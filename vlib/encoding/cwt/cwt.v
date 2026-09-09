@@ -75,7 +75,7 @@ pub fn sign(claims ClaimsSet, key cose.Key, opts SignOptions) ![]u8 {
 // verify parses, unwraps and verifies a signed CWT, returning the
 // claims set. The outer tag 61 is accepted-but-not-required.
 pub fn verify(token []u8, key cose.Key, opts VerifyOptions) !ClaimsSet {
-	cose_message := unwrap_cwt(token)
+	cose_message := unwrap_cwt(token)!
 	payload := cose.verify1(cose_message, key, external_aad: opts.external_aad)!
 	return ClaimsSet.decode(payload)!
 }
@@ -94,7 +94,7 @@ pub fn mac(claims ClaimsSet, key cose.Key, opts MacOptions) ![]u8 {
 
 // verify_mac parses, unwraps and verifies a MACed CWT.
 pub fn verify_mac(token []u8, key cose.Key, opts VerifyMacOptions) !ClaimsSet {
-	cose_message := unwrap_cwt(token)
+	cose_message := unwrap_cwt(token)!
 	payload := cose.verify_mac0(cose_message, key, external_aad: opts.external_aad)!
 	return ClaimsSet.decode(payload)!
 }
@@ -114,15 +114,19 @@ fn wrap_cwt(cose_message []u8, tagged bool) []u8 {
 // unwrap_cwt strips the optional outer tag 61 and returns the inner
 // COSE message bytes. Tagged and untagged inputs are both accepted.
 //
-// Tag 61 encodes as exactly two bytes (`0xD8 0x3D`, RFC 8949 §3.4)
-// since 61 fits in a single-octet argument; checking those two bytes
-// directly is faster and safer than running a partial CBOR decode
-// just to peek a tag we'd then have to roll back. Any inner COSE tag
-// (e.g. 18 for Sign1) starts with a different byte and is left to the
-// downstream parser.
-fn unwrap_cwt(token []u8) []u8 {
-	if token.len >= 2 && token[0] == 0xD8 && token[1] == 0x3D {
-		return token[2..].clone()
+// The tag is parsed rather than matched byte-for-byte because CBOR permits
+// non-preferred integer encodings such as `d9 003d` for tag 61.
+fn unwrap_cwt(token []u8) ![]u8 {
+	if token.len == 0 {
+		return token.clone()
+	}
+	mut u := cbor.new_unpacker(token, cbor.DecodeOpts{})
+	if u.peek_kind()! == .tag_val {
+		tag := u.unpack_tag()!
+		if tag == tag_cwt {
+			consumed := token.len - u.remaining()
+			return token[consumed..].clone()
+		}
 	}
 	return token.clone()
 }

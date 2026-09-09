@@ -20,6 +20,11 @@ const alg_direct = i64(-6)
 // rationale on `max_signers` in sign.v.
 const max_recipients = 256
 
+struct RecipientAlgorithm {
+	present bool
+	value   i64
+}
+
 // Recipient is one entry of the `recipients` array of a COSE_Mac
 // message. In "direct" mode the recipient carries only routing info
 // (typically `kid` plus `alg = direct` in the unprotected header) and
@@ -95,7 +100,8 @@ pub fn mac(payload []u8, key Key, opts MacOptions) ![]u8 {
 	mut recipients := []Recipient{cap: opts.recipients.len}
 	for src in opts.recipients {
 		mut new_unprotected := src.unprotected
-		if new_unprotected.algorithm == none && !has_int_label(new_unprotected, label_alg) {
+		has_direct := check_direct_recipient(src, false)!
+		if !has_direct {
 			// Re-allocate the slice so we don't mutate the caller's
 			// Headers if it shares its backing array.
 			mut extras := []HeaderEntry{cap: new_unprotected.extra_int_labels.len + 1}
@@ -134,6 +140,7 @@ pub fn verify_mac(message []u8, key Key, opts VerifyMacOptions) ![]u8 {
 	check_protected_headers(msg.protected, msg.unprotected)!
 	for r in msg.recipients {
 		check_protected_headers(r.protected, r.unprotected)!
+		check_direct_recipient(r, true)!
 	}
 	pl := if dp := opts.detached_payload {
 		dp
@@ -154,6 +161,71 @@ pub fn verify_mac(message []u8, key Key, opts VerifyMacOptions) ![]u8 {
 	tbm := mac_structure_mac(body_protected, opts.external_aad, pl)
 	mac_verify(alg, key, tbm, msg.tag)!
 	return pl
+}
+
+fn header_algorithm(h Headers) !RecipientAlgorithm {
+	mut result := RecipientAlgorithm{}
+	if alg := h.algorithm {
+		result = RecipientAlgorithm{
+			present: true
+			value:   i64(alg)
+		}
+	}
+	for entry in h.extra_int_labels {
+		if entry.label != label_alg {
+			continue
+		}
+		if result.present {
+			return MalformedMessage{
+				reason: 'duplicate recipient algorithm header'
+			}
+		}
+		result = RecipientAlgorithm{
+			present: true
+			value:   entry.value.as_int() or {
+				return MalformedMessage{
+					reason: 'recipient algorithm header is not an integer'
+				}
+			}
+		}
+	}
+	return result
+}
+
+// check_direct_recipient validates the only recipient mode implemented by
+// this module. It returns false for an absent algorithm when creation is
+// allowed to auto-add `direct`.
+fn check_direct_recipient(recipient Recipient, require_algorithm bool) !bool {
+	protected_alg := header_algorithm(recipient.protected)!
+	unprotected_alg := header_algorithm(recipient.unprotected)!
+	if protected_alg.present && unprotected_alg.present {
+		return MalformedMessage{
+			reason: 'recipient algorithm appears in both protected and unprotected headers'
+		}
+	}
+	alg := if protected_alg.present {
+		protected_alg.value
+	} else if unprotected_alg.present {
+		unprotected_alg.value
+	} else {
+		if require_algorithm {
+			return MalformedMessage{
+				reason: 'COSE_Mac recipient is missing alg = direct (-6)'
+			}
+		}
+		return false
+	}
+	if alg != alg_direct {
+		return MalformedMessage{
+			reason: 'unsupported COSE_Mac recipient algorithm ${alg}; only direct (-6) is supported'
+		}
+	}
+	if recipient.encrypted_key.len != 0 {
+		return MalformedMessage{
+			reason: 'direct COSE_Mac recipient must have an empty encrypted_key'
+		}
+	}
+	return true
 }
 
 // protected_bytes returns the body protected bucket to feed into the

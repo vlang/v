@@ -181,6 +181,19 @@ fn test_unknown_decoded_key_algorithm_remains_constrained() {
 	}
 }
 
+fn test_key_decode_rejects_duplicate_labels() {
+	for encoded in [
+		hex.decode('a301040104205820' + '11'.repeat(32))!,
+		hex.decode('a40104617800617801205820' + '11'.repeat(32))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'duplicate COSE_Key labels must be rejected'
+		} else {
+			assert err.msg().contains('duplicate')
+		}
+	}
+}
+
 fn test_mac0_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

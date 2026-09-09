@@ -229,7 +229,14 @@ fn test_mac_uses_the_received_protected_bytes_for_body_and_recipient() {
 	p.pack_array_header(1)
 	p.pack_array_header(3)
 	p.pack_bytes(nc_body_protected)
-	p.pack_value(Headers{}.to_value())!
+	p.pack_value(Headers{
+		extra_int_labels: [
+			HeaderEntry{
+				label: label_alg
+				value: cbor.new_int(alg_direct)
+			},
+		]
+	}.to_value())!
 	p.pack_bytes([]u8{})
 	msg := p.bytes()
 

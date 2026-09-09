@@ -90,6 +90,44 @@ fn test_mac_recipient_alg_direct_auto_added() {
 	assert found_direct
 }
 
+fn test_mac_rejects_non_direct_recipient_algorithm() {
+	key := Key.symmetric([]u8{len: 32, init: 1})
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	for recipient in [
+		Recipient{
+			protected: Headers{
+				algorithm: .es256
+			}
+		},
+		Recipient{
+			unprotected: Headers{
+				algorithm: .es256
+			}
+		},
+	] {
+		if _ := mac('payload'.bytes(), key, protected: hp, recipients: [recipient]) {
+			assert false, 'only direct recipient algorithms are supported'
+		} else {
+			assert err.msg().contains('only direct')
+		}
+	}
+}
+
+fn test_verify_mac_requires_direct_recipient_algorithm() {
+	key := Key.symmetric([]u8{len: 32, init: 1})
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	signed := mac('payload'.bytes(), key, protected: hp, recipients: [Recipient{}])!
+	mut msg := MacMessage.decode(signed)!
+	msg.recipients[0].unprotected = Headers{}
+	if _ := verify_mac(msg.encode(true)!, key) {
+		assert false, 'verification must require alg = direct for every recipient'
+	} else {
+		assert err.msg().contains('missing alg = direct')
+	}
+}
+
 fn test_mac_decodes_indefinite_length_arrays() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

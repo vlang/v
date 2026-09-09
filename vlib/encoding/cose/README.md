@@ -171,7 +171,8 @@ cose.verify1(sig_only, pub_key, detached_payload: large_blob)!
   `Key.decode()`.
 - `cose.Headers` — typed protected/unprotected header bag. Well-known
   parameters as fields, others via `extra_int_labels` /
-  `extra_text_labels`. Serialised in canonical CBOR order, except for
+  `extra_text_labels`; mixed integer/text `crit` entries are retained in
+  `critical` / `critical_text`. Serialised in canonical CBOR order, except for
   the protected bucket of a decoded message: RFC 9052 §4.4 and §6.3
   build the `Sig_structure` / `MAC_structure` from the protected bytes
   as they were received, so those are kept verbatim and re-emitted

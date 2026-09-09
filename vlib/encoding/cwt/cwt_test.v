@@ -74,6 +74,17 @@ fn test_verify_signed_cwt_appendix_a3() {
 	assert (claims.sub or { '' }) == 'erikw'
 }
 
+fn test_verify_accepts_non_preferred_cwt_tag_encoding() {
+	x := hex.decode(a3_p256_x_hex)!
+	y := hex.decode(a3_p256_y_hex)!
+	pub_key := cose.Key.ec2_public(.p_256, x, y)
+	// Tag 61 encoded with a two-byte argument instead of its preferred
+	// one-byte argument: d9 003d rather than d8 3d.
+	token := hex.decode('d9003d' + a3_signed_message_hex)!
+	claims := verify(token, pub_key)!
+	assert (claims.iss or { '' }) == 'coap://as.example.com'
+}
+
 fn test_sign_and_verify_cwt_roundtrip_es256() {
 	x := hex.decode(a3_p256_x_hex)!
 	y := hex.decode(a3_p256_y_hex)!

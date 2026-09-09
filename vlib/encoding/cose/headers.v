@@ -32,12 +32,11 @@ pub struct Headers {
 pub mut:
 	// algorithm — label 1.
 	algorithm ?Algorithm
-	// critical — label 2. Lists integer labels that MUST appear in the
-	// protected header and that the recipient MUST understand. Text-
-	// labelled crit entries are accepted on decode (kept in the cbor
-	// `Value` of the surrounding map) but not modelled here, since
-	// real-world COSE deployments always use integer labels.
-	critical []i64
+	// critical — label 2. Lists labels that MUST appear in the protected
+	// header and that the recipient MUST understand. Integer and text
+	// labels are retained separately for convenient typed access.
+	critical      []i64
+	critical_text []string
 	// content_type — label 3. RFC 9052 allows either a uint (CoAP
 	// content-format) or a tstr (IANA media type). Set at most one of
 	// these two fields; if both are set, the int form wins on encode.
@@ -88,9 +87,10 @@ pub:
 // An empty *protected* Headers serialises to a zero-length bstr (`0x40`)
 // per RFC 9052 §3.
 pub fn (h Headers) is_empty() bool {
-	return h.algorithm == none && h.critical.len == 0 && h.content_type_int == none
-		&& h.content_type_text == none && h.kid == none && h.iv == none && h.partial_iv == none
-		&& h.extra_int_labels.len == 0 && h.extra_text_labels.len == 0
+	return h.algorithm == none && h.critical.len == 0 && h.critical_text.len == 0
+		&& h.content_type_int == none && h.content_type_text == none && h.kid == none
+		&& h.iv == none && h.partial_iv == none && h.extra_int_labels.len == 0
+		&& h.extra_text_labels.len == 0
 }
 
 // to_value returns the Headers as a `cbor.Value` (always a `Map`),
@@ -123,10 +123,13 @@ fn (h Headers) append_pairs(mut pairs []cbor.MapPair) {
 			value: cbor.new_int(i64(alg))
 		}
 	}
-	if h.critical.len > 0 {
+	if h.critical.len > 0 || h.critical_text.len > 0 {
 		mut crit_arr := cbor.Array{}
 		for c in h.critical {
 			crit_arr.elements << cbor.new_int(c)
+		}
+		for c in h.critical_text {
+			crit_arr.elements << cbor.new_text(c)
 		}
 		pairs << cbor.MapPair{
 			key:   cbor.new_int(label_crit)
@@ -273,16 +276,26 @@ fn parse_headers_value(v cbor.Value) !Headers {
 								reason: 'crit label is not an array'
 							}
 						}
+						if items.len == 0 {
+							return MalformedMessage{
+								reason: 'crit array must not be empty (RFC 9052 §3.1)'
+							}
+						}
 						mut crit := []i64{cap: items.len}
+						mut crit_text := []string{cap: items.len}
 						for item in items {
-							c := item.as_int() or {
+							if c := item.as_int() {
+								crit << c
+							} else if c := item.as_string() {
+								crit_text << c
+							} else {
 								return MalformedMessage{
-									reason: 'crit array contains non-integer'
+									reason: 'crit array contains a label that is neither int nor tstr'
 								}
 							}
-							crit << c
 						}
 						h.critical = crit
+						h.critical_text = crit_text
 					}
 					label_content_type {
 						if u := pair.value.as_uint() {
@@ -379,7 +392,7 @@ fn check_protected_headers(protected Headers, unprotected Headers) ! {
 			}
 		}
 	}
-	if unprotected.critical.len > 0 {
+	if has_int_label(unprotected, label_crit) {
 		return MalformedMessage{
 			reason: 'crit label must be in protected headers (RFC 9052 §3.1)'
 		}
@@ -389,6 +402,13 @@ fn check_protected_headers(protected Headers, unprotected Headers) ! {
 		if !has_int_label(protected, label) {
 			return MalformedMessage{
 				reason: 'crit lists label ${label}, but it is not present in protected headers (RFC 9052 §3.1)'
+			}
+		}
+	}
+	for label in protected.critical_text {
+		if !has_text_label(protected, label) {
+			return MalformedMessage{
+				reason: 'crit lists label "${label}", but it is not present in protected headers (RFC 9052 §3.1)'
 			}
 		}
 	}
@@ -409,6 +429,11 @@ fn check_critical(h Headers) ! {
 			}
 		}
 	}
+	for label in h.critical_text {
+		return MalformedMessage{
+			reason: 'crit lists unknown label "${label}" (RFC 9052 §3.1)'
+		}
+	}
 }
 
 // has_int_label reports whether `h` already declares the given integer
@@ -424,7 +449,7 @@ fn has_int_label(h Headers, label i64) bool {
 			}
 		}
 		label_crit {
-			if h.critical.len > 0 {
+			if h.critical.len > 0 || h.critical_text.len > 0 {
 				return true
 			}
 		}

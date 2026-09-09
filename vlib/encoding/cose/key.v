@@ -221,7 +221,7 @@ pub fn (k Key) encode() ![]u8 {
 
 // Key.decode parses a CBOR-encoded COSE_Key.
 pub fn Key.decode(data []u8) !Key {
-	v := cbor.decode[cbor.Value](data, cbor.DecodeOpts{})!
+	v := cbor.decode[cbor.Value](data, cbor.DecodeOpts{ deny_duplicate_keys: true })!
 	m := if v is cbor.Map {
 		v
 	} else {

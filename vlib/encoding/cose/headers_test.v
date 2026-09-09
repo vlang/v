@@ -165,14 +165,31 @@ fn test_rejects_labels_repeated_across_header_buckets() {
 	}
 }
 
-fn test_rejects_present_empty_crit_repeated_across_header_buckets() {
-	// The empty arrays cannot be inferred from Headers.critical.len, so
-	// decoding must preserve the fact that label 2 was present.
-	protected := parse_protected(hex.decode('a10280')!)!
-	unprotected := parse_headers_map(hex.decode('a10280')!)!
-	if _ := check_protected_headers(protected, unprotected) {
-		assert false, 'present empty crit labels must not occur in both buckets'
+fn test_rejects_present_empty_crit() {
+	if _ := parse_protected(hex.decode('a10280')!) {
+		assert false, 'a present crit array must not be empty'
 	} else {
-		assert err.msg().contains('header label 2')
+		assert err.msg().contains('crit array must not be empty')
+	}
+}
+
+fn test_preserves_text_labels_in_crit_for_validation() {
+	mut h := Headers{}
+	h.algorithm = .es256
+	h.critical = [i64(1)]
+	h.critical_text = ['app']
+	h.extra_text_labels = [
+		TextHeaderEntry{
+			label: 'app'
+			value: cbor.new_int(1)
+		},
+	]
+	parsed := parse_protected(h.encode_protected()!)!
+	assert parsed.critical == [i64(1)]
+	assert parsed.critical_text == ['app']
+	if _ := check_protected_headers(parsed, Headers{}) {
+		assert false, 'text crit labels must be assessed during validation'
+	} else {
+		assert err.msg().contains('crit lists unknown label "app"')
 	}
 }
