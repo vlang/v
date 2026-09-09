@@ -251,6 +251,16 @@ fn test_string_interpolation_reference_to_option_value_is_evaluated_lazily() {
 	assert counter.calls == 2
 }
 
+fn test_dumped_option_reference_string_interpolation_is_not_hoisted_from_if_expression() {
+	options := [?string('value')]
+	result := if false {
+		dump('${&options[1]}')
+	} else {
+		''
+	}
+	assert result == ''
+}
+
 fn test_int_ref_string_interpolation() {
 	mut count := 10
 	count_ref := &count
