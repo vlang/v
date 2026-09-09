@@ -266,6 +266,13 @@ fn test_likely_option_reference_string_interpolation_is_not_hoisted_from_short_c
 	assert !(false && _likely_('${&options[1]}' == ''))
 }
 
+fn test_unsafe_option_reference_string_interpolation_is_not_hoisted_from_short_circuit() {
+	options := [?string('value')]
+	mut counter := OptionRefCounter{}
+	assert !(false && unsafe { '${&options[counter.next()]}' == '' })
+	assert counter.calls == 0
+}
+
 fn test_int_ref_string_interpolation() {
 	mut count := 10
 	count_ref := &count

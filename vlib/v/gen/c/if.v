@@ -605,6 +605,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		ast.Likely {
 			return g.need_tmp_var_in_expr(expr.expr)
 		}
+		ast.UnsafeExpr {
+			return g.need_tmp_var_in_expr(expr.expr)
+		}
 		ast.Ident {
 			return expr.or_expr.kind != .absent
 		}
