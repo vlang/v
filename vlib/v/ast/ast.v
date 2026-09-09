@@ -712,10 +712,14 @@ pub:
 
 pub struct ReceiverHelperCall {
 pub:
-	name          string
-	receiver_type Type
-	param_idx     int
-	param_type    Type
+	name                 string
+	receiver_type        Type
+	param_idx            int
+	param_type           Type
+	result_is_local      bool
+	result_alias_var_pos int
+pub mut:
+	result_escapes bool
 }
 
 @[minify]

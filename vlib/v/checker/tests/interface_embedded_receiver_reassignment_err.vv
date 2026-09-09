@@ -232,6 +232,9 @@ fn main() {
 	_ = pointer_element.return_saved_pointer_through_helper()
 	_ = pointer_element.return_or_pointer_through_helper()
 	_ = pointer_element.return_ident_or_pointer_receiver()
+	pointer_element.replace_through_indexed_method(PointerNode(Item{}))
+	_ = pointer_element.return_pointer_array_infix()
+	_ = pointer_element.return_pointer_helper_alias()
 }
 
 fn replace_pointer_node(node &PointerNode, next PointerNode) {
@@ -374,4 +377,41 @@ fn (node &PointerNode) return_or_pointer_through_helper() &PointerNode {
 fn (node &PointerNode) return_ident_or_pointer_receiver() &PointerNode {
 	candidate := maybe_pointer_node()
 	return candidate or { node }
+}
+
+fn (node &PointerNode) replace_pointer_value(next PointerNode) {
+	unsafe {
+		*node = next
+	}
+}
+
+fn (node &PointerNode) replace_through_indexed_method(next PointerNode) {
+	unsafe {
+		(&[1]PointerNode(node))[0].replace_pointer_value(next)
+	}
+}
+
+struct PointerNodes {
+	nodes []&PointerNode
+}
+
+fn (left PointerNodes) + (_ PointerNodes) PointerNodes {
+	return PointerNodes{
+		nodes: left.nodes
+	}
+}
+
+fn (node &PointerNode) return_pointer_array_infix() PointerNodes {
+	return PointerNodes{
+		nodes: [node]
+	} + PointerNodes{}
+}
+
+fn identity_pointer_node(node &PointerNode) &PointerNode {
+	return unsafe { node }
+}
+
+fn (node &PointerNode) return_pointer_helper_alias() &PointerNode {
+	alias := identity_pointer_node(node)
+	return alias
 }

@@ -124,6 +124,10 @@ fn contains_receiver_var_reference(expr ast.Expr, name string, var_pos int) bool
 		ast.MatchExpr {
 			reduced.branches.any(stmts_return_receiver_var_reference(it.stmts, name, var_pos))
 		}
+		ast.InfixExpr {
+			reduced.op == .plus && (contains_receiver_var_reference(reduced.left, name, var_pos)
+				|| contains_receiver_var_reference(reduced.right, name, var_pos))
+		}
 		ast.ArrayDecompose {
 			contains_receiver_var_reference(reduced.expr, name, var_pos)
 		}
@@ -254,6 +258,9 @@ fn is_receiver_method_target(expr ast.Expr, name string, aliases []ast.ReceiverA
 	}
 	if reduced is ast.PrefixExpr && reduced.op == .mul {
 		return is_receiver_pointer_alias(reduced.right, name, aliases)
+	}
+	if reduced is ast.IndexExpr {
+		return is_receiver_pointer_alias(reduced.left, name, aliases)
 	}
 	return false
 }

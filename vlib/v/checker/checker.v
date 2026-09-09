@@ -156,6 +156,8 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	inside_assign                    bool
+	receiver_helper_result_is_local  bool
+	receiver_helper_result_alias     ast.ReceiverAlias
 	assert_autocasts                 map[string]AssertAutocast
 	is_js_backend                    bool
 	// doing_line_info                  int    // a quick single file run when called with v -line-info (contains line nr to inspect)

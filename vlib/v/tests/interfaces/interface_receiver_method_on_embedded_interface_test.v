@@ -66,6 +66,16 @@ fn (node &Node) local_pointer_helper_array_len() int {
 	return local_pointer_array_len(node)
 }
 
+fn (node &Node) read_field_through_returned_helper_alias() string {
+	alias := identity_node(node)
+	return alias.name
+}
+
+fn (node &Node) return_unrelated_helper_pointer() &Node {
+	alias := unrelated_node(node)
+	return alias
+}
+
 fn (node &Node) inspect_through_generic_helper() int {
 	return inspect_value(node)
 }
@@ -107,6 +117,14 @@ fn local_pointer_array_len(node &Node) int {
 	mut saved := []&Node{}
 	saved << node
 	return saved.len
+}
+
+fn identity_node(node &Node) &Node {
+	return unsafe { node }
+}
+
+fn unrelated_node(_ &Node) &Node {
+	return new_child('unrelated')
 }
 
 fn replace_pointer_only_on_windows(node &Node, next &Node) {
@@ -284,6 +302,12 @@ fn test_forward_pointer_receiver_helper_does_not_escape() {
 fn test_local_pointer_helper_array_does_not_escape() {
 	element := new_element()
 	assert element.local_pointer_helper_array_len() == 1
+}
+
+fn test_local_helper_returned_pointer_alias_does_not_escape() {
+	element := new_element()
+	assert element.read_field_through_returned_helper_alias() == 'body'
+	assert element.return_unrelated_helper_pointer().name == 'unrelated'
 }
 
 fn test_generic_pointer_receiver_helper_does_not_escape() {

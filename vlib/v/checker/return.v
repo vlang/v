@@ -151,6 +151,7 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 	}
 	node.types = got_types
+	c.record_receiver_return(node.exprs)
 	$if debug_manualfree ? {
 		cfn := c.table.cur_fn
 		if cfn.is_manualfree {

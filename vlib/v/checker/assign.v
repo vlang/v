@@ -176,7 +176,16 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				&& right is ast.StructInit && (right as ast.StructInit).is_anon {
 				c.anon_struct_should_be_mut = true
 			}
+			prev_receiver_helper_result_is_local := c.receiver_helper_result_is_local
+			prev_receiver_helper_result_alias := c.receiver_helper_result_alias
+			c.receiver_helper_result_is_local = is_decl && i < node.left.len
+				&& node.left[i] is ast.Ident
+			if c.receiver_helper_result_is_local {
+				c.receiver_helper_result_alias = receiver_alias_for_ident(node.left[i] as ast.Ident)
+			}
 			mut right_type := c.expr(mut right)
+			c.receiver_helper_result_is_local = prev_receiver_helper_result_is_local
+			c.receiver_helper_result_alias = prev_receiver_helper_result_alias
 			c.anon_struct_should_be_mut = false
 			if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
 				c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
@@ -386,7 +395,15 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.anon_struct_should_be_mut = false
 				}
 			}
+			prev_receiver_helper_result_is_local := c.receiver_helper_result_is_local
+			prev_receiver_helper_result_alias := c.receiver_helper_result_alias
+			c.receiver_helper_result_is_local = is_decl && left is ast.Ident
+			if c.receiver_helper_result_is_local {
+				c.receiver_helper_result_alias = receiver_alias_for_ident(left as ast.Ident)
+			}
 			right_type := c.expr(mut expr)
+			c.receiver_helper_result_is_local = prev_receiver_helper_result_is_local
+			c.receiver_helper_result_alias = prev_receiver_helper_result_alias
 			c.inside_decl_rhs = false
 			c.inside_ref_lit = old_inside_ref_lit
 			if node.right_types.len == i {
