@@ -80,6 +80,16 @@ fn (node &Node) replace_through_pointer_closure(next Node) {
 	replace()
 }
 
+fn replace_pointer_argument(node &Node, next Node) {
+	unsafe {
+		*node = next
+	}
+}
+
+fn (node &Node) replace_through_pointer_argument(next Node) {
+	replace_pointer_argument(node, next)
+}
+
 interface Element {
 	Node
 }
@@ -101,4 +111,5 @@ fn main() {
 	element.replace_through_pointer(Node(Item{}))
 	element.replace_through_pointer_closure(Node(Item{}))
 	element.replace_through_pointer_method(Node(Item{}))
+	element.replace_through_pointer_argument(Node(Item{}))
 }

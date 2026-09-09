@@ -52,9 +52,8 @@ fn (c &Checker) implicit_mut_call_arg(param ast.Param, arg ast.CallArg) ast.Call
 	}
 }
 
-fn (mut c Checker) record_receiver_mut_argument(param ast.Param, arg ast.CallArg) {
-	if !param.is_mut || !arg.is_mut || c.table.cur_fn == unsafe { nil }
-		|| !c.table.cur_fn.is_method
+fn (mut c Checker) record_receiver_argument(param ast.Param, arg ast.CallArg) {
+	if c.table.cur_fn == unsafe { nil } || !c.table.cur_fn.is_method
 		|| (!c.table.cur_fn.rec_mut && !c.table.cur_fn.receiver.typ.is_ptr()) {
 		return
 	}
@@ -67,7 +66,11 @@ fn (mut c Checker) record_receiver_mut_argument(param ast.Param, arg ast.CallArg
 		mut receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
 		method_idx := c.table.cur_fn.method_idx
 		if method_idx >= 0 && method_idx < receiver_sym.methods.len {
-			receiver_sym.methods[method_idx].receiver_passed_mut = true
+			if param.is_mut && arg.is_mut {
+				receiver_sym.methods[method_idx].receiver_passed_mut = true
+			} else if c.table.cur_fn.receiver.typ.is_ptr() && param.typ.is_ptr() {
+				receiver_sym.methods[method_idx].receiver_address_taken = true
+			}
 		}
 	}
 }
@@ -2474,7 +2477,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		call_arg = c.implicit_mut_call_arg(param, call_arg)
 		node.args[i] = call_arg
-		c.record_receiver_mut_argument(param, call_arg)
+		c.record_receiver_argument(param, call_arg)
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(mut call_arg.expr)
 			call_arg_expr_pos := call_arg.expr.pos()
@@ -3490,7 +3493,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 					arg = c.implicit_mut_call_arg(param, arg)
 					node.args[i] = arg
-					c.record_receiver_mut_argument(param, arg)
+					c.record_receiver_argument(param, arg)
 					if arg.is_mut {
 						to_lock, pos := c.fail_if_immutable(mut arg.expr)
 						if !param.is_mut {
@@ -3902,7 +3905,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		arg = c.implicit_mut_call_arg(param, arg)
 		node.args[i] = arg
-		c.record_receiver_mut_argument(param, arg)
+		c.record_receiver_argument(param, arg)
 		if arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(mut arg.expr)
 			if !param_is_mut {
