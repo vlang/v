@@ -699,6 +699,14 @@ pub:
 	is_fn_var   bool
 }
 
+pub struct ReceiverPointerAlias {
+pub:
+	name      string
+	var_pos   int
+	start_pos int
+	end_pos   int
+}
+
 @[minify]
 pub struct Fn {
 pub:
@@ -745,7 +753,7 @@ pub mut:
 	receiver_address_taken        bool
 	receiver_captured_mut         bool
 	receiver_method_calls         []string
-	receiver_pointer_aliases      []string
+	receiver_pointer_aliases      []ReceiverPointerAlias
 	//
 	is_expand_simple_interpolation bool // for tagging b.f(s string), which is then called with `b.f('some ${x} ${y}')`,
 	// when that call, should be expanded to `b.f('some '); b.f(x); b.f(' '); b.f(y);`

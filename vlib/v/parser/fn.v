@@ -42,14 +42,35 @@ mut:
 	address_taken       bool
 	captured_mut        bool
 	method_calls        []string
-	receiver_aliases    []string
+	receiver_aliases    []ast.ReceiverPointerAlias
 }
 
 fn contains_receiver_reference(expr ast.Expr, name string) bool {
+	return contains_receiver_var_reference(expr, name, -1)
+}
+
+fn receiver_ident_var_pos(ident ast.Ident) int {
+	obj_pos := match ident.obj {
+		ast.Var { ident.obj.pos.pos }
+		else { -1 }
+	}
+
+	if obj_pos >= 0 {
+		return obj_pos
+	}
+	if ident.scope != unsafe { nil } {
+		if variable := ident.scope.find_var(ident.name) {
+			return variable.pos.pos
+		}
+	}
+	return -1
+}
+
+fn contains_receiver_var_reference(expr ast.Expr, name string, var_pos int) bool {
 	reduced := expr.remove_par()
 	return match reduced {
 		ast.Ident {
-			reduced.name == name
+			reduced.name == name && (var_pos < 0 || receiver_ident_var_pos(reduced) == var_pos)
 		}
 		ast.PrefixExpr {
 			if reduced.op == .mul {
@@ -57,48 +78,48 @@ fn contains_receiver_reference(expr ast.Expr, name string) bool {
 			} else if reduced.op == .amp {
 				right := reduced.right.remove_par()
 				if right is ast.PrefixExpr && right.op == .mul {
-					contains_receiver_reference(right.right, name)
+					contains_receiver_var_reference(right.right, name, var_pos)
 				} else {
-					contains_receiver_reference(right, name)
+					contains_receiver_var_reference(right, name, var_pos)
 				}
 			} else {
 				false
 			}
 		}
 		ast.CastExpr {
-			contains_receiver_reference(reduced.expr, name)
-				|| (reduced.has_arg && contains_receiver_reference(reduced.arg, name))
+			contains_receiver_var_reference(reduced.expr, name, var_pos)
+				|| (reduced.has_arg && contains_receiver_var_reference(reduced.arg, name, var_pos))
 		}
 		ast.AsCast {
-			contains_receiver_reference(reduced.expr, name)
+			contains_receiver_var_reference(reduced.expr, name, var_pos)
 		}
 		ast.UnsafeExpr {
-			contains_receiver_reference(reduced.expr, name)
+			contains_receiver_var_reference(reduced.expr, name, var_pos)
 		}
 		ast.IfExpr {
-			reduced.branches.any(stmts_return_receiver_reference(it.stmts, name))
+			reduced.branches.any(stmts_return_receiver_var_reference(it.stmts, name, var_pos))
 		}
 		ast.MatchExpr {
-			reduced.branches.any(stmts_return_receiver_reference(it.stmts, name))
+			reduced.branches.any(stmts_return_receiver_var_reference(it.stmts, name, var_pos))
 		}
 		ast.ArrayDecompose {
-			contains_receiver_reference(reduced.expr, name)
+			contains_receiver_var_reference(reduced.expr, name, var_pos)
 		}
 		ast.ArrayInit {
-			reduced.exprs.any(contains_receiver_reference(it, name))
+			reduced.exprs.any(contains_receiver_var_reference(it, name, var_pos))
 				|| (reduced.has_update_expr
-				&& contains_receiver_reference(reduced.update_expr, name))
+				&& contains_receiver_var_reference(reduced.update_expr, name, var_pos))
 		}
 		ast.MapInit {
-			reduced.keys.any(contains_receiver_reference(it, name))
-				|| reduced.vals.any(contains_receiver_reference(it, name))
+			reduced.keys.any(contains_receiver_var_reference(it, name, var_pos))
+				|| reduced.vals.any(contains_receiver_var_reference(it, name, var_pos))
 				|| (reduced.has_update_expr
-				&& contains_receiver_reference(reduced.update_expr, name))
+				&& contains_receiver_var_reference(reduced.update_expr, name, var_pos))
 		}
 		ast.StructInit {
-			reduced.init_fields.any(contains_receiver_reference(it.expr, name))
+			reduced.init_fields.any(contains_receiver_var_reference(it.expr, name, var_pos))
 				|| (reduced.has_update_expr
-				&& contains_receiver_reference(reduced.update_expr, name))
+				&& contains_receiver_var_reference(reduced.update_expr, name, var_pos))
 		}
 		else {
 			false
@@ -106,17 +127,17 @@ fn contains_receiver_reference(expr ast.Expr, name string) bool {
 	}
 }
 
-fn stmts_return_receiver_reference(stmts []ast.Stmt, name string) bool {
+fn stmts_return_receiver_var_reference(stmts []ast.Stmt, name string, var_pos int) bool {
 	if stmts.len == 0 {
 		return false
 	}
 	last_stmt := stmts.last()
 	return match last_stmt {
 		ast.ExprStmt {
-			contains_receiver_reference(last_stmt.expr, name)
+			contains_receiver_var_reference(last_stmt.expr, name, var_pos)
 		}
 		ast.Return {
-			last_stmt.exprs.any(contains_receiver_reference(it, name))
+			last_stmt.exprs.any(contains_receiver_var_reference(it, name, var_pos))
 		}
 		else {
 			false
@@ -124,16 +145,17 @@ fn stmts_return_receiver_reference(stmts []ast.Stmt, name string) bool {
 	}
 }
 
-fn contains_receiver_or_alias(expr ast.Expr, name string, aliases []string) bool {
-	return contains_receiver_reference(expr, name)
-		|| aliases.any(contains_receiver_reference(expr, it))
+fn contains_receiver_or_alias(expr ast.Expr, name string, aliases []ast.ReceiverPointerAlias) bool {
+	return contains_receiver_reference(expr, name) || aliases.any(it.end_pos == 0
+		&& contains_receiver_var_reference(expr, it.name, it.var_pos))
 }
 
-fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []string) bool {
+fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []ast.ReceiverPointerAlias) bool {
 	reduced := expr.remove_par()
 	return match reduced {
 		ast.Ident {
-			reduced.name == name || reduced.name in aliases
+			reduced.name == name || aliases.any(it.end_pos == 0 && reduced.name == it.name
+				&& receiver_ident_var_pos(reduced) == it.var_pos)
 		}
 		ast.CastExpr {
 			is_receiver_pointer_alias(reduced.expr, name, aliases)
@@ -161,6 +183,30 @@ fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []string) bool 
 			false
 		}
 	}
+}
+
+fn receiver_pointer_alias_index(ident ast.Ident, aliases []ast.ReceiverPointerAlias) int {
+	var_pos := receiver_ident_var_pos(ident)
+	if var_pos < 0 {
+		return -1
+	}
+	for i, alias in aliases {
+		if alias.end_pos == 0 && ident.name == alias.name && var_pos == alias.var_pos {
+			return i
+		}
+	}
+	return -1
+}
+
+fn is_receiver_method_target(expr ast.Expr, name string, aliases []ast.ReceiverPointerAlias) bool {
+	reduced := expr.remove_par()
+	if is_receiver_pointer_alias(reduced, name, aliases) {
+		return true
+	}
+	if reduced is ast.PrefixExpr && reduced.op == .mul {
+		return is_receiver_pointer_alias(reduced.right, name, aliases)
+	}
+	return false
 }
 
 fn scan_receiver_sql_query_data(items []ast.SqlQueryDataItem, name string, mut info ReceiverReassignmentInfo) {
@@ -208,21 +254,39 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 			if node is ast.AssignStmt {
 				if info.receiver_is_ptr {
 					for i, right in node.right {
-						if !contains_receiver_or_alias(right, name, info.receiver_aliases) {
+						left := if i < node.left.len {
+							node.left[i].remove_par()
+						} else {
+							ast.empty_expr
+						}
+						mut alias_idx := -1
+						if left is ast.Ident {
+							alias_idx = receiver_pointer_alias_index(left, info.receiver_aliases)
+						}
+						has_receiver := contains_receiver_or_alias(right, name,
+							info.receiver_aliases)
+						is_pointer_alias := is_receiver_pointer_alias(right, name,
+							info.receiver_aliases)
+						if has_receiver && is_pointer_alias && left is ast.Ident
+							&& left.name !in [name, '_'] && receiver_ident_var_pos(left) >= 0 {
+							if alias_idx < 0 {
+								info.receiver_aliases << ast.ReceiverPointerAlias{
+									name:      left.name
+									var_pos:   receiver_ident_var_pos(left)
+									start_pos: left.pos.pos
+								}
+							}
 							continue
 						}
-						if i < node.left.len
-							&& is_receiver_pointer_alias(right, name, info.receiver_aliases) {
-							left := node.left[i].remove_par()
-							if left is ast.Ident && left.name !in [name, '_']
-								&& left.obj !is ast.GlobalField {
-								if left.name !in info.receiver_aliases {
-									info.receiver_aliases << left.name
-								}
-								continue
+						if has_receiver {
+							info.address_taken = true
+						}
+						if alias_idx >= 0 {
+							info.receiver_aliases[alias_idx] = ast.ReceiverPointerAlias{
+								...info.receiver_aliases[alias_idx]
+								end_pos: left.pos().pos
 							}
 						}
-						info.address_taken = true
 					}
 				}
 				for left in node.left {
@@ -272,7 +336,7 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 			match node {
 				ast.AnonFn {
 					mut receiver_names := [name]
-					receiver_names << info.receiver_aliases
+					receiver_names << info.receiver_aliases.filter(it.end_pos == 0).map(it.name)
 					if node.inherited_vars.any(it.name == name && it.is_mut) {
 						info.captured_mut = true
 					} else if info.receiver_is_ptr && !info.receiver_is_mut
@@ -299,8 +363,8 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 				ast.CallExpr {
 					mut left := node.left
 					left = left.remove_par()
-					if node.is_method && left is ast.Ident
-						&& (left.name == name || left.name in info.receiver_aliases)
+					if node.is_method
+						&& is_receiver_method_target(left, name, info.receiver_aliases)
 						&& node.name !in info.method_calls {
 						info.method_calls << node.name
 					}

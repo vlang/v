@@ -67,6 +67,12 @@ fn (node &Node) replace_through_pointer(next Node) {
 	}
 }
 
+fn (node &Node) replace_through_dereferenced_pointer(next Node) {
+	unsafe {
+		(*node).replace(next)
+	}
+}
+
 fn (mut node Node) replace_through_pointer_method(next Node) {
 	node.replace_through_pointer(next)
 }
@@ -131,6 +137,12 @@ fn (node &PointerNode) capture_pointer_receiver() fn () string {
 	}
 }
 
+fn (node &PointerNode) pass_alias_before_rebinding(other &PointerNode) {
+	mut alias := unsafe { node }
+	retain_void_pointer(voidptr(alias))
+	alias = unsafe { other }
+}
+
 interface Element {
 	Node
 }
@@ -152,6 +164,7 @@ fn main() {
 	element.replace_through_closure(Node(Item{}))
 	element.replace_through_comptime_method(Node(Item{}))
 	element.replace_through_pointer(Node(Item{}))
+	element.replace_through_dereferenced_pointer(Node(Item{}))
 	element.replace_through_pointer_closure(Node(Item{}))
 	element.replace_through_pointer_method(Node(Item{}))
 	element.replace_through_pointer_argument(Node(Item{}))
@@ -164,4 +177,6 @@ fn main() {
 	pointer_element.publish_pointer_receiver(ch)
 	reader := pointer_element.capture_pointer_receiver()
 	_ = reader()
+	other := PointerNode(Item{})
+	pointer_element.pass_alias_before_rebinding(&other)
 }

@@ -34,6 +34,16 @@ fn (node &Node) read_field_through_local_alias() string {
 	return alias.name
 }
 
+fn read_node_name(node &Node) string {
+	return node.name
+}
+
+fn (node &Node) read_field_through_rebound_alias(other &Node) string {
+	mut alias := unsafe { node }
+	alias = unsafe { other }
+	return read_node_name(alias)
+}
+
 interface Element {
 	Node
 	attributes map[string]string
@@ -132,6 +142,11 @@ fn test_dereferenced_pointer_receiver_value_does_not_escape() {
 fn test_local_pointer_receiver_alias_does_not_escape() {
 	element := new_element()
 	assert element.read_field_through_local_alias() == 'body'
+}
+
+fn test_rebound_pointer_receiver_alias_does_not_escape() {
+	element := new_element()
+	assert element.read_field_through_rebound_alias(new_child('other')) == 'other'
 }
 
 fn test_smartcast_receiver_method_on_embedded_interface() {
