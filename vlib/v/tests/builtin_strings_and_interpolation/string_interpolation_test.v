@@ -291,6 +291,14 @@ fn test_comptime_call_option_reference_string_interpolation_is_not_hoisted_from_
 	assert counter.calls == 0
 }
 
+fn test_collection_method_option_reference_string_interpolation_is_not_hoisted_from_short_circuit() {
+	values := []string{}
+	options := [?string('value')]
+	mut counter := OptionRefCounter{}
+	assert !(false && values.contains('${&options[counter.next()]}'))
+	assert counter.calls == 0
+}
+
 fn test_int_ref_string_interpolation() {
 	mut count := 10
 	count_ref := &count
