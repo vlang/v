@@ -9184,6 +9184,7 @@ to V with a C declaration:
 ```v ignore
 #flag @VMODROOT/vlib/v/slow_tests/assembly/util/v_sha256_block.o
 
+@[c_extern]
 fn C.v_sha256_block(&u32, &u8)
 ```
 
