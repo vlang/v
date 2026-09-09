@@ -12604,6 +12604,10 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 		&& t.callback_source_type_is_container(expected_type) {
 		return t.callback_container_source_types_compatible(node.value, expected_type)
 	}
+	if node.kind == .index && node.value == 'range' && node.children_count > 0 {
+		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), expected_type, mut
+			seen)
+	}
 	if node.kind == .ident && t.fn_literal_cast_target_contains_callback(expected_type) {
 		mut handled := false
 		for rhs_id in t.callback_local_reaching_rhs_ids(node.value, arg_id) {
@@ -13139,6 +13143,10 @@ fn (mut t Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, 
 			if !t.fn_literal_cast_target_contains_callback(t.node_type(arg_id)) {
 				return
 			}
+			if node.value == 'range' && node.children_count > 0 {
+				t.collect_fn_literal_source_type_texts(t.a.child(&node, 0), mut result, mut seen)
+				return
+			}
 			before := result.len
 			t.collect_callback_member_reaching_source_type_texts(arg_id, mut result, mut seen)
 			if result.len > before {
@@ -13275,6 +13283,12 @@ fn (t &Transformer) collect_callback_projected_member_source_ids(source_id flat.
 	}
 	seen[key] = true
 	access := t.a.nodes[int(access_id)]
+	if value_id := t.callback_array_added_value_for_index(source_id, access_id) {
+		if value_id !in result {
+			result << value_id
+		}
+		return
+	}
 	if access.kind == .ident {
 		if source_id !in result {
 			result << source_id
@@ -13680,8 +13694,22 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 		}
 		return
 	}
+	mut child_start := 0
+	if node.kind in [.for_stmt, .for_in_stmt] {
+		child_start = callback_loop_body_start(node)
+		if rhs_ids := t.callback_sequence_definite_assignment_rhs_ids(node, child_start, name,
+			use_id)
+		{
+			for rhs_id in rhs_ids {
+				if rhs_id !in result {
+					result << rhs_id
+				}
+			}
+			return
+		}
+	}
 	mut name_shadowed := false
-	for i in 0 .. node.children_count {
+	for i in child_start .. node.children_count {
 		child_id := t.a.child(&node, i)
 		if int(child_id) < 0 || int(child_id) >= t.a.nodes.len {
 			continue
@@ -13766,6 +13794,10 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 		return none
 	}
 	start := if node.kind == .match_branch && node.value != 'else' { node.value.int() } else { 0 }
+	return t.callback_sequence_definite_assignment_rhs_ids(node, start, name, use_id)
+}
+
+fn (t &Transformer) callback_sequence_definite_assignment_rhs_ids(node flat.Node, start int, name string, use_id flat.NodeId) ?[]flat.NodeId {
 	mut result := []flat.NodeId{}
 	mut assigned := false
 	mut name_shadowed := false
@@ -13809,6 +13841,10 @@ fn (t &Transformer) callback_definite_assignment_rhs_ids(id flat.NodeId, name st
 		}
 	}
 	return if assigned { result } else { none }
+}
+
+fn callback_loop_body_start(node flat.Node) int {
+	return if node.kind == .for_in_stmt { node.value.int() } else { 3 }
 }
 
 // CallbackUseFlow keeps branch-local exits separate from paths that can reach a later use.
@@ -14027,6 +14063,33 @@ fn (t &Transformer) callback_array_mutation_receiver_expected_type(id flat.NodeI
 		return none
 	}
 	return t.callback_lvalue_expected_type(t.a.child(callee, 0), expected_type)
+}
+
+fn (t &Transformer) callback_array_added_value_for_index(source_id flat.NodeId, access_id flat.NodeId) ?flat.NodeId {
+	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(access_id) < 0
+		|| int(access_id) >= t.a.nodes.len {
+		return none
+	}
+	access := t.a.nodes[int(access_id)]
+	if access.kind != .index || access.children_count == 0 {
+		return none
+	}
+	access_receiver_id := t.a.child(&access, 0)
+	source := t.a.nodes[int(source_id)]
+	if source.kind in [.expr_stmt, .paren] && source.children_count == 1 {
+		return t.callback_array_added_value_for_index(t.a.child(&source, 0), access_id)
+	}
+	if source.kind == .infix && source.op == .left_shift && source.children_count >= 2
+		&& t.callback_member_lvalues_exact(t.a.child(&source, 0), access_receiver_id) {
+		return t.a.child(&source, 1)
+	}
+	value_id := t.callback_array_mutation_value_id(source_id) or { return none }
+	callee := t.a.child_node(&source, 0)
+	if callee.children_count == 0
+		|| !t.callback_member_lvalues_exact(t.a.child(callee, 0), access_receiver_id) {
+		return none
+	}
+	return value_id
 }
 
 fn (t &Transformer) callback_lvalue_base_is_ident(id flat.NodeId, name string) bool {
