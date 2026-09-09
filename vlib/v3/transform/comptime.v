@@ -5,6 +5,7 @@ import strconv
 import strings
 import v3.flat
 import v3.types
+import v3.util
 
 const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
 const comptime_method_selector_marker = '__v3_comptime_method_selector'
@@ -16,17 +17,7 @@ fn (t &Transformer) vmod_root() string {
 	if dir.len == 0 {
 		dir = os.getwd()
 	}
-	for {
-		if os.exists(os.join_path(dir, 'v.mod')) {
-			return dir
-		}
-		parent := os.dir(dir)
-		if parent == dir || parent.len == 0 {
-			return if t.cur_file.len > 0 { os.dir(t.cur_file) } else { os.getwd() }
-		}
-		dir = parent
-	}
-	return dir
+	return util.nearest_vmod_root(t.cur_file) or { os.real_path(dir) }
 }
 
 // Compile-time reflection: `$for field in T.fields { ... }`.

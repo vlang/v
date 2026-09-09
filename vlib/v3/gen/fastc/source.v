@@ -6,24 +6,14 @@ import time
 import v3.pref
 import v3.scanner
 import v3.token
+import v3.util
 
 fn fastc_vmod_root_for_file(source_file string) string {
 	mut dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
 	if dir.len == 0 {
 		dir = os.getwd()
 	}
-	original_dir := dir
-	for {
-		if os.exists(os.join_path(dir, 'v.mod')) {
-			return os.real_path(dir)
-		}
-		parent := os.dir(dir)
-		if parent == dir || parent.len == 0 {
-			return os.real_path(original_dir)
-		}
-		dir = parent
-	}
-	return os.real_path(original_dir)
+	return util.nearest_vmod_root(source_file) or { os.real_path(dir) }
 }
 
 fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) string {
