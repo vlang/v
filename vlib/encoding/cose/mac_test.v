@@ -167,7 +167,36 @@ fn test_mac_rejects_non_direct_recipient_algorithm() {
 		if _ := mac('payload'.bytes(), key, protected: hp, recipients: [recipient]) {
 			assert false, 'only direct recipient algorithms are supported'
 		} else {
-			assert err.msg().contains('only direct')
+			assert err.msg().contains('protected headers must be empty')
+				|| err.msg().contains('only direct')
+		}
+	}
+}
+
+fn test_mac_rejects_nonempty_direct_recipient_protected_headers() {
+	key := Key.symmetric([]u8{len: 32, init: 1})
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	for protected in [
+		Headers{
+			extra_int_labels: [HeaderEntry{
+				label: label_alg
+				value: cbor.new_int(alg_direct)
+			}]
+		},
+		Headers{
+			kid: 'routing'.bytes()
+		},
+	] {
+		if _ := mac('payload'.bytes(), key,
+			protected: hp
+			recipients: [Recipient{
+				protected: protected
+			}]
+		) {
+			assert false, 'direct recipients must have empty protected headers'
+		} else {
+			assert err.msg().contains('protected headers must be empty')
 		}
 	}
 }

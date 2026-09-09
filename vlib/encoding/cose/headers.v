@@ -375,6 +375,7 @@ fn parse_headers_value(v cbor.Value) !Headers {
 				}
 			}
 		}
+		check_header_values(h)!
 		return h
 	}
 	return MalformedMessage{
@@ -480,6 +481,13 @@ fn check_header_values(h Headers) ! {
 		if content_type > 65535 {
 			return MalformedMessage{
 				reason: 'numeric content type exceeds 65535 (RFC 9052 §3.1)'
+			}
+		}
+	}
+	if partial_iv := h.partial_iv {
+		if partial_iv.len > 13 {
+			return MalformedMessage{
+				reason: 'partial iv exceeds 13 bytes (RFC 9052 §3.1)'
 			}
 		}
 	}

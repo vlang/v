@@ -200,16 +200,20 @@ fn check_direct_recipient(recipient Recipient, require_algorithm bool) !bool {
 			reason: 'direct COSE_Mac recipient must have an empty encrypted_key'
 		}
 	}
-	protected_alg := header_algorithm(recipient.protected)!
-	unprotected_alg := header_algorithm(recipient.unprotected)!
-	if protected_alg.present && unprotected_alg.present {
+	if !recipient.protected.is_empty() {
 		return MalformedMessage{
-			reason: 'recipient algorithm appears in both protected and unprotected headers'
+			reason: 'direct COSE_Mac recipient protected headers must be empty'
 		}
 	}
-	alg := if protected_alg.present {
-		protected_alg.value
-	} else if unprotected_alg.present {
+	if raw := recipient.raw_protected {
+		if raw.len != 0 {
+			return MalformedMessage{
+				reason: 'direct COSE_Mac recipient protected headers must use an empty bstr'
+			}
+		}
+	}
+	unprotected_alg := header_algorithm(recipient.unprotected)!
+	alg := if unprotected_alg.present {
 		unprotected_alg.value
 	} else {
 		if require_algorithm {

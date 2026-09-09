@@ -144,6 +144,7 @@ pub fn Key.symmetric(k []u8) Key {
 // encode returns the canonical CBOR encoding of the COSE_Key.
 pub fn (k Key) encode() ![]u8 {
 	k.validate_curve_type()!
+	k.validate_okp_widths()!
 	mut pairs := []cbor.MapPair{cap: 8}
 	pairs << cbor.MapPair{
 		key:   cbor.new_int(key_label_kty)
@@ -518,6 +519,7 @@ pub fn Key.decode(data []u8) !Key {
 				}
 			}
 			out.validate_curve_type()!
+			out.validate_okp_widths()!
 		}
 		.rsa {}
 	}
@@ -556,6 +558,26 @@ fn (k Key) validate_curve_type() ! {
 			}
 		}
 		else {}
+	}
+}
+
+fn (k Key) validate_okp_widths() ! {
+	if k.kty != .okp {
+		return
+	}
+	crv := k.crv or { return }
+	if crv != .ed25519 {
+		return
+	}
+	if x := k.x {
+		if x.len != 32 {
+			return error('cose: Ed25519 public key x must be 32 bytes, got ${x.len}')
+		}
+	}
+	if d := k.d {
+		if d.len != 32 {
+			return error('cose: Ed25519 private seed d must be 32 bytes, got ${d.len}')
+		}
 	}
 }
 

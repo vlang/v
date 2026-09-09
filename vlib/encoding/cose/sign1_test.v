@@ -481,6 +481,29 @@ fn test_key_decode_rejects_non_fixed_width_ec2_coordinates() {
 	}
 }
 
+fn test_key_codec_rejects_invalid_ed25519_widths() {
+	for key in [
+		Key.okp_public(.ed25519, [u8(1)]),
+		Key.okp_private(.ed25519, []u8{len: 32}, [u8(1)]),
+	] {
+		if _ := key.encode() {
+			assert false, 'Ed25519 x and d must each be 32 bytes'
+		} else {
+			assert err.msg().contains('must be 32 bytes')
+		}
+	}
+	for encoded in [
+		hex.decode('a301012006214101')!,
+		hex.decode('a301012006234101')!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'decoded Ed25519 x and d must each be 32 bytes'
+		} else {
+			assert err.msg().contains('must be 32 bytes')
+		}
+	}
+}
+
 fn test_sign1_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

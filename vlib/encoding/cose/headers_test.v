@@ -158,6 +158,25 @@ fn test_rejects_iv_and_partial_iv_in_same_security_layer() {
 	}
 }
 
+fn test_rejects_partial_iv_longer_than_13_bytes() {
+	for headers in [
+		Headers{
+			partial_iv: []u8{len: 14}
+		},
+	] {
+		if _ := headers.encode_map() {
+			assert false, 'Partial IV must not exceed 13 bytes'
+		} else {
+			assert err.msg().contains('partial iv exceeds 13 bytes')
+		}
+	}
+	if _ := parse_protected(hex.decode('a1064e' + '00'.repeat(14))!) {
+		assert false, 'decoded Partial IV must not exceed 13 bytes'
+	} else {
+		assert err.msg().contains('partial iv exceeds 13 bytes')
+	}
+}
+
 fn test_encode_rejects_duplicate_header_labels() {
 	for headers in [
 		Headers{

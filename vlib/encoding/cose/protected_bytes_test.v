@@ -301,12 +301,12 @@ fn test_sign_uses_the_received_protected_bytes_for_body_and_signer() {
 	}
 }
 
-fn test_mac_uses_the_received_protected_bytes_for_body_and_recipient() {
+fn test_mac_uses_the_received_protected_bytes_for_body() {
 	key := Key.symmetric([]u8{len: 32, init: 0x42})
 	payload := nc_text.bytes()
 
-	// Only the body bucket is covered by the MAC_structure; the
-	// recipient bucket still has to round-trip through encode.
+	// Only the body bucket is covered by the MAC_structure. A direct
+	// recipient is required to have an empty protected bucket.
 	tbm := mac_structure_mac(nc_mac0_protected, []u8{}, payload)
 	tag := compute_mac(.hmac_256_256, key, tbm)!
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
@@ -318,7 +318,7 @@ fn test_mac_uses_the_received_protected_bytes_for_body_and_recipient() {
 	p.pack_bytes(tag)
 	p.pack_array_header(1)
 	p.pack_array_header(3)
-	p.pack_bytes(nc_body_protected)
+	p.pack_bytes([]u8{})
 	p.pack_value(Headers{
 		extra_int_labels: [
 			HeaderEntry{
@@ -333,7 +333,7 @@ fn test_mac_uses_the_received_protected_bytes_for_body_and_recipient() {
 	assert verify_mac(msg, key)! == payload
 	decoded := MacMessage.decode(msg)!
 	assert decoded.protected_bytes()! == nc_mac0_protected
-	assert decoded.recipients[0].protected_bytes()! == nc_body_protected
+	assert decoded.recipients[0].protected_bytes()! == []u8{}
 	assert decoded.encode(true)! == msg
 	mut modified := decoded
 	modified.recipients[0].protected.kid = 'changed'.bytes()
