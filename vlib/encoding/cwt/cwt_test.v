@@ -224,6 +224,49 @@ fn test_claims_set_rejects_duplicate_labels() {
 	}
 }
 
+fn test_claims_set_encode_rejects_duplicate_labels() {
+	value := cose.Headers{}.to_value()
+	for claims in [
+		ClaimsSet{
+			exp:              1
+			extra_int_claims: [ClaimEntry{
+				label: 4
+				value: value
+			}]
+		},
+		ClaimsSet{
+			extra_int_claims: [
+				ClaimEntry{
+					label: 100
+					value: value
+				},
+				ClaimEntry{
+					label: 100
+					value: value
+				},
+			]
+		},
+		ClaimsSet{
+			extra_text_claims: [
+				TextClaimEntry{
+					label: 'private'
+					value: value
+				},
+				TextClaimEntry{
+					label: 'private'
+					value: value
+				},
+			]
+		},
+	] {
+		if _ := claims.encode() {
+			assert false, 'duplicate claim labels must be rejected before encoding'
+		} else {
+			assert err.msg().contains('duplicate claim label')
+		}
+	}
+}
+
 fn test_claims_set_rejects_fractional_numeric_date() {
 	// {4: 1.5}; the ClaimsSet i64 model cannot retain the fraction.
 	encoded := hex.decode('a104fb3ff8000000000000')!

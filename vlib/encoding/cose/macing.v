@@ -27,7 +27,8 @@ fn compute_mac_for_operation(alg Algorithm, key Key, data []u8, operation KeyOp)
 	}
 	k := key.k or { return error('cose: symmetric key missing k') }
 	minimum_key_size := match alg {
-		.hmac_256_64, .hmac_256_256 { 32 }
+		.hmac_256_64 { 16 }
+		.hmac_256_256 { 32 }
 		.hmac_384_384 { 48 }
 		.hmac_512_512 { 64 }
 		else { 0 }

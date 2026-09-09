@@ -32,7 +32,7 @@ fn test_verify_mac0_accepts_reference_vector() {
 }
 
 fn test_mac0_truncated_hs256_64_tag_size() {
-	key := Key.symmetric([u8(0x42)].repeat(32))
+	key := Key.symmetric([u8(0x42)].repeat(16))
 	mut hp := Headers{}
 	hp.algorithm = .hmac_256_64
 	signed := mac0('hi'.bytes(), key, protected: hp)!
@@ -137,7 +137,7 @@ fn test_mac0_detached_payload() {
 
 fn test_mac0_rejects_undersized_hmac_keys() {
 	algorithms := [Algorithm.hmac_256_64, .hmac_256_256, .hmac_384_384, .hmac_512_512]
-	undersized := [31, 31, 47, 63]
+	undersized := [15, 31, 47, 63]
 	for i, alg in algorithms {
 		mut hp := Headers{}
 		hp.algorithm = alg

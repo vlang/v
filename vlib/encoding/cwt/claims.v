@@ -59,6 +59,7 @@ pub:
 // CBOR map. The output is the bytes that go into the
 // `payload` slot of the surrounding COSE message.
 pub fn (c ClaimsSet) encode() ![]u8 {
+	check_claim_labels(c)!
 	mut pairs := []cbor.MapPair{cap: 8 + c.extra_int_claims.len + c.extra_text_claims.len}
 	if iss := c.iss {
 		pairs << cbor.MapPair{
@@ -126,6 +127,44 @@ pub fn (c ClaimsSet) encode() ![]u8 {
 	return cbor.encode(cbor.Value(cbor.Map{ pairs: pairs }), cbor.EncodeOpts{
 		canonical: true
 	})!
+}
+
+fn check_claim_labels(c ClaimsSet) ! {
+	mut seen_int_claims := []i64{cap: 7 + c.extra_int_claims.len}
+	if c.iss != none {
+		seen_int_claims << claim_iss
+	}
+	if c.sub != none {
+		seen_int_claims << claim_sub
+	}
+	if c.aud.len > 0 {
+		seen_int_claims << claim_aud
+	}
+	if c.exp != none {
+		seen_int_claims << claim_exp
+	}
+	if c.nbf != none {
+		seen_int_claims << claim_nbf
+	}
+	if c.iat != none {
+		seen_int_claims << claim_iat
+	}
+	if c.cti != none {
+		seen_int_claims << claim_cti
+	}
+	for entry in c.extra_int_claims {
+		if entry.label in seen_int_claims {
+			return error('cwt: duplicate claim label ${entry.label}')
+		}
+		seen_int_claims << entry.label
+	}
+	mut seen_text_claims := []string{cap: c.extra_text_claims.len}
+	for entry in c.extra_text_claims {
+		if entry.label in seen_text_claims {
+			return error('cwt: duplicate claim label "${entry.label}"')
+		}
+		seen_text_claims << entry.label
+	}
 }
 
 // ClaimsSet.decode parses a CBOR-encoded Claims Set. Unknown claims
