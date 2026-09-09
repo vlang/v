@@ -467,7 +467,7 @@ pub fn (mut h Header) set_custom(key string, value string) ! {
 	mut set := false
 	mut i := 0
 	for i < h.cur_pos {
-		if h.data[i].key == key {
+		if header_key_eq(h.data[i].key, key) {
 			if !set {
 				h.data[i] = HeaderKV{key, value}
 				set = true
@@ -523,7 +523,7 @@ fn (mut h Header) remove_custom_all(key string) {
 pub fn (mut h Header) delete_custom(key string) {
 	mut i := 0
 	for i < h.cur_pos {
-		if h.data[i].key == key {
+		if header_key_eq(h.data[i].key, key) {
 			h.delete_at(i)
 		} else {
 			i++
@@ -667,8 +667,23 @@ pub fn (h Header) keys() []string {
 	for i := 0; i < h.cur_pos; i++ {
 		res << h.data[i].key
 	}
-	// Make sure keys are lower case and unique
 	return arrays.uniq(res)
+}
+
+// unique_keys gets header names deduplicated case-insensitively, retaining the
+// first spelling. Use this when serializing HTTP fields.
+pub fn (h Header) unique_keys() []string {
+	mut res := []string{cap: h.cur_pos}
+	mut seen := map[string]bool{}
+	for i := 0; i < h.cur_pos; i++ {
+		lower := h.data[i].key.to_lower()
+		if lower in seen {
+			continue
+		}
+		seen[lower] = true
+		res << h.data[i].key
+	}
+	return res
 }
 
 @[params]

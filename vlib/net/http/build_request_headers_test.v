@@ -26,3 +26,12 @@ fn test_build_request_headers_semicolon_combines_case_insensitive_cookie_fields(
 	assert headers.count('Cookie:') == 1
 	assert headers.contains('Cookie: a=1; b=2\r\n')
 }
+
+fn test_build_request_headers_deduplicates_header_name_casing() {
+	mut req := Request{}
+	req.header.add_custom('X-Foo', 'a')!
+	req.header.add_custom('x-foo', 'b')!
+	headers := req.build_request_headers(.get, 'localhost', 80, '/')
+	assert headers.count('X-Foo:') == 1
+	assert headers.contains('X-Foo: a, b\r\n')
+}

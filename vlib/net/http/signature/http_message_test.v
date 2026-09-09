@@ -30,6 +30,7 @@ fn test_sign_and_verify_request_hmac_roundtrip() {
 		components: ['@method', '@target-uri', '@authority', 'date', 'content-type']
 		created:    1618884473
 	)!
+	assert !req.allow_redirect
 	verify_request(req, key)!
 }
 
@@ -264,6 +265,14 @@ fn test_outgoing_request_components_match_repeated_header_serialization() {
 	assert c.component_value('accept')! == 'text/html, application/json'
 }
 
+fn test_outgoing_request_components_deduplicate_header_name_casing() {
+	mut req := build_request('https://example.com/')
+	req.header.add_custom('X-Foo', 'a')!
+	req.header.add_custom('x-foo', 'b')!
+	c := request_components(req, 'https', .outgoing)!
+	assert c.component_value('x-foo')! == 'a, b'
+}
+
 fn test_outgoing_request_components_include_generated_fields() {
 	mut req := http.Request{
 		method:     .post
@@ -354,6 +363,18 @@ fn test_sign_response_normalizes_zero_status_to_wire_ok() {
 		...resp
 		status_code: 200
 	}
+	verify_response(received, key)!
+}
+
+fn test_sign_response_includes_generated_content_length() {
+	mut resp := http.Response{
+		body: 'hello'
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_response(mut resp, key, components: ['@status', 'content-length'], created: 1)!
+	mut received := resp
+	received.status_code = 200
+	received.header.set(.content_length, received.body.len.str())
 	verify_response(received, key)!
 }
 

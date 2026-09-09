@@ -30,6 +30,18 @@ fn test_to_h2_request_lowercases_and_keeps_custom_headers() {
 	assert h2req.headers.any(it.name == 'content-length' && it.value == '0')
 }
 
+fn test_to_h2_request_deduplicates_header_name_casing() {
+	mut h := new_header()
+	h.add_custom('X-Foo', 'a')!
+	h.add_custom('x-foo', 'b')!
+	req := Request{}
+	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
+	values := h2req.headers.filter(it.name == 'x-foo')
+	assert values.len == 2
+	assert values[0].value == 'a'
+	assert values[1].value == 'b'
+}
+
 fn test_to_h2_request_strips_hop_by_hop_and_host() {
 	mut h := new_header()
 	h.add(.connection, 'keep-alive')

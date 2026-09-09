@@ -42,7 +42,7 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	if !header.contains(.content_length) {
 		extra << H2HeaderField{'content-length', data.len.str()}
 	}
-	for key in header.keys() {
+	for key in header.unique_keys() {
 		lkey := key.to_lower()
 		if lkey in h2_hop_by_hop {
 			continue

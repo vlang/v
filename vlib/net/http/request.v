@@ -440,7 +440,7 @@ fn (req &Request) build_request_headers_opts(method Method, host_name string, po
 		sb.write_string('\r\n')
 	}
 	chkey := CommonHeader.cookie.str()
-	for key in header.keys() {
+	for key in header.unique_keys() {
 		if header_key_eq(key, chkey) {
 			continue
 		}

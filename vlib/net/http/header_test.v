@@ -107,6 +107,7 @@ fn test_custom_header() {
 	assert h.custom_values('ABC') == ['dEf', 'GhI']
 	assert h.custom_values('abc') == ['dEf', 'GhI']
 	assert h.keys() == ['AbC', 'aBc']
+	assert h.unique_keys() == ['AbC']
 	h.delete_custom('AbC')
 	h.delete_custom('aBc')
 

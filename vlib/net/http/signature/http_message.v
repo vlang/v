@@ -39,7 +39,8 @@ pub:
 // `Signature-Input` and `Signature` header fields. Existing values of
 // these headers are preserved (RFC 9421 §4.3 - multiple signatures
 // can coexist), so calling this twice with different labels yields
-// two co-existing signatures.
+// two co-existing signatures. Automatic redirects are disabled because
+// the signature only covers this request target and method.
 //
 // `created` defaults to `time.now().unix()` when omitted, since
 // RFC 9421 §7.2.1 RECOMMENDS the parameter for replay protection.
@@ -66,6 +67,7 @@ pub fn sign_request(mut req http.Request, key Key, opts SignRequestOptions) ! {
 	out := sign(c, p, key, opts.label)!
 	append_dict_header(mut req.header, 'Signature-Input', out.signature_input)!
 	append_dict_header(mut req.header, 'Signature', out.signature)!
+	req.allow_redirect = false
 }
 
 // VerifyRequestOptions parametrises `verify_request`. `label` selects
@@ -278,7 +280,7 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 	query := if mode == .outgoing { transport_query } else { parsed.raw_query }
 	c.query = if query != '' { '?' + query } else { '?' }
 	c.request_target = request_target
-	for k in req.header.keys() {
+	for k in req.header.unique_keys() {
 		values := req.header.custom_values(k)
 		if values.len > 0 {
 			c.fields[k.to_lower()] = values
@@ -323,11 +325,14 @@ fn response_components(resp http.Response) Components {
 	mut c := Components{
 		status: wire_status
 	}
-	for k in resp.header.keys() {
+	for k in resp.header.unique_keys() {
 		values := resp.header.custom_values(k)
 		if values.len > 0 {
 			c.fields[k.to_lower()] = values
 		}
+	}
+	if !resp.header.contains(.content_length) {
+		c.fields['content-length'] = [resp.body.len.str()]
 	}
 	return c
 }
