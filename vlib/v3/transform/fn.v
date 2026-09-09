@@ -4,6 +4,8 @@ import v3.flat
 import v3.types
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
+const callback_unreachable_projected_index = -2
+const callback_conservative_projected_index = -3
 
 // max_stringify_nesting_depth bounds how deeply the inline autostr lowering
 // (structs, sum types) recurses through *distinct* aggregate types before it
@@ -13259,16 +13261,22 @@ fn (mut t Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, 
 fn (mut t Transformer) collect_callback_member_reaching_source_type_texts(arg_id flat.NodeId, mut result []string, mut seen map[int]bool) {
 	root_name := t.callback_lvalue_root_name(arg_id) or { return }
 	result_start := result.len
-	for source_id in t.callback_local_reaching_rhs_ids(root_name, arg_id) {
+	source_ids := t.callback_local_reaching_rhs_ids(root_name, arg_id)
+	projected_indexes := t.callback_array_reaching_source_indexes(source_ids, arg_id)
+	for source_index, source_id in source_ids {
 		if int(source_id) < 0 || int(source_id) >= t.a.nodes.len {
+			continue
+		}
+		projected_index := projected_indexes[source_index]
+		if projected_index == callback_unreachable_projected_index {
 			continue
 		}
 		source := t.a.nodes[int(source_id)]
 		if source.kind in [.index_assign, .selector_assign] && source.op == .assign
 			&& source.children_count >= 2 {
 			lhs_id := t.a.child(&source, 0)
-			if t.callback_member_lvalues_may_alias(arg_id, lhs_id) {
-				if t.callback_member_lvalues_exact(arg_id, lhs_id)
+			if t.callback_member_lvalues_may_alias_at_index(arg_id, lhs_id, projected_index) {
+				if t.callback_member_lvalues_exact_at_index(arg_id, lhs_id, projected_index)
 					&& t.callback_assignment_definitely_precedes_use(source_id, arg_id) {
 					result.trim(result_start)
 				}
@@ -13278,8 +13286,8 @@ fn (mut t Transformer) collect_callback_member_reaching_source_type_texts(arg_id
 		}
 		mut projected := []flat.NodeId{}
 		mut projected_seen := map[string]bool{}
-		t.collect_callback_projected_member_source_ids(source_id, arg_id, mut projected, mut
-			projected_seen)
+		t.collect_callback_projected_member_source_ids_at_index(source_id, arg_id, projected_index, mut
+			projected, mut projected_seen)
 		for projected_id in projected {
 			t.collect_fn_literal_source_type_texts(projected_id, mut result, mut seen)
 		}
@@ -13287,17 +13295,22 @@ fn (mut t Transformer) collect_callback_member_reaching_source_type_texts(arg_id
 }
 
 fn (t &Transformer) collect_callback_projected_member_source_ids(source_id flat.NodeId, access_id flat.NodeId, mut result []flat.NodeId, mut seen map[string]bool) {
+	t.collect_callback_projected_member_source_ids_at_index(source_id, access_id, -1, mut result, mut
+		seen)
+}
+
+fn (t &Transformer) collect_callback_projected_member_source_ids_at_index(source_id flat.NodeId, access_id flat.NodeId, projected_index int, mut result []flat.NodeId, mut seen map[string]bool) {
 	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(access_id) < 0
 		|| int(access_id) >= t.a.nodes.len {
 		return
 	}
-	key := '${int(source_id)}:${int(access_id)}'
+	key := '${int(source_id)}:${int(access_id)}:${projected_index}'
 	if seen[key] {
 		return
 	}
 	seen[key] = true
 	access := t.a.nodes[int(access_id)]
-	if value_id := t.callback_array_added_value_for_index(source_id, access_id) {
+	if value_id := t.callback_array_added_value_for_index(source_id, access_id, projected_index) {
 		if value_id !in result {
 			result << value_id
 		}
@@ -13310,28 +13323,28 @@ fn (t &Transformer) collect_callback_projected_member_source_ids(source_id flat.
 		return
 	}
 	if access.kind == .paren && access.children_count == 1 {
-		t.collect_callback_projected_member_source_ids(source_id, t.a.child(&access, 0), mut
-			result, mut seen)
+		t.collect_callback_projected_member_source_ids_at_index(source_id, t.a.child(&access, 0),
+			projected_index, mut result, mut seen)
 		return
 	}
 	if access.kind !in [.selector, .index] || access.children_count == 0 {
 		return
 	}
 	mut base_sources := []flat.NodeId{}
-	t.collect_callback_projected_member_source_ids(source_id, t.a.child(&access, 0), mut
+	t.collect_callback_projected_member_source_ids_at_index(source_id, t.a.child(&access, 0), -1, mut
 		base_sources, mut seen)
 	for base_source_id in base_sources {
-		t.collect_callback_projected_one_step_source_ids(base_source_id, access_id, mut result, mut
-			seen)
+		t.collect_callback_projected_one_step_source_ids(base_source_id, access_id,
+			projected_index, mut result, mut seen)
 	}
 }
 
-fn (t &Transformer) collect_callback_projected_one_step_source_ids(source_id flat.NodeId, access_id flat.NodeId, mut result []flat.NodeId, mut seen map[string]bool) {
+fn (t &Transformer) collect_callback_projected_one_step_source_ids(source_id flat.NodeId, access_id flat.NodeId, projected_index int, mut result []flat.NodeId, mut seen map[string]bool) {
 	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(access_id) < 0
 		|| int(access_id) >= t.a.nodes.len {
 		return
 	}
-	key := 'step:${int(source_id)}:${int(access_id)}'
+	key := 'step:${int(source_id)}:${int(access_id)}:${projected_index}'
 	if seen[key] {
 		return
 	}
@@ -13340,27 +13353,27 @@ fn (t &Transformer) collect_callback_projected_one_step_source_ids(source_id fla
 	access := t.a.nodes[int(access_id)]
 	if source.kind in [.paren, .expr_stmt, .dump_expr, .cast_expr, .as_expr]
 		&& source.children_count == 1 {
-		t.collect_callback_projected_one_step_source_ids(t.a.child(&source, 0), access_id, mut
-			result, mut seen)
+		t.collect_callback_projected_one_step_source_ids(t.a.child(&source, 0), access_id,
+			projected_index, mut result, mut seen)
 		return
 	}
 	if source.kind in [.block, .match_branch, .lock_expr] && source.children_count > 0 {
 		t.collect_callback_projected_one_step_source_ids(t.a.child(&source,
-			source.children_count - 1), access_id, mut result, mut seen)
+			source.children_count - 1), access_id, projected_index, mut result, mut seen)
 		return
 	}
 	if source.kind in [.if_expr, .match_stmt, .or_expr] {
 		start := if source.kind == .or_expr { 0 } else { 1 }
 		for i in start .. source.children_count {
-			t.collect_callback_projected_one_step_source_ids(t.a.child(&source, i), access_id, mut
-				result, mut seen)
+			t.collect_callback_projected_one_step_source_ids(t.a.child(&source, i), access_id,
+				projected_index, mut result, mut seen)
 		}
 		return
 	}
 	if source.kind == .ident {
 		for rhs_id in t.callback_local_reaching_rhs_ids(source.value, source_id) {
-			t.collect_callback_projected_one_step_source_ids(rhs_id, access_id, mut result, mut
-				seen)
+			t.collect_callback_projected_one_step_source_ids(rhs_id, access_id, projected_index, mut
+				result, mut seen)
 		}
 		return
 	}
@@ -13374,8 +13387,8 @@ fn (t &Transformer) collect_callback_projected_one_step_source_ids(source_id fla
 					return
 				}
 			}
-			t.collect_callback_projected_one_step_source_ids(t.a.child(&source, 0), access_id, mut
-				result, mut seen)
+			t.collect_callback_projected_one_step_source_ids(t.a.child(&source, 0), access_id,
+				projected_index, mut result, mut seen)
 			return
 		}
 		if source.kind == .struct_init {
@@ -13401,13 +13414,19 @@ fn (t &Transformer) collect_callback_projected_one_step_source_ids(source_id fla
 		return
 	}
 	if source.kind == .array_literal {
-		index := t.callback_static_index_value(access)
+		index := if projected_index == callback_conservative_projected_index {
+			-1
+		} else if projected_index >= 0 {
+			projected_index
+		} else {
+			t.callback_static_index_value(access)
+		}
 		if index >= 0 && index < int(source.children_count) {
 			child_id := t.a.child(&source, index)
 			child := t.a.nodes[int(child_id)]
 			if child.kind == .prefix && child.value == '...' && child.children_count > 0 {
-				t.collect_callback_projected_one_step_source_ids(t.a.child(&child, 0), access_id, mut
-					result, mut seen)
+				t.collect_callback_projected_one_step_source_ids(t.a.child(&child, 0), access_id,
+					projected_index, mut result, mut seen)
 			} else {
 				result << child_id
 			}
@@ -13494,6 +13513,35 @@ fn (t &Transformer) callback_member_lvalues_may_alias(access_id flat.NodeId, lhs
 	return true
 }
 
+fn (t &Transformer) callback_member_lvalues_may_alias_at_index(access_id flat.NodeId, lhs_id flat.NodeId, projected_index int) bool {
+	if projected_index == callback_conservative_projected_index {
+		if int(access_id) < 0 || int(access_id) >= t.a.nodes.len || int(lhs_id) < 0
+			|| int(lhs_id) >= t.a.nodes.len {
+			return false
+		}
+		access := t.a.nodes[int(access_id)]
+		lhs := t.a.nodes[int(lhs_id)]
+		return access.kind == .index && lhs.kind == .index && access.children_count > 0
+			&& lhs.children_count > 0
+			&& t.expr_key(t.a.child(&access, 0)) == t.expr_key(t.a.child(&lhs, 0))
+	}
+	if projected_index < 0 || int(access_id) < 0 || int(access_id) >= t.a.nodes.len
+		|| int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
+		return t.callback_member_lvalues_may_alias(access_id, lhs_id)
+	}
+	access := t.a.nodes[int(access_id)]
+	lhs := t.a.nodes[int(lhs_id)]
+	if access.kind != .index || lhs.kind != .index || access.children_count < 2
+		|| lhs.children_count < 2 {
+		return t.callback_member_lvalues_may_alias(access_id, lhs_id)
+	}
+	if t.expr_key(t.a.child(&access, 0)) != t.expr_key(t.a.child(&lhs, 0)) {
+		return false
+	}
+	lhs_index := t.callback_static_index_value(lhs)
+	return lhs_index < 0 || lhs_index == projected_index
+}
+
 fn (t &Transformer) callback_member_lvalues_exact(access_id flat.NodeId, lhs_id flat.NodeId) bool {
 	if int(access_id) < 0 || int(access_id) >= t.a.nodes.len || int(lhs_id) < 0
 		|| int(lhs_id) >= t.a.nodes.len {
@@ -13527,13 +13575,28 @@ fn (t &Transformer) callback_member_lvalues_exact(access_id flat.NodeId, lhs_id 
 	return false
 }
 
+fn (t &Transformer) callback_member_lvalues_exact_at_index(access_id flat.NodeId, lhs_id flat.NodeId, projected_index int) bool {
+	if projected_index == callback_conservative_projected_index {
+		return false
+	}
+	if projected_index < 0 || int(access_id) < 0 || int(access_id) >= t.a.nodes.len
+		|| int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
+		return t.callback_member_lvalues_exact(access_id, lhs_id)
+	}
+	access := t.a.nodes[int(access_id)]
+	lhs := t.a.nodes[int(lhs_id)]
+	if access.kind != .index || lhs.kind != .index || access.children_count < 2
+		|| lhs.children_count < 2 {
+		return t.callback_member_lvalues_exact(access_id, lhs_id)
+	}
+	return t.callback_static_index_value(lhs) == projected_index
+		&& t.callback_member_lvalues_exact(t.a.child(&access, 0), t.a.child(&lhs, 0))
+}
+
 fn (t &Transformer) callback_assignment_definitely_precedes_use(assignment_id flat.NodeId, use_id flat.NodeId) bool {
 	assignment_source := t.callback_source_node_id(assignment_id) or { return false }
 	mut cursor := t.callback_source_node_id(use_id) or { return false }
-	assignment_parent := t.source_parent_id(assignment_source)
-	if assignment_parent < 0 {
-		return false
-	}
+	assignment_parent := t.callback_enclosing_reaching_scope(assignment_source) or { return false }
 	for _ in 0 .. t.source_parent_ids.len {
 		parent_id := t.source_parent_id(cursor)
 		if parent_id < 0 {
@@ -13545,6 +13608,22 @@ fn (t &Transformer) callback_assignment_definitely_precedes_use(assignment_id fl
 		cursor = parent_id
 	}
 	return false
+}
+
+fn (t &Transformer) callback_enclosing_reaching_scope(id int) ?int {
+	mut cursor := id
+	for _ in 0 .. t.source_parent_ids.len {
+		parent_id := t.source_parent_id(cursor)
+		if parent_id < 0 {
+			return none
+		}
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.block, .match_branch, .fn_decl, .fn_literal, .lambda_expr] {
+			return parent_id
+		}
+		cursor = parent_id
+	}
+	return none
 }
 
 fn (t &Transformer) callback_static_index_value(node flat.Node) int {
@@ -14317,64 +14396,128 @@ fn (t &Transformer) callback_array_length_before_mutation(receiver_id flat.NodeI
 	return if has_base { length } else { none }
 }
 
-fn (t &Transformer) callback_array_added_value_reaches_index(receiver_id flat.NodeId, value_id flat.NodeId, start int, access_index int) bool {
-	count := t.callback_array_added_count(receiver_id, value_id) or { return access_index >= start }
-	return access_index >= start && access_index - start < count
+struct CallbackArrayAddition {
+	value_id flat.NodeId
+	start    int = -1
+	count    int = -1
 }
 
-fn (t &Transformer) callback_array_added_value_for_index(source_id flat.NodeId, access_id flat.NodeId) ?flat.NodeId {
-	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(access_id) < 0
-		|| int(access_id) >= t.a.nodes.len {
+fn (t &Transformer) callback_array_addition(source_id flat.NodeId, receiver_id flat.NodeId) ?CallbackArrayAddition {
+	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(receiver_id) < 0
+		|| int(receiver_id) >= t.a.nodes.len {
+		return none
+	}
+	source := t.a.nodes[int(source_id)]
+	if source.kind in [.expr_stmt, .paren] && source.children_count == 1 {
+		return t.callback_array_addition(t.a.child(&source, 0), receiver_id)
+	}
+	if source.kind == .infix && source.op == .left_shift && source.children_count >= 2
+		&& t.callback_member_lvalues_exact(t.a.child(&source, 0), receiver_id) {
+		value_id := t.a.child(&source, 1)
+		mut start := -1
+		if known_start := t.callback_array_length_before_mutation(receiver_id, source_id) {
+			start = known_start
+		}
+		return CallbackArrayAddition{
+			value_id: value_id
+			start:    start
+			count:    t.callback_array_added_count(receiver_id, value_id) or { -1 }
+		}
+	}
+	value_id := t.callback_array_mutation_value_id(source_id) or { return none }
+	callee := t.a.child_node(&source, 0)
+	if callee.children_count == 0
+		|| !t.callback_member_lvalues_exact(t.a.child(callee, 0), receiver_id) {
+		return none
+	}
+	start := if callee.value == 'insert' {
+		if source.children_count < 2 {
+			-1
+		} else {
+			t.callback_static_non_negative_int(t.a.child(&source, 1)) or { -1 }
+		}
+	} else {
+		0
+	}
+	return CallbackArrayAddition{
+		value_id: value_id
+		start:    start
+		count:    t.callback_array_added_count(receiver_id, value_id) or { -1 }
+	}
+}
+
+fn (t &Transformer) callback_array_reaching_source_indexes(source_ids []flat.NodeId, access_id flat.NodeId) []int {
+	// Insertions are walked backward because each one remaps the index seen by all earlier
+	// definitions. A conditional shift makes those earlier projections conservative.
+	mut result := []int{len: source_ids.len, init: -1}
+	if int(access_id) < 0 || int(access_id) >= t.a.nodes.len {
+		return result
+	}
+	access := t.a.nodes[int(access_id)]
+	if access.kind != .index || access.children_count == 0 {
+		return result
+	}
+	mut projected_index := t.callback_static_index_value(access)
+	if projected_index < 0 {
+		return result
+	}
+	receiver_id := t.a.child(&access, 0)
+	mut reaches_earlier_sources := true
+	mut conservatively_project_earlier_sources := false
+	for source_index := source_ids.len - 1; source_index >= 0; source_index-- {
+		if !reaches_earlier_sources {
+			result[source_index] = callback_unreachable_projected_index
+			continue
+		}
+		if conservatively_project_earlier_sources {
+			result[source_index] = callback_conservative_projected_index
+			continue
+		}
+		result[source_index] = projected_index
+		addition := t.callback_array_addition(source_ids[source_index], receiver_id) or { continue }
+		if addition.start < 0 || addition.count < 0 {
+			continue
+		}
+		if projected_index < addition.start {
+			continue
+		}
+		if !t.callback_assignment_definitely_precedes_use(source_ids[source_index], access_id) {
+			if projected_index - addition.start >= addition.count {
+				conservatively_project_earlier_sources = true
+			}
+			continue
+		}
+		if projected_index - addition.start < addition.count {
+			reaches_earlier_sources = false
+		} else {
+			projected_index -= addition.count
+		}
+	}
+	return result
+}
+
+fn (t &Transformer) callback_array_added_value_for_index(source_id flat.NodeId, access_id flat.NodeId, projected_index int) ?flat.NodeId {
+	if int(access_id) < 0 || int(access_id) >= t.a.nodes.len {
 		return none
 	}
 	access := t.a.nodes[int(access_id)]
 	if access.kind != .index || access.children_count == 0 {
 		return none
 	}
-	access_receiver_id := t.a.child(&access, 0)
-	access_index := t.callback_static_index_value(access)
-	source := t.a.nodes[int(source_id)]
-	if source.kind in [.expr_stmt, .paren] && source.children_count == 1 {
-		return t.callback_array_added_value_for_index(t.a.child(&source, 0), access_id)
+	addition := t.callback_array_addition(source_id, t.a.child(&access, 0)) or { return none }
+	if projected_index == callback_conservative_projected_index {
+		return addition.value_id
 	}
-	if source.kind == .infix && source.op == .left_shift && source.children_count >= 2
-		&& t.callback_member_lvalues_exact(t.a.child(&source, 0), access_receiver_id) {
-		value_id := t.a.child(&source, 1)
-		if access_index < 0 {
-			return value_id
-		}
-		start := t.callback_array_length_before_mutation(access_receiver_id, source_id) or {
-			return value_id
-		}
-		return if t.callback_array_added_value_reaches_index(access_receiver_id, value_id, start,
-			access_index)
-		{
-			value_id
-		} else {
-			none
-		}
-	}
-	value_id := t.callback_array_mutation_value_id(source_id) or { return none }
-	callee := t.a.child_node(&source, 0)
-	if callee.children_count == 0
-		|| !t.callback_member_lvalues_exact(t.a.child(callee, 0), access_receiver_id) {
-		return none
-	}
-	if access_index < 0 {
-		return value_id
-	}
-	start := if callee.value == 'insert' {
-		if source.children_count < 2 {
-			return value_id
-		}
-		t.callback_static_non_negative_int(t.a.child(&source, 1)) or { return value_id }
+	access_index := if projected_index >= 0 {
+		projected_index
 	} else {
-		0
+		t.callback_static_index_value(access)
 	}
-	return if t.callback_array_added_value_reaches_index(access_receiver_id, value_id, start,
-		access_index)
-	{
-		value_id
+	if access_index < 0 || addition.start < 0 || addition.count < 0 {
+		return addition.value_id
+	}
+	return if access_index >= addition.start && access_index - addition.start < addition.count {
+		addition.value_id
 	} else {
 		none
 	}
