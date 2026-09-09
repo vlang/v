@@ -1,4 +1,4 @@
-// vtest build: linux || openbsd
+// vtest build: linux || termux || android || openbsd
 module picohttpparser
 
 #include <signal.h>

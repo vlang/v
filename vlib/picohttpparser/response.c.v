@@ -114,7 +114,7 @@ fn C.send(sockfd i32, buf voidptr, len usize, flags i32) i32
 // Linux and OpenBSD do not provide the SO_NOSIGPIPE socket option used by
 // picoev on macOS and FreeBSD. Suppress SIGPIPE for each send so callers that
 // change the process-wide signal disposition cannot terminate the server.
-const send_flags = $if linux || termux || openbsd { int(C.MSG_NOSIGNAL) } $else { 0 }
+const send_flags = $if linux || termux || android || openbsd { int(C.MSG_NOSIGNAL) } $else { 0 }
 
 @[inline]
 pub fn (mut r Response) end() int {
