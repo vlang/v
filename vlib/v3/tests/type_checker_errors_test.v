@@ -1941,6 +1941,18 @@ fn test_callback_identifier_c_abi_modes_inside_generic_fn() {
 	run_bad(v3_bin, 'bad_named_const_callback_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Router {}\nfn handle(const_event &C.native_event) {}\nfn (r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(handle)\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')
+	method_matching := run_good(v3_bin, 'good_method_value_const_callback_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Handler {}\nfn (h Handler) handle(const_event &C.native_event) {}\nstruct Router {}\nfn (r Router) accept(handler ConstHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tr := Router{}\n\treturn r.accept(Handler{}.handle)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert method_matching == 'true'
+	run_bad(v3_bin, 'bad_method_value_const_callback_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nstruct Handler {}\nfn (h Handler) handle(const_event &C.native_event) {}\nstruct Router {}\nfn (r Router) accept(handler PlainHandler) {}\nfn startup[T]() {\n\tr := Router{}\n\tr.accept(Handler{}.handle)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	container_alias_matching := run_good(v3_bin, 'good_callback_container_alias_in_generic',
+		'type ConstHandlers = []fn (const_event &C.native_event)\nstruct C.native_event {}\nfn accept[T](handlers ConstHandlers) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\treturn accept[int]([fn (const_event &C.native_event) {}])\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert container_alias_matching == 'true'
+	run_bad(v3_bin, 'bad_callback_container_alias_in_generic',
+		'type PlainHandlers = []fn (event &C.native_event)\nstruct C.native_event {}\nfn accept[T](handlers PlainHandlers) {}\nfn startup[T]() {\n\taccept[int]([fn (const_event &C.native_event) {}])\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
 }
 
 fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn() {

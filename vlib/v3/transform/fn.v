@@ -12583,6 +12583,9 @@ fn (mut t Transformer) fn_literal_container_modes_compatible(arg_id flat.NodeId,
 	for source_expected.starts_with('?') || source_expected.starts_with('!') {
 		source_expected = source_expected[1..].trim_space()
 	}
+	if t.fn_literal_cast_target_contains_callback(source_expected) {
+		source_expected = t.callback_source_alias_expansion(source_expected, 0)
+	}
 	mut normalized_expected := t.normalize_type_alias(expected_type.trim_space())
 	for normalized_expected.starts_with('?') || normalized_expected.starts_with('!') {
 		normalized_expected = normalized_expected[1..].trim_space()
@@ -12851,6 +12854,17 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 			}
 			return
 		}
+		.selector {
+			if isnil(t.tc) || node.children_count == 0 || !t.tc.expr_is_method_value(arg_id)
+				|| !t.fn_literal_cast_target_contains_callback(t.node_type(arg_id)) {
+				return
+			}
+			method_name := t.resolve_receiver_method_name(t.a.child(&node, 0), node.value)
+			if source_type := t.callback_decl_source_type(method_name, true) {
+				result << source_type
+			}
+			return
+		}
 		else {}
 	}
 	if node.kind != .fn_literal {
@@ -12952,6 +12966,10 @@ fn (t &Transformer) callback_source_node_id(id flat.NodeId) ?int {
 }
 
 fn (t &Transformer) named_callback_source_type(name string) ?string {
+	return t.callback_decl_source_type(name, false)
+}
+
+fn (t &Transformer) callback_decl_source_type(name string, skip_receiver bool) ?string {
 	if name.len == 0 || t.call_param_types_decl_index.len == 0 {
 		return none
 	}
@@ -12968,11 +12986,17 @@ fn (t &Transformer) named_callback_source_type(name string) ?string {
 		return none
 	}
 	mut params := []string{}
+	mut param_idx := 0
 	for i in 0 .. node.children_count {
 		param := t.a.child_node(&node, i)
 		if param.kind != .param {
 			continue
 		}
+		if skip_receiver && param_idx == 0 {
+			param_idx++
+			continue
+		}
+		param_idx++
 		mode := if param.is_mut { 'mut ' } else { '' }
 		param_type := t.decl_param_type_in_file(param.typ, decl.module, decl.file)
 		params << '${mode}${param.value} ${param_type}'
@@ -12980,6 +13004,71 @@ fn (t &Transformer) named_callback_source_type(name string) ?string {
 	ret_type := t.decl_param_type_in_file(node.typ, decl.module, decl.file)
 	ret := if ret_type.len > 0 && ret_type != 'void' { ' ${ret_type}' } else { '' }
 	return 'fn (${params.join(', ')})${ret}'
+}
+
+fn (t &Transformer) callback_source_alias_expansion(type_name string, depth int) string {
+	clean := type_name.trim_space()
+	if clean.len == 0 || depth >= 16 || isnil(t.tc) {
+		return clean
+	}
+	for prefix in ['shared ', '?', '!', '[]', '...', '&', 'atomic ', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) && clean.len > prefix.len {
+			return prefix + t.callback_source_alias_expansion(clean[prefix.len..], depth + 1)
+		}
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end > 3 && bracket_end < clean.len {
+			key := t.callback_source_alias_expansion(clean[4..bracket_end], depth + 1)
+			value := t.callback_source_alias_expansion(clean[bracket_end + 1..], depth + 1)
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 0 && bracket_end + 1 < clean.len {
+			return clean[..bracket_end + 1] + t.callback_source_alias_expansion(clean[bracket_end +
+				1..], depth + 1)
+		}
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		return clean
+	}
+	base, args, is_generic := generic_app_parts(clean)
+	lookup_base := if is_generic { base } else { clean }
+	wanted_module := if lookup_base.contains('.') {
+		lookup_base.all_before_last('.')
+	} else {
+		t.current_source_module()
+	}
+	wanted_name := lookup_base.all_after_last('.')
+	mut file_name := ''
+	mut module_name := ''
+	for idx in t.tc.top_level_idx {
+		node := t.a.nodes[idx]
+		if node.kind == .file {
+			file_name = node.value
+			module_name = t.tc.file_modules[file_name] or { '' }
+			continue
+		}
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
+		if node.kind != .type_decl || node.children_count > 0
+			|| node.value != wanted_name
+			|| ((module_name !in ['', 'main'] || wanted_module !in ['', 'main'])
+			&& module_name != wanted_module) {
+			continue
+		}
+		mut target := t.decl_param_type_in_file(node.typ, module_name, file_name)
+		params := node.generic_params()
+		if is_generic && params.len == args.len {
+			target = substitute_generic_type_text_with_params(target, args, params)
+		}
+		return t.callback_source_alias_expansion(target, depth + 1)
+	}
+	return clean
 }
 
 fn (t &Transformer) fn_literal_cast_target_contains_callback(type_name string) bool {
