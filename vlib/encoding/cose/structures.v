@@ -22,6 +22,16 @@ fn payload_for_verification(attached ?[]u8, detached ?[]u8, option_name string) 
 	}
 }
 
+fn check_verification_payload(attached ?[]u8, supplied []u8) ! {
+	if payload := attached {
+		if supplied != payload {
+			return MalformedMessage{
+				reason: 'verification payload does not match the attached message payload'
+			}
+		}
+	}
+}
+
 // sig_structure_sign1 builds the byte stream signed by COSE_Sign1
 // (RFC 9052 §4.4):
 //

@@ -204,7 +204,13 @@ fn verify_with_key(alg Algorithm, key Key, to_be_signed []u8, signature []u8) ! 
 		}
 		.eddsa {
 			check_okp_key(key)!
-			x := key.x or { return error('cose: OKP key missing x') }
+			x := key.x or {
+				d := key.d or { return error('cose: OKP key missing x and d') }
+				if d.len != ed25519.seed_size {
+					return error('cose: Ed25519 seed must be ${ed25519.seed_size} bytes, got ${d.len}')
+				}
+				ed25519.new_key_from_seed(d).public_key()
+			}
 			if x.len != ed25519.public_key_size {
 				return error('cose: Ed25519 public key must be ${ed25519.public_key_size} bytes')
 			}

@@ -84,6 +84,7 @@ pub fn (mut m Mac0Message) compute(key Key, payload []u8, external_aad []u8) ! {
 
 // verify recomputes the MAC tag and checks it against the stored one.
 pub fn (m Mac0Message) verify(key Key, payload []u8, external_aad []u8) ! {
+	check_verification_payload(m.payload, payload)!
 	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Mac0')!
 	check_protected_headers(m.protected, m.unprotected)!
 	alg := verification_algorithm(m.protected, m.unprotected, key, 'Mac0')!

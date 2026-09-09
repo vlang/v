@@ -145,6 +145,12 @@ fn test_verify_mac0_rejects_detached_override_of_attached_payload() {
 	} else {
 		assert err.msg().contains('cannot be used when the message contains an attached payload')
 	}
+	msg := Mac0Message.decode(maced)!
+	if _ := msg.verify(key, 'other'.bytes(), []u8{}) {
+		assert false, 'low-level verification must not override an attached payload'
+	} else {
+		assert err.msg().contains('does not match the attached message payload')
+	}
 }
 
 fn test_mac0_rejects_undersized_hmac_keys() {

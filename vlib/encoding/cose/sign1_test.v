@@ -298,6 +298,12 @@ fn test_verify1_rejects_detached_override_of_attached_payload() {
 	} else {
 		assert err.msg().contains('cannot be used when the message contains an attached payload')
 	}
+	msg := Sign1Message.decode(signed)!
+	if _ := msg.verify(Key.okp_public(.ed25519, x), 'other'.bytes(), []u8{}) {
+		assert false, 'low-level verification must not override an attached payload'
+	} else {
+		assert err.msg().contains('does not match the attached message payload')
+	}
 }
 
 fn test_sign1_untagged_roundtrip() {
@@ -357,6 +363,7 @@ fn test_sign1_derives_public_key_when_private_okp_x_is_absent() {
 	signed := sign1('payload'.bytes(), key, protected: hp)!
 	public_key := Key.okp_public(.ed25519, hex.decode(eddsa_x_hex)!)
 	assert verify1(signed, public_key)! == 'payload'.bytes()
+	assert verify1(signed, key)! == 'payload'.bytes()
 }
 
 fn test_sign1_rejects_ec_public_coordinates_mismatching_scalar() {
