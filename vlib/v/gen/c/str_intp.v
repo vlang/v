@@ -439,7 +439,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	expr := node.exprs[i]
 	fmt := fmts[i]
 	mut orig_typ := if i < node.expr_types.len {
-		g.unwrap_generic(node.expr_types[i])
+		g.unwrap_generic(g.recheck_concrete_type(node.expr_types[i]))
 	} else {
 		ast.string_type
 	}
