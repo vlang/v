@@ -7,6 +7,7 @@ import strings
 pub struct InlineAsmHeader {
 pub:
 	arch        string
+	is_goto     bool
 	is_volatile bool
 	is_raw      bool
 	is_intel    bool
@@ -16,6 +17,7 @@ pub:
 // text preceding an assembly block's opening brace.
 pub fn parse_inline_asm_header(source string) InlineAsmHeader {
 	mut arch := ''
+	mut is_goto := false
 	mut is_volatile := false
 	mut is_raw := false
 	mut is_intel := false
@@ -25,6 +27,10 @@ pub fn parse_inline_asm_header(source string) InlineAsmHeader {
 		}
 		if word == 'volatile' {
 			is_volatile = true
+			continue
+		}
+		if word == 'goto' {
+			is_goto = true
 			continue
 		}
 		// The instruction set always comes first, so a leading `raw` or `intel` would
@@ -43,6 +49,7 @@ pub fn parse_inline_asm_header(source string) InlineAsmHeader {
 	}
 	return InlineAsmHeader{
 		arch: arch
+		is_goto: is_goto
 		is_volatile: is_volatile
 		is_raw: is_raw
 		is_intel: is_intel

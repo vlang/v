@@ -23,6 +23,7 @@ struct CInlineAsmIO {
 
 struct CInlineAsmBlock {
 	arch          string
+	is_goto       bool
 	is_volatile   bool
 	is_raw        bool
 	is_intel      bool
@@ -30,6 +31,7 @@ struct CInlineAsmBlock {
 	output        []CInlineAsmIO
 	input         []CInlineAsmIO
 	clobbered     []string
+	labels        []string
 	section_count int
 }
 
@@ -3044,8 +3046,11 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 			aliases[io.alias] = true
 		}
 	}
-	is_extended := block.section_count > 1
+	is_extended := block.section_count > 1 || block.is_goto
 	g.write('__asm__')
+	if block.is_goto {
+		g.write(' goto')
+	}
 	if block.is_volatile {
 		g.write(' volatile')
 	}
@@ -3067,6 +3072,9 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 		} else {
 			lower_c_inline_asm_template(template, block.arch, aliases, is_extended)
 		}
+		if block.is_goto {
+			lowered = g.lower_c_inline_asm_goto_labels(lowered, block.labels)
+		}
 		g.writeln('"${c_escape(lowered + '\n\t')}"')
 	}
 	if block.is_intel {
@@ -3085,6 +3093,17 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 		for i, clobber in block.clobbered {
 			g.write('"${c_escape(clobber)}"')
 			if i + 1 < block.clobbered.len {
+				g.writeln(',')
+			} else {
+				g.writeln('')
+			}
+		}
+	}
+	if block.section_count > 4 {
+		g.write(': ')
+		for i, label in block.labels {
+			g.write(g.user_goto_c_label(label))
+			if i + 1 < block.labels.len {
 				g.writeln(',')
 			} else {
 				g.writeln('')
@@ -3199,6 +3218,7 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 	}
 	header := strip_c_inline_asm_comments(source[..open]).fields()
 	mut arch := ''
+	mut is_goto := false
 	mut is_volatile := false
 	mut is_raw := false
 	mut is_intel := false
@@ -3208,6 +3228,10 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 		}
 		if word == 'volatile' {
 			is_volatile = true
+			continue
+		}
+		if word == 'goto' {
+			is_goto = true
 			continue
 		}
 		if arch.len > 0 && word == 'raw' {
@@ -3245,8 +3269,15 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 			clobbered << name
 		}
 	}
+	mut labels := []string{}
+	if sections.len > 4 {
+		for label in sections[4].replace(',', ' ').fields() {
+			labels << label
+		}
+	}
 	return CInlineAsmBlock{
 		arch: arch
+		is_goto: is_goto
 		is_volatile: is_volatile
 		is_raw: is_raw
 		is_intel: is_intel
@@ -3254,8 +3285,33 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 		output: if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
 		input: if sections.len > 2 { parse_c_inline_asm_ios(sections[2], false) } else { [] }
 		clobbered: clobbered
+		labels: labels
 		section_count: sections.len
 	}
+}
+
+fn (mut g FlatGen) lower_c_inline_asm_goto_labels(template string, labels []string) string {
+	mut result := strings.new_builder(template.len)
+	mut i := 0
+	for i < template.len {
+		if !c_inline_asm_ident_start(template[i]) {
+			result.write_u8(template[i])
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < template.len && c_inline_asm_ident_char(template[i]) {
+			i++
+		}
+		word := template[start..i]
+		if word in labels && (i == template.len || template[i] != `:`) {
+			result.write_string('%l[${g.user_goto_c_label(word)}]')
+		} else {
+			result.write_string(word)
+		}
+	}
+	return result.str()
 }
 
 // parse_c_inline_asm_raw_templates returns the verbatim text of every double-quoted

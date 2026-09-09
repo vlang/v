@@ -8394,6 +8394,11 @@ fn (mut p Parser) validate_inline_asm_lock_instruction() {
 fn (mut p Parser) asm_stmt() flat.NodeId {
 	asm_pos := p.tok_pos
 	p.next() // skip 'asm'
+	mut is_goto := false
+	if p.tok == .key_goto {
+		is_goto = true
+		p.next()
+	}
 	// consume optional volatile keyword
 	if p.tok == .key_volatile || (p.tok == .name && p.lit == 'volatile') {
 		p.next()
@@ -8432,6 +8437,9 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 		p.next()
 	}
 	if !p.prefs.is_fmt {
+		if is_goto && p.prefs.backend != 'c' {
+			p.record_diagnostic('`asm goto` is only supported by the C backend', asm_pos)
+		}
 		if is_intel && pref.normalized_arch(asm_arch) !in ['amd64', 'x86'] {
 			p.record_diagnostic('the `intel` assembly modifier is only supported for i386 and amd64', asm_pos)
 		}

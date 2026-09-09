@@ -92,6 +92,11 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 				}
 			}
 		}
+		if header.is_goto && sections.len > 4 {
+			for label in inline_asm_words(block, sections[4]) {
+				aliases[label.text] = true
+			}
+		}
 		tc.check_inline_asm_templates(id, node, block, start, sections[0], registers, aliases, header.arch, header.is_intel)
 	}
 }
