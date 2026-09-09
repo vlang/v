@@ -7213,6 +7213,19 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 				arg_typ = resolved_param_type
 			}
 		}
+		if in_generic_context {
+			resolved_scope_type := g.resolved_scope_var_type_uncached(arg.expr)
+			if resolved_scope_type != 0 {
+				resolved_arg_type := g.unwrap_generic(g.recheck_concrete_type(resolved_scope_type))
+				skip_inherited_option_storage_type := arg.expr.obj is ast.Var
+					&& arg.expr.obj.is_inherited && !expected_type.has_option_or_result()
+					&& arg_typ != 0 && !arg_typ.has_option_or_result()
+					&& resolved_arg_type.has_option_or_result()
+				if !skip_inherited_option_storage_type {
+					arg_typ = resolved_arg_type
+				}
+			}
+		}
 	}
 	needs_resolved_expr_type := arg.expr is ast.SelectorExpr
 		|| arg.expr is ast.IndexExpr || arg.expr is ast.ComptimeSelector
