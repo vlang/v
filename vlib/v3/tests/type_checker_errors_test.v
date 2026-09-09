@@ -2204,6 +2204,15 @@ fn test_callback_slices_preserve_container_c_abi_modes() {
 
 fn test_callback_array_mutations_reach_index_projections() {
 	v3_bin := build_v3()
+	append_unrelated := run_good(v3_bin, 'good_callback_append_does_not_reach_other_index',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handler PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut handlers := [PlainHandler(plain_handler)]\n\thandlers << ConstHandler(const_handler)\n\treturn consume[int](handlers[0])\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert append_unrelated == 'true'
+	prepend_unrelated := run_good(v3_bin, 'good_callback_prepend_does_not_reach_other_index',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handler PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut handlers := [PlainHandler(plain_handler)]\n\thandlers.prepend(ConstHandler(const_handler))\n\treturn consume[int](handlers[1])\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert prepend_unrelated == 'true'
+	insert_unrelated := run_good(v3_bin, 'good_callback_insert_does_not_reach_other_index',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handler PlainHandler) bool {\n\treturn true\n}\nfn startup[T]() bool {\n\tmut handlers := [PlainHandler(plain_handler), PlainHandler(plain_handler)]\n\thandlers.insert(1, ConstHandler(const_handler))\n\treturn consume[int](handlers[0])\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert insert_unrelated == 'true'
 	run_bad(v3_bin, 'bad_callback_prepend_before_index_in_generic',
 		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handler PlainHandler) {}\nfn startup[T]() {\n\tmut handlers := [PlainHandler(plain_handler)]\n\thandlers.prepend(ConstHandler(const_handler))\n\tconsume[int](handlers[0])\n}\nfn main() {\n\tstartup[int]()\n}\n',
 		'cannot use')

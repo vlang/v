@@ -13551,11 +13551,15 @@ fn (t &Transformer) callback_static_index_value(node flat.Node) int {
 	if node.children_count < 2 {
 		return -1
 	}
-	index := t.a.child_node(&node, 1)
-	if index.kind != .int_literal {
-		return -1
+	return t.callback_static_non_negative_int(t.a.child(&node, 1)) or { -1 }
+}
+
+fn (t &Transformer) callback_static_non_negative_int(id flat.NodeId) ?int {
+	literal := t.specialized_int_literal(id) or { return none }
+	if literal.negative || literal.magnitude > u64(max_int) {
+		return none
 	}
-	return index.value.int()
+	return int(literal.magnitude)
 }
 
 fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.NodeId) []flat.NodeId {
@@ -14182,6 +14186,142 @@ fn (t &Transformer) callback_array_mutation_receiver_expected_type(id flat.NodeI
 	return t.callback_lvalue_expected_type(t.a.child(callee, 0), expected_type)
 }
 
+fn (t &Transformer) callback_array_source_known_length(id flat.NodeId) ?int {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count == 1 {
+		return t.callback_array_source_known_length(t.a.child(&node, 0))
+	}
+	if node.kind == .array_literal {
+		for i in 0 .. node.children_count {
+			child := t.a.child_node(&node, i)
+			if child.kind == .prefix && child.value == '...' {
+				return none
+			}
+		}
+		return int(node.children_count)
+	}
+	if node.kind == .array_init {
+		for i in 0 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_init && field.value == 'len' && field.children_count > 0 {
+				return t.callback_static_non_negative_int(t.a.child(field, 0))
+			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) callback_array_added_count(receiver_id flat.NodeId, value_id flat.NodeId) ?int {
+	mut receiver_type := t.normalize_type_alias(t.node_type(receiver_id)).trim_space()
+	mut value_type := t.normalize_type_alias(t.node_type(value_id)).trim_space()
+	mut receiver_depth := 0
+	mut value_depth := 0
+	for receiver_type.starts_with('[]') {
+		receiver_depth++
+		receiver_type = receiver_type[2..].trim_space()
+	}
+	for value_type.starts_with('[]') {
+		value_depth++
+		value_type = value_type[2..].trim_space()
+	}
+	if value_depth != receiver_depth {
+		return 1
+	}
+	if value_depth == 0 {
+		return none
+	}
+	return t.callback_array_source_known_length(value_id)
+}
+
+fn (t &Transformer) callback_array_projected_source_known_length(source_id flat.NodeId, receiver_id flat.NodeId) ?int {
+	mut projected := []flat.NodeId{}
+	mut seen := map[string]bool{}
+	t.collect_callback_projected_member_source_ids(source_id, receiver_id, mut projected, mut seen)
+	if projected.len != 1 {
+		return none
+	}
+	return t.callback_array_source_known_length(projected[0])
+}
+
+fn (t &Transformer) callback_array_length_before_mutation(receiver_id flat.NodeId, mutation_id flat.NodeId) ?int {
+	root_name := t.callback_lvalue_root_name(receiver_id) or { return none }
+	mut length := -1
+	mut has_base := false
+	for source_id in t.callback_local_reaching_rhs_ids(root_name, mutation_id) {
+		mut current_id := source_id
+		mut source := t.a.nodes[int(current_id)]
+		for source.kind in [.expr_stmt, .paren] && source.children_count == 1 {
+			current_id = t.a.child(&source, 0)
+			source = t.a.nodes[int(current_id)]
+		}
+		if source.kind == .infix && source.op == .left_shift && source.children_count >= 2 {
+			if !t.callback_member_lvalues_exact(t.a.child(&source, 0), receiver_id) {
+				continue
+			}
+			if !has_base || !t.callback_assignment_definitely_precedes_use(current_id, mutation_id) {
+				return none
+			}
+			count := t.callback_array_added_count(receiver_id, t.a.child(&source, 1)) or {
+				return none
+			}
+			if count > max_int - length {
+				return none
+			}
+			length += count
+			continue
+		}
+		if value_id := t.callback_array_mutation_value_id(current_id) {
+			callee := t.a.child_node(&source, 0)
+			if callee.children_count == 0
+				|| !t.callback_member_lvalues_exact(t.a.child(callee, 0), receiver_id) {
+				continue
+			}
+			if !has_base || !t.callback_assignment_definitely_precedes_use(current_id, mutation_id) {
+				return none
+			}
+			count := t.callback_array_added_count(receiver_id, value_id) or { return none }
+			if count > max_int - length {
+				return none
+			}
+			length += count
+			continue
+		}
+		if clear_receiver_id := t.callback_container_clear_call_receiver(current_id) {
+			if !t.callback_member_lvalues_exact(clear_receiver_id, receiver_id)
+				|| !t.callback_assignment_definitely_precedes_use(current_id, mutation_id) {
+				return none
+			}
+			length = 0
+			has_base = true
+			continue
+		}
+		if source.kind == .index_assign && source.children_count > 0 {
+			lhs := t.a.child_node(&source, 0)
+			if lhs.children_count > 0
+				&& t.callback_member_lvalues_exact(t.a.child(lhs, 0), receiver_id) {
+				continue
+			}
+		}
+		projected_length := t.callback_array_projected_source_known_length(current_id, receiver_id) or {
+			return none
+		}
+		if has_base {
+			return none
+		}
+		length = projected_length
+		has_base = true
+	}
+	return if has_base { length } else { none }
+}
+
+fn (t &Transformer) callback_array_added_value_reaches_index(receiver_id flat.NodeId, value_id flat.NodeId, start int, access_index int) bool {
+	count := t.callback_array_added_count(receiver_id, value_id) or { return access_index >= start }
+	return access_index >= start && access_index - start < count
+}
+
 fn (t &Transformer) callback_array_added_value_for_index(source_id flat.NodeId, access_id flat.NodeId) ?flat.NodeId {
 	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len || int(access_id) < 0
 		|| int(access_id) >= t.a.nodes.len {
@@ -14192,13 +14332,27 @@ fn (t &Transformer) callback_array_added_value_for_index(source_id flat.NodeId, 
 		return none
 	}
 	access_receiver_id := t.a.child(&access, 0)
+	access_index := t.callback_static_index_value(access)
 	source := t.a.nodes[int(source_id)]
 	if source.kind in [.expr_stmt, .paren] && source.children_count == 1 {
 		return t.callback_array_added_value_for_index(t.a.child(&source, 0), access_id)
 	}
 	if source.kind == .infix && source.op == .left_shift && source.children_count >= 2
 		&& t.callback_member_lvalues_exact(t.a.child(&source, 0), access_receiver_id) {
-		return t.a.child(&source, 1)
+		value_id := t.a.child(&source, 1)
+		if access_index < 0 {
+			return value_id
+		}
+		start := t.callback_array_length_before_mutation(access_receiver_id, source_id) or {
+			return value_id
+		}
+		return if t.callback_array_added_value_reaches_index(access_receiver_id, value_id, start,
+			access_index)
+		{
+			value_id
+		} else {
+			none
+		}
 	}
 	value_id := t.callback_array_mutation_value_id(source_id) or { return none }
 	callee := t.a.child_node(&source, 0)
@@ -14206,7 +14360,24 @@ fn (t &Transformer) callback_array_added_value_for_index(source_id flat.NodeId, 
 		|| !t.callback_member_lvalues_exact(t.a.child(callee, 0), access_receiver_id) {
 		return none
 	}
-	return value_id
+	if access_index < 0 {
+		return value_id
+	}
+	start := if callee.value == 'insert' {
+		if source.children_count < 2 {
+			return value_id
+		}
+		t.callback_static_non_negative_int(t.a.child(&source, 1)) or { return value_id }
+	} else {
+		0
+	}
+	return if t.callback_array_added_value_reaches_index(access_receiver_id, value_id, start,
+		access_index)
+	{
+		value_id
+	} else {
+		none
+	}
 }
 
 fn (t &Transformer) callback_lvalue_base_is_ident(id flat.NodeId, name string) bool {
