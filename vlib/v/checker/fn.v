@@ -92,18 +92,21 @@ fn (mut c Checker) record_receiver_argument(param ast.Param, arg ast.CallArg) {
 		|| (!c.table.cur_fn.rec_mut && !c.table.cur_fn.receiver.typ.is_ptr()) {
 		return
 	}
+	mut receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
+	method_idx := c.table.cur_fn.method_idx
+	if method_idx < 0 || method_idx >= receiver_sym.methods.len {
+		return
+	}
 	receiver_name := c.table.cur_fn.receiver.name
-	arg_is_receiver := receiver_pointer_argument(arg.expr, receiver_name)
+	mut receiver_names := [receiver_name]
+	receiver_names << receiver_sym.methods[method_idx].receiver_pointer_aliases
+	arg_is_receiver := receiver_names.any(receiver_pointer_argument(arg.expr, it))
 	if arg_is_receiver {
-		mut receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
-		method_idx := c.table.cur_fn.method_idx
-		if method_idx >= 0 && method_idx < receiver_sym.methods.len {
-			if param.is_mut && arg.is_mut {
-				receiver_sym.methods[method_idx].receiver_passed_mut = true
-			} else if c.table.cur_fn.receiver.typ.is_ptr() && (param.typ.is_any_kind_of_pointer()
-				|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer()) {
-				receiver_sym.methods[method_idx].receiver_address_taken = true
-			}
+		if param.is_mut && arg.is_mut {
+			receiver_sym.methods[method_idx].receiver_passed_mut = true
+		} else if c.table.cur_fn.receiver.typ.is_ptr() && (param.typ.is_any_kind_of_pointer()
+			|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer()) {
+			receiver_sym.methods[method_idx].receiver_address_taken = true
 		}
 	}
 }
@@ -116,10 +119,15 @@ fn (mut c Checker) record_receiver_method_call(left ast.Expr, called_name string
 	}
 	mut left_expr := left
 	left_expr = left_expr.remove_par()
-	if left_expr is ast.Ident && left_expr.name == c.table.cur_fn.receiver.name {
+	if left_expr is ast.Ident {
 		mut receiver_sym := c.table.sym(c.table.cur_fn.receiver.typ)
 		method_idx := c.table.cur_fn.method_idx
+		mut receiver_names := [c.table.cur_fn.receiver.name]
+		if method_idx >= 0 && method_idx < receiver_sym.methods.len {
+			receiver_names << receiver_sym.methods[method_idx].receiver_pointer_aliases
+		}
 		if method_idx >= 0 && method_idx < receiver_sym.methods.len
+			&& left_expr.name in receiver_names
 			&& called_name !in receiver_sym.methods[method_idx].receiver_method_calls {
 			receiver_sym.methods[method_idx].receiver_method_calls << called_name
 		}

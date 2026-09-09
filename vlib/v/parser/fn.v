@@ -41,6 +41,7 @@ mut:
 	address_taken       bool
 	captured_mut        bool
 	method_calls        []string
+	receiver_aliases    []string
 }
 
 fn contains_receiver_reference(expr ast.Expr, name string) bool {
@@ -122,6 +123,45 @@ fn stmts_return_receiver_reference(stmts []ast.Stmt, name string) bool {
 	}
 }
 
+fn contains_receiver_or_alias(expr ast.Expr, name string, aliases []string) bool {
+	return contains_receiver_reference(expr, name)
+		|| aliases.any(contains_receiver_reference(expr, it))
+}
+
+fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []string) bool {
+	reduced := expr.remove_par()
+	return match reduced {
+		ast.Ident {
+			reduced.name == name || reduced.name in aliases
+		}
+		ast.CastExpr {
+			is_receiver_pointer_alias(reduced.expr, name, aliases)
+				|| (reduced.has_arg && is_receiver_pointer_alias(reduced.arg, name, aliases))
+		}
+		ast.AsCast {
+			is_receiver_pointer_alias(reduced.expr, name, aliases)
+		}
+		ast.UnsafeExpr {
+			is_receiver_pointer_alias(reduced.expr, name, aliases)
+		}
+		ast.PrefixExpr {
+			if reduced.op == .amp {
+				right := reduced.right.remove_par()
+				if right is ast.PrefixExpr && right.op == .mul {
+					is_receiver_pointer_alias(right.right, name, aliases)
+				} else {
+					is_receiver_pointer_alias(right, name, aliases)
+				}
+			} else {
+				false
+			}
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn scan_receiver_sql_query_data(items []ast.SqlQueryDataItem, name string, mut info ReceiverReassignmentInfo) {
 	for item in items {
 		match item {
@@ -165,8 +205,24 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 				}
 			}
 			if node is ast.AssignStmt {
-				if info.receiver_is_ptr && node.right.any(contains_receiver_reference(it, name)) {
-					info.address_taken = true
+				if info.receiver_is_ptr {
+					for i, right in node.right {
+						if !contains_receiver_or_alias(right, name, info.receiver_aliases) {
+							continue
+						}
+						if i < node.left.len
+							&& is_receiver_pointer_alias(right, name, info.receiver_aliases) {
+							left := node.left[i].remove_par()
+							if left is ast.Ident && left.name !in [name, '_']
+								&& left.obj !is ast.GlobalField {
+								if left.name !in info.receiver_aliases {
+									info.receiver_aliases << left.name
+								}
+								continue
+							}
+						}
+						info.address_taken = true
+					}
 				}
 				for left in node.left {
 					reduced := left.remove_par()
@@ -181,7 +237,7 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 				}
 			}
 			if info.receiver_is_ptr && node is ast.Return
-				&& node.exprs.any(contains_receiver_reference(it, name)) {
+				&& node.exprs.any(contains_receiver_or_alias(it, name, info.receiver_aliases)) {
 				info.address_taken = true
 			}
 			// Visit statement payloads that are not exposed by Node.children().
@@ -237,7 +293,8 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 				ast.CallExpr {
 					mut left := node.left
 					left = left.remove_par()
-					if node.is_method && left is ast.Ident && left.name == name
+					if node.is_method && left is ast.Ident
+						&& (left.name == name || left.name in info.receiver_aliases)
 						&& node.name !in info.method_calls {
 						info.method_calls << node.name
 					}
@@ -285,6 +342,10 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 					scan_receiver_reassignment(node.or_expr, name, mut info)
 				}
 				ast.InfixExpr {
+					if info.receiver_is_ptr && node.op == .arrow
+						&& contains_receiver_or_alias(node.right, name, info.receiver_aliases) {
+						info.address_taken = true
+					}
 					scan_receiver_reassignment(node.or_block, name, mut info)
 				}
 				ast.IsRefType {
@@ -1431,6 +1492,7 @@ run them via `v file.v` instead',
 		type_sym.methods[type_sym_method_idx].receiver_address_taken = receiver_info.address_taken
 		type_sym.methods[type_sym_method_idx].receiver_captured_mut = receiver_info.captured_mut
 		type_sym.methods[type_sym_method_idx].receiver_method_calls = receiver_info.method_calls
+		type_sym.methods[type_sym_method_idx].receiver_pointer_aliases = receiver_info.receiver_aliases
 	}
 	if !no_body && are_params_type_only {
 		p.error_with_pos('functions with type only params can not have bodies', body_start_pos)

@@ -119,6 +119,10 @@ fn (node &PointerNode) pass_pointer_receiver_as_voidptr() {
 	retain_void_pointer(voidptr(node))
 }
 
+fn (node &PointerNode) publish_pointer_receiver(ch chan &PointerNode) {
+	ch <- node
+}
+
 interface Element {
 	Node
 }
@@ -146,4 +150,6 @@ fn main() {
 	mut holder := PointerHolder{}
 	pointer_element.store_pointer_receiver(mut holder)
 	pointer_element.pass_pointer_receiver_as_voidptr()
+	ch := chan &PointerNode{cap: 1}
+	pointer_element.publish_pointer_receiver(ch)
 }

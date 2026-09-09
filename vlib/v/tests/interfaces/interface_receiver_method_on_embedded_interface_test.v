@@ -29,6 +29,11 @@ fn (node &Node) copy_value() Node {
 	return unsafe { *node }
 }
 
+fn (node &Node) read_field_through_local_alias() string {
+	alias := unsafe { node }
+	return alias.name
+}
+
 interface Element {
 	Node
 	attributes map[string]string
@@ -122,6 +127,11 @@ fn test_dereferenced_pointer_receiver_value_does_not_escape() {
 	element := new_element()
 	copy := element.copy_value()
 	assert copy.name == 'body'
+}
+
+fn test_local_pointer_receiver_alias_does_not_escape() {
+	element := new_element()
+	assert element.read_field_through_local_alias() == 'body'
 }
 
 fn test_smartcast_receiver_method_on_embedded_interface() {
