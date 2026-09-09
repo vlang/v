@@ -1034,10 +1034,14 @@ fn (t &Transformer) infix_operand_requests_pointer_identity(id flat.NodeId) bool
 	if node.kind == .ident {
 		return t.var_is_ref_param(node.value)
 	}
+	if node.kind == .paren && node.children_count == 1 {
+		child_id := t.source_expr_child(id, node, 0) or { return false }
+		return t.infix_operand_requests_pointer_identity(child_id)
+	}
 	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
 		return false
 	}
-	child_id := t.source_unary_expr_child(id, node) or { return false }
+	child_id := t.source_expr_child(id, node, 0) or { return false }
 	return t.source_expr_is_plain_lvalue(child_id)
 }
 
@@ -1049,24 +1053,37 @@ fn (t &Transformer) source_expr_is_plain_lvalue(id flat.NodeId) bool {
 	if node.kind == .ident {
 		return node.value.len > 0
 	}
-	if node.kind != .selector || node.children_count == 0 {
+	if node.kind !in [.selector, .index, .paren] || node.children_count == 0 {
 		return false
 	}
-	child_id := t.source_unary_expr_child(id, node) or { return false }
+	if node.kind == .index && node.value == 'range' {
+		return false
+	}
+	child_id := t.source_expr_child(id, node, 0) or { return false }
 	return t.source_expr_is_plain_lvalue(child_id)
 }
 
-fn (t &Transformer) source_unary_expr_child(id flat.NodeId, node &flat.Node) ?flat.NodeId {
-	child_id := t.a.child(node, 0)
+fn (t &Transformer) source_expr_child(id flat.NodeId, node &flat.Node, child_idx int) ?flat.NodeId {
+	if child_idx < 0 || child_idx >= int(node.children_count) {
+		return none
+	}
+	child_id := t.a.child(node, child_idx)
 	if int(child_id) >= 0 {
 		return child_id
 	}
 	// In-place transform passes can consume a source child slot. Source nodes are
-	// built post-order, so the direct child of a unary expression immediately
-	// precedes it and remains linked by the immutable source-parent index.
-	source_child := int(id) - 1
-	if source_child >= 0 && t.source_parent_id(source_child) == int(id) {
-		return flat.NodeId(source_child)
+	// built post-order, so recover the requested direct child from the immutable
+	// source-parent index. Walking backwards visits direct children right-to-left.
+	target_from_right := int(node.children_count) - 1 - child_idx
+	mut direct_child_from_right := 0
+	for source_child := int(id) - 1; source_child >= 0; source_child-- {
+		if t.source_parent_id(source_child) != int(id) {
+			continue
+		}
+		if direct_child_from_right == target_from_right {
+			return flat.NodeId(source_child)
+		}
+		direct_child_from_right++
 	}
 	return none
 }
