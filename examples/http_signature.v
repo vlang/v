@@ -47,7 +47,10 @@ fn demo_sign_and_verify_request() ! {
 	println('Signature-Input: ${si}')
 	println('Signature:       ${sig}')
 
-	signature.verify_request(req, pub_key)!
+	signature.verify_request(req, pub_key,
+		required_components: ['date', '@method', '@path', '@authority', 'content-type',
+			'content-length']
+	)!
 	println('  ✓ verified with the matching public key')
 }
 
@@ -83,7 +86,13 @@ fn demo_two_signatures() ! {
 	si := req.header.get_custom('Signature-Input') or { '' }
 	println('\nMerged Signature-Input: ${si}')
 
-	signature.verify_request(req, client_key, label: 'client-sig')!
-	signature.verify_request(req, proxy_key, label: 'proxy-sig')!
+	signature.verify_request(req, client_key,
+		label:               'client-sig'
+		required_components: ['@method', '@target-uri', 'date']
+	)!
+	signature.verify_request(req, proxy_key,
+		label:               'proxy-sig'
+		required_components: ['@method', '@authority', 'date']
+	)!
 	println('  ✓ both labelled signatures verified')
 }

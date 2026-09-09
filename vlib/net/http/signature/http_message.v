@@ -81,6 +81,8 @@ pub struct VerifyRequestOptions {
 pub:
 	label    string
 	now_unix i64
+	// required_components defaults to @method, @target-uri, and @authority.
+	required_components []string
 	// scheme — see SignRequestOptions.scheme. Both ends of the
 	// signature must agree on the scheme used to reconstruct the
 	// target URI, otherwise the signature bases differ.
@@ -90,7 +92,9 @@ pub:
 // verify_request verifies a labelled signature on an HTTP request. If
 // `opts.label` is empty and exactly one signature is present, that
 // one is checked. If `opts.now_unix > 0`, the `expires` parameter is
-// also enforced.
+// also enforced. By default, coverage of @method, @target-uri, and
+// @authority is required; pass an explicit application profile through
+// `required_components` to override that policy.
 pub fn verify_request(req http.Request, key Key, opts VerifyRequestOptions) ! {
 	c := request_components(req, opts.scheme, .incoming)!
 	sig_input := merged_dict_field(req.header, 'Signature-Input') or {
@@ -103,7 +107,15 @@ pub fn verify_request(req http.Request, key Key, opts VerifyRequestOptions) ! {
 			reason: 'request has no Signature header'
 		}
 	}
-	verify(c, sig_input, sig_value, opts.label, key, now_unix: opts.now_unix)!
+	required := if opts.required_components.len > 0 {
+		opts.required_components
+	} else {
+		['@method', '@target-uri', '@authority']
+	}
+	verify(c, sig_input, sig_value, opts.label, key,
+		now_unix:            opts.now_unix
+		required_components: required
+	)!
 }
 
 // SignResponseOptions / VerifyResponseOptions mirror their request
@@ -164,9 +176,12 @@ pub struct VerifyResponseOptions {
 pub:
 	label    string
 	now_unix i64
+	// required_components defaults to @status.
+	required_components []string
 }
 
-// verify_response verifies a labelled signature on an HTTP response.
+// verify_response verifies a labelled signature on an HTTP response and
+// requires @status coverage unless `required_components` is set explicitly.
 pub fn verify_response(resp http.Response, key Key, opts VerifyResponseOptions) ! {
 	c := response_components(resp)
 	sig_input := merged_dict_field(resp.header, 'Signature-Input') or {
@@ -179,7 +194,15 @@ pub fn verify_response(resp http.Response, key Key, opts VerifyResponseOptions) 
 			reason: 'response has no Signature header'
 		}
 	}
-	verify(c, sig_input, sig_value, opts.label, key, now_unix: opts.now_unix)!
+	required := if opts.required_components.len > 0 {
+		opts.required_components
+	} else {
+		['@status']
+	}
+	verify(c, sig_input, sig_value, opts.label, key,
+		now_unix:            opts.now_unix
+		required_components: required
+	)!
 }
 
 // append_dict_header merges `addition` into the existing dictionary
@@ -342,7 +365,7 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 	} else if parsed.host != '' {
 		parsed.host
 	} else {
-		req.host
+		req.host.trim_space()
 	}
 	if mode == .outgoing {
 		if parsed.host != '' {
@@ -442,11 +465,12 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 
 fn transport_authority(url urllib.URL) string {
 	hostname := url.hostname()
+	host := if hostname.contains(':') { '[${hostname}]' } else { hostname }
 	port := url.port().int()
 	if port == 0 || (url.scheme == 'http' && port == 80) || (url.scheme == 'https' && port == 443) {
-		return hostname
+		return host
 	}
-	return '${hostname}:${port}'
+	return '${host}:${port}'
 }
 
 fn response_components(resp http.Response) Components {

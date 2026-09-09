@@ -47,7 +47,7 @@ fn test_sign_and_verify_request_ed25519_roundtrip() {
 		components: ['@method', '@target-uri', 'date']
 		created:    1618884473
 	)!
-	verify_request(req, pub_key)!
+	verify_request(req, pub_key, required_components: ['@method', '@target-uri'])!
 }
 
 fn test_sign_and_verify_request_ecdsa_p256_roundtrip() {
@@ -59,7 +59,9 @@ fn test_sign_and_verify_request_ecdsa_p256_roundtrip() {
 		components: ['@method', '@target-uri', '@path', '@query', 'content-type']
 		created:    1618884473
 	)!
-	verify_request(req, pub_key)!
+	verify_request(req, pub_key,
+		required_components: ['@method', '@target-uri', '@path', '@query', 'content-type']
+	)!
 }
 
 fn test_sign_and_verify_request_ecdsa_p384_roundtrip() {
@@ -83,7 +85,7 @@ fn test_sign_and_verify_request_ecdsa_p384_roundtrip() {
 		components: ['@method', '@target-uri']
 		created:    1618884473
 	)!
-	verify_request(req, pub_key)!
+	verify_request(req, pub_key, required_components: ['@method', '@target-uri'])!
 }
 
 fn test_verify_request_rejects_wrong_key() {
@@ -91,7 +93,7 @@ fn test_verify_request_rejects_wrong_key() {
 	good := Key.hmac_sha256('secret-A'.bytes())!
 	bad := Key.hmac_sha256('secret-B'.bytes())!
 	sign_request(mut req, good, components: ['@method', '@target-uri'], created: 1)!
-	if _ := verify_request(req, bad) {
+	if _ := verify_request(req, bad, required_components: ['@method', '@target-uri']) {
 		assert false, 'wrong key must not verify'
 	} else {
 		assert err is VerificationFailed
@@ -105,7 +107,7 @@ fn test_verify_request_rejects_tampered_target_uri() {
 	// Mutate the URL after signing - the verifier rebuilds the
 	// signature base from the (now-tampered) request and must fail.
 	req.url = 'https://example.com/bar'
-	if _ := verify_request(req, key) {
+	if _ := verify_request(req, key, required_components: ['@method', '@target-uri']) {
 		assert false, 'tampered @target-uri must not verify'
 	} else {
 		assert err is VerificationFailed
@@ -133,13 +135,28 @@ fn test_verify_request_rejects_expired_signature() {
 		created:    1000
 		expires:    2000
 	)!
-	if _ := verify_request(req, key, now_unix: 5000) {
+	if _ := verify_request(req, key, now_unix: 5000, required_components: ['@method']) {
 		assert false, 'expired signature must be rejected when now_unix > expires'
 	} else {
 		assert err is SignatureExpired
 	}
 	// Unchecked when now_unix is left at the default zero.
-	verify_request(req, key)!
+	verify_request(req, key, required_components: ['@method'])!
+}
+
+fn test_verify_request_requires_safe_default_component_coverage() {
+	mut req := build_request('https://example.com/foo')
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_request(mut req, key, components: ['date'], created: 1)!
+	if _ := verify_request(req, key) {
+		assert false, 'request verification must require method, target URI, and authority by default'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('@method')
+	}
+	// Applications with a different authorization profile can opt into its
+	// required component set explicitly.
+	verify_request(req, key, required_components: ['date'])!
 }
 
 fn test_origin_form_request_target_uri_reconstructed() {
@@ -170,7 +187,7 @@ fn test_origin_form_request_target_uri_reconstructed() {
 			received.header.add_custom(k, v)!
 		}
 	}
-	verify_request(received, key)!
+	verify_request(received, key, required_components: ['@method', '@target-uri'])!
 }
 
 fn test_origin_form_uses_explicit_scheme() {
@@ -198,7 +215,10 @@ fn test_origin_form_uses_explicit_scheme() {
 			received.header.add_custom(k, v)!
 		}
 	}
-	verify_request(received, key, scheme: 'http')!
+	verify_request(received, key,
+		scheme:              'http'
+		required_components: ['@method', '@target-uri']
+	)!
 }
 
 fn test_request_components_preserve_escaped_path() {
@@ -230,6 +250,31 @@ fn test_outgoing_request_components_trim_explicit_host_for_derived_values() {
 	c := request_components(req, 'https', .outgoing)!
 	assert c.component_value('@authority')! == 'example.com'
 	assert c.component_value('@target-uri')! == 'https://example.com/path'
+}
+
+fn test_incoming_request_components_trim_host_for_derived_values() {
+	req := http.parse_request_str('GET /path HTTP/1.1\r\nHost: example.com \r\n\r\n')!
+	c := request_components(req, 'https', .incoming)!
+	assert c.component_value('@authority')! == 'example.com'
+	assert c.component_value('@target-uri')! == 'https://example.com/path'
+}
+
+fn test_outgoing_request_components_preserve_ipv6_authority_brackets() {
+	req := http.Request{
+		method: .get
+		url:    'https://[2001:db8::1]/path'
+	}
+	c := request_components(req, 'https', .outgoing)!
+	assert c.component_value('@authority')! == '[2001:db8::1]'
+	assert c.component_value('@target-uri')! == 'https://[2001:db8::1]/path'
+
+	req_nondefault := http.Request{
+		method: .get
+		url:    'https://[2001:db8::1]:8443/path'
+	}
+	c_nondefault := request_components(req_nondefault, 'https', .outgoing)!
+	assert c_nondefault.component_value('@authority')! == '[2001:db8::1]:8443'
+	assert c_nondefault.component_value('@target-uri')! == 'https://[2001:db8::1]:8443/path'
 }
 
 fn test_incoming_request_components_preserve_absolute_form() {
@@ -373,9 +418,15 @@ fn test_sign_two_signatures_coexist() {
 	k2 := Key.hmac_sha256('two'.bytes())!
 	sign_request(mut req, k1, components: ['@method'], label: 'sig-a', created: 1)!
 	sign_request(mut req, k2, components: ['@target-uri'], label: 'sig-b', created: 2)!
-	verify_request(req, k1, label: 'sig-a')!
-	verify_request(req, k2, label: 'sig-b')!
-	if _ := verify_request(req, k1, label: 'sig-b') {
+	verify_request(req, k1, label: 'sig-a', required_components: ['@method'])!
+	verify_request(req, k2, label: 'sig-b', required_components: ['@target-uri'])!
+	if _ := verify_request(req, k1,
+		label:               'sig-b'
+		required_components: [
+			'@target-uri',
+		]
+	)
+	{
 		assert false, 'sig-b must not verify under k1'
 	} else {
 		assert err is VerificationFailed
@@ -468,7 +519,7 @@ fn test_sign_request_allows_http2_te_trailers() {
 	req.header.add_custom('TE', 'trailers')!
 	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_request(mut req, key, components: ['te'], created: 1)!
-	verify_request(req, key)!
+	verify_request(req, key, required_components: ['te'])!
 }
 
 fn test_sign_request_rejects_self_referential_signature_field() {
@@ -501,6 +552,22 @@ fn test_sign_response_and_verify() {
 		created:    1
 	)!
 	verify_response(resp, key)!
+}
+
+fn test_verify_response_requires_status_coverage_by_default() {
+	mut resp := http.Response{
+		status_code: 200
+	}
+	resp.header.add_custom('Content-Type', 'application/json')!
+	key := Key.hmac_sha256(test_secret.bytes())!
+	sign_response(mut resp, key, components: ['content-type'], created: 1)!
+	if _ := verify_response(resp, key) {
+		assert false, 'response verification must require status coverage by default'
+	} else {
+		assert err is MalformedMessage
+		assert err.msg().contains('@status')
+	}
+	verify_response(resp, key, required_components: ['content-type'])!
 }
 
 fn test_sign_response_normalizes_zero_status_to_wire_ok() {

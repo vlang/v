@@ -66,14 +66,13 @@ pub fn sign(c Components, p SignatureParams, key Key, label string) !SignedHeade
 }
 
 // VerifyOptions tweaks `verify`. `now_unix` enables the optional
-// `expires` parameter check (any value > 0 turns it on); leave it at
-// the default to skip the expiry check entirely. Kept as a single
-// option struct so future toggles (clock skew tolerance, allowed
-// algorithm list…) land here without breaking signatures.
+// `expires` parameter check (any value > 0 turns it on), and
+// `required_components` enforces an application coverage policy.
 @[params]
 pub struct VerifyOptions {
 pub:
-	now_unix i64
+	now_unix            i64
+	required_components []string
 }
 
 // verify checks the signature for `label` against `c` using `key`.
@@ -83,7 +82,9 @@ pub:
 // `label` selects which signature to check when several are present.
 // Pass an empty string to verify the only signature - the call fails
 // with `MalformedMessage` if zero or more than one is found. When
-// `opts.now_unix > 0` the `expires` parameter is also enforced.
+// `opts.now_unix > 0` the `expires` parameter is also enforced. The
+// low-level API requires callers to set `required_components` when the
+// result is used for authorization; the HTTP wrappers provide safe defaults.
 pub fn verify(c Components, sig_input_header string, signature_header string, label string, key Key, opts VerifyOptions) ! {
 	entries := parse_signature_input(sig_input_header)!
 	signatures := parse_signature(signature_header)!
@@ -99,6 +100,7 @@ pub fn verify(c Components, sig_input_header string, signature_header string, la
 		}
 	}
 	check_registered_param_types(entry)!
+	check_required_components(entry, opts.required_components)!
 	if created := entry.params['created'] {
 		if created is i64 {
 			if expires := entry.params['expires'] {
@@ -118,6 +120,16 @@ pub fn verify(c Components, sig_input_header string, signature_header string, la
 					expires: exp_v
 					now:     opts.now_unix
 				}
+			}
+		}
+	}
+}
+
+fn check_required_components(entry SignatureEntry, required []string) ! {
+	for component in normalize_component_names(required) {
+		if component !in entry.components {
+			return MalformedMessage{
+				reason: 'signature does not cover required component "${component}"'
 			}
 		}
 	}

@@ -39,6 +39,12 @@ y)`, …) are still available when you have JWK-style key material.
 The `now_unix` option enforces the optional `expires` parameter; pass
 `0` (the default) to skip the expiry check.
 
+`verify_request` requires `@method`, `@target-uri`, and `@authority` by
+default, while `verify_response` requires `@status`. Applications using a
+different authorization profile must pass its component set explicitly with
+`required_components`. The lower-level `verify` API performs cryptographic
+verification only unless its `required_components` option is set.
+
 ## Algorithms
 
 | IANA name           | Status | Backed by |
