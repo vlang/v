@@ -109,6 +109,12 @@ pub:
 	sum_type_name string // the parent sum type name (e.g. "Expr")
 }
 
+enum SmartcastRestoreState {
+	unchanged
+	invalidated
+	reestablished
+}
+
 struct LocalClosureFieldCandidate {
 	source_id       int
 	owner_id        int
@@ -217,7 +223,9 @@ mut:
 	pending_stmts                   []flat.NodeId
 	smartcast_stack                 []SmartcastContext
 	invalidated_smartcasts          map[string]bool
-	smartcast_invalidation_events   []string
+	smartcast_event_id               int
+	smartcast_invalidation_event_ids map[string]int
+	smartcast_reestablishment_event_ids map[string]int
 	in_call_callee                  bool
 	in_monomorphize_scan            bool
 	validating_generic_spec         bool
@@ -3827,7 +3835,9 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.fixed_array_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
-	w.smartcast_invalidation_events = []string{}
+	w.smartcast_event_id = 0
+	w.smartcast_invalidation_event_ids = map[string]int{}
+	w.smartcast_reestablishment_event_ids = map[string]int{}
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
 	w.pointer_value_rvalues = map[string]bool{}
@@ -3951,7 +3961,9 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.fixed_array_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
-	w.smartcast_invalidation_events = []string{}
+	w.smartcast_event_id = 0
+	w.smartcast_invalidation_event_ids = map[string]int{}
+	w.smartcast_reestablishment_event_ids = map[string]int{}
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
 	w.pointer_value_rvalues = map[string]bool{}
@@ -4088,6 +4100,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		orm_initialized_fields: map[string][]string{}
 		sql_query_data_aliases: map[string][]string{}
 		invalidated_smartcasts: map[string]bool{}
+		smartcast_invalidation_event_ids: map[string]int{}
+		smartcast_reestablishment_event_ids: map[string]int{}
 		escaping_amp_ptrs: map[string]bool{}
 		escaping_amp_sources: map[string]bool{}
 		heaped_amp_locals: map[string]bool{}
@@ -8721,7 +8735,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.cur_fn_variadic_param = ''
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()
-	t.smartcast_invalidation_events.clear()
+	t.smartcast_event_id = 0
+	t.smartcast_invalidation_event_ids.clear()
+	t.smartcast_reestablishment_event_ids.clear()
 	// Collect param types
 	mut param_idx := 0
 	mut source_mut_params := []string{}
@@ -8884,7 +8900,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	}
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()
-	t.smartcast_invalidation_events.clear()
+	t.smartcast_event_id = 0
+	t.smartcast_invalidation_event_ids.clear()
+	t.smartcast_reestablishment_event_ids.clear()
 	t.cur_fn_is_generic = old_is_generic
 	t.cur_fn_manualfree = old_manualfree
 	t.cur_fn_receiver_name = old_receiver_name
@@ -9111,16 +9129,6 @@ fn (t &Transformer) non_invalidated_smartcasts(contexts []SmartcastContext) []Sm
 	return keep
 }
 
-fn (t &Transformer) non_invalidated_smartcasts_since(event_start int, contexts []SmartcastContext) []SmartcastContext {
-	mut keep := []SmartcastContext{cap: contexts.len}
-	for sc in contexts {
-		if !t.smartcast_context_invalidated_since(event_start, sc.expr_name) {
-			keep << sc
-		}
-	}
-	return keep
-}
-
 fn (t &Transformer) smartcast_context_invalidated(expr_name string) bool {
 	if expr_name.len == 0 || t.invalidated_smartcasts.len == 0 {
 		return false
@@ -9133,18 +9141,51 @@ fn (t &Transformer) smartcast_context_invalidated(expr_name string) bool {
 	return false
 }
 
-fn (t &Transformer) smartcast_context_invalidated_since(event_start int, expr_name string) bool {
-	if expr_name.len == 0 || event_start >= t.smartcast_invalidation_events.len {
-		return false
-	}
-	start := if event_start < 0 { 0 } else { event_start }
-	for i in start .. t.smartcast_invalidation_events.len {
-		key := t.smartcast_invalidation_events[i]
-		if expr_name == key || expr_name.starts_with('${key}.') {
-			return true
+fn (t &Transformer) restore_smartcasts_since(event_start int, saved []SmartcastContext) []SmartcastContext {
+	mut restored := []SmartcastContext{cap: saved.len}
+	mut replaced_exprs := map[string]bool{}
+	for smartcast in saved {
+		match t.smartcast_restore_state_since(event_start, smartcast.expr_name) {
+			.invalidated {
+				continue
+			}
+			.reestablished {
+				if smartcast.expr_name in replaced_exprs {
+					continue
+				}
+				replaced_exprs[smartcast.expr_name] = true
+				for current in t.smartcast_stack {
+					if current.expr_name == smartcast.expr_name {
+						restored << current
+					}
+				}
+			}
+			.unchanged {
+				restored << smartcast
+			}
 		}
 	}
-	return false
+	return restored
+}
+
+fn (t &Transformer) smartcast_restore_state_since(event_start int, expr_name string) SmartcastRestoreState {
+	if expr_name.len == 0 || event_start >= t.smartcast_event_id {
+		return .unchanged
+	}
+	mut latest_invalidation_id := 0
+	for key, event_id in t.smartcast_invalidation_event_ids {
+		if event_id > event_start && event_id > latest_invalidation_id
+			&& (expr_name == key || expr_name.starts_with('${key}.')) {
+			latest_invalidation_id = event_id
+		}
+	}
+	if latest_invalidation_id == 0 {
+		return .unchanged
+	}
+	if t.smartcast_reestablishment_event_ids[expr_name] or { 0 } > latest_invalidation_id {
+		return .reestablished
+	}
+	return .invalidated
 }
 
 fn (t &Transformer) is_multi_init_for_block(node flat.Node) bool {
@@ -12058,7 +12099,8 @@ fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
 	if key.len == 0 || t.smartcast_stack.len == 0 {
 		return
 	}
-	t.smartcast_invalidation_events << key
+	t.smartcast_event_id++
+	t.smartcast_invalidation_event_ids[key] = t.smartcast_event_id
 	t.invalidated_smartcasts[key] = true
 	prefix := '${key}.'
 	mut keep := []SmartcastContext{cap: t.smartcast_stack.len}
@@ -22239,11 +22281,14 @@ fn (mut t Transformer) make_if_with_ownership_drop_mode(cond flat.NodeId, then_b
 // push_smartcast updates push smartcast state for Transformer.
 pub fn (mut t Transformer) push_smartcast(expr_name string, variant string, sum_type string) {
 	t.invalidated_smartcasts.delete(expr_name)
-	t.smartcast_stack << SmartcastContext{
+	smartcast := SmartcastContext{
 		expr_name: expr_name
 		variant_name: variant
 		sum_type_name: sum_type
 	}
+	t.smartcast_stack << smartcast
+	t.smartcast_event_id++
+	t.smartcast_reestablishment_event_ids[expr_name] = t.smartcast_event_id
 }
 
 // pop_smartcast updates pop smartcast state for Transformer.
