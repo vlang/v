@@ -18,3 +18,17 @@ fn test_float_power_in_comptime_if() {
 	}
 	assert value == 1
 }
+
+type ComptimeAddend = u8
+
+fn (a ComptimeAddend) + (b ComptimeAddend) ComptimeAddend {
+	return ComptimeAddend(u8(a) + u8(b))
+}
+
+fn test_overloaded_numeric_operation_in_comptime_if() {
+	mut value := 0
+	$if ComptimeAddend(1) + ComptimeAddend(1) == ComptimeAddend(2) {
+		value = 1
+	}
+	assert value == 1
+}

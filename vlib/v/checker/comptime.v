@@ -1328,9 +1328,10 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 		ast.InfixExpr {
 			left_sym := c.table.sym(expr.left_type)
 			right_sym := c.table.sym(expr.right_type)
-			if (!left_sym.is_builtin() && left_sym.has_method_with_generic_parent(expr.op.str()))
+			if c.comptime_eval_for_range && ((!left_sym.is_builtin()
+				&& left_sym.has_method_with_generic_parent(expr.op.str()))
 				|| (!right_sym.is_builtin()
-				&& right_sym.has_method_with_generic_parent(expr.op.str())) {
+				&& right_sym.has_method_with_generic_parent(expr.op.str()))) {
 				return none
 			}
 			left := c.eval_comptime_const_expr_with_locals(expr.left, nlevel + 1, local_values)?
