@@ -115,6 +115,11 @@ pub fn parse_signature_input(input string) ![]SignatureEntry {
 			break
 		}
 		label := p.parse_key()!
+		if entries.any(it.label == label) {
+			return MalformedMessage{
+				reason: 'Signature-Input contains duplicate label "${label}"'
+			}
+		}
 		p.expect(`=`) or {
 			return MalformedMessage{
 				reason: 'Signature-Input: expected "=" after label "${label}"'
@@ -158,6 +163,11 @@ pub fn parse_signature(input string) !map[string][]u8 {
 			break
 		}
 		label := p.parse_key()!
+		if label in out {
+			return MalformedMessage{
+				reason: 'Signature contains duplicate label "${label}"'
+			}
+		}
 		p.expect(`=`) or {
 			return MalformedMessage{
 				reason: 'Signature: expected "=" after label "${label}"'

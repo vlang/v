@@ -252,6 +252,25 @@ fn test_outgoing_request_components_match_repeated_header_serialization() {
 	assert c.component_value('accept')! == 'text/html, application/json'
 }
 
+fn test_outgoing_request_components_include_generated_fields() {
+	mut req := http.Request{
+		method:     .post
+		url:        'https://example.com/upload'
+		data:       'body'
+		user_agent: 'signature-test'
+	}
+	req.add_cookie(http.Cookie{
+		name:  'sid'
+		value: 'abc'
+	})
+	req.header.add_custom('cookie', 'theme=dark')!
+	c := request_components(req, 'https', .outgoing)!
+	assert c.component_value('host')! == 'example.com'
+	assert c.component_value('user-agent')! == 'signature-test'
+	assert c.component_value('content-length')! == '4'
+	assert c.component_value('cookie')! == 'sid=abc; theme=dark'
+}
+
 fn test_sign_request_rejects_control_bytes_in_parameters() {
 	mut req := build_request('https://example.com/')
 	key := Key.hmac_sha256(test_secret.bytes())
@@ -313,6 +332,17 @@ fn test_sign_response_and_verify() {
 		created:    1
 	)!
 	verify_response(resp, key)!
+}
+
+fn test_sign_response_normalizes_zero_status_to_wire_ok() {
+	mut resp := http.Response{}
+	key := Key.hmac_sha256(test_secret.bytes())
+	sign_response(mut resp, key, components: ['@status'], created: 1)!
+	received := http.Response{
+		...resp
+		status_code: 200
+	}
+	verify_response(received, key)!
 }
 
 fn test_alg_param_must_match_key_algorithm() {

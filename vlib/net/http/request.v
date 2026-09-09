@@ -234,6 +234,21 @@ pub fn (req &Request) cookie(name string) ?Cookie {
 	return none
 }
 
+// cookie_header_value returns the value net.http sends in the Cookie header,
+// combining request cookies and explicit Cookie field values.
+pub fn (req &Request) cookie_header_value() string {
+	return req.cookie_header_value_with_header(req.header)
+}
+
+fn (req &Request) cookie_header_value_with_header(header Header) string {
+	mut parts := []string{cap: req.cookies.len + header.values(.cookie).len}
+	for key, value in req.cookies {
+		parts << '${key}=${value}'
+	}
+	parts << header.values(.cookie)
+	return parts.join('; ')
+}
+
 // do will send the HTTP request and returns `http.Response` as soon as the response is received
 pub fn (req &Request) do() !Response {
 	mut rurl := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
@@ -426,7 +441,7 @@ fn (req &Request) build_request_headers_opts(method Method, host_name string, po
 	}
 	chkey := CommonHeader.cookie.str()
 	for key in header.keys() {
-		if key == chkey {
+		if header_key_eq(key, chkey) {
 			continue
 		}
 		// RFC 9110 §5.2 combines repeated field lines with a comma. This also
@@ -451,32 +466,11 @@ fn (req &Request) build_request_cookies_header() string {
 }
 
 fn (req &Request) build_request_cookies_header_with_header(header Header) string {
-	if req.cookies.len < 1 {
+	value := req.cookie_header_value_with_header(header)
+	if value == '' {
 		return ''
 	}
-	mut sb_cookie := strings.new_builder(1024)
-	hvcookies := header.values(.cookie)
-	total_cookies := req.cookies.len + hvcookies.len
-	sb_cookie.write_string('Cookie: ')
-	mut idx := 0
-	for key, val in req.cookies {
-		sb_cookie.write_string(key)
-		sb_cookie.write_string('=')
-		sb_cookie.write_string(val)
-		if idx < total_cookies - 1 {
-			sb_cookie.write_string('; ')
-		}
-		idx++
-	}
-	for c in hvcookies {
-		sb_cookie.write_string(c)
-		if idx < total_cookies - 1 {
-			sb_cookie.write_string('; ')
-		}
-		idx++
-	}
-	sb_cookie.write_string('\r\n')
-	return sb_cookie.str()
+	return 'Cookie: ${value}\r\n'
 }
 
 fn (req &Request) http_do(host string, method Method, path string, data string, header Header) !Response {

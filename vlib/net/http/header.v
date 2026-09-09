@@ -465,16 +465,18 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 pub fn (mut h Header) set_custom(key string, value string) ! {
 	is_valid(key)!
 	mut set := false
-	for i, kv in h.data {
-		if kv.key == key {
+	mut i := 0
+	for i < h.cur_pos {
+		if h.data[i].key == key {
 			if !set {
 				h.data[i] = HeaderKV{key, value}
 				set = true
+				i++
 			} else {
-				// Remove old duplicates
-				h.data[i] = HeaderKV{key, ''}
+				h.delete_at(i)
 			}
-			// return
+		} else {
+			i++
 		}
 	}
 	if set {
@@ -519,9 +521,12 @@ fn (mut h Header) remove_custom_all(key string) {
 
 // delete_custom deletes all values for a custom header key.
 pub fn (mut h Header) delete_custom(key string) {
-	for i := 0; i < h.cur_pos; i++ {
+	mut i := 0
+	for i < h.cur_pos {
 		if h.data[i].key == key {
-			h.data[i] = HeaderKV{key, ''}
+			h.delete_at(i)
+		} else {
+			i++
 		}
 	}
 	// h.data.delete(key)
@@ -533,6 +538,14 @@ pub fn (mut h Header) delete_custom(key string) {
 		h.keys[kl] = h.keys[kl].filter(it != key)
 	}
 	*/
+}
+
+fn (mut h Header) delete_at(index int) {
+	for i := index; i < h.cur_pos - 1; i++ {
+		h.data[i] = h.data[i + 1]
+	}
+	h.cur_pos--
+	h.data[h.cur_pos] = HeaderKV{}
 }
 
 // contains returns whether the header key exists in the map.
@@ -632,7 +645,7 @@ pub fn (h Header) custom_values(key string, flags HeaderQueryConfig) []string {
 	if flags.exact {
 		for i := 0; i < h.cur_pos; i++ {
 			kv := h.data[i]
-			if kv.key == key && kv.value != '' { // empty value means a deleted header
+			if kv.key == key {
 				res << kv.value
 			}
 		}
@@ -640,7 +653,7 @@ pub fn (h Header) custom_values(key string, flags HeaderQueryConfig) []string {
 	} else {
 		for i := 0; i < h.cur_pos; i++ {
 			kv := h.data[i]
-			if header_key_eq(kv.key, key) && kv.value != '' { // empty value means a deleted header
+			if header_key_eq(kv.key, key) {
 				res << kv.value
 			}
 		}
@@ -652,9 +665,6 @@ pub fn (h Header) custom_values(key string, flags HeaderQueryConfig) []string {
 pub fn (h Header) keys() []string {
 	mut res := []string{cap: h.cur_pos}
 	for i := 0; i < h.cur_pos; i++ {
-		if h.data[i].value == '' {
-			continue
-		}
 		res << h.data[i].key
 	}
 	// Make sure keys are lower case and unique
@@ -708,9 +718,6 @@ pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfi
 	// for _, kv in h.data {
 	for i := 0; i < h.cur_pos; i++ {
 		kv := h.data[i]
-		if kv.value == '' { // empty value marks a deleted header
-			continue
-		}
 		key := if flags.version == .v2_0 {
 			kv.key.to_lower()
 		} else if flags.canonicalize {

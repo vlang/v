@@ -36,10 +36,10 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 		}
 	}
 	mut extra := []H2HeaderField{}
-	if !header.contains(.user_agent) && req.user_agent != '' {
+	if !header.contains(.user_agent) {
 		extra << H2HeaderField{'user-agent', req.user_agent}
 	}
-	if data.len > 0 && !header.contains(.content_length) {
+	if !header.contains(.content_length) {
 		extra << H2HeaderField{'content-length', data.len.str()}
 	}
 	for key in header.keys() {
@@ -59,15 +59,9 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	}
 	// Cookies: the request's own cookie map plus any Cookie header values,
 	// joined into one field (RFC 7540 Section 8.1.2.5 also allows splitting).
-	mut cookie_parts := []string{}
-	for k, v in req.cookies {
-		cookie_parts << '${k}=${v}'
-	}
-	for cv in header.values(.cookie) {
-		cookie_parts << cv
-	}
-	if cookie_parts.len > 0 {
-		extra << H2HeaderField{'cookie', cookie_parts.join('; ')}
+	cookie_value := req.cookie_header_value_with_header(header)
+	if cookie_value != '' {
+		extra << H2HeaderField{'cookie', cookie_value}
 	}
 	return H2ClientRequest{
 		method:    method.str()

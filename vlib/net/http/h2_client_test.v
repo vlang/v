@@ -27,6 +27,7 @@ fn test_to_h2_request_lowercases_and_keeps_custom_headers() {
 	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
 	assert h2req.headers.any(it.name == 'accept' && it.value == 'application/json')
 	assert h2req.headers.any(it.name == 'content-type' && it.value == 'text/plain')
+	assert h2req.headers.any(it.name == 'content-length' && it.value == '0')
 }
 
 fn test_to_h2_request_strips_hop_by_hop_and_host() {

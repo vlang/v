@@ -280,6 +280,19 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 			c.fields[k.to_lower()] = values
 		}
 	}
+	if mode == .outgoing {
+		c.fields['host'] = [authority]
+		if !req.header.contains(.user_agent) {
+			c.fields['user-agent'] = [req.user_agent]
+		}
+		if !req.header.contains(.content_length) {
+			c.fields['content-length'] = [req.data.len.str()]
+		}
+		cookie_value := req.cookie_header_value()
+		if cookie_value != '' {
+			c.fields['cookie'] = [cookie_value]
+		}
+	}
 	return c
 }
 
@@ -293,8 +306,16 @@ fn transport_authority(url urllib.URL) string {
 }
 
 fn response_components(resp http.Response) Components {
+	status := http.status_from_int(resp.status_code)
+	wire_status := if status.is_valid() {
+		resp.status_code
+	} else if resp.status_code == 0 && resp.status_msg == '' {
+		200
+	} else {
+		500
+	}
 	mut c := Components{
-		status: resp.status_code
+		status: wire_status
 	}
 	for k in resp.header.keys() {
 		values := resp.header.custom_values(k)

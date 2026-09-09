@@ -102,6 +102,19 @@ fn test_parse_signature_input_multiple_entries() {
 	assert entries[1].components == ['date', '@authority']
 }
 
+fn test_parsers_reject_duplicate_labels() {
+	if _ := parse_signature_input('sig1=("@method"), sig1=("@path")') {
+		assert false, 'Signature-Input must reject duplicate dictionary labels'
+	} else {
+		assert err is MalformedMessage
+	}
+	if _ := parse_signature('sig1=:YQ==:, sig1=:Yg==:') {
+		assert false, 'Signature must reject duplicate dictionary labels'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_parse_signature_returns_decoded_bytes() {
 	src := 'sig1=:cGF5bG9hZA==:'
 	parsed := parse_signature(src)!
