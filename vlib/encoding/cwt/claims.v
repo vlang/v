@@ -27,9 +27,8 @@ pub struct ClaimsSet {
 pub mut:
 	iss ?string
 	sub ?string
-	// aud — RFC 7519 / 8392 allow either a single string or an array.
-	// We model both as a slice for uniformity: empty = no audience,
-	// single-element = string form on the wire, multi-element = array.
+	// aud — RFC 8392 requires a single text string. The slice is empty
+	// when absent and has exactly one element when present.
 	aud []string
 	exp ?i64
 	nbf ?i64
@@ -73,19 +72,13 @@ pub fn (c ClaimsSet) encode() ![]u8 {
 			value: cbor.new_text(sub)
 		}
 	}
+	if c.aud.len > 1 {
+		return error('cwt: aud must contain at most one text value')
+	}
 	if c.aud.len == 1 {
 		pairs << cbor.MapPair{
 			key:   cbor.new_int(claim_aud)
 			value: cbor.new_text(c.aud[0])
-		}
-	} else if c.aud.len > 1 {
-		mut arr := cbor.Array{}
-		for a in c.aud {
-			arr.elements << cbor.new_text(a)
-		}
-		pairs << cbor.MapPair{
-			key:   cbor.new_int(claim_aud)
-			value: arr
 		}
 	}
 	if exp := c.exp {
@@ -193,23 +186,7 @@ pub fn ClaimsSet.decode(data []u8) !ClaimsSet {
 					c.sub = pair.value.as_string() or { return error('cwt: sub is not text') }
 				}
 				claim_aud {
-					if s := pair.value.as_string() {
-						c.aud = [s]
-				} else if items := pair.value.as_array() {
-					if items.len == 0 {
-						return error('cwt: aud array must not be empty')
-					}
-					mut auds := []string{cap: items.len}
-						for it in items {
-							s := it.as_string() or {
-								return error('cwt: aud array contains non-text')
-							}
-							auds << s
-						}
-						c.aud = auds
-					} else {
-						return error('cwt: aud is neither text nor array of text')
-					}
+					c.aud = [pair.value.as_string() or { return error('cwt: aud is not text') }]
 				}
 				claim_exp {
 					c.exp = decode_numeric_date(pair.value)!

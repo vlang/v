@@ -83,8 +83,9 @@ mut:
 	// treated as unconstrained while still allowing it to round-trip.
 	raw_algorithm      ?i64
 	raw_algorithm_text ?string
-	// raw_curve preserves a valid but unsupported integer curve identifier.
-	raw_curve ?i64
+	// raw_curve preserves valid but unsupported integer/text curve identifiers.
+	raw_curve      ?i64
+	raw_curve_text ?string
 	// raw_key_ops preserves valid text and future/private integer operations.
 	raw_key_ops []cbor.Value
 }
@@ -226,16 +227,10 @@ pub fn (k Key) encode() ![]u8 {
 			}
 		}
 		.ec2, .okp {
-			curve_code := if crv := k.crv {
-				i64(crv)
-			} else if raw_curve := k.raw_curve {
-				raw_curve
-			} else {
-				return error('cose: ${k.kty} key missing crv parameter')
-			}
+			curve_value := k.encoded_curve()!
 			pairs << cbor.MapPair{
 				key:   cbor.new_int(key_label_crv)
-				value: cbor.new_int(curve_code)
+				value: curve_value
 			}
 			if x := k.x {
 				pairs << cbor.MapPair{
@@ -443,26 +438,19 @@ pub fn Key.decode(data []u8) !Key {
 			.ec2, .okp {
 				match int_key {
 					key_label_crv {
-						code := pair.value.as_int() or {
+						if code := pair.value.as_int() {
+							match code {
+								1 { out.crv = .p_256 }
+								2 { out.crv = .p_384 }
+								3 { out.crv = .p_521 }
+								6 { out.crv = .ed25519 }
+								else { out.raw_curve = code }
+							}
+						} else if name := pair.value.as_string() {
+							out.raw_curve_text = name
+						} else {
 							return MalformedMessage{
-								reason: 'crv is not int'
-							}
-						}
-						match code {
-							1 {
-								out.crv = .p_256
-							}
-							2 {
-								out.crv = .p_384
-							}
-							3 {
-								out.crv = .p_521
-							}
-							6 {
-								out.crv = .ed25519
-							}
-							else {
-								out.raw_curve = code
+								reason: 'crv is neither int nor tstr'
 							}
 						}
 					}
@@ -495,13 +483,49 @@ pub fn Key.decode(data []u8) !Key {
 			.rsa {}
 		}
 	}
-	if out.kty == .symmetric && out.k == none {
-		return MalformedMessage{
-			reason: 'symmetric COSE_Key missing k parameter'
+	match out.kty {
+		.symmetric {
+			if out.k == none {
+				return MalformedMessage{
+					reason: 'symmetric COSE_Key missing k parameter'
+				}
+			}
 		}
+		.ec2 {
+			if !out.has_curve() || out.x == none || out.y == none {
+				return MalformedMessage{
+					reason: 'EC2 COSE_Key requires crv, x, and y parameters'
+				}
+			}
+		}
+		.okp {
+			if !out.has_curve() || (out.x == none && out.d == none) {
+				return MalformedMessage{
+					reason: 'OKP COSE_Key requires crv and x or d parameters'
+				}
+			}
+		}
+		.rsa {}
 	}
 
 	return out
+}
+
+fn (k Key) has_curve() bool {
+	return k.crv != none || k.raw_curve != none || k.raw_curve_text != none
+}
+
+fn (k Key) encoded_curve() !cbor.Value {
+	if crv := k.crv {
+		return cbor.new_int(i64(crv))
+	}
+	if raw_curve := k.raw_curve {
+		return cbor.new_int(raw_curve)
+	}
+	if raw_curve_text := k.raw_curve_text {
+		return cbor.new_text(raw_curve_text)
+	}
+	return error('cose: ${k.kty} key missing crv parameter')
 }
 
 // check_algorithm allows keys without an algorithm restriction, enforces a

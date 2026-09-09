@@ -385,6 +385,33 @@ fn test_key_decode_preserves_unsupported_curve() {
 	}
 }
 
+fn test_key_decode_preserves_text_curve() {
+	encoded := hex.decode('a301012068582d637573746f6d215820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	assert roundtripped.raw_curve_text == ?string('X-custom')
+	if _ := verify_with_key(.eddsa, roundtripped, []u8{}, []u8{}) {
+		assert false, 'an unsupported text curve must fail only when used'
+	} else {
+		assert err.msg().contains('unsupported curve "X-custom"')
+	}
+}
+
+fn test_key_decode_rejects_incomplete_asymmetric_keys() {
+	for encoded in [
+		hex.decode('a10102')!,
+		hex.decode('a201022001')!,
+		hex.decode('a301022001215820' + '11'.repeat(32))!,
+		hex.decode('a201012006')!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'asymmetric keys must contain their mandatory parameters'
+		} else {
+			assert err.msg().contains('COSE_Key requires')
+		}
+	}
+}
+
 fn test_sign1_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

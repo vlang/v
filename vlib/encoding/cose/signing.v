@@ -58,6 +58,9 @@ fn check_ec_key(alg Algorithm, key Key) !EcParams {
 		if raw_curve := key.raw_curve {
 			return error('cose: EC2 key uses unsupported curve ${raw_curve}')
 		}
+		if raw_curve_text := key.raw_curve_text {
+			return error('cose: EC2 key uses unsupported curve "${raw_curve_text}"')
+		}
 		return error('cose: EC2 key missing crv')
 	}
 	if crv != params.curve {
@@ -74,6 +77,9 @@ fn check_okp_key(key Key) ! {
 	crv := key.crv or {
 		if raw_curve := key.raw_curve {
 			return error('cose: OKP key uses unsupported curve ${raw_curve}')
+		}
+		if raw_curve_text := key.raw_curve_text {
+			return error('cose: OKP key uses unsupported curve "${raw_curve_text}"')
 		}
 		return error('cose: OKP key missing crv')
 	}

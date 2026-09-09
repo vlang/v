@@ -149,19 +149,26 @@ fn test_aud_single_string_form_on_wire() {
 	assert encoded == [u8(0xA1), 0x03, 0x64, 0x73, 0x6F, 0x6C, 0x6F]
 }
 
-fn test_aud_multi_string_form_on_wire() {
+fn test_aud_rejects_multiple_values_and_array_form() {
 	mut c := ClaimsSet{}
 	c.aud = ['a', 'b']
-	encoded := c.encode()!
-	parsed := ClaimsSet.decode(encoded)!
-	assert parsed.aud == ['a', 'b']
+	if _ := c.encode() {
+		assert false, 'CWT audience must be a single text string'
+	} else {
+		assert err.msg().contains('at most one text value')
+	}
+	if _ := ClaimsSet.decode(hex.decode('a103816161')!) {
+		assert false, 'CWT audience array form must be rejected'
+	} else {
+		assert err.msg().contains('aud is not text')
+	}
 }
 
 fn test_claims_set_rejects_present_empty_audience() {
 	if _ := ClaimsSet.decode(hex.decode('a10380')!) {
 		assert false, 'a present audience array must not be empty'
 	} else {
-		assert err.msg().contains('aud array must not be empty')
+		assert err.msg().contains('aud is not text')
 	}
 }
 
