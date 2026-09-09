@@ -495,6 +495,11 @@ pub fn Key.decode(data []u8) !Key {
 			.rsa {}
 		}
 	}
+	if out.kty == .symmetric && out.k == none {
+		return MalformedMessage{
+			reason: 'symmetric COSE_Key missing k parameter'
+		}
+	}
 
 	return out
 }

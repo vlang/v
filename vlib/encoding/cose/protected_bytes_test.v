@@ -178,6 +178,48 @@ fn test_mac0_recomputing_drops_the_decoded_protected_bytes() {
 	assert verify_mac0(out, key)! == payload
 }
 
+fn test_resigning_validates_current_header_presence() {
+	d := hex.decode(nc_eddsa_d_hex)!
+	x := hex.decode(nc_eddsa_x_hex)!
+	key := Key.okp_private(.ed25519, x, d)
+	payload := nc_text.bytes()
+	mut decoded := Sign1Message.decode(build_sign1_with_protected(nc_sign1_protected,
+		payload, key)!)!
+	decoded.protected.content_type_int = none
+	decoded.protected.critical = [i64(label_content_type)]
+	if _ := decoded.sign(key, payload, []u8{}) {
+		assert false, 'resigning must validate labels in the current header fields'
+	} else {
+		assert err.msg().contains('but it is not present')
+	}
+}
+
+fn test_failed_signing_and_macing_preserve_received_protected_bytes() {
+	d := hex.decode(nc_eddsa_d_hex)!
+	x := hex.decode(nc_eddsa_x_hex)!
+	priv := Key.okp_private(.ed25519, x, d)
+	pub_key := Key.okp_public(.ed25519, x)
+	payload := nc_text.bytes()
+	sign1_bytes := build_sign1_with_protected(nc_sign1_protected, payload, priv)!
+	mut signed := Sign1Message.decode(sign1_bytes)!
+	if _ := signed.sign(pub_key, payload, []u8{}) {
+		assert false, 'signing with a public key must fail'
+	}
+	assert signed.protected_bytes()! == nc_sign1_protected
+	assert signed.encode(true)! == sign1_bytes
+	signed.verify(pub_key, payload, []u8{})!
+
+	key := Key.symmetric([]u8{len: 32, init: 0x42})
+	mac0_bytes := build_mac0_with_protected(nc_mac0_protected, payload, key)!
+	mut maced := Mac0Message.decode(mac0_bytes)!
+	if _ := maced.compute(Key.symmetric([u8(1)]), payload, []u8{}) {
+		assert false, 'MAC computation with a short key must fail'
+	}
+	assert maced.protected_bytes()! == nc_mac0_protected
+	assert maced.encode(true)! == mac0_bytes
+	maced.verify(key, payload, []u8{})!
+}
+
 fn test_messages_built_in_memory_still_use_canonical_protected_bytes() {
 	d := hex.decode(nc_eddsa_d_hex)!
 	x := hex.decode(nc_eddsa_x_hex)!

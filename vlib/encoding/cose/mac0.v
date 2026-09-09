@@ -74,12 +74,12 @@ pub fn (mut m Mac0Message) compute(key Key, payload []u8, external_aad []u8) ! {
 		return error('cose: Mac0Message.compute requires protected.algorithm to be set')
 	}
 
-	// Computing a tag commits to the canonical encoding of the current
-	// headers, so any bytes kept from a previous `decode` are stale.
-	m.raw_protected = none
 	body_protected := m.protected.encode_protected()!
 	tbm := mac_structure_mac0(body_protected, external_aad, payload)
-	m.tag = compute_mac(alg, key, tbm)!
+	tag := compute_mac(alg, key, tbm)!
+	// Commit both pieces of state only after MAC computation succeeds.
+	m.raw_protected = none
+	m.tag = tag
 }
 
 // verify recomputes the MAC tag and checks it against the stored one.

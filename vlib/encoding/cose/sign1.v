@@ -98,12 +98,12 @@ pub fn (mut m Sign1Message) sign(key Key, payload []u8, external_aad []u8) ! {
 		return error('cose: Sign1Message.sign requires protected.algorithm to be set')
 	}
 
-	// Signing always commits to the canonical encoding of the current
-	// headers, so any bytes kept from a previous `decode` are stale.
-	m.raw_protected = none
 	body_protected := m.protected.encode_protected()!
 	tbs := sig_structure_sign1(body_protected, external_aad, payload)
-	m.signature = sign_with_key(alg, key, tbs)!
+	signature := sign_with_key(alg, key, tbs)!
+	// Commit both pieces of state only after signing succeeds.
+	m.raw_protected = none
+	m.signature = signature
 }
 
 // verify recomputes the Sig_structure from the message's protected

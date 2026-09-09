@@ -60,12 +60,6 @@ pub mut:
 	extra_int_labels []HeaderEntry
 	// extra_text_labels carries text-labelled parameters (private use).
 	extra_text_labels []TextHeaderEntry
-
-mut:
-	// decoded labels retain presence information that typed fields cannot
-	// express, such as a present-but-empty crit array.
-	decoded_int_labels  []i64
-	decoded_text_labels []string
 }
 
 // HeaderEntry is one (int label, value) pair. The value is held as a
@@ -245,7 +239,6 @@ fn parse_headers_value(v cbor.Value) !Headers {
 					}
 				}
 				seen_int_labels[int_key] = true
-				h.decoded_int_labels << int_key
 				match int_key {
 					label_alg {
 						if code := pair.value.as_int() {
@@ -372,7 +365,6 @@ fn parse_headers_value(v cbor.Value) !Headers {
 					}
 				}
 				seen_text_labels[str_key] = true
-				h.decoded_text_labels << str_key
 				h.extra_text_labels << TextHeaderEntry{
 					label: str_key
 					value: pair.value
@@ -583,9 +575,6 @@ fn check_critical(h Headers) ! {
 // has_int_label reports whether `h` already declares the given integer
 // label, either via a typed well-known field or via `extra_int_labels`.
 fn has_int_label(h Headers, label i64) bool {
-	if label in h.decoded_int_labels {
-		return true
-	}
 	match label {
 		label_alg {
 			if h.algorithm != none {
@@ -629,14 +618,8 @@ fn has_int_label(h Headers, label i64) bool {
 }
 
 fn int_header_labels(h Headers) []i64 {
-	mut labels := []i64{cap: h.decoded_int_labels.len + h.extra_int_labels.len + 6}
+	mut labels := []i64{cap: h.extra_int_labels.len + 6}
 	mut seen := map[i64]bool{}
-	for label in h.decoded_int_labels {
-		if label !in seen {
-			labels << label
-			seen[label] = true
-		}
-	}
 	for label in [label_alg, label_crit, label_content_type, label_kid, label_iv,
 		label_partial_iv] {
 		if has_int_label(h, label) && label !in seen {
@@ -654,9 +637,6 @@ fn int_header_labels(h Headers) []i64 {
 }
 
 fn has_text_label(h Headers, label string) bool {
-	if label in h.decoded_text_labels {
-		return true
-	}
 	for entry in h.extra_text_labels {
 		if entry.label == label {
 			return true
@@ -666,14 +646,8 @@ fn has_text_label(h Headers, label string) bool {
 }
 
 fn text_header_labels(h Headers) []string {
-	mut labels := []string{cap: h.decoded_text_labels.len + h.extra_text_labels.len}
+	mut labels := []string{cap: h.extra_text_labels.len}
 	mut seen := map[string]bool{}
-	for label in h.decoded_text_labels {
-		if label !in seen {
-			labels << label
-			seen[label] = true
-		}
-	}
 	for entry in h.extra_text_labels {
 		if entry.label !in seen {
 			labels << entry.label

@@ -270,6 +270,14 @@ fn test_key_decode_rejects_non_label_map_keys() {
 	}
 }
 
+fn test_key_decode_rejects_symmetric_key_without_material() {
+	if _ := Key.decode(hex.decode('a10104')!) {
+		assert false, 'a symmetric COSE_Key must contain k'
+	} else {
+		assert err.msg().contains('missing k parameter')
+	}
+}
+
 fn test_key_decode_rejects_present_empty_key_ops() {
 	encoded := hex.decode('a301040480205820' + '11'.repeat(32))!
 	if _ := Key.decode(encoded) {
