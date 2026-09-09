@@ -363,7 +363,7 @@ fn (mut c Checker) return_expr_contains_pointer_param(expr ast.Expr, aliases []s
 	reduced := expr.remove_par()
 	return match reduced {
 		ast.Ident {
-			reduced.name in aliases
+			reduced.name in aliases || c.stmts_return_pointer_param(reduced.or_expr.stmts, aliases)
 		}
 		ast.CastExpr {
 			c.return_expr_contains_pointer_param(reduced.expr, aliases)

@@ -45,6 +45,7 @@ mut:
 	method_calls        []string
 	receiver_aliases    []ast.ReceiverAlias
 	preferences         &pref.Preferences = unsafe { nil }
+	has_go_statements   bool
 }
 
 fn contains_receiver_reference(expr ast.Expr, name string) bool {
@@ -84,7 +85,8 @@ fn contains_receiver_var_reference(expr ast.Expr, name string, var_pos int) bool
 	reduced := expr.remove_par()
 	return match reduced {
 		ast.Ident {
-			reduced.name == name && (var_pos < 0 || receiver_ident_var_pos(reduced) == var_pos)
+			(reduced.name == name && (var_pos < 0 || receiver_ident_var_pos(reduced) == var_pos))
+				|| stmts_return_receiver_var_reference(reduced.or_expr.stmts, name, var_pos)
 		}
 		ast.PrefixExpr {
 			if reduced.op == .mul {
@@ -176,6 +178,7 @@ fn is_receiver_pointer_alias(expr ast.Expr, name string, aliases []ast.ReceiverA
 		ast.Ident {
 			reduced.name == name || aliases.any(it.end_pos == 0 && it.is_pointer
 				&& reduced.name == it.name && receiver_ident_var_pos(reduced) == it.var_pos)
+				|| stmts_return_receiver_pointer_alias(reduced.or_expr.stmts, name, aliases)
 		}
 		ast.CastExpr {
 			is_receiver_pointer_alias(reduced.expr, name, aliases)
@@ -226,6 +229,24 @@ fn can_end_receiver_alias(ident ast.Ident, alias ast.ReceiverAlias) bool {
 		&& ident.scope.end_pos == alias.scope_end
 }
 
+fn stmts_return_receiver_pointer_alias(stmts []ast.Stmt, name string, aliases []ast.ReceiverAlias) bool {
+	if stmts.len == 0 {
+		return false
+	}
+	last_stmt := stmts.last()
+	return match last_stmt {
+		ast.ExprStmt {
+			is_receiver_pointer_alias(last_stmt.expr, name, aliases)
+		}
+		ast.Return {
+			last_stmt.exprs.any(is_receiver_pointer_alias(it, name, aliases))
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn is_receiver_method_target(expr ast.Expr, name string, aliases []ast.ReceiverAlias) bool {
 	reduced := expr.remove_par()
 	if is_receiver_pointer_alias(reduced, name, aliases) {
@@ -258,7 +279,7 @@ fn scan_receiver_sql_query_data(items []ast.SqlQueryDataItem, name string, mut i
 	}
 }
 
-fn receiver_comptime_if_cond(expr ast.Expr, preferences &pref.Preferences) ?bool {
+fn receiver_comptime_if_cond(expr ast.Expr, preferences &pref.Preferences, has_go_statements bool) ?bool {
 	reduced := expr.remove_par()
 	return match reduced {
 		ast.BoolLiteral {
@@ -268,7 +289,7 @@ fn receiver_comptime_if_cond(expr ast.Expr, preferences &pref.Preferences) ?bool
 			if reduced.op != .not {
 				return none
 			}
-			!receiver_comptime_if_cond(reduced.right, preferences)?
+			!receiver_comptime_if_cond(reduced.right, preferences, has_go_statements)?
 		}
 		ast.PostfixExpr {
 			if reduced.op != .question || reduced.expr !is ast.Ident {
@@ -280,8 +301,8 @@ fn receiver_comptime_if_cond(expr ast.Expr, preferences &pref.Preferences) ?bool
 			if reduced.op !in [.and, .logical_or] {
 				return none
 			}
-			left := receiver_comptime_if_cond(reduced.left, preferences)?
-			right := receiver_comptime_if_cond(reduced.right, preferences)?
+			left := receiver_comptime_if_cond(reduced.left, preferences, has_go_statements)?
+			right := receiver_comptime_if_cond(reduced.right, preferences, has_go_statements)?
 			if reduced.op == .and {
 				left && right
 			} else {
@@ -289,6 +310,9 @@ fn receiver_comptime_if_cond(expr ast.Expr, preferences &pref.Preferences) ?bool
 			}
 		}
 		ast.Ident {
+			if reduced.name == 'threads' {
+				return has_go_statements
+			}
 			if reduced.name !in ast.valid_comptime_not_user_defined {
 				return none
 			}
@@ -439,7 +463,8 @@ fn scan_receiver_reassignment(node ast.Node, name string, mut info ReceiverReass
 								}
 								return
 							}
-							is_active := receiver_comptime_if_cond(branch.cond, info.preferences) or {
+							is_active := receiver_comptime_if_cond(branch.cond, info.preferences,
+								info.has_go_statements) or {
 								for fallback_branch in node.branches {
 									for stmt in fallback_branch.stmts {
 										scan_receiver_reassignment(stmt, name, mut info)
@@ -1708,9 +1733,10 @@ run them via `v file.v` instead',
 	p.cur_fn_name = keep_fn_name
 	if is_method && (rec.is_mut || rec.typ.is_ptr()) && type_sym_method_idx < type_sym.methods.len {
 		mut receiver_info := ReceiverReassignmentInfo{
-			receiver_is_ptr: rec.typ.is_ptr()
-			receiver_is_mut: rec.is_mut
-			preferences:     p.pref
+			receiver_is_ptr:   rec.typ.is_ptr()
+			receiver_is_mut:   rec.is_mut
+			preferences:       p.pref
+			has_go_statements: p.table.gostmts > 0
 		}
 		for stmt in stmts {
 			scan_receiver_reassignment(stmt, rec.name, mut receiver_info)

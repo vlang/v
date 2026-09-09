@@ -57,6 +57,7 @@ fn receiver_pointer_argument(expr ast.Expr, receiver_name string) bool {
 	return match reduced {
 		ast.Ident {
 			reduced.name == receiver_name
+				|| stmts_return_receiver_pointer_argument(reduced.or_expr.stmts, receiver_name)
 		}
 		ast.CastExpr {
 			receiver_pointer_argument(reduced.expr, receiver_name)
@@ -135,7 +136,9 @@ fn receiver_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
 					var_pos = variable.pos.pos
 				}
 			}
-			reduced.name == alias.name && var_pos == alias.var_pos
+
+			(reduced.name == alias.name && var_pos == alias.var_pos)
+				|| stmts_return_receiver_alias_argument(reduced.or_expr.stmts, alias)
 		}
 		ast.CastExpr {
 			receiver_alias_argument(reduced.expr, alias)

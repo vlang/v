@@ -27,6 +27,12 @@ fn (mut node Node) replace_only_on_windows(next &Node) {
 	}
 }
 
+fn (mut node Node) replace_only_with_threads(next &Node) {
+	$if threads {
+		node = unsafe { *next }
+	}
+}
+
 fn (node &Node) replace_through_helper_only_on_windows(next &Node) {
 	replace_pointer_only_on_windows(node, next)
 }
@@ -223,6 +229,16 @@ fn test_inactive_comptime_receiver_replacement_is_ignored() {
 			name: 'body'
 		})
 		element.replace_only_on_windows(new_child('replacement'))
+		assert element.name == 'body'
+	}
+}
+
+fn test_inactive_threads_receiver_replacement_is_ignored() {
+	$if !threads {
+		mut element := Element(HTMLBodyElement{
+			name: 'body'
+		})
+		element.replace_only_with_threads(new_child('replacement'))
 		assert element.name == 'body'
 	}
 }

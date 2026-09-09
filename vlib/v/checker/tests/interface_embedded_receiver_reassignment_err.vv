@@ -231,6 +231,7 @@ fn main() {
 	_ = pointer_element.return_dumped_pointer_receiver()
 	_ = pointer_element.return_saved_pointer_through_helper()
 	_ = pointer_element.return_or_pointer_through_helper()
+	_ = pointer_element.return_ident_or_pointer_receiver()
 }
 
 fn replace_pointer_node(node &PointerNode, next PointerNode) {
@@ -368,4 +369,9 @@ fn return_or_pointer_node(node &PointerNode) &PointerNode {
 
 fn (node &PointerNode) return_or_pointer_through_helper() &PointerNode {
 	return return_or_pointer_node(node)
+}
+
+fn (node &PointerNode) return_ident_or_pointer_receiver() &PointerNode {
+	candidate := maybe_pointer_node()
+	return candidate or { node }
 }
