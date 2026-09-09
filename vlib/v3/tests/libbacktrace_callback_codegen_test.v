@@ -38,6 +38,6 @@ fn test_libbacktrace_callback_codegen_matches_header() {
 		'incompatible-pointer-types'
 	}
 	include_dir := os.join_path(vroot, 'thirdparty', 'libbacktrace')
-	check := os.execute('${os.quoted_path(cc)} -w -Werror=${pointer_warning} -fsyntax-only -I${os.quoted_path(include_dir)} ${os.quoted_path(c_path)}')
+	check := os.execute('${os.quoted_path(cc)} -Werror=${pointer_warning} -fsyntax-only -I${os.quoted_path(include_dir)} ${os.quoted_path(c_path)}')
 	assert check.exit_code == 0, check.output
 }

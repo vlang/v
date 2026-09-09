@@ -13111,9 +13111,7 @@ fn (mut g FlatGen) c_call_callback_abi_thunk(arg_id flat.NodeId, expected types.
 		return none
 	}
 	actual_fn := g.callback_fn_value_type(actual_name) or { return none }
-	encoded := g.tc.c_abi_fn_ptr_type_for_type_text(expected.name()) or {
-		g.c_extern_fn_ptr_encoded(expected_fn)
-	}
+	encoded := g.c_extern_fn_ptr_encoded_for_type(expected, expected_fn)
 	return g.ensure_callback_userdata_wrapper(actual_name, actual_fn, expected_fn, encoded)
 }
 
@@ -13332,10 +13330,15 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	}
 	actual_ret_ct := g.callback_c_type(actual.return_type)
 	expected_ret_ct := g.callback_expected_return_c_type(expected.return_type, expected_c_abi)
-	if actual_ret_ct != expected_ret_ct {
-		return none
-	}
 	mut needs_wrapper := false
+	mut cast_return := false
+	if actual_ret_ct != expected_ret_ct {
+		if !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct) {
+			return none
+		}
+		needs_wrapper = true
+		cast_return = true
+	}
 	mut param_decls := []string{}
 	mut call_args := []string{}
 	mut setup_lines := []string{}
@@ -13393,11 +13396,12 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	g.callback_wrapper_names[key] = name
 	params := if param_decls.len == 0 { 'void' } else { param_decls.join(', ') }
 	call := '${actual_c_name}(${call_args.join(', ')})'
+	return_expr := if cast_return { '(${expected_ret_ct})(${call})' } else { call }
 	setup := if setup_lines.len == 0 { '' } else { setup_lines.join(' ') + ' ' }
 	body := if expected_ret_ct == 'void' {
 		'static void ${name}(${params}) { ${setup}${call}; }'
 	} else {
-		'static ${expected_ret_ct} ${name}(${params}) { ${setup}return ${call}; }'
+		'static ${expected_ret_ct} ${name}(${params}) { ${setup}return ${return_expr}; }'
 	}
 	g.add_callback_wrapper_def(body)
 	return name
@@ -17890,8 +17894,10 @@ fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
 	if t is types.Alias {
 		// A `type Cb = fn (int)` alias over a function type must still keep C `int`
 		// inside the C ABI; alias-over-`int` likewise. Non-interop bases return none.
-		if encoded := g.tc.c_abi_fn_ptr_type_for_type_text(t.name) {
-			return g.resolve_fn_ptr_type(encoded)
+		if _ := g.tc.c_abi_fn_ptr_type_for_type_text(t.name) {
+			if fn_type := fn_type_from(t) {
+				return g.resolve_fn_ptr_type(g.c_extern_fn_ptr_encoded_for_type(t, fn_type))
+			}
 		}
 		return g.c_extern_interop_type_name(t.base_type)
 	}
@@ -17929,6 +17935,38 @@ fn (mut g FlatGen) c_extern_fn_ptr_encoded(t types.FnType) string {
 		params << (g.c_extern_interop_type_name(pt) or { g.tc.c_type(pt) })
 	}
 	return 'fn_ptr:${ret}|${params.join(', ')}'
+}
+
+// c_extern_fn_ptr_encoded_for_type merges source-retained callback ABI details,
+// such as `const_` pointer parameters, into the C-extern encoding. Positions that
+// have no retained override keep the extern lowering, notably V `int` as C `int`.
+fn (mut g FlatGen) c_extern_fn_ptr_encoded_for_type(t types.Type, fn_type types.FnType) string {
+	extern_encoded := g.c_extern_fn_ptr_encoded(fn_type)
+	retained_encoded := g.tc.c_abi_fn_ptr_type_for_type_text(t.name()) or {
+		return extern_encoded
+	}
+	ordinary_encoded := g.fn_ptr_type_key(fn_type)
+	return merge_retained_fn_ptr_c_abi(extern_encoded, retained_encoded, ordinary_encoded)
+}
+
+fn merge_retained_fn_ptr_c_abi(extern_encoded string, retained_encoded string, ordinary_encoded string) string {
+	extern_ret, _ := fn_ptr_typedef_parts(extern_encoded)
+	retained_ret, _ := fn_ptr_typedef_parts(retained_encoded)
+	ordinary_ret, _ := fn_ptr_typedef_parts(ordinary_encoded)
+	mut extern_params := callback_fn_ptr_param_c_types(extern_encoded)
+	retained_params := callback_fn_ptr_param_c_types(retained_encoded)
+	ordinary_params := callback_fn_ptr_param_c_types(ordinary_encoded)
+	if extern_params.len != retained_params.len || retained_params.len != ordinary_params.len {
+		return extern_encoded
+	}
+	for i, retained_param in retained_params {
+		if retained_param != ordinary_params[i] {
+			extern_params[i] = retained_param
+		}
+	}
+	ret := if retained_ret != ordinary_ret { retained_ret } else { extern_ret }
+	params := if extern_params.len == 0 { 'void' } else { extern_params.join(', ') }
+	return 'fn_ptr:${ret}|${params}'
 }
 
 // c_call_arg_cabi_cast returns the C spelling to cast a C-call argument to so it
