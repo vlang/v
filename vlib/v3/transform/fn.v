@@ -1137,7 +1137,12 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		mode_param_type := if variadic_idx >= 0 && param_idx >= variadic_idx
 			&& variadic_idx < param_type_names.len
 			&& param_type_names[variadic_idx].starts_with('...') {
-			param_type_names[variadic_idx][3..]
+			variadic_element_type := param_type_names[variadic_idx][3..]
+			if arg_node.kind == .prefix && arg_node.value == '...' {
+				'[]${variadic_element_type}'
+			} else {
+				variadic_element_type
+			}
 		} else {
 			param_type
 		}
@@ -12582,6 +12587,10 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 		}
 		return if handled { true } else { none }
 	}
+	if node.kind == .prefix && node.value == '...' && node.children_count == 1 {
+		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), expected_type, mut
+			seen)
+	}
 	if node.kind == .postfix && node.children_count == 1 {
 		return t.fn_literal_container_modes_compatible_seen(t.a.child(&node, 0), expected_type, mut
 			seen)
@@ -12618,6 +12627,11 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 				return compatible
 			}
 		}
+	}
+	if node.kind == .index_assign && node.op == .assign && node.children_count >= 2 {
+		value_expected := t.callback_index_assignment_expected_type(t.a.child(&node, 0),
+			expected_type) or { return none }
+		return t.fn_literal_container_element_mode_compatible(t.a.child(&node, 1), value_expected)
 	}
 	mut source_expected := expected_type.trim_space()
 	for source_expected.starts_with('?') || source_expected.starts_with('!') {
@@ -12786,6 +12800,42 @@ fn (t &Transformer) callback_source_type_is_container(type_name string) bool {
 	}
 	return expanded.starts_with('[]') || expanded.starts_with('map[')
 		|| t.is_fixed_array_type(expanded)
+}
+
+fn (t &Transformer) callback_index_assignment_expected_type(lhs_id flat.NodeId, expected_type string) ?string {
+	if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
+		return none
+	}
+	lhs := t.a.nodes[int(lhs_id)]
+	if lhs.kind != .index || lhs.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(&lhs, 0)
+	base := t.a.nodes[int(base_id)]
+	base_expected := if base.kind == .index {
+		t.callback_index_assignment_expected_type(base_id, expected_type) or { return none }
+	} else {
+		expected_type
+	}
+	mut container := t.callback_source_alias_expansion(base_expected, 0).trim_space()
+	for container.starts_with('?') || container.starts_with('!') || container.starts_with('&')
+		|| container.starts_with('shared ') {
+		container = if container.starts_with('shared ') {
+			container[7..].trim_space()
+		} else {
+			container[1..].trim_space()
+		}
+	}
+	if container.starts_with('[]') {
+		return container[2..]
+	}
+	if t.is_fixed_array_type(container) {
+		return fixed_array_elem_type(container)
+	}
+	if container.starts_with('map[') {
+		return t.map_value_type(container)
+	}
+	return none
 }
 
 fn (mut t Transformer) fn_literal_container_element_mode_compatible(id flat.NodeId, expected_type string) bool {
@@ -13054,7 +13104,8 @@ fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.
 		}
 		next_id := path[path_idx - 1]
 		for i in 0 .. parent.children_count {
-			child_id := int(t.a.child(&parent, i))
+			stmt_id := t.a.child(&parent, i)
+			child_id := int(stmt_id)
 			if child_id == next_id {
 				break
 			}
@@ -13066,8 +13117,14 @@ fn (t &Transformer) callback_local_reaching_rhs_ids(name string, before_id flat.
 				reaching = rhs_ids.clone()
 				continue
 			}
+			if t.callback_index_assignment_targets_name(stmt_id, name) {
+				if stmt_id !in reaching {
+					reaching << stmt_id
+				}
+				continue
+			}
 			mut nested := []flat.NodeId{}
-			t.collect_callback_nested_assignment_rhs_ids(t.a.child(&parent, i), name, mut nested)
+			t.collect_callback_nested_assignment_rhs_ids(stmt_id, name, mut nested)
 			for rhs_id in nested {
 				if rhs_id !in reaching {
 					reaching << rhs_id
@@ -13103,6 +13160,12 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 	if node.kind == .decl_assign {
 		return
 	}
+	if t.callback_index_assignment_targets_name(id, name) {
+		if id !in result {
+			result << id
+		}
+		return
+	}
 	if node.kind == .assign && node.op == .assign {
 		if rhs_ids := t.callback_direct_assignment_rhs_ids(node, name) {
 			for rhs_id in rhs_ids {
@@ -13130,6 +13193,34 @@ fn (t &Transformer) collect_callback_nested_assignment_rhs_ids(id flat.NodeId, n
 			t.collect_callback_nested_assignment_rhs_ids(child_id, name, mut result)
 		}
 	}
+}
+
+fn (t &Transformer) callback_index_assignment_targets_name(id flat.NodeId, name string) bool {
+	if name.len == 0 || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .index_assign || node.op != .assign || node.children_count == 0 {
+		return false
+	}
+	return t.callback_index_base_is_ident(t.a.child(&node, 0), name)
+}
+
+fn (t &Transformer) callback_index_base_is_ident(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value == name
+	}
+	if node.kind == .index && node.children_count > 0 {
+		return t.callback_index_base_is_ident(t.a.child(&node, 0), name)
+	}
+	if node.kind == .paren && node.children_count == 1 {
+		return t.callback_index_base_is_ident(t.a.child(&node, 0), name)
+	}
+	return false
 }
 
 fn (t &Transformer) callback_source_node_id(id flat.NodeId) ?int {
