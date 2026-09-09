@@ -61,6 +61,20 @@ fn test_nofloat_range_float_cast_uses_lowered_semantics() {
 	assert result.exit_code == 0, result.output
 }
 
+fn test_untyped_modulo_range_uses_signed_semantics() {
+	root := os.join_path(os.vtmp_dir(), 'range_untyped_signed_modulo_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	program := os.join_path(root, 'main.v')
+	source := 'fn main() {\n\tmut entered := false\n\tfor _ in (-1 % 4294967295) .. 0 {\n\t\tentered = true\n\t\tbreak\n\t}\n\tassert entered\n}\n'
+	os.write_file(program, source) or { panic(err) }
+	result := os.execute('${range_diagnostic_vexe} -w run ${os.quoted_path(program)}')
+	assert result.exit_code == 0, result.output
+}
+
 fn test_checked_overflow_range_bound_compiles_and_panics() {
 	root := os.join_path(os.vtmp_dir(), 'range_checked_overflow_${os.getpid()}')
 	os.rmdir_all(root) or {}

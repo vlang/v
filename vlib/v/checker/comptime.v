@@ -1224,6 +1224,16 @@ fn raw_int_bits(val ast.ComptTimeConstValue) ?i64 {
 	}
 }
 
+fn comptime_integer_value_is_negative(value ast.ComptTimeConstValue) bool {
+	return match value {
+		i8 { value < 0 }
+		i16 { value < 0 }
+		i32 { value < 0 }
+		i64 { value < 0 }
+		else { false }
+	}
+}
+
 // wrap_comptime_int truncates a raw 64-bit comptime arithmetic result down to the
 // width and signedness of `typ`, matching the wraparound semantics of a real
 // narrowing cast/assignment in generated code (e.g. `u8(255) + u8(1)` wraps to `0`,
@@ -1551,6 +1561,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 						mut use_signed_arithmetic := is_untyped_int || promoted_type.is_signed()
 						if is_untyped_int && expr.op in [.div, .mod] {
 							use_signed_arithmetic = literal_runtime_type.is_signed()
+								|| comptime_integer_value_is_negative(left)
+								|| comptime_integer_value_is_negative(right)
 						}
 						if use_signed_arithmetic {
 							match expr.op {
