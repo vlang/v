@@ -2147,6 +2147,22 @@ fn test_callback_nested_array_mutations_and_generic_returns_preserve_c_abi_modes
 		'cannot use')
 }
 
+fn test_callback_spread_projection_and_terminating_branches_preserve_c_abi_modes() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_indexed_callback_from_spread_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\nstruct C.native_event {}\nfn consume[T](handler PlainHandler) {}\nfn startup[T]() {\n\tbase := [fn (const_event &C.native_event) {}]\n\tcallbacks := [...base]\n\tconsume[int](callbacks[0])\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	panic_branch := run_good(v3_bin, 'good_noreturn_callback_branch_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handler PlainHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tmut callback := PlainHandler(plain_handler)\n\tif flag {\n\t\tcallback = ConstHandler(const_handler)\n\t\tpanic("stop")\n\t}\n\treturn consume[int](callback)\n}\nfn main() {\n\tprintln(startup[int](false).str())\n}\n')
+	assert panic_branch == 'true'
+	break_branch := run_good(v3_bin, 'good_break_callback_branch_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handler PlainHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tmut callback := PlainHandler(plain_handler)\n\tfor {\n\t\tcallback = PlainHandler(plain_handler)\n\t\tif flag {\n\t\t\tcallback = ConstHandler(const_handler)\n\t\t\tbreak\n\t\t}\n\t\treturn consume[int](callback)\n\t}\n\treturn true\n}\nfn main() {\n\tprintln(startup[int](false).str())\n}\n')
+	assert break_branch == 'true'
+	continue_branch := run_good(v3_bin, 'good_continue_callback_branch_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](handler PlainHandler) bool {\n\treturn true\n}\nfn startup[T](flag bool) bool {\n\tmut callback := PlainHandler(plain_handler)\n\tfor _ in 0 .. 1 {\n\t\tcallback = PlainHandler(plain_handler)\n\t\tif flag {\n\t\t\tcallback = ConstHandler(const_handler)\n\t\t\tcontinue\n\t\t}\n\t\treturn consume[int](callback)\n\t}\n\treturn true\n}\nfn main() {\n\tprintln(startup[int](false).str())\n}\n')
+	assert continue_branch == 'true'
+}
+
 fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	v3_bin := build_v3()
 	matching := run_good(v3_bin, 'good_nested_const_fn_literal_alias_in_generic',

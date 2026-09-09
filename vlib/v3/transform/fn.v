@@ -13371,7 +13371,14 @@ fn (t &Transformer) collect_callback_projected_one_step_source_ids(source_id fla
 	if source.kind == .array_literal {
 		index := t.callback_static_index_value(access)
 		if index >= 0 && index < int(source.children_count) {
-			result << t.a.child(&source, index)
+			child_id := t.a.child(&source, index)
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .prefix && child.value == '...' && child.children_count > 0 {
+				t.collect_callback_projected_one_step_source_ids(t.a.child(&child, 0), access_id, mut
+					result, mut seen)
+			} else {
+				result << child_id
+			}
 			return
 		}
 		for i in 0 .. source.children_count {
@@ -13791,7 +13798,7 @@ fn (t &Transformer) callback_node_definitely_terminates(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .return_stmt {
+	if t.stmt_tail_exits(id) {
 		return true
 	}
 	if node.kind in [.block, .match_branch] {
