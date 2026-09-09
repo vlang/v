@@ -132,6 +132,48 @@ fn test_rejects_numeric_content_type_above_coap_range() {
 	}
 }
 
+fn test_encode_rejects_duplicate_header_labels() {
+	for headers in [
+		Headers{
+			algorithm:        .es256
+			extra_int_labels: [HeaderEntry{
+				label: 1
+				value: cbor.new_int(-7)
+			}]
+		},
+		Headers{
+			extra_int_labels: [
+				HeaderEntry{
+					label: 42
+					value: cbor.new_int(1)
+				},
+				HeaderEntry{
+					label: 42
+					value: cbor.new_int(2)
+				},
+			]
+		},
+		Headers{
+			extra_text_labels: [
+				TextHeaderEntry{
+					label: 'private'
+					value: cbor.new_int(1)
+				},
+				TextHeaderEntry{
+					label: 'private'
+					value: cbor.new_int(2)
+				},
+			]
+		},
+	] {
+		if _ := headers.encode_map() {
+			assert false, 'duplicate labels must be rejected before encoding'
+		} else {
+			assert err.msg().contains('duplicate header label')
+		}
+	}
+}
+
 fn test_parse_rejects_duplicate_int_labels() {
 	// map with duplicate alg labels: {1: -7, 1: -8}
 	dup := hex.decode('A201260127')!

@@ -110,6 +110,7 @@ pub fn (h Headers) to_value() cbor.Value {
 // the form used inside both the protected bstr wrapper and the
 // unprotected slot.
 pub fn (h Headers) encode_map() ![]u8 {
+	check_header_values(h)!
 	return cbor.encode(h.to_value(), cbor.EncodeOpts{ canonical: true })!
 }
 
@@ -428,6 +429,27 @@ fn check_protected_headers(protected Headers, unprotected Headers) ! {
 }
 
 fn check_header_values(h Headers) ! {
+	mut seen_int_labels := []i64{}
+	for label in typed_int_header_labels(h) {
+		seen_int_labels << label
+	}
+	for entry in h.extra_int_labels {
+		if entry.label in seen_int_labels {
+			return MalformedMessage{
+				reason: 'duplicate header label ${entry.label} (RFC 9052 §3)'
+			}
+		}
+		seen_int_labels << entry.label
+	}
+	mut seen_text_labels := []string{}
+	for entry in h.extra_text_labels {
+		if entry.label in seen_text_labels {
+			return MalformedMessage{
+				reason: 'duplicate header label "${entry.label}" (RFC 9052 §3)'
+			}
+		}
+		seen_text_labels << entry.label
+	}
 	if content_type := h.content_type_int {
 		if content_type > 65535 {
 			return MalformedMessage{
@@ -435,6 +457,29 @@ fn check_header_values(h Headers) ! {
 			}
 		}
 	}
+}
+
+fn typed_int_header_labels(h Headers) []i64 {
+	mut labels := []i64{cap: 6}
+	if h.algorithm != none {
+		labels << label_alg
+	}
+	if h.critical.len > 0 || h.critical_text.len > 0 {
+		labels << label_crit
+	}
+	if h.content_type_int != none || h.content_type_text != none {
+		labels << label_content_type
+	}
+	if h.kid != none {
+		labels << label_kid
+	}
+	if h.iv != none {
+		labels << label_iv
+	}
+	if h.partial_iv != none {
+		labels << label_partial_iv
+	}
+	return labels
 }
 
 // check_critical enforces RFC 9052 §3.1: every integer label listed in

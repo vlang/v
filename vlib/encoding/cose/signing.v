@@ -54,7 +54,12 @@ fn check_ec_key(alg Algorithm, key Key) !EcParams {
 		return error('cose: ${alg.name()} requires kty=EC2, got ${key.kty}')
 	}
 	params := ec_params_for(alg)!
-	crv := key.crv or { return error('cose: EC2 key missing crv') }
+	crv := key.crv or {
+		if raw_curve := key.raw_curve {
+			return error('cose: EC2 key uses unsupported curve ${raw_curve}')
+		}
+		return error('cose: EC2 key missing crv')
+	}
 	if crv != params.curve {
 		return error('cose: ${alg.name()} requires crv=${params.curve}, got ${crv}')
 	}
@@ -66,7 +71,12 @@ fn check_okp_key(key Key) ! {
 	if key.kty != .okp {
 		return error('cose: EdDSA requires kty=OKP, got ${key.kty}')
 	}
-	crv := key.crv or { return error('cose: OKP key missing crv') }
+	crv := key.crv or {
+		if raw_curve := key.raw_curve {
+			return error('cose: OKP key uses unsupported curve ${raw_curve}')
+		}
+		return error('cose: OKP key missing crv')
+	}
 	if crv != .ed25519 {
 		return error('cose: EdDSA requires crv=Ed25519, got ${crv}')
 	}

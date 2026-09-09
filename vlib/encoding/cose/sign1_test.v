@@ -338,6 +338,17 @@ fn test_sign1_rejects_ec_public_coordinates_mismatching_scalar() {
 	}
 }
 
+fn test_key_decode_preserves_unsupported_curve() {
+	encoded := hex.decode('a301012004215820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	if _ := verify_with_key(.eddsa, roundtripped, []u8{}, []u8{}) {
+		assert false, 'an unsupported decoded curve must fail only when used'
+	} else {
+		assert err.msg().contains('unsupported curve 4')
+	}
+}
+
 fn test_sign1_decodes_indefinite_length_outer_array() {
 	mut p := cbor.new_packer(cbor.EncodeOpts{})
 	p.pack_array_indef()!

@@ -81,7 +81,10 @@ mut:
 	// raw_algorithm preserves an unsupported label-3 value read from a
 	// COSE_Key.  It prevents a decoded constrained key from silently being
 	// treated as unconstrained while still allowing it to round-trip.
-	raw_algorithm ?i64
+	raw_algorithm      ?i64
+	raw_algorithm_text ?string
+	// raw_curve preserves a valid but unsupported integer curve identifier.
+	raw_curve ?i64
 }
 
 // Key.ec2_private builds an EC2 private key from raw coordinates and
@@ -158,6 +161,11 @@ pub fn (k Key) encode() ![]u8 {
 			key:   cbor.new_int(key_label_alg)
 			value: cbor.new_int(raw_algorithm)
 		}
+	} else if raw_algorithm_text := k.raw_algorithm_text {
+		pairs << cbor.MapPair{
+			key:   cbor.new_int(key_label_alg)
+			value: cbor.new_text(raw_algorithm_text)
+		}
 	}
 	if k.key_ops.len > 0 {
 		mut ops_arr := cbor.Array{}
@@ -185,11 +193,17 @@ pub fn (k Key) encode() ![]u8 {
 			}
 		}
 		.ec2, .okp {
-			crv := k.crv or { return error('cose: ${k.kty} key missing crv parameter') }
+			curve_code := if crv := k.crv {
+				i64(crv)
+			} else if raw_curve := k.raw_curve {
+				raw_curve
+			} else {
+				return error('cose: ${k.kty} key missing crv parameter')
+			}
 			x := k.x or { return error('cose: ${k.kty} key missing x parameter') }
 			pairs << cbor.MapPair{
 				key:   cbor.new_int(key_label_crv)
-				value: cbor.new_int(i64(crv))
+				value: cbor.new_int(curve_code)
 			}
 			pairs << cbor.MapPair{
 				key:   cbor.new_int(key_label_x)
@@ -291,15 +305,18 @@ pub fn Key.decode(data []u8) !Key {
 				}
 			}
 			key_label_alg {
-				code := pair.value.as_int() or {
-					return MalformedMessage{
-						reason: 'alg is not int'
+				if code := pair.value.as_int() {
+					if alg := algorithm_from_int(code) {
+						out.alg = alg
+					} else {
+						out.raw_algorithm = code
 					}
-				}
-				if alg := algorithm_from_int(code) {
-					out.alg = alg
+				} else if name := pair.value.as_string() {
+					out.raw_algorithm_text = name
 				} else {
-					out.raw_algorithm = code
+					return MalformedMessage{
+						reason: 'alg is neither int nor tstr'
+					}
 				}
 			}
 			key_label_key_ops {
@@ -399,23 +416,21 @@ pub fn Key.decode(data []u8) !Key {
 								reason: 'crv is not int'
 							}
 						}
-						out.crv = match code {
+						match code {
 							1 {
-								Curve.p_256
+								out.crv = .p_256
 							}
 							2 {
-								Curve.p_384
+								out.crv = .p_384
 							}
 							3 {
-								Curve.p_521
+								out.crv = .p_521
 							}
 							6 {
-								Curve.ed25519
+								out.crv = .ed25519
 							}
 							else {
-								return MalformedMessage{
-									reason: 'unsupported crv ${code}'
-								}
+								out.raw_curve = code
 							}
 						}
 					}
@@ -465,6 +480,8 @@ fn (k Key) check_algorithm(alg Algorithm) ! {
 		}
 	} else if raw_algorithm := k.raw_algorithm {
 		return error('cose: key constrains use to unsupported algorithm ${raw_algorithm}')
+	} else if raw_algorithm_text := k.raw_algorithm_text {
+		return error('cose: key constrains use to unsupported algorithm "${raw_algorithm_text}"')
 	}
 }
 

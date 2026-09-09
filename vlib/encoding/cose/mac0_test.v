@@ -197,6 +197,17 @@ fn test_unknown_decoded_key_algorithm_remains_constrained() {
 	}
 }
 
+fn test_text_decoded_key_algorithm_remains_constrained() {
+	encoded := hex.decode('a301040363666f6f205820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	if _ := compute_mac(.hmac_256_256, roundtripped, 'payload'.bytes()) {
+		assert false, 'a text-valued decoded algorithm must not become unconstrained'
+	} else {
+		assert err.msg().contains('unsupported algorithm "foo"')
+	}
+}
+
 fn test_key_decode_rejects_duplicate_labels() {
 	for encoded in [
 		hex.decode('a301040104205820' + '11'.repeat(32))!,
