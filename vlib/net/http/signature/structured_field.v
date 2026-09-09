@@ -38,10 +38,11 @@ pub:
 // in the order they were inserted into the map. RFC 9421 does not
 // constrain the order of parameters, but our output mirrors `pairs` so
 // callers control the wire layout. It returns `MalformedMessage` when a
-// string value contains bytes outside the RFC 8941 visible ASCII range.
+// parameter name or string value violates the RFC 8941 grammar.
 pub fn serialize_params(pairs []ParamPair) !string {
 	mut sb := []string{cap: pairs.len * 2}
 	for pair in pairs {
+		check_sf_key(pair.name, 'parameter name')!
 		sb << ';'
 		sb << pair.name
 		sb << '='

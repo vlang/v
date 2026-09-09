@@ -218,10 +218,19 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 			reason: 'request url "${req.url}" is not a valid URL: ${err.msg()}'
 		}
 	}
-	authority := if parsed.host != '' {
+	mut authority := if parsed.host != '' {
 		parsed.host
 	} else {
 		req.host
+	}
+	if mode == .outgoing {
+		if host := req.header.get(.host) {
+			if host != '' {
+				authority = host
+			}
+		} else if parsed.host != '' {
+			authority = transport_authority(parsed)
+		}
 	}
 	scheme := if parsed.scheme != '' { parsed.scheme } else { default_scheme }
 	mut c := Components{
@@ -249,7 +258,7 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 		req.url
 	}
 	c.target_uri = if mode == .outgoing && parsed.host != '' {
-		'${scheme}://${transport_authority(parsed)}${origin_target}'
+		'${scheme}://${authority}${origin_target}'
 	} else if is_origin_form && authority != '' && scheme != '' {
 		'${scheme}://${authority}${req.url}'
 	} else {
@@ -268,10 +277,7 @@ fn request_components(req http.Request, default_scheme string, mode RequestCompo
 	for k in req.header.keys() {
 		values := req.header.custom_values(k)
 		if values.len > 0 {
-			// HTTP/1.x emits repeated custom header values on one field line,
-			// separated with `; `. Sign that exact serialized representation.
-			c.fields[k.to_lower()] = if mode == .outgoing { [
-					values.join('; ')] } else { values }
+			c.fields[k.to_lower()] = values
 		}
 	}
 	return c

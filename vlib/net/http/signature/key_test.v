@@ -33,6 +33,12 @@ AwEHoUQDQgAE/z/OBheMT6mCKDapfETr56tkYLOrnQh+ZL293+IqXsJ+iMZgYe0/
 WHaZhZfCu1OKUWayaVEkvb7j0o3uUfw+OQ==
 -----END EC PRIVATE KEY-----'
 
+const secp256k1_private_pem = '-----BEGIN EC PRIVATE KEY-----
+MHQCAQEEIOPU7WKsHTyVIXG8dgC7rRnWHs5aB4Ltm4evimpk/i3woAcGBSuBBAAK
+oUQDQgAECSuyyabDUU2w1p22h1AGyfD7At+Cvb63E//kTmcXA55d1xZZH3WX6msE
+9u0eNEe/4nVyHbTKoW+DKBFEGtHNpw==
+-----END EC PRIVATE KEY-----'
+
 fn key_test_b26_components() Components {
 	return Components{
 		method:    'POST'
@@ -130,6 +136,14 @@ fn test_from_pem_ecdsa_p256_pads_short_private_scalar() {
 	}
 	out := sign(c, p, priv, 'sig1')!
 	verify(c, out.signature_input, out.signature, 'sig1', priv)!
+}
+
+fn test_from_pem_rejects_unsupported_same_width_curve() {
+	if _ := Key.from_pem(secp256k1_private_pem) {
+		assert false, 'secp256k1 must not be interpreted as NIST P-256'
+	} else {
+		assert err is UnsupportedAlgorithm
+	}
 }
 
 fn test_pad_left_pads_to_width_and_rejects_overflow() {

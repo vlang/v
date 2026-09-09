@@ -9,3 +9,11 @@ fn test_build_request_headers_with_empty_body_adds_content_length_zero() {
 	headers := req.build_request_headers(.post, 'localhost', 80, '/')
 	assert headers.contains('Content-Length: 0\r\n')
 }
+
+fn test_build_request_headers_comma_combines_repeated_fields() {
+	mut req := Request{}
+	req.header.add_custom('Accept', 'text/html')!
+	req.header.add_custom('Accept', 'application/json')!
+	headers := req.build_request_headers(.get, 'localhost', 80, '/')
+	assert headers.contains('Accept: text/html, application/json\r\n')
+}

@@ -67,6 +67,20 @@ fn test_serialize_params_rejects_control_bytes() {
 	}
 }
 
+fn test_serialize_params_rejects_invalid_names() {
+	pairs := [
+		ParamPair{
+			name:  'safe\r\nInjected'
+			value: true
+		},
+	]
+	if _ := serialize_params(pairs) {
+		assert false, 'parameter names must use the Structured Field key grammar'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
 fn test_parse_signature_input_single_entry() {
 	src := 'sig1=("@method" "host");created=1618884473;keyid="my-key"'
 	entries := parse_signature_input(src)!
@@ -144,6 +158,14 @@ fn test_public_header_serializers_reject_invalid_labels() {
 	} else {
 		assert err is MalformedMessage
 	}
+}
+
+fn test_public_header_serializers_accept_dotted_labels() {
+	p := SignatureParams{
+		components: ['@method']
+	}
+	assert signature_input_value('sig.v1', p)! == 'sig.v1=("@method")'
+	assert signature_header_value('sig.v1', 'signature'.bytes())!.starts_with('sig.v1=:')
 }
 
 fn test_signature_base_string_rejects_duplicate_components() {

@@ -151,14 +151,20 @@ pub fn Key.from_pem(pem_text string) !Key {
 			}
 		}
 	}
+	if block.block_type !in ['PUBLIC KEY', 'EC PRIVATE KEY', 'PRIVATE KEY'] {
+		return MalformedMessage{
+			reason: 'unsupported PEM block "${block.block_type}" - expected PRIVATE KEY, EC PRIVATE KEY, or PUBLIC KEY'
+		}
+	}
+	curve := ecdsa_curve_from_der(der)!
 	// ECDSA path - delegate parsing to vlib/crypto/ecdsa, then extract
 	// raw coordinates so the Key struct stays algorithm-tagged.
 	return match block.block_type {
 		'PUBLIC KEY' {
-			ecdsa_key_from_pem_public(pem_text)!
+			ecdsa_key_from_pem_public(pem_text, curve)!
 		}
 		'EC PRIVATE KEY', 'PRIVATE KEY' {
-			ecdsa_key_from_pem_private(pem_text)!
+			ecdsa_key_from_pem_private(pem_text, curve)!
 		}
 		else {
 			return MalformedMessage{
@@ -172,8 +178,43 @@ pub fn Key.from_pem(pem_text string) !Key {
 // `06 03 2B 65 70` is unambiguous in any PKCS#8 / SPKI Ed25519 blob.
 fn contains_oid_ed25519(b []u8) bool {
 	needle := [u8(0x06), 0x03, 0x2B, 0x65, 0x70]
+	return contains_bytes(b, needle)
+}
+
+enum EcdsaPemCurve {
+	p256
+	p384
+}
+
+fn ecdsa_curve_from_der(der []u8) !EcdsaPemCurve {
+	p256_pos := index_bytes(der, [u8(0x06), 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07])
+	p384_pos := index_bytes(der, [u8(0x06), 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22])
+	k1_pos := index_bytes(der, [u8(0x06), 0x05, 0x2B, 0x81, 0x04, 0x00, 0x0A])
+	p521_pos := index_bytes(der, [u8(0x06), 0x05, 0x2B, 0x81, 0x04, 0x00, 0x23])
+	mut first_pos := der.len
+	for pos in [p256_pos, p384_pos, k1_pos, p521_pos] {
+		if pos >= 0 && pos < first_pos {
+			first_pos = pos
+		}
+	}
+	if p256_pos == first_pos {
+		return .p256
+	}
+	if p384_pos == first_pos {
+		return .p384
+	}
+	return UnsupportedAlgorithm{
+		name: 'ECDSA curve in PEM'
+	}
+}
+
+fn contains_bytes(b []u8, needle []u8) bool {
+	return index_bytes(b, needle) >= 0
+}
+
+fn index_bytes(b []u8, needle []u8) int {
 	if b.len < needle.len {
-		return false
+		return -1
 	}
 	for i in 0 .. b.len - needle.len + 1 {
 		mut ok := true
@@ -184,10 +225,10 @@ fn contains_oid_ed25519(b []u8) bool {
 			}
 		}
 		if ok {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 // parse_ed25519_pkcs8 extracts the 32-byte seed from the canonical
@@ -229,7 +270,7 @@ fn has_prefix(b []u8, prefix []u8) bool {
 	return true
 }
 
-fn ecdsa_key_from_pem_private(pem_text string) !Key {
+fn ecdsa_key_from_pem_private(pem_text string, curve EcdsaPemCurve) !Key {
 	priv_obj := ecdsa.privkey_from_string(pem_text) or {
 		return MalformedMessage{
 			reason: 'ECDSA PEM parse failed: ${err.msg()}'
@@ -240,10 +281,10 @@ fn ecdsa_key_from_pem_private(pem_text string) !Key {
 	priv_obj.free()
 	xy := pub_obj.bytes()!
 	pub_obj.free()
-	return ecdsa_key_from_xy_d(xy, d, true)!
+	return ecdsa_key_from_xy_d(xy, d, true, curve)!
 }
 
-fn ecdsa_key_from_pem_public(pem_text string) !Key {
+fn ecdsa_key_from_pem_public(pem_text string, curve EcdsaPemCurve) !Key {
 	pub_obj := ecdsa.pubkey_from_string(pem_text) or {
 		return MalformedMessage{
 			reason: 'ECDSA PEM parse failed: ${err.msg()}'
@@ -251,13 +292,13 @@ fn ecdsa_key_from_pem_public(pem_text string) !Key {
 	}
 	xy := pub_obj.bytes()!
 	pub_obj.free()
-	return ecdsa_key_from_xy_d(xy, []u8{}, false)!
+	return ecdsa_key_from_xy_d(xy, []u8{}, false, curve)!
 }
 
 // ecdsa_key_from_xy_d takes the SEC1 uncompressed point (`xy` =
-// `0x04 || x || y`) and an optional `d` and selects the matching
-// `Key.ecdsa_p256_*` / `Key.ecdsa_p384_*` constructor by point size.
-fn ecdsa_key_from_xy_d(xy []u8, d []u8, is_priv bool) !Key {
+// `0x04 || x || y`) and an optional `d` and selects the constructor
+// matching the named-curve OID parsed from the PEM.
+fn ecdsa_key_from_xy_d(xy []u8, d []u8, is_priv bool, curve EcdsaPemCurve) !Key {
 	if xy.len < 1 || xy[0] != 0x04 {
 		return MalformedMessage{
 			reason: 'ECDSA public key must be SEC1 uncompressed (0x04 || x || y)'
@@ -266,24 +307,29 @@ fn ecdsa_key_from_xy_d(xy []u8, d []u8, is_priv bool) !Key {
 	coord := (xy.len - 1) / 2
 	x := xy[1..1 + coord]
 	y := xy[1 + coord..1 + coord * 2]
-	return match coord {
-		32 {
+	return match curve {
+		.p256 {
+			if coord != 32 {
+				return MalformedMessage{
+					reason: 'P-256 key must have 32-byte coordinates'
+				}
+			}
 			if is_priv {
 				Key.ecdsa_p256_private(x, y, d)!
 			} else {
 				Key.ecdsa_p256_public(x, y)!
 			}
 		}
-		48 {
+		.p384 {
+			if coord != 48 {
+				return MalformedMessage{
+					reason: 'P-384 key must have 48-byte coordinates'
+				}
+			}
 			if is_priv {
 				Key.ecdsa_p384_private(x, y, d)!
 			} else {
 				Key.ecdsa_p384_public(x, y)!
-			}
-		}
-		else {
-			return UnsupportedAlgorithm{
-				name: 'ECDSA curve with ${coord * 8}-bit coordinates'
 			}
 		}
 	}

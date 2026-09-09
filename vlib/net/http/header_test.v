@@ -86,6 +86,14 @@ fn test_delete_header() {
 	assert r.header.get(.authorization)? == ''
 }
 
+fn test_render_omits_deleted_header_slots() {
+	mut h := new_header()
+	h.add_custom('X-Test', 'first')!
+	h.add_custom('X-Test', 'second')!
+	h.delete_custom('X-Test')
+	assert h.render(HeaderRenderConfig{}) == ''
+}
+
 fn test_custom_header() {
 	mut h := new_header()
 	h.add_custom('AbC', 'dEf')!

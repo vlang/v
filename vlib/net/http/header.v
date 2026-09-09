@@ -708,6 +708,9 @@ pub fn (h Header) render_into_sb(mut sb strings.Builder, flags HeaderRenderConfi
 	// for _, kv in h.data {
 	for i := 0; i < h.cur_pos; i++ {
 		kv := h.data[i]
+		if kv.value == '' { // empty value marks a deleted header
+			continue
+		}
 		key := if flags.version == .v2_0 {
 			kv.key.to_lower()
 		} else if flags.canonicalize {

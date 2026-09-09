@@ -236,12 +236,20 @@ fn test_outgoing_proxy_request_components_use_absolute_form() {
 	assert c.component_value('@request-target')! == 'http://example.com/search?q=a+b'
 }
 
+fn test_outgoing_request_components_use_host_override() {
+	mut req := build_request('https://origin.example/path')
+	req.header.set(.host, 'virtual.example')
+	c := request_components(req, 'https', .outgoing)!
+	assert c.component_value('@authority')! == 'virtual.example'
+	assert c.component_value('@target-uri')! == 'https://virtual.example/path'
+}
+
 fn test_outgoing_request_components_match_repeated_header_serialization() {
 	mut req := build_request('https://example.com/')
 	req.header.add_custom('Accept', 'text/html')!
 	req.header.add_custom('Accept', 'application/json')!
 	c := request_components(req, 'https', .outgoing)!
-	assert c.component_value('accept')! == 'text/html; application/json'
+	assert c.component_value('accept')! == 'text/html, application/json'
 }
 
 fn test_sign_request_rejects_control_bytes_in_parameters() {
@@ -267,6 +275,15 @@ fn test_append_dict_header_preserves_all_existing_field_lines() {
 	assert header.custom_values('Signature-Input') == [
 		'sig-a=("@method"), sig-b=("@path"), sig-c=("@authority")',
 	]
+	response := http.Response{
+		status_code:  200
+		status_msg:   'OK'
+		http_version: '1.1'
+		header:       header
+	}
+	wire := response.bytestr()
+	assert wire.count('Signature-Input:') == 1
+	assert !wire.contains('Signature-Input: \r\n')
 }
 
 fn test_sign_two_signatures_coexist() {

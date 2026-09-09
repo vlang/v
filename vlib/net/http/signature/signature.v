@@ -137,22 +137,27 @@ fn find_entry(entries []SignatureEntry, label string) ?SignatureEntry {
 }
 
 fn check_label(label string) ! {
-	if label == '' {
+	check_sf_key(label, 'signature label')!
+}
+
+fn check_sf_key(key string, description string) ! {
+	if key == '' {
 		return MalformedMessage{
-			reason: 'signature label cannot be empty'
+			reason: '${description} cannot be empty'
 		}
 	}
-	for c in label {
-		if !((c >= `a` && c <= `z`) || (c >= `0` && c <= `9`) || c == `-` || c == `_` || c == `*`) {
+	for c in key {
+		if !((c >= `a` && c <= `z`) || (c >= `0` && c <= `9`) || c == `-` || c == `_`
+			|| c == `.` || c == `*`) {
 			return MalformedMessage{
-				reason: 'signature label "${label}" must match the Structured Field key grammar (lowercase + digits + - _ *)'
+				reason: '${description} "${key}" must match the Structured Field key grammar'
 			}
 		}
 	}
-	first := label[0]
+	first := key[0]
 	if !((first >= `a` && first <= `z`) || first == `*`) {
 		return MalformedMessage{
-			reason: 'signature label "${label}" must start with a lowercase letter or "*"'
+			reason: '${description} "${key}" must start with a lowercase letter or "*"'
 		}
 	}
 }
