@@ -69,6 +69,9 @@ pub fn sign(payload []u8, signers []Signer, opts SignOptions) ![]u8 {
 	if signers.len == 0 {
 		return error('cose: COSE_Sign requires at least one signer')
 	}
+	if signers.len > max_signers {
+		return error('cose: COSE_Sign supports at most ${max_signers} signers')
+	}
 	signed_bytes := opts.detached_payload or { payload }
 	check_protected_headers(opts.protected, opts.unprotected)!
 	body_protected := opts.protected.encode_protected()!
@@ -165,6 +168,15 @@ fn (s Signature) protected_bytes() ![]u8 {
 // that mutating `protected` on a decoded message has no effect on the
 // output until the message is produced again through `sign()`.
 pub fn (m SignMessage) encode(tagged bool) ![]u8 {
+	if m.signatures.len == 0 || m.signatures.len > max_signers {
+		return MalformedMessage{
+			reason: 'Sign requires between 1 and ${max_signers} signatures'
+		}
+	}
+	check_protected_headers(m.protected, m.unprotected)!
+	for entry in m.signatures {
+		check_protected_headers(entry.protected, entry.unprotected)!
+	}
 	body_protected := m.protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })

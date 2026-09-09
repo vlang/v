@@ -200,6 +200,38 @@ fn test_encode_rejects_duplicate_header_labels() {
 	}
 }
 
+fn test_message_encoders_validate_unprotected_headers() {
+	invalid := Headers{
+		kid:              'kid'.bytes()
+		extra_int_labels: [HeaderEntry{
+			label: label_kid
+			value: cbor.new_bytes('duplicate'.bytes())
+		}]
+	}
+	if _ := Sign1Message{
+		unprotected: invalid
+	}.encode(false) {
+		assert false, 'Sign1 encoder must validate unprotected headers'
+	}
+	if _ := Mac0Message{
+		unprotected: invalid
+	}.encode(false) {
+		assert false, 'Mac0 encoder must validate unprotected headers'
+	}
+	if _ := SignMessage{
+		unprotected: invalid
+		signatures:  [Signature{}]
+	}.encode(false) {
+		assert false, 'Sign encoder must validate unprotected headers'
+	}
+	if _ := MacMessage{
+		unprotected: invalid
+		recipients:  [Recipient{}]
+	}.encode(false) {
+		assert false, 'Mac encoder must validate unprotected headers'
+	}
+}
+
 fn test_parse_rejects_duplicate_int_labels() {
 	// map with duplicate alg labels: {1: -7, 1: -8}
 	dup := hex.decode('A201260127')!

@@ -4,6 +4,28 @@ module cose
 import encoding.base64
 import encoding.cbor
 
+fn encode_mac_unchecked(m MacMessage) ![]u8 {
+	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
+	p.pack_tag(tag_mac)
+	p.pack_array_header(5)
+	p.pack_bytes(m.protected_bytes()!)
+	p.pack_value(m.unprotected.to_value())!
+	if payload := m.payload {
+		p.pack_bytes(payload)
+	} else {
+		p.pack_null()
+	}
+	p.pack_bytes(m.tag)
+	p.pack_array_header(u64(m.recipients.len))
+	for recipient in m.recipients {
+		p.pack_array_header(3)
+		p.pack_bytes(recipient.protected_bytes()!)
+		p.pack_value(recipient.unprotected.to_value())!
+		p.pack_bytes(recipient.encrypted_key)
+	}
+	return p.bytes()
+}
+
 fn test_mac_direct_recipient_roundtrip() {
 	k := base64.url_decode('hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYg')
 	key := Key.symmetric(k)
@@ -58,7 +80,12 @@ fn test_mac_direct_mode_rejects_multiple_recipients() {
 	signed := mac('payload'.bytes(), key, protected: hp, recipients: [Recipient{}])!
 	mut decoded := MacMessage.decode(signed)!
 	decoded.recipients << decoded.recipients[0]
-	if _ := verify_mac(decoded.encode(true)!, key) {
+	if _ := decoded.encode(true) {
+		assert false, 'low-level encoding must reject multiple direct recipients'
+	} else {
+		assert err.msg().contains('exactly one recipient')
+	}
+	if _ := verify_mac(encode_mac_unchecked(decoded)!, key) {
 		assert false, 'direct mode must reject multiple recipients on verification'
 	} else {
 		assert err.msg().contains('exactly one recipient')

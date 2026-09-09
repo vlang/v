@@ -27,12 +27,15 @@ const sample_text = 'This is the content.'
 fn sign1_unchecked(payload []u8, key Key, protected Headers, unprotected Headers) ![]u8 {
 	body_protected := protected.encode_protected()!
 	tbs := sig_structure_sign1(body_protected, []u8{}, payload)
-	return Sign1Message{
-		protected:   protected
-		unprotected: unprotected
-		payload:     payload
-		signature:   sign_with_key(.eddsa, key, tbs)!
-	}.encode(true)!
+	signature := sign_with_key(.eddsa, key, tbs)!
+	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
+	p.pack_tag(tag_sign1)
+	p.pack_array_header(4)
+	p.pack_bytes(body_protected)
+	p.pack_value(unprotected.to_value())!
+	p.pack_bytes(payload)
+	p.pack_bytes(signature)
+	return p.bytes()
 }
 
 fn test_sign1_eddsa_matches_reference_vector() {

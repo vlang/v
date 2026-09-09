@@ -195,8 +195,11 @@ pub fn ClaimsSet.decode(data []u8) !ClaimsSet {
 				claim_aud {
 					if s := pair.value.as_string() {
 						c.aud = [s]
-					} else if items := pair.value.as_array() {
-						mut auds := []string{cap: items.len}
+				} else if items := pair.value.as_array() {
+					if items.len == 0 {
+						return error('cwt: aud array must not be empty')
+					}
+					mut auds := []string{cap: items.len}
 						for it in items {
 							s := it.as_string() or {
 								return error('cwt: aud array contains non-text')

@@ -257,6 +257,15 @@ fn (r Recipient) protected_bytes() ![]u8 {
 // that mutating `protected` on a decoded message has no effect on the
 // output until the message is produced again through `mac()`.
 pub fn (m MacMessage) encode(tagged bool) ![]u8 {
+	if m.recipients.len != 1 {
+		return MalformedMessage{
+			reason: 'direct-mode COSE_Mac requires exactly one recipient'
+		}
+	}
+	check_protected_headers(m.protected, m.unprotected)!
+	for recipient in m.recipients {
+		check_protected_headers(recipient.protected, recipient.unprotected)!
+	}
 	body_protected := m.protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })

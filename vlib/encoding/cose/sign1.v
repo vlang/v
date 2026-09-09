@@ -143,6 +143,7 @@ fn (m Sign1Message) protected_bytes() ![]u8 {
 // that mutating `protected` on a decoded message has no effect on the
 // output until `sign()` is called on it again.
 pub fn (m Sign1Message) encode(tagged bool) ![]u8 {
+	check_protected_headers(m.protected, m.unprotected)!
 	body_protected := m.protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })

@@ -157,6 +157,14 @@ fn test_aud_multi_string_form_on_wire() {
 	assert parsed.aud == ['a', 'b']
 }
 
+fn test_claims_set_rejects_present_empty_audience() {
+	if _ := ClaimsSet.decode(hex.decode('a10380')!) {
+		assert false, 'a present audience array must not be empty'
+	} else {
+		assert err.msg().contains('aud array must not be empty')
+	}
+}
+
 fn test_validate_time_passes_inside_window() {
 	c := ClaimsSet{
 		exp: 2_000_000_000

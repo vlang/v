@@ -67,6 +67,21 @@ fn test_sign_rejects_signer_without_alg() {
 	}
 }
 
+fn test_sign_rejects_more_than_max_signers() {
+	if _ := sign('payload'.bytes(), []Signer{len: max_signers + 1}) {
+		assert false, 'creation must not exceed the decoder signer limit'
+	} else {
+		assert err.msg().contains('at most ${max_signers} signers')
+	}
+	if _ := SignMessage{
+		signatures: []Signature{len: max_signers + 1}
+	}.encode(false) {
+		assert false, 'low-level encoding must not exceed the decoder signer limit'
+	} else {
+		assert err.msg().contains('between 1 and ${max_signers} signatures')
+	}
+}
+
 fn test_sign_decode_rejects_huge_signers_count() {
 	// Hand-built COSE_Sign with a signatures-array length declared as
 	// 0x1A 0xFFFFFFFF (≈ 4 billion). Without a cap this would trigger
