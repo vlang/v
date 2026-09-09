@@ -2128,6 +2128,25 @@ fn test_fn_literal_nested_named_callback_param_matches_alias_inside_generic_fn()
 	assert aliased == 'true'
 }
 
+fn test_callback_nested_array_mutations_and_generic_returns_preserve_c_abi_modes() {
+	v3_bin := build_v3()
+	nested_mutation_matching := run_good(v3_bin, 'good_nested_callback_array_mutations_in_generic',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\nmut:\n\thandlers []ConstHandler\n}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](options Options) bool {\n\treturn options.handlers.len == 3\n}\nfn startup[T]() bool {\n\tmut options := Options{\n\t\thandlers: [ConstHandler(const_handler)]\n\t}\n\toptions.handlers.prepend(ConstHandler(const_handler))\n\toptions.handlers.insert(1, ConstHandler(const_handler))\n\treturn consume[int](options)\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert nested_mutation_matching == 'true'
+	run_bad(v3_bin, 'bad_nested_callback_array_prepend_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\nmut:\n\thandlers []PlainHandler\n}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](options Options) {}\nfn startup[T]() {\n\tmut options := Options{\n\t\thandlers: [PlainHandler(plain_handler)]\n\t}\n\toptions.handlers.prepend(ConstHandler(const_handler))\n\tconsume[int](options)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	run_bad(v3_bin, 'bad_nested_callback_array_insert_in_generic',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nstruct Options {\nmut:\n\thandlers []PlainHandler\n}\nfn plain_handler(event &C.native_event) {}\nfn const_handler(const_event &C.native_event) {}\nfn consume[T](options Options) {}\nfn startup[T]() {\n\tmut options := Options{\n\t\thandlers: [PlainHandler(plain_handler)]\n\t}\n\toptions.handlers.insert(0, ConstHandler(const_handler))\n\tconsume[int](options)\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+	generic_return_matching := run_good(v3_bin, 'good_generic_callback_container_return_modes',
+		'type ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn const_handler(const_event &C.native_event) {}\nfn identity[T](value T) T {\n\treturn value\n}\nfn consume[T](handlers []ConstHandler) bool {\n\treturn handlers.len == 1\n}\nfn startup[T]() bool {\n\thandlers := [ConstHandler(const_handler)]\n\treturn consume[int](identity[[]ConstHandler](handlers))\n}\nfn main() {\n\tprintln(startup[int]().str())\n}\n')
+	assert generic_return_matching == 'true'
+	run_bad(v3_bin, 'bad_generic_callback_container_return_modes',
+		'type PlainHandler = fn (event &C.native_event)\ntype ConstHandler = fn (const_event &C.native_event)\nstruct C.native_event {}\nfn const_handler(const_event &C.native_event) {}\nfn identity[T](value T) T {\n\treturn value\n}\nfn consume[T](handlers []PlainHandler) {}\nfn startup[T]() {\n\thandlers := [ConstHandler(const_handler)]\n\tconsume[int](identity[[]ConstHandler](handlers))\n}\nfn main() {\n\tstartup[int]()\n}\n',
+		'cannot use')
+}
+
 fn test_fn_literal_nested_c_abi_const_mode_matches_alias_inside_generic_fn() {
 	v3_bin := build_v3()
 	matching := run_good(v3_bin, 'good_nested_const_fn_literal_alias_in_generic',

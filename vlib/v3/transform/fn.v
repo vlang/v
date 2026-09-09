@@ -12537,7 +12537,7 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	return false
 }
 
-fn (t &Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, expected_type string) bool {
+fn (mut t Transformer) fn_literal_c_abi_signature_compatible(arg_id flat.NodeId, expected_type string) bool {
 	if isnil(t.tc) {
 		return true
 	}
@@ -12655,12 +12655,14 @@ fn (mut t Transformer) fn_literal_container_modes_compatible_seen(arg_id flat.No
 		return t.fn_literal_container_element_mode_compatible(rhs_id, element_expected)
 	}
 	if value_id := t.callback_array_mutation_value_id(arg_id) {
-		if compatible := t.fn_literal_container_modes_compatible_seen(value_id, expected_type, mut
+		container_expected := t.callback_array_mutation_receiver_expected_type(arg_id,
+			expected_type) or { expected_type }
+		if compatible := t.fn_literal_container_modes_compatible_seen(value_id, container_expected, mut
 			seen)
 		{
 			return compatible
 		}
-		element_expected := t.callback_container_source_element_type(expected_type) or {
+		element_expected := t.callback_container_source_element_type(container_expected) or {
 			return none
 		}
 		return t.fn_literal_container_element_mode_compatible(value_id, element_expected)
@@ -13085,14 +13087,14 @@ fn (t &Transformer) sum_type_has_source_only_fn_variant(expected_type string) bo
 	return false
 }
 
-fn (t &Transformer) fn_literal_source_type_texts(arg_id flat.NodeId) []string {
+fn (mut t Transformer) fn_literal_source_type_texts(arg_id flat.NodeId) []string {
 	mut result := []string{}
 	mut seen := map[int]bool{}
 	t.collect_fn_literal_source_type_texts(arg_id, mut result, mut seen)
 	return result
 }
 
-fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut result []string, mut seen map[int]bool) {
+fn (mut t Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut result []string, mut seen map[int]bool) {
 	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
 		return
 	}
@@ -13228,7 +13230,7 @@ fn (t &Transformer) collect_fn_literal_source_type_texts(arg_id flat.NodeId, mut
 	result << 'fn (${params.join(', ')})${ret}'
 }
 
-fn (t &Transformer) collect_callback_member_reaching_source_type_texts(arg_id flat.NodeId, mut result []string, mut seen map[int]bool) {
+fn (mut t Transformer) collect_callback_member_reaching_source_type_texts(arg_id flat.NodeId, mut result []string, mut seen map[int]bool) {
 	root_name := t.callback_lvalue_root_name(arg_id) or { return }
 	result_start := result.len
 	for source_id in t.callback_local_reaching_rhs_ids(root_name, arg_id) {
@@ -13907,6 +13909,21 @@ fn (t &Transformer) callback_array_mutation_value_id(id flat.NodeId) ?flat.NodeI
 	return t.a.child(&node, value_index)
 }
 
+fn (t &Transformer) callback_array_mutation_receiver_expected_type(id flat.NodeId, expected_type string) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	return t.callback_lvalue_expected_type(t.a.child(callee, 0), expected_type)
+}
+
 fn (t &Transformer) callback_lvalue_base_is_ident(id flat.NodeId, name string) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -13951,7 +13968,7 @@ fn (t &Transformer) named_callback_source_type(name string) ?string {
 	return t.callback_decl_source_type(name, false)
 }
 
-fn (t &Transformer) callback_index_source_element_type(node flat.Node) ?string {
+fn (mut t Transformer) callback_index_source_element_type(node flat.Node) ?string {
 	if node.children_count == 0 {
 		return none
 	}
@@ -13986,7 +14003,7 @@ fn (t &Transformer) callback_index_source_element_type(node flat.Node) ?string {
 	return none
 }
 
-fn (t &Transformer) callback_call_source_return_type(id flat.NodeId, node flat.Node) ?string {
+fn (mut t Transformer) callback_call_source_return_type(id flat.NodeId, node flat.Node) ?string {
 	if node.children_count == 0 {
 		return none
 	}
@@ -14004,6 +14021,10 @@ fn (t &Transformer) callback_call_source_return_type(id flat.NodeId, node flat.N
 				return t.callback_source_return_expansion(return_type)
 			}
 		}
+	}
+	generic_return := t.raw_generic_call_return_type(id, node)
+	if generic_return.len > 0 {
+		return t.callback_source_return_expansion(generic_return)
 	}
 	call_name := t.resolve_call_name(node)
 	mut candidates := []string{}
