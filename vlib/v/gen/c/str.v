@@ -299,7 +299,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	}
 	is_ptr_alias_with_str := !typ.is_ptr() && resolved_typ.is_ptr() && sym.kind == .alias
 		&& sym.has_method('str')
-	if is_ptr && typ.has_option_or_result() && expr is ast.PrefixExpr && expr.op == .amp {
+	if is_ptr && !option_payload_ref_tmp && typ.has_option_or_result() && expr is ast.PrefixExpr
+		&& expr.op == .amp {
 		// `&option_value` is not materialized as the option-pointer wrapper that a
 		// pointer variable uses. Stringify the option value directly and retain the
 		// reference prefix instead of treating the wrapper as its scalar payload.
