@@ -67,6 +67,12 @@ fn receiver_pointer_argument(expr ast.Expr, receiver_name string) bool {
 		ast.UnsafeExpr {
 			receiver_pointer_argument(reduced.expr, receiver_name)
 		}
+		ast.IfExpr {
+			reduced.branches.any(stmts_return_receiver_pointer_argument(it.stmts, receiver_name))
+		}
+		ast.MatchExpr {
+			reduced.branches.any(stmts_return_receiver_pointer_argument(it.stmts, receiver_name))
+		}
 		ast.PrefixExpr {
 			if reduced.op == .mul {
 				false
@@ -80,6 +86,24 @@ fn receiver_pointer_argument(expr ast.Expr, receiver_name string) bool {
 			} else {
 				false
 			}
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn stmts_return_receiver_pointer_argument(stmts []ast.Stmt, receiver_name string) bool {
+	if stmts.len == 0 {
+		return false
+	}
+	last_stmt := stmts.last()
+	return match last_stmt {
+		ast.ExprStmt {
+			receiver_pointer_argument(last_stmt.expr, receiver_name)
+		}
+		ast.Return {
+			last_stmt.exprs.any(receiver_pointer_argument(it, receiver_name))
 		}
 		else {
 			false
@@ -116,6 +140,12 @@ fn receiver_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
 		ast.UnsafeExpr {
 			receiver_alias_argument(reduced.expr, alias)
 		}
+		ast.IfExpr {
+			reduced.branches.any(stmts_return_receiver_alias_argument(it.stmts, alias))
+		}
+		ast.MatchExpr {
+			reduced.branches.any(stmts_return_receiver_alias_argument(it.stmts, alias))
+		}
 		ast.PrefixExpr {
 			if reduced.op == .mul {
 				false
@@ -129,6 +159,24 @@ fn receiver_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
 			} else {
 				false
 			}
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn stmts_return_receiver_alias_argument(stmts []ast.Stmt, alias ast.ReceiverAlias) bool {
+	if stmts.len == 0 {
+		return false
+	}
+	last_stmt := stmts.last()
+	return match last_stmt {
+		ast.ExprStmt {
+			receiver_alias_argument(last_stmt.expr, alias)
+		}
+		ast.Return {
+			last_stmt.exprs.any(receiver_alias_argument(it, alias))
 		}
 		else {
 			false

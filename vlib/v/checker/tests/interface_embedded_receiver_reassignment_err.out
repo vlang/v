@@ -151,17 +151,32 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:213:18: err
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   214 |     pointer_element.pass_local_holder_mut()
-  215 |     pointer_element.spawn_pointer_read()
+  215 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:214:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_mut` through embedded interface `PointerElement` because it can replace its receiver through a mutable call
   212 |     pointer_element.pass_alias_before_rebinding(&other)
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()
       |                     ~~~~~~~~~~~~~~~~~~~~~~~
-  215 |     pointer_element.spawn_pointer_read()
-  216 | }
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  215 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+  216 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:217:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  215 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+  216 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
+  217 |     pointer_element.spawn_pointer_read()
+      |                     ~~~~~~~~~~~~~~~~~~~~
+  218 | }
+  219 |
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_conditional_pointer` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()
-  215 |     pointer_element.spawn_pointer_read()
-      |                     ~~~~~~~~~~~~~~~~~~~~
-  216 | }
+  215 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  216 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
+  217 |     pointer_element.spawn_pointer_read()
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:216:18: error: cannot call pointer-receiver method `PointerNode.pass_match_pointer` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  214 |     pointer_element.pass_local_holder_mut()
+  215 |     pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+  216 |     pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  217 |     pointer_element.spawn_pointer_read()
+  218 | }

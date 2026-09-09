@@ -212,5 +212,24 @@ fn main() {
 	pointer_element.pass_alias_before_rebinding(&other)
 	pointer_element.pass_alias_after_conditional_rebinding(&other, true)
 	pointer_element.pass_local_holder_mut()
+	pointer_element.pass_conditional_pointer(&other, PointerNode(Item{}), true)
+	pointer_element.pass_match_pointer(&other, PointerNode(Item{}), 0)
 	pointer_element.spawn_pointer_read()
+}
+
+fn replace_pointer_node(node &PointerNode, next PointerNode) {
+	unsafe {
+		*node = next
+	}
+}
+
+fn (node &PointerNode) pass_conditional_pointer(other &PointerNode, next PointerNode, use_node bool) {
+	replace_pointer_node(if use_node { node } else { other }, next)
+}
+
+fn (node &PointerNode) pass_match_pointer(other &PointerNode, next PointerNode, selector int) {
+	replace_pointer_node(match selector {
+		0 { node }
+		else { other }
+	}, next)
 }
