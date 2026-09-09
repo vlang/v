@@ -187,13 +187,20 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:223:18: err
       |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   224 |     bound_reader := pointer_element.return_bound_read_method()
   225 |     _ = bound_reader()
-vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:226:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:226:22: error: cannot call pointer-receiver method `PointerNode.return_or_pointer_receiver` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   224 |     bound_reader := pointer_element.return_bound_read_method()
   225 |     _ = bound_reader()
-  226 |     pointer_element.spawn_pointer_read()
+  226 |     _ = pointer_element.return_or_pointer_receiver()
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  227 |     pointer_element.spawn_pointer_read()
+  228 | }
+vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:227:18: error: cannot call pointer-receiver method `PointerNode.spawn_pointer_read` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
+  225 |     _ = bound_reader()
+  226 |     _ = pointer_element.return_or_pointer_receiver()
+  227 |     pointer_element.spawn_pointer_read()
       |                     ~~~~~~~~~~~~~~~~~~~~
-  227 | }
-  228 |
+  228 | }
+  229 |
 vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:215:18: error: cannot call pointer-receiver method `PointerNode.pass_local_holder_value` through embedded interface `PointerElement` because its receiver address escapes and can be used to replace it
   213 |     pointer_element.pass_alias_after_conditional_rebinding(&other, true)
   214 |     pointer_element.pass_local_holder_mut()
@@ -228,4 +235,4 @@ vlib/v/checker/tests/interface_embedded_receiver_reassignment_err.vv:224:34: err
   224 |     bound_reader := pointer_element.return_bound_read_method()
       |                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~
   225 |     _ = bound_reader()
-  226 |     pointer_element.spawn_pointer_read()
+  226 |     _ = pointer_element.return_or_pointer_receiver()

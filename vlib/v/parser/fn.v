@@ -108,6 +108,9 @@ fn contains_receiver_var_reference(expr ast.Expr, name string, var_pos int) bool
 		ast.UnsafeExpr {
 			contains_receiver_var_reference(reduced.expr, name, var_pos)
 		}
+		ast.CallExpr {
+			stmts_return_receiver_var_reference(reduced.or_block.stmts, name, var_pos)
+		}
 		ast.IfExpr {
 			reduced.branches.any(stmts_return_receiver_var_reference(it.stmts, name, var_pos))
 		}

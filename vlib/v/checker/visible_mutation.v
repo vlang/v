@@ -19,7 +19,8 @@ fn (mut c Checker) visible_param_mutation_cache_key(func ast.Fn, param_idx int) 
 }
 
 fn (mut c Checker) fn_has_visible_mutation_for_param(func ast.Fn, param_idx int) bool {
-	if param_idx < 0 || param_idx >= func.params.len || !func.params[param_idx].is_mut {
+	if param_idx < 0 || param_idx >= func.params.len
+		|| (!func.params[param_idx].is_mut && !func.params[param_idx].typ.is_any_kind_of_pointer()) {
 		return false
 	}
 	cache_key := c.visible_param_mutation_cache_key(func, param_idx)
@@ -46,13 +47,74 @@ fn (mut c Checker) fn_has_visible_mutation_for_param(func ast.Fn, param_idx int)
 }
 
 fn (mut c Checker) fn_decl_has_visible_mutation_for_param(fn_decl &ast.FnDecl, param_idx int) bool {
-	if param_idx < 0 || param_idx >= fn_decl.params.len || !fn_decl.params[param_idx].is_mut {
+	if param_idx < 0 || param_idx >= fn_decl.params.len
+		|| (!fn_decl.params[param_idx].is_mut
+		&& !fn_decl.params[param_idx].typ.is_any_kind_of_pointer()) {
 		return false
 	}
 	root_name := fn_decl.params[param_idx].name
 	root_type := fn_decl.params[param_idx].typ
 	for stmt in fn_decl.stmts {
 		if c.stmt_has_visible_mutation(stmt, root_name, root_type) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) fn_pointer_param_may_escape_or_mutate(func ast.Fn, param_idx int) bool {
+	if param_idx < 0 || param_idx >= func.params.len
+		|| !func.params[param_idx].typ.is_any_kind_of_pointer() {
+		return true
+	}
+	if func.source_fn == unsafe { nil } || func.no_body || func.language != .v {
+		return true
+	}
+	if c.type_may_share_mutable_storage(func.return_type)
+		|| c.fn_has_visible_mutation_for_param(func, param_idx) {
+		return true
+	}
+	fn_decl := unsafe { &ast.FnDecl(func.source_fn) }
+	if fn_decl == unsafe { nil } || param_idx >= fn_decl.params.len {
+		return true
+	}
+	param_name := fn_decl.params[param_idx].name
+	for stmt in fn_decl.stmts {
+		if c.node_captures_or_stores_pointer_param(stmt, param_name, fn_decl.params[param_idx].typ) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) node_captures_or_stores_pointer_param(node ast.Node, name string, typ ast.Type) bool {
+	match node {
+		ast.Expr {
+			if node is ast.AnonFn && node.inherited_vars.any(it.name == name) {
+				return true
+			}
+		}
+		ast.Stmt {
+			if node is ast.FnDecl {
+				return false
+			}
+			if node is ast.AssignStmt {
+				for i, right in node.right {
+					if !is_visible_root_mutation(c.expr_mutation_visibility(right, name, typ)) {
+						continue
+					}
+					if i >= node.left.len
+						|| !is_visible_root_mutation(c.expr_mutation_visibility(node.left[i], name, typ)) {
+						return true
+					}
+				}
+			}
+		}
+		else {}
+	}
+
+	for child in node.children() {
+		if c.node_captures_or_stores_pointer_param(child, name, typ) {
 			return true
 		}
 	}
@@ -107,8 +169,14 @@ fn (mut c Checker) expr_has_visible_mutation(expr ast.Expr, root_name string, ro
 			}
 		}
 		ast.InfixExpr {
-			if expr.op == .left_shift
-				&& is_visible_root_mutation(c.expr_mutation_visibility(expr.left, root_name, root_type)) {
+			if expr.op == .left_shift {
+				if is_visible_root_mutation(c.expr_mutation_visibility(expr.left, root_name, root_type))
+					|| is_visible_root_mutation(c.expr_mutation_visibility(expr.right, root_name, root_type)) {
+					return true
+				}
+			}
+			if expr.op == .arrow
+				&& is_visible_root_mutation(c.expr_mutation_visibility(expr.right, root_name, root_type)) {
 				return true
 			}
 		}
@@ -231,7 +299,8 @@ fn (mut c Checker) call_has_visible_root_mutation(node ast.CallExpr, root_name s
 	if node.is_method {
 		left_vis := c.expr_mutation_visibility(node.left, root_name, root_type)
 		if has_called_fn {
-			if called_fn.params.len > 0 && called_fn.params[0].is_mut {
+			if called_fn.params.len > 0
+				&& (called_fn.params[0].is_mut || called_fn.params[0].typ.is_any_kind_of_pointer()) {
 				match left_vis {
 					.direct {
 						if c.fn_has_visible_mutation_for_param(called_fn, 0) {
@@ -250,17 +319,13 @@ fn (mut c Checker) call_has_visible_root_mutation(node ast.CallExpr, root_name s
 	}
 	if !has_called_fn {
 		for arg in node.args {
-			if arg.is_mut
-				&& is_visible_root_mutation(c.expr_mutation_visibility(arg.expr, root_name, root_type)) {
+			if is_visible_root_mutation(c.expr_mutation_visibility(arg.expr, root_name, root_type)) {
 				return true
 			}
 		}
 		return false
 	}
 	for i, arg in node.args {
-		if !arg.is_mut {
-			continue
-		}
 		param_idx := c.call_arg_param_index(called_fn, i)
 		arg_vis := c.expr_mutation_visibility(arg.expr, root_name, root_type)
 		if param_idx < 0 || param_idx >= called_fn.params.len {
@@ -269,7 +334,8 @@ fn (mut c Checker) call_has_visible_root_mutation(node ast.CallExpr, root_name s
 			}
 			continue
 		}
-		if !called_fn.params[param_idx].is_mut {
+		if !called_fn.params[param_idx].is_mut
+			&& !called_fn.params[param_idx].typ.is_any_kind_of_pointer() {
 			continue
 		}
 		match arg_vis {

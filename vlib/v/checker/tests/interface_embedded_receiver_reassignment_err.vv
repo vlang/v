@@ -223,6 +223,7 @@ fn main() {
 	pointer_element.replace_through_pointer_alias(PointerNode(Item{}))
 	bound_reader := pointer_element.return_bound_read_method()
 	_ = bound_reader()
+	_ = pointer_element.return_or_pointer_receiver()
 	pointer_element.spawn_pointer_read()
 }
 
@@ -290,4 +291,12 @@ fn (node &PointerNode) pass_local_holder_projection() {
 		node: unsafe { node }
 	}
 	replace_pointer_node(holder.node, PointerNode(Item{}))
+}
+
+fn maybe_pointer_node() ?&PointerNode {
+	return none
+}
+
+fn (node &PointerNode) return_or_pointer_receiver() &PointerNode {
+	return maybe_pointer_node() or { node }
 }

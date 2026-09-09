@@ -67,6 +67,9 @@ fn receiver_pointer_argument(expr ast.Expr, receiver_name string) bool {
 		ast.UnsafeExpr {
 			receiver_pointer_argument(reduced.expr, receiver_name)
 		}
+		ast.CallExpr {
+			stmts_return_receiver_pointer_argument(reduced.or_block.stmts, receiver_name)
+		}
 		ast.IfExpr {
 			reduced.branches.any(stmts_return_receiver_pointer_argument(it.stmts, receiver_name))
 		}
@@ -140,6 +143,9 @@ fn receiver_alias_argument(expr ast.Expr, alias ast.ReceiverAlias) bool {
 		ast.UnsafeExpr {
 			receiver_alias_argument(reduced.expr, alias)
 		}
+		ast.CallExpr {
+			stmts_return_receiver_alias_argument(reduced.or_block.stmts, alias)
+		}
 		ast.SelectorExpr {
 			!alias.is_pointer && receiver_alias_argument(reduced.expr, alias)
 		}
@@ -207,7 +213,7 @@ fn receiver_method_target(expr ast.Expr, receiver_name string, aliases []ast.Rec
 	return false
 }
 
-fn (mut c Checker) record_receiver_argument(param ast.Param, arg ast.CallArg) {
+fn (mut c Checker) record_receiver_argument(callee ast.Fn, param_idx int, param ast.Param, arg ast.CallArg) {
 	if c.table.cur_fn == unsafe { nil } || !c.table.cur_fn.is_method
 		|| (!c.table.cur_fn.rec_mut && !c.table.cur_fn.receiver.typ.is_ptr()) {
 		return
@@ -226,7 +232,17 @@ fn (mut c Checker) record_receiver_argument(param ast.Param, arg ast.CallArg) {
 			receiver_sym.methods[method_idx].receiver_passed_mut = true
 		} else if c.table.cur_fn.receiver.typ.is_ptr() && (param.typ.is_any_kind_of_pointer()
 			|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer()) {
-			receiver_sym.methods[method_idx].receiver_address_taken = true
+			if arg.expr.remove_par() is ast.CastExpr {
+				receiver_sym.methods[method_idx].receiver_address_taken = true
+			} else if !receiver_sym.methods[method_idx].receiver_helper_calls.any(
+				it.name == callee.name && it.receiver_type == callee.receiver_type
+				&& it.param_idx == param_idx) {
+				receiver_sym.methods[method_idx].receiver_helper_calls << ast.ReceiverHelperCall{
+					name:          callee.name
+					receiver_type: callee.receiver_type
+					param_idx:     param_idx
+				}
+			}
 		}
 	} else if aliases.any(!it.is_pointer && receiver_alias_argument(arg.expr, it)) {
 		if param.is_mut && arg.is_mut {
@@ -2651,7 +2667,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		call_arg = c.implicit_mut_call_arg(param, call_arg)
 		node.args[i] = call_arg
-		c.record_receiver_argument(param, call_arg)
+		c.record_receiver_argument(func, param_i, param, call_arg)
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(mut call_arg.expr)
 			call_arg_expr_pos := call_arg.expr.pos()
@@ -3307,6 +3323,19 @@ fn (mut c Checker) method_can_replace_receiver(receiver_sym &ast.TypeSymbol, met
 			return true
 		}
 	}
+	for helper in method.receiver_helper_calls {
+		called_fn := if helper.receiver_type != 0 {
+			helper_sym := c.table.sym(c.unwrap_generic(helper.receiver_type))
+			c.table.find_method_with_embeds(helper_sym, helper.name.all_after_last('.')) or {
+				return true
+			}
+		} else {
+			c.table.find_fn(helper.name) or { return true }
+		}
+		if c.fn_pointer_param_may_escape_or_mutate(called_fn, helper.param_idx) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -3317,7 +3346,7 @@ fn receiver_replacement_reason(method ast.Fn) string {
 	if method.receiver_passed_mut || method.receiver_method_calls.len > 0 {
 		return 'it can replace its receiver through a mutable call'
 	}
-	if method.receiver_address_taken {
+	if method.receiver_address_taken || method.receiver_helper_calls.len > 0 {
 		return 'its receiver address escapes and can be used to replace it'
 	}
 	if method.receiver_captured_mut {
@@ -3667,7 +3696,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 					arg = c.implicit_mut_call_arg(param, arg)
 					node.args[i] = arg
-					c.record_receiver_argument(param, arg)
+					c.record_receiver_argument(info.func, i, param, arg)
 					if arg.is_mut {
 						to_lock, pos := c.fail_if_immutable(mut arg.expr)
 						if !param.is_mut {
@@ -4079,7 +4108,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		arg = c.implicit_mut_call_arg(param, arg)
 		node.args[i] = arg
-		c.record_receiver_argument(param, arg)
+		c.record_receiver_argument(method, i + 1, param, arg)
 		if arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(mut arg.expr)
 			if !param_is_mut {
