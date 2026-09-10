@@ -43,6 +43,9 @@ fn test_plain_v_header_owned_c_structs_are_not_redeclared() {
 typedef struct V3HeaderOwnedImpl_ {
 	long long value;
 } V3HeaderOwnedAlias;
+typedef struct {
+	long long value;
+} _V3HeaderOwnedAlias;
 typedef struct V3HeaderOwnedTag {
 	long long value;
 } V3HeaderOwnedTag;
@@ -59,18 +62,26 @@ struct C.V3HeaderOwnedAlias {
 	value int
 }
 
+@[typedef]
+struct C._V3HeaderOwnedAlias {
+	value int
+}
+
 struct C.V3HeaderOwnedTag {
 	value int
 }
 
 fn main() {
 	alias := C.V3HeaderOwnedAlias{
-		value: 40
+		value: 20
+	}
+	private_alias := C._V3HeaderOwnedAlias{
+		value: 20
 	}
 	tag := C.V3HeaderOwnedTag{
 		value: 2
 	}
-	println(alias.value + tag.value)
+	println(alias.value + private_alias.value + tag.value)
 }
 ')!
 	out := os.join_path(root, 'out')
@@ -82,6 +93,7 @@ fn main() {
 	generated := os.read_file(out + '.c')!
 	assert !generated.contains('typedef struct V3HeaderOwnedAlias V3HeaderOwnedAlias;'), generated
 	assert !generated.contains('struct V3HeaderOwnedAlias {'), generated
+	assert !generated.contains('struct _V3HeaderOwnedAlias'), generated
 	assert !generated.contains('struct V3HeaderOwnedTag {'), generated
 }
 

@@ -98,8 +98,8 @@ fn main() {
 		}
 	}
 	if !fastc_self_build && obinary == '' {
-		install_missing_bsd_v1_fallback(vroot, vexe, args, host_os) or {
-			eprintln('cannot prepare the BSD V1 compatibility compiler: ${err.msg()}')
+		install_missing_v1_fallback(vroot, vexe, args, host_os) or {
+			eprintln('cannot prepare the V1 compatibility compiler: ${err.msg()}')
 			exit(1)
 		}
 	}
@@ -365,6 +365,10 @@ fn self_build_supports_prealloc(args []string, host_os string) bool {
 
 fn self_ccompiler_supports_prealloc(ccompiler string, target_os string) bool {
 	cc := os.file_name(ccompiler.trim_space()).to_lower_ascii()
+	// Windows defaults to bundled TCC when no compiler is explicit.
+	if target_os == 'windows' && cc == '' {
+		return false
+	}
 	is_tinyc := cc.contains('tcc') || cc.contains('tinyc') || cc.contains('tinygcc')
 		|| cc.contains('tiny_gcc') || cc.contains('tiny-gcc')
 	return !is_tinyc || target_os == 'macos'
@@ -484,6 +488,9 @@ fn clone_args(args []string) []string {
 }
 
 fn self_build_host_os() string {
+	$if vself_test_windows_transition ? {
+		return 'windows'
+	}
 	$if vself_test_bsd_transition ? {
 		return 'freebsd'
 	}
@@ -491,18 +498,19 @@ fn self_build_host_os() string {
 }
 
 fn self_build_uses_embedded_v3(host_os string) bool {
-	return host_os in ['linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
+	return host_os in ['linux', 'macos', 'windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
 }
 
-fn install_missing_bsd_v1_fallback(vroot string, compiler string, args []string, host_os string) ! {
-	if host_os !in ['freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
+fn install_missing_v1_fallback(vroot string, compiler string, args []string, host_os string) ! {
+	if host_os !in ['windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
 		return
 	}
-	fallback := os.join_path(vroot, v1_fallback_binary)
+	exe_ext := if host_os == 'windows' { '.exe' } else { '' }
+	fallback := os.join_path(vroot, '${v1_fallback_binary}${exe_ext}')
 	if os.is_executable(fallback) {
 		return
 	}
-	staged_fallback := os.join_path(vroot, '.vself_v1_fallback_${os.getpid()}')
+	staged_fallback := os.join_path(vroot, '.vself_v1_fallback_${os.getpid()}${exe_ext}')
 	os.rm(staged_fallback) or {}
 	defer {
 		os.rm(staged_fallback) or {}
@@ -510,7 +518,7 @@ fn install_missing_bsd_v1_fallback(vroot string, compiler string, args []string,
 	mut fallback_args := initial_bootstrap_args(args).filter(it !in ['-new-compiler', '-old-compiler'])
 	fallback_args << ['-no-parallel', '-d', 'v1_fallback']
 	fallback_args = with_output_arg(fallback_args, staged_fallback)
-	println('V self compiling the BSD V1 compatibility compiler...')
+	println('V self compiling the V1 compatibility compiler...')
 	fallback_cmd := compose_v_cmd(compiler, fallback_args, full_v_cli_source)
 	run_cmd(fallback_cmd) or {
 		return error('failed to build `${fallback}` before replacing V.\n${err.msg()}')

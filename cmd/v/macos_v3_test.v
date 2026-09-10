@@ -122,6 +122,7 @@ fn test_windows_makev_builds_the_v1_fallback_executable() {
 	assert source.contains('set V1_FALLBACK=./v1_fallback.exe')
 	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -d v1_fallback -o "%V1_FALLBACK%" cmd/v')
 	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
+	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -d v1_fallback -o "%V_STAGE%" cmd/v')
 	assert !source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc')
 	normalized := source.replace('\r\n', '\n')
 	assert normalized.count('call :move_updated_to_v\nif !ERRORLEVEL! NEQ 0 goto :compile_error') == 5

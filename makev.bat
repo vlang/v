@@ -280,7 +280,8 @@ if not defined stage_vflags (
 )
 
 echo  ^> Compiling "%V_STAGE%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -o "%V_STAGE%" cmd/v
+REM Keep this stage on V1: only the established compiler emits MSVC command lines.
+"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -d v1_fallback -o "%V_STAGE%" cmd/v
 if !ERRORLEVEL! NEQ 0 (
 	if exist %ObjFile% del %ObjFile%
 	if exist "%V_STAGE%" del "%V_STAGE%"
