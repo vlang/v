@@ -3505,18 +3505,19 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 }
 
 fn (mut g FlatGen) emit_translation_unit_include_directives() {
-	windows_header_emitted := g.emit_preinclude_directives()
-	g.emit_preserved_c_directives_scoped()
+	mut windows_header_emitted := g.emit_preinclude_directives()
+	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
 	if g.target.os == 'windows' && !windows_header_emitted {
 		// Winsock2 must precede windows.h, which otherwise includes legacy winsock.h.
 		g.writeln('#include <windows.h>')
 	}
 }
 
-fn (mut g FlatGen) emit_preserved_c_directives_scoped() {
+fn (mut g FlatGen) emit_preserved_c_directives_scoped(windows_header_emitted bool) bool {
 	state := g.begin_scoped_append()
-	g.emit_preserved_c_directives()
+	emitted_windows_header := g.emit_preserved_c_directives(windows_header_emitted)
 	g.finish_scoped_append(state)
+	return emitted_windows_header
 }
 
 fn (mut g FlatGen) emit_c_directives_scoped(late bool) {
@@ -9328,10 +9329,12 @@ fn c_is_late_source_include_directive(directive string) bool {
 	return arg.ends_with('.m') || arg.ends_with('.mm')
 }
 
-fn (mut g FlatGen) emit_preserved_c_directives() {
+fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool {
 	mut emitted := false
 	mut emitted_includes := map[string]bool{}
 	mut has_mach_headers := false
+	mut emitted_windows_header := windows_header_emitted
+	mut deferred_synchapi_indices := []int{}
 	directives := g.ordered_c_directives(false)
 	use_system_libc := g.c_directives_use_system_libc()
 	for i, directive in directives {
@@ -9350,31 +9353,34 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 			emitted = true
 			continue
 		}
-		prefix := if c_lifted_include_skips_context(directive) {
-			[]string{}
-		} else {
-			c_lifted_include_context_prefix(directives, i)
-		}
-		if c_is_preserved_system_include_directive(clean) {
-			// Dedupe on the include *together with* its lifted guard context: the
-			// same header may legitimately appear under different guards (e.g. one
-			// `#ifdef __linux__` block and one `#ifdef __APPLE__` block), and each
-			// occurrence needs its own context emitted. Keying on the raw include
-			// line alone would drop the second, differently-guarded include.
-			key := prefix.join('\n') + '\x00' + clean
-			if emitted_includes[key] {
+		if g.target.os == 'windows' {
+			if clean == '#include <windows.h>' {
+				if emitted_windows_header {
+					continue
+				}
+				emitted_windows_header = true
+			}
+			if !emitted_windows_header && clean == '#include <synchapi.h>' {
+				deferred_synchapi_indices << i
 				continue
 			}
-			emitted_includes[key] = true
 		}
-		for line in prefix {
-			g.writeln(line)
+		if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
 			emitted = true
 		}
-		g.emit_preserved_c_directive(directive)
-		emitted = true
-		for _ in 0 .. c_lifted_include_context_depth(prefix) {
-			g.writeln('#endif')
+	}
+	if deferred_synchapi_indices.len > 0 {
+		if !emitted_windows_header {
+			// Preserve Winsock2 ahead of windows.h while keeping synchapi.h after
+			// the WinAPI base declarations that it requires.
+			g.writeln('#include <windows.h>')
+			emitted_windows_header = true
+			emitted = true
+		}
+		for i in deferred_synchapi_indices {
+			if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
+				emitted = true
+			}
 		}
 	}
 	refs := g.c_extern_referenced_symbols()
@@ -9388,6 +9394,37 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 	if emitted {
 		g.writeln('')
 	}
+	return emitted_windows_header
+}
+
+fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int, mut emitted_includes map[string]bool) bool {
+	directive := directives[index]
+	clean := trimmed_space(directive)
+	prefix := if c_lifted_include_skips_context(directive) {
+		[]string{}
+	} else {
+		c_lifted_include_context_prefix(directives, index)
+	}
+	if c_is_preserved_system_include_directive(clean) {
+		// Dedupe on the include *together with* its lifted guard context: the
+		// same header may legitimately appear under different guards (e.g. one
+		// `#ifdef __linux__` block and one `#ifdef __APPLE__` block), and each
+		// occurrence needs its own context emitted. Keying on the raw include
+		// line alone would drop the second, differently-guarded include.
+		key := prefix.join('\n') + '\x00' + clean
+		if emitted_includes[key] {
+			return false
+		}
+		emitted_includes[key] = true
+	}
+	for line in prefix {
+		g.writeln(line)
+	}
+	g.emit_preserved_c_directive(directive)
+	for _ in 0 .. c_lifted_include_context_depth(prefix) {
+		g.writeln('#endif')
+	}
+	return true
 }
 
 fn c_lifted_include_skips_context(directive string) bool {

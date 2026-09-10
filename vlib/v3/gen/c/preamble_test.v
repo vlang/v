@@ -46,6 +46,26 @@ fn test_windows_translation_unit_keeps_preserved_winsock_headers_before_windows_
 	assert c_code.count('#include <windows.h>') == 1
 }
 
+fn test_windows_translation_unit_interposes_windows_header_before_preserved_synchapi() {
+	mut g := windows_preamble_test_gen()
+	g.preinclude_directives = ['#include "winapi_config.h"']
+	g.add_c_directive('sync', '#include <synchapi.h>', false)
+	g.add_c_directive('net', '#include <winsock2.h>', false)
+	g.add_c_directive('net', '#include <ws2tcpip.h>', false)
+	g.emit_translation_unit_include_directives()
+	c_code := g.sb.str()
+	config_index := c_code.index('#include "winapi_config.h"')?
+	winsock_index := c_code.index('#include <winsock2.h>')?
+	ws2tcpip_index := c_code.index('#include <ws2tcpip.h>')?
+	windows_index := c_code.index('#include <windows.h>')?
+	synchapi_index := c_code.index('#include <synchapi.h>')?
+	assert config_index < winsock_index
+	assert winsock_index < ws2tcpip_index
+	assert ws2tcpip_index < windows_index
+	assert windows_index < synchapi_index
+	assert c_code.count('#include <windows.h>') == 1
+}
+
 fn test_thread_local_decl_uses_portable_c_dialects() {
 	mut g := FlatGen.new()
 	g.emit_thread_local_decl_after_tinyc('int state;')
