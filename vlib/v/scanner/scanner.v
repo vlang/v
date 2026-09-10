@@ -1698,7 +1698,7 @@ pub fn (mut s Scanner) ident_char() string {
 		}
 	} else if c.ends_with('\n') {
 		s.add_error_detail('use quotes for strings, backticks for characters')
-		s.error_with_pos('invalid character literal, use \\`\\n\\` instead', lspos)
+		s.error_with_pos('invalid character literal, use `\\n` instead', lspos)
 	} else if c.len > len {
 		ch := c[c.len - 1]
 		if !util.is_escape_sequence(ch) && !digit_table[ch] {

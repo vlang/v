@@ -527,6 +527,19 @@ fn test_formatter_keeps_trailing_brace_comment_after_type_check_conditions() {
 	assert vfmt('type_check_brace_comment_twice', out) == out
 }
 
+// A comment between `}` and `else if` used to be emitted as a leading comment on the
+// condition after `} else if ` was already written, leaving that line with a trailing
+// space (`v fmt -verify` accepts it, `v vet` rejects it). It stays on its own line.
+fn test_formatter_keeps_comment_between_brace_and_else_if_clean() {
+	source := 'fn f(name string, x int) {\n\tif x == 1 {\n\t\tprintln(1)\n\t}\n\t// pick the other branch\n\telse if !name.contains(".") {\n\t\tprintln(2)\n\t}\n\tif x == 2 {\n\t\tprintln(3)\n\t}\n\t// plain else\n\telse {\n\t\tprintln(4)\n\t}\n\tif x == 3 {\n\t\tprintln(5)\n\t} // trailing on brace\n\telse {\n\t\tprintln(6)\n\t}\n}\n'
+	out := vfmt('comment_between_brace_and_else_if', source)
+	assert !out.split_into_lines().any(it.ends_with(' ') || it.ends_with('\t')), out
+	assert out.contains("\t}\n\t// pick the other branch\n\telse if !name.contains('.') {\n"), out
+	assert out.contains('\t}\n\t// plain else\n\telse {\n'), out
+	assert out.contains('\t} // trailing on brace\n\telse {\n'), out
+	assert vfmt('comment_between_brace_and_else_if_twice', out) == out
+}
+
 // A whole-string field attribute must keep its quotes: `@[C\x5cnD]` is not valid syntax.
 fn test_formatter_keeps_quotes_on_string_field_attributes() {
 	source := "struct AttrHazardStruct {\n\ta int @[mytag: 'A\\x5cnB']\n\tb int @['C\\x5cnD']\n}\n"

@@ -7270,10 +7270,9 @@ fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		// check for imported symbol
 		if c.file.imported_symbols_trie.matches(name) {
 			name = c.file.imported_symbols[name]
-		} else if 
-
+		}
 		// prepend mod to look for fn call or const
-		!name.contains('.') && node.mod != 'builtin' {
+		else if !name.contains('.') && node.mod != 'builtin' {
 			name = '${node.mod}.${node.name}'
 		}
 		pobj = c.file.global_scope.find_ptr(name)

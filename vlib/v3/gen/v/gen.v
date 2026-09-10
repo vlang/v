@@ -2554,14 +2554,30 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 	if children.len > 2 {
 		else_id := children[2]
 		en := g.a.node(else_id)
-		if en.kind == .if_expr {
+		// A comment between `}` and `else` (`}\n// why\nelse if cond {`) must stay on its
+		// own line: writing `} else ` first and letting the condition's leading-comment
+		// emission break the line would leave `} else if ` with a trailing space.
+		else_start := if en.kind == .if_expr && en.children_count > 0 {
+			g.a.child_node(en, 0).pos.offset
+		} else {
+			en.pos.offset
+		}
+		if !is_compact && g.has_comment_between(then_blk.pos.end, else_start) {
+			g.source_end = int_max(g.source_end, then_blk.pos.end)
+			g.emit_comments_before(else_start)
+			if !g.on_newline {
+				g.writeln('')
+			}
+			g.write('else ')
+		} else {
 			g.write(' else ')
+		}
+		if en.kind == .if_expr {
 			g.if_expr(else_id)
 		} else if is_compact {
-			g.write(' else ')
 			g.compact_expr_block(else_id)
 		} else {
-			g.writeln(' else {')
+			g.writeln('{')
 			g.source_end = int_max(g.source_end, en.pos.offset)
 			g.stmt_list_ids(g.a.children_of(en))
 			g.indent++
