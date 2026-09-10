@@ -44,9 +44,9 @@ therefore use V3. Commands such as `test` remain external tools, while each disc
 is compiled by V3. Non-C backends remain separate builder tools.
 
 `-new-compiler` remains accepted for command-line compatibility and selects the same in-process V3
-driver. `-old-compiler` is unavailable in a V3-only executable and reports an error. On Windows
-and portable cross-VC builds, the V3 driver is not embedded and `cmd/v` retains the established
-compiler.
+driver. On macOS, Linux, and BSD, `-old-compiler` launches the external `v1_fallback`
+compatibility compiler installed by `make` and maintained by self-builds. On Windows and portable
+cross-VC builds, the V3 driver is not embedded and `cmd/v` retains the established compiler.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
