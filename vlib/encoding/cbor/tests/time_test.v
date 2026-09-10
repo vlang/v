@@ -5,6 +5,7 @@ module main
 
 import encoding.cbor
 import encoding.hex
+import os
 import time
 
 fn h(s string) []u8 {
@@ -36,4 +37,29 @@ fn test_time_decode_tag1_float() {
 	assert got.unix() == 1363896240
 	// Sub-second component is non-zero (~500ms).
 	assert got.nanosecond > 0
+}
+
+fn test_time_encode_tag0_zoned_subsecond_uses_utc_instant() {
+	old_zoneinfo := os.getenv_opt('ZONEINFO')
+	os.setenv('ZONEINFO', os.join_path(@VEXEROOT, 'vlib', 'time', 'tzdata', 'zoneinfo.zip'), true)
+	defer {
+		if old := old_zoneinfo {
+			os.setenv('ZONEINFO', old, true)
+		} else {
+			os.unsetenv('ZONEINFO')
+		}
+	}
+	loc := time.load_location('Asia/Shanghai')!
+	t := time.unix_nanosecond(1_704_067_200, 1).in(loc)!
+	bytes := cbor.encode[time.Time](t, cbor.EncodeOpts{})!
+	v := cbor.decode[cbor.Value](bytes, cbor.DecodeOpts{})!
+	assert v is cbor.Tag
+	if v is cbor.Tag {
+		assert v.number == 0
+		content := v.content()
+		assert content is cbor.Text
+		if content is cbor.Text {
+			assert content.value == '2024-01-01T00:00:00.000000001Z'
+		}
+	}
 }

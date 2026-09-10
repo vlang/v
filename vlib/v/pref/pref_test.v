@@ -182,6 +182,14 @@ fn new_wasm_preferences() pref.Preferences {
 	}
 }
 
+fn new_js_preferences() pref.Preferences {
+	return pref.Preferences{
+		backend: .js_node
+		os:      .linux
+		arch:    .amd64
+	}
+}
+
 fn new_c_preferences() pref.Preferences {
 	return pref.Preferences{
 		backend: .c
@@ -194,12 +202,15 @@ fn test_c_backend_filters_backend_specific_files() {
 	prefs := new_c_preferences()
 	dir := os.join_path(os.vtmp_dir(), 'c_backend_filters')
 	filtered := prefs.should_compile_filtered_files(dir, [
+		'codec_native.v',
 		'mod.c.v',
 		'mod.js.v',
+		'mod.native.v',
 		'mod.v',
 		'mod.wasm.v',
 	])
 	assert filtered == [
+		os.join_path(dir, 'codec_native.v'),
 		os.join_path(dir, 'mod.c.v'),
 		os.join_path(dir, 'mod.v'),
 	]
@@ -209,6 +220,22 @@ fn test_c_backend_skips_modules_with_only_non_c_variants() {
 	prefs := new_c_preferences()
 	filtered := prefs.should_compile_filtered_files('sus', ['sus.js.v', 'sus.wasm.v'])
 	assert filtered.len == 0
+}
+
+fn test_js_backend_skips_native_files() {
+	prefs := new_js_preferences()
+	dir := os.join_path(os.vtmp_dir(), 'js_backend_filters')
+	filtered := prefs.should_compile_filtered_files(dir, [
+		'sus.v',
+		'sus_native.v',
+		'sus.native.v',
+		'sus.js.v',
+	])
+	assert filtered == [
+		os.join_path(dir, 'sus.js.v'),
+		os.join_path(dir, 'sus.v'),
+		os.join_path(dir, 'sus_native.v'),
+	]
 }
 
 fn test_wasm_backend_filters_backend_specific_files() {
@@ -230,6 +257,22 @@ fn test_wasm_backend_skips_modules_with_only_c_and_js_variants() {
 	prefs := new_wasm_preferences()
 	filtered := prefs.should_compile_filtered_files('sus', ['sus.c.v', 'sus.js.v'])
 	assert filtered.len == 0
+}
+
+fn test_wasm_backend_skips_native_files() {
+	prefs := new_wasm_preferences()
+	dir := os.join_path(os.vtmp_dir(), 'wasm_backend_filters')
+	filtered := prefs.should_compile_filtered_files(dir, [
+		'sus.v',
+		'sus_native.v',
+		'sus.native.v',
+		'sus.wasm.v',
+	])
+	assert filtered == [
+		os.join_path(dir, 'sus.v'),
+		os.join_path(dir, 'sus.wasm.v'),
+		os.join_path(dir, 'sus_native.v'),
+	]
 }
 
 fn filtered_file_names_for_os(os_kind pref.OS, files []string) []string {

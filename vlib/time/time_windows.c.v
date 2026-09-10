@@ -37,7 +37,7 @@ fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 
 fn C.FileTimeToSystemTime(lpFileTime &C._FILETIME, lpSystemTime &SystemTime)
 
-fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation &C.TIME_ZONE_INFORMATION, lpUniversalTime &SystemTime,
+fn C.SystemTimeToTzSpecificLocalTime(lpTimeZoneInformation voidptr, lpUniversalTime &SystemTime,
 	lpLocalTime &SystemTime)
 
 fn C.localtime_s(t &C.time_t, tm &C.tm)
@@ -118,14 +118,18 @@ pub fn (t Time) local() Time {
 	if t.is_local {
 		return t
 	}
+	// IANA-zoned values keep their absolute instant in `unix`, while their
+	// public calendar fields contain the location's wall clock. Convert that
+	// projection back to UTC before passing it to the Windows API.
+	utc_time := t.local_to_utc()
 	st_utc := SystemTime{
-		year:        u16(t.year)
-		month:       u16(t.month)
-		day:         u16(t.day)
-		hour:        u16(t.hour)
-		minute:      u16(t.minute)
-		second:      u16(t.second)
-		millisecond: u16(t.nanosecond / 1_000_000)
+		year:        u16(utc_time.year)
+		month:       u16(utc_time.month)
+		day:         u16(utc_time.day)
+		hour:        u16(utc_time.hour)
+		minute:      u16(utc_time.minute)
+		second:      u16(utc_time.second)
+		millisecond: u16(utc_time.nanosecond / 1_000_000)
 	}
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(unsafe { nil }, voidptr(&st_utc), voidptr(&st_local))
@@ -138,6 +142,7 @@ pub fn (t Time) local() Time {
 		second:     st_local.second // These are the same
 		nanosecond: int(st_local.millisecond) * 1_000_000
 		unix:       st_local.unix()
+		is_local:   true
 	}
 	return t_local
 }
