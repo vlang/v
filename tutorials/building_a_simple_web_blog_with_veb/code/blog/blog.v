@@ -3,7 +3,7 @@ module main
 import veb
 import time
 import db.sqlite
-import json
+import json2
 
 // Context struct must embed veb.Context
 pub struct Context {
@@ -79,7 +79,7 @@ pub fn (app &App) new_article(mut ctx Context) veb.Result {
 @['/articles'; get]
 pub fn (app &App) articles(mut ctx Context) veb.Result {
 	articles := app.find_all_articles()
-	json_result := json.encode(articles)
+	json_result := json2.encode(articles, escape_unicode: true)
 	return ctx.json(json_result)
 }
 

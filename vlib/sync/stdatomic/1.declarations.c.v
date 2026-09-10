@@ -9,42 +9,44 @@ $if windows {
 } $else {
 	#flag -I @VEXEROOT/thirdparty/stdatomic/nix
 	$if tinyc {
-		// Keep compatibility helpers distinct from the standard API that is
-		// restored below for user and third-party headers.
-		#define atomic_thread_fence v_tcc_compat_atomic_thread_fence
-		#define __atomic_thread_fence v_tcc_compat_internal_atomic_thread_fence
-		#define atomic_load v_tcc_compat_atomic_load
-		#define atomic_store v_tcc_compat_atomic_store
-		#define atomic_compare_exchange_weak v_tcc_compat_atomic_compare_exchange_weak
-		#define atomic_compare_exchange_strong v_tcc_compat_atomic_compare_exchange_strong
-		#define atomic_exchange v_tcc_compat_atomic_exchange
-		#define atomic_fetch_add v_tcc_compat_atomic_fetch_add
-		#define atomic_fetch_sub v_tcc_compat_atomic_fetch_sub
-		#define atomic_fetch_and v_tcc_compat_atomic_fetch_and
-		#define atomic_fetch_or v_tcc_compat_atomic_fetch_or
-		#define atomic_fetch_xor v_tcc_compat_atomic_fetch_xor
+		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_aliases.h"
 	}
 	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
 	$if tinyc {
 		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_cleanup.h"
-		#include <stdatomic.h>
+	}
+	$if tinyc && freebsd && amd64 {
+		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_freebsd_amd64_fence_pre.h"
+	}
+	$if tinyc {
+		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_restore.h"
+		$if linux {
+			#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_linux_fence.h"
+		}
+	}
+	$if tinyc && freebsd && amd64 {
+		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_freebsd_amd64_fence.h"
 	}
 }
 
 $if linux {
 	$if tinyc {
 		$if amd64 {
+			// Use shared libraries here. Newer TCC runtimes provide these symbols too,
+			// and linking GCC's static archive then causes duplicate definitions.
+			// Debian/Ubuntu:
+			#flag $when_first_existing('/usr/lib/gcc/x86_64-linux-gnu/6/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/7/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/8/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/9/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/10/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/11/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/12/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/13/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/14/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/15/libatomic.so','/usr/lib/gcc/x86_64-linux-gnu/16/libatomic.so')
 			// Redhat/CentOS:
-			#flag $when_first_existing('/usr/lib/gcc/x86_64-redhat-linux/6/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/7/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/8/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/9/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/10/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/11/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/12/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/13/libatomic.a','/usr/lib/gcc/x86_64-redhat-linux/14/libatomic.a')
+			#flag $when_first_existing('/usr/lib/gcc/x86_64-redhat-linux/6/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/7/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/8/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/9/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/10/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/11/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/12/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/13/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/14/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/15/libatomic.so','/usr/lib/gcc/x86_64-redhat-linux/16/libatomic.so')
 			// Gentoo:
-			#flag $when_first_existing('/usr/lib/gcc/x86_64-pc-linux-gnu/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-gnu/14/libatomic.a')
+			#flag $when_first_existing('/usr/lib/gcc/x86_64-pc-linux-gnu/6/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/7/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/8/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/9/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/10/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/11/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/12/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/13/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/14/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/15/libatomic.so','/usr/lib/gcc/x86_64-pc-linux-gnu/16/libatomic.so')
 			// OpenSUSE:
-			#flag $when_first_existing('/usr/lib64/gcc/x86_64-suse-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-suse-linux/14/libatomic.a')
+			#flag $when_first_existing('/usr/lib64/gcc/x86_64-suse-linux/6/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/7/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/8/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/9/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/10/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/11/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/12/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/13/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/14/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/15/libatomic.so','/usr/lib64/gcc/x86_64-suse-linux/16/libatomic.so')
 			// ALT Linux:
-			#flag $when_first_existing('/usr/lib64/gcc/x86_64-alt-linux/6/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/7/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/8/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/9/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/10/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/11/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/12/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/13/libatomic.a','/usr/lib64/gcc/x86_64-alt-linux/14/libatomic.a')
+			#flag $when_first_existing('/usr/lib64/gcc/x86_64-alt-linux/6/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/7/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/8/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/9/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/10/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/11/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/12/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/13/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/14/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/15/libatomic.so','/usr/lib64/gcc/x86_64-alt-linux/16/libatomic.so')
 			$if musl ? {
 				// Alpine:
-				#flag $when_first_existing('/usr/lib/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/14/libatomic.a')
+				#flag $when_first_existing('/usr/lib/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/6/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/7/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/8/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/9/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/10/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/11/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/12/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/13/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/14/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/15/libatomic.a','/usr/lib/gcc/x86_64-pc-linux-musl/16/libatomic.a')
 				#flag @VEXEROOT/thirdparty/stdatomic/nix/atomic.S
 			}
 		} $else $if arm64 {
@@ -70,18 +72,18 @@ $if linux {
 			//    13: 0000000000000040    12 IFUNC   GLOBAL DEFAULT    1 __atomic_add_fetch_4
 
 			// Debian/Ubuntu:
-			#flag $when_first_existing('/usr/lib/gcc/aarch64-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/14/libatomic.so')
+			#flag $when_first_existing('/usr/lib/gcc/aarch64-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/14/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/15/libatomic.so','/usr/lib/gcc/aarch64-linux-gnu/16/libatomic.so')
 			// Redhat/CentOS:
-			#flag $when_first_existing('/usr/lib/gcc/aarch64-redhat-linux/6/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/7/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/8/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/9/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/10/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/11/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/12/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/13/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/14/libatomic.so')
+			#flag $when_first_existing('/usr/lib/gcc/aarch64-redhat-linux/6/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/7/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/8/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/9/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/10/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/11/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/12/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/13/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/14/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/15/libatomic.so','/usr/lib/gcc/aarch64-redhat-linux/16/libatomic.so')
 			// Gentoo:
-			#flag $when_first_existing('/usr/lib/gcc/aarch64-pc-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/14/libatomic.so')
+			#flag $when_first_existing('/usr/lib/gcc/aarch64-pc-linux-gnu/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/14/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/15/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-gnu/16/libatomic.so')
 			// OpenSUSE:
-			#flag $when_first_existing('/usr/lib64/gcc/aarch64-suse-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/14/libatomic.so')
+			#flag $when_first_existing('/usr/lib64/gcc/aarch64-suse-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/14/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/15/libatomic.so','/usr/lib64/gcc/aarch64-suse-linux/16/libatomic.so')
 			// ALT Linux:
-			#flag $when_first_existing('/usr/lib64/gcc/aarch64-alt-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/14/libatomic.so')
+			#flag $when_first_existing('/usr/lib64/gcc/aarch64-alt-linux/6/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/7/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/8/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/9/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/10/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/11/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/12/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/13/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/14/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/15/libatomic.so','/usr/lib64/gcc/aarch64-alt-linux/16/libatomic.so')
 			$if musl ? {
 				// Alpine:
-				#flag $when_first_existing('/usr/lib/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/14/libatomic.so')
+				#flag $when_first_existing('/usr/lib/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/6/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/7/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/8/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/9/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/10/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/11/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/12/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/13/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/14/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/15/libatomic.so','/usr/lib/gcc/aarch64-pc-linux-musl/16/libatomic.so')
 			}
 		}
 	}

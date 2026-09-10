@@ -16,6 +16,7 @@ fn gen_c_for_source(name string, source string) string {
 	mut a := p.parse_file(src)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	tc.diagnostic_files[src] = true
 	tc.check_semantics()
@@ -48,6 +49,7 @@ fn gen_c_for_sources(name string, files map[string]string) string {
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	for path in paths {
 		tc.diagnostic_files[path] = true
@@ -70,6 +72,7 @@ fn gen_c_for_source_with_scalar_zero_decl(name string, source string, decl_name 
 	mut a := p.parse_file(src)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	tc.diagnostic_files[src] = true
 	tc.check_semantics()
@@ -115,7 +118,10 @@ fn main() {
 
 // test_mut_static_local_decl_codegen validates this v3 regression case.
 fn test_mut_static_local_decl_codegen() {
-	c_code := gen_c_for_source('static_local_decl', 'fn next_value() int {
+	c_code := gen_c_for_source('static_local_decl', '@[translated]
+module main
+
+fn next_value() int {
 	mut static x := 0
 	x++
 	return x
@@ -125,7 +131,7 @@ fn main() {
 	_ := next_value()
 }
 ')
-	assert c_code.contains('static int x = 0;')
+	assert c_code.contains('static i64 x = 0;')
 }
 
 // test_aggregate_globals_are_brace_zero_initialized validates this v3 regression case.
@@ -169,19 +175,21 @@ fn main() {}
 ')
 	assert c_code.contains('Array names = {0};')
 	assert c_code.contains('map lookup = {0};')
+	assert c_code.contains('names = array_new(sizeof(string), 0, 0);')
+	assert c_code.contains('lookup = new_map(')
 	assert c_code.contains('Box box = {0};')
-	assert c_code.contains('int empty[0];')
-	assert c_code.contains('int slots[2] = {0};')
-	assert c_code.contains('\nZeroLeading zero;\n')
-	assert c_code.contains('\nNestedZeroLeading nested;\n')
-	assert c_code.contains('\nZeroLeading zero_slots[2];\n')
+	assert c_code.contains('i64 empty[0];')
+	assert c_code.contains('i64 slots[2] = {0};')
+	assert c_code.contains('\nmain__ZeroLeading zero;\n')
+	assert c_code.contains('\nmain__NestedZeroLeading nested;\n')
+	assert c_code.contains('\nmain__ZeroLeading zero_slots[2];\n')
 	assert c_code.contains('\nint const_empty[0];\n')
-	assert c_code.contains('\nZeroLeadingConst const_zero;\n')
-	assert c_code.contains('\nZeroLeadingConst const_zero_slots[2];\n')
+	assert c_code.contains('\nmain__ZeroLeadingConst const_zero;\n')
+	assert c_code.contains('\nmain__ZeroLeadingConst const_zero_slots[2];\n')
 	assert !c_code.contains('Array names = 0;')
 	assert !c_code.contains('map lookup = 0;')
 	assert !c_code.contains('Box box = 0;')
-	assert !c_code.contains('int empty[0] = {0};')
+	assert !c_code.contains('i64 empty[0] = {0};')
 	assert !c_code.contains('ZeroLeading zero = {0};')
 	assert !c_code.contains('NestedZeroLeading nested = {0};')
 	assert !c_code.contains('ZeroLeading zero_slots[2] = {0};')
@@ -249,6 +257,6 @@ fn main() {
 }
 ',
 		'box', 'Box')
-	assert c_code.contains('box = (Box){0};'), c_code
+	assert c_code.contains('box = (main__Box){0};'), c_code
 	assert !c_code.contains('box = {0};')
 }

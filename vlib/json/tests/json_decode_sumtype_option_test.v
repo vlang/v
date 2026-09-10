@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 type Any = string | f32 | bool | ?int

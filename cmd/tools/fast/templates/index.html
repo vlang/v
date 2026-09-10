@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Is V still fast?</title>
+<style>
+	:root {
+		--bg: #0f1117;
+		--panel: #171a23;
+		--border: #262a36;
+		--fg: #e6e6e6;
+		--muted: #8b93a7;
+		--accent: #5aa9e6;
+		--green: #8BC34A;
+		--red: #c34a68;
+		--purple: #7144ac;
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		background: var(--bg);
+		color: var(--fg);
+		font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+		font-size: 14px;
+		line-height: 1.5;
+	}
+	/* use the full screen width so the wide stats table never needs horizontal scroll */
+	.wrap { max-width: none; margin: 0 auto; padding: 24px 24px 60px; }
+	/* keep the graph at a readable size instead of stretching it across the whole screen */
+	.chartbox { max-width: 1400px; }
+	h1 { font-size: 26px; margin: 0 0 4px; }
+	h1 a { color: var(--fg); text-decoration: none; }
+	.sub { color: var(--muted); margin-bottom: 20px; }
+	.sub a { color: var(--accent); }
+	.stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0 24px; }
+	.stat {
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 12px 16px;
+		min-width: 120px;
+	}
+	.stat .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+	.stat .v { font-size: 20px; margin-top: 4px; }
+	.panel {
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 24px;
+	}
+	.panel h2 { font-size: 15px; margin: 0; color: var(--muted); font-weight: 600; }
+	.chart-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+	.toggle { display: inline-flex; }
+	.toggle button {
+		background: #10131a; color: var(--muted); border: 1px solid var(--border);
+		padding: 5px 12px; cursor: pointer; font-family: inherit; font-size: 12px;
+	}
+	.toggle button + button { border-left: 0; }
+	.toggle button:first-child { border-radius: 6px 0 0 6px; }
+	.toggle button:last-child { border-radius: 0 6px 6px 0; }
+	.toggle button.active { background: var(--accent); color: #10131a; }
+	canvas { width: 100%; height: 320px; display: block; }
+	.legend { display: flex; gap: 18px; margin-top: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+	.legend span { display: inline-flex; align-items: center; gap: 6px; }
+	.legend i { width: 12px; height: 3px; display: inline-block; border-radius: 2px; }
+	.tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+	table { border-collapse: collapse; width: 100%; white-space: nowrap; }
+	th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+	th {
+		background: #10131a;
+		color: var(--muted);
+		font-weight: 600;
+		position: sticky;
+		top: 0;
+		text-align: right;
+	}
+	th.left, td.left { text-align: left; }
+	tbody tr:hover { background: #1c202b; }
+	td.msg { max-width: 368px; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+	td.commit a { color: var(--accent); text-decoration: none; }
+	.cell { position: relative; }
+	.memory { color: var(--muted); font-size: 11px; }
+	.diff {
+		display: inline-block;
+		border-radius: 3px;
+		color: #fff;
+		padding: 0 5px;
+		margin-top: 3px;
+		font-size: 11px;
+	}
+	.minus { background: var(--red); }
+	.plus  { background: var(--green); color: #10131a; }
+	.equal { background: var(--purple); }
+	.empty { padding: 40px; text-align: center; color: var(--muted); }
+	code { background: #10131a; padding: 2px 6px; border-radius: 4px; color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+	<h1><a href="/">Is V still fast?</a></h1>
+	<div class="sub">
+		Compilation speed of the V compiler, measured per commit. Running on base model M5 Macbook Pro 2025.<br>
+		Served by a <a href="https://modules.vlang.io/veb.html" target="_blank">veb</a> app —
+		source: <a href="https://github.com/vlang/v/tree/master/cmd/tools/fast" target="_blank">cmd/tools/fast</a>
+	</div>
+
+	<div class="stats">
+		<div class="stat"><div class="k">Benchmarks</div><div class="v">${count}</div></div>
+		<div class="stat"><div class="k">Latest commit</div><div class="v">${latest}</div></div>
+		<div class="stat"><div class="k">Page generated</div><div class="v">${generated}</div></div>
+	</div>
+
+	@if count == 0
+		<div class="panel empty">
+			No benchmarks yet.<br><br>
+			Run <code>v run . bench</code> to measure the current commit,<br>
+			or <code>v run . run</code> to sample every 50th commit of 2026.
+		</div>
+	@else
+		<div class="panel chartbox">
+			<div class="chart-head">
+				<h2 id="chart-title">Self-compilation time (ms), oldest → newest</h2>
+				<div class="toggle">
+					<button data-mode="time" class="active" onclick="setMode('time')">Compile time</button>
+					<button data-mode="rss_self" onclick="setMode('rss_self')">RSS: self-compile</button>
+					<button data-mode="rss_hello" onclick="setMode('rss_hello')">RSS: hello.v</button>
+				</div>
+			</div>
+			<canvas id="chart" width="1360" height="320"></canvas>
+			<div class="legend" id="legend"></div>
+		</div>
+
+		<div class="tablewrap">
+		<table>
+			<tr>
+				<th class="left">Timestamp</th>
+				<th class="left">Commit</th>
+				<th class="left">Message</th>
+				<th>v -o v.c</th>
+				<th>v -o v</th>
+				<th>V lines / s</th>
+				<th>V lines</th>
+				<th>v.c size</th>
+				<th>scan</th>
+				<th>parse</th>
+				<th>check</th>
+				<th>cgen</th>
+				<th>v hello.v</th>
+			</tr>
+			@for row in rows
+			<tr>
+				<td class="left">${row.timestamp}</td>
+				<td class="left commit"><a href="${row.commit_url}" target="_blank">${row.commit_hash}</a></td>
+				<td class="left msg" title="${row.message}">${row.message}</td>
+				<td class="cell">${row.v_c}ms
+					@if row.d_v_c.text != ''
+					<br>
+					<span class="diff ${row.d_v_c.cls}">${row.d_v_c.text}</span>
+					@end
+				</td>
+				<td class="cell">${row.v_self}ms
+					@if row.d_v_self.text != ''
+					<br>
+					<span class="diff ${row.d_v_self.cls}">${row.d_v_self.text}</span>
+					@end
+				</td>
+				<td>${row.lines_per_s}</td>
+				<td>${row.vlines}</td>
+				<td>${row.vc_size} KB</td>
+				<td>${row.scan}ms
+					@if row.scan_rss > 0
+					<div class="memory">${row.scan_rss} MB</div>
+					@end
+				</td>
+				<td>${row.parse}ms
+					@if row.parse_rss > 0
+					<div class="memory">${row.parse_rss} MB</div>
+					@end
+				</td>
+				<td>${row.check}ms
+					@if row.check_rss > 0
+					<div class="memory">${row.check_rss} MB</div>
+					@end
+				</td>
+				<td>${row.cgen}ms
+					@if row.cgen_rss > 0
+					<div class="memory">${row.cgen_rss} MB</div>
+					@end
+				</td>
+				<td class="cell">${row.hello}ms
+					@if row.d_hello.text != ''
+					<br>
+					<span class="diff ${row.d_hello.cls}">${row.d_hello.text}</span>
+					@end
+				</td>
+			</tr>
+			@end
+		</table>
+		</div>
+	@end
+</div>
+
+<script>
+const GREEN = '#8BC34A', RED = '#c34a68', BLUE = '#5aa9e6';
+let CHART_DATA = null, mode = 'time';
+
+const MODES = {
+	time:      { title: 'Self-compilation time (ms), oldest → newest',
+	             legend: '<span><i style="background:#5aa9e6"></i>v -o v.c</span><span><i style="background:#8BC34A"></i>v -o v</span><span><i style="background:#c34a68"></i>v hello.v</span>' },
+	rss_self:  { key: 'self_rss', color: GREEN,
+	             title: 'Self-compilation peak memory (RSS), oldest → newest',
+	             legend: '<span><i style="background:#8BC34A;height:10px"></i>v self-compile RSS — box: q1–q3, whisker: min–max, line: median</span>' },
+	rss_hello: { key: 'hello_rss', color: RED,
+	             title: 'hello.v peak memory (RSS), oldest → newest',
+	             legend: '<span><i style="background:#c34a68;height:10px"></i>v hello.v RSS — box: q1–q3, whisker: min–max, line: median</span>' },
+};
+
+async function loadData() {
+	if (CHART_DATA) return CHART_DATA;
+	// relative URL so it works both from the veb server and the static export
+	try { CHART_DATA = await (await fetch('benchmarks.json')).json(); } catch (e) { CHART_DATA = []; }
+	return CHART_DATA;
+}
+
+function setMode(m) {
+	mode = m;
+	document.querySelectorAll('.toggle button').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+	document.getElementById('chart-title').textContent = MODES[m].title;
+	document.getElementById('legend').innerHTML = MODES[m].legend;
+	render();
+}
+
+function setupCanvas(el) {
+	const dpr = window.devicePixelRatio || 1, cssW = el.clientWidth, cssH = el.clientHeight;
+	el.width = cssW * dpr; el.height = cssH * dpr;
+	const ctx = el.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, cssW, cssH);
+	return { ctx, W: cssW, H: cssH, pad: 48 };
+}
+
+function grid(ctx, W, H, pad, max, unit) {
+	ctx.strokeStyle = '#262a36'; ctx.fillStyle = '#8b93a7';
+	ctx.font = '11px Menlo, monospace'; ctx.lineWidth = 1; ctx.textAlign = 'left';
+	for (let g = 0; g <= 4; g++) {
+		const y = pad + (H - 2 * pad) * g / 4;
+		ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke();
+		ctx.fillText((max * (1 - g / 4)).toFixed(unit === 'MB' ? 0 : 0) + unit, 2, y + 3);
+	}
+}
+
+function noData(ctx, W, H) {
+	ctx.fillStyle = '#8b93a7'; ctx.font = '13px Menlo, monospace'; ctx.textAlign = 'center';
+	ctx.fillText('No RSS data yet — run `fast run`/`fast remeasure` to populate it.', W / 2, H / 2);
+	ctx.textAlign = 'left';
+}
+
+function drawTime(ctx, W, H, pad, data) {
+	const series = [{ key: 'v_c', color: BLUE }, { key: 'v_self', color: GREEN }, { key: 'hello', color: RED }];
+	let max = 0;
+	for (const d of data) for (const s of series) max = Math.max(max, d[s.key]);
+	max = max * 1.1 || 1;
+	grid(ctx, W, H, pad, max, 'ms');
+	const x = i => pad + (W - 2 * pad) * (data.length <= 1 ? 0.5 : i / (data.length - 1));
+	const y = v => pad + (H - 2 * pad) * (1 - v / max);
+	for (const s of series) {
+		ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.beginPath();
+		data.forEach((d, i) => { i ? ctx.lineTo(x(i), y(d[s.key])) : ctx.moveTo(x(i), y(d[s.key])); });
+		ctx.stroke();
+	}
+}
+
+// box-and-whisker of a five-number RSS summary [min,q1,med,q3,max] (KB -> MB)
+function drawBoxWhisker(ctx, W, H, pad, data, key, color) {
+	const valid = data.filter(d => Array.isArray(d[key]) && d[key].length === 5 && d[key][4] > 0);
+	if (!valid.length) { noData(ctx, W, H); return; }
+	let maxKb = 0;
+	for (const d of valid) maxKb = Math.max(maxKb, d[key][4]);
+	const max = maxKb * 1.1 / 1024; // MB with headroom
+	grid(ctx, W, H, pad, max, 'MB');
+	const x = i => pad + (W - 2 * pad) * (data.length <= 1 ? 0.5 : i / (data.length - 1));
+	const y = mb => pad + (H - 2 * pad) * (1 - mb / max);
+	const bw = Math.max(3, Math.min(14, (W - 2 * pad) / data.length * 0.55));
+	data.forEach((d, i) => {
+		const a = d[key];
+		if (!Array.isArray(a) || a.length !== 5 || a[4] <= 0) return;
+		const [mn, q1, md, q3, mx] = a.map(kb => y(kb / 1024));
+		const cx = x(i);
+		ctx.strokeStyle = color; ctx.lineWidth = 1;
+		// whisker + caps
+		ctx.beginPath(); ctx.moveTo(cx, mn); ctx.lineTo(cx, mx);
+		ctx.moveTo(cx - bw / 3, mn); ctx.lineTo(cx + bw / 3, mn);
+		ctx.moveTo(cx - bw / 3, mx); ctx.lineTo(cx + bw / 3, mx); ctx.stroke();
+		// box q1..q3
+		ctx.fillStyle = color + '33';
+		ctx.fillRect(cx - bw / 2, q3, bw, q1 - q3);
+		ctx.strokeRect(cx - bw / 2, q3, bw, q1 - q3);
+		// median
+		ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx - bw / 2, md); ctx.lineTo(cx + bw / 2, md); ctx.stroke();
+	});
+}
+
+async function render() {
+	const el = document.getElementById('chart');
+	if (!el) return;
+	const data = await loadData();
+	const { ctx, W, H, pad } = setupCanvas(el);
+	if (!data || !data.length) return;
+	if (mode === 'time') drawTime(ctx, W, H, pad, data);
+	else drawBoxWhisker(ctx, W, H, pad, data, MODES[mode].key, MODES[mode].color);
+}
+
+setMode('time');
+window.addEventListener('resize', render);
+</script>
+</body>
+</html>

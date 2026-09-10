@@ -1,0 +1,21 @@
+@[callconv: stdcall]
+type StdcallCallback = fn (int) int
+
+@[callconv: cdecl]
+type CdeclCallback = fn (int) int
+
+interface CallbackProvider {
+	callback() StdcallCallback
+}
+
+struct CdeclProvider {}
+
+fn (_ CdeclProvider) callback() CdeclCallback {
+	return fn (value int) int {
+		return value
+	}
+}
+
+fn main() {
+	_ := CallbackProvider(CdeclProvider{})
+}

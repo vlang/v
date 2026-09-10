@@ -1,0 +1,5 @@
+Name: quoted-split-link-pairs-74
+Description: Quoted and escaped split linker operand fixture
+Version: 1.0.0
+Libs: -L "/issue74/public search" -l issue74_public
+Libs.private: -L /issue74/private\ search -l issue74_private

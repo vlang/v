@@ -29,13 +29,13 @@ concurrency:
 jobs:
   tools-linux:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     strategy:
       matrix:
         cc: [tcc, gcc, clang]
       fail-fast: false
     env:
-      VFLAGS: -cc ${{ matrix.cc }}
+      VFLAGS: -old-compiler -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
       - name: Build V
@@ -75,7 +75,7 @@ jobs:
         cc: [clang]
       fail-fast: false
     env:
-      VFLAGS: -cc ${{ matrix.cc }}
+      VFLAGS: -old-compiler -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
       - name: Build V
@@ -100,6 +100,23 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build V
         run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
+      - name: Install OpenSSL for MSVC
+        if: ${{ matrix.cc == 'msvc' }}
+        run: |
+          $opensslBin = 'C:\Program Files\OpenSSL\bin'
+          $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+          $cryptoLib = Join-Path $libDir 'libcrypto.lib'
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+            choco install openssl --version=3.5.4 --allow-downgrade -y --no-progress
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chocolatey failed to install OpenSSL 3.5.4 (exit $LASTEXITCODE)"
+            }
+          }
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+            throw "OpenSSL installation is incomplete under C:\Program Files\OpenSSL"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
+          Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
       - name: Install SQLite (needed by vsqlite tool)
         run: .\.github\workflows\windows-install-sqlite.bat
       - name: Check build tools
@@ -112,13 +129,13 @@ jobs:
 
   tools-docker-ubuntu-musl:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     container:
       image: thevlang/vlang:ubuntu-build
       env:
         V_CI_MUSL: 1
         V_CI_UBUNTU_MUSL: 1
-        VFLAGS: -cc musl-gcc -gc none
+        VFLAGS: -old-compiler -cc musl-gcc -gc none
       volumes:
         - ${{github.workspace}}:/opt/vlang
     steps:
@@ -132,6 +149,15 @@ jobs:
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: Build musl-native OpenSSL
+        run: |
+          wget -q https://github.com/openssl/openssl/releases/download/openssl-3.5.4/openssl-3.5.4.tar.gz -O /tmp/openssl-3.5.4.tar.gz
+          echo '967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99  /tmp/openssl-3.5.4.tar.gz' | sha256sum --check --strict
+          tar -C /tmp -xf /tmp/openssl-3.5.4.tar.gz
+          cd /tmp/openssl-3.5.4
+          CC=musl-gcc ./Configure linux-x86_64 no-shared no-tests no-secure-memory no-afalgeng --prefix=/usr/local --libdir=lib64 --openssldir=/usr/local/ssl
+          make -j"$(nproc)"
+          make install_sw
       - name: Check build tools
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
@@ -152,7 +178,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Start FreeBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.3.0
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: freebsd
           version: '15.1'
@@ -214,7 +240,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Start OpenBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.3.0
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: openbsd
           version: '7.8'
@@ -225,7 +251,7 @@ jobs:
       - name: Tests tools on OpenBSD with ${{ matrix.cc }}
         shell: cpa.sh {0}
         run: |
-          sudo pkg_add git sqlite3 gmake boehm-gc libiconv
+          sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
           # Mandatory: hostname not set in VM => some tests fail
           sudo hostname -s openbsd-ci
           echo "::group::OS infos"

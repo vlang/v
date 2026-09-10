@@ -3,14 +3,18 @@
 // that can be found in the LICENSE file.
 module builder
 
+import crypto.sha256
 import hash.fnv1a
 import os
+import os.filelock
+import time
 import v.ast
 import v.cflag
 import v.pref
 import v.util
 import v.vcache
 import term
+import strings
 
 const c_std = 'c99'
 const cpp_std = 'c++17'
@@ -29,6 +33,14 @@ const missing_libatomic_markers = [
 ]!
 const max_cross_sysroot_git_symlink_depth = 32
 const max_cross_sysroot_git_symlink_placeholder_size = 256
+const max_reproducible_macos_debug_cache_bytes = u64(1024 * 1024 * 1024)
+
+struct ReproducibleMacosDebugCacheEntry {
+	object_dir  string
+	object_path string
+	size        u64
+	last_used   i64
+}
 
 fn live_windows_import_lib_path(source_path string) string {
 	cache_dir := os.join_path(os.cache_dir(), 'v', 'live')
@@ -78,14 +90,14 @@ fn c_output_suggests_missing_header_for_typedef_c_struct(c_output string, known_
 			}
 			if name in known_typedef_c_struct_aliases
 				&& (lower_line.contains('expected (got') || lower_line.contains('unknown type name')
-				|| lower_line.contains('undeclared identifier')
-				|| lower_line.contains('does not name a type')) {
+					|| lower_line.contains('undeclared identifier')
+					|| lower_line.contains('does not name a type')) {
 				return known_typedef_c_struct_aliases[name]
 			}
 			if name.contains('__')
 				&& (lower_line.contains('expected (got') || lower_line.contains('unknown type name')
-				|| lower_line.contains('undeclared identifier')
-				|| lower_line.contains('does not name a type')) {
+					|| lower_line.contains('undeclared identifier')
+					|| lower_line.contains('does not name a type')) {
 				suffix := name.all_after_last('__')
 				if suffix in known_typedef_c_structs {
 					return suffix
@@ -367,8 +379,7 @@ fn normalized_missing_library_name(raw_name string, allow_plain_name bool) strin
 fn c_error_missing_library_name(c_output string) string {
 	for line in c_output.split_into_lines() {
 		if line.contains("library '") && line.contains("' not found") {
-			return normalized_missing_library_name(line.all_after("library '").all_before("' not found"),
-				true)
+			return normalized_missing_library_name(line.all_after("library '").all_before("' not found"), true)
 		}
 		lower_line := line.to_lower()
 		for marker in [
@@ -387,8 +398,7 @@ fn c_error_missing_library_name(c_output string) string {
 			}
 		}
 		if line.contains(': error: ') && lower_line.contains(': no such file or directory') {
-			lib_name := normalized_missing_library_name(line.all_after(': error: ').all_before(': No such file or directory'),
-				false)
+			lib_name := normalized_missing_library_name(line.all_after(': error: ').all_before(': No such file or directory'), false)
 			if lib_name != '' {
 				return lib_name
 			}
@@ -466,8 +476,7 @@ fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, 
 				error_keyword = libatomic_marker
 				error_context_before = 0
 			}
-			elines := error_context_lines(trimmed_output, error_keyword, error_context_before,
-				cut_off_limit)
+			elines := error_context_lines(trimmed_output, error_keyword, error_context_before, cut_off_limit)
 			header := '================== ${c_compilation_error_title} (from ${ccompiler}): =============='
 			println(header)
 			for eline in elines {
@@ -505,13 +514,11 @@ fn (mut v Builder) post_process_c_compiler_output_with_report(ccompiler string, 
 		|| res.output.contains('.o: file not recognized') {
 		more_suggestions += '\n${highlight_word('Suggestion')}: try `v wipe-cache`, then repeat your compilation.'
 	}
-	missing_typedef_header_name := c_output_suggests_missing_header_for_typedef_c_struct(res.output,
-		v.known_typedef_c_structs(), v.known_typedef_c_struct_aliases())
+	missing_typedef_header_name := c_output_suggests_missing_header_for_typedef_c_struct(res.output, v.known_typedef_c_structs(), v.known_typedef_c_struct_aliases())
 	if missing_typedef_header_name != '' {
 		more_suggestions += '\n${highlight_word('Suggestion')}: the C typedef `${missing_typedef_header_name}` backing `@[typedef] struct C.${missing_typedef_header_name} {}` was not found by the C compiler. Make sure the header that defines it is included on this platform and that its `#flag -I` path is correct. If the C API actually declares `struct ${missing_typedef_header_name}` without a typedef, remove `@[typedef]` from the V redeclaration.'
 	}
-	missing_typedef_name := c_output_suggests_missing_typedef_for_c_struct(res.output,
-		v.known_non_typedef_c_structs())
+	missing_typedef_name := c_output_suggests_missing_typedef_for_c_struct(res.output, v.known_non_typedef_c_structs())
 	if missing_typedef_name != '' {
 		more_suggestions += '\n${highlight_word('Suggestion')}: if `${missing_typedef_name}` is declared in the C header with `typedef struct ... ${missing_typedef_name};`, add `@[typedef]` to the V redeclaration: `@[typedef] struct C.${missing_typedef_name} { ... }`.'
 	}
@@ -580,6 +587,8 @@ pub enum CC {
 }
 
 pub struct CcompilerOptions {
+mut:
+	pkgconfig_pthread bool // exact `-pthread` supplied by an ordered pkg-config linker segment
 pub mut:
 	guessed_compiler string
 	shared_postfix   string // .so, .dll
@@ -717,6 +726,173 @@ fn cc_from_pref_ccompiler_type(cc_type pref.CompilerType) CC {
 		.msvc { .msvc }
 		.cplusplus { .unknown }
 	}
+}
+
+fn ordered_link_cflag_key(flag cflag.CFlag) string {
+	return '${flag.os}\x00${flag.name}\x00${flag.value}'
+}
+
+fn quote_spaced_ordered_pkgconfig_operand(flag cflag.CFlag, preserve_msvc_slash_option bool) cflag.CFlag {
+	value := flag.value
+	is_quoted := value.len >= 2 && ((value[0] == `"` && value[value.len - 1] == `"`)
+		|| (value[0] == `'` && value[value.len - 1] == `'`))
+	is_msvc_slash_option := preserve_msvc_slash_option && flag.name == '' && value.starts_with('/')
+		&& value.contains(':')
+	if is_msvc_slash_option {
+		colon_index := value.index(':') or { return flag }
+		option_name := value[1..colon_index]
+		operand := value[colon_index + 1..]
+		is_operand_quoted := operand.len >= 2
+			&& ((operand[0] == `"` && operand[operand.len - 1] == `"`)
+				|| (operand[0] == `'` && operand[operand.len - 1] == `'`))
+		if option_name != '' && option_name.bytes().all(it.is_alnum())
+			&& operand.contains_any(' \t\r\n') && !is_operand_quoted {
+			return cflag.CFlag{
+				mod: flag.mod
+				os: flag.os
+				name: flag.name
+				value: '${value[..colon_index + 1]}"${operand}"'
+				cached: flag.cached
+			}
+		}
+		return flag
+	}
+	is_raw_operand := flag.name == '' && !is_msvc_slash_option
+	if (flag.name != '-L' && !is_raw_operand) || !value.contains_any(' \t\r\n') || is_quoted {
+		return flag
+	}
+	return cflag.CFlag{
+		mod: flag.mod
+		os: flag.os
+		name: flag.name
+		value: '"${value}"'
+		cached: flag.cached
+	}
+}
+
+fn generic_ordered_pkgconfig_flag(flag cflag.CFlag) cflag.CFlag {
+	value := flag.value
+	if flag.name != '-L' || value.len <= 2 || value[0] != `"` || value[value.len - 1] != `"` {
+		return flag
+	}
+	return cflag.CFlag{
+		mod: flag.mod
+		os: flag.os
+		name: flag.name
+		value: value[1..value.len - 1]
+		cached: flag.cached
+	}
+}
+
+fn ordered_pkgconfig_link_args(flag cflag.CFlag, convert_windows_import_libs bool) []string {
+	if flag.name == '-Wl' && flag.value.contains_any(' \t\r\n') {
+		formatted := flag.format() or { return []string{} }
+		return ['"${formatted}"']
+	}
+	raw_safe_flag := quote_spaced_ordered_pkgconfig_operand(flag, false)
+	if convert_windows_import_libs {
+		return raw_safe_flag.windows_import_lib_link_args()
+	}
+	formatted_flag := generic_ordered_pkgconfig_flag(raw_safe_flag)
+	return [formatted_flag.format() or { return []string{} }]
+}
+
+fn ordinary_flag_is_linker_control(flag cflag.CFlag) bool {
+	raw := flag.value.trim_space()
+	return flag.name in ['-L', '-Wl', '-framework', '-library'] || raw == '-Xlinker'
+		|| raw.starts_with('-Xlinker ') || raw == '-force_load' || raw.starts_with('-force_load ')
+		|| raw == '-weak_framework' || raw.starts_with('-weak_framework ')
+}
+
+fn ordinary_flag_takes_linker_operand(flag cflag.CFlag) bool {
+	raw := flag.value.trim_space()
+	return (flag.name == '' && raw in ['-Xlinker', '-force_load', '-weak_framework'])
+		|| (flag.name == '-Wl'
+			&& raw in [',-rpath', ',--rpath', ',-R', ',-rpath-link', ',--rpath-link',
+				',--version-script'])
+}
+
+fn ordered_ordinary_link_args(flag cflag.CFlag, force_linker bool) []string {
+	if force_linker {
+		return [flag.format() or { return []string{} }]
+	}
+	_, others, libs := [flag].defines_others_libs()
+	if libs.len > 0 {
+		return libs
+	}
+	if ordinary_flag_is_linker_control(flag) {
+		return others
+	}
+	return []string{}
+}
+
+fn (v &Builder) split_ordered_pkgconfig_link_flags(cflags []cflag.CFlag) ([]cflag.CFlag, []string, bool) {
+	mut has_pkgconfig_segment := false
+	for segment in v.table.link_flag_segments {
+		if segment.is_pkgconfig {
+			has_pkgconfig_segment = true
+			break
+		}
+	}
+	if !has_pkgconfig_segment {
+		return cflags, []string{}, false
+	}
+	mut active_cflags := map[string]bool{}
+	for flag in cflags {
+		active_cflags[ordered_link_cflag_key(flag)] = true
+	}
+	mut routed_cflags := map[string]bool{}
+	mut ordered_link_flags := []string{}
+	mut pkgconfig_pthread := false
+	mut pending_linker_option := ''
+	convert_windows_import_libs := v.pref.os == .windows && v.pref.ccompiler_type in [
+		.gcc,
+		.mingw,
+	]
+	for segment in v.table.link_flag_segments {
+		if segment.is_pkgconfig {
+			if pending_linker_option != '' {
+				verror('incomplete linker option `${pending_linker_option}` before `#pkgconfig`; provide its operand in the next ordinary `#flag` directive before the pkg-config directive')
+			}
+			for flag in segment.flags {
+				args := ordered_pkgconfig_link_args(flag, convert_windows_import_libs)
+				for arg in args {
+					ordered_link_flags << arg
+					if arg == '-pthread' {
+						pkgconfig_pthread = true
+					}
+				}
+			}
+			continue
+		}
+		for flag in segment.flags {
+			key := ordered_link_cflag_key(flag)
+			if key !in active_cflags {
+				continue
+			}
+			force_linker := pending_linker_option != ''
+			pending_linker_option = ''
+			if !force_linker && ordinary_flag_takes_linker_operand(flag) {
+				pending_linker_option = flag.format() or { flag.value.trim_space() }
+			}
+			args := ordered_ordinary_link_args(flag, force_linker)
+			if args.len == 0 {
+				continue
+			}
+			routed_cflags[key] = true
+			ordered_link_flags << args
+		}
+	}
+	if pending_linker_option != '' {
+		verror('incomplete linker option `${pending_linker_option}` at the end of ordered linker flags; provide its operand in the next ordinary `#flag` directive')
+	}
+	mut legacy_cflags := []cflag.CFlag{cap: cflags.len}
+	for flag in cflags {
+		if ordered_link_cflag_key(flag) !in routed_cflags {
+			legacy_cflags << flag
+		}
+	}
+	return legacy_cflags, ordered_link_flags, pkgconfig_pthread
 }
 
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
@@ -965,6 +1141,16 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if ccoptions.debug_mode && current_os != 'windows' && v.pref.build_mode != .build_module {
 		if ccoptions.cc != .tcc && current_os == 'macos' {
 			ccoptions.linker_flags << '-Wl,-export_dynamic' // clang for mac needs export_dynamic instead of -rdynamic
+			if v.pref.building_v && ccoptions.cc == .clang {
+				// ld64 otherwise lets temporary object and output paths perturb the
+				// content-derived UUID and its provisional ad-hoc code signature.
+				// Suppress that signature so every linker version leaves the same
+				// unsigned layout for the normalized post-link signature below.
+				ccoptions.args << os.quoted_path('-ffile-prefix-map=${v.out_name_c}=<generated-c>')
+				ccoptions.linker_flags << '-Wl,-reproducible'
+				ccoptions.linker_flags << '-Wl,-final_output,v-compiler'
+				ccoptions.linker_flags << '-Wl,-no_adhoc_codesign'
+			}
 		} else {
 			if v.pref.ccompiler != 'x86_64-w64-mingw32-gcc' {
 				// the mingw-w64-gcc cross compiler does not support -rdynamic, and windows/wine already does have nicer backtraces
@@ -1080,10 +1266,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.o_args << only_o_files
 	}
 
-	defines, others, libs := cflags.defines_others_libs()
+	legacy_cflags, ordered_link_flags, pkgconfig_pthread :=
+		v.split_ordered_pkgconfig_link_flags(cflags)
+	defines, others, libs := legacy_cflags.defines_others_libs()
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
+	ccoptions.linker_flags << ordered_link_flags
+	ccoptions.pkgconfig_pthread = pkgconfig_pthread
 	v.fixup_tcc_macos_comma_path_flags(mut ccoptions)
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
 		if ccoptions.cc != .tcc {
@@ -1128,6 +1318,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 				}
 			}
 		}
+		if ccoptions.cc == .clang && ccoptions.source_args.contains('-x none') {
+			// Clang 21 warns that this language reset is unused when no source follows it.
+			// Keep the reset for cached/object inputs, but do not let -cstrict promote that
+			// command-line warning to an error.
+			ccoptions.wargs << '-Wno-unused-command-line-argument'
+		}
 	}
 	if !v.pref.no_std {
 		ccoptions.source_args << ['-std=${c_std}', '-D_DEFAULT_SOURCE']
@@ -1148,6 +1344,10 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 
 pub fn (v &Builder) get_compile_args() []string {
 	return v.only_compile_args(v.ccoptions)
+}
+
+pub fn (v &Builder) has_pkgconfig_pthread() bool {
+	return v.ccoptions.pkgconfig_pthread
 }
 
 fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
@@ -1178,6 +1378,12 @@ fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
+	if ccoptions.pkgconfig_pthread
+		&& (ccoptions.cc in [.gcc, .clang] || v.pref.ccompiler_type == .cplusplus)
+		&& (v.pref.is_o || (v.pref.build_mode == .build_module && !v.pref.is_shared))
+		&& !all.any(pref.contains_exact_cflag_token(it, '-pthread')) {
+		all << '-pthread'
+	}
 	return all
 }
 
@@ -1207,25 +1413,25 @@ fn (v &Builder) thirdparty_cross_compile_config() ThirdpartyCrossCompileConfig {
 	if v.pref.os == .linux && current_os != 'linux' {
 		sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
 		return ThirdpartyCrossCompileConfig{
-			target_args:           ['-target x86_64-linux-gnu']
+			target_args: ['-target x86_64-linux-gnu']
 			trailing_include_args: [
 				'-I',
 				os.quoted_path('${sysroot}/include'),
 			]
-			sysroot:               sysroot
+			sysroot: sysroot
 		}
 	}
 	if v.pref.os == .freebsd && current_os != 'freebsd' {
 		sysroot := os.join_path(os.vmodules_dir(), 'freebsdroot')
 		return ThirdpartyCrossCompileConfig{
-			target_args:           ['-target x86_64-unknown-freebsd14.0']
+			target_args: ['-target x86_64-unknown-freebsd14.0']
 			trailing_include_args: [
 				'-I',
 				os.quoted_path('${sysroot}/include'),
 				'-I',
 				os.quoted_path('${sysroot}/usr/include'),
 			]
-			sysroot:               sysroot
+			sysroot: sysroot
 		}
 	}
 	return ThirdpartyCrossCompileConfig{}
@@ -1291,13 +1497,11 @@ fn (mut v Builder) setup_output_name() {
 		}
 	}
 	if v.pref.build_mode == .build_module {
-		v.pref.out_name = v.pref.cache_manager.mod_postfix_with_key2cpath(v.pref.path, '.o',
-			v.pref.path) // v.out_name
+		v.pref.out_name = v.pref.cache_manager.mod_postfix_with_key2cpath(v.pref.path, '.o', v.pref.path) // v.out_name
 		if v.pref.is_verbose {
 			println('Building ${v.pref.path} to ${v.pref.out_name} ...')
 		}
-		v.pref.cache_manager.mod_save(v.pref.path, '.output.description.txt', v.pref.path,
-			get_dsc_content('PREF.PATH: ${v.pref.path}\nVOPTS: ${v.pref.cache_manager.vopts}\n')) or {
+		v.pref.cache_manager.mod_save(v.pref.path, '.output.description.txt', v.pref.path, get_dsc_content('PREF.PATH: ${v.pref.path}\nVOPTS: ${v.pref.cache_manager.vopts}\n')) or {
 			panic(err)
 		}
 	}
@@ -1326,6 +1530,60 @@ fn looks_like_windows_path(value string) bool {
 	return value.contains('\\') || value.contains('/') || (value.len > 1 && value[1] == `:`)
 }
 
+// rewrite_windows_path_operand_arg rewrites only the path value of compiler
+// arguments that take a filesystem operand: the path bearing options `-I`,
+// `-L`, `-B`, `-o ` and `-c `, and bare source/object/archive file paths.
+// Option values that merely contain a path looking substring are left
+// untouched, so that e.g. `-DROOT="C:\Program Files\SDK"` keeps its exact
+// macro value after the rewrite.
+fn single_windows_path_operand(value string) ?string {
+	trimmed := value.trim_space()
+	if trimmed.len >= 2 && trimmed[0] in [`"`, `'`] {
+		if trimmed[trimmed.len - 1] != trimmed[0] {
+			return none
+		}
+		return trimmed[1..trimmed.len - 1]
+	}
+	if trimmed.bytes().any(it.is_space()) {
+		return none
+	}
+	return trimmed
+}
+
+fn quote_windows_gcc_path_operand(path string) string {
+	mut trailing_separators := 0
+	for i := path.len - 1; i >= 0 && path[i] == `\\`; i-- {
+		trailing_separators++
+	}
+	return '"${path}${'\\'.repeat(trailing_separators)}"'
+}
+
+fn rewrite_windows_path_operand_arg(arg string, resolver WindowsPathResolver) string {
+	if arg == '' {
+		return ''
+	}
+	for prefix in ['-I', '-L', '-B', '-o ', '-c '] {
+		if arg.starts_with(prefix) {
+			path := single_windows_path_operand(arg[prefix.len..]) or { return arg }
+			if looks_like_windows_path(path) {
+				return prefix + quote_windows_gcc_path_operand(resolver(path))
+			}
+		}
+	}
+	if !arg.starts_with('-') {
+		path := single_windows_path_operand(arg) or { return arg }
+		if looks_like_windows_path(path) {
+			return quote_windows_gcc_path_operand(resolver(path))
+		}
+	}
+	return arg
+}
+
+// rewrite_windows_path_arg rewrites any quoted path substring of a compiler
+// argument, in addition to the whole path operands handled by
+// rewrite_windows_path_operand_arg. tcc keeps this broader, pre-existing
+// rewrite, so its whole argument vector stays ASCII on Windows; the narrower
+// operand only rewrite is used for gcc, see tcc_windows_path_arg.
 fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
 	if arg == '' {
 		return ''
@@ -1339,19 +1597,18 @@ fn rewrite_windows_path_arg(arg string, resolver WindowsPathResolver) string {
 			}
 		}
 	}
-	for prefix in ['-I', '-L', '-B', '-o ', '-c '] {
-		if arg.starts_with(prefix) {
-			path := arg[prefix.len..].trim_space().trim('"')
-			if looks_like_windows_path(path) {
-				return prefix + '"${resolver(path)}"'
-			}
-		}
-	}
-	trimmed := arg.trim_space().trim('"')
-	if !arg.starts_with('-') && looks_like_windows_path(trimmed) {
-		return '"${resolver(trimmed)}"'
-	}
-	return arg
+	return rewrite_windows_path_operand_arg(arg, resolver)
+}
+
+// cc_uses_short_windows_paths reports whether the given C compiler needs the
+// Windows paths passed to it to be rewritten to their ASCII 8.3 short forms
+// first. Both tcc and the MinGW GCC toolchain, including its C++ drivers, read response file contents
+// with the ANSI C runtime: non-ASCII characters in paths get mangled on
+// Windows setups, whose active code page can not represent them (or whose
+// compiler expects UTF-8). V therefore prefers pure ASCII short paths and,
+// for gcc, falls back to the Unicode command line when no short name exists.
+fn cc_uses_short_windows_paths(cc CC, compiler_type pref.CompilerType) bool {
+	return cc in [.gcc, .tcc] || compiler_type == .cplusplus
 }
 
 fn short_windows_path(path string) string {
@@ -1363,17 +1620,28 @@ fn short_windows_path(path string) string {
 
 fn (v &Builder) tcc_windows_path(p string) string {
 	$if windows {
-		if v.ccoptions.cc == .tcc {
+		if cc_uses_short_windows_paths(v.ccoptions.cc, v.pref.ccompiler_type) {
 			return short_windows_path(p)
 		}
 	}
 	return p
 }
 
+// tcc_windows_path_arg rewrites the Windows path arguments of tcc and the
+// MinGW GCC toolchain to ASCII 8.3 short paths, so that non-ASCII project
+// paths survive the ANSI response file encoding (see issue #28126). tcc keeps
+// the broader rewrite_windows_path_arg, while GCC and its C++ drivers get only their real
+// filesystem operands rewritten: gcc argument vectors can contain user
+// `CFLAGS` with path looking values (e.g. `-DROOT="C:\Program Files\SDK"`),
+// which must not be altered. If an 8.3 alias is unavailable, should_use_rsp
+// sends gcc's remaining Unicode arguments through CreateProcessW instead.
 fn (v &Builder) tcc_windows_path_arg(arg string) string {
 	$if windows {
 		if v.ccoptions.cc == .tcc {
 			return rewrite_windows_path_arg(arg, short_windows_path)
+		}
+		if v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus {
+			return rewrite_windows_path_operand_arg(arg, short_windows_path)
 		}
 	}
 	return arg
@@ -1389,7 +1657,346 @@ fn (v &Builder) rsp_safe_arg(arg string) string {
 	return arg
 }
 
-fn (v &Builder) should_use_rsp(rsp_args []string) bool {
+fn shell_safe_cc_arg(arg string) string {
+	if arg in ['-Wl,-(', '-Wl,-)'] {
+		return os.quoted_path(arg)
+	}
+	return arg
+}
+
+fn gcc_rsp_args_are_ascii(args []string) bool {
+	return args.all(it.is_ascii())
+}
+
+// ccompiler_exec_args turns the builder's shell-formatted option fragments into the
+// exact argument vector expected by os.exec, without corrupting non-ASCII bytes.
+fn ccompiler_exec_args(ccompiler string, args []string) []string {
+	mut exact_args := [ccompiler]
+	mut current := []u8{}
+	mut quote := u8(0)
+	mut has_arg := false
+	input := args.join(' ')
+	mut i := 0
+	for i < input.len {
+		ch := input[i]
+		if quote == 0 && ch.is_space() {
+			if has_arg {
+				exact_args << current.bytestr()
+				current = []u8{}
+				has_arg = false
+			}
+			i++
+			continue
+		}
+		if ch == `\\` {
+			start := i
+			for i < input.len && input[i] == `\\` {
+				i++
+			}
+			count := i - start
+			if i < input.len && input[i] == `"` {
+				for _ in 0 .. count / 2 {
+					current << `\\`
+				}
+				if count % 2 == 1 {
+					current << `"`
+				} else {
+					quote = if quote == `"` { u8(0) } else { u8(`"`) }
+				}
+				has_arg = true
+				i++
+				continue
+			}
+			for _ in 0 .. count {
+				current << `\\`
+			}
+			has_arg = true
+			continue
+		}
+		if ch in [`"`, `'`] {
+			if quote == 0 {
+				quote = ch
+				has_arg = true
+				i++
+				continue
+			}
+			if quote == ch {
+				quote = 0
+				i++
+				continue
+			}
+		}
+		current << ch
+		has_arg = true
+		i++
+	}
+	if has_arg {
+		exact_args << current.bytestr()
+	}
+	return exact_args
+}
+
+fn gcc_response_file_content(args []string) string {
+	exact_args := ccompiler_exec_args('', args)[1..]
+	return gcc_response_file_content_for_exact_args(exact_args)
+}
+
+fn gcc_response_file_content_for_exact_args(args []string) string {
+	return args.map('"' + it.replace('\\', '\\\\').replace('"', '\\"') + '"').join(' ')
+}
+
+fn windows_quote_exec_arg(arg string) string {
+	if arg.len == 0 {
+		return '""'
+	}
+	quote_char := `"`
+	backslash := `\\`
+	mut quoted := strings.new_builder(arg.len + 8)
+	quoted.write_u8(quote_char)
+	mut pending_backslashes := 0
+	for ch in arg.bytes() {
+		if ch == backslash {
+			pending_backslashes++
+			continue
+		}
+		if ch == quote_char {
+			for _ in 0 .. pending_backslashes * 2 + 1 {
+				quoted.write_u8(backslash)
+			}
+			quoted.write_u8(quote_char)
+			pending_backslashes = 0
+			continue
+		}
+		for _ in 0 .. pending_backslashes {
+			quoted.write_u8(backslash)
+		}
+		pending_backslashes = 0
+		quoted.write_u8(ch)
+	}
+	for _ in 0 .. pending_backslashes * 2 {
+		quoted.write_u8(backslash)
+	}
+	quoted.write_u8(quote_char)
+	return quoted.str()
+}
+
+struct GccUnicodeResponsePlan {
+mut:
+	args                   []string
+	response_files         []string
+	response_contents      []string
+	response_encoding      GccResponseFileEncoding
+	requires_full_response bool
+	full_response_content  string
+}
+
+enum GccResponseFileEncoding {
+	ascii
+	ansi
+	utf8
+}
+
+fn (mut plan GccUnicodeResponsePlan) add_ascii_run(response_file string, args []string) {
+	file := '${response_file}.${plan.response_files.len}'
+	plan.args << '@${file}'
+	plan.response_files << file
+	plan.response_contents << gcc_response_file_content_for_exact_args(args)
+}
+
+fn gcc_unicode_response_plan(response_file string, args []string, max_command_bytes int) GccUnicodeResponsePlan {
+	exact_args := ccompiler_exec_args('', args)[1..]
+	mut plan := GccUnicodeResponsePlan{
+		response_encoding: .ascii
+	}
+	mut ascii_run := []string{}
+	for arg in exact_args {
+		if arg.is_ascii() {
+			ascii_run << arg
+			continue
+		}
+		if ascii_run.len > 0 {
+			plan.add_ascii_run(response_file, ascii_run)
+			ascii_run = []string{}
+		}
+		plan.args << arg
+	}
+	if ascii_run.len > 0 {
+		plan.add_ascii_run(response_file, ascii_run)
+	}
+	mut quoted_command_bytes := 0
+	for arg in plan.args {
+		// Account for the exact backslash+quote expansion used by CreateProcessW.
+		quoted_command_bytes += windows_quote_exec_arg(arg).len + 1
+	}
+	if quoted_command_bytes > max_command_bytes {
+		plan.requires_full_response = true
+		plan.full_response_content = gcc_response_file_content_for_exact_args(exact_args)
+	}
+	return plan
+}
+
+fn gcc_unicode_full_response_plan(response_file string, content string, encoding GccResponseFileEncoding) GccUnicodeResponsePlan {
+	return GccUnicodeResponsePlan{
+		args: ['@${response_file}']
+		response_files: [response_file]
+		response_contents: [content]
+		response_encoding: encoding
+	}
+}
+
+fn response_file_content_is_ansi_lossless(content string) bool {
+	$if windows {
+		ansi := string_to_ansi_not_null_terminated(content)
+		ansi_text := ansi.bytestr()
+		decoded := unsafe { string_from_wide(ansi_text.to_wide(from_ansi: true)) }
+		return decoded == content
+	}
+	return true
+}
+
+fn gcc_response_file_encoding_from_probes(utf8_supported bool, ansi_supported bool, ansi_preserves_content bool) !GccResponseFileEncoding {
+	if utf8_supported {
+		return .utf8
+	}
+	if ansi_supported && ansi_preserves_content {
+		return .ansi
+	}
+	return error('the Windows GCC command has too many non-ASCII arguments for the command line, and the selected driver accepts neither a compatible UTF-8 response file nor a lossless active-code-page response file; enable 8.3 short paths or use a Unicode-capable GCC or Clang toolchain')
+}
+
+fn first_non_ascii_response_rune(content string) string {
+	for character in content.runes() {
+		if character > 127 {
+			return character.str()
+		}
+	}
+	return ''
+}
+
+fn (mut v Builder) windows_gcc_response_file_probe(ccompiler string, response_file string, marker string, encoding GccResponseFileEncoding) bool {
+	$if windows {
+		probe_id := '${os.getpid()}_${time.sys_mono_now()}'
+		probe_source := '${response_file}.${probe_id}_${marker}.c'
+		probe_response := '${response_file}.${probe_id}.encoding_probe'
+		defer {
+			os.rm(probe_source) or {}
+			os.rm(probe_response) or {}
+		}
+		transport_source := v.tcc_windows_path(probe_source)
+		// Resolve the production path transport before creating the leaf so the
+		// non-ASCII marker remains available to distinguish the driver's decoder.
+		os.write_file(probe_source, '') or { return false }
+		probe_content := gcc_response_file_content_for_exact_args(['-fsyntax-only', '-x', 'c',
+			transport_source])
+		if encoding == .utf8 {
+			os.write_file(probe_response, probe_content) or { return false }
+		} else {
+			os.write_file_array(probe_response, string_to_ansi_not_null_terminated(probe_content)) or {
+				return false
+			}
+		}
+		probe_arg := '@${v.tcc_windows_path(probe_response)}'
+		probe_cmd := '${v.quote_compiler_name(ccompiler)} ${windows_quote_exec_arg(probe_arg)}'
+		probe_result := v.execute_ccompiler(ccompiler, probe_cmd, [ccompiler, probe_arg])
+		return probe_result.exit_code == 0
+	}
+	return false
+}
+
+fn (mut v Builder) windows_gcc_response_file_encoding(ccompiler string, response_file string, content string) !GccResponseFileEncoding {
+	marker := first_non_ascii_response_rune(content)
+	if marker == '' {
+		return .ascii
+	}
+	utf8_supported := v.windows_gcc_response_file_probe(ccompiler, response_file, marker, .utf8)
+	ansi_preserves_content := response_file_content_is_ansi_lossless(content)
+	mut ansi_supported := false
+	if !utf8_supported && ansi_preserves_content {
+		ansi_supported = v.windows_gcc_response_file_probe(ccompiler, response_file, marker, .ansi)
+	}
+	return gcc_response_file_encoding_from_probes(utf8_supported, ansi_supported, ansi_preserves_content)
+}
+
+fn write_gcc_response_file(response_file string, response_file_content string, encoding GccResponseFileEncoding) {
+	if encoding == .utf8 {
+		os.write_file(response_file, response_file_content) or {
+			write_response_file_error(response_file, err)
+		}
+		return
+	}
+	write_response_file(response_file, response_file_content)
+}
+
+fn (v &Builder) ccompiler_response_file_content(args []string, formatted string) string {
+	$if windows {
+		if v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus {
+			return gcc_response_file_content(args)
+		}
+	}
+	return formatted.replace('\\', '\\\\')
+}
+
+fn (v &Builder) windows_gcc_needs_direct_exec(args []string) bool {
+	$if windows {
+		return (v.ccoptions.cc == .gcc || v.pref.ccompiler_type == .cplusplus)
+			&& !gcc_rsp_args_are_ascii(args)
+	}
+	return false
+}
+
+fn ccompiler_is_windows_batch_file(ccompiler string) bool {
+	name := resolved_windows_ccompiler_path(ccompiler).to_lower_ascii()
+	return name.ends_with('.bat') || name.ends_with('.cmd')
+}
+
+fn resolved_windows_ccompiler_path(ccompiler string) string {
+	name := ccompiler.trim_space().trim('"').trim("'")
+	$if windows {
+		if os.file_ext(name) == '' && (name.contains('/') || name.contains('\\')) {
+			for suffix in ['.exe', '.bat', '.cmd', ''] {
+				candidate := name + suffix
+				if os.is_file(candidate) {
+					return os.abs_path(candidate)
+				}
+			}
+		}
+		return os.find_abs_path_of_executable(name) or { name }
+	}
+	return name
+}
+
+fn execute_windows_batch_ccompiler(cmd string) os.Result {
+	$if windows {
+		// `os.execute` expands percent-delimited environment variables before starting
+		// cmd.exe. Expand this indirection once inside cmd.exe instead, so percent signs
+		// carried by compiler arguments are not scanned again.
+		command_env_name := 'V_CCOMPILER_BATCH_COMMAND_${os.getpid()}'
+		old_command := os.getenv_opt(command_env_name)
+		os.setenv(command_env_name, cmd, true)
+		defer {
+			if previous := old_command {
+				os.setenv(command_env_name, previous, true)
+			} else {
+				os.unsetenv(command_env_name)
+			}
+		}
+		command_interpreter := os.getenv_opt('COMSPEC') or { 'cmd.exe' }
+		return os.exec([command_interpreter, '/d', '/v:off', '/s', '/c', '%${command_env_name}%'])
+	}
+	return os.execute(cmd)
+}
+
+fn (v &Builder) execute_ccompiler(ccompiler string, cmd string, exec_args []string) os.Result {
+	if exec_args.len > 0 {
+		if ccompiler_is_windows_batch_file(ccompiler) {
+			return execute_windows_batch_ccompiler(cmd)
+		}
+		return os.exec(exec_args)
+	}
+	return os.execute(cmd)
+}
+
+fn (v &Builder) response_files_are_allowed(rsp_args []string) bool {
 	if v.pref.no_rsp || v.pref.os == .termux {
 		return false
 	}
@@ -1397,6 +2004,18 @@ fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 		if arg.contains("'\\''") || arg.contains('\n') || arg.contains('\r') {
 			return false
 		}
+	}
+	return true
+}
+
+fn (v &Builder) should_use_rsp(rsp_args []string) bool {
+	if !v.response_files_are_allowed(rsp_args) {
+		return false
+	}
+	// os.short_path returns its input when a Windows volume has 8.3 aliases disabled.
+	// An ANSI response file would replace those remaining Unicode characters with `?`.
+	if v.windows_gcc_needs_direct_exec(rsp_args) {
+		return false
 	}
 	return true
 }
@@ -1523,13 +2142,14 @@ fn (mut v Builder) generate_c_project() {
 	}
 	v.dump_c_options(all_args)
 	cc_cmd := '${v.quote_compiler_name(ccompiler)} ${all_args.join(' ')}'
+	posix_cc_cmd := '${v.quote_compiler_name(ccompiler)} ${all_args.map(shell_safe_cc_arg(it)).join(' ')}'
 	os.write_file(os.join_path(project_dir, 'build_command.txt'), cc_cmd + '\n') or {
 		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'build_command.txt'))}: ${err}')
 	}
-	os.write_file(os.join_path(project_dir, 'Makefile'), 'all:\n\t${cc_cmd}\n') or {
+	os.write_file(os.join_path(project_dir, 'Makefile'), 'all:\n\t${posix_cc_cmd}\n') or {
 		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'Makefile'))}: ${err}')
 	}
-	os.write_file(os.join_path(project_dir, 'build.sh'), '#!/bin/sh\nset -eu\n${cc_cmd}\n') or {
+	os.write_file(os.join_path(project_dir, 'build.sh'), '#!/bin/sh\nset -eu\n${posix_cc_cmd}\n') or {
 		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'build.sh'))}: ${err}')
 	}
 	os.write_file(os.join_path(project_dir, 'build.bat'), '@echo off\r\n${cc_cmd}\r\n') or {
@@ -1709,6 +2329,11 @@ pub fn (mut v Builder) cc() {
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
+	mut reproducible_debug_object := ''
+	mut reproducible_debug_object_lock := filelock.new('')
+	defer {
+		reproducible_debug_object_lock.release()
+	}
 	original_pwd := os.getwd()
 	for {
 		// try to compile with the chosen compiler
@@ -1740,6 +2365,14 @@ pub fn (mut v Builder) cc() {
 			v.ccoptions.pre_args << '-c'
 		}
 		v.handle_usecache(vexe)
+		reproducible_debug_object_lock.release()
+		reproducible_debug_object = v.prepare_reproducible_macos_debug_compiler_object(ccompiler, vdir, mut reproducible_debug_object_lock)
+		if reproducible_debug_object != '' {
+			// Link the persistent object instead of letting clang use a random temporary
+			// object, whose path would otherwise be recorded in the Mach-O debug map.
+			v.ccoptions.source_args = [v.tcc_quoted_path(reproducible_debug_object)]
+			v.ccoptions.args << '-Qunused-arguments'
+		}
 		$if windows {
 			if v.ccoptions.cc == .msvc || v.pref.ccompiler_type == .msvc {
 				v.cc_msvc()
@@ -1751,12 +2384,13 @@ pub fn (mut v Builder) cc() {
 		v.dump_c_options(all_args)
 		mut rsp_args := all_args.map(v.rsp_safe_arg(it))
 		rsp_args = rsp_args.map(v.tcc_windows_path_arg(it))
-		shell_args := rsp_args.join(' ')
+		use_unicode_rsp := v.response_files_are_allowed(rsp_args)
+			&& v.windows_gcc_needs_direct_exec(rsp_args)
 		mut should_use_rsp := v.should_use_rsp(rsp_args)
 		mut str_args := if !should_use_rsp {
-			shell_args.replace('\n', ' ')
+			rsp_args.map(shell_safe_cc_arg(it)).join(' ').replace('\n', ' ')
 		} else {
-			shell_args
+			rsp_args.join(' ')
 		}
 		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
 		if v.pref.parallel_cc {
@@ -1767,9 +2401,38 @@ pub fn (mut v Builder) cc() {
 		}
 		mut response_file := ''
 		mut response_file_content := str_args
-		if should_use_rsp {
+		mut compiler_exec_args := []string{}
+		if use_unicode_rsp {
 			response_file = '${v.out_name_c}.rsp'
-			response_file_content = str_args.replace('\\', '\\\\')
+			max_command_bytes := if ccompiler_is_windows_batch_file(ccompiler) {
+				7000
+			} else {
+				30000
+			}
+			mut plan := gcc_unicode_response_plan(response_file, rsp_args, max_command_bytes)
+			if plan.requires_full_response {
+				response_encoding := v.windows_gcc_response_file_encoding(ccompiler, response_file, plan.full_response_content) or { verror(err.msg()) }
+				plan = gcc_unicode_full_response_plan(response_file, plan.full_response_content, response_encoding)
+			}
+			mut transport_args := plan.args.clone()
+			for i, arg in transport_args {
+				if arg.starts_with('@') {
+					transport_args[i] = '@${v.tcc_windows_path(arg[1..])}'
+				}
+			}
+			for i, file in plan.response_files {
+				write_gcc_response_file(file, plan.response_contents[i], plan.response_encoding)
+			}
+			response_file_content = plan.response_contents.join('\n')
+			compiler_exec_args = [ccompiler]
+			compiler_exec_args << transport_args
+			cmd = '${v.quote_compiler_name(ccompiler)} ${transport_args.map(windows_quote_exec_arg(it)).join(' ')}'
+			if !v.ccoptions.debug_mode {
+				v.pref.cleanup_files << plan.response_files
+			}
+		} else if should_use_rsp {
+			response_file = '${v.out_name_c}.rsp'
+			response_file_content = v.ccompiler_response_file_content(rsp_args, str_args)
 			write_response_file(response_file, response_file_content)
 			rspexpr := '@${v.tcc_windows_path(response_file)}'
 			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
@@ -1794,14 +2457,16 @@ pub fn (mut v Builder) cc() {
 		// Run
 		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
 		util.timing_start(ccompiler_label)
-		res := os.execute(cmd)
+		if compiler_exec_args.len == 0 && v.windows_gcc_needs_direct_exec(rsp_args) {
+			compiler_exec_args = ccompiler_exec_args(ccompiler, rsp_args)
+		}
+		res := v.execute_ccompiler(ccompiler, cmd, compiler_exec_args)
 		util.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(ccompiler, res)
 		}
 		os.chdir(original_pwd) or {}
-		vcache.dlog('| Builder.' + @FN,
-			'>       v.pref.use_cache: ${v.pref.use_cache} | v.pref.retry_compilation: ${v.pref.retry_compilation}')
+		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: ${v.pref.use_cache} | v.pref.retry_compilation: ${v.pref.retry_compilation}')
 		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: ${res.exit_code} | cmd: ${cmd}')
 		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n${response_file_content}')
 		if res.exit_code != 0 {
@@ -1810,7 +2475,7 @@ pub fn (mut v Builder) cc() {
 			if v.pref.building_v && v.pref.is_prod && !v.pref.no_prod_options && !v.disable_flto
 				&& v.ccoptions.cc == .gcc && response_file_content.contains('-flto')
 				&& (res.output.contains('undefined symbol: main')
-				|| res.output.contains('undefined reference to `main')) {
+					|| res.output.contains('undefined reference to `main')) {
 				v.disable_flto = true
 				if !v.pref.is_quiet {
 					eprintln('Retrying compiler build without `-flto` after a linker failure with missing `main`.')
@@ -1852,12 +2517,7 @@ pub fn (mut v Builder) cc() {
 				}
 			}
 			if res.exit_code == 127 {
-				verror('C compiler error, while attempting to run: \n' +
-					'-----------------------------------------------------------\n' + '${cmd}\n' +
-					'-----------------------------------------------------------\n' +
-					'Probably your C compiler is missing. \n' +
-					'Please reinstall it, or make it available in your PATH.\n\n' +
-					missing_compiler_info())
+				verror('C compiler error, while attempting to run: \n' + '-----------------------------------------------------------\n' + '${cmd}\n' + '-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' + 'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
 			}
 		}
 		v.post_process_c_compiler_output(ccompiler, res)
@@ -1869,6 +2529,8 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
+	v.normalize_reproducible_macos_debug_compiler_uuid()
+	v.generate_reproducible_macos_debug_compiler_dsym(reproducible_debug_object)
 	if v.pref.compress {
 		ret := os.system('strip ${os.quoted_path(v.pref.out_name)}')
 		if ret != 0 {
@@ -1894,12 +2556,420 @@ pub fn (mut v Builder) cc() {
 			}
 		}
 	}
+	v.finalize_reproducible_macos_debug_compiler()
 	// if v.pref.os == .ios {
 	// ret := os.system('ldid2 -S ${v.pref.out_name}')
 	// if ret != 0 {
 	// eprintln('failed to run ldid2, try: brew install ldid')
 	// }
 	// }
+}
+
+fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler string, vdir string, mut object_usage_lock filelock.FileLock) string {
+	$if macos {
+		if v.pref.os != .macos || !v.pref.building_v || !v.pref.is_debug || v.pref.parallel_cc
+			|| v.pref.build_mode == .build_module || v.pref.is_o || v.ccoptions.cc != .clang {
+			return ''
+		}
+		cache_dir := os.join_path(os.cache_dir(), 'v', 'reproducible-macos-debug')
+		os.mkdir_all(cache_dir) or {
+			verror('could not create the reproducible macOS debug object directory: ${err}')
+			return ''
+		}
+		prune_reproducible_macos_debug_compiler_temporaries(cache_dir)
+		temporary_object := os.join_path(cache_dir, 'v-compiler.${os.getpid()}.tmp')
+		mut temporary_object_lock := filelock.new(temporary_object + '.lock')
+		temporary_object_lock.acquire() or {
+			verror('could not lock the temporary reproducible macOS debug object: ${err}')
+			return ''
+		}
+		defer {
+			temporary_object_lock.release()
+		}
+		os.rm(temporary_object) or {}
+		os.rm(temporary_object + '.rsp') or {}
+		mut compile_options := v.ccoptions
+		// Output and linked third-party objects do not affect compilation of the
+		// generated C file and must not enter the persistent object's content.
+		compile_options.o_args = ['-o ${v.tcc_quoted_path(temporary_object)}', '-c']
+		mut rsp_args := v.only_compile_args(compile_options).map(v.rsp_safe_arg(it))
+		rsp_args = rsp_args.map(v.tcc_windows_path_arg(it))
+		should_use_rsp := v.should_use_rsp(rsp_args)
+		mut str_args := if should_use_rsp {
+			rsp_args.join(' ')
+		} else {
+			rsp_args.map(shell_safe_cc_arg(it)).join(' ').replace('\n', ' ')
+		}
+		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
+		mut response_file := ''
+		mut response_file_content := str_args
+		if should_use_rsp {
+			response_file = '${temporary_object}.rsp'
+			response_file_content = v.ccompiler_response_file_content(rsp_args, str_args)
+			write_response_file(response_file, response_file_content)
+			rspexpr := '@${v.tcc_windows_path(response_file)}'
+			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
+		}
+		v.show_cc(cmd, response_file, response_file_content)
+		original_pwd := os.getwd()
+		os.chdir(vdir) or {
+			verror('could not enter the compiler directory for the reproducible macOS debug build: ${err}')
+			return ''
+		}
+		util.timing_start('C object')
+		res := v.execute_ccompiler(ccompiler, cmd, []string{})
+		util.timing_measure('C object')
+		os.chdir(original_pwd) or {}
+		if v.pref.show_c_output {
+			v.show_c_compiler_output(ccompiler, res)
+		}
+		if response_file != '' {
+			os.rm(response_file) or {}
+		}
+		if res.exit_code != 0 {
+			os.rm(temporary_object) or {}
+		}
+		v.post_process_c_compiler_output(ccompiler, res)
+		object_bytes := os.read_bytes(temporary_object) or {
+			verror('could not read the reproducible macOS debug object: ${err}')
+			return ''
+		}
+		object_dir := os.join_path(cache_dir, sha256.sum(object_bytes).hex())
+		object_path := os.join_path(object_dir, 'v-compiler.o')
+		os.mkdir_all(object_dir) or {
+			verror('could not create the content-addressed macOS debug object directory: ${err}')
+			return ''
+		}
+		mut cache_entry_lock := new_reproducible_macos_debug_cache_entry_lock(object_dir) or {
+			verror('could not open the reproducible macOS debug cache entry lock: ${err}')
+			return ''
+		}
+		cache_entry_lock.acquire() or {
+			verror('could not lock the reproducible macOS debug cache entry: ${err}')
+			return ''
+		}
+		defer {
+			cache_entry_lock.release()
+		}
+		store_reproducible_macos_debug_compiler_object(temporary_object, object_dir, object_path) or {
+			verror('could not store the reproducible macOS debug object: ${err}')
+			return ''
+		}
+		os.utime(object_path, 1, 1) or {
+			verror('could not normalize the reproducible macOS debug object timestamp: ${err}')
+		}
+		object_usage_lock = filelock.new_file(object_path, mode: .shared)
+		object_usage_lock.acquire() or {
+			verror('could not lock the reproducible macOS debug object for linking: ${err}')
+			return ''
+		}
+		now := time.now().unix()
+		os.utime(object_dir, now, now) or {}
+		prune_reproducible_macos_debug_compiler_cache(cache_dir, object_path, max_reproducible_macos_debug_cache_bytes)
+		return object_path
+	}
+	return ''
+}
+
+fn store_reproducible_macos_debug_compiler_object(temporary_object string, object_dir string, object_path string) ! {
+	os.mkdir_all(object_dir)!
+	if os.is_file(object_path) {
+		os.rm(temporary_object) or {}
+	} else {
+		os.mv(temporary_object, object_path)!
+	}
+}
+
+fn new_reproducible_macos_debug_cache_entry_lock(object_dir string) !filelock.FileLock {
+	lock_path := object_dir + '.lock'
+	// Cache entry locks remain in the cache root so all contenders always lock the
+	// same inode, including while the corresponding content directory is pruned.
+	mut lock_file := os.open_append(lock_path)!
+	lock_file.close()
+	return filelock.new_file(lock_path)
+}
+
+fn prune_reproducible_macos_debug_compiler_cache(cache_dir string, retained_object string, max_bytes u64) {
+	$if macos {
+		prune_reproducible_macos_debug_compiler_temporaries(cache_dir)
+		mut total_size := u64(0)
+		mut candidates := []ReproducibleMacosDebugCacheEntry{}
+		for name in os.ls(cache_dir) or { return } {
+			object_dir := os.join_path(cache_dir, name)
+			object_path := os.join_path(object_dir, 'v-compiler.o')
+			object_stat := os.stat(object_path) or { continue }
+			dir_stat := os.stat(object_dir) or { continue }
+			total_size += object_stat.size
+			if object_path != retained_object {
+				candidates << ReproducibleMacosDebugCacheEntry{
+					object_dir: object_dir
+					object_path: object_path
+					size: object_stat.size
+					last_used: dir_stat.mtime
+				}
+			}
+		}
+		if total_size <= max_bytes {
+			return
+		}
+		candidates.sort(a.last_used < b.last_used)
+		for entry in candidates {
+			if total_size <= max_bytes {
+				break
+			}
+			if remove_reproducible_macos_debug_cache_entry(entry) {
+				total_size -= entry.size
+			}
+		}
+	}
+}
+
+fn prune_reproducible_macos_debug_compiler_temporaries(cache_dir string) {
+	mut temporary_names := map[string]bool{}
+	for name in os.ls(cache_dir) or { return } {
+		if !name.starts_with('v-compiler.') {
+			continue
+		}
+		temporary_name := if name.ends_with('.tmp') {
+			name
+		} else if name.ends_with('.tmp.rsp') {
+			name.trim_string_right('.rsp')
+		} else if name.ends_with('.tmp.lock') {
+			name.trim_string_right('.lock')
+		} else {
+			continue
+		}
+		pid := temporary_name.trim_string_left('v-compiler.').trim_string_right('.tmp')
+		if pid.len == 0 || !pid.bytes().all(it.is_digit()) {
+			continue
+		}
+		temporary_names[temporary_name] = true
+	}
+	for temporary_name, _ in temporary_names {
+		temporary_object := os.join_path(cache_dir, temporary_name)
+		mut temporary_object_lock := filelock.new(temporary_object + '.lock')
+		if !temporary_object_lock.try_acquire() {
+			continue
+		}
+		os.rm(temporary_object) or {}
+		os.rm(temporary_object + '.rsp') or {}
+		temporary_object_lock.release()
+	}
+}
+
+fn remove_reproducible_macos_debug_cache_entry(entry ReproducibleMacosDebugCacheEntry) bool {
+	mut cache_entry_lock := new_reproducible_macos_debug_cache_entry_lock(entry.object_dir) or {
+		return false
+	}
+	if !cache_entry_lock.try_acquire() {
+		return false
+	}
+	defer {
+		cache_entry_lock.release()
+	}
+	mut object_lock := filelock.new_file(entry.object_path, mode: .exclusive)
+	if !object_lock.try_acquire() {
+		return false
+	}
+	defer {
+		object_lock.release()
+	}
+	current_dir_stat := os.stat(entry.object_dir) or { return false }
+	if current_dir_stat.mtime != entry.last_used {
+		return false
+	}
+	os.rmdir_all(entry.object_dir) or { return false }
+	return true
+}
+
+fn (v &Builder) should_finalize_reproducible_macos_debug_compiler() bool {
+	$if macos {
+		return v.pref.os == .macos && v.pref.building_v && v.pref.is_debug
+			&& v.pref.build_mode != .build_module && !v.pref.is_o
+	}
+	return false
+}
+
+fn macho_little_endian_u32(data []u8, offset int) u32 {
+	return u32(data[offset]) | (u32(data[offset + 1]) << 8) | (u32(data[offset + 2]) << 16) | (u32(data[offset + 3]) << 24)
+}
+
+fn macho_u32(data []u8, offset int, little_endian bool) u32 {
+	if little_endian {
+		return macho_little_endian_u32(data, offset)
+	}
+	return (u32(data[offset]) << 24) | (u32(data[offset + 1]) << 16) | (u32(data[offset + 2]) << 8) | u32(data[offset + 3])
+}
+
+fn macho_u64(data []u8, offset int, little_endian bool) u64 {
+	if little_endian {
+		return u64(macho_u32(data, offset, true)) | (u64(macho_u32(data, offset + 4, true)) << 32)
+	}
+	return (u64(macho_u32(data, offset, false)) << 32) | u64(macho_u32(data, offset + 4, false))
+}
+
+fn normalize_thin_macho_uuid(mut data []u8) !bool {
+	if data.len < 4 {
+		return error('Mach-O header is truncated')
+	}
+	magic := macho_little_endian_u32(data, 0)
+	header_size, little_endian := match magic {
+		u32(0xfeedface) { 28, true }
+		u32(0xfeedfacf) { 32, true }
+		u32(0xcefaedfe) { 28, false }
+		u32(0xcffaedfe) { 32, false }
+		else {
+			return false
+		}
+	}
+	if data.len < header_size {
+		return error('Mach-O header is truncated')
+	}
+	ncommands := int(macho_u32(data, 16, little_endian))
+	commands_size := int(macho_u32(data, 20, little_endian))
+	commands_end := header_size + commands_size
+	if commands_size < 0 || commands_end < header_size || commands_end > data.len {
+		return error('Mach-O load commands are truncated')
+	}
+	mut command_offset := header_size
+	for _ in 0 .. ncommands {
+		if command_offset + 8 > commands_end {
+			return error('Mach-O load command header is truncated')
+		}
+		command := macho_u32(data, command_offset, little_endian)
+		command_size := int(macho_u32(data, command_offset + 4, little_endian))
+		if command_size < 8 || command_offset + command_size > commands_end {
+			return error('Mach-O load command is truncated')
+		}
+		if command == 0x1b {
+			if command_size < 24 {
+				return error('Mach-O LC_UUID command is truncated')
+			}
+			uuid_offset := command_offset + 8
+			for i in 0 .. 16 {
+				data[uuid_offset + i] = 0
+			}
+			mut digest := sha256.sum(data)
+			// Match the version and variant bits emitted by ld64 for content UUIDs.
+			digest[6] = (digest[6] & 0x0f) | 0x30
+			digest[8] = (digest[8] & 0x3f) | 0x80
+			for i in 0 .. 16 {
+				data[uuid_offset + i] = digest[i]
+			}
+			return true
+		}
+		command_offset += command_size
+	}
+	// A caller can explicitly link with `-Wl,-no_uuid`; there is nothing to
+	// normalize in that case.
+	return true
+}
+
+fn normalize_fat_macho_uuids(mut data []u8, is_64 bool, little_endian bool) ! {
+	if data.len < 8 {
+		return error('Mach-O universal header is truncated')
+	}
+	architecture_count := u64(macho_u32(data, 4, little_endian))
+	architecture_size := u64(if is_64 { 32 } else { 20 })
+	if architecture_count > u64(data.len - 8) / architecture_size {
+		return error('Mach-O universal architecture table is truncated')
+	}
+	for i in u64(0) .. architecture_count {
+		entry_offset := 8 + int(i * architecture_size)
+		slice_offset := if is_64 {
+			macho_u64(data, entry_offset + 8, little_endian)
+		} else {
+			u64(macho_u32(data, entry_offset + 8, little_endian))
+		}
+		slice_size := if is_64 {
+			macho_u64(data, entry_offset + 16, little_endian)
+		} else {
+			u64(macho_u32(data, entry_offset + 12, little_endian))
+		}
+		if slice_offset > u64(data.len) || slice_size > u64(data.len) - slice_offset {
+			return error('Mach-O universal architecture slice is truncated')
+		}
+		// Keep a view into the universal binary so UUID writes update its slice.
+		mut slice := unsafe { data[int(slice_offset)..int(slice_offset + slice_size)] }
+		if !normalize_thin_macho_uuid(mut slice)! {
+			return error('Mach-O universal architecture slice has an invalid magic')
+		}
+	}
+}
+
+fn normalize_macho_uuid(mut data []u8) ! {
+	if data.len < 4 {
+		return error('Mach-O header is truncated')
+	}
+	magic := macho_little_endian_u32(data, 0)
+	match magic {
+		u32(0xbebafeca) { normalize_fat_macho_uuids(mut data, false, false)! }
+		u32(0xcafebabe) { normalize_fat_macho_uuids(mut data, false, true)! }
+		u32(0xbfbafeca) { normalize_fat_macho_uuids(mut data, true, false)! }
+		u32(0xcafebabf) { normalize_fat_macho_uuids(mut data, true, true)! }
+		else {
+			if data.len < 28 {
+				return error('Mach-O header is truncated')
+			}
+			normalize_thin_macho_uuid(mut data)!
+		}
+	}
+}
+
+fn (v &Builder) normalize_reproducible_macos_debug_compiler_uuid() {
+	$if macos {
+		if !v.should_finalize_reproducible_macos_debug_compiler() {
+			return
+		}
+		// Older ld64 releases include the output path in LC_UUID even with
+		// `-reproducible`. Replace it before dsymutil and codesign consume it.
+		mut binary := os.read_bytes(v.pref.out_name) or {
+			verror('could not read the reproducible macOS compiler binary: ${err}')
+			return
+		}
+		normalize_macho_uuid(mut binary) or {
+			verror('could not normalize the reproducible macOS compiler UUID: ${err}')
+			return
+		}
+		os.write_file_array(v.pref.out_name, binary) or {
+			verror('could not write the reproducible macOS compiler binary: ${err}')
+		}
+	}
+}
+
+fn (v &Builder) generate_reproducible_macos_debug_compiler_dsym(debug_object string) {
+	$if macos {
+		if !v.should_finalize_reproducible_macos_debug_compiler() || debug_object == '' {
+			return
+		}
+		dsymutil_path := os.find_abs_path_of_executable('dsymutil') or {
+			verror('could not find `dsymutil` to finalize the reproducible macOS compiler debug information')
+			return
+		}
+		dsymutil_result := os.execute('${os.quoted_path(dsymutil_path)} -o ${os.quoted_path(v.pref.out_name + '.dSYM')} ${os.quoted_path(v.pref.out_name)}')
+		if dsymutil_result.exit_code != 0 {
+			verror('failed to generate the reproducible macOS compiler debug information:\n${dsymutil_result.output}')
+		}
+	}
+}
+
+fn (v &Builder) finalize_reproducible_macos_debug_compiler() {
+	$if macos {
+		if !v.should_finalize_reproducible_macos_debug_compiler() {
+			return
+		}
+		codesign_path := os.find_abs_path_of_executable('codesign') or {
+			verror('could not find `codesign` to finalize the reproducible macOS compiler binary')
+			return
+		}
+		// The linker leaves this compiler unsigned; add one normalized signature with
+		// a stable identifier so its layout and contents do not depend on the output path.
+		codesign_result :=
+			os.execute('${os.quoted_path(codesign_path)} --force --sign - --identifier org.vlang.v ${os.quoted_path(v.pref.out_name)}')
+		if codesign_result.exit_code != 0 {
+			verror('failed to ad-hoc sign the reproducible macOS compiler binary:\n${codesign_result.output}')
+		}
+	}
 }
 
 fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
@@ -2094,11 +3164,16 @@ fn linux_cross_target_for_arch(arch pref.Arch) !LinuxCrossTarget {
 		return error('Linux cross compilation currently supports only `-arch amd64`; the bundled linuxroot sysroot does not provide `${arch}` runtime files.')
 	}
 	return LinuxCrossTarget{
-		triple:           'x86_64-linux-gnu'
-		lib_dir:          'x86_64-linux-gnu'
-		dynamic_linker:   '/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
+		triple: 'x86_64-linux-gnu'
+		lib_dir: 'x86_64-linux-gnu'
+		dynamic_linker: '/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
 		linker_emulation: 'elf_x86_64'
 	}
+}
+
+fn linux_cross_compile_include_arg(sysroot string) string {
+	sysroot_include := os.join_path(sysroot, 'include')
+	return '-I ${os.quoted_path(sysroot_include)}'
 }
 
 fn (mut b Builder) cc_linux_cross() {
@@ -2148,14 +3223,13 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	mut extra_objs := []string{cap: extra_sources.len}
 	for src in extra_sources {
-		src_obj := os.join_path(os.vtmp_dir(), os.file_name(src) + '.' +
-			linux_cross_target.lib_dir + '.o')
+		src_obj := os.join_path(os.vtmp_dir(), os.file_name(src) + '.' + linux_cross_target.lib_dir + '.o')
 		mut src_args := []string{cap: 16}
 		src_args << '-w'
 		src_args << '-fPIC'
 		src_args << '-target ${linux_cross_target.triple}'
 		src_args << defines
-		src_args << '-I ${os.quoted_path('${sysroot}/include')}'
+		src_args << linux_cross_compile_include_arg(sysroot)
 		src_args << other_flags
 		src_args << '-o ${os.quoted_path(src_obj)}'
 		src_args << '-c ${os.quoted_path(src)}'
@@ -2176,7 +3250,7 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-fPIC'
 	cc_args << '-target ${linux_cross_target.triple}'
 	cc_args << defines
-	cc_args << '-I ${os.quoted_path('${sysroot}/include')} '
+	cc_args << linux_cross_compile_include_arg(sysroot)
 	cc_args << other_flags
 	cc_args << '-o ${os.quoted_path(obj_file)}'
 	cc_args << '-c ${os.quoted_path(b.out_name_c)}'
@@ -2405,8 +3479,7 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 			rest_of_module_flags := b.get_rest_of_module_cflags(flag)
 			$if windows {
 				if b.pref.ccompiler == 'msvc' {
-					b.build_thirdparty_obj_file_with_msvc(flag.mod, flag.value,
-						rest_of_module_flags)
+					b.build_thirdparty_obj_file_with_msvc(flag.mod, flag.value, rest_of_module_flags)
 					continue
 				}
 			}
@@ -2452,24 +3525,10 @@ fn sqlite_thirdparty_validation_error(mod string, obj_path string, source_file s
 	return ''
 }
 
-// fixup_tcc_macos_comma_path_flags works around the fact that both tcc and
-// clang split `-Wl,foo,bar` on every comma without an escape mechanism. When
-// V's install path contains a literal comma (used in CI to stress
-// space-paths), the `-Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"` flag emitted
-// by builtin_d_gcboehm.c.v under `$if tinyc` expands into a path with a comma
-// and the linker rejects it. The bundled libgc.dylib also gets passed by
-// absolute path; that itself is fine, but the dylib's `LC_ID_DYLIB` is
-// `@rpath/libgc.dylib`, so the linked binary cannot find the library at
-// runtime once we strip the rpath flag.
-//
-// This helper copies the bundled dylib into a non-comma cache directory,
-// updates the copy's install_name to its own absolute path (so the linked
-// binary records that path in `LC_LOAD_DYLIB`), then rewrites the dylib flag
-// in the linker arguments to point at the copy and drops the now-broken rpath
-// flag. The bundled libgc.dylib itself is left untouched, so binaries built
-// before/elsewhere that rely on `@rpath/libgc.dylib` still work. The fixup is
-// applied for any cc, since V may fall back from tcc to clang and reuse the
-// already-emitted flags.
+// fixup_tcc_macos_comma_path_flags moves the exact bundled libgc dylib/rpath
+// pair to a persistent comma-free content store when V's root contains a comma.
+// It is token-driven because a fallback compiler can reuse the already emitted
+// flags. The store keeps the dylib bytes and its @rpath install name unchanged.
 fn (v &Builder) fixup_tcc_macos_comma_path_flags(mut ccoptions CcompilerOptions) {
 	$if !macos {
 		return
@@ -2477,44 +3536,15 @@ fn (v &Builder) fixup_tcc_macos_comma_path_flags(mut ccoptions CcompilerOptions)
 	if v.pref.os != .macos {
 		return
 	}
-	tcc_lib_dir := os.real_path(os.join_path(v.pref.vroot, 'thirdparty', 'tcc', 'lib'))
-	if !tcc_lib_dir.contains(',') {
+	plan := plan_tcc_macos_libgc_store(v.pref.vroot, ccoptions.linker_flags, ccoptions.pre_args) or {
+		verror(err.msg())
+	}
+	if !plan.required {
 		return
 	}
-	src_dylib := os.join_path(tcc_lib_dir, 'libgc.dylib')
-	if !os.exists(src_dylib) {
-		return
-	}
-	cache_dir := os.join_path(os.temp_dir(), 'v_tcc_libgc')
-	if cache_dir.contains(',') {
-		return
-	}
-	if !os.exists(cache_dir) {
-		os.mkdir_all(cache_dir) or { return }
-	}
-	cache_dylib := os.join_path(cache_dir, 'libgc.dylib')
-	src_mtime := os.file_last_mod_unix(src_dylib)
-	if !os.exists(cache_dylib) || os.file_last_mod_unix(cache_dylib) < src_mtime {
-		os.cp(src_dylib, cache_dylib) or { return }
-		idres :=
-			os.execute('install_name_tool -id ${os.quoted_path(cache_dylib)} ${os.quoted_path(cache_dylib)}')
-		if idres.exit_code != 0 {
-			if v.pref.is_verbose {
-				eprintln('install_name_tool -id for ${cache_dylib} failed: ${idres.output.trim_space()}')
-			}
-			return
-		}
-	}
-	cache_dylib_quoted := '"${cache_dylib}"'
-	suffix := os.path_separator + 'tcc' + os.path_separator + 'lib' + os.path_separator +
-		'libgc.dylib'
-	ccoptions.linker_flags = ccoptions.linker_flags.map(if it.ends_with(suffix + '"')
-		&& it.starts_with('"') {
-		cache_dylib_quoted
-	} else {
-		it
-	})
-	ccoptions.pre_args = ccoptions.pre_args.filter(!it.starts_with('-Wl,-rpath,'))
+	linker_flags, pre_args := materialize_and_rewrite_tcc_macos_libgc_flags(plan, ccoptions.linker_flags, ccoptions.pre_args) or { verror(err.msg()) }
+	ccoptions.linker_flags = linker_flags
+	ccoptions.pre_args = pre_args
 }
 
 fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path string, source_file string, source_kind SourceKind) bool {
@@ -2577,8 +3607,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	trace_thirdparty_obj_files := 'trace_thirdparty_obj_files' in v.pref.compile_defines
 	obj_path := os.real_path(path)
 	opath := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', obj_path)
-	thirdparty_desc_path := v.pref.cache_manager.mod_postfix_with_key2cpath(mod,
-		'.thirdparty.description.txt', obj_path)
+	thirdparty_desc_path := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.thirdparty.description.txt', obj_path)
 	mut source_file := c_project_source_from_object_path(obj_path) or { '' }
 	source_kind := if source_file.ends_with('.c') {
 		SourceKind.c
@@ -2589,13 +3618,11 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	} else {
 		SourceKind.unknown
 	}
-	sqlite_validation_message := sqlite_thirdparty_validation_error(mod, obj_path, source_file,
-		source_kind)
+	sqlite_validation_message := sqlite_thirdparty_validation_error(mod, obj_path, source_file, source_kind)
 	if sqlite_validation_message != '' {
 		verror(sqlite_validation_message)
 	}
-	compile_bundled_source := v.should_compile_bundled_thirdparty_object_from_source(obj_path,
-		source_file, source_kind)
+	compile_bundled_source := v.should_compile_bundled_thirdparty_object_from_source(obj_path, source_file, source_kind)
 	if os.exists(obj_path) && !compile_bundled_source {
 		// Some .o files are distributed with no source
 		// for example thirdparty\tcc\lib\openlibm.o
@@ -2679,8 +3706,7 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 		verror(res.output)
 		return
 	}
-	v.pref.cache_manager.mod_save(mod, '.thirdparty.description.txt', obj_path,
-		get_dsc_content('OBJ_PATH: ${obj_path}\nCMD: ${cmd}\n')) or { panic(err) }
+	v.pref.cache_manager.mod_save(mod, '.thirdparty.description.txt', obj_path, get_dsc_content('OBJ_PATH: ${obj_path}\nCMD: ${cmd}\n')) or { panic(err) }
 	if v.pref.show_cc {
 		println('>> OBJECT FILE compilation cmd: ${cmd}')
 	}
@@ -2800,8 +3826,7 @@ pub fn (mut v Builder) quote_compiler_name(name string) string {
 
 fn write_response_file(response_file string, response_file_content string) {
 	$if windows {
-		os.write_file_array(response_file,
-			string_to_ansi_not_null_terminated(response_file_content)) or {
+		os.write_file_array(response_file, string_to_ansi_not_null_terminated(response_file_content)) or {
 			write_response_file_error(response_file_content, err)
 		}
 	} $else {

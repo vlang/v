@@ -130,7 +130,7 @@ pub fn C.XSendEvent(display &C.Display, window Window, propagate int, event_mask
 pub fn C.XFilterEvent(event &C.XEvent, window Window) int
 pub fn C.XChangeProperty(display &C.Display, window Window, property Atom, type_ Atom, format int, mode int, data &u8, nitems int) int
 pub fn C.XConvertSelection(display &C.Display, selection Atom, target Atom, property Atom, requestor Window, time Time) int
-pub fn C.XSetSelectionOwner(display &C.Display, selection Atom, window Window, time Time) Window
+pub fn C.XSetSelectionOwner(display &C.Display, selection Atom, window Window, time Time) int
 pub fn C.XGetSelectionOwner(display &C.Display, selection Atom) Window
 pub fn C.XDeleteProperty(display &C.Display, window Window, property Atom) int
 pub fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type &Atom, actual_format &int, nitems &u64, bytes_after &u64, data &&u8) int

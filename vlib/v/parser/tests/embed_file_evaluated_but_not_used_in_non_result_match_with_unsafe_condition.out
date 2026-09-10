@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_non_result_match_with_unsafe_condition.vv:6:5: error: expression evaluated but not used
+    4 |         match unsafe { 0 } + 0 {
+    5 |             0 {
+    6 |                 $embed_file(@FILE)
+      |                 ~~~~~~~~~~~~~~~~~~
+    7 |             }
+    8 |             else {

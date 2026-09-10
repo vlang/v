@@ -8,7 +8,15 @@ import v.gen.wasm
 pub fn start() {
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, _ := pref.parse_args([], args_and_flags)
-	builder.compile('build', prefs, compile_wasm)
+	if report := builder.take_external_v3_report_from_env() {
+		// A V3->V1 fallback staged a report before launching this builder. Route it
+		// through compile_with_external_c_error_report so the notice/submission and
+		// the staged-directory cleanup happen relative to THIS build's outcome (only
+		// notify/submit after it succeeds), instead of before the retry ran.
+		builder.compile_with_external_c_error_report('build', prefs, compile_wasm, report)
+	} else {
+		builder.compile('build', prefs, compile_wasm)
+	}
 }
 
 pub fn compile_wasm(mut b builder.Builder) {

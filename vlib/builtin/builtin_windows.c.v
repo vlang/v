@@ -46,8 +46,10 @@ pub type C.LPTSTR = &C.TCHAR
 
 pub type C.LPCTSTR = &C.TCHAR
 
-fn C.WriteConsoleW(voidptr, &u16, u32, &u32, voidptr) bool
-fn C.WriteFile(voidptr, &u8, u32, &u32, voidptr) bool
+type C.DWORD = u32
+
+fn C.WriteConsoleW(voidptr, &u16, C.DWORD, &C.DWORD, voidptr) bool
+fn C.WriteFile(voidptr, &u8, C.DWORD, &C.DWORD, voidptr) bool
 fn C.ExitProcess(u32)
 fn C.GetProcessHeap() voidptr
 fn C.HeapAlloc(voidptr, u32, usize) voidptr
@@ -64,7 +66,7 @@ fn set_stream_binary_mode(stream &C.FILE) {
 }
 
 fn is_terminal(fd int) int {
-	mut mode := u32(0)
+	mut mode := C.DWORD(0)
 	$if v2_native_windows_pe_minimal ? {
 		if fd != 0 && fd != 1 && fd != 2 {
 			return 0
@@ -133,8 +135,8 @@ fn write_buf_to_console(fd int, buf &u8, buf_len int) bool {
 		mut remaining_chars := converted
 		mut wide_ptr := wide_buf
 		for remaining_chars > 0 {
-			mut chars_written := u32(0)
-			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), &chars_written, nil)
+			mut chars_written := C.DWORD(0)
+			if !C.WriteConsoleW(console_handle, wide_ptr, C.DWORD(remaining_chars), &chars_written, nil)
 				|| chars_written == 0 {
 				return false
 			}
@@ -154,7 +156,7 @@ fn write_buf_to_console_kernel32(fd int, buf &u8, buf_len int) bool {
 	if isnil(console_handle) || console_handle == voidptr(-1) {
 		return false
 	}
-	mut mode := u32(0)
+	mut mode := C.DWORD(0)
 	if !C.GetConsoleMode(console_handle, &mode) {
 		return false
 	}
@@ -183,8 +185,8 @@ fn write_buf_to_console_kernel32(fd int, buf &u8, buf_len int) bool {
 		mut remaining_chars := converted
 		mut wide_ptr := wide_buf
 		for remaining_chars > 0 {
-			mut chars_written := u32(0)
-			if !C.WriteConsoleW(console_handle, wide_ptr, u32(remaining_chars), &chars_written, nil)
+			mut chars_written := C.DWORD(0)
+			if !C.WriteConsoleW(console_handle, wide_ptr, C.DWORD(remaining_chars), &chars_written, nil)
 				|| chars_written == 0 {
 				return false
 			}
@@ -223,8 +225,8 @@ fn write_buf_to_fd_kernel32_status(fd int, buf &u8, buf_len int) int {
 			} else {
 				remaining_bytes
 			}
-			mut written := u32(0)
-			if !C.WriteFile(handle, ptr, u32(chunk), &written, nil) {
+			mut written := C.DWORD(0)
+			if !C.WriteFile(handle, ptr, C.DWORD(chunk), &written, nil) {
 				return 3
 			}
 			if written == 0 {

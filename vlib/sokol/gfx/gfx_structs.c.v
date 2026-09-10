@@ -36,6 +36,7 @@ pub type ColorTargetState = C.sg_color_target_state
 
 pub struct C.sg_pipeline_desc {
 pub mut:
+	_start_canary             u32
 	shader                    Shader
 	layout                    VertexLayoutState
 	depth                     DepthState
@@ -50,6 +51,7 @@ pub mut:
 	blend_color               Color
 	alpha_to_coverage_enabled bool
 	label                     &char = &char(unsafe { nil })
+	_end_canary               u32
 }
 
 pub type PipelineDesc = C.sg_pipeline_desc
@@ -181,10 +183,12 @@ pub type StageBindings = C.sg_stage_bindings
 @[heap]
 pub struct C.sg_shader_desc {
 pub mut:
-	attrs [16]ShaderAttrDesc
-	vs    ShaderStageDesc
-	fs    ShaderStageDesc
-	label &char
+	_start_canary u32
+	attrs         [16]ShaderAttrDesc
+	vs            ShaderStageDesc
+	fs            ShaderStageDesc
+	label         &char
+	_end_canary   u32
 }
 
 pub type ShaderDesc = C.sg_shader_desc
@@ -638,24 +642,26 @@ pub type Pass = C.sg_pass
 
 pub struct C.sg_buffer_desc {
 pub mut:
-	size  usize
-	type  BufferType
-	usage Usage
-	data  Range
-	label &char
+	_start_canary u32
+	size          usize
+	type          BufferType
+	usage         Usage
+	data          Range
+	label         &char
 	// backend-specific resources
 	gl_buffers   [2]u32
 	mtl_buffers  [2]voidptr
 	d3d11_buffer voidptr
 	wgpu_buffer  voidptr
+	_end_canary  u32
 }
 
 pub type BufferDesc = C.sg_buffer_desc
 
 pub struct C.sg_slot_info {
+pub:
 	state  ResourceState
 	res_id u32
-	ctx_id u32
 }
 
 pub type SlotInfo = C.sg_slot_info
@@ -685,6 +691,7 @@ pub fn (mut b Buffer) free() {
 
 pub struct C.sg_image_desc {
 pub mut:
+	_start_canary u32
 	type          ImageType
 	render_target bool
 	width         int
@@ -712,11 +719,15 @@ pub mut:
 	d3d11_texture              voidptr
 	d3d11_shader_resource_view voidptr
 	wgpu_texture               voidptr
+	wgpu_texture_view          voidptr
+	_end_canary                u32
 }
 
 pub type ImageDesc = C.sg_image_desc
 
 pub struct C.sg_sampler_desc {
+pub mut:
+	_start_canary  u32
 	min_filter     Filter
 	mag_filter     Filter
 	mipmap_filter  Filter
@@ -734,6 +745,7 @@ pub struct C.sg_sampler_desc {
 	mtl_sampler   voidptr
 	d3d11_sampler voidptr
 	wgpu_sampler  voidptr
+	_end_canary   u32
 }
 
 pub type SamplerDesc = C.sg_sampler_desc
@@ -980,4 +992,9 @@ pub type CommitListener = C.sg_commit_listener
 pub struct C.sg_trace_hooks {}
 
 // pub struct C.sg_resource_state {} enum
-pub struct C.sg_sampler_info {}
+pub struct C.sg_sampler_info {
+pub:
+	slot SlotInfo
+}
+
+pub type SamplerInfo = C.sg_sampler_info

@@ -36,3 +36,30 @@ fn test_fixed_array_field_assign_from_match_expr() {
 	fixed_array_expr_set_match(mut mesh, false)
 	assert mesh.highlight == fixed_array_expr_lo
 }
+
+struct FixedArrayExprBoard {
+mut:
+	cells [4][4]int
+}
+
+fn fixed_array_expr_board_of(values [][]int) [4][4]int {
+	mut board := [4][4]int{}
+	for row in 0 .. 4 {
+		for column in 0 .. 4 {
+			board[row][column] = values[row][column]
+		}
+	}
+	return board
+}
+
+fn test_fixed_array_field_assign_from_call_with_array_init_argument() {
+	mut board := FixedArrayExprBoard{}
+	board.cells = fixed_array_expr_board_of([
+		[0, 0, 0, 2],
+		[0, 0, 0, 0],
+		[0, 2, 0, 0],
+		[0, 0, 0, 0],
+	])
+	assert board.cells[0][3] == 2
+	assert board.cells[2][1] == 2
+}

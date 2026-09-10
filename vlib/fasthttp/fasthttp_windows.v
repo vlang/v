@@ -23,17 +23,24 @@ struct IocpConn {
 	server &Server
 	fd     C.SOCKET
 mut:
-	request_buf    []u8
-	read_start     i64
-	write_start    i64
-	request_active bool
+	request_buf []u8
+	request_len int
+	read_eof    bool
+	// Housekeeping runs concurrently with completion workers, so fields it reads
+	// are atomic rather than merely protected by the registry container mutex.
+	read_start     &stdatomic.AtomicVal[u64] = stdatomic.new_atomic(u64(0))
+	write_start    &stdatomic.AtomicVal[u64] = stdatomic.new_atomic(u64(0))
+	request_active &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
 	request_arena  voidptr
 	should_close   bool
 	closing        &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	file_handle    voidptr
-	has_file       bool
-	file_len       i64
-	file_pos       i64
+	// The registry keeps the connection reachable, and this pointer keeps the one
+	// outstanding kernel-owned operation reachable until IOCP completes it.
+	pending_op  &stdatomic.AtomicVal[voidptr] = stdatomic.new_atomic(voidptr(unsafe { nil }))
+	file_handle voidptr
+	has_file    bool
+	file_len    i64
+	file_pos    i64
 }
 
 struct IocpConnRegistry {
@@ -42,6 +49,7 @@ mut:
 	conns map[voidptr]&IocpConn
 }
 
+@[heap]
 struct IocpOperation {
 mut:
 	overlapped C.OVERLAPPED
@@ -55,20 +63,24 @@ mut:
 pub struct Server {
 pub:
 	family                  net.AddrFamily = .ip6
-	port                    int            = 3000
-	max_request_buffer_size int            = 8192
-	timeout_in_seconds      int            = 30
+	host                    string
+	port                    int = 3000
+	max_request_buffer_size int = 8192
+	max_request_body_size   int = default_max_request_body_size
+	timeout_in_seconds      int = 30
 	user_data               voidptr
 mut:
 	listen_fd       C.SOCKET = iocp_invalid_socket
 	iocp            voidptr
-	threads         []thread          = []thread{len: iocp_thread_count, cap: iocp_thread_count}
+	threads         []thread = []thread{len: iocp_thread_count, cap: iocp_thread_count}
 	registry        &IocpConnRegistry = &IocpConnRegistry{}
-	request_handler fn (HttpRequest) !HttpResponse @[required]
+	request_handler fn (HttpRequest) !HttpResponse = unsafe { nil }
+	append_handler  AppendHandler = unsafe { nil }
+	make_state      fn () voidptr = unsafe { nil }
 	running         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
 	shutting_down   &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
 	stopped         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
-	active_requests &stdatomic.AtomicVal[int]  = stdatomic.new_atomic(0)
+	active_requests &stdatomic.AtomicVal[int] = stdatomic.new_atomic(0)
 }
 
 // new_server creates and initializes a new Server instance.
@@ -76,18 +88,33 @@ pub fn new_server(config ServerConfig) !&Server {
 	if config.max_request_buffer_size <= 0 {
 		return error('max_request_buffer_size must be greater than 0')
 	}
+	if config.max_request_body_size < 0 {
+		return error('max_request_body_size must not be negative')
+	}
+	has_handler := config.handler != unsafe { nil }
+	has_append := config.append_handler != unsafe { nil }
+	if !has_handler && !has_append {
+		return error('a handler is required: set exactly one of `handler` or `append_handler`')
+	}
+	if has_handler && has_append {
+		return error('set only one of `handler` or `append_handler`, not both')
+	}
 	mut server := &Server{
-		family:                  config.family
-		port:                    config.port
+		family: config.family
+		host: config.host
+		port: config.port
 		max_request_buffer_size: config.max_request_buffer_size
-		timeout_in_seconds:      config.timeout_in_seconds
-		user_data:               config.user_data
-		request_handler:         config.handler
-		running:                 stdatomic.new_atomic(false)
-		shutting_down:           stdatomic.new_atomic(false)
-		stopped:                 stdatomic.new_atomic(true)
-		active_requests:         stdatomic.new_atomic(0)
-		registry:                &IocpConnRegistry{
+		max_request_body_size: config.max_request_body_size
+		timeout_in_seconds: config.timeout_in_seconds
+		user_data: config.user_data
+		request_handler: config.handler
+		append_handler: config.append_handler
+		make_state: config.make_state
+		running: stdatomic.new_atomic(false)
+		shutting_down: stdatomic.new_atomic(false)
+		stopped: stdatomic.new_atomic(true)
+		active_requests: stdatomic.new_atomic(0)
+		registry: &IocpConnRegistry{
 			mutex: sync.new_mutex()
 		}
 	}
@@ -116,9 +143,7 @@ fn get_transmit_file_fn(fd C.SOCKET) ?IocpTransmitFileFn {
 	}
 	mut transmit_file := voidptr(unsafe { nil })
 	mut bytes_returned := C.DWORD(0)
-	rc := C.WSAIoctl(fd, C.SIO_GET_EXTENSION_FUNCTION_POINTER, voidptr(&transmit_file_guid),
-		C.DWORD(sizeof(C.GUID)), voidptr(&transmit_file), C.DWORD(sizeof(voidptr)),
-		&bytes_returned, unsafe { nil }, unsafe { nil })
+	rc := C.WSAIoctl(fd, C.SIO_GET_EXTENSION_FUNCTION_POINTER, voidptr(&transmit_file_guid), C.DWORD(sizeof(C.GUID)), voidptr(&transmit_file), C.DWORD(sizeof(voidptr)), &bytes_returned, unsafe { nil }, unsafe { nil })
 	if rc == C.SOCKET_ERROR || transmit_file == unsafe { nil } {
 		return none
 	}
@@ -130,33 +155,30 @@ fn wsa_error_message(label string) string {
 }
 
 fn create_server_socket(server &Server) !C.SOCKET {
-	server_fd := C.WSASocketW(i32(server.family), i32(net.SocketType.tcp), 0, unsafe { nil }, 0,
-		u32(C.WSA_FLAG_OVERLAPPED))
+	// Resolve the bind address first: the socket family must match the address
+	// family, and a configured host may resolve to a different family than
+	// server.family (e.g. an IPv4 host with the default family: .ip6).
+	addr := resolve_bind_addr(server.host, server.family, server.port)!
+	server_fd := C.WSASocketW(i32(addr.family()), i32(net.SocketType.tcp), 0, unsafe { nil }, 0, u32(C.WSA_FLAG_OVERLAPPED))
 	if server_fd == iocp_invalid_socket {
 		return error(wsa_error_message('WSASocketW'))
 	}
 
 	opt := 1
-	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEADDR, voidptr(&opt), sizeof(opt)) < 0 {
+	if C.v_fasthttp_setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEADDR, voidptr(&opt), sizeof(opt)) < 0 {
 		close_socket(server_fd)
 		return error(wsa_error_message('setsockopt SO_REUSEADDR'))
 	}
-	if server.family == .ip6 {
+	if addr.family() == .ip6 {
 		ipv6_only := 0
-		C.setsockopt(server_fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, voidptr(&ipv6_only),
-			sizeof(ipv6_only))
+		C.v_fasthttp_setsockopt(server_fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, voidptr(&ipv6_only), sizeof(ipv6_only))
 	}
 
-	addr := if server.family == .ip6 {
-		net.new_ip6(u16(server.port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
-	} else {
-		net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
-	}
-	if C.bind(server_fd, voidptr(&addr), int(addr.len())) < 0 {
+	if C.v_fasthttp_bind(server_fd, voidptr(&addr), int(addr.len())) < 0 {
 		close_socket(server_fd)
 		return error(wsa_error_message('bind'))
 	}
-	if C.listen(server_fd, max_connection_size) < 0 {
+	if C.v_fasthttp_listen(server_fd, max_connection_size) < 0 {
 		close_socket(server_fd)
 		return error(wsa_error_message('listen'))
 	}
@@ -177,8 +199,28 @@ fn (conn &IocpConn) is_closing() bool {
 	return closing.load()
 }
 
+fn (mut conn IocpConn) register_op(op &IocpOperation) {
+	mut pending_op := conn.pending_op
+	if !pending_op.compare_and_swap(voidptr(unsafe { nil }), voidptr(op)) {
+		panic('fasthttp: attempted to post concurrent operations on one IOCP connection')
+	}
+}
+
+fn (mut conn IocpConn) unregister_op(op &IocpOperation) {
+	mut pending_op := conn.pending_op
+	if !pending_op.compare_and_swap(voidptr(op), voidptr(unsafe { nil })) {
+		panic('fasthttp: pending IOCP operation changed before submission failed')
+	}
+}
+
+fn (mut conn IocpConn) take_op(overlapped &C.OVERLAPPED) bool {
+	mut pending_op := conn.pending_op
+	raw_op := voidptr(overlapped)
+	return pending_op.compare_and_swap(raw_op, voidptr(unsafe { nil }))
+}
+
 fn close_conn_socket(fd C.SOCKET) {
-	C.shutdown(fd, C.SD_BOTH)
+	C.v_fasthttp_shutdown(fd, C.SD_BOTH)
 	close_socket(fd)
 }
 
@@ -225,7 +267,7 @@ fn (mut registry IocpConnRegistry) close_all_async() {
 	registry.mutex.unlock()
 }
 
-fn (mut registry IocpConnRegistry) sweep_timed_out_io(timeout_ns i64) {
+fn (mut registry IocpConnRegistry) sweep_timed_out_io(timeout_ns u64) {
 	now := time.sys_mono_now()
 	registry.mutex.lock()
 	for key in registry.conns.keys() {
@@ -233,12 +275,14 @@ fn (mut registry IocpConnRegistry) sweep_timed_out_io(timeout_ns i64) {
 		if conn.is_closing() {
 			continue
 		}
-		if !conn.request_active && conn.read_start > 0 && now - conn.read_start >= timeout_ns
+		read_start := conn.read_start.load()
+		write_start := conn.write_start.load()
+		if !conn.request_active.load() && read_start > 0 && now - read_start >= timeout_ns
 			&& conn.mark_closing() {
-			C.send(conn.fd, status_408_response.data, status_408_response.len, 0)
+			C.v_fasthttp_send(conn.fd, status_408_response.data, status_408_response.len, 0)
 			close_conn_socket(conn.fd)
 		}
-		if conn.write_start > 0 && now - conn.write_start >= timeout_ns && conn.mark_closing() {
+		if write_start > 0 && now - write_start >= timeout_ns && conn.mark_closing() {
 			close_conn_socket(conn.fd)
 		}
 	}
@@ -259,8 +303,7 @@ fn (mut conn IocpConn) open_response_file(path string) bool {
 	conn.close_response_file()
 	st := os.stat(path) or { return false }
 	path_wide := path.to_wide()
-	handle := C.CreateFileW(path_wide, C.GENERIC_READ, C.FILE_SHARE_READ, 0, C.OPEN_EXISTING,
-		C.FILE_ATTRIBUTE_NORMAL, 0)
+	handle := C.CreateFileW(path_wide, C.GENERIC_READ, C.FILE_SHARE_READ, 0, C.OPEN_EXISTING, C.FILE_ATTRIBUTE_NORMAL, 0)
 	if handle == C.INVALID_HANDLE_VALUE || handle == unsafe { nil } {
 		return false
 	}
@@ -289,16 +332,16 @@ fn (mut conn IocpConn) free_request_arena() {
 }
 
 fn (mut conn IocpConn) end_active_request() {
-	if conn.request_active {
+	mut request_active := conn.request_active
+	if request_active.compare_and_swap(true, false) {
 		conn.server.end_request()
-		conn.request_active = false
 	}
 }
 
 fn (mut conn IocpConn) begin_active_request() {
-	if !conn.request_active {
+	mut request_active := conn.request_active
+	if request_active.compare_and_swap(false, true) {
 		conn.server.begin_request()
-		conn.request_active = true
 	}
 }
 
@@ -310,6 +353,26 @@ fn free_conn_storage(mut conn IocpConn) {
 	if conn.closing != unsafe { nil } {
 		unsafe { free(conn.closing) }
 		conn.closing = unsafe { nil }
+	}
+	if conn.pending_op != unsafe { nil } {
+		mut pending_op := conn.pending_op
+		if pending_op.load() != unsafe { nil } {
+			panic('fasthttp: freeing an IOCP connection with a pending operation')
+		}
+		unsafe { free(conn.pending_op) }
+		conn.pending_op = unsafe { nil }
+	}
+	if conn.read_start != unsafe { nil } {
+		unsafe { free(conn.read_start) }
+		conn.read_start = unsafe { nil }
+	}
+	if conn.write_start != unsafe { nil } {
+		unsafe { free(conn.write_start) }
+		conn.write_start = unsafe { nil }
+	}
+	if conn.request_active != unsafe { nil } {
+		unsafe { free(conn.request_active) }
+		conn.request_active = unsafe { nil }
 	}
 	unsafe { free(conn) }
 }
@@ -336,9 +399,12 @@ fn reset_conn_for_next_request(mut conn IocpConn) {
 	conn.end_active_request()
 	conn.close_response_file()
 	conn.free_request_arena()
-	conn.request_buf.clear()
-	conn.read_start = 0
-	conn.write_start = 0
+	if conn.request_len > 0 {
+		conn.request_buf.delete_many(0, conn.request_len)
+		conn.request_len = 0
+	}
+	conn.read_start.store(if conn.request_buf.len > 0 { time.sys_mono_now() } else { u64(0) })
+	conn.write_start.store(0)
 	conn.should_close = false
 }
 
@@ -346,7 +412,7 @@ fn post_recv(mut conn IocpConn) bool {
 	mut op := &IocpOperation{
 		kind: .read
 		conn: conn
-		buf:  []u8{len: iocp_read_buf_size}
+		buf: []u8{len: iocp_read_buf_size}
 	}
 	op.wsabuf = C.WSABUF{
 		len: u32(op.buf.len)
@@ -354,10 +420,12 @@ fn post_recv(mut conn IocpConn) bool {
 	}
 	mut flags := C.DWORD(0)
 	mut bytes_read := C.DWORD(0)
+	conn.register_op(op)
 	ret := C.WSARecv(conn.fd, &op.wsabuf, 1, &bytes_read, &flags, &op.overlapped, unsafe { nil })
 	if ret == C.SOCKET_ERROR {
 		code := C.WSAGetLastError()
 		if code != C.WSA_IO_PENDING {
+			conn.unregister_op(op)
 			op.free()
 			return false
 		}
@@ -376,11 +444,13 @@ fn post_write_op(mut op IocpOperation) bool {
 		buf: unsafe { &char(&op.buf[op.pos]) }
 	}
 	mut bytes_sent := C.DWORD(0)
-	op.conn.write_start = time.sys_mono_now()
+	op.conn.write_start.store(time.sys_mono_now())
+	op.conn.register_op(op)
 	ret := C.WSASend(op.conn.fd, &op.wsabuf, 1, &bytes_sent, 0, &op.overlapped, unsafe { nil })
 	if ret == C.SOCKET_ERROR {
 		code := C.WSAGetLastError()
 		if code != C.WSA_IO_PENDING {
+			op.conn.unregister_op(op)
 			return false
 		}
 	}
@@ -406,16 +476,17 @@ fn post_transmit_file(mut conn IocpConn) bool {
 	file_pos := u64(conn.file_pos)
 	op.overlapped.Offset = u32(file_pos & 0xffffffff)
 	op.overlapped.OffsetHigh = u32(file_pos >> 32)
-	conn.write_start = time.sys_mono_now()
+	conn.write_start.store(time.sys_mono_now())
 	transmit_file := get_transmit_file_fn(conn.fd) or {
 		op.free()
 		return false
 	}
-	ret := transmit_file(conn.fd, conn.file_handle, C.DWORD(chunk_size), 0, &op.overlapped,
-		unsafe { nil }, 0)
+	conn.register_op(op)
+	ret := transmit_file(conn.fd, conn.file_handle, C.DWORD(chunk_size), 0, &op.overlapped, unsafe { nil }, 0)
 	if ret == 0 {
 		code := C.WSAGetLastError()
 		if code != C.WSA_IO_PENDING {
+			conn.unregister_op(op)
 			op.free()
 			return false
 		}
@@ -423,11 +494,11 @@ fn post_transmit_file(mut conn IocpConn) bool {
 	return true
 }
 
-fn continue_response_after_write(mut conn IocpConn) {
+fn continue_response_after_write(mut conn IocpConn, worker_state voidptr) {
 	if conn.has_file {
 		if conn.file_pos >= conn.file_len {
 			conn.close_response_file()
-			complete_response(mut conn)
+			complete_response(mut conn, worker_state)
 			return
 		}
 		if !post_transmit_file(mut conn) {
@@ -435,13 +506,21 @@ fn continue_response_after_write(mut conn IocpConn) {
 		}
 		return
 	}
-	complete_response(mut conn)
+	complete_response(mut conn, worker_state)
 }
 
-fn complete_response(mut conn IocpConn) {
+fn complete_response(mut conn IocpConn, worker_state voidptr) {
 	should_close := conn.should_close
 	reset_conn_for_next_request(mut conn)
 	if conn.server.is_shutting_down() || should_close {
+		close_conn(mut conn)
+		return
+	}
+	if conn.request_buf.len > 0 {
+		dispatch_iocp_request(mut conn, worker_state)
+		return
+	}
+	if conn.read_eof {
 		close_conn(mut conn)
 		return
 	}
@@ -450,16 +529,16 @@ fn complete_response(mut conn IocpConn) {
 	}
 }
 
-fn send_response(mut conn IocpConn, content []u8, should_close bool) {
+fn send_response(mut conn IocpConn, content []u8, should_close bool, worker_state voidptr) {
 	conn.should_close = should_close
 	if content.len == 0 {
-		continue_response_after_write(mut conn)
+		continue_response_after_write(mut conn, worker_state)
 		return
 	}
 	mut op := &IocpOperation{
 		kind: .write
 		conn: conn
-		buf:  content
+		buf: content
 	}
 	if !post_write_op(mut op) {
 		op.free()
@@ -467,38 +546,62 @@ fn send_response(mut conn IocpConn, content []u8, should_close bool) {
 	}
 }
 
-fn send_terminal_response(mut conn IocpConn, response []u8) {
-	conn.read_start = 0
-	send_response(mut conn, response.clone(), true)
+fn send_terminal_response(mut conn IocpConn, response []u8, worker_state voidptr) {
+	conn.begin_active_request()
+	conn.request_len = conn.request_buf.len
+	conn.read_start.store(0)
+	send_response(mut conn, response.clone(), true, worker_state)
 }
 
-fn process_request(mut conn IocpConn) {
+fn process_request(mut conn IocpConn, frame_total int, worker_state voidptr) {
 	conn.begin_active_request()
+	conn.request_len = frame_total
+	// The append handler manages its own -prealloc scope; only the legacy path
+	// uses the reactor arena.
+	using_append := conn.server.append_handler != unsafe { nil }
 	mut request_arena := voidptr(unsafe { nil })
 	$if prealloc {
-		request_arena = unsafe { prealloc_scope_begin() }
+		if !using_append {
+			request_arena = unsafe { prealloc_scope_begin() }
+		}
 	}
 
-	mut decoded := decode_http_request(conn.request_buf) or {
+	// The consumed prefix remains stable until this response completes.
+	req_view := conn.request_buf[..frame_total]
+	mut decoded := decode_http_request(req_view) or {
 		end_request_arena_current_thread(request_arena)
-		send_terminal_response(mut conn, tiny_bad_request_response)
+		send_terminal_response(mut conn, tiny_bad_request_response, worker_state)
 		return
-	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
 	}
 	// Keep legacy int fd consumers working; client_conn_handle preserves the full SOCKET.
 	decoded.client_conn_fd = int(conn.fd)
 	decoded.client_conn_handle = usize(conn.fd)
 	decoded.user_data = conn.server.user_data
+	decoded.worker_state = worker_state
 
-	mut response := conn.server.request_handler(decoded) or {
-		end_request_arena_current_thread(request_arena)
-		send_terminal_response(mut conn, tiny_bad_request_response)
-		return
-	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp handler returned') }
+	mut response := if using_append {
+		// Zero-copy contract: the handler appends its response into `out`; wrap it
+		// into the existing response-sending path.
+		// NOTE: `out` is a fresh per-request buffer. Under the default GC it is
+		// reclaimed after the send; under -prealloc the append path opens no request
+		// scope, so it is not reclaimed per request (known limitation — IOCP does not
+		// yet reuse a persistent per-connection write buffer).
+		mut out := []u8{}
+		mut ctl := ResponseControl{}
+		step := conn.server.append_handler(decoded, mut out, worker_state, mut ctl)
+		HttpResponse{
+			content: out
+			content_owned: true
+			takeover_mode: ctl.takeover_mode
+			should_close: ctl.should_close || step != .done
+			file_path: ctl.file_path
+		}
+	} else {
+		conn.server.request_handler(decoded) or {
+			end_request_arena_current_thread(request_arena)
+			send_terminal_response(mut conn, tiny_bad_request_response, worker_state)
+			return
+		}
 	}
 	response.attach_request_arena_if_empty(request_arena)
 
@@ -510,14 +613,20 @@ fn process_request(mut conn IocpConn) {
 			return
 		}
 		.reusable {
+			should_close := response.should_close
+				|| (conn.read_eof && frame_total == conn.request_buf.len)
 			response.free_owned_content()
 			response.end_request_arena_current_thread()
 			reset_conn_for_next_request(mut conn)
-			if conn.server.is_shutting_down() || response.should_close {
+			if conn.server.is_shutting_down() || should_close {
 				close_conn(mut conn)
 				return
 			}
-			if !post_recv(mut conn) {
+			if conn.request_buf.len > 0 {
+				dispatch_iocp_request(mut conn, worker_state)
+			} else if conn.read_eof {
+				close_conn(mut conn)
+			} else if !post_recv(mut conn) {
 				close_conn(mut conn)
 			}
 			return
@@ -529,17 +638,54 @@ fn process_request(mut conn IocpConn) {
 		if !conn.open_response_file(response.file_path) {
 			response.free_owned_content()
 			response.end_request_arena_current_thread()
-			send_terminal_response(mut conn, tiny_bad_request_response)
+			send_terminal_response(mut conn, tiny_bad_request_response, worker_state)
 			return
 		}
 	}
 	mut content := response.take_or_clone_content()
 	conn.request_arena = response.take_request_arena()
 	leave_request_arena_current_thread(conn.request_arena)
-	send_response(mut conn, content, response.should_close)
+	should_close := response.should_close || (conn.read_eof && frame_total == conn.request_buf.len)
+	send_response(mut conn, content, should_close, worker_state)
 }
 
-fn handle_read_completion(mut conn IocpConn, mut op IocpOperation, bytes_read C.DWORD) {
+fn dispatch_iocp_request(mut conn IocpConn, worker_state voidptr) {
+	if conn.request_buf.len == 0 {
+		if conn.read_eof {
+			close_conn(mut conn)
+		} else if !post_recv(mut conn) {
+			close_conn(mut conn)
+		}
+		return
+	}
+	frame_total := frame_request_length_lim_idx(conn.request_buf, conn.server.max_request_buffer_size, conn.server.max_request_body_size)
+	if frame_total == -1 {
+		if conn.read_eof {
+			send_terminal_response(mut conn, tiny_bad_request_response, worker_state)
+			return
+		}
+		read_start := conn.read_start.load()
+		if conn.server.timeout_in_seconds > 0 && read_start > 0 {
+			timeout_ns := u64(conn.server.timeout_in_seconds) * 1_000_000_000
+			if time.sys_mono_now() - read_start >= timeout_ns {
+				send_terminal_response(mut conn, status_408_response, worker_state)
+				return
+			}
+		}
+		if !post_recv(mut conn) {
+			close_conn(mut conn)
+		}
+		return
+	}
+	if frame_total < -1 {
+		send_terminal_response(mut conn, response_for_frame_error(frame_total), worker_state)
+		return
+	}
+	conn.read_start.store(0)
+	process_request(mut conn, frame_total, worker_state)
+}
+
+fn handle_read_completion(mut conn IocpConn, mut op IocpOperation, bytes_read C.DWORD, worker_state voidptr) {
 	defer {
 		op.free()
 	}
@@ -548,43 +694,19 @@ fn handle_read_completion(mut conn IocpConn, mut op IocpOperation, bytes_read C.
 		return
 	}
 	if bytes_read == 0 {
-		close_conn(mut conn)
+		conn.read_eof = true
+		dispatch_iocp_request(mut conn, worker_state)
 		return
 	}
 
-	if conn.read_start == 0 {
-		conn.read_start = time.sys_mono_now()
+	if conn.read_start.load() == 0 {
+		conn.read_start.store(time.sys_mono_now())
 	}
 	conn.request_buf << op.buf[..int(bytes_read)]
-	buffer_len := conn.request_buf.len
-	header_end_pos := find_header_end_in_buf(conn.request_buf.data, buffer_len)
-	if (header_end_pos == -1 && buffer_len >= conn.server.max_request_buffer_size)
-		|| header_end_pos > conn.server.max_request_buffer_size {
-		send_terminal_response(mut conn, status_413_response)
-		return
-	}
-	if header_end_pos >= 0 && has_complete_body(conn.request_buf.data, buffer_len) {
-		conn.read_start = 0
-		conn.begin_active_request()
-		process_request(mut conn)
-		return
-	}
-
-	if conn.server.timeout_in_seconds > 0 {
-		elapsed_ns := time.sys_mono_now() - conn.read_start
-		timeout_ns := i64(conn.server.timeout_in_seconds) * 1_000_000_000
-		if elapsed_ns >= timeout_ns {
-			send_terminal_response(mut conn, status_408_response)
-			return
-		}
-	}
-
-	if !post_recv(mut conn) {
-		close_conn(mut conn)
-	}
+	dispatch_iocp_request(mut conn, worker_state)
 }
 
-fn handle_write_completion(mut conn IocpConn, mut op IocpOperation, bytes_written C.DWORD) {
+fn handle_write_completion(mut conn IocpConn, mut op IocpOperation, bytes_written C.DWORD, worker_state voidptr) {
 	if conn.is_closing() {
 		op.free()
 		close_conn(mut conn)
@@ -599,10 +721,10 @@ fn handle_write_completion(mut conn IocpConn, mut op IocpOperation, bytes_writte
 		return
 	}
 	op.free()
-	continue_response_after_write(mut conn)
+	continue_response_after_write(mut conn, worker_state)
 }
 
-fn handle_transmit_file_completion(mut conn IocpConn, mut op IocpOperation, bytes_transferred C.DWORD) {
+fn handle_transmit_file_completion(mut conn IocpConn, mut op IocpOperation, bytes_transferred C.DWORD, worker_state voidptr) {
 	if conn.is_closing() {
 		op.free()
 		close_conn(mut conn)
@@ -615,13 +737,13 @@ fn handle_transmit_file_completion(mut conn IocpConn, mut op IocpOperation, byte
 	}
 	conn.file_pos += i64(bytes_transferred)
 	op.free()
-	continue_response_after_write(mut conn)
+	continue_response_after_write(mut conn, worker_state)
 }
 
 fn run_iocp_housekeeping(server &Server) bool {
 	mut registry := server.registry
 	if server.timeout_in_seconds > 0 {
-		timeout_ns := i64(server.timeout_in_seconds) * 1_000_000_000
+		timeout_ns := u64(server.timeout_in_seconds) * 1_000_000_000
 		registry.sweep_timed_out_io(timeout_ns)
 	}
 	if server.is_shutting_down() && server.active_request_count() == 0 {
@@ -632,6 +754,10 @@ fn run_iocp_housekeeping(server &Server) bool {
 }
 
 fn process_iocp_events(server &Server) {
+	mut worker_state := voidptr(unsafe { nil })
+	if server.make_state != unsafe { nil } {
+		worker_state = server.make_state()
+	}
 	for {
 		if run_iocp_housekeeping(server) {
 			return
@@ -639,8 +765,7 @@ fn process_iocp_events(server &Server) {
 		mut bytes_transferred := C.DWORD(0)
 		mut completion_key := C.ULONG_PTR(0)
 		mut overlapped := &C.OVERLAPPED(unsafe { nil })
-		ok := C.GetQueuedCompletionStatus(server.iocp, &bytes_transferred, &completion_key,
-			&overlapped, iocp_wait_timeout_ms)
+		ok := C.GetQueuedCompletionStatus(server.iocp, &bytes_transferred, &completion_key, &overlapped, iocp_wait_timeout_ms)
 		if overlapped == unsafe { nil } {
 			if run_iocp_housekeeping(server) {
 				return
@@ -650,6 +775,9 @@ fn process_iocp_events(server &Server) {
 
 		mut op := unsafe { &IocpOperation(overlapped) }
 		mut conn := op.conn
+		if !conn.take_op(overlapped) {
+			continue
+		}
 		if !ok {
 			op.free()
 			close_conn(mut conn)
@@ -657,13 +785,13 @@ fn process_iocp_events(server &Server) {
 		}
 		match op.kind {
 			.read {
-				handle_read_completion(mut conn, mut op, bytes_transferred)
+				handle_read_completion(mut conn, mut op, bytes_transferred, worker_state)
 			}
 			.write {
-				handle_write_completion(mut conn, mut op, bytes_transferred)
+				handle_write_completion(mut conn, mut op, bytes_transferred, worker_state)
 			}
 			.transmit_file {
-				handle_transmit_file_completion(mut conn, mut op, bytes_transferred)
+				handle_transmit_file_completion(mut conn, mut op, bytes_transferred, worker_state)
 			}
 		}
 
@@ -684,16 +812,18 @@ fn accept_loop(server &Server) {
 			continue
 		}
 		opt := 1
-		C.setsockopt(client_fd, C.IPPROTO_TCP, C.TCP_NODELAY, voidptr(&opt), sizeof(opt))
+		C.v_fasthttp_setsockopt(client_fd, C.IPPROTO_TCP, C.TCP_NODELAY, voidptr(&opt), sizeof(opt))
+		mut conn := &IocpConn{
+			server: server
+			fd: client_fd
+			request_buf: []u8{cap: server.max_request_buffer_size}
+			closing: stdatomic.new_atomic(false)
+			pending_op: stdatomic.new_atomic(voidptr(unsafe { nil }))
+		}
 		if !associate_socket_with_iocp(server.iocp, client_fd) {
 			close_socket(client_fd)
+			free_conn_storage(mut conn)
 			continue
-		}
-		mut conn := &IocpConn{
-			server:      server
-			fd:          client_fd
-			request_buf: []u8{cap: server.max_request_buffer_size}
-			closing:     stdatomic.new_atomic(false)
 		}
 		mut registry := server.registry
 		registry.add(conn)
@@ -705,7 +835,7 @@ fn accept_loop(server &Server) {
 
 fn (mut server Server) stop_accepting() {
 	if server.listen_fd != iocp_invalid_socket {
-		C.shutdown(server.listen_fd, C.SD_BOTH)
+		C.v_fasthttp_shutdown(server.listen_fd, C.SD_BOTH)
 		close_socket(server.listen_fd)
 		server.listen_fd = iocp_invalid_socket
 	}
@@ -719,8 +849,7 @@ fn (mut server Server) stop_accepting() {
 // run starts the server and begins listening for incoming connections.
 pub fn (mut server Server) run() ! {
 	server.listen_fd = create_server_socket(server)!
-	server.iocp = C.CreateIoCompletionPort(C.INVALID_HANDLE_VALUE, unsafe { nil }, 0,
-		C.DWORD(max_thread_pool_size))
+	server.iocp = C.CreateIoCompletionPort(C.INVALID_HANDLE_VALUE, unsafe { nil }, 0, C.DWORD(max_thread_pool_size))
 	if server.iocp == unsafe { nil } {
 		close_socket(server.listen_fd)
 		server.listen_fd = iocp_invalid_socket
@@ -733,7 +862,7 @@ pub fn (mut server Server) run() ! {
 	server.threads[max_thread_pool_size] = spawn accept_loop(server)
 
 	server.mark_running()
-	println('listening on http://0.0.0.0:${server.port}/')
+	println('listening on http://${listen_host_display(server.host, server.family)}:${server.port}/')
 
 	for i in 0 .. max_thread_pool_size + 1 {
 		server.threads[i].wait()

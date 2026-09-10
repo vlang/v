@@ -6,7 +6,7 @@
 import os
 import toml
 import toml.ast
-import x.json2
+import json2
 
 const test_root = os.join_path(@VEXEROOT, 'vlib/toml/tests/testdata/toml_lang/tests')
 const test_files_file = os.join_path(test_root, 'files-toml-1.0.0')

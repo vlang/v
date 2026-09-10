@@ -1,0 +1,6 @@
+vlib/v/parser/tests/fixed_array_init_map_elem_type_err.vv:2:10: error: cannot use the map type without key and value definition
+    1 | fn main() {
+    2 |     a := [4]map{}
+      |             ~~~
+    3 |     println(a)
+    4 | }

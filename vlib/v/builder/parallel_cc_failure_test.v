@@ -11,8 +11,7 @@ fn run_parallel_cc_case(case_name string, files map[string]string) os.Result {
 }
 
 fn run_parallel_cc_case_with_env(case_name string, files map[string]string, env_overrides map[string]string) os.Result {
-	return run_parallel_cc_case_with_args(case_name, ['-parallel-cc', 'main.v'], files,
-		env_overrides)
+	return run_parallel_cc_case_with_args(case_name, ['-parallel-cc', 'main.v'], files, env_overrides)
 }
 
 fn run_parallel_cc_case_with_args(case_name string, args []string, files map[string]string, env_overrides map[string]string) os.Result {
@@ -33,7 +32,12 @@ fn run_parallel_cc_case_with_args(case_name string, args []string, files map[str
 	}
 	mut p := os.new_process(parallel_cc_vexe)
 	p.set_work_folder(case_dir)
-	p.set_args(args)
+	mut child_args := []string{}
+	$if !macos && !linux {
+		child_args << '-old-compiler'
+	}
+	child_args << args
+	p.set_args(child_args)
 	p.set_environment(env)
 	p.set_redirect_stdio()
 	p.wait()
@@ -43,7 +47,7 @@ fn run_parallel_cc_case_with_args(case_name string, args []string, files map[str
 	p.close()
 	return os.Result{
 		exit_code: exit_code
-		output:    '${stdout}${stderr}'
+		output: '${stdout}${stderr}'
 	}
 }
 
@@ -59,7 +63,11 @@ fn main() {}
 '
 	})
 	assert res.exit_code == 1, res.output
-	assert res.output.contains('failed parallel C compilation'), res.output
+	$if macos || linux {
+		assert res.output.contains('definitely_missing_parallel_cc_header.h'), res.output
+	} $else {
+		assert res.output.contains('failed parallel C compilation'), res.output
+	}
 }
 
 fn test_parallel_cc_fails_when_final_linking_fails() {
@@ -78,6 +86,25 @@ fn main() {
 	assert res.output.contains('failed to link after parallel C compilation'), res.output
 }
 
+fn test_parallel_cc_can_emit_one_external_definition_from_inserted_header() {
+	res := run_parallel_cc_case('single_inserted_definition', {
+		'parallel_cc_single_definition.h': '#if !defined(V_PARALLEL_CC) || defined(V_PARALLEL_CC_OUT_0)
+int parallel_cc_single_definition(void) { return 42; }
+#else
+int parallel_cc_single_definition(void);
+#endif
+'
+		'main.v':                          'module main
+#insert "@DIR/parallel_cc_single_definition.h"
+fn C.parallel_cc_single_definition() int
+fn main() {
+	println(C.parallel_cc_single_definition())
+}
+'
+	})
+	assert res.exit_code == 0, res.output
+}
+
 fn test_parallel_cc_succeeds_with_array_sort_compare_helper() {
 	res := run_parallel_cc_case('array_sort_compare_helper', {
 		'main.v': 'module main
@@ -87,6 +114,34 @@ fn test_parallel_cc_succeeds_with_array_sort_compare_helper() {
 		println(xs)
 	}
 	'
+	})
+	assert res.exit_code == 0, res.output
+}
+
+fn test_parallel_cc_keeps_top_level_comptime_function_guards_together() {
+	res := run_parallel_cc_case_with_env('top_level_comptime_function', {
+		'main.v': 'module main
+
+fn before() int {
+	return 1
+}
+
+$if !parallel_cc_guard_disabled ? {
+	fn guarded() int {
+		return 2
+	}
+}
+
+fn after() int {
+	return 3
+}
+
+fn main() {
+	println(before() + guarded() + after())
+}
+'
+	}, {
+		'VJOBS': '2'
 	})
 	assert res.exit_code == 0, res.output
 }

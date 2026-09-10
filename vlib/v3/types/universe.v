@@ -1,4 +1,25 @@
+@[has_globals]
 module types
+
+// platform_int_c_type is the C spelling emitted for V's platform-width `int`
+// (the `Primitive` with size 0). `int` is 64-bit on 64-bit targets and 32-bit
+// on 32-bit targets, so it lowers to `i64` or `i32` respectively. It defaults to
+// the 64-bit spelling so self-host and the C-backend unit tests work before a
+// target is configured; `set_platform_int_bits` updates it for cross builds.
+__global platform_int_c_type = 'i64'
+
+// set_platform_int_bits selects the C spelling for the platform `int` from the
+// target pointer width. The driver calls this once, before checking or code
+// generation, so every `c_type` lowering agrees on the width.
+pub fn set_platform_int_bits(bits int) {
+	platform_int_c_type = if bits == 32 { 'i32' } else { 'i64' }
+}
+
+// platform_int_bits returns the bit width of V's platform `int` (64 or 32),
+// used for literal-overflow and range checks so they match the emitted width.
+pub fn platform_int_bits() int {
+	return if platform_int_c_type == 'i64' { 64 } else { 32 }
+}
 
 pub const bool_ = Primitive{
 	props: .boolean
@@ -73,8 +94,8 @@ pub fn is_builtin_type_name(name string) bool {
 		|| name == 'i64' || name == 'u8' || name == 'byte' || name == 'u16' || name == 'u32'
 		|| name == 'u64' || name == 'f32' || name == 'f64' || name == 'string' || name == 'char'
 		|| name == 'rune' || name == 'isize' || name == 'usize' || name == 'void'
-		|| name == 'voidptr' || name == 'array' || name == 'charptr' || name == 'byteptr'
-		|| name == 'nil' || name == 'none'
+		|| name == 'voidptr' || name == 'array' || name == 'map' || name == 'charptr'
+		|| name == 'byteptr' || name == 'nil' || name == 'none'
 }
 
 // builtin_type_value returns the Type for a known builtin type name.

@@ -1,0 +1,4 @@
+fn main() {
+	fallback := $embed_file(@FILE)
+	fallback == $embed_file(@FILE)
+}

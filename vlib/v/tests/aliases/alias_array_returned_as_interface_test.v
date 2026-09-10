@@ -7,7 +7,7 @@ interface Value {
 type List = []Value
 
 fn (x List) str() string {
-	return x.str()
+	return ([]Value(x)).str()
 }
 
 fn make_list() !Value {

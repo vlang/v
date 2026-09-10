@@ -33,7 +33,8 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_builtin_const_imported_input_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	// This test inspects the imported implementation in the monolithic C output.
+	compile := os.execute('${v3_bin} -nocache ${src} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -43,7 +44,9 @@ fn main() {
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('#define builtin__max_u64'), c_code
-	assert c_code.contains('builtin__max_u64 / (u64)(base)'), c_code
+	assert c_code.contains('= (u64)(builtin__max_u64);'), c_code
+	assert c_code.contains('= (u64)((u64)(base));'), c_code
+	assert c_code.contains('v_panic(_S("division by zero"))'), c_code
 	assert c_code.contains('__if_val_') && c_code.contains('builtin__max_u64;'), c_code
 	assert !c_code.contains('(max_u64 /'), c_code
 	assert !c_code.contains('= max_u64;'), c_code

@@ -933,8 +933,11 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 								}
 							}
 							.plus {
+								folded_val := util.smart_quote(node.left.val, node.left.is_raw,
+									node.left.opaque_pos) +
+									util.smart_quote(node.right.val, node.right.is_raw, node.right.opaque_pos)
 								return if t.pref.backend == .c { ast.Expr(ast.StringLiteral{
-										val: util.smart_quote(node.left.val, node.left.is_raw) + util.smart_quote(node.right.val, node.right.is_raw)
+										val: folded_val
 										pos: pos
 									}) } else { ast.Expr(node) }
 							}
@@ -1454,7 +1457,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 
 	// first, insert all the statements, for writing the static strings, that were parts of the original string interpolation:
 	mut calls := []ast.Stmt{}
-	for val in original.vals {
+	for idx, val in original.vals {
 		if val == '' {
 			// there is no point in appending empty strings
 			// so instead, just emit an empty statement, to be ignored by the backend
@@ -1463,6 +1466,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 			}
 			continue
 		}
+		val_opaque_pos := if idx < original.opaque_pos.len { original.opaque_pos[idx] } else { []int{} }
 		mut ncall := ast.ExprStmt{
 			expr: ast.Expr(ast.CallExpr{
 				...nexpr
@@ -1470,7 +1474,8 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 					ast.CallArg{
 						...nexpr.args[0]
 						expr: ast.StringLiteral{
-							val: val
+							val:        val
+							opaque_pos: val_opaque_pos
 						}
 					},
 				]

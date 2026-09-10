@@ -238,3 +238,69 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true\nfalse\nrect\nother'
 }
+
+fn test_interface_match_patterns_lower_embedded_interfaces() {
+	v3_bin := build_v3()
+
+	src := os.join_path(os.temp_dir(), 'v3_interface_match_embedded_${os.getpid()}.v')
+	os.write_file(src, 'interface Base {
+	get() int
+}
+
+interface Child {
+	Base
+	extra() int
+}
+
+struct Plain {
+	n int
+}
+
+fn (p Plain) get() int {
+	return p.n
+}
+
+struct Item {
+	n int
+}
+
+fn (i Item) get() int {
+	return i.n
+}
+
+fn (i Item) extra() int {
+	return i.n + 1
+}
+
+fn classify(base Base) string {
+	return match base {
+		Child { "child:" + int_str(base.extra()) }
+		else { "base:" + int_str(base.get()) }
+	}
+}
+
+fn main() {
+	println(classify(Item{
+		n: 7
+	}))
+	println(classify(Plain{
+		n: 3
+	}))
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_interface_match_embedded_out_${os.getpid()}')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+
+	c_code := os.read_file('${bin}.c') or { '' }
+	assert !c_code.contains('base == Child'), c_code
+	assert !c_code.contains('base == main__Child'), c_code
+
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'child:8\nbase:3'
+}

@@ -655,8 +655,8 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	right_arg := g.read_field(left_type, '_typ', 'b')
 
 	fn_builder.writeln('${g.static_non_parallel}inline bool ${fn_name}_interface_eq(${ptr_styp} a, ${ptr_styp} b) {')
-	fn_builder.writeln('\tif (${left_arg} == ${right_arg}) {')
-	fn_builder.writeln('\t\tu32 idx = v_typeof_interface_idx_${idx_fn}(${left_arg});')
+	fn_builder.writeln('\tif (_V_INTERFACE_TYPE_INDEX(${left_arg}) == _V_INTERFACE_TYPE_INDEX(${right_arg})) {')
+	fn_builder.writeln('\t\tu32 idx = v_typeof_interface_idx_${idx_fn}(_V_INTERFACE_TYPE_INDEX(${left_arg}));')
 	if info is ast.Interface {
 		for typ in info.types {
 			sym := g.table.sym(typ.set_nr_muls(0))

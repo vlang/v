@@ -1,0 +1,5 @@
+Name: oracle-diamond-common-74
+Description: Shared public diamond provider
+Version: 1.0.0
+Libs: -loracle_diamond_common
+Cflags: -DORACLE_DIAMOND_COMMON

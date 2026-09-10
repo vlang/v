@@ -61,7 +61,7 @@ fn main() {
 		return
 	}
 
-	cm := CertManager{}
+	cm := &CertManager{}
 
 	// Create the SSL configuration
 	mut config := mbedtls.SSLConnectConfig{

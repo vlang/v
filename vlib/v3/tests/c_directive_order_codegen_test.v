@@ -6,8 +6,19 @@ const directive_order_v3_dir = os.dir(directive_order_tests_dir)
 const directive_order_vlib_dir = os.dir(directive_order_v3_dir)
 const directive_order_v3_src = os.join_path(directive_order_v3_dir, 'v3.v')
 
+fn directive_order_v3_bin_path() string {
+	return os.join_path(os.temp_dir(), 'v3_c_directive_order_test_${os.getpid()}')
+}
+
+fn testsuite_begin() {
+	os.rm(directive_order_v3_bin_path()) or {}
+}
+
 fn directive_order_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_c_directive_order_test')
+	v3_bin := directive_order_v3_bin_path()
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${directive_order_vexe} -gc none -path "${directive_order_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${directive_order_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -39,7 +50,7 @@ fn main() {}
 	directive_order_write_file(root, 'sokol/c/sokol_gfx.h', '')
 	directive_order_write_file(root, 'sokol/f/f.v', 'module f
 
-import sokol.c as _
+import sokol.gfx as _
 
 #define SOKOL_FONTSTASH_IMPL
 #include "util/sokol_fontstash.h"
@@ -47,6 +58,10 @@ import sokol.c as _
 #ifdef KEEP_DUPLICATE_INCLUDE
 #include "sokol_gfx.h"
 #endif
+')
+	directive_order_write_file(root, 'sokol/gfx/gfx.v', 'module gfx
+
+import sokol.c as _
 ')
 	directive_order_write_file(root, 'sokol/f/util/sokol_fontstash.h', '')
 	directive_order_write_file(root, 'sokol/f/sokol_gfx.h', '')
@@ -720,6 +735,26 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
+fn directive_order_gen_c_task_info_reference(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_task_info_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_task_info' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+fn C.task_info() int
+
+fn main() {
+	_ := C.task_info()
+}
+')
+	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_task_info.c')
+	os.rm(c_out) or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
+	assert result.exit_code == 0, result.output
+	return os.read_file(c_out) or { panic(err) }
+}
+
 fn directive_order_gen_c_headerless_timerfd_header(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_timerfd_project')
 	os.rmdir_all(root) or {}
@@ -805,6 +840,41 @@ static inline int stdarg_sum(int count, ...) {
 	run := os.execute(bin_out)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '6', run.output
+	return os.read_file(bin_out + '.c') or { panic(err) }
+}
+
+fn directive_order_gen_and_run_inttypes_header(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_inttypes_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_inttypes' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+#include <stdint.h>
+#include "inttypes_user.h"
+
+fn C.inttypes_macro_widths() int
+
+fn main() {
+	println(C.inttypes_macro_widths().str())
+}
+')
+	directive_order_write_file(root, 'inttypes_macros.h', '#include <inttypes.h>
+')
+	directive_order_write_file(root, 'inttypes_user.h', '#include "inttypes_macros.h"
+
+static inline int inttypes_macro_widths(void) {
+	return (int) (sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64));
+}
+')
+	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_inttypes')
+	os.rm(bin_out) or {}
+	os.rm(bin_out + '.c') or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin_out}')
+	assert result.exit_code == 0, result.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
@@ -922,7 +992,9 @@ fn directive_order_count(c_code string, needle string) int {
 fn directive_order_has_include_directive(c_code string) bool {
 	for line in c_code.split_into_lines() {
 		clean := line.trim_space()
-		if clean.starts_with('#include') {
+		// System headers can be emitted by the compiler preamble. These checks are
+		// interested in local headers that should have been inlined.
+		if clean.starts_with('#include "') {
 			return true
 		}
 	}
@@ -1022,7 +1094,7 @@ fn test_header_declared_prototypes_are_not_redeclared() {
 fn test_inlined_headers_are_emitted_before_type_declarations() {
 	c_code := directive_order_gen_c_struct_field_after_header(directive_order_build_v3())
 	header_idx := directive_order_index(c_code, '} FieldThing;')
-	wrap_idx := directive_order_index(c_code, 'struct Wrap {')
+	wrap_idx := directive_order_index(c_code, 'struct main__Wrap {')
 	assert header_idx >= 0, c_code
 	assert wrap_idx >= 0, c_code
 	assert header_idx < wrap_idx, c_code
@@ -1074,28 +1146,20 @@ fn test_nested_local_header_includes_are_inlined_recursively() {
 	assert !directive_order_has_include_directive(c_code), c_code
 }
 
-fn test_unresolved_system_include_is_dropped() {
+fn test_supported_system_include_is_preserved_and_enables_system_preamble() {
 	c_code := directive_order_gen_c_unresolved_system_include(directive_order_build_v3())
 	assert !directive_order_has_include_directive(c_code), c_code
 	assert !c_code.contains('#include <platform_user_header.h>'), c_code
-	assert !c_code.contains('#include <dlfcn.h>'), c_code
-	assert !c_code.contains('#include <stdint.h>'), c_code
-	assert c_code.contains('typedef unsigned int uint32_t;'), c_code
-	assert c_code.contains('void* dlopen('), c_code
+	assert c_code.contains('#include <dlfcn.h>'), c_code
+	assert c_code.contains('#include <stdint.h>'), c_code
 	api_compat_idx := directive_order_index(c_code, '#define PLATFORM_API_COMPAT 7')
 	guard_idx := directive_order_index(c_code, '#ifdef USE_DLFCN')
-	time_t_idx := directive_order_index(c_code, 'typedef long long time_t;')
-	off_t_idx := directive_order_index(c_code, 'typedef long long off_t;')
-	wchar_idx := directive_order_index(c_code, 'typedef unsigned int wchar_t;')
-	fd_set_idx := directive_order_index(c_code, '#ifndef FD_SET')
+	dlfcn_idx := directive_order_index(c_code, '#include <dlfcn.h>')
+	preamble_idx := directive_order_index(c_code, 'typedef signed char i8;')
 	assert api_compat_idx >= 0, c_code
 	assert guard_idx >= 0, c_code
-	assert time_t_idx >= 0, c_code
-	assert off_t_idx >= 0, c_code
-	assert wchar_idx >= 0, c_code
-	assert fd_set_idx >= 0, c_code
-	assert c_code.contains('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined)'), c_code
-	assert c_code.contains('#if !defined(_OFF_T) && !defined(_OFF_T_DEFINED) && !defined(__off_t_defined)'), c_code
+	assert dlfcn_idx > guard_idx, c_code
+	assert preamble_idx > dlfcn_idx, c_code
 }
 
 fn test_unresolved_quoted_include_is_preserved() {
@@ -1107,7 +1171,7 @@ fn test_unresolved_quoted_include_is_preserved() {
 	assert include_idx < define_idx, c_code
 }
 
-fn test_nested_system_include_is_dropped_from_inlined_header() {
+fn test_nested_system_include_is_preserved_in_its_platform_guard() {
 	c_code := directive_order_gen_c_nested_system_include(directive_order_build_v3())
 	include_idx := directive_order_index(c_code, '#include <nested_platform_header.h>')
 	preamble_idx := directive_order_index(c_code, 'typedef signed char i8;')
@@ -1115,7 +1179,8 @@ fn test_nested_system_include_is_dropped_from_inlined_header() {
 		'#if !defined(__V_HEADERLESS_STDINT_H) && !defined(_STDINT_H)')
 	nested_define_idx := directive_order_index(c_code, '#define NESTED_PLATFORM_HEADER 1')
 	nested_word_idx := directive_order_index(c_code, 'typedef uint64_t NestedWord;')
-	assert include_idx == -1, c_code
+	assert include_idx > nested_define_idx, c_code
+	assert include_idx < stdint_guard_idx, c_code
 	assert !directive_order_has_include_directive(c_code), c_code
 	assert preamble_idx >= 0, c_code
 	assert stdint_guard_idx >= 0, c_code
@@ -1151,9 +1216,21 @@ fn test_mach_headers_are_emitted_headerlessly() {
 	assert !c_code.contains('#include <mach/mach.h>'), c_code
 	assert !c_code.contains('#include <mach/mach_time.h>'), c_code
 	assert !c_code.contains('#define panic mach_panic'), c_code
-	assert c_code.contains('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;'), c_code
-	assert c_code.contains('struct mach_timebase_info_data_t {'), c_code
-	assert c_code.contains('void mach_timebase_info('), c_code
+	assert c_code.contains('#if defined(__APPLE__) && !defined(_MACH_TASK_INFO_H_)'), c_code
+	assert c_code.contains('typedef unsigned int task_t;'), c_code
+	assert c_code.contains('struct task_basic_info {'), c_code
+	assert c_code.contains('#define KERN_SUCCESS 0'), c_code
+	assert c_code.contains('#define MACH_TASK_BASIC_INFO_COUNT 12'), c_code
+	assert c_code.contains('#define TASK_BASIC_INFO 18'), c_code
+	assert c_code.contains('typedef struct mach_timebase_info_data_t { u32 numer; u32 denom; } mach_timebase_info_data_t;'), c_code
+	assert c_code.contains('int mach_timebase_info('), c_code
+}
+
+fn test_inferred_mach_headers_are_target_guarded() {
+	c_code := directive_order_gen_c_task_info_reference(directive_order_build_v3())
+	assert c_code.contains('#ifdef __APPLE__\n#define panic mach_panic\n#include <mach/mach.h>\n#undef panic\n#include <mach/task.h>\n#endif'), c_code
+	assert c_code.contains('#if defined(__APPLE__) && !defined(_MACH_TASK_INFO_H_)\ntypedef unsigned int task_t;'), c_code
+	assert c_code.contains('#ifndef __APPLE__\nint task_info(void);\n#endif'), c_code
 }
 
 fn test_timerfd_header_uses_headerless_decls() {
@@ -1168,24 +1245,30 @@ fn test_timerfd_header_uses_headerless_decls() {
 	assert c_code.contains('#define TFD_NONBLOCK O_NONBLOCK'), c_code
 }
 
-fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {
+fn test_stdarg_in_inlined_header_provides_va_defs() {
 	c_code := directive_order_gen_and_run_stdarg_header(directive_order_build_v3())
-	assert !c_code.contains('#include <stdarg.h>'), c_code
-	assert !c_code.contains('#include <stddef.h>'), c_code
-	assert c_code.contains('typedef __builtin_va_list va_list;'), c_code
-	assert c_code.contains('#define va_start(ap, last) __builtin_va_start(ap, last)'), c_code
-	assert c_code.contains('#define va_arg(ap, type) __builtin_va_arg(ap, type)'), c_code
-	assert c_code.contains('#define offsetof(type, member) __builtin_offsetof(type, member)'), c_code
+	assert c_code.contains('#include <stdarg.h>')
+		|| c_code.contains('typedef __builtin_va_list va_list;'), c_code
+	assert c_code.contains('#include <stddef.h>')
+		|| c_code.contains('#define offsetof(type, member) __builtin_offsetof(type, member)'), c_code
 	assert c_code.contains('offsetof(struct StdargThing, value)'), c_code
 	assert c_code.contains('static inline int stdarg_sum(int count, ...)'), c_code
 }
 
-fn test_poll_in_inlined_header_uses_headerless_struct() {
+fn test_inttypes_in_inlined_header_keeps_format_macros() {
+	c_code := directive_order_gen_and_run_inttypes_header(directive_order_build_v3())
+	assert c_code.contains('#include <stdint.h>'), c_code
+	assert c_code.contains('#include <inttypes.h>'), c_code
+	assert !c_code.contains('__V_HEADERLESS_STDINT_H'), c_code
+	assert c_code.contains('sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64)'), c_code
+}
+
+fn test_poll_in_inlined_header_uses_preserved_system_struct() {
 	c_code := directive_order_gen_c_nested_poll_header(directive_order_build_v3())
 	assert !directive_order_has_include_directive(c_code), c_code
-	assert !c_code.contains('#include <poll.h>'), c_code
+	assert c_code.contains('#include <poll.h>'), c_code
 	assert c_code.contains('static inline int poll_user_fd(struct pollfd* item)'), c_code
-	assert c_code.contains('struct pollfd {\n'), c_code
+	assert !c_code.contains('struct pollfd {\n'), c_code
 }
 
 fn test_rwmutex_keeps_linux_rwlockattr_prototype() {

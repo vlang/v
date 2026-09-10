@@ -1,0 +1,16 @@
+fn main() {
+	fallback := $embed_file(@FILE)
+	_ := if true {
+		match unsafe { 0 } + 0 {
+			0 {
+				$embed_file(@FILE)
+			}
+			else {
+				fallback
+			}
+		}
+		0
+	} else {
+		1
+	}
+}

@@ -1,5 +1,7 @@
 module sqlite
 
+const sqlite_null = 5
+
 fn C.sqlite3_bind_null(&C.sqlite3_stmt, i32) i32
 fn C.sqlite3_bind_double(&C.sqlite3_stmt, i32, f64) i32
 fn C.sqlite3_bind_int(&C.sqlite3_stmt, i32, i32) i32
@@ -27,7 +29,11 @@ fn (stmt &Stmt) bind_null(idx int) int {
 }
 
 fn (stmt &Stmt) bind_int(idx int, v int) int {
-	return C.sqlite3_bind_int(stmt.stmt, idx, v)
+	$if new_int ? && x64 {
+		return C.sqlite3_bind_int64(stmt.stmt, idx, i64(v))
+	} $else {
+		return C.sqlite3_bind_int(stmt.stmt, idx, v)
+	}
 }
 
 fn (stmt &Stmt) bind_i64(idx int, v i64) int {
@@ -43,15 +49,19 @@ fn (stmt &Stmt) bind_text(idx int, s string) int {
 }
 
 fn (stmt &Stmt) get_int(idx int) ?int {
-	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+	if C.sqlite3_column_type(stmt.stmt, idx) == sqlite_null {
 		return none
 	} else {
-		return C.sqlite3_column_int(stmt.stmt, idx)
+		$if new_int ? && x64 {
+			return int(C.sqlite3_column_int64(stmt.stmt, idx))
+		} $else {
+			return C.sqlite3_column_int(stmt.stmt, idx)
+		}
 	}
 }
 
 fn (stmt &Stmt) get_i64(idx int) ?i64 {
-	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+	if C.sqlite3_column_type(stmt.stmt, idx) == sqlite_null {
 		return none
 	} else {
 		return C.sqlite3_column_int64(stmt.stmt, idx)
@@ -59,7 +69,7 @@ fn (stmt &Stmt) get_i64(idx int) ?i64 {
 }
 
 fn (stmt &Stmt) get_f64(idx int) ?f64 {
-	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+	if C.sqlite3_column_type(stmt.stmt, idx) == sqlite_null {
 		return none
 	} else {
 		return C.sqlite3_column_double(stmt.stmt, idx)
@@ -67,7 +77,7 @@ fn (stmt &Stmt) get_f64(idx int) ?f64 {
 }
 
 fn (stmt &Stmt) get_text(idx int) ?string {
-	if C.sqlite3_column_type(stmt.stmt, idx) == C.SQLITE_NULL {
+	if C.sqlite3_column_type(stmt.stmt, idx) == sqlite_null {
 		return none
 	} else {
 		b := &char(C.sqlite3_column_text(stmt.stmt, idx))

@@ -1,0 +1,7 @@
+Name: mixed-case-static-74
+Description: Mixed-case fields accepted only by static resolution
+Version: 1.0.0
+lIbS: -Wl,--issue74-mixed-public
+lIbS.pRiVaTe: -Wl,--issue74-mixed-private
+cFlAgS: -DISSUE74_MIXED_PUBLIC
+cFlAgS.pRiVaTe: -DISSUE74_MIXED_PRIVATE

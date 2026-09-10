@@ -199,6 +199,11 @@ fn (mut g Gen) resolved_if_guard_ident_str_intp_type(expr ast.Ident) ast.Type {
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
+	} else if g.table.is_scalar_ptr_type(ftyp) {
+		// Go-style: a reference to a scalar (int, float, bool, string, rune) -
+		// including aliases of them - is printed as its address. Mirrors the
+		// checker so generic interpolation (which recomputes formats here) agrees.
+		return `p`
 	} else if typ.is_float() {
 		return `g`
 	} else if typ.is_signed() || typ.is_int_literal() {
@@ -277,7 +282,13 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	if g.int_ref_interpolates_as_value(expr, typ, fmts[i]) && typ.is_ptr() {
 		typ = typ.deref()
 	}
+	was_ptr := g.table.fully_unaliased_type(typ).is_ptr()
 	typ = g.table.final_type(typ)
+	if was_ptr && !typ.is_ptr() {
+		// `final_type` drops the pointer for aliases (e.g. `&MyInt` -> `int`);
+		// keep it a pointer so a reference still formats as an address.
+		typ = typ.ref()
+	}
 	if typ.has_flag(.shared_f) && typ.is_ptr() {
 		typ = typ.clear_flag(.shared_f).deref()
 	}
@@ -322,7 +333,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 				else { fmt_type = .si_f64 }
 			}
 		}
-	} else if typ.is_pointer() {
+	} else if typ.is_pointer() || (typ.is_ptr() && fspec in [`p`, `x`, `X`]) {
 		if fspec in [`x`, `X`] {
 			base = 16 - 2 // our base start from 2
 		}
@@ -428,7 +439,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	expr := node.exprs[i]
 	fmt := fmts[i]
 	mut orig_typ := if i < node.expr_types.len {
-		g.unwrap_generic(node.expr_types[i])
+		g.unwrap_generic(g.recheck_concrete_type(node.expr_types[i]))
 	} else {
 		ast.string_type
 	}
@@ -502,10 +513,10 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 	} else if !typ.has_option_or_result() && typ_sym.kind == .interface
 		&& (typ_sym.info as ast.Interface).defines_method('str') {
 		rec_type_name := util.no_dots(g.cc_type(typ, false))
-		g.write('${c_name(rec_type_name)}_name_table[')
+		g.write('((struct _${c_name(rec_type_name)}_interface_methods*)')
 		g.expr(expr)
 		dot := if typ.is_ptr() { '->' } else { '.' }
-		g.write('${dot}_typ]._method_str(')
+		g.write('${dot}_typ)->_method_str(')
 		g.expr(expr)
 		g.write2('${dot}_object', ')')
 	} else if fmt == `s` || typ.has_flag(.variadic) {
@@ -539,10 +550,16 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			g.inside_opt_or_res = old_inside_opt_or_res
 			g.write('.data))')
 		} else {
+			// an explicit `${x:s}` should format the pointed-to value, not the
+			// address that a scalar reference gets by default
+			old_inside_s_fmt := g.inside_str_interp_s_fmt
+			g.inside_str_interp_s_fmt = true
 			if g.gen_windows_liveshared_string_tmp(expr, exp_typ) {
+				g.inside_str_interp_s_fmt = old_inside_s_fmt
 				return
 			}
 			g.gen_expr_to_string(expr, exp_typ)
+			g.inside_str_interp_s_fmt = old_inside_s_fmt
 		}
 	} else if typ.is_number() || typ.is_pointer() || fmt == `d` {
 		if typ.is_signed() && fmt in [`x`, `X`, `o`] {
@@ -758,7 +775,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write2('builtin__str_intp(', node_.vals.len.str())
 	g.write(', _MOV((StrIntpData[]){')
 	for i, val in node_.vals {
-		mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
+		val_opaque_pos := if i < node_.opaque_pos.len { node_.opaque_pos[i] } else { []int{} }
+		mut escaped_val := cescape_nonascii(util.smart_quote(val, false, val_opaque_pos))
 		escaped_val = escaped_val.replace('\0', '\\0')
 
 		if escaped_val.len > 0 {
@@ -931,7 +949,8 @@ fn (mut g Gen) gen_simple_string_inter_literal(node ast.StringInterLiteral, fmts
 			if written_parts > 0 {
 				g.write(', ')
 			}
-			mut escaped_val := cescape_nonascii(util.smart_quote(val, false))
+			val_opaque_pos := if i < node.opaque_pos.len { node.opaque_pos[i] } else { []int{} }
+			mut escaped_val := cescape_nonascii(util.smart_quote(val, false, val_opaque_pos))
 			escaped_val = escaped_val.replace('\0', '\\0')
 			g.write2('_S("', escaped_val)
 			g.write('")')

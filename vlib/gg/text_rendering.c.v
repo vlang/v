@@ -36,7 +36,7 @@ pub enum VerticalAlign {
 const initial_text_atlas_size = int($d('gg_text_buff_size', 2048))
 const max_text_atlas_size = 8192
 
-fn expand_atlas_callback(uptr voidptr, error int, _val int) {
+fn expand_atlas_callback(uptr voidptr, error i32, _val i32) {
 	if error != C.FONS_ATLAS_FULL {
 		return
 	}
@@ -246,7 +246,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg TextCfg) {
 	$if macos {
 		if ctx.native_rendering {
 			if cfg.align == align_right {
-				width := ctx.text_width(text_)
+				width := C.darwin_text_width_with_cfg(text_, cfg)
 				// println('draw text ctx.height = ${ctx.height}')
 				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
 			} else {

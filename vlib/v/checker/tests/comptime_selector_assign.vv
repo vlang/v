@@ -1,4 +1,4 @@
-import x.json2 { Any, decode }
+import json2 { Any, decode }
 
 struct Income {
 mut:

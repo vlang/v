@@ -4,7 +4,7 @@ import v3.ssa
 
 // --- Simplify trivial phi nodes ---
 // A phi is trivial if all its non-self operands resolve to a single value, or if
-// it has no uses at all. Trivial phis are replaced and marked dead (nop bitcast).
+// it has no uses at all. Trivial phis are removed from their blocks immediately.
 fn simplify_phi_nodes(mut m ssa.Module) bool {
 	mut any_changed := false
 	mut changed := true
@@ -14,28 +14,22 @@ fn simplify_phi_nodes(mut m ssa.Module) bool {
 			func := m.funcs[fi]
 			for blk_id in func.blocks {
 				blk := m.blocks[blk_id]
+				mut kept := []ssa.ValueID{cap: blk.instrs.len}
 				for val_id in blk.instrs {
 					val := m.values[val_id]
 					if val.kind != .instruction {
+						kept << val_id
 						continue
 					}
 					instr := m.instrs[val.index]
 					if instr.op != .phi {
+						kept << val_id
 						continue
 					}
 
 					// Dead phi: no uses -> remove.
 					if val.uses.len == 0 {
-						for i := 0; i < instr.operands.len; i += 2 {
-							op_val := instr.operands[i]
-							if op_val != val_id {
-								remove_use(mut m, op_val, val_id)
-							}
-						}
-						mut dead_phi := m.instrs[val.index]
-						dead_phi.op = .bitcast
-						dead_phi.operands = []
-						m.instrs[val.index] = dead_phi
+						remove_replaced_phi(mut m, val_id)
 						changed = true
 						any_changed = true
 						continue
@@ -56,15 +50,24 @@ fn simplify_phi_nodes(mut m ssa.Module) bool {
 							break
 						}
 					}
-					if is_trivial && unique_val != -1 {
-						m.replace_uses(val_id, unique_val)
-						mut triv_phi := m.instrs[val.index]
-						triv_phi.op = .bitcast
-						triv_phi.operands = []
-						m.instrs[val.index] = triv_phi
+					if is_trivial {
+						replacement := if unique_val != -1 {
+							unique_val
+						} else {
+							m.get_or_add_const(val.typ, 'undef')
+						}
+						m.replace_uses(val_id, replacement)
+						remove_replaced_phi(mut m, val_id)
 						changed = true
 						any_changed = true
+						continue
 					}
+					kept << val_id
+				}
+				if kept.len != blk.instrs.len {
+					mut compacted := m.blocks[blk_id]
+					compacted.instrs = kept
+					m.blocks[blk_id] = compacted
 				}
 			}
 		}
@@ -83,12 +86,16 @@ fn prune_phi_operands(mut m ssa.Module) {
 				continue
 			}
 			preds := m.blocks[blk_id].preds
-			for val_id in m.blocks[blk_id].instrs {
+			blk := m.blocks[blk_id]
+			mut kept_instrs := []ssa.ValueID{cap: blk.instrs.len}
+			for val_id in blk.instrs {
 				if val_id <= 0 || val_id >= m.values.len || m.values[val_id].kind != .instruction {
+					kept_instrs << val_id
 					continue
 				}
 				idx := m.values[val_id].index
 				if m.instrs[idx].op != .phi {
+					kept_instrs << val_id
 					continue
 				}
 				ops := m.instrs[idx].operands
@@ -105,28 +112,40 @@ fn prune_phi_operands(mut m ssa.Module) {
 					}
 				}
 				if kept.len == ops.len && distinct.len > 1 {
+					kept_instrs << val_id
 					continue // unchanged, still a real phi
 				}
 				if distinct.len == 1 {
 					// Trivial phi -> its single incoming value.
 					m.replace_uses(val_id, distinct[0])
-					mut nop := m.instrs[idx]
-					nop.op = .bitcast
-					nop.operands = []
-					m.instrs[idx] = nop
+					remove_replaced_phi(mut m, val_id)
 				} else if distinct.len == 0 {
-					mut nop := m.instrs[idx]
-					nop.op = .bitcast
-					nop.operands = []
-					m.instrs[idx] = nop
+					undef := m.get_or_add_const(m.values[val_id].typ, 'undef')
+					m.replace_uses(val_id, undef)
+					remove_replaced_phi(mut m, val_id)
 				} else {
-					mut pruned := m.instrs[idx]
-					pruned.operands = kept
-					m.instrs[idx] = pruned
+					m.rewrite_instruction(val_id, .phi, kept)
+					kept_instrs << val_id
 				}
+			}
+			if kept_instrs.len != blk.instrs.len {
+				mut compacted := m.blocks[blk_id]
+				compacted.instrs = kept_instrs
+				m.blocks[blk_id] = compacted
 			}
 		}
 	}
+}
+
+// remove_replaced_phi detaches an obsolete phi and makes accidental future
+// references fail verification instead of masquerading as another operation.
+fn remove_replaced_phi(mut m ssa.Module, val_id int) {
+	m.detach_instruction_uses(val_id)
+	mut dead := m.values[val_id]
+	dead.kind = .unknown
+	dead.index = -1
+	dead.uses = []ssa.ValueID{}
+	m.values[val_id] = dead
 }
 
 // --- Critical edge splitting ---
@@ -134,7 +153,6 @@ fn prune_phi_operands(mut m ssa.Module) {
 // whose target has multiple predecessors, so phi-elimination copies have a unique
 // home. Operands here are raw block ids (v3 convention).
 fn split_critical_edges(mut m ssa.Module) {
-	build_cfg(mut m)
 	for fi in 0 .. m.funcs.len {
 		mut edges_to_split := [][]int{}
 		func := m.funcs[fi]
@@ -171,7 +189,7 @@ fn split_critical_edges(mut m ssa.Module) {
 					idx := m.values[term_val_id].index
 					mut term := m.instrs[idx]
 					for i in 0 .. term.operands.len {
-						if int(term.operands[i]) == succ_id {
+						if term.is_successor_operand(i) && int(term.operands[i]) == succ_id {
 							term.operands[i] = ssa.ValueID(split_blk)
 						}
 					}
@@ -254,26 +272,39 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 			pred_copy_srcs[pred_blk] = []
 		}
 
-		// Remove phi instructions (nop them).
+		// Phi destinations remain virtual values populated by predecessor copies,
+		// but the original phi instructions and their incoming uses are removed.
 		for blk_id in func.blocks {
 			if blk_id < 0 || blk_id >= m.blocks.len {
 				continue
 			}
-			for val_id in m.blocks[blk_id].instrs {
+			blk := m.blocks[blk_id]
+			mut kept_instrs := []ssa.ValueID{cap: blk.instrs.len}
+			for val_id in blk.instrs {
 				if val_id < 0 || val_id >= m.values.len {
+					kept_instrs << val_id
 					continue
 				}
 				val := m.values[val_id]
 				if val.kind != .instruction {
+					kept_instrs << val_id
 					continue
 				}
 				idx := val.index
 				if m.instrs[idx].op == .phi {
-					mut cleanup := m.instrs[idx]
-					cleanup.op = .bitcast
-					cleanup.operands = []
-					m.instrs[idx] = cleanup
+					m.detach_instruction_uses(val_id)
+					mut result := m.values[val_id]
+					result.kind = .phi_result
+					result.index = -1
+					m.values[val_id] = result
+				} else {
+					kept_instrs << val_id
 				}
+			}
+			if kept_instrs.len != blk.instrs.len {
+				mut compacted := m.blocks[blk_id]
+				compacted.instrs = kept_instrs
+				m.blocks[blk_id] = compacted
 			}
 		}
 	}
@@ -308,14 +339,20 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 		}
 	}
 	mut src_ref_count := []int{len: max_id + np + 4}
+	mut source_users := map[int][]int{}
 
 	for i in 0 .. np {
 		src_ref_count[p_src[i]]++
+		mut users := source_users[p_src[i]]
+		users << i
+		source_users[p_src[i]] = users
 	}
 
 	mut alive := []int{len: np}
+	mut dest_to_copy := map[int]int{}
 	for i in 0 .. np {
 		alive[i] = 1
+		dest_to_copy[p_dest[i]] = i
 	}
 
 	mut worklist := []int{}
@@ -327,7 +364,9 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 
 	mut s_dest := []int{}
 	mut s_src := []int{}
+	mut pending_instrs := []int{cap: np + 1}
 	mut remaining := np
+	mut cycle_cursor := 0
 
 	for remaining > 0 {
 		if worklist.len > 0 {
@@ -345,8 +384,8 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 				src_ref_count[s]--
 			}
 			if src_ref_count[s] == 0 {
-				for j in 0 .. np {
-					if alive[j] == 1 && p_dest[j] == s {
+				if j := dest_to_copy[s] {
+					if alive[j] == 1 {
 						worklist << j
 					}
 				}
@@ -355,16 +394,14 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 		}
 
 		// Cycle: break it by copying one source into a temp.
-		mut ci := -1
-		for k in 0 .. np {
-			if alive[k] == 1 {
-				ci = k
-				break
-			}
+		for cycle_cursor < np && alive[cycle_cursor] == 0 {
+			cycle_cursor++
 		}
-		if ci < 0 {
+		if cycle_cursor >= np {
 			break
 		}
+		ci := cycle_cursor
+		cycle_cursor++
 		cycle_src := p_src[ci]
 		mut typ := 0
 		if cycle_src >= 0 && cycle_src < m.values.len {
@@ -373,32 +410,40 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 		if typ == 0 && p_dest[ci] >= 0 && p_dest[ci] < m.values.len {
 			typ = m.values[p_dest[ci]].typ
 		}
-		temp := insert_temp_in_block(mut m, blk_id, cycle_src, typ)
+		temp := add_temp_value(mut m, blk_id, cycle_src, typ)
+		pending_instrs << temp
 		for temp >= src_ref_count.len {
 			src_ref_count << 0
 		}
 		src_ref_count[temp] = 0
-		for i in 0 .. np {
-			if alive[i] == 1 && p_src[i] == cycle_src {
-				p_src[i] = temp
-				src_ref_count[temp]++
+		mut temp_users := []int{}
+		if users := source_users[cycle_src] {
+			for copy_idx in users {
+				if alive[copy_idx] == 1 && p_src[copy_idx] == cycle_src {
+					p_src[copy_idx] = temp
+					temp_users << copy_idx
+					src_ref_count[temp]++
+				}
 			}
 		}
+		source_users[cycle_src] = []int{}
+		source_users[temp] = temp_users
 		src_ref_count[cycle_src] = 0
-		for j in 0 .. np {
-			if alive[j] == 1 && p_dest[j] == cycle_src {
+		if j := dest_to_copy[cycle_src] {
+			if alive[j] == 1 {
 				worklist << j
 			}
 		}
 	}
 
 	for si in 0 .. s_dest.len {
-		insert_copy_in_block(mut m, blk_id, s_dest[si], s_src[si])
+		pending_instrs << add_copy_value(mut m, blk_id, s_dest[si], s_src[si])
 	}
+	insert_before_terminator(mut m, blk_id, pending_instrs)
 }
 
-// insert_temp_in_block updates insert temp in block state for optimize.
-fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
+// add_temp_value creates a temporary copy value for later block insertion.
+fn add_temp_value(mut m ssa.Module, blk_id int, src int, typ int) int {
 	m.instrs << ssa.Instruction{
 		op:       .bitcast
 		block:    blk_id
@@ -406,12 +451,12 @@ fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
 		operands: [ssa.ValueID(src)]
 	}
 	temp_id := m.add_value(.instruction, typ, 'phi_tmp_${m.values.len}', m.instrs.len - 1)
-	insert_before_terminator(mut m, blk_id, temp_id)
+	m.add_value_user(src, temp_id)
 	return temp_id
 }
 
-// insert_copy_in_block updates insert copy in block state for optimize.
-fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
+// add_copy_value creates a phi-elimination copy for later block insertion.
+fn add_copy_value(mut m ssa.Module, blk_id int, dest int, src int) int {
 	typ := m.values[dest].typ
 	m.instrs << ssa.Instruction{
 		op:       .assign
@@ -419,12 +464,16 @@ fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
 		typ:      typ
 		operands: [ssa.ValueID(dest), ssa.ValueID(src)]
 	}
-	val_id := m.add_value(.instruction, typ, 'copy', m.instrs.len - 1)
-	insert_before_terminator(mut m, blk_id, val_id)
+	copy_id := m.add_value(.instruction, typ, 'copy', m.instrs.len - 1)
+	m.add_value_user(src, copy_id)
+	return copy_id
 }
 
-// insert_before_terminator updates insert before terminator state for optimize.
-fn insert_before_terminator(mut m ssa.Module, blk_id int, new_val int) {
+// insert_before_terminator inserts all pending values with one block-array copy.
+fn insert_before_terminator(mut m ssa.Module, blk_id int, new_values []int) {
+	if new_values.len == 0 {
+		return
+	}
 	mut blk := m.blocks[blk_id]
 	mut insert_idx := blk.instrs.len
 	if insert_idx > 0 {
@@ -435,11 +484,13 @@ fn insert_before_terminator(mut m ssa.Module, blk_id int, new_val int) {
 			insert_idx = blk.instrs.len - 1
 		}
 	}
-	mut new_instrs := []ssa.ValueID{cap: blk.instrs.len + 1}
+	mut new_instrs := []ssa.ValueID{cap: blk.instrs.len + new_values.len}
 	for ii in 0 .. insert_idx {
 		new_instrs << blk.instrs[ii]
 	}
-	new_instrs << ssa.ValueID(new_val)
+	for val_id in new_values {
+		new_instrs << ssa.ValueID(val_id)
+	}
 	for ii in insert_idx .. blk.instrs.len {
 		new_instrs << blk.instrs[ii]
 	}

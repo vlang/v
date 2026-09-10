@@ -80,6 +80,11 @@ jobs:
         run: git branch master remotes/origin/master
       - name: Test `v up`
         run: |
+          tested_sha=$(git rev-parse 'HEAD^{commit}')
+          if [ "$tested_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::checked out commit $tested_sha does not match GITHUB_SHA $GITHUB_SHA"
+            exit 1
+          fi
           # Derive a commit sha from an older successful fast workflow on master that was able to build V.
           # The workflow used below is `Path Testing CI` (18477644).
           # Fetch several successful runs and pick the first commit that is actually reachable on master.
@@ -109,7 +114,8 @@ jobs:
             commit_count=$(printf '%s\n' "$commits" | grep -c . || true)
             echo "page $page: fetched $commit_count commits"
             for sha in $commits; do
-              if git merge-base --is-ancestor "$sha" master 2>/dev/null; then
+              if git merge-base --is-ancestor "$sha" master 2>/dev/null &&
+                 git merge-base --is-ancestor "$sha" "$tested_sha" 2>/dev/null; then
                 valid_count=$((valid_count + 1))
                 echo "  valid #$valid_count: $sha"
                 # Skip the first few valid commits to get an older one for testing upgrades.
@@ -122,16 +128,106 @@ jobs:
           done
           if [ -z "$recent_good_commit" ]; then
             echo "Path Testing CI lookup yielded only $valid_count valid commits; falling back to git log."
-            recent_good_commit=$(git log master --first-parent --format=%H --before='14 days ago' -n 1)
+            common_ancestor=$(git merge-base master "$tested_sha" || true)
+            if [ -n "$common_ancestor" ]; then
+              fallback_start=$(git rev-parse "${common_ancestor}^" 2>/dev/null || true)
+              if [ -n "$fallback_start" ]; then
+                recent_good_commit=$(git log "$fallback_start" --first-parent --format=%H --before='14 days ago' -n 1)
+              fi
+            fi
           fi
           if [ -z "$recent_good_commit" ]; then
             echo "Could not find a valid recent good commit on master"
             exit 1
           fi
           echo "recent_good_commit=$recent_good_commit"
+          if [ "$recent_good_commit" = "$tested_sha" ]; then
+            echo "::error::the v up seed must differ from the tested commit"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$recent_good_commit" "$tested_sha"; then
+            echo "::error::v up seed $recent_good_commit is not an ancestor of $tested_sha"
+            exit 1
+          fi
+          vup_remote="$RUNNER_TEMP/v-up-tested-$tested_sha.git"
+          if [ -e "$vup_remote" ]; then
+            echo "::error::temporary v up remote already exists: $vup_remote"
+            exit 1
+          fi
+          git init --bare "$vup_remote"
+          GIT_ALLOW_PROTOCOL=file git push "$vup_remote" "$tested_sha:refs/heads/master"
+          git -C "$vup_remote" symbolic-ref HEAD refs/heads/master
+          bare_sha=$(git -C "$vup_remote" rev-parse 'HEAD^{commit}')
+          if [ "$bare_sha" != "$tested_sha" ]; then
+            echo "::error::temporary v up remote has $bare_sha instead of $tested_sha"
+            exit 1
+          fi
           # Build oldv at recent_good_commit.
           ./v run cmd/tools/oldv.v -v "$recent_good_commit"
           cd "$HOME/.cache/oldv/v_at_$recent_good_commit"
+          seed_sha=$(git rev-parse 'HEAD^{commit}')
+          if [ "$seed_sha" != "$recent_good_commit" ]; then
+            echo "::error::oldv checkout has $seed_sha instead of $recent_good_commit"
+            exit 1
+          fi
+          if [ ! -f thirdparty/tcc/.git/config ]; then
+            echo "::error::oldv must have a repository-local tcc dependency before v up"
+            exit 1
+          fi
+          rm -f -- cv
+          if [ -n "$(git status --porcelain=v1)" ]; then
+            echo "::error::oldv left unexpected changes in the tested checkout"
+            git status --short
+            exit 1
+          fi
+          git config --local protocol.file.allow always
+          git config --local url."https://github.com/vlang/vc".insteadOf https://github.com/vlang/vc
+          git config --local url."file://$vup_remote".insteadOf https://github.com/vlang/v
+          git remote add ci-tested-v-up https://github.com/vlang/v
+          git remote add ci-vc-upstream https://github.com/vlang/vc
+          resolved_vup_url=$(git remote get-url ci-tested-v-up)
+          expected_vup_url="file://$vup_remote"
+          if [ "$resolved_vup_url" != "$expected_vup_url" ]; then
+            echo "::error::v up URL resolved to $resolved_vup_url instead of $expected_vup_url"
+            exit 1
+          fi
+          resolved_vc_url=$(git remote get-url ci-vc-upstream)
+          expected_vc_url="https://github.com/vlang/vc"
+          if [ "$resolved_vc_url" != "$expected_vc_url" ]; then
+            echo "::error::vc URL resolved to $resolved_vc_url instead of $expected_vc_url"
+            exit 1
+          fi
+          remote_master=$(git ls-remote https://github.com/vlang/v refs/heads/master)
+          expected_remote_master=$(printf '%s\trefs/heads/master' "$tested_sha")
+          if [ "$remote_master" != "$expected_remote_master" ]; then
+            echo "::error::v up remote master is not exactly $tested_sha"
+            exit 1
+          fi
           # Test updating
-          ./v version && ./v -v up && ./v version
+          ./v version
+          ./v -v up
+          ./v version
+          updated_sha=$(git rev-parse 'HEAD^{commit}')
+          if [ "$updated_sha" != "$tested_sha" ]; then
+            echo "::error::v up ended at $updated_sha instead of $tested_sha"
+            exit 1
+          fi
+          configured_file_protocol=$(git config --local --get protocol.file.allow)
+          configured_vup_url=$(git remote get-url ci-tested-v-up)
+          configured_vc_url=$(git remote get-url ci-vc-upstream)
+          configured_instead_of=$(git config --local --get-all url."file://$vup_remote".insteadOf)
+          configured_vc_instead_of=$(git config --local --get-all url."https://github.com/vlang/vc".insteadOf)
+          if [ "$configured_file_protocol" != "always" ] ||
+             [ "$configured_vup_url" != "$expected_vup_url" ] ||
+             [ "$configured_vc_url" != "$expected_vc_url" ] ||
+             [ "$configured_instead_of" != "https://github.com/vlang/v" ] ||
+             [ "$configured_vc_instead_of" != "$expected_vc_url" ]; then
+            echo "::error::v up changed its repository-local Git routing"
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain=v1)" ]; then
+            echo "::error::v up left the tested checkout dirty"
+            git status --short
+            exit 1
+          fi
           ./v -o v2 cmd/v && ./v2 -o v3 cmd/v

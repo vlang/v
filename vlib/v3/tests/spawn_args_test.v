@@ -31,11 +31,24 @@ fn compact_c(c_code string) string {
 fn assert_spawn_pthread_decls(c_code string) {
 	assert c_code.contains('int pthread_attr_init(pthread_attr_t* attr);'), c_code
 	assert c_code.contains('int pthread_attr_destroy(pthread_attr_t* attr);'), c_code
-	assert c_code.contains('i32 pthread_attr_setstacksize(void* attr, size_t stacksize);'), c_code
-	assert c_code.contains('i32 pthread_create(void* thread, void* attr, void* start_routine, void* arg);'), c_code
-	assert c_code.contains('i32 pthread_join(void* thread, void* retval);'), c_code
+	assert c_code.contains('int pthread_attr_setstacksize(pthread_attr_t* attr, size_t stacksize);'), c_code
+	assert c_code.contains('int pthread_create(void* thread, void* attr, void* start_routine, void* arg);'), c_code
+	assert c_code.contains('int pthread_join(void* thread, void** retval);'), c_code
 	assert !c_code.contains('i32 pthread_attr_init(void* attr);'), c_code
 	assert !c_code.contains('i32 pthread_attr_destroy(void* attr);'), c_code
+	assert c_code.contains('typedef struct { pthread_t handle; } __v_thread;'), c_code
+	assert c_code.contains('static __v_thread __v_thread_spawn('), c_code
+	assert c_code.contains('#define V_THREAD_STACK_SIZE 8388608'), c_code
+	assert c_code.contains('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;'), c_code
+	assert c_code.contains('pthread_attr_setstacksize(&attr, __v_thread_stack_size);'), c_code
+	assert c_code.contains('pthread_create(&result.handle, &attr, (void*)start, arg);'), c_code
+	assert c_code.contains('int attr_rc = pthread_attr_destroy(&attr);'), c_code
+	assert c_code.contains('if (cleanup) cleanup(arg);'), c_code
+	assert c_code.contains('V thread attribute initialization failed: %d'), c_code
+	assert c_code.contains('V thread stack size setup failed: %d'), c_code
+	assert c_code.contains('V thread creation failed: %d'), c_code
+	assert c_code.contains('static void* __v_thread_join(__v_thread thread)'), c_code
+	assert !c_code.contains('pthread_attr_setstacksize(&_at'), c_code
 }
 
 // A `spawn` of a free function with arguments must pack the arguments into a heap
@@ -54,7 +67,7 @@ fn add(mut c Counter, a int, b int) {
 }
 
 fn main() {
-	mut c := Counter{}
+	mut c := &Counter{}
 	_ := spawn add(mut c, 3, 4)
 	println("ok")
 }
@@ -63,9 +76,9 @@ fn main() {
 	assert c_code.contains('add_thread_args'), c_code
 	assert c_code.contains('pthread_create'), c_code
 	assert_spawn_pthread_decls(c_code)
-	assert c_compact.contains('typedefstruct{Counter*a0;inta1;inta2;}add_thread_args;'), c_code
-	assert c_compact.contains('->a0=&c;'), c_code
-	assert c_compact.contains(',add_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.contains('typedefstruct{main__Counter*a0;i64a1;i64a2;}add_thread_args;'), c_code
+	assert c_compact.contains('->a0=c;'), c_code
+	assert c_compact.contains('__v_thread_spawn(add_args_thread_wrapper,(void*)_sa'), c_code
 	assert c_code.contains('add(p->a0, p->a1, p->a2)'), c_code
 }
 
@@ -84,16 +97,17 @@ fn (mut c Counter) bump(x int) {
 }
 
 fn main() {
-	mut c := Counter{}
+	mut c := &Counter{}
 	_ := spawn c.bump(10)
 	println("ok")
 }
 	')
 	c_compact := compact_c(c_code)
 	assert c_code.contains('pthread_create'), c_code
-	assert c_compact.contains('typedefstruct{Counter*a0;inta1;}Counter__bump_thread_args;'), c_code
-	assert c_compact.contains('->a0=&c;'), c_code
-	assert c_compact.contains(',Counter__bump_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.contains('typedefstruct{main__Counter*a0;i64a1;}Counter__bump_thread_args;'), c_code
+	assert c_compact.contains('->a0=c;'), c_code
+	assert c_compact.contains('__v_thread_spawn(Counter__bump_args_thread_wrapper,(void*)_sa'), c_code
+
 	assert c_code.contains('Counter__bump(p->a0, p->a1)'), c_code
 }
 
@@ -119,10 +133,11 @@ fn main() {
 	')
 	c_compact := compact_c(c_code)
 	assert c_code.contains('pthread_create'), c_code
-	assert c_compact.contains('typedefstruct{Greetera0;}Greeter__greet_thread_args;'), c_code
+	assert c_compact.contains('typedefstruct{main__Greetera0;}Greeter__greet_thread_args;'), c_code
 	assert c_compact.contains('->a0=g;'), c_code
 	assert !c_compact.contains('->a0=&g;'), c_code
-	assert c_compact.contains(',Greeter__greet_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.contains('__v_thread_spawn(Greeter__greet_args_thread_wrapper,(void*)_sa'), c_code
+
 	assert c_code.contains('Greeter__greet(p->a0)'), c_code
 	assert !c_code.contains('(Greeter)arg'), c_code
 }
@@ -162,10 +177,72 @@ fn main() {
 	')
 	c_compact := compact_c(c_code)
 	assert c_code.contains('pthread_create'), c_code
-	assert c_compact.contains('typedefstruct{Boxa0;}Box__show_thread_args'), c_code
+	assert c_compact.contains('typedefstruct{main__Boxa0;}Box__show_thread_args'), c_code
 	assert c_compact.contains('Box__show(&p->a0)'), c_code
-	assert !c_compact.contains('typedefstruct{Box*a0;}Box__show_thread_args'), c_code
-	assert c_compact.contains('typedefstruct{inta0;}takes_ptr_thread_args'), c_code
+	assert !c_compact.contains('typedefstruct{main__Box*a0;}Box__show_thread_args'), c_code
+	assert c_compact.contains('typedefstruct{i64a0;}takes_ptr_thread_args'), c_code
 	assert c_compact.contains('takes_ptr(&p->a0)'), c_code
-	assert !c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
+	assert !c_compact.contains('typedefstruct{i64*a0;}takes_ptr_thread_args'), c_code
+}
+
+fn test_spawn_mutable_local_address_preserves_escaping_pointer() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_mutable_local_address', '
+fn takes_ptr(value &int) {
+	println(*value)
+}
+
+fn main() {
+	for i in 0 .. 1 {
+		mut value := i + 9
+		_ := spawn takes_ptr(&value)
+		value = 10
+	}
+	println("ok")
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_compact.contains('typedefstruct{i64*a0;}takes_ptr_thread_args'), c_code
+	assert c_compact.contains('->a0=value;'), c_code
+	assert c_compact.contains('takes_ptr(p->a0)'), c_code
+	assert !c_compact.contains('typedefstruct{i64a0;}takes_ptr_thread_args'), c_code
+}
+
+fn test_spawn_result_uses_checked_allocation_and_typed_join() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_checked_result', '
+fn answer() int {
+	return 42
+}
+
+fn main() {
+	t := spawn answer()
+	println(t.wait())
+}
+	')
+	assert c_code.contains('(i64*)__v_thread_alloc(sizeof(i64))'), c_code
+	assert c_code.contains('__v_thread_join(t)'), c_code
+	assert !c_code.contains('pthread_join((pthread_t)'), c_code
+}
+
+// A spawned named closure remains caller-owned because it can be reused after join.
+fn test_spawn_fn_value_closure_keeps_caller_ownership() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_fn_value_capture', '
+fn main() {
+	x := 11
+	cb := fn [x] () int {
+		return x
+	}
+	t := spawn (cb)()
+	println(t.wait())
+	println(cb())
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_code.contains('fn_value_args_thread_wrapper'), c_code
+	assert c_compact.contains('f;}fn_value_thread_args_'), c_code
+	assert c_compact.contains('p->f()'), c_code
+	assert !c_compact.contains('closure__closure_try_destroy((void*)p->f);'), c_code
+	assert !c_compact.contains('closure__closure_try_destroy((void*)cb);'), c_code
 }

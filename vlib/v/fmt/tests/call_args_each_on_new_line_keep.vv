@@ -1,0 +1,64 @@
+// A trailing comma after the last call argument, with the arguments starting on a
+// new line after `(`, keeps the call expanded, preserving the source line grouping
+// like gofmt (see issue #27909).
+module main
+
+struct Data {
+	password_details PasswordDetails
+	user             User
+}
+
+struct User {
+	password_hash string
+	password_salt string
+}
+
+struct PasswordDetails {
+	function_name string
+	parameters    string
+}
+
+fn verify_password(password string, hash string, salt string, function_name string, parameters string) ! {
+}
+
+fn (d Data) check(password string, a int, b int) ! {
+	verify_password(
+		password,
+		d.user.password_hash,
+		d.user.password_salt,
+		d.password_details.function_name,
+		d.password_details.parameters,
+	)!
+	d.log(
+		a,
+		b,
+	)
+	single(
+		password,
+	)
+	// a returned-function call keeps its own arguments expanded too
+	make_adder(a)(
+		b,
+		a,
+	)
+	// arguments the user grouped on one line stay grouped
+	d.log2(
+		a, b,
+		b, a,
+	)
+}
+
+fn (d Data) log2(w int, x int, y int, z int) {
+}
+
+fn (d Data) log(a int, b int) {
+}
+
+fn single(s string) {
+}
+
+fn make_adder(base int) fn (int, int) int {
+	return fn (x int, y int) int {
+		return x + y
+	}
+}

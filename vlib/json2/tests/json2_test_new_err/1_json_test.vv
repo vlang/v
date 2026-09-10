@@ -1,0 +1,27 @@
+import json2 as json
+import time
+
+struct User2 {
+	age      int
+	nums     []int
+	reg_date time.Time
+}
+
+struct User {
+	age           int
+	nums          []int
+	last_name     string @[json: lastName]
+	is_registered bool   @[json: IsRegistered]
+	typ           int    @[json: 'type']
+	pets          string @[json: 'pet_animals'; raw]
+}
+
+fn test_encode_decode_time() {
+	user := User2{
+		age:      25
+		reg_date: time.new(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
+	}
+	s := json.encode(user)
+	println(s)
+	assert s.contains('"reg_date":1608621780')
+}

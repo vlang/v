@@ -1,11 +1,16 @@
+// vtest retry: 3
 module onecontext
 
 import context
 import time
 
-fn eventually(ch chan int) bool {
+// eventually reports whether `ch` fires within `within`. Callers that expect a
+// signal pass a generous budget so a slow / loaded CI runner (notably the tcc
+// Windows job) still sees the cross-goroutine cancellation propagate in time;
+// callers asserting the negative pass a short probe so the test stays quick.
+fn eventually(ch chan int, within time.Duration) bool {
 	mut background := context.background()
-	mut timeout, cancel := context.with_timeout(mut background, 30 * time.millisecond)
+	mut timeout, cancel := context.with_timeout(mut background, within)
 	defer {
 		cancel()
 	}
@@ -77,11 +82,11 @@ fn test_merge_nominal() {
 		assert false
 	}
 
-	assert !eventually(ctx.done())
+	assert !eventually(ctx.done(), 30 * time.millisecond)
 	assert ctx.err() is none
 
 	cancel2()
-	assert eventually(ctx.done())
+	assert eventually(ctx.done(), 2 * time.second)
 	assert ctx.err().str() == 'canceled context'
 }
 
@@ -134,10 +139,10 @@ fn test_merge_deadline_context_n() {
 
 	mut ctx, cancel := merge(ctx1, ...ctxs)
 
-	assert !eventually(ctx.done())
+	assert !eventually(ctx.done(), 30 * time.millisecond)
 	assert ctx.err() is none
 	cancel()
-	assert eventually(ctx.done())
+	assert eventually(ctx.done(), 2 * time.second)
 	assert ctx.err().str() == 'canceled context'
 }
 
@@ -159,7 +164,7 @@ fn test_merge_cancel_two() {
 	mut ctx, cancel := merge(ctx1, ctx2)
 	cancel()
 
-	assert eventually(ctx.done())
+	assert eventually(ctx.done(), 2 * time.second)
 	assert ctx.err().str() == 'canceled context'
 	assert ctx.err().str() == 'canceled context'
 }
@@ -172,7 +177,7 @@ fn test_merge_cancel_multiple() {
 	mut ctx, cancel := merge(ctx1, ctx2, ctx3)
 	cancel()
 
-	assert eventually(ctx.done())
+	assert eventually(ctx.done(), 2 * time.second)
 	assert ctx.err().str() == 'canceled context'
 	assert ctx.err().str() == 'canceled context'
 }

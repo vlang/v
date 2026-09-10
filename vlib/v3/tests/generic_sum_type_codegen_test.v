@@ -379,9 +379,64 @@ fn main() {}
 	os.rm(bin) or {}
 	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
 	assert compile.exit_code != 0, compile.output
-	assert compile.output.contains('cannot return') || compile.output.contains('incompatible'), compile.output
+	assert compile.output.contains('cannot use `Node[string]` as type `Tree[int]`')
+		|| compile.output.contains('cannot return') || compile.output.contains('incompatible'), compile.output
 
 	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+fn test_generic_sum_rejects_unknown_is_pattern_after_specialization() {
+	v3_bin := generic_sum_type_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_generic_sum_type_unknown_is_${os.getpid()}.v')
+	os.write_file(src, '
+struct A {}
+struct B {}
+
+type Value = A | B
+
+fn has_missing[T](value T) bool {
+	return value is Missing
+}
+
+fn main() {
+	value := Value(A{})
+	println(has_missing(value))
+}
+') or {
+		panic(err)
+	}
+
+	bin := os.join_path(os.temp_dir(), 'v3_generic_sum_type_unknown_is_${os.getpid()}')
+	os.rm(bin) or {}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('`Missing` is not a variant of sum type `Value`'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+fn test_generic_sum_comptime_variant_pattern_still_specializes() {
+	generic_sum_type_compile_run_source('comptime_variant_pattern', '
+struct A {}
+struct B {}
+
+type Value = A | B
+
+fn match_count[T](value T) int {
+	mut count := 0
+	$for variant in T.variants {
+		if value is variant {
+			count++
+		}
+	}
+	return count
+}
+
+fn main() {
+	value := Value(A{})
+	assert match_count(value) == 1
+	println("ok")
+}
+')
 }
 
 fn test_generic_sum_rejects_mismatched_qualified_generic_variant_pattern() {
@@ -600,7 +655,7 @@ type Tree[T] = Empty | foo.Node[T]
 
 fn value(tree Tree[int]) int {
 	return match tree {
-		foo.Node { tree.value }
+		foo.Node[int] { tree.value }
 		Empty { 0 }
 	}
 }
@@ -628,9 +683,9 @@ struct Box[T] {
 	value T
 }
 
-type S = Box[int] | Box[string]
+type BoxSum = Box[int] | Box[string]
 
-fn score(s S) int {
+fn score(s BoxSum) int {
 	return match s {
 		Box[int] { 10 + s.value }
 		Box[string] { 100 + s.value.len }
@@ -638,7 +693,7 @@ fn score(s S) int {
 }
 
 fn main() {
-	s := S(Box[string]{
+	s := BoxSum(Box[string]{
 		value: "ok"
 	})
 	assert s is Box[string]
@@ -647,7 +702,7 @@ fn main() {
 	assert b.value == "ok"
 	assert score(s) == 102
 
-	i := S(Box[int]{
+	i := BoxSum(Box[int]{
 		value: 7
 	})
 	assert i is Box[int]
