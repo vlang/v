@@ -8638,7 +8638,11 @@ pub fn run(args []string) {
 		eprintln("builder error: ${input_file} doesn't exist")
 		exit(1)
 	}
-	if input_implies_building_v(input_file) {
+	cmd_v_build := input_is_cmd_v(input_file)
+	// Neither compiler entry point uses generics. Keep self-builds off the generic
+	// reachability and monomorphization paths without requiring an explicit flag.
+	// -building-v can force the same mode for another known non-generic input.
+	if input_implies_building_v(input_file) || cmd_v_build {
 		building_v = true
 	}
 	configure_selfhost_parallelism(building_v)
@@ -8784,15 +8788,8 @@ pub fn run(args []string) {
 		&& !user_defines.any(it.all_before('=').trim_space() == 'linux_wayland_session') {
 		user_defines << 'linux_wayland_session'
 	}
-	cmd_v_build := input_is_cmd_v(input_file)
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
 	v3_compiler_tree_input := input_is_v3_compiler_tree(input_file)
-	// Neither compiler entry point uses generics. Keep self-builds off the generic
-	// reachability and monomorphization paths without requiring an explicit flag.
-	// -building-v can force the same mode for another known non-generic input.
-	if input_implies_building_v(input_file) || cmd_v_build {
-		building_v = true
-	}
 	if backend == 'fastc' && 'fastc_real_builtin' in user_defines {
 		// Opt-in: compile an ordinary program through FastC's real-`builtin` path
 		// (real `struct string`, error system, and the full runtime) instead of the
