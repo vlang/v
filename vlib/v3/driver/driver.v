@@ -6611,6 +6611,14 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	return if target.os in ['macos', 'ios'] { 'clang' } else { 'gcc' }
 }
 
+fn v3_select_windows_default_c_compiler(c_compiler string, c_compiler_explicit bool, host_os string, target_os string, bundled_tcc string, bundled_tcc_available bool) string {
+	if !c_compiler_explicit && host_os == 'windows' && target_os == 'windows'
+		&& bundled_tcc_available {
+		return bundled_tcc
+	}
+	return c_compiler
+}
+
 fn v3_should_prefer_bundled_tcc_for_selfhost(building_v bool, backend string, c_only bool, is_prod bool, is_c_debug bool, c_compiler_explicit bool, target pref.Target, bundled_tcc_available bool) bool {
 	if !building_v || backend != 'c' || c_only || is_prod || is_c_debug || c_compiler_explicit
 		|| !bundled_tcc_available {
@@ -8861,24 +8869,6 @@ pub fn run(args []string) {
 	// V's platform `int` is 64-bit on 64-bit targets and 32-bit on 32-bit ones;
 	// pin the C spelling from the target width before any checking or codegen.
 	types.set_platform_int_bits(target.pointer_bits)
-	constraint_ccompiler := if backend == 'arm64'
-		|| (!c_compiler_explicit && os.user_os() == 'windows' && target.os == 'windows') {
-		'tinyc'
-	} else {
-		effective_c_compiler_name(c_compiler, target)
-	}
-	incompatible_direct_test := v3_direct_test_input_is_incompatible(is_test_command, input_file, backend, target, constraint_ccompiler, is_prod, user_defines)
-	if incompatible_direct_test {
-		// Directory test discovery already excludes incompatible backend/platform files.
-		// Apply the same backend, platform, and `// vtest build:` rules to a direct single-file
-		// test before parsing it; otherwise unavailable symbols and dependencies emit
-		// misleading diagnostics instead of reporting a skip.
-		if !silent {
-			println('SKIP ${input_file}')
-		}
-		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-		return
-	}
 	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'linux_wayland_session') {
 		user_defines << 'linux_wayland_session'
@@ -9103,11 +9093,7 @@ pub fn run(args []string) {
 	}
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	bundled_tcc_available := os.is_executable(bundled_tcc)
-	if !c_compiler_explicit && os.user_os() == 'windows' && target.os == 'windows' {
-		if os.is_executable(bundled_tcc) {
-			c_compiler = bundled_tcc
-		}
-	}
+	c_compiler = v3_select_windows_default_c_compiler(c_compiler, c_compiler_explicit, os.user_os(), target.os, bundled_tcc, bundled_tcc_available)
 	// The non-production C path tries bundled TCC before its `cc` fallback. Select
 	// TinyCC compile-time branches for a self-host too, so system headers and inline
 	// assembly intended for Clang do not prevent that first attempt.
@@ -9119,6 +9105,18 @@ pub fn run(args []string) {
 		'tinyc'
 	} else {
 		effective_c_compiler_name(c_compiler, target)
+	}
+	incompatible_direct_test := v3_direct_test_input_is_incompatible(is_test_command, input_file, backend, target, effective_c_compiler, is_prod, user_defines)
+	if incompatible_direct_test {
+		// Directory test discovery already excludes incompatible backend/platform files.
+		// Apply the same backend, platform, compiler, and `// vtest build:` rules to a direct
+		// single-file test before parsing it; otherwise unavailable symbols and dependencies
+		// emit misleading diagnostics instead of reporting a skip.
+		if !silent {
+			println('SKIP ${input_file}')
+		}
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		return
 	}
 	// Windows selects its bundled TCC without an explicit `-cc`. Compiler flags
 	// follow that effective compiler, while retry policy still follows user intent.
