@@ -85,9 +85,11 @@ The standard bootstrap builds a sibling `v1_fallback` executable
 (`v1_fallback.exe` on Windows). `-old-compiler` launches it explicitly, and
 ordinary user builds retry through it after a V3 compiler or C compilation
 failure. Explicit `-new-compiler` builds and native compiler self-builds remain
-strict V3 operations. A separately built V3-only executable without the sibling
+strict V3 operations, except for `-new-compiler -cc msvc` on Windows. V3 does
+not yet generate MSVC command lines, so that combination intentionally launches
+`v1_fallback.exe`. A separately built V3-only executable without the sibling
 cannot use the fallback. `-new-compiler` remains accepted for command-line
-compatibility and selects the same embedded driver.
+compatibility and otherwise selects the same embedded driver.
 
 On platforms that do not embed V3, `cmd/v` still contains the established
 compiler from `vlib/v`. There, `-new-compiler` reports that the current build does

@@ -43,18 +43,20 @@ link the established compiler in `vlib/v`; its own build and every other direct 
 use V3. Commands such as `test` remain external tools, while each discovered test file is compiled
 by V3. Non-C backends remain separate builder tools.
 
-`-new-compiler` remains accepted for command-line compatibility and selects the same in-process V3
-driver. The standard bootstrap also builds `v1_fallback` (`v1_fallback.exe` on Windows) beside
-`v`; `-old-compiler` launches it explicitly, and ordinary user builds retry through it after a V3
-compiler or C compilation failure. A separately built V3-only executable without that sibling
-cannot use the fallback. On portable cross-VC builds, the V3 driver is not embedded and `cmd/v`
-retains the established compiler.
+`-new-compiler` remains accepted for command-line compatibility and normally selects the same
+in-process V3 driver. The standard bootstrap also builds `v1_fallback` (`v1_fallback.exe` on
+Windows) beside `v`; `-old-compiler` launches it explicitly, and ordinary user builds retry through
+it after a V3 compiler or C compilation failure. A separately built V3-only executable without
+that sibling cannot use the fallback. On portable cross-VC builds, the V3 driver is not embedded
+and `cmd/v` retains the established compiler.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
 
 Explicit `-new-compiler` builds and native `cmd/v` self-builds remain strict V3 operations and do
-not retry with V1.
+not retry with V1, except for `-new-compiler -cc msvc` on Windows. V3 does not yet generate MSVC
+command lines, so that combination intentionally launches `v1_fallback.exe` instead of exercising
+V3.
 
 ## Target selection
 
