@@ -7286,6 +7286,9 @@ by an `id`. An ID on an earlier node is available to following nodes in the same
 Both quoted and unquoted `#RRGGBB` color values are accepted. A `Repeater` requires `model`
 and stable `key` properties and exposes `item` and `index` inside its delegate.
 
+String literals may use either double (`"`) or single (`'`) quote delimiters. Escape a matching
+quote or a backslash with `\`; `\n` and `\t` are also supported.
+
 The `bind.text`, `bind.checked`, `bind.active`, and `bind.value` properties create two-way
 bindings to mutable top-level fields on `app`. Event properties `on_tap`, `on_change`,
 `on_active`, `on_text`, and `on_submit` call an `app` method with zero or one argument. These
