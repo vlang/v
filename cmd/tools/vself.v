@@ -30,6 +30,7 @@ fn main() {
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
+	host_os := self_build_host_os()
 	command_index := os.getenv('VSELF_COMMAND_INDEX').int()
 	os.unsetenv('VSELF_COMMAND_INDEX')
 	repeat_count, mut args := extract_repeat_count(args_[1..], command_index)
@@ -45,17 +46,19 @@ fn main() {
 	}
 	if !fastc_self_build && !has_self_build_configuration_arg(effective_args) {
 		// compiling by default, i.e. `v self`:
-		uos := os.user_os()
 		uname := os.uname()
-		if uos == 'macos' {
+		if host_os == 'macos' {
 			// Apple Silicon's bundled TCC is much faster for compiler rebuilds. The
 			// generated compiler uses pthread-backed allocator state because native
 			// TinyCC TLS is not reliable on macOS.
 			default_cc := if uname.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
 			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
-		} else if uos == 'linux' && uname.machine in ['arm64', 'aarch64'] {
+		} else if host_os == 'linux' && uname.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
 			// prefer the system compiler for self-builds there.
+			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
+		} else if host_os in ['freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
+			// V3's preallocation runtime needs the system compiler on BSD.
 			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
 		}
 	}
@@ -63,7 +66,7 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && os.user_os() in ['linux', 'macos'] && '-prod' in effective_args
+	if !fastc_self_build && self_build_uses_embedded_v3(host_os) && '-prod' in effective_args
 		&& '-parallel-cc' !in effective_args {
 		// A V3-only cmd/v is large enough that a monolithic C compiler + LTO dominates
 		// the self-build. Parallel C compilation also keeps the generated unit out
@@ -71,15 +74,15 @@ fn main() {
 		args << '-parallel-cc'
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && os.user_os() in ['linux', 'macos'] && '-prod' in effective_args
+	if !fastc_self_build && self_build_uses_embedded_v3(host_os) && '-prod' in effective_args
 		&& '-no-memory-limit' !in effective_args && '--no-memory-limit' !in effective_args {
 		// Production C generation for the embedded V3 compiler can legitimately
 		// exceed V3's default 10 GB process limit before the native compiler starts.
 		args << '-no-memory-limit'
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && os.user_os() in ['linux', 'macos']
-		&& self_build_supports_prealloc(effective_args) && !has_prealloc_arg(effective_args) {
+	if !fastc_self_build && self_build_uses_embedded_v3(host_os)
+		&& self_build_supports_prealloc(effective_args, host_os) && !has_prealloc_arg(effective_args) {
 		// The embedded V3 compiler uses disposable preallocation scopes. Pass the
 		// flag explicitly so the first `v up` built by an older compiler gets
 		// the bounded-memory implementation too.
@@ -95,7 +98,7 @@ fn main() {
 		}
 	}
 	if !fastc_self_build && obinary == '' {
-		install_missing_bsd_v1_fallback(vroot, vexe, args, self_build_host_os()) or {
+		install_missing_bsd_v1_fallback(vroot, vexe, args, host_os) or {
 			eprintln('cannot prepare the BSD V1 compatibility compiler: ${err.msg()}')
 			exit(1)
 		}
@@ -323,8 +326,8 @@ fn has_prealloc_arg(args []string) bool {
 	return args.any(it in ['-prealloc', '-no-prealloc'])
 }
 
-fn self_build_supports_prealloc(args []string) bool {
-	mut target_os := os.user_os()
+fn self_build_supports_prealloc(args []string, host_os string) bool {
+	mut target_os := host_os
 	mut ccompiler := ''
 	mut gc := 'none'
 	mut i := 0
@@ -356,7 +359,7 @@ fn self_build_supports_prealloc(args []string) bool {
 		}
 		i++
 	}
-	return target_os in ['linux', 'macos'] && gc == 'none'
+	return self_build_uses_embedded_v3(target_os) && gc == 'none'
 		&& self_ccompiler_supports_prealloc(ccompiler, target_os)
 }
 
@@ -485,6 +488,10 @@ fn self_build_host_os() string {
 		return 'freebsd'
 	}
 	return os.user_os()
+}
+
+fn self_build_uses_embedded_v3(host_os string) bool {
+	return host_os in ['linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
 }
 
 fn install_missing_bsd_v1_fallback(vroot string, compiler string, args []string, host_os string) ! {
