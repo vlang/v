@@ -7,7 +7,6 @@ on:
       - master
     paths:
       - '**'
-      - '!vlib/v3/**'
       - '!**.md'
       - '!**.yml'
       - '!cmd/tools/**'
@@ -47,6 +46,7 @@ on:
       - 'vlib/time/**'
       - 'vlib/toml/**'
       - 'vlib/v/**'
+      - 'vlib/v3/**'
       # build-examples / DB / Sokol deps exercised by ci/openbsd_ci.vsh
       - 'vlib/compress/**'
       - 'vlib/crypto/rand/**'
@@ -91,7 +91,8 @@ jobs:
         with:
           operating_system: openbsd
           version: '7.8'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           sync_files: runner-to-vm
 
       - name: Tests on OpenBSD with tcc
@@ -129,7 +130,8 @@ jobs:
         with:
           operating_system: openbsd
           version: '7.8'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           sync_files: runner-to-vm
 
       - name: Tests on OpenBSD with clang

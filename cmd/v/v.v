@@ -11,7 +11,7 @@ import v.pref
 import v.util
 import v.util.version
 
-$if v1_fallback ?|| cross ?|| ( !macos && !linux ) {
+$if v1_fallback ?|| cross ?|| ( !bsd && !linux ) {
 	// The compatibility compiler, portable cross snapshots, and non-V3 targets
 	// all need the V1 builder. Keep this as one import site: a compatibility
 	// compiler generating a cross target can satisfy multiple parts of the condition.
@@ -262,7 +262,7 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 }
 
 fn autofree_args_have_unsupported_ownership_option(args []string, command string) bool {
-	$if macos {
+	$if bsd || linux {
 		return macos_v3_has_unsupported_leading_option(args, command)
 	}
 	return false
@@ -274,7 +274,7 @@ fn v3_ownership_forwarded_args(prefs &pref.Preferences, merged_args []string) []
 		ownership_args.prepend('ownership')
 		ownership_args.prepend('-d')
 	}
-	$if macos {
+	$if bsd || linux {
 		return macos_v3_forwarded_args(prefs, ownership_args)
 	}
 	return ownership_args
@@ -343,7 +343,8 @@ fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_co
 	if new_compiler {
 		return false
 	}
-	return is_autofree && host_os in ['macos', 'linux']
+	return is_autofree
+		&& host_os in ['macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
 }
 
 fn is_ownership_relevant_command(command string, prefs &pref.Preferences) bool {
@@ -424,7 +425,7 @@ fn rebuild(prefs &pref.Preferences) {
 		.c {
 			$if v1_fallback ?|| cross ? {
 				builder.compile('build', prefs, cbuilder.compile_c)
-			} $else $if macos || linux {
+			} $else $if bsd || linux {
 
 				// Every C-backend build is dispatched to V3 before this point. Keeping
 				// this path fatal prevents an accidental dependency on the unlinked V1

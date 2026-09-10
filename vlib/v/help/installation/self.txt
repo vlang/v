@@ -7,7 +7,8 @@ Usage:
 
 Options:
   All other options are passed to the build command. (e.g. -prod)
-  Plain self-builds compile the full `cmd/v` CLI, which embeds and defaults to V3 on macOS/Linux.
+  Plain self-builds compile the full `cmd/v` CLI, which embeds and defaults to V3 on macOS,
+  Linux, and BSD.
   On Apple Silicon, regular self-builds use bundled TCC by default; `CC` or `-cc` overrides it.
   On macOS and Linux, -prod uses a single parallel C build without LTO instead of PGO.
   On other systems, -prod with clang/gcc may use PGO when tools are available.

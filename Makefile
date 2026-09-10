@@ -4,7 +4,7 @@ CFLAGS ?=
 LDFLAGS ?=
 
 # Portable VC snapshots do not embed V3. Keep their v1 executable on the full
-# compatibility compiler path even when the generated C is built on macOS/Linux.
+# compatibility compiler path even when the generated C is built on a V3 host.
 VC_BOOTSTRAP_DEFINE = -DCUSTOM_DEFINE_v1_fallback
 
 all: download_vc v
@@ -99,8 +99,24 @@ v:
 	case " $(VFLAGS) " in \
 		*" -gc "*|*" -gc="*) bootstrap_gcflags="";; \
 	esac; \
+	bootstrap_ccompiler=; \
+	case " $(VFLAGS) " in \
+		*" -cc "*|*" -cc="*) ;; \
+		*) \
+			case "$$sys" in \
+				Linux|FreeBSD|NetBSD|OpenBSD|DragonFly) \
+					case "$$arch" in \
+						arm64|aarch64) bootstrap_ccompiler="$(CC)";; \
+					esac; \
+					;; \
+			esac; \
+			;; \
+	esac; \
 	$(CC) $$bootstrap_ccflags $(VC_BOOTSTRAP_DEFINE) -std=gnu11 -w -o v1 vc/v.c -lm -lpthread $$ldflags || cmd/tools/cc_compilation_failed_non_windows.sh; \
 	set -- ./v1 -no-parallel -o v2 $$bootstrap_gcflags $(VFLAGS); \
+	if [ -n "$$bootstrap_ccompiler" ]; then \
+		set -- "$$@" -cc "$$bootstrap_ccompiler"; \
+	fi; \
 	if [ -n "$$bootstrap_ccflags" ]; then \
 		set -- "$$@" -cflags "$$bootstrap_ccflags"; \
 	fi; \
@@ -110,8 +126,11 @@ v:
 	set -- "$$@" cmd/v; \
 	"$$@"; \
 	case "$$sys" in \
-		Linux|Darwin) \
+		Linux|Darwin|FreeBSD|NetBSD|OpenBSD|DragonFly) \
 			set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback $$bootstrap_gcflags $(VFLAGS); \
+			if [ -n "$$bootstrap_ccompiler" ]; then \
+				set -- "$$@" -cc "$$bootstrap_ccompiler"; \
+			fi; \
 			if [ -n "$$bootstrap_ccflags" ]; then \
 				set -- "$$@" -cflags "$$bootstrap_ccflags"; \
 			fi; \
@@ -126,6 +145,9 @@ v:
 			;; \
 	esac; \
 	set -- ./v2 -o v $$bootstrap_gcflags $(VFLAGS); \
+	if [ -n "$$bootstrap_ccompiler" ]; then \
+		set -- "$$@" -cc "$$bootstrap_ccompiler"; \
+	fi; \
 	if [ -n "$$ccflags" ]; then \
 		set -- "$$@" -cflags "$$ccflags"; \
 	fi; \

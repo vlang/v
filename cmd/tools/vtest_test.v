@@ -83,8 +83,8 @@ fn test_vtest_executable_compiles() {
 }
 
 fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
-	$if !macos && !linux {
-		// The embedded V3 compiler is currently available only on macOS and Linux.
+	$if !bsd && !linux {
+		// The embedded V3 compiler is currently available only on macOS, Linux, and BSD.
 		return
 	}
 	os.execute_or_exit('${os.quoted_path(vexe)} -old-compiler -nocache -o ${mytest_exe} cmd/tools/vtest.v')

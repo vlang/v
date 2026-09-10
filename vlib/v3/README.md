@@ -29,24 +29,24 @@ builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until v3
 can compile the full builtin map.v.
 
-## macOS V3 dispatch
+## V3 dispatch
 
-On macOS and Linux, V3 is the default compiler for user source and test builds. The top-level
-`v` command runs the V3 driver linked into `cmd/v`; it does not build or launch a second compiler
-process. This includes direct file and directory builds, `run`, `build`, and test-file compilation,
-plus production and shared builds and supported cross targets and backends. The `test` command
-itself continues to use the established test dispatcher, while each discovered test file is
-compiled by V3.
+On macOS, Linux, and BSD, V3 is the default compiler for user source and test builds. The
+top-level `v` command runs the V3 driver linked into `cmd/v`; it does not build or launch a second
+compiler process. This includes direct file and directory builds, `run`, `build`, and test-file
+compilation, plus production and shared builds and supported cross targets and backends. The
+`test` command itself continues to use the established test dispatcher, while each discovered
+test file is compiled by V3.
 
-`cmd/v` remains the full CLI and tool dispatcher. On macOS and Linux it links V3, but does not link
-the established compiler in `vlib/v`; its own build and every other direct C build therefore use
-V3. Commands such as `test` remain external tools, while each discovered test file is compiled by
-V3. Non-C backends remain separate builder tools.
+`cmd/v` remains the full CLI and tool dispatcher. On macOS, Linux, and BSD it links V3, but does
+not link the established compiler in `vlib/v`; its own build and every other direct C build
+therefore use V3. Commands such as `test` remain external tools, while each discovered test file
+is compiled by V3. Non-C backends remain separate builder tools.
 
 `-new-compiler` remains accepted for command-line compatibility and selects the same in-process V3
-driver. `-old-compiler` is unavailable in a V3-only executable and reports an error. On Windows,
-the BSDs, and portable cross-VC builds, the V3 driver is not embedded and `cmd/v` retains the
-established compiler.
+driver. `-old-compiler` is unavailable in a V3-only executable and reports an error. On Windows
+and portable cross-VC builds, the V3 driver is not embedded and `cmd/v` retains the established
+compiler.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
@@ -77,8 +77,8 @@ compiler-tree and self-host builds stop at 9984 MiB, leaving extra sampling head
 10 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
-On macOS and Linux, `make` and the default `v self` build the compiler with `-prealloc`, enabling
-the disposable stage arenas that keep compiler self-hosting within that ceiling.
+On macOS, Linux, and BSD, `make` and the default `v self` build the compiler with `-prealloc`,
+enabling the disposable stage arenas that keep compiler self-hosting within that ceiling.
 Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.

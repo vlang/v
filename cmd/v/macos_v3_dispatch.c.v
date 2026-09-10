@@ -1,6 +1,6 @@
 module main
 
-// The V3 compiler is linked directly into `cmd/v` on macOS and Linux. The
+// The V3 compiler is linked directly into `cmd/v` on macOS, Linux, and BSD. The
 // command shell hands C-backend compilations to it in-process while leaving
 // tool commands and other backends on their existing external-tool paths.
 // When V3 fails an ordinary program compilation, the lean V3-only command
@@ -74,7 +74,7 @@ fn retry_macos_v3_with_v1(state &MacosV3RetryState) {
 }
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
-	$if macos || linux {
+	$if bsd || linux {
 		needs_v1_compatibility := macos_v3_needs_v1_compatibility(command, prefs)
 		fallback_executable := macos_v3_v1_fallback_executable()
 		if macos_v3_needs_bootstrap_before_v1_fallback(prefs, needs_v1_compatibility, os.executable(), fallback_executable) {
@@ -103,7 +103,7 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 			eprintln('the embedded V3 compiler is unavailable on this target, and fallback is disabled.')
 			exit(1)
 		}
-		$if macos || linux {
+		$if bsd || linux {
 			// musl deliberately does not link V3 because its runtime still depends on
 			// glibc-only C interfaces. Use the same full external compatibility
 			// compiler that an ordinary failed V3 build would retry through.

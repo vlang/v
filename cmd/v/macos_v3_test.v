@@ -33,7 +33,7 @@ fn test_macos_v3_embedded_driver_matches_target_selection() {
 		assert !macos_v3_driver_is_available()
 	} $else $if musl ? {
 		assert !macos_v3_driver_is_available()
-	} $else $if macos || linux {
+	} $else $if bsd || linux {
 		assert macos_v3_driver_is_available()
 	} $else {
 		assert !macos_v3_driver_is_available()
@@ -84,7 +84,7 @@ fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 
 fn test_macos_v3_cmd_source_unlinks_v1_on_supported_hosts() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'v.v'))!
-	assert source.contains('\$if v1_fallback ?|| cross ?|| ( !macos && !linux ) {')
+	assert source.contains('\$if v1_fallback ?|| cross ?|| ( !bsd && !linux ) {')
 	assert source.contains('import v.builder')
 	assert source.contains('import v.builder.cbuilder')
 	assert source.contains('\$if v1_fallback ?|| cross ? {\n\t\t\t\tbuilder.compile')
@@ -106,7 +106,7 @@ fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {
 }
 
 fn test_v1_fallback_can_bootstrap_cmd_v_without_target_define() {
-	$if macos || linux {
+	$if bsd || linux {
 		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)
 		if !os.is_executable(fallback) {
 			return
@@ -123,7 +123,7 @@ fn test_v1_fallback_can_bootstrap_cmd_v_without_target_define() {
 }
 
 fn test_macos_v3_old_compiler_uses_external_v1_command() {
-	$if macos || linux {
+	$if bsd || linux {
 		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)
 		if !os.is_executable(fallback) {
 			return
@@ -147,7 +147,7 @@ fn test_macos_v3_old_compiler_uses_external_v1_command() {
 }
 
 fn test_macos_v3_invalid_program_still_reports_an_error_after_v1_retry() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_invalid_program_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -168,7 +168,7 @@ fn test_macos_v3_invalid_program_still_reports_an_error_after_v1_retry() {
 }
 
 fn test_macos_v3_fatal_errors_reports_only_the_first_error() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_fatal_errors_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -275,6 +275,9 @@ fn test_macos_v3_ownership_delegation_never_selects_v1() {
 	assert ownership_delegation_is_requested(true, false, false, false, 'linux')
 	assert ownership_delegation_is_requested(false, true, false, false, 'macos')
 	assert ownership_delegation_is_requested(false, true, false, false, 'linux')
+	for bsd_os in ['freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
+		assert ownership_delegation_is_requested(false, true, false, false, bsd_os)
+	}
 	assert !ownership_delegation_is_requested(false, true, false, false, 'windows')
 	assert !ownership_delegation_is_requested(true, false, true, false, 'macos')
 	direct_prefs := &pref.Preferences{
@@ -295,7 +298,7 @@ fn test_macos_v3_ownership_delegation_never_selects_v1() {
 }
 
 fn test_macos_v3_autofree_direct_and_run_use_ownership_compiler() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_autofree_run_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -317,7 +320,7 @@ fn test_macos_v3_autofree_direct_and_run_use_ownership_compiler() {
 }
 
 fn test_macos_v3_parallel_cc_ignores_inactive_header_definitions() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_inactive_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -339,7 +342,7 @@ fn test_macos_v3_parallel_cc_ignores_inactive_header_definitions() {
 }
 
 fn test_macos_v3_compiles_cmd_v_without_v1_modules() {
-	$if macos || linux {
+	$if bsd || linux {
 		compiler := os.join_path(macos_v3_test_vroot, '.v3_only_cmd_test_${os.getpid()}')
 		defer {
 			os.rm(compiler) or {}

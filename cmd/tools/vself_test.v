@@ -138,7 +138,7 @@ fn test_macos_default_self_build_compiler_selection() {
 }
 
 fn test_plain_self_replacement_preserves_cli_and_embedded_v3() {
-	$if !macos && !linux {
+	$if !bsd && !linux {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'vself_full_cli_replacement_${os.getpid()}')

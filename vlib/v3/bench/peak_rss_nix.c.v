@@ -1,21 +1,13 @@
 module bench
 
-#include <sys/resource.h>
+#insert "@VEXEROOT/vlib/v3/bench/peak_rss.h"
 
-struct C.rusage {
-	ru_maxrss i64
-}
-
-fn C.getrusage(who int, usage &C.rusage) int
+fn C.v3_bench_peak_rss_kb() i64
 
 fn peak_rss_kb() i64 {
-	mut usage := C.rusage{}
-	if C.getrusage(C.RUSAGE_SELF, &usage) != 0 {
+	peak := C.v3_bench_peak_rss_kb()
+	if peak < 0 {
 		return current_rss_kb()
 	}
-	$if macos {
-		return usage.ru_maxrss / 1024
-	} $else {
-		return usage.ru_maxrss
-	}
+	return peak
 }
