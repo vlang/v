@@ -212,7 +212,7 @@ fn (mut checker Decoder) checker_error(message string) ! {
 	mut context_end := int_min(checker.json.len, position + max_extra_characters)
 	context_end_newline := checker.json[position..context_end].index_u8(`\n`)
 
-	if context_end_newline != -1 {
+	if context_end_newline > 0 {
 		context_end = position + context_end_newline
 	}
 
