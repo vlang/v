@@ -68,9 +68,16 @@ const v3_fallback_native_input_prefix = '@native-input:'
 const v3_fallback_native_manifest_key = '@native-input-manifest:v1'
 const v3_fallback_native_manifest_value = 'v3-native-input-manifest-v1'
 const bsd_selfhost_job_limit = 2
+const bsd_selfhost_parallel_cc_job_limit = 8
+const bsd_selfhost_parallel_cc_unit_count = 8
+const bsd_prod_selfhost_memory_per_job = u64(2) * 1024 * 1024 * 1024
 
-fn default_selfhost_job_count(jobs int, is_bsd_host bool, allow_overcommit bool) int {
+fn default_selfhost_job_count(jobs int, is_bsd_host bool, allow_overcommit bool, prod_parallel_cc bool, total_memory u64) int {
 	if is_bsd_host {
+		if prod_parallel_cc && total_memory > 0 {
+			memory_jobs := int((total_memory + bsd_prod_selfhost_memory_per_job - 1) / bsd_prod_selfhost_memory_per_job)
+			return int_min(jobs, int_max(bsd_selfhost_job_limit, int_min(memory_jobs, bsd_selfhost_parallel_cc_job_limit)))
+		}
 		return int_min(jobs, bsd_selfhost_job_limit)
 	}
 	if !allow_overcommit || jobs < 2 || jobs >= 12 {
@@ -79,13 +86,17 @@ fn default_selfhost_job_count(jobs int, is_bsd_host bool, allow_overcommit bool)
 	return int_min(12, jobs + jobs / 2)
 }
 
-fn configure_selfhost_parallelism(building_v bool) {
+fn configure_selfhost_parallelism(building_v bool, prod_parallel_cc bool) {
 	if !building_v || os.getenv('VJOBS') != '' {
 		return
 	}
 	jobs := runtime.nr_jobs()
 	is_bsd_host := $if freebsd || openbsd || netbsd || dragonfly { true } $else { false }
-	configured_jobs := default_selfhost_job_count(jobs, is_bsd_host, os.getenv('V3_NO_SELFHOST_JOB_OVERCOMMIT') == '')
+	mut total_memory := u64(0)
+	if is_bsd_host && prod_parallel_cc {
+		total_memory = u64(runtime.total_memory() or { 0 })
+	}
+	configured_jobs := default_selfhost_job_count(jobs, is_bsd_host, os.getenv('V3_NO_SELFHOST_JOB_OVERCOMMIT') == '', prod_parallel_cc, total_memory)
 	if configured_jobs != jobs {
 		// V3 self-hosting needs more than 4 GiB before the C compiler starts.
 		// Bound BSD worker pools so CPU-rich hosts do not multiply that peak.
@@ -1849,6 +1860,22 @@ mut:
 	result os.Result
 }
 
+fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool, prod_parallel_cc bool) int {
+	max_jobs := if building_v && is_bsd_host && prod_parallel_cc {
+		bsd_selfhost_parallel_cc_job_limit
+	} else {
+		v3_parallel_cc_max_jobs
+	}
+	return int_max(1, int_min(max_jobs, available_jobs))
+}
+
+fn v3_parallel_c_unit_count(job_count int, building_v bool, is_bsd_host bool) int {
+	if building_v && is_bsd_host {
+		return bsd_selfhost_parallel_cc_unit_count
+	}
+	return job_count * v3_parallel_cc_units_per_job
+}
+
 fn (plan &V3CCompilerFlagPlan) compiler_args(output string, inputs []string, support_inputs []string) []string {
 	mut args := plan.before_inputs.clone()
 	args << ['-o', output]
@@ -2110,15 +2137,14 @@ fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) 
 	return split.prefix, merge_v3_parallel_c_units(units, max_units)
 }
 
-fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, show_command bool) os.Result {
+fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, show_command bool, job_count int, unit_count int) os.Result {
 	source := os.read_file(source_path) or {
 		return os.Result{
 			exit_code: 1
 			output: 'failed to read generated C source ${source_path}: ${err.msg()}'
 		}
 	}
-	job_count := int_max(1, int_min(v3_parallel_cc_max_jobs, runtime.nr_jobs()))
-	prefix, bodies := split_v3_parallel_c_source(source, job_count * v3_parallel_cc_units_per_job) or {
+	prefix, bodies := split_v3_parallel_c_source(source, unit_count) or {
 		return os.Result{
 			exit_code: 1
 			output: 'failed to split generated C source: ${err.msg()}'
@@ -2143,19 +2169,27 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	}
 	mut tasks := []&V3ParallelCCompileTask{cap: bodies.len + 1}
 	mut objects := []string{cap: bodies.len + 1}
-	mut compile_flags := c_object_compile_flags(c_flag_plan.before_inputs)
-	compile_flags << c_object_compile_flags(c_flag_plan.after_inputs)
+	mut small_compile_flags := c_object_compile_flags(c_flag_plan.before_inputs)
+	small_compile_flags << c_object_compile_flags(c_flag_plan.after_inputs)
+	mut large_compile_flags := c_object_compile_flags(large_c_flag_plan.before_inputs)
+	large_compile_flags << c_object_compile_flags(large_c_flag_plan.after_inputs)
 	for unit_index := 0; unit_index <= bodies.len; unit_index++ {
 		source_name := 'unit_${unit_index}.c'
 		object_name := 'unit_${unit_index}.o'
 		unit_source := if unit_index == 0 { prefix } else { bodies[unit_index - 1] }
-		write_v3_parallel_c_source(os.join_path_single(build_dir, source_name), header_name, unit_source, unit_index == 0) or {
+		unit_path := os.join_path_single(build_dir, source_name)
+		write_v3_parallel_c_source(unit_path, header_name, unit_source, unit_index == 0) or {
 			return os.Result{
 				exit_code: 1
 				output: 'failed to write parallel C unit ${source_name}: ${err.msg()}'
 			}
 		}
-		mut compile_args := compile_flags.clone()
+		unit_is_large := v3_parallel_c_unit_is_large(os.file_size(unit_path), u64(header.len), unit_index == 0)
+		mut compile_args := if unit_is_large {
+			large_compile_flags.clone()
+		} else {
+			small_compile_flags.clone()
+		}
 		compile_args << ['-x', if objective_c { 'objective-c' } else { 'c' }, '-c', '-o',
 			object_name, source_name]
 		if show_command {
@@ -7632,6 +7666,14 @@ fn v3_is_large_prod_c_unit(source_size u64) bool {
 	return source_size >= v3_large_prod_c_unit_threshold
 }
 
+fn v3_parallel_c_unit_is_large(source_size u64, declaration_header_size u64, owns_declarations bool) bool {
+	return v3_is_large_prod_c_unit(source_size + if owns_declarations {
+		u64(0)
+	} else {
+		declaration_header_size
+	})
+}
+
 fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, large_c_unit bool, limit_inlining bool, explicit_tcc bool) []string {
 	if !is_prod || no_prod_options {
 		return []
@@ -8645,7 +8687,11 @@ pub fn run(args []string) {
 	if input_implies_building_v(input_file) || cmd_v_build {
 		building_v = true
 	}
-	configure_selfhost_parallelism(building_v)
+	configure_selfhost_parallelism(building_v, is_prod && parallel_cc)
+	available_parallel_c_jobs := runtime.nr_jobs()
+	is_bsd_host := $if freebsd || openbsd || netbsd || dragonfly { true } $else { false }
+	parallel_c_job_count := v3_parallel_c_job_count(available_parallel_c_jobs, building_v, is_bsd_host, is_prod && parallel_cc)
+	parallel_c_unit_count := v3_parallel_c_unit_count(parallel_c_job_count, building_v, is_bsd_host)
 	if generate_c_project.len > 0 {
 		if backend != 'c' {
 			eprintln('`-generate-c-project` is currently supported only for the C backend')
@@ -11270,7 +11316,7 @@ pub fn run(args []string) {
 		all_compile_c_flags << generated_c_flags
 		needs_objective_c := c_flags_need_objective_c(all_compile_c_flags)
 			|| cgen.cache_native_inputs_need_objective_c(a, prefs.vroot, user_c_flags, prefs.c99, prefs.ccompiler, prefs.target)
-		large_prod_c_unit := os.is_file(published_c_source)
+		large_prod_c_unit := !use_parallel_c_compilation && os.is_file(published_c_source)
 			&& v3_is_large_prod_c_unit(os.file_size(published_c_source))
 		limit_large_unit_inlining := large_prod_c_unit && effective_c_compiler == 'clang'
 		link_uses_non_c_language := c_link_flags_use_non_c_language(all_compile_c_flags)
@@ -11307,7 +11353,7 @@ pub fn run(args []string) {
 		} else {
 			''
 		}
-		c_flag_plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		c_flag_options := V3CCompilerFlagOptions{
 			environment_c_flags: environment_c_flags
 			link_ld_flags: link_ld_flags
 			target_args: target_args
@@ -11329,7 +11375,14 @@ pub fn run(args []string) {
 			is_c_debug: is_c_debug
 			is_o: is_o
 			is_liveshared: is_liveshared
-		})
+		}
+		c_flag_plan := v3_c_compiler_flag_plan(c_flag_options)
+		large_c_flag_options := V3CCompilerFlagOptions{
+			...c_flag_options
+			large_c_unit: true
+			limit_inlining: effective_c_compiler == 'clang'
+		}
+		large_c_flag_plan := v3_c_compiler_flag_plan(large_c_flag_options)
 		mut native_support_inputs := []string{}
 		if explicit_tcc {
 			atomic_input := if generate_c_project.len > 0 {
@@ -11931,7 +11984,7 @@ pub fn run(args []string) {
 			}
 			if use_parallel_c_compilation && cached_program_main_object.len == 0
 				&& fallback_source == 'src.c' {
-				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, !silent || show_cc)
+				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, !silent || show_cc, parallel_c_job_count, parallel_c_unit_count)
 			} else {
 				cc_args := c_flag_plan.compiler_args('out', compiler_inputs, [])
 				if !silent || show_cc {
