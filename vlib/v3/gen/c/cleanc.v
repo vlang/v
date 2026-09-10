@@ -4853,18 +4853,27 @@ fn normalized_c_include_arg_path(include_arg string) string {
 }
 
 fn (mut g FlatGen) emit_preinclude_directives() {
-	// WinAPI leaf headers such as synchapi.h assume that windows.h has already
-	// declared their shared base types. Emit it before every user/module include,
-	// regardless of source traversal order or include directive kind.
-	early_windows_header := g.target.os == 'windows'
-	if early_windows_header {
-		g.writeln('#include <windows.h>')
-	}
+	// Configuration preincludes must run before windows.h so they can select the
+	// requested WinAPI surface. Only interpose windows.h before a leaf header that
+	// specifically requires its base declarations.
+	windows_target := g.target.os == 'windows'
+	mut emitted_windows_header := false
 	for directive in g.preinclude_directives {
-		if early_windows_header && directive == '#include <windows.h>' {
+		if windows_target && directive == '#include <windows.h>' {
+			if !emitted_windows_header {
+				g.writeln(directive)
+				emitted_windows_header = true
+			}
 			continue
 		}
+		if windows_target && !emitted_windows_header && directive == '#include <synchapi.h>' {
+			g.writeln('#include <windows.h>')
+			emitted_windows_header = true
+		}
 		g.writeln(directive)
+	}
+	if windows_target && !emitted_windows_header {
+		g.writeln('#include <windows.h>')
 	}
 	if g.preinclude_directives.len > 0 {
 		g.writeln('')

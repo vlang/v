@@ -2,14 +2,25 @@ module c
 
 import v3.pref
 
-fn test_windows_translation_unit_starts_includes_with_windows_header() {
+fn test_windows_translation_unit_preserves_configuration_preincludes() {
 	mut g := FlatGen.new()
 	g.target = pref.target_from('windows', 'amd64') or { panic(err) }
-	g.preinclude_directives = ['#include <synchapi.h>', '#include <windows.h>']
+	g.preinclude_directives = ['#include "winapi_config.h"', '#include <synchapi.h>',
+		'#include <windows.h>']
 	g.emit_preinclude_directives()
 	c_code := g.sb.str()
+	assert c_code.index('#include "winapi_config.h"')? < c_code.index('#include <windows.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <synchapi.h>')?
 	assert c_code.count('#include <windows.h>') == 1
+}
+
+fn test_windows_translation_unit_adds_windows_header_after_configuration_preincludes() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('windows', 'amd64') or { panic(err) }
+	g.preinclude_directives = ['#include "winapi_config.h"']
+	g.emit_preinclude_directives()
+	c_code := g.sb.str()
+	assert c_code.index('#include "winapi_config.h"')? < c_code.index('#include <windows.h>')?
 }
 
 fn test_thread_local_decl_uses_portable_c_dialects() {
