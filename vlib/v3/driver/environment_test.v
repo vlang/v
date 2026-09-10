@@ -33,12 +33,13 @@ fn test_default_selfhost_job_count() {
 }
 
 fn test_v3_parallel_c_job_count() {
-	assert v3_parallel_c_job_count(0, false, false) == 1
-	assert v3_parallel_c_job_count(8, false, false) == v3_parallel_cc_max_jobs
-	assert v3_parallel_c_job_count(8, true, false) == v3_parallel_cc_max_jobs
-	assert v3_parallel_c_job_count(1, true, true) == 1
-	assert v3_parallel_c_job_count(4, true, true) == 4
-	assert v3_parallel_c_job_count(16, true, true) == bsd_selfhost_parallel_cc_job_limit
+	assert v3_parallel_c_job_count(0, false, false, false) == 1
+	assert v3_parallel_c_job_count(8, false, false, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(8, true, false, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(16, true, true, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(1, true, true, true) == 1
+	assert v3_parallel_c_job_count(4, true, true, true) == 4
+	assert v3_parallel_c_job_count(16, true, true, true) == bsd_selfhost_parallel_cc_job_limit
 }
 
 fn test_v3_parallel_c_unit_count() {

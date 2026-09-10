@@ -1860,8 +1860,8 @@ mut:
 	result os.Result
 }
 
-fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool) int {
-	max_jobs := if building_v && is_bsd_host {
+fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool, prod_parallel_cc bool) int {
+	max_jobs := if building_v && is_bsd_host && prod_parallel_cc {
 		bsd_selfhost_parallel_cc_job_limit
 	} else {
 		v3_parallel_cc_max_jobs
@@ -8690,7 +8690,7 @@ pub fn run(args []string) {
 	configure_selfhost_parallelism(building_v, is_prod && parallel_cc)
 	available_parallel_c_jobs := runtime.nr_jobs()
 	is_bsd_host := $if freebsd || openbsd || netbsd || dragonfly { true } $else { false }
-	parallel_c_job_count := v3_parallel_c_job_count(available_parallel_c_jobs, building_v, is_bsd_host)
+	parallel_c_job_count := v3_parallel_c_job_count(available_parallel_c_jobs, building_v, is_bsd_host, is_prod && parallel_cc)
 	parallel_c_unit_count := v3_parallel_c_unit_count(parallel_c_job_count, building_v, is_bsd_host)
 	if generate_c_project.len > 0 {
 		if backend != 'c' {
