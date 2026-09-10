@@ -1834,7 +1834,7 @@ struct V3CCompilerFlagOptions {
 	parallel_cc         bool
 	large_c_unit        bool
 	limit_inlining      bool
-	explicit_tcc        bool
+	is_tcc              bool
 	is_c_debug          bool
 	is_o                bool
 	is_liveshared       bool
@@ -2263,8 +2263,8 @@ fn v3_tcc_backtrace_enabled(target_os string, target_arch string, is_shared bool
 	return !is_shared && !(target_os == 'macos' && target_arch == 'arm64')
 }
 
-fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target_arch string, is_shared bool, explicit_tcc bool) {
-	if explicit_tcc && !v3_tcc_backtrace_enabled(target_os, target_arch, is_shared)
+fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target_arch string, is_shared bool, is_tcc bool) {
+	if is_tcc && !v3_tcc_backtrace_enabled(target_os, target_arch, is_shared)
 		&& 'no_backtrace' !in user_defines {
 		// The builtin backtrace implementation must match the native TCC flag plan.
 		// Shared libraries cannot link TCC's runtime symbols, while its initializer
@@ -2391,13 +2391,13 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.link_c_standard.len > 0 {
 		before_inputs << options.link_c_standard
 	}
-	before_inputs << v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.explicit_tcc)
+	before_inputs << v3_prod_c_optimization_flags(options.is_prod, options.no_prod_options, options.is_shared, options.parallel_cc, options.large_c_unit, options.limit_inlining, options.is_tcc)
 	if options.pic_flag.len > 0 {
 		before_inputs << options.pic_flag
 	}
 	before_inputs << v3_windows_executable_linker_flags(options.target_os, options.c_compiler, options.is_shared, options.is_o)
 	mut tcc_includes := ''
-	if options.explicit_tcc {
+	if options.is_tcc {
 		tcc_resources := v3_tcc_resource_flags(options.vroot)
 		tcc_includes = tcc_resources.include_arg
 		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg,
@@ -2409,11 +2409,11 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	before_inputs << options.warn_args
 	before_inputs << '-Wno-int-conversion'
-	if options.target_os == 'macos' && !options.is_shared && !options.explicit_tcc {
+	if options.target_os == 'macos' && !options.is_shared && !options.is_tcc {
 		before_inputs << '-Wl,-stack_size,0x4000000'
 	}
 	if options.is_c_debug && options.target_os == 'macos' && !options.is_shared
-		&& !options.explicit_tcc {
+		&& !options.is_tcc {
 		before_inputs << '-Wl,-export_dynamic'
 	}
 	if options.is_shared {
@@ -2424,7 +2424,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	} else if options.is_o {
 		before_inputs << '-c'
 	}
-	if options.is_liveshared && options.target_os == 'macos' && !options.explicit_tcc {
+	if options.is_liveshared && options.target_os == 'macos' && !options.is_tcc {
 		before_inputs << ['-flat_namespace', '-undefined', 'dynamic_lookup']
 	}
 	mut after_inputs := options.dependencies.clone()
@@ -7706,14 +7706,14 @@ fn v3_parallel_c_unit_is_large(source_size u64, declaration_header_size u64, own
 	})
 }
 
-fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, large_c_unit bool, limit_inlining bool, explicit_tcc bool) []string {
+fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, large_c_unit bool, limit_inlining bool, is_tcc bool) []string {
 	if !is_prod || no_prod_options {
 		return []
 	}
 	// Clang's -O3 compile cost grows sharply on very large generated translation
 	// units. -O2 retains whole-program LTO while avoiding those costly passes.
 	mut flags := [if large_c_unit { '-O2' } else { '-O3' }]
-	if !is_shared && !parallel_cc && !explicit_tcc {
+	if !is_shared && !parallel_cc && !is_tcc {
 		flags << '-flto'
 	}
 	if large_c_unit && limit_inlining {
@@ -7724,11 +7724,11 @@ fn v3_prod_c_optimization_flags(is_prod bool, no_prod_options bool, is_shared bo
 	return flags
 }
 
-fn v3_prod_c_object_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, explicit_tcc bool) []string {
+fn v3_prod_c_object_optimization_flags(is_prod bool, no_prod_options bool, is_shared bool, parallel_cc bool, is_tcc bool) []string {
 	// Native support sources are cached as independently compiled objects. Emitting
 	// LLVM bitcode here makes every program link optimize those unchanged sources
 	// again; keep the per-object -O3 work in the cache instead.
-	return v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, false, false, explicit_tcc).filter(it != '-flto')
+	return v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, false, false, is_tcc).filter(it != '-flto')
 }
 
 fn append_v3_c_compile_mode_flags(mut args []string, c_standard string, opt_flags string, pic_flag string) {
@@ -8169,7 +8169,6 @@ pub fn run(args []string) {
 	mut c_compiler := 'cc'
 	mut c_compiler_explicit := false
 	mut c_compiler_arg_index := -1
-	mut explicit_tcc := false
 	mut retry_compilation := true
 	mut gc_mode := 'none'
 	mut enable_globals_compat := false
@@ -9101,8 +9100,11 @@ pub fn run(args []string) {
 	} else {
 		effective_c_compiler_name(c_compiler, target)
 	}
-	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
-	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, explicit_tcc || prefer_bundled_tcc)
+	// Windows selects its bundled TCC without an explicit `-cc`. Compiler flags
+	// follow that effective compiler, while retry policy still follows user intent.
+	effective_tcc := backend in ['c', 'fastc'] && effective_c_compiler == 'tinyc'
+	explicit_tcc := c_compiler_explicit && effective_tcc
+	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, effective_tcc)
 	if os.getenv('FASTC_BENCH_PHASES') != '' {
 		eprintln('fastc-phase driver.defines ${driver_sw.elapsed().microseconds()}us')
 	}
@@ -9402,7 +9404,7 @@ pub fn run(args []string) {
 	minimal_literal_output := !is_prof
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	host_target := pref.host_target()
-	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !explicit_tcc
+	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !effective_tcc
 		&& !is_o && target.os != 'windows' && coverage_dir.len == 0 && profile_file.len == 0
 		&& v3_parallel_cc_monolithic_define !in user_defines
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
@@ -11362,7 +11364,7 @@ pub fn run(args []string) {
 			generated_c_flags.clone()
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
-			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, explicit_tcc)
+			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc)
 			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags, object_optimization_flags, prefs.c99, pic_flag, target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
 				message := err.msg()
 				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
@@ -11379,7 +11381,7 @@ pub fn run(args []string) {
 			}
 			b.step('C object cache')
 		}
-		flag_plan_sdk_root := if explicit_tcc && prefs.normalized_target_os() == 'macos' {
+		flag_plan_sdk_root := if effective_tcc && prefs.normalized_target_os() == 'macos' {
 			macos_sdk_root_cache.get()
 		} else {
 			''
@@ -11403,7 +11405,7 @@ pub fn run(args []string) {
 			parallel_cc: parallel_cc
 			large_c_unit: large_prod_c_unit
 			limit_inlining: limit_large_unit_inlining
-			explicit_tcc: explicit_tcc
+			is_tcc: effective_tcc
 			is_c_debug: is_c_debug
 			is_o: is_o
 			is_liveshared: is_liveshared
@@ -11416,7 +11418,7 @@ pub fn run(args []string) {
 		}
 		large_c_flag_plan := v3_c_compiler_flag_plan(large_c_flag_options)
 		mut native_support_inputs := []string{}
-		if explicit_tcc {
+		if effective_tcc {
 			atomic_input := if generate_c_project.len > 0 {
 				tcc_atomic_s_arg(prefs)
 			} else {
@@ -11498,7 +11500,7 @@ pub fn run(args []string) {
 			if interface_impl_signature.len == 0 {
 				interface_impl_signature = pre_tc.interface_impl_set_signature()
 			}
-			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, large_prod_c_unit, limit_large_unit_inlining, explicit_tcc).join(' ')
+			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, large_prod_c_unit, limit_large_unit_inlining, effective_tcc).join(' ')
 			warning_flags := warn_args.join(' ')
 			mut compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)
 			mut prepared_plan_entry := cgen_cache_entry

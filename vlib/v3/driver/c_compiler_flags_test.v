@@ -1,6 +1,7 @@
 module driver
 
 import os
+import v3.cmdexec
 import v3.pref
 
 fn test_input_is_cmd_v_accepts_relative_entry_file() {
@@ -35,10 +36,10 @@ fn test_v3_regenerates_cc_fallback_after_preferred_tcc() {
 	assert v3_should_regenerate_for_cc_fallback(true, false, 0)
 }
 
-fn test_v3_explicit_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
+fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	vroot := os.join_path(os.temp_dir(), 'v3_tcc_flag_plan')
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-		explicit_tcc: true
+		is_tcc: true
 		target_os: 'macos'
 		target_arch: 'arm64'
 		vroot: vroot
@@ -67,10 +68,36 @@ fn test_v3_tcc_resource_flags_use_windows_bundle_root() {
 	assert resources.library_arg == '-L${tcc_lib}'
 }
 
-fn test_v3_explicit_tcc_flag_plan_restores_native_local_prefix() {
+fn test_v3_windows_tcc_prod_flag_plan_uses_tcc_resources() {
+	vroot := os.join_path(os.vtmp_dir(), 'v3_windows_tcc_prod_flag_plan_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	tcc_root := os.join_path(vroot, 'thirdparty', 'tcc')
+	tcc_lib := os.join_path_single(tcc_root, 'lib')
+	tcc_include := os.join_path_single(tcc_root, 'include')
+	os.mkdir_all(tcc_lib)!
+	os.mkdir_all(os.join_path_single(tcc_include, 'winapi'))!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_tcc: true
+		is_prod: true
+		target_os: 'windows'
+		target_arch: 'amd64'
+		c_compiler: 'tinyc'
+		vroot: vroot
+	})
+	assert '-O3' in plan.before_inputs
+	assert '-flto' !in plan.before_inputs
+	assert '-B${tcc_root}' in plan.before_inputs
+	assert '-I${tcc_include}' in plan.before_inputs
+	assert '-L${tcc_lib}' in plan.before_inputs
+}
+
+fn test_v3_tcc_flag_plan_restores_native_local_prefix() {
 	host_os := os.user_os()
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-		explicit_tcc: true
+		is_tcc: true
 		target_os: host_os
 		target_arch: 'amd64'
 		vroot: os.join_path(os.temp_dir(), 'v3_tcc_native_flag_plan')
@@ -82,6 +109,39 @@ fn test_v3_explicit_tcc_flag_plan_restores_native_local_prefix() {
 		assert '-I/usr/local/include' in plan.before_inputs
 		assert '-L/usr/local/lib' in plan.before_inputs
 	}
+}
+
+fn test_v3_windows_default_tcc_prod_build() {
+	$if !windows {
+		return
+	}
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	assert os.is_executable(bundled_tcc)
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_default_tcc_prod_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.exe')
+	os.write_file(source, 'fn main() {\n\texit(42)\n}\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	build := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-prod', '-showcc', '-o', output,
+		source])
+	assert build.exit_code == 0, build.output
+	normalized_output := build.output.replace('\\', '/')
+	assert normalized_output.contains('thirdparty/tcc/tcc.exe'), build.output
+	assert normalized_output.contains('-B') && normalized_output.contains('thirdparty/tcc'), build.output
+	assert !normalized_output.contains('-flto'), build.output
+	run_result := cmdexec.run(output, [])
+	assert run_result.exit_code == 42, run_result.output
 }
 
 fn test_add_v3_tcc_compat_defines() {
