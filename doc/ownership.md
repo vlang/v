@@ -17,8 +17,12 @@ fn main() {
 Compile with ownership checking:
 
 ```
-v2 -ownership -o out main.v
+v -ownership -o out main.v
 ```
+
+Ownership mode defines the target-visible custom option `ownership`. Code can use
+`$if ownership ? {}` to select ownership-specific branches, and files named
+`*_d_ownership.v` are included in ownership builds.
 
 ## Creating owned values
 
@@ -203,15 +207,18 @@ fn main() {
 
 ## Enabling ownership checking
 
-Ownership checking is compiled into a separate `v2_ownership` binary using V's
-compile-time defines so there is zero overhead in the normal `v2` binary.
+Ownership checking is compiled into a separate `v3_ownership` binary using V's
+compile-time defines so there is no ownership-checking overhead in the normal compiler.
 
 ```
-v2 -ownership file.v       # check and compile
+v -ownership file.v        # check and compile
 ```
+
+The main V driver forwards `-d ownership` to the ownership-enabled compiler. This both
+enables the target compile-time checks described above and selects ownership-specific files.
 
 To build the ownership-enabled compiler manually:
 
 ```
-v -d ownership -o v2_ownership cmd/v2/v2.v
+v -d ownership -o v3_ownership vlib/v3/v3.v
 ```

@@ -38,6 +38,9 @@ fn C.realloc(a voidptr, b usize) voidptr
 fn C.free(ptr voidptr)
 
 fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
+
+// C.munmap releases a memory mapping created by C.mmap.
+fn C.munmap(addr_length voidptr, len usize) i32
 fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
 
 fn C.aligned_alloc(align usize, size usize) voidptr
@@ -52,8 +55,10 @@ fn C._aligned_msize(voidptr, align isize, offset isize) isize
 fn C._aligned_recalloc(voidptr, num isize, size isize, align isize) voidptr
 
 $if windows {
+	type C.DWORD = u32
+
 	fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
-	fn C.VirtualProtect(voidptr, isize, u32, &u32) bool
+	fn C.VirtualProtect(voidptr, isize, C.DWORD, &C.DWORD) bool
 }
 
 @[noreturn; trusted]
@@ -280,7 +285,7 @@ fn C.isatty(fd i32) i32
 
 fn C.syscall(number i32, va ...voidptr) i32
 
-fn C.sysctl(name &int, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) i32
+fn C.sysctl(name &i32, namelen u32, oldp voidptr, oldlenp voidptr, newp voidptr, newlen usize) i32
 
 @[trusted]
 fn C._fileno(&C.FILE) i32
@@ -562,7 +567,7 @@ fn C.write(fd i32, buf voidptr, count usize) i32
 fn C.close(fd i32) i32
 
 // pipes
-fn C.pipe(pipefds &int) i32
+fn C.pipe(pipefds &i32) i32
 
 fn C.dup2(oldfd i32, newfd i32) i32
 

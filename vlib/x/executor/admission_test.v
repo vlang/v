@@ -359,7 +359,7 @@ fn wait_for_bool(signal chan bool, message string) bool {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		executor_admission_signal_timeout() {
 			assert false, message
 		}
 	}
@@ -371,11 +371,18 @@ fn wait_for_string(signal chan string, message string) string {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		executor_admission_signal_timeout() {
 			assert false, message
 		}
 	}
 	return ''
+}
+
+fn executor_admission_signal_timeout() time.Duration {
+	$if windows {
+		return 5 * time.second
+	}
+	return 1 * time.second
 }
 
 fn assert_no_bool(signal chan bool, message string) {

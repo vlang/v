@@ -59,9 +59,8 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 
 			handle_route[A, X](mut global_app, mut user_context, url, host, &routes)
 			// Preserve the handled context on the heap before the stack-local user context goes away.
-			unsafe {
-				*ctx = user_context.Context
-			}
+			mut ctx_mut := unsafe { &Context(ctx) }
+			ctx_mut.preserve_for_response_writer(user_context.Context)
 			return ctx
 		}
 	}
@@ -73,8 +72,8 @@ pub fn (mut c Controller) register_host_controller[A, X](host string, path strin
 }
 
 // controller_host generates a controller which only handles incoming requests from the `host` domain
-pub fn controller_host[A, X](host string, path string, mut global_app A) &ControllerPath {
-	mut ctrl := controller[A, X](path, mut global_app)
+pub fn controller_host[A, X](host string, path string, mut global_app A) !&ControllerPath {
+	mut ctrl := controller[A, X](path, mut global_app)!
 	ctrl.host = host
 	return ctrl
 }

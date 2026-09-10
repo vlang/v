@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module builtin
 
+const utf8_replacement_rune = rune(0xfffd)
+
 // utf8_char_len returns the length in bytes of a UTF-8 encoded codepoint that starts with the byte `b`.
 pub fn utf8_char_len(b u8) int {
 	return int(((u32(0xe5000000) >> ((b >> 3) & 0x1e)) & 3) + 1)
@@ -93,39 +95,78 @@ pub fn (_bytes []u8) utf8_to_utf32() !rune {
 	return impl_utf8_to_utf32(_bytes.data, _bytes.len)
 }
 
+@[inline]
+fn utf8_is_continuation(b u8) bool {
+	return (b & 0xc0) == 0x80
+}
+
+@[direct_array_access]
+fn utf8_decode_rune(_bytes &u8, available_len int) (rune, int) {
+	if available_len <= 0 {
+		return 0, 0
+	}
+	b0 := unsafe { _bytes[0] }
+	if b0 < 0x80 {
+		return rune(b0), 1
+	}
+	if b0 < 0xc2 {
+		return utf8_replacement_rune, 1
+	}
+	char_len := if b0 < 0xe0 {
+		2
+	} else if b0 < 0xf0 {
+		3
+	} else if b0 < 0xf5 {
+		4
+	} else {
+		return utf8_replacement_rune, 1
+	}
+	if available_len < char_len {
+		return utf8_replacement_rune, 1
+	}
+	b1 := unsafe { _bytes[1] }
+	if !utf8_is_continuation(b1) {
+		return utf8_replacement_rune, 1
+	}
+	if char_len == 2 {
+		return ((rune(b0) & 0x1f) << 6) | (rune(b1) & 0x3f), 2
+	}
+	if b0 == 0xe0 && b1 < 0xa0 {
+		return utf8_replacement_rune, 1
+	}
+	if b0 == 0xed && b1 >= 0xa0 {
+		return utf8_replacement_rune, 1
+	}
+	b2 := unsafe { _bytes[2] }
+	if !utf8_is_continuation(b2) {
+		return utf8_replacement_rune, 1
+	}
+	if char_len == 3 {
+		return ((rune(b0) & 0x0f) << 12) | ((rune(b1) & 0x3f) << 6) | (rune(b2) & 0x3f), 3
+	}
+	if b0 == 0xf0 && b1 < 0x90 {
+		return utf8_replacement_rune, 1
+	}
+	if b0 == 0xf4 && b1 > 0x8f {
+		return utf8_replacement_rune, 1
+	}
+	b3 := unsafe { _bytes[3] }
+	if !utf8_is_continuation(b3) {
+		return utf8_replacement_rune, 1
+	}
+	return ((rune(b0) & 0x07) << 18) | ((rune(b1) & 0x3f) << 12) | ((rune(b2) & 0x3f) << 6) | (rune(b3) & 0x3f), 4
+}
+
 @[direct_array_access]
 fn impl_utf8_to_utf32(_bytes &u8, _bytes_len int) rune {
 	if _bytes_len == 0 || _bytes_len > 4 {
 		return 0
 	}
-	// return ASCII unchanged
-	if _bytes_len == 1 {
-		return rune(unsafe { _bytes[0] })
+	r, len := utf8_decode_rune(_bytes, _bytes_len)
+	if len != _bytes_len {
+		return utf8_replacement_rune
 	}
-
-	match _bytes_len {
-		2 {
-			b0 := rune(unsafe { _bytes[0] })
-			b1 := rune(unsafe { _bytes[1] })
-			return ((b0 & 0x1F) << 6) | (b1 & 0x3F)
-		}
-		3 {
-			b0 := rune(unsafe { _bytes[0] })
-			b1 := rune(unsafe { _bytes[1] })
-			b2 := rune(unsafe { _bytes[2] })
-			return ((b0 & 0x0F) << 12) | ((b1 & 0x3F) << 6) | (b2 & 0x3F)
-		}
-		4 {
-			b0 := rune(unsafe { _bytes[0] })
-			b1 := rune(unsafe { _bytes[1] })
-			b2 := rune(unsafe { _bytes[2] })
-			b3 := rune(unsafe { _bytes[3] })
-			return ((b0 & 0x07) << 18) | ((b1 & 0x3F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
-		}
-		else {
-			return 0
-		}
-	}
+	return r
 }
 
 // Calculate string length for formatting, i.e. number of "characters"

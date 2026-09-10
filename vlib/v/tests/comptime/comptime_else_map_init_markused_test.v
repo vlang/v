@@ -1,7 +1,7 @@
 // Regression test for https://github.com/vlang/v/issues/XXXXX
 // Comptime $else branch with map literal init should not cause
 // a panic in the markused walker when the branch is skipped.
-import x.json2
+import json2
 
 pub enum AppError {
 	invalid_method

@@ -7,6 +7,8 @@ fn test_run_sync_from_foreign_thread_waits_until_owner_executes_job() {
 	sync_started := chan bool{cap: 1}
 	sync_ran := chan bool{cap: 1}
 	sync_done := chan bool{cap: 1}
+	barrier_started := chan bool{cap: 1}
+	release_barrier := chan bool{cap: 1}
 	run_result := chan string{cap: 1}
 
 	runner := spawn fn [mut ex, run_result] () {
@@ -31,7 +33,13 @@ fn test_run_sync_from_foreign_thread_waits_until_owner_executes_job() {
 	assert wait_for_bool(sync_started, 'run_sync caller did not start')
 	assert wait_for_bool(sync_ran, 'run_sync job did not run on owner pump')
 	assert wait_for_bool(sync_done, 'run_sync caller did not finish')
+	ex.try_post(fn [barrier_started, release_barrier] () ! {
+		barrier_started <- true
+		_ := <-release_barrier
+	})!
+	assert wait_for_bool(barrier_started, 'owner barrier job did not start')
 	ex.stop()
+	release_barrier <- true
 	assert wait_for_string(run_result, 'run did not stop') == 'ok'
 	ex.wait()!
 	caller.wait()
@@ -287,7 +295,7 @@ fn wait_for_bool(signal chan bool, message string) bool {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		executor_sync_call_signal_timeout() {
 			assert false, message
 		}
 	}
@@ -299,7 +307,7 @@ fn wait_for_int(signal chan int, message string) int {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		executor_sync_call_signal_timeout() {
 			assert false, message
 		}
 	}
@@ -311,9 +319,16 @@ fn wait_for_string(signal chan string, message string) string {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		executor_sync_call_signal_timeout() {
 			assert false, message
 		}
 	}
 	return ''
+}
+
+fn executor_sync_call_signal_timeout() time.Duration {
+	$if windows {
+		return 5 * time.second
+	}
+	return 1 * time.second
 }

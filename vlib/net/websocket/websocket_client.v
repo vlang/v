@@ -336,7 +336,7 @@ pub fn (mut ws Client) close(code int, message string) ! {
 	ws.debug_log('sending close, ${code}, ${message}')
 	ws_state := ws.get_state()
 	if ws_state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
-		ws.debug_log('close: Websocket already closed (${ws_state}), ${message}, ${code} handle(${ws.conn.sock.handle})')
+		ws.debug_log('close: Websocket already closed (${ws_state}), ${message}, ${code}')
 		err_msg := 'Socket already closed: ${code}'
 		return error(err_msg)
 	}

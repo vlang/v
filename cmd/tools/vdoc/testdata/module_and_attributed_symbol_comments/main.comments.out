@@ -1,0 +1,7 @@
+module main
+    This is the overview comment of the module. It is placed in the first comment right after the module name.
+
+fn bar()
+    bar is the documentation for bar
+fn foo()
+    foo is the documentation for foo

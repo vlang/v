@@ -4,7 +4,7 @@
 module to
 
 import toml
-import x.json2
+import json2
 
 type DocOrAny = toml.Any | toml.Doc
 
@@ -78,7 +78,7 @@ fn any_to_json(a toml.Any) string {
 	}
 }
 
-// json_any returns `Any` as a `x.json2.Any` type.
+// json_any returns `Any` as a `json2.Any` type.
 pub fn json_any(a toml.Any) json2.Any {
 	match a {
 		toml.Null {

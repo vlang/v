@@ -1,1 +1,6 @@
+vlib/v/tests/skip_unused/struct_field_none.vv:1:1: warning: module `json` has been deprecated; `json` will be removed soon; use the pure V `json2` module instead
+    1 | import json
+      | ~~~~~~~~~~~
+    2 |
+    3 | pub struct Struct {
 {}

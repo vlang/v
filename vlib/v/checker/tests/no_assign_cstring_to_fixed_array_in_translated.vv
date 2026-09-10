@@ -1,0 +1,12 @@
+@[translated]
+module main
+
+struct CRecord {
+	name [8]i8
+}
+
+fn main() {
+	_ := CRecord{
+		name: c'abc'
+	}
+}

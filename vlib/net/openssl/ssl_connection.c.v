@@ -168,12 +168,16 @@ fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
+	if s.config.validate && C.v_net_openssl_has_x509_identity_checks() != 1 {
+		return error('net.openssl SSLConn.init, certificate identity validation requires OpenSSL 1.0.2 or newer')
+	}
 	s.sslctx = unsafe { C.SSL_CTX_new(C.SSLv23_client_method()) }
 	if s.sslctx == 0 {
 		return error('net.openssl Could not get ssl context')
 	}
 
 	if s.config.validate {
+		C.SSL_CTX_set_verify(s.sslctx, C.SSL_VERIFY_PEER, unsafe { nil })
 		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
 		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_COMPRESSION)
 	}
@@ -228,6 +232,11 @@ fn (mut s SSLConn) init() ! {
 			if s.config.validate && res != 1 {
 				return error('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed')
 			}
+		} else {
+			res = C.SSL_CTX_set_default_verify_paths(s.sslctx)
+			if res != 1 {
+				return error('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed')
+			}
 		}
 		if s.config.cert != '' {
 			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),
@@ -257,6 +266,20 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname}')
 	}
+	mut connected := false
+	defer {
+		if !connected {
+			if s.ssl != 0 {
+				unsafe { C.SSL_free(voidptr(s.ssl)) }
+				s.ssl = unsafe { nil }
+			}
+			if s.sslctx != 0 {
+				C.SSL_CTX_free(s.sslctx)
+				s.sslctx = unsafe { nil }
+			}
+			s.handle = 0
+		}
+	}
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
 	mut res := C.SSL_set_tlsext_host_name(voidptr(s.ssl), voidptr(hostname.str))
@@ -267,6 +290,31 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 		return error('net.openssl SSLConn.connect, could not assign ssl to socket.')
 	}
 	s.complete_connect()!
+	s.verify_hostname(hostname)!
+	connected = true
+}
+
+fn (s &SSLConn) verify_hostname(hostname string) ! {
+	if !s.config.validate {
+		return
+	}
+	cert := C.v_net_openssl_get1_peer_certificate(s.ssl)
+	if cert == unsafe { nil } {
+		return error('net.openssl SSLConn.verify_hostname, the peer sent no certificate')
+	}
+	defer {
+		C.X509_free(cert)
+	}
+	ip_result := C.v_net_openssl_x509_check_ip_asc(cert, &char(hostname.str), 0)
+	verified := if ip_result == -2 {
+		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), usize(hostname.len), 0,
+			unsafe { nil }) == 1
+	} else {
+		ip_result == 1
+	}
+	if !verified {
+		return error('net.openssl SSLConn.verify_hostname, the certificate is not valid for `${hostname}`')
+	}
 }
 
 // dial opens an ssl connection on hostname:port
@@ -583,12 +631,18 @@ fn wait_for(handle int, what Select, timeout time.Duration) ! {
 	return net.err_timed_out
 }
 
-// wait_for_write waits for a write io operation to be available
-fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
+// wait_for_write waits for a write io operation to be available. Pure
+// raw-socket select() on s.handle — never touches the TLS context, so it is
+// safe to call without holding any lock that guards concurrent access to the
+// context itself (see h2_pooled_transport.v).
+pub fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
 	return wait_for(s.handle, .write, timeout)
 }
 
-// wait_for_read waits for a read io operation to be available
-fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
+// wait_for_read waits for a read io operation to be available. Pure
+// raw-socket select() on s.handle — never touches the TLS context, so it is
+// safe to call without holding any lock that guards concurrent access to the
+// context itself (see h2_pooled_transport.v).
+pub fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
 	return wait_for(s.handle, .read, timeout)
 }

@@ -1,0 +1,6 @@
+Name: oracle-diamond-root-74
+Description: Public diamond oracle root
+Version: 1.0.0
+Requires: oracle-diamond-left-74 oracle-diamond-right-74
+Libs: -loracle_diamond_root
+Cflags: -DORACLE_DIAMOND_ROOT

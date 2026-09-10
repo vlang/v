@@ -1,0 +1,18 @@
+import json2
+
+struct User {
+	name string
+}
+
+fn to_json(u User) string {
+	return json2.encode(u, escape_unicode: true)
+}
+
+fn from_json(s string) !User {
+	return json2.decode[User](s)
+}
+
+fn main() {
+	println(to_json(User{ name: 'bob' }))
+	println(from_json('{"name":"bob"}')!)
+}

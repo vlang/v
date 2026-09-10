@@ -1,0 +1,7 @@
+import v.embed_file
+
+fn main() {
+	$for method in embed_file.EmbedFileData.methods {
+		'' == $embed_file(@FILE).$method()
+	}
+}

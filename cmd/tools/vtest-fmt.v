@@ -4,7 +4,10 @@ import os
 import testing
 import v.util
 
-const known_failing_exceptions = []string{}
+const known_failing_exceptions = [
+	// This file uses V3-only lifetime syntax, which the V1 formatter cannot parse.
+	'vlib/sync/arc/arc_d_ownership.v',
+]
 
 fn main() {
 	args_string := os.args[1..].join(' ')
@@ -16,8 +19,8 @@ fn v_test_formatting(vargs string) {
 	util.prepare_tool_when_needed('vfmt.v')
 	testing.eheader('Run "v fmt" over all .v files')
 	mut vfmt_test_session := testing.new_test_session('${vargs} fmt -worker', false)
-	vfmt_test_session.files << all_v_files
-	vfmt_test_session.skip_files << known_failing_exceptions
+	exceptions := known_failing_exceptions.map(os.abs_path)
+	vfmt_test_session.files << all_v_files.filter(os.abs_path(it) !in exceptions)
 	vfmt_test_session.test()
 	eprintln(vfmt_test_session.benchmark.total_message('running vfmt over V files'))
 	if vfmt_test_session.benchmark.nfail > 0 {

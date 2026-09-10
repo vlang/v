@@ -1,0 +1,14 @@
+module json2
+
+import json
+
+struct User {
+	name string
+}
+
+// This file's own module is `json2`, so `import json2` would be rejected by the
+// checker (cannot import a module into a module with the same name). The migrated
+// qualifier is effectively taken, so the file's json usage is left unmigrated.
+fn to_json(u User) string {
+	return json.encode(u)
+}

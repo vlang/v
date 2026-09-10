@@ -1,0 +1,16 @@
+import json
+
+struct Config {
+	enabled bool
+}
+
+// A commented `json.decode` in a loop header (condition here; also C-style init/cond/inc and
+// the for-in iterable) is outside Node.children(), so the collision/comment scan sub-walks
+// the loop-header expressions. Migrating would drop the `/* target */` comment when printing
+// the type inside `json2.decode[...]`, so the file is kept on legacy json.
+fn run(raw string) {
+	for json.decode( // target
+	 Config, raw)!.enabled {
+		break
+	}
+}

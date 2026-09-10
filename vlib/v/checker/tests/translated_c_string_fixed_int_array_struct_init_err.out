@@ -1,0 +1,7 @@
+vlib/v/checker/tests/translated_c_string_fixed_int_array_struct_init_err.vv:10:3: error: cannot assign to field `values`: expected `[4]int`, not `&u8`
+    8 | fn main() {
+    9 |     _ := FixedNumbers{
+   10 |         values: c'abcd'
+      |         ~~~~~~~~~~~~~~~
+   11 |     }
+   12 | }

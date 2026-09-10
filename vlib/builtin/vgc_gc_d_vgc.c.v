@@ -174,42 +174,19 @@ fn vgc_shade(addr usize) {
 	}
 }
 
-// Parallel mark using OS threads.
-// Translated from Go's gcDrain() with multiple workers.
+// Mark the heap. Currently single-threaded on purpose.
+//
+// Parallel marking (spawning helper threads that all run vgc_drain_mark_work) is
+// NOT correct yet: vgc_bitmap_test_and_set() on mark_bits is a plain non-atomic
+// read-modify-write, so two workers marking objects whose mark bits live in the same
+// byte can lose a mark and let a live object be swept. Until the mark bitmap uses
+// atomic ops (and the rest of the parallel path is audited), force a single worker.
+// This keeps marking race-free and makes the unlocked arena reads in vgc_find_span
+// safe (no concurrent readers, and the sole mutator is blocked inside gc_start).
 fn vgc_parallel_mark() {
-	mut nworkers := C.vgc_num_cpus()
-	if nworkers < 1 {
-		nworkers = 1
-	} else if nworkers > 4 {
-		nworkers = 4
-	}
-	vgc_heap.gc_nworkers = nworkers
+	vgc_heap.gc_nworkers = 1
 	C.vgc_atomic_store_u32(&vgc_heap.gc_workers_done, 0)
-
-	if nworkers <= 1 {
-		vgc_drain_mark_work()
-		return
-	}
-
-	// Start helper workers and let the current GC thread participate as well.
-	for _ in 1 .. nworkers {
-		C.vgc_start_thread(vgc_mark_worker)
-	}
 	vgc_drain_mark_work()
-	C.vgc_atomic_add_u32(&vgc_heap.gc_workers_done, 1)
-
-	// Wait for all workers to finish
-	for C.vgc_atomic_load_u32(&vgc_heap.gc_workers_done) < u32(nworkers) {
-		C.vgc_atomic_fence()
-	}
-}
-
-// Mark worker function - runs in a spawned thread.
-// Translated from Go's gcDrain() loop.
-fn vgc_mark_worker() {
-	vgc_ensure_registered()
-	vgc_drain_mark_work()
-	C.vgc_atomic_add_u32(&vgc_heap.gc_workers_done, 1)
 }
 
 // Drain the mark work queue - scan grey objects and mark their referents.

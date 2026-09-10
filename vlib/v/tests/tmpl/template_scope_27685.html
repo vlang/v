@@ -1,0 +1,10 @@
+@if project.credits.len > 0
+@if project.credits[1] != ""
+credit link @{project.credits[1]}
+@else
+credit @{project.credits[0]} (@{project.credits[2]})
+@end
+@end
+@if project.videos.len > 0
+video @{project.videos[0]}
+@end

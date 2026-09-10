@@ -22,10 +22,54 @@ mut:
 	@type int
 	unix i64
 	block_size int
+	typeof int
+}
+
+enum Kind {
+	@asm
+	end
+}
+
+enum Header {
+	authority
+	content_type
+	authorization
+}
+
+struct Locker {
+	n int
+}
+
+fn (locker Locker) lock() int {
+	return locker.n + 4
+}
+
+fn header_count(headers map[Header]string) int {
+	return headers.len
+}
+
+fn value_args(item &Token, text &string) int {
+	return item.typeof + text.len
 }
 
 fn bump(unix i64) i64 {
 	return unix + 1
+}
+
+fn access(x int) int {
+	return x + 11
+}
+
+fn read() int {
+	return 13
+}
+
+fn close() int {
+	return 14
+}
+
+fn fabs(x int) int {
+	return x + 15
 }
 
 fn rewrite(mut item Token, unix i64) {
@@ -35,18 +79,34 @@ fn rewrite(mut item Token, unix i64) {
 
 fn main() {
 	mut @type := 1
+	mut @true := 6
+	mut @false := 7
+	mut stdin := 8
+	mut stderr := 9
+	mut stdout := 10
 	mut unix := i64(2)
 	mut item := Token{
 		@type: @type
 		unix: unix
 		block_size: block_size
+		typeof: 12
 	}
 	item.@type += 3
 	item.unix = bump(item.unix)
 	rewrite(mut item, 5)
 	item.block_size = block_size
 	mut block_size := 1
-	println(int_str(item.@type + int(item.unix) + item.block_size + block_size))
+	println(int_str(access(item.@type + @true + @false + stdin + stderr + stdout + int(item.unix) + item.block_size + item.typeof + int(Kind.@asm) + block_size) + read() + close() + fabs(1)))
+	println(int_str(header_count({
+		.authority: "example.com"
+		.content_type: "application/json"
+		.authorization: "secret"
+	})))
+	println(int_str(Locker{n: 1}.@lock()))
+	item_ref := &item
+	label := "abc"
+	label_ref := &label
+	println(int_str(value_args(item_ref, label_ref)))
 }
 ') or {
 		panic(err)
@@ -64,6 +124,17 @@ fn main() {
 	assert !c_code.contains('->unix'), c_code
 	assert !c_code.contains('#define block_size'), c_code
 	assert c_code.contains('i64 v_unix'), c_code
+	assert c_code.contains('i64 _v_true'), c_code
+	assert c_code.contains('i64 _v_false'), c_code
+	assert c_code.contains('i64 v_stdin'), c_code
+	assert c_code.contains('i64 v_stderr'), c_code
+	assert c_code.contains('i64 v_stdout'), c_code
+	assert c_code.contains('i64 v_access(i64 x)'), c_code
+	assert c_code.contains('i64 v_read(void)'), c_code
+	assert c_code.contains('i64 v_close(void)'), c_code
+	assert c_code.contains('i64 v_fabs(i64 x)'), c_code
+	assert c_code.contains('i64 v_typeof'), c_code
+	assert c_code.contains('Kind___v_asm'), c_code
 	assert c_code.contains('.v_unix'), c_code
 	assert c_code.contains('->v_unix'), c_code
 	assert c_code.contains('#define main__block_size'), c_code
@@ -71,7 +142,7 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '18'
+	assert run.output.trim_space() == '124\n3\n5\n15'
 
 	csym_src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_csym_${pid}.v')
 	os.write_file(csym_src, 'fn C.unix(i64) i64
@@ -90,4 +161,28 @@ fn main() {
 	assert csym_code.contains('unix(10)'), csym_code
 	assert !csym_code.contains('v_unix(10)'), csym_code
 	assert !csym_code.contains('C.unix'), csym_code
+
+	$if macos {
+		objc_src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.m')
+		os.write_file(objc_src,
+			'#include <Cocoa/Cocoa.h>\n\nint v3_point_sum(main__V3PointUnique p) {\n\treturn p.x + 1;\n}\n') or {
+			panic(err)
+		}
+		objc_v := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.v')
+		os.write_file(objc_v,
+			'#flag darwin -fobjc-arc\n#flag darwin -framework Cocoa\n#include "${objc_src}"\n\nstruct V3PointUnique {\n\tx int\n}\n\nfn C.v3_point_sum(V3PointUnique) int\n\nfn main() {\n\tprintln(int_str(C.v3_point_sum(V3PointUnique{x: 8})))\n}\n') or {
+			panic(err)
+		}
+		objc_bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}')
+		objc_compile := os.execute('${v3_bin} ${objc_v} -b c -o ${objc_bin}')
+		assert objc_compile.exit_code == 0, objc_compile.output
+		objc_code := os.read_file(objc_bin + '.c') or { panic(err) }
+		type_pos := objc_code.index('struct main__V3PointUnique {') or { -1 }
+		assert type_pos >= 0, objc_code
+		// Objective-C source bodies are compiled in a separate native unit.
+		assert !objc_code.contains('int v3_point_sum(main__V3PointUnique p) {'), objc_code
+		objc_run := os.execute(objc_bin)
+		assert objc_run.exit_code == 0, objc_run.output
+		assert objc_run.output.trim_space() == '9'
+	}
 }

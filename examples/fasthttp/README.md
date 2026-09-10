@@ -58,10 +58,12 @@ curl http://localhost:3000/notfound
 
 The example demonstrates:
 
-1. **Request Routing**: The `handle_request()` function routes incoming HTTP requests based on
+1. **Request Routing**: the `handle()` append handler routes incoming HTTP requests based on
    method and path
-2. **Response Handling**: Controllers return HTTP responses with proper headers and status codes
-3. **Content Type**: All responses are returned as `[]u8` (byte arrays)
+2. **Response Handling**: controllers append the raw HTTP response (headers + body) into the
+   connection's reused `out` buffer and the handler returns `.done`
+3. **Zero-copy**: no per-request response object is allocated; responses go straight into the
+   server's reused, pipelining-batched write buffer
 
 The fasthttp module handles:
 

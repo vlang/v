@@ -9,15 +9,17 @@ module time
 
 pub struct C.tm {
 pub mut:
-	tm_sec    int
-	tm_min    int
-	tm_hour   int
-	tm_mday   int
-	tm_mon    int
-	tm_year   int
-	tm_wday   int
-	tm_yday   int
-	tm_isdst  int
+	tm_sec   i32
+	tm_min   i32
+	tm_hour  i32
+	tm_mday  i32
+	tm_mon   i32
+	tm_year  i32
+	tm_wday  i32
+	tm_yday  i32
+	tm_isdst i32
+	// C `long tm_gmtoff`: pointer-width, which V's `int` already matches (i64 on
+	// 64-bit, i32 on 32-bit), unlike the 32-bit C `int` fields above.
 	tm_gmtoff int
 }
 

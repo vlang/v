@@ -43,7 +43,8 @@ fn sapp_to_gfx_pixelformat(sapp_fmt int) gfx.PixelFormat {
 // The retuned `gfx.Environment` can be used when rendering via `sapp`.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn glue_environment() gfx.Environment {
-	sapp_env := C.sapp_get_environment()
+	mut sapp_env := Environment{}
+	C.v_sapp_get_environment(&sapp_env)
 	mut env := gfx.Environment{}
 	unsafe { vmemset(&env, 0, int(sizeof(env))) }
 	env.defaults.color_format = sapp_to_gfx_pixelformat(sapp_env.defaults.color_format)
@@ -51,6 +52,9 @@ pub fn glue_environment() gfx.Environment {
 	env.defaults.sample_count = sapp_env.defaults.sample_count
 	$if macos && !darwin_sokol_glcore33 ? {
 		env.metal.device = sapp_env.metal.device
+	} $else $if windows && sokol_d3d11 ? {
+		env.d3d11.device = sapp_env.d3d11.device
+		env.d3d11.device_context = sapp_env.d3d11.device_context
 	}
 	return env
 }
@@ -59,7 +63,8 @@ pub fn glue_environment() gfx.Environment {
 // The retuned `gfx.Swapchain` can be used when rendering via `sapp`.
 // See also: documentation at the top of thirdparty/sokol/sokol_gfx.h
 pub fn glue_swapchain() gfx.Swapchain {
-	sapp_sc := C.sapp_get_swapchain()
+	mut sapp_sc := Swapchain{}
+	C.v_sapp_get_swapchain(&sapp_sc)
 	mut swapchain := gfx.Swapchain{}
 	unsafe { vmemset(&swapchain, 0, int(sizeof(swapchain))) }
 	swapchain.width = sapp_sc.width
@@ -71,6 +76,10 @@ pub fn glue_swapchain() gfx.Swapchain {
 		swapchain.metal.current_drawable = sapp_sc.metal.current_drawable
 		swapchain.metal.depth_stencil_texture = sapp_sc.metal.depth_stencil_texture
 		swapchain.metal.msaa_color_texture = sapp_sc.metal.msaa_color_texture
+	} $else $if windows && sokol_d3d11 ? {
+		swapchain.d3d11.render_view = sapp_sc.d3d11.render_view
+		swapchain.d3d11.resolve_view = sapp_sc.d3d11.resolve_view
+		swapchain.d3d11.depth_stencil_view = sapp_sc.d3d11.depth_stencil_view
 	} $else {
 		swapchain.gl.framebuffer = sapp_sc.gl.framebuffer
 	}

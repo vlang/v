@@ -1,3 +1,9 @@
+vlib/v/checker/tests/orm_insert_object_with_mismatched_type_error.vv:2:1: warning: module `json` has been deprecated; `json` will be removed soon; use the pure V `json2` module instead
+    1 | import db.sqlite
+    2 | import json
+      | ~~~~~~~~~~~
+    3 |
+    4 | struct Tiddler {
 vlib/v/checker/tests/orm_insert_object_with_mismatched_type_error.vv:19:10: error: cannot use `Tiddler` as `Tiddlers`
    17 |     sql db {
    18 |         create table Tiddlers

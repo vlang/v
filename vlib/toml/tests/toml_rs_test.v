@@ -1,7 +1,7 @@
 import os
 import toml
 import toml.ast
-import x.json2
+import json2
 
 const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 const no_jq = os.getenv('VNO_JQ') == '1'

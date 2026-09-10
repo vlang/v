@@ -62,14 +62,10 @@ mut:
 pub fn (s string) runes() []rune {
 	mut runes := []rune{cap: s.len}
 	for i := 0; i < s.len; i++ {
-		char_len := utf8_char_len(unsafe { s.str[i] })
+		r, char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+		runes << r
 		if char_len > 1 {
-			end := if s.len - 1 >= i + char_len { i + char_len } else { s.len }
-			mut r := unsafe { s[i..end] }
-			runes << r.utf32_code()
 			i += char_len - 1
-		} else {
-			runes << unsafe { s.str[i] }
 		}
 	}
 	return runes
@@ -3236,17 +3232,7 @@ pub fn (mut ri RunesIterator) next() ?rune {
 	if ri.i >= ri.s.len {
 		return none
 	}
-	char_len := utf8_char_len(unsafe { ri.s.str[ri.i] })
-	if char_len == 1 {
-		res := unsafe { ri.s.str[ri.i] }
-		ri.i++
-		return res
-	}
-	start := &u8(unsafe { &ri.s.str[ri.i] })
-	len := if ri.s.len - 1 >= ri.i + char_len { char_len } else { ri.s.len - ri.i }
-	ri.i += char_len
-	if char_len > 4 {
-		return 0
-	}
-	return rune(impl_utf8_to_utf32(start, len))
+	r, char_len := utf8_decode_rune(unsafe { &ri.s.str[ri.i] }, ri.s.len - ri.i)
+	ri.i += if char_len > 0 { char_len } else { 1 }
+	return r
 }

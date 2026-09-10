@@ -73,7 +73,7 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 					}
 				} else {
 					branches << ast.IfBranch{
-						stmts:    p.parse_block_no_scope(false)
+						stmts:    p.parse_branch_block_no_scope(is_expr_)
 						pos:      start_pos.extend(end_pos)
 						body_pos: body_pos.extend(p.tok.pos())
 						comments: comments
@@ -184,6 +184,17 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 			p.comptime_if_cond = false
 		}
 		comments << p.eat_comments()
+		// catch the common typo `if if cond {` / `} else if if cond {`, where a
+		// second `if` was written by mistake. The inner `if` gets parsed as the
+		// condition expression, so bail out with a helpful message instead of the
+		// confusing `expecting {` error that appears further down the file.
+		if !is_comptime && p.tok.kind != .lcbr {
+			if cond is ast.IfExpr && !cond.has_else {
+				p.error_with_pos('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
+					cond.pos)
+				return ast.IfExpr{}
+			}
+		}
 		end_pos := p.prev_tok.pos()
 		body_pos := p.tok.pos()
 		p.inside_if = false
@@ -206,7 +217,7 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 				scope:    p.scope
 			}
 		} else {
-			stmts := p.parse_block_no_scope(false)
+			stmts := p.parse_branch_block_no_scope(is_expr_)
 			branches << ast.IfBranch{
 				cond:     cond
 				stmts:    stmts
@@ -553,7 +564,7 @@ fn (mut p Parser) match_expr(is_comptime bool, is_expr bool) ast.MatchExpr {
 			&& !p.pref.output_cross_c {
 			p.skip_scope()
 		} else {
-			stmts = p.parse_block_no_scope(false)
+			stmts = p.parse_branch_block_no_scope(is_expr_)
 		}
 		branch_scope := p.scope
 		p.close_scope()
@@ -613,7 +624,10 @@ fn (mut p Parser) match_expr(is_comptime bool, is_expr bool) ast.MatchExpr {
 		len:     match_last_pos.pos - match_first_pos.pos + match_last_pos.len
 		col:     match_first_pos.col
 	}
-	pos.update_last_line(match_last_pos.line_nr)
+	// match_last_pos is a Pos (already 0-based), so update_last_line (which expects
+	// a 1-based token line) would leave last_line one line short of the closing `}`,
+	// making vfmt insert a bogus empty line after the match statement.
+	pos.last_line = match_last_pos.last_line
 	return ast.MatchExpr{
 		is_comptime: is_comptime
 		is_expr:     is_expr_

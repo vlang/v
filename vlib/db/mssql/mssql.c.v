@@ -75,9 +75,11 @@ pub fn (mut conn Connection) query(q string) !Result {
 	affected := hstmt.retrieve_affected_rows()!
 
 	hstmt.prepare_read()!
+	names := hstmt.read_column_names()!
 	raw_rows := hstmt.read_rows()!
 
 	mut res := Result{
+		names:             names
 		rows:              []Row{}
 		num_rows_affected: affected
 	}

@@ -7,6 +7,8 @@ pub:
 	label string
 }
 
+pub type MyArray = []int
+
 fn increment_hidden(mut counter Counter) {
 	counter.hidden++
 }
@@ -26,3 +28,5 @@ pub fn (mut counter Counter) bump_hidden_via_helper() {
 pub fn (counter Counter) label_text() string {
 	return counter.label
 }
+
+pub fn (mut a MyArray) reverse_in_place() {}

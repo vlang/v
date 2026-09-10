@@ -1152,7 +1152,7 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			return expr.val.i64()
 		}
 		ast.StringLiteral {
-			return util.smart_quote(expr.val, expr.is_raw)
+			return util.smart_quote(expr.val, expr.is_raw, expr.opaque_pos)
 		}
 		ast.StringInterLiteral {
 			if nlevel < 0 {
@@ -1173,9 +1173,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 			}
 		}
 		ast.CharLiteral {
-			runes := expr.val.runes()
-			if runes.len > 0 {
-				return runes[0]
+			if value := ast.char_literal_rune_value(expr.val) {
+				return ast.ComptTimeConstValue(value)
 			}
 			return none
 		}

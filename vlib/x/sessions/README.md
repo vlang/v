@@ -76,9 +76,11 @@ For this example we will use the memory store.
 ```v ignore
 fn main() {
 	mut app := &App{
-		store: sessions.MemoryStore[User]{}
-		// use your own secret which will be used to verify session id's
-		secret: 'my secret'.bytes()
+		sessions: &sessions.Sessions[User]{
+			store: sessions.MemoryStore[User]{}
+			// use your own secret which will be used to verify session id's
+			secret: 'my secret'.bytes()
+		}
 	}
 
 	veb.run[App, Context](mut app, 8080)
@@ -87,7 +89,7 @@ fn main() {
 
 ### Middleware
 
-The `sessions.veb2_middleware` module provides a middleware handler. This handler will execute
+The `sessions.veb_middleware` module provides a middleware handler. This handler will execute
 before your own route handlers and will verify the current session and fetch any associated
 session data and load it into `sessions.CurrentSession`, which is embedded on the Context struct.
 
@@ -99,7 +101,7 @@ session data and load it into `sessions.CurrentSession`, which is embedded on th
 
 ```v ignore
 // add this import at the top of your file
-import x.sessions.veb2_middleware
+import x.sessions.veb_middleware
 
 pub struct App {
     // embed the Middleware struct from veb
@@ -112,13 +114,15 @@ pub mut:
 
 fn main() {
 	mut app := &App{
-		store: sessions.MemoryStore[User]{}
-		// use your own secret which will be used to verify session id's
-		secret: 'my secret'.bytes()
+		sessions: &sessions.Sessions[User]{
+			store: sessions.MemoryStore[User]{}
+			// use your own secret which will be used to verify session id's
+			secret: 'my secret'.bytes()
+		}
 	}
 
     // register the sessions middleware
-    app.use(veb2_middleware.create[User, Context](mut app.sessions))
+    app.use(veb_middleware.create[User, Context](mut app.sessions))
 
 	veb.run[App, Context](mut app, 8080)
 }

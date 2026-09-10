@@ -69,6 +69,43 @@ Omitted `month` and `day` values default to `1`, and out-of-range values panic.
 Use `t.is_zero()` to check whether a `time.Time` is still its zero value before formatting or
 serializing it.
 
+IANA time zone data can be loaded by name and used to convert Unix timestamps
+or UTC `Time` values to that location's calendar time. `load_location` searches
+`ZONEINFO`, system zoneinfo paths, and V's installed `zoneinfo.zip`. Programs
+that need embedded time zone data (no system zoneinfo, portable binaries) can
+import `time.tzdata`.
+
+```v
+import time
+import time.tzdata as _
+
+shanghai := time.load_location('Asia/Shanghai')!
+local := time.unix(1_704_067_200).in(shanghai)!
+assert local.format_ss() == '2024-01-01 08:00:00'
+assert local.unix() == 1_704_067_200
+assert (local.zone()!).offset == 28_800
+```
+
+IANA-zoned values keep `unix` as the absolute UTC epoch instant. Calendar
+fields (`year`, `hour`, ...) are wall time in that location. Prefer
+`t.location()` / `t.zone()` over the older `is_local` flag: `is_local` only
+marks system-local wall time with a fixed process offset and is left `false`
+on IANA-zoned `Time` values.
+
+The bundled `vlib/time/tzdata/zoneinfo.zip` is a store-only (uncompressed) zip
+of IANA zoneinfo files for offline use via `import time.tzdata`. Refresh it
+from a full IANA tzdb source archive with packrat data enabled, so named zones
+retain their pre-1970 histories. For example, from an extracted tzdb source
+archive:
+
+```sh
+make PACKRATDATA=backzone PACKRATLIST= ZFLAGS='-b slim' \
+  DESTDIR=/tmp/tzdb-full TZDIR=/zoneinfo posix_only
+cd /tmp/tzdb-full/zoneinfo
+find . -type f -print | LC_ALL=C sort | sed 's#^./##' | \
+  zip -0 -X /path/to/v/vlib/time/tzdata/zoneinfo.zip -@
+```
+
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
 executed other tasks. [See](https://play.vlang.io/?query=f6c008bc34):
@@ -84,5 +121,22 @@ fn main() {
 	sw := time.new_stopwatch()
 	do_something()
 	println('Note: do_something() took: ${sw.elapsed().milliseconds()} ms')
+}
+```
+
+Use a timer when a wait needs to participate in a `select`:
+
+```v
+import time
+
+timer := time.new_timer(500 * time.millisecond)
+defer {
+	timer.stop()
+}
+select {
+	fired_at := <-timer.c {
+		println('timer fired at ${fired_at}')
+	}
+	// another channel can be handled here
 }
 ```

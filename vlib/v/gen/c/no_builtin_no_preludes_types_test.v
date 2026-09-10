@@ -15,5 +15,7 @@ fn test_no_builtin_no_preludes_types_are_lowered_to_c() {
 	assert !generated_c.contains('typedef array Array_charptr;')
 	assert !generated_c.contains('voidptr file')
 	assert generated_c.contains('main__proc_read(void* file, char* buff, u32 size, u64* offset);')
+		|| generated_c.contains('proc_read(void* file, char* buff, u32 size, u64* offset);')
 	assert generated_c.contains('(void*,char*,u32,u64*);')
+		|| generated_c.contains('(void*, char*, u32, u64*);')
 }

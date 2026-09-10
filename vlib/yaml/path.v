@@ -1,7 +1,7 @@
 module yaml
 
 import time
-import x.json2
+import json2
 
 fn (a Any) value_(current Any, key []string) ?Any {
 	if key.len == 0 {

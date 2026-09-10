@@ -81,6 +81,11 @@ pub mut:
 	u32_escapes_pos []int    = []int{cap: 10} // pos list of \UXXXXXXXX
 	h_escapes_pos   []int    = []int{cap: 10} // pos list of \xXX
 	str_segments    []string = []string{cap: 10}
+	// for each `.string` token (keyed by its `tidx`) that contains a decoded \xXX/\uXXXX/\UXXXXXXXX
+	// escape, the byte offsets in that token's `.lit` which are opaque, already-resolved bytes -
+	// consumed once by the parser when it builds the corresponding ast.StringLiteral/StringInterLiteral,
+	// so that cgen's util.smart_quote() knows never to reinterpret them as the start of another escape.
+	string_opaque_pos map[int][]int = map[int][]int{}
 }
 
 /*
@@ -131,19 +136,8 @@ pub fn new_scanner_file(file_path string, file_idx i16, comments_mode CommentsMo
 		return error('${file_path} is not a .v file')
 	}
 	raw_text := util.read_file(file_path) or { return err }
-	mut s := &Scanner{
-		pref:                        pref_
-		text:                        raw_text
-		all_tokens:                  []token.Token{cap: raw_text.len / 3}
-		is_print_line_on_error:      true
-		is_print_colored_error:      true
-		is_print_rel_paths_on_error: true
-		is_fmt:                      pref_.is_fmt
-		comments_mode:               comments_mode
-		file_path:                   file_path
-		file_base:                   os.base(file_path)
-		file_idx:                    file_idx
-	}
+	mut s := new_plain_scanner(raw_text, comments_mode, pref_, file_path, os.base(file_path))
+	s.file_idx = file_idx
 	s.scan_all_tokens_in_buffer()
 	return s
 }
@@ -152,12 +146,13 @@ const internally_generated_v_code = 'internally_generated_v_code'
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
-	mut s := new_plain_scanner(text, comments_mode, pref_)
+	mut s := new_plain_scanner(text, comments_mode, pref_, internally_generated_v_code,
+		internally_generated_v_code)
 	s.scan_all_tokens_in_buffer()
 	return s
 }
 
-fn new_plain_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
+fn new_plain_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences, file_path string, file_base string) &Scanner {
 	return &Scanner{
 		pref:                        pref_
 		text:                        text
@@ -167,8 +162,8 @@ fn new_plain_scanner(text string, comments_mode CommentsMode, pref_ &pref.Prefer
 		is_print_rel_paths_on_error: true
 		is_fmt:                      pref_.is_fmt
 		comments_mode:               comments_mode
-		file_path:                   internally_generated_v_code
-		file_base:                   internally_generated_v_code
+		file_path:                   file_path
+		file_base:                   file_base
 	}
 }
 
@@ -1309,7 +1304,10 @@ pub fn (mut s Scanner) ident_string() string {
 				s.u32_escapes_pos << s.pos - 1
 			}
 			// Unknown escape sequence
-			if !util.is_escape_sequence(c) && !digit_table[c] && c != `\n` {
+			is_crlf_line_break := c == b_cr && s.pos + 1 < s.text.len
+				&& s.text[s.pos + 1] == b_lf
+			if !util.is_escape_sequence(c) && !digit_table[c] && c != b_lf
+				&& !is_crlf_line_break {
 				s.error('`${c.ascii_str()}` unknown escape sequence')
 			}
 		}
@@ -1332,6 +1330,11 @@ pub fn (mut s Scanner) ident_string() string {
 	}
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
+		// byte offsets (into the *decoded* literal below) that came straight out of
+		// decode_h_escape_single/decode_u16_escape_single/decode_u32_escape_single, i.e.
+		// bytes that are already fully resolved and must never be reinterpreted as the
+		// start of another escape sequence downstream (see util.smart_quote).
+		mut opaque_pos := []int{}
 		if !s.is_fmt {
 			mut segment_idx := 0
 			s.str_segments.clear()
@@ -1342,22 +1345,37 @@ pub fn (mut s Scanner) ident_string() string {
 				s.all_pos << s.h_escapes_pos
 				s.all_pos.sort()
 
+				mut out_len := 0
 				for pos in s.all_pos {
-					s.str_segments << string_so_far[segment_idx..(pos - start)]
+					literal_segment := string_so_far[segment_idx..(pos - start)]
+					s.str_segments << literal_segment
+					out_len += literal_segment.len
 					segment_idx = pos - start
 					if pos in s.u16_escapes_pos {
 						decoded := s.decode_u16_escape_single(string_so_far, segment_idx)
 						s.str_segments << decoded.segment
+						for i in 0 .. decoded.segment.len {
+							opaque_pos << out_len + i
+						}
+						out_len += decoded.segment.len
 						segment_idx = decoded.idx
 					}
 					if pos in s.u32_escapes_pos {
 						decoded := s.decode_u32_escape_single(string_so_far, segment_idx)
 						s.str_segments << decoded.segment
+						for i in 0 .. decoded.segment.len {
+							opaque_pos << out_len + i
+						}
+						out_len += decoded.segment.len
 						segment_idx = decoded.idx
 					}
 					if pos in s.h_escapes_pos {
 						decoded := s.decode_h_escape_single(string_so_far, segment_idx)
 						s.str_segments << decoded.segment
+						for i in 0 .. decoded.segment.len {
+							opaque_pos << out_len + i
+						}
+						out_len += decoded.segment.len
 						segment_idx = decoded.idx
 					}
 				}
@@ -1369,12 +1387,15 @@ pub fn (mut s Scanner) ident_string() string {
 		}
 
 		if n_cr_chars > 0 {
-			string_so_far = string_so_far.replace('\r', '')
+			string_so_far, opaque_pos = remove_cr_chars(string_so_far, opaque_pos)
 		}
 		if !is_raw && string_so_far.contains('\\\n') {
-			lit = trim_slash_line_break(string_so_far)
+			lit, opaque_pos = trim_slash_line_break(string_so_far, opaque_pos)
 		} else {
 			lit = string_so_far
+		}
+		if opaque_pos.len > 0 {
+			s.string_opaque_pos[s.tidx] = opaque_pos
 		}
 	}
 	if s.text[end] == quote {
@@ -1503,29 +1524,74 @@ fn (mut s Scanner) decode_u32erune(str string) string {
 	return ss.join('')
 }
 
-fn trim_slash_line_break(s string) string {
+fn remove_cr_chars(s string, opaque_pos []int) (string, []int) {
+	mut bytes := []u8{cap: s.len}
+	mut adjusted_opaque_pos := []int{cap: opaque_pos.len}
+	mut opaque_idx := 0
+	for i, b in s {
+		is_opaque := opaque_idx < opaque_pos.len && opaque_pos[opaque_idx] == i
+		// Only source CR bytes are normalized away. A CR produced by a decoded escape
+		// is already resolved data and must remain in the literal.
+		if b == b_cr && !is_opaque {
+			continue
+		}
+		if is_opaque {
+			adjusted_opaque_pos << bytes.len
+			opaque_idx++
+		}
+		bytes << b
+	}
+	return bytes.bytestr(), adjusted_opaque_pos
+}
+
+fn remove_string_range(s string, opaque_pos []int, start int, end int) (string, []int) {
+	mut adjusted_opaque_pos := []int{cap: opaque_pos.len}
+	for pos in opaque_pos {
+		if pos < start {
+			adjusted_opaque_pos << pos
+		} else if pos >= end {
+			adjusted_opaque_pos << pos - (end - start)
+		}
+	}
+	return s[..start] + s[end..], adjusted_opaque_pos
+}
+
+fn trim_slash_line_break(s string, opaque_pos []int) (string, []int) {
 	mut start := 0
 	mut ret_str := s
+	mut adjusted_opaque_pos := opaque_pos.clone()
 	for {
 		// find the position of the first `\` followed by a newline, after `start`:
 		idx := ret_str.index_after('\\\n', start) or { break }
 		start = idx
+		// Decoded backslashes/newlines are literal data, not continuation syntax.
+		if idx in adjusted_opaque_pos || idx + 1 in adjusted_opaque_pos {
+			start++
+			continue
+		}
 		// Here, ret_str[idx] is \, and ret_str[idx+1] is newline.
 		// Depending on the number of backslashes before the newline, we should either
 		// treat the last one and the whitespace after it as line-break, or just ignore it:
 		mut nbackslashes := 0
-		for eidx := idx; eidx >= 0 && ret_str[eidx] == `\\`; eidx-- {
+		for eidx := idx; eidx >= 0 && ret_str[eidx] == `\\`
+			&& eidx !in adjusted_opaque_pos; eidx-- {
 			nbackslashes++
 		}
 		// eprintln('>> start: ${start:-5} | nbackslashes: ${nbackslashes:-5} | ret_str: $ret_str')
 		if idx == 0 || (nbackslashes & 1) == 1 {
-			ret_str = ret_str[..idx] + ret_str[idx + 2..].trim_left(' \n\t\v\f\r')
+			mut end := idx + 2
+			for end < ret_str.len && ret_str[end] in [` `, `\n`, `\t`, `\v`, `\f`, `\r`]
+				&& end !in adjusted_opaque_pos {
+				end++
+			}
+			ret_str, adjusted_opaque_pos = remove_string_range(ret_str, adjusted_opaque_pos,
+				idx, end)
 		} else {
 			// ensure the loop will terminate, when we could not strip anything:
 			start++
 		}
 	}
-	return ret_str
+	return ret_str, adjusted_opaque_pos
 }
 
 /// ident_char is called when a backtick "single-char" is parsed from the code

@@ -1,0 +1,13 @@
+#define xdg_wm_base_interface v_multiwindow_xdg_wm_base_interface
+#define xdg_positioner_interface v_multiwindow_xdg_positioner_interface
+#define xdg_surface_interface v_multiwindow_xdg_surface_interface
+#define xdg_toplevel_interface v_multiwindow_xdg_toplevel_interface
+#define xdg_popup_interface v_multiwindow_xdg_popup_interface
+
+#include "xdg-shell-protocol.c"
+
+#undef xdg_wm_base_interface
+#undef xdg_positioner_interface
+#undef xdg_surface_interface
+#undef xdg_toplevel_interface
+#undef xdg_popup_interface

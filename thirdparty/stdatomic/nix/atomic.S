@@ -63,9 +63,17 @@ _V_atomic_thread_fence:
 #if defined __aarch64__
         .text
 
+#if defined(__APPLE__)
+        /* Mach-O prepends a leading underscore to C symbols, so the C name
+           `_V_atomic_thread_fence` is the asm symbol `__V_atomic_thread_fence`.
+           Mach-O also has no `.type ... %function` directive. */
+        .global __V_atomic_thread_fence
+__V_atomic_thread_fence:
+#else
         .global _V_atomic_thread_fence
         .type   _V_atomic_thread_fence, %function
 _V_atomic_thread_fence:
+#endif
 #ifdef __TINYC__
         .int 0xd5033bbf
         .int 0xd65f03c0

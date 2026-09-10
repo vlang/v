@@ -775,6 +775,27 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	if s.opened {
 		return error('net.mbedtls SSLConn.connect, ssl connection was already open')
 	}
+	mut connected := false
+	defer {
+		if !connected {
+			if unsafe { s.certs != nil } {
+				C.mbedtls_x509_crt_free(&s.certs.cacert)
+				C.mbedtls_x509_crt_free(&s.certs.client_cert)
+				C.mbedtls_pk_free(&s.certs.client_key)
+				s.certs = unsafe { nil }
+			}
+			C.mbedtls_ssl_free(&s.ssl)
+			C.mbedtls_ssl_config_free(&s.conf)
+			free_rng(mut s.ctr_drbg, mut s.entropy)
+			if s.alpn_list != unsafe { nil } {
+				unsafe {
+					C.free(s.alpn_list)
+					s.alpn_list = nil
+				}
+			}
+			s.handle = 0
+		}
+	}
 	s.handle = tcp_conn.sock.handle
 	s.set_read_timeout(tcp_conn.read_timeout())
 	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
@@ -786,11 +807,20 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
 		C.mbedtls_net_recv_timeout)
 	ret = C.mbedtls_ssl_handshake(&s.ssl)
+	// WANT_READ/WANT_WRITE are not errors -- mbedtls's own docs require every
+	// caller to retry the handshake call on them. On this blocking BIO each
+	// retry's internal recv already blocks up to read_timeout (via
+	// mbedtls_net_recv_timeout), so a genuinely stalled peer still surfaces
+	// as MBEDTLS_ERR_SSL_TIMEOUT rather than spinning here forever.
+	for ret == C.MBEDTLS_ERR_SSL_WANT_READ || ret == C.MBEDTLS_ERR_SSL_WANT_WRITE {
+		ret = C.mbedtls_ssl_handshake(&s.ssl)
+	}
 	if ret != 0 {
 		return error_with_code('net.mbedtls SSLConn.connect, mbedtls_ssl_handshake failed 2; ret: ${ret}',
 			ret)
 	}
 	s.opened = true
+	connected = true
 }
 
 // dial opens an ssl connection on hostname:port
@@ -835,6 +865,11 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 		C.mbedtls_net_recv_timeout)
 	s.handle = s.server_fd.fd
 	ret = C.mbedtls_ssl_handshake(&s.ssl)
+	// See the identical retry loop in SSLConn.connect() above for why
+	// WANT_READ/WANT_WRITE must be retried rather than treated as fatal.
+	for ret == C.MBEDTLS_ERR_SSL_WANT_READ || ret == C.MBEDTLS_ERR_SSL_WANT_WRITE {
+		ret = C.mbedtls_ssl_handshake(&s.ssl)
+	}
 	if ret != 0 {
 		return error_with_code('net.mbedtls SSLConn.dial, mbedtls_ssl_handshake failed 3; ret: ${ret}',
 			ret)
@@ -1063,12 +1098,18 @@ fn wait_for(handle int, what Select, timeout time.Duration) ! {
 	return net.err_timed_out
 }
 
-// wait_for_write waits for a write io operation to be available
-fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
+// wait_for_write waits for a write io operation to be available. Pure
+// raw-socket select() on s.handle — never touches the TLS context, so it is
+// safe to call without holding any lock that guards concurrent access to the
+// context itself (see h2_pooled_transport.v).
+pub fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
 	return wait_for(s.handle, .write, timeout)
 }
 
-// wait_for_read waits for a read io operation to be available
-fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
+// wait_for_read waits for a read io operation to be available. Pure
+// raw-socket select() on s.handle — never touches the TLS context, so it is
+// safe to call without holding any lock that guards concurrent access to the
+// context itself (see h2_pooled_transport.v).
+pub fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
 	return wait_for(s.handle, .read, timeout)
 }

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "patch-effect.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "owner", "files", "functions", "required_probe_ids"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"},
+    "owner": {"type": "string", "enum": ["tinycc", "v-libgc", "bundle-overlay"]},
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/relative_path"}
+    },
+    "functions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 128}
+    },
+    "required_probe_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"}
+    }
+  }
+}

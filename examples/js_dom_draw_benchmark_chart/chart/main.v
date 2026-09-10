@@ -2,7 +2,7 @@ module main
 
 import veb
 import os
-import json
+import json2 as json
 import arrays
 import net.http
 import math
@@ -148,14 +148,14 @@ fn update_framework_benchmark_times() !FrameworkPlatform {
 fn typescript_sqlite_memory() !FrameworkBenchmarkResponse {
 	url := 'http://localhost:3000/sqlite-memory/${benchmark_loop_length}'
 	res := http.get(url) or { panic(err) }
-	framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
+	framework_benchmark_response := json.decode[FrameworkBenchmarkResponse](res.body)!
 	return framework_benchmark_response
 }
 
 fn v_sqlite_memory() !FrameworkBenchmarkResponse {
 	url := 'http://localhost:4000/sqlite-memory/${benchmark_loop_length}'
 	res := http.get(url) or { panic(err) }
-	framework_benchmark_response := json.decode(FrameworkBenchmarkResponse, res.body)!
+	framework_benchmark_response := json.decode[FrameworkBenchmarkResponse](res.body)!
 	return framework_benchmark_response
 }
 

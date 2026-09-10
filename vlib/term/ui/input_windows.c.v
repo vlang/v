@@ -52,15 +52,13 @@ pub fn init(cfg Config) &Context {
 	}
 
 	// enable extended input flags (see https://stackoverflow.com/a/46802726)
-	// 0x80 == C.ENABLE_EXTENDED_FLAGS
-	if !C.SetConsoleMode(stdin_handle, 0x80) {
-		panic('could not set raw input mode')
-	}
-	mut input_mode := u32(C.ENABLE_WINDOW_INPUT)
+	mut input_mode := u32(C.ENABLE_EXTENDED_FLAGS) | u32(C.ENABLE_WINDOW_INPUT)
 	if ctx.cfg.mouse_enabled {
 		input_mode |= u32(C.ENABLE_MOUSE_INPUT)
 	}
 	// enable window input and optionally mouse input events.
+	// set all flags in a single call, since each SetConsoleMode call replaces
+	// the previous input mode completely, instead of extending it.
 	if !C.SetConsoleMode(stdin_handle, input_mode) {
 		panic('could not set raw input mode')
 	}
@@ -130,6 +128,18 @@ pub fn (mut ctx Context) run() ! {
 	}
 }
 
+// key_code_for_char maps the character of a key event that did not match
+// any of the known virtual key codes to a KeyCode.
+fn key_code_for_char(e C.KEY_EVENT_RECORD) KeyCode {
+	// non-ASCII characters (e.g. from CJK IME input) have no ASCII
+	// representation; mapping their low byte to a KeyCode would
+	// produce fake control keys like .escape
+	if unsafe { e.uChar.UnicodeChar } > 0x7F {
+		return KeyCode.null
+	}
+	return unsafe { KeyCode(e.uChar.AsciiChar) }
+}
+
 fn (mut ctx Context) parse_events() {
 	nr_events := u32(0)
 	if !C.GetNumberOfConsoleInputEvents(ctx.stdin_handle, &nr_events) {
@@ -168,7 +178,7 @@ fn (mut ctx Context) parse_events() {
 					91...93 { KeyCode.null } // special keys
 					96...105 { unsafe { KeyCode(ch - 48) } } // numpad numbers
 					112...135 { unsafe { KeyCode(ch + 178) } } // f1 - f24
-					else { unsafe { KeyCode(ascii) } }
+					else { key_code_for_char(e) }
 				}
 
 				mut modifiers := unsafe { Modifiers(0) }

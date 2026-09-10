@@ -1,0 +1,3 @@
+COutputPoint point, i64 delta) {
+COutputPoint){.x = point.x + delta
+COutputPoint){.x = 1

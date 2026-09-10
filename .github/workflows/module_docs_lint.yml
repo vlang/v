@@ -10,6 +10,10 @@ on:
     paths:
       - '**/cmd/tools/vdoc/theme/**'
 
+concurrency:
+  group: module-docs-lint-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-module-docs:
     runs-on: ubuntu-latest

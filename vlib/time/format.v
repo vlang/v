@@ -184,7 +184,7 @@ pub fn (t Time) format_rfc3339() string {
 	}
 
 	t_ := time_with_unix(t)
-	if t_.is_local {
+	if t_.is_local || t_.location() != none {
 		utc_time := t_.local_to_utc()
 		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
 		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
@@ -217,7 +217,7 @@ pub fn (t Time) format_rfc3339_micro() string {
 	}
 
 	t_ := time_with_unix(t)
-	if t_.is_local {
+	if t_.is_local || t_.location() != none {
 		utc_time := t_.local_to_utc()
 		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
 		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
@@ -250,7 +250,7 @@ pub fn (t Time) format_rfc3339_nano() string {
 	}
 
 	t_ := time_with_unix(t)
-	if t_.is_local {
+	if t_.is_local || t_.location() != none {
 		utc_time := t_.local_to_utc()
 		int_to_byte_array_no_pad(utc_time.year, mut buf, 4)
 		int_to_byte_array_no_pad(utc_time.month, mut buf, 7)
@@ -395,8 +395,8 @@ const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 // |       Second     | s     | 0 1 ... 58 59                          |
 // |                  | ss    | 00 01 ... 58 59                        |
 // |       Offset     | Z     | -7 -6 ... +5 +6                        |
-// |                  | ZZ    | -0700 -0600 ... +0500 +0600            |
-// |                  | ZZZ   | -07:00 -06:00 ... +05:00 +06:00        |
+// |                  | ZZ    | -0700 -0630 ... +0545 +0600            |
+// |                  | ZZZ   | -07:00 -06:30 ... +05:45 +06:00        |
 //
 // Usage:
 // ```v
@@ -546,33 +546,13 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('Anno Domini')
 			}
 			'Z' {
-				mut hours := offset() / seconds_per_hour
-				if hours >= 0 {
-					sb.write_string('+${hours}')
-				} else {
-					hours = -hours
-					sb.write_string('-${hours}')
-				}
+				sb.write_string(t.custom_format_zone_offset(token))
 			}
 			'ZZ' {
-				// TODO: update if minute differs?
-				mut hours := offset() / seconds_per_hour
-				if hours >= 0 {
-					sb.write_string('+${hours:02}00')
-				} else {
-					hours = -hours
-					sb.write_string('-${hours:02}00')
-				}
+				sb.write_string(t.custom_format_zone_offset(token))
 			}
 			'ZZZ' {
-				// TODO: update if minute differs?
-				mut hours := offset() / seconds_per_hour
-				if hours >= 0 {
-					sb.write_string('+${hours:02}:00')
-				} else {
-					hours = -hours
-					sb.write_string('-${hours:02}:00')
-				}
+				sb.write_string(t.custom_format_zone_offset(token))
 			}
 			'a' {
 				if t.hour < 12 {
@@ -594,6 +574,21 @@ pub fn (t Time) custom_format(s string) string {
 		}
 	}
 	return sb.str()
+}
+
+fn (t Time) custom_format_zone_offset(token string) string {
+	zone_offset := if t.has_location() { (t.zone() or { Zone{} }).offset } else { offset() }
+	sign := if zone_offset < 0 { '-' } else { '+' }
+	abs_offset := if zone_offset < 0 { -zone_offset } else { zone_offset }
+	hours := abs_offset / seconds_per_hour
+	if token == 'Z' {
+		return '${sign}${hours}'
+	}
+	minutes := (abs_offset % seconds_per_hour) / seconds_per_minute
+	if token == 'ZZ' {
+		return '${sign}${hours:02}${minutes:02}'
+	}
+	return '${sign}${hours:02}:${minutes:02}'
 }
 
 // clean returns a date string in a clean form.
@@ -720,9 +715,10 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 @[deprecated: 'use `http_header_string()` instead']
 @[deprecated_after: '2026-09-30']
 pub fn (t Time) utc_string() string {
-	day_str := t.weekday_str()
-	month_str := t.smonth()
-	utc_string := '${day_str}, ${t.day} ${month_str} ${t.year} ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
+	t_ := if t.location() != none { t.local_to_utc() } else { t }
+	day_str := t_.weekday_str()
+	month_str := t_.smonth()
+	utc_string := '${day_str}, ${t_.day} ${month_str} ${t_.year} ${t_.hour:02d}:${t_.minute:02d}:${t_.second:02d} UTC'
 	return utc_string
 }
 
@@ -736,24 +732,96 @@ pub fn (t Time) http_header_string() string {
 	return buf.bytestr()
 }
 
-// push_to_http_header returns a date string in the format used in HTTP headers, as defined in RFC 2616.
+// http_date_len is the byte length of an HTTP-date value (RFC 9110 IMF-fixdate),
+// e.g. "Sun, 06 Nov 1994 08:49:37 GMT".
+pub const http_date_len = 29
+
+// write_http_header writes the 29-byte HTTP-date ("Sun, 06 Nov 1994 08:49:37 GMT",
+// RFC 9110 IMF-fixdate) at dst, which may point into a fixed array or a dynamic
+// array's data, at any offset. dst_len is the number of writable bytes at dst;
+// an error is returned when it is less than http_date_len, so a caller cannot
+// silently overrun its buffer. No allocation on the success path.
+@[unsafe]
+pub fn (t Time) write_http_header(dst &u8, dst_len int) ! {
+	if dst_len < http_date_len {
+		return error('time.write_http_header: dst_len must be >= 29')
+	}
+	if t.location() != none {
+		unsafe { t.local_to_utc().write_http_header(dst, dst_len)! }
+		return
+	}
+	t_ := t
+	day_str := long_days[iclamp(0, t_.day_of_week() - 1, 6)] // read in place: no substr
+	// months_string is indexed in place (no smonth() substr allocation); out-of-range
+	// months keep smonth()'s historical '---' fallback.
+	mi := if t_.month >= 1 && t_.month <= 12 { (t_.month - 1) * 3 } else { -1 }
+	m0 := if mi >= 0 { months_string[mi] } else { `-` }
+	m1 := if mi >= 0 { months_string[mi + 1] } else { `-` }
+	m2 := if mi >= 0 { months_string[mi + 2] } else { `-` }
+
+	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, m0, m1, m2, ` `, `0`,
+		`0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `, `G`, `M`, `T`]!
+	unsafe {
+		int_to_ptr_byte_array_no_pad(t_.day, &buf[5], 2)
+		int_to_ptr_byte_array_no_pad(t_.year, &buf[12], 4)
+		int_to_ptr_byte_array_no_pad(t_.hour, &buf[17], 2)
+		int_to_ptr_byte_array_no_pad(t_.minute, &buf[20], 2)
+		int_to_ptr_byte_array_no_pad(t_.second, &buf[23], 2)
+		// plain byte loop instead of vmemcpy: compiles on every backend (JS has
+		// no vmemcpy) and C compilers turn it into a memcpy at -prod anyway
+		for i in 0 .. 29 {
+			dst[i] = buf[i]
+		}
+	}
+}
+
+// update_http_header refreshes an HTTP-date previously written at dst (by
+// write_http_header) from last_unix to now_unix, rewriting ONLY the digits
+// whose value changed: within the same minute that is the 2 seconds digits;
+// minute and hour rollovers add 2 digits each; a day rollover (or
+// last_unix <= 0 / now_unix <= 0) falls back to a full write_http_header,
+// which is the only path that pays calendar math — at a 1 Hz refresh cadence,
+// once per day. The caller passes the same UTC unix seconds it will keep for
+// the next call. No allocation on the success path.
+@[unsafe]
+pub fn update_http_header(dst &u8, dst_len int, last_unix i64, now_unix i64) ! {
+	if dst_len < http_date_len {
+		return error('time.update_http_header: dst_len must be >= 29')
+	}
+	if now_unix == last_unix {
+		return
+	}
+	if last_unix <= 0 || now_unix <= 0 || now_unix / 86400 != last_unix / 86400 {
+		unsafe { unix(now_unix).write_http_header(dst, dst_len)! }
+		return
+	}
+	tod := int(now_unix % 86400)
+	unsafe {
+		write_2_digits(dst + 23, tod % 60)
+		if now_unix / 60 != last_unix / 60 {
+			write_2_digits(dst + 20, (tod / 60) % 60)
+			if now_unix / 3600 != last_unix / 3600 {
+				write_2_digits(dst + 17, tod / 3600)
+			}
+		}
+	}
+}
+
+@[inline]
+fn write_2_digits(dst &u8, v int) {
+	unsafe {
+		dst[0] = u8(`0` + v / 10)
+		dst[1] = u8(`0` + v % 10)
+	}
+}
+
+// push_to_http_header appends the 29-byte HTTP-date to buffer, as defined in RFC 2616.
 // e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
 pub fn (t Time) push_to_http_header(mut buffer []u8) {
-	day_str := t.weekday_str()
-	month_str := t.smonth()
-
-	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, month_str[0], month_str[1],
-		month_str[2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `,
-		`G`, `M`, `T`]!
+	mut buf := [29]u8{}
 	unsafe {
-		int_to_ptr_byte_array_no_pad(t.day, &buf[5], 2)
-		int_to_ptr_byte_array_no_pad(t.year, &buf[12], 4)
-		int_to_ptr_byte_array_no_pad(t.hour, &buf[17], 2)
-		int_to_ptr_byte_array_no_pad(t.minute, &buf[20], 2)
-		int_to_ptr_byte_array_no_pad(t.second, &buf[23], 2)
-	}
-	unsafe {
-		buffer.push_many(&buf[0], buf.len)
+		t.write_http_header(&buf[0], 29) or {} // 29 >= http_date_len: cannot fail
+		buffer.push_many(&buf[0], 29)
 	}
 }
 

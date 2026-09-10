@@ -5,6 +5,7 @@ on:
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'
+      - '!vlib/v3/**'
       - 'cmd/tools/vdoc/**.v'
       - 'cmd/tools/vdoc/theme/**.js'
       - 'cmd/tools/vdoc/theme/**.css'
@@ -17,6 +18,7 @@ on:
     paths:
       - 'vlib/**.v'
       - 'vlib/**.md'
+      - '!vlib/v3/**'
       - 'cmd/tools/vdoc/**.v'
       - 'cmd/tools/vdoc/theme/**.js'
       - 'cmd/tools/vdoc/theme/**.css'

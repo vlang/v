@@ -5,7 +5,7 @@
 // Add new cases here whenever a schema field is touched.
 module mcp
 
-import json
+import json2 as json
 
 fn build_initialized_session(mut server Server) {
 	server.dispatch_message(Request{
@@ -57,7 +57,7 @@ fn test_jsonrpc_envelope_includes_required_fields() {
 
 	dispatch := server.dispatch_message(new_request(2, 'ping', empty).encode(), stdio_session_id,
 		.stdio)!
-	envelope := json.decode(MessageEnvelope, dispatch.response)!
+	envelope := json.decode[MessageEnvelope](dispatch.response)!
 	assert envelope.jsonrpc == '2.0'
 	assert envelope.id == '2'
 	assert envelope.result == '{}'

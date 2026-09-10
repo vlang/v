@@ -344,6 +344,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// Libs are passed to cl.exe which passes them to the linker
 	a << real_libs.join(' ')
 	a << '/link'
+	a << v.msvc_ordered_pkgconfig_linker_args()
 	if v.pref.is_shared {
 		// generate a .def for export function names, avoid function name mangle
 		// must put after the /link flag!
@@ -550,6 +551,55 @@ mut:
 	other_flags []string
 }
 
+struct MsvcQuotedFlagPart {
+	value string
+	raw   string
+}
+
+fn (mut v Builder) msvc_ordered_pkgconfig_linker_args() []string {
+	mut args := []string{}
+	for segment in v.table.link_flag_segments {
+		if !segment.is_pkgconfig {
+			continue
+		}
+		for flag in segment.flags {
+			structured_flag := quote_spaced_ordered_pkgconfig_operand(flag, true)
+			parts := split_quoted_flag_parts(structured_flag.value)
+			for i, part in parts {
+				is_named_token := i == 0 && structured_flag.name != ''
+				token_flag := if is_named_token && structured_flag.name != '-Wl' {
+					cflag.CFlag{
+						mod:   structured_flag.mod
+						os:    structured_flag.os
+						name:  structured_flag.name
+						value: part.value
+					}
+				} else {
+					cflag.CFlag{
+						mod:   structured_flag.mod
+						value: if is_named_token {
+							'${structured_flag.name}${part.raw}'
+						} else {
+							part.raw
+						}
+					}
+				}
+				sflags := v.msvc_string_flags([token_flag])
+				args << sflags.lib_paths
+				args << sflags.real_libs
+				if !is_named_token && !part.value.starts_with('-')
+					&& part.value.to_lower_ascii().ends_with('.lib') {
+					args << part.raw
+				} else if !is_named_token && part.value.len > 1 && part.value[0] == `/`
+					&& sflags.other_flags.len > 0 {
+					args << part.raw
+				}
+			}
+		}
+	}
+	return args
+}
+
 fn strip_quotes(value string) string {
 	if value.len >= 2 && value[0] == `"` && value[value.len - 1] == `"` {
 		return value[1..value.len - 1]
@@ -620,25 +670,39 @@ fn split_and_apply_gnu_flags(value string, mut inc_paths []string, mut lib_paths
 }
 
 fn split_quoted_flags(value string) []string {
-	mut parts := []string{}
+	return split_quoted_flag_parts(value).map(it.value)
+}
+
+fn split_quoted_flag_parts(value string) []MsvcQuotedFlagPart {
+	mut parts := []MsvcQuotedFlagPart{}
 	mut buf := []u8{}
+	mut raw := []u8{}
 	mut in_quote := false
 	for ch in value {
 		if ch == `"` {
 			in_quote = !in_quote
+			raw << ch
 			continue
 		}
 		if !in_quote && ch == ` ` {
 			if buf.len > 0 {
-				parts << buf.bytestr()
+				parts << MsvcQuotedFlagPart{
+					value: buf.bytestr()
+					raw:   raw.bytestr()
+				}
 				buf = []u8{}
 			}
+			raw = []u8{}
 			continue
 		}
 		buf << ch
+		raw << ch
 	}
 	if buf.len > 0 {
-		parts << buf.bytestr()
+		parts << MsvcQuotedFlagPart{
+			value: buf.bytestr()
+			raw:   raw.bytestr()
+		}
 	}
 	return parts
 }

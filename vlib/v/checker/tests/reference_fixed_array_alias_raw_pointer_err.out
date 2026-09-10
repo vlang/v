@@ -1,0 +1,14 @@
+vlib/v/checker/tests/reference_fixed_array_alias_raw_pointer_err.vv:15:8: error: cannot reference fixed array `p` outside `unsafe` blocks as it is supposed to be stored on stack
+   13 |     mut arr := FA{}
+   14 |     p := unsafe { &arr }
+   15 |     q := &p
+      |           ^
+   16 |     _ = q
+   17 | }
+vlib/v/checker/tests/reference_fixed_array_alias_raw_pointer_err.vv:21:8: error: cannot reference fixed array `p` outside `unsafe` blocks as it is supposed to be stored on stack
+   19 | fn from_return() {
+   20 |     p := get_ptr()
+   21 |     q := &p
+      |           ^
+   22 |     _ = q
+   23 | }

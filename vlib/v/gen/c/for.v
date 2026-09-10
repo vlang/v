@@ -29,7 +29,7 @@ fn for_in_val_type(base_type ast.Type, is_mut bool, is_ref bool) ast.Type {
 
 fn (mut g Gen) write_for_in_array_value_decl(node ast.ForInStmt, styp string, val_sym_ ast.TypeSymbol) {
 	mut val_sym := val_sym_
-	if mut val_sym.info is ast.FnType {
+	if val_sym.info is ast.FnType {
 		g.writeln('${g.fn_ptr_decl_str(val_sym.info, c_name(node.val_var))};')
 		return
 	}
@@ -48,7 +48,7 @@ fn (mut g Gen) write_for_in_array_value_decl(node ast.ForInStmt, styp string, va
 
 fn (mut g Gen) write_for_in_array_value_assign(node ast.ForInStmt, styp string, val_sym_ ast.TypeSymbol, cond_var string, op_field string, idx string, cond_is_option bool, opt_expr string) {
 	mut val_sym := val_sym_
-	if mut val_sym.info is ast.FnType {
+	if val_sym.info is ast.FnType {
 		g.writeln('\t${c_name(node.val_var)} = ((voidptr*)${cond_var}${op_field}data)[${idx}];')
 		return
 	}
@@ -85,11 +85,12 @@ fn (mut g Gen) write_labeled_continue_gate(label string, prefix string) {
 	if label.len == 0 {
 		return
 	}
-	continue_flag := labeled_continue_flag_name(label)
-	continue_entry_label := labeled_continue_entry_label_name(label)
+	continue_flag := g.user_goto_label_control_name(label, 'continue_flag')
+	continue_entry_label := g.user_goto_label_control_name(label, 'continue_entry')
+	continue_label := g.user_goto_label_control_name(label, 'continue')
 	g.writeln('${prefix}bool ${continue_flag} = false;')
 	g.writeln('${prefix}${continue_entry_label}: {}')
-	g.writeln('${prefix}if (${continue_flag}) goto ${label}__continue;')
+	g.writeln('${prefix}if (${continue_flag}) goto ${continue_label};')
 }
 
 fn for_c_ident_name(expr ast.Expr) string {
@@ -150,11 +151,13 @@ fn (mut g Gen) for_c_unsigned_overflow_guard(node ast.ForCStmt) ?ForCOverflowGua
 	limit_expr := match postfix.op {
 		.inc { '(${g.styp(unaliased_typ)})-1' }
 		.dec { '(${g.styp(unaliased_typ)})0' }
-		else { return none }
+		else {
+			return none
+		}
 	}
 
 	return ForCOverflowGuard{
-		cname:      c_name(postfix_var_name)
+		cname: c_name(postfix_var_name)
 		limit_expr: limit_expr
 	}
 }
@@ -305,8 +308,7 @@ fn (mut g Gen) write_loop_scope_cleanup_after_defer(scope &ast.Scope, pos token.
 		g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false, -1)
 	}
 	if g.fn_decl != unsafe { nil } {
-		g.cleanup_local_closure_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false,
-			-1, stmts)
+		g.cleanup_local_closure_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false, -1, stmts)
 	}
 }
 
@@ -319,7 +321,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		g.is_vlines_enabled = false
 		g.inside_for_c_stmt = true
 		if node.label.len > 0 {
-			g.writeln('${node.label}:')
+			g.writeln('${g.user_goto_label_name(node.label)}:')
 		}
 		g.writeln('{')
 		g.indent++
@@ -353,34 +355,31 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('{')
 		}
 		autofree_keep_start := g.push_for_c_init_autofree_keep_vars(init_autofree_vars)
-		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
-			node.pos.pos)
+		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars, node.pos.pos)
 		skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
 		ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
 		g.pop_skip_scope_cleanup(skip_cleanup_start)
 		if node.label.len > 0 {
 			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 			g.writeln('}')
-			g.writeln('${node.label}__continue: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 		} else {
 			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 		}
 		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
 		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
 		g.writeln('}')
 		if has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${node.label}__break: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 		}
 		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
 		g.cleanup_for_c_init_autofree_vars(init_autofree_vars)
 		g.indent--
 		g.writeln('}')
 		if !has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${node.label}__break: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 		}
 	} else {
 		overflow_guard := g.for_c_unsigned_overflow_guard(node) or { ForCOverflowGuard{} }
@@ -403,7 +402,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('bool ${overflow_guard_flag} = false;')
 		}
 		if node.label.len > 0 {
-			g.writeln('${node.label}:')
+			g.writeln('${g.user_goto_label_name(node.label)}:')
 		}
 		g.set_current_pos_as_last_stmt_pos()
 		g.skip_stmt_pos = true
@@ -450,27 +449,24 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('{')
 		}
 		autofree_keep_start := g.push_for_c_init_autofree_keep_vars(init_autofree_vars)
-		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
-			node.pos.pos)
+		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars, node.pos.pos)
 		skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
 		ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
 		g.pop_skip_scope_cleanup(skip_cleanup_start)
 		if node.label.len > 0 {
 			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 			g.writeln('}')
-			g.writeln('${node.label}__continue: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 		} else {
 			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
+			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 		}
 		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
 		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
 		g.writeln('}')
 		if has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${node.label}__break: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 		}
 		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
 		g.cleanup_for_c_init_autofree_vars(init_autofree_vars)
@@ -479,7 +475,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln('}')
 		}
 		if !has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${node.label}__break: {}')
+			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 		}
 	}
 	g.loop_depth--
@@ -489,7 +485,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.loop_depth++
 	g.is_vlines_enabled = false
 	if node.label.len > 0 {
-		g.writeln('${node.label}:')
+		g.writeln('${g.user_goto_label_name(node.label)}:')
 	}
 	g.writeln('for (;;) {')
 	if !node.is_inf {
@@ -512,14 +508,14 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 		g.writeln('\t}')
-		g.writeln('\t${node.label}__continue: {}')
+		g.writeln('\t${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 	} else {
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 	}
 	g.writeln('}')
 	if node.label.len > 0 {
-		g.writeln('${node.label}__break: {}')
+		g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
 	}
 	g.loop_depth--
 }
@@ -711,13 +707,13 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 	g.loop_depth++
 	mut array_debug_value_scope_opened := false
 	if node.label.len > 0 {
-		g.writeln('\t${node.label}: {}')
+		g.writeln('\t${g.user_goto_label_name(node.label)}: {}')
 	}
 	if node.is_range {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
 		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
 				'${i}=builtin__overflow__add_i32(${i},1)'
@@ -801,7 +797,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
 				'${i}=builtin__overflow__add_i32(${i},1)'
@@ -828,9 +824,8 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${cond_expr}; ${plus_plus_i}) {')
 		if node.val_var != '_' {
 			if array_debug_value_scope_opened {
-				g.write_for_in_array_value_assign(node, styp, val_sym, cond_var, op_field, i,
-					cond_is_option, opt_expr)
-			} else if mut val_sym.info is ast.FnType {
+				g.write_for_in_array_value_assign(node, styp, val_sym, cond_var, op_field, i, cond_is_option, opt_expr)
+			} else if val_sym.info is ast.FnType {
 				g.write('\t')
 				tcc_bug := c_name(node.val_var)
 				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
@@ -888,7 +883,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		plus_plus_idx := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${idx}=builtin__overflow__add_i64(${idx},1)'
 			} $else {
 				'${idx}=builtin__overflow__add_i32(${idx},1)'
@@ -901,22 +896,41 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ${plus_plus_idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
+			base_elem_type := g.unwrap_generic(info.elem_type)
+			base_elem_sym := g.table.sym(base_elem_type)
+			loop_var_added_ref := node.val_type.nr_muls() > base_elem_type.nr_muls()
+			base_elem_is_concrete_fn := base_elem_sym.info is ast.FnType
+				&& base_elem_sym.info.has_decl
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
 				&& !node.val_type.has_flag(.option)
-			if val_sym.info is ast.FnType {
+			if val_sym.info is ast.FnType && (!loop_var_added_ref || base_elem_is_concrete_fn) {
 				g.write('\t')
 				tcc_bug := c_name(node.val_var)
-				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
+				if base_elem_is_concrete_fn {
+					g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
+				} else {
+					g.write_fntype_decl(tcc_bug, val_sym.info, node.val_type.nr_muls())
+				}
 			} else if is_fixed_array {
 				styp := g.styp(node.val_type)
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${cond_var}[${idx}], sizeof(${styp}));')
 			} else {
-				styp := g.styp(node.val_type)
+				styp := if node.val_type.has_flag(.option_mut_param_t) {
+					'${g.styp(node.val_type.clear_flag(.option_mut_param_t))}*'
+				} else {
+					g.styp(node.val_type)
+				}
 				g.write('\t${styp} ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
-				addr := if node.val_is_mut { '&' } else { '' }
+				addr := if (node.val_is_mut || node.val_is_ref)
+					&& (node.val_type.has_flag(.option_mut_param_t)
+						|| (loop_var_added_ref && !base_elem_is_concrete_fn)) {
+					'&'
+				} else {
+					''
+				}
 				if cond_type_is_ptr {
 					g.writeln(' = ${addr}(*${cond_var})[${idx}];')
 				} else if cond_is_literal {
@@ -925,7 +939,22 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 					g.write(' = ${addr}')
 					g.expr(node.cond)
 					if info.is_fn_ret {
-						g.write('.ret_arr')
+						// g.expr(node.cond) already appends `.ret_arr` when the cond
+						// is itself a fixed-array-returning call or a fixed-ret temp
+						// (see fn.v / cgen.v). Only add it here for other exprs (e.g. a
+						// plain variable holding a fn-ret fixed array) to avoid a
+						// doubled `.ret_arr` (which is not a struct member).
+						mut cond_expr := node.cond
+						if cond_expr is ast.ParExpr {
+							cond_expr = cond_expr.expr
+						}
+						cond_emits_ret_arr := (cond_expr is ast.CallExpr
+							&& !cond_expr.return_type.has_option_or_result()
+							&& g.table.final_sym(cond_expr.return_type).kind == .array_fixed)
+							|| (cond_expr is ast.CTempVar && cond_expr.is_fixed_ret)
+						if !cond_emits_ret_arr {
+							g.write('.ret_arr')
+						}
 					}
 					g.writeln('[${idx}];')
 				}
@@ -952,7 +981,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		idx := g.new_tmp_var()
 		plus_plus_idx := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${idx}=builtin__overflow__add_i64(${idx},1)'
 			} $else {
 				'${idx}=builtin__overflow__add_i32(${idx},1)'
@@ -1041,7 +1070,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
 				'${i}=builtin__overflow__add_i32(${i},1)'
@@ -1096,7 +1125,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln(';')
 		i := node.key_var
 		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'${i}=builtin__overflow__add_i64(${i},1)'
 			} $else {
 				'${i}=builtin__overflow__add_i32(${i},1)'
@@ -1119,7 +1148,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		} else if receiver_sym.info is ast.Interface {
 			left_cc_type := g.cc_type(g.table.unaliased_type(unwrapped_cond_type), false)
 			left_type_name := util.no_dots(left_cc_type)
-			fn_name = '${c_name(left_type_name)}_name_table[${t_expr}._typ]._method_next'
+			fn_name = '((struct _${c_name(left_type_name)}_interface_methods*)${t_expr}._typ)->_method_next'
 		} else {
 			fn_name = g.specialized_method_name_from_receiver(next_fn, unwrapped_cond_type, fn_name)
 		}
@@ -1162,12 +1191,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, val_type)
 
 		g.for_in_stmt(ast.ForInStmt{
-			cond:       node.cond
-			cond_type:  for_type
-			kind:       g.table.sym(for_type).kind
-			stmts:      node.stmts
-			val_type:   val_type
-			val_var:    node.val_var
+			cond: node.cond
+			cond_type: for_type
+			kind: g.table.sym(for_type).kind
+			stmts: node.stmts
+			val_type: val_type
+			val_var: node.val_var
 			val_is_mut: node.val_is_mut
 			val_is_ref: node.val_is_ref
 		})
@@ -1198,7 +1227,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
 		g.writeln('\t}')
-		g.writeln('\t${node.label}__continue: {}')
+		g.writeln('\t${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 	} else {
 		g.write_defer_stmts(node.scope, false, node.pos)
 		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
@@ -1209,7 +1238,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		g.writeln('}')
 	}
 	if node.label.len > 0 {
-		g.writeln('\t${node.label}__break: {}')
+		g.writeln('\t${g.user_goto_label_control_name(node.label, 'break')}: {}')
 	}
 	g.loop_depth--
 }

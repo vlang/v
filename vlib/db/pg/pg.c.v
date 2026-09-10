@@ -9,6 +9,10 @@ $if $pkgconfig('libpq') {
 } $else {
 	$if msvc {
 		#flag -llibpq
+	} $else $if windows {
+		// GCC and TCC need a GNU-compatible import library, not MSVC's libpq.lib.
+		// Keep the path explicit so a missing dependency names the expected file.
+		#flag @VEXEROOT/thirdparty/pg/win64/mingw/libpq.dll.a
 	} $else {
 		#flag -lpq
 	}
@@ -110,11 +114,36 @@ pub mut:
 	vals []string
 }
 
+// Field contains the metadata that libpq reports for a result column.
+pub struct Field {
+pub:
+	name          string
+	type_oid      u32
+	type_modifier int
+	size          int
+	format        int
+	table_oid     u32
+	table_column  int
+}
+
 pub struct Result {
 pub:
-	cols  map[string]int
-	names []string
-	rows  []Row
+	cols   map[string]int
+	names  []string
+	rows   []Row
+	fields []Field
+}
+
+// SslMode controls PostgreSQL SSL/TLS negotiation through libpq's `sslmode`
+// connection keyword.
+pub enum SslMode {
+	unset
+	disable
+	allow
+	prefer
+	require
+	verify_ca
+	verify_full
 }
 
 // Notification represents a notification received from the server via LISTEN/NOTIFY
@@ -133,6 +162,12 @@ pub:
 	username string
 	password string
 	dbname   string
+	// SSL/TLS configuration, passed through to libpq connection keywords.
+	ssl_mode SslMode
+	ssl_key  string // client key file path, maps to sslkey
+	ssl_cert string // client certificate file path, maps to sslcert
+	ssl_ca   string // CA certificate file path, maps to sslrootcert
+	ssl_crl  string // certificate revocation list file path, maps to sslcrl
 }
 
 //
@@ -212,13 +247,25 @@ fn C.PQnfields(const_res &C.PGresult) i32
 
 fn C.PQfname(const_res &C.PGresult, i32) &char
 
+fn C.PQftype(const_res &C.PGresult, i32) u32
+
+fn C.PQfmod(const_res &C.PGresult, i32) i32
+
+fn C.PQfsize(const_res &C.PGresult, i32) i32
+
+fn C.PQfformat(const_res &C.PGresult, i32) i32
+
+fn C.PQftable(const_res &C.PGresult, i32) u32
+
+fn C.PQftablecol(const_res &C.PGresult, i32) i32
+
 // Params:
 // const Oid *paramTypes
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams i32, const_paramTypes &int, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
+fn C.PQexecParams(conn &C.PGconn, const_command &char, nParams i32, const_paramTypes &u32, const_paramValues voidptr,
+	const_paramLengths &i32, const_paramFormats &i32, resultFormat i32) &C.PGresult
 
 fn C.PQputCopyData(conn &C.PGconn, const_buffer &char, nbytes i32) i32
 
@@ -228,8 +275,8 @@ fn C.PQgetCopyData(conn &C.PGconn, buffer &&char, async i32) i32
 
 fn C.PQprepare(conn &C.PGconn, const_stmtName &char, const_query &char, nParams i32, const_param_types &&char) &C.PGresult
 
-fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams i32, const_paramValues &char,
-	const_paramLengths &int, const_paramFormats &int, resultFormat i32) &C.PGresult
+fn C.PQexecPrepared(conn &C.PGconn, const_stmtName &char, nParams i32, const_paramValues voidptr,
+	const_paramLengths &i32, const_paramFormats &i32, resultFormat i32) &C.PGresult
 
 // cleanup
 
@@ -273,6 +320,18 @@ fn escape_conninfo_value(value string) string {
 	return escaped.bytestr()
 }
 
+fn (mode SslMode) conninfo_value() string {
+	return match mode {
+		.unset { '' }
+		.disable { 'disable' }
+		.allow { 'allow' }
+		.prefer { 'prefer' }
+		.require { 'require' }
+		.verify_ca { 'verify-ca' }
+		.verify_full { 'verify-full' }
+	}
+}
+
 // connection_user returns the configured username, accepting both `user` and `username`.
 pub fn (config Config) connection_user() !string {
 	if config.user != '' && config.username != '' && config.user != config.username {
@@ -285,7 +344,7 @@ pub fn (config Config) connection_user() !string {
 }
 
 fn (config Config) conninfo() !string {
-	mut parts := []string{cap: 5}
+	mut parts := []string{cap: 10}
 	if config.host != '' {
 		parts << 'host=${escape_conninfo_value(config.host)}'
 	}
@@ -302,6 +361,21 @@ fn (config Config) conninfo() !string {
 	if config.password != '' {
 		parts << 'password=${escape_conninfo_value(config.password)}'
 	}
+	if config.ssl_mode != .unset {
+		parts << 'sslmode=${config.ssl_mode.conninfo_value()}'
+	}
+	if config.ssl_cert != '' {
+		parts << 'sslcert=${escape_conninfo_value(config.ssl_cert)}'
+	}
+	if config.ssl_key != '' {
+		parts << 'sslkey=${escape_conninfo_value(config.ssl_key)}'
+	}
+	if config.ssl_ca != '' {
+		parts << 'sslrootcert=${escape_conninfo_value(config.ssl_ca)}'
+	}
+	if config.ssl_crl != '' {
+		parts << 'sslcrl=${escape_conninfo_value(config.ssl_crl)}'
+	}
 	return parts.join(' ')
 }
 
@@ -316,12 +390,9 @@ fn connect_slot(conninfo string) !IdleSlot {
 	}
 	status := unsafe { ConnStatusType(C.PQstatus(conn)) }
 	if status != .ok {
-		// We force the construction of a new string as the
-		// error message will be freed by the next `PQfinish` call
-		c_error_msg := unsafe { C.PQerrorMessage(conn).vstring() }
-		error_msg := '${c_error_msg}'
+		c_error_msg := unsafe { cstring_to_vstring(C.PQerrorMessage(conn)) }
 		C.PQfinish(conn)
-		return error('Connection to a PG database failed: ${error_msg}')
+		return error('Connection to a PG database failed: ${c_error_msg}')
 	}
 	return IdleSlot{
 		handle:     conn
@@ -445,10 +516,20 @@ fn res_to_result(res voidptr) Result {
 
 	mut cols := map[string]int{}
 	mut names := []string{}
+	mut fields := []Field{cap: nr_cols}
 	for j in 0 .. nr_cols {
 		field_name := unsafe { cstring_to_vstring(C.PQfname(res, j)) }
 		cols[field_name] = j
 		names << field_name
+		fields << Field{
+			name:          field_name
+			type_oid:      C.PQftype(res, j)
+			type_modifier: C.PQfmod(res, j)
+			size:          C.PQfsize(res, j)
+			format:        C.PQfformat(res, j)
+			table_oid:     C.PQftable(res, j)
+			table_column:  C.PQftablecol(res, j)
+		}
 	}
 	mut rows := []Row{}
 	for i in 0 .. nr_rows {
@@ -465,7 +546,12 @@ fn res_to_result(res voidptr) Result {
 	}
 
 	C.PQclear(res)
-	return Result{cols, names, rows}
+	return Result{
+		cols:   cols
+		names:  names
+		rows:   rows
+		fields: fields
+	}
 }
 
 // close releases this conn back to its pool. Safe to call more than once:
@@ -767,8 +853,10 @@ pub fn (c &Conn) copy_expert(query string, mut file io.ReaderWriter) !int {
 fn pg_stmt_worker(c &Conn, query string, data orm.QueryData, where orm.QueryData) ![]Row {
 	mut param_types := []u32{}
 	mut param_vals := []&char{}
-	mut param_lens := []int{}
-	mut param_formats := []int{}
+	// C's PQexecParams reads these as `const int *` (4-byte C ints); back them with
+	// i32 so `.data` matches the C ABI (a V `[]int` is now 64-bit per element).
+	mut param_lens := []i32{}
+	mut param_formats := []i32{}
 
 	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, data)
 	pg_stmt_binder(mut param_types, mut param_vals, mut param_lens, mut param_formats, where)
@@ -942,6 +1030,20 @@ pub fn (c &Conn) unlisten_all() ! {
 	}
 }
 
+// escape_literal returns `value` as a quoted PostgreSQL literal that is safe to interpolate into
+// a query. Prefer parameterized queries when they can express the operation.
+pub fn (c &Conn) escape_literal(value string) !string {
+	c.ensure_active()!
+	escaped := C.PQescapeLiteral(c.conn, &char(value.str), usize(value.len))
+	if escaped == unsafe { nil } {
+		e := unsafe { C.PQerrorMessage(c.conn).vstring() }
+		return error('pg escape_literal error: "${e}"')
+	}
+	result := unsafe { escaped.vstring().clone() }
+	C.PQfreemem(escaped)
+	return result
+}
+
 // notify sends a notification on the specified channel with an optional payload.
 // All connections currently listening on that channel will receive the notification.
 pub fn (c &Conn) notify(channel string, payload string) ! {
@@ -951,14 +1053,8 @@ pub fn (c &Conn) notify(channel string, payload string) ! {
 	}
 	mut sql_stmt := ''
 	if payload.len > 0 {
-		// Use PQescapeLiteral to safely escape the payload
-		escaped := C.PQescapeLiteral(c.conn, &char(payload.str), usize(payload.len))
-		if escaped == unsafe { nil } {
-			e := unsafe { C.PQerrorMessage(c.conn).vstring() }
-			return error('pg notify error: failed to escape payload: "${e}"')
-		}
-		sql_stmt = unsafe { 'NOTIFY ${channel}, ' + escaped.vstring() + ';' }
-		C.PQfreemem(escaped)
+		escaped := c.escape_literal(payload)!
+		sql_stmt = 'NOTIFY ${channel}, ${escaped};'
 	} else {
 		sql_stmt = 'NOTIFY ${channel};'
 	}

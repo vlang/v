@@ -1,17 +1,78 @@
+#include <stdint.h>
 #include <Cocoa/Cocoa.h>
 
+static uint32_t gg_color_key(gg__Color c) {
+	return ((uint32_t)c.r)
+		| ((uint32_t)c.g << 8)
+		| ((uint32_t)c.b << 16)
+		| ((uint32_t)c.a << 24);
+}
+
+static CGFloat gg_color_channel(uint8_t value) {
+	return (CGFloat)value / 255.0;
+}
+
+static NSMutableDictionary<NSNumber*, NSColor*>* g_ns_color_cache = nil;
+static NSMutableDictionary<NSNumber*, id>* g_cg_color_cache = nil;
+
 NSColor* nscolor(gg__Color c) {
-	float red = (float)c.r / 255.0f;
-	float green = (float)c.g / 255.0f;
-	float blue = (float)c.b / 255.0f;
-	return [NSColor colorWithDeviceRed:red green:green blue:blue alpha:1.0f];
+	if (g_ns_color_cache == nil) {
+		g_ns_color_cache = [[NSMutableDictionary alloc] init];
+	}
+	NSNumber* key = @(gg_color_key(c));
+	NSColor* cached = [g_ns_color_cache objectForKey:key];
+	if (cached != nil) {
+		return cached;
+	}
+	NSColor* color = [NSColor colorWithDeviceRed:gg_color_channel(c.r)
+		green:gg_color_channel(c.g)
+		blue:gg_color_channel(c.b)
+		alpha:gg_color_channel(c.a)];
+	[g_ns_color_cache setObject:color forKey:key];
+	return color;
+}
+
+static CGColorRef cgcolor(gg__Color c) {
+	if (g_cg_color_cache == nil) {
+		g_cg_color_cache = [[NSMutableDictionary alloc] init];
+	}
+	NSNumber* key = @(gg_color_key(c));
+	id cached = [g_cg_color_cache objectForKey:key];
+	if (cached != nil) {
+		return (__bridge CGColorRef)cached;
+	}
+	CGColorRef color = CGColorCreateGenericRGB(gg_color_channel(c.r),
+		gg_color_channel(c.g),
+		gg_color_channel(c.b),
+		gg_color_channel(c.a));
+	[g_cg_color_cache setObject:(__bridge id)color forKey:key];
+	CGColorRelease(color);
+	return (__bridge CGColorRef)[g_cg_color_cache objectForKey:key];
+}
+
+static CGContextRef current_cg_context() {
+	NSGraphicsContext* context = [NSGraphicsContext currentContext];
+	if (context == nil) {
+		return NULL;
+	}
+	return [context CGContext];
+}
+
+CFStringRef cfstring(string s) {
+	return CFStringCreateWithBytesNoCopy(kCFAllocatorDefault,
+	                                     (const UInt8*)s.str,
+	                                     s.len,
+	                                     kCFStringEncodingUTF8,
+	                                     false,
+	                                     kCFAllocatorNull);
 }
 
 NSString* nsstring(string s) {
-	return [[NSString alloc] initWithBytesNoCopy:s.str
-	                                      length:s.len
-	                                    encoding:NSUTF8StringEncoding
-	                                freeWhenDone:false];
+	CFStringRef cf = cfstring(s);
+	if (cf == nil) {
+		return @"";
+	}
+	return CFBridgingRelease(cf);
 }
 
 gg__Size gg_get_screen_size() {
@@ -93,7 +154,7 @@ void gg_set_force_mono(int on) { g_gg_force_mono = on; }
 // churn (CPU + autorelease-pool pressure). The set of distinct (size, style,
 // color) combinations a UI actually uses is tiny (a few sizes × a theme palette),
 // so we memoize the finished attribute dict. Keyed on everything that changes the
-// dict — color rgb (nscolor ignores alpha), size, bold, mono, and the global
+// dict — color rgba, size, bold, mono, and the global
 // force-mono flag. The dictionary retains each cached attr dict (ARC), so they
 // persist for the process; bounded by the number of distinct combinations.
 static NSMutableDictionary<NSNumber*, NSDictionary*>* g_text_attr_cache = nil;
@@ -102,10 +163,11 @@ static NSDictionary* darwin_text_attrs(gg__TextCfg cfg) {
 	uint64_t key = ((uint64_t)cfg.color.r)
 		| ((uint64_t)cfg.color.g << 8)
 		| ((uint64_t)cfg.color.b << 16)
-		| (((uint64_t)cfg.size & 0xFFFF) << 24)
-		| ((uint64_t)(cfg.bold ? 1 : 0) << 40)
-		| ((uint64_t)(cfg.mono ? 1 : 0) << 41)
-		| ((uint64_t)(g_gg_force_mono ? 1 : 0) << 42);
+		| ((uint64_t)cfg.color.a << 24)
+		| (((uint64_t)cfg.size & 0xFFFF) << 32)
+		| ((uint64_t)(cfg.bold ? 1 : 0) << 48)
+		| ((uint64_t)(cfg.mono ? 1 : 0) << 49)
+		| ((uint64_t)(g_gg_force_mono ? 1 : 0) << 50);
 	if (g_text_attr_cache == nil) {
 		g_text_attr_cache = [[NSMutableDictionary alloc] init];
 	}
@@ -140,36 +202,76 @@ static NSDictionary* darwin_text_attrs(gg__TextCfg cfg) {
 
 void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 	NSDictionary* attr = darwin_text_attrs(cfg);
-	[nsstring(s) drawAtPoint:NSMakePoint(x, y - 15) withAttributes:attr];
+	CFStringRef cf = cfstring(s);
+	if (cf == nil) {
+		return;
+	}
+	NSString* n = (__bridge NSString*)cf;
+	[n drawAtPoint:NSMakePoint(x, y - 15) withAttributes:attr];
+	CFRelease(cf);
 }
 
-int darwin_text_width(string s) {
+// Attributes used by darwin_text_width. Must match what darwin_draw_string
+// uses for default-size text (gg TextCfg.size defaults to 16): measuring with
+// nil attributes used 12pt Helvetica, so every measured width came out ~25%
+// short of what was actually drawn, and any layout built from per-chunk
+// text_width calls (absolutely positioned text runs) overlapped on screen.
+static NSDictionary* darwin_measure_attrs(void) {
+	static NSDictionary* attrs = nil;
+	static NSDictionary* attrs_mono = nil;
+	if (g_gg_force_mono) {
+		if (attrs_mono == nil) {
+			// Keep in sync with darwin_text_attrs: force-mono draws Menlo at size - 1.
+			attrs_mono = [@{ NSFontAttributeName : [NSFont fontWithName:@"Menlo" size:15] } copy];
+		}
+		return attrs_mono;
+	}
+	if (attrs == nil) {
+		attrs = [@{ NSFontAttributeName : [NSFont userFontOfSize:16] } copy];
+	}
+	return attrs;
+}
+
+static int darwin_text_width_with_attrs(string s, NSDictionary* attrs) {
 	// println('text_width "${s}" len=${s.len}')
 	NSString* n = @"";
+	CFStringRef cf = nil;
 	if (s.len == 1) {
 		// println('len=1')
 		n = [NSString stringWithFormat:@"%c", s.str[0]];
 	} else {
-		n = nsstring(s);
+		cf = cfstring(s);
+		if (cf == nil) {
+			return 0;
+		}
+		n = (__bridge NSString*)cf;
 	}
-	/*
-	# if (!defaultFont){
-	# defaultFont = [NSFont userFontOfSize: ui__DEFAULT_FONT_SIZE];
-	# }
-	# NSDictionary *attrs = @{
-	# NSFontAttributeName: defaultFont,
-	# };
-	*/
-	NSSize size = [n sizeWithAttributes:nil];
+	NSSize size = [n sizeWithAttributes:attrs];
+	if (cf != nil) {
+		CFRelease(cf);
+	}
 	// # printf("!!!%f\n", ceil(size.width));
 	return (int)(ceil(size.width));
 }
 
+int darwin_text_width(string s) {
+	return darwin_text_width_with_attrs(s, darwin_measure_attrs());
+}
+
+int darwin_text_width_with_cfg(string s, gg__TextCfg cfg) {
+	return darwin_text_width_with_attrs(s, darwin_text_attrs(cfg));
+}
+
 void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) {
-	NSColor* color = nscolor(c);
-	NSRect rect = NSMakeRect(x, y, width, height);
-	[color setFill];
-	NSRectFill(rect);
+	if (width <= 0 || height <= 0) {
+		return;
+	}
+	CGContextRef context = current_cg_context();
+	if (context == NULL) {
+		return;
+	}
+	CGContextSetFillColorWithColor(context, cgcolor(c));
+	CGContextFillRect(context, CGRectMake(x, y, width, height));
 }
 
 static void mark_view_tree_needs_display(NSView *view) {
@@ -228,25 +330,28 @@ void darwin_draw_image(float x, float y, float w, float h, gg__Image* img) {
 }
 
 void darwin_draw_circle(float x, float y, float d, gg__Color color) {
-	NSColor* c = nscolor(color);
-	NSRect rect = NSMakeRect(x, y, d * 2, d * 2);
-	NSBezierPath* circlePath = [NSBezierPath bezierPath];
-	[circlePath appendBezierPathWithOvalInRect:rect];
-	[c setFill];
-	// [circlePath stroke];
-	[circlePath fill];
-	// NSRectFill(rect);
+	if (d <= 0) {
+		return;
+	}
+	CGContextRef context = current_cg_context();
+	if (context == NULL) {
+		return;
+	}
+	CGContextSetFillColorWithColor(context, cgcolor(color));
+	CGContextFillEllipseInRect(context, CGRectMake(x, y, d * 2, d * 2));
 }
 
 void darwin_draw_circle_empty(float x, float y, float d, gg__Color color) {
-	NSColor* outlineColor = nscolor(color);
-	CGFloat outlineWidth = 1.0; //2.0;
-
-	NSRect rect = NSMakeRect(x, y, d * 2, d * 2);
-	NSBezierPath* circlePath = [NSBezierPath bezierPath];
-	[circlePath appendBezierPathWithOvalInRect:rect];
-
-	[outlineColor setStroke];
-	[circlePath setLineWidth:outlineWidth];
-	[circlePath stroke];
+	if (d <= 0) {
+		return;
+	}
+	CGContextRef context = current_cg_context();
+	if (context == NULL) {
+		return;
+	}
+	CGContextSaveGState(context);
+	CGContextSetStrokeColorWithColor(context, cgcolor(color));
+	CGContextSetLineWidth(context, 1.0);
+	CGContextStrokeEllipseInRect(context, CGRectMake(x, y, d * 2, d * 2));
+	CGContextRestoreGState(context);
 }

@@ -7,7 +7,7 @@ import strings
 
 fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	if !node.is_comptime {
-		node.is_expr = c.expected_type != ast.void_type
+		node.is_expr = node.is_expr || c.expected_type != ast.void_type
 	}
 	node.expected_type = c.expected_type
 	if mut node.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
@@ -293,7 +293,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 
 		if !node.is_comptime || (node.is_comptime && comptime_match_branch_result) {
 			if node.is_expr {
-				c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
+				c.stmts_before_branch_expr(mut branch.stmts)
 			} else {
 				c.stmts(mut branch.stmts)
 			}
@@ -603,33 +603,7 @@ fn (mut c Checker) check_match_branch_last_stmt(mut last_stmt ast.ExprStmt, ret_
 }
 
 fn char_literal_number_value(value string) ?i64 {
-	if value.len == 2 && value[0] == `\\` {
-		return match value[1] {
-			`a` { 7 }
-			`b` { 8 }
-			`t` { 9 }
-			`n` { 10 }
-			`v` { 11 }
-			`f` { 12 }
-			`r` { 13 }
-			`e` { 27 }
-			`$` { 36 }
-			`"` { 34 }
-			`'` { 39 }
-			`?` { 63 }
-			`@` { 64 }
-			`\\` { 92 }
-			`\`` { 96 }
-			`{` { 123 }
-			`}` { 125 }
-			else { none }
-		}
-	}
-	runes := value.runes()
-	if runes.len == 1 {
-		return runes[0]
-	}
-	return none
+	return i64(ast.char_literal_rune_value(value)?)
 }
 
 fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
@@ -828,7 +802,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
 				_ := c.expr(mut expr)
 			}
-			if expr is ast.TypeNode && cond_sym.kind == .struct {
+			if expr is ast.TypeNode && cond_sym.kind == .struct && !node.is_comptime {
 				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
 					branch.pos)
 			}

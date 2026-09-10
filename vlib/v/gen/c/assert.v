@@ -75,10 +75,10 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.decrement_inside_ternary()
 		g.writeln(' {')
 		g.gen_assert_metainfo(node, .pass, metaname)
-		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_pass(test_runner._object, &${metaname});')
+		g.writeln('\t((struct _main__TestRunner_interface_methods*)test_runner._typ)->_method_assert_pass(test_runner._object, &${metaname});')
 		g.writeln('} else {')
 		g.gen_assert_metainfo(node, .fail, metaname)
-		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_fail(test_runner._object, &${metaname});')
+		g.writeln('\t((struct _main__TestRunner_interface_methods*)test_runner._typ)->_method_assert_fail(test_runner._object, &${metaname});')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('}')
 	} else {

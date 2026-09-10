@@ -1,0 +1,12 @@
+vlib/v/checker/tests/undeclared_type_array_index_err.vv:10:4: error: undefined ident: `Yo`
+    8 | fn (mut a Array) update() {
+    9 |     a[0] = 0
+   10 |     a[Yo] = 0
+      |       ~~
+   11 | }
+vlib/v/checker/tests/undeclared_type_array_index_err.vv:10:4: error: non-integer index `void` (array type `[8]u8`)
+    8 | fn (mut a Array) update() {
+    9 |     a[0] = 0
+   10 |     a[Yo] = 0
+      |       ~~
+   11 | }

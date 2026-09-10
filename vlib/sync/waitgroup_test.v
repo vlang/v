@@ -2,7 +2,6 @@
 // vtest flaky: true
 module sync
 
-import time
 import sync.stdatomic
 
 fn issue_6870_worker(mut wg WaitGroup, ready chan bool, release chan bool) {
@@ -28,7 +27,7 @@ fn test_waitgroup_reuse() {
 		unsafe {
 			*(&bool(executed)) = true
 		}
-		time.sleep(100 * time.millisecond)
+		sync_sleep_nanoseconds(100_000_000)
 	}(mut wg, voidptr(&executed))
 
 	wg.wait()
@@ -40,7 +39,7 @@ fn test_waitgroup_no_use() {
 	watchdog := spawn fn (done chan bool) {
 		select {
 			_ := <-done {}
-			10 * time.second {
+			i64(10_000_000_000) {
 				panic('test_waitgroup_no_use did not complete in time')
 			}
 		}
@@ -86,7 +85,7 @@ fn test_waitgroup_add_while_waiting() {
 		for _ in 0 .. 8 {
 			select {
 				_ := <-wait_done {}
-				2 * time.second {
+				i64(2_000_000_000) {
 					assert false, 'wait() missed a wakeup while work added more tasks'
 				}
 			}

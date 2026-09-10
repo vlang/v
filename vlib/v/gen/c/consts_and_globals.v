@@ -12,6 +12,7 @@ import v.depgraph
 struct GlobalConstDef {
 	mod            string   // module name
 	def            string   // definition
+	extern_def     string   // declaration shared by parallel C translation units
 	init           string   // init later (in _vinit)
 	dep_names      []string // the names of all the consts, that this const depends on
 	order          int      // -1 for simple defines, string literals, anonymous function names, extern declarations etc
@@ -217,7 +218,17 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 				if rune_code in [`"`, `\\`, `'`] {
 					return false
 				}
-				escval := util.smart_quote(u8(rune_code).ascii_str(), false)
+				escval := if rune_code < 32 || rune_code == 127 {
+					// Control characters cannot appear verbatim inside a C char
+					// literal: a raw `\r` would even split the `#define` line and
+					// break compilation. Emit a portable octal escape instead,
+					// mirroring char_literal().
+					mut sb := strings.new_builder(4)
+					write_octal_escape(mut sb, u8(rune_code))
+					sb.str()
+				} else {
+					util.smart_quote(u8(rune_code).ascii_str(), false, []int{})
+				}
 
 				g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
 					mod:   mod
@@ -229,7 +240,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, cname string, fie
 			}
 		}
 		string {
-			escaped_val := util.smart_quote(ct_value, false)
+			escaped_val := util.smart_quote(ct_value, false, []int{})
 			// g.const_decl_write_precomputed(line_nr, styp, cname, '_S("${escaped_val}")')
 			// TODO: ^ the above for strings, cause:
 			// `error C2099: initializer is not a constant` errors in MSVC,
@@ -526,7 +537,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		attributes += 'VV_EXP '
 	}
 	if attr := node.attrs.find_first('_linker_section') {
-		attributes += '__attribute__ ((section ("${attr.arg}"))) '
+		escaped_section := util.smart_quote(attr.arg, false, attr.arg_opaque_pos)
+		attributes += '__attribute__ ((section ("${escaped_section}"))) '
 	}
 	for field in node.fields {
 		name := c_name(field.name)
@@ -591,13 +603,35 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			}
 			continue
 		}
-		if field.is_extern {
-			tls_kw := if field.name == 'g_memory_block' && g.pref.prealloc {
-				'_Thread_local '
-			} else {
-				''
+		if field.name == 'g_memory_block' && g.pref.prealloc {
+			// The prealloc arena root is thread-local, so each thread bump-allocates
+			// from its own chunk. TinyCC on macOS has no working thread-local storage
+			// (a store to a `_Thread_local` variable segfaults), so there we emulate
+			// per-thread storage with a pthread key. The generated C is compiled by
+			// either tcc or the fallback system compiler, so both variants must exist.
+			linkage := '${extern}${field_visibility_kw}'
+			g.write_prealloc_tls_global(mut def_builder, linkage, styp, final_c_name)
+			g.global_const_defs[name] = GlobalConstDef{
+				mod:        node.mod
+				def:        def_builder.str()
+				extern_def: g.prealloc_tls_global_extern(styp, final_c_name)
 			}
-			def_builder.writeln('${extern}${tls_kw}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}; // global 2')
+			continue
+		}
+		if field.name == 'g_autostr_addr_state' && node.mod == 'builtin' {
+			// Recursive automatic stringification state is local to each thread. A
+			// process-global stack lets concurrent interpolations corrupt each other.
+			linkage := '${extern}${field_visibility_kw}'
+			g.write_autostr_tls_global(mut def_builder, linkage, styp, final_c_name)
+			g.global_const_defs[name] = GlobalConstDef{
+				mod:        node.mod
+				def:        def_builder.str()
+				extern_def: g.autostr_tls_global_extern(styp, final_c_name)
+			}
+			continue
+		}
+		if field.is_extern {
+			def_builder.writeln('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}; // global 2')
 			g.global_const_defs[name] = GlobalConstDef{
 				mod:   node.mod
 				def:   def_builder.str()
@@ -607,12 +641,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		mut needs_ending_semicolon := false
 		if field.language != .c || field.has_expr {
-			tls_kw := if field.name == 'g_memory_block' && g.pref.prealloc {
-				'_Thread_local '
-			} else {
-				''
-			}
-			def_builder.write_string('${extern}${tls_kw}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
+			def_builder.write_string('${extern}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
 			needs_ending_semicolon = true
 		}
 		if field.has_expr || cinit {
@@ -628,9 +657,11 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			}
 			if g.pref.translated {
 				def_builder.write_string(' = ${g.expr_string(field.expr)}')
-			} else if (field.expr.is_literal() && should_init) || cinit
+			} else if !should_init && !cinit {
+				// Cached modules provide the definition and initialization.
+			} else if field.expr.is_literal() || cinit
 				|| (field.expr is ast.ArrayInit && field.expr.is_fixed)
-				|| (is_simple_unsafe_expr && should_init) {
+				|| is_simple_unsafe_expr {
 				// Simple literals can be initialized right away in global scope in C.
 				// e.g. `int myglobal = 10;`
 				def_builder.write_string(' = ${g.expr_string(field.expr)}')
@@ -673,6 +704,89 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			dep_names: g.table.dependent_names_in_expr(field.expr)
 		}
 	}
+}
+
+// write_prealloc_tls_global emits the definition of the thread-local prealloc arena
+// root (`g_memory_block`). C compilers use `_Thread_local`, while C++ compilers use
+// `thread_local`, so each thread bump-allocates from its own arena. TinyCC on macOS has no working
+// thread-local storage (a store to a `_Thread_local` variable segfaults), so there the
+// same identifier is redirected to per-thread storage held in a pthread key. Both variants
+// are emitted because the same generated C can be compiled by TCC or the system compiler.
+fn (mut g Gen) write_prealloc_tls_global(mut def_builder strings.Builder, linkage string, styp string,
+	cname string) {
+	slot_linkage := if g.pref.parallel_cc { '' } else { 'static inline ' }
+	def_builder.writeln('#if defined(__TINYC__) && defined(__APPLE__)')
+	def_builder.writeln('#include <pthread.h>')
+	def_builder.writeln('static pthread_key_t v_prealloc_tls_key;')
+	def_builder.writeln('static pthread_once_t v_prealloc_tls_once = PTHREAD_ONCE_INIT;')
+	def_builder.writeln('static void v_prealloc_tls_slot_free(void *slot) { free(slot); }')
+	def_builder.writeln('static void v_prealloc_tls_key_init(void) { pthread_key_create(&v_prealloc_tls_key, v_prealloc_tls_slot_free); }')
+	def_builder.writeln('${slot_linkage}void **v_prealloc_tls_slot(void) {')
+	def_builder.writeln('\tpthread_once(&v_prealloc_tls_once, v_prealloc_tls_key_init);')
+	def_builder.writeln('\tvoid **slot = (void **)pthread_getspecific(v_prealloc_tls_key);')
+	def_builder.writeln('\tif (slot == ((void *)0)) {')
+	def_builder.writeln('\t\tslot = (void **)calloc(1, sizeof(void *));')
+	def_builder.writeln('\t\tpthread_setspecific(v_prealloc_tls_key, slot);')
+	def_builder.writeln('\t}')
+	def_builder.writeln('\treturn slot;')
+	def_builder.writeln('}')
+	def_builder.writeln('#define ${cname} (*(${styp} *)v_prealloc_tls_slot())')
+	def_builder.writeln('#elif defined(__cplusplus)')
+	def_builder.writeln('${linkage}thread_local ${styp} ${cname}; // global 6')
+	def_builder.writeln('#else')
+	def_builder.writeln('${linkage}_Thread_local ${styp} ${cname}; // global 6')
+	def_builder.writeln('#endif')
+}
+
+fn (g &Gen) prealloc_tls_global_extern(styp string, cname string) string {
+	return '#if defined(__TINYC__) && defined(__APPLE__)\nvoid **v_prealloc_tls_slot(void);\n#define ${cname} (*(${styp} *)v_prealloc_tls_slot())\n#elif defined(__cplusplus)\nextern thread_local ${styp} ${cname};\n#else\nextern _Thread_local ${styp} ${cname};\n#endif'
+}
+
+// write_autostr_tls_global emits the per-thread recursion stack used by automatic str methods.
+// TinyCC uses native OS thread-local slots, while other C compilers use language TLS.
+fn (mut g Gen) write_autostr_tls_global(mut def_builder strings.Builder, linkage string, styp string,
+	cname string) {
+	slot_fn := 'v_${cname}_tls_slot'
+	slot_linkage := if g.pref.parallel_cc { '' } else { 'static ' }
+	def_builder.writeln('#if defined(__TINYC__) && defined(_WIN32)')
+	// TinyCC's bundled import library does not expose the Fls* symbols. Resolve
+	// them at runtime so Windows can still release each slot at thread exit.
+	def_builder.writeln('typedef DWORD (WINAPI *${cname}_fls_alloc_fn)(void (WINAPI *)(void*));')
+	def_builder.writeln('typedef void* (WINAPI *${cname}_fls_get_fn)(DWORD);')
+	def_builder.writeln('typedef BOOL (WINAPI *${cname}_fls_set_fn)(DWORD, void*);')
+	def_builder.writeln('static DWORD ${cname}_tls_key = 0xFFFFFFFF;')
+	def_builder.writeln('static ${cname}_fls_get_fn ${cname}_fls_get;')
+	def_builder.writeln('static ${cname}_fls_set_fn ${cname}_fls_set;')
+	def_builder.writeln('static void WINAPI ${cname}_tls_free(void* p) { free(p); }')
+	def_builder.writeln('static void ${cname}_tls_init(void) __attribute__((constructor));')
+	def_builder.writeln('static void ${cname}_tls_init(void) {')
+	def_builder.writeln('\tvoid* kernel32 = GetModuleHandleA("kernel32.dll");')
+	def_builder.writeln('\t${cname}_fls_alloc_fn fls_alloc = (${cname}_fls_alloc_fn)GetProcAddress(kernel32, "FlsAlloc");')
+	def_builder.writeln('\t${cname}_fls_get = (${cname}_fls_get_fn)GetProcAddress(kernel32, "FlsGetValue");')
+	def_builder.writeln('\t${cname}_fls_set = (${cname}_fls_set_fn)GetProcAddress(kernel32, "FlsSetValue");')
+	def_builder.writeln('\t${cname}_tls_key = fls_alloc && ${cname}_fls_get && ${cname}_fls_set ? fls_alloc(${cname}_tls_free) : TlsAlloc();')
+	def_builder.writeln('}')
+	def_builder.writeln('${slot_linkage}${styp}* ${slot_fn}(void) { void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_tls_key) : TlsGetValue(${cname}_tls_key); if (!p) { p = calloc(1, sizeof(${styp})); if (${cname}_fls_set) ${cname}_fls_set(${cname}_tls_key, p); else TlsSetValue(${cname}_tls_key, p); } return (${styp}*)p; }')
+	def_builder.writeln('#define ${cname} (*${slot_fn}())')
+	def_builder.writeln('#elif defined(__TINYC__)')
+	def_builder.writeln('#include <pthread.h>')
+	def_builder.writeln('static pthread_key_t ${cname}_tls_key;')
+	def_builder.writeln('static pthread_once_t ${cname}_tls_once = PTHREAD_ONCE_INIT;')
+	def_builder.writeln('static void ${cname}_tls_init(void) { pthread_key_create(&${cname}_tls_key, free); }')
+	def_builder.writeln('${slot_linkage}${styp}* ${slot_fn}(void) { pthread_once(&${cname}_tls_once, ${cname}_tls_init); void* p = pthread_getspecific(${cname}_tls_key); if (!p) { p = calloc(1, sizeof(${styp})); pthread_setspecific(${cname}_tls_key, p); } return (${styp}*)p; }')
+	def_builder.writeln('#define ${cname} (*${slot_fn}())')
+	def_builder.writeln('#elif defined(_MSC_VER)')
+	def_builder.writeln('${linkage}__declspec(thread) ${styp} ${cname}; // global 6')
+	def_builder.writeln('#elif defined(__cplusplus)')
+	def_builder.writeln('${linkage}thread_local ${styp} ${cname}; // global 6')
+	def_builder.writeln('#else')
+	def_builder.writeln('${linkage}_Thread_local ${styp} ${cname}; // global 6')
+	def_builder.writeln('#endif')
+}
+
+fn (g &Gen) autostr_tls_global_extern(styp string, cname string) string {
+	slot_fn := 'v_${cname}_tls_slot'
+	return '#if defined(__TINYC__)\n${styp}* ${slot_fn}(void);\n#define ${cname} (*${slot_fn}())\n#elif defined(_MSC_VER)\nextern __declspec(thread) ${styp} ${cname};\n#elif defined(__cplusplus)\nextern thread_local ${styp} ${cname};\n#else\nextern _Thread_local ${styp} ${cname};\n#endif'
 }
 
 fn (mut g Gen) sort_globals_consts() {

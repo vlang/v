@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
+import compress.brotli
 import compress.gzip
 import compress.zlib
 import net.http.chunked
@@ -12,8 +13,14 @@ import strings
 // Response represents the result of the request
 pub struct Response {
 pub mut:
-	body         string
-	header       Header
+	body   string
+	header Header
+	// trailers are emitted as a trailing HEADERS block by the HTTP/2 server
+	// path (net.http.h2_server.v) after the body, e.g. for `grpc-status`.
+	// Ignored by the HTTP/1.1 write path — H1 has no wire mechanism for this
+	// enabled here (chunked-encoding trailers are a separate, unimplemented
+	// feature), so fields set here simply do not appear on an H1 response.
+	trailers     Header
 	status_code  int
 	status_msg   string
 	http_version string
@@ -28,6 +35,15 @@ pub fn (resp Response) bytes() []u8 {
 	mut sb := strings.new_builder(resp.response_buffer_cap())
 	resp.write_into_builder(mut sb)
 	return unsafe { sb.reuse_as_plain_u8_array() }
+}
+
+// write_to appends the raw HTTP response bytes (status line, headers and body)
+// to `sb`, letting a caller serialize directly into an existing buffer instead of
+// allocating a fresh one via bytes()/bytestr(). Since strings.Builder is a []u8,
+// a server can reuse its per-connection write buffer as the target and avoid a
+// per-response allocation and copy.
+pub fn (resp Response) write_to(mut sb strings.Builder) {
+	resp.write_into_builder(mut sb)
 }
 
 // Formats resp to a string suitable for HTTP response transmission
@@ -113,6 +129,9 @@ fn decode_response_body(body string, content_encoding string) string {
 			'gzip', 'x-gzip' {
 				gzip.decompress(decoded) or { return body }
 			}
+			'br' {
+				brotli.decompress(decoded) or { return body }
+			}
 			'deflate' {
 				zlib.decompress(decoded) or { return body }
 			}
@@ -134,8 +153,8 @@ fn parse_status_line(line string) !(string, int, string) {
 		return error('response does not start with HTTP/, line: `${line}`')
 	}
 	data := line.split_nth(' ', 3)
-	if data.len != 3 {
-		return error('expected at least 3 tokens, but found: ${data.len}')
+	if data.len < 2 {
+		return error('expected at least 2 tokens, but found: ${data.len}')
 	}
 	version := data[0].substr(5, data[0].len)
 	// validate version is 1*DIGIT "." 1*DIGIT
@@ -148,7 +167,10 @@ fn parse_status_line(line string) !(string, int, string) {
 			return error('HTTP version must contain only integers, found: `${digit}`')
 		}
 	}
-	return version, strconv.atoi(data[1])!, data[2]
+	// RFC 9112 §4: the reason-phrase is optional, and servers that omit it
+	// sometimes omit the SP before it too.
+	reason := if data.len == 3 { data[2] } else { '' }
+	return version, strconv.atoi(data[1])!, reason
 }
 
 // cookies parses the Set-Cookie headers into Cookie objects
@@ -177,6 +199,7 @@ pub fn (r Response) version() Version {
 		'1.0' { .v1_0 }
 		'1.1' { .v1_1 }
 		'2.0' { .v2_0 }
+		'3.0' { .v3_0 }
 		else { .unknown }
 	}
 }

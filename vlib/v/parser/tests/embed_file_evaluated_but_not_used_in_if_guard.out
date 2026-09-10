@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_if_guard.vv:6:2: error: expression evaluated but not used
+    4 | 
+    5 | fn main() {
+    6 |     '' == (if x := maybe($embed_file(@FILE).path) {
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 |         x
+    8 |     } else {

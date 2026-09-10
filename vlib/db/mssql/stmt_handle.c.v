@@ -65,6 +65,28 @@ fn (h HStmt) retrieve_column_count() !int {
 	return int(col_count_buff)
 }
 
+fn (h HStmt) read_column_names() ![]string {
+	if h.column_count <= 0 {
+		return []string{}
+	}
+	mut names := []string{cap: h.column_count}
+	for i := 0; i < h.column_count; i++ {
+		mut name_buf := [256]char{}
+		mut name_len := C.SQLSMALLINT(0)
+		mut data_type := C.SQLSMALLINT(0)
+		mut column_size := C.SQLULEN(0)
+		mut decimal_digits := C.SQLSMALLINT(0)
+		mut nullable := C.SQLSMALLINT(0)
+		retcode := C.SQLDescribeCol(h.hstmt, C.SQLUSMALLINT(i + 1), &C.SQLCHAR(&name_buf[0]),
+			C.SQLSMALLINT(name_buf.len), &name_len, &data_type, &column_size, &decimal_digits,
+			&nullable)
+		check_error(retcode, 'SQLDescribeCol()', C.SQLHANDLE(h.hstmt),
+			C.SQLSMALLINT(C.SQL_HANDLE_STMT))!
+		names << unsafe { (&name_buf[0]).vstring() }
+	}
+	return names
+}
+
 // allocate buffers and bind them to drivers
 fn (mut h HStmt) prepare_read() ! {
 	mut retcode := C.SQLRETURN(C.SQL_SUCCESS)

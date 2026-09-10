@@ -1,6 +1,6 @@
 module main
 
-import json
+import json2 as json
 import net.http
 
 pub fn get_products(token string) ![]Product {
@@ -13,7 +13,7 @@ pub fn get_products(token string) ![]Product {
 	}
 
 	resp := http.fetch(http.FetchConfig{ ...config, url: url })!
-	products := json.decode([]Product, resp.body)!
+	products := json.decode[[]Product](resp.body)!
 
 	return products
 }
@@ -29,7 +29,7 @@ pub fn get_user(token string) !User {
 	}
 
 	resp := http.fetch(http.FetchConfig{ ...config, url: url })!
-	user := json.decode(User, resp.body)!
+	user := json.decode[User](resp.body)!
 
 	return user
 }

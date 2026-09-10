@@ -1,0 +1,6 @@
+Name: uppercase-private-provider-74
+Description: Uppercase private cflags oracle provider
+Version: 1.0.0
+Libs: -luppercase_private_provider
+Cflags: -DISSUE74_UPPERCASE_PROVIDER
+CFLAGS.private: -DFRIBIDI_LIB_STATIC

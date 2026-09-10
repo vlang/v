@@ -1,5 +1,6 @@
+// vtest vflags: -w
 import json
-import x.json2
+import json2
 
 struct Foo {
 	name string

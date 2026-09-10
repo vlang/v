@@ -1,0 +1,76 @@
+struct Flag {
+	ok   bool
+	kind int
+}
+
+fn check(flag Flag) bool {
+	return flag.ok
+}
+
+fn kind_with_default(flag map[string]int, default int) int {
+	return flag['kind'] + default - default
+}
+
+fn yes() bool {
+	return true
+}
+
+fn main() {
+	fallback := $embed_file(@FILE)
+	embedded_if := if yes() {
+		if Flag{
+			ok: true
+		}.ok {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	embedded_match := if yes() {
+		match kind_with_default({
+			'kind': 0
+		}, 1) {
+			0 { $embed_file(@FILE) }
+			else { fallback }
+		}
+	} else {
+		fallback
+	}
+	embedded_map_if := if yes() {
+		if {
+			'ok': true
+		}['ok'] {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	embedded_map_match := if yes() {
+		match {
+			'kind': 0
+		}['kind'] {
+			0 { $embed_file(@FILE) }
+			else { fallback }
+		}
+	} else {
+		fallback
+	}
+	embedded_arg_if := if yes() {
+		if check(Flag{ ok: true }) {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	assert embedded_if.len > 0
+	assert embedded_match.len > 0
+	assert embedded_map_if.len > 0
+	assert embedded_map_match.len > 0
+	assert embedded_arg_if.len > 0
+}

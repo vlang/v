@@ -678,7 +678,7 @@ fn file_has_c_includes(file &ast.File) bool {
 		return false
 	}
 	for stmt in file.stmts {
-		if stmt is ast.HashStmt && stmt.kind in ['include', 'preinclude'] {
+		if stmt is ast.HashStmt && stmt.kind in ['include', 'preinclude', 'insert'] {
 			return true
 		}
 	}
@@ -955,7 +955,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 			// g.write('static ')
 			// g.definitions.write_string('static ')
 		}
-		if !node.is_anon {
+		if !node.is_anon && !g.comptime.inside_comptime_if {
 			g.out_fn_start_pos << g.out.len
 		}
 	}
@@ -1116,6 +1116,7 @@ fn (mut g Gen) post_process_generic_fns_for_files(files []&ast.File) {
 						}
 						emitted_generic_specializations[specialization_key] = true
 						g.cur_concrete_types = concrete_specialization.clone()
+						g.clear_type_resolution_caches()
 						g.fn_decl(*generic_fn)
 						emitted_this_round = true
 					}
@@ -1145,6 +1146,14 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	c_sym_name := node.name.all_after_first('C__').all_after_first('C.')
 	if node.language == .c && c_sym_name in ['va_start', 'va_arg', 'va_end', 'va_copy'] {
 		return
+	}
+	mut previous_user_goto_label_ids := g.user_goto_label_ids.move()
+	previous_user_goto_label_count := g.user_goto_label_count
+	g.user_goto_label_ids = map[string]int{}
+	g.user_goto_label_count = 0
+	defer {
+		g.user_goto_label_ids = previous_user_goto_label_ids.move()
+		g.user_goto_label_count = previous_user_goto_label_count
 	}
 	old_is_vlines_enabled := g.is_vlines_enabled
 	g.is_vlines_enabled = true
@@ -1318,16 +1327,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				}
 			}
 			mut method_name := c_name(call_fn.name)
-			if call_fn.name.contains('_') {
-				parts := call_fn.name.split('_')
-				if parts.len >= 2 {
-					receiver_type_name := parts[0]
-					if resolved_sym := g.table.find_sym(receiver_type_name) {
-						if resolved_sym.is_builtin() {
-							method_name = 'builtin__${method_name}'
-						}
-					}
-				}
+			trace_receiver_name := call_fn.name.all_before('_')
+			if call_fn.func.is_method
+				&& g.receiver_type_is_builtin(call_fn.func.receiver_type, trace_receiver_name) {
+				method_name = 'builtin__${method_name}'
 			}
 			if call_fn.return_type == 0 || call_fn.return_type == ast.void_type {
 				if add_trace_hook {
@@ -1445,7 +1448,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.definitions.write_string('void')
 	}
 	if attr := node.attrs.find_first('_linker_section') {
-		g.definitions.writeln(') __attribute__ ((section ("${attr.arg}")));')
+		escaped_section := util.smart_quote(attr.arg, false, attr.arg_opaque_pos)
+		g.definitions.writeln(') __attribute__ ((section ("${escaped_section}")));')
 	} else {
 		g.definitions.writeln(');')
 	}
@@ -1721,6 +1725,21 @@ fn (mut g Gen) c_call_name(node ast.CallExpr, cname string) string {
 		g.extern_out.writeln('extern ${alias_sig};')
 	}
 	return alias_name
+}
+
+fn (mut g Gen) c_call_return_type_cast(node ast.CallExpr) ast.Type {
+	if !g.table.c_fn_has_local_return_types(node.name) {
+		return ast.no_type
+	}
+	if f := g.table.find_c_fn_in_module(node.name, node.mod) {
+		typ := f.return_type
+		sym := g.table.final_sym(typ)
+		if typ.is_any_kind_of_pointer()
+			|| sym.kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char, .rune, .bool, .enum, .function] {
+			return typ
+		}
+	}
+	return ast.no_type
 }
 
 fn (mut g Gen) closure_ctx(node ast.FnDecl) string {
@@ -2306,7 +2325,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 			g.write2(line, '*(${g.base_type(ret_typ)}*)${tmp_res}.data')
 			return
 		}
-	} else if !g.inside_curry_call && node.left is ast.SelectorExpr && node.name == '' {
+	} else if !g.inside_curry_call && node.name == ''
+		&& (node.left is ast.CastExpr || node.left is ast.SelectorExpr) {
 		if node.or_block.kind == .absent {
 			g.expr(ast.Expr(node.left))
 		} else {
@@ -3030,6 +3050,10 @@ fn (mut g Gen) gen_to_str_method_call(node ast.CallExpr, unwrapped_rec_type ast.
 				g.unwrap_generic(g.recheck_concrete_type(resolved_rec_type)))
 			return true
 		}
+	}
+	if node.from_embed_types.len > 0 {
+		g.gen_expr_to_string(left_node, rec_type)
+		return true
 	}
 	rec_sym := g.table.sym(rec_type)
 	if g.alias_uses_parent_str(rec_sym) {
@@ -3889,7 +3913,11 @@ fn (mut g Gen) update_generic_call_concrete_types_from_fn_types(generic_names []
 	}
 	if param_fn.func.return_type.has_flag(.generic) {
 		gt_name := g.table.sym(param_fn.func.return_type).name
-		mut return_type := arg_fn.func.return_type
+		mut return_type := if param_fn.func.return_type.has_option_or_result() {
+			arg_fn.func.return_type.clear_option_and_result()
+		} else {
+			arg_fn.func.return_type
+		}
 		if arg.expr is ast.LambdaExpr && return_type.has_flag(.generic) {
 			return_type = g.type_resolver.unwrap_generic_expr(arg.expr.expr, return_type)
 			if return_type.has_flag(.generic) {
@@ -4221,11 +4249,14 @@ fn (mut g Gen) refresh_current_generic_local_scope_vars(scope &ast.Scope) {
 						var.is_unwrapped = parent_var.is_unwrapped
 					}
 				} else if var.expr !is ast.EmptyExpr {
-					should_resolve_expr_type := var.typ == 0
-						|| var.typ == ast.void_type || var.typ.has_flag(.generic)
-						|| g.type_has_unresolved_generic_parts(var.typ)
-						|| (var.expr is ast.StructInit && var.expr.typ_str.len > 0
-						&& g.current_fn_generic_names().index(var.expr.typ_str.all_after_last('.')) >= 0)
+					mut is_generic_struct_init := false
+					if var.expr is ast.StructInit && var.expr.typ_str.len > 0 {
+						struct_name := var.expr.typ_str.all_after_last('.')
+						is_generic_struct_init = g.current_fn_generic_names().index(struct_name) >= 0
+					}
+					should_resolve_expr_type := var.typ == 0 || var.typ == ast.void_type
+						|| var.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(var.typ) || is_generic_struct_init
 					if should_resolve_expr_type && !(var.expr is ast.Ident && var.expr.name == name) {
 						mut resolved_type := g.resolved_expr_type(var.expr, var.typ)
 						if resolved_type != 0 {
@@ -4398,6 +4429,14 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 			resolved_left_type := g.resolve_current_fn_generic_param_type(node.left.name)
 			if resolved_left_type != 0 {
 				left_type = resolved_left_type
+			} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				// node.left_type may be stale from a previous generic instantiation
+				// (the checker overwrites it on each pass); re-resolve it from the scope
+				scope_type := g.resolved_scope_var_type(node.left)
+				if scope_type != 0 && !scope_type.has_flag(.generic)
+					&& !g.type_has_unresolved_generic_parts(scope_type) {
+					left_type = scope_type
+				}
 			}
 		}
 	} else if node.left is ast.StructInit {
@@ -4465,7 +4504,8 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 					unwrapped_rec_type =
 						g.unwrap_generic(g.type_resolver.get_type(ast.Expr(node.left)))
 				} else {
-					unwrapped_rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
+					unwrapped_rec_type = g.unwrap_generic(g.exposed_smartcast_type(node.left.obj.orig_type,
+						node.left.obj.smartcasts.last(), node.left.obj.is_mut))
 					cast_sym := g.table.sym(unwrapped_rec_type)
 					if cast_sym.info is ast.Aggregate {
 						unwrapped_rec_type = cast_sym.info.types[g.aggregate_type_idx]
@@ -4631,6 +4671,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		else {}
 	}
+	if node.left is ast.Ident && node.left.obj is ast.Var && node.left.obj.smartcasts.len > 0
+		&& node.left.obj.orig_type != 0
+		&& g.table.final_sym(g.unwrap_generic(node.left.obj.orig_type)).kind == .interface {
+		left_type = g.unwrap_generic(g.exposed_smartcast_type(node.left.obj.orig_type,
+			node.left.obj.smartcasts.last(), node.left.obj.is_mut))
+	}
 
 	if left_type == g.unwrap_generic(node.left_type) {
 		resolved_left_type := g.type_resolver.get_type_or_default(node.left, node.left_type)
@@ -4727,7 +4773,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		dot := g.dot_or_ptr(left_type)
 		mname := c_fn_name(method_name)
-		g.write('${dot}_methods))->_method_${mname}(')
+		g.write('${dot}_typ))->_method_${mname}(')
 		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write2('(', '*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
@@ -4759,6 +4805,27 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)
+	left_storage_type := g.table.fully_unaliased_type(left_type)
+	left_type_is_ptr := left_type.is_ptr() || left_storage_type.is_ptr()
+	// In generic functions node.from_embed_types may be stale: the checker overwrites
+	// it on each instantiation pass, so the state of the last checked concrete type
+	// wins (including a possibly empty state). Re-resolve it for the current
+	// concrete receiver type.
+	mut effective_embed_types := node.from_embed_types.clone()
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && left_sym.kind != .interface
+		&& final_left_sym.info is ast.Struct {
+		if left_sym.has_method(method_name) || final_left_sym.has_method(method_name)
+			|| final_left_sym.has_method_with_generic_parent(method_name) {
+			effective_embed_types = []
+		} else {
+			_, embed_types := g.table.find_method_from_embeds(final_left_sym, method_name) or {
+				ast.Fn{}, []ast.Type{}
+			}
+			if embed_types.len > 0 {
+				effective_embed_types = embed_types.clone()
+			}
+		}
+	}
 	mut use_builtin_array_sort := false
 	if final_left_sym.kind == .array && node.kind in [.sort, .sorted] && node.args.len > 0 {
 		if method := left_sym.find_method(method_name) {
@@ -4800,15 +4867,20 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 						')', node)
 					return
 				} else if left_sym.kind == .interface {
-					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_interface_${typ_sym.cname}',
-						')', node)
+					g.conversion_function_call('builtin__charptr_vstring_literal(v_typeof_interface_${typ_sym.cname}(_V_INTERFACE_TYPE_INDEX',
+						'))', node)
 					return
 				}
 			}
 			.type_idx {
 				if left_sym.kind in [.sum_type, .interface] {
-					g.conversion_function_call('v_typeof_${prefix_name}_idx_${typ_sym.cname}', '',
-						node)
+					if left_sym.kind == .interface {
+						g.conversion_function_call('v_typeof_interface_idx_${typ_sym.cname}(_V_INTERFACE_TYPE_INDEX',
+							')', node)
+					} else {
+						g.conversion_function_call('v_typeof_${prefix_name}_idx_${typ_sym.cname}',
+							'', node)
+					}
 					return
 				}
 			}
@@ -4837,10 +4909,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else {
 		name = util.no_dots('${receiver_type_name}_${method_name}')
 	}
-	if resolved_sym := g.table.find_sym(receiver_type_name) {
-		if resolved_sym.is_builtin() && !receiver_type_name.starts_with('_') {
-			name = 'builtin__${name}'
-		}
+	if g.receiver_type_is_builtin(unwrapped_rec_type, receiver_type_name)
+		&& !receiver_type_name.starts_with('_') {
+		name = 'builtin__${name}'
 	} else if receiver_type_name in ['int_literal', 'float_literal', 'vint_t'] {
 		name = 'builtin__${name}'
 	}
@@ -4848,7 +4919,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		name = 'sync__Channel_${method_name}'
 	}
 	mut is_range_slice := false
-	if receiver_type.is_ptr() && !left_type.is_ptr() {
+	if receiver_type.is_ptr() && !left_type_is_ptr {
 		if node.left is ast.IndexExpr {
 			idx := node.left.index
 			if idx is ast.RangeExpr {
@@ -5421,7 +5492,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	mut free_receiver_heap_copy := ''
-	if is_free_method && has_method && node.left is ast.Ident && !left_type.is_ptr()
+	if is_free_method && has_method && node.left is ast.Ident && !left_type_is_ptr
 		&& free_method_calls_free_on_receiver(full_method) {
 		left_ident := node.left as ast.Ident
 		if !g.resolved_ident_is_auto_heap(left_ident) {
@@ -5434,17 +5505,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write(stmt_line)
 		}
 	}
+	receiver_storage_type := g.table.fully_unaliased_type(receiver_type)
 	receiver_needs_ref := receiver_type.is_ptr() || receiver_is_mut
 	// g.generate_tmp_autofree_arg_vars(node, name)
-	if !receiver_needs_ref && left_type.is_ptr() && node.kind == .str {
+	if !receiver_needs_ref && left_type_is_ptr && node.kind == .str {
 		if left_type.is_int_valptr() {
 			g.write('builtin__ptr_str(')
 		} else {
 			g.gen_expr_to_string(node.left, left_type)
 			return
 		}
-	} else if receiver_needs_ref && left_type.is_ptr() && node.kind == .str
-		&& !left_sym.has_method('str') {
+	} else if receiver_needs_ref && left_type_is_ptr && node.kind == .str && !has_method {
 		g.gen_expr_to_string(node.left, left_type)
 		return
 	} else {
@@ -5469,8 +5540,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		else {}
 	}
 
-	if free_receiver_heap_copy == '' && receiver_needs_ref && (!left_type.is_ptr()
-		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.kind != .str)) {
+	if free_receiver_heap_copy == '' && receiver_needs_ref && (!left_type_is_ptr
+		|| effective_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.kind != .str)) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO: same logic in call_args()
@@ -5497,14 +5568,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				cast_n++
 			}
 		}
-	} else if free_receiver_heap_copy == '' && !receiver_needs_ref && left_type.is_ptr()
-		&& node.kind != .str && node.from_embed_types.len == 0 {
+	} else if free_receiver_heap_copy == '' && !receiver_needs_ref && left_type_is_ptr
+		&& node.kind != .str && effective_embed_types.len == 0 {
 		if !left_type.has_flag(.shared_f) {
-			g.write('*'.repeat(left_type.nr_muls()))
+			diff := left_storage_type.nr_muls() - receiver_storage_type.nr_muls()
+			if diff > 0 {
+				g.write('*'.repeat(diff))
+			}
 		}
-	} else if free_receiver_heap_copy == '' && !is_range_slice && node.from_embed_types.len == 0
+	} else if free_receiver_heap_copy == '' && !is_range_slice && effective_embed_types.len == 0
 		&& node.kind != .str {
-		diff := left_type.nr_muls() - receiver_type.nr_muls()
+		diff := left_storage_type.nr_muls() - receiver_storage_type.nr_muls()
 		if diff > 0 {
 			g.write('*'.repeat(diff))
 		}
@@ -5523,7 +5597,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('(map[]){')
 			g.expr(ast.Expr(node.left))
 			g.write('}[0]')
-		} else if !is_interface && node.from_embed_types.len > 0 {
+		} else if !is_interface && effective_embed_types.len > 0 {
 			// For mut generic params where the concrete type resolves
 			// to a multi-pointer (e.g. mut ctx X where X = &Context →
 			// C param is Context**), fn_decl_params adds .ref() which
@@ -5546,29 +5620,29 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			} else {
 				g.expr(ast.Expr(node.left))
 			}
-		} else if is_interface && node.from_embed_types.len > 0 {
+		} else if is_interface && effective_embed_types.len > 0 {
 			if g.out.last_n(1) == '&' {
 				g.go_back(1)
 			}
 			if receiver_type.is_ptr() && left_type.is_ptr() {
 				// (main__IFoo*)bar
-				g.write2('(', g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('(', g.table.sym(effective_embed_types.last()).cname)
 				g.write('*)')
 				g.expr(ast.Expr(node.left))
 			} else if receiver_type.is_ptr() && !left_type.is_ptr() {
 				// (main__IFoo*)&bar
-				g.write2('(', g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('(', g.table.sym(effective_embed_types.last()).cname)
 				g.write('*)&')
 				g.expr(ast.Expr(node.left))
 			} else if !receiver_type.is_ptr() && left_type.is_ptr() {
 				// *((main__IFoo*)bar)
-				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('*((', g.table.sym(effective_embed_types.last()).cname)
 				g.write('*)')
 				g.expr(ast.Expr(node.left))
 				g.write(')')
 			} else {
 				// *((main__IFoo*)&bar)
-				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('*((', g.table.sym(effective_embed_types.last()).cname)
 				g.write('*)&')
 				g.expr(node.left)
 				g.write(')')
@@ -5579,8 +5653,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.expr(node.left)
 		}
-		if !is_interface || node.from_embed_types.len == 0 {
-			mut node_embed_types := node.from_embed_types.clone()
+		if !is_interface || effective_embed_types.len == 0 {
+			mut node_embed_types := effective_embed_types.clone()
 			if node.left is ast.Ident && g.comptime.get_ct_type_var(node.left) == .generic_var
 				&& !final_left_sym.has_method(method_name)
 				&& !final_left_sym.has_method_with_generic_parent(method_name) {
@@ -5627,6 +5701,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		// it's non-option fixed array, requires accessing .ret_arr member to get the array
 		g.write('.ret_arr')
 	}
+}
+
+// receiver_type_is_builtin follows type indexes only, so parallel cgen does not
+// read the type-name map while another checker shard may still be extending it.
+fn (g &Gen) receiver_type_is_builtin(typ ast.Type, receiver_name string) bool {
+	sym := g.table.sym(typ)
+	if sym.is_builtin() {
+		return true
+	}
+	return receiver_name in ['array', 'map', 'chan', 'thread']
 }
 
 fn (mut g Gen) fn_call(node ast.CallExpr) {
@@ -5930,20 +6014,21 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				&& (g.is_autofree || g.pref.gc_mode == .boehm_leak)
 			if typ_sym.kind == .interface && (typ_sym.info as ast.Interface).defines_method('str') {
 				rec_type_name := util.no_dots(g.cc_type(typ, false))
+				methods_struct_name := 'struct _${c_name(rec_type_name)}_interface_methods'
 				dot := if typ.is_ptr() { '->' } else { '.' }
 				if needs_tmp_string {
 					tmp := g.new_tmp_var()
-					g.write('string ${tmp} = ${c_name(rec_type_name)}_name_table[')
+					g.write('string ${tmp} = ((${methods_struct_name}*)')
 					g.expr(expr)
-					g.write('${dot}_typ]._method_str(')
+					g.write('${dot}_typ)->_method_str(')
 					g.expr(expr)
 					g.write('${dot}_object')
 					g.writeln('); builtin__${c_fn_name(print_method)}(${tmp}); builtin__string_free(&${tmp});')
 				} else {
 					g.write('builtin__${c_fn_name(print_method)}(')
-					g.write('${c_name(rec_type_name)}_name_table[')
+					g.write('((${methods_struct_name}*)')
 					g.expr(expr)
-					g.write('${dot}_typ]._method_str(')
+					g.write('${dot}_typ)->_method_str(')
 					g.expr(expr)
 					g.write('${dot}_object')
 					g.writeln('));')
@@ -6008,6 +6093,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// g.write(cur_line + ' /* <== af cur line*/')
 			// }
 			mut is_fn_var := false
+			mut has_c_return_type_cast := false
 			if !is_selector_call {
 				if obj := node.scope.find_var(node.name) {
 					// Temp fix generate call fn error when the struct type of sumtype
@@ -6104,6 +6190,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 			if !is_fn_var {
+				if node.language == .c {
+					c_return_type := g.c_call_return_type_cast(node)
+					if c_return_type != ast.no_type {
+						g.write('((${g.styp(c_return_type)})')
+						has_c_return_type_cast = true
+					}
+				}
 				if g.cur_fn != unsafe { nil } && g.cur_fn.trace_fns.len > 0 {
 					if node.is_fn_var {
 						g.gen_trace_fn_var_call(node, name, call_generic_names, call_concrete_types)
@@ -6143,6 +6236,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				}
 			}
 			if name != '&' {
+				g.write(')')
+			}
+			if has_c_return_type_cast {
 				g.write(')')
 			}
 			if node.return_type != 0 && !node.return_type.has_option_or_result()
@@ -6325,6 +6421,15 @@ fn (mut g Gen) call_arg_param(node ast.CallExpr, arg_idx int) ?ast.Param {
 		}
 		return none
 	}
+	if node.language == .c {
+		if func := g.table.find_c_fn_in_module(node.name, node.mod) {
+			return if func.is_variadic && arg_idx >= func.params.len - 1 {
+				func.params.last()
+			} else {
+				func.params[arg_idx]
+			}
+		}
+	}
 	if func := g.table.find_fn(node.name) {
 		return if func.is_variadic && arg_idx >= func.params.len - 1 {
 			func.params.last()
@@ -6363,9 +6468,27 @@ fn array_mut_arg_is_addressable(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) call_args(node ast.CallExpr) {
+	// Call arguments are independent expressions: an option/result-typed argument
+	// wraps itself based on its own expected type, not on any enclosing if/match
+	// option context. Reset those flags so that a nested if/match expression used as
+	// a plain (non-option) argument is not wrongly option-wrapped with the enclosing
+	// function's return type (e.g. `return match { X { SV(create(if c { EnumA } else
+	// { EnumB })) } }` in an `?SV` fn would wrap the enum branch as `?SV`).
+	prev_inside_if_option := g.inside_if_option
+	prev_inside_match_option := g.inside_match_option
+	prev_inside_if_result := g.inside_if_result
+	prev_inside_match_result := g.inside_match_result
+	g.inside_if_option = false
+	g.inside_match_option = false
+	g.inside_if_result = false
+	g.inside_match_result = false
 	g.expected_fixed_arr = true
 	defer {
 		g.expected_fixed_arr = false
+		g.inside_if_option = prev_inside_if_option
+		g.inside_match_option = prev_inside_match_option
+		g.inside_if_result = prev_inside_if_result
+		g.inside_match_result = prev_inside_match_result
 	}
 	args := if g.is_js_call {
 		if node.args.len < 1 {
@@ -7462,6 +7585,9 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 				g.write('(${g.styp(arg.expr.typ)})')
 			}
 		}
+	} else if arg.expr is ast.StructInit
+		&& g.table.final_sym(g.unwrap_generic(arg.expr.typ)).kind == .array_fixed {
+		g.write('(${g.styp(arg.expr.typ)})')
 	} else if arg.expr is ast.ComptimeSelector && arg_typ.has_flag(.option)
 		&& !expected_type.has_flag(.option) {
 		// allow to pass val.$(filed.name) where T is expected, doing automatic unwrap in this case

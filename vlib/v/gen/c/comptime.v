@@ -416,7 +416,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 						g.veb_filter_fn_name = 'veb__filter'
 					}
 					// insert stmts from veb_tmpl fn
+					g.clear_type_resolution_caches()
 					g.stmts(stmt.stmts.filter(it !is ast.Return))
+					g.clear_type_resolution_caches()
 					//
 					if is_html {
 						g.inside_veb_tmpl = prev_inside_veb_tmpl
@@ -601,15 +603,25 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 	mut res := []string{cap: attrs.len}
 	for attr in attrs {
 		mut s := attr.name
+		mut s_opaque_pos := attr.name_opaque_pos.clone()
 		if attr.has_arg {
 			mut arg := attr.arg
+			mut arg_opaque_pos := attr.arg_opaque_pos.clone()
 			if attr.kind == .string {
 				quote := if attr.quote == `"` { '"' } else { "'" }
 				arg = '${quote}${arg}${quote}'
+				// shift for the opening quote char just prepended above
+				for i in 0 .. arg_opaque_pos.len {
+					arg_opaque_pos[i] += quote.len
+				}
+			}
+			prefix_len := s.len + ': '.len
+			for pos in arg_opaque_pos {
+				s_opaque_pos << prefix_len + pos
 			}
 			s += ': ${arg}'
 		}
-		res << '_S("${cescape_nonascii(util.smart_quote(s, false))}")'
+		res << '_S("${cescape_nonascii(util.smart_quote(s, false, s_opaque_pos))}")'
 	}
 	return res
 }
@@ -617,8 +629,8 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 fn cgen_vattrs(attrs []ast.Attr) []string {
 	mut res := []string{cap: attrs.len}
 	for attr in attrs {
-		name := cescape_nonascii(util.smart_quote(attr.name, false))
-		arg := cescape_nonascii(util.smart_quote(attr.arg, false))
+		name := cescape_nonascii(util.smart_quote(attr.name, false, attr.name_opaque_pos))
+		arg := cescape_nonascii(util.smart_quote(attr.arg, false, attr.arg_opaque_pos))
 		res << '((VAttribute){.name=_S("${name}"),.has_arg=${attr.has_arg},.arg=_S("${arg}"),.kind=AttributeKind__${attr.kind}})'
 	}
 	return res
@@ -626,7 +638,7 @@ fn cgen_vattrs(attrs []ast.Attr) []string {
 
 fn (mut g Gen) comptime_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
-		val := cescape_nonascii(util.smart_quote(node.val, false))
+		val := cescape_nonascii(util.smart_quote(node.val, false, []int{}))
 		g.write('_S("${val}")')
 	} else {
 		val := node.val.replace('\\', '\\\\')
@@ -846,7 +858,19 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 	is_opt_or_result := inferred_typ.has_option_or_result()
 	is_array_fixed := g.table.final_sym(inferred_typ).kind == .array_fixed
-	line := if node.is_expr && inferred_typ != ast.void_type {
+	// `gen_as_expr` controls the result temp: whether it is declared here and
+	// referenced at the end. It is only needed when the if is used as an
+	// expression and some branch yields a concrete (non-void) value type.
+	// Whether an *individual* branch assigns to that temp is decided per branch
+	// below, from the branch's own final statement - a branch that ends in a
+	// void/noreturn expression (e.g. `panic(err)`) is emitted as a plain
+	// statement even when another retained branch supplies the value type (as
+	// happens in `-cross`/`output_cross_c` mode, where non-selected branches are
+	// kept). Without this, such a branch would emit `${tmp_var} = <void>` (or,
+	// when the value branch is pruned as dead code, reference an undeclared temp
+	// entirely). See issue #28022.
+	gen_as_expr := node.is_expr && inferred_typ != ast.void_type
+	line := if gen_as_expr {
 		stmt_str := g.go_before_last_stmt()
 		g.write(util.tabs(g.indent))
 		styp := g.styp(inferred_typ)
@@ -912,8 +936,21 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			}
 			g.defer_ifdef += expr_str
 		}
-		if node.is_expr {
-			if is_true.val {
+		// Decide, for this specific branch, whether its final statement produces
+		// a value to assign to the result temp. A void/noreturn last statement
+		// (e.g. `panic(err)`) must be emitted as a plain statement even when the
+		// overall if yields a value type from a different retained branch.
+		mut branch_produces_value := false
+		if gen_as_expr && branch.stmts.len > 0 {
+			branch_last := branch.stmts.last()
+			if branch_last is ast.ExprStmt {
+				branch_typ := g.type_resolver.get_type_or_default(branch_last.expr, branch_last.typ)
+				branch_produces_value = branch_typ != ast.void_type
+					&& !branch_typ.has_flag(.generic)
+			}
+		}
+		if branch_produces_value {
+			if is_true.val || g.pref.output_cross_c {
 				g.bind_comptime_if_generic_types(branch.cond)
 				len := branch.stmts.len
 				if len > 0 {
@@ -992,7 +1029,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	}
 	g.defer_ifdef = ''
 	g.writeln('#endif')
-	if node.is_expr {
+	if gen_as_expr {
 		g.write('${line}${tmp_var}')
 	}
 }
@@ -1476,9 +1513,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.comptime.comptime_for_attr_var = node.val_var
 				g.comptime.comptime_for_attr_value = attr
 				g.writeln('/* attribute ${i} : ${attr.name} */ {')
-				g.writeln('\t${node.val_var}.name = _S("${attr.name}");')
+				g.writeln('\t${node.val_var}.name = _S("${util.smart_quote(attr.name, false, attr.name_opaque_pos)}");')
 				g.writeln('\t${node.val_var}.has_arg = ${attr.has_arg};')
-				g.writeln('\t${node.val_var}.arg = _S("${util.smart_quote(attr.arg, false)}");')
+				g.writeln('\t${node.val_var}.arg = _S("${util.smart_quote(attr.arg, false, attr.arg_opaque_pos)}");')
 				g.writeln('\t${node.val_var}.kind = AttributeKind__${attr.kind};')
 				g.stmts(node.stmts)
 				g.write_defer_stmts(node.scope, false, node.pos)

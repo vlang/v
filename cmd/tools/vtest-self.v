@@ -23,7 +23,7 @@ mut:
 
 const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
-const temporarily_disabled_self_test_vlib_dirs = ['v2_toberemoved', 'v3']
+const temporarily_disabled_self_test_vlib_dirs = ['v3']
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
@@ -93,7 +93,7 @@ const essential_list = [
 	'vlib/v/gen/js/program_test.v',
 	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
-	'vlib/x/json2/tests/json2_test.v',
+	'vlib/json2/tests/json2_test.v',
 ]
 const skip_with_fsanitize_memory = [
 	'do_not_remove',
@@ -114,6 +114,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/ssl/ssl_read_all_test.v',
 	'vlib/net/udp_test.v',
 	'vlib/net/tcp_test.v',
+	'vlib/context/onecontext/onecontext_test.v', // spawn + channels + IError default field; tripped by MSan padding tracking
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
@@ -140,6 +141,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/orm/orm_save_test.v',
 	'vlib/orm/orm_upsert_test.v',
 	'vlib/orm/orm_func_test.v',
+	'vlib/db/driver_test.v', // MSan flags uninstrumented sqlite3BtreeOpen in libsqlite3.so
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',
@@ -195,8 +197,6 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/shared_library_system_link_test.v', // ASan keeps Boehm GC symbols visible, breaking the export-symbol assertion
 	'vlib/veb/sse/sse_test.v', // long-lived event stream + sockets, ASan flake
-	'vlib/v2_toberemoved/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, ASan-incompatible
-	'vlib/v2_toberemoved/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, ASan-incompatible
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
@@ -214,15 +214,53 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 	'vlib/v/tests/shared_library_system_link_test.v', // UBSan keeps Boehm GC symbols visible, breaking the export-symbol assertion
-	'vlib/v2_toberemoved/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, UBSan-incompatible
-	'vlib/v2_toberemoved/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, UBSan-incompatible
-	'vlib/v2_toberemoved/transformer/transformer_test.v', // v2 transformer, UBSan-incompatible
 	'vlib/yaml/yaml_conformance_test.v', // upstream libyaml-style integer overflow flagged by UBSan
 ]
 const skip_on_ubuntu_musl = [
 	'do_not_remove',
+	'cmd/tools/fast/bench_test.v', // parsing-only test compiles fast's main package, pulling db.sqlite and the host glibc .pc/header (sys/cdefs.h)
 	'vlib/arrays/parallel/parallel_test.v',
 	'vlib/builtin/js/array_test.js.v',
+	// crypto.ecdsa (and net.quic, which imports it -- added for
+	// https://github.com/vlang/v/issues/27675) needs Ubuntu's system
+	// OpenSSL dev headers, which are built against glibc. Fixing the -I
+	// flag (ecdsa.c.v was pointing one directory too deep, `.../openssl`
+	// instead of `.../include` -- masked everywhere else by /usr/include
+	// being on every other compiler's implicit default search path, which
+	// musl-gcc's -nostdinc removes) only gets past the __has_include()
+	// check; the actual headers then transitively pull in glibc's own
+	// <stdio.h>/<time.h>/<limits.h>, which conflict at the type level
+	// with musl's parallel headers already active via musl-gcc's own
+	// -isystem wrapper (confirmed directly: __gnuc_va_list/__time64_t
+	// undefined, va_list/__BYTE_ORDER redefined incompatibly). Same root
+	// cause as the pg/sqlite entry below -- a glibc-targeted dev package
+	// is not usable from a musl-gcc build without a musl-native OpenSSL.
+	// Add any NEW net.quic/crypto.ecdsa test file here too.
+	'vlib/crypto/ecdsa/ecdsa_p256_ecdh_test.v',
+	'vlib/net/quic/coalesce_test.v',
+	'vlib/net/quic/crypto_stream_test.v',
+	'vlib/net/quic/frame_test.v',
+	'vlib/net/quic/handshake_confirm_test.v',
+	'vlib/net/quic/header_protection_test.v',
+	'vlib/net/quic/header_test.v',
+	'vlib/net/quic/initial_exchange_test.v',
+	'vlib/net/quic/initial_secrets_test.v',
+	'vlib/net/quic/key_update_test.v',
+	'vlib/net/quic/packet_number_space_test.v',
+	'vlib/net/quic/packet_number_test.v',
+	'vlib/net/quic/packet_protection_test.v',
+	'vlib/net/quic/retry_test.v',
+	'vlib/net/quic/tls13_certificate_chain_test.v',
+	'vlib/net/quic/tls13_certificate_test.v',
+	'vlib/net/quic/tls13_client_hello_test.v',
+	'vlib/net/quic/tls13_handshake_test.v',
+	'vlib/net/quic/tls13_keyschedule_test.v',
+	'vlib/net/quic/tls13_messages_test.v',
+	'vlib/net/quic/tls13_quiche_vector_test.v',
+	'vlib/net/quic/tls13_server_hello_test.v',
+	'vlib/net/quic/transport_parameters_test.v',
+	'vlib/net/quic/varint_test.v', // pure V, no OpenSSL of its own -- but V compiles net.quic as one package, so a sibling file's #include failure still fails this file's build
+	'vlib/net/quic/version_negotiation_test.v',
 	'vlib/db/pg_sqlite_consistency_test.v', // pg + sqlite dev headers pull in glibc-only sys/cdefs.h on musl-gcc
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
@@ -232,6 +270,12 @@ const skip_on_ubuntu_musl = [
 	'vlib/db/sqlite/sqlite_f32_test.v',
 	'vlib/gg/draw_rect_empty_test.v', // sokol.sapp needs X11/Xlib.h, not installed in the musl Docker image
 	'vlib/gg/text_rendering_test.v',
+	'vlib/gg/multiwindow_render_runtime_contract_test.v', // same sokol.sapp/X11/Xlib.h gap as the two entries above
+	'vlib/gg/multiwindow_services_contract_test.v',
+	'vlib/gg/multiwindow_gl_readback_helpers_d_gg_multiwindow_test.v',
+	'vlib/gg/multiwindow_wayland_services_d_gg_multiwindow_test.v',
+	'vlib/x/multiwindow/service_native_win32_no_flag_test.v',
+	'vlib/sokol/gfx/metal_private_hook_contract_test.v',
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
@@ -256,6 +300,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_serial_attribute_test.v',
 	'vlib/orm/orm_option_subselect_test.v',
 	'vlib/orm/orm_func_test.v',
+	'vlib/orm/orm_module_table_prefix/orm_module_table_prefix_test.v',
 	'vlib/orm/orm_where_in_test.v',
 	'vlib/sokol/gfx/gfx_test.v', // sokol_app.h needs GL/gl.h, not installed in the musl Docker image
 	'vlib/v/gen/c/sql_assert_temp_var_test.v', // sqlite header dependency pulls in glibc sys/cdefs.h on musl-gcc

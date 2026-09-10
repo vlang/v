@@ -1,8 +1,10 @@
 import os
 import v3.flat
+import v3.markused
 import v3.parser
 import v3.pref
 import v3.ssa
+import v3.transform
 import v3.types
 
 // parse_checked_source reads parse checked source input for v3 tests.
@@ -28,6 +30,18 @@ fn build_source(name string, source string) &ssa.Module {
 fn build_source_with_used(name string, source string, used_fns map[string]bool) &ssa.Module {
 	a, tc := parse_checked_source(name, source)
 	return ssa.build_with_used(a, used_fns, tc)
+}
+
+// build_transformed_source builds source after the normal used-filtered transform path.
+fn build_transformed_source(name string, source string) &ssa.Module {
+	mut a, mut tc := parse_checked_source(name, source)
+	mut used := markused.mark_used(a, tc)
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	return ssa.build_with_used(a, used, tc)
 }
 
 // find_func resolves find func information for v3 tests.
@@ -168,6 +182,120 @@ fn same(a string, b string) bool {
 	assert has_call_to(m, 'same', 'string__eq')
 }
 
+// test_formatted_interpolation_helpers_build_for_ssa validates this v3 regression case.
+fn test_formatted_interpolation_helpers_build_for_ssa() {
+	m := build_transformed_source('formatted_interpolation_helpers', '
+fn main() {
+	label := "x"
+	value := 1.25
+	n := 7
+	_ := "\${label:-4s}\${value:6.2f}\${n:04d}\${65:c}"
+}
+')
+	assert has_call_to(m, 'main', 'v3_string_pad')
+	assert has_call_to(m, 'main', 'v3_f64_fixed')
+	assert has_call_to(m, 'main', 'v3_int_zpad')
+	assert has_call_to(m, 'main', 'v3_char_string')
+	for name in ['v3_string_pad', 'v3_f64_fixed', 'v3_int_zpad', 'v3_i64_zpad', 'v3_u64_zpad',
+		'v3_char_string'] {
+		f := find_func(m, name)
+		assert f.blocks.len > 0
+	}
+}
+
+// test_array_string_equality_helper_builds_for_ssa validates this v3 regression case.
+fn test_array_string_equality_helper_builds_for_ssa() {
+	m := build_transformed_source('array_string_equality_helper', '
+fn same(left []string, right []string) bool {
+	return left == right
+}
+
+fn main() {
+	_ := same(["x"], ["x"])
+}
+')
+	assert has_call_to(m, 'same', 'array_eq_string')
+	f := find_func(m, 'array_eq_string')
+	assert f.blocks.len > 0
+}
+
+// test_scalar_array_sort_helper_builds_for_ssa validates this v3 regression case.
+fn test_scalar_array_sort_helper_builds_for_ssa() {
+	m := build_transformed_source('scalar_array_sort_helper', '
+fn main() {
+	mut values := [3, 1, 2]
+	values.sort()
+}
+')
+	assert has_call_to(m, 'main', 'v3_array_sort_int')
+	f := find_func(m, 'v3_array_sort_int')
+	assert f.blocks.len > 1
+}
+
+// test_u8_array_bytestr_alias_builds_for_ssa validates this v3 regression case.
+fn test_u8_array_bytestr_alias_builds_for_ssa() {
+	m := build_source('u8_array_bytestr_alias', '
+fn show(data []u8) string {
+	return data.bytestr()
+}
+')
+	assert has_call_to(m, 'show', '[]u8.bytestr')
+	f := find_func(m, '[]u8.bytestr')
+	assert f.blocks.len > 0
+}
+
+// test_enum_str_resolves_to_autostr_for_ssa validates this v3 regression case.
+fn test_enum_str_resolves_to_autostr_for_ssa() {
+	m := build_source('enum_str_autostr', '
+enum Color {
+	red
+	blue
+}
+
+fn show(color Color) string {
+	return color.str()
+}
+')
+	assert has_call_to(m, 'show', 'Color__autostr')
+	f := find_func(m, 'Color__autostr')
+	assert f.blocks.len > 0
+}
+
+// test_rand_prng_interface_stubs_are_registered_for_ssa validates this v3 regression case.
+fn test_rand_prng_interface_stubs_are_registered_for_ssa() {
+	m := build_source('rand_prng_interface_stubs', '
+fn main() {}
+')
+	for name in ['rand.new_default', 'rand.PRNG.seed', 'rand.PRNG.u8', 'rand.PRNG.u16',
+		'rand.PRNG.u32', 'rand.PRNG.u64', 'rand.PRNG.block_size', 'rand.PRNG.free'] {
+		f := find_func(m, name)
+		assert f.blocks.len > 0
+	}
+}
+
+// test_at_exit_stub_is_registered_for_ssa validates this v3 regression case.
+fn test_at_exit_stub_is_registered_for_ssa() {
+	m := build_source('at_exit_stub', '
+fn main() {}
+')
+	f := find_func(m, 'at_exit')
+	assert f.blocks.len > 0
+}
+
+// test_pthread_setkind_np_uses_local_stub_for_ssa validates this v3 regression case.
+fn test_pthread_setkind_np_uses_local_stub_for_ssa() {
+	m := build_source('pthread_setkind_np_stub', '
+fn C.pthread_rwlockattr_setkind_np(voidptr, i32) i32
+
+fn set_kind(attr voidptr) {
+	_ := C.pthread_rwlockattr_setkind_np(attr, 0)
+}
+')
+	assert has_call_to(m, 'set_kind', 'pthread_rwlockattr_setkind_np')
+	f := find_func(m, 'pthread_rwlockattr_setkind_np')
+	assert f.blocks.len > 0
+}
+
 // test_c_fn_decl_registers_extern_signature validates this v3 regression case.
 fn test_c_fn_decl_registers_extern_signature() {
 	m := build_source('c_fn_decl', '
@@ -203,6 +331,109 @@ fn apply(f fn (int, int) int, x int, y int) int {
 		}
 	}
 	assert found_indirect
+}
+
+// test_function_alias_field_call_lowers_to_call_indirect validates this v3 regression case.
+fn test_function_alias_field_call_lowers_to_call_indirect() {
+	m := build_source('call_indirect_alias_field', '
+type Callback = fn (int, int) int
+
+struct Holder {
+	callback Callback
+}
+
+fn apply(holder Holder, x int, y int) int {
+	return holder.callback(x, y)
+}
+')
+	assert has_instr_op(m, 'apply', .call_indirect)
+}
+
+// test_embed_file_decoder_dispatch_stub_builds_for_ssa validates this v3 regression case.
+fn test_embed_file_decoder_dispatch_stub_builds_for_ssa() {
+	m := build_source('embed_file_decoder_stub', 'fn main() {}')
+	f := find_func(m, 'embed_file.Decoder.decompress')
+	assert f.blocks.len == 1
+}
+
+// test_closure_once_stub_builds_for_ssa validates this v3 regression case.
+fn test_closure_once_stub_builds_for_ssa() {
+	m := build_source('closure_once_stub', 'fn main() {}')
+	f := find_func(m, 'v_closure_init_once')
+	assert f.blocks.len == 3
+	assert has_instr_op(m, 'v_closure_init_once', .call_indirect)
+	zero_fn := find_func(m, 'v3_pthread_zero')
+	assert zero_fn.blocks.len == 1
+}
+
+// test_fixed_array_return_keeps_value_type validates this v3 regression case.
+fn test_fixed_array_return_keeps_value_type() {
+	m := build_source('fixed_array_return', '
+struct Digest {
+	bytes [32]u8
+}
+
+fn get_bytes(d &Digest) [32]u8 {
+	return d.bytes
+}
+')
+	f := find_func(m, 'get_bytes')
+	typ := m.type_store.types[f.typ]
+	assert typ.kind == .array_t
+	assert typ.len == 32
+}
+
+// test_c_environ_loads_external_global validates this v3 regression case.
+fn test_c_environ_loads_external_global() {
+	m := build_source('c_environ_external_global', '
+fn read_environ() voidptr {
+	return voidptr(C.environ)
+}
+')
+	mut found := false
+	for global in m.globals {
+		if global.name == 'environ' {
+			assert global.linkage == .external
+			found = true
+		}
+	}
+	assert found
+}
+
+// test_dereference_struct_assignment_emits_store validates this v3 regression case.
+fn test_dereference_struct_assignment_emits_store() {
+	m := build_source('dereference_struct_assignment', '
+struct Big {
+	a int
+	b int
+	c int
+}
+
+fn copy_into(dst &Big, value Big) {
+	unsafe {
+		*dst = value
+	}
+}
+')
+	f := find_func(m, 'copy_into')
+	mut struct_stores := 0
+	for block_id in f.blocks {
+		for value_id in m.blocks[block_id].instrs {
+			value := m.values[value_id]
+			if value.kind != .instruction {
+				continue
+			}
+			instr := m.instrs[value.index]
+			if instr.op != .store || instr.operands.len < 2 {
+				continue
+			}
+			src_type := m.values[instr.operands[0]].typ
+			if src_type > 0 && m.type_store.types[src_type].kind == .struct_t {
+				struct_stores++
+			}
+		}
+	}
+	assert struct_stores >= 2
 }
 
 // test_label_and_goto_lower_to_jump_blocks validates this v3 regression case.
@@ -358,6 +589,23 @@ fn make_array() int {
 	assert has_alloca_len_const(m, 'make_array', '4')
 }
 
+// test_const_string_membership_does_not_heap_build_array validates this v3 regression case.
+fn test_const_string_membership_does_not_heap_build_array() {
+	m := build_transformed_source('const_string_membership', '
+const names = ["malloc", "free", "puts"]
+
+fn has_name(name string) bool {
+	return name in names
+}
+
+fn main() {
+	_ := has_name("malloc")
+}
+')
+	assert has_call_to(m, 'has_name', 'fixed_array_contains_string')
+	assert !has_call_to(m, 'has_name', 'array_new')
+}
+
 // test_string_range_does_not_lower_to_array_slice validates this v3 regression case.
 fn test_string_range_does_not_lower_to_array_slice() {
 	m := build_source('string_range', '
@@ -381,4 +629,141 @@ fn last_value(values []int) int {
 ')
 	assert has_call_to(m, 'first_value', 'array_get')
 	assert has_call_to(m, 'last_value', 'array_get')
+}
+
+// test_used_filter_keeps_main validates this v3 regression case.
+fn test_used_filter_keeps_main() {
+	mut used := map[string]bool{}
+	used['println'] = true
+	m := build_source_with_used('used_filter_main', '
+fn main() {
+	println("hello")
+}
+', used)
+	main_fn := find_func(m, 'main')
+	assert main_fn.blocks.len > 0
+}
+
+// test_map_move_runtime_helper_builds_ssa validates this v3 regression case.
+fn test_map_move_runtime_helper_builds_ssa() {
+	m := build_transformed_source('map_move_runtime', '
+fn main() {
+	mut values := map[string]int{}
+	moved := values.move()
+	moved.clear()
+	moved.reserve(4)
+	moved.delete("x")
+	keys := moved.keys()
+	vals := moved.values()
+	moved.free()
+	_ := keys
+	_ := vals
+}
+')
+	assert has_call_to(m, 'main', 'map__move')
+	assert has_call_to(m, 'main', 'map__clear')
+	assert has_call_to(m, 'main', 'map__reserve')
+	assert has_call_to(m, 'main', 'map__delete')
+	assert has_call_to(m, 'main', 'map__keys')
+	assert has_call_to(m, 'main', 'map__values')
+	assert has_call_to(m, 'main', 'map__free')
+	move_fn := find_func(m, 'map__move')
+	assert move_fn.blocks.len > 0
+	keys_fn := find_func(m, 'map__keys')
+	assert keys_fn.blocks.len > 0
+	values_fn := find_func(m, 'map__values')
+	assert values_fn.blocks.len > 0
+}
+
+// test_moved_from_map_len_checks_nil_state validates this v3 regression case.
+fn test_moved_from_map_len_checks_nil_state() {
+	m := build_transformed_source('moved_from_map_len', '
+fn main() {
+	mut values := map[string]int{}
+	moved := values.move()
+	_ := moved
+	_ := values.len
+}
+')
+	assert has_call_to(m, 'main', 'map__move')
+	assert has_instr_op(m, 'main', .br)
+}
+
+// test_array_flags_set_lowers_without_receiver_collision validates this v3 regression case.
+fn test_array_flags_set_lowers_without_receiver_collision() {
+	m := build_source('array_flags_set', '
+fn main() {
+	mut values := []string{}
+	unsafe {
+		values.flags.set(.noslices | .noshrink)
+	}
+}
+')
+	assert !has_call_to(m, 'main', 'SortedMap.set')
+	assert has_instr_op(m, 'main', .or_)
+}
+
+// test_transformed_string_const_remains_a_string_argument validates this v3 regression case.
+fn test_transformed_string_const_remains_a_string_argument() {
+	m := build_transformed_source('string_const_argument', "
+const suffix = '.vvmrc'
+
+fn consume(base string, elem string) string {
+	return base + elem
+}
+
+fn main() {
+	_ = consume('base', suffix)
+}
+")
+	for instr in func_instrs(m, 'main') {
+		if instr.op != .call || instr.operands.len != 3 {
+			continue
+		}
+		callee := m.values[instr.operands[0]]
+		if callee.kind != .func_ref || callee.name != 'consume' {
+			continue
+		}
+		suffix := m.values[instr.operands[2]]
+		assert suffix.name == '.vvmrc'
+		assert suffix.kind == .string_literal
+		assert suffix.typ == m.values[instr.operands[1]].typ
+		return
+	}
+	assert false, 'missing call to consume'
+}
+
+fn test_native_darwin_pthread_mutex_uses_opaque_abi_size() {
+	m := build_source('darwin_pthread_mutex_size', '@[typedef]
+struct C.pthread_mutex_t {}
+
+fn pthread_mutex_size() int {
+	return sizeof(C.pthread_mutex_t)
+}
+')
+	result := ret_operand(m, 'pthread_mutex_size')
+	value := m.values[result]
+	assert value.kind == .constant
+	assert value.name == '64'
+}
+
+fn test_native_struct_fixed_array_field_uses_inline_storage() {
+	m := build_source('struct_fixed_array_storage', 'struct Cache {
+	recent [4]string
+}
+
+fn cache_size() int {
+	return sizeof(Cache)
+}
+
+fn cache_item(cache &Cache) string {
+	return cache.recent[2]
+}
+')
+	result := ret_operand(m, 'cache_size')
+	value := m.values[result]
+	assert value.kind == .constant
+	assert value.name == '64'
+	assert !has_call_to(m, 'cache_item', 'array_get')
+	assert has_instr_op(m, 'cache_item', .load)
 }

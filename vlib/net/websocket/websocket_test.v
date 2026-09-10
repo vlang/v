@@ -176,6 +176,15 @@ fn on_close_cb_3(mut cli websocket.Client, code int, reason string, mut res Webs
 	res.nr_closes++
 }
 
+fn test_close_unconnected_client_returns_error() ! {
+	mut client := websocket.new_client('ws://localhost:30004')!
+	client.close(1000, 'closing connection') or {
+		assert err.msg() == 'Socket already closed: 1000'
+		return
+	}
+	assert false, 'closing an unconnected client should return an error'
+}
+
 fn test_on_close_when_client_closing_connection() ! {
 	mut ws := websocket.new_server(.ip, 30004, '')
 	start_server_in_thread_and_wait_till_it_is_ready_to_accept_connections(mut ws)

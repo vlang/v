@@ -8,8 +8,11 @@
 #   2. starts it on a free port (TLS + ALPN h2),
 #   3. runs a PINNED h2spec binary against it,
 #   4. compares the set of FAILED case IDs against h2spec_expected_failures.txt,
-#   5. fails only on a regression (a case that newly fails, or a recorded failure
-#      that now passes — so the baseline is kept honest and shrinks over time).
+#   5. fails on a regression (a case that newly fails, or a recorded failure that
+#      now passes). The baseline is currently EMPTY (the server passes all 146
+#      h2spec cases as of vlang/v#27627), so today ANY h2spec failure fails the
+#      gate; the regression-vs-baseline mechanism stays in place so a future gap
+#      can be re-baselined without breaking CI for unrelated work.
 #
 # h2spec is NOT installed here. Provide it via $H2SPEC_BIN or on PATH; CI fetches
 # a pinned release (see .github/workflows/h2spec.yml). This script never runs
@@ -115,8 +118,9 @@ fi
 if [ -n "$now_passing" ]; then
     # Fail too (not just warn): a recorded failure that now passes must be removed
     # from the baseline, otherwise the gate keeps allowing that case and a later
-    # PR can reintroduce the failure unnoticed. (Codex P2.) The 37 baseline cases
-    # are deterministic at H2SPEC_TIMEOUT=5, so this does not flap.
+    # PR can reintroduce the failure unnoticed. (Codex P2.) All 146 cases are
+    # deterministic at H2SPEC_TIMEOUT=5 (baseline is empty as of #27627), so this
+    # does not flap.
     echo "::error:: these recorded failures now PASS — remove them from h2spec_expected_failures.txt to keep the gate honest:" >&2
     echo "$now_passing" >&2
     rc=1

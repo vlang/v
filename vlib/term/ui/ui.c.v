@@ -34,16 +34,33 @@ pub fn (mut ctx Context) write(s string) {
 	unsafe { ctx.print_buf.push_many(s.str, s.len) }
 }
 
-// flush displays the accumulated print buffer to the screen.
+// write_to_stdout writes a string to stdout.
+// On Windows, V's standard output path is used, since it converts UTF-8
+// to UTF-16 for consoles, where the code page may not be UTF-8.
 @[inline]
+fn write_to_stdout(s string) {
+	$if windows {
+		print(s)
+		return
+	}
+	C.write(1, s.str, s.len)
+}
+
+// flush displays the accumulated print buffer to the screen.
+@[inline; manualfree]
 pub fn (mut ctx Context) flush() {
 	// TODO: Diff the previous frame against this one, and only render things that changed?
+	if ctx.print_buf.len == 0 {
+		return
+	}
+	// tos() borrows the print buffer; @[manualfree] stops -autofree
+	// from freeing the borrowed string after flush returns.
 	if !ctx.enable_su {
-		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
+		write_to_stdout(unsafe { tos(ctx.print_buf.data, ctx.print_buf.len) })
 	} else {
-		C.write(1, bsu.str, bsu.len)
-		C.write(1, ctx.print_buf.data, ctx.print_buf.len)
-		C.write(1, esu.str, esu.len)
+		write_to_stdout(bsu)
+		write_to_stdout(unsafe { tos(ctx.print_buf.data, ctx.print_buf.len) })
+		write_to_stdout(esu)
 	}
 	ctx.print_buf.clear()
 }

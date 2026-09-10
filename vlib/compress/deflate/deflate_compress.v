@@ -9,22 +9,29 @@ const deflate_min_match = 3
 const deflate_max_match = 258
 const deflate_window = 32768
 
-// fixed_litlen_encode returns (reversed_codes, code_lengths) for fixed Huffman lit/len.
-// The LSB-first (bit-reversed) codes come straight from the shared canonical
-// builder, since the encoder writes bits LSB-first.
-fn fixed_litlen_encode() !([]u32, []int) {
-	lens := fixed_litlen_lengths()
-	t := huffman.build(lengths: lens, max_bits: 9, bit_order: .lsb_first)!
-	return t.codes, lens
+const fixed_litlen_codes = build_fixed_litlen_codes()
+const fixed_dist_codes = build_fixed_dist_codes()
+
+// build_fixed_litlen_codes returns reversed codes for fixed Huffman lit/len.
+// The LSB-first codes come straight from the shared canonical builder, since
+// the encoder writes bits LSB-first.
+fn build_fixed_litlen_codes() []u32 {
+	mut t := huffman.build(lengths: fixed_litlen_lens, max_bits: 9, bit_order: .lsb_first) or {
+		panic('deflate: failed to build fixed lit/len Huffman codes: ${err}')
+	}
+	defer {
+		unsafe { t.lengths.free() }
+	}
+	return t.codes
 }
 
-// fixed_dist_encode returns (reversed_codes, code_lengths) for fixed Huffman distance.
-fn fixed_dist_encode() ([]u32, []int) {
-	mut codes := []u32{len: 30}
-	for i in 0 .. 30 {
+// build_fixed_dist_codes returns reversed codes for fixed Huffman distance.
+fn build_fixed_dist_codes() []u32 {
+	mut codes := []u32{len: fixed_dist_lens.len}
+	for i in 0 .. fixed_dist_lens.len {
 		codes[i] = bit_reverse(u32(i), 5)
 	}
-	return codes, []int{len: 30, init: 5}
+	return codes
 }
 
 fn length_code_info(length int) (int, int, int) {
@@ -114,8 +121,10 @@ fn (mut w BitWriter) flush() {
 // deflate_compress_fixed compresses data to RFC 1951 DEFLATE using fixed Huffman codes.
 @[direct_array_access]
 fn deflate_compress_fixed(data []u8) ![]u8 {
-	ll_codes, ll_lens := fixed_litlen_encode()!
-	d_codes, d_lens := fixed_dist_encode()
+	ll_codes := fixed_litlen_codes
+	ll_lens := fixed_litlen_lens
+	d_codes := fixed_dist_codes
+	d_lens := fixed_dist_lens
 	mut w := BitWriter{}
 	// BFINAL=1, BTYPE=01 (fixed Huffman)
 	w.write_bits(1, 1)
@@ -126,7 +135,13 @@ fn deflate_compress_fixed(data []u8) ![]u8 {
 		return w.buf
 	}
 	mut last := []int{len: deflate_hash_size, init: -1}
+	defer {
+		unsafe { last.free() }
+	}
 	mut prev := []int{len: data.len, init: -1}
+	defer {
+		unsafe { prev.free() }
+	}
 	mut pos := 0
 	for pos < data.len {
 		off, match_len := find_lz_match(data, pos, last, prev)

@@ -17,7 +17,8 @@ pub fn (row Row) values() []string {
 
 pub struct Result {
 pub mut:
-	rows []Row
+	names []string
+	rows  []Row
 	// the number of rows affected by sql statement
 	num_rows_affected int
 }

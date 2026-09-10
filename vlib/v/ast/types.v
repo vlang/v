@@ -718,6 +718,16 @@ pub fn (typ Type) is_float_valptr() bool {
 	return typ.is_ptr() && typ.idx() in float_type_idxs
 }
 
+// is_scalar_ptr returns `true` if `typ` is a pointer to a scalar value
+// (an integer, float, rune, bool or string). Following Go's `%v` semantics,
+// such references are printed as their address, while pointers to compound
+// values (structs, arrays, maps) are printed as `&` + the pointed-to value.
+@[inline]
+pub fn (typ Type) is_scalar_ptr() bool {
+	return typ.is_ptr()
+		&& (typ.idx() in number_type_idxs || typ.idx() in [string_type_idx, bool_type_idx])
+}
+
 // is_pure_int return `true` if `typ` is a pure int
 @[inline]
 pub fn (typ Type) is_pure_int() bool {
@@ -1167,6 +1177,9 @@ pub fn (t &TypeSymbol) is_empty_struct_array() bool {
 		if elem_sym.info is Struct {
 			return elem_sym.info.is_empty_struct()
 		}
+		if elem_sym.info is ArrayFixed {
+			return elem_sym.is_empty_struct_array()
+		}
 	}
 	return false
 }
@@ -1471,8 +1484,7 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 					align = t.pointer_size
 				}
 				Interface {
-					interface_header_size := round_up(t.pointer_size + 4, t.pointer_size) +
-						t.pointer_size
+					interface_header_size := 2 * t.pointer_size
 					size = interface_header_size + sym.info.fields.len * t.pointer_size
 					align = t.pointer_size
 					for etyp in sym.info.embeds {
