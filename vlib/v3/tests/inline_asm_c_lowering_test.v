@@ -342,6 +342,19 @@ fn test_asm_goto_lowers_x86_loop_family_targets() {
 	assert c_source.contains('"loop %l[__v_user_goto_0]\\n\\t"'), c_source
 }
 
+fn test_asm_goto_lowers_branch_after_leading_local_label() {
+	generate, c_source := generate_inline_asm_c('goto_leading_label_program', 'fn main() {
+	asm goto amd64 {
+		retry: jne done
+		; ; ; ; done
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"retry: jne %l[__v_user_goto_0]\\n\\t"'), c_source
+}
+
 fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
 	generate, c_source := generate_inline_asm_c('raw_goto_program', 'fn main() {
 	asm goto amd64 raw {

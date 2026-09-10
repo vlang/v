@@ -3318,12 +3318,14 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 
 fn (mut g FlatGen) lower_c_inline_asm_goto_branch_label(source string, lowered string, arch string, aliases map[string]bool, labels []string) string {
 	line := source.trim_space()
+	instruction_start := c_inline_asm_instruction_start(line)
+	instruction_line := line[instruction_start..]
 	mut split := 0
-	for split < line.len && !line[split].is_space() {
+	for split < instruction_line.len && !instruction_line[split].is_space() {
 		split++
 	}
-	instruction := line[..split]
-	operands := split_c_inline_asm_operands(line[split..].trim_space())
+	instruction := instruction_line[..split]
+	operands := split_c_inline_asm_operands(instruction_line[split..].trim_space())
 	label_index := c_inline_asm_goto_branch_label_operand_index(instruction, arch, operands.len)
 	if label_index < 0 {
 		return lowered
@@ -3332,16 +3334,18 @@ fn (mut g FlatGen) lower_c_inline_asm_goto_branch_label(source string, lowered s
 	if label !in labels || aliases[label] || label in util.asm_register_names(arch) {
 		return lowered
 	}
-	lowered_split := lowered.index_u8(` `)
+	lowered_instruction_start := c_inline_asm_instruction_start(lowered)
+	lowered_instruction := lowered[lowered_instruction_start..]
+	lowered_split := lowered_instruction.index_u8(` `)
 	if lowered_split < 0 {
 		return lowered
 	}
-	mut lowered_operands := split_c_inline_asm_operands(lowered[lowered_split + 1..])
+	mut lowered_operands := split_c_inline_asm_operands(lowered_instruction[lowered_split + 1..])
 	if lowered_operands.len != operands.len {
 		return lowered
 	}
 	lowered_operands[label_index] = '%l[${g.user_goto_c_label(label)}]'
-	return lowered[..lowered_split + 1] + lowered_operands.join(', ')
+	return lowered[..lowered_instruction_start + lowered_split + 1] + lowered_operands.join(', ')
 }
 
 fn (mut g FlatGen) lower_c_inline_asm_goto_raw_labels(template string, labels []string) string {
@@ -3596,12 +3600,14 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 	if line.len == 0 || line.ends_with(':') {
 		return line
 	}
+	instruction_start := c_inline_asm_instruction_start(line)
+	instruction_line := line[instruction_start..]
 	mut split := 0
-	for split < line.len && !line[split].is_space() {
+	for split < instruction_line.len && !instruction_line[split].is_space() {
 		split++
 	}
-	mut instruction := line[..split]
-	mut operands_source := line[split..].trim_space()
+	mut instruction := instruction_line[..split]
+	mut operands_source := instruction_line[split..].trim_space()
 	if is_c_inline_asm_x86_arch(arch) && instruction == 'lock' && operands_source.len > 0 {
 		mut next := 0
 		for next < operands_source.len && !operands_source[next].is_space() {
@@ -3611,7 +3617,7 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 		operands_source = operands_source[next..].trim_space()
 	}
 	if operands_source.len == 0 {
-		return instruction
+		return line[..instruction_start] + instruction
 	}
 	mut operands := split_c_inline_asm_operands(operands_source)
 	is_directive := instruction.starts_with('.')
@@ -3628,7 +3634,7 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 		}
 		lowered << lowered_operand
 	}
-	return instruction + ' ' + lowered.join(', ')
+	return line[..instruction_start] + instruction + ' ' + lowered.join(', ')
 }
 
 // lower_c_inline_asm_intel_template keeps V's destination-first structured syntax as
@@ -3639,12 +3645,14 @@ fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool, is_
 	if line.len == 0 || line.ends_with(':') {
 		return line
 	}
+	instruction_start := c_inline_asm_instruction_start(line)
+	instruction_line := line[instruction_start..]
 	mut split := 0
-	for split < line.len && !line[split].is_space() {
+	for split < instruction_line.len && !instruction_line[split].is_space() {
 		split++
 	}
-	mut instruction := line[..split]
-	mut operands_source := line[split..].trim_space()
+	mut instruction := instruction_line[..split]
+	mut operands_source := instruction_line[split..].trim_space()
 	if instruction == 'lock' && operands_source.len > 0 {
 		mut next := 0
 		for next < operands_source.len && !operands_source[next].is_space() {
@@ -3654,14 +3662,37 @@ fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool, is_
 		operands_source = operands_source[next..].trim_space()
 	}
 	if operands_source.len == 0 {
-		return instruction
+		return line[..instruction_start] + instruction
 	}
 	operands := split_c_inline_asm_operands(operands_source)
 	mut lowered := []string{cap: operands.len}
 	for operand in operands {
 		lowered << lower_c_inline_asm_intel_operand(operand, aliases, is_extended)
 	}
-	return instruction + ' ' + lowered.join(', ')
+	return line[..instruction_start] + instruction + ' ' + lowered.join(', ')
+}
+
+// c_inline_asm_instruction_start skips an optional local label before an instruction.
+fn c_inline_asm_instruction_start(line string) int {
+	mut i := 0
+	if i < line.len && line[i] == `.` {
+		i++
+	}
+	if i >= line.len || (!c_inline_asm_ident_start(line[i]) && !line[i].is_digit()) {
+		return 0
+	}
+	i++
+	for i < line.len && c_inline_asm_ident_char(line[i]) {
+		i++
+	}
+	if i >= line.len || line[i] != `:` {
+		return 0
+	}
+	i++
+	for i < line.len && line[i].is_space() {
+		i++
+	}
+	return i
 }
 
 fn lower_c_inline_asm_intel_operand(source string, aliases map[string]bool, is_extended bool) string {
