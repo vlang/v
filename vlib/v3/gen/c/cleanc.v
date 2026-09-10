@@ -3487,8 +3487,7 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 		g.writeln('#define _VPROFILE (1)')
 	}
 	g.thread_stack_size_definition()
-	g.emit_preinclude_directives()
-	g.emit_preserved_c_directives_scoped()
+	g.emit_translation_unit_include_directives()
 	g.preamble()
 	if g.cache_split {
 		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */')
@@ -3496,6 +3495,15 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 	g.emit_c_directives_scoped(false)
 	if g.cache_split {
 		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_END */')
+	}
+}
+
+fn (mut g FlatGen) emit_translation_unit_include_directives() {
+	windows_header_emitted := g.emit_preinclude_directives()
+	g.emit_preserved_c_directives_scoped()
+	if g.target.os == 'windows' && !windows_header_emitted {
+		// Winsock2 must precede windows.h, which otherwise includes legacy winsock.h.
+		g.writeln('#include <windows.h>')
 	}
 }
 
@@ -4852,7 +4860,7 @@ fn normalized_c_include_arg_path(include_arg string) string {
 	return path.replace('\\', '/')
 }
 
-fn (mut g FlatGen) emit_preinclude_directives() {
+fn (mut g FlatGen) emit_preinclude_directives() bool {
 	// Configuration preincludes must run before windows.h so they can select the
 	// requested WinAPI surface. Only interpose windows.h before a leaf header that
 	// specifically requires its base declarations.
@@ -4872,12 +4880,10 @@ fn (mut g FlatGen) emit_preinclude_directives() {
 		}
 		g.writeln(directive)
 	}
-	if windows_target && !emitted_windows_header {
-		g.writeln('#include <windows.h>')
-	}
 	if g.preinclude_directives.len > 0 {
 		g.writeln('')
 	}
+	return emitted_windows_header
 }
 
 fn (mut g FlatGen) emit_postinclude_directives() {

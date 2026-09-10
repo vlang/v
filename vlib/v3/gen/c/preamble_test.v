@@ -1,13 +1,20 @@
 module c
 
+import v3.flat
 import v3.pref
 
-fn test_windows_translation_unit_preserves_configuration_preincludes() {
+fn windows_preamble_test_gen() FlatGen {
 	mut g := FlatGen.new()
+	g.a = &flat.FlatAst{}
 	g.target = pref.target_from('windows', 'amd64') or { panic(err) }
+	return g
+}
+
+fn test_windows_translation_unit_preserves_configuration_preincludes() {
+	mut g := windows_preamble_test_gen()
 	g.preinclude_directives = ['#include "winapi_config.h"', '#include <synchapi.h>',
 		'#include <windows.h>']
-	g.emit_preinclude_directives()
+	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
 	assert c_code.index('#include "winapi_config.h"')? < c_code.index('#include <windows.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <synchapi.h>')?
@@ -15,12 +22,28 @@ fn test_windows_translation_unit_preserves_configuration_preincludes() {
 }
 
 fn test_windows_translation_unit_adds_windows_header_after_configuration_preincludes() {
-	mut g := FlatGen.new()
-	g.target = pref.target_from('windows', 'amd64') or { panic(err) }
+	mut g := windows_preamble_test_gen()
 	g.preinclude_directives = ['#include "winapi_config.h"']
-	g.emit_preinclude_directives()
+	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
 	assert c_code.index('#include "winapi_config.h"')? < c_code.index('#include <windows.h>')?
+}
+
+fn test_windows_translation_unit_keeps_preserved_winsock_headers_before_windows_header() {
+	mut g := windows_preamble_test_gen()
+	g.preinclude_directives = ['#include "winapi_config.h"']
+	g.add_c_directive('net', '#include <winsock2.h>', false)
+	g.add_c_directive('net', '#include <ws2tcpip.h>', false)
+	g.emit_translation_unit_include_directives()
+	c_code := g.sb.str()
+	config_index := c_code.index('#include "winapi_config.h"')?
+	winsock_index := c_code.index('#include <winsock2.h>')?
+	ws2tcpip_index := c_code.index('#include <ws2tcpip.h>')?
+	windows_index := c_code.index('#include <windows.h>')?
+	assert config_index < winsock_index
+	assert winsock_index < ws2tcpip_index
+	assert ws2tcpip_index < windows_index
+	assert c_code.count('#include <windows.h>') == 1
 }
 
 fn test_thread_local_decl_uses_portable_c_dialects() {

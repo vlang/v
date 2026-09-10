@@ -215,7 +215,8 @@ pub fn error_code() int {
 	return C.WSAGetLastError()
 }
 
-pub struct C.WSAData {
+@[typedef]
+pub struct C.WSADATA {
 mut:
 	wVersion       u16
 	wHighVersion   u16
@@ -227,7 +228,7 @@ mut:
 }
 
 fn init() {
-	mut wsadata := C.WSAData{
+	mut wsadata := C.WSADATA{
 		lpVendorInfo: 0
 	}
 	res := C.WSAStartup(wsa_v22, &wsadata)
