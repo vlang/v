@@ -17037,7 +17037,7 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 			params_str := clean[params_start..params_end]
 			if trimmed_space(params_str).len > 0 {
 				for part in split_params(params_str) {
-					fn_parts << subst_generic_text(normalize_fn_type_param_text(part), args, params)
+					fn_parts << subst_generic_text(normalize_fn_type_param_text_preserving_mut(part), args, params)
 				}
 			}
 			ret_str := trimmed_space(clean[params_end + 1..])
@@ -17678,6 +17678,14 @@ fn split_params(s string) []string {
 
 // normalize_fn_type_param_text transforms normalize fn type param text data for types.
 fn normalize_fn_type_param_text(param string) string {
+	return normalize_fn_type_param_text_with_mut_mode(param, false)
+}
+
+fn normalize_fn_type_param_text_preserving_mut(param string) string {
+	return normalize_fn_type_param_text_with_mut_mode(param, true)
+}
+
+fn normalize_fn_type_param_text_with_mut_mode(param string, preserve_mut bool) string {
 	mut text := trimmed_space(param)
 	mut is_mut := false
 	if text.starts_with('mut ') {
@@ -17710,8 +17718,13 @@ fn normalize_fn_type_param_text(param string) string {
 			break
 		}
 	}
-	if is_mut && text.len > 0 && !text.starts_with('&') {
-		return '&' + text
+	if is_mut && text.len > 0 {
+		if preserve_mut {
+			return 'mut ' + text
+		}
+		if !text.starts_with('&') {
+			return '&' + text
+		}
 	}
 	return text
 }
