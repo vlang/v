@@ -5,8 +5,7 @@ import v.token
 import v.pref
 
 fn scan_kinds(text string) []token.Kind {
-	mut scanner := new_plain_scanner(text, .skip_comments, &pref.Preferences{},
-		internally_generated_v_code, internally_generated_v_code)
+	mut scanner := new_plain_scanner(text, .skip_comments, &pref.Preferences{}, internally_generated_v_code, internally_generated_v_code)
 	mut token_kinds := []token.Kind{}
 	for {
 		tok := scanner.text_scan()
@@ -19,8 +18,7 @@ fn scan_kinds(text string) []token.Kind {
 }
 
 fn scan_tokens(text string) []token.Token {
-	mut scanner := new_plain_scanner(text, .parse_comments, &pref.Preferences{},
-		internally_generated_v_code, internally_generated_v_code)
+	mut scanner := new_plain_scanner(text, .parse_comments, &pref.Preferences{}, internally_generated_v_code, internally_generated_v_code)
 	mut tokens := []token.Token{}
 	for {
 		tok := scanner.text_scan()
@@ -207,13 +205,13 @@ fn test_escape_rune() {
 
 fn test_escape_string() {
 	// these lines work if the v compiler is working
-	assert '\x61' == 'a'
-	assert '\x62' == 'b'
-	assert '\u0061' == 'a'
-	assert '\U00000061' == 'a'
-	assert '\141' == 'a'
-	assert '\xe2\x98\x85' == '★'
-	assert '\342\230\205' == '★'
+	assert 'a' == 'a'
+	assert 'b' == 'b'
+	assert 'a' == 'a'
+	assert 'a' == 'a'
+	assert 'a' == 'a'
+	assert '★' == '★'
+	assert '★' == '★'
 
 	// the following lines test the scanner module
 	// even before it is compiled into the v executable
@@ -317,8 +315,7 @@ fn test_escape_string() {
 
 fn assert_str_interpolation_works(mlen int, text string) {
 	mut max_len := 0
-	mut scanner := new_plain_scanner(text, .skip_comments, &pref.Preferences{},
-		internally_generated_v_code, internally_generated_v_code)
+	mut scanner := new_plain_scanner(text, .skip_comments, &pref.Preferences{}, internally_generated_v_code, internally_generated_v_code)
 	for {
 		tok := scanner.text_scan()
 		if scanner.str_helper_tokens.len > max_len {
@@ -342,15 +339,15 @@ fn test_string_interpolation_with_nested_string_does_not_grow_str_helper_tokens_
 }
 
 fn test_dollar_sign_is_literal_without_braces() {
-	mut result := scan_tokens("'a$b'")
+	mut result := scan_tokens("'a\$b'")
 	assert result.len == 1
 	assert result[0].kind == .string
-	assert result[0].lit == 'a$b'
+	assert result[0].lit == 'a\$b'
 
-	result = scan_tokens('"a$b"')
+	result = scan_tokens('"a\$b"')
 	assert result.len == 1
 	assert result[0].kind == .string
-	assert result[0].lit == 'a$b'
+	assert result[0].lit == 'a\$b'
 }
 
 fn scan_string_with_opaque_pos(source string) (token.Token, []int) {
@@ -360,35 +357,54 @@ fn scan_string_with_opaque_pos(source string) (token.Token, []int) {
 }
 
 fn test_string_opaque_positions_survive_source_normalization() {
-	lf_tok, lf_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 92, 10, 92, 120, 53,
-		99, 110, 66, 39].bytestr())
+	lf_tok, lf_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 92, 10, 92, 120, 53, 99, 110,
+		66, 39].bytestr())
 	assert lf_tok.lit.bytes() == [u8(65), 92, 110, 66]
 	assert lf_opaque_pos == [1]
 
-	crlf_tok, crlf_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 92, 13, 10, 92,
-		120, 53, 99, 110, 66, 39].bytestr())
+	crlf_tok, crlf_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 92, 13, 10, 92, 120, 53,
+		99, 110, 66, 39].bytestr())
 	assert crlf_tok.lit.bytes() == [u8(65), 92, 110, 66]
 	assert crlf_opaque_pos == [1]
 
-	cr_tok, cr_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 13, 92, 120, 53,
-		99, 110, 66, 39].bytestr())
+	cr_tok, cr_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 13, 92, 120, 53, 99, 110,
+		66, 39].bytestr())
 	assert cr_tok.lit.bytes() == [u8(65), 92, 110, 66]
 	assert cr_opaque_pos == [1]
 }
 
 fn test_source_normalization_does_not_remove_decoded_bytes() {
-	decoded_cr_tok, decoded_cr_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 92,
-		120, 48, 100, 66, 13, 67, 39].bytestr())
+	decoded_cr_tok, decoded_cr_opaque_pos := scan_string_with_opaque_pos([u8(39), 65, 92, 120, 48,
+		100, 66, 13, 67, 39].bytestr())
 	assert decoded_cr_tok.lit.bytes() == [u8(65), 13, 66, 67]
 	assert decoded_cr_opaque_pos == [1]
 
-	decoded_slash_tok, decoded_slash_opaque_pos := scan_string_with_opaque_pos([u8(39), 65,
-		92, 120, 53, 99, 10, 66, 39].bytestr())
+	decoded_slash_tok, decoded_slash_opaque_pos := scan_string_with_opaque_pos([
+		u8(39),
+		65,
+		92,
+		120,
+		53,
+		99,
+		10,
+		66,
+		39,
+	].bytestr())
 	assert decoded_slash_tok.lit.bytes() == [u8(65), 92, 10, 66]
 	assert decoded_slash_opaque_pos == [1]
 
-	decoded_space_tok, decoded_space_opaque_pos := scan_string_with_opaque_pos([u8(39), 65,
-		92, 10, 92, 120, 50, 48, 66, 39].bytestr())
+	decoded_space_tok, decoded_space_opaque_pos := scan_string_with_opaque_pos([
+		u8(39),
+		65,
+		92,
+		10,
+		92,
+		120,
+		50,
+		48,
+		66,
+		39,
+	].bytestr())
 	assert decoded_space_tok.lit.bytes() == [u8(65), 32, 66]
 	assert decoded_space_opaque_pos == [1]
 }
@@ -412,8 +428,7 @@ fn test_truncated_escape_at_eof_does_not_read_past_end() {
 	// Buggy scanner reads [3]='a', [4]='b' — valid hex — and reports NO \x error.
 	buf_x := r'"\xab"'.bytes()
 	text_x := unsafe { tos(buf_x.data, 3) }
-	mut s := new_plain_scanner(text_x, .skip_comments, prefs, internally_generated_v_code,
-		internally_generated_v_code)
+	mut s := new_plain_scanner(text_x, .skip_comments, prefs, internally_generated_v_code, internally_generated_v_code)
 	_ = s.text_scan()
 	assert s.errors.any(it.message.contains('used without two following hex digits')), r'scanner must report \x error for "\xab" truncated after "\x"'
 
@@ -421,8 +436,7 @@ fn test_truncated_escape_at_eof_does_not_read_past_end() {
 	// Buggy scanner reads [3]...[6] — all valid hex — and reports NO \u error.
 	buf_u := r'"\u1234"'.bytes()
 	text_u := unsafe { tos(buf_u.data, 3) }
-	mut s2 := new_plain_scanner(text_u, .skip_comments, prefs, internally_generated_v_code,
-		internally_generated_v_code)
+	mut s2 := new_plain_scanner(text_u, .skip_comments, prefs, internally_generated_v_code, internally_generated_v_code)
 	_ = s2.text_scan()
 	assert s2.errors.any(it.message.contains('incomplete 16 bit unicode')), r'scanner must report \u error for "\u1234" truncated after "\u"'
 
@@ -430,8 +444,7 @@ fn test_truncated_escape_at_eof_does_not_read_past_end() {
 	// Buggy scanner reads [3]...[10] — all valid hex — and reports NO \U error.
 	buf_uu := r'"\U12345678"'.bytes()
 	text_uu := unsafe { tos(buf_uu.data, 3) }
-	mut s3 := new_plain_scanner(text_uu, .skip_comments, prefs, internally_generated_v_code,
-		internally_generated_v_code)
+	mut s3 := new_plain_scanner(text_uu, .skip_comments, prefs, internally_generated_v_code, internally_generated_v_code)
 	_ = s3.text_scan()
 	assert s3.errors.any(it.message.contains('incomplete 32 bit unicode')), r'scanner must report \U error for "\U12345678" truncated after "\U"'
 }

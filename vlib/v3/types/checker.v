@@ -7484,8 +7484,7 @@ fn (tc &TypeChecker) collapsed_call_arg_raw_param_idx(node flat.Node, info CallI
 	}
 	recv_extra := if info.has_receiver { 1 } else { 0 }
 	collapsed := if field_init_args > 0 { 1 } else { 0 }
-	actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed +
-		recv_extra
+	actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed + recv_extra
 	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
 	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
 	arg_shift := if ctx_omitted { ctx_count } else { 0 }

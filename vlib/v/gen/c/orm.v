@@ -254,7 +254,7 @@ fn (mut g Gen) emit_sql_query_data_guard_open(cond ast.IfGuardExpr) SqlQueryData
 	}
 	g.indent++
 	return SqlQueryDataGuardState{
-		temp_var:  temp_var
+		temp_var: temp_var
 		expr_type: expr_type
 	}
 }
@@ -521,8 +521,7 @@ fn (mut g Gen) emit_sql_query_data_items(query_var string, items []ast.SqlQueryD
 					}
 					mut branch_items := branch.items.clone()
 					if branch.cond is ast.IfGuardExpr {
-						g.annotate_sql_query_data_guard_items(mut branch_items, branch.cond,
-							prev_guard)
+						g.annotate_sql_query_data_guard_items(mut branch_items, branch.cond, prev_guard)
 					}
 					g.emit_sql_query_data_items(query_var, branch_items, resolve_columns)
 					g.indent--
@@ -642,11 +641,9 @@ fn (mut g Gen) sql_insert_expr(node ast.SqlExpr) {
 
 	// orm_insert needs an SqlStmtLine, build it from SqlExpr (most nodes are the same)
 	hack_stmt_line := g.build_sql_stmt_line_from_sql_expr(node)
-	g.write_orm_insert(hack_stmt_line, table_name, connection_var_name, result_var_name,
-		node.or_expr, table_attrs)
+	g.write_orm_insert(hack_stmt_line, table_name, connection_var_name, result_var_name, node.or_expr, table_attrs)
 
-	g.write2(left,
-		'((struct _orm__Connection_interface_methods*)${connection_var_name}._typ)->_method_last_id(${connection_var_name}._object)')
+	g.write2(left, '((struct _orm__Connection_interface_methods*)${connection_var_name}._typ)->_method_last_id(${connection_var_name}._object)')
 }
 
 fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLine {
@@ -655,11 +652,11 @@ fn (mut g Gen) build_sql_stmt_line_from_sql_expr(node ast.SqlExpr) ast.SqlStmtLi
 		sub_structs[key] = g.build_sql_stmt_line_from_sql_expr(sub)
 	}
 	return ast.SqlStmtLine{
-		object_var:  node.inserted_var
-		fields:      node.fields
-		table_expr:  node.table_expr
+		object_var: node.inserted_var
+		fields: node.fields
+		table_expr: node.table_expr
 		sub_structs: sub_structs
-		scope:       node.scope
+		scope: node.scope
 	}
 }
 
@@ -703,16 +700,13 @@ fn (mut g Gen) sql_stmt_line(stmt_line ast.SqlStmtLine, connection_var_name stri
 	}
 
 	if node.kind == .create {
-		g.write_orm_create_table(node, table_name, connection_var_name, result_var_name,
-			table_attrs)
+		g.write_orm_create_table(node, table_name, connection_var_name, result_var_name, table_attrs)
 	} else if node.kind == .drop {
 		g.write_orm_drop_table(node, table_name, connection_var_name, result_var_name, table_attrs)
 	} else if node.kind == .insert {
-		g.write_orm_insert(node, table_name, connection_var_name, result_var_name, or_expr,
-			table_attrs)
+		g.write_orm_insert(node, table_name, connection_var_name, result_var_name, or_expr, table_attrs)
 	} else if node.kind == .upsert {
-		g.write_orm_upsert(node, table_name, connection_var_name, result_var_name, or_expr,
-			table_attrs)
+		g.write_orm_upsert(node, table_name, connection_var_name, result_var_name, or_expr, table_attrs)
 	} else if node.kind == .update {
 		g.write_orm_update(node, table_name, connection_var_name, result_var_name, table_attrs)
 	} else if node.kind == .delete {
@@ -924,8 +918,7 @@ fn (mut g Gen) write_orm_insert(node &ast.SqlStmtLine, table_name string, connec
 	last_ids_variable_name := g.new_tmp_var()
 
 	g.writeln('Array_orm__Primitive ${last_ids_variable_name} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
-	g.write_orm_insert_with_last_ids(node, connection_var_name, table_name, last_ids_variable_name,
-		result_var_name, '', '', or_expr)
+	g.write_orm_insert_with_last_ids(node, connection_var_name, table_name, last_ids_variable_name, result_var_name, '', '', or_expr)
 }
 
 // orm_object_var_c_name escapes a top-level ORM object variable (the `x` in
@@ -972,8 +965,7 @@ fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, c
 		mut row_node := *node
 		row_node.object_var = row_var
 		row_node.is_array_insert = false
-		g.write_orm_insert(&row_node, table_name, connection_var_name, row_result_var, or_expr,
-			[]ast.Attr{})
+		g.write_orm_insert(&row_node, table_name, connection_var_name, row_result_var, or_expr, []ast.Attr{})
 		g.or_block(row_result_var, *or_expr, ast.int_type.set_flag(.result))
 		g.writeln('${result_var_name} = ${row_result_var};')
 		g.indent--
@@ -988,8 +980,7 @@ fn (mut g Gen) write_orm_bulk_insert(node &ast.SqlStmtLine, table_name string, c
 	g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${object_var}, ${idx_var}));')
 	for field in fields {
 		g.write('builtin__array_push(&${data_var}, _MOV((orm__Primitive[1]){')
-		g.write_orm_field_access_to_primitive(field, row_var, node.table_expr.typ,
-			g.table.sym(node.table_expr.typ))
+		g.write_orm_field_access_to_primitive(field, row_var, node.table_expr.typ, g.table.sym(node.table_expr.typ))
 		g.writeln('}));')
 	}
 	g.indent--
@@ -1278,8 +1269,7 @@ fn (mut g Gen) write_orm_update(node &ast.SqlStmtLine, table_name string, connec
 			g.writeln('.fields = builtin____new_array_with_default_noscan(${node.updated_columns.len}, ${node.updated_columns.len}, sizeof(string), 0')
 		}
 
-		g.writeln2('),',
-			'.data = builtin__new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
+		g.writeln2('),', '.data = builtin__new_array_from_c_array(${node.update_exprs.len}, ${node.update_exprs.len}, sizeof(orm__Primitive),')
 
 		if node.update_exprs.len > 0 {
 			g.indent++
@@ -1350,8 +1340,7 @@ fn (mut g Gen) write_orm_bulk_update(node &ast.SqlStmtLine, table_name string, c
 	g.indent--
 	g.writeln('}')
 	g.write('builtin__array_push(&${where_data_var}, _MOV((orm__Primitive[1]){')
-	g.write_orm_field_access_to_primitive(key_field, row_var, node.table_expr.typ,
-		g.table.sym(node.table_expr.typ))
+	g.write_orm_field_access_to_primitive(key_field, row_var, node.table_expr.typ, g.table.sym(node.table_expr.typ))
 	g.writeln('}));')
 	g.indent--
 	g.writeln('}')
@@ -1364,12 +1353,10 @@ fn (mut g Gen) write_orm_bulk_update(node &ast.SqlStmtLine, table_name string, c
 		g.indent++
 		g.writeln('${row_type} ${row_var} = (*(${row_type}*)builtin__array_get(${node.array_update_var}, ${idx_var}));')
 		g.write('builtin__array_push(&${data_var}, _MOV((orm__Primitive[1]){')
-		g.write_orm_field_access_to_primitive(key_field, row_var, node.table_expr.typ,
-			g.table.sym(node.table_expr.typ))
+		g.write_orm_field_access_to_primitive(key_field, row_var, node.table_expr.typ, g.table.sym(node.table_expr.typ))
 		g.writeln('}));')
 		g.write('builtin__array_push(&${data_var}, _MOV((orm__Primitive[1]){')
-		g.write_orm_field_access_to_primitive(value_field, row_var, node.table_expr.typ,
-			g.table.sym(node.table_expr.typ))
+		g.write_orm_field_access_to_primitive(value_field, row_var, node.table_expr.typ, g.table.sym(node.table_expr.typ))
 		g.writeln('}));')
 		g.indent--
 		g.writeln('}')
@@ -1431,9 +1418,7 @@ fn (mut g Gen) write_orm_field_access_to_primitive(field ast.StructField, object
 		primary_field := g.get_orm_struct_primary_field(foreign_info.fields) or {
 			verror('ORM: struct field `${field.name}` of type `${sym.name}` has no primary field')
 		}
-		g.write_orm_field_access_to_primitive(primary_field,
-			'${object_var}.${orm_field_access_name(field.name)}',
-			final_field_typ.clear_flag(.option), g.table.sym(final_field_typ.clear_flag(.option)))
+		g.write_orm_field_access_to_primitive(primary_field, '${object_var}.${orm_field_access_name(field.name)}', final_field_typ.clear_flag(.option), g.table.sym(final_field_typ.clear_flag(.option)))
 		return
 	}
 	typ = vint2int(typ)
@@ -1706,9 +1691,7 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			}
 			arr.fields = fff.clone()
 			unsafe { fff.free() }
-			g.write_orm_insert_with_last_ids(arr, connection_var_name,
-				g.get_table_name_by_struct_type(arr.table_expr.typ), last_ids, res_, id_name,
-				fkeys[i], or_expr)
+			g.write_orm_insert_with_last_ids(arr, connection_var_name, g.get_table_name_by_struct_type(arr.table_expr.typ), last_ids, res_, id_name, fkeys[i], or_expr)
 			g.indent--
 			g.writeln('}')
 		}
@@ -1778,12 +1761,12 @@ fn (mut g Gen) write_orm_struct_field_expr_to_primitive(field ast.StructField, e
 		verror('ORM: struct field `${field.name}` of type `${foreign_sym.name}` has no primary field')
 	}
 	g.write_orm_primitive(primary_field.typ, ast.SelectorExpr{
-		pos:        expr.pos()
+		pos: expr.pos()
 		field_name: primary_field.name
-		expr:       expr
-		expr_type:  orm_expr_effective_type(expr, field.typ).clear_flag(.option).clear_flag(.result)
-		typ:        primary_field.typ
-		scope:      unsafe { nil }
+		expr: expr
+		expr_type: orm_expr_effective_type(expr, field.typ).clear_flag(.option).clear_flag(.result)
+		typ: primary_field.typ
+		scope: unsafe { nil }
 	})
 }
 
@@ -1899,8 +1882,7 @@ fn (mut g Gen) write_orm_where(where_expr ast.Expr) {
 
 	g.writeln('(orm__QueryData){')
 	g.indent++
-	g.write_orm_where_expr(where_expr, mut fields, mut parentheses, mut kinds, mut data, mut
-		is_ands)
+	g.write_orm_where_expr(where_expr, mut fields, mut parentheses, mut kinds, mut data, mut is_ands)
 	g.writeln('.types = builtin____new_array_with_default_noscan(0, 0, sizeof(${ast.int_type_name}), 0),')
 	if fields.len > 0 {
 		g.writeln('.fields = builtin__new_array_from_c_array(${fields.len}, ${fields.len}, sizeof(string),')
@@ -1994,8 +1976,7 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 	match expr {
 		ast.InfixExpr {
 			g.sql_side = .left
-			g.write_orm_where_expr(expr.left, mut fields, mut parentheses, mut kinds, mut data, mut
-				is_and)
+			g.write_orm_where_expr(expr.left, mut fields, mut parentheses, mut kinds, mut data, mut is_and)
 			is_nil_comparison := expr.right is ast.Nil && expr.op in [.eq, .ne]
 			mut ignore_rhs := expr.op in [.key_is, .not_is] || is_nil_comparison
 			mut kind := match expr.op {
@@ -2062,14 +2043,12 @@ fn (mut g Gen) write_orm_where_expr(expr ast.Expr, mut fields []string, mut pare
 			}
 			if !ignore_rhs { // ignore rhs for unary ops and SQL NULL equality
 				g.sql_side = .right
-				g.write_orm_where_expr(expr.right, mut fields, mut parentheses, mut kinds, mut
-					data, mut is_and)
+				g.write_orm_where_expr(expr.right, mut fields, mut parentheses, mut kinds, mut data, mut is_and)
 			}
 		}
 		ast.ParExpr {
 			mut par := [fields.len]
-			g.write_orm_where_expr(expr.expr, mut fields, mut parentheses, mut kinds, mut data, mut
-				is_and)
+			g.write_orm_where_expr(expr.expr, mut fields, mut parentheses, mut kinds, mut data, mut is_and)
 			par << fields.len - 1
 			parentheses << par
 		}
@@ -2226,8 +2205,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('NULL')
 	}
 	g.indent--
-	g.writeln2('),',
-		'.select_exprs = builtin__new_array_from_c_array(${select_exprs.len}, ${select_exprs.len}, sizeof(string),')
+	g.writeln2('),', '.select_exprs = builtin__new_array_from_c_array(${select_exprs.len}, ${select_exprs.len}, sizeof(string),')
 	g.indent++
 
 	if select_exprs.len > 0 {
@@ -2244,8 +2222,7 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 		g.writeln('NULL')
 	}
 	g.indent--
-	g.writeln2('),',
-		'.types = builtin__new_array_from_c_array(${types.len}, ${types.len}, sizeof(${ast.int_type_name}),')
+	g.writeln2('),', '.types = builtin__new_array_from_c_array(${types.len}, ${types.len}, sizeof(${ast.int_type_name}),')
 	g.indent++
 
 	if types.len > 0 {
@@ -2460,35 +2437,35 @@ fn (mut g Gen) write_orm_select(node ast.SqlExpr, connection_var_name string, re
 					}
 					where_expr.left = left_where_expr
 					where_expr.right = ast.SelectorExpr{
-						pos:        right_where_expr.pos
+						pos: right_where_expr.pos
 						field_name: primary_field.name
-						is_mut:     false
-						expr:       right_where_expr
-						expr_type:  (right_where_expr.info as ast.IdentVar).typ
-						typ:        (right_where_expr.info as ast.IdentVar).typ
-						scope:      unsafe { nil }
+						is_mut: false
+						expr: right_where_expr
+						expr_type: (right_where_expr.info as ast.IdentVar).typ
+						typ: (right_where_expr.info as ast.IdentVar).typ
+						scope: unsafe { nil }
 					}
 
 					mut sql_expr_select_array := ast.SqlExpr{
-						typ:                  final_field_typ.set_flag(.result)
-						aggregate_kind:       sub.aggregate_kind
-						aggregate_field:      sub.aggregate_field
-						db_expr:              sub.db_expr
-						has_where:            sub.has_where
-						has_offset:           sub.has_offset
-						offset_expr:          sub.offset_expr
-						has_order:            sub.has_order
-						order_expr:           sub.order_expr
-						has_desc:             sub.has_desc
-						is_array:             true
-						is_generated:         true
-						pos:                  sub.pos
-						has_limit:            sub.has_limit
-						limit_expr:           sub.limit_expr
-						table_expr:           sub.table_expr
-						fields:               sub.fields
-						sub_structs:          sub.sub_structs
-						where_expr:           where_expr
+						typ: final_field_typ.set_flag(.result)
+						aggregate_kind: sub.aggregate_kind
+						aggregate_field: sub.aggregate_field
+						db_expr: sub.db_expr
+						has_where: sub.has_where
+						has_offset: sub.has_offset
+						offset_expr: sub.offset_expr
+						has_order: sub.has_order
+						order_expr: sub.order_expr
+						has_desc: sub.has_desc
+						is_array: true
+						is_generated: true
+						pos: sub.pos
+						has_limit: sub.has_limit
+						limit_expr: sub.limit_expr
+						table_expr: sub.table_expr
+						fields: sub.fields
+						sub_structs: sub.sub_structs
+						where_expr: where_expr
 						aggregate_field_type: sub.aggregate_field_type
 					}
 

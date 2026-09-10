@@ -465,11 +465,11 @@ fn (mut t Transformer) make_interface_conversion_init(iface string, fields []fla
 		t.a.children << field
 	}
 	return t.a.add_node(flat.Node{
-		kind:           .struct_init
+		kind: .struct_init
 		children_start: start
 		children_count: flat.child_count(fields.len)
-		value:          iface
-		typ:            iface
+		value: iface
+		typ: iface
 	})
 }
 
@@ -527,7 +527,7 @@ fn (mut t Transformer) interface_conversion_impl_mappings(source_iface string, t
 			t.interface_impl_type_id(target_iface, impl) or { continue }
 		}
 		result << InterfaceImplMapping{
-			impl:      impl
+			impl: impl
 			source_id: source_id
 			target_id: target_id
 		}
@@ -607,13 +607,13 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	t.a.children << literal
 	ptr_type := if target_type.len > 0 { target_type } else { '&${iface_name}' }
 	return t.a.add_node(flat.Node{
-		kind:           .prefix
-		op:             .amp
+		kind: .prefix
+		op: .amp
 		children_start: start
 		children_count: 1
-		pos:            node.pos
-		value:          node.value
-		typ:            ptr_type
+		pos: node.pos
+		value: node.value
+		typ: ptr_type
 	})
 }
 
@@ -674,10 +674,10 @@ fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, val
 	t.a.children << then_block
 	t.a.children << else_block
 	return t.a.add_node(flat.Node{
-		kind:           .if_expr
+		kind: .if_expr
 		children_start: start
 		children_count: 3
-		typ:            field_type
+		typ: field_type
 	})
 }
 
@@ -831,11 +831,11 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		t.a.children << field_id
 	}
 	return t.a.add_node(flat.Node{
-		kind:           .struct_init
+		kind: .struct_init
 		children_start: start
 		children_count: flat.child_count(field_ids.len)
-		value:          iface_name
-		typ:            iface_name
+		value: iface_name
+		typ: iface_name
 	})
 }
 
@@ -944,13 +944,13 @@ fn (mut t Transformer) transform_interface_cast(id flat.NodeId, node flat.Node) 
 		t.a.children << nc
 	}
 	return t.a.add_node(flat.Node{
-		kind:           node.kind
-		op:             node.op
+		kind: node.kind
+		op: node.op
 		children_start: start
 		children_count: node.children_count
-		pos:            node.pos
-		value:          node.value
-		typ:            node.typ
+		pos: node.pos
+		value: node.value
+		typ: node.typ
 	})
 }
 
@@ -968,15 +968,13 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 			interface_base = base_id
 			mut receiver_source_type := t.original_expr_type(base_id)
 			if t.active_specialization_args.len > 0 {
-				receiver_source_type = t.subst_type(receiver_source_type,
-					t.active_specialization_args)
+				receiver_source_type = t.subst_type(receiver_source_type, t.active_specialization_args)
 			}
 			interface_name = t.resolve_interface_type_name(receiver_source_type)
 			if interface_name.len == 0 {
 				receiver_source_type = t.node_type(base_id)
 				if t.active_specialization_args.len > 0 {
-					receiver_source_type = t.subst_type(receiver_source_type,
-						t.active_specialization_args)
+					receiver_source_type = t.subst_type(receiver_source_type, t.active_specialization_args)
 				}
 				interface_name = t.resolve_interface_type_name(receiver_source_type)
 			}
@@ -987,8 +985,7 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 				interface_name = '${receiver_base}[${receiver_args.join(', ')}]'
 			}
 			if interface_name.len > 0 {
-				interface_receiver_type = interface_type_with_pointer_depth(receiver_source_type,
-					interface_name)
+				interface_receiver_type = interface_type_with_pointer_depth(receiver_source_type, interface_name)
 			}
 			if _ := t.raw_const_type_name_for_expr(base_id) {
 				// A module-qualified interface constant (`net.err_foo.code()`) is
@@ -1042,8 +1039,7 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 		t.set_node_typ(int(ident), interface_receiver_type)
 		ident
 	} else if base_node.kind == .selector && base_node.children_count > 0 {
-		t.make_selector_op(t.a.child(&base_node, 0), base_node.value, interface_receiver_type,
-			base_node.op)
+		t.make_selector_op(t.a.child(&base_node, 0), base_node.value, interface_receiver_type, base_node.op)
 	} else {
 		base
 	}

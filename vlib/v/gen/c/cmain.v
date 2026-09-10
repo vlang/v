@@ -294,7 +294,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 	}
 ')
 	}
-	g.writeln2('	return g_desc;', '}')
+	g.writeln2('\treturn g_desc;', '}')
 }
 
 pub fn (mut g Gen) write_tests_definitions() {

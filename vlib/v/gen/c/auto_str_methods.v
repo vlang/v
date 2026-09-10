@@ -102,8 +102,7 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			if method_has_generic_source(str_method) {
 				match mut sym.info {
 					ast.Struct, ast.SumType, ast.Interface, ast.Alias, ast.GenericInst, ast.FnType {
-						str_fn_name = g.generic_fn_name(g.str_method_concrete_types(unwrapped, sym),
-							str_fn_name)
+						str_fn_name = g.generic_fn_name(g.str_method_concrete_types(unwrapped, sym), str_fn_name)
 					}
 					else {}
 				}
@@ -114,7 +113,7 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 		str_fn_name = util.no_dots(g.cc_type(unwrapped, false)) + '_str'
 	}
 	g.str_types << StrType{
-		typ:  unwrapped
+		typ: unwrapped
 		styp: styp
 	}
 	return str_fn_name
@@ -194,8 +193,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 			g.gen_str_for_fn_type(sym.info, styp, str_fn_name)
 		}
 		ast.Struct {
-			g.gen_str_for_struct(typ.typ, sym.info, sym.language, styp,
-				g.table.type_to_str(typ.typ), str_fn_name)
+			g.gen_str_for_struct(typ.typ, sym.info, sym.language, styp, g.table.type_to_str(typ.typ), str_fn_name)
 		}
 		ast.Map {
 			g.gen_str_for_map(sym.info, styp, str_fn_name)
@@ -733,7 +731,7 @@ fn (mut g Gen) str_method_concrete_types(typ ast.Type, sym &ast.TypeSymbol) []as
 fn (mut g Gen) concrete_types_for_fn_type_symbol(sym &ast.TypeSymbol) []ast.Type {
 	if sym.info is ast.FnType && sym.generic_types.len > 0
 		&& !sym.generic_types.any(it.has_flag(.generic)
-		|| g.table.generic_type_names(it).len > 0) {
+			|| g.table.generic_type_names(it).len > 0) {
 		return sym.generic_types.clone()
 	}
 	return []ast.Type{}
@@ -851,7 +849,7 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 			}
 		} else if sym.kind == .rune {
 			// Rune are managed at this level as strings
-			g.auto_str_funcs.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(it) }, 0, 0, 0}, {_S("\`"), 0, {0}, 0, 0, 0}}));\n')
+			g.auto_str_funcs.writeln('\t\tstring x = builtin__str_intp(2, _MOV((StrIntpData[]){{_S("\\`"), ${si_s_code}, {.d_s = ${elem_str_fn_name}(it) }, 0, 0, 0}, {_S("\\`"), 0, {0}, 0, 0, 0}}));\n')
 		} else if sym.kind == .string {
 			if typ.has_flag(.option) {
 				func := g.get_str_fn(typ)
@@ -1117,7 +1115,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 		}
 		return .si_g64
 	} else if sym.kind == .int {
-		$if new_int ? && x64 {
+		$if new_int ?&& x64 {
 			return .si_i64
 		} $else {
 			return .si_i32
@@ -1280,10 +1278,8 @@ fn (mut g Gen) gen_str_for_struct(typ ast.Type, info ast.Struct, lang ast.Langua
 				if str_method := sym.find_method_with_generic_parent('str') {
 					if method_has_generic_source(str_method) && !ftyp_noshared.has_flag(.option) {
 						match sym.info {
-							ast.Struct, ast.SumType, ast.Interface, ast.Alias, ast.GenericInst,
-							ast.FnType {
-								field_fn_name = g.generic_fn_name(g.str_method_concrete_types(ftyp_noshared, sym),
-									field_fn_name)
+							ast.Struct, ast.SumType, ast.Interface, ast.Alias, ast.GenericInst, ast.FnType {
+								field_fn_name = g.generic_fn_name(g.str_method_concrete_types(ftyp_noshared, sym), field_fn_name)
 							}
 							else {}
 						}
@@ -1308,8 +1304,7 @@ fn (mut g Gen) gen_str_for_struct(typ ast.Type, info ast.Struct, lang ast.Langua
 		}
 
 		mut funcprefix := ''
-		mut func, mut caller_should_free := struct_auto_str_func(sym, lang, field.typ,
-			field_styp_fn_name, field.name, sym_has_str_method, str_method_expects_ptr)
+		mut func, mut caller_should_free := struct_auto_str_func(sym, lang, field.typ, field_styp_fn_name, field.name, sym_has_str_method, str_method_expects_ptr)
 		ftyp_nr_muls := field.typ.nr_muls()
 		field_name := if lang == .c { field.name } else { c_name(field.name) }
 		op := if is_c_struct { '->' } else { '.' }
@@ -1348,11 +1343,9 @@ fn (mut g Gen) gen_str_for_struct(typ ast.Type, info ast.Struct, lang ast.Langua
 				tmpvar := g.new_tmp_var()
 				if is_opt_field {
 					arr_styp := g.base_type(field.typ)
-					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}builtin__autostr_array_circular(${it_field_name}.state != 2 ? (*(${arr_styp}*)${it_field_name}.data).len : 0);',
-						'\tbuiltin__string_free(&${tmpvar});')
+					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}builtin__autostr_array_circular(${it_field_name}.state != 2 ? (*(${arr_styp}*)${it_field_name}.data).len : 0);', '\tbuiltin__string_free(&${tmpvar});')
 				} else {
-					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}builtin__autostr_array_circular(${it_field_name}.len);',
-						'\tbuiltin__string_free(&${tmpvar});')
+					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}builtin__autostr_array_circular(${it_field_name}.len);', '\tbuiltin__string_free(&${tmpvar});')
 				}
 				fn_body.write_string(tmpvar)
 			} else {
@@ -1412,8 +1405,7 @@ fn (mut g Gen) gen_str_for_struct(typ ast.Type, info ast.Struct, lang ast.Langua
 					fn_body.write_string(tmpvar)
 				} else if caller_should_free {
 					tmpvar := g.new_tmp_var()
-					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}${func};',
-						'\tbuiltin__string_free(&${tmpvar});')
+					fn_body_surrounder.add('\tstring ${tmpvar} = ${funcprefix}${func};', '\tbuiltin__string_free(&${tmpvar});')
 					fn_body.write_string(tmpvar)
 				} else {
 					fn_body.write_string2(funcprefix, func)

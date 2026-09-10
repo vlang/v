@@ -500,6 +500,42 @@ fn test_formatter_preserves_mutable_match_subjects() {
 	assert vfmt('mutable_match_subject_twice', out) == out
 }
 
+// The parser marks only the leftmost ident of `mut a.b` / `mut a[0]` as mutable, so the
+// formatter must follow the selector/index chain or it silently drops the `mut` and turns
+// the smartcast immutable (`nd.child.n = 2` then fails to compile).
+fn test_formatter_preserves_mut_on_selector_and_index_smartcasts() {
+	source := 'fn b(mut nd Node, mut arr []E) {\n\tif mut nd.child is A {\n\t\tnd.child.n = 2\n\t}\n\tif mut nd.child !is B {\n\t\tnd.child.n = 2\n\t}\n\tif mut arr[0] is A {\n\t\tarr[0].n = 2\n\t}\n\tmatch mut nd.child {\n\t\tA {\n\t\t\tnd.child.n = 3\n\t\t}\n\t\tB {}\n\t}\n\tmatch mut nd.a.b.c {\n\t\tA {\n\t\t\tnd.a.b.c.n = 3\n\t\t}\n\t\tB {}\n\t}\n}\n'
+	out := vfmt('mut_selector_smartcast', source)
+	assert out.contains('if mut nd.child is A {'), out
+	assert out.contains('if mut nd.child !is B {'), out
+	assert out.contains('if mut arr[0] is A {'), out
+	assert out.contains('match mut nd.child {'), out
+	assert out.contains('match mut nd.a.b.c {'), out
+	assert vfmt('mut_selector_smartcast_twice', out) == out
+}
+
+// An `is` / `!is` / `!in` condition used to get a point span on the token after it (the
+// `{`), so the block's trailing comment looked like it trailed the condition and was
+// hoisted in front of the brace, which then no longer re-parsed the same way.
+fn test_formatter_keeps_trailing_brace_comment_after_type_check_conditions() {
+	source := "type S = int | string\n\nfn f(mut s S, name string) {\n\tif mut s is int { // is cmt\n\t\tprintln(s)\n\t}\n\tif s !is int { // not is cmt\n\t\tprintln(s)\n\t}\n\tif name !in [\n\t\t'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',\n\t\t'b',\n\t] { // not in cmt\n\t\tprintln(name)\n\t}\n\tif 1 !in 0 .. 3 { // range cmt\n\t\tprintln(name)\n\t}\n}\n"
+	out := vfmt('type_check_brace_comment', source)
+	assert out.contains('if mut s is int { // is cmt\n'), out
+	assert out.contains('if s !is int { // not is cmt\n'), out
+	assert out.contains('] { // not in cmt\n'), out
+	assert out.contains('if 1 !in 0 .. 3 { // range cmt\n'), out
+	assert vfmt('type_check_brace_comment_twice', out) == out
+}
+
+// A whole-string field attribute must keep its quotes: `@[C\x5cnD]` is not valid syntax.
+fn test_formatter_keeps_quotes_on_string_field_attributes() {
+	source := "struct AttrHazardStruct {\n\ta int @[mytag: 'A\\x5cnB']\n\tb int @['C\\x5cnD']\n}\n"
+	out := vfmt('string_field_attributes', source)
+	assert out.contains("a int @[mytag: 'A\\x5cnB']"), out
+	assert out.contains("b int @['C\\x5cnD']"), out
+	assert vfmt('string_field_attributes_twice', out) == out
+}
+
 fn test_formatter_accepts_remaining_repository_syntax() {
 	source := "module main\n\nimport underscore as _abc\n\nfn accepts[T]() bool { return true }\n\nfn check() {\n\tassert kind == .fn\n\tassert accepts[atomic fn (int) int]()\n\tassert sizeof(`€`) == 4\n\tassert sizeof(c'hello') == 6\n\tassert sizeof(r'hello') > 0\n}\n"
 	out := vfmt('remaining_repository_syntax', source)

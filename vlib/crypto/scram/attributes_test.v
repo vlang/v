@@ -18,7 +18,7 @@ fn test_escape_saslname_escapes_only_what_the_grammar_forbids() {
 }
 
 fn test_escape_saslname_refuses_a_nul_byte() {
-	escape_saslname('nul\0name') or {
+	escape_saslname('nul\x00name') or {
 		assert err.msg().contains('must not contain a NUL byte')
 		return
 	}
@@ -48,7 +48,7 @@ fn test_unescape_saslname_refuses_anything_it_did_not_produce() {
 		'a nearly truncated one':      'ab=2'
 		'a raw comma':                 'a,b'
 		'a raw comma after an escape': '=2C,'
-		'a NUL byte':                  'nul\0name'
+		'a NUL byte':                  'nul\x00name'
 	}
 	for what, name in cases {
 		unescape_saslname(name) or {
@@ -97,7 +97,7 @@ fn test_parse_attributes_accepts_a_utf8_extension_value() {
 }
 
 fn test_parse_attributes_refuses_a_nul_byte_in_any_value() {
-	for message in ['x=\0', 'r=nonce,x=before\0after'] {
+	for message in ['x=\x00', 'r=nonce,x=before\x00after'] {
 		parse_attributes(message) or {
 			assert err is MalformedMessage, message
 			assert err.msg().contains('must not contain a NUL byte'), message
@@ -188,8 +188,8 @@ fn test_parse_positive_int_refuses_anything_lenient() {
 fn test_decode_base64_refuses_non_canonical_encodings() {
 	assert decode_base64('', 'x')! == []u8{}
 	assert decode_base64('dGVzdA==', 'x')! == 'test'.bytes()
-	for value in ['dGVzdA', 'dGVzdA=', 'dGVzdA===', 'not!base64', 'dGVz dA==', '====',
-		'{AAA', 'AAA{', '=AAA', 'AA=A'] {
+	for value in ['dGVzdA', 'dGVzdA=', 'dGVzdA===', 'not!base64', 'dGVz dA==', '====', '{AAA', 'AAA{',
+		'=AAA', 'AA=A'] {
 		decode_base64(value, 'the salt') or {
 			assert err.msg() == 'scram: malformed message: the salt is not valid base64'
 			assert err is MalformedMessage, value
@@ -220,7 +220,7 @@ fn test_gs2_header_rendering() {
 }
 
 fn test_gs2_header_refuses_an_unusable_binding_name() {
-	for name in ['', 'has,comma', 'has=equals', 'has space', 'has_underscore', 'control\0byte',
+	for name in ['', 'has,comma', 'has=equals', 'has space', 'has_underscore', 'control\x00byte',
 		'café'] {
 		binding := ChannelBinding{
 			mode: .required
@@ -280,8 +280,8 @@ fn test_split_gs2_header_separates_the_three_parts() {
 }
 
 fn test_split_gs2_header_refuses_invalid_utf8_authzid() {
-	client_first := [u8(`n`), `,`, `a`, `=`, 0xff, `,`, `n`, `=`, `u`, `s`, `e`, `r`, `,`,
-		`r`, `=`, `a`, `b`, `c`].bytestr()
+	client_first := [u8(`n`), `,`, `a`, `=`, 0xff, `,`, `n`, `=`, `u`, `s`, `e`, `r`, `,`, `r`,
+		`=`, `a`, `b`, `c`].bytestr()
 	split_gs2_header(client_first) or {
 		assert err is MalformedMessage
 		assert err.msg().contains('must contain valid UTF-8')
@@ -307,7 +307,7 @@ fn test_validate_nonce_matches_the_printable_rule() {
 	validate_nonce('rOprNGfwEbeRWgbNEkqO')!
 	validate_nonce('%hvYDpWUa2RaTCAfuxFIlj)hNlF\$k0')!
 	validate_nonce('a+b/c=')!
-	for bad in ['', ' ', 'a,b', 'a b', 'tab\there', 'nul\0here', 'newline\n', 'é'] {
+	for bad in ['', ' ', 'a,b', 'a b', 'tab\there', 'nul\x00here', 'newline\n', 'é'] {
 		validate_nonce(bad) or { continue }
 		assert false, 'accepted the nonce `${bad}`'
 	}

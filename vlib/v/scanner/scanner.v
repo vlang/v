@@ -59,11 +59,11 @@ pub mut:
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
-	quote                       u8   // which quote is used to denote current string: ' or "
-	nr_lines                    int  // total number of lines in the source file that were scanned
+	quote                       u8 // which quote is used to denote current string: ' or "
+	nr_lines                    int // total number of lines in the source file that were scanned
 	is_fmt                      bool // Used for v fmt.
 	comments_mode               CommentsMode
-	is_inside_toplvl_statement  bool          // *only* used in comments_mode: .toplevel_comments, toggled by parser
+	is_inside_toplvl_statement  bool // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int
@@ -76,10 +76,10 @@ pub mut:
 	should_abort                bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the scanner should stop
 
 	// the following are used only inside ident_string, but are here to avoid allocating new arrays for the most common case of strings without escapes
-	all_pos         []int    = []int{cap: 30}
-	u16_escapes_pos []int    = []int{cap: 10} // pos list of \uXXXX
-	u32_escapes_pos []int    = []int{cap: 10} // pos list of \UXXXXXXXX
-	h_escapes_pos   []int    = []int{cap: 10} // pos list of \xXX
+	all_pos         []int = []int{cap: 30}
+	u16_escapes_pos []int = []int{cap: 10} // pos list of \uXXXX
+	u32_escapes_pos []int = []int{cap: 10} // pos list of \UXXXXXXXX
+	h_escapes_pos   []int = []int{cap: 10} // pos list of \xXX
 	str_segments    []string = []string{cap: 10}
 	// for each `.string` token (keyed by its `tidx`) that contains a decoded \xXX/\uXXXX/\UXXXXXXXX
 	// escape, the byte offsets in that token's `.lit` which are opaque, already-resolved bytes -
@@ -146,24 +146,23 @@ const internally_generated_v_code = 'internally_generated_v_code'
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
-	mut s := new_plain_scanner(text, comments_mode, pref_, internally_generated_v_code,
-		internally_generated_v_code)
+	mut s := new_plain_scanner(text, comments_mode, pref_, internally_generated_v_code, internally_generated_v_code)
 	s.scan_all_tokens_in_buffer()
 	return s
 }
 
 fn new_plain_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences, file_path string, file_base string) &Scanner {
 	return &Scanner{
-		pref:                        pref_
-		text:                        text
-		all_tokens:                  []token.Token{cap: text.len / 3}
-		is_print_line_on_error:      true
-		is_print_colored_error:      true
+		pref: pref_
+		text: text
+		all_tokens: []token.Token{cap: text.len / 3}
+		is_print_line_on_error: true
+		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
-		is_fmt:                      pref_.is_fmt
-		comments_mode:               comments_mode
-		file_path:                   file_path
-		file_base:                   file_base
+		is_fmt: pref_.is_fmt
+		comments_mode: comments_mode
+		file_path: file_path
+		file_base: file_base
 	}
 }
 
@@ -205,13 +204,13 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 		max_column = 1
 	}
 	return token.Token{
-		kind:     tok_kind
-		lit:      lit
-		line_nr:  s.line_nr + line_offset
-		col:      u16(max_column)
-		pos:      s.pos - len + 1
-		len:      len
-		tidx:     cidx
+		kind: tok_kind
+		lit: lit
+		line_nr: s.line_nr + line_offset
+		col: u16(max_column)
+		pos: s.pos - len + 1
+		len: len
+		tidx: cidx
 		file_idx: s.file_idx
 	}
 }
@@ -219,13 +218,13 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 @[inline]
 fn (s &Scanner) new_eof_token() token.Token {
 	return token.Token{
-		kind:     .eof
-		lit:      ''
-		line_nr:  s.line_nr + 1
-		col:      u16(s.current_column())
-		pos:      s.pos
-		len:      1
-		tidx:     s.tidx
+		kind: .eof
+		lit: ''
+		line_nr: s.line_nr + 1
+		col: u16(s.current_column())
+		pos: s.pos
+		len: 1
+		tidx: s.tidx
 		file_idx: s.file_idx
 	}
 }
@@ -239,13 +238,13 @@ fn (mut s Scanner) new_multiline_token(tok_kind token.Kind, lit string, len int,
 		max_column = 1
 	}
 	return token.Token{
-		kind:     tok_kind
-		lit:      lit
-		line_nr:  start_line + 1
-		col:      u16(max_column)
-		pos:      s.pos - len + 1
-		len:      len
-		tidx:     cidx
+		kind: tok_kind
+		lit: lit
+		line_nr: start_line + 1
+		col: u16(max_column)
+		pos: s.pos - len + 1
+		len: len
+		tidx: cidx
 		file_idx: s.file_idx
 	}
 }
@@ -323,10 +322,10 @@ fn (s &Scanner) next_non_space_char(pos int) u8 {
 @[inline]
 fn (s &Scanner) pos_from_bounds(start_pos int, end_pos int) token.Pos {
 	return token.Pos{
-		len:      end_pos - start_pos
-		line_nr:  s.line_nr
-		pos:      start_pos
-		col:      u16_col(start_pos - s.last_nl_pos - 1)
+		len: end_pos - start_pos
+		line_nr: s.line_nr
+		pos: start_pos
+		col: u16_col(start_pos - s.last_nl_pos - 1)
 		file_idx: s.file_idx
 	}
 }
@@ -487,8 +486,7 @@ fn (mut s Scanner) ident_dec_number() string {
 	if has_wrong_digit {
 		invalid_ident := s.number_prefixed_identifier_name(start_pos, s.pos)
 		if invalid_ident != '' {
-			s.error_with_pos('identifier name `${invalid_ident}` cannot start with a number', s.pos_from_bounds(start_pos,
-				s.pos))
+			s.error_with_pos('identifier name `${invalid_ident}` cannot start with a number', s.pos_from_bounds(start_pos, s.pos))
 			number := s.num_lit(start_pos, s.pos)
 			s.pos--
 			return number
@@ -633,10 +631,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 			eprintln('> internally_generated_v_code,   end: ${s.text#[-50..]}')
 			eprintln('> internally_generated_v_code,   len: ${s.text.len}')
 		}
-		panic(
-			'the end of file `${s.file_path}` has been reached ${s.max_eofs} times already, the v parser is probably stuck.\n' +
-			'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
-			'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
+		panic('the end of file `${s.file_path}` has been reached ${s.max_eofs} times already, the v parser is probably stuck.\n' + 'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' + 'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
 	}
 	if s.pos != s.text.len && s.eofs == 1 {
 		s.inc_line_number()
@@ -820,19 +815,18 @@ pub fn (mut s Scanner) text_scan() token.Token {
 			single_quote, double_quote {
 				if s.is_likely_unclosed_string_interpolation(c) {
 					s.error_with_pos('expected `}` to close string interpolation', token.Pos{
-						len:       1
-						line_nr:   s.line_nr
-						pos:       s.pos
-						col:       u16_col(s.current_column() - 1)
-						file_idx:  s.file_idx
+						len: 1
+						line_nr: s.line_nr
+						pos: s.pos
+						col: u16_col(s.current_column() - 1)
+						file_idx: s.file_idx
 						last_line: s.line_nr
 					})
 				}
 				s.str_helper_tokens << c
 				start_line := s.line_nr
 				ident_string := s.ident_string()
-				return s.new_multiline_token(.string, ident_string, ident_string.len + 2,
-					start_line) // + two quotes
+				return s.new_multiline_token(.string, ident_string, ident_string.len + 2, start_line) // + two quotes
 			}
 			`\`` {
 				// ` // apostrophe balance comment. do not remove
@@ -987,14 +981,13 @@ pub fn (mut s Scanner) text_scan() token.Token {
 					comment := s.text[start - 1..s.pos].trim_space()
 					if s.line_nr != 1 {
 						comment_pos := token.Pos{
-							line_nr:  s.line_nr - 1
-							len:      comment.len
-							pos:      start
-							col:      u16_col(s.current_column() - comment.len)
+							line_nr: s.line_nr - 1
+							len: comment.len
+							pos: start
+							col: u16_col(s.current_column() - comment.len)
 							file_idx: s.file_idx
 						}
-						s.error_with_pos('a shebang is only valid at the top of the file',
-							comment_pos)
+						s.error_with_pos('a shebang is only valid at the top of the file', comment_pos)
 					}
 					// s.fgenln('// shebang line "$s.line_comment"')
 					return s.new_token(.comment, comment, comment.len + 2)
@@ -1146,15 +1139,14 @@ pub fn (mut s Scanner) text_scan() token.Token {
 						mut comment := s.text[start..(s.pos - 1)]
 						if !comment.contains('\n') {
 							comment_pos := token.Pos{
-								line_nr:  start_line
-								len:      comment.len + 4
-								pos:      start
-								col:      u16_col(s.current_column() - comment.len - 4)
+								line_nr: start_line
+								len: comment.len + 4
+								pos: start
+								col: u16_col(s.current_column() - comment.len - 4)
 								file_idx: s.file_idx
 							}
 							if !s.pref.is_fmt {
-								s.error_with_pos('inline comment is deprecated, please use line comment',
-									comment_pos)
+								s.error_with_pos('inline comment is deprecated, please use line comment', comment_pos)
 							}
 							comment = '\x01' + comment.trim(' ')
 						}
@@ -1220,9 +1212,9 @@ pub fn (mut s Scanner) ident_string() string {
 		s.is_nested_string = false
 	}
 	lspos := token.Pos{
-		line_nr:  s.line_nr
-		pos:      s.pos
-		col:      u16(s.pos - s.last_nl_pos - 1)
+		line_nr: s.line_nr
+		pos: s.pos
+		col: u16(s.pos - s.last_nl_pos - 1)
 		file_idx: s.file_idx
 	}
 	q := s.text[s.pos]
@@ -1417,7 +1409,7 @@ fn (mut s Scanner) decode_h_escape_single(str string, idx int) DecodedEscape {
 	}
 	// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
 	return DecodedEscape{
-		idx:     end_idx
+		idx: end_idx
 		segment: [u8(strconv.parse_uint(str[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
 	}
 }
@@ -1584,8 +1576,7 @@ fn trim_slash_line_break(s string, opaque_pos []int) (string, []int) {
 				&& end !in adjusted_opaque_pos {
 				end++
 			}
-			ret_str, adjusted_opaque_pos = remove_string_range(ret_str, adjusted_opaque_pos,
-				idx, end)
+			ret_str, adjusted_opaque_pos = remove_string_range(ret_str, adjusted_opaque_pos, idx, end)
 		} else {
 			// ensure the loop will terminate, when we could not strip anything:
 			start++
@@ -1608,9 +1599,9 @@ fn trim_slash_line_break(s string, opaque_pos []int) (string, []int) {
 ///   escaped utf8 runes in octal like `\342\230\205` => (★)
 pub fn (mut s Scanner) ident_char() string {
 	lspos := token.Pos{
-		line_nr:  s.line_nr
-		pos:      s.pos
-		col:      u16(s.pos - s.last_nl_pos - 1)
+		line_nr: s.line_nr
+		pos: s.pos
+		col: u16(s.pos - s.last_nl_pos - 1)
 		file_idx: s.file_idx
 	}
 
@@ -1696,20 +1687,18 @@ pub fn (mut s Scanner) ident_char() string {
 				i += 2
 			}
 			if escaped_hex || escaped_unicode_16 || escaped_unicode_32 {
-				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (escape sequence did not refer to a singular rune)',
-					lspos)
+				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (escape sequence did not refer to a singular rune)', lspos)
 			} else if u.len == 0 {
 				s.add_error_detail('use quotes for strings, backticks for characters')
 				s.error_with_pos('invalid empty character literal `${orig}`', lspos)
 			} else {
 				s.add_error_detail('use quotes for strings, backticks for characters')
-				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (more than one character)',
-					lspos)
+				s.error_with_pos('invalid character literal `${orig}` => `${c}` ([${err_info.join(', ')}]) (more than one character)', lspos)
 			}
 		}
 	} else if c.ends_with('\n') {
 		s.add_error_detail('use quotes for strings, backticks for characters')
-		s.error_with_pos('invalid character literal, use \`\\n\` instead', lspos)
+		s.error_with_pos('invalid character literal, use \\`\\n\\` instead', lspos)
 	} else if c.len > len {
 		ch := c[c.len - 1]
 		if !util.is_escape_sequence(ch) && !digit_table[ch] {
@@ -1761,9 +1750,9 @@ fn (mut s Scanner) inc_line_number() {
 
 pub fn (mut s Scanner) current_pos() token.Pos {
 	return token.Pos{
-		line_nr:  s.line_nr
-		pos:      s.pos
-		col:      u16_col(s.current_column() - 1)
+		line_nr: s.line_nr
+		pos: s.pos
+		col: u16_col(s.current_column() - 1)
 		file_idx: s.file_idx
 	}
 }
@@ -1774,8 +1763,8 @@ pub fn (mut s Scanner) note(msg string) {
 		return
 	}
 	pos := token.Pos{
-		line_nr:  s.line_nr
-		pos:      s.pos
+		line_nr: s.line_nr
+		pos: s.pos
 		file_idx: s.file_idx
 	}
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
@@ -1783,9 +1772,9 @@ pub fn (mut s Scanner) note(msg string) {
 	} else {
 		s.notices << errors.Notice{
 			file_path: s.file_path
-			pos:       pos
-			reporter:  .scanner
-			message:   msg
+			pos: pos
+			reporter: .scanner
+			message: msg
 		}
 	}
 }
@@ -1820,10 +1809,10 @@ pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
 	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		util.show_compiler_message('warning:',
-			pos:       pos
+			pos: pos
 			file_path: s.file_path
-			message:   msg
-			details:   details
+			message: msg
+			details: details
 		)
 	} else {
 		if s.pref.message_limit >= 0 && s.warnings.len >= s.pref.message_limit {
@@ -1832,10 +1821,10 @@ pub fn (mut s Scanner) warn_with_pos(msg string, pos token.Pos) {
 		}
 		s.warnings << errors.Warning{
 			file_path: s.file_path
-			pos:       pos
-			reporter:  .scanner
-			message:   msg
-			details:   details
+			pos: pos
+			reporter: .scanner
+			message: msg
+			details: details
 		}
 	}
 }
@@ -1848,19 +1837,19 @@ pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
 	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		util.show_compiler_message('error:',
-			pos:       pos
+			pos: pos
 			file_path: s.file_path
-			message:   msg
-			details:   details
+			message: msg
+			details: details
 		)
 		exit(1)
 	} else {
 		if s.pref.fatal_errors {
 			util.show_compiler_message('error:',
-				pos:       pos
+				pos: pos
 				file_path: s.file_path
-				message:   msg
-				details:   details
+				message: msg
+				details: details
 			)
 			exit(1)
 		}
@@ -1870,10 +1859,10 @@ pub fn (mut s Scanner) error_with_pos(msg string, pos token.Pos) {
 		}
 		s.errors << errors.Error{
 			file_path: s.file_path
-			pos:       pos
-			reporter:  .scanner
-			message:   msg
-			details:   details
+			pos: pos
+			reporter: .scanner
+			message: msg
+			details: details
 		}
 	}
 }

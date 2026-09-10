@@ -8,32 +8,32 @@ import db.sqlite
 // it in the source spell out a recognized escape letter (e.g. `n`, `t`).
 
 fn test_hex_escape_decoding_to_backslash_followed_by_letter() {
-	s := 'A\x5cnB'
+	s := 'A\\nB'
 	assert s.len == 4
 	assert s.bytes() == [u8(65), 92, 110, 66]
 }
 
 fn test_u32_escape_decoding_to_backslash_followed_by_letter() {
-	s := 'A\U0000005crB'
+	s := 'A\\rB'
 	assert s.len == 4
 	assert s.bytes() == [u8(65), 92, 114, 66]
 }
 
 fn test_trailing_decoded_backslash() {
-	s := 'A\x5c'
+	s := 'A\\'
 	assert s.len == 2
 	assert s.bytes() == [u8(65), 92]
 }
 
 fn test_two_decoded_backslashes_back_to_back() {
-	s := 'A\x5c\x5cB'
+	s := 'A\\\\B'
 	assert s.len == 4
 	assert s.bytes() == [u8(65), 92, 92, 66]
 }
 
 fn test_interpolated_string_with_decoded_backslash() {
 	x := 42
-	s := 'A\x5cn${x}B'
+	s := 'A\\n${x}B'
 	assert s.len == 6
 	assert s.bytes() == [u8(65), 92, 110, 52, 50, 66]
 }
@@ -52,24 +52,26 @@ fn test_line_continuation_before_decoded_backslash() {
 fn test_string_builder_write_string_with_decoded_backslash_in_interpolation() {
 	x := 1
 	mut sb := strings.new_builder(16)
-	sb.write_string('A\x5cnB${x}')
+	sb.write_string('A\\nB${x}')
 	s := sb.str()
 	assert s.len == 5
 	assert s.bytes() == [u8(65), 92, 110, 66, 49]
 }
 
 fn test_compile_time_string_concat_folding_with_decoded_backslash() {
-	s := 'A\x5c' + 'nB'
+	s := 'A\\' + 'nB'
 	assert s.len == 4
 	assert s.bytes() == [u8(65), 92, 110, 66]
 }
 
 fn test_decoded_backslash_does_not_break_string_equality_and_match() {
-	s := 'A\x5cnB'
-	assert s == 'A\x5cnB'
+	s := 'A\\nB'
+	assert s == 'A\\nB'
 	mut matched := false
 	match s {
-		'A\x5cnB' { matched = true }
+		'A\\nB' {
+			matched = true
+		}
 		else {}
 	}
 	assert matched
@@ -78,7 +80,7 @@ fn test_decoded_backslash_does_not_break_string_equality_and_match() {
 fn test_ordinary_escapes_still_work() {
 	assert 'A\nB'.bytes() == [u8(65), 10, 66]
 	assert 'A\\B'.bytes() == [u8(65), 92, 66]
-	assert 'A\x22B'.bytes() == [u8(65), 34, 66]
+	assert 'A"B'.bytes() == [u8(65), 34, 66]
 }
 
 // regression test for a second gap found and fixed after adversarial review: ast.Attr's `name`
@@ -226,7 +228,7 @@ fn test_orm_table_name_with_decoded_backslash() {
 	sql db {
 		create table OrmTableHazardItem
 	} or { panic(err) }
-	rows := db.exec('select name from sqlite_master where type = \'table\'') or { panic(err) }
+	rows := db.exec("select name from sqlite_master where type = 'table'") or { panic(err) }
 	mut found := false
 	for row in rows {
 		if row.vals.len > 0 {

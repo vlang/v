@@ -3013,7 +3013,10 @@ fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 				continue
 			}
 			piece_kind := parsed_attribute_kind(p.tok)
-			mut piece := attr_unquote(p.lit)
+			// The formatter re-emits field attributes from these strings, so it must keep
+			// the quotes of a whole-string attribute (`@['C\x5cnD']`) - unquoted, the
+			// escape is no longer valid syntax. Reflection keeps the legacy unquoted form.
+			mut piece := if p.prefs.is_fmt { p.lit } else { attr_unquote(p.lit) }
 			p.next()
 			if p.tok == .lpar {
 				attr_name := piece
@@ -8756,20 +8759,23 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next()
 			type_name := p.parse_type_name()
 			istart := p.add_child(lhs)
-			is_node := p.add_node(flat.Node{
+			// Span operand..type like `in_expr` does. A default (point) span would sit on the
+			// *next* token, which for `if x is T { // c` is the `{`, and the formatter would
+			// then hoist the block's trailing comment in front of the brace.
+			is_node := p.add_node_from(flat.Node{
 				kind: .is_expr
 				value: type_name
 				children_start: istart
 				children_count: 1
-			})
+			}, lhs)
 			if is_negated {
 				nstart := p.add_child(is_node)
-				lhs = p.add_node(flat.Node{
+				lhs = p.add_node_from(flat.Node{
 					kind: .prefix
 					op: .not
 					children_start: nstart
 					children_count: 1
-				})
+				}, is_node)
 			} else {
 				lhs = is_node
 			}
@@ -8784,19 +8790,19 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next() // skip is
 			type_name := p.parse_type_name()
 			istart := p.add_child(lhs)
-			is_node := p.add_node(flat.Node{
+			is_node := p.add_node_from(flat.Node{
 				kind: .is_expr
 				value: type_name
 				children_start: istart
 				children_count: 1
-			})
+			}, lhs)
 			nstart := p.add_child(is_node)
-			lhs = p.add_node(flat.Node{
+			lhs = p.add_node_from(flat.Node{
 				kind: .prefix
 				op: .not
 				children_start: nstart
 				children_count: 1
-			})
+			}, is_node)
 			continue
 		}
 		// `in` / `!in` / `not_in`
@@ -8827,12 +8833,12 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			}, lhs)
 			if is_negated {
 				nstart := p.add_child(in_node)
-				lhs = p.add_node(flat.Node{
+				lhs = p.add_node_from(flat.Node{
 					kind: .prefix
 					op: .not
 					children_start: nstart
 					children_count: 1
-				})
+				}, in_node)
 			} else {
 				lhs = in_node
 			}
@@ -8849,26 +8855,27 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			if p.tok == .dotdot {
 				p.next()
 				range_rhs := p.expr(.sum)
-				rstart := p.add_children2(rhs, range_rhs)
-				rhs = p.add_node(flat.Node{
+				range_lhs := rhs
+				rstart := p.add_children2(range_lhs, range_rhs)
+				rhs = p.add_node_from(flat.Node{
 					kind: .range
 					children_start: rstart
 					children_count: 2
-				})
+				}, range_lhs)
 			}
 			istart := p.add_children2(lhs, rhs)
-			in_node := p.add_node(flat.Node{
+			in_node := p.add_node_from(flat.Node{
 				kind: .in_expr
 				children_start: istart
 				children_count: 2
-			})
+			}, lhs)
 			nstart := p.add_child(in_node)
-			lhs = p.add_node(flat.Node{
+			lhs = p.add_node_from(flat.Node{
 				kind: .prefix
 				op: .not
 				children_start: nstart
 				children_count: 1
-			})
+			}, in_node)
 			continue
 		}
 		// skip auto-semicolons before infix operators (multi-line expressions)

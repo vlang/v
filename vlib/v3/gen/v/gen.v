@@ -1007,7 +1007,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write(' as ${g.type_text(n.value)}')
 		}
 		.is_expr {
-			if g.a.child_node(n, 0).is_mut {
+			if g.smartcast_operand_is_mut(g.a.child(n, 0)) {
 				g.write('mut ')
 			}
 			g.expr(g.a.child(n, 0))
@@ -1332,7 +1332,7 @@ fn (mut g Gen) prefix_expr(id flat.NodeId) {
 	cn := g.a.node(child)
 	// `!is` / `!in` are parsed as a `.not` prefix wrapping the is/in expression.
 	if n.op == .not && cn.kind == .is_expr {
-		if g.a.child_node(cn, 0).is_mut {
+		if g.smartcast_operand_is_mut(g.a.child(cn, 0)) {
 			g.write('mut ')
 		}
 		g.expr(g.a.child(cn, 0))
@@ -1503,6 +1503,25 @@ fn (mut g Gen) call_arg(id flat.NodeId) {
 		g.write('mut ')
 	}
 	g.expr(id)
+}
+
+// smartcast_operand_is_mut reports whether the operand of `if mut X is T` /
+// `match mut X` was written with `mut`. The parser's prefix `mut` marks only the
+// node parsed immediately after it, so for `mut a.b` / `mut a[0]` the flag lives on
+// the leftmost `a`, not on the selector/index node the smartcast sees. Follow that
+// chain so the `mut` is not dropped (it would silently make the smartcast immutable).
+fn (g &Gen) smartcast_operand_is_mut(id flat.NodeId) bool {
+	mut cur := g.a.node(id)
+	for {
+		if cur.is_mut {
+			return true
+		}
+		if cur.kind !in [.selector, .index] || cur.children_count == 0 {
+			return false
+		}
+		cur = g.a.child_node(cur, 0)
+	}
+	return false
 }
 
 fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
@@ -2603,8 +2622,7 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 		return
 	}
 	g.write('match ')
-	subject := g.a.node(children[0])
-	if subject.is_mut {
+	if g.smartcast_operand_is_mut(children[0]) {
 		g.write('mut ')
 	}
 	in_init := g.in_init
