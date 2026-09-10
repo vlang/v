@@ -157,7 +157,7 @@ fn (g &FlatGen) shared_array_payload_lvalue(id flat.NodeId) ?string {
 		return g.shared_array_payload_lvalue(g.a.child(&node, 0))
 	}
 	if node.kind == .ident && g.local_storage_is_shared(node.value) {
-		return '${g.cname(node.value)}->val'
+		return '${g.shared_storage_ident_c_name(node.value)}->val'
 	}
 	return none
 }
@@ -316,7 +316,7 @@ fn (mut g FlatGen) gen_lock_mutex_addr(lock_id flat.NodeId) {
 	lock_node := g.a.nodes[int(lock_id)]
 	if lock_node.kind == .ident && g.local_storage_is_shared(lock_node.value) {
 		g.write('(uintptr_t)&')
-		g.write(g.cname(lock_node.value))
+		g.write(g.shared_storage_ident_c_name(lock_node.value))
 		g.write('->mtx')
 		return
 	}
@@ -7303,7 +7303,7 @@ fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type 
 		return
 	}
 	if v_type is types.Pointer && rhs.kind == .ident && g.local_storage_is_shared(rhs.value) {
-		g.write('&(${g.local_cname(rhs.value)}->val)')
+		g.write('&(${g.shared_storage_ident_c_name(rhs.value)}->val)')
 		return
 	}
 	if v_type is types.Pointer && rhs.kind == .ident && !g.local_storage_is_pointer(rhs.value) {

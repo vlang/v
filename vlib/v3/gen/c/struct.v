@@ -3257,7 +3257,7 @@ fn (mut g FlatGen) gen_shared_storage_expr(id flat.NodeId) bool {
 		return g.gen_shared_storage_expr(g.a.child(&node, 0))
 	}
 	if node.kind == .ident && g.local_storage_is_shared(node.value) {
-		g.write(g.cname(node.value))
+		g.write(g.shared_storage_ident_c_name(node.value))
 		return true
 	}
 	if node.kind == .index && node.children_count > 1 {
@@ -3279,7 +3279,7 @@ fn (mut g FlatGen) gen_local_shared_value_selector(base_id flat.NodeId, field st
 	if base.kind != .ident || !g.local_storage_is_shared(base.value) {
 		return false
 	}
-	g.write(g.cname(base.value))
+	g.write(g.shared_storage_ident_c_name(base.value))
 	g.write('->val.')
 	g.write(c_field_name(field))
 	mut base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
@@ -3313,7 +3313,7 @@ fn (mut g FlatGen) gen_shared_field_storage_selector(base_id flat.NodeId, base_t
 	}
 	base := g.a.nodes[int(base_id)]
 	if base.kind == .ident && g.local_storage_is_shared(base.value) {
-		g.write(g.cname(base.value))
+		g.write(g.shared_storage_ident_c_name(base.value))
 		g.write('->val.')
 		g.write(c_field_name(field))
 		return true

@@ -5270,6 +5270,66 @@ fn main() {
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
+fn test_cached_module_shared_global_lock_uses_qualified_storage() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_shared_global_lock_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'guarded/guarded.v', '@[has_globals]
+module guarded
+
+__global guarded_items shared []int
+
+pub fn append(value int) {
+	lock guarded_items {
+		guarded_items << value
+	}
+}
+
+pub fn count() int {
+	return rlock guarded_items {
+		guarded_items.len
+	}
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', '@[has_globals]
+module main
+
+import guarded
+
+__global guarded_items shared []int
+
+fn local_summary() string {
+	shared guarded_items := &[41]
+	mut summary := ""
+	lock guarded_items {
+		guarded_items << 42
+		alias := guarded_items
+		summary = int_str(alias.len) + ":" + int_str(alias[0]) + ":" + int_str(alias[1])
+	}
+	return summary
+}
+
+fn main() {
+	guarded.append(42)
+	println(guarded.count())
+	println(local_summary())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '1\n2:41:42'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '1\n2:41:42'
+}
+
 fn test_cached_header_preserves_noreturn_attribute() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_noreturn_${os.getpid()}')
