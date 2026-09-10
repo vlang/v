@@ -31,28 +31,30 @@ can compile the full builtin map.v.
 
 ## V3 dispatch
 
-On macOS, Linux, and BSD, V3 is the default compiler for user source and test builds. The
+On macOS, BSD, Linux, and Windows, V3 is the default compiler for user source and test builds. The
 top-level `v` command runs the V3 driver linked into `cmd/v`; it does not build or launch a second
 compiler process. This includes direct file and directory builds, `run`, `build`, and test-file
 compilation, plus production and shared builds and supported cross targets and backends. The
 `test` command itself continues to use the established test dispatcher, while each discovered
 test file is compiled by V3.
 
-`cmd/v` remains the full CLI and tool dispatcher. On macOS, Linux, and BSD it links V3, but does
-not link the established compiler in `vlib/v`; its own build and every other direct C build
-therefore use V3. Commands such as `test` remain external tools, while each discovered test file
-is compiled by V3. Non-C backends remain separate builder tools.
+`cmd/v` remains the full CLI and tool dispatcher. On these platforms it links V3, but does not
+link the established compiler in `vlib/v`; its own build and every other direct C build therefore
+use V3. Commands such as `test` remain external tools, while each discovered test file is compiled
+by V3. Non-C backends remain separate builder tools.
 
 `-new-compiler` remains accepted for command-line compatibility and selects the same in-process V3
-driver. On macOS, Linux, and BSD, `-old-compiler` launches the external `v1_fallback`
-compatibility compiler installed by `make` and maintained by self-builds. On Windows and portable
-cross-VC builds, the V3 driver is not embedded and `cmd/v` retains the established compiler.
+driver. The standard bootstrap also builds `v1_fallback` (`v1_fallback.exe` on Windows) beside
+`v`; `-old-compiler` launches it explicitly, and ordinary user builds retry through it after a V3
+compiler or C compilation failure. A separately built V3-only executable without that sibling
+cannot use the fallback. On portable cross-VC builds, the V3 driver is not embedded and `cmd/v`
+retains the established compiler.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
 
-V3 parser, checker, code-generation, and C-compiler failures are returned directly; `cmd/v` does
-not retry them with V1.
+Explicit `-new-compiler` builds and native `cmd/v` self-builds remain strict V3 operations and do
+not retry with V1.
 
 ## Target selection
 

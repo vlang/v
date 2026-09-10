@@ -490,6 +490,13 @@ fn c_backend_fn_file_rank(file string) int {
 	return 0
 }
 
+fn (g &FlatGen) c_main_declaration() string {
+	if g.target.os == 'windows' {
+		return 'int wmain(int argc, wchar_t** argv) {'
+	}
+	return 'int main(int argc, char** argv) {'
+}
+
 fn (mut g FlatGen) gen_synthetic_main_after_fns() {
 	if g.suppress_main {
 		if g.needs_no_main_runtime_init_caller() {
@@ -4671,7 +4678,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	fn_start_pos := g.sb.len
 	mut is_direct_no_main_export := false
 	if is_entry_main {
-		g.writeln('int main(int argc, char** argv) {')
+		g.writeln(g.c_main_declaration())
 		if g.has_builtins {
 			g.writeln('\tg_main_argc = argc;')
 			g.writeln('\tg_main_argv = argv;')
@@ -5078,7 +5085,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.goto_label_c_names.clear()
 	g.goto_label_count = 0
 	fn_start_pos := g.sb.len
-	g.writeln('int main(int argc, char** argv) {')
+	g.writeln(g.c_main_declaration())
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
 		g.writeln('\tg_main_argv = argv;')
@@ -5177,7 +5184,7 @@ fn (mut g FlatGen) gen_test_main() {
 		g.writeln('}')
 		g.writeln('')
 	}
-	g.writeln('int main(int argc, char** argv) {')
+	g.writeln(g.c_main_declaration())
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
 		g.writeln('\tg_main_argv = argv;')
@@ -6221,6 +6228,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
 	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
+	if fn_node.kind == .selector && node.children_count == 2 && target_name.starts_with('C.')
+		&& target_name in g.tc.type_aliases {
+		g.write('(${g.direct_call_name(target_name)})(')
+		g.gen_expr(g.a.child(&node, 1))
+		g.write(')')
+		return
+	}
 	if g.gen_c_va_macro_call(node, target_name, resolved_target_name) {
 		return
 	}

@@ -48,7 +48,7 @@ fn test_linux_routes_implicit_cmd_v_self_build_to_v1_compatibility() {
 }
 
 fn test_temporary_self_build_bootstraps_only_before_v1_fallback_exists() {
-	$if bsd || linux {
+	$if bsd || linux || windows {
 		vroot := os.dir(@VEXE)
 		mut prefs := &pref.Preferences{
 			path: os.join_path(vroot, 'cmd', 'v')

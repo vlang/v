@@ -1827,9 +1827,16 @@ fn (mut t Transformer) transform_call_arg_for_named_param(arg_id flat.NodeId, pa
 	// C declarations often use `voidptr` as an intentionally opaque placeholder
 	// for a native by-value type whose full declaration lives in an inserted C or
 	// Objective-C source. Match the legacy backend by leaving such C arguments in
-	// value form; callers that need an actual pointer spell `&value` explicitly.
-	if call_name.starts_with('C.') && transform_param_type_is_void_pointer(param_type) {
-		return t.transform_expr(arg_id)
+	// value form. An explicit opaque-pointer cast also owns its pointer depth even
+	// when an included header refines the parameter to `void**` (for example,
+	// `CreatePipe(voidptr(&handle))`).
+	if call_name.starts_with('C.') {
+		arg_node := t.a.nodes[int(arg_id)]
+		if transform_param_type_is_void_pointer(param_type)
+			|| (arg_node.kind == .cast_expr
+				&& transform_param_type_is_void_pointer(t.node_type(arg_id))) {
+			return t.transform_expr(arg_id)
+		}
 	}
 	return t.transform_call_arg_for_param(arg_id, param_type)
 }

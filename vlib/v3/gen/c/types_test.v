@@ -450,6 +450,39 @@ fn test_optional_payload_does_not_qualify_ambiguous_interface() {
 	assert g.stale_ambiguous_qualified_interface_c_type('Value')
 }
 
+fn test_optional_array_typedef_ignores_nominal_name_collisions() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.interface_names['first.Array'] = true
+	tc.interface_names['second.Array'] = true
+	tc.structs['first.Array'] = []types.StructField{}
+	tc.structs['second.Array'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.stale_ambiguous_qualified_interface_c_type('Array')
+	assert g.stale_ambiguous_qualified_struct_c_type('Array')
+	assert g.emit_optional_typedef('Optional_Array', 'Array')
+	assert g.sb.str().contains('Array value; } Optional_Array;')
+}
+
+fn test_optional_sum_typedef_ignores_struct_name_collisions() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.sum_types['types.Type'] = ['types.Primitive', 'types.Struct']
+	tc.structs['first.Type'] = []types.StructField{}
+	tc.structs['second.Type'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	assert g.stale_missing_qualified_struct_c_type('types__Type')
+	assert g.is_known_sum_c_type('types__Type')
+	assert g.emit_optional_typedef('Optional_types__Type', 'types__Type')
+	assert g.sb.str().contains('types__Type value; } Optional_types__Type;')
+}
+
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{

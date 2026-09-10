@@ -4853,7 +4853,17 @@ fn normalized_c_include_arg_path(include_arg string) string {
 }
 
 fn (mut g FlatGen) emit_preinclude_directives() {
+	// WinAPI leaf headers such as synchapi.h assume that windows.h has already
+	// declared their shared base types. Emit it before every user/module include,
+	// regardless of source traversal order or include directive kind.
+	early_windows_header := g.target.os == 'windows'
+	if early_windows_header {
+		g.writeln('#include <windows.h>')
+	}
 	for directive in g.preinclude_directives {
+		if early_windows_header && directive == '#include <windows.h>' {
+			continue
+		}
 		g.writeln(directive)
 	}
 	if g.preinclude_directives.len > 0 {
@@ -16780,12 +16790,20 @@ fn (mut g FlatGen) system_libc_headers() {
 	// GCC's Objective-C frontend does not implement the C11 `_Atomic` qualifier,
 	// but its stdatomic macros still work with volatile storage and __atomic builtins.
 	// Clang implements `_Atomic` in Objective-C and must retain the native qualifier.
+	// Windows TCC uses V's WinAPI atomic compatibility header instead. It must be
+	// available before struct declarations that contain atomic_uintptr_t fields, and
+	// including both implementations redefines atomic_flag and the operation macros.
+	windows_atomic_header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
+	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
+	g.writeln('#include "${windows_atomic_header}"')
+	g.writeln('#else')
 	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
 	g.writeln('#define _Atomic volatile')
 	g.writeln('#endif')
 	g.writeln('#include <stdatomic.h>')
 	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
 	g.writeln('#undef _Atomic')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/syscall.h>')
@@ -19204,7 +19222,9 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	// `atomic_thread_fence` and maps `__atomic_thread_fence` to it. Redeclaring the
 	// mapped name with `int` conflicts with TCC's `memory_order` enum parameter.
 	// clang/gcc keep the builtin.
-	g.writeln('#if defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(_WIN32)))')
+	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
+	g.writeln('/* V atomic.h supplies atomic_thread_fence on Windows TCC. */')
+	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv))')
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')

@@ -1,5 +1,17 @@
 module c
 
+import v3.pref
+
+fn test_windows_translation_unit_starts_includes_with_windows_header() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('windows', 'amd64') or { panic(err) }
+	g.preinclude_directives = ['#include <synchapi.h>', '#include <windows.h>']
+	g.emit_preinclude_directives()
+	c_code := g.sb.str()
+	assert c_code.index('#include <windows.h>')? < c_code.index('#include <synchapi.h>')?
+	assert c_code.count('#include <windows.h>') == 1
+}
+
 fn test_thread_local_decl_uses_portable_c_dialects() {
 	mut g := FlatGen.new()
 	g.emit_thread_local_decl_after_tinyc('int state;')
@@ -174,6 +186,7 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	mut g := FlatGen.new()
 	g.atomic_thread_fence_compat_decls()
 	c_code := g.sb.str()
+	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)\n/* V atomic.h supplies atomic_thread_fence on Windows TCC. */')
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
 }
@@ -193,6 +206,8 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	mut g := FlatGen.new()
 	g.system_libc_headers()
 	c_code := g.sb.str()
+	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)')
+	assert c_code.contains('thirdparty/stdatomic/win/atomic.h"\n#else')
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
 	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')

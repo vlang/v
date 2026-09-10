@@ -54,3 +54,12 @@ fn test_c_type_cache_reuses_entry_for_equal_types() {
 	})
 	assert tc.c_type(first) == tc.c_type(again)
 }
+
+fn test_private_c_struct_names_keep_the_struct_tag() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	stat_type := Type(Struct{
+		name: 'C.__stat64'
+	})
+	assert tc.c_type(stat_type) == 'struct __stat64'
+}

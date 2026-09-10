@@ -11,7 +11,7 @@ import v.pref
 import v.util
 import v.util.version
 
-$if v1_fallback ?|| cross ?|| ( !bsd && !linux ) {
+$if v1_fallback ?|| cross ?|| ( !bsd && !linux && !windows ) {
 	// The compatibility compiler, portable cross snapshots, and non-V3 targets
 	// all need the V1 builder. Keep this as one import site: a compatibility
 	// compiler generating a cross target can satisfy multiple parts of the condition.
@@ -425,7 +425,7 @@ fn rebuild(prefs &pref.Preferences) {
 		.c {
 			$if v1_fallback ?|| cross ? {
 				builder.compile('build', prefs, cbuilder.compile_c)
-			} $else $if bsd || linux {
+			} $else $if bsd || linux || windows {
 
 				// Every C-backend build is dispatched to V3 before this point. Keeping
 				// this path fatal prevents an accidental dependency on the unlinked V1

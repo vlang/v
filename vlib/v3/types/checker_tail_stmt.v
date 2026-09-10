@@ -16223,6 +16223,9 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		}
 		if t.name.starts_with('C.') {
 			raw := t.name[2..]
+			if raw.starts_with('_') {
+				return 'struct ${raw}'
+			}
 			if raw.starts_with('builtin__closure__') {
 				closure_name := 'closure.${raw['builtin__closure__'.len..]}'
 				if closure_name in tc.structs {

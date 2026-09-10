@@ -5238,7 +5238,8 @@ fn c_struct_needs_typedef(name string) bool {
 		return true
 	}
 	raw := name[2..]
-	if raw.len > 0 && raw[0] >= `a` && raw[0] <= `z` && !raw.ends_with('_t') {
+	if raw.starts_with('_')
+		|| (raw.len > 0 && raw[0] >= `a` && raw[0] <= `z` && !raw.ends_with('_t')) {
 		return false
 	}
 	return true
@@ -5417,7 +5418,8 @@ fn (mut g FlatGen) struct_decls() {
 			// An inlined header that defines `struct zip_t` without a typedef
 			// leaves V references to the bare name dangling; supply the alias
 			// (skipped when the header already typedefs it).
-			if name.starts_with('C.') && name !in c_preamble_defined_structs && c_struct_needs_typedef(name) && g.inlined_c_structs[name[2..]]
+			if name.starts_with('C.') && name !in c_preamble_defined_structs && name[2..] !in c_system_header_struct_names && c_struct_needs_typedef(name)
+				&& g.inlined_c_structs[name[2..]]
 				&& !g.inlined_c_typedef_names[name[2..]] && !(g.cache_split
 				&& name[2..] in c_cache_system_header_struct_names) {
 				ityp := if name in g.tc.unions { 'union' } else { 'struct' }

@@ -164,7 +164,7 @@ fn test_bsd_self_build_uses_system_cc_and_v3_safeguards() {
 }
 
 fn test_plain_self_replacement_preserves_cli_and_embedded_v3() {
-	$if !bsd && !linux {
+	$if !bsd && !linux && !windows {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'vself_full_cli_replacement_${os.getpid()}')

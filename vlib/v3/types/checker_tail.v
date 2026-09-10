@@ -3322,6 +3322,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		callee_id := tc.a.child(&node, 0)
 		callee := tc.a.child_node(&node, 0)
+		if tc.check_c_alias_cast_call(id, node, callee) {
+			return
+		}
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver_id := tc.a.child(callee, 0)
 			receiver := tc.a.node(receiver_id)
@@ -4041,7 +4044,7 @@ fn (tc &TypeChecker) v_source_fn_has_body(name string) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) rewrite_c_alias_call_as_cast(id flat.NodeId, node flat.Node, callee flat.Node) bool {
+fn (mut tc TypeChecker) check_c_alias_cast_call(id flat.NodeId, node flat.Node, callee flat.Node) bool {
 	if callee.kind != .selector || callee.children_count == 0 || node.children_count != 2 {
 		return false
 	}
@@ -4050,7 +4053,7 @@ fn (mut tc TypeChecker) rewrite_c_alias_call_as_cast(id flat.NodeId, node flat.N
 	if base.kind != .ident || base.value != 'C' || type_name !in tc.type_aliases {
 		return false
 	}
-	tc.a.nodes[int(id)] = flat.Node{
+	cast_node := flat.Node{
 		kind:                 .cast_expr
 		value:                type_name
 		typ:                  node.typ
@@ -4062,7 +4065,7 @@ fn (mut tc TypeChecker) rewrite_c_alias_call_as_cast(id flat.NodeId, node flat.N
 		op:                   node.op
 		skip_ownership_drops: node.skip_ownership_drops
 	}
-	tc.check_cast_expr(id, tc.a.nodes[int(id)])
+	tc.check_cast_expr(id, cast_node)
 	return true
 }
 

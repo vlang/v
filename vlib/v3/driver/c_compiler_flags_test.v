@@ -50,6 +50,23 @@ fn test_v3_explicit_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-L${tcc_install_dir}' in plan.before_inputs
 }
 
+fn test_v3_tcc_resource_flags_use_windows_bundle_root() {
+	vroot := os.join_path(os.temp_dir(), 'v3_windows_tcc_flag_plan_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	tcc_root := os.join_path(vroot, 'thirdparty', 'tcc')
+	tcc_lib := os.join_path_single(tcc_root, 'lib')
+	tcc_include := os.join_path_single(tcc_root, 'include')
+	os.mkdir_all(tcc_lib)!
+	os.mkdir_all(os.join_path_single(tcc_include, 'winapi'))!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	resources := v3_tcc_resource_flags(vroot)
+	assert resources.base_arg == '-B${tcc_root}'
+	assert resources.include_arg == '-I${tcc_include}'
+	assert resources.library_arg == '-L${tcc_lib}'
+}
+
 fn test_v3_explicit_tcc_flag_plan_restores_native_local_prefix() {
 	host_os := os.user_os()
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
@@ -86,7 +103,7 @@ fn test_add_v3_tcc_compat_defines() {
 }
 
 fn test_v3_default_linker_flags() {
-	assert v3_default_linker_flags('windows', false) == ['-lm']
+	assert v3_default_linker_flags('windows', false) == []
 	assert v3_default_linker_flags('linux', false) == ['-lm', '-lpthread']
 	assert v3_default_linker_flags('freebsd', false) == ['-lm', '-lpthread', '-lexecinfo', '-lelf']
 	assert v3_default_linker_flags('netbsd', false) == ['-lm', '-lpthread', '-lexecinfo', '-lelf']
@@ -97,6 +114,28 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	mut flags := ['-lpthread', '-lm']
 	add_v3_default_linker_flags(mut flags, 'linux', false)
 	assert flags == ['-lpthread', '-lm']
+}
+
+fn test_v3_fastc_default_linker_flags() {
+	assert v3_fastc_default_linker_flags('windows', true) == []
+	assert v3_fastc_default_linker_flags('linux', false) == ['-lm']
+	assert v3_fastc_default_linker_flags('linux', true) == ['-lpthread', '-lm']
+}
+
+fn test_v3_windows_executable_linker_flags() {
+	expected := ['-municode', '-Wl,-stack=33554432']
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false) == expected
+	assert v3_windows_executable_linker_flags('windows', 'gcc', false, false) == expected
+	assert v3_windows_executable_linker_flags('windows', 'msvc', false, false) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', true, false) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, true) == []
+	assert v3_windows_executable_linker_flags('linux', 'tinyc', false, false) == []
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os: 'windows'
+		c_compiler: 'tinyc'
+	})
+	assert '-municode' in plan.before_inputs
+	assert '-Wl,-stack=33554432' in plan.before_inputs
 }
 
 fn test_add_c_language_runtime_link_flags() {
