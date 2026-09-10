@@ -1,0 +1,38 @@
+{
+   "title":"CWT doument - Appendix A.7",
+   "input":{
+       "plaintext_hex":"a106fb41d584367c200000",
+      "mac0":{
+         "alg":"HS256/64",
+         "protected":{
+            "alg":"HS256/64"
+         },
+         "recipients":[
+            {
+               "unprotected":{
+                  "alg":"direct",
+                  "kid":"our-secret"
+               },
+               "key":{
+                  "kty":"oct",
+                  "kid":"our-secret",
+                  "use":"enc",
+                  "k_hex":"403697de87af64611c1d32a05dab0fe1fcb715a86ab435f1ec99192d79569388"
+               }
+            }
+         ]
+      }
+   },
+   "intermediates":{
+      "ToMac_hex":"84644D41433043A10104404BA106FB41D584367C200000",
+      "CEK_hex":"403697DE87AF64611C1D32A05DAB0FE1FCB715A86AB435F1EC99192D79569388",
+      "recipients":[
+         {
+         }
+      ]
+   },
+   "output":{
+      "cbor_diag":"17([h'A10104', {}, h'A106FB41D584367C200000', h'B8816F34C0542892'])",
+      "cbor":"D18443A10104A04BA106FB41D584367C20000048B8816F34C0542892"
+   }
+}
