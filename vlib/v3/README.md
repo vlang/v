@@ -95,6 +95,10 @@ The cap does not apply to compiler/self-host inputs or to V3 executables built w
 preallocation. It depends on how the V3 compiler executable was built, so passing `-no-prealloc`
 for the user program being compiled does not disable the compiler's own job cap.
 
+BSD compiler and self-host builds normally keep their V stages at two jobs. Production builds
+using `-parallel-cc` allow one job per 2 GiB of physical memory, up to eight jobs, and use the same
+limit for the split C compilation. Other parallel C builds remain limited to two jobs.
+
 ## Fast C backend
 
 `-b fastc` selects the embedded V3 driver and its AST-free parser for the shortest edit-run cycle.
