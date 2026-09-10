@@ -63,6 +63,9 @@ mut:
 	// suppress_mut skips the `mut ` prefix on an assignment (used for C-style
 	// `for` loop init clauses, whose variable the parser always marks mutable).
 	suppress_mut bool
+	// suppress_trailing_comments defers comments that belong after a surrounding
+	// delimiter, such as the opening brace of a loop.
+	suppress_trailing_comments int
 	// attrs maps a declaration node id to its `@[...]` attribute strings. The parser stores
 	// attributes on a separate floating `.directive` node rather than as a child, so they are
 	// collected up-front in collect_attrs. attr_sources retains formatter-only source groups.
@@ -109,6 +112,7 @@ pub fn (mut g Gen) reset() {
 	g.formatter_types = map[string]FormatterTypeSource{}
 	g.array_breaks.clear()
 	g.array_depth = 0
+	g.suppress_trailing_comments = 0
 }
 
 // format_file parses-independent convenience: format the file whose trailing
@@ -470,12 +474,15 @@ fn (mut g Gen) emit_implied_imports() {
 fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 	mut imported := map[string]bool{}
 	mut declared := map[string]bool{}
-	for id in g.a.children_of(fnode) {
-		n := g.a.node(id)
-		if n.kind == .import_decl {
+	for n in g.a.nodes {
+		if n.pos.id == g.file_id && n.kind == .import_decl {
 			local_name := if n.typ.len > 0 { n.typ } else { n.value.all_after_last('.') }
 			imported[local_name] = true
-		} else if n.kind == .module_decl {
+		}
+	}
+	for id in g.a.children_of(fnode) {
+		n := g.a.node(id)
+		if n.kind == .module_decl {
 			declared[n.value.all_after_last('.')] = true
 		} else if n.kind == .fn_decl {
 			declared[n.value.all_after_last('.')] = true
@@ -837,7 +844,7 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 	}
 	if n.kind == .asm_stmt && int(id) in g.a.formatter_sources {
 		g.skip_comments_before(stmt_end + 1)
-	} else {
+	} else if g.suppress_trailing_comments == 0 {
 		g.emit_trailing_comments(stmt_end)
 	}
 	g.source_end = int_max(g.source_end, stmt_end)
@@ -1068,7 +1075,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 	}
 	if (n.kind == .sql_expr || n.typ == '__v3_formatter_raw') && int(id) in g.a.formatter_sources {
 		g.skip_comments_before(n.pos.end + 1)
-	} else {
+	} else if g.suppress_trailing_comments == 0 {
 		g.emit_trailing_comments(n.pos.end)
 	}
 	g.source_end = int_max(g.source_end, n.pos.end)
@@ -2356,6 +2363,7 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 	in_init := g.in_init
 	g.in_init = true
 	g.write('for')
+	g.suppress_trailing_comments++
 	if n.value == 'c_style' {
 		g.write(' ')
 		if !g.is_empty(init) {
@@ -2379,8 +2387,23 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 	} else {
 		g.write(' ')
 	}
+	g.suppress_trailing_comments--
 	g.in_init = in_init
-	g.writeln('{')
+	g.write('{')
+	header_end := if !g.is_empty(post) {
+		g.rightmost_source_end(post)
+	} else if !g.is_empty(cond) {
+		g.rightmost_source_end(cond)
+	} else if !g.is_empty(init) {
+		g.rightmost_source_end(init)
+	} else {
+		n.pos.offset
+	}
+	body_start := if body.len > 0 { g.leftmost_source_start(body[0]) } else { n.pos.end }
+	g.emit_header_trailing_comments(header_end, body_start)
+	if !g.on_newline {
+		g.writeln('')
+	}
 	g.stmt_list_ids(body)
 	g.indent++
 	g.advance_source_end_before_pending_comment(n.pos.end)
@@ -2433,6 +2456,7 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 		!g.is_empty(v1) && mut_val
 	}
 	g.write('for ')
+	g.suppress_trailing_comments++
 	if g.is_empty(v1) {
 		if first_is_mut {
 			g.write('mut ')
@@ -2459,8 +2483,15 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 	} else {
 		g.expr(children[2])
 	}
+	g.suppress_trailing_comments--
 	body := unsafe { children[body_start..] }
-	g.writeln(' {')
+	g.write(' {')
+	header_end := g.rightmost_source_end(children[body_start - 1])
+	body_source_start := if body.len > 0 { g.leftmost_source_start(body[0]) } else { n.pos.end }
+	g.emit_header_trailing_comments(header_end, body_source_start)
+	if !g.on_newline {
+		g.writeln('')
+	}
 	g.stmt_list_ids(body)
 	g.indent++
 	g.advance_source_end_before_pending_comment(n.pos.end)
@@ -3015,7 +3046,12 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		g.write(' ')
 		g.write(receiver_type)
 		g.write(') ')
-		g.write(name.all_after_last('.'))
+		method_name := name.all_after_last('.')
+		g.write(method_name)
+		if method_name in ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '<=', '>', '>=', '|',
+			'^', '[]', '[]='] {
+			g.write(' ')
+		}
 	} else if n.kind == .c_fn_decl {
 		if name.starts_with('JS:') {
 			g.write('JS.${name[3..]}')
@@ -3933,6 +3969,22 @@ fn (mut g Gen) emit_trailing_comments(end int) {
 		}
 		g.write_comment(comment.text)
 		g.source_end = comment.pos.end
+		g.comment_i++
+	}
+}
+
+fn (mut g Gen) emit_header_trailing_comments(header_end int, body_start int) {
+	for g.comment_i < g.comments.len {
+		comment := g.comments[g.comment_i]
+		if comment.pos.offset < header_end || comment.pos.offset >= body_start
+			|| g.source_line(comment.pos.offset) != g.source_line(header_end) {
+			return
+		}
+		if g.out.len > 0 && g.out.last_n(1) !in [' ', '\t', '\n'] {
+			g.write(' ')
+		}
+		g.write_comment(comment.text)
+		g.source_end = int_max(g.source_end, comment.pos.end)
 		g.comment_i++
 	}
 }
