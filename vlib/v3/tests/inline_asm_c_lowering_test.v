@@ -425,6 +425,86 @@ fn main() {
 	assert !c_source.contains('#error asm goto'), c_source
 }
 
+fn test_asm_goto_across_rlock_scope_is_rejected() {
+	generate, _ := generate_inline_asm_c('goto_rlock_scope_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	rlock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+}
+
+fn test_asm_goto_across_lock_scope_inside_closure_is_rejected() {
+	generate, _ := generate_inline_asm_c('goto_lock_scope_closure_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	f := fn [shared counter] () {
+		lock counter {
+			asm goto amd64 {
+				jmp done
+				; ; ; ; done
+			}
+		}
+		done:
+	}
+	f()
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+}
+
+fn test_asm_goto_to_undeclared_label_in_lock_scope_is_rejected() {
+	generate, _ := generate_inline_asm_c('goto_undeclared_label_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	lock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+}
+')
+	assert generate.exit_code != 0, generate.output
+}
+
+fn test_asm_goto_across_objectless_lock_is_allowed() {
+	generate, c_source := generate_inline_asm_c('goto_objectless_lock_program', 'fn main() {
+	lock {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('jmp %l[__v_user_goto_0]'), c_source
+	assert !c_source.contains('#error asm goto'), c_source
+}
+
 fn generate_inline_asm_c(name string, source string) (os.Result, string) {
 	return generate_inline_asm_c_for_arch(name, source, 'amd64')
 }

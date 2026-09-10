@@ -2484,12 +2484,20 @@ fn (mut tc TypeChecker) check_asm_goto_lock_scopes(node flat.Node) {
 			tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut scan)
 		}
 	}
+	tc.report_asm_goto_lock_crossings(scan)
+}
+
+// report_asm_goto_lock_crossings emits a diagnostic for every collected `asm goto`
+// whose target label resolves to a different `lock`/`rlock` scope path than the
+// block. A target not declared in this function scope resolves to the empty path,
+// matching the C backend (`goto_label_lock_scopes[label] or { [] }`).
+fn (mut tc TypeChecker) report_asm_goto_lock_crossings(scan AsmGotoLockScan) {
 	for asm_id in scan.asm_gotos {
 		asm_node := tc.a.node(asm_id)
 		active := scan.asm_goto_scopes[int(asm_id)]
 		for target in inline_asm_goto_labels(asm_node.value) {
-			if target in scan.label_scopes
-				&& !asm_goto_lock_scopes_equal(scan.label_scopes[target], active) {
+			target_scope := scan.label_scopes[target] or { []int{} }
+			if !asm_goto_lock_scopes_equal(target_scope, active) {
 				tc.record_error_at(.compile_error, asm_goto_lock_scope_error(target), asm_id,
 					asm_node.pos)
 				break
@@ -2504,15 +2512,29 @@ fn asm_goto_lock_scope_error(target string) string {
 
 // collect_asm_goto_lock_scopes walks a function body, recording the `lock`/`rlock`
 // scope path (a stack of enclosing `lock_expr` node ids) at every label declaration
-// and at every `asm goto` block, so check_asm_goto_lock_scopes can compare them.
+// and at every `asm goto` block, so report_asm_goto_lock_crossings can compare them.
 fn (mut tc TypeChecker) collect_asm_goto_lock_scopes(id flat.NodeId, scopes []int, mut scan AsmGotoLockScan) {
 	node := tc.a.node(id)
 	if node.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
-		// A nested function or closure has its own lock nesting.
+		// A nested function or closure is lowered to its own C function with a
+		// fresh lock stack (`collect_fn_prelude_scan` runs per function), so scan
+		// and report its body independently against an empty scope path -- the
+		// enclosing function's locks are not active inside it.
+		mut nested := AsmGotoLockScan{}
+		for i in 0 .. node.children_count {
+			child_id := tc.a.child(node, i)
+			if tc.a.node(child_id).kind != .param {
+				tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut nested)
+			}
+		}
+		tc.report_asm_goto_lock_crossings(nested)
 		return
 	}
 	mut cur := scopes.clone()
-	if node.kind == .lock_expr {
+	// `gen_lock_enter` skips a `lock {}` / `rlock {}` with no lock objects
+	// (`lock_count = children_count - 1 <= 0`), so it never becomes an active
+	// scope at runtime -- do not treat it as one here either.
+	if node.kind == .lock_expr && node.children_count > 1 {
 		cur << int(id)
 	}
 	if node.kind == .label_stmt && node.value.len > 0 {
