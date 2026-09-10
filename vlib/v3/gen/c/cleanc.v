@@ -1020,7 +1020,7 @@ fn (g &FlatGen) shared_storage_ident_c_name(name string) string {
 			return g.global_c_name(global_name)
 		}
 	}
-	return g.cname(name)
+	return g.local_cname(name)
 }
 
 fn (mut g FlatGen) declare_local_fn_value_c_name(owner types.ScopeBindingOwner, c_name string) {

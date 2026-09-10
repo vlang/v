@@ -5296,23 +5296,38 @@ pub fn count() int {
 }
 ')
 	main_file := os.join_path(root, 'main.v')
-	write_module_cache_file(root, 'main.v', 'module main
+	write_module_cache_file(root, 'main.v', '@[has_globals]
+module main
 
 import guarded
+
+__global guarded_items shared []int
+
+fn local_summary() string {
+	shared guarded_items := &[41]
+	mut summary := ""
+	lock guarded_items {
+		guarded_items << 42
+		alias := guarded_items
+		summary = int_str(alias.len) + ":" + int_str(alias[0]) + ":" + int_str(alias[1])
+	}
+	return summary
+}
 
 fn main() {
 	guarded.append(42)
 	println(guarded.count())
+	println(local_summary())
 }
 ')
 	cache_dir := os.join_path(root, 'cache')
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
-	assert run_module_cache_binary(first_output) == '1'
+	assert run_module_cache_binary(first_output) == '1\n2:41:42'
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
-	assert run_module_cache_binary(second_output) == '1'
+	assert run_module_cache_binary(second_output) == '1\n2:41:42'
 }
 
 fn test_cached_header_preserves_noreturn_attribute() {
