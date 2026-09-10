@@ -16230,7 +16230,8 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 			if t.name in tc.c_typedef_structs {
 				return raw
 			}
-			if raw.starts_with('_') {
+			// Winsock exposes WSAData only as a struct tag; its typedef is WSADATA.
+			if raw == 'WSAData' || raw.starts_with('_') {
 				return 'struct ${raw}'
 			}
 			if raw.starts_with('builtin__closure__') {

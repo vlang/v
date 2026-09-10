@@ -64,6 +64,15 @@ fn test_private_c_struct_names_keep_the_struct_tag() {
 	assert tc.c_type(stat_type) == 'struct __stat64'
 }
 
+fn test_wsa_data_keeps_the_windows_struct_tag() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	wsa_data_type := Type(Struct{
+		name: 'C.WSAData'
+	})
+	assert tc.c_type(wsa_data_type) == 'struct WSAData'
+}
+
 fn test_private_typedef_c_struct_names_keep_the_typedef_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
