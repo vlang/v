@@ -741,7 +741,7 @@ and conversions, refer to the
 Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
 quotes to single quotes unless the string contains a single quote character.
 
-Prepend `r` for raw strings. Escapes are not handled, so you will get exacly what you type:
+Prepend `r` for raw strings. Escapes are not handled, so you will get exactly what you type:
 
 ```v
 s := r'hello\nworld' // the `\n` will be preserved as two characters
