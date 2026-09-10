@@ -217,6 +217,21 @@ fn test_v3_windows_executable_linker_flags() {
 	assert '-Wl,-stack=33554432' in plan.before_inputs
 }
 
+fn test_v3_fastc_rejects_windows_gui_subsystem() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_windows_subsystem_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {}\n')!
+	build := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-b', 'fastc', '-os', 'windows',
+		'-subsystem', 'windows', source])
+	assert build.exit_code != 0, build.output
+	assert build.output.contains('the V3 fastc backend does not support `-subsystem windows`'), build.output
+}
+
 fn test_add_c_language_runtime_link_flags() {
 	target := pref.Target{
 		os: 'linux'

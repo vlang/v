@@ -8866,6 +8866,10 @@ pub fn run(args []string) {
 		eprintln(err.msg())
 		exit(1)
 	}
+	if backend == 'fastc' && target.os == 'windows' && subsystem == .windows {
+		eprintln('the V3 fastc backend does not support `-subsystem windows`')
+		exit(1)
+	}
 	// V's platform `int` is 64-bit on 64-bit targets and 32-bit on 32-bit ones;
 	// pin the C spelling from the target width before any checking or codegen.
 	types.set_platform_int_bits(target.pointer_bits)
