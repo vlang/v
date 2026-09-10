@@ -49,9 +49,12 @@ fn test_v3_parallel_c_unit_count() {
 }
 
 fn test_v3_large_prod_c_unit_uses_the_compiled_unit_size() {
-	assert !v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold - 1, false)
-	assert v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold, false)
-	assert !v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold, true)
+	assert !v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold - 1)
+	assert v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold)
+	assert !v3_parallel_c_unit_is_large(v3_large_prod_c_unit_threshold - 1, 0, true)
+	assert v3_parallel_c_unit_is_large(v3_large_prod_c_unit_threshold, 0, true)
+	assert !v3_parallel_c_unit_is_large(v3_large_prod_c_unit_threshold - 100, 99, false)
+	assert v3_parallel_c_unit_is_large(v3_large_prod_c_unit_threshold - 100, 100, false)
 }
 
 fn test_configure_selfhost_parallelism_uses_bsd_limit() {
@@ -539,8 +542,8 @@ fn test_v3_prod_c_optimization_flags_skip_lto_for_tcc() {
 	]
 	assert v3_prod_c_optimization_flags(false, false, false, false, false, false, false) == []
 	assert v3_prod_c_optimization_flags(true, true, false, false, false, false, false) == []
-	assert !v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold - 1, false)
-	assert v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold, false)
+	assert !v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold - 1)
+	assert v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold)
 }
 
 fn test_v3_prod_c_object_optimization_flags_keep_cached_objects_out_of_lto() {
