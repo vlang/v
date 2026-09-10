@@ -1,0 +1,24 @@
+interface Value {}
+
+struct Box[T] {
+	val T
+}
+
+struct Holder {
+	val Value
+}
+
+fn main() {
+	s := Holder{
+		val: 42
+	}
+
+	match s.val {
+		Box[Missing] {
+			''
+		}
+		else {
+			''
+		}
+	}
+}

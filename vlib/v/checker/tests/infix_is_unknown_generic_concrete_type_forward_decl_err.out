@@ -1,0 +1,7 @@
+vlib/v/checker/tests/infix_is_unknown_generic_concrete_type_forward_decl_err.vv:5:14: error: is: type `Box[Missing]` does not exist
+    3 | fn main() {
+    4 |     v := Value(Box[int]{})
+    5 |     if v is Box[Missing] {
+      |                 ~~~~~~~
+    6 |         println('yes')
+    7 |     }

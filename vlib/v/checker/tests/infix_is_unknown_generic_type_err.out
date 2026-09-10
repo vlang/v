@@ -1,0 +1,62 @@
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:10:10: error: is: type `Missing` does not exist
+    8 |     v := Value(Box[int]{})
+    9 | 
+   10 |     if v is Missing {}
+      |             ~~~~~~~
+   11 |     if v is Missing[int] {}
+   12 |     if v is Missing[Box] {}
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:11:10: error: is: type `Missing[int]` does not exist
+    9 | 
+   10 |     if v is Missing {}
+   11 |     if v is Missing[int] {}
+      |             ~~~~~~~
+   12 |     if v is Missing[Box] {}
+   13 |     if v is Box[Missing] {}
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:12:10: error: is: type `Missing[Box]` does not exist
+   10 |     if v is Missing {}
+   11 |     if v is Missing[int] {}
+   12 |     if v is Missing[Box] {}
+      |             ~~~~~~~
+   13 |     if v is Box[Missing] {}
+   14 |     if v is Box[[]Missing] {}
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:13:14: error: is: type `Box[Missing]` does not exist
+   11 |     if v is Missing[int] {}
+   12 |     if v is Missing[Box] {}
+   13 |     if v is Box[Missing] {}
+      |                 ~~~~~~~
+   14 |     if v is Box[[]Missing] {}
+   15 |     if v is Box[map[string]Missing] {}
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:14:16: error: is: type `Box[[]Missing]` does not exist
+   12 |     if v is Missing[Box] {}
+   13 |     if v is Box[Missing] {}
+   14 |     if v is Box[[]Missing] {}
+      |                   ~~~~~~~
+   15 |     if v is Box[map[string]Missing] {}
+   16 |     if v is Box[map[Missing]string] {}
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:15:25: error: is: type `Box[map[string]Missing]` does not exist
+   13 |     if v is Box[Missing] {}
+   14 |     if v is Box[[]Missing] {}
+   15 |     if v is Box[map[string]Missing] {}
+      |                            ~~~~~~~
+   16 |     if v is Box[map[Missing]string] {}
+   17 |     if v is Box[fn (Missing) int] {}
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:16:18: error: is: type `Box[map[Missing]string]` does not exist
+   14 |     if v is Box[[]Missing] {}
+   15 |     if v is Box[map[string]Missing] {}
+   16 |     if v is Box[map[Missing]string] {}
+      |                     ~~~~~~~
+   17 |     if v is Box[fn (Missing) int] {}
+   18 |     if v is Box[fn (int) Missing] {}
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:17:18: error: is: type `Box[fn (Missing) int]` does not exist
+   15 |     if v is Box[map[string]Missing] {}
+   16 |     if v is Box[map[Missing]string] {}
+   17 |     if v is Box[fn (Missing) int] {}
+      |                     ~~~~~~~
+   18 |     if v is Box[fn (int) Missing] {}
+   19 | }
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:18:23: error: is: type `Box[fn (int) Missing]` does not exist
+   16 |     if v is Box[map[Missing]string] {}
+   17 |     if v is Box[fn (Missing) int] {}
+   18 |     if v is Box[fn (int) Missing] {}
+      |                          ~~~~~~~
+   19 | }

@@ -1,0 +1,12 @@
+interface Value {}
+
+struct Box[T] {
+	val T
+}
+
+fn main() {
+	v := Value(Box[int]{})
+	if v is Box[Missing] {
+		println('yes')
+	}
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_interface_unknown_generic_concrete_type_err.vv:17:7: error: unknown type `Box[Missing]`
+   15 | 
+   16 |     match s.val {
+   17 |         Box[Missing] {
+      |             ~~~~~~~
+   18 |             ''
+   19 |         }
