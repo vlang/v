@@ -105,6 +105,11 @@ fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {
 	}
 }
 
+fn test_netbsd_marks_the_v1_compatibility_compiler() {
+	makefile := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
+	assert makefile.contains('paxctl +m \$(V1_FALLBACK_EXE)')
+}
+
 fn test_v1_fallback_can_bootstrap_cmd_v_without_target_define() {
 	$if bsd || linux {
 		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)

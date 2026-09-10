@@ -246,6 +246,9 @@ ifdef NETBSD
 endif
 ifdef V1_FALLBACK_BUILD
 	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
+ifdef NETBSD
+	paxctl +m $(V1_FALLBACK_EXE)
+endif
 endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD

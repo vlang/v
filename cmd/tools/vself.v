@@ -10,6 +10,7 @@ const args_ = arguments()
 const is_debug = args_.contains('-debug')
 const full_v_cli_source = 'cmd/v'
 const standalone_v3_source = 'vlib/v3/v3.v'
+const v1_fallback_binary = 'v1_fallback'
 
 // support a renamed `v` executable too:
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
@@ -90,6 +91,12 @@ fn main() {
 		if unsupported.len > 0 {
 			eprintln('`v self -b fastc xN` cannot preserve these options across repeated replacement builds: ${unsupported.join(' ')}')
 			eprintln('Remove the options, use `x1`, or specify `-o` to keep the original compiler.')
+			exit(1)
+		}
+	}
+	if !fastc_self_build && obinary == '' {
+		install_missing_bsd_v1_fallback(vroot, vexe, args, self_build_host_os()) or {
+			eprintln('cannot prepare the BSD V1 compatibility compiler: ${err.msg()}')
 			exit(1)
 		}
 	}
@@ -471,6 +478,48 @@ fn clone_args(args []string) []string {
 		cloned << arg.clone()
 	}
 	return cloned
+}
+
+fn self_build_host_os() string {
+	$if vself_test_bsd_transition ? {
+		return 'freebsd'
+	}
+	return os.user_os()
+}
+
+fn install_missing_bsd_v1_fallback(vroot string, compiler string, args []string, host_os string) ! {
+	if host_os !in ['freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
+		return
+	}
+	fallback := os.join_path(vroot, v1_fallback_binary)
+	if os.is_executable(fallback) {
+		return
+	}
+	staged_fallback := os.join_path(vroot, '.vself_v1_fallback_${os.getpid()}')
+	os.rm(staged_fallback) or {}
+	defer {
+		os.rm(staged_fallback) or {}
+	}
+	mut fallback_args := initial_bootstrap_args(args).filter(it !in ['-new-compiler', '-old-compiler'])
+	fallback_args << ['-no-parallel', '-d', 'v1_fallback']
+	fallback_args = with_output_arg(fallback_args, staged_fallback)
+	println('V self compiling the BSD V1 compatibility compiler...')
+	fallback_cmd := compose_v_cmd(compiler, fallback_args, full_v_cli_source)
+	run_cmd(fallback_cmd) or {
+		return error('failed to build `${fallback}` before replacing V.\n${err.msg()}')
+	}
+	if !os.is_executable(staged_fallback) {
+		return error('the staged V1 compatibility compiler `${staged_fallback}` is not executable')
+	}
+	if host_os == 'netbsd' {
+		run_cmd('paxctl +m ${os.quoted_path(staged_fallback)}') or {
+			return error('failed to mark the NetBSD V1 compatibility compiler.\n${err.msg()}')
+		}
+	}
+	if os.exists(fallback) {
+		os.rm(fallback)!
+	}
+	os.mv(staged_fallback, fallback)!
 }
 
 fn compose_v_cmd(vexe string, args []string, source string) string {
