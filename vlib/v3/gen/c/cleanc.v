@@ -483,6 +483,7 @@ mut:
 	compiler_vexe_env_setup       bool = true
 	ccompiler                     string
 	target                        pref.Target
+	subsystem                     pref.Subsystem
 	// C spelling for V's platform-width `int`: `i64` on 64-bit targets, `i32` on
 	// 32-bit. Used by hand-written runtime helpers that operate on `[]int`
 	// elements or `int` values directly (kept in sync with set_target).
@@ -1279,6 +1280,11 @@ pub fn (mut g FlatGen) set_compiler_vexe_env_setup(enabled bool) {
 pub fn (mut g FlatGen) set_target(target pref.Target) {
 	g.target = target
 	g.int_ct = if target.pointer_bits == 32 { 'i32' } else { 'i64' }
+}
+
+// set_subsystem configures the Windows executable subsystem.
+pub fn (mut g FlatGen) set_subsystem(subsystem pref.Subsystem) {
+	g.subsystem = subsystem
 }
 
 // set_thread_stack_size configures the stack size used by generated worker threads.

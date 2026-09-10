@@ -490,11 +490,45 @@ fn c_backend_fn_file_rank(file string) int {
 	return 0
 }
 
-fn (g &FlatGen) c_main_declaration() string {
-	if g.target.os == 'windows' {
+fn (g &FlatGen) is_gui_app(force_main_console bool) bool {
+	match g.subsystem {
+		.windows {
+			return true
+		}
+		.console {
+			return false
+		}
+		.auto {}
+	}
+	if g.target.os != 'windows' || force_main_console {
+		return false
+	}
+	for flag in g.c_flags {
+		clean := flag.trim_space().to_lower_ascii()
+		if clean in ['gdi32', '-lgdi32', 'gdi32.lib'] {
+			return true
+		}
+	}
+	return false
+}
+
+fn windows_gui_stdio_setup(force_console bool) string {
+	console_setup := if force_console {
+		'\tcon_valid = AllocConsole();\n'
+	} else {
+		'\tcon_valid = AttachConsole(ATTACH_PARENT_PROCESS);\n'
+	}
+	return '\tBOOL con_valid = FALSE;\n' + console_setup + '\tFILE* res_fp = 0;\n' + '\terrno_t err;\n' + '\tif (con_valid) {\n' + '\t\terr = freopen_s(&res_fp, "CON", "w", stdout);\n' + '\t\terr = freopen_s(&res_fp, "CON", "w", stderr);\n' + '\t} else {\n' + '\t\terr = freopen_s(&res_fp, "NUL", "w", stdout);\n' + '\t\terr = freopen_s(&res_fp, "NUL", "w", stderr);\n' + '\t}\n' + '\t(void)err;'
+}
+
+fn (g &FlatGen) c_main_declaration(force_main_console bool) string {
+	if g.target.os != 'windows' {
+		return 'int main(int argc, char** argv) {'
+	}
+	if !g.is_gui_app(force_main_console) {
 		return 'int wmain(int argc, wchar_t** argv) {'
 	}
-	return 'int main(int argc, char** argv) {'
+	return 'int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd) {\n' + '\tLPWSTR full_cmd_line = GetCommandLineW(); /* do not use cmd_line */\n' + '\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);\n' + '\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");\n' + '\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");\n' + '\tint argc;\n' + '\twchar_t** argv = CommandLineToArgvW(full_cmd_line, &argc);\n' + windows_gui_stdio_setup(force_main_console)
 }
 
 fn (mut g FlatGen) gen_synthetic_main_after_fns() {
@@ -4678,7 +4712,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	fn_start_pos := g.sb.len
 	mut is_direct_no_main_export := false
 	if is_entry_main {
-		g.writeln(g.c_main_declaration())
+		force_main_console := g.tc.declaration_has_attribute(node_id, 'console')
+		g.writeln(g.c_main_declaration(force_main_console))
 		if g.has_builtins {
 			g.writeln('\tg_main_argc = argc;')
 			g.writeln('\tg_main_argv = argv;')
@@ -5085,7 +5120,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.goto_label_c_names.clear()
 	g.goto_label_count = 0
 	fn_start_pos := g.sb.len
-	g.writeln(g.c_main_declaration())
+	g.writeln(g.c_main_declaration(false))
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
 		g.writeln('\tg_main_argv = argv;')
@@ -5184,7 +5219,7 @@ fn (mut g FlatGen) gen_test_main() {
 		g.writeln('}')
 		g.writeln('')
 	}
-	g.writeln(g.c_main_declaration())
+	g.writeln(g.c_main_declaration(false))
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
 		g.writeln('\tg_main_argv = argv;')

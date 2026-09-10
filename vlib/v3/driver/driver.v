@@ -1826,6 +1826,7 @@ struct V3CCompilerFlagOptions {
 	target_os           string
 	target_arch         string
 	c_compiler          string
+	subsystem           pref.Subsystem
 	macos_sdk_root      string
 	pic_flag            string
 	is_prod             bool
@@ -2310,9 +2311,16 @@ fn v3_fastc_default_linker_flags(target_os string, uses_threads bool) []string {
 	return flags
 }
 
-fn v3_windows_executable_linker_flags(target_os string, c_compiler string, is_shared bool, is_o bool) []string {
+fn v3_windows_executable_linker_flags(target_os string, c_compiler string, is_shared bool, is_o bool, subsystem pref.Subsystem) []string {
 	if target_os == 'windows' && c_compiler != 'msvc' && !is_shared && !is_o {
-		return ['-municode', '-Wl,-stack=33554432']
+		mut flags := ['-municode']
+		match subsystem {
+			.console { flags << '-mconsole' }
+			.windows { flags << '-mwindows' }
+			.auto {}
+		}
+		flags << '-Wl,-stack=33554432'
+		return flags
 	}
 	return []
 }
@@ -2395,7 +2403,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.pic_flag.len > 0 {
 		before_inputs << options.pic_flag
 	}
-	before_inputs << v3_windows_executable_linker_flags(options.target_os, options.c_compiler, options.is_shared, options.is_o)
+	before_inputs << v3_windows_executable_linker_flags(options.target_os, options.c_compiler, options.is_shared, options.is_o, options.subsystem)
 	mut tcc_includes := ''
 	if options.is_tcc {
 		tcc_resources := v3_tcc_resource_flags(options.vroot)
@@ -7760,7 +7768,7 @@ fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only', '-profile-fns']
+		'-run-only', '-profile-fns', '-subsystem']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -8177,6 +8185,7 @@ pub fn run(args []string) {
 	mut is_shared := false
 	mut is_livemain := false
 	mut is_liveshared := false
+	mut subsystem := pref.Subsystem.auto
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_builtin := false
@@ -8310,6 +8319,17 @@ pub fn run(args []string) {
 		} else if args[i] == '-shared' || args[i] == '--shared' {
 			is_shared = true
 			i++
+		} else if args[i] == '-subsystem' && i + 1 < args.len {
+			subsystem = match args[i + 1] {
+				'auto' { pref.Subsystem.auto }
+				'console' { pref.Subsystem.console }
+				'windows' { pref.Subsystem.windows }
+				else {
+					eprintln('invalid subsystem: ${args[i + 1]}')
+					exit(1)
+				}
+			}
+			i += 2
 		} else if args[i] == '-live' {
 			is_livemain = true
 			// Live builds need every module in the reloadable source artifact. A
@@ -9136,6 +9156,7 @@ pub fn run(args []string) {
 	prefs.is_livemain = is_livemain
 	prefs.is_liveshared = is_liveshared
 	prefs.is_shared = is_shared
+	prefs.subsystem = subsystem
 	prefs.no_builtin = no_builtin
 	prefs.no_preludes = no_preludes
 	prefs.verbose = verbose
@@ -9436,6 +9457,7 @@ pub fn run(args []string) {
 		'debug=${is_debug}',
 		'c_debug=${is_c_debug}',
 		'shared=${is_shared}',
+		'subsystem=${prefs.subsystem}',
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
 		'thread_stack_size=${prefs.thread_stack_size}',
@@ -11201,6 +11223,7 @@ pub fn run(args []string) {
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
+			g.set_subsystem(prefs.subsystem)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
@@ -11257,6 +11280,7 @@ pub fn run(args []string) {
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
+			g.set_subsystem(prefs.subsystem)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
@@ -11397,6 +11421,7 @@ pub fn run(args []string) {
 			target_os: prefs.normalized_target_os()
 			target_arch: prefs.normalized_target_arch()
 			c_compiler: effective_c_compiler
+			subsystem: prefs.subsystem
 			macos_sdk_root: flag_plan_sdk_root
 			pic_flag: pic_flag
 			is_prod: is_prod
@@ -11864,7 +11889,7 @@ pub fn run(args []string) {
 			if wrapv_flag.len > 0 {
 				tcc_args << wrapv_flag
 			}
-			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o)
+			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem)
 			tcc_args << tcc_cached_main_flags(resolved_c_flags)
 			tcc_args << ['-o', 'out', os.base(tcc_main_file)]
 			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
@@ -11953,7 +11978,7 @@ pub fn run(args []string) {
 			} else if is_o {
 				tcc_args << '-c'
 			}
-			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o)
+			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem)
 			tcc_source := if cache_full_tcc_source.len > 0 {
 				os.base(cache_full_tcc_source)
 			} else {

@@ -184,12 +184,22 @@ fn test_v3_fastc_default_linker_flags() {
 
 fn test_v3_windows_executable_linker_flags() {
 	expected := ['-municode', '-Wl,-stack=33554432']
-	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false) == expected
-	assert v3_windows_executable_linker_flags('windows', 'gcc', false, false) == expected
-	assert v3_windows_executable_linker_flags('windows', 'msvc', false, false) == []
-	assert v3_windows_executable_linker_flags('windows', 'tinyc', true, false) == []
-	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, true) == []
-	assert v3_windows_executable_linker_flags('linux', 'tinyc', false, false) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .auto) == expected
+	assert v3_windows_executable_linker_flags('windows', 'gcc', false, false, .auto) == expected
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .console) == [
+		'-municode',
+		'-mconsole',
+		'-Wl,-stack=33554432',
+	]
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .windows) == [
+		'-municode',
+		'-mwindows',
+		'-Wl,-stack=33554432',
+	]
+	assert v3_windows_executable_linker_flags('windows', 'msvc', false, false, .auto) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', true, false, .auto) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, true, .auto) == []
+	assert v3_windows_executable_linker_flags('linux', 'tinyc', false, false, .auto) == []
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 		target_os: 'windows'
 		c_compiler: 'tinyc'

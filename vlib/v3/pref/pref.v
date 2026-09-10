@@ -27,6 +27,13 @@ const macos_v3_private_environment_names = [
 	macos_v3_caller_no_fallback_present_env,
 ]
 
+// Subsystem selects the Windows executable subsystem.
+pub enum Subsystem {
+	auto
+	console
+	windows
+}
+
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
@@ -55,6 +62,7 @@ pub mut:
 	is_livemain           bool
 	is_liveshared         bool
 	is_shared             bool
+	subsystem             Subsystem
 	no_builtin            bool
 	no_preludes           bool
 	module_search_paths   []string
