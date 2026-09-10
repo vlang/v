@@ -383,7 +383,7 @@ fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
 }
 
 fn test_asm_goto_across_lock_scope_is_rejected() {
-	generate, c_source := generate_inline_asm_c('goto_lock_scope_program', 'struct Counter {
+	generate, _ := generate_inline_asm_c('goto_lock_scope_program', 'struct Counter {
 mut:
 	value int
 }
@@ -399,8 +399,30 @@ fn main() {
 	done:
 }
 ')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+}
+
+fn test_asm_goto_within_lock_scope_is_allowed() {
+	generate, c_source := generate_inline_asm_c('goto_within_lock_scope_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	lock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+		done:
+	}
+}
+')
 	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('#error asm goto into or out of a lock scope is not supported'), c_source
+	assert c_source.contains('jmp %l[__v_user_goto_0]'), c_source
+	assert !c_source.contains('#error asm goto'), c_source
 }
 
 fn generate_inline_asm_c(name string, source string) (os.Result, string) {

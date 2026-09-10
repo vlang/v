@@ -1714,6 +1714,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 				tc.record_unused_fn_vars(node)
 				tc.record_unused_fn_params(node)
 				tc.record_unused_fn_labels(node)
+				tc.check_asm_goto_lock_scopes(node)
 			}
 			tc.check_fn_bare_generic_fntype_params(node)
 		}
@@ -2461,6 +2462,80 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 				label_id, tc.a.node(label_id).pos)
 		}
 	}
+}
+
+struct AsmGotoLockScan {
+mut:
+	label_scopes    map[string][]int
+	asm_gotos       []flat.NodeId
+	asm_goto_scopes map[int][]int
+}
+
+// check_asm_goto_lock_scopes reports an `asm goto` whose target label sits in a
+// different `lock`/`rlock` scope than the block itself. The C backend cannot lower a
+// jump that enters or leaves a lock scope (the scope's unlock/cleanup would be
+// skipped), so it otherwise emits an `#error` into the generated C with no V source
+// position; this turns that into a positioned compiler diagnostic.
+fn (mut tc TypeChecker) check_asm_goto_lock_scopes(node flat.Node) {
+	mut scan := AsmGotoLockScan{}
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if tc.a.node(child_id).kind != .param {
+			tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut scan)
+		}
+	}
+	for asm_id in scan.asm_gotos {
+		asm_node := tc.a.node(asm_id)
+		active := scan.asm_goto_scopes[int(asm_id)]
+		for target in inline_asm_goto_labels(asm_node.value) {
+			if target in scan.label_scopes
+				&& !asm_goto_lock_scopes_equal(scan.label_scopes[target], active) {
+				tc.record_error_at(.compile_error, asm_goto_lock_scope_error(target), asm_id,
+					asm_node.pos)
+				break
+			}
+		}
+	}
+}
+
+fn asm_goto_lock_scope_error(target string) string {
+	return '`asm goto` cannot jump to label `${target}`: it is in a different `lock`/`rlock` scope, and the C backend cannot lower a jump that enters or leaves a lock scope'
+}
+
+// collect_asm_goto_lock_scopes walks a function body, recording the `lock`/`rlock`
+// scope path (a stack of enclosing `lock_expr` node ids) at every label declaration
+// and at every `asm goto` block, so check_asm_goto_lock_scopes can compare them.
+fn (mut tc TypeChecker) collect_asm_goto_lock_scopes(id flat.NodeId, scopes []int, mut scan AsmGotoLockScan) {
+	node := tc.a.node(id)
+	if node.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
+		// A nested function or closure has its own lock nesting.
+		return
+	}
+	mut cur := scopes.clone()
+	if node.kind == .lock_expr {
+		cur << int(id)
+	}
+	if node.kind == .label_stmt && node.value.len > 0 {
+		scan.label_scopes[node.value] = cur.clone()
+	} else if node.kind == .asm_stmt && inline_asm_goto_labels(node.value).len > 0 {
+		scan.asm_gotos << id
+		scan.asm_goto_scopes[int(id)] = cur.clone()
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_asm_goto_lock_scopes(tc.a.child(node, i), cur, mut scan)
+	}
+}
+
+fn asm_goto_lock_scopes_equal(a []int, b []int) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i, scope in a {
+		if b[i] != scope {
+			return false
+		}
+	}
+	return true
 }
 
 fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
