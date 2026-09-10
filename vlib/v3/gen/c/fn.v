@@ -4072,7 +4072,7 @@ fn (g &FlatGen) shared_local_arg_c_expr(arg_id flat.NodeId) ?string {
 		}
 	}
 	if arg.kind == .ident && g.local_storage_is_shared(arg.value) {
-		return g.cname(arg.value)
+		return g.shared_storage_ident_c_name(arg.value)
 	}
 	return none
 }
@@ -4091,7 +4091,7 @@ fn (g &FlatGen) shared_payload_deref_storage_c_expr(id flat.NodeId) ?string {
 	base_id := g.a.child(&node, 0)
 	base := g.a.nodes[int(base_id)]
 	if base.kind == .ident && g.local_storage_is_shared(base.value) {
-		return g.cname(base.value)
+		return g.shared_storage_ident_c_name(base.value)
 	}
 	return none
 }
@@ -4353,7 +4353,7 @@ fn (g &FlatGen) spawn_shared_value_selector_storage(child flat.Node) ?string {
 	if base.kind != .ident || !g.local_ident_is_shared_wrapper(base.value) {
 		return none
 	}
-	return g.cname(base.value)
+	return g.shared_storage_ident_c_name(base.value)
 }
 
 fn (g &FlatGen) local_ident_is_shared_wrapper(name string) bool {
