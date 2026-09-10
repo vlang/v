@@ -22,6 +22,22 @@ fn test_macos_v3_routes_cross_modes_to_v1_compatibility() {
 	assert macos_v3_needs_v1_compatibility('cmd/v', portable)
 }
 
+fn test_windows_msvc_routes_to_v1_compatibility() {
+	mut prefs := &pref.Preferences{
+		path: 'main.v'
+		backend: .c
+		ccompiler: 'msvc'
+		ccompiler_type: .msvc
+	}
+	assert macos_v3_windows_msvc_needs_v1_compatibility(prefs, .windows)
+	assert !macos_v3_windows_msvc_needs_v1_compatibility(prefs, .linux)
+	prefs.new_compiler = true
+	assert macos_v3_windows_msvc_needs_v1_compatibility(prefs, .windows)
+	$if windows {
+		assert macos_v3_needs_v1_compatibility('main.v', prefs)
+	}
+}
+
 fn test_macos_v3_routes_internal_tool_bootstrap_to_v1_compatibility() {
 	vroot := os.dir(@VEXE)
 	tool_path := os.join_path(vroot, 'cmd', 'tools', 'vpm')

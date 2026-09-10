@@ -172,7 +172,13 @@ fn macos_v3_needs_bootstrap_before_v1_fallback(prefs &pref.Preferences, needs_v1
 }
 
 fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool {
-	// FastC and explicit `-new-compiler` are deliberately strict V3 requests.
+	if macos_v3_windows_msvc_needs_v1_compatibility(prefs, pref.get_host_os()) {
+		// V3 does not have an MSVC command-line driver. Preserve the supported
+		// Windows mode by selecting the compatibility compiler before V3 runs.
+		return true
+	}
+	// Apart from the unsupported MSVC driver above, FastC and explicit
+	// `-new-compiler` are deliberately strict V3 requests.
 	if prefs.new_compiler || prefs.is_fastc || prefs.backend != .c || prefs.path == ''
 		|| command == 'test' || command in external_tools
 		|| macos_v3_non_compilation_command(command) {
@@ -200,6 +206,10 @@ fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool
 	target := os.real_path(prefs.path).replace('\\', '/').trim_right('/')
 	tools := '${vroot}/cmd/tools'
 	return target == tools || target.starts_with(tools + '/')
+}
+
+fn macos_v3_windows_msvc_needs_v1_compatibility(prefs &pref.Preferences, host_os pref.OS) bool {
+	return host_os == .windows && prefs.ccompiler_type == .msvc
 }
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
