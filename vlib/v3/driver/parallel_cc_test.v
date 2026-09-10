@@ -32,6 +32,27 @@ fn test_split_v3_parallel_c_source_uses_safe_unit_markers() {
 	assert units[1].contains('void second(void) {}')
 }
 
+fn test_v3_parallel_c_cache_source_identity_tracks_generated_content() {
+	cache_root := os.join_path(os.vtmp_dir(), 'parallel_cc_identity_test')
+	body := 'void body(void) {}\n'
+	first := v3_parallel_c_cached_source_path(cache_root, body, false)
+	assert first == v3_parallel_c_cached_source_path(cache_root, body, false)
+	assert first != v3_parallel_c_cached_source_path(cache_root, body + '// changed\n', false)
+	assert first != v3_parallel_c_cached_source_path(cache_root, body, true)
+}
+
+fn test_v3_parallel_c_cached_unit_includes_stable_header_path() {
+	header_path := '/cache/headers/shared.h'
+	body := 'void body(void) {}\n'
+	unit := v3_parallel_c_unit_source(header_path, body, false)
+	assert unit.contains('#include "${header_path}"')
+	assert unit.ends_with(body)
+	owner := v3_parallel_c_unit_source(header_path, body, true)
+	assert owner.contains('#define V_PARALLEL_CC_OUT_0 1')
+	assert !owner.contains('#include "${header_path}"')
+	assert !v3_parallel_c_unit_source('', body, false).contains('#include')
+}
+
 fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
 	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_${os.getpid()}')

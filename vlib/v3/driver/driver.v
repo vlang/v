@@ -69,7 +69,7 @@ const v3_fallback_native_manifest_key = '@native-input-manifest:v1'
 const v3_fallback_native_manifest_value = 'v3-native-input-manifest-v1'
 const bsd_selfhost_job_limit = 2
 const bsd_selfhost_parallel_cc_job_limit = 8
-const bsd_selfhost_parallel_cc_unit_count = 8
+const bsd_selfhost_parallel_cc_unit_count = 32
 const bsd_prod_selfhost_memory_per_job = u64(2) * 1024 * 1024 * 1024
 
 fn default_selfhost_job_count(jobs int, is_bsd_host bool, allow_overcommit bool, prod_parallel_cc bool, total_memory u64) int {
@@ -1401,9 +1401,19 @@ fn trace_c_object_cache(status string, key string, reason string, dependency_cou
 fn c_object_dependencies(compiler string, compile_args []string, source_file string) CObjectDependencies {
 	mut args := compile_args.clone()
 	mt_target := 'v3cache'
-	marker := '${mt_target}:'
 	args << ['-M', '-MT', mt_target, source_file]
 	result := cmdexec.run(compiler, args)
+	if result.exit_code != 0 {
+		return CObjectDependencies{
+			files: [source_file]
+			used_fallback: true
+		}
+	}
+	return c_object_dependencies_from_output(result.output, source_file)
+}
+
+fn c_object_dependencies_from_output(output string, source_file string) CObjectDependencies {
+	marker := 'v3cache:'
 	// Fail closed: any output we cannot fully and unambiguously interpret must
 	// use a build-local, uncached object. A malformed or unexpected depfile that
 	// is silently accepted as a valid, source-only dependency set would let a
@@ -1412,16 +1422,13 @@ fn c_object_dependencies(compiler string, compile_args []string, source_file str
 		files: [source_file]
 		used_fallback: true
 	}
-	if result.exit_code != 0 {
-		return fallback
-	}
-	if !result.output.contains(marker) {
+	if !output.contains(marker) {
 		// The `-MT` target marker is missing, so `all_after` would return the
 		// entire compiler output and tokenize it as bogus dependencies.
 		return fallback
 	}
 	continuation := '\\' + '\n'
-	dep_text := result.output.replace(continuation, ' ').all_after(marker)
+	dep_text := output.replace(continuation, ' ').all_after(marker)
 	dependencies := cmdexec.split_args(dep_text) or { return fallback }
 	if dependencies.len == 0 {
 		return fallback
@@ -1851,13 +1858,24 @@ const v3_parallel_cc_units_per_job = 4
 const v3_parallel_cc_monolithic_define = 'v3_parallel_cc_monolithic'
 const v3_parallel_cc_monolithic_exit_code = 125
 const v3_parallel_cc_monolithic_message = 'v3 parallel C source requires monolithic regeneration'
+const v3_parallel_cc_cache_format = 'v3-parallel-cc-cache-v1'
 
 struct V3ParallelCCompileTask {
-	compiler string
-	args     []string
-	dir      string
+	compiler        string
+	dependency_args []string
+	dir             string
+	source_path     string
+	object_name     string
+	object_index    int
 mut:
-	result os.Result
+	args            []string
+	dependency_file string
+	request_object  string
+	manifest_path   string
+	result          os.Result
+	dependencies    CObjectDependencies
+	cache_object    string
+	cacheable       bool
 }
 
 fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool, prod_parallel_cc bool) int {
@@ -1898,25 +1916,59 @@ fn run_v3_parallel_c_compile_task(raw_task voidptr) voidptr {
 	return unsafe { nil }
 }
 
-fn write_v3_parallel_c_source(path string, header_name string, body string, owner bool) ! {
-	mut file := os.create(path)!
+fn v3_parallel_c_cache_root() string {
+	base := os.abs_path(os.getenv_opt('V3CACHE') or { os.vtmp_dir() })
+	return os.join_path_single(base, 'v3_parallel_cc_objects')
+}
+
+fn v3_parallel_c_cached_source_path(cache_root string, source string, owner bool) string {
+	content_key := sha256.hexhash('${v3_parallel_cc_cache_format}\x00${source}')
+	name := if owner { 'owner.c' } else { 'body.c' }
+	return os.join_path(cache_root, 'sources', content_key, name)
+}
+
+fn publish_v3_parallel_c_cache_source(path string, source string) ! {
+	if os.is_file(path) {
+		if os.read_file(path)! == source {
+			return
+		}
+	}
+	os.mkdir_all(os.dir(path), mode: 0o700)!
+	temporary_path := '${path}.tmp.${tempname.unique_token()}'
 	defer {
-		file.close()
+		os.rm(temporary_path) or {}
 	}
-	file.writeln('#define V3CACHE_PROGRAM_UNIT 1')!
-	file.writeln('#define V_PARALLEL_CC 1')!
-	file.writeln('#define _VPARALLELCC 1')!
+	os.write_file(temporary_path, source)!
+	os.mv(temporary_path, path) or {
+		if !os.is_file(path) || os.read_file(path)! != source {
+			return error('failed to publish parallel C cache source ${path}: ${err}')
+		}
+	}
+}
+
+fn v3_parallel_c_unit_source(header_path string, body string, owner bool) string {
+	mut source := strings.new_builder(body.len + header_path.len + 160)
+	source.writeln('#define V3CACHE_PROGRAM_UNIT 1')
+	source.writeln('#define V_PARALLEL_CC 1')
+	source.writeln('#define _VPARALLELCC 1')
 	if owner {
-		file.writeln('#define V_PARALLEL_CC_OUT_0 1')!
-		file.write_string(body)!
-		return
+		source.writeln('#define V_PARALLEL_CC_OUT_0 1')
+		source.write_string(body)
+		return source.str()
 	}
-	file.writeln('#include "${header_name}"')!
+	if header_path.len > 0 {
+		source.writeln('#include "${header_path}"')
+	}
 	// These program lifecycle functions are emitted in the generated body rather
 	// than its declaration prefix, so later body units need explicit prototypes.
-	file.writeln('void _vinit(void);')!
-	file.writeln('void _vcleanup(void);')!
-	file.write_string(body)!
+	source.writeln('void _vinit(void);')
+	source.writeln('void _vcleanup(void);')
+	source.write_string(body)
+	return source.str()
+}
+
+fn write_v3_parallel_c_source(path string, header_name string, body string, owner bool) ! {
+	os.write_file(path, v3_parallel_c_unit_source(header_name, body, owner))!
 }
 
 fn v3_parallel_c_include_dirs(flags []string) []string {
@@ -2137,7 +2189,7 @@ fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) 
 	return split.prefix, merge_v3_parallel_c_units(units, max_units)
 }
 
-fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, show_command bool, job_count int, unit_count int) os.Result {
+fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, show_command bool, job_count int, unit_count int, cache_objects bool, target pref.Target, mut cache_stats CObjectCacheStats) os.Result {
 	source := os.read_file(source_path) or {
 		return os.Result{
 			exit_code: 1
@@ -2167,6 +2219,23 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 			output: 'failed to write parallel C header ${header_path}: ${err.msg()}'
 		}
 	}
+	cache_root := v3_parallel_c_cache_root()
+	mut use_object_cache := cache_objects
+	mut cached_header_path := ''
+	if use_object_cache {
+		os.mkdir_all(cache_root, mode: 0o700) or {
+			use_object_cache = false
+		}
+	}
+	if use_object_cache {
+		cached_header_path = os.join_path(cache_root, 'headers', '${sha256.hexhash(header)}.h')
+		publish_v3_parallel_c_cache_source(cached_header_path, header) or {
+			return os.Result{
+				exit_code: 1
+				output: 'failed to prepare parallel C cache header: ${err.msg()}'
+			}
+		}
+	}
 	mut tasks := []&V3ParallelCCompileTask{cap: bodies.len + 1}
 	mut objects := []string{cap: bodies.len + 1}
 	mut small_compile_flags := c_object_compile_flags(c_flag_plan.before_inputs)
@@ -2177,44 +2246,86 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 		source_name := 'unit_${unit_index}.c'
 		object_name := 'unit_${unit_index}.o'
 		unit_source := if unit_index == 0 { prefix } else { bodies[unit_index - 1] }
-		unit_path := os.join_path_single(build_dir, source_name)
-		write_v3_parallel_c_source(unit_path, header_name, unit_source, unit_index == 0) or {
-			return os.Result{
-				exit_code: 1
-				output: 'failed to write parallel C unit ${source_name}: ${err.msg()}'
+		owner := unit_index == 0
+		mut unit_path := os.join_path_single(build_dir, source_name)
+		mut rendered_source := ''
+		if use_object_cache {
+			rendered_source = v3_parallel_c_unit_source('', unit_source, owner)
+			unit_path = v3_parallel_c_cached_source_path(cache_root, rendered_source, owner)
+			publish_v3_parallel_c_cache_source(unit_path, rendered_source) or {
+				return os.Result{
+					exit_code: 1
+					output: 'failed to prepare parallel C cache unit ${source_name}: ${err.msg()}'
+				}
+			}
+		} else {
+			write_v3_parallel_c_source(unit_path, header_name, unit_source, owner) or {
+				return os.Result{
+					exit_code: 1
+					output: 'failed to write parallel C unit ${source_name}: ${err.msg()}'
+				}
 			}
 		}
-		unit_is_large := v3_parallel_c_unit_is_large(os.file_size(unit_path), u64(header.len), unit_index == 0)
+		unit_is_large := v3_parallel_c_unit_is_large(os.file_size(unit_path), u64(header.len), owner)
 		mut compile_args := if unit_is_large {
 			large_compile_flags.clone()
 		} else {
 			small_compile_flags.clone()
 		}
-		compile_args << ['-x', if objective_c { 'objective-c' } else { 'c' }, '-c', '-o',
-			object_name, source_name]
-		if show_command {
-			println('  > ${cmdexec.display(c_compiler, compile_args)}')
+		if use_object_cache && !owner {
+			compile_args << ['-include', cached_header_path]
 		}
-		tasks << &V3ParallelCCompileTask{
+		compile_args << ['-x', if objective_c { 'objective-c' } else { 'c' }]
+		mut task := &V3ParallelCCompileTask{
 			compiler: c_compiler
-			args: compile_args
+			dependency_args: compile_args.clone()
 			dir: build_dir
+			source_path: unit_path
+			object_name: object_name
+			object_index: objects.len
 		}
 		objects << object_name
+		if use_object_cache {
+			cache_stats.requests++
+			task.cacheable = true
+			task.request_object = unit_path.all_before_last('.c') + '.o'
+			task.manifest_path = c_object_manifest_path(cache_root, task.request_object, c_compiler, compile_args, target, mut cache_stats)
+			if cached_object := valid_c_object_manifest(task.manifest_path, mut cache_stats) {
+				objects[task.object_index] = cached_object
+				if show_command {
+					mut cached_args := compile_args.clone()
+					cached_args << ['-c', '-o', cached_object, unit_path]
+					println('  > ${cmdexec.display(c_compiler, cached_args)} (cached)')
+				}
+				continue
+			}
+		}
+		task.args = compile_args.clone()
+		if task.cacheable {
+			task.dependency_file = os.join_path_single(build_dir, 'unit_${unit_index}.d')
+			task.args << ['-MD', '-MF', task.dependency_file, '-MT', 'v3cache']
+		}
+		task.args << ['-c', '-o', object_name, unit_path]
+		tasks << task
 	}
 	mut work := []workers.Task{cap: tasks.len}
 	for task in tasks {
+		if show_command {
+			println('  > ${cmdexec.display(c_compiler, task.args)}')
+		}
 		work << workers.Task{
 			run: run_v3_parallel_c_compile_task
 			arg: voidptr(task)
 		}
 	}
 	mut pool := workers.new(job_count)
-	pool.run(work)
+	if work.len > 0 {
+		pool.run(work)
+	}
 	mut errors := strings.new_builder(1024)
 	mut failed := false
 	for task in tasks {
-		if task.result.exit_code != 0 {
+		if task.args.len > 0 && task.result.exit_code != 0 {
 			failed = true
 			errors.write_string(task.result.output)
 			if task.result.output.len > 0 && !task.result.output.ends_with('\n') {
@@ -2231,6 +2342,40 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 		}
 	}
 	pool.close()
+	for mut task in tasks {
+		if !task.cacheable {
+			continue
+		}
+		dependency_output := os.read_file(task.dependency_file) or { '' }
+		os.rm(task.dependency_file) or {}
+		task.dependencies = c_object_dependencies_from_output(dependency_output, task.source_path)
+		cache_stats.dependency_scans++
+		cache_stats.dependency_files += task.dependencies.files.len
+		if task.dependencies.used_fallback {
+			cache_stats.dependency_scan_fallbacks++
+			continue
+		}
+		cache_name := c_object_cache_name(task.request_object, c_compiler, task.dependency_args, task.dependencies.files, target, false, mut cache_stats)
+		task.cache_object = os.join_path_single(cache_root, cache_name)
+		local_object := os.join_path_single(build_dir, task.object_name)
+		if os.is_file(task.cache_object) {
+			os.rm(local_object) or {}
+			cache_stats.publish_races++
+		} else {
+			os.mv(local_object, task.cache_object) or {
+				if !os.is_file(task.cache_object) {
+					continue
+				}
+				os.rm(local_object) or {}
+				cache_stats.publish_races++
+			}
+		}
+		if os.is_file(task.cache_object) {
+			objects[task.object_index] = task.cache_object
+			write_c_object_manifest(task.manifest_path, task.cache_object, task.dependencies.files, mut cache_stats) or {}
+			cache_stats.misses++
+		}
+	}
 	mut link_inputs := objects.clone()
 	link_inputs << native_support_inputs
 	link_inputs << cached_objects
@@ -11984,7 +12129,8 @@ pub fn run(args []string) {
 			}
 			if use_parallel_c_compilation && cached_program_main_object.len == 0
 				&& fallback_source == 'src.c' {
-				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, !silent || show_cc, parallel_c_job_count, parallel_c_unit_count)
+				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, !silent || show_cc, parallel_c_job_count, parallel_c_unit_count, building_v
+					&& is_bsd_host && is_prod && !no_cache, prefs.target, mut c_object_cache_stats)
 			} else {
 				cc_args := c_flag_plan.compiler_args('out', compiler_inputs, [])
 				if !silent || show_cc {
