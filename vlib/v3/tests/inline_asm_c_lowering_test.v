@@ -355,6 +355,19 @@ fn test_asm_goto_lowers_branch_after_leading_local_label() {
 	assert c_source.contains('"retry: jne %l[__v_user_goto_0]\\n\\t"'), c_source
 }
 
+fn test_asm_goto_lowers_uppercase_branch_mnemonics() {
+	generate, c_source := generate_inline_asm_c('goto_uppercase_mnemonic_program', 'fn main() {
+	asm goto amd64 {
+		retry: JNE done
+		; ; ; ; done
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"retry: JNE %l[__v_user_goto_0]\\n\\t"'), c_source
+}
+
 fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
 	generate, c_source := generate_inline_asm_c('raw_goto_program', 'fn main() {
 	asm goto amd64 raw {

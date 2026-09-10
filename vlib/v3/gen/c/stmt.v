@@ -3356,20 +3356,23 @@ fn (mut g FlatGen) lower_c_inline_asm_goto_raw_labels(template string, labels []
 	return lowered
 }
 
+// c_inline_asm_goto_branch_label_operand_index matches mnemonics case-insensitively,
+// since GNU as accepts `JNE`/`B.EQ` just like their lowercase forms.
 fn c_inline_asm_goto_branch_label_operand_index(instruction string, arch string, operand_count int) int {
 	if operand_count == 0 {
 		return -1
 	}
+	name := instruction.to_lower_ascii()
 	if is_c_inline_asm_x86_arch(arch) {
-		return if instruction.starts_with('call') || instruction.starts_with('j')
-			|| instruction in ['loop', 'loope', 'loopne', 'loopz', 'loopnz'] {
+		return if name.starts_with('call') || name.starts_with('j')
+			|| name in ['loop', 'loope', 'loopne', 'loopz', 'loopnz'] {
 			0
 		} else {
 			-1
 		}
 	}
-	if arch in ['arm64', 'aarch64'] && (instruction == 'b' || instruction == 'bl'
-		|| instruction.starts_with('b.') || instruction.starts_with('cb') || instruction.starts_with('tb')) {
+	if arch in ['arm64', 'aarch64'] && (name == 'b' || name == 'bl'
+		|| name.starts_with('b.') || name.starts_with('cb') || name.starts_with('tb')) {
 		return operand_count - 1
 	}
 	return -1
