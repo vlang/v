@@ -30,12 +30,17 @@ fn test_parse_inline_asm_header_reads_arch_and_modifiers() {
 	assert !plain.is_raw
 	assert !plain.is_intel
 	assert !plain.is_volatile
+	assert !plain.is_goto
 
 	modified := parse_inline_asm_header('asm volatile amd64 raw intel ')
 	assert modified.arch == 'amd64'
 	assert modified.is_volatile
 	assert modified.is_raw
 	assert modified.is_intel
+
+	goto_header := parse_inline_asm_header('asm goto amd64 ')
+	assert goto_header.arch == 'amd64'
+	assert goto_header.is_goto
 }
 
 fn test_asm_register_names_cover_the_supported_architectures() {

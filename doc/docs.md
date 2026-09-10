@@ -9120,6 +9120,19 @@ asm amd64 raw {
 assert value == 42
 ```
 
+`asm goto` emits GNU `asm goto` and is available only with the C backend. Its fifth semicolon
+section lists the V labels that the assembly may branch to. Use the label name in a structured
+branch instruction; a `raw` template uses GNU's `%l[label]` form. Targets cannot enter or leave a
+V `lock` scope.
+
+```v ignore
+asm goto amd64 {
+    jne done
+    ; ; ; ; done
+}
+done:
+```
+
 Use `intel` for destination-first structured x86 assembly. V surrounds the generated template
 with `.intel_syntax noprefix` and `.att_syntax prefix`, and does not reorder its operands:
 

@@ -285,6 +285,7 @@ fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
 		; +r (value)
 	}
 }
+
 ') or {
 		panic(err)
 	}
@@ -292,6 +293,101 @@ fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
 	assert generate.exit_code == 0, generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('"mov %%fs:(%[value]), %[value]\\n\\t"'), c_source
+}
+
+fn test_asm_goto_reaches_c_lowering() {
+	generate, c_source := generate_inline_asm_c('asm_jump_program', 'fn main() {
+	asm goto amd64 {
+		mov rax, gs:[16]
+		jne over
+		; ; ; ; over
+	}
+	over:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert !generate.output.contains('label `over` defined and not used'), generate.output
+	assert c_source.contains('__asm__ goto ('), c_source
+	assert c_source.contains('"mov %%gs:(16), %%rax\\n\\t"'), c_source
+	assert c_source.contains('"jne %l[__v_user_goto_0]\\n\\t"'), c_source
+	assert c_source.contains(': __v_user_goto_0'), c_source
+}
+
+fn test_asm_goto_does_not_rewrite_non_branch_label_names() {
+	generate, c_source := generate_inline_asm_c('goto_register_label_program', 'fn main() {
+	asm goto amd64 {
+		mov rax, rax
+		jmp rax
+		; ; ; ; rax
+	}
+	rax:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"mov %%rax, %%rax\\n\\t"'), c_source
+	assert c_source.contains('"jmp *%%rax\\n\\t"'), c_source
+	assert !c_source.contains('%l['), c_source
+}
+
+fn test_asm_goto_lowers_x86_loop_family_targets() {
+	generate, c_source := generate_inline_asm_c('goto_loop_program', 'fn main() {
+	asm goto amd64 {
+		loop done
+		; ; ; ; done
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"loop %l[__v_user_goto_0]\\n\\t"'), c_source
+}
+
+fn test_asm_goto_lowers_branch_after_leading_local_label() {
+	generate, c_source := generate_inline_asm_c('goto_leading_label_program', 'fn main() {
+	asm goto amd64 {
+		retry: jne done
+		; ; ; ; done
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"retry: jne %l[__v_user_goto_0]\\n\\t"'), c_source
+}
+
+fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
+	generate, c_source := generate_inline_asm_c('raw_goto_program', 'fn main() {
+	asm goto amd64 raw {
+		"jmp %l[done]\\n\\t"
+		; ; ; ; done
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"jmp %l[__v_user_goto_0]\\n\\t"'), c_source
+	assert c_source.contains(': __v_user_goto_0'), c_source
+}
+
+fn test_asm_goto_across_lock_scope_is_rejected() {
+	generate, c_source := generate_inline_asm_c('goto_lock_scope_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	lock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('#error asm goto into or out of a lock scope is not supported'), c_source
 }
 
 fn generate_inline_asm_c(name string, source string) (os.Result, string) {

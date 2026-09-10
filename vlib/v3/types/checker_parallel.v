@@ -2441,6 +2441,10 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 			labels << id
 		} else if current.kind == .goto_stmt {
 			used[current.value] = true
+		} else if current.kind == .asm_stmt {
+			for label in inline_asm_goto_labels(current.value) {
+				used[label] = true
+			}
 		}
 		for i in 0 .. current.children_count {
 			stack << tc.a.child(current, i)
