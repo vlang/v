@@ -10968,12 +10968,17 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .param {
 			param_ids << child_id
-			param_type_texts << child.typ
+			// mut x &T keeps its own pointer in typ and marks the extra mutable
+			// caller slot with op == .amp; mut x T already carries that slot as
+			// the folded &T. The lifted signature and the fn-value cast below both
+			// describe the slot, so add the level the text is still missing.
+			slot_type_text := explicit_mut_pointer_param_type_text(child, child.typ)
+			param_type_texts << slot_type_text
 			if child.value.len > 0 {
 				param_names << child.value
 			}
 			if !isnil(t.tc) {
-				param_types << t.tc.parse_type(child.typ)
+				param_types << t.tc.parse_type(slot_type_text)
 			}
 		} else if child.kind == .ident {
 			// `fn [T] (...)` inside a generic declaration captures the type

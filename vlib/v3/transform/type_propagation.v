@@ -383,7 +383,7 @@ fn (t &Transformer) fn_literal_type_text(node flat.Node) string {
 			continue
 		}
 		raw := if child.typ.len > 0 { child.typ } else { child.value }
-		params << fn_literal_param_type_text(raw)
+		params << explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(raw))
 	}
 	ret := node.typ.trim_space()
 	if ret.len == 0 || ret == 'void' {

@@ -8840,7 +8840,7 @@ fn (tc &TypeChecker) explicit_generic_call_info(name string, has_receiver bool, 
 	}
 	mut sub_params := []Type{}
 	for param_text in param_texts {
-		sub_params << tc.parse_fn_signature_type(name, subst_generic_text(param_text,
+		sub_params << tc.parse_fn_signature_type(name, subst_generic_signature_param_text(param_text,
 			concrete_args, generic_params))
 	}
 	ret_text := tc.fn_ret_type_texts[name] or { '' }
@@ -15682,14 +15682,14 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		if generic_type_application(param_text) {
 			// Named applications such as `Box[T]` lose their arguments in the
 			// open parsed type, so retain the textual reconstruction for them.
-			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_text(param_text,
-				signature_args, signature_params))
+			sub_params << tc.parse_fn_signature_type(info.name,
+				subst_generic_signature_param_text(param_text, signature_args, signature_params))
 		} else if i < info.params.len {
 			sub_params << tc.substitute_generic_type_values(info.params[i], concrete_types,
 				generic_params)
 		} else {
-			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_text(param_text,
-				concrete_args, generic_params))
+			sub_params << tc.parse_fn_signature_type(info.name,
+				subst_generic_signature_param_text(param_text, concrete_args, generic_params))
 		}
 	}
 	ret_text := tc.fn_ret_type_texts[info.name] or { '' }
@@ -15797,7 +15797,7 @@ fn (mut tc TypeChecker) contextual_generic_lambda_type(id flat.NodeId, expected 
 		} else {
 			param_type
 		}
-		params << param_type
+		params << explicit_mut_ref_param_slot_type(param, param_type)
 		params_mut << param.is_mut
 		if !type_contains_unknown(binding_type) {
 			has_contextual_param = true

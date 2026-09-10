@@ -4539,10 +4539,7 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ string, decl Gen
 	}
 	if clean.starts_with('mut ') {
 		inner := t.qualify_specialized_signature_type_text(clean[4..], decl)
-		if inner.starts_with('&') {
-			return inner
-		}
-		return '&' + inner
+		return 'mut ' + inner
 	}
 	if clean.starts_with('?') {
 		return '?' + t.qualify_specialized_signature_type_text(clean[1..], decl)
@@ -9430,7 +9427,7 @@ fn generic_fn_type_param_payload(param string) string {
 fn generic_fn_type_param_mode_payload(param string) string {
 	trimmed := param.trim_space()
 	payload := generic_fn_type_param_payload(trimmed)
-	if trimmed.starts_with('mut ') && !payload.starts_with('&') {
+	if trimmed.starts_with('mut ') {
 		return 'mut ${payload}'
 	}
 	return payload
@@ -11871,15 +11868,15 @@ fn subst_generic_fn_type_param_text(param string, args []string, params []string
 		tail := text[space + 1..].trim_space()
 		if generic_fn_type_param_head_is_name(head, tail) {
 			sub := substitute_generic_type_text_with_params(tail, args, params)
-			if is_mut && sub.len > 0 && !sub.starts_with('&') {
-				return '${head} &${sub}'
+			if is_mut && sub.len > 0 {
+				return 'mut ${head} ${sub}'
 			}
 			return '${head} ${sub}'
 		}
 	}
 	sub := substitute_generic_type_text_with_params(text, args, params)
-	if is_mut && sub.len > 0 && !sub.starts_with('&') {
-		return '&${sub}'
+	if is_mut && sub.len > 0 {
+		return 'mut ${sub}'
 	}
 	return sub
 }
@@ -12168,11 +12165,13 @@ fn (t &Transformer) lock_colliding_main_substitution_type_text(original string, 
 							source_param := source_params[i].trim_space()
 							source_is_mut := source_param.starts_with('mut ')
 							source_payload := generic_fn_type_param_payload(source_param)
-							mut concrete_payload := generic_fn_type_param_payload(concrete_param)
-							if source_is_mut && concrete_payload.starts_with('&') {
-								concrete_payload = concrete_payload[1..]
-							}
-							locked := t.lock_colliding_main_substitution_type_text(source_payload, concrete_payload, module_name, generic_params)
+							// Both payloads are already declared spellings: the mut
+							// prefix is stripped separately and readded below, so the
+							// leading & of a mut T instantiated with &Dog belongs
+							// to T and must survive.
+							concrete_payload := generic_fn_type_param_payload(concrete_param)
+							locked := t.lock_colliding_main_substitution_type_text(source_payload,
+								concrete_payload, module_name, generic_params)
 							locked_params << if source_is_mut { 'mut ${locked}' } else { locked }
 						}
 						locked_ret := t.lock_colliding_main_substitution_type_text(source_ret, concrete_ret, module_name, generic_params)

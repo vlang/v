@@ -450,7 +450,20 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
 	assert generic_fn_type_param_mode_payload('mut Item') == 'mut Item'
 	assert generic_fn_type_param_mode_payload('mut item Item') == 'mut Item'
+	assert generic_fn_type_param_mode_payload('mut &Dog') == 'mut &Dog'
 	assert generic_fn_type_param_mode_payload('item Item') == 'Item'
+	assert subst_generic_fn_type_param_text('mut it T', ['&Dog'], ['T']) == 'mut it &Dog'
+	assert substitute_generic_type_text_with_params('fn (mut it T)', ['&Dog'], ['T']) == 'fn(mut it &Dog)'
+
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.qualify_specialized_signature_type_text('fn(mut &Dog)', GenericFnDecl{}) == 'fn (mut &Dog)'
+
+	assert t.lock_colliding_main_substitution_type_text('fn(mut it T)', 'fn(mut it &Dog)',
+		'arc', ['T']) == 'fn (mut &Dog)'
+	assert t.lock_colliding_main_substitution_type_text('fn(mut it T)', 'fn(mut it Dog)',
+		'arc', ['T']) == 'fn (mut Dog)'
 }
 
 fn test_resolve_substituted_type_text_qualifies_local_generic_base() {

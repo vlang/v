@@ -447,10 +447,15 @@ pub fn (t Type) name() string {
 			if i > 0 {
 				s += ', '
 			}
+			param := fn_type_param_type(t, i)
 			if fn_type_param_is_mut(t, i) {
 				s += 'mut '
+				if param is Pointer {
+					s += nested_type_name(param.base_type)
+					continue
+				}
 			}
-			s += nested_type_name(fn_type_param_type(t, i))
+			s += nested_type_name(param)
 		}
 		s += ')'
 		if t.return_type !is Void {

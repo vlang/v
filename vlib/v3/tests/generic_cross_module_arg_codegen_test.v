@@ -42,6 +42,82 @@ fn generic_cross_run_project(v3_bin string, name string, files map[string]string
 	return run.output.trim_space()
 }
 
+fn test_generic_mut_pointer_callback_preserves_reassigned_slot() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_mut_pointer_callback_slot', {
+		'main.v': 'module main
+
+@[heap]
+struct Dog {
+	name string
+}
+
+struct Box[T] {
+	item T
+}
+
+fn apply[T](b Box[T], f fn (mut it T)) T {
+	mut it := b.item
+	f(mut it)
+	return it
+}
+
+fn main() {
+	first := &Dog{
+		name: \'first\'
+	}
+	second := &Dog{
+		name: \'second\'
+	}
+	box := Box[&Dog]{
+		item: first
+	}
+	result := apply[&Dog](box, fn [second] (mut it &Dog) {
+		it = second
+	})
+	println(result.name)
+}
+'
+	})
+	assert out == 'second'
+}
+
+fn test_generic_mut_value_callback_keeps_single_caller_slot() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_mut_value_callback_slot', {
+		'main.v': 'module main
+
+struct Dog {
+mut:
+	name string
+}
+
+struct Box[T] {
+	item T
+}
+
+fn apply[T](b Box[T], f fn (mut it T)) T {
+	mut it := b.item
+	f(mut it)
+	return it
+}
+
+fn main() {
+	box := Box[Dog]{
+		item: Dog{
+			name: \'first\'
+		}
+	}
+	result := apply[Dog](box, fn (mut it Dog) {
+		it.name = \'second\'
+	})
+	println(result.name)
+}
+'
+	})
+	assert out == 'second'
+}
+
 fn test_imported_generic_arg_uses_qualified_local_type_in_specialized_signature() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_cross_module_arg', {
@@ -153,7 +229,7 @@ fn test_generic_interface_result_call_keeps_specialized_symbol_and_wrapper() {
 fn test_generic_comptime_if_uses_interface_implementation() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_comptime_interface_impl', {
-		'sink/sink.v': 'module sink\n\npub interface Writer {\nmut:\n\twrite(n int) int\n}\n\npub struct Counter[W] {\nmut:\n\twriter W\n}\n\npub fn Counter.new[W](writer W) Counter[W] {\n\treturn Counter[W]{\n\t\twriter: writer\n\t}\n}\n\npub fn (mut counter Counter[W]) write(n int) int {\n\t$if W is Writer {\n\t\treturn counter.writer.write(n)\n\t} $else {\n\t\treturn -1\n\t}\n}\n'
+		'sink/sink.v': 'module sink\n\npub interface Writer {\nmut:\n\twrite(n int) int\n}\n\npub struct Counter[W] {\nmut:\n\twriter W\n}\n\npub fn Counter.new[W](writer W) Counter[W] {\n\treturn Counter[W]{\n\t\twriter: writer\n\t}\n}\n\npub fn (mut counter Counter[W]) write(n int) int {\n\t\$if W is Writer {\n\t\treturn counter.writer.write(n)\n\t} \$else {\n\t\treturn -1\n\t}\n}\n'
 		'user/user.v': 'module user\n\nimport sink\n\nstruct LocalWriter implements sink.Writer {\nmut:\n\ttotal int\n}\n\nfn (mut w LocalWriter) write(n int) int {\n\tw.total += n\n\treturn w.total\n}\n\npub fn run() int {\n\tmut counter := sink.Counter.new(LocalWriter{})\n\treturn counter.write(41)\n}\n'
 		'main.v':      'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
