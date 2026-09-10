@@ -8,7 +8,7 @@ VC     ?= ./vc
 VEXE   ?= ./v
 V1_FALLBACK_EXE := $(dir $(VEXE))v1_fallback
 # Portable VC snapshots do not embed V3. Keep their v1 executable on the full
-# compatibility compiler path even when the generated C is built on macOS/Linux.
+# compatibility compiler path even when the generated C is built on a V3 host.
 VC_BOOTSTRAP_DEFINE := -DCUSTOM_DEFINE_v1_fallback
 VCREPO ?= https://github.com/vlang/vc
 TCCREPO ?= https://github.com/vlang/tccbin
@@ -75,19 +75,26 @@ endif
 endif
 
 ifeq ($(_SYS),FreeBSD)
+V1_FALLBACK_BUILD := 1
 TCCOS := freebsd
 LDFLAGS += -lexecinfo
 endif
 
 ifeq ($(_SYS),NetBSD)
 NETBSD := 1
+V1_FALLBACK_BUILD := 1
 TCCOS := netbsd
 LDFLAGS += -lexecinfo
 endif
 
 ifeq ($(_SYS),OpenBSD)
+V1_FALLBACK_BUILD := 1
 TCCOS := openbsd
 LDFLAGS += -lexecinfo
+endif
+
+ifeq ($(_SYS),DragonFly)
+V1_FALLBACK_BUILD := 1
 endif
 
 ifdef ANDROID_ROOT
@@ -179,11 +186,11 @@ BOOTSTRAP_GC_VFLAG :=
 ifeq ($(filter -gc -gc=%,$(VFLAGS)),)
 	BOOTSTRAP_GC_VFLAG := -gc none
 endif
-ifeq ($(LINUX),1)
+ifneq ($(filter $(_SYS),Linux FreeBSD NetBSD OpenBSD DragonFly),)
 ifneq ($(filter $(TCCARCH),arm64 aarch64),)
 ifeq ($(filter -cc,$(VFLAGS)),)
 ifeq ($(findstring -cc=,$(VFLAGS)),)
-	# Bundled TCC can hang or miscompile V while bootstrapping on Linux ARM64,
+	# Bundled TCC can hang, fail, or miscompile V while bootstrapping on ARM64,
 	# so keep both `v1 -> v2` and `v2 -> v` on the same system compiler
 	# unless the user overrode it explicitly.
 	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
@@ -191,6 +198,8 @@ ifeq ($(findstring -cc=,$(VFLAGS)),)
 endif
 endif
 endif
+endif
+ifeq ($(LINUX),1)
 ifneq ($(BOOTSTRAP_TCC_REQUESTED),)
 ifneq ($(CC),tcc)
 	# The external vc bootstrap snapshot may still emit Windows-only stdio
@@ -237,6 +246,9 @@ ifdef NETBSD
 endif
 ifdef V1_FALLBACK_BUILD
 	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
+ifdef NETBSD
+	paxctl +m $(V1_FALLBACK_EXE)
+endif
 endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD

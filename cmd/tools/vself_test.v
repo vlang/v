@@ -137,8 +137,34 @@ fn test_macos_default_self_build_compiler_selection() {
 	assert_vself_preserves_full_cli(old_result.output)
 }
 
+fn test_bsd_self_build_uses_system_cc_and_v3_safeguards() {
+	$if windows {
+		return
+	}
+	noop := os.find_abs_path_of_executable('echo') or { return }
+	tool := os.join_path(os.vtmp_dir(), 'vself_bsd_defaults_test')
+	defer {
+		os.rm(tool) or {}
+	}
+	build := os.execute('${os.quoted_path(vexe)} -d vself_test_bsd_transition -o ${os.quoted_path(tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
+	assert build.exit_code == 0, build.output
+	default_result := os.execute('env -u CC VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -o /tmp/vself_bsd_defaults_test')
+	assert default_result.exit_code == 0, default_result.output
+	assert default_result.output.contains('-cc cc'), default_result.output
+	assert default_result.output.contains('-prealloc'), default_result.output
+	assert_vself_preserves_full_cli(default_result.output)
+	prod_result := os.execute('env -u CC VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -prod -o /tmp/vself_bsd_prod_test')
+	assert prod_result.exit_code == 0, prod_result.output
+	assert prod_result.output.contains('-parallel-cc'), prod_result.output
+	assert_vself_uses_single_prod_build(prod_result.output)
+	tinyc_result := os.execute('VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -cc tcc -o /tmp/vself_bsd_tinyc_test')
+	assert tinyc_result.exit_code == 0, tinyc_result.output
+	assert !tinyc_result.output.contains('-prealloc'), tinyc_result.output
+	assert_vself_preserves_full_cli(tinyc_result.output)
+}
+
 fn test_plain_self_replacement_preserves_cli_and_embedded_v3() {
-	$if !macos && !linux {
+	$if !bsd && !linux {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'vself_full_cli_replacement_${os.getpid()}')
@@ -184,15 +210,17 @@ fn main() {
 	mock_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
 	assert mock_build.exit_code == 0, mock_build.output
 	vself_tool := os.join_path(root, 'vself')
-	vself_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
+	vself_build := os.execute('${os.quoted_path(vexe)} -d vself_test_bsd_transition -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert vself_build.exit_code == 0, vself_build.output
 
 	self_result := os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')
 	assert self_result.exit_code == 0, self_result.output
 	assert self_result.output.contains('cmd/v'), self_result.output
+	assert self_result.output.contains('BSD V1 compatibility compiler'), self_result.output
 	assert !self_result.output.contains('vlib/v3/v3.v'), self_result.output
 	assert os.is_executable(isolated_vexe)
 	assert os.is_executable(os.join_path(root, 'v_old'))
+	assert os.is_executable(os.join_path(root, 'v1_fallback'))
 
 	version_result := os.execute('VFLAGS="" VOSARGS="" VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(isolated_vexe)} version')
 	assert version_result.exit_code == 0, version_result.output

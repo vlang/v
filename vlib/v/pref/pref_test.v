@@ -464,29 +464,45 @@ fn test_prealloc_defaults_to_no_gc() {
 	assert prefs.gc_mode == .no_gc
 }
 
-fn test_macos_and_linux_v_compiler_target_defaults_to_prealloc() {
-	if pref.get_host_os() !in [.macos, .linux] {
+fn test_v3_platform_v_compiler_targets_default_to_prealloc() {
+	if pref.get_host_os() !in [.macos, .linux, .freebsd, .openbsd, .netbsd, .dragonfly] {
 		return
 	}
-	for target in [os.join_path(vroot, 'cmd', 'v'), os.join_path(vroot, 'vlib', 'v3', 'v3.v')] {
-		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
-		assert prefs.building_v
-		assert prefs.prealloc
-		assert prefs.gc_mode == .no_gc
+	for target_os in [pref.OS.macos, .linux, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		for target in [os.join_path(vroot, 'cmd', 'v'), os.join_path(vroot, 'vlib', 'v3', 'v3.v')] {
+			mut prefs := pref.Preferences{
+				path:                  target
+				os:                    target_os
+				ccompiler:             'cc'
+				ccompiler_set_by_flag: true
+			}
+			prefs.fill_with_defaults()
+			assert prefs.building_v
+			assert prefs.prealloc
+			assert prefs.gc_mode == .no_gc
+		}
 	}
 }
 
-fn test_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
-	if pref.get_host_os() != .linux {
+fn test_non_macos_explicit_tinyc_v_compiler_target_skips_prealloc() {
+	if pref.get_host_os() !in [.macos, .linux, .freebsd, .openbsd, .netbsd, .dragonfly] {
 		return
 	}
 	target := os.join_path(vroot, 'cmd', 'v')
-	for compiler in ['tcc', 'tinyc'] {
-		prefs, _ := pref.parse_args_and_show_errors([], ['', '-cc', compiler, target], false)
-		assert prefs.building_v
-		assert prefs.ccompiler_type == .tinyc
-		assert !prefs.prealloc
-		assert '-prealloc' !in prefs.build_options
+	for target_os in [pref.OS.linux, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		for compiler in ['tcc', 'tinyc'] {
+			mut prefs := pref.Preferences{
+				path:                  target
+				os:                    target_os
+				ccompiler:             compiler
+				ccompiler_set_by_flag: true
+			}
+			prefs.fill_with_defaults()
+			assert prefs.building_v
+			assert prefs.ccompiler_type == .tinyc
+			assert !prefs.prealloc
+			assert '-prealloc' !in prefs.build_options
+		}
 	}
 }
 

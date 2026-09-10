@@ -67,18 +67,29 @@ const macos_v3_c_error_v_source_digests_file = 'v_source_digests'
 const v3_fallback_native_input_prefix = '@native-input:'
 const v3_fallback_native_manifest_key = '@native-input-manifest:v1'
 const v3_fallback_native_manifest_value = 'v3-native-input-manifest-v1'
+const bsd_selfhost_job_limit = 2
+
+fn default_selfhost_job_count(jobs int, is_bsd_host bool, allow_overcommit bool) int {
+	if is_bsd_host {
+		return int_min(jobs, bsd_selfhost_job_limit)
+	}
+	if !allow_overcommit || jobs < 2 || jobs >= 12 {
+		return jobs
+	}
+	return int_min(12, jobs + jobs / 2)
+}
 
 fn configure_selfhost_parallelism(building_v bool) {
-	if !building_v || os.getenv('VJOBS') != '' || os.getenv('V3_NO_SELFHOST_JOB_OVERCOMMIT') != '' {
+	if !building_v || os.getenv('VJOBS') != '' {
 		return
 	}
 	jobs := runtime.nr_jobs()
-	if jobs < 2 || jobs >= 12 {
-		return
-	}
-	overcommitted := int_min(12, jobs + jobs / 2)
-	if overcommitted > jobs {
-		os.setenv('VJOBS', overcommitted.str(), true)
+	is_bsd_host := $if freebsd || openbsd || netbsd || dragonfly { true } $else { false }
+	configured_jobs := default_selfhost_job_count(jobs, is_bsd_host, os.getenv('V3_NO_SELFHOST_JOB_OVERCOMMIT') == '')
+	if configured_jobs != jobs {
+		// V3 self-hosting needs more than 4 GiB before the C compiler starts.
+		// Bound BSD worker pools so CPU-rich hosts do not multiply that peak.
+		os.setenv('VJOBS', configured_jobs.str(), true)
 	}
 }
 
@@ -8627,7 +8638,11 @@ pub fn run(args []string) {
 		eprintln("builder error: ${input_file} doesn't exist")
 		exit(1)
 	}
-	if input_implies_building_v(input_file) {
+	cmd_v_build := input_is_cmd_v(input_file)
+	// Neither compiler entry point uses generics. Keep self-builds off the generic
+	// reachability and monomorphization paths without requiring an explicit flag.
+	// -building-v can force the same mode for another known non-generic input.
+	if input_implies_building_v(input_file) || cmd_v_build {
 		building_v = true
 	}
 	configure_selfhost_parallelism(building_v)
@@ -8773,15 +8788,8 @@ pub fn run(args []string) {
 		&& !user_defines.any(it.all_before('=').trim_space() == 'linux_wayland_session') {
 		user_defines << 'linux_wayland_session'
 	}
-	cmd_v_build := input_is_cmd_v(input_file)
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
 	v3_compiler_tree_input := input_is_v3_compiler_tree(input_file)
-	// Neither compiler entry point uses generics. Keep self-builds off the generic
-	// reachability and monomorphization paths without requiring an explicit flag.
-	// -building-v can force the same mode for another known non-generic input.
-	if input_implies_building_v(input_file) || cmd_v_build {
-		building_v = true
-	}
 	if backend == 'fastc' && 'fastc_real_builtin' in user_defines {
 		// Opt-in: compile an ordinary program through FastC's real-`builtin` path
 		// (real `struct string`, error system, and the full runtime) instead of the

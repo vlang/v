@@ -6,8 +6,8 @@ import crypto.rand.internal
 const tiny_primes = [u64(2), 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61]!
 
 // The odd primes below 60, as two products that each fit in a 32 bit word.
-const primes_a = u64(3 * 5 * 7 * 11 * 13 * 17 * 19 * 23 * 37)
-const primes_b = u64(29 * 31 * 41 * 43 * 47 * 53)
+const primes_a = u64(3) * 5 * 7 * 11 * 13 * 17 * 19 * 23 * 37
+const primes_b = u64(29) * 31 * 41 * 43 * 47 * 53
 
 // Bases that make Miller-Rabin deterministic below 3317044064679887385961981.
 const deterministic_bases = [u64(2), 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41]!

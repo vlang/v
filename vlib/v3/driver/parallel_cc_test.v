@@ -33,7 +33,7 @@ fn test_split_v3_parallel_c_source_uses_safe_unit_markers() {
 }
 
 fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -57,7 +57,7 @@ fn test_v3_parallel_cc_compiles_and_runs_multiple_c_units() {
 }
 
 fn test_v3_parallel_cc_keeps_test_binaries_in_one_unit() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_test_harness_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -80,7 +80,7 @@ fn test_v3_parallel_cc_keeps_test_binaries_in_one_unit() {
 }
 
 fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_header_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -103,7 +103,7 @@ fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
 }
 
 fn test_v3_parallel_cc_falls_back_for_native_static_state() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_static_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -127,7 +127,7 @@ fn test_v3_parallel_cc_falls_back_for_native_static_state() {
 }
 
 fn test_v3_parallel_cc_falls_back_for_native_function_local_static_state() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_local_static_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -151,7 +151,7 @@ fn test_v3_parallel_cc_falls_back_for_native_function_local_static_state() {
 }
 
 fn test_v3_parallel_cc_falls_back_for_macro_generated_function_local_static_state() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_macro_static_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -181,7 +181,7 @@ DEF(v3_parallel_macro_next)
 }
 
 fn test_v3_parallel_cc_falls_back_for_coverage_and_profile_state() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_instrumentation_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!

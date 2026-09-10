@@ -6,7 +6,6 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - 'cmd/tools/**'
@@ -45,6 +44,7 @@ on:
       - 'vlib/time/**'
       - 'vlib/toml/**'
       - 'vlib/v/**'
+      - 'vlib/v3/**'
       # build-examples / DB / Sokol deps exercised by ci/freebsd_ci.vsh
       - 'examples/**'
       - 'vlib/compress/**'
@@ -90,7 +90,8 @@ jobs:
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
 
@@ -131,7 +132,8 @@ jobs:
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
 
@@ -172,7 +174,8 @@ jobs:
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
 

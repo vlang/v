@@ -1,6 +1,7 @@
 module driver
 
 import os
+import runtime
 import crypto.sha256
 import v3.ansi
 import v3.parser
@@ -12,6 +13,42 @@ fn restore_driver_environment(name string, old_value string, was_set bool) {
 		os.setenv(name, old_value, true)
 	} else {
 		os.unsetenv(name)
+	}
+}
+
+fn test_default_selfhost_job_count() {
+	assert default_selfhost_job_count(1, false, true) == 1
+	assert default_selfhost_job_count(2, false, true) == 3
+	assert default_selfhost_job_count(8, false, true) == 12
+	assert default_selfhost_job_count(12, false, true) == 12
+	assert default_selfhost_job_count(8, false, false) == 8
+	assert default_selfhost_job_count(1, true, true) == 1
+	assert default_selfhost_job_count(8, true, true) == bsd_selfhost_job_limit
+	assert default_selfhost_job_count(8, true, false) == bsd_selfhost_job_limit
+}
+
+fn test_configure_selfhost_parallelism_uses_bsd_limit() {
+	old_vjobs := os.getenv('VJOBS')
+	vjobs_was_set := 'VJOBS' in os.environ()
+	old_no_overcommit := os.getenv('V3_NO_SELFHOST_JOB_OVERCOMMIT')
+	no_overcommit_was_set := 'V3_NO_SELFHOST_JOB_OVERCOMMIT' in os.environ()
+	defer {
+		restore_driver_environment('VJOBS', old_vjobs, vjobs_was_set)
+		restore_driver_environment('V3_NO_SELFHOST_JOB_OVERCOMMIT', old_no_overcommit, no_overcommit_was_set)
+	}
+	os.unsetenv('VJOBS')
+	os.setenv('V3_NO_SELFHOST_JOB_OVERCOMMIT', '1', true)
+	$if freebsd || openbsd || netbsd || dragonfly {
+		jobs := runtime.nr_jobs()
+		configure_selfhost_parallelism(true)
+		if jobs > bsd_selfhost_job_limit {
+			assert os.getenv('VJOBS') == bsd_selfhost_job_limit.str()
+		} else {
+			assert os.getenv('VJOBS') == ''
+		}
+	} $else {
+		configure_selfhost_parallelism(true)
+		assert os.getenv('VJOBS') == ''
 	}
 }
 

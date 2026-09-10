@@ -109,13 +109,15 @@ fn check_compress() {
 }
 
 fn run_essential_tests() {
+	// The broad compatibility suite includes V1-specific diagnostic fixtures.
+	// Self-hosting and the module tasks above cover the default V3 compiler.
 	if common.is_github_job {
 		println('::group::Run essential tests')
-		exec('VTEST_JUST_ESSENTIAL=1 v -silent test-self')
+		exec('VTEST_JUST_ESSENTIAL=1 v -old-compiler -silent test-self')
 		println('::endgroup::')
 	} else {
 		println('### Run essential tests')
-		exec('VTEST_JUST_ESSENTIAL=1 v -progress test-self')
+		exec('VTEST_JUST_ESSENTIAL=1 v -old-compiler -progress test-self')
 	}
 }
 
