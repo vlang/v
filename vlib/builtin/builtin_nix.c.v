@@ -5,7 +5,7 @@ module builtin
 
 @[markused]
 fn builtin_init() {
-	$if prealloc {
+	$if prealloc && v3_backend ? {
 		unsafe { prealloc_vinit() }
 	}
 	$if gcboehm ? {

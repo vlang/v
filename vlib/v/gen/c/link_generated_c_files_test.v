@@ -22,8 +22,6 @@ fn test_prealloc_tls_global_has_cplusplus_thread_local_branch() {
 	emit_result := os.execute(emit_cmd)
 	assert emit_result.exit_code == 0, '${emit_cmd}\n${emit_result.output}'
 	generated := os.read_file(generated_c_path)!
-	assert generated.contains('#if defined(__TINYC__) && !defined(_WIN32)'), generated
-	assert generated.contains('static void g_memory_block_key_init(void)'), generated
 	assert generated.contains('#elif defined(__cplusplus)\nthread_local VMemoryBlock* g_memory_block; // global 6'), generated
 
 	assert generated.contains('#else\n_Thread_local VMemoryBlock* g_memory_block; // global 6'), generated
@@ -52,7 +50,6 @@ fn test_parallel_cc_prealloc_tls_extern_has_cplusplus_thread_local_branch() {
 	b.front_and_middle_stages(files)!
 	result := c.gen(b.parsed_files, mut b.table, b.pref)
 	externs := result.extern_str.replace('\r\n', '\n')
-	assert externs.contains('#if defined(__TINYC__) && !defined(_WIN32)'), externs
 	assert externs.contains('#elif defined(__cplusplus)\nextern thread_local VMemoryBlock* g_memory_block;'), externs
 
 	assert externs.contains('#else\nextern _Thread_local VMemoryBlock* g_memory_block;'), externs

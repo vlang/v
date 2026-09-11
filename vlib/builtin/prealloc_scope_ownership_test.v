@@ -1,11 +1,3 @@
-fn test_prealloc_initialization_is_idempotent() {
-	$if prealloc {
-		root := g_memory_block
-		unsafe { prealloc_vinit() }
-		assert g_memory_block == root
-	}
-}
-
 fn test_prealloc_scope_owns_multiple_blocks() {
 	$if prealloc {
 		before := []u8{len: 32}

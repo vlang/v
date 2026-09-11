@@ -15,7 +15,6 @@ fn C.v_prealloc_atomic_store_i32(ptr &i32, val int) int
 fn C.v_prealloc_atomic_cas_i32(ptr &i32, expected int, desired int) int
 fn C.v_prealloc_atomic_add_i64(ptr &i64, delta i64) i64
 fn C.v_prealloc_atomic_load_i64(ptr &i64) i64
-fn C.g_memory_block_key_init()
 
 // With -prealloc, V calls libc's malloc to get chunks, each at least 16MB
 // in size, as needed. Once a chunk is available, all malloc() calls within
@@ -41,7 +40,6 @@ const prealloc_scope_block_size = 256 * 1024
 const prealloc_default_align = sizeof(voidptr) * 2
 
 __global g_memory_block &VMemoryBlock
-__global g_prealloc_initialized bool
 __global g_prealloc_allocation_count i64
 __global g_prealloc_allocated_bytes i64
 
@@ -541,16 +539,7 @@ fn prealloc_vinit() {
 	$if prealloc_trace_vinit ? {
 		C.fprintf(C.stderr, c'prealloc_vinit started\n')
 	}
-	if g_prealloc_initialized {
-		return
-	}
-	g_prealloc_initialized = true
 	unsafe {
-		$if tinyc && (freebsd || openbsd || netbsd || dragonfly) {
-			// BSD TinyCC does not reliably run C constructor functions. Initialize
-			// the generated pthread-key arena slot before its first access.
-			C.g_memory_block_key_init()
-		}
 		mut root := vmemory_block_new(nil, isize(prealloc_block_size), 0)
 		root.recycle_cache = &VPreallocBlockCache(C.calloc(1, sizeof(VPreallocBlockCache)))
 		vmemory_abort_on_nil(root.recycle_cache, sizeof(VPreallocBlockCache))
