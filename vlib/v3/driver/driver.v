@@ -8957,12 +8957,10 @@ pub fn run(args []string) {
 		// The compiler is a single-shot batch program — exactly what the
 		// -prealloc bump arena is for (~18% less CPU across its
 		// allocation-heavy phases) — so compiler builds default to it.
-		// -no-prealloc opts out (also restores tcc linking: tcc has no
-		// thread-local storage support, so prealloc builds link with cc).
-		// The FastC backend honors it too: it emits the arena root
-		// `g_memory_block` as per-thread storage (a pthread key under bundled
-		// TinyCC, which lacks thread-local storage), so its worker-thread
-		// generations bump-allocate safely (see fastc_write_prealloc_tls_global).
+		// -no-prealloc opts out. Bundled TinyCC lacks language-level thread-local
+		// storage, so its arena root uses a native thread slot instead. This keeps
+		// worker-thread generations safe in both C backends (see the C generator's
+		// pthread-key slot and fastc_write_prealloc_tls_global).
 		if !no_prealloc && 'prealloc' !in user_defines {
 			user_defines << 'prealloc'
 		}

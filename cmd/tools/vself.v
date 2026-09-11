@@ -58,7 +58,8 @@ fn main() {
 			// prefer the system compiler for self-builds there.
 			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
 		} else if host_os in ['freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
-			// V3's preallocation runtime needs the system compiler on BSD.
+			// Keep the ordinary BSD self-build on the platform's system toolchain.
+			// Explicit TinyCC builds use the preallocation-compatible pthread slot.
 			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
 		}
 	}
@@ -370,7 +371,7 @@ fn self_ccompiler_supports_prealloc(ccompiler string, target_os string) bool {
 	}
 	is_tinyc := cc.contains('tcc') || cc.contains('tinyc') || cc.contains('tinygcc')
 		|| cc.contains('tiny_gcc') || cc.contains('tiny-gcc')
-	return !is_tinyc || target_os == 'macos'
+	return !is_tinyc || target_os in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
 }
 
 fn has_profile_cflag(args []string) bool {
