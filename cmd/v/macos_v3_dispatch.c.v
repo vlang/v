@@ -197,11 +197,21 @@ fn macos_v3_windows_msvc_needs_v1_compatibility(prefs &pref.Preferences, host_os
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.backend != .c || command == 'test' || command in external_tools
-		|| macos_v3_non_compilation_command(command) || prefs.path == '' {
+		|| macos_v3_non_compilation_command(command) {
+		return false
+	}
+	// The legacy preference parser deliberately rejects `v build <source>`, so it
+	// does not populate prefs.path for the explicit build command. Let V3 parse the
+	// original arguments and report missing or invalid inputs instead of reaching
+	// the V3-only command shell's unreachable V1 builder guard.
+	if command == 'build' {
+		return true
+	}
+	if prefs.path == '' {
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
-	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
+	return command == 'run' || prefs.is_script || os.is_dir(prefs.path)
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
 		|| normalized_path.ends_with('.vv')
 }
@@ -220,8 +230,10 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	mut environment := macos_v3_child_environment(vexe, caller_environment, dispatch_environment)
 	no_fallback := environment[macos_v3_no_fallback_env] or { '' }
 	// cmd/v self-builds deliberately remain V3-only. The compatibility compiler
-	// exists for user programs and tools, not as an alternate self-host path.
-	fallback_enabled := !prefs.new_compiler && no_fallback != '1'
+	// exists for user programs and tools, not as an alternate self-host path. An
+	// empty path belongs to explicit `build` argument validation, which V1 cannot
+	// recover and would only report again with a less useful empty-path error.
+	fallback_enabled := prefs.path != '' && !prefs.new_compiler && no_fallback != '1'
 		&& !macos_v3_is_self_build_target(prefs)
 	fallback_file := macos_v3_fallback_file_for_pid()
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)

@@ -68,13 +68,26 @@ fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 	assert is_macos_v3_relevant_command('cmd/v', prefs)
 	prefs.old_compiler = false
 	prefs.path = ''
-	assert !is_macos_v3_relevant_command('build', prefs)
+	assert is_macos_v3_relevant_command('build', prefs)
 	prefs.path = 'main.v'
 	prefs.backend = .js_node
 	assert !is_macos_v3_relevant_command('main.v', prefs)
 	prefs.backend = .c
 	for command in ['test', 'fmt', 'version', 'crun', 'build-module'] {
 		assert !is_macos_v3_relevant_command(command, prefs)
+	}
+}
+
+fn test_macos_v3_explicit_build_reports_a_regular_input_error() {
+	for args in [['build', 'help'], ['-new-compiler', 'build', 'help']] {
+		result := run_macos_v3_test_process(@VEXE, args, macos_v3_test_vroot, {})
+		assert result.exit_code == 1, result.output
+		assert result.output.trim_space() == "builder error: help doesn't exist", result.output
+	}
+	for args in [['build'], ['-new-compiler', 'build']] {
+		result := run_macos_v3_test_process(@VEXE, args, macos_v3_test_vroot, {})
+		assert result.exit_code == 1, result.output
+		assert result.output.trim_space() == 'no input file', result.output
 	}
 }
 
