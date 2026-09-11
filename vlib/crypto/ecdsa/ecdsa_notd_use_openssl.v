@@ -124,17 +124,72 @@ pub fn generate_key(opt CurveOptions) !(PublicKey, PrivateKey) {
 	return pb, pv
 }
 
-// new_key_from_seed is NOT implemented for the default mbedTLS backend: unlike
-// OpenSSL's current implementation (raw `BN_bin2bn(seed)`, no range check),
-// mbedTLS's closest equivalent validates the resulting scalar is in
-// `[1, curve_order-1]` and rejects it otherwise -- a seed that deterministically
-// "works" under `-d use_openssl` today could be rejected here. That's a real
-// behavioral divergence, not just missing plumbing, and needs its own design
-// pass (reduce mod n first? accept the stricter rejection and document it?)
-// before porting -- not silently reimplemented as if the two were equivalent.
-// Build with `-d use_openssl` if you need this today.
+// new_key_from_seed creates a new private key from the seed bytes. If opt was not provided,
+// its default to prime256v1 curve.
+//
+// Notes on the seed:
+//
+// You should make sure, the seed bytes come from a cryptographically secure random generator,
+// likes the `crypto.rand` or other trusted sources.
+// Internally, the seed size's would be checked to not exceed the key size of underlying curve,
+// ie, 32 bytes length for p-256 and secp256k1, 48 bytes length for p-384 and 66 bytes length for p-521.
+// Its recommended to use seed with bytes length matching with underlying curve key size.
+//
+// The seed is read as a big-endian integer and must be a valid private scalar
+// for the curve, i.e. in `[1, curve_order-1]` -- mbedTLS's mbedtls_ecp_read_key
+// enforces this and any other value is rejected with an error. This is
+// stricter than the `-d use_openssl` backend, which performs no such range
+// check; the two agree on every seed that `PrivateKey.bytes()` can produce
+// (always in range), so keys saved with one backend reload with the other.
 pub fn new_key_from_seed(seed []u8, opt CurveOptions) !PrivateKey {
-	return error('crypto.ecdsa: new_key_from_seed is not implemented for the default mbedTLS backend yet (OpenSSL and mbedTLS diverge on out-of-range-scalar handling here); build with -d use_openssl')
+	// Early exit checks, same order and wording as ecdsa_d_use_openssl.v's.
+	if seed.len == 0 {
+		return error('Seed with null-length was not allowed')
+	}
+	key_size := opt.nid.byte_size()
+	if seed.len > key_size {
+		return error('Seed length exceeds key size')
+	}
+	if opt.fixed_size && seed.len != key_size {
+		return error('seed size doesnt match with curve key size')
+	}
+	mut ctr_drbg := C.mbedtls_ctr_drbg_context{}
+	mut entropy := C.mbedtls_entropy_context{}
+	init_rng(mut ctr_drbg, mut entropy)!
+	defer {
+		free_rng(mut ctr_drbg, mut entropy)
+	}
+
+	mut ctx := &C.mbedtls_ecdsa_context{}
+	C.mbedtls_ecdsa_init(ctx)
+	// read_key loads the group and the private scalar (range-checked), but
+	// leaves the public point unset -- calc_public derives Q = d * G, which
+	// sign()/public_key()/derive_shared_secret() all need present in the ctx.
+	rret := C.mbedtls_ecp_read_key(opt.nid.mbedtls_group_id(), ctx, seed.data, usize(seed.len))
+	if rret != 0 {
+		C.mbedtls_ecdsa_free(ctx)
+		return error_with_code('crypto.ecdsa: mbedtls_ecp_read_key failed (seed is not a valid private scalar for the curve?)', rret)
+	}
+	cret := C.mbedtls_ecp_keypair_calc_public(ctx, C.mbedtls_ctr_drbg_random, voidptr(&ctr_drbg))
+	if cret != 0 {
+		C.mbedtls_ecdsa_free(ctx)
+		return error_with_code('crypto.ecdsa: mbedtls_ecp_keypair_calc_public failed', cret)
+	}
+	mut pvkey := PrivateKey{
+		ctx: ctx
+		nid: opt.nid
+	}
+	// Same ks_flag/ks_size contract as the OpenSSL backend: a fixed-size key
+	// reports bytes() at the curve's width, a flexible one at the seed's own
+	// length (so a short or leading-zero seed round-trips byte-for-byte).
+	if opt.fixed_size {
+		pvkey.ks_flag = .fixed
+		pvkey.ks_size = key_size
+	} else {
+		pvkey.ks_flag = .flexible
+		pvkey.ks_size = seed.len
+	}
+	return pvkey
 }
 
 // PrivateKey represents ECDSA private key. Actually its a key pair,
