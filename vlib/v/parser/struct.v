@@ -163,6 +163,20 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				end_comments = p.eat_comments(same_line: true)
 				break
 			}
+			mut pre_field_comments := p.eat_comments()
+			if pre_field_comments.len > 0
+				&& ((p.tok.kind == .key_pub && p.peek_tok.kind in [.key_mut, .colon])
+				|| (p.tok.kind in [.key_mut, .key_global, .key_module] && p.peek_tok.kind == .colon)) {
+				// A comment that is separated from the previous field by a blank line, and is
+				// followed by a section keyword (like `pub mut:`), was not eaten as the follow up
+				// comment of that field; it still belongs to it, not to the first field of the new section.
+				if ast_fields.len > 0 {
+					ast_fields.last().next_comments << pre_field_comments
+				} else {
+					pre_comments << pre_field_comments
+				}
+				pre_field_comments = []
+			}
 			if p.tok.kind == .key_pub && p.peek_tok.kind in [.key_mut, .colon] {
 				p.next()
 				if p.tok.kind == .key_mut {
@@ -225,7 +239,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_field_mut = false
 				is_field_global = false
 			}
-			pre_field_comments := p.eat_comments()
+			pre_field_comments << p.eat_comments()
 			mut next_field_comments := []ast.Comment{}
 			field_start_pos := p.tok.pos()
 			mut is_field_volatile := false
@@ -896,6 +910,25 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			continue
 		}
 
+		mut comments := p.eat_comments()
+		if comments.len > 0 && p.tok.kind == .key_mut && p.peek_tok.kind == .colon {
+			// A comment that is separated from the previous field/method by a blank line, and is
+			// followed by `mut:`, was not eaten as the follow up comment of that field/method;
+			// it still belongs to it, not to the first field/method of the `mut:` section.
+			if methods.len > 0 && (fields.len == 0 || methods.last().pos.pos > fields.last().pos.pos) {
+				methods.last().next_comments << comments
+			} else if fields.len > 0 {
+				mut last_comments := fields.last().comments.clone()
+				last_comments << comments
+				fields[fields.len - 1] = ast.StructField{
+					...fields.last()
+					comments: last_comments
+				}
+			} else {
+				pre_comments << comments
+			}
+			comments = []
+		}
 		if p.tok.kind == .key_mut {
 			if is_mut {
 				p.error_with_pos('redefinition of `mut` section', p.tok.pos())
@@ -916,7 +949,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 			return ast.InterfaceDecl{}
 		}
-		mut comments := p.eat_comments()
+		comments << p.eat_comments()
 		if p.peek_tok.kind == .lpar {
 			// interface methods
 			method_start_pos := p.tok.pos()
