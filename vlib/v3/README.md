@@ -58,6 +58,19 @@ not retry with V1, except for `-new-compiler -cc msvc` on Windows. V3 does not y
 command lines, so that combination intentionally launches `v1_fallback.exe` instead of exercising
 V3.
 
+## Profile-guided compiler build
+
+On macOS or Linux with Clang and a matching `llvm-profdata`, build an optimized standalone
+compiler with `./build_pgo.sh ./v3 ./v3-pgo` from this directory. The first argument is an existing
+V3 compiler; the second is the output path. Both arguments are optional. The script builds an
+instrumented compiler, trains it on three uncached self-compilations, and rebuilds with the
+collected profile. It removes its temporary binaries and profiles when finished.
+
+Use `./v3-pgo -nocache -building-v -o v4 v3.v` for the self-build benchmark. Profile-guided gains
+are separate from ordinary `-prod` builds and depend on the workload. Rebuild the profile when
+compiler sources change. `CC` and `LLVM_PROFDATA` select the Clang and profile tools; macOS also
+supports finding `llvm-profdata` through `xcrun`. `V3_PGO_CFLAGS` adds flags to the final build.
+
 ## Target selection
 
 The C backend accepts `-os <name>` and `-arch <name>`. The target controls source-file suffix
