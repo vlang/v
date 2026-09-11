@@ -351,7 +351,7 @@ fn test_dollar_sign_is_literal_without_braces() {
 }
 
 fn scan_string_with_opaque_pos(source string) (token.Token, []int) {
-	mut scanner := new_plain_scanner(source, .skip_comments, &pref.Preferences{})
+	mut scanner := new_plain_scanner(source, .skip_comments, &pref.Preferences{}, internally_generated_v_code, internally_generated_v_code)
 	tok := scanner.text_scan()
 	return tok, scanner.string_opaque_pos[tok.tidx]
 }
