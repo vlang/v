@@ -182,6 +182,7 @@ struct V3CgenCacheInput {
 struct V3CgenCacheMetadata {
 	interface_impl_signature string
 	prefix_source_identity   string
+	windows_gui_entry_point  bool
 	flags                    []string
 	diagnostics              []V3CachedTypeDiagnostic
 }
@@ -1827,6 +1828,7 @@ struct V3CCompilerFlagOptions {
 	target_arch         string
 	c_compiler          string
 	subsystem           pref.Subsystem
+	windows_gui_app     bool
 	macos_sdk_root      string
 	pic_flag            string
 	is_prod             bool
@@ -2311,13 +2313,17 @@ fn v3_fastc_default_linker_flags(target_os string, uses_threads bool) []string {
 	return flags
 }
 
-fn v3_windows_executable_linker_flags(target_os string, c_compiler string, is_shared bool, is_o bool, subsystem pref.Subsystem) []string {
+fn v3_windows_executable_linker_flags(target_os string, c_compiler string, is_shared bool, is_o bool, subsystem pref.Subsystem, windows_gui_app bool) []string {
 	if target_os == 'windows' && c_compiler != 'msvc' && !is_shared && !is_o {
 		mut flags := ['-municode']
 		match subsystem {
 			.console { flags << '-mconsole' }
 			.windows { flags << '-mwindows' }
-			.auto {}
+			.auto {
+				if windows_gui_app {
+					flags << '-mwindows'
+				}
+			}
 		}
 		flags << '-Wl,-stack=33554432'
 		return flags
@@ -2403,7 +2409,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.pic_flag.len > 0 {
 		before_inputs << options.pic_flag
 	}
-	before_inputs << v3_windows_executable_linker_flags(options.target_os, options.c_compiler, options.is_shared, options.is_o, options.subsystem)
+	before_inputs << v3_windows_executable_linker_flags(options.target_os, options.c_compiler, options.is_shared, options.is_o, options.subsystem, options.windows_gui_app)
 	mut tcc_includes := ''
 	if options.is_tcc {
 		tcc_resources := v3_tcc_resource_flags(options.vroot)
@@ -5146,9 +5152,9 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 	return true
 }
 
-fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string, prefix_source_identity string, diagnostics []V3CachedTypeDiagnostic) string {
-	mut parts := ['v3-cgen-metadata-v4', interface_impl_signature, prefix_source_identity,
-		flags.len.str()]
+fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string, prefix_source_identity string, windows_gui_entry_point bool, diagnostics []V3CachedTypeDiagnostic) string {
+	mut parts := ['v3-cgen-metadata-v5', interface_impl_signature, prefix_source_identity,
+		windows_gui_entry_point.str(), flags.len.str()]
 	parts << flags
 	parts << diagnostics.len.str()
 	for diagnostic in diagnostics {
@@ -5167,14 +5173,21 @@ fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string, pref
 
 fn decode_v3_cgen_metadata(metadata string) ?V3CgenCacheMetadata {
 	parts := metadata.split('\x00')
-	if parts.len < 5 || parts[0] != 'v3-cgen-metadata-v4' {
+	if parts.len < 6 || parts[0] != 'v3-cgen-metadata-v5' {
 		return none
 	}
-	flag_count := strconv.atoi(parts[3]) or { return none }
-	if flag_count < 0 || 4 + flag_count >= parts.len {
+	windows_gui_entry_point := match parts[3] {
+		'true' { true }
+		'false' { false }
+		else {
+			return none
+		}
+	}
+	flag_count := strconv.atoi(parts[4]) or { return none }
+	if flag_count < 0 || 5 + flag_count >= parts.len {
 		return none
 	}
-	mut index := 4 + flag_count
+	mut index := 5 + flag_count
 	diagnostic_count := strconv.atoi(parts[index]) or { return none }
 	if diagnostic_count < 0 {
 		return none
@@ -5212,7 +5225,8 @@ fn decode_v3_cgen_metadata(metadata string) ?V3CgenCacheMetadata {
 	return V3CgenCacheMetadata{
 		interface_impl_signature: parts[1]
 		prefix_source_identity: parts[2]
-		flags: parts[4..4 + flag_count].clone()
+		windows_gui_entry_point: windows_gui_entry_point
+		flags: parts[5..5 + flag_count].clone()
 		diagnostics: diagnostics
 	}
 }
@@ -11168,6 +11182,7 @@ pub fn run(args []string) {
 			''
 		}
 		mut generated_c_flags := cgen_cache_metadata.flags.clone()
+		mut windows_gui_entry_point := cgen_cache_metadata.windows_gui_entry_point
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
 		incremental_c_declarations := if incremental_cache_hit {
@@ -11253,6 +11268,9 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
+			if generated_gui_entry_point := g.generated_windows_gui_entry_point() {
+				windows_gui_entry_point = generated_gui_entry_point
+			}
 			if !incremental_cache_hit {
 				scoped_generated_c_flags = g.c_flags()
 			}
@@ -11309,6 +11327,9 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
+			if generated_gui_entry_point := g.generated_windows_gui_entry_point() {
+				windows_gui_entry_point = generated_gui_entry_point
+			}
 			if !incremental_cache_hit {
 				generated_c_flags = g.c_flags()
 			}
@@ -11424,6 +11445,7 @@ pub fn run(args []string) {
 			target_arch: prefs.normalized_target_arch()
 			c_compiler: effective_c_compiler
 			subsystem: prefs.subsystem
+			windows_gui_app: windows_gui_entry_point
 			macos_sdk_root: flag_plan_sdk_root
 			pic_flag: pic_flag
 			is_prod: is_prod
@@ -11668,7 +11690,7 @@ pub fn run(args []string) {
 				}
 				if !cgen_cache_hit && program_cache_enabled {
 					published_cgen_cache_input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
-					prepared_plan_entry = cache_state.manager.write_cgen(published_cgen_cache_input.source_files, published_cgen_cache_input.generation_signature, published_cgen_cache_input.dependency_inputs, generated_source, encode_v3_cgen_metadata(generated_c_flags, interface_impl_signature, prefix_source_identity, cached_checker_diagnostics)) or { modulecache.CgenEntry{} }
+					prepared_plan_entry = cache_state.manager.write_cgen(published_cgen_cache_input.source_files, published_cgen_cache_input.generation_signature, published_cgen_cache_input.dependency_inputs, generated_source, encode_v3_cgen_metadata(generated_c_flags, interface_impl_signature, prefix_source_identity, windows_gui_entry_point, cached_checker_diagnostics)) or { modulecache.CgenEntry{} }
 				}
 				if incremental_cache_restored && prepared_plan_entry.source.len > 0 {
 					stable_body_source := os.read_file(prepared_plan_entry.source) or {
@@ -11695,7 +11717,7 @@ pub fn run(args []string) {
 				if !generic_cache_hit && generic_cache_signature.len > 0
 					&& generated_monomorph_specs.len > 0 {
 					published_generic_input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
-					cache_state.manager.write_generic_program(published_generic_input.source_files, generic_cache_signature, published_generic_input.generation_signature, published_generic_input.dependency_inputs, encode_monomorph_cache_specs(generated_monomorph_specs), encode_cached_used_fns(program_used_fns), prepared_cache.program_prefix_source, modulecache.prune_unreferenced_static_string_definitions(prepared_cache.program_declarations), prepared_cache.program_body_cache, encode_cached_runtime_strings(generic_cache_runtime_strings), encode_v3_cgen_metadata(generated_c_flags, interface_impl_signature, prefix_source_identity, cached_checker_diagnostics)) or {}
+					cache_state.manager.write_generic_program(published_generic_input.source_files, generic_cache_signature, published_generic_input.generation_signature, published_generic_input.dependency_inputs, encode_monomorph_cache_specs(generated_monomorph_specs), encode_cached_used_fns(program_used_fns), prepared_cache.program_prefix_source, modulecache.prune_unreferenced_static_string_definitions(prepared_cache.program_declarations), prepared_cache.program_body_cache, encode_cached_runtime_strings(generic_cache_runtime_strings), encode_v3_cgen_metadata(generated_c_flags, interface_impl_signature, prefix_source_identity, windows_gui_entry_point, cached_checker_diagnostics)) or {}
 				}
 				if (!generic_cache_hit || incremental_cache_hit)
 					&& incremental_snapshot.declaration_signature.len > 0 {
@@ -11721,7 +11743,7 @@ pub fn run(args []string) {
 					} else {
 						prepared_cache.tcc_program_declarations
 					}
-					cache_state.manager.write_incremental_program(published_incremental_input.source_files, incremental_snapshot.declaration_signature, published_incremental_input.generation_signature, published_incremental_input.dependency_inputs, encode_incremental_manifest(incremental_snapshot), incremental_body, encode_cached_used_fns(incremental_used), encode_monomorph_cache_specs(incremental_specs), prepared_cache.program_prefix_source, incremental_declarations, incremental_tcc_declarations, prepared_cache.objects, encode_v3_cgen_metadata(generated_c_flags, interface_impl_signature, prefix_source_identity, cached_checker_diagnostics)) or {}
+					cache_state.manager.write_incremental_program(published_incremental_input.source_files, incremental_snapshot.declaration_signature, published_incremental_input.generation_signature, published_incremental_input.dependency_inputs, encode_incremental_manifest(incremental_snapshot), incremental_body, encode_cached_used_fns(incremental_used), encode_monomorph_cache_specs(incremental_specs), prepared_cache.program_prefix_source, incremental_declarations, incremental_tcc_declarations, prepared_cache.objects, encode_v3_cgen_metadata(generated_c_flags, interface_impl_signature, prefix_source_identity, windows_gui_entry_point, cached_checker_diagnostics)) or {}
 				}
 			}
 			prealloc_scope_leave_for_v3(cache_prepare_scope)
@@ -11891,7 +11913,7 @@ pub fn run(args []string) {
 			if wrapv_flag.len > 0 {
 				tcc_args << wrapv_flag
 			}
-			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem)
+			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem, windows_gui_entry_point)
 			tcc_args << tcc_cached_main_flags(resolved_c_flags)
 			tcc_args << ['-o', 'out', os.base(tcc_main_file)]
 			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
@@ -11980,7 +12002,7 @@ pub fn run(args []string) {
 			} else if is_o {
 				tcc_args << '-c'
 			}
-			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem)
+			tcc_args << v3_windows_executable_linker_flags(prefs.normalized_target_os(), 'tinyc', is_shared, is_o, prefs.subsystem, windows_gui_entry_point)
 			tcc_source := if cache_full_tcc_source.len > 0 {
 				os.base(cache_full_tcc_source)
 			} else {

@@ -153,6 +153,24 @@ fn test_v3_windows_default_tcc_prod_build() {
 	assert run_result.exit_code == 42, run_result.output
 }
 
+fn test_v3_windows_auto_gui_build_uses_windows_subsystem() {
+	$if !windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_auto_gui_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.exe')
+	os.write_file(source, '#flag windows -lgdi32\n\nfn main() {}\n')!
+	build := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-showcc', '-o', output, source])
+	assert build.exit_code == 0, build.output
+	assert build.output.contains('-mwindows'), build.output
+}
+
 fn test_add_v3_tcc_compat_defines() {
 	mut macos_arm64 := []string{}
 	add_v3_tcc_compat_defines(mut macos_arm64, 'macos', 'arm64', false, true)
@@ -193,28 +211,42 @@ fn test_v3_fastc_default_linker_flags() {
 
 fn test_v3_windows_executable_linker_flags() {
 	expected := ['-municode', '-Wl,-stack=33554432']
-	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .auto) == expected
-	assert v3_windows_executable_linker_flags('windows', 'gcc', false, false, .auto) == expected
-	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .console) == [
-		'-municode',
-		'-mconsole',
-		'-Wl,-stack=33554432',
-	]
-	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .windows) == [
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .auto, false) == expected
+	assert v3_windows_executable_linker_flags('windows', 'gcc', false, false, .auto, false) == expected
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .auto, true) == [
 		'-municode',
 		'-mwindows',
 		'-Wl,-stack=33554432',
 	]
-	assert v3_windows_executable_linker_flags('windows', 'msvc', false, false, .auto) == []
-	assert v3_windows_executable_linker_flags('windows', 'tinyc', true, false, .auto) == []
-	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, true, .auto) == []
-	assert v3_windows_executable_linker_flags('linux', 'tinyc', false, false, .auto) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .console, true) == [
+		'-municode',
+		'-mconsole',
+		'-Wl,-stack=33554432',
+	]
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .windows, false) == [
+		'-municode',
+		'-mwindows',
+		'-Wl,-stack=33554432',
+	]
+	assert v3_windows_executable_linker_flags('windows', 'msvc', false, false, .auto, true) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', true, false, .auto, true) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, true, .auto, true) == []
+	assert v3_windows_executable_linker_flags('linux', 'tinyc', false, false, .auto, true) == []
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 		target_os: 'windows'
 		c_compiler: 'tinyc'
+		windows_gui_app: true
 	})
 	assert '-municode' in plan.before_inputs
+	assert '-mwindows' in plan.before_inputs
 	assert '-Wl,-stack=33554432' in plan.before_inputs
+}
+
+fn test_v3_cgen_metadata_preserves_windows_gui_entry_point() {
+	encoded := encode_v3_cgen_metadata(['-lgdi32'], 'interfaces', 'prefix', true, []V3CachedTypeDiagnostic{})
+	decoded := decode_v3_cgen_metadata(encoded) or { panic('could not decode Cgen metadata') }
+	assert decoded.windows_gui_entry_point
+	assert decoded.flags == ['-lgdi32']
 }
 
 fn test_v3_fastc_rejects_windows_gui_subsystem() {

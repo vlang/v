@@ -521,11 +521,13 @@ fn windows_gui_stdio_setup(force_console bool) string {
 	return '\tBOOL con_valid = FALSE;\n' + console_setup + '\tFILE* res_fp = 0;\n' + '\terrno_t err;\n' + '\tif (con_valid) {\n' + '\t\terr = freopen_s(&res_fp, "CON", "w", stdout);\n' + '\t\terr = freopen_s(&res_fp, "CON", "w", stderr);\n' + '\t} else {\n' + '\t\terr = freopen_s(&res_fp, "NUL", "w", stdout);\n' + '\t\terr = freopen_s(&res_fp, "NUL", "w", stderr);\n' + '\t}\n' + '\t(void)err;'
 }
 
-fn (g &FlatGen) c_main_declaration(force_main_console bool) string {
+fn (mut g FlatGen) c_main_declaration(force_main_console bool) string {
 	if g.target.os != 'windows' {
 		return 'int main(int argc, char** argv) {'
 	}
-	if !g.is_gui_app(force_main_console) {
+	g.windows_entry_point_generated = true
+	g.windows_gui_entry_point = g.is_gui_app(force_main_console)
+	if !g.windows_gui_entry_point {
 		return 'int wmain(int argc, wchar_t** argv) {'
 	}
 	return 'int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd) {\n' + '\tLPWSTR full_cmd_line = GetCommandLineW(); /* do not use cmd_line */\n' + '\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);\n' + '\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");\n' + '\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");\n' + '\tint argc;\n' + '\twchar_t** argv = CommandLineToArgvW(full_cmd_line, &argc);\n' + windows_gui_stdio_setup(force_main_console)

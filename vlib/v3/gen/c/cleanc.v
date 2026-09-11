@@ -484,6 +484,8 @@ mut:
 	ccompiler                     string
 	target                        pref.Target
 	subsystem                     pref.Subsystem
+	windows_entry_point_generated bool
+	windows_gui_entry_point       bool
 	// C spelling for V's platform-width `int`: `i64` on 64-bit targets, `i32` on
 	// 32-bit. Used by hand-written runtime helpers that operate on `[]int`
 	// elements or `int` values directly (kept in sync with set_target).
@@ -1285,6 +1287,15 @@ pub fn (mut g FlatGen) set_target(target pref.Target) {
 // set_subsystem configures the Windows executable subsystem.
 pub fn (mut g FlatGen) set_subsystem(subsystem pref.Subsystem) {
 	g.subsystem = subsystem
+}
+
+// generated_windows_gui_entry_point reports the GUI decision when this generator emitted a
+// Windows executable entry point, or none when the current generation did not emit one.
+pub fn (g &FlatGen) generated_windows_gui_entry_point() ?bool {
+	if !g.windows_entry_point_generated {
+		return none
+	}
+	return g.windows_gui_entry_point
 }
 
 // set_thread_stack_size configures the stack size used by generated worker threads.
