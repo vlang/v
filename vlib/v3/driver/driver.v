@@ -4103,10 +4103,11 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 	mut macros := map[string]V3CacheLocalCMacro{}
 	compiler_names := ['__clang__', '__GNUC__', '_MSC_VER', '__TINYC__']
 	target_names := ['__APPLE__', '__MACH__', '__linux__', '__ANDROID__', '_WIN32', '_WIN64',
-		'__FreeBSD__', '__OpenBSD__', '__NetBSD__', '__DragonFly__', '__EMSCRIPTEN__', '__x86_64__',
-		'__amd64__', '__i386__', '__aarch64__', '__arm64__', '__arm__', '__riscv', '__powerpc64__',
-		'__ppc64__', '__s390x__', '__loongarch64', '__wasm__', '__wasm32__', '_M_X64', '_M_AMD64',
-		'_M_IX86', '_M_ARM', '_M_ARM64', '__LP64__', '_LP64', '__ILP32__']
+		'__FreeBSD__', '__OpenBSD__', '__NetBSD__', '__DragonFly__', '__sun', '__EMSCRIPTEN__',
+		'__x86_64__', '__amd64__', '__i386__', '__aarch64__', '__arm64__', '__arm__', '__riscv',
+		'__riscv_xlen', '__powerpc64__', '__ppc64__', '__s390x__', '__loongarch64', '__sparc__',
+		'__wasm__', '__wasm32__', '_M_X64', '_M_AMD64', '_M_IX86', '_M_ARM', '_M_ARM64', '__LP64__',
+		'_LP64', '__ILP32__']
 	for name in compiler_names {
 		macros[name] = V3CacheLocalCMacro{
 			known: true
@@ -4168,6 +4169,9 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 			'dragonfly' {
 				defined << '__DragonFly__'
 			}
+			'solaris' {
+				defined << '__sun'
+			}
 			'wasm32_emscripten' {
 				defined << '__EMSCRIPTEN__'
 			}
@@ -4198,7 +4202,7 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 				'arm32' {
 					defined << '__arm__'
 				}
-				'riscv64' {
+				'riscv32', 'riscv64' {
 					defined << '__riscv'
 				}
 				'ppc64', 'ppc64le' {
@@ -4209,6 +4213,9 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 				}
 				'loongarch64' {
 					defined << '__loongarch64'
+				}
+				'sparc64' {
+					defined << '__sparc__'
 				}
 				'wasm32' {
 					defined << ['__wasm__', '__wasm32__']
@@ -4226,6 +4233,15 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 		macros[name] = V3CacheLocalCMacro{
 			known: true
 			is_defined: true
+			truth: 1
+		}
+	}
+	if target.arch in ['riscv32', 'riscv64'] {
+		xlen := if target.arch == 'riscv32' { '32' } else { '64' }
+		macros['__riscv_xlen'] = V3CacheLocalCMacro{
+			known: true
+			is_defined: true
+			replacement: xlen
 			truth: 1
 		}
 	}
@@ -6668,7 +6684,8 @@ fn v3_test_build_fact_name(name string) bool {
 	return name in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
 		'android', 'termux', 'solaris', 'haiku', 'qnx', 'serenity', 'vinix', 'wasm32_emscripten',
 		'tinyc', 'tcc', 'clang', 'gcc', 'mingw', 'msvc', 'cplusplus', 'amd64', 'arm64', 'arm32',
-		'x86', 'i386', 'riscv64', 'ppc', 'ppc64', 'ppc64le', 's390x', 'loongarch64', 'wasm32', 'prod']
+		'x86', 'i386', 'rv32', 'riscv32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le', 's390x',
+		'loongarch64', 'sparc64', 'wasm32', 'prod']
 }
 
 fn v3_test_build_facts(target pref.Target, ccompiler string, is_prod bool) []string {
@@ -6684,6 +6701,10 @@ fn v3_test_build_facts(target pref.Target, ccompiler string, is_prod bool) []str
 	facts[target.arch] = true
 	if target.arch == 'x86' {
 		facts['i386'] = true
+	} else if target.arch == 'riscv32' {
+		facts['rv32'] = true
+	} else if target.arch == 'riscv64' {
+		facts['rv64'] = true
 	}
 	if is_prod {
 		facts['prod'] = true

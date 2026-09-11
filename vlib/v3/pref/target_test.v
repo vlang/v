@@ -35,18 +35,29 @@ fn test_target_from_normalizes_and_derives_platform_properties() {
 fn test_native_arch_aliases_normalize_to_supported_targets() {
 	assert target_from('linux', 'i386')!.arch == 'x86'
 	assert target_from('linux', 'aarch32')!.arch == 'arm32'
+	assert target_from('linux', 'rv32')!.arch == 'riscv32'
+	assert target_from('linux', 'risc-v32')!.arch == 'riscv32'
 	assert target_from('linux', 'rv64')!.arch == 'riscv64'
 	assert target_from('linux', 'risc-v64')!.arch == 'riscv64'
 	assert target_from('linux', 's390x')!.arch == 's390x'
 	assert target_from('linux', 'ppc64')!.arch == 'ppc64'
 	assert target_from('linux', 'ppc64le')!.arch == 'ppc64le'
 	assert target_from('linux', 'loongarch64')!.arch == 'loongarch64'
+	assert target_from('solaris', 'sparc64')!.arch == 'sparc64'
 	assert target_from('wasm32_emscripten', 'wasm')!.arch == 'wasm32'
 	mut prefs := new_preferences()
 	prefs.target = target_from('linux', 'i386')!
 	assert prefs.comptime_platform() == 'i386'
 	prefs.target = target_from('linux', 'rv64')!
 	assert prefs.comptime_platform() == 'rv64'
+	prefs.target = target_from('linux', 'rv32')!
+	assert prefs.comptime_platform() == 'rv32'
+	assert prefs.target.pointer_bits == 32
+	assert prefs.target.endian == 'little'
+	prefs.target = target_from('solaris', 'sparc64')!
+	assert prefs.comptime_platform() == 'sparc64'
+	assert prefs.target.pointer_bits == 64
+	assert prefs.target.endian == 'big'
 }
 
 fn test_remaining_native_os_targets_are_supported() {
@@ -86,6 +97,16 @@ fn test_comptime_flags_use_target_instead_of_host() {
 	prefs.target = target_from('linux', 'rv64') or { panic(err) }
 	assert comptime_flag_value(prefs, 'rv64')
 	assert comptime_flag_value(prefs, 'riscv64')
+	prefs.target = target_from('linux', 'rv32') or { panic(err) }
+	assert comptime_flag_value(prefs, 'rv32')
+	assert comptime_flag_value(prefs, 'riscv32')
+	assert comptime_flag_value(prefs, 'x32')
+	prefs.target = target_from('solaris', 'sparc64') or { panic(err) }
+	assert comptime_flag_value(prefs, 'solaris')
+	assert comptime_flag_value(prefs, 'sparc64')
+	assert comptime_flag_value(prefs, 'x64')
+	assert comptime_flag_value(prefs, 'big_endian')
+	assert !comptime_flag_value(prefs, 'linux')
 	prefs.target = target_from('linux', 'i386') or { panic(err) }
 	assert comptime_flag_value(prefs, 'i386')
 	assert comptime_flag_value(prefs, 'x86')
@@ -140,8 +161,8 @@ fn test_source_selection_uses_target_os_and_arch() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	for name in ['common.v', 'cpu_amd64.v', 'cpu_arm64.v', 'cpu.i386.v', 'cpu.i686.v', 'cpu.rv64.v',
-		'sys_linux.v', 'sys_macos.v'] {
+	for name in ['common.v', 'cpu_amd64.v', 'cpu_arm64.v', 'cpu.i386.v', 'cpu.i686.v', 'cpu.rv32.v',
+		'cpu.rv64.v', 'cpu.sparc64.v', 'sys_linux.v', 'sys_macos.v', 'sys_solaris.v'] {
 		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
 	}
 
@@ -159,6 +180,16 @@ fn test_source_selection_uses_target_os_and_arch() {
 	selected = get_v_files_from_dir_for_target(dir, [], linux_riscv64).map(os.base(it))
 	selected.sort()
 	assert selected == ['common.v', 'cpu.rv64.v', 'sys_linux.v']
+
+	linux_riscv32 := target_from('linux', 'riscv32') or { panic(err) }
+	selected = get_v_files_from_dir_for_target(dir, [], linux_riscv32).map(os.base(it))
+	selected.sort()
+	assert selected == ['common.v', 'cpu.rv32.v', 'sys_linux.v']
+
+	solaris_sparc64 := target_from('solaris', 'sparc64') or { panic(err) }
+	selected = get_v_files_from_dir_for_target(dir, [], solaris_sparc64).map(os.base(it))
+	selected.sort()
+	assert selected == ['common.v', 'cpu.sparc64.v', 'sys_solaris.v']
 
 	linux_x86 := target_from('linux', 'x86') or { panic(err) }
 	selected = get_v_files_from_dir_for_target(dir, [], linux_x86).map(os.base(it))

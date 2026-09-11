@@ -10087,8 +10087,8 @@ fn c_flag_target_os(target string) ?string {
 
 fn c_flag_target_arch(target string) ?string {
 	normalized := pref.normalized_arch(target)
-	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc', 'ppc64', 'ppc64le', 's390x',
-		'loongarch64', 'wasm32'] {
+	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64',
+		'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
 		return normalized
 	}
 	return none

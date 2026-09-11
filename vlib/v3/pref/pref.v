@@ -97,6 +97,8 @@ pub fn host_arch() string {
 		return 'amd64'
 	} $else $if arm32 {
 		return 'arm32'
+	} $else $if rv32 {
+		return 'riscv32'
 	} $else $if rv64 {
 		return 'riscv64'
 	} $else $if s390x {
@@ -107,6 +109,8 @@ pub fn host_arch() string {
 		return 'ppc64'
 	} $else $if loongarch64 {
 		return 'loongarch64'
+	} $else $if sparc64 {
+		return 'sparc64'
 	} $else $if wasm32 {
 		return 'wasm32'
 	} $else $if i386 {
@@ -139,15 +143,19 @@ pub fn target_from(os_name string, arch_name string) !Target {
 		'wasm32_emscripten'] {
 		return error('unsupported target OS `${os_name}`')
 	}
-	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
-		's390x', 'loongarch64', 'wasm32'] {
+	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64',
+		'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
 		return error('unsupported target architecture `${arch_name}`')
 	}
 	if target_os == 'wasm32_emscripten' && target_arch != 'wasm32' {
 		return error('target OS `wasm32_emscripten` requires architecture `wasm32`')
 	}
-	endian := if target_arch in ['ppc', 'ppc64', 's390x'] { 'big' } else { 'little' }
-	pointer_bits := if target_arch in ['x86', 'arm32', 'ppc', 'wasm32'] { 32 } else { 64 }
+	endian := if target_arch in ['ppc', 'ppc64', 's390x', 'sparc64'] { 'big' } else { 'little' }
+	pointer_bits := if target_arch in ['x86', 'arm32', 'riscv32', 'ppc', 'wasm32'] {
+		32
+	} else {
+		64
+	}
 	abi := match target_os {
 		'windows' { 'windows' }
 		'macos', 'ios' { 'darwin' }
@@ -574,8 +582,8 @@ pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 		return true
 	}
 	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
-		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
-		's390x', 'loongarch64', 'wasm32'] {
+		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv32', 'riscv32', 'rv64', 'riscv64', 'ppc',
+		'ppc64', 'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
 		if normalized_arch(arch) != target.arch && file_name_has_arch_marker(file, arch) {
 			return true
 		}
@@ -662,8 +670,8 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 	// target's, and the OS-specific suffixes of the target OS.
 	mut incompatible_archs := []string{}
 	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
-		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
-		's390x', 'loongarch64', 'wasm32'] {
+		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv32', 'riscv32', 'rv64', 'riscv64', 'ppc',
+		'ppc64', 'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
 		if normalized_arch(arch) != target.arch {
 			incompatible_archs << arch
 		}
@@ -967,6 +975,7 @@ pub fn normalized_arch(target_arch string) string {
 		'aarch64' { 'arm64' }
 		'i386', 'i486', 'i586', 'i686', 'x32', 'x86_32', 'ia-32', 'ia32' { 'x86' }
 		'aarch32', 'arm', 'armv7', 'armv7l' { 'arm32' }
+		'rv32', 'risc-v32' { 'riscv32' }
 		'rv64', 'risc-v64', 'riscv', 'risc-v' { 'riscv64' }
 		'wasm' { 'wasm32' }
 		else { target_arch }
@@ -987,6 +996,7 @@ pub fn (p &Preferences) normalized_target_arch() string {
 pub fn (p &Preferences) comptime_platform() string {
 	return match p.target.arch {
 		'x86' { 'i386' }
+		'riscv32' { 'rv32' }
 		'riscv64' { 'rv64' }
 		else { p.target.arch }
 	}
@@ -1028,6 +1038,9 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'termux' {
 			return p.normalized_target_os() == 'termux'
 		}
+		'solaris' {
+			return p.normalized_target_os() == 'solaris'
+		}
 		'qnx', 'haiku', 'serenity', 'vinix' {
 			return p.normalized_target_os() == name
 		}
@@ -1063,7 +1076,10 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'rv64', 'riscv64' {
 			return p.target.arch == 'riscv64'
 		}
-		's390x', 'ppc', 'ppc64', 'ppc64le', 'loongarch64', 'wasm32' {
+		'rv32', 'riscv32' {
+			return p.target.arch == 'riscv32'
+		}
+		's390x', 'ppc', 'ppc64', 'ppc64le', 'loongarch64', 'sparc64', 'wasm32' {
 			return p.target.arch == name
 		}
 		'little_endian' {

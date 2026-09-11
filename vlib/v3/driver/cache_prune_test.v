@@ -386,6 +386,18 @@ fn test_cache_c_source_definitely_active_code_uses_target_predefined_macros() {
 	mut overridden := cache_local_c_compiler_macros(['-U__APPLE__'], 'clang', target)
 	disabled := cache_c_source_definitely_active_code(source, mut overridden)
 	assert !disabled.contains('apple_api')
+
+	solaris_sparc64 := pref.target_from('solaris', 'sparc64') or { panic(err) }
+	mut solaris_macros := cache_local_c_compiler_macros([]string{}, 'gcc', solaris_sparc64)
+	solaris_source := '#if defined(__sun) && defined(__sparc__) && defined(__LP64__)\nstatic int solaris_sparc_api(void) { return 3; }\n#endif\n'
+	solaris_active := cache_c_source_definitely_active_code(solaris_source, mut solaris_macros)
+	assert solaris_active.contains('solaris_sparc_api')
+
+	linux_riscv32 := pref.target_from('linux', 'riscv32') or { panic(err) }
+	mut riscv_macros := cache_local_c_compiler_macros([]string{}, 'gcc', linux_riscv32)
+	riscv_source := '#if defined(__riscv) && __riscv_xlen == 32 && defined(__ILP32__)\nstatic int riscv32_api(void) { return 4; }\n#endif\n'
+	riscv_active := cache_c_source_definitely_active_code(riscv_source, mut riscv_macros)
+	assert riscv_active.contains('riscv32_api')
 }
 
 fn test_cache_compiler_macro_probe_uses_implicit_objective_c_language() {
