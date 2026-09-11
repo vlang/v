@@ -12614,8 +12614,9 @@ fn (mut tc TypeChecker) check_loop_var_const_conflict(id flat.NodeId) bool {
 }
 
 fn (mut tc TypeChecker) check_for_in_const_conflicts_preflight() {
-	for i, node in tc.a.nodes {
-		if node.kind != .for_in_stmt || node.value.int() < 3 || node.children_count < 2 {
+	for i in tc.preflight_nodes(.for_in_stmt) {
+		node := tc.a.nodes[i]
+		if node.value.int() < 3 || node.children_count < 2 {
 			continue
 		}
 		file := tc.a.source_files[node.pos.id] or { continue }

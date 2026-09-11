@@ -25,6 +25,9 @@ const selfhost_transform_clone_budget_bytes = u64(2_600_000_000)
 // Shared-base workers share the AST but retain private checker and transform
 // scratch. Eight lanes keep large user builds below the ordinary memory ceiling.
 const max_shared_transform_jobs = 8
+// Compiler builds use bounded batches and can fill more cores without cloning
+// the base AST. Ordinary import graphs retain the smaller scratch budget.
+const max_shared_selfhost_transform_jobs = 12
 // One chunk per lane bounds the number of private worker views kept until merge.
 const shared_transform_chunks_per_job = 1
 // Normal function lowering needs part of the shared append pool too. Limit
@@ -2256,7 +2259,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// exact per-item subtree ranges, and skip_generics (the generic passes
 		// scan and mutate arbitrary AST regions, which the shared design forbids).
 		if t.skip_generics && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
-			shared_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, items.len)
+			shared_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, items.len, t.building_v)
 			if shared_jobs > 1 {
 				return t.run_parallel_transform_shared(items, base_nodes, base_children, shared_jobs)
 			}
@@ -2396,13 +2399,14 @@ fn (mut t Transformer) mark_parallel_worker_maps_shared() {
 
 // shared_transform_job_count caps the shared-base worker count: no clones, so
 // only core count and item count matter.
-fn shared_transform_job_count(n_runtime_jobs int, n_items int) int {
+fn shared_transform_job_count(n_runtime_jobs int, n_items int, building_v bool) int {
 	if n_runtime_jobs <= 0 || n_items <= 0 {
 		return 0
 	}
 	mut n := n_runtime_jobs
-	if n > max_shared_transform_jobs {
-		n = max_shared_transform_jobs
+	limit := if building_v { max_shared_selfhost_transform_jobs } else { max_shared_transform_jobs }
+	if n > limit {
+		n = limit
 	}
 	if n > n_items {
 		n = n_items

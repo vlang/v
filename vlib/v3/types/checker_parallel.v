@@ -141,24 +141,28 @@ struct UnusedFnVarCandidate {
 }
 
 struct CollectIndexPrepArgs {
-	tc   voidptr
-	a    &flat.FlatAst
-	kind u8 // 0 = parent edges, 1 = threads condition, 2 = node-cache reset
-	n    int
+	tc    voidptr
+	a     &flat.FlatAst
+	kind  u8 // 0 = parent edges, 1 = threads condition, 2..4 = caches, 5 = metadata
+	n     int
+	start int
+	end   int
+mut:
+	parent_chunk DirectParentChunk
 }
 
 struct CollectDeclarationIndexArgs {
 	tc   voidptr
 	a    &flat.FlatAst
-	kind u8 // 0 = generic params, 1 = type declarations, 2 = function declarations
+	kind u8 // 0 = generic params, 1 = type declarations, 2 = functions, 3 = visibility
 }
 
 fn collect_index_prep_thread(arg voidptr) voidptr {
-	a := unsafe { &CollectIndexPrepArgs(arg) }
+	mut a := unsafe { &CollectIndexPrepArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
 	match a.kind {
 		0 {
-			tc.fill_direct_parent_edges(a.a)
+			a.parent_chunk = tc.fill_direct_parent_edges_range(a.a, a.start, a.end)
 		}
 		1 {
 			scope := check_worker_scope_begin(true)
@@ -166,8 +170,11 @@ fn collect_index_prep_thread(arg voidptr) voidptr {
 			check_worker_scope_leave(scope)
 			check_worker_scope_free(scope)
 		}
+		5 {
+			tc.collect_direct_parent_metadata(a.a)
+		}
 		else {
-			tc.reset_node_caches(a.n)
+			tc.reset_node_cache_group(a.n, int(a.kind) - 2)
 		}
 	}
 	return unsafe { nil }
@@ -179,53 +186,62 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 	match a.kind {
 		0 { tc.build_enclosing_generic_param_index(a.a) }
 		1 { tc.build_type_declaration_index(a.a) }
-		else { tc.build_fn_declaration_indexes(a.a) }
+		2 { tc.build_fn_declaration_indexes(a.a) }
+		else { tc.collect_declaration_visibility() }
 	}
 	return unsafe { nil }
 }
 
-// prepare_collect_index_parallel overlaps three independent index-front-end
-// tasks. Persistent arrays are initialized and reset on the caller's arena;
-// helper tasks only fill those arrays or return the scalar threads condition.
+// prepare_collect_index_parallel overlaps independent index tasks. Each cache
+// group owns its arrays, and all allocations survive in persistent arenas.
 fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 	if !tc.building_v_fast || os.getenv('V3_NO_PAR_CHECK_INDEX_PREP') != '' || isnil(a.worker_pool)
 		|| a.worker_pool.size() < 2 || a.nodes.len < 65536 {
 		return false
 	}
 	tc.init_direct_parent_index(a)
-	mut args := [
-		CollectIndexPrepArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 0
-		},
-		CollectIndexPrepArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 1
-		},
-		CollectIndexPrepArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 2
-			n:    a.nodes.len
-		},
-	]
-	a.worker_pool.run([
-		workers.Task{ run: collect_index_prep_thread, arg: unsafe { voidptr(&args[0]) } },
-		workers.Task{ run: collect_index_prep_thread, arg: unsafe { voidptr(&args[1]) } },
-		workers.Task{
-			run:        collect_index_prep_thread
-			arg:        unsafe { voidptr(&args[2]) }
-			force_sync: true
-		},
-	])
-	tc.collect_direct_parent_metadata(a)
+	mut args := []CollectIndexPrepArgs{cap: 9}
+	mut start := 0
+	for job in 0 .. 4 {
+		mut end := if job == 3 { a.nodes.len } else { a.nodes.len * (job + 1) / 4 }
+		if end < start {
+			continue
+		}
+		// Finish a declaration so the next lane starts with a zero function cost.
+		for end < a.nodes.len {
+			kind := a.nodes[end].kind
+			end++
+			if kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl, .enum_decl,
+				.import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
+				break
+			}
+		}
+		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: 0, start: start, end: end }
+		start = end
+	}
+	for kind in [u8(1), 5, 2, 3, 4] {
+		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: kind, n: a.nodes.len }
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
+			run: collect_index_prep_thread
+			arg: unsafe { voidptr(&args[i]) }
+			force_sync: i == args.len - 1
+		}
+	}
+	a.worker_pool.run(tasks)
+	for arg in args {
+		if arg.kind == 0 {
+			tc.merge_direct_parent_chunk(arg.parent_chunk)
+		}
+	}
+	tc.preflight_index_nodes_len = a.nodes.len
 	tc.direct_parent_index_trusted = true
 	return true
 }
 
-// prepare_collect_declaration_indexes_parallel builds the three independent
+// prepare_collect_declaration_indexes_parallel builds independent
 // read-only-AST declaration indexes on separate persistent lanes.
 fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst) bool {
 	if !tc.building_v_fast || !tc.scope_parallel_check_workers
@@ -249,6 +265,11 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 			a:    a
 			kind: 2
 		},
+		CollectDeclarationIndexArgs{
+			tc: voidptr(tc)
+			a: a
+			kind: 3
+		},
 	]
 	a.worker_pool.run([
 		workers.Task{
@@ -260,8 +281,12 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 			arg: unsafe { voidptr(&args[1]) }
 		},
 		workers.Task{
-			run:        collect_declaration_index_thread
-			arg:        unsafe { voidptr(&args[2]) }
+			run: collect_declaration_index_thread
+			arg: unsafe { voidptr(&args[2]) }
+		},
+		workers.Task{
+			run: collect_declaration_index_thread
+			arg: unsafe { voidptr(&args[3]) }
 			force_sync: true
 		},
 	])
@@ -1209,10 +1234,16 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 				chunk_target = items.len
 			}
 		}
-		mut chunks := split_check_items(items, chunk_target)
-		chunk_count := chunks.len
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		dynamic_dispatch := tc.scope_parallel_check_workers && tc.building_v_fast && fail.len == 0
+		// Dynamic workers record their actual assignments after dispatch; the
+		// static partition would only allocate and sort buckets that get replaced.
+		mut chunks := if dynamic_dispatch {
+			[][]CheckWorkItem{len: chunk_target}
+		} else {
+			split_check_items(items, chunk_target)
+		}
+		chunk_count := chunks.len
 		mut dynamic_chunks := [][]CheckWorkItem{}
 		mut chunk_queue := chan int{cap: 1}
 		if dynamic_dispatch {
@@ -1484,20 +1515,44 @@ fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 	}
 	mut sorted := items.clone()
 	sorted.sort(a.rank > b.rank)
+	mut least_loaded := []int{len: n, init: index}
+	restore_check_load_heap(mut least_loaded, loads)
 	for it in sorted {
-		mut best := 0
-		for b in 1 .. n {
-			if loads[b] < loads[best] {
-				best = b
-			}
-		}
+		best := least_loaded[0]
 		buckets[best] << it
 		loads[best] += i64(it.cost) + 1
+		restore_check_load_heap(mut least_loaded, loads)
 	}
 	for mut bucket in buckets {
 		bucket.sort(a.fn_idx < b.fn_idx)
 	}
 	return buckets
+}
+
+// Only the root's load changes. Break equal-load ties by bucket index, exactly
+// as the original linear search, so scheduling and merge order stay unchanged.
+@[direct_array_access]
+fn restore_check_load_heap(mut order []int, loads []i64) {
+	if order.len < 2 {
+		return
+	}
+	root := order[0]
+	mut parent := 0
+	for parent * 2 + 1 < order.len {
+		mut child := parent * 2 + 1
+		right := child + 1
+		if right < order.len && (loads[order[right]] < loads[order[child]]
+			|| (loads[order[right]] == loads[order[child]] && order[right] < order[child])) {
+			child = right
+		}
+		if loads[root] < loads[order[child]]
+			|| (loads[root] == loads[order[child]] && root < order[child]) {
+			break
+		}
+		order[parent] = order[child]
+		parent = child
+	}
+	order[parent] = root
 }
 
 // merge_own_sparse_caches replays the master's out-of-range cache writes
@@ -2792,6 +2847,12 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		w.type_interner = new_type_interner()
 		w.symbols = new_symbol_interner()
 		w.type_cache.base = unsafe { nil }
+		if !isnil(precomputed) {
+			// Only immutable semantic values cross the arena boundary. The full
+			// cache also contains TypeIds belonging to another private interner.
+			unsafe { w.type_cache.struct_field_shared = precomputed.struct_field_shared }
+			unsafe { w.type_cache.struct_field_complete = precomputed.struct_field_complete }
+		}
 	}
 	return w
 }
@@ -2804,13 +2865,13 @@ fn (tc &TypeChecker) precomputed_check_cache() &TypeCache {
 		return unsafe { nil }
 	}
 	if tc.type_cache.source_error_embed_indexed || tc.type_cache.short_type_name_index_built
-		|| tc.type_cache.local_fn_decl_indexed_len > 0 {
+		|| tc.type_cache.local_fn_decl_indexed_len > 0 || tc.type_cache.struct_field_shared.len > 0 {
 		return tc.type_cache
 	}
 	mut fallback := tc.type_cache.base
 	for !isnil(fallback) {
 		if fallback.source_error_embed_indexed || fallback.short_type_name_index_built
-			|| fallback.local_fn_decl_indexed_len > 0 {
+			|| fallback.local_fn_decl_indexed_len > 0 || fallback.struct_field_shared.len > 0 {
 			return fallback
 		}
 		fallback = fallback.base
@@ -2856,9 +2917,19 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 
 fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 	for idx in indexes {
-		_, canonical := tc.intern_type(clone_owned_type(tc.expr_type_values[idx]))
-		tc.expr_type_values[idx] = canonical
+		tc.expr_type_values[idx] = tc.promote_check_type(tc.expr_type_values[idx])
 	}
+}
+
+// A batch repeats the same types on thousands of nodes. Clone only the first
+// instance into the accumulator's arena, before releasing the batch's storage.
+// The accumulator is private to this lane (or the joined master during merge).
+fn (tc &TypeChecker) promote_check_type(typ Type) Type {
+	if canonical := tc.probe_intern_type(typ) {
+		return canonical
+	}
+	_, canonical := tc.intern_type(clone_owned_type(typ))
+	return canonical
 }
 
 fn par_check_clone_enabled() bool {
@@ -2875,8 +2946,7 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 				tc.resolved_fn_value_names[idx] = tc.resolved_fn_value_names[idx].clone()
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				_, canonical := tc.intern_type(clone_owned_type(tc.expr_type_values[idx]))
-				tc.expr_type_values[idx] = canonical
+				tc.expr_type_values[idx] = tc.promote_check_type(tc.expr_type_values[idx])
 			}
 		}
 	}
@@ -2987,8 +3057,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 	}
 	for idx, typ in w.sparse_expr_type_values {
 		owned_type := if scoped {
-			_, canonical := tc.intern_type(clone_owned_type(typ))
-			canonical
+			tc.promote_check_type(typ)
 		} else {
 			typ
 		}

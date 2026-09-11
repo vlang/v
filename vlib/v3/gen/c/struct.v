@@ -3888,14 +3888,18 @@ fn (g &FlatGen) find_struct_decl(type_name string) ?StructDeclInfo {
 // a private instance (new_parallel_worker_config).
 struct StructDeclPrefCache {
 mut:
-	module           string
-	entries          map[string]StructDeclInfo
-	misses           map[string]bool
-	field_entries    map[string][]types.StructField
-	field_misses     map[string]bool
-	field_last_name  string
-	field_last_value []types.StructField
-	field_last_state i8
+	module             string
+	entries            map[string]StructDeclInfo
+	misses             map[string]bool
+	field_entries      map[string][]types.StructField
+	field_misses       map[string]bool
+	field_last_name    string
+	field_last_value   []types.StructField
+	field_last_state   i8
+	type_recent_owners [256]string
+	type_recent_fields [256]string
+	type_recent_values [256]types.Type
+	type_recent_states [256]i8
 }
 
 fn (mut cache StructDeclPrefCache) select_module(module_name string) {
@@ -3910,6 +3914,7 @@ fn (mut cache StructDeclPrefCache) select_module(module_name string) {
 	cache.field_last_name = ''
 	cache.field_last_value = []types.StructField{}
 	cache.field_last_state = 0
+	cache.type_recent_states = [256]i8{}
 }
 
 fn (g &FlatGen) find_struct_decl_preferred(type_name string) ?StructDeclInfo {
@@ -4093,14 +4098,55 @@ fn (g &FlatGen) struct_init_resolved_decl_name(type_name string) string {
 
 // struct_field_type supports struct field type handling for FlatGen.
 fn (g &FlatGen) struct_field_type(type_name string, field_name string) ?types.Type {
-	fields := g.struct_fields_for_type(type_name) or { return none }
-	for f in fields {
-		if f.name == field_name {
-			if shared_alias_ptr := g.shared_alias_pointer_type(f.typ) {
-				return shared_alias_ptr
-			}
-			return f.typ
+	typ := g.struct_field_type_cached(type_name, field_name)?
+	if shared_alias_ptr := g.shared_alias_pointer_type(typ) {
+		return shared_alias_ptr
+	}
+	return typ
+}
+
+@[direct_array_access]
+fn (g &FlatGen) struct_field_type_cached(type_name string, field_name string) ?types.Type {
+	mut cache := g.struct_decl_pref_cache
+	cache_enabled := g.cache_struct_fields && !isnil(cache)
+	mut slot := 0
+	if cache_enabled {
+		cache.select_module(g.tc.cur_module)
+		// The complete owner/field comparison keeps sampled-key collisions harmless.
+		mut hash := u32(type_name.len * 31 + field_name.len)
+		if type_name.len > 0 {
+			hash = hash * 16777619 ^ u32(type_name[type_name.len - 1])
 		}
+		if field_name.len > 0 {
+			hash = hash * 16777619 ^ u32(field_name[0])
+			hash = hash * 16777619 ^ u32(field_name[field_name.len - 1])
+		}
+		slot = int(hash & 255)
+		if cache.type_recent_states[slot] != 0
+			&& cache.type_recent_owners[slot] == type_name
+			&& cache.type_recent_fields[slot] == field_name {
+			if cache.type_recent_states[slot] < 0 {
+				return none
+			}
+			return cache.type_recent_values[slot]
+		}
+	}
+	fields := g.struct_fields_for_type(type_name) or { return none }
+	for field in fields {
+		if field.name == field_name {
+			if cache_enabled {
+				cache.type_recent_owners[slot] = type_name
+				cache.type_recent_fields[slot] = field_name
+				cache.type_recent_values[slot] = field.typ
+				cache.type_recent_states[slot] = 1
+			}
+			return field.typ
+		}
+	}
+	if cache_enabled {
+		cache.type_recent_owners[slot] = type_name
+		cache.type_recent_fields[slot] = field_name
+		cache.type_recent_states[slot] = -1
 	}
 	return none
 }
