@@ -4,6 +4,7 @@ import os
 import v3.flat
 import v3.parser
 import v3.pref
+import v3.token
 
 fn parse_literal_spelling_source(name string, source string) &flat.FlatAst {
 	path := os.join_path(os.temp_dir(), 'v3_vfmt_spelling_${name}_${os.getpid()}.v')
@@ -82,12 +83,55 @@ fn test_formatter_preserves_prefixed_string_spelling() {
 		r'r"\0\x00 $name"',
 		r"js'\x41'",
 		r'js"\x41"',
+		r"c''",
+		r'c""',
 		r"c'\0'",
 		r'c"\0"',
+		r"c'\x41'",
+		r'c"\x41"',
+		r'c"\"quoted\""',
 		r"c'A\x5cnB'",
 	]
 	for i, literal in literals {
 		assert_literal_spelling('prefixes_${i}', literal)
+	}
+}
+
+fn test_formatter_recovers_c_string_prefix_from_quote_only_spans() {
+	mut g := Gen.new()
+	for literal in [r"c''", r'c""', r"c'\x41'", r'c"\x41"'] {
+		g.source = literal
+		// The scanner excludes `c` from a parsed C string's span.
+		quote_only := flat.Node{
+			kind: .char_literal
+			value: 'c:A'
+			pos: token.new_span(1, 1, literal.len)
+		}
+		assert g.string_literal_text(&quote_only) == literal
+		// Also accept nodes whose span already includes the prefix.
+		with_prefix := flat.Node{
+			kind: .char_literal
+			value: 'c:A'
+			pos: token.new_span(1, 0, literal.len)
+		}
+		assert g.string_literal_text(&with_prefix) == literal
+	}
+	// Do not borrow a different preceding byte for a synthesized node.
+	g.source = r'x"\x41"'
+	no_prefix := flat.Node{
+		kind: .char_literal
+		value: 'c:A'
+		pos: token.new_span(1, 1, g.source.len)
+	}
+	assert g.string_literal_text(&no_prefix) == "c'A'"
+	// Empty and out-of-bounds spans must still use the safe fallback.
+	for start in [0, g.source.len, g.source.len + 1] {
+		missing := flat.Node{
+			kind: .char_literal
+			value: 'c:A'
+			pos: token.new_span(1, start, start)
+		}
+		assert g.string_literal_text(&missing) == "c'A'"
 	}
 }
 

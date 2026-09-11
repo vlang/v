@@ -115,7 +115,7 @@ pub fn (mut g Gen) reset() {
 	g.suppress_trailing_comments = 0
 }
 
-// format_file parses-independent convenience: format the file's trailing
+// format_file parses-independent convenience: format the file whose trailing
 // `.file` node id is `file_id` within `a`.
 pub fn format_file(a &flat.FlatAst, file_id flat.NodeId) string {
 	mut g := Gen.new()
@@ -4249,7 +4249,14 @@ fn (g &Gen) string_literal_text(n &flat.Node) string {
 	} else {
 		''
 	}
-	if source := g.source_span(n.pos.offset, n.pos.end) {
+	mut start := n.pos.offset
+	// The scanner starts C-string spans at the quote, unlike raw and JS strings.
+	// Recover the adjacent prefix without changing scanner positions or synthesized nodes.
+	if is_c_string && start > 0 && start < g.source.len
+		&& g.source[start] in [`'`, `"`] && g.source[start - 1] == `c` {
+		start--
+	}
+	if source := g.source_span(start, n.pos.end) {
 		// Keep the original quotes and escapes, as gofmt does for string literals.
 		// Empty or non-literal spans can belong to synthesized nodes; use the fallback below.
 		if source.len >= prefix.len + 2 && source.starts_with(prefix)
