@@ -867,7 +867,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		}
 		.char_literal {
 			if n.value.starts_with('c:') {
-				g.write(c_string_literal_text(n.value))
+				g.write(g.string_literal_text(n))
 			} else {
 				g.write(g.rune_literal(n))
 			}
@@ -1768,7 +1768,7 @@ fn (g &Gen) map_key_width(id flat.NodeId) int {
 		}
 		.char_literal {
 			if n.value.starts_with('c:') {
-				c_string_literal_text(n.value)
+				g.string_literal_text(n)
 			} else {
 				g.rune_literal(n)
 			}
@@ -4239,11 +4239,34 @@ fn op_str(op flat.Op) string {
 }
 
 fn (g &Gen) string_literal_text(n &flat.Node) string {
-	if source := g.source_span(n.pos.offset, n.pos.end) {
-		// Physical newlines are part of a multiline literal's value and layout.
-		if source.contains('\n') || source.contains('\r') {
+	is_c_string := n.kind == .char_literal && n.value.starts_with('c:')
+	prefix := if is_c_string {
+		'c'
+	} else if n.typ.starts_with('raw:') {
+		'r'
+	} else if n.typ.starts_with('js:') {
+		'js'
+	} else {
+		''
+	}
+	mut start := n.pos.offset
+	// The scanner starts C-string spans at the quote, unlike raw and JS strings.
+	// Recover the adjacent prefix without changing scanner positions or synthesized nodes.
+	if is_c_string && start > 0 && start < g.source.len
+		&& g.source[start] in [`'`, `"`] && g.source[start - 1] == `c` {
+		start--
+	}
+	if source := g.source_span(start, n.pos.end) {
+		// Keep the original quotes and escapes, as gofmt does for string literals.
+		// Empty or non-literal spans can belong to synthesized nodes; use the fallback below.
+		if source.len >= prefix.len + 2 && source.starts_with(prefix)
+			&& source[prefix.len] in [`'`, `"`]
+			&& source[source.len - 1] == source[prefix.len] {
 			return source
 		}
+	}
+	if is_c_string {
+		return c_string_literal_text(n.value)
 	}
 	if n.typ.starts_with('raw:') {
 		quote := if n.typ.ends_with('"') { '"' } else { "'" }
