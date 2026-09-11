@@ -25,14 +25,17 @@ fn test_v3_default_compiler_uses_implicit_tcc() {
 	assert v3_select_implicit_c_compiler('clang', true, bundled_tcc) == 'clang'
 }
 
-fn test_v3_implicit_tcc_uses_platform_compiler_for_cpp_objects() {
+fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
 	implicit_tcc := os.join_path(os.temp_dir(), 'bin', 'tcc')
 	assert c_source_object_compiler('', implicit_tcc, true) == implicit_tcc
-	assert c_source_object_compiler('objective-c', implicit_tcc, true) == implicit_tcc
+	assert c_source_object_compiler('objective-c', implicit_tcc, true) == 'cc'
 	assert c_source_object_compiler('c++', implicit_tcc, true) == 'c++'
 	assert c_source_object_compiler('objective-c++', implicit_tcc, true) == 'c++'
+	assert c_source_object_compiler('objective-c', 'cc', false) == 'cc'
 	assert c_source_object_compiler('c++', 'cc', false) == 'c++'
+	assert c_source_object_compiler('objective-c', 'clang', false) == 'clang'
 	assert c_source_object_compiler('c++', 'clang', false) == 'clang'
+	assert c_source_object_compiler('objective-c', 'tcc', false) == 'tcc'
 	assert c_source_object_compiler('c++', 'tcc', false) == 'tcc'
 }
 
