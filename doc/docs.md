@@ -75,7 +75,7 @@ project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
 ## The default compiler
 
-On macOS, Linux, and Windows, the top-level `v` executable contains only the
+On every native platform, the top-level `v` executable contains only the
 experimental **V3** C compiler (whose source lives in `vlib/v3`). Every direct C
 build, including compiler self-builds, is compiled by V3 in-process. The CLI and
 tool commands remain in `cmd/v`; commands such as `test` and `fmt` are external
@@ -91,9 +91,8 @@ not yet generate MSVC command lines, so that combination intentionally launches
 cannot use the fallback. `-new-compiler` remains accepted for command-line
 compatibility and otherwise selects the same embedded driver.
 
-On platforms that do not embed V3, `cmd/v` still contains the established
-compiler from `vlib/v`. There, `-new-compiler` reports that the current build does
-not include V3.
+Portable cross-VC snapshots do not embed V3 and retain the established compiler
+from `vlib/v`.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
