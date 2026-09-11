@@ -514,36 +514,43 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
-	preferred_tcc := default_tcc_compiler()
+	if p.backend != .c || p.output_cross_c {
+		return
+	}
 	if p.ccompiler in ['tcc', 'tinyc'] {
+		preferred_tcc := default_tcc_compiler()
 		p.ccompiler = if preferred_tcc != '' { preferred_tcc } else { 'tcc' }
 		return
 	}
-	if p.ccompiler == '' {
-		// -prealloc uses thread-local allocator state. The bundled tcc does not
-		// support TLS declarations, so use the platform C compiler by default.
-		if p.prealloc {
-			return
-		}
-		// -d no_gc_thread_local_alloc forces the bundled source libgc path. The
-		// bundled tcc cannot compile that source reliably, so use the platform C
-		// compiler by default. An explicit -cc still wins.
-		if p.needs_source_boehm_without_thread_local_alloc() {
-			return
-		}
-		// use an optimizing compiler (i.e. gcc or clang) on -prod mode
-		if p.is_prod {
-			return
-		}
-		// The macOS bundled tcc is sensitive to Apple SDK/header changes and
-		// app/framework includes. Keep it available through explicit `-cc tcc`,
-		// but default to the platform compiler on macOS.
-		if get_host_os() == .macos {
-			return
-		}
-		p.ccompiler = preferred_tcc
+	if p.ccompiler != '' {
 		return
 	}
+	// -prealloc uses thread-local allocator state. The bundled tcc does not
+	// support TLS declarations, so use the platform C compiler by default.
+	if p.prealloc {
+		return
+	}
+	// -d no_gc_thread_local_alloc forces the bundled source libgc path. The
+	// bundled tcc cannot compile that source reliably, so use the platform C
+	// compiler by default. An explicit -cc still wins.
+	if p.needs_source_boehm_without_thread_local_alloc() {
+		return
+	}
+	// use an optimizing compiler (i.e. gcc or clang) on -prod mode
+	if p.is_prod {
+		return
+	}
+	if (p.os != ._auto && p.os != get_host_os())
+		|| (p.arch != ._auto && p.arch != get_host_arch()) {
+		return
+	}
+	// The macOS bundled tcc is sensitive to Apple SDK/header changes and
+	// app/framework includes. Keep it available through explicit `-cc tcc`,
+	// but default to the platform compiler on macOS.
+	if get_host_os() == .macos {
+		return
+	}
+	p.ccompiler = default_tcc_compiler()
 }
 
 fn usable_system_tcc_compiler() string {
