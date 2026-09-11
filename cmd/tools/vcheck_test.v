@@ -365,3 +365,34 @@ fn write_text_file(path string, content string) ! {
 	os.mkdir_all(os.dir(path))!
 	os.write_file(path, content)!
 }
+
+fn test_check_md_vml_fence_is_not_a_v_example() {
+	md_dir := os.join_path(os.vtmp_dir(), 'vcheck_vml_fence_${os.getpid()}')
+	os.rmdir_all(md_dir) or {}
+	os.mkdir_all(md_dir)!
+	defer {
+		os.rmdir_all(md_dir) or {}
+	}
+	md_path := os.join_path(md_dir, 'vml.md')
+	// VML markup is not V source, so a ```vml fence must not be extracted as a V example,
+	// and the parser must still pick up the V example that follows it.
+	write_text_file(md_path, '# VML fence
+
+```vml
+Screen {
+    Column {
+        Button { text: "Save" on_tap: app.save() }
+    }
+}
+```
+
+```v ignore
+fn after_vml() {}
+```
+')!
+	res :=
+		os.execute('${os.quoted_path(vexe)} check-md -hide-warnings -silent ${os.quoted_path(md_path)}')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('unrecognized command'), res.output
+	assert res.output.contains('Checked .md files: 1 | Ex.: 1 |'), res.output
+}

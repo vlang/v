@@ -328,6 +328,8 @@ fn eline(file_path string, lnumber int, column int, message string) string {
 }
 
 const default_command = 'compile'
+// fence languages that begin with `v` but hold something other than V source
+const non_v_fence_languages = ['vml']
 
 struct VCodeExample {
 mut:
@@ -438,7 +440,7 @@ fn (mut f MDFile) check() CheckResult {
 }
 
 fn (mut f MDFile) parse_line(lnumber int, line string) {
-	if line.starts_with('```v') {
+	if line.starts_with('```v') && line.replace('```', '').trim_space() !in non_v_fence_languages {
 		if f.state == .markdown {
 			f.state = .vexample
 			mut command := line.replace('```v', '').trim_space()
