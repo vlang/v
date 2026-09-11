@@ -164,9 +164,10 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				break
 			}
 			mut pre_field_comments := p.eat_comments()
-			if pre_field_comments.len > 0
-				&& ((p.tok.kind == .key_pub && p.peek_tok.kind in [.key_mut, .colon])
-				|| (p.tok.kind in [.key_mut, .key_global, .key_module] && p.peek_tok.kind == .colon)) {
+			kw, next := p.tok.kind, p.peek_tok.kind
+			is_section_keyword := (kw == .key_pub && next in [.key_mut, .colon])
+				|| (kw in [.key_mut, .key_global, .key_module] && next == .colon)
+			if pre_field_comments.len > 0 && is_section_keyword {
 				// A comment that is separated from the previous field by a blank line, and is
 				// followed by a section keyword (like `pub mut:`), was not eaten as the follow up
 				// comment of that field; it still belongs to it, not to the first field of the new section.
