@@ -11,7 +11,7 @@ const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
 // Scoped workers use bounded arena batches, so let self-host checks occupy all
 // of the worker pool's cores without retaining one large arena per core.
-const max_scoped_check_jobs = 17
+const max_scoped_check_jobs = 18
 // The historical 96-batch limit remains the low-memory fallback. Prealloc
 // self-host checks default to one twelfth as many batches below, amortizing
 // checker fork/promotion setup while keeping each worker's scratch bounded.
@@ -143,7 +143,7 @@ struct UnusedFnVarCandidate {
 struct CollectIndexPrepArgs {
 	tc    voidptr
 	a     &flat.FlatAst
-	kind  u8 // 0 = parent edges, 1 = threads condition, 2..4 = caches, 5 = metadata
+	kind  u8 // 0 = parent edges, 1 = threads condition, 2..4 = caches
 	n     int
 	start int
 	end   int
@@ -169,9 +169,6 @@ fn collect_index_prep_thread(arg voidptr) voidptr {
 			tc.prepare_threads_condition()
 			check_worker_scope_leave(scope)
 			check_worker_scope_free(scope)
-		}
-		5 {
-			tc.collect_direct_parent_metadata(a.a)
 		}
 		else {
 			tc.reset_node_cache_group(a.n, int(a.kind) - 2)
@@ -200,10 +197,15 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 		return false
 	}
 	tc.init_direct_parent_index(a)
-	mut args := []CollectIndexPrepArgs{cap: 9}
+	parent_jobs := int_min(8, a.worker_pool.size() + 1)
+	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
 	mut start := 0
-	for job in 0 .. 4 {
-		mut end := if job == 3 { a.nodes.len } else { a.nodes.len * (job + 1) / 4 }
+	for job in 0 .. parent_jobs {
+		mut end := if job == parent_jobs - 1 {
+			a.nodes.len
+		} else {
+			a.nodes.len * (job + 1) / parent_jobs
+		}
 		if end < start {
 			continue
 		}
@@ -219,7 +221,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: 0, start: start, end: end }
 		start = end
 	}
-	for kind in [u8(1), 5, 2, 3, 4] {
+	for kind in [u8(1), 2, 3, 4] {
 		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: kind, n: a.nodes.len }
 	}
 	mut tasks := []workers.Task{cap: args.len}
@@ -234,6 +236,11 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 	for arg in args {
 		if arg.kind == 0 {
 			tc.merge_direct_parent_chunk(arg.parent_chunk)
+			// The parent walk already found these nodes; avoid streaming the whole
+			// AST again just to collect declaration attributes and builder bindings.
+			for idx in arg.parent_chunk.metadata_node_ids {
+				tc.collect_direct_parent_node_metadata(a, idx, a.nodes[idx])
+			}
 		}
 	}
 	tc.preflight_index_nodes_len = a.nodes.len
@@ -2836,6 +2843,35 @@ mut:
 	miss []int
 }
 
+struct CheckTypePromotionCache {
+mut:
+	w0     [512]u64
+	w1     [512]u64
+	values [512]Type
+	set    [512]bool
+}
+
+// Source payloads stay alive and immutable for the entire promotion pass. Raw
+// identities are safe within that pass; never retain this cache across arena frees.
+fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePromotionCache, promote_missing bool) ?Type {
+	w0, w1, raw_slot := type_value_words(&typ)
+	slot := raw_slot & (cache.set.len - 1)
+	if cache.set[slot] && cache.w0[slot] == w0 && cache.w1[slot] == w1 {
+		return cache.values[slot]
+	}
+	canonical := tc.probe_intern_type(typ) or {
+		if !promote_missing {
+			return none
+		}
+		tc.promote_check_type(typ)
+	}
+	cache.w0[slot] = w0
+	cache.w1[slot] = w1
+	cache.values[slot] = canonical
+	cache.set[slot] = true
+	return canonical
+}
+
 // check_clone_chunk_thread promotes one chunk's node-cache payloads out of
 // the (still alive) worker scopes: name clones land in the pool thread's
 // persistent arena, and expr types are rebound via a read-only interner probe.
@@ -2845,6 +2881,7 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CheckCloneChunkArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
 	items := unsafe { &[]CheckWorkItem(a.items_ptr) }
+	mut cache := CheckTypePromotionCache{}
 	for item in *items {
 		for idx in item.range_lo .. item.fn_idx + 1 {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
@@ -2854,7 +2891,7 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 				tc.resolved_fn_value_names[idx] = tc.resolved_fn_value_names[idx].clone()
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				if canonical := tc.probe_intern_type(tc.expr_type_values[idx]) {
+				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false) {
 					tc.expr_type_values[idx] = canonical
 				} else {
 					a.miss << idx
@@ -2866,8 +2903,11 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 }
 
 fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
+	mut cache := CheckTypePromotionCache{}
 	for idx in indexes {
-		tc.expr_type_values[idx] = tc.promote_check_type(tc.expr_type_values[idx])
+		tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true) or {
+			tc.promote_check_type(tc.expr_type_values[idx])
+		}
 	}
 }
 
@@ -2887,6 +2927,7 @@ fn par_check_clone_enabled() bool {
 }
 
 fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem) {
+	mut cache := CheckTypePromotionCache{}
 	for item in items {
 		for idx in item.range_lo .. item.fn_idx + 1 {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
@@ -2896,7 +2937,9 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 				tc.resolved_fn_value_names[idx] = tc.resolved_fn_value_names[idx].clone()
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				tc.expr_type_values[idx] = tc.promote_check_type(tc.expr_type_values[idx])
+				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true) or {
+					tc.promote_check_type(tc.expr_type_values[idx])
+				}
 			}
 		}
 	}

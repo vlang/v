@@ -27,7 +27,7 @@ const selfhost_transform_clone_budget_bytes = u64(2_600_000_000)
 const max_shared_transform_jobs = 8
 // Compiler builds use bounded batches and can fill more cores without cloning
 // the base AST. Ordinary import graphs retain the smaller scratch budget.
-const max_shared_selfhost_transform_jobs = 12
+const max_shared_selfhost_transform_jobs = 18
 // One chunk per lane bounds the number of private worker views kept until merge.
 const shared_transform_chunks_per_job = 1
 // Normal function lowering needs part of the shared append pool too. Limit

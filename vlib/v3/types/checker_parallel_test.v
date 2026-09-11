@@ -6,6 +6,27 @@ import v3.flat
 import v3.parser
 import v3.pref
 
+fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	initial_count := tc.type_count()
+	mut cache := CheckTypePromotionCache{}
+	mut originals := []Type{}
+	for i in 0 .. 600 {
+		typ := Type(Struct{ name: 'Item${i}' })
+		originals << typ
+		assert tc.cached_check_type_promotion(typ, mut cache, false) == none
+		promoted := tc.cached_check_type_promotion(typ, mut cache, true)?
+		assert promoted.name() == 'Item${i}'
+		assert tc.cached_check_type_promotion(typ, mut cache, false)? == promoted
+	}
+	// More live payloads than slots exercises eviction without losing identity.
+	for i, typ in originals {
+		assert tc.cached_check_type_promotion(typ, mut cache, false)?.name() == 'Item${i}'
+	}
+	assert tc.type_count() == initial_count + 600
+}
+
 fn test_check_heap_partitions_match_linear_load_selection() {
 	for count in [0, 1, 2, 33, 256, 1500] {
 		mut items := []CheckWorkItem{}
@@ -173,6 +194,31 @@ fn test_fast_file_index_collects_translated_module_attribute() {
 	mut tc := TypeChecker.new(a)
 	tc.collect(a)
 	assert tc.translated_files[path]
+}
+
+fn test_parent_metadata_replay_matches_full_scan() {
+	path := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}.v')
+	os.write_file(path, '@[translated]\nmodule main\nimport strings\n@[inline]\nfn make_builder() { mut b := strings.new_builder(10) }\n') or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut serial := TypeChecker.new(a)
+	serial.init_direct_parent_index(a)
+	serial.collect_direct_parent_metadata(a)
+	mut split := TypeChecker.new(a)
+	split.init_direct_parent_index(a)
+	for part in 0 .. 3 {
+		chunk := split.fill_direct_parent_edges_range(a, a.nodes.len * part / 3, a.nodes.len * (part + 1) / 3)
+		for idx in chunk.metadata_node_ids {
+			split.collect_direct_parent_node_metadata(a, idx, a.nodes[idx])
+		}
+	}
+	assert split.declaration_attributes == serial.declaration_attributes
+	assert split.translated_files == serial.translated_files
+	assert split.translated_files[path]
+	assert split.strings_builder_candidates == serial.strings_builder_candidates
+	assert split.strings_builder_candidates.len == 1
 }
 
 fn test_checker_flag_include_dir_consumes_only_the_operand() {

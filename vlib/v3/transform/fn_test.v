@@ -3,6 +3,39 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_selfhost_return_alias_cache_preserves_module_and_worker_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['one.Value'] = 'int'
+	tc.structs['two.Value'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.building_v = true
+	t.skip_generics = true
+	t.raw_return_alias_cache = &ContextBoolLookupCache{}
+	t.build_generic_alias_name_index()
+	for module_name in ['one', 'two', 'one', 'two'] {
+		t.cur_module = module_name
+		for typ in ['Value', '?Value', '[]Value', 'map[string]Value', ' int '] {
+			expected := t.raw_return_type_contains_alias_uncached(typ)
+			assert t.raw_return_type_contains_alias(typ) == expected
+			assert t.raw_return_type_contains_alias(typ.clone()) == expected
+		}
+		assert t.raw_return_type_contains_alias('?Value') == (module_name == 'one')
+	}
+	assert t.raw_return_alias_cache.entries.len > 0
+	mut worker := t.fork_scoped_batch_worker(&a, &tc)
+	assert worker.raw_return_alias_cache != t.raw_return_alias_cache
+	worker.cur_module = 'one'
+	assert worker.raw_return_type_contains_alias('?Value')
+	assert !t.raw_return_type_contains_alias('?Value')
+	// General builds continue to observe declaration changes between queries.
+	t.building_v = false
+	t.cur_module = 'one'
+	assert !t.raw_return_type_contains_alias('Late')
+	tc.type_aliases['one.Late'] = 'string'
+	assert t.raw_return_type_contains_alias('Late')
+}
+
 fn test_enum_autostr_call_marks_synthesized_helper_used() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -1704,14 +1704,12 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 // Independent arrays can be initialized on separate persistent worker arenas.
 fn (mut tc TypeChecker) reset_node_cache_group(n int, group int) {
 	if group == 0 {
-		// Only set slots are read; zeroed strings also match the representation
-		// used when transform grows these caches. Avoid a default-string fill.
-		tc.resolved_call_names = unsafe { []string{len: n} }
+		tc.resolved_call_names = new_zeroed_string_cache(n)
 		tc.resolved_call_set = []bool{len: n}
 		return
 	}
 	if group == 1 {
-		tc.resolved_fn_value_names = unsafe { []string{len: n} }
+		tc.resolved_fn_value_names = new_zeroed_string_cache(n)
 		tc.resolved_fn_value_set = []bool{len: n}
 		return
 	}
@@ -1724,6 +1722,19 @@ fn (mut tc TypeChecker) reset_node_cache_group(n int, group int) {
 	tc.lexical_smartcast_misses = []bool{len: n}
 	tc.checking_nodes = []bool{len: n}
 	tc.parallel_check_sparse = false
+}
+
+fn new_zeroed_string_cache(n int) []string {
+	mut values := []string{cap: n}
+	if n > 0 {
+		// Cache reads are guarded by set bits. Match the zero representation
+		// used during transform growth without synthesizing per-element stores.
+		unsafe {
+			values.grow_len(n)
+			vmemset(values.data, 0, isize(n) * isize(sizeof(string)))
+		}
+	}
+	return values
 }
 
 fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
@@ -1752,6 +1763,7 @@ struct DirectParentChunk {
 mut:
 	external_edges     []DirectParentEdge
 	preflight_node_ids []i32
+	metadata_node_ids  []i32
 	synthetic_type_ids []i32
 	has_goto_nodes     bool
 }
@@ -1769,6 +1781,9 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 	mut fn_cost := 0
 	for parent_idx in start .. end {
 		node := a.nodes[parent_idx]
+		if node.kind in [.decl_assign, .directive] {
+			chunk.metadata_node_ids << parent_idx
+		}
 		if node.kind in [.for_in_stmt, .comptime_for] {
 			chunk.preflight_node_ids << parent_idx
 		}
@@ -1860,30 +1875,36 @@ fn (tc &TypeChecker) preflight_nodes(kind flat.NodeKind) []i32 {
 
 fn (mut tc TypeChecker) collect_direct_parent_metadata(a &flat.FlatAst) {
 	for parent_idx, node in a.nodes {
-		if node.kind == .decl_assign && node.children_count >= 2 {
-			lhs := a.child_node(&node, 0)
-			if lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(&node, 1)) {
-				tc.strings_builder_candidates << parent_idx
-			}
-		} else if node.kind == .directive {
-			if node.value.starts_with('@attributes:') {
-				decl_id := node.value['@attributes:'.len..].int()
-				if decl_id >= 0 && decl_id < a.nodes.len {
-					tc.declaration_attributes[decl_id] = node.generic_params()
-					decl := a.nodes[decl_id]
-					if decl.kind == .module_decl {
-						if source_file := a.source_files[decl.pos.id] {
-							tc.collect_module_attributes(node, source_file.name)
-						}
+		if node.kind in [.decl_assign, .directive] {
+			tc.collect_direct_parent_node_metadata(a, parent_idx, node)
+		}
+	}
+}
+
+fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, parent_idx int, node flat.Node) {
+	if node.kind == .decl_assign && node.children_count >= 2 {
+		lhs := a.child_node(&node, 0)
+		if lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(&node, 1)) {
+			tc.strings_builder_candidates << parent_idx
+		}
+	} else if node.kind == .directive {
+		if node.value.starts_with('@attributes:') {
+			decl_id := node.value['@attributes:'.len..].int()
+			if decl_id >= 0 && decl_id < a.nodes.len {
+				tc.declaration_attributes[decl_id] = node.generic_params()
+				decl := a.nodes[decl_id]
+				if decl.kind == .module_decl {
+					if source_file := a.source_files[decl.pos.id] {
+						tc.collect_module_attributes(node, source_file.name)
 					}
 				}
-			} else if node.value == 'flag' && node.pos.is_valid() {
-				if source_file := a.source_files[node.pos.id] {
-					if raw_dir := checker_flag_include_dir(node.typ) {
-						resolved := tc.resolve_insert_path(raw_dir, source_file.name)
-						if resolved !in tc.insert_include_dirs_by_file[source_file.name] {
-							tc.insert_include_dirs_by_file[source_file.name] << resolved
-						}
+			}
+		} else if node.value == 'flag' && node.pos.is_valid() {
+			if source_file := a.source_files[node.pos.id] {
+				if raw_dir := checker_flag_include_dir(node.typ) {
+					resolved := tc.resolve_insert_path(raw_dir, source_file.name)
+					if resolved !in tc.insert_include_dirs_by_file[source_file.name] {
+						tc.insert_include_dirs_by_file[source_file.name] << resolved
 					}
 				}
 			}

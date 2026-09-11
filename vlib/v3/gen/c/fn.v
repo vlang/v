@@ -970,6 +970,12 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name str
 }
 
 fn (g &FlatGen) is_program_specialization_fn_node(node flat.Node, node_index int, module_name string) bool {
+	if g.a.specialized_fn_nodes[node_index] {
+		return true
+	}
+	if g.tc.specialized_generic_fns.len == 0 {
+		return false
+	}
 	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
 	return g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn)
 }
@@ -2399,12 +2405,15 @@ fn (g &FlatGen) is_explicit_generic_method_call_selector(fn_node &flat.Node, res
 }
 
 fn (g &FlatGen) method_name_by_receiver_param_type(receiver_type types.Type, method string) ?string {
+	if method.contains('.') {
+		return none
+	}
+	suffix := '.${method}'
 	clean_receiver := concrete_receiver_type(receiver_type)
 	receiver_ct := g.tc.c_type(clean_receiver)
 	mut candidates := []string{}
 	for name, params in g.fn_decl_param_types {
-		if !name.contains('.') || name.contains('__') || name.all_after_last('.') != method
-			|| params.len == 0 {
+		if params.len == 0 || !name.ends_with(suffix) || name.contains('__') {
 			continue
 		}
 		param_receiver := concrete_receiver_type(params[0])

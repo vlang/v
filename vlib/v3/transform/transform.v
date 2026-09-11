@@ -260,6 +260,7 @@ mut:
 	interface_type_cache          &ContextLookupCache = unsafe { nil }
 	enum_expected_cache           &LookupCache = unsafe { nil }
 	type_alias_name_cache         &ContextBoolLookupCache = unsafe { nil }
+	raw_return_alias_cache        &ContextBoolLookupCache = unsafe { nil }
 	interface_box_param_cache     &BoolLookupCache = unsafe { nil }
 	alias_receiver_method_cache   &LookupCache = unsafe { nil }
 	receiver_method_cache         &ReceiverMethodCache = unsafe { nil }
@@ -1793,6 +1794,7 @@ fn (mut t Transformer) prepare() {
 	t.type_alias_name_cache = &ContextBoolLookupCache{
 		entries: map[string]i8{}
 	}
+	t.raw_return_alias_cache = &ContextBoolLookupCache{}
 	t.prepare_interface_impl_indexes()
 	t.ierror_none_type_id = t.interface_impl_type_id('IError', 'None__') or { 0 }
 }
@@ -3803,6 +3805,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.type_alias_name_cache = &ContextBoolLookupCache{
 		entries: map[string]i8{}
 	}
+	w.raw_return_alias_cache = &ContextBoolLookupCache{}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[string]string{}
 		misses: map[string]bool{}
@@ -3942,6 +3945,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.type_alias_name_cache = &ContextBoolLookupCache{
 		entries: map[string]i8{}
 	}
+	w.raw_return_alias_cache = &ContextBoolLookupCache{}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[string]string{}
 		misses: map[string]bool{}
@@ -23107,7 +23111,29 @@ fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?st
 }
 
 fn (t &Transformer) raw_return_type_contains_alias(typ string) bool {
-	clean := typ.trim_space()
+	// Self-host lowering keeps alias declarations fixed. Repeated return types
+	// can reuse the recursive verdict within one module and worker batch.
+	if !t.building_v || !t.skip_generics || isnil(t.raw_return_alias_cache) {
+		return t.raw_return_type_contains_alias_uncached(typ)
+	}
+	mut cache := t.raw_return_alias_cache
+	if !same_transform_text(cache.module, t.cur_module) {
+		cache.module = t.cur_module
+		cache.entries.clear()
+		cache.last_name = ''
+		cache.last_value = 0
+	}
+	cached := cache.get(typ)
+	if cached != 0 {
+		return cached > 0
+	}
+	result := t.raw_return_type_contains_alias_uncached(typ)
+	cache.put(typ, if result { i8(1) } else { i8(-1) })
+	return result
+}
+
+fn (t &Transformer) raw_return_type_contains_alias_uncached(typ string) bool {
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 {
 		return false
 	}

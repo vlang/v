@@ -799,6 +799,17 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 	if g.decl_types_ready {
 		return
 	}
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
+	g.collect_specialized_declaration_signature_types()
+	g.finish_declaration_signature_types()
+}
+
+fn (mut g FlatGen) collect_specialized_declaration_signature_types() {
 	// Specialized generic-interface wrappers are synthesized from the interface
 	// declaration instead of appearing as standalone AST declarations. Discover
 	// their applications here as well so tuple and option return ABIs are defined
@@ -817,12 +828,6 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 				g.collect_declaration_signature_type_for_context(param, true)
 			}
 		}
-	}
-	old_module := g.tc.cur_module
-	old_file := g.tc.cur_file
-	defer {
-		g.tc.cur_module = old_module
-		g.tc.cur_file = old_file
 	}
 	// Parallel monomorph workers can append concrete declarations before their
 	// checker signature maps are merged. Read those declaration nodes directly too,
@@ -869,12 +874,19 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 			g.collect_declaration_signature_type_for_context(g.fn_node_effective_param_type(param, raw_type), concrete_optional)
 		}
 	}
+}
+
+fn (mut g FlatGen) finish_declaration_signature_types() {
 	// The selected function list excludes open generic templates and carries the
 	// exact module/file context later used by forward_decls(). Collect those known
 	// concrete signatures without the conservative placeholder-name filter: in a
 	// large program it can mistake short nominal payloads such as `Token` or `Type`
 	// for generic parameters and omit their optional wrapper typedefs.
 	g.collect_selected_declaration_signature_types()
+	g.collect_checker_declaration_signature_types()
+}
+
+fn (mut g FlatGen) collect_checker_declaration_signature_types() {
 	mut seen := &PreseedTypeSeen{}
 	for name, ret in g.tc.fn_ret_types {
 		// Generic template signatures keep unspecialized placeholder types

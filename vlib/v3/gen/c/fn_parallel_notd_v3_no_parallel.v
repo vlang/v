@@ -17,7 +17,7 @@ const min_flat_cgen_parallel_items = 128
 // expression. Keep self-host body batches narrow so those values are released
 // throughout cgen instead of accumulating across hundreds of functions.
 const scoped_cgen_worker_batches = 256
-const flat_cgen_chunks_per_job = 6
+const flat_cgen_chunks_per_job = 8
 
 // FlatCgenChunkArgs represents flat cgen chunk args data used by c.
 struct FlatCgenChunkArgs {
@@ -365,6 +365,67 @@ $if !windows {
 		osw := time.new_stopwatch()
 		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		w.collect_declaration_signature_types()
+		w.optional_types_ready = true
+		w.timing_profile('  [ttime]       fs opt types   ${f64(osw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
+		return unsafe { nil }
+	}
+
+	struct OptionalSelectionArgs {
+		worker voidptr
+		items  chan []FlatFnGenItem
+	}
+
+	fn checker_signature_support_thread(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
+		w.collect_checker_declaration_signature_types()
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
+		return unsafe { nil }
+	}
+
+	// Start declaration discovery while the master selects functions. The channel
+	// publishes a stable snapshot before this lane reads the selected signatures.
+	fn optional_support_selection_thread(arg voidptr) voidptr {
+		a := unsafe { &OptionalSelectionArgs(arg) }
+		mut w := unsafe { &FlatGen(a.worker) }
+		osw := time.new_stopwatch()
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
+		old_module := w.tc.cur_module
+		old_file := w.tc.cur_file
+		if !w.decl_types_ready {
+			w.collect_specialized_declaration_signature_types()
+			// Checker signatures and expression types do not depend on selection.
+			// Give that scan its own checker/cache state while selected items arrive.
+			mut metadata := w.new_parallel_worker(0)
+			metadata.c_name_cache = &CNameCache{}
+			metadata.generic_app_cache = &GenericAppCache{}
+			metadata.needed_optional_types = map[string]string{}
+			metadata_thread := spawn checker_signature_support_thread(voidptr(metadata))
+			w.fn_gen_items = <-a.items
+			w.collect_selected_declaration_signature_types()
+			metadata_thread.wait()
+			// Preserve the serial precedence: source specializations, selected
+			// signatures, then checker metadata. Tuple emission deduplicates names.
+			for name, payload in metadata.needed_optional_types {
+				w.needed_optional_types[name] = payload
+			}
+			w.multi_return_types << metadata.multi_return_types
+			for name, enabled in metadata.multi_return_type_names {
+				w.multi_return_type_names[name] = enabled
+			}
+			if metadata.worker_scope != unsafe { nil } {
+				w.parallel_worker_scopes << metadata.worker_scope
+			}
+			w.decl_types_ready = true
+			w.multi_return_types_ready = true
+		} else {
+			w.fn_gen_items = <-a.items
+		}
+		w.tc.cur_module = old_module
+		w.tc.cur_file = old_file
 		w.optional_types_ready = true
 		w.timing_profile('  [ttime]       fs opt types   ${f64(osw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		w.worker_scope = scope
@@ -1365,6 +1426,8 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 	g.multi_return_type_names = worker.multi_return_type_names.move()
 	g.multi_return_types_ready = worker.multi_return_types_ready
 	g.decl_types_ready = worker.decl_types_ready
+	g.parallel_worker_scopes << worker.parallel_worker_scopes
+	worker.parallel_worker_scopes = []voidptr{}
 	if worker.worker_scope != unsafe { nil } {
 		g.parallel_worker_scopes << worker.worker_scope
 		worker.worker_scope = unsafe { nil }
@@ -3075,17 +3138,21 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		}
 		mut fs_worker := g.new_parallel_worker(0)
 		fs_worker.tc.verbose = g.tc.verbose
-		// These helpers can intern C names concurrently. Give each a detached cache
-		// instead of racing through the shared master cache backing.
+		// These helpers resolve C names and generic applications concurrently with
+		// selection. Keep their mutable caches separate from the master and each other.
 		fs_worker.c_name_cache = &CNameCache{}
+		fs_worker.generic_app_cache = &GenericAppCache{}
 		mut fixed_array_worker := g.new_parallel_worker(1)
 		fixed_array_worker.tc.verbose = g.tc.verbose
 		fixed_array_worker.c_name_cache = &CNameCache{}
+		fixed_array_worker.generic_app_cache = &GenericAppCache{}
 		mut optional_worker := g.new_parallel_worker(2)
 		optional_worker.tc.verbose = g.tc.verbose
 		optional_worker.c_name_cache = &CNameCache{}
+		optional_worker.generic_app_cache = &GenericAppCache{}
 		mut call_optional_worker := g.new_parallel_worker(3)
 		call_optional_worker.c_name_cache = &CNameCache{}
+		call_optional_worker.generic_app_cache = &GenericAppCache{}
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		if fail.len > 0 {
 			// prepare_pre_dispatch_master can submit its own selection/cost batches to
@@ -3125,12 +3192,16 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			fixed_storage_thread := spawn fixed_storage_scan_thread(voidptr(fs_worker))
 			fixed_array_thread := spawn fixed_array_support_thread(voidptr(fixed_array_worker))
 			call_optional_thread := spawn unresolved_call_optional_thread(voidptr(call_optional_worker))
+			selection_args := OptionalSelectionArgs{
+				worker: voidptr(optional_worker)
+				items: chan []FlatFnGenItem{ cap: 1 }
+			}
+			optional_thread := spawn optional_support_selection_thread(voidptr(&selection_args))
 			g.prepare_pre_dispatch_master()
 			// Reuse the selected declarations instead of selecting every function
 			// again on the optional-support thread. Cost refinement writes the
 			// master's item array, so the helper needs its own snapshot.
-			optional_worker.fn_gen_items = g.fn_gen_items.clone()
-			optional_thread := spawn optional_support_thread(voidptr(optional_worker))
+			selection_args.items <- g.fn_gen_items.clone()
 			g.timing_profile('  [ttime]     cg prep master ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			psw.restart()
 			g.refine_fn_item_costs(no_parallel, true)
