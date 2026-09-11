@@ -102,7 +102,11 @@ for the user program being compiled does not disable the compiler's own job cap.
 
 BSD compiler and self-host builds normally keep their V stages at two jobs. Production builds
 using `-parallel-cc` allow one job per 2 GiB of physical memory, up to eight jobs, and use the same
-limit for the split C compilation. Other parallel C builds remain limited to two jobs.
+limit for the split C compilation. Cached builds divide the compiler across 32 C units and cache
+those production objects by content, compiler, flags, target, and included-file contents. Repeated
+production self-builds therefore compile only changed units. `-nocache` disables this reuse and
+uses one C unit per compiler job to avoid repeatedly parsing the shared declarations. Other
+parallel C builds remain limited to two jobs.
 
 ## Fast C backend
 
