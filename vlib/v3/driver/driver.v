@@ -1895,9 +1895,9 @@ fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool
 	return int_max(1, int_min(max_jobs, available_jobs))
 }
 
-fn v3_parallel_c_unit_count(job_count int, building_v bool, is_bsd_host bool, prod_parallel_cc bool) int {
+fn v3_parallel_c_unit_count(job_count int, building_v bool, is_bsd_host bool, prod_parallel_cc bool, cache_objects bool) int {
 	if building_v && is_bsd_host && prod_parallel_cc {
-		return bsd_selfhost_parallel_cc_unit_count
+		return if cache_objects { bsd_selfhost_parallel_cc_unit_count } else { job_count }
 	}
 	return job_count * v3_parallel_cc_units_per_job
 }
@@ -8884,7 +8884,8 @@ pub fn run(args []string) {
 	available_parallel_c_jobs := runtime.nr_jobs()
 	is_bsd_host := $if freebsd || openbsd || netbsd || dragonfly { true } $else { false }
 	parallel_c_job_count := v3_parallel_c_job_count(available_parallel_c_jobs, building_v, is_bsd_host, is_prod && parallel_cc)
-	parallel_c_unit_count := v3_parallel_c_unit_count(parallel_c_job_count, building_v, is_bsd_host, is_prod && parallel_cc)
+	parallel_c_unit_count := v3_parallel_c_unit_count(parallel_c_job_count, building_v, is_bsd_host, is_prod
+		&& parallel_cc, !no_cache)
 	if generate_c_project.len > 0 {
 		if backend != 'c' {
 			eprintln('`-generate-c-project` is currently supported only for the C backend')
