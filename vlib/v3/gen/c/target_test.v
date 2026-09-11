@@ -231,6 +231,7 @@ fn test_emscripten_c_directive_target_is_distinct_from_host() {
 fn test_c_directive_arch_aliases_use_canonical_targets() {
 	riscv32 := pref.target_from('linux', 'riscv32') or { panic(err) }
 	riscv64 := pref.target_from('linux', 'riscv64') or { panic(err) }
+	ppc := pref.target_from('linux', 'ppc') or { panic(err) }
 	sparc64 := pref.target_from('solaris', 'sparc64') or { panic(err) }
 	x86 := pref.target_from('linux', 'x86') or { panic(err) }
 	arm64 := pref.target_from('linux', 'arm64') or { panic(err) }
@@ -238,6 +239,8 @@ fn test_c_directive_arch_aliases_use_canonical_targets() {
 	assert c_flag_args('risc-v32 -DRISCV32', '', '', riscv32) == ['-DRISCV32']
 	assert c_flag_args('rv64 -DRV64', '', '', riscv64) == ['-DRV64']
 	assert c_flag_args('risc-v64 -DRISCV64', '', '', riscv64) == ['-DRISCV64']
+	assert c_flag_args('ppc32 -DPPC', '', '', ppc) == ['-DPPC']
+	assert c_flag_args('powerpc -DPOWERPC', '', '', ppc) == ['-DPOWERPC']
 	assert c_flag_args('sparc64 -DSPARC64', '', '', sparc64) == ['-DSPARC64']
 	assert c_flag_args('rv64 -DRV64', '', '', arm64).len == 0
 	assert c_flag_args('i386 -DI386', '', '', x86) == ['-DI386']

@@ -4105,9 +4105,9 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 	target_names := ['__APPLE__', '__MACH__', '__linux__', '__ANDROID__', '_WIN32', '_WIN64',
 		'__FreeBSD__', '__OpenBSD__', '__NetBSD__', '__DragonFly__', '__sun', '__EMSCRIPTEN__',
 		'__x86_64__', '__amd64__', '__i386__', '__aarch64__', '__arm64__', '__arm__', '__riscv',
-		'__riscv_xlen', '__powerpc64__', '__ppc64__', '__s390x__', '__loongarch64', '__sparc__',
-		'__wasm__', '__wasm32__', '_M_X64', '_M_AMD64', '_M_IX86', '_M_ARM', '_M_ARM64', '__LP64__',
-		'_LP64', '__ILP32__']
+		'__riscv_xlen', '__powerpc__', '__ppc__', '__powerpc64__', '__ppc64__', '__s390x__',
+		'__loongarch64', '__sparc__', '__wasm__', '__wasm32__', '_M_X64', '_M_AMD64', '_M_IX86',
+		'_M_ARM', '_M_ARM64', '__LP64__', '_LP64', '__ILP32__']
 	for name in compiler_names {
 		macros[name] = V3CacheLocalCMacro{
 			known: true
@@ -4204,6 +4204,9 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 				}
 				'riscv32', 'riscv64' {
 					defined << '__riscv'
+				}
+				'ppc' {
+					defined << ['__powerpc__', '__ppc__']
 				}
 				'ppc64', 'ppc64le' {
 					defined << ['__powerpc64__', '__ppc64__']

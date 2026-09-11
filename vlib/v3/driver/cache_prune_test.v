@@ -398,6 +398,12 @@ fn test_cache_c_source_definitely_active_code_uses_target_predefined_macros() {
 	riscv_source := '#if defined(__riscv) && __riscv_xlen == 32 && defined(__ILP32__)\nstatic int riscv32_api(void) { return 4; }\n#endif\n'
 	riscv_active := cache_c_source_definitely_active_code(riscv_source, mut riscv_macros)
 	assert riscv_active.contains('riscv32_api')
+
+	linux_ppc := pref.target_from('linux', 'ppc') or { panic(err) }
+	mut ppc_macros := cache_local_c_compiler_macros([]string{}, 'gcc', linux_ppc)
+	ppc_source := '#if defined(__powerpc__) && defined(__ppc__) && defined(__ILP32__)\nstatic int ppc_api(void) { return 5; }\n#endif\n'
+	ppc_active := cache_c_source_definitely_active_code(ppc_source, mut ppc_macros)
+	assert ppc_active.contains('ppc_api')
 }
 
 fn test_cache_compiler_macro_probe_uses_implicit_objective_c_language() {

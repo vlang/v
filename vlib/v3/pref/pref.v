@@ -107,6 +107,8 @@ pub fn host_arch() string {
 		return 'ppc64le'
 	} $else $if ppc64 {
 		return 'ppc64'
+	} $else $if ppc {
+		return 'ppc'
 	} $else $if loongarch64 {
 		return 'loongarch64'
 	} $else $if sparc64 {
@@ -977,6 +979,7 @@ pub fn normalized_arch(target_arch string) string {
 		'aarch32', 'arm', 'armv7', 'armv7l' { 'arm32' }
 		'rv32', 'risc-v32' { 'riscv32' }
 		'rv64', 'risc-v64', 'riscv', 'risc-v' { 'riscv64' }
+		'ppc32', 'powerpc' { 'ppc' }
 		'wasm' { 'wasm32' }
 		else { target_arch }
 	}

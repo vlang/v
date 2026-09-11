@@ -5086,7 +5086,7 @@ fn (p &Parser) comptime_cond_name_is_flag(cond string, name string, end int) boo
 		return true
 	}
 	match name {
-		'macos', 'darwin', 'mac', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'termux', 'solaris', 'wasm32_emscripten', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64', 'i386', 'x86', 'arm64', 'aarch64', 'arm32', 'rv32', 'riscv32', 'rv64', 'riscv64', 's390x', 'ppc64', 'ppc64le', 'loongarch64', 'sparc64', 'wasm32', 'little_endian', 'big_endian', 'debug', 'test', 'native', 'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm', 'gcc', 'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding', 'nofloat', 'threads' {
+		'macos', 'darwin', 'mac', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'termux', 'solaris', 'wasm32_emscripten', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64', 'i386', 'x86', 'arm64', 'aarch64', 'arm32', 'rv32', 'riscv32', 'rv64', 'riscv64', 's390x', 'ppc', 'ppc64', 'ppc64le', 'loongarch64', 'sparc64', 'wasm32', 'little_endian', 'big_endian', 'debug', 'test', 'native', 'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm', 'gcc', 'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding', 'nofloat', 'threads' {
 			return true
 		}
 		else {}
