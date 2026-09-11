@@ -42,7 +42,7 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 		return
 	}
 	test_root := os.join_path(os.vtmp_dir(), 'v3_default_system_tcc_${os.getpid()}')
-	system_tcc := write_v3_test_tcc(test_root, 0)
+	system_tcc := write_v3_test_tcc(os.join_path(test_root, 'bin', 'tcc'), 0)
 	old_path := os.getenv_opt('PATH')
 	os.setenv('PATH', os.dir(system_tcc), true)
 	defer {
@@ -53,9 +53,12 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 		}
 		os.rmdir_all(test_root) or {}
 	}
-	bundled_tcc := os.join_path(test_root, 'missing', 'tcc.exe')
-	assert v3_default_tcc_compiler(bundled_tcc, false, true, 'linux') == system_tcc
-	assert v3_default_tcc_compiler(bundled_tcc, true, true, 'linux') == bundled_tcc
+	bundled_tcc := write_v3_test_tcc(os.join_path(test_root, 'thirdparty', 'tcc', 'tcc.exe'), 1)
+	assert !v3_usable_tcc_compiler(bundled_tcc)
+	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, 'linux') == system_tcc
+	write_v3_test_tcc(bundled_tcc, 0)
+	assert v3_usable_tcc_compiler(bundled_tcc)
+	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, 'linux') == bundled_tcc
 	assert v3_default_tcc_compiler(bundled_tcc, false, false, 'linux') == ''
 	assert v3_default_tcc_compiler(bundled_tcc, false, true, 'macos') == ''
 }
@@ -65,7 +68,7 @@ fn test_v3_default_tcc_compiler_skips_broken_system_tcc() {
 		return
 	}
 	test_root := os.join_path(os.vtmp_dir(), 'v3_broken_system_tcc_${os.getpid()}')
-	system_tcc := write_v3_test_tcc(test_root, 1)
+	system_tcc := write_v3_test_tcc(os.join_path(test_root, 'bin', 'tcc'), 1)
 	old_path := os.getenv_opt('PATH')
 	os.setenv('PATH', os.dir(system_tcc), true)
 	defer {
@@ -98,8 +101,7 @@ fn test_v3_regenerates_cc_fallback_after_preferred_tcc() {
 	assert v3_should_regenerate_for_cc_fallback(true, false, 0)
 }
 
-fn write_v3_test_tcc(test_root string, exit_code int) string {
-	tcc_path := os.join_path(test_root, 'bin', 'tcc')
+fn write_v3_test_tcc(tcc_path string, exit_code int) string {
 	os.mkdir_all(os.dir(tcc_path)) or { panic(err) }
 	os.write_file(tcc_path, '#!/bin/sh\nexit ${exit_code}\n') or { panic(err) }
 	os.chmod(tcc_path, 0o700) or { panic(err) }

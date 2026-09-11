@@ -6610,6 +6610,13 @@ fn default_cc_identity() string {
 	return '${cc_path}\t${metadata}\t${version.exit_code}\t${version.output.replace('\n', ' ')}'
 }
 
+fn v3_usable_tcc_compiler(tcc_path string) bool {
+	if !os.is_executable(tcc_path) {
+		return false
+	}
+	return cmdexec.run(tcc_path, ['-v']).exit_code == 0
+}
+
 fn v3_usable_system_tcc_compiler(host_os string) string {
 	// Match the V1 system-TCC fallback on macOS: a PATH-installed TCC remains
 	// opt-in because SDK and framework headers can require Clang compatibility.
@@ -6617,8 +6624,7 @@ fn v3_usable_system_tcc_compiler(host_os string) string {
 		return ''
 	}
 	system_tcc := os.find_abs_path_of_executable('tcc') or { return '' }
-	tcc_probe := cmdexec.run(system_tcc, ['-v'])
-	if tcc_probe.exit_code != 0 {
+	if !v3_usable_tcc_compiler(system_tcc) {
 		return ''
 	}
 	return system_tcc
@@ -9169,7 +9175,7 @@ pub fn run(args []string) {
 		resolve_vroot_for_input(prefs.vroot, input_file)
 	}
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
-	bundled_tcc_available := os.is_executable(bundled_tcc)
+	bundled_tcc_available := v3_usable_tcc_compiler(bundled_tcc)
 	host_os := os.user_os()
 	host_target := pref.host_target()
 	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug
