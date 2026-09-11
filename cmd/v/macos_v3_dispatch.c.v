@@ -230,8 +230,10 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	mut environment := macos_v3_child_environment(vexe, caller_environment, dispatch_environment)
 	no_fallback := environment[macos_v3_no_fallback_env] or { '' }
 	// cmd/v self-builds deliberately remain V3-only. The compatibility compiler
-	// exists for user programs and tools, not as an alternate self-host path.
-	fallback_enabled := !prefs.new_compiler && no_fallback != '1'
+	// exists for user programs and tools, not as an alternate self-host path. An
+	// empty path belongs to explicit `build` argument validation, which V1 cannot
+	// recover and would only report again with a less useful empty-path error.
+	fallback_enabled := prefs.path != '' && !prefs.new_compiler && no_fallback != '1'
 		&& !macos_v3_is_self_build_target(prefs)
 	fallback_file := macos_v3_fallback_file_for_pid()
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)

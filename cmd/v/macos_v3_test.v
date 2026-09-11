@@ -82,8 +82,12 @@ fn test_macos_v3_explicit_build_reports_a_regular_input_error() {
 	for args in [['build', 'help'], ['-new-compiler', 'build', 'help']] {
 		result := run_macos_v3_test_process(@VEXE, args, macos_v3_test_vroot, {})
 		assert result.exit_code == 1, result.output
-		assert result.output.contains("builder error: help doesn't exist"), result.output
-		assert !result.output.contains('C-backend compilation was not dispatched to V3'), result.output
+		assert result.output.trim_space() == "builder error: help doesn't exist", result.output
+	}
+	for args in [['build'], ['-new-compiler', 'build']] {
+		result := run_macos_v3_test_process(@VEXE, args, macos_v3_test_vroot, {})
+		assert result.exit_code == 1, result.output
+		assert result.output.trim_space() == 'no input file', result.output
 	}
 }
 
