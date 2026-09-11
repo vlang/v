@@ -6763,6 +6763,10 @@ fn v3_select_implicit_c_compiler(c_compiler string, c_compiler_explicit bool, im
 	return c_compiler
 }
 
+fn v3_platform_c_compiler(host_os string) string {
+	return if host_os == 'windows' { 'gcc' } else { 'cc' }
+}
+
 fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_tcc_semantics bool, tried_tcc bool, tcc_exit_code int) bool {
 	return retry_compilation && use_implicit_tcc_semantics && (!tried_tcc || tcc_exit_code != 0)
 }
@@ -12252,7 +12256,7 @@ pub fn run(args []string) {
 			show_v3_c_compiler_output(show_c_output, c_compiler, result)
 			if result.exit_code != 0 {
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
-					fallback := 'cc'
+					fallback := v3_platform_c_compiler(host_os)
 					eprintln('warning: tcc compilation failed, falling back to ${fallback}')
 					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 					cleanup_c_build_dir(cc_dir)
@@ -12483,7 +12487,7 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 }
 
 fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_dir string, verbose bool, show_cc bool) {
-	fallback := 'cc'
+	fallback := v3_platform_c_compiler(os.user_os())
 	if verbose || show_cc {
 		eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
 	}
