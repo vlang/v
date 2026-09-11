@@ -94,6 +94,17 @@ fn test_tinyc_windows_thread_local_slot_uses_win32_tls() {
 	assert !windows_code.contains('pthread_')
 }
 
+fn test_tinyc_pthread_pointer_slot_does_not_rely_on_constructor() {
+	mut g := FlatGen.new()
+	g.emit_tinyc_pthread_pointer_slot('state', 'State*')
+	c_code := g.sb.str()
+	assert c_code.contains('static pthread_once_t state_key_once = PTHREAD_ONCE_INIT;')
+	assert c_code.contains('static void state_key_create(void) { pthread_key_create(&state_key, 0); }')
+	assert c_code.contains('static void state_key_init(void) { pthread_once(&state_key_once, state_key_create); }')
+	assert c_code.contains('state_key_init();')
+	assert !c_code.contains('__attribute__((constructor))')
+}
+
 fn test_autostr_thread_local_matching_is_restricted_to_builtin_global() {
 	mut g := FlatGen.new()
 	g.global_modules['g_autostr_addr_state'] = 'builtin'
@@ -141,6 +152,8 @@ fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	assert c_code.contains('typedef __darwin_pthread_t pthread_t;'), c_code
 	assert c_code.contains('typedef __darwin_pthread_key_t pthread_key_t;'), c_code
 	assert c_code.contains('#define PTHREAD_MUTEX_INITIALIZER { 0x32AAABA7, { 0 } }'), c_code
+	assert c_code.contains('#define PTHREAD_ONCE_INIT { 0x30B1BCBA, { 0 } }'), c_code
+	assert c_code.contains('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));'), c_code
 	assert c_code.contains('int pthread_equal(pthread_t t1, pthread_t t2);'), c_code
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0'), c_code
 }

@@ -17254,9 +17254,19 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_darwin_pthread_alias('pthread_once_t', '__darwin_pthread_once_t', '_PTHREAD_ONCE_T')
 	g.headerless_darwin_pthread_alias('pthread_key_t', '__darwin_pthread_key_t', '_PTHREAD_KEY_T')
 	g.writeln('#endif')
+	g.writeln('#ifndef PTHREAD_ONCE_INIT')
+	g.writeln('#ifdef V_HEADERLESS_DARWIN_PTHREAD_TYPES')
+	g.writeln('#define PTHREAD_ONCE_INIT { 0x30B1BCBA, { 0 } }')
+	g.writeln('#elif defined(__APPLE__)')
+	g.writeln('#define PTHREAD_ONCE_INIT { ._opaque = { 0xba, 0xbc, 0xb1, 0x30 } }')
+	g.writeln('#else')
+	g.writeln('#define PTHREAD_ONCE_INIT { 0 }')
+	g.writeln('#endif')
+	g.writeln('#endif')
 	g.writeln('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
 	g.writeln('void* pthread_getspecific(pthread_key_t key);')
 	g.writeln('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
+	g.writeln('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sem_t;')
 	g.writeln('#if !defined(__sigset_t_defined) && !defined(_SIGSET_T_DECLARED) && !defined(_SIGSET_T_DEFINED) && !defined(_SIGSET_T)')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;')
@@ -20368,6 +20378,23 @@ fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string,
 	g.writeln('#elif defined(__TINYC__)')
 }
 
+fn (mut g FlatGen) emit_tinyc_pthread_pointer_slot(cname string, ct string) {
+	g.writeln('static pthread_key_t ${cname}_key;')
+	g.writeln('static pthread_once_t ${cname}_key_once = PTHREAD_ONCE_INIT;')
+	g.writeln('static void ${cname}_key_create(void) { pthread_key_create(&${cname}_key, 0); }')
+	g.writeln('static void ${cname}_key_init(void) { pthread_once(&${cname}_key_once, ${cname}_key_create); }')
+	g.writeln('static ${ct}* ${cname}_slot(void) {')
+	g.writeln('\t${cname}_key_init();')
+	g.writeln('\tvoid* p = pthread_getspecific(${cname}_key);')
+	g.writeln('\tif (p == 0) {')
+	g.writeln('\t\tp = calloc(1, sizeof(${ct}));')
+	g.writeln('\t\tpthread_setspecific(${cname}_key, p);')
+	g.writeln('\t}')
+	g.writeln('\treturn (${ct}*)p;')
+	g.writeln('}')
+	g.writeln('#define ${cname} (*${cname}_slot())')
+}
+
 fn (mut g FlatGen) global_decls() {
 	old_module := g.tc.cur_module
 	for name, typ in g.global_types {
@@ -20460,18 +20487,7 @@ fn (mut g FlatGen) global_decls() {
 		if g.prealloc && name == 'g_memory_block' {
 			cn := g.cname(name)
 			g.emit_tinyc_windows_thread_local_slot(cn, ct, '')
-			g.writeln('static pthread_key_t ${cn}_key;')
-			g.writeln('static void ${cn}_key_init(void) __attribute__((constructor));')
-			g.writeln('static void ${cn}_key_init(void) { pthread_key_create(&${cn}_key, 0); }')
-			g.writeln('static ${ct}* ${cn}_slot(void) {')
-			g.writeln('\tvoid* p = pthread_getspecific(${cn}_key);')
-			g.writeln('\tif (p == 0) {')
-			g.writeln('\t\tp = calloc(1, sizeof(${ct}));')
-			g.writeln('\t\tpthread_setspecific(${cn}_key, p);')
-			g.writeln('\t}')
-			g.writeln('\treturn (${ct}*)p;')
-			g.writeln('}')
-			g.writeln('#define ${cn} (*${cn}_slot())')
+			g.emit_tinyc_pthread_pointer_slot(cn, ct)
 			g.writeln('#else')
 			g.writeln('_Thread_local ${ct} ${cn}${init};')
 			g.writeln('#endif')

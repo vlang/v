@@ -188,7 +188,7 @@ fn test_bsd_self_build_uses_system_cc_and_v3_safeguards() {
 	assert_vself_uses_single_prod_build(prod_result.output)
 	tinyc_result := os.execute('VFLAGS="" VEXE=${os.quoted_path(noop)} ${os.quoted_path(tool)} self -cc tcc -o /tmp/vself_bsd_tinyc_test')
 	assert tinyc_result.exit_code == 0, tinyc_result.output
-	assert !tinyc_result.output.contains('-prealloc'), tinyc_result.output
+	assert tinyc_result.output.contains('-prealloc'), tinyc_result.output
 	assert_vself_preserves_full_cli(tinyc_result.output)
 }
 

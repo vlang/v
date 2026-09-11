@@ -304,7 +304,8 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		if p.building_v && p.os in [.macos, .linux, .freebsd, .openbsd, .netbsd, .dragonfly]
 			&& !p.prealloc
 			&& (!p.gc_set_by_flag || p.gc_mode == .no_gc)
-			&& (p.os == .macos || !p.ccompiler_set_by_flag
+			&& (p.os in [.macos, .freebsd, .openbsd, .netbsd, .dragonfly]
+				|| !p.ccompiler_set_by_flag
 				|| cc_from_string(p.ccompiler) != .tinyc) {
 			p.prealloc = true
 			p.build_options << '-prealloc'

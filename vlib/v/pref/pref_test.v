@@ -484,12 +484,32 @@ fn test_v3_platform_v_compiler_targets_default_to_prealloc() {
 	}
 }
 
-fn test_non_macos_explicit_tinyc_v_compiler_target_skips_prealloc() {
+fn test_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
 	if pref.get_host_os() !in [.macos, .linux, .freebsd, .openbsd, .netbsd, .dragonfly] {
 		return
 	}
 	target := os.join_path(vroot, 'cmd', 'v')
-	for target_os in [pref.OS.linux, .freebsd, .openbsd, .netbsd, .dragonfly] {
+	for compiler in ['tcc', 'tinyc'] {
+		mut prefs := pref.Preferences{
+			path:                  target
+			os:                    .linux
+			ccompiler:             compiler
+			ccompiler_set_by_flag: true
+		}
+		prefs.fill_with_defaults()
+		assert prefs.building_v
+		assert prefs.ccompiler_type == .tinyc
+		assert !prefs.prealloc
+		assert '-prealloc' !in prefs.build_options
+	}
+}
+
+fn test_bsd_explicit_tinyc_v_compiler_target_keeps_prealloc() {
+	if pref.get_host_os() !in [.macos, .linux, .freebsd, .openbsd, .netbsd, .dragonfly] {
+		return
+	}
+	target := os.join_path(vroot, 'cmd', 'v')
+	for target_os in [pref.OS.freebsd, .openbsd, .netbsd, .dragonfly] {
 		for compiler in ['tcc', 'tinyc'] {
 			mut prefs := pref.Preferences{
 				path:                  target
@@ -500,8 +520,8 @@ fn test_non_macos_explicit_tinyc_v_compiler_target_skips_prealloc() {
 			prefs.fill_with_defaults()
 			assert prefs.building_v
 			assert prefs.ccompiler_type == .tinyc
-			assert !prefs.prealloc
-			assert '-prealloc' !in prefs.build_options
+			assert prefs.prealloc
+			assert '-prealloc' in prefs.build_options
 		}
 	}
 }

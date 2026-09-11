@@ -3758,11 +3758,18 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	mut w := t.fork_program_view(ast, wtc, used, copy_used_fns)
 	w.used_struct_operator_fns = t.used_struct_operator_fns.clone()
 	if !copy_used_fns {
-		w.used_fns_parent = unsafe { &t.used_fns }
-		w.used_fns_root = if !isnil(t.used_fns_root) {
-			t.used_fns_root
+		if t.node_context_read_only && isnil(t.used_fns_parent) && !isnil(t.used_fns_root) {
+			// A shared-base master is still recording helper names while its workers
+			// run. Read the immutable snapshot it installed instead of racing its map.
+			w.used_fns_parent = t.used_fns_root
+			w.used_fns_root = unsafe { nil }
 		} else {
-			t.used_fns_parent
+			w.used_fns_parent = unsafe { &t.used_fns }
+			w.used_fns_root = if !isnil(t.used_fns_root) {
+				t.used_fns_root
+			} else {
+				t.used_fns_parent
+			}
 		}
 	}
 	w.alias_cache = &AliasCache{}

@@ -8957,12 +8957,10 @@ pub fn run(args []string) {
 		// The compiler is a single-shot batch program — exactly what the
 		// -prealloc bump arena is for (~18% less CPU across its
 		// allocation-heavy phases) — so compiler builds default to it.
-		// -no-prealloc opts out (also restores tcc linking: tcc has no
-		// thread-local storage support, so prealloc builds link with cc).
-		// The FastC backend honors it too: it emits the arena root
-		// `g_memory_block` as per-thread storage (a pthread key under bundled
-		// TinyCC, which lacks thread-local storage), so its worker-thread
-		// generations bump-allocate safely (see fastc_write_prealloc_tls_global).
+		// -no-prealloc opts out. Bundled TinyCC lacks language-level thread-local
+		// storage, so its arena root uses a native thread slot instead. This keeps
+		// worker-thread generations safe in both C backends (see the C generator's
+		// pthread-key slot and fastc_write_prealloc_tls_global).
 		if !no_prealloc && 'prealloc' !in user_defines {
 			user_defines << 'prealloc'
 		}
@@ -9610,7 +9608,17 @@ pub fn run(args []string) {
 		files << builtin_files
 	}
 	mut parse_timing := V3ParseTiming{}
+	had_v3_backend_define := 'v3_backend' in prefs.user_defines
+	if !had_v3_backend_define {
+		// Builtin has a few V3-specific implementations. Make the same internal
+		// define used for filename selection visible while their bodies are parsed,
+		// then remove it before parsing any user or imported module.
+		prefs.user_defines << 'v3_backend'
+	}
 	parse_files_dispatch_profiled(mut p, files, !current_no_parallel, mut parse_timing)
+	if !had_v3_backend_define {
+		prefs.user_defines = prefs.user_defines.filter(it != 'v3_backend')
+	}
 	mut a := p.a
 	if !current_no_parallel {
 		// Later parallel stages can run inside disposable arenas. Ensure the shared
@@ -10639,7 +10647,7 @@ pub fn run(args []string) {
 			prealloc_scope_leave_for_v3(transform_scope)
 			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
 				&& !cache_state.manager.enabled && retained_transform_regions.len == 0
-				&& (input_is_v3_compiler_entry(input_file)
+				&& (cmd_v_build || input_is_v3_compiler_entry(input_file)
 					|| os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != '')
 			if retain_transform_scope {
 				// Cgen is the only remaining semantic consumer in this no-cache self-host
@@ -16313,11 +16321,15 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		}
 	}
 	mut was_parallel := false
-	// Compiler self-hosting is faster through the normal incremental import loop:
-	// eager discovery duplicates import-identity and collision work for this graph.
+	mut eager_selfhost_imports := os.getenv('V3_NO_EAGER_SELFHOST_IMPORTS') == ''
+	$if freebsd || openbsd || netbsd || dragonfly {
+		// On BSD the eager scan duplicates enough filesystem and import-identity work
+		// to be slower than the normal wave parser for the compiler graph.
+		eager_selfhost_imports = false
+	}
 	if prefs.building_v && !prefs.selfhost && allow_parallel && !cache_state.manager.enabled
 		&& !initial_files.any(input_is_v3_compiler_entry(it))
-		&& os.getenv('V3_NO_EAGER_SELFHOST_IMPORTS') == '' {
+		&& eager_selfhost_imports {
 		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root, mut parsed_modules, mut module_path_cache)
 		mut eager_files := []string{}
 		mut eager_canons := []string{}
