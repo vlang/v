@@ -237,6 +237,18 @@ fn test_macos_v3_forwarded_args_strip_only_compiler_selection() {
 	assert run_forwarded.last() == '-new-compiler'
 }
 
+fn test_macos_v3_forwarded_args_propagate_detected_musl() {
+	musl_args := macos_v3_forwarded_args(&pref.Preferences{
+		is_musl: true
+	}, ['main.v'])
+	assert '-dmusl' in musl_args
+
+	glibc_args := macos_v3_forwarded_args(&pref.Preferences{
+		is_glibc: true
+	}, ['main.v'])
+	assert '-dmusl' !in glibc_args
+}
+
 fn test_macos_v3_forwarded_args_preserve_compatibility_aliases() {
 	mut arch_prefs := &pref.Preferences{
 		arch: .amd64

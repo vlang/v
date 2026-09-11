@@ -104,6 +104,12 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 		}
 		forwarded_args << arg
 	}
+	// V1 resolves the native libc before dispatch, including automatic musl
+	// detection when the user did not pass `-musl`. Carry that resolved mode into
+	// V3 as a target define so `$if musl ?` and `_d_musl.v` selection stay correct.
+	if prefs.is_musl {
+		forwarded_args.insert(0, '-dmusl')
+	}
 	if prefs.enable_globals {
 		for i, arg in forwarded_args {
 			if arg == '--enable-globals' {
