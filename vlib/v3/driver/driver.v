@@ -6745,8 +6745,8 @@ fn v3_select_windows_default_c_compiler(c_compiler string, c_compiler_explicit b
 	return c_compiler
 }
 
-fn v3_should_regenerate_after_implicit_tcc(use_implicit_tcc_semantics bool, tried_tcc bool, tcc_exit_code int) bool {
-	return use_implicit_tcc_semantics && (!tried_tcc || tcc_exit_code != 0)
+fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_tcc_semantics bool, tried_tcc bool, tcc_exit_code int) bool {
+	return retry_compilation && use_implicit_tcc_semantics && (!tried_tcc || tcc_exit_code != 0)
 }
 
 struct V3TestBuildConstraint {
@@ -12155,9 +12155,11 @@ pub fn run(args []string) {
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
 		}
-		if v3_should_regenerate_after_implicit_tcc(use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
+		if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
 			fallback := 'cc'
-			eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
+			if verbose || show_cc {
+				eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
+			}
 			retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 			cleanup_c_build_dir(cc_dir)
 			retry_result := cmdexec.run(os.executable(), retry_args)
@@ -12168,6 +12170,18 @@ pub fn run(args []string) {
 				exit(retry_result.exit_code)
 			}
 			return
+		}
+		if !retry_compilation && use_implicit_tcc_semantics
+			&& (!tried_tcc || result.exit_code != 0) {
+			if tried_tcc {
+				eprintln('C compilation error (from ${os.file_name(implicit_tcc)}):')
+				eprintln(result.output)
+			} else {
+				eprintln('C compilation error: implicit tcc could not be used for this build')
+			}
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			cleanup_c_build_dir(cc_dir)
+			exit(1)
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
 			used_tcc = false

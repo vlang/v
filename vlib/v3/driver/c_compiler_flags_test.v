@@ -191,11 +191,13 @@ fn test_v3_system_tcc_does_not_use_bundled_resources() {
 }
 
 fn test_v3_regenerates_cc_fallback_after_implicit_tcc() {
-	assert !v3_should_regenerate_after_implicit_tcc(false, false, 0)
-	assert !v3_should_regenerate_after_implicit_tcc(false, true, 1)
-	assert !v3_should_regenerate_after_implicit_tcc(true, true, 0)
-	assert v3_should_regenerate_after_implicit_tcc(true, true, 1)
-	assert v3_should_regenerate_after_implicit_tcc(true, false, 0)
+	assert !v3_should_regenerate_after_implicit_tcc(true, false, false, 0)
+	assert !v3_should_regenerate_after_implicit_tcc(true, false, true, 1)
+	assert !v3_should_regenerate_after_implicit_tcc(true, true, true, 0)
+	assert v3_should_regenerate_after_implicit_tcc(true, true, true, 1)
+	assert v3_should_regenerate_after_implicit_tcc(true, true, false, 0)
+	assert !v3_should_regenerate_after_implicit_tcc(false, true, true, 1)
+	assert !v3_should_regenerate_after_implicit_tcc(false, true, false, 0)
 }
 
 fn write_v3_test_tcc(tcc_path string, exit_code int) string {
