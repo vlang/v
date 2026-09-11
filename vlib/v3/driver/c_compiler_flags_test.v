@@ -80,11 +80,21 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		...base
 		dump_c_flags: true
 	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		parallel_cc: true
+	})
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
 		c_compiler: 'tcc'
 		c_compiler_explicit: true
 		dump_c_flags: true
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: 'tcc'
+		c_compiler_explicit: true
+		parallel_cc: true
 	})
 	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base

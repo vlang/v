@@ -6637,6 +6637,7 @@ struct V3BundledTccProbeOptions {
 	c_compiler          string
 	c_compiler_explicit bool
 	dump_c_flags        bool
+	parallel_cc         bool
 	host_os             string
 	host_target         pref.Target
 	target              pref.Target
@@ -6658,7 +6659,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 		}
 		return os.real_path(compiler_path) == os.real_path(options.bundled_tcc)
 	}
-	if options.dump_c_flags {
+	if options.dump_c_flags || options.parallel_cc {
 		return false
 	}
 	// Windows uses its bundled TCC as the platform default, including modes that
@@ -9248,13 +9249,15 @@ pub fn run(args []string) {
 		c_compiler: c_compiler
 		c_compiler_explicit: c_compiler_explicit
 		dump_c_flags: dump_c_flags.len > 0
+		parallel_cc: parallel_cc
 		host_os: host_os
 		host_target: host_target
 		target: target
 		bundled_tcc: bundled_tcc
 	})
 	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug
-		&& !c_compiler_explicit && target.os == host_target.os && target.arch == host_target.arch
+		&& !c_compiler_explicit && !parallel_cc && target.os == host_target.os
+		&& target.arch == host_target.arch
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, bundled_tcc_available, allow_system_tcc, dump_c_flags.len > 0, host_os)
 	c_compiler = v3_select_implicit_c_compiler(c_compiler, c_compiler_explicit, implicit_tcc)
 	// Generate for the compiler that receives the first build attempt. If implicit
