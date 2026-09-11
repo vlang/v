@@ -5037,6 +5037,32 @@ fn test_transform_worker_records_struct_operators_in_private_map() {
 	assert master.used_struct_operator_fns['main.Point.==']
 }
 
+fn test_shared_transform_worker_reads_immutable_used_fn_snapshot() {
+	$if !v3_no_parallel ? {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut master := new_transformer(mut a, &tc, {
+			'main': true
+		})
+		master.retain_worker_results = true
+		master.node_context_read_only = true
+		shared_used_fns := master.used_fns.clone()
+		master.used_fns_root = unsafe { &shared_used_fns }
+
+		worker_tc := tc.fork_for_parallel_transform(&a)
+		mut worker := master.fork_worker(&a, worker_tc)
+		assert worker.used_fn_contains_name('main')
+
+		master.mark_used_fn_key('master_only')
+		assert !worker.used_fn_contains_name('master_only')
+		worker.mark_used_fn_key('worker_only')
+		assert !master.used_fn_contains_name('worker_only')
+
+		master.merge_worker_used_fns(worker)
+		assert master.used_fn_contains_name('worker_only')
+	}
+}
+
 fn test_skipped_literal_decl_does_not_hide_later_closure() {
 	mut a := flat.FlatAst.new()
 	a.add_node(flat.Node{

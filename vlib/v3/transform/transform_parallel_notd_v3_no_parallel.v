@@ -2233,11 +2233,10 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 	} $else {
 
 		// Generic body lowering can discover signatures, so generic builds use the
-		// cloned-worker path below. Self-host builds also use growable clones:
-		// metadata-driven expansions otherwise send most compiler functions to the
-		// serial fallback and require an expensive whole-program estimate first.
-		// Each worker owns its signature maps, and the deterministic merge publishes
-		// additions after all body work has joined.
+		// cloned-worker path below. Skip-generic builds, including self-hosts, can use
+		// the fixed shared regions: compiler interpolation expansion is bounded in
+		// transform_serial_then_collect_pure. Each worker owns its signature maps, and
+		// the deterministic merge publishes additions after all body work has joined.
 		if isnil(t.a.worker_pool) {
 			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
@@ -2256,7 +2255,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// Clone-free shared-base path: needs the checker's top-level index for
 		// exact per-item subtree ranges, and skip_generics (the generic passes
 		// scan and mutate arbitrary AST regions, which the shared design forbids).
-		if t.skip_generics && !t.building_v && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
+		if t.skip_generics && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
 			shared_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, items.len)
 			if shared_jobs > 1 {
 				return t.run_parallel_transform_shared(items, base_nodes, base_children, shared_jobs)
@@ -2546,6 +2545,12 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.shared_base_nodes = base_nodes
 		t.shared_base_children = base_children
 		t.node_context_read_only = true
+		// The caller transforms the first chunk while helpers run. Give every helper
+		// an immutable used-function root instead of making it read the caller's map
+		// while the caller records newly discovered helpers in that map.
+		previous_used_fns_root := t.used_fns_root
+		shared_used_fns := t.used_fns.clone()
+		t.used_fns_root = unsafe { &shared_used_fns }
 		t.timing_profile('  [ttime]     ss split+part  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		mut args := []SharedChunkArgs{len: chunk_count}
@@ -2696,6 +2701,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.defer_oor_writes = false
 		t.shared_base_nodes = -1
 		t.shared_base_children = -1
+		t.used_fns_root = previous_used_fns_root
 		t.flush_deferred_base_writes()
 		if t.ignored_comptime_for_log.len > 0 {
 			if t.ignored_comptime_for_nodes.len < t.a.nodes.len {

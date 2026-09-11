@@ -1874,6 +1874,16 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
+	internal_define_source := os.join_path(root, 'internal_define.v')
+	os.write_file(internal_define_source, "fn main() {\n\t\$if v3_backend ? {\n\t\tprintln('v3_backend_leaked_to_user')\n\t} \$else {\n\t\tprintln('v3_backend_stays_internal')\n\t}\n}\n")!
+	internal_define_c := os.join_path(root, 'internal_define.c')
+	internal_define_compile := cmdexec.run(v3_bin, ['-prealloc', '-o', internal_define_c,
+		internal_define_source])
+	assert internal_define_compile.exit_code == 0, internal_define_compile.output
+	internal_define_output := os.read_file(internal_define_c)!
+	assert internal_define_output.contains('prealloc_vinit();')
+	assert internal_define_output.contains('v3_backend_stays_internal')
+	assert !internal_define_output.contains('v3_backend_leaked_to_user')
 	verbose_output := os.join_path(root, 'hello_verbose.c')
 	verbose_compile := cmdexec.run(v3_bin, ['-nocache', '-v', '-o', verbose_output, source])
 	assert verbose_compile.exit_code == 0, verbose_compile.output
