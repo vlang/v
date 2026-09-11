@@ -13,7 +13,10 @@ struct ClosureMutex {
 
 @[inline]
 fn closure_mtx_ptr_platform() voidptr {
-	return unsafe { voidptr(&g_closure.closure_mtx[0]) }
+	// Explicit `ClosureMutex.` (instead of the promoted `g_closure.closure_mtx`)
+	// so the V3 C backend emits the embedded sub-struct access; the promoted
+	// path emits `g_closure.closure_mtx` which does not exist at the C level.
+	return unsafe { voidptr(&g_closure.ClosureMutex.closure_mtx[0]) }
 }
 
 @[inline]

@@ -515,6 +515,13 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 	branch_type := t.if_expr_branch_result_type(node)
 	if t.if_expr_branch_overrides_sum_target(branch_type, result_type) {
 		actual_result_type = branch_type
+	} else if actual_result_type == 'int' && branch_type != '' && branch_type != 'int'
+		&& branch_type != 'unknown' && branch_type != 'void' {
+		// In declaration contexts the target type defaults to int before the
+		// branch values are inspected. A default int target does not reflect a
+		// non-int merged branch type (e.g. an if-expression whose branches are
+		// generic f64 calls like math.min), so use the branch type itself.
+		actual_result_type = branch_type
 	}
 	tmp_name := t.new_temp('if_val')
 	outer_pending := t.pending_stmts.clone()
