@@ -16,13 +16,15 @@ fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('linux', 'arm64', true)
 }
 
-fn test_v3_windows_default_compiler_requires_bundled_tcc() {
+fn test_v3_windows_default_compiler_uses_implicit_tcc() {
 	bundled_tcc := os.join_path(os.temp_dir(), 'thirdparty', 'tcc', 'tcc.exe')
-	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', bundled_tcc, true) == bundled_tcc
-	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', bundled_tcc, false) == 'cc'
-	assert v3_select_windows_default_c_compiler('clang', true, 'windows', 'windows', bundled_tcc, true) == 'clang'
-	assert v3_select_windows_default_c_compiler('cc', false, 'linux', 'windows', bundled_tcc, true) == 'cc'
-	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'linux', bundled_tcc, true) == 'cc'
+	system_tcc := os.join_path(os.temp_dir(), 'bin', 'tcc.exe')
+	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', bundled_tcc) == bundled_tcc
+	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', system_tcc) == system_tcc
+	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', '') == 'cc'
+	assert v3_select_windows_default_c_compiler('clang', true, 'windows', 'windows', bundled_tcc) == 'clang'
+	assert v3_select_windows_default_c_compiler('cc', false, 'linux', 'windows', bundled_tcc) == 'cc'
+	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'linux', bundled_tcc) == 'cc'
 }
 
 fn test_v3_bundled_tcc_probe_eligibility() {

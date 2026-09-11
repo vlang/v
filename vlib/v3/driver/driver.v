@@ -6744,10 +6744,10 @@ fn v3_effective_c_compiler_for_codegen(backend string, c_compiler string, use_im
 	return effective_c_compiler_name(c_compiler, target)
 }
 
-fn v3_select_windows_default_c_compiler(c_compiler string, c_compiler_explicit bool, host_os string, target_os string, bundled_tcc string, bundled_tcc_available bool) string {
+fn v3_select_windows_default_c_compiler(c_compiler string, c_compiler_explicit bool, host_os string, target_os string, implicit_tcc string) string {
 	if !c_compiler_explicit && host_os == 'windows' && target_os == 'windows'
-		&& bundled_tcc_available {
-		return bundled_tcc
+		&& implicit_tcc != '' {
+		return implicit_tcc
 	}
 	return c_compiler
 }
@@ -9241,7 +9241,7 @@ pub fn run(args []string) {
 	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug
 		&& !c_compiler_explicit && target.os == host_target.os && target.arch == host_target.arch
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, bundled_tcc_available, allow_system_tcc, dump_c_flags.len > 0, host_os)
-	c_compiler = v3_select_windows_default_c_compiler(c_compiler, c_compiler_explicit, host_os, target.os, bundled_tcc, bundled_tcc_available)
+	c_compiler = v3_select_windows_default_c_compiler(c_compiler, c_compiler_explicit, host_os, target.os, implicit_tcc)
 	// Generate for the compiler that receives the first build attempt. If implicit
 	// TCC cannot be used, regenerate below before invoking the `cc` fallback.
 	use_implicit_tcc_semantics := backend == 'c' && !c_compiler_explicit && implicit_tcc != ''
@@ -9258,8 +9258,8 @@ pub fn run(args []string) {
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		return
 	}
-	// Windows selects its bundled TCC without an explicit `-cc`. Compiler flags
-	// follow that effective compiler, while retry policy still follows user intent.
+	// Windows selects its implicit bundled or system TCC without an explicit `-cc`.
+	// Compiler flags follow that effective compiler, while retry policy still follows user intent.
 	effective_tcc := backend in ['c', 'fastc'] && effective_c_compiler == 'tinyc'
 	explicit_tcc := c_compiler_explicit && effective_tcc
 	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, effective_tcc)
