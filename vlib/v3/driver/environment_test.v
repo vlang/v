@@ -43,10 +43,11 @@ fn test_v3_parallel_c_job_count() {
 }
 
 fn test_v3_parallel_c_unit_count() {
-	assert v3_parallel_c_unit_count(2, false, false) == 2 * v3_parallel_cc_units_per_job
-	assert v3_parallel_c_unit_count(2, true, false) == 2 * v3_parallel_cc_units_per_job
-	assert v3_parallel_c_unit_count(2, true, true) == bsd_selfhost_parallel_cc_unit_count
-	assert v3_parallel_c_unit_count(8, true, true) == bsd_selfhost_parallel_cc_unit_count
+	assert v3_parallel_c_unit_count(2, false, false, false) == 2 * v3_parallel_cc_units_per_job
+	assert v3_parallel_c_unit_count(2, true, false, true) == 2 * v3_parallel_cc_units_per_job
+	assert v3_parallel_c_unit_count(2, true, true, false) == 2 * v3_parallel_cc_units_per_job
+	assert v3_parallel_c_unit_count(2, true, true, true) == bsd_selfhost_parallel_cc_unit_count
+	assert v3_parallel_c_unit_count(8, true, true, true) == bsd_selfhost_parallel_cc_unit_count
 }
 
 fn test_v3_large_prod_c_unit_uses_the_compiled_unit_size() {

@@ -1399,10 +1399,18 @@ fn trace_c_object_cache(status string, key string, reason string, dependency_cou
 }
 
 fn c_object_dependencies(compiler string, compile_args []string, source_file string) CObjectDependencies {
+	return c_object_dependencies_in(compiler, compile_args, source_file, '')
+}
+
+fn c_object_dependencies_in(compiler string, compile_args []string, source_file string, work_dir string) CObjectDependencies {
 	mut args := compile_args.clone()
 	mt_target := 'v3cache'
 	args << ['-M', '-MT', mt_target, source_file]
-	result := cmdexec.run(compiler, args)
+	result := if work_dir.len > 0 {
+		cmdexec.run_in(compiler, args, work_dir)
+	} else {
+		cmdexec.run(compiler, args)
+	}
 	if result.exit_code != 0 {
 		return CObjectDependencies{
 			files: [source_file]
@@ -1868,14 +1876,14 @@ struct V3ParallelCCompileTask {
 	object_name     string
 	object_index    int
 mut:
-	args            []string
-	dependency_file string
-	request_object  string
-	manifest_path   string
-	result          os.Result
-	dependencies    CObjectDependencies
-	cache_object    string
-	cacheable       bool
+	args           []string
+	request_object string
+	manifest_path  string
+	cache_key      string
+	result         os.Result
+	dependencies   CObjectDependencies
+	cache_object   string
+	cacheable      bool
 }
 
 fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool, prod_parallel_cc bool) int {
@@ -1887,8 +1895,8 @@ fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool
 	return int_max(1, int_min(max_jobs, available_jobs))
 }
 
-fn v3_parallel_c_unit_count(job_count int, building_v bool, is_bsd_host bool) int {
-	if building_v && is_bsd_host {
+fn v3_parallel_c_unit_count(job_count int, building_v bool, is_bsd_host bool, prod_parallel_cc bool) int {
+	if building_v && is_bsd_host && prod_parallel_cc {
 		return bsd_selfhost_parallel_cc_unit_count
 	}
 	return job_count * v3_parallel_cc_units_per_job
@@ -1913,6 +1921,12 @@ fn (plan &V3CCompilerFlagPlan) all_flags(support_inputs []string) []string {
 fn run_v3_parallel_c_compile_task(raw_task voidptr) voidptr {
 	mut task := unsafe { &V3ParallelCCompileTask(raw_task) }
 	task.result = cmdexec.run_in(task.compiler, task.args, task.dir)
+	return unsafe { nil }
+}
+
+fn run_v3_parallel_c_dependency_task(raw_task voidptr) voidptr {
+	mut task := unsafe { &V3ParallelCCompileTask(raw_task) }
+	task.dependencies = c_object_dependencies_in(task.compiler, task.dependency_args, task.source_path, task.dir)
 	return unsafe { nil }
 }
 
@@ -1944,6 +1958,17 @@ fn publish_v3_parallel_c_cache_source(path string, source string) ! {
 			return error('failed to publish parallel C cache source ${path}: ${err}')
 		}
 	}
+}
+
+fn publish_v3_parallel_c_cache_object(local_object string, cache_object string) ! {
+	temporary_path := os.join_path_single(os.dir(cache_object), '.${os.base(cache_object)}.tmp.${tempname.unique_token()}')
+	defer {
+		os.rm(temporary_path) or {}
+	}
+	os.cp(local_object, temporary_path)!
+	// Both paths are inside the cache directory, so rename cannot fall back to
+	// exposing a partially copied object across filesystems.
+	os.rename(temporary_path, cache_object)!
 }
 
 fn v3_parallel_c_unit_source(header_path string, body string, owner bool) string {
@@ -2301,15 +2326,52 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 			}
 		}
 		task.args = compile_args.clone()
-		if task.cacheable {
-			task.dependency_file = os.join_path_single(build_dir, 'unit_${unit_index}.d')
-			task.args << ['-MD', '-MF', task.dependency_file, '-MT', 'v3cache']
-		}
 		task.args << ['-c', '-o', object_name, unit_path]
 		tasks << task
 	}
+	mut pool := workers.new(job_count)
+	mut dependency_work := []workers.Task{cap: tasks.len}
+	for task in tasks {
+		if task.cacheable {
+			dependency_work << workers.Task{
+				run: run_v3_parallel_c_dependency_task
+				arg: voidptr(task)
+			}
+		}
+	}
+	if dependency_work.len > 0 {
+		pool.run(dependency_work)
+	}
+	for mut task in tasks {
+		if !task.cacheable {
+			continue
+		}
+		cache_stats.dependency_scans++
+		cache_stats.dependency_files += task.dependencies.files.len
+		if task.dependencies.used_fallback {
+			cache_stats.dependency_scan_fallbacks++
+			task.cacheable = false
+			continue
+		}
+		task.cache_key = c_object_cache_name(task.request_object, c_compiler, task.dependency_args, task.dependencies.files, target, false, mut cache_stats)
+		task.cache_object = os.join_path_single(cache_root, task.cache_key)
+		if os.is_file(task.cache_object) {
+			cache_stats.content_key_hits++
+			objects[task.object_index] = task.cache_object
+			write_c_object_manifest(task.manifest_path, task.cache_object, task.dependencies.files, mut cache_stats) or {}
+			if show_command {
+				println('  > ${cmdexec.display(c_compiler, task.args)} (cached)')
+			}
+			task.args = []
+			continue
+		}
+		cache_stats.misses++
+	}
 	mut work := []workers.Task{cap: tasks.len}
 	for task in tasks {
+		if task.args.len == 0 {
+			continue
+		}
 		if show_command {
 			println('  > ${cmdexec.display(c_compiler, task.args)}')
 		}
@@ -2318,7 +2380,6 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 			arg: voidptr(task)
 		}
 	}
-	mut pool := workers.new(job_count)
 	if work.len > 0 {
 		pool.run(work)
 	}
@@ -2343,38 +2404,25 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	}
 	pool.close()
 	for mut task in tasks {
-		if !task.cacheable {
+		if !task.cacheable || task.args.len == 0 {
 			continue
 		}
-		dependency_output := os.read_file(task.dependency_file) or { '' }
-		os.rm(task.dependency_file) or {}
-		task.dependencies = c_object_dependencies_from_output(dependency_output, task.source_path)
-		cache_stats.dependency_scans++
-		cache_stats.dependency_files += task.dependencies.files.len
-		if task.dependencies.used_fallback {
-			cache_stats.dependency_scan_fallbacks++
+		post_key := c_object_cache_name(task.request_object, c_compiler, task.dependency_args, task.dependencies.files, target, true, mut cache_stats)
+		if post_key != task.cache_key {
+			cache_stats.input_snapshot_races++
+			trace_c_object_cache('bypass', task.cache_key, 'inputs changed during compilation; using build-local object', task.dependencies.files.len)
 			continue
 		}
-		cache_name := c_object_cache_name(task.request_object, c_compiler, task.dependency_args, task.dependencies.files, target, false, mut cache_stats)
-		task.cache_object = os.join_path_single(cache_root, cache_name)
 		local_object := os.join_path_single(build_dir, task.object_name)
 		if os.is_file(task.cache_object) {
-			os.rm(local_object) or {}
 			cache_stats.publish_races++
-		} else {
-			os.mv(local_object, task.cache_object) or {
-				if !os.is_file(task.cache_object) {
-					continue
-				}
-				os.rm(local_object) or {}
-				cache_stats.publish_races++
-			}
 		}
-		if os.is_file(task.cache_object) {
-			objects[task.object_index] = task.cache_object
-			write_c_object_manifest(task.manifest_path, task.cache_object, task.dependencies.files, mut cache_stats) or {}
-			cache_stats.misses++
+		publish_v3_parallel_c_cache_object(local_object, task.cache_object) or {
+			continue
 		}
+		os.rm(local_object) or {}
+		objects[task.object_index] = task.cache_object
+		write_c_object_manifest(task.manifest_path, task.cache_object, task.dependencies.files, mut cache_stats) or {}
 	}
 	mut link_inputs := objects.clone()
 	link_inputs << native_support_inputs
@@ -8836,7 +8884,7 @@ pub fn run(args []string) {
 	available_parallel_c_jobs := runtime.nr_jobs()
 	is_bsd_host := $if freebsd || openbsd || netbsd || dragonfly { true } $else { false }
 	parallel_c_job_count := v3_parallel_c_job_count(available_parallel_c_jobs, building_v, is_bsd_host, is_prod && parallel_cc)
-	parallel_c_unit_count := v3_parallel_c_unit_count(parallel_c_job_count, building_v, is_bsd_host)
+	parallel_c_unit_count := v3_parallel_c_unit_count(parallel_c_job_count, building_v, is_bsd_host, is_prod && parallel_cc)
 	if generate_c_project.len > 0 {
 		if backend != 'c' {
 			eprintln('`-generate-c-project` is currently supported only for the C backend')
