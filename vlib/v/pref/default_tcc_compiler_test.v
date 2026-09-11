@@ -203,6 +203,72 @@ fn test_try_to_use_tcc_by_default_does_not_probe_tcc_when_ineligible() {
 	assert !os.is_file(probe_marker)
 }
 
+fn test_try_to_use_tcc_by_default_requires_glibc_tcc_runtime() {
+	$if !linux {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_tcc_runtime_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	probe_marker := os.join_path(test_root, 'tcc_was_probed')
+	system_tcc := prepare_test_executable(test_root, 'bin/tcc', 'printf probed > ${os.quoted_path(probe_marker)}\nexit 0')
+	fake_vexe := os.join_path(test_root, 'v')
+	old_vexe := os.getenv('VEXE')
+	old_path := os.getenv('PATH')
+	os.setenv('VEXE', fake_vexe, true)
+	os.setenv('PATH', os.dir(system_tcc), true)
+	defer {
+		if old_vexe == '' {
+			os.unsetenv('VEXE')
+		} else {
+			os.setenv('VEXE', old_vexe, true)
+		}
+		os.setenv('PATH', old_path, true)
+		os.rmdir_all(test_root) or {}
+	}
+	mut prefs := Preferences{
+		os: .linux
+		is_glibc: true
+		gc_mode: .boehm_full_opt
+	}
+	prefs.try_to_use_tcc_by_default()
+	assert prefs.ccompiler == ''
+	assert !os.is_file(probe_marker)
+	libgc := os.join_path(test_root, 'thirdparty', 'tcc', 'lib', 'libgc.a')
+	os.mkdir_all(os.dir(libgc)) or { panic(err) }
+	os.write_file(libgc, '') or { panic(err) }
+	prefs.try_to_use_tcc_by_default()
+	assert prefs.ccompiler == system_tcc
+	assert os.is_file(probe_marker)
+}
+
+fn test_system_tcc_runtime_available_requires_glibc_boehm_archive() {
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_system_tcc_runtime_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	prefs := Preferences{
+		os: .linux
+		is_glibc: true
+		gc_mode: .boehm_full_opt
+	}
+	assert !prefs.system_tcc_runtime_available(test_root)
+	libgc := os.join_path(test_root, 'thirdparty', 'tcc', 'lib', 'libgc.a')
+	os.mkdir_all(os.dir(libgc)) or { panic(err) }
+	os.write_file(libgc, '') or { panic(err) }
+	assert prefs.system_tcc_runtime_available(test_root)
+	assert Preferences{
+		os: .linux
+		is_musl: true
+		gc_mode: .boehm_full_opt
+	}.system_tcc_runtime_available(test_root)
+	assert Preferences{
+		os: .linux
+		is_glibc: true
+		gc_mode: .no_gc
+	}.system_tcc_runtime_available(test_root)
+}
+
 fn test_try_to_use_tcc_by_default_skips_bundled_tcc_on_macos() {
 	$if !macos {
 		return

@@ -550,7 +550,19 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 	if get_host_os() == .macos {
 		return
 	}
-	p.ccompiler = default_tcc_compiler()
+	vroot := os.dir(vexe_path())
+	p.ccompiler = preferred_tcc_compiler(vroot, p.system_tcc_runtime_available(vroot))
+}
+
+fn (p &Preferences) system_tcc_runtime_available(vroot string) bool {
+	uses_boehm := p.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt,
+		.boehm_leak]
+	if p.os != .linux || !p.is_glibc || !uses_boehm
+		|| 'dynamic_boehm' in p.compile_defines_all
+		|| 'use_bundled_libgc' in p.compile_defines_all {
+		return true
+	}
+	return os.is_file(os.join_path(vroot, 'thirdparty', 'tcc', 'lib', 'libgc.a'))
 }
 
 fn usable_system_tcc_compiler() string {
@@ -579,9 +591,16 @@ fn usable_bundled_tcc_compiler(vroot string) string {
 pub fn default_tcc_compiler() string {
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
+	return preferred_tcc_compiler(vroot, true)
+}
+
+fn preferred_tcc_compiler(vroot string, allow_system_tcc bool) string {
 	bundled_tcc := usable_bundled_tcc_compiler(vroot)
 	if bundled_tcc != '' {
 		return bundled_tcc
+	}
+	if !allow_system_tcc {
+		return ''
 	}
 	return usable_system_tcc_compiler()
 }
