@@ -109,10 +109,10 @@ pub fn (mut h Hash256) write(msg []u8) !int {
 // clone returns the clone of the current Hash256
 fn (h &Hash256) clone() &Hash256 {
 	digest := Digest{
-		State:  h.Digest.State
-		buf:    h.Digest.buf.clone()
+		State: h.Digest.State
+		buf: h.Digest.buf.clone()
 		length: h.Digest.length
-		done:   h.Digest.done
+		done: h.Digest.done
 	}
 	return &Hash256{digest}
 }

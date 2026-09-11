@@ -58,16 +58,6 @@ fn ct_copy_internal(v int, mut x []u8, y []u8, at int) {
 	}
 }
 
-// portable little-endian helper
-@[inline]
-fn u64le(x u64) u64 {
-	$if little_endian {
-		return x
-	}
-	// otherwise, change into little-endian format
-	return ((u64(0x00000000000000FF) & x) << 56) | ((u64(0x000000000000FF00) & x) << 40) | ((u64(0x0000000000FF0000) & x) << 24) | ((u64(0x00000000FF000000) & x) << 8) | ((u64(0x000000FF00000000) & x) >> 8) | ((u64(0x0000FF0000000000) & x) >> 24) | ((u64(0x00FF000000000000) & x) >> 40) | ((u64(0xFF00000000000000) & x) >> 56)
-}
-
 @[inline]
 fn get_byte(x u64, i int) u8 {
 	return u8(x >> (8 * i))
