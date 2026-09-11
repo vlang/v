@@ -31,17 +31,17 @@ can compile the full builtin map.v.
 
 ## V3 dispatch
 
-On macOS, BSD, Linux, and Windows, V3 is the default compiler for user source and test builds. The
-top-level `v` command runs the V3 driver linked into `cmd/v`; it does not build or launch a second
-compiler process. This includes direct file and directory builds, `run`, `build`, and test-file
-compilation, plus production and shared builds and supported cross targets and backends. The
-`test` command itself continues to use the established test dispatcher, while each discovered
-test file is compiled by V3.
+On every native platform, V3 is the default compiler for user source and test builds. The top-level
+`v` command runs the V3 driver linked into `cmd/v`; it does not build or launch a second compiler
+process. This includes direct file and directory builds, `run`, `build`, and test-file compilation,
+plus production and shared builds and supported cross targets and backends. The `test` command
+itself continues to use the established test dispatcher, while each discovered test file is
+compiled by V3.
 
-`cmd/v` remains the full CLI and tool dispatcher. On these platforms it links V3, but does not
-link the established compiler in `vlib/v`; its own build and every other direct C build therefore
-use V3. Commands such as `test` remain external tools, while each discovered test file is compiled
-by V3. Non-C backends remain separate builder tools.
+`cmd/v` remains the full CLI and tool dispatcher. Native builds link V3, but do not link the
+established compiler in `vlib/v`; their own build and every other direct C build therefore use V3.
+Commands such as `test` remain external tools, while each discovered test file is compiled by V3.
+Non-C backends remain separate builder tools.
 
 `-new-compiler` remains accepted for command-line compatibility and normally selects the same
 in-process V3 driver. The standard bootstrap also builds `v1_fallback` (`v1_fallback.exe` on
@@ -81,8 +81,9 @@ compiler-tree and self-host builds stop at 9984 MiB, leaving extra sampling head
 10 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
-On macOS, Linux, and BSD, `make` and the default `v self` build the compiler with `-prealloc`,
-enabling the disposable stage arenas that keep compiler self-hosting within that ceiling.
+Native compiler and `v self` builds use `-prealloc` when their target and selected C compiler
+support it, enabling the disposable stage arenas that keep compiler self-hosting within that
+ceiling.
 Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.

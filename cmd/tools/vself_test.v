@@ -192,8 +192,8 @@ fn test_bsd_self_build_uses_system_cc_and_v3_safeguards() {
 	assert_vself_preserves_full_cli(tinyc_result.output)
 }
 
-fn test_plain_self_replacement_preserves_cli_and_embedded_v3() {
-	$if !bsd && !linux {
+fn test_other_native_host_self_replacement_preserves_cli_and_embedded_v3() {
+	$if windows {
 		return
 	}
 	root := os.join_path(os.vtmp_dir(), 'vself_full_cli_replacement_${os.getpid()}')
@@ -214,7 +214,7 @@ fn test_plain_self_replacement_preserves_cli_and_embedded_v3() {
 	mock_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
 	assert mock_build.exit_code == 0, mock_build.output
 	vself_tool := os.join_path(root, 'vself')
-	vself_build := os.execute('${os.quoted_path(vexe)} -d vself_test_bsd_transition -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
+	vself_build := os.execute('${os.quoted_path(vexe)} -nocache -d vself_test_other_transition -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert vself_build.exit_code == 0, vself_build.output
 
 	self_result := os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')
@@ -263,7 +263,7 @@ fn test_windows_plain_self_transition_installs_exe_fallback() {
 	mock_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
 	assert mock_build.exit_code == 0, mock_build.output
 	vself_tool := os.join_path(root, 'vself')
-	vself_build := os.execute('${os.quoted_path(vexe)} -d vself_test_windows_transition -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
+	vself_build := os.execute('${os.quoted_path(vexe)} -nocache -d vself_test_windows_transition -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
 	assert vself_build.exit_code == 0, vself_build.output
 
 	self_result := os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')

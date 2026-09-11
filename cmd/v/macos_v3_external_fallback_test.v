@@ -31,7 +31,7 @@ fn write_v3_rejecting_c_compiler(path string) ! {
 }
 
 fn test_macos_v3_uses_external_v1_fallback_after_c_compilation_error() {
-	$if bsd || linux {
+	$if !windows {
 		vroot := os.dir(@VEXE)
 		fallback := os.join_path(vroot, macos_v3_v1_fallback_binary)
 		// Developer/compiler-only test builds do not necessarily come through make.

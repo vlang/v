@@ -51,7 +51,6 @@ endif
 
 ifeq ($(_SYS),Linux)
 LINUX := 1
-V1_FALLBACK_BUILD := 1
 TCCOS := linux
 ifneq ($(shell ldd --version 2>&1 | grep -i musl),)
 TCCOS := linuxmusl
@@ -60,7 +59,6 @@ endif
 
 ifeq ($(_SYS),Darwin)
 MAC := 1
-V1_FALLBACK_BUILD := 1
 TCCOS := macos
 ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 16), 1)
 LEGACY := 1
@@ -75,32 +73,24 @@ endif
 endif
 
 ifeq ($(_SYS),FreeBSD)
-V1_FALLBACK_BUILD := 1
 TCCOS := freebsd
 LDFLAGS += -lexecinfo
 endif
 
 ifeq ($(_SYS),NetBSD)
 NETBSD := 1
-V1_FALLBACK_BUILD := 1
 TCCOS := netbsd
 LDFLAGS += -lexecinfo
 endif
 
 ifeq ($(_SYS),OpenBSD)
-V1_FALLBACK_BUILD := 1
 TCCOS := openbsd
 LDFLAGS += -lexecinfo
-endif
-
-ifeq ($(_SYS),DragonFly)
-V1_FALLBACK_BUILD := 1
 endif
 
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
-undefine V1_FALLBACK_BUILD
 TCCOS := android
 ifneq ($(wildcard $(PREFIX)/lib/libexecinfo.*),)
 LDFLAGS += -lexecinfo
@@ -245,11 +235,9 @@ endif
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
 endif
-ifdef V1_FALLBACK_BUILD
 	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m $(V1_FALLBACK_EXE)
-endif
 endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD

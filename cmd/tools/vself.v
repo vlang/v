@@ -66,7 +66,7 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && self_build_uses_embedded_v3(host_os) && '-prod' in effective_args
+	if !fastc_self_build && '-prod' in effective_args
 		&& '-parallel-cc' !in effective_args {
 		// A V3-only cmd/v is large enough that a monolithic C compiler + LTO dominates
 		// the self-build. Parallel C compilation also keeps the generated unit out
@@ -74,15 +74,15 @@ fn main() {
 		args << '-parallel-cc'
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && self_build_uses_embedded_v3(host_os) && '-prod' in effective_args
+	if !fastc_self_build && '-prod' in effective_args
 		&& '-no-memory-limit' !in effective_args && '--no-memory-limit' !in effective_args {
 		// Production C generation for the embedded V3 compiler can legitimately
 		// exceed V3's default 10 GB process limit before the native compiler starts.
 		args << '-no-memory-limit'
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && self_build_uses_embedded_v3(host_os)
-		&& self_build_supports_prealloc(effective_args, host_os) && !has_prealloc_arg(effective_args) {
+	if !fastc_self_build && self_build_supports_prealloc(effective_args, host_os)
+		&& !has_prealloc_arg(effective_args) {
 		// The embedded V3 compiler uses disposable preallocation scopes. Pass the
 		// flag explicitly so the first `v up` built by an older compiler gets
 		// the bounded-memory implementation too.
@@ -359,8 +359,7 @@ fn self_build_supports_prealloc(args []string, host_os string) bool {
 		}
 		i++
 	}
-	return self_build_uses_embedded_v3(target_os) && gc == 'none'
-		&& self_ccompiler_supports_prealloc(ccompiler, target_os)
+	return gc == 'none' && self_ccompiler_supports_prealloc(ccompiler, target_os)
 }
 
 fn self_ccompiler_supports_prealloc(ccompiler string, target_os string) bool {
@@ -494,17 +493,13 @@ fn self_build_host_os() string {
 	$if vself_test_bsd_transition ? {
 		return 'freebsd'
 	}
+	$if vself_test_other_transition ? {
+		return 'haiku'
+	}
 	return os.user_os()
 }
 
-fn self_build_uses_embedded_v3(host_os string) bool {
-	return host_os in ['linux', 'macos', 'windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
-}
-
 fn install_missing_v1_fallback(vroot string, compiler string, args []string, host_os string) ! {
-	if host_os !in ['windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
-		return
-	}
 	exe_ext := if host_os == 'windows' { '.exe' } else { '' }
 	fallback := os.join_path(vroot, '${v1_fallback_binary}${exe_ext}')
 	if os.is_executable(fallback) {
