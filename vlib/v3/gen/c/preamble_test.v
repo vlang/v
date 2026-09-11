@@ -152,6 +152,8 @@ fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	assert c_code.contains('typedef __darwin_pthread_t pthread_t;'), c_code
 	assert c_code.contains('typedef __darwin_pthread_key_t pthread_key_t;'), c_code
 	assert c_code.contains('#define PTHREAD_MUTEX_INITIALIZER { 0x32AAABA7, { 0 } }'), c_code
+	assert c_code.contains('#define PTHREAD_ONCE_INIT { 0x30B1BCBA, { 0 } }'), c_code
+	assert c_code.contains('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));'), c_code
 	assert c_code.contains('int pthread_equal(pthread_t t1, pthread_t t2);'), c_code
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0'), c_code
 }
