@@ -95,6 +95,11 @@ fn test_comptime_flags_use_target_instead_of_host() {
 	assert !comptime_flag_value(prefs, 'android')
 	assert comptime_flag_value(prefs, 'posix')
 
+	prefs.target = target_from('ios', 'arm64') or { panic(err) }
+	assert comptime_flag_value(prefs, 'ios')
+	assert !comptime_flag_value(prefs, 'macos')
+	assert comptime_flag_value(prefs, 'posix')
+
 	prefs.target = target_from('wasm32_emscripten', 'wasm32') or { panic(err) }
 	assert comptime_flag_value(prefs, 'wasm32_emscripten')
 	assert comptime_flag_value(prefs, 'wasm32')
@@ -172,7 +177,8 @@ fn test_source_selection_uses_target_os_and_arch() {
 		os.rmdir_all(dir) or {}
 	}
 	for name in ['common.v', 'cpu_amd64.v', 'cpu_arm64.v', 'cpu.i386.v', 'cpu.i686.v', 'cpu.ppc.v',
-		'cpu.rv32.v', 'cpu.rv64.v', 'cpu.sparc64.v', 'sys_linux.v', 'sys_macos.v', 'sys_solaris.v'] {
+		'cpu.rv32.v', 'cpu.rv64.v', 'cpu.sparc64.v', 'sys_ios.v', 'sys_linux.v', 'sys_macos.v',
+		'sys_solaris.v'] {
 		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
 	}
 
@@ -185,6 +191,11 @@ fn test_source_selection_uses_target_os_and_arch() {
 	selected = get_v_files_from_dir_for_target(dir, [], macos_amd64).map(os.base(it))
 	selected.sort()
 	assert selected == ['common.v', 'cpu_amd64.v', 'sys_macos.v']
+
+	ios_arm64 := target_from('ios', 'arm64') or { panic(err) }
+	selected = get_v_files_from_dir_for_target(dir, [], ios_arm64).map(os.base(it))
+	selected.sort()
+	assert selected == ['common.v', 'cpu_arm64.v', 'sys_ios.v']
 
 	linux_riscv64 := target_from('linux', 'riscv64') or { panic(err) }
 	selected = get_v_files_from_dir_for_target(dir, [], linux_riscv64).map(os.base(it))

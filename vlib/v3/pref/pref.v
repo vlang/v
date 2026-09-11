@@ -1017,6 +1017,9 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'macos', 'darwin', 'mac' {
 			return p.normalized_target_os() == 'macos'
 		}
+		'ios' {
+			return p.normalized_target_os() == 'ios'
+		}
 		'linux' {
 			return p.normalized_target_os() == 'linux'
 		}

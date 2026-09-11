@@ -525,6 +525,9 @@ pub fn user_os() string {
 	$if linux {
 		return 'linux'
 	}
+	$if ios {
+		return 'ios'
+	}
 	$if macos {
 		return 'macos'
 	}
