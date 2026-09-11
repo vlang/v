@@ -237,16 +237,18 @@ fn test_macos_v3_forwarded_args_strip_only_compiler_selection() {
 	assert run_forwarded.last() == '-new-compiler'
 }
 
-fn test_macos_v3_forwarded_args_propagate_detected_musl() {
+fn test_macos_v3_forwarded_args_propagate_resolved_libc() {
 	musl_args := macos_v3_forwarded_args(&pref.Preferences{
 		is_musl: true
 	}, ['-musl', 'main.v'])
 	assert '-dmusl' in musl_args
+	assert '-dglibc' !in musl_args
 	assert '-musl' !in musl_args
 
 	glibc_args := macos_v3_forwarded_args(&pref.Preferences{
 		is_glibc: true
 	}, ['-glibc', 'main.v'])
+	assert '-dglibc' in glibc_args
 	assert '-dmusl' !in glibc_args
 	assert '-glibc' !in glibc_args
 
@@ -258,6 +260,7 @@ fn test_macos_v3_forwarded_args_propagate_detected_musl() {
 	assert run_args.count(it == '-musl') == 1
 	assert run_args.count(it == '-glibc') == 1
 	assert '-dmusl' in run_args
+	assert '-dglibc' !in run_args
 }
 
 fn test_macos_v3_forwarded_args_preserve_compatibility_aliases() {
