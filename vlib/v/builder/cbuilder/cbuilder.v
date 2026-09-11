@@ -88,7 +88,14 @@ pub fn gen_c(mut b builder.Builder, v_files []string) strings.Builder {
 	if b.pref.parallel_cc {
 		b.cc() // Call it just to gen b.str_args
 		util.timing_start('Parallel C compilation')
-		parallel_cc(mut b, result) or { builder.verror(err.msg()) }
+		parallel_cc(mut b, result) or {
+			util.timing_measure('Parallel C compilation')
+			ccompiler := parallel_cc_compiler_path(b)
+			if b.retry_failed_tcc_compilation(ccompiler, err.msg()) {
+				return result.res_builder
+			}
+			builder.verror(err.msg())
+		}
 		util.timing_measure('Parallel C compilation')
 	}
 

@@ -16,33 +16,258 @@ fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('linux', 'arm64', true)
 }
 
-fn test_v3_prefers_bundled_tcc_for_debug_selfhost() {
-	host := pref.host_target()
-	assert v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(false, 'c', false, false, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'fastc', false, false, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', true, false, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, true, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, true, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, true, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false, host, false)
-}
-
-fn test_v3_windows_default_compiler_requires_bundled_tcc() {
+fn test_v3_default_compiler_uses_implicit_tcc() {
 	bundled_tcc := os.join_path(os.temp_dir(), 'thirdparty', 'tcc', 'tcc.exe')
-	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', bundled_tcc, true) == bundled_tcc
-	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', bundled_tcc, false) == 'cc'
-	assert v3_select_windows_default_c_compiler('clang', true, 'windows', 'windows', bundled_tcc, true) == 'clang'
-	assert v3_select_windows_default_c_compiler('cc', false, 'linux', 'windows', bundled_tcc, true) == 'cc'
-	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'linux', bundled_tcc, true) == 'cc'
+	system_tcc := os.join_path(os.temp_dir(), 'bin', 'tcc.exe')
+	assert v3_select_implicit_c_compiler('cc', false, bundled_tcc) == bundled_tcc
+	assert v3_select_implicit_c_compiler('cc', false, system_tcc) == system_tcc
+	assert v3_select_implicit_c_compiler('cc', false, '') == 'cc'
+	assert v3_select_implicit_c_compiler('clang', true, bundled_tcc) == 'clang'
 }
 
-fn test_v3_regenerates_cc_fallback_after_preferred_tcc() {
-	assert !v3_should_regenerate_for_cc_fallback(false, false, 0)
-	assert !v3_should_regenerate_for_cc_fallback(false, true, 1)
-	assert !v3_should_regenerate_for_cc_fallback(true, true, 0)
-	assert v3_should_regenerate_for_cc_fallback(true, true, 1)
-	assert v3_should_regenerate_for_cc_fallback(true, false, 0)
+fn test_v3_platform_c_compiler() {
+	assert v3_platform_c_compiler('windows') == 'gcc'
+	assert v3_platform_c_compiler('linux') == 'cc'
+	assert v3_platform_c_compiler('macos') == 'cc'
+}
+
+fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
+	implicit_tcc := os.join_path(os.temp_dir(), 'bin', 'tcc')
+	assert c_source_object_compiler('', implicit_tcc, true, 'linux') == implicit_tcc
+	assert c_source_object_compiler('objective-c', implicit_tcc, true, 'linux') == 'cc'
+	assert c_source_object_compiler('objective-c', implicit_tcc, true, 'windows') == 'gcc'
+	assert c_source_object_compiler('c++', implicit_tcc, true, 'linux') == 'c++'
+	assert c_source_object_compiler('objective-c++', implicit_tcc, true, 'linux') == 'c++'
+	assert c_source_object_compiler('objective-c', 'cc', false, 'linux') == 'cc'
+	assert c_source_object_compiler('c++', 'cc', false, 'linux') == 'c++'
+	assert c_source_object_compiler('objective-c', 'clang', false, 'linux') == 'clang'
+	assert c_source_object_compiler('c++', 'clang', false, 'linux') == 'clang'
+	assert c_source_object_compiler('objective-c', 'tcc', false, 'linux') == 'tcc'
+	assert c_source_object_compiler('c++', 'tcc', false, 'linux') == 'tcc'
+}
+
+fn test_v3_bundled_tcc_probe_eligibility() {
+	linux_target := pref.Target{
+		os: 'linux'
+		arch: 'amd64'
+	}
+	bundled_tcc := os.join_path(os.vtmp_dir(), 'v3_probe_eligibility', 'thirdparty', 'tcc', 'tcc.exe')
+	base := V3BundledTccProbeOptions{
+		backend: 'c'
+		c_compiler: 'cc'
+		host_os: 'linux'
+		host_target: linux_target
+		target: linux_target
+		bundled_tcc: bundled_tcc
+	}
+	assert v3_should_probe_bundled_tcc(base)
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		backend: 'wasm'
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_only: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_c_debug: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		dump_c_flags: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		parallel_cc: true
+	})
+	windows_target := pref.Target{
+		os: 'windows'
+		arch: 'amd64'
+	}
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		parallel_cc: true
+		host_os: 'windows'
+		host_target: windows_target
+		target: windows_target
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: 'tcc'
+		c_compiler_explicit: true
+		dump_c_flags: true
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: 'tcc'
+		c_compiler_explicit: true
+		parallel_cc: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: 'clang'
+		c_compiler_explicit: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		target: pref.Target{
+			os: 'linux'
+			arch: 'arm64'
+		}
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod: true
+		c_compiler: 'tcc'
+		c_compiler_explicit: true
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: bundled_tcc
+		c_compiler_explicit: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: os.join_path(os.vtmp_dir(), 'bin', 'tcc')
+		c_compiler_explicit: true
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod: true
+		is_c_debug: true
+		host_os: 'windows'
+		host_target: windows_target
+		target: windows_target
+	})
+}
+
+fn test_v3_bundled_tcc_probe_does_not_run_when_ineligible() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v3_bundled_tcc_probe_${os.getpid()}')
+	probe_marker := os.join_path(test_root, 'tcc_was_probed')
+	bundled_tcc := os.join_path(test_root, 'thirdparty', 'tcc', 'tcc.exe')
+	os.mkdir_all(os.dir(bundled_tcc)) or { panic(err) }
+	os.write_file(bundled_tcc, '#!/bin/sh\nprintf probed > ${os.quoted_path(probe_marker)}\nexit 0\n') or { panic(err) }
+	os.chmod(bundled_tcc, 0o700) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	linux_target := pref.Target{
+		os: 'linux'
+		arch: 'amd64'
+	}
+	base := V3BundledTccProbeOptions{
+		backend: 'c'
+		c_compiler: 'cc'
+		host_os: 'linux'
+		host_target: linux_target
+		target: linux_target
+		bundled_tcc: bundled_tcc
+	}
+	assert !v3_bundled_tcc_available(V3BundledTccProbeOptions{
+		...base
+		is_prod: true
+	})
+	assert !os.is_file(probe_marker)
+	assert v3_bundled_tcc_available(base)
+	assert os.is_file(probe_marker)
+}
+
+fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v3_default_system_tcc_${os.getpid()}')
+	system_tcc := write_v3_test_tcc(os.join_path(test_root, 'bin', 'tcc'), 0)
+	old_path := os.getenv_opt('PATH')
+	os.setenv('PATH', os.dir(system_tcc), true)
+	defer {
+		if value := old_path {
+			os.setenv('PATH', value, true)
+		} else {
+			os.unsetenv('PATH')
+		}
+		os.rmdir_all(test_root) or {}
+	}
+	bundled_tcc := write_v3_test_tcc(os.join_path(test_root, 'thirdparty', 'tcc', 'tcc.exe'), 1)
+	assert !v3_usable_tcc_compiler(bundled_tcc)
+	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux')
+	assert implicit_tcc == system_tcc
+	assert v3_effective_c_compiler_for_codegen('c', 'cc', implicit_tcc != '', pref.host_target()) == 'tinyc'
+	write_v3_test_tcc(bundled_tcc, 0)
+	assert v3_usable_tcc_compiler(bundled_tcc)
+	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux') == bundled_tcc
+	assert v3_default_tcc_compiler(bundled_tcc, true, true, true, 'linux') == ''
+	assert v3_default_tcc_compiler(bundled_tcc, false, false, false, 'linux') == ''
+	assert v3_default_tcc_compiler(bundled_tcc, false, true, false, 'macos') == ''
+}
+
+fn test_v3_default_tcc_compiler_skips_broken_system_tcc() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v3_broken_system_tcc_${os.getpid()}')
+	system_tcc := write_v3_test_tcc(os.join_path(test_root, 'bin', 'tcc'), 1)
+	old_path := os.getenv_opt('PATH')
+	os.setenv('PATH', os.dir(system_tcc), true)
+	defer {
+		if value := old_path {
+			os.setenv('PATH', value, true)
+		} else {
+			os.unsetenv('PATH')
+		}
+		os.rmdir_all(test_root) or {}
+	}
+	bundled_tcc := os.join_path(test_root, 'missing', 'tcc.exe')
+	assert v3_default_tcc_compiler(bundled_tcc, false, true, false, 'linux') == ''
+}
+
+fn test_v3_system_tcc_does_not_use_bundled_resources() {
+	vroot := os.join_path(os.temp_dir(), 'v3_system_tcc_resources')
+	bundled_tcc := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	system_tcc := os.join_path(os.path_separator, 'usr', 'bin', 'tcc')
+	resources := v3_tcc_resource_flags_for_compiler(vroot, system_tcc, bundled_tcc, false)
+	assert resources == V3TccResourceFlags{}
+	bundled_resources := v3_tcc_resource_flags_for_compiler(vroot, bundled_tcc, bundled_tcc, true)
+	assert bundled_resources.base_arg.contains('thirdparty')
+}
+
+fn test_v3_system_tcc_runtime_requires_windows_openlibm() {
+	test_root := os.join_path(os.vtmp_dir(), 'v3_system_tcc_runtime_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	assert v3_system_tcc_runtime_available(test_root, 'linux')
+	assert !v3_system_tcc_runtime_available(test_root, 'windows')
+	openlibm := os.join_path(test_root, 'thirdparty', 'tcc', 'lib', 'openlibm.o')
+	os.mkdir_all(os.dir(openlibm)) or { panic(err) }
+	os.write_file(openlibm, '') or { panic(err) }
+	assert v3_system_tcc_runtime_available(test_root, 'windows')
+}
+
+fn test_v3_regenerates_cc_fallback_after_implicit_tcc() {
+	assert !v3_should_regenerate_after_implicit_tcc(true, false, false, 0)
+	assert !v3_should_regenerate_after_implicit_tcc(true, false, true, 1)
+	assert !v3_should_regenerate_after_implicit_tcc(true, true, true, 0)
+	assert v3_should_regenerate_after_implicit_tcc(true, true, true, 1)
+	assert v3_should_regenerate_after_implicit_tcc(true, true, false, 0)
+	assert !v3_should_regenerate_after_implicit_tcc(false, true, true, 1)
+	assert !v3_should_regenerate_after_implicit_tcc(false, true, false, 0)
+}
+
+fn write_v3_test_tcc(tcc_path string, exit_code int) string {
+	os.mkdir_all(os.dir(tcc_path)) or { panic(err) }
+	os.write_file(tcc_path, '#!/bin/sh\nexit ${exit_code}\n') or { panic(err) }
+	os.chmod(tcc_path, 0o700) or { panic(err) }
+	return tcc_path
 }
 
 fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
