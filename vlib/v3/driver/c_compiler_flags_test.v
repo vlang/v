@@ -58,6 +58,16 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 	})
 	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
+		dump_c_flags: true
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: 'tcc'
+		c_compiler_explicit: true
+		dump_c_flags: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
 		c_compiler: 'clang'
 		c_compiler_explicit: true
 	})
@@ -150,14 +160,15 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 	}
 	bundled_tcc := write_v3_test_tcc(os.join_path(test_root, 'thirdparty', 'tcc', 'tcc.exe'), 1)
 	assert !v3_usable_tcc_compiler(bundled_tcc)
-	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, 'linux')
+	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux')
 	assert implicit_tcc == system_tcc
 	assert v3_effective_c_compiler_for_codegen('c', 'cc', implicit_tcc != '', pref.host_target()) == 'tinyc'
 	write_v3_test_tcc(bundled_tcc, 0)
 	assert v3_usable_tcc_compiler(bundled_tcc)
-	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, 'linux') == bundled_tcc
-	assert v3_default_tcc_compiler(bundled_tcc, false, false, 'linux') == ''
-	assert v3_default_tcc_compiler(bundled_tcc, false, true, 'macos') == ''
+	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, false, 'linux') == bundled_tcc
+	assert v3_default_tcc_compiler(bundled_tcc, true, true, true, 'linux') == ''
+	assert v3_default_tcc_compiler(bundled_tcc, false, false, false, 'linux') == ''
+	assert v3_default_tcc_compiler(bundled_tcc, false, true, false, 'macos') == ''
 }
 
 fn test_v3_default_tcc_compiler_skips_broken_system_tcc() {
@@ -177,7 +188,7 @@ fn test_v3_default_tcc_compiler_skips_broken_system_tcc() {
 		os.rmdir_all(test_root) or {}
 	}
 	bundled_tcc := os.join_path(test_root, 'missing', 'tcc.exe')
-	assert v3_default_tcc_compiler(bundled_tcc, false, true, 'linux') == ''
+	assert v3_default_tcc_compiler(bundled_tcc, false, true, false, 'linux') == ''
 }
 
 fn test_v3_system_tcc_does_not_use_bundled_resources() {
