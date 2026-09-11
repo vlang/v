@@ -240,13 +240,24 @@ fn test_macos_v3_forwarded_args_strip_only_compiler_selection() {
 fn test_macos_v3_forwarded_args_propagate_detected_musl() {
 	musl_args := macos_v3_forwarded_args(&pref.Preferences{
 		is_musl: true
-	}, ['main.v'])
+	}, ['-musl', 'main.v'])
 	assert '-dmusl' in musl_args
+	assert '-musl' !in musl_args
 
 	glibc_args := macos_v3_forwarded_args(&pref.Preferences{
 		is_glibc: true
-	}, ['main.v'])
+	}, ['-glibc', 'main.v'])
 	assert '-dmusl' !in glibc_args
+	assert '-glibc' !in glibc_args
+
+	run_args := macos_v3_forwarded_args(&pref.Preferences{
+		is_run: true
+		is_musl: true
+		run_args: ['-musl', '-glibc']
+	}, ['-musl', 'run', 'main.v', '-musl', '-glibc'])
+	assert run_args.count(it == '-musl') == 1
+	assert run_args.count(it == '-glibc') == 1
+	assert '-dmusl' in run_args
 }
 
 fn test_macos_v3_forwarded_args_preserve_compatibility_aliases() {
