@@ -314,3 +314,31 @@ fn test_new_key_from_seed_rejects_bad_sizes() ! {
 		assert err.msg() == 'seed size doesnt match with curve key size'
 	}
 }
+
+// test_new_key_from_seed_fixed_size_leading_zero_seed_keeps_width locks in
+// the rule behind the fixed_size round trip on BOTH backends: a .fixed key's
+// bytes() is always the curve's full width, zero-padded, even when the
+// scalar's own top byte(s) are zero -- so it always reloads with
+// `fixed_size: true`. Deterministic, unlike a random keygen where a
+// leading-zero scalar only shows up ~1/2 of the time on P-521 and ~1/256
+// on P-256 (the flake the OpenSSL backend's bytes() used to have).
+fn test_new_key_from_seed_fixed_size_leading_zero_seed_keeps_width() ! {
+	for nid, size in {
+		Nid.prime256v1: 32
+		.secp384r1:     48
+		.secp521r1:     66
+		.secp256k1:     32
+	} {
+		mut seed := []u8{len: size, init: 0x5a}
+		seed[0] = 0
+		seed[1] = 0
+		key := new_key_from_seed(seed, nid: nid, fixed_size: true)!
+		got := key.bytes()!
+		assert got.len == size, 'bytes() must be ${size} wide on ${nid}, got ${got.len}'
+		assert got == seed, 'bytes() must round-trip the zero-padded seed on ${nid}'
+		reloaded := new_key_from_seed(got, nid: nid, fixed_size: true)!
+		assert key.equal(reloaded), 'reloaded key differs on ${nid}'
+		reloaded.free()
+		key.free()
+	}
+}
