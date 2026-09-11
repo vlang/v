@@ -2259,6 +2259,36 @@ fn (v &Builder) retry_compilation_with(ccompiler string) os.Result {
 	return os.execute(cmd)
 }
 
+// retry_failed_tcc_compilation regenerates and compiles with a platform compiler after a TCC failure.
+pub fn (mut v Builder) retry_failed_tcc_compilation(ccompiler string, output string) bool {
+	if !is_tcc_compilation_failure(ccompiler, v.ccoptions.cc, output)
+		|| !v.pref.retry_compilation {
+		return false
+	}
+	old_ccompiler := v.pref.ccompiler
+	v.pref.default_c_compiler()
+	if v.pref.ccompiler == ccompiler || is_tcc_compiler_name(v.pref.ccompiler)
+		|| is_tcc_alias_compiler(v.pref.ccompiler) {
+		v.pref.ccompiler = first_available_ccompiler([old_ccompiler, ccompiler, v.pref.ccompiler])
+	}
+	if v.pref.ccompiler == '' || v.pref.ccompiler == ccompiler {
+		return false
+	}
+	if v.pref.is_verbose {
+		eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
+	} else if !v.pref.is_quiet {
+		eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler}'))
+	}
+	retry_res := v.retry_compilation_with(v.pref.ccompiler)
+	if retry_res.exit_code != 0 || v.should_forward_retry_output() {
+		print(retry_res.output)
+	}
+	if retry_res.exit_code != 0 {
+		exit(retry_res.exit_code)
+	}
+	return true
+}
+
 pub fn (mut v Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
@@ -2491,29 +2521,8 @@ pub fn (mut v Builder) cc() {
 					}
 					exit(101)
 				}
-				if v.pref.retry_compilation {
-					old_ccompiler := v.pref.ccompiler
-					v.pref.default_c_compiler()
-					if v.pref.ccompiler == ccompiler || is_tcc_compiler_name(v.pref.ccompiler)
-						|| is_tcc_alias_compiler(v.pref.ccompiler) {
-						v.pref.ccompiler = first_available_ccompiler([old_ccompiler, ccompiler,
-							v.pref.ccompiler])
-					}
-					if v.pref.ccompiler != '' && v.pref.ccompiler != ccompiler {
-						if v.pref.is_verbose {
-							eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
-						} else if !v.pref.is_quiet {
-							eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler}'))
-						}
-						retry_res := v.retry_compilation_with(v.pref.ccompiler)
-						if retry_res.exit_code != 0 || v.should_forward_retry_output() {
-							print(retry_res.output)
-						}
-						if retry_res.exit_code != 0 {
-							exit(retry_res.exit_code)
-						}
-						return
-					}
+				if v.retry_failed_tcc_compilation(ccompiler, res.output) {
+					return
 				}
 			}
 			if res.exit_code == 127 {

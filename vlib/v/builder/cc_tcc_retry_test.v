@@ -79,6 +79,36 @@ fn test_tcc_retry_warning_is_visible() {
 	assert res.output.contains('warning: tcc compilation failed, falling back to cc'), res.output
 }
 
+fn test_parallel_tcc_failure_retries_with_platform_compiler() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_parallel_tcc_retry_${os.getpid()}')
+	fake_tcc := os.join_path(test_root, 'fake-tcc')
+	source_path := os.join_path(test_root, 'main.v')
+	exe_path := os.join_path(test_root, 'main')
+	no_retry_exe_path := os.join_path(test_root, 'main_no_retry')
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	os.write_file(fake_tcc, '#!/bin/sh\necho "tcc: error: parallel compiler failed"\nexit 1\n') or {
+		panic(err)
+	}
+	os.chmod(fake_tcc, 0o700) or { panic(err) }
+	os.write_file(source_path, 'fn main() {}\n') or { panic(err) }
+	res :=
+		execute_tcc_retry_test_command('VJOBS=2 ${os.quoted_path(@VEXE)} -old-compiler -cc ${os.quoted_path(fake_tcc)} -parallel-cc -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('warning: tcc compilation failed, falling back to cc'), res.output
+	assert os.is_file(exe_path)
+	no_retry_res :=
+		execute_tcc_retry_test_command('VJOBS=2 ${os.quoted_path(@VEXE)} -old-compiler -cc ${os.quoted_path(fake_tcc)} -parallel-cc -no-retry-compilation -o ${os.quoted_path(no_retry_exe_path)} ${os.quoted_path(source_path)}')
+	assert no_retry_res.exit_code != 0, no_retry_res.output
+	assert no_retry_res.output.contains('failed parallel C compilation'), no_retry_res.output
+	assert !no_retry_res.output.contains('falling back to'), no_retry_res.output
+}
+
 fn test_tcc_retry_inserts_fallback_flags_before_implicit_vsh_script() {
 	script_path := os.join_path(os.vtmp_dir(), 'implicit_retry_script.vsh')
 	builder := &Builder{
