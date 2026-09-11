@@ -547,9 +547,6 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 }
 
 fn usable_system_tcc_compiler() string {
-	if get_host_os() != .termux {
-		return ''
-	}
 	system_tcc := os.find_abs_path_of_executable('tcc') or { return '' }
 	tcc_probe := os.execute('${os.quoted_path(system_tcc)} -v')
 	if tcc_probe.exit_code != 0 {
