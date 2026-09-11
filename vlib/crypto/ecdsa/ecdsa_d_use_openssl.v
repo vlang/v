@@ -248,12 +248,10 @@ pub fn (pv PrivateKey) bytes() ![]u8 {
 		// P-256 keys). A minimal-length encoding cannot be reloaded with
 		// `new_key_from_seed(seed, fixed_size: true)` and differs from what
 		// the mbedTLS backend's own bytes() returns for the same key.
-		key_bits := C.EVP_PKEY_get_bits(pv.evpkey)
-		if key_bits <= 0 {
+		evp_key_size(pv.evpkey) or {
 			C.BN_free(bn)
-			return error('EVP_PKEY_get_bits failed')
+			return err
 		}
-		(key_bits + 7) / 8
 	}
 	mut buf := []u8{len: int(size)}
 	res := C.BN_bn2binpad(bn, buf.data, i32(size))
