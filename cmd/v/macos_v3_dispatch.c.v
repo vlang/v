@@ -197,11 +197,21 @@ fn macos_v3_windows_msvc_needs_v1_compatibility(prefs &pref.Preferences, host_os
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.backend != .c || command == 'test' || command in external_tools
-		|| macos_v3_non_compilation_command(command) || prefs.path == '' {
+		|| macos_v3_non_compilation_command(command) {
+		return false
+	}
+	// The legacy preference parser deliberately rejects `v build <source>`, so it
+	// does not populate prefs.path for the explicit build command. Let V3 parse the
+	// original arguments and report missing or invalid inputs instead of reaching
+	// the V3-only command shell's unreachable V1 builder guard.
+	if command == 'build' {
+		return true
+	}
+	if prefs.path == '' {
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
-	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
+	return command == 'run' || prefs.is_script || os.is_dir(prefs.path)
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
 		|| normalized_path.ends_with('.vv')
 }
