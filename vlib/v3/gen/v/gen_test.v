@@ -80,6 +80,14 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_preserves_operator_method_spacing() {
+	source := 'struct Number {\n\tvalue int\n}\n\nfn (a Number) + (b Number) Number {\n\treturn Number{a.value + b.value}\n}\n\nfn (a Number) == (b Number) bool {\n\treturn a.value == b.value\n}\n\nfn (a Number) < (b Number) bool {\n\treturn a.value < b.value\n}\n\nfn (a Number) [] (index int) int {\n\treturn a.value + index\n}\n'
+	out := vfmt('operator_method_spacing', source)
+	assert out == source, out
+	assert reparse_diagnostics('operator_method_spacing_twice', out) == 0
+	assert vfmt('operator_method_spacing_twice', out) == out
+}
+
 fn test_formatter_preserves_static_associated_function_syntax() {
 	source := 'struct Widget {}\n\nfn Widget.make() Widget {\n\treturn Widget{}\n}\n\nstruct Cache__static__State {}\n\nfn Cache__static__State.reset__static__now() {}\n\nfn int.tag() {}\n\nfn int__static__tag__static__3() {}\n'
 	out := vfmt('static_associated_function', source)
@@ -180,6 +188,14 @@ fn test_formatter_keeps_trailing_loop_comments_inside_body() {
 	out := vfmt('trailing_loop_comments', source)
 	assert out == source, out
 	assert vfmt('trailing_loop_comments_twice', out) == out
+}
+
+fn test_formatter_keeps_loop_header_comments_after_the_opening_brace() {
+	source := 'fn copy_range(items []int, start int, end int) {\n\tfor i in start .. end { // copy selected items\n\t\tprintln(items[i])\n\t}\n\tfor item in items { // copy every item\n\t\tprintln(item)\n\t}\n\tfor i := 0; i < end; i++ { // C-style loop\n\t\tprintln(i)\n\t}\n\tfor start < end { // conditional loop\n\t\tbreak\n\t}\n}\n'
+	out := vfmt('loop_header_comments', source)
+	assert out == source, out
+	assert reparse_diagnostics('loop_header_comments_twice', out) == 0
+	assert vfmt('loop_header_comments_twice', out) == out
 }
 
 fn test_formatter_keeps_trailing_comptime_for_comments_inside_body() {
@@ -443,6 +459,14 @@ fn test_formatter_resolves_implied_imports_in_selector_scope() {
 	assert out.contains('println(time.now)'), out
 	assert out.contains('println(time.now())'), out
 	assert vfmt('scope_aware_implied_import_twice', out) == out
+}
+
+fn test_formatter_does_not_duplicate_a_conditional_import() {
+	source := 'module builtin\n\n\$if !nofloat ? {\n\timport strconv\n}\n\nfn format_float(x f64) string {\n\treturn strconv.f64_to_str_l(x)\n}\n'
+	out := vfmt('conditional_implied_import', source)
+	assert out == source, out
+	assert out.count('import strconv') == 1
+	assert vfmt('conditional_implied_import_twice', out) == out
 }
 
 fn test_formatter_preserves_isreftype_spelling() {
