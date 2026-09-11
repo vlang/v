@@ -11556,7 +11556,13 @@ pub fn run(args []string) {
 			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc)
 			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags, object_optimization_flags, prefs.c99, pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir, mut c_object_cache_stats) or {
 				message := err.msg()
-				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
+				if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, false, 0) {
+					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc)
+					return
+				}
+				if use_implicit_tcc_semantics {
+					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				} else if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 					published_c_source,
 					cache_plan_file,
 					cc_src,
@@ -12175,19 +12181,7 @@ pub fn run(args []string) {
 			used_tcc = result.exit_code == 0
 		}
 		if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
-			fallback := 'cc'
-			if verbose || show_cc {
-				eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
-			}
-			retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
-			cleanup_c_build_dir(cc_dir)
-			retry_result := cmdexec.run(os.executable(), retry_args)
-			if retry_result.output.len > 0 {
-				print(retry_result.output)
-			}
-			if retry_result.exit_code != 0 {
-				exit(retry_result.exit_code)
-			}
+			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc)
 			return
 		}
 		if !retry_compilation && use_implicit_tcc_semantics
@@ -12486,6 +12480,22 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 		}
 	}
 	return public_args
+}
+
+fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_dir string, verbose bool, show_cc bool) {
+	fallback := 'cc'
+	if verbose || show_cc {
+		eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
+	}
+	retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
+	cleanup_c_build_dir(cc_dir)
+	retry_result := cmdexec.run(os.executable(), retry_args)
+	if retry_result.output.len > 0 {
+		print(retry_result.output)
+	}
+	if retry_result.exit_code != 0 {
+		exit(retry_result.exit_code)
+	}
 }
 
 fn checker_fixture_include_target_message(raw string) (string, string) {
