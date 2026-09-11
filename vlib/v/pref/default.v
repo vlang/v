@@ -557,7 +557,8 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 fn (p &Preferences) system_tcc_runtime_available(vroot string) bool {
 	uses_boehm := p.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt,
 		.boehm_leak]
-	if p.os != .linux || !p.is_glibc || !uses_boehm
+	needs_bundled_libgc := uses_boehm && (p.os == .windows || (p.os == .linux && p.is_glibc))
+	if !needs_bundled_libgc
 		|| 'dynamic_boehm' in p.compile_defines_all
 		|| 'use_bundled_libgc' in p.compile_defines_all {
 		return true

@@ -241,22 +241,28 @@ fn test_try_to_use_tcc_by_default_requires_glibc_tcc_runtime() {
 	assert os.is_file(probe_marker)
 }
 
-fn test_system_tcc_runtime_available_requires_glibc_boehm_archive() {
+fn test_system_tcc_runtime_available_requires_bundled_boehm_archive() {
 	test_root := os.join_path(os.vtmp_dir(), 'v_pref_system_tcc_runtime_${os.getpid()}')
 	os.rmdir_all(test_root) or {}
 	defer {
 		os.rmdir_all(test_root) or {}
 	}
-	prefs := Preferences{
+	linux_prefs := Preferences{
 		os: .linux
 		is_glibc: true
 		gc_mode: .boehm_full_opt
 	}
-	assert !prefs.system_tcc_runtime_available(test_root)
+	windows_prefs := Preferences{
+		os: .windows
+		gc_mode: .boehm_full_opt
+	}
+	assert !linux_prefs.system_tcc_runtime_available(test_root)
+	assert !windows_prefs.system_tcc_runtime_available(test_root)
 	libgc := os.join_path(test_root, 'thirdparty', 'tcc', 'lib', 'libgc.a')
 	os.mkdir_all(os.dir(libgc)) or { panic(err) }
 	os.write_file(libgc, '') or { panic(err) }
-	assert prefs.system_tcc_runtime_available(test_root)
+	assert linux_prefs.system_tcc_runtime_available(test_root)
+	assert windows_prefs.system_tcc_runtime_available(test_root)
 	assert Preferences{
 		os: .linux
 		is_musl: true
