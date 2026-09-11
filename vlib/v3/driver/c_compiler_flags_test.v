@@ -37,6 +37,113 @@ fn test_v3_windows_default_compiler_requires_bundled_tcc() {
 	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'linux', bundled_tcc, true) == 'cc'
 }
 
+fn test_v3_bundled_tcc_probe_eligibility() {
+	linux_target := pref.Target{
+		os: 'linux'
+		arch: 'amd64'
+	}
+	bundled_tcc := os.join_path(os.vtmp_dir(), 'v3_probe_eligibility', 'thirdparty', 'tcc', 'tcc.exe')
+	base := V3BundledTccProbeOptions{
+		backend: 'c'
+		c_compiler: 'cc'
+		host_os: 'linux'
+		host_target: linux_target
+		target: linux_target
+		bundled_tcc: bundled_tcc
+	}
+	assert v3_should_probe_bundled_tcc(base)
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		backend: 'wasm'
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_only: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_c_debug: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: 'clang'
+		c_compiler_explicit: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		target: pref.Target{
+			os: 'linux'
+			arch: 'arm64'
+		}
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod: true
+		c_compiler: 'tcc'
+		c_compiler_explicit: true
+	})
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: bundled_tcc
+		c_compiler_explicit: true
+	})
+	assert !v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		c_compiler: os.join_path(os.vtmp_dir(), 'bin', 'tcc')
+		c_compiler_explicit: true
+	})
+	windows_target := pref.Target{
+		os: 'windows'
+		arch: 'amd64'
+	}
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		is_prod: true
+		is_c_debug: true
+		host_os: 'windows'
+		host_target: windows_target
+		target: windows_target
+	})
+}
+
+fn test_v3_bundled_tcc_probe_does_not_run_when_ineligible() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v3_bundled_tcc_probe_${os.getpid()}')
+	probe_marker := os.join_path(test_root, 'tcc_was_probed')
+	bundled_tcc := os.join_path(test_root, 'thirdparty', 'tcc', 'tcc.exe')
+	os.mkdir_all(os.dir(bundled_tcc)) or { panic(err) }
+	os.write_file(bundled_tcc, '#!/bin/sh\nprintf probed > ${os.quoted_path(probe_marker)}\nexit 0\n') or { panic(err) }
+	os.chmod(bundled_tcc, 0o700) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	linux_target := pref.Target{
+		os: 'linux'
+		arch: 'amd64'
+	}
+	base := V3BundledTccProbeOptions{
+		backend: 'c'
+		c_compiler: 'cc'
+		host_os: 'linux'
+		host_target: linux_target
+		target: linux_target
+		bundled_tcc: bundled_tcc
+	}
+	assert !v3_bundled_tcc_available(V3BundledTccProbeOptions{
+		...base
+		is_prod: true
+	})
+	assert !os.is_file(probe_marker)
+	assert v3_bundled_tcc_available(base)
+	assert os.is_file(probe_marker)
+}
+
 fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 	$if windows {
 		return

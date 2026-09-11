@@ -6617,6 +6617,49 @@ fn v3_usable_tcc_compiler(tcc_path string) bool {
 	return cmdexec.run(tcc_path, ['-v']).exit_code == 0
 }
 
+struct V3BundledTccProbeOptions {
+	backend             string
+	c_only              bool
+	is_prod             bool
+	is_c_debug          bool
+	c_compiler          string
+	c_compiler_explicit bool
+	host_os             string
+	host_target         pref.Target
+	target              pref.Target
+	bundled_tcc         string
+}
+
+fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
+	if options.backend != 'c' || options.c_only
+		|| options.target.os != options.host_target.os
+		|| options.target.arch != options.host_target.arch {
+		return false
+	}
+	if options.c_compiler_explicit {
+		if options.c_compiler in ['tcc', 'tinyc'] {
+			return true
+		}
+		compiler_path := os.find_abs_path_of_executable(options.c_compiler) or {
+			options.c_compiler
+		}
+		return os.real_path(compiler_path) == os.real_path(options.bundled_tcc)
+	}
+	// Windows uses its bundled TCC as the platform default, including modes that
+	// use an optimizing or debug compiler by default on other hosts.
+	if options.host_os == 'windows' && options.target.os == 'windows' {
+		return true
+	}
+	return !options.is_prod && !options.is_c_debug
+}
+
+fn v3_bundled_tcc_available(options V3BundledTccProbeOptions) bool {
+	if !v3_should_probe_bundled_tcc(options) {
+		return false
+	}
+	return v3_usable_tcc_compiler(options.bundled_tcc)
+}
+
 fn v3_usable_system_tcc_compiler(host_os string) string {
 	// Match the V1 system-TCC fallback on macOS: a PATH-installed TCC remains
 	// opt-in because SDK and framework headers can require Clang compatibility.
@@ -9175,9 +9218,20 @@ pub fn run(args []string) {
 		resolve_vroot_for_input(prefs.vroot, input_file)
 	}
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
-	bundled_tcc_available := v3_usable_tcc_compiler(bundled_tcc)
 	host_os := os.user_os()
 	host_target := pref.host_target()
+	bundled_tcc_available := v3_bundled_tcc_available(V3BundledTccProbeOptions{
+		backend: backend
+		c_only: c_only
+		is_prod: is_prod
+		is_c_debug: is_c_debug
+		c_compiler: c_compiler
+		c_compiler_explicit: c_compiler_explicit
+		host_os: host_os
+		host_target: host_target
+		target: target
+		bundled_tcc: bundled_tcc
+	})
 	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug
 		&& !c_compiler_explicit && target.os == host_target.os && target.arch == host_target.arch
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, bundled_tcc_available, allow_system_tcc, host_os)
@@ -9223,7 +9277,7 @@ pub fn run(args []string) {
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
-		if os.is_executable(bundled_tcc) {
+		if bundled_tcc_available {
 			c_compiler = bundled_tcc
 		}
 	}
