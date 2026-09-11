@@ -521,7 +521,7 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 	t.pending_stmts.clear()
 
 	mut prelude := []flat.NodeId{}
-	prelude << t.make_decl_assign_typed(tmp_name, t.zero_value_for_type(actual_result_type), actual_result_type)
+	prelude << t.make_staging_value_decl(tmp_name, actual_result_type)
 	for stmt in t.build_if_value_chain(id, tmp_name, actual_result_type) {
 		prelude << stmt
 	}

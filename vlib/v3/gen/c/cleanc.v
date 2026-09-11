@@ -15467,6 +15467,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.gen_or_expr(node)
 		}
 		.block {
+			old_unsafe_depth := g.unsafe_depth
+			if node.value == 'unsafe' {
+				g.unsafe_depth++
+			}
+			defer {
+				g.unsafe_depth = old_unsafe_depth
+			}
 			if node.children_count > 1 {
 				// Lowered collection expressions can introduce a lexical defer inside a
 				// GNU statement expression. Keep it visible to returns/propagations in
@@ -19374,7 +19381,11 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) (0)')
 	g.writeln('#endif')
 	g.filelock_compat_decls()
-	g.writeln('#define array_new(elem_size, len, cap) __new_array((len), (cap), (elem_size))')
+	// Empty array headers need no allocation. Keep this small wrapper inline so
+	// aggregate defaults fold to constants even when __new_array stays out of line.
+	g.writeln('array __new_array(${g.int_ct} len, ${g.int_ct} cap, ${g.int_ct} elem_size);')
+	g.writeln('static inline array __v3_internal_symbol_array_new(${g.int_ct} elem_size, ${g.int_ct} len, ${g.int_ct} cap) { if (len == 0 && cap == 0) return (array){.element_size = elem_size, .flags = ArrayFlags__managed}; return __new_array(len, cap, elem_size); }')
+	g.writeln('#define array_new(elem_size, len, cap) __v3_internal_symbol_array_new((elem_size), (len), (cap))')
 	g.writeln('#define array_push array__push')
 	g.writeln('void array__push_many(array* a, void* val, ${g.int_ct} size);')
 	g.writeln('#define array_push_many_ptr(a, val, size) array__push_many((a), (void*)(val), (size))')
@@ -22188,8 +22199,7 @@ fn (g &FlatGen) collect_string_plus_parts(id flat.NodeId, mut parts []flat.NodeI
 	parts << id
 }
 
-// Nested string concatenation owns each intermediate result. Emit the chain as
-// ordered statements and release every superseded accumulator.
+// Evaluate concatenation operands in order, then copy them into one allocation.
 fn (mut g FlatGen) gen_owned_string_plus_chain(id flat.NodeId) {
 	mut parts := []flat.NodeId{}
 	g.collect_string_plus_parts(id, mut parts)
@@ -22197,23 +22207,7 @@ fn (mut g FlatGen) gen_owned_string_plus_chain(id flat.NodeId) {
 		g.gen_call(id, g.a.nodes[int(id)])
 		return
 	}
-	tmp := g.tmp_count
-	g.tmp_count++
-	g.write('({')
-	for i, part in parts {
-		g.write(' string __str_plus_part_${tmp}_${i} = ')
-		g.gen_expr_as_string(part)
-		g.write(';')
-	}
-	g.write(' string __str_plus_acc_${tmp}_1 = string__plus(__str_plus_part_${tmp}_0, __str_plus_part_${tmp}_1);')
-	mut previous := '__str_plus_acc_${tmp}_1'
-	for i := 2; i < parts.len; i++ {
-		next := '__str_plus_acc_${tmp}_${i}'
-		g.write(' string ${next} = string__plus(${previous}, __str_plus_part_${tmp}_${i});')
-		g.write(' string__free(&${previous});')
-		previous = next
-	}
-	g.write(' ${previous}; })')
+	g.gen_string_join_parts(parts, false)
 }
 
 fn (g &FlatGen) is_runtime_assignable(id flat.NodeId) bool {
@@ -22715,6 +22709,7 @@ fn (g &FlatGen) op_str(op flat.Op) string {
 	}
 }
 
+@[inline]
 fn (mut g FlatGen) write(s string) {
 	if g.line_start {
 		g.write_indent()
@@ -22729,6 +22724,7 @@ fn (mut g FlatGen) write(s string) {
 	g.line_start = s[s.len - 1] == `\n`
 }
 
+@[inline]
 fn (mut g FlatGen) writeln(s string) {
 	if s.len > 0 {
 		if g.line_start {
@@ -22740,6 +22736,7 @@ fn (mut g FlatGen) writeln(s string) {
 	g.line_start = true
 }
 
+@[inline]
 fn (mut g FlatGen) write_indent() {
 	for _ in 0 .. g.indent {
 		g.sb.write_string('\t')

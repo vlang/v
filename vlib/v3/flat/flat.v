@@ -839,7 +839,7 @@ pub fn (mut a FlatAst) add_child(id NodeId) {
 }
 
 // child supports child handling for FlatAst.
-@[inline]
+@[direct_array_access; inline]
 pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 	child_index := node.children_start + index
 	if index < 0 || index >= node.children_count || child_index < 0 || child_index >= a.children.len {
@@ -850,7 +850,7 @@ pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 }
 
 // child_node supports child node handling for FlatAst.
-@[inline]
+@[direct_array_access; inline]
 pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 	id := a.child(node, index)
 	if int(id) < 0 || int(id) >= a.nodes.len {
@@ -861,7 +861,7 @@ pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 }
 
 // node supports node handling for FlatAst.
-@[inline]
+@[direct_array_access; inline]
 pub fn (a &FlatAst) node(id NodeId) &Node {
 	if int(id) < 0 || int(id) >= a.nodes.len {
 		return &empty_node_value

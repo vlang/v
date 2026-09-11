@@ -2058,7 +2058,7 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 			t.make_ident(key_name),
 		], 'void'))
 	}
-	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(result_type), result_type)
+	prelude << t.make_staging_value_decl(val_name, result_type)
 	move_found_value := !isnil(t.tc) && t.tc.ownership_index_read_moves_value(expr_id)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(info.value_type))
 

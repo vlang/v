@@ -52,6 +52,7 @@ const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
 const source_deref_marker = '__v3_source_deref'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const stack_value_decl_marker = '__v3_stack_value_decl'
+const zeroed_stack_value_decl_marker = '__v3_zeroed_stack_value_decl'
 // Small late-reachability sets are cheaper to lower directly than through a
 // sequence of disposable scoped-worker forks. Larger sets keep bounded scratch.
 const direct_late_transform_max_names = 64
@@ -5617,10 +5618,7 @@ fn (mut t Transformer) transform_const_string_interp(_id flat.NodeId, node flat.
 		child_id := t.a.child(&node, i)
 		parts << t.transform_string_interp_part(child_id)
 	}
-	mut expr := parts[0]
-	for i in 1 .. parts.len {
-		expr = t.make_call_typed('string__plus', [expr, parts[i]], 'string')
-	}
+	expr := t.make_string_join(parts, node)
 	mut stmts := []flat.NodeId{}
 	t.drain_pending(mut stmts)
 	t.pending_stmts = outer_pending
@@ -14222,6 +14220,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		// regardless of whether its address is later taken (`@[heap]` is an unconditional
 		// promise, not an escape-analysis trigger).
 		if src.kind == .ident && node.value != stack_value_decl_marker
+			&& node.value != zeroed_stack_value_decl_marker
 			&& src.value !in t.heaped_amp_locals && t.heap_attr_struct_type(inferred_typ) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
@@ -18487,6 +18486,9 @@ fn (mut t Transformer) lower_owned_array_index_move(source_id flat.NodeId, index
 
 // transform_string_interp transforms transform string interp data for transform.
 fn (mut t Transformer) transform_string_interp(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.value == '__v3_string_join' {
+		return id
+	}
 	if node.children_count == 0 {
 		return t.make_string_literal('')
 	}
@@ -18545,12 +18547,33 @@ fn (mut t Transformer) transform_string_interp(id flat.NodeId, node flat.Node) f
 		t.pending_stmts << st
 	}
 	parts := if hoisting { temps } else { inline_parts }
-	mut result := if parts.len == 0 { t.make_string_literal('') } else { parts[0] }
-	for i in 1 .. parts.len {
-		result = t.string_plus(result, parts[i])
+	return t.make_string_join(parts, node)
+}
+
+// Keep converted operands together: a concatenation chain adds two AST nodes
+// per pair and repeatedly copies each growing prefix at runtime.
+fn (mut t Transformer) make_string_join(parts []flat.NodeId, source flat.Node) flat.NodeId {
+	if parts.len == 0 {
+		return t.make_string_literal('')
 	}
-	t.set_node_typ(int(result), 'string')
-	return result
+	if parts.len == 1 {
+		t.set_node_typ(int(parts[0]), 'string')
+		return parts[0]
+	}
+	if parts.len == 2 {
+		return t.string_plus(parts[0], parts[1])
+	}
+	t.mark_used_fn_key('string_plus_many')
+	start := t.a.children.len
+	t.a.children << parts
+	return t.a.add_node(flat.Node{
+		kind: .string_interp
+		value: '__v3_string_join'
+		typ: 'string'
+		pos: source.pos
+		children_start: start
+		children_count: parts.len
+	})
 }
 
 fn (t &Transformer) string_interp_has_unresolved_generic_part(node flat.Node) bool {

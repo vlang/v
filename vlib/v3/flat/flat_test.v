@@ -117,3 +117,24 @@ fn test_promote_transform_texts_rebuilds_scoped_table_growth() {
 		}
 	}
 }
+
+fn test_ast_accessors_preserve_bounds_validation() {
+	mut a := FlatAst.new()
+	id := a.add_val(.ident, 'valid')
+	a.children << id
+	parent := Node{ children_count: 1 }
+	assert a.child(&parent, 0) == id
+	assert a.child_node(&parent, 0).value == 'valid'
+	assert a.node(id).value == 'valid'
+	assert a.child(&parent, -1) == empty_node
+	assert a.child(&parent, 1) == empty_node
+	assert a.child_node(&parent, -1).kind == .empty
+	assert a.child_node(&parent, 1).kind == .empty
+	assert a.node(empty_node).kind == .empty
+	assert a.node(NodeId(a.nodes.len)).kind == .empty
+	outside := Node{ children_start: 4, children_count: 1 }
+	assert a.child(&outside, 0) == empty_node
+	assert a.child_node(&outside, 0).kind == .empty
+	a.children[0] = NodeId(a.nodes.len)
+	assert a.child_node(&parent, 0).kind == .empty
+}

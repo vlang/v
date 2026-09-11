@@ -3,6 +3,23 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_zeroed_staging_values_keep_heap_structs_on_the_stack() {
+	mut a := flat.FlatAst.new()
+	decl := a.add_node(flat.Node{ kind: .struct_decl, value: 'HeapValue' })
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['HeapValue'] = []types.StructField{}
+	tc.type_declaration_ids['HeapValue'] = [int(decl)]
+	tc.declaration_attributes[int(decl)] = ['heap']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.heap_attr_struct_type('HeapValue')
+	staging := t.make_staging_value_decl('staging', 'HeapValue')
+	t.transform_decl_assign_stmt(staging, a.nodes[int(staging)])
+	assert 'staging' !in t.heaped_amp_locals
+	ordinary := t.make_decl_assign_typed('ordinary', t.zero_value_for_type('HeapValue'), 'HeapValue')
+	t.transform_decl_assign_stmt(ordinary, a.nodes[int(ordinary)])
+	assert 'ordinary' in t.heaped_amp_locals
+}
+
 fn test_selfhost_return_alias_cache_preserves_module_and_worker_context() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
