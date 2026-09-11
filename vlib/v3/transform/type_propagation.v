@@ -1166,6 +1166,10 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 	result := t.normalize_type_alias_uncached(typ)
 	c.entries[typ] = result
 	c.put_recent(typ, result)
+	// Builtin spellings are independent of the importing file and module.
+	if result == typ && is_plain_builtin_alias_type(typ) {
+		c.canonical_types[recent_slot] = typ
+	}
 	return result
 }
 

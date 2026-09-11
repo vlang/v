@@ -726,6 +726,11 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 		return
 	}
 	g.collect_declaration_signature_types()
+	g.collect_unresolved_call_optional_types()
+	g.optional_types_ready = true
+}
+
+fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 	// Calls without a resolved expression type are the only optional-type source
 	// not covered by the shared declaration-signature scan.
 	mut seen_type_ids := []bool{len: 65536}
@@ -759,7 +764,6 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 			g.collect_optional_typedef_type(g.parse_node_type(&node))
 		}
 	}
-	g.optional_types_ready = true
 }
 
 fn cgen_type_text_is_complete(text string) bool {

@@ -380,11 +380,11 @@ mut:
 	parse_value_recent_context [2048]u64
 	parse_value_recent_values  [2048]Type
 	parse_value_recent_set     [2048]bool
-	// Exact canonical text-id cache used by post-transform consumers. A lazy
-	// 65536-slot table avoids collisions for every compact FlatAst text id.
+	// Bounded canonical text-id cache. Workers touch only a fraction of the
+	// 65536 possible ids; retain the exact id to distinguish slot collisions.
 	parse_text_id_context []u64
 	parse_text_id_values  []Type
-	parse_text_id_set     []bool
+	parse_text_ids        []u16
 	// Alias targets can contain callbacks whose signatures mention the alias
 	// itself (for example `type Handlers = map[string]fn (Handlers)`). Keep the
 	// active expansion chain private to each checker/cache so parsing such a
@@ -416,12 +416,12 @@ mut:
 	symbol_recent_set           [2048]bool
 	struct_field_entries        map[string]Type
 	struct_field_misses         map[string]bool
-	struct_field_last_struct    usize
-	struct_field_last_field     usize
-	struct_field_last_struct_n  int
-	struct_field_last_field_n   int
-	struct_field_last_value     Type = Type(void_)
-	struct_field_last_state     i8
+	struct_field_shared         map[string]Type // immutable declaration types, without local TypeIds
+	struct_field_complete       map[string]bool // direct fields cover every lookup for these owners
+	struct_field_recent_structs [256]string
+	struct_field_recent_fields  [256]string
+	struct_field_recent_values  [256]Type
+	struct_field_recent_states  [256]i8
 	struct_field_fn_diagnostics map[string]string
 	sum_variant_pattern_entries map[string]string
 	recv_pattern_entries        map[string]GenericReceiverMethodPatternMatch
@@ -942,6 +942,8 @@ mut:
 	// checker workers. Transformed or appended nodes use the scan fallback in
 	// direct_parent_id.
 	direct_parent_ids           []flat.NodeId
+	preflight_node_ids          []i32
+	preflight_index_nodes_len   int = -1
 	rewritten_parent_ids        []flat.NodeId
 	value_used_nodes            []bool
 	fn_check_costs              []i32
@@ -1301,6 +1303,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		rewritten_parent_ids: tc.rewritten_parent_ids
 		value_used_nodes: tc.value_used_nodes
 		direct_parent_index_trusted: tc.direct_parent_index_trusted
+		preflight_node_ids: tc.preflight_node_ids
+		preflight_index_nodes_len: tc.preflight_index_nodes_len
 		has_goto_nodes: tc.has_goto_nodes
 		declaration_attributes: tc.declaration_attributes
 		type_declaration_ids: tc.type_declaration_ids
@@ -1564,6 +1568,9 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 		cache.clear_c_type_entries()
 		cache.struct_field_entries.clear()
 		cache.struct_field_misses.clear()
+		cache.struct_field_shared = map[string]Type{}
+		cache.struct_field_complete = map[string]bool{}
+		cache.struct_field_recent_states = [256]i8{}
 		cache.recv_pattern_entries.clear()
 		cache.recv_pattern_misses.clear()
 		cache.ierror_compat_entries.clear()
@@ -1619,6 +1626,7 @@ pub fn (tc &TypeChecker) type_cache_parse_enabled() bool {
 	return !isnil(tc.type_cache) && tc.type_cache.parse_enabled
 }
 
+// clear_field_lookup_cache invalidates field types after declaration metadata changes.
 pub fn (tc &TypeChecker) clear_field_lookup_cache() {
 	mut cache := tc.type_cache
 	if isnil(cache) {
@@ -1626,6 +1634,9 @@ pub fn (tc &TypeChecker) clear_field_lookup_cache() {
 	}
 	cache.struct_field_entries.clear()
 	cache.struct_field_misses.clear()
+	cache.struct_field_shared = map[string]Type{}
+	cache.struct_field_complete = map[string]bool{}
+	cache.struct_field_recent_states = [256]i8{}
 }
 
 // clear_c_type_cache invalidates C spellings after monomorphization changes
@@ -1685,10 +1696,25 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 
 // reset_node_caches updates reset node caches state for types.
 fn (mut tc TypeChecker) reset_node_caches(n int) {
-	tc.resolved_call_names = []string{len: n}
-	tc.resolved_call_set = []bool{len: n}
-	tc.resolved_fn_value_names = []string{len: n}
-	tc.resolved_fn_value_set = []bool{len: n}
+	for group in 0 .. 3 {
+		tc.reset_node_cache_group(n, group)
+	}
+}
+
+// Independent arrays can be initialized on separate persistent worker arenas.
+fn (mut tc TypeChecker) reset_node_cache_group(n int, group int) {
+	if group == 0 {
+		// Only set slots are read; zeroed strings also match the representation
+		// used when transform grows these caches. Avoid a default-string fill.
+		tc.resolved_call_names = unsafe { []string{len: n} }
+		tc.resolved_call_set = []bool{len: n}
+		return
+	}
+	if group == 1 {
+		tc.resolved_fn_value_names = unsafe { []string{len: n} }
+		tc.resolved_fn_value_set = []bool{len: n}
+		return
+	}
 	tc.statement_nodes = []bool{len: n}
 	// No init fill: every read of expr_type_values is guarded by expr_type_set,
 	// so unset slots are never returned, and skipping the ~1M-element fill loop
@@ -1712,12 +1738,40 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.strings_builder_candidates = []i32{cap: 1024}
 	tc.synthetic_top_level_type_ids = []i32{cap: 2048}
 	tc.has_goto_nodes = false
+	tc.preflight_node_ids = []i32{}
+	tc.preflight_index_nodes_len = -1
 }
 
-@[direct_array_access]
+struct DirectParentEdge {
+	child      flat.NodeId
+	parent     flat.NodeId
+	value_used bool
+}
+
+struct DirectParentChunk {
+mut:
+	external_edges     []DirectParentEdge
+	preflight_node_ids []i32
+	synthetic_type_ids []i32
+	has_goto_nodes     bool
+}
+
 fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
+	chunk := tc.fill_direct_parent_edges_range(a, 0, a.nodes.len)
+	tc.merge_direct_parent_chunk(chunk)
+	tc.preflight_index_nodes_len = a.nodes.len
+}
+
+// Ranges start immediately after a declaration, where the running cost resets.
+@[direct_array_access]
+fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start int, end int) DirectParentChunk {
+	mut chunk := DirectParentChunk{}
 	mut fn_cost := 0
-	for parent_idx, node in a.nodes {
+	for parent_idx in start .. end {
+		node := a.nodes[parent_idx]
+		if node.kind in [.for_in_stmt, .comptime_for] {
+			chunk.preflight_node_ids << parent_idx
+		}
 		// Node count alone severely underestimates index-heavy and control-flow
 		// functions, which leaves one parallel checker worker running last.
 		mut node_cost := 1 + int(node.children_count) * 2
@@ -1732,21 +1786,29 @@ fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 		}
 		fn_cost += node_cost
 		if node.kind == .goto_stmt {
-			tc.has_goto_nodes = true
+			chunk.has_goto_nodes = true
 		}
 		if node.kind == .struct_decl
 			&& (is_anonymous_struct_name(node.value) || node.value.contains('@local@')) {
-			tc.synthetic_top_level_type_ids << parent_idx
+			chunk.synthetic_type_ids << parent_idx
 		}
 		for child_idx in 0 .. node.children_count {
 			child := a.child(&node, child_idx)
 			idx := int(child)
-			if idx >= 0 && idx < tc.value_used_nodes.len
-				&& node.kind !in [.expr_stmt, .block, .match_branch, .fn_decl, .comptime_for] {
+			if idx < 0 || idx >= a.nodes.len {
+				continue
+			}
+			value_used := node.kind !in [.expr_stmt, .block, .match_branch, .fn_decl, .comptime_for]
+			if idx < start || idx >= end {
+				// Each lane writes only its own child slots. Replay cross-range
+				// references after joining, preserving the first parent in source order.
+				chunk.external_edges << DirectParentEdge{child, flat.NodeId(parent_idx), value_used}
+				continue
+			}
+			if value_used {
 				tc.value_used_nodes[idx] = true
 			}
-			if idx >= 0 && idx < tc.direct_parent_ids.len
-				&& tc.direct_parent_ids[idx] == flat.empty_node {
+			if tc.direct_parent_ids[idx] == flat.empty_node {
 				tc.direct_parent_ids[idx] = flat.NodeId(parent_idx)
 			}
 		}
@@ -1758,6 +1820,42 @@ fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 			fn_cost = 0
 		}
 	}
+	return chunk
+}
+
+fn (mut tc TypeChecker) merge_direct_parent_chunk(chunk DirectParentChunk) {
+	for edge in chunk.external_edges {
+		old_parent := tc.direct_parent_ids[int(edge.child)]
+		if old_parent == flat.empty_node || edge.parent < old_parent {
+			tc.direct_parent_ids[int(edge.child)] = edge.parent
+		}
+		if edge.value_used {
+			tc.value_used_nodes[int(edge.child)] = true
+		}
+	}
+	tc.preflight_node_ids << chunk.preflight_node_ids
+	tc.synthetic_top_level_type_ids << chunk.synthetic_type_ids
+	tc.has_goto_nodes = tc.has_goto_nodes || chunk.has_goto_nodes
+}
+
+// preflight_nodes reuses the parsed-tree scan while its parent index is valid.
+// Standalone checker clients and rewritten ASTs retain the full-scan fallback.
+fn (tc &TypeChecker) preflight_nodes(kind flat.NodeKind) []i32 {
+	mut ids := []i32{}
+	if tc.direct_parent_index_trusted && tc.preflight_index_nodes_len == tc.a.nodes.len {
+		for id in tc.preflight_node_ids {
+			if tc.a.nodes[id].kind == kind {
+				ids << id
+			}
+		}
+	} else {
+		for id, node in tc.a.nodes {
+			if node.kind == kind {
+				ids << id
+			}
+		}
+	}
+	return ids
 }
 
 fn (mut tc TypeChecker) collect_direct_parent_metadata(a &flat.FlatAst) {
@@ -2812,6 +2910,7 @@ fn (mut tc TypeChecker) collect_index_child(a &flat.FlatAst, i int, idx_file str
 	return idx_module
 }
 
+// collect indexes source declarations and resolves their types before body checking.
 pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
 	mut ck_part_sw := time.new_stopwatch()
@@ -3095,22 +3194,22 @@ fn is_plain_type_symbol(type_text string) bool {
 	return true
 }
 
-fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node) {
+fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node, module_name string) {
 	visibility := DeclarationVisibility{
-		module_name: tc.cur_module
+		module_name: module_name
 		kind: node.kind
 		is_pub: node.op == .arrow
 	}
 	match node.kind {
 		.fn_decl {
-			name := checker_qualified_fn_name(tc.cur_module, node.value)
+			name := checker_qualified_fn_name(module_name, node.value)
 			tc.declaration_visibility[name] = visibility
-			if tc.cur_module == 'builtin' && visibility.is_pub {
+			if module_name == 'builtin' && visibility.is_pub {
 				tc.declaration_visibility['builtin.${node.value}'] = visibility
 			}
 		}
 		.struct_decl, .type_decl, .interface_decl, .enum_decl {
-			name := qualify_decl_name_in_module(node.value, tc.cur_module)
+			name := qualify_decl_name_in_module(node.value, module_name)
 			tc.declaration_visibility[name] = visibility
 		}
 		.const_decl {
@@ -3119,7 +3218,7 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node) {
 				if field.kind != .const_field {
 					continue
 				}
-				name := qualify_decl_name_in_module(field.value, tc.cur_module)
+				name := qualify_decl_name_in_module(field.value, module_name)
 				tc.declaration_visibility[name] = visibility
 			}
 		}
@@ -3129,9 +3228,9 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node) {
 				if field.kind != .field_decl || field.value.starts_with('C.') {
 					continue
 				}
-				name := qualify_decl_name_in_module(field.value, tc.cur_module)
+				name := qualify_decl_name_in_module(field.value, module_name)
 				tc.declaration_visibility[name] = DeclarationVisibility{
-					module_name: tc.cur_module
+					module_name: module_name
 					kind: .global_decl
 					is_pub: visibility.is_pub || field.op == .arrow
 				}
@@ -3141,12 +3240,33 @@ fn (mut tc TypeChecker) register_declaration_visibility(node flat.Node) {
 	}
 }
 
+fn (mut tc TypeChecker) collect_declaration_visibility() {
+	mut file_modules := tc.file_modules.clone()
+	mut file := tc.cur_file
+	mut module_name := tc.cur_module
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		if node.kind == .file {
+			file = node.value
+			module_name = file_modules[file] or { '' }
+		} else if node.kind == .module_decl {
+			module_name = node.value
+			if file.len > 0 && file !in file_modules {
+				file_modules[file] = module_name
+			}
+		} else {
+			tc.register_declaration_visibility(node, module_name)
+		}
+	}
+}
+
 // collect_after_index runs collection passes 1 and 2 plus the resolution tail
 // over the already-built top-level index (shared by the fast file-index path
 // and the full-scan fallback in collect()).
 fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
-	if !tc.prepare_collect_declaration_indexes_parallel(a) {
+	parallel_declaration_indexes := tc.prepare_collect_declaration_indexes_parallel(a)
+	if !parallel_declaration_indexes {
 		tc.build_enclosing_generic_param_index(a)
 		tc.build_type_declaration_index(a)
 		tc.build_fn_declaration_indexes(a)
@@ -3158,7 +3278,9 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	for tl_idx in tc.top_level_idx {
 		node := a.nodes[tl_idx]
 		node_ref := a.node(flat.NodeId(tl_idx))
-		tc.register_declaration_visibility(node)
+		if !parallel_declaration_indexes {
+			tc.register_declaration_visibility(node, tc.cur_module)
+		}
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
@@ -3749,6 +3871,9 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	tc.resolve_const_types()
 	tc.build_const_suffixes()
 	tc.build_struct_embed_index()
+	if tc.building_v_fast {
+		tc.cache_direct_struct_field_types()
+	}
 	tc.timing_profile('  [ttime]     ck c resolve   ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	if !isnil(tc.visible_mutation_cache) {
 		mut visible_mutation_cache := tc.visible_mutation_cache
@@ -3757,6 +3882,39 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	$if ownership ? {
 		tc.ownership_after_collect()
 	}
+}
+
+// Seed the frozen cache once instead of making every checker batch walk the
+// same large compiler structs. Generic applications still need substitution.
+fn (tc &TypeChecker) cache_direct_struct_field_types() {
+	if isnil(tc.type_cache) {
+		return
+	}
+	mut cache := tc.type_cache
+	mut fields_by_name := map[string]Type{}
+	mut complete_owners := map[string]bool{}
+	for owner, fields in tc.structs {
+		if owner.contains('[') {
+			continue
+		}
+		mut complete := true
+		embeds_indexed := owner in tc.struct_embed_receivers
+		// Match the direct-field walk's first-declaration precedence.
+		for i := fields.len - 1; i >= 0; i-- {
+			field := fields[i]
+			fields_by_name['${owner}\n${field.name}'] = field.typ
+			if field.is_embed || (!embeds_indexed && embedded_field_type(field) != none) {
+				complete = false
+			}
+		}
+		if complete {
+			complete_owners[owner] = true
+		}
+	}
+	cache.struct_field_shared = fields_by_name.move()
+	cache.struct_field_complete = complete_owners.move()
+	cache.struct_field_misses.clear()
+	cache.struct_field_recent_states = [256]i8{}
 }
 
 fn source_field_decl_is_mut(field flat.Node) bool {
@@ -15483,8 +15641,9 @@ fn (tc &TypeChecker) comptime_struct_update_source_pos(node flat.Node) ?token.Po
 fn (mut tc TypeChecker) check_comptime_struct_updates_preflight() {
 	message := 'cannot use struct update syntax in compile time expressions'
 	tc.ct_update_pos = map[int]token.Pos{}
-	for node in tc.a.nodes {
-		if node.kind != .comptime_for || node.children_count == 0 {
+	for id in tc.preflight_nodes(.comptime_for) {
+		node := tc.a.nodes[id]
+		if node.children_count == 0 {
 			continue
 		}
 		body_id := tc.a.child(&node, 0)
@@ -15587,10 +15746,8 @@ fn (mut tc TypeChecker) check_comptime_for_source_type(id flat.NodeId, node flat
 }
 
 fn (mut tc TypeChecker) check_comptime_for_source_types_preflight() {
-	for index, node in tc.a.nodes {
-		if node.kind == .comptime_for {
-			tc.check_comptime_for_source_type(flat.NodeId(index), node)
-		}
+	for index in tc.preflight_nodes(.comptime_for) {
+		tc.check_comptime_for_source_type(flat.NodeId(index), tc.a.nodes[index])
 	}
 }
 

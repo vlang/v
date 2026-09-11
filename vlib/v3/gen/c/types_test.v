@@ -6,6 +6,61 @@ import v3.parser
 import v3.pref
 import v3.types
 
+fn test_field_type_cache_preserves_collisions_and_module_context() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.structs['one.Box'] = [
+		types.StructField{ name: 'abba', typ: types.Type(types.int_) },
+		types.StructField{ name: 'acca', typ: types.Type(types.string_) },
+	]
+	tc.structs['two.Box'] = [
+		types.StructField{ name: 'abba', typ: types.Type(types.bool_) },
+	]
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	g.cache_struct_fields = true
+	g.struct_decl_pref_cache = &StructDeclPrefCache{}
+	for _ in 0 .. 3 {
+		tc.cur_module = 'one'
+		assert g.struct_field_type('Box'.clone(), 'abba'.clone())? == types.Type(types.int_)
+		assert g.struct_field_type('Box', 'acca')? == types.Type(types.string_)
+		assert g.struct_field_type('Box', 'adda') == none
+		tc.cur_module = 'two'
+		assert g.struct_field_type('Box', 'abba')? == types.Type(types.bool_)
+		assert g.struct_field_type('Box', 'acca') == none
+	}
+}
+
+fn test_optional_scan_lanes_preserve_declaration_and_unresolved_call_types() {
+	$if !windows {
+		mut ast := flat.FlatAst.new()
+		ast.add_node(flat.Node{ kind: .call, typ: '?string' })
+		ast.add_node(flat.Node{ kind: .call, typ: '?([]' })
+		mut tc := types.TypeChecker.new(&ast)
+		tc.fn_ret_types['resolved'] = types.Type(types.OptionType{ base_type: types.Type(types.int_) })
+		mut serial := FlatGen.new()
+		serial.a = &ast
+		serial.tc = &tc
+		serial.collect_optional_typedefs()
+		mut split := FlatGen.new()
+		split.a = &ast
+		split.tc = &tc
+		split.scope_parallel_workers = true
+		mut declarations := split.new_parallel_worker(0)
+		mut calls := split.new_parallel_worker(1)
+		optional_support_thread(voidptr(declarations))
+		unresolved_call_optional_thread(voidptr(calls))
+		split.publish_optional_support(mut declarations)
+		split.publish_unresolved_call_optional_types(mut calls)
+		assert split.needed_optional_types == serial.needed_optional_types
+		assert split.needed_optional_types.len == 2
+		assert split.optional_types_ready
+		assert split.decl_types_ready
+		assert split.multi_return_types_ready
+	}
+}
+
 fn test_void_pointer_predicate_preserves_alias_and_named_type_rules() {
 	void_alias := types.Type(types.Alias{ name: 'Nothing', base_type: types.Type(types.void_) })
 	for typ in [types.Type(types.voidptr_), types.Type(types.Pointer{ base_type: void_alias }),
