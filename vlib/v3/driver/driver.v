@@ -6703,6 +6703,13 @@ fn v3_default_tcc_compiler(bundled_tcc string, bundled_tcc_available bool, allow
 	return v3_usable_system_tcc_compiler(host_os)
 }
 
+fn v3_system_tcc_runtime_available(vroot string, target_os string) bool {
+	if target_os != 'windows' {
+		return true
+	}
+	return os.is_file(os.join_path(vroot, 'thirdparty', 'tcc', 'lib', 'openlibm.o'))
+}
+
 fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
 	resolved_path := os.real_path(compiler_path)
@@ -9259,6 +9266,7 @@ pub fn run(args []string) {
 		&& !c_compiler_explicit && (!parallel_cc || target.os == 'windows')
 		&& target.os == host_target.os
 		&& target.arch == host_target.arch
+		&& v3_system_tcc_runtime_available(prefs.vroot, target.os)
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, bundled_tcc_available, allow_system_tcc, dump_c_flags.len > 0, host_os)
 	c_compiler = v3_select_implicit_c_compiler(c_compiler, c_compiler_explicit, implicit_tcc)
 	// Generate for the compiler that receives the first build attempt. If implicit

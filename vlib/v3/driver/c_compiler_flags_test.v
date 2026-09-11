@@ -239,6 +239,20 @@ fn test_v3_system_tcc_does_not_use_bundled_resources() {
 	assert bundled_resources.base_arg.contains('thirdparty')
 }
 
+fn test_v3_system_tcc_runtime_requires_windows_openlibm() {
+	test_root := os.join_path(os.vtmp_dir(), 'v3_system_tcc_runtime_${os.getpid()}')
+	os.rmdir_all(test_root) or {}
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	assert v3_system_tcc_runtime_available(test_root, 'linux')
+	assert !v3_system_tcc_runtime_available(test_root, 'windows')
+	openlibm := os.join_path(test_root, 'thirdparty', 'tcc', 'lib', 'openlibm.o')
+	os.mkdir_all(os.dir(openlibm)) or { panic(err) }
+	os.write_file(openlibm, '') or { panic(err) }
+	assert v3_system_tcc_runtime_available(test_root, 'windows')
+}
+
 fn test_v3_regenerates_cc_fallback_after_implicit_tcc() {
 	assert !v3_should_regenerate_after_implicit_tcc(true, false, false, 0)
 	assert !v3_should_regenerate_after_implicit_tcc(true, false, true, 1)

@@ -555,6 +555,10 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 }
 
 fn (p &Preferences) system_tcc_runtime_available(vroot string) bool {
+	if p.os == .windows
+		&& !os.is_file(os.join_path(vroot, 'thirdparty', 'tcc', 'lib', 'openlibm.o')) {
+		return false
+	}
 	uses_boehm := p.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt,
 		.boehm_leak]
 	needs_bundled_libgc := uses_boehm && (p.os == .windows || (p.os == .linux && p.is_glibc))
