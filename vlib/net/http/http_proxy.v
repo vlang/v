@@ -147,6 +147,16 @@ fn (pr &HttpProxy) connect_tcp(host string) !&net.TcpConn {
 	}
 }
 
+fn (pr &HttpProxy) request_target(host urllib.URL, host_name string, port_part string, path string) string {
+	// RFC 9112: absolute-form only toward an HTTP proxy, and only for non-CONNECT http:// targets.
+	// SOCKS is a tunnel; the origin wants origin-form.
+	if pr.scheme in ['http', 'https'] && host.scheme == 'http' {
+		return '${host.scheme}://${host_name}${port_part}${path}'
+	}
+
+	return path
+}
+
 fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Request, data string, header Header) !Response {
 	host_name := host.hostname()
 	mut port := host.port().int()
@@ -159,19 +169,20 @@ fn (pr &HttpProxy) http_do(host urllib.URL, method Method, path string, req &Req
 		':${port}'
 	}
 
-	s := req.build_request_headers_with(method, host_name, port,
-		'${host.scheme}://${host_name}${port_part}${path}', data, header)
+	target := pr.request_target(host, host_name, port_part, path)
+	s := req.build_request_headers_with(method, host_name, port, target, data, header)
+
 	if host.scheme == 'https' {
 		mut client := pr.ssl_dial('${host_name}:${port}')!
 
 		$if windows {
 			return error('Windows Not SUPPORTED') // TODO: windows ssl
 			// response_text := req.do_request(req.build_request_headers(req.method, host_name,
-			// 	path))!
+			// 	target))!
 			// client.shutdown()!
 			// return response_text
 		} $else {
-			return req.do_request(req.build_request_headers_with(method, host_name, port, path,
+			return req.do_request(req.build_request_headers_with(method, host_name, port, target,
 				data, header), mut client)!
 		}
 	} else if host.scheme == 'http' {
