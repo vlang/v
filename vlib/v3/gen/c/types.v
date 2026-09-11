@@ -703,6 +703,10 @@ fn optional_payload_is_bare_struct(t types.Type) bool {
 // optional_typedefs supports optional typedefs handling for FlatGen.
 fn (mut g FlatGen) optional_typedefs() {
 	g.collect_optional_typedefs()
+	// Declaration collection can have completed before the final selected-function
+	// list is available. Revisit that concrete list immediately before emission so
+	// every wrapper used by forward_decls() is already defined.
+	g.collect_selected_declaration_signature_types()
 	mut wrote := false
 	mut names := g.needed_optional_types.keys()
 	names.sort()
@@ -817,8 +821,8 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 		g.tc.cur_file = old_file
 	}
 	// Parallel monomorph workers can append concrete declarations before their
-	// checker signature maps are merged. Read declaration nodes directly too, so
-	// an option/result used only by a worker specialization still gets a typedef.
+	// checker signature maps are merged. Read those declaration nodes directly too,
+	// so an option/result used only by a worker specialization still gets a typedef.
 	mut cur_module := ''
 	mut cur_file := ''
 	for idx in g.top_level_nodes() {
@@ -835,26 +839,38 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 		if node.kind != .fn_decl {
 			continue
 		}
-		concrete_optional := g.a.specialized_fn_nodes[idx]
-			|| g.name_uses_specialized_generic_abi(node.value)
-		if !concrete_optional {
-			continue
-		}
 		g.tc.cur_module = g.a.specialized_fn_modules[idx] or { cur_module }
 		g.tc.cur_file = g.a.specialized_fn_files[idx] or {
 			g.tc.fn_type_files[node.value] or { cur_file }
 		}
-		if node.typ.len > 0 {
-			g.collect_declaration_signature_type_for_context(g.tc.parse_type(node.typ), concrete_optional)
+		concrete_optional := g.is_program_specialization_fn_node(node, idx, g.tc.cur_module)
+		if !concrete_optional {
+			continue
 		}
+		return_type := g.fn_node_return_type(node, g.tc.cur_module)
+		g.collect_declaration_signature_type_for_context(return_type, concrete_optional)
+		typed_params := g.fn_node_param_types(node, g.tc.cur_module)
+		mut param_idx := 0
 		for i in 0 .. node.children_count {
 			param := g.a.child_node(&node, i)
 			if param.kind != .param {
 				break
 			}
-			g.collect_declaration_signature_type_for_context(g.tc.parse_type(param.typ), concrete_optional)
+			raw_type := if param_idx < typed_params.len {
+				typed_params[param_idx]
+			} else {
+				g.tc.parse_resolution_type(param.typ)
+			}
+			param_idx++
+			g.collect_declaration_signature_type_for_context(g.fn_node_effective_param_type(param, raw_type), concrete_optional)
 		}
 	}
+	// The selected function list excludes open generic templates and carries the
+	// exact module/file context later used by forward_decls(). Collect those known
+	// concrete signatures without the conservative placeholder-name filter: in a
+	// large program it can mistake short nominal payloads such as `Token` or `Type`
+	// for generic parameters and omit their optional wrapper typedefs.
+	g.collect_selected_declaration_signature_types()
 	mut seen := &PreseedTypeSeen{}
 	for name, ret in g.tc.fn_ret_types {
 		// Generic template signatures keep unspecialized placeholder types
@@ -922,6 +938,38 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 	g.multi_return_types_ready = true
 }
 
+fn (mut g FlatGen) collect_selected_declaration_signature_types() {
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
+	for item in g.ensure_fn_gen_items() {
+		node := g.a.nodes[int(item.node_id)]
+		g.tc.cur_module = item.module
+		g.tc.cur_file = item.file
+		concrete_optional := g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
+		return_type := g.fn_node_return_type(node, item.module)
+		g.collect_known_declaration_signature_type_for_context(return_type, concrete_optional)
+		typed_params := g.fn_node_param_types(node, item.module)
+		mut param_idx := 0
+		for i in 0 .. node.children_count {
+			param := g.a.child_node(&node, i)
+			if param.kind != .param {
+				break
+			}
+			raw_type := if param_idx < typed_params.len {
+				typed_params[param_idx]
+			} else {
+				g.tc.parse_resolution_type(param.typ)
+			}
+			param_idx++
+			g.collect_known_declaration_signature_type_for_context(g.fn_node_effective_param_type(param, raw_type), concrete_optional)
+		}
+	}
+}
+
 @[inline]
 fn cgen_type_first_seen(typ &types.Type, mut seen PreseedTypeSeen) bool {
 	words := unsafe { &u64(voidptr(typ)) }
@@ -953,6 +1001,10 @@ fn (mut g FlatGen) collect_declaration_signature_type_for_context(t types.Type, 
 	if skip {
 		return
 	}
+	g.collect_known_declaration_signature_type_for_context(t, concrete_optional)
+}
+
+fn (mut g FlatGen) collect_known_declaration_signature_type_for_context(t types.Type, concrete_optional bool) {
 	g.collect_concrete_optional_typedef_type_for_context(t, concrete_optional)
 	g.collect_known_concrete_multi_return_type(t)
 }
@@ -1205,9 +1257,11 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	bare_val_type := val_type.trim_right('*')
 	interface_matches := g.qualified_interface_c_types(bare_val_type.all_after_last('__'))
 	is_known_interface := bare_val_type in interface_matches
+	is_known_sum_type := g.is_known_sum_c_type(bare_val_type)
 	// Multi-return names can contain a module-qualified field component, but the
 	// payload is the generated tuple struct rather than a stale source struct.
-	if !is_known_interface && !bare_val_type.starts_with('multi_return_')
+	if bare_val_type != 'Array' && !is_known_interface && !is_known_sum_type
+		&& !bare_val_type.starts_with('multi_return_')
 		&& (g.stale_ambiguous_qualified_struct_c_type(bare_val_type)
 			|| g.stale_missing_qualified_struct_c_type(bare_val_type)) {
 		// Stale generic annotations can lose the declaration module or inherit the
@@ -1216,7 +1270,8 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		g.emitted_optional_types[opt_name] = true
 		return false
 	}
-	if !bare_val_type.contains('__') && g.stale_ambiguous_qualified_interface_c_type(bare_val_type) {
+	if bare_val_type != 'Array' && !bare_val_type.contains('__')
+		&& g.stale_ambiguous_qualified_interface_c_type(bare_val_type) {
 		// A stale unqualified signature cannot identify which imported interface it
 		// belongs to. Its concrete, module-qualified signature registers the usable
 		// typedef; do not emit an invalid C type for the ambiguous collector entry.
@@ -1236,6 +1291,15 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
 	g.emitted_optional_types[opt_name] = true
 	return true
+}
+
+fn (g &FlatGen) is_known_sum_c_type(c_type string) bool {
+	for name, _ in g.tc.sum_types {
+		if g.cname(name) == c_type {
+			return true
+		}
+	}
+	return false
 }
 
 // ensure_fn_ptr_typedef_by_name emits the `_fn_ptr_<hash>` typedef registered under

@@ -78,6 +78,7 @@ see also `v help build`.
       When set to `console` V will generate a `wmain` main function.
       When set to `windows` V will generate a `wWinMain` main function,
       even when you are not compiling `gg` apps.
+      The FastC backend does not support `-subsystem windows` yet.
 
    -icon <path>
    --icon=<path>

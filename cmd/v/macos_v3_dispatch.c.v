@@ -1,6 +1,6 @@
 module main
 
-// The V3 compiler is linked directly into `cmd/v` on macOS, Linux, and BSD. The
+// The V3 compiler is linked directly into `cmd/v` on macOS, BSD, Linux, and Windows. The
 // command shell hands C-backend compilations to it in-process while leaving
 // tool commands and other backends on their existing external-tool paths.
 // When V3 fails an ordinary program compilation, the lean V3-only command
@@ -74,7 +74,7 @@ fn retry_macos_v3_with_v1(state &MacosV3RetryState) {
 }
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
-	$if bsd || linux {
+	$if bsd || linux || windows {
 		needs_v1_compatibility := macos_v3_needs_v1_compatibility(command, prefs)
 		fallback_executable := macos_v3_v1_fallback_executable()
 		if macos_v3_needs_bootstrap_before_v1_fallback(prefs, needs_v1_compatibility, os.executable(), fallback_executable) {
@@ -103,7 +103,7 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 			eprintln('the embedded V3 compiler is unavailable on this target, and fallback is disabled.')
 			exit(1)
 		}
-		$if bsd || linux {
+		$if bsd || linux || windows {
 			// musl deliberately does not link V3 because its runtime still depends on
 			// glibc-only C interfaces. Use the same full external compatibility
 			// compiler that an ordinary failed V3 build would retry through.
@@ -145,7 +145,7 @@ fn launch_macos_v1_fallback(executable string, args []string, is_verbose bool, r
 }
 
 fn macos_v3_v1_fallback_executable() string {
-	return os.join_path(os.dir(pref.vexe_path()), macos_v3_v1_fallback_binary)
+	return util.path_of_executable(os.join_path(os.dir(pref.vexe_path()), macos_v3_v1_fallback_binary))
 }
 
 fn macos_v3_is_self_build_target(prefs &pref.Preferences) bool {
@@ -172,7 +172,13 @@ fn macos_v3_needs_bootstrap_before_v1_fallback(prefs &pref.Preferences, needs_v1
 }
 
 fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool {
-	// FastC and explicit `-new-compiler` are deliberately strict V3 requests.
+	if macos_v3_windows_msvc_needs_v1_compatibility(prefs, pref.get_host_os()) {
+		// V3 does not have an MSVC command-line driver. Preserve the supported
+		// Windows mode by selecting the compatibility compiler before V3 runs.
+		return true
+	}
+	// Apart from the unsupported MSVC driver above, FastC and explicit
+	// `-new-compiler` are deliberately strict V3 requests.
 	if prefs.new_compiler || prefs.is_fastc || prefs.backend != .c || prefs.path == ''
 		|| command == 'test' || command in external_tools
 		|| macos_v3_non_compilation_command(command) {
@@ -200,6 +206,10 @@ fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool
 	target := os.real_path(prefs.path).replace('\\', '/').trim_right('/')
 	tools := '${vroot}/cmd/tools'
 	return target == tools || target.starts_with(tools + '/')
+}
+
+fn macos_v3_windows_msvc_needs_v1_compatibility(prefs &pref.Preferences, host_os pref.OS) bool {
+	return host_os == .windows && prefs.ccompiler_type == .msvc
 }
 
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {

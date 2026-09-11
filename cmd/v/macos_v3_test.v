@@ -33,7 +33,7 @@ fn test_macos_v3_embedded_driver_matches_target_selection() {
 		assert !macos_v3_driver_is_available()
 	} $else $if musl ? {
 		assert !macos_v3_driver_is_available()
-	} $else $if bsd || linux {
+	} $else $if bsd || linux || windows {
 		assert macos_v3_driver_is_available()
 	} $else {
 		assert !macos_v3_driver_is_available()
@@ -84,7 +84,7 @@ fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 
 fn test_macos_v3_cmd_source_unlinks_v1_on_supported_hosts() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'v.v'))!
-	assert source.contains('\$if v1_fallback ?|| cross ?|| ( !bsd && !linux ) {')
+	assert source.contains('\$if v1_fallback ?|| cross ?|| ( !bsd && !linux && !windows ) {')
 	assert source.contains('import v.builder')
 	assert source.contains('import v.builder.cbuilder')
 	assert source.contains('\$if v1_fallback ?|| cross ? {\n\t\t\t\tbuilder.compile')
@@ -110,9 +110,31 @@ fn test_netbsd_marks_the_v1_compatibility_compiler() {
 	assert makefile.contains('paxctl +m \$(V1_FALLBACK_EXE)')
 }
 
+fn test_windows_make_builds_the_v1_fallback_executable() {
+	source := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
+	assert source.contains('V1_FALLBACK_EXE = \$(dir \$(VEXE))v1_fallback\$(EXE_EXT)')
+	fallback_build := './v1\$(EXE_EXT) -no-parallel -d v1_fallback -o \$(V1_FALLBACK_EXE)'
+	assert source.count(fallback_build) == 2
+}
+
+fn test_windows_makev_builds_the_v1_fallback_executable() {
+	source := os.read_file(os.join_path(macos_v3_test_vroot, 'makev.bat'))!
+	assert source.contains('set V1_FALLBACK=./v1_fallback.exe')
+	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !V_FALLBACK_CC_ARGS! -d v1_fallback -o "%V1_FALLBACK%" cmd/v')
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!" -cflags -Bthirdparty/tcc')
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc clang -cflags "--target=!clang_target!"')
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!gcc_exe!"')
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc msvc')
+	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
+	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -d v1_fallback -o "%V_STAGE%" cmd/v')
+	assert !source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc')
+	normalized := source.replace('\r\n', '\n')
+	assert normalized.count('call :move_updated_to_v\nif !ERRORLEVEL! NEQ 0 goto :compile_error') == 5
+}
+
 fn test_v1_fallback_can_bootstrap_cmd_v_without_target_define() {
-	$if bsd || linux {
-		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)
+	$if bsd || linux || windows {
+		fallback := macos_v3_v1_fallback_executable()
 		if !os.is_executable(fallback) {
 			return
 		}
@@ -128,8 +150,8 @@ fn test_v1_fallback_can_bootstrap_cmd_v_without_target_define() {
 }
 
 fn test_macos_v3_old_compiler_uses_external_v1_command() {
-	$if bsd || linux {
-		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)
+	$if bsd || linux || windows {
+		fallback := macos_v3_v1_fallback_executable()
 		if !os.is_executable(fallback) {
 			return
 		}
@@ -152,7 +174,7 @@ fn test_macos_v3_old_compiler_uses_external_v1_command() {
 }
 
 fn test_macos_v3_invalid_program_still_reports_an_error_after_v1_retry() {
-	$if bsd || linux {
+	$if bsd || linux || windows {
 		root := os.join_path(os.vtmp_dir(), 'v3_invalid_program_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -173,7 +195,7 @@ fn test_macos_v3_invalid_program_still_reports_an_error_after_v1_retry() {
 }
 
 fn test_macos_v3_fatal_errors_reports_only_the_first_error() {
-	$if bsd || linux {
+	$if bsd || linux || windows {
 		root := os.join_path(os.vtmp_dir(), 'v3_fatal_errors_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -347,7 +369,7 @@ fn test_macos_v3_parallel_cc_ignores_inactive_header_definitions() {
 }
 
 fn test_macos_v3_compiles_cmd_v_without_v1_modules() {
-	$if bsd || linux {
+	$if bsd || linux || windows {
 		compiler := os.join_path(macos_v3_test_vroot, '.v3_only_cmd_test_${os.getpid()}')
 		defer {
 			os.rm(compiler) or {}

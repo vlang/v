@@ -75,16 +75,21 @@ project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
 ## The default compiler
 
-On macOS and Linux, the top-level `v` executable contains only the experimental
-**V3** C compiler (whose source lives in `vlib/v3`). Every direct C build,
-including compiler self-builds, is compiled by V3 in-process. The CLI and tool
-commands remain in `cmd/v`; commands such as `test` and `fmt` are external tools,
-and non-C backends remain separate builder tools.
+On macOS, Linux, and Windows, the top-level `v` executable contains only the
+experimental **V3** C compiler (whose source lives in `vlib/v3`). Every direct C
+build, including compiler self-builds, is compiled by V3 in-process. The CLI and
+tool commands remain in `cmd/v`; commands such as `test` and `fmt` are external
+tools, and non-C backends remain separate builder tools.
 
-V3 compilation errors are returned directly. These builds do not silently retry
-with the established compiler, and `-old-compiler` reports that the executable
-contains only V3. `-new-compiler` remains accepted for command-line compatibility
-and selects the same embedded driver.
+The standard bootstrap builds a sibling `v1_fallback` executable
+(`v1_fallback.exe` on Windows). `-old-compiler` launches it explicitly, and
+ordinary user builds retry through it after a V3 compiler or C compilation
+failure. Explicit `-new-compiler` builds and native compiler self-builds remain
+strict V3 operations, except for `-new-compiler -cc msvc` on Windows. V3 does
+not yet generate MSVC command lines, so that combination intentionally launches
+`v1_fallback.exe`. A separately built V3-only executable without the sibling
+cannot use the fallback. `-new-compiler` remains accepted for command-line
+compatibility and otherwise selects the same embedded driver.
 
 On platforms that do not embed V3, `cmd/v` still contains the established
 compiler from `vlib/v`. There, `-new-compiler` reports that the current build does

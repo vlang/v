@@ -17,6 +17,35 @@ fn assert_vself_uses_single_prod_build(output string) {
 	assert_vself_preserves_full_cli(output)
 }
 
+fn vself_mock_compiler_source() string {
+	return "module main
+
+import os
+
+fn main() {
+	if os.args.last() != 'cmd/v' {
+		eprintln('expected cmd/v, got ' + os.args.last())
+		exit(1)
+	}
+	mut output := ''
+	for i, arg in os.args {
+		if arg == '-o' && i + 1 < os.args.len {
+			output = os.args[i + 1]
+		}
+	}
+	if output == '' {
+		eprintln('missing -o')
+		exit(1)
+	}
+	os.cp(os.getenv('VSELF_TEST_FULL_CLI'), output) or {
+		eprintln(err)
+		exit(1)
+	}
+	println(os.args.last())
+}
+"
+}
+
 fn test_linux_tinyc_self_build_does_not_enable_prealloc() {
 	$if !linux {
 		return
@@ -180,32 +209,7 @@ fn test_plain_self_replacement_preserves_cli_and_embedded_v3() {
 	// The stub keeps this test fast, but only emits a replacement when vself asks
 	// for cmd/v. Targeting standalone v3.v makes the replacement fail.
 	mock_source := os.join_path(root, 'mock_compiler.v')
-	os.write_file(mock_source, "module main
-
-import os
-
-fn main() {
-	if os.args.last() != 'cmd/v' {
-		eprintln('expected cmd/v, got ' + os.args.last())
-		exit(1)
-	}
-	mut output := ''
-	for i, arg in os.args {
-		if arg == '-o' && i + 1 < os.args.len {
-			output = os.args[i + 1]
-		}
-	}
-	if output == '' {
-		eprintln('missing -o')
-		exit(1)
-	}
-	os.cp(os.getenv('VSELF_TEST_FULL_CLI'), output) or {
-		eprintln(err)
-		exit(1)
-	}
-	println(os.args.last())
-}
-") or { panic(err) }
+	os.write_file(mock_source, vself_mock_compiler_source()) or { panic(err) }
 	isolated_vexe := os.join_path(root, 'v')
 	mock_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
 	assert mock_build.exit_code == 0, mock_build.output
@@ -216,7 +220,7 @@ fn main() {
 	self_result := os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')
 	assert self_result.exit_code == 0, self_result.output
 	assert self_result.output.contains('cmd/v'), self_result.output
-	assert self_result.output.contains('BSD V1 compatibility compiler'), self_result.output
+	assert self_result.output.contains('V1 compatibility compiler'), self_result.output
 	assert !self_result.output.contains('vlib/v3/v3.v'), self_result.output
 	assert os.is_executable(isolated_vexe)
 	assert os.is_executable(os.join_path(root, 'v_old'))
@@ -237,4 +241,34 @@ fn main() {
 	program_result := os.execute(os.quoted_path(program))
 	assert program_result.exit_code == 0, program_result.output
 	assert program_result.output.trim_space() == '42', program_result.output
+}
+
+fn test_windows_plain_self_transition_installs_exe_fallback() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vself_windows_transition_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for directory in ['vlib', 'thirdparty'] {
+		os.symlink(os.join_path(vroot, directory), os.join_path(root, directory)) or { panic(err) }
+	}
+
+	mock_source := os.join_path(root, 'mock_compiler.v')
+	os.write_file(mock_source, vself_mock_compiler_source()) or { panic(err) }
+	isolated_vexe := os.join_path(root, 'v')
+	mock_build := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(isolated_vexe)} ${os.quoted_path(mock_source)}')
+	assert mock_build.exit_code == 0, mock_build.output
+	vself_tool := os.join_path(root, 'vself')
+	vself_build := os.execute('${os.quoted_path(vexe)} -d vself_test_windows_transition -o ${os.quoted_path(vself_tool)} ${os.quoted_path(os.join_path(vroot, 'cmd', 'tools', 'vself.v'))}')
+	assert vself_build.exit_code == 0, vself_build.output
+
+	self_result := os.execute('env -u CC VFLAGS="" VOSARGS="" VSELF_TEST_FULL_CLI=${os.quoted_path(vexe)} VEXE=${os.quoted_path(isolated_vexe)} ${os.quoted_path(vself_tool)} self -silent')
+	assert self_result.exit_code == 0, self_result.output
+	assert self_result.output.contains('V1 compatibility compiler'), self_result.output
+	assert !self_result.output.contains('-prealloc'), self_result.output
+	assert os.is_executable(os.join_path(root, 'v1_fallback.exe'))
 }

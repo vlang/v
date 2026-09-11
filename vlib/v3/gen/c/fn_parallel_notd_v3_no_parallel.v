@@ -1110,6 +1110,10 @@ fn (mut g FlatGen) write_scoped_cgen_batch_output(batch &FlatGen) bool {
 // and, when needed, output into the helper's result arena.
 fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool) {
 	mut b := unsafe { batch }
+	if batch.windows_entry_point_generated {
+		g.windows_entry_point_generated = true
+		g.windows_gui_entry_point = batch.windows_gui_entry_point
+	}
 	if !output_streamed {
 		output := b.sb.str()
 		if output.len > 0 {
@@ -2511,6 +2515,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe_env_setup: g.compiler_vexe_env_setup
 		ccompiler: g.ccompiler
 		target: g.target
+		subsystem: g.subsystem
+		c_flags: g.c_flags
 		suppress_main: g.suppress_main
 		cur_param_names: if result_only {
 			g.cur_param_names
@@ -2856,6 +2862,10 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	mut ww := unsafe { w }
 	if g.output_error.len == 0 && w.output_error.len > 0 {
 		g.output_error = w.output_error.clone()
+	}
+	if w.windows_entry_point_generated {
+		g.windows_entry_point_generated = true
+		g.windows_gui_entry_point = w.windows_gui_entry_point
 	}
 	string_id_remap := g.publish_worker_string_literals(w)
 	borrow_worker_segments := os.getenv('V3_RETAIN_CGEN_RESULT_SCOPES') != ''

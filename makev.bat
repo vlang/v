@@ -16,7 +16,9 @@ set V_BOOTSTRAP=./v_win_bootstrap.exe
 set V_OLD=./v_old.exe
 set V_UPDATED=./v_up.exe
 set V_STAGE=./v_stage.exe
+set V1_FALLBACK=./v1_fallback.exe
 set V_C_FILE=./vc/v_win.c
+set V_FALLBACK_CC_ARGS=
 REM Existing vc bootstraps may predate the TCC Win64 CRT prelude fix, so keep
 REM their cgen single-threaded while they build a fresh compiler from sources.
 REM TODO: remove this after vc/v_win.c is regenerated with the fixed CRT prelude.
@@ -165,6 +167,7 @@ if !ERRORLEVEL! NEQ 0 goto :compile_error
 call :build_fresh_v_with_tcc
 if !ERRORLEVEL! NEQ 0 goto :tcc_retry_with_host_bootstrap
 call :move_updated_to_v
+if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
 
 :tcc_retry_with_host_bootstrap
@@ -181,12 +184,14 @@ if !ERRORLEVEL! NEQ 0 (
 	goto :compile_error
 )
 call :move_updated_to_v
+if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
 
 :build_fresh_v_with_tcc
+set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!" -cflags -Bthirdparty/tcc
 echo  ^> Compiling "%V_STAGE%" with "%V_BOOTSTRAP%"
-REM Keep the TCC root relative here; V forwards -cflags through a response file.
-REM An absolute -B path breaks there when the checkout path contains spaces.
+REM Keep the V1 bootstrap's TCC root relative; it forwards -cflags through a
+REM response file, where an absolute -B path breaks when the checkout has spaces.
 "%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o "%V_STAGE%" cmd/v
 set stage_error=!ERRORLEVEL!
 if !stage_error! NEQ 0 (
@@ -194,7 +199,9 @@ if !stage_error! NEQ 0 (
 	exit /b !stage_error!
 )
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
-"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o "%V_UPDATED%" cmd/v
+REM V3 supplies the absolute bundled-TCC root itself. A relative -B here would
+REM override it after V3 changes into its isolated link directory.
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v
 set stage_error=!ERRORLEVEL!
 if exist "%V_STAGE%" del "%V_STAGE%"
 exit /b !stage_error!
@@ -206,10 +213,12 @@ if !ERRORLEVEL! NEQ 0 (
 	goto :gcc_strap
 )
 
+set V_FALLBACK_CC_ARGS=-cc clang -cflags "--target=!clang_target!"
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
 "%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc clang -cflags "--target=!clang_target!" -o "%V_UPDATED%" cmd/v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 call :move_updated_to_v
+if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
 
 :gcc_strap
@@ -219,10 +228,12 @@ if !ERRORLEVEL! NEQ 0 (
 	goto :msvc_strap
 )
 
+set V_FALLBACK_CC_ARGS=-cc "!gcc_exe!"
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
 "%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!gcc_exe!" -o "%V_UPDATED%" cmd/v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 call :move_updated_to_v
+if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
 
 :msvc_strap
@@ -273,7 +284,8 @@ if not defined stage_vflags (
 )
 
 echo  ^> Compiling "%V_STAGE%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -o "%V_STAGE%" cmd/v
+REM Keep this stage on V1: only the established compiler emits MSVC command lines.
+"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -d v1_fallback -o "%V_STAGE%" cmd/v
 if !ERRORLEVEL! NEQ 0 (
 	if exist %ObjFile% del %ObjFile%
 	if exist "%V_STAGE%" del "%V_STAGE%"
@@ -281,12 +293,14 @@ if !ERRORLEVEL! NEQ 0 (
 )
 
 echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
+set V_FALLBACK_CC_ARGS=-cc msvc
 "%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc msvc -o "%V_UPDATED%" cmd/v
 set msvc_error=!ERRORLEVEL!
 if exist %ObjFile% del %ObjFile%
 if exist "%V_STAGE%" del "%V_STAGE%"
 if %msvc_error% NEQ 0 goto :compile_error
 call :move_updated_to_v
+if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
 
 :download_tcc
@@ -521,6 +535,9 @@ endlocal
 exit /b 0
 
 :move_updated_to_v
+echo  ^> Compiling "%V1_FALLBACK%" with "%V_BOOTSTRAP%"
+"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !V_FALLBACK_CC_ARGS! -d v1_fallback -o "%V1_FALLBACK%" cmd/v
+if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 @REM del "%V_EXE%" &:: breaks if `makev.bat` is run from `v up` b/c of held file handle on `%V_EXE%`
 if exist "%V_EXE%" move "%V_EXE%" "%V_OLD%" >nul
 REM sleep for at most 100ms

@@ -483,6 +483,9 @@ mut:
 	compiler_vexe_env_setup       bool = true
 	ccompiler                     string
 	target                        pref.Target
+	subsystem                     pref.Subsystem
+	windows_entry_point_generated bool
+	windows_gui_entry_point       bool
 	// C spelling for V's platform-width `int`: `i64` on 64-bit targets, `i32` on
 	// 32-bit. Used by hand-written runtime helpers that operate on `[]int`
 	// elements or `int` values directly (kept in sync with set_target).
@@ -1279,6 +1282,20 @@ pub fn (mut g FlatGen) set_compiler_vexe_env_setup(enabled bool) {
 pub fn (mut g FlatGen) set_target(target pref.Target) {
 	g.target = target
 	g.int_ct = if target.pointer_bits == 32 { 'i32' } else { 'i64' }
+}
+
+// set_subsystem configures the Windows executable subsystem.
+pub fn (mut g FlatGen) set_subsystem(subsystem pref.Subsystem) {
+	g.subsystem = subsystem
+}
+
+// generated_windows_gui_entry_point reports the GUI decision when this generator emitted a
+// Windows executable entry point, or none when the current generation did not emit one.
+pub fn (g &FlatGen) generated_windows_gui_entry_point() ?bool {
+	if !g.windows_entry_point_generated {
+		return none
+	}
+	return g.windows_gui_entry_point
 }
 
 // set_thread_stack_size configures the stack size used by generated worker threads.
@@ -3487,8 +3504,7 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 		g.writeln('#define _VPROFILE (1)')
 	}
 	g.thread_stack_size_definition()
-	g.emit_preinclude_directives()
-	g.emit_preserved_c_directives_scoped()
+	g.emit_translation_unit_include_directives()
 	g.preamble()
 	if g.cache_split {
 		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */')
@@ -3499,10 +3515,20 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 	}
 }
 
-fn (mut g FlatGen) emit_preserved_c_directives_scoped() {
+fn (mut g FlatGen) emit_translation_unit_include_directives() {
+	mut windows_header_emitted := g.emit_preinclude_directives()
+	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
+	if g.target.os == 'windows' && !windows_header_emitted {
+		// Winsock2 must precede windows.h, which otherwise includes legacy winsock.h.
+		g.writeln('#include <windows.h>')
+	}
+}
+
+fn (mut g FlatGen) emit_preserved_c_directives_scoped(windows_header_emitted bool) bool {
 	state := g.begin_scoped_append()
-	g.emit_preserved_c_directives()
+	emitted_windows_header := g.emit_preserved_c_directives(windows_header_emitted)
 	g.finish_scoped_append(state)
+	return emitted_windows_header
 }
 
 fn (mut g FlatGen) emit_c_directives_scoped(late bool) {
@@ -4852,13 +4878,30 @@ fn normalized_c_include_arg_path(include_arg string) string {
 	return path.replace('\\', '/')
 }
 
-fn (mut g FlatGen) emit_preinclude_directives() {
+fn (mut g FlatGen) emit_preinclude_directives() bool {
+	// Configuration preincludes must run before windows.h so they can select the
+	// requested WinAPI surface. Only interpose windows.h before a leaf header that
+	// specifically requires its base declarations.
+	windows_target := g.target.os == 'windows'
+	mut emitted_windows_header := false
 	for directive in g.preinclude_directives {
+		if windows_target && directive == '#include <windows.h>' {
+			if !emitted_windows_header {
+				g.writeln(directive)
+				emitted_windows_header = true
+			}
+			continue
+		}
+		if windows_target && !emitted_windows_header && directive == '#include <synchapi.h>' {
+			g.writeln('#include <windows.h>')
+			emitted_windows_header = true
+		}
 		g.writeln(directive)
 	}
 	if g.preinclude_directives.len > 0 {
 		g.writeln('')
 	}
+	return emitted_windows_header
 }
 
 fn (mut g FlatGen) emit_postinclude_directives() {
@@ -9297,10 +9340,12 @@ fn c_is_late_source_include_directive(directive string) bool {
 	return arg.ends_with('.m') || arg.ends_with('.mm')
 }
 
-fn (mut g FlatGen) emit_preserved_c_directives() {
+fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool {
 	mut emitted := false
 	mut emitted_includes := map[string]bool{}
 	mut has_mach_headers := false
+	mut emitted_windows_header := windows_header_emitted
+	mut deferred_synchapi_indices := []int{}
 	directives := g.ordered_c_directives(false)
 	use_system_libc := g.c_directives_use_system_libc()
 	for i, directive in directives {
@@ -9319,31 +9364,34 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 			emitted = true
 			continue
 		}
-		prefix := if c_lifted_include_skips_context(directive) {
-			[]string{}
-		} else {
-			c_lifted_include_context_prefix(directives, i)
-		}
-		if c_is_preserved_system_include_directive(clean) {
-			// Dedupe on the include *together with* its lifted guard context: the
-			// same header may legitimately appear under different guards (e.g. one
-			// `#ifdef __linux__` block and one `#ifdef __APPLE__` block), and each
-			// occurrence needs its own context emitted. Keying on the raw include
-			// line alone would drop the second, differently-guarded include.
-			key := prefix.join('\n') + '\x00' + clean
-			if emitted_includes[key] {
+		if g.target.os == 'windows' {
+			if clean == '#include <windows.h>' {
+				if emitted_windows_header {
+					continue
+				}
+				emitted_windows_header = true
+			}
+			if !emitted_windows_header && clean == '#include <synchapi.h>' {
+				deferred_synchapi_indices << i
 				continue
 			}
-			emitted_includes[key] = true
 		}
-		for line in prefix {
-			g.writeln(line)
+		if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
 			emitted = true
 		}
-		g.emit_preserved_c_directive(directive)
-		emitted = true
-		for _ in 0 .. c_lifted_include_context_depth(prefix) {
-			g.writeln('#endif')
+	}
+	if deferred_synchapi_indices.len > 0 {
+		if !emitted_windows_header {
+			// Preserve Winsock2 ahead of windows.h while keeping synchapi.h after
+			// the WinAPI base declarations that it requires.
+			g.writeln('#include <windows.h>')
+			emitted_windows_header = true
+			emitted = true
+		}
+		for i in deferred_synchapi_indices {
+			if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
+				emitted = true
+			}
 		}
 	}
 	refs := g.c_extern_referenced_symbols()
@@ -9357,6 +9405,37 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 	if emitted {
 		g.writeln('')
 	}
+	return emitted_windows_header
+}
+
+fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int, mut emitted_includes map[string]bool) bool {
+	directive := directives[index]
+	clean := trimmed_space(directive)
+	prefix := if c_lifted_include_skips_context(directive) {
+		[]string{}
+	} else {
+		c_lifted_include_context_prefix(directives, index)
+	}
+	if c_is_preserved_system_include_directive(clean) {
+		// Dedupe on the include *together with* its lifted guard context: the
+		// same header may legitimately appear under different guards (e.g. one
+		// `#ifdef __linux__` block and one `#ifdef __APPLE__` block), and each
+		// occurrence needs its own context emitted. Keying on the raw include
+		// line alone would drop the second, differently-guarded include.
+		key := prefix.join('\n') + '\x00' + clean
+		if emitted_includes[key] {
+			return false
+		}
+		emitted_includes[key] = true
+	}
+	for line in prefix {
+		g.writeln(line)
+	}
+	g.emit_preserved_c_directive(directive)
+	for _ in 0 .. c_lifted_include_context_depth(prefix) {
+		g.writeln('#endif')
+	}
+	return true
 }
 
 fn c_lifted_include_skips_context(directive string) bool {
@@ -16780,12 +16859,20 @@ fn (mut g FlatGen) system_libc_headers() {
 	// GCC's Objective-C frontend does not implement the C11 `_Atomic` qualifier,
 	// but its stdatomic macros still work with volatile storage and __atomic builtins.
 	// Clang implements `_Atomic` in Objective-C and must retain the native qualifier.
+	// Windows TCC uses V's WinAPI atomic compatibility header instead. It must be
+	// available before struct declarations that contain atomic_uintptr_t fields, and
+	// including both implementations redefines atomic_flag and the operation macros.
+	windows_atomic_header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
+	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
+	g.writeln('#include "${windows_atomic_header}"')
+	g.writeln('#else')
 	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
 	g.writeln('#define _Atomic volatile')
 	g.writeln('#endif')
 	g.writeln('#include <stdatomic.h>')
 	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
 	g.writeln('#undef _Atomic')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/syscall.h>')
@@ -19204,7 +19291,9 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	// `atomic_thread_fence` and maps `__atomic_thread_fence` to it. Redeclaring the
 	// mapped name with `int` conflicts with TCC's `memory_order` enum parameter.
 	// clang/gcc keep the builtin.
-	g.writeln('#if defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(_WIN32)))')
+	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
+	g.writeln('/* V atomic.h supplies atomic_thread_fence on Windows TCC. */')
+	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv))')
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')

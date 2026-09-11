@@ -1,6 +1,7 @@
 module driver
 
 import os
+import v3.cmdexec
 import v3.pref
 
 fn test_input_is_cmd_v_accepts_relative_entry_file() {
@@ -27,6 +28,15 @@ fn test_v3_prefers_bundled_tcc_for_debug_selfhost() {
 	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false, host, false)
 }
 
+fn test_v3_windows_default_compiler_requires_bundled_tcc() {
+	bundled_tcc := os.join_path(os.temp_dir(), 'thirdparty', 'tcc', 'tcc.exe')
+	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', bundled_tcc, true) == bundled_tcc
+	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', bundled_tcc, false) == 'cc'
+	assert v3_select_windows_default_c_compiler('clang', true, 'windows', 'windows', bundled_tcc, true) == 'clang'
+	assert v3_select_windows_default_c_compiler('cc', false, 'linux', 'windows', bundled_tcc, true) == 'cc'
+	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'linux', bundled_tcc, true) == 'cc'
+}
+
 fn test_v3_regenerates_cc_fallback_after_preferred_tcc() {
 	assert !v3_should_regenerate_for_cc_fallback(false, false, 0)
 	assert !v3_should_regenerate_for_cc_fallback(false, true, 1)
@@ -35,10 +45,10 @@ fn test_v3_regenerates_cc_fallback_after_preferred_tcc() {
 	assert v3_should_regenerate_for_cc_fallback(true, false, 0)
 }
 
-fn test_v3_explicit_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
+fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	vroot := os.join_path(os.temp_dir(), 'v3_tcc_flag_plan')
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-		explicit_tcc: true
+		is_tcc: true
 		target_os: 'macos'
 		target_arch: 'arm64'
 		vroot: vroot
@@ -50,10 +60,53 @@ fn test_v3_explicit_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-L${tcc_install_dir}' in plan.before_inputs
 }
 
-fn test_v3_explicit_tcc_flag_plan_restores_native_local_prefix() {
+fn test_v3_tcc_resource_flags_use_windows_bundle_root() {
+	vroot := os.join_path(os.temp_dir(), 'v3_windows_tcc_flag_plan_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	tcc_root := os.join_path(vroot, 'thirdparty', 'tcc')
+	tcc_lib := os.join_path_single(tcc_root, 'lib')
+	tcc_include := os.join_path_single(tcc_root, 'include')
+	os.mkdir_all(tcc_lib)!
+	os.mkdir_all(os.join_path_single(tcc_include, 'winapi'))!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	resources := v3_tcc_resource_flags(vroot)
+	assert resources.base_arg == '-B${tcc_root}'
+	assert resources.include_arg == '-I${tcc_include}'
+	assert resources.library_arg == '-L${tcc_lib}'
+}
+
+fn test_v3_windows_tcc_prod_flag_plan_uses_tcc_resources() {
+	vroot := os.join_path(os.vtmp_dir(), 'v3_windows_tcc_prod_flag_plan_${os.getpid()}')
+	os.rmdir_all(vroot) or {}
+	tcc_root := os.join_path(vroot, 'thirdparty', 'tcc')
+	tcc_lib := os.join_path_single(tcc_root, 'lib')
+	tcc_include := os.join_path_single(tcc_root, 'include')
+	os.mkdir_all(tcc_lib)!
+	os.mkdir_all(os.join_path_single(tcc_include, 'winapi'))!
+	defer {
+		os.rmdir_all(vroot) or {}
+	}
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_tcc: true
+		is_prod: true
+		target_os: 'windows'
+		target_arch: 'amd64'
+		c_compiler: 'tinyc'
+		vroot: vroot
+	})
+	assert '-O3' in plan.before_inputs
+	assert '-flto' !in plan.before_inputs
+	assert '-B${tcc_root}' in plan.before_inputs
+	assert '-I${tcc_include}' in plan.before_inputs
+	assert '-L${tcc_lib}' in plan.before_inputs
+}
+
+fn test_v3_tcc_flag_plan_restores_native_local_prefix() {
 	host_os := os.user_os()
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
-		explicit_tcc: true
+		is_tcc: true
 		target_os: host_os
 		target_arch: 'amd64'
 		vroot: os.join_path(os.temp_dir(), 'v3_tcc_native_flag_plan')
@@ -65,6 +118,57 @@ fn test_v3_explicit_tcc_flag_plan_restores_native_local_prefix() {
 		assert '-I/usr/local/include' in plan.before_inputs
 		assert '-L/usr/local/lib' in plan.before_inputs
 	}
+}
+
+fn test_v3_windows_default_tcc_prod_build() {
+	$if !windows {
+		return
+	}
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	assert os.is_executable(bundled_tcc)
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_default_tcc_prod_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.exe')
+	os.write_file(source, 'fn main() {\n\texit(42)\n}\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	build := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-prod', '-showcc', '-o', output,
+		source])
+	assert build.exit_code == 0, build.output
+	normalized_output := build.output.replace('\\', '/')
+	assert normalized_output.contains('thirdparty/tcc/tcc.exe'), build.output
+	assert normalized_output.contains('-B') && normalized_output.contains('thirdparty/tcc'), build.output
+	assert !normalized_output.contains('-flto'), build.output
+	run_result := cmdexec.run(output, [])
+	assert run_result.exit_code == 42, run_result.output
+}
+
+fn test_v3_windows_auto_gui_build_uses_windows_subsystem() {
+	$if !windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_windows_auto_gui_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.exe')
+	os.write_file(source, '#flag windows -lgdi32\n\nfn main() {}\n')!
+	build := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-showcc', '-o', output, source])
+	assert build.exit_code == 0, build.output
+	assert build.output.contains('-mwindows'), build.output
 }
 
 fn test_add_v3_tcc_compat_defines() {
@@ -86,7 +190,7 @@ fn test_add_v3_tcc_compat_defines() {
 }
 
 fn test_v3_default_linker_flags() {
-	assert v3_default_linker_flags('windows', false) == ['-lm']
+	assert v3_default_linker_flags('windows', false) == []
 	assert v3_default_linker_flags('linux', false) == ['-lm', '-lpthread']
 	assert v3_default_linker_flags('freebsd', false) == ['-lm', '-lpthread', '-lexecinfo', '-lelf']
 	assert v3_default_linker_flags('netbsd', false) == ['-lm', '-lpthread', '-lexecinfo', '-lelf']
@@ -97,6 +201,67 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	mut flags := ['-lpthread', '-lm']
 	add_v3_default_linker_flags(mut flags, 'linux', false)
 	assert flags == ['-lpthread', '-lm']
+}
+
+fn test_v3_fastc_default_linker_flags() {
+	assert v3_fastc_default_linker_flags('windows', true) == []
+	assert v3_fastc_default_linker_flags('linux', false) == ['-lm']
+	assert v3_fastc_default_linker_flags('linux', true) == ['-lpthread', '-lm']
+}
+
+fn test_v3_windows_executable_linker_flags() {
+	expected := ['-municode', '-Wl,-stack=33554432']
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .auto, false) == expected
+	assert v3_windows_executable_linker_flags('windows', 'gcc', false, false, .auto, false) == expected
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .auto, true) == [
+		'-municode',
+		'-mwindows',
+		'-Wl,-stack=33554432',
+	]
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .console, true) == [
+		'-municode',
+		'-mconsole',
+		'-Wl,-stack=33554432',
+	]
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .windows, false) == [
+		'-municode',
+		'-mwindows',
+		'-Wl,-stack=33554432',
+	]
+	assert v3_windows_executable_linker_flags('windows', 'msvc', false, false, .auto, true) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', true, false, .auto, true) == []
+	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, true, .auto, true) == []
+	assert v3_windows_executable_linker_flags('linux', 'tinyc', false, false, .auto, true) == []
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		target_os: 'windows'
+		c_compiler: 'tinyc'
+		windows_gui_app: true
+	})
+	assert '-municode' in plan.before_inputs
+	assert '-mwindows' in plan.before_inputs
+	assert '-Wl,-stack=33554432' in plan.before_inputs
+}
+
+fn test_v3_cgen_metadata_preserves_windows_gui_entry_point() {
+	encoded := encode_v3_cgen_metadata(['-lgdi32'], 'interfaces', 'prefix', true, []V3CachedTypeDiagnostic{})
+	decoded := decode_v3_cgen_metadata(encoded) or { panic('could not decode Cgen metadata') }
+	assert decoded.windows_gui_entry_point
+	assert decoded.flags == ['-lgdi32']
+}
+
+fn test_v3_fastc_rejects_windows_gui_subsystem() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_windows_subsystem_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {}\n')!
+	build := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-b', 'fastc', '-os', 'windows',
+		'-subsystem', 'windows', source])
+	assert build.exit_code != 0, build.output
+	assert build.output.contains('the V3 fastc backend does not support `-subsystem windows`'), build.output
 }
 
 fn test_add_c_language_runtime_link_flags() {
