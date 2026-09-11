@@ -254,7 +254,10 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 	}
 	os.mkdir_all(cache_dir) or { return atomic_s }
 	build_path := '${object_path}.tmp.${os.getpid()}'
-	mut args := ['-std=gnu11', tcc_includes]
+	mut args := ['-std=gnu11']
+	if tcc_includes != '' {
+		args << tcc_includes
+	}
 	if wrapv_flag.len > 0 {
 		args << wrapv_flag
 	}
@@ -1117,8 +1120,11 @@ fn v3_cached_tcc_executable_path(manager &modulecache.Manager, source_identity s
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
-	mut inputs := os.walk_ext(tcc_lib_dir, '.h')
-	inputs << os.walk_ext(tcc_lib_dir, '.a')
+	mut inputs := []string{}
+	if tcc_lib_dir != '' {
+		inputs = os.walk_ext(tcc_lib_dir, '.h')
+		inputs << os.walk_ext(tcc_lib_dir, '.a')
+	}
 	for arg in tcc_args {
 		clean := arg.trim_space()
 		if os.is_file(clean) {
@@ -2361,6 +2367,13 @@ fn v3_tcc_resource_flags(vroot string) V3TccResourceFlags {
 		include_arg: '-I${include_dir}'
 		library_arg: '-L${install_dir}'
 	}
+}
+
+fn v3_tcc_resource_flags_for_compiler(vroot string, tcc_path string, bundled_tcc string, bundled_tcc_available bool) V3TccResourceFlags {
+	if !bundled_tcc_available || os.real_path(tcc_path) != os.real_path(bundled_tcc) {
+		return V3TccResourceFlags{}
+	}
+	return v3_tcc_resource_flags(vroot)
 }
 
 fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
@@ -6597,6 +6610,30 @@ fn default_cc_identity() string {
 	return '${cc_path}\t${metadata}\t${version.exit_code}\t${version.output.replace('\n', ' ')}'
 }
 
+fn v3_usable_system_tcc_compiler(host_os string) string {
+	// Match the V1 system-TCC fallback on macOS: a PATH-installed TCC remains
+	// opt-in because SDK and framework headers can require Clang compatibility.
+	if host_os == 'macos' {
+		return ''
+	}
+	system_tcc := os.find_abs_path_of_executable('tcc') or { return '' }
+	tcc_probe := cmdexec.run(system_tcc, ['-v'])
+	if tcc_probe.exit_code != 0 {
+		return ''
+	}
+	return system_tcc
+}
+
+fn v3_default_tcc_compiler(bundled_tcc string, bundled_tcc_available bool, allow_system_tcc bool, host_os string) string {
+	if bundled_tcc_available {
+		return bundled_tcc
+	}
+	if !allow_system_tcc {
+		return ''
+	}
+	return v3_usable_system_tcc_compiler(host_os)
+}
+
 fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
 	resolved_path := os.real_path(compiler_path)
@@ -9133,7 +9170,12 @@ pub fn run(args []string) {
 	}
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	bundled_tcc_available := os.is_executable(bundled_tcc)
-	c_compiler = v3_select_windows_default_c_compiler(c_compiler, c_compiler_explicit, os.user_os(), target.os, bundled_tcc, bundled_tcc_available)
+	host_os := os.user_os()
+	host_target := pref.host_target()
+	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug
+		&& !c_compiler_explicit && target.os == host_target.os && target.arch == host_target.arch
+	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, bundled_tcc_available, allow_system_tcc, host_os)
+	c_compiler = v3_select_windows_default_c_compiler(c_compiler, c_compiler_explicit, host_os, target.os, bundled_tcc, bundled_tcc_available)
 	// The non-production C path tries bundled TCC before its `cc` fallback. Select
 	// TinyCC compile-time branches for a self-host too, so system headers and inline
 	// assembly intended for Clang do not prevent that first attempt.
@@ -9462,7 +9504,6 @@ pub fn run(args []string) {
 	}
 	minimal_literal_output := !is_prof
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
-	host_target := pref.host_target()
 	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !effective_tcc
 		&& !is_o && target.os != 'windows' && coverage_dir.len == 0 && profile_file.len == 0
 		&& v3_parallel_cc_monolithic_define !in user_defines
@@ -11926,19 +11967,24 @@ pub fn run(args []string) {
 		mut tcc_cache_hit := false
 		mut used_tcc := false
 		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language
-			&& !is_c_debug {
+			&& !is_c_debug && implicit_tcc != '' {
 			tried_tcc = true
-			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
-			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
-			tcc_resources := v3_tcc_resource_flags(prefs.vroot)
-			mut tcc_args := [c_standard, tcc_resources.base_arg, tcc_resources.include_arg,
-				tcc_resources.library_arg, '-w', '-Werror=implicit-function-declaration']
+			tcc_path := implicit_tcc
+			tcc_resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, tcc_path, bundled_tcc, bundled_tcc_available)
+			mut tcc_args := [c_standard]
+			if tcc_resources.base_arg != '' {
+				tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg,
+					tcc_resources.library_arg]
+			}
+			tcc_args << ['-w', '-Werror=implicit-function-declaration']
 			tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
 				macos_sdk_root_cache.get()
 			} else {
 				''
 			}
-			tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
+			if tcc_resources.base_arg != '' {
+				tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
+			}
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
 				tcc_args << '-bt25'
 			}
@@ -11997,19 +12043,17 @@ pub fn run(args []string) {
 			&& (!tcc_link_has_incompatible_objects || cache_full_tcc_source.len > 0)
 			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
 			&& (!cache_state.manager.enabled || cache_full_tcc_source.len > 0) && !is_c_debug
-			&& dump_c_flags.len == 0 {
+			&& dump_c_flags.len == 0 && (explicit_tcc || implicit_tcc != '') {
 			tried_tcc = true
-			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
-			bundled_tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 			tcc_path := if explicit_tcc && c_compiler in ['tcc', 'tinyc']
-				&& os.is_executable(bundled_tcc_path) {
-				bundled_tcc_path
+				&& bundled_tcc_available {
+				bundled_tcc
 			} else if explicit_tcc {
 				c_compiler
 			} else {
-				bundled_tcc_path
+				implicit_tcc
 			}
-			tcc_resources := v3_tcc_resource_flags(prefs.vroot)
+			tcc_resources := v3_tcc_resource_flags_for_compiler(prefs.vroot, tcc_path, bundled_tcc, bundled_tcc_available)
 			mut tcc_args := environment_c_flags.clone()
 			if link_c_standard.len > 0 {
 				tcc_args << link_c_standard
@@ -12017,14 +12061,18 @@ pub fn run(args []string) {
 			if pic_flag.len > 0 {
 				tcc_args << pic_flag
 			}
-			tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg,
-				tcc_resources.library_arg]
+			if tcc_resources.base_arg != '' {
+				tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg,
+					tcc_resources.library_arg]
+			}
 			tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
 				macos_sdk_root_cache.get()
 			} else {
 				''
 			}
-			tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
+			if tcc_resources.base_arg != '' {
+				tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
+			}
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
 				tcc_args << '-bt25'
 			}
