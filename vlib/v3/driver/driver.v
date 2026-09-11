@@ -6730,6 +6730,13 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 	return if target.os in ['macos', 'ios'] { 'clang' } else { 'gcc' }
 }
 
+fn v3_effective_c_compiler_for_codegen(backend string, c_compiler string, use_implicit_tcc_semantics bool, target pref.Target) string {
+	if backend == 'arm64' || use_implicit_tcc_semantics {
+		return 'tinyc'
+	}
+	return effective_c_compiler_name(c_compiler, target)
+}
+
 fn v3_select_windows_default_c_compiler(c_compiler string, c_compiler_explicit bool, host_os string, target_os string, bundled_tcc string, bundled_tcc_available bool) string {
 	if !c_compiler_explicit && host_os == 'windows' && target_os == 'windows'
 		&& bundled_tcc_available {
@@ -6738,17 +6745,8 @@ fn v3_select_windows_default_c_compiler(c_compiler string, c_compiler_explicit b
 	return c_compiler
 }
 
-fn v3_should_prefer_bundled_tcc_for_selfhost(building_v bool, backend string, c_only bool, is_prod bool, is_c_debug bool, c_compiler_explicit bool, target pref.Target, bundled_tcc_available bool) bool {
-	if !building_v || backend != 'c' || c_only || is_prod || is_c_debug || c_compiler_explicit
-		|| !bundled_tcc_available {
-		return false
-	}
-	host := pref.host_target()
-	return target.os == host.os && target.arch == host.arch
-}
-
-fn v3_should_regenerate_for_cc_fallback(prefer_bundled_tcc bool, tried_tcc bool, tcc_exit_code int) bool {
-	return prefer_bundled_tcc && (!tried_tcc || tcc_exit_code != 0)
+fn v3_should_regenerate_after_implicit_tcc(use_implicit_tcc_semantics bool, tried_tcc bool, tcc_exit_code int) bool {
+	return use_implicit_tcc_semantics && (!tried_tcc || tcc_exit_code != 0)
 }
 
 struct V3TestBuildConstraint {
@@ -9236,18 +9234,10 @@ pub fn run(args []string) {
 		&& !c_compiler_explicit && target.os == host_target.os && target.arch == host_target.arch
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, bundled_tcc_available, allow_system_tcc, host_os)
 	c_compiler = v3_select_windows_default_c_compiler(c_compiler, c_compiler_explicit, host_os, target.os, bundled_tcc, bundled_tcc_available)
-	// The non-production C path tries bundled TCC before its `cc` fallback. Select
-	// TinyCC compile-time branches for a self-host too, so system headers and inline
-	// assembly intended for Clang do not prevent that first attempt.
-	prefer_bundled_tcc := retry_compilation
-		&& v3_should_prefer_bundled_tcc_for_selfhost(building_v, backend, c_only, is_prod, is_c_debug, c_compiler_explicit, target, bundled_tcc_available)
-	effective_c_compiler := if backend == 'arm64' {
-		'tinyc'
-	} else if prefer_bundled_tcc {
-		'tinyc'
-	} else {
-		effective_c_compiler_name(c_compiler, target)
-	}
+	// Generate for the compiler that receives the first build attempt. If implicit
+	// TCC cannot be used, regenerate below before invoking the `cc` fallback.
+	use_implicit_tcc_semantics := backend == 'c' && !c_compiler_explicit && implicit_tcc != ''
+	effective_c_compiler := v3_effective_c_compiler_for_codegen(backend, c_compiler, use_implicit_tcc_semantics, target)
 	incompatible_direct_test := v3_direct_test_input_is_incompatible(is_test_command, input_file, backend, target, effective_c_compiler, is_prod, user_defines)
 	if incompatible_direct_test {
 		// Directory test discovery already excludes incompatible backend/platform files.
@@ -12165,9 +12155,9 @@ pub fn run(args []string) {
 			show_v3_c_compiler_output(show_c_output, tcc_path, result)
 			used_tcc = result.exit_code == 0
 		}
-		if v3_should_regenerate_for_cc_fallback(prefer_bundled_tcc, tried_tcc, result.exit_code) {
+		if v3_should_regenerate_after_implicit_tcc(use_implicit_tcc_semantics, tried_tcc, result.exit_code) {
 			fallback := 'cc'
-			eprintln('warning: bundled tcc could not build the generated unit, regenerating with ${fallback}')
+			eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
 			retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 			cleanup_c_build_dir(cc_dir)
 			retry_result := cmdexec.run(os.executable(), retry_args)

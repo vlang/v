@@ -16,18 +16,6 @@ fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('linux', 'arm64', true)
 }
 
-fn test_v3_prefers_bundled_tcc_for_debug_selfhost() {
-	host := pref.host_target()
-	assert v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(false, 'c', false, false, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'fastc', false, false, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', true, false, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, true, false, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, true, false, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, true, host, true)
-	assert !v3_should_prefer_bundled_tcc_for_selfhost(true, 'c', false, false, false, false, host, false)
-}
-
 fn test_v3_windows_default_compiler_requires_bundled_tcc() {
 	bundled_tcc := os.join_path(os.temp_dir(), 'thirdparty', 'tcc', 'tcc.exe')
 	assert v3_select_windows_default_c_compiler('cc', false, 'windows', 'windows', bundled_tcc, true) == bundled_tcc
@@ -162,7 +150,9 @@ fn test_v3_default_tcc_compiler_uses_working_system_tcc() {
 	}
 	bundled_tcc := write_v3_test_tcc(os.join_path(test_root, 'thirdparty', 'tcc', 'tcc.exe'), 1)
 	assert !v3_usable_tcc_compiler(bundled_tcc)
-	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, 'linux') == system_tcc
+	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, 'linux')
+	assert implicit_tcc == system_tcc
+	assert v3_effective_c_compiler_for_codegen('c', 'cc', implicit_tcc != '', pref.host_target()) == 'tinyc'
 	write_v3_test_tcc(bundled_tcc, 0)
 	assert v3_usable_tcc_compiler(bundled_tcc)
 	assert v3_default_tcc_compiler(bundled_tcc, v3_usable_tcc_compiler(bundled_tcc), true, 'linux') == bundled_tcc
@@ -200,12 +190,12 @@ fn test_v3_system_tcc_does_not_use_bundled_resources() {
 	assert bundled_resources.base_arg.contains('thirdparty')
 }
 
-fn test_v3_regenerates_cc_fallback_after_preferred_tcc() {
-	assert !v3_should_regenerate_for_cc_fallback(false, false, 0)
-	assert !v3_should_regenerate_for_cc_fallback(false, true, 1)
-	assert !v3_should_regenerate_for_cc_fallback(true, true, 0)
-	assert v3_should_regenerate_for_cc_fallback(true, true, 1)
-	assert v3_should_regenerate_for_cc_fallback(true, false, 0)
+fn test_v3_regenerates_cc_fallback_after_implicit_tcc() {
+	assert !v3_should_regenerate_after_implicit_tcc(false, false, 0)
+	assert !v3_should_regenerate_after_implicit_tcc(false, true, 1)
+	assert !v3_should_regenerate_after_implicit_tcc(true, true, 0)
+	assert v3_should_regenerate_after_implicit_tcc(true, true, 1)
+	assert v3_should_regenerate_after_implicit_tcc(true, false, 0)
 }
 
 fn write_v3_test_tcc(tcc_path string, exit_code int) string {
