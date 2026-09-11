@@ -1212,9 +1212,9 @@ fn c_source_language(source_file string, source_language string) string {
 	return ''
 }
 
-fn c_source_object_compiler(language string, c_compiler string, use_platform_non_c_compiler bool) string {
+fn c_source_object_compiler(language string, c_compiler string, use_platform_non_c_compiler bool, target_os string) string {
 	if use_platform_non_c_compiler && language == 'objective-c' {
-		return 'cc'
+		return v3_platform_c_compiler(target_os)
 	}
 	if language in ['c++', 'objective-c++']
 		&& (c_compiler == 'cc' || use_platform_non_c_compiler) {
@@ -1233,7 +1233,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	} else {
 		c_standard_flag(c99)
 	}
-	compiler := c_source_object_compiler(language, c_compiler, use_platform_non_c_compiler)
+	compiler := c_source_object_compiler(language, c_compiler, use_platform_non_c_compiler, target.os)
 	mut args := [std_flag]
 	args << target_args
 	if pic_flag.len > 0 {
@@ -6659,7 +6659,7 @@ fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
 		}
 		return os.real_path(compiler_path) == os.real_path(options.bundled_tcc)
 	}
-	if options.dump_c_flags || options.parallel_cc {
+	if options.dump_c_flags || (options.parallel_cc && options.target.os != 'windows') {
 		return false
 	}
 	// Windows uses its bundled TCC as the platform default, including modes that
@@ -9256,7 +9256,8 @@ pub fn run(args []string) {
 		bundled_tcc: bundled_tcc
 	})
 	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug
-		&& !c_compiler_explicit && !parallel_cc && target.os == host_target.os
+		&& !c_compiler_explicit && (!parallel_cc || target.os == 'windows')
+		&& target.os == host_target.os
 		&& target.arch == host_target.arch
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, bundled_tcc_available, allow_system_tcc, dump_c_flags.len > 0, host_os)
 	c_compiler = v3_select_implicit_c_compiler(c_compiler, c_compiler_explicit, implicit_tcc)

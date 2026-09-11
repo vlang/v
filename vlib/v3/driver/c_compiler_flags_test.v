@@ -33,16 +33,17 @@ fn test_v3_platform_c_compiler() {
 
 fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
 	implicit_tcc := os.join_path(os.temp_dir(), 'bin', 'tcc')
-	assert c_source_object_compiler('', implicit_tcc, true) == implicit_tcc
-	assert c_source_object_compiler('objective-c', implicit_tcc, true) == 'cc'
-	assert c_source_object_compiler('c++', implicit_tcc, true) == 'c++'
-	assert c_source_object_compiler('objective-c++', implicit_tcc, true) == 'c++'
-	assert c_source_object_compiler('objective-c', 'cc', false) == 'cc'
-	assert c_source_object_compiler('c++', 'cc', false) == 'c++'
-	assert c_source_object_compiler('objective-c', 'clang', false) == 'clang'
-	assert c_source_object_compiler('c++', 'clang', false) == 'clang'
-	assert c_source_object_compiler('objective-c', 'tcc', false) == 'tcc'
-	assert c_source_object_compiler('c++', 'tcc', false) == 'tcc'
+	assert c_source_object_compiler('', implicit_tcc, true, 'linux') == implicit_tcc
+	assert c_source_object_compiler('objective-c', implicit_tcc, true, 'linux') == 'cc'
+	assert c_source_object_compiler('objective-c', implicit_tcc, true, 'windows') == 'gcc'
+	assert c_source_object_compiler('c++', implicit_tcc, true, 'linux') == 'c++'
+	assert c_source_object_compiler('objective-c++', implicit_tcc, true, 'linux') == 'c++'
+	assert c_source_object_compiler('objective-c', 'cc', false, 'linux') == 'cc'
+	assert c_source_object_compiler('c++', 'cc', false, 'linux') == 'c++'
+	assert c_source_object_compiler('objective-c', 'clang', false, 'linux') == 'clang'
+	assert c_source_object_compiler('c++', 'clang', false, 'linux') == 'clang'
+	assert c_source_object_compiler('objective-c', 'tcc', false, 'linux') == 'tcc'
+	assert c_source_object_compiler('c++', 'tcc', false, 'linux') == 'tcc'
 }
 
 fn test_v3_bundled_tcc_probe_eligibility() {
@@ -84,6 +85,17 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		...base
 		parallel_cc: true
 	})
+	windows_target := pref.Target{
+		os: 'windows'
+		arch: 'amd64'
+	}
+	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
+		...base
+		parallel_cc: true
+		host_os: 'windows'
+		host_target: windows_target
+		target: windows_target
+	})
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
 		c_compiler: 'tcc'
@@ -124,10 +136,6 @@ fn test_v3_bundled_tcc_probe_eligibility() {
 		c_compiler: os.join_path(os.vtmp_dir(), 'bin', 'tcc')
 		c_compiler_explicit: true
 	})
-	windows_target := pref.Target{
-		os: 'windows'
-		arch: 'amd64'
-	}
 	assert v3_should_probe_bundled_tcc(V3BundledTccProbeOptions{
 		...base
 		is_prod: true
