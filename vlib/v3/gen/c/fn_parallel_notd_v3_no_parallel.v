@@ -17,7 +17,7 @@ const min_flat_cgen_parallel_items = 128
 // expression. Keep self-host body batches narrow so those values are released
 // throughout cgen instead of accumulating across hundreds of functions.
 const scoped_cgen_worker_batches = 256
-const flat_cgen_chunks_per_job = 16
+const flat_cgen_chunks_per_job = 32
 
 // FlatCgenChunkArgs represents flat cgen chunk args data used by c.
 struct FlatCgenChunkArgs {
@@ -303,11 +303,13 @@ $if !windows {
 		// tables; running these emitters on the master would mutate shared name and
 		// type caches. The private worker keeps those writes isolated while its
 		// already-complete const/global metadata is read-only.
+		// The tail worker is private, so its scratch can live in a disposable
+		// arena; only its two output texts are published into this thread's arena.
+		tail_scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		mut tail := w.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
 		if !w.cache_split {
 			tail.interface_method_stubs()
-			w.parallel_interface_stubs = tail.sb.str()
-			unsafe { tail.sb.free() }
+			w.parallel_interface_stubs = cgen_publish_builder_text(mut tail.sb, tail_scope)
 			tail.sb = strings.new_builder(4096)
 		}
 		w.timing_profile('  [ttime]       td iface defs ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -315,10 +317,11 @@ $if !windows {
 		if w.print_fn_names.len == 0 {
 			tail.gen_vinit()
 			tail.gen_vcleanup()
-			w.parallel_init_defs = tail.sb.str()
-			unsafe { tail.sb.free() }
+			w.parallel_init_defs = cgen_publish_builder_text(mut tail.sb, tail_scope)
 			tail.sb = strings.new_builder(0)
 		}
+		cgen_worker_scope_leave(tail_scope)
+		cgen_worker_scope_free(tail_scope)
 		w.timing_profile('  [ttime]       td init defs  ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		w.restore_scratch_lookup_caches(saved_lookup_caches)
 		w.parallel_support_ready = true
@@ -1176,6 +1179,32 @@ fn (mut g FlatGen) write_scoped_cgen_batch_output(batch &FlatGen) bool {
 	return true
 }
 
+// cgen_publish_builder_text copies a helper builder's text into the arena that
+// encloses `scope` and releases the builder's scoped storage.
+fn cgen_publish_builder_text(mut sb strings.Builder, scope voidptr) string {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			state := unsafe { prealloc_scope_suspend(scope) }
+			text := sb.str()
+			unsafe { prealloc_scope_resume(scope, state) }
+			unsafe { sb.free() }
+			return text
+		}
+	}
+	text := sb.str()
+	unsafe { sb.free() }
+	return text
+}
+
+// moved_segment returns its argument unchanged. Appending an addressable
+// string (a local or field) to an array clones its bytes; passing the value
+// through a call appends the existing storage instead. Output segments are
+// already private copies, so the clone would only double their footprint.
+@[inline]
+fn moved_segment(s string) string {
+	return s
+}
+
 // absorb_scoped_cgen_batch copies a finished batch's observable side tables
 // and, when needed, output into the helper's result arena.
 fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool) {
@@ -1184,13 +1213,10 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		g.windows_entry_point_generated = true
 		g.windows_gui_entry_point = batch.windows_gui_entry_point
 	}
-	if !output_streamed {
-		output := b.sb.str()
-		if output.len > 0 {
-			g.fn_segs << output
-		} else {
-			unsafe { output.free() }
-		}
+	if !output_streamed && b.sb.len > 0 {
+		// Append the builder's copy directly: appending an addressable local
+		// would clone the whole chunk output a second time into this arena.
+		g.fn_segs << b.sb.str()
 	}
 	unsafe { b.sb.free() }
 	// Preserve worker-only literals at the IDs already written into batch output.
@@ -1398,25 +1424,57 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	for opt_name, val_type in fs_worker.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
 	}
+	if fs_worker.worker_scope != unsafe { nil } {
+		// The whole-AST scan leaves far more scratch behind than its three result
+		// tables hold. Publish owned copies into the enclosing cgen arena and
+		// release the helper arena before the function workers start, instead of
+		// keeping it resident through emission.
+		g.fixed_storage_consts = clone_cgen_string_bool_map(fs_worker.fixed_storage_consts)
+		g.param_types_by_short = clone_cgen_param_types_map(fs_worker.param_types_by_short)
+		g.concrete_optional_abi_fns = clone_cgen_string_bool_map(fs_worker.concrete_optional_abi_fns)
+		cgen_worker_scope_free(fs_worker.worker_scope)
+		fs_worker.worker_scope = unsafe { nil }
+		return
+	}
 	g.fixed_storage_consts = fs_worker.fixed_storage_consts.move()
 	g.param_types_by_short = fs_worker.param_types_by_short.move()
 	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
-	if fs_worker.worker_scope != unsafe { nil } {
-		// These tables stay live through function emission. Retaining the small
-		// helper arena is cheaper than deep-cloning their type/string payloads and
-		// matches the optional/fixed-array support publishers below.
-		g.parallel_worker_scopes << fs_worker.worker_scope
-		fs_worker.worker_scope = unsafe { nil }
+}
+
+fn clone_cgen_param_types_map(values map[string][]types.Type) map[string][]types.Type {
+	mut cloned := map[string][]types.Type{}
+	for key, params in values {
+		cloned[key.clone()] = types.clone_owned_types(params)
 	}
+	return cloned
+}
+
+fn clone_cgen_fixed_array_typedef_map(values map[string]FixedArrayTypedefInfo) map[string]FixedArrayTypedefInfo {
+	mut cloned := map[string]FixedArrayTypedefInfo{}
+	for key, info in values {
+		cloned[key.clone()] = FixedArrayTypedefInfo{
+			arr: types.ArrayFixed{
+				elem_type: types.clone_owned_type(info.arr.elem_type)
+				len: info.arr.len
+				len_expr: info.arr.len_expr.clone()
+			}
+			module: info.module.clone()
+		}
+	}
+	return cloned
 }
 
 fn (mut g FlatGen) publish_fixed_array_support(mut worker FlatGen) {
-	g.fixed_array_typedefs_needed = worker.fixed_array_typedefs_needed.move()
 	g.fixed_array_typedefs_ready = worker.fixed_array_typedefs_ready
 	if worker.worker_scope != unsafe { nil } {
-		g.parallel_worker_scopes << worker.worker_scope
+		// Same trade as publish_fixed_storage_scan: the typedef table is small,
+		// the discovery scan's scratch is not.
+		g.fixed_array_typedefs_needed = clone_cgen_fixed_array_typedef_map(worker.fixed_array_typedefs_needed)
+		cgen_worker_scope_free(worker.worker_scope)
 		worker.worker_scope = unsafe { nil }
+		return
 	}
+	g.fixed_array_typedefs_needed = worker.fixed_array_typedefs_needed.move()
 }
 
 fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
@@ -1636,7 +1694,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.timing_profile('  [ttime]   cg merge         ${f64(msw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			for output in ordered_chunk_outputs {
 				if output.len > 0 {
-					g.fn_segs << output
+					g.fn_segs << moved_segment(output)
 				}
 			}
 			cgen_worker_scope_free(worker_setup_scope)
@@ -1644,14 +1702,11 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			// overlay so worker-arena memo values cannot escape into the base.
 			g.tc.discard_type_cache_overlay_after_forks()
 			g.gen_synthetic_main_after_fns()
-			synthetic_output := g.sb.str()
+			if g.sb.len > 0 {
+				g.fn_segs << g.sb.str()
+			}
 			unsafe { g.sb.free() }
 			g.sb = strings.new_builder(0)
-			if synthetic_output.len > 0 {
-				g.fn_segs << synthetic_output
-			} else {
-				unsafe { synthetic_output.free() }
-			}
 			return
 		}
 		// chunk[0] is emitted by the master directly into its own builder; the
@@ -1694,14 +1749,11 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			}
 		}
 		g.parallel_used = g.a.worker_pool.run(tasks)
-		master_output := g.sb.str()
+		if g.sb.len > 0 {
+			g.fn_segs << g.sb.str()
+		}
 		unsafe { g.sb.free() }
 		g.sb = strings.new_builder(4096)
-		if master_output.len > 0 {
-			g.fn_segs << master_output
-		} else {
-			unsafe { master_output.free() }
-		}
 		for ci := 0; ci < thread_count; ci++ {
 			mut w := unsafe { &FlatGen(cgen_workers[ci]) }
 			g.merge_parallel_worker(w)
@@ -1713,14 +1765,11 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		g.tc.discard_type_cache_overlay_after_forks()
 		// Synthetic main temps continue after the master's chunk[0] range.
 		g.gen_synthetic_main_after_fns()
-		synthetic_output := g.sb.str()
+		if g.sb.len > 0 {
+			g.fn_segs << g.sb.str()
+		}
 		unsafe { g.sb.free() }
 		g.sb = strings.new_builder(0)
-		if synthetic_output.len > 0 {
-			g.fn_segs << synthetic_output
-		} else {
-			unsafe { synthetic_output.free() }
-		}
 	}
 }
 
@@ -2959,20 +3008,19 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	} else {
 		map[string]bool{}
 	}
-	worker_output := ww.sb.str()
-	if worker_output.len > 0 {
+	if ww.sb.len > 0 {
 		if g.cache_stable_symbols {
+			worker_output := ww.sb.str()
 			stable_output := ww.rewrite_cache_string_symbols(worker_output)
-			g.fn_segs << stable_output
+			g.fn_segs << moved_segment(stable_output)
 			unsafe { worker_output.free() }
 		} else if string_id_remap.len > 0 {
+			worker_output := ww.sb.str()
 			g.fn_segs << remap_scoped_worker_string_symbols(worker_output, string_id_remap, user_c_symbols)
 			unsafe { worker_output.free() }
 		} else {
-			g.fn_segs << worker_output
+			g.fn_segs << ww.sb.str()
 		}
-	} else {
-		unsafe { worker_output.free() }
 	}
 	// The ordered segment owns the copied output; release the worker builder.
 	unsafe { ww.sb.free() }
@@ -2996,7 +3044,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 				continue
 			}
 		}
-		g.fn_segs << normalized
+		g.fn_segs << moved_segment(normalized)
 	}
 	if g.cache_split {
 		for literal in w.str_lits {

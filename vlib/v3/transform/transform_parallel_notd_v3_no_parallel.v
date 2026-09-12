@@ -2513,6 +2513,9 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			return false
 		}
 		t.tc.freeze_type_cache_for_forks()
+		// The chunk partition, its cost tables and the helper forks below are
+		// only read until the join; keep them out of the retained stage arena.
+		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		mut chunk_target := n_jobs * shared_transform_chunks_per_job
 		if chunk_target > bounded_items.len {
 			chunk_target = bounded_items.len
@@ -2563,7 +2566,6 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		shared_used_fns := t.used_fns.clone()
 		t.used_fns_root = unsafe { &shared_used_fns }
 		t.timing_profile('  [ttime]     ss split+part  ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		mut args := []SharedChunkArgs{len: chunk_count}
 		args[0] = SharedChunkArgs{
 			worker: voidptr(t)

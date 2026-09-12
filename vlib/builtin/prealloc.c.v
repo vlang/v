@@ -70,8 +70,8 @@ const prealloc_block_size = 16 * 1024 * 1024
 // size of the first chunk for a scoped prealloc arena. Request-scoped arenas
 // should not force a 16MB libc allocation for every request.
 const prealloc_scope_block_size = 256 * 1024
-// Bound retained scope blocks to 4 MiB per thread, including compiler workers.
-const prealloc_recycle_cache_slots = 16
+// Bound retained scope blocks to 2 MiB per thread, including compiler workers.
+const prealloc_recycle_cache_slots = 8
 
 // `malloc` has to return memory suitably aligned for any V value. Keep the
 // default at the common max alignment used by libc malloc on current targets.
@@ -925,8 +925,9 @@ pub fn prealloc_scope_owns(scope_ptr voidptr, ptr voidptr) bool {
 		if lo == 0 {
 			return false
 		}
-		range := scope.ranges[lo - 1]
-		return address < range.stop
+		// Read the field in place: copying the @[heap] range struct into a local
+		// would heap-allocate on every probe, and callers probe once per AST node.
+		return address < scope.ranges[lo - 1].stop
 	}
 }
 

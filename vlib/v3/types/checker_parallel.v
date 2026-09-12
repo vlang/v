@@ -993,6 +993,9 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		final_file := tc.cur_file
 		final_module := tc.cur_module
 		was_parallel := tc.run_parallel_check(items)
+		// Per-function check costs only schedule the parallel batches above.
+		unsafe { tc.fn_check_costs.free() }
+		tc.fn_check_costs = []i32{}
 		tc.cur_file = final_file
 		tc.cur_module = final_module
 		if tc.defer_ierror_gating {
@@ -2851,6 +2854,31 @@ mut:
 	set    [512]bool
 }
 
+// CheckNamePromotionCache maps a still-alive worker-arena name instance to
+// the single persistent CachedName already published for it. Resolved call
+// names repeat across thousands of nodes, so this avoids one string clone and
+// one box per node. Never retain it across arena frees.
+struct CheckNamePromotionCache {
+mut:
+	ptrs   [1024]voidptr
+	lens   [1024]int
+	values [1024]&CachedName
+}
+
+@[inline]
+fn promote_cached_name_value(name &CachedName, mut cache CheckNamePromotionCache) &CachedName {
+	value := name.value
+	slot := int((u64(voidptr(value.str)) >> 4) & 1023)
+	if cache.ptrs[slot] == voidptr(value.str) && cache.lens[slot] == value.len {
+		return cache.values[slot]
+	}
+	promoted := cached_name(value.clone())
+	cache.ptrs[slot] = voidptr(value.str)
+	cache.lens[slot] = value.len
+	cache.values[slot] = promoted
+	return promoted
+}
+
 // Source payloads stay alive and immutable for the entire promotion pass. Raw
 // identities are safe within that pass; never retain this cache across arena frees.
 fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePromotionCache, promote_missing bool) ?Type {
@@ -2882,13 +2910,14 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 	mut tc := unsafe { &TypeChecker(a.tc) }
 	items := unsafe { &[]CheckWorkItem(a.items_ptr) }
 	mut cache := CheckTypePromotionCache{}
+	mut names := CheckNamePromotionCache{}
 	for item in *items {
 		for idx in item.range_lo .. item.fn_idx + 1 {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				tc.resolved_call_names[idx] = cached_name(tc.resolved_call_names[idx].value.clone())
+				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				tc.resolved_fn_value_names[idx] = cached_name(tc.resolved_fn_value_names[idx].value.clone())
+				tc.resolved_fn_value_names[idx] = promote_cached_name_value(tc.resolved_fn_value_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false) {
@@ -2928,13 +2957,14 @@ fn par_check_clone_enabled() bool {
 
 fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem) {
 	mut cache := CheckTypePromotionCache{}
+	mut names := CheckNamePromotionCache{}
 	for item in items {
 		for idx in item.range_lo .. item.fn_idx + 1 {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				tc.resolved_call_names[idx] = cached_name(tc.resolved_call_names[idx].value.clone())
+				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				tc.resolved_fn_value_names[idx] = cached_name(tc.resolved_fn_value_names[idx].value.clone())
+				tc.resolved_fn_value_names[idx] = promote_cached_name_value(tc.resolved_fn_value_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true) or {
