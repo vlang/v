@@ -228,7 +228,7 @@ fn test_orm_table_name_with_decoded_backslash() {
 	sql db {
 		create table OrmTableHazardItem
 	} or { panic(err) }
-	rows := db.exec('select name from sqlite_master where type = \'table\'') or { panic(err) }
+	rows := db.exec("select name from sqlite_master where type = 'table'") or { panic(err) }
 	mut found := false
 	for row in rows {
 		if row.vals.len > 0 {

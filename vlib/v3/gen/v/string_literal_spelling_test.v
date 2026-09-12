@@ -26,11 +26,16 @@ fn format_literal_spelling_source(name string, source string) string {
 	return format(parse_literal_spelling_source(name, source))
 }
 
-fn assert_literal_spelling(name string, literal string) {
+fn assert_literal_formats_to(name string, literal string, expected_literal string) {
 	source := 'fn main() {\n\ts := ${literal}\n\t_ = s\n}\n'
+	expected := 'fn main() {\n\ts := ${expected_literal}\n\t_ = s\n}\n'
 	out := format_literal_spelling_source(name, source)
-	assert out == source, '${name}: ${out}'
+	assert out == expected, '${name}: ${out}'
 	assert format_literal_spelling_source('${name}_twice', out) == out
+}
+
+fn assert_literal_spelling(name string, literal string) {
+	assert_literal_formats_to(name, literal, literal)
 }
 
 fn test_formatter_preserves_each_nul_escape_spelling() {
@@ -63,43 +68,56 @@ fn test_formatter_preserves_hex_unicode_and_backslash_spelling() {
 	}
 }
 
-fn test_formatter_preserves_string_quote_delimiters() {
-	literals := [
-		r"''",
-		r'""',
-		r"'single quoted'",
-		r'"double quoted"',
-		r"'it\'s still single quoted'",
-		r'"\"double\""',
-	]
-	for i, literal in literals {
-		assert_literal_spelling('quotes_${i}', literal)
-	}
+fn test_formatter_normalizes_string_quote_delimiters() {
+	// Single quotes are preferred, unless the literal holds a `'` but no `"`.
+	// Interpolated literals already follow that rule, so plain ones must too.
+	assert_literal_spelling('quotes_empty_single', r"''")
+	assert_literal_formats_to('quotes_empty_double', r'""', r"''")
+	assert_literal_spelling('quotes_single', r"'single quoted'")
+	assert_literal_formats_to('quotes_double', r'"double quoted"', r"'double quoted'")
+	// `'it\'s'` -> `"it's"`: double quotes win and the escape is dropped.
+	assert_literal_formats_to('quotes_escaped_single', r"'it\'s single'", '"it\'s single"')
+	assert_literal_spelling('quotes_kept_double', '"it\'s single"')
+	// `"\"double\""` -> `'"double"'`: single quotes win and the escape is dropped.
+	assert_literal_formats_to('quotes_escaped_double', r'"\"double\""', '\'"double"\'')
+	// With both quotes present, single quotes win and `'` stays escaped.
+	assert_literal_spelling('quotes_both_single', '\'has \\\' and \\" both\'')
+	// A double quoted literal with both becomes single quoted, escaping only `'`.
+	assert_literal_formats_to('quotes_both_double', '"has \' and \\" both"', '\'has \\\' and " both\'')
 }
 
-fn test_formatter_preserves_prefixed_string_spelling() {
-	literals := [
-		r"r'\0\x00 $name'",
-		r'r"\0\x00 $name"',
-		r"js'\x41'",
-		r'js"\x41"',
-		r"c''",
-		r'c""',
-		r"c'\0'",
-		r'c"\0"',
-		r"c'\x41'",
-		r'c"\x41"',
-		r'c"\"quoted\""',
-		r"c'A\x5cnB'",
-	]
-	for i, literal in literals {
-		assert_literal_spelling('prefixes_${i}', literal)
-	}
+fn test_formatter_normalizes_prefixed_string_spelling() {
+	assert_literal_spelling('prefixes_js_single', r"js'\x41'")
+	assert_literal_formats_to('prefixes_js_double', r'js"\x41"', r"js'\x41'")
+	assert_literal_spelling('prefixes_c_empty_single', r"c''")
+	assert_literal_formats_to('prefixes_c_empty_double', r'c""', r"c''")
+	assert_literal_spelling('prefixes_c_nul_single', r"c'\0'")
+	assert_literal_formats_to('prefixes_c_nul_double', r'c"\0"', r"c'\0'")
+	assert_literal_spelling('prefixes_c_hex_single', r"c'\x41'")
+	assert_literal_formats_to('prefixes_c_hex_double', r'c"\x41"', r"c'\x41'")
+	assert_literal_spelling('prefixes_c_backslash', r"c'A\x5cnB'")
+	// `c"\"quoted\""` -> `c'"quoted"'`
+	assert_literal_formats_to('prefixes_c_quoted', r'c"\"quoted\""', 'c\'"quoted"\'')
+}
+
+fn test_formatter_keeps_raw_literal_delimiters() {
+	// A raw literal cannot escape a quote, so its delimiter decides what it can
+	// hold and is never rewritten.
+	assert_literal_spelling('raw_single', r"r'\0\x00 $name'")
+	assert_literal_spelling('raw_double', r'r"\0\x00 $name"')
+	assert_literal_spelling('raw_single_inside_double', 'r"raw \' quote"')
+	assert_literal_spelling('raw_double_inside_single', "r'raw \" quote'")
 }
 
 fn test_formatter_recovers_c_string_prefix_from_quote_only_spans() {
 	mut g := Gen.new()
-	for literal in [r"c''", r'c""', r"c'\x41'", r'c"\x41"'] {
+	cases := {
+		r"c''":     r"c''"
+		r'c""':     r"c''"
+		r"c'\x41'": r"c'\x41'"
+		r'c"\x41"': r"c'\x41'"
+	}
+	for literal, expected in cases {
 		g.source = literal
 		// The scanner excludes `c` from a parsed C string's span.
 		quote_only := flat.Node{
@@ -107,14 +125,14 @@ fn test_formatter_recovers_c_string_prefix_from_quote_only_spans() {
 			value: 'c:A'
 			pos: token.new_span(1, 1, literal.len)
 		}
-		assert g.string_literal_text(&quote_only) == literal
+		assert g.string_literal_text(&quote_only) == expected
 		// Also accept nodes whose span already includes the prefix.
 		with_prefix := flat.Node{
 			kind: .char_literal
 			value: 'c:A'
 			pos: token.new_span(1, 0, literal.len)
 		}
-		assert g.string_literal_text(&with_prefix) == literal
+		assert g.string_literal_text(&with_prefix) == expected
 	}
 	// Do not borrow a different preceding byte for a synthesized node.
 	g.source = r'x"\x41"'
@@ -152,14 +170,14 @@ fn test_formatter_aligns_map_keys_using_preserved_literal_spelling() {
 
 fn test_formatter_keeps_c_string_selector_rewrite_idempotent() {
 	source := 'fn main() {\n\ts := "\\x41".str\n}\n'
-	expected := 'fn main() {\n\ts := c"\\x41"\n}\n'
+	expected := "fn main() {\n\ts := c'\\x41'\n}\n"
 	out := format_literal_spelling_source('c_string_selector_spelling', source)
 	assert out == expected, out
 	assert format_literal_spelling_source('c_string_selector_spelling_twice', out) == out
 	js_out := format_with_options(parse_literal_spelling_source('js_string_selector', source), FormatOptions{
 		backend: 'js'
 	})
-	assert js_out == source, js_out
+	assert js_out == "fn main() {\n\ts := '\\x41'.str\n}\n", js_out
 }
 
 fn test_formatter_preserves_multiline_string_contents() {
