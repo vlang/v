@@ -565,6 +565,42 @@ fn test_generic_text_substitution_recurses_through_wrappers() {
 	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
 }
 
+fn test_generic_text_substitution_preserves_mut_fn_pointer_params() {
+	substituted := subst_generic_text('fn (mut T) string', ['&Dog'], ['T'])
+	assert substituted == 'fn(mut &Dog) string'
+
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	callback_type := tc.parse_type(substituted)
+	assert callback_type is FnType
+	fn_type := callback_type as FnType
+	assert fn_type.params_mut == [true]
+	assert fn_compatible_param_type(fn_type, 0).name() == '&&Dog'
+	assert tc.c_type(callback_type) == 'fn_ptr:string|Dog**'
+	assert subst_generic_signature_param_text('f fn (mut it T) string', ['&Dog'], ['T']) == 'fn(mut &Dog) string'
+}
+
+fn test_mut_callback_param_keeps_declared_and_slot_pointers_apart() {
+	assert normalize_fn_type_param_text('Dog') == 'Dog'
+	assert normalize_fn_type_param_text('mut Dog') == '&Dog'
+	assert normalize_fn_type_param_text('&Dog') == '&Dog'
+	assert normalize_fn_type_param_text('mut &Dog') == '&&Dog'
+	assert normalize_fn_type_param_text('mut it &Dog') == '&&Dog'
+
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	assert tc.c_type(tc.parse_type('fn (Dog)')) == 'fn_ptr:void|Dog'
+	assert tc.c_type(tc.parse_type('fn (mut Dog)')) == 'fn_ptr:void|Dog*'
+	assert tc.c_type(tc.parse_type('fn (&Dog)')) == 'fn_ptr:void|Dog*'
+	assert tc.c_type(tc.parse_type('fn (mut &Dog)')) == 'fn_ptr:void|Dog**'
+
+	for text in ['fn(Dog)', 'fn(mut Dog)', 'fn(&Dog)', 'fn(mut &Dog)'] {
+		parsed := tc.parse_type(text)
+		assert parsed.name() == text
+		assert tc.c_type(tc.parse_type(parsed.name())) == tc.c_type(parsed)
+	}
+}
+
 fn test_concrete_generic_method_signature_candidates_flatten_nested_pointer_args() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)

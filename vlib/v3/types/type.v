@@ -195,7 +195,7 @@ pub fn clone_owned_type(value Type) Type {
 		Primitive {
 			Type(Primitive{
 				props: value.props
-				size:  value.size
+				size: value.size
 			})
 		}
 		String {
@@ -227,19 +227,19 @@ pub fn clone_owned_type(value Type) Type {
 		ArrayFixed {
 			Type(ArrayFixed{
 				elem_type: clone_owned_type(value.elem_type)
-				len:       value.len
-				len_expr:  value.len_expr.clone()
+				len: value.len
+				len_expr: value.len_expr.clone()
 			})
 		}
 		Channel {
 			Type(Channel{
 				elem_type: clone_owned_type(value.elem_type)
-				is_mut:    value.is_mut
+				is_mut: value.is_mut
 			})
 		}
 		Map {
 			Type(Map{
-				key_type:   clone_owned_type(value.key_type)
+				key_type: clone_owned_type(value.key_type)
 				value_type: clone_owned_type(value.value_type)
 			})
 		}
@@ -250,8 +250,8 @@ pub fn clone_owned_type(value Type) Type {
 		}
 		FnType {
 			Type(FnType{
-				params:      clone_owned_types(value.params)
-				params_mut:  value.params_mut.clone()
+				params: clone_owned_types(value.params)
+				params_mut: value.params_mut.clone()
 				return_type: clone_owned_type(value.return_type)
 			})
 		}
@@ -277,7 +277,7 @@ pub fn clone_owned_type(value Type) Type {
 		}
 		Enum {
 			Type(Enum{
-				name:    value.name.clone()
+				name: value.name.clone()
 				is_flag: value.is_flag
 			})
 		}
@@ -288,7 +288,7 @@ pub fn clone_owned_type(value Type) Type {
 		}
 		Alias {
 			Type(Alias{
-				name:      value.name.clone()
+				name: value.name.clone()
 				base_type: clone_owned_type(value.base_type)
 			})
 		}
@@ -447,10 +447,15 @@ pub fn (t Type) name() string {
 			if i > 0 {
 				s += ', '
 			}
+			param := fn_type_param_type(t, i)
 			if fn_type_param_is_mut(t, i) {
 				s += 'mut '
+				if param is Pointer {
+					s += nested_type_name(param.base_type)
+					continue
+				}
 			}
-			s += nested_type_name(fn_type_param_type(t, i))
+			s += nested_type_name(param)
 		}
 		s += ')'
 		if t.return_type !is Void {

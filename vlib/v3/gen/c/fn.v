@@ -13414,7 +13414,7 @@ fn (mut g FlatGen) callback_fn_types_direct_compatible(actual types.FnType, expe
 		return false
 	}
 	for i in 0 .. expected.params.len {
-		if g.callback_c_type(fn_type_param(actual, i)) != g.callback_expected_param_c_type(expected, i, expected_c_abi) {
+		if g.callback_c_type(fn_type_effective_param(actual, i)) != g.callback_expected_param_c_type(expected, i, expected_c_abi) {
 			return false
 		}
 	}
@@ -13427,8 +13427,8 @@ fn (mut g FlatGen) callback_fn_types_cast_compatible(actual types.FnType, expect
 		return false
 	}
 	for i in 0 .. expected.params.len {
-		actual_param := fn_type_param(actual, i)
-		expected_param := fn_type_param(expected, i)
+		actual_param := fn_type_effective_param(actual, i)
+		expected_param := fn_type_effective_param(expected, i)
 		actual_ct := g.callback_c_type(actual_param)
 		expected_ct := g.callback_expected_param_c_type(expected, i, expected_c_abi)
 		if actual_ct == expected_ct
@@ -13460,8 +13460,8 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	mut call_args := []string{}
 	mut setup_lines := []string{}
 	for i in 0 .. expected.params.len {
-		expected_param := fn_type_param(expected, i)
-		actual_param := fn_type_param(actual, i)
+		expected_param := fn_type_effective_param(expected, i)
+		actual_param := fn_type_effective_param(actual, i)
 		expected_ct := g.callback_expected_param_c_type(expected, i, expected_c_abi)
 		actual_ct := g.callback_c_type(actual_param)
 		param_decls << '${expected_ct} arg${i}'

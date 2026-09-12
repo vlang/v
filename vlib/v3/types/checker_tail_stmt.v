@@ -15964,13 +15964,14 @@ fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 		reached_params = true
 		params_mut << child.is_mut
 		parsed := tc.parse_type(normalize_fn_type_param_text(child.typ))
-		if child.value.len == 0 && child.typ.len > 0 && parsed is Unknown {
-			params << Type(Struct{
+		resolved := if child.value.len == 0 && child.typ.len > 0 && parsed is Unknown {
+			Type(Struct{
 				name: child.typ
 			})
 		} else {
-			params << parsed
+			parsed
 		}
+		params << explicit_mut_ref_param_slot_type(child, resolved)
 	}
 	return Type(FnType{
 		params: params
@@ -16723,7 +16724,7 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 				sub_params << tc.substitute_generic_type_values(param_types[i], concrete_types, params)
 				continue
 			}
-			sub_params << tc.parse_fn_signature_type(generic_key, subst_generic_text(pt, concrete_args, params))
+			sub_params << tc.parse_fn_signature_type(generic_key, subst_generic_signature_param_text(pt, concrete_args, params))
 		}
 	} else if ptypes := tc.fn_param_types[generic_key] {
 		for pt in ptypes {
@@ -17033,7 +17034,7 @@ pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name string, method str
 	mut sub_params := []Type{}
 	if param_texts := tc.fn_param_type_texts[generic_key] {
 		for pt in param_texts {
-			sub_params << tc.parse_fn_signature_type(generic_key, subst_generic_text(pt, concrete_args, params))
+			sub_params << tc.parse_fn_signature_type(generic_key, subst_generic_signature_param_text(pt, concrete_args, params))
 		}
 	} else if ptypes := tc.fn_param_types[generic_key] {
 		for pt in ptypes {
@@ -17145,7 +17146,7 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 			params_str := clean[params_start..params_end]
 			if trimmed_space(params_str).len > 0 {
 				for part in split_params(params_str) {
-					fn_parts << subst_generic_text(normalize_fn_type_param_text(part), args, params)
+					fn_parts << subst_generic_text(normalize_fn_type_param_text_preserving_mut(part), args, params)
 				}
 			}
 			ret_str := trimmed_space(clean[params_end + 1..])
@@ -17172,6 +17173,25 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 		}
 	}
 	return clean
+}
+
+fn subst_generic_signature_param_text(typ string, args []string, params []string) string {
+	clean := trimmed_space(typ)
+	if clean.len == 0 {
+		return clean
+	}
+	if clean.starts_with('mut ') {
+		return 'mut ' + subst_generic_signature_param_text(clean[4..], args, params)
+	}
+	space := top_level_space_index(clean)
+	if space > 0 {
+		head := trimmed_space(clean[..space])
+		tail := trimmed_space(clean[space + 1..])
+		if fn_type_param_head_is_name(head, tail) {
+			return subst_generic_text(tail, args, params)
+		}
+	}
+	return subst_generic_text(clean, args, params)
 }
 
 // split_generic_arg_list splits a comma-separated generic argument list at the
@@ -17784,8 +17804,29 @@ fn split_params(s string) []string {
 	return parts
 }
 
+// explicit_mut_ref_param_slot_type applies the mutable caller slot that a param
+// node's own type text still lacks. The parser folds mut x T into &T but
+// records mut x &T as &T with op == .amp. Only the explicit pointer form
+// still needs the slot here.
+fn explicit_mut_ref_param_slot_type(param flat.Node, typ Type) Type {
+	if !param.is_mut || param.op != .amp || typ !is Pointer {
+		return typ
+	}
+	return Type(Pointer{
+		base_type: typ
+	})
+}
+
 // normalize_fn_type_param_text transforms normalize fn type param text data for types.
 fn normalize_fn_type_param_text(param string) string {
+	return normalize_fn_type_param_text_with_mut_mode(param, false)
+}
+
+fn normalize_fn_type_param_text_preserving_mut(param string) string {
+	return normalize_fn_type_param_text_with_mut_mode(param, true)
+}
+
+fn normalize_fn_type_param_text_with_mut_mode(param string, preserve_mut bool) string {
 	mut text := trimmed_space(param)
 	mut is_mut := false
 	if text.starts_with('mut ') {
@@ -17818,7 +17859,10 @@ fn normalize_fn_type_param_text(param string) string {
 			break
 		}
 	}
-	if is_mut && text.len > 0 && !text.starts_with('&') {
+	if is_mut && text.len > 0 {
+		if preserve_mut {
+			return 'mut ' + text
+		}
 		return '&' + text
 	}
 	return text

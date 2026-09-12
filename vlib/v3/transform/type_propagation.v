@@ -126,7 +126,8 @@ fn (t &Transformer) decl_type_should_override_fallback(authority string, fallbac
 		return true
 	}
 	if authority != fallback
-		&& rhs.kind in [.bool_literal, .char_literal, .float_literal, .int_literal, .string_literal, .string_interp] {
+		&& rhs.kind in [.bool_literal, .char_literal, .float_literal, .int_literal, .string_literal,
+			.string_interp] {
 		return true
 	}
 	if t.local_struct_type_overrides_imported_alias(authority, fallback) {
@@ -227,11 +228,21 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	if int(id) >= 0 {
 		node := t.a.nodes[int(id)]
 		match node.kind {
-			.bool_literal { return 'bool' }
-			.char_literal { return if node.value.starts_with('c:') { '&u8' } else { 'rune' } }
-			.float_literal { return 'f64' }
-			.int_literal { return 'int' }
-			.string_literal, .string_interp { return 'string' }
+			.bool_literal {
+				return 'bool'
+			}
+			.char_literal {
+				return if node.value.starts_with('c:') { '&u8' } else { 'rune' }
+			}
+			.float_literal {
+				return 'f64'
+			}
+			.int_literal {
+				return 'int'
+			}
+			.string_literal, .string_interp {
+				return 'string'
+			}
 			else {}
 		}
 		if node.kind == .spawn_expr {
@@ -383,7 +394,7 @@ fn (t &Transformer) fn_literal_type_text(node flat.Node) string {
 			continue
 		}
 		raw := if child.typ.len > 0 { child.typ } else { child.value }
-		params << fn_literal_param_type_text(raw)
+		params << explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(raw))
 	}
 	ret := node.typ.trim_space()
 	if ret.len == 0 || ret == 'void' {
@@ -603,9 +614,7 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 				}
 			}
 		}
-		if type_name := t.qualified_enum_type_selector_name_from_selector_name(base_selector_name,
-			field_name)
-		{
+		if type_name := t.qualified_enum_type_selector_name_from_selector_name(base_selector_name, field_name) {
 			return type_name
 		}
 	}
@@ -957,7 +966,7 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 	}
 	info := t.structs[lookup_type] or { return none }
 	return StructFieldLookup{
-		info:       info
+		info: info
 		owner_type: owner_type
 	}
 }
@@ -995,46 +1004,35 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 		return typ
 	}
 	if typ.starts_with('mut ') {
-		return 'mut ' +
-			t.normalize_field_type_with_owner_substitution(typ[4..], owner_type, allow_owner_substitution)
+		return 'mut ' + t.normalize_field_type_with_owner_substitution(typ[4..], owner_type, allow_owner_substitution)
 	}
 	if typ.starts_with('shared ') {
-		return 'shared ' +
-			t.normalize_field_type_with_owner_substitution(typ[7..], owner_type, allow_owner_substitution)
+		return 'shared ' + t.normalize_field_type_with_owner_substitution(typ[7..], owner_type, allow_owner_substitution)
 	}
 	if typ.starts_with('atomic ') {
-		return 'atomic ' +
-			t.normalize_field_type_with_owner_substitution(typ[7..], owner_type, allow_owner_substitution)
+		return 'atomic ' + t.normalize_field_type_with_owner_substitution(typ[7..], owner_type, allow_owner_substitution)
 	}
 	if typ.starts_with('&') {
-		return '&' +
-			t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		return '&' + t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
 	}
 	if typ.starts_with('[]') {
-		return '[]' +
-			t.normalize_field_type_with_owner_substitution(typ[2..], owner_type, allow_owner_substitution)
+		return '[]' + t.normalize_field_type_with_owner_substitution(typ[2..], owner_type, allow_owner_substitution)
 	}
 	if typ.starts_with('?') {
-		return '?' +
-			t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		return '?' + t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
 	}
 	if typ.starts_with('!') {
-		return '!' +
-			t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
+		return '!' + t.normalize_field_type_with_owner_substitution(typ[1..], owner_type, allow_owner_substitution)
 	}
 	if typ.starts_with('map[') {
 		bracket_end := typ.index(']') or { return t.normalize_type_alias(typ) }
-		key_type := t.normalize_field_type_with_owner_substitution(typ[4..bracket_end], owner_type,
-			allow_owner_substitution)
-		value_type := t.normalize_field_type_with_owner_substitution(typ[bracket_end + 1..],
-			owner_type, allow_owner_substitution)
+		key_type := t.normalize_field_type_with_owner_substitution(typ[4..bracket_end], owner_type, allow_owner_substitution)
+		value_type := t.normalize_field_type_with_owner_substitution(typ[bracket_end + 1..], owner_type, allow_owner_substitution)
 		return 'map[${key_type}]${value_type}'
 	}
 	if typ.starts_with('[') {
 		bracket_end := typ.index(']') or { return t.normalize_type_alias(typ) }
-		return typ[..bracket_end + 1] +
-			t.normalize_field_type_with_owner_substitution(typ[bracket_end +
-			1..], owner_type, allow_owner_substitution)
+		return typ[..bracket_end + 1] + t.normalize_field_type_with_owner_substitution(typ[bracket_end + 1..], owner_type, allow_owner_substitution)
 	}
 	owner_base, owner_args, owner_is_generic_app := generic_app_parts(owner_type)
 	if allow_owner_substitution && owner_is_generic_app {
@@ -1046,8 +1044,7 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 				substitute_generic_type_text(typ, owner_args)
 			}
 			if substituted != typ {
-				return t.normalize_field_type_with_owner_substitution(substituted, owner_type,
-					false)
+				return t.normalize_field_type_with_owner_substitution(substituted, owner_type, false)
 			}
 		}
 	}
@@ -1063,8 +1060,7 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 		}
 		mut normalized_args := []string{cap: args.len}
 		for arg in args {
-			mut normalized_arg := t.normalize_field_type_with_owner_substitution(arg, owner_type,
-				allow_owner_substitution)
+			mut normalized_arg := t.normalize_field_type_with_owner_substitution(arg, owner_type, allow_owner_substitution)
 			if field_base.contains('.') {
 				field_mod := field_base.all_before_last('.')
 				normalized_arg = strip_field_module_prefix_from_type(normalized_arg, field_mod)
@@ -1391,8 +1387,7 @@ fn strip_field_module_prefix_from_type(typ string, module_name string) string {
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			return clean[..bracket_end + 1] +
-				strip_field_module_prefix_from_type(clean[bracket_end + 1..], module_name)
+			return clean[..bracket_end + 1] + strip_field_module_prefix_from_type(clean[bracket_end + 1..], module_name)
 		}
 	}
 	base, args, ok := generic_app_parts(clean)
@@ -1451,8 +1446,7 @@ fn is_plain_builtin_alias_type(typ string) bool {
 		return false
 	}
 	return match typ {
-		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64',
-		'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr' {
+		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr' {
 			true
 		}
 		else {
@@ -1542,8 +1536,7 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end > 0 && bracket_end < clean.len - 1 {
-			return clean[..bracket_end + 1] + t.normalize_type_in_module(clean[bracket_end +
-				1..], mod)
+			return clean[..bracket_end + 1] + t.normalize_type_in_module(clean[bracket_end + 1..], mod)
 		}
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
