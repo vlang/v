@@ -10956,10 +10956,16 @@ fn (mut t Transformer) callee_is_erased_explicit_generic(callee flat.Node, decl 
 //
 // A genuinely implicit callee must not be preserved: the template node is shared between instances,
 // so it can still name the specialization chosen for an earlier one and has to be retargeted. The
-// signature check separates the two, and a position whose inferred type contradicts the recorded one
-// declines preservation as well. `explicit_generic_fn_value_specialization` collapses a list only
-// when it covers every generic parameter, so the recorded arguments are normally complete, but the
-// tail is filled positionally so a partial list can never be silently replaced.
+// signature check separates the two, and it is the only thing that may: once a slot is known to come
+// from source, inference about it is not evidence against it. A caller instantiated with a type the
+// list does not accept still infers something for that slot, and declining on the mismatch would
+// hand the call back to implicit inference and lose the explicit arguments entirely -- the very
+// thing this function exists to prevent. Mismatches between an explicit argument and a value passed
+// for it are the checker's to report.
+//
+// `explicit_generic_fn_value_specialization` collapses a list only when it covers every generic
+// parameter, so the recorded arguments are normally complete, but the tail is filled positionally so
+// a partial list can never be silently replaced.
 fn (mut t Transformer) generic_call_args_preserving_explicit(callee flat.Node, decl GenericFnDecl, inferred map[string]string) ?[]string {
 	if callee.kind != .ident || callee.value.len == 0 {
 		return none
@@ -10979,17 +10985,7 @@ fn (mut t Transformer) generic_call_args_preserving_explicit(callee flat.Node, d
 		return none
 	}
 	mut preserved := recorded.clone()
-	for i, name in param_names {
-		if i < recorded.len {
-			// If this clone infers a different type for a position the explicit list fixed,
-			// the callee is not the binding it appears to be; retarget normally instead.
-			if got := inferred[name] {
-				if got != recorded[i] {
-					return none
-				}
-			}
-			continue
-		}
+	for name in param_names[recorded.len..] {
 		preserved << inferred[name] or { return none }
 	}
 	return preserved

@@ -19,6 +19,16 @@ fn test_explicit_args_survive_when_another_param_is_inferable() {
 	assert pick_caller(1) == 'string/int'
 }
 
+type AliasedInt = int
+
+// Instantiating the caller with an alias makes this clone infer `AliasedInt` for `B`, which differs
+// from the `int` the explicit list fixed. That inference is not evidence against the list: the call
+// stays bound to `pick[string, int]`.
+fn test_explicit_args_survive_when_inference_disagrees() {
+	assert pick_caller(AliasedInt(3)) == 'string/int'
+	assert pick_caller(1) == 'string/int'
+}
+
 struct Holder[T] {
 	value T
 }
