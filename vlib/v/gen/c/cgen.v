@@ -14477,7 +14477,9 @@ fn (mut g Gen) interface_field_ptr_expr(st ast.Type, cctype string, field ast.St
 	cname := c_name(field.name)
 	field_styp := g.styp(field.typ)
 	resolved_st_sym := g.table.final_sym(st)
-	if resolved_st_sym.kind == .map && field.name == 'len' {
+	if (resolved_st_sym.kind == .map
+		|| (resolved_st_sym.mod == 'builtin' && resolved_st_sym.name == 'map'))
+		&& field.name == 'len' {
 		return '(${field_styp}*)(&x->data->count)'
 	}
 	if _ := g.table.find_field(resolved_st_sym, field.name) {

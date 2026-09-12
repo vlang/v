@@ -1090,7 +1090,7 @@ pub fn (t &Table) struct_fields(sym &TypeSymbol) []StructField {
 pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 	mut ts := unsafe { s }
 	for {
-		if ts.kind == .map && name == 'len' {
+		if (ts.kind == .map || (ts.mod == 'builtin' && ts.name == 'map')) && name == 'len' {
 			return StructField{
 				name:          'len'
 				typ:           int_type
