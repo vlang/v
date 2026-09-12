@@ -13,6 +13,30 @@ see also `v help build`.
       Officially supported/tested C compilers include:
       `clang`, `gcc`, `tcc` (also accepted as `tinyc`), `mingw-w64` and `msvc`.
 
+   -glibc
+   -musl
+      Pin the C library that the program is going to be linked against, instead
+      of letting V infer it from the machine it is running on. This decides
+      `$if glibc {` and `$if musl ? {` in V code, and with them glibc-only code
+      such as the `<execinfo.h>` symbolisation of panic backtraces.
+
+      Without either option, V detects the C library of the host, and trusts
+      that detection only while it compiles *and* links the program itself. Once
+      the output is handed to another toolchain, the host says nothing about the
+      eventual build, so a detected glibc is dropped and the generated code is
+      left linkable against either C library. That applies to `-o out.c`,
+      `-o -`, `-o out.o`, `-is_o`, `-generate-c-project` and `-os cross`. The
+      visible cost is that panic backtraces are no longer resolved to function
+      names, since that needs glibc; pass `-glibc` to get them back when the
+      generated C really will be built against glibc.
+
+      A detected musl is kept in those modes rather than dropped, because an
+      unset `musl` define does not read as "unknown", it reads as "not musl",
+      and code behind `$if !musl ?` would then reach for glibc-only functions.
+
+      Both options are honoured in every mode above, so cross builds that do
+      know their target can say so.
+
    -old-compiler
       On macOS, Linux, and BSD the experimental V3 compiler (vlib/v3) is the default;
       `-old-compiler` bypasses it and compiles with the established compiler in

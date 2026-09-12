@@ -7133,6 +7133,14 @@ Full list of builtin options:
 |                                |                  |                               | `wasm32_emscripten`, `wasm32_wasi`            |
 |                                |                  |                               | `native`, `autofree`                          |
 
+`glibc` is decided by V, not passed with `-d`: it detects the C library of the
+machine it runs on, and keeps that answer only while it also links the program.
+For output another toolchain builds (`-o out.c`, `-o -`, `-o out.o`,
+`-generate-c-project`, `-os cross`) a detected glibc is dropped, so the code
+stays linkable against glibc and musl alike. Use `-glibc` or `-musl` to pin the
+target C library instead; `-musl` is also what enables `$if musl ? {`. See
+`v help build-c` for the details.
+
 #### `$embed_file`
 
 ```v ignore
