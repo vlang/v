@@ -13291,9 +13291,19 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 		if actual_base is types.Array {
 			if actual_base.elem_type.name() != expected_base.elem_type.name()
 				&& !forwarded_array_elems_storage_identical(actual_base.elem_type, expected_base.elem_type) {
+				if !t.forwarded_slot_conversion_supported(actual_base.elem_type, expected_base.elem_type)
+					&& t.record_specialized_slot_mismatch(actual_type, expected_type) {
+					return none
+				}
 				return t.convert_forwarded_array_to_dynamic(id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, false)
 			}
 		} else if actual_base is types.ArrayFixed {
+			if actual_base.elem_type.name() != expected_base.elem_type.name()
+				&& !forwarded_array_elems_storage_identical(actual_base.elem_type, expected_base.elem_type)
+				&& !t.forwarded_slot_conversion_supported(actual_base.elem_type, expected_base.elem_type)
+				&& t.record_specialized_slot_mismatch(actual_type, expected_type) {
+				return none
+			}
 			return t.convert_forwarded_array_to_dynamic(id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, true)
 		}
 	}

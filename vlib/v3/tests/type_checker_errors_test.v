@@ -2551,3 +2551,21 @@ fn test_bool_condition_alias_rejects_pointer_pointee_writes() {
 	output := run_good(v3_bin, 'good_bool_condition_alias_immutable_local', good)
 	assert output == '7'
 }
+
+// A generic template body is never return-checked on its own (`[]T` can legally
+// become any `[]U` once `T` is known), so an incompatible element type in a
+// specialization used to reach the transform unreported and be lowered into an
+// element-copy loop between unrelated C types - the build then failed inside the
+// generated C instead of naming the offending return.
+fn test_generic_specialization_rejects_incompatible_array_element_return() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_generic_array_elem_return_mismatch',
+		'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tv int\n}\n\nfn take[T](items []T) []Bar {\n\treturn items\n}\n\nfn main() {\n\t_ := take([Foo{\n\t\tv: 1\n\t}])\n}\n',
+		'cannot return `[]Foo` as `[]Bar`')
+	// Elements that only differ in spelling (a registered alias next to its base
+	// type, one level down) are storage-identical, so the same slot must keep
+	// compiling.
+	rows := run_good(v3_bin, 'good_generic_array_elem_alias_return',
+		'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n')
+	assert rows == '4'
+}
