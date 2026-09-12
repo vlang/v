@@ -465,6 +465,9 @@ fn (mut cache TypeCache) clear_c_type_entries() {
 struct ResolutionTypeViewCache {
 mut:
 	by_file map[string]&TypeChecker
+	// Import-aware views keyed by source file, reused across every declaration
+	// type resolved in that file instead of forking a full checker per call.
+	scoped_by_file map[string]&TypeChecker
 }
 
 // TypeCacheStats reports semantic cache effectiveness for compiler telemetry.
@@ -3091,7 +3094,7 @@ fn (mut tc TypeChecker) reserve_collect_maps() {
 			tc.receiver_method_suffix_index.reserve(u32(tc.receiver_method_suffix_index.len) + decl_estimate * 3)
 			if !isnil(tc.visible_mutation_cache) {
 				mut mutation_cache := tc.visible_mutation_cache
-				mutation_cache.decls.reserve(u32(mutation_cache.decls.len) + decl_estimate * 8)
+				mutation_cache.decls.reserve(u32(mutation_cache.decls.len) + decl_estimate * 3)
 			}
 			if os.getenv('V3_NO_EXTENDED_COLLECT_RESERVES') == '' {
 				tc.fn_type_files.reserve(u32(tc.fn_type_files.len) + decl_estimate * 3)
@@ -5185,6 +5188,15 @@ pub fn (tc &TypeChecker) parse_resolution_type_in_file(typ string, file string) 
 		return tc.parse_type(typ)
 	}
 	module_name := tc.file_modules[file] or { '' }
+	if !isnil(tc.resolution_type_views) {
+		mut views := unsafe { tc.resolution_type_views }
+		if cached := views.scoped_by_file[file] {
+			return cached.parse_resolution_type(typ)
+		}
+		mut scoped := tc.fork_type_parse_view(file, module_name)
+		views.scoped_by_file[file] = scoped
+		return scoped.parse_resolution_type(typ)
+	}
 	mut scoped := tc.fork_type_parse_view(file, module_name)
 	return scoped.parse_resolution_type(typ)
 }
@@ -12194,8 +12206,45 @@ fn (tc &TypeChecker) infer_decl_generic_params(node flat.Node) map[string]bool {
 }
 
 fn (tc &TypeChecker) infer_decl_generic_param_names(node flat.Node) []string {
+	if node.generic_params().len == 0 && !tc.decl_receiver_may_carry_generic_params(node) {
+		// The common non-generic declaration: skip the temporary map and sort.
+		return []string{}
+	}
 	params := tc.infer_decl_generic_params(node)
 	return generic_param_names_from_map(params)
+}
+
+// decl_receiver_may_carry_generic_params reports whether a method receiver
+// type spelling can contribute generic parameters (`Foo[T]`), mirroring the
+// early exits of collect_generic_receiver_params without allocating.
+fn (tc &TypeChecker) decl_receiver_may_carry_generic_params(node flat.Node) bool {
+	if node.kind != .fn_decl && node.kind != .c_fn_decl {
+		return false
+	}
+	if !node.value.contains('.') || node.children_count == 0 {
+		return false
+	}
+	receiver_id := tc.a.child(&node, 0)
+	if int(receiver_id) < 0 {
+		return false
+	}
+	receiver := tc.a.nodes[int(receiver_id)]
+	if receiver.kind != .param {
+		return false
+	}
+	if receiver.typ.contains('[') {
+		return true
+	}
+	// A bare generic-parameter spelling is the only bracket-free candidate the
+	// full scan can report.
+	mut clean := receiver.typ.trim_space()
+	for clean.starts_with('shared ') || clean.starts_with('atomic ') {
+		clean = clean[7..].trim_space()
+	}
+	for clean.len > 0 && clean[0] in [`&`, `?`, `!`] {
+		clean = clean[1..].trim_space()
+	}
+	return is_bare_generic_param(clean)
 }
 
 fn generic_param_names_from_map(params map[string]bool) []string {

@@ -198,12 +198,22 @@ $if !windows {
 	// collect_types walk, and the permanent thread arena keeps them alive. Alias
 	// method collection stays on the master because its normalization reads the
 	// type maps collect_types is still populating.
+	// The pre-scan helpers build their indexes in disposable arenas returned
+	// to the joiner. The indexes stay live through transform; lowered node
+	// texts that borrow from them are canonicalized before the driver frees
+	// the arenas together with the preparation arena.
 	fn transform_pre_scan_index_thread(arg voidptr) voidptr {
 		mut t := unsafe { &Transformer(arg) }
+		scope := if t.retain_prescan_scopes {
+			transform_worker_scope_begin(true)
+		} else {
+			unsafe { nil }
+		}
 		t.build_source_parent_index()
 		t.collect_multi_return_fn_ret_types()
 		t.rebuild_variadic_suffix_index()
-		return unsafe { nil }
+		transform_worker_scope_leave(scope)
+		return scope
 	}
 
 	// transform_const_fixed_scan_thread classifies array-literal constants on a
@@ -226,8 +236,14 @@ $if !windows {
 	// caches and publishes only its completed declaration maps after joining.
 	fn transform_param_prep_thread(arg voidptr) voidptr {
 		mut w := unsafe { &Transformer(arg) }
+		scope := if w.retain_prescan_scopes {
+			transform_worker_scope_begin(true)
+		} else {
+			unsafe { nil }
+		}
 		w.prepare_parallel_call_param_types()
-		return unsafe { nil }
+		transform_worker_scope_leave(scope)
+		return scope
 	}
 
 	// TransformChunkArgs is the payload handed to each persistent worker.
@@ -286,11 +302,11 @@ mut:
 
 // ScopedTextScanArgs is the payload for one scoped-text flag-scan worker.
 struct ScopedTextScanArgs {
-	a     &flat.FlatAst = unsafe { nil }
-	scope voidptr
-	start int
-	end   int
-	flags voidptr // &u8 base of the per-node flag array
+	a      &flat.FlatAst = unsafe { nil }
+	scopes voidptr
+	start  int
+	end    int
+	flags  voidptr // &u8 base of the per-node flag array
 }
 
 struct WorkerScopeFreeArgs {
@@ -301,7 +317,47 @@ struct WorkerScopeFreeArgs {
 
 // node_has_scoped_text reports whether any text payload of `node` lives in
 // `scope`'s arena, i.e. whether canonicalization/promotion would rewrite it.
+
+// node_has_any_scoped_text reports whether any node text is owned by one of
+// `scopes`. `lo`/`hi` bound the union of the arenas' address ranges: nearly
+// every text lives outside them, so the per-arena search is rarely needed.
 @[inline]
+fn node_has_any_scoped_text(node &flat.Node, scopes []voidptr, lo usize, hi usize) bool {
+	value_addr := usize(voidptr(node.value.str))
+	typ_addr := usize(voidptr(node.typ.str))
+	if (node.value.len == 0 || value_addr < lo || value_addr >= hi)
+		&& (node.typ.len == 0 || typ_addr < lo || typ_addr >= hi) && isnil(node.payload) {
+		return false
+	}
+	for scope in scopes {
+		if node_has_scoped_text(node, scope) {
+			return true
+		}
+	}
+	return false
+}
+
+// scopes_address_range returns the union address range of `scopes`.
+fn scopes_address_range(scopes []voidptr) (usize, usize) {
+	mut lo := usize(0)
+	mut hi := usize(0)
+	$if prealloc {
+		for scope in scopes {
+			scope_lo, scope_hi := unsafe { prealloc_scope_address_range(scope) }
+			if scope_hi <= scope_lo {
+				continue
+			}
+			if hi == 0 || scope_lo < lo {
+				lo = scope_lo
+			}
+			if scope_hi > hi {
+				hi = scope_hi
+			}
+		}
+	}
+	return lo, hi
+}
+
 fn node_has_scoped_text(node &flat.Node, scope voidptr) bool {
 	if node.value.len > 0 && transform_scope_owns(scope, node.value.str) {
 		return true
@@ -337,9 +393,11 @@ $if !windows {
 	fn scoped_text_scan_thread(arg voidptr) voidptr {
 		a := unsafe { &ScopedTextScanArgs(arg) }
 		flags := unsafe { &u8(a.flags) }
+		scopes := unsafe { &[]voidptr(a.scopes) }
+		lo, hi := scopes_address_range(*scopes)
 		for idx in a.start .. a.end {
 			node := unsafe { &a.a.nodes[idx] }
-			if node_has_scoped_text(node, a.scope) {
+			if node_has_any_scoped_text(node, *scopes, lo, hi) {
 				unsafe {
 					flags[idx] = 1
 				}
@@ -844,6 +902,12 @@ pub fn promote_scoped_checker_node_caches_parallel(mut tc types.TypeChecker, a &
 // worker pool. Returns false when no pool is available so the caller can walk
 // every node serially instead.
 pub fn scan_scoped_text_flags_parallel(a &flat.FlatAst, scope voidptr, mut flags []u8) bool {
+	return scan_scoped_text_flags_parallel_multi(a, [scope], mut flags)
+}
+
+// scan_scoped_text_flags_parallel_multi flags every node whose text is owned by
+// any of `scopes`.
+pub fn scan_scoped_text_flags_parallel_multi(a &flat.FlatAst, scopes []voidptr, mut flags []u8) bool {
 	$if windows {
 		return false
 	} $else {
@@ -865,7 +929,7 @@ pub fn scan_scoped_text_flags_parallel(a &flat.FlatAst, scope voidptr, mut flags
 			}
 			args << ScopedTextScanArgs{
 				a: a
-				scope: scope
+				scopes: unsafe { voidptr(&scopes) }
 				start: start
 				end: end
 				flags: flags.data
@@ -2507,15 +2571,18 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		mut ttsw := time.new_stopwatch()
 		node_pool := t.a.nodes.cap - base_nodes
 		child_pool := t.a.children.cap - base_children
+		// The bounded item list, the chunk partition, its cost tables and the
+		// helper forks below are only read until the join; keep them out of the
+		// retained stage arena.
+		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		bounded_items := t.bound_shared_expansion(items, node_pool, child_pool)
 		if bounded_items.len < min_parallel_transform_items {
+			transform_worker_scope_leave(setup_scope)
 			t.transform_pure_items_serial(bounded_items)
+			transform_worker_scope_free(setup_scope)
 			return false
 		}
 		t.tc.freeze_type_cache_for_forks()
-		// The chunk partition, its cost tables and the helper forks below are
-		// only read until the join; keep them out of the retained stage arena.
-		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		mut chunk_target := n_jobs * shared_transform_chunks_per_job
 		if chunk_target > bounded_items.len {
 			chunk_target = bounded_items.len
@@ -2963,6 +3030,7 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 				a: t.a
 				tc: param_tc
 				prefix_param_scan: t.prefix_param_scan
+				retain_prescan_scopes: t.retain_prescan_scopes
 				call_param_types_decl_cache: map[int][]types.Type{}
 				call_param_types_decl_misses: map[string]bool{}
 				call_param_types_decl_index: map[string]FnParamDeclRef{}
@@ -2971,8 +3039,8 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 			t.defer_pre_scan_indexes = true
 			index_thread := spawn transform_pre_scan_index_thread(voidptr(t))
 			t.prepare()
-			_ = param_thread.wait()
-			_ = index_thread.wait()
+			t.add_prescan_scope(param_thread.wait())
+			t.add_prescan_scope(index_thread.wait())
 			t.call_param_types_decl_cache = param_w.call_param_types_decl_cache.move()
 			t.call_param_types_decl_misses = param_w.call_param_types_decl_misses.move()
 			t.call_param_types_decl_shared = true
@@ -2983,7 +3051,7 @@ fn (mut t Transformer) prepare_with_pre_scans() {
 			t.defer_pre_scan_indexes = true
 			index_thread := spawn transform_pre_scan_index_thread(voidptr(t))
 			t.prepare()
-			_ = index_thread.wait()
+			t.add_prescan_scope(index_thread.wait())
 		}
 		_ = scan_thread.wait()
 		t.defer_pre_scan_indexes = false

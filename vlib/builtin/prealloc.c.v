@@ -915,6 +915,20 @@ pub fn prealloc_scope_owns(scope_ptr voidptr, ptr voidptr) bool {
 	}
 }
 
+// prealloc_scope_address_range returns the lowest and one-past-highest
+// addresses of the blocks owned by scope_ptr, so callers probing many pointers
+// can reject most of them before the per-block search in prealloc_scope_owns.
+@[inline; unsafe]
+pub fn prealloc_scope_address_range(scope_ptr voidptr) (usize, usize) {
+	if scope_ptr == unsafe { nil } {
+		return 0, 0
+	}
+	unsafe {
+		scope := &VPreallocScope(scope_ptr)
+		return scope.min_address, scope.max_address
+	}
+}
+
 // prealloc_scope_abandon restores the current thread arena and intentionally
 // leaks the scoped blocks. It is only for APIs that transfer request state to
 // user code without providing a close hook yet.

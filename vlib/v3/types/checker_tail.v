@@ -11862,7 +11862,7 @@ fn (tc &TypeChecker) selector_has_shared_elements(node flat.Node) bool {
 
 // struct_field_is_shared reports whether a resolved struct field uses shared storage.
 pub fn (tc &TypeChecker) struct_field_is_shared(struct_name string, field_name string) bool {
-	if struct_name.len == 0 || field_name.len == 0 {
+	if struct_name.len == 0 || field_name.len == 0 || tc.struct_shared_fields.len == 0 {
 		return false
 	}
 	mut candidates := []string{cap: 4}

@@ -546,6 +546,13 @@ fn trimmed_space(s string) string {
 // c_escape supports c escape handling for c.
 fn c_escape(s string) string {
 	mut out := strings.new_builder(s.len * 4)
+	c_escape_into(mut out, s)
+	return out.str()
+}
+
+// c_escape_into appends the C-escaped form of s to out, without the temporary
+// builder and copy that c_escape needs for its return value.
+fn c_escape_into(mut out strings.Builder, s string) {
 	for b in s.bytes() {
 		match b {
 			`\\` {
@@ -576,7 +583,6 @@ fn c_escape(s string) string {
 			}
 		}
 	}
-	return out.str()
 }
 
 fn c_byte_string_escape(s string) string {

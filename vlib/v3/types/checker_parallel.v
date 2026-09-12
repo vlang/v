@@ -47,6 +47,9 @@ struct InterfaceImplChunkArgs {
 	results     voidptr
 	start       int
 	end         int
+	scoped      bool
+mut:
+	scope voidptr
 }
 
 struct InterfaceImplResults {
@@ -55,7 +58,13 @@ mut:
 }
 
 fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
-	a := unsafe { &InterfaceImplChunkArgs(arg) }
+	mut a := unsafe { &InterfaceImplChunkArgs(arg) }
+	if a.scoped {
+		// A forked checker only writes its private caches, so the whole index
+		// scratch can live in a disposable arena; the master publishes copies of
+		// the names before releasing it.
+		a.scope = check_worker_scope_begin(true)
+	}
 	tc := unsafe { &TypeChecker(a.checker) }
 	iface_names := unsafe { &[]string(a.iface_names) }
 	mut results := unsafe { &InterfaceImplResults(a.results) }
@@ -70,6 +79,9 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 			names: impls
 			ids: stable_interface_type_ids(impls)
 		}
+	}
+	if a.scoped {
+		check_worker_scope_leave(a.scope)
 	}
 	return unsafe { nil }
 }
@@ -106,6 +118,9 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 				results: voidptr(results)
 				start: iface_names.len * job / n_jobs
 				end: iface_names.len * (job + 1) / n_jobs
+				// Job 0 runs on the master checker, whose overlay is folded back
+				// into the shared cache below; only forks may use scratch arenas.
+				scoped: job > 0
 			}
 			tasks << workers.Task{
 				run: interface_impl_index_chunk_thread
@@ -128,6 +143,11 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 					names: names
 					ids: stable_interface_type_ids(names)
 				}
+			}
+		}
+		for arg in args {
+			if arg.scope != unsafe { nil } {
+				check_worker_scope_free(arg.scope)
 			}
 		}
 		return true
@@ -988,11 +1008,16 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.check_export_attrs()
 		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cksw.restart()
+		// The work list only drives the dispatch below; keep it and its
+		// collection scratch out of the persistent arena.
+		items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
 		items := tc.collect_parallel_check_items()
+		check_worker_scope_leave(items_scope)
 		tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
 		final_file := tc.cur_file
 		final_module := tc.cur_module
 		was_parallel := tc.run_parallel_check(items)
+		check_worker_scope_free(items_scope)
 		// Per-function check costs only schedule the parallel batches above.
 		unsafe { tc.fn_check_costs.free() }
 		tc.fn_check_costs = []i32{}
@@ -1239,6 +1264,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		dynamic_dispatch := tc.scope_parallel_check_workers && tc.building_v_fast && fail.len == 0
 		// Dynamic workers record their actual assignments after dispatch; the
 		// static partition would only allocate and sort buckets that get replaced.
+		// The chunk partition only serves the dispatch below; keep it out of the
+		// persistent arena together with the worker forks.
+		setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
 		mut chunks := if dynamic_dispatch {
 			[][]CheckWorkItem{len: chunk_target}
 		} else {
@@ -1257,7 +1285,6 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			chunk_queue.close()
 		}
 		thread_count := chunk_count - 1
-		setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
 		worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
 		rpsw := time.new_stopwatch()
 		mut checker_workers := []voidptr{cap: worker_count}
