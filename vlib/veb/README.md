@@ -122,9 +122,10 @@ fn main() {
 ```
 
 `nr_workers` defaults to `1` to preserve the historical single-loop behavior.
-It only affects the default non-SSL picoev backend and currently requires Linux
-or Termux. When running with `-d new_veb`, the fasthttp backend is already
-multi-threaded and ignores `nr_workers`.
+It controls the default non-SSL picoev backend (currently on Linux or Termux).
+With `-d use_openssl`, it also limits concurrent TLS handshakes, so the default
+serializes handshakes. When running with `-d new_veb`, the fasthttp backend is
+already multi-threaded and ignores `nr_workers`.
 
 ## Request-scoped allocation with `-prealloc`
 
@@ -158,15 +159,15 @@ v -prealloc -d trace_prealloc -d new_veb run .
 
 ## HTTPS
 
-To serve HTTPS directly from `veb`, pass an `mbedtls.SSLConnectConfig` in `RunParams`:
-This built-in HTTPS listener is mbedtls-backed. When compiling with
-`-d use_openssl`, `veb` HTTP apps avoid `net.mbedtls`, but direct `veb`
-HTTPS startup is unavailable.
+To serve HTTPS directly from `veb`, pass an SSL configuration in `RunParams`.
+The default backend expects `mbedtls.SSLConnectConfig`. When compiling with
+`-d use_openssl`, use `openssl.SSLConnectConfig` instead. For example, run the
+following OpenSSL-backed server with `v -d use_openssl run .`:
 
-```v
+```v oksyntax
 module main
 
-import net.mbedtls
+import net.openssl
 import veb
 
 pub struct Context {
@@ -184,7 +185,8 @@ fn main() {
 	veb.run_at[App, Context](mut app,
 		host:       '0.0.0.0'
 		port:       8443
-		ssl_config: mbedtls.SSLConnectConfig{
+		family:     .ip
+		ssl_config: openssl.SSLConnectConfig{
 			cert:     'certs/server.crt'
 			cert_key: 'certs/server.key'
 		}
