@@ -13130,7 +13130,7 @@ pub fn (tc &TypeChecker) type_name(t Type) string {
 @[inline]
 fn type_recent_hash_slot(typ Type) (u64, int) {
 	hash := semantic_type_hash(typ)
-	return hash, int(hash & 2047)
+	return hash, int(hash & u64(type_cache_recent_slots - 1))
 }
 
 // type_value_words exposes the transient Type representation for immediate
@@ -13295,7 +13295,7 @@ fn parse_type_cache_get_mode(mut cache TypeCache, file string, module_name strin
 
 @[inline]
 fn parse_type_cache_value_recent_slot(text string, context_hash u64) int {
-	return int(((u64(voidptr(text.str)) >> 4) ^ u64(text.len) ^ context_hash) & 2047)
+	return int(((u64(voidptr(text.str)) >> 4) ^ u64(text.len) ^ context_hash) & u64(type_cache_recent_slots - 1))
 }
 
 fn parse_type_cache_get_recent(mut cache TypeCache, file string, module_name string, text string, generic_params []string, resolution bool) ?Type {
@@ -16201,7 +16201,7 @@ pub fn (tc &TypeChecker) c_type(t Type) string {
 	// same-named aliases over different resolved bases) yet fold to different C
 	// representations, so a textual key would hand back the wrong layout.
 	id, canonical := tc.intern_type(t)
-	slot := int(u32(id) & 2047)
+	slot := int(u32(id) & u32(type_cache_recent_slots - 1))
 	if tc.fast_c_type_recent {
 		if cache.c_recent_set[slot] && cache.c_recent_ids[slot] == id {
 			cache.c_hits++

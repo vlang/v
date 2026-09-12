@@ -1,5 +1,63 @@
 module flat
 
+fn discard_capacity_on_worker() bool {
+	test_discard_unused_capacity_preserves_live_nodes_and_later_appends()
+	$if prealloc {
+		// Releasing the original arena must also work after its unused pages
+		// have been replaced, including the root arena's libc-backed blocks.
+		unsafe { prealloc_thread_cleanup() }
+	}
+	return true
+}
+
+fn test_discard_unused_capacity_allows_arena_teardown() {
+	$if prealloc {
+		handle := spawn discard_capacity_on_worker()
+		assert handle.wait()
+	}
+}
+
+fn test_discard_unused_capacity_preserves_live_nodes_and_later_appends() {
+	mut a := FlatAst.new()
+	// Dirty the full backing, then discard the former worker append regions.
+	a.nodes = []Node{len: 50_000, init: Node{ kind: .ident, value: 'live', typ: 'int' }}
+	a.children = []NodeId{len: 400_000, init: NodeId(17)}
+	a.nodes.trim(73)
+	a.children.trim(113)
+	neighbor := []u8{len: 40_000, init: 0xab}
+	node_data := a.nodes.data
+	child_data := a.children.data
+	node_cap := a.nodes.cap
+	child_cap := a.children.cap
+	unsafe { a.discard_unused_capacity() }
+	assert a.nodes.len == 73
+	assert a.children.len == 113
+	for node in a.nodes {
+		assert node.kind == .ident
+		assert node.value == 'live'
+		assert node.typ == 'int'
+	}
+	for child in a.children {
+		assert child == NodeId(17)
+	}
+	for byte in neighbor {
+		assert byte == 0xab
+	}
+	for i in 0 .. 30_000 {
+		a.nodes << Node{ kind: .int_literal, value: '42' }
+		a.children << NodeId(i)
+	}
+	assert a.nodes.data == node_data
+	assert a.children.data == child_data
+	assert a.nodes.cap == node_cap
+	assert a.children.cap == child_cap
+	for i in 0 .. 30_000 {
+		assert a.nodes[73 + i].kind == .int_literal
+		assert a.nodes[73 + i].value == '42'
+		assert a.children[113 + i] == NodeId(i)
+	}
+}
+
 fn test_node_kind_has_one_canonical_representation() {
 	mut ast := FlatAst.new()
 	id := ast.add_node(Node{
@@ -88,6 +146,37 @@ fn test_clone_text_table_owned_detaches_scoped_storage() {
 	}
 }
 
+fn test_text_intern_passes_detach_reused_source_storage() {
+	mut ast := FlatAst.new()
+	mut source := []u8{len: 5}
+	// Simulate parser scratch being reused between independent intern passes.
+	borrowed := unsafe { tos(source.data, source.len) }
+	names := ['alpha', 'bravo', 'cider']
+	for i, name in names {
+		for j in 0 .. source.len {
+			source[j] = name[j]
+		}
+		ast.add_node(Node{
+			value: borrowed
+			typ: borrowed
+			payload: node_payload([borrowed])
+		})
+		if i % 2 == 0 {
+			ast.intern_node_texts_range(i, i + 1)
+		} else {
+			ast.intern_node_texts_at([i])
+		}
+	}
+	for i, name in names {
+		node := ast.nodes[i]
+		assert node.value == name
+		assert node.typ == name
+		assert node.generic_params() == [name]
+		assert ast.text(TextId(node.type_text_id())) == name
+		assert node.value.str == node.typ.str
+	}
+}
+
 fn test_promote_transform_texts_rebuilds_scoped_table_growth() {
 	$if prealloc {
 		mut ast := FlatAst.new()
@@ -116,4 +205,25 @@ fn test_promote_transform_texts_rebuilds_scoped_table_growth() {
 			assert canonical == value
 		}
 	}
+}
+
+fn test_ast_accessors_preserve_bounds_validation() {
+	mut a := FlatAst.new()
+	id := a.add_val(.ident, 'valid')
+	a.children << id
+	parent := Node{ children_count: 1 }
+	assert a.child(&parent, 0) == id
+	assert a.child_node(&parent, 0).value == 'valid'
+	assert a.node(id).value == 'valid'
+	assert a.child(&parent, -1) == empty_node
+	assert a.child(&parent, 1) == empty_node
+	assert a.child_node(&parent, -1).kind == .empty
+	assert a.child_node(&parent, 1).kind == .empty
+	assert a.node(empty_node).kind == .empty
+	assert a.node(NodeId(a.nodes.len)).kind == .empty
+	outside := Node{ children_start: 4, children_count: 1 }
+	assert a.child(&outside, 0) == empty_node
+	assert a.child_node(&outside, 0).kind == .empty
+	a.children[0] = NodeId(a.nodes.len)
+	assert a.child_node(&parent, 0).kind == .empty
 }

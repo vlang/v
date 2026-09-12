@@ -6,6 +6,78 @@ import v3.parser
 import v3.pref
 import v3.types
 
+fn test_optional_selection_handoff_preserves_signature_context_and_types() {
+	$if !windows && !v3_no_parallel ? {
+		mut ast := flat.FlatAst.new()
+		fn_id := ast.add_node(flat.Node{ kind: .fn_decl, value: 'load', typ: '?Data' })
+		pair_id := ast.add_node(flat.Node{ kind: .fn_decl, value: 'pair', typ: '(int, string)' })
+		ast.specialized_fn_nodes[int(fn_id)] = true
+		ast.specialized_fn_modules[int(fn_id)] = 'payload'
+		ast.specialized_fn_files[int(fn_id)] = 'payload.v'
+		mut tc := types.TypeChecker.new(&ast)
+		tc.structs['payload.Data'] = []types.StructField{}
+		tc.struct_modules['payload.Data'] = 'payload'
+		tc.fn_ret_types['payload.pair'] = types.Type(types.MultiReturn{ types: [
+			types.Type(types.int_),
+			types.Type(types.string_),
+		] })
+		tc.cur_module = 'caller'
+		tc.cur_file = 'caller.v'
+		mut serial := FlatGen.new()
+		serial.scope_parallel_workers = true
+		serial.a = &ast
+		serial.tc = &tc
+		items := [
+			FlatFnGenItem{ node_id: fn_id, module: 'payload', file: 'payload.v', c_name: 'load' },
+			FlatFnGenItem{ node_id: pair_id, module: 'payload', file: 'payload.v', c_name: 'pair' },
+		]
+		serial.fn_gen_items = items
+		mut worker := serial.new_parallel_worker(0)
+		serial.collect_declaration_signature_types()
+		args := OptionalSelectionArgs{ worker: voidptr(worker), items: chan []FlatFnGenItem{ cap: 1 } }
+		thread := spawn optional_support_selection_thread(voidptr(&args))
+		args.items <- items.clone()
+		thread.wait()
+		assert worker.needed_optional_types == serial.needed_optional_types
+		assert 'Optional_payload__Data' in worker.needed_optional_types
+		assert worker.optional_types_ready
+		assert worker.decl_types_ready
+		assert worker.multi_return_types_ready
+		assert worker.tc.cur_module == 'caller'
+		assert worker.tc.cur_file == 'caller.v'
+		assert worker.multi_return_type_names == serial.multi_return_type_names
+		mut serial_emitted := map[string]bool{}
+		mut parallel_emitted := map[string]bool{}
+		serial.walk_multi_return_typedefs(mut serial_emitted, false)
+		worker.walk_multi_return_typedefs(mut parallel_emitted, false)
+		assert serial_emitted.len == 1
+		assert worker.sb.str() == serial.sb.str()
+		serial.publish_optional_support(mut worker)
+		$if prealloc {
+			assert serial.parallel_worker_scopes.len == 2
+		}
+		serial.free_parallel_worker_scopes()
+	}
+}
+
+fn test_receiver_param_method_scan_preserves_suffix_and_tie_breaking() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	receiver := types.Type(types.Struct{ name: 'Box' })
+	for name in ['z.Box.show', 'a.Box.show', 'mod.Box.show', 'mod.Box.shower', '__hidden.Box.show'] {
+		g.fn_decl_param_types[name] = [receiver]
+	}
+	tc.cur_module = 'mod'
+	assert g.method_name_by_receiver_param_type(receiver, 'show')? == 'mod.Box.show'
+	tc.cur_module = 'elsewhere'
+	assert g.method_name_by_receiver_param_type(receiver, 'show')? == 'a.Box.show'
+	assert g.method_name_by_receiver_param_type(receiver, 'Box.show') == none
+	assert g.method_name_by_receiver_param_type(receiver, 'missing') == none
+}
+
 fn test_field_type_cache_preserves_collisions_and_module_context() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
@@ -124,7 +196,7 @@ fn test_json_helper_scan_requires_legacy_json_module() {
 		flat.Node{ kind: .ident, value: 'pointer', typ: '&int' }]
 	ast.children = [flat.NodeId(1), flat.NodeId(2)]
 	mut tc := types.TypeChecker.new(&ast)
-	tc.resolved_call_names = ['json.encode', '', '']
+	tc.resolved_call_names = [types.cached_name('json.encode'), unsafe { nil }, unsafe { nil }]
 	tc.resolved_call_set = [true, false, false]
 	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_),
 		types.Type(types.Pointer{ base_type: types.Type(types.int_) })]

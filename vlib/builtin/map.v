@@ -158,14 +158,19 @@ fn (mut d DenseArray) reserve(n int) {
 }
 
 // Make space to append an element and return index
-// The growth-factor is roughly 1.125 `(x + (x >> 3))`
+// Preallocated arenas retain old buffers, so doubling bounds their cumulative
+// storage and copying. Other allocators use the compact 1.125 growth factor.
 @[inline]
 fn (mut d DenseArray) expand() int {
 	old_cap := d.cap
 	old_key_size := d.key_bytes * old_cap
 	old_value_size := d.value_bytes * old_cap
 	if d.cap == d.len {
-		d.cap += d.cap >> 3
+		$if prealloc {
+			d.cap += d.cap
+		} $else {
+			d.cap += d.cap >> 3
+		}
 		unsafe {
 			d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
 			d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
@@ -337,6 +342,12 @@ fn new_map_data(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn Map
 	free_fn MapFreeFn) &VMapData {
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > int(sizeof(voidptr))
+	// Arenas retain old metadata slabs, so reserve a modest probe tail before
+	// insertion instead of repeatedly copying the slab to add four entries.
+	mut initial_extra_metas := u32(extra_metas_inc)
+	$if prealloc {
+		initial_extra_metas = 32
+	}
 	return &VMapData{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -345,7 +356,7 @@ fn new_map_data(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn Map
 		shift: init_log_capicity
 		key_values: DenseArray{ key_bytes: key_bytes, value_bytes: value_bytes }
 		metas: unsafe { nil }
-		extra_metas: extra_metas_inc
+		extra_metas: initial_extra_metas
 		count: 0
 		has_string_keys: has_string_keys
 		hash_fn: hash_fn
@@ -670,6 +681,9 @@ fn (mut m VMapData) cached_rehash(old_cap u32) {
 		kv_index := unsafe { old_metas[i + 1] }
 		index, meta = m.meta_less(index, meta)
 		m.meta_greater(index, meta, kv_index)
+	}
+	$if prealloc {
+		unsafe { prealloc_discard_pages(old_metas, usize(sizeof(u32)) * usize(old_cap + 2 + old_extra_metas)) }
 	}
 	unsafe { free(old_metas) }
 }
@@ -1041,6 +1055,9 @@ pub fn (m &map) free() {
 
 @[unsafe]
 fn (m &VMapData) free() {
+	$if prealloc {
+		unsafe { prealloc_discard_pages(m.metas, usize(sizeof(u32)) * usize(m.even_index + 2 + m.extra_metas)) }
+	}
 	unsafe { free(m.metas) }
 	unsafe {
 		m.metas = nil
@@ -1071,10 +1088,16 @@ fn (m &VMapData) free() {
 			m.key_values.all_deleted = nil
 		}
 		if m.key_values.keys != nil {
+			$if prealloc {
+				prealloc_discard_pages(m.key_values.keys, usize(m.key_values.cap) * usize(m.key_bytes))
+			}
 			free(m.key_values.keys)
 			m.key_values.keys = nil
 		}
 		if m.key_values.values != nil {
+			$if prealloc {
+				prealloc_discard_pages(m.key_values.values, usize(m.key_values.cap) * usize(m.value_bytes))
+			}
 			free(m.key_values.values)
 			m.key_values.values = nil
 		}

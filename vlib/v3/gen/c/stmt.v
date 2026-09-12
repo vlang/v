@@ -6881,7 +6881,13 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			g.gen_decl_lhs(lhs_id)
 			g.write(' = ')
-			g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
+			if node.value == '__v3_zeroed_stack_value_decl' && !lhs_is_defer_capture
+				&& !g.has_zero_sized_leading_init_slot(v_type) {
+				// An internal staging value is assigned on every path that reads it.
+				g.write('{0}')
+			} else {
+				g.gen_decl_init_expr(rhs_id, rhs, v_type, ct, !lhs_is_defer_capture)
+			}
 			g.writeln(';')
 			if lhs.kind == .ident {
 				owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)

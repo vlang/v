@@ -209,6 +209,46 @@ fn test_synthetic_import_insertion_remaps_declaration_attribute_targets() {
 	assert ast.nodes[3].value == '@attributes:2'
 }
 
+fn test_synthetic_import_insertion_reuses_capacity_and_remaps_edges() {
+	// Exercise both an existing reservation and growth past a full buffer.
+	for capacity in [6, 32] {
+		mut ast := flat.FlatAst.new()
+		ast.nodes = []flat.Node{cap: capacity}
+		for name in ['a', 'b', 'c', 'd', 'e', 'f'] {
+			ast.add_node(flat.Node{ kind: .ident, value: name })
+		}
+		ast.children = [flat.NodeId(0), 1, 2, 3, 4, 5, flat.empty_node]
+		ast.nodes[5].children_start = 0
+		ast.nodes[5].children_count = i32(ast.children.len)
+		ast.user_code_start = 2
+		data := ast.nodes.data
+		insert_synthetic_imports(mut ast, [
+			SyntheticInsertion{ pos: 0, node: flat.Node{ kind: .import_decl, value: 'first' } },
+			SyntheticInsertion{ pos: 2, node: flat.Node{ kind: .import_decl, value: 'second' } },
+			SyntheticInsertion{ pos: 2, node: flat.Node{ kind: .import_decl, value: 'third' } },
+			SyntheticInsertion{ pos: 6, node: flat.Node{ kind: .import_decl, value: 'last' } },
+		])
+		assert ast.nodes.map(it.value) == ['first', 'a', 'b', 'second', 'third', 'c', 'd', 'e',
+			'f', 'last']
+		assert ast.children == [flat.NodeId(1), 2, 5, 6, 7, 8, flat.empty_node]
+		assert ast.nodes[8].children_start == 0
+		assert ast.nodes[8].children_count == ast.children.len
+		assert ast.user_code_start == 5
+		assert ast.text_values[ast.text_values.len - 4..] == ['first', 'second', 'third', 'last']
+		if capacity == 32 {
+			assert ast.nodes.data == data
+			assert ast.nodes.cap == capacity
+		}
+		// A later import wave must retain the same reservation as well.
+		grown_data := ast.nodes.data
+		insert_synthetic_imports(mut ast, [
+			SyntheticInsertion{ pos: 10, node: flat.Node{ kind: .import_decl, value: 'next' } },
+		])
+		assert ast.nodes.data == grown_data
+		assert ast.nodes.last().value == 'next'
+	}
+}
+
 fn test_synthetic_import_insertion_preserves_file_index_and_import_order() {
 	root := os.join_path(os.vtmp_dir(), 'v3_synthetic_file_index_${os.getpid()}')
 	os.mkdir_all(root)!

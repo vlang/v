@@ -6626,8 +6626,8 @@ fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) (int, bool) {
 }
 
 fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, bool) {
-	// transform_string_interp joins every part after the first with string__plus.
-	// Each join appends two nodes and three child IDs, so charge the larger pool.
+	// Reserve conservatively for a join and its converted operands. Keeping the
+	// former pairwise-join bound also covers late, partially lowered expansions.
 	mut estimate := if node.children_count > 1 { 3 * (int(node.children_count) - 1) } else { 0 }
 	mut may_hoist := false
 	mut needs_deferred_lowering := false

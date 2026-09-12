@@ -214,7 +214,7 @@ fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	}, flat.Node{
 		kind: .ident
 	}]
-	tc.resolved_call_names = ['source_call']
+	tc.resolved_call_names = [types.cached_name('source_call')]
 	tc.resolved_call_set = [true]
 	tc.expr_type_values = [types.Type(types.int_)]
 	tc.expr_type_set = [true]

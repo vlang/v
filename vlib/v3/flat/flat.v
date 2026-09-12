@@ -522,6 +522,15 @@ pub fn (mut a FlatAst) intern_node_texts_from(start int) {
 	a.intern_node_texts_range(start, a.nodes.len)
 }
 
+// TextProbeCache holds per-pass scratch on the stack. Its strings borrow
+// canonical text owned by the AST; the cache itself never escapes the pass.
+pub struct TextProbeCache {
+pub mut:
+	ptrs   [4096]voidptr
+	values [4096]string
+	ids    [4096]u16
+}
+
 // intern_node_texts_range canonicalizes managed payloads in nodes[start..end).
 // The bounded form serves the parallel parse merge, where later chunks are
 // already present in the node array but must be interned in chunk order.
@@ -533,14 +542,12 @@ pub fn (mut a FlatAst) intern_node_texts_range(start int, end int) {
 	// Node texts repeat heavily by exact string instance (already-interned
 	// strings share `.str`), so a direct-mapped pointer probe skips the
 	// content-hash table lookup for the overwhelming majority of nodes.
-	// Nothing is freed during this pass, so pointer keys stay valid.
-	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
-	mut cache_vals := []string{len: 4096}
-	mut type_cache_ptrs := unsafe { []voidptr{len: 4096} }
-	mut type_cache_vals := []string{len: 4096}
-	mut type_cache_ids := []u16{len: 4096}
+	// Nothing is freed during this pass, so pointer keys stay valid. Fixed
+	// arrays keep this per-pass scratch off the compilation arena.
+	mut value_cache := TextProbeCache{}
+	mut type_cache := TextProbeCache{}
 	for idx in first .. end {
-		a.intern_node_texts_one(idx, mut cache_ptrs, mut cache_vals, mut type_cache_ptrs, mut type_cache_vals, mut type_cache_ids)
+		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
 	}
 }
 
@@ -552,17 +559,14 @@ pub fn (mut a FlatAst) intern_node_texts_at(indexes []int) {
 	if indexes.len == 0 {
 		return
 	}
-	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
-	mut cache_vals := []string{len: 4096}
-	mut type_cache_ptrs := unsafe { []voidptr{len: 4096} }
-	mut type_cache_vals := []string{len: 4096}
-	mut type_cache_ids := []u16{len: 4096}
+	mut value_cache := TextProbeCache{}
+	mut type_cache := TextProbeCache{}
 	for idx in indexes {
-		a.intern_node_texts_one(idx, mut cache_ptrs, mut cache_vals, mut type_cache_ptrs, mut type_cache_vals, mut type_cache_ids)
+		a.intern_node_texts_one(idx, mut value_cache.ptrs, mut value_cache.values, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
 	}
 }
 
-fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs []voidptr, mut cache_vals []string, mut type_cache_ptrs []voidptr, mut type_cache_vals []string, mut type_cache_ids []u16) {
+fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string, mut type_cache_ptrs [4096]voidptr, mut type_cache_vals [4096]string, mut type_cache_ids [4096]u16) {
 	a.nodes[idx].value = a.intern_text_ptr_cached(a.nodes[idx].value, mut cache_ptrs, mut cache_vals)
 	type_id, canonical_type := a.intern_type_text_ptr_cached(a.nodes[idx].typ, mut type_cache_ptrs, mut type_cache_vals, mut type_cache_ids)
 	a.nodes[idx].typ = canonical_type
@@ -582,7 +586,7 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs []voidptr, mut 
 // intern_type_text_ptr_cached canonicalizes a node type spelling and returns
 // its compact identity. Programs with more than 65535 texts use 0 and retain
 // the existing string-keyed fallback.
-pub fn (mut a FlatAst) intern_type_text_ptr_cached(value string, mut cache_ptrs []voidptr, mut cache_vals []string, mut cache_ids []u16) (u16, string) {
+pub fn (mut a FlatAst) intern_type_text_ptr_cached(value string, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string, mut cache_ids [4096]u16) (u16, string) {
 	if value.len == 0 {
 		return 0, ''
 	}
@@ -602,7 +606,7 @@ pub fn (mut a FlatAst) intern_type_text_ptr_cached(value string, mut cache_ptrs 
 // rebinds `value` to its canonical copy when the text table already holds the
 // content and reports a miss otherwise, never mutating the table. Safe on
 // worker threads only while no thread inserts into the table.
-pub fn (a &FlatAst) probe_text_ptr_cached(value string, mut cache_ptrs []voidptr, mut cache_vals []string) (string, bool) {
+pub fn (a &FlatAst) probe_text_ptr_cached(value string, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string) (string, bool) {
 	if value.len == 0 {
 		return '', true
 	}
@@ -621,7 +625,7 @@ pub fn (a &FlatAst) probe_text_ptr_cached(value string, mut cache_ptrs []voidptr
 
 // probe_type_text_ptr_cached is the compact-id form used while parallel parse
 // workers probe the frozen master text table.
-pub fn (a &FlatAst) probe_type_text_ptr_cached(value string, mut cache_ptrs []voidptr, mut cache_vals []string, mut cache_ids []u16) (u16, string, bool) {
+pub fn (a &FlatAst) probe_type_text_ptr_cached(value string, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string, mut cache_ids [4096]u16) (u16, string, bool) {
 	if value.len == 0 {
 		return 0, '', true
 	}
@@ -640,7 +644,8 @@ pub fn (a &FlatAst) probe_type_text_ptr_cached(value string, mut cache_ptrs []vo
 	return 0, value, false
 }
 
-pub fn (mut a FlatAst) intern_text_ptr_cached(value string, mut cache_ptrs []voidptr, mut cache_vals []string) string {
+// intern_text_ptr_cached interns text using a caller-owned scratch cache.
+pub fn (mut a FlatAst) intern_text_ptr_cached(value string, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string) string {
 	if value.len == 0 {
 		return ''
 	}
@@ -839,7 +844,7 @@ pub fn (mut a FlatAst) add_child(id NodeId) {
 }
 
 // child supports child handling for FlatAst.
-@[inline]
+@[direct_array_access; inline]
 pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 	child_index := node.children_start + index
 	if index < 0 || index >= node.children_count || child_index < 0 || child_index >= a.children.len {
@@ -850,7 +855,7 @@ pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 }
 
 // child_node supports child node handling for FlatAst.
-@[inline]
+@[direct_array_access; inline]
 pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 	id := a.child(node, index)
 	if int(id) < 0 || int(id) >= a.nodes.len {
@@ -861,7 +866,7 @@ pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 }
 
 // node supports node handling for FlatAst.
-@[inline]
+@[direct_array_access; inline]
 pub fn (a &FlatAst) node(id NodeId) &Node {
 	if int(id) < 0 || int(id) >= a.nodes.len {
 		return &empty_node_value

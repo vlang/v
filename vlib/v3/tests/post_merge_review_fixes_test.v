@@ -2356,12 +2356,131 @@ fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
 	assert out == '0\n1'
 }
 
-fn test_nested_string_plus_releases_intermediate_storage() {
+fn test_empty_array_headers_preserve_growth_and_argument_evaluation() {
+	v3_bin := build_v3()
+	source := 'struct EmptyArrays {
+mut:
+	words []string
+	values []u16
+}
+
+struct HeaderCalls {
+mut:
+	count int
+}
+
+fn v3_array_new() int { return 5 }
+fn __v3_internal_symbol_array_new() int { return 6 }
+
+fn zero(mut calls HeaderCalls) int {
+	calls.count++
+	return 0
+}
+
+fn main() {
+	assert v3_array_new() == 5
+	assert __v3_internal_symbol_array_new() == 6
+	mut calls := HeaderCalls{}
+	mut values := []int{len: zero(mut calls), cap: zero(mut calls)}
+	assert calls.count == 2
+	assert values.len == 0 && values.cap == 0
+	values << 42
+	assert values == [42]
+	mut empty := []int{}
+	mut copied := empty.clone()
+	empty << 1
+	copied << 2
+	assert empty == [1] && copied == [2]
+	mut fields := EmptyArrays{}
+	fields.words << "value"
+	fields.values << u16(513)
+	assert fields.words == ["value"]
+	assert fields.values[0] == 513
+	println("ok")
+}
+'
+	assert run_good_with_flags(v3_bin, 'empty_array_headers_prealloc', '-gc none -prealloc -nocache', source) == 'ok'
+	assert run_good_with_flags(v3_bin, 'empty_array_headers_malloc', '-gc none -no-prealloc -nocache', source) == 'ok'
+}
+
+fn test_or_staging_does_not_construct_unused_defaults() {
+	v3_bin := build_v3()
+	source := '@[has_globals]
+module main
+
+__global default_calls int
+
+fn initial_value() int {
+	default_calls++
+	return 99
+}
+
+struct StagedValue {
+	value int = initial_value()
+	items []int
+	labels map[string]string
+}
+
+fn maybe_value(ok bool) !StagedValue {
+	if !ok { return error("missing") }
+	return StagedValue{value: 7, items: [3], labels: {"k": "v"}}
+}
+
+fn choose_value(ok bool) StagedValue {
+	return maybe_value(ok) or { StagedValue{value: 8, items: [4]} }
+}
+
+fn early_return(ok bool) int {
+	value := maybe_value(ok) or { return -1 }
+	return value.value
+}
+
+fn maybe_pair(ok bool) !(StagedValue, string) {
+	if !ok { return error("missing") }
+	return StagedValue{value: 11}, "pair"
+}
+
+fn main() {
+	a := choose_value(true)
+	assert a.value == 7 && a.items == [3] && a.labels["k"] == "v"
+	b := choose_value(false)
+	assert b.value == 8 && b.items == [4] && b.labels.len == 0
+	assert early_return(true) == 7
+	assert early_return(false) == -1
+	mut total := 0
+	for i in 0 .. 3 {
+		value := maybe_value(i == 1) or { continue }
+		total += value.value
+	}
+	assert total == 7
+	c, text := maybe_pair(true) or { StagedValue{value: 12}, "fallback" }
+	assert c.value == 11 && text == "pair"
+	d, fallback := maybe_pair(false) or { StagedValue{value: 12}, "fallback" }
+	assert d.value == 12 && fallback == "fallback"
+	values := {"found": StagedValue{value: 13}}
+	found := values["found"] or { StagedValue{value: 14} }
+	missing := values["missing"] or { StagedValue{value: 14} }
+	assert found.value == 13 && missing.value == 14
+	selected := if total == 7 { StagedValue{value: 15} } else { StagedValue{value: 16} }
+	assert selected.value == 15
+	assert default_calls == 0
+	ordinary := StagedValue{}
+	assert ordinary.value == 99
+	assert default_calls == 1
+	println("ok")
+}
+'
+	assert run_good(v3_bin, 'or_staging_defaults', source) == 'ok'
+	heap_source := source.replace('struct StagedValue {', '@[heap]\nstruct StagedValue {')
+	assert run_good(v3_bin, 'or_staging_heap_defaults', heap_source) == 'ok'
+}
+
+fn test_interpolation_joins_without_intermediate_storage() {
 	v3_bin := build_v3()
 	source := "fn concat_path(dir string, name string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', name))\n}\n"
 	c_source := gen_c(v3_bin, 'nested_string_plus_owned_intermediate', source)
 	assert !c_source.contains('string__plus(string__plus(dir,'), c_source
-	assert c_source.contains('string__free(&__str_plus_acc_'), c_source
+	assert c_source.contains(', __v3_internal_symbol_join_'), c_source
 	out := run_good(v3_bin, 'nested_string_plus_owned_intermediate_run', source)
 	assert out == 'root/file'
 }
@@ -10409,4 +10528,45 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'true'
+}
+
+fn test_inline_helpers_keep_callable_symbols_in_cached_and_uncached_builds() {
+	v3_bin := build_v3()
+	files := {
+		'v.mod':           'Module { name: "inline_symbols" }'
+		'helper/helper.v': 'module helper
+
+@[inline]
+pub fn twice(n int) int {
+	return n * 2
+}
+
+@[inline]
+pub fn identity[T](value T) T {
+	return value
+}
+'
+		'main.v':          'module main
+import helper
+
+fn invoke(f fn (int) int, n int) int {
+	return f(n)
+}
+
+fn main() {
+	assert invoke(helper.twice, 21) == 42
+	assert helper.identity[int](7) == 7
+	println("ok")
+}
+'
+	}
+	assert run_good_project_with_flags(v3_bin, 'inline_uncached', '-nocache', files, 'main.v') == 'ok'
+	assert run_good_cached_project(v3_bin, 'inline_cached', files, 'main.v') == 'ok'
+	root := '${tmp_test_path('inline_cached')}_project'
+	warm_bin := tmp_test_path('inline_cached_warm')
+	warm := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -o ${warm_bin}')
+	assert warm.exit_code == 0, warm.output
+	run := os.execute(warm_bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
 }

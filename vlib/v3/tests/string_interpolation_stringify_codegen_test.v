@@ -318,3 +318,66 @@ fn test_string_plus_does_not_stringify_non_strings() {
 	assert map_result.output.contains('operator `+` cannot concatenate `string` and `map[string]int`'), map_result.output
 	assert !map_result.output.contains('C compilation failed'), map_result.output
 }
+
+fn test_joined_interpolation_preserves_order_and_formatted_parts() {
+	v3_bin := string_interp_build_v3()
+	src := "const prefix = 'hello'
+const greeting = '\${prefix} world!'
+
+struct Counter {
+mut:
+	n int
+}
+
+fn (mut c Counter) next() int {
+	c.n++
+	return c.n
+}
+
+fn (mut c Counter) values() []int {
+	c.n++
+	return [c.n]
+}
+
+fn (mut c Counter) maybe() ?int {
+	c.n++
+	return c.n
+}
+
+fn decorate(text string) string {
+	return '<\${text}> / \${text}'
+}
+
+fn main() {
+	mut c := Counter{}
+	assert '\${c.next()}:\${c.next()}:\${c.next()}' == '1:2:3'
+	assert c.n == 3
+	// Array and optional conversions introduce statements before the join.
+	assert '\${c.next()} / \${c.values()} / \${c.next()}' == '4 / [5] / 6'
+	assert '\${c.next()} / \${c.maybe()} / \${c.next()}' == '7 / Option(8) / 9'
+	assert c.n == 9
+	assert '\${c.next():04d} / \${c.next():x} / \${c.next():3d}' == '0010 / b /  12'
+	assert c.next().str() + (c.next().str() + c.next().str()) == '131415'
+	assert c.n == 15
+	assert greeting == 'hello world!'
+	__v3_internal_symbol_join_0 := 'reserved'
+	assert '<\${__v3_internal_symbol_join_0}>' == '<reserved>'
+	text := 'Привет'
+	assert decorate(text) == '<Привет> / Привет'
+	zero := u8(0).ascii_str()
+	joined := 'a\${zero}b\${text}'
+	assert joined.len == 3 + text.len
+	assert joined[0] == 97 && joined[1] == 0 && joined[2] == 98
+	assert joined[3..] == text
+	assert text + zero + text == 'Привет' + zero + 'Привет'
+	assert text == 'Привет'
+	println('ok')
+}
+"
+	bin := os.join_path(os.temp_dir(), 'v3_string_join_order_${os.getpid()}')
+	compile := compile_v3_input(v3_bin, 'v3_string_join_order', src, bin)
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}

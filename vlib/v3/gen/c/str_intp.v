@@ -5,6 +5,10 @@ import v3.types
 
 // gen_string_interp emits string interp output for c.
 fn (mut g FlatGen) gen_string_interp(node flat.Node) {
+	if node.value == '__v3_string_join' {
+		g.gen_string_join(node)
+		return
+	}
 	n := node.children_count
 	if n == 0 {
 		sid := g.intern_string('')
@@ -86,6 +90,28 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 		}
 	}
 	g.write('})')
+}
+
+// Lowered operands are already strings. Separate assignments preserve source
+// evaluation order, including calls that mutate a value used by a later part.
+fn (mut g FlatGen) gen_string_join(node flat.Node) {
+	g.gen_string_join_parts(g.a.children_of(&node), true)
+}
+
+fn (mut g FlatGen) gen_string_join_parts(parts []flat.NodeId, interpolation bool) {
+	name := '__v3_internal_symbol_join_${g.tmp_count}'
+	g.tmp_count++
+	g.write('({ string ${name}[${parts.len}]; ')
+	for i, part in parts {
+		g.write('${name}[${i}] = ')
+		if interpolation {
+			g.gen_string_interp_child_expr(part)
+		} else {
+			g.gen_expr_as_string(part)
+		}
+		g.write('; ')
+	}
+	g.write('string_plus_many(${parts.len}, ${name}); })')
 }
 
 fn (g &FlatGen) string_interp_child_type(child_id flat.NodeId, child flat.Node) types.Type {

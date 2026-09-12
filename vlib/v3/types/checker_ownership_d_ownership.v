@@ -10479,7 +10479,7 @@ fn (tc &TypeChecker) ownership_call_name_in_module(id flat.NodeId, module_name s
 	call_id := tc.ownership_unwrap_expr(id)
 	idx := int(call_id)
 	if idx >= 0 && idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-		return tc.resolved_call_names[idx]
+		return tc.resolved_call_names[idx].value
 	}
 	if !tc.valid_node_id(call_id) {
 		return ''
@@ -11056,7 +11056,7 @@ fn (tc &TypeChecker) ownership_call_name(id flat.NodeId) string {
 	call_id := tc.ownership_unwrap_expr(id)
 	idx := int(call_id)
 	if idx >= 0 && idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-		return tc.resolved_call_names[idx]
+		return tc.resolved_call_names[idx].value
 	}
 	if !tc.valid_node_id(call_id) {
 		return ''

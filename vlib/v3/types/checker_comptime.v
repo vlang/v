@@ -6441,7 +6441,20 @@ fn (tc &TypeChecker) scan_has_spawn_expr() bool {
 	mut file_nodes := map[string]flat.NodeId{}
 	mut file_imports := map[string][]string{}
 	mut module_files := map[string][]string{}
-	for idx, node in tc.a.nodes {
+	// Parser file pairs already identify the file roots. Hand-built or rewritten
+	// trees keep the full-scan fallback when that index is incomplete.
+	mut file_ids := []i32{}
+	if file_index_usable(tc.a) {
+		file_ids = tc.a.file_node_ids.clone()
+	} else {
+		for idx, node in tc.a.nodes {
+			if node.kind == .file {
+				file_ids << idx
+			}
+		}
+	}
+	for idx in file_ids {
+		node := tc.a.nodes[idx]
 		if node.kind != .file || node.children_count == 0 || node.value.len == 0 {
 			continue
 		}

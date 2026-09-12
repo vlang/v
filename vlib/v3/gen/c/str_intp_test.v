@@ -83,3 +83,32 @@ fn test_ierror_interpolation_uses_dynamic_message_dispatch() {
 	g.gen_string_interp(a.nodes[int(interp_id)])
 	assert g.sb.str() == 'string_plus_many(1, (string[1]){({ IError _ierror_msg0 = err; IError__msg(&_ierror_msg0); })})'
 }
+
+fn test_lowered_string_join_keeps_source_identifiers_out_of_its_temporary_namespace() {
+	mut a := flat.FlatAst.new()
+	name := '__v3_internal_symbol_join_0'
+	part := a.add_node(flat.Node{
+		kind: .ident
+		value: name
+		typ: 'string'
+	})
+	a.children << part
+	a.children << part
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_scope.insert(name, types.Type(types.string_))
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.gen_string_interp(flat.Node{
+		kind: .string_interp
+		value: '__v3_string_join'
+		typ: 'string'
+		children_count: 2
+	})
+	output := g.sb.str()
+	assert output.contains('string ${name}[2];')
+	assert output.contains('${name}[0] = ${g.cname(name)};')
+	assert output.contains('${name}[1] = ${g.cname(name)};')
+	assert g.cname(name) != name
+	assert output.contains('string_plus_many(2, ${name})')
+}

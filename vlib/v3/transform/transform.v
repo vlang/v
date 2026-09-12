@@ -52,6 +52,7 @@ const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
 const source_deref_marker = '__v3_source_deref'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
 const stack_value_decl_marker = '__v3_stack_value_decl'
+const zeroed_stack_value_decl_marker = '__v3_zeroed_stack_value_decl'
 // Small late-reachability sets are cheaper to lower directly than through a
 // sequence of disposable scoped-worker forks. Larger sets keep bounded scratch.
 const direct_late_transform_max_names = 64
@@ -131,8 +132,9 @@ struct LocalClosureDeclCandidate {
 	name      string
 }
 
+// Rewrite logs use the same compact index width as the AST they address.
 struct InplaceChildRewrite {
-	slot  int
+	slot  i32
 	child flat.NodeId
 }
 
@@ -260,6 +262,7 @@ mut:
 	interface_type_cache          &ContextLookupCache = unsafe { nil }
 	enum_expected_cache           &LookupCache = unsafe { nil }
 	type_alias_name_cache         &ContextBoolLookupCache = unsafe { nil }
+	raw_return_alias_cache        &ContextBoolLookupCache = unsafe { nil }
 	interface_box_param_cache     &BoolLookupCache = unsafe { nil }
 	alias_receiver_method_cache   &LookupCache = unsafe { nil }
 	receiver_method_cache         &ReceiverMethodCache = unsafe { nil }
@@ -500,18 +503,20 @@ mut:
 	preserve_inplace_expr_types bool
 	inplace_child_log           []InplaceChildRewrite
 	worker_scope                voidptr
-	scoped_base_nodes           int = -1
-	scoped_owned_base_nodes     map[int]bool
-	scoped_owned_base_log       []int
-	scoped_base_log_active      bool
-	scoped_promoted_texts       map[string]string
-	retain_worker_results       bool
-	retained_worker_regions     []ScopedTransformRegion
-	stage_scope                 voidptr
-	scoped_monomorphize         bool
-	monomorph_worker_scopes     []voidptr
-	signature_maps_shared       bool
-	signature_maps_changed      bool
+	// Helper merge tables are disposable; published AST text uses their parent arena.
+	merge_scratch_scope     voidptr
+	scoped_base_nodes       int = -1
+	scoped_owned_base_nodes map[int]bool
+	scoped_owned_base_log   []flat.NodeId
+	scoped_base_log_active  bool
+	scoped_promoted_texts   map[string]string
+	retain_worker_results   bool
+	retained_worker_regions []ScopedTransformRegion
+	stage_scope             voidptr
+	scoped_monomorphize     bool
+	monomorph_worker_scopes []voidptr
+	signature_maps_shared   bool
+	signature_maps_changed  bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -1132,15 +1137,52 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	t.apply_ignored_comptime_for_nodes()
 	t.retain_current_worker_scope_all()
 	t.timing_profile('  [ttime] sum_eq+tail        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	mut owned_base_nodes := t.scoped_owned_base_nodes.keys()
-	owned_base_nodes << t.scoped_owned_base_log
+	owned_base_nodes := t.scoped_owned_base_node_ids()
 	// The per-item resolve memo was allocated inside this stage's disposable
 	// arena; drop the master checker's pointer before the driver releases it.
 	if !isnil(t.tc) {
 		t.tc.reset_body_resolve_memo()
 	}
 	t.used_fns_log_active = used_log_was_active
+	t.release_finished_scratch()
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
+}
+
+fn (mut t Transformer) release_finished_scratch() {
+	$if prealloc {
+		if !t.building_v || !t.skip_generics || t.stage_scope == unsafe { nil } {
+			return
+		}
+		// The transformer has finished, but its arena still backs AST text.
+		// Drop only private container storage; string and node payloads survive.
+		unsafe {
+			t.node_module_map_cache.free()
+			t.node_file_map_cache.free()
+			t.source_parent_ids.free()
+			t.fn_scan_costs.free()
+			t.fn_escape_scan_flags.free()
+			t.scoped_owned_base_log.free()
+			t.inplace_child_log.free()
+			t.transformed_fns.free()
+			t.scoped_promoted_texts.free()
+			t.receiver_method_suffix_index.free()
+			t.structs.free()
+			t.fn_ret_types.free()
+			t.call_param_types_decl_index.free()
+		}
+	}
+}
+
+// Widen compact rewrite ids only when publishing the transform result.
+fn (t &Transformer) scoped_owned_base_node_ids() []int {
+	mut nodes := []int{cap: t.scoped_owned_base_nodes.len + t.scoped_owned_base_log.len}
+	for idx, _ in t.scoped_owned_base_nodes {
+		nodes << idx
+	}
+	for idx in t.scoped_owned_base_log {
+		nodes << int(idx)
+	}
+	return nodes
 }
 
 fn (mut t Transformer) retain_current_worker_scope_all() {
@@ -1148,8 +1190,7 @@ fn (mut t Transformer) retain_current_worker_scope_all() {
 		return
 	}
 	if !t.retained_worker_regions.any(it.scope == t.worker_scope) {
-		mut base_nodes := t.scoped_owned_base_nodes.keys()
-		base_nodes << t.scoped_owned_base_log
+		base_nodes := t.scoped_owned_base_node_ids()
 		t.retained_worker_regions << ScopedTransformRegion{
 			scope: t.worker_scope
 			new_start: 0
@@ -1793,6 +1834,7 @@ fn (mut t Transformer) prepare() {
 	t.type_alias_name_cache = &ContextBoolLookupCache{
 		entries: map[string]i8{}
 	}
+	t.raw_return_alias_cache = &ContextBoolLookupCache{}
 	t.prepare_interface_impl_indexes()
 	t.ierror_none_type_id = t.interface_impl_type_id('IError', 'None__') or { 0 }
 }
@@ -2088,7 +2130,7 @@ fn (mut t Transformer) record_inplace_child_rewrite(slot int, child flat.NodeId)
 	// append block. The master chunk already appends at the final offset.
 	if !t.defer_oor_writes && slot >= 0 && slot < t.shared_base_children {
 		t.inplace_child_log << InplaceChildRewrite{
-			slot: slot
+			slot: i32(slot)
 			child: child
 		}
 	}
@@ -2300,7 +2342,7 @@ fn (mut t Transformer) set_node_generic_params(idx int, gparams []string) {
 fn (mut t Transformer) mark_scoped_owned_base_node(idx int) {
 	if t.scope_parallel_workers && idx >= 0 && idx < t.scoped_base_nodes {
 		if t.scoped_base_log_active {
-			t.scoped_owned_base_log << idx
+			t.scoped_owned_base_log << flat.NodeId(idx)
 		} else {
 			t.scoped_owned_base_nodes[idx] = true
 		}
@@ -3803,6 +3845,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.type_alias_name_cache = &ContextBoolLookupCache{
 		entries: map[string]i8{}
 	}
+	w.raw_return_alias_cache = &ContextBoolLookupCache{}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[string]string{}
 		misses: map[string]bool{}
@@ -3882,7 +3925,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		t.scoped_base_nodes
 	}
 	w.scoped_owned_base_nodes = map[int]bool{}
-	w.scoped_owned_base_log = []int{}
+	w.scoped_owned_base_log = []flat.NodeId{}
 	w.scoped_base_log_active = false
 	w.scoped_promoted_texts = map[string]string{}
 	// Workers do not record transformed fns (that would write the master's
@@ -3942,6 +3985,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.type_alias_name_cache = &ContextBoolLookupCache{
 		entries: map[string]i8{}
 	}
+	w.raw_return_alias_cache = &ContextBoolLookupCache{}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[string]string{}
 		misses: map[string]bool{}
@@ -4167,16 +4211,24 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	t.merge_worker_signatures(w)
 	t.merge_worker_capture_contexts(w)
-	scoped := w.worker_scope != unsafe { nil }
+	scoped := w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil }
 	for name, used in w.used_fns {
 		if used {
-			owned_name := if scoped && !t.retain_worker_results { name.clone() } else { name }
+			owned_name := if scoped && (!t.retain_worker_results || w.merge_scratch_scope != unsafe { nil }) {
+				name.clone()
+			} else {
+				name
+			}
 			t.mark_used_fn_key(owned_name)
 		}
 	}
 	for name, used in w.used_struct_operator_fns {
 		if used && name !in t.used_struct_operator_fns {
-			owned_name := if scoped && !t.retain_worker_results { name.clone() } else { name }
+			owned_name := if scoped && (!t.retain_worker_results || w.merge_scratch_scope != unsafe { nil }) {
+				name.clone()
+			} else {
+				name
+			}
 			t.used_struct_operator_fns[owned_name] = true
 		}
 	}
@@ -4638,7 +4690,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 	}
 	if t.scope_parallel_workers && t.retain_worker_results {
 		for idx in w.scoped_owned_base_nodes.keys() {
-			t.scoped_owned_base_log << idx
+			t.scoped_owned_base_log << flat.NodeId(idx)
 		}
 		t.scoped_owned_base_log << w.scoped_owned_base_log
 	}
@@ -4648,7 +4700,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			t.clone_scoped_worker_node(idx, w.worker_scope)
 		}
 		for idx in w.scoped_owned_base_log {
-			t.clone_scoped_worker_node(idx, w.worker_scope)
+			t.clone_scoped_worker_node(int(idx), w.worker_scope)
 		}
 	}
 	// Replay the call/fn-value resolutions the worker recorded for its
@@ -4690,12 +4742,16 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			continue
 		}
 		t.generic_call_spec_cache[shifted] = GenericCallSpec{
-			decl_key: if w.worker_scope != unsafe { nil } {
+			decl_key: if w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil } {
 				spec.decl_key.clone()
 			} else {
 				spec.decl_key
 			}
-			args: spec.args.clone()
+			args: if w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil } {
+				spec.args.map(it.clone())
+			} else {
+				spec.args.clone()
+			}
 		}
 	}
 	for idx, missed in w.generic_call_spec_misses {
@@ -4712,7 +4768,11 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			continue
 		}
 		shifted := idx + int(node_shift)
-		owned_typ := if w.worker_scope != unsafe { nil } { typ.clone() } else { typ }
+		owned_typ := if w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil } {
+			typ.clone()
+		} else {
+			typ
+		}
 		t.record_refined_node_type(shifted, owned_typ)
 	}
 	if w.ignored_comptime_for_nodes.len > 0 {
@@ -4742,6 +4802,12 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			}
 		}
 	}
+	if w.merge_scratch_scope != unsafe { nil } {
+		// Every worker table and rewrite log has been consumed. Node payloads
+		// were published outside this arena while the helper was running.
+		transform_worker_scope_free(w.merge_scratch_scope)
+		unsafe { w.merge_scratch_scope = nil }
+	}
 }
 
 fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
@@ -4758,11 +4824,11 @@ fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
 		unsafe {
 			t.tc.resolved_call_names.grow_len(amount)
 			t.tc.resolved_call_set.grow_len(amount)
-			vmemset(&t.tc.resolved_call_names[start], 0, isize(amount) * isize(sizeof(string)))
+			vmemset(&t.tc.resolved_call_names[start], 0, isize(amount) * isize(sizeof(&types.CachedName)))
 			vmemset(&t.tc.resolved_call_set[set_start], 0, isize(amount))
 		}
 	}
-	t.tc.resolved_call_names[idx] = t.tc.canonical_symbol(name)
+	t.tc.resolved_call_names[idx] = types.cached_name(t.tc.canonical_symbol(name))
 	t.tc.resolved_call_set[idx] = true
 }
 
@@ -4794,11 +4860,11 @@ fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
 		unsafe {
 			t.tc.resolved_fn_value_names.grow_len(amount)
 			t.tc.resolved_fn_value_set.grow_len(amount)
-			vmemset(&t.tc.resolved_fn_value_names[start], 0, isize(amount) * isize(sizeof(string)))
+			vmemset(&t.tc.resolved_fn_value_names[start], 0, isize(amount) * isize(sizeof(&types.CachedName)))
 			vmemset(&t.tc.resolved_fn_value_set[set_start], 0, isize(amount))
 		}
 	}
-	t.tc.resolved_fn_value_names[idx] = t.tc.canonical_symbol(name)
+	t.tc.resolved_fn_value_names[idx] = types.cached_name(t.tc.canonical_symbol(name))
 	t.tc.resolved_fn_value_set[idx] = true
 }
 
@@ -4827,7 +4893,7 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 			vmemset(&t.tc.resolved_call_set[start], 0, call_end - start)
 		}
 		for k in start .. call_end {
-			t.tc.resolved_call_names[k] = ''
+			t.tc.resolved_call_names[k] = unsafe { nil }
 		}
 	}
 	fn_value_end := if end < t.tc.resolved_fn_value_set.len {
@@ -4840,7 +4906,7 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 			vmemset(&t.tc.resolved_fn_value_set[start], 0, fn_value_end - start)
 		}
 		for k in start .. fn_value_end {
-			t.tc.resolved_fn_value_names[k] = ''
+			t.tc.resolved_fn_value_names[k] = unsafe { nil }
 		}
 	}
 	expr_end := if end < t.tc.expr_type_set.len { end } else { t.tc.expr_type_set.len }
@@ -4879,11 +4945,11 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 		return
 	}
 	if idx < t.tc.resolved_call_set.len {
-		t.tc.resolved_call_names[idx] = ''
+		t.tc.resolved_call_names[idx] = unsafe { nil }
 		t.tc.resolved_call_set[idx] = false
 	}
 	if idx < t.tc.resolved_fn_value_set.len {
-		t.tc.resolved_fn_value_names[idx] = ''
+		t.tc.resolved_fn_value_names[idx] = unsafe { nil }
 		t.tc.resolved_fn_value_set[idx] = false
 	}
 	if idx < t.tc.expr_type_set.len {
@@ -5613,10 +5679,7 @@ fn (mut t Transformer) transform_const_string_interp(_id flat.NodeId, node flat.
 		child_id := t.a.child(&node, i)
 		parts << t.transform_string_interp_part(child_id)
 	}
-	mut expr := parts[0]
-	for i in 1 .. parts.len {
-		expr = t.make_call_typed('string__plus', [expr, parts[i]], 'string')
-	}
+	expr := t.make_string_join(parts, node)
 	mut stmts := []flat.NodeId{}
 	t.drain_pending(mut stmts)
 	t.pending_stmts = outer_pending
@@ -14218,6 +14281,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		// regardless of whether its address is later taken (`@[heap]` is an unconditional
 		// promise, not an escape-analysis trigger).
 		if src.kind == .ident && node.value != stack_value_decl_marker
+			&& node.value != zeroed_stack_value_decl_marker
 			&& src.value !in t.heaped_amp_locals && t.heap_attr_struct_type(inferred_typ) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
@@ -18483,6 +18547,9 @@ fn (mut t Transformer) lower_owned_array_index_move(source_id flat.NodeId, index
 
 // transform_string_interp transforms transform string interp data for transform.
 fn (mut t Transformer) transform_string_interp(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.value == '__v3_string_join' {
+		return id
+	}
 	if node.children_count == 0 {
 		return t.make_string_literal('')
 	}
@@ -18541,12 +18608,33 @@ fn (mut t Transformer) transform_string_interp(id flat.NodeId, node flat.Node) f
 		t.pending_stmts << st
 	}
 	parts := if hoisting { temps } else { inline_parts }
-	mut result := if parts.len == 0 { t.make_string_literal('') } else { parts[0] }
-	for i in 1 .. parts.len {
-		result = t.string_plus(result, parts[i])
+	return t.make_string_join(parts, node)
+}
+
+// Keep converted operands together: a concatenation chain adds two AST nodes
+// per pair and repeatedly copies each growing prefix at runtime.
+fn (mut t Transformer) make_string_join(parts []flat.NodeId, source flat.Node) flat.NodeId {
+	if parts.len == 0 {
+		return t.make_string_literal('')
 	}
-	t.set_node_typ(int(result), 'string')
-	return result
+	if parts.len == 1 {
+		t.set_node_typ(int(parts[0]), 'string')
+		return parts[0]
+	}
+	if parts.len == 2 {
+		return t.string_plus(parts[0], parts[1])
+	}
+	t.mark_used_fn_key('string_plus_many')
+	start := t.a.children.len
+	t.a.children << parts
+	return t.a.add_node(flat.Node{
+		kind: .string_interp
+		value: '__v3_string_join'
+		typ: 'string'
+		pos: source.pos
+		children_start: start
+		children_count: parts.len
+	})
 }
 
 fn (t &Transformer) string_interp_has_unresolved_generic_part(node flat.Node) bool {
@@ -23107,7 +23195,29 @@ fn (t &Transformer) raw_return_type_for_fn_name(name string, node flat.Node) ?st
 }
 
 fn (t &Transformer) raw_return_type_contains_alias(typ string) bool {
-	clean := typ.trim_space()
+	// Self-host lowering keeps alias declarations fixed. Repeated return types
+	// can reuse the recursive verdict within one module and worker batch.
+	if !t.building_v || !t.skip_generics || isnil(t.raw_return_alias_cache) {
+		return t.raw_return_type_contains_alias_uncached(typ)
+	}
+	mut cache := t.raw_return_alias_cache
+	if !same_transform_text(cache.module, t.cur_module) {
+		cache.module = t.cur_module
+		cache.entries.clear()
+		cache.last_name = ''
+		cache.last_value = 0
+	}
+	cached := cache.get(typ)
+	if cached != 0 {
+		return cached > 0
+	}
+	result := t.raw_return_type_contains_alias_uncached(typ)
+	cache.put(typ, if result { i8(1) } else { i8(-1) })
+	return result
+}
+
+fn (t &Transformer) raw_return_type_contains_alias_uncached(typ string) bool {
+	clean := trimmed_transform_text(typ)
 	if clean.len == 0 {
 		return false
 	}

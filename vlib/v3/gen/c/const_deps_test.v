@@ -42,6 +42,29 @@ fn const_deps_test_method_call(mut a flat.FlatAst, receiver string, method strin
 	return add_const_deps_test_node(mut a, .call, '', [callee])
 }
 
+fn test_scoped_const_order_does_not_populate_live_checker_cache() {
+	mut a := flat.FlatAst.new()
+	call := const_deps_test_method_call(mut a, '[]int', 'clone')
+	mut tc := types.TypeChecker.new(&a)
+	tc.set_fresh_type_cache(true)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.scope_parallel_workers = true
+	g.const_vals['value'] = call
+	g.const_init_order = ['value']
+	before := tc.type_cache_stats()
+	assert g.const_emission_order_owned() == ['value']
+	assert g.tc == &tc
+	assert tc.type_cache_stats() == before
+	// Sorting again must work after the previous dependency arena was freed.
+	assert g.const_emission_order_owned() == ['value']
+	// The fixture must actually exercise type memoization during traversal.
+	assert g.const_emission_order() == ['value']
+	assert tc.type_cache_stats().parse_misses > before.parse_misses
+	assert tc.parse_type('[]int').name() == '[]int'
+}
+
 fn test_const_helper_shadows_follow_lexical_scope_and_declaration_order() {
 	mut a := flat.FlatAst.new()
 	dep_value := add_const_deps_test_node(mut a, .int_literal, '41', [])

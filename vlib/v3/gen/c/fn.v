@@ -970,6 +970,12 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name str
 }
 
 fn (g &FlatGen) is_program_specialization_fn_node(node flat.Node, node_index int, module_name string) bool {
+	if g.a.specialized_fn_nodes[node_index] {
+		return true
+	}
+	if g.tc.specialized_generic_fns.len == 0 {
+		return false
+	}
 	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
 	return g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn)
 }
@@ -1903,26 +1909,23 @@ fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 	return ' __attribute__((${c_attrs.join(', ')}))'
 }
 
-fn (g &FlatGen) fn_decl_c_noinline_prefix(node_id flat.NodeId) string {
-	if g.ccompiler == 'msvc' {
-		return ''
-	}
+// Keep the external declaration and let the C optimizer choose which hinted
+// calls to inline. In particular, cached modules still need a callable symbol.
+fn (g &FlatGen) fn_decl_inlining_prefix(node_id flat.NodeId) string {
+	mut inline_hint := false
 	for raw_attr in g.fn_decl_attributes(node_id) {
-		if raw_attr.all_before(':').trim_space() == 'noinline' {
-			return '__attribute__((noinline)) '
+		attr := raw_attr.all_before(':').trim_space()
+		if attr == 'noinline' {
+			return if g.ccompiler == 'msvc' {
+				'__declspec(noinline) '
+			} else {
+				'__attribute__((noinline)) '
+			}
 		}
+		inline_hint = inline_hint || attr == 'inline'
 	}
-	return ''
-}
-
-fn (g &FlatGen) fn_decl_msvc_noinline_prefix(node_id flat.NodeId) string {
-	if g.ccompiler != 'msvc' {
-		return ''
-	}
-	for raw_attr in g.fn_decl_attributes(node_id) {
-		if raw_attr.all_before(':').trim_space() == 'noinline' {
-			return '__declspec(noinline) '
-		}
+	if inline_hint {
+		return if g.ccompiler == 'msvc' { '__inline ' } else { 'inline ' }
 	}
 	return ''
 }
@@ -2399,12 +2402,15 @@ fn (g &FlatGen) is_explicit_generic_method_call_selector(fn_node &flat.Node, res
 }
 
 fn (g &FlatGen) method_name_by_receiver_param_type(receiver_type types.Type, method string) ?string {
+	if method.contains('.') {
+		return none
+	}
+	suffix := '.${method}'
 	clean_receiver := concrete_receiver_type(receiver_type)
 	receiver_ct := g.tc.c_type(clean_receiver)
 	mut candidates := []string{}
 	for name, params in g.fn_decl_param_types {
-		if !name.contains('.') || name.contains('__') || name.all_after_last('.') != method
-			|| params.len == 0 {
+		if params.len == 0 || !name.ends_with(suffix) || name.contains('__') {
 			continue
 		}
 		param_receiver := concrete_receiver_type(params[0])
@@ -4731,8 +4737,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	} else {
 		ret_type := g.fn_node_return_type(node, module_name)
 		g.set_cur_fn_ret(ret_type)
-		g.write(g.fn_decl_msvc_noinline_prefix(node_id))
-		g.write(g.fn_decl_c_noinline_prefix(node_id))
+		g.write(g.fn_decl_inlining_prefix(node_id))
 		if export_name := g.export_fn_name_in_module(module_name, node.value) {
 			if export_name == generated_fn_name {
 				g.write(g.exported_symbol_attribute())

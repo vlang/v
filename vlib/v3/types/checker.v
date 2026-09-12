@@ -344,6 +344,10 @@ fn push_type_name_candidate(mut candidates []string, name string) {
 	}
 }
 
+// Recent probes are private to each short-lived checker view; map caches
+// retain entries evicted by a collision in these bounded front caches.
+const type_cache_recent_slots = 512
+
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
@@ -375,11 +379,11 @@ mut:
 	// Canonical AST type texts repeat by pointer within one checker view. Cache
 	// their parsed values directly so the common hit avoids the generic map
 	// lookup after the existing context check.
-	parse_value_recent_ptrs    [2048]usize
-	parse_value_recent_lens    [2048]int
-	parse_value_recent_context [2048]u64
-	parse_value_recent_values  [2048]Type
-	parse_value_recent_set     [2048]bool
+	parse_value_recent_ptrs    [type_cache_recent_slots]usize
+	parse_value_recent_lens    [type_cache_recent_slots]int
+	parse_value_recent_context [type_cache_recent_slots]u64
+	parse_value_recent_values  [type_cache_recent_slots]Type
+	parse_value_recent_set     [type_cache_recent_slots]bool
 	// Bounded canonical text-id cache. Workers touch only a fraction of the
 	// 65536 possible ids; retain the exact id to distinguish slot collisions.
 	parse_text_id_context []u64
@@ -397,23 +401,23 @@ mut:
 	// (`[size]int` with different resolved `size`, or same-named aliases over
 	// different bases); raw interface words and retained Type payloads are not
 	// stable either, since sum-type payload storage can reuse an address.
-	c_recent_ids  [2048]TypeId
-	c_recent_vals [2048]string
-	c_recent_set  [2048]bool
+	c_recent_ids  [type_cache_recent_slots]TypeId
+	c_recent_vals [type_cache_recent_slots]string
+	c_recent_set  [type_cache_recent_slots]bool
 	// type_name cannot use its result as its lookup key. Semantic hashes choose a
 	// slot, and an owned Type copy verifies equality.
-	name_recent_hashes [2048]u64
-	name_recent_types  [2048]Type
-	name_recent_vals   [2048]string
-	name_recent_set    [2048]bool
+	name_recent_hashes [type_cache_recent_slots]u64
+	name_recent_types  [type_cache_recent_slots]Type
+	name_recent_vals   [type_cache_recent_slots]string
+	name_recent_set    [type_cache_recent_slots]bool
 	// Per-checker symbol probes front the compilation-wide interner. Resolved
 	// names are usually repeated as the same canonical string pointer inside a
 	// worker, so these slots avoid taking the interner mutex on every call.
-	symbol_recent_ptrs          [2048]usize
-	symbol_recent_lens          [2048]int
-	symbol_recent_ids           [2048]SymbolId
-	symbol_recent_vals          [2048]string
-	symbol_recent_set           [2048]bool
+	symbol_recent_ptrs          [type_cache_recent_slots]usize
+	symbol_recent_lens          [type_cache_recent_slots]int
+	symbol_recent_ids           [type_cache_recent_slots]SymbolId
+	symbol_recent_vals          [type_cache_recent_slots]string
+	symbol_recent_set           [type_cache_recent_slots]bool
 	struct_field_entries        map[string]Type
 	struct_field_misses         map[string]bool
 	struct_field_shared         map[string]Type // immutable declaration types, without local TypeIds
@@ -791,9 +795,9 @@ pub mut:
 	comptime_static_depth   int
 	errors                  []TypeError
 	notices                 []TypeError
-	resolved_call_names     []string // node_id -> resolved function name
+	resolved_call_names     []&CachedName // node_id -> resolved function name
 	resolved_call_set       []bool
-	resolved_fn_value_names []string // node_id -> resolved function value name
+	resolved_fn_value_names []&CachedName // node_id -> resolved function value name
 	resolved_fn_value_set   []bool
 	statement_nodes         []bool
 	// Exact call/function-value dependencies recorded while each function is
@@ -1091,9 +1095,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		// reset_node_caches (allocating them here too paid for everything
 		// twice), and extend_node_caches grows them on demand for any checker
 		// used without a collect() call.
-		resolved_call_names: []string{}
+		resolved_call_names: []&CachedName{}
 		resolved_call_set: []bool{}
-		resolved_fn_value_names: []string{}
+		resolved_fn_value_names: []&CachedName{}
 		resolved_fn_value_set: []bool{}
 		statement_nodes: []bool{}
 		method_values_by_fn: map[int][]string{}
@@ -1704,14 +1708,12 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 // Independent arrays can be initialized on separate persistent worker arenas.
 fn (mut tc TypeChecker) reset_node_cache_group(n int, group int) {
 	if group == 0 {
-		// Only set slots are read; zeroed strings also match the representation
-		// used when transform grows these caches. Avoid a default-string fill.
-		tc.resolved_call_names = unsafe { []string{len: n} }
+		tc.resolved_call_names = new_zeroed_name_cache(n)
 		tc.resolved_call_set = []bool{len: n}
 		return
 	}
 	if group == 1 {
-		tc.resolved_fn_value_names = unsafe { []string{len: n} }
+		tc.resolved_fn_value_names = new_zeroed_name_cache(n)
 		tc.resolved_fn_value_set = []bool{len: n}
 		return
 	}
@@ -1724,6 +1726,19 @@ fn (mut tc TypeChecker) reset_node_cache_group(n int, group int) {
 	tc.lexical_smartcast_misses = []bool{len: n}
 	tc.checking_nodes = []bool{len: n}
 	tc.parallel_check_sparse = false
+}
+
+fn new_zeroed_name_cache(n int) []&CachedName {
+	mut values := []&CachedName{cap: n}
+	if n > 0 {
+		// Cache reads are guarded by set bits. Match the zero representation
+		// used during transform growth without synthesizing per-element stores.
+		unsafe {
+			values.grow_len(n)
+			vmemset(values.data, 0, isize(n) * isize(sizeof(&CachedName)))
+		}
+	}
+	return values
 }
 
 fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
@@ -1752,6 +1767,7 @@ struct DirectParentChunk {
 mut:
 	external_edges     []DirectParentEdge
 	preflight_node_ids []i32
+	metadata_node_ids  []i32
 	synthetic_type_ids []i32
 	has_goto_nodes     bool
 }
@@ -1769,6 +1785,9 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 	mut fn_cost := 0
 	for parent_idx in start .. end {
 		node := a.nodes[parent_idx]
+		if node.kind in [.decl_assign, .directive] {
+			chunk.metadata_node_ids << parent_idx
+		}
 		if node.kind in [.for_in_stmt, .comptime_for] {
 			chunk.preflight_node_ids << parent_idx
 		}
@@ -1860,30 +1879,36 @@ fn (tc &TypeChecker) preflight_nodes(kind flat.NodeKind) []i32 {
 
 fn (mut tc TypeChecker) collect_direct_parent_metadata(a &flat.FlatAst) {
 	for parent_idx, node in a.nodes {
-		if node.kind == .decl_assign && node.children_count >= 2 {
-			lhs := a.child_node(&node, 0)
-			if lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(&node, 1)) {
-				tc.strings_builder_candidates << parent_idx
-			}
-		} else if node.kind == .directive {
-			if node.value.starts_with('@attributes:') {
-				decl_id := node.value['@attributes:'.len..].int()
-				if decl_id >= 0 && decl_id < a.nodes.len {
-					tc.declaration_attributes[decl_id] = node.generic_params()
-					decl := a.nodes[decl_id]
-					if decl.kind == .module_decl {
-						if source_file := a.source_files[decl.pos.id] {
-							tc.collect_module_attributes(node, source_file.name)
-						}
+		if node.kind in [.decl_assign, .directive] {
+			tc.collect_direct_parent_node_metadata(a, parent_idx, node)
+		}
+	}
+}
+
+fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, parent_idx int, node flat.Node) {
+	if node.kind == .decl_assign && node.children_count >= 2 {
+		lhs := a.child_node(&node, 0)
+		if lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(&node, 1)) {
+			tc.strings_builder_candidates << parent_idx
+		}
+	} else if node.kind == .directive {
+		if node.value.starts_with('@attributes:') {
+			decl_id := node.value['@attributes:'.len..].int()
+			if decl_id >= 0 && decl_id < a.nodes.len {
+				tc.declaration_attributes[decl_id] = node.generic_params()
+				decl := a.nodes[decl_id]
+				if decl.kind == .module_decl {
+					if source_file := a.source_files[decl.pos.id] {
+						tc.collect_module_attributes(node, source_file.name)
 					}
 				}
-			} else if node.value == 'flag' && node.pos.is_valid() {
-				if source_file := a.source_files[node.pos.id] {
-					if raw_dir := checker_flag_include_dir(node.typ) {
-						resolved := tc.resolve_insert_path(raw_dir, source_file.name)
-						if resolved !in tc.insert_include_dirs_by_file[source_file.name] {
-							tc.insert_include_dirs_by_file[source_file.name] << resolved
-						}
+			}
+		} else if node.value == 'flag' && node.pos.is_valid() {
+			if source_file := a.source_files[node.pos.id] {
+				if raw_dir := checker_flag_include_dir(node.typ) {
+					resolved := tc.resolve_insert_path(raw_dir, source_file.name)
+					if resolved !in tc.insert_include_dirs_by_file[source_file.name] {
+						tc.insert_include_dirs_by_file[source_file.name] << resolved
 					}
 				}
 			}
@@ -2170,9 +2195,9 @@ fn (mut tc TypeChecker) extend_node_caches(n int) {
 		&& n <= tc.statement_nodes.len && n <= tc.expr_type_values.len && n <= tc.checking_nodes.len {
 		return
 	}
-	extend_string_cache(mut tc.resolved_call_names, n)
+	extend_name_cache(mut tc.resolved_call_names, n)
 	extend_bool_cache(mut tc.resolved_call_set, n)
-	extend_string_cache(mut tc.resolved_fn_value_names, n)
+	extend_name_cache(mut tc.resolved_fn_value_names, n)
 	extend_bool_cache(mut tc.resolved_fn_value_set, n)
 	extend_bool_cache(mut tc.statement_nodes, n)
 	extend_type_cache(mut tc.expr_type_values, n)
@@ -2183,9 +2208,9 @@ fn (mut tc TypeChecker) extend_node_caches(n int) {
 // reserve_transform_node_caches reserves node-indexed semantic storage before
 // a scoped transform starts, keeping the escaping slabs in the compilation arena.
 pub fn (mut tc TypeChecker) reserve_transform_node_caches(n int) {
-	reserve_string_cache(mut tc.resolved_call_names, n)
+	reserve_name_cache(mut tc.resolved_call_names, n)
 	reserve_bool_cache(mut tc.resolved_call_set, n)
-	reserve_string_cache(mut tc.resolved_fn_value_names, n)
+	reserve_name_cache(mut tc.resolved_fn_value_names, n)
 	reserve_bool_cache(mut tc.resolved_fn_value_set, n)
 	reserve_bool_cache(mut tc.statement_nodes, n)
 	reserve_type_cache(mut tc.expr_type_values, n)
@@ -2208,13 +2233,13 @@ pub fn (mut tc TypeChecker) materialize_sparse_transform_node_caches(n int, capa
 	tc.extend_node_caches(n)
 	for idx, name in tc.sparse_resolved_call_names {
 		if idx >= 0 && idx < n {
-			tc.resolved_call_names[idx] = name
+			tc.resolved_call_names[idx] = cached_name(name)
 			tc.resolved_call_set[idx] = true
 		}
 	}
 	for idx, name in tc.sparse_resolved_fn_values {
 		if idx >= 0 && idx < n {
-			tc.resolved_fn_value_names[idx] = name
+			tc.resolved_fn_value_names[idx] = cached_name(name)
 			tc.resolved_fn_value_set[idx] = true
 		}
 	}
@@ -2317,7 +2342,7 @@ pub fn (mut tc TypeChecker) promote_scoped_transform_interners(type_start int, s
 	}
 }
 
-fn reserve_string_cache(mut values []string, n int) {
+fn reserve_name_cache(mut values []&CachedName, n int) {
 	if n > values.cap {
 		unsafe { values.grow_cap(n - values.cap) }
 	}
@@ -2335,9 +2360,13 @@ fn reserve_type_cache(mut values []Type, n int) {
 	}
 }
 
-fn extend_string_cache(mut values []string, n int) {
+fn extend_name_cache(mut values []&CachedName, n int) {
 	if n > values.len {
-		values << []string{len: n - values.len}
+		start := values.len
+		unsafe {
+			values.grow_len(n - start)
+			vmemset(&values[start], 0, isize(n - start) * isize(sizeof(&CachedName)))
+		}
 	}
 }
 
@@ -7561,7 +7590,8 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 	}
 	collapsed := if field_init_args > 0 { 1 } else { 0 }
 	recv_extra := if info.has_receiver { 1 } else { 0 }
-	mut actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed + recv_extra
+	mut actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed +
+		recv_extra
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
@@ -8197,14 +8227,14 @@ fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				return tc.resolved_call_names[idx]
+				return tc.resolved_call_names[idx].value
 			}
 			return none
 		}
 		return tc.sparse_resolved_call_names[idx] or { none }
 	}
 	if idx >= 0 && idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-		return tc.resolved_call_names[idx]
+		return tc.resolved_call_names[idx].value
 	}
 	return none
 }
@@ -8385,14 +8415,14 @@ pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) {
 			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				return tc.resolved_fn_value_names[idx]
+				return tc.resolved_fn_value_names[idx].value
 			}
 			return none
 		}
 		return tc.sparse_resolved_fn_values[idx] or { none }
 	}
 	if idx >= 0 && idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-		return tc.resolved_fn_value_names[idx]
+		return tc.resolved_fn_value_names[idx].value
 	}
 	return none
 }
@@ -8408,7 +8438,7 @@ pub fn (mut tc TypeChecker) clear_resolved_fn_value(id flat.NodeId) {
 		tc.fork_overlay.resolved_fn_values.delete(idx)
 	}
 	if idx < tc.resolved_fn_value_set.len {
-		tc.resolved_fn_value_names[idx] = ''
+		tc.resolved_fn_value_names[idx] = unsafe { nil }
 		tc.resolved_fn_value_set[idx] = false
 	}
 	if tc.sparse_resolved_fn_values.len > 0 {
@@ -8458,7 +8488,7 @@ fn (tc &TypeChecker) intern_symbol(name string) (SymbolId, string) {
 	mut cache := unsafe { tc.type_cache }
 	if !isnil(cache) {
 		ptr := usize(name.str)
-		slot := int((u64(ptr) >> 4 ^ u64(name.len)) & 2047)
+		slot := int((u64(ptr) >> 4 ^ u64(name.len)) & u64(type_cache_recent_slots - 1))
 		if cache.symbol_recent_set[slot] && cache.symbol_recent_ptrs[slot] == ptr
 			&& cache.symbol_recent_lens[slot] == name.len {
 			return cache.symbol_recent_ids[slot], cache.symbol_recent_vals[slot]
@@ -8606,7 +8636,7 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	tc.record_direct_dependency(symbol_id)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_call_names.len {
-			tc.resolved_call_names[idx] = canonical
+			tc.resolved_call_names[idx] = cached_name(canonical)
 			tc.resolved_call_set[idx] = true
 			return
 		}
@@ -8617,7 +8647,7 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 		tc.extend_node_caches(tc.a.nodes.len)
 	}
 	if idx < tc.resolved_call_names.len {
-		tc.resolved_call_names[idx] = canonical
+		tc.resolved_call_names[idx] = cached_name(canonical)
 		tc.resolved_call_set[idx] = true
 	}
 }
@@ -8632,7 +8662,7 @@ fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) 
 	tc.record_direct_dependency(symbol_id)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_fn_value_names.len {
-			tc.resolved_fn_value_names[idx] = canonical
+			tc.resolved_fn_value_names[idx] = cached_name(canonical)
 			tc.resolved_fn_value_set[idx] = true
 			return
 		}
@@ -8643,7 +8673,7 @@ fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) 
 		tc.extend_node_caches(tc.a.nodes.len)
 	}
 	if idx < tc.resolved_fn_value_names.len {
-		tc.resolved_fn_value_names[idx] = canonical
+		tc.resolved_fn_value_names[idx] = cached_name(canonical)
 		tc.resolved_fn_value_set[idx] = true
 	}
 }

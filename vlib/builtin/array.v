@@ -405,6 +405,9 @@ pub fn (mut a array) ensure_cap(required int) {
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 		if a.flags.has(.noslices) && !a.flags.has(.is_slice) && !a.buffer_has_slices() {
 			unsafe {
+				$if prealloc {
+					prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size))
+				}
 				if a.flags.has(.managed) {
 					free(&u8(a.data) - u64(array_data_header_size()))
 				} else {
@@ -1271,6 +1274,9 @@ pub fn (a array) reverse() array {
 @[unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
+		if !a.flags.has(.is_slice) && !a.flags.has(.nofree) {
+			unsafe { prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size)) }
+		}
 		return
 	}
 	// A slice is a borrowed view into another array's buffer; its `.data` points

@@ -58,6 +58,20 @@ not retry with V1, except for `-new-compiler -cc msvc` on Windows. V3 does not y
 command lines, so that combination intentionally launches `v1_fallback.exe` instead of exercising
 V3.
 
+## Profile-guided compiler build
+
+On macOS or Linux with Clang and a matching `llvm-profdata`, build an optimized standalone
+compiler with `./build_pgo.sh ./v3 ./v3-pgo` from this directory. The first argument is an existing
+V3 compiler; the second is the output path. Both arguments are optional. The script builds an
+instrumented compiler, trains it on three uncached self-compilations, and rebuilds with the
+collected profile. It removes its temporary binaries and profiles when finished.
+
+Use `./v3-pgo -nocache -building-v -o v4 v3.v` for the self-build benchmark. Profile-guided gains
+are separate from ordinary `-prod` builds and depend on the workload. Rebuild the profile when
+compiler sources change. `CC` and `LLVM_PROFDATA` select the Clang and profile tools. Relative
+tool paths resolve from the caller's working directory. macOS also supports finding
+`llvm-profdata` through `xcrun`. `V3_PGO_CFLAGS` adds flags to the final build.
+
 ## Target selection
 
 The C backend accepts `-os <name>` and `-arch <name>`. The target controls source-file suffix
@@ -287,6 +301,22 @@ expression-type metadata for the post-transform flat AST, including new node IDs
 created by lowering. V1 and V2 do not need a separate step because their checker
 updates the typed AST/table that later stages keep using directly; v3's flat AST
 keeps those per-node caches outside the nodes.
+
+Resolved call and function-value caches use `types.CachedName` pointers, allocating a string
+header only for occupied slots. The existing set bits guard reads. `types.cached_name()` creates
+an immutable entry; `types.promote_cached_name()` preserves both its header and string bytes
+when a worker or transform arena is released. Text interning uses per-pass `flat.TextProbeCache`
+scratch on the stack, while canonical text remains owned by the AST.
+After parallel transform merges its append regions, `FlatAst.discard_unused_capacity()`
+releases unused AST pages on macOS and Linux in preallocated builds. It preserves the virtual
+reservation and live nodes, so later appends keep their existing capacity.
+
+Preallocated builds use `prealloc_discard_pages()` to return complete pages from obsolete
+reallocation buffers and freed containers while preserving the surrounding arena. Array growth
+does this only when the existing ownership checks permit releasing the old buffer. Scope block
+recycling retains at most 4 MiB per thread. Self-host transform helpers keep merge bookkeeping in
+separate arenas and publish escaping AST text into their parent arenas; the bookkeeping is freed
+after joining. The completed master transform also releases its private indexes and rewrite logs.
 
 Imports are resolved recursively: after parsing the input file, the driver
 collects `import_decl` nodes, resolves module paths, parses module files, and

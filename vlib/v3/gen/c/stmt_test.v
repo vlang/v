@@ -695,3 +695,29 @@ fn test_inline_asm_x86_registers_include_avx512_mask_registers() {
 	assert !is_c_inline_asm_x86_register('r999')
 	assert lower_c_inline_asm_template('mov ax, cs', 'amd64', map[string]bool{}, false) == 'mov %cs, %ax'
 }
+
+fn test_unsafe_value_block_scopes_direct_array_access() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	array_type := types.Type(types.Array{ elem_type: types.Type(types.int_) })
+	values := stmt_test_node(mut a, .ident, 'values', [])
+	index := stmt_test_node(mut a, .int_literal, '1', [])
+	element := stmt_test_node(mut a, .index, '', [values, index])
+	tc.cur_scope.insert('values', array_type)
+	tc.register_synth_type(values, array_type)
+	tc.register_synth_type(element, types.Type(types.int_))
+	expression := stmt_test_node(mut a, .expr_stmt, '', [element])
+	block := stmt_test_node(mut a, .block, 'unsafe', [expression])
+	g.gen_expr(block)
+	unchecked := g.sb.str()
+	assert unchecked.contains('.data'), unchecked
+	assert !unchecked.contains('array_get('), unchecked
+	assert g.unsafe_depth == 0
+	g.sb.clear()
+	g.gen_expr(element)
+	checked := g.sb.str()
+	assert checked.contains('array_get('), checked
+}

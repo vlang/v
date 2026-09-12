@@ -1444,6 +1444,14 @@ fn (mut t Transformer) make_stack_value_decl_assign_typed(name string, rhs flat.
 	return decl
 }
 
+// make_staging_value_decl reserves a temporary assigned by every continuing branch.
+// Preserve its typed initializer for other backends; C needs only zeroed storage.
+fn (mut t Transformer) make_staging_value_decl(name string, typ string) flat.NodeId {
+	decl := t.make_stack_value_decl_assign_typed(name, t.zero_value_for_type(typ), typ)
+	t.a.nodes[int(decl)].value = zeroed_stack_value_decl_marker
+	return decl
+}
+
 // zero_value_for_type supports zero value for type handling for Transformer.
 fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	mut clean := typ
@@ -1638,8 +1646,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 			break
 		}
 	}
-	prelude << t.make_stack_value_decl_assign_typed(val_tmp,
-		t.zero_value_for_type(storage_value_type), storage_value_type)
+	prelude << t.make_staging_value_decl(val_tmp, storage_value_type)
 
 	opt_ident := t.make_ident(opt_tmp)
 	ok_cond := t.make_selector(opt_ident, 'ok', 'bool')

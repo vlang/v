@@ -6273,7 +6273,7 @@ fn promote_scoped_ast_nodes_flagged(mut ast flat.FlatAst, base_nodes int, new_en
 // canonicalize_scoped_node_cached is canonicalize_scoped_node with a pointer
 // probe over the caller's cache arrays: owned texts repeat the same shared
 // string instances heavily, so most content-hash intern lookups are skipped.
-fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr, mut cache_ptrs []voidptr, mut cache_vals []string) {
+fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string) {
 	if idx < 0 || idx >= ast.nodes.len {
 		return
 	}
@@ -6509,16 +6509,10 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	if !transform.promote_scoped_checker_node_caches_parallel(mut tc, a, scope, generated_start) {
 		for idx in 0 .. tc.resolved_call_names.len {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				name := tc.resolved_call_names[idx]
-				if name.len > 0 && scoped_value_owned(scope, name.str) {
-					tc.resolved_call_names[idx] = name.clone()
-				}
+				tc.resolved_call_names[idx] = types.promote_cached_name(tc.resolved_call_names[idx], scope)
 			}
 			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				name := tc.resolved_fn_value_names[idx]
-				if name.len > 0 && scoped_value_owned(scope, name.str) {
-					tc.resolved_fn_value_names[idx] = name.clone()
-				}
+				tc.resolved_fn_value_names[idx] = types.promote_cached_name(tc.resolved_fn_value_names[idx], scope)
 			}
 			if idx >= generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
@@ -7217,7 +7211,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 		if idx >= tc.resolved_fn_value_set.len || !tc.resolved_fn_value_set[idx] {
 			continue
 		}
-		name := tc.resolved_fn_value_names[idx]
+		name := tc.resolved_fn_value_names[idx].value
 		params := tc.fn_param_types[name] or { continue }
 		ret := tc.fn_ret_types[name] or { continue }
 		tc.expr_type_values[idx] = types.FnType{
@@ -10824,11 +10818,10 @@ pub fn run(args []string) {
 					if !fused_text_promote {
 						mut scoped_text_flags := []u8{len: a.nodes.len}
 						if transform.scan_scoped_text_flags_parallel(a, transform_scope, mut scoped_text_flags) {
-							mut canon_cache_ptrs := unsafe { []voidptr{len: 4096} }
-							mut canon_cache_vals := []string{len: 4096}
+							mut canon_cache := flat.TextProbeCache{}
 							for idx, flag in scoped_text_flags {
 								if flag != 0 {
-									canonicalize_scoped_node_cached(mut a, idx, transform_scope, mut canon_cache_ptrs, mut canon_cache_vals)
+									canonicalize_scoped_node_cached(mut a, idx, transform_scope, mut canon_cache.ptrs, mut canon_cache.values)
 								}
 							}
 						} else {
@@ -10910,7 +10903,8 @@ pub fn run(args []string) {
 					for idx in 0 .. pre_tc.resolved_call_names.len {
 						if idx < pre_tc.resolved_call_set.len && pre_tc.resolved_call_set[idx] {
 							name := pre_tc.resolved_call_names[idx]
-							if name.len > 0 && scoped_value_owned(transform_scope, name.str) {
+							if scoped_value_owned(transform_scope, name)
+								|| scoped_value_owned(transform_scope, name.value.str) {
 								leaked_rc++
 								if first_leak < 0 {
 									first_leak = idx
@@ -10920,7 +10914,8 @@ pub fn run(args []string) {
 						if idx < pre_tc.resolved_fn_value_set.len
 							&& pre_tc.resolved_fn_value_set[idx] {
 							name := pre_tc.resolved_fn_value_names[idx]
-							if name.len > 0 && scoped_value_owned(transform_scope, name.str) {
+							if scoped_value_owned(transform_scope, name)
+								|| scoped_value_owned(transform_scope, name.value.str) {
 								leaked_fv++
 							}
 						}
@@ -10997,6 +10992,10 @@ pub fn run(args []string) {
 		if !building_v && !uses_generics && transformed_used_fns_need_monomorphize(used_fns) {
 			uses_generics = true
 			skip_transform_generics = false
+		}
+		if scope_prealloc_transform {
+			// Worker views have joined and their live regions are now compacted.
+			unsafe { a.discard_unused_capacity() }
 		}
 		if incremental_cache_hit {
 			b.step_parallel('transform (incremental)', transform_was_parallel)
@@ -15917,7 +15916,7 @@ struct SyntheticInsertion {
 	node flat.Node
 }
 
-// insert_synthetic_imports rebuilds a.nodes with each synthetic import spliced in
+// insert_synthetic_imports shifts a.nodes in place with each synthetic import spliced in
 // before its recorded original-array position, so the next resolver pass scans a
 // module's synthetic import right after that module's own region — in the same
 // order serial one-module-at-a-time resolution appended and scanned it, before
@@ -15932,26 +15931,37 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 		return
 	}
 	old_len := a.nodes.len
-	mut new_nodes := []flat.Node{cap: old_len + insertions.len}
-	mut start := 0
+	mut imports := []flat.Node{cap: insertions.len}
 	for insertion in insertions {
-		// Copy each unchanged region once instead of appending every AST node.
-		new_nodes << a.nodes[start..insertion.pos]
-		new_nodes << canonical_node_texts(mut a, insertion.node)
-		start = insertion.pos
+		imports << canonical_node_texts(mut a, insertion.node)
 	}
-	new_nodes << a.nodes[start..]
-	for i in 0 .. new_nodes.len {
-		mut node := new_nodes[i]
+	// Keep the parser's reserved capacity. Rebuilding this array for a handful
+	// of imports retains the old slab under -prealloc and forces later parse
+	// waves to allocate and copy it again.
+	unsafe { a.nodes.grow_len(insertions.len) }
+	mut end := old_len
+	for i := insertions.len - 1; i >= 0; i-- {
+		insertion := insertions[i]
+		if end > insertion.pos {
+			// Move backwards by region: source and destination may overlap, and
+			// earlier regions must remain intact until their own move.
+			unsafe {
+				vmemmove(&a.nodes[insertion.pos + i + 1], &a.nodes[insertion.pos], isize(end - insertion.pos) * isize(sizeof(flat.Node)))
+			}
+		}
+		a.nodes[insertion.pos + i] = imports[i]
+		end = insertion.pos
+	}
+	for i in 0 .. a.nodes.len {
+		mut node := a.nodes[i]
 		if node.kind == .directive && node.value.starts_with('@attributes:') {
 			target_idx := node.value['@attributes:'.len..].int()
 			if target_idx >= 0 && target_idx < old_len {
 				node.value = '@attributes:${target_idx + synthetic_index_shift(insertions, target_idx)}'
-				new_nodes[i] = canonical_node_texts(mut a, node)
+				a.nodes[i] = canonical_node_texts(mut a, node)
 			}
 		}
 	}
-	a.nodes = new_nodes
 	for i, idx in a.file_node_ids {
 		a.file_node_ids[i] = idx + synthetic_index_shift(insertions, idx)
 	}
