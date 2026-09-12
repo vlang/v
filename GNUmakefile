@@ -7,6 +7,7 @@ VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
 V1_FALLBACK_EXE = $(dir $(VEXE))v1_fallback$(EXE_EXT)
+V1_FALLBACK_INSTALLER = $(VROOT)/cmd/tools/install_v1_fallback.sh
 # Portable VC snapshots do not embed V3. Keep their v1 executable on the full
 # compatibility compiler path even when the generated C is built on a V3 host.
 VC_BOOTSTRAP_DEFINE := -DCUSTOM_DEFINE_v1_fallback
@@ -216,7 +217,7 @@ all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
 	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
-	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
+	sh "$(V1_FALLBACK_INSTALLER)" "./v1$(EXE_EXT)" "$(V1_FALLBACK_EXE)"
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
 	$(RM) v2$(EXE_EXT)
@@ -235,7 +236,7 @@ endif
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
 endif
-	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
+	sh "$(V1_FALLBACK_INSTALLER)" "./v1$(EXE_EXT)" "$(V1_FALLBACK_EXE)"
 ifdef NETBSD
 	paxctl +m $(V1_FALLBACK_EXE)
 endif

@@ -44,11 +44,13 @@ Commands such as `test` remain external tools, while each discovered test file i
 Non-C backends remain separate builder tools.
 
 `-new-compiler` remains accepted for command-line compatibility and normally selects the same
-in-process V3 driver. The standard bootstrap also builds `v1_fallback` (`v1_fallback.exe` on
-Windows) beside `v`; `-old-compiler` launches it explicitly, and ordinary user builds retry through
-it after a V3 compiler or C compilation failure. A separately built V3-only executable without
-that sibling cannot use the fallback. On portable cross-VC builds, the V3 driver is not embedded
-and `cmd/v` retains the established compiler.
+in-process V3 driver. The standard bootstrap also installs the V 0.5.2 release compiler as
+`v1_fallback` (`v1_fallback.exe` on Windows) beside `v`; it verifies a matching GitHub release
+asset, or builds the tag with `oldv` when no asset can be installed. `-old-compiler` launches it
+explicitly, and ordinary user builds retry through it after a V3 compiler or C compilation
+failure. A separately built V3-only executable without that sibling cannot use the fallback. On
+portable cross-VC builds, the V3 driver is not embedded and `cmd/v` retains the established
+compiler.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.

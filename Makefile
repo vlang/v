@@ -125,18 +125,7 @@ v:
 	fi; \
 	set -- "$$@" cmd/v; \
 	"$$@"; \
-	set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback $$bootstrap_gcflags $(VFLAGS); \
-	if [ -n "$$bootstrap_ccompiler" ]; then \
-		set -- "$$@" -cc "$$bootstrap_ccompiler"; \
-	fi; \
-	if [ -n "$$bootstrap_ccflags" ]; then \
-		set -- "$$@" -cflags "$$bootstrap_ccflags"; \
-	fi; \
-	if [ -n "$$ldflags" ]; then \
-		set -- "$$@" -ldflags "$$ldflags"; \
-	fi; \
-	set -- "$$@" cmd/v; \
-	"$$@"; \
+	sh ./cmd/tools/install_v1_fallback.sh ./v1 ./v1_fallback; \
 	set -- ./v2 -o v $$bootstrap_gcflags $(VFLAGS); \
 	if [ -n "$$bootstrap_ccompiler" ]; then \
 		set -- "$$@" -cc "$$bootstrap_ccompiler"; \
