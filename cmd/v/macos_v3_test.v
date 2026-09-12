@@ -139,8 +139,8 @@ fn test_gnumake_builds_the_v1_fallback_executable_for_every_native_host() {
 	assert source.contains('V1_FALLBACK_EXE = \$(dir \$(VEXE))v1_fallback\$(EXE_EXT)')
 	installer := 'sh "\$(V1_FALLBACK_INSTALLER)" "./v1\$(EXE_EXT)" "\$(V1_FALLBACK_EXE)"'
 	assert source.count(installer) == 2
-	oldv_environment := 'CC="\$(CC)" OLDV_CCOPTIONS="\$(BOOTSTRAP_VC_CFLAGS)" OLDV_LDFLAGS="\$(BOOTSTRAP_LDFLAGS)"'
-	assert source.count(oldv_environment) == 2
+	fallback_environment := 'V1_FALLBACK_LOCAL="\$(local)" CC="\$(CC)" OLDV_CCOPTIONS="\$(BOOTSTRAP_VC_CFLAGS)" OLDV_LDFLAGS="\$(BOOTSTRAP_LDFLAGS)"'
+	assert source.count(fallback_environment) == 2
 	assert !source.contains('-d v1_fallback -o \$(V1_FALLBACK_EXE)')
 }
 
@@ -151,7 +151,7 @@ fn test_portable_make_builds_the_v1_fallback_executable_for_every_native_host() 
 	assert !source.contains('set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback')
 }
 
-fn test_v1_fallback_installer_downloads_0_5_2_and_uses_oldv_on_failure() {
+fn test_v1_fallback_installer_downloads_0_5_2_and_uses_local_or_oldv_fallback() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'install_v1_fallback.sh'))!
 	assert source.contains('release_version=0.5.2')
 	assert source.contains('https://github.com/vlang/v/releases/download/\$release_version')
@@ -160,12 +160,17 @@ fn test_v1_fallback_installer_downloads_0_5_2_and_uses_oldv_on_failure() {
 		assert source.contains('asset=${asset}'), asset
 	}
 	assert source.contains('candidate_has_expected_version || {')
+	assert source.contains('if [ -n "\${V1_FALLBACK_LOCAL:-}" ]; then')
+	assert source.contains('"\$bootstrap_v" -no-parallel -gc none -d v1_fallback -o "\$candidate"')
 	assert source.contains('cmd/tools/oldv.v --cache=false --command "\$oldv_copy" "\$release_version"')
 	assert source.contains('actual_sha256=\$(sha256_of "\$archive")')
 	oldv_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'oldv.v'))!
 	assert oldv_source.contains("if use_cache {\n\t\t\ttools << 'rsync'")
 	assert oldv_source.contains('oldv_required_tools(context.use_cache, context.cc)')
 	assert oldv_source.contains('tools << cc')
+	assert oldv_source.contains("default_cc := if env_cc == '' { 'cc' } else { env_cc }")
+	assert oldv_source.contains("context.cc = fp.string('cc', 0, default_cc")
+	assert !oldv_source.contains("if env_cc != '' {\n\t\tcontext.cc = env_cc")
 	assert oldv_source.contains("env_ldflags := os.getenv('OLDV_LDFLAGS')")
 	vgit_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'modules', 'vgit', 'vgit.v'))!
 	assert vgit_source.contains("c_ldflags = '\${c_ldflags} \${vgit_context.cc_ldflags}'.trim_space()")

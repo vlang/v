@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # Install the V 0.5.2 release compiler used by cmd/v as its V1 fallback.
-# If GitHub does not provide a binary for this host, or the binary cannot be
-# downloaded and verified, use the existing oldv tool to build the same tag.
+# If GitHub does not provide a usable binary, preserve hermetic `make local=1`
+# builds by compiling from this checkout before trying the existing oldv tool.
 
 set -u
 
@@ -126,14 +126,37 @@ build_with_oldv() {
 	chmod +x "$candidate" || return 1
 }
 
+build_from_local_sources() {
+	echo "Building the V $release_version fallback from local sources..."
+	set -- "$bootstrap_v" -no-parallel -gc none -d v1_fallback -o "$candidate"
+	if [ -n "${CC:-}" ]; then
+		set -- "$@" -cc "$CC"
+	fi
+	if [ -n "${OLDV_CCOPTIONS:-}" ]; then
+		set -- "$@" -cflags "$OLDV_CCOPTIONS"
+	fi
+	if [ -n "${OLDV_LDFLAGS:-}" ]; then
+		set -- "$@" -ldflags "$OLDV_LDFLAGS"
+	fi
+	set -- "$@" cmd/v
+	"$@" || return 1
+	chmod +x "$candidate" || return 1
+	candidate_has_expected_version || return 1
+}
+
 if download_release; then
 	echo "Installed the V $release_version release fallback from $asset"
 else
 	echo "Could not install a V $release_version release asset for $system/$architecture." >&2
-	build_with_oldv || {
-		echo "Could not build the V $release_version fallback with oldv." >&2
-		exit 1
-	}
+	if [ -n "${V1_FALLBACK_LOCAL:-}" ]; then
+		build_from_local_sources && local_build_succeeded=1
+	fi
+	if [ "${local_build_succeeded:-0}" -ne 1 ]; then
+		build_with_oldv || {
+			echo "Could not build the V $release_version fallback with oldv." >&2
+			exit 1
+		}
+	fi
 fi
 
 candidate_has_expected_version || {

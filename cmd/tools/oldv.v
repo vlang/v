@@ -129,13 +129,11 @@ fn main() {
 		context.vgo.v_repo_url = 'https://github.com/vlang/v'
 		context.vgo.vc_repo_url = 'https://github.com/vlang/vc'
 	}
-	context.cc = fp.string('cc', 0, 'cc', 'Use this C compiler for bootstrapping v.c (defaults to `cc`).')
+	env_cc := os.getenv('CC')
+	default_cc := if env_cc == '' { 'cc' } else { env_cc }
+	context.cc = fp.string('cc', 0, default_cc, 'Use this C compiler for bootstrapping v.c (defaults to `CC` or `cc`).')
 	context.cc_options = fp.string('ccoptions', 0, '', 'Use these C compiler options for bootstrapping v.c (defaults to ``).')
 	context.cc_ldflags = fp.string('ldflags', 0, '', 'Use these linker options while bootstrapping (defaults to ``).')
-	env_cc := os.getenv('CC')
-	if env_cc != '' {
-		context.cc = env_cc
-	}
 	env_cc_options := os.getenv('OLDV_CCOPTIONS')
 	if env_cc_options != '' {
 		context.cc_options = env_cc_options
