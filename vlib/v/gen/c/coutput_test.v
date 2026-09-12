@@ -287,10 +287,13 @@ fn test_addressable_map_fallback_does_not_allocate_carrier() {
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !generated_c_uses_v3_codegen(compilation.output)
-	assert compilation.output.contains('Map_string_main__Entry _t')
-	assert compilation.output.contains('*ADDR(Map_string_main__Entry, ({')
-	assert compilation.output.contains('*((Map_string_main__Entry*)')
-	assert !compilation.output.contains('} (Map_string_main__Entry*)')
+	// The lookup goes through a generated helper rather than a `({ ... })`
+	// statement expression, which is a GNU extension MSVC cannot parse.
+	assert !compilation.output.contains('({ map*')
+	assert compilation.output.contains('*ADDR(Map_string_main__Entry, _v_map_get_or_zero_Map_string_main__Entry(')
+	// A hit returns the stored map; only a miss builds the default, so no
+	// lookup allocates a carrier for a value it is about to throw away.
+	assert compilation.output.contains('if (v) { return *(Map_string_main__Entry*)v; }')
 	assert !compilation.output.contains('builtin__memdup(ADDR(Map_string_main__Entry')
 }
 
