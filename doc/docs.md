@@ -9127,6 +9127,43 @@ asm amd64 raw {
 assert value == 42
 ```
 
+Raw templates are the right level for hand-written kernels that need GNU assembler features such
+as local labels or explicit operand modifiers. A label made with `%=` gets a unique numeric suffix
+for each inline-assembly statement, so prefer names such as `.Lloop%=` for loops in reusable
+functions. Numeric local labels such as `1:` with `1b` (backward) and `1f` (forward) references are
+also useful for short branches. Do not use an ordinary global-looking label in a raw block unless
+it is deliberately exported: two instantiations of a function can otherwise define the same
+assembler symbol.
+
+For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
+the pointer inside the template, and decrement the count until it reaches zero:
+
+```v ignore
+mut ptr := data.data
+mut len := u64(data.len)
+asm amd64 raw {
+    "testq %[len], %[len]\n\t"
+    "jz .Ldone%=\n\t"
+    ".Lloop%=:\n\t"
+    "... load and process one block ...\n\t"
+    "addq $16, %[ptr]\n\t"
+    "subq $1, %[len]\n\t"
+    "jnz .Lloop%=\n\t"
+    ".Ldone%=:"
+    ; [ptr] "+r" (ptr)
+      [len] "+r" (len)
+    ;
+    ; memory
+    ; cc
+}
+```
+
+Use `memory` when the assembly reads or writes memory not described by an operand, and use `cc`
+when it changes or observes condition flags. Raw templates leave the compiler-specific details of
+`r`, `m`, and explicit memory addressing to the selected C compiler. Use `r` for pointers when the
+template performs address arithmetic; use `m` when the template needs the compiler to format a
+memory operand. Keep the pointer and length constraints read-write when the template modifies them.
+
 `asm goto` emits GNU `asm goto` and is available only with the C backend. Its fifth semicolon
 section lists the V labels that the assembly may branch to. Use the label name in a structured
 branch instruction; a `raw` template uses GNU's `%l[label]` form. Targets cannot enter or leave a
