@@ -29,8 +29,90 @@ pub fn run_with_timeout(program string, args []string, timeout_ms i64) os.Result
 	return run_in_mode(program, args, '', false, timeout_ms)
 }
 
+// windows_implicit_suffixes are the extensions CreateProcessW appends to a
+// program path that carries none. os.is_executable only accepts a name that
+// already ends in one of them, so an extension-less `C:\\LLVM\\bin\\clang`
+// has to be probed with each of these before it counts as missing.
+const windows_implicit_suffixes = ['.exe', '.com', '.bat', '.cmd']
+
+// resolve_executable returns the program path to hand to os.Process, or none
+// when nothing can be started. It mirrors os.Process's own resolution:
+//   - Windows expands every filename with abs_path() before CreateProcessW, so
+//     even a bare name is looked up next to the caller's folder rather than
+//     through PATH.
+//   - Unix keeps an absolute path as is, resolves a path that carries a
+//     separator against the *caller's* folder when a work folder was set (the
+//     child execve()s that absolute path after it has changed folders), and
+//     otherwise searches PATH.
+//
+// It returns the resolved path rather than a yes/no, because on Windows the
+// candidate that exists may not be the name the caller passed: CreateProcessW
+// binds an absolute non-batch filename as lpApplicationName, so a program that
+// only exists as `${program}.exe` has to be launched under *that* name, or the
+// launch fails even though the file is right there.
+fn resolve_executable(program string, work_folder string) ?string {
+	if program == '' {
+		return none
+	}
+	$if windows {
+		if program.contains('%') {
+			// CreateProcessW expands `%VAR%` itself. Probing the literal would
+			// reject `%COMSPEC%` and friends, which launch fine today.
+			return program
+		}
+		return windows_resolve_executable(os.abs_path(program))
+	} $else {
+		if os.is_abs_path(program) {
+			return if os.is_executable(program) { program } else { none }
+		}
+		if program.contains(os.path_separator) {
+			probe := if work_folder.len > 0 { os.abs_path(program) } else { program }
+			return if os.is_executable(probe) { program } else { none }
+		}
+		os.find_abs_path_of_executable(program) or { return none }
+		return program
+	}
+}
+
+// windows_resolve_executable returns the candidate CreateProcessW would load,
+// appending the implicit extensions when the path carries none. Every branch
+// errs towards letting the launch proceed: this check only exists to turn an
+// unstartable command into a result instead of an abort, so a false "missing"
+// would break callers that work today, while a false "present" merely restores
+// the previous behaviour.
+fn windows_resolve_executable(candidate string) ?string {
+	if os.is_executable(candidate) {
+		return candidate
+	}
+	if os.file_ext(candidate) != '' {
+		// os.is_executable only accepts the conventional extensions, but
+		// CreateProcessW runs any module it can load - including a PE binary
+		// deliberately named `clang.bin`. Existence is the honest test here.
+		return if os.is_file(candidate) { candidate } else { none }
+	}
+	for suffix in windows_implicit_suffixes {
+		probed := candidate + suffix
+		if os.is_executable(probed) {
+			return probed
+		}
+	}
+	// An extension-less file can still be a loadable module.
+	return if os.is_file(candidate) { candidate } else { none }
+}
+
 fn run_in_mode(program string, args []string, work_folder string, merge_output bool, timeout_ms i64) os.Result {
-	mut process := os.new_process(program)
+	// Decide here whether the command can start at all. On Windows a
+	// CreateProcess that cannot find the program makes os.Process abort the
+	// whole compiler, with a message that does not even name what was missing;
+	// a missing command has to be an ordinary failing result that the caller
+	// can report, or fall back from, on every host.
+	launch_program := resolve_executable(program, work_folder) or {
+		return os.Result{
+			exit_code: 127
+			output: 'failed to find executable: ${program}\n'
+		}
+	}
+	mut process := os.new_process(launch_program)
 	process.set_args(args)
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
@@ -125,7 +207,7 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	}
 	return os.Result{
 		exit_code: exit_code
-		output:    output_text
+		output: output_text
 	}
 }
 
