@@ -2592,8 +2592,14 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				} else if sym.kind == .map {
 					info := sym.info as ast.Map
 					styp := g.styp(info.value_type)
+					val_sym := g.table.final_sym(info.value_type)
+					if val_sym.kind == .map {
+						g.write('${styp} _var_${left.pos.pos} = ')
+						g.gen_map_value_lookup(left, info.key_type, info.value_type, styp, left.left_type.is_ptr(), false, false, false)
+						g.writeln(';')
+						continue
+					}
 					zero := g.type_default(info.value_type)
-					val_sym := g.table.sym(info.value_type)
 					if val_sym.kind == .function {
 						left_type := node.left_types[i]
 						left_sym := g.table.sym(left_type)

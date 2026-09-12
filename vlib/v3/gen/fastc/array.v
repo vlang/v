@@ -767,6 +767,11 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 	mut previous_module_separator := false
 	for i, item in tokens {
 		mut piece := item.lit
+		map_length_receiver_type := if item.tok == .dot {
+			g.map_length_receiver_type(tokens, i) or { '' }
+		} else {
+			''
+		}
 		if item.tok == .right_shift_unsigned {
 			// V's logical right shift `>>>` has no C spelling; on the unsigned operand it is
 			// always applied to (V code casts to an unsigned type first, e.g. `u64(x) >>> n`)
@@ -863,7 +868,10 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			piece = '(Option){.state=2}'
 		} else if item.tok == .name {
 			previous := if i == 0 { token.Token.unknown } else { tokens[i - 1].tok }
-			piece = if previous == .dot && i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
+			piece = if previous == .dot && item.lit == 'len'
+				&& g.map_length_receiver_type(tokens, i - 1) != none {
+				'count'
+			} else if previous == .dot && i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
 				item.lit
 			} else if previous == .dot && previous_module_separator {
 				// The module prefix already makes a qualified keyword-named constant safe
@@ -880,6 +888,8 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			} else {
 				g.resolved_expression_name(item.lit, previous)
 			}
+		} else if item.tok == .dot && map_length_receiver_type != '' {
+			piece = if map_length_receiver_type.ends_with('*') { '->data->' } else { '.data->' }
 		} else if item.tok == .dot && i > 0 && tokens[i - 1].tok == .name && tokens[i - 1].lit in g.imports && tokens[i - 1].lit !in g.locals && (i < 2 || tokens[i - 2].tok != .dot) {
 			// An imported module name qualifies only at the start of a chain; `v.pref.os.str()`
 			// accesses the field `os`, not the `os` module, even when that module is imported. A

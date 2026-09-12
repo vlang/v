@@ -40,7 +40,38 @@ typedef unsigned char *byteptr;
 typedef char *charptr;
 typedef void *chan;
 typedef struct { void *data; int offset; int len; int cap; int flags; } array;
-typedef struct { void *data; int len; } map;
+/* Keep these private map-header declarations in sync with builtin/map.v. */
+typedef struct {
+	int key_bytes;
+	int value_bytes;
+	int cap;
+	int len;
+	u32 deletes;
+	u8 *all_deleted;
+	u8 *keys;
+	u8 *values;
+} DenseArray;
+typedef u64 (*MapHashFn)(voidptr);
+typedef bool (*MapEqFn)(voidptr, voidptr);
+typedef void (*MapCloneFn)(voidptr, voidptr);
+typedef void (*MapFreeFn)(voidptr);
+typedef struct VMapData {
+	int key_bytes;
+	int value_bytes;
+	u32 even_index;
+	u8 cached_hashbits;
+	u8 shift;
+	DenseArray key_values;
+	u32 *metas;
+	u32 extra_metas;
+	bool has_string_keys;
+	MapHashFn hash_fn;
+	MapEqFn key_eq_fn;
+	MapCloneFn clone_fn;
+	MapFreeFn free_fn;
+	int count;
+} VMapData;
+typedef struct { VMapData *data; } map;
 typedef struct { void *data; void *err; unsigned char state; } Option;
 /* One multi-return component. Values up to 32 bytes are stored inline; larger
    ones are boxed and referenced through `ptr`, so no component size can

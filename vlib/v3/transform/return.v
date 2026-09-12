@@ -754,7 +754,6 @@ fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type t
 	idx_name := t.new_temp('return_map_idx')
 	source_key_name := t.new_temp('return_map_source_key')
 	key_name := t.new_temp('return_map_key')
-	zero_name := t.new_temp('return_map_zero')
 	source_value_name := t.new_temp('return_map_source_value')
 	value_name := t.new_temp('return_map_value')
 	keys_type := '[]${actual_key_storage}'
@@ -769,8 +768,7 @@ fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type t
 	source_key := t.array_get_value(t.make_ident(keys_name), t.make_ident(idx_name), actual_key_storage)
 	mut body := []flat.NodeId{}
 	body << t.make_decl_assign_typed(source_key_name, source_key, actual_key_storage)
-	body << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(actual_value_type), actual_value_type)
-	source_value := t.make_map_get_expr(base, actual_map_type, source_key_name, zero_name, actual_value_type)
+	source_value := t.make_map_lookup_value(base, actual_map_type, source_key_name, actual_value_type, mut body)
 	body << t.make_decl_assign_typed(source_value_name, source_value, actual_value_type)
 	body_pending_start := t.pending_stmts.len
 	logical_source_key := if actual_key_storage == actual_key_type {

@@ -153,6 +153,25 @@ fn fastc_method_receiver_start_after(tokens []FastcExpressionToken, dot int, low
 	return lower_bound
 }
 
+fn (g &Parser) map_receiver_type_before_dot(tokens []FastcExpressionToken, dot int) ?string {
+	if dot <= 0 || dot >= tokens.len || tokens[dot].tok != .dot {
+		return none
+	}
+	receiver_start := fastc_method_receiver_start(tokens, dot)
+	receiver_type := g.infer_expression_type(tokens[receiver_start..dot]) or { return none }
+	if !g.is_map_type(receiver_type) {
+		return none
+	}
+	return receiver_type
+}
+
+fn (g &Parser) map_length_receiver_type(tokens []FastcExpressionToken, dot int) ?string {
+	if dot + 1 >= tokens.len || tokens[dot + 1].tok != .name || tokens[dot + 1].lit != 'len' {
+		return none
+	}
+	return g.map_receiver_type_before_dot(tokens, dot)
+}
+
 fn fastc_call_arguments(tokens []FastcExpressionToken, open int, close int) ![][]FastcExpressionToken {
 	if open + 1 == close {
 		return [][]FastcExpressionToken{}

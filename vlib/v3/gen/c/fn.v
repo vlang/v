@@ -9709,7 +9709,7 @@ fn (mut g FlatGen) json_encode_value_c_expr_inner(typ types.Type, expr string, s
 		encoded := g.json_encode_value_c_expr_inner(clean.value_type, '(*${value_name})', seen) or {
 			return none
 		}
-		return '({ map ${map_name} = ${expr}; string ${out_name} = v3_c_lit("{", 1); bool ${out_name}_first = true; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.key_values.len; ++${idx_name}) { if (${map_name}.key_values.deletes != 0 && ${map_name}.key_values.all_deleted != 0 && ${map_name}.key_values.all_deleted[${idx_name}] != 0) continue; if (!${out_name}_first) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); string* ${key_name} = (string*)(${map_name}.key_values.keys + ${idx_name} * ${map_name}.key_values.key_bytes); ${value_ct}* ${value_name} = (${value_ct}*)(${map_name}.key_values.values + ${idx_name} * ${map_name}.key_values.value_bytes); ${out_name} = string__plus(string__plus(string__plus(${out_name}, v3_json_encode_string(*${key_name})), v3_c_lit(":", 1)), ${encoded}); ${out_name}_first = false; } string__plus(${out_name}, v3_c_lit("}", 1)); })'
+		return '({ map ${map_name} = ${expr}; string ${out_name} = v3_c_lit("{", 1); bool ${out_name}_first = true; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.data->key_values.len; ++${idx_name}) { if (${map_name}.data->key_values.deletes != 0 && ${map_name}.data->key_values.all_deleted != 0 && ${map_name}.data->key_values.all_deleted[${idx_name}] != 0) continue; if (!${out_name}_first) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); string* ${key_name} = (string*)(${map_name}.data->key_values.keys + ${idx_name} * ${map_name}.data->key_values.key_bytes); ${value_ct}* ${value_name} = (${value_ct}*)(${map_name}.data->key_values.values + ${idx_name} * ${map_name}.data->key_values.value_bytes); ${out_name} = string__plus(string__plus(string__plus(${out_name}, v3_json_encode_string(*${key_name})), v3_c_lit(":", 1)), ${encoded}); ${out_name}_first = false; } string__plus(${out_name}, v3_c_lit("}", 1)); })'
 	}
 	if clean is types.Primitive {
 		if clean.props.has(.boolean) {
@@ -9855,7 +9855,7 @@ fn (mut g FlatGen) json_encode_value_c_expr_inner(typ types.Type, expr string, s
 		colon := g.intern_string(':')
 		empty := g.intern_string('')
 		value_expr := g.json_encode_value_c_expr_inner(clean.value_type, '(*(${value_ct}*)${value_name})', seen) or { return none }
-		return '({ map ${map_name} = ${expr}; string ${out_name} = _str_${open}; int ${count_name} = 0; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.key_values.len; ++${idx_name}) { if (${map_name}.key_values.deletes != 0 && ${map_name}.key_values.all_deleted != 0 && ${map_name}.key_values.all_deleted[${idx_name}] != 0) continue; string ${key_name} = *(string*)(${map_name}.key_values.keys + ${idx_name} * ${map_name}.key_values.key_bytes); void* ${value_name} = (void*)(${map_name}.key_values.values + ${idx_name} * ${map_name}.key_values.value_bytes); ${out_name} = string__plus(${out_name}, ${count_name} == 0 ? _str_${empty} : _str_${comma}); ${out_name} = string__plus(${out_name}, v3_json_encode_string(${key_name})); ${out_name} = string__plus(${out_name}, _str_${colon}); ${out_name} = string__plus(${out_name}, ${value_expr}); ${count_name}++; } string__plus(${out_name}, _str_${close}); })'
+		return '({ map ${map_name} = ${expr}; string ${out_name} = _str_${open}; int ${count_name} = 0; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.data->key_values.len; ++${idx_name}) { if (${map_name}.data->key_values.deletes != 0 && ${map_name}.data->key_values.all_deleted != 0 && ${map_name}.data->key_values.all_deleted[${idx_name}] != 0) continue; string ${key_name} = *(string*)(${map_name}.data->key_values.keys + ${idx_name} * ${map_name}.data->key_values.key_bytes); void* ${value_name} = (void*)(${map_name}.data->key_values.values + ${idx_name} * ${map_name}.data->key_values.value_bytes); ${out_name} = string__plus(${out_name}, ${count_name} == 0 ? _str_${empty} : _str_${comma}); ${out_name} = string__plus(${out_name}, v3_json_encode_string(${key_name})); ${out_name} = string__plus(${out_name}, _str_${colon}); ${out_name} = string__plus(${out_name}, ${value_expr}); ${count_name}++; } string__plus(${out_name}, _str_${close}); })'
 	}
 	return none
 }
@@ -9992,7 +9992,7 @@ fn (mut g FlatGen) json_encode_equal_c_expr(typ types.Type, left string, right s
 		left_value := g.tmp_name()
 		right_value := g.tmp_name()
 		value_equal := g.json_encode_equal_c_expr(clean.value_type, '(*${left_value})', '(*${right_value})', seen) or { return none }
-		return '({ map ${left_name} = ${left}; map ${right_name} = ${right}; bool ${equal_name} = ${left_name}.len == ${right_name}.len; for (int ${index_name} = 0; ${equal_name} && ${index_name} < ${left_name}.key_values.len; ++${index_name}) { if (${left_name}.key_values.deletes != 0 && ${left_name}.key_values.all_deleted != 0 && ${left_name}.key_values.all_deleted[${index_name}] != 0) continue; string* ${key_name} = (string*)(${left_name}.key_values.keys + ${index_name} * ${left_name}.key_values.key_bytes); ${value_ct}* ${left_value} = (${value_ct}*)(${left_name}.key_values.values + ${index_name} * ${left_name}.key_values.value_bytes); if (!map__exists(&${right_name}, ${key_name})) { ${equal_name} = false; break; } ${value_ct}* ${right_value} = (${value_ct}*)map__get(&${right_name}, ${key_name}, ${left_value}); if (!(${value_equal})) ${equal_name} = false; } ${equal_name}; })'
+		return '({ map ${left_name} = ${left}; map ${right_name} = ${right}; bool ${equal_name} = ${left_name}.data->count == ${right_name}.data->count; for (int ${index_name} = 0; ${equal_name} && ${index_name} < ${left_name}.data->key_values.len; ++${index_name}) { if (${left_name}.data->key_values.deletes != 0 && ${left_name}.data->key_values.all_deleted != 0 && ${left_name}.data->key_values.all_deleted[${index_name}] != 0) continue; string* ${key_name} = (string*)(${left_name}.data->key_values.keys + ${index_name} * ${left_name}.data->key_values.key_bytes); ${value_ct}* ${left_value} = (${value_ct}*)(${left_name}.data->key_values.values + ${index_name} * ${left_name}.data->key_values.value_bytes); if (!map__exists(&${right_name}, ${key_name})) { ${equal_name} = false; break; } ${value_ct}* ${right_value} = (${value_ct}*)map__get(&${right_name}, ${key_name}, ${left_value}); if (!(${value_equal})) ${equal_name} = false; } ${equal_name}; })'
 	}
 	if clean is types.Struct {
 		if clean.name in seen {
@@ -11865,6 +11865,9 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 }
 
 fn (g &FlatGen) interface_impl_field_access_suffix(impl_name string, field_name string) string {
+	if field_name == 'len' && types.unalias_type(g.tc.parse_type(impl_name)) is types.Map {
+		return '->data->count'
+	}
 	if g.direct_struct_field_exists(impl_name, field_name) {
 		return '->${g.cname(field_name)}'
 	}

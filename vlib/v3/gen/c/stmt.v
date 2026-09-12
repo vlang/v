@@ -39,6 +39,22 @@ struct CInlineAsmBlock {
 fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_type types.Map, base_is_pointer bool) {
 	c_key := g.map_key_temp_c_type(map_type.key_type)
 	c_val := g.tc.c_type(map_type.value_type)
+	if default_init_unalias_type(map_type.value_type) is types.Map {
+		map_tmp := g.tmp_name()
+		key_tmp := g.tmp_name()
+		value_tmp := g.tmp_name()
+		g.write('(*({ map* ${map_tmp} = ')
+		if !base_is_pointer {
+			g.write('&')
+		}
+		g.gen_expr(base_id)
+		g.write('; void* ${key_tmp} = &(${c_key}[]){')
+		g.gen_expr(g.a.child(&node, 1))
+		g.write('}; void* ${value_tmp} = map__get_check(${map_tmp}, ${key_tmp}); if (!${value_tmp}) { ${value_tmp} = map__get_or_set(${map_tmp}, ${key_tmp}, ')
+		g.gen_default_value_addr_for_type(map_type.value_type)
+		g.write('); } (${c_val}*)${value_tmp}; }))')
+		return
+	}
 	g.write('(*(${c_val}*)map__get_or_set(')
 	if !base_is_pointer {
 		g.write('&')
@@ -1357,7 +1373,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			}
 		}
 		types.Map {
-			key_values := '(${expr}).key_values'
+			key_values := '(${expr}).data->key_values'
 			if g.ownership_type_requires_destruction(typ.key_type, depth + 1)
 				|| g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
 				idx := g.tmp_count
@@ -2333,7 +2349,7 @@ fn (mut g FlatGen) gen_select_receive_map_value(expr string, actual types.Type, 
 	g.gen_select_receive_value(source_key, actual_key, expected_key)
 	g.write('; ${expected_value_ct} ${value} = ')
 	g.gen_select_receive_value(source_value, actual_value, expected_value)
-	g.write('; map__set(&${out}, &${key}, &${value}); ${source}.free_fn(&${source_key}); } ')
+	g.write('; map__set(&${out}, &${key}, &${value}); ${source}.data->free_fn(&${source_key}); } ')
 	g.write('array__free(&${keys}); map__free(&${source}); ${out}; })')
 	return true
 }
