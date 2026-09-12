@@ -10,7 +10,7 @@ mut:
 	values      &u8 = unsafe { nil }
 }
 
-struct MapDataLayoutForTest {
+struct MapLayoutForTest {
 	key_bytes   int
 	value_bytes int
 mut:
@@ -26,17 +26,12 @@ mut:
 	clone_fn        voidptr
 	free_fn         voidptr
 pub mut:
-	count int
-}
-
-struct MapLayoutForTest {
-mut:
-	data &MapDataLayoutForTest = unsafe { nil }
+	len int
 }
 
 fn test_map_delete_reclaims_dense_array_tail() {
 	mut m := map[string]string{}
-	raw := unsafe { (&MapLayoutForTest(&m)).data }
+	raw := unsafe { &MapLayoutForTest(&m) }
 	// Establish backing storage before checking repeated insertion/deletion.
 	m['first'] = 'first'
 	m.delete('first')
@@ -58,7 +53,7 @@ fn test_empty_map_defers_storage_until_first_write() {
 	// initializer. Under gcboehm_opt, pointer-free storage uses eager no-scan
 	// allocations by design.
 	mut m := map[string]string{}
-	raw := unsafe { (&MapLayoutForTest(&m)).data }
+	raw := unsafe { &MapLayoutForTest(&m) }
 	assert raw.metas == unsafe { nil }
 	assert raw.key_values.keys == unsafe { nil }
 	assert raw.key_values.values == unsafe { nil }
@@ -123,7 +118,7 @@ fn test_lazy_map_small_reservations_and_nested_first_writes() {
 
 fn test_map_reserve_preallocates_dense_array() {
 	mut m := map[string]int{}
-	raw := unsafe { (&MapLayoutForTest(&m)).data }
+	raw := unsafe { &MapLayoutForTest(&m) }
 	m.reserve(1000)
 	assert raw.key_values.cap >= 1000
 	keys := raw.key_values.keys
@@ -144,8 +139,8 @@ fn test_empty_map_reserve_matches_populated_map_hash_state() {
 		}
 		empty.reserve(u32(n))
 		populated.reserve(u32(n))
-		e := unsafe { (&MapLayoutForTest(&empty)).data }
-		p := unsafe { (&MapLayoutForTest(&populated)).data }
+		e := unsafe { &MapLayoutForTest(&empty) }
+		p := unsafe { &MapLayoutForTest(&populated) }
 		assert e.even_index == p.even_index
 		assert e.cached_hashbits == p.cached_hashbits
 		assert e.shift == p.shift

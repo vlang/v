@@ -182,7 +182,7 @@ fn test_js_runtime_errors_are_shown_for_js_tests() {
 
 fn test_with_stats_and_partial_failure() {
 	res := os.execute('${os.quoted_path(mytest_exe)} -stats test ${os.quoted_path(tpath_partial)}')
-	assert res.exit_code == 1
+	assert res.exit_code == 1, res.output
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
 	assert res.output.contains('To reproduce just failure'), res.output

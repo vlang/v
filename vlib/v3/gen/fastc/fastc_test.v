@@ -2762,56 +2762,6 @@ fn test_real_builtin_path_inferred_enum_keyed_map() {
 	assert source.contains('Map_Block_string'), source
 }
 
-fn test_map_layout_and_length_selector_use_runtime_header() {
-	prefs := pref.new_preferences()
-	c_source := generate('module main
-
-struct Holder {
-	values map[string]int
-}
-
-fn map_len(values map[string]int) int {
-	return values.len + 1
-}
-
-fn map_nonempty(values map[string]int) bool {
-	return values.len > 0
-}
-
-fn map_field_len(holder Holder) int {
-	return holder.values.len
-}
-
-fn main() {}
-', 'map_length_selector.v', prefs) or { panic(err) }
-	assert c_source.contains('typedef struct { VMapData *data; } map;'), c_source
-	assert c_source.contains('return values.data->count+1;'), c_source
-	assert c_source.contains('values.data->count>0'), c_source
-	assert c_source.contains('return holder.values.data->count;'), c_source
-	assert !c_source.contains('typedef struct { void *data; int len; } map;'), c_source
-}
-
-fn test_map_valued_lookup_uses_valid_lazy_fallback() {
-	mut prefs := pref.new_preferences()
-	prefs.building_v = true
-	c_source := generate('module main
-
-fn missing_map_len(values map[string]map[string]int) int {
-	inner := values["missing"]
-	return inner.len
-}
-
-fn main() {
-	values := map[string]map[string]int{}
-	_ := missing_map_len(values)
-}
-', 'map_value_lookup.v', prefs) or { panic(err) }
-	assert c_source.contains('__vf_ml.state ? (Map_string_int)builtin__new_map(sizeof(string), sizeof(int)'), c_source
-	assert c_source.contains('return inner.data->count;'), c_source
-	assert !c_source.contains('Map_string_int){0}'), c_source
-	assert !c_source.contains('__vf_map_zero'), c_source
-}
-
 fn test_selfhost_inferred_map_enum_value_shorthand_uses_first_value_type() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

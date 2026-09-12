@@ -1497,7 +1497,7 @@ fn (g &FlatGen) enum_method_c_name_in_module_uncached(module_name string, name s
 	receiver := unsafe { qualified.substr_unsafe(0, dot) }
 	method := unsafe { qualified.substr_unsafe(dot + 1, qualified.len) }
 	if _ := g.enum_selector_base_name(receiver) {
-		return '${g.cname(receiver)}_${g.cname(method)}'
+		return '${g.enum_type_c_name(receiver)}_${g.cname(method)}'
 	}
 	return none
 }
@@ -6138,7 +6138,8 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 	if !is_c_call {
 		return false
 	}
-	param_types := g.param_types_for(callee_name, callee_name.all_after_last('.'))
+	lookup_name := if fn_node.value.starts_with('C.') { fn_node.value } else { callee_name }
+	param_types := g.param_types_for(lookup_name, lookup_name.all_after_last('.'))
 	c_variadic_prefix := g.c_fn_abi_variadic_prefix(callee_name, fn_node.value, param_types)
 	is_c_variadic_fn := c_variadic_prefix >= 0
 	is_variadic_fn := is_c_variadic_fn || (g.tc.fn_variadic[callee_name] or { false })
@@ -6155,6 +6156,7 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		param_types.len
 	}
 	mut out_args := []flat.NodeId{}
+	mut array_out_args := []flat.NodeId{}
 	for i in 1 .. node.children_count {
 		arg_id := g.a.child(&node, i)
 		if arg_id in g.cabi_int_out_args {
@@ -6162,9 +6164,11 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		}
 		if g.c_call_is_int_out_arg(arg_id, i - 1, param_types, typed_param_count, is_native_variadic) {
 			out_args << arg_id
+		} else if g.c_call_is_int_array_data_arg(arg_id, i - 1, param_types, typed_param_count, is_native_variadic) {
+			array_out_args << arg_id
 		}
 	}
-	if out_args.len == 0 {
+	if out_args.len == 0 && array_out_args.len == 0 {
 		return false
 	}
 	mut ret_type := g.declared_call_return_type(id)
@@ -6194,6 +6198,20 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		g.cabi_int_out_args[arg_id] = '&${val_tmp}'
 		copybacks << '*${addr_tmp} = ${val_tmp};'
 	}
+	for arg_id in array_out_args {
+		base_id := g.c_call_int_array_data_base(arg_id) or { continue }
+		n := g.tmp_count
+		g.tmp_count++
+		addr_tmp := '_cabi_out_array_${n}'
+		val_tmp := '_cabi_out_values_${n}'
+		idx_tmp := '_cabi_out_idx_${n}'
+		g.write('Array* ${addr_tmp} = &(')
+		g.gen_expr(base_id)
+		g.write('); int* ${val_tmp} = (int*)calloc(${addr_tmp}->cap, sizeof(int)); ')
+		g.write('for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${addr_tmp}->len; ++${idx_tmp}) { ${val_tmp}[${idx_tmp}] = (int)(((i64*)${addr_tmp}->data)[${idx_tmp}]); } ')
+		g.cabi_int_out_args[arg_id] = val_tmp
+		copybacks << 'for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${addr_tmp}->len; ++${idx_tmp}) { ((i64*)${addr_tmp}->data)[${idx_tmp}] = (i64)${val_tmp}[${idx_tmp}]; } free(${val_tmp});'
+	}
 	if ret_type is types.Void {
 		g.gen_call(id, node)
 		g.write('; ')
@@ -6214,6 +6232,9 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 	}
 	g.write('})')
 	for arg_id in out_args {
+		g.cabi_int_out_args.delete(arg_id)
+	}
+	for arg_id in array_out_args {
 		g.cabi_int_out_args.delete(arg_id)
 	}
 	return true
@@ -6251,6 +6272,47 @@ fn c_type_is_pointer_to_platform_int(t types.Type) bool {
 		}
 	}
 	return false
+}
+
+fn (g &FlatGen) c_call_int_array_data_base(arg_id flat.NodeId) ?flat.NodeId {
+	mut data_id := arg_id
+	for {
+		node := g.a.node(data_id)
+		if node.kind in [.cast_expr, .paren] && node.children_count == 1 {
+			data_id = g.a.child(node, 0)
+			continue
+		}
+		if node.kind == .selector && node.value == 'data' && node.children_count > 0 {
+			return g.a.child(node, 0)
+		}
+		return none
+	}
+	return none
+}
+
+// c_call_is_int_array_data_arg reports whether an `[]int.data` argument needs a
+// temporary C `int` buffer at a C ABI boundary. The selector base must be a stable,
+// addressable dynamic array so the wrapper can copy values back after the call.
+fn (mut g FlatGen) c_call_is_int_array_data_arg(arg_id flat.NodeId, arg_idx int, param_types []types.Type, typed_param_count int, is_native_variadic bool) bool {
+	base_id := g.c_call_int_array_data_base(arg_id) or { return false }
+	if !g.expr_is_addressable(base_id) || !g.expr_is_stable_for_reuse(base_id) {
+		return false
+	}
+	base_type := cgen_unalias_type(g.usable_expr_type(base_id))
+	if base_type is types.Array {
+		elem_type := cgen_unalias_type(base_type.elem_type)
+		if elem_type !is types.Primitive || elem_type.size != 0
+			|| !elem_type.props.has(.integer) || elem_type.props.has(.unsigned) {
+			return false
+		}
+	} else {
+		return false
+	}
+	if arg_idx < typed_param_count {
+		return arg_idx < param_types.len
+			&& c_type_is_pointer_to_platform_int(cgen_unalias_type(param_types[arg_idx]))
+	}
+	return is_native_variadic
 }
 
 // gen_call emits call output for c.
@@ -9647,7 +9709,7 @@ fn (mut g FlatGen) json_encode_value_c_expr_inner(typ types.Type, expr string, s
 		encoded := g.json_encode_value_c_expr_inner(clean.value_type, '(*${value_name})', seen) or {
 			return none
 		}
-		return '({ map ${map_name} = ${expr}; string ${out_name} = v3_c_lit("{", 1); bool ${out_name}_first = true; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.data->key_values.len; ++${idx_name}) { if (${map_name}.data->key_values.deletes != 0 && ${map_name}.data->key_values.all_deleted != 0 && ${map_name}.data->key_values.all_deleted[${idx_name}] != 0) continue; if (!${out_name}_first) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); string* ${key_name} = (string*)(${map_name}.data->key_values.keys + ${idx_name} * ${map_name}.data->key_values.key_bytes); ${value_ct}* ${value_name} = (${value_ct}*)(${map_name}.data->key_values.values + ${idx_name} * ${map_name}.data->key_values.value_bytes); ${out_name} = string__plus(string__plus(string__plus(${out_name}, v3_json_encode_string(*${key_name})), v3_c_lit(":", 1)), ${encoded}); ${out_name}_first = false; } string__plus(${out_name}, v3_c_lit("}", 1)); })'
+		return '({ map ${map_name} = ${expr}; string ${out_name} = v3_c_lit("{", 1); bool ${out_name}_first = true; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.key_values.len; ++${idx_name}) { if (${map_name}.key_values.deletes != 0 && ${map_name}.key_values.all_deleted != 0 && ${map_name}.key_values.all_deleted[${idx_name}] != 0) continue; if (!${out_name}_first) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); string* ${key_name} = (string*)(${map_name}.key_values.keys + ${idx_name} * ${map_name}.key_values.key_bytes); ${value_ct}* ${value_name} = (${value_ct}*)(${map_name}.key_values.values + ${idx_name} * ${map_name}.key_values.value_bytes); ${out_name} = string__plus(string__plus(string__plus(${out_name}, v3_json_encode_string(*${key_name})), v3_c_lit(":", 1)), ${encoded}); ${out_name}_first = false; } string__plus(${out_name}, v3_c_lit("}", 1)); })'
 	}
 	if clean is types.Primitive {
 		if clean.props.has(.boolean) {
@@ -9793,7 +9855,7 @@ fn (mut g FlatGen) json_encode_value_c_expr_inner(typ types.Type, expr string, s
 		colon := g.intern_string(':')
 		empty := g.intern_string('')
 		value_expr := g.json_encode_value_c_expr_inner(clean.value_type, '(*(${value_ct}*)${value_name})', seen) or { return none }
-		return '({ map ${map_name} = ${expr}; string ${out_name} = _str_${open}; int ${count_name} = 0; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.data->key_values.len; ++${idx_name}) { if (${map_name}.data->key_values.deletes != 0 && ${map_name}.data->key_values.all_deleted != 0 && ${map_name}.data->key_values.all_deleted[${idx_name}] != 0) continue; string ${key_name} = *(string*)(${map_name}.data->key_values.keys + ${idx_name} * ${map_name}.data->key_values.key_bytes); void* ${value_name} = (void*)(${map_name}.data->key_values.values + ${idx_name} * ${map_name}.data->key_values.value_bytes); ${out_name} = string__plus(${out_name}, ${count_name} == 0 ? _str_${empty} : _str_${comma}); ${out_name} = string__plus(${out_name}, v3_json_encode_string(${key_name})); ${out_name} = string__plus(${out_name}, _str_${colon}); ${out_name} = string__plus(${out_name}, ${value_expr}); ${count_name}++; } string__plus(${out_name}, _str_${close}); })'
+		return '({ map ${map_name} = ${expr}; string ${out_name} = _str_${open}; int ${count_name} = 0; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.key_values.len; ++${idx_name}) { if (${map_name}.key_values.deletes != 0 && ${map_name}.key_values.all_deleted != 0 && ${map_name}.key_values.all_deleted[${idx_name}] != 0) continue; string ${key_name} = *(string*)(${map_name}.key_values.keys + ${idx_name} * ${map_name}.key_values.key_bytes); void* ${value_name} = (void*)(${map_name}.key_values.values + ${idx_name} * ${map_name}.key_values.value_bytes); ${out_name} = string__plus(${out_name}, ${count_name} == 0 ? _str_${empty} : _str_${comma}); ${out_name} = string__plus(${out_name}, v3_json_encode_string(${key_name})); ${out_name} = string__plus(${out_name}, _str_${colon}); ${out_name} = string__plus(${out_name}, ${value_expr}); ${count_name}++; } string__plus(${out_name}, _str_${close}); })'
 	}
 	return none
 }
@@ -9930,7 +9992,7 @@ fn (mut g FlatGen) json_encode_equal_c_expr(typ types.Type, left string, right s
 		left_value := g.tmp_name()
 		right_value := g.tmp_name()
 		value_equal := g.json_encode_equal_c_expr(clean.value_type, '(*${left_value})', '(*${right_value})', seen) or { return none }
-		return '({ map ${left_name} = ${left}; map ${right_name} = ${right}; bool ${equal_name} = ${left_name}.data->count == ${right_name}.data->count; for (int ${index_name} = 0; ${equal_name} && ${index_name} < ${left_name}.data->key_values.len; ++${index_name}) { if (${left_name}.data->key_values.deletes != 0 && ${left_name}.data->key_values.all_deleted != 0 && ${left_name}.data->key_values.all_deleted[${index_name}] != 0) continue; string* ${key_name} = (string*)(${left_name}.data->key_values.keys + ${index_name} * ${left_name}.data->key_values.key_bytes); ${value_ct}* ${left_value} = (${value_ct}*)(${left_name}.data->key_values.values + ${index_name} * ${left_name}.data->key_values.value_bytes); if (!map__exists(&${right_name}, ${key_name})) { ${equal_name} = false; break; } ${value_ct}* ${right_value} = (${value_ct}*)map__get(&${right_name}, ${key_name}, ${left_value}); if (!(${value_equal})) ${equal_name} = false; } ${equal_name}; })'
+		return '({ map ${left_name} = ${left}; map ${right_name} = ${right}; bool ${equal_name} = ${left_name}.len == ${right_name}.len; for (int ${index_name} = 0; ${equal_name} && ${index_name} < ${left_name}.key_values.len; ++${index_name}) { if (${left_name}.key_values.deletes != 0 && ${left_name}.key_values.all_deleted != 0 && ${left_name}.key_values.all_deleted[${index_name}] != 0) continue; string* ${key_name} = (string*)(${left_name}.key_values.keys + ${index_name} * ${left_name}.key_values.key_bytes); ${value_ct}* ${left_value} = (${value_ct}*)(${left_name}.key_values.values + ${index_name} * ${left_name}.key_values.value_bytes); if (!map__exists(&${right_name}, ${key_name})) { ${equal_name} = false; break; } ${value_ct}* ${right_value} = (${value_ct}*)map__get(&${right_name}, ${key_name}, ${left_value}); if (!(${value_equal})) ${equal_name} = false; } ${equal_name}; })'
 	}
 	if clean is types.Struct {
 		if clean.name in seen {
@@ -11803,9 +11865,6 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 }
 
 fn (g &FlatGen) interface_impl_field_access_suffix(impl_name string, field_name string) string {
-	if field_name == 'len' && types.unalias_type(g.tc.parse_type(impl_name)) is types.Map {
-		return '->data->count'
-	}
 	if g.direct_struct_field_exists(impl_name, field_name) {
 		return '->${g.cname(field_name)}'
 	}

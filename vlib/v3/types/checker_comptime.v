@@ -4730,13 +4730,6 @@ fn (tc &TypeChecker) interface_diagnostic_type_name(typ Type, alias_module strin
 }
 
 fn (tc &TypeChecker) interface_actual_field(concrete_name string, field_name string) ?StructField {
-	if field_name == 'len' && unalias_type(tc.parse_type(concrete_name)) is Map {
-		return StructField{
-			name:   'len'
-			typ:    Type(int_)
-			is_mut: true
-		}
-	}
 	mut candidates := [concrete_name]
 	if !concrete_name.contains('.') {
 		qname := tc.qualify_name(concrete_name)

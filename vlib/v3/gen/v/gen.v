@@ -84,7 +84,7 @@ pub:
 // Gen.new returns a fresh formatter.
 pub fn Gen.new() &Gen {
 	return &Gen{
-		out:    strings.new_builder(1000)
+		out: strings.new_builder(1000)
 		indent: -1
 	}
 }
@@ -195,9 +195,9 @@ fn (mut g Gen) collect_formatter_types() {
 			continue
 		}
 		g.formatter_types[n.value] = FormatterTypeSource{
-			text:  source.trim_space()
+			text: source.trim_space()
 			start: n.pos.offset
-			end:   n.pos.end
+			end: n.pos.end
 		}
 	}
 }
@@ -1007,7 +1007,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write(' as ${g.type_text(n.value)}')
 		}
 		.is_expr {
-			if g.a.child_node(n, 0).is_mut {
+			if g.smartcast_operand_is_mut(g.a.child(n, 0)) {
 				g.write('mut ')
 			}
 			g.expr(g.a.child(n, 0))
@@ -1301,8 +1301,8 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 
 fn (g &Gen) array_expr_width(id flat.NodeId) int {
 	n := g.a.node(id)
-	if n.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
-		.ident, .enum_val] {
+	if n.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .ident,
+		.enum_val] {
 		return n.value.len
 	}
 	if source := g.source_span(n.pos.offset, n.pos.end) {
@@ -1332,7 +1332,7 @@ fn (mut g Gen) prefix_expr(id flat.NodeId) {
 	cn := g.a.node(child)
 	// `!is` / `!in` are parsed as a `.not` prefix wrapping the is/in expression.
 	if n.op == .not && cn.kind == .is_expr {
-		if g.a.child_node(cn, 0).is_mut {
+		if g.smartcast_operand_is_mut(g.a.child(cn, 0)) {
 			g.write('mut ')
 		}
 		g.expr(g.a.child(cn, 0))
@@ -1435,9 +1435,15 @@ fn (g &Gen) call_args_expanded(id flat.NodeId, args []flat.NodeId) bool {
 fn call_args_start_on_new_line(source string) bool {
 	for i in 1 .. source.len {
 		match source[i] {
-			` `, `\t`, `\r` { continue }
-			`\n` { return true }
-			else { return false }
+			` `, `\t`, `\r` {
+				continue
+			}
+			`\n` {
+				return true
+			}
+			else {
+				return false
+			}
 		}
 	}
 	return false
@@ -1503,6 +1509,25 @@ fn (mut g Gen) call_arg(id flat.NodeId) {
 		g.write('mut ')
 	}
 	g.expr(id)
+}
+
+// smartcast_operand_is_mut reports whether the operand of `if mut X is T` /
+// `match mut X` was written with `mut`. The parser's prefix `mut` marks only the
+// node parsed immediately after it, so for `mut a.b` / `mut a[0]` the flag lives on
+// the leftmost `a`, not on the selector/index node the smartcast sees. Follow that
+// chain so the `mut` is not dropped (it would silently make the smartcast immutable).
+fn (g &Gen) smartcast_operand_is_mut(id flat.NodeId) bool {
+	mut cur := g.a.node(id)
+	for {
+		if cur.is_mut {
+			return true
+		}
+		if cur.kind !in [.selector, .index] || cur.children_count == 0 {
+			return false
+		}
+		cur = g.a.child_node(cur, 0)
+	}
+	return false
 }
 
 fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
@@ -2535,14 +2560,30 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 	if children.len > 2 {
 		else_id := children[2]
 		en := g.a.node(else_id)
-		if en.kind == .if_expr {
+		// A comment between `}` and `else` (`}\n// why\nelse if cond {`) must stay on its
+		// own line: writing `} else ` first and letting the condition's leading-comment
+		// emission break the line would leave `} else if ` with a trailing space.
+		else_start := if en.kind == .if_expr && en.children_count > 0 {
+			g.a.child_node(en, 0).pos.offset
+		} else {
+			en.pos.offset
+		}
+		if !is_compact && g.has_comment_between(then_blk.pos.end, else_start) {
+			g.source_end = int_max(g.source_end, then_blk.pos.end)
+			g.emit_comments_before(else_start)
+			if !g.on_newline {
+				g.writeln('')
+			}
+			g.write('else ')
+		} else {
 			g.write(' else ')
+		}
+		if en.kind == .if_expr {
 			g.if_expr(else_id)
 		} else if is_compact {
-			g.write(' else ')
 			g.compact_expr_block(else_id)
 		} else {
-			g.writeln(' else {')
+			g.writeln('{')
 			g.source_end = int_max(g.source_end, en.pos.offset)
 			g.stmt_list_ids(g.a.children_of(en))
 			g.indent++
@@ -2603,8 +2644,7 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 		return
 	}
 	g.write('match ')
-	subject := g.a.node(children[0])
-	if subject.is_mut {
+	if g.smartcast_operand_is_mut(children[0]) {
 		g.write('mut ')
 	}
 	in_init := g.in_init
@@ -3894,7 +3934,8 @@ fn is_bare_formatter_attribute(part string) bool {
 // Helpers --------------------------------------------------------------------
 
 fn (g &Gen) stmt_source_span(n &flat.Node) (int, int) {
-	if n.kind in [.expr_stmt, .assign, .selector_assign, .index_assign, .decl_assign, .return_stmt, .assert_stmt]
+	if n.kind in [.expr_stmt, .assign, .selector_assign, .index_assign, .decl_assign, .return_stmt,
+		.assert_stmt]
 		&& n.children_count > 0 {
 		mut start := n.pos.offset
 		mut end := 0

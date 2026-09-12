@@ -15,9 +15,9 @@ fn pencil_credentials(mechanism Mechanism) Credentials {
 fn server_for(mechanism Mechanism, binding ChannelBinding) &Server {
 	creds := pencil_credentials(mechanism)
 	return new_server(
-		mechanism:       mechanism
+		mechanism: mechanism
 		channel_binding: binding
-		lookup:          fn [creds] (username string) !Credentials {
+		lookup: fn [creds] (username string) !Credentials {
 			return creds
 		}
 	) or { panic(err) }
@@ -61,8 +61,8 @@ fn test_a_full_exchange_succeeds_with_channel_binding() {
 	}
 	mut server := server_for(.sha256, binding)
 	mut client := new_client(
-		username:        'user'
-		password:        'pencil'
+		username: 'user'
+		password: 'pencil'
 		channel_binding: binding
 	)!
 	run_exchange(mut client, mut server)!
@@ -96,7 +96,7 @@ fn test_the_server_prepares_the_authorization_identity_before_exposing_it() {
 fn test_the_server_rejects_unprepared_non_ascii_authorization_identities_by_default() {
 	creds := pencil_credentials(.sha256)
 	mut server := new_server(
-		nonce:  'servernonce'
+		nonce: 'servernonce'
 		lookup: fn [creds] (username string) !Credentials {
 			return creds
 		}
@@ -141,7 +141,7 @@ fn test_the_server_prepares_the_username_before_lookup() {
 fn test_the_server_rejects_unprepared_non_ascii_usernames_by_default() {
 	creds := pencil_credentials(.sha256)
 	mut server := new_server(
-		nonce:  'servernonce'
+		nonce: 'servernonce'
 		lookup: fn [creds] (username string) !Credentials {
 			return creds
 		}
@@ -184,7 +184,7 @@ fn test_credentials_for_another_mechanism_are_refused() {
 	creds := pencil_credentials(.sha1)
 	mut server := new_server(
 		mechanism: .sha256
-		lookup:    fn [creds] (username string) !Credentials {
+		lookup: fn [creds] (username string) !Credentials {
 			return creds
 		}
 	)!
@@ -199,13 +199,13 @@ fn test_credentials_for_another_mechanism_are_refused() {
 fn test_incomplete_credentials_are_refused() {
 	for creds in [
 		Credentials{
-			mechanism:  .sha256
-			salt:       []u8{}
+			mechanism: .sha256
+			salt: []u8{}
 			iterations: 4096
 		},
 		Credentials{
-			mechanism:  .sha256
-			salt:       'salt'.bytes()
+			mechanism: .sha256
+			salt: 'salt'.bytes()
 			iterations: 0
 		},
 	] {
@@ -360,8 +360,8 @@ fn test_a_stripped_channel_binding_is_detected_as_a_downgrade() {
 	}
 	mut server := server_for(.sha256, binding)
 	mut client := new_client(
-		username:        'user'
-		password:        'pencil'
+		username: 'user'
+		password: 'pencil'
 		channel_binding: ChannelBinding{
 			mode: .unsupported_by_server
 		}
@@ -377,8 +377,8 @@ fn test_a_stripped_channel_binding_is_detected_as_a_downgrade() {
 fn test_a_channel_binding_the_server_does_not_offer_is_refused() {
 	mut server := server_for(.sha256, ChannelBinding{})
 	mut client := new_client(
-		username:        'user'
-		password:        'pencil'
+		username: 'user'
+		password: 'pencil'
 		channel_binding: ChannelBinding{
 			mode: .required
 			name: 'tls-exporter'
@@ -400,8 +400,8 @@ fn test_a_different_binding_type_is_refused() {
 		data: 'binding data'.bytes()
 	})
 	mut client := new_client(
-		username:        'user'
-		password:        'pencil'
+		username: 'user'
+		password: 'pencil'
 		channel_binding: ChannelBinding{
 			mode: .required
 			name: 'tls-exporter'
@@ -424,8 +424,8 @@ fn test_different_binding_data_is_refused() {
 		data: 'the real certificate'.bytes()
 	})
 	mut client := new_client(
-		username:        'user'
-		password:        'pencil'
+		username: 'user'
+		password: 'pencil'
 		channel_binding: ChannelBinding{
 			mode: .required
 			name: 'tls-server-end-point'

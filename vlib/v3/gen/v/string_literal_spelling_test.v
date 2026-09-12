@@ -156,10 +156,9 @@ fn test_formatter_keeps_c_string_selector_rewrite_idempotent() {
 	out := format_literal_spelling_source('c_string_selector_spelling', source)
 	assert out == expected, out
 	assert format_literal_spelling_source('c_string_selector_spelling_twice', out) == out
-	js_out := format_with_options(parse_literal_spelling_source('js_string_selector', source),
-		FormatOptions{
-			backend: 'js'
-		})
+	js_out := format_with_options(parse_literal_spelling_source('js_string_selector', source), FormatOptions{
+		backend: 'js'
+	})
 	assert js_out == source, js_out
 }
 

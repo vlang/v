@@ -150,8 +150,7 @@ fn (mut c Checker) check_dynamic_sql_query_data(expr ast.Expr, table_sym &ast.Ty
 		return false
 	}
 	field_names := fields.map(it.name)
-	return c.check_dynamic_sql_query_data_items(mut resolved.items, table_sym, fields, field_names,
-		context)
+	return c.check_dynamic_sql_query_data_items(mut resolved.items, table_sym, fields, field_names, context)
 }
 
 fn (mut c Checker) check_dynamic_sql_query_data_items(mut items []ast.SqlQueryDataItem, table_sym &ast.TypeSymbol,
@@ -160,8 +159,7 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(mut items []ast.SqlQueryDa
 	for mut item in items {
 		match item {
 			ast.SqlQueryDataLeaf {
-				if !c.check_dynamic_sql_query_data_expr(item.expr, table_sym, fields, field_names,
-					context) {
+				if !c.check_dynamic_sql_query_data_expr(item.expr, table_sym, fields, field_names, context) {
 					ok = false
 					continue
 				}
@@ -170,8 +168,7 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(mut items []ast.SqlQueryDa
 						mut where_expr := item.expr
 						c.expr(mut where_expr)
 						c.check_expr_has_no_fn_calls_with_non_orm_return_type(&where_expr)
-						c.check_where_expr_has_no_pointless_exprs(table_sym, field_names,
-							&where_expr)
+						c.check_where_expr_has_no_pointless_exprs(table_sym, field_names, &where_expr)
 						item.expr = where_expr
 					}
 					.set_ {
@@ -199,8 +196,7 @@ fn (mut c Checker) check_dynamic_sql_query_data_items(mut items []ast.SqlQueryDa
 						c.expr(mut cond)
 						branch.cond = cond
 					}
-					if !c.check_dynamic_sql_query_data_items(mut branch.items, table_sym, fields,
-						field_names, context) {
+					if !c.check_dynamic_sql_query_data_items(mut branch.items, table_sym, fields, field_names, context) {
 						ok = false
 					}
 				}
@@ -220,10 +216,8 @@ fn (mut c Checker) check_dynamic_sql_query_data_expr(expr ast.Expr, table_sym &a
 			if expr.op in [.and, .logical_or] {
 				match context {
 					.where_ {
-						left_ok := c.check_dynamic_sql_query_data_expr(expr.left, table_sym,
-							fields, field_names, context)
-						right_ok := c.check_dynamic_sql_query_data_expr(expr.right, table_sym,
-							fields, field_names, context)
+						left_ok := c.check_dynamic_sql_query_data_expr(expr.left, table_sym, fields, field_names, context)
+						right_ok := c.check_dynamic_sql_query_data_expr(expr.right, table_sym, fields, field_names, context)
 						return left_ok && right_ok
 					}
 					.set_ {
@@ -239,15 +233,13 @@ fn (mut c Checker) check_dynamic_sql_query_data_expr(expr ast.Expr, table_sym &a
 			}
 			matched_fields := fields.filter(it.name == field_name)
 			if matched_fields.len == 0 {
-				c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_sym.name}` structure has no field with name `${field_name}`'),
-					expr.left.pos())
+				c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_sym.name}` structure has no field with name `${field_name}`'), expr.left.pos())
 				return false
 			}
 			match context {
 				.where_ {
 					if !is_sql_query_data_op(expr.op) {
-						c.orm_error('dynamic ORM `where` items must use comparison operators',
-							expr.pos)
+						c.orm_error('dynamic ORM `where` items must use comparison operators', expr.pos)
 						return false
 					}
 				}
@@ -259,8 +251,7 @@ fn (mut c Checker) check_dynamic_sql_query_data_expr(expr ast.Expr, table_sym &a
 					field := matched_fields[0]
 					for attr in field.attrs {
 						if attr.name == 'fkey' {
-							c.orm_error("`${field_name}` is a foreign column of `${table_sym.name}`, it can't update here",
-								expr.pos)
+							c.orm_error("`${field_name}` is a foreign column of `${table_sym.name}`, it can't update here", expr.pos)
 							return false
 						}
 					}
@@ -341,8 +332,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	for field in non_primitive_fields {
 		field_sym := c.table.sym(field.typ.clear_flag(.option))
 		if field_sym.kind == .array && !has_primary {
-			c.orm_error('a struct that has a field that holds an array must have a primary key',
-				field.pos)
+			c.orm_error('a struct that has a field that holds an array must have a primary key', field.pos)
 		}
 
 		c.check_orm_non_primitive_struct_field_attrs(field)
@@ -369,20 +359,19 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 		// Require foreign struct to have a primary key for relationship
 		if !foreign_has_primary {
-			c.orm_error('struct `${foreign_sym.name}` used as ORM sub-struct field `${field.name}` must have a `@[primary]` field, or use `@[sql: \'-\']` to skip this field',
-				field.pos)
+			c.orm_error("struct `${foreign_sym.name}` used as ORM sub-struct field `${field.name}` must have a `@[primary]` field, or use `@[sql: '-']` to skip this field", field.pos)
 			continue
 		}
 
 		mut subquery_expr := ast.SqlExpr{
 			inserted_var: field.name
-			pos:          node.pos
-			has_where:    true
-			where_expr:   ast.None{}
-			typ:          field.typ.clear_flag(.option).set_flag(.result)
-			scope:        c.fn_scope
-			db_expr:      node.db_expr
-			table_expr:   ast.TypeNode{
+			pos: node.pos
+			has_where: true
+			where_expr: ast.None{}
+			typ: field.typ.clear_flag(.option).set_flag(.result)
+			scope: c.fn_scope
+			db_expr: node.db_expr
+			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
 				typ: foreign_typ
 			}
@@ -394,34 +383,34 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.inside_sql = tmp_inside_sql
 
 		subquery_expr.where_expr = ast.InfixExpr{
-			op:          .eq
-			pos:         subquery_expr.pos
-			left:        ast.Ident{
+			op: .eq
+			pos: subquery_expr.pos
+			left: ast.Ident{
 				language: .v
 				tok_kind: .eq
-				scope:    c.fn_scope
-				obj:      ast.Var{}
-				mod:      'main'
-				name:     foreign_primary_field.name
-				is_mut:   false
-				kind:     .unresolved
-				info:     ast.IdentVar{}
+				scope: c.fn_scope
+				obj: ast.Var{}
+				mod: 'main'
+				name: foreign_primary_field.name
+				is_mut: false
+				kind: .unresolved
+				info: ast.IdentVar{}
 			}
-			right:       ast.Ident{
+			right: ast.Ident{
 				language: .c
-				mod:      'main'
+				mod: 'main'
 				tok_kind: .eq
-				obj:      ast.Var{}
-				is_mut:   false
-				scope:    c.fn_scope
-				info:     ast.IdentVar{
+				obj: ast.Var{}
+				is_mut: false
+				scope: c.fn_scope
+				info: ast.IdentVar{
 					typ: foreign_primary_field.typ
 				}
 			}
-			left_type:   foreign_primary_field.typ
-			right_type:  foreign_primary_field.typ
+			left_type: foreign_primary_field.typ
+			right_type: foreign_primary_field.typ
 			auto_locked: ''
-			or_block:    ast.OrExpr{}
+			or_block: ast.OrExpr{}
 		}
 
 		if field_sym.kind == .array {
@@ -460,8 +449,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 				selected_field_type := c.table.final_type(selected_field.typ.clear_flag(.option))
 				if c.table.sym(selected_field_type).kind == .array
 					&& primary_field.name !in selected_field_names {
-					c.orm_error('selecting array field `${selected_field.name}` requires selecting primary field `${primary_field.name}` too',
-						node.pos)
+					c.orm_error('selecting array field `${selected_field.name}` requires selecting primary field `${primary_field.name}` too', node.pos)
 					return ast.void_type
 				}
 			}
@@ -478,8 +466,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			node.aggregate_field_type = ast.int_type
 			node.typ = ast.int_type.set_flag(.result)
 		} else {
-			aggregate_field := c.check_orm_aggregate_field(node.aggregate_kind,
-				node.aggregate_field, fields, table_sym.name, node.pos) or { return ast.void_type }
+			aggregate_field := c.check_orm_aggregate_field(node.aggregate_kind, node.aggregate_field, fields, table_sym.name, node.pos) or { return ast.void_type }
 			node.aggregate_field_type = aggregate_field.typ
 			node.fields = [
 				aggregate_field,
@@ -515,8 +502,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 			order_ident_name := node.order_expr.name
 
 			if !table_sym.has_field(order_ident_name) {
-				c.orm_error(util.new_suggestion(order_ident_name, field_names).say('`${table_sym.name}` structure has no field with name `${order_ident_name}`'),
-					node.order_expr.pos)
+				c.orm_error(util.new_suggestion(order_ident_name, field_names).say('`${table_sym.name}` structure has no field with name `${order_ident_name}`'), node.order_expr.pos)
 				return ast.void_type
 			}
 		} else {
@@ -529,14 +515,12 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 	if node.has_limit {
 		c.expr(mut node.limit_expr)
-		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.limit_expr,
-			'limit')
+		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.limit_expr, 'limit')
 	}
 
 	if node.has_offset {
 		c.expr(mut node.offset_expr)
-		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.offset_expr,
-			'offset')
+		c.check_sql_value_expr_is_comptime_with_natural_number_or_expr_with_int_type(mut node.offset_expr, 'offset')
 	}
 	c.expr(mut node.db_expr)
 	if node.is_insert {
@@ -621,14 +605,12 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			is_array_insert = true
 			elem_type := insert_sym.array_info().elem_type
 			if elem_type.is_ptr() {
-				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values',
-					node.pos)
+				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values', node.pos)
 				return ast.void_type
 			}
 			inserting_object_type = c.unwrap_generic(elem_type)
 			if inserting_object_type != node.table_expr.typ {
-				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values',
-					node.pos)
+				c.orm_error('bulk ${node.kind} currently supports only arrays of `${table_sym.name}` values', node.pos)
 				return ast.void_type
 			}
 		}
@@ -670,8 +652,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 
 	if node.is_array_insert && non_primitive_fields.len > 0 {
 		for field in non_primitive_fields {
-			c.orm_error('bulk ${node.kind} currently supports only primitive, enum, and time.Time fields',
-				field.pos)
+			c.orm_error('bulk ${node.kind} currently supports only primitive, enum, and time.Time fields', field.pos)
 		}
 		return ast.void_type
 	}
@@ -696,13 +677,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		foreign_typ := c.get_field_foreign_table_type(field)
 
 		mut subquery_expr := ast.SqlStmtLine{
-			pos:          node.pos
-			kind:         node.kind
-			table_expr:   ast.TypeNode{
+			pos: node.pos
+			kind: node.kind
+			table_expr: ast.TypeNode{
 				pos: node.table_expr.pos
 				typ: foreign_typ
 			}
-			object_var:   field.name
+			object_var: field.name
 			is_generated: true
 		}
 
@@ -721,8 +702,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 			if field_sym.kind == .struct && c.table.sym(field_typ).name == 'time.Time' {
 				continue
 			}
-			c.orm_error('upsert currently supports only primitive, enum, and time.Time fields',
-				field.pos)
+			c.orm_error('upsert currently supports only primitive, enum, and time.Time fields', field.pos)
 		}
 	}
 
@@ -737,8 +717,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		field := updated_fields.first()
 		for attr in field.attrs {
 			if attr.name == 'fkey' {
-				c.orm_error("`${column}` is a foreign column of `${table_sym.name}`, it can't update here",
-					node.pos)
+				c.orm_error("`${column}` is a foreign column of `${table_sym.name}`, it can't update here", node.pos)
 				break
 			}
 		}
@@ -797,8 +776,7 @@ fn (mut c Checker) check_orm_array_update(mut node ast.SqlStmtLine, table_sym &a
 	array_elem_type := c.orm_array_object_elem_type(node, array_name) or { return false }
 	if array_elem_type.is_ptr() {
 		node.is_array_update = true
-		c.orm_error('bulk update currently supports only arrays of `${table_sym.name}` values',
-			array_ident.pos)
+		c.orm_error('bulk update currently supports only arrays of `${table_sym.name}` values', array_ident.pos)
 		return true
 	}
 	if c.unwrap_generic(array_elem_type) != node.table_expr.typ {
@@ -806,18 +784,15 @@ fn (mut c Checker) check_orm_array_update(mut node ast.SqlStmtLine, table_sym &a
 	}
 	info := table_sym.info as ast.Struct
 	key_field := c.orm_struct_field(info.fields, key_ident.name) or {
-		c.orm_error('type `${table_sym.name}` has no field named `${key_ident.name}`',
-			key_ident.pos)
+		c.orm_error('type `${table_sym.name}` has no field named `${key_ident.name}`', key_ident.pos)
 		return true
 	}
 	selector_key_field := c.orm_struct_field(info.fields, key_selector.field_name) or {
-		c.orm_error('type `${table_sym.name}` has no field named `${key_selector.field_name}`',
-			key_selector.pos)
+		c.orm_error('type `${table_sym.name}` has no field named `${key_selector.field_name}`', key_selector.pos)
 		return true
 	}
 	if !c.check_types(selector_key_field.typ, key_field.typ) {
-		c.orm_error('cannot use `${key_selector.field_name}` as update key `${key_ident.name}`',
-			key_selector.pos)
+		c.orm_error('cannot use `${key_selector.field_name}` as update key `${key_ident.name}`', key_selector.pos)
 		return true
 	}
 	for i, expr in node.update_exprs {
@@ -833,21 +808,18 @@ fn (mut c Checker) check_orm_array_update(mut node ast.SqlStmtLine, table_sym &a
 			return false
 		}
 		value_field := c.orm_struct_field(info.fields, selector.field_name) or {
-			c.orm_error('type `${table_sym.name}` has no field named `${selector.field_name}`',
-				selector.pos)
+			c.orm_error('type `${table_sym.name}` has no field named `${selector.field_name}`', selector.pos)
 			return true
 		}
 		column := node.updated_columns[i]
 		target_field := c.get_orm_field_by_column_name(node.fields, column) or { return false }
 		target_sym := c.table.final_sym(target_field.typ.clear_flag(.option))
 		if target_sym.kind == .struct && target_sym.name != 'time.Time' {
-			c.orm_error('bulk update currently supports only primitive, enum, and time.Time fields',
-				selector.pos)
+			c.orm_error('bulk update currently supports only primitive, enum, and time.Time fields', selector.pos)
 			return true
 		}
 		if !c.check_types(value_field.typ, target_field.typ) {
-			c.orm_error('cannot use `${selector.field_name}` as update value for `${target_field.name}`',
-				selector.pos)
+			c.orm_error('cannot use `${selector.field_name}` as update value for `${target_field.name}`', selector.pos)
 			return true
 		}
 	}
@@ -884,8 +856,7 @@ fn (_ &Checker) orm_struct_field(fields []ast.StructField, name string) ?ast.Str
 fn (mut c Checker) check_orm_struct_field_attrs(node ast.SqlStmtLine, field ast.StructField) {
 	for attr in field.attrs {
 		if attr.name == 'nonull' {
-			c.warn('`nonull` attribute is deprecated; non-optional fields are always "NOT NULL", use Option fields where they can be NULL',
-				node.pos)
+			c.warn('`nonull` attribute is deprecated; non-optional fields are always "NOT NULL", use Option fields where they can be NULL', node.pos)
 		}
 	}
 }
@@ -897,8 +868,7 @@ fn (mut c Checker) check_orm_non_primitive_struct_field_attrs(field ast.StructFi
 	for attr in field.attrs {
 		if attr.name == 'fkey' {
 			if field_type.kind != .array && field_type.kind != .struct {
-				c.orm_error('the `fkey` attribute must be used only with arrays and structures',
-					attr.pos)
+				c.orm_error('the `fkey` attribute must be used only with arrays and structures', attr.pos)
 				return
 			}
 
@@ -914,8 +884,7 @@ fn (mut c Checker) check_orm_non_primitive_struct_field_attrs(field ast.StructFi
 			}
 
 			field_struct_type.find_field(attr.arg) or {
-				c.orm_error('`${field_struct_type.name}` struct has no field with name `${attr.arg}`',
-					attr.pos)
+				c.orm_error('`${field_struct_type.name}` struct has no field with name `${attr.arg}`', attr.pos)
 				return
 			}
 
@@ -924,8 +893,7 @@ fn (mut c Checker) check_orm_non_primitive_struct_field_attrs(field ast.StructFi
 	}
 
 	if field_type.kind == .array && !has_fkey_attr {
-		c.orm_error('a field that holds an array must be defined with the `fkey` attribute',
-			field.pos)
+		c.orm_error('a field that holds an array must be defined with the `fkey` attribute', field.pos)
 	}
 }
 
@@ -949,8 +917,7 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 				for ef in embedded_fields {
 					// Ensure the embedded field type is valid (not 0/unresolved)
 					if ef.typ == 0 {
-						c.orm_error('embedded struct `${embed_sym.name}` has unresolved field type for `${ef.name}`',
-							pos)
+						c.orm_error('embedded struct `${embed_sym.name}` has unresolved field type for `${ef.name}`', pos)
 						continue
 					}
 					mut new_field := ef
@@ -969,10 +936,10 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 					}
 					if !has_sql {
 						new_field.attrs << ast.Attr{
-							name:    'sql'
-							arg:     ef.name
+							name: 'sql'
+							arg: ef.name
 							has_arg: true
-							kind:    .string
+							kind: .string
 						}
 					}
 					fields << new_field
@@ -984,21 +951,17 @@ fn (mut c Checker) fetch_and_check_orm_fields(info ast.Struct, pos token.Pos, ta
 		// Resolve generic field types using the struct's concrete_types if available
 		if field_typ.has_flag(.generic) && info.generic_types.len > 0
 			&& info.generic_types.len == info.concrete_types.len {
-			if resolved_typ := c.table.convert_generic_type(field_typ, generic_names,
-				info.concrete_types)
-			{
+			if resolved_typ := c.table.convert_generic_type(field_typ, generic_names, info.concrete_types) {
 				field_typ = resolved_typ
 			}
 		}
 		// Validate field type is resolved (not 0 and not still generic)
 		if field_typ == 0 || field_typ.has_flag(.generic) {
-			c.orm_error('field `${field.name}` has unresolved type in generic struct `${table_name}` - use a concrete type instantiation',
-				field.pos)
+			c.orm_error('field `${field.name}` has unresolved type in generic struct `${table_name}` - use a concrete type instantiation', field.pos)
 			continue
 		}
 		if c.orm_field_uses_anon_struct(field_typ) {
-			c.orm_error('field `${field.name}` uses an anonymous struct type, which ORM does not support; use a named struct, or skip it with `@[skip]` or `@[sql: \'-\']`',
-				field.pos)
+			c.orm_error("field `${field.name}` uses an anonymous struct type, which ORM does not support; use a named struct, or skip it with `@[skip]` or `@[sql: '-']`", field.pos)
 			continue
 		}
 		field_sym := c.table.sym(field_typ)
@@ -1086,8 +1049,7 @@ fn (mut c Checker) check_orm_aggregate_field(kind ast.SqlAggregateKind, field_na
 		for item in fields {
 			field_names << item.name
 		}
-		c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_name}` structure has no field with name `${field_name}`'),
-			pos)
+		c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_name}` structure has no field with name `${field_name}`'), pos)
 		return none
 	}
 	resolved_field := field[0]
@@ -1162,8 +1124,7 @@ fn (mut c Checker) check_sql_expr_type_is_int(expr &ast.Expr, sql_keyword string
 
 		if !is_acceptable_type {
 			error_type_symbol := c.fn_return_type_flag_to_string(expr.return_type)
-			c.orm_error('function calls in `${sql_keyword}` must return only an integer type, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`',
-				expr.pos)
+			c.orm_error('function calls in `${sql_keyword}` must return only an integer type, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`', expr.pos)
 		}
 
 		return
@@ -1202,8 +1163,7 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 
 		if !is_acceptable_type {
 			error_type_symbol := c.fn_return_type_flag_to_string(expr.return_type)
-			c.orm_error('function calls must return only primitive types and time.Time, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`',
-				expr.pos)
+			c.orm_error('function calls must return only primitive types and time.Time, but `${expr.name}` returns `${error_type_symbol}${type_symbol.name}`', expr.pos)
 		}
 	} else if expr is ast.ParExpr {
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.expr)
@@ -1211,11 +1171,9 @@ fn (mut c Checker) check_expr_has_no_fn_calls_with_non_orm_return_type(expr &ast
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.left)
 		c.check_expr_has_no_fn_calls_with_non_orm_return_type(expr.right)
 		if expr.right_type.has_flag(.option) && expr.op !in [.key_is, .not_is] {
-			c.warn('comparison with Option value probably isn\'t intended; use "is none" and "!is none" to select by NULL',
-				expr.pos)
+			c.warn('comparison with Option value probably isn\'t intended; use "is none" and "!is none" to select by NULL', expr.pos)
 		} else if expr.right_type == ast.none_type && expr.op !in [.key_is, .not_is] {
-			c.warn('comparison with none probably isn\'t intended; use "is none" and "!is none" to select by NULL',
-				expr.pos)
+			c.warn('comparison with none probably isn\'t intended; use "is none" and "!is none" to select by NULL', expr.pos)
 		}
 	}
 }
@@ -1227,8 +1185,7 @@ fn (mut c Checker) check_where_data_expr_has_no_struct_field_refs(table_type_sym
 	match expr {
 		ast.Ident {
 			if expr.kind == .unresolved && table_type_symbol.has_field(expr.name) {
-				c.orm_error('right side of the `${op}` expression cannot reference another `${table_type_symbol.name}` field; field-to-field comparisons are not supported',
-					expr.pos)
+				c.orm_error('right side of the `${op}` expression cannot reference another `${table_type_symbol.name}` field; field-to-field comparisons are not supported', expr.pos)
 			}
 		}
 		ast.ArrayInit {
@@ -1273,26 +1230,22 @@ fn (mut c Checker) check_where_data_expr_has_no_struct_field_refs(table_type_sym
 			if table_type_symbol.has_field(expr.field_name) {
 				if expr.expr is ast.TypeNode
 					&& c.table.sym(expr.expr.typ).name == table_type_symbol.name {
-					c.orm_error('right side of the `${op}` expression cannot reference another `${table_type_symbol.name}` field; field-to-field comparisons are not supported',
-						expr.pos)
+					c.orm_error('right side of the `${op}` expression cannot reference another `${table_type_symbol.name}` field; field-to-field comparisons are not supported', expr.pos)
 				} else if expr.expr is ast.Ident && expr.expr.kind == .unresolved
 					&& expr.expr.name == table_name {
-					c.orm_error('right side of the `${op}` expression cannot reference another `${table_type_symbol.name}` field; field-to-field comparisons are not supported',
-						expr.pos)
+					c.orm_error('right side of the `${op}` expression cannot reference another `${table_type_symbol.name}` field; field-to-field comparisons are not supported', expr.pos)
 				}
 			}
 			c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, expr.expr, op)
 		}
 		ast.StringInterLiteral {
 			for interpolated in expr.exprs {
-				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, interpolated,
-					op)
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, interpolated, op)
 			}
 		}
 		ast.StructInit {
 			for init_field in expr.init_fields {
-				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol,
-					init_field.expr, op)
+				c.check_where_data_expr_has_no_struct_field_refs(table_type_symbol, init_field.expr, op)
 			}
 		}
 		ast.UnsafeExpr {
@@ -1320,8 +1273,7 @@ fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &as
 			left_ident_name := expr.left.name
 
 			if !table_type_symbol.has_field(left_ident_name) {
-				c.orm_error(util.new_suggestion(left_ident_name, field_names).say(has_no_field_error),
-					expr.left.pos)
+				c.orm_error(util.new_suggestion(left_ident_name, field_names).say(has_no_field_error), expr.left.pos)
 			}
 		} else if expr.left is ast.InfixExpr || expr.left is ast.ParExpr
 			|| expr.left is ast.PrefixExpr {
@@ -1342,8 +1294,7 @@ fn (mut c Checker) check_where_expr_has_no_pointless_exprs(table_type_symbol &as
 	} else if expr is ast.PrefixExpr {
 		c.check_where_expr_has_no_pointless_exprs(table_type_symbol, field_names, expr.right)
 	} else {
-		c.orm_error('`where` expression must have at least one comparison for filtering rows',
-			expr.pos())
+		c.orm_error('`where` expression must have at least one comparison for filtering rows', expr.pos())
 	}
 }
 
@@ -1376,12 +1327,11 @@ fn (mut c Checker) check_orm_or_expr(mut expr ORMExpr) {
 		if c.inside_defer {
 			c.error('ORM returns a result, so it should have an `or {}` block at the end', expr.pos)
 		} else {
-			c.error('ORM returns a result, so it should have either an `or {}` block, or `!` at the end',
-				expr.pos)
+			c.error('ORM returns a result, so it should have either an `or {}` block, or `!` at the end', expr.pos)
 		}
 	} else {
 		c.check_or_expr(expr.or_expr, return_type.clear_flag(.result), return_type, if mut expr is ast.SqlExpr {
-			expr
+			ast.Expr(expr)
 		} else {
 			ast.empty_expr
 		})
@@ -1493,8 +1443,7 @@ fn (mut c Checker) resolve_orm_selected_fields(requested_fields []ast.SqlSelectF
 			field_name = field_name.all_after('${short_table_name}.')
 		}
 		if field_name !in field_names {
-			c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_sym.name}` structure has no field with name `${field_name}`'),
-				requested_field.pos)
+			c.orm_error(util.new_suggestion(field_name, field_names).say('`${table_sym.name}` structure has no field with name `${field_name}`'), requested_field.pos)
 			return none
 		}
 		selected_field_names[field_name] = true
@@ -1594,8 +1543,7 @@ fn (mut c Checker) check_orm_join_on_expr(on_expr ast.Expr, main_table_sym &ast.
 	if on_expr is ast.InfixExpr {
 		// Check that the operator is a comparison operator
 		if on_expr.op !in [.eq, .ne, .lt, .gt, .le, .ge] {
-			c.orm_error('JOIN ON condition must use a comparison operator (==, !=, <, >, <=, >=)',
-				on_expr.pos)
+			c.orm_error('JOIN ON condition must use a comparison operator (==, !=, <, >, <=, >=)', on_expr.pos)
 			return false
 		}
 
@@ -1611,8 +1559,7 @@ fn (mut c Checker) check_orm_join_on_expr(on_expr ast.Expr, main_table_sym &ast.
 
 		return true
 	} else if on_expr !is ast.EmptyExpr {
-		c.orm_error('JOIN ON condition must be a comparison expression (e.g., Table1.field == Table2.field)',
-			on_expr.pos())
+		c.orm_error('JOIN ON condition must be a comparison expression (e.g., Table1.field == Table2.field)', on_expr.pos())
 		return false
 	}
 
@@ -1641,8 +1588,7 @@ fn (mut c Checker) check_orm_join_field_ref(expr ast.Expr, main_table_sym &ast.T
 		is_join_table := table_name == join_table_name
 
 		if !is_main_table && !is_join_table {
-			c.orm_error('table `${table_name}` in JOIN ON condition must be either `${main_table_name}` or `${join_table_name}`',
-				expr.pos)
+			c.orm_error('table `${table_name}` in JOIN ON condition must be either `${main_table_name}` or `${join_table_name}`', expr.pos)
 			return false
 		}
 
@@ -1650,14 +1596,12 @@ fn (mut c Checker) check_orm_join_field_ref(expr ast.Expr, main_table_sym &ast.T
 		field_name := expr.field_name
 		if is_main_table {
 			if !main_table_sym.has_field(field_name) {
-				c.orm_error('field `${field_name}` does not exist in table `${main_table_name}`',
-					expr.pos)
+				c.orm_error('field `${field_name}` does not exist in table `${main_table_name}`', expr.pos)
 				return false
 			}
 		} else {
 			if !join_table_sym.has_field(field_name) {
-				c.orm_error('field `${field_name}` does not exist in table `${join_table_name}`',
-					expr.pos)
+				c.orm_error('field `${field_name}` does not exist in table `${join_table_name}`', expr.pos)
 				return false
 			}
 		}
@@ -1680,22 +1624,19 @@ fn (mut c Checker) check_orm_join_field_ref(expr ast.Expr, main_table_sym &ast.T
 		is_join_table := table_name == join_table_name
 
 		if !is_main_table && !is_join_table {
-			c.orm_error('table `${table_name}` in JOIN ON condition must be either `${main_table_name}` or `${join_table_name}`',
-				expr.pos)
+			c.orm_error('table `${table_name}` in JOIN ON condition must be either `${main_table_name}` or `${join_table_name}`', expr.pos)
 			return false
 		}
 
 		// Check if the field exists in the target table
 		if is_main_table {
 			if !main_table_sym.has_field(field_name) {
-				c.orm_error('field `${field_name}` does not exist in table `${main_table_name}`',
-					expr.pos)
+				c.orm_error('field `${field_name}` does not exist in table `${main_table_name}`', expr.pos)
 				return false
 			}
 		} else {
 			if !join_table_sym.has_field(field_name) {
-				c.orm_error('field `${field_name}` does not exist in table `${join_table_name}`',
-					expr.pos)
+				c.orm_error('field `${field_name}` does not exist in table `${join_table_name}`', expr.pos)
 				return false
 			}
 		}
@@ -1703,7 +1644,6 @@ fn (mut c Checker) check_orm_join_field_ref(expr ast.Expr, main_table_sym &ast.T
 		return true
 	}
 
-	c.orm_error('JOIN ON condition expects Table.field format (got ${typeof(expr).name})',
-		expr.pos())
+	c.orm_error('JOIN ON condition expects Table.field format (got ${typeof(expr).name})', expr.pos())
 	return false
 }

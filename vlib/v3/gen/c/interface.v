@@ -2685,8 +2685,8 @@ fn (mut g FlatGen) interface_map_str_expr(map_type types.Map, expr string, mut s
 	tmp := g.interface_tmp('iface_str_map')
 	out := g.interface_tmp('iface_str_out')
 	idx := g.interface_tmp('iface_str_i')
-	key := '*(${key_ct}*)((u8*)${tmp}.data->key_values.keys + ${idx} * ${tmp}.data->key_values.key_bytes)'
-	value := '*(${value_ct}*)((u8*)${tmp}.data->key_values.values + ${idx} * ${tmp}.data->key_values.value_bytes)'
+	key := '*(${key_ct}*)((u8*)${tmp}.key_values.keys + ${idx} * ${tmp}.key_values.key_bytes)'
+	value := '*(${value_ct}*)((u8*)${tmp}.key_values.values + ${idx} * ${tmp}.key_values.value_bytes)'
 	mut key_str := g.interface_implicit_str_expr(map_type.key_type, key, true, mut stack) or {
 		g.interface_str_lit('<map key>')
 	}
@@ -2695,7 +2695,7 @@ fn (mut g FlatGen) interface_map_str_expr(map_type types.Map, expr string, mut s
 	}
 	key_str = 'v3_indent_multiline(${key_str})'
 	value_str = 'v3_indent_multiline(${value_str})'
-	return '({ map ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('{')}; bool first = true; for (int ${idx} = 0; ${idx} < ${tmp}.data->key_values.len; ++${idx}) { if (${tmp}.data->key_values.deletes != 0 && ${tmp}.data->key_values.all_deleted != 0 && ${tmp}.data->key_values.all_deleted[${idx}] != 0) continue; if (!first) ${out} = ${g.interface_str_plus(out,
+	return '({ map ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('{')}; bool first = true; for (int ${idx} = 0; ${idx} < ${tmp}.key_values.len; ++${idx}) { if (${tmp}.key_values.deletes != 0 && ${tmp}.key_values.all_deleted != 0 && ${tmp}.key_values.all_deleted[${idx}] != 0) continue; if (!first) ${out} = ${g.interface_str_plus(out,
 		g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, key_str)}; ${out} = ${g.interface_str_plus(out,
 		g.interface_str_lit(': '))}; ${out} = ${g.interface_str_plus(out, value_str)}; first = false; } ${g.interface_str_plus(out,
 		g.interface_str_lit('}'))}; })'

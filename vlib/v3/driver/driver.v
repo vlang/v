@@ -9194,7 +9194,6 @@ pub fn run(args []string) {
 		// Descendant FastC compilers preserve the same define in v3.fastcdriver.
 		record_user_define(mut user_defines, mut compile_values, 'fastc_selfhost')
 	}
-
 	mut b := bench.new()
 	driver_sw := time.new_stopwatch()
 	if silent || c_to_stdout {
@@ -12255,7 +12254,7 @@ pub fn run(args []string) {
 				cleanup_c_build_dir(cc_dir)
 				mut regeneration_args := ['-d', v3_parallel_cc_monolithic_define]
 				for arg in args {
-					if arg !in [macos_v3_compat_c99_flag, macos_v3_internal_quiet_flag] {
+					if arg != macos_v3_compat_c99_flag {
 						regeneration_args << arg
 					}
 				}
@@ -12491,7 +12490,7 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 	mut public_args := []string{cap: retry_args.len + 1}
 	public_args << '-no-retry-compilation'
 	for arg in retry_args {
-		if arg !in [macos_v3_compat_c99_flag, macos_v3_internal_quiet_flag] {
+		if arg != macos_v3_compat_c99_flag {
 			public_args << arg
 		}
 	}

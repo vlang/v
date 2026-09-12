@@ -50,6 +50,22 @@ fn test_macos_v3_routes_internal_tool_bootstrap_to_v1_compatibility() {
 	assert !macos_v3_needs_v1_compatibility(tool_path, prefs)
 }
 
+fn test_macos_v3_routes_unsupported_c_options_to_v1_compatibility() {
+	mut prefs := &pref.Preferences{
+		path: 'main.v'
+		backend: .c
+		no_std: true
+	}
+	assert macos_v3_needs_v1_compatibility('main.v', prefs)
+	prefs.new_compiler = true
+	assert !macos_v3_needs_v1_compatibility('main.v', prefs)
+}
+
+fn test_macos_v3_does_not_forward_private_flags_to_v1() {
+	args := ['-silent', macos_v3_internal_quiet_flag, macos_v3_compat_c99_flag, 'main.v']
+	assert macos_v1_fallback_args(args) == ['-silent', 'main.v']
+}
+
 fn test_native_cmd_v_self_build_does_not_preselect_v1_compatibility() {
 	vroot := os.dir(@VEXE)
 	prefs := &pref.Preferences{

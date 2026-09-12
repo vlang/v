@@ -1463,11 +1463,6 @@ fn (g &Parser) map_key_value_types(typ string) ?(string, string) {
 	return fastc_declared_map_key_value_types(typ, g.declared_kinds)
 }
 
-fn (g &Parser) is_map_type(typ string) bool {
-	base := fastc_trim_pointer_suffix(g.underlying_alias_type(fastc_normalize_inferred_type(typ)))
-	return base == 'map' || g.map_key_value_types(base) != none
-}
-
 fn fastc_register_composite_type(typ string, mut composite_types map[string]bool) {
 	base := typ.trim_right('*')
 	if base.starts_with('Array_') || base.starts_with('Map_') {

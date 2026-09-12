@@ -256,7 +256,7 @@ fn test_scoped_checker_merge_deep_clones_diagnostic_details() {
 		scope := unsafe { prealloc_scope_begin() }
 		mut worker := tc.fork_for_parallel_check()
 		worker.notices << TypeError{
-			msg:     'scoped notice'.clone()
+			msg: 'scoped notice'.clone()
 			details: ['scoped detail'.clone()]
 		}
 		unsafe { prealloc_scope_leave(scope) }
@@ -275,14 +275,14 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	first_children := a.begin_children()
 	a.add_child(child)
 	first_parent := a.add_node(flat.Node{
-		kind:           .paren
+		kind: .paren
 		children_start: first_children
 		children_count: 1
 	})
 	second_children := a.begin_children()
 	a.add_child(child)
 	a.add_node(flat.Node{
-		kind:           .expr_stmt
+		kind: .expr_stmt
 		children_start: second_children
 		children_count: 1
 	})
@@ -299,7 +299,7 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	appended_children := a.begin_children()
 	a.add_child(appended_child)
 	appended_parent := a.add_node(flat.Node{
-		kind:           .paren
+		kind: .paren
 		children_start: appended_children
 		children_count: 1
 	})
@@ -324,14 +324,14 @@ fn test_rewritten_parent_index_falls_back_from_a_stale_shared_edge() {
 	first_children := a.begin_children()
 	a.add_child(shared_child)
 	first_parent := a.add_node(flat.Node{
-		kind:           .paren
+		kind: .paren
 		children_start: first_children
 		children_count: 1
 	})
 	second_children := a.begin_children()
 	a.add_child(shared_child)
 	second_parent := a.add_node(flat.Node{
-		kind:           .expr_stmt
+		kind: .expr_stmt
 		children_start: second_children
 		children_count: 1
 	})
@@ -391,7 +391,7 @@ fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 	generic_children := a.begin_children()
 	a.add_child(generic_child)
 	mut generic_fn := flat.Node{
-		kind:           .fn_decl
+		kind: .fn_decl
 		children_start: generic_children
 		children_count: 1
 	}
@@ -402,7 +402,7 @@ fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 	unrelated_children := a.begin_children()
 	a.add_child(unrelated_child)
 	unrelated_fn_id := a.add_node(flat.Node{
-		kind:           .fn_decl
+		kind: .fn_decl
 		children_start: unrelated_children
 		children_count: 1
 	})
@@ -462,8 +462,7 @@ fn test_parallel_checker_preserves_all_dependency_edges() {
 
 fn assert_preflight_error_keeps_function_semantics(name string, source string, initial_error string, collection_error bool) {
 	for want_parallel in [false, true] {
-		path := os.join_path(os.vtmp_dir(),
-			'v3_preflight_continuation_${name}_${want_parallel}_${os.getpid()}.v')
+		path := os.join_path(os.vtmp_dir(), 'v3_preflight_continuation_${name}_${want_parallel}_${os.getpid()}.v')
 		os.write_file(path, source) or { panic(err) }
 		mut p := parser.Parser.new(pref.new_preferences())
 		mut a := p.parse_file(path)
@@ -484,10 +483,6 @@ fn assert_preflight_error_keeps_function_semantics(name string, source string, i
 }
 
 fn test_preflight_errors_do_not_skip_function_semantics() {
-	assert_preflight_error_keeps_function_semantics('collection_error',
-		'type Recursive = []Recursive\n\nfn main() {\n\tunknown_call()\n}\n',
-		'recursive declarations of aliases', true)
-	assert_preflight_error_keeps_function_semantics('for_in_const_conflict',
-		'const item = 1\n\nfn report_other_error() {\n\tunknown_call()\n}\n\nfn main() {\n\tfor item in [1, 2] {}\n}\n',
-		'duplicate of a const name `item`', false)
+	assert_preflight_error_keeps_function_semantics('collection_error', 'type Recursive = []Recursive\n\nfn main() {\n\tunknown_call()\n}\n', 'recursive declarations of aliases', true)
+	assert_preflight_error_keeps_function_semantics('for_in_const_conflict', 'const item = 1\n\nfn report_other_error() {\n\tunknown_call()\n}\n\nfn main() {\n\tfor item in [1, 2] {}\n}\n', 'duplicate of a const name `item`', false)
 }

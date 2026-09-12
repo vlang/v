@@ -1090,15 +1090,6 @@ pub fn (t &Table) struct_fields(sym &TypeSymbol) []StructField {
 pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 	mut ts := unsafe { s }
 	for {
-		if ts.kind == .map && name == 'len' {
-			return StructField{
-				name:          'len'
-				typ:           int_type
-				unaliased_typ: int_type
-				is_pub:        true
-				is_mut:        true
-			}
-		}
 		match mut ts.info {
 			Struct {
 				if field := ts.info.find_field(name) {
@@ -2770,8 +2761,7 @@ pub fn (mut t Table) complete_interface_check() {
 	}
 	for tk, mut tsym in t.type_symbols {
 		tk_typ := idx_to_type(tk)
-		// VMapData is private storage behind map and cannot be an interface value.
-		if tsym.kind != .struct || (tsym.mod == 'builtin' && tsym.name == 'VMapData') {
+		if tsym.kind != .struct {
 			continue
 		}
 		for _, mut idecl in t.interfaces {

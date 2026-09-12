@@ -681,9 +681,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	elem_styp := g.styp(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
 	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_init
-	// An indexed initializer overwrites every element itself, so it does not need a
-	// cloned map seed. All other map initializers use the map-aware clone helper.
-	is_default_map := elem_type.unaliased_sym.kind == .map && !node.has_index
+	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_init
 	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
 		|| elem_type.unaliased_sym.kind in [.array, .map])
 	if node.has_index {
@@ -733,7 +731,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		} else if node.has_len && elem_type.typ == ast.string_type {
 			g.write2('&(${elem_styp}[]){', '_S("")')
 			g.write('})')
-		} else if node.has_len && elem_type.unaliased_sym.kind == .array {
+		} else if node.has_len && elem_type.unaliased_sym.kind in [.array, .map] {
 			g.write2('(voidptr)&(${elem_styp}[]){', g.type_default(elem_type.typ))
 			g.write('}[0])')
 		} else {
@@ -802,13 +800,8 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.write('}[0], ${depth})')
 	} else if is_default_map {
 		g.write('(${elem_styp}[]){')
-		if node.has_init {
-			g.expr(node.init_expr)
-			g.write('}[0], false)')
-		} else {
-			g.write(g.type_default(elem_type.typ))
-			g.write('}[0], true)')
-		}
+		g.expr(node.init_expr)
+		g.write('}[0])')
 	} else if needs_more_defaults {
 		tmp := g.new_tmp_var()
 		line := g.go_before_last_stmt().trim_space()

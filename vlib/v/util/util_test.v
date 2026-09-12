@@ -22,6 +22,13 @@ fn test_tool_recompilation_args_do_not_change_other_tools_or_platforms() {
 	assert tool_recompilation_args('vpm', 'windows').len == 0
 }
 
+fn test_tool_launch_command_has_no_trailing_space_without_arguments() {
+	tool_exe := os.join_path('path with spaces', path_of_executable('vdoctor'))
+	quoted_exe := os.quoted_path(tool_exe)
+	assert tool_launch_command(tool_exe, '') == quoted_exe
+	assert tool_launch_command(tool_exe, '--help') == '${quoted_exe} --help'
+}
+
 fn test_fallback_tool_executable_path_uses_vtmp_for_missing_single_file_tool() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'util_test_fallback_tool_executable_path')
 	os.mkdir_all(tmp_dir) or { panic(err) }
@@ -32,8 +39,7 @@ fn test_fallback_tool_executable_path_uses_vtmp_for_missing_single_file_tool() {
 	os.write_file(tool_source, 'fn main() {}') or { panic(err) }
 	tool_exe := os.join_path(tmp_dir, 'vdoctor')
 
-	fallback := fallback_tool_executable_path(@VEXE, '/opt/vlang', 'vdoctor', tool_source,
-		tool_exe, true)
+	fallback := fallback_tool_executable_path(@VEXE, '/opt/vlang', 'vdoctor', tool_source, tool_exe, true)
 
 	assert fallback != tool_exe
 	assert fallback.starts_with(os.join_path(os.vtmp_dir(), 'tools'))
@@ -63,8 +69,7 @@ fn test_fallback_tool_executable_path_uses_vtmp_for_outdated_single_file_tool_in
 	if os.geteuid() == 0 {
 		return
 	}
-	tmp_dir := os.join_path(os.vtmp_dir(),
-		'util_test_fallback_tool_executable_path_readonly_outdated')
+	tmp_dir := os.join_path(os.vtmp_dir(), 'util_test_fallback_tool_executable_path_readonly_outdated')
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	tool_source := os.join_path(tmp_dir, 'vrepl.v')
 	tool_exe := os.join_path(tmp_dir, 'vrepl')
@@ -80,8 +85,7 @@ fn test_fallback_tool_executable_path_uses_vtmp_for_outdated_single_file_tool_in
 		return
 	}
 
-	fallback := fallback_tool_executable_path(@VEXE, '/opt/vlang', 'vrepl', tool_source, tool_exe,
-		false)
+	fallback := fallback_tool_executable_path(@VEXE, '/opt/vlang', 'vrepl', tool_source, tool_exe, false)
 
 	assert fallback != tool_exe
 	assert fallback.starts_with(os.join_path(os.vtmp_dir(), 'tools'))
@@ -95,8 +99,7 @@ fn test_fallback_tool_executable_path_keeps_current_single_file_tool_in_readonly
 	if os.geteuid() == 0 {
 		return
 	}
-	tmp_dir := os.join_path(os.vtmp_dir(),
-		'util_test_fallback_tool_executable_path_readonly_current')
+	tmp_dir := os.join_path(os.vtmp_dir(), 'util_test_fallback_tool_executable_path_readonly_current')
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	tool_source := os.join_path(tmp_dir, 'vrepl.v')
 	tool_exe := os.join_path(tmp_dir, 'vrepl')
@@ -112,8 +115,7 @@ fn test_fallback_tool_executable_path_keeps_current_single_file_tool_in_readonly
 		return
 	}
 
-	fallback := fallback_tool_executable_path(@VEXE, '/opt/vlang', 'vrepl', tool_source, tool_exe,
-		false)
+	fallback := fallback_tool_executable_path(@VEXE, '/opt/vlang', 'vrepl', tool_source, tool_exe, false)
 
 	assert fallback == tool_exe
 }
@@ -177,8 +179,7 @@ fn test_qualify_import_resolves_module_alias_and_submodule() {
 	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'alias_test'\n}\n")!
 	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\n')!
 	os.write_file(os.join_path(canonical_dir, 'sub', 'sub.v'), 'module sub\n')!
-	os.write_file(os.join_path(vlib_dir, 'legacy', 'alias.v'),
-		"@[alias: '@VMODROOT/vlib/canonical'] module legacy\n")!
+	os.write_file(os.join_path(vlib_dir, 'legacy', 'alias.v'), "@[alias: '@VMODROOT/vlib/canonical'] module legacy\n")!
 
 	mut p := pref.new_preferences()
 	p.lookup_path = [vlib_dir]
@@ -204,8 +205,7 @@ fn test_module_alias_lookup_stops_at_nearest_vmod() {
 	os.write_file(os.join_path(outer_root, 'v.mod'), "Module {\n\tname: 'outer'\n}\n")!
 	os.write_file(os.join_path(nested_root, 'v.mod'), "Module {\n\tname: 'nested'\n}\n")!
 	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\n')!
-	os.write_file(os.join_path(alias_dir, 'alias.v'),
-		"@[alias: '@VMODROOT/modules/canonical'] module legacy\n")!
+	os.write_file(os.join_path(alias_dir, 'alias.v'), "@[alias: '@VMODROOT/modules/canonical'] module legacy\n")!
 	main_file := os.join_path(nested_root, 'src', 'main.v')
 	os.write_file(main_file, 'module main\n\nimport legacy\n\nfn main() {}\n')!
 

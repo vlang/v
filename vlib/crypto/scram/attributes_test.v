@@ -188,8 +188,8 @@ fn test_parse_positive_int_refuses_anything_lenient() {
 fn test_decode_base64_refuses_non_canonical_encodings() {
 	assert decode_base64('', 'x')! == []u8{}
 	assert decode_base64('dGVzdA==', 'x')! == 'test'.bytes()
-	for value in ['dGVzdA', 'dGVzdA=', 'dGVzdA===', 'not!base64', 'dGVz dA==', '====',
-		'{AAA', 'AAA{', '=AAA', 'AA=A'] {
+	for value in ['dGVzdA', 'dGVzdA=', 'dGVzdA===', 'not!base64', 'dGVz dA==', '====', '{AAA', 'AAA{',
+		'=AAA', 'AA=A'] {
 		decode_base64(value, 'the salt') or {
 			assert err.msg() == 'scram: malformed message: the salt is not valid base64'
 			assert err is MalformedMessage, value
@@ -280,8 +280,8 @@ fn test_split_gs2_header_separates_the_three_parts() {
 }
 
 fn test_split_gs2_header_refuses_invalid_utf8_authzid() {
-	client_first := [u8(`n`), `,`, `a`, `=`, 0xff, `,`, `n`, `=`, `u`, `s`, `e`, `r`, `,`,
-		`r`, `=`, `a`, `b`, `c`].bytestr()
+	client_first := [u8(`n`), `,`, `a`, `=`, 0xff, `,`, `n`, `=`, `u`, `s`, `e`, `r`, `,`, `r`,
+		`=`, `a`, `b`, `c`].bytestr()
 	split_gs2_header(client_first) or {
 		assert err is MalformedMessage
 		assert err.msg().contains('must contain valid UTF-8')

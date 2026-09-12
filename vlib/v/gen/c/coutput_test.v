@@ -45,10 +45,16 @@ fn test_out_files() {
 	mut total_oks_panic := 0
 	mut total_skips := 0
 	paths := vtest.filter_vtest_only(tests, basepath: testdata_folder).sorted()
-	println(term.colorize(term.green,
-		'> testing whether ${paths.len} .out files in ${local_tdata_path} match:'))
+	println(term.colorize(term.green, '> testing whether ${paths.len} .out files in ${local_tdata_path} match:'))
 	for out_path in paths {
 		basename, path, relpath, out_relpath := target2paths(out_path, '.out')
+		$if tinyc {
+			if user_os == 'freebsd' && relpath.ends_with('cross_printfn_v_malloc.vv') {
+				eprintln('> skipping ${relpath} on freebsd-tcc, since -cross -printfn does not emit a runnable executable')
+				total_skips++
+				continue
+			}
+		}
 		if should_skip(relpath) {
 			total_skips++
 			continue
@@ -146,8 +152,7 @@ fn test_c_must_have_files() {
 	mut total_oks_panic := 0
 	mut total_skips := 0
 	mut failed_descriptions := []string{cap: paths.len}
-	println(term.colorize(term.green,
-		'> testing whether all line patterns in ${paths.len} `.c.must_have` files in ${local_tdata_path} match:'))
+	println(term.colorize(term.green, '> testing whether all line patterns in ${paths.len} `.c.must_have` files in ${local_tdata_path} match:'))
 	for must_have_path in paths {
 		_, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
 		if should_skip(relpath) {
@@ -275,20 +280,6 @@ fn test_map_guard_without_observed_error_does_not_allocate_error() {
 	assert !body.contains('builtin___v_error(')
 }
 
-fn test_addressable_map_fallback_does_not_allocate_carrier() {
-	os.chdir(vroot) or {}
-	path := os.join_path(testdata_folder, 'map_value_lookup_lazy_default.vv')
-	cmd := '${os.quoted_path(vexe)} -old-compiler -o - ${os.quoted_path(path)}'
-	compilation := os.execute(cmd)
-	ensure_compilation_succeeded(compilation, cmd)
-	assert !generated_c_uses_v3_codegen(compilation.output)
-	assert compilation.output.contains('Map_string_main__Entry _t')
-	assert compilation.output.contains('*ADDR(Map_string_main__Entry, ({')
-	assert compilation.output.contains('*((Map_string_main__Entry*)')
-	assert !compilation.output.contains('} (Map_string_main__Entry*)')
-	assert !compilation.output.contains('builtin__memdup(ADDR(Map_string_main__Entry')
-}
-
 fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	os.chdir(vroot) or {}
 	path := os.join_path(testdata_folder, 'or_block_err_var_collision.vv')
@@ -336,15 +327,17 @@ fn test_main_error_propagation_panic_branches_do_not_fall_through() {
 		os.rmdir_all(test_dir) or {}
 	}
 	source_path := os.join_path(test_dir, 'main_error_propagation_panic_tail.v')
-	os.write_file(source_path,
-		['module main', '', 'fn fail_result() ! {', "\treturn error('new error')", '}', '', 'fn fail_option() ?int {', '\treturn none', '}', '', 'fn defer_result() ! {', '\tdefer {', "\t\tprintln('result deferred')", '\t}', '\tfail_result()!', '}', '', 'fn defer_option() ?int {', '\tdefer {', "\t\tprintln('option deferred')", '\t}', '\treturn fail_option()', '}', '', 'fn main() {', '\tif arguments().len > 1000 {', '\t\tdefer_option()?', '\t}', '\tdefer_result()!', '}'].join('\n') +
-		'\n')!
+	os.write_file(source_path, ['module main', '', 'fn fail_result() ! {',
+		"\treturn error('new error')", '}', '', 'fn fail_option() ?int {', '\treturn none', '}',
+		'', 'fn defer_result() ! {', '\tdefer {', "\t\tprintln('result deferred')", '\t}',
+		'\tfail_result()!', '}', '', 'fn defer_option() ?int {', '\tdefer {',
+		"\t\tprintln('option deferred')", '\t}', '\treturn fail_option()', '}', '', 'fn main() {',
+		'\tif arguments().len > 1000 {', '\t\tdefer_option()?', '\t}', '\tdefer_result()!', '}'].join('\n') + '\n')!
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
 	if generated_c_uses_v3_codegen(compilation.output) {
-		main_body := compilation.output.all_after('int main(int argc, char** argv) {')
-			.all_before('u8* malloc_noscan')
+		main_body := compilation.output.all_after('int main(int argc, char** argv) {').all_before('u8* malloc_noscan')
 		assert main_body.count('if (!__or_opt_') == 2
 		assert main_body.count('v_panic(') == 2
 		lines := main_body.split_into_lines()
@@ -371,8 +364,7 @@ fn test_main_error_propagation_panic_branches_do_not_fall_through() {
 
 fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	os.chdir(vroot) or {}
-	path := os.join_path(vroot,
-		'vlib/v/tests/modules/interface_array_concat_from_another_module/main_test.v')
+	path := os.join_path(vroot, 'vlib/v/tests/modules/interface_array_concat_from_another_module/main_test.v')
 	symbol := '__v_array_to_interface_array__Array_interface_array_concat_from_another_module__mod__Value__to__Array_interface_array_concat_from_another_module__mod__Value'
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
 	compilation := os.execute(cmd)
@@ -431,8 +423,7 @@ fn test_array_push_no_bounds_checking_keeps_max_len_panics() {
 fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_tmp_decl() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_live_windows_ternary_str_intp.vv')
-	os.write_file(test_source,
-		"module main\n\n@[live]\nfn foo(ok bool, name string) string {\n\treturn if ok { 'Hello, \${name}!' } else { '\${u32(7)}' }\n}\n\nfn main() {\n\tprintln(foo(true, 'V'))\n}\n")!
+	os.write_file(test_source, "module main\n\n@[live]\nfn foo(ok bool, name string) string {\n\treturn if ok { 'Hello, \${name}!' } else { '\${u32(7)}' }\n}\n\nfn main() {\n\tprintln(foo(true, 'V'))\n}\n")!
 	defer {
 		os.rm(test_source) or {}
 	}
@@ -450,8 +441,7 @@ fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_
 fn test_windows_sharedlive_explicit_string_format_scalar_reference_uses_pointee() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_live_windows_scalar_ref_s_fmt.vv')
-	os.write_file(test_source,
-		"module main\n\n@[live]\nfn format_scalar_ref(p &string) string {\n\treturn '\${p:s}'\n}\n\nfn main() {\n\ts := 'hi'\n\tprintln(format_scalar_ref(&s))\n}\n")!
+	os.write_file(test_source, "module main\n\n@[live]\nfn format_scalar_ref(p &string) string {\n\treturn '\${p:s}'\n}\n\nfn main() {\n\ts := 'hi'\n\tprintln(format_scalar_ref(&s))\n}\n")!
 	defer {
 		os.rm(test_source) or {}
 	}
@@ -470,8 +460,7 @@ fn test_windows_sharedlive_explicit_string_format_scalar_reference_uses_pointee(
 fn test_simple_string_interpolation_does_not_emit_str_intp_runtime() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_simple_interpolation_no_str_intp.vv')
-	os.write_file(test_source,
-		"module main\n\nimport time\n\nfn main() {\n\tt := time.now()\n\tprintln('elapsed \${time.since(t)}')\n}\n")!
+	os.write_file(test_source, "module main\n\nimport time\n\nfn main() {\n\tt := time.now()\n\tprintln('elapsed \${time.since(t)}')\n}\n")!
 	defer {
 		os.rm(test_source) or {}
 	}
@@ -618,8 +607,7 @@ fn windows_tcc_ccompiler_for_coutput_test() string {
 fn test_no_main_exports_initialize_windows_runtime() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_no_main_export_windows_init.vv')
-	os.write_file(test_source,
-		"module no_main\n\n@[export: 'v_sdl_app_quit']\npub fn app_quit() {}\n")!
+	os.write_file(test_source, "module no_main\n\n@[export: 'v_sdl_app_quit']\npub fn app_quit() {}\n")!
 	defer {
 		os.rm(test_source) or {}
 	}
@@ -696,8 +684,7 @@ fn test_c_fallback_decl_uses_module_wide_c_inserts() {
 		os.rmdir_all(test_source) or {}
 	}
 	header_path := os.join_path(test_source, 'c_header_decl.h')
-	os.write_file(header_path,
-		'static int c_header_decl(const char *input) { return input != 0; }\n')!
+	os.write_file(header_path, 'static int c_header_decl(const char *input) { return input != 0; }\n')!
 	header_include_path := header_path.replace('\\', '/')
 	os.write_file(os.join_path(test_source, 'include.v'), 'module main
 
@@ -728,8 +715,7 @@ fn test_c_fallback_decl_uses_inserted_header() {
 	defer {
 		os.rmdir_all(test_source) or {}
 	}
-	os.write_file(os.join_path(test_source, 'inserted.h'),
-		'static int inserted_const_decl(const char *input) { return input != 0; }\n')!
+	os.write_file(os.join_path(test_source, 'inserted.h'), 'static int inserted_const_decl(const char *input) { return input != 0; }\n')!
 	os.write_file(os.join_path(test_source, 'linked.c'), 'int inserted_link_anchor = 0;\n')!
 	os.write_file(os.join_path(test_source, 'main.v'), 'module main
 
@@ -758,9 +744,8 @@ fn test_c_fallback_decl_uses_c_helper_submodule_includes() {
 		os.rmdir_all(test_source) or {}
 	}
 	header_path := os.join_path(c_module_path, 'c_helper_decl.h')
-	os.write_file(header_path,
-		['#include <stdbool.h>', 'typedef enum { false_value, true_value } foreign_bool;', 'foreign_bool c_helper_decl(void);'].join('\n') +
-		'\n')!
+	os.write_file(header_path, ['#include <stdbool.h>',
+		'typedef enum { false_value, true_value } foreign_bool;', 'foreign_bool c_helper_decl(void);'].join('\n') + '\n')!
 	header_include_path := header_path.replace('\\', '/')
 	os.write_file(os.join_path(c_module_path, 'c.c.v'), 'module c
 
@@ -798,9 +783,13 @@ pub fn call() {
 fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_user_defined_windows_dllmain.vv')
-	os.write_file(test_source,
-		['module test', '', 'pub type C.DWORD = u32', 'pub type C.LPVOID = voidptr', '', 'fn C._vinit_caller()', 'fn C._vcleanup_caller()', '', "@[export: 'library_answer']", 'pub fn library_answer() int {', '\treturn 42', '}', '', "@[export: 'DllMain']", 'pub fn dll_main(hinst C.HINSTANCE, reason C.DWORD, reserved C.LPVOID) C.BOOL {', '\t_ = hinst', '\t_ = reserved', '\tif reason == C.DWORD(1) {', '\t\tC._vinit_caller()', '\t} else if reason == C.DWORD(0) {', '\t\tC._vcleanup_caller()', '\t}', '\treturn 1', '}'].join('\n') +
-		'\n')!
+	os.write_file(test_source, ['module test', '', 'pub type C.DWORD = u32',
+		'pub type C.LPVOID = voidptr', '', 'fn C._vinit_caller()', 'fn C._vcleanup_caller()', '',
+		"@[export: 'library_answer']", 'pub fn library_answer() int {', '\treturn 42', '}', '',
+		"@[export: 'DllMain']",
+		'pub fn dll_main(hinst C.HINSTANCE, reason C.DWORD, reserved C.LPVOID) C.BOOL {', '\t_ = hinst',
+		'\t_ = reserved', '\tif reason == C.DWORD(1) {', '\t\tC._vinit_caller()',
+		'\t} else if reason == C.DWORD(0) {', '\t\tC._vcleanup_caller()', '\t}', '\treturn 1', '}'].join('\n') + '\n')!
 	defer {
 		os.rm(test_source) or {}
 	}
@@ -920,15 +909,16 @@ fn test_array_sort_expression_key_avoids_sanitized_name_collisions() {
 	defer {
 		os.rmdir_all(test_dir) or {}
 	}
-	os.write_file(os.join_path(test_dir, 'main.v'),
-		['module main', '', 'struct Inner {', '\tbar int', '}', '', 'struct Item {', '\tfoo Inner', '\tfoo_bar int', '\tlabel string', '}', '', 'fn main() {', '\tprintln(sort_by_nested())', '\tprintln(sort_by_flat())', '}'].join('\n') +
-		'\n')!
-	os.write_file(os.join_path(test_dir, 'nested.v'),
-		['module main', '', 'fn sort_by_nested() string {', "\tmut items := [Item{ foo: Inner{ bar: 2 }, foo_bar: 1, label: 'nested-wrong' }, Item{ foo: Inner{ bar: 1 }, foo_bar: 2, label: 'nested-ok' }]", '\titems.sort(a.foo.bar < b.foo.bar)', '\treturn items[0].label', '}'].join('\n') +
-		'\n')!
-	os.write_file(os.join_path(test_dir, 'flat.v'),
-		['module main', '', 'fn sort_by_flat() string {', "\tmut items := [Item{ foo: Inner{ bar: 1 }, foo_bar: 2, label: 'flat-wrong' }, Item{ foo: Inner{ bar: 2 }, foo_bar: 1, label: 'flat-ok' }]", '\titems.sort(a.foo_bar < b.foo_bar)', '\treturn items[0].label', '}'].join('\n') +
-		'\n')!
+	os.write_file(os.join_path(test_dir, 'main.v'), ['module main', '', 'struct Inner {', '\tbar int',
+		'}', '', 'struct Item {', '\tfoo Inner', '\tfoo_bar int', '\tlabel string', '}', '',
+		'fn main() {', '\tprintln(sort_by_nested())', '\tprintln(sort_by_flat())', '}'].join('\n') + '\n')!
+	os.write_file(os.join_path(test_dir, 'nested.v'), ['module main', '',
+		'fn sort_by_nested() string {',
+		"\tmut items := [Item{ foo: Inner{ bar: 2 }, foo_bar: 1, label: 'nested-wrong' }, Item{ foo: Inner{ bar: 1 }, foo_bar: 2, label: 'nested-ok' }]",
+		'\titems.sort(a.foo.bar < b.foo.bar)', '\treturn items[0].label', '}'].join('\n') + '\n')!
+	os.write_file(os.join_path(test_dir, 'flat.v'), ['module main', '', 'fn sort_by_flat() string {',
+		"\tmut items := [Item{ foo: Inner{ bar: 1 }, foo_bar: 2, label: 'flat-wrong' }, Item{ foo: Inner{ bar: 2 }, foo_bar: 1, label: 'flat-ok' }]",
+		'\titems.sort(a.foo_bar < b.foo_bar)', '\treturn items[0].label', '}'].join('\n') + '\n')!
 	pexe := os.join_path(test_dir, 'sort_expr_collision')
 	cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(pexe)} ${os.quoted_path(test_dir)}'
 	compilation := os.execute(cmd)
@@ -1003,10 +993,8 @@ fn test_auxiliary_c_symbols_use_stable_type_hashes() {
 	ensure_compilation_succeeded(compilation_b, cmd_b)
 	compare_a := generated_c_symbols_with_prefix(compilation_a.output, 'compare_')
 	compare_b := generated_c_symbols_with_prefix(compilation_b.output, 'compare_')
-	keepalive_a := generated_c_symbols_with_prefix(compilation_a.output,
-		'__v_boehm_collect_keepalive_')
-	keepalive_b := generated_c_symbols_with_prefix(compilation_b.output,
-		'__v_boehm_collect_keepalive_')
+	keepalive_a := generated_c_symbols_with_prefix(compilation_a.output, '__v_boehm_collect_keepalive_')
+	keepalive_b := generated_c_symbols_with_prefix(compilation_b.output, '__v_boehm_collect_keepalive_')
 	uses_v3_a := generated_c_uses_v3_codegen(compilation_a.output)
 	uses_v3_b := generated_c_uses_v3_codegen(compilation_b.output)
 	assert uses_v3_a == uses_v3_b
@@ -1031,9 +1019,9 @@ fn test_boehm_scope_pin_does_not_walk_array_elements() {
 	}
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_boehm_constant_time_array_pin.v')
-	os.write_file(test_source,
-		['module main', '', 'struct Item {', '\tname string', '\tdata []u8', '}', '', 'fn sink(_ int) {}', '', 'fn hot(items []Item) {', '\tsink(items.len)', '}', '', 'fn main() {', '\thot([])', '}'].join('\n') +
-		'\n')!
+	os.write_file(test_source, ['module main', '', 'struct Item {', '\tname string', '\tdata []u8',
+		'}', '', 'fn sink(_ int) {}', '', 'fn hot(items []Item) {', '\tsink(items.len)', '}', '',
+		'fn main() {', '\thot([])', '}'].join('\n') + '\n')!
 	defer {
 		os.rm(test_source) or {}
 	}
@@ -1051,9 +1039,13 @@ fn test_boehm_scope_pin_does_not_walk_array_elements() {
 fn test_veb_implicit_ctx_alias_uses_user_context_name() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_veb_implicit_ctx_alias.vv')
-	os.write_file(test_source,
-		['module main', '', 'import veb', '', 'struct App {}', '', 'struct Context {', '\tveb.Context', '}', '', 'fn (app App) nested(mut ctx Context) veb.Result {', "\treturn ctx.text('nested')", '}', '', 'fn (app App) log(_ Context) {', "\tprintln('hi')", '}', '', 'fn (app App) index(mut c Context) veb.Result {', '\tapp.log(c)', '\treturn app.nested()', '}', '', 'fn main() {', '\tmut app := App{}', '\tmut ctx := Context{}', '\t_ = app.index(mut ctx)', '}'].join('\n') +
-		'\n')!
+	os.write_file(test_source, ['module main', '', 'import veb', '', 'struct App {}', '',
+		'struct Context {', '\tveb.Context', '}', '',
+		'fn (app App) nested(mut ctx Context) veb.Result {', "\treturn ctx.text('nested')", '}',
+		'', 'fn (app App) log(_ Context) {', "\tprintln('hi')", '}', '',
+		'fn (app App) index(mut c Context) veb.Result {', '\tapp.log(c)', '\treturn app.nested()',
+		'}', '', 'fn main() {', '\tmut app := App{}', '\tmut ctx := Context{}',
+		'\t_ = app.index(mut ctx)', '}'].join('\n') + '\n')!
 	defer {
 		os.rm(test_source) or {}
 	}
@@ -1083,9 +1075,11 @@ fn test_veb_implicit_ctx_alias_on_context_receiver_tmpl_not_found() {
 	os.mkdir_all(os.join_path(test_dir, 'web'))!
 	test_source := os.join_path(test_dir, 'main.v')
 	os.write_file(os.join_path(test_dir, 'web', 'notfound.html'), '<h1>@ctx.req.url</h1>\n')!
-	os.write_file(test_source,
-		['module main', '', 'import veb', '', 'pub struct Context {', '\tveb.Context', '}', '', 'pub struct App {}', '', 'pub fn (mut c Context) not_found() veb.Result {', '\tc.res.set_status(.not_found)', "\treturn c.html(\$tmpl('web/notfound.html'))", '}', '', 'fn main() {', '\tmut app := App{}', '\tveb.run[App, Context](mut app, 8080)', '}'].join('\n') +
-		'\n')!
+	os.write_file(test_source, ['module main', '', 'import veb', '', 'pub struct Context {',
+		'\tveb.Context', '}', '', 'pub struct App {}', '',
+		'pub fn (mut c Context) not_found() veb.Result {', '\tc.res.set_status(.not_found)',
+		"\treturn c.html(\$tmpl('web/notfound.html'))", '}', '', 'fn main() {', '\tmut app := App{}',
+		'\tveb.run[App, Context](mut app, 8080)', '}'].join('\n') + '\n')!
 	defer {
 		os.rmdir_all(test_dir) or {}
 	}
@@ -1135,8 +1129,7 @@ fn test_veb_template_scope_gc_pin_does_not_escape_loop_var() {
 		'  @end',
 		'</div>',
 	]
-	os.write_file(os.join_path(test_dir, 'templates', 'tree.html'),
-		template_lines.join('\n') + '\n')!
+	os.write_file(os.join_path(test_dir, 'templates', 'tree.html'), template_lines.join('\n') + '\n')!
 	test_source := os.join_path(test_dir, 'main.v')
 	source_lines := [
 		'module main',

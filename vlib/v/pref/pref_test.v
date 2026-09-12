@@ -42,13 +42,11 @@ fn test_cross_compile_keeps_explicit_cc() {
 	target_os := if pref.get_host_os() == .linux { 'macos' } else { 'linux' }
 	custom_cc := 'cosmocc'
 
-	first, _ := pref.parse_args_and_show_errors(['help'], ['', '-cc', custom_cc, '-os', target_os],
-		false)
+	first, _ := pref.parse_args_and_show_errors(['help'], ['', '-cc', custom_cc, '-os', target_os], false)
 	assert first.ccompiler_set_by_flag
 	assert first.ccompiler == custom_cc
 
-	second, _ := pref.parse_args_and_show_errors(['help'],
-		['', '-os', target_os, '-cc', custom_cc], false)
+	second, _ := pref.parse_args_and_show_errors(['help'], ['', '-os', target_os, '-cc', custom_cc], false)
 	assert second.ccompiler_set_by_flag
 	assert second.ccompiler == custom_cc
 }
@@ -101,8 +99,7 @@ fn test_disable_explicit_mutability_flag() {
 	assert prefs.disable_explicit_mutability
 	assert prefs.build_options.contains('-disable-explicit-mutability')
 
-	prefs2, _ := pref.parse_args_and_show_errors([], ['--disable-explicit-mutability', target],
-		false)
+	prefs2, _ := pref.parse_args_and_show_errors([], ['--disable-explicit-mutability', target], false)
 	assert prefs2.disable_explicit_mutability
 	assert prefs2.build_options.contains('--disable-explicit-mutability')
 }
@@ -128,8 +125,7 @@ fn test_profile_flag_does_not_consume_run_command() {
 
 fn test_profile_flag_still_accepts_explicit_output_file() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	prefs, command := pref.parse_args_and_show_errors([], ['-profile', 'profile.txt', target],
-		false)
+	prefs, command := pref.parse_args_and_show_errors([], ['-profile', 'profile.txt', target], false)
 	assert command == target
 	assert prefs.path == target
 	assert prefs.is_prof
@@ -163,13 +159,11 @@ fn test_non_launcher_parse_keeps_v_flags_after_the_command() {
 	// general V preference flags that follow it. The default parser (non-launcher mode) must
 	// keep interpreting them, so passthrough stays scoped to the `v` launcher; see the review of
 	// vlang/v#28114.
-	translated, cmd1 := pref.parse_args_and_show_errors(['fmt'],
-		['fmt', '-translated', 'generated.v'], false)
+	translated, cmd1 := pref.parse_args_and_show_errors(['fmt'], ['fmt', '-translated', 'generated.v'], false)
 	assert cmd1 == 'fmt'
 	assert translated.translated
 
-	crossos, cmd2 := pref.parse_args_and_show_errors(['fmt'], ['fmt', '-os', 'linux', 'source.v'],
-		false)
+	crossos, cmd2 := pref.parse_args_and_show_errors(['fmt'], ['fmt', '-os', 'linux', 'source.v'], false)
 	assert cmd2 == 'fmt'
 	assert crossos.os == .linux
 }
@@ -177,24 +171,24 @@ fn test_non_launcher_parse_keeps_v_flags_after_the_command() {
 fn new_wasm_preferences() pref.Preferences {
 	return pref.Preferences{
 		backend: .wasm
-		os:      .browser
-		arch:    .wasm32
+		os: .browser
+		arch: .wasm32
 	}
 }
 
 fn new_js_preferences() pref.Preferences {
 	return pref.Preferences{
 		backend: .js_node
-		os:      .linux
-		arch:    .amd64
+		os: .linux
+		arch: .amd64
 	}
 }
 
 fn new_c_preferences() pref.Preferences {
 	return pref.Preferences{
 		backend: .c
-		os:      .linux
-		arch:    .amd64
+		os: .linux
+		arch: .amd64
 	}
 }
 
@@ -330,8 +324,7 @@ fn test_explicit_gc_mode_is_forwarded_to_build_module() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	for gc_mode in ['none', 'boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt',
 		'boehm_leak'] {
-		prefs, _ := pref.parse_args_and_show_errors([], ['-usecache', '-gc', gc_mode, target],
-			false)
+		prefs, _ := pref.parse_args_and_show_errors([], ['-usecache', '-gc', gc_mode, target], false)
 		assert prefs.build_options.contains('-gc ${gc_mode}')
 	}
 }
@@ -344,8 +337,7 @@ fn issue74_cache_path_for_ldflags(ldflags string) (string, pref.PkgConfigMode) {
 	}
 	args << target
 	mut prefs, _ := pref.parse_args_and_show_errors([], args, false)
-	path := prefs.cache_manager.mod_postfix_with_key2cpath('issue74-cache-salt', '.o',
-		'same-source')
+	path := prefs.cache_manager.mod_postfix_with_key2cpath('issue74-cache-salt', '.o', 'same-source')
 	return path, prefs.pkgconfig_mode
 }
 
@@ -471,9 +463,9 @@ fn test_v3_platform_v_compiler_targets_default_to_prealloc() {
 	for target_os in [pref.OS.macos, .linux, .freebsd, .openbsd, .netbsd, .dragonfly] {
 		for target in [os.join_path(vroot, 'cmd', 'v'), os.join_path(vroot, 'vlib', 'v3', 'v3.v')] {
 			mut prefs := pref.Preferences{
-				path:                  target
-				os:                    target_os
-				ccompiler:             'cc'
+				path: target
+				os: target_os
+				ccompiler: 'cc'
 				ccompiler_set_by_flag: true
 			}
 			prefs.fill_with_defaults()
@@ -491,9 +483,9 @@ fn test_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
 	target := os.join_path(vroot, 'cmd', 'v')
 	for compiler in ['tcc', 'tinyc'] {
 		mut prefs := pref.Preferences{
-			path:                  target
-			os:                    .linux
-			ccompiler:             compiler
+			path: target
+			os: .linux
+			ccompiler: compiler
 			ccompiler_set_by_flag: true
 		}
 		prefs.fill_with_defaults()
@@ -512,9 +504,9 @@ fn test_bsd_explicit_tinyc_v_compiler_target_keeps_prealloc() {
 	for target_os in [pref.OS.freebsd, .openbsd, .netbsd, .dragonfly] {
 		for compiler in ['tcc', 'tinyc'] {
 			mut prefs := pref.Preferences{
-				path:                  target
-				os:                    target_os
-				ccompiler:             compiler
+				path: target
+				os: target_os
+				ccompiler: compiler
 				ccompiler_set_by_flag: true
 			}
 			prefs.fill_with_defaults()
@@ -542,8 +534,7 @@ fn test_macos_explicit_tinyc_v_compiler_target_keeps_prealloc() {
 
 fn test_prealloc_overrides_explicit_gc_selection() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', '-prealloc', target],
-		false)
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', '-prealloc', target], false)
 	assert prefs.prealloc
 	assert prefs.gc_mode == .no_gc
 	assert 'gcboehm' !in prefs.compile_defines
@@ -552,8 +543,7 @@ fn test_prealloc_overrides_explicit_gc_selection() {
 
 fn test_no_gc_thread_local_alloc_prefers_source_bundled_boehm() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	prefs, _ := pref.parse_args_and_show_errors([], ['', '-d', 'no_gc_thread_local_alloc', target],
-		false)
+	prefs, _ := pref.parse_args_and_show_errors([], ['', '-d', 'no_gc_thread_local_alloc', target], false)
 	assert prefs.gc_mode == .boehm_full_opt
 	assert 'no_gc_thread_local_alloc' in prefs.compile_defines_all
 	assert 'use_bundled_libgc' in prefs.compile_defines_all
@@ -581,14 +571,14 @@ fn test_no_gc_thread_local_alloc_keeps_explicit_dynamic_boehm() {
 
 fn stale_windows_gc_prefs(gc_set_by_flag bool) pref.Preferences {
 	mut prefs := pref.Preferences{
-		os:                  .windows
-		ccompiler_type:      .msvc
-		gc_mode:             .boehm_full_opt
-		gc_set_by_flag:      gc_set_by_flag
-		compile_defines:     ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
+		os: .windows
+		ccompiler_type: .msvc
+		gc_mode: .boehm_full_opt
+		gc_set_by_flag: gc_set_by_flag
+		compile_defines: ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
 		compile_defines_all: ['gcboehm', 'gcboehm_full', 'gcboehm_opt', 'custom']
-		compile_values:      map[string]string{}
-		build_options:       ['-prod', '-d gcboehm', '-d gcboehm_full', '-d gcboehm_opt']
+		compile_values: map[string]string{}
+		build_options: ['-prod', '-d gcboehm', '-d gcboehm_full', '-d gcboehm_opt']
 	}
 	prefs.compile_values['gcboehm'] = 'true'
 	prefs.compile_values['gcboehm_full'] = 'true'
@@ -722,7 +712,7 @@ fn test_repeated_backend_flags_preserve_final_fastc_selection() {
 
 fn test_v3_checker_fixture_flag_is_accepted() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	for flag in ['-checker-fixture', '-macos-v3-compat-c99'] {
+	for flag in ['-checker-fixture', '-macos-v3-compat-c99', '-macos-v3-internal-quiet'] {
 		prefs, command := pref.parse_args_and_show_errors([], [flag, target], false)
 		assert command == target
 		assert flag !in prefs.build_options
@@ -942,7 +932,7 @@ fn test_output_flag_accepts_directory_path() {
 
 fn test_tcc_shared_builds_disable_backtraces() {
 	mut shared_prefs := &pref.Preferences{
-		path:      'libfoo.v'
+		path: 'libfoo.v'
 		is_shared: true
 		ccompiler: 'tinyc'
 	}
@@ -950,10 +940,10 @@ fn test_tcc_shared_builds_disable_backtraces() {
 	assert 'no_backtrace' in shared_prefs.compile_defines_all
 
 	mut regular_prefs := &pref.Preferences{
-		path:                  'main.v'
-		os:                    .linux
-		arch:                  .amd64
-		ccompiler:             'tinyc'
+		path: 'main.v'
+		os: .linux
+		arch: .amd64
+		ccompiler: 'tinyc'
 		ccompiler_set_by_flag: true
 	}
 	regular_prefs.fill_with_defaults()
@@ -962,10 +952,10 @@ fn test_tcc_shared_builds_disable_backtraces() {
 
 fn test_macos_arm64_tcc_builds_disable_backtraces() {
 	mut prefs := &pref.Preferences{
-		path:                  'main.v'
-		os:                    .macos
-		arch:                  .arm64
-		ccompiler:             'tinyc'
+		path: 'main.v'
+		os: .macos
+		arch: .arm64
+		ccompiler: 'tinyc'
 		ccompiler_set_by_flag: true
 	}
 	prefs.fill_with_defaults()
@@ -975,9 +965,9 @@ fn test_macos_arm64_tcc_builds_disable_backtraces() {
 
 fn test_bsd_tinyc_defaults_to_openssl() {
 	mut bsd_tinyc_prefs := &pref.Preferences{
-		path:                  'main.v'
-		os:                    .freebsd
-		ccompiler:             'tinyc'
+		path: 'main.v'
+		os: .freebsd
+		ccompiler: 'tinyc'
 		ccompiler_set_by_flag: true
 	}
 	bsd_tinyc_prefs.fill_with_defaults()
@@ -985,8 +975,8 @@ fn test_bsd_tinyc_defaults_to_openssl() {
 	assert 'use_openssl' in bsd_tinyc_prefs.compile_defines_all
 
 	mut bsd_clang_prefs := &pref.Preferences{
-		path:      'main.v'
-		os:        .freebsd
+		path: 'main.v'
+		os: .freebsd
 		ccompiler: 'clang'
 	}
 	bsd_clang_prefs.fill_with_defaults()
@@ -995,7 +985,7 @@ fn test_bsd_tinyc_defaults_to_openssl() {
 
 fn test_late_resolved_tcc_shared_builds_disable_backtraces() {
 	mut shared_prefs := &pref.Preferences{
-		path:      'libfoo.v'
+		path: 'libfoo.v'
 		is_shared: true
 		ccompiler: 'gcc'
 	}

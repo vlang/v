@@ -4,6 +4,13 @@ import os
 import v3.cmdexec
 import v3.pref
 
+fn v3_driver_test_executable() string {
+	if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
+		return os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
+	}
+	return @VEXE
+}
+
 fn test_input_is_cmd_v_accepts_relative_entry_file() {
 	assert input_is_cmd_v('cmd/v')
 	assert input_is_cmd_v('cmd/v/v.v')
@@ -263,6 +270,14 @@ fn test_v3_regenerates_cc_fallback_after_implicit_tcc() {
 	assert !v3_should_regenerate_after_implicit_tcc(false, true, false, 0)
 }
 
+fn test_v3_retry_compilation_preserves_internal_quiet() {
+	args := [macos_v3_internal_quiet_flag, macos_v3_compat_c99_flag, '-autofree', 'run', 'main.v']
+	retry := v3_retry_compilation_args(args, -1, 'cc')
+	assert macos_v3_internal_quiet_flag in retry
+	assert macos_v3_compat_c99_flag !in retry
+	assert retry[0] == '-no-retry-compilation'
+}
+
 fn write_v3_test_tcc(tcc_path string, exit_code int) string {
 	os.mkdir_all(os.dir(tcc_path)) or { panic(err) }
 	os.write_file(tcc_path, '#!/bin/sh\nexit ${exit_code}\n') or { panic(err) }
@@ -367,8 +382,8 @@ fn test_v3_windows_default_tcc_prod_build() {
 			os.setenv('VFLAGS', value, true)
 		}
 	}
-	build := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-prod', '-showcc', '-o', output,
-		source])
+	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-prod', '-showcc',
+		'-o', output, source])
 	assert build.exit_code == 0, build.output
 	normalized_output := build.output.replace('\\', '/')
 	assert normalized_output.contains('thirdparty/tcc/tcc.exe'), build.output
@@ -391,7 +406,8 @@ fn test_v3_windows_auto_gui_build_uses_windows_subsystem() {
 	source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main.exe')
 	os.write_file(source, '#flag windows -lgdi32\n\nfn main() {}\n')!
-	build := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-showcc', '-o', output, source])
+	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-showcc', '-o',
+		output, source])
 	assert build.exit_code == 0, build.output
 	assert build.output.contains('-mwindows'), build.output
 }
@@ -483,8 +499,8 @@ fn test_v3_fastc_rejects_windows_gui_subsystem() {
 	}
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, 'fn main() {}\n')!
-	build := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-b', 'fastc', '-os', 'windows',
-		'-subsystem', 'windows', source])
+	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-b', 'fastc',
+		'-os', 'windows', '-subsystem', 'windows', source])
 	assert build.exit_code != 0, build.output
 	assert build.output.contains('the V3 fastc backend does not support `-subsystem windows`'), build.output
 }

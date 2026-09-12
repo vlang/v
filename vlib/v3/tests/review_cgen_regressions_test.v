@@ -110,6 +110,62 @@ fn main() {
 	assert c_code.contains('main__float_power = '), c_code
 }
 
+fn test_struct_const_with_sum_type_uses_portable_runtime_init() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'struct_const_sum_type_runtime_init', 'interface Value {}
+
+struct Empty {}
+
+struct Holder {
+	value Value
+}
+
+const holder = Holder{
+	value: Empty{}
+}
+
+fn main() {
+	println(holder.value is Empty)
+}
+')
+	assert out == 'true'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_struct_const_sum_type_runtime_init.c')) or {
+		panic(err)
+	}
+	assert c_code.contains('main__Holder main__holder;'), c_code
+	assert c_code.contains('main__holder = (main__Holder){'), c_code
+	assert c_code.contains('._object = (main__Empty*)(memdup('), c_code
+}
+
+fn test_int_literal_receiver_uses_int_literal_method() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'int_literal_receiver', 'fn main() {
+	println(255.hex_full())
+	println(4294967296.hex_full())
+}
+')
+	assert out == '00000000000000ff\n0000000100000000'
+}
+
+fn test_c_int_array_data_argument_uses_abi_buffer() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'c_int_array_data_abi', "#include <stdio.h>
+
+fn main() {
+	mut first := []int{len: 1}
+	mut second := []int{len: 1}
+	C.sscanf(c'4 2', c'%d %d', first.data, second.data)
+	println(int_str(first[0] + second[0]))
+}
+")
+	assert out == '6'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_c_int_array_data_abi.c')) or {
+		panic(err)
+	}
+	assert c_code.contains('int* _cabi_out_values_'), c_code
+	assert c_code.contains('free(_cabi_out_values_'), c_code
+}
+
 fn test_array_power_assign_uses_power_helper() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'array_power_assign', 'struct IntList {
@@ -482,8 +538,7 @@ fn f() b.Foo {
 
 fn main() {}
 '
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_return', return_files,
-		'main.v', 'cannot return')
+	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_return', return_files, 'main.v', 'cannot return')
 	mut field_files := files.clone()
 	field_files['main.v'] = 'module main
 
@@ -502,8 +557,7 @@ fn make_holder() Holder {
 
 fn main() {}
 '
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_field', field_files,
-		'main.v', 'cannot initialize field')
+	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_field', field_files, 'main.v', 'cannot initialize field')
 }
 
 fn test_optional_single_letter_struct_keeps_concrete_payload_type() {

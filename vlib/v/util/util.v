@@ -49,6 +49,7 @@ pub fn tabs(n int) string {
 }
 
 pub const stable_build_time = get_build_time()
+
 // get_build_time returns the current build time, while taking into account SOURCE_DATE_EPOCH
 // to support transparent reproducible builds. See also https://reproducible-builds.org/docs/source-date-epoch/
 // When SOURCE_DATE_EPOCH is not set, it will return the current UTC time.
@@ -165,8 +166,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	}
 	disabling_file := recompilation.disabling_file(vroot)
 	is_recompilation_disabled := os.exists(disabling_file)
-	tool_exe = fallback_tool_executable_path(vexe, vroot, tool_name, tool_source, tool_exe,
-		is_recompilation_disabled)
+	tool_exe = fallback_tool_executable_path(vexe, vroot, tool_name, tool_source, tool_exe, is_recompilation_disabled)
 	is_using_temporary_tool_exe := tool_exe != original_tool_exe
 	if !os.exists(tool_exe) && !os.exists(tool_source) {
 		eprintln('cannot find `${tool_name}`: missing both `${tool_exe}` and `${tool_source}`')
@@ -297,8 +297,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	}
 	tlog('executing: ${tool_exe} with ${tool_args}')
 	$if windows {
-		cmd_system('${os.quoted_path(tool_exe)} ${tool_args}')
+		cmd_system(tool_launch_command(tool_exe, tool_args))
 	} $else $if js {
+
 		// no way to implement os.execvp in JS backend
 		cmd_system('${tool_exe} ${tool_args}')
 	} $else {
@@ -396,6 +397,10 @@ pub fn quote_path(s string) string {
 
 pub fn args_quote_paths(args []string) string {
 	return args.map(quote_path(it)).join(' ')
+}
+
+fn tool_launch_command(tool_exe string, tool_args string) string {
+	return '${os.quoted_path(tool_exe)} ${tool_args}'.trim_space()
 }
 
 pub fn path_of_executable(path string) string {
@@ -507,8 +512,7 @@ and the existing module `${modulename}` may still work.')
 	cloning_res :=
 		os.execute('${os.quoted_path(vexe)} retry -- git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
 	if cloning_res.exit_code != 0 {
-		return error_with_code('cloning failed, details: ${cloning_res.output}',
-			cloning_res.exit_code)
+		return error_with_code('cloning failed, details: ${cloning_res.output}', cloning_res.exit_code)
 	}
 	if !os.exists(mod_v_file) {
 		return error('even after cloning, ${mod_v_file} is still missing')

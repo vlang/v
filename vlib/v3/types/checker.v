@@ -7642,8 +7642,7 @@ fn (tc &TypeChecker) collapsed_call_arg_raw_param_idx(node flat.Node, info CallI
 	}
 	recv_extra := if info.has_receiver { 1 } else { 0 }
 	collapsed := if field_init_args > 0 { 1 } else { 0 }
-	actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed +
-		recv_extra
+	actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed + recv_extra
 	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
 	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
 	arg_shift := if ctx_omitted { ctx_count } else { 0 }
@@ -15034,10 +15033,10 @@ fn (tc &TypeChecker) branch_tail_never_returns(branch_id flat.NodeId) bool {
 	// shares every map's backing storage anyway and memmoves the ~11KB
 	// TypeChecker per call, so swap in a scratch clone and restore instead.
 	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
-	mut saved_smartcasts := mtc.smartcasts.move()
+	saved_smartcasts := clone_smartcasts(mtc.smartcasts)
 	mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 	defer {
-		mtc.smartcasts = saved_smartcasts.move()
+		mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
 	tail_index := int(branch.children_count) - 1
 	for i in body_start .. tail_index {
@@ -15105,10 +15104,10 @@ fn (tc &TypeChecker) stmt_sequence_definitely_returns(node &flat.Node, body_star
 	// Only the `smartcasts` binding needs isolation here (see
 	// branch_tail_never_returns); avoid the ~11KB full struct copy.
 	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
-	mut saved_smartcasts := mtc.smartcasts.move()
+	saved_smartcasts := clone_smartcasts(mtc.smartcasts)
 	mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 	defer {
-		mtc.smartcasts = saved_smartcasts.move()
+		mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
 	for i in body_start .. node.children_count {
 		child_id := tc.a.child(node, i)
@@ -15181,10 +15180,10 @@ fn (tc &TypeChecker) match_branch_definitely_returns_with_context(node flat.Node
 	// Only the `smartcasts` binding needs isolation here (see
 	// branch_tail_never_returns); avoid the ~11KB full struct copy.
 	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
-	mut saved_smartcasts := mtc.smartcasts.move()
+	saved_smartcasts := clone_smartcasts(mtc.smartcasts)
 	mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 	defer {
-		mtc.smartcasts = saved_smartcasts.move()
+		mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 	}
 	mtc.smartcasts[subject_key] = tc.parse_type(smartcast_type)
 	return tc.match_branch_definitely_returns(branch)

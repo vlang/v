@@ -258,15 +258,6 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
 }
 
-fn test_map_equality_fallback_does_not_infer_value_type_from_size() {
-	mut g := FlatGen.new()
-	g.map_equality_fallback_decls()
-	c_code := g.sb.str()
-	assert c_code.contains('v3_map_value_eq(void* a, void* b, int value_bytes) { return memcmp(a, b, value_bytes) == 0; }')
-	assert !c_code.contains('value_bytes == sizeof(map)')
-	assert !c_code.contains('value_bytes == sizeof(string)')
-}
-
 fn test_builtin_heap_tracking_fallbacks_do_not_redefine_user_hooks() {
 	mut fallback := FlatGen.new()
 	fallback.heap_tracking_fallback_decls()

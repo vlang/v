@@ -109,6 +109,9 @@ jobs:
           echo "::endgroup::"
           echo "::group::Build V"
           git config --global --add safe.directory .
+          # V3 is now part of the first bootstrap target and can exceed OpenBSD's
+          # default per-process data-segment limit even though the VM has 8 GiB.
+          ulimit -d 4194304
           gmake
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
@@ -149,6 +152,9 @@ jobs:
           echo "::endgroup::"
           echo "::group::Build V"
           git config --global --add safe.directory .
+          # V3 is now part of the first bootstrap target and can exceed OpenBSD's
+          # default per-process data-segment limit even though the VM has 8 GiB.
+          ulimit -d 4194304
           gmake
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3

@@ -990,21 +990,20 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			'++${idx}'
 		}
 		map_len := g.new_tmp_var()
-		key_values := '${cond_var}${dot_or_ptr}data->key_values'
 		g.empty_line = true
-		g.writeln('${ast.int_type_name} ${map_len} = ${key_values}.len;')
+		g.writeln('${ast.int_type_name} ${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
 		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${map_len}; ${plus_plus_idx} ) {')
 		// TODO: don't have this check when the map has no deleted elements
 		g.indent++
 		diff := g.new_tmp_var()
-		g.writeln('${ast.int_type_name} ${diff} = ${key_values}.len - ${map_len};')
-		g.writeln('${map_len} = ${key_values}.len;')
+		g.writeln('${ast.int_type_name} ${diff} = ${cond_var}${dot_or_ptr}key_values.len - ${map_len};')
+		g.writeln('${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
 		// TODO: optimize this
 		g.writeln('if (${diff} < 0) {')
 		g.writeln('\t${idx} = -1;')
 		g.writeln('\tcontinue;')
 		g.writeln('}')
-		g.writeln('if (!builtin__DenseArray_has_index(&${key_values}, ${idx})) {continue;}')
+		g.writeln('if (!builtin__DenseArray_has_index(&${cond_var}${dot_or_ptr}key_values, ${idx})) {continue;}')
 		if node.cond is ast.Ident {
 			cond_ident := node.cond as ast.Ident
 			resolved_key_type := g.resolve_current_fn_generic_param_key_type(cond_ident.name)
@@ -1027,9 +1026,9 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			key := c_name(node.key_var)
 			if g.table.final_sym(node.key_type).kind == .array_fixed {
 				g.writeln('${key_styp} ${key};')
-				g.writeln('memcpy(${key}, builtin__DenseArray_key(&${key_values}, ${idx}), sizeof(${key_styp}));')
+				g.writeln('memcpy(${key}, builtin__DenseArray_key(&${cond_var}${dot_or_ptr}key_values, ${idx}), sizeof(${key_styp}));')
 			} else {
-				g.writeln('${key_styp} ${key} = *(${key_styp}*)builtin__DenseArray_key(&${key_values}, ${idx});')
+				g.writeln('${key_styp} ${key} = *(${key_styp}*)builtin__DenseArray_key(&${cond_var}${dot_or_ptr}key_values, ${idx});')
 			}
 			// TODO: analyze whether node.key_type has a .clone() method and call .clone() for all types:
 			if node.key_type == ast.string_type {
@@ -1042,11 +1041,11 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				tcc_bug := c_name(node.val_var)
 				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
 				g.write(' = (*(voidptr*)')
-				g.writeln('builtin__DenseArray_value(&${key_values}, ${idx}));')
+				g.writeln('builtin__DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}));')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
 				val_styp := g.styp(node.val_type)
 				g.writeln('${val_styp} ${c_name(node.val_var)};')
-				g.writeln('memcpy(*(${val_styp}*)${c_name(node.val_var)}, (byte*)builtin__DenseArray_value(&${key_values}, ${idx}), sizeof(${val_styp}));')
+				g.writeln('memcpy(*(${val_styp}*)${c_name(node.val_var)}, (byte*)builtin__DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}), sizeof(${val_styp}));')
 			} else {
 				val_styp := g.styp(node.val_type)
 				if node.val_is_mut || node.val_is_ref {
@@ -1058,7 +1057,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				} else {
 					g.write('${val_styp} ${c_name(node.val_var)} = (*(${val_styp}*)')
 				}
-				g.writeln('builtin__DenseArray_value(&${key_values}, ${idx}));')
+				g.writeln('builtin__DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}));')
 			}
 		}
 		g.indent--

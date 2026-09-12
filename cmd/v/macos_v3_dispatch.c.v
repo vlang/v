@@ -129,11 +129,15 @@ fn launch_macos_v1_fallback(executable string, args []string, is_verbose bool, r
 	if is_verbose || os.getenv('V3_CACHE_TRACE') != '' {
 		eprintln('${reason}; retrying with `${executable}`.')
 	}
-	os.execvp(executable, args) or {
+	os.execvp(executable, macos_v1_fallback_args(args)) or {
 		eprintln('failed to launch the V1 compatibility compiler `${executable}`: ${err}')
 		exit(1)
 	}
 	exit(1)
+}
+
+fn macos_v1_fallback_args(args []string) []string {
+	return args.filter(it !in [macos_v3_compat_c99_flag, macos_v3_internal_quiet_flag])
 }
 
 fn macos_v3_v1_fallback_executable() string {
@@ -175,6 +179,11 @@ fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool
 		|| command == 'test' || command in external_tools
 		|| macos_v3_non_compilation_command(command) {
 		return false
+	}
+	// Preserve established flags that the V3 argument parser or backend does not
+	// implement yet. Explicit V3/FastC requests above remain strict.
+	if v3_has_unsupported_preferences(prefs) {
+		return true
 	}
 	// Portable VC generation and non-host C targets were compatibility-compiler
 	// modes before the V3-only self-build change. Do not make V3 fail first (or,

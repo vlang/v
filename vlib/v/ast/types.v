@@ -1503,8 +1503,13 @@ pub fn (t &Table) type_size(typ Type) (int, int) {
 			size = info.size * elem_size
 			align = elem_align
 		}
+		// TODO: hardcoded:
 		.map {
-			size = t.pointer_size
+			size = if t.pointer_size == 8 {
+				$if new_int ? && x64 { 144 } $else { 120 }
+			} else {
+				80
+			}
 			align = t.pointer_size
 		}
 		.array {

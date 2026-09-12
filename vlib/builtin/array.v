@@ -299,7 +299,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 	return arr
 }
 
-fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map, free_seed bool) array {
+fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array {
 	panic_on_negative_len(mylen)
 	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
@@ -321,9 +321,6 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map, free_
 				eptr += arr.element_size
 			}
 		}
-	}
-	if free_seed {
-		unsafe { val.free() }
 	}
 	return arr
 }

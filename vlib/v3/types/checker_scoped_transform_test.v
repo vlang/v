@@ -72,7 +72,7 @@ mut:
 	values      &u8 = unsafe { nil }
 }
 
-struct SignatureMapDataLayoutForTest {
+struct SignatureMapLayoutForTest {
 	key_bytes   int
 	value_bytes int
 mut:
@@ -88,15 +88,10 @@ mut:
 	clone_fn        voidptr
 	free_fn         voidptr
 pub mut:
-	count int
+	len int
 }
 
-struct SignatureMapLayoutForTest {
-mut:
-	data &SignatureMapDataLayoutForTest = unsafe { nil }
-}
-
-fn signature_map_storage_owned_by_scope(scope voidptr, layout &SignatureMapDataLayoutForTest) bool {
+fn signature_map_storage_owned_by_scope(scope voidptr, layout &SignatureMapLayoutForTest) bool {
 	$if prealloc {
 		return unsafe { prealloc_scope_owns(scope, layout.key_values.keys) }
 			|| unsafe { prealloc_scope_owns(scope, layout.key_values.values) }
@@ -142,13 +137,11 @@ fn test_rebuild_scoped_transform_signatures_and_suffix_index_after_growth() {
 			tc.fn_variadic[name] = false
 			tc.specialized_generic_fns[name] = true
 		}
-		ret_scoped := unsafe { (&SignatureMapLayoutForTest(&tc.fn_ret_types)).data }
-		params_scoped := unsafe { (&SignatureMapLayoutForTest(&tc.fn_param_types)).data }
-		variadic_scoped := unsafe { (&SignatureMapLayoutForTest(&tc.fn_variadic)).data }
-		specialized_scoped := unsafe {
-			(&SignatureMapLayoutForTest(&tc.specialized_generic_fns)).data
-		}
-		suffix_scoped := unsafe { (&SignatureMapLayoutForTest(&tc.receiver_method_suffix_index)).data }
+		ret_scoped := unsafe { &SignatureMapLayoutForTest(&tc.fn_ret_types) }
+		params_scoped := unsafe { &SignatureMapLayoutForTest(&tc.fn_param_types) }
+		variadic_scoped := unsafe { &SignatureMapLayoutForTest(&tc.fn_variadic) }
+		specialized_scoped := unsafe { &SignatureMapLayoutForTest(&tc.specialized_generic_fns) }
+		suffix_scoped := unsafe { &SignatureMapLayoutForTest(&tc.receiver_method_suffix_index) }
 		assert signature_map_storage_owned_by_scope(scope, ret_scoped)
 		assert signature_map_storage_owned_by_scope(scope, params_scoped)
 		assert signature_map_storage_owned_by_scope(scope, variadic_scoped)
@@ -159,13 +152,11 @@ fn test_rebuild_scoped_transform_signatures_and_suffix_index_after_growth() {
 		tc.rebuild_scoped_transform_signature_maps()
 		tc.rebuild_fn_param_suffix_index()
 		assert tc.transform_signature_names_log.len == 0
-		ret_rebuilt := unsafe { (&SignatureMapLayoutForTest(&tc.fn_ret_types)).data }
-		params_rebuilt := unsafe { (&SignatureMapLayoutForTest(&tc.fn_param_types)).data }
-		variadic_rebuilt := unsafe { (&SignatureMapLayoutForTest(&tc.fn_variadic)).data }
-		specialized_rebuilt := unsafe {
-			(&SignatureMapLayoutForTest(&tc.specialized_generic_fns)).data
-		}
-		suffix_rebuilt := unsafe { (&SignatureMapLayoutForTest(&tc.receiver_method_suffix_index)).data }
+		ret_rebuilt := unsafe { &SignatureMapLayoutForTest(&tc.fn_ret_types) }
+		params_rebuilt := unsafe { &SignatureMapLayoutForTest(&tc.fn_param_types) }
+		variadic_rebuilt := unsafe { &SignatureMapLayoutForTest(&tc.fn_variadic) }
+		specialized_rebuilt := unsafe { &SignatureMapLayoutForTest(&tc.specialized_generic_fns) }
+		suffix_rebuilt := unsafe { &SignatureMapLayoutForTest(&tc.receiver_method_suffix_index) }
 		assert !signature_map_storage_owned_by_scope(scope, ret_rebuilt)
 		assert !signature_map_storage_owned_by_scope(scope, params_rebuilt)
 		assert !signature_map_storage_owned_by_scope(scope, variadic_rebuilt)

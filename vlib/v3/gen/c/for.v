@@ -299,10 +299,10 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 						g.writeln('map ${map_src} = ${container_str};')
 						g.writeln('map ${map_snapshot_var} = map__clone(&${map_src});')
 					}
-					'${map_snapshot_var}.data->key_values'
+					'${map_snapshot_var}.key_values'
 				} else {
 					access := if container_storage_is_pointer { '->' } else { '.' }
-					'(${container_str})${access}data->key_values'
+					'(${container_str})${access}key_values'
 				}
 				g.writeln('for (int ${iter_var} = 0; ${iter_var} < ${key_values}.len; ${iter_var}++) {')
 				g.indent++
@@ -666,7 +666,7 @@ fn (g &FlatGen) node_contains_delete_call(id flat.NodeId, container_key string) 
 
 fn (mut g FlatGen) gen_map_loop_copyback_dirty_checks(map_ptr_expr string, key_ptr_expr string) {
 	for guard in g.map_loop_copyback_guards {
-		g.writeln('if (!${guard.dirty_var} && (${map_ptr_expr}) == (${guard.map_ref}) && (${guard.map_ref})->data->key_eq_fn(${key_ptr_expr}, ${guard.key_ref})) ${guard.dirty_var} = true;')
+		g.writeln('if (!${guard.dirty_var} && (${map_ptr_expr}) == (${guard.map_ref}) && (${guard.map_ref})->key_eq_fn(${key_ptr_expr}, ${guard.key_ref})) ${guard.dirty_var} = true;')
 	}
 }
 

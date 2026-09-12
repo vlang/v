@@ -170,7 +170,7 @@ fn run_good_project_result(v3_bin string, name string, flags string, files map[s
 	run := os.execute(good_bin)
 	assert run.exit_code == 0, run.output
 	return GoodProjectRun{
-		run_output:     run.output.trim_space()
+		run_output: run.output.trim_space()
 		compile_output: compile.output
 	}
 }
@@ -240,18 +240,15 @@ fn main() {
 
 fn test_filelock_helpers_are_inlined_in_generated_c() {
 	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'filelock_helpers_inline',
-		'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_unlock(i32(-1), u64(0), u64(0))\n}\n')
+	c_source := gen_c(v3_bin, 'filelock_helpers_inline', 'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_unlock(i32(-1), u64(0), u64(0))\n}\n')
 	assert !c_source.contains('filelock_helpers.h')
 	assert c_source.contains('static inline int v_filelock_lock(')
 	assert c_source.contains('static inline int v_filelock_unlock(')
 	assert c_source.contains('#ifndef V_OS_FILELOCK_HELPERS_H')
 	assert !c_source.contains('v_filelock_status')
-	status_source := gen_c(v3_bin, 'filelock_custom_prefix_decl',
-		'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\nfn C.v_filelock_status() int\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_status()\n}\n')
+	status_source := gen_c(v3_bin, 'filelock_custom_prefix_decl', 'import os.filelock\n\nfn C.v_filelock_lock(i32, i32, i32, u64, u64) i32\nfn C.v_filelock_unlock(i32, u64, u64) i32\nfn C.v_filelock_status() int\n\nfn main() {\n\t_ = filelock.LockMode.exclusive\n\t_ = C.v_filelock_lock(i32(-1), 1, 1, u64(0), u64(0))\n\t_ = C.v_filelock_status()\n}\n')
 	assert status_source.contains('int v_filelock_status(')
-	out := run_good(v3_bin, 'filelock_user_names_not_helpers',
-		'fn v_filelock_lock() int {\n\treturn 3\n}\n\nfn v_filelock_unlock() int {\n\treturn 4\n}\n\nfn main() {\n\tprintln(int_str(v_filelock_lock() + v_filelock_unlock()))\n}\n')
+	out := run_good(v3_bin, 'filelock_user_names_not_helpers', 'fn v_filelock_lock() int {\n\treturn 3\n}\n\nfn v_filelock_unlock() int {\n\treturn 4\n}\n\nfn main() {\n\tprintln(int_str(v_filelock_lock() + v_filelock_unlock()))\n}\n')
 	assert out == '7'
 }
 
@@ -335,14 +332,9 @@ fn main() {
 
 fn test_multi_return_assignment_requires_option_result_handling() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'unhandled_result_multi_decl_assign',
-		"fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n",
-		'requires `or {}`, `!`, or `?` handling')
-	run_bad(v3_bin, 'unhandled_result_multi_assign',
-		"fn pair() !(int, string) {\n\treturn 4, 'ok'\n}\n\nfn main() {\n\tmut a := 0\n\tmut b := ''\n\ta, b = pair()\n\tprintln(int_str(a) + b)\n}\n",
-		'requires `or {}`, `!`, or `?` handling')
-	out := run_good(v3_bin, 'handled_result_multi_decl_assign',
-		"fn pair() !(int, string) {\n\treturn 5, 'ok'\n}\n\nfn main() {\n\ta, b := pair() or { panic(err) }\n\tprintln(int_str(a) + b)\n}\n")
+	run_bad(v3_bin, 'unhandled_result_multi_decl_assign', "fn pair() !(int, string) {\n\treturn 3, 'ok'\n}\n\nfn main() {\n\ta, b := pair()\n\tprintln(int_str(a) + b)\n}\n", 'requires `or {}`, `!`, or `?` handling')
+	run_bad(v3_bin, 'unhandled_result_multi_assign', "fn pair() !(int, string) {\n\treturn 4, 'ok'\n}\n\nfn main() {\n\tmut a := 0\n\tmut b := ''\n\ta, b = pair()\n\tprintln(int_str(a) + b)\n}\n", 'requires `or {}`, `!`, or `?` handling')
+	out := run_good(v3_bin, 'handled_result_multi_decl_assign', "fn pair() !(int, string) {\n\treturn 5, 'ok'\n}\n\nfn main() {\n\ta, b := pair() or { panic(err) }\n\tprintln(int_str(a) + b)\n}\n")
 	assert out == '5ok'
 }
 
@@ -383,16 +375,14 @@ fn test_sum_type_rejects_pointer_variants() {
 type Item = &Foo | int
 
 fn main() {}
-',
-		'sum type cannot hold a reference type')
+', 'sum type cannot hold a reference type')
 	run_bad(v3_bin, 'pointer_alias_sum_variant', 'struct Foo {}
 
 type FooPointer = &Foo
 type Item = FooPointer | int
 
 fn main() {}
-',
-		'sum type cannot hold a reference type')
+', 'sum type cannot hold a reference type')
 	run_bad(v3_bin, 'is_pointer_value_variant_rejected', 'struct Foo {}
 
 type Item = Foo | int
@@ -403,8 +393,7 @@ fn main() {
 		println("wrong")
 	}
 }
-',
-		'`&Foo` is not a variant of sum type `Item`')
+', '`&Foo` is not a variant of sum type `Item`')
 }
 
 fn test_single_letter_enum_names_are_rejected() {
@@ -414,8 +403,7 @@ fn test_single_letter_enum_names_are_rejected() {
 }
 
 fn main() {}
-',
-		'single letter capital names are reserved for generic template types.')
+', 'single letter capital names are reserved for generic template types.')
 }
 
 fn test_nested_sum_is_check_evaluates_subject_once() {
@@ -1537,11 +1525,8 @@ fn test_select_receive_assignment_checks_lhs_type() {
 	}
 	println(value.str())
 }
-',
-		'cannot assign `int` to `bool`')
-	run_bad(v3_bin, 'select_receive_assign_string_mismatch',
-		"fn main() {\n\tch := chan int{}\n\tmut value := ''\n\tselect {\n\t\tvalue = <-ch {}\n\t\telse {}\n\t}\n\tprintln(value)\n}\n",
-		'cannot assign `int` to `string`')
+', 'cannot assign `int` to `bool`')
+	run_bad(v3_bin, 'select_receive_assign_string_mismatch', "fn main() {\n\tch := chan int{}\n\tmut value := ''\n\tselect {\n\t\tvalue = <-ch {}\n\t\telse {}\n\t}\n\tprintln(value)\n}\n", 'cannot assign `int` to `string`')
 }
 
 fn test_select_receive_assignment_applies_destination_conversions() {
@@ -1841,23 +1826,20 @@ fn test_select_compound_receive_assignment_is_rejected() {
 	}
 	println(int_str(value))
 }
-',
-		'compound receive assignment `+=` is not supported in `select`')
+', 'compound receive assignment `+=` is not supported in `select`')
 }
 
 fn test_select_assignment_cases_require_receive_rhs() {
 	v3_bin := build_v3()
 	for op in [':=', '=', '+='] {
-		run_bad(v3_bin, 'select_non_receive_${op.replace('=', 'eq').replace(':', 'decl').replace('+',
-			'plus')}', 'fn main() {
+		run_bad(v3_bin, 'select_non_receive_${op.replace('=', 'eq').replace(':', 'decl').replace('+', 'plus')}', 'fn main() {
 	mut value := 0
 	select {
 		value ${op} 1 {}
 	}
 	println(int_str(value))
 }
-',
-			'select assignment case requires a channel receive on the right side')
+', 'select assignment case requires a channel receive on the right side')
 	}
 }
 
@@ -1871,8 +1853,7 @@ fn main() {
 		10 * time.millisecond {}
 	}
 }
-',
-		'`else` and timeout value are mutually exclusive `select` keys')
+', '`else` and timeout value are mutually exclusive `select` keys')
 	run_bad(v3_bin, 'select_timeout_before_else', 'import time
 
 fn main() {
@@ -1881,8 +1862,7 @@ fn main() {
 		else {}
 	}
 }
-',
-		'`else` and timeout value are mutually exclusive `select` keys')
+', '`else` and timeout value are mutually exclusive `select` keys')
 }
 
 fn test_select_rejects_duplicate_timeouts() {
@@ -1895,8 +1875,7 @@ fn main() {
 		20 * time.millisecond {}
 	}
 }
-',
-		'at most one timeout branch allowed in `select` block')
+', 'at most one timeout branch allowed in `select` block')
 }
 
 fn test_select_timeout_only_waits_and_runs_branch() {
@@ -1926,8 +1905,7 @@ fn test_select_receive_declaration_requires_identifier() {
 		else {}
 	}
 }
-',
-		'select receive declaration requires a plain identifier on the left side')
+', 'select receive declaration requires a plain identifier on the left side')
 }
 
 fn test_comptime_if_threads_expression_is_deferred() {
@@ -2039,8 +2017,7 @@ fn main() {
 
 fn test_comptime_if_threads_mixed_conditions_keep_normal_flag_evaluation() {
 	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'comptime_threads_mixed_conditions',
-		'-d mixed_threads_flag', 'fn main() {
+	out := run_good_with_flags(v3_bin, 'comptime_threads_mixed_conditions', '-d mixed_threads_flag', 'fn main() {
 	$if mixed_threads_flag ? || threads {
 		println("statement or")
 	} $else {
@@ -2092,8 +2069,7 @@ fn main() {
 '
 	without_define := run_good(v3_bin, 'comptime_custom_threads_default', source)
 	assert without_define == 'optional disabled\n7\ndefine enabled\n41\n7'
-	with_define := run_good_with_flags(v3_bin, 'comptime_custom_threads_enabled', '-d threads',
-		source)
+	with_define := run_good_with_flags(v3_bin, 'comptime_custom_threads_enabled', '-d threads', source)
 	assert with_define == 'optional enabled\n41\ndefine enabled\n41\n41'
 }
 
@@ -2271,61 +2247,38 @@ fn main() {
 
 fn test_context_dependent_if_branches_infer_wrapper_types() {
 	v3_bin := build_v3()
-	opt_out := run_good(v3_bin, 'if_none_branch_infers_option',
-		'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n')
+	opt_out := run_good(v3_bin, 'if_none_branch_infers_option', 'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n')
 	assert opt_out == '3\n-1'
-	opt_assign_out := run_good(v3_bin, 'if_none_branch_uses_option_assignment_context',
-		'fn main() {\n\tflag := false\n\tmut value := ?int(none)\n\tvalue = if flag { none } else { 8 }\n\tprintln(int_str(value or { -1 }))\n}\n')
+	opt_assign_out := run_good(v3_bin, 'if_none_branch_uses_option_assignment_context', 'fn main() {\n\tflag := false\n\tmut value := ?int(none)\n\tvalue = if flag { none } else { 8 }\n\tprintln(int_str(value or { -1 }))\n}\n')
 	assert opt_assign_out == '8'
-	res_out := run_good(v3_bin, 'if_error_branch_infers_result',
-		"fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
+	res_out := run_good(v3_bin, 'if_error_branch_infers_result', "fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
 	assert res_out == '4\n-1'
-	code_out := run_good(v3_bin, 'if_error_with_code_branch_infers_result',
-		"fn maybe(flag bool) !int {\n\treturn if flag { error_with_code('bad', 1) } else { 6 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
+	code_out := run_good(v3_bin, 'if_error_with_code_branch_infers_result', "fn maybe(flag bool) !int {\n\treturn if flag { error_with_code('bad', 1) } else { 6 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
 	assert code_out == '6\n-1'
-	match_code_out := run_good(v3_bin, 'match_error_with_code_branch_infers_result',
-		"fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n")
+	match_code_out := run_good(v3_bin, 'match_error_with_code_branch_infers_result', "fn maybe(n int) !int {\n\treturn match n {\n\t\t0 { error_with_code('bad', 2) }\n\t\telse { 7 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(maybe(1) or { -1 }))\n\tprintln(int_str(maybe(0) or { -1 }))\n}\n")
 	assert match_code_out == '7\n-1'
-	run_bad(v3_bin, 'if_none_branch_without_context_rejected',
-		'fn main() {\n\tx := if true { none } else { 1 }\n\tprintln(x)\n}\n',
-		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context',
-		'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n',
-		'if-expression branch type mismatch')
-	option_error_out := run_good(v3_bin, 'if_error_branch_infers_option',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	run_bad(v3_bin, 'if_none_branch_without_context_rejected', 'fn main() {\n\tx := if true { none } else { 1 }\n\tprintln(x)\n}\n', 'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context', 'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n', 'if-expression branch type mismatch')
+	option_error_out := run_good(v3_bin, 'if_error_branch_infers_option', "fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
 	assert option_error_out == '1\nbad'
-	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload',
-		'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n',
-		'if-expression branch type mismatch')
-	match_option_error_out := run_good(v3_bin, 'match_error_branch_infers_option',
-		"fn f(n int) ?int {\n\treturn match n {\n\t\t0 { error('bad') }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(1) or { -1 }))\n\t_ := f(0) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload', 'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n', 'if-expression branch type mismatch')
+	match_option_error_out := run_good(v3_bin, 'match_error_branch_infers_option', "fn f(n int) ?int {\n\treturn match n {\n\t\t0 { error('bad') }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(1) or { -1 }))\n\t_ := f(0) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
 	assert match_option_error_out == '1\nbad'
-	run_bad(v3_bin, 'match_none_branch_rejected_for_result_payload',
-		'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n',
-		'cannot return')
-	run_bad(v3_bin, 'if_option_void_branch_rejected_for_payload',
-		'fn maybe_void() ? {\n\treturn\n}\n\nfn f(ok bool) ?int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n',
-		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'if_result_void_branch_rejected_for_payload',
-		'fn maybe_void() ! {\n\treturn\n}\n\nfn f(ok bool) !int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n',
-		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'match_option_void_branch_rejected_for_payload',
-		'fn maybe_void() ? {\n\treturn\n}\n\nfn f(n int) ?int {\n\treturn match n {\n\t\t0 { maybe_void() }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(0) or { 0 }\n}\n',
-		'cannot return')
+	run_bad(v3_bin, 'match_none_branch_rejected_for_result_payload', 'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n', 'cannot return')
+	run_bad(v3_bin, 'if_option_void_branch_rejected_for_payload', 'fn maybe_void() ? {\n\treturn\n}\n\nfn f(ok bool) ?int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n', 'if-expression branch type mismatch')
+	run_bad(v3_bin, 'if_result_void_branch_rejected_for_payload', 'fn maybe_void() ! {\n\treturn\n}\n\nfn f(ok bool) !int {\n\treturn if ok { maybe_void() } else { 1 }\n}\n\nfn main() {\n\t_ := f(true) or { 0 }\n}\n', 'if-expression branch type mismatch')
+	run_bad(v3_bin, 'match_option_void_branch_rejected_for_payload', 'fn maybe_void() ? {\n\treturn\n}\n\nfn f(n int) ?int {\n\treturn match n {\n\t\t0 { maybe_void() }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(0) or { 0 }\n}\n', 'cannot return')
 }
 
 fn test_assoc_return_runs_defers() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'assoc_return_runs_defers',
-		'struct Point {\n\tx int\n\ty int\n}\n\n__global hit int\n\nfn make_point() Point {\n\tbase := Point{\n\t\tx: 1\n\t\ty: 2\n\t}\n\tdefer {\n\t\thit = 7\n\t}\n\treturn Point{\n\t\t...base\n\t\tx: 5\n\t}\n}\n\nfn main() {\n\tp := make_point()\n\tprintln(int_str(p.x))\n\tprintln(int_str(hit))\n}\n')
+	out := run_good(v3_bin, 'assoc_return_runs_defers', 'struct Point {\n\tx int\n\ty int\n}\n\n__global hit int\n\nfn make_point() Point {\n\tbase := Point{\n\t\tx: 1\n\t\ty: 2\n\t}\n\tdefer {\n\t\thit = 7\n\t}\n\treturn Point{\n\t\t...base\n\t\tx: 5\n\t}\n}\n\nfn main() {\n\tp := make_point()\n\tprintln(int_str(p.x))\n\tprintln(int_str(hit))\n}\n')
 	assert out == '5\n7'
 }
 
 fn test_pointer_arithmetic_deref_keeps_pointer_type() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'pointer_arithmetic_deref',
-		'fn main() {\n\tmut nums := [1, 2]!\n\tp := unsafe { &nums[0] }\n\tv := unsafe { *(p + 1) }\n\tprintln(int_str(v))\n}\n')
+	out := run_good(v3_bin, 'pointer_arithmetic_deref', 'fn main() {\n\tmut nums := [1, 2]!\n\tp := unsafe { &nums[0] }\n\tv := unsafe { *(p + 1) }\n\tprintln(int_str(v))\n}\n')
 	assert out == '2'
 }
 
@@ -2335,8 +2288,7 @@ fn test_builtin_addr_requires_unsafe_and_addresses_pointer_variables() {
 	x := 1
 	_ := __addr(x)
 }
-',
-		'`__addr` can only be used in unsafe blocks')
+', '`__addr` can only be used in unsafe blocks')
 	source := 'fn main() {
 	mut a := 1
 	mut b := 2
@@ -2391,19 +2343,16 @@ fn main() {
 
 fn test_array_alias_free_uses_array_builtin_inside_alias_method() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'array_alias_free_builtin',
-		'import strings\n\nfn main() {\n\tmut b := strings.new_builder(4)\n\tb.write_string("ok")\n\tunsafe { b.free() }\n\tprintln("ok")\n}\n')
+	out := run_good(v3_bin, 'array_alias_free_builtin', 'import strings\n\nfn main() {\n\tmut b := strings.new_builder(4)\n\tb.write_string("ok")\n\tunsafe { b.free() }\n\tprintln("ok")\n}\n')
 	assert out == 'ok'
 }
 
 fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
 	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'dynamic_enum_array_literal_width',
-		'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
+	c_source := gen_c(v3_bin, 'dynamic_enum_array_literal_width', 'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
 	assert c_source.contains('array_new(\tsizeof(Tiny), 0, 2)'), c_source
 	assert !c_source.contains('Array values = array_new(\tsizeof(int), 0, 2)'), c_source
-	out := run_good(v3_bin, 'dynamic_enum_array_literal_width_run',
-		'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
+	out := run_good(v3_bin, 'dynamic_enum_array_literal_width_run', 'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
 	assert out == '0\n1'
 }
 
@@ -2563,11 +2512,9 @@ fn main() {
 
 fn test_channel_alias_close_method_wins_over_builtin() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'channel_alias_close_method_before_builtin',
-		'type MyChan = chan int\n\nfn (c MyChan) close() int {\n\treturn 71\n}\n\nfn main() {\n\tch := MyChan(unsafe { nil })\n\tprintln(int_str(ch.close()))\n}\n')
+	out := run_good(v3_bin, 'channel_alias_close_method_before_builtin', 'type MyChan = chan int\n\nfn (c MyChan) close() int {\n\treturn 71\n}\n\nfn main() {\n\tch := MyChan(unsafe { nil })\n\tprintln(int_str(ch.close()))\n}\n')
 	assert out == '71'
-	pointer_c := gen_c(v3_bin, 'pointer_channel_close_lowers_to_runtime',
-		'fn main() {\n\tmut ch := chan bool{cap: 1}\n\tp := &ch\n\tp.close()\n}\n')
+	pointer_c := gen_c(v3_bin, 'pointer_channel_close_lowers_to_runtime', 'fn main() {\n\tmut ch := chan bool{cap: 1}\n\tp := &ch\n\tp.close()\n}\n')
 	assert pointer_c.contains('sync__Channel__close(*p,')
 }
 
@@ -2620,8 +2567,7 @@ fn test_explicit_return_semicolon_keeps_unreachable_check() {
 	println("unreachable")
 }
 fn main() {}
-',
-		'unreachable code')
+', 'unreachable code')
 	run_bad(v3_bin, 'nested_explicit_return_semicolon_unreachable', 'fn stop(ok bool) {
 	if ok {
 		return;
@@ -2629,8 +2575,7 @@ fn main() {}
 	}
 }
 fn main() {}
-',
-		'unreachable code')
+', 'unreachable code')
 	run_bad(v3_bin, 'nested_return_semicolon_unreachable', 'fn stop(ok bool) {
 	if ok {
 		return;
@@ -2639,8 +2584,7 @@ fn main() {}
 	println("unreachable")
 }
 fn main() {}
-',
-		'unreachable code')
+', 'unreachable code')
 }
 
 fn test_qualified_enum_str_requires_exact_receiver() {
@@ -2655,34 +2599,26 @@ fn test_qualified_enum_str_requires_exact_receiver() {
 
 fn test_array_builtin_method_fallback_keeps_return_type() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'array_builtin_method_fallback',
-		'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tnums << 3\n\tptrs := unsafe { nums.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n')
+	out := run_good(v3_bin, 'array_builtin_method_fallback', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tnums << 3\n\tptrs := unsafe { nums.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n')
 	assert out == '3'
-	ptr_out := run_good(v3_bin, 'array_pointers_pointer_receiver',
-		'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tp := &nums\n\tptrs := unsafe { p.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n')
+	ptr_out := run_good(v3_bin, 'array_pointers_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tp := &nums\n\tptrs := unsafe { p.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n')
 	assert ptr_out == '1'
-	reverse_out := run_good(v3_bin, 'array_reverse_pointer_receiver',
-		'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tp := &nums\n\tp.reverse()\n\tprintln("ok")\n}\n')
+	reverse_out := run_good(v3_bin, 'array_reverse_pointer_receiver', 'fn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tnums << 2\n\tp := &nums\n\tp.reverse()\n\tprintln("ok")\n}\n')
 	assert reverse_out == 'ok'
-	exact_out := run_good(v3_bin, 'exact_array_receiver_method_before_builtin',
-		'fn (a []int) pointers() []int {\n\treturn a\n}\n\nfn main() {\n\tnums := [9]\n\tptrs := nums.pointers()\n\tprintln(int_str(ptrs[0]))\n}\n')
+	exact_out := run_good(v3_bin, 'exact_array_receiver_method_before_builtin', 'fn (a []int) pointers() []int {\n\treturn a\n}\n\nfn main() {\n\tnums := [9]\n\tptrs := nums.pointers()\n\tprintln(int_str(ptrs[0]))\n}\n')
 	assert exact_out == '9'
-	exact_clear_out := run_good(v3_bin, 'exact_array_clear_method_before_cgen',
-		'fn (a []int) clear() int {\n\treturn 5\n}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tprintln(int_str(nums.clear()))\n\tprintln(int_str(nums.len))\n}\n')
+	exact_clear_out := run_good(v3_bin, 'exact_array_clear_method_before_cgen', 'fn (a []int) clear() int {\n\treturn 5\n}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tprintln(int_str(nums.clear()))\n\tprintln(int_str(nums.len))\n}\n')
 	assert exact_clear_out == '5\n1'
-	exact_clone_out := run_good(v3_bin, 'exact_array_clone_method_before_builtin',
-		'fn (a []int) clone() int {\n\treturn 12\n}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tprintln(int_str(nums.clone()))\n}\n')
+	exact_clone_out := run_good(v3_bin, 'exact_array_clone_method_before_builtin', 'fn (a []int) clone() int {\n\treturn 12\n}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tprintln(int_str(nums.clone()))\n}\n')
 	assert exact_clone_out == '12'
-	exact_reverse_out := run_good(v3_bin, 'exact_array_reverse_method_before_builtin',
-		'fn (a []int) reverse() int {\n\treturn 13\n}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tprintln(int_str(nums.reverse()))\n}\n')
+	exact_reverse_out := run_good(v3_bin, 'exact_array_reverse_method_before_builtin', 'fn (a []int) reverse() int {\n\treturn 13\n}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tprintln(int_str(nums.reverse()))\n}\n')
 	assert exact_reverse_out == '13'
 	module_array_prefix_out := run_good_project(v3_bin, 'array_prefix_module_receiver_method', {
 		'main.v':            'module main\n\nimport array_utils\n\nfn main() {\n\tprintln(array_utils.run())\n}\n'
 		'array_utils/mod.v': 'module array_utils\n\nfn (a []int) reverse() int {\n\treturn 73\n}\n\npub fn run() string {\n\tmut nums := []int{}\n\tnums << 1\n\treturn int_str(nums.reverse())\n}\n'
 	}, 'main.v')
 	assert module_array_prefix_out == '73'
-	module_array_runtime_prefix_out := run_good_project(v3_bin,
-		'array_runtime_prefix_module_receiver_method', {
+	module_array_runtime_prefix_out := run_good_project(v3_bin, 'array_runtime_prefix_module_receiver_method', {
 		'main.v':             'module main\n\nimport array__utils\n\nfn main() {\n\tprintln(array__utils.run())\n}\n'
 		'array__utils/mod.v': 'module array__utils\n\nfn (a []int) reverse() int {\n\treturn 83\n}\n\npub fn run() string {\n\tmut nums := []int{}\n\tnums << 1\n\treturn int_str(nums.reverse())\n}\n'
 	}, 'main.v')
@@ -2692,47 +2628,31 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 		'thing/mod.v': 'module thing\n\nfn (a []int) move() int {\n\treturn 91\n}\n\npub fn run() string {\n\tmut nums := []int{}\n\tnums << 1\n\treturn int_str(nums.move())\n}\n'
 	}, 'main.v')
 	assert module_array_move_out == '91'
-	exact_prepend_out := run_good(v3_bin, 'exact_array_prepend_method_before_builtin',
-		'fn (a []int) prepend(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tprintln(int_str(nums.prepend(4)))\n}\n')
+	exact_prepend_out := run_good(v3_bin, 'exact_array_prepend_method_before_builtin', 'fn (a []int) prepend(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\tprintln(int_str(nums.prepend(4)))\n}\n')
 	assert exact_prepend_out == '5'
-	run_bad(v3_bin, 'exact_array_first_method_checked_before_builtin',
-		'fn (a []int) first() string {\n\treturn "bad"\n}\n\nfn take_int(x int) {}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\ttake_int(nums.first())\n}\n',
-		'cannot use `string` as argument 1 to `take_int`; expected `int`')
-	fixed_dynamic_out := run_good(v3_bin, 'fixed_array_dynamic_receiver_method_before_builtin',
-		'fn (a []int) pointers() int {\n\treturn 41\n}\n\nfn main() {\n\tfixed := [3]int{}\n\tprintln(int_str(fixed.pointers()))\n}\n')
+	run_bad(v3_bin, 'exact_array_first_method_checked_before_builtin', 'fn (a []int) first() string {\n\treturn "bad"\n}\n\nfn take_int(x int) {}\n\nfn main() {\n\tmut nums := []int{}\n\tnums << 1\n\ttake_int(nums.first())\n}\n', 'cannot use `string` as argument 1 to `take_int`; expected `int`')
+	fixed_dynamic_out := run_good(v3_bin, 'fixed_array_dynamic_receiver_method_before_builtin', 'fn (a []int) pointers() int {\n\treturn 41\n}\n\nfn main() {\n\tfixed := [3]int{}\n\tprintln(int_str(fixed.pointers()))\n}\n')
 	assert fixed_dynamic_out == '41'
-	nested_fixed_dynamic_out := run_good(v3_bin, 'nested_fixed_array_dynamic_receiver_method',
-		'fn (a [][2]int) pointers() int {\n\treturn 82\n}\n\nfn main() {\n\tfixed := [3][2]int{}\n\tprintln(int_str(fixed.pointers()))\n}\n')
+	nested_fixed_dynamic_out := run_good(v3_bin, 'nested_fixed_array_dynamic_receiver_method', 'fn (a [][2]int) pointers() int {\n\treturn 82\n}\n\nfn main() {\n\tfixed := [3][2]int{}\n\tprintln(int_str(fixed.pointers()))\n}\n')
 	assert nested_fixed_dynamic_out == '82'
-	fixed_alias_shape_out := run_good(v3_bin, 'fixed_array_builtin_not_alias_method',
-		'type F = [2]int\n\nfn (f F) pointers() int {\n\treturn 66\n}\n\nfn main() {\n\tmut fixed := [2]int{}\n\tptrs := unsafe { fixed.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n')
+	fixed_alias_shape_out := run_good(v3_bin, 'fixed_array_builtin_not_alias_method', 'type F = [2]int\n\nfn (f F) pointers() int {\n\treturn 66\n}\n\nfn main() {\n\tmut fixed := [2]int{}\n\tptrs := unsafe { fixed.pointers() }\n\tprintln(int_str(ptrs.len))\n}\n')
 	assert fixed_alias_shape_out == '2'
-	plain_array_contains_out := run_good(v3_bin, 'plain_array_contains_not_alias_method',
-		'type A = []int\n\nfn (a A) contains(x int) int {\n\treturn 0\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tif nums.contains(2) {\n\t\tprintln("builtin")\n\t} else {\n\t\tprintln("alias")\n\t}\n\talias := A(nums)\n\tprintln(int_str(alias.contains(2)))\n}\n')
+	plain_array_contains_out := run_good(v3_bin, 'plain_array_contains_not_alias_method', 'type A = []int\n\nfn (a A) contains(x int) int {\n\treturn 0\n}\n\nfn main() {\n\tnums := [1, 2, 3]\n\tif nums.contains(2) {\n\t\tprintln("builtin")\n\t} else {\n\t\tprintln("alias")\n\t}\n\talias := A(nums)\n\tprintln(int_str(alias.contains(2)))\n}\n')
 	assert plain_array_contains_out == 'builtin\n0'
 	module_primitive_out := run_good_project(v3_bin, 'module_primitive_array_receiver_method', {
 		'main.v':      'module main\n\nimport thing\n\nfn main() {\n\tprintln(thing.run())\n}\n'
 		'thing/mod.v': 'module thing\n\nfn (a []int) pointers() int {\n\treturn 64\n}\n\npub fn run() string {\n\tmut nums := []int{}\n\tnums << 1\n\treturn int_str(nums.pointers())\n}\n'
 	}, 'main.v')
 	assert module_primitive_out == '64'
-	fixed_out := run_good(v3_bin, 'fixed_array_pointers_original_storage',
-		'fn main() {\n\tmut fixed := [3]int{}\n\tfixed[0] = 1\n\tptrs := unsafe { fixed.pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 9\n\t}\n\tprintln(int_str(fixed[0]))\n}\n')
+	fixed_out := run_good(v3_bin, 'fixed_array_pointers_original_storage', 'fn main() {\n\tmut fixed := [3]int{}\n\tfixed[0] = 1\n\tptrs := unsafe { fixed.pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 9\n\t}\n\tprintln(int_str(fixed[0]))\n}\n')
 	assert fixed_out == '9'
-	fixed_expr_out := run_good(v3_bin, 'fixed_array_pointers_evaluates_receiver_once',
-		'__global calls int\n\nfn next() int {\n\tcalls = calls + 1\n\treturn 0\n}\n\nfn main() {\n\tmut rows := [1][2]int{}\n\trows[0][0] = 5\n\tptrs := unsafe { rows[next()].pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 8\n\t}\n\tprintln(int_str(calls))\n\tprintln(int_str(rows[0][0]))\n}\n')
+	fixed_expr_out := run_good(v3_bin, 'fixed_array_pointers_evaluates_receiver_once', '__global calls int\n\nfn next() int {\n\tcalls = calls + 1\n\treturn 0\n}\n\nfn main() {\n\tmut rows := [1][2]int{}\n\trows[0][0] = 5\n\tptrs := unsafe { rows[next()].pointers() }\n\tunsafe {\n\t\tp0 := &int(ptrs[0])\n\t\t*p0 = 8\n\t}\n\tprintln(int_str(calls))\n\tprintln(int_str(rows[0][0]))\n}\n')
 	assert fixed_expr_out == '1\n8'
-	run_bad(v3_bin, 'fixed_array_pointers_rejects_rvalue_receiver',
-		'fn make_fixed() [2]int {\n\treturn [7, 8]!\n}\n\nfn main() {\n\t_ := unsafe { make_fixed().pointers() }\n}\n',
-		'fixed array receiver for `pointers` must be addressable')
-	run_bad(v3_bin, 'fixed_array_pointers_rejects_map_index_receiver',
-		'fn main() {\n\tmut m := map[string][2]int{}\n\tm["x"] = [1, 2]!\n\t_ := unsafe { m["x"].pointers() }\n}\n',
-		'fixed array receiver for `pointers` must be addressable')
-	fixed_len_expr_out := run_good(v3_bin, 'fixed_array_pointers_folds_len_expr',
-		'const segs = 2\n\nfn main() {\n\tmut const_len := [segs + 1]int{}\n\tconst_ptrs := unsafe { const_len.pointers() }\n\tmut shift_len := [8 >>> 1]int{}\n\tshift_ptrs := unsafe { shift_len.pointers() }\n\tprintln(int_str(const_ptrs.len))\n\tprintln(int_str(shift_ptrs.len))\n}\n')
+	run_bad(v3_bin, 'fixed_array_pointers_rejects_rvalue_receiver', 'fn make_fixed() [2]int {\n\treturn [7, 8]!\n}\n\nfn main() {\n\t_ := unsafe { make_fixed().pointers() }\n}\n', 'fixed array receiver for `pointers` must be addressable')
+	run_bad(v3_bin, 'fixed_array_pointers_rejects_map_index_receiver', 'fn main() {\n\tmut m := map[string][2]int{}\n\tm["x"] = [1, 2]!\n\t_ := unsafe { m["x"].pointers() }\n}\n', 'fixed array receiver for `pointers` must be addressable')
+	fixed_len_expr_out := run_good(v3_bin, 'fixed_array_pointers_folds_len_expr', 'const segs = 2\n\nfn main() {\n\tmut const_len := [segs + 1]int{}\n\tconst_ptrs := unsafe { const_len.pointers() }\n\tmut shift_len := [8 >>> 1]int{}\n\tshift_ptrs := unsafe { shift_len.pointers() }\n\tprintln(int_str(const_ptrs.len))\n\tprintln(int_str(shift_ptrs.len))\n}\n')
 	assert fixed_len_expr_out == '3\n4'
-	run_bad(v3_bin, 'fixed_array_pointers_rejects_extra_arg',
-		'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut fixed := [3]int{}\n\t_ := unsafe { fixed.pointers(extra_arg()) }\n}\n',
-		'argument count mismatch for `fixed.pointers`: expected 1, got 2')
+	run_bad(v3_bin, 'fixed_array_pointers_rejects_extra_arg', 'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut fixed := [3]int{}\n\t_ := unsafe { fixed.pointers(extra_arg()) }\n}\n', 'argument count mismatch for `fixed.pointers`: expected 1, got 2')
 }
 
 fn test_alias_receiver_method_value_escape_is_supported() {
@@ -2818,35 +2738,22 @@ fn main() {
 
 fn test_map_builtin_method_fallback_checks_arguments() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'map_keys_rejects_extra_arg',
-		'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n',
-		'argument count mismatch for `m.keys`: expected 0, got 1')
-	run_bad(v3_bin, 'map_delete_rejects_bad_key_type',
-		'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n',
-		'cannot use `int` as argument 2 to `m.delete`; expected `string`')
-	run_bad(v3_bin, 'map_reserve_rejects_bad_count_type',
-		'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n',
-		'cannot use `string` as argument 2 to `m.reserve`; expected `u32`')
-	out := run_good(v3_bin, 'map_builtin_method_fallback',
-		'fn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tmut moved := m.move()\n\tprintln(int_str(m.len))\n\tmoved.clear()\n\tmoved.reserve(6)\n\tmoved.delete("x")\n\tkeys := moved.keys()\n\tvalues := moved.values()\n\tcloned := moved.clone()\n\tprintln(int_str(keys.len + values.len + cloned.len))\n}\n')
+	run_bad(v3_bin, 'map_keys_rejects_extra_arg', 'fn extra_arg() int {\n\treturn 1\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\t_ := m.keys(extra_arg())\n}\n', 'argument count mismatch for `m.keys`: expected 0, got 1')
+	run_bad(v3_bin, 'map_delete_rejects_bad_key_type', 'fn main() {\n\tmut m := map[string]int{}\n\tm.delete(123)\n}\n', 'cannot use `int` as argument 2 to `m.delete`; expected `string`')
+	run_bad(v3_bin, 'map_reserve_rejects_bad_count_type', 'fn main() {\n\tmut m := map[string]int{}\n\tm.reserve("bad")\n}\n', 'cannot use `string` as argument 2 to `m.reserve`; expected `u32`')
+	out := run_good(v3_bin, 'map_builtin_method_fallback', 'fn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tmut moved := m.move()\n\tprintln(int_str(m.len))\n\tmoved.clear()\n\tmoved.reserve(6)\n\tmoved.delete("x")\n\tkeys := moved.keys()\n\tvalues := moved.values()\n\tcloned := moved.clone()\n\tprintln(int_str(keys.len + values.len + cloned.len))\n}\n')
 	assert out == '0\n0'
-	empty_arrays_out := run_good(v3_bin, 'map_empty_keys_values_keep_elem_size',
-		"struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n")
+	empty_arrays_out := run_good(v3_bin, 'map_empty_keys_values_keep_elem_size', "struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n")
 	assert empty_arrays_out == 'abc\ndef'
-	pointer_out := run_good(v3_bin, 'map_move_pointer_receiver_returns_map',
-		'fn take(m map[string]int) int {\n\treturn m.len\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tp := &m\n\tprintln(int_str(take(p.move())))\n\tprintln(int_str(m.len))\n}\n')
+	pointer_out := run_good(v3_bin, 'map_move_pointer_receiver_returns_map', 'fn take(m map[string]int) int {\n\treturn m.len\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["abc"] = 42\n\tp := &m\n\tprintln(int_str(take(p.move())))\n\tprintln(int_str(m.len))\n}\n')
 	assert pointer_out == '1\n0'
-	exact_out := run_good(v3_bin, 'exact_map_receiver_method_before_builtin',
-		'fn (m map[string]int) keys() int {\n\treturn 77\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\tn := m.keys()\n\tprintln(int_str(n))\n}\n')
+	exact_out := run_good(v3_bin, 'exact_map_receiver_method_before_builtin', 'fn (m map[string]int) keys() int {\n\treturn 77\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\tn := m.keys()\n\tprintln(int_str(n))\n}\n')
 	assert exact_out == '77'
-	alias_rvalue_out := run_good(v3_bin, 'map_alias_rvalue_receiver_method_before_builtin',
-		'type M = map[string]int\n\nfn (m M) delete(k string) int {\n\treturn 66\n}\n\nfn make_m() M {\n\tmut m := M(map[string]int{})\n\tm["x"] = 1\n\treturn m\n}\n\nfn main() {\n\tprintln(int_str(make_m().delete("x")))\n}\n')
+	alias_rvalue_out := run_good(v3_bin, 'map_alias_rvalue_receiver_method_before_builtin', 'type M = map[string]int\n\nfn (m M) delete(k string) int {\n\treturn 66\n}\n\nfn make_m() M {\n\tmut m := M(map[string]int{})\n\tm["x"] = 1\n\treturn m\n}\n\nfn main() {\n\tprintln(int_str(make_m().delete("x")))\n}\n')
 	assert alias_rvalue_out == '66'
-	plain_map_out := run_good(v3_bin, 'plain_map_builtin_not_alias_method',
-		'type M = map[string]int\n\nfn (m M) keys() int {\n\treturn 66\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\tkeys := m.keys()\n\tprintln(int_str(keys.len))\n}\n')
+	plain_map_out := run_good(v3_bin, 'plain_map_builtin_not_alias_method', 'type M = map[string]int\n\nfn (m M) keys() int {\n\treturn 66\n}\n\nfn main() {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\tkeys := m.keys()\n\tprintln(int_str(keys.len))\n}\n')
 	assert plain_map_out == '1'
-	module_map_runtime_prefix_out := run_good_project(v3_bin,
-		'map_runtime_prefix_module_receiver_method', {
+	module_map_runtime_prefix_out := run_good_project(v3_bin, 'map_runtime_prefix_module_receiver_method', {
 		'main.v':           'module main\n\nimport map__utils\n\nfn main() {\n\tprintln(map__utils.run())\n}\n'
 		'map__utils/mod.v': 'module map__utils\n\nfn (m map[string]int) keys() int {\n\treturn 84\n}\n\npub fn run() string {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\treturn int_str(m.keys())\n}\n'
 	}, 'main.v')
@@ -2856,11 +2763,9 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 		'map/mod.v': 'module map\n\nfn (m map[string]int) keys() int {\n\treturn 85\n}\n\npub fn run() string {\n\tmut m := map[string]int{}\n\tm["x"] = 1\n\treturn int_str(m.keys())\n}\n'
 	}, 'main.v')
 	assert module_map_out == '85'
-	fixed_key_out := run_good(v3_bin, 'fixed_array_key_map_receiver_method_before_builtin',
-		'fn (m map[[2]string]int) keys() int {\n\treturn 88\n}\n\nfn main() {\n\tmut m := map[[2]string]int{}\n\tkey := ["a", "b"]!\n\tm[key] = 1\n\tprintln(int_str(m.keys()))\n}\n')
+	fixed_key_out := run_good(v3_bin, 'fixed_array_key_map_receiver_method_before_builtin', 'fn (m map[[2]string]int) keys() int {\n\treturn 88\n}\n\nfn main() {\n\tmut m := map[[2]string]int{}\n\tkey := ["a", "b"]!\n\tm[key] = 1\n\tprintln(int_str(m.keys()))\n}\n')
 	assert fixed_key_out == '88'
-	nested_fixed_key_out := run_good(v3_bin, 'nested_fixed_array_key_map_receiver_method',
-		'fn (m map[[3][2]int]int) keys() int {\n\treturn 99\n}\n\nfn main() {\n\tmut m := map[[3][2]int]int{}\n\tkey := [3][2]int{}\n\tm[key] = 1\n\tprintln(int_str(m.keys()))\n}\n')
+	nested_fixed_key_out := run_good(v3_bin, 'nested_fixed_array_key_map_receiver_method', 'fn (m map[[3][2]int]int) keys() int {\n\treturn 99\n}\n\nfn main() {\n\tmut m := map[[3][2]int]int{}\n\tkey := [3][2]int{}\n\tm[key] = 1\n\tprintln(int_str(m.keys()))\n}\n')
 	assert nested_fixed_key_out == '99'
 	module_collection_out := run_good_project(v3_bin, 'module_collection_receiver_methods', {
 		'main.v':      'module main\n\nimport thing\n\nfn main() {\n\tprintln(thing.run())\n}\n'
@@ -2872,11 +2777,9 @@ fn test_map_builtin_method_fallback_checks_arguments() {
 fn test_arm64_string_roundtrip_preserves_literal_flag() {
 	$if macos && arm64 {
 		v3_bin := build_v3()
-		out := run_good_backend(v3_bin, 'arm64_string_roundtrip_preserves_literal_flag', 'arm64',
-			"fn literal_local() string {\n\ts := 'literal-static'\n\treturn s\n}\n\nfn arg_local(s string) string {\n\tlocal := s\n\treturn local\n}\n\nfn main() {\n\ta := literal_local()\n\tb := arg_local('argument-static')\n\tunsafe {\n\t\ta.free()\n\t\tb.free()\n\t}\n\tprintln('ok')\n}\n")
+		out := run_good_backend(v3_bin, 'arm64_string_roundtrip_preserves_literal_flag', 'arm64', "fn literal_local() string {\n\ts := 'literal-static'\n\treturn s\n}\n\nfn arg_local(s string) string {\n\tlocal := s\n\treturn local\n}\n\nfn main() {\n\ta := literal_local()\n\tb := arg_local('argument-static')\n\tunsafe {\n\t\ta.free()\n\t\tb.free()\n\t}\n\tprintln('ok')\n}\n")
 		assert out == 'ok'
-		map_out := run_good_backend(v3_bin, 'arm64_map_empty_arrays_keep_elem_size', 'arm64',
-			"struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n")
+		map_out := run_good_backend(v3_bin, 'arm64_map_empty_arrays_keep_elem_size', 'arm64', "struct State {\n\tlabels map[string]string\n}\n\nfn main() {\n\ts := State{}\n\tmut keys := s.labels.keys()\n\tkeys << 'abc'\n\tprintln(keys[0])\n\tmut values := s.labels.values()\n\tvalues << 'def'\n\tprintln(values[0])\n}\n")
 		assert map_out == 'abc\ndef'
 	} $else {
 		assert true
@@ -3519,8 +3422,7 @@ enum HelperKind {
 }
 
 fn main() {}
-',
-		'immutable, declare it with `mut`')
+', 'immutable, declare it with `mut`')
 	source := 'fn make_local() int {
 	x := 4
 	mut y := x + 2
@@ -3565,8 +3467,7 @@ enum HelperKind {
 fn main() {
 	println(HelperKind.a)
 }
-',
-		'cannot redefine builtin public function `exit`')
+', 'cannot redefine builtin public function `exit`')
 }
 
 fn test_enum_initializer_helper_keeps_noreturn_validation() {
@@ -3581,8 +3482,7 @@ enum HelperKind {
 }
 
 fn main() {}
-',
-		'[noreturn] functions cannot use return statements')
+', '[noreturn] functions cannot use return statements')
 }
 
 fn test_json_decode_enum_accepts_name_and_label() {
@@ -3664,79 +3564,68 @@ fn main() {
 
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'string_index_type_is_u8',
-		"fn main() {\n\ts := 'ABC'\n\tprintln(typeof(s[0]).name)\n\tprintln('\${s[2]}')\n}\n")
+	out := run_good(v3_bin, 'string_index_type_is_u8', "fn main() {\n\ts := 'ABC'\n\tprintln(typeof(s[0]).name)\n\tprintln('\${s[2]}')\n}\n")
 	assert out == 'u8\n67'
 }
 
 fn test_f32_map_and_fixed_array_stringification() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'f32_map_stringification',
-		"fn main() {\n\tm := {\n\t\t'a': f32(1.5)\n\t}\n\tprintln(m)\n\tfixed := [f32(1.5), f32(2.25)]!\n\tmf := {\n\t\t'x': fixed\n\t}\n\tprintln(mf)\n}\n")
+	out := run_good(v3_bin, 'f32_map_stringification', "fn main() {\n\tm := {\n\t\t'a': f32(1.5)\n\t}\n\tprintln(m)\n\tfixed := [f32(1.5), f32(2.25)]!\n\tmf := {\n\t\t'x': fixed\n\t}\n\tprintln(mf)\n}\n")
 	assert out == "{'a': 1.5}\n{'x': [1.5, 2.25]}"
 }
 
 fn test_u8_map_stringification_is_numeric() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'u8_map_stringification',
-		"fn main() {\n\tkeys := {\n\t\tu8(23): 'x'\n\t}\n\tvals := {\n\t\t'x': u8(23)\n\t}\n\tboth := {\n\t\tu8(65): u8(10)\n\t}\n\tprintln(keys)\n\tprintln(vals)\n\tprintln(both)\n}\n")
+	out := run_good(v3_bin, 'u8_map_stringification', "fn main() {\n\tkeys := {\n\t\tu8(23): 'x'\n\t}\n\tvals := {\n\t\t'x': u8(23)\n\t}\n\tboth := {\n\t\tu8(65): u8(10)\n\t}\n\tprintln(keys)\n\tprintln(vals)\n\tprintln(both)\n}\n")
 	assert out == "{23: 'x'}\n{'x': 23}\n{65: 10}"
 }
 
 fn test_map_equality_uses_semantic_value_comparison() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'map_semantic_value_equality',
-		"struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n")
+	out := run_good(v3_bin, 'map_semantic_value_equality', "struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tleft := {\n\t\t'x': Item{\n\t\t\tname: 'hello'.clone()\n\t\t\tparts: ['ab'.clone()]\n\t\t}\n\t}\n\tright := {\n\t\t'x': Item{\n\t\t\tname: join('he', 'llo')\n\t\t\tparts: [join('a', 'b')]\n\t\t}\n\t}\n\tarr_left := {\n\t\t'y': ['cd'.clone()]\n\t}\n\tarr_right := {\n\t\t'y': [join('c', 'd')]\n\t}\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(arr_left == arr_right)\n}\n")
 	assert out == 'true\nfalse\ntrue'
 }
 
 fn test_array_equality_marks_struct_operator_used() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'array_eq_struct_operator_used',
-		'struct Item {\n\tvalue int\n}\n\nfn (a Item) == (b Item) bool {\n\treturn a.value % 10 == b.value % 10\n}\n\nfn main() {\n\tleft := [Item{value: 12}]\n\tright := [Item{value: 2}]\n\tprintln(left == right)\n}\n')
+	out := run_good(v3_bin, 'array_eq_struct_operator_used', 'struct Item {\n\tvalue int\n}\n\nfn (a Item) == (b Item) bool {\n\treturn a.value % 10 == b.value % 10\n}\n\nfn main() {\n\tleft := [Item{value: 12}]\n\tright := [Item{value: 2}]\n\tprintln(left == right)\n}\n')
 	assert out == 'true'
 }
 
 fn test_zero_padded_interpolation_preserves_wide_integers() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'wide_zero_padded_interpolation',
-		"fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020d}')\n\tprintln('\${small:08d}')\n}\n")
+	out := run_good(v3_bin, 'wide_zero_padded_interpolation', "fn main() {\n\tbig := i64(5000000000)\n\tubig := u64(18446744073709551615)\n\tsmall := u64(42)\n\tprintln('\${big:012d}')\n\tprintln('\${ubig:020d}')\n\tprintln('\${small:08d}')\n}\n")
 	assert out == '005000000000\n18446744073709551615\n00000042'
 }
 
 fn test_formatted_interpolation_rune_and_long_float() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'formatted_interpolation_rune_and_long_float',
-		"fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n\tprintln('\${238.5:0.0f}')\n\tprintln('\${239.5555555:0.6f}')\n}\n")
+	out := run_good(v3_bin, 'formatted_interpolation_rune_and_long_float', "fn main() {\n\tr := '\${rune(0x20ac):c}'\n\tprintln(int_str(r.len))\n\tprintln(int_str(int(r[0])) + ',' + int_str(int(r[1])) + ',' + int_str(int(r[2])))\n\tlong := '\${1.0:.200f}'\n\tprintln(int_str(long.len))\n\tprintln(int_str(int(long[0])) + ',' + int_str(int(long[1])) + ',' + int_str(int(long[2])) + ',' + int_str(int(long[long.len - 1])))\n\tprintln('\${238.5:0.0f}')\n\tprintln('\${239.5555555:0.6f}')\n}\n")
 	assert out == '3\n226,130,172\n202\n49,46,48,48\n239\n239.555556'
 }
 
 fn test_formatted_interpolation_integer_alias_character_code() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'formatted_interpolation_integer_alias_character_code',
-		"type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n")
+	out := run_good(v3_bin, 'formatted_interpolation_integer_alias_character_code', "type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n")
 	assert out == 'ABC'
 }
 
 fn test_formatted_interpolation_alias_uses_string_representation() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'formatted_interpolation_alias_string',
-		'import time\n\nfn main() {\n\tduration := time.Duration(10)\n\tprintln("|\${duration:10s}|")\n}\n')
+	out := run_good(v3_bin, 'formatted_interpolation_alias_string', 'import time\n\nfn main() {\n\tduration := time.Duration(10)\n\tprintln("|\${duration:10s}|")\n}\n')
 	assert out == '|      10ns|'
 }
 
 fn test_callback_pointer_return_is_compatible_with_voidptr_return() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'callback_pointer_return_to_voidptr',
-		'struct Item {\n\tvalue int\n}\n\nstruct Config {\n\tcallback fn () voidptr\n}\n\nfn make_item() &Item {\n\treturn &Item{value: 42}\n}\n\nfn main() {\n\tconfig := Config{callback: make_item}\n\titem := unsafe { &Item(config.callback()) }\n\tprintln(item.value)\n}\n')
+	out := run_good(v3_bin, 'callback_pointer_return_to_voidptr', 'struct Item {\n\tvalue int\n}\n\nstruct Config {\n\tcallback fn () voidptr\n}\n\nfn make_item() &Item {\n\treturn &Item{value: 42}\n}\n\nfn main() {\n\tconfig := Config{callback: make_item}\n\titem := unsafe { &Item(config.callback()) }\n\tprintln(item.value)\n}\n')
 	assert out == '42'
 }
 
 fn test_stats_reports_failed_test_status_and_passed_total() {
 	v3_bin := build_v3()
 	source := '${tmp_test_path('stats_failed_test_status')}_test.v'
-	os.write_file(source,
-		'fn test_fails() {\n\tassert false\n}\n\nfn test_passes() {\n\tassert true\n}\n') or {
+	os.write_file(source, 'fn test_fails() {\n\tassert false\n}\n\nfn test_passes() {\n\tassert true\n}\n') or {
 		panic(err)
 	}
 	outer_run_only := os.getenv_opt('VTEST_ONLY_FN')
@@ -3758,15 +3647,13 @@ fn test_stats_reports_failed_test_status_and_passed_total() {
 
 fn test_driver_accepts_cdebug_alias() {
 	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'cdebug_alias', '-nocache -cdebug',
-		"fn main() {\n\t\$if debug {\n\t\tprintln('debug')\n\t} \$else {\n\t\tprintln('release')\n\t}\n}\n")
+	out := run_good_with_flags(v3_bin, 'cdebug_alias', '-nocache -cdebug', "fn main() {\n\t\$if debug {\n\t\tprintln('debug')\n\t} \$else {\n\t\tprintln('release')\n\t}\n}\n")
 	assert out == 'debug'
 }
 
 fn test_alias_interface_str_dispatch_marks_alias_method_used() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'alias_interface_str_dispatch',
-		"interface Printer {\n\tstr() string\n}\n\ntype Label = int\n\nfn (l Label) str() string {\n\treturn 'label:' + int_str(int(l))\n}\n\nfn make() Printer {\n\tl := Label(7)\n\treturn l\n}\n\nfn main() {\n\tp := make()\n\tprintln('\${p}')\n}\n")
+	out := run_good(v3_bin, 'alias_interface_str_dispatch', "interface Printer {\n\tstr() string\n}\n\ntype Label = int\n\nfn (l Label) str() string {\n\treturn 'label:' + int_str(int(l))\n}\n\nfn make() Printer {\n\tl := Label(7)\n\treturn l\n}\n\nfn main() {\n\tp := make()\n\tprintln('\${p}')\n}\n")
 	assert out == 'label:7'
 }
 
@@ -3910,8 +3797,7 @@ fn main() {
 	value := Value(1)
 	_ := Printable(value)
 }
-',
-		'does not implement interface')
+', 'does not implement interface')
 }
 
 fn test_implicit_interface_str_dispatch_stringifies_nested_struct_fields() {
@@ -4428,37 +4314,26 @@ fn main() {
 
 fn test_empty_interface_is_matches_alias_equivalent_type_ids() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'empty_interface_alias_type_id',
-		'interface Any {}\n\ntype MyInt = int\n\nfn main() {\n\tvalue := MyInt(1)\n\ta := Any(value)\n\tprintln((a is MyInt).str())\n\tprintln((a is int).str())\n\tplain := int(2)\n\tb := Any(plain)\n\tprintln((b is MyInt).str())\n\tprintln((b is int).str())\n}\n')
+	out := run_good(v3_bin, 'empty_interface_alias_type_id', 'interface Any {}\n\ntype MyInt = int\n\nfn main() {\n\tvalue := MyInt(1)\n\ta := Any(value)\n\tprintln((a is MyInt).str())\n\tprintln((a is int).str())\n\tplain := int(2)\n\tb := Any(plain)\n\tprintln((b is MyInt).str())\n\tprintln((b is int).str())\n}\n')
 	assert out == 'true\ntrue\ntrue\ntrue'
 }
 
 fn test_empty_interface_box_preserves_enum_type_id() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'empty_interface_enum_type_id',
-		'interface Any {}\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tx := Any(Color.red)\n\tprintln((x is Color).str())\n\tprintln((x is int).str())\n}\n')
+	out := run_good(v3_bin, 'empty_interface_enum_type_id', 'interface Any {}\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tx := Any(Color.red)\n\tprintln((x is Color).str())\n\tprintln((x is int).str())\n}\n')
 	assert out == 'true\nfalse'
 }
 
 fn test_interface_cast_rejects_pointer_shape_mismatch() {
 	v3_bin := build_v3()
-	run_bad(v3_bin, 'interface_pointer_shape_mismatch',
-		'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n',
-		'does not implement interface')
-	run_bad(v3_bin, 'interface_voidptr_cast_rejected',
-		'interface Sink {\n\tput()\n}\n\nfn main() {\n\tx := 1\n\tp := voidptr(&x)\n\t_ := Sink(p)\n}\n',
-		'does not implement interface')
-	pointer_escape_out := run_good(v3_bin, 'interface_pointer_voidptr_cast_escape_hatch',
-		'interface Sink {\n\tput()\n}\n\nfn main() {\n\tp := unsafe { voidptr(0) }\n\t_ := &Sink(p)\n\tprintln("ok")\n}\n')
+	run_bad(v3_bin, 'interface_pointer_shape_mismatch', 'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n', 'does not implement interface')
+	run_bad(v3_bin, 'interface_voidptr_cast_rejected', 'interface Sink {\n\tput()\n}\n\nfn main() {\n\tx := 1\n\tp := voidptr(&x)\n\t_ := Sink(p)\n}\n', 'does not implement interface')
+	pointer_escape_out := run_good(v3_bin, 'interface_pointer_voidptr_cast_escape_hatch', 'interface Sink {\n\tput()\n}\n\nfn main() {\n\tp := unsafe { voidptr(0) }\n\t_ := &Sink(p)\n\tprintln("ok")\n}\n')
 	assert pointer_escape_out == 'ok'
-	run_bad(v3_bin, 'interface_alias_cast_non_implementer',
-		'interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nstruct Bad {}\n\nfn main() {\n\t_ := SinkAlias(Bad{})\n}\n',
-		'does not implement interface')
-	nil_out := run_good(v3_bin, 'interface_pointer_nil_cast',
-		"interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := Sink(nil)\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n")
+	run_bad(v3_bin, 'interface_alias_cast_non_implementer', 'interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nstruct Bad {}\n\nfn main() {\n\t_ := SinkAlias(Bad{})\n}\n', 'does not implement interface')
+	nil_out := run_good(v3_bin, 'interface_pointer_nil_cast', "interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := Sink(nil)\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n")
 	assert nil_out == 'ok'
-	nil_arg_out := run_good(v3_bin, 'interface_pointer_nil_argument',
-		"interface Item {\n\tname string\n}\n\nfn take(item &Item) {\n\tassert item == unsafe { nil }\n}\n\nfn main() {\n\tvalue := unsafe { nil }\n\ttake(value)\n\ttake(unsafe { nil })\n\tprintln('ok')\n}\n")
+	nil_arg_out := run_good(v3_bin, 'interface_pointer_nil_argument', "interface Item {\n\tname string\n}\n\nfn take(item &Item) {\n\tassert item == unsafe { nil }\n}\n\nfn main() {\n\tvalue := unsafe { nil }\n\ttake(value)\n\ttake(unsafe { nil })\n\tprintln('ok')\n}\n")
 	assert nil_arg_out == 'ok'
 }
 
@@ -4476,24 +4351,19 @@ fn test_interface_is_unqualified_local_uses_exact_impl_id() {
 
 fn test_callback_lambda_lift_preserves_outer_captures() {
 	v3_bin := build_v3()
-	no_arg_out := run_good(v3_bin, 'callback_no_arg_lambda_lift_preserves_capture',
-		'fn apply(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tvalue := 41\n\tprintln(int_str(apply(|| value + 1)))\n}\n')
+	no_arg_out := run_good(v3_bin, 'callback_no_arg_lambda_lift_preserves_capture', 'fn apply(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tvalue := 41\n\tprintln(int_str(apply(|| value + 1)))\n}\n')
 	assert no_arg_out == '42'
-	out := run_good(v3_bin, 'callback_lambda_lift_preserves_capture',
-		'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n')
+	out := run_good(v3_bin, 'callback_lambda_lift_preserves_capture', 'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn main() {\n\toffset := 7\n\tprintln(int_str(apply(|n| n + offset, 5)))\n}\n')
 	assert out == '12'
-	callee_out := run_good(v3_bin, 'callback_lambda_lift_preserves_fn_callee_capture',
-		'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn double(n int) int {\n\treturn n * 2\n}\n\nfn main() {\n\tcb := double\n\tprintln(int_str(apply(|n| cb(n), 6)))\n}\n')
+	callee_out := run_good(v3_bin, 'callback_lambda_lift_preserves_fn_callee_capture', 'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn double(n int) int {\n\treturn n * 2\n}\n\nfn main() {\n\tcb := double\n\tprintln(int_str(apply(|n| cb(n), 6)))\n}\n')
 	assert callee_out == '12'
 }
 
 fn test_callback_lambda_lift_forwards_optional_void_failures() {
 	v3_bin := build_v3()
-	result_out := run_good(v3_bin, 'callback_lambda_result_void_forward',
-		'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n')
+	result_out := run_good(v3_bin, 'callback_lambda_result_void_forward', 'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n')
 	assert result_out == 'fail'
-	option_out := run_good(v3_bin, 'callback_lambda_option_void_forward',
-		'fn takes(cb fn () ?) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ? {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
+	option_out := run_good(v3_bin, 'callback_lambda_option_void_forward', 'fn takes(cb fn () ?) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ? {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
 	assert option_out == 'none'
 }
 
@@ -4726,16 +4596,14 @@ fn test_pointer_interface_cast_heap_copies_converted_interface_source() {
 
 fn test_c_atomic_pointer_load_store_preserves_pointer_width() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'c_atomic_pointer_load_store',
-		'fn C.atomic_load_ptr(voidptr) voidptr\nfn C.atomic_store_ptr(voidptr, voidptr)\n\nfn main() {\n\tvalue := 9\n\tmut slot := unsafe { nil }\n\tC.atomic_store_ptr(voidptr(&slot), voidptr(&value))\n\tprintln((C.atomic_load_ptr(voidptr(&slot)) == voidptr(&value)).str())\n}\n')
+	out := run_good(v3_bin, 'c_atomic_pointer_load_store', 'fn C.atomic_load_ptr(voidptr) voidptr\nfn C.atomic_store_ptr(voidptr, voidptr)\n\nfn main() {\n\tvalue := 9\n\tmut slot := unsafe { nil }\n\tC.atomic_store_ptr(voidptr(&slot), voidptr(&value))\n\tprintln((C.atomic_load_ptr(voidptr(&slot)) == voidptr(&value)).str())\n}\n')
 	assert out == 'true'
 }
 
 fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 	$if macos && arm64 {
 		v3_bin := build_v3()
-		out := run_good_backend(v3_bin, 'native_atomic_pointer_fetch_add_sub', 'arm64',
-			'fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr\nfn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr\n\nfn main() {\n\tmut vals := [10, 20, 30]!\n\tmut p := voidptr(unsafe { &vals[0] })\n\told := C.atomic_fetch_add_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old == voidptr(unsafe { &vals[0] }))\n\tprintln(p == voidptr(unsafe { &vals[1] }))\n\told2 := C.atomic_fetch_sub_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old2 == voidptr(unsafe { &vals[1] }))\n\tprintln(p == voidptr(unsafe { &vals[0] }))\n}\n')
+		out := run_good_backend(v3_bin, 'native_atomic_pointer_fetch_add_sub', 'arm64', 'fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr\nfn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr\n\nfn main() {\n\tmut vals := [10, 20, 30]!\n\tmut p := voidptr(unsafe { &vals[0] })\n\told := C.atomic_fetch_add_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old == voidptr(unsafe { &vals[0] }))\n\tprintln(p == voidptr(unsafe { &vals[1] }))\n\told2 := C.atomic_fetch_sub_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old2 == voidptr(unsafe { &vals[1] }))\n\tprintln(p == voidptr(unsafe { &vals[0] }))\n}\n')
 		assert out == 'true\ntrue\ntrue\ntrue'
 	}
 }
@@ -4790,8 +4658,7 @@ fn main() {
 }
 	')
 	assert out == '7\nright\n9\n23\n11\n13'
-	inferred_out := run_good(v3_bin, 'anonymous_struct_inferred_literal_typed_shape',
-		'fn main() {\n\ta := struct { x: 1 }\n\tb := struct { x: "typed" }\n\tprintln(int_str(a.x))\n\tprintln(b.x)\n}\n')
+	inferred_out := run_good(v3_bin, 'anonymous_struct_inferred_literal_typed_shape', 'fn main() {\n\ta := struct { x: 1 }\n\tb := struct { x: "typed" }\n\tprintln(int_str(a.x))\n\tprintln(b.x)\n}\n')
 	assert inferred_out == '1\ntyped'
 }
 
@@ -5234,8 +5101,7 @@ fn (d Dict) [] (key string) int {
 	return d.values[key]
 }
 '
-	out := run_good(v3_bin, 'overloaded_index_accepts_declared_key_type', dict_src +
-		'
+	out := run_good(v3_bin, 'overloaded_index_accepts_declared_key_type', dict_src + '
 
 fn main() {
 	d := Dict{
@@ -5247,33 +5113,27 @@ fn main() {
 }
 ')
 	assert out == '7'
-	run_bad(v3_bin, 'overloaded_index_rejects_wrong_key_type', dict_src +
-		'
+	run_bad(v3_bin, 'overloaded_index_rejects_wrong_key_type', dict_src + '
 
 fn main() {
 	d := Dict{}
 	println(int_str(d[1]))
 }
-',
-		'cannot use `int` as overloaded index; expected `string`')
-	run_bad(v3_bin, 'overloaded_index_assignment_requires_setter', dict_src +
-		'
+', 'cannot use `int` as overloaded index; expected `string`')
+	run_bad(v3_bin, 'overloaded_index_assignment_requires_setter', dict_src + '
 
 fn main() {
 	mut d := Dict{}
 	d["name"] = 1
 }
-',
-		'index assignment requires a `[]=` overload on `Dict`')
-	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_setter', dict_src +
-		'
+', 'index assignment requires a `[]=` overload on `Dict`')
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_setter', dict_src + '
 
 fn main() {
 	mut d := Dict{}
 	d["name"] += 1
 }
-',
-		'index assignment requires a `[]=` overload on `Dict`')
+', 'index assignment requires a `[]=` overload on `Dict`')
 }
 
 fn test_overloaded_index_assignment_uses_setter_signature() {
@@ -5287,9 +5147,7 @@ fn (mut d Dict) []= (key string, value int) {
 	d.values[key] = value
 }
 '
-	setter_only := run_good(v3_bin, 'overloaded_index_assignment_write_only_setter',
-		setter_only_src +
-		'
+	setter_only := run_good(v3_bin, 'overloaded_index_assignment_write_only_setter', setter_only_src + '
 
 fn main() {
 	mut d := Dict{
@@ -5300,8 +5158,7 @@ fn main() {
 }
 ')
 	assert setter_only == '7'
-	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_getter', setter_only_src +
-		'
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_getter', setter_only_src + '
 
 fn main() {
 	mut d := Dict{
@@ -5309,8 +5166,7 @@ fn main() {
 	}
 	d["name"] += 1
 }
-',
-		'compound index assignment requires a `[]` overload on `Dict`')
+', 'compound index assignment requires a `[]` overload on `Dict`')
 	mismatched_getter_src := 'struct Tensor {}
 
 fn (t Tensor) [] (index int) int {
@@ -5320,15 +5176,13 @@ fn (t Tensor) [] (index int) int {
 fn (mut t Tensor) []= (parts []SliceIndex, value int) {
 }
 '
-	run_bad(v3_bin, 'overloaded_index_compound_assignment_checks_getter_index',
-		mismatched_getter_src + '
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_checks_getter_index', mismatched_getter_src + '
 
 fn main() {
 	mut t := Tensor{}
 	t[1, 2] += 3
 }
-',
-		'multi-index expressions on overloaded `[]` require a `[]SliceIndex` parameter')
+', 'multi-index expressions on overloaded `[]` require a `[]SliceIndex` parameter')
 	range_mismatched_getter_src := 'struct Window {}
 
 fn (w Window) [] (part SliceIndex) int {
@@ -5338,17 +5192,14 @@ fn (w Window) [] (part SliceIndex) int {
 fn (mut w Window) []= (parts []SliceIndex, value int) {
 }
 '
-	run_bad(v3_bin, 'overloaded_index_compound_assignment_rejects_mismatched_index_temps',
-		range_mismatched_getter_src + '
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_rejects_mismatched_index_temps', range_mismatched_getter_src + '
 
 fn main() {
 	mut w := Window{}
 	w[1..2] += 3
 }
-',
-		'compound index assignment requires matching `[]` and `[]=` index parameter types')
-	run_bad(v3_bin, 'overloaded_index_assignment_rejects_wrong_setter_key', setter_only_src +
-		'
+', 'compound index assignment requires matching `[]` and `[]=` index parameter types')
+	run_bad(v3_bin, 'overloaded_index_assignment_rejects_wrong_setter_key', setter_only_src + '
 
 fn main() {
 	mut d := Dict{
@@ -5356,8 +5207,7 @@ fn main() {
 	}
 	d[1] = 7
 }
-',
-		'cannot use `int` as overloaded index; expected `string`')
+', 'cannot use `int` as overloaded index; expected `string`')
 	getter_and_setter_src := 'struct Dict {
 mut:
 	values map[string]int
@@ -5371,9 +5221,7 @@ fn (mut d Dict) []= (key string, value int) {
 	d.values[key] = value
 }
 '
-	both := run_good(v3_bin, 'overloaded_index_assignment_prefers_setter_value_type',
-		getter_and_setter_src +
-		'
+	both := run_good(v3_bin, 'overloaded_index_assignment_prefers_setter_value_type', getter_and_setter_src + '
 
 fn main() {
 	mut d := Dict{
@@ -5384,9 +5232,7 @@ fn main() {
 }
 ')
 	assert both == '9'
-	run_bad(v3_bin, 'overloaded_index_assignment_rejects_getter_value_type',
-		getter_and_setter_src +
-		'
+	run_bad(v3_bin, 'overloaded_index_assignment_rejects_getter_value_type', getter_and_setter_src + '
 
 fn main() {
 	mut d := Dict{
@@ -5394,11 +5240,8 @@ fn main() {
 	}
 	d["name"] = "bad"
 }
-',
-		'expected `int`, not `string`')
-	run_bad(v3_bin, 'overloaded_index_compound_assignment_rejects_getter_value_type',
-		getter_and_setter_src +
-		'
+', 'expected `int`, not `string`')
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_rejects_getter_value_type', getter_and_setter_src + '
 
 fn main() {
 	mut d := Dict{
@@ -5406,10 +5249,8 @@ fn main() {
 	}
 	d["name"] += 1
 }
-',
-		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
-	run_bad(v3_bin, 'overloaded_index_postfix_mutation_rejected', getter_and_setter_src +
-		'
+', 'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
+	run_bad(v3_bin, 'overloaded_index_postfix_mutation_rejected', getter_and_setter_src + '
 
 fn main() {
 	mut d := Dict{
@@ -5417,8 +5258,7 @@ fn main() {
 	}
 	d["name"]++
 }
-',
-		'postfix mutation is not supported for overloaded index expressions')
+', 'postfix mutation is not supported for overloaded index expressions')
 }
 
 fn test_generic_overloaded_index_uses_specialized_methods() {
@@ -5533,12 +5373,9 @@ fn main() {
 		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\tif !isreftype(foo.Bar) {\n\t\tprintln("qualified type")\n\t}\n\tif isreftype(&foo.Bar) {\n\t\tprintln("qualified ptr type")\n\t}\n\tbar := foo.Bar{}\n\tif isreftype(bar) {\n\t\tprintln("bad expr")\n\t} else {\n\t\tprintln("qualified value expr")\n\t}\n}\n'
 	}, 'main.v')
 	assert qualified_out == 'qualified type\nqualified ptr type\nqualified value expr'
-	run_bad(v3_bin, 'isreftype_unknown_type_arg', 'fn main() {\n\t_ := isreftype(NoSuchType)\n}\n',
-		'unknown type `NoSuchType`')
-	run_bad(v3_bin, 'isreftype_unknown_array_elem_type_arg',
-		'fn main() {\n\t_ := isreftype([]MissingElem)\n}\n', 'unknown type `MissingElem`')
-	run_bad(v3_bin, 'isreftype_unknown_bracket_type_arg',
-		'fn main() {\n\t_ := isreftype[OtherMissing]()\n}\n', 'unknown type `OtherMissing`')
+	run_bad(v3_bin, 'isreftype_unknown_type_arg', 'fn main() {\n\t_ := isreftype(NoSuchType)\n}\n', 'unknown type `NoSuchType`')
+	run_bad(v3_bin, 'isreftype_unknown_array_elem_type_arg', 'fn main() {\n\t_ := isreftype([]MissingElem)\n}\n', 'unknown type `MissingElem`')
+	run_bad(v3_bin, 'isreftype_unknown_bracket_type_arg', 'fn main() {\n\t_ := isreftype[OtherMissing]()\n}\n', 'unknown type `OtherMissing`')
 }
 
 fn test_shadowed_global_local_rename_is_scoped_to_binding() {
@@ -5833,8 +5670,7 @@ fn main() {
 		}
 	}
 }
-",
-		'compile-time error: present method selected')
+", 'compile-time error: present method selected')
 }
 
 fn test_review_index_overload_and_interface_regressions() {
@@ -5975,11 +5811,9 @@ fn main() {
 }
 ")
 	assert overload_out == '7\n12\n1\n10\nax\n5\n2\n5'
-	generic_index_out := run_good(v3_bin, 'review_generic_index_overload_specializes',
-		'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n')
+	generic_index_out := run_good(v3_bin, 'review_generic_index_overload_specializes', 'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n')
 	assert generic_index_out == '2\n9'
-	explicit_method_out := run_good(v3_bin, 'review_explicit_generic_method_callee',
-		'interface Named {\n\tname() string\n}\n\nstruct Config {\n\tx int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) name() string {\n\treturn u.name\n}\n\nstruct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn (r Runner) make[T](cfg T) T {\n\t_ = r\n\treturn cfg\n}\n\nfn (r Runner) pass[T](value T) T {\n\t_ = r\n\treturn value\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n\tcfg := r.make[Config](x: 7)\n\tprintln(int_str(cfg.x))\n\tnamed := r.pass[Named](User{\n\t\tname: "Ada"\n\t})\n\tprintln(named.name())\n}\n')
+	explicit_method_out := run_good(v3_bin, 'review_explicit_generic_method_callee', 'interface Named {\n\tname() string\n}\n\nstruct Config {\n\tx int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) name() string {\n\treturn u.name\n}\n\nstruct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn (r Runner) make[T](cfg T) T {\n\t_ = r\n\treturn cfg\n}\n\nfn (r Runner) pass[T](value T) T {\n\t_ = r\n\treturn value\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n\tcfg := r.make[Config](x: 7)\n\tprintln(int_str(cfg.x))\n\tnamed := r.pass[Named](User{\n\t\tname: "Ada"\n\t})\n\tprintln(named.name())\n}\n')
 	assert explicit_method_out == 'int\n7\nAda'
 	str_out := run_good(v3_bin, 'review_pointer_fields_implicit_str', "interface Printable {
 	str() string
@@ -6027,59 +5861,37 @@ fn main() {
 	p := voidptr(&x)
 	_ := Sink(p)
 }
-	',
-		'does not implement interface')
-	rvalue_upcast_out := run_good(v3_bin, 'review_interface_rvalue_upcasts',
-		'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n')
+	', 'does not implement interface')
+	rvalue_upcast_out := run_good(v3_bin, 'review_interface_rvalue_upcasts', 'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n')
 	assert rvalue_upcast_out == 'call\nif\nindex'
-	embedded_interface_out := run_good(v3_bin, 'review_embedded_interface_fields_and_ptr_upcast',
-		'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n')
+	embedded_interface_out := run_good(v3_bin, 'review_embedded_interface_fields_and_ptr_upcast', 'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n')
 	assert embedded_interface_out == 'Ada\nAda:Ada:label\nBea:3'
 }
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	v3_bin := build_v3()
-	shadow_out := run_good(v3_bin, 'review_shadowed_global_nested_scope',
-		'__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n')
+	shadow_out := run_good(v3_bin, 'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n')
 	assert shadow_out == '3\n12'
-	pointer_str_out := run_good(v3_bin, 'review_pointer_value_receiver_str',
-		"struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n")
+	pointer_str_out := run_good(v3_bin, 'review_pointer_value_receiver_str', "struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n")
 	assert pointer_str_out == '&custom:7'
-	interface_smartcast_str_out := run_good(v3_bin, 'review_interface_smartcast_pointer_str',
-		"interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n\tboxed := Named(Item{})\n\tprintln(describe(boxed))\n}\n")
+	interface_smartcast_str_out := run_good(v3_bin, 'review_interface_smartcast_pointer_str', "interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n\tboxed := Named(Item{})\n\tprintln(describe(boxed))\n}\n")
 	assert interface_smartcast_str_out == '&item\nitem'
-	run_bad(v3_bin, 'review_setter_only_compound_index_assignment',
-		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
-		'compound index assignment requires a `[]` overload')
-	run_bad(v3_bin, 'review_getter_only_index_assignment',
-		"struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] = 1\n}\n",
-		'index assignment requires a `[]=` overload')
-	run_bad(v3_bin, 'review_getter_only_compound_index_assignment',
-		"struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
-		'index assignment requires a `[]=` overload')
-	run_bad(v3_bin, 'review_compound_index_getter_key_mismatch',
-		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
-		'cannot use `string` as overloaded index; expected `int`')
-	run_bad(v3_bin, 'review_compound_index_getter_value_mismatch',
-		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
-		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
-	pointer_depth_out := run_good(v3_bin, 'review_one_level_implicit_address',
-		'fn take(p &int) int {\n\treturn *p\n}\n\nfn main() {\n\tmut n := 3\n\tprintln(int_str(take(n)))\n}\n')
+	run_bad(v3_bin, 'review_setter_only_compound_index_assignment', "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n", 'compound index assignment requires a `[]` overload')
+	run_bad(v3_bin, 'review_getter_only_index_assignment', "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] = 1\n}\n", 'index assignment requires a `[]=` overload')
+	run_bad(v3_bin, 'review_getter_only_compound_index_assignment', "struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n", 'index assignment requires a `[]=` overload')
+	run_bad(v3_bin, 'review_compound_index_getter_key_mismatch', "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n", 'cannot use `string` as overloaded index; expected `int`')
+	run_bad(v3_bin, 'review_compound_index_getter_value_mismatch', "struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n", 'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
+	pointer_depth_out := run_good(v3_bin, 'review_one_level_implicit_address', 'fn take(p &int) int {\n\treturn *p\n}\n\nfn main() {\n\tmut n := 3\n\tprintln(int_str(take(n)))\n}\n')
 	assert pointer_depth_out == '3'
-	alias_str_out := run_good(v3_bin, 'review_alias_struct_implicit_interface_str',
-		"interface Printable {\n\tstr() string\n}\n\nstruct Foo {\n\tx int\n}\n\ntype AliasFoo = Foo\n\nfn main() {\n\tvalue := Printable(AliasFoo(Foo{\n\t\tx: 7\n\t}))\n\ttext := value.str()\n\tprintln(text.contains('Foo'))\n\tprintln(text.contains('x: 7'))\n}\n")
+	alias_str_out := run_good(v3_bin, 'review_alias_struct_implicit_interface_str', "interface Printable {\n\tstr() string\n}\n\nstruct Foo {\n\tx int\n}\n\ntype AliasFoo = Foo\n\nfn main() {\n\tvalue := Printable(AliasFoo(Foo{\n\t\tx: 7\n\t}))\n\ttext := value.str()\n\tprintln(text.contains('Foo'))\n\tprintln(text.contains('x: 7'))\n}\n")
 	assert alias_str_out == 'true\ntrue'
-	alias_field_str_out := run_good(v3_bin, 'review_alias_fields_implicit_interface_str',
-		'interface Printable {\n\tstr() string\n}\n\nstruct Bar {\n\tx int\n}\n\ntype MyBar = Bar\ntype MyNums = []int\ntype MyFixed = [2]int\ntype MyName = string\n\nstruct Foo {\n\tbar   MyBar\n\tnums  MyNums\n\tfixed MyFixed\n\tname  MyName\n}\n\nfn main() {\n\tvalue := Printable(Foo{\n\t\tbar: MyBar(Bar{\n\t\t\tx: 7\n\t\t})\n\t\tnums: MyNums([1, 2])\n\t\tfixed: MyFixed([3, 4]!)\n\t\tname: MyName(\'Ada\')\n\t})\n\ttext := value.str()\n\tprintln(text.contains(\'x: 7\'))\n\tprintln(text.contains(\'[1, 2]\'))\n\tprintln(text.contains(\'[3, 4]\'))\n\tprintln(text.contains("\'Ada\'"))\n}\n')
+	alias_field_str_out := run_good(v3_bin, 'review_alias_fields_implicit_interface_str', 'interface Printable {\n\tstr() string\n}\n\nstruct Bar {\n\tx int\n}\n\ntype MyBar = Bar\ntype MyNums = []int\ntype MyFixed = [2]int\ntype MyName = string\n\nstruct Foo {\n\tbar   MyBar\n\tnums  MyNums\n\tfixed MyFixed\n\tname  MyName\n}\n\nfn main() {\n\tvalue := Printable(Foo{\n\t\tbar: MyBar(Bar{\n\t\t\tx: 7\n\t\t})\n\t\tnums: MyNums([1, 2])\n\t\tfixed: MyFixed([3, 4]!)\n\t\tname: MyName(\'Ada\')\n\t})\n\ttext := value.str()\n\tprintln(text.contains(\'x: 7\'))\n\tprintln(text.contains(\'[1, 2]\'))\n\tprintln(text.contains(\'[3, 4]\'))\n\tprintln(text.contains("\'Ada\'"))\n}\n')
 	assert alias_field_str_out == 'true\ntrue\ntrue\ntrue'
-	call_ptr_out := run_good(v3_bin, 'review_call_return_pointer_not_arg_alias',
-		'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
+	call_ptr_out := run_good(v3_bin, 'review_call_return_pointer_not_arg_alias', 'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
 	assert call_ptr_out == '20'
-	mut_param_alias_out := run_good(v3_bin, 'review_mut_param_pointer_alias_return',
-		'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain[T](mut x T) &T {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep[int](mut a)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain[int](mut b)\n\tunsafe {\n\t\t*q = 8\n\t}\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n')
+	mut_param_alias_out := run_good(v3_bin, 'review_mut_param_pointer_alias_return', 'fn keep[T](mut x T) &T {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain[T](mut x T) &T {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep[int](mut a)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain[int](mut b)\n\tunsafe {\n\t\t*q = 8\n\t}\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n')
 	assert mut_param_alias_out == '7\n7\n8\n8'
-	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array',
-		'@[translated]\nmodule main\n\nconst n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
+	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array', '@[translated]\nmodule main\n\nconst n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
 }
 
@@ -6165,15 +5977,13 @@ fn test_cross_module_mut_receiver_checks_visible_mutation() {
 
 fn test_implicit_reference_materializes_required_pointer_levels() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'review_multi_level_implicit_addresses',
-		'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n')
+	out := run_good(v3_bin, 'review_multi_level_implicit_addresses', 'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n')
 	assert out == '5\n7'
 }
 
 fn test_discard_assignment_preserves_array_return_type() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'discard_array_return_no_context',
-		"fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n")
+	out := run_good(v3_bin, 'discard_array_return_no_context', "fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
 
@@ -6283,15 +6093,13 @@ fn main() {
 }
 ')
 	assert promoted_declared_default_out == '3\n7\n3\n8\n9\n2\n10\n2'
-	promoted_cross_module_default_out := run_good_project(v3_bin,
-		'promoted_cross_module_struct_default', {
+	promoted_cross_module_default_out := run_good_project(v3_bin, 'promoted_cross_module_struct_default', {
 		'v.mod':            "Module { name: 'promoted_cross_module_struct_default' }\n"
 		'defaults/types.v': 'module defaults\n\npub const default_a = 3\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = Inner{\n\t\ta: default_a\n\t\tb: 4\n\t}\n}\n'
 		'main.v':           'module main\n\nimport defaults\n\nconst default_a = 99\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
 	}, 'main.v')
 	assert promoted_cross_module_default_out == '3\n7'
-	promoted_import_alias_call_default_out := run_good_project(v3_bin,
-		'promoted_import_alias_call_default', {
+	promoted_import_alias_call_default_out := run_good_project(v3_bin, 'promoted_import_alias_call_default', {
 		'v.mod':             "Module { name: 'promoted_import_alias_call_default' }\n"
 		'helpers/helpers.v': 'module helpers\n\npub fn default_a() int {\n\treturn 3\n}\n'
 		'defaults/types.v':  'module defaults\n\nimport helpers as h\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = make_inner(h.default_a())\n}\n\nfn make_inner(a int) Inner {\n\treturn Inner{\n\t\ta: a\n\t\tb: 4\n\t}\n}\n'
@@ -6493,8 +6301,7 @@ fn main() {
 		'main.v':        'module main\n\n#define V3_TOPLEVEL_SHIM_VALUE 46\n#include "toplevel.c"\n#undef V3_TOPLEVEL_SHIM_VALUE\n\n#define V3_GUARDED_SOURCE\n#ifdef V3_GUARDED_SOURCE\n#define V3_GUARDED_SHIM_VALUE 45\n#include "shim.c"\n#undef V3_GUARDED_SHIM_VALUE\n#endif\n\n#define V3_SOURCE_VARIANT 1\n#include "specialized.c"\n#undef V3_SOURCE_VARIANT\n#define V3_SOURCE_VARIANT 2\n#include "specialized.c"\n#undef V3_SOURCE_VARIANT\n\n#pragma pack(push, 1)\n#include "packed.c"\n#pragma pack(pop)\n\nfn C.answer_from_guarded_shim() int\nfn C.answer_from_toplevel_shim() int\nfn C.answer_from_source_variant_one() int\nfn C.answer_from_source_variant_two() int\nfn C.v3_review_packed_size() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_guarded_shim() + C.answer_from_toplevel_shim() + C.answer_from_source_variant_one() + C.answer_from_source_variant_two()))\n\tprintln(int_str(C.v3_review_packed_size()))\n}\n'
 	}, 'main.v')
 	assert guarded_include_out == '94\n5'
-	guarded_header_before_source_out := run_good_project(v3_bin,
-		'guarded_header_before_source_include', {
+	guarded_header_before_source_out := run_good_project(v3_bin, 'guarded_header_before_source_include', {
 		'v.mod':   "Module { name: 'guarded_header_before_source_include' }\n"
 		'types.h': 'typedef struct { int value; } V3GuardedHeaderType;\n'
 		'impl.c':  'V3GuardedHeaderType v3_make_guarded_header_type(void) { return (V3GuardedHeaderType){50}; }\nint v3_guarded_header_type_value(V3GuardedHeaderType value) { return value.value; }\n'
@@ -6507,29 +6314,25 @@ fn main() {
 		'main.v': 'module main\n\n#include "shim.c"\n\nstruct SourceTypeHolder {\n\tvalue C.V3SourceType\n}\n\nfn C.v3_source_type_value(C.V3SourceType) int\n\nfn main() {\n\tholder := SourceTypeHolder{\n\t\tvalue: C.V3SourceType{\n\t\t\tvalue: 51\n\t\t}\n\t}\n\tprintln(int_str(C.v3_source_type_value(holder.value)))\n}\n'
 	}, 'main.v')
 	assert source_type_out == '51'
-	objective_c_type_out := run_good_project_with_flags(v3_bin, 'objective_c_type_provider',
-		'-cc clang', {
+	objective_c_type_out := run_good_project_with_flags(v3_bin, 'objective_c_type_provider', '-cc clang', {
 		'v.mod':  "Module { name: 'objective_c_type_provider' }\n"
 		'shim.m': 'typedef struct { int value; } V3ObjectiveCType;\nint v3_objective_c_type_value(V3ObjectiveCType value) { return value.value; }\n'
 		'main.v': 'module main\n\n#include "shim.m"\n\nstruct ObjectiveCTypeHolder {\n\tvalue C.V3ObjectiveCType\n}\n\nfn C.v3_objective_c_type_value(C.V3ObjectiveCType) int\n\nfn main() {\n\tholder := ObjectiveCTypeHolder{\n\t\tvalue: C.V3ObjectiveCType{\n\t\t\tvalue: 56\n\t\t}\n\t}\n\tprintln(int_str(C.v3_objective_c_type_value(holder.value)))\n}\n'
 	}, 'main.v')
 	assert objective_c_type_out == '56'
-	objective_c_typedef_out := run_good_project_with_flags(v3_bin, 'objective_c_typedef_provider',
-		'-cc clang', {
+	objective_c_typedef_out := run_good_project_with_flags(v3_bin, 'objective_c_typedef_provider', '-cc clang', {
 		'v.mod':  "Module { name: 'objective_c_typedef_provider' }\n"
 		'shim.m': 'typedef enum { V3_KIND_ZERO = 0 } V3Kind;\ntypedef unsigned long V3Plain;\n'
 		'main.v': 'module main\n\n#include "shim.m"\n\nstruct ObjectiveCTypedefHolder {\n\tkind C.V3Kind\n\tvalue C.V3Plain\n}\n\nfn main() {\n\t_ := ObjectiveCTypedefHolder{}\n\tprintln(int_str(66))\n}\n'
 	}, 'main.v')
 	assert objective_c_typedef_out == '66'
-	objective_c_sum_typedef_out := run_good_project_with_flags(v3_bin,
-		'objective_c_sum_typedef_provider', '-cc clang', {
+	objective_c_sum_typedef_out := run_good_project_with_flags(v3_bin, 'objective_c_sum_typedef_provider', '-cc clang', {
 		'v.mod':  "Module { name: 'objective_c_sum_typedef_provider' }\n"
 		'shim.m': 'typedef struct { int value; } V3Obj;\n'
 		'main.v': 'module main\n\n#include "shim.m"\n\ntype ObjectiveCSumValue = C.V3Obj | int\n\nfn main() {\n\t_ := ObjectiveCSumValue(67)\n\tprintln(int_str(67))\n}\n'
 	}, 'main.v')
 	assert objective_c_sum_typedef_out == '67'
-	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
-		'-cc clang', {
+	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include', '-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"
 		'shim.cc': '#include <string>\nextern "C" int answer_from_cpp(void) { std::string answer(2, \'x\'); return int(answer.size()); }\n'
 		'shim.m':  'int answer_from_objective_c(void) { return 1; }\n'
@@ -6537,30 +6340,26 @@ fn main() {
 		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_cpp() int\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp() + C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert objective_cpp_out == '46'
-	objective_cpp_object_fallback_out := run_good_project_with_flags(v3_bin,
-		'objective_cpp_object_fallback', '-cc clang', {
+	objective_cpp_object_fallback_out := run_good_project_with_flags(v3_bin, 'objective_cpp_object_fallback', '-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_object_fallback' }\n"
 		'shim.mm': '#include <string>\nextern "C" int answer_from_objective_cpp_object(void) { std::string answer(49, \'x\'); return int(answer.size()); }\n'
 		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_objective_cpp_object() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_cpp_object()))\n}\n'
 	}, 'main.v')
 	assert objective_cpp_object_fallback_out == '49'
-	objective_c_object_fallback_out := run_good_project_with_flags(v3_bin,
-		'objective_c_object_fallback', '-cc clang', {
+	objective_c_object_fallback_out := run_good_project_with_flags(v3_bin, 'objective_c_object_fallback', '-cc clang', {
 		'v.mod':  "Module { name: 'objective_c_object_fallback' }\n"
 		'shim.m': 'int answer_from_objective_c_object(void) { return 64; }\n'
 		'main.v': 'module main\n\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_objective_c_object() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_c_object()))\n}\n'
 	}, 'main.v')
 	assert objective_c_object_fallback_out == '64'
-	objective_cpp_after_guarded_header_out := run_good_project_with_flags(v3_bin,
-		'objective_cpp_after_guarded_header', '-cc clang', {
+	objective_cpp_after_guarded_header_out := run_good_project_with_flags(v3_bin, 'objective_cpp_after_guarded_header', '-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_after_guarded_header' }\n"
 		'shim.h':  '#ifndef V3_REVIEW_SHIM_H\n#define V3_REVIEW_SHIM_H\ntypedef int v3_review_header_int;\n#endif\n'
 		'shim.mm': 'extern "C" int answer_after_guarded_header(void) { v3_review_header_int value = 48; auto answer = [value]() { return value; }; return answer(); }\n'
 		'main.v':  'module main\n\n#include "shim.h"\n#include "shim.mm"\n\nfn C.answer_after_guarded_header() int\n\nfn main() {\n\tprintln(int_str(C.answer_after_guarded_header()))\n}\n'
 	}, 'main.v')
 	assert objective_cpp_after_guarded_header_out == '48'
-	guarded_objective_cpp_out := run_good_project_with_flags(v3_bin,
-		'guarded_objective_cpp_source_include', '-cc clang', {
+	guarded_objective_cpp_out := run_good_project_with_flags(v3_bin, 'guarded_objective_cpp_source_include', '-cc clang', {
 		'v.mod':          "Module { name: 'guarded_objective_cpp_source_include' }\n"
 		'disabled.m':     '#error disabled Objective-C source must not be compiled\n'
 		'disabled.mm':    '#error disabled Objective-C++ source must not be compiled\n'
@@ -6584,22 +6383,19 @@ fn main() {
 	assert inactive_objective_cpp.run_output == '65'
 	assert !inactive_objective_cpp.compile_output.contains('v3_native_source_context_'), inactive_objective_cpp.compile_output
 
-	guarded_objective_c_static_out := run_good_project_with_flags(v3_bin,
-		'guarded_objective_c_static', '-cc clang', {
+	guarded_objective_c_static_out := run_good_project_with_flags(v3_bin, 'guarded_objective_c_static', '-cc clang', {
 		'v.mod':  "Module { name: 'guarded_objective_c_static' }\n"
 		'shim.m': '#ifndef V3_OBJECTIVE_C_STATIC_VALUE\n#error missing guarded Objective-C context\n#endif\nstatic int answer_from_guarded_objective_c_static(void) { return V3_OBJECTIVE_C_STATIC_VALUE; }\n'
 		'main.v': 'module main\n\n#define V3_OBJECTIVE_C_STATIC_VALUE 55\n#ifdef V3_OBJECTIVE_C_STATIC_VALUE\n#include "shim.m"\n#endif\n\nfn C.answer_from_guarded_objective_c_static() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_guarded_objective_c_static()))\n}\n'
 	}, 'main.v')
 	assert guarded_objective_c_static_out == '55'
-	delayed_objective_c_macro_out := run_good_project_with_flags(v3_bin,
-		'delayed_objective_c_macro', '-cc clang', {
+	delayed_objective_c_macro_out := run_good_project_with_flags(v3_bin, 'delayed_objective_c_macro', '-cc clang', {
 		'v.mod':  "Module { name: 'delayed_objective_c_macro' }\n"
 		'shim.m': '#ifndef V3_DELAYED_OBJECTIVE_C_VALUE\n#error missing delayed Objective-C macro context\n#endif\nstatic int answer_from_delayed_objective_c_macro(void) { return V3_DELAYED_OBJECTIVE_C_VALUE; }\n'
 		'main.v': 'module main\n\n#define V3_DELAYED_OBJECTIVE_C_VALUE 57\n#ifdef V3_DELAYED_OBJECTIVE_C_VALUE\n#include "shim.m"\n#endif\n#undef V3_DELAYED_OBJECTIVE_C_VALUE\n\nfn C.answer_from_delayed_objective_c_macro() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_delayed_objective_c_macro()))\n}\n'
 	}, 'main.v')
 	assert delayed_objective_c_macro_out == '57'
-	inactive_undef_context_out := run_good_project_with_flags(v3_bin, 'inactive_undef_context',
-		'-cc clang', {
+	inactive_undef_context_out := run_good_project_with_flags(v3_bin, 'inactive_undef_context', '-cc clang', {
 		'v.mod':  "Module { name: 'inactive_undef_context' }\n"
 		'shim.m': '#ifndef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n#error active macro was lost through inactive undef\n#endif\nstatic int answer_after_inactive_undef(void) { return V3_ACTIVE_THROUGH_INACTIVE_UNDEF; }\n'
 		'main.v': 'module main\n\n#define V3_ACTIVE_THROUGH_INACTIVE_UNDEF 62\n#if 0\n#undef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n#endif\n#include "shim.m"\n#undef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n\nfn C.answer_after_inactive_undef() int\n\nfn main() {\n\tprintln(int_str(C.answer_after_inactive_undef()))\n}\n'
@@ -6611,16 +6407,14 @@ fn main() {
 		'main.v':     'module main\n\n#if defined(V3_NEVER_DEFINED_FOR_OBJECTIVE_C)\n#include "disabled.m"\n#endif\n\n#if 0\n#elif 0\n#include "disabled.m"\n#endif\n\n#if 1\n#elif 0\n#else\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error inactive guards must not enable Objective-C\n#endif\n\nfn main() {\n\tprintln(int_str(63))\n}\n'
 	}, 'main.v')
 	assert inactive_defined_guard_out == '63'
-	noncontiguous_source_context_out := run_good_project_with_flags(v3_bin,
-		'noncontiguous_source_context', '-cc clang', {
+	noncontiguous_source_context_out := run_good_project_with_flags(v3_bin, 'noncontiguous_source_context', '-cc clang', {
 		'v.mod':  "Module { name: 'noncontiguous_source_context' }\n"
 		'defs.h': 'typedef int v3_noncontiguous_context_header_type;\n'
 		'shim.m': '#ifndef V3_NONCONTIGUOUS_CONTEXT_VALUE\n#error missing non-contiguous macro context\n#endif\nstatic int answer_from_noncontiguous_context(void) { return V3_NONCONTIGUOUS_CONTEXT_VALUE; }\n'
 		'main.v': 'module main\n\n#define V3_NONCONTIGUOUS_CONTEXT_VALUE 61\n#pragma pack(push, 1)\n#include "defs.h"\n#include "shim.m"\n#pragma pack(pop)\n#undef V3_NONCONTIGUOUS_CONTEXT_VALUE\n\nstruct V3DelayedContextLayout {\n\tfirst u8\n\tsecond u64\n}\n\nfn C.answer_from_noncontiguous_context() int\n\nfn main() {\n\tprintln(int_str(int(sizeof(V3DelayedContextLayout))))\n\tprintln(int_str(C.answer_from_noncontiguous_context()))\n}\n'
 	}, 'main.v')
 	assert noncontiguous_source_context_out == '16\n61'
-	relative_source_include_out := run_good_project_relative_input(v3_bin, 'relative_source_input',
-		'-cc clang', {
+	relative_source_include_out := run_good_project_relative_input(v3_bin, 'relative_source_input', '-cc clang', {
 		'v.mod':  "Module { name: 'relative_source_input' }\n"
 		'shim.c': 'int answer_from_relative_c(void) { return 58; }\n'
 		'shim.m': 'int answer_from_relative_objective_c(void) { return 1; }\n'
@@ -6633,29 +6427,25 @@ fn main() {
 		'main.v':   'module main\n\n#flag @VMODROOT/shim.cpp\n\nfn C.answer_from_cpp_runtime() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp_runtime()))\n}\n'
 	}, 'main.v')
 	assert cpp_runtime_out == '44'
-	explicit_language_out := run_good_project_with_flags(v3_bin, 'explicit_language_source_flag',
-		'-cc clang', {
+	explicit_language_out := run_good_project_with_flags(v3_bin, 'explicit_language_source_flag', '-cc clang', {
 		'v.mod':  "Module { name: 'explicit_language_source_flag' }\n"
 		'shim.c': '#include <string>\nextern "C" int answer_from_explicit_cpp(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'
 		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim.c\n\nfn C.answer_from_explicit_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_explicit_cpp()))\n}\n'
 	}, 'main.v')
 	assert explicit_language_out == '44'
-	explicit_object_language_out := run_good_project_with_flags(v3_bin,
-		'explicit_object_fallback_language', '-cc clang', {
+	explicit_object_language_out := run_good_project_with_flags(v3_bin, 'explicit_object_fallback_language', '-cc clang', {
 		'v.mod':  "Module { name: 'explicit_object_fallback_language' }\n"
 		'shim.c': '#include <string>\nextern "C" int answer_from_explicit_object_cpp(void) { std::string answer(52, \'x\'); return int(answer.size()); }\n'
 		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_explicit_object_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_explicit_object_cpp()))\n}\n'
 	}, 'main.v')
 	assert explicit_object_language_out == '52'
-	extensionless_language_out := run_good_project_with_flags(v3_bin,
-		'extensionless_explicit_language', '-cc clang', {
+	extensionless_language_out := run_good_project_with_flags(v3_bin, 'extensionless_explicit_language', '-cc clang', {
 		'v.mod':  "Module { name: 'extensionless_explicit_language' }\n"
 		'shim':   '#include <string>\nextern "C" int answer_from_extensionless_cpp(void) { std::string answer(53, \'x\'); return int(answer.size()); }\n'
 		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim\n\nfn C.answer_from_extensionless_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_extensionless_cpp()))\n}\n'
 	}, 'main.v')
 	assert extensionless_language_out == '53'
-	objective_cpp_c_override_out := run_good_project_with_flags(v3_bin, 'objective_cpp_c_override',
-		'-cc clang', {
+	objective_cpp_c_override_out := run_good_project_with_flags(v3_bin, 'objective_cpp_c_override', '-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_c_override' }\n"
 		'shim.mm': 'int answer_from_mm_compiled_as_c(void) { void* raw = 0; int* typed = raw; return typed == 0 ? 54 : 0; }\n'
 		'main.v':  'module main\n\n#flag -x c\n#flag @VMODROOT/shim.mm\n\nfn C.answer_from_mm_compiled_as_c() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_mm_compiled_as_c()))\n}\n'
@@ -6665,8 +6455,7 @@ fn main() {
 
 fn test_imported_objective_cpp_wrapper_context() {
 	v3_bin := build_v3()
-	out := run_good_project_with_flags(v3_bin, 'imported_objective_cpp_wrapper_context',
-		'-cc clang', {
+	out := run_good_project_with_flags(v3_bin, 'imported_objective_cpp_wrapper_context', '-cc clang', {
 		'v.mod':                   "Module { name: 'imported_objective_cpp_wrapper_context' }\n"
 		'nativecontext/context.v': 'module nativecontext\n\n#define V3_IMPORTED_OBJECTIVE_CPP_VALUE 68\n#include "types.h"\n\npub fn keep_context_module() {}\n'
 		'nativecontext/types.h':   'typedef int v3_imported_objective_cpp_int;\n'
@@ -6752,8 +6541,7 @@ fn test_valued_bare_macro_objective_c_guards_remain_possible() {
 
 fn test_external_bare_macro_objective_c_guards_remain_possible() {
 	v3_bin := build_v3()
-	out := run_good_project_with_flags(v3_bin, 'external_bare_macro_objective_c_guards',
-		'-cc clang', {
+	out := run_good_project_with_flags(v3_bin, 'external_bare_macro_objective_c_guards', '-cc clang', {
 		'v.mod':           "Module { name: 'external_bare_macro_objective_c_guards' }\n"
 		'config.h':        '#define V3_HEADER_FEATURE 1\n'
 		'forced.h':        '#define V3_FORCED_FEATURE 1\n'
@@ -6816,8 +6604,7 @@ fn main() {
 	value := 7
 	C.take(value)
 }
-',
-		'cannot use `int` as argument')
+', 'cannot use `int` as argument')
 	run_bad(v3_bin, 'v_voidptr_enum_value_does_not_auto_address', 'enum Color {
 	red
 }
@@ -6829,8 +6616,7 @@ fn take(value voidptr) {
 fn main() {
 	take(Color.red)
 }
-',
-		'cannot use `Color` as argument')
+', 'cannot use `Color` as argument')
 	v_call_out := run_good(v3_bin, 'v_voidptr_auto_address', 'const voidptr_const_value = 9
 
 fn take(value voidptr) int {
@@ -7418,8 +7204,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_unknown_struct_suppression_stays_with_related_generic_declaration() {
@@ -7480,8 +7265,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_or_fallback_progress_is_conditional() {
@@ -7505,8 +7289,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_short_circuit_progress_is_conditional() {
@@ -7528,8 +7311,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_logical_or_rhs_progress', 'struct Item {
 mut:
 	remaining int
@@ -7547,8 +7329,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_unreachable_short_circuit_call', 'struct Item {}
 
 fn (item Item) str() string {
@@ -7584,8 +7365,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_selected_comptime_progress', 'struct Item {
 mut:
 	remaining int
@@ -7640,8 +7420,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_invoked_helper_calls_are_analyzed() {
@@ -7657,8 +7436,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_progressed_invoked_helper_call', 'struct Item {
 mut:
 	remaining int
@@ -7727,8 +7505,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_constant_true_branch_has_no_fallthrough() {
@@ -7796,8 +7573,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_spawn_mutation_is_not_synchronous_progress() {
@@ -7818,8 +7594,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_spawned_call', 'struct Item {}
 
 fn (item Item) str() string {
@@ -7828,8 +7603,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_assertion_mutation_is_not_guaranteed_progress() {
@@ -7851,8 +7625,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_unreachable_assert_message', 'struct Item {}
 
 fn (item Item) str() string {
@@ -7873,8 +7646,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_select_branches_have_isolated_progress() {
@@ -7899,8 +7671,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_deferred_mutation_does_not_count_as_progress() {
@@ -7919,8 +7690,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_deferred_calls_use_scope_exit_state_in_lifo_order() {
@@ -7941,8 +7711,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_deferred_call_before_mutation', 'struct Item {
 mut:
 	remaining int
@@ -7960,8 +7729,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_deferred_mutation_before_call', 'struct Item {
 mut:
 	remaining int
@@ -8021,8 +7789,7 @@ fn (item LambdaItem) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_invoked_fn_literal', 'struct LiteralItem {}
 
 fn (item LiteralItem) str() string {
@@ -8033,8 +7800,7 @@ fn (item LiteralItem) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_unbacked_enum_field_keeps_integer_overflow_diagnostic() {
@@ -8044,8 +7810,7 @@ fn test_unbacked_enum_field_keeps_integer_overflow_diagnostic() {
 }
 
 fn main() {}
-',
-		'integer literal 18446744073709551616 overflows int')
+', 'integer literal 18446744073709551616 overflows int')
 }
 
 fn test_diagnostic_footer_uses_deduplicated_error_count() {
@@ -8178,8 +7943,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_array_append_counts_as_progress() {
@@ -8355,8 +8119,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_multiply_one_noop', 'struct Item {
 mut:
 	remaining int
@@ -8369,8 +8132,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_helper_add_zero_noop', 'struct Item {
 mut:
 	remaining int
@@ -8387,8 +8149,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_reversed_mutations_do_not_count_as_progress() {
@@ -8406,8 +8167,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_reversed_compound_assignment', 'struct Item {
 mut:
 	remaining int
@@ -8421,8 +8181,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_nested_helper_mutations_count_as_progress() {
@@ -8480,8 +8239,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_duplicate_function_diagnostics_survive_body_errors() {
@@ -8672,8 +8430,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_indexed_bound_method_value', 'struct Item {}
 
 fn (item Item) str() string {
@@ -8683,8 +8440,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_interface_bound_method_value', 'interface Printable {
 	str() string
 }
@@ -8698,8 +8454,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_function_field_bound_method_value', 'struct Holder {
 	cb fn () string
 }
@@ -8714,8 +8469,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_helper_summary_keeps_later_rebind() {
@@ -8737,8 +8491,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_user_c_string_function_is_not_inferred_unsafe() {
@@ -8778,8 +8531,7 @@ recurse:
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_allows_recursing_into_child_values() {
@@ -8818,8 +8570,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_helper_returned_child', 'struct Tree {
 	children []Tree
 }
@@ -8854,8 +8605,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_map_element_provenance', 'struct Item {}
 
 fn (item Item) str() string {
@@ -8864,8 +8614,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_array_indexed_progress', 'struct Item {
 mut:
 	remaining int
@@ -8900,8 +8649,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_preserves_multi_return_slots_and_aggregate_clones() {
@@ -8918,8 +8666,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_multi_return_assign_slot_provenance', 'struct Item {}
 
 fn carry(item Item) (Item, int) {
@@ -8933,8 +8680,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_array_clone_element_provenance', 'struct Item {}
 
 fn (item Item) str() string {
@@ -8943,8 +8689,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_map_clone_element_provenance', 'struct Item {}
 
 fn (item Item) str() string {
@@ -8953,8 +8698,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_preserves_wrapper_append_and_helper_aggregate_provenance() {
@@ -8973,8 +8717,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_array_append_provenance', 'struct Item {}
 
 fn (item Item) str() string {
@@ -8984,8 +8727,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_helper_array_provenance', 'struct Item {}
 
 fn wrap(item Item) []Item {
@@ -8997,8 +8739,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_helper_map_provenance', 'struct Item {}
 
 fn wrap(item Item) map[string]Item {
@@ -9010,8 +8751,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_helper_wrapper_provenance', 'struct Item {}
 
 struct Wrapper {
@@ -9029,8 +8769,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_preserves_qualified_helper_args_and_slot_replacements() {
@@ -9053,8 +8792,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_array_slot_replacement', 'struct Item {
 	remaining int
 }
@@ -9068,8 +8806,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_map_slot_replacement', 'struct Item {
 	remaining int
 }
@@ -9083,8 +8820,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_wrapper_field_replacement', 'struct Item {
 	remaining int
 }
@@ -9105,8 +8841,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_noreturn_branch_does_not_fall_through() {
@@ -9147,8 +8882,7 @@ fn test_map_rebind_clears_unsafe_alias_provenance() {
 	copy := alias
 	println(copy.len)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 }
 
 fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
@@ -9165,8 +8899,7 @@ fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 	copy := alias
 	println(copy.len)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	out := run_good(v3_bin, 'unsafe_map_alias_assert_message_rebind', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9193,8 +8926,7 @@ fn test_unsafe_map_alias_provenance_isolates_assert_messages() {
 	copy := alias
 	println(copy.len)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 }
 
 fn test_fresh_unsafe_map_is_not_reference_alias() {
@@ -9204,8 +8936,7 @@ fn test_fresh_unsafe_map_is_not_reference_alias() {
 	copy := alias
 	println(copy.len)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	out := run_good(v3_bin, 'unsafe_map_reference_alias', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9306,8 +9037,7 @@ fn test_unsafe_map_alias_unconditional_loop_has_no_zero_iteration_path() {
 fn main() {
 	branch(false)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 }
 
 fn test_unsafe_map_alias_provenance_tracks_each_loop_break() {
@@ -9330,8 +9060,7 @@ fn test_unsafe_map_alias_provenance_tracks_each_loop_break() {
 fn main() {
 	branch(true)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	out := run_good(v3_bin, 'unsafe_map_alias_assignment_before_break', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9362,8 +9091,7 @@ fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
 	copy := alias
 	println(copy.len)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	run_bad(v3_bin, 'unsafe_map_alias_skipped_logical_or_rhs', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9376,8 +9104,7 @@ fn test_unsafe_map_alias_provenance_merges_short_circuit_operands() {
 	copy := alias
 	println(copy.len)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	out := run_good(v3_bin, 'unsafe_map_alias_required_logical_rhs', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9412,8 +9139,7 @@ fn test_unsafe_map_alias_provenance_merges_control_flow_paths() {
 fn main() {
 	branch(false)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	run_bad(v3_bin, 'unsafe_map_alias_match_return_path', 'fn branch(value int) {
 	mut original := {
 		"value": 1
@@ -9433,8 +9159,7 @@ fn main() {
 fn main() {
 	branch(1)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	run_bad(v3_bin, 'unsafe_map_alias_loop_zero_path', 'fn branch(values []int) {
 	mut original := {
 		"value": 1
@@ -9450,8 +9175,7 @@ fn main() {
 fn main() {
 	branch([]int{})
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	out := run_good(v3_bin, 'unsafe_map_alias_all_if_paths', 'fn branch(cond bool) {
 	mut first := {
 		"value": 1
@@ -9519,8 +9243,7 @@ fn branch(ok bool) {
 fn main() {
 	branch(true)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	out := run_good(v3_bin, 'unsafe_map_alias_all_or_paths', 'fn maybe() ?int {
 	return none
 }
@@ -9557,8 +9280,7 @@ fn test_unsafe_map_alias_provenance_delays_defer_effects() {
 	copy := alias
 	println(copy.len)
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	out := run_good(v3_bin, 'unsafe_map_alias_deferred_rebind', 'fn main() {
 	mut original := {
 		"value": 1
@@ -9592,8 +9314,7 @@ fn test_unsafe_map_alias_provenance_isolates_select_branches() {
 		}
 	}
 }
-',
-		'cannot copy map: call `move` or `clone` method (or use a reference)')
+', 'cannot copy map: call `move` or `clone` method (or use a reference)')
 	out := run_good(v3_bin, 'unsafe_map_alias_all_select_paths', 'fn main() {
 	mut first := {
 		"value": 1
@@ -9631,8 +9352,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_empty_struct_literal_provenance', 'struct Item {}
 
 fn (item Item) str() string {
@@ -9640,8 +9360,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_changed_struct_literal', 'struct Item {
 	remaining int
 }
@@ -9677,8 +9396,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_struct_update_noop_field', 'struct Item {
 	remaining int
 }
@@ -9691,8 +9409,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_struct_update_helper_provenance', 'struct Item {
 	value int
 }
@@ -9708,8 +9425,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_helper_returned_struct_update', 'struct Item {
 	value int
 }
@@ -9725,8 +9441,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_progressed_struct_update', 'struct Item {
 	remaining int
 }
@@ -9769,8 +9484,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_guarded_nonnumeric_struct_update_progress() {
@@ -9833,8 +9547,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_helper_unconditional_loop_progress() {
@@ -9912,8 +9625,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_preserves_provenance_through_buffered_channels() {
@@ -9927,8 +9639,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_buffered_channel_progress', 'struct Item {
 mut:
 	remaining int
@@ -9969,8 +9680,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_array_reverse_in_place', 'struct Item {
 	remaining int
 }
@@ -9984,8 +9694,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_array_prepend_shift', 'struct Item {
 	remaining int
 }
@@ -9999,8 +9708,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_array_delete_progress', 'struct Item {
 	remaining int
 }
@@ -10035,8 +9743,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_print_aggregate_receiver', 'struct Item {}
 
 fn (item Item) str() string {
@@ -10045,8 +9752,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_print_progressed_receiver', 'struct Item {
 mut:
 	remaining int
@@ -10102,8 +9808,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_mutated_local_receiver_index', 'struct Item {}
 
 fn (item Item) str() string {
@@ -10114,8 +9819,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_detects_string_interpolation_formatting() {
@@ -10127,8 +9831,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_interpolated_aggregate_receiver', 'struct Item {}
 
 fn (item Item) str() string {
@@ -10136,8 +9839,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_formatted_receiver', 'struct Item {}
 
 fn (item Item) str() string {
@@ -10145,8 +9847,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_interpolated_progressed_receiver', 'struct Item {
 mut:
 	remaining int
@@ -10180,8 +9881,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_explicit_map_str', 'struct Item {}
 
 fn (item Item) str() string {
@@ -10192,8 +9892,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_explicit_array_str_progress', 'struct Item {
 mut:
 	remaining int
@@ -10273,8 +9972,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_helper_nonzero_repeated_array', 'struct Item {}
 
 fn repeat(item Item) []Item {
@@ -10286,8 +9984,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 }
 
 fn test_recursive_str_tracks_for_in_values_and_array_slices() {
@@ -10302,8 +9999,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_for_in_index_and_value', 'struct Item {}
 
 fn (item Item) str() string {
@@ -10314,8 +10010,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	run_bad(v3_bin, 'recursive_str_array_slice_receiver', 'struct Item {}
 
 fn (item Item) str() string {
@@ -10325,8 +10020,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good(v3_bin, 'recursive_str_array_slice_terminal_index', 'struct Item {
 	done bool
 }
@@ -10386,8 +10080,7 @@ fn (item Item) str() string {
 }
 
 fn main() {}
-',
-		'cannot call `str()` method recursively')
+', 'cannot call `str()` method recursively')
 	out := run_good_with_flags(v3_bin, 'recursive_str_dump_nop_dump', '-d nop_dump', source)
 	assert out == ''
 	progressed_out := run_good(v3_bin, 'recursive_str_dump_progressed_receiver', 'struct Item {
@@ -10545,39 +10238,32 @@ fn test_imported_generic_receiver_alias_method_return_is_concrete() {
 
 fn test_top_level_statements_with_postinclude_generate_main() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'top_level_postinclude_main',
-		'#postinclude <limits.h>\n\n@[export: "v3_exported_helper"]\nfn exported_helper() {}\n\nprintln("ok")\n')
+	out := run_good(v3_bin, 'top_level_postinclude_main', '#postinclude <limits.h>\n\n@[export: "v3_exported_helper"]\nfn exported_helper() {}\n\nprintln("ok")\n')
 	assert out == 'ok'
 }
 
 fn test_composite_string_format_accepts_width_and_alignment() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'composite_string_format_width',
-		'fn main() {\n\tprintln("|\${[1, 2]:-12s}|")\n}\n')
+	out := run_good(v3_bin, 'composite_string_format_width', 'fn main() {\n\tprintln("|\${[1, 2]:-12s}|")\n}\n')
 	assert out == '|[1, 2]      |'
 }
 
 fn test_comptime_define_field_default_is_not_fixed_array_initializer() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'comptime_define_field_default',
-		'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n')
+	out := run_good(v3_bin, 'comptime_define_field_default', 'struct Job {\n\tid string = \$d("id", "Job")\n}\n\nstruct App {\n\tjobs [\$d("jobs", 2)]Job\n}\n\nfn main() {\n\tapp := App{}\n\tprintln(app.jobs[0].id)\n}\n')
 	assert out == 'Job'
-	run_bad(v3_bin, 'comptime_define_fixed_array_initializer',
-		'struct App {\n\tjobs [\$d("jobs", 2)]int = [1, 2]!\n}\n\nfn main() {}\n',
-		'cannot initialize a fixed size array field that uses `$d()` as size quantifier')
+	run_bad(v3_bin, 'comptime_define_fixed_array_initializer', 'struct App {\n\tjobs [\$d("jobs", 2)]int = [1, 2]!\n}\n\nfn main() {}\n', 'cannot initialize a fixed size array field that uses `$d()` as size quantifier')
 }
 
 fn test_comptime_define_call_is_not_parenthesized_condition_warning() {
 	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'comptime_define_if_warning', '-W',
-		'fn main() {\n\tif \$d("enabled", true) {\n\t\tprintln("ok")\n\t}\n}\n')
+	out := run_good_with_flags(v3_bin, 'comptime_define_if_warning', '-W', 'fn main() {\n\tif \$d("enabled", true) {\n\t\tprintln("ok")\n\t}\n}\n')
 	assert out == 'ok'
 }
 
 fn test_pointer_map_assignment_does_not_require_or_block() {
 	v3_bin := build_v3()
-	out := run_good_with_flags(v3_bin, 'pointer_map_assignment_warning', '-W',
-		'struct Item {}\n\nfn main() {\n\tmut items := map[string]&Item{}\n\titems["one"] = &Item{}\n\tprintln(items.len)\n}\n')
+	out := run_good_with_flags(v3_bin, 'pointer_map_assignment_warning', '-W', 'struct Item {}\n\nfn main() {\n\tmut items := map[string]&Item{}\n\titems["one"] = &Item{}\n\tprintln(items.len)\n}\n')
 	assert out == '1'
 }
 

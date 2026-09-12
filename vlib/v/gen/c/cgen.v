@@ -8075,15 +8075,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	unwrapped_expr_type := g.unwrap_generic(lhs_expr_type)
 	sym := g.table.sym(unwrapped_expr_type)
-	is_map_len := g.table.final_sym(unwrapped_expr_type).kind == .map
-		&& node.field_name == 'len'
-	field_name := if is_map_len {
-		'data->count'
-	} else if sym.language == .v {
-		c_name(node.field_name)
-	} else {
-		node.field_name
-	}
+	field_name := if sym.language == .v { c_name(node.field_name) } else { node.field_name }
 	resolved_selector_expr_type := if lhs_expr_type.has_flag(.generic)
 		|| g.type_has_unresolved_generic_parts(lhs_expr_type) {
 		unwrapped_expr_type
@@ -14477,9 +14469,6 @@ fn (mut g Gen) interface_field_ptr_expr(st ast.Type, cctype string, field ast.St
 	cname := c_name(field.name)
 	field_styp := g.styp(field.typ)
 	resolved_st_sym := g.table.final_sym(st)
-	if resolved_st_sym.kind == .map && field.name == 'len' {
-		return '(${field_styp}*)(&x->data->count)'
-	}
 	if _ := g.table.find_field(resolved_st_sym, field.name) {
 		return '(${field_styp}*)((char*)x + __offsetof_ptr(x, ${cctype}, ${cname}))'
 	}

@@ -824,9 +824,6 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 }
 
 fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string) string {
-	if field_name == 'len' && g.is_map_type(receiver_type) {
-		return 'int'
-	}
 	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'

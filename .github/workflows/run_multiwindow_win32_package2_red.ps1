@@ -606,6 +606,9 @@ fn test_package2_controlled_failure_exit() {
         $terminalLines = @($lines | Where-Object { $_ -cmatch '^PACKAGE2_EXIT_PROBE_TERMINAL=' })
         $exactMarkers = $testLines.Count -eq 1 -and $testLines[0] -ceq $testMarker `
             -and $terminalLines.Count -eq 1 -and $terminalLines[0] -ceq $terminalMarker
+        $controlledAssertion = $exactMarkers -and $text.Contains(
+            'PACKAGE2_EXIT_PROBE_ASSERTION=controlled_failure'
+        )
 
         if ($result.TimedOut -or $text -match $timeoutPattern) {
             throw "Package 2 controlled failure-exit probe timed out for $Compiler"
@@ -616,7 +619,9 @@ fn test_package2_controlled_failure_exit() {
         if ($null -eq $result.ExitCode) {
             throw "Package 2 controlled failure-exit probe returned no exit code for $Compiler"
         }
-        if ($result.ExitCode -in $crashExitCodes -or $text -match $fatalPattern) {
+        if ($result.ExitCode -in $crashExitCodes -or (
+            $text -match $fatalPattern -and -not $controlledAssertion
+        )) {
             throw "Package 2 controlled failure-exit probe crashed or panicked for $Compiler"
         }
         if ($result.ExitCode -eq 0) {

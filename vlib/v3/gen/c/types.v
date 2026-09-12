@@ -1514,15 +1514,16 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 			}
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
-				cn := g.cname(name)
-				if !g.enum_autostr_is_used(cn) {
+				enum_cn := g.cname(name)
+				fn_cn := g.enum_autostr_c_name(name)
+				if !g.enum_autostr_is_used(fn_cn) {
 					continue
 				}
-				if emitted[cn] {
+				if emitted[fn_cn] {
 					continue
 				}
-				emitted[cn] = true
-				g.writeln('string ${cn}__autostr(${cn} it);')
+				emitted[fn_cn] = true
+				g.writeln('string ${fn_cn}__autostr(${enum_cn} it);')
 			}
 			else {}
 		}
@@ -1548,28 +1549,29 @@ fn (mut g FlatGen) enum_str_defs() {
 			}
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
-				cn := g.cname(name)
-				if !g.enum_autostr_is_used(cn) {
+				enum_cn := g.cname(name)
+				fn_cn := g.enum_autostr_c_name(name)
+				if !g.enum_autostr_is_used(fn_cn) {
 					continue
 				}
-				if emitted[cn] {
+				if emitted[fn_cn] {
 					continue
 				}
-				emitted[cn] = true
+				emitted[fn_cn] = true
 				if node.typ == 'flag' {
 					// `[flag]` enum: a value can combine several bits, so build the V
 					// `Enum{.a | .b}` form by testing each field bit instead of matching a
 					// single case (which would send any combination to the integer path).
-					g.emit_flag_enum_autostr(node, name, cn)
+					g.emit_flag_enum_autostr(node, name, enum_cn, fn_cn)
 				} else if backing := enum_decl_backing_type(node) {
 					storage_ct := g.enum_emit_storage_c_type(name, backing)
-					g.writeln('string ${cn}__autostr(${cn} it) {')
+					g.writeln('string ${fn_cn}__autostr(${enum_cn} it) {')
 					for i in 0 .. node.children_count {
 						f := g.a.child_node(&node, i)
 						raw_fname := f.value
 						fname := enum_field_display_name(raw_fname)
 						cfield := g.cname(raw_fname)
-						g.writeln('\tif (it == ${cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
+						g.writeln('\tif (it == ${enum_cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
 					}
 					if enum_storage_c_type_is_unsigned(storage_ct) {
 						g.writeln('\treturn strconv__format_uint((u64)(${storage_ct})it, 10);')
@@ -1579,7 +1581,7 @@ fn (mut g FlatGen) enum_str_defs() {
 					g.writeln('}')
 					g.writeln('')
 				} else {
-					g.writeln('string ${cn}__autostr(${cn} it) {')
+					g.writeln('string ${fn_cn}__autostr(${enum_cn} it) {')
 					for i in 0 .. node.children_count {
 						f := g.a.child_node(&node, i)
 						raw_fname := f.value
@@ -1587,7 +1589,7 @@ fn (mut g FlatGen) enum_str_defs() {
 						cfield := g.cname(raw_fname)
 						// Use ordered comparisons instead of switch cases: enums may opt in
 						// to duplicate values, and the first declared name is their auto-str.
-						g.writeln('\tif (it == ${cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
+						g.writeln('\tif (it == ${enum_cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
 					}
 					g.writeln('\treturn strconv__format_int((i64)it, 10);')
 					g.writeln('}')
@@ -1605,7 +1607,7 @@ fn (g &FlatGen) enum_autostr_is_used(cname string) bool {
 
 fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
 	if node.value.contains('.') {
-		return node.value
+		return g.enum_type_codegen_name(node.value)
 	}
 	candidate := if module_name.len > 0 && module_name !in ['main', 'builtin'] {
 		'${module_name}.${node.value}'
@@ -1613,7 +1615,7 @@ fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
 		node.value
 	}
 	if candidate in g.tc.enum_names {
-		return candidate
+		return g.enum_type_codegen_name(candidate)
 	}
 	mut resolved := ''
 	for name in g.tc.enum_names.keys() {
@@ -1625,7 +1627,26 @@ fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
 		}
 		resolved = name
 	}
-	return if resolved.len > 0 { resolved } else { candidate }
+	name := if resolved.len > 0 { resolved } else { candidate }
+	return g.enum_type_codegen_name(name)
+}
+
+// enum_type_codegen_name preserves V1's main-module namespace in ownership/autofree
+// output. Bare builtin enum names stay unqualified.
+fn (g &FlatGen) enum_type_codegen_name(name string) string {
+	if !g.tc.autofree_mode || name.contains('.') {
+		return name
+	}
+	if module_name := g.enum_modules[name] {
+		if module_name in ['', 'main'] {
+			return 'main.${name}'
+		}
+	}
+	return name
+}
+
+fn (g &FlatGen) enum_type_c_name(name string) string {
+	return g.cname(g.enum_type_codegen_name(name))
 }
 
 fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
@@ -1669,13 +1690,13 @@ fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
 // emit_flag_enum_autostr emits the `<Enum>__autostr` helper for a `[flag]` enum.
 // Matching V, a combined value is rendered as `Enum{.a | .b}` by testing each
 // field's bit; `Enum(0)` renders as `Enum{}`.
-fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, cn string) {
+fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, enum_cn string, fn_cn string) {
 	short := node.value.all_after_last('.')
 	mut storage_ct := 'int'
 	if backing := enum_decl_backing_type(node) {
 		storage_ct = g.enum_emit_storage_c_type(name, backing)
 	}
-	g.writeln('string ${cn}__autostr(${cn} it) {')
+	g.writeln('string ${fn_cn}__autostr(${enum_cn} it) {')
 	g.writeln('\t${storage_ct} __fe_v = (${storage_ct})it;')
 	g.writeln('\tstring __fe_res = (string){.str = (u8*)"${short}{", .len = ${short.len + 1}, .is_lit = 1};')
 	g.writeln('\tbool __fe_first = true;')
@@ -1708,7 +1729,7 @@ fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, cn string
 		raw_fname := f.value
 		fname := enum_field_display_name(raw_fname)
 		cfield := g.cname(raw_fname)
-		field_expr := '${cn}__${cfield}'
+		field_expr := '${enum_cn}__${cfield}'
 		g.writeln('\tif (${field_expr} != 0 && (__fe_v & (${storage_ct})${field_expr}) == (${storage_ct})${field_expr}) {')
 		g.writeln('\t\tif (!__fe_first) { __fe_res = string__plus(__fe_res, (string){.str = (u8*)" | ", .len = 3, .is_lit = 1}); }')
 		g.writeln('\t\t__fe_res = string__plus(__fe_res, (string){.str = (u8*)".${fname}", .len = ${fname.len + 1}, .is_lit = 1});')

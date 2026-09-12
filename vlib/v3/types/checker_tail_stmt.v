@@ -2783,11 +2783,11 @@ fn (tc &TypeChecker) match_expr_tail_type(id flat.NodeId) Type {
 			// Only the `smartcasts` binding needs isolation here (see
 			// branch_tail_never_returns); avoid the ~11KB full struct copy.
 			mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
-			mut saved_smartcasts := mtc.smartcasts.move()
+			saved_smartcasts := clone_smartcasts(mtc.smartcasts)
 			mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 			mtc.apply_match_branch_context_smartcasts(subject_key, subject_type, branch)
 			bt := tc.branch_tail_type(branch_id)
-			mtc.smartcasts = saved_smartcasts.move()
+			mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 			bt
 		} else {
 			tc.branch_tail_type(branch_id)
@@ -9250,18 +9250,6 @@ fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) 
 		}
 		return true
 	}
-	if clean is Map {
-		if tc.interface_abstract_method_names(expected.name).len > 0 {
-			return false
-		}
-		for field in tc.interface_field_list(expected.name) {
-			if field.name != 'len' || !tc.type_compatible(Type(int_), field.typ)
-				|| !tc.type_compatible(field.typ, Type(int_)) {
-				return false
-			}
-		}
-		return true
-	}
 	concrete_name := method_type_name(clean)
 	if concrete_name.len == 0 {
 		return false
@@ -9672,11 +9660,7 @@ fn (tc &TypeChecker) interface_impl_candidate_names() map[string]bool {
 		candidates[name] = true
 	}
 	for name, _ in tc.structs {
-		candidate := interface_impl_candidate_name(name)
-		// builtin.VMapData is private map storage and cannot be an interface value.
-		if name != 'VMapData' || tc.struct_modules[name] != 'builtin' {
-			candidates[candidate] = true
-		}
+		candidates[interface_impl_candidate_name(name)] = true
 	}
 	for name, _ in tc.enum_names {
 		candidates[interface_impl_candidate_name(name)] = true
@@ -9708,10 +9692,7 @@ fn (tc &TypeChecker) interface_impl_names_uncached_after(iface_name string, excl
 		}
 	}
 	for name, _ in tc.structs {
-		candidate := interface_impl_candidate_name(name)
-		if name != 'VMapData' || tc.struct_modules[name] != 'builtin' {
-			add_interface_impl_candidate(mut candidate_set, candidate, excluded)
-		}
+		add_interface_impl_candidate(mut candidate_set, interface_impl_candidate_name(name), excluded)
 	}
 	if has_no_requirements || accepts_implicit_str {
 		for name, _ in tc.enum_names {

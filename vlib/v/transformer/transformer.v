@@ -19,7 +19,7 @@ pub struct Transformer {
 pub mut:
 	index                &IndexState
 	table                &ast.Table = unsafe { nil }
-	file                 &ast.File  = unsafe { nil }
+	file                 &ast.File = unsafe { nil }
 	skip_array_transform bool // is the checker transformer, set by the checker
 mut:
 	is_assert   bool
@@ -38,7 +38,7 @@ fn (mut t Transformer) trace[T](fbase string, x &T) {
 
 pub fn new_transformer(pref_ &pref.Preferences) &Transformer {
 	return &Transformer{
-		pref:  pref_
+		pref: pref_
 		index: &IndexState{
 			saved_key_vals: [][]KeyVal{cap: 1000}
 			saved_disabled: []bool{cap: 1000}
@@ -933,13 +933,15 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 								}
 							}
 							.plus {
-								folded_val := util.smart_quote(node.left.val, node.left.is_raw,
-									node.left.opaque_pos) +
-									util.smart_quote(node.right.val, node.right.is_raw, node.right.opaque_pos)
-								return if t.pref.backend == .c { ast.Expr(ast.StringLiteral{
+								folded_val := util.smart_quote(node.left.val, node.left.is_raw, node.left.opaque_pos) + util.smart_quote(node.right.val, node.right.is_raw, node.right.opaque_pos)
+								return if t.pref.backend == .c {
+									ast.Expr(ast.StringLiteral{
 										val: folded_val
 										pos: pos
-									}) } else { ast.Expr(node) }
+									})
+								} else {
+									ast.Expr(node)
+								}
 							}
 							else {}
 						}
@@ -1242,7 +1244,10 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 				// Note: skip this optimization in SQL WHERE clauses, where `field == field` means
 				// comparing a table field with a variable of the same name, not self-comparison.
 				if !t.inside_sql && node.left.type_name() == node.right.type_name()
-					&& node.left_type !in [ast.f32_type, ast.f64_type] && node.op in [.eq, .ne]
+					&& node.left_type !in [ast.f32_type, ast.f64_type] && node.op in [
+					.eq,
+					.ne,
+				]
 					&& node.left !is ast.StructInit && node.right !is ast.StructInit {
 					left_name := '${node.left}'
 					right_name := '${node.right}'
@@ -1399,17 +1404,17 @@ pub fn (mut t Transformer) fn_decl_trace_calls(mut node ast.FnDecl) {
 	}
 	expr_stmt := ast.ExprStmt{
 		expr: ast.CallExpr{
-			mod:      node.mod
-			pos:      node.pos
+			mod: node.mod
+			pos: node.pos
 			language: .v
-			scope:    node.scope
-			name:     'v.trace_calls.on_call'
-			args:     [
+			scope: node.scope
+			name: 'v.trace_calls.on_call'
+			args: [
 				ast.CallArg{
 					expr: ast.StringLiteral{
 						val: fname
 					}
-					typ:  ast.string_type_idx
+					typ: ast.string_type_idx
 				},
 			]
 		}
@@ -1466,7 +1471,11 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 			}
 			continue
 		}
-		val_opaque_pos := if idx < original.opaque_pos.len { original.opaque_pos[idx] } else { []int{} }
+		val_opaque_pos := if idx < original.opaque_pos.len {
+			original.opaque_pos[idx]
+		} else {
+			[]int{}
+		}
 		mut ncall := ast.ExprStmt{
 			expr: ast.Expr(ast.CallExpr{
 				...nexpr
@@ -1474,21 +1483,21 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 					ast.CallArg{
 						...nexpr.args[0]
 						expr: ast.StringLiteral{
-							val:        val
+							val: val
 							opaque_pos: val_opaque_pos
 						}
 					},
 				]
 			})
-			typ:  ntype
-			pos:  nexpr.pos
+			typ: ntype
+			pos: nexpr.pos
 		}
 		calls << ncall
 	}
 	// now, insert the statements for writing the variable expressions between the static strings:
 	for idx, expr in original.exprs {
 		mut ncall := ast.ExprStmt{
-			typ:  ntype
+			typ: ntype
 			expr: ast.Expr(ast.CallExpr{
 				...nexpr
 				args: [
@@ -1498,7 +1507,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 					},
 				]
 			})
-			pos:  nexpr.pos
+			pos: nexpr.pos
 		}
 		etype := original.expr_types[idx]
 		if etype.is_int() {
@@ -1513,7 +1522,7 @@ pub fn (mut t Transformer) simplify_nested_interpolation_in_sb(mut onode ast.Stm
 		*onode = ast.Stmt(ast.Block{
 			scope: ast.empty_scope
 			stmts: calls
-			pos:   nexpr.pos
+			pos: nexpr.pos
 		})
 	}
 	return true

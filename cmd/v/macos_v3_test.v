@@ -12,7 +12,14 @@ fn run_macos_v3_test_process(executable string, args []string, work_dir string, 
 	for name, value in overrides {
 		environment[name] = value
 	}
-	mut process := os.new_process(executable)
+	// The tools workflow runs this suite through the V1 compatibility compiler.
+	// Process-level dispatcher tests must still invoke the sibling V3-enabled `v`.
+	actual_executable := if os.base(executable) in ['v1_fallback', 'v1_fallback.exe'] {
+		os.join_path(os.dir(executable), 'v' + $if windows { '.exe' } $else { '' })
+	} else {
+		executable
+	}
+	mut process := os.new_process(actual_executable)
 	process.set_args(args)
 	process.set_work_folder(work_dir)
 	process.set_environment(environment)

@@ -587,26 +587,6 @@ fn test_map_reserve_keeps_empty_map_valid() {
 	unsafe { moved.free() }
 }
 
-fn test_map_move_leaves_source_empty() {
-	mut original := {
-		'abc': 42
-	}
-	moved := original.move()
-	assert moved.len == 1
-	assert original.len == 0
-	assert 'abc' !in original
-	original.clear()
-	assert original.len == 0
-	original.reserve(32)
-	original['def'] = 24
-	assert original == {
-		'def': 24
-	}
-	assert moved == {
-		'abc': 42
-	}
-}
-
 struct MValue {
 	name string
 	misc map[string]string
