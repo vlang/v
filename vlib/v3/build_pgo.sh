@@ -18,8 +18,13 @@ if [[ -z "${LLVM_PROFDATA:-}" ]] && ! command -v "$profdata" >/dev/null 2>&1 \
     && command -v xcrun >/dev/null 2>&1; then
     profdata="$(xcrun --find llvm-profdata)"
 fi
-command -v "$clang" >/dev/null || { echo "Clang executable not found: $clang" >&2; exit 1; }
-command -v "$profdata" >/dev/null || { echo "profile tool not found: $profdata" >&2; exit 1; }
+clang_path="$(command -v "$clang")" || { echo "Clang executable not found: $clang" >&2; exit 1; }
+profdata_path="$(command -v "$profdata")" || { echo "profile tool not found: $profdata" >&2; exit 1; }
+# Resolve overrides and relative PATH entries before changing directories.
+clang="$clang_path"
+profdata="$profdata_path"
+[[ "$clang" = /* ]] || clang="$PWD/$clang"
+[[ "$profdata" = /* ]] || profdata="$PWD/$profdata"
 case "$("$clang" --version)" in
     *clang*) ;;
     *) echo "profile-guided builds require Clang: $clang" >&2; exit 1 ;;

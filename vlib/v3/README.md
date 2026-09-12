@@ -68,8 +68,9 @@ collected profile. It removes its temporary binaries and profiles when finished.
 
 Use `./v3-pgo -nocache -building-v -o v4 v3.v` for the self-build benchmark. Profile-guided gains
 are separate from ordinary `-prod` builds and depend on the workload. Rebuild the profile when
-compiler sources change. `CC` and `LLVM_PROFDATA` select the Clang and profile tools; macOS also
-supports finding `llvm-profdata` through `xcrun`. `V3_PGO_CFLAGS` adds flags to the final build.
+compiler sources change. `CC` and `LLVM_PROFDATA` select the Clang and profile tools. Relative
+tool paths resolve from the caller's working directory. macOS also supports finding
+`llvm-profdata` through `xcrun`. `V3_PGO_CFLAGS` adds flags to the final build.
 
 ## Target selection
 
