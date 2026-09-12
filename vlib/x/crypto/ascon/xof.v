@@ -61,7 +61,7 @@ pub fn new_xof128(size int) &Xof128 {
 		Digest: Digest{
 			State: xof128_initial_state
 		}
-		size:   size
+		size: size
 	}
 }
 
@@ -80,7 +80,7 @@ pub fn (x &Xof128) block_size() int {
 fn (x &Xof128) clone() &Xof128 {
 	return &Xof128{
 		Digest: x.Digest
-		size:   x.size
+		size: x.size
 	}
 }
 
@@ -208,8 +208,8 @@ pub fn new_cxof128(size int, cs []u8) !&CXof128 {
 		Digest: Digest{
 			State: s
 		}
-		cs:     cs
-		size:   size
+		cs: cs
+		size: size
 	}
 }
 
@@ -266,8 +266,8 @@ pub fn (mut x CXof128) read(mut dst []u8) !int {
 fn (x &CXof128) clone() &CXof128 {
 	return &CXof128{
 		Digest: x.Digest
-		size:   x.size
-		cs:     x.cs
+		size: x.size
+		cs: x.cs
 	}
 }
 

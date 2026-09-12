@@ -45,9 +45,9 @@ fn (mut d Digest) finish() {
 
 // absorb absorbs message msg_ into Digest state.
 @[direct_array_access]
-fn (mut d Digest) absorb(msg_ []u8) int {
+fn (mut d Digest) absorb(msg []u8) int {
 	// nothing to absorb, just return
-	if msg_.len == 0 {
+	if msg.len == 0 {
 		return 0
 	}
 	// Absorbing messages into Digest state working in streaming-way.
@@ -57,46 +57,45 @@ fn (mut d Digest) absorb(msg_ []u8) int {
 	// And then absorb this buffered message into state.
 	// The process continues until the last partial block thats maybe below the block_size.
 	// If its happens, it will be stored on the Digest internal buffer for later processing.
-	mut msg := msg_.clone()
-	unsafe {
-		// Check if internal buffer has previous unprocessed bytes.
-		// If its on there, try to empty the buffer.
-		if d.length > 0 {
-			// There are bytes in the d.buf, append it with bytes taken from msg
-			if d.length + msg.len >= block_size {
-				n := copy(mut d.buf[d.length..], msg)
-				msg = msg[n..]
-				d.length += n
-				// If this d.buf length has reached block_size bytes, absorb it.
-				if d.length == block_size {
-					d.State.e0 ^= binary.little_endian_u64(d.buf)
-					ascon_pnr(mut d.State, .ascon_prnd_12)
-					// reset the internal buffer
-					d.length = 0
-					d.buf.reset()
-				}
-			} else {
-				// Otherwise, still fit to buffer, but nof fully fills the d.buf
-				// just stores into buffer without processing
-				n := copy(mut d.buf[d.length..], msg)
-				msg = msg[n..]
-				d.length += n
+	mut pos := 0
+
+	// Check if internal buffer has previous unprocessed bytes.
+	// If its on there, try to empty the buffer.
+	if d.length > 0 {
+		// There are bytes in the d.buf, append it with bytes taken from msg
+		if d.length + msg.len >= block_size {
+			n := copy(mut d.buf[d.length..], msg[pos..])
+			pos += n
+			d.length += n
+			// If this d.buf length has reached block_size bytes, absorb it.
+			if d.length == block_size {
+				d.State.e0 ^= binary.little_endian_u64(d.buf)
+				ascon_pnr(mut d.State, .ascon_prnd_12)
+				// reset the internal buffer
+				d.length = 0
+				unsafe { d.buf.reset() }
 			}
-		}
-		// process for full block
-		for msg.len >= block_size {
-			d.State.e0 ^= binary.little_endian_u64(msg[0..block_size])
-			msg = msg[block_size..]
-			ascon_pnr(mut d.State, .ascon_prnd_12)
-		}
-		// If there are partial block, just stored into buffer.
-		if msg.len > 0 {
-			n := copy(mut d.buf[d.length..], msg)
-			msg = msg[n..]
+		} else {
+			// Otherwise, still fit to buffer, but nof fully fills the d.buf
+			// just stores into buffer without processing
+			n := copy(mut d.buf[d.length..], msg[pos..])
+			pos += n
 			d.length += n
 		}
-		return msg_.len - msg.len
 	}
+	// process for full block
+	for msg.len - pos >= block_size {
+		d.State.e0 ^= binary.little_endian_u64(msg[pos..pos + block_size])
+		pos += block_size
+		ascon_pnr(mut d.State, .ascon_prnd_12)
+	}
+	// If there are partial block, just stored into buffer.
+	if msg.len - pos > 0 {
+		n := copy(mut d.buf[d.length..], msg[pos..])
+		pos += n
+		d.length += n
+	}
+	return pos
 }
 
 // squeeze squeezes the state and calculates checksum output for the current state.
@@ -107,7 +106,7 @@ fn (mut d Digest) squeeze(mut dst []u8) int {
 	if dst.len == 0 {
 		return 0
 	}
-	// check
+	// check 
 	if dst.len > max_hash_size {
 		panic('Digest.squeeze: invalid dst.len')
 	}
@@ -134,6 +133,7 @@ fn (mut d Digest) squeeze(mut dst []u8) int {
 	return pos
 }
 
+// ascon_generic_hash generates generic digest used on across of the Ascon-family implementation.
 @[direct_array_access; inline]
 fn ascon_generic_hash(mut s State, msg []u8, size int) []u8 {
 	// Assumed state was correctly initialized
@@ -141,7 +141,10 @@ fn ascon_generic_hash(mut s State, msg []u8, size int) []u8 {
 	mut pos := 0
 	// Check if msg has non-null length, if yes, absorb it.
 	// Otherwise, just pad it
-	if _likely_(msg.len > 0) {
+	// NOTE: BUG on formatter ? This line gets on warning with message
+	// "warning: unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`"
+	cond := _likely_(msg.len > 0)
+	if cond {
 		mut msg_len := msg.len
 		for msg_len >= block_size {
 			block := unsafe { msg[pos..pos + block_size] }
