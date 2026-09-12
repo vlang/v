@@ -12523,6 +12523,16 @@ fn (g &FlatGen) c_typedef_cast_call_name(node flat.Node) string {
 	return ''
 }
 
+// context_wants_pointer_to_fn reports whether the expression being generated is
+// consumed as a pointer to a function rather than as a callable value.
+fn (g &FlatGen) context_wants_pointer_to_fn() bool {
+	expected := cgen_unalias_type(g.expected_expr_type)
+	if expected is types.Pointer {
+		return cgen_unalias_type(expected.base_type) is types.FnType
+	}
+	return false
+}
+
 // gen_expr_with_possible_enum_type emits expr with possible enum type output for c.
 fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected types.Type) {
 	node := g.a.nodes[int(id)]
@@ -14496,9 +14506,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
-			if node.op == .amp && cgen_unalias_type(g.usable_expr_type(child_id)) is types.FnType {
-				// Function values are already C pointers. Taking the address of a local
-				// function value would store a pointer to its stack slot instead.
+			if node.op == .amp && cgen_unalias_type(g.usable_expr_type(child_id)) is types.FnType
+				&& !g.context_wants_pointer_to_fn() {
+				// A function value is already a C pointer, so `&` on one is a no-op
+				// wherever the context wants a callable: `Holder{ f: &local }` has to
+				// store the function, not the address of a stack slot that dies with
+				// the frame. Only a context that asks for a pointer to a function
+				// - `ref := &f`, read back through `*ref` - needs the address, and
+				// dropping it there leaves the dereference reading code as data.
 				g.gen_expr(child_id)
 				return
 			}

@@ -576,6 +576,25 @@ fn main() {
 	assert out == '7'
 }
 
+fn test_pointer_to_local_fn_value_round_trips_through_a_deref() {
+	v3_bin := build_v3()
+	// The mirror image of the case above: here the pointer *is* the point, so the
+	// `&` cannot be dropped - `*ref` would otherwise read the function's code as
+	// if it were a stored function pointer.
+	out := run_good(v3_bin, 'deref_of_address_of_local_fn_value', 'fn answer() int {
+	return 42
+}
+
+fn main() {
+	f := answer
+	ref := &f
+	deref := *ref
+	println(deref())
+}
+')
+	assert out == '42'
+}
+
 fn test_const_generic_fn_factory_value_call_uses_const_storage() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'const_generic_fn_factory_value_call', '
