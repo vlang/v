@@ -2783,11 +2783,11 @@ fn (tc &TypeChecker) match_expr_tail_type(id flat.NodeId) Type {
 			// Only the `smartcasts` binding needs isolation here (see
 			// branch_tail_never_returns); avoid the ~11KB full struct copy.
 			mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
-			saved_smartcasts := clone_smartcasts(mtc.smartcasts)
+			mut saved_smartcasts := mtc.smartcasts.move()
 			mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 			mtc.apply_match_branch_context_smartcasts(subject_key, subject_type, branch)
 			bt := tc.branch_tail_type(branch_id)
-			mtc.smartcasts = clone_smartcasts(saved_smartcasts)
+			mtc.smartcasts = saved_smartcasts.move()
 			bt
 		} else {
 			tc.branch_tail_type(branch_id)

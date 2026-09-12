@@ -15032,11 +15032,13 @@ fn (tc &TypeChecker) branch_tail_never_returns(branch_id flat.NodeId) bool {
 	// Only the `smartcasts` binding needs isolation here: a full `*tc` copy
 	// shares every map's backing storage anyway and memmoves the ~11KB
 	// TypeChecker per call, so swap in a scratch clone and restore instead.
+	// Keep the original map allocation aside: the clone can belong to a
+	// disposable transform arena and must not escape into the master checker.
 	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
-	saved_smartcasts := clone_smartcasts(mtc.smartcasts)
+	mut saved_smartcasts := mtc.smartcasts.move()
 	mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 	defer {
-		mtc.smartcasts = clone_smartcasts(saved_smartcasts)
+		mtc.smartcasts = saved_smartcasts.move()
 	}
 	tail_index := int(branch.children_count) - 1
 	for i in body_start .. tail_index {
@@ -15104,10 +15106,10 @@ fn (tc &TypeChecker) stmt_sequence_definitely_returns(node &flat.Node, body_star
 	// Only the `smartcasts` binding needs isolation here (see
 	// branch_tail_never_returns); avoid the ~11KB full struct copy.
 	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
-	saved_smartcasts := clone_smartcasts(mtc.smartcasts)
+	mut saved_smartcasts := mtc.smartcasts.move()
 	mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 	defer {
-		mtc.smartcasts = clone_smartcasts(saved_smartcasts)
+		mtc.smartcasts = saved_smartcasts.move()
 	}
 	for i in body_start .. node.children_count {
 		child_id := tc.a.child(node, i)
@@ -15180,10 +15182,10 @@ fn (tc &TypeChecker) match_branch_definitely_returns_with_context(node flat.Node
 	// Only the `smartcasts` binding needs isolation here (see
 	// branch_tail_never_returns); avoid the ~11KB full struct copy.
 	mut mtc := unsafe { &TypeChecker(voidptr(tc)) }
-	saved_smartcasts := clone_smartcasts(mtc.smartcasts)
+	mut saved_smartcasts := mtc.smartcasts.move()
 	mtc.smartcasts = clone_smartcasts(saved_smartcasts)
 	defer {
-		mtc.smartcasts = clone_smartcasts(saved_smartcasts)
+		mtc.smartcasts = saved_smartcasts.move()
 	}
 	mtc.smartcasts[subject_key] = tc.parse_type(smartcast_type)
 	return tc.match_branch_definitely_returns(branch)
