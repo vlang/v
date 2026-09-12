@@ -329,6 +329,12 @@ const default_command = 'compile'
 // fence languages that begin with `v` but hold something other than V source
 const non_v_fence_languages = ['vml']
 
+// fence_language returns the first token of a code fence's info string.
+fn fence_language(line string) string {
+	fields := line.replace('```', '').fields()
+	return if fields.len > 0 { fields[0] } else { '' }
+}
+
 struct VCodeExample {
 mut:
 	text    []string
@@ -434,7 +440,9 @@ fn (mut f MDFile) check() CheckResult {
 }
 
 fn (mut f MDFile) parse_line(lnumber int, line string) {
-	if line.starts_with('```v') && line.replace('```', '').trim_space() !in non_v_fence_languages {
+	// Only the first word of a fence info string names the language; anything after it
+	// (e.g. `title=example`) is metadata and must not affect the decision.
+	if line.starts_with('```v') && fence_language(line) !in non_v_fence_languages {
 		if f.state == .markdown {
 			f.state = .vexample
 			mut command := line.replace('```v', '').trim_space()
