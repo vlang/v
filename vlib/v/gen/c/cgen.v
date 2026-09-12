@@ -6783,6 +6783,25 @@ fn (mut g Gen) map_fn_ptrs(key_sym ast.TypeSymbol) (string, string, string, stri
 	return hash_fn, key_eq_fn, clone_fn, free_fn
 }
 
+// map_uses_pointer_header reports whether the builtin sources being compiled
+// declare the pointer-sized map header.
+fn (g &Gen) map_uses_pointer_header() bool {
+	map_sym := g.table.sym(ast.map_type)
+	return g.table.struct_has_field(map_sym, 'data')
+}
+
+// map_internal_field returns the C field path for the loaded builtin map layout.
+// Bootstrap compilers must support both the old inline and pointer-sized headers.
+fn (g &Gen) map_internal_field(field string) string {
+	if g.map_uses_pointer_header() {
+		if field == 'len' {
+			return 'data->count'
+		}
+		return 'data->${field}'
+	}
+	return field
+}
+
 @[inline]
 fn (mut g Gen) map_key_fn_key(typ ast.Type) ast.Type {
 	return g.table.fully_unaliased_type(g.unwrap_generic(typ).set_nr_muls(0))
@@ -8078,7 +8097,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	is_map_len := g.table.final_sym(unwrapped_expr_type).kind == .map
 		&& node.field_name == 'len'
 	field_name := if is_map_len {
-		'data->count'
+		g.map_internal_field('len')
 	} else if sym.language == .v {
 		c_name(node.field_name)
 	} else {
@@ -14477,7 +14496,7 @@ fn (mut g Gen) interface_field_ptr_expr(st ast.Type, cctype string, field ast.St
 	cname := c_name(field.name)
 	field_styp := g.styp(field.typ)
 	resolved_st_sym := g.table.final_sym(st)
-	if (resolved_st_sym.kind == .map
+	if g.map_uses_pointer_header() && (resolved_st_sym.kind == .map
 		|| (resolved_st_sym.mod == 'builtin' && resolved_st_sym.name == 'map'))
 		&& field.name == 'len' {
 		return '(${field_styp}*)(&x->data->count)'

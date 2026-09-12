@@ -1002,20 +1002,21 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string ${str_fn_name}(${styp} m) { return indent_${str_fn_name}(m, 0);}')
 	g.definitions.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} m, ${ast.int_type_name} indent_count);')
 	g.auto_str_funcs.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} m, ${ast.int_type_name} indent_count) { /* gen_str_for_map */')
-	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(2 + m.data->key_values.len * 10);')
+	key_values := 'm.${g.map_internal_field('key_values')}'
+	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(2 + ${key_values}.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _S("{"));')
 	g.auto_str_funcs.writeln('\tbool is_first = true;')
-	g.auto_str_funcs.writeln('\tfor (${ast.int_type_name} i = 0; i < m.data->key_values.len; ++i) {')
-	g.auto_str_funcs.writeln('\t\tif (!builtin__DenseArray_has_index(&m.data->key_values, i)) { continue; }')
+	g.auto_str_funcs.writeln('\tfor (${ast.int_type_name} i = 0; i < ${key_values}.len; ++i) {')
+	g.auto_str_funcs.writeln('\t\tif (!builtin__DenseArray_has_index(&${key_values}, i)) { continue; }')
 	g.auto_str_funcs.writeln('\t\telse if (!is_first) { strings__Builder_write_string(&sb, _S(", ")); }')
 
 	if key_sym.kind == .string {
-		g.auto_str_funcs.writeln('\t\tstring key = *(string*)builtin__DenseArray_key(&m.data->key_values, i);')
+		g.auto_str_funcs.writeln('\t\tstring key = *(string*)builtin__DenseArray_key(&${key_values}, i);')
 	} else if key_sym.kind == .array_fixed {
 		g.auto_str_funcs.writeln('\t\t${key_styp} key;')
-		g.auto_str_funcs.writeln('\t\tmemcpy(key, builtin__DenseArray_key(&m.data->key_values, i), sizeof(${key_styp}));')
+		g.auto_str_funcs.writeln('\t\tmemcpy(key, builtin__DenseArray_key(&${key_values}, i), sizeof(${key_styp}));')
 	} else {
-		g.auto_str_funcs.writeln('\t\t${key_styp} key = *(${key_styp}*)builtin__DenseArray_key(&m.data->key_values, i);')
+		g.auto_str_funcs.writeln('\t\t${key_styp} key = *(${key_styp}*)builtin__DenseArray_key(&${key_values}, i);')
 	}
 	if key_sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_sq('key')});')
@@ -1036,9 +1037,9 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	} else if val_sym.kind == .string {
 		if val_typ.has_flag(.option) {
 			func := g.get_str_fn(val_typ)
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${func}(*(${val_styp}*)builtin__DenseArray_value(&m.data->key_values, i)));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${func}(*(${val_styp}*)builtin__DenseArray_value(&${key_values}, i)));')
 		} else {
-			tmp_str := str_intp_sq('*(${val_styp}*)builtin__DenseArray_value(&m.data->key_values, i)')
+			tmp_str := str_intp_sq('*(${val_styp}*)builtin__DenseArray_value(&${key_values}, i)')
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 		}
 	} else if should_use_indent_func(val_sym.kind) && fn_str.name != 'str' {
@@ -1047,11 +1048,11 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		} else {
 			'*'.repeat(val_typ.nr_muls() + 1)
 		}
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(${deref}(${val_styp}*)builtin__DenseArray_value(&m.data->key_values, i), indent_count));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, indent_${elem_str_fn_name}(${deref}(${val_styp}*)builtin__DenseArray_value(&${key_values}, i), indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
-		tmp_val := '*(${val_styp}*)builtin__DenseArray_value(&m.data->key_values, i)'
+		tmp_val := '*(${val_styp}*)builtin__DenseArray_value(&${key_values}, i)'
 		if val_typ.has_flag(.option) {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${g.get_str_fn(val_typ)}(*(${val_styp}*)builtin__DenseArray_value(&m.data->key_values, i)));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${g.get_str_fn(val_typ)}(*(${val_styp}*)builtin__DenseArray_value(&${key_values}, i)));')
 		} else {
 			if val_sym.kind == .f32 {
 				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${str_intp_g32(tmp_val)});')
@@ -1061,16 +1062,16 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		}
 	} else if val_sym.kind == .rune {
 		tmp_str :=
-			str_intp_rune('${elem_str_fn_name}(*(${val_styp}*)builtin__DenseArray_value(&m.data->key_values, i))')
+			str_intp_rune('${elem_str_fn_name}(*(${val_styp}*)builtin__DenseArray_value(&${key_values}, i))')
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${tmp_str});')
 	} else {
 		deref := '*'.repeat(val_typ.nr_muls())
 		if val_typ.has_flag(.option) {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${g.get_str_fn(val_typ)}(*${deref}(${val_styp}*)builtin__DenseArray_value(&m.data->key_values, i)));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${g.get_str_fn(val_typ)}(*${deref}(${val_styp}*)builtin__DenseArray_value(&${key_values}, i)));')
 		} else if receiver_is_ptr {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(${deref}(${val_styp}*)builtin__DenseArray_value(&m.data->key_values, i)));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(${deref}(${val_styp}*)builtin__DenseArray_value(&${key_values}, i)));')
 		} else {
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*${deref}(${val_styp}*)builtin__DenseArray_value(&m.data->key_values, i)));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, ${elem_str_fn_name}(*${deref}(${val_styp}*)builtin__DenseArray_value(&${key_values}, i)));')
 		}
 	}
 	g.auto_str_funcs.writeln('\t\tis_first = false;')

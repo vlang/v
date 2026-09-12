@@ -549,9 +549,9 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	ptr_value_styp := g.styp(value.typ)
 	g.definitions.writeln('${g.static_non_parallel}bool ${ptr_styp}_map_eq(${ptr_styp} a, ${ptr_styp} b);')
 
-	left_len := g.read_map_field_from_option(left.typ, 'data->count', 'a')
-	right_len := g.read_map_field_from_option(left.typ, 'data->count', 'b')
-	key_values := g.read_map_field_from_option(left.typ, 'data->key_values', 'a')
+	left_len := g.read_map_field_from_option(left.typ, g.map_internal_field('len'), 'a')
+	right_len := g.read_map_field_from_option(left.typ, g.map_internal_field('len'), 'b')
+	key_values := g.read_map_field_from_option(left.typ, g.map_internal_field('key_values'), 'a')
 
 	a := if left.typ.has_flag(.option) { g.read_map_from_option(left.typ, 'a') } else { '&a' }
 	b := if left.typ.has_flag(.option) { g.read_map_from_option(left.typ, 'b') } else { '&b' }

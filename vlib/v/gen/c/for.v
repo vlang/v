@@ -990,7 +990,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			'++${idx}'
 		}
 		map_len := g.new_tmp_var()
-		key_values := '${cond_var}${dot_or_ptr}data->key_values'
+		key_values := '${cond_var}${dot_or_ptr}${g.map_internal_field('key_values')}'
 		g.empty_line = true
 		g.writeln('${ast.int_type_name} ${map_len} = ${key_values}.len;')
 		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${map_len}; ${plus_plus_idx} ) {')

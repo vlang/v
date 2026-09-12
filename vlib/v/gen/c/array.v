@@ -681,9 +681,11 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	elem_styp := g.styp(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
 	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_init
+	uses_pointer_map_header := g.map_uses_pointer_header()
 	// An indexed initializer overwrites every element itself, so it does not need a
 	// cloned map seed. All other map initializers use the map-aware clone helper.
-	is_default_map := elem_type.unaliased_sym.kind == .map && !node.has_index
+	is_default_map := elem_type.unaliased_sym.kind == .map
+		&& if uses_pointer_map_header { !node.has_index } else { node.has_init }
 	needs_more_defaults := node.has_len && (g.struct_has_array_or_map_field(elem_type.typ)
 		|| elem_type.unaliased_sym.kind in [.array, .map])
 	if node.has_index {
@@ -802,7 +804,10 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.write('}[0], ${depth})')
 	} else if is_default_map {
 		g.write('(${elem_styp}[]){')
-		if node.has_init {
+		if !uses_pointer_map_header {
+			g.expr(node.init_expr)
+			g.write('}[0])')
+		} else if node.has_init {
 			g.expr(node.init_expr)
 			g.write('}[0], false)')
 		} else {
