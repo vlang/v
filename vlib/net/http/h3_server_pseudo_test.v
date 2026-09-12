@@ -1,0 +1,406 @@
+// vtest build: present_openssl?
+// vtest vflags: -d http3
+// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module http
+
+import net
+import net.quic
+
+// h3_validate_request_pseudo's own doc comment (h3_server.v) covers the
+// full RFC 9114 §4.3.1 shape it enforces; these are pure, fast unit tests
+// for it directly, independent of h3_server_test.v's real-socket end-to-end
+// coverage.
+
+fn test_h3_validate_request_pseudo_accepts_an_ordinary_get() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+			value: 'example.com'
+		},
+	])!
+}
+
+fn test_h3_validate_request_pseudo_rejects_ordinary_request_missing_scheme() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+	]) or {
+		assert err.msg().contains('mandatory pseudo-header')
+		return
+	}
+	assert false, 'expected an error for a GET request missing :scheme'
+}
+
+fn test_h3_validate_request_pseudo_rejects_connect_until_tunnels_are_supported() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'CONNECT'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+			value: 'example.com:443'
+		},
+	]) or {
+		assert err.msg().contains('CONNECT is unsupported')
+		return
+	}
+	assert false, 'expected CONNECT to be rejected until tunnel dispatch is supported'
+}
+
+fn test_h3_validate_request_pseudo_rejects_connect_even_with_scheme() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'CONNECT'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+			value: 'example.com:443'
+		},
+	]) or {
+		assert err.msg().contains('CONNECT is unsupported')
+		return
+	}
+	assert false, 'expected CONNECT to remain unsupported when :scheme is present'
+}
+
+fn test_h3_validate_request_pseudo_rejects_connect_even_with_path() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'CONNECT'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+			value: 'example.com:443'
+		},
+	]) or {
+		assert err.msg().contains('CONNECT is unsupported')
+		return
+	}
+	assert false, 'expected CONNECT to remain unsupported when :path is present'
+}
+
+fn test_h3_validate_request_pseudo_rejects_connect_without_authority() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'CONNECT'
+		},
+	]) or {
+		assert err.msg().contains('CONNECT is unsupported')
+		return
+	}
+	assert false, 'expected CONNECT without :authority to remain unsupported'
+}
+
+fn test_h3_validate_request_pseudo_rejects_connect_with_empty_authority() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'CONNECT'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+		},
+	]) or {
+		assert err.msg().contains('CONNECT is unsupported')
+		return
+	}
+	assert false, 'expected CONNECT with an empty :authority to remain unsupported'
+}
+
+// Extended CONNECT (RFC 9220-style WebSockets-over-HTTP/3, a `:protocol`
+// pseudo-header) is explicitly out of scope for this fix -- see
+// h3_validate_request_pseudo's own doc comment (h3_server.v). This is the
+// regression test that scope-limit claim needs: :protocol must still fall
+// through the generic "unknown request pseudo-header" rejection, not be
+// silently accepted as if it were a recognized field. Without this test,
+// a future change adding a `:protocol` match arm while implementing
+// Extended CONNECT -- without also wiring up its required semantics --
+// would compile and ship with :protocol-bearing requests silently passing
+// validation instead of being rejected.
+fn test_h3_validate_request_pseudo_rejects_protocol_pseudo_header() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'CONNECT'
+		},
+		quic.QpackFieldLine{
+			name: ':protocol'
+			value: 'websocket'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+			value: 'example.com:443'
+		},
+	]) or { return }
+	assert false, 'expected an error for a request carrying the unimplemented :protocol pseudo-header'
+}
+
+fn test_h3_build_request_rejects_unknown_method_before_get_conversion() {
+	st := &H3ServerStream{
+		headers: [
+			quic.QpackFieldLine{
+				name: ':method'
+				value: 'FOO'
+			},
+			quic.QpackFieldLine{
+				name: ':path'
+				value: '/'
+			},
+			quic.QpackFieldLine{
+				name: ':scheme'
+				value: 'https'
+			},
+		]
+	}
+	h3_build_request(st) or {
+		assert err.msg().contains('unsupported method')
+		return
+	}
+	assert false, 'expected an unknown method to be rejected before conversion to GET'
+}
+
+fn test_h3_build_request_uses_host_when_authority_is_omitted() {
+	st := &H3ServerStream{
+		headers: [
+			quic.QpackFieldLine{
+				name: ':method'
+				value: 'GET'
+			},
+			quic.QpackFieldLine{
+				name: ':path'
+				value: '/'
+			},
+			quic.QpackFieldLine{
+				name: ':scheme'
+				value: 'https'
+			},
+			quic.QpackFieldLine{
+				name: 'host'
+				value: 'example.com'
+			},
+		]
+	}
+	req := h3_build_request(st)!
+	assert req.host == 'example.com'
+}
+
+fn test_h3_validate_request_pseudo_rejects_non_token_regular_field_name() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+			value: 'example.com'
+		},
+		quic.QpackFieldLine{
+			name: 'bad name'
+			value: 'silently dropped before this fix'
+		},
+	]) or {
+		assert err.msg().contains('invalid header field name')
+		return
+	}
+	assert false, 'expected a non-token regular field name to be rejected'
+}
+
+fn test_h3_build_request_canonicalizes_host_to_authority() {
+	st := &H3ServerStream{
+		headers: [
+			quic.QpackFieldLine{
+				name: ':method'
+				value: 'GET'
+			},
+			quic.QpackFieldLine{
+				name: ':path'
+				value: '/'
+			},
+			quic.QpackFieldLine{
+				name: ':scheme'
+				value: 'https'
+			},
+			quic.QpackFieldLine{
+				name: ':authority'
+				value: 'authority.example'
+			},
+			quic.QpackFieldLine{
+				name: 'host'
+				value: 'conflicting.example'
+			},
+		]
+	}
+	req := h3_build_request(st)!
+	assert req.host == 'authority.example'
+	assert req.header.get(.host)? == 'authority.example'
+}
+
+fn test_h3_build_request_checks_fixed_header_capacity_before_insertion() {
+	mut headers := [
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+		quic.QpackFieldLine{
+			name: ':authority'
+			value: 'example.com'
+		},
+	]
+	// Repeated fields consume distinct Header slots just like distinct names.
+	for _ in 0 .. max_headers {
+		headers << quic.QpackFieldLine{
+			name: 'x-field'
+			value: 'value'
+		}
+	}
+	accepted_st := &H3ServerStream{
+		headers: headers[..headers.len - 1].clone()
+	}
+	accepted_req := h3_build_request(accepted_st)!
+	assert accepted_req.header.get(.host)? == 'example.com'
+
+	st := &H3ServerStream{
+		headers: headers
+	}
+	h3_build_request(st) or {
+		assert err.msg().contains('too many request header fields')
+		return
+	}
+	assert false, 'expected regular headers plus synthesized Host to exceed Header capacity'
+}
+
+fn test_h3_build_request_rejects_overflowing_content_length() {
+	st := &H3ServerStream{
+		headers: [
+			quic.QpackFieldLine{
+				name: ':method'
+				value: 'GET'
+			},
+			quic.QpackFieldLine{
+				name: ':path'
+				value: '/'
+			},
+			quic.QpackFieldLine{
+				name: ':scheme'
+				value: 'https'
+			},
+			quic.QpackFieldLine{
+				name: ':authority'
+				value: 'example.com'
+			},
+			quic.QpackFieldLine{
+				name: 'content-length'
+				value: '99999999999999999999'
+			},
+		]
+	}
+	h3_build_request(st) or {
+		assert err.msg().contains('outside the supported range')
+		return
+	}
+	assert false, 'expected an overflowing content-length to be rejected'
+}
+
+fn test_h3_validate_request_pseudo_rejects_duplicate_host_fields() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+		quic.QpackFieldLine{
+			name: 'host'
+			value: 'first.example'
+		},
+		quic.QpackFieldLine{
+			name: 'host'
+			value: 'second.example'
+		},
+	]) or {
+		assert err.msg().contains('duplicate host')
+		return
+	}
+	assert false, 'expected duplicate host fields to be rejected'
+}
+
+fn test_h3_validate_request_pseudo_rejects_missing_authority_and_host() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name: ':method'
+			value: 'GET'
+		},
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/'
+		},
+		quic.QpackFieldLine{
+			name: ':scheme'
+			value: 'https'
+		},
+	]) or {
+		assert err.msg().contains(':authority and host')
+		return
+	}
+	assert false, 'expected an ordinary request without :authority or host to be rejected'
+}
+
+fn test_h3_server_propagates_only_unexpected_udp_read_errors() {
+	assert !h3_server_should_propagate_read_error(net.err_timed_out_code, false)
+	assert !h3_server_should_propagate_read_error(123, true)
+	assert h3_server_should_propagate_read_error(123, false)
+}

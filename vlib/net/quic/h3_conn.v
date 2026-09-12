@@ -8,13 +8,34 @@ module quic
 // blocked once more encoder-stream data arrives. This is the file every
 // "deferred to Phase 12" doc comment across h3_*.v/qpack_*.v pointed at.
 //
+// Role-aware since Phase 13e: a CLIENT-role H3Conn opens its own request
+// streams (open_request_stream/send_request_headers/send_request_data) and
+// treats every HEADERS/DATA/trailing-HEADERS sequence on one as the SERVER's
+// response (response_headers/response_data/response_trailers/response_ended
+// events); a SERVER-role H3Conn instead treats a PEER-opened (client-
+// initiated) bidirectional stream as an incoming REQUEST (request_headers/
+// request_data/request_trailers/request_ended events) and answers on that
+// SAME stream via send_response_headers/send_response_data -- it never
+// calls open_request_stream itself (HTTP/3 request streams are always
+// client-initiated, RFC 9114 §6.1, so a server has nothing of its own to
+// open). Both roles share the identical underlying per-stream message-
+// framing state machine (h3_request_stream.v) and QPACK encode/decode
+// path: RFC 9114 §4.1's HEADERS -> DATA* -> optional trailing HEADERS
+// grammar, and the field-section wire format, are symmetric between a
+// request and a response, so nothing about the state machine itself needed
+// to change -- only which EVENT KIND a decoded HEADERS/DATA block is
+// reported as, and whether a first HEADERS block is checked for an RFC
+// 9110 §15.2 1xx informational status (a response-only concept; a
+// request's :method/:path/:scheme/:authority pseudo-headers have no
+// analogous interim form, so a server-role connection never applies that
+// check -- see deliver_decoded_headers).
+//
 // Scope decision, documented here and in PROGRESS.md/the conformance
-// matrix: this v1 client role NEVER sends MAX_PUSH_ID, so RFC 9114
-// §7.2.7's push-authorization precondition is never satisfied -- any
-// PUSH_PROMISE/CANCEL_PUSH this connection receives is therefore always a
-// protocol violation (H3_ID_ERROR), and no push-ID/max-push-id tracking
-// state exists anywhere in this file. CONNECT is similarly out of scope --
-// nothing in H3ClientRequest (net.http, Phase 12d) ever constructs one.
+// matrix: this implementation never creates pushes. A server still accepts
+// and tracks a client's legal MAX_PUSH_ID increases; PUSH_PROMISE and
+// CANCEL_PUSH remain unsupported. CONNECT is similarly out of scope --
+// nothing in H3ClientRequest (net.http, Phase 12d) or the Phase 13e server
+// path ever constructs or accepts one.
 
 // max_h3_control_plane_buffered_bytes bounds how many not-yet-decoded
 // bytes this connection will buffer for a CONTROL-PLANE stream (the HTTP/3
@@ -22,14 +43,21 @@ module quic
 // connection error. Mirrors crypto_stream.v's max_crypto_stream_buffered_
 // bytes reasoning exactly: control-plane messages (SETTINGS, GOAWAY,
 // QPACK instructions) never legitimately need anywhere near this much.
-// Deliberately NOT applied to a REQUEST stream's H3FrameDecoder -- DATA
-// frames legitimately carry arbitrarily large bodies (h3_frame.v's own
-// module doc comment), so capping there would incorrectly reject a
-// spec-legal large transfer; H3FrameDecoder.pending_len() exists
-// specifically so a request stream's buffering can instead be reasoned
-// about against QUIC's own per-stream flow-control window (already
-// enforced by QuicConn itself), not an independent byte cap here.
+// DATA uses a caller-configured request-stream limit instead; HEADERS has
+// its own fixed bound below because a decoder must retain the complete
+// QPACK field section before it can process it.
 pub const max_h3_control_plane_buffered_bytes = u64(65536)
+
+// max_h3_request_headers_frame_payload bounds one encoded QPACK field
+// section before H3FrameDecoder buffers its payload. It mirrors HTTP/2's
+// one-megabyte received header-block bound.
+const max_h3_request_headers_frame_payload = u64(1024 * 1024)
+
+// max_h3_blocked_field_section_bytes bounds the aggregate encoded field
+// sections retained while waiting for QPACK inserts. The peer-controlled
+// blocked-stream setting limits distinct streams, but one stream can also
+// queue trailers, so a separate connection-wide byte budget is required.
+const max_h3_blocked_field_section_bytes = u64(8 * 1024 * 1024)
 
 // max_h3_uni_stream_header_buffered_bytes bounds how many bytes this
 // connection will buffer for a peer-initiated unidirectional stream whose
@@ -40,13 +68,23 @@ pub const max_h3_control_plane_buffered_bytes = u64(65536)
 const max_h3_uni_stream_header_buffered_bytes = 32
 
 // H3EventKind is one kind of thing an H3Conn.poll()/process_timeouts()
-// call can report.
+// call can report. The response_*/request_* pairs are mutually exclusive
+// per connection, not per event: a CLIENT-role H3Conn only ever produces
+// response_*, a SERVER-role one only ever produces request_* (see this
+// file's own module doc comment) -- both members exist rather than one
+// role-ambiguous name so a caller handling both roles (or just reading a
+// log) never has to cross-reference which role a given H3Conn was to know
+// what an event actually means.
 pub enum H3EventKind {
 	settings_received
 	response_headers
 	response_data
 	response_trailers
 	response_ended
+	request_headers
+	request_data
+	request_trailers
+	request_ended
 	request_error
 	goaway
 	connection_error
@@ -55,9 +93,11 @@ pub enum H3EventKind {
 // H3Event reports one thing that happened. Which fields are meaningful
 // depends on `kind`: `stream_id` is set for every per-request-stream kind
 // (response_headers/response_data/response_trailers/response_ended/
-// request_error); `headers` for response_headers/response_trailers;
-// `data` for response_data; `error_code`/`reason` for request_error/
-// connection_error; `goaway_id` for goaway.
+// request_headers/request_data/request_trailers/request_ended/
+// request_error); `headers` for response_headers/response_trailers/
+// request_headers/request_trailers; `data` for response_data/request_data;
+// `error_code`/`reason` for request_error/connection_error; `goaway_id`
+// for goaway.
 pub struct H3Event {
 pub:
 	kind       H3EventKind
@@ -96,6 +136,10 @@ pub:
 	// only carries the WIRE bytes) since new_qpack_decoder needs the raw
 	// value, not a re-parse of what this connection just encoded.
 	own_qpack_max_table_capacity u64
+	// max_inbound_data_frame_payload rejects an incoming request-stream DATA
+	// frame as soon as its declared length is decoded, before its payload is
+	// buffered. Zero leaves the payload size unrestricted.
+	max_inbound_data_frame_payload u64
 }
 
 // UniStreamKind classifies a peer-initiated unidirectional stream once
@@ -165,8 +209,10 @@ pub struct H3Conn {
 mut:
 	qc &QuicConn
 
-	own_settings                 []H3Setting
-	own_qpack_max_table_capacity u64
+	own_settings                   []H3Setting
+	own_qpack_max_table_capacity   u64
+	own_qpack_blocked_streams      u64
+	max_inbound_data_frame_payload u64
 
 	own_control_stream_id       ?u64
 	own_qpack_encoder_stream_id ?u64
@@ -186,6 +232,8 @@ mut:
 	peer_qpack_decoder_stream_id ?u64
 	peer_qpack_encoder_buf       []u8
 	peer_qpack_decoder_buf       []u8
+	peer_max_push_id             ?u64
+	peer_goaway_id               ?u64
 	qpack_stream_registry        QpackStreamRegistry
 	// Every OTHER classified-but-uninteresting peer uni stream (push,
 	// reserved/grease, or genuinely unknown -- RFC 9114 §6.2/§6.2.3/§9 all
@@ -217,6 +265,8 @@ pub fn new_h3_conn(mut qc QuicConn, params H3ConnParams) &H3Conn {
 		qc: qc
 		own_settings: params.settings
 		own_qpack_max_table_capacity: params.own_qpack_max_table_capacity
+		own_qpack_blocked_streams: qpack_blocked_streams_from_settings(params.settings)
+		max_inbound_data_frame_payload: params.max_inbound_data_frame_payload
 		peer_control_decoder: new_h3_frame_decoder()
 		qpack_decoder: new_qpack_decoder(params.own_qpack_max_table_capacity)
 		qpack_encoder: new_qpack_encoder()
@@ -228,7 +278,7 @@ pub fn new_h3_conn(mut qc QuicConn, params H3ConnParams) &H3Conn {
 // free releases native resources owned by the wrapped QUIC connection.
 // It is idempotent and must be called once the H3Conn will no longer be polled.
 pub fn (mut h H3Conn) free() {
-	h.qc.handshake.free()
+	h.qc.free()
 }
 
 // established reports whether the wrapped QuicConn has reached RFC 9000's
@@ -237,6 +287,28 @@ pub fn (mut h H3Conn) free() {
 // (Phase 12c) needs before it may start draining queued requests.
 pub fn (h &H3Conn) established() bool {
 	return h.qc.state() == .established
+}
+
+// closed reports whether this connection has already reported its own
+// .connection_closed event (handle_quic_events sets this the moment that
+// QuicEvent is seen). Exists for an external caller managing MANY H3Conns
+// side by side (e.g. a future net.http h3_server.v atop a QuicListener,
+// Phase 13e) to know when it is safe to drop its own reference and stop
+// driving this connection any further -- mirrors established()'s identical
+// "cheap derived-state accessor for an outside caller" role.
+pub fn (h &H3Conn) closed() bool {
+	return h.closed
+}
+
+// is_server_role reports whether the wrapped QuicConn is playing the
+// server role -- the one fact this file's request/response event-kind and
+// 1xx-informational-status branching (deliver_decoded_headers,
+// finalize_request_stream_if_done, dispatch_request_stream_frames) all key
+// off of. A tiny named helper rather than repeating `h.qc.role() ==
+// .server` at each call site, so the intent reads the same way at every
+// one of them.
+fn (h &H3Conn) is_server_role() bool {
+	return h.qc.role() == .server
 }
 
 // poll feeds one datagram (or none) through the wrapped QuicConn, then
@@ -255,6 +327,32 @@ pub fn (mut h H3Conn) poll(incoming ?[]u8, now u64) !H3PollResult {
 pub fn (mut h H3Conn) process_timeouts(now u64) !H3PollResult {
 	qc_result := h.qc.process_timeouts(now)!
 	return h.drive(qc_result)!
+}
+
+// drive_events drives this connection's H3 layer from a set of QuicEvents
+// that some OTHER caller already obtained from the wrapped QuicConn's own
+// poll()/process_timeouts() -- for a caller that cannot let THIS H3Conn
+// call qc.poll()/qc.process_timeouts() itself, because something else
+// already did (a QuicListener demuxing many connections behind one socket,
+// Phase 13e's net.http h3_server.v, whose own QuicListener.poll() call
+// already drove the matched connection's QUIC layer as part of routing one
+// incoming datagram to it). The returned H3PollResult's `outgoing` and
+// `next_timeout` are always empty/none -- meaningless here, since this
+// call injects no new incoming bytes of its own for qc to have drained
+// anything against; the caller already has the real (correctly peer-
+// addressed) outgoing bytes and next_timeout from its own QuicListener
+// call and must use those instead. Only `events` carries real output.
+// Matches this file's own "queue-now-drain-later" contract throughout:
+// open_own_streams_if_ready/drain_known_peer_streams may still enqueue new
+// writes onto the underlying QuicConn (e.g. this connection's own control
+// stream, or a response the caller sends in reaction to one of the
+// returned events) -- those reach the wire whenever the caller's OWN next
+// QuicListener.poll()/process_timeouts() call for this connection next
+// drains it, not from this call.
+pub fn (mut h H3Conn) drive_events(events []QuicEvent) !H3PollResult {
+	return h.drive(PollResult{
+		events: events
+	})!
 }
 
 // drive is poll()/process_timeouts()' shared body.
@@ -295,9 +393,20 @@ fn (mut h H3Conn) handle_quic_events(events []QuicEvent, mut result H3PollResult
 				}
 				if id.direction() == .unidirectional {
 					h.pending_peer_uni_headers[stream_id] = []u8{}
+				} else if h.is_server_role() {
+					// A peer-initiated (client-initiated) bidirectional
+					// stream IS this server's defined use of one: RFC 9114
+					// §6.1 request streams are always client-initiated, so
+					// this is a new incoming request. Register it exactly
+					// like open_request_stream does for a CLIENT's own
+					// outgoing stream -- dispatch_request_stream_frames
+					// (below) then drives it identically regardless of
+					// which side actually opened it.
+					h.request_streams[stream_id] = new_h3_request_stream_state()
+					h.request_decoders[stream_id] = new_h3_frame_decoder()
 				}
 				// A peer-initiated BIDI stream has no defined use in HTTP/3's
-				// client role (request streams are always client-initiated,
+				// CLIENT role (request streams are always client-initiated,
 				// RFC 9114 §6.1) -- ignored rather than acted on, same
 				// tolerate-and-do-nothing posture as an unknown uni stream
 				// type, since Table 1 grants it no legal frame types either.
@@ -372,6 +481,7 @@ fn (mut h H3Conn) drain_known_peer_streams(mut result H3PollResult) ! {
 	if dec_id := h.peer_qpack_decoder_stream_id {
 		h.drive_peer_qpack_decoder_stream(dec_id)!
 	}
+	h.require_peer_critical_streams_open()!
 	// ignored_peer_streams (push/reserved/unknown uni streams) are
 	// deliberately never read again -- see the field's own doc comment; no
 	// loop over it belongs here at all.
@@ -382,6 +492,23 @@ fn (mut h H3Conn) drain_known_peer_streams(mut result H3PollResult) ! {
 		h.dispatch_request_stream_frames(stream_id, mut result)!
 	}
 	h.retry_blocked_sections(mut result)!
+}
+
+// require_peer_critical_streams_open enforces RFC 9114 §6.2.1 and RFC 9204
+// §4.2: once the peer's control or either QPACK stream has been identified,
+// a FIN or RESET on it is a connection error. Run this after draining their
+// latest bytes so a terminal STREAM frame cannot leave the connection usable
+// or leave request field sections blocked forever.
+fn (h &H3Conn) require_peer_critical_streams_open() ! {
+	critical_streams := [h.peer_control_stream_id, h.peer_qpack_encoder_stream_id,
+		h.peer_qpack_decoder_stream_id]
+	for stream_id_opt in critical_streams {
+		stream_id := stream_id_opt or { continue }
+		status := h.qc.stream_recv_status(stream_id) or { continue }
+		if status.state != .open {
+			return error_with_code('h3: peer closed critical stream ${stream_id}', int(H3ErrorCode.closed_critical_stream))
+		}
+	}
 }
 
 // pump_pending_uni_header reads any new bytes on a not-yet-classified
@@ -399,6 +526,20 @@ fn (mut h H3Conn) pump_pending_uni_header(stream_id u64) ! {
 	}
 	if u64(buf.len) > max_h3_uni_stream_header_buffered_bytes {
 		return error_with_code('h3: peer unidirectional stream ${stream_id} sent more than ${max_h3_uni_stream_header_buffered_bytes} bytes without completing its type header', int(H3ErrorCode.general_protocol_error))
+	}
+	// RFC 9114 §6.2.2 permits only servers to initiate push streams. Reject
+	// one from a client as soon as its Stream Type varint is complete; waiting
+	// for the following Push ID would needlessly retain attacker-controlled
+	// header bytes for a stream that can never be valid in the server role.
+	if h.is_server_role() {
+		raw_type, _ := decode_varint(buf) or {
+			h.pending_peer_uni_headers[stream_id] = buf
+			return
+		}
+		if raw_type == h3_push_stream_type {
+			h.pending_peer_uni_headers.delete(stream_id)
+			return error_with_code('h3: a client cannot initiate a push stream', int(H3ErrorCode.stream_creation_error))
+		}
 	}
 	kind, consumed := classify_peer_uni_stream_header(buf) or {
 		h.pending_peer_uni_headers[stream_id] = buf
@@ -466,8 +607,15 @@ fn (mut h H3Conn) require_valid_frame_for_role(frame H3Frame, role H3StreamRole)
 // -----------------------------------------------------------------------
 
 // open_request_stream opens a new client-initiated bidirectional request
-// stream and begins tracking its response message-framing state.
+// stream and begins tracking its response message-framing state. CLIENT
+// role only -- RFC 9114 §6.1 request streams are always client-initiated,
+// so a server has no legal use for opening one of its own; it answers on
+// whichever stream ID the PEER opened instead (see this file's own module
+// doc comment and send_response_headers/send_response_data).
 pub fn (mut h H3Conn) open_request_stream() !u64 {
+	if h.is_server_role() {
+		return error('h3: open_request_stream is client-role only -- a server answers on the stream the peer opened (RFC 9114 §6.1)')
+	}
 	stream_id := h.qc.open_stream(true)!
 	h.request_streams[stream_id] = new_h3_request_stream_state()
 	h.request_decoders[stream_id] = new_h3_frame_decoder()
@@ -501,6 +649,24 @@ pub fn (mut h H3Conn) send_request_data(stream_id u64, data []u8, fin bool) ! {
 	h.qc.write_stream(stream_id, frame_bytes, fin)!
 }
 
+// send_response_headers is the SERVER-role counterpart of
+// send_request_headers, for `stream_id` a PEER opened (an incoming
+// request) rather than one this endpoint opened itself. Functionally
+// identical -- QPACK-encoding a field section and queuing it as a HEADERS
+// frame doesn't care which endpoint opened the stream it's writing to --
+// this exists as a separately named entry point purely so a server
+// caller's own code reads as "sending a response", not "sending a
+// request" onto a stream it never opened.
+pub fn (mut h H3Conn) send_response_headers(stream_id u64, lines []QpackFieldLine, fin bool) ! {
+	h.send_request_headers(stream_id, lines, fin)!
+}
+
+// send_response_data is send_request_data's identical server-role
+// counterpart -- see send_response_headers' own doc comment.
+pub fn (mut h H3Conn) send_response_data(stream_id u64, data []u8, fin bool) ! {
+	h.send_request_data(stream_id, data, fin)!
+}
+
 // -----------------------------------------------------------------------
 // Request-stream response dispatch
 // -----------------------------------------------------------------------
@@ -508,14 +674,10 @@ pub fn (mut h H3Conn) send_request_data(stream_id u64, data []u8, fin bool) ! {
 // dispatch_request_stream_frames reads any new bytes on `stream_id`,
 // decodes as many complete frames as are available, and drives both
 // h3_request_stream.v's message-framing state machine and QPACK field-
-// section decoding for each. A message-framing or QPACK decompression
-// failure on THIS stream is request-scoped (RFC 9204 §2.2.3 explicitly
-// calls a field-section decode failure "a stream error of type
-// QPACK_DECOMPRESSION_FAILED" -- QPACK's dynamic table is mutated only by
-// separate encoder-stream instructions, already applied independently, so
-// a decode failure on one section does not desync it the way an HPACK
-// failure would) -- reported as a request_error event and the stream
-// marked dead, never propagated as a connection-level error.
+// section decoding for each. HTTP message-framing failures are request-scoped,
+// but RFC 9204 §2.2.3 requires a field-section decompression failure to close
+// the connection with QPACK_DECOMPRESSION_FAILED. decode_or_queue_headers and
+// retry_blocked_sections therefore propagate malformed QPACK sections.
 fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3PollResult) ! {
 	mut decoder := h.request_decoders[stream_id] or { return }
 	new_bytes := h.qc.read_stream(stream_id)!
@@ -523,36 +685,68 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 		decoder.push(new_bytes)
 	}
 	for {
-		decoded := decoder.next()!
+		decoded := decoder.next_with_payload_limits(h.max_inbound_data_frame_payload, max_h3_request_headers_frame_payload) or {
+			if err.code() != int(H3ErrorCode.excessive_load) {
+				return err
+			}
+			h.fail_request_stream(stream_id, H3ErrorCode.excessive_load.code(), err.msg(), mut result)
+			return
+		}
 		if !decoded.has_frame {
 			break
 		}
 		h.require_valid_frame_for_role(decoded.frame, .request)!
 		match decoded.frame {
 			PushPromiseFrame {
-				// Table-1-legal on a request stream, but v1 never authorizes
-				// push -- request-scoped here (tied to this one exchange),
-				// unlike the identical rejection on the control stream, which
-				// is connection-scoped (MAX_PUSH_ID there implies a peer that
-				// may be confused about push in general, not just this
-				// request).
-				h.fail_request_stream(stream_id, H3ErrorCode.id_error.code(), 'push is never authorized by this client', mut result)
+				if h.is_server_role() {
+					return error_with_code('h3: a client cannot send PUSH_PROMISE', int(H3ErrorCode.frame_unexpected))
+				}
+				// Client role does not authorize push in this v1 implementation
+				// (this file's own module doc comment), so reject that promised
+				// exchange. Server role has already returned the mandatory
+				// connection-level FRAME_UNEXPECTED error above.
+				h.fail_request_stream(stream_id, H3ErrorCode.id_error.code(), 'push is not authorized on this connection', mut result)
 				return
 			}
 			DataFrame {
 				mut state := h.request_streams[stream_id] or { return }
-				state.note_frame_kind(false, true) or {
-					h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
-					return
+				initial_request_headers_blocked := h.is_server_role()
+					&& state.phase() == .awaiting_response_headers
+					&& h.has_blocked_section_for(stream_id)
+				if initial_request_headers_blocked {
+					state.note_data_behind_blocked_headers() or {
+						h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
+						return
+					}
+				} else {
+					state.note_frame_kind(false, true) or {
+						h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
+						return
+					}
 				}
 				result.events << H3Event{
-					kind: .response_data
+					kind: if h.is_server_role() {
+						H3EventKind.request_data
+					} else {
+						H3EventKind.response_data
+					}
 					stream_id: stream_id
 					data: decoded.frame.data
 				}
 			}
 			HeadersFrame {
 				mut state := h.request_streams[stream_id] or { return }
+				initial_request_headers_blocked := h.is_server_role()
+					&& state.phase() == .awaiting_response_headers
+					&& h.has_blocked_section_for(stream_id)
+				if initial_request_headers_blocked {
+					state.note_trailers_behind_blocked_headers() or {
+						h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
+						return
+					}
+					h.queue_blocked_section(stream_id, decoded.frame.encoded_field_section.clone(), true)!
+					continue
+				}
 				is_trailers := state.phase() == .in_body
 				state.note_frame_kind(true, false) or {
 					h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
@@ -576,18 +770,66 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 // if QPACK reports the section blocked (RFC 9204 §2.1.2/§2.2.1).
 fn (mut h H3Conn) decode_or_queue_headers(stream_id u64, buf []u8, is_trailers bool, mut result H3PollResult) ! {
 	decoded := h.qpack_decoder.decode_field_section(stream_id, buf) or {
-		h.fail_request_stream(stream_id, u64(err.code()), err.msg(), mut result)
-		return
+		if err.code() == int(H3ErrorCode.excessive_load) {
+			h.fail_request_stream(stream_id, H3ErrorCode.excessive_load.code(), err.msg(), mut result)
+			return
+		}
+		return h3_qpack_decompression_error(err)
 	}
 	if decoded.blocked {
-		h.blocked_sections << BlockedFieldSection{
-			stream_id: stream_id
-			buf: buf
-			is_trailers: is_trailers
-		}
+		h.queue_blocked_section(stream_id, buf, is_trailers)!
 		return
 	}
 	h.deliver_decoded_headers(stream_id, decoded, is_trailers, mut result)!
+}
+
+// h3_qpack_decompression_error normalizes low-level prefix/field-line parser
+// errors, which do not all carry their wire code, to RFC 9204's mandatory
+// QPACK_DECOMPRESSION_FAILED connection error.
+fn h3_qpack_decompression_error(err IError) IError {
+	return error_with_code(err.msg(), int(QpackErrorCode.decompression_failed))
+}
+
+// h3_blocked_field_section_budget_allows reports whether another encoded
+// field section fits without overflowing the connection-wide retention cap.
+fn h3_blocked_field_section_budget_allows(retained u64, incoming u64) bool {
+	return retained <= max_h3_blocked_field_section_bytes
+		&& incoming <= max_h3_blocked_field_section_bytes - retained
+}
+
+// queue_blocked_section retains one QPACK-blocked field section while
+// enforcing both this endpoint's advertised distinct-stream limit and a
+// separate aggregate byte budget.
+fn (mut h H3Conn) queue_blocked_section(stream_id u64, buf []u8, is_trailers bool) ! {
+	if !h.has_blocked_section_for(stream_id) {
+		mut blocked_streams := u64(0)
+		mut seen := map[u64]bool{}
+		for section in h.blocked_sections {
+			if section.stream_id !in seen {
+				seen[section.stream_id] = true
+				blocked_streams++
+			}
+		}
+		if blocked_streams >= h.own_qpack_blocked_streams {
+			return error_with_code('qpack: blocked field section exceeds the advertised ${h.own_qpack_blocked_streams}-stream limit', int(QpackErrorCode.decompression_failed))
+		}
+	}
+	mut retained := u64(0)
+	for section in h.blocked_sections {
+		section_len := u64(section.buf.len)
+		if !h3_blocked_field_section_budget_allows(retained, section_len) {
+			return error_with_code('qpack: blocked field sections exceed the ${max_h3_blocked_field_section_bytes}-byte retention limit', int(QpackErrorCode.decompression_failed))
+		}
+		retained += section_len
+	}
+	if !h3_blocked_field_section_budget_allows(retained, u64(buf.len)) {
+		return error_with_code('qpack: blocked field sections exceed the ${max_h3_blocked_field_section_bytes}-byte retention limit', int(QpackErrorCode.decompression_failed))
+	}
+	h.blocked_sections << BlockedFieldSection{
+		stream_id: stream_id
+		buf: buf
+		is_trailers: is_trailers
+	}
 }
 
 // deliver_decoded_headers relays a successfully decoded field section's
@@ -595,25 +837,35 @@ fn (mut h H3Conn) decode_or_queue_headers(stream_id u64, buf []u8, is_trailers b
 // QpackDecoder.decode_field_section's own doc comment for when one is
 // produced) and emits the matching H3Event.
 //
-// A `!is_trailers` block (a response-headers CANDIDATE -- the first HEADERS
-// this stream has seen, or another one arriving while still awaiting the
-// final response) is inspected for RFC 9110 §15.2's 1xx informational
-// range: a well-formed 1xx :status is discarded here entirely (this v1
-// client has no Expect:100-continue/early-hints support to hand it to) and
-// the stream's phase is left unchanged, so the NEXT HEADERS block -- final
-// or another interim one -- is still treated as a response-headers
-// candidate rather than trailers. Only once a non-1xx (or malformed/
-// missing, left for net.http's own :status validation to reject) status is
-// seen does this advance the phase and emit `.response_headers`. Mirrors
-// h2_mux_conn.v's identical "discard 1xx, keep waiting for the real
-// response" handling for HTTP/2.
+// A `!is_trailers` block on a CLIENT-role connection (a response-headers
+// CANDIDATE -- the first HEADERS this stream has seen, or another one
+// arriving while still awaiting the final response) is inspected for RFC
+// 9110 §15.2's 1xx informational range: a well-formed 1xx :status is
+// discarded here entirely (this v1 client has no Expect:100-continue/
+// early-hints support to hand it to) and the stream's phase is left
+// unchanged, so the NEXT HEADERS block -- final or another interim one --
+// is still treated as a response-headers candidate rather than trailers.
+// Only once a non-1xx (or malformed/missing, left for net.http's own
+// :status validation to reject) status is seen does this advance the phase
+// and emit `.response_headers`. Mirrors h2_mux_conn.v's identical "discard
+// 1xx, keep waiting for the real response" handling for HTTP/2.
+//
+// A SERVER-role connection skips the 1xx check entirely: a REQUEST's
+// :method/:path/:scheme/:authority pseudo-headers have no RFC 9110 §15.2
+// interim-response analog, so the FIRST (and only non-trailer) HEADERS
+// block on an incoming request stream is unconditionally the request
+// headers -- the phase always advances immediately, and net.http's own
+// h3_server.v (Phase 13e) owns validating the pseudo-headers this section
+// actually decoded to, exactly like it owns :status validation for the
+// client role (this function never itself rejects either).
 fn (mut h H3Conn) deliver_decoded_headers(stream_id u64, decoded QpackDecodeFieldSectionResult, is_trailers bool, mut result H3PollResult) ! {
 	if decoded.decoder_instructions.len > 0 {
 		if dec_id := h.own_qpack_decoder_stream_id {
 			h.qc.write_stream(dec_id, decoded.decoder_instructions, false)!
 		}
 	}
-	if !is_trailers && h3_status_is_informational(decoded.lines) {
+	is_server := h.is_server_role()
+	if !is_trailers && !is_server && h3_status_is_informational(decoded.lines) {
 		return
 	}
 	if !is_trailers {
@@ -622,9 +874,9 @@ fn (mut h H3Conn) deliver_decoded_headers(stream_id u64, decoded QpackDecodeFiel
 	}
 	result.events << H3Event{
 		kind: if is_trailers {
-			H3EventKind.response_trailers
+			if is_server { H3EventKind.request_trailers } else { H3EventKind.response_trailers }
 		} else {
-			H3EventKind.response_headers
+			if is_server { H3EventKind.request_headers } else { H3EventKind.response_headers }
 		}
 		stream_id: stream_id
 		headers: decoded.lines
@@ -668,16 +920,27 @@ fn (mut h H3Conn) retry_blocked_sections(mut result H3PollResult) ! {
 	}
 	mut still_blocked := []BlockedFieldSection{}
 	mut resolved_streams := []u64{}
+	mut blocked_initial_by_stream := map[u64]bool{}
 	for section in h.blocked_sections {
 		if section.stream_id in h.dead_request_streams {
 			continue
 		}
-		decoded := h.qpack_decoder.decode_field_section(section.stream_id, section.buf) or {
-			h.fail_request_stream(section.stream_id, u64(err.code()), err.msg(), mut result)
+		if section.is_trailers && section.stream_id in blocked_initial_by_stream {
+			still_blocked << section
 			continue
+		}
+		decoded := h.qpack_decoder.decode_field_section(section.stream_id, section.buf) or {
+			if err.code() == int(H3ErrorCode.excessive_load) {
+				h.fail_request_stream(section.stream_id, H3ErrorCode.excessive_load.code(), err.msg(), mut result)
+				continue
+			}
+			return h3_qpack_decompression_error(err)
 		}
 		if decoded.blocked {
 			still_blocked << section
+			if !section.is_trailers {
+				blocked_initial_by_stream[section.stream_id] = true
+			}
 			continue
 		}
 		h.deliver_decoded_headers(section.stream_id, decoded, section.is_trailers, mut result)!
@@ -719,9 +982,17 @@ fn (mut h H3Conn) finalize_request_stream_if_done(stream_id u64, mut result H3Po
 			if state.phase() == .done {
 				return
 			}
+			if h.is_server_role() && state.phase() == .awaiting_response_headers {
+				h.fail_request_stream(stream_id, H3ErrorCode.request_incomplete.code(), 'request stream ended before its initial HEADERS', mut result)
+				return
+			}
 			state.note_fin()
 			result.events << H3Event{
-				kind: .response_ended
+				kind: if h.is_server_role() {
+					H3EventKind.request_ended
+				} else {
+					H3EventKind.response_ended
+				}
 				stream_id: stream_id
 			}
 			// This stream will never be dispatched to again (note_fin is
@@ -781,7 +1052,7 @@ fn (mut h H3Conn) fail_request_stream(stream_id u64, error_code u64, reason stri
 
 // prune_terminal_dead_streams drops any dead_request_streams entry whose
 // underlying QUIC receive side has itself reached a terminal state
-// (reset_recvd/reset_read or size_known/data_recvd/data_read): once that
+// (reset_recvd/reset_read or data_recvd/data_read): once that
 // has happened, the transport guarantees no further STREAM frames for that
 // ID can ever arrive (RFC 9000 -- a stream ID is never reused within a
 // connection), so this layer no longer needs to remember it was locally

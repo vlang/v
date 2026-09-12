@@ -387,3 +387,125 @@ fn test_build_client_hello_structure() {
 
 	assert alpn_data[3..5].bytestr() == 'h3'
 }
+
+// parse_client_hello / decode_alpn_offer (Phase 13a, server-role parsing).
+// Round-tripped through this same file's own build_client_hello -- the
+// perfect pair, same discipline as every other build/parse cross-check in
+// this module.
+
+fn test_parse_client_hello_round_trips_through_build_client_hello() {
+	_, priv_key := ecdsa.generate_key()!
+	pub_key := priv_key.public_key()!
+	ecdhe_public_key := pub_key.uncompressed_bytes()!
+
+	tp := QuicTransportParameters{
+		initial_source_connection_id: []u8{len: 8, init: 0xcc}
+	}
+	msg := build_client_hello(
+		random:               []u8{len: 32, init: 0x22}
+		server_name:          'example.com'
+		ecdhe_public_key:     ecdhe_public_key
+		transport_parameters: tp
+		alpn_protocols:       ['h3', 'h3-29']
+	)!
+	parsed_msg, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	assert parsed_msg.typ == .client_hello
+
+	result := parse_client_hello(parsed_msg.body)!
+	assert result.random == []u8{len: 32, init: 0x22}
+	assert result.cipher_suites == [cipher_suite_tls_aes_128_gcm_sha256]
+
+	ks_ext := find_extension(result.extensions, ext_key_share) or { panic('missing key_share') }
+	// Client-side key_share is list-wrapped (KeyShareClientHello) -- skip
+	// the 2-byte client_shares length prefix before the single entry's own
+	// group(2)+key_exchange_len(2)+key_exchange, matching
+	// encode_key_share_extension's own wire shape (this file).
+	assert ks_ext.data[2..4] == [u8(named_group_secp256r1 >> 8), u8(named_group_secp256r1)]
+	assert ks_ext.data[6..] == ecdhe_public_key
+
+	alpn_ext := find_extension(result.extensions, ext_alpn) or { panic('missing alpn') }
+	assert decode_alpn_offer(alpn_ext.data)! == ['h3', 'h3-29']
+
+	tp_ext := find_extension(result.extensions, ext_quic_transport_parameters) or {
+		panic('missing quic_transport_parameters')
+	}
+	decoded_tp := decode_transport_parameters(tp_ext.data)!
+	assert decoded_tp.initial_source_connection_id? == []u8{len: 8, init: 0xcc}
+}
+
+fn test_parse_client_hello_rejects_nonempty_session_id() {
+	mut body := []u8{}
+	body << u8(0x03)
+	body << u8(0x03)
+	body << []u8{len: 32}
+	body << u8(1) // non-empty session id -- always wrong, RFC 9001 §8.4
+	body << u8(0xaa)
+	body << u8(0)
+	body << u8(2)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256 >> 8)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256)
+	body << u8(1)
+	body << u8(0)
+	body << u8(0)
+	body << u8(0)
+	parse_client_hello(body) or {
+		assert err.msg().contains('legacy_session_id')
+		assert err.code() == int(quic_error_protocol_violation)
+		return
+	}
+	assert false, 'expected an error for a non-empty legacy_session_id'
+}
+
+fn test_parse_client_hello_rejects_wrong_legacy_version() {
+	mut body := []u8{}
+	body << u8(0x03)
+	body << u8(0x01) // wrong: must be 0x0303
+	body << []u8{len: 32}
+	body << u8(0)
+	body << u8(0)
+	body << u8(2)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256 >> 8)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256)
+	body << u8(1)
+	body << u8(0)
+	body << u8(0)
+	body << u8(0)
+	parse_client_hello(body) or {
+		assert err.msg().contains('legacy_version')
+		return
+	}
+	assert false, 'expected an error for a wrong legacy_version'
+}
+
+fn test_parse_client_hello_rejects_wrong_compression_methods() {
+	mut body := []u8{}
+	body << u8(0x03)
+	body << u8(0x03)
+	body << []u8{len: 32}
+	body << u8(0)
+	body << u8(0)
+	body << u8(2)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256 >> 8)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256)
+	body << u8(2) // wrong: must be exactly [0]
+	body << u8(0)
+	body << u8(1)
+	body << u8(0)
+	body << u8(0)
+	parse_client_hello(body) or {
+		assert err.msg().contains('legacy_compression_methods')
+		return
+	}
+	assert false, 'expected an error for a malformed legacy_compression_methods'
+}
+
+fn test_decode_alpn_offer_rejects_empty_entry() {
+	// A zero-length protocol name -- RFC 7301 §3.1: opaque ProtocolName<1..255>.
+	data := [u8(0), 1, 0]
+	decode_alpn_offer(data) or {
+		assert err.msg().contains('must not be empty')
+		return
+	}
+	assert false, 'expected an error for an empty protocol name'
+}

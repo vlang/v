@@ -192,3 +192,58 @@ fn test_verify_retry_integrity_tag_discards_when_already_processed_other_packet(
 	ok := verify_retry_integrity_tag(original_dcid, packet, true)!
 	assert ok == false
 }
+
+// encode_retry_packet (Phase 13b, server-role construction). Round-tripped
+// through this same file's own verify_retry_integrity_tag/
+// parse_retry_packet -- the client-role functions, written and tested in an
+// earlier phase, completely independently of this server-role code. This
+// is the strongest possible cross-check available in this module: it isn't
+// merely "does this look like a well-formed packet," it's "does the exact
+// client code that will actually receive this in production accept it."
+
+fn test_encode_retry_packet_round_trips_through_client_verification() {
+	client_scid := [u8(0x55), 0x66, 0x77, 0x88]
+	original_dcid := [u8(0xaa), 0xbb, 0xcc, 0xdd]
+	server_scid := [u8(9), 10, 11, 12]
+	key := []u8{len: retry_token_key_len, init: 0x42}
+	client_addr := [u8(192), 168, 1, 1, 0x1f, 0x90]
+
+	packet := encode_retry_packet(
+		client_scid:   client_scid
+		server_scid:   server_scid
+		original_dcid: original_dcid
+		token_key:     key
+		client_addr:   client_addr
+		issued_at_ms:  500
+	)!
+
+	ok := verify_retry_integrity_tag(original_dcid, packet, false)!
+	assert ok
+	parsed := parse_retry_packet(packet, original_dcid, client_scid)!
+	assert parsed.dcid == client_scid
+	assert parsed.scid == server_scid
+	assert parsed.retry_token.len > 0
+
+	// The retried Initial's token is exactly parsed.retry_token -- validate
+	// it the way the server's own future connection-acceptance path would.
+	claims := validate_retry_token_for_attempt(key, parsed.retry_token, client_addr, 500, 30000)!
+	assert claims.original_dcid == original_dcid
+	assert claims.client_addr == client_addr
+	assert claims.issued_at_ms == 500
+}
+
+fn test_encode_retry_packet_rejects_server_scid_equal_to_original_dcid() {
+	original_dcid := [u8(0xaa), 0xbb, 0xcc, 0xdd]
+	encode_retry_packet(
+		client_scid:   [u8(1), 2, 3, 4]
+		server_scid:   original_dcid // degenerate: RFC 9000 §17.2.5.1 forbids this
+		original_dcid: original_dcid
+		token_key:     []u8{len: retry_token_key_len}
+		client_addr:   [u8(1)]
+		issued_at_ms:  0
+	) or {
+		assert err.msg().contains('must not equal')
+		return
+	}
+	assert false, 'expected an error when server_scid equals original_dcid'
+}
