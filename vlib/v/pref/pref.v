@@ -341,6 +341,16 @@ pub fn (p &Preferences) only_emits_c() bool {
 		|| p.should_output_to_stdout()
 }
 
+// names_its_c_compiler reports whether the artefact V produces says which C compiler
+// builds it. Anything V compiles or links itself does, and so does `-generate-c-project`,
+// which writes the compiler and its options into the build scripts it leaves next to the
+// C - so the generated C has to be built for that compiler, tcc inserts and all. Plain C
+// output does not: `-o out.c`, `-o -` and `-os cross` name no compiler anywhere, and
+// leave the choice entirely to whoever picks the file up.
+pub fn (p &Preferences) names_its_c_compiler() bool {
+	return !p.only_emits_c() || p.generate_c_project != ''
+}
+
 // stops_before_linking reports whether V hands its output to another toolchain instead of
 // producing a finished, V-linked artefact. That is everything only_emits_c covers, plus
 // `-o out.o`/`-is_o`: V does compile an object there, but somebody else links it. Whatever

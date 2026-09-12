@@ -129,6 +129,40 @@ fn test_object_output_stops_before_linking_but_still_compiles() {
 	assert !linked_by_v.only_emits_c()
 }
 
+fn test_only_generated_c_projects_name_their_compiler_among_the_c_only_modes() {
+	// The libc and the C compiler are not handed off alike: a generated project pins the
+	// compiler in its own build scripts, while bare C output pins nothing.
+	mut c_project := Preferences{
+		os:                 ._auto
+		generate_c_project: 'out/cproject'
+		out_name:           'prog'
+	}
+	assert c_project.only_emits_c()
+	assert c_project.names_its_c_compiler()
+
+	for out_name in ['out.c', '/tmp/-'] {
+		mut p := Preferences{
+			os:       ._auto
+			out_name: out_name
+		}
+		assert p.only_emits_c(), out_name
+		assert !p.names_its_c_compiler(), out_name
+	}
+
+	// V runs the compiler for both of these, so both name it.
+	mut object := Preferences{
+		os:       ._auto
+		is_o:     true
+		out_name: 'unit.o'
+	}
+	assert object.names_its_c_compiler()
+	mut linked_by_v := Preferences{
+		os:       ._auto
+		out_name: 'prog'
+	}
+	assert linked_by_v.names_its_c_compiler()
+}
+
 fn test_generated_c_project_forgets_the_detected_libc() {
 	// `-generate-c-project` writes the C next to build.sh/Makefile and returns, so the
 	// libc belongs to whatever those scripts are pointed at, not to this machine.

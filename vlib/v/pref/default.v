@@ -679,7 +679,9 @@ pub fn (mut p Preferences) default_c_compiler() {
 		}
 		// Same reason as the handoff guard in try_to_use_tcc_by_default: the bundled tcc
 		// this otherwise falls back to must not shape C that another toolchain compiles.
-		if p.only_emits_c() {
+		// `-generate-c-project` is not in that group - it writes the compiler into its own
+		// build scripts, so the bundled tcc there is a choice the generated C matches.
+		if !p.names_its_c_compiler() {
 			p.ccompiler = 'gcc'
 			return
 		}

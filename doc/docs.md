@@ -7136,10 +7136,12 @@ Full list of builtin options:
 `glibc` is decided by V, not passed with `-d`: it detects the C library of the
 machine it runs on, and keeps that answer only while it also links the program.
 For output another toolchain builds (`-o out.c`, `-o -`, `-o out.o`,
-`-generate-c-project`, `-os cross`) a detected glibc is dropped, so the code
-stays linkable against glibc and musl alike. Use `-glibc` or `-musl` to pin the
-target C library instead; `-musl` is also what enables `$if musl ? {`. See
-`v help build-c` for the details.
+`-generate-c-project`, `-os cross`) a detected glibc is dropped, which keeps the
+generated code off glibc-only functions such as `backtrace()`. Building for musl
+still requires `-musl`, which is also what enables `$if musl ? {`: V never infers
+it, and without it the build asserts the target is *not* musl, down to the
+`#flag`s that select a garbage collector. Use `-glibc` or `-musl` to pin the
+target C library. See `v help build-c` for the details.
 
 #### `$embed_file`
 

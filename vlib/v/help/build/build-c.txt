@@ -20,19 +20,29 @@ see also `v help build`.
       `$if glibc {` and `$if musl ? {` in V code, and with them glibc-only code
       such as the `<execinfo.h>` symbolisation of panic backtraces.
 
+      Note: building for musl requires `-musl`. V never infers musl for you: it
+      detects the C library of the host, and an unset `musl` define does not
+      read as "target unknown", it reads as "target is not musl". Code behind
+      `$if !musl ?` acts on that, and so do the `#flag`s that pick the garbage
+      collector: with the default GC a non-musl build links the bundled
+      `thirdparty/tcc/lib/libgc.a`, which is built for glibc and references
+      `__data_start`, a symbol musl does not provide.
+
       Without either option, V detects the C library of the host, and trusts
       that detection only while it compiles *and* links the program itself. Once
-      the output is handed to another toolchain, the host says nothing about the
-      eventual build, so a detected glibc is dropped and the generated code is
-      left linkable against either C library. That applies to `-o out.c`,
-      `-o -`, `-o out.o`, `-is_o`, `-generate-c-project` and `-os cross`. The
-      visible cost is that panic backtraces are no longer resolved to function
-      names, since that needs glibc; pass `-glibc` to get them back when the
-      generated C really will be built against glibc.
+      the output is handed to another toolchain - `-o out.c`, `-o -`,
+      `-o out.o`, `-is_o`, `-generate-c-project` and `-os cross` - the host says
+      nothing about the eventual build, so a *detected glibc* is dropped. That
+      keeps V's own generated code off glibc-only functions such as
+      `backtrace()`, so it no longer fails to link against musl for that reason;
+      it is not a promise that everything else in the build is neutral, because
+      `#flag`s can still name host-built libraries as above. The visible cost is
+      that panic backtraces are no longer resolved to function names, since that
+      needs glibc; pass `-glibc` to get them back when the generated C really
+      will be built against glibc.
 
-      A detected musl is kept in those modes rather than dropped, because an
-      unset `musl` define does not read as "unknown", it reads as "not musl",
-      and code behind `$if !musl ?` would then reach for glibc-only functions.
+      A detected musl is kept in those modes rather than dropped, for the reason
+      above: dropping it would assert the target is not musl.
 
       Both options are honoured in every mode above, so cross builds that do
       know their target can say so.

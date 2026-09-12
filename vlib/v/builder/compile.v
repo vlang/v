@@ -17,12 +17,12 @@ pub fn should_find_windows_host_c_compiler(pref_ &pref.Preferences) bool {
 
 fn resolve_ccompiler_type_and_pkgconfig_mode(mut prefs pref.Preferences) {
 	// This probes what `prefs.ccompiler` actually is, by name, path and `--version`. That
-	// is worth knowing about a compiler V is going to run, and misleading about one it is
-	// not: when V only writes C, a `cc` that happens to be tcc would still turn on
+	// is worth knowing whenever the artefact names its compiler, and misleading when it
+	// does not: for bare C output a `cc` that happens to be tcc would still turn on
 	// `$if tinyc` and emit `tcc_backtrace`, which has no declaration outside
 	// `#ifdef __TINYC__`, into output meant for gcc or clang. An explicit `-cc` is the
-	// user describing the target toolchain, so it is still resolved.
-	if prefs.ccompiler_set_by_flag || !prefs.only_emits_c() {
+	// user describing the target toolchain, so it is always resolved.
+	if prefs.ccompiler_set_by_flag || prefs.names_its_c_compiler() {
 		prefs.ccompiler_type = resolve_ccompiler_type(prefs.ccompiler, prefs.ccompiler_type)
 	}
 	prefs.resolve_pkgconfig_mode()

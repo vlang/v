@@ -36,7 +36,7 @@ fn test_c_only_output_does_not_resolve_an_implicit_cc_to_tinyc() {
 		os.rmdir_all(os.dir(cc)) or {}
 	}
 	for out_name in ['out.c', '/tmp/-'] {
-		// V writes the C and never runs a compiler on it, so what `cc` happens to be here
+		// V writes the C and names no compiler anywhere, so what `cc` happens to be here
 		// must not turn on `$if tinyc` and emit `tcc_backtrace` into portable output.
 		mut p := pref.Preferences{
 			ccompiler: cc
@@ -45,14 +45,23 @@ fn test_c_only_output_does_not_resolve_an_implicit_cc_to_tinyc() {
 		resolve_ccompiler_type_and_pkgconfig_mode(mut p)
 		assert p.ccompiler_type == .gcc, out_name
 	}
+}
 
-	mut c_project := pref.Preferences{
+fn test_generated_c_project_resolves_the_compiler_its_scripts_will_name() {
+	cc := neutral_cc_pointing_at_tcc() or { return }
+	defer {
+		os.rmdir_all(os.dir(cc)) or {}
+	}
+	// `-generate-c-project` writes this compiler into build.sh/Makefile, so the C beside
+	// them has to be generated for it: leaving the type at `.gcc` would drop the TinyCC
+	// inserts in `sync.stdatomic` from C the scripts then hand to TinyCC.
+	mut p := pref.Preferences{
 		ccompiler:          cc
 		generate_c_project: 'out/cproject'
 		out_name:           'prog'
 	}
-	resolve_ccompiler_type_and_pkgconfig_mode(mut c_project)
-	assert c_project.ccompiler_type == .gcc
+	resolve_ccompiler_type_and_pkgconfig_mode(mut p)
+	assert p.ccompiler_type == .tinyc
 }
 
 fn test_a_compiler_v_actually_runs_is_still_resolved() {
