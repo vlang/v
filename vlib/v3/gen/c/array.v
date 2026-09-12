@@ -112,7 +112,10 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 	} else {
 		'new_array_from_c_array'
 	}
-	g.write('${new_fn}(${count}, ${count}, sizeof(${sizeof_elem}), (${c_elem}[]){')
+	// Size the compound literal explicitly. TinyCC mis-accounts an unsized
+	// `(T[]){a, b}` whose elements are struct values rather than brace
+	// initializers, and aborts with an internal `initializer overflow`.
+	g.write('${new_fn}(${count}, ${count}, sizeof(${sizeof_elem}), (${c_elem}[${count}]){')
 	for i in 0 .. count {
 		if i > 0 {
 			g.write(', ')
