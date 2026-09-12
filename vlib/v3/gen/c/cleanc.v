@@ -11,6 +11,7 @@ import v3.modulecache
 import v3.pref
 import v3.types
 import v3.util
+import v.util as vutil
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
@@ -9645,6 +9646,9 @@ fn c_include_arg(raw string, vroot string, source_file string) string {
 
 fn c_include_arg_for_target(raw string, vroot string, source_file string, target pref.Target) string {
 	mut clean := c_directive_arg_for_target(raw.trim_space(), target) or { return '' }
+	if clean.contains('\$env(') {
+		clean = vutil.resolve_env_value(clean, true) or { return '' }
+	}
 	clean = c_resolve_pseudo_paths(clean.trim_space(), vroot, source_file)
 	if clean.len == 0 {
 		return ''
@@ -9683,7 +9687,12 @@ fn c_flag_args_with_values(raw string, vroot string, source_file string, target 
 	defaults_expanded := c_expand_default_define_macros(without_comment, compile_values) or {
 		return []string{}
 	}
-	clean := c_expand_existing_path_macros(defaults_expanded, vroot, source_file) or {
+	environment_expanded := if defaults_expanded.contains('\$env(') {
+		vutil.resolve_env_value(defaults_expanded, true) or { return []string{} }
+	} else {
+		defaults_expanded
+	}
+	clean := c_expand_existing_path_macros(environment_expanded, vroot, source_file) or {
 		return []string{}
 	}
 	args := cmdexec.split_args(clean) or { return []string{} }
