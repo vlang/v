@@ -92,6 +92,36 @@ fn test_tinyc_windows_thread_local_slot_uses_win32_tls() {
 	assert !windows_code.contains('FlsSetValue(state_key, p)')
 	assert windows_code.contains('state_slot_free(void* p) { free(p); }')
 	assert !windows_code.contains('pthread_')
+	// TinyCC never runs `__attribute__((constructor))`, so the slot has to
+	// allocate the key itself on first use.
+	assert !windows_code.contains('__attribute__((constructor))')
+	assert windows_code.contains('if (state_key != 0xFFFFFFFF) { return; }')
+	assert windows_code.contains('state_slot(void) { state_key_init();')
+}
+
+fn test_tinyc_pthread_value_slot_creates_its_own_key_lazily() {
+	mut g := FlatGen.new()
+	g.emit_tinyc_pthread_value_slot('state', 'State', '')
+	c_code := g.sb.str()
+	assert c_code.contains('static pthread_key_t state_key;')
+	assert c_code.contains('static pthread_once_t state_key_once = PTHREAD_ONCE_INIT;')
+	assert c_code.contains('static void state_key_create(void) { pthread_key_create(&state_key, free); }')
+	assert c_code.contains('static void state_key_init(void) { pthread_once(&state_key_once, state_key_create); }')
+	assert c_code.contains('static State* state_slot(void) { state_key_init(); void* p = pthread_getspecific(state_key);')
+	assert c_code.contains('#define state (*state_slot())')
+	// A constructor-initialized key stays 0 under TinyCC and aliases the first
+	// key the process really creates, so one slot writes through another's
+	// storage.
+	assert !c_code.contains('__attribute__((constructor))')
+}
+
+fn test_tinyc_pthread_value_slot_supports_fixed_arrays() {
+	mut g := FlatGen.new()
+	g.emit_tinyc_pthread_value_slot('stack', 'i64', '[64]')
+	c_code := g.sb.str()
+	assert c_code.contains('static i64 (*stack_slot(void))[64] { stack_key_init(); void* p = pthread_getspecific(stack_key);')
+	assert c_code.contains('calloc(1, sizeof(*stack_slot()))')
+	assert !c_code.contains('__attribute__((constructor))')
 }
 
 fn test_tinyc_pthread_pointer_slot_does_not_rely_on_constructor() {

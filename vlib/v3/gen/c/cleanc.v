@@ -20409,8 +20409,10 @@ fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string,
 	g.writeln('static ${cname}_fls_get_fn ${cname}_fls_get;')
 	g.writeln('static ${cname}_fls_set_fn ${cname}_fls_set;')
 	g.writeln('static void WINAPI ${cname}_slot_free(void* p) { free(p); }')
-	g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
+	// TinyCC parses `__attribute__((constructor))` but never runs the function,
+	// so the key has to be allocated on first use instead.
 	g.writeln('static void ${cname}_key_init(void) {')
+	g.writeln('\tif (${cname}_key != 0xFFFFFFFF) { return; }')
 	g.writeln('\tvoid* kernel32 = GetModuleHandleA("kernel32.dll");')
 	g.writeln('\t${cname}_fls_alloc_fn fls_alloc = (${cname}_fls_alloc_fn)GetProcAddress(kernel32, "FlsAlloc");')
 	g.writeln('\t${cname}_fls_get = (${cname}_fls_get_fn)GetProcAddress(kernel32, "FlsGetValue");')
@@ -20418,12 +20420,40 @@ fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string,
 	g.writeln('\t${cname}_key = fls_alloc && ${cname}_fls_get && ${cname}_fls_set ? fls_alloc(${cname}_slot_free) : TlsAlloc();')
 	g.writeln('}')
 	if dims.len > 0 {
-		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return p; }')
+		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { ${cname}_key_init(); void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return p; }')
 	} else {
-		g.writeln('static ${ct}* ${cname}_slot(void) { void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
+		g.writeln('static ${ct}* ${cname}_slot(void) { ${cname}_key_init(); void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
 	}
 	g.writeln('#define ${cname} (*${cname}_slot())')
 	g.writeln('#elif defined(__TINYC__)')
+}
+
+// emit_tinyc_pthread_slot_key emits the pthread key that backs a TinyCC
+// thread-local slot. The key is created on first use through `pthread_once`,
+// never from `__attribute__((constructor))`: TinyCC accepts that attribute but
+// never runs the function, leaving the key at its zero initializer - which is
+// also the key `pthread_key_create` hands out for the first key the process
+// really creates. Two slots would then share one key, and the wider one would
+// write through the narrower one's storage (see the `-prealloc` arena slot in
+// emit_tinyc_pthread_pointer_slot, which is created that way).
+fn (mut g FlatGen) emit_tinyc_pthread_slot_key(cname string) {
+	g.writeln('static pthread_key_t ${cname}_key;')
+	g.writeln('static pthread_once_t ${cname}_key_once = PTHREAD_ONCE_INIT;')
+	g.writeln('static void ${cname}_key_create(void) { pthread_key_create(&${cname}_key, free); }')
+	g.writeln('static void ${cname}_key_init(void) { pthread_once(&${cname}_key_once, ${cname}_key_create); }')
+}
+
+// emit_tinyc_pthread_value_slot emits the TinyCC replacement for a thread-local
+// value of type `ct` (with `dims` set for a fixed array), stored in its own
+// pthread key and allocated per thread on first access.
+fn (mut g FlatGen) emit_tinyc_pthread_value_slot(cname string, ct string, dims string) {
+	g.emit_tinyc_pthread_slot_key(cname)
+	if dims.len > 0 {
+		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { ${cname}_key_init(); void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); pthread_setspecific(${cname}_key, p); } return p; }')
+	} else {
+		g.writeln('static ${ct}* ${cname}_slot(void) { ${cname}_key_init(); void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); pthread_setspecific(${cname}_key, p); } return (${ct}*)p; }')
+	}
+	g.writeln('#define ${cname} (*${cname}_slot())')
 }
 
 fn (mut g FlatGen) emit_tinyc_pthread_pointer_slot(cname string, ct string) {
@@ -20467,11 +20497,7 @@ fn (mut g FlatGen) global_decls() {
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
 			if is_thread_local {
 				g.emit_tinyc_windows_thread_local_slot(g.cname(name), c_elem, dims)
-				g.writeln('static pthread_key_t ${g.cname(name)}_key;')
-				g.writeln('static void ${g.cname(name)}_key_init(void) __attribute__((constructor));')
-				g.writeln('static void ${g.cname(name)}_key_init(void) { pthread_key_create(&${g.cname(name)}_key, free); }')
-				g.writeln('static ${c_elem} (*${g.cname(name)}_slot(void))${dims} { void* p = pthread_getspecific(${g.cname(name)}_key); if (!p) { p = calloc(1, sizeof(*${g.cname(name)}_slot())); pthread_setspecific(${g.cname(name)}_key, p); } return p; }')
-				g.writeln('#define ${g.cname(name)} (*${g.cname(name)}_slot())')
+				g.emit_tinyc_pthread_value_slot(g.cname(name), c_elem, dims)
 				g.emit_thread_local_decl_after_tinyc('${c_elem} ${g.cname(name)}${dims}${init};')
 			} else {
 				g.writeln('${c_elem} ${g.cname(name)}${dims}${init};')
@@ -20509,20 +20535,12 @@ fn (mut g FlatGen) global_decls() {
 			cname := g.cname(name)
 			if shared_ct := g.fn_capture_shared_global_c_type(name) {
 				g.emit_tinyc_windows_thread_local_slot(cname, shared_ct, '')
-				g.writeln('static pthread_key_t ${cname}_key;')
-				g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
-				g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
-				g.writeln('static ${shared_ct}* ${cname}_slot(void) { void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${shared_ct})); pthread_setspecific(${cname}_key, p); } return (${shared_ct}*)p; }')
-				g.writeln('#define ${cname} (*${cname}_slot())')
+				g.emit_tinyc_pthread_value_slot(cname, shared_ct, '')
 				g.emit_thread_local_decl_after_tinyc('${shared_ct} ${cname};')
 				continue
 			}
 			g.emit_tinyc_windows_thread_local_slot(cname, ct, '')
-			g.writeln('static pthread_key_t ${cname}_key;')
-			g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
-			g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
-			g.writeln('static ${ct}* ${cname}_slot(void) { void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); pthread_setspecific(${cname}_key, p); } return (${ct}*)p; }')
-			g.writeln('#define ${cname} (*${cname}_slot())')
+			g.emit_tinyc_pthread_value_slot(cname, ct, '')
 			g.emit_thread_local_decl_after_tinyc('${ct} ${cname}${init};')
 			continue
 		}
