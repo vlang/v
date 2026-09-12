@@ -6,6 +6,7 @@ module scanner
 import toml.input
 import toml.token
 import toml.util
+import strings
 
 pub const digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
 pub const end_of_text = u32(~0)
@@ -430,7 +431,15 @@ fn (mut s Scanner) extract_string() !string {
 	s.col--
 	quote := u8(s.at())
 	start := s.pos
-	mut lit := quote.ascii_str()
+	// `has_newline` mirrors what `lit.contains('\n')` used to report, without
+	// re-scanning the whole literal on every byte: it is set by each append and,
+	// like `contains`, never goes back to false.
+	mut has_newline := false
+	mut lit := strings.new_builder(64)
+	defer {
+		unsafe { lit.free() }
+	}
+	lit.write_u8(quote)
 
 	is_multiline := s.text[s.pos + 1] == quote && s.text[s.pos + 2] == quote
 	// Check for escaped multiline quote
@@ -455,7 +464,8 @@ fn (mut s Scanner) extract_string() !string {
 		// Check for escaped chars
 		if c == u8(92) {
 			esc, skip := s.handle_escapes(quote, is_multiline)
-			lit += esc
+			lit.write_string(esc)
+			has_newline = has_newline || esc.contains('\n')
 			if skip > 0 {
 				s.pos += skip
 				s.col += skip
@@ -471,18 +481,20 @@ fn (mut s Scanner) extract_string() !string {
 		if c == quote {
 			s.pos++
 			s.col++
-			return lit + quote.ascii_str()
+			lit.write_u8(quote)
+			return lit.str()
 		}
 
-		lit += c.ascii_str()
+		lit.write_u8(c)
+		has_newline = has_newline || c == `\n`
 
 		// Don't eat multiple lines in single-line mode
-		if lit.contains('\n') {
+		if has_newline {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
 				' unfinished single-line string literal `${quote.ascii_str()}` started at ${start} (${s.line_nr},${s.col}) "${u8(s.at()).ascii_str()}" near ...${s.excerpt(s.pos, 5)}...')
 		}
 	}
-	return lit
+	return lit.str()
 }
 
 // extract_multiline_string collects and returns a string containing
@@ -494,7 +506,13 @@ fn (mut s Scanner) extract_multiline_string() !string {
 	// characters is the quotes
 	quote := u8(s.at())
 	start := s.pos
-	mut lit := quote.ascii_str() + quote.ascii_str() + quote.ascii_str()
+	mut lit := strings.new_builder(64)
+	defer {
+		unsafe { lit.free() }
+	}
+	lit.write_u8(quote)
+	lit.write_u8(quote)
+	lit.write_u8(quote)
 
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'multi-line `${quote.ascii_str()}${s.text[
 		s.pos + 1].ascii_str()}${s.text[s.pos + 2].ascii_str()}` string started at pos ${start} (${s.line_nr},${s.col}) (quote type: ${quote.ascii_str()} / ${quote})')
@@ -520,14 +538,14 @@ fn (mut s Scanner) extract_multiline_string() !string {
 		}
 		if c == `\n` {
 			s.inc_line_number()
-			lit += c.ascii_str()
+			lit.write_u8(c)
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'c: `\\n` / ${c}')
 			continue
 		}
 		// Check for escaped chars
 		if c == u8(92) {
 			esc, skip := s.handle_escapes(quote, true)
-			lit += esc
+			lit.write_string(esc)
 			if skip > 0 {
 				s.pos += skip
 				s.col += skip
@@ -545,25 +563,33 @@ fn (mut s Scanner) extract_multiline_string() !string {
 				if s.peek(3) == end_of_text {
 					s.pos += 3
 					s.col += 3
-					lit += quote.ascii_str() + quote.ascii_str() + quote.ascii_str()
+					lit.write_u8(quote)
+					lit.write_u8(quote)
+					lit.write_u8(quote)
+					// `str()` empties the builder, so the result is taken once and reused.
+					result := lit.str()
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
-						'returning at ${c.ascii_str()} `${lit}`')
-					return lit
+						'returning at ${c.ascii_str()} `${result}`')
+					return result
 				} else if s.peek(3) != quote {
 					// lit += c.ascii_str()
 					// lit += quote.ascii_str()
 					s.pos += 3
 					s.col += 3
-					lit += quote.ascii_str() + quote.ascii_str() + quote.ascii_str()
+					lit.write_u8(quote)
+					lit.write_u8(quote)
+					lit.write_u8(quote)
+					// `str()` empties the builder, so the result is taken once and reused.
+					result := lit.str()
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
-						'returning at ${c.ascii_str()} `${lit}`')
-					return lit
+						'returning at ${c.ascii_str()} `${result}`')
+					return result
 				}
 			}
 		}
-		lit += c.ascii_str()
+		lit.write_u8(c)
 	}
-	return lit
+	return lit.str()
 }
 
 // handle_escapes returns any escape character sequence.
