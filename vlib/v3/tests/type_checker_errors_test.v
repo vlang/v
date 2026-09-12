@@ -2562,10 +2562,25 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 	run_bad(v3_bin, 'bad_generic_array_elem_return_mismatch',
 		'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tv int\n}\n\nfn take[T](items []T) []Bar {\n\treturn items\n}\n\nfn main() {\n\t_ := take([Foo{\n\t\tv: 1\n\t}])\n}\n',
 		'cannot return `[]Foo` as `[]Bar`')
+	run_bad(v3_bin, 'bad_generic_array_elem_return_unrelated_scalar',
+		'fn take[T](items []T) []string {\n\treturn items\n}\n\nfn main() {\n\t_ := take([1, 2])\n}\n',
+		'cannot return `[]int` as `[]string`')
 	// Elements that only differ in spelling (a registered alias next to its base
 	// type, one level down) are storage-identical, so the same slot must keep
 	// compiling.
 	rows := run_good(v3_bin, 'good_generic_array_elem_alias_return',
 		'type NodeId = int\n\nfn take[T](rows [][]T) [][]NodeId {\n\treturn rows\n}\n\nfn main() {\n\trows := take([[1, 2], [3]])\n\tprintln(int_str(rows.len + rows[0].len))\n}\n')
 	assert rows == '4'
+	// Elements the copy loop does coerce are legal slots, not mismatches: the
+	// declared element type only has to be assignment-compatible, which covers
+	// integer into float, float into float and integer into enum.
+	widened := run_good(v3_bin, 'good_generic_array_elem_int_to_float',
+		'fn take[T](items []T) []f64 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1, 2, 3])[0] + 0.5)\n}\n')
+	assert widened == '1.5'
+	narrowed := run_good(v3_bin, 'good_generic_array_elem_float_to_float',
+		'fn take[T](items []T) []f32 {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([1.5, 2.5])[0])\n}\n')
+	assert narrowed == '1.5'
+	enum_slot := run_good(v3_bin, 'good_generic_array_elem_int_to_enum',
+		'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([0, 1]).len))\n}\n')
+	assert enum_slot == '2'
 }

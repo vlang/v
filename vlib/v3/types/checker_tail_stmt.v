@@ -8305,6 +8305,14 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 }
 
 // type_compatible returns type compatible data for TypeChecker.
+// slot_value_compatible exposes the checker's assignment-compatibility rule to
+// the transform. The transform lowers value slots long after checking, and a
+// generic specialization is the one case where it sees concrete types the
+// checker never judged, so it has to ask the same question the checker would.
+pub fn (tc &TypeChecker) slot_value_compatible(actual Type, expected Type) bool {
+	return tc.type_compatible(actual, expected)
+}
+
 fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	actual_raw := actual
 	expected_raw := expected

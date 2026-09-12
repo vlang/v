@@ -13028,7 +13028,7 @@ fn (mut t Transformer) validate_specialized_call_result(id flat.NodeId, actual_t
 // lowered to an element copy between unrelated C types and only failed in the C
 // compiler, pointing at generated code instead of the offending return.
 fn (mut t Transformer) record_specialized_slot_mismatch(actual types.Type, expected types.Type) bool {
-	if !t.validating_generic_spec {
+	if !t.validating_generic_spec || isnil(t.tc) {
 		return false
 	}
 	actual_name := actual.name()
@@ -13036,10 +13036,13 @@ fn (mut t Transformer) record_specialized_slot_mismatch(actual types.Type, expec
 	if t.generic_arg_is_unresolved(actual_name) || t.generic_arg_is_unresolved(expected_name) {
 		return false
 	}
-	// `forwarded_slot_conversion_supported` also says "no" for slots that need no
-	// conversion at all (a registered alias next to its base type, two spellings
-	// of one integer width). Those are not mismatches.
-	if t.forwarded_slot_types_interchangeable(actual, expected) {
+	// `forwarded_slot_conversion_supported` answers "does this slot need one of
+	// the conversions lowered here", which is narrower than "is this legal". It
+	// says no both for slots needing no conversion at all (a registered alias
+	// next to its base type) and for ones the element copy already coerces
+	// (`[]int` into `[]f64`, an integer into an enum). Only the checker's own
+	// rule separates those from a real mismatch.
+	if t.tc.slot_value_compatible(actual, expected) {
 		return false
 	}
 	if t.in_return_expr {
@@ -13048,40 +13051,6 @@ fn (mut t Transformer) record_specialized_slot_mismatch(actual types.Type, expec
 		t.record_monomorph_error('cannot use `${actual_name}` as `${expected_name}`')
 	}
 	return true
-}
-
-// forwarded_slot_types_interchangeable reports whether two types are the same at
-// the C level even though their spellings differ, so moving a value between them
-// needs no conversion.
-fn (t &Transformer) forwarded_slot_types_interchangeable(actual types.Type, expected types.Type) bool {
-	actual_base := forwarded_return_unalias_type(actual)
-	expected_base := forwarded_return_unalias_type(expected)
-	actual_name := t.semantic_type_name(actual_base)
-	expected_name := t.semantic_type_name(expected_base)
-	if actual_name == expected_name
-		|| t.normalize_type_alias(actual_name) == t.normalize_type_alias(expected_name) {
-		return true
-	}
-	if actual_base.is_integer() && expected_base.is_integer() {
-		return forwarded_integer_storage_matches(actual_base, expected_base)
-	}
-	if actual_base is types.Array && expected_base is types.Array {
-		return t.forwarded_slot_types_interchangeable(actual_base.elem_type, expected_base.elem_type)
-	}
-	if actual_base is types.ArrayFixed && expected_base is types.ArrayFixed {
-		return t.forwarded_slot_types_interchangeable(actual_base.elem_type, expected_base.elem_type)
-	}
-	if actual_base is types.Map && expected_base is types.Map {
-		return t.forwarded_slot_types_interchangeable(actual_base.key_type, expected_base.key_type)
-			&& t.forwarded_slot_types_interchangeable(actual_base.value_type, expected_base.value_type)
-	}
-	if actual_base is types.OptionType && expected_base is types.OptionType {
-		return t.forwarded_slot_types_interchangeable(actual_base.base_type, expected_base.base_type)
-	}
-	if actual_base is types.ResultType && expected_base is types.ResultType {
-		return t.forwarded_slot_types_interchangeable(actual_base.base_type, expected_base.base_type)
-	}
-	return false
 }
 
 fn (mut t Transformer) validate_specialized_comparison_operands(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, transformed_lhs flat.NodeId, transformed_rhs flat.NodeId) bool {
