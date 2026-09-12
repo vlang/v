@@ -235,13 +235,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
 			spec_name := transform_qualified_fn_name(decl.module, spec_value)
 			t.record_generic_specialization_args_for_names([spec_name, c_name(spec_name)], concrete_args)
-			params := t.specialized_generic_call_param_type_texts(decl, concrete_args)
-			ret_type := t.specialized_fn_return_type_text(decl, concrete_args)
-			fn_type := 'fn (${params.join(', ')})${if ret_type.len > 0 && ret_type != 'void' {
-				' ${ret_type}'
-			} else {
-				''
-			}}'
+			fn_type := t.specialized_generic_fn_type_text(decl, concrete_args)
 			t.set_node(i, flat.Node{
 				kind: .ident
 				value: spec_name
@@ -327,13 +321,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
 					spec_name := transform_qualified_fn_name(decl.module, spec_value)
 					t.record_generic_specialization_args_for_names([spec_name, c_name(spec_name)], concrete_args)
-					params := t.specialized_generic_call_param_type_texts(decl, concrete_args)
-					ret_type := t.specialized_fn_return_type_text(decl, concrete_args)
-					fn_type := 'fn (${params.join(', ')})${if ret_type.len > 0 && ret_type != 'void' {
-						' ${ret_type}'
-					} else {
-						''
-					}}'
+					fn_type := t.specialized_generic_fn_type_text(decl, concrete_args)
 					t.set_node(i, flat.Node{
 						kind: .ident
 						value: spec_name
@@ -10929,17 +10917,49 @@ fn (t &Transformer) callee_matches_generic_args(callee flat.Node, decl GenericFn
 	return callee.value in [spec_value, qualified_spec, c_name(spec_value), c_name(qualified_spec)]
 }
 
+// specialized_generic_fn_type_text renders the `fn (params) ret` type that
+// `explicit_generic_fn_value_specialization` writes onto a callee ident when it erases an explicit
+// `fn_name[Type]` list into a specialization ident.
+fn (mut t Transformer) specialized_generic_fn_type_text(decl GenericFnDecl, args []string) string {
+	params := t.specialized_generic_call_param_type_texts(decl, args)
+	ret_type := t.specialized_fn_return_type_text(decl, args)
+	return 'fn (${params.join(', ')})${if ret_type.len > 0 && ret_type != 'void' {
+		' ${ret_type}'
+	} else {
+		''
+	}}'
+}
+
+// callee_is_erased_explicit_generic reports whether `callee` is an ident that
+// `explicit_generic_fn_value_specialization` produced from a source-level `fn_name[Type]` list.
+//
+// That erasure is the only thing that writes the specialized signature into a callee ident's type:
+// `make_ident`, which retargets an implicit call, types a name only when it resolves to a variable
+// and so leaves a specialization ident untyped. Checking the signature therefore separates an erased
+// explicit callee from a stale implicit one without per-worker bookkeeping, which matters because
+// the erasure and the retarget can happen in different monomorphization workers.
+fn (mut t Transformer) callee_is_erased_explicit_generic(callee flat.Node, decl GenericFnDecl, args []string) bool {
+	if !callee.typ.starts_with('fn (') {
+		return false
+	}
+	return callee.typ == t.specialized_generic_fn_type_text(decl, args)
+}
+
 // generic_call_args_preserving_explicit returns the type arguments a cloned call must keep because
-// an explicit `fn_name[Type]` list already chose them, or none when the callee is not bound to a
-// specialization of `decl`.
+// an explicit `fn_name[Type]` list already chose them, or none when the callee is not an erased
+// explicit callee bound to a specialization of `decl`.
 //
 // Such callees are rewritten to a plain specialization ident before the enclosing generic body is
 // cloned, so the explicit list is no longer visible on the call node and the retarget paths would
 // otherwise treat the call as implicit. Every position the list fixed resolves identically in each
-// clone of that body; only positions it left open may be filled from this clone's inference. Today
-// `explicit_generic_fn_value_specialization` collapses a list only when it covers every generic
-// parameter, so the recorded arguments are normally complete, but the tail is filled positionally so
-// a partial list can never be silently replaced.
+// clone of that body; only positions it left open may be filled from this clone's inference.
+//
+// A genuinely implicit callee must not be preserved: the template node is shared between instances,
+// so it can still name the specialization chosen for an earlier one and has to be retargeted. The
+// signature check separates the two, and a position whose inferred type contradicts the recorded one
+// declines preservation as well. `explicit_generic_fn_value_specialization` collapses a list only
+// when it covers every generic parameter, so the recorded arguments are normally complete, but the
+// tail is filled positionally so a partial list can never be silently replaced.
 fn (mut t Transformer) generic_call_args_preserving_explicit(callee flat.Node, decl GenericFnDecl, inferred map[string]string) ?[]string {
 	if callee.kind != .ident || callee.value.len == 0 {
 		return none
@@ -10951,12 +10971,25 @@ fn (mut t Transformer) generic_call_args_preserving_explicit(callee flat.Node, d
 	if !t.callee_matches_generic_args(callee, decl, recorded) {
 		return none
 	}
+	if !t.callee_is_erased_explicit_generic(callee, decl, recorded) {
+		return none
+	}
 	param_names := t.generic_fn_param_names(decl.node, decl.module)
 	if param_names.len < recorded.len {
 		return none
 	}
 	mut preserved := recorded.clone()
-	for name in param_names[recorded.len..] {
+	for i, name in param_names {
+		if i < recorded.len {
+			// If this clone infers a different type for a position the explicit list fixed,
+			// the callee is not the binding it appears to be; retarget normally instead.
+			if got := inferred[name] {
+				if got != recorded[i] {
+					return none
+				}
+			}
+			continue
+		}
 		preserved << inferred[name] or { return none }
 	}
 	return preserved
