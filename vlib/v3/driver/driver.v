@@ -9549,10 +9549,16 @@ pub fn run(args []string) {
 				os.rm(fastc_bin_file) or {}
 			}
 			if !fastc_result.success {
+				if v3_recover_from_cache_failure(args, fastc_result.output, '') {
+					return
+				}
 				if fastc_result.command.len == 0 {
 					eprintln('fastc requires the bundled TinyCC executable')
 				} else if !show_c_output && fastc_result.output.len > 0 {
 					eprintln(fastc_result.output.trim_space())
+				}
+				if v3_cache_failure_artifacts(fastc_result.output).len > 0 {
+					eprintln("Suggestion: the C toolchain keeps rejecting files from V's cache. Run `v wipe-cache`, then repeat your compilation.")
 				}
 				exit(1)
 			}
@@ -12292,9 +12298,24 @@ pub fn run(args []string) {
 			}
 			show_v3_c_compiler_output(show_c_output, c_compiler, result)
 			if result.exit_code != 0 {
+				// Before degrading to the fallback compiler: a stale cache entry
+				// is repairable, and falling back would hide it indefinitely.
+				if v3_recover_from_cache_failure(args, result.output, cc_dir) {
+					return
+				}
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
 					fallback := v3_platform_c_compiler(host_os)
 					eprintln('warning: tcc compilation failed, falling back to ${fallback}')
+					// Recovery above already declined, so discarding the entries
+					// did not help. Name them: the fallback still produces a
+					// working binary, which is what makes this easy to miss.
+					if artifacts := v3_unrepaired_cache_failure_artifacts(result.output) {
+						eprintln('warning: tcc rejected cached V build artifacts that a rebuild did not repair:')
+						for artifact in artifacts {
+							eprintln('  ${artifact}')
+						}
+						eprintln('Suggestion: run `v wipe-cache`, then repeat your compilation.')
+					}
 					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 					cleanup_c_build_dir(cc_dir)
 					retry_result := cmdexec.run(os.executable(), retry_args)
@@ -12329,6 +12350,11 @@ Please install the corresponding development package/libraries and make sure the
 				} else {
 					eprintln('C compilation failed:')
 					eprintln(result.output)
+				}
+				if v3_cache_failure_artifacts(result.output).len > 0 {
+					// Reached only after the automatic retry above already
+					// discarded these entries and the rebuild republished them.
+					eprintln("Suggestion: the C toolchain keeps rejecting files from V's cache. Run `v wipe-cache`, then repeat your compilation.")
 				}
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
@@ -12503,6 +12529,162 @@ fn v3_is_tcc_compilation_failure(c_compiler string, output string) bool {
 		}
 	}
 	return false
+}
+
+// v3_cache_artifact_dir_names are the persistent caches a build links artifacts
+// out of. The live build directory is deliberately absent: a diagnostic naming
+// a file there describes generated or user source, not a stale cache entry.
+const v3_cache_artifact_dir_names = ['v3_module_cache_', 'v3_thirdparty_objs', 'v3_fastc_unit_cache',
+	'v3_fastc_link_cache', 'v3_crun_cache']
+
+// v3_cache_failure_markers are whole-file rejections: the toolchain could not
+// read or find an input, or saw the same symbol twice. Line-scoped diagnostics
+// are excluded on purpose, so a compile error inside a cached unit is reported
+// to the user instead of costing a rebuild that reproduces it.
+const v3_cache_failure_markers = ['unrecognized file type', 'file format not recognized',
+	'not an object file', 'no such file or directory', 'file not found', 'malformed object',
+	'truncated or malformed', 'archive has no index', 'duplicate symbol', 'multiple definition',
+	'defined twice', 'incompatible file format']
+
+const v3_cache_recovery_env = 'V3_INTERNAL_CACHE_RECOVERY'
+
+fn v3_cache_artifact_prefixes() []string {
+	mut roots := [os.vtmp_dir()]
+	if configured := os.getenv_opt('V3CACHE') {
+		root := os.abs_path(configured)
+		if root !in roots {
+			roots << root
+		}
+	}
+	mut prefixes := []string{cap: roots.len * v3_cache_artifact_dir_names.len}
+	for root in roots {
+		for name in v3_cache_artifact_dir_names {
+			prefixes << os.join_path_single(root, name)
+		}
+	}
+	return prefixes
+}
+
+// v3_cache_error_artifacts returns the cached artifacts named by a C toolchain
+// error. The wording differs per toolchain, but every such diagnostic quotes
+// the offending path, so the path is the portable signal.
+fn v3_cache_error_artifacts(output string) []string {
+	if output.len == 0 {
+		return []
+	}
+	prefixes := v3_cache_artifact_prefixes()
+	mut artifacts := []string{}
+	for raw in output.fields() {
+		token := raw.trim('\'"`()[],;:')
+		if token.len == 0 || token in artifacts {
+			continue
+		}
+		for prefix in prefixes {
+			if token.starts_with(prefix) {
+				artifacts << token
+				break
+			}
+		}
+	}
+	return artifacts
+}
+
+// v3_cache_failure_artifacts returns the cache entries to discard after a C
+// toolchain failure. Both signals are required: the output has to name a cached
+// artifact *and* report a whole-file failure, so an ordinary compile error is
+// never mistaken for a poisoned cache.
+fn v3_cache_failure_artifacts(output string) []string {
+	lowered := output.to_lower_ascii()
+	mut has_marker := false
+	for marker in v3_cache_failure_markers {
+		if lowered.contains(marker) {
+			has_marker = true
+			break
+		}
+	}
+	if !has_marker {
+		return []
+	}
+	return v3_cache_error_artifacts(output)
+}
+
+// v3_discard_cache_artifacts removes the rejected entries together with the
+// sidecars that would otherwise keep certifying them: a stamp still validates a
+// deleted object, and a link plan replays the object path into the next link
+// even once the object is gone.
+fn v3_discard_cache_artifacts(artifacts []string) int {
+	mut discarded := 0
+	mut object_dirs := []string{}
+	for artifact in artifacts {
+		for path in [artifact, '${artifact}.stamp', '${artifact}.deps', '${artifact}.deps.stamp'] {
+			if !os.exists(path) {
+				continue
+			}
+			os.rm(path) or { continue }
+			discarded++
+		}
+		dir := os.dir(artifact)
+		if os.base(dir).starts_with('v3_thirdparty_objs') && dir !in object_dirs {
+			object_dirs << dir
+		}
+	}
+	for dir in object_dirs {
+		for name in os.ls(dir) or { []string{} } {
+			if !name.ends_with('.manifest') {
+				continue
+			}
+			os.rm(os.join_path_single(dir, name)) or { continue }
+			discarded++
+		}
+	}
+	return discarded
+}
+
+// v3_unrepaired_cache_failure_artifacts returns the cached artifacts a failure
+// blames once automatic recovery has already had its turn, so the caller can
+// report what discarding them did not fix. It yields nothing on a build that
+// never attempted recovery, where the retry is still pending.
+fn v3_unrepaired_cache_failure_artifacts(output string) ?[]string {
+	if os.getenv(v3_cache_recovery_env) != '1' {
+		return none
+	}
+	artifacts := v3_cache_failure_artifacts(output)
+	if artifacts.len == 0 {
+		return none
+	}
+	return artifacts
+}
+
+// v3_recover_from_cache_failure discards the cache entries a C toolchain
+// failure blamed and restarts the build once. Such an entry is otherwise
+// permanent - it outlives the build that published it, and the only symptom is
+// a toolchain error about a file the user never named - so recovering here is
+// preferred over degrading the build to a fallback compiler.
+fn v3_recover_from_cache_failure(args []string, output string, cc_dir string) bool {
+	if os.getenv(v3_cache_recovery_env) == '1' {
+		return false
+	}
+	artifacts := v3_cache_failure_artifacts(output)
+	if artifacts.len == 0 {
+		return false
+	}
+	if v3_discard_cache_artifacts(artifacts) == 0 {
+		return false
+	}
+	// Reported even under `-silent`, like the tcc fallback warning: a repair the
+	// user cannot see is indistinguishable from the silent degradation that
+	// makes a poisoned cache entry so hard to notice in the first place.
+	eprintln('warning: the C toolchain rejected cached V build artifacts; discarding them and retrying:')
+	for artifact in artifacts {
+		eprintln('  ${artifact}')
+	}
+	cleanup_c_build_dir(cc_dir)
+	os.setenv(v3_cache_recovery_env, '1', true)
+	os.execvp(os.executable(), args) or {
+		eprintln('failed to restart the build after discarding stale cache entries: ${err.msg()}')
+		exit(1)
+	}
+	return true
 }
 
 fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback string) []string {
