@@ -15917,7 +15917,7 @@ struct SyntheticInsertion {
 	node flat.Node
 }
 
-// insert_synthetic_imports rebuilds a.nodes with each synthetic import spliced in
+// insert_synthetic_imports shifts a.nodes in place with each synthetic import spliced in
 // before its recorded original-array position, so the next resolver pass scans a
 // module's synthetic import right after that module's own region — in the same
 // order serial one-module-at-a-time resolution appended and scanned it, before
@@ -15932,26 +15932,37 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 		return
 	}
 	old_len := a.nodes.len
-	mut new_nodes := []flat.Node{cap: old_len + insertions.len}
-	mut start := 0
+	mut imports := []flat.Node{cap: insertions.len}
 	for insertion in insertions {
-		// Copy each unchanged region once instead of appending every AST node.
-		new_nodes << a.nodes[start..insertion.pos]
-		new_nodes << canonical_node_texts(mut a, insertion.node)
-		start = insertion.pos
+		imports << canonical_node_texts(mut a, insertion.node)
 	}
-	new_nodes << a.nodes[start..]
-	for i in 0 .. new_nodes.len {
-		mut node := new_nodes[i]
+	// Keep the parser's reserved capacity. Rebuilding this array for a handful
+	// of imports retains the old slab under -prealloc and forces later parse
+	// waves to allocate and copy it again.
+	unsafe { a.nodes.grow_len(insertions.len) }
+	mut end := old_len
+	for i := insertions.len - 1; i >= 0; i-- {
+		insertion := insertions[i]
+		if end > insertion.pos {
+			// Move backwards by region: source and destination may overlap, and
+			// earlier regions must remain intact until their own move.
+			unsafe {
+				vmemmove(&a.nodes[insertion.pos + i + 1], &a.nodes[insertion.pos], isize(end - insertion.pos) * isize(sizeof(flat.Node)))
+			}
+		}
+		a.nodes[insertion.pos + i] = imports[i]
+		end = insertion.pos
+	}
+	for i in 0 .. a.nodes.len {
+		mut node := a.nodes[i]
 		if node.kind == .directive && node.value.starts_with('@attributes:') {
 			target_idx := node.value['@attributes:'.len..].int()
 			if target_idx >= 0 && target_idx < old_len {
 				node.value = '@attributes:${target_idx + synthetic_index_shift(insertions, target_idx)}'
-				new_nodes[i] = canonical_node_texts(mut a, node)
+				a.nodes[i] = canonical_node_texts(mut a, node)
 			}
 		}
 	}
-	a.nodes = new_nodes
 	for i, idx in a.file_node_ids {
 		a.file_node_ids[i] = idx + synthetic_index_shift(insertions, idx)
 	}

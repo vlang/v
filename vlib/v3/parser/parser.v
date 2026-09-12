@@ -142,9 +142,16 @@ pub mut:
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
 // without retaining successively doubled backing arrays during transform.
 pub fn (mut p Parser) reserve_selfhost_ast() {
-	selfhost_ast_capacity := 2_097_152 // 2 MiB
-	p.a.nodes.ensure_cap(selfhost_ast_capacity)
-	p.a.children.ensure_cap(selfhost_ast_capacity)
+	// Reserve transform headroom without ensure_cap rounding the node slab up
+	// to four million entries. Parallel transform partitions this capacity, so
+	// extra room also spreads worker writes across more physical pages.
+	selfhost_node_capacity := 3_145_728
+	if p.a.nodes.cap < selfhost_node_capacity {
+		old_nodes := p.a.nodes
+		p.a.nodes = []flat.Node{cap: selfhost_node_capacity}
+		p.a.nodes << old_nodes
+	}
+	p.a.children.ensure_cap(4_194_304)
 }
 
 // ExportRecord captures one accepted `@[export: name]` registration in file
