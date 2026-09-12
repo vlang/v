@@ -2571,18 +2571,17 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		mut ttsw := time.new_stopwatch()
 		node_pool := t.a.nodes.cap - base_nodes
 		child_pool := t.a.children.cap - base_children
-		// The bounded item list, the chunk partition, its cost tables and the
-		// helper forks below are only read until the join; keep them out of the
-		// retained stage arena.
-		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
+		// Bounding may append to t.deferred_expansion_items, which outlives this
+		// call, so it must run before the disposable setup arena becomes current.
 		bounded_items := t.bound_shared_expansion(items, node_pool, child_pool)
 		if bounded_items.len < min_parallel_transform_items {
-			transform_worker_scope_leave(setup_scope)
 			t.transform_pure_items_serial(bounded_items)
-			transform_worker_scope_free(setup_scope)
 			return false
 		}
 		t.tc.freeze_type_cache_for_forks()
+		// The chunk partition, its cost tables and the helper forks below are
+		// only read until the join; keep them out of the retained stage arena.
+		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		mut chunk_target := n_jobs * shared_transform_chunks_per_job
 		if chunk_target > bounded_items.len {
 			chunk_target = bounded_items.len
