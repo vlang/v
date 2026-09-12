@@ -16,7 +16,23 @@ pub fn should_find_windows_host_c_compiler(pref_ &pref.Preferences) bool {
 }
 
 fn resolve_ccompiler_type_and_pkgconfig_mode(mut prefs pref.Preferences) {
-	prefs.ccompiler_type = resolve_ccompiler_type(prefs.ccompiler, prefs.ccompiler_type)
+	resolved := resolve_ccompiler_type(prefs.ccompiler, prefs.ccompiler_type)
+	// Probing says what the compiler installed here really is. For C that V only writes
+	// and never compiles, that is a guess about somebody else's build, and it goes wrong
+	// in one direction in particular: `$if tinyc` emits `tcc_backtrace`, whose only
+	// declaration sits behind `#ifdef __TINYC__`, so gcc and clang reject the file
+	// outright. Just that outcome is dropped - a `cc` that is really clang still resolves
+	// to `.clang` - and an explicit `-cc` names the target toolchain, so it always does.
+	implicit_tinyc_for_emitted_c := resolved == .tinyc && !prefs.ccompiler_set_by_flag
+		&& !prefs.names_its_c_compiler()
+	if !implicit_tinyc_for_emitted_c {
+		prefs.ccompiler_type = resolved
+	}
+	// `fill_with_defaults()` derived these from `cc_from_string()`, which only reads the
+	// name, so `cc` looked like gcc there. Redo them now that the compiler behind the name
+	// is known, or a `cc` that turns out to be tcc misses its `no_backtrace` and OpenSSL
+	// normalisation. Both are guarded by what they already added, so repeating is safe.
+	prefs.normalize_gc_defaults_for_resolved_ccompiler()
 	prefs.resolve_pkgconfig_mode()
 }
 

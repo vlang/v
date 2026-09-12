@@ -103,6 +103,7 @@ pub mut:
 	// nofmt            bool   // disable vfmt
 	is_glibc           bool // if GLIBC will be linked
 	is_musl            bool // if MUSL will be linked
+	libc_set_by_flag   bool // true when `-glibc`/`-musl` pinned the libc explicitly, instead of it being detected on the host
 	is_test            bool // `v test string_test.v`
 	is_script          bool // single file mode (`v program.v`), main function can be skipped
 	is_vsh             bool // v script (`file.vsh`) file, the `os` module should be made global
@@ -328,6 +329,65 @@ fn detect_musl(mut res Preferences) {
 		res.is_musl = true
 		res.is_glibc = false
 	}
+}
+
+// only_emits_c reports whether V writes C for somebody else's build and never runs a C
+// compiler on it at all: portable `-os cross` C, `-o out.c`, `-o -` streamed to stdout,
+// and `-generate-c-project`, which writes C next to the build scripts that will compile
+// it. Nothing V can observe about this machine's toolchain describes that build, so no
+// compiler-specific construct may be baked into the output.
+pub fn (p &Preferences) only_emits_c() bool {
+	return p.output_cross_c || p.out_name.ends_with('.c') || p.generate_c_project != ''
+		|| p.should_output_to_stdout()
+}
+
+// names_its_c_compiler reports whether the artefact V produces says which C compiler
+// builds it. Anything V compiles or links itself does, and so does `-generate-c-project`,
+// which writes the compiler and its options into the build scripts it leaves next to the
+// C - so the generated C has to be built for that compiler, tcc inserts and all. Plain C
+// output does not: `-o out.c`, `-o -` and `-os cross` name no compiler anywhere, and
+// leave the choice entirely to whoever picks the file up.
+pub fn (p &Preferences) names_its_c_compiler() bool {
+	return !p.only_emits_c() || p.generate_c_project != ''
+}
+
+// stops_before_linking reports whether V hands its output to another toolchain instead of
+// producing a finished, V-linked artefact. That is everything only_emits_c covers, plus
+// `-o out.o`/`-is_o`: V does compile an object there, but somebody else links it. Whatever
+// V infers about this machine is then a guess about somebody else's build, so the
+// inferences that would narrow the output have to be held back.
+fn (p &Preferences) stops_before_linking() bool {
+	return p.only_emits_c() || p.is_o
+}
+
+// forget_host_glibc_for_foreign_targets discards the glibc that `detect_musl` inferred
+// from the host, when that probe cannot describe the program being built.
+//
+// `ldd --version` only answers "which libc is installed here". That is the right answer
+// while V compiles and links a host binary itself, and a useless one as soon as somebody
+// else performs the link, or as soon as the target is not this machine. Guessing glibc
+// there is not a harmless default, because `$if glibc` then emits calls to the
+// glibc-only `backtrace`/`backtrace_symbols`, so a glibc host silently produces output
+// that cannot be linked against musl:
+//
+//	ld.lld: error: undefined symbol: backtrace
+//
+// Only the glibc half of the guess is dropped; `is_musl` is deliberately left alone. The
+// two are not mirror images: an unset `musl` compile define does not read as "libc
+// unknown" but as "the target is not musl", and `$if linux && !musl ?` branches act on
+// that - `v_gettid` reaches for glibc's `C.gettid()`, and `picoev` includes
+// <sys/cdefs.h>, which musl does not ship. So forgetting glibc widens what the output
+// can link against, while forgetting musl would narrow it.
+//
+// `-glibc`/`-musl` still pin the libc, for cross builds that do know their target.
+fn (mut p Preferences) forget_host_glibc_for_foreign_targets() {
+	if p.libc_set_by_flag || !p.is_glibc {
+		return
+	}
+	if !p.stops_before_linking() && p.os in [._auto, get_host_os()] {
+		return
+	}
+	p.is_glibc = false
 }
 
 @[noreturn]
@@ -831,11 +891,13 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 			'-musl' {
 				res.is_musl = true
 				res.is_glibc = false
+				res.libc_set_by_flag = true
 				res.build_options << arg
 			}
 			'-glibc' {
 				res.is_musl = false
 				res.is_glibc = true
+				res.libc_set_by_flag = true
 				res.build_options << arg
 			}
 			'-no-bounds-checking' {
@@ -1382,7 +1444,9 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 	if res.ccompiler == 'musl-gcc' {
 		res.is_musl = true
 		res.is_glibc = false
+		res.libc_set_by_flag = true
 	}
+	res.forget_host_glibc_for_foreign_targets()
 	if res.is_musl {
 		// make `$if musl? {` work:
 		res.compile_defines << 'musl'
