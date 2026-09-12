@@ -656,7 +656,20 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	if clean.contains('.') {
 		alias := clean.all_before('.')
 		if module_name := g.tc.file_imports['${file}\n${alias}'] {
-			return module_name + clean[alias.len..]
+			// A prefix that is itself an imported module path is already canonical;
+			// expanding it through this file's alias would retarget a same-named
+			// type. See TypeChecker.canonical_import_type_text_wins.
+			//
+			// Not every caller reaches here with canonical text: the `.cast_expr`
+			// and `.array_init` branches in cleanc.v pass the node's raw source
+			// spelling. For those a colliding short import is already resolved to
+			// the wrong module before C generation -- `foo.Value(300)` with
+			// `import x.foo` + `import foo as jj` picks `foo`'s alias on master too
+			// -- so this guard does not change their (already wrong) outcome. That
+			// source-spelling direction is a separate pre-existing bug.
+			if !g.tc.canonical_import_type_text_wins(file, alias, clean) {
+				return module_name + clean[alias.len..]
+			}
 		}
 	}
 	return clean
