@@ -41,6 +41,7 @@ mut:
 	show_vccommit bool // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
 	cc            string = 'cc' // the C compiler to use for bootstrapping.
 	cc_options    string // additional options to pass to the C compiler while bootstrapping.
+	cc_ldflags    string // additional linker options to use while bootstrapping.
 }
 
 fn (mut c Context) compile_oldv_if_needed() {
@@ -50,6 +51,7 @@ fn (mut c Context) compile_oldv_if_needed() {
 		vc_repo_url: c.vgo.vc_repo_url
 		cc: c.cc
 		cc_options: c.cc_options
+		cc_ldflags: c.cc_ldflags
 		commit_v: c.commit_v
 		path_v: c.path_v
 		path_vc: c.path_vc
@@ -90,14 +92,14 @@ fn sync_cache() {
 	scripting.verbose_trace(@FN, 'done')
 }
 
-fn oldv_required_tools(use_cache bool) []string {
+fn oldv_required_tools(use_cache bool, cc string) []string {
 	mut tools := ['git', 'wc', 'make']
 	if os.user_os() == 'windows' {
 		if use_cache {
 			tools << 'robocopy'
 		}
 	} else {
-		tools << 'cc'
+		tools << cc
 		if use_cache {
 			tools << 'rsync'
 		}
@@ -127,13 +129,22 @@ fn main() {
 		context.vgo.v_repo_url = 'https://github.com/vlang/v'
 		context.vgo.vc_repo_url = 'https://github.com/vlang/vc'
 	}
-	scripting.used_tools_must_exist(oldv_required_tools(context.use_cache))
 	context.cc = fp.string('cc', 0, 'cc', 'Use this C compiler for bootstrapping v.c (defaults to `cc`).')
 	context.cc_options = fp.string('ccoptions', 0, '', 'Use these C compiler options for bootstrapping v.c (defaults to ``).')
+	context.cc_ldflags = fp.string('ldflags', 0, '', 'Use these linker options while bootstrapping (defaults to ``).')
+	env_cc := os.getenv('CC')
+	if env_cc != '' {
+		context.cc = env_cc
+	}
 	env_cc_options := os.getenv('OLDV_CCOPTIONS')
 	if env_cc_options != '' {
 		context.cc_options = env_cc_options
 	}
+	env_ldflags := os.getenv('OLDV_LDFLAGS')
+	if env_ldflags != '' {
+		context.cc_ldflags = env_ldflags
+	}
+	scripting.used_tools_must_exist(oldv_required_tools(context.use_cache, context.cc))
 	context.cleanup = fp.bool('clean', 0, false, 'Clean before running (slower).')
 	context.fresh_tcc = fp.bool('fresh_tcc', 0, true, 'Do `make fresh_tcc` when preparing a V compiler.')
 	context.cmd_to_run = fp.string('command', `c`, '', 'Command to run in the old V repo.\n')
@@ -174,10 +185,6 @@ fn main() {
 	if !os.is_dir(context.vgo.workdir) {
 		eprintln('Work folder: ${context.vgo.workdir} , does not exist.')
 		exit(2)
-	}
-	ecc := os.getenv('CC')
-	if ecc != '' {
-		context.cc = ecc
 	}
 	if context.cleanup {
 		scripting.rmrf(context.path_v)

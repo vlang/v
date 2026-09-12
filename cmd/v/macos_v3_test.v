@@ -139,12 +139,15 @@ fn test_gnumake_builds_the_v1_fallback_executable_for_every_native_host() {
 	assert source.contains('V1_FALLBACK_EXE = \$(dir \$(VEXE))v1_fallback\$(EXE_EXT)')
 	installer := 'sh "\$(V1_FALLBACK_INSTALLER)" "./v1\$(EXE_EXT)" "\$(V1_FALLBACK_EXE)"'
 	assert source.count(installer) == 2
+	oldv_environment := 'CC="\$(CC)" OLDV_CCOPTIONS="\$(BOOTSTRAP_VC_CFLAGS)" OLDV_LDFLAGS="\$(BOOTSTRAP_LDFLAGS)"'
+	assert source.count(oldv_environment) == 2
 	assert !source.contains('-d v1_fallback -o \$(V1_FALLBACK_EXE)')
 }
 
 fn test_portable_make_builds_the_v1_fallback_executable_for_every_native_host() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'Makefile'))!
 	assert source.count('sh ./cmd/tools/install_v1_fallback.sh ./v1 ./v1_fallback') == 1
+	assert source.contains('CC="\$(CC)" OLDV_CCOPTIONS="\$\$bootstrap_ccflags" OLDV_LDFLAGS="\$\$ldflags"')
 	assert !source.contains('set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback')
 }
 
@@ -161,7 +164,12 @@ fn test_v1_fallback_installer_downloads_0_5_2_and_uses_oldv_on_failure() {
 	assert source.contains('actual_sha256=\$(sha256_of "\$archive")')
 	oldv_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'oldv.v'))!
 	assert oldv_source.contains("if use_cache {\n\t\t\ttools << 'rsync'")
-	assert oldv_source.contains('oldv_required_tools(context.use_cache)')
+	assert oldv_source.contains('oldv_required_tools(context.use_cache, context.cc)')
+	assert oldv_source.contains('tools << cc')
+	assert oldv_source.contains("env_ldflags := os.getenv('OLDV_LDFLAGS')")
+	vgit_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'modules', 'vgit', 'vgit.v'))!
+	assert vgit_source.contains("c_ldflags = '\${c_ldflags} \${vgit_context.cc_ldflags}'.trim_space()")
+	assert vgit_source.contains('\'-ldflags "\${vgit_context.cc_ldflags}"\'')
 }
 
 fn test_windows_makev_builds_the_v1_fallback_executable() {

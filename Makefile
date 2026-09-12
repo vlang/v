@@ -125,7 +125,7 @@ v:
 	fi; \
 	set -- "$$@" cmd/v; \
 	"$$@"; \
-	sh ./cmd/tools/install_v1_fallback.sh ./v1 ./v1_fallback; \
+	CC="$(CC)" OLDV_CCOPTIONS="$$bootstrap_ccflags" OLDV_LDFLAGS="$$ldflags" sh ./cmd/tools/install_v1_fallback.sh ./v1 ./v1_fallback; \
 	set -- ./v2 -o v $$bootstrap_gcflags $(VFLAGS); \
 	if [ -n "$$bootstrap_ccompiler" ]; then \
 		set -- "$$@" -cc "$$bootstrap_ccompiler"; \
