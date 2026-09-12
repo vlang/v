@@ -12,10 +12,19 @@ pub:
 	value     Primitive = Null{}
 }
 
+enum RelationLoadMode {
+	explicit
+	implicit
+}
+
 @[heap]
 pub struct QueryBuilder[T] {
 mut:
-	builder_error string
+	relation_load_mode RelationLoadMode
+	include_paths      [][]string
+	last_include_path  []string
+	hydration_fields   []string
+	builder_error      string
 pub mut:
 	meta                  []TableField
 	valid_sql_field_names []string
@@ -23,6 +32,45 @@ pub mut:
 	config                SelectConfig
 	data                  QueryData
 	where                 QueryData
+}
+
+// include loads a direct relationship when query runs. Unrequested relationships remain unloaded.
+pub fn (qb_ &QueryBuilder[T]) include(field string) !&QueryBuilder[T] {
+	if field.trim_space().len == 0 || field.contains('.') {
+		return error('include: expected a direct relationship name')
+	}
+	path := canonical_include_path[T]([field])!
+	mut qb := unsafe { qb_ }
+	qb.add_include_path(path)
+	qb.last_include_path = path
+	return qb
+}
+
+// then_include continues the last included path. query and reset clear that path.
+pub fn (qb_ &QueryBuilder[T]) then_include(field string) !&QueryBuilder[T] {
+	if qb_.last_include_path.len == 0 {
+		return error('then_include: call `include` before `then_include`')
+	}
+	if field.trim_space().len == 0 || field.contains('.') {
+		return error('then_include: expected a direct relationship name')
+	}
+	mut candidate := qb_.last_include_path.clone()
+	candidate << field
+	path := canonical_include_path[T](candidate)!
+	mut qb := unsafe { qb_ }
+	qb.add_include_path(path)
+	qb.last_include_path = path
+	return qb
+}
+
+fn (qb_ &QueryBuilder[T]) add_include_path(path []string) {
+	mut qb := unsafe { qb_ }
+	for existing in qb.include_paths {
+		if existing == path {
+			return
+		}
+	}
+	qb.include_paths << path
 }
 
 // new_query creates a new query object for struct `T`.
@@ -55,18 +103,24 @@ pub fn (qb_ &QueryBuilder[T]) reset() &QueryBuilder[T] {
 	}
 	qb.data = QueryData{}
 	qb.where = QueryData{}
+	qb.relation_load_mode = .explicit
+	qb.include_paths = [][]string{}
+	qb.last_include_path = []string{}
+	qb.hydration_fields = []string{}
 	qb.builder_error = ''
 	return qb
 }
 
 fn (qb_ &QueryBuilder[T]) v_sql_select_fields(fields []string) &QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
+	qb.relation_load_mode = .implicit
 	qb.config.fields = fields.map(qb.v_sql_field_name(it))
 	return qb
 }
 
 fn (qb_ &QueryBuilder[T]) v_sql_select_qualified_fields(fields []string) &QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
+	qb.relation_load_mode = .implicit
 	mut select_fields := fields.map(qb.v_sql_field_name(it))
 	if select_fields.len == 0 {
 		for field in qb.meta {
@@ -382,24 +436,35 @@ fn (qb_ &QueryBuilder[T]) v_sql_table_attrs(attrs []VAttribute) &QueryBuilder[T]
 // valid `operator` incldue: `=`, `!=`, `<>`, `>=`, `<=`, `>`, `<`, `LIKE`, `ILIKE`, `IS NULL`, `IS NOT NULL`, `IN`, `NOT IN`
 // example: `where('(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))', a, b, c, x, y)`
 pub fn (qb_ &QueryBuilder[T]) where(condition string, params ...Primitive) !&QueryBuilder[T] {
-	mut qb := unsafe { qb_ }
-	if qb.where.fields.len > 0 {
-		// skip first field
-		qb.where.is_and << true // and
-	}
-	qb.parse_conditions(condition, normalize_primitive_arguments(params))!
-	qb.config.has_where = true
-	return qb
+	return qb_.add_where_condition(condition, params, true)
 }
 
 // or_where create a `where` clause, it will `OR` with previous `where` clause.
 pub fn (qb_ &QueryBuilder[T]) or_where(condition string, params ...Primitive) !&QueryBuilder[T] {
+	return qb_.add_where_condition(condition, params, false)
+}
+
+fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primitive, is_and bool) !&QueryBuilder[T] {
+	mut parsed := new_query_internal[T](qb_.conn)
+	parsed.parse_conditions(condition, normalize_primitive_arguments(params))!
 	mut qb := unsafe { qb_ }
-	if qb.where.fields.len > 0 {
-		// skip first field
-		qb.where.is_and << false // or
+	start := qb.where.fields.len
+	if start > 0 {
+		qb.where.is_and << is_and
 	}
-	qb.parse_conditions(condition, normalize_primitive_arguments(params))!
+	qb.where.fields << parsed.where.fields
+	for value in parsed.where.data {
+		qb.where.data << value
+	}
+	qb.where.types << parsed.where.types
+	qb.where.kinds << parsed.where.kinds
+	qb.where.is_and << parsed.where.is_and
+	for span in parsed.where.parentheses {
+		qb.where.parentheses << [span[0] + start, span[1] + start]
+	}
+	if start > 0 && parsed.where.is_and.any(!it) {
+		qb.where.parentheses << [start, qb.where.fields.len - 1]
+	}
 	qb.config.has_where = true
 	return qb
 }
@@ -999,7 +1064,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 				if mm.len != 0 {
 					m = mm[0]
 					index := qb.config.fields.index(sql_field_name(m))
-					if index >= 0 {
+					if index >= 0 && sql_field_name(m) !in qb.hydration_fields {
 						value := row[index]
 
 						if value != Primitive(Null{}) {
@@ -1190,7 +1255,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 			if mm.len != 0 {
 				m = mm[0]
 				index := qb.config.fields.index(sql_field_name(m))
-				if index >= 0 {
+				if index >= 0 && sql_field_name(m) !in qb.hydration_fields {
 					value := row[index]
 
 					$if field.typ is $option {
@@ -1384,41 +1449,48 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 	mut conn := qb.conn
 	$for field in T.fields {
 		field_type_name := typeof(field).name
-		$if field.unaliased_typ is $array {
-			fkey := orm_field_fkey(field.attrs)
-			if fkey.len > 0 && parent_key != Primitive(Null{}) {
-				instance.$(field.name) = query_relation_array_like(mut conn, parent_key, fkey,
-					instance.$(field.name))!
-			}
-		} $else $if field.typ is $option {
-			if orm_type_name_is_optional_array(field_type_name) {
+		if relation_should_load(qb.relation_load_mode, qb.include_paths, field.name) {
+			child_paths := include_child_paths(qb.include_paths, field.name)
+			$if field.unaliased_typ is $array {
 				fkey := orm_field_fkey(field.attrs)
 				if fkey.len > 0 && parent_key != Primitive(Null{}) {
-					instance.$(field.name) = query_relation_optional_array_like(mut conn,
-						parent_key, fkey, instance.$(field.name))!
+					instance.$(field.name) = query_relation_array_like(mut conn, parent_key, fkey,
+						qb.relation_load_mode, child_paths, instance.$(field.name))!
 				}
-			} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
-				mm := qb.meta.filter(it.name == field.name)
-				if mm.len != 0 {
-					index := qb.config.fields.index(sql_field_name(mm[0]))
-					if index >= 0 && index < row.len
-						&& orm_relation_lookup_key_has_value(row[index]) {
-						instance.$(field.name) = query_relation_one_optional_like(mut conn,
-							row[index], instance.$(field.name))
+			} $else $if field.typ is $option {
+				if orm_type_name_is_optional_array(field_type_name) {
+					fkey := orm_field_fkey(field.attrs)
+					if fkey.len > 0 && parent_key != Primitive(Null{}) {
+						instance.$(field.name) = query_relation_optional_array_like(mut conn,
+							parent_key, fkey, qb.relation_load_mode, child_paths,
+							instance.$(field.name))!
+					}
+				} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
+					mm := qb.meta.filter(it.name == field.name)
+					if mm.len != 0 {
+						index := qb.config.fields.index(sql_field_name(mm[0]))
+						if index >= 0 && index < row.len
+							&& orm_relation_lookup_key_has_value(row[index]) {
+							related := query_relation_one_optional_like(mut conn, row[index],
+								qb.relation_load_mode, child_paths, instance.$(field.name))!
+							if related.len > 0 {
+								instance.$(field.name) = related[0]
+							}
+						}
 					}
 				}
-			}
-		} $else $if field.unaliased_typ is time.Time {
-		} $else $if field.unaliased_typ is ?time.Time {
-		} $else $if field.unaliased_typ is $struct {
-			if !orm_type_name_is_time(field_type_name) {
-				mm := qb.meta.filter(it.name == field.name)
-				if mm.len != 0 {
-					index := qb.config.fields.index(sql_field_name(mm[0]))
-					if index >= 0 && index < row.len
-						&& orm_relation_lookup_key_has_value(row[index]) {
-						instance.$(field.name) = query_relation_one_like(mut conn, row[index],
-							instance.$(field.name))!
+			} $else $if field.unaliased_typ is time.Time {
+			} $else $if field.unaliased_typ is ?time.Time {
+			} $else $if field.unaliased_typ is $struct {
+				if !orm_type_name_is_time(field_type_name) {
+					mm := qb.meta.filter(it.name == field.name)
+					if mm.len != 0 {
+						index := qb.config.fields.index(sql_field_name(mm[0]))
+						if index >= 0 && index < row.len
+							&& orm_relation_lookup_key_has_value(row[index]) {
+							instance.$(field.name) = query_relation_one_like(mut conn, row[index],
+								qb.relation_load_mode, child_paths, instance.$(field.name))!
+						}
 					}
 				}
 			}
@@ -1630,6 +1702,7 @@ pub fn (qb_ &QueryBuilder[T]) query() ![]T {
 	defer {
 		qb.reset()
 	}
+	qb.ensure_keys_for_includes()!
 	qb.prepare()!
 	rows := qb.conn.select(qb.config, qb.data, qb.where)!
 	mut result := []T{cap: rows.len}
@@ -2265,8 +2338,10 @@ fn primitive_for_field[U](value Primitive, field_name string) Primitive {
 	return value
 }
 
-fn query_relation_one[U](mut conn Connection, key Primitive) !U {
+fn query_relation_one[U](mut conn Connection, key Primitive, mode RelationLoadMode, paths [][]string) !U {
 	mut qb := new_query_internal[U](conn)
+	qb.relation_load_mode = mode
+	qb.include_paths = paths
 	primary := find_save_primary_field_name(qb.meta) or { return U{} }
 	rows := qb.v_sql_where_primitive(primary, .eq, primitive_for_field[U](key, primary)).query()!
 	if rows.len == 0 {
@@ -2275,42 +2350,53 @@ fn query_relation_one[U](mut conn Connection, key Primitive) !U {
 	return rows[0]
 }
 
-fn query_relation_one_like[U](mut conn Connection, key Primitive, _ U) !U {
-	return query_relation_one[U](mut conn, key)
+fn query_relation_one_like[U](mut conn Connection, key Primitive, mode RelationLoadMode, paths [][]string, _ U) !U {
+	return query_relation_one[U](mut conn, key, mode, paths)
 }
 
-fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, _ ?U) ?U {
+fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, mode RelationLoadMode, paths [][]string, _ ?U) ![]U {
 	$if U is time.Time {
-		return none
+		return []U{}
 	} $else $if U is $struct {
-		return query_relation_one[U](mut conn, key) or { return none }
+		mut qb := new_query_internal[U](conn)
+		qb.relation_load_mode = mode
+		qb.include_paths = paths
+		primary := find_save_primary_field_name(qb.meta) or { return []U{} }
+		return qb.v_sql_where_primitive(primary, .eq, primitive_for_field[U](key, primary)).query() or {
+			if mode == .implicit {
+				return []U{}
+			}
+			return err
+		}
 	} $else {
-		return none
+		return []U{}
 	}
 }
 
-fn query_relation_array[U](mut conn Connection, key Primitive, fkey string) ![]U {
+fn query_relation_array[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string) ![]U {
 	mut qb := new_query_internal[U](conn)
+	qb.relation_load_mode = mode
+	qb.include_paths = paths
 	field_key := primitive_for_field[U](key, fkey)
 	return qb.v_sql_where_primitive(fkey, .eq, field_key).query() or {
-		if err.msg().contains('no such table') {
+		if mode == .implicit && err.msg().contains('no such table') {
 			return []U{}
 		}
 		return err
 	}
 }
 
-fn query_relation_array_like[U](mut conn Connection, key Primitive, fkey string, _ []U) ![]U {
-	return query_relation_array[U](mut conn, key, fkey)
+fn query_relation_array_like[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, _ []U) ![]U {
+	return query_relation_array[U](mut conn, key, fkey, mode, paths)
 }
 
-fn query_relation_array_from_optional[U](mut conn Connection, key Primitive, fkey string, _ ?[]U) ![]U {
-	return query_relation_array[U](mut conn, key, fkey)!
+fn query_relation_array_from_optional[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, _ ?[]U) ![]U {
+	return query_relation_array[U](mut conn, key, fkey, mode, paths)!
 }
 
-fn query_relation_optional_array_like[U](mut conn Connection, key Primitive, fkey string, value ?U) !U {
+fn query_relation_optional_array_like[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, _ ?U) !U {
 	$if U is $array {
-		return query_relation_array_from_optional(mut conn, key, fkey, value)!
+		return query_relation_array_like(mut conn, key, fkey, mode, paths, U{})!
 	}
 	return U{}
 }
@@ -2348,7 +2434,9 @@ fn insert_optional_relation_array_values[U](mut conn Connection, values ?[]U, ke
 
 fn insert_optional_relation_array[U](mut conn Connection, values ?U, key Primitive, fkey string) ! {
 	$if U is $array {
-		insert_optional_relation_array_values(mut conn, values, key, fkey)!
+		if items := values {
+			insert_relation_array(mut conn, items, key, fkey)!
+		}
 	}
 }
 
@@ -2781,4 +2869,141 @@ pub fn (qb_ &QueryBuilder[T]) last_id() int {
 	mut qb := unsafe { qb_ }
 	qb.reset()
 	return qb.conn.last_id()
+}
+
+fn relation_field_name[T](name string) string {
+	$for field in T.fields {
+		if field.name == name {
+			return name
+		}
+	}
+	$for field in T.fields {
+		if orm_field_sql_name(field.attrs, field.name) == name {
+			return field.name
+		}
+	}
+	return name
+}
+
+fn relation_should_load(mode RelationLoadMode, paths [][]string, field string) bool {
+	return mode == .implicit || paths.any(it.len > 0 && it[0] == field)
+}
+
+fn include_child_paths(paths [][]string, field string) [][]string {
+	mut children := [][]string{}
+	for path in paths {
+		if path.len > 1 && path[0] == field {
+			children << path[1..]
+		}
+	}
+	return children
+}
+
+fn canonical_include_path[T](path []string) ![]string {
+	if path.len == 0 {
+		return []string{}
+	}
+	meta := struct_meta[T]()
+	table := table_from_struct[T](meta)
+	relation := relation_field_name[T](path[0])
+	if !meta.any(it.name == relation) {
+		return error('include: field `${path[0]}` does not exist on `${table.name}`')
+	}
+	empty := T{}
+	$for field in T.fields {
+		if field.name == relation && !field.is_embed {
+			mut children := []string{}
+			field_type_name := typeof(field).name
+			$if field.unaliased_typ is $array {
+				fkey := orm_field_fkey(field.attrs)
+				if fkey.len == 0 {
+					return error('include: field `${relation}` is not a `@[fkey]` relationship')
+				}
+				_ := find_save_primary_field_name(meta) or {
+					return error('include: table `${table.name}` requires a `@[primary]` or `id` field')
+				}
+				children = canonical_include_array(path[1..], fkey, empty.$(field.name))!
+			} $else $if field.typ is $option {
+				if orm_type_name_is_optional_array(field_type_name) {
+					fkey := orm_field_fkey(field.attrs)
+					if fkey.len == 0 {
+						return error('include: field `${relation}` is not a `@[fkey]` relationship')
+					}
+					_ := find_save_primary_field_name(meta) or {
+						return error('include: table `${table.name}` requires a `@[primary]` or `id` field')
+					}
+					children = canonical_include_optional(path[1..], fkey, empty.$(field.name))!
+				} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
+					children = canonical_include_optional(path[1..], '', empty.$(field.name))!
+				} else {
+					return error('include: field `${relation}` is not a relationship')
+				}
+			} $else $if field.unaliased_typ is time.Time {
+				return error('include: field `${relation}` is not a relationship')
+			} $else $if field.unaliased_typ is $struct {
+				children = canonical_include_one(path[1..], empty.$(field.name))!
+			} $else {
+				return error('include: field `${relation}` is not a `@[fkey]` relationship')
+			}
+			mut result := [relation]
+			result << children
+			return result
+		}
+	}
+	return error('include: field `${path[0]}` is not a relationship')
+}
+
+fn canonical_include_array[U](path []string, fkey string, _ []U) ![]string {
+	meta := struct_meta[U]()
+	if !meta.any((it.name == fkey || sql_field_name(it) == fkey) && !it.is_arr) {
+		return error('include: foreign key `${fkey}` does not exist on `${table_from_struct[U](meta).name}`')
+	}
+	return canonical_include_path[U](path)
+}
+
+fn canonical_include_one[U](path []string, _ U) ![]string {
+	meta := struct_meta[U]()
+	_ := find_save_primary_field_name(meta) or {
+		return error('include: table `${table_from_struct[U](meta).name}` requires a `@[primary]` or `id` field')
+	}
+	return canonical_include_path[U](path)
+}
+
+fn canonical_include_optional[U](path []string, fkey string, _ ?U) ![]string {
+	$if U is $array {
+		return canonical_include_array(path, fkey, U{})
+	} $else $if U is $struct {
+		return canonical_include_one(path, U{})
+	}
+	return error('include: invalid optional relationship')
+}
+
+// Fetch lookup keys omitted by select without exposing them as selected scalar fields.
+fn (qb_ &QueryBuilder[T]) ensure_keys_for_includes() ! {
+	if qb_.include_paths.len == 0 || qb_.config.fields.len == 0 {
+		return
+	}
+	mut qb := unsafe { qb_ }
+	for path in qb.include_paths {
+		for field in qb.meta {
+			if field.name != path[0] {
+				continue
+			}
+			key := if field.is_arr {
+				find_save_primary_field_name(qb.meta) or {
+					return error('include: missing primary key')
+				}
+			} else {
+				sql_field_name(field)
+			}
+			if key in qb.config.fields {
+				continue
+			}
+			if qb.config.has_distinct {
+				return error('include with `distinct` requires selecting the relationship key `${key}`')
+			}
+			qb.config.fields << key
+			qb.hydration_fields << key
+		}
+	}
 }
