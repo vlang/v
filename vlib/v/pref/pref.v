@@ -1358,6 +1358,11 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 		}
 	} else if is_source_file(command) {
 		res.path = command
+	} else if command == 'build' {
+		// `v build <target>` compiles <target>, just like `v <target>` does. Without
+		// the target in res.path, the builder could only report an empty path in its
+		// `<target> doesn't exist` error.
+		res.path = command_args[0] or { eprintln_exit('no input file') }
 	}
 	if !res.is_bare && res.bare_builtin_dir != '' {
 		eprintln_cond(show_output && !res.is_quiet, '`-bare-builtin-dir` must be used with `-freestanding`')

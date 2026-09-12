@@ -2,21 +2,33 @@ module main
 
 import os
 
+// The tools workflow compiles and runs this suite with the V1 compatibility
+// compiler, so `@VEXE` is `v1_fallback` there. This dispatcher test must still drive
+// the sibling V3 enabled `v`. Returns none when that binary is absent, e.g. in a plain
+// developer build without one, so the test can skip instead of fail.
+fn external_fallback_test_dispatcher() ?string {
+	if os.base(@VEXE) !in ['v1_fallback', 'v1_fallback.exe'] {
+		return @VEXE
+	}
+	dispatcher := os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
+	if !os.is_executable(dispatcher) {
+		return none
+	}
+	return dispatcher
+}
+
 fn run_external_fallback_test_process(executable string, args []string, work_dir string, overrides map[string]string) os.Result {
 	mut environment := os.environ()
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
+	// The compiler started here has to identify itself by its own path: the stub C
+	// compiler below recognizes the V1 compatibility stage by VEXE, and an inherited
+	// VEXE from the tools lanes would already name `v1_fallback` in the V3 stage.
+	environment.delete('VEXE')
 	for name, value in overrides {
 		environment[name] = value
 	}
-	// The tools workflow runs this suite through the V1 compatibility compiler.
-	// Process-level dispatcher tests must still invoke the sibling V3-enabled `v`.
-	actual_executable := if os.base(executable) in ['v1_fallback', 'v1_fallback.exe'] {
-		os.join_path(os.dir(executable), 'v' + $if windows { '.exe' } $else { '' })
-	} else {
-		executable
-	}
-	mut process := os.new_process(actual_executable)
+	mut process := os.new_process(executable)
 	process.set_args(args)
 	process.set_work_folder(work_dir)
 	process.set_environment(environment)
@@ -46,6 +58,10 @@ fn test_macos_v3_uses_external_v1_fallback_after_c_compilation_error() {
 		if !os.is_executable(fallback) {
 			return
 		}
+		vexe := external_fallback_test_dispatcher() or {
+			eprintln('> skipping ${@FN}: the V3 dispatcher `v` is missing next to `${@VEXE}`')
+			return
+		}
 		root := os.join_path(os.vtmp_dir(), 'v3_external_v1_fallback_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -57,7 +73,7 @@ fn test_macos_v3_uses_external_v1_fallback_after_c_compilation_error() {
 		compiler := os.join_path(root, 'reject-v3-cc')
 		write_v3_rejecting_c_compiler(compiler)!
 		output := os.join_path(root, 'main')
-		result := run_external_fallback_test_process(@VEXE, ['-silent', '-nocache', '-no-parallel',
+		result := run_external_fallback_test_process(vexe, ['-silent', '-nocache', '-no-parallel',
 			'-cc', compiler, '-o', output, source], vroot, {
 			'V_MACOS_V3_NO_FALLBACK': ''
 		})
@@ -70,7 +86,7 @@ fn test_macos_v3_uses_external_v1_fallback_after_c_compilation_error() {
 		strict_compiler := os.join_path(root, 'strict-reject-v3-cc')
 		write_v3_rejecting_c_compiler(strict_compiler)!
 		strict_output := os.join_path(root, 'strict')
-		strict := run_external_fallback_test_process(@VEXE, ['-silent', '-nocache', '-no-parallel',
+		strict := run_external_fallback_test_process(vexe, ['-silent', '-nocache', '-no-parallel',
 			'-cc', strict_compiler, '-o', strict_output, source], vroot, {
 			'V_MACOS_V3_NO_FALLBACK': '1'
 		})

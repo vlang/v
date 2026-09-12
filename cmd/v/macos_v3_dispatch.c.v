@@ -209,10 +209,11 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		|| macos_v3_non_compilation_command(command) {
 		return false
 	}
-	// The legacy preference parser deliberately rejects `v build <source>`, so it
-	// does not populate prefs.path for the explicit build command. Let V3 parse the
-	// original arguments and report missing or invalid inputs instead of reaching
-	// the V3-only command shell's unreachable V1 builder guard.
+	// The legacy preference parser deliberately rejects `v build <source>`, so an
+	// explicit build command reaching this point has no path, or a path that does
+	// not exist. Let V3 parse the original arguments and report missing or invalid
+	// inputs instead of reaching the V3-only command shell's unreachable V1 builder
+	// guard.
 	if command == 'build' {
 		return true
 	}
@@ -239,11 +240,11 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	mut environment := macos_v3_child_environment(vexe, caller_environment, dispatch_environment)
 	no_fallback := environment[macos_v3_no_fallback_env] or { '' }
 	// cmd/v self-builds deliberately remain V3-only. The compatibility compiler
-	// exists for user programs and tools, not as an alternate self-host path. An
-	// empty path belongs to explicit `build` argument validation, which V1 cannot
-	// recover and would only report again with a less useful empty-path error.
-	fallback_enabled := prefs.path != '' && !prefs.new_compiler && no_fallback != '1'
-		&& !macos_v3_is_self_build_target(prefs)
+	// exists for user programs and tools, not as an alternate self-host path. A
+	// missing or empty input path belongs to explicit argument validation, which V1
+	// cannot recover and would only report a second time.
+	fallback_enabled := prefs.path != '' && os.exists(prefs.path) && !prefs.new_compiler
+		&& no_fallback != '1' && !macos_v3_is_self_build_target(prefs)
 	fallback_file := macos_v3_fallback_file_for_pid()
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)
 	os.rm(fallback_file) or {}
