@@ -15,19 +15,26 @@ fn bundled_tcc() string {
 	return tcc
 }
 
-// neutral_cc_pointing_at_tcc reproduces a machine whose `cc` is TinyCC, under a name that
-// says nothing about it, so only probing the executable can tell.
-fn neutral_cc_pointing_at_tcc() !string {
-	tcc := bundled_tcc()
-	if tcc == '' {
-		return error('no usable bundled tcc')
+// neutral_cc_pointing_at reproduces a machine whose `cc` is some particular compiler,
+// under a name that says nothing about it, so only probing the executable can tell.
+fn neutral_cc_pointing_at(compiler string) !string {
+	if compiler == '' {
+		return error('no usable compiler to point at')
 	}
-	dir := os.join_path(os.vtmp_dir(), 'handoff_cc_${os.getpid()}')
+	dir := os.join_path(os.vtmp_dir(), 'handoff_cc_${os.getpid()}_${os.file_name(compiler)}')
 	os.mkdir_all(dir)!
 	cc := os.join_path(dir, 'cc')
 	os.rm(cc) or {}
-	os.symlink(tcc, cc)!
+	os.symlink(compiler, cc)!
 	return cc
+}
+
+fn neutral_cc_pointing_at_tcc() !string {
+	return neutral_cc_pointing_at(bundled_tcc())!
+}
+
+fn neutral_cc_pointing_at_clang() !string {
+	return neutral_cc_pointing_at(os.find_abs_path_of_executable('clang') or { '' })!
 }
 
 fn test_c_only_output_does_not_resolve_an_implicit_cc_to_tinyc() {
@@ -45,6 +52,43 @@ fn test_c_only_output_does_not_resolve_an_implicit_cc_to_tinyc() {
 		resolve_ccompiler_type_and_pkgconfig_mode(mut p)
 		assert p.ccompiler_type == .gcc, out_name
 	}
+}
+
+fn test_c_only_output_still_resolves_a_cc_that_is_not_tinyc() {
+	cc := neutral_cc_pointing_at_clang() or { return }
+	defer {
+		os.rmdir_all(os.dir(cc)) or {}
+	}
+	// Only the TinyCC outcome is dropped. `cc_from_string('cc')` falls back to `.gcc`, so
+	// leaving this unprobed would flip `$if clang` off and `$if gcc` on for every macOS
+	// user of `-o out.c`, which has nothing to do with the libc this branch is about.
+	for out_name in ['out.c', '/tmp/-'] {
+		mut p := pref.Preferences{
+			ccompiler: cc
+			out_name:  out_name
+		}
+		resolve_ccompiler_type_and_pkgconfig_mode(mut p)
+		assert p.ccompiler_type == .clang, out_name
+	}
+}
+
+fn test_late_tinyc_resolution_still_disables_unsupported_backtraces() {
+	cc := neutral_cc_pointing_at_tcc() or { return }
+	defer {
+		os.rmdir_all(os.dir(cc)) or {}
+	}
+	// `fill_with_defaults()` ran this normalisation while `cc` still looked like gcc, so
+	// it has to run again once the name is resolved: TinyCC shared libraries must not
+	// depend on its backtrace runtime symbols.
+	mut p := pref.Preferences{
+		ccompiler:          cc
+		is_shared:          true
+		generate_c_project: 'out/cproject'
+		out_name:           'libx'
+	}
+	resolve_ccompiler_type_and_pkgconfig_mode(mut p)
+	assert p.ccompiler_type == .tinyc
+	assert 'no_backtrace' in p.compile_defines_all
 }
 
 fn test_generated_c_project_resolves_the_compiler_its_scripts_will_name() {
