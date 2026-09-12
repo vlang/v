@@ -12335,6 +12335,9 @@ pub fn run(args []string) {
 						regeneration_args << arg
 					}
 				}
+				$if windows {
+					exit(os.system(v3_exec_command(os.executable(), regeneration_args)))
+				}
 				os.execvp(os.executable(), regeneration_args) or {
 					eprintln('failed to restart monolithic C compilation: ${err.msg()}')
 					exit(1)
@@ -13646,18 +13649,26 @@ fn restart_v3_with_args(extra_args []string) {
 	mut args := extra_args.clone()
 	args << os.args[1..]
 	os.setenv(v3_internal_restart_env, '1', true)
-	$if js {
-		mut command := [os.quoted_path(executable)]
-		for arg in args {
-			command << os.quoted_path(arg)
-		}
-		exit(os.system(command.join(' ')))
+	$if js || windows {
+		// Windows has no exec either: `_execvp` would start the child and then
+		// exit this process with status 0, dropping the restarted build's
+		// result on the floor.
+		exit(os.system(v3_exec_command(executable, args)))
 	} $else {
 		os.execvp(executable, args) or {
 			eprintln('failed to restart ${executable}: ${err.msg()}')
 			exit(1)
 		}
 	}
+}
+
+// v3_exec_command renders an argv for a shell, for the platforms that cannot exec.
+fn v3_exec_command(executable string, args []string) string {
+	mut command := [os.quoted_path(executable)]
+	for arg in args {
+		command << os.quoted_path(arg)
+	}
+	return command.join(' ')
 }
 
 fn cache_external_input_owner_modules(state &V3ModuleCacheState, a &flat.FlatAst, unscoped_inputs map[string][]string, static_inputs map[string][]string, user_files []string, c_flags []string, ccompiler string, target pref.Target) (map[string]bool, bool) {

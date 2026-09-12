@@ -129,11 +129,26 @@ fn launch_macos_v1_fallback(executable string, args []string, is_verbose bool, r
 	if is_verbose || os.getenv('V3_CACHE_TRACE') != '' {
 		eprintln('${reason}; retrying with `${executable}`.')
 	}
-	os.execvp(executable, macos_v1_fallback_args(args)) or {
+	fallback_args := macos_v1_fallback_args(args)
+	$if windows {
+		// Windows has no exec. The CRT's `_execvp` starts the child and then
+		// terminates this process with status 0, so the compatibility
+		// compiler's exit code never reaches whoever ran `v` - a failed
+		// compilation looks like a success to every caller, including
+		// `os.execute` in the test suite. Run it as a child and forward its
+		// status, the way `v.util`'s tool launcher already does.
+		exit(os.system(exec_command(executable, fallback_args)))
+	}
+	os.execvp(executable, fallback_args) or {
 		eprintln('failed to launch the V1 compatibility compiler `${executable}`: ${err}')
 		exit(1)
 	}
 	exit(1)
+}
+
+// exec_command renders an argv for a shell, for the platforms that cannot exec.
+fn exec_command(executable string, args []string) string {
+	return '${os.quoted_path(executable)} ${util.args_quote_paths(args)}'.trim_space()
 }
 
 fn macos_v1_fallback_args(args []string) []string {
