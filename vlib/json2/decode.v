@@ -584,7 +584,9 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 							decoder.decode_error('`raw` attribute can only be used with string fields')!
 						}
 					} else {
-						$if field.typ is $option {
+						$if field.is_shared {
+							decoder.decode_error('shared fields cannot be decoded')!
+						} $else $if field.typ is $option {
 							if decoder.current_node.value.value_kind == .null {
 								new_val.$(field.name) = none
 
@@ -973,7 +975,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										decoder.decode_error('`raw` attribute can only be used with string fields')!
 									}
 								} else {
-									$if field.typ is $option {
+									$if field.is_shared {
+										decoder.decode_error('shared fields cannot be decoded')!
+									} $else $if field.typ is $option {
 										if decoder.current_node.value.value_kind == .null {
 											val.$(field.name) = none
 
