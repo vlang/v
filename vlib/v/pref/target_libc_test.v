@@ -39,6 +39,33 @@ fn test_c_output_forgets_the_detected_libc() {
 	assert !p.is_musl
 }
 
+fn test_object_output_forgets_the_detected_libc() {
+	// `-o unit.o` and `-is_o` only ever reach the C compiler with `-c`, so the libc
+	// belongs to whoever links the object afterwards.
+	mut p := Preferences{
+		is_glibc: true
+		os:       ._auto
+		is_o:     true
+		out_name: 'unit.o'
+	}
+	p.forget_host_libc_for_foreign_targets()
+	assert !p.is_glibc
+	assert !p.is_musl
+}
+
+fn test_stdout_output_forgets_the_detected_libc() {
+	// `-o -` prints the C and returns before `cc` is ever invoked.
+	mut p := Preferences{
+		is_glibc: true
+		os:       ._auto
+		out_name: '/tmp/-'
+	}
+	assert p.should_output_to_stdout()
+	p.forget_host_libc_for_foreign_targets()
+	assert !p.is_glibc
+	assert !p.is_musl
+}
+
 fn test_foreign_os_forgets_the_detected_libc() {
 	mut p := Preferences{
 		is_glibc: true
@@ -80,6 +107,15 @@ fn test_explicit_libc_options_survive_foreign_targets() {
 	}
 	musl.forget_host_libc_for_foreign_targets()
 	assert musl.is_musl
+}
+
+fn test_object_output_is_resolved_before_the_libc() {
+	// A `.o` output name only sets `is_o` late in parsing; the libc has to be settled
+	// after that point, or object output would silently keep the host libc.
+	p, _ := parse_args([], ['-o', 'unit.o', 'a.v'])
+	assert p.is_o
+	assert !p.is_glibc
+	assert !p.is_musl
 }
 
 fn test_libc_options_are_recorded_as_explicit_by_the_parser() {

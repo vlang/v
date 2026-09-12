@@ -336,10 +336,10 @@ fn detect_musl(mut res Preferences) {
 //
 // `ldd --version` only answers "which libc is installed here". That is the right answer
 // while V compiles and links a host binary itself, and a useless one as soon as somebody
-// else performs the link: with `-o out.c` V only emits C, and with `-os <other>` the
-// target is not this machine at all. Guessing glibc there is not a harmless default,
-// because `$if glibc` then emits calls to the glibc-only `backtrace`/`backtrace_symbols`,
-// so a glibc host silently produces C that cannot link against musl:
+// else performs the link, or as soon as the target is not this machine. Guessing glibc
+// there is not a harmless default, because `$if glibc` then emits calls to the
+// glibc-only `backtrace`/`backtrace_symbols`, so a glibc host silently produces output
+// that cannot be linked against musl:
 //
 //	ld.lld: error: undefined symbol: backtrace
 //
@@ -349,9 +349,12 @@ fn (mut p Preferences) forget_host_libc_for_foreign_targets() {
 	if p.libc_set_by_flag {
 		return
 	}
-	v_links_for_the_host := !p.output_cross_c && !p.out_name.ends_with('.c')
-		&& p.os in [._auto, get_host_os()]
-	if v_links_for_the_host {
+	// Every mode here stops short of the link, and leaves it to whoever picks the
+	// artefact up: portable `-os cross` C, `-o out.c`, `-o -` streamed to stdout, and
+	// `-o out.o`/`-is_o`, which only ever reaches the C compiler with `-c`.
+	v_stops_before_linking := p.output_cross_c || p.out_name.ends_with('.c') || p.is_o
+		|| p.should_output_to_stdout()
+	if !v_stops_before_linking && p.os in [._auto, get_host_os()] {
 		return
 	}
 	p.is_glibc = false
