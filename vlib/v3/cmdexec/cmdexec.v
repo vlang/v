@@ -7,6 +7,10 @@ import time
 // no_timeout waits for the child process for as long as it takes.
 pub const no_timeout = i64(0)
 
+// timeout_drain_ms bounds how long a timed out run keeps collecting whatever
+// the killed command already wrote into its pipes.
+const timeout_drain_ms = i64(200)
+
 // run executes program with an exact argument vector and captures its output.
 pub fn run(program string, args []string) os.Result {
 	return run_in(program, args, '')
@@ -31,6 +35,16 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
 	}
+	if timeout_ms > 0 {
+		// A bounded run must be able to take down everything the command
+		// started, not only the direct child: a descendant that inherited the
+		// stdout/stderr pipes - `sh -c '... & wait'` and shell wrappers in
+		// general - would otherwise keep the write ends open past the deadline.
+		// Only bounded runs get their own process group, so unbounded ones (the
+		// C compiler and linker invocations) keep sharing the caller's group,
+		// and keep reacting to a Ctrl-C on the build, exactly as before.
+		process.use_pgroup = true
+	}
 	if merge_output {
 		process.set_redirect_stdio_merged()
 	} else {
@@ -49,6 +63,10 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 		// read: a child that keeps writing must hit the bound just the same.
 		if timeout_ms > 0 && sw.elapsed().milliseconds() >= timeout_ms {
 			timed_out = true
+			// Kill the group first, so that descendants holding the pipes go
+			// away too, then the child itself, in case it had not reached its
+			// setpgid() yet when the group kill was delivered.
+			process.signal_pgkill()
 			process.signal_kill()
 			// signal_kill() marks the process `.aborted` before it has been
 			// reaped, and wait() skips waitpid() for a process that is not
@@ -67,10 +85,25 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	process.wait()
 	if timed_out {
 		eprintln('V: `${display(program, args)}` did not finish within ${timeout_ms}ms, the child process was killed')
-	}
-	output.write_string(process.stdout_slurp())
-	if !merge_output {
-		output.write_string(process.stderr_slurp())
+		// Never block on EOF after the deadline: the slurps on the normal path
+		// wait until every writer of the pipe is gone, and a descendant that
+		// escaped the group kill still owns one. Collect what is already
+		// buffered instead.
+		drain := time.new_stopwatch()
+		for drain.elapsed().milliseconds() < timeout_drain_ms {
+			stdout := process.stdout_read()
+			stderr := if merge_output { '' } else { process.stderr_read() }
+			if stdout.len == 0 && stderr.len == 0 {
+				break
+			}
+			output.write_string(stdout)
+			output.write_string(stderr)
+		}
+	} else {
+		output.write_string(process.stdout_slurp())
+		if !merge_output {
+			output.write_string(process.stderr_slurp())
+		}
 	}
 	if process.err.len > 0 {
 		output.write_string(process.err)

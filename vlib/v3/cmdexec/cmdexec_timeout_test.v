@@ -1,5 +1,6 @@
 module cmdexec
 
+import os
 import time
 
 // assert_no_unreaped_child fails when the run that just finished left a child
@@ -40,6 +41,31 @@ fn test_run_with_timeout_kills_a_child_that_keeps_writing() {
 		assert elapsed < 60000, 'run_with_timeout waited ${elapsed}ms for a child that keeps writing'
 		assert result.output.contains('v-cmdexec-timeout-stream')
 		assert_no_unreaped_child('a timed out chatty child')
+	}
+}
+
+fn test_run_with_timeout_kills_descendants_that_hold_the_pipes() {
+	$if windows {
+		assert true
+	} $else {
+		marker := os.join_path(os.vtmp_dir(), 'v_cmdexec_descendant_${os.getpid()}.marker')
+		os.rm(marker) or {}
+		// The command starts a descendant that inherits its stdout/stderr and
+		// outlives it. Killing only the direct child leaves those pipe writers
+		// open, and the slurps at the end of a run block until every writer is
+		// gone - so the bound would be ignored. The descendant also creates a
+		// marker file after 2s, which must never appear.
+		script := 'echo v-cmdexec-descendant; { sleep 2; touch ${os.quoted_path(marker)}; sleep 300; } & wait'
+		sw := time.new_stopwatch()
+		result := run_with_timeout('sh', ['-c', script], 500)
+		elapsed := sw.elapsed().milliseconds()
+		assert result.exit_code != 0
+		assert elapsed < 60000, 'run_with_timeout waited ${elapsed}ms for a command with a live descendant'
+		assert result.output.contains('v-cmdexec-descendant')
+		assert_no_unreaped_child('a timed out command with a descendant')
+		time.sleep(3 * time.second)
+		assert !os.exists(marker), 'the descendant outlived the timed out command'
+		os.rm(marker) or {}
 	}
 }
 
