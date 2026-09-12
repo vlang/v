@@ -18720,6 +18720,11 @@ fn (mut g FlatGen) fn_returns_veb_result(node flat.Node) bool {
 	if node.typ == 'veb.Result' {
 		return true
 	}
+	// Only a spelling ending in `Result` can resolve to `veb.Result`; skip the
+	// type parse for every other method return type.
+	if !node.typ.ends_with('Result') {
+		return false
+	}
 	ret := g.parse_node_type(&node)
 	return ret.name() == 'veb.Result'
 }

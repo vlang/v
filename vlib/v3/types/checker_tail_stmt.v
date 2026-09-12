@@ -16744,12 +16744,23 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 
 fn (tc &TypeChecker) generic_struct_method_alias_target(type_name string) string {
 	mut current := type_name
-	mut seen := map[string]bool{}
+	// The chain is at most 16 deep; a fixed scratch list replaces the per-call
+	// map this hot path used to allocate.
+	mut seen := [16]string{}
+	mut seen_len := 0
 	for _ in 0 .. 16 {
-		if seen[current] {
+		mut cycle := false
+		for i in 0 .. seen_len {
+			if seen[i] == current {
+				cycle = true
+				break
+			}
+		}
+		if cycle {
 			break
 		}
-		seen[current] = true
+		seen[seen_len] = current
+		seen_len++
 		qualified := tc.qualify_name(current)
 		target := tc.type_aliases[current] or { tc.type_aliases[qualified] or { break } }
 		if target == current {

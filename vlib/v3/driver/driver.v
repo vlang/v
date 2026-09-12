@@ -6305,24 +6305,31 @@ fn promote_scoped_ast_nodes_flagged(mut ast flat.FlatAst, base_nodes int, new_en
 	}
 }
 
-// release_transform_prepare_scope canonicalizes every node text still owned by
-// the self-host transform preparation arena and then frees that arena.
-fn release_transform_prepare_scope(mut a flat.FlatAst, scope voidptr) {
+// release_transform_helper_scopes canonicalizes every node text still owned by
+// one of the self-host transform helper arenas (preparation and pre-scan
+// indexes) and then frees those arenas.
+fn release_transform_helper_scopes(mut a flat.FlatAst, scopes []voidptr) {
 	mut flags := []u8{len: a.nodes.len}
-	if transform.scan_scoped_text_flags_parallel(a, scope, mut flags) {
+	if transform.scan_scoped_text_flags_parallel_multi(a, scopes, mut flags) {
 		mut canon_cache := flat.TextProbeCache{}
 		for idx, flag in flags {
 			if flag != 0 {
-				canonicalize_scoped_node_cached(mut a, idx, scope, mut canon_cache.ptrs, mut canon_cache.values)
+				for scope in scopes {
+					canonicalize_scoped_node_cached(mut a, idx, scope, mut canon_cache.ptrs, mut canon_cache.values)
+				}
 			}
 		}
 	} else {
 		for idx in 0 .. a.nodes.len {
-			canonicalize_scoped_node(mut a, idx, scope)
+			for scope in scopes {
+				canonicalize_scoped_node(mut a, idx, scope)
+			}
 		}
 	}
 	unsafe { flags.free() }
-	prealloc_scope_free_for_v3(scope)
+	for scope in scopes {
+		prealloc_scope_free_for_v3(scope)
+	}
 }
 
 // canonicalize_scoped_node_cached is canonicalize_scoped_node with a pointer
@@ -10330,6 +10337,7 @@ pub fn run(args []string) {
 	mut texts_canonical_after_annotation := cgen_cache_hit
 	mut retained_transform_scope := unsafe { nil }
 	mut retained_transform_prepare_scope := unsafe { nil }
+	mut retained_transform_prescan_scopes := []voidptr{}
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
@@ -10808,6 +10816,7 @@ pub fn run(args []string) {
 			if prepare_transform_overlap {
 				transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_prepared_selfhost_owned(mut prepared_transform, mut a, &pre_tc, used_fns, transform_scope)
 				retained_transform_prepare_scope = prepared_transform.take_scope()
+				retained_transform_prescan_scopes = prepared_transform.take_prescan_scopes()
 			} else {
 				// Large user programs keep more memory live when function-body workers
 				// overlap the transformed AST. Scoped serial batches trade a little CPU
@@ -10819,12 +10828,19 @@ pub fn run(args []string) {
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			mut post_sw := time.new_stopwatch()
 			prealloc_scope_leave_for_v3(transform_scope)
-			if retained_transform_prepare_scope != unsafe { nil } {
-				// The preparation arena backs only a few thousand lowered node texts.
-				// Publish those into the compilation arena and release the arena now
-				// instead of keeping its index scratch alive through codegen.
-				release_transform_prepare_scope(mut a, retained_transform_prepare_scope)
+			if retained_transform_prepare_scope != unsafe { nil }
+				|| retained_transform_prescan_scopes.len > 0 {
+				// The preparation and pre-scan arenas back only a few thousand lowered
+				// node texts. Publish those into the compilation arena and release the
+				// arenas now instead of keeping their index scratch alive through codegen.
+				mut helper_scopes := []voidptr{cap: retained_transform_prescan_scopes.len + 1}
+				if retained_transform_prepare_scope != unsafe { nil } {
+					helper_scopes << retained_transform_prepare_scope
+				}
+				helper_scopes << retained_transform_prescan_scopes
+				release_transform_helper_scopes(mut a, helper_scopes)
 				retained_transform_prepare_scope = unsafe { nil }
+				retained_transform_prescan_scopes = []voidptr{}
 			}
 			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
 				&& !cache_state.manager.enabled && retained_transform_regions.len == 0

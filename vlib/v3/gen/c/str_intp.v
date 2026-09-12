@@ -391,20 +391,29 @@ fn (mut g FlatGen) string_literals_from(start int) {
 		mut literals := g.str_lits[start..].clone()
 		literals.sort()
 		for s in literals {
-			i := g.str_lit_ids[s]
-			escaped := c_escape(s)
-			g.writeln('static const string _str_${i} = {"${escaped}", ${s.len}, 1};')
+			g.write_string_literal_def(g.str_lit_ids[s], s)
 		}
 	} else {
 		for i := start; i < g.str_lits.len; i++ {
-			s := g.str_lits[i]
-			escaped := c_escape(s)
-			g.writeln('static const string _str_${i} = {"${escaped}", ${s.len}, 1};')
+			g.write_string_literal_def(i, g.str_lits[i])
 		}
 	}
 	if g.str_lits.len > start {
 		g.writeln('')
 	}
+}
+
+// write_string_literal_def emits one literal table entry straight into the
+// output builder: escaping into a temporary and interpolating the line would
+// leave two copies of every literal behind in the cgen arena.
+fn (mut g FlatGen) write_string_literal_def(id int, s string) {
+	g.write('static const string _str_')
+	g.sb.write_decimal(i64(id))
+	g.sb.write_string(' = {"')
+	c_escape_into(mut g.sb, s)
+	g.sb.write_string('", ')
+	g.sb.write_decimal(i64(s.len))
+	g.writeln(', 1};')
 }
 
 // intern_string supports intern string handling for FlatGen.

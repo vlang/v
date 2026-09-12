@@ -35,6 +35,7 @@ struct FlatCgenCostArgs {
 mut:
 	refs  map[string]bool
 	cands []FlatCgenPrepCandidate
+	scope voidptr // disposable arena holding refs/cands until the master replays them
 }
 
 struct FlatCgenDynamicArgs {
@@ -211,6 +212,15 @@ $if !windows {
 
 	fn flat_cgen_cost_thread(arg voidptr) voidptr {
 		mut a := unsafe { &FlatCgenCostArgs(arg) }
+		// Costs are written into the shared item array; the collected refs and
+		// candidates are replayed by the master, which then frees this arena.
+		a.scope = cgen_worker_scope_begin(true)
+		flat_cgen_cost_range(mut a)
+		cgen_worker_scope_leave(a.scope)
+		return unsafe { nil }
+	}
+
+	fn flat_cgen_cost_range(mut a FlatCgenCostArgs) {
 		mut items := unsafe { &[]FlatFnGenItem(a.items_ptr) }
 		mut stack := []flat.NodeId{cap: 256}
 		if !isnil(a.g) {
@@ -236,7 +246,7 @@ $if !windows {
 					items[idx].skip_prelude_scan = !needs_prelude_scan
 				}
 			}
-			return unsafe { nil }
+			return
 		}
 		for idx in a.start .. a.end {
 			unsafe {
@@ -245,7 +255,7 @@ $if !windows {
 				items[idx].skip_prelude_scan = !needs_prelude_scan
 			}
 		}
-		return unsafe { nil }
+		return
 	}
 
 	fn parallel_type_decls_thread(arg voidptr) voidptr {
@@ -932,6 +942,9 @@ fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 			g.prep_costs_pending = false
 		}
 		g.prep_externs_pending = false
+		for arg in args {
+			cgen_worker_scope_free(arg.scope)
+		}
 	}
 }
 
@@ -1478,18 +1491,24 @@ fn (mut g FlatGen) publish_fixed_array_support(mut worker FlatGen) {
 }
 
 fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
-	g.needed_optional_types = worker.needed_optional_types.move()
 	g.optional_types_ready = worker.optional_types_ready
-	g.multi_return_types = worker.multi_return_types
-	g.multi_return_type_names = worker.multi_return_type_names.move()
 	g.multi_return_types_ready = worker.multi_return_types_ready
 	g.decl_types_ready = worker.decl_types_ready
 	g.parallel_worker_scopes << worker.parallel_worker_scopes
 	worker.parallel_worker_scopes = []voidptr{}
 	if worker.worker_scope != unsafe { nil } {
-		g.parallel_worker_scopes << worker.worker_scope
+		// Publish owned copies of the three result tables and release the
+		// signature scan's arena instead of keeping it resident through emission.
+		g.needed_optional_types = clone_cgen_string_map(worker.needed_optional_types)
+		g.multi_return_types = types.clone_owned_types(worker.multi_return_types)
+		g.multi_return_type_names = clone_cgen_string_bool_map(worker.multi_return_type_names)
+		cgen_worker_scope_free(worker.worker_scope)
 		worker.worker_scope = unsafe { nil }
+		return
 	}
+	g.needed_optional_types = worker.needed_optional_types.move()
+	g.multi_return_types = worker.multi_return_types
+	g.multi_return_type_names = worker.multi_return_type_names.move()
 }
 
 fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
@@ -1509,15 +1528,30 @@ fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
 			g.interfaces[name.clone()] = methods.clone()
 		}
 	}
-	g.interface_boxed_types = worker.interface_boxed_types.move()
 	g.interface_boxed_types_done = worker.interface_boxed_types_done
+	if worker.worker_scope != unsafe { nil } {
+		// Same trade as the other scan publishers: copy the small result tables
+		// and free the scan arena now.
+		g.interface_boxed_types = clone_cgen_string_bool_map(worker.interface_boxed_types)
+		g.iface_impls = clone_cgen_string_list_map(worker.iface_impls)
+		g.iface_type_ids = clone_cgen_string_int_map(worker.iface_type_ids)
+		g.ierror_method_emit_names = clone_cgen_string_bool_map(worker.ierror_method_emit_names)
+		cgen_worker_scope_free(worker.worker_scope)
+		worker.worker_scope = unsafe { nil }
+		return
+	}
+	g.interface_boxed_types = worker.interface_boxed_types.move()
 	g.iface_impls = worker.iface_impls.move()
 	g.iface_type_ids = worker.iface_type_ids.move()
 	g.ierror_method_emit_names = worker.ierror_method_emit_names.move()
-	if worker.worker_scope != unsafe { nil } {
-		g.parallel_worker_scopes << worker.worker_scope
-		worker.worker_scope = unsafe { nil }
+}
+
+fn clone_cgen_string_list_map(values map[string][]string) map[string][]string {
+	mut cloned := map[string][]string{}
+	for key, list in values {
+		cloned[key.clone()] = clone_cgen_string_list(list)
 	}
+	return cloned
 }
 
 // gen_fns_dispatch emits fns dispatch output for c.
@@ -1844,7 +1878,7 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 		next_target := total_cost * (chunk_idx + 1) / n_jobs
 		if current.len > 0 && consumed_cost >= next_target && chunks_left > 1
 			&& remaining_items >= chunks_left {
-			chunks << current
+			chunks << moved_items(current)
 			current = []FlatFnGenItem{}
 			chunk_idx++
 			chunks_left--
@@ -1853,9 +1887,16 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 		consumed_cost += item.cost
 	}
 	if current.len > 0 {
-		chunks << current
+		chunks << moved_items(current)
 	}
 	return chunks
+}
+
+// moved_items returns its argument unchanged so the caller can append a
+// finished chunk without the implicit deep clone of an addressable array.
+@[inline]
+fn moved_items(items []FlatFnGenItem) []FlatFnGenItem {
+	return items
 }
 
 // stripe_flat_cgen_items mixes several narrow, cost-balanced source ranges

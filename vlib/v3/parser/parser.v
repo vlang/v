@@ -199,8 +199,10 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases: map[string]bool{}
 		a: &flat.FlatAst{
-			nodes: []flat.Node{cap: 256}
-			children: []flat.NodeId{cap: 512}
+			// Parallel-parse workers reserve for their chunk before parsing and
+			// the self-host reserves the whole AST, so start without capacity.
+			nodes: []flat.Node{}
+			children: []flat.NodeId{}
 			disabled_fns: map[string]bool{}
 			export_fn_names: map[string]string{}
 			source_files: map[int]&token.File{}

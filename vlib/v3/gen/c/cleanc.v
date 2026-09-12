@@ -789,6 +789,20 @@ fn (mut g FlatGen) declare_ierror_pointer_alias(name string, needs_copy bool) {
 	if name.len == 0 {
 		return
 	}
+	if !needs_copy {
+		// An absent entry already reads as "no copy needed". Only record the
+		// negative when an enclosing scope tracks an alias it must shadow.
+		mut any_tracked := false
+		for aliases in g.ierror_stack_pointer_aliases {
+			if aliases.len > 0 {
+				any_tracked = true
+				break
+			}
+		}
+		if !any_tracked {
+			return
+		}
+	}
 	if g.ierror_stack_pointer_aliases.len == 0 {
 		g.ierror_stack_pointer_aliases << map[string]bool{}
 	}
@@ -4443,19 +4457,25 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool, deferred_sign
 	if incremental && fn_count < g.incremental_fn_names.len {
 		fn_count = g.incremental_fn_names.len
 	}
-	fn_alias_count := u32(fn_count * 7 + 1024)
+	// Self-host declarations register about two spellings per function; the
+	// exact per-registration reservation below covers the rest.
+	fn_alias_count := u32(fn_count * 3 + 1024)
 	fn_name_count := u32(fn_count * 2 + 1024)
+	// Node indexes hold about one entry per emitted function and variadic
+	// registrations are rare; their metadata tables are zeroed, so oversized
+	// reservations cost resident memory.
+	fn_node_count := u32(fn_count / 2 + 1024)
 	if !deferred_signatures {
 		g.fn_decl_param_types.reserve(fn_alias_count)
-		g.fn_decl_variadic.reserve(fn_name_count)
-		g.fn_decl_shared_params.reserve(fn_alias_count)
+		g.fn_decl_variadic.reserve(u32(fn_count / 4 + 256))
+		g.fn_decl_shared_params.reserve(fn_name_count)
 		g.fn_decl_mut_receivers.reserve(fn_name_count)
 		g.fn_decl_ret_types.reserve(fn_alias_count)
 	}
 	g.fn_decl_variadic_short_counts.reserve(u32(fn_count + 256))
-	g.fn_decl_nodes_by_name.reserve(fn_name_count)
+	g.fn_decl_nodes_by_name.reserve(fn_node_count)
 	g.fn_decl_nodes_by_short.reserve(u32(fn_count + 256))
-	g.fn_decl_nodes_by_module_short.reserve(fn_name_count)
+	g.fn_decl_nodes_by_module_short.reserve(fn_node_count)
 	g.module_init_fn_modules.reserve(u32(fn_count / 8 + 64))
 	g.module_cleanup_fn_modules.reserve(u32(fn_count / 8 + 64))
 	g.struct_decl_infos.reserve(u32(struct_count * 2 + 256))
@@ -13136,8 +13156,12 @@ fn (mut g FlatGen) const_address_can_force_fixed_storage(const_name string) bool
 
 fn fixed_storage_node_scan_thread(arg voidptr) voidptr {
 	mut scan := unsafe { &FixedStorageNodeScanArgs(arg) }
+	// The scan's item lists and scratch live in a disposable arena that the
+	// caller releases once it has copied the items out.
+	scope := cgen_worker_scope_begin(true)
 	scan.g.scan_fixed_storage_node_range(mut scan)
-	return unsafe { nil }
+	cgen_worker_scope_leave(scope)
+	return scope
 }
 
 fn (g &FlatGen) scan_fixed_storage_node_range(mut scan FixedStorageNodeScanArgs) {
@@ -13322,7 +13346,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 		scan_threads << spawn fixed_storage_node_scan_thread(unsafe { voidptr(&scans[scan_idx]) })
 	}
 	g.scan_fixed_storage_node_range(mut scans[0])
-	scan_threads.wait()
+	scan_scopes := scan_threads.wait()
 	for scan in scans {
 		address_items << scan.address_items
 		ref_items << scan.ref_items
@@ -13333,6 +13357,9 @@ fn (mut g FlatGen) collect_fixed_storage_consts(allow_parallel bool) {
 				fixed_safe_refs[id] = true
 			}
 		}
+	}
+	for scope in scan_scopes {
+		cgen_worker_scope_free(scope)
 	}
 	g.timing_profile('  [ttime]         fs node scan ${f64(fssw.elapsed().microseconds()) / 1000.0:7.2f} ms (refs: ${ref_items.len}, calls: ${call_base_items.len}, indexes: ${index_base_items.len})')
 	fssw.restart()

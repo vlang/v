@@ -504,7 +504,13 @@ mut:
 	inplace_child_log           []InplaceChildRewrite
 	worker_scope                voidptr
 	// Helper merge tables are disposable; published AST text uses their parent arena.
-	merge_scratch_scope     voidptr
+	merge_scratch_scope voidptr
+	// Arenas of the prepare-time index helpers; the driver frees them with the
+	// preparation arena after canonicalizing the node texts they back. Only the
+	// self-host prepared path collects them, so the helper threads scope their
+	// indexes only when this is set.
+	retain_prescan_scopes   bool
+	prescan_scopes          []voidptr
 	scoped_base_nodes       int = -1
 	scoped_owned_base_nodes map[int]bool
 	scoped_owned_base_log   []flat.NodeId
@@ -889,6 +895,22 @@ mut:
 	ready       bool
 }
 
+// add_prescan_scope records a helper-index arena returned by a pre-scan thread.
+fn (mut t Transformer) add_prescan_scope(scope voidptr) {
+	if scope != unsafe { nil } {
+		t.prescan_scopes << scope
+	}
+}
+
+// take_prescan_scopes transfers the pre-scan helper arenas to the driver. They
+// back index tables and possibly lowered node text, so they are released only
+// together with the preparation arena.
+pub fn (mut prepared PreparedSelfhostTransform) take_prescan_scopes() []voidptr {
+	scopes := prepared.transformer.prescan_scopes
+	prepared.transformer.prescan_scopes = []voidptr{}
+	return scopes
+}
+
 // take_scope transfers ownership of the preparation arena to the driver. The
 // arena can back lowered AST text, so it must remain alive through codegen.
 pub fn (mut prepared PreparedSelfhostTransform) take_scope() voidptr {
@@ -909,6 +931,7 @@ pub fn prepare_selfhost_transform(a &flat.FlatAst, tc &types.TypeChecker, enable
 	prep_tc := tc.fork_for_parallel_transform(a)
 	mut t := new_transformer_view(a, prep_tc, map[string]bool{})
 	configure_transformer(mut t, true, true, true, true, false, unsafe { nil })
+	t.retain_prescan_scopes = true
 	t.prepare_with_pre_scans()
 	// This whole-AST scan is independent of reachability and otherwise leaves
 	// the persistent worker pool idle at the start of transform.
@@ -2341,11 +2364,10 @@ fn (mut t Transformer) set_node_generic_params(idx int, gparams []string) {
 @[inline]
 fn (mut t Transformer) mark_scoped_owned_base_node(idx int) {
 	if t.scope_parallel_workers && idx >= 0 && idx < t.scoped_base_nodes {
-		if t.scoped_base_log_active {
-			t.scoped_owned_base_log << flat.NodeId(idx)
-		} else {
-			t.scoped_owned_base_nodes[idx] = true
-		}
+		// Every consumer tolerates repeated ids (promotion and cloning are
+		// ownership-guarded no-ops the second time), so a compact append-only
+		// log replaces the per-node map entries in the retained stage arena.
+		t.scoped_owned_base_log << flat.NodeId(idx)
 	}
 }
 
