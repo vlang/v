@@ -9242,6 +9242,18 @@ fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) 
 		}
 		return true
 	}
+	if clean is Map {
+		if tc.interface_abstract_method_names(expected.name).len > 0 {
+			return false
+		}
+		for field in tc.interface_field_list(expected.name) {
+			if field.name != 'len' || !tc.type_compatible(Type(int_), field.typ)
+				|| !tc.type_compatible(field.typ, Type(int_)) {
+				return false
+			}
+		}
+		return true
+	}
 	concrete_name := method_type_name(clean)
 	if concrete_name.len == 0 {
 		return false
@@ -9652,7 +9664,11 @@ fn (tc &TypeChecker) interface_impl_candidate_names() map[string]bool {
 		candidates[name] = true
 	}
 	for name, _ in tc.structs {
-		candidates[interface_impl_candidate_name(name)] = true
+		candidate := interface_impl_candidate_name(name)
+		// builtin.VMapData is private map storage and cannot be an interface value.
+		if name != 'VMapData' || tc.struct_modules[name] != 'builtin' {
+			candidates[candidate] = true
+		}
 	}
 	for name, _ in tc.enum_names {
 		candidates[interface_impl_candidate_name(name)] = true
@@ -9684,7 +9700,10 @@ fn (tc &TypeChecker) interface_impl_names_uncached_after(iface_name string, excl
 		}
 	}
 	for name, _ in tc.structs {
-		add_interface_impl_candidate(mut candidate_set, interface_impl_candidate_name(name), excluded)
+		candidate := interface_impl_candidate_name(name)
+		if name != 'VMapData' || tc.struct_modules[name] != 'builtin' {
+			add_interface_impl_candidate(mut candidate_set, candidate, excluded)
+		}
 	}
 	if has_no_requirements || accepts_implicit_str {
 		for name, _ in tc.enum_names {

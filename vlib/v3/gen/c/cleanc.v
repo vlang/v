@@ -14903,10 +14903,23 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(')')
 				}
 				g.write('.len')
-			} else if node.value == 'len' && (base_type_clean is types.Array || base_type_clean is types.Map || (base_type_clean is types.Struct && base_type_clean.name in [
-				'array',
-				'map',
-			])) {
+			} else if node.value == 'len' && (base_type_clean is types.Map
+				|| (base_type_clean is types.Struct && base_type_clean.name == 'map')) {
+				needs_paren := base.kind !in [.ident, .selector]
+				if needs_paren {
+					g.write('(')
+				}
+				g.gen_expr(base_id)
+				if needs_paren {
+					g.write(')')
+				}
+				if base_type0 is types.Pointer {
+					g.write('->data->count')
+				} else {
+					g.write('.data->count')
+				}
+			} else if node.value == 'len' && (base_type_clean is types.Array
+				|| (base_type_clean is types.Struct && base_type_clean.name == 'array')) {
 				// Array accessors such as `last()` are calls in the flat tree, but
 				// emit a dereference expression in C. Parenthesize that value before
 				// selecting `.len`, otherwise the member access binds inside `array_get`.
@@ -15159,6 +15172,20 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else if base_type is types.Map {
 				c_key := g.map_key_temp_c_type(base_type.key_type)
 				c_val := g.value_c_type(base_type.value_type)
+				if default_init_unalias_type(base_type.value_type) is types.Map {
+					map_tmp := g.tmp_name()
+					value_tmp := g.tmp_name()
+					zero_tmp := g.tmp_name()
+					// Keep the allocating map default behind the missing-key branch.
+					g.write('(*({ map* ${map_tmp} = &((map[]){')
+					g.gen_expr(base_id)
+					g.write('}[0]); void* ${value_tmp} = map__get_check(${map_tmp}, &(${c_key}[]){')
+					g.gen_expr(g.a.child(node, 1))
+					g.write('}); ${c_val} ${zero_tmp}; if (!${value_tmp}) { ${zero_tmp} = ')
+					g.gen_default_value_for_type(base_type.value_type)
+					g.write('; ${value_tmp} = &${zero_tmp}; } (${c_val}*)${value_tmp}; }))')
+					return
+				}
 				// The map expression may be a value-returning call. Put it in a compound
 				// literal so C can take a stable address for the duration of map__get.
 				g.write('(*(${c_val}*)map__get(&((map[]){')
@@ -16286,14 +16313,9 @@ fn (mut g FlatGen) gen_map_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id f
 	if clean_lhs !is types.Map || map_str_clean_type(rhs_type) !is types.Map {
 		return false
 	}
-	// v3_map_map_eq compares value payloads it does not recognize bytewise. That
-	// is wrong whenever a value's semantic equality differs from its bytes — a
-	// struct/sum type/fixed array holding strings, arrays or maps. The
-	// transformer lowers those maps directly to element-wise comparisons; only
-	// fall back to the raw helper for value types it compares correctly (its
-	// size dispatch handles primitives, pointers, strings, and dynamic maps and
-	// arrays of those). Otherwise leave the comparison unlowered rather than
-	// emit a silently incorrect result.
+	// The runtime helper has no semantic type descriptor. The transformer lowers
+	// strings and containers to typed comparisons; only bytewise scalar values
+	// may reach this fallback.
 	if !g.map_value_bytewise_eq_safe((clean_lhs as types.Map).value_type) {
 		return false
 	}
@@ -16308,38 +16330,25 @@ fn (mut g FlatGen) gen_map_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id f
 	return true
 }
 
-// map_value_bytewise_eq_safe reports whether v3_map_map_eq compares a map value
-// of this type correctly. Its size dispatch handles primitive/pointer/string
-// values and recurses through dynamic maps and arrays of such values, but
-// falls back to a raw memcmp for anything else (structs, sum types, fixed
-// arrays, interfaces, options), which breaks semantic equality.
+// map_value_bytewise_eq_safe reports whether v3_map_map_eq can compare a map
+// value without semantic type information. Container and string values are
+// lowered to typed comparisons by the transformer; the runtime fallback must
+// never infer their type from a byte count.
 fn (g &FlatGen) map_value_bytewise_eq_safe(value_type types.Type) bool {
 	clean := default_init_unalias_type(value_type)
-	if clean is types.Map {
-		// v3_map_map_eq recurses into map values through itself, so a nested map
-		// is safe as long as its own value type is.
-		return g.map_value_bytewise_eq_safe(clean.value_type)
-	}
-	if clean is types.Array {
-		// The runtime helper's Array case only compares string elements
-		// (array_eq_string) or primitive/pointer elements (array_eq_raw)
-		// correctly; arrays of maps, structs, or nested arrays fall through to a
-		// bytewise element compare of their descriptors. Only flat element types
-		// are safe here — anything else is left to the transform's element-wise
-		// path.
-		return g.map_scalar_bytewise_eq_safe(clean.elem_type)
-	}
 	return g.map_scalar_bytewise_eq_safe(clean)
 }
 
 // map_scalar_bytewise_eq_safe reports whether a bytewise (memcmp/array_eq_raw)
 // comparison of a single value of this type matches its semantic equality.
-// True only for types with no indirection to follow: primitives, enums,
-// pointers (compared by address), and strings (which v3_map_map_eq / array
-// helpers special-case).
+// True only for types with no indirection or representation-level equality
+// differences: integer/boolean primitives, enums, pointers, and nil.
 fn (g &FlatGen) map_scalar_bytewise_eq_safe(t types.Type) bool {
 	clean := default_init_unalias_type(t)
-	return clean is types.Primitive || clean is types.Char || clean is types.Rune || clean is types.ISize || clean is types.USize || clean is types.Enum || clean is types.Pointer || clean is types.String || clean is types.Nil
+	if clean is types.Primitive {
+		return clean.props.has(.boolean) || clean.props.has(.integer)
+	}
+	return clean is types.Char || clean is types.Rune || clean is types.ISize || clean is types.USize || clean is types.Enum || clean is types.Pointer || clean is types.Nil
 }
 
 fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
@@ -19327,6 +19336,11 @@ fn (mut g FlatGen) heap_tracking_fallback_decls() {
 	}
 }
 
+fn (mut g FlatGen) map_equality_fallback_decls() {
+	g.writeln('static inline bool v3_map_value_eq(void* a, void* b, int value_bytes) { return memcmp(a, b, value_bytes) == 0; }')
+	g.writeln('static inline bool v3_map_map_eq(map a, map b) { if (a.data->count != b.data->count) return false; for (int i = 0; i < a.data->key_values.len; ++i) { if (a.data->key_values.deletes != 0 && a.data->key_values.all_deleted != 0 && a.data->key_values.all_deleted[i] != 0) continue; void* ak = (void*)(a.data->key_values.keys + i * a.data->key_values.key_bytes); if (!map__exists(&b, ak)) return false; void* av = (void*)(a.data->key_values.values + i * a.data->key_values.value_bytes); void* bv = map__get(&b, ak, av); if (!v3_map_value_eq(av, bv, a.data->value_bytes)) return false; } return true; }')
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -19484,14 +19498,14 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('}')
 	g.writeln('static inline string v3_map_str(map m, int key_kind, int val_kind, int val_fixed_len) {')
 	g.writeln('\tstring out = v3_c_lit("{", 1); bool first = true;')
-	g.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')
-	g.writeln('\t\tif (m.key_values.deletes != 0 && m.key_values.all_deleted != 0 && m.key_values.all_deleted[i] != 0) continue;')
+	g.writeln('\tfor (int i = 0; i < m.data->key_values.len; ++i) {')
+	g.writeln('\t\tif (m.data->key_values.deletes != 0 && m.data->key_values.all_deleted != 0 && m.data->key_values.all_deleted[i] != 0) continue;')
 	g.writeln('\t\tif (!first) out = string__plus(out, v3_c_lit(", ", 2));')
-	g.writeln('\t\tvoid* key = (void*)(m.key_values.keys + i * m.key_values.key_bytes);')
-	g.writeln('\t\tvoid* val = (void*)(m.key_values.values + i * m.key_values.value_bytes);')
-	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(key, key_kind, m.key_values.key_bytes, 0));')
+	g.writeln('\t\tvoid* key = (void*)(m.data->key_values.keys + i * m.data->key_values.key_bytes);')
+	g.writeln('\t\tvoid* val = (void*)(m.data->key_values.values + i * m.data->key_values.value_bytes);')
+	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(key, key_kind, m.data->key_values.key_bytes, 0));')
 	g.writeln('\t\tout = string__plus(out, v3_c_lit(": ", 2));')
-	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(val, val_kind, m.value_bytes, val_fixed_len));')
+	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(val, val_kind, m.data->value_bytes, val_fixed_len));')
 	g.writeln('\t\tfirst = false;')
 	g.writeln('\t}')
 	g.writeln('\treturn string__plus(out, v3_c_lit("}", 1));')
@@ -19511,9 +19525,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline bool array_eq_array(Array a, Array b, int depth) { if (a.len != b.len || a.element_size != b.element_size) return false; if (depth <= 1 || a.element_size != sizeof(Array)) { if (a.element_size == sizeof(string)) return array_eq_string(a, b); return array_eq_raw(a, b, a.element_size); } Array* ad = (Array*)a.data; Array* bd = (Array*)b.data; for (int i = 0; i < a.len; i++) { if (!array_eq_array(ad[i], bd[i], depth - 1)) return false; } return true; }')
 	g.writeln('void* map__get(map* m, void* key, void* zero);')
 	g.writeln('bool map__exists(map* m, void* key);')
-	g.writeln('static inline bool v3_map_map_eq(map a, map b);')
-	g.writeln('static inline bool v3_map_value_eq(void* a, void* b, int value_bytes) { if (value_bytes == sizeof(string)) { string sa = *(string*)a; string sb = *(string*)b; return sa.len == sb.len && (sa.len == 0 || memcmp(sa.str, sb.str, sa.len) == 0); } if (value_bytes == sizeof(map)) { return v3_map_map_eq(*(map*)a, *(map*)b); } if (value_bytes == sizeof(string) + sizeof(map)) { string sa = *(string*)a; string sb = *(string*)b; if (!(sa.len == sb.len && (sa.len == 0 || memcmp(sa.str, sb.str, sa.len) == 0))) return false; map ma = *(map*)((u8*)a + sizeof(string)); map mb = *(map*)((u8*)b + sizeof(string)); return v3_map_map_eq(ma, mb); } if (value_bytes == sizeof(Array)) { Array aa = *(Array*)a; Array bb = *(Array*)b; if (aa.element_size != bb.element_size) return false; if (aa.element_size == sizeof(string)) return array_eq_string(aa, bb); if (aa.element_size == sizeof(Array)) return array_eq_array(aa, bb, 8); return array_eq_raw(aa, bb, aa.element_size); } return memcmp(a, b, value_bytes) == 0; }')
-	g.writeln('static inline bool v3_map_map_eq(map a, map b) { if (a.len != b.len) return false; for (int i = 0; i < a.key_values.len; ++i) { if (a.key_values.deletes != 0 && a.key_values.all_deleted != 0 && a.key_values.all_deleted[i] != 0) continue; void* ak = (void*)(a.key_values.keys + i * a.key_values.key_bytes); if (!map__exists(&b, ak)) return false; void* av = (void*)(a.key_values.values + i * a.key_values.value_bytes); void* bv = map__get(&b, ak, av); if (!v3_map_value_eq(av, bv, a.value_bytes)) return false; } return true; }')
+	g.map_equality_fallback_decls()
 	g.writeln('static inline bool fixed_array_contains_string(const string* a, int len, string val) { for (int i = 0; i < len; i++) if (a[i].len == val.len && memcmp(a[i].str, val.str, val.len) == 0) return true; return false; }')
 	g.writeln('static inline bool fixed_array_contains_u8(const u8* a, int len, u8 val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')
 	g.writeln('static inline bool fixed_array_contains_int(const ${g.int_ct}* a, int len, ${g.int_ct} val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')

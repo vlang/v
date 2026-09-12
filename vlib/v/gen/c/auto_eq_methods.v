@@ -549,15 +549,19 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	ptr_value_styp := g.styp(value.typ)
 	g.definitions.writeln('${g.static_non_parallel}bool ${ptr_styp}_map_eq(${ptr_styp} a, ${ptr_styp} b);')
 
-	left_len := g.read_map_field_from_option(left.typ, 'len', 'a')
-	right_len := g.read_map_field_from_option(left.typ, 'len', 'b')
-	key_values := g.read_map_field_from_option(left.typ, 'key_values', 'a')
+	left_len := g.read_map_field_from_option(left.typ, 'data->count', 'a')
+	right_len := g.read_map_field_from_option(left.typ, 'data->count', 'b')
+	key_values := g.read_map_field_from_option(left.typ, 'data->key_values', 'a')
 
 	a := if left.typ.has_flag(.option) { g.read_map_from_option(left.typ, 'a') } else { '&a' }
 	b := if left.typ.has_flag(.option) { g.read_map_from_option(left.typ, 'b') } else { '&b' }
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('${g.static_non_parallel}inline bool ${ptr_styp}_map_eq(${ptr_styp} a, ${ptr_styp} b) {')
+	if left.typ.has_flag(.option) {
+		fn_builder.writeln('\tif (a.state != b.state) return false;')
+		fn_builder.writeln('\tif (a.state == 2 && a.state == b.state) return true;')
+	}
 	fn_builder.writeln('\tif (${left_len} != ${right_len}) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')

@@ -275,6 +275,20 @@ fn test_map_guard_without_observed_error_does_not_allocate_error() {
 	assert !body.contains('builtin___v_error(')
 }
 
+fn test_addressable_map_fallback_does_not_allocate_carrier() {
+	os.chdir(vroot) or {}
+	path := os.join_path(testdata_folder, 'map_value_lookup_lazy_default.vv')
+	cmd := '${os.quoted_path(vexe)} -old-compiler -o - ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !generated_c_uses_v3_codegen(compilation.output)
+	assert compilation.output.contains('Map_string_main__Entry _t')
+	assert compilation.output.contains('*ADDR(Map_string_main__Entry, ({')
+	assert compilation.output.contains('*((Map_string_main__Entry*)')
+	assert !compilation.output.contains('} (Map_string_main__Entry*)')
+	assert !compilation.output.contains('builtin__memdup(ADDR(Map_string_main__Entry')
+}
+
 fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	os.chdir(vroot) or {}
 	path := os.join_path(testdata_folder, 'or_block_err_var_collision.vv')

@@ -1,0 +1,6 @@
+builtin__map_get_check(_t2, _t3); _t4 ? *((Map_string_int*)_t4) : builtin__new_map
+if (!_t3) { _t3 = builtin__map_get_and_set(_t1, _t2, &(Map_string_int[]){ builtin__new_map
+Map_string_main__Entry _t
+builtin____new_array_with_map_default(2, 0, sizeof(Map_string_int)
+}[0], true)
+}[0], false)

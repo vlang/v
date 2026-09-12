@@ -1,0 +1,54 @@
+// vtest vflags: -old-compiler
+
+fn read_present(values map[string]map[string]int) int {
+	return values['present'].len
+}
+
+fn set_nested(mut values map[string]map[string]int) {
+	values['created']['answer'] = 42
+}
+
+struct Entry {
+mut:
+	answer int
+}
+
+fn set_field_on_missing_nested_map(mut values map[string]map[string]Entry) {
+	values['missing']['child'].answer = 42
+}
+
+fn main() {
+	mut values := {
+		'present': {
+			'answer': 7
+		}
+	}
+	for _ in 0 .. 100 {
+		assert read_present(values) == 1
+	}
+	set_nested(mut values)
+	assert values['created']['answer'] == 42
+
+	mut missing := map[string]map[string]Entry{}
+	set_field_on_missing_nested_map(mut missing)
+	assert missing.len == 0
+
+	mut defaults := []map[string]int{len: 2}
+	defaults[0]['changed'] = 1
+	assert defaults[1].len == 0
+
+	mut seed := {
+		'present': 1
+	}
+	initialized := []map[string]int{len: 2, init: seed}
+	seed['still_valid'] = 2
+	assert seed.len == 2
+	assert initialized[0].len == 1
+	assert initialized[1].len == 1
+
+	indexed := []map[string]int{len: 2, init: {
+		'index': index
+	}}
+	assert indexed[0]['index'] == 0
+	assert indexed[1]['index'] == 1
+}

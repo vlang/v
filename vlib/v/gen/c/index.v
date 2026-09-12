@@ -845,6 +845,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	} else if !gen_or && (g.inside_map_postfix || g.inside_map_infix
 		|| g.inside_map_index || g.inside_array_index || g.inside_left_shift
 		|| (g.is_assign_lhs && !g.is_arraymap_set && get_and_set_types)) {
+		if val_sym.kind == .map {
+			is_mutable_lookup := use_get_and_set || (g.is_assign_lhs && g.inside_map_index)
+			g.gen_map_value_lookup(node, key_type, val_type, val_type_str, left_is_ptr, left_is_shared, is_mutable_lookup, true)
+			return
+		}
 		zero := g.type_default(val_type)
 		if use_get_and_set {
 			g.write('(*(${val_type_str}*)builtin__map_get_and_set((map*)')
@@ -865,6 +870,10 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.is_assign_lhs = old_is_assign_lhs
 		g.write(', &(${val_type_str}[]){ ${zero} }))')
 	} else {
+		if !gen_or && val_sym.kind == .map {
+			g.gen_map_value_lookup(node, key_type, val_type, val_type_str, left_is_ptr, left_is_shared, false, false)
+			return
+		}
 		zero := g.type_default(val_type)
 		is_gen_or_and_assign_rhs := gen_or && !g.discard_or_result
 		cur_line := if is_gen_or_and_assign_rhs {
@@ -998,5 +1007,66 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 				}
 			}
 		}
+	}
+}
+
+// gen_map_value_lookup emits a lookup whose empty map fallback is constructed only
+// when the key is absent. A map default owns a heap-allocated header, so passing it
+// eagerly to map_get would leak the discarded header for every successful lookup.
+fn (mut g Gen) gen_map_value_lookup(node ast.IndexExpr, key_type ast.Type, val_type ast.Type, val_type_str string, left_is_ptr bool, left_is_shared bool, insert_if_missing bool, addressable bool) {
+	map_tmp := g.new_tmp_var()
+	key_tmp := g.new_tmp_var()
+	value_tmp := g.new_tmp_var()
+	if insert_if_missing {
+		g.write('(*({ map* ${map_tmp} = (map*)')
+	} else if addressable {
+		// The outer ADDR carrier keeps the copied value alive after the statement expression ends.
+		g.write('(*ADDR(${val_type_str}, ({ map* ${map_tmp} = (map*)')
+	} else {
+		g.write('({ map* ${map_tmp} = (map*)')
+	}
+	if insert_if_missing {
+		// Mutating lookups must retain the address of the original map.
+		if !left_is_ptr || left_is_shared {
+			g.write('&')
+		}
+		g.expr(node.left)
+		if left_is_shared {
+			g.write('->val')
+		}
+	} else {
+		// ADDR also gives value-returning map expressions a stable address.
+		if !left_is_ptr || left_is_shared {
+			g.write('ADDR(map, ')
+			g.expr(node.left)
+			if left_is_shared {
+				// Project the shared value before ADDR closes so it receives a map expression.
+				if left_is_ptr {
+					g.write('->val')
+				} else {
+					g.write('.val')
+				}
+			}
+			g.write(')')
+		} else {
+			g.write('(')
+			g.expr(node.left)
+			g.write(')')
+		}
+	}
+	g.write('; void* ${key_tmp} = ')
+	old_is_assign_lhs := g.is_assign_lhs
+	g.is_assign_lhs = false
+	g.write_map_key_arg(node.index, key_type)
+	g.is_assign_lhs = old_is_assign_lhs
+	g.write('; void* ${value_tmp} = builtin__map_get_check(${map_tmp}, ${key_tmp}); ')
+	zero := g.type_default(val_type)
+	if insert_if_missing {
+		g.write('if (!${value_tmp}) { ${value_tmp} = builtin__map_get_and_set(${map_tmp}, ${key_tmp}, &(${val_type_str}[]){ ${zero} }); } (${val_type_str}*)${value_tmp}; }))')
+	} else if addressable {
+		zero_tmp := g.new_tmp_var()
+		g.write('${val_type_str} ${zero_tmp}; if (!${value_tmp}) { ${zero_tmp} = ${zero}; ${value_tmp} = &${zero_tmp}; } *((${val_type_str}*)${value_tmp}); })))')
+	} else {
+		g.write('${value_tmp} ? *((${val_type_str}*)${value_tmp}) : ${zero}; })')
 	}
 }

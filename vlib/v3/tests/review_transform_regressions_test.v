@@ -4365,6 +4365,26 @@ fn test_nested_map_equality_uses_declared_value_type() {
 	assert out == 'true\ntrue'
 }
 
+fn test_map_value_lookup_constructs_default_only_for_missing_key() {
+	v3_bin := build_v3_review_transform()
+	source := "fn read_present(values map[string]map[string]int) int {\n\treturn values['present'].len\n}\n\nfn set_nested(mut values map[string]map[string]int) {\n\tvalues['created']['answer'] = 42\n}\n\nfn main() {\n\tmut values := {\n\t\t'present': {'answer': 7}\n\t}\n\tfor _ in 0 .. 100 {\n\t\tassert read_present(values) == 1\n\t}\n\tset_nested(mut values)\n\tprintln(int_str(values['created']['answer']))\n}\n"
+	c_source := gen_c_from_source(v3_bin, 'map_value_lookup_lazy_default_c', source)
+	read_body := c_fn_body(c_source, 'i64 read_present(map values) {')
+	read_check := read_body.index('map__get_check') or { -1 }
+	read_default := read_body.index('new_map(') or { -1 }
+	assert read_check >= 0, read_body
+	assert read_default > read_check, read_body
+	assert read_body[read_check..read_default].contains('?'), read_body
+	set_body := c_fn_body(c_source, 'void set_nested(map* values) {')
+	set_check := set_body.index('map__get_check') or { -1 }
+	set_default := set_body.index('new_map(') or { -1 }
+	assert set_check >= 0, set_body
+	assert set_default > set_check, set_body
+	set_guard := set_body[set_check..set_default]
+	assert set_guard.contains('?') || set_guard.contains('if (!'), set_body
+	assert run_good(v3_bin, 'map_value_lookup_lazy_default', source) == '42'
+}
+
 fn test_pointer_array_equality_uses_pointer_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'pointer_array_equality', 'struct Node {\n\tvalue int\n}\n\nfn main() {\n\tleft_node := Node{\n\t\tvalue: 5\n\t}\n\tright_node := Node{\n\t\tvalue: 5\n\t}\n\tleft_ptr := &left_node\n\tright_ptr := &right_node\n\tleft := [left_ptr]\n\tright := [right_ptr]\n\tsame := [left_ptr]\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n\tprintln(right_ptr in left)\n\tprintln(int_str(left.index(right_ptr)))\n}\n')
