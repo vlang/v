@@ -762,11 +762,7 @@ fn (g &Parser) render_mutable_map_value_pointer(tokens []FastcExpressionToken) ?
 		}
 		map_address = if map_type.ends_with('*') { map_source } else { '&(${map_source})' }
 	}
-	mut empty_value := '(${value_type}){0}'
-	if nested_key_type, nested_value_type := g.map_key_value_types(value_type) {
-		hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(nested_key_type)
-		empty_value = '(${value_type})builtin__new_map(sizeof(${fastc_runtime_c_type(nested_key_type)}), sizeof(${fastc_runtime_c_type(nested_value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn})'
-	}
+	empty_value := g.map_lookup_missing_value_expression(value_type)
 	return FastcRenderedExpression{
 		source: '({ ${key_type} __vf_nested_map_key = (${key_source}); ${value_type} *__vf_nested_map_value = (${value_type} *)builtin__map_get_check((map *)(${map_address}), &__vf_nested_map_key); if (__vf_nested_map_value == NULL) { ${value_type} __vf_nested_map_empty = ${empty_value}; builtin__map_set((map *)(${map_address}), &__vf_nested_map_key, &__vf_nested_map_empty); __vf_nested_map_value = (${value_type} *)builtin__map_get_check((map *)(${map_address}), &__vf_nested_map_key); } __vf_nested_map_value; })'
 		typ: value_type

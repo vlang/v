@@ -8305,6 +8305,14 @@ fn (tc &TypeChecker) enum_selector_type(node &flat.Node) ?Type {
 }
 
 // type_compatible returns type compatible data for TypeChecker.
+// slot_value_compatible exposes the checker's assignment-compatibility rule to
+// the transform. The transform lowers value slots long after checking, and a
+// generic specialization is the one case where it sees concrete types the
+// checker never judged, so it has to ask the same question the checker would.
+pub fn (tc &TypeChecker) slot_value_compatible(actual Type, expected Type) bool {
+	return tc.type_compatible(actual, expected)
+}
+
 fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	actual_raw := actual
 	expected_raw := expected
@@ -9242,6 +9250,18 @@ fn (tc &TypeChecker) type_implements_interface(actual Type, expected Interface) 
 		}
 		return true
 	}
+	if clean is Map {
+		if tc.interface_abstract_method_names(expected.name).len > 0 {
+			return false
+		}
+		for field in tc.interface_field_list(expected.name) {
+			if field.name != 'len' || !tc.type_compatible(Type(int_), field.typ)
+				|| !tc.type_compatible(field.typ, Type(int_)) {
+				return false
+			}
+		}
+		return true
+	}
 	concrete_name := method_type_name(clean)
 	if concrete_name.len == 0 {
 		return false
@@ -9652,7 +9672,11 @@ fn (tc &TypeChecker) interface_impl_candidate_names() map[string]bool {
 		candidates[name] = true
 	}
 	for name, _ in tc.structs {
-		candidates[interface_impl_candidate_name(name)] = true
+		candidate := interface_impl_candidate_name(name)
+		// builtin.VMapData is private map storage and cannot be an interface value.
+		if name != 'VMapData' || tc.struct_modules[name] != 'builtin' {
+			candidates[candidate] = true
+		}
 	}
 	for name, _ in tc.enum_names {
 		candidates[interface_impl_candidate_name(name)] = true
@@ -9684,7 +9708,10 @@ fn (tc &TypeChecker) interface_impl_names_uncached_after(iface_name string, excl
 		}
 	}
 	for name, _ in tc.structs {
-		add_interface_impl_candidate(mut candidate_set, interface_impl_candidate_name(name), excluded)
+		candidate := interface_impl_candidate_name(name)
+		if name != 'VMapData' || tc.struct_modules[name] != 'builtin' {
+			add_interface_impl_candidate(mut candidate_set, candidate, excluded)
+		}
 	}
 	if has_no_requirements || accepts_implicit_str {
 		for name, _ in tc.enum_names {
@@ -10649,12 +10676,20 @@ pub fn (mut tc TypeChecker) prepare_interface_requirement_indexes() {
 	// Default interface methods are stored with ordinary function signatures.
 	// Index them once instead of scanning the full signature table separately
 	// for every interface (and again for each embedded-interface traversal).
+	mut receiver_names := map[string]string{}
 	for key, _ in tc.fn_ret_types {
 		dot := key.last_index_u8(`.`)
 		if dot <= 0 {
 			continue
 		}
-		receiver := tc.interface_metadata_name(key[..dot])
+		raw_receiver := key[..dot]
+		// Most signatures repeat an ordinary struct receiver. Resolve its
+		// interface metadata once for this immutable declaration table.
+		receiver := receiver_names[raw_receiver] or {
+			resolved := tc.interface_metadata_name(raw_receiver)
+			receiver_names[raw_receiver] = resolved
+			resolved
+		}
 		mut methods := direct_methods[receiver] or { continue }
 		method := key[dot + 1..]
 		if method !in methods {
@@ -10979,16 +11014,16 @@ pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructFiel
 	return tc.struct_fields_for_init(struct_name)
 }
 
+@[direct_array_access]
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
 	if !isnil(tc.type_cache) {
 		cache := tc.type_cache
-		if cache.struct_field_last_state != 0
-			&& cache.struct_field_last_struct == usize(struct_name.str)
-			&& cache.struct_field_last_field == usize(field_name.str)
-			&& cache.struct_field_last_struct_n == struct_name.len
-			&& cache.struct_field_last_field_n == field_name.len {
-			if cache.struct_field_last_state > 0 {
-				return cache.struct_field_last_value
+		slot := struct_field_cache_slot(struct_name, field_name)
+		if cache.struct_field_recent_states[slot] != 0
+			&& cache.struct_field_recent_structs[slot] == struct_name
+			&& cache.struct_field_recent_fields[slot] == field_name {
+			if cache.struct_field_recent_states[slot] > 0 {
+				return cache.struct_field_recent_values[slot]
 			}
 			return none
 		}
@@ -10997,11 +11032,19 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 	if !isnil(tc.type_cache) {
 		mut fallback := tc.type_cache.base
 		for !isnil(fallback) {
+			if typ := fallback.struct_field_shared[cache_key] {
+				tc.remember_struct_field_type(struct_name, field_name, typ, true)
+				return typ
+			}
 			if typ := fallback.struct_field_entries[cache_key] {
 				tc.remember_struct_field_type(struct_name, field_name, typ, true)
 				return typ
 			}
 			if fallback.struct_field_misses[cache_key] {
+				tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
+				return none
+			}
+			if fallback.struct_field_complete[struct_name] {
 				tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
 				return none
 			}
@@ -11011,7 +11054,12 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 			tc.remember_struct_field_type(struct_name, field_name, typ, true)
 			return typ
 		}
-		if tc.type_cache.struct_field_misses[cache_key] {
+		if typ := tc.type_cache.struct_field_shared[cache_key] {
+			tc.remember_struct_field_type(struct_name, field_name, typ, true)
+			return typ
+		}
+		if tc.type_cache.struct_field_misses[cache_key]
+			|| tc.type_cache.struct_field_complete[struct_name] {
 			tc.remember_struct_field_type(struct_name, field_name, Type(void_), false)
 			return none
 		}
@@ -11033,19 +11081,33 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 	return none
 }
 
+// Sample both spellings; every cache hit compares the full names.
+@[direct_array_access; inline]
+fn struct_field_cache_slot(struct_name string, field_name string) int {
+	mut hash := u32(struct_name.len)
+	if struct_name.len > 0 {
+		hash = hash * 16777619 ^ u32(struct_name[struct_name.len / 2])
+		hash = hash * 16777619 ^ u32(struct_name[struct_name.len - 1])
+	}
+	hash = hash * 16777619 ^ u32(field_name.len)
+	if field_name.len > 0 {
+		hash = hash * 16777619 ^ u32(field_name[0])
+		hash = hash * 16777619 ^ u32(field_name[field_name.len - 1])
+	}
+	return int(hash & 255)
+}
+
+@[direct_array_access]
 fn (tc &TypeChecker) remember_struct_field_type(struct_name string, field_name string, typ Type, found bool) {
 	if isnil(tc.type_cache) {
 		return
 	}
 	mut cache := tc.type_cache
-	struct_ptr := usize(struct_name.str)
-	field_ptr := usize(field_name.str)
-	cache.struct_field_last_struct = struct_ptr
-	cache.struct_field_last_field = field_ptr
-	cache.struct_field_last_struct_n = struct_name.len
-	cache.struct_field_last_field_n = field_name.len
-	cache.struct_field_last_value = typ
-	cache.struct_field_last_state = if found { i8(1) } else { i8(-1) }
+	slot := struct_field_cache_slot(struct_name, field_name)
+	cache.struct_field_recent_structs[slot] = struct_name
+	cache.struct_field_recent_fields[slot] = field_name
+	cache.struct_field_recent_values[slot] = typ
+	cache.struct_field_recent_states[slot] = if found { i8(1) } else { i8(-1) }
 }
 
 // struct_field_type_name returns the canonical type name for a struct field.
@@ -12358,6 +12420,47 @@ fn (tc &TypeChecker) lexical_smartcast_type(id flat.NodeId, key string) ?Type {
 	return tc.lexical_smartcast_type_in_parents(id, key, false)
 }
 
+// Reject unrelated conditions before resolving their types or allocating bindings.
+// Identifier conditions can refer to a saved boolean expression, so stay conservative.
+fn (tc &TypeChecker) condition_may_smartcast_key(id flat.NodeId, key string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.ident {
+			return true
+		}
+		.paren, .prefix {
+			return node.children_count > 0
+				&& tc.condition_may_smartcast_key(tc.a.child(node, 0), key)
+		}
+		.is_expr {
+			return node.children_count > 0 && tc.expr_key(tc.a.child(node, 0)) == key
+		}
+		.infix {
+			if node.children_count < 2 {
+				return false
+			}
+			lhs := tc.a.child(node, 0)
+			rhs := tc.a.child(node, 1)
+			if node.op in [.logical_and, .logical_or] {
+				return tc.condition_may_smartcast_key(lhs, key) || tc.condition_may_smartcast_key(rhs, key)
+			}
+			if node.op in [.eq, .ne] {
+				if tc.a.node(rhs).kind in [.none_expr, .nil_literal] {
+					return tc.expr_key(lhs) == key
+				}
+				if tc.a.node(lhs).kind in [.none_expr, .nil_literal] {
+					return tc.expr_key(rhs) == key
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
 // Walk the parent chain once, returning the nearest valid narrowing. Separate
 // if/for/match walks repeated the same parent lookups and evaluated outer
 // conditions even when a closer branch already determined the type.
@@ -12383,7 +12486,7 @@ fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key strin
 					break
 				}
 			}
-			if branch_index >= 1 {
+			if branch_index >= 1 && tc.condition_may_smartcast_key(tc.a.child(parent, 0), key) {
 				cond_id := tc.a.child(parent, 0)
 				bindings := if branch_index == 1 {
 					tc.extract_smartcasts(cond_id)
@@ -12410,7 +12513,7 @@ fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key strin
 			// rest of the body (the dynamic pass deletes the smartcast on assignment).
 			// Only reconstruct the condition smartcast when no preceding body statement,
 			// nor the statement holding `id`, writes `key`.
-			if body_index >= 3 {
+			if body_index >= 3 && tc.condition_may_smartcast_key(tc.a.child(parent, 1), key) {
 				for binding in tc.extract_smartcasts(tc.a.child(parent, 1)) {
 					if binding.name == key
 						&& !tc.for_body_writes_key_before(parent, body_index, current, key) {
@@ -12805,21 +12908,21 @@ pub fn (tc &TypeChecker) parse_type_ref(typ string, text_id u16) Type {
 		}
 	}
 	mut cache := unsafe { tc.type_cache }
-	if cache.parse_text_id_set.len == 0 {
-		cache.parse_text_id_context = []u64{len: 65536}
-		cache.parse_text_id_values = unsafe { []Type{len: 65536} }
-		cache.parse_text_id_set = []bool{len: 65536}
+	if cache.parse_text_ids.len == 0 {
+		cache.parse_text_id_context = []u64{len: 4096}
+		cache.parse_text_id_values = unsafe { []Type{len: 4096} }
+		cache.parse_text_ids = []u16{len: 4096}
 	}
-	slot := int(text_id)
+	slot := int(text_id) & 4095
 	context_hash := parse_type_cache_context_hash(mut cache, tc.cur_file, tc.cur_module, tc.fn_context.generic_params, tc.resolution_type_mode)
-	if cache.parse_text_id_set[slot] && cache.parse_text_id_context[slot] == context_hash {
+	if cache.parse_text_ids[slot] == text_id && cache.parse_text_id_context[slot] == context_hash {
 		cache.parse_hits++
 		return cache.parse_text_id_values[slot]
 	}
 	result := tc.parse_type(typ)
 	cache.parse_text_id_context[slot] = context_hash
 	cache.parse_text_id_values[slot] = result
-	cache.parse_text_id_set[slot] = true
+	cache.parse_text_ids[slot] = text_id
 	return result
 }
 
@@ -14691,7 +14794,8 @@ fn (mut memo BodyResolveMemo) begin(lo int, hi int) {
 	memo.hi = hi
 	memo.call_generation++
 	if memo.types.len < span {
-		memo.types = []Type{len: span, init: Type(void_)}
+		// A type is read only after its filled byte is set for this function.
+		memo.types = unsafe { []Type{len: span} }
 		memo.filled = []u8{len: span}
 	} else {
 		unsafe { vmemset(memo.filled.data, 0, span) }
@@ -16224,18 +16328,22 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		}
 		if t.name.starts_with('C.') {
 			raw := t.name[2..]
-			if raw.starts_with('builtin__closure__') {
-				closure_name := 'closure.${raw['builtin__closure__'.len..]}'
-				if closure_name in tc.structs {
-					return tc.c_struct_type_name(closure_name)
-				}
-			}
 			// A struct declared `@[typedef] struct C.foo {}` is referenced by its
 			// typedef name (`foo`), never as `struct foo` — the C header (and v3's own
 			// emitted `typedef struct {...} foo;`) has no matching `struct foo` tag, so
 			// a `struct foo` reference would stay an incomplete type.
 			if t.name in tc.c_typedef_structs {
 				return raw
+			}
+			// Winsock exposes WSAData only as a struct tag; its typedef is WSADATA.
+			if raw == 'WSAData' || raw.starts_with('_') {
+				return 'struct ${raw}'
+			}
+			if raw.starts_with('builtin__closure__') {
+				closure_name := 'closure.${raw['builtin__closure__'.len..]}'
+				if closure_name in tc.structs {
+					return tc.c_struct_type_name(closure_name)
+				}
 			}
 			if raw.ends_with('_s')
 				|| (raw.len > 0 && raw[0] >= `a` && raw[0] <= `z` && !raw.ends_with('_t')) {

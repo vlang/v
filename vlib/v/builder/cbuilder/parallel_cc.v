@@ -20,13 +20,16 @@ fn parallel_cc_compiler_path(b &builder.Builder) string {
 	return cc_compiler
 }
 
-fn parallel_cc_uses_tcc(cc_kind builder.CC, ccompiler string) bool {
-	if cc_kind == .tcc {
-		return true
+fn parallel_cc_bundled_tcc_root(vroot string, ccompiler string) string {
+	if ccompiler == '' {
+		return ''
 	}
-	normalized := ccompiler.replace('\\', '/').to_lower()
-	return normalized == 'tcc' || normalized.ends_with('/tcc') || normalized.ends_with('/tcc.exe')
-		|| normalized.contains('/thirdparty/tcc/')
+	bundled_tcc := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compiler_path := os.find_abs_path_of_executable(ccompiler) or { ccompiler }
+	if os.real_path(compiler_path) != os.real_path(bundled_tcc) {
+		return ''
+	}
+	return os.dir(bundled_tcc)
 }
 
 fn parallel_cc_shell_safe_linker_arg(arg string) string {
@@ -101,17 +104,18 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 		out_files[i].close()
 	}
 
-	cc := b.quote_compiler_name(parallel_cc_compiler_path(b))
+	ccompiler := parallel_cc_compiler_path(b)
+	cc := b.quote_compiler_name(ccompiler)
 	mut compile_args := b.get_compile_args()
 	mut linker_args := b.get_linker_args()
-	if parallel_cc_uses_tcc(b.ccoptions.cc, parallel_cc_compiler_path(b)) {
+	tcc_root_dir := parallel_cc_bundled_tcc_root(b.pref.vroot, ccompiler)
+	if tcc_root_dir != '' {
 		// vlang/tcc can have its runtime objects under `${vroot}/thirdparty/tcc/lib/tcc/`
 		// or directly under `${vroot}/thirdparty/tcc/lib/`, while its system headers
 		// can be under that install dir or `${vroot}/thirdparty/tcc/include/`.
 		// `-B` controls tcc's include search (`${B}/include`) and `-L` adds a library search path,
 		// so pass absolute paths for both. This lets tcc find them regardless of the cwd from
 		// which v was invoked, without affecting how user-supplied relative flags are resolved.
-		tcc_root_dir := os.join_path(@VEXEROOT, 'thirdparty', 'tcc')
 		tcc_lib_dir := os.join_path(tcc_root_dir, 'lib')
 		tcc_nested_dir := os.join_path(tcc_lib_dir, 'tcc')
 		tcc_install_dir := if os.is_dir(tcc_nested_dir) { tcc_nested_dir } else { tcc_lib_dir }

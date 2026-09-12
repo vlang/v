@@ -2,6 +2,87 @@ module types
 
 import v3.flat
 
+fn test_seeded_field_types_preserve_direct_precedence_and_generic_substitution() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['Inner'] = [StructField{ name: 'value', typ: Type(bool_) }]
+	tc.structs['Outer'] = [
+		StructField{ name: 'Inner', typ: Type(Struct{ name: 'Inner' }), is_embed: true },
+		StructField{ name: 'value', typ: Type(int_) },
+		StructField{ name: 'value', typ: Type(string_) },
+	]
+	tc.structs['Box'] = [StructField{ name: 'item', typ: unknown_type('T') }]
+	tc.structs['Promoted'] = [
+		StructField{ name: 'Inner', typ: Type(Struct{ name: 'Inner' }) },
+	]
+	tc.struct_generic_params['Box'] = ['T']
+	mut expected := []string{}
+	for owner in ['Outer', 'Box[int]', 'Box[string]'] {
+		field := if owner == 'Outer' { 'value' } else { 'item' }
+		expected << tc.struct_field_type_name(owner, field)?
+	}
+	tc.clear_field_lookup_cache()
+	tc.cache_direct_struct_field_types()
+	tc.scope_parallel_check_workers = true
+	mut worker := tc.fork_for_parallel_check()
+	assert worker.type_cache.struct_field_shared.len == tc.type_cache.struct_field_shared.len
+	assert worker.type_cache.struct_field_shared.len > 0
+	assert worker.type_cache.struct_field_complete['Inner']
+	assert !worker.type_cache.struct_field_complete['Outer']
+	assert !worker.type_cache.struct_field_complete['Promoted']
+	assert worker.struct_field_type('Inner', 'missing') == none
+	assert worker.struct_field_type('Promoted', 'value')? == Type(bool_)
+	for i, owner in ['Outer', 'Box[int]', 'Box[string]'] {
+		field := if owner == 'Outer' { 'value' } else { 'item' }
+		assert worker.struct_field_type_name(owner, field)? == expected[i]
+	}
+	worker.clear_field_lookup_cache()
+	assert tc.type_cache.struct_field_shared.len > 0
+	assert tc.type_cache.struct_field_complete['Inner']
+	tc.structs['Inner'] << StructField{ name: 'missing', typ: Type(string_) }
+	tc.clear_field_lookup_cache()
+	assert tc.struct_field_type('Inner', 'missing')? == Type(string_)
+}
+
+fn test_field_cache_handles_collisions_missing_fields_and_invalidation() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['Box'] = [
+		StructField{ name: 'abba', typ: Type(int_) },
+		StructField{ name: 'acca', typ: Type(string_) },
+	]
+	for _ in 0 .. 3 {
+		assert tc.struct_field_type('Box'.clone(), 'abba'.clone())? == Type(int_)
+		assert tc.struct_field_type('Box', 'acca')? == Type(string_)
+		assert tc.struct_field_type('Box', 'adda') == none
+	}
+	tc.structs['Box'] = [StructField{ name: 'adda', typ: Type(bool_) }]
+	tc.clear_field_lookup_cache()
+	assert tc.struct_field_type('Box', 'adda')? == Type(bool_)
+	assert tc.struct_field_type('Box', 'acca') == none
+}
+
+fn test_type_text_id_cache_keeps_colliding_ids_and_file_context_distinct() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.type_cache.parse_enabled = true
+	tc.cur_module = 'app'
+	tc.cur_file = 'one.v'
+	tc.structs['one.Item'] = []StructField{}
+	tc.structs['two.Item'] = []StructField{}
+	tc.register_file_import('dep', 'one')
+	for _ in 0 .. 3 {
+		assert tc.parse_type_ref('dep.Item', 1).name() == 'one.Item'
+		assert tc.parse_type_ref('string', 4097).name() == 'string'
+		assert tc.parse_type_ref('bool', 65535).name() == 'bool'
+	}
+	tc.cur_file = 'two.v'
+	tc.register_file_import('dep', 'two')
+	assert tc.parse_type_ref('dep.Item', 1).name() == 'two.Item'
+	tc.cur_file = 'one.v'
+	assert tc.parse_type_ref('dep.Item', 1).name() == 'one.Item'
+}
+
 fn test_parse_type_cache_keeps_context_components_without_joined_keys() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

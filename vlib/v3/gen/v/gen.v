@@ -63,6 +63,9 @@ mut:
 	// suppress_mut skips the `mut ` prefix on an assignment (used for C-style
 	// `for` loop init clauses, whose variable the parser always marks mutable).
 	suppress_mut bool
+	// suppress_trailing_comments defers comments that belong after a surrounding
+	// delimiter, such as the opening brace of a loop.
+	suppress_trailing_comments int
 	// attrs maps a declaration node id to its `@[...]` attribute strings. The parser stores
 	// attributes on a separate floating `.directive` node rather than as a child, so they are
 	// collected up-front in collect_attrs. attr_sources retains formatter-only source groups.
@@ -81,7 +84,7 @@ pub:
 // Gen.new returns a fresh formatter.
 pub fn Gen.new() &Gen {
 	return &Gen{
-		out:    strings.new_builder(1000)
+		out: strings.new_builder(1000)
 		indent: -1
 	}
 }
@@ -109,6 +112,7 @@ pub fn (mut g Gen) reset() {
 	g.formatter_types = map[string]FormatterTypeSource{}
 	g.array_breaks.clear()
 	g.array_depth = 0
+	g.suppress_trailing_comments = 0
 }
 
 // format_file parses-independent convenience: format the file whose trailing
@@ -191,9 +195,9 @@ fn (mut g Gen) collect_formatter_types() {
 			continue
 		}
 		g.formatter_types[n.value] = FormatterTypeSource{
-			text:  source.trim_space()
+			text: source.trim_space()
 			start: n.pos.offset
-			end:   n.pos.end
+			end: n.pos.end
 		}
 	}
 }
@@ -470,12 +474,15 @@ fn (mut g Gen) emit_implied_imports() {
 fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 	mut imported := map[string]bool{}
 	mut declared := map[string]bool{}
-	for id in g.a.children_of(fnode) {
-		n := g.a.node(id)
-		if n.kind == .import_decl {
+	for n in g.a.nodes {
+		if n.pos.id == g.file_id && n.kind == .import_decl {
 			local_name := if n.typ.len > 0 { n.typ } else { n.value.all_after_last('.') }
 			imported[local_name] = true
-		} else if n.kind == .module_decl {
+		}
+	}
+	for id in g.a.children_of(fnode) {
+		n := g.a.node(id)
+		if n.kind == .module_decl {
 			declared[n.value.all_after_last('.')] = true
 		} else if n.kind == .fn_decl {
 			declared[n.value.all_after_last('.')] = true
@@ -837,7 +844,7 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 	}
 	if n.kind == .asm_stmt && int(id) in g.a.formatter_sources {
 		g.skip_comments_before(stmt_end + 1)
-	} else {
+	} else if g.suppress_trailing_comments == 0 {
 		g.emit_trailing_comments(stmt_end)
 	}
 	g.source_end = int_max(g.source_end, stmt_end)
@@ -860,7 +867,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		}
 		.char_literal {
 			if n.value.starts_with('c:') {
-				g.write(c_string_literal_text(n.value))
+				g.write(g.string_literal_text(n))
 			} else {
 				g.write(g.rune_literal(n))
 			}
@@ -1000,7 +1007,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write(' as ${g.type_text(n.value)}')
 		}
 		.is_expr {
-			if g.a.child_node(n, 0).is_mut {
+			if g.smartcast_operand_is_mut(g.a.child(n, 0)) {
 				g.write('mut ')
 			}
 			g.expr(g.a.child(n, 0))
@@ -1068,7 +1075,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 	}
 	if (n.kind == .sql_expr || n.typ == '__v3_formatter_raw') && int(id) in g.a.formatter_sources {
 		g.skip_comments_before(n.pos.end + 1)
-	} else {
+	} else if g.suppress_trailing_comments == 0 {
 		g.emit_trailing_comments(n.pos.end)
 	}
 	g.source_end = int_max(g.source_end, n.pos.end)
@@ -1294,8 +1301,8 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 
 fn (g &Gen) array_expr_width(id flat.NodeId) int {
 	n := g.a.node(id)
-	if n.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
-		.ident, .enum_val] {
+	if n.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .ident,
+		.enum_val] {
 		return n.value.len
 	}
 	if source := g.source_span(n.pos.offset, n.pos.end) {
@@ -1325,7 +1332,7 @@ fn (mut g Gen) prefix_expr(id flat.NodeId) {
 	cn := g.a.node(child)
 	// `!is` / `!in` are parsed as a `.not` prefix wrapping the is/in expression.
 	if n.op == .not && cn.kind == .is_expr {
-		if g.a.child_node(cn, 0).is_mut {
+		if g.smartcast_operand_is_mut(g.a.child(cn, 0)) {
 			g.write('mut ')
 		}
 		g.expr(g.a.child(cn, 0))
@@ -1428,9 +1435,15 @@ fn (g &Gen) call_args_expanded(id flat.NodeId, args []flat.NodeId) bool {
 fn call_args_start_on_new_line(source string) bool {
 	for i in 1 .. source.len {
 		match source[i] {
-			` `, `\t`, `\r` { continue }
-			`\n` { return true }
-			else { return false }
+			` `, `\t`, `\r` {
+				continue
+			}
+			`\n` {
+				return true
+			}
+			else {
+				return false
+			}
 		}
 	}
 	return false
@@ -1496,6 +1509,25 @@ fn (mut g Gen) call_arg(id flat.NodeId) {
 		g.write('mut ')
 	}
 	g.expr(id)
+}
+
+// smartcast_operand_is_mut reports whether the operand of `if mut X is T` /
+// `match mut X` was written with `mut`. The parser's prefix `mut` marks only the
+// node parsed immediately after it, so for `mut a.b` / `mut a[0]` the flag lives on
+// the leftmost `a`, not on the selector/index node the smartcast sees. Follow that
+// chain so the `mut` is not dropped (it would silently make the smartcast immutable).
+fn (g &Gen) smartcast_operand_is_mut(id flat.NodeId) bool {
+	mut cur := g.a.node(id)
+	for {
+		if cur.is_mut {
+			return true
+		}
+		if cur.kind !in [.selector, .index] || cur.children_count == 0 {
+			return false
+		}
+		cur = g.a.child_node(cur, 0)
+	}
+	return false
 }
 
 fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
@@ -1761,7 +1793,7 @@ fn (g &Gen) map_key_width(id flat.NodeId) int {
 		}
 		.char_literal {
 			if n.value.starts_with('c:') {
-				c_string_literal_text(n.value)
+				g.string_literal_text(n)
 			} else {
 				g.rune_literal(n)
 			}
@@ -2356,6 +2388,7 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 	in_init := g.in_init
 	g.in_init = true
 	g.write('for')
+	g.suppress_trailing_comments++
 	if n.value == 'c_style' {
 		g.write(' ')
 		if !g.is_empty(init) {
@@ -2379,8 +2412,23 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 	} else {
 		g.write(' ')
 	}
+	g.suppress_trailing_comments--
 	g.in_init = in_init
-	g.writeln('{')
+	g.write('{')
+	header_end := if !g.is_empty(post) {
+		g.rightmost_source_end(post)
+	} else if !g.is_empty(cond) {
+		g.rightmost_source_end(cond)
+	} else if !g.is_empty(init) {
+		g.rightmost_source_end(init)
+	} else {
+		n.pos.offset
+	}
+	body_start := if body.len > 0 { g.leftmost_source_start(body[0]) } else { n.pos.end }
+	g.emit_header_trailing_comments(header_end, body_start)
+	if !g.on_newline {
+		g.writeln('')
+	}
 	g.stmt_list_ids(body)
 	g.indent++
 	g.advance_source_end_before_pending_comment(n.pos.end)
@@ -2433,6 +2481,7 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 		!g.is_empty(v1) && mut_val
 	}
 	g.write('for ')
+	g.suppress_trailing_comments++
 	if g.is_empty(v1) {
 		if first_is_mut {
 			g.write('mut ')
@@ -2459,8 +2508,15 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 	} else {
 		g.expr(children[2])
 	}
+	g.suppress_trailing_comments--
 	body := unsafe { children[body_start..] }
-	g.writeln(' {')
+	g.write(' {')
+	header_end := g.rightmost_source_end(children[body_start - 1])
+	body_source_start := if body.len > 0 { g.leftmost_source_start(body[0]) } else { n.pos.end }
+	g.emit_header_trailing_comments(header_end, body_source_start)
+	if !g.on_newline {
+		g.writeln('')
+	}
 	g.stmt_list_ids(body)
 	g.indent++
 	g.advance_source_end_before_pending_comment(n.pos.end)
@@ -2504,14 +2560,30 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 	if children.len > 2 {
 		else_id := children[2]
 		en := g.a.node(else_id)
-		if en.kind == .if_expr {
+		// A comment between `}` and `else` (`}\n// why\nelse if cond {`) must stay on its
+		// own line: writing `} else ` first and letting the condition's leading-comment
+		// emission break the line would leave `} else if ` with a trailing space.
+		else_start := if en.kind == .if_expr && en.children_count > 0 {
+			g.a.child_node(en, 0).pos.offset
+		} else {
+			en.pos.offset
+		}
+		if !is_compact && g.has_comment_between(then_blk.pos.end, else_start) {
+			g.source_end = int_max(g.source_end, then_blk.pos.end)
+			g.emit_comments_before(else_start)
+			if !g.on_newline {
+				g.writeln('')
+			}
+			g.write('else ')
+		} else {
 			g.write(' else ')
+		}
+		if en.kind == .if_expr {
 			g.if_expr(else_id)
 		} else if is_compact {
-			g.write(' else ')
 			g.compact_expr_block(else_id)
 		} else {
-			g.writeln(' else {')
+			g.writeln('{')
 			g.source_end = int_max(g.source_end, en.pos.offset)
 			g.stmt_list_ids(g.a.children_of(en))
 			g.indent++
@@ -2572,8 +2644,7 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 		return
 	}
 	g.write('match ')
-	subject := g.a.node(children[0])
-	if subject.is_mut {
+	if g.smartcast_operand_is_mut(children[0]) {
 		g.write('mut ')
 	}
 	in_init := g.in_init
@@ -3015,7 +3086,12 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		g.write(' ')
 		g.write(receiver_type)
 		g.write(') ')
-		g.write(name.all_after_last('.'))
+		method_name := name.all_after_last('.')
+		g.write(method_name)
+		if method_name in ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '<=', '>', '>=', '|',
+			'^', '[]', '[]='] {
+			g.write(' ')
+		}
 	} else if n.kind == .c_fn_decl {
 		if name.starts_with('JS:') {
 			g.write('JS.${name[3..]}')
@@ -3858,7 +3934,8 @@ fn is_bare_formatter_attribute(part string) bool {
 // Helpers --------------------------------------------------------------------
 
 fn (g &Gen) stmt_source_span(n &flat.Node) (int, int) {
-	if n.kind in [.expr_stmt, .assign, .selector_assign, .index_assign, .decl_assign, .return_stmt, .assert_stmt]
+	if n.kind in [.expr_stmt, .assign, .selector_assign, .index_assign, .decl_assign, .return_stmt,
+		.assert_stmt]
 		&& n.children_count > 0 {
 		mut start := n.pos.offset
 		mut end := 0
@@ -3933,6 +4010,22 @@ fn (mut g Gen) emit_trailing_comments(end int) {
 		}
 		g.write_comment(comment.text)
 		g.source_end = comment.pos.end
+		g.comment_i++
+	}
+}
+
+fn (mut g Gen) emit_header_trailing_comments(header_end int, body_start int) {
+	for g.comment_i < g.comments.len {
+		comment := g.comments[g.comment_i]
+		if comment.pos.offset < header_end || comment.pos.offset >= body_start
+			|| g.source_line(comment.pos.offset) != g.source_line(header_end) {
+			return
+		}
+		if g.out.len > 0 && g.out.last_n(1) !in [' ', '\t', '\n'] {
+			g.write(' ')
+		}
+		g.write_comment(comment.text)
+		g.source_end = int_max(g.source_end, comment.pos.end)
 		g.comment_i++
 	}
 }
@@ -4187,11 +4280,34 @@ fn op_str(op flat.Op) string {
 }
 
 fn (g &Gen) string_literal_text(n &flat.Node) string {
-	if source := g.source_span(n.pos.offset, n.pos.end) {
-		// Physical newlines are part of a multiline literal's value and layout.
-		if source.contains('\n') || source.contains('\r') {
+	is_c_string := n.kind == .char_literal && n.value.starts_with('c:')
+	prefix := if is_c_string {
+		'c'
+	} else if n.typ.starts_with('raw:') {
+		'r'
+	} else if n.typ.starts_with('js:') {
+		'js'
+	} else {
+		''
+	}
+	mut start := n.pos.offset
+	// The scanner starts C-string spans at the quote, unlike raw and JS strings.
+	// Recover the adjacent prefix without changing scanner positions or synthesized nodes.
+	if is_c_string && start > 0 && start < g.source.len
+		&& g.source[start] in [`'`, `"`] && g.source[start - 1] == `c` {
+		start--
+	}
+	if source := g.source_span(start, n.pos.end) {
+		// Keep the original quotes and escapes, as gofmt does for string literals.
+		// Empty or non-literal spans can belong to synthesized nodes; use the fallback below.
+		if source.len >= prefix.len + 2 && source.starts_with(prefix)
+			&& source[prefix.len] in [`'`, `"`]
+			&& source[source.len - 1] == source[prefix.len] {
 			return source
 		}
+	}
+	if is_c_string {
+		return c_string_literal_text(n.value)
 	}
 	if n.typ.starts_with('raw:') {
 		quote := if n.typ.ends_with('"') { '"' } else { "'" }

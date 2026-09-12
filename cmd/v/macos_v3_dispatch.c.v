@@ -1,7 +1,7 @@
 module main
 
-// The V3 compiler is linked directly into `cmd/v` on macOS and Linux. The
-// command shell hands C-backend compilations to it in-process while leaving
+// The V3 compiler is linked directly into every native `cmd/v` build. The command
+// shell hands C-backend compilations to it in-process while leaving
 // tool commands and other backends on their existing external-tool paths.
 // When V3 fails an ordinary program compilation, the lean V3-only command
 // shell execs the separately built full V1 command binary instead of linking
@@ -74,22 +74,20 @@ fn retry_macos_v3_with_v1(state &MacosV3RetryState) {
 }
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
-	$if macos || linux {
-		needs_v1_compatibility := macos_v3_needs_v1_compatibility(command, prefs)
-		fallback_executable := macos_v3_v1_fallback_executable()
-		if macos_v3_needs_bootstrap_before_v1_fallback(prefs, needs_v1_compatibility, os.executable(), fallback_executable) {
-			all_args := util.join_env_vflags_and_os_args()
-			bootstrap_args := all_args[1..].filter(it != '-old-compiler')
-			launch_macos_v3_compiler(prefs, bootstrap_args)
+	needs_v1_compatibility := macos_v3_needs_v1_compatibility(command, prefs)
+	fallback_executable := macos_v3_v1_fallback_executable()
+	if macos_v3_needs_bootstrap_before_v1_fallback(prefs, needs_v1_compatibility, os.executable(), fallback_executable) {
+		all_args := util.join_env_vflags_and_os_args()
+		bootstrap_args := all_args[1..].filter(it != '-old-compiler')
+		launch_macos_v3_compiler(prefs, bootstrap_args)
+	}
+	if prefs.old_compiler || needs_v1_compatibility {
+		reason := if prefs.old_compiler {
+			'`-old-compiler` was requested'
+		} else {
+			'this build requires the V1 compatibility compiler'
 		}
-		if prefs.old_compiler || needs_v1_compatibility {
-			reason := if prefs.old_compiler {
-				'`-old-compiler` was requested'
-			} else {
-				'this build requires the V1 compatibility compiler'
-			}
-			launch_macos_v1_fallback(fallback_executable, os.args[1..], prefs.is_verbose, reason)
-		}
+		launch_macos_v1_fallback(fallback_executable, os.args[1..], prefs.is_verbose, reason)
 	}
 	if !is_macos_v3_relevant_command(command, prefs) {
 		return
@@ -103,13 +101,7 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 			eprintln('the embedded V3 compiler is unavailable on this target, and fallback is disabled.')
 			exit(1)
 		}
-		$if macos || linux {
-			// musl deliberately does not link V3 because its runtime still depends on
-			// glibc-only C interfaces. Use the same full external compatibility
-			// compiler that an ordinary failed V3 build would retry through.
-			launch_macos_v1_fallback(macos_v3_v1_fallback_executable(), os.args[1..], prefs.is_verbose, 'the embedded V3 compiler is unavailable on this target')
-		}
-		return
+		launch_macos_v1_fallback(fallback_executable, os.args[1..], prefs.is_verbose, 'the embedded V3 compiler is unavailable in this build')
 	}
 	if message := macos_v3_fastc_incompatibility(prefs) {
 		eprintln(message)
@@ -137,15 +129,19 @@ fn launch_macos_v1_fallback(executable string, args []string, is_verbose bool, r
 	if is_verbose || os.getenv('V3_CACHE_TRACE') != '' {
 		eprintln('${reason}; retrying with `${executable}`.')
 	}
-	os.execvp(executable, args) or {
+	os.execvp(executable, macos_v1_fallback_args(args)) or {
 		eprintln('failed to launch the V1 compatibility compiler `${executable}`: ${err}')
 		exit(1)
 	}
 	exit(1)
 }
 
+fn macos_v1_fallback_args(args []string) []string {
+	return args.filter(it !in [macos_v3_compat_c99_flag, macos_v3_internal_quiet_flag])
+}
+
 fn macos_v3_v1_fallback_executable() string {
-	return os.join_path(os.dir(pref.vexe_path()), macos_v3_v1_fallback_binary)
+	return util.path_of_executable(os.join_path(os.dir(pref.vexe_path()), macos_v3_v1_fallback_binary))
 }
 
 fn macos_v3_is_self_build_target(prefs &pref.Preferences) bool {
@@ -166,26 +162,28 @@ fn macos_v3_is_self_build_target(prefs &pref.Preferences) bool {
 fn macos_v3_needs_bootstrap_before_v1_fallback(prefs &pref.Preferences, needs_v1_compatibility bool, executable string, fallback_executable string) bool {
 	// A clean bootstrap reaches the dispatcher in the temporary v1 compiler before
 	// make has created v1_fallback. Keep the self-build on V3 whether the fallback
-	// was requested explicitly or by Linux compatibility routing.
+	// was requested explicitly or by compatibility routing.
 	return (prefs.old_compiler || needs_v1_compatibility) && macos_v3_is_self_build_target(prefs)
 		&& os.base(executable) !in ['v', 'v.exe', 'vnew', 'vnew.exe'] && !os.is_executable(fallback_executable)
 }
 
 fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool {
-	// FastC and explicit `-new-compiler` are deliberately strict V3 requests.
+	if macos_v3_windows_msvc_needs_v1_compatibility(prefs, pref.get_host_os()) {
+		// V3 does not have an MSVC command-line driver. Preserve the supported
+		// Windows mode by selecting the compatibility compiler before V3 runs.
+		return true
+	}
+	// Apart from the unsupported MSVC driver above, FastC and explicit
+	// `-new-compiler` are deliberately strict V3 requests.
 	if prefs.new_compiler || prefs.is_fastc || prefs.backend != .c || prefs.path == ''
 		|| command == 'test' || command in external_tools
 		|| macos_v3_non_compilation_command(command) {
 		return false
 	}
-	$if linux {
-		// A lean cmd/v generated by the current V3 compiler has quadratic parser
-		// memory use on Linux. Generate the compiler with V1 until that V3 codegen
-		// bug is fixed; the resulting cmd/v remains lean and dispatches user builds
-		// to its embedded V3 driver.
-		if macos_v3_is_self_build_target(prefs) {
-			return true
-		}
+	// Preserve established flags that the V3 argument parser or backend does not
+	// implement yet. Explicit V3/FastC requests above remain strict.
+	if v3_has_unsupported_preferences(prefs) {
+		return true
 	}
 	// Portable VC generation and non-host C targets were compatibility-compiler
 	// modes before the V3-only self-build change. Do not make V3 fail first (or,
@@ -202,13 +200,27 @@ fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool
 	return target == tools || target.starts_with(tools + '/')
 }
 
+fn macos_v3_windows_msvc_needs_v1_compatibility(prefs &pref.Preferences, host_os pref.OS) bool {
+	return host_os == .windows && prefs.ccompiler_type == .msvc
+}
+
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.backend != .c || command == 'test' || command in external_tools
-		|| macos_v3_non_compilation_command(command) || prefs.path == '' {
+		|| macos_v3_non_compilation_command(command) {
+		return false
+	}
+	// The legacy preference parser deliberately rejects `v build <source>`, so it
+	// does not populate prefs.path for the explicit build command. Let V3 parse the
+	// original arguments and report missing or invalid inputs instead of reaching
+	// the V3-only command shell's unreachable V1 builder guard.
+	if command == 'build' {
+		return true
+	}
+	if prefs.path == '' {
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
-	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
+	return command == 'run' || prefs.is_script || os.is_dir(prefs.path)
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
 		|| normalized_path.ends_with('.vv')
 }
@@ -227,8 +239,10 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	mut environment := macos_v3_child_environment(vexe, caller_environment, dispatch_environment)
 	no_fallback := environment[macos_v3_no_fallback_env] or { '' }
 	// cmd/v self-builds deliberately remain V3-only. The compatibility compiler
-	// exists for user programs and tools, not as an alternate self-host path.
-	fallback_enabled := !prefs.new_compiler && no_fallback != '1'
+	// exists for user programs and tools, not as an alternate self-host path. An
+	// empty path belongs to explicit `build` argument validation, which V1 cannot
+	// recover and would only report again with a less useful empty-path error.
+	fallback_enabled := prefs.path != '' && !prefs.new_compiler && no_fallback != '1'
 		&& !macos_v3_is_self_build_target(prefs)
 	fallback_file := macos_v3_fallback_file_for_pid()
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)

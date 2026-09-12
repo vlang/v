@@ -350,6 +350,7 @@ mut:
 	global_raw_type_texts          map[string]string
 	enum_vals                      map[string]int
 	enum_value_exprs               map[string]string
+	enum_modules                   map[string]string
 	defers                         []flat.NodeId
 	defer_cleanup_stack            []flat.NodeId // already emitted by the active cleanup path
 	scope_defer_starts             []int
@@ -483,6 +484,9 @@ mut:
 	compiler_vexe_env_setup       bool = true
 	ccompiler                     string
 	target                        pref.Target
+	subsystem                     pref.Subsystem
+	windows_entry_point_generated bool
+	windows_gui_entry_point       bool
 	// C spelling for V's platform-width `int`: `i64` on 64-bit targets, `i32` on
 	// 32-bit. Used by hand-written runtime helpers that operate on `[]int`
 	// elements or `int` values directly (kept in sync with set_target).
@@ -1012,6 +1016,17 @@ fn (g &FlatGen) local_storage_is_shared(name string) bool {
 	return false
 }
 
+// shared_storage_ident_c_name qualifies shared globals while preserving local storage names.
+fn (g &FlatGen) shared_storage_ident_c_name(name string) string {
+	owner := g.local_storage_owner(name) or { return g.cname(name) }
+	if g.tc.file_scope != unsafe { nil } && owner.belongs_to_scope(g.tc.file_scope) {
+		if global_name := g.global_name_for_ident(name) {
+			return g.global_c_name(global_name)
+		}
+	}
+	return g.local_cname(name)
+}
+
 fn (mut g FlatGen) declare_local_fn_value_c_name(owner types.ScopeBindingOwner, c_name string) {
 	key := owner.storage_key()
 	if key.len == 0 {
@@ -1071,6 +1086,7 @@ pub fn FlatGen.new() FlatGen {
 		global_raw_type_texts: map[string]string{}
 		enum_vals: map[string]int{}
 		enum_value_exprs: map[string]string{}
+		enum_modules: map[string]string{}
 		interfaces: map[string][]string{}
 		const_vals: map[string]flat.NodeId{}
 		const_modules: map[string]string{}
@@ -1268,6 +1284,20 @@ pub fn (mut g FlatGen) set_compiler_vexe_env_setup(enabled bool) {
 pub fn (mut g FlatGen) set_target(target pref.Target) {
 	g.target = target
 	g.int_ct = if target.pointer_bits == 32 { 'i32' } else { 'i64' }
+}
+
+// set_subsystem configures the Windows executable subsystem.
+pub fn (mut g FlatGen) set_subsystem(subsystem pref.Subsystem) {
+	g.subsystem = subsystem
+}
+
+// generated_windows_gui_entry_point reports the GUI decision when this generator emitted a
+// Windows executable entry point, or none when the current generation did not emit one.
+pub fn (g &FlatGen) generated_windows_gui_entry_point() ?bool {
+	if !g.windows_entry_point_generated {
+		return none
+	}
+	return g.windows_gui_entry_point
 }
 
 // set_thread_stack_size configures the stack size used by generated worker threads.
@@ -2807,6 +2837,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.global_raw_type_texts.clear()
 	g.enum_vals.clear()
 	g.enum_value_exprs.clear()
+	g.enum_modules.clear()
 	g.interfaces.clear()
 	g.const_vals.clear()
 	g.const_modules.clear()
@@ -3476,8 +3507,7 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 		g.writeln('#define _VPROFILE (1)')
 	}
 	g.thread_stack_size_definition()
-	g.emit_preinclude_directives()
-	g.emit_preserved_c_directives_scoped()
+	g.emit_translation_unit_include_directives()
 	g.preamble()
 	if g.cache_split {
 		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */')
@@ -3488,10 +3518,20 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 	}
 }
 
-fn (mut g FlatGen) emit_preserved_c_directives_scoped() {
+fn (mut g FlatGen) emit_translation_unit_include_directives() {
+	mut windows_header_emitted := g.emit_preinclude_directives()
+	windows_header_emitted = g.emit_preserved_c_directives_scoped(windows_header_emitted)
+	if g.target.os == 'windows' && !windows_header_emitted {
+		// Winsock2 must precede windows.h, which otherwise includes legacy winsock.h.
+		g.writeln('#include <windows.h>')
+	}
+}
+
+fn (mut g FlatGen) emit_preserved_c_directives_scoped(windows_header_emitted bool) bool {
 	state := g.begin_scoped_append()
-	g.emit_preserved_c_directives()
+	emitted_windows_header := g.emit_preserved_c_directives(windows_header_emitted)
 	g.finish_scoped_append(state)
+	return emitted_windows_header
 }
 
 fn (mut g FlatGen) emit_c_directives_scoped(late bool) {
@@ -4204,6 +4244,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			is_flag := enum_decl_is_flag(node)
 			mut val := 0
 			enum_name := qualify_name_in_module(cur_module, node.value)
+			g.enum_modules[enum_name] = cur_module
 			backing := enum_decl_backing_type(node) or { '' }
 			if backing.len > 0 {
 				g.register_enum_backing_info(enum_name, backing)
@@ -4227,7 +4268,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				}
 				key := '${enum_name}.${f.value}'
 				if is_backed_enum {
-					g.enum_value_exprs[key] = '${g.cname(enum_name)}__${g.cname(f.value)}'
+					g.enum_value_exprs[key] = '${g.enum_type_c_name(enum_name)}__${g.cname(f.value)}'
 					val++
 				} else if is_flag {
 					g.enum_vals[key] = 1 << val
@@ -4236,7 +4277,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 				} else {
 					// Keep enum expressions symbolic so explicit values that come from C
 					// macros (and therefore cannot be folded by V) survive at use sites.
-					g.enum_value_exprs[key] = '${g.cname(enum_name)}__${g.cname(f.value)}'
+					g.enum_value_exprs[key] = '${g.enum_type_c_name(enum_name)}__${g.cname(f.value)}'
 					g.enum_vals[key] = val
 					field_values[f.value] = val
 					val++
@@ -4841,13 +4882,30 @@ fn normalized_c_include_arg_path(include_arg string) string {
 	return path.replace('\\', '/')
 }
 
-fn (mut g FlatGen) emit_preinclude_directives() {
+fn (mut g FlatGen) emit_preinclude_directives() bool {
+	// Configuration preincludes must run before windows.h so they can select the
+	// requested WinAPI surface. Only interpose windows.h before a leaf header that
+	// specifically requires its base declarations.
+	windows_target := g.target.os == 'windows'
+	mut emitted_windows_header := false
 	for directive in g.preinclude_directives {
+		if windows_target && directive == '#include <windows.h>' {
+			if !emitted_windows_header {
+				g.writeln(directive)
+				emitted_windows_header = true
+			}
+			continue
+		}
+		if windows_target && !emitted_windows_header && directive == '#include <synchapi.h>' {
+			g.writeln('#include <windows.h>')
+			emitted_windows_header = true
+		}
 		g.writeln(directive)
 	}
 	if g.preinclude_directives.len > 0 {
 		g.writeln('')
 	}
+	return emitted_windows_header
 }
 
 fn (mut g FlatGen) emit_postinclude_directives() {
@@ -9286,10 +9344,12 @@ fn c_is_late_source_include_directive(directive string) bool {
 	return arg.ends_with('.m') || arg.ends_with('.mm')
 }
 
-fn (mut g FlatGen) emit_preserved_c_directives() {
+fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool {
 	mut emitted := false
 	mut emitted_includes := map[string]bool{}
 	mut has_mach_headers := false
+	mut emitted_windows_header := windows_header_emitted
+	mut deferred_synchapi_indices := []int{}
 	directives := g.ordered_c_directives(false)
 	use_system_libc := g.c_directives_use_system_libc()
 	for i, directive in directives {
@@ -9308,31 +9368,34 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 			emitted = true
 			continue
 		}
-		prefix := if c_lifted_include_skips_context(directive) {
-			[]string{}
-		} else {
-			c_lifted_include_context_prefix(directives, i)
-		}
-		if c_is_preserved_system_include_directive(clean) {
-			// Dedupe on the include *together with* its lifted guard context: the
-			// same header may legitimately appear under different guards (e.g. one
-			// `#ifdef __linux__` block and one `#ifdef __APPLE__` block), and each
-			// occurrence needs its own context emitted. Keying on the raw include
-			// line alone would drop the second, differently-guarded include.
-			key := prefix.join('\n') + '\x00' + clean
-			if emitted_includes[key] {
+		if g.target.os == 'windows' {
+			if clean == '#include <windows.h>' {
+				if emitted_windows_header {
+					continue
+				}
+				emitted_windows_header = true
+			}
+			if !emitted_windows_header && clean == '#include <synchapi.h>' {
+				deferred_synchapi_indices << i
 				continue
 			}
-			emitted_includes[key] = true
 		}
-		for line in prefix {
-			g.writeln(line)
+		if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
 			emitted = true
 		}
-		g.emit_preserved_c_directive(directive)
-		emitted = true
-		for _ in 0 .. c_lifted_include_context_depth(prefix) {
-			g.writeln('#endif')
+	}
+	if deferred_synchapi_indices.len > 0 {
+		if !emitted_windows_header {
+			// Preserve Winsock2 ahead of windows.h while keeping synchapi.h after
+			// the WinAPI base declarations that it requires.
+			g.writeln('#include <windows.h>')
+			emitted_windows_header = true
+			emitted = true
+		}
+		for i in deferred_synchapi_indices {
+			if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
+				emitted = true
+			}
 		}
 	}
 	refs := g.c_extern_referenced_symbols()
@@ -9346,6 +9409,37 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 	if emitted {
 		g.writeln('')
 	}
+	return emitted_windows_header
+}
+
+fn (mut g FlatGen) emit_preserved_c_directive_at(directives []string, index int, mut emitted_includes map[string]bool) bool {
+	directive := directives[index]
+	clean := trimmed_space(directive)
+	prefix := if c_lifted_include_skips_context(directive) {
+		[]string{}
+	} else {
+		c_lifted_include_context_prefix(directives, index)
+	}
+	if c_is_preserved_system_include_directive(clean) {
+		// Dedupe on the include *together with* its lifted guard context: the
+		// same header may legitimately appear under different guards (e.g. one
+		// `#ifdef __linux__` block and one `#ifdef __APPLE__` block), and each
+		// occurrence needs its own context emitted. Keying on the raw include
+		// line alone would drop the second, differently-guarded include.
+		key := prefix.join('\n') + '\x00' + clean
+		if emitted_includes[key] {
+			return false
+		}
+		emitted_includes[key] = true
+	}
+	for line in prefix {
+		g.writeln(line)
+	}
+	g.emit_preserved_c_directive(directive)
+	for _ in 0 .. c_lifted_include_context_depth(prefix) {
+		g.writeln('#endif')
+	}
+	return true
 }
 
 fn c_lifted_include_skips_context(directive string) bool {
@@ -9997,8 +10091,8 @@ fn c_flag_target_os(target string) ?string {
 
 fn c_flag_target_arch(target string) ?string {
 	normalized := pref.normalized_arch(target)
-	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc', 'ppc64', 'ppc64le', 's390x',
-		'loongarch64', 'wasm32'] {
+	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64',
+		'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
 		return normalized
 	}
 	return none
@@ -14813,10 +14907,23 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(')')
 				}
 				g.write('.len')
-			} else if node.value == 'len' && (base_type_clean is types.Array || base_type_clean is types.Map || (base_type_clean is types.Struct && base_type_clean.name in [
-				'array',
-				'map',
-			])) {
+			} else if node.value == 'len' && (base_type_clean is types.Map
+				|| (base_type_clean is types.Struct && base_type_clean.name == 'map')) {
+				needs_paren := base.kind !in [.ident, .selector]
+				if needs_paren {
+					g.write('(')
+				}
+				g.gen_expr(base_id)
+				if needs_paren {
+					g.write(')')
+				}
+				if base_type0 is types.Pointer {
+					g.write('->data->count')
+				} else {
+					g.write('.data->count')
+				}
+			} else if node.value == 'len' && (base_type_clean is types.Array
+				|| (base_type_clean is types.Struct && base_type_clean.name == 'array')) {
 				// Array accessors such as `last()` are calls in the flat tree, but
 				// emit a dereference expression in C. Parenthesize that value before
 				// selecting `.len`, otherwise the member access binds inside `array_get`.
@@ -15069,6 +15176,20 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else if base_type is types.Map {
 				c_key := g.map_key_temp_c_type(base_type.key_type)
 				c_val := g.value_c_type(base_type.value_type)
+				if default_init_unalias_type(base_type.value_type) is types.Map {
+					map_tmp := g.tmp_name()
+					value_tmp := g.tmp_name()
+					zero_tmp := g.tmp_name()
+					// Keep the allocating map default behind the missing-key branch.
+					g.write('(*({ map* ${map_tmp} = &((map[]){')
+					g.gen_expr(base_id)
+					g.write('}[0]); void* ${value_tmp} = map__get_check(${map_tmp}, &(${c_key}[]){')
+					g.gen_expr(g.a.child(node, 1))
+					g.write('}); ${c_val} ${zero_tmp}; if (!${value_tmp}) { ${zero_tmp} = ')
+					g.gen_default_value_for_type(base_type.value_type)
+					g.write('; ${value_tmp} = &${zero_tmp}; } (${c_val}*)${value_tmp}; }))')
+					return
+				}
 				// The map expression may be a value-returning call. Put it in a compound
 				// literal so C can take a stable address for the duration of map__get.
 				g.write('(*(${c_val}*)map__get(&((map[]){')
@@ -16196,14 +16317,9 @@ fn (mut g FlatGen) gen_map_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id f
 	if clean_lhs !is types.Map || map_str_clean_type(rhs_type) !is types.Map {
 		return false
 	}
-	// v3_map_map_eq compares value payloads it does not recognize bytewise. That
-	// is wrong whenever a value's semantic equality differs from its bytes — a
-	// struct/sum type/fixed array holding strings, arrays or maps. The
-	// transformer lowers those maps directly to element-wise comparisons; only
-	// fall back to the raw helper for value types it compares correctly (its
-	// size dispatch handles primitives, pointers, strings, and dynamic maps and
-	// arrays of those). Otherwise leave the comparison unlowered rather than
-	// emit a silently incorrect result.
+	// The runtime helper has no semantic type descriptor. The transformer lowers
+	// strings and containers to typed comparisons; only bytewise scalar values
+	// may reach this fallback.
 	if !g.map_value_bytewise_eq_safe((clean_lhs as types.Map).value_type) {
 		return false
 	}
@@ -16218,38 +16334,25 @@ fn (mut g FlatGen) gen_map_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id f
 	return true
 }
 
-// map_value_bytewise_eq_safe reports whether v3_map_map_eq compares a map value
-// of this type correctly. Its size dispatch handles primitive/pointer/string
-// values and recurses through dynamic maps and arrays of such values, but
-// falls back to a raw memcmp for anything else (structs, sum types, fixed
-// arrays, interfaces, options), which breaks semantic equality.
+// map_value_bytewise_eq_safe reports whether v3_map_map_eq can compare a map
+// value without semantic type information. Container and string values are
+// lowered to typed comparisons by the transformer; the runtime fallback must
+// never infer their type from a byte count.
 fn (g &FlatGen) map_value_bytewise_eq_safe(value_type types.Type) bool {
 	clean := default_init_unalias_type(value_type)
-	if clean is types.Map {
-		// v3_map_map_eq recurses into map values through itself, so a nested map
-		// is safe as long as its own value type is.
-		return g.map_value_bytewise_eq_safe(clean.value_type)
-	}
-	if clean is types.Array {
-		// The runtime helper's Array case only compares string elements
-		// (array_eq_string) or primitive/pointer elements (array_eq_raw)
-		// correctly; arrays of maps, structs, or nested arrays fall through to a
-		// bytewise element compare of their descriptors. Only flat element types
-		// are safe here — anything else is left to the transform's element-wise
-		// path.
-		return g.map_scalar_bytewise_eq_safe(clean.elem_type)
-	}
 	return g.map_scalar_bytewise_eq_safe(clean)
 }
 
 // map_scalar_bytewise_eq_safe reports whether a bytewise (memcmp/array_eq_raw)
 // comparison of a single value of this type matches its semantic equality.
-// True only for types with no indirection to follow: primitives, enums,
-// pointers (compared by address), and strings (which v3_map_map_eq / array
-// helpers special-case).
+// True only for types with no indirection or representation-level equality
+// differences: integer/boolean primitives, enums, pointers, and nil.
 fn (g &FlatGen) map_scalar_bytewise_eq_safe(t types.Type) bool {
 	clean := default_init_unalias_type(t)
-	return clean is types.Primitive || clean is types.Char || clean is types.Rune || clean is types.ISize || clean is types.USize || clean is types.Enum || clean is types.Pointer || clean is types.String || clean is types.Nil
+	if clean is types.Primitive {
+		return clean.props.has(.boolean) || clean.props.has(.integer)
+	}
+	return clean is types.Char || clean is types.Rune || clean is types.ISize || clean is types.USize || clean is types.Enum || clean is types.Pointer || clean is types.Nil
 }
 
 fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
@@ -16656,7 +16759,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define __bool_true_false_are_defined 1')
 	g.writeln('#endif')
 	g.writeln('typedef void* voidptr;')
-	g.writeln('typedef int int_literal;')
+	g.writeln('typedef i64 int_literal;')
 	g.writeln('typedef double float_literal;')
 	g.writeln('struct sync__Channel;')
 	g.writeln('typedef struct sync__Channel* chan;')
@@ -16769,12 +16872,20 @@ fn (mut g FlatGen) system_libc_headers() {
 	// GCC's Objective-C frontend does not implement the C11 `_Atomic` qualifier,
 	// but its stdatomic macros still work with volatile storage and __atomic builtins.
 	// Clang implements `_Atomic` in Objective-C and must retain the native qualifier.
+	// Windows TCC uses V's WinAPI atomic compatibility header instead. It must be
+	// available before struct declarations that contain atomic_uintptr_t fields, and
+	// including both implementations redefines atomic_flag and the operation macros.
+	windows_atomic_header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
+	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
+	g.writeln('#include "${windows_atomic_header}"')
+	g.writeln('#else')
 	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
 	g.writeln('#define _Atomic volatile')
 	g.writeln('#endif')
 	g.writeln('#include <stdatomic.h>')
 	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
 	g.writeln('#undef _Atomic')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/syscall.h>')
@@ -16813,6 +16924,12 @@ fn (mut g FlatGen) system_libc_headers() {
 // prototypes where it does not (musl, older toolchains). builtin declares
 // `fn C.backtrace` next to an unrelated `#include`, so nothing else can supply it.
 fn (mut g FlatGen) system_execinfo_declarations() {
+	// Musl builds provide the exported fallback implementations from
+	// builtin_backtraces_d_musl.c.v. Their V ABI uses `void **`, which is not
+	// compatible with the glibc-shaped `void *const *` prototypes below.
+	if 'musl' in g.compile_values {
+		return
+	}
 	g.writeln('#if defined(__has_include) && !defined(__TINYC__)')
 	g.writeln('\t#if __has_include(<execinfo.h>) && !defined(_WIN32)')
 	g.writeln('\t\t#define __V_HAVE_EXECINFO_H 1')
@@ -17156,9 +17273,19 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_darwin_pthread_alias('pthread_once_t', '__darwin_pthread_once_t', '_PTHREAD_ONCE_T')
 	g.headerless_darwin_pthread_alias('pthread_key_t', '__darwin_pthread_key_t', '_PTHREAD_KEY_T')
 	g.writeln('#endif')
+	g.writeln('#ifndef PTHREAD_ONCE_INIT')
+	g.writeln('#ifdef V_HEADERLESS_DARWIN_PTHREAD_TYPES')
+	g.writeln('#define PTHREAD_ONCE_INIT { 0x30B1BCBA, { 0 } }')
+	g.writeln('#elif defined(__APPLE__)')
+	g.writeln('#define PTHREAD_ONCE_INIT { ._opaque = { 0xba, 0xbc, 0xb1, 0x30 } }')
+	g.writeln('#else')
+	g.writeln('#define PTHREAD_ONCE_INIT { 0 }')
+	g.writeln('#endif')
+	g.writeln('#endif')
 	g.writeln('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
 	g.writeln('void* pthread_getspecific(pthread_key_t key);')
 	g.writeln('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
+	g.writeln('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sem_t;')
 	g.writeln('#if !defined(__sigset_t_defined) && !defined(_SIGSET_T_DECLARED) && !defined(_SIGSET_T_DEFINED) && !defined(_SIGSET_T)')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;')
@@ -19089,6 +19216,23 @@ fn (mut g FlatGen) prealloc_atomic_compat_decls() {
 	g.writeln('#endif')
 }
 
+fn (mut g FlatGen) tinyc_atomic_libcall_decls() {
+	g.writeln('#ifdef __TINYC__')
+	g.writeln('extern byte __atomic_exchange_1(byte* ptr, byte val, int order);')
+	g.writeln('extern u16 __atomic_exchange_2(u16* ptr, u16 val, int order);')
+	g.writeln('extern u32 __atomic_exchange_4(u32* ptr, u32 val, int order);')
+	g.writeln('extern u64 __atomic_exchange_8(u64* ptr, u64 val, int order);')
+	g.writeln('extern void __atomic_store_1(byte* ptr, byte val, int order);')
+	g.writeln('extern void __atomic_store_2(u16* ptr, u16 val, int order);')
+	g.writeln('extern void __atomic_store_4(u32* ptr, u32 val, int order);')
+	g.writeln('extern void __atomic_store_8(u64* ptr, u64 val, int order);')
+	g.writeln('extern _Bool __atomic_compare_exchange_1(byte* ptr, byte* expected, byte desired, int success_order, int failure_order);')
+	g.writeln('extern _Bool __atomic_compare_exchange_2(u16* ptr, u16* expected, u16 desired, int success_order, int failure_order);')
+	g.writeln('extern _Bool __atomic_compare_exchange_4(u32* ptr, u32* expected, u32 desired, int success_order, int failure_order);')
+	g.writeln('extern _Bool __atomic_compare_exchange_8(u64* ptr, u64* expected, u64 desired, int success_order, int failure_order);')
+	g.writeln('#endif')
+}
+
 fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	if g.target.os == 'windows' && (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc')) {
 		header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
@@ -19114,9 +19258,6 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('static inline u32 atomic_load_u32(void* ptr) { return __atomic_fetch_add((u32*)ptr, 0, 5); }')
 	g.writeln('static inline u64 atomic_load_u64(void* ptr) { return __atomic_fetch_add((u64*)ptr, 0, 5); }')
 	g.writeln('#ifdef __TINYC__')
-	// Without a declaration TCC applies the C89 implicit `int` return type to the
-	// 64-bit libcall, truncating exchanged pointers and large u64 values.
-	g.writeln('extern u64 __atomic_exchange_8(u64* ptr, u64 val, int order);')
 	g.writeln('static inline void* atomic_load_ptr(void* ptr) { return (void*)(uintptr_t)__atomic_fetch_add((uintptr_t*)ptr, (uintptr_t)0, 5); }')
 	g.writeln('static inline byte atomic_exchange_byte(void* ptr, byte val) { return __atomic_exchange_1((byte*)ptr, val, 5); }')
 	g.writeln('static inline u16 atomic_exchange_u16(void* ptr, u16 val) { return __atomic_exchange_2((u16*)ptr, val, 5); }')
@@ -19193,7 +19334,9 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	// `atomic_thread_fence` and maps `__atomic_thread_fence` to it. Redeclaring the
 	// mapped name with `int` conflicts with TCC's `memory_order` enum parameter.
 	// clang/gcc keep the builtin.
-	g.writeln('#if defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(_WIN32)))')
+	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
+	g.writeln('/* V atomic.h supplies atomic_thread_fence on Windows TCC. */')
+	g.writeln('#elif defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv))')
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
@@ -19217,13 +19360,18 @@ fn (mut g FlatGen) heap_tracking_fallback_decls() {
 	}
 }
 
+fn (mut g FlatGen) map_equality_fallback_decls() {
+	g.writeln('static inline bool v3_map_value_eq(void* a, void* b, int value_bytes) { return memcmp(a, b, value_bytes) == 0; }')
+	g.writeln('static inline bool v3_map_map_eq(map a, map b) { if (a.data->count != b.data->count) return false; for (int i = 0; i < a.data->key_values.len; ++i) { if (a.data->key_values.deletes != 0 && a.data->key_values.all_deleted != 0 && a.data->key_values.all_deleted[i] != 0) continue; void* ak = (void*)(a.data->key_values.keys + i * a.data->key_values.key_bytes); if (!map__exists(&b, ak)) return false; void* av = (void*)(a.data->key_values.values + i * a.data->key_values.value_bytes); void* bv = map__get(&b, ak, av); if (!v3_map_value_eq(av, bv, a.data->value_bytes)) return false; } return true; }')
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
 	}
 	g.libc_compat_decls()
-	g.writeln('#ifndef __linux__')
-	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) 0')
+	g.writeln('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP')
+	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) (0)')
 	g.writeln('#endif')
 	g.filelock_compat_decls()
 	g.writeln('#define array_new(elem_size, len, cap) __new_array((len), (cap), (elem_size))')
@@ -19243,6 +19391,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.atomic_thread_fence_compat_decls()
 	g.heap_tracking_fallback_decls()
 	g.writeln('static inline int v3_sum_ptr_type_idx(const void* p) { return p == NULL ? 0 : *(const int*)p; }')
+	g.tinyc_atomic_libcall_decls()
 	g.prealloc_atomic_compat_decls()
 	g.atomic_builtin_compat_decls()
 	g.writeln('static inline double math__abs(double a) { return a < 0 ? -a : a; }')
@@ -19374,14 +19523,14 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('}')
 	g.writeln('static inline string v3_map_str(map m, int key_kind, int val_kind, int val_fixed_len) {')
 	g.writeln('\tstring out = v3_c_lit("{", 1); bool first = true;')
-	g.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')
-	g.writeln('\t\tif (m.key_values.deletes != 0 && m.key_values.all_deleted != 0 && m.key_values.all_deleted[i] != 0) continue;')
+	g.writeln('\tfor (int i = 0; i < m.data->key_values.len; ++i) {')
+	g.writeln('\t\tif (m.data->key_values.deletes != 0 && m.data->key_values.all_deleted != 0 && m.data->key_values.all_deleted[i] != 0) continue;')
 	g.writeln('\t\tif (!first) out = string__plus(out, v3_c_lit(", ", 2));')
-	g.writeln('\t\tvoid* key = (void*)(m.key_values.keys + i * m.key_values.key_bytes);')
-	g.writeln('\t\tvoid* val = (void*)(m.key_values.values + i * m.key_values.value_bytes);')
-	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(key, key_kind, m.key_values.key_bytes, 0));')
+	g.writeln('\t\tvoid* key = (void*)(m.data->key_values.keys + i * m.data->key_values.key_bytes);')
+	g.writeln('\t\tvoid* val = (void*)(m.data->key_values.values + i * m.data->key_values.value_bytes);')
+	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(key, key_kind, m.data->key_values.key_bytes, 0));')
 	g.writeln('\t\tout = string__plus(out, v3_c_lit(": ", 2));')
-	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(val, val_kind, m.value_bytes, val_fixed_len));')
+	g.writeln('\t\tout = string__plus(out, v3_map_str_piece(val, val_kind, m.data->value_bytes, val_fixed_len));')
 	g.writeln('\t\tfirst = false;')
 	g.writeln('\t}')
 	g.writeln('\treturn string__plus(out, v3_c_lit("}", 1));')
@@ -19401,9 +19550,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline bool array_eq_array(Array a, Array b, int depth) { if (a.len != b.len || a.element_size != b.element_size) return false; if (depth <= 1 || a.element_size != sizeof(Array)) { if (a.element_size == sizeof(string)) return array_eq_string(a, b); return array_eq_raw(a, b, a.element_size); } Array* ad = (Array*)a.data; Array* bd = (Array*)b.data; for (int i = 0; i < a.len; i++) { if (!array_eq_array(ad[i], bd[i], depth - 1)) return false; } return true; }')
 	g.writeln('void* map__get(map* m, void* key, void* zero);')
 	g.writeln('bool map__exists(map* m, void* key);')
-	g.writeln('static inline bool v3_map_map_eq(map a, map b);')
-	g.writeln('static inline bool v3_map_value_eq(void* a, void* b, int value_bytes) { if (value_bytes == sizeof(string)) { string sa = *(string*)a; string sb = *(string*)b; return sa.len == sb.len && (sa.len == 0 || memcmp(sa.str, sb.str, sa.len) == 0); } if (value_bytes == sizeof(map)) { return v3_map_map_eq(*(map*)a, *(map*)b); } if (value_bytes == sizeof(string) + sizeof(map)) { string sa = *(string*)a; string sb = *(string*)b; if (!(sa.len == sb.len && (sa.len == 0 || memcmp(sa.str, sb.str, sa.len) == 0))) return false; map ma = *(map*)((u8*)a + sizeof(string)); map mb = *(map*)((u8*)b + sizeof(string)); return v3_map_map_eq(ma, mb); } if (value_bytes == sizeof(Array)) { Array aa = *(Array*)a; Array bb = *(Array*)b; if (aa.element_size != bb.element_size) return false; if (aa.element_size == sizeof(string)) return array_eq_string(aa, bb); if (aa.element_size == sizeof(Array)) return array_eq_array(aa, bb, 8); return array_eq_raw(aa, bb, aa.element_size); } return memcmp(a, b, value_bytes) == 0; }')
-	g.writeln('static inline bool v3_map_map_eq(map a, map b) { if (a.len != b.len) return false; for (int i = 0; i < a.key_values.len; ++i) { if (a.key_values.deletes != 0 && a.key_values.all_deleted != 0 && a.key_values.all_deleted[i] != 0) continue; void* ak = (void*)(a.key_values.keys + i * a.key_values.key_bytes); if (!map__exists(&b, ak)) return false; void* av = (void*)(a.key_values.values + i * a.key_values.value_bytes); void* bv = map__get(&b, ak, av); if (!v3_map_value_eq(av, bv, a.value_bytes)) return false; } return true; }')
+	g.map_equality_fallback_decls()
 	g.writeln('static inline bool fixed_array_contains_string(const string* a, int len, string val) { for (int i = 0; i < len; i++) if (a[i].len == val.len && memcmp(a[i].str, val.str, val.len) == 0) return true; return false; }')
 	g.writeln('static inline bool fixed_array_contains_u8(const u8* a, int len, u8 val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')
 	g.writeln('static inline bool fixed_array_contains_int(const ${g.int_ct}* a, int len, ${g.int_ct} val) { for (int i = 0; i < len; i++) if (a[i] == val) return true; return false; }')
@@ -20268,6 +20415,23 @@ fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string,
 	g.writeln('#elif defined(__TINYC__)')
 }
 
+fn (mut g FlatGen) emit_tinyc_pthread_pointer_slot(cname string, ct string) {
+	g.writeln('static pthread_key_t ${cname}_key;')
+	g.writeln('static pthread_once_t ${cname}_key_once = PTHREAD_ONCE_INIT;')
+	g.writeln('static void ${cname}_key_create(void) { pthread_key_create(&${cname}_key, 0); }')
+	g.writeln('static void ${cname}_key_init(void) { pthread_once(&${cname}_key_once, ${cname}_key_create); }')
+	g.writeln('static ${ct}* ${cname}_slot(void) {')
+	g.writeln('\t${cname}_key_init();')
+	g.writeln('\tvoid* p = pthread_getspecific(${cname}_key);')
+	g.writeln('\tif (p == 0) {')
+	g.writeln('\t\tp = calloc(1, sizeof(${ct}));')
+	g.writeln('\t\tpthread_setspecific(${cname}_key, p);')
+	g.writeln('\t}')
+	g.writeln('\treturn (${ct}*)p;')
+	g.writeln('}')
+	g.writeln('#define ${cname} (*${cname}_slot())')
+}
+
 fn (mut g FlatGen) global_decls() {
 	old_module := g.tc.cur_module
 	for name, typ in g.global_types {
@@ -20360,18 +20524,7 @@ fn (mut g FlatGen) global_decls() {
 		if g.prealloc && name == 'g_memory_block' {
 			cn := g.cname(name)
 			g.emit_tinyc_windows_thread_local_slot(cn, ct, '')
-			g.writeln('static pthread_key_t ${cn}_key;')
-			g.writeln('static void ${cn}_key_init(void) __attribute__((constructor));')
-			g.writeln('static void ${cn}_key_init(void) { pthread_key_create(&${cn}_key, 0); }')
-			g.writeln('static ${ct}* ${cn}_slot(void) {')
-			g.writeln('\tvoid* p = pthread_getspecific(${cn}_key);')
-			g.writeln('\tif (p == 0) {')
-			g.writeln('\t\tp = calloc(1, sizeof(${ct}));')
-			g.writeln('\t\tpthread_setspecific(${cn}_key, p);')
-			g.writeln('\t}')
-			g.writeln('\treturn (${ct}*)p;')
-			g.writeln('}')
-			g.writeln('#define ${cn} (*${cn}_slot())')
+			g.emit_tinyc_pthread_pointer_slot(cn, ct)
 			g.writeln('#else')
 			g.writeln('_Thread_local ${ct} ${cn}${init};')
 			g.writeln('#endif')
@@ -21349,7 +21502,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		g.tc.cur_module = old_module
 		return
 	}
-	expr_str := if v_type !is types.ArrayFixed && ct == 'Array' {
+	mut expr_str := if v_type !is types.ArrayFixed && ct == 'Array' {
 		arr := array_like_type(default_init_unalias_type(v_type)) or {
 			types.Array{
 				elem_type: types.Type(types.void_)
@@ -21367,6 +21520,12 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		g.const_expr_to_string(val_id, []string{})
 	} else {
 		g.expr_to_string(val_id)
+	}
+	// Const sum/interface payloads use file-scope compound arrays as stable backing
+	// storage. If portability requires moving the initializer into `_vinit`, emit
+	// the regular runtime expression instead so boxed payloads are copied to the heap.
+	if g.is_const_expr(val_id) && expr_str.contains('[]){') {
+		expr_str = g.expr_to_string(val_id)
 	}
 	if trimmed_space(expr_str).len == 0 {
 		g.tc.cur_module = old_module
@@ -21480,7 +21639,9 @@ fn (mut g FlatGen) name_collides_with_struct_field(name string) bool {
 }
 
 fn (g &FlatGen) const_expr_needs_runtime_storage(expr string) bool {
-	return expr.contains('array_new(') || expr.contains('new_map(') || expr.contains('({') || expr.contains('sync__new_channel_st(') || expr.contains('__map_') || expr.contains('_str_')
+	return expr.contains('array_new(') || expr.contains('new_map(') || expr.contains('({')
+		|| expr.contains('[]){') || expr.contains('sync__new_channel_st(')
+		|| expr.contains('__map_') || expr.contains('_str_')
 }
 
 fn (mut g FlatGen) queue_map_literal_sets(target string, val_id flat.NodeId, map_type types.Map) {

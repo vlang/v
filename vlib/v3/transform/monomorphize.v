@@ -12170,8 +12170,7 @@ fn (t &Transformer) lock_colliding_main_substitution_type_text(original string, 
 							// leading & of a mut T instantiated with &Dog belongs
 							// to T and must survive.
 							concrete_payload := generic_fn_type_param_payload(concrete_param)
-							locked := t.lock_colliding_main_substitution_type_text(source_payload,
-								concrete_payload, module_name, generic_params)
+							locked := t.lock_colliding_main_substitution_type_text(source_payload, concrete_payload, module_name, generic_params)
 							locked_params << if source_is_mut { 'mut ${locked}' } else { locked }
 						}
 						locked_ret := t.lock_colliding_main_substitution_type_text(source_ret, concrete_ret, module_name, generic_params)

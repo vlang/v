@@ -490,6 +490,49 @@ fn c_backend_fn_file_rank(file string) int {
 	return 0
 }
 
+fn (g &FlatGen) is_gui_app(force_main_console bool) bool {
+	match g.subsystem {
+		.windows {
+			return true
+		}
+		.console {
+			return false
+		}
+		.auto {}
+	}
+	if g.target.os != 'windows' || force_main_console {
+		return false
+	}
+	for flag in g.c_flags {
+		clean := flag.trim_space().to_lower_ascii()
+		if clean in ['gdi32', '-lgdi32', 'gdi32.lib'] {
+			return true
+		}
+	}
+	return false
+}
+
+fn windows_gui_stdio_setup(force_console bool) string {
+	console_setup := if force_console {
+		'\tcon_valid = AllocConsole();\n'
+	} else {
+		'\tcon_valid = AttachConsole(ATTACH_PARENT_PROCESS);\n'
+	}
+	return '\tBOOL con_valid = FALSE;\n' + console_setup + '\tFILE* res_fp = 0;\n' + '\terrno_t err;\n' + '\tif (con_valid) {\n' + '\t\terr = freopen_s(&res_fp, "CON", "w", stdout);\n' + '\t\terr = freopen_s(&res_fp, "CON", "w", stderr);\n' + '\t} else {\n' + '\t\terr = freopen_s(&res_fp, "NUL", "w", stdout);\n' + '\t\terr = freopen_s(&res_fp, "NUL", "w", stderr);\n' + '\t}\n' + '\t(void)err;'
+}
+
+fn (mut g FlatGen) c_main_declaration(force_main_console bool) string {
+	if g.target.os != 'windows' {
+		return 'int main(int argc, char** argv) {'
+	}
+	g.windows_entry_point_generated = true
+	g.windows_gui_entry_point = g.is_gui_app(force_main_console)
+	if !g.windows_gui_entry_point {
+		return 'int wmain(int argc, wchar_t** argv) {'
+	}
+	return 'int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd) {\n' + '\tLPWSTR full_cmd_line = GetCommandLineW(); /* do not use cmd_line */\n' + '\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);\n' + '\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");\n' + '\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");\n' + '\tint argc;\n' + '\twchar_t** argv = CommandLineToArgvW(full_cmd_line, &argc);\n' + windows_gui_stdio_setup(force_main_console)
+}
+
 fn (mut g FlatGen) gen_synthetic_main_after_fns() {
 	if g.suppress_main {
 		if g.needs_no_main_runtime_init_caller() {
@@ -1454,7 +1497,7 @@ fn (g &FlatGen) enum_method_c_name_in_module_uncached(module_name string, name s
 	receiver := unsafe { qualified.substr_unsafe(0, dot) }
 	method := unsafe { qualified.substr_unsafe(dot + 1, qualified.len) }
 	if _ := g.enum_selector_base_name(receiver) {
-		return '${g.cname(receiver)}_${g.cname(method)}'
+		return '${g.enum_type_c_name(receiver)}_${g.cname(method)}'
 	}
 	return none
 }
@@ -4072,7 +4115,7 @@ fn (g &FlatGen) shared_local_arg_c_expr(arg_id flat.NodeId) ?string {
 		}
 	}
 	if arg.kind == .ident && g.local_storage_is_shared(arg.value) {
-		return g.cname(arg.value)
+		return g.shared_storage_ident_c_name(arg.value)
 	}
 	return none
 }
@@ -4091,7 +4134,7 @@ fn (g &FlatGen) shared_payload_deref_storage_c_expr(id flat.NodeId) ?string {
 	base_id := g.a.child(&node, 0)
 	base := g.a.nodes[int(base_id)]
 	if base.kind == .ident && g.local_storage_is_shared(base.value) {
-		return g.cname(base.value)
+		return g.shared_storage_ident_c_name(base.value)
 	}
 	return none
 }
@@ -4353,7 +4396,7 @@ fn (g &FlatGen) spawn_shared_value_selector_storage(child flat.Node) ?string {
 	if base.kind != .ident || !g.local_ident_is_shared_wrapper(base.value) {
 		return none
 	}
-	return g.cname(base.value)
+	return g.shared_storage_ident_c_name(base.value)
 }
 
 fn (g &FlatGen) local_ident_is_shared_wrapper(name string) bool {
@@ -4671,7 +4714,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	fn_start_pos := g.sb.len
 	mut is_direct_no_main_export := false
 	if is_entry_main {
-		g.writeln('int main(int argc, char** argv) {')
+		force_main_console := g.tc.declaration_has_attribute(node_id, 'console')
+		g.writeln(g.c_main_declaration(force_main_console))
 		if g.has_builtins {
 			g.writeln('\tg_main_argc = argc;')
 			g.writeln('\tg_main_argv = argv;')
@@ -5078,7 +5122,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.goto_label_c_names.clear()
 	g.goto_label_count = 0
 	fn_start_pos := g.sb.len
-	g.writeln('int main(int argc, char** argv) {')
+	g.writeln(g.c_main_declaration(false))
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
 		g.writeln('\tg_main_argv = argv;')
@@ -5177,7 +5221,7 @@ fn (mut g FlatGen) gen_test_main() {
 		g.writeln('}')
 		g.writeln('')
 	}
-	g.writeln('int main(int argc, char** argv) {')
+	g.writeln(g.c_main_declaration(false))
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
 		g.writeln('\tg_main_argv = argv;')
@@ -6094,7 +6138,8 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 	if !is_c_call {
 		return false
 	}
-	param_types := g.param_types_for(callee_name, callee_name.all_after_last('.'))
+	lookup_name := if fn_node.value.starts_with('C.') { fn_node.value } else { callee_name }
+	param_types := g.param_types_for(lookup_name, lookup_name.all_after_last('.'))
 	c_variadic_prefix := g.c_fn_abi_variadic_prefix(callee_name, fn_node.value, param_types)
 	is_c_variadic_fn := c_variadic_prefix >= 0
 	is_variadic_fn := is_c_variadic_fn || (g.tc.fn_variadic[callee_name] or { false })
@@ -6111,6 +6156,7 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		param_types.len
 	}
 	mut out_args := []flat.NodeId{}
+	mut array_out_args := []flat.NodeId{}
 	for i in 1 .. node.children_count {
 		arg_id := g.a.child(&node, i)
 		if arg_id in g.cabi_int_out_args {
@@ -6118,9 +6164,11 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		}
 		if g.c_call_is_int_out_arg(arg_id, i - 1, param_types, typed_param_count, is_native_variadic) {
 			out_args << arg_id
+		} else if g.c_call_is_int_array_data_arg(arg_id, i - 1, param_types, typed_param_count, is_native_variadic) {
+			array_out_args << arg_id
 		}
 	}
-	if out_args.len == 0 {
+	if out_args.len == 0 && array_out_args.len == 0 {
 		return false
 	}
 	mut ret_type := g.declared_call_return_type(id)
@@ -6150,6 +6198,20 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		g.cabi_int_out_args[arg_id] = '&${val_tmp}'
 		copybacks << '*${addr_tmp} = ${val_tmp};'
 	}
+	for arg_id in array_out_args {
+		base_id := g.c_call_int_array_data_base(arg_id) or { continue }
+		n := g.tmp_count
+		g.tmp_count++
+		addr_tmp := '_cabi_out_array_${n}'
+		val_tmp := '_cabi_out_values_${n}'
+		idx_tmp := '_cabi_out_idx_${n}'
+		g.write('Array* ${addr_tmp} = &(')
+		g.gen_expr(base_id)
+		g.write('); int* ${val_tmp} = (int*)calloc(${addr_tmp}->cap, sizeof(int)); ')
+		g.write('for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${addr_tmp}->len; ++${idx_tmp}) { ${val_tmp}[${idx_tmp}] = (int)(((i64*)${addr_tmp}->data)[${idx_tmp}]); } ')
+		g.cabi_int_out_args[arg_id] = val_tmp
+		copybacks << 'for (i64 ${idx_tmp} = 0; ${idx_tmp} < ${addr_tmp}->len; ++${idx_tmp}) { ((i64*)${addr_tmp}->data)[${idx_tmp}] = (i64)${val_tmp}[${idx_tmp}]; } free(${val_tmp});'
+	}
 	if ret_type is types.Void {
 		g.gen_call(id, node)
 		g.write('; ')
@@ -6170,6 +6232,9 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 	}
 	g.write('})')
 	for arg_id in out_args {
+		g.cabi_int_out_args.delete(arg_id)
+	}
+	for arg_id in array_out_args {
 		g.cabi_int_out_args.delete(arg_id)
 	}
 	return true
@@ -6209,6 +6274,47 @@ fn c_type_is_pointer_to_platform_int(t types.Type) bool {
 	return false
 }
 
+fn (g &FlatGen) c_call_int_array_data_base(arg_id flat.NodeId) ?flat.NodeId {
+	mut data_id := arg_id
+	for {
+		node := g.a.node(data_id)
+		if node.kind in [.cast_expr, .paren] && node.children_count == 1 {
+			data_id = g.a.child(node, 0)
+			continue
+		}
+		if node.kind == .selector && node.value == 'data' && node.children_count > 0 {
+			return g.a.child(node, 0)
+		}
+		return none
+	}
+	return none
+}
+
+// c_call_is_int_array_data_arg reports whether an `[]int.data` argument needs a
+// temporary C `int` buffer at a C ABI boundary. The selector base must be a stable,
+// addressable dynamic array so the wrapper can copy values back after the call.
+fn (mut g FlatGen) c_call_is_int_array_data_arg(arg_id flat.NodeId, arg_idx int, param_types []types.Type, typed_param_count int, is_native_variadic bool) bool {
+	base_id := g.c_call_int_array_data_base(arg_id) or { return false }
+	if !g.expr_is_addressable(base_id) || !g.expr_is_stable_for_reuse(base_id) {
+		return false
+	}
+	base_type := cgen_unalias_type(g.usable_expr_type(base_id))
+	if base_type is types.Array {
+		elem_type := cgen_unalias_type(base_type.elem_type)
+		if elem_type !is types.Primitive || elem_type.size != 0
+			|| !elem_type.props.has(.integer) || elem_type.props.has(.unsigned) {
+			return false
+		}
+	} else {
+		return false
+	}
+	if arg_idx < typed_param_count {
+		return arg_idx < param_types.len
+			&& c_type_is_pointer_to_platform_int(cgen_unalias_type(param_types[arg_idx]))
+	}
+	return is_native_variadic
+}
+
 // gen_call emits call output for c.
 @[direct_array_access]
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
@@ -6221,6 +6327,13 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
 	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
+	if fn_node.kind == .selector && node.children_count == 2 && target_name.starts_with('C.')
+		&& target_name in g.tc.type_aliases {
+		g.write('(${g.direct_call_name(target_name)})(')
+		g.gen_expr(g.a.child(&node, 1))
+		g.write(')')
+		return
+	}
 	if g.gen_c_va_macro_call(node, target_name, resolved_target_name) {
 		return
 	}
@@ -9596,7 +9709,7 @@ fn (mut g FlatGen) json_encode_value_c_expr_inner(typ types.Type, expr string, s
 		encoded := g.json_encode_value_c_expr_inner(clean.value_type, '(*${value_name})', seen) or {
 			return none
 		}
-		return '({ map ${map_name} = ${expr}; string ${out_name} = v3_c_lit("{", 1); bool ${out_name}_first = true; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.key_values.len; ++${idx_name}) { if (${map_name}.key_values.deletes != 0 && ${map_name}.key_values.all_deleted != 0 && ${map_name}.key_values.all_deleted[${idx_name}] != 0) continue; if (!${out_name}_first) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); string* ${key_name} = (string*)(${map_name}.key_values.keys + ${idx_name} * ${map_name}.key_values.key_bytes); ${value_ct}* ${value_name} = (${value_ct}*)(${map_name}.key_values.values + ${idx_name} * ${map_name}.key_values.value_bytes); ${out_name} = string__plus(string__plus(string__plus(${out_name}, v3_json_encode_string(*${key_name})), v3_c_lit(":", 1)), ${encoded}); ${out_name}_first = false; } string__plus(${out_name}, v3_c_lit("}", 1)); })'
+		return '({ map ${map_name} = ${expr}; string ${out_name} = v3_c_lit("{", 1); bool ${out_name}_first = true; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.data->key_values.len; ++${idx_name}) { if (${map_name}.data->key_values.deletes != 0 && ${map_name}.data->key_values.all_deleted != 0 && ${map_name}.data->key_values.all_deleted[${idx_name}] != 0) continue; if (!${out_name}_first) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); string* ${key_name} = (string*)(${map_name}.data->key_values.keys + ${idx_name} * ${map_name}.data->key_values.key_bytes); ${value_ct}* ${value_name} = (${value_ct}*)(${map_name}.data->key_values.values + ${idx_name} * ${map_name}.data->key_values.value_bytes); ${out_name} = string__plus(string__plus(string__plus(${out_name}, v3_json_encode_string(*${key_name})), v3_c_lit(":", 1)), ${encoded}); ${out_name}_first = false; } string__plus(${out_name}, v3_c_lit("}", 1)); })'
 	}
 	if clean is types.Primitive {
 		if clean.props.has(.boolean) {
@@ -9742,7 +9855,7 @@ fn (mut g FlatGen) json_encode_value_c_expr_inner(typ types.Type, expr string, s
 		colon := g.intern_string(':')
 		empty := g.intern_string('')
 		value_expr := g.json_encode_value_c_expr_inner(clean.value_type, '(*(${value_ct}*)${value_name})', seen) or { return none }
-		return '({ map ${map_name} = ${expr}; string ${out_name} = _str_${open}; int ${count_name} = 0; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.key_values.len; ++${idx_name}) { if (${map_name}.key_values.deletes != 0 && ${map_name}.key_values.all_deleted != 0 && ${map_name}.key_values.all_deleted[${idx_name}] != 0) continue; string ${key_name} = *(string*)(${map_name}.key_values.keys + ${idx_name} * ${map_name}.key_values.key_bytes); void* ${value_name} = (void*)(${map_name}.key_values.values + ${idx_name} * ${map_name}.key_values.value_bytes); ${out_name} = string__plus(${out_name}, ${count_name} == 0 ? _str_${empty} : _str_${comma}); ${out_name} = string__plus(${out_name}, v3_json_encode_string(${key_name})); ${out_name} = string__plus(${out_name}, _str_${colon}); ${out_name} = string__plus(${out_name}, ${value_expr}); ${count_name}++; } string__plus(${out_name}, _str_${close}); })'
+		return '({ map ${map_name} = ${expr}; string ${out_name} = _str_${open}; int ${count_name} = 0; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.data->key_values.len; ++${idx_name}) { if (${map_name}.data->key_values.deletes != 0 && ${map_name}.data->key_values.all_deleted != 0 && ${map_name}.data->key_values.all_deleted[${idx_name}] != 0) continue; string ${key_name} = *(string*)(${map_name}.data->key_values.keys + ${idx_name} * ${map_name}.data->key_values.key_bytes); void* ${value_name} = (void*)(${map_name}.data->key_values.values + ${idx_name} * ${map_name}.data->key_values.value_bytes); ${out_name} = string__plus(${out_name}, ${count_name} == 0 ? _str_${empty} : _str_${comma}); ${out_name} = string__plus(${out_name}, v3_json_encode_string(${key_name})); ${out_name} = string__plus(${out_name}, _str_${colon}); ${out_name} = string__plus(${out_name}, ${value_expr}); ${count_name}++; } string__plus(${out_name}, _str_${close}); })'
 	}
 	return none
 }
@@ -9879,7 +9992,7 @@ fn (mut g FlatGen) json_encode_equal_c_expr(typ types.Type, left string, right s
 		left_value := g.tmp_name()
 		right_value := g.tmp_name()
 		value_equal := g.json_encode_equal_c_expr(clean.value_type, '(*${left_value})', '(*${right_value})', seen) or { return none }
-		return '({ map ${left_name} = ${left}; map ${right_name} = ${right}; bool ${equal_name} = ${left_name}.len == ${right_name}.len; for (int ${index_name} = 0; ${equal_name} && ${index_name} < ${left_name}.key_values.len; ++${index_name}) { if (${left_name}.key_values.deletes != 0 && ${left_name}.key_values.all_deleted != 0 && ${left_name}.key_values.all_deleted[${index_name}] != 0) continue; string* ${key_name} = (string*)(${left_name}.key_values.keys + ${index_name} * ${left_name}.key_values.key_bytes); ${value_ct}* ${left_value} = (${value_ct}*)(${left_name}.key_values.values + ${index_name} * ${left_name}.key_values.value_bytes); if (!map__exists(&${right_name}, ${key_name})) { ${equal_name} = false; break; } ${value_ct}* ${right_value} = (${value_ct}*)map__get(&${right_name}, ${key_name}, ${left_value}); if (!(${value_equal})) ${equal_name} = false; } ${equal_name}; })'
+		return '({ map ${left_name} = ${left}; map ${right_name} = ${right}; bool ${equal_name} = ${left_name}.data->count == ${right_name}.data->count; for (int ${index_name} = 0; ${equal_name} && ${index_name} < ${left_name}.data->key_values.len; ++${index_name}) { if (${left_name}.data->key_values.deletes != 0 && ${left_name}.data->key_values.all_deleted != 0 && ${left_name}.data->key_values.all_deleted[${index_name}] != 0) continue; string* ${key_name} = (string*)(${left_name}.data->key_values.keys + ${index_name} * ${left_name}.data->key_values.key_bytes); ${value_ct}* ${left_value} = (${value_ct}*)(${left_name}.data->key_values.values + ${index_name} * ${left_name}.data->key_values.value_bytes); if (!map__exists(&${right_name}, ${key_name})) { ${equal_name} = false; break; } ${value_ct}* ${right_value} = (${value_ct}*)map__get(&${right_name}, ${key_name}, ${left_value}); if (!(${value_equal})) ${equal_name} = false; } ${equal_name}; })'
 	}
 	if clean is types.Struct {
 		if clean.name in seen {
@@ -11752,6 +11865,9 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 }
 
 fn (g &FlatGen) interface_impl_field_access_suffix(impl_name string, field_name string) string {
+	if field_name == 'len' && types.unalias_type(g.tc.parse_type(impl_name)) is types.Map {
+		return '->data->count'
+	}
 	if g.direct_struct_field_exists(impl_name, field_name) {
 		return '->${g.cname(field_name)}'
 	}
@@ -12949,6 +13065,7 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 		}
 		is_rvalue := arg_node.kind == .call
 			|| (arg_node.kind == .index && arg_node.value == 'range')
+			|| (!arg_node.is_mut && g.map_index_value_is_rvalue(arg_id))
 		if is_rvalue {
 			ct := g.tc.c_type(types.unwrap_pointer(expected))
 			g.write('({${ct} _t${g.tmp_count} = ')
@@ -15639,6 +15756,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		}
 		is_rvalue := arg_node.kind == .call
 			|| (arg_node.kind == .index && arg_node.value == 'range')
+			|| (!arg_node.is_mut && g.map_index_value_is_rvalue(arg_id))
 			|| g.arg_is_const_ident(arg_node)
 		if needs_addr && g.arg_is_const_ident(arg_node) {
 			value_type := g.addressed_const_arg_value_type(arg_id, param_types[arg_idx])

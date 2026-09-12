@@ -226,8 +226,20 @@ mut:
 	lpVendorInfo   &u8
 }
 
+@[typedef]
+pub struct C.WSADATA {
+mut:
+	wVersion       u16
+	wHighVersion   u16
+	szDescription  [257]u8
+	szSystemStatus [129]u8
+	iMaxSockets    u16
+	iMaxUdpDg      u16
+	lpVendorInfo   &u8
+}
+
 fn init() {
-	mut wsadata := C.WSAData{
+	mut wsadata := C.WSADATA{
 		lpVendorInfo: 0
 	}
 	res := C.WSAStartup(wsa_v22, &wsadata)

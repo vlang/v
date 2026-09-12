@@ -88,7 +88,7 @@ fn main() {
 	ts.session_start('Testing...')
 	ts.test()
 	ts.session_stop('all V _test.v files')
-	if ts.failed_cmds.len > 0 {
+	if ts.has_failures() {
 		exit(1)
 	}
 }
@@ -142,8 +142,8 @@ pub fn (ctx &Context) should_test_dir(path string, backend string) ([]string, []
 }
 
 enum ShouldTestStatus {
-	test   // do test, print OK or FAIL, depending on if it passes
-	skip   // print SKIP for the test
+	test // do test, print OK or FAIL, depending on if it passes
+	skip // print SKIP for the test
 	ignore // just ignore the file, so it will not be printed at all in the list of tests
 }
 

@@ -24,11 +24,11 @@ const args = arguments()
 
 fn new_app() App {
 	return App{
-		is_verbose:   '-v' in args
-		is_prod:      '-prod' in args
-		vexe:         vexe
-		vroot:        vroot
-		skip_v_self:  '-skip_v_self' in args
+		is_verbose: '-v' in args
+		is_prod: '-prod' in args
+		vexe: vexe
+		vroot: vroot
+		skip_v_self: '-skip_v_self' in args
 		skip_current: '-skip_current' in args
 	}
 }
@@ -45,12 +45,13 @@ fn main() {
 		eprintln('Try running `${get_tcc_update_cmd()}` .')
 		exit(1)
 	}
-	hash_when_vup_was_compiled := @VCURRENTHASH
-	current_hash_from_filesystem := version.githash(vroot) or { hash_when_vup_was_compiled }
-	if !app.skip_current && hash_when_vup_was_compiled == current_hash_from_filesystem {
+	current_v_hash := app.current_v_hash() or { @VCURRENTHASH }
+	current_hash_from_filesystem := version.githash(vroot) or { current_v_hash }
+	if !app.skip_current && current_v_hash == current_hash_from_filesystem {
 		println('V is already updated.')
-		if !os.exists(app.current_vexe_path()) {
-			eprintln('`${app.vexe}` is missing, trying `${get_make_cmd_name()}` to restore it...')
+		current_vexe_path := app.current_vexe_path()
+		if !os.exists(current_vexe_path) {
+			eprintln('`${current_vexe_path}` is missing, trying `${get_make_cmd_name()}` to restore it...')
 			if !app.make('') {
 				app.show_current_v_version()
 				eprintln('Recompiling V *failed*.')
@@ -197,7 +198,7 @@ fn (app App) make(_vself string) bool {
 fn (app App) show_current_v_version() {
 	vexe_path := app.current_vexe_path()
 	if !os.exists(vexe_path) {
-		println('Current V version: unavailable (`${app.vexe}` is missing).')
+		println('Current V version: unavailable (`${vexe_path}` is missing).')
 		return
 	}
 	vout := os.execute('${os.quoted_path(vexe_path)} version')
@@ -212,6 +213,28 @@ fn (app App) show_current_v_version() {
 		}
 		println('Current V version: ${vversion}')
 	}
+}
+
+fn (app App) current_v_hash() ?string {
+	vexe_path := app.current_vexe_path()
+	if !os.exists(vexe_path) {
+		return none
+	}
+	vout := os.execute('${os.quoted_path(vexe_path)} version')
+	if vout.exit_code != 0 {
+		return none
+	}
+	for line in vout.output.split_into_lines() {
+		fields := line.trim_space().fields()
+		if fields.len != 3 || fields[0] != 'V' {
+			continue
+		}
+		hash := fields[2].all_after_last('.')
+		if hash.len >= 7 && hash[..7].bytes().all(it.is_hex_digit()) {
+			return hash[..7]
+		}
+	}
+	return none
 }
 
 fn (app App) current_vexe_name() string {
@@ -229,6 +252,17 @@ fn (app App) current_vbackup_name() string {
 }
 
 fn (app App) current_vexe_path() string {
+	// The V3 dispatcher delegates building `vup` to `v1_fallback`. In that case
+	// @VEXE identifies the fallback, but `v up` must inspect and rebuild the main
+	// compiler next to it.
+	if os.file_name(app.vexe) in ['v1_fallback', 'v1_fallback.exe'] {
+		primary_vexe := os.join_path_single(app.vroot, if os.user_os() == 'windows' {
+			'v.exe'
+		} else {
+			'v'
+		})
+		return primary_vexe
+	}
 	if os.exists(app.vexe) {
 		return app.vexe
 	}

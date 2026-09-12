@@ -3,8 +3,6 @@ module fastc
 import crypto.sha256
 import os
 
-fn C.ftruncate(i32, u64) i32
-
 // TinyCC signs the executables it links on macOS by running Apple's
 // `codesign -f -s - <file>`, and that tool costs about 50 ms per build,
 // half of TinyCC's own time for the self-host. The drivers therefore put a
@@ -132,7 +130,7 @@ fn fastc_sign_macho_adhoc_buffered(path string) ! {
 	if patch.original_len > patch.final_len {
 		// A larger old signature is cut off.
 		out.flush()
-		if C.ftruncate(i32(out.fd), u64(patch.final_len)) != 0 {
+		if fastc_truncate_file_descriptor(i32(out.fd), u64(patch.final_len)) != 0 {
 			out.close()
 			return error('`${path}`: could not truncate the old signature')
 		}

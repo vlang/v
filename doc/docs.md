@@ -75,20 +75,24 @@ project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
 ## The default compiler
 
-On macOS and Linux, the top-level `v` executable contains only the experimental
-**V3** C compiler (whose source lives in `vlib/v3`). Every direct C build,
-including compiler self-builds, is compiled by V3 in-process. The CLI and tool
-commands remain in `cmd/v`; commands such as `test` and `fmt` are external tools,
-and non-C backends remain separate builder tools.
+On every native platform, the top-level `v` executable contains only the
+experimental **V3** C compiler (whose source lives in `vlib/v3`). Every direct C
+build, including compiler self-builds, is compiled by V3 in-process. The CLI and
+tool commands remain in `cmd/v`; commands such as `test` and `fmt` are external
+tools, and non-C backends remain separate builder tools.
 
-V3 compilation errors are returned directly. These builds do not silently retry
-with the established compiler, and `-old-compiler` reports that the executable
-contains only V3. `-new-compiler` remains accepted for command-line compatibility
-and selects the same embedded driver.
+The standard bootstrap builds a sibling `v1_fallback` executable
+(`v1_fallback.exe` on Windows). `-old-compiler` launches it explicitly, and
+ordinary user builds retry through it after a V3 compiler or C compilation
+failure. Explicit `-new-compiler` builds and native compiler self-builds remain
+strict V3 operations, except for `-new-compiler -cc msvc` on Windows. V3 does
+not yet generate MSVC command lines, so that combination intentionally launches
+`v1_fallback.exe`. A separately built V3-only executable without the sibling
+cannot use the fallback. `-new-compiler` remains accepted for command-line
+compatibility and otherwise selects the same embedded driver.
 
-On platforms that do not embed V3, `cmd/v` still contains the established
-compiler from `vlib/v`. There, `-new-compiler` reports that the current build does
-not include V3.
+Portable cross-VC snapshots do not embed V3 and retain the established compiler
+from `vlib/v`.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
@@ -7286,6 +7290,9 @@ by an `id`. An ID on an earlier node is available to following nodes in the same
 Both quoted and unquoted `#RRGGBB` color values are accepted. A `Repeater` requires `model`
 and stable `key` properties and exposes `item` and `index` inside its delegate.
 
+String literals may use either double (`"`) or single (`'`) quote delimiters. Escape a matching
+quote or a backslash with `\`; `\n` and `\t` are also supported.
+
 The `bind.text`, `bind.checked`, `bind.active`, and `bind.value` properties create two-way
 bindings to mutable top-level fields on `app`. Event properties `on_tap`, `on_change`,
 `on_active`, `on_text`, and `on_submit` call an `app` method with zero or one argument. These
@@ -9118,6 +9125,19 @@ asm amd64 raw {
     ; cc
 }
 assert value == 42
+```
+
+`asm goto` emits GNU `asm goto` and is available only with the C backend. Its fifth semicolon
+section lists the V labels that the assembly may branch to. Use the label name in a structured
+branch instruction; a `raw` template uses GNU's `%l[label]` form. Targets cannot enter or leave a
+V `lock` scope.
+
+```v ignore
+asm goto amd64 {
+    jne done
+    ; ; ; ; done
+}
+done:
 ```
 
 Use `intel` for destination-first structured x86 assembly. V surrounds the generated template

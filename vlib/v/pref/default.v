@@ -297,13 +297,16 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	npath := rpath.replace('\\', '/')
 	p.building_v = !p.is_repl && is_v_compiler_target(npath)
-	$if macos || linux {
+	$if bsd || linux {
 		// The embedded V3 compiler relies on disposable preallocation scopes to keep
 		// large compiler-module tests bounded. Match V3's own building-v default so
 		// ordinary `v -o vnew cmd/v` builds do not retain every stage allocation.
-		if p.building_v && p.os in [.macos, .linux] && !p.prealloc
+		if p.building_v && p.os in [.macos, .linux, .freebsd, .openbsd, .netbsd, .dragonfly]
+			&& !p.prealloc
 			&& (!p.gc_set_by_flag || p.gc_mode == .no_gc)
-			&& (p.os != .linux || !p.ccompiler_set_by_flag || cc_from_string(p.ccompiler) != .tinyc) {
+			&& (p.os in [.macos, .freebsd, .openbsd, .netbsd, .dragonfly]
+				|| !p.ccompiler_set_by_flag
+				|| cc_from_string(p.ccompiler) != .tinyc) {
 			p.prealloc = true
 			p.build_options << '-prealloc'
 		}
@@ -511,42 +514,63 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
-	preferred_tcc := default_tcc_compiler()
+	if p.backend != .c || p.output_cross_c {
+		return
+	}
 	if p.ccompiler in ['tcc', 'tinyc'] {
+		preferred_tcc := default_tcc_compiler()
 		p.ccompiler = if preferred_tcc != '' { preferred_tcc } else { 'tcc' }
 		return
 	}
-	if p.ccompiler == '' {
-		// -prealloc uses thread-local allocator state. The bundled tcc does not
-		// support TLS declarations, so use the platform C compiler by default.
-		if p.prealloc {
-			return
-		}
-		// -d no_gc_thread_local_alloc forces the bundled source libgc path. The
-		// bundled tcc cannot compile that source reliably, so use the platform C
-		// compiler by default. An explicit -cc still wins.
-		if p.needs_source_boehm_without_thread_local_alloc() {
-			return
-		}
-		// use an optimizing compiler (i.e. gcc or clang) on -prod mode
-		if p.is_prod {
-			return
-		}
-		// The macOS bundled tcc is sensitive to Apple SDK/header changes and
-		// app/framework includes. Keep it available through explicit `-cc tcc`,
-		// but default to the platform compiler on macOS.
-		if get_host_os() == .macos {
-			return
-		}
-		p.ccompiler = preferred_tcc
+	if p.ccompiler != '' {
 		return
 	}
+	// -prealloc uses thread-local allocator state. The bundled tcc does not
+	// support TLS declarations, so use the platform C compiler by default.
+	if p.prealloc {
+		return
+	}
+	// -d no_gc_thread_local_alloc forces the bundled source libgc path. The
+	// bundled tcc cannot compile that source reliably, so use the platform C
+	// compiler by default. An explicit -cc still wins.
+	if p.needs_source_boehm_without_thread_local_alloc() {
+		return
+	}
+	// use an optimizing compiler (i.e. gcc or clang) on -prod mode
+	if p.is_prod {
+		return
+	}
+	if (p.os != ._auto && p.os != get_host_os())
+		|| (p.arch != ._auto && p.arch != get_host_arch()) {
+		return
+	}
+	// The macOS bundled tcc is sensitive to Apple SDK/header changes and
+	// app/framework includes. Keep it available through explicit `-cc tcc`,
+	// but default to the platform compiler on macOS.
+	if get_host_os() == .macos {
+		return
+	}
+	vroot := os.dir(vexe_path())
+	p.ccompiler = preferred_tcc_compiler(vroot, p.system_tcc_runtime_available(vroot))
+}
+
+fn (p &Preferences) system_tcc_runtime_available(vroot string) bool {
+	if p.os == .windows
+		&& !os.is_file(os.join_path(vroot, 'thirdparty', 'tcc', 'lib', 'openlibm.o')) {
+		return false
+	}
+	uses_boehm := p.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt,
+		.boehm_leak]
+	needs_bundled_libgc := uses_boehm && (p.os == .windows || (p.os == .linux && p.is_glibc))
+	if !needs_bundled_libgc
+		|| 'dynamic_boehm' in p.compile_defines_all
+		|| 'use_bundled_libgc' in p.compile_defines_all {
+		return true
+	}
+	return os.is_file(os.join_path(vroot, 'thirdparty', 'tcc', 'lib', 'libgc.a'))
 }
 
 fn usable_system_tcc_compiler() string {
-	if get_host_os() != .termux {
-		return ''
-	}
 	system_tcc := os.find_abs_path_of_executable('tcc') or { return '' }
 	tcc_probe := os.execute('${os.quoted_path(system_tcc)} -v')
 	if tcc_probe.exit_code != 0 {
@@ -572,9 +596,16 @@ fn usable_bundled_tcc_compiler(vroot string) string {
 pub fn default_tcc_compiler() string {
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
+	return preferred_tcc_compiler(vroot, true)
+}
+
+fn preferred_tcc_compiler(vroot string, allow_system_tcc bool) string {
 	bundled_tcc := usable_bundled_tcc_compiler(vroot)
 	if bundled_tcc != '' {
 		return bundled_tcc
+	}
+	if !allow_system_tcc {
+		return ''
 	}
 	return usable_system_tcc_compiler()
 }

@@ -6,6 +6,152 @@ import v3.flat
 import v3.parser
 import v3.pref
 
+fn test_check_heap_partitions_match_linear_load_selection() {
+	for count in [0, 1, 2, 33, 256, 1500] {
+		mut items := []CheckWorkItem{}
+		mut total := i64(0)
+		for i in 0 .. count {
+			cost := (i * 31) % 97
+			items << CheckWorkItem{ fn_idx: i, cost: cost, rank: i64(i % 13) }
+			total += i64(cost) + 1
+		}
+		for n in [1, 2, 3, 17, 136] {
+			mut expected := [][]CheckWorkItem{len: n}
+			mut loads := []i64{len: n}
+			if n > 1 {
+				loads[0] = -total * check_master_bias_pct / i64(100 * n)
+			}
+			mut sorted := items.clone()
+			sorted.sort(a.rank > b.rank)
+			for item in sorted {
+				mut best := 0
+				for bucket in 1 .. n {
+					if loads[bucket] < loads[best] {
+						best = bucket
+					}
+				}
+				expected[best] << item
+				loads[best] += i64(item.cost) + 1
+			}
+			for mut bucket in expected {
+				bucket.sort(a.fn_idx < b.fn_idx)
+			}
+			assert split_check_items(items, n) == expected
+		}
+	}
+}
+
+fn test_visibility_index_preserves_file_context_and_builtin_aliases() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, 'one.v')
+	a.add_val(.module_decl, 'alpha')
+	a.add_node(flat.Node{ kind: .fn_decl, value: 'entry', op: .arrow })
+	a.add_val(.file, 'one.v')
+	a.add_val(.fn_decl, 'trailing')
+	a.add_val(.file, 'two.v')
+	a.add_val(.module_decl, 'builtin')
+	a.add_node(flat.Node{ kind: .fn_decl, value: 'helper', op: .arrow })
+	mut tc := TypeChecker.new(&a)
+	for i in 0 .. a.nodes.len {
+		tc.top_level_idx << i
+	}
+	tc.cur_module = 'original'
+	tc.cur_file = 'original.v'
+	tc.collect_declaration_visibility()
+	assert tc.declaration_visibility['alpha.entry'].is_pub
+	assert tc.declaration_visibility['alpha.trailing'].module_name == 'alpha'
+	assert tc.declaration_visibility['helper'].is_pub
+	assert tc.declaration_visibility['builtin.helper'].is_pub
+	assert tc.cur_module == 'original'
+	assert tc.cur_file == 'original.v'
+	assert tc.file_modules.len == 0
+}
+
+fn test_checker_type_promotion_survives_batch_arena_release() {
+	$if prealloc {
+		a := flat.FlatAst.new()
+		tc := TypeChecker.new(&a)
+		scope := unsafe { prealloc_scope_begin() }
+		borrowed := Type(FnType{
+			params: [Type(Struct{ name: 'ScopedItem'.clone() })]
+			return_type: Type(Array{ elem_type: Type(string_) })
+		})
+		unsafe { prealloc_scope_leave(scope) }
+		first := tc.promote_check_type(borrowed)
+		second := tc.promote_check_type(borrowed)
+		if first is FnType && second is FnType {
+			assert !unsafe { prealloc_scope_owns(scope, first.params.data) }
+			assert first.params.data == second.params.data
+		} else {
+			assert false
+		}
+		unsafe { prealloc_scope_free_after(scope) }
+		assert first.name() == 'fn(ScopedItem) []string'
+		assert second.name() == first.name()
+	}
+}
+
+fn test_parent_index_ranges_preserve_cross_range_edges_and_function_costs() {
+	mut a := flat.FlatAst.new()
+	a.add(.ident)
+	for kind, children in {
+		flat.NodeKind.paren:        [flat.NodeId(0), flat.NodeId(5)]
+		flat.NodeKind.fn_decl:      [flat.NodeId(1)]
+		flat.NodeKind.expr_stmt:    [flat.NodeId(0)]
+		flat.NodeKind.comptime_for: [flat.NodeId(5)]
+	} {
+		start := a.begin_children()
+		for child in children {
+			a.add_child(child)
+		}
+		a.add_node(flat.Node{ kind: kind, children_start: start, children_count: children.len })
+	}
+	a.add(.ident)
+	start := a.begin_children()
+	a.add_child(flat.NodeId(5))
+	a.add_node(flat.Node{ kind: .paren, children_start: start, children_count: 1 })
+	a.add(.for_in_stmt)
+	a.add_val(.struct_decl, 'Box@local@1')
+	a.add(.goto_stmt)
+	a.add(.fn_decl)
+	mut serial := TypeChecker.new(&a)
+	serial.building_v_fast = true
+	serial.build_direct_parent_index(&a)
+	mut split := TypeChecker.new(&a)
+	split.building_v_fast = true
+	split.init_direct_parent_index(&a)
+	// Visit the later range first to exercise source-order parent selection.
+	later := split.fill_direct_parent_edges_range(&a, 3, a.nodes.len)
+	earlier := split.fill_direct_parent_edges_range(&a, 0, 3)
+	split.merge_direct_parent_chunk(earlier)
+	split.merge_direct_parent_chunk(later)
+	assert split.direct_parent_ids == serial.direct_parent_ids
+	assert split.direct_parent_ids[5] == flat.NodeId(1)
+	assert split.value_used_nodes == serial.value_used_nodes
+	assert split.fn_check_costs == serial.fn_check_costs
+	assert split.preflight_node_ids == serial.preflight_node_ids
+	assert split.synthetic_top_level_type_ids == serial.synthetic_top_level_type_ids
+	assert split.has_goto_nodes == serial.has_goto_nodes
+}
+
+fn test_preflight_index_falls_back_after_ast_growth_or_invalidation() {
+	mut a := flat.FlatAst.new()
+	a.add(.ident)
+	loop := a.add(.for_in_stmt)
+	comptime_loop := a.add(.comptime_for)
+	mut tc := TypeChecker.new(&a)
+	tc.build_direct_parent_index(&a)
+	assert tc.preflight_nodes(.for_in_stmt) == [i32(loop)]
+	assert tc.preflight_nodes(.comptime_for) == [i32(comptime_loop)]
+	added := a.add(.comptime_for)
+	assert tc.preflight_nodes(.comptime_for) == [i32(comptime_loop), i32(added)]
+	tc.build_direct_parent_index(&a)
+	a.nodes[int(loop)].kind = .comptime_for
+	tc.direct_parent_index_trusted = false
+	assert tc.preflight_nodes(.for_in_stmt).len == 0
+	assert tc.preflight_nodes(.comptime_for) == [i32(loop), i32(comptime_loop), i32(added)]
+}
+
 fn test_fast_file_index_collects_translated_module_attribute() {
 	old_no_file_idx := os.getenv_opt('V3_NO_FILE_IDX')
 	os.unsetenv('V3_NO_FILE_IDX')
@@ -110,7 +256,7 @@ fn test_scoped_checker_merge_deep_clones_diagnostic_details() {
 		scope := unsafe { prealloc_scope_begin() }
 		mut worker := tc.fork_for_parallel_check()
 		worker.notices << TypeError{
-			msg:     'scoped notice'.clone()
+			msg: 'scoped notice'.clone()
 			details: ['scoped detail'.clone()]
 		}
 		unsafe { prealloc_scope_leave(scope) }
@@ -129,14 +275,14 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	first_children := a.begin_children()
 	a.add_child(child)
 	first_parent := a.add_node(flat.Node{
-		kind:           .paren
+		kind: .paren
 		children_start: first_children
 		children_count: 1
 	})
 	second_children := a.begin_children()
 	a.add_child(child)
 	a.add_node(flat.Node{
-		kind:           .expr_stmt
+		kind: .expr_stmt
 		children_start: second_children
 		children_count: 1
 	})
@@ -153,7 +299,7 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	appended_children := a.begin_children()
 	a.add_child(appended_child)
 	appended_parent := a.add_node(flat.Node{
-		kind:           .paren
+		kind: .paren
 		children_start: appended_children
 		children_count: 1
 	})
@@ -178,14 +324,14 @@ fn test_rewritten_parent_index_falls_back_from_a_stale_shared_edge() {
 	first_children := a.begin_children()
 	a.add_child(shared_child)
 	first_parent := a.add_node(flat.Node{
-		kind:           .paren
+		kind: .paren
 		children_start: first_children
 		children_count: 1
 	})
 	second_children := a.begin_children()
 	a.add_child(shared_child)
 	second_parent := a.add_node(flat.Node{
-		kind:           .expr_stmt
+		kind: .expr_stmt
 		children_start: second_children
 		children_count: 1
 	})
@@ -245,7 +391,7 @@ fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 	generic_children := a.begin_children()
 	a.add_child(generic_child)
 	mut generic_fn := flat.Node{
-		kind:           .fn_decl
+		kind: .fn_decl
 		children_start: generic_children
 		children_count: 1
 	}
@@ -256,7 +402,7 @@ fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 	unrelated_children := a.begin_children()
 	a.add_child(unrelated_child)
 	unrelated_fn_id := a.add_node(flat.Node{
-		kind:           .fn_decl
+		kind: .fn_decl
 		children_start: unrelated_children
 		children_count: 1
 	})
@@ -316,8 +462,7 @@ fn test_parallel_checker_preserves_all_dependency_edges() {
 
 fn assert_preflight_error_keeps_function_semantics(name string, source string, initial_error string, collection_error bool) {
 	for want_parallel in [false, true] {
-		path := os.join_path(os.vtmp_dir(),
-			'v3_preflight_continuation_${name}_${want_parallel}_${os.getpid()}.v')
+		path := os.join_path(os.vtmp_dir(), 'v3_preflight_continuation_${name}_${want_parallel}_${os.getpid()}.v')
 		os.write_file(path, source) or { panic(err) }
 		mut p := parser.Parser.new(pref.new_preferences())
 		mut a := p.parse_file(path)
@@ -338,10 +483,6 @@ fn assert_preflight_error_keeps_function_semantics(name string, source string, i
 }
 
 fn test_preflight_errors_do_not_skip_function_semantics() {
-	assert_preflight_error_keeps_function_semantics('collection_error',
-		'type Recursive = []Recursive\n\nfn main() {\n\tunknown_call()\n}\n',
-		'recursive declarations of aliases', true)
-	assert_preflight_error_keeps_function_semantics('for_in_const_conflict',
-		'const item = 1\n\nfn report_other_error() {\n\tunknown_call()\n}\n\nfn main() {\n\tfor item in [1, 2] {}\n}\n',
-		'duplicate of a const name `item`', false)
+	assert_preflight_error_keeps_function_semantics('collection_error', 'type Recursive = []Recursive\n\nfn main() {\n\tunknown_call()\n}\n', 'recursive declarations of aliases', true)
+	assert_preflight_error_keeps_function_semantics('for_in_const_conflict', 'const item = 1\n\nfn report_other_error() {\n\tunknown_call()\n}\n\nfn main() {\n\tfor item in [1, 2] {}\n}\n', 'duplicate of a const name `item`', false)
 }

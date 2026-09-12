@@ -703,6 +703,10 @@ fn optional_payload_is_bare_struct(t types.Type) bool {
 // optional_typedefs supports optional typedefs handling for FlatGen.
 fn (mut g FlatGen) optional_typedefs() {
 	g.collect_optional_typedefs()
+	// Declaration collection can have completed before the final selected-function
+	// list is available. Revisit that concrete list immediately before emission so
+	// every wrapper used by forward_decls() is already defined.
+	g.collect_selected_declaration_signature_types()
 	mut wrote := false
 	mut names := g.needed_optional_types.keys()
 	names.sort()
@@ -722,6 +726,11 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 		return
 	}
 	g.collect_declaration_signature_types()
+	g.collect_unresolved_call_optional_types()
+	g.optional_types_ready = true
+}
+
+fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 	// Calls without a resolved expression type are the only optional-type source
 	// not covered by the shared declaration-signature scan.
 	mut seen_type_ids := []bool{len: 65536}
@@ -755,7 +764,6 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 			g.collect_optional_typedef_type(g.parse_node_type(&node))
 		}
 	}
-	g.optional_types_ready = true
 }
 
 fn cgen_type_text_is_complete(text string) bool {
@@ -817,8 +825,8 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 		g.tc.cur_file = old_file
 	}
 	// Parallel monomorph workers can append concrete declarations before their
-	// checker signature maps are merged. Read declaration nodes directly too, so
-	// an option/result used only by a worker specialization still gets a typedef.
+	// checker signature maps are merged. Read those declaration nodes directly too,
+	// so an option/result used only by a worker specialization still gets a typedef.
 	mut cur_module := ''
 	mut cur_file := ''
 	for idx in g.top_level_nodes() {
@@ -835,26 +843,38 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 		if node.kind != .fn_decl {
 			continue
 		}
-		concrete_optional := g.a.specialized_fn_nodes[idx]
-			|| g.name_uses_specialized_generic_abi(node.value)
-		if !concrete_optional {
-			continue
-		}
 		g.tc.cur_module = g.a.specialized_fn_modules[idx] or { cur_module }
 		g.tc.cur_file = g.a.specialized_fn_files[idx] or {
 			g.tc.fn_type_files[node.value] or { cur_file }
 		}
-		if node.typ.len > 0 {
-			g.collect_declaration_signature_type_for_context(g.tc.parse_type(node.typ), concrete_optional)
+		concrete_optional := g.is_program_specialization_fn_node(node, idx, g.tc.cur_module)
+		if !concrete_optional {
+			continue
 		}
+		return_type := g.fn_node_return_type(node, g.tc.cur_module)
+		g.collect_declaration_signature_type_for_context(return_type, concrete_optional)
+		typed_params := g.fn_node_param_types(node, g.tc.cur_module)
+		mut param_idx := 0
 		for i in 0 .. node.children_count {
 			param := g.a.child_node(&node, i)
 			if param.kind != .param {
 				break
 			}
-			g.collect_declaration_signature_type_for_context(g.tc.parse_type(param.typ), concrete_optional)
+			raw_type := if param_idx < typed_params.len {
+				typed_params[param_idx]
+			} else {
+				g.tc.parse_resolution_type(param.typ)
+			}
+			param_idx++
+			g.collect_declaration_signature_type_for_context(g.fn_node_effective_param_type(param, raw_type), concrete_optional)
 		}
 	}
+	// The selected function list excludes open generic templates and carries the
+	// exact module/file context later used by forward_decls(). Collect those known
+	// concrete signatures without the conservative placeholder-name filter: in a
+	// large program it can mistake short nominal payloads such as `Token` or `Type`
+	// for generic parameters and omit their optional wrapper typedefs.
+	g.collect_selected_declaration_signature_types()
 	mut seen := &PreseedTypeSeen{}
 	for name, ret in g.tc.fn_ret_types {
 		// Generic template signatures keep unspecialized placeholder types
@@ -922,6 +942,38 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 	g.multi_return_types_ready = true
 }
 
+fn (mut g FlatGen) collect_selected_declaration_signature_types() {
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
+	for item in g.ensure_fn_gen_items() {
+		node := g.a.nodes[int(item.node_id)]
+		g.tc.cur_module = item.module
+		g.tc.cur_file = item.file
+		concrete_optional := g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
+		return_type := g.fn_node_return_type(node, item.module)
+		g.collect_known_declaration_signature_type_for_context(return_type, concrete_optional)
+		typed_params := g.fn_node_param_types(node, item.module)
+		mut param_idx := 0
+		for i in 0 .. node.children_count {
+			param := g.a.child_node(&node, i)
+			if param.kind != .param {
+				break
+			}
+			raw_type := if param_idx < typed_params.len {
+				typed_params[param_idx]
+			} else {
+				g.tc.parse_resolution_type(param.typ)
+			}
+			param_idx++
+			g.collect_known_declaration_signature_type_for_context(g.fn_node_effective_param_type(param, raw_type), concrete_optional)
+		}
+	}
+}
+
 @[inline]
 fn cgen_type_first_seen(typ &types.Type, mut seen PreseedTypeSeen) bool {
 	words := unsafe { &u64(voidptr(typ)) }
@@ -953,6 +1005,10 @@ fn (mut g FlatGen) collect_declaration_signature_type_for_context(t types.Type, 
 	if skip {
 		return
 	}
+	g.collect_known_declaration_signature_type_for_context(t, concrete_optional)
+}
+
+fn (mut g FlatGen) collect_known_declaration_signature_type_for_context(t types.Type, concrete_optional bool) {
 	g.collect_concrete_optional_typedef_type_for_context(t, concrete_optional)
 	g.collect_known_concrete_multi_return_type(t)
 }
@@ -1205,9 +1261,11 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	bare_val_type := val_type.trim_right('*')
 	interface_matches := g.qualified_interface_c_types(bare_val_type.all_after_last('__'))
 	is_known_interface := bare_val_type in interface_matches
+	is_known_sum_type := g.is_known_sum_c_type(bare_val_type)
 	// Multi-return names can contain a module-qualified field component, but the
 	// payload is the generated tuple struct rather than a stale source struct.
-	if !is_known_interface && !bare_val_type.starts_with('multi_return_')
+	if bare_val_type != 'Array' && !is_known_interface && !is_known_sum_type
+		&& !bare_val_type.starts_with('multi_return_')
 		&& (g.stale_ambiguous_qualified_struct_c_type(bare_val_type)
 			|| g.stale_missing_qualified_struct_c_type(bare_val_type)) {
 		// Stale generic annotations can lose the declaration module or inherit the
@@ -1216,7 +1274,8 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		g.emitted_optional_types[opt_name] = true
 		return false
 	}
-	if !bare_val_type.contains('__') && g.stale_ambiguous_qualified_interface_c_type(bare_val_type) {
+	if bare_val_type != 'Array' && !bare_val_type.contains('__')
+		&& g.stale_ambiguous_qualified_interface_c_type(bare_val_type) {
 		// A stale unqualified signature cannot identify which imported interface it
 		// belongs to. Its concrete, module-qualified signature registers the usable
 		// typedef; do not emit an invalid C type for the ambiguous collector entry.
@@ -1236,6 +1295,15 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
 	g.emitted_optional_types[opt_name] = true
 	return true
+}
+
+fn (g &FlatGen) is_known_sum_c_type(c_type string) bool {
+	for name, _ in g.tc.sum_types {
+		if g.cname(name) == c_type {
+			return true
+		}
+	}
+	return false
 }
 
 // ensure_fn_ptr_typedef_by_name emits the `_fn_ptr_<hash>` typedef registered under
@@ -1446,15 +1514,16 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 			}
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
-				cn := g.cname(name)
-				if !g.enum_autostr_is_used(cn) {
+				enum_cn := g.cname(name)
+				fn_cn := g.enum_autostr_c_name(name)
+				if !g.enum_autostr_is_used(fn_cn) {
 					continue
 				}
-				if emitted[cn] {
+				if emitted[fn_cn] {
 					continue
 				}
-				emitted[cn] = true
-				g.writeln('string ${cn}__autostr(${cn} it);')
+				emitted[fn_cn] = true
+				g.writeln('string ${fn_cn}__autostr(${enum_cn} it);')
 			}
 			else {}
 		}
@@ -1480,28 +1549,29 @@ fn (mut g FlatGen) enum_str_defs() {
 			}
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
-				cn := g.cname(name)
-				if !g.enum_autostr_is_used(cn) {
+				enum_cn := g.cname(name)
+				fn_cn := g.enum_autostr_c_name(name)
+				if !g.enum_autostr_is_used(fn_cn) {
 					continue
 				}
-				if emitted[cn] {
+				if emitted[fn_cn] {
 					continue
 				}
-				emitted[cn] = true
+				emitted[fn_cn] = true
 				if node.typ == 'flag' {
 					// `[flag]` enum: a value can combine several bits, so build the V
 					// `Enum{.a | .b}` form by testing each field bit instead of matching a
 					// single case (which would send any combination to the integer path).
-					g.emit_flag_enum_autostr(node, name, cn)
+					g.emit_flag_enum_autostr(node, name, enum_cn, fn_cn)
 				} else if backing := enum_decl_backing_type(node) {
 					storage_ct := g.enum_emit_storage_c_type(name, backing)
-					g.writeln('string ${cn}__autostr(${cn} it) {')
+					g.writeln('string ${fn_cn}__autostr(${enum_cn} it) {')
 					for i in 0 .. node.children_count {
 						f := g.a.child_node(&node, i)
 						raw_fname := f.value
 						fname := enum_field_display_name(raw_fname)
 						cfield := g.cname(raw_fname)
-						g.writeln('\tif (it == ${cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
+						g.writeln('\tif (it == ${enum_cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
 					}
 					if enum_storage_c_type_is_unsigned(storage_ct) {
 						g.writeln('\treturn strconv__format_uint((u64)(${storage_ct})it, 10);')
@@ -1511,7 +1581,7 @@ fn (mut g FlatGen) enum_str_defs() {
 					g.writeln('}')
 					g.writeln('')
 				} else {
-					g.writeln('string ${cn}__autostr(${cn} it) {')
+					g.writeln('string ${fn_cn}__autostr(${enum_cn} it) {')
 					for i in 0 .. node.children_count {
 						f := g.a.child_node(&node, i)
 						raw_fname := f.value
@@ -1519,7 +1589,7 @@ fn (mut g FlatGen) enum_str_defs() {
 						cfield := g.cname(raw_fname)
 						// Use ordered comparisons instead of switch cases: enums may opt in
 						// to duplicate values, and the first declared name is their auto-str.
-						g.writeln('\tif (it == ${cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
+						g.writeln('\tif (it == ${enum_cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
 					}
 					g.writeln('\treturn strconv__format_int((i64)it, 10);')
 					g.writeln('}')
@@ -1537,7 +1607,7 @@ fn (g &FlatGen) enum_autostr_is_used(cname string) bool {
 
 fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
 	if node.value.contains('.') {
-		return node.value
+		return g.enum_type_codegen_name(node.value)
 	}
 	candidate := if module_name.len > 0 && module_name !in ['main', 'builtin'] {
 		'${module_name}.${node.value}'
@@ -1545,7 +1615,7 @@ fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
 		node.value
 	}
 	if candidate in g.tc.enum_names {
-		return candidate
+		return g.enum_type_codegen_name(candidate)
 	}
 	mut resolved := ''
 	for name in g.tc.enum_names.keys() {
@@ -1557,7 +1627,26 @@ fn (g &FlatGen) enum_decl_type_name(node flat.Node, module_name string) string {
 		}
 		resolved = name
 	}
-	return if resolved.len > 0 { resolved } else { candidate }
+	name := if resolved.len > 0 { resolved } else { candidate }
+	return g.enum_type_codegen_name(name)
+}
+
+// enum_type_codegen_name preserves V1's main-module namespace in ownership/autofree
+// output. Bare builtin enum names stay unqualified.
+fn (g &FlatGen) enum_type_codegen_name(name string) string {
+	if !g.tc.autofree_mode || name.contains('.') {
+		return name
+	}
+	if module_name := g.enum_modules[name] {
+		if module_name in ['', 'main'] {
+			return 'main.${name}'
+		}
+	}
+	return name
+}
+
+fn (g &FlatGen) enum_type_c_name(name string) string {
+	return g.cname(g.enum_type_codegen_name(name))
 }
 
 fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
@@ -1601,13 +1690,13 @@ fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
 // emit_flag_enum_autostr emits the `<Enum>__autostr` helper for a `[flag]` enum.
 // Matching V, a combined value is rendered as `Enum{.a | .b}` by testing each
 // field's bit; `Enum(0)` renders as `Enum{}`.
-fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, cn string) {
+fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, enum_cn string, fn_cn string) {
 	short := node.value.all_after_last('.')
 	mut storage_ct := 'int'
 	if backing := enum_decl_backing_type(node) {
 		storage_ct = g.enum_emit_storage_c_type(name, backing)
 	}
-	g.writeln('string ${cn}__autostr(${cn} it) {')
+	g.writeln('string ${fn_cn}__autostr(${enum_cn} it) {')
 	g.writeln('\t${storage_ct} __fe_v = (${storage_ct})it;')
 	g.writeln('\tstring __fe_res = (string){.str = (u8*)"${short}{", .len = ${short.len + 1}, .is_lit = 1};')
 	g.writeln('\tbool __fe_first = true;')
@@ -1640,7 +1729,7 @@ fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, cn string
 		raw_fname := f.value
 		fname := enum_field_display_name(raw_fname)
 		cfield := g.cname(raw_fname)
-		field_expr := '${cn}__${cfield}'
+		field_expr := '${enum_cn}__${cfield}'
 		g.writeln('\tif (${field_expr} != 0 && (__fe_v & (${storage_ct})${field_expr}) == (${storage_ct})${field_expr}) {')
 		g.writeln('\t\tif (!__fe_first) { __fe_res = string__plus(__fe_res, (string){.str = (u8*)" | ", .len = 3, .is_lit = 1}); }')
 		g.writeln('\t\t__fe_res = string__plus(__fe_res, (string){.str = (u8*)".${fname}", .len = ${fname.len + 1}, .is_lit = 1});')

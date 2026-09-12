@@ -186,60 +186,60 @@ mut:
 	merge_absorbed_child_shift i32
 	// const_array_fixed_storage_cache avoids rescanning the complete AST for
 	// repeated uses of the same array constant in one transform worker.
-	const_array_fixed_storage_cache map[string]i8
-	enum_types                      map[string][]string
-	enum_backing_types              map[string]string
-	runtime_type_indexes            map[string]int
-	cur_file                        string
-	cur_module                      string
-	cur_fn_name                     string
-	cur_fn_source_file              string
-	cur_fn_source_module            string
-	cur_fn_receiver_name            string
-	cur_fn_ret_type                 string
-	cur_fn_is_generic               bool
-	cur_fn_manualfree               bool
-	literal_free_fn_body            bool // work item is proven to contain no closure literals
-	cur_fn_variadic_param           string
-	skip_generics                   bool
-	building_v                      bool
-	var_types                       []VarTypeBinding
-	var_type_indices                map[string]int
-	var_type_cache                  &VarTypeIndexCache = unsafe { nil }
-	refined_node_types              map[int]string
-	fn_value_locals                 map[string]string
-	mut_param_values                map[string]bool
-	fixed_array_param_values        map[string]bool
-	mut_value_ident_nodes           map[int]bool
-	ordering_snapshot_names         map[string]bool
-	pointer_value_lvalues           map[string]bool
-	pointer_value_rvalues           map[string]bool
-	addr_lvalue_pointer_locals      map[string]bool
-	orm_initialized_fields          map[string][]string
-	sql_query_data_aliases          map[string][]string
-	bound_method_arrays             map[string]BoundMethodArrayInfo
-	temp_counter                    int
-	global_temp_counter             int
-	pending_stmts                   []flat.NodeId
-	smartcast_stack                 []SmartcastContext
-	invalidated_smartcasts          map[string]bool
-	smartcast_event_id               int
-	smartcast_invalidation_event_ids map[string]int
+	const_array_fixed_storage_cache     map[string]i8
+	enum_types                          map[string][]string
+	enum_backing_types                  map[string]string
+	runtime_type_indexes                map[string]int
+	cur_file                            string
+	cur_module                          string
+	cur_fn_name                         string
+	cur_fn_source_file                  string
+	cur_fn_source_module                string
+	cur_fn_receiver_name                string
+	cur_fn_ret_type                     string
+	cur_fn_is_generic                   bool
+	cur_fn_manualfree                   bool
+	literal_free_fn_body                bool // work item is proven to contain no closure literals
+	cur_fn_variadic_param               string
+	skip_generics                       bool
+	building_v                          bool
+	var_types                           []VarTypeBinding
+	var_type_indices                    map[string]int
+	var_type_cache                      &VarTypeIndexCache = unsafe { nil }
+	refined_node_types                  map[int]string
+	fn_value_locals                     map[string]string
+	mut_param_values                    map[string]bool
+	fixed_array_param_values            map[string]bool
+	mut_value_ident_nodes               map[int]bool
+	ordering_snapshot_names             map[string]bool
+	pointer_value_lvalues               map[string]bool
+	pointer_value_rvalues               map[string]bool
+	addr_lvalue_pointer_locals          map[string]bool
+	orm_initialized_fields              map[string][]string
+	sql_query_data_aliases              map[string][]string
+	bound_method_arrays                 map[string]BoundMethodArrayInfo
+	temp_counter                        int
+	global_temp_counter                 int
+	pending_stmts                       []flat.NodeId
+	smartcast_stack                     []SmartcastContext
+	invalidated_smartcasts              map[string]bool
+	smartcast_event_id                  int
+	smartcast_invalidation_event_ids    map[string]int
 	smartcast_reestablishment_event_ids map[string]int
-	in_call_callee                  bool
-	in_monomorphize_scan            bool
-	validating_generic_spec         bool
-	allow_comptime_enum_int_assign  bool
-	monomorph_errors                []string
-	monomorph_error_seen            map[string]bool
-	in_spawn_expr                   bool
-	has_spawn_expr                  bool
-	in_const_init                   bool
-	in_return_expr                  bool
-	in_string_interp_part           bool
-	expected_expr_node              int = -1
-	expected_expr_type              string
-	in_selector_base                bool
+	in_call_callee                      bool
+	in_monomorphize_scan                bool
+	validating_generic_spec             bool
+	allow_comptime_enum_int_assign      bool
+	monomorph_errors                    []string
+	monomorph_error_seen                map[string]bool
+	in_spawn_expr                       bool
+	has_spawn_expr                      bool
+	in_const_init                       bool
+	in_return_expr                      bool
+	in_string_interp_part               bool
+	expected_expr_node                  int = -1
+	expected_expr_type                  string
+	in_selector_base                    bool
 	// Set while transforming the base of a bound-method-value selector, where a
 	// `first()`/`last()` accessor base must keep its copying semantics instead of being
 	// borrowed in place (see borrow_first_last_accessor / transform_selector_expr).
@@ -3758,11 +3758,18 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	mut w := t.fork_program_view(ast, wtc, used, copy_used_fns)
 	w.used_struct_operator_fns = t.used_struct_operator_fns.clone()
 	if !copy_used_fns {
-		w.used_fns_parent = unsafe { &t.used_fns }
-		w.used_fns_root = if !isnil(t.used_fns_root) {
-			t.used_fns_root
+		if t.node_context_read_only && isnil(t.used_fns_parent) && !isnil(t.used_fns_root) {
+			// A shared-base master is still recording helper names while its workers
+			// run. Read the immutable snapshot it installed instead of racing its map.
+			w.used_fns_parent = t.used_fns_root
+			w.used_fns_root = unsafe { nil }
 		} else {
-			t.used_fns_parent
+			w.used_fns_parent = unsafe { &t.used_fns }
+			w.used_fns_root = if !isnil(t.used_fns_root) {
+				t.used_fns_root
+			} else {
+				t.used_fns_parent
+			}
 		}
 	}
 	w.alias_cache = &AliasCache{}
@@ -13284,9 +13291,17 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 		if actual_base is types.Array {
 			if actual_base.elem_type.name() != expected_base.elem_type.name()
 				&& !forwarded_array_elems_storage_identical(actual_base.elem_type, expected_base.elem_type) {
+				if t.record_specialized_slot_mismatch(actual_type, expected_type) {
+					return none
+				}
 				return t.convert_forwarded_array_to_dynamic(id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, false)
 			}
 		} else if actual_base is types.ArrayFixed {
+			if actual_base.elem_type.name() != expected_base.elem_type.name()
+				&& !forwarded_array_elems_storage_identical(actual_base.elem_type, expected_base.elem_type)
+				&& t.record_specialized_slot_mismatch(actual_type, expected_type) {
+				return none
+			}
 			return t.convert_forwarded_array_to_dynamic(id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, true)
 		}
 	}

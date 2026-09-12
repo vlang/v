@@ -1827,9 +1827,16 @@ fn (mut t Transformer) transform_call_arg_for_named_param(arg_id flat.NodeId, pa
 	// C declarations often use `voidptr` as an intentionally opaque placeholder
 	// for a native by-value type whose full declaration lives in an inserted C or
 	// Objective-C source. Match the legacy backend by leaving such C arguments in
-	// value form; callers that need an actual pointer spell `&value` explicitly.
-	if call_name.starts_with('C.') && transform_param_type_is_void_pointer(param_type) {
-		return t.transform_expr(arg_id)
+	// value form. An explicit opaque-pointer cast also owns its pointer depth even
+	// when an included header refines the parameter to `void**` (for example,
+	// `CreatePipe(voidptr(&handle))`).
+	if call_name.starts_with('C.') {
+		arg_node := t.a.nodes[int(arg_id)]
+		if transform_param_type_is_void_pointer(param_type)
+			|| (arg_node.kind == .cast_expr
+				&& transform_param_type_is_void_pointer(t.node_type(arg_id))) {
+			return t.transform_expr(arg_id)
+		}
 	}
 	return t.transform_call_arg_for_param(arg_id, param_type)
 }
@@ -8523,7 +8530,6 @@ fn (mut t Transformer) lower_typed_map_str(map_expr flat.NodeId, map_type string
 	keys_name := t.new_temp('map_str_keys')
 	idx_name := t.new_temp('map_str_idx')
 	key_name := t.new_temp('map_str_key')
-	zero_name := t.new_temp('map_str_zero')
 	value_name := t.new_temp('map_str_value')
 	key_kind := t.map_str_kind_for_type(key_type)
 	value_kind := t.map_str_kind_for_type(value_type)
@@ -8537,12 +8543,10 @@ fn (mut t Transformer) lower_typed_map_str(map_expr flat.NodeId, map_type string
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	key_expr := t.array_get_value(t.make_ident(keys_name), t.make_ident(idx_name), key_storage_type)
 	key_decl := t.make_decl_assign_typed(key_name, key_expr, key_storage_type)
-	zero_decl := t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type), value_type)
-	value_expr := t.make_map_get_expr(base, map_type, key_name, zero_name, value_type)
-	value_decl := t.make_decl_assign_typed(value_name, value_expr, value_type)
 	mut loop_body := []flat.NodeId{}
 	loop_body << key_decl
-	loop_body << zero_decl
+	value_expr := t.make_map_lookup_value(base, map_type, key_name, value_type, mut loop_body)
+	value_decl := t.make_decl_assign_typed(value_name, value_expr, value_type)
 	loop_body << value_decl
 	sep_cond := t.make_infix(.gt, t.make_ident(idx_name), t.make_int_literal(0))
 	sep_stmt := t.append_string(result_name, t.make_string_literal(', '))
@@ -12608,6 +12612,14 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if !base_is_pointer
 		&& builtin_base_type in ['u8', 'i8', 'u16', 'i16', 'u32', 'int', 'u64', 'i64', 'rune']
 		&& method in ['hex', 'hex_full'] {
+		if !isnil(t.tc) {
+			if resolved_method := t.tc.resolved_call_name(id) {
+				if resolved_method == 'int_literal.${method}' {
+					args := t.transform_receiver_method_args(node, base_id, resolved_method)
+					return t.make_receiver_method_call_typed(node, resolved_method, args, 'string')
+				}
+			}
+		}
 		return t.make_call_typed('${builtin_base_type}__${method}', [
 			t.transform_expr(base_id),
 		], 'string')
@@ -13016,6 +13028,41 @@ fn (mut t Transformer) validate_specialized_call_result(id flat.NodeId, actual_t
 		t.record_monomorph_error('cannot use `${actual_type}` as `${expected_type}`')
 	}
 	return false
+}
+
+// record_specialized_slot_mismatch reports a value whose concrete type the
+// checker would not accept in the slot it is being placed in, and reports
+// whether it did. Open generic templates are never body-checked (`[]T`
+// legitimately matches any `[]U` until `T` is known), so a specialization
+// returning `[]Foo` from a `[]Bar` function reaches the transform unreported;
+// without this the slot was lowered anyway and only failed in the C compiler,
+// pointing at generated code instead of the offending return.
+//
+// The question is compatibility, never whether a lowering exists. The element
+// copy will box any struct into an interface, so an element that does not
+// implement the target has to be rejected here rather than at `.id = src.id`
+// in the generated C.
+fn (mut t Transformer) record_specialized_slot_mismatch(actual types.Type, expected types.Type) bool {
+	if !t.validating_generic_spec || isnil(t.tc) {
+		return false
+	}
+	actual_name := actual.name()
+	expected_name := expected.name()
+	if t.generic_arg_is_unresolved(actual_name) || t.generic_arg_is_unresolved(expected_name) {
+		return false
+	}
+	// The checker's own rule is the authority here: it already covers registered
+	// aliases, integer widths, integer-to-float, float-to-float, integer-to-enum,
+	// interfaces and sum variants, recursing through arrays and maps.
+	if t.tc.slot_value_compatible(actual, expected) {
+		return false
+	}
+	if t.in_return_expr {
+		t.record_monomorph_error('cannot return `${actual_name}` as `${expected_name}`')
+	} else {
+		t.record_monomorph_error('cannot use `${actual_name}` as `${expected_name}`')
+	}
+	return true
 }
 
 fn (mut t Transformer) validate_specialized_comparison_operands(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, transformed_lhs flat.NodeId, transformed_rhs flat.NodeId) bool {

@@ -408,6 +408,17 @@ fn C.mbedtls_ecp_export(key &C.mbedtls_ecdsa_context, grp &C.mbedtls_ecp_group, 
 
 fn C.mbedtls_ecp_set_public_key(grp_id int, key &C.mbedtls_ecdsa_context, q &C.mbedtls_ecp_point) int
 
+// mbedtls_ecp_read_key loads `grp_id`'s group into `key` and reads `buf` as
+// the big-endian private scalar `d`, then rejects it via
+// mbedtls_ecp_check_privkey unless it lies in `[1, curve_order-1]`. It does
+// NOT compute the public point -- call mbedtls_ecp_keypair_calc_public next.
+fn C.mbedtls_ecp_read_key(grp_id int, key &C.mbedtls_ecdsa_context, buf &u8, buflen usize) int
+
+// mbedtls_ecp_keypair_calc_public computes and stores `Q = d * G` for a
+// keypair whose group and private scalar are already set. `f_rng` is
+// required (used for scalar-multiplication blinding, not for the key itself).
+fn C.mbedtls_ecp_keypair_calc_public(key &C.mbedtls_ecdsa_context, f_rng fn (voidptr, &u8, usize) int, p_rng voidptr) int
+
 fn C.mbedtls_mpi_init(x &C.mbedtls_mpi)
 
 fn C.mbedtls_mpi_free(x &C.mbedtls_mpi)

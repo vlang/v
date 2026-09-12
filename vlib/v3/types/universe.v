@@ -90,12 +90,15 @@ pub const byteptr_ = Pointer{
 
 // is_builtin_type_name reports whether name is one of V's builtin type names.
 pub fn is_builtin_type_name(name string) bool {
-	return name == 'bool' || name == 'int' || name == 'i8' || name == 'i16' || name == 'i32'
-		|| name == 'i64' || name == 'u8' || name == 'byte' || name == 'u16' || name == 'u32'
-		|| name == 'u64' || name == 'f32' || name == 'f64' || name == 'string' || name == 'char'
-		|| name == 'rune' || name == 'isize' || name == 'usize' || name == 'void'
-		|| name == 'voidptr' || name == 'array' || name == 'map' || name == 'charptr'
-		|| name == 'byteptr' || name == 'nil' || name == 'none'
+	return match name.len {
+		2 { name in ['i8', 'u8'] }
+		3 { name in ['int', 'i16', 'i32', 'i64', 'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'nil'] }
+		4 { name in ['bool', 'byte', 'char', 'rune', 'void', 'none'] }
+		5 { name in ['isize', 'usize', 'array'] }
+		6 { name == 'string' }
+		7 { name in ['voidptr', 'charptr', 'byteptr'] }
+		else { false }
+	}
 }
 
 // builtin_type_value returns the Type for a known builtin type name.

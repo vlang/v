@@ -6,9 +6,9 @@ TMPDIR ?= /tmp
 VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
-V1_FALLBACK_EXE := $(dir $(VEXE))v1_fallback
+V1_FALLBACK_EXE = $(dir $(VEXE))v1_fallback$(EXE_EXT)
 # Portable VC snapshots do not embed V3. Keep their v1 executable on the full
-# compatibility compiler path even when the generated C is built on macOS/Linux.
+# compatibility compiler path even when the generated C is built on a V3 host.
 VC_BOOTSTRAP_DEFINE := -DCUSTOM_DEFINE_v1_fallback
 VCREPO ?= https://github.com/vlang/vc
 TCCREPO ?= https://github.com/vlang/tccbin
@@ -51,7 +51,6 @@ endif
 
 ifeq ($(_SYS),Linux)
 LINUX := 1
-V1_FALLBACK_BUILD := 1
 TCCOS := linux
 ifneq ($(shell ldd --version 2>&1 | grep -i musl),)
 TCCOS := linuxmusl
@@ -60,7 +59,6 @@ endif
 
 ifeq ($(_SYS),Darwin)
 MAC := 1
-V1_FALLBACK_BUILD := 1
 TCCOS := macos
 ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 16), 1)
 LEGACY := 1
@@ -93,7 +91,6 @@ endif
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
-undefine V1_FALLBACK_BUILD
 TCCOS := android
 ifneq ($(wildcard $(PREFIX)/lib/libexecinfo.*),)
 LDFLAGS += -lexecinfo
@@ -179,11 +176,11 @@ BOOTSTRAP_GC_VFLAG :=
 ifeq ($(filter -gc -gc=%,$(VFLAGS)),)
 	BOOTSTRAP_GC_VFLAG := -gc none
 endif
-ifeq ($(LINUX),1)
+ifneq ($(filter $(_SYS),Linux FreeBSD NetBSD OpenBSD DragonFly),)
 ifneq ($(filter $(TCCARCH),arm64 aarch64),)
 ifeq ($(filter -cc,$(VFLAGS)),)
 ifeq ($(findstring -cc=,$(VFLAGS)),)
-	# Bundled TCC can hang or miscompile V while bootstrapping on Linux ARM64,
+	# Bundled TCC can hang, fail, or miscompile V while bootstrapping on ARM64,
 	# so keep both `v1 -> v2` and `v2 -> v` on the same system compiler
 	# unless the user overrode it explicitly.
 	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
@@ -191,6 +188,8 @@ ifeq ($(findstring -cc=,$(VFLAGS)),)
 endif
 endif
 endif
+endif
+ifeq ($(LINUX),1)
 ifneq ($(BOOTSTRAP_TCC_REQUESTED),)
 ifneq ($(CC),tcc)
 	# The external vc bootstrap snapshot may still emit Windows-only stdio
@@ -217,6 +216,7 @@ all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
 	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
+	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
 	$(RM) v2$(EXE_EXT)
@@ -235,8 +235,9 @@ endif
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
 endif
-ifdef V1_FALLBACK_BUILD
 	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
+ifdef NETBSD
+	paxctl +m $(V1_FALLBACK_EXE)
 endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD

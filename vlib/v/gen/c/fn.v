@@ -5532,7 +5532,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		ast.IndexExpr {
 			if node.left.left_type != 0 {
 				indexed_container_sym := g.table.final_sym(g.unwrap_generic(node.left.left_type))
-				if indexed_container_sym.kind == .string && !node.left.left_type.is_ptr() {
+				if (indexed_container_sym.kind == .string && !node.left.left_type.is_ptr())
+					|| (indexed_container_sym.kind == .map && !receiver_is_mut) {
 					receiver_expr_is_addressable = false
 				}
 			}

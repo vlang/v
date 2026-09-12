@@ -83,8 +83,8 @@ fn test_vtest_executable_compiles() {
 }
 
 fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
-	$if !macos && !linux {
-		// The embedded V3 compiler is currently available only on macOS and Linux.
+	$if !bsd && !linux {
+		// The embedded V3 compiler is currently available only on macOS, Linux, and BSD.
 		return
 	}
 	os.execute_or_exit('${os.quoted_path(vexe)} -old-compiler -nocache -o ${mytest_exe} cmd/tools/vtest.v')
@@ -182,7 +182,7 @@ fn test_js_runtime_errors_are_shown_for_js_tests() {
 
 fn test_with_stats_and_partial_failure() {
 	res := os.execute('${os.quoted_path(mytest_exe)} -stats test ${os.quoted_path(tpath_partial)}')
-	assert res.exit_code == 1
+	assert res.exit_code == 1, res.output
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
 	assert res.output.contains('To reproduce just failure'), res.output

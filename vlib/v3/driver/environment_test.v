@@ -1,6 +1,7 @@
 module driver
 
 import os
+import runtime
 import crypto.sha256
 import v3.ansi
 import v3.parser
@@ -12,6 +13,73 @@ fn restore_driver_environment(name string, old_value string, was_set bool) {
 		os.setenv(name, old_value, true)
 	} else {
 		os.unsetenv(name)
+	}
+}
+
+fn test_default_selfhost_job_count() {
+	assert bsd_prod_selfhost_memory_per_job == u64(2_147_483_648)
+	assert default_selfhost_job_count(1, false, true, false, 0) == 1
+	assert default_selfhost_job_count(2, false, true, false, 0) == 3
+	assert default_selfhost_job_count(8, false, true, false, 0) == 12
+	assert default_selfhost_job_count(12, false, true, false, 0) == 12
+	assert default_selfhost_job_count(8, false, false, false, 0) == 8
+	assert default_selfhost_job_count(1, true, true, false, 0) == 1
+	assert default_selfhost_job_count(8, true, true, false, 0) == bsd_selfhost_job_limit
+	assert default_selfhost_job_count(8, true, false, false, 0) == bsd_selfhost_job_limit
+	assert default_selfhost_job_count(8, true, true, true, 0) == bsd_selfhost_job_limit
+	assert default_selfhost_job_count(8, true, true, true, u64(4) * 1024 * 1024 * 1024) == 2
+	assert default_selfhost_job_count(8, true, true, true, u64(8) * 1024 * 1024 * 1024) == 4
+	assert default_selfhost_job_count(16, true, true, true, u64(16) * 1024 * 1024 * 1024) == 8
+}
+
+fn test_v3_parallel_c_job_count() {
+	assert v3_parallel_c_job_count(0, false, false, false) == 1
+	assert v3_parallel_c_job_count(8, false, false, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(8, true, false, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(16, true, true, false) == v3_parallel_cc_max_jobs
+	assert v3_parallel_c_job_count(1, true, true, true) == 1
+	assert v3_parallel_c_job_count(4, true, true, true) == 4
+	assert v3_parallel_c_job_count(16, true, true, true) == bsd_selfhost_parallel_cc_job_limit
+}
+
+fn test_v3_parallel_c_unit_count() {
+	assert v3_parallel_c_unit_count(2, false, false) == 2 * v3_parallel_cc_units_per_job
+	assert v3_parallel_c_unit_count(2, true, false) == 2 * v3_parallel_cc_units_per_job
+	assert v3_parallel_c_unit_count(2, true, true) == bsd_selfhost_parallel_cc_unit_count
+	assert v3_parallel_c_unit_count(8, true, true) == bsd_selfhost_parallel_cc_unit_count
+}
+
+fn test_v3_large_prod_c_unit_uses_the_compiled_unit_size() {
+	assert !v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold - 1)
+	assert v3_is_large_prod_c_unit(v3_large_prod_c_unit_threshold)
+	assert !v3_parallel_c_unit_is_large(v3_large_prod_c_unit_threshold - 1, 0, true)
+	assert v3_parallel_c_unit_is_large(v3_large_prod_c_unit_threshold, 0, true)
+	assert !v3_parallel_c_unit_is_large(v3_large_prod_c_unit_threshold - 100, 99, false)
+	assert v3_parallel_c_unit_is_large(v3_large_prod_c_unit_threshold - 100, 100, false)
+}
+
+fn test_configure_selfhost_parallelism_uses_bsd_limit() {
+	old_vjobs := os.getenv('VJOBS')
+	vjobs_was_set := 'VJOBS' in os.environ()
+	old_no_overcommit := os.getenv('V3_NO_SELFHOST_JOB_OVERCOMMIT')
+	no_overcommit_was_set := 'V3_NO_SELFHOST_JOB_OVERCOMMIT' in os.environ()
+	defer {
+		restore_driver_environment('VJOBS', old_vjobs, vjobs_was_set)
+		restore_driver_environment('V3_NO_SELFHOST_JOB_OVERCOMMIT', old_no_overcommit, no_overcommit_was_set)
+	}
+	os.unsetenv('VJOBS')
+	os.setenv('V3_NO_SELFHOST_JOB_OVERCOMMIT', '1', true)
+	$if freebsd || openbsd || netbsd || dragonfly {
+		jobs := runtime.nr_jobs()
+		configure_selfhost_parallelism(true, false)
+		if jobs > bsd_selfhost_job_limit {
+			assert os.getenv('VJOBS') == bsd_selfhost_job_limit.str()
+		} else {
+			assert os.getenv('VJOBS') == ''
+		}
+	} $else {
+		configure_selfhost_parallelism(true, false)
+		assert os.getenv('VJOBS') == ''
 	}
 }
 

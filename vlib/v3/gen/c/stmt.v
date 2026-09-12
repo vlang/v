@@ -5,6 +5,7 @@ import strings
 import v3.flat
 import v3.gen.c.naming
 import v3.types
+import v3.util
 
 const direct_optional_forward_return_value = '__direct_optional_forward'
 const optional_success_return_value = '__optional_success_return'
@@ -23,6 +24,7 @@ struct CInlineAsmIO {
 
 struct CInlineAsmBlock {
 	arch          string
+	is_goto       bool
 	is_volatile   bool
 	is_raw        bool
 	is_intel      bool
@@ -30,12 +32,29 @@ struct CInlineAsmBlock {
 	output        []CInlineAsmIO
 	input         []CInlineAsmIO
 	clobbered     []string
+	labels        []string
 	section_count int
 }
 
 fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_type types.Map, base_is_pointer bool) {
 	c_key := g.map_key_temp_c_type(map_type.key_type)
 	c_val := g.tc.c_type(map_type.value_type)
+	if default_init_unalias_type(map_type.value_type) is types.Map {
+		map_tmp := g.tmp_name()
+		key_tmp := g.tmp_name()
+		value_tmp := g.tmp_name()
+		g.write('(*({ map* ${map_tmp} = ')
+		if !base_is_pointer {
+			g.write('&')
+		}
+		g.gen_expr(base_id)
+		g.write('; void* ${key_tmp} = &(${c_key}[]){')
+		g.gen_expr(g.a.child(&node, 1))
+		g.write('}; void* ${value_tmp} = map__get_check(${map_tmp}, ${key_tmp}); if (!${value_tmp}) { ${value_tmp} = map__get_or_set(${map_tmp}, ${key_tmp}, ')
+		g.gen_default_value_addr_for_type(map_type.value_type)
+		g.write('); } (${c_val}*)${value_tmp}; }))')
+		return
+	}
 	g.write('(*(${c_val}*)map__get_or_set(')
 	if !base_is_pointer {
 		g.write('&')
@@ -157,7 +176,7 @@ fn (g &FlatGen) shared_array_payload_lvalue(id flat.NodeId) ?string {
 		return g.shared_array_payload_lvalue(g.a.child(&node, 0))
 	}
 	if node.kind == .ident && g.local_storage_is_shared(node.value) {
-		return '${g.cname(node.value)}->val'
+		return '${g.shared_storage_ident_c_name(node.value)}->val'
 	}
 	return none
 }
@@ -316,7 +335,7 @@ fn (mut g FlatGen) gen_lock_mutex_addr(lock_id flat.NodeId) {
 	lock_node := g.a.nodes[int(lock_id)]
 	if lock_node.kind == .ident && g.local_storage_is_shared(lock_node.value) {
 		g.write('(uintptr_t)&')
-		g.write(g.cname(lock_node.value))
+		g.write(g.shared_storage_ident_c_name(lock_node.value))
 		g.write('->mtx')
 		return
 	}
@@ -684,6 +703,22 @@ fn (g &FlatGen) goto_target_lock_scopes(label string) []int {
 		return g.active_lock_scope_ids()
 	}
 	return g.goto_label_lock_scopes[label] or { []int{} }
+}
+
+fn (g &FlatGen) asm_goto_targets_stay_in_lock_scope(labels []string) bool {
+	active_scopes := g.active_lock_scope_ids()
+	for label in labels {
+		target_scopes := g.goto_target_lock_scopes(label)
+		if target_scopes.len != active_scopes.len {
+			return false
+		}
+		for i, target_scope in target_scopes {
+			if active_scopes[i] != target_scope {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 fn (mut g FlatGen) gen_goto_lock_leaves(label string) bool {
@@ -1338,7 +1373,7 @@ fn (mut g FlatGen) gen_ownership_drop_value_inner(typ types.Type, expr string, d
 			}
 		}
 		types.Map {
-			key_values := '(${expr}).key_values'
+			key_values := '(${expr}).data->key_values'
 			if g.ownership_type_requires_destruction(typ.key_type, depth + 1)
 				|| g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
 				idx := g.tmp_count
@@ -2314,7 +2349,7 @@ fn (mut g FlatGen) gen_select_receive_map_value(expr string, actual types.Type, 
 	g.gen_select_receive_value(source_key, actual_key, expected_key)
 	g.write('; ${expected_value_ct} ${value} = ')
 	g.gen_select_receive_value(source_value, actual_value, expected_value)
-	g.write('; map__set(&${out}, &${key}, &${value}); ${source}.free_fn(&${source_key}); } ')
+	g.write('; map__set(&${out}, &${key}, &${value}); ${source}.data->free_fn(&${source_key}); } ')
 	g.write('array__free(&${keys}); map__free(&${source}); ${out}; })')
 	return true
 }
@@ -3033,6 +3068,10 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 		&& block.clobbered.len == 0 && !block.is_volatile {
 		return
 	}
+	if block.is_goto && !g.asm_goto_targets_stay_in_lock_scope(block.labels) {
+		g.writeln('#error asm goto into or out of a lock scope is not supported')
+		return
+	}
 	mut aliases := map[string]bool{}
 	for io in block.output {
 		if io.alias.len > 0 {
@@ -3044,8 +3083,11 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 			aliases[io.alias] = true
 		}
 	}
-	is_extended := block.section_count > 1
+	is_extended := block.section_count > 1 || block.is_goto
 	g.write('__asm__')
+	if block.is_goto {
+		g.write(' goto')
+	}
 	if block.is_volatile {
 		g.write(' volatile')
 	}
@@ -3059,13 +3101,21 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 	}
 	for template in block.templates {
 		if block.is_raw {
-			g.writeln('"${template}"')
+			raw_template := if block.is_goto {
+				g.lower_c_inline_asm_goto_raw_labels(template, block.labels)
+			} else {
+				template
+			}
+			g.writeln('"${raw_template}"')
 			continue
 		}
-		lowered := if block.is_intel {
+		mut lowered := if block.is_intel {
 			lower_c_inline_asm_intel_template(template, aliases, is_extended)
 		} else {
 			lower_c_inline_asm_template(template, block.arch, aliases, is_extended)
+		}
+		if block.is_goto {
+			lowered = g.lower_c_inline_asm_goto_branch_label(template, lowered, block.arch, aliases, block.labels)
 		}
 		g.writeln('"${c_escape(lowered + '\n\t')}"')
 	}
@@ -3085,6 +3135,17 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 		for i, clobber in block.clobbered {
 			g.write('"${c_escape(clobber)}"')
 			if i + 1 < block.clobbered.len {
+				g.writeln(',')
+			} else {
+				g.writeln('')
+			}
+		}
+	}
+	if block.section_count > 4 {
+		g.write(': ')
+		for i, label in block.labels {
+			g.write(g.user_goto_c_label(label))
+			if i + 1 < block.labels.len {
 				g.writeln(',')
 			} else {
 				g.writeln('')
@@ -3199,6 +3260,7 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 	}
 	header := strip_c_inline_asm_comments(source[..open]).fields()
 	mut arch := ''
+	mut is_goto := false
 	mut is_volatile := false
 	mut is_raw := false
 	mut is_intel := false
@@ -3208,6 +3270,10 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 		}
 		if word == 'volatile' {
 			is_volatile = true
+			continue
+		}
+		if word == 'goto' {
+			is_goto = true
 			continue
 		}
 		if arch.len > 0 && word == 'raw' {
@@ -3245,8 +3311,15 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 			clobbered << name
 		}
 	}
+	mut labels := []string{}
+	if sections.len > 4 {
+		for label in sections[4].replace(',', ' ').fields() {
+			labels << label
+		}
+	}
 	return CInlineAsmBlock{
 		arch: arch
+		is_goto: is_goto
 		is_volatile: is_volatile
 		is_raw: is_raw
 		is_intel: is_intel
@@ -3254,8 +3327,68 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 		output: if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
 		input: if sections.len > 2 { parse_c_inline_asm_ios(sections[2], false) } else { [] }
 		clobbered: clobbered
+		labels: labels
 		section_count: sections.len
 	}
+}
+
+fn (mut g FlatGen) lower_c_inline_asm_goto_branch_label(source string, lowered string, arch string, aliases map[string]bool, labels []string) string {
+	line := source.trim_space()
+	instruction_start := c_inline_asm_instruction_start(line)
+	instruction_line := line[instruction_start..]
+	mut split := 0
+	for split < instruction_line.len && !instruction_line[split].is_space() {
+		split++
+	}
+	instruction := instruction_line[..split]
+	operands := split_c_inline_asm_operands(instruction_line[split..].trim_space())
+	label_index := c_inline_asm_goto_branch_label_operand_index(instruction, arch, operands.len)
+	if label_index < 0 {
+		return lowered
+	}
+	label := operands[label_index].trim_space()
+	if label !in labels || aliases[label] || label in util.asm_register_names(arch) {
+		return lowered
+	}
+	lowered_instruction_start := c_inline_asm_instruction_start(lowered)
+	lowered_instruction := lowered[lowered_instruction_start..]
+	lowered_split := lowered_instruction.index_u8(` `)
+	if lowered_split < 0 {
+		return lowered
+	}
+	mut lowered_operands := split_c_inline_asm_operands(lowered_instruction[lowered_split + 1..])
+	if lowered_operands.len != operands.len {
+		return lowered
+	}
+	lowered_operands[label_index] = '%l[${g.user_goto_c_label(label)}]'
+	return lowered[..lowered_instruction_start + lowered_split + 1] + lowered_operands.join(', ')
+}
+
+fn (mut g FlatGen) lower_c_inline_asm_goto_raw_labels(template string, labels []string) string {
+	mut lowered := template
+	for label in labels {
+		lowered = lowered.replace('%l[${label}]', '%l[${g.user_goto_c_label(label)}]')
+	}
+	return lowered
+}
+
+fn c_inline_asm_goto_branch_label_operand_index(instruction string, arch string, operand_count int) int {
+	if operand_count == 0 {
+		return -1
+	}
+	if is_c_inline_asm_x86_arch(arch) {
+		return if instruction.starts_with('call') || instruction.starts_with('j')
+			|| instruction in ['loop', 'loope', 'loopne', 'loopz', 'loopnz'] {
+			0
+		} else {
+			-1
+		}
+	}
+	if arch in ['arm64', 'aarch64'] && (instruction == 'b' || instruction == 'bl'
+		|| instruction.starts_with('b.') || instruction.starts_with('cb') || instruction.starts_with('tb')) {
+		return operand_count - 1
+	}
+	return -1
 }
 
 // parse_c_inline_asm_raw_templates returns the verbatim text of every double-quoted
@@ -3483,12 +3616,14 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 	if line.len == 0 || line.ends_with(':') {
 		return line
 	}
+	instruction_start := c_inline_asm_instruction_start(line)
+	instruction_line := line[instruction_start..]
 	mut split := 0
-	for split < line.len && !line[split].is_space() {
+	for split < instruction_line.len && !instruction_line[split].is_space() {
 		split++
 	}
-	mut instruction := line[..split]
-	mut operands_source := line[split..].trim_space()
+	mut instruction := instruction_line[..split]
+	mut operands_source := instruction_line[split..].trim_space()
 	if is_c_inline_asm_x86_arch(arch) && instruction == 'lock' && operands_source.len > 0 {
 		mut next := 0
 		for next < operands_source.len && !operands_source[next].is_space() {
@@ -3498,7 +3633,7 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 		operands_source = operands_source[next..].trim_space()
 	}
 	if operands_source.len == 0 {
-		return instruction
+		return line[..instruction_start] + instruction
 	}
 	mut operands := split_c_inline_asm_operands(operands_source)
 	is_directive := instruction.starts_with('.')
@@ -3515,7 +3650,7 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 		}
 		lowered << lowered_operand
 	}
-	return instruction + ' ' + lowered.join(', ')
+	return line[..instruction_start] + instruction + ' ' + lowered.join(', ')
 }
 
 // lower_c_inline_asm_intel_template keeps V's destination-first structured syntax as
@@ -3526,12 +3661,14 @@ fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool, is_
 	if line.len == 0 || line.ends_with(':') {
 		return line
 	}
+	instruction_start := c_inline_asm_instruction_start(line)
+	instruction_line := line[instruction_start..]
 	mut split := 0
-	for split < line.len && !line[split].is_space() {
+	for split < instruction_line.len && !instruction_line[split].is_space() {
 		split++
 	}
-	mut instruction := line[..split]
-	mut operands_source := line[split..].trim_space()
+	mut instruction := instruction_line[..split]
+	mut operands_source := instruction_line[split..].trim_space()
 	if instruction == 'lock' && operands_source.len > 0 {
 		mut next := 0
 		for next < operands_source.len && !operands_source[next].is_space() {
@@ -3541,14 +3678,37 @@ fn lower_c_inline_asm_intel_template(source string, aliases map[string]bool, is_
 		operands_source = operands_source[next..].trim_space()
 	}
 	if operands_source.len == 0 {
-		return instruction
+		return line[..instruction_start] + instruction
 	}
 	operands := split_c_inline_asm_operands(operands_source)
 	mut lowered := []string{cap: operands.len}
 	for operand in operands {
 		lowered << lower_c_inline_asm_intel_operand(operand, aliases, is_extended)
 	}
-	return instruction + ' ' + lowered.join(', ')
+	return line[..instruction_start] + instruction + ' ' + lowered.join(', ')
+}
+
+// c_inline_asm_instruction_start skips an optional local label before an instruction.
+fn c_inline_asm_instruction_start(line string) int {
+	mut i := 0
+	if i < line.len && line[i] == `.` {
+		i++
+	}
+	if i >= line.len || (!c_inline_asm_ident_start(line[i]) && !line[i].is_digit()) {
+		return 0
+	}
+	i++
+	for i < line.len && c_inline_asm_ident_char(line[i]) {
+		i++
+	}
+	if i >= line.len || line[i] != `:` {
+		return 0
+	}
+	i++
+	for i < line.len && line[i].is_space() {
+		i++
+	}
+	return i
 }
 
 fn lower_c_inline_asm_intel_operand(source string, aliases map[string]bool, is_extended bool) string {
@@ -7303,7 +7463,7 @@ fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type 
 		return
 	}
 	if v_type is types.Pointer && rhs.kind == .ident && g.local_storage_is_shared(rhs.value) {
-		g.write('&(${g.local_cname(rhs.value)}->val)')
+		g.write('&(${g.shared_storage_ident_c_name(rhs.value)}->val)')
 		return
 	}
 	if v_type is types.Pointer && rhs.kind == .ident && !g.local_storage_is_pointer(rhs.value) {

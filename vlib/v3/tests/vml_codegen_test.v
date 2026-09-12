@@ -260,6 +260,18 @@ fn main() {
 	invalid_private := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${main_path}')
 	assert invalid_private.exit_code != 0, invalid_private.output
 	assert invalid_private.output.contains('must be public'), invalid_private.output
+	os.write_file(os.join_path(root, 'single_quotes.vml'), 'Screen { Label { text: \'It\\\'s "ready"\' tooltip: \'line one\\nline two\' } Label { text: "\${app.label(\'}\')}" } }') or {
+		panic(err)
+	}
+	single_quotes_path := os.join_path(root, 'single_quotes.v')
+	os.write_file(single_quotes_path, "module main\n\nimport ui2\n\nstruct App {}\n\npub fn (app &App) label(value string) string {\n\t_ = app\n\treturn value\n}\n\nfn build(app &App) ui2.Element {\n\treturn \$vml('single_quotes.vml')\n}\n\nfn main() {\n\tapp := App{}\n\troot := build(&app)\n\tprintln(root.children[0].text + ':' + root.children[0].tooltip + ':' + root.children[1].text)\n}\n") or {
+		panic(err)
+	}
+	single_quotes_compile := os.execute('${v3_bin} -nocache -path "${root}|${vml_codegen_vlib_dir}" -b c -o ${bin} ${single_quotes_path}')
+	assert single_quotes_compile.exit_code == 0, single_quotes_compile.output
+	single_quotes_run := os.execute(bin)
+	assert single_quotes_run.exit_code == 0, single_quotes_run.output
+	assert single_quotes_run.output == 'It\'s "ready":line one\nline two:}\n', single_quotes_run.output
 }
 
 /* MOCK_UI2

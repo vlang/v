@@ -91,6 +91,8 @@ fn macos_v3_leading_option_consumes_value(option string) bool {
 fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
 	// `-new-compiler` is consumed by cmd/v to select V3; it must not reach the V3
 	// driver, which is already running and would reject it as an unknown option.
+	// V1 likewise resolves `-musl` and `-glibc` into its libc preference fields.
+	// V3 receives that state as a define below instead of seeing unsupported options.
 	// The parser keeps every argument after a `run` target in `run_args`; those
 	// belong to the program, so do not consume their compiler-like spellings.
 	mut compiler_args_len := raw_args.len
@@ -99,10 +101,18 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 	}
 	mut forwarded_args := []string{cap: raw_args.len}
 	for i, arg in raw_args {
-		if arg == '-new-compiler' && i < compiler_args_len {
+		if i < compiler_args_len && arg in ['-new-compiler', '-musl', '-glibc'] {
 			continue
 		}
 		forwarded_args << arg
+	}
+	// V1 resolves the native libc before dispatch, including automatic detection
+	// when the user did not pass a libc option. Carry that resolved mode into V3
+	// as a target define so libc compile-time conditions stay correct.
+	if prefs.is_musl {
+		forwarded_args.insert(0, '-dmusl')
+	} else if prefs.is_glibc {
+		forwarded_args.insert(0, '-dglibc')
 	}
 	if prefs.enable_globals {
 		for i, arg in forwarded_args {

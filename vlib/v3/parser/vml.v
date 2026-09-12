@@ -102,7 +102,7 @@ fn (mut l VmlLexer) read_number() VmlToken {
 
 fn (mut l VmlLexer) read_string() !VmlToken {
 	line := l.line
-	l.advance()
+	quote := l.advance()
 	mut value := []u8{}
 	for l.pos < l.source.len {
 		c := l.advance()
@@ -113,9 +113,10 @@ fn (mut l VmlLexer) read_string() !VmlToken {
 				`t` { value << `\t` }
 				`\\` { value << `\\` }
 				`"` { value << `"` }
+				`'` { value << `'` }
 				else { value << next }
 			}
-		} else if c == `"` {
+		} else if c == quote {
 			return VmlToken{.string_, value.bytestr(), line}
 		} else {
 			value << c
@@ -196,7 +197,7 @@ fn tokenize_vml(source string) ![]VmlToken {
 				}
 				tokens << VmlToken{.or, '||', line}
 			}
-			`"` {
+			`"`, `'` {
 				tokens << lexer.read_string()!
 				continue
 			}
@@ -490,23 +491,23 @@ fn (mut p VmlSourceParser) parse_primary() !&VmlExpr {
 }
 
 fn vml_interpolation_end(value string, start int) ?int {
-	mut quoted := false
+	mut quote := u8(0)
 	mut escaped := false
 	mut nested_braces := 0
 	for i := start; i < value.len; i++ {
 		ch := value[i]
-		if quoted {
+		if quote != 0 {
 			if escaped {
 				escaped = false
 			} else if ch == `\\` {
 				escaped = true
-			} else if ch == `"` {
-				quoted = false
+			} else if ch == quote {
+				quote = 0
 			}
 			continue
 		}
-		if ch == `"` {
-			quoted = true
+		if ch == `"` || ch == `'` {
+			quote = ch
 		} else if ch == `{` {
 			nested_braces++
 		} else if ch == `}` {

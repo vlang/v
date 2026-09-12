@@ -358,15 +358,24 @@ $if !windows {
 		return unsafe { nil }
 	}
 
-	// optional_support_thread fuses the declaration-signature, multi-return and
-	// unresolved-call optional scans on a helper while the other predispatch
-	// workers traverse the same immutable AST.
+	// Declaration signatures and unresolved calls use independent read-only inputs;
+	// collect their optional typedefs on separate lanes and join before dispatch.
 	fn optional_support_thread(arg voidptr) voidptr {
 		mut w := unsafe { &FlatGen(arg) }
 		osw := time.new_stopwatch()
 		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
-		w.collect_optional_typedefs()
+		w.collect_declaration_signature_types()
+		w.optional_types_ready = true
 		w.timing_profile('  [ttime]       fs opt types   ${f64(osw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
+		return unsafe { nil }
+	}
+
+	fn unresolved_call_optional_thread(arg voidptr) voidptr {
+		mut w := unsafe { &FlatGen(arg) }
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
+		w.collect_unresolved_call_optional_types()
 		w.worker_scope = scope
 		cgen_worker_scope_leave(scope)
 		return unsafe { nil }
@@ -1110,6 +1119,10 @@ fn (mut g FlatGen) write_scoped_cgen_batch_output(batch &FlatGen) bool {
 // and, when needed, output into the helper's result arena.
 fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool) {
 	mut b := unsafe { batch }
+	if batch.windows_entry_point_generated {
+		g.windows_entry_point_generated = true
+		g.windows_gui_entry_point = batch.windows_gui_entry_point
+	}
 	if !output_streamed {
 		output := b.sb.str()
 		if output.len > 0 {
@@ -1356,6 +1369,17 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 		g.parallel_worker_scopes << worker.worker_scope
 		worker.worker_scope = unsafe { nil }
 	}
+}
+
+fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
+	for name, payload in worker.needed_optional_types {
+		// This scan follows declarations in the serial pipeline, including when
+		// two payload spellings map to the same optional typedef name.
+		g.needed_optional_types[name.clone()] = payload.clone()
+	}
+	// Only the typedef spellings escape this scan; release its parsing scratch.
+	cgen_worker_scope_free(worker.worker_scope)
+	worker.worker_scope = unsafe { nil }
 }
 
 fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
@@ -2413,6 +2437,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		global_raw_type_texts: g.global_raw_type_texts
 		enum_vals: g.enum_vals
 		enum_value_exprs: g.enum_value_exprs
+		enum_modules: g.enum_modules
 		interfaces: g.interfaces
 		const_vals: g.const_vals
 		const_modules: g.const_modules
@@ -2511,6 +2536,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe_env_setup: g.compiler_vexe_env_setup
 		ccompiler: g.ccompiler
 		target: g.target
+		subsystem: g.subsystem
+		c_flags: g.c_flags
 		suppress_main: g.suppress_main
 		cur_param_names: if result_only {
 			g.cur_param_names
@@ -2857,6 +2884,10 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	if g.output_error.len == 0 && w.output_error.len > 0 {
 		g.output_error = w.output_error.clone()
 	}
+	if w.windows_entry_point_generated {
+		g.windows_entry_point_generated = true
+		g.windows_gui_entry_point = w.windows_gui_entry_point
+	}
 	string_id_remap := g.publish_worker_string_literals(w)
 	borrow_worker_segments := os.getenv('V3_RETAIN_CGEN_RESULT_SCOPES') != ''
 		&& w.worker_scope != unsafe { nil } && !g.cache_stable_symbols && string_id_remap.len == 0
@@ -3053,12 +3084,16 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		mut optional_worker := g.new_parallel_worker(2)
 		optional_worker.tc.verbose = g.tc.verbose
 		optional_worker.c_name_cache = &CNameCache{}
+		mut call_optional_worker := g.new_parallel_worker(3)
+		call_optional_worker.c_name_cache = &CNameCache{}
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		if fail.len > 0 {
 			// prepare_pre_dispatch_master can submit its own selection/cost batches to
 			// this pool. Do not run it as the caller-side task of an outer Pool.run:
 			// the untagged completion channel would let the nested batch consume the
 			// support tasks' completions and return while its payloads are still live.
+			g.prepare_pre_dispatch_master()
+			optional_worker.fn_gen_items = g.fn_gen_items.clone()
 			g.a.worker_pool.run([
 				workers.Task{
 					run: fixed_storage_scan_thread
@@ -3075,8 +3110,12 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 					arg: voidptr(optional_worker)
 					force_sync: fail == 'cgen:all' || fail == 'cgen:pre:all'
 				},
+				workers.Task{
+					run: unresolved_call_optional_thread
+					arg: voidptr(call_optional_worker)
+					force_sync: fail == 'cgen:all' || fail == 'cgen:pre:all'
+				},
 			])
-			g.prepare_pre_dispatch_master()
 			g.refine_fn_item_costs(no_parallel, false)
 		} else {
 			// Item selection only reads the AST and immutable checker tables, so let
@@ -3085,8 +3124,13 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			mut psw := time.new_stopwatch()
 			fixed_storage_thread := spawn fixed_storage_scan_thread(voidptr(fs_worker))
 			fixed_array_thread := spawn fixed_array_support_thread(voidptr(fixed_array_worker))
-			optional_thread := spawn optional_support_thread(voidptr(optional_worker))
+			call_optional_thread := spawn unresolved_call_optional_thread(voidptr(call_optional_worker))
 			g.prepare_pre_dispatch_master()
+			// Reuse the selected declarations instead of selecting every function
+			// again on the optional-support thread. Cost refinement writes the
+			// master's item array, so the helper needs its own snapshot.
+			optional_worker.fn_gen_items = g.fn_gen_items.clone()
+			optional_thread := spawn optional_support_thread(voidptr(optional_worker))
 			g.timing_profile('  [ttime]     cg prep master ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			psw.restart()
 			g.refine_fn_item_costs(no_parallel, true)
@@ -3095,11 +3139,13 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			_ = fixed_storage_thread.wait()
 			_ = fixed_array_thread.wait()
 			_ = optional_thread.wait()
+			_ = call_optional_thread.wait()
 			g.timing_profile('  [ttime]     cg fs wait     ${f64(psw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		}
 		g.publish_fixed_storage_scan(mut fs_worker)
 		g.publish_fixed_array_support(mut fixed_array_worker)
 		g.publish_optional_support(mut optional_worker)
+		g.publish_unresolved_call_optional_types(mut call_optional_worker)
 		if g.parallel_prepared && !g.prep_externs_pending {
 			// Item-body and top-level C-extern refs are fully collected (fused
 			// prep + exact-cost pass or its serial fallback); the pre-dispatch

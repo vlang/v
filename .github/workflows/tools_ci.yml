@@ -182,7 +182,8 @@ jobs:
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
           environment_variables: VFLAGS
@@ -244,7 +245,8 @@ jobs:
         with:
           operating_system: openbsd
           version: '7.8'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           sync_files: runner-to-vm
           environment_variables: VFLAGS
 
@@ -261,6 +263,8 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           printf "VFLAGS = %s\n" "$VFLAGS"
+          # V3 self-hosting can exceed OpenBSD's default per-process data limit.
+          ulimit -d 4194304
           gmake && ./v -showcc -o v cmd/v && sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"

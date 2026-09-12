@@ -236,13 +236,22 @@ pub fn (pv PrivateKey) bytes() ![]u8 {
 		C.BN_free(bn)
 		return error('EVP_PKEY_get_bn_param failed')
 	}
-	num_bytes := (C.BN_num_bits(bn) + 7) / 8
 	// Get the buffer size to store the seed.
 	size := if pv.ks_flag == .flexible {
 		// should be non zero
 		pv.ks_size
 	} else {
-		num_bytes
+		// A .fixed key always serializes at the curve's own width (32/48/66
+		// bytes), zero-padded by BN_bn2binpad -- NOT at the scalar's minimal
+		// BN_num_bits() length, which is shorter whenever the scalar's top
+		// byte(s) happen to be zero (about half of all P-521 keys, 1 in 256
+		// P-256 keys). A minimal-length encoding cannot be reloaded with
+		// `new_key_from_seed(seed, fixed_size: true)` and differs from what
+		// the mbedTLS backend's own bytes() returns for the same key.
+		evp_key_size(pv.evpkey) or {
+			C.BN_free(bn)
+			return err
+		}
 	}
 	mut buf := []u8{len: int(size)}
 	res := C.BN_bn2binpad(bn, buf.data, i32(size))

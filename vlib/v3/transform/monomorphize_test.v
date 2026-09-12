@@ -460,10 +460,12 @@ fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.qualify_specialized_signature_type_text('fn(mut &Dog)', GenericFnDecl{}) == 'fn (mut &Dog)'
 
-	assert t.lock_colliding_main_substitution_type_text('fn(mut it T)', 'fn(mut it &Dog)',
-		'arc', ['T']) == 'fn (mut &Dog)'
-	assert t.lock_colliding_main_substitution_type_text('fn(mut it T)', 'fn(mut it Dog)',
-		'arc', ['T']) == 'fn (mut Dog)'
+	assert t.lock_colliding_main_substitution_type_text('fn(mut it T)', 'fn(mut it &Dog)', 'arc', [
+		'T',
+	]) == 'fn (mut &Dog)'
+	assert t.lock_colliding_main_substitution_type_text('fn(mut it T)', 'fn(mut it Dog)', 'arc', [
+		'T',
+	]) == 'fn (mut Dog)'
 }
 
 fn test_resolve_substituted_type_text_qualifies_local_generic_base() {

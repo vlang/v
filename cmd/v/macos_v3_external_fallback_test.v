@@ -9,7 +9,14 @@ fn run_external_fallback_test_process(executable string, args []string, work_dir
 	for name, value in overrides {
 		environment[name] = value
 	}
-	mut process := os.new_process(executable)
+	// The tools workflow runs this suite through the V1 compatibility compiler.
+	// Process-level dispatcher tests must still invoke the sibling V3-enabled `v`.
+	actual_executable := if os.base(executable) in ['v1_fallback', 'v1_fallback.exe'] {
+		os.join_path(os.dir(executable), 'v' + $if windows { '.exe' } $else { '' })
+	} else {
+		executable
+	}
+	mut process := os.new_process(actual_executable)
 	process.set_args(args)
 	process.set_work_folder(work_dir)
 	process.set_environment(environment)
@@ -31,7 +38,7 @@ fn write_v3_rejecting_c_compiler(path string) ! {
 }
 
 fn test_macos_v3_uses_external_v1_fallback_after_c_compilation_error() {
-	$if macos || linux {
+	$if !windows {
 		vroot := os.dir(@VEXE)
 		fallback := os.join_path(vroot, macos_v3_v1_fallback_binary)
 		// Developer/compiler-only test builds do not necessarily come through make.

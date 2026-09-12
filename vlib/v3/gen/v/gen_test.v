@@ -69,8 +69,7 @@ fn reparse_diagnostics(name string, src string) int {
 }
 
 fn test_fn_and_method() {
-	out := vfmt('method',
-		'module m\npub fn (mut p Point) inc(dx int) int {\n\tp.n += dx\n\treturn p.n\n}\n')
+	out := vfmt('method', 'module m\npub fn (mut p Point) inc(dx int) int {\n\tp.n += dx\n\treturn p.n\n}\n')
 	assert out == 'module m
 
 pub fn (mut p Point) inc(dx int) int {
@@ -78,6 +77,14 @@ pub fn (mut p Point) inc(dx int) int {
 	return p.n
 }
 '
+}
+
+fn test_formatter_preserves_operator_method_spacing() {
+	source := 'struct Number {\n\tvalue int\n}\n\nfn (a Number) + (b Number) Number {\n\treturn Number{a.value + b.value}\n}\n\nfn (a Number) == (b Number) bool {\n\treturn a.value == b.value\n}\n\nfn (a Number) < (b Number) bool {\n\treturn a.value < b.value\n}\n\nfn (a Number) [] (index int) int {\n\treturn a.value + index\n}\n'
+	out := vfmt('operator_method_spacing', source)
+	assert out == source, out
+	assert reparse_diagnostics('operator_method_spacing_twice', out) == 0
+	assert vfmt('operator_method_spacing_twice', out) == out
 }
 
 fn test_formatter_preserves_static_associated_function_syntax() {
@@ -180,6 +187,14 @@ fn test_formatter_keeps_trailing_loop_comments_inside_body() {
 	out := vfmt('trailing_loop_comments', source)
 	assert out == source, out
 	assert vfmt('trailing_loop_comments_twice', out) == out
+}
+
+fn test_formatter_keeps_loop_header_comments_after_the_opening_brace() {
+	source := 'fn copy_range(items []int, start int, end int) {\n\tfor i in start .. end { // copy selected items\n\t\tprintln(items[i])\n\t}\n\tfor item in items { // copy every item\n\t\tprintln(item)\n\t}\n\tfor i := 0; i < end; i++ { // C-style loop\n\t\tprintln(i)\n\t}\n\tfor start < end { // conditional loop\n\t\tbreak\n\t}\n}\n'
+	out := vfmt('loop_header_comments', source)
+	assert out == source, out
+	assert reparse_diagnostics('loop_header_comments_twice', out) == 0
+	assert vfmt('loop_header_comments_twice', out) == out
 }
 
 fn test_formatter_keeps_trailing_comptime_for_comments_inside_body() {
@@ -445,6 +460,14 @@ fn test_formatter_resolves_implied_imports_in_selector_scope() {
 	assert vfmt('scope_aware_implied_import_twice', out) == out
 }
 
+fn test_formatter_does_not_duplicate_a_conditional_import() {
+	source := 'module builtin\n\n\$if !nofloat ? {\n\timport strconv\n}\n\nfn format_float(x f64) string {\n\treturn strconv.f64_to_str_l(x)\n}\n'
+	out := vfmt('conditional_implied_import', source)
+	assert out == source, out
+	assert out.count('import strconv') == 1
+	assert vfmt('conditional_implied_import_twice', out) == out
+}
+
 fn test_formatter_preserves_isreftype_spelling() {
 	source := 'fn check[T](value T) {\n\t_ = isreftype(T)\n\t_ = isreftype[T]()\n\t_ = isreftype(value)\n\t_ = isreftype(sizeof(T))\n}\n'
 	out := vfmt('isreftype_spelling', source)
@@ -476,6 +499,55 @@ fn test_formatter_preserves_mutable_match_subjects() {
 	assert vfmt('mutable_match_subject_twice', out) == out
 }
 
+// The parser marks only the leftmost ident of `mut a.b` / `mut a[0]` as mutable, so the
+// formatter must follow the selector/index chain or it silently drops the `mut` and turns
+// the smartcast immutable (`nd.child.n = 2` then fails to compile).
+fn test_formatter_preserves_mut_on_selector_and_index_smartcasts() {
+	source := 'fn b(mut nd Node, mut arr []E) {\n\tif mut nd.child is A {\n\t\tnd.child.n = 2\n\t}\n\tif mut nd.child !is B {\n\t\tnd.child.n = 2\n\t}\n\tif mut arr[0] is A {\n\t\tarr[0].n = 2\n\t}\n\tmatch mut nd.child {\n\t\tA {\n\t\t\tnd.child.n = 3\n\t\t}\n\t\tB {}\n\t}\n\tmatch mut nd.a.b.c {\n\t\tA {\n\t\t\tnd.a.b.c.n = 3\n\t\t}\n\t\tB {}\n\t}\n}\n'
+	out := vfmt('mut_selector_smartcast', source)
+	assert out.contains('if mut nd.child is A {'), out
+	assert out.contains('if mut nd.child !is B {'), out
+	assert out.contains('if mut arr[0] is A {'), out
+	assert out.contains('match mut nd.child {'), out
+	assert out.contains('match mut nd.a.b.c {'), out
+	assert vfmt('mut_selector_smartcast_twice', out) == out
+}
+
+// An `is` / `!is` / `!in` condition used to get a point span on the token after it (the
+// `{`), so the block's trailing comment looked like it trailed the condition and was
+// hoisted in front of the brace, which then no longer re-parsed the same way.
+fn test_formatter_keeps_trailing_brace_comment_after_type_check_conditions() {
+	source := "type S = int | string\n\nfn f(mut s S, name string) {\n\tif mut s is int { // is cmt\n\t\tprintln(s)\n\t}\n\tif s !is int { // not is cmt\n\t\tprintln(s)\n\t}\n\tif name !in [\n\t\t'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',\n\t\t'b',\n\t] { // not in cmt\n\t\tprintln(name)\n\t}\n\tif 1 !in 0 .. 3 { // range cmt\n\t\tprintln(name)\n\t}\n}\n"
+	out := vfmt('type_check_brace_comment', source)
+	assert out.contains('if mut s is int { // is cmt\n'), out
+	assert out.contains('if s !is int { // not is cmt\n'), out
+	assert out.contains('] { // not in cmt\n'), out
+	assert out.contains('if 1 !in 0 .. 3 { // range cmt\n'), out
+	assert vfmt('type_check_brace_comment_twice', out) == out
+}
+
+// A comment between `}` and `else if` used to be emitted as a leading comment on the
+// condition after `} else if ` was already written, leaving that line with a trailing
+// space (`v fmt -verify` accepts it, `v vet` rejects it). It stays on its own line.
+fn test_formatter_keeps_comment_between_brace_and_else_if_clean() {
+	source := 'fn f(name string, x int) {\n\tif x == 1 {\n\t\tprintln(1)\n\t}\n\t// pick the other branch\n\telse if !name.contains(".") {\n\t\tprintln(2)\n\t}\n\tif x == 2 {\n\t\tprintln(3)\n\t}\n\t// plain else\n\telse {\n\t\tprintln(4)\n\t}\n\tif x == 3 {\n\t\tprintln(5)\n\t} // trailing on brace\n\telse {\n\t\tprintln(6)\n\t}\n}\n'
+	out := vfmt('comment_between_brace_and_else_if', source)
+	assert !out.split_into_lines().any(it.ends_with(' ') || it.ends_with('\t')), out
+	assert out.contains('\t}\n\t// pick the other branch\n\telse if !name.contains(".") {\n'), out
+	assert out.contains('\t}\n\t// plain else\n\telse {\n'), out
+	assert out.contains('\t} // trailing on brace\n\telse {\n'), out
+	assert vfmt('comment_between_brace_and_else_if_twice', out) == out
+}
+
+// A whole-string field attribute must keep its quotes: `@[C\x5cnD]` is not valid syntax.
+fn test_formatter_keeps_quotes_on_string_field_attributes() {
+	source := "struct AttrHazardStruct {\n\ta int @[mytag: 'A\\x5cnB']\n\tb int @['C\\x5cnD']\n}\n"
+	out := vfmt('string_field_attributes', source)
+	assert out.contains("a int @[mytag: 'A\\x5cnB']"), out
+	assert out.contains("b int @['C\\x5cnD']"), out
+	assert vfmt('string_field_attributes_twice', out) == out
+}
+
 fn test_formatter_accepts_remaining_repository_syntax() {
 	source := "module main\n\nimport underscore as _abc\n\nfn accepts[T]() bool { return true }\n\nfn check() {\n\tassert kind == .fn\n\tassert accepts[atomic fn (int) int]()\n\tassert sizeof(`€`) == 4\n\tassert sizeof(c'hello') == 6\n\tassert sizeof(r'hello') > 0\n}\n"
 	out := vfmt('remaining_repository_syntax', source)
@@ -494,8 +566,7 @@ fn test_attributes_and_pub() {
 }
 
 fn test_enum_and_types() {
-	out := vfmt('enum',
-		'pub enum Color as u8 {\n\tred = 1\n\tgreen\n}\n\ntype MyInt = int\ntype Sum = Foo | Bar\n')
+	out := vfmt('enum', 'pub enum Color as u8 {\n\tred = 1\n\tgreen\n}\n\ntype MyInt = int\ntype Sum = Foo | Bar\n')
 	assert out.contains('enum Color as u8 {')
 	assert out.contains('red = 1')
 	assert out.contains('type MyInt = int')
@@ -523,18 +594,17 @@ fn test_control_flow() {
 }
 
 fn test_match() {
-	out := vfmt('match',
-		'fn f(x int) string {\n\treturn match x {\n\t\t1, 2 { "a" }\n\t\telse { "b" }\n\t}\n}\n')
+	out := vfmt('match', 'fn f(x int) string {\n\treturn match x {\n\t\t1, 2 { "a" }\n\t\telse { "b" }\n\t}\n}\n')
 	assert out.contains('match x {')
 	assert out.contains('1, 2 {')
 	assert out.contains('else {')
 }
 
 fn test_string_escaping() {
-	// a literal `$` must be escaped so it is not read back as interpolation
+	// Preserve a valid literal `$` spelling and an interpolation spelling.
 	out := vfmt('stresc', "fn f() {\n\ta := 'price: \$5'\n\tb := '\${x}y'\n}\n")
-	assert out.contains("'price: \\\$5'")
-	assert out.contains("'\${x}y'")
+	assert out.contains("'price: \$5'"), out
+	assert out.contains("'\${x}y'"), out
 }
 
 fn test_c_string_escaping() {
@@ -555,8 +625,7 @@ fn test_rune_literal_escaping() {
 }
 
 fn test_formatter_preserves_source_only_syntax() {
-	out := vfmt('source_only',
-		'// docs\nfn f() {\n\tx := c\' \'\n\ty := r"raw \\\\ text"\n\t\$if windows {\n\t\tprintln(\'windows\')\n\t} \$else {\n\t\tprintln(\'other\')\n\t}\n\tasm amd64 {\n\t\tnop\n\t}\n\tprintln(@FN) // inline\n\t_ = x\n\t_ = y\n}\n')
+	out := vfmt('source_only', '// docs\nfn f() {\n\tx := c\' \'\n\ty := r"raw \\\\ text"\n\t\$if windows {\n\t\tprintln(\'windows\')\n\t} \$else {\n\t\tprintln(\'other\')\n\t}\n\tasm amd64 {\n\t\tnop\n\t}\n\tprintln(@FN) // inline\n\t_ = x\n\t_ = y\n}\n')
 	assert out.starts_with('// docs\nfn f() {'), out
 	assert out.contains("x := c' '"), out
 	assert out.contains('y := r"raw \\\\ text"'), out
@@ -568,8 +637,7 @@ fn test_formatter_preserves_source_only_syntax() {
 }
 
 fn test_formatter_preserves_comptime_calls_attributes_and_volatile_fields() {
-	out := vfmt('more_source_only',
-		"@[if missing_flag ?]\nfn guarded() {\n\ta := \$embed_file('./missing.txt')\n\tb := \$env('VFMT_SECRET')\n\tc := \$tmpl('./missing.html')\n\tprintln(@FILE)\n\t_ = a\n\t_ = b\n\t_ = c\n}\n\nstruct Counter {\n\tvolatile value u64\n}\n\nfn main() {\n\tmut volatile counter := u64(0)\n\t_ = counter\n}\n")
+	out := vfmt('more_source_only', "@[if missing_flag ?]\nfn guarded() {\n\ta := \$embed_file('./missing.txt')\n\tb := \$env('VFMT_SECRET')\n\tc := \$tmpl('./missing.html')\n\tprintln(@FILE)\n\t_ = a\n\t_ = b\n\t_ = c\n}\n\nstruct Counter {\n\tvolatile value u64\n}\n\nfn main() {\n\tmut volatile counter := u64(0)\n\t_ = counter\n}\n")
 	assert out.contains('@[if missing_flag ?]'), out
 	assert out.contains("\$embed_file('./missing.txt')"), out
 	assert out.contains("\$env('VFMT_SECRET')"), out
@@ -581,8 +649,7 @@ fn test_formatter_preserves_comptime_calls_attributes_and_volatile_fields() {
 }
 
 fn test_formatter_preserves_fixed_array_literal_prefixes() {
-	out := vfmt('fixed_array_literal_prefixes',
-		'fn main() {\n\ta := [4]f32[1, 2, 3, 4]\n\tb := [..]f32[1, 2, 3, 4]\n\t_ = a\n\t_ = b\n}\n')
+	out := vfmt('fixed_array_literal_prefixes', 'fn main() {\n\ta := [4]f32[1, 2, 3, 4]\n\tb := [..]f32[1, 2, 3, 4]\n\t_ = a\n\t_ = b\n}\n')
 	assert out.contains('a := [4]f32[1, 2, 3, 4]'), out
 	assert out.contains('b := [..]f32[1, 2, 3, 4]\n'), out
 }
@@ -817,8 +884,7 @@ fn test_formatter_preserves_boolean_compound_assignment_spelling() {
 }
 
 fn test_formatter_preserves_capture_and_shared_parameter_qualifiers() {
-	out := vfmt('capture_and_shared_qualifiers',
-		'struct St {}\n\nfn (shared receiver St) use(shared value St) {}\n\nfn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut item, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n')
+	out := vfmt('capture_and_shared_qualifiers', 'struct St {}\n\nfn (shared receiver St) use(shared value St) {}\n\nfn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut item, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n')
 	assert out.contains('fn (shared receiver St) use(shared value St)'), out
 	assert out.contains('atomic counter := 0'), out
 	assert out.contains('fn [mut item, atomic counter, shared state] ()'), out
@@ -870,30 +936,26 @@ fn test_formatter_preserves_lifetime_annotations() {
 }
 
 fn test_formatter_ignores_vfmt_directives_inside_strings() {
-	out := vfmt('vfmt_directives_in_strings',
-		"fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n")
+	out := vfmt('vfmt_directives_in_strings', "fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n")
 	assert out.contains("off := '// vfmt off'"), out
 	assert out.contains("on := '// vfmt on'"), out
 	assert out.contains("fn format_me() {\n\tprintln('yes')\n}"), out
 }
 
 fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {
-	bodyless := vfmt('bodyless_functions',
-		'fn plain(value usize) usize\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n')
+	bodyless := vfmt('bodyless_functions', 'fn plain(value usize) usize\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n')
 	assert bodyless.contains('fn plain(value usize) usize'), bodyless
 	assert bodyless.contains('fn C.c_call(value int) int'), bodyless
 	assert bodyless.contains('fn JS.js_call(value int) int'), bodyless
 	assert !bodyless.contains('fn C.plain'), bodyless
 	assert vfmt('bodyless_functions_twice', bodyless) == bodyless
 
-	concurrency := vfmt('go_and_spawn',
-		'fn work() {}\n\nfn main() {\n\tgo work()\n\tspawn work()\n}\n')
+	concurrency := vfmt('go_and_spawn', 'fn work() {}\n\nfn main() {\n\tgo work()\n\tspawn work()\n}\n')
 	assert concurrency.contains('go work()'), concurrency
 	assert concurrency.contains('spawn work()'), concurrency
 	assert vfmt('go_and_spawn_twice', concurrency) == concurrency
 
-	dollar := vfmt('legacy_dollar_builtins',
-		"fn main() {\n\t// vfmt off\n\tn := 1\n\tassert \$typeof(n).name == 'int'\n\tassert \$sizeof(n) > 0\n\tassert !\$isreftype[int]()\n\tassert \$dump(n) == n\n\t// vfmt on\n}\n")
+	dollar := vfmt('legacy_dollar_builtins', "fn main() {\n\t// vfmt off\n\tn := 1\n\tassert \$typeof(n).name == 'int'\n\tassert \$sizeof(n) > 0\n\tassert !\$isreftype[int]()\n\tassert \$dump(n) == n\n\t// vfmt on\n}\n")
 	assert dollar.contains('\$typeof(n).name'), dollar
 	assert dollar.contains('\$sizeof(n)'), dollar
 	assert dollar.contains('\$isreftype[int]()'), dollar
@@ -1160,14 +1222,12 @@ fn test_formatter_preserves_js_string_prefixes() {
 }
 
 fn test_formatter_preserves_sql_body() {
-	out := vfmt('sql_body',
-		'struct User {\n\tid int\n}\n\nfn f(db DB) {\n\t_ := sql db {\n\t\tselect from User where id == 1\n\t}\n}\n')
+	out := vfmt('sql_body', 'struct User {\n\tid int\n}\n\nfn f(db DB) {\n\t_ := sql db {\n\t\tselect from User where id == 1\n\t}\n}\n')
 	assert out.contains('sql db {\n\t\tselect from User where id == 1\n\t}'), out
 }
 
 fn test_formatter_preserves_mut_type_check() {
-	out := vfmt('mut_type_check',
-		'fn f(mut writer io.Writer) {\n\tif mut writer is os.File {\n\t\twriter.flush()\n\t}\n}\n')
+	out := vfmt('mut_type_check', 'fn f(mut writer io.Writer) {\n\tif mut writer is os.File {\n\t\twriter.flush()\n\t}\n}\n')
 	assert out.contains('if mut writer is os.File {'), out
 }
 
@@ -1305,8 +1365,7 @@ fn enabled() bool {
 }
 
 fn test_generics_and_interface() {
-	out := vfmt('gen',
-		'pub struct Stack[T] {\nmut:\n\tdata []T\n}\n\ninterface Reader {\n\tread(mut buf []u8) !int\nmut:\n\tpos int\n}\n')
+	out := vfmt('gen', 'pub struct Stack[T] {\nmut:\n\tdata []T\n}\n\ninterface Reader {\n\tread(mut buf []u8) !int\nmut:\n\tpos int\n}\n')
 	assert out.contains('struct Stack[T] {')
 	assert out.contains('interface Reader {')
 	assert out.contains('read(mut buf []u8) !int')

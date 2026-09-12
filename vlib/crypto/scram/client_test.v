@@ -45,8 +45,8 @@ fn test_new_client_rejects_an_unusable_nonce() {
 
 fn test_new_client_rejects_channel_binding_without_a_name() {
 	new_client(
-		username:        'user'
-		password:        'pencil'
+		username: 'user'
+		password: 'pencil'
 		channel_binding: ChannelBinding{
 			mode: .required
 			data: [u8(1), 2, 3]
@@ -73,8 +73,8 @@ fn test_mechanism_name_follows_the_channel_binding() {
 	sha1_client := new_client(username: 'user', password: 'pencil', mechanism: .sha1)!
 	assert sha1_client.mechanism_name() == 'SCRAM-SHA-1'
 	bound := new_client(
-		username:        'user'
-		password:        'pencil'
+		username: 'user'
+		password: 'pencil'
 		channel_binding: ChannelBinding{
 			mode: .required
 			name: 'tls-server-end-point'
@@ -89,9 +89,9 @@ fn test_the_gs2_flag_reflects_the_channel_binding_mode() {
 	assert unsupported.first()!.starts_with('n,,')
 
 	mut downgraded := new_client(
-		username:        'user'
-		password:        'pencil'
-		nonce:           rfc_nonce
+		username: 'user'
+		password: 'pencil'
+		nonce: rfc_nonce
 		channel_binding: ChannelBinding{
 			mode: .unsupported_by_server
 		}
@@ -99,9 +99,9 @@ fn test_the_gs2_flag_reflects_the_channel_binding_mode() {
 	assert downgraded.first()!.starts_with('y,,')
 
 	mut bound := new_client(
-		username:        'user'
-		password:        'pencil'
-		nonce:           rfc_nonce
+		username: 'user'
+		password: 'pencil'
+		nonce: rfc_nonce
 		channel_binding: ChannelBinding{
 			mode: .required
 			name: 'tls-server-end-point'
@@ -115,8 +115,8 @@ fn test_the_authzid_is_escaped_in_the_gs2_header() {
 	mut client := new_client(
 		username: 'user'
 		password: 'pencil'
-		authzid:  'a,b=c'
-		nonce:    rfc_nonce
+		authzid: 'a,b=c'
+		nonce: rfc_nonce
 	)!
 	assert client.first()!.starts_with('n,a=a=2Cb=3Dc,')
 }
@@ -178,9 +178,9 @@ fn test_the_iteration_floor_can_be_lowered_deliberately() {
 	// Some deployments predate RFC 7677 §4 and still use 1000. Talking to them
 	// has to be possible, but only by saying so explicitly.
 	mut client := new_client(
-		username:       'user'
-		password:       'pencil'
-		nonce:          rfc_nonce
+		username: 'user'
+		password: 'pencil'
+		nonce: rfc_nonce
 		min_iterations: 1000
 	)!
 	client.first()!
@@ -293,7 +293,8 @@ fn test_extension_server_refusals_accept_the_full_value_alphabet() {
 }
 
 fn test_a_server_final_message_cannot_contain_a_verifier_and_an_error() {
-	for server_final in ['${rfc_server_final},e=invalid-proof', 'e=invalid-proof,${rfc_server_final}'] {
+	for server_final in ['${rfc_server_final},e=invalid-proof',
+		'e=invalid-proof,${rfc_server_final}'] {
 		mut client := rfc_client()
 		client.first()!
 		client.final(rfc_server_first)!

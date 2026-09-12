@@ -34,6 +34,7 @@ const prealloc_block_size = 16 * 1024 * 1024
 // size of the first chunk for a scoped prealloc arena. Request-scoped arenas
 // should not force a 16MB libc allocation for every request.
 const prealloc_scope_block_size = 256 * 1024
+const prealloc_recycle_cache_slots = 512
 
 // `malloc` has to return memory suitably aligned for any V value. Keep the
 // default at the common max alignment used by libc malloc on current targets.
@@ -61,8 +62,16 @@ struct VPreallocBlockCache {
 mut:
 	count  int
 	bytes  isize
-	starts [64]voidptr
-	sizes  [64]isize
+	starts [prealloc_recycle_cache_slots]voidptr
+	sizes  [prealloc_recycle_cache_slots]isize
+}
+
+@[inline]
+fn prealloc_recycle_cache_limit() int {
+	$if v3_backend ? {
+		return prealloc_recycle_cache_slots
+	}
+	return 64
 }
 
 // PreallocStats is a process-wide snapshot of instrumented arena allocations.
@@ -446,8 +455,9 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 							if g_memory_block != 0 {
 								cache = g_memory_block.recycle_cache
 							}
-							if cache != 0 && cache.count < 64
-								&& cache.bytes + isize(size) <= isize(prealloc_scope_block_size) * 64 {
+							cache_limit := prealloc_recycle_cache_limit()
+							if cache != 0 && cache.count < cache_limit
+								&& cache.bytes + isize(size) <= isize(prealloc_scope_block_size) * cache_limit {
 								cache.starts[cache.count] = voidptr(mb.start)
 								cache.sizes[cache.count] = isize(size)
 								cache.bytes += isize(size)

@@ -64,10 +64,10 @@ enum ServerState {
 // to share between threads; use one value per connection.
 @[heap]
 pub struct Server {
-	mechanism       Mechanism
-	channel_binding ChannelBinding
-	advertises_plus bool
-	server_nonce    string
+	mechanism        Mechanism
+	channel_binding  ChannelBinding
+	advertises_plus  bool
+	server_nonce     string
 	lookup           fn (username string) !Credentials = unsafe { nil }
 	prepare_username fn (username string) !string = unsafe { nil }
 	prepare_authzid  fn (authzid string) !string = unsafe { nil }
@@ -98,11 +98,11 @@ pub fn new_server(config ServerConfig) !&Server {
 	// configuration at construction time rather than mid-exchange.
 	config.channel_binding.gs2_flag()!
 	return &Server{
-		mechanism:       config.mechanism
+		mechanism: config.mechanism
 		channel_binding: config.channel_binding
 		advertises_plus: config.advertises_plus || config.channel_binding.mode == .required
-		server_nonce:    nonce
-		lookup:          config.lookup
+		server_nonce: nonce
+		lookup: config.lookup
 		prepare_username: if config.prepare_username == unsafe { nil } {
 			prepare_ascii_username
 		} else {
@@ -121,8 +121,7 @@ fn prepare_ascii_username(username string) !string {
 }
 
 fn prepare_ascii_authzid(authzid string) !string {
-	return prepare_ascii_identity(authzid,
-		"prepare_authzid with the application protocol's preparation profile")
+	return prepare_ascii_identity(authzid, "prepare_authzid with the application protocol's preparation profile")
 }
 
 fn prepare_ascii_identity(identity string, config_hint string) !string {

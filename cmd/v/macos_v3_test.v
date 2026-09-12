@@ -12,7 +12,14 @@ fn run_macos_v3_test_process(executable string, args []string, work_dir string, 
 	for name, value in overrides {
 		environment[name] = value
 	}
-	mut process := os.new_process(executable)
+	// The tools workflow runs this suite through the V1 compatibility compiler.
+	// Process-level dispatcher tests must still invoke the sibling V3-enabled `v`.
+	actual_executable := if os.base(executable) in ['v1_fallback', 'v1_fallback.exe'] {
+		os.join_path(os.dir(executable), 'v' + $if windows { '.exe' } $else { '' })
+	} else {
+		executable
+	}
+	mut process := os.new_process(actual_executable)
 	process.set_args(args)
 	process.set_work_folder(work_dir)
 	process.set_environment(environment)
@@ -31,12 +38,8 @@ fn run_macos_v3_test_process(executable string, args []string, work_dir string, 
 fn test_macos_v3_embedded_driver_matches_target_selection() {
 	$if cross ? {
 		assert !macos_v3_driver_is_available()
-	} $else $if musl ? {
-		assert !macos_v3_driver_is_available()
-	} $else $if macos || linux {
-		assert macos_v3_driver_is_available()
 	} $else {
-		assert !macos_v3_driver_is_available()
+		assert macos_v3_driver_is_available()
 	}
 }
 
@@ -72,7 +75,7 @@ fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 	assert is_macos_v3_relevant_command('cmd/v', prefs)
 	prefs.old_compiler = false
 	prefs.path = ''
-	assert !is_macos_v3_relevant_command('build', prefs)
+	assert is_macos_v3_relevant_command('build', prefs)
 	prefs.path = 'main.v'
 	prefs.backend = .js_node
 	assert !is_macos_v3_relevant_command('main.v', prefs)
@@ -82,15 +85,36 @@ fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 	}
 }
 
-fn test_macos_v3_cmd_source_unlinks_v1_on_supported_hosts() {
+fn test_macos_v3_explicit_build_reports_a_regular_input_error() {
+	for args in [['build', 'help'], ['-new-compiler', 'build', 'help']] {
+		result := run_macos_v3_test_process(@VEXE, args, macos_v3_test_vroot, {})
+		assert result.exit_code == 1, result.output
+		assert result.output.trim_space() == "builder error: help doesn't exist", result.output
+	}
+	for args in [['build'], ['-new-compiler', 'build']] {
+		result := run_macos_v3_test_process(@VEXE, args, macos_v3_test_vroot, {})
+		assert result.exit_code == 1, result.output
+		assert result.output.trim_space() == 'no input file', result.output
+	}
+}
+
+fn test_macos_v3_cmd_source_unlinks_v1_on_every_native_host() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'v.v'))!
-	assert source.contains('\$if v1_fallback ?|| cross ?|| ( !macos && !linux ) {')
+	assert source.contains('\$if v1_fallback ?|| cross ? {')
+	assert !source.contains('!bsd && !linux && !windows')
 	assert source.contains('import v.builder')
 	assert source.contains('import v.builder.cbuilder')
 	assert source.contains('\$if v1_fallback ?|| cross ? {\n\t\t\t\tbuilder.compile')
 	driver := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'macos_v3_driver_notd_cross.v'))!
 	assert driver.contains('\$if v1_fallback ? {')
+	assert !driver.contains('musl ?')
+	assert !driver.contains('bsd || linux || windows')
 	assert driver.contains('fn macos_v3_driver_is_available() bool')
+	dispatch := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'macos_v3_dispatch.c.v'))!
+	assert !dispatch.contains('\$if bsd || linux || windows')
+	assert !dispatch.contains('\$if linux')
+	vself := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'vself.v'))!
+	assert !vself.contains('self_build_uses_embedded_v3')
 }
 
 fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {
@@ -105,84 +129,111 @@ fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {
 	}
 }
 
+fn test_netbsd_marks_the_v1_compatibility_compiler() {
+	makefile := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
+	assert makefile.contains('paxctl +m \$(V1_FALLBACK_EXE)')
+}
+
+fn test_gnumake_builds_the_v1_fallback_executable_for_every_native_host() {
+	source := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
+	assert source.contains('V1_FALLBACK_EXE = \$(dir \$(VEXE))v1_fallback\$(EXE_EXT)')
+	fallback_build := './v1\$(EXE_EXT) -no-parallel -d v1_fallback -o \$(V1_FALLBACK_EXE)'
+	assert source.count(fallback_build) == 2
+	assert !source.contains('V1_FALLBACK_BUILD')
+}
+
+fn test_portable_make_builds_the_v1_fallback_executable_for_every_native_host() {
+	source := os.read_file(os.join_path(macos_v3_test_vroot, 'Makefile'))!
+	fallback_build := 'set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback'
+	assert source.count(fallback_build) == 1
+	assert !source.contains('rm -f v1_fallback')
+}
+
+fn test_windows_makev_builds_the_v1_fallback_executable() {
+	source := os.read_file(os.join_path(macos_v3_test_vroot, 'makev.bat'))!
+	assert source.contains('set V1_FALLBACK=./v1_fallback.exe')
+	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !V_FALLBACK_CC_ARGS! -d v1_fallback -o "%V1_FALLBACK%" cmd/v')
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!" -cflags -Bthirdparty/tcc')
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc clang -cflags "--target=!clang_target!"')
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!gcc_exe!"')
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc msvc')
+	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
+	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -d v1_fallback -o "%V_STAGE%" cmd/v')
+	assert !source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc')
+	normalized := source.replace('\r\n', '\n')
+	assert normalized.count('call :move_updated_to_v\nif !ERRORLEVEL! NEQ 0 goto :compile_error') == 5
+}
+
 fn test_v1_fallback_can_bootstrap_cmd_v_without_target_define() {
-	$if macos || linux {
-		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)
-		if !os.is_executable(fallback) {
-			return
-		}
-		compiler := os.join_path(os.vtmp_dir(), 'v1_bootstrap_cmd_v_${os.getpid()}')
-		defer {
-			os.rm(compiler) or {}
-		}
-		result := run_macos_v3_test_process(fallback, ['-no-parallel', '-nocache', '-gc', 'none',
-			'-o', compiler, 'cmd/v'], macos_v3_test_vroot, {})
-		assert result.exit_code == 0, result.output
-		assert os.is_executable(compiler)
+	fallback := macos_v3_v1_fallback_executable()
+	if !os.is_executable(fallback) {
+		return
 	}
+	compiler := os.join_path(os.vtmp_dir(), 'v1_bootstrap_cmd_v_${os.getpid()}')
+	defer {
+		os.rm(compiler) or {}
+	}
+	result := run_macos_v3_test_process(fallback, ['-no-parallel', '-nocache', '-gc', 'none', '-o',
+		compiler, 'cmd/v'], macos_v3_test_vroot, {})
+	assert result.exit_code == 0, result.output
+	assert os.is_executable(compiler)
 }
 
 fn test_macos_v3_old_compiler_uses_external_v1_command() {
-	$if macos || linux {
-		fallback := os.join_path(macos_v3_test_vroot, macos_v3_v1_fallback_binary)
-		if !os.is_executable(fallback) {
-			return
-		}
-		root := os.join_path(os.vtmp_dir(), 'v3_external_old_compiler_${os.getpid()}')
-		os.rmdir_all(root) or {}
-		os.mkdir_all(root)!
-		defer {
-			os.rmdir_all(root) or {}
-		}
-		source := os.join_path(root, 'main.v')
-		os.write_file(source, 'fn main() { println("v1") }\n')!
-		output := os.join_path(root, 'main')
-		result := run_macos_v3_test_process(@VEXE, ['-old-compiler', '-o', output, source], macos_v3_test_vroot, {})
-		assert result.exit_code == 0, result.output
-		assert os.is_executable(output)
-		run := os.execute(os.quoted_path(output))
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == 'v1', run.output
+	fallback := macos_v3_v1_fallback_executable()
+	if !os.is_executable(fallback) {
+		return
 	}
+	root := os.join_path(os.vtmp_dir(), 'v3_external_old_compiler_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() { println("v1") }\n')!
+	output := os.join_path(root, 'main')
+	result := run_macos_v3_test_process(@VEXE, ['-old-compiler', '-o', output, source], macos_v3_test_vroot, {})
+	assert result.exit_code == 0, result.output
+	assert os.is_executable(output)
+	run := os.execute(os.quoted_path(output))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'v1', run.output
 }
 
 fn test_macos_v3_invalid_program_still_reports_an_error_after_v1_retry() {
-	$if macos || linux {
-		root := os.join_path(os.vtmp_dir(), 'v3_invalid_program_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_invalid_program_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
 		os.rmdir_all(root) or {}
-		os.mkdir_all(root)!
-		defer {
-			os.rmdir_all(root) or {}
-		}
-		source := os.join_path(root, 'main.v')
-		os.write_file(source, 'fn main() { missing_name() }\n')!
-		result := run_macos_v3_test_process(@VEXE, ['-o', os.join_path(root, 'main'), source], macos_v3_test_vroot, {
-			'V_MACOS_V3_FALLBACK_FILE': os.join_path(root, 'stale_fallback')
-			'V_MACOS_V3_C_ERROR_DIR':   os.join_path(root, 'stale_report')
-			'V_MACOS_V3_RETRY':         '1'
-		})
-		assert result.exit_code == 1, result.output
-		assert result.output.contains('missing_name'), result.output
-		assert !os.exists(os.join_path(root, 'stale_fallback'))
 	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() { missing_name() }\n')!
+	result := run_macos_v3_test_process(@VEXE, ['-o', os.join_path(root, 'main'), source], macos_v3_test_vroot, {
+		'V_MACOS_V3_FALLBACK_FILE': os.join_path(root, 'stale_fallback')
+		'V_MACOS_V3_C_ERROR_DIR':   os.join_path(root, 'stale_report')
+		'V_MACOS_V3_RETRY':         '1'
+	})
+	assert result.exit_code == 1, result.output
+	assert result.output.contains('missing_name'), result.output
+	assert !os.exists(os.join_path(root, 'stale_fallback'))
 }
 
 fn test_macos_v3_fatal_errors_reports_only_the_first_error() {
-	$if macos || linux {
-		root := os.join_path(os.vtmp_dir(), 'v3_fatal_errors_${os.getpid()}')
+	root := os.join_path(os.vtmp_dir(), 'v3_fatal_errors_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
 		os.rmdir_all(root) or {}
-		os.mkdir_all(root)!
-		defer {
-			os.rmdir_all(root) or {}
-		}
-		source := os.join_path(root, 'main.v')
-		os.write_file(source, 'fn main() {\n\tmissing_first()\n\tmissing_second()\n}\n')!
-		result := run_macos_v3_test_process(@VEXE, ['-Wfatal-errors', '-o',
-			os.join_path(root, 'main'), source], macos_v3_test_vroot, {})
-		assert result.exit_code == 1, result.output
-		assert result.output.contains('missing_first'), result.output
-		assert !result.output.contains('unknown function `missing_second`'), result.output
 	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {\n\tmissing_first()\n\tmissing_second()\n}\n')!
+	result := run_macos_v3_test_process(@VEXE, ['-Wfatal-errors', '-o', os.join_path(root, 'main'),
+		source], macos_v3_test_vroot, {})
+	assert result.exit_code == 1, result.output
+	assert result.output.contains('missing_first'), result.output
+	assert !result.output.contains('unknown function `missing_second`'), result.output
 }
 
 fn test_macos_v3_forwarded_args_strip_only_compiler_selection() {
@@ -204,6 +255,32 @@ fn test_macos_v3_forwarded_args_strip_only_compiler_selection() {
 	])
 	assert run_forwarded.count(it == '-new-compiler') == 1
 	assert run_forwarded.last() == '-new-compiler'
+}
+
+fn test_macos_v3_forwarded_args_propagate_resolved_libc() {
+	musl_args := macos_v3_forwarded_args(&pref.Preferences{
+		is_musl: true
+	}, ['-musl', 'main.v'])
+	assert '-dmusl' in musl_args
+	assert '-dglibc' !in musl_args
+	assert '-musl' !in musl_args
+
+	glibc_args := macos_v3_forwarded_args(&pref.Preferences{
+		is_glibc: true
+	}, ['-glibc', 'main.v'])
+	assert '-dglibc' in glibc_args
+	assert '-dmusl' !in glibc_args
+	assert '-glibc' !in glibc_args
+
+	run_args := macos_v3_forwarded_args(&pref.Preferences{
+		is_run: true
+		is_musl: true
+		run_args: ['-musl', '-glibc']
+	}, ['-musl', 'run', 'main.v', '-musl', '-glibc'])
+	assert run_args.count(it == '-musl') == 1
+	assert run_args.count(it == '-glibc') == 1
+	assert '-dmusl' in run_args
+	assert '-dglibc' !in run_args
 }
 
 fn test_macos_v3_forwarded_args_preserve_compatibility_aliases() {
@@ -275,6 +352,9 @@ fn test_macos_v3_ownership_delegation_never_selects_v1() {
 	assert ownership_delegation_is_requested(true, false, false, false, 'linux')
 	assert ownership_delegation_is_requested(false, true, false, false, 'macos')
 	assert ownership_delegation_is_requested(false, true, false, false, 'linux')
+	for bsd_os in ['freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
+		assert ownership_delegation_is_requested(false, true, false, false, bsd_os)
+	}
 	assert !ownership_delegation_is_requested(false, true, false, false, 'windows')
 	assert !ownership_delegation_is_requested(true, false, true, false, 'macos')
 	direct_prefs := &pref.Preferences{
@@ -295,7 +375,7 @@ fn test_macos_v3_ownership_delegation_never_selects_v1() {
 }
 
 fn test_macos_v3_autofree_direct_and_run_use_ownership_compiler() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_autofree_run_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -317,7 +397,7 @@ fn test_macos_v3_autofree_direct_and_run_use_ownership_compiler() {
 }
 
 fn test_macos_v3_parallel_cc_ignores_inactive_header_definitions() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_inactive_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -339,17 +419,15 @@ fn test_macos_v3_parallel_cc_ignores_inactive_header_definitions() {
 }
 
 fn test_macos_v3_compiles_cmd_v_without_v1_modules() {
-	$if macos || linux {
-		compiler := os.join_path(macos_v3_test_vroot, '.v3_only_cmd_test_${os.getpid()}')
-		defer {
-			os.rm(compiler) or {}
-		}
-		result := run_macos_v3_test_process(@VEXE, ['-no-memory-limit', '-no-parallel', '-o',
-			compiler, 'cmd/v'], macos_v3_test_vroot, {})
-		assert result.exit_code == 0, result.output
-		assert os.is_executable(compiler)
-		version := run_macos_v3_test_process(compiler, ['version'], macos_v3_test_vroot, {})
-		assert version.exit_code == 0, version.output
-		assert version.output.starts_with('V '), version.output
+	compiler := os.join_path(macos_v3_test_vroot, '.v3_only_cmd_test_${os.getpid()}')
+	defer {
+		os.rm(compiler) or {}
 	}
+	result := run_macos_v3_test_process(@VEXE, ['-no-memory-limit', '-no-parallel', '-o', compiler,
+		'cmd/v'], macos_v3_test_vroot, {})
+	assert result.exit_code == 0, result.output
+	assert os.is_executable(compiler)
+	version := run_macos_v3_test_process(compiler, ['version'], macos_v3_test_vroot, {})
+	assert version.exit_code == 0, version.output
+	assert version.output.starts_with('V '), version.output
 }

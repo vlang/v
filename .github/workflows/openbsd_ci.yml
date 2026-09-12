@@ -7,7 +7,6 @@ on:
       - master
     paths:
       - '**'
-      - '!vlib/v3/**'
       - '!**.md'
       - '!**.yml'
       - '!cmd/tools/**'
@@ -47,6 +46,7 @@ on:
       - 'vlib/time/**'
       - 'vlib/toml/**'
       - 'vlib/v/**'
+      - 'vlib/v3/**'
       # build-examples / DB / Sokol deps exercised by ci/openbsd_ci.vsh
       - 'vlib/compress/**'
       - 'vlib/crypto/rand/**'
@@ -91,7 +91,8 @@ jobs:
         with:
           operating_system: openbsd
           version: '7.8'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           sync_files: runner-to-vm
 
       - name: Tests on OpenBSD with tcc
@@ -108,6 +109,9 @@ jobs:
           echo "::endgroup::"
           echo "::group::Build V"
           git config --global --add safe.directory .
+          # V3 is now part of the first bootstrap target and can exceed OpenBSD's
+          # default per-process data-segment limit even though the VM has 8 GiB.
+          ulimit -d 4194304
           gmake
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
@@ -129,7 +133,8 @@ jobs:
         with:
           operating_system: openbsd
           version: '7.8'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           sync_files: runner-to-vm
 
       - name: Tests on OpenBSD with clang
@@ -147,6 +152,9 @@ jobs:
           echo "::endgroup::"
           echo "::group::Build V"
           git config --global --add safe.directory .
+          # V3 is now part of the first bootstrap target and can exceed OpenBSD's
+          # default per-process data-segment limit even though the VM has 8 GiB.
+          ulimit -d 4194304
           gmake
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3

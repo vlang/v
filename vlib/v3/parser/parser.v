@@ -3013,7 +3013,10 @@ fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 				continue
 			}
 			piece_kind := parsed_attribute_kind(p.tok)
-			mut piece := attr_unquote(p.lit)
+			// The formatter re-emits field attributes from these strings, so it must keep
+			// the quotes of a whole-string attribute (`@['C\x5cnD']`) - unquoted, the
+			// escape is no longer valid syntax. Reflection keeps the legacy unquoted form.
+			mut piece := if p.prefs.is_fmt { p.lit } else { attr_unquote(p.lit) }
 			p.next()
 			if p.tok == .lpar {
 				attr_name := piece
@@ -5017,6 +5020,7 @@ fn comptime_flag_is_target_arch(name string, target_arch string) bool {
 		'amd64' { name in ['amd64', 'x64', 'x86_64'] }
 		'arm64' { name in ['arm64', 'aarch64'] }
 		'x86' { name in ['x86', 'i386', 'i486', 'i586', 'i686', 'x86_32', 'ia-32', 'ia32'] }
+		'riscv32' { name in ['riscv32', 'rv32'] }
 		'riscv64' { name in ['riscv64', 'rv64'] }
 		else { name == target_arch }
 	}
@@ -5085,7 +5089,7 @@ fn (p &Parser) comptime_cond_name_is_flag(cond string, name string, end int) boo
 		return true
 	}
 	match name {
-		'macos', 'darwin', 'mac', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'termux', 'wasm32_emscripten', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64', 'i386', 'x86', 'arm64', 'aarch64', 'arm32', 'rv64', 'riscv64', 's390x', 'ppc64', 'ppc64le', 'loongarch64', 'wasm32', 'little_endian', 'big_endian', 'debug', 'test', 'native', 'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm', 'gcc', 'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding', 'nofloat', 'threads' {
+		'macos', 'darwin', 'mac', 'ios', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'termux', 'solaris', 'wasm32_emscripten', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64', 'i386', 'x86', 'arm64', 'aarch64', 'arm32', 'rv32', 'riscv32', 'rv64', 'riscv64', 's390x', 'ppc', 'ppc64', 'ppc64le', 'loongarch64', 'sparc64', 'wasm32', 'little_endian', 'big_endian', 'debug', 'test', 'native', 'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm', 'gcc', 'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding', 'nofloat', 'threads' {
 			return true
 		}
 		else {}
@@ -8383,6 +8387,11 @@ fn (mut p Parser) validate_inline_asm_lock_instruction() {
 fn (mut p Parser) asm_stmt() flat.NodeId {
 	asm_pos := p.tok_pos
 	p.next() // skip 'asm'
+	mut is_goto := false
+	if p.tok == .key_goto {
+		is_goto = true
+		p.next()
+	}
 	// consume optional volatile keyword
 	if p.tok == .key_volatile || (p.tok == .name && p.lit == 'volatile') {
 		p.next()
@@ -8421,6 +8430,9 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 		p.next()
 	}
 	if !p.prefs.is_fmt {
+		if is_goto && p.prefs.backend != 'c' {
+			p.record_diagnostic('`asm goto` is only supported by the C backend', asm_pos)
+		}
 		if is_intel && pref.normalized_arch(asm_arch) !in ['amd64', 'x86'] {
 			p.record_diagnostic('the `intel` assembly modifier is only supported for i386 and amd64', asm_pos)
 		}
@@ -8748,20 +8760,23 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next()
 			type_name := p.parse_type_name()
 			istart := p.add_child(lhs)
-			is_node := p.add_node(flat.Node{
+			// Span operand..type like `in_expr` does. A default (point) span would sit on the
+			// *next* token, which for `if x is T { // c` is the `{`, and the formatter would
+			// then hoist the block's trailing comment in front of the brace.
+			is_node := p.add_node_from(flat.Node{
 				kind: .is_expr
 				value: type_name
 				children_start: istart
 				children_count: 1
-			})
+			}, lhs)
 			if is_negated {
 				nstart := p.add_child(is_node)
-				lhs = p.add_node(flat.Node{
+				lhs = p.add_node_from(flat.Node{
 					kind: .prefix
 					op: .not
 					children_start: nstart
 					children_count: 1
-				})
+				}, is_node)
 			} else {
 				lhs = is_node
 			}
@@ -8776,19 +8791,19 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next() // skip is
 			type_name := p.parse_type_name()
 			istart := p.add_child(lhs)
-			is_node := p.add_node(flat.Node{
+			is_node := p.add_node_from(flat.Node{
 				kind: .is_expr
 				value: type_name
 				children_start: istart
 				children_count: 1
-			})
+			}, lhs)
 			nstart := p.add_child(is_node)
-			lhs = p.add_node(flat.Node{
+			lhs = p.add_node_from(flat.Node{
 				kind: .prefix
 				op: .not
 				children_start: nstart
 				children_count: 1
-			})
+			}, is_node)
 			continue
 		}
 		// `in` / `!in` / `not_in`
@@ -8819,12 +8834,12 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			}, lhs)
 			if is_negated {
 				nstart := p.add_child(in_node)
-				lhs = p.add_node(flat.Node{
+				lhs = p.add_node_from(flat.Node{
 					kind: .prefix
 					op: .not
 					children_start: nstart
 					children_count: 1
-				})
+				}, in_node)
 			} else {
 				lhs = in_node
 			}
@@ -8841,26 +8856,27 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			if p.tok == .dotdot {
 				p.next()
 				range_rhs := p.expr(.sum)
-				rstart := p.add_children2(rhs, range_rhs)
-				rhs = p.add_node(flat.Node{
+				range_lhs := rhs
+				rstart := p.add_children2(range_lhs, range_rhs)
+				rhs = p.add_node_from(flat.Node{
 					kind: .range
 					children_start: rstart
 					children_count: 2
-				})
+				}, range_lhs)
 			}
 			istart := p.add_children2(lhs, rhs)
-			in_node := p.add_node(flat.Node{
+			in_node := p.add_node_from(flat.Node{
 				kind: .in_expr
 				children_start: istart
 				children_count: 2
-			})
+			}, lhs)
 			nstart := p.add_child(in_node)
-			lhs = p.add_node(flat.Node{
+			lhs = p.add_node_from(flat.Node{
 				kind: .prefix
 				op: .not
 				children_start: nstart
 				children_count: 1
-			})
+			}, in_node)
 			continue
 		}
 		// skip auto-semicolons before infix operators (multi-line expressions)

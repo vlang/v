@@ -1,11 +1,15 @@
 module cbuilder
 
-fn test_parallel_cc_uses_tcc_for_resolved_compiler_paths() {
-	assert parallel_cc_uses_tcc(.tcc, 'cc')
-	assert parallel_cc_uses_tcc(.unknown, 'tcc')
-	assert parallel_cc_uses_tcc(.unknown, '/tmp/v/thirdparty/tcc/tcc')
-	assert parallel_cc_uses_tcc(.unknown, 'D:\\a\\v\\v\\thirdparty\\tcc\\tcc.exe')
-	assert !parallel_cc_uses_tcc(.unknown, '/usr/bin/clang')
+import os
+
+fn test_parallel_cc_bundled_tcc_root_excludes_system_tcc() {
+	vroot := os.join_path(os.vtmp_dir(), 'parallel_cc_bundled_tcc_root')
+	bundled_tcc_root := os.join_path(vroot, 'thirdparty', 'tcc')
+	bundled_tcc := os.join_path(bundled_tcc_root, 'tcc.exe')
+	system_tcc := os.join_path(vroot, 'usr', 'bin', 'tcc')
+	assert parallel_cc_bundled_tcc_root(vroot, bundled_tcc) == bundled_tcc_root
+	assert parallel_cc_bundled_tcc_root(vroot, system_tcc) == ''
+	assert parallel_cc_bundled_tcc_root(vroot, 'clang') == ''
 }
 
 fn test_parallel_cc_projects_pkgconfig_pthread_once() {

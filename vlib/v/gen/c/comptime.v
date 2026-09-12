@@ -98,8 +98,7 @@ fn (mut g Gen) comptime_type_expr_type(expr ast.Expr, fallback_type ast.Type) as
 					if expr.is_fixed {
 						sym := g.table.final_sym(expr.typ)
 						if sym.info is ast.ArrayFixed {
-							return ast.new_type(g.table.find_or_register_array_fixed(elem_type,
-								sym.info.size, sym.info.size_expr, sym.info.is_fn_ret))
+							return ast.new_type(g.table.find_or_register_array_fixed(elem_type, sym.info.size, sym.info.size_expr, sym.info.is_fn_ret))
 						}
 					}
 					return ast.new_type(g.table.find_or_register_array(elem_type))
@@ -123,8 +122,7 @@ fn (mut g Gen) comptime_type_expr_type(expr ast.Expr, fallback_type ast.Type) as
 				return resolved_generic_type
 			}
 			if expr.name in g.type_resolver.type_map {
-				return g.unwrap_generic(g.recheck_concrete_type(g.type_resolver.get_ct_type_or_default(expr.name,
-					fallback_type)))
+				return g.unwrap_generic(g.recheck_concrete_type(g.type_resolver.get_ct_type_or_default(expr.name, fallback_type)))
 			}
 			if util.is_generic_type_name(expr.name) && g.cur_fn != unsafe { nil } {
 				return g.unwrap_generic(g.recheck_concrete_type(g.table.find_type(expr.name).set_flag(.generic)))
@@ -201,7 +199,8 @@ fn (mut g Gen) comptime_typeof_generic_ident_type(ident ast.Ident) ast.Type {
 
 fn (mut g Gen) comptime_selector_type_expr_type(expr ast.SelectorExpr, fallback_type ast.Type) ast.Type {
 	if expr.expr is ast.Ident && g.comptime.inside_comptime_for
-		&& expr.field_name in ['typ', 'unaliased_typ', 'indirections', 'pointee_type', 'payload_type', 'variant_types'] {
+		&& expr.field_name in ['typ', 'unaliased_typ', 'indirections', 'pointee_type', 'payload_type',
+			'variant_types'] {
 		ident := expr.expr as ast.Ident
 		if ident.name == g.comptime.comptime_for_field_var
 			|| ident.name == g.comptime.comptime_for_variant_var
@@ -258,11 +257,11 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 	left_type := g.resolved_expr_type(node.left, node.left_type)
 	if node.is_method && g.comptime.comptime_for_method != unsafe { nil } {
 		g.selector_expr(ast.SelectorExpr{
-			pos:                 node.pos
-			expr:                node.left
-			expr_type:           left_type
-			typ:                 g.type_resolver.get_type(node)
-			field_name:          g.comptime.comptime_for_method.name
+			pos: node.pos
+			expr: node.left
+			expr_type: left_type
+			typ: g.type_resolver.get_type(node)
+			field_name: g.comptime.comptime_for_method.name
 			has_hidden_receiver: true
 		})
 		return
@@ -468,8 +467,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		// check argument length and types
 		if m.params.len - 1 != node.args.len && !expand_strs {
 			if g.inside_call {
-				g.error('expected ${m.params.len - 1} arguments to method ${sym.name}.${m.name}, but got ${node.args.len}',
-					node.pos)
+				g.error('expected ${m.params.len - 1} arguments to method ${sym.name}.${m.name}, but got ${node.args.len}', node.pos)
 			} else {
 				if !has_decompose {
 					// do not generate anything if the argument lengths don't match
@@ -694,8 +692,7 @@ fn (mut g Gen) recover_specialized_generic_context_for(fn_name string) ([]string
 				if generic_fn.is_method && concrete_types.len > generic_names.len {
 					receiver_generic_names := g.table.generic_type_names(generic_fn.receiver.typ)
 					if receiver_generic_names.len > 0 {
-						mut effective_generic_names := []string{cap: receiver_generic_names.len +
-							generic_names.len}
+						mut effective_generic_names := []string{cap: receiver_generic_names.len + generic_names.len}
 						for name in receiver_generic_names {
 							if name !in effective_generic_names {
 								effective_generic_names << name
@@ -751,8 +748,7 @@ fn (mut g Gen) gen_branch_context_string() string {
 	}
 	if generic_names.len > 0 && generic_names.len == concrete_types.len {
 		for i in 0 .. generic_names.len {
-			arr << generic_names[i] + '=' +
-				util.strip_main_name(g.table.type_to_str(concrete_types[i]))
+			arr << generic_names[i] + '=' + util.strip_main_name(g.table.type_to_str(concrete_types[i]))
 		}
 	}
 
@@ -760,35 +756,29 @@ fn (mut g Gen) gen_branch_context_string() string {
 	if g.comptime.inside_comptime_for {
 		// variants
 		if g.comptime.comptime_for_variant_var.len > 0 {
-			variant := g.table.type_to_str(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ',
-				ast.no_type))
+			variant := g.table.type_to_str(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_variant_var}.typ', ast.no_type))
 			arr << g.comptime.comptime_for_variant_var + '.typ=' + variant
 		}
 		// fields
 		if g.comptime.comptime_for_field_var.len > 0 {
-			arr << g.comptime.comptime_for_field_var + '.name=' +
-				g.comptime.comptime_for_field_value.name
+			arr << g.comptime.comptime_for_field_var + '.name=' + g.comptime.comptime_for_field_value.name
 		}
 		// values
 		if g.comptime.comptime_for_enum_var.len > 0 {
-			enum_var := g.table.type_to_str(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_enum_var}.typ',
-				ast.void_type))
+			enum_var := g.table.type_to_str(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_enum_var}.typ', ast.void_type))
 			arr << g.comptime.comptime_for_enum_var + '.typ=' + enum_var
 		}
 		// attributes
 		if g.comptime.comptime_for_attr_var.len > 0 {
-			arr << g.comptime.comptime_for_attr_var + '.name=' +
-				g.comptime.comptime_for_attr_value.name
+			arr << g.comptime.comptime_for_attr_var + '.name=' + g.comptime.comptime_for_attr_value.name
 		}
 		// methods
 		if g.comptime.comptime_for_method_var.len > 0 {
-			arr << g.comptime.comptime_for_method_var + '.name=' +
-				g.comptime.comptime_for_method.name
+			arr << g.comptime.comptime_for_method_var + '.name=' + g.comptime.comptime_for_method.name
 		}
 		// args
 		if g.comptime.comptime_for_method_param_var.len > 0 {
-			arg_var := g.table.type_to_str(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_method_param_var}.typ',
-				ast.void_type))
+			arg_var := g.table.type_to_str(g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_method_param_var}.typ', ast.void_type))
 			arr << g.comptime.comptime_for_method_param_var + '.typ=' + arg_var
 		}
 	}
@@ -997,8 +987,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 								g.go_back(2)
 							}
 							g.writeln(';')
-							g.writeln2('memcpy(&${tmp_var}, &${tmp_var2}, sizeof(${base_styp}));',
-								'}')
+							g.writeln2('memcpy(&${tmp_var}, &${tmp_var2}, sizeof(${base_styp}));', '}')
 						} else {
 							g.write('${tmp_var} = ')
 							g.stmt(last)
@@ -1053,8 +1042,7 @@ fn (mut g Gen) bind_comptime_if_generic_types(cond ast.Expr) {
 				}
 				.key_is {
 					if cond.right is ast.TypeNode {
-						g.type_resolver.bind_matching_generic_type(g.get_expr_type(cond.left),
-							cond.right.typ)
+						g.type_resolver.bind_matching_generic_type(g.get_expr_type(cond.left), cond.right.typ)
 					}
 				}
 				.key_in {
@@ -1088,7 +1076,8 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 		}
 		ast.SelectorExpr {
 			if cond.name_type != 0
-				&& cond.field_name in ['key_type', 'value_type', 'element_type', 'pointee_type', 'payload_type', 'variant_types'] {
+				&& cond.field_name in ['key_type', 'value_type', 'element_type', 'pointee_type',
+					'payload_type', 'variant_types'] {
 				return g.type_resolver.typeof_field_type(cond.name_type, cond.field_name)
 			}
 			if cond.gkind_field == .typ {
@@ -1099,8 +1088,7 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 				return ast.int_type
 			} else {
 				if cond.expr is ast.TypeOf {
-					return g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(cond.expr.expr,
-						cond.name_type), cond.field_name)
+					return g.type_resolver.typeof_field_type(g.type_resolver.typeof_type(cond.expr.expr, cond.name_type), cond.field_name)
 				}
 				name := '${cond.expr}.${cond.field_name}'
 				if name in g.type_resolver.type_map {
@@ -1135,20 +1123,20 @@ fn (mut g Gen) get_expr_type(cond ast.Expr) ast.Type {
 fn (mut g Gen) push_new_comptime_info() {
 	g.clear_type_resolution_caches()
 	g.type_resolver.info_stack << type_resolver.ResolverInfo{
-		saved_type_map:               g.type_resolver.type_map.clone()
-		inside_comptime_for:          g.comptime.inside_comptime_for
-		inside_comptime_if:           g.comptime.inside_comptime_if
-		comptime_for_variant_var:     g.comptime.comptime_for_variant_var
-		comptime_for_field_var:       g.comptime.comptime_for_field_var
-		comptime_for_field_type:      g.comptime.comptime_for_field_type
-		comptime_for_field_value:     g.comptime.comptime_for_field_value
-		comptime_for_enum_var:        g.comptime.comptime_for_enum_var
-		comptime_for_attr_var:        g.comptime.comptime_for_attr_var
-		comptime_for_attr_value:      g.comptime.comptime_for_attr_value
-		comptime_for_method_var:      g.comptime.comptime_for_method_var
-		comptime_for_method:          g.comptime.comptime_for_method
+		saved_type_map: g.type_resolver.type_map.clone()
+		inside_comptime_for: g.comptime.inside_comptime_for
+		inside_comptime_if: g.comptime.inside_comptime_if
+		comptime_for_variant_var: g.comptime.comptime_for_variant_var
+		comptime_for_field_var: g.comptime.comptime_for_field_var
+		comptime_for_field_type: g.comptime.comptime_for_field_type
+		comptime_for_field_value: g.comptime.comptime_for_field_value
+		comptime_for_enum_var: g.comptime.comptime_for_enum_var
+		comptime_for_attr_var: g.comptime.comptime_for_attr_var
+		comptime_for_attr_value: g.comptime.comptime_for_attr_value
+		comptime_for_method_var: g.comptime.comptime_for_method_var
+		comptime_for_method: g.comptime.comptime_for_method
 		comptime_for_method_ret_type: g.comptime.comptime_for_method_ret_type
-		comptime_loop_id:             g.comptime.comptime_loop_id++
+		comptime_loop_id: g.comptime.comptime_loop_id++
 	}
 }
 
@@ -1268,8 +1256,7 @@ fn (mut g Gen) comptime_for_iteration_has_live_stmts(stmts []ast.Stmt) bool {
 
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	resolved_typ := if node.expr !is ast.EmptyExpr {
-		mut expr_typ := g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.expr,
-			node.typ)))
+		mut expr_typ := g.unwrap_generic(g.recheck_concrete_type(g.resolved_expr_type(node.expr, node.typ)))
 		resolved_ct_typ := g.type_resolver.get_type(node.expr)
 		if resolved_ct_typ != ast.void_type {
 			expr_typ = g.unwrap_generic(g.recheck_concrete_type(resolved_ct_typ))
@@ -1335,12 +1322,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 			} else {
 				attrs := cgen_attrs(method.attrs)
 				vattrs := cgen_vattrs(method.attrs)
-				g.writeln(
-					'\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
-					attrs.join(', ') + '}));\n')
-				g.writeln(
-					'\t${node.val_var}.attributes = builtin__new_array_from_c_array(${vattrs.len}, ${vattrs.len}, sizeof(VAttribute), _MOV((VAttribute[${vattrs.len}]){' +
-					vattrs.join(', ') + '}));\n')
+				g.writeln('\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' + attrs.join(', ') + '}));\n')
+				g.writeln('\t${node.val_var}.attributes = builtin__new_array_from_c_array(${vattrs.len}, ${vattrs.len}, sizeof(VAttribute), _MOV((VAttribute[${vattrs.len}]){' + vattrs.join(', ') + '}));\n')
 			}
 			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
@@ -1399,8 +1382,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					sym.info.fields
 				}
 				else {
-					g.error('comptime field lookup is supported only for structs and interfaces, and ${sym.name} is neither',
-						node.pos)
+					g.error('comptime field lookup is supported only for structs and interfaces, and ${sym.name} is neither', node.pos)
 					[]ast.StructField{}
 				}
 			}
@@ -1422,9 +1404,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 					g.writeln('\t${node.val_var}.attrs = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(string)});')
 				} else {
 					attrs := cgen_attrs(field.attrs)
-					g.writeln(
-						'\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
-						attrs.join(', ') + '}));\n')
+					g.writeln('\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' + attrs.join(', ') + '}));\n')
 				}
 				field_sym := g.table.sym(resolved_field_typ)
 				styp := resolved_field_typ
@@ -1489,9 +1469,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 						g.writeln('\t${node.val_var}.attrs = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(string)});')
 					} else {
 						attrs := cgen_attrs(enum_attrs)
-						g.writeln(
-							'\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' +
-							attrs.join(', ') + '}));\n')
+						g.writeln('\t${node.val_var}.attrs = builtin__new_array_from_c_array(${attrs.len}, ${attrs.len}, sizeof(string), _MOV((string[${attrs.len}]){' + attrs.join(', ') + '}));\n')
 					}
 					g.stmts(node.stmts)
 					g.write_defer_stmts(node.scope, false, node.pos)
@@ -1605,8 +1583,7 @@ fn (mut g Gen) comptime_selector_type(node ast.SelectorExpr) ast.Type {
 	}
 	if g.comptime.inside_comptime_for && typ == g.enum_data_type && node.field_name == 'value' {
 		// for comp-time enum.values
-		return g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_enum_var}.typ',
-			ast.void_type)
+		return g.type_resolver.get_ct_type_or_default('${g.comptime.comptime_for_enum_var}.typ', ast.void_type)
 	}
 	field_name := node.field_name
 	sym := g.table.sym(typ)

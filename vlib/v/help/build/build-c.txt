@@ -14,7 +14,7 @@ see also `v help build`.
       `clang`, `gcc`, `tcc` (also accepted as `tinyc`), `mingw-w64` and `msvc`.
 
    -old-compiler
-      On macOS and Linux the experimental V3 compiler (vlib/v3) is the default;
+      On macOS, Linux, and BSD the experimental V3 compiler (vlib/v3) is the default;
       `-old-compiler` bypasses it and compiles with the established compiler in
       vlib/v. V already falls back to this compiler automatically when V3 cannot
       build an eligible program, and (unless V_C_ERROR_BUG_REPORT_DISABLED=1 is
@@ -78,6 +78,7 @@ see also `v help build`.
       When set to `console` V will generate a `wmain` main function.
       When set to `windows` V will generate a `wWinMain` main function,
       even when you are not compiling `gg` apps.
+      The FastC backend does not support `-subsystem windows` yet.
 
    -icon <path>
    --icon=<path>

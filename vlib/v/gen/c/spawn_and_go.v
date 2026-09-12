@@ -75,8 +75,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		}
 	} else if mut expr.left is ast.AnonFn {
 		if expr.left.inherited_vars.len > 0 {
-			fn_var := g.fn_var_signature(ast.void_type, expr.left.decl.return_type,
-				expr.left.decl.params.map(it.typ), tmp_fn)
+			fn_var := g.fn_var_signature(ast.void_type, expr.left.decl.return_type, expr.left.decl.params.map(it.typ), tmp_fn)
 			g.write('\t${fn_var} = ')
 			g.gen_anon_fn(mut expr.left)
 			g.writeln(';')
@@ -90,8 +89,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		if expr.is_fn_var {
 			fn_sym := g.table.sym(expr.fn_var_type)
 			func := (fn_sym.info as ast.FnType).func
-			fn_var := g.fn_var_signature(ast.void_type, func.return_type, func.params.map(it.typ),
-				tmp_fn)
+			fn_var := g.fn_var_signature(ast.void_type, func.return_type, func.params.map(it.typ), tmp_fn)
 			g.write('\t${fn_var} = ')
 			g.expr(expr.left)
 			g.writeln(';')
@@ -200,9 +198,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			if param.name == expr.name {
 				if param.typ.has_flag(.generic) || g.type_has_unresolved_generic_parts(param.typ) {
 					mut muttable := unsafe { &ast.Table(g.table) }
-					if resolved_type := muttable.convert_generic_type(param.typ,
-						orig_fn.generic_names, g.cur_concrete_types)
-					{
+					if resolved_type := muttable.convert_generic_type(param.typ, orig_fn.generic_names, g.cur_concrete_types) {
 						fn_sym := g.table.sym(resolved_type)
 						if fn_sym.info is ast.FnType {
 							resolved_ret = fn_sym.info.func.return_type
@@ -299,9 +295,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 						if param.typ.has_flag(.generic)
 							|| g.type_has_unresolved_generic_parts(param.typ) {
 							mut muttable := unsafe { &ast.Table(g.table) }
-							if resolved := muttable.convert_generic_type(param.typ,
-								orig_fn.generic_names, g.cur_concrete_types)
-							{
+							if resolved := muttable.convert_generic_type(param.typ, orig_fn.generic_names, g.cur_concrete_types) {
 								fn_var_type = resolved
 							}
 						}
@@ -313,8 +307,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			info := fn_sym.info as ast.FnType
 			resolved_fn_params = info.func.params.clone()
 			wrapper_return_type = info.func.return_type
-			fn_var = g.fn_var_signature(ast.void_type, wrapper_return_type,
-				info.func.params.map(it.typ), 'fn')
+			fn_var = g.fn_var_signature(ast.void_type, wrapper_return_type, info.func.params.map(it.typ), 'fn')
 		} else if node.call_expr.left is ast.AnonFn {
 			f := node.call_expr.left.decl
 			wrapper_return_type = f.return_type
@@ -325,23 +318,19 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 				rec_sym := g.table.sym(g.unwrap_generic(node.call_expr.receiver_type))
 				if f := rec_sym.find_method_with_generic_parent(node.call_expr.name) {
 					mut muttable := unsafe { &ast.Table(g.table) }
-					return_type := muttable.convert_generic_type(f.return_type, f.generic_names,
-						node.call_expr.concrete_types) or { f.return_type }
+					return_type := muttable.convert_generic_type(f.return_type, f.generic_names, node.call_expr.concrete_types) or { f.return_type }
 					wrapper_return_type = return_type
 					mut arg_types := f.params.map(it.typ)
-					arg_types = arg_types.map(muttable.convert_generic_type(it, f.generic_names,
-						node.call_expr.concrete_types) or { it })
+					arg_types = arg_types.map(muttable.convert_generic_type(it, f.generic_names, node.call_expr.concrete_types) or { it })
 					fn_var = g.fn_var_signature(ast.void_type, return_type, arg_types, 'fn')
 				}
 			} else {
 				if f := g.table.find_fn(node.call_expr.name) {
 					concrete_types := node.call_expr.concrete_types.map(g.unwrap_generic(it))
-					return_type := g.table.convert_generic_type(f.return_type, f.generic_names,
-						concrete_types) or { f.return_type }
+					return_type := g.table.convert_generic_type(f.return_type, f.generic_names, concrete_types) or { f.return_type }
 					wrapper_return_type = return_type
 					mut arg_types := f.params.map(it.typ)
-					arg_types = arg_types.map(g.table.convert_generic_type(it, f.generic_names,
-						concrete_types) or { it })
+					arg_types = arg_types.map(g.table.convert_generic_type(it, f.generic_names, concrete_types) or { it })
 					for i, typ in arg_types {
 						mut typ_sym := g.table.sym(typ)
 						for {
@@ -394,8 +383,7 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			}
 			arg_sym := g.table.sym(arg_typ)
 			if arg_sym.info is ast.FnType {
-				sig := g.fn_var_signature(arg_typ, arg_sym.info.func.return_type,
-					arg_sym.info.func.params.map(it.typ), 'arg${i + 1}')
+				sig := g.fn_var_signature(arg_typ, arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ), 'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {
 				// Keep the wrapper field type in sync with the coercion done when

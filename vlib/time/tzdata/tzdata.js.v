@@ -1,0 +1,4 @@
+module tzdata
+
+fn init() {
+}

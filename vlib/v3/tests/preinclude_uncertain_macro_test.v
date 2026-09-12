@@ -1,7 +1,7 @@
 import os
 
 fn test_preinclude_uncertain_macro_keeps_c_extern_prototype() {
-	$if macos || linux {
+	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_preinclude_uncertain_macro_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!

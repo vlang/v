@@ -27,12 +27,12 @@ pub enum AssertFailureMode {
 pub enum GarbageCollectionMode {
 	unknown
 	no_gc
-	boehm_full     // full garbage collection mode
-	boehm_incr     // incremental garbage collection mode
+	boehm_full // full garbage collection mode
+	boehm_incr // incremental garbage collection mode
 	boehm_full_opt // full garbage collection mode
 	boehm_incr_opt // incremental garbage collection mode
-	boehm_leak     // leak detection mode (makes `gc_check_leaks()` work)
-	vgc            // V GC: concurrent tri-color mark-and-sweep (translated from Go's runtime GC)
+	boehm_leak // leak detection mode (makes `gc_check_leaks()` work)
+	vgc // V GC: concurrent tri-color mark-and-sweep (translated from Go's runtime GC)
 }
 
 pub enum OutputMode {
@@ -55,12 +55,12 @@ pub enum Subsystem {
 }
 
 pub enum Backend {
-	c               // The (default) C backend
-	interpret       // Removed V1 interpreter backend; kept for compatibility diagnostics.
-	js_node         // The JavaScript NodeJS backend
-	js_browser      // The JavaScript browser backend
+	c // The (default) C backend
+	interpret // Removed V1 interpreter backend; kept for compatibility diagnostics.
+	js_node // The JavaScript NodeJS backend
+	js_browser // The JavaScript browser backend
 	js_freestanding // The JavaScript freestanding backend
-	wasm            // The WebAssembly backend
+	wasm // The WebAssembly backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -101,19 +101,19 @@ pub mut:
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
-	is_glibc           bool   // if GLIBC will be linked
-	is_musl            bool   // if MUSL will be linked
-	is_test            bool   // `v test string_test.v`
-	is_script          bool   // single file mode (`v program.v`), main function can be skipped
-	is_vsh             bool   // v script (`file.vsh`) file, the `os` module should be made global
+	is_glibc           bool // if GLIBC will be linked
+	is_musl            bool // if MUSL will be linked
+	is_test            bool // `v test string_test.v`
+	is_script          bool // single file mode (`v program.v`), main function can be skipped
+	is_vsh             bool // v script (`file.vsh`) file, the `os` module should be made global
 	raw_vsh_tmp_prefix string // The prefix used for executables, when a script lacks the .vsh extension
-	is_livemain        bool   // main program that contains live/hot code
-	is_liveshared      bool   // a shared library, that will be used in a -live main program
-	is_shared          bool   // an ordinary shared library, -shared, no matter if it is live or not
-	is_o               bool   // building an .o file
-	is_prof            bool   // benchmark every function
-	is_prod            bool   // use "-O3"
-	no_prod_options    bool   // `-no-prod-options`, means do not pass any optimization flags to the C compilation, while still allowing the user to use for example `-cflags -Os` to pass custom ones
+	is_livemain        bool // main program that contains live/hot code
+	is_liveshared      bool // a shared library, that will be used in a -live main program
+	is_shared          bool // an ordinary shared library, -shared, no matter if it is live or not
+	is_o               bool // building an .o file
+	is_prof            bool // benchmark every function
+	is_prod            bool // use "-O3"
+	no_prod_options    bool // `-no-prod-options`, means do not pass any optimization flags to the C compilation, while still allowing the user to use for example `-cflags -Os` to pass custom ones
 	is_repl            bool
 	is_eval_argument   bool // true for `v -e 'println(2+2)'`. `println(2+2)` will be in pref.eval_argument .
 	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
@@ -128,22 +128,22 @@ pub mut:
 	is_vet             bool
 	is_template        bool // skip _ var warning in templates
 	is_ios_simulator   bool
-	is_apk             bool     // build as Android .apk format
-	is_help            bool     // -h, -help or --help was passed
-	is_quiet           bool     // do not show the repetitive explanatory messages like the one for `v -prod run file.v` .
-	is_cstrict         bool     // turn on more C warnings; slightly slower
-	is_callstack       bool     // turn on callstack registers on each call when v.debug is imported
-	is_trace           bool     // turn on possibility to trace fn call where v.debug is imported
-	is_coverage        bool     // turn on code coverage stats
-	is_check_return    bool     // -check-return, will make V produce notices about *all* call expressions with unused results. NOTE: experimental!
-	is_check_overflow  bool     // -check-overflow, will panic on integer overflow
-	eval_argument      string   // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
-	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
-	profile_file       string   // the profile results will be stored inside profile_file
-	coverage_dir       string   // the coverage files will be stored inside coverage_dir
-	profile_no_inline  bool     // when true, @[inline] functions would not be profiled
+	is_apk             bool // build as Android .apk format
+	is_help            bool // -h, -help or --help was passed
+	is_quiet           bool // do not show the repetitive explanatory messages like the one for `v -prod run file.v` .
+	is_cstrict         bool // turn on more C warnings; slightly slower
+	is_callstack       bool // turn on callstack registers on each call when v.debug is imported
+	is_trace           bool // turn on possibility to trace fn call where v.debug is imported
+	is_coverage        bool // turn on code coverage stats
+	is_check_return    bool // -check-return, will make V produce notices about *all* call expressions with unused results. NOTE: experimental!
+	is_check_overflow  bool // -check-overflow, will panic on integer overflow
+	eval_argument      string // `println(2+2)` on `v -e "println(2+2)"`. Note that this source code, will be evaluated in vsh mode, so 'v -e 'println(ls(".")!)' is valid.
+	test_runner        string // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
+	profile_file       string // the profile results will be stored inside profile_file
+	coverage_dir       string // the coverage files will be stored inside coverage_dir
+	profile_no_inline  bool // when true, @[inline] functions would not be profiled
 	profile_fns        []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
-	translated         bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	translated         bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	translated_go      bool = true // Are we running V code translated from Go? Allow err shadowing
 	obfuscate_removed  bool // `v -obf program.v`, renames functions to "f_XXX". REMOVED. Use `strip` instead
 	hide_auto_str      bool // `v -hide-auto-str program.v`, doesn't generate str() with struct data
@@ -170,53 +170,53 @@ pub mut:
 	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
 	dump_defines           string // `-dump-defines defines.txt` - let V store all the defines that affect the current program and their values, one define per line + `,` + its value.
 	generate_c_project     string // `-generate-c-project path` - generate a portable C project folder with the generated C file and build scripts.
-	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
+	use_cache              bool // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
 	use_os_system_to_run   bool // when set, use os.system() to run the produced executable, instead of os.new_process; works around segfaults on macos, that may happen when xcode is updated
 	macosx_version_min     string = '0' // relevant only for macos and ios targets
 	// TODO: Convert this into a []string
-	cflags         string        // Additional options which will be passed to the C compiler *before* other options.
-	ldflags        string        // Additional options which will be passed to the C compiler *after* everything else.
+	cflags         string // Additional options which will be passed to the C compiler *before* other options.
+	ldflags        string // Additional options which will be passed to the C compiler *after* everything else.
 	pkgconfig_mode PkgConfigMode // Static only for an exact `-static` C compiler argument on GNU-compatible compilers.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
-	m64                       bool         // true = generate 64-bit code, defaults to x64
-	ccompiler                 string       // the name of the C compiler used
-	ccompiler_set_by_flag     bool         // true when the compiler receives `-cc`
+	m64                       bool // true = generate 64-bit code, defaults to x64
+	ccompiler                 string // the name of the C compiler used
+	ccompiler_set_by_flag     bool // true when the compiler receives `-cc`
 	ccompiler_type            CompilerType // the type of the C compiler used
-	cppcompiler               string       // the name of the CPP compiler used
+	cppcompiler               string // the name of the CPP compiler used
 	third_party_option        string
 	building_v                bool
-	no_bounds_checking        bool   // `-no-bounds-checking` turns off *all* bounds checks for all functions at runtime, as if they all had been tagged with `@[direct_array_access]`
-	force_bounds_checking     bool   // `-force-bounds-checking` turns ON *all* bounds checks, even for functions that *were* tagged with `@[direct_array_access]`
-	autofree                  bool   // `v -manualfree` => false, `v -autofree` => true; false by default for now.
-	print_autofree_vars       bool   // print vars that are not freed by autofree
+	no_bounds_checking        bool // `-no-bounds-checking` turns off *all* bounds checks for all functions at runtime, as if they all had been tagged with `@[direct_array_access]`
+	force_bounds_checking     bool // `-force-bounds-checking` turns ON *all* bounds checks, even for functions that *were* tagged with `@[direct_array_access]`
+	autofree                  bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
+	print_autofree_vars       bool // print vars that are not freed by autofree
 	print_autofree_vars_in_fn string // same as above, but only for a single fn
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
-	trace_calls bool     // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
+	trace_calls bool // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
 	trace_fns   []string // when set, tracing will be done only for functions, whose names match the listed patterns.
-	compress    bool     // when set, use `upx` to compress the generated executable
+	compress    bool // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
-	no_builtin                  bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
-	enable_globals              bool   // allow __global for low level code
-	disable_explicit_mutability bool   // allow ordinary variables to be mutated without explicit `mut` annotations
-	is_bare                     bool   // set by -freestanding
+	no_builtin                  bool // Skip adding the `builtin` module implicitly. The generated C code may not compile.
+	enable_globals              bool // allow __global for low level code
+	disable_explicit_mutability bool // allow ordinary variables to be mutated without explicit `mut` annotations
+	is_bare                     bool // set by -freestanding
 	bare_builtin_dir            string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
-	no_preludes                 bool   // Prevents V from generating preludes in resulting .c files
+	no_preludes                 bool // Prevents V from generating preludes in resulting .c files
 	custom_prelude              string // Contents of custom V prelude that will be prepended before code in resulting .c files
-	no_closures                 bool   // Produce a compile time error, if a closure was generated for any reason (an implicit receiver method was stored, or an explicit `fn [captured]()`).
+	no_closures                 bool // Produce a compile time error, if a closure was generated for any reason (an implicit receiver method was stored, or an explicit `fn [captured]()`).
 	cmain                       string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
 	lookup_path                 []string
 	output_cross_c              bool // true, when the user passed `-os cross` or `-cross`
 	output_es5                  bool
 	prealloc                    bool
 	vroot                       string
-	vlib                        string   // absolute path to the vlib/ folder
+	vlib                        string // absolute path to the vlib/ folder
 	vmodules_paths              []string // absolute paths to the vmodules folders, by default ['/home/user/.vmodules'], can be overridden by setting VMODULES
-	out_name_c                  string   // full os.real_path to the generated .tmp.c file; set by builder.
+	out_name_c                  string // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name                    string
-	out_name_is_dir             bool   // true when `-o`/`-output` was passed with a trailing path separator
+	out_name_is_dir             bool // true when `-o`/`-output` was passed with a trailing path separator
 	path                        string // Path to file/folder to compile
 	line_info                   string // `-line-info="file.v:28"`: for "mini VLS" (shows information about objects on provided line)
 	linfo                       LineInfo
@@ -226,8 +226,8 @@ pub mut:
 	file_list []string // A list of .v files or directories. All .v files found recursively in directories will be included in the compilation.
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
-	compile_defines     []string          // just ['vfmt']
-	compile_defines_all []string          // contains both: ['vfmt','another']
+	compile_defines     []string // just ['vfmt']
+	compile_defines_all []string // contains both: ['vfmt','another']
 	compile_values      map[string]string // the map will contain for `-d key=value`: compile_values['key'] = 'value', and for `-d ident`, it will be: compile_values['ident'] = 'true'
 
 	run_args     []string // `v run x.v 1 2 3` => `1 2 3`
@@ -255,11 +255,11 @@ pub mut:
 	skip_unused       bool // skip generating C code for functions, that are not used
 
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
-	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successful builds.
-	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
+	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successful builds.
+	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
-	gc_set_by_flag      bool              // true when the compiler receives `-gc`
+	gc_set_by_flag      bool // true when the compiler receives `-gc`
 	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 200 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
@@ -279,7 +279,7 @@ pub mut:
 	relaxed_gcc14 bool = true // turn on the generated pragmas, that make gcc versions > 14 a lot less pedantic. The default is to have those pragmas in the generated C output, so that gcc-14 can be used on Arch etc.
 	//
 	subsystem          Subsystem // the type of the window app, that is going to be generated; has no effect on !windows
-	icon_path          string    // Windows executable icon file (.ico or .png)
+	icon_path          string // Windows executable icon file (.ico or .png)
 	is_vls             bool
 	json_errors        bool // -json-errors, for VLS and other tools
 	new_transform      bool // temporary for the new transformer
@@ -421,8 +421,8 @@ fn optional_arg_value(args []string, idx int, command string, known_external_com
 	}
 	if command == ''
 		&& (next in known_external_commands || next in internal_v_commands || next.ends_with('.v')
-		|| next.ends_with('.vsh') || os.is_dir(next)
-		|| !has_following_positional_arg(args, idx + 2)) {
+			|| next.ends_with('.vsh') || os.is_dir(next)
+			|| !has_following_positional_arg(args, idx + 2)) {
 		return def, false
 	}
 	return next, true
@@ -453,9 +453,9 @@ pub fn option_may_consume_value(option string) bool {
 	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
 		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof',
 		'-profile', '-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude',
-		'-file-list', '-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files',
-		'-dump-defines', '-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags',
-		'-ldflags', '-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-file-list', '-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
+		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
+		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
 		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend',
 		'-compile-backend', '--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude',
 		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
@@ -594,8 +594,8 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 			'-selfhost' {
 				// Passed through to the embedded V3 driver for FastC compiler builds.
 			}
-			'-checker-fixture', '-macos-v3-compat-c99' {
-				// Passed through to the embedded V3 diagnostic fixture runner.
+			'-checker-fixture', '-macos-v3-compat-c99', '-macos-v3-internal-quiet' {
+				// Private flags passed through to the embedded V3 driver.
 			}
 			'-no-memory-limit', '--no-memory-limit' {
 				// Passed through to V3 dispatchers by cmd/v.
@@ -765,8 +765,7 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 				res.is_shared = true
 			}
 			'--enable-globals' {
-				eprintln_cond(show_output && !res.is_quiet,
-					'`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
+				eprintln_cond(show_output && !res.is_quiet, '`--enable-globals` flag is deprecated, please use `-enable-globals` instead')
 				res.enable_globals = true
 			}
 			'-enable-globals' {
@@ -860,8 +859,7 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 				res.relaxed_gcc14 = false
 			}
 			'-prof', '-profile' {
-				profile_file, profile_file_consumed := optional_arg_value(args, i, command,
-					known_external_commands, '-')
+				profile_file, profile_file_consumed := optional_arg_value(args, i, command, known_external_commands, '-')
 				res.profile_file = profile_file
 				res.is_prof = true
 				res.build_options << '${arg} ${res.profile_file}'
@@ -1070,8 +1068,7 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 				run_http_argument := 'import net.http.file; file.serve()'
 				mut new_args := args.filter(it != '-http')
 				new_args << ['-e', run_http_argument]
-				eprintln_cond(show_output && !res.is_quiet,
-					"Note: use `v -e '${run_http_argument}'`, if you want to customise the http server options.")
+				eprintln_cond(show_output && !res.is_quiet, "Note: use `v -e '${run_http_argument}'`, if you want to customise the http server options.")
 				run_code_in_tmp_vfile_and_exit(new_args, mut res, '-e', 'vsh', run_http_argument)
 			}
 			'-cross' {
@@ -1319,10 +1316,8 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 	}
 
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
-		eprintln_cond(show_output && !res.is_quiet,
-			"Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
-		eprintln_cond(show_output && !res.is_quiet,
-			'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
+		eprintln_cond(show_output && !res.is_quiet, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
+		eprintln_cond(show_output && !res.is_quiet, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
 	}
 	if res.os in [.browser, .wasi] && res.backend != .wasm {
 		eprintln_exit('OS `${res.os}` forbidden for backends other than wasm')
@@ -1358,16 +1353,14 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path)
 			&& os.is_file(res.path + '.v') {
-			eprintln_cond(show_output && !res.is_quiet,
-				'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
+			eprintln_cond(show_output && !res.is_quiet, 'It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
 			res.path += '.v'
 		}
 	} else if is_source_file(command) {
 		res.path = command
 	}
 	if !res.is_bare && res.bare_builtin_dir != '' {
-		eprintln_cond(show_output && !res.is_quiet,
-			'`-bare-builtin-dir` must be used with `-freestanding`')
+		eprintln_cond(show_output && !res.is_quiet, '`-bare-builtin-dir` must be used with `-freestanding`')
 	}
 	if !build_vsh_source
 		&& (command.ends_with('.vsh') || (res.raw_vsh_tmp_prefix != '' && !res.is_run)) {

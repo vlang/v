@@ -38,6 +38,21 @@ pub fn fastc_compile_prestarted_rendering_c_units(mut _ FastcPrestartedCUnits, m
 	return error('prestarted FastC units are unavailable on Windows')
 }
 
+// fastc_compile_rendering_c_units waits for the rendering workers, writes their
+// output to the temporary unit files, and compiles those files concurrently.
+// Windows' process wrapper cannot stream the rendered source over stdin yet.
+pub fn fastc_compile_rendering_c_units(tcc string, base_args []string, mut rendering FastcRenderingCUnits, prepared FastcPreparedUnits, mut _ FastcPreparedLink, _ bool) ![]string {
+	if rendering.paths.len != rendering.workers.len
+		|| prepared.entries.len != rendering.paths.len {
+		return error('invalid rendering FastC unit layout')
+	}
+	mut sources := []string{len: rendering.paths.len}
+	for i in rendering.order {
+		sources[i] = rendering.workers[i].wait()
+	}
+	return fastc_compile_c_unit_texts(tcc, base_args, rendering.paths, sources, prepared)
+}
+
 // fastc_compile_c_units compiles the translation units to objects with
 // concurrent TinyCC processes and returns the object paths, or the output of
 // the first compile that failed.
