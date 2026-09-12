@@ -4,6 +4,13 @@ import os
 import strings
 import time
 
+// no_timeout waits for the child process for as long as it takes.
+pub const no_timeout = i64(0)
+
+// timeout_drain_ms bounds how long a timed out run keeps collecting whatever
+// the killed command already wrote into its pipes.
+const timeout_drain_ms = i64(200)
+
 // run executes program with an exact argument vector and captures its output.
 pub fn run(program string, args []string) os.Result {
 	return run_in(program, args, '')
@@ -11,14 +18,32 @@ pub fn run(program string, args []string) os.Result {
 
 // run_in executes program in work_folder with an exact argument vector.
 pub fn run_in(program string, args []string, work_folder string) os.Result {
-	return run_in_mode(program, args, work_folder, false)
+	return run_in_mode(program, args, work_folder, false, no_timeout)
 }
 
-fn run_in_mode(program string, args []string, work_folder string, merge_output bool) os.Result {
+// run_with_timeout is run, bounded: after timeout_ms milliseconds the child is
+// killed and a non zero result is returned. Use it for short probes that must
+// never be able to block a build, so that a child which can never make progress
+// is reported instead of hanging the compiler forever.
+pub fn run_with_timeout(program string, args []string, timeout_ms i64) os.Result {
+	return run_in_mode(program, args, '', false, timeout_ms)
+}
+
+fn run_in_mode(program string, args []string, work_folder string, merge_output bool, timeout_ms i64) os.Result {
 	mut process := os.new_process(program)
 	process.set_args(args)
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
+	}
+	if timeout_ms > 0 {
+		// A bounded run must be able to take down everything the command
+		// started, not only the direct child: a descendant that inherited the
+		// stdout/stderr pipes - `sh -c '... & wait'` and shell wrappers in
+		// general - would otherwise keep the write ends open past the deadline.
+		// Only bounded runs get their own process group, so unbounded ones (the
+		// C compiler and linker invocations) keep sharing the caller's group,
+		// and keep reacting to a Ctrl-C on the build, exactly as before.
+		process.use_pgroup = true
 	}
 	if merge_output {
 		process.set_redirect_stdio_merged()
@@ -27,26 +52,71 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	}
 	process.run()
 	mut output := strings.new_builder(1024)
+	mut timed_out := false
+	sw := time.new_stopwatch()
 	for process.is_alive() {
 		stdout := process.stdout_read()
 		stderr := if merge_output { '' } else { process.stderr_read() }
 		output.write_string(stdout)
 		output.write_string(stderr)
+		// The deadline is checked on every iteration, not only when nothing was
+		// read: a child that keeps writing must hit the bound just the same.
+		if timeout_ms > 0 && sw.elapsed().milliseconds() >= timeout_ms {
+			timed_out = true
+			// Kill the group first, so that descendants holding the pipes go
+			// away too, then the child itself, in case it had not reached its
+			// setpgid() yet when the group kill was delivered.
+			process.signal_pgkill()
+			process.signal_kill()
+			// signal_kill() marks the process `.aborted` before it has been
+			// reaped, and wait() skips waitpid() for a process that is not
+			// running, which would leave a zombie behind until this process
+			// exits. Put it back into a waitable state, so that the wait()
+			// below actually reaps it.
+			if process.status == .aborted {
+				process.status = .running
+			}
+			break
+		}
 		if stdout.len == 0 && stderr.len == 0 {
 			time.sleep(time.millisecond)
 		}
 	}
 	process.wait()
-	output.write_string(process.stdout_slurp())
-	if !merge_output {
-		output.write_string(process.stderr_slurp())
+	if timed_out {
+		eprintln('V: `${display(program, args)}` did not finish within ${timeout_ms}ms, the child process was killed')
+		// Never block on EOF after the deadline: the slurps on the normal path
+		// wait until every writer of the pipe is gone, and a descendant that
+		// escaped the group kill still owns one. Collect what is already
+		// buffered instead.
+		drain := time.new_stopwatch()
+		for drain.elapsed().milliseconds() < timeout_drain_ms {
+			stdout := process.stdout_read()
+			stderr := if merge_output { '' } else { process.stderr_read() }
+			if stdout.len == 0 && stderr.len == 0 {
+				break
+			}
+			output.write_string(stdout)
+			output.write_string(stderr)
+		}
+	} else {
+		output.write_string(process.stdout_slurp())
+		if !merge_output {
+			output.write_string(process.stderr_slurp())
+		}
 	}
 	if process.err.len > 0 {
 		output.write_string(process.err)
 		output.write_string(': ')
 		output.writeln(program)
 	}
-	exit_code := if process.code >= 0 { process.code } else { 1 }
+	exit_code := if timed_out {
+		if process.code > 0 { process.code } else { 1 }
+	} else if process.code >= 0 {
+		process.code
+	} else {
+		1
+	}
 	process.close()
 	mut output_text := output.str()
 	if exit_code != 0 && output_text.contains('os: failed to find executable')
@@ -62,7 +132,7 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 // run_in_merged executes a command with an exact argument vector and captures
 // both stdout and stderr.
 pub fn run_in_merged(program string, args []string, work_folder string) os.Result {
-	return run_in_mode(program, args, work_folder, true)
+	return run_in_mode(program, args, work_folder, true, no_timeout)
 }
 
 // split_args parses a directive or tool response into literal argv elements.
