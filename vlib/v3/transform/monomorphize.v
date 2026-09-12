@@ -10584,6 +10584,12 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			}
 			param_idx++
 		}
+		if t.call_keeps_explicit_specialization(callee, decl, inferred) {
+			// The callee already names the specialization picked by an explicit
+			// `fn_name[Type]` list, and this call carries nothing to infer from. Neither the
+			// enclosing return type nor the enclosing generic arguments may retarget it.
+			return ''
+		}
 		if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0 {
 			mut return_inferred := map[string]string{}
 			infer_generic_type_args(decl.node.typ, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred)
@@ -10862,7 +10868,8 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			}
 			param_idx++
 		}
-		if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0 {
+		if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0
+			&& !t.call_keeps_explicit_specialization(callee, decl, inferred) {
 			mut return_inferred := map[string]string{}
 			t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred, receiver_params)
 			for name, inferred_type in return_inferred {
@@ -10897,6 +10904,27 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 	} else {
 		t.rewrite_generic_plain_call(clone_id, clone, decl, concrete_call_args)
 	}
+}
+
+// call_keeps_explicit_specialization reports whether a cloned call is already bound to the concrete
+// specialization selected by an explicit `fn_name[Type]` type-argument list.
+//
+// Such callees are rewritten to a plain specialization ident before the enclosing generic body is
+// cloned, so the explicit arguments are no longer visible on the call node. The call resolves to the
+// same specialization in every clone of that body, and nothing could be inferred from its
+// arguments, so the enclosing function's return type must not retarget it to another
+// specialization.
+fn (t &Transformer) call_keeps_explicit_specialization(callee flat.Node, decl GenericFnDecl, inferred map[string]string) bool {
+	if inferred.len > 0 || callee.kind != .ident || callee.value.len == 0 {
+		return false
+	}
+	recorded := t.recorded_generic_specialization_args(callee.value) or { return false }
+	if recorded.len == 0 || t.generic_args_have_placeholders(recorded) {
+		return false
+	}
+	spec_value := specialized_generic_fn_value(decl.node.value, recorded)
+	qualified_spec := transform_qualified_fn_name(decl.module, spec_value)
+	return callee.value in [spec_value, qualified_spec, c_name(spec_value), c_name(qualified_spec)]
 }
 
 fn (t &Transformer) generic_specialization_registered(decl GenericFnDecl, args []string) bool {
