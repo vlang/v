@@ -249,6 +249,7 @@ mut:
 	array_get_types                      []ast.Type
 	auto_fn_definitions                  []string // auto generated functions definition list
 	sumtype_casting_fns                  []SumtypeCastingFn
+	map_value_lookup_fns                 []MapValueLookupFn // lazily-defaulted map-of-map lookups
 	anon_fn_definitions                  []string // anon generated functions definition list
 	anon_fns                             shared []string // remove duplicate anon generated functions
 	sumtype_definitions                  map[string]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
@@ -582,6 +583,18 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 					global_g.sumtype_casting_fns << scf
 				}
 			}
+			for mvl in g.map_value_lookup_fns {
+				mut already_exists := false
+				for existing in global_g.map_value_lookup_fns {
+					if existing.fn_name == mvl.fn_name {
+						already_exists = true
+						break
+					}
+				}
+				if !already_exists {
+					global_g.map_value_lookup_fns << mvl
+				}
+			}
 
 			for at in g.array_typedefs {
 				if at !in global_g.array_typedefs {
@@ -647,6 +660,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	}
 	for sumtype_casting_fn in global_g.sumtype_casting_fns {
 		global_g.write_sumtype_casting_fn(sumtype_casting_fn)
+	}
+	for map_value_lookup_fn in global_g.map_value_lookup_fns {
+		global_g.write_map_value_lookup_fn(map_value_lookup_fn)
 	}
 	global_g.write_shareds()
 	global_g.emit_late_chan_type_definitions()
