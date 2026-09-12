@@ -70,6 +70,14 @@ sha256_of() {
 	fi
 }
 
+candidate_has_expected_version() {
+	candidate_version=$("$candidate" version 2>/dev/null) || return 1
+	case "$candidate_version" in
+		"V $release_version "*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
 download_release() {
 	[ -n "$asset" ] || return 1
 	url=${V1_FALLBACK_RELEASE_URL:-$release_base_url/$asset}
@@ -95,6 +103,10 @@ download_release() {
 		return 1
 	fi
 	chmod +x "$candidate" || return 1
+	candidate_has_expected_version || {
+		echo "The V $release_version release fallback cannot run on this host." >&2
+		return 1
+	}
 }
 
 build_with_oldv() {
@@ -110,7 +122,7 @@ build_with_oldv() {
 			;;
 	esac
 	V1_FALLBACK_TARGET=$oldv_target "$bootstrap_v" -no-parallel -gc none run \
-		cmd/tools/oldv.v --command "$oldv_copy" "$release_version" || return 1
+		cmd/tools/oldv.v --cache=false --command "$oldv_copy" "$release_version" || return 1
 	chmod +x "$candidate" || return 1
 }
 
@@ -124,17 +136,14 @@ else
 	}
 fi
 
-fallback_version=$("$candidate" version 2>/dev/null) || {
-	echo "The staged V1 fallback is not executable." >&2
+candidate_has_expected_version || {
+	if [ -n "${candidate_version:-}" ]; then
+		echo "Expected V $release_version fallback, got: $candidate_version" >&2
+	else
+		echo "The staged V1 fallback is not executable." >&2
+	fi
 	exit 1
 }
-case "$fallback_version" in
-	"V $release_version "*) ;;
-	*)
-		echo "Expected V $release_version fallback, got: $fallback_version" >&2
-		exit 1
-		;;
-esac
 
 rm -f "$fallback_output"
 mv "$candidate" "$fallback_output" || exit 1

@@ -156,8 +156,12 @@ fn test_v1_fallback_installer_downloads_0_5_2_and_uses_oldv_on_failure() {
 		'v_windows.zip'] {
 		assert source.contains('asset=${asset}'), asset
 	}
-	assert source.contains('cmd/tools/oldv.v --command "\$oldv_copy" "\$release_version"')
+	assert source.contains('candidate_has_expected_version || {')
+	assert source.contains('cmd/tools/oldv.v --cache=false --command "\$oldv_copy" "\$release_version"')
 	assert source.contains('actual_sha256=\$(sha256_of "\$archive")')
+	oldv_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'oldv.v'))!
+	assert oldv_source.contains("if use_cache {\n\t\t\ttools << 'rsync'")
+	assert oldv_source.contains('oldv_required_tools(context.use_cache)')
 }
 
 fn test_windows_makev_builds_the_v1_fallback_executable() {
