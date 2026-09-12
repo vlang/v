@@ -13017,6 +13017,41 @@ fn (mut t Transformer) validate_specialized_call_result(id flat.NodeId, actual_t
 	return false
 }
 
+// record_specialized_slot_mismatch reports a value whose concrete type the
+// checker would not accept in the slot it is being placed in, and reports
+// whether it did. Open generic templates are never body-checked (`[]T`
+// legitimately matches any `[]U` until `T` is known), so a specialization
+// returning `[]Foo` from a `[]Bar` function reaches the transform unreported;
+// without this the slot was lowered anyway and only failed in the C compiler,
+// pointing at generated code instead of the offending return.
+//
+// The question is compatibility, never whether a lowering exists. The element
+// copy will box any struct into an interface, so an element that does not
+// implement the target has to be rejected here rather than at `.id = src.id`
+// in the generated C.
+fn (mut t Transformer) record_specialized_slot_mismatch(actual types.Type, expected types.Type) bool {
+	if !t.validating_generic_spec || isnil(t.tc) {
+		return false
+	}
+	actual_name := actual.name()
+	expected_name := expected.name()
+	if t.generic_arg_is_unresolved(actual_name) || t.generic_arg_is_unresolved(expected_name) {
+		return false
+	}
+	// The checker's own rule is the authority here: it already covers registered
+	// aliases, integer widths, integer-to-float, float-to-float, integer-to-enum,
+	// interfaces and sum variants, recursing through arrays and maps.
+	if t.tc.slot_value_compatible(actual, expected) {
+		return false
+	}
+	if t.in_return_expr {
+		t.record_monomorph_error('cannot return `${actual_name}` as `${expected_name}`')
+	} else {
+		t.record_monomorph_error('cannot use `${actual_name}` as `${expected_name}`')
+	}
+	return true
+}
+
 fn (mut t Transformer) validate_specialized_comparison_operands(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, transformed_lhs flat.NodeId, transformed_rhs flat.NodeId) bool {
 	if !t.validating_generic_spec || node.op !in [.eq, .ne, .lt, .gt, .le, .ge] {
 		return true
