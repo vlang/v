@@ -30,6 +30,15 @@ fn main() {
 		enable_http2:           true
 		handler:                H2SpecHandler{}
 		show_startup_message:   false
+		// The TLS handshake runs on the handler workers, and an idle keep-alive
+		// connection pins its worker until the client closes it. Several h2spec
+		// flow-control cases (6.5.3/1, 6.9.1/1, 6.9.2/1, 6.9.2/2) open a preflight
+		// connection and keep it alive while dialing the case's own one, so with
+		// the default worker_num (= nr_jobs(), 4 on the CI runner) those dials
+		// found no free worker and timed out. Pin a generous, host-independent
+		// worker count so the gate does not depend on the runner's core count
+		// (vlang/v#28517).
+		worker_num: 16
 	}
 	println('h2spec target listening on 127.0.0.1:${port} (h2 over TLS)')
 	srv.listen_and_serve()
