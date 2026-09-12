@@ -331,8 +331,8 @@ fn detect_musl(mut res Preferences) {
 	}
 }
 
-// forget_host_libc_for_foreign_targets discards the libc that `detect_musl` probed on
-// the host, when that probe cannot describe the program being built.
+// forget_host_glibc_for_foreign_targets discards the glibc that `detect_musl` inferred
+// from the host, when that probe cannot describe the program being built.
 //
 // `ldd --version` only answers "which libc is installed here". That is the right answer
 // while V compiles and links a host binary itself, and a useless one as soon as somebody
@@ -343,10 +343,16 @@ fn detect_musl(mut res Preferences) {
 //
 //	ld.lld: error: undefined symbol: backtrace
 //
-// Leaving the libc unknown keeps such output portable across both libcs. `-glibc`/`-musl`
-// still pin it, for cross builds that do know their target.
-fn (mut p Preferences) forget_host_libc_for_foreign_targets() {
-	if p.libc_set_by_flag {
+// Only the glibc half of the guess is dropped; `is_musl` is deliberately left alone. The
+// two are not mirror images: an unset `musl` compile define does not read as "libc
+// unknown" but as "the target is not musl", and `$if linux && !musl ?` branches act on
+// that - `v_gettid` reaches for glibc's `C.gettid()`, and `picoev` includes
+// <sys/cdefs.h>, which musl does not ship. So forgetting glibc widens what the output
+// can link against, while forgetting musl would narrow it.
+//
+// `-glibc`/`-musl` still pin the libc, for cross builds that do know their target.
+fn (mut p Preferences) forget_host_glibc_for_foreign_targets() {
+	if p.libc_set_by_flag || !p.is_glibc {
 		return
 	}
 	// Every mode here stops short of the link, and leaves it to whoever picks the
@@ -358,7 +364,6 @@ fn (mut p Preferences) forget_host_libc_for_foreign_targets() {
 		return
 	}
 	p.is_glibc = false
-	p.is_musl = false
 }
 
 @[noreturn]
@@ -1417,7 +1422,7 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 		res.is_glibc = false
 		res.libc_set_by_flag = true
 	}
-	res.forget_host_libc_for_foreign_targets()
+	res.forget_host_glibc_for_foreign_targets()
 	if res.is_musl {
 		// make `$if musl? {` work:
 		res.compile_defines << 'musl'

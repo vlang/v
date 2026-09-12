@@ -10,7 +10,7 @@ fn test_host_native_build_keeps_the_detected_libc() {
 		os:       ._auto
 		out_name: 'prog'
 	}
-	p.forget_host_libc_for_foreign_targets()
+	p.forget_host_glibc_for_foreign_targets()
 	assert p.is_glibc
 	assert !p.is_musl
 }
@@ -21,7 +21,7 @@ fn test_explicitly_targeting_the_host_os_keeps_the_detected_libc() {
 		os:       get_host_os()
 		out_name: 'prog'
 	}
-	p.forget_host_libc_for_foreign_targets()
+	p.forget_host_glibc_for_foreign_targets()
 	assert p.is_musl
 	assert !p.is_glibc
 }
@@ -34,7 +34,7 @@ fn test_c_output_forgets_the_detected_libc() {
 		os:       ._auto
 		out_name: 'build/desktop.c'
 	}
-	p.forget_host_libc_for_foreign_targets()
+	p.forget_host_glibc_for_foreign_targets()
 	assert !p.is_glibc
 	assert !p.is_musl
 }
@@ -48,7 +48,7 @@ fn test_object_output_forgets_the_detected_libc() {
 		is_o:     true
 		out_name: 'unit.o'
 	}
-	p.forget_host_libc_for_foreign_targets()
+	p.forget_host_glibc_for_foreign_targets()
 	assert !p.is_glibc
 	assert !p.is_musl
 }
@@ -61,9 +61,36 @@ fn test_stdout_output_forgets_the_detected_libc() {
 		out_name: '/tmp/-'
 	}
 	assert p.should_output_to_stdout()
-	p.forget_host_libc_for_foreign_targets()
+	p.forget_host_glibc_for_foreign_targets()
 	assert !p.is_glibc
 	assert !p.is_musl
+}
+
+fn test_detected_musl_survives_non_linking_output() {
+	// An unset `musl` define is not "libc unknown", it is "the target is not musl", and
+	// `$if linux && !musl ?` acts on it: `v_gettid` would switch to glibc's `C.gettid()`
+	// and `picoev` would include <sys/cdefs.h>, which musl does not ship. So a musl host
+	// keeps its libc even where a glibc one gives it up.
+	for out_name in ['build/desktop.c', 'unit.o', '/tmp/-'] {
+		mut p := Preferences{
+			is_musl:  true
+			os:       ._auto
+			is_o:     out_name.ends_with('.o')
+			out_name: out_name
+		}
+		p.forget_host_glibc_for_foreign_targets()
+		assert p.is_musl, out_name
+		assert !p.is_glibc, out_name
+	}
+
+	mut cross := Preferences{
+		is_musl:        true
+		os:             non_host_os()
+		output_cross_c: true
+		out_name:       'v.c'
+	}
+	cross.forget_host_glibc_for_foreign_targets()
+	assert cross.is_musl
 }
 
 fn test_foreign_os_forgets_the_detected_libc() {
@@ -72,7 +99,7 @@ fn test_foreign_os_forgets_the_detected_libc() {
 		os:       non_host_os()
 		out_name: 'prog'
 	}
-	p.forget_host_libc_for_foreign_targets()
+	p.forget_host_glibc_for_foreign_targets()
 	assert !p.is_glibc
 	assert !p.is_musl
 }
@@ -84,7 +111,7 @@ fn test_portable_c_output_forgets_the_detected_libc() {
 		output_cross_c: true
 		out_name:       'v.c'
 	}
-	p.forget_host_libc_for_foreign_targets()
+	p.forget_host_glibc_for_foreign_targets()
 	assert !p.is_glibc
 	assert !p.is_musl
 }
@@ -96,7 +123,7 @@ fn test_explicit_libc_options_survive_foreign_targets() {
 		os:               non_host_os()
 		out_name:         'build/desktop.c'
 	}
-	glibc.forget_host_libc_for_foreign_targets()
+	glibc.forget_host_glibc_for_foreign_targets()
 	assert glibc.is_glibc
 
 	mut musl := Preferences{
@@ -105,7 +132,7 @@ fn test_explicit_libc_options_survive_foreign_targets() {
 		os:               non_host_os()
 		out_name:         'build/desktop.c'
 	}
-	musl.forget_host_libc_for_foreign_targets()
+	musl.forget_host_glibc_for_foreign_targets()
 	assert musl.is_musl
 }
 
