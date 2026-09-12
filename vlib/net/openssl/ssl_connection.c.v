@@ -311,6 +311,9 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname} | port: ${port}')
 	}
+	// Note: net.dial_tcp's error is returned as is, on purpose - it carries
+	// the code of the failing connect (ECONNREFUSED etc), which callers use to
+	// classify the failure, just like for a plain net.dial_tcp call.
 	mut tcp_conn := net.dial_tcp('${hostname}:${port}') or { return err }
 	mut connected := false
 	defer {
