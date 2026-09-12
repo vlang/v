@@ -112,6 +112,7 @@ mut:
 	is_void_expr_stmt                    bool // ExprStmt whose result is discarded
 	is_arraymap_set                      bool // map or array set value state
 	is_amp                               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(unsafe { nil })` etc
+	is_direct_amp_as_cast                bool // direct `&(expr as Type)` operand; consumed by AsCast codegen
 	is_sql                               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared                            bool // for initialization of hidden mutex in `[rw]shared` literals
 	is_vlines_enabled                    bool // is it safe to generate #line directives when -g is passed
@@ -7479,41 +7480,38 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if g.is_option_auto_heap {
 					g.write('(${g.base_type(node.right_type)}*)')
 				}
-				mut tmp_var := ''
+				mut direct_amp_expr := node.right
 				if node.op == .amp {
-					if node.right is ast.ParExpr && node.right.expr is ast.AsCast
-						&& (node.right.expr as ast.AsCast).expr is ast.CallExpr {
-						str := g.go_before_last_stmt()
-						g.empty_line = true
-						typ := g.styp(((node.right as ast.ParExpr).expr as ast.AsCast).typ)
-						tmp_var = g.new_tmp_var()
-						g.writeln('${typ} ${tmp_var};')
-						mut stmts := []ast.Stmt{cap: 1}
-						stmts << ast.ExprStmt{
-							pos: node.pos
-							expr: node.right
-						}
-						// This tmp var is local to this `&(...)`; don't inherit an enclosing
-						// if/match's `.ret_arr` decision (only if/match set this flag).
-						prev_ret_arr := g.if_match_tmp_is_fn_ret_arr
-						g.if_match_tmp_is_fn_ret_arr = none
-						g.stmts_with_tmp_var(stmts, tmp_var)
-						g.if_match_tmp_is_fn_ret_arr = prev_ret_arr
-						g.set_current_pos_as_last_stmt_pos()
-						g.write(str)
-					}
+					direct_amp_expr = unwrap_par_expr(node.right)
+				}
+				mut is_as_cast_heap := false
+				mut as_cast_heap_type := ast.Type(0)
+				mut as_cast_heap_is_fixed_array := false
+				if direct_amp_expr is ast.AsCast && node.op == .amp
+					&& g.as_cast_address_needs_heap(direct_amp_expr) {
+					is_as_cast_heap = true
+					as_cast_heap_type = direct_amp_expr.typ
+					as_cast_heap_is_fixed_array = g.table.final_sym(as_cast_heap_type).info is ast.ArrayFixed
 				}
 				mut has_slice_call := false
 				// When taking the address of an auto-deref variable (e.g. `&receiver`
 				// where the receiver is already a pointer in C), the `&` and the
 				// implicit dereference cancel out, so emit neither.
 				is_amp_auto_deref := node.op == .amp && node.right.is_auto_deref_var()
+				mut is_as_cast_ptr := false
 				if !g.is_option_auto_heap {
 					has_slice_call = node.op == .amp && node.right is ast.IndexExpr
 						&& node.right.index is ast.RangeExpr
+					if node.op == .amp && !is_as_cast_heap {
+						if direct_amp_expr is ast.AsCast {
+							if g.as_cast_will_use_ptr(direct_amp_expr) {
+								is_as_cast_ptr = true
+							}
+						}
+					}
 					if has_slice_call {
 						g.write('ADDR(${g.styp(node.right_type)}, ')
-					} else if !is_amp_auto_deref {
+					} else if !is_amp_auto_deref && !is_as_cast_ptr && !is_as_cast_heap {
 						g.write(node.op.str())
 					}
 				}
@@ -7535,19 +7533,33 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				if node.right.is_auto_deref_var() && node.op !in [.amp, .mul, .arrow] {
 					g.write('*')
 				}
+				if is_as_cast_heap {
+					if as_cast_heap_is_fixed_array {
+						as_cast_heap_styp := g.styp(as_cast_heap_type)
+						g.write('(${as_cast_heap_styp}*)builtin__memdup((void*)&(')
+					} else {
+						g.write_heap_alloc(g.styp(as_cast_heap_type), as_cast_heap_type)
+					}
+				}
 				// Keep nested unary +/- parenthesized so C does not collapse them into ++/--
 				// when the parser has preserved a nested prefix node or folded a signed literal.
 				needs_nested_prefix_parens := prefix_expr_operand_needs_parens(node)
 				if needs_nested_prefix_parens {
 					g.write('(')
 				}
-				if tmp_var == '' {
-					g.expr(node.right)
-				} else {
-					g.write(tmp_var)
-				}
+				old_is_direct_amp_as_cast := g.is_direct_amp_as_cast
+				g.is_direct_amp_as_cast = is_as_cast_ptr
+				g.expr(node.right)
+				g.is_direct_amp_as_cast = old_is_direct_amp_as_cast
 				if needs_nested_prefix_parens {
 					g.write(')')
+				}
+				if is_as_cast_heap {
+					if as_cast_heap_is_fixed_array {
+						g.write('), sizeof(${g.styp(as_cast_heap_type)}))')
+					} else {
+						g.write_heap_alloc_close(as_cast_heap_type)
+					}
 				}
 				if has_slice_call {
 					g.write(')')
@@ -11738,7 +11750,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 	}
 	return_needs_local_closure_cleanup := g.return_needs_local_closure_cleanup(node)
-	return_expr0 := unwrap_paren_call_expr(expr0)
+	return_expr0 := unwrap_par_expr(expr0)
 	return_call_needs_closure_lifetime_arg_tmp := match return_expr0 {
 		ast.CallExpr { g.call_needs_closure_lifetime_arg_tmp(return_expr0) }
 		else { false }
@@ -12198,7 +12210,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		} else {
 			if ret_type.has_flag(.option) {
-				inner_expr := unwrap_paren_call_expr(expr0)
+				inner_expr := unwrap_par_expr(expr0)
 				expr0_is_alias_fn_ret := inner_expr is ast.CallExpr && type0.has_flag(.option)
 					&& g.table.type_kind(type0) in [.placeholder, .alias]
 				// return foo() (or `return (foo())`) where foo() returns a
@@ -12209,13 +12221,13 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.expr_with_opt(expr0, type0, ret_type)
 				}
 			} else if ret_type.has_flag(.result) && type0.has_flag(.result) && type0 != ret_type
-				&& unwrap_paren_call_expr(expr0) is ast.CallExpr
+				&& unwrap_par_expr(expr0) is ast.CallExpr
 				&& g.table.are_payloads_alias_compatible(type0.clear_flag(.result), ret_type.clear_flag(.result)) {
 				// return foo() (or `return (foo())`) where foo() returns a different
 				// but layout-equivalent result alias (e.g. `!Aa` vs `!Bb` with
 				// `type Aa = Bb`, or `![]Aa` vs `![]Bb`). The two C structs are
 				// distinct, so emit a memcpy-based clone.
-				g.expr_result_with_alias(unwrap_paren_call_expr(expr0), type0, ret_type)
+				g.expr_result_with_alias(unwrap_par_expr(expr0), type0, ret_type)
 			} else {
 				if fn_return_is_fixed_array && !type0.has_option_or_result() {
 					if node.exprs[0] is ast.Ident {
@@ -12275,10 +12287,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 }
 
-// unwrap_paren_call_expr strips redundant `ParExpr` wrappers from `expr` and
-// returns the inner expression. Used by the result-alias return path to
-// recognize `return (foo())` as equivalent to `return foo()`.
-fn unwrap_paren_call_expr(expr ast.Expr) ast.Expr {
+// unwrap_par_expr strips redundant `ParExpr` wrappers from `expr`.
+fn unwrap_par_expr(expr ast.Expr) ast.Expr {
 	mut e := expr
 	for e is ast.ParExpr {
 		e = e.expr
@@ -14161,12 +14171,12 @@ fn (mut g Gen) as_cast_option_payload_expr_from_expr(typ ast.Type, expr ast.Expr
 	return g.as_cast_option_payload_expr(typ, g.expr_string(expr), false)
 }
 
-fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol, payload_is_direct_ptr bool) {
+fn (mut g Gen) write_as_cast_call_start(styp string, sym ast.TypeSymbol, payload_is_direct_ptr bool, is_direct_amp bool) {
 	if sym.info is ast.FnType {
 		g.write('(${styp})')
 	} else if payload_is_direct_ptr {
 		g.write('(${styp})')
-	} else if g.inside_smartcast {
+	} else if g.inside_smartcast || is_direct_amp {
 		g.write('(${styp}*)')
 	} else {
 		g.write('*(${styp}*)')
@@ -14237,7 +14247,42 @@ fn as_cast_operand_needs_tmp_eval(expr ast.Expr) bool {
 	}
 }
 
+fn (mut g Gen) as_cast_address_needs_heap(node ast.AsCast) bool {
+	if unwrap_par_expr(node.expr) is ast.CallExpr {
+		return true
+	}
+	target_sym := g.table.sym(g.unwrap_generic(node.typ))
+	if target_sym.info is ast.FnType {
+		return true
+	}
+	expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	return target_sym.info is ast.Interface && expr_type_sym.info is ast.Interface
+}
+
+fn (mut g Gen) as_cast_will_use_ptr(node ast.AsCast) bool {
+	unwrapped_node_typ := g.unwrap_generic(node.typ)
+	node_type_sym := g.table.sym(unwrapped_node_typ)
+	unwrapped_expr_type := g.unwrap_generic(node.expr_type)
+	expr_type_without_option := unwrapped_expr_type.clear_flag(.option)
+	expr_type_sym := g.table.sym(unwrapped_expr_type)
+	if expr_type_sym.kind == .sum_type && expr_type_without_option == unwrapped_node_typ {
+		return false
+	}
+	if expr_type_sym.info is ast.SumType {
+		return true
+	}
+	if expr_type_sym.info is ast.Interface && node.expr_type != node.typ {
+		return node_type_sym.info !is ast.Interface
+	}
+	return false
+}
+
 fn (mut g Gen) as_cast(node ast.AsCast) {
+	is_direct_amp := g.is_direct_amp_as_cast
+	g.is_direct_amp_as_cast = false
+	defer {
+		g.is_direct_amp_as_cast = is_direct_amp
+	}
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
 	unwrapped_node_typ := g.unwrap_generic(node.typ)
@@ -14285,7 +14330,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym, false)
+			g.write_as_cast_call_start(styp, sym, false, is_direct_amp)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := if expr_is_option {
@@ -14295,7 +14340,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			}
 			obj_expr := '(${expr_str})${dot}_${payload_member}'
 			tag_expr := '(${expr_str})${dot}_typ'
-			g.write_as_cast_call_start(styp, sym, false)
+			g.write_as_cast_call_start(styp, sym, false, is_direct_amp)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
@@ -14352,13 +14397,13 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 			tmp_var := g.expr_to_ctemp_before_stmt(node.expr, node.expr_type).name
 			obj_expr := '${tmp_var}${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(_V_INTERFACE_TYPE_INDEX(${tmp_var}${dot}_typ))'
-			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
+			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr(), is_direct_amp)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		} else {
 			expr_str := g.expr_string(node.expr)
 			obj_expr := '(${expr_str})${dot}_${payload_sym.cname}'
 			tag_expr := 'v_typeof_interface_idx_${expr_type_sym.cname}(_V_INTERFACE_TYPE_INDEX((${expr_str})${dot}_typ))'
-			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr())
+			g.write_as_cast_call_start(styp, sym, unwrapped_node_typ.is_ptr(), is_direct_amp)
 			g.write_as_cast_call(obj_expr, tag_expr, sidx, index_exprs)
 		}
 
