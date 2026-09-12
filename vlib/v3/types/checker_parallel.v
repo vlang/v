@@ -1759,6 +1759,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 				tc.record_unused_fn_vars(node)
 				tc.record_unused_fn_params(node)
 				tc.record_unused_fn_labels(node)
+				tc.check_asm_goto_lock_scopes(node)
 			}
 			tc.check_fn_bare_generic_fntype_params(node)
 		}
@@ -2476,6 +2477,102 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 			tc.record_warning_at(.unknown_ident, 'label `${label.value}` defined and not used', label_id, tc.a.node(label_id).pos)
 		}
 	}
+}
+
+struct AsmGotoLockScan {
+mut:
+	label_scopes    map[string][]int
+	asm_gotos       []flat.NodeId
+	asm_goto_scopes map[int][]int
+}
+
+// check_asm_goto_lock_scopes reports an `asm goto` whose target label sits in a
+// different `lock`/`rlock` scope than the block itself. The C backend cannot lower a
+// jump that enters or leaves a lock scope (the scope's unlock/cleanup would be
+// skipped), so it otherwise emits an `#error` into the generated C with no V source
+// position; this turns that into a positioned compiler diagnostic.
+fn (mut tc TypeChecker) check_asm_goto_lock_scopes(node flat.Node) {
+	mut scan := AsmGotoLockScan{}
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if tc.a.node(child_id).kind != .param {
+			tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut scan)
+		}
+	}
+	tc.report_asm_goto_lock_crossings(scan)
+}
+
+// report_asm_goto_lock_crossings emits a diagnostic for every collected `asm goto`
+// whose target label resolves to a different `lock`/`rlock` scope path than the
+// block. A target not declared in this function scope resolves to the empty path,
+// matching the C backend (`goto_label_lock_scopes[label] or { [] }`).
+fn (mut tc TypeChecker) report_asm_goto_lock_crossings(scan AsmGotoLockScan) {
+	for asm_id in scan.asm_gotos {
+		asm_node := tc.a.node(asm_id)
+		active := scan.asm_goto_scopes[int(asm_id)]
+		for target in inline_asm_goto_labels(asm_node.value) {
+			target_scope := scan.label_scopes[target] or { []int{} }
+			if !asm_goto_lock_scopes_equal(target_scope, active) {
+				tc.record_error_at(.compile_error, asm_goto_lock_scope_error(target), asm_id,
+					asm_node.pos)
+				break
+			}
+		}
+	}
+}
+
+fn asm_goto_lock_scope_error(target string) string {
+	return '`asm goto` cannot jump to label `${target}`: it is in a different `lock`/`rlock` scope, and the C backend cannot lower a jump that enters or leaves a lock scope'
+}
+
+// collect_asm_goto_lock_scopes walks a function body, recording the `lock`/`rlock`
+// scope path (a stack of enclosing `lock_expr` node ids) at every label declaration
+// and at every `asm goto` block, so report_asm_goto_lock_crossings can compare them.
+fn (mut tc TypeChecker) collect_asm_goto_lock_scopes(id flat.NodeId, scopes []int, mut scan AsmGotoLockScan) {
+	node := tc.a.node(id)
+	if node.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
+		// A nested function or closure is lowered to its own C function with a
+		// fresh lock stack (`collect_fn_prelude_scan` runs per function), so scan
+		// and report its body independently against an empty scope path -- the
+		// enclosing function's locks are not active inside it.
+		mut nested := AsmGotoLockScan{}
+		for i in 0 .. node.children_count {
+			child_id := tc.a.child(node, i)
+			if tc.a.node(child_id).kind != .param {
+				tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut nested)
+			}
+		}
+		tc.report_asm_goto_lock_crossings(nested)
+		return
+	}
+	mut cur := scopes.clone()
+	// `gen_lock_enter` skips a `lock {}` / `rlock {}` with no lock objects
+	// (`lock_count = children_count - 1 <= 0`), so it never becomes an active
+	// scope at runtime -- do not treat it as one here either.
+	if node.kind == .lock_expr && node.children_count > 1 {
+		cur << int(id)
+	}
+	if node.kind == .label_stmt && node.value.len > 0 {
+		scan.label_scopes[node.value] = cur.clone()
+	} else if node.kind == .asm_stmt && inline_asm_goto_labels(node.value).len > 0 {
+		scan.asm_gotos << id
+		scan.asm_goto_scopes[int(id)] = cur.clone()
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_asm_goto_lock_scopes(tc.a.child(node, i), cur, mut scan)
+	}
+}
+
+fn asm_goto_lock_scopes_equal(a []int, b []int) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i, scope in a {
+		if b[i] != scope {
+			return false
+		}
+	}
+	return true
 }
 
 fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
