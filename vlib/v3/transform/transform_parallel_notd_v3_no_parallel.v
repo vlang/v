@@ -1972,6 +1972,23 @@ fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
 	}
 }
 
+// promote_scoped_specialization_maps rehomes the specialization tables when a
+// batch added to them. Those inserts happen while the batch's scratch arena is
+// the active one, so the map's storage grows inside an arena that is released at
+// the end of the batch - while the entries themselves are read much later, by
+// merge_worker, out of the helper the master is merging.
+fn (mut t Transformer) promote_scoped_specialization_maps(nodes_len int, modules_len int, files_len int) {
+	if t.a.specialized_fn_nodes.len != nodes_len {
+		t.a.specialized_fn_nodes = t.a.specialized_fn_nodes.clone()
+	}
+	if t.a.specialized_fn_modules.len != modules_len {
+		t.a.specialized_fn_modules = t.a.specialized_fn_modules.clone()
+	}
+	if t.a.specialized_fn_files.len != files_len {
+		t.a.specialized_fn_files = t.a.specialized_fn_files.clone()
+	}
+}
+
 // absorb_scoped_batch publishes one batch's observable state into the helper's
 // result arena before its large scratch arena is released.
 fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, new_node_start int) {
@@ -2116,6 +2133,9 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 			end++
 		}
 		text_start := t.a.text_values.len
+		spec_nodes_len := t.a.specialized_fn_nodes.len
+		spec_modules_len := t.a.specialized_fn_modules.len
+		spec_files_len := t.a.specialized_fn_files.len
 		scratch_scope := transform_worker_scope_begin(true)
 		batch_tc := t.tc.fork_for_parallel_transform(t.a)
 		mut batch := t.fork_scoped_batch_worker(t.a, batch_tc)
@@ -2134,6 +2154,7 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		storage_state := transform_stage_scope_suspend(t.merge_scratch_scope)
 		t.promote_scoped_ast_storage(scratch_scope)
+		t.promote_scoped_specialization_maps(spec_nodes_len, spec_modules_len, spec_files_len)
 		transform_stage_scope_resume(t.merge_scratch_scope, storage_state)
 		for item in items[start..end] {
 			if item.fn_idx >= 0 && item.fn_idx < t.transformed_fns.len {
@@ -2192,6 +2213,9 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		log_start := t.used_fns_log.len
 		mut node_starts := []int{len: selected.len + 1}
 		text_start := t.a.text_values.len
+		spec_nodes_len := t.a.specialized_fn_nodes.len
+		spec_modules_len := t.a.specialized_fn_modules.len
+		spec_files_len := t.a.specialized_fn_files.len
 		scratch_scope := transform_worker_scope_begin(true)
 		batch_tc := t.tc.fork_for_parallel_transform(t.a)
 		mut batch := t.fork_scoped_batch_worker(t.a, batch_tc)
@@ -2211,6 +2235,7 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		t.a.promote_transform_texts_from(text_start, scratch_scope)
 		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
 		t.promote_scoped_ast_storage(scratch_scope)
+		t.promote_scoped_specialization_maps(spec_nodes_len, spec_modules_len, spec_files_len)
 		transform_worker_scope_free(scratch_scope)
 		for si, ci in selected {
 			idx := candidates[ci].idx
