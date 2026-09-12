@@ -204,7 +204,11 @@ $if !windows {
 	// the arenas together with the preparation arena.
 	fn transform_pre_scan_index_thread(arg voidptr) voidptr {
 		mut t := unsafe { &Transformer(arg) }
-		scope := transform_worker_scope_begin(t.retain_prescan_scopes)
+		scope := if t.retain_prescan_scopes {
+			transform_worker_scope_begin(true)
+		} else {
+			unsafe { nil }
+		}
 		t.build_source_parent_index()
 		t.collect_multi_return_fn_ret_types()
 		t.rebuild_variadic_suffix_index()
@@ -232,7 +236,11 @@ $if !windows {
 	// caches and publishes only its completed declaration maps after joining.
 	fn transform_param_prep_thread(arg voidptr) voidptr {
 		mut w := unsafe { &Transformer(arg) }
-		scope := transform_worker_scope_begin(w.retain_prescan_scopes)
+		scope := if w.retain_prescan_scopes {
+			transform_worker_scope_begin(true)
+		} else {
+			unsafe { nil }
+		}
 		w.prepare_parallel_call_param_types()
 		transform_worker_scope_leave(scope)
 		return scope
@@ -335,7 +343,7 @@ fn scopes_address_range(scopes []voidptr) (usize, usize) {
 	mut hi := usize(0)
 	$if prealloc {
 		for scope in scopes {
-			scope_lo, scope_hi := transform_scope_address_range(scope)
+			scope_lo, scope_hi := unsafe { prealloc_scope_address_range(scope) }
 			if scope_hi <= scope_lo {
 				continue
 			}

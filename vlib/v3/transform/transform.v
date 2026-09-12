@@ -4457,19 +4457,6 @@ fn transform_scope_owns(scope voidptr, ptr voidptr) bool {
 	return false
 }
 
-// transform_scope_address_range returns the union address range of the blocks
-// owned by `scope`, so callers can reject most pointers before the per-block
-// search in transform_scope_owns.
-fn transform_scope_address_range(scope voidptr) (usize, usize) {
-	$if prealloc {
-		unsafe {
-			lo, hi := prealloc_scope_address_range(scope)
-			return lo, hi
-		}
-	}
-	return 0, 0
-}
-
 // clone_scoped_worker_node publishes a node's owned fields through the
 // compilation text table before its helper arena is released.
 fn (mut t Transformer) clone_scoped_worker_node(idx int, scope voidptr) {
