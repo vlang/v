@@ -6270,6 +6270,26 @@ fn promote_scoped_ast_nodes_flagged(mut ast flat.FlatAst, base_nodes int, new_en
 	}
 }
 
+// release_transform_prepare_scope canonicalizes every node text still owned by
+// the self-host transform preparation arena and then frees that arena.
+fn release_transform_prepare_scope(mut a flat.FlatAst, scope voidptr) {
+	mut flags := []u8{len: a.nodes.len}
+	if transform.scan_scoped_text_flags_parallel(a, scope, mut flags) {
+		mut canon_cache := flat.TextProbeCache{}
+		for idx, flag in flags {
+			if flag != 0 {
+				canonicalize_scoped_node_cached(mut a, idx, scope, mut canon_cache.ptrs, mut canon_cache.values)
+			}
+		}
+	} else {
+		for idx in 0 .. a.nodes.len {
+			canonicalize_scoped_node(mut a, idx, scope)
+		}
+	}
+	unsafe { flags.free() }
+	prealloc_scope_free_for_v3(scope)
+}
+
 // canonicalize_scoped_node_cached is canonicalize_scoped_node with a pointer
 // probe over the caller's cache arrays: owned texts repeat the same shared
 // string instances heavily, so most content-hash intern lookups are skipped.
@@ -10764,6 +10784,13 @@ pub fn run(args []string) {
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			mut post_sw := time.new_stopwatch()
 			prealloc_scope_leave_for_v3(transform_scope)
+			if retained_transform_prepare_scope != unsafe { nil } {
+				// The preparation arena backs only a few thousand lowered node texts.
+				// Publish those into the compilation arena and release the arena now
+				// instead of keeping its index scratch alive through codegen.
+				release_transform_prepare_scope(mut a, retained_transform_prepare_scope)
+				retained_transform_prepare_scope = unsafe { nil }
+			}
 			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
 				&& !cache_state.manager.enabled && retained_transform_regions.len == 0
 				&& (cmd_v_build || input_is_v3_compiler_entry(input_file)
