@@ -158,14 +158,19 @@ fn (mut d DenseArray) reserve(n int) {
 }
 
 // Make space to append an element and return index
-// The growth-factor is roughly 1.125 `(x + (x >> 3))`
+// Preallocated arenas retain old buffers, so doubling bounds their cumulative
+// storage and copying. Other allocators use the compact 1.125 growth factor.
 @[inline]
 fn (mut d DenseArray) expand() int {
 	old_cap := d.cap
 	old_key_size := d.key_bytes * old_cap
 	old_value_size := d.value_bytes * old_cap
 	if d.cap == d.len {
-		d.cap += d.cap >> 3
+		$if prealloc {
+			d.cap += d.cap
+		} $else {
+			d.cap += d.cap >> 3
+		}
 		unsafe {
 			d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
 			d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)

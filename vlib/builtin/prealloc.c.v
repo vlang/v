@@ -34,7 +34,8 @@ const prealloc_block_size = 16 * 1024 * 1024
 // size of the first chunk for a scoped prealloc arena. Request-scoped arenas
 // should not force a 16MB libc allocation for every request.
 const prealloc_scope_block_size = 256 * 1024
-const prealloc_recycle_cache_slots = 512
+// Bound retained scope blocks to 16 MiB per thread, including compiler workers.
+const prealloc_recycle_cache_slots = 64
 
 // `malloc` has to return memory suitably aligned for any V value. Keep the
 // default at the common max alignment used by libc malloc on current targets.
