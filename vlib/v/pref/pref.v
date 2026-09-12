@@ -482,6 +482,7 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 	mut no_skip_unused := false
 	mut command, mut command_idx := '', 0
 	mut build_vsh_source := false
+	mut build_target := ''
 	mut new_compiler_set_by_flag := false
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
@@ -1251,6 +1252,11 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 						if res.is_eval_argument || command in ['run', 'crun', 'watch'] {
 							break
 						}
+					} else if command == 'build' && build_target == '' {
+						// The first argument after the `build` command that is neither an
+						// option nor an option value is its target. Options may precede it,
+						// as in `v build -o out target`.
+						build_target = arg
 					} else if is_source_file(command) && is_source_file(arg) && !res.is_vsh
 						&& command !in known_external_commands && res.raw_vsh_tmp_prefix == '' {
 						eprintln_exit('Too many targets. Specify just one target: <target.v|target_directory>.')
@@ -1362,7 +1368,10 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 		// `v build <target>` compiles <target>, just like `v <target>` does. Without
 		// the target in res.path, the builder could only report an empty path in its
 		// `<target> doesn't exist` error.
-		res.path = command_args[0] or { eprintln_exit('no input file') }
+		if build_target == '' {
+			eprintln_exit('no input file')
+		}
+		res.path = build_target
 	}
 	if !res.is_bare && res.bare_builtin_dir != '' {
 		eprintln_cond(show_output && !res.is_quiet, '`-bare-builtin-dir` must be used with `-freestanding`')
