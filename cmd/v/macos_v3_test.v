@@ -129,6 +129,17 @@ fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {
 	}
 }
 
+fn test_vc_bootstrap_excludes_parallel_v3_sources_from_the_v1_stage() {
+	gnumake := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
+	assert gnumake.contains('BOOTSTRAP_V3_SEED_VFLAG := -d v3_no_parallel')
+	seed_build := './v1\$(EXE_EXT) -no-parallel \$(BOOTSTRAP_V3_SEED_VFLAG) -o v2\$(EXE_EXT)'
+	assert gnumake.count(seed_build) == 2
+
+	portable_make := os.read_file(os.join_path(macos_v3_test_vroot, 'Makefile'))!
+	assert portable_make.contains('BOOTSTRAP_V3_SEED_VFLAG = -d v3_no_parallel')
+	assert portable_make.contains('set -- ./v1 -no-parallel \$(BOOTSTRAP_V3_SEED_VFLAG) -o v2')
+}
+
 fn test_netbsd_marks_the_v1_compatibility_compiler() {
 	makefile := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
 	assert makefile.contains('paxctl +m \$(V1_FALLBACK_EXE)')
