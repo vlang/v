@@ -7342,7 +7342,7 @@ fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() 
 fn test_selfhost_append_array_result_to_struct_field() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
-	c_source := generate('module main
+	c_source := generate("module main
 
 struct State {
 mut:
@@ -7350,7 +7350,7 @@ mut:
 }
 
 fn load_values() ![]string {
-	return [\'one\', \'two\']
+	return ['one', 'two']
 }
 
 fn add_values(mut state State) ! {
@@ -7361,7 +7361,7 @@ fn main() {
 	mut state := State{}
 	add_values(mut state) or { panic(err) }
 }
-', 'selfhost_append_array_result_to_struct_field.v', prefs) or { panic(err) }
+", 'selfhost_append_array_result_to_struct_field.v', prefs) or { panic(err) }
 	assert c_source.contains('builtin__array_push_many'), c_source
 	assert !c_source.contains('state->values<<'), c_source
 }
@@ -9621,12 +9621,12 @@ fn main() {
 fn test_selfhost_or_block_with_multiline_struct_fallback_is_a_value() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
-	c_source := generate('module main
+	c_source := generate("module main
 
 struct Item {}
 
 fn get(items map[string]Item) Item {
-	return items[\'missing\'] or {
+	return items['missing'] or {
 		Item{}
 	}
 }
@@ -9634,7 +9634,7 @@ fn get(items map[string]Item) Item {
 fn main() {
 	_ := get(map[string]Item{})
 }
-', 'selfhost_multiline_struct_fallback.v', prefs) or { panic(err) }
+", 'selfhost_multiline_struct_fallback.v', prefs) or { panic(err) }
 	assert c_source.contains('? ((Item){}) : *((Item *)'), c_source
 	assert !c_source.contains('if (__v'), c_source
 }
@@ -12538,7 +12538,7 @@ fn main() {
 fn test_selfhost_map_assignment_with_propagated_result() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
-	c_source := generate('module main
+	c_source := generate("module main
 
 struct Item {
 	value int
@@ -12549,14 +12549,14 @@ fn load_item() !Item {
 }
 
 fn insert(mut items map[string]Item) ! {
-	items[\'answer\'] = load_item()!
+	items['answer'] = load_item()!
 }
 
 fn main() {
 	mut items := map[string]Item{}
 	insert(mut items) or { panic(err) }
 }
-', 'selfhost_map_assignment_propagated_result.v', prefs) or { panic(err) }
+", 'selfhost_map_assignment_propagated_result.v', prefs) or { panic(err) }
 	assert c_source.contains('builtin__map_set'), c_source
 	assert c_source.contains('__vf_op'), c_source
 	assert !c_source.contains('items[_S("answer")]'), c_source

@@ -4298,12 +4298,18 @@ fn (g &Gen) string_literal_text(n &flat.Node) string {
 		start--
 	}
 	if source := g.source_span(start, n.pos.end) {
-		// Keep the original quotes and escapes, as gofmt does for string literals.
+		// Keep the original escapes, but normalize the delimiter, so that `'\0'` and
+		// `'\x00'` both survive while `"text"` still becomes `'text'`.
 		// Empty or non-literal spans can belong to synthesized nodes; use the fallback below.
 		if source.len >= prefix.len + 2 && source.starts_with(prefix)
 			&& source[prefix.len] in [`'`, `"`]
 			&& source[source.len - 1] == source[prefix.len] {
-			return source
+			// A raw literal cannot escape its delimiter, so its quotes are part of
+			// what it can hold and are kept as written, as they were before.
+			if n.typ.starts_with('raw:') {
+				return source
+			}
+			return requote_literal_text(source, prefix.len)
 		}
 	}
 	if is_c_string {
@@ -4317,6 +4323,51 @@ fn (g &Gen) string_literal_text(n &flat.Node) string {
 		return 'js${quote_string(n.value)}'
 	}
 	return quote_string(n.value)
+}
+
+// preferred_quote picks the delimiter for a literal body: single quotes, unless
+// the body holds a `'` but no `"`. `quote_string` and `string_interp` follow the
+// same rule, so plain and interpolated literals are spelled consistently.
+fn preferred_quote(body string) u8 {
+	return if body.contains("'") && !body.contains('"') { `"` } else { `'` }
+}
+
+// requote_literal_text re-emits an escaped literal's own source spelling under
+// the preferred delimiter. Only the quote escaping is rewritten: every other
+// escape, including `\0` vs `\x00` and hex or Unicode forms, is copied byte for
+// byte. `prefix_len` is the length of a `c` or `js` prefix.
+fn requote_literal_text(source string, prefix_len int) string {
+	old_quote := source[prefix_len]
+	body := source[prefix_len + 1..source.len - 1]
+	new_quote := preferred_quote(body)
+	if new_quote == old_quote {
+		return source
+	}
+	mut b := strings.new_builder(source.len + 8)
+	b.write_string(source[..prefix_len])
+	b.write_u8(new_quote)
+	mut i := 0
+	for i < body.len {
+		c := body[i]
+		if c == `\\` && i + 1 < body.len {
+			next := body[i + 1]
+			// The former delimiter no longer needs escaping; `\\` and every other
+			// escape sequence keep their original spelling.
+			if next != old_quote {
+				b.write_u8(c)
+			}
+			b.write_u8(next)
+			i += 2
+			continue
+		}
+		if c == new_quote {
+			b.write_u8(`\\`)
+		}
+		b.write_u8(c)
+		i++
+	}
+	b.write_u8(new_quote)
+	return b.str()
 }
 
 // quote_string wraps a decoded string-literal value in quotes, preferring
