@@ -2343,7 +2343,7 @@ fn v3_windows_executable_linker_flags(target_os string, c_compiler string, is_sh
 				}
 			}
 		}
-		flags << '-Wl,-stack=33554432'
+		flags << '-Wl,--stack=33554432'
 		return flags
 	}
 	return []

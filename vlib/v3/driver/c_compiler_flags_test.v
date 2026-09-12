@@ -451,23 +451,23 @@ fn test_v3_fastc_default_linker_flags() {
 }
 
 fn test_v3_windows_executable_linker_flags() {
-	expected := ['-municode', '-Wl,-stack=33554432']
+	expected := ['-municode', '-Wl,--stack=33554432']
 	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .auto, false) == expected
 	assert v3_windows_executable_linker_flags('windows', 'gcc', false, false, .auto, false) == expected
 	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .auto, true) == [
 		'-municode',
 		'-mwindows',
-		'-Wl,-stack=33554432',
+		'-Wl,--stack=33554432',
 	]
 	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .console, true) == [
 		'-municode',
 		'-mconsole',
-		'-Wl,-stack=33554432',
+		'-Wl,--stack=33554432',
 	]
 	assert v3_windows_executable_linker_flags('windows', 'tinyc', false, false, .windows, false) == [
 		'-municode',
 		'-mwindows',
-		'-Wl,-stack=33554432',
+		'-Wl,--stack=33554432',
 	]
 	assert v3_windows_executable_linker_flags('windows', 'msvc', false, false, .auto, true) == []
 	assert v3_windows_executable_linker_flags('windows', 'tinyc', true, false, .auto, true) == []
@@ -480,7 +480,7 @@ fn test_v3_windows_executable_linker_flags() {
 	})
 	assert '-municode' in plan.before_inputs
 	assert '-mwindows' in plan.before_inputs
-	assert '-Wl,-stack=33554432' in plan.before_inputs
+	assert '-Wl,--stack=33554432' in plan.before_inputs
 }
 
 fn test_v3_cgen_metadata_preserves_windows_gui_entry_point() {
