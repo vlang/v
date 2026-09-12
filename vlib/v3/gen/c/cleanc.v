@@ -20409,15 +20409,27 @@ fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string,
 	g.writeln('static ${cname}_fls_get_fn ${cname}_fls_get;')
 	g.writeln('static ${cname}_fls_set_fn ${cname}_fls_set;')
 	g.writeln('static void WINAPI ${cname}_slot_free(void* p) { free(p); }')
+	g.writeln('static unsigned int ${cname}_key_claim;')
+	g.writeln('static unsigned int ${cname}_key_ready;')
 	// TinyCC parses `__attribute__((constructor))` but never runs the function,
-	// so the key has to be allocated on first use instead.
+	// so the TLS index has to be allocated on first use. Exactly one thread may
+	// do that: a second `FlsAlloc`/`TlsAlloc` would replace a key whose storage
+	// other threads are already using, stranding both the storage and the key.
+	// `__atomic_add_fetch` is the primitive TinyCC itself uses for Windows
+	// Interlocked operations; the seq_cst publish also orders the key and
+	// function pointer stores before any waiter observes them.
 	g.writeln('static void ${cname}_key_init(void) {')
-	g.writeln('\tif (${cname}_key != 0xFFFFFFFF) { return; }')
-	g.writeln('\tvoid* kernel32 = GetModuleHandleA("kernel32.dll");')
-	g.writeln('\t${cname}_fls_alloc_fn fls_alloc = (${cname}_fls_alloc_fn)GetProcAddress(kernel32, "FlsAlloc");')
-	g.writeln('\t${cname}_fls_get = (${cname}_fls_get_fn)GetProcAddress(kernel32, "FlsGetValue");')
-	g.writeln('\t${cname}_fls_set = (${cname}_fls_set_fn)GetProcAddress(kernel32, "FlsSetValue");')
-	g.writeln('\t${cname}_key = fls_alloc && ${cname}_fls_get && ${cname}_fls_set ? fls_alloc(${cname}_slot_free) : TlsAlloc();')
+	g.writeln('\tif (__atomic_add_fetch(&${cname}_key_ready, 0, 5)) { return; }')
+	g.writeln('\tif (__atomic_add_fetch(&${cname}_key_claim, 1, 5) == 1) {')
+	g.writeln('\t\tvoid* kernel32 = GetModuleHandleA("kernel32.dll");')
+	g.writeln('\t\t${cname}_fls_alloc_fn fls_alloc = (${cname}_fls_alloc_fn)GetProcAddress(kernel32, "FlsAlloc");')
+	g.writeln('\t\t${cname}_fls_get = (${cname}_fls_get_fn)GetProcAddress(kernel32, "FlsGetValue");')
+	g.writeln('\t\t${cname}_fls_set = (${cname}_fls_set_fn)GetProcAddress(kernel32, "FlsSetValue");')
+	g.writeln('\t\t${cname}_key = fls_alloc && ${cname}_fls_get && ${cname}_fls_set ? fls_alloc(${cname}_slot_free) : TlsAlloc();')
+	g.writeln('\t\t__atomic_add_fetch(&${cname}_key_ready, 1, 5);')
+	g.writeln('\t} else {')
+	g.writeln('\t\twhile (!__atomic_add_fetch(&${cname}_key_ready, 0, 5)) { Sleep(0); }')
+	g.writeln('\t}')
 	g.writeln('}')
 	if dims.len > 0 {
 		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { ${cname}_key_init(); void* p = ${cname}_fls_get ? ${cname}_fls_get(${cname}_key) : TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); if (${cname}_fls_set) ${cname}_fls_set(${cname}_key, p); else TlsSetValue(${cname}_key, p); } return p; }')

@@ -93,10 +93,20 @@ fn test_tinyc_windows_thread_local_slot_uses_win32_tls() {
 	assert windows_code.contains('state_slot_free(void* p) { free(p); }')
 	assert !windows_code.contains('pthread_')
 	// TinyCC never runs `__attribute__((constructor))`, so the slot has to
-	// allocate the key itself on first use.
+	// allocate the TLS index itself on first use - and exactly once, or a
+	// second index would strand the storage threads already hold in the first.
 	assert !windows_code.contains('__attribute__((constructor))')
-	assert windows_code.contains('if (state_key != 0xFFFFFFFF) { return; }')
 	assert windows_code.contains('state_slot(void) { state_key_init();')
+	assert windows_code.contains('if (__atomic_add_fetch(&state_key_ready, 0, 5)) { return; }')
+	assert windows_code.contains('if (__atomic_add_fetch(&state_key_claim, 1, 5) == 1) {')
+	assert windows_code.contains('__atomic_add_fetch(&state_key_ready, 1, 5);')
+	assert windows_code.contains('while (!__atomic_add_fetch(&state_key_ready, 0, 5)) { Sleep(0); }')
+	// The key and the resolved Fls* pointers are only read after the publish.
+	claim_index := windows_code.index('__atomic_add_fetch(&state_key_claim, 1, 5)')?
+	publish_index := windows_code.index('__atomic_add_fetch(&state_key_ready, 1, 5)')?
+	alloc_index := windows_code.index('fls_alloc(state_slot_free)')?
+	assert claim_index < alloc_index
+	assert alloc_index < publish_index
 }
 
 fn test_tinyc_pthread_value_slot_creates_its_own_key_lazily() {
