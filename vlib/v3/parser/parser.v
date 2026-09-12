@@ -5475,12 +5475,18 @@ fn comptime_cond_split_top_level(cond string, op string) (string, string, bool) 
 	return '', '', false
 }
 
+// pkgconfig_probe_timeout_ms bounds the `pkg-config --exists` probe. The probe
+// runs while the parallel parser pool is live, i.e. it starts a child process
+// from a multi threaded process; bounding it keeps a child that can never make
+// progress a diagnosable error, instead of a compiler that hangs forever.
+const pkgconfig_probe_timeout_ms = i64(30000)
+
 fn eval_pkgconfig_cond(cond string) bool {
 	name := pkgconfig_name_from_cond(cond)
 	if !is_safe_pkgconfig_name(name) {
 		return false
 	}
-	result := cmdexec.run('pkg-config', ['--exists', name])
+	result := cmdexec.run_with_timeout('pkg-config', ['--exists', name], pkgconfig_probe_timeout_ms)
 	return result.exit_code == 0
 }
 

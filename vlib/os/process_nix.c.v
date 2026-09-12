@@ -2,6 +2,10 @@ module os
 
 fn C.setpgid(pid i32, pgid i32) i32
 
+// child_spawn_code_prefix is the `; code: N` separator that `IError.str()` adds.
+// It is a literal, so the forked child can copy it without allocating.
+const child_spawn_code_prefix = '; code: '
+
 fn env_value_from_entries(env []string, name string) ?string {
 	prefix := '${name}='
 	for entry in env {
@@ -26,6 +30,115 @@ fn (p &Process) unix_resolve_filename() !string {
 	return find_abs_path_of_executable_in_path_env(p.filename, path)
 }
 
+// UnixSpawnPlan holds everything the forked child needs, in a form it can use
+// without allocating.
+//
+// Between `fork()` and `execve()` the child is a single thread inside a copy of
+// a possibly multi threaded address space: every lock that some other thread
+// held at fork time (the GC's, the allocator's, libc's) was copied in the
+// locked state, and the thread that would have released it does not exist in
+// the child. Anything that allocates there - resolving the executable through
+// `PATH`, building the `argv`/`envp` vectors, formatting an error message with
+// `eprintln` - can therefore block forever, which also hangs every parent that
+// waits for the child. See vlang/v#28509.
+struct UnixSpawnPlan {
+	exe           string  // the already resolved path that is passed to execve
+	argv          []&char // NUL terminated argument vector
+	envp          []&char // NUL terminated environment vector
+	resolve_error string  // when not empty, the child reports it and exits, instead of exec'ing
+	stdin_error   string  // the message prefix used when the stdin file cannot be opened
+}
+
+// unix_prepare_spawn does all the allocating work of a spawn upfront, in the
+// parent process, so that the forked child only has to use async signal safe
+// calls. It never fails: a failure to resolve the executable is turned into the
+// message that the child prints on its (already redirected) stderr, keeping the
+// previous observable behaviour of a child that exits with code 1.
+fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
+	mut exe := ''
+	mut resolve_error := ''
+	if resolved := p.unix_resolve_filename() {
+		exe = resolved
+	} else {
+		resolve_error = '${err}\n'
+	}
+	mut argv := []&char{cap: p.args.len + 2}
+	argv << &char(exe.str)
+	for i in 0 .. p.args.len {
+		argv << &char(p.args[i].str)
+	}
+	argv << &char(unsafe { nil })
+	mut envp := []&char{cap: p.env.len + 1}
+	for i in 0 .. p.env.len {
+		envp << &char(p.env[i].str)
+	}
+	envp << &char(unsafe { nil })
+	stdin_error := if p.has_stdin_path {
+		'failed to open stdin file "${p.stdin_path}": '
+	} else {
+		''
+	}
+	return UnixSpawnPlan{
+		exe:           exe
+		argv:          argv
+		envp:          envp
+		resolve_error: resolve_error
+		stdin_error:   stdin_error
+	}
+}
+
+// unix_child_write writes an already built message to the child's stderr.
+// It is used between fork() and execve(), so it must not allocate.
+fn unix_child_write(s string) {
+	if s.len > 0 {
+		unsafe { C.write(2, s.str, usize(s.len)) }
+	}
+}
+
+// unix_child_report_errno writes the C error text of the current errno to the
+// child's stderr, followed by a newline, reproducing what `eprintln(err)` used
+// to print, without allocating. `with_code` appends the `; code: N` suffix that
+// `IError.str()` adds for errors that carry a code.
+@[direct_array_access]
+fn unix_child_report_errno(with_code bool) {
+	code := C.errno
+	emsg := C.strerror(i32(code))
+	if emsg != unsafe { nil } {
+		// Note: strerror() is not formally async signal safe, but it does not go
+		// through V's allocator, and open()/execve() only ever set a known errno,
+		// for which the C library returns a pointer to a constant string.
+		unsafe { C.write(2, emsg, usize(C.strlen(emsg))) }
+	}
+	mut buf := [32]u8{}
+	mut n := 0
+	if with_code {
+		for ch in child_spawn_code_prefix {
+			buf[n] = ch
+			n++
+		}
+		mut digits := [16]u8{}
+		mut d := 0
+		mut rest := if code > 0 { code } else { 0 }
+		if rest == 0 {
+			digits[0] = `0`
+			d = 1
+		}
+		for rest > 0 {
+			digits[d] = u8(`0` + rest % 10)
+			d++
+			rest /= 10
+		}
+		for d > 0 {
+			d--
+			buf[n] = digits[d]
+			n++
+		}
+	}
+	buf[n] = `\n`
+	n++
+	unsafe { C.write(2, &buf[0], usize(n)) }
+}
+
 fn (mut p Process) unix_spawn_process() int {
 	// Each `C.pipe` writes two C `int` file descriptors; back them with `i32` so the
 	// buffer matches the C ABI (a V `[6]int` is six 64-bit slots now that `int` is
@@ -43,6 +156,9 @@ fn (mut p Process) unix_spawn_process() int {
 		}
 		_ = dont_care // using `_` directly on each above `pipe` fails to avoid C compiler generate an `-Wunused-result` warning
 	}
+	// Resolve the executable and build the C argv/envp vectors *before* forking;
+	// doing it in the child would allocate, and can deadlock there.
+	plan := p.unix_prepare_spawn()
 	pid := fork()
 	if pid != 0 {
 		// This is the parent process after the fork.
@@ -70,6 +186,11 @@ fn (mut p Process) unix_spawn_process() int {
 	// but it is otherwise independent and can do stuff *without*
 	// affecting the parent process.
 	//
+	// Note: only async signal safe calls are allowed from here until execve()
+	// replaces the process image - no allocation, no eprintln, and no exit()
+	// (which would run the parent's atexit handlers and flush its buffered
+	// stdio a second time). Use _exit() instead.
+	//
 	if p.use_pgroup {
 		C.setpgid(0, 0)
 	}
@@ -77,8 +198,9 @@ fn (mut p Process) unix_spawn_process() int {
 	if p.has_stdin_path {
 		stdin_fd = C.open(&char(p.stdin_path.str), o_rdonly, 0)
 		if stdin_fd == -1 {
-			eprintln('failed to open stdin file "${p.stdin_path}": ${posix_get_error_msg(C.errno)}')
-			exit(1)
+			unix_child_write(plan.stdin_error)
+			unix_child_report_errno(false)
+			C._exit(1)
 		}
 	}
 	if p.use_stdio_ctl {
@@ -118,17 +240,17 @@ fn (mut p Process) unix_spawn_process() int {
 	if stdin_fd > 0 {
 		fd_close(stdin_fd)
 	}
-	p.filename = p.unix_resolve_filename() or {
-		eprintln(err)
-		exit(1)
+	if plan.resolve_error.len > 0 {
+		unix_child_write(plan.resolve_error)
+		C._exit(1)
 	}
 	if p.work_folder != '' {
-		chdir(p.work_folder) or {}
+		C.chdir(&char(p.work_folder.str))
 	}
-	execve(p.filename, p.args, p.env) or {
-		eprintln(err)
-		exit(1)
-	}
+	C.execve(&char(plan.exe.str), plan.argv.data, plan.envp.data)
+	// Note: normally execve does not return at all. If it does, it failed.
+	unix_child_report_errno(true)
+	C._exit(1)
 	return 0
 }
 
