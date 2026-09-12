@@ -1178,12 +1178,12 @@ fn test_fixed_array_length_checks() {
 	}, 'main.v')
 	mixed_const_compact := mixed_const_c.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert mixed_const_compact.contains('Arraymain__xs;'), mixed_const_c
-	assert mixed_const_compact.contains('main__xs=new_array_from_c_array(3,3,sizeof(int),(int[]){1,2,3});'), mixed_const_c
+	assert mixed_const_compact.contains('main__xs=new_array_from_c_array(3,3,sizeof(i64),(i64[3]){1,2,3});'), mixed_const_c
 
-	assert mixed_const_compact.contains('return(*(int*)array_get(main__xs,0));'), mixed_const_c
-	assert mixed_const_compact.contains('intlength_score(void){returnmain__xs.len;}'), mixed_const_c
+	assert mixed_const_compact.contains('return(*(i64*)array_get(main__xs,0));'), mixed_const_c
+	assert mixed_const_compact.contains('i64length_score(void){returnmain__xs.len;}'), mixed_const_c
 	assert mixed_const_compact.contains('Arrayall(void){returnmain__xs;}'), mixed_const_c
-	assert !mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(int),&main__xs);'), mixed_const_c
+	assert !mixed_const_compact.contains('returnnew_array_from_c_array(3,3,sizeof(i64),&main__xs);'), mixed_const_c
 
 	shadowed := run_good_project(v3_bin, 'good_shadowed_const_fixed_storage', {
 		'main.v':       'module main\n\nimport fixture\n\nconst xs = [10, 20, 30]\n\nfn all() []int {\n\treturn xs\n}\n\nfn main() {\n\tys := all()\n\tprintln(int_str(fixture.first() + ys.len + ys[2]))\n}\n'
