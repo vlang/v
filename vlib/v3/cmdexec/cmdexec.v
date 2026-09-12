@@ -45,12 +45,22 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 		stderr := if merge_output { '' } else { process.stderr_read() }
 		output.write_string(stdout)
 		output.write_string(stderr)
-		if stdout.len == 0 && stderr.len == 0 {
-			if timeout_ms > 0 && sw.elapsed().milliseconds() >= timeout_ms {
-				timed_out = true
-				process.signal_kill()
-				break
+		// The deadline is checked on every iteration, not only when nothing was
+		// read: a child that keeps writing must hit the bound just the same.
+		if timeout_ms > 0 && sw.elapsed().milliseconds() >= timeout_ms {
+			timed_out = true
+			process.signal_kill()
+			// signal_kill() marks the process `.aborted` before it has been
+			// reaped, and wait() skips waitpid() for a process that is not
+			// running, which would leave a zombie behind until this process
+			// exits. Put it back into a waitable state, so that the wait()
+			// below actually reaps it.
+			if process.status == .aborted {
+				process.status = .running
 			}
+			break
+		}
+		if stdout.len == 0 && stderr.len == 0 {
 			time.sleep(time.millisecond)
 		}
 	}

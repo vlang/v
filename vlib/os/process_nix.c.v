@@ -47,6 +47,7 @@ struct UnixSpawnPlan {
 	envp          []&char // NUL terminated environment vector
 	resolve_error string  // when not empty, the child reports it and exits, instead of exec'ing
 	stdin_error   string  // the message prefix used when the stdin file cannot be opened
+	exec_error    string  // the message prefix used when execve fails
 }
 
 // unix_prepare_spawn does all the allocating work of a spawn upfront, in the
@@ -74,7 +75,7 @@ fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
 	}
 	envp << &char(unsafe { nil })
 	stdin_error := if p.has_stdin_path {
-		'failed to open stdin file "${p.stdin_path}": '
+		'failed to open stdin file "${p.stdin_path}"'
 	} else {
 		''
 	}
@@ -84,6 +85,7 @@ fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
 		envp:          envp
 		resolve_error: resolve_error
 		stdin_error:   stdin_error
+		exec_error:    'os: failed to execute "${exe}"'
 	}
 }
 
@@ -95,44 +97,42 @@ fn unix_child_write(s string) {
 	}
 }
 
-// unix_child_report_errno writes the C error text of the current errno to the
-// child's stderr, followed by a newline, reproducing what `eprintln(err)` used
-// to print, without allocating. `with_code` appends the `; code: N` suffix that
-// `IError.str()` adds for errors that carry a code.
+// unix_child_report_errno writes `prefix` followed by the `; code: N` suffix
+// that `IError.str()` uses, and a newline, to the child's stderr.
+//
+// It runs between fork() and execve(), so it only uses write() and stack
+// buffers. In particular it does *not* call strerror(): that can take libc's
+// locale/message locks, which are exactly the kind of lock that a fork from a
+// multi threaded process can inherit already held. The errno is reported as a
+// number instead; the C library's text for it is one `errno 13` lookup away,
+// and a terse message is much better than a child that hangs while producing a
+// nicer one.
 @[direct_array_access]
-fn unix_child_report_errno(with_code bool) {
+fn unix_child_report_errno(prefix string) {
 	code := C.errno
-	emsg := C.strerror(i32(code))
-	if emsg != unsafe { nil } {
-		// Note: strerror() is not formally async signal safe, but it does not go
-		// through V's allocator, and open()/execve() only ever set a known errno,
-		// for which the C library returns a pointer to a constant string.
-		unsafe { C.write(2, emsg, usize(C.strlen(emsg))) }
-	}
+	unix_child_write(prefix)
 	mut buf := [32]u8{}
 	mut n := 0
-	if with_code {
-		for ch in child_spawn_code_prefix {
-			buf[n] = ch
-			n++
-		}
-		mut digits := [16]u8{}
-		mut d := 0
-		mut rest := if code > 0 { code } else { 0 }
-		if rest == 0 {
-			digits[0] = `0`
-			d = 1
-		}
-		for rest > 0 {
-			digits[d] = u8(`0` + rest % 10)
-			d++
-			rest /= 10
-		}
-		for d > 0 {
-			d--
-			buf[n] = digits[d]
-			n++
-		}
+	for ch in child_spawn_code_prefix {
+		buf[n] = ch
+		n++
+	}
+	mut digits := [16]u8{}
+	mut d := 0
+	mut rest := if code > 0 { code } else { 0 }
+	if rest == 0 {
+		digits[0] = `0`
+		d = 1
+	}
+	for rest > 0 {
+		digits[d] = u8(`0` + rest % 10)
+		d++
+		rest /= 10
+	}
+	for d > 0 {
+		d--
+		buf[n] = digits[d]
+		n++
 	}
 	buf[n] = `\n`
 	n++
@@ -198,8 +198,7 @@ fn (mut p Process) unix_spawn_process() int {
 	if p.has_stdin_path {
 		stdin_fd = C.open(&char(p.stdin_path.str), o_rdonly, 0)
 		if stdin_fd == -1 {
-			unix_child_write(plan.stdin_error)
-			unix_child_report_errno(false)
+			unix_child_report_errno(plan.stdin_error)
 			C._exit(1)
 		}
 	}
@@ -249,7 +248,7 @@ fn (mut p Process) unix_spawn_process() int {
 	}
 	C.execve(&char(plan.exe.str), plan.argv.data, plan.envp.data)
 	// Note: normally execve does not return at all. If it does, it failed.
-	unix_child_report_errno(true)
+	unix_child_report_errno(plan.exec_error)
 	C._exit(1)
 	return 0
 }
