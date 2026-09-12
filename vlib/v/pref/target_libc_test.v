@@ -100,6 +100,20 @@ fn test_detected_musl_survives_non_linking_output() {
 	assert cross.is_musl
 }
 
+fn test_generated_c_project_forgets_the_detected_libc() {
+	// `-generate-c-project` writes the C next to build.sh/Makefile and returns, so the
+	// libc belongs to whatever those scripts are pointed at, not to this machine.
+	mut p := Preferences{
+		is_glibc:           true
+		os:                 ._auto
+		generate_c_project: 'out/cproject'
+		out_name:           'prog'
+	}
+	p.forget_host_glibc_for_foreign_targets()
+	assert !p.is_glibc
+	assert !p.is_musl
+}
+
 fn test_foreign_os_forgets_the_detected_libc() {
 	mut p := Preferences{
 		is_glibc: true
@@ -165,6 +179,14 @@ fn test_handed_off_output_does_not_default_to_tinyc() {
 		p.try_to_use_tcc_by_default()
 		assert p.ccompiler == '', out_name
 	}
+
+	mut c_project := Preferences{
+		os:                 ._auto
+		generate_c_project: 'out/cproject'
+		out_name:           'prog'
+	}
+	c_project.try_to_use_tcc_by_default()
+	assert c_project.ccompiler == ''
 
 	mut linked_by_v := Preferences{
 		os:       ._auto

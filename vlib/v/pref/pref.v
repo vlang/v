@@ -331,13 +331,15 @@ fn detect_musl(mut res Preferences) {
 	}
 }
 
-// stops_before_linking reports whether V hands its output to another toolchain instead
-// of producing a finished, V-linked artefact: portable `-os cross` C, `-o out.c`, `-o -`
-// streamed to stdout, and `-o out.o`/`-is_o`, which only ever reaches the C compiler
-// with `-c`. Whatever V infers about this machine is then a guess about somebody else's
-// build, so the inferences that would narrow the output have to be held back.
+// stops_before_linking reports whether V hands its output to another toolchain instead of
+// producing a finished, V-linked artefact: portable `-os cross` C, `-o out.c`, `-o -`
+// streamed to stdout, `-generate-c-project`, which writes C next to the build scripts that
+// will compile it, and `-o out.o`/`-is_o`, which only ever reaches the C compiler with
+// `-c`. Whatever V infers about this machine is then a guess about somebody else's build,
+// so the inferences that would narrow the output have to be held back.
 fn (p &Preferences) stops_before_linking() bool {
-	return p.output_cross_c || p.out_name.ends_with('.c') || p.is_o || p.should_output_to_stdout()
+	return p.output_cross_c || p.out_name.ends_with('.c') || p.generate_c_project != '' || p.is_o
+		|| p.should_output_to_stdout()
 }
 
 // forget_host_glibc_for_foreign_targets discards the glibc that `detect_musl` inferred
