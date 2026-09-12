@@ -331,6 +331,15 @@ fn detect_musl(mut res Preferences) {
 	}
 }
 
+// stops_before_linking reports whether V hands its output to another toolchain instead
+// of producing a finished, V-linked artefact: portable `-os cross` C, `-o out.c`, `-o -`
+// streamed to stdout, and `-o out.o`/`-is_o`, which only ever reaches the C compiler
+// with `-c`. Whatever V infers about this machine is then a guess about somebody else's
+// build, so the inferences that would narrow the output have to be held back.
+fn (p &Preferences) stops_before_linking() bool {
+	return p.output_cross_c || p.out_name.ends_with('.c') || p.is_o || p.should_output_to_stdout()
+}
+
 // forget_host_glibc_for_foreign_targets discards the glibc that `detect_musl` inferred
 // from the host, when that probe cannot describe the program being built.
 //
@@ -355,12 +364,7 @@ fn (mut p Preferences) forget_host_glibc_for_foreign_targets() {
 	if p.libc_set_by_flag || !p.is_glibc {
 		return
 	}
-	// Every mode here stops short of the link, and leaves it to whoever picks the
-	// artefact up: portable `-os cross` C, `-o out.c`, `-o -` streamed to stdout, and
-	// `-o out.o`/`-is_o`, which only ever reaches the C compiler with `-c`.
-	v_stops_before_linking := p.output_cross_c || p.out_name.ends_with('.c') || p.is_o
-		|| p.should_output_to_stdout()
-	if !v_stops_before_linking && p.os in [._auto, get_host_os()] {
+	if !p.stops_before_linking() && p.os in [._auto, get_host_os()] {
 		return
 	}
 	p.is_glibc = false

@@ -4,6 +4,13 @@ fn non_host_os() OS {
 	return if get_host_os() == .linux { OS.windows } else { OS.linux }
 }
 
+// detected_host_musl reports what `detect_musl` found for this machine. A host-native
+// build is the one shape that never discards the probe, so it reads it back unchanged.
+fn detected_host_musl() bool {
+	host, _ := parse_args([], ['-o', 'prog', 'a.v'])
+	return host.is_musl
+}
+
 fn test_host_native_build_keeps_the_detected_libc() {
 	mut p := Preferences{
 		is_glibc: true
@@ -138,11 +145,44 @@ fn test_explicit_libc_options_survive_foreign_targets() {
 
 fn test_object_output_is_resolved_before_the_libc() {
 	// A `.o` output name only sets `is_o` late in parsing; the libc has to be settled
-	// after that point, or object output would silently keep the host libc.
+	// after that point, or object output would silently keep the host glibc.
 	p, _ := parse_args([], ['-o', 'unit.o', 'a.v'])
 	assert p.is_o
 	assert !p.is_glibc
-	assert !p.is_musl
+	// A musl host keeps its libc here, so this has to be read against the host.
+	assert p.is_musl == detected_host_musl()
+}
+
+fn test_handed_off_output_does_not_default_to_tinyc() {
+	// `$if tinyc && !glibc` calls `tcc_backtrace`, declared only behind `#ifdef
+	// __TINYC__`, so a defaulted tcc would make clang and gcc reject the output.
+	for out_name in ['out.c', 'unit.o', '/tmp/-'] {
+		mut p := Preferences{
+			os:       ._auto
+			is_o:     out_name.ends_with('.o')
+			out_name: out_name
+		}
+		p.try_to_use_tcc_by_default()
+		assert p.ccompiler == '', out_name
+	}
+
+	mut linked_by_v := Preferences{
+		os:       ._auto
+		out_name: 'prog'
+	}
+	linked_by_v.try_to_use_tcc_by_default()
+	// Only meaningful where tcc is the default at all; elsewhere this stays empty.
+	assert linked_by_v.ccompiler == '' || linked_by_v.ccompiler.contains('tcc')
+}
+
+fn test_explicit_tinyc_survives_handed_off_output() {
+	mut p := Preferences{
+		ccompiler: 'tcc'
+		os:        ._auto
+		out_name:  'out.c'
+	}
+	p.try_to_use_tcc_by_default()
+	assert p.ccompiler.contains('tcc')
 }
 
 fn test_libc_options_are_recorded_as_explicit_by_the_parser() {
@@ -158,7 +198,8 @@ fn test_libc_options_are_recorded_as_explicit_by_the_parser() {
 
 	plain, _ := parse_args([], ['-o', 'x.c', 'a.v'])
 	assert !plain.libc_set_by_flag
-	// Without an explicit option there is nothing to carry into the generated C.
+	// Without an explicit option there is no glibc to carry into the generated C, while
+	// a detected musl is kept, so that reads against the host.
 	assert !plain.is_glibc
-	assert !plain.is_musl
+	assert plain.is_musl == detected_host_musl()
 }

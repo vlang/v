@@ -525,6 +525,14 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 	if p.ccompiler != '' {
 		return
 	}
+	// A default tcc is a speed optimisation for the ordinary build-and-run cycle. Where
+	// V hands its output to another toolchain, that guess leaks tcc-only constructs into
+	// it instead: `$if tinyc && !glibc` calls `tcc_backtrace`, whose only declaration
+	// sits behind `#ifdef __TINYC__`, so clang and gcc then reject the very C that was
+	// meant to be portable. An explicit `-cc tcc` above still wins.
+	if p.stops_before_linking() {
+		return
+	}
 	// -prealloc uses thread-local allocator state. The bundled tcc does not
 	// support TLS declarations, so use the platform C compiler by default.
 	if p.prealloc {
