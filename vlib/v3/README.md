@@ -311,6 +311,13 @@ After parallel transform merges its append regions, `FlatAst.discard_unused_capa
 releases unused AST pages on macOS and Linux in preallocated builds. It preserves the virtual
 reservation and live nodes, so later appends keep their existing capacity.
 
+Preallocated builds use `prealloc_discard_pages()` to return complete pages from obsolete
+reallocation buffers and freed containers while preserving the surrounding arena. Array growth
+does this only when the existing ownership checks permit releasing the old buffer. Scope block
+recycling retains at most 4 MiB per thread. Self-host transform helpers keep merge bookkeeping in
+separate arenas and publish escaping AST text into their parent arenas; the bookkeeping is freed
+after joining. The completed master transform also releases its private indexes and rewrite logs.
+
 Imports are resolved recursively: after parsing the input file, the driver
 collects `import_decl` nodes, resolves module paths, parses module files, and
 repeats until no new imports are found.

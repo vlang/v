@@ -21944,7 +21944,14 @@ fn (mut g FlatGen) const_emission_order_owned() []string {
 		return g.const_emission_order()
 	}
 	scope := cgen_worker_scope_begin(true)
+	// Dependency discovery resolves receiver types. Keep those memo writes in
+	// the same disposable arena as the traversal, away from the live checker.
+	master_tc := g.tc
+	g.tc = g.clone_parallel_type_checker()
+	saved_lookup_caches := g.begin_scratch_lookup_caches()
 	scoped_names := g.const_emission_order()
+	g.restore_scratch_lookup_caches(saved_lookup_caches)
+	g.tc = master_tc
 	cgen_worker_scope_leave(scope)
 	names := clone_cgen_string_list(scoped_names)
 	cgen_worker_scope_free(scope)

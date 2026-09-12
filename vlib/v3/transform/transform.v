@@ -503,18 +503,20 @@ mut:
 	preserve_inplace_expr_types bool
 	inplace_child_log           []InplaceChildRewrite
 	worker_scope                voidptr
-	scoped_base_nodes           int = -1
-	scoped_owned_base_nodes     map[int]bool
-	scoped_owned_base_log       []flat.NodeId
-	scoped_base_log_active      bool
-	scoped_promoted_texts       map[string]string
-	retain_worker_results       bool
-	retained_worker_regions     []ScopedTransformRegion
-	stage_scope                 voidptr
-	scoped_monomorphize         bool
-	monomorph_worker_scopes     []voidptr
-	signature_maps_shared       bool
-	signature_maps_changed      bool
+	// Helper merge tables are disposable; published AST text uses their parent arena.
+	merge_scratch_scope     voidptr
+	scoped_base_nodes       int = -1
+	scoped_owned_base_nodes map[int]bool
+	scoped_owned_base_log   []flat.NodeId
+	scoped_base_log_active  bool
+	scoped_promoted_texts   map[string]string
+	retain_worker_results   bool
+	retained_worker_regions []ScopedTransformRegion
+	stage_scope             voidptr
+	scoped_monomorphize     bool
+	monomorph_worker_scopes []voidptr
+	signature_maps_shared   bool
+	signature_maps_changed  bool
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -1142,7 +1144,33 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 		t.tc.reset_body_resolve_memo()
 	}
 	t.used_fns_log_active = used_log_was_active
+	t.release_finished_scratch()
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
+}
+
+fn (mut t Transformer) release_finished_scratch() {
+	$if prealloc {
+		if !t.building_v || !t.skip_generics || t.stage_scope == unsafe { nil } {
+			return
+		}
+		// The transformer has finished, but its arena still backs AST text.
+		// Drop only private container storage; string and node payloads survive.
+		unsafe {
+			t.node_module_map_cache.free()
+			t.node_file_map_cache.free()
+			t.source_parent_ids.free()
+			t.fn_scan_costs.free()
+			t.fn_escape_scan_flags.free()
+			t.scoped_owned_base_log.free()
+			t.inplace_child_log.free()
+			t.transformed_fns.free()
+			t.scoped_promoted_texts.free()
+			t.receiver_method_suffix_index.free()
+			t.structs.free()
+			t.fn_ret_types.free()
+			t.call_param_types_decl_index.free()
+		}
+	}
 }
 
 // Widen compact rewrite ids only when publishing the transform result.
@@ -4183,16 +4211,24 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	t.merge_worker_signatures(w)
 	t.merge_worker_capture_contexts(w)
-	scoped := w.worker_scope != unsafe { nil }
+	scoped := w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil }
 	for name, used in w.used_fns {
 		if used {
-			owned_name := if scoped && !t.retain_worker_results { name.clone() } else { name }
+			owned_name := if scoped && (!t.retain_worker_results || w.merge_scratch_scope != unsafe { nil }) {
+				name.clone()
+			} else {
+				name
+			}
 			t.mark_used_fn_key(owned_name)
 		}
 	}
 	for name, used in w.used_struct_operator_fns {
 		if used && name !in t.used_struct_operator_fns {
-			owned_name := if scoped && !t.retain_worker_results { name.clone() } else { name }
+			owned_name := if scoped && (!t.retain_worker_results || w.merge_scratch_scope != unsafe { nil }) {
+				name.clone()
+			} else {
+				name
+			}
 			t.used_struct_operator_fns[owned_name] = true
 		}
 	}
@@ -4706,12 +4742,16 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			continue
 		}
 		t.generic_call_spec_cache[shifted] = GenericCallSpec{
-			decl_key: if w.worker_scope != unsafe { nil } {
+			decl_key: if w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil } {
 				spec.decl_key.clone()
 			} else {
 				spec.decl_key
 			}
-			args: spec.args.clone()
+			args: if w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil } {
+				spec.args.map(it.clone())
+			} else {
+				spec.args.clone()
+			}
 		}
 	}
 	for idx, missed in w.generic_call_spec_misses {
@@ -4728,7 +4768,11 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			continue
 		}
 		shifted := idx + int(node_shift)
-		owned_typ := if w.worker_scope != unsafe { nil } { typ.clone() } else { typ }
+		owned_typ := if w.worker_scope != unsafe { nil } || w.merge_scratch_scope != unsafe { nil } {
+			typ.clone()
+		} else {
+			typ
+		}
 		t.record_refined_node_type(shifted, owned_typ)
 	}
 	if w.ignored_comptime_for_nodes.len > 0 {
@@ -4757,6 +4801,12 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 				t.ignored_comptime_for_nodes[shifted] = true
 			}
 		}
+	}
+	if w.merge_scratch_scope != unsafe { nil } {
+		// Every worker table and rewrite log has been consumed. Node payloads
+		// were published outside this arena while the helper was running.
+		transform_worker_scope_free(w.merge_scratch_scope)
+		unsafe { w.merge_scratch_scope = nil }
 	}
 }
 

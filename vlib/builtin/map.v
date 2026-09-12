@@ -682,6 +682,9 @@ fn (mut m VMapData) cached_rehash(old_cap u32) {
 		index, meta = m.meta_less(index, meta)
 		m.meta_greater(index, meta, kv_index)
 	}
+	$if prealloc {
+		unsafe { prealloc_discard_pages(old_metas, usize(sizeof(u32)) * usize(old_cap + 2 + old_extra_metas)) }
+	}
 	unsafe { free(old_metas) }
 }
 
@@ -1052,6 +1055,9 @@ pub fn (m &map) free() {
 
 @[unsafe]
 fn (m &VMapData) free() {
+	$if prealloc {
+		unsafe { prealloc_discard_pages(m.metas, usize(sizeof(u32)) * usize(m.even_index + 2 + m.extra_metas)) }
+	}
 	unsafe { free(m.metas) }
 	unsafe {
 		m.metas = nil
@@ -1082,10 +1088,16 @@ fn (m &VMapData) free() {
 			m.key_values.all_deleted = nil
 		}
 		if m.key_values.keys != nil {
+			$if prealloc {
+				prealloc_discard_pages(m.key_values.keys, usize(m.key_values.cap) * usize(m.key_bytes))
+			}
 			free(m.key_values.keys)
 			m.key_values.keys = nil
 		}
 		if m.key_values.values != nil {
+			$if prealloc {
+				prealloc_discard_pages(m.key_values.values, usize(m.key_values.cap) * usize(m.value_bytes))
+			}
 			free(m.key_values.values)
 			m.key_values.values = nil
 		}
