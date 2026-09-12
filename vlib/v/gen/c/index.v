@@ -5,6 +5,7 @@ module c
 
 import v.ast
 import v.util
+import strings
 
 struct IndexOperatorMethodInfo {
 	method        ast.Fn
@@ -1010,20 +1011,73 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	}
 }
 
+struct MapValueLookupFn {
+	fn_name      string
+	val_type     ast.Type
+	val_type_str string
+	insert       bool
+}
+
+// map_value_lookup_fn names the helper that performs a lazily-defaulted lookup for
+// `val_type_str`, registering it for emission on first use. A statement expression
+// would be shorter, but `({ ... })` is a GNU extension that MSVC rejects, and this
+// lookup was the only place cgen still needed one.
+fn (mut g Gen) map_value_lookup_fn(val_type ast.Type, val_type_str string, insert bool) string {
+	fn_name := if insert {
+		'_v_map_get_or_insert_${val_type_str}'
+	} else {
+		'_v_map_get_or_zero_${val_type_str}'
+	}
+	for existing in g.map_value_lookup_fns {
+		if existing.fn_name == fn_name {
+			return fn_name
+		}
+	}
+	g.map_value_lookup_fns << MapValueLookupFn{
+		fn_name: fn_name
+		val_type: val_type
+		val_type_str: val_type_str
+		insert: insert
+	}
+	return fn_name
+}
+
+// write_map_value_lookup_fn emits the body of a helper registered by
+// map_value_lookup_fn. The default is built inside the helper, so a lookup that
+// finds its key never constructs - and never leaks - a map header.
+fn (mut g Gen) write_map_value_lookup_fn(fun MapValueLookupFn) {
+	val_type_str := fun.val_type_str
+	zero := g.type_default(fun.val_type)
+	ret_type := if fun.insert { '${val_type_str}*' } else { val_type_str }
+	signature := '${ret_type} ${fun.fn_name}(map* m, void* key)'
+	g.definitions.writeln('${signature};')
+	mut sb := strings.new_builder(256)
+	sb.writeln('${signature} {')
+	sb.writeln('\tvoid* v = builtin__map_get_check(m, key);')
+	if fun.insert {
+		sb.writeln('\tif (!v) { v = builtin__map_get_and_set(m, key, &(${val_type_str}[]){ ${zero} }); }')
+		sb.writeln('\treturn (${val_type_str}*)v;')
+	} else {
+		sb.writeln('\tif (v) { return *(${val_type_str}*)v; }')
+		sb.writeln('\t${val_type_str} zero = ${zero};')
+		sb.writeln('\treturn zero;')
+	}
+	sb.writeln('}\n')
+	g.auto_fn_definitions << sb.str()
+}
+
 // gen_map_value_lookup emits a lookup whose empty map fallback is constructed only
 // when the key is absent. A map default owns a heap-allocated header, so passing it
 // eagerly to map_get would leak the discarded header for every successful lookup.
 fn (mut g Gen) gen_map_value_lookup(node ast.IndexExpr, key_type ast.Type, val_type ast.Type, val_type_str string, left_is_ptr bool, left_is_shared bool, insert_if_missing bool, addressable bool) {
-	map_tmp := g.new_tmp_var()
-	key_tmp := g.new_tmp_var()
-	value_tmp := g.new_tmp_var()
+	fn_name := g.map_value_lookup_fn(val_type, val_type_str, insert_if_missing)
 	if insert_if_missing {
-		g.write('(*({ map* ${map_tmp} = (map*)')
+		g.write('(*${fn_name}((map*)')
 	} else if addressable {
-		// The outer ADDR carrier keeps the copied value alive after the statement expression ends.
-		g.write('(*ADDR(${val_type_str}, ({ map* ${map_tmp} = (map*)')
+		// The ADDR carrier gives the returned copy a stable address.
+		g.write('(*ADDR(${val_type_str}, ${fn_name}((map*)')
 	} else {
-		g.write('({ map* ${map_tmp} = (map*)')
+		g.write('${fn_name}((map*)')
 	}
 	if insert_if_missing {
 		// Mutating lookups must retain the address of the original map.
@@ -1054,19 +1108,16 @@ fn (mut g Gen) gen_map_value_lookup(node ast.IndexExpr, key_type ast.Type, val_t
 			g.write(')')
 		}
 	}
-	g.write('; void* ${key_tmp} = ')
+	g.write(', ')
 	old_is_assign_lhs := g.is_assign_lhs
 	g.is_assign_lhs = false
 	g.write_map_key_arg(node.index, key_type)
 	g.is_assign_lhs = old_is_assign_lhs
-	g.write('; void* ${value_tmp} = builtin__map_get_check(${map_tmp}, ${key_tmp}); ')
-	zero := g.type_default(val_type)
 	if insert_if_missing {
-		g.write('if (!${value_tmp}) { ${value_tmp} = builtin__map_get_and_set(${map_tmp}, ${key_tmp}, &(${val_type_str}[]){ ${zero} }); } (${val_type_str}*)${value_tmp}; }))')
+		g.write('))')
 	} else if addressable {
-		zero_tmp := g.new_tmp_var()
-		g.write('${val_type_str} ${zero_tmp}; if (!${value_tmp}) { ${zero_tmp} = ${zero}; ${value_tmp} = &${zero_tmp}; } *((${val_type_str}*)${value_tmp}); })))')
+		g.write(')))')
 	} else {
-		g.write('${value_tmp} ? *((${val_type_str}*)${value_tmp}) : ${zero}; })')
+		g.write(')')
 	}
 }
