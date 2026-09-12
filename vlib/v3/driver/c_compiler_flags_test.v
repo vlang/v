@@ -521,3 +521,65 @@ fn test_add_c_language_runtime_link_flags() {
 	add_c_language_runtime_link_flags(mut existing, existing.clone(), 'objective-c++', target)
 	assert existing == ['-lstdc++', '-lobjc']
 }
+
+fn test_v3_cache_failure_artifacts_needs_a_cached_path_and_a_whole_file_failure() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	object := os.join_path(cache_dir, 'atomic_deadbeef_cafe.o')
+	rejected := 'tcc: error: ${object}: unrecognized file type'
+	assert v3_cache_failure_artifacts(rejected) == [object]
+
+	// A line-scoped diagnostic in a cached unit is a real compile error, not a
+	// poisoned entry; spending a rebuild on it would only reproduce it.
+	module_source := os.join_path(os.vtmp_dir(), 'v3_module_cache_1234', 'abcd', 'main_9.c')
+	compile_error := '${module_source}:41:7: error: use of undeclared identifier'
+	assert v3_cache_failure_artifacts(compile_error) == []
+
+	// The build directory sits next to the caches but holds generated source.
+	build_source := os.join_path(os.vtmp_dir(), 'prog.01M2AH.tmp.c')
+	assert v3_cache_failure_artifacts('cc: ${build_source}: no such file or directory') == []
+
+	// A whole-file failure about a file V does not own is the user's to fix.
+	assert v3_cache_failure_artifacts('ld: file not found: /usr/local/lib/libfoo.a') == []
+
+	// Every marker has to be paired with a cached path.
+	assert v3_cache_failure_artifacts('ld: duplicate symbol _main') == []
+}
+
+fn test_v3_cache_error_artifacts_reads_paths_out_of_toolchain_diagnostics() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_fastc_unit_cache')
+	first := os.join_path(cache_dir, 'unit_1.o')
+	second := os.join_path(cache_dir, 'unit_2.o')
+	output := "ld: warning: ignoring file '${first}', building for macOS-arm64\n" + 'ld: ${second}: file format not recognized\n' + 'ld: ${first}: not an object file\n'
+	// Quoting and punctuation differ per toolchain, and one path can be blamed
+	// more than once.
+	assert v3_cache_error_artifacts(output) == [first, second]
+	assert v3_cache_error_artifacts('') == []
+}
+
+fn test_v3_discard_cache_artifacts_drops_sidecars_and_link_plans() {
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	os.mkdir_all(cache_dir)!
+	token := 'v3_discard_test_${os.getpid()}'
+	object := os.join_path(cache_dir, '${token}.o')
+	stamp := '${object}.stamp'
+	deps := '${object}.deps'
+	plan := os.join_path(cache_dir, 'link_${token}.manifest')
+	unrelated := os.join_path(cache_dir, '${token}_keep.o')
+	for path in [object, stamp, deps, plan, unrelated] {
+		os.write_file(path, 'x')!
+	}
+	defer {
+		for path in [object, stamp, deps, plan, unrelated] {
+			os.rm(path) or {}
+		}
+	}
+	discarded := v3_discard_cache_artifacts([object])
+	assert discarded >= 4, '${discarded}'
+	assert !os.exists(object)
+	// A stamp still certifies a deleted object, and a link plan replays its path
+	// into the next link, so both have to go with it.
+	assert !os.exists(stamp)
+	assert !os.exists(deps)
+	assert !os.exists(plan)
+	assert os.exists(unrelated)
+}
