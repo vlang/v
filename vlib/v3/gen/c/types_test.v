@@ -17,10 +17,12 @@ fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 		mut tc := types.TypeChecker.new(&ast)
 		tc.structs['payload.Data'] = []types.StructField{}
 		tc.struct_modules['payload.Data'] = 'payload'
-		tc.fn_ret_types['payload.pair'] = types.Type(types.MultiReturn{ types: [
-			types.Type(types.int_),
-			types.Type(types.string_),
-		] })
+		tc.fn_ret_types['payload.pair'] = types.Type(types.MultiReturn{
+			types: [
+				types.Type(types.int_),
+				types.Type(types.string_),
+			]
+		})
 		tc.cur_module = 'caller'
 		tc.cur_file = 'caller.v'
 		mut serial := FlatGen.new()

@@ -387,6 +387,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 						ast.EnumVal {
 							default_expr.typ = typ
 						}
+
 						// TODO: implement all types??
 						else {}
 					}

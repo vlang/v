@@ -43,7 +43,7 @@ struct StruWithOptionalRawAttribute {
 
 struct StruWithRequiredAttribute {
 	a                 int
-	name              string  @[required]
+	name              string @[required]
 	skip_and_required ?string @[required; skip]
 	b                 int
 }
@@ -58,7 +58,7 @@ struct JsonNullAttrBar {
 
 struct JsonNullAttrFoo {
 	name   ?string @[json_null]
-	age    ?int    @[json_null]
+	age    ?int @[json_null]
 	text   ?string
 	other  ?JsonNullAttrBar
 	other2 ?JsonNullAttrBar @[json_null]
@@ -75,7 +75,7 @@ fn test_json_null_attribute() {
 	assert json.encode(JsonNullAttrFoo{ name: '' }) == '{"name":"","age":null,"other2":null}'
 	assert json.encode(JsonNullAttrFoo{ age: 10 }) == '{"name":null,"age":10,"other2":null}'
 	assert json.encode(JsonNullAttrFoo{
-		age:    10
+		age: 10
 		other2: JsonNullAttrBar{
 			name: none
 		}
@@ -85,40 +85,40 @@ fn test_json_null_attribute() {
 
 fn test_skip_and_rename_attributes() {
 	assert json.decode[StruWithJsonAttribute]('{"name": "hola1", "a": 2, "b": 3}')! == StruWithJsonAttribute{
-		a:     2
+		a: 2
 		name2: 'hola1'
-		b:     3
+		b: 3
 	}, '`json` attribute not working'
 
 	assert json.decode[StruWithSkipAttribute]('{"name": "hola2", "a": 2, "b": 3}')! == StruWithSkipAttribute{
-		a:    2
+		a: 2
 		name: none
-		b:    3
+		b: 3
 	}, '`skip` attribute not working'
 
 	assert json.decode[StruWithJsonSkipAttribute]('{"name": "hola3", "a": 2, "b": 3}')! == StruWithJsonSkipAttribute{
-		a:    2
+		a: 2
 		name: none
-		b:    3
+		b: 3
 	}, " `json: '-'` skip attribute not working"
 
 	assert json.decode[StruWithOmitemptyAttribute]('{"name": "", "a": 2, "b": 3}')! == StruWithOmitemptyAttribute{
-		a:    2
+		a: 2
 		name: none
-		b:    3
+		b: 3
 	}, '`omitempty` attribute not working'
 
 	assert json.decode[StruWithOmitemptyAttribute]('{"name": "hola", "a": 2, "b": 3}')! == StruWithOmitemptyAttribute{
-		a:    2
+		a: 2
 		name: 'hola'
-		b:    3
+		b: 3
 	}, '`omitempty` attribute not working'
 }
 
 fn test_decode_skipped_shared_fields() {
 	value := StruWithSkippedSharedFields{
-		name:      'foo'
-		data:      'bar'
+		name: 'foo'
+		data: 'bar'
 		json_data: 'baz'
 	}
 	assert json.encode(value) == '{"name":"foo"}'
@@ -128,10 +128,10 @@ fn test_decode_skipped_shared_fields() {
 
 fn test_raw_attribute() {
 	assert json.decode[StruWithRawAttribute]('{"name": "hola", "a": 2, "object": {"c": 4, "d": 5}, "b": 3}')! == StruWithRawAttribute{
-		a:      2
-		name:   '"hola"'
+		a: 2
+		name: '"hola"'
 		object: '{"c": 4, "d": 5}'
-		b:      3
+		b: 3
 	}, '`raw` attribute not working'
 }
 
@@ -145,10 +145,10 @@ fn test_optional_raw_attribute_preserves_source_bytes() {
 
 fn test_required_attribute() {
 	assert json.decode[StruWithRequiredAttribute]('{"name": "hola", "a": 2, "skip_and_required": "hola", "b": 3}')! == StruWithRequiredAttribute{
-		a:                 2
-		name:              'hola'
+		a: 2
+		name: 'hola'
 		skip_and_required: none
-		b:                 3
+		b: 3
 	}, '`required` attribute not working'
 
 	mut has_error := false
@@ -168,9 +168,9 @@ fn test_required_attribute() {
 
 fn test_required_skipped_attribute_with_escaped_key() {
 	assert json.decode[StruWithRequiredAttribute](r'{"name":"hola","a":2,"\u0073kip_and_required":"hola","b":3}')! == StruWithRequiredAttribute{
-		a:                 2
-		name:              'hola'
+		a: 2
+		name: 'hola'
 		skip_and_required: none
-		b:                 3
+		b: 3
 	}
 }

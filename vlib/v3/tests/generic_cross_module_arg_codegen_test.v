@@ -45,7 +45,7 @@ fn generic_cross_run_project(v3_bin string, name string, files map[string]string
 fn test_generic_mut_pointer_callback_preserves_reassigned_slot() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_mut_pointer_callback_slot', {
-		'main.v': 'module main
+		'main.v': "module main
 
 @[heap]
 struct Dog {
@@ -64,10 +64,10 @@ fn apply[T](b Box[T], f fn (mut it T)) T {
 
 fn main() {
 	first := &Dog{
-		name: \'first\'
+		name: 'first'
 	}
 	second := &Dog{
-		name: \'second\'
+		name: 'second'
 	}
 	box := Box[&Dog]{
 		item: first
@@ -77,7 +77,7 @@ fn main() {
 	})
 	println(result.name)
 }
-'
+"
 	})
 	assert out == 'second'
 }
@@ -85,7 +85,7 @@ fn main() {
 fn test_generic_mut_value_callback_keeps_single_caller_slot() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_mut_value_callback_slot', {
-		'main.v': 'module main
+		'main.v': "module main
 
 struct Dog {
 mut:
@@ -105,15 +105,15 @@ fn apply[T](b Box[T], f fn (mut it T)) T {
 fn main() {
 	box := Box[Dog]{
 		item: Dog{
-			name: \'first\'
+			name: 'first'
 		}
 	}
 	result := apply[Dog](box, fn (mut it Dog) {
-		it.name = \'second\'
+		it.name = 'second'
 	})
 	println(result.name)
 }
-'
+"
 	})
 	assert out == 'second'
 }

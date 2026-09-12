@@ -47,7 +47,7 @@ fn test_character_interpolation_unwraps_integer_alias() {
 	g.a = &a
 	g.tc = &tc
 	assert g.gen_formatted_string_interp_child_expr(value_id, types.Alias{
-		name:      'Code'
+		name: 'Code'
 		base_type: types.Type(types.u8_)
 	}, 'c')
 	assert g.sb.str() == 'rune__str((u32)(65))'
@@ -63,13 +63,13 @@ fn test_width_only_enum_interpolation_uses_enum_text() {
 fn test_ierror_interpolation_uses_dynamic_message_dispatch() {
 	mut a := flat.FlatAst.new()
 	err_id := a.add_node(flat.Node{
-		kind:  .ident
+		kind: .ident
 		value: 'err'
-		typ:   'IError'
+		typ: 'IError'
 	})
 	a.children << err_id
 	interp_id := a.add_node(flat.Node{
-		kind:           .string_interp
+		kind: .string_interp
 		children_start: 0
 		children_count: 1
 	})

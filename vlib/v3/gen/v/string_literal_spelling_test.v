@@ -106,7 +106,7 @@ fn test_formatter_keeps_raw_literal_delimiters() {
 	assert_literal_spelling('raw_single', r"r'\0\x00 $name'")
 	assert_literal_spelling('raw_double', r'r"\0\x00 $name"')
 	assert_literal_spelling('raw_single_inside_double', 'r"raw \' quote"')
-	assert_literal_spelling('raw_double_inside_single', "r'raw \" quote'")
+	assert_literal_spelling('raw_double_inside_single', 'r\'raw " quote\'')
 }
 
 fn test_formatter_recovers_c_string_prefix_from_quote_only_spans() {

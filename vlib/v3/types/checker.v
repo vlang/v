@@ -7590,8 +7590,7 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 	}
 	collapsed := if field_init_args > 0 { 1 } else { 0 }
 	recv_extra := if info.has_receiver { 1 } else { 0 }
-	mut actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed +
-		recv_extra
+	mut actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed + recv_extra
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
