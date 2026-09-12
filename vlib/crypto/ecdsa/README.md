@@ -23,22 +23,22 @@ build flag:
   discoverable by the C compiler.
 
 Both backends implement the same public API (`generate_key`,
-`PrivateKey.new`, `.sign`, `.public_key`, `.derive_shared_secret`, `.equal`,
-`.free`, `PublicKey.verify`, `.equal`, `.free`, `.uncompressed_bytes`,
-`PublicKey.from_uncompressed_bytes`), so calling code compiles unchanged
-regardless of which backend is selected.
+`new_key_from_seed`, `PrivateKey.new`, `.sign`, `.bytes`, `.public_key`,
+`.derive_shared_secret`, `.equal`, `.free`, `PublicKey.verify`, `.equal`,
+`.free`, `.uncompressed_bytes`, `PublicKey.from_uncompressed_bytes`), so
+calling code compiles unchanged regardless of which backend is selected.
+
+One documented difference: `new_key_from_seed` on the mbedTLS backend
+rejects a seed whose big-endian value is outside `[1, curve_order-1]`
+(mbedTLS's `mbedtls_ecp_read_key` range-checks the scalar), while the
+OpenSSL backend performs no such check. Every seed that `PrivateKey.bytes()`
+produces is in range, so a key saved with either backend reloads with both.
 
 **The default mbedTLS backend does not (yet) implement everything the
 OpenSSL backend does** -- these return a clear, informative error instead of
 silently behaving differently, and are only available under
 `-d use_openssl` today:
 
-- `new_key_from_seed` -- OpenSSL's current implementation performs no range
-  check against the curve order; mbedTLS's closest equivalent validates the
-  resulting scalar is in `[1, curve_order-1]` and rejects it otherwise. A
-  seed that "works" under `-d use_openssl` could be rejected here, so this
-  is a genuine behavioral divergence, not just missing plumbing, and needs
-  its own design pass before porting.
 - `PrivateKey.sign()`/`sign_with_options()` with
   `hash_config: .with_custom_hash` -- mbedTLS's deterministic-nonce signing
   (RFC 6979, compiled in by default) needs a real digest-algorithm
