@@ -234,12 +234,22 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 }
 
 // tcc_compiler_identity describes which compiler build a cached object came
-// from. Reading the whole executable to hash it would cost more than the object
-// cache saves, so size and modification time stand in for its contents; both
-// change when thirdparty/tcc is rebuilt or pulled.
+// from. Hashing the whole executable on every link would cost more than the
+// object cache saves, so stat metadata stands in for its contents: inode, size
+// and nanosecond mtime/ctime all move when thirdparty/tcc is rebuilt, pulled or
+// reinstalled. Size with a second-resolution mtime does not - it cannot tell an
+// in-place rebuild to the same size within one second from no change at all, nor
+// an install that preserves mtime - and reusing the object across that would
+// recreate the incompatible-object failure this key exists to prevent.
+// Platforms without that metadata fall back to hashing the executable, which is
+// exact; only they pay for the read.
 fn tcc_compiler_identity(tcc_path string) string {
 	resolved := os.real_path(os.find_abs_path_of_executable(tcc_path) or { tcc_path })
-	return '${resolved}\x00${os.file_size(resolved)}\x00${os.file_last_mod_unix(resolved)}'
+	metadata := modulecache.file_metadata_signature(resolved)
+	if metadata.len > 0 {
+		return '${resolved}\x00${metadata}'
+	}
+	return '${resolved}\x00${modulecache.file_signature(resolved)}'
 }
 
 // tcc_atomic_object_key names the cached atomic.S object. Only the compiler that

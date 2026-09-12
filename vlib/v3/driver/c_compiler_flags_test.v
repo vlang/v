@@ -568,3 +568,21 @@ fn test_tcc_compiler_identity_tracks_rebuilds() {
 	os.write_file(compiler, 'a rebuilt compiler with a different size')!
 	assert first != tcc_compiler_identity(compiler)
 }
+
+fn test_tcc_compiler_identity_tracks_same_size_rebuilds() {
+	root := os.join_path(os.vtmp_dir(), 'v3_atomic_identity_same_size_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	compiler := os.join_path(root, 'tcc.exe')
+	os.write_file(compiler, 'first build')!
+	first := tcc_compiler_identity(compiler)
+	// Rewritten in place to the same byte count, within one filesystem timestamp
+	// second. Size plus a second-resolution mtime cannot separate these two
+	// compilers, and reusing an object across them is what produces an
+	// "unrecognized file type" link failure that no later build clears.
+	os.write_file(compiler, 'other build')!
+	assert os.file_size(compiler) == 11
+	assert first != tcc_compiler_identity(compiler)
+}
