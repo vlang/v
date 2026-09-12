@@ -13065,6 +13065,7 @@ fn (mut g FlatGen) gen_arg_for_expected_type(arg_id flat.NodeId, expected types.
 		}
 		is_rvalue := arg_node.kind == .call
 			|| (arg_node.kind == .index && arg_node.value == 'range')
+			|| (!arg_node.is_mut && g.map_index_value_is_rvalue(arg_id))
 		if is_rvalue {
 			ct := g.tc.c_type(types.unwrap_pointer(expected))
 			g.write('({${ct} _t${g.tmp_count} = ')
@@ -15755,6 +15756,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		}
 		is_rvalue := arg_node.kind == .call
 			|| (arg_node.kind == .index && arg_node.value == 'range')
+			|| (!arg_node.is_mut && g.map_index_value_is_rvalue(arg_id))
 			|| g.arg_is_const_ident(arg_node)
 		if needs_addr && g.arg_is_const_ident(arg_node) {
 			value_type := g.addressed_const_arg_value_type(arg_id, param_types[arg_idx])

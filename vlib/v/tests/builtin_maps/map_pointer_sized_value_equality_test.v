@@ -63,3 +63,13 @@ fn test_nested_map_values_use_semantic_equality() {
 	assert left == right
 	assert left != different
 }
+
+fn test_map_value_lookup_clone_materializes_the_read_value() {
+	values := {
+		'present': {
+			'value': 1
+		}
+	}
+	cloned := values['missing'].clone()
+	assert cloned.len == 0
+}

@@ -1088,10 +1088,30 @@ fn (g &FlatGen) array_elem_type_matches(expected types.Type, actual types.Type) 
 fn (mut g FlatGen) gen_map_ref_arg(base_id flat.NodeId, base_type types.Type) {
 	if base_type is types.Pointer {
 		g.gen_expr(base_id)
+	} else if !g.expr_is_addressable(base_id) || g.map_index_value_is_rvalue(base_id) {
+		ct := g.tc.c_type(base_type)
+		g.write('&((${ct}[]){')
+		g.gen_expr(base_id)
+		g.write('})[0]')
 	} else {
 		g.write('&')
 		g.gen_expr(base_id)
 	}
+}
+
+fn (g &FlatGen) map_index_value_is_rvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return g.map_index_value_is_rvalue(g.a.child(&node, 0))
+	}
+	if node.kind != .index || node.value == 'range' || node.children_count == 0 {
+		return false
+	}
+	container_type := concrete_receiver_type(g.usable_expr_type(g.a.child(&node, 0)))
+	return container_type is types.Map
 }
 
 fn (mut g FlatGen) gen_index_overload_call(node flat.Node, base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
