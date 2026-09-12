@@ -10584,30 +10584,34 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			}
 			param_idx++
 		}
-		if t.call_keeps_explicit_specialization(callee, decl, inferred) {
+		if preserved := t.generic_call_args_preserving_explicit(callee, decl, inferred) {
 			// The callee already names the specialization picked by an explicit
-			// `fn_name[Type]` list, and this call carries nothing to infer from. Neither the
-			// enclosing return type nor the enclosing generic arguments may retarget it.
-			return ''
-		}
-		if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0 {
-			mut return_inferred := map[string]string{}
-			infer_generic_type_args(decl.node.typ, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred)
-			for name, inferred_type in return_inferred {
-				if name !in inferred {
-					inferred[name] = inferred_type
+			// `fn_name[Type]` list. Every position that list fixed must survive; neither the
+			// enclosing return type nor the enclosing generic arguments may replace it.
+			if t.callee_matches_generic_args(callee, decl, preserved) {
+				return ''
+			}
+			call_args = preserved.clone()
+		} else {
+			if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0 {
+				mut return_inferred := map[string]string{}
+				infer_generic_type_args(decl.node.typ, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred)
+				for name, inferred_type in return_inferred {
+					if name !in inferred {
+						inferred[name] = inferred_type
+					}
 				}
 			}
-		}
-		for name in param_names {
-			arg := inferred[name] or {
-				idx := t.active_generic_param_index(name)
-				if idx < 0 || idx >= args.len {
-					return ''
+			for name in param_names {
+				arg := inferred[name] or {
+					idx := t.active_generic_param_index(name)
+					if idx < 0 || idx >= args.len {
+						return ''
+					}
+					args[idx]
 				}
-				args[idx]
+				call_args << t.inherited_generic_arg_for_decl_module(arg, decl.module, args)
 			}
-			call_args << t.inherited_generic_arg_for_decl_module(arg, decl.module, args)
 		}
 	}
 	if call_args.len == 0 || t.generic_args_have_placeholders(call_args) {
@@ -10868,19 +10872,27 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			}
 			param_idx++
 		}
-		if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0
-			&& !t.call_keeps_explicit_specialization(callee, decl, inferred) {
-			mut return_inferred := map[string]string{}
-			t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred, receiver_params)
-			for name, inferred_type in return_inferred {
-				if name !in inferred {
-					inferred[name] = inferred_type
+		if preserved := t.generic_call_args_preserving_explicit(callee, decl, inferred) {
+			// See `retarget_cloned_generic_call`: an explicit `fn_name[Type]` list pins these
+			// positions for every clone of this body.
+			if t.callee_matches_generic_args(callee, decl, preserved) {
+				return
+			}
+			call_args = preserved.clone()
+		} else {
+			if inferred.len < param_names.len && t.cur_fn_ret_type.len > 0 {
+				mut return_inferred := map[string]string{}
+				t.infer_generic_return_type_args(decl, t.generic_inference_expected_type(t.cur_fn_ret_type), mut return_inferred, receiver_params)
+				for name, inferred_type in return_inferred {
+					if name !in inferred {
+						inferred[name] = inferred_type
+					}
 				}
 			}
-		}
-		for name in param_names {
-			arg := inferred[name] or { return }
-			call_args << t.inherited_generic_arg_for_decl_module(arg, decl.module, active_args)
+			for name in param_names {
+				arg := inferred[name] or { return }
+				call_args << t.inherited_generic_arg_for_decl_module(arg, decl.module, active_args)
+			}
 		}
 	}
 	if call_args.len == 0 || t.generic_args_have_placeholders(call_args) {
@@ -10906,25 +10918,48 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 	}
 }
 
-// call_keeps_explicit_specialization reports whether a cloned call is already bound to the concrete
-// specialization selected by an explicit `fn_name[Type]` type-argument list.
-//
-// Such callees are rewritten to a plain specialization ident before the enclosing generic body is
-// cloned, so the explicit arguments are no longer visible on the call node. The call resolves to the
-// same specialization in every clone of that body, and nothing could be inferred from its
-// arguments, so the enclosing function's return type must not retarget it to another
-// specialization.
-fn (t &Transformer) call_keeps_explicit_specialization(callee flat.Node, decl GenericFnDecl, inferred map[string]string) bool {
-	if inferred.len > 0 || callee.kind != .ident || callee.value.len == 0 {
+// callee_matches_generic_args reports whether `callee` already names the specialization of `decl`
+// for exactly `args`.
+fn (t &Transformer) callee_matches_generic_args(callee flat.Node, decl GenericFnDecl, args []string) bool {
+	if callee.kind != .ident || callee.value.len == 0 || args.len == 0 {
 		return false
 	}
-	recorded := t.recorded_generic_specialization_args(callee.value) or { return false }
-	if recorded.len == 0 || t.generic_args_have_placeholders(recorded) {
-		return false
-	}
-	spec_value := specialized_generic_fn_value(decl.node.value, recorded)
+	spec_value := specialized_generic_fn_value(decl.node.value, args)
 	qualified_spec := transform_qualified_fn_name(decl.module, spec_value)
 	return callee.value in [spec_value, qualified_spec, c_name(spec_value), c_name(qualified_spec)]
+}
+
+// generic_call_args_preserving_explicit returns the type arguments a cloned call must keep because
+// an explicit `fn_name[Type]` list already chose them, or none when the callee is not bound to a
+// specialization of `decl`.
+//
+// Such callees are rewritten to a plain specialization ident before the enclosing generic body is
+// cloned, so the explicit list is no longer visible on the call node and the retarget paths would
+// otherwise treat the call as implicit. Every position the list fixed resolves identically in each
+// clone of that body; only positions it left open may be filled from this clone's inference. Today
+// `explicit_generic_fn_value_specialization` collapses a list only when it covers every generic
+// parameter, so the recorded arguments are normally complete, but the tail is filled positionally so
+// a partial list can never be silently replaced.
+fn (mut t Transformer) generic_call_args_preserving_explicit(callee flat.Node, decl GenericFnDecl, inferred map[string]string) ?[]string {
+	if callee.kind != .ident || callee.value.len == 0 {
+		return none
+	}
+	recorded := t.recorded_generic_specialization_args(callee.value) or { return none }
+	if recorded.len == 0 || t.generic_args_have_placeholders(recorded) {
+		return none
+	}
+	if !t.callee_matches_generic_args(callee, decl, recorded) {
+		return none
+	}
+	param_names := t.generic_fn_param_names(decl.node, decl.module)
+	if param_names.len < recorded.len {
+		return none
+	}
+	mut preserved := recorded.clone()
+	for name in param_names[recorded.len..] {
+		preserved << inferred[name] or { return none }
+	}
+	return preserved
 }
 
 fn (t &Transformer) generic_specialization_registered(decl GenericFnDecl, args []string) bool {
