@@ -737,16 +737,10 @@ $if !windows {
 		mut tc := unsafe { &types.TypeChecker(a.tc) }
 		for idx in a.start .. a.end {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				name := tc.resolved_call_names[idx]
-				if name.len > 0 && transform_scope_owns(a.scope, name.str) {
-					tc.resolved_call_names[idx] = name.clone()
-				}
+				tc.resolved_call_names[idx] = types.promote_cached_name(tc.resolved_call_names[idx], a.scope)
 			}
 			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				name := tc.resolved_fn_value_names[idx]
-				if name.len > 0 && transform_scope_owns(a.scope, name.str) {
-					tc.resolved_fn_value_names[idx] = name.clone()
-				}
+				tc.resolved_fn_value_names[idx] = types.promote_cached_name(tc.resolved_fn_value_names[idx], a.scope)
 			}
 			if idx >= a.generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx]
 				&& idx < tc.expr_type_values.len {
@@ -1936,7 +1930,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 			t.promote_scoped_node_to_current(idx, scope)
 		}
 		for idx in batch.scoped_owned_base_log {
-			t.promote_scoped_node_to_current(idx, scope)
+			t.promote_scoped_node_to_current(int(idx), scope)
 		}
 	} else {
 		// Generic lowering can rewrite nodes reached indirectly through late calls.
@@ -1946,7 +1940,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		}
 	}
 	for idx in batch.scoped_owned_base_nodes.keys() {
-		t.scoped_owned_base_log << idx
+		t.scoped_owned_base_log << flat.NodeId(idx)
 	}
 	t.scoped_owned_base_log << batch.scoped_owned_base_log
 	t.inplace_child_log << batch.inplace_child_log
@@ -2631,8 +2625,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			}
 		}
 		if t.retain_worker_results && t.worker_scope != unsafe { nil } {
-			mut master_base_nodes := t.scoped_owned_base_nodes.keys()
-			master_base_nodes << t.scoped_owned_base_log
+			mut master_base_nodes := t.scoped_owned_base_node_ids()
 			for write in t.deferred_base_writes {
 				master_base_nodes << write.idx
 			}
@@ -2677,8 +2670,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 				t.clone_deferred_worker_writes_from(deferred_start)
 				transform_worker_scope_free(ww.worker_scope)
 			} else if ww.worker_scope != unsafe { nil } {
-				mut worker_base_nodes := ww.scoped_owned_base_nodes.keys()
-				worker_base_nodes << ww.scoped_owned_base_log
+				mut worker_base_nodes := ww.scoped_owned_base_node_ids()
 				for item in chunks[ci + 1] {
 					worker_base_nodes << item.fn_idx
 				}

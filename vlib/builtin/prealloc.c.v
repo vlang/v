@@ -34,8 +34,8 @@ const prealloc_block_size = 16 * 1024 * 1024
 // size of the first chunk for a scoped prealloc arena. Request-scoped arenas
 // should not force a 16MB libc allocation for every request.
 const prealloc_scope_block_size = 256 * 1024
-// Bound retained scope blocks to 16 MiB per thread, including compiler workers.
-const prealloc_recycle_cache_slots = 64
+// Bound retained scope blocks to 8 MiB per thread, including compiler workers.
+const prealloc_recycle_cache_slots = 32
 
 // `malloc` has to return memory suitably aligned for any V value. Keep the
 // default at the common max alignment used by libc malloc on current targets.
@@ -46,7 +46,7 @@ __global g_prealloc_allocation_count i64
 __global g_prealloc_allocated_bytes i64
 
 // prealloc_recyclable_block_size reports whether a block belongs to one of
-// the scope size classes (256K..4M, the geometric scope growth ladder) that
+// the scope size classes (256K..1M, the geometric scope growth ladder) that
 // the per-thread recycle cache retains.
 fn prealloc_recyclable_block_size(size isize) bool {
 	base := isize(prealloc_scope_block_size)
@@ -69,10 +69,7 @@ mut:
 
 @[inline]
 fn prealloc_recycle_cache_limit() int {
-	$if v3_backend ? {
-		return prealloc_recycle_cache_slots
-	}
-	return 64
+	return prealloc_recycle_cache_slots
 }
 
 // PreallocStats is a process-wide snapshot of instrumented arena allocations.

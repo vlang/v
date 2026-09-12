@@ -132,8 +132,9 @@ struct LocalClosureDeclCandidate {
 	name      string
 }
 
+// Rewrite logs use the same compact index width as the AST they address.
 struct InplaceChildRewrite {
-	slot  int
+	slot  i32
 	child flat.NodeId
 }
 
@@ -504,7 +505,7 @@ mut:
 	worker_scope                voidptr
 	scoped_base_nodes           int = -1
 	scoped_owned_base_nodes     map[int]bool
-	scoped_owned_base_log       []int
+	scoped_owned_base_log       []flat.NodeId
 	scoped_base_log_active      bool
 	scoped_promoted_texts       map[string]string
 	retain_worker_results       bool
@@ -1134,8 +1135,7 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	t.apply_ignored_comptime_for_nodes()
 	t.retain_current_worker_scope_all()
 	t.timing_profile('  [ttime] sum_eq+tail        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	mut owned_base_nodes := t.scoped_owned_base_nodes.keys()
-	owned_base_nodes << t.scoped_owned_base_log
+	owned_base_nodes := t.scoped_owned_base_node_ids()
 	// The per-item resolve memo was allocated inside this stage's disposable
 	// arena; drop the master checker's pointer before the driver releases it.
 	if !isnil(t.tc) {
@@ -1145,13 +1145,24 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
 }
 
+// Widen compact rewrite ids only when publishing the transform result.
+fn (t &Transformer) scoped_owned_base_node_ids() []int {
+	mut nodes := []int{cap: t.scoped_owned_base_nodes.len + t.scoped_owned_base_log.len}
+	for idx, _ in t.scoped_owned_base_nodes {
+		nodes << idx
+	}
+	for idx in t.scoped_owned_base_log {
+		nodes << int(idx)
+	}
+	return nodes
+}
+
 fn (mut t Transformer) retain_current_worker_scope_all() {
 	if !t.retain_worker_results || t.worker_scope == unsafe { nil } {
 		return
 	}
 	if !t.retained_worker_regions.any(it.scope == t.worker_scope) {
-		mut base_nodes := t.scoped_owned_base_nodes.keys()
-		base_nodes << t.scoped_owned_base_log
+		base_nodes := t.scoped_owned_base_node_ids()
 		t.retained_worker_regions << ScopedTransformRegion{
 			scope: t.worker_scope
 			new_start: 0
@@ -2091,7 +2102,7 @@ fn (mut t Transformer) record_inplace_child_rewrite(slot int, child flat.NodeId)
 	// append block. The master chunk already appends at the final offset.
 	if !t.defer_oor_writes && slot >= 0 && slot < t.shared_base_children {
 		t.inplace_child_log << InplaceChildRewrite{
-			slot: slot
+			slot: i32(slot)
 			child: child
 		}
 	}
@@ -2303,7 +2314,7 @@ fn (mut t Transformer) set_node_generic_params(idx int, gparams []string) {
 fn (mut t Transformer) mark_scoped_owned_base_node(idx int) {
 	if t.scope_parallel_workers && idx >= 0 && idx < t.scoped_base_nodes {
 		if t.scoped_base_log_active {
-			t.scoped_owned_base_log << idx
+			t.scoped_owned_base_log << flat.NodeId(idx)
 		} else {
 			t.scoped_owned_base_nodes[idx] = true
 		}
@@ -3886,7 +3897,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		t.scoped_base_nodes
 	}
 	w.scoped_owned_base_nodes = map[int]bool{}
-	w.scoped_owned_base_log = []int{}
+	w.scoped_owned_base_log = []flat.NodeId{}
 	w.scoped_base_log_active = false
 	w.scoped_promoted_texts = map[string]string{}
 	// Workers do not record transformed fns (that would write the master's
@@ -4643,7 +4654,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 	}
 	if t.scope_parallel_workers && t.retain_worker_results {
 		for idx in w.scoped_owned_base_nodes.keys() {
-			t.scoped_owned_base_log << idx
+			t.scoped_owned_base_log << flat.NodeId(idx)
 		}
 		t.scoped_owned_base_log << w.scoped_owned_base_log
 	}
@@ -4653,7 +4664,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			t.clone_scoped_worker_node(idx, w.worker_scope)
 		}
 		for idx in w.scoped_owned_base_log {
-			t.clone_scoped_worker_node(idx, w.worker_scope)
+			t.clone_scoped_worker_node(int(idx), w.worker_scope)
 		}
 	}
 	// Replay the call/fn-value resolutions the worker recorded for its
@@ -4763,11 +4774,11 @@ fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
 		unsafe {
 			t.tc.resolved_call_names.grow_len(amount)
 			t.tc.resolved_call_set.grow_len(amount)
-			vmemset(&t.tc.resolved_call_names[start], 0, isize(amount) * isize(sizeof(string)))
+			vmemset(&t.tc.resolved_call_names[start], 0, isize(amount) * isize(sizeof(&types.CachedName)))
 			vmemset(&t.tc.resolved_call_set[set_start], 0, isize(amount))
 		}
 	}
-	t.tc.resolved_call_names[idx] = t.tc.canonical_symbol(name)
+	t.tc.resolved_call_names[idx] = types.cached_name(t.tc.canonical_symbol(name))
 	t.tc.resolved_call_set[idx] = true
 }
 
@@ -4799,11 +4810,11 @@ fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
 		unsafe {
 			t.tc.resolved_fn_value_names.grow_len(amount)
 			t.tc.resolved_fn_value_set.grow_len(amount)
-			vmemset(&t.tc.resolved_fn_value_names[start], 0, isize(amount) * isize(sizeof(string)))
+			vmemset(&t.tc.resolved_fn_value_names[start], 0, isize(amount) * isize(sizeof(&types.CachedName)))
 			vmemset(&t.tc.resolved_fn_value_set[set_start], 0, isize(amount))
 		}
 	}
-	t.tc.resolved_fn_value_names[idx] = t.tc.canonical_symbol(name)
+	t.tc.resolved_fn_value_names[idx] = types.cached_name(t.tc.canonical_symbol(name))
 	t.tc.resolved_fn_value_set[idx] = true
 }
 
@@ -4832,7 +4843,7 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 			vmemset(&t.tc.resolved_call_set[start], 0, call_end - start)
 		}
 		for k in start .. call_end {
-			t.tc.resolved_call_names[k] = ''
+			t.tc.resolved_call_names[k] = unsafe { nil }
 		}
 	}
 	fn_value_end := if end < t.tc.resolved_fn_value_set.len {
@@ -4845,7 +4856,7 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 			vmemset(&t.tc.resolved_fn_value_set[start], 0, fn_value_end - start)
 		}
 		for k in start .. fn_value_end {
-			t.tc.resolved_fn_value_names[k] = ''
+			t.tc.resolved_fn_value_names[k] = unsafe { nil }
 		}
 	}
 	expr_end := if end < t.tc.expr_type_set.len { end } else { t.tc.expr_type_set.len }
@@ -4884,11 +4895,11 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 		return
 	}
 	if idx < t.tc.resolved_call_set.len {
-		t.tc.resolved_call_names[idx] = ''
+		t.tc.resolved_call_names[idx] = unsafe { nil }
 		t.tc.resolved_call_set[idx] = false
 	}
 	if idx < t.tc.resolved_fn_value_set.len {
-		t.tc.resolved_fn_value_names[idx] = ''
+		t.tc.resolved_fn_value_names[idx] = unsafe { nil }
 		t.tc.resolved_fn_value_set[idx] = false
 	}
 	if idx < t.tc.expr_type_set.len {

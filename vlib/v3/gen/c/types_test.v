@@ -196,7 +196,7 @@ fn test_json_helper_scan_requires_legacy_json_module() {
 		flat.Node{ kind: .ident, value: 'pointer', typ: '&int' }]
 	ast.children = [flat.NodeId(1), flat.NodeId(2)]
 	mut tc := types.TypeChecker.new(&ast)
-	tc.resolved_call_names = ['json.encode', '', '']
+	tc.resolved_call_names = [types.cached_name('json.encode'), unsafe { nil }, unsafe { nil }]
 	tc.resolved_call_set = [true, false, false]
 	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_),
 		types.Type(types.Pointer{ base_type: types.Type(types.int_) })]

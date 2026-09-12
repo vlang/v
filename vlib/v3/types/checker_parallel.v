@@ -1559,11 +1559,11 @@ fn restore_check_load_heap(mut order []int, loads []i64) {
 // serial flow produced with direct writes.
 fn (mut tc TypeChecker) merge_own_sparse_caches() {
 	for idx, name in tc.sparse_resolved_call_names {
-		tc.resolved_call_names[idx] = name
+		tc.resolved_call_names[idx] = cached_name(name)
 		tc.resolved_call_set[idx] = true
 	}
 	for idx, name in tc.sparse_resolved_fn_values {
-		tc.resolved_fn_value_names[idx] = name
+		tc.resolved_fn_value_names[idx] = cached_name(name)
 		tc.resolved_fn_value_set[idx] = true
 	}
 	for idx, _ in tc.sparse_statement_nodes {
@@ -2885,10 +2885,10 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 	for item in *items {
 		for idx in item.range_lo .. item.fn_idx + 1 {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				tc.resolved_call_names[idx] = tc.resolved_call_names[idx].clone()
+				tc.resolved_call_names[idx] = cached_name(tc.resolved_call_names[idx].value.clone())
 			}
 			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				tc.resolved_fn_value_names[idx] = tc.resolved_fn_value_names[idx].clone()
+				tc.resolved_fn_value_names[idx] = cached_name(tc.resolved_fn_value_names[idx].value.clone())
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false) {
@@ -2931,10 +2931,10 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 	for item in items {
 		for idx in item.range_lo .. item.fn_idx + 1 {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				tc.resolved_call_names[idx] = tc.resolved_call_names[idx].clone()
+				tc.resolved_call_names[idx] = cached_name(tc.resolved_call_names[idx].value.clone())
 			}
 			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				tc.resolved_fn_value_names[idx] = tc.resolved_fn_value_names[idx].clone()
+				tc.resolved_fn_value_names[idx] = cached_name(tc.resolved_fn_value_names[idx].value.clone())
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true) or {
@@ -3028,7 +3028,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		if tc.parallel_check_sparse {
 			tc.sparse_resolved_call_names[idx] = owned_name
 		} else {
-			tc.resolved_call_names[idx] = owned_name
+			tc.resolved_call_names[idx] = cached_name(owned_name)
 			tc.resolved_call_set[idx] = true
 		}
 	}
@@ -3037,7 +3037,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		if tc.parallel_check_sparse {
 			tc.sparse_resolved_fn_values[idx] = owned_name
 		} else {
-			tc.resolved_fn_value_names[idx] = owned_name
+			tc.resolved_fn_value_names[idx] = cached_name(owned_name)
 			tc.resolved_fn_value_set[idx] = true
 		}
 	}

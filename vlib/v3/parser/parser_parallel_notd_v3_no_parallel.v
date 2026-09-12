@@ -973,11 +973,8 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 			cid
 		}
 	}
-	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
-	mut cache_vals := []string{len: 4096}
-	mut type_cache_ptrs := unsafe { []voidptr{len: 4096} }
-	mut type_cache_vals := []string{len: 4096}
-	mut type_cache_ids := []u16{len: 4096}
+	mut value_cache := flat.TextProbeCache{}
+	mut type_cache := flat.TextProbeCache{}
 	for k in 0 .. w.a.nodes.len {
 		mut node := w.a.nodes[k]
 		if node.children_count != 0 {
@@ -993,10 +990,10 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		// are rebound here; missing texts go to the ordered serial tail so the
 		// canonical table's insertion order matches the serial merge.
 		mut all_hit := true
-		node.value, all_hit = p.a.probe_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
+		node.value, all_hit = p.a.probe_text_ptr_cached(node.value, mut value_cache.ptrs, mut value_cache.values)
 		mut hit := true
 		mut type_id := u16(0)
-		type_id, node.typ, hit = p.a.probe_type_text_ptr_cached(node.typ, mut type_cache_ptrs, mut type_cache_vals, mut type_cache_ids)
+		type_id, node.typ, hit = p.a.probe_type_text_ptr_cached(node.typ, mut type_cache.ptrs, mut type_cache.values, mut type_cache.ids)
 		node.set_type_text_id(type_id)
 		all_hit = all_hit && hit
 		params := node.generic_params()
@@ -1004,7 +1001,7 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 			mut canonical_params := []string{cap: params.len}
 			mut params_hit := true
 			for item in params {
-				canonical, item_hit := p.a.probe_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
+				canonical, item_hit := p.a.probe_text_ptr_cached(item, mut value_cache.ptrs, mut value_cache.values)
 				canonical_params << canonical
 				params_hit = params_hit && item_hit
 			}

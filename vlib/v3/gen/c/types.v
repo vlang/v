@@ -740,7 +740,7 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 			continue
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
-			name := g.tc.resolved_call_names[idx]
+			name := g.tc.resolved_call_names[idx].value
 			if name in g.tc.fn_ret_types {
 				// collect_declaration_signature_types() already processed this exact
 				// return entry; only calls without checker return metadata need their

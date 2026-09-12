@@ -3462,13 +3462,26 @@ fn (mut t Transformer) ensure_node_context_map_capacity() {
 	if t.node_context_read_only {
 		return
 	}
-	if t.node_module_map_cache.len < t.a.nodes.len {
-		t.node_module_map_cache.ensure_cap(t.a.nodes.cap)
-		t.node_module_map_cache << []u32{len: t.a.nodes.len - t.node_module_map_cache.len}
+	grow_node_context_cache(mut t.node_module_map_cache, t.a.nodes.len, t.a.nodes.cap)
+	grow_node_context_cache(mut t.node_file_map_cache, t.a.nodes.len, t.a.nodes.cap)
+}
+
+fn grow_node_context_cache(mut cache []u32, size int, capacity int) {
+	old_len := cache.len
+	if old_len >= size {
+		return
 	}
-	if t.node_file_map_cache.len < t.a.nodes.len {
-		t.node_file_map_cache.ensure_cap(t.a.nodes.cap)
-		t.node_file_map_cache << []u32{len: t.a.nodes.len - t.node_file_map_cache.len}
+	if cache.cap < capacity {
+		// Use the AST's reserved size without rounding each side table up again.
+		mut grown := []u32{cap: capacity}
+		grown << cache
+		// Transfer the new backing; this local has no other surviving reference.
+		cache = unsafe { grown }
+	}
+	// Extend in place instead of retaining a temporary zero-filled array.
+	unsafe {
+		cache.grow_len(size - old_len)
+		vmemset(&cache[old_len], 0, isize(size - old_len) * isize(sizeof(u32)))
 	}
 }
 
@@ -5887,7 +5900,7 @@ fn (mut t Transformer) clear_resolved_call(id flat.NodeId) {
 		return
 	}
 	if idx >= 0 && idx < t.tc.resolved_call_names.len {
-		t.tc.resolved_call_names[idx] = ''
+		t.tc.resolved_call_names[idx] = unsafe { nil }
 		t.tc.resolved_call_set[idx] = false
 	}
 }
@@ -10938,7 +10951,7 @@ fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 		''
 	}
 	if call_name.len == 0 && src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx] {
-		call_name = t.tc.resolved_call_names[src_idx]
+		call_name = t.tc.resolved_call_names[src_idx].value
 	}
 	if call_name.len > 0 && !t.cloned_call_has_exact_generic_callee(dst_idx)
 		&& !t.resolved_call_is_generic_fn(call_name) {
@@ -10951,7 +10964,7 @@ fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 	}
 	if fn_value.len == 0 && src_idx < t.tc.resolved_fn_value_set.len
 		&& t.tc.resolved_fn_value_set[src_idx] {
-		fn_value = t.tc.resolved_fn_value_names[src_idx]
+		fn_value = t.tc.resolved_fn_value_names[src_idx].value
 	}
 	if fn_value.len > 0 {
 		overlay.resolved_fn_values[dst_idx] = fn_value

@@ -12,12 +12,12 @@ fn test_node_cache_reset_clears_string_slots_and_set_bits() {
 		assert tc.resolved_call_set.len == n
 		assert tc.resolved_fn_value_set.len == n
 		for i in 0 .. n {
-			assert tc.resolved_call_names[i] == ''
-			assert tc.resolved_fn_value_names[i] == ''
+			assert isnil(tc.resolved_call_names[i])
+			assert isnil(tc.resolved_fn_value_names[i])
 			assert !tc.resolved_call_set[i]
 			assert !tc.resolved_fn_value_set[i]
-			tc.resolved_call_names[i] = 'previous.call'
-			tc.resolved_fn_value_names[i] = 'previous.value'
+			tc.resolved_call_names[i] = cached_name('previous.call')
+			tc.resolved_fn_value_names[i] = cached_name('previous.value')
 			tc.resolved_call_set[i] = true
 			tc.resolved_fn_value_set[i] = true
 		}

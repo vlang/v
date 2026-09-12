@@ -55,6 +55,27 @@ fn test_c_type_cache_reuses_entry_for_equal_types() {
 	assert tc.c_type(first) == tc.c_type(again)
 }
 
+fn test_c_type_cache_preserves_types_after_recent_slot_eviction() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	mut expected := []string{}
+	for size in 1 .. 2050 {
+		expected << tc.c_type(Type(ArrayFixed{
+			elem_type: Type(int_)
+			len: size
+			len_expr: 'size'
+		}))
+	}
+	for i, name in expected {
+		assert name.ends_with('_${i + 1}')
+		assert tc.c_type(Type(ArrayFixed{
+			elem_type: Type(int_)
+			len: i + 1
+			len_expr: 'size'
+		})) == name
+	}
+}
+
 fn test_private_c_struct_names_keep_the_struct_tag() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

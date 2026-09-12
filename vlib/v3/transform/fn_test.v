@@ -109,7 +109,7 @@ fn test_cloned_worker_merge_replays_relocated_children_and_body_roots() {
 			children_count: 1
 		}
 		worker_ast.children[base_slot] = new_leaf
-		worker.inplace_child_log << InplaceChildRewrite{ slot: base_slot, child: new_leaf }
+		worker.inplace_child_log << InplaceChildRewrite{ slot: i32(base_slot), child: new_leaf }
 		a.add_node(flat.Node{ kind: .int_literal, value: '3' })
 		a.add_child(leaf)
 		merged_leaf := flat.NodeId(a.nodes.len)
@@ -1029,18 +1029,18 @@ fn test_merged_resolution_cache_initializes_gaps_and_preserves_entries() {
 	t.set_resolved_fn_value_entry(2, 'main.callback')
 	t.set_resolved_call_entry(4096, 'main.last')
 	t.set_resolved_fn_value_entry(8192, 'main.final_callback')
-	assert tc.resolved_call_names[1] == 'main.first'
+	assert tc.resolved_call_names[1].value == 'main.first'
 	assert tc.resolved_call_set[1]
-	assert tc.resolved_call_names[4096] == 'main.last'
+	assert tc.resolved_call_names[4096].value == 'main.last'
 	assert tc.resolved_call_set[4096]
-	assert tc.resolved_fn_value_names[2] == 'main.callback'
+	assert tc.resolved_fn_value_names[2].value == 'main.callback'
 	assert tc.resolved_fn_value_set[2]
-	assert tc.resolved_fn_value_names[8192] == 'main.final_callback'
+	assert tc.resolved_fn_value_names[8192].value == 'main.final_callback'
 	assert tc.resolved_fn_value_set[8192]
 	for i in 3 .. 4096 {
-		assert tc.resolved_call_names[i] == ''
+		assert isnil(tc.resolved_call_names[i])
 		assert !tc.resolved_call_set[i]
-		assert tc.resolved_fn_value_names[i] == ''
+		assert isnil(tc.resolved_fn_value_names[i])
 		assert !tc.resolved_fn_value_set[i]
 	}
 }

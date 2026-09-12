@@ -342,6 +342,12 @@ fn new_map_data(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn Map
 	free_fn MapFreeFn) &VMapData {
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > int(sizeof(voidptr))
+	// Arenas retain old metadata slabs, so reserve a modest probe tail before
+	// insertion instead of repeatedly copying the slab to add four entries.
+	mut initial_extra_metas := u32(extra_metas_inc)
+	$if prealloc {
+		initial_extra_metas = 32
+	}
 	return &VMapData{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -350,7 +356,7 @@ fn new_map_data(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn Map
 		shift: init_log_capicity
 		key_values: DenseArray{ key_bytes: key_bytes, value_bytes: value_bytes }
 		metas: unsafe { nil }
-		extra_metas: extra_metas_inc
+		extra_metas: initial_extra_metas
 		count: 0
 		has_string_keys: has_string_keys
 		hash_fn: hash_fn

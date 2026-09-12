@@ -302,6 +302,15 @@ created by lowering. V1 and V2 do not need a separate step because their checker
 updates the typed AST/table that later stages keep using directly; v3's flat AST
 keeps those per-node caches outside the nodes.
 
+Resolved call and function-value caches use `types.CachedName` pointers, allocating a string
+header only for occupied slots. The existing set bits guard reads. `types.cached_name()` creates
+an immutable entry; `types.promote_cached_name()` preserves both its header and string bytes
+when a worker or transform arena is released. Text interning uses per-pass `flat.TextProbeCache`
+scratch on the stack, while canonical text remains owned by the AST.
+After parallel transform merges its append regions, `FlatAst.discard_unused_capacity()`
+releases unused AST pages on macOS and Linux in preallocated builds. It preserves the virtual
+reservation and live nodes, so later appends keep their existing capacity.
+
 Imports are resolved recursively: after parsing the input file, the driver
 collects `import_decl` nodes, resolves module paths, parses module files, and
 repeats until no new imports are found.
