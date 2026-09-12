@@ -677,6 +677,12 @@ pub fn (mut p Preferences) default_c_compiler() {
 			p.ccompiler = 'gcc'
 			return
 		}
+		// Same reason as the handoff guard in try_to_use_tcc_by_default: the bundled tcc
+		// this otherwise falls back to must not shape C that another toolchain compiles.
+		if p.only_emits_c() {
+			p.ccompiler = 'gcc'
+			return
+		}
 		p.ccompiler = windows_default_c_compiler(os.dir(vexe_path()))
 		return
 	}

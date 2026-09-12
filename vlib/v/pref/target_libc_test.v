@@ -100,6 +100,35 @@ fn test_detected_musl_survives_non_linking_output() {
 	assert cross.is_musl
 }
 
+fn test_object_output_stops_before_linking_but_still_compiles() {
+	// The two predicates differ on exactly one mode, and the difference matters: with
+	// `-o out.o` V does run the C compiler, so `$if tinyc` has to keep telling the truth
+	// about it, or the `#flag` and atomics shims TinyCC needs would be left out.
+	mut object := Preferences{
+		os:       ._auto
+		is_o:     true
+		out_name: 'unit.o'
+	}
+	assert object.stops_before_linking()
+	assert !object.only_emits_c()
+
+	for out_name in ['out.c', '/tmp/-'] {
+		mut p := Preferences{
+			os:       ._auto
+			out_name: out_name
+		}
+		assert p.stops_before_linking(), out_name
+		assert p.only_emits_c(), out_name
+	}
+
+	mut linked_by_v := Preferences{
+		os:       ._auto
+		out_name: 'prog'
+	}
+	assert !linked_by_v.stops_before_linking()
+	assert !linked_by_v.only_emits_c()
+}
+
 fn test_generated_c_project_forgets_the_detected_libc() {
 	// `-generate-c-project` writes the C next to build.sh/Makefile and returns, so the
 	// libc belongs to whatever those scripts are pointed at, not to this machine.

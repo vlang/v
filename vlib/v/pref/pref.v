@@ -331,15 +331,23 @@ fn detect_musl(mut res Preferences) {
 	}
 }
 
-// stops_before_linking reports whether V hands its output to another toolchain instead of
-// producing a finished, V-linked artefact: portable `-os cross` C, `-o out.c`, `-o -`
-// streamed to stdout, `-generate-c-project`, which writes C next to the build scripts that
-// will compile it, and `-o out.o`/`-is_o`, which only ever reaches the C compiler with
-// `-c`. Whatever V infers about this machine is then a guess about somebody else's build,
-// so the inferences that would narrow the output have to be held back.
-fn (p &Preferences) stops_before_linking() bool {
-	return p.output_cross_c || p.out_name.ends_with('.c') || p.generate_c_project != '' || p.is_o
+// only_emits_c reports whether V writes C for somebody else's build and never runs a C
+// compiler on it at all: portable `-os cross` C, `-o out.c`, `-o -` streamed to stdout,
+// and `-generate-c-project`, which writes C next to the build scripts that will compile
+// it. Nothing V can observe about this machine's toolchain describes that build, so no
+// compiler-specific construct may be baked into the output.
+pub fn (p &Preferences) only_emits_c() bool {
+	return p.output_cross_c || p.out_name.ends_with('.c') || p.generate_c_project != ''
 		|| p.should_output_to_stdout()
+}
+
+// stops_before_linking reports whether V hands its output to another toolchain instead of
+// producing a finished, V-linked artefact. That is everything only_emits_c covers, plus
+// `-o out.o`/`-is_o`: V does compile an object there, but somebody else links it. Whatever
+// V infers about this machine is then a guess about somebody else's build, so the
+// inferences that would narrow the output have to be held back.
+fn (p &Preferences) stops_before_linking() bool {
+	return p.only_emits_c() || p.is_o
 }
 
 // forget_host_glibc_for_foreign_targets discards the glibc that `detect_musl` inferred
