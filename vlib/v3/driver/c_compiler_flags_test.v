@@ -521,3 +521,50 @@ fn test_add_c_language_runtime_link_flags() {
 	add_c_language_runtime_link_flags(mut existing, existing.clone(), 'objective-c++', target)
 	assert existing == ['-lstdc++', '-lobjc']
 }
+
+fn test_tcc_atomic_object_key_separates_compilers_targets_and_args() {
+	root := os.join_path(os.vtmp_dir(), 'v3_atomic_object_key_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	target := pref.Target{
+		os: 'macos'
+		arch: 'arm64'
+		object_format: 'macho'
+	}
+	first_tcc := os.join_path(root, 'first_tcc')
+	second_tcc := os.join_path(root, 'second_tcc')
+	os.write_file(first_tcc, 'first')!
+	os.write_file(second_tcc, 'second compiler build')!
+	args := ['-std=gnu11', '-fwrapv']
+	key := tcc_atomic_object_key('source-signature', first_tcc, args, target)
+
+	assert key == tcc_atomic_object_key('source-signature', first_tcc, args, target)
+	// A different compiler build must not reuse the object: tcc emits ELF
+	// objects even on macOS, and rejects a Mach-O object with
+	// "unrecognized file type" instead of falling back to reassembling atomic.S.
+	assert key != tcc_atomic_object_key('source-signature', second_tcc, args, target)
+	assert key != tcc_atomic_object_key('other-signature', first_tcc, args, target)
+	assert key != tcc_atomic_object_key('source-signature', first_tcc, ['-std=gnu11'], target)
+	assert key != tcc_atomic_object_key('source-signature', first_tcc, args, pref.Target{
+		...target
+		arch: 'amd64'
+	})
+}
+
+fn test_tcc_compiler_identity_tracks_rebuilds() {
+	root := os.join_path(os.vtmp_dir(), 'v3_atomic_compiler_identity_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	compiler := os.join_path(root, 'tcc.exe')
+	os.write_file(compiler, 'first')!
+	first := tcc_compiler_identity(compiler)
+	assert first == tcc_compiler_identity(compiler)
+	// `make` re-pulls and rebuilds thirdparty/tcc in place, so the identity has
+	// to change when the executable at the same path does.
+	os.write_file(compiler, 'a rebuilt compiler with a different size')!
+	assert first != tcc_compiler_identity(compiler)
+}
