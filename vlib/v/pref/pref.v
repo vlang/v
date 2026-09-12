@@ -103,6 +103,7 @@ pub mut:
 	// nofmt            bool   // disable vfmt
 	is_glibc           bool // if GLIBC will be linked
 	is_musl            bool // if MUSL will be linked
+	libc_set_by_flag   bool // true when `-glibc`/`-musl` pinned the libc explicitly, instead of it being detected on the host
 	is_test            bool // `v test string_test.v`
 	is_script          bool // single file mode (`v program.v`), main function can be skipped
 	is_vsh             bool // v script (`file.vsh`) file, the `os` module should be made global
@@ -328,6 +329,33 @@ fn detect_musl(mut res Preferences) {
 		res.is_musl = true
 		res.is_glibc = false
 	}
+}
+
+// forget_host_libc_for_foreign_targets discards the libc that `detect_musl` probed on
+// the host, when that probe cannot describe the program being built.
+//
+// `ldd --version` only answers "which libc is installed here". That is the right answer
+// while V compiles and links a host binary itself, and a useless one as soon as somebody
+// else performs the link: with `-o out.c` V only emits C, and with `-os <other>` the
+// target is not this machine at all. Guessing glibc there is not a harmless default,
+// because `$if glibc` then emits calls to the glibc-only `backtrace`/`backtrace_symbols`,
+// so a glibc host silently produces C that cannot link against musl:
+//
+//	ld.lld: error: undefined symbol: backtrace
+//
+// Leaving the libc unknown keeps such output portable across both libcs. `-glibc`/`-musl`
+// still pin it, for cross builds that do know their target.
+fn (mut p Preferences) forget_host_libc_for_foreign_targets() {
+	if p.libc_set_by_flag {
+		return
+	}
+	v_links_for_the_host := !p.output_cross_c && !p.out_name.ends_with('.c')
+		&& p.os in [._auto, get_host_os()]
+	if v_links_for_the_host {
+		return
+	}
+	p.is_glibc = false
+	p.is_musl = false
 }
 
 @[noreturn]
@@ -831,11 +859,13 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 			'-musl' {
 				res.is_musl = true
 				res.is_glibc = false
+				res.libc_set_by_flag = true
 				res.build_options << arg
 			}
 			'-glibc' {
 				res.is_musl = false
 				res.is_glibc = true
+				res.libc_set_by_flag = true
 				res.build_options << arg
 			}
 			'-no-bounds-checking' {
@@ -1382,7 +1412,9 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 	if res.ccompiler == 'musl-gcc' {
 		res.is_musl = true
 		res.is_glibc = false
+		res.libc_set_by_flag = true
 	}
+	res.forget_host_libc_for_foreign_targets()
 	if res.is_musl {
 		// make `$if musl? {` work:
 		res.compile_defines << 'musl'
