@@ -85,17 +85,7 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 
 	// Once we've failed now try and explain why we failed to connect
 	// to any of these addresses
-	mut err_builder := strings.new_builder(1024)
-	err_builder.write_string('dial_tcp failed for address ${address}\n')
-	err_builder.write_string('tried addrs:\n')
-	for i := 0; i < errs.len; i++ {
-		addr := addrs[i]
-		why := errs[i]
-		err_builder.write_string('\t${addr}: ${why}\n')
-	}
-
-	// failed
-	return error(err_builder.str())
+	return dial_error(addrs, errs, 'dial_tcp failed for address ${address}')
 }
 
 // dial_tcp_with_bind will bind the given local address `laddr` and dial.
@@ -104,16 +94,21 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 		return error('${err.msg()}; could not resolve address ${saddr} in dial_tcp_with_bind')
 	}
 
+	// Keep track of dialing errors that take place
+	mut errs := []IError{}
+
 	// Very simple dialer
 	for addr in addrs {
 		mut s := new_tcp_socket(addr.family()) or {
 			return error('${err.msg()}; could not create new tcp socket in dial_tcp_with_bind')
 		}
 		s.bind(laddr) or {
+			errs << err
 			s.close() or { continue }
 			continue
 		}
 		s.connect(addr) or {
+			errs << err
 			// Connection failed
 			s.close() or { continue }
 			continue
@@ -131,7 +126,42 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 		return conn
 	}
 	// failed
-	return error('dial_tcp_with_bind failed for address ${saddr}')
+	return dial_error(addrs, errs, 'dial_tcp_with_bind failed for address ${saddr}')
+}
+
+// dial_error produces the error that a dial returns, when every candidate
+// address of a host failed. The message lists each tried address with its own
+// error, while the code of the returned error is the *last* non 0 per address
+// code (it is 0, only if no attempt reported a code at all).
+//
+// Rationale for using the last code: a host can resolve to several addresses,
+// that fail differently (on a dual stack machine, the IPv6 candidate often
+// fails with ENETUNREACH, while the IPv4 one fails with ECONNREFUSED), so a
+// single code can not describe all of them. The last attempt is the one, that
+// the dialer finally gave up on, so its code is the most useful one for a
+// caller, that wants to classify the failure; the other codes are still
+// visible in the message. When all attempts failed with the same code (the
+// common case, for example a single resolved address), that code is propagated
+// unchanged.
+//
+// Without a code here, callers like net.http's retry loop, and
+// net.openssl.SSLConn.dial (which returns dial_tcp's error verbatim), would see
+// err.code() == 0, and could not distinguish a hopeless failure from a
+// retryable one. See https://github.com/vlang/v/issues/28510 .
+fn dial_error(addrs []Addr, errs []IError, header string) IError {
+	mut err_builder := strings.new_builder(1024)
+	err_builder.write_string('${header}\n')
+	err_builder.write_string('tried addrs:\n')
+	mut last_code := 0
+	for i := 0; i < errs.len && i < addrs.len; i++ {
+		addr := addrs[i]
+		why := errs[i]
+		err_builder.write_string('\t${addr}: ${why}\n')
+		if why.code() != 0 {
+			last_code = why.code()
+		}
+	}
+	return error_with_code(err_builder.str(), last_code)
 }
 
 // close closes the tcp connection
