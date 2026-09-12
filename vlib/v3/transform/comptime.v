@@ -1259,7 +1259,33 @@ fn (t &Transformer) comptime_method_call_arity_matches(node flat.Node, method Me
 	if method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...') {
 		return actual_count >= method.params.len - 1
 	}
-	return actual_count == method.params.len
+	if actual_count == method.params.len {
+		return true
+	}
+	// A veb route handler may omit its `ctx` parameter, in which case it is not in
+	// the reflected parameter list but still exists in the signature. Reflected
+	// `app.$method(mut ctx)` calls pass that context explicitly, so one extra
+	// argument is the correct arity for such a method.
+	return actual_count == method.params.len + 1 && t.method_has_implicit_veb_ctx(method)
+}
+
+// method_has_implicit_veb_ctx reports whether `method` is a veb route handler that
+// declares no `ctx` parameter and therefore had one inserted into its signature.
+fn (t &Transformer) method_has_implicit_veb_ctx(method MethodMeta) bool {
+	if isnil(t.tc) || t.tc.fn_implicit_veb_ctx.len == 0 || method.name.len == 0 {
+		return false
+	}
+	receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
+	if receiver_name.len == 0 {
+		return false
+	}
+	key := '${receiver_name}.${method.name}'
+	for name in [key, c_name(key)] {
+		if t.tc.fn_implicit_veb_ctx[name] {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string, method MethodMeta, inner_vars []string) ?flat.NodeId {

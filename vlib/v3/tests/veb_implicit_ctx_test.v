@@ -244,3 +244,53 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'first:second', run.output
 }
+
+// A reflected `app.$method(mut ctx)` call passes the hidden veb context as its
+// only argument. Handlers that declare no parameters of their own still accept
+// it, so the specialization must be kept: dropping it as an arity mismatch made
+// veb answer `HTTP/ 0` for every route whose handler omitted `ctx`.
+fn test_veb_reflected_implicit_ctx_call_without_spread_args() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (mut app App) index() veb.Result {
+	println("index called")
+	return veb.Result{}
+}
+
+pub fn (mut app App) explicit(mut ctx Context) veb.Result {
+	println("explicit called")
+	return veb.Result{}
+}
+
+fn dispatch[A, X](mut app A, mut ctx X) {
+	$for method in A.methods {
+		$if method.return_type is veb.Result {
+			app.$method(mut ctx)
+		}
+	}
+}
+
+fn main() {
+	mut app := App{}
+	mut ctx := Context{}
+	dispatch(mut app, mut ctx)
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_no_spread.v')
+	os.write_file(src_file, src) or { panic(err) }
+	bin_out := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_no_spread')
+	os.rm(bin_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().split_into_lines() == ['index called', 'explicit called'], run.output
+}
