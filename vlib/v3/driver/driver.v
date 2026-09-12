@@ -233,6 +233,41 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	return atomic_s
 }
 
+// tcc_compiler_identity describes which compiler build a cached object came
+// from. Hashing the whole executable on every link would cost more than the
+// object cache saves, so stat metadata stands in for its contents: inode, size
+// and nanosecond mtime/ctime all move when thirdparty/tcc is rebuilt, pulled or
+// reinstalled. Size with a second-resolution mtime does not - it cannot tell an
+// in-place rebuild to the same size within one second from no change at all, nor
+// an install that preserves mtime - and reusing the object across that would
+// recreate the incompatible-object failure this key exists to prevent.
+// Platforms without that metadata fall back to hashing the executable, which is
+// exact; only they pay for the read.
+fn tcc_compiler_identity(tcc_path string) string {
+	resolved := os.real_path(os.find_abs_path_of_executable(tcc_path) or { tcc_path })
+	metadata := modulecache.file_metadata_signature(resolved)
+	if metadata.len > 0 {
+		return '${resolved}\x00${metadata}'
+	}
+	return '${resolved}\x00${modulecache.file_signature(resolved)}'
+}
+
+// tcc_atomic_object_key names the cached atomic.S object. Only the compiler that
+// produced the object can consume it again - tcc emits ELF objects even on
+// macOS, where clang emits Mach-O and neither reads the other's format - so the
+// key covers the compiler build, the target and the assembler arguments as well
+// as atomic.S itself. Keying on atomic.S alone let one producer publish an
+// object that every later link rejected with "unrecognized file type", silently
+// degrading every tcc build on the machine to the `cc` fallback.
+fn tcc_atomic_object_key(source_signature string, tcc_path string, args []string, target pref.Target) string {
+	mut hash := u64(1469598103934665603)
+	for identity in [source_signature, tcc_compiler_identity(tcc_path), target.os, target.arch,
+		target.object_format, args.join('\x00')] {
+		hash = c_hash_bytes(hash, identity.bytes())
+	}
+	return hash.hex()
+}
+
 // tcc_atomic_arg returns the atomic-support argument for a tcc link,
 // preferring a cached precompiled object: assembling atomic.S inside every
 // link costs ~28ms, while the object only changes when the source does.
@@ -247,13 +282,6 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 	if signature.len == 0 {
 		return atomic_s
 	}
-	wrapv_suffix := if wrapv_flag.len > 0 { '_wrapv' } else { '' }
-	object_path := os.join_path(cache_dir, 'atomic_${naming.sanitize(signature)}${wrapv_suffix}.o')
-	if os.is_file(object_path) {
-		return object_path
-	}
-	os.mkdir_all(cache_dir) or { return atomic_s }
-	build_path := '${object_path}.tmp.${os.getpid()}'
 	mut args := ['-std=gnu11']
 	if tcc_includes != '' {
 		args << tcc_includes
@@ -261,6 +289,13 @@ fn tcc_atomic_arg(prefs &pref.Preferences, tcc_path string, tcc_includes string)
 	if wrapv_flag.len > 0 {
 		args << wrapv_flag
 	}
+	key := tcc_atomic_object_key(signature, tcc_path, args, prefs.target)
+	object_path := os.join_path(cache_dir, 'atomic_${naming.sanitize(signature)}_${key}.o')
+	if os.is_file(object_path) {
+		return object_path
+	}
+	os.mkdir_all(cache_dir) or { return atomic_s }
+	build_path := '${object_path}.tmp.${os.getpid()}'
 	args << ['-c', atomic_s, '-o', build_path]
 	result := cmdexec.run(tcc_path, args)
 	if result.exit_code != 0 || !os.is_file(build_path) {
