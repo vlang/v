@@ -86,8 +86,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 	if vcbefore_subject_match.len > 3 {
 		_, vccommit = line_to_timestamp_and_commit(vcbefore_subject_match)
 	} else {
-		scripting.verbose_trace(@FN,
-			'the v commit did not match anything in the vc log; try --timestamp instead.')
+		scripting.verbose_trace(@FN, 'the v commit did not match anything in the vc log; try --timestamp instead.')
 		vcbefore := scripting.run('git rev-list HEAD -n1 --timestamp --before=${v_timestamp} ')
 		_, vccommit = line_to_timestamp_and_commit(vcbefore)
 	}
@@ -152,7 +151,8 @@ pub struct VGitContext {
 pub:
 	cc          string = 'cc' // what C compiler to use for bootstrapping
 	cc_options  string // what additional C compiler options to use for bootstrapping
-	workdir     string = '/tmp'   // the base working folder
+	cc_ldflags  string // what additional linker options to use for bootstrapping
+	workdir     string = '/tmp' // the base working folder
 	commit_v    string = 'master' // the commit-ish that needs to be prepared
 	path_v      string // where is the local working copy v repo
 	path_vc     string // where is the local working copy vc repo
@@ -162,18 +162,17 @@ pub mut:
 	// these will be filled by vgitcontext.compile_oldv_if_needed()
 	commit_v__hash string // the git commit of the v repo that should be prepared
 	commit_vc_hash string // the git commit of the vc repo, corresponding to commit_v__hash
-	commit_v__ts   u64    // unix timestamp, that corresponds to commit_v__hash; filled by prepare_vc_source
+	commit_v__ts   u64 // unix timestamp, that corresponds to commit_v__hash; filled by prepare_vc_source
 	vexename       string // v or v.exe
 	vexepath       string // the full absolute path to the prepared v/v.exe
 	vvlocation     string // v.v or compiler/ or cmd/v, depending on v version
-	make_fresh_tcc bool   // whether to do 'make fresh_tcc' before compiling an old V.
-	show_vccommit  bool   // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
+	make_fresh_tcc bool // whether to do 'make fresh_tcc' before compiling an old V.
+	show_vccommit  bool // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
 }
 
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v,
-		vgit_context.vexename))
+	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v, vgit_context.vexename))
 	if os.is_dir(vgit_context.path_v) && os.is_executable(vgit_context.vexepath)
 		&& !vgit_context.show_vccommit {
 		// already compiled, no need to compile that specific v executable again
@@ -193,8 +192,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
 	}
-	v_commithash, vccommit_before, v_timestamp := prepare_vc_source(vgit_context.path_vc,
-		vgit_context.path_v, 'HEAD')
+	v_commithash, vccommit_before, v_timestamp := prepare_vc_source(vgit_context.path_vc, vgit_context.path_v, 'HEAD')
 	vgit_context.commit_v__hash = v_commithash
 	vgit_context.commit_v__ts = v_timestamp
 	vgit_context.commit_vc_hash = vccommit_before
@@ -256,15 +254,21 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		if vgit_context.commit_v__ts >= 1699341818 && !vgit_context.cc.contains('msvc') {
 			c_flags += '-lws2_32'
 		}
-		command_for_building_v_from_c_source = c(vgit_context.cc,
-			'${vc_v_cpermissive_flags} ${c_flags} -o cv.exe "${vc_source_file_location}" ${c_ldflags}')
-		command_for_selfbuilding = c('.\\cv.exe',
-			'${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
+		c_ldflags = vgit_context.cc_ldflags
 	} else {
-		command_for_building_v_from_c_source = c(vgit_context.cc,
-			'${vc_v_cpermissive_flags} ${c_flags} -o cv "${vc_source_file_location}" ${c_ldflags}')
-		command_for_selfbuilding = c('./cv',
-			'${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" -o ${vgit_context.vexename} {SOURCE}')
+		c_ldflags = '${c_ldflags} ${vgit_context.cc_ldflags}'.trim_space()
+	}
+	selfbuild_ldflags := if vgit_context.cc_ldflags == '' {
+		''
+	} else {
+		'-ldflags "${vgit_context.cc_ldflags}"'
+	}
+	if 'windows' == os.user_os() {
+		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv.exe "${vc_source_file_location}" ${c_ldflags}')
+		command_for_selfbuilding = c('.\\cv.exe', '${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" ${selfbuild_ldflags} -o ${vgit_context.vexename} {SOURCE}')
+	} else {
+		command_for_building_v_from_c_source = c(vgit_context.cc, '${vc_v_cpermissive_flags} ${c_flags} -o cv "${vc_source_file_location}" ${c_ldflags}')
+		command_for_selfbuilding = c('./cv', '${vc_v_bootstrap_flags} -cflags "${vc_v_cpermissive_flags}" ${selfbuild_ldflags} -o ${vgit_context.vexename} {SOURCE}')
 	}
 
 	scripting.run(command_for_building_v_from_c_source)
@@ -284,15 +288,13 @@ pub mut:
 	workdir     string = os.temp_dir() // the working folder (typically /tmp), where the tool will write
 	v_repo_url  string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
 	vc_repo_url string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
-	show_help   bool   // whether to show the usage screen
-	verbose     bool   // should the tool be much more verbose
+	show_help   bool // whether to show the usage screen
+	verbose     bool // should the tool be much more verbose
 }
 
 pub fn add_common_tool_options(mut context VGitOptions, mut fp flag.FlagParser) []string {
-	context.workdir = os.real_path(fp.string('workdir', `w`, context.workdir,
-		'A writable base folder. Default: ${context.workdir}'))
-	context.v_repo_url = fp.string('vrepo', 0, context.v_repo_url,
-		'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
+	context.workdir = os.real_path(fp.string('workdir', `w`, context.workdir, 'A writable base folder. Default: ${context.workdir}'))
+	context.v_repo_url = fp.string('vrepo', 0, context.v_repo_url, 'The url of the V repository. You can clone it locally too. See also --vcrepo below.')
 	context.vc_repo_url = fp.string('vcrepo', 0, context.vc_repo_url, 'The url of the vc repository. You can clone it
 ${flag.space}beforehand, and then just give the local folder
 ${flag.space}path here. That will eliminate the network ops

@@ -137,16 +137,39 @@ fn test_netbsd_marks_the_v1_compatibility_compiler() {
 fn test_gnumake_builds_the_v1_fallback_executable_for_every_native_host() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
 	assert source.contains('V1_FALLBACK_EXE = \$(dir \$(VEXE))v1_fallback\$(EXE_EXT)')
-	fallback_build := './v1\$(EXE_EXT) -no-parallel -d v1_fallback -o \$(V1_FALLBACK_EXE)'
-	assert source.count(fallback_build) == 2
-	assert !source.contains('V1_FALLBACK_BUILD')
+	installer := 'sh "\$(V1_FALLBACK_INSTALLER)" "./v1\$(EXE_EXT)" "\$(V1_FALLBACK_EXE)"'
+	assert source.count(installer) == 2
+	oldv_environment := 'CC="\$(CC)" OLDV_CCOPTIONS="\$(BOOTSTRAP_VC_CFLAGS)" OLDV_LDFLAGS="\$(BOOTSTRAP_LDFLAGS)"'
+	assert source.count(oldv_environment) == 2
+	assert !source.contains('-d v1_fallback -o \$(V1_FALLBACK_EXE)')
 }
 
 fn test_portable_make_builds_the_v1_fallback_executable_for_every_native_host() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'Makefile'))!
-	fallback_build := 'set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback'
-	assert source.count(fallback_build) == 1
-	assert !source.contains('rm -f v1_fallback')
+	assert source.count('sh ./cmd/tools/install_v1_fallback.sh ./v1 ./v1_fallback') == 1
+	assert source.contains('CC="\$(CC)" OLDV_CCOPTIONS="\$\$bootstrap_ccflags" OLDV_LDFLAGS="\$\$ldflags"')
+	assert !source.contains('set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback')
+}
+
+fn test_v1_fallback_installer_downloads_0_5_2_and_uses_oldv_on_failure() {
+	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'install_v1_fallback.sh'))!
+	assert source.contains('release_version=0.5.2')
+	assert source.contains('https://github.com/vlang/v/releases/download/\$release_version')
+	for asset in ['v_linux.zip', 'v_linux_arm64.zip', 'v_macos_arm64.zip', 'v_macos_x86_64.zip',
+		'v_windows.zip'] {
+		assert source.contains('asset=${asset}'), asset
+	}
+	assert source.contains('candidate_has_expected_version || {')
+	assert source.contains('cmd/tools/oldv.v --cache=false --command "\$oldv_copy" "\$release_version"')
+	assert source.contains('actual_sha256=\$(sha256_of "\$archive")')
+	oldv_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'oldv.v'))!
+	assert oldv_source.contains("if use_cache {\n\t\t\ttools << 'rsync'")
+	assert oldv_source.contains('oldv_required_tools(context.use_cache, context.cc)')
+	assert oldv_source.contains('tools << cc')
+	assert oldv_source.contains("env_ldflags := os.getenv('OLDV_LDFLAGS')")
+	vgit_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'modules', 'vgit', 'vgit.v'))!
+	assert vgit_source.contains("c_ldflags = '\${c_ldflags} \${vgit_context.cc_ldflags}'.trim_space()")
+	assert vgit_source.contains('\'-ldflags "\${vgit_context.cc_ldflags}"\'')
 }
 
 fn test_windows_makev_builds_the_v1_fallback_executable() {
@@ -164,19 +187,14 @@ fn test_windows_makev_builds_the_v1_fallback_executable() {
 	assert normalized.count('call :move_updated_to_v\nif !ERRORLEVEL! NEQ 0 goto :compile_error') == 5
 }
 
-fn test_v1_fallback_can_bootstrap_cmd_v_without_target_define() {
+fn test_v1_fallback_reports_the_requested_release_version() {
 	fallback := macos_v3_v1_fallback_executable()
 	if !os.is_executable(fallback) {
 		return
 	}
-	compiler := os.join_path(os.vtmp_dir(), 'v1_bootstrap_cmd_v_${os.getpid()}')
-	defer {
-		os.rm(compiler) or {}
-	}
-	result := run_macos_v3_test_process(fallback, ['-no-parallel', '-nocache', '-gc', 'none', '-o',
-		compiler, 'cmd/v'], macos_v3_test_vroot, {})
+	result := os.execute('${os.quoted_path(fallback)} version')
 	assert result.exit_code == 0, result.output
-	assert os.is_executable(compiler)
+	assert result.output.starts_with('V 0.5.2 '), result.output
 }
 
 fn test_macos_v3_old_compiler_uses_external_v1_command() {

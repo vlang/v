@@ -81,8 +81,10 @@ build, including compiler self-builds, is compiled by V3 in-process. The CLI and
 tool commands remain in `cmd/v`; commands such as `test` and `fmt` are external
 tools, and non-C backends remain separate builder tools.
 
-The standard bootstrap builds a sibling `v1_fallback` executable
-(`v1_fallback.exe` on Windows). `-old-compiler` launches it explicitly, and
+The standard bootstrap installs the V 0.5.2 release compiler as the sibling
+`v1_fallback` executable (`v1_fallback.exe` on Windows). It downloads and
+verifies the matching GitHub release asset, or builds the tag with `oldv` when
+the asset is unavailable. `-old-compiler` launches it explicitly, and
 ordinary user builds retry through it after a V3 compiler or C compilation
 failure. Explicit `-new-compiler` builds and native compiler self-builds remain
 strict V3 operations, except for `-new-compiler -cc msvc` on Windows. V3 does
