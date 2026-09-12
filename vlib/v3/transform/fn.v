@@ -13020,13 +13020,18 @@ fn (mut t Transformer) validate_specialized_call_result(id flat.NodeId, actual_t
 	return false
 }
 
-// record_specialized_slot_mismatch reports a value whose concrete type cannot be
-// converted to the slot it is being placed in, and reports whether it did.
-// Open generic templates are never body-checked (`[]T` legitimately matches any
-// `[]U` until `T` is known), so a specialization returning `[]Foo` from a
-// `[]Bar` function reaches the transform unreported; without this the slot was
-// lowered to an element copy between unrelated C types and only failed in the C
-// compiler, pointing at generated code instead of the offending return.
+// record_specialized_slot_mismatch reports a value whose concrete type the
+// checker would not accept in the slot it is being placed in, and reports
+// whether it did. Open generic templates are never body-checked (`[]T`
+// legitimately matches any `[]U` until `T` is known), so a specialization
+// returning `[]Foo` from a `[]Bar` function reaches the transform unreported;
+// without this the slot was lowered anyway and only failed in the C compiler,
+// pointing at generated code instead of the offending return.
+//
+// The question is compatibility, never whether a lowering exists. The element
+// copy will box any struct into an interface, so an element that does not
+// implement the target has to be rejected here rather than at `.id = src.id`
+// in the generated C.
 fn (mut t Transformer) record_specialized_slot_mismatch(actual types.Type, expected types.Type) bool {
 	if !t.validating_generic_spec || isnil(t.tc) {
 		return false
@@ -13036,12 +13041,9 @@ fn (mut t Transformer) record_specialized_slot_mismatch(actual types.Type, expec
 	if t.generic_arg_is_unresolved(actual_name) || t.generic_arg_is_unresolved(expected_name) {
 		return false
 	}
-	// `forwarded_slot_conversion_supported` answers "does this slot need one of
-	// the conversions lowered here", which is narrower than "is this legal". It
-	// says no both for slots needing no conversion at all (a registered alias
-	// next to its base type) and for ones the element copy already coerces
-	// (`[]int` into `[]f64`, an integer into an enum). Only the checker's own
-	// rule separates those from a real mismatch.
+	// The checker's own rule is the authority here: it already covers registered
+	// aliases, integer widths, integer-to-float, float-to-float, integer-to-enum,
+	// interfaces and sum variants, recursing through arrays and maps.
 	if t.tc.slot_value_compatible(actual, expected) {
 		return false
 	}

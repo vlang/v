@@ -2583,4 +2583,19 @@ fn test_generic_specialization_rejects_incompatible_array_element_return() {
 	enum_slot := run_good(v3_bin, 'good_generic_array_elem_int_to_enum',
 		'enum Color {\n\tred\n\tgreen\n}\n\nfn take[T](items []T) []Color {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([0, 1]).len))\n}\n')
 	assert enum_slot == '2'
+	// Having a lowering is not the same as being legal: the element copy boxes
+	// any struct into an interface, so an element that does not implement the
+	// target has to be rejected here rather than at `.id = src.id` in the C.
+	run_bad(v3_bin, 'bad_generic_array_elem_unimplemented_interface',
+		'interface HasId {\n\tid int\n}\n\nstruct NoId {\n\tv int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\t_ := take([NoId{\n\t\tv: 1\n\t}])\n}\n',
+		'cannot return `[]NoId` as `[]HasId`')
+	boxed := run_good(v3_bin, 'good_generic_array_elem_interface_field',
+		'interface HasId {\n\tid int\n}\n\nstruct WithId {\n\tid int\n}\n\nfn take[T](items []T) []HasId {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([WithId{\n\t\tid: 7\n\t}])[0].id))\n}\n')
+	assert boxed == '7'
+	spoken := run_good(v3_bin, 'good_generic_array_elem_interface_method',
+		"interface Speaker {\n\tspeak() string\n}\n\nstruct Dog {}\n\nfn (d Dog) speak() string {\n\treturn 'woof'\n}\n\nfn take[T](items []T) []Speaker {\n\treturn items\n}\n\nfn main() {\n\tprintln(take([Dog{}])[0].speak())\n}\n")
+	assert spoken == 'woof'
+	variants := run_good(v3_bin, 'good_generic_array_elem_sum_variant',
+		'struct Foo {\n\tv int\n}\n\nstruct Bar {\n\tw int\n}\n\ntype FB = Bar | Foo\n\nfn take[T](items []T) []FB {\n\treturn items\n}\n\nfn main() {\n\tprintln(int_str(take([Foo{\n\t\tv: 3\n\t}]).len))\n}\n')
+	assert variants == '1'
 }
