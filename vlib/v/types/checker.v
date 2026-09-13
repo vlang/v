@@ -4811,16 +4811,22 @@ fn (tc &TypeChecker) shadowed_local_fn_key(name string) ?string {
 	} else {
 		return none
 	}
-	// `qualified` doubles as the declaration_visibility key, which records the
-	// declaring module of every source declaration. Going through it also skips
-	// `fn C.uname()`, which is registered under the lowered alias `uname` as
-	// well, yet is only ever callable as `C.uname()`.
-	visibility := tc.declaration_visibility[qualified] or { return none }
+	// The signature key doubles as the declaration_visibility key, which records
+	// the declaring module of every source declaration. Going through it also
+	// skips `fn C.uname()`, which is registered under the lowered alias `uname`
+	// as well, yet is only ever callable as `C.uname()`.
+	visibility := tc.declaration_visibility[key] or { return none }
 	if visibility.kind != .fn_decl {
 		return none
 	}
 	if visibility.module_name == tc.cur_module
 		|| (visibility.module_name in ['', 'main'] && tc.cur_module in ['', 'main']) {
+		return key
+	}
+	// A public `builtin` function stays callable unprefixed from every module,
+	// so a local of that name really does shadow it. Its private helpers
+	// (`new_node` in `builtin/sorted_map.v`) are not callable outside `builtin`.
+	if visibility.module_name == 'builtin' && visibility.is_pub {
 		return key
 	}
 	return none

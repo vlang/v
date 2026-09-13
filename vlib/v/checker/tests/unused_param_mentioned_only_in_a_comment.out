@@ -1,0 +1,14 @@
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:3:14: notice: unused parameter: `x`
+    1 | // Only the `$if` branches of a function can hide a use from the checker, so a
+    2 | // name that merely appears in a comment or in a string stays unused.
+    3 | fn commented(x int) {
+      |              ^
+    4 |     /* x */
+    5 |     $if windows {
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:9:11: notice: unused parameter: `y`
+    7 | }
+    8 | 
+    9 | fn quoted(y int) {
+      |           ^
+   10 |     // y
+   11 |     $if windows {

@@ -2509,11 +2509,11 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 	}
 }
 
-// fn_comptime_branch_may_use_ident reports whether `name` may be used by a
-// branch of `node` that was never parsed. `$if` drops the branch the current
-// build does not take, so an identifier used only there is invisible to the AST
-// walks above, and reporting it as unused would be wrong for the build
-// configuration that does take the branch.
+// fn_comptime_branch_may_use_ident reports whether `name` is used by a `$if`
+// branch of `node`. The parser drops the branch the current build does not
+// take, so an identifier used only there is invisible to the AST walks above,
+// and reporting it as unused would be wrong for the build configuration that
+// does take the branch.
 fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name string) bool {
 	if name.len == 0 {
 		return false
@@ -2522,28 +2522,35 @@ fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name strin
 	source := tc.source_texts_by_file[file.name] or { return false }
 	// A fn_decl only records where its declaration starts, so its body has to
 	// be recovered from the source.
-	text := declaration_source_text(source, node.pos.offset)
-	if !text.contains('$if') && !text.contains('$else') {
-		return false
-	}
-	// The declaration itself already contributes one occurrence of the name.
-	return whole_word_occurrences(text, name) > 1
+	code := declaration_comptime_branch_code(source, node.pos.offset)
+	return whole_word_occurrences(code, name) > 0
 }
 
-// declaration_source_text returns the text of the declaration starting at
-// `start`, from there up to the closing brace of its body. It returns an empty
-// string for a declaration without a body, such as `fn C.uname(name &C.utsname) i32`.
-fn declaration_source_text(source string, start int) string {
+// declaration_comptime_branch_code returns the code of the `$if` and `$else`
+// branches of the declaration starting at `start`, with comments and literals
+// left out so that a plain identifier search cannot match inside them. Only
+// those branches can hide an identifier from the AST, so the rest of the
+// declaration - where a field name or a comment could collide with the searched
+// name - is deliberately not part of the result. An empty string is returned
+// for a declaration without a body, such as `fn C.uname(name &C.utsname) i32`.
+fn declaration_comptime_branch_code(source string, start int) string {
 	if start < 0 || start >= source.len {
 		return ''
 	}
+	mut code := []u8{}
 	mut depth := 0
 	mut paren_depth := 0
+	// The brace depth a `$if`/`$else` body was opened at, or -1 outside one.
+	mut branch_depth := -1
+	mut branch_expected := false
 	mut i := start
 	for i < source.len {
 		c := source[i]
 		if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
 			i = source.index_after('\n', i) or { return '' }
+			if branch_depth >= 0 {
+				code << ` `
+			}
 			continue
 		}
 		if c == `/` && i + 1 < source.len && source[i + 1] == `*` {
@@ -2560,29 +2567,74 @@ fn declaration_source_text(source string, start int) string {
 					i++
 				}
 			}
+			if branch_depth >= 0 {
+				code << ` `
+			}
 			continue
 		}
 		if c == `'` || c == `"` || c == `\`` {
 			i++
 			for i < source.len && source[i] != c {
 				if source[i] == `\\` {
-					i++
+					i += 2
+					continue
+				}
+				if source[i] == `$` && i + 1 < source.len && source[i + 1] == `{` {
+					// An interpolation holds ordinary code, so it keeps its text.
+					mut interpolation := 0
+					mut j := i + 1
+					for j < source.len {
+						if source[j] == `{` {
+							interpolation++
+						} else if source[j] == `}` {
+							interpolation--
+							if interpolation == 0 {
+								j++
+								break
+							}
+						}
+						j++
+					}
+					if branch_depth >= 0 {
+						code << source[i + 1..j].bytes()
+					}
+					i = j
+					continue
 				}
 				i++
 			}
 			i++
+			if branch_depth >= 0 {
+				code << ` `
+			}
 			continue
+		}
+		if c == `$` {
+			mut word_end := i + 1
+			for word_end < source.len && is_import_ident_byte(source[word_end]) {
+				word_end++
+			}
+			if source[i + 1..word_end] in ['if', 'else'] {
+				branch_expected = true
+			}
 		}
 		if c == `(` {
 			paren_depth++
 		} else if c == `)` {
 			paren_depth--
 		} else if c == `{` {
+			if branch_expected && branch_depth < 0 {
+				branch_depth = depth
+				branch_expected = false
+			}
 			depth++
 		} else if c == `}` {
 			depth--
+			if branch_depth >= 0 && depth == branch_depth {
+				branch_depth = -1
+			}
 			if depth == 0 {
-				return source[start..i + 1]
+				return code.bytestr()
 			}
 		} else if c == `\n` && depth == 0 && paren_depth == 0 {
 			// The header is over and no body opened on it, so the next line
@@ -2595,12 +2647,18 @@ fn declaration_source_text(source string, start int) string {
 				return ''
 			}
 		}
+		if branch_depth >= 0 {
+			code << c
+		}
 		i++
 	}
 	return ''
 }
 
 fn whole_word_occurrences(text string, word string) int {
+	if word.len == 0 {
+		return 0
+	}
 	mut count := 0
 	mut cursor := 0
 	for cursor < text.len {

@@ -1,0 +1,26 @@
+// Only the `$if` branches of a function can hide a use from the checker, so a
+// name that merely appears in a comment or in a string stays unused.
+fn commented(x int) {
+	/* x */
+	$if windows {
+	}
+}
+
+fn quoted(y int) {
+	// y
+	$if windows {
+		println('y')
+	}
+}
+
+fn interpolated(z int) {
+	$if windows {
+		println('${z}')
+	}
+}
+
+fn main() {
+	commented(1)
+	quoted(2)
+	interpolated(3)
+}
