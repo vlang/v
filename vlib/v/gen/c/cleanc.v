@@ -510,6 +510,8 @@ mut:
 	current_decl_is_mut          bool
 	direct_array_access          bool
 	struct_default_module        string
+	struct_default_generic_params []string
+	struct_default_generic_args   []string
 	default_value_stack          map[string]bool
 	shadowed_global_locals       map[string]bool
 	cur_param_names              []string
@@ -11327,13 +11329,14 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected_type typ
 		return
 	}
 	if node.kind == .cast_expr && node.children_count > 0 {
-		if _ := g.shared_alias_pointer_type_from_text(node.value) {
+		target_text := g.generic_default_type_text(node.value)
+		if _ := g.shared_alias_pointer_type_from_text(target_text) {
 			g.gen_expr_with_expected_type(g.a.child(node, 0), expected)
 			g.expected_expr_type = old_expected
 			g.expected_enum = old_expected_enum
 			return
 		}
-		if g.cast_alias_matches_expected_storage(node.value, expected) {
+		if g.cast_alias_matches_expected_storage(target_text, expected) {
 			g.gen_expr_with_expected_type(g.a.child(node, 0), expected)
 			g.expected_expr_type = old_expected
 			g.expected_enum = old_expected_enum
@@ -11497,7 +11500,7 @@ fn (mut g FlatGen) gen_sum_pointer_default_expr(node flat.Node, expected types.T
 		return false
 	}
 	if node.value.len > 0 {
-		init_type := default_init_unalias_type(g.tc.parse_type(node.value))
+		init_type := default_init_unalias_type(g.tc.parse_type(g.generic_default_type_text(node.value)))
 		if init_type is types.Pointer {
 			init_base := default_init_unalias_type(init_type.base_type)
 			if !g.type_names_match(init_base, base_type) {
@@ -11564,7 +11567,7 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected ty
 	if node.kind != .cast_expr || node.children_count == 0 {
 		return false
 	}
-	target_type := g.tc.parse_type(node.value)
+	target_type := g.tc.parse_type(g.generic_default_type_text(node.value))
 	if target_type !is types.Pointer {
 		return false
 	}
@@ -11962,7 +11965,7 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 	if node.kind == .struct_init && node.value.len > 0 {
 		// A variant literal (`SNull{}`) may carry the checker's expected-type
 		// propagation (the sum type itself); the literal names its own type.
-		lit_type := g.tc.parse_type(node.value)
+		lit_type := g.tc.parse_type(g.generic_default_type_text(node.value))
 		if lit_type !is types.Unknown {
 			return lit_type
 		}
@@ -12569,13 +12572,14 @@ fn (g &FlatGen) expected_expr_is_optional_struct() bool {
 }
 
 fn (mut g FlatGen) type_name_c_type(type_name string) string {
-	if _ := g.tc.cur_scope.lookup(type_name) {
-		return g.cname(type_name)
+	target_name := g.generic_default_type_text(type_name)
+	if _ := g.tc.cur_scope.lookup(target_name) {
+		return g.cname(target_name)
 	}
-	if type_name.starts_with('fn_ptr:') {
-		return g.resolve_fn_ptr_type(type_name)
+	if target_name.starts_with('fn_ptr:') {
+		return g.resolve_fn_ptr_type(target_name)
 	}
-	t := g.tc.parse_type(type_name)
+	t := g.tc.parse_type(target_name)
 	ct := if t is types.OptionType || t is types.ResultType {
 		g.optional_type_name(t)
 	} else if t is types.Enum {
@@ -12589,7 +12593,8 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 	return ct
 }
 
-fn (mut g FlatGen) sizeof_target(value string) string {
+fn (mut g FlatGen) sizeof_target(value0 string) string {
+	value := g.generic_default_type_text(value0)
 	if value.starts_with('fn_ptr:') {
 		return g.resolve_fn_ptr_type(value)
 	}
@@ -13642,16 +13647,17 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			'(${child})'
 		}
 		.cast_expr {
-			target_type := g.tc.parse_type(node.value)
-			mut ct := if node.value.starts_with('fn_ptr:') {
-				g.resolve_fn_ptr_type(node.value)
+			target_text := g.generic_default_type_text(node.value)
+			target_type := g.tc.parse_type(target_text)
+			mut ct := if target_text.starts_with('fn_ptr:') {
+				g.resolve_fn_ptr_type(target_text)
 			} else {
 				g.tc.c_type(target_type)
 			}
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
-			if node.value in g.interfaces || g.tc.qualify_name(node.value) in g.interfaces {
+			if target_text in g.interfaces || g.tc.qualify_name(target_text) in g.interfaces {
 				return '(${ct}){0}'
 			}
 			if target_type is types.SumType {
@@ -13793,13 +13799,13 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			'(string){"${c_escape(type_name)}", ${type_name.len}, 1}'
 		}
 		.sizeof_expr {
-			'sizeof(${g.sizeof_target(node.value)})'
+			'sizeof(${g.sizeof_target(g.generic_default_type_text(node.value))})'
 		}
 		.int_literal, .float_literal, .bool_literal, .char_literal, .enum_val {
 			g.expr_to_string(id)
 		}
 		.offsetof_expr {
-			ct := g.sizeof_target(node.value)
+			ct := g.sizeof_target(g.generic_default_type_text(node.value))
 			'offsetof(${ct}, ${g.cname(node.typ)})'
 		}
 		else {
@@ -15384,13 +15390,22 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.array_init {
-			raw_init_type := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(node))
+			target_text := g.generic_default_type_text(node.value)
+			raw_init_type := g.canonical_import_alias_type_in_file(target_text,
+				g.node_source_file(node))
 			init_type := raw_init_type
 			if init_type is types.ArrayFixed {
 				c_elem, dims := g.fixed_array_decl_parts(init_type)
 				g.write('(${c_elem}${dims}){0}')
 			} else {
-				c_elem := g.value_sizeof_target(raw_init_type)
+				elem_type := if expected_array := array_like_type(default_init_unalias_type(g.expected_expr_type)) {
+					expected_array.elem_type
+				} else if init_array := array_like_type(init_type) {
+					init_array.elem_type
+				} else {
+					raw_init_type
+				}
+				c_elem := g.value_sizeof_target(elem_type)
 				g.write('array_new(sizeof(${c_elem}), 0, 0)')
 			}
 		}
@@ -15401,10 +15416,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			panic('internal error: SQL expression reached C backend after transform')
 		}
 		.cast_expr {
-			target_type := g.canonical_import_alias_type_in_file(node.value, g.node_source_file(node))
+			target_text := g.generic_default_type_text(node.value)
+			target_type := g.canonical_import_alias_type_in_file(target_text, g.node_source_file(node))
 			semantic_target := cgen_unalias_type(target_type)
-			mut ct := if node.value.starts_with('fn_ptr:') {
-				g.resolve_fn_ptr_type(node.value)
+			mut ct := if target_text.starts_with('fn_ptr:') {
+				g.resolve_fn_ptr_type(target_text)
 			} else {
 				g.cast_c_type(target_type)
 			}
@@ -15412,7 +15428,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
 			cast_arg := g.a.child_node(node, 0)
-			if shared_alias_ptr := g.shared_alias_pointer_type_from_text(node.value) {
+			if shared_alias_ptr := g.shared_alias_pointer_type_from_text(target_text) {
 				g.gen_expr_with_expected_type(g.a.child(node, 0), shared_alias_ptr)
 				return
 			}
@@ -15562,6 +15578,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.is_expr {
 			expr_id := g.a.child(node, 0)
+			is_pattern := g.generic_default_type_text(node.value)
 			expr_type := g.tc.resolve_type(expr_id)
 			clean := cgen_unalias_unwrap_all_pointers(expr_type)
 			expr_node := g.a.nodes[int(expr_id)]
@@ -15577,7 +15594,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			}
 			if clean is types.SumType {
-				idx := g.sum_type_index(clean.name, node.value)
+				idx := g.sum_type_index(clean.name, is_pattern)
 				g.write('(')
 				if subject_is_pointer {
 					g.gen_is_expr_subject(expr_id, extra_deref)
@@ -15589,9 +15606,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(')')
 			} else if clean is types.Interface {
 				idx := if g.is_ierror_type_name(clean.name) {
-					g.ierror_type_id_for_pattern(node.value)
+					g.ierror_type_id_for_pattern(is_pattern)
 				} else {
-					g.iface_type_id_for_pattern(clean.name, node.value)
+					g.iface_type_id_for_pattern(clean.name, is_pattern)
 				}
 				if idx == 0 {
 					g.write('0')
@@ -15607,7 +15624,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 				g.write(')')
 			} else if g.is_ierror_type_name(types.Type(clean).name()) {
-				idx := g.ierror_type_id_for_pattern(node.value)
+				idx := g.ierror_type_id_for_pattern(is_pattern)
 				if idx == 0 {
 					g.write('0')
 					return
@@ -15635,7 +15652,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			clean := types.unwrap_pointer(expr_type)
 			if clean is types.SumType {
-				qv := g.resolve_variant(clean.name, node.value)
+				qv := g.resolve_variant(clean.name, g.generic_default_type_text(node.value))
 				field := g.sum_field_name(qv)
 				if g.variant_references_sum(qv, clean.name) {
 					g.write('(*')
@@ -15678,7 +15695,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					}
 				}
 			} else if clean is types.Interface || g.is_ierror_type_name(types.Type(clean).name()) {
-				target := g.tc.parse_type(node.value)
+				target := g.tc.parse_type(g.generic_default_type_text(node.value))
 				if target is types.Pointer {
 					g.write('(${g.tc.c_type(target)})')
 					if expr_type.is_pointer() {
@@ -15707,13 +15724,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.sizeof_expr {
-			g.write('sizeof(${g.sizeof_target_in_file(node.value, g.node_source_file(node))})')
+			target_text := g.generic_default_type_text(node.value)
+			g.write('sizeof(${g.sizeof_target_in_file(target_text, g.node_source_file(node))})')
 		}
 		.typeof_expr {
 			g.gen_typeof_name(node)
 		}
 		.offsetof_expr {
-			ct := g.type_name_c_type(node.value)
+			ct := g.type_name_c_type(g.generic_default_type_text(node.value))
 			g.write('offsetof(${ct}, ${g.cname(node.typ)})')
 		}
 		.assoc {
@@ -15865,7 +15883,7 @@ fn (mut g FlatGen) gen_typeof_name(node flat.Node) {
 
 fn (g &FlatGen) typeof_type_name(node flat.Node) string {
 	if node.value.len > 0 {
-		return typeof_display_type_name(node.value)
+		return typeof_display_type_name(g.generic_default_type_text(node.value))
 	}
 	if node.children_count == 0 {
 		return ''
@@ -20682,20 +20700,25 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 	if struct_name in visited {
 		return
 	}
+	source := g.struct_default_decl_source(struct_name) or { return }
 	visited[struct_name] = true
-	info := g.find_struct_decl(struct_name) or { return }
+	info := source.info
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
 	old_default_module := g.struct_default_module
+	old_default_generic_params := g.struct_default_generic_params
+	old_default_generic_args := g.struct_default_generic_args
 	g.tc.cur_module = info.module
 	g.tc.cur_file = info.file
 	g.struct_default_module = info.module
+	g.struct_default_generic_params = source.params
+	g.struct_default_generic_args = source.args
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind != .field_decl {
 			continue
 		}
-		field_type := g.struct_default_field_type(info, field)
+		field_type := g.struct_default_field_type_for_source(source, field)
 		field_target := '${target}.${g.cname(field.value)}'
 		if field.children_count == 0 {
 			clean_field_type := default_init_unalias_type(field_type)
@@ -20708,7 +20731,8 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 		old_line_start := g.line_start
 		g.sb = strings.new_builder(128)
 		g.line_start = true
-		g.gen_struct_field_expr_for_field(g.a.child(field, 0), info.full_name, field.value, field_type)
+		g.gen_struct_field_expr_for_field(g.a.child(field, 0), source.owner_name, field.value,
+			field_type)
 		expr := g.sb.str()
 		g.sb = old_sb
 		g.line_start = old_line_start
@@ -20724,6 +20748,8 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 	g.tc.cur_module = old_module
 	g.tc.cur_file = old_file
 	g.struct_default_module = old_default_module
+	g.struct_default_generic_params = old_default_generic_params
+	g.struct_default_generic_args = old_default_generic_args
 	visited.delete(struct_name)
 }
 
