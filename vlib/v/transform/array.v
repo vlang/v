@@ -1360,6 +1360,15 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 				t.transform_expr_for_type(rhs_id, elem_type)
 			}
 		}
+	} else if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+		// `[]Iface << []Concrete` has to box every element. A bare `push_many` would
+		// memcpy the concrete values into interface-sized slots and leave the type tag
+		// unset, so the first method call on an appended element dispatches to nothing
+		// ("interface method X not implemented"). The same conversion covers sum-type
+		// and integer-width element changes; element slots that already match convert
+		// to `none` here and keep the plain bulk append.
+		rhs = converted
+		rhs_type = array_type
 	} else {
 		// Route a value `match`/`if` push-many RHS (an array-producing match, e.g.
 		// `out << (match node { First { values_first(node)! } ... })`) through value
@@ -1599,6 +1608,15 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 				t.transform_expr_for_type(rhs_id, elem_type)
 			}
 		}
+	} else if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+		// `[]Iface << []Concrete` has to box every element. A bare `push_many` would
+		// memcpy the concrete values into interface-sized slots and leave the type tag
+		// unset, so the first method call on an appended element dispatches to nothing
+		// ("interface method X not implemented"). The same conversion covers sum-type
+		// and integer-width element changes; element slots that already match convert
+		// to `none` here and keep the plain bulk append.
+		rhs = converted
+		rhs_type = array_type
 	} else {
 		// Route a value `match`/`if` push-many RHS (an array-producing match, e.g.
 		// `out << (match node { First { values_first(node)! } ... })`) through value

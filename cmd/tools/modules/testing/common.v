@@ -18,7 +18,7 @@ import v.build_constraint
 
 pub const max_header_len = get_max_header_len()
 
-pub const host_os = pref.get_host_os()
+pub const host_os = pref.host_os_name()
 
 pub const github_job = os.getenv('GITHUB_JOB')
 
@@ -666,14 +666,14 @@ pub fn (mut ts TestSession) test() {
 		// Special case for android_outside_termux because of its
 		// underscores
 		if file.ends_with('_android_outside_termux_test.v') {
-			if !host_os.is_target_of('android_outside_termux') {
+			if !pref.os_is_target_of(host_os, 'android_outside_termux') {
 				remaining_files << dot_relative_file
 				ts.skip_files << file
 				continue
 			}
 		}
 		os_target := file.all_before_last('_test.v').all_after_last('_')
-		if !host_os.is_target_of(os_target) {
+		if !pref.os_is_target_of(host_os, os_target) {
 			remaining_files << dot_relative_file
 			ts.skip_files << file
 			continue

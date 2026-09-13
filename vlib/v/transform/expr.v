@@ -2001,6 +2001,28 @@ fn (t &Transformer) sum_eq_type_for_operands(lhs_type string, rhs_type string) s
 	return ''
 }
 
+// expr_is_bare_nil reports whether an expression is literally `nil`, seeing through
+// the wrappers it is usually written behind. `nil` is only reachable in unsafe code,
+// so `x == unsafe { nil }` is the normal spelling and the comparison has to recognise
+// the block as the nil it yields. Unlike `expr_is_nil_like` this does not accept `0`,
+// which for an option would turn `?int == 0` into a `none` test.
+fn (t &Transformer) expr_is_bare_nil(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .nil_literal {
+		return true
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return t.expr_is_bare_nil(t.a.child(&node, 0))
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return t.expr_is_bare_nil(t.a.child(&node, node.children_count - 1))
+	}
+	return false
+}
+
 // transform_infix_optional_none_ops supports transform_infix_optional_none_ops handling.
 fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.op !in [.eq, .ne] || node.children_count < 2 {
@@ -2015,10 +2037,10 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		opt_id = rhs_id
 	} else if rhs.kind == .none_expr {
 		opt_id = lhs_id
-	} else if lhs.kind == .nil_literal && t.is_optional_type_name(t.node_type(rhs_id)) {
+	} else if t.expr_is_bare_nil(lhs_id) && t.is_optional_type_name(t.node_type(rhs_id)) {
 		// `nil == x` on a `?&T` behaves like `none == x`
 		opt_id = rhs_id
-	} else if rhs.kind == .nil_literal && t.is_optional_type_name(t.node_type(lhs_id)) {
+	} else if t.expr_is_bare_nil(rhs_id) && t.is_optional_type_name(t.node_type(lhs_id)) {
 		opt_id = lhs_id
 	} else {
 		mut lhs_type := t.raw_expr_type_without_smartcast(lhs_id)

@@ -20,22 +20,14 @@ fn test_pure_v_math_module() {
 	exec('v -exclude @vlib/math/*.c.v test vlib/math/')
 }
 
-fn use_established_compiler_for_self_tests() {
-	current_vflags := os.getenv('VFLAGS')
-	if '-old-compiler' !in current_vflags.fields() {
-		os.setenv('VFLAGS', '${current_vflags} -old-compiler'.trim_space(), true)
-	}
-}
-
 fn self_tests() {
-	// The dedicated V3 workflow owns strict V3 coverage. Keep the full vlib suite
-	// and its nested compiler invocations on V1 so the compatibility compiler
-	// shipped by this rollout remains tested.
-	use_established_compiler_for_self_tests()
+	// Never select the V1 compatibility compiler here. It is a separate V 0.5.2
+	// installation, so `test-self vlib` would resolve `vlib` under *its* VROOT and
+	// test the release's own standard library instead of this repository's.
 	if common.is_github_job {
-		exec('v -old-compiler -W -silent test-self vlib')
+		exec('v -W -silent test-self vlib')
 	} else {
-		exec('v -old-compiler -progress test-self vlib')
+		exec('v -progress test-self vlib')
 	}
 }
 
@@ -255,14 +247,12 @@ fn self_tests_gcc() {
 }
 
 fn self_tests_prod_gcc() {
-	use_established_compiler_for_self_tests()
 	exec('v -o vprod -prod cmd/v')
-	exec('./vprod -old-compiler -silent test-self vlib')
+	exec('./vprod -silent test-self vlib')
 }
 
 fn self_tests_cstrict_gcc() {
-	use_established_compiler_for_self_tests()
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -old-compiler -cc gcc -cstrict -silent test-self vlib')
+	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 v -cc gcc -cstrict -silent test-self vlib')
 }
 
 fn build_examples_gcc() {
@@ -379,14 +369,12 @@ fn self_tests_clang() {
 }
 
 fn self_tests_vprod_clang() {
-	use_established_compiler_for_self_tests()
 	exec('v -o vprod -prod cmd/v')
-	exec('./vprod -old-compiler -silent test-self vlib')
+	exec('./vprod -silent test-self vlib')
 }
 
 fn self_tests_cstrict_clang() {
-	use_established_compiler_for_self_tests()
-	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -old-compiler -cstrict -silent test-self vlib')
+	exec('VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict -silent test-self vlib')
 }
 
 fn build_examples_clang() {
@@ -413,9 +401,7 @@ fn build_modules_clang() {
 }
 
 fn test_inline_assembly() {
-	// V3 does not lower inline assembly yet. Select V1 explicitly so this task
-	// remains transparent without making the rest of the Linux task runner strict.
-	exec('v -old-compiler test vlib/v/slow_tests/assembly')
+	exec('v test vlib/v/slow_tests/assembly')
 }
 
 // Collect all tasks

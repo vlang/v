@@ -11842,7 +11842,21 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 	if !t.is_optional_type_name(lhs_type) {
 		return
 	}
+	// Assigning a payload only *keeps* an unwrap that was already in force, e.g.
+	// `if a != none { a = 5; println(a + 1) }`, where the assignment invalidates
+	// the smartcast the condition established. Outside such a region the variable
+	// stays a plain `?T`: re-reading it must still yield the option, or `if v := a`
+	// initialises an `Optional_T` from a payload and `'${a}'` prints the payload
+	// instead of `Option(...)`.
+	was_unwrapped := if sc := t.find_smartcast(key) {
+		sc.sum_type_name == option_unwrap_marker
+	} else {
+		false
+	}
 	t.invalidate_smartcast_for_lvalue(lhs_id)
+	if !was_unwrapped {
+		return
+	}
 	base_type := t.optional_base_type(t.qualify_optional_type(lhs_type))
 	mut rhs_type := t.node_type(rhs_id)
 	if rhs_type.len == 0 {
@@ -20877,7 +20891,13 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			expr_type = t.resolve_expr_type(child_id)
 		}
 		if t.is_optional_type_name(expr_type) {
-			return t.coerce_transformed_expr_to_type(expr, child_id, optional_target)
+			coerced := t.coerce_transformed_expr_to_type(expr, child_id, optional_target)
+			// An option-to-option cast is representation-identical, so the coercion
+			// can hand the operand straight back and the cast's own spelling would be
+			// lost with it. Keep it: `?MyByte(?u8(0))` is a `?MyByte`, and printing it
+			// through the operand's `?u8` drops the alias (`Option(0)`).
+			t.set_node_typ(int(coerced), optional_cast_type)
+			return coerced
 		}
 		return t.make_optional_some(expr, optional_target)
 	}

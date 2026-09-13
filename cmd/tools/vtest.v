@@ -165,26 +165,25 @@ fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
 			return .ignore
 		}
 		backend_arg := path.all_before_last('.v').all_after_last('.')
-		arch := pref.arch_from_string(backend_arg) or { pref.Arch._auto }
-		if arch == pref.get_host_arch() {
+		if arch := pref.arch_from_string(backend_arg) {
+			if arch != pref.host_arch() {
+				return .skip
+			}
 			return ctx.should_test_when_it_contains_matching_fns(path, backend)
-		} else if arch == ._auto {
-			if backend_arg == 'c' { // .c.v
-				return if backend == 'c' {
-					ctx.should_test_when_it_contains_matching_fns(path, backend)
-				} else {
-					ShouldTestStatus.skip
-				}
+		}
+		if backend_arg == 'c' { // .c.v
+			return if backend == 'c' {
+				ctx.should_test_when_it_contains_matching_fns(path, backend)
+			} else {
+				ShouldTestStatus.skip
 			}
-			if backend_arg == 'js' {
-				return if backend == 'js' {
-					ctx.should_test_when_it_contains_matching_fns(path, backend)
-				} else {
-					ShouldTestStatus.skip
-				}
+		}
+		if backend_arg == 'js' {
+			return if backend == 'js' {
+				ctx.should_test_when_it_contains_matching_fns(path, backend)
+			} else {
+				ShouldTestStatus.skip
 			}
-		} else {
-			return .skip
 		}
 	}
 	return .ignore

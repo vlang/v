@@ -32,6 +32,75 @@ struct FormatterTypeSource {
 	end   int
 }
 
+// AlignInfo is one alignment group: the widest entry seen so far and the line the
+// group currently ends on.
+struct AlignInfo {
+mut:
+	line_nr int
+	max_len int
+}
+
+// FieldAlign computes column widths for a run of declarations, the way the legacy
+// formatter did. `use_break_line` groups end where the source had a blank line;
+// the other groups end when two entries are more than one line apart, or when an
+// entry differs from the group by `threshold` characters or more (so that one very
+// long field does not push a whole block of short ones far to the right).
+struct FieldAlign {
+	use_break_line bool
+	use_threshold  bool
+	threshold      int = 25
+mut:
+	infos   []AlignInfo
+	cur_idx int
+}
+
+fn (mut fa FieldAlign) add_new_info(len int, line int) {
+	fa.infos << AlignInfo{
+		line_nr: line
+		max_len: len
+	}
+}
+
+fn (mut fa FieldAlign) add_info(len int, line int, has_break_line bool) {
+	if fa.infos.len == 0 {
+		fa.add_new_info(len, line)
+		return
+	}
+	last_idx := fa.infos.len - 1
+	if (fa.use_break_line && has_break_line)
+		|| (!fa.use_break_line && line - fa.infos[last_idx].line_nr > 1) {
+		fa.add_new_info(len, line)
+		return
+	}
+	if fa.use_threshold {
+		len_diff := if fa.infos[last_idx].max_len >= len {
+			fa.infos[last_idx].max_len - len
+		} else {
+			len - fa.infos[last_idx].max_len
+		}
+		if len_diff >= fa.threshold {
+			fa.add_new_info(len, line)
+			return
+		}
+	}
+	fa.infos[last_idx].line_nr = line
+	if len > fa.infos[last_idx].max_len {
+		fa.infos[last_idx].max_len = len
+	}
+}
+
+// max_len returns the width of the group that `line_nr` belongs to. Calls have to
+// follow the same order as the `add_info` calls that built the groups.
+fn (mut fa FieldAlign) max_len(line_nr int) int {
+	if fa.cur_idx < fa.infos.len && fa.infos[fa.cur_idx].line_nr < line_nr {
+		fa.cur_idx++
+	}
+	if fa.cur_idx < fa.infos.len {
+		return fa.infos[fa.cur_idx].max_len
+	}
+	return 0
+}
+
 // Gen holds the formatter state for one output buffer.
 pub struct Gen {
 mut:
@@ -390,6 +459,26 @@ fn (g &Gen) comments_inside(start int, end int) bool {
 		if comment.pos.offset > start && comment.pos.offset < end {
 			return true
 		}
+	}
+	return false
+}
+
+// has_trailing_comment reports whether a comment follows the source offset `end` on the
+// same line, with only blank space in between - that is, whether emit_trailing_comments will
+// print something there. Used to decide up front which lines take part in comment alignment.
+fn (g &Gen) has_trailing_comment(end int) bool {
+	if end < 0 || end > g.source.len {
+		return false
+	}
+	for comment in g.comments {
+		if comment.pos.offset < end {
+			continue
+		}
+		if comment.pos.offset > g.source.len
+			|| g.source_line(comment.pos.offset) != g.source_line(end) {
+			return false
+		}
+		return g.source[end..comment.pos.offset].trim_space().len == 0
 	}
 	return false
 }
@@ -1247,6 +1336,10 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 	}
 	line_break := source_break || g.array_breaks[g.array_depth - 1]
 	mut indented := false
+	// An element's trailing comment is held back until its separating comma has been written,
+	// so that the source's `0, // 0` does not come out as `0 // 0` with the comma stranded on
+	// the next line (which the following run then read as an element of its own).
+	mut pending_comment_end := -1
 	for i, child in children {
 		if i == 0 {
 			if line_break {
@@ -1255,48 +1348,90 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 				indented = true
 			}
 		} else if line_break {
-			g.writeln(',')
+			g.end_array_element(pending_comment_end, true)
+			pending_comment_end = -1
 		} else {
 			width := g.array_expr_width(child)
 			current_len := g.output_line_len()
 			if current_len > formatter_array_wrap_break
 				|| (width > 0 && current_len + 2 + width > formatter_max_line_len) {
-				g.writeln(',')
+				g.end_array_element(pending_comment_end, true)
+				pending_comment_end = -1
 				if !indented {
 					g.indent++
 					indented = true
 				}
 			} else {
-				g.write(', ')
+				ended := g.end_array_element(pending_comment_end, false)
+				pending_comment_end = -1
+				if ended {
+					// the element's comment ended the line, so the rest has to be indented too
+					if !indented {
+						g.indent++
+						indented = true
+					}
+				} else {
+					g.write(', ')
+				}
 			}
 		}
+		cn := g.a.node(child)
+		holds_comment := cn.pos.is_valid() && g.has_trailing_comment(cn.pos.end)
+		if holds_comment {
+			g.suppress_trailing_comments++
+		}
 		g.expr(child)
+		if holds_comment {
+			g.suppress_trailing_comments--
+			pending_comment_end = cn.pos.end
+		}
 	}
 	last := g.a.node(children.last())
 	has_trailing_comments := g.has_comment_between(last.pos.end, n.pos.end)
 	if line_break {
-		g.writeln(',')
+		g.end_array_element(pending_comment_end, true)
 		if has_trailing_comments {
 			g.advance_source_end_before_pending_comment(n.pos.end)
 			g.emit_comments_before(n.pos.end)
 		}
 		g.indent--
 	} else if has_trailing_comments {
-		g.writeln(',')
+		g.end_array_element(pending_comment_end, true)
 		if !indented {
 			g.indent++
 		}
 		g.advance_source_end_before_pending_comment(n.pos.end)
 		g.emit_comments_before(n.pos.end)
 		g.indent--
-	} else if indented {
-		g.indent--
+	} else {
+		g.end_array_element(pending_comment_end, false)
+		if indented {
+			g.indent--
+		}
 	}
 	g.write(']')
 	g.array_depth--
 	if g.array_depth == 0 {
 		g.array_breaks.clear()
 	}
+}
+
+// end_array_element writes the comma that separates array elements, then the trailing comment
+// that was held back while the element itself was written, and finally ends the line when the
+// array is laid out one element per line.
+fn (mut g Gen) end_array_element(pending_comment_end int, break_line bool) bool {
+	if pending_comment_end >= 0 {
+		g.write(',')
+		g.emit_trailing_comments(pending_comment_end)
+		if !g.on_newline {
+			g.writeln('')
+		}
+		return true
+	}
+	if break_line {
+		g.writeln(',')
+	}
+	return break_line
 }
 
 fn (g &Gen) array_expr_width(id flat.NodeId) int {
@@ -1480,9 +1615,7 @@ fn (mut g Gen) expanded_call_args(id flat.NodeId, args []flat.NodeId) {
 		g.writeln(',')
 		g.indent++
 	}
-	for arg in args[first_named..] {
-		g.named_init_field(arg)
-	}
+	g.named_init_fields(args[first_named..])
 	g.emit_comments_before(g.a.formatter_node_ends[int(id)] or { g.a.node(id).pos.end })
 	g.indent--
 }
@@ -1640,9 +1773,7 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 		in_init := g.in_init
 		g.in_init = true
 		g.indent++
-		for fid in fields {
-			g.named_init_field(fid)
-		}
+		g.named_init_fields(fields)
 		g.emit_comments_before(n.pos.end)
 		g.indent--
 		g.in_init = in_init
@@ -1668,13 +1799,129 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 	}
 }
 
-fn (mut g Gen) named_init_field(id flat.NodeId) {
+// init_field_alignments returns, per keyed initializer field, the column the value starts in
+// and the column a trailing comment starts in. A field with no entry is written unpadded.
+fn (mut g Gen) init_field_alignments(fields []flat.NodeId) (map[int]int, map[int]int) {
+	mut value_align := FieldAlign{
+		use_break_line: true
+	}
+	mut comment_align := FieldAlign{
+		use_threshold: true
+	}
+	mut keyed := []flat.NodeId{}
+	mut lines := map[int]int{}
+	mut prev_end := -1
+	for fid in fields {
+		f := g.a.node(fid)
+		if f.value.len == 0 || f.children_count == 0 {
+			continue
+		}
+		v := g.a.child_node(f, 0)
+		if !v.pos.is_valid() {
+			continue
+		}
+		line := g.source_line(v.pos.offset)
+		has_break := prev_end >= 0 && g.source_has_blank_line_between(prev_end, v.pos.offset)
+		keyed << fid
+		lines[int(fid)] = line
+		value_align.add_info(f.value.len, line, has_break)
+		if width := g.init_field_comment_width(fid) {
+			comment_align.add_info(width, line, has_break)
+		}
+		prev_end = v.pos.end
+	}
+	mut values := map[int]int{}
+	mut comments := map[int]int{}
+	for fid in keyed {
+		line := lines[int(fid)]
+		values[int(fid)] = value_align.max_len(line)
+		if _ := g.init_field_comment_width(fid) {
+			comments[int(fid)] = comment_align.max_len(line)
+		}
+	}
+	return values, comments
+}
+
+// init_field_comment_width returns the rendered width of an initializer field's value when
+// that value is written on one line and is followed by a trailing comment.
+fn (g &Gen) init_field_comment_width(fid flat.NodeId) ?int {
+	f := g.a.node(fid)
+	if f.children_count == 0 {
+		return none
+	}
+	v := g.a.child_node(f, 0)
+	if !v.pos.is_valid() || !g.has_trailing_comment(v.pos.end) {
+		return none
+	}
+	width := g.array_expr_width(g.a.child(f, 0))
+	if width <= 0 {
+		return none
+	}
+	return width
+}
+
+// emit_blank_line_between_offsets keeps a blank line the source had between two constructs,
+// given their source offsets. Used where the nodes themselves carry no usable span.
+fn (mut g Gen) emit_blank_line_between_offsets(prev_end int, cur_start int) {
+	if prev_end < 0 || cur_start < prev_end {
+		return
+	}
+	mut limit := cur_start
+	if g.comment_i < g.comments.len {
+		// a comment in the gap keeps the blank lines that follow it, so only the part of the
+		// gap before that comment decides the separator here
+		comment_start := g.comments[g.comment_i].pos.offset
+		if comment_start >= prev_end && comment_start < limit {
+			limit = comment_start
+		}
+	}
+	if !g.source_has_blank_line_between(prev_end, limit) {
+		return
+	}
+	g.write_blank_line()
+}
+
+// named_init_fields writes a run of keyed initializer fields, one per line, keeping the blank
+// lines the source used to separate them. Each such blank line also ends an alignment group.
+fn (mut g Gen) named_init_fields(fields []flat.NodeId) {
+	value_align, comment_align := g.init_field_alignments(fields)
+	mut prev_end := -1
+	for fid in fields {
+		f := g.a.node(fid)
+		if f.children_count > 0 {
+			v := g.a.child_node(f, 0)
+			if v.pos.is_valid() {
+				g.emit_blank_line_between_offsets(prev_end, v.pos.offset)
+				prev_end = v.pos.end
+			}
+		}
+		g.named_init_field(fid, value_align[int(fid)] or { 0 }, comment_align[int(fid)] or { 0 })
+	}
+}
+
+fn (mut g Gen) named_init_field(id flat.NodeId, value_width int, comment_width int) {
 	f := g.a.node(id)
 	value := g.a.child(f, 0)
 	v := g.a.node(value)
 	g.emit_comments_before(v.pos.offset)
 	g.write('${f.value}: ')
-	g.expr(value)
+	if value_width > f.value.len {
+		g.write(' '.repeat(value_width - f.value.len))
+	}
+	if comment_width > 0 {
+		// The value's own trailing-comment pass would print the comment before the padding
+		// that lines it up, so hold it back until the column is reached. Only single line
+		// values take this path, so no comment can be hidden inside the value.
+		g.suppress_trailing_comments++
+		g.expr(value)
+		g.suppress_trailing_comments--
+		width := g.array_expr_width(value)
+		if width > 0 && comment_width >= width {
+			g.write(' '.repeat(comment_width - width + 1))
+		}
+	} else {
+		g.expr(value)
+	}
 	g.emit_trailing_comments(v.pos.end)
 	if !g.on_newline {
 		g.writeln('')
@@ -1713,9 +1960,7 @@ fn (mut g Gen) assoc(id flat.NodeId) {
 	if !g.on_newline {
 		g.writeln('')
 	}
-	for fid in children[1..] {
-		g.named_init_field(fid)
-	}
+	g.named_init_fields(children[1..])
 	g.advance_source_end_before_pending_comment(n.pos.end)
 	g.emit_comments_before(n.pos.end)
 	g.indent--
@@ -2002,6 +2247,13 @@ fn (mut g Gen) comma_exprs(n &flat.Node) {
 	mut first := true
 	for stmt_id in g.a.children_of(n) {
 		stmt := g.a.node(stmt_id)
+		// A trailing comma (`dump(1,)`) leaves an empty entry behind; printing a separator for
+		// it would end the statement with a stray `, `.
+		if g.is_empty(stmt_id)
+			|| (stmt.kind == .expr_stmt && stmt.children_count == 1
+			&& g.is_empty(g.a.child(stmt, 0))) {
+			continue
+		}
 		if !first {
 			g.write(', ')
 		}
@@ -2058,7 +2310,13 @@ fn (mut g Gen) block_stmt(id flat.NodeId) {
 			g.in_init = in_init
 			g.write(' ')
 		}
-		g.writeln('}')
+		// A compact block nested in another inline construct (`defer { unsafe { x } }`)
+		// must not end the line: the enclosing construct still has its own `}` to write.
+		if g.in_init {
+			g.write('}')
+		} else {
+			g.writeln('}')
+		}
 		return
 	}
 	g.writeln('${prefix}{')
@@ -2713,6 +2971,10 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 				}
 			}
 		}
+		// The branch's closing `}` is part of its span, but the statements inside only move
+		// `source_end` up to the last one of them. Without advancing past the brace, a comment
+		// on the following line looks like it is separated by a blank line and one is invented.
+		g.source_end = int_max(g.source_end, b.pos.end)
 	}
 	g.indent--
 	g.write('}')
@@ -2730,7 +2992,27 @@ fn (g &Gen) match_branch_is_compact(branch &flat.Node, body []flat.NodeId) bool 
 	} else {
 		return false
 	}
-	return g.compact_expr_ids(body) != none
+	return g.compact_expr_ids(body) != none || g.compact_branch_stmt(body) != none
+}
+
+// compact_branch_stmt returns the single statement of a match branch that can stay on the
+// branch line. `compact_expr_ids` only accepts expression statements, but a branch whose body
+// is one `return`/assignment/jump is just as short and the source usually writes it inline.
+fn (g &Gen) compact_branch_stmt(body []flat.NodeId) ?flat.NodeId {
+	if body.len != 1 {
+		return none
+	}
+	mut id := body[0]
+	mut stmt := g.a.node(id)
+	if stmt.kind == .block && stmt.value.len == 0 && stmt.children_count == 1 {
+		id = g.a.child(stmt, 0)
+		stmt = g.a.node(id)
+	}
+	if stmt.kind in [.return_stmt, .assign, .decl_assign, .selector_assign, .index_assign,
+		.break_stmt, .continue_stmt, .goto_stmt] {
+		return id
+	}
+	return none
 }
 
 fn (g &Gen) compact_expr_ids(ids []flat.NodeId) ?[]flat.NodeId {
@@ -2759,17 +3041,28 @@ fn (g &Gen) compact_expr_ids(ids []flat.NodeId) ?[]flat.NodeId {
 }
 
 fn (mut g Gen) compact_match_branch(branch &flat.Node, body []flat.NodeId) {
-	expressions := g.compact_expr_ids(body) or { []flat.NodeId{} }
-	g.write('{')
-	if expressions.len > 0 {
-		g.write(' ')
-		in_init := g.in_init
-		g.in_init = true
-		g.expr_list(expressions, ', ')
-		g.in_init = in_init
-		g.write(' ')
+	if expressions := g.compact_expr_ids(body) {
+		g.write('{')
+		if expressions.len > 0 {
+			g.write(' ')
+			in_init := g.in_init
+			g.in_init = true
+			g.expr_list(expressions, ', ')
+			g.in_init = in_init
+			g.write(' ')
+		}
+		g.write('}')
+		g.source_end = int_max(g.source_end, branch.pos.end)
+		return
 	}
-	g.write('}')
+	if stmt_id := g.compact_branch_stmt(body) {
+		g.write('{ ')
+		g.compact_stmt(stmt_id)
+		g.write(' }')
+		g.source_end = int_max(g.source_end, branch.pos.end)
+		return
+	}
+	g.write('{}')
 	g.source_end = int_max(g.source_end, branch.pos.end)
 }
 
@@ -2792,7 +3085,11 @@ fn (mut g Gen) defer_stmt(id flat.NodeId) {
 			g.in_init = in_init
 			g.write(' ')
 		}
-		g.writeln('}')
+		if g.in_init {
+			g.write('}')
+		} else {
+			g.writeln('}')
+		}
 		return
 	}
 	g.writeln(prefix)
@@ -2838,6 +3135,10 @@ fn (mut g Gen) comptime_if(id flat.NodeId) {
 		g.advance_source_end_before_pending_comment(then_blk.pos.end)
 		g.emit_comments_before(then_blk.pos.end)
 		g.indent--
+		// The branch's closing `}` is part of its span, but the statements inside only move
+		// `source_end` up to the last one of them. Without advancing past the brace, the first
+		// comment of the `$else` branch looks like it follows a blank line and one is invented.
+		g.source_end = int_max(g.source_end, then_blk.pos.end)
 	}
 	g.write('}')
 	if children.len > 1 {
@@ -3098,7 +3399,14 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		} else if name.starts_with('C:') {
 			g.write('C.${name[2..]}')
 		} else if name.starts_with('V:') {
-			g.write(name[2..])
+			// A body-less `fn Type.method(...)` declaration keeps the internal static-method
+			// mangling in its name; print the source spelling instead of the marker.
+			plain := name[2..]
+			if receiver, method := flat.decode_static_type_method_name(plain) {
+				g.write('${receiver}.${method}')
+			} else {
+				g.write(plain)
+			}
 		} else {
 			g.write('C.${name}')
 		}
@@ -3248,6 +3556,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 	}
 	g.indent++
 	alignments := g.aggregate_field_alignments(fields, false)
+	default_align, attr_align, comment_align := g.struct_field_suffix_alignments(fields)
 	mut cur_access := ''
 	mut previous := flat.empty_node
 	for fid in fields {
@@ -3290,6 +3599,13 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
 		is_embed := flags.contains('e')
+		mut suffix_width := 0
+		// While a comment column is being reached, the trailing comment must not be printed
+		// by the default expression's own pass: it would land before the padding.
+		pads_comment := int(fid) in comment_align
+		if pads_comment {
+			g.suppress_trailing_comments++
+		}
 		if is_embed {
 			g.write(g.type_text(f.value))
 		} else {
@@ -3299,14 +3615,36 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 			g.write(f.value)
 			width := alignments[int(fid)] or { f.value.len }
 			g.write(' '.repeat(width - f.value.len + 1))
-			g.write(g.type_text(f.typ))
+			type_text := g.type_text(f.typ)
+			g.write(type_text)
+			suffix_width = type_text.len
 			if f.children_count > 0 {
+				if pad := default_align[int(fid)] {
+					if pad > type_text.len {
+						g.write(' '.repeat(pad - type_text.len))
+					}
+				}
 				g.write(' = ')
 				g.expr(g.a.child(f, 0))
+				suffix_width = g.struct_field_default_width(fid) + 2
 			}
 		}
 		if gp.len > 1 {
-			g.write(' @[${gp[1..].join('; ')}]')
+			attr_text := '@[${gp[1..].join('; ')}]'
+			if pad := attr_align[int(fid)] {
+				if pad > suffix_width {
+					g.write(' '.repeat(pad - suffix_width))
+				}
+			}
+			g.write(' ${attr_text}')
+			suffix_width = attr_text.len
+		}
+		if pads_comment {
+			g.suppress_trailing_comments--
+			pad := comment_align[int(fid)] or { 0 }
+			if pad >= suffix_width {
+				g.write(' '.repeat(pad - suffix_width + 1))
+			}
 		}
 		g.emit_trailing_comments(f.pos.end)
 		if !g.on_newline {
@@ -3332,7 +3670,16 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		g.write(' as ${gp[0]}')
 	}
 	end := g.a.formatter_node_ends[int(id)] or { n.pos.end }
-	fields := g.a.children_of(n)
+	// The parser can leave a nameless member behind, e.g. when the `{` sits on its own line
+	// after a trailing comment. Writing it would emit a line holding only indentation.
+	mut fields := []flat.NodeId{}
+	for fid in g.a.children_of(n) {
+		f := g.a.node(fid)
+		if f.value.len == 0 && f.children_count == 0 {
+			continue
+		}
+		fields << fid
+	}
 	if fields.len == 0 && g.empty_braced_body_is_compact(n, end)
 		&& !g.has_comment_between(n.pos.offset, end) {
 		g.writeln(' {}')
@@ -3341,22 +3688,43 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 	g.writeln(' {')
 	g.indent++
 	alignments := g.enum_field_alignments(fields)
+	attr_align, comment_align := g.enum_field_suffix_alignments(fields)
 	mut previous := flat.empty_node
 	for fid in fields {
 		f := g.a.node(fid)
 		g.emit_blank_line_between(previous, fid)
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
+		pads_comment := int(fid) in comment_align
+		if pads_comment {
+			g.suppress_trailing_comments++
+		}
 		g.write(f.value)
+		mut suffix_width := f.value.len
 		if f.children_count > 0 {
 			width := alignments[int(fid)] or { f.value.len }
 			g.write(' '.repeat(width - f.value.len))
 			g.write(' = ')
 			g.expr(g.a.child(f, 0))
+			suffix_width = g.enum_field_value_width(fid) + 2
 		}
 		fattrs := f.generic_params()
 		if fattrs.len > 0 {
-			g.write(' @[${fattrs.join('; ')}]')
+			attr_text := '@[${fattrs.join('; ')}]'
+			if pad := attr_align[int(fid)] {
+				if pad > suffix_width {
+					g.write(' '.repeat(pad - suffix_width))
+				}
+			}
+			g.write(' ${attr_text}')
+			suffix_width = attr_text.len
+		}
+		if pads_comment {
+			g.suppress_trailing_comments--
+			pad := comment_align[int(fid)] or { 0 }
+			if pad >= suffix_width {
+				g.write(' '.repeat(pad - suffix_width + 1))
+			}
 		}
 		g.emit_trailing_comments(f.pos.end)
 		if !g.on_newline {
@@ -3368,6 +3736,68 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 	g.emit_comments_before(end)
 	g.indent--
 	g.writeln('}')
+}
+
+// enum_field_value_width returns the rendered width of an enum member's value when it fits on
+// one line, and 0 otherwise.
+fn (g &Gen) enum_field_value_width(fid flat.NodeId) int {
+	f := g.a.node(fid)
+	if f.children_count == 0 {
+		return 0
+	}
+	return g.array_expr_width(g.a.child(f, 0))
+}
+
+// enum_field_suffix_alignments returns the columns for a member's inline attributes and for
+// its trailing comment, so that a run of members lines those up the way the `=` values are.
+fn (g &Gen) enum_field_suffix_alignments(fields []flat.NodeId) (map[int]int, map[int]int) {
+	mut attr_align := FieldAlign{
+		use_threshold: true
+	}
+	mut comment_align := FieldAlign{
+		use_threshold: true
+	}
+	mut entries := []flat.NodeId{}
+	mut lines := map[int]int{}
+	mut previous := flat.empty_node
+	for fid in fields {
+		f := g.a.node(fid)
+		if !f.pos.is_valid() {
+			previous = flat.empty_node
+			continue
+		}
+		line := g.source_line(f.pos.offset)
+		has_break := int(previous) >= 0
+			&& g.source_has_blank_line_between(g.a.node(previous).pos.end, f.pos.offset)
+		fattrs := f.generic_params()
+		mut suffix := f.value.len
+		if f.children_count > 0 {
+			suffix = g.enum_field_value_width(fid) + 2
+		}
+		if fattrs.len > 0 {
+			attr_align.add_info(suffix, line, has_break)
+			suffix = '@[${fattrs.join('; ')}]'.len
+		}
+		if g.has_trailing_comment(f.pos.end) {
+			comment_align.add_info(suffix, line, has_break)
+		}
+		entries << fid
+		lines[int(fid)] = line
+		previous = fid
+	}
+	mut attrs := map[int]int{}
+	mut comments := map[int]int{}
+	for fid in entries {
+		f := g.a.node(fid)
+		line := lines[int(fid)]
+		if f.generic_params().len > 0 {
+			attrs[int(fid)] = attr_align.max_len(line)
+		}
+		if g.has_trailing_comment(f.pos.end) {
+			comments[int(fid)] = comment_align.max_len(line)
+		}
+	}
+	return attrs, comments
 }
 
 fn (g &Gen) enum_field_alignments(fields []flat.NodeId) map[int]int {
@@ -3516,6 +3946,7 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 	g.writeln(' {')
 	g.indent++
 	alignments := g.aggregate_field_alignments(fields, true)
+	comment_align := g.interface_comment_alignments(fields)
 	mut cur_mut := false
 	mut previous := flat.empty_node
 	for fid in fields {
@@ -3531,6 +3962,11 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 			}
 			cur_mut = f.is_mut
 		}
+		mut suffix_width := 0
+		pads_comment := int(fid) in comment_align
+		if pads_comment {
+			g.suppress_trailing_comments++
+		}
 		if f.op == .dot {
 			// method
 			g.write(f.value)
@@ -3542,12 +3978,23 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 			if f.typ.len > 0 {
 				g.write(' ${g.type_text(f.typ)}')
 			}
+			suffix_width = g.node_source_width(fid)
 		} else {
 			g.write(f.value)
+			suffix_width = f.value.len
 			if f.typ.len > 0 {
 				width := alignments[int(fid)] or { f.value.len }
 				g.write(' '.repeat(width - f.value.len + 1))
-				g.write(g.type_text(f.typ))
+				type_text := g.type_text(f.typ)
+				g.write(type_text)
+				suffix_width = type_text.len
+			}
+		}
+		if pads_comment {
+			g.suppress_trailing_comments--
+			pad := comment_align[int(fid)] or { 0 }
+			if pad >= suffix_width {
+				g.write(' '.repeat(pad - suffix_width + 1))
 			}
 		}
 		g.emit_trailing_comments(f.pos.end)
@@ -3560,6 +4007,64 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 	g.emit_comments_before(n.pos.end)
 	g.indent--
 	g.writeln('}')
+}
+
+// node_source_width returns the width of a node's own source text when it fits on one line,
+// and 0 otherwise.
+fn (g &Gen) node_source_width(id flat.NodeId) int {
+	n := g.a.node(id)
+	if source := g.source_span(n.pos.offset, n.pos.end) {
+		trimmed := source.trim_space()
+		if !trimmed.contains('\n') && !trimmed.contains('\r') {
+			return trimmed.len
+		}
+	}
+	return 0
+}
+
+// interface_comment_alignments returns the column a trailing comment starts in for every
+// interface member that has one. Fields and methods are aligned independently, since a method
+// signature is usually much wider than a field type.
+fn (mut g Gen) interface_comment_alignments(fields []flat.NodeId) map[int]int {
+	mut field_align := FieldAlign{
+		use_threshold: true
+	}
+	mut method_align := FieldAlign{
+		use_threshold: true
+	}
+	mut entries := []flat.NodeId{}
+	mut lines := map[int]int{}
+	mut previous := flat.empty_node
+	for fid in fields {
+		f := g.a.node(fid)
+		if !f.pos.is_valid() {
+			previous = flat.empty_node
+			continue
+		}
+		line := g.source_line(f.pos.offset)
+		has_break := g.field_alignment_break(previous, fid)
+		if g.has_trailing_comment(f.pos.end) {
+			if f.op == .dot {
+				method_align.add_info(g.node_source_width(fid), line, has_break)
+			} else {
+				width := if f.typ.len > 0 { g.type_text(f.typ).len } else { f.value.len }
+				field_align.add_info(width, line, has_break)
+			}
+			entries << fid
+			lines[int(fid)] = line
+		}
+		previous = fid
+	}
+	mut comments := map[int]int{}
+	for fid in entries {
+		line := lines[int(fid)]
+		comments[int(fid)] = if g.a.node(fid).op == .dot {
+			method_align.max_len(line)
+		} else {
+			field_align.max_len(line)
+		}
+	}
+	return comments
 }
 
 // access_specifier_end returns the offset just past the `:` of the access
@@ -3594,6 +4099,105 @@ fn (g &Gen) access_specifier_end(start int, end int) ?int {
 		return none
 	}
 	return start + result
+}
+
+// struct_field_default_width returns the rendered width of a field's default value when it
+// fits on one line, and 0 otherwise.
+fn (g &Gen) struct_field_default_width(fid flat.NodeId) int {
+	f := g.a.node(fid)
+	if f.children_count == 0 {
+		return 0
+	}
+	return g.array_expr_width(g.a.child(f, 0))
+}
+
+// struct_field_suffix_alignments returns the columns for the three things that can follow a
+// field's type: its `= default`, its inline attributes and its trailing comment. The name and
+// type columns are handled by aggregate_field_alignments; these three line up what comes after.
+fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int, map[int]int, map[int]int) {
+	mut default_align := FieldAlign{
+		use_threshold: true
+	}
+	mut attr_align := FieldAlign{
+		use_threshold: true
+	}
+	mut comment_align := FieldAlign{
+		use_threshold: true
+	}
+	mut entries := []flat.NodeId{}
+	mut lines := map[int]int{}
+	mut previous := flat.empty_node
+	mut prev_state := 0
+	for fid in fields {
+		f := g.a.node(fid)
+		if f.kind != .field_decl || !f.pos.is_valid() {
+			previous = flat.empty_node
+			continue
+		}
+		gp := f.generic_params()
+		flags := if gp.len > 0 { gp[0] } else { '' }
+		if flags.contains('e') {
+			previous = flat.empty_node
+			continue
+		}
+		line := g.source_line(f.pos.offset)
+		has_break := g.field_alignment_break(previous, fid)
+		type_width := g.type_text(f.typ).len
+		mut suffix := type_width
+		mut suffix_known := true
+		if f.children_count > 0 {
+			default_align.add_info(type_width, line, has_break)
+			default_width := g.struct_field_default_width(fid)
+			suffix = default_width + 2
+			// A default that wraps over several lines has no single column to measure from.
+			suffix_known = default_width > 0
+		}
+		if gp.len > 1 {
+			attr_align.add_info(suffix, line, has_break)
+			suffix = '@[${gp[1..].join('; ')}]'.len
+			suffix_known = true
+		}
+		if suffix_known && g.has_trailing_comment(f.pos.end) {
+			// Comments only line up across fields that end the same way. A `= default` or an
+			// attribute makes the text in front of the comment a different shape, so the run
+			// restarts there instead of pushing the plain fields far to the right.
+			state := if gp.len > 1 {
+				1
+			} else if f.children_count > 0 {
+				2
+			} else {
+				3
+			}
+			if prev_state != state {
+				comment_align.add_new_info(suffix, line)
+			} else {
+				comment_align.add_info(suffix, line, has_break)
+			}
+			prev_state = state
+		}
+		entries << fid
+		lines[int(fid)] = line
+		previous = fid
+	}
+	mut defaults := map[int]int{}
+	mut attrs := map[int]int{}
+	mut comments := map[int]int{}
+	for fid in entries {
+		f := g.a.node(fid)
+		line := lines[int(fid)]
+		gp := f.generic_params()
+		if f.children_count > 0 {
+			defaults[int(fid)] = default_align.max_len(line)
+		}
+		if gp.len > 1 {
+			attrs[int(fid)] = attr_align.max_len(line)
+		}
+		if (gp.len > 1 || f.children_count == 0 || g.struct_field_default_width(fid) > 0)
+			&& g.has_trailing_comment(f.pos.end) {
+			comments[int(fid)] = comment_align.max_len(line)
+		}
+	}
+	return defaults, attrs, comments
 }
 
 // aggregate_field_alignments returns the widest field name in each adjacent
@@ -3981,8 +4585,11 @@ fn (mut g Gen) emit_comments_before(limit int) {
 			if !g.on_newline && g.out.len > 0 {
 				g.writeln('')
 			}
+			// Only a genuinely empty line in the gap counts. Comparing line numbers alone
+			// invented a blank line whenever something unwritten sat in between, such as the
+			// `{` of a declaration whose header comment was already emitted.
 			if g.source_end >= 0
-				&& g.source_line(comment.pos.offset) > g.source_line(g.source_end) + 1
+				&& g.source_has_blank_line_between(g.source_end, comment.pos.offset)
 				&& (g.out.len == 0 || !g.out.last_n(int_min(2, g.out.len)).ends_with('\n\n')) {
 				g.out.writeln('')
 			}

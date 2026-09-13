@@ -514,6 +514,12 @@ fn type_has_import_alias_text(typ types.Type) bool {
 }
 
 fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {
+	if os.getenv('V3_DEBUG_SIZEOF') == '1' {
+		probe := g.sizeof_target(value)
+		if probe.contains('io__') {
+			eprintln('[sizeof] value=${value} file=${file} cur_file=${g.tc.cur_file} cur_module=${g.tc.cur_module} target=${probe}')
+		}
+	}
 	canonical := g.canonical_import_alias_type_text_in_file(value, file)
 	if canonical != value {
 		if exact := g.exact_known_import_type_text(canonical) {
@@ -663,8 +669,16 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 }
 
 fn (g &FlatGen) node_source_file(node &flat.Node) string {
-	if source_file := g.a.source_files[node.pos.id] {
-		return source_file.name
+	// A synthesized node (a transform-created `sizeof`, a temporary, ...) carries no
+	// position, and `source_files` is keyed by file id where 0 is a real file. An
+	// unchecked lookup therefore resolves such a node against whichever file happens
+	// to be first, which qualified a bare `Type` against that file's imports (giving
+	// `io__Type` instead of `types__Type`). Fall through to the enclosing function's
+	// file instead.
+	if node.pos.is_valid() {
+		if source_file := g.a.source_files[node.pos.id] {
+			return source_file.name
+		}
 	}
 	mut pending := []flat.Node{cap: node.children_count}
 	for i in 0 .. node.children_count {
@@ -672,8 +686,10 @@ fn (g &FlatGen) node_source_file(node &flat.Node) string {
 	}
 	for pending.len > 0 {
 		child := pending.pop()
-		if source_file := g.a.source_files[child.pos.id] {
-			return source_file.name
+		if child.pos.is_valid() {
+			if source_file := g.a.source_files[child.pos.id] {
+				return source_file.name
+			}
 		}
 		for i in 0 .. child.children_count {
 			pending << g.a.child_node(&child, i)

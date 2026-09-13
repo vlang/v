@@ -32,7 +32,7 @@ fn run_driver_review_process(program string, args []string, environment map[stri
 
 fn build_driver_review_v3(root string) string {
 	v3_bin := os.join_path(root, 'v3_review_driver')
-	result := run_driver_review_process(@VEXE, ['-old-compiler', '-gc', 'none', '-path',
+	result := run_driver_review_process(@VEXE, ['-gc', 'none', '-path',
 		'${driver_review_vlib_dir}|@vlib|@vmodules', '-o', v3_bin, driver_review_v3_src],
 		driver_review_environment())
 	assert result.exit_code == 0, result.output
@@ -122,7 +122,15 @@ int main(void) {
 		cross_c_output, cross_c_source], driver_review_environment())
 	assert cross_c_compile.exit_code == 0, cross_c_compile.output
 	assert os.is_file(cross_c_output)
-	assert os.read_file(cross_c_output)!.contains('int main(int argc, char** argv)')
+	// A cross build still emits a complete program; the entry point is the target's
+	// own (Windows programs are generated with the wide `wmain`).
+	cross_c_text := os.read_file(cross_c_output)!
+	cross_entry_point := if cross_target_os == 'windows' {
+		'int wmain(int argc, wchar_t** argv)'
+	} else {
+		'int main(int argc, char** argv)'
+	}
+	assert cross_c_text.contains(cross_entry_point), cross_entry_point
 
 	first_root := os.join_path(root, 'modules_first')
 	second_root := os.join_path(root, 'modules_second')

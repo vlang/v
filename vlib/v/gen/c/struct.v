@@ -2939,17 +2939,22 @@ fn (mut g FlatGen) shared_value_c_type(inner string) string {
 
 fn (mut g FlatGen) shared_wrapper_c_name(inner string) string {
 	name := g.shared_value_type_name(inner)
-	if info := g.find_struct_decl(inner) {
-		if info.module == 'main' {
-			return '__shared__main__${name}'
-		}
-	}
-	typ := g.tc.parse_type(inner)
-	if typ is types.Struct {
-		struct_type := typ as types.Struct
-		if info := g.find_struct_decl(struct_type.name) {
+	// A `main` struct that reached here through a container (`Array_`, `Map_`, ...)
+	// has lost its module in the wrapper name, so it is restored here. A plain
+	// struct name already carries it and must not get a second `main__`.
+	if !name.starts_with('main__') {
+		if info := g.find_struct_decl(inner) {
 			if info.module == 'main' {
 				return '__shared__main__${name}'
+			}
+		}
+		typ := g.tc.parse_type(inner)
+		if typ is types.Struct {
+			struct_type := typ as types.Struct
+			if info := g.find_struct_decl(struct_type.name) {
+				if info.module == 'main' {
+					return '__shared__main__${name}'
+				}
 			}
 		}
 	}

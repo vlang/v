@@ -1623,7 +1623,22 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 		return t.make_int_literal(0)
 	}
 
-	prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
+	// `x?` on a plain option variable must not go through a staging copy: the
+	// unwrap is an lvalue, so `x?.pop()` has to mutate `x`'s own payload rather
+	// than a temp that is thrown away right after. A propagation unwrap always
+	// diverges on the `none` branch, so there is no value slot to fill and the
+	// payload can simply be read in place once `ok` has been checked.
+	mut inplace_name := ''
+	if node.value in ['?', '!'] && prelude.len == 0 {
+		new_expr_node := t.a.nodes[int(new_expr)]
+		if new_expr_node.kind == .ident && new_expr_node.value.len > 0
+			&& t.is_optional_type_name(t.var_type(new_expr_node.value)) {
+			inplace_name = new_expr_node.value
+		}
+	}
+	if inplace_name.len == 0 {
+		prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
+	}
 	storage_value_type0 := if t.is_fixed_array_type(value_type) {
 		t.resolved_fixed_array_canonical_type(value_type)
 	} else {
@@ -1645,6 +1660,15 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 			storage_value_type = active_arg
 			break
 		}
+	}
+	if inplace_name.len > 0 {
+		not_ok := t.make_prefix(.not, t.make_selector(t.make_ident(inplace_name), 'ok',
+			'bool'))
+		inplace_else := t.make_or_else_block(node.value, t.lower_or_body_to_stmts(body_id,
+			'', '', node.value, inplace_name))
+		t.pending_stmts = outer_pending
+		t.pending_stmts << t.make_if(not_ok, inplace_else, t.make_empty())
+		return t.make_selector(t.make_ident(inplace_name), 'value', storage_value_type)
 	}
 	prelude << t.make_staging_value_decl(val_tmp, storage_value_type)
 

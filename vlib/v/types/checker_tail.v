@@ -14965,8 +14965,19 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		if arg_node.kind in [.int_literal, .float_literal] && param_text in generic_params {
 			for later_param_idx in param_idx + 1 .. param_texts.len {
 				later_arg_idx := later_param_idx - first_param_idx + 1 + info.arg_offset
-				if trimmed_space(param_texts[later_param_idx]) == param_text
-					&& later_arg_idx < node.children_count {
+				if trimmed_space(param_texts[later_param_idx]) != param_text
+					|| later_arg_idx >= node.children_count {
+					continue
+				}
+				later_id := tc.call_arg_value(tc.a.child(&node, later_arg_idx))
+				later_kind := tc.a.node(later_id).kind
+				// A later argument that carries a type of its own decides the
+				// placeholder. Between untyped numeric literals only a float may
+				// override an int, never the other way round: otherwise
+				// `f(0.0, 1, 1)` would take `int` from the trailing literal and then
+				// reject its own `f64` first argument.
+				if later_kind !in [.int_literal, .float_literal]
+					|| (arg_node.kind == .int_literal && later_kind == .float_literal) {
 					defer_numeric_literal = true
 					break
 				}

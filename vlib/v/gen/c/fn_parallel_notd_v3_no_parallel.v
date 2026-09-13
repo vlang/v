@@ -2729,6 +2729,10 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe_env_setup: g.compiler_vexe_env_setup
 		ccompiler: g.ccompiler
 		target: g.target
+		// `int_ct` is derived from the target by set_target, which a worker never
+		// calls. Without copying it a worker keeps the 64-bit default and emits an
+		// `i64` body for a prototype the master declared as `i32` on a 32-bit target.
+		int_ct: g.int_ct
 		subsystem: g.subsystem
 		c_flags: g.c_flags
 		suppress_main: g.suppress_main

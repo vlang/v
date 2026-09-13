@@ -319,6 +319,7 @@ mut:
 	test_files                     map[string]bool
 	show_test_stats                bool
 	show_test_summary              bool
+	show_test_file_results         bool
 	test_run_only                  []string
 	assert_expr_overrides          map[int]string
 	print_fn_names                 []string
@@ -1325,6 +1326,11 @@ pub fn (mut g FlatGen) set_show_test_stats(enabled bool) {
 // set_show_test_summary enables the aggregate report used by the `v test` command.
 pub fn (mut g FlatGen) set_show_test_summary(enabled bool) {
 	g.show_test_summary = enabled
+}
+
+// set_show_test_file_results enables the per-test-file OK/FAIL lines of `v test`.
+pub fn (mut g FlatGen) set_show_test_file_results(enabled bool) {
+	g.show_test_file_results = enabled
 }
 
 // set_test_run_only limits the generated test harness to matching test functions.
@@ -16845,6 +16851,9 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('#include <features.h>')
 		g.writeln('#endif')
 		g.write(manual_stdlib_c_headers())
+		// The prelude `#undef`s its own V_CRT_* macros, so leave a marker that later
+		// blocks can test before repeating any of its declarations.
+		g.writeln('#define V_MANUAL_STDLIB_HEADERS 1')
 		g.writeln('void abort(void);')
 		g.system_libc_headers()
 		g.system_libc_preamble()
@@ -19498,11 +19507,17 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('static int v3_array_sort_${sort_type}_cmp(const void* a, const void* b) { ${c_type} av = *(const ${c_type}*)a; ${c_type} bv = *(const ${c_type}*)b; return (av > bv) - (av < bv); }')
 		g.writeln('static inline void v3_array_sort_${sort_type}(Array* a) { if (a != NULL && a->len > 1) qsort(a->data, (size_t)a->len, sizeof(${c_type}), v3_array_sort_${sort_type}_cmp); }')
 	}
+	// The manual stdlib prelude already declares these, with the CRT linkage the
+	// platform wants. Repeating them after `-is_o` pushes its `internal_linkage`
+	// attribute makes clang reject the second, attribute-less declaration, so only
+	// the headerless preamble needs them here.
+	g.writeln('#ifndef V_MANUAL_STDLIB_HEADERS')
 	g.writeln('#ifdef _WIN32')
 	g.writeln('void* _aligned_malloc(size_t size, size_t alignment);')
 	g.writeln('void _aligned_free(void* memblock);')
 	g.writeln('#else')
 	g.writeln('int posix_memalign(void** memptr, size_t alignment, size_t size);')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) { void* p = NULL; if (alignment < sizeof(void*)) alignment = sizeof(void*);')
 	g.writeln('#ifdef _WIN32')
