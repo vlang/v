@@ -47,8 +47,9 @@ pub fn os_is_target_of(this_os string, target string) bool {
 		|| (host != 'netbsd' && target == 'netbsd')
 		|| (host != 'dragonfly' && target == 'dragonfly')
 		|| (host != 'solaris' && target == 'solaris') || (host != 'qnx' && target == 'qnx')
-		|| (host != 'serenity' && target == 'serenity')
+		|| (host != 'serenity' && target == 'serenity') || (host != 'haiku' && target == 'haiku')
 		|| (host != 'plan9' && target == 'plan9') || (host != 'vinix' && target == 'vinix')
+		|| (host != 'wasm32_emscripten' && target in ['emscripten', 'wasm32_emscripten'])
 		|| (host != 'android' && target in ['android', 'android_outside_termux'])
 		|| (host != 'termux' && target == 'termux') {
 		return false

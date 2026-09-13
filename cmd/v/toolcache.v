@@ -26,6 +26,9 @@ const tool_cache_disable_env = 'VTOOLS_NO_CACHE'
 const tool_cache_dir_env = 'VTOOLS_CACHE_DIR'
 const tool_cache_verbose_env = 'VTOOLS_CACHE_VERBOSE'
 const tool_cache_field_separator = '\x1f'
+// marks a cached binary that had to be renamed out of the way instead of being overwritten,
+// because Windows was still executing it; `prune_stale_tool_binaries` collects these later
+const tool_cache_replaced_marker = '.replaced.'
 
 // ToolCacheEntry describes where a single compiled `cmd/tools/` program is cached.
 struct ToolCacheEntry {
@@ -257,6 +260,73 @@ fn unbuildable_tool_failure(entry ToolCacheEntry) ?string {
 	return details
 }
 
+// c_stage_failure_markers are the ways the driver reports that the generated C could not be
+// compiled or linked. The C stage only runs once the whole V source closure has been accepted,
+// so a failure carrying one of these is about the toolchain and not about the tool's sources.
+const c_stage_failure_markers = ['C compilation failed:', 'C compilation error (from ',
+	'failed parallel C compilation', 'failed to link after parallel C compilation',
+	'was not found while linking the generated program']
+
+// build_failure_is_source_dependent reports whether a failed tool build is explained by the
+// tool's V sources, and may therefore be cached against them. Anything else -- a C compiler
+// that was not installed at the time, a transient linker failure, a build the OOM killer cut
+// short, a child process that never started -- has to be retried on the next invocation,
+// because nothing in the recorded manifest would ever invalidate it.
+fn build_failure_is_source_dependent(details string) bool {
+	text := details.trim_space()
+	if text == '' {
+		// A build that produced no diagnostic at all was not a rejection of the sources.
+		return false
+	}
+	for marker in c_stage_failure_markers {
+		if text.contains(marker) {
+			return false
+		}
+	}
+	for line in text.split_into_lines() {
+		if line_is_v_diagnostic(line) {
+			return true
+		}
+	}
+	return false
+}
+
+// line_is_v_diagnostic reports whether a line is a V compiler diagnostic, i.e. has the
+// `<file>:<line>:<column>: error: ...` shape that the frontend gives every one of them.
+// The position is what makes the test meaningful: without it any output that merely
+// contains the word `error` would pass, including a C compiler's own.
+fn line_is_v_diagnostic(line string) bool {
+	mut head := ''
+	if index := line.index(': error: ') {
+		head = line[..index]
+	} else if index := line.index(': builder error: ') {
+		head = line[..index]
+	} else {
+		return false
+	}
+	if !head.contains(':') {
+		return false
+	}
+	column := head.all_after_last(':')
+	rest := head.all_before_last(':')
+	if !rest.contains(':') {
+		return false
+	}
+	return is_all_digits(column) && is_all_digits(rest.all_after_last(':'))
+}
+
+fn is_all_digits(text string) bool {
+	if text == '' {
+		return false
+	}
+	for character in text {
+		if !character.is_digit() {
+			return false
+		}
+	}
+	return true
+}
+
 // record_unbuildable_tool remembers a failed build together with the inputs that caused it,
 // so that the failing compilation is not repeated on every invocation, while fixing any of
 // those inputs still makes it be retried.
@@ -297,11 +367,15 @@ fn encode_tool_cache_manifest(source_files []string, started i64) string {
 	return lines.join('\n') + '\n'
 }
 
-// publish_atomically moves `staged` over `destination` in a single rename, so that a
+// publish_atomically moves `staged` over `destination` in a single step, so that a
 // concurrently running V process either sees the previous file or the new one, but never
 // a half written one, and never has the executable it is starting truncated underneath it.
+// `destination` regularly already exists: a tool whose own sources and compiler are
+// unchanged keeps its cache key, so a rebuild triggered by an imported vlib module lands
+// in the very same slot. Replacing it is what `replace_file_atomically` is for; a plain
+// `os.rename` would fail there on Windows.
 fn publish_atomically(staged string, destination string) bool {
-	os.rename(staged, destination) or {
+	if !replace_file_atomically(staged, destination) {
 		os.rm(staged) or {}
 		return false
 	}
@@ -336,7 +410,18 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 	keep := os.file_name(entry.binary)
 	entries := os.ls(directory) or { return }
 	for name in entries {
-		if !is_cache_artifact_of(name, entry.name) || name.starts_with(keep) {
+		if !is_cache_artifact_of(name, entry.name) {
+			continue
+		}
+		if name.contains(tool_cache_replaced_marker) {
+			// A binary that Windows would not let us overwrite while it was still being
+			// executed was renamed aside instead. It shares the current entry's prefix, so
+			// the `keep` test below would spare it forever; once the process that held it
+			// has exited this is the only thing that ever deletes it.
+			os.rm(os.join_path(directory, name)) or {}
+			continue
+		}
+		if name.starts_with(keep) {
 			continue
 		}
 		os.rm(os.join_path(directory, name)) or {}
@@ -375,7 +460,13 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	if code != 0 || !os.is_file(staged) {
 		os.rm(staged) or {}
 		details := if output.trim_space() != '' { output } else { failure }
-		record_unbuildable_tool(entry, dumped, started, details)
+		// Only a failure the tool's own V sources explain may be cached against them. A C
+		// toolchain that was missing, out of memory or momentarily broken says nothing about
+		// those sources, and the manifest does not describe it, so recording it would replay
+		// the same error until a source file happened to change.
+		if build_failure_is_source_dependent(details) {
+			record_unbuildable_tool(entry, dumped, started, details)
+		}
 		return error(details)
 	}
 	source_files := os.read_file(dumped) or { '' }.split_into_lines()

@@ -310,3 +310,86 @@ fn unbuildable_fixture(directory string, filler string) ToolCacheEntry {
 		unbuildable_manifest: binary + '.unbuildable.inputs'
 	}
 }
+
+// A build that failed because of the environment rather than the tool's own sources must not
+// be recorded: nothing in the manifest describes the toolchain, so the failure would be
+// replayed on every later invocation even after the environment was repaired.
+fn test_only_source_dependent_build_failures_are_cached() {
+	// V frontend diagnostics: these are explained by the sources, and are cacheable.
+	assert build_failure_is_source_dependent('/v/cmd/tools/vdemo.v:3:1: error: unknown type `Foo`')
+	assert build_failure_is_source_dependent('/v/cmd/tools/vdemo.v:2:1: builder error: cannot import module "missing" (not found)')
+	assert build_failure_is_source_dependent('warming up\n/v/x.v:12:5: error: undefined ident: `y`\n')
+
+	// C stage failures: the whole V source closure was already accepted by the time these
+	// happen, so they say nothing about it.
+	assert !build_failure_is_source_dependent('C compilation failed:\nsrc.c:12:3: error: expected `;`')
+	assert !build_failure_is_source_dependent('C compilation error (from clang):\nsrc.c:9:1: error: x')
+	assert !build_failure_is_source_dependent('failed parallel C compilation\nsrc.c:4:4: error: x')
+	assert !build_failure_is_source_dependent('failed to link after parallel C compilation')
+	assert !build_failure_is_source_dependent('builder error:\n==================\nC library `sqlite3` was not found while linking the generated program.')
+
+	// No diagnostic at all: a child that never started, or one the OOM killer cut short.
+	assert !build_failure_is_source_dependent('')
+	assert !build_failure_is_source_dependent('   \n  ')
+	assert !build_failure_is_source_dependent('signal 9')
+	assert !build_failure_is_source_dependent('exec failed: No such file or directory')
+	// Prose that merely contains the word, with no source position, is not a diagnostic.
+	assert !build_failure_is_source_dependent('clang: error: no such file or directory')
+}
+
+fn test_v_diagnostic_lines_require_a_source_position() {
+	assert line_is_v_diagnostic('/a/b.v:1:2: error: boom')
+	assert line_is_v_diagnostic('/a/b.v:10:20: builder error: boom')
+	assert !line_is_v_diagnostic('error: boom')
+	assert !line_is_v_diagnostic('/a/b.v: error: boom')
+	assert !line_is_v_diagnostic('/a/b.v:x:y: error: boom')
+	assert !line_is_v_diagnostic('cc: error: boom')
+	assert !line_is_v_diagnostic('just a line')
+}
+
+// A rebuild triggered by a changed vlib dependency keeps the tool's cache key, so it has to
+// be installable over the binary already sitting in that slot.
+fn test_publishing_replaces_an_existing_binary() {
+	directory := toolcache_test_dir('replace')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	destination := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	staged := destination + '.staged.1'
+	os.write_file(destination, 'old') or { panic(err) }
+	os.write_file(staged, 'new') or { panic(err) }
+
+	assert publish_atomically(staged, destination)
+	assert os.read_file(destination) or { '' } == 'new'
+	assert !os.exists(staged)
+}
+
+// The binaries that Windows only let us rename out of the way share the current entry's
+// prefix, so pruning has to collect them explicitly or they would accumulate forever.
+fn test_pruning_collects_binaries_that_were_replaced_while_in_use() {
+	directory := toolcache_test_dir('prune_replaced')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	key := 'a'.repeat(64)
+	binary := os.join_path(directory, 'vdemo-${key}')
+	entry := ToolCacheEntry{
+		name:     'vdemo'
+		vroot:    directory
+		binary:   binary
+		manifest: binary + '.inputs'
+	}
+	os.write_file(binary, 'current') or { panic(err) }
+	os.write_file(binary + '.inputs', 'manifest') or { panic(err) }
+	displaced := '${binary}${tool_cache_replaced_marker}4242'
+	os.write_file(displaced, 'previous') or { panic(err) }
+	stale := os.join_path(directory, 'vdemo-' + 'b'.repeat(64))
+	os.write_file(stale, 'older build') or { panic(err) }
+
+	prune_stale_tool_binaries(entry)
+
+	assert os.exists(binary), 'the current binary must be kept'
+	assert os.exists(binary + '.inputs'), 'the current manifest must be kept'
+	assert !os.exists(displaced), 'a binary replaced while in use must be collected'
+	assert !os.exists(stale), 'a previous build must be collected'
+}

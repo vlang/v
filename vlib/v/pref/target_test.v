@@ -230,8 +230,8 @@ fn test_termux_source_selection_keeps_android_common_files_distinct() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	for name in ['platform_default.c.v', 'platform_android.c.v',
-		'platform_android_outside_termux.c.v', 'platform_termux.c.v'] {
+	for name in ['platform_default.c.v', 'platform_android.c.v', 'platform_android_outside_termux.c.v',
+		'platform_termux.c.v'] {
 		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
 	}
 
@@ -292,4 +292,40 @@ fn test_remaining_native_os_source_selection_is_target_specific() {
 			'platform_${os_name}.c.v',
 		]
 	}
+}
+
+fn test_os_is_target_of_rejects_foreign_platform_suffixes() {
+	// `v test` derives the target from the file name (`foo_haiku_test.v` -> `haiku`),
+	// so every platform V can target has to be denied on hosts that are not it. A name
+	// missing here does not fail closed: it falls through and the test runs anyway.
+	platforms := ['windows', 'linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris',
+		'qnx', 'haiku', 'serenity', 'vinix', 'plan9', 'ios', 'termux']
+	for host in platforms {
+		for target in platforms {
+			if host == target {
+				assert os_is_target_of(host, target), '${host} must run its own ${target} tests'
+				continue
+			}
+			assert !os_is_target_of(host, target), '${host} must not run ${target} tests'
+		}
+	}
+}
+
+fn test_os_is_target_of_keeps_grouping_suffixes() {
+	assert os_is_target_of('linux', 'nix')
+	assert os_is_target_of('macos', 'nix')
+	assert !os_is_target_of('windows', 'nix')
+	assert os_is_target_of('freebsd', 'bsd')
+	assert os_is_target_of('macos', 'bsd')
+	assert !os_is_target_of('haiku', 'bsd')
+	// `all` and an unrecognized suffix are not platform constraints at all.
+	assert os_is_target_of('haiku', 'all')
+	assert os_is_target_of('linux', 'utils')
+}
+
+fn test_os_is_target_of_rejects_emscripten_on_native_hosts() {
+	assert !os_is_target_of('linux', 'emscripten')
+	assert !os_is_target_of('macos', 'wasm32_emscripten')
+	assert os_is_target_of('emscripten', 'emscripten')
+	assert os_is_target_of('wasm32_emscripten', 'emscripten')
 }
