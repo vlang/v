@@ -17783,6 +17783,14 @@ fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name stri
 	if g.files_with_c_includes[source_file] {
 		return false
 	}
+	// On a freestanding target V does not drive the C build: the project compiles
+	// and links the generated C itself, so `#flag`/`#include` say nothing about
+	// which objects a `fn C.xxx` will be resolved from. A missing prototype is a
+	// hard error there, while one the project's own header also declares is
+	// harmless, so a file that includes no C header of its own gets the prototype.
+	if g.target_libc_headers {
+		return true
+	}
 	if g.files_linking_c_sources[source_file] {
 		return true
 	}

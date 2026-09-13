@@ -8518,6 +8518,7 @@ pub fn run(args []string) {
 	mut notes_are_errors := false
 	mut fatal_errors := false
 	mut check_overflow := false
+	mut target_libc_headers := false
 	mut force_bounds_checking := false
 	mut print_v_files := false
 	mut print_watched_files := false
@@ -8889,6 +8890,12 @@ pub fn run(args []string) {
 			if 'nofloat' !in user_defines {
 				user_defines << 'nofloat'
 			}
+			i++
+		} else if args[i] == '-target-libc-headers' {
+			// Deliberately not a `freestanding` define: that one selects vlib's
+			// bare-metal paths, which call bare_print/bare_panic out of a
+			// `-bare-builtin-dir`. This target has a libc, in its own headers.
+			target_libc_headers = true
 			i++
 		} else if args[i] == '-no-bounds-checking' {
 			if 'no_bounds_checking' !in user_defines {
@@ -9501,6 +9508,7 @@ pub fn run(args []string) {
 	prefs.ccompiler = effective_c_compiler
 	prefs.no_parallel = current_no_parallel
 	prefs.c99 = c99
+	prefs.target_libc_headers = target_libc_headers
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.enable_globals = enable_globals_compat
 	prefs.user_defines = user_defines
@@ -11674,6 +11682,7 @@ pub fn run(args []string) {
 			g.set_output_cross_c(prefs.output_cross_c)
 			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
+			g.set_target_libc_headers(prefs.target_libc_headers)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
@@ -11737,6 +11746,7 @@ pub fn run(args []string) {
 			g.set_output_cross_c(prefs.output_cross_c)
 			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
+			g.set_target_libc_headers(prefs.target_libc_headers)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)

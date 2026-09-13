@@ -496,6 +496,9 @@ mut:
 	// generated header the way the reference compiler did.
 	compile_defines               []string
 	subsystem                     pref.Subsystem
+	// target_libc_headers mirrors pref.Preferences.target_libc_headers: the target
+	// supplies the libc headers, so this generator must not restate them.
+	target_libc_headers           bool
 	windows_entry_point_generated bool
 	windows_gui_entry_point       bool
 	// C spelling for V's platform-width `int`: `i64` on 64-bit targets, `i32` on
@@ -1425,6 +1428,11 @@ fn cross_cond_top_level_index(cond string, op string) ?int {
 // set_subsystem configures the Windows executable subsystem.
 pub fn (mut g FlatGen) set_subsystem(subsystem pref.Subsystem) {
 	g.subsystem = subsystem
+}
+
+// set_target_libc_headers marks a target that supplies the libc headers itself.
+pub fn (mut g FlatGen) set_target_libc_headers(target_libc_headers bool) {
+	g.target_libc_headers = target_libc_headers
 }
 
 // generated_windows_gui_entry_point reports the GUI decision when this generator emitted a
@@ -17441,6 +17449,14 @@ fn (mut g FlatGen) preamble() {
 }
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
+	// A freestanding target has no hosted libc to include, whatever the program's
+	// own `#include`s name. Those includes are the project's own headers -- a
+	// kernel compiling with `-nostdinc` against its own tree -- so treating any
+	// include as proof of a system libc put <sys/un.h> and the rest of the hosted
+	// set into a translation unit that has none of them.
+	if g.target_libc_headers {
+		return false
+	}
 	for directive in g.preinclude_directives {
 		for line in directive.split_into_lines() {
 			clean := trimmed_space(line)
@@ -17666,7 +17682,20 @@ fn (mut g FlatGen) headerless_darwin_pthread_alias(alias string, typ string, gua
 
 fn (mut g FlatGen) headerless_libc_preamble() {
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
-	g.writeln(c_stdint_header_text())
+	if g.target_libc_headers {
+		// A freestanding target supplies these headers itself, so include them
+		// instead of restating what they declare. Its own <stdint.h> may spell the
+		// fixed-width types differently than the text below does -- `unsigned long`
+		// where this says `unsigned long long` -- which is a typedef conflict rather
+		// than a compatible redeclaration, and the same applies to every libc
+		// prototype further down. This is the set V's own runtime calls into.
+		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdio.h', 'stdlib.h',
+			'string.h'] {
+			g.writeln('#include <${header}>')
+		}
+	} else {
+		g.writeln(c_stdint_header_text())
+	}
 	g.writeln('#ifndef NULL')
 	g.writeln('#define NULL ((void*)0)')
 	g.writeln('#endif')
@@ -17728,6 +17757,14 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#ifndef _IONBF')
 	g.writeln('#define _IONBF 2')
 	g.writeln('#endif')
+	if g.target_libc_headers {
+		// Everything below declares a hosted libc: FILE, the POSIX structs, and the
+		// prototypes that go with them. A kernel defines those itself, in its own
+		// headers, and a second declaration of `struct stat` or `strlen` conflicts
+		// with the real one instead of describing it. The macros above are all
+		// `#ifndef`-guarded, so they stay.
+		return
+	}
 	g.headerless_windows_sdk_types()
 	g.writeln('#if !defined(__FILE_defined) && !defined(_FILE_DEFINED) && !defined(_FILEDEFED) && !defined(__DEFINED_FILE) && !defined(_FILE_DECLARED) && !defined(__FILE_DECLARED)')
 	g.writeln('typedef struct FILE FILE;')

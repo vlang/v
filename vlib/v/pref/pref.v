@@ -48,25 +48,32 @@ pub mut:
 	c99                   bool
 	force_bounds_checking bool
 	enable_globals        bool
-	vroot                 string = detect_vroot()
-	vexe                  string = detect_vexe()
-	vhash                 string
-	vcurrent_hash         string
-	selfhost              bool
-	building_v            bool // compiling the V compiler itself: no generics, skip monomorphization
-	is_prod               bool
-	is_debug              bool
-	is_test               bool // at least one compatible user test file is being compiled
-	is_fmt                bool // preserve source-only syntax needed by the V formatter
-	migrate_json2         bool // rewrite supported legacy json calls while formatting
-	is_livemain           bool
-	is_liveshared         bool
-	is_shared             bool
-	subsystem             Subsystem
-	no_builtin            bool
-	no_preludes           bool
-	module_search_paths   []string
-	thread_stack_size     int = 8 * 1024 * 1024
+	// target_libc_headers marks a target that supplies the C library headers
+	// itself, so the generated C must include them rather than restate what they
+	// declare. A kernel, compiling `-nostdinc` against its own header tree, is the
+	// case. It cannot be inferred from the target OS, which also hosts ordinary
+	// programs that link the host's libc. Distinct from V1's `-freestanding`,
+	// which means no libc at all.
+	target_libc_headers bool
+	vroot               string = detect_vroot()
+	vexe                string = detect_vexe()
+	vhash               string
+	vcurrent_hash       string
+	selfhost            bool
+	building_v          bool // compiling the V compiler itself: no generics, skip monomorphization
+	is_prod             bool
+	is_debug            bool
+	is_test             bool // at least one compatible user test file is being compiled
+	is_fmt              bool // preserve source-only syntax needed by the V formatter
+	migrate_json2       bool // rewrite supported legacy json calls while formatting
+	is_livemain         bool
+	is_liveshared       bool
+	is_shared           bool
+	subsystem           Subsystem
+	no_builtin          bool
+	no_preludes         bool
+	module_search_paths []string
+	thread_stack_size   int = 8 * 1024 * 1024
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm            bool
