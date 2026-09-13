@@ -134,20 +134,30 @@ fn test_netbsd_marks_the_v1_compatibility_compiler() {
 	assert makefile.contains('paxctl +m \$(V1_FALLBACK_EXE)')
 }
 
-fn test_gnumake_builds_the_v1_fallback_executable_for_every_native_host() {
+fn test_gnumake_builds_the_v1_fallback_only_on_demand() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
 	assert source.contains('V1_FALLBACK_EXE = \$(dir \$(VEXE))v1_fallback\$(EXE_EXT)')
-	installer := 'sh "\$(V1_FALLBACK_INSTALLER)" "./v1\$(EXE_EXT)" "\$(V1_FALLBACK_EXE)"'
-	assert source.count(installer) == 2
-	fallback_environment := 'V1_FALLBACK_LOCAL="\$(local)" CC="\$(CC)" OLDV_CCOPTIONS="\$(BOOTSTRAP_VC_CFLAGS)" OLDV_LDFLAGS="\$(BOOTSTRAP_LDFLAGS)"'
-	assert source.count(fallback_environment) == 2
+	all_recipe := source.all_after('all: latest_vc latest_tcc latest_legacy').all_before('\nv1:\n')
+	assert !all_recipe.contains('V1_FALLBACK_EXE')
+	assert all_recipe.contains('-new-compiler run cmd/tools/detect_tcc.v')
+	assert all_recipe.contains('-new-compiler run .github/problem-matchers/register_all.vsh')
+	assert source.contains('\n.PHONY: all v1 ')
+	assert source.contains('\nv1:\n')
+	assert source.contains('candidate="\$(V1_FALLBACK_EXE).tmp.\$\$\$\$"')
+	assert source.contains('Built V1 compatibility compiler: \$(V1_FALLBACK_EXE)')
 	assert !source.contains('-d v1_fallback -o \$(V1_FALLBACK_EXE)')
 }
 
-fn test_portable_make_builds_the_v1_fallback_executable_for_every_native_host() {
+fn test_portable_make_builds_the_v1_fallback_only_on_demand() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'Makefile'))!
-	assert source.count('sh ./cmd/tools/install_v1_fallback.sh ./v1 ./v1_fallback') == 1
-	assert source.contains('CC="\$(CC)" OLDV_CCOPTIONS="\$\$bootstrap_ccflags" OLDV_LDFLAGS="\$\$ldflags"')
+	v_recipe := source.all_after('\nv:\n').all_before('\nv1:\n')
+	assert !v_recipe.contains('v1_fallback')
+	assert v_recipe.contains('./v -new-compiler run ./cmd/tools/detect_tcc.v')
+	assert v_recipe.contains('./v -new-compiler run .github/problem-matchers/register_all.vsh')
+	assert source.contains('\n.PHONY: all check download_vc install v v1\n')
+	assert source.contains('\nv1:\n')
+	assert source.contains('candidate=./v1_fallback.tmp.\$\$\$\$')
+	assert source.contains('Built V1 compatibility compiler: ./v1_fallback')
 	assert !source.contains('set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback')
 }
 

@@ -81,16 +81,16 @@ build, including compiler self-builds, is compiled by V3 in-process. The CLI and
 tool commands remain in `cmd/v`; commands such as `test` and `fmt` are external
 tools, and non-C backends remain separate builder tools.
 
-The standard bootstrap installs the V 0.5.2 release compiler as the sibling
-`v1_fallback` executable (`v1_fallback.exe` on Windows). It downloads and
-verifies the matching GitHub release asset, or builds the tag with `oldv` when
-the asset is unavailable. `-old-compiler` launches it explicitly, and
+The standard bootstrap does not build the sibling `v1_fallback` executable
+(`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
+sibling is missing, it reports that it is running `make v1` and builds the
+fallback from the current `vc` snapshot. You can run `make v1` explicitly to
+prepare it ahead of time. `-old-compiler` launches the fallback explicitly, and
 ordinary user builds retry through it after a V3 compiler or C compilation
 failure. Explicit `-new-compiler` builds and native compiler self-builds remain
 strict V3 operations, except for `-new-compiler -cc msvc` on Windows. V3 does
 not yet generate MSVC command lines, so that combination intentionally launches
-`v1_fallback.exe`. A separately built V3-only executable without the sibling
-cannot use the fallback. `-new-compiler` remains accepted for command-line
+`v1_fallback.exe`. `-new-compiler` remains accepted for command-line
 compatibility and otherwise selects the same embedded driver.
 
 Portable cross-VC snapshots do not embed V3 and retain the established compiler

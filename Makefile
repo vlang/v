@@ -9,7 +9,7 @@ VC_BOOTSTRAP_DEFINE = -DCUSTOM_DEFINE_v1_fallback
 
 all: download_vc v
 
-.PHONY: all check download_vc install v
+.PHONY: all check download_vc install v v1
 
 download_vc:
 	@set -e; \
@@ -125,7 +125,6 @@ v:
 	fi; \
 	set -- "$$@" cmd/v; \
 	"$$@"; \
-	CC="$(CC)" OLDV_CCOPTIONS="$$bootstrap_ccflags" OLDV_LDFLAGS="$$ldflags" sh ./cmd/tools/install_v1_fallback.sh ./v1 ./v1_fallback; \
 	set -- ./v2 -o v $$bootstrap_gcflags $(VFLAGS); \
 	if [ -n "$$bootstrap_ccompiler" ]; then \
 		set -- "$$@" -cc "$$bootstrap_ccompiler"; \
@@ -139,10 +138,61 @@ v:
 	set -- "$$@" cmd/v; \
 	"$$@"; \
 	rm -rf v1 v2; \
-	./v run ./cmd/tools/detect_tcc.v; \
+	./v -new-compiler run ./cmd/tools/detect_tcc.v; \
 	echo "V has been successfully built"; \
 	./v version; \
-	./v run .github/problem-matchers/register_all.vsh
+	./v -new-compiler run .github/problem-matchers/register_all.vsh
+
+v1:
+	@set -e; \
+	if [ ! -f vc/v.c ]; then $(MAKE) download_vc; fi; \
+	sys=`uname -s 2>/dev/null || echo unknown`; \
+	arch=`uname -m 2>/dev/null || echo unknown`; \
+	set -- $(CFLAGS); \
+	bootstrap_ccflags=; \
+	unsafe_o=0; \
+	for arg do \
+		case "$$arg" in \
+			-O|-O0|-O1) bootstrap_ccflags="$$bootstrap_ccflags $$arg";; \
+			-O*) bootstrap_ccflags="$$bootstrap_ccflags $$arg"; unsafe_o=1;; \
+			*) bootstrap_ccflags="$$bootstrap_ccflags $$arg";; \
+		esac; \
+	done; \
+	bootstrap_ccflags=$${bootstrap_ccflags# }; \
+	set -- $(LDFLAGS); \
+	ldflags=; \
+	for arg do ldflags="$$ldflags $$arg"; done; \
+	ldflags=$${ldflags# }; \
+	case "$$sys" in \
+		Linux) case "$$arch" in arm*) ldflags="$$ldflags -latomic";; esac;; \
+		FreeBSD|NetBSD|OpenBSD) ldflags="$$ldflags -lexecinfo";; \
+	esac; \
+	ldflags=$${ldflags# }; \
+	if [ "$$sys" = Linux ]; then \
+		case "$$arch" in \
+			arm64|aarch64) \
+				if [ $$unsafe_o -eq 1 ]; then \
+					set -- $$bootstrap_ccflags; \
+					bootstrap_ccflags=; \
+					for arg do \
+						case "$$arg" in \
+							-O|-O0|-O1) bootstrap_ccflags="$$bootstrap_ccflags $$arg";; \
+							-O*) bootstrap_ccflags="$$bootstrap_ccflags -O1";; \
+							*) bootstrap_ccflags="$$bootstrap_ccflags $$arg";; \
+						esac; \
+					done; \
+					bootstrap_ccflags=$${bootstrap_ccflags# }; \
+				fi;; \
+		esac; \
+	fi; \
+	candidate=./v1_fallback.tmp.$$$$; \
+	trap 'rm -f "$$candidate"' EXIT HUP INT TERM; \
+	if ! $(CC) $$bootstrap_ccflags $(VC_BOOTSTRAP_DEFINE) -std=gnu11 -w -o "$$candidate" vc/v.c -lm -lpthread $$ldflags; then \
+		cmd/tools/cc_compilation_failed_non_windows.sh; \
+		exit 1; \
+	fi; \
+	mv -f "$$candidate" ./v1_fallback; \
+	echo "Built V1 compatibility compiler: ./v1_fallback"
 
 check:
 	./v test-all
