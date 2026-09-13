@@ -85,7 +85,18 @@ fn labeled_assignment() {
 	}
 }
 
+// The literal may be addressed, and is a map all the same.
+fn addressed_map_key(ak string) {
+	$if windows {
+		m := &map[string]int{
+			ak: 1
+		}
+		println(m.len)
+	}
+}
+
 fn main() {
+	addressed_map_key('h')
 	labeled_assignment()
 	function_valued_map_key('g')
 	println(double(2))

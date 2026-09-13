@@ -366,3 +366,16 @@ fn test_a_labeled_assignment_still_writes() {
 	// And a write is a use of a parameter, label or not.
 	assert code_references_ident('retry: x = 1', 'x', true)
 }
+
+fn test_an_addressed_map_literal_is_still_a_map() {
+	assert code_references_ident('m := &map[string]int{x: 1}', 'x', true)
+	assert code_references_ident('return &map[string]int{x: 1}', 'x', true)
+	// A pointer inside the type is part of it, not a prefix of the literal.
+	assert code_references_ident('m := map[string]&Config{x: 1}', 'x', true)
+	assert code_references_ident('m := &map[string]&Config{x: 1}', 'x', true)
+	// An addressed struct literal still names its fields.
+	assert !code_references_ident('c := &Config{x: 1}', 'x', true)
+	assert !code_references_ident('c := &Box[int]{x: 1}', 'x', true)
+	// And an array of maps still initialises an array.
+	assert !code_references_ident('_ = []map[string]int{len: 3}', 'len', true)
+}

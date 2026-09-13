@@ -2918,6 +2918,12 @@ fn map_literal_type_precedes(tokens []string, index int) bool {
 		}
 		break
 	}
+	// `&map[string]int{..}` addresses the literal, and `?`/`!` wrap its type;
+	// the brackets of `[]map[string]int{..}` are not skipped, because that one
+	// initialises an array and names its options.
+	for first < index && tokens[first] in ['&', '?', '!'] {
+		first++
+	}
 	return first < index && tokens[first] == 'map'
 }
 
