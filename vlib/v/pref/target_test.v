@@ -406,12 +406,17 @@ fn test_cross_c_conditions_are_mutually_exclusive_like_comptime_flag_value() {
 	assert android_condition.contains('defined(__ANDROID__)')
 	assert android_condition.contains('!defined(__TERMUX__)')
 
+	// Clang defines `__APPLE__` for iOS too; the deployment-target macro is what
+	// separates them. There is no `__TARGET_IOS__`.
 	for apple_alias in ['macos', 'darwin', 'mac'] {
 		condition := cross_target_c_condition(apple_alias) or { '' }
 		assert condition.contains('defined(__APPLE__)'), apple_alias
-		assert condition.contains('!defined(__TARGET_IOS__)'), apple_alias
+		assert condition.contains('!defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)'), apple_alias
 	}
-	assert cross_target_c_condition('ios') or { '' } == 'defined(__TARGET_IOS__)'
+	assert cross_target_c_condition('ios') or { '' } == 'defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)'
+	// `comptime_flag_value` counts macOS but not iOS as BSD.
+	bsd_condition := cross_target_c_condition('bsd') or { '' }
+	assert bsd_condition.contains('!defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)')
 }
 
 fn test_cross_gcc_condition_uses_a_macro_gcc_defines() {

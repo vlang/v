@@ -8408,7 +8408,7 @@ libraries and include files for Windows and Linux. V will provide you with a lin
 
 ### Portable C output (`-os cross`)
 
-`-os cross` (also spelled `-cross`) is not a platform. It asks for *portable* C,
+`-os cross` is not a platform. It asks for *portable* C,
 i.e. C that is not tied to one OS, architecture or C compiler, so that a single
 generated file can be compiled on any of them. It is how V's own bootstrap
 snapshot `vc/v.c` is produced, and it only makes sense with `-o file.c`:
@@ -8417,6 +8417,17 @@ snapshot `vc/v.c` is produced, and it only makes sense with `-o file.c`:
 v -os cross -o /tmp/v.c cmd/v
 cc -o v_from_c /tmp/v.c -lm -lpthread
 ```
+
+The `-cross` flag asks for the same output, but as a modifier that combines with
+an explicit target, which is how the Windows bootstrap snapshot is produced:
+
+```shell
+v -cross -os windows -cc msvc -o /tmp/v_win.c cmd/v
+```
+
+Either spelling also turns on the `cross` and `no_backtrace` custom defines, so
+that the `$if cross ?` guards in the standard library select their portable path
+instead of a platform syscall.
 
 In this mode V does not decide a target-dependent `$if` while generating. It
 keeps every branch and emits the condition as a C preprocessor guard, leaving
@@ -8447,16 +8458,24 @@ values - are still resolved while generating, exactly as in an ordinary build.
 sources shipped alongside your code are embedded into the output instead of
 being referenced by a path that will not exist on the machine that compiles it.
 
-Two limitations are worth knowing:
+What is *not* portable, and is therefore decided while generating, for the host
+V runs on:
 
-* A `$if` used as an *expression* is resolved for the generating host rather
-  than guarded, because its branches may have different types. For example
-  `closure_thunk` in `vlib/builtin/closure` is a differently sized fixed array
-  per architecture, which no guard around an expression can express.
-* [Environment specific files](#environment-specific-files) are still selected
-  by the host V runs on. A module split into `x_linux.c.v` and `x_darwin.c.v`
-  contributes only the generating host's variant, so generate the portable C on
-  the platform whose variants are the portable ones.
+* A `$if` used as an *expression*. Its branches may have different types - for
+  example `closure_thunk` in `vlib/builtin/closure` is a differently sized fixed
+  array per architecture - which no guard around an expression can express.
+* A `$if` at file scope holding *declarations*. A function, type, constant or
+  global cannot be wrapped in `#if` by the backend, so only the host's branch is
+  emitted. Directives (`#include`, `#flag`) written at file scope *are* kept
+  from every branch and guarded, which is what makes the headers portable.
+* [Environment specific files](#environment-specific-files). A module split into
+  `x_linux.c.v` and `x_darwin.c.v` contributes only the generating host's
+  variant, so generate the portable C on the platform whose variants are the
+  portable ones.
+* The pointer width. V's `int`, the type layouts and the literal ranges are
+  baked for the generating target, so the output carries a check that fails the
+  build with a clear `#error` when it is compiled for a different width. The
+  output stays portable across targets of the same width.
 
 ## Compiling for iOS
 
