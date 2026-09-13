@@ -17760,14 +17760,6 @@ fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string
 		if alias_path := resolve_local_module_alias_path(importer_dir, top_name, mod_name) {
 			return alias_path
 		}
-		local_modules_root := os.join_path_single(importer_dir, 'modules')
-		if alias_path := resolve_local_module_alias_path(local_modules_root, top_name, mod_name) {
-			return alias_path
-		}
-		local_modules_path := os.join_path_single(local_modules_root, mod_path)
-		if module_path_has_v_sources(local_modules_path, prefs) {
-			return local_modules_path
-		}
 	}
 	if project_root.len > 0 {
 		if alias_path := resolve_local_module_alias_path(project_root, top_name, mod_name) {
@@ -17803,11 +17795,9 @@ fn import_uses_explicit_module_alias(prefs &pref.Preferences, mod_name string, i
 	if importing_file.len > 0 {
 		importer_dir := os.dir(importing_file)
 		roots << importer_dir
-		roots << os.join_path_single(importer_dir, 'modules')
 	}
 	if project_root.len > 0 {
 		roots << project_root
-		roots << os.join_path_single(project_root, 'modules')
 	}
 	if prefs.module_search_paths.len > 0 {
 		roots << prefs.module_search_paths

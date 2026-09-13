@@ -3789,13 +3789,28 @@ myapp/
 `main.v` can use `import myapp.common`, and `structs.v` should still
 declare `module common`.
 
+A module's import path is its path under that lookup root, so the directory
+holding a module has to sit at the root itself. There is no virtual `modules/`
+directory anymore: `modules/mymod` is not searched, the same way the virtual
+`src/` source root is no longer searched. Move such a directory up beside the
+`v.mod` it belongs to, which leaves every `import` unchanged:
+
+```text
+myapp/
+├── v.mod
+├── main.v
+└── mymod/            # was myapp/modules/mymod
+```
+
+V reports the move for you when an import would otherwise have resolved there.
+
 ### Module aliases
 
 When a module moves, an `alias.v` file can keep its old import path working without copying its
 implementation. The alias module contains only a module declaration with an `alias` attribute:
 
 ```v ignore
-@[alias: '@VMODROOT/modules/new_name']
+@[alias: '@VMODROOT/new_name']
 module old_name
 ```
 

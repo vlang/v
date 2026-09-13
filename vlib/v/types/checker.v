@@ -5441,6 +5441,30 @@ fn (mut tc TypeChecker) register_file_import(alias string, module_name string) {
 	info.imports[alias] = module_name
 }
 
+// removed_modules_layout_hint explains an import that a `modules/` directory
+// would have satisfied. The virtual `modules/` lookup is gone, the same way the
+// virtual `src/` source root is: a module's import path is its path under the
+// nearest v.mod, so the directory has to sit there rather than one level down.
+fn (tc &TypeChecker) removed_modules_layout_hint(missing_path string) string {
+	if tc.cur_file.len == 0 {
+		return ''
+	}
+	relative := missing_path.replace('.', os.path_separator)
+	mut current := os.dir(os.real_path(tc.cur_file))
+	for {
+		candidate := os.join_path(current, 'modules', relative)
+		if os.is_dir(candidate) {
+			return '\nthe virtual `modules/` directory is no longer searched for modules.\nMove it up beside the v.mod it belongs to, which keeps the import path the same:\n\tmv ${candidate} ${os.join_path(current, relative)}'
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ''
+}
+
 fn (mut tc TypeChecker) check_import_diagnostics() {
 	mut first_imports := map[string]token.Pos{}
 	mut declaration_seen_in_file := false
@@ -5465,7 +5489,7 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		module_base := module_path.all_after_last('.')
 		explicit_alias := tc.import_has_explicit_alias(node)
 		if missing_path := tc.a.missing_imports[idx] {
-			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)', flat.NodeId(idx), node.pos, 'builder error:')
+			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)${tc.removed_modules_layout_hint(missing_path)}', flat.NodeId(idx), node.pos, 'builder error:')
 		}
 		tc.check_import_source_syntax(flat.NodeId(idx), node)
 		if tc.selective_import_has_missing_value_symbol(node, module_path)

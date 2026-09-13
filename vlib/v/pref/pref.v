@@ -402,12 +402,7 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	if relative_path := module_path_from_search_root(mod, mod_path, importer_dir) {
 		return relative_path
 	}
-	// 2. local modules/ directory beside the importing file
-	local_modules_root := os.join_path_single(importer_dir, 'modules')
-	if local_modules_path := module_path_from_search_root(mod, mod_path, local_modules_root) {
-		return local_modules_path
-	}
-	// 3. explicitly ordered module search paths, when supplied with `-path`
+	// 2. explicitly ordered module search paths, when supplied with `-path`
 	if p.module_search_paths.len > 0 {
 		for search_root in p.module_search_paths {
 			if explicit_path := module_path_from_search_root(mod, mod_path, search_root) {
@@ -416,26 +411,22 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		}
 		return ''
 	}
-	// 4. vlib
+	// 3. vlib
 	vlib_root := os.join_path_single(p.vroot, 'vlib')
 	if vlib_path := module_path_from_search_root(mod, mod_path, vlib_root) {
 		return vlib_path
 	}
-	// 5. ~/.vmodules (or $VMODULES)
+	// 4. ~/.vmodules (or $VMODULES)
 	if vmodules_path := module_path_from_search_root(mod, mod_path, vmodules_dir()) {
 		return vmodules_path
 	}
-	// 6. walk up the parent directories of the importing file, like V1's
+	// 5. walk up the parent directories of the importing file, like V1's
 	// Builder.find_module_path. This finds sibling projects: e.g. importing
 	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
 	mut current_dir := importer_dir
 	for {
 		if try_path := module_path_from_search_root(mod, mod_path, current_dir) {
 			return try_path
-		}
-		modules_root := os.join_path_single(current_dir, 'modules')
-		if try_modules_path := module_path_from_search_root(mod, mod_path, modules_root) {
-			return try_modules_path
 		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
