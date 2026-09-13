@@ -12505,6 +12505,9 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		}
 		mut shadows_fn := lhs_node.value in tc.fn_ret_types
 			|| tc.qualify_fn_name(lhs_node.value) in tc.fn_ret_types
+		if shadows_fn && tc.bare_name_is_c_fn_alias(lhs_node.value) {
+			shadows_fn = false
+		}
 		if shadows_fn && tc.imported_module_prefix(lhs_id, lhs_node.value) != none
 			&& !tc.source_module_declares_fn(lhs_node.value) {
 			shadows_fn = false

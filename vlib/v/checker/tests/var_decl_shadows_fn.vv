@@ -6,4 +6,8 @@ fn main() {
 	shadowed := 5
 	println(shadowed)
 	_ = shadowed
+	// `close` is in scope only as `C.close` (declared in vlib/builtin/cfns.c.v),
+	// so this variable shadows nothing and must not be flagged:
+	close := 3
+	println(close)
 }

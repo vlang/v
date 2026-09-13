@@ -365,6 +365,16 @@ fn (tc &TypeChecker) source_module_declares_fn(name string) bool {
 	return false
 }
 
+// bare_name_is_c_fn_alias reports whether `name` is present in fn_ret_types only
+// as the bare alias that `.c_fn_decl` registers alongside `C.name`. Such a name is
+// callable solely as `C.name`, so a variable using it shadows nothing.
+fn (tc &TypeChecker) bare_name_is_c_fn_alias(name string) bool {
+	if 'C.${name}' !in tc.fn_ret_types {
+		return false
+	}
+	return !tc.source_module_declares_fn(name)
+}
+
 fn (tc &TypeChecker) fn_receiver_param_diagnostic_pos(node flat.Node, name string) token.Pos {
 	header_pos := tc.fn_declaration_diagnostic_pos(node)
 	file := tc.a.source_files[header_pos.id] or { return header_pos }
