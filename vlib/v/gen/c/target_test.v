@@ -1312,7 +1312,7 @@ fn test_cross_c_condition_translates_retained_comptime_conditions() {
 	g.set_output_cross_c(true)
 	assert g.cross_c_condition('linux') == '(defined(__linux__) && !defined(__ANDROID__))'
 	assert g.cross_c_condition('!(windows)') == '(!defined(_WIN32))'
-	assert g.cross_c_condition('(macos || linux)') == '((defined(__APPLE__) && !defined(__TARGET_IOS__)) || (defined(__linux__) && !defined(__ANDROID__)))'
+	assert g.cross_c_condition('(macos || linux)') == '((defined(__APPLE__) && !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)) || (defined(__linux__) && !defined(__ANDROID__)))'
 	assert g.cross_c_condition('(arm64 && !(tinyc))') == '(defined(__V_arm64) && (!defined(__TINYC__)))'
 	// The parser folds target-independent parts of a retained condition before
 	// codegen, so only `true`/`false` reach this translation.

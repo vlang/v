@@ -8447,16 +8447,24 @@ values - are still resolved while generating, exactly as in an ordinary build.
 sources shipped alongside your code are embedded into the output instead of
 being referenced by a path that will not exist on the machine that compiles it.
 
-Two limitations are worth knowing:
+What is *not* portable, and is therefore decided while generating, for the host
+V runs on:
 
-* A `$if` used as an *expression* is resolved for the generating host rather
-  than guarded, because its branches may have different types. For example
-  `closure_thunk` in `vlib/builtin/closure` is a differently sized fixed array
-  per architecture, which no guard around an expression can express.
-* [Environment specific files](#environment-specific-files) are still selected
-  by the host V runs on. A module split into `x_linux.c.v` and `x_darwin.c.v`
-  contributes only the generating host's variant, so generate the portable C on
-  the platform whose variants are the portable ones.
+* A `$if` used as an *expression*. Its branches may have different types - for
+  example `closure_thunk` in `vlib/builtin/closure` is a differently sized fixed
+  array per architecture - which no guard around an expression can express.
+* A `$if` at file scope holding *declarations*. A function, type, constant or
+  global cannot be wrapped in `#if` by the backend, so only the host's branch is
+  emitted. Directives (`#include`, `#flag`) written at file scope *are* kept
+  from every branch and guarded, which is what makes the headers portable.
+* [Environment specific files](#environment-specific-files). A module split into
+  `x_linux.c.v` and `x_darwin.c.v` contributes only the generating host's
+  variant, so generate the portable C on the platform whose variants are the
+  portable ones.
+* The pointer width. V's `int`, the type layouts and the literal ranges are
+  baked for the generating target, so the output carries a check that fails the
+  build with a clear `#error` when it is compiled for a different width. The
+  output stays portable across targets of the same width.
 
 ## Compiling for iOS
 
