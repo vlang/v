@@ -105,3 +105,73 @@ fn test_comparing_against_a_nil_returning_call() {
 	assert empty == unsafe { nil }
 	assert voidptr(nil_tag()) == unsafe { nil }
 }
+
+// The operand's statements keep the block scope they were written in. Splicing them into the
+// enclosing scope instead put a block-local declaration one level up, so an outer variable of
+// the same name became a second declaration in one C scope and the program stopped compiling.
+fn test_a_nil_operand_block_keeps_its_own_scope() {
+	empty := ?&Tag(none)
+	mut seen := []int{}
+
+	assert empty == unsafe {
+		local := 1
+		seen << local
+		nil
+	}
+	// Declaring the same name in the enclosing scope afterwards has to stay legal.
+	local := 2
+	assert local == 2
+	assert seen == [1]
+}
+
+fn test_a_nil_operand_block_scope_is_kept_in_both_operand_positions() {
+	empty := ?&Tag(none)
+	mut seen := []int{}
+
+	assert unsafe {
+		shared_name := 10
+		seen << shared_name
+		nil
+	} == empty
+	assert empty != unsafe {
+		shared_name := 20
+		seen << shared_name
+		nil
+	} == false
+
+	shared_name := 30
+	assert shared_name == 30
+	assert seen == [10, 20]
+}
+
+// Each nested level is its own scope, so the same name may be declared at every one of them.
+fn test_nested_nil_operand_blocks_each_keep_their_scope() {
+	empty := ?&Tag(none)
+	mut seen := []int{}
+
+	assert empty == unsafe {
+		depth := 1
+		seen << depth
+		unsafe {
+			depth := 2
+			seen << depth
+			nil
+		}
+	}
+	depth := 3
+	assert depth == 3
+	assert seen == [1, 2]
+}
+
+// A block-local must not outlive its operand: the value the comparison yields still comes
+// from the option, and the statements run for their effect only.
+fn test_a_nil_operand_block_local_does_not_leak_into_the_result() {
+	present := ?&Tag(&Tag{ id: 'x' })
+	mut calls := 0
+	assert (present == unsafe {
+		ignored := 99
+		calls += ignored - 98
+		nil
+	}) == false
+	assert calls == 1
+}
