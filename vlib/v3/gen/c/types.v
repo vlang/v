@@ -202,6 +202,17 @@ fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
 	return clean_type
 }
 
+// cgen_type_is_map reports whether typ is a map, looking through any alias
+// chain. The map header no longer carries a `len` field -- the count lives in
+// `data->count` -- so a `.len` selector on an *alias* of a map has to take the
+// map branch as well. Matching only the bare map type left the alias falling
+// through to a plain field access, and the generated C did not compile:
+// `error: no member named 'len' in 'struct map'`.
+fn cgen_type_is_map(typ types.Type) bool {
+	clean := cgen_unalias_type(typ)
+	return clean is types.Map || (clean is types.Struct && clean.name == 'map')
+}
+
 fn cgen_unalias_type(typ types.Type) types.Type {
 	mut current := typ
 	for _ in 0 .. 1000 {

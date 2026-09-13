@@ -14949,8 +14949,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(')')
 				}
 				g.write('.len')
-			} else if node.value == 'len' && (base_type_clean is types.Map
-				|| (base_type_clean is types.Struct && base_type_clean.name == 'map')) {
+			} else if node.value == 'len' && cgen_type_is_map(base_type_clean) {
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {
 					g.write('(')
