@@ -196,8 +196,9 @@ pub:
 // Node payloads live in one process-wide table: a node carries a 4-byte id
 // (0 = none) instead of a pointer, so copying a node copies the id and the
 // node header stays 80 bytes. The table only grows (payloads are rare and
-// tiny), its chunks are plain C allocations that outlive every arena, and ids
-// are handed out under a spin lock while lookups are lock-free.
+// tiny), its chunks outlive every arena, and ids are handed out under a spin
+// lock while lookups are lock-free. The lock and the raw allocations live in
+// flat_payload.c.v.
 const node_payload_chunk_bits = 12
 const node_payload_chunk_size = 1 << node_payload_chunk_bits
 const node_payload_chunk_mask = node_payload_chunk_size - 1
@@ -212,19 +213,6 @@ mut:
 __global g_node_payload_table &NodePayloadTable
 __global g_node_payload_lock i32
 
-fn C.v_prealloc_atomic_cas_i32(ptr &i32, expected int, desired int) int
-
-fn C.v_prealloc_atomic_store_i32(ptr &i32, val int) int
-
-fn node_payload_lock() {
-	for C.v_prealloc_atomic_cas_i32(&g_node_payload_lock, 0, 1) == 0 {
-	}
-}
-
-fn node_payload_unlock() {
-	C.v_prealloc_atomic_store_i32(&g_node_payload_lock, 0)
-}
-
 // node_payload registers an uncommon node payload and returns its id, or 0
 // for an empty list.
 pub fn node_payload(generic_params []string) u32 {
@@ -237,7 +225,7 @@ pub fn node_payload(generic_params []string) u32 {
 	node_payload_lock()
 	mut table := g_node_payload_table
 	if isnil(table) {
-		table = unsafe { &NodePayloadTable(C.calloc(1, sizeof(NodePayloadTable))) }
+		table = node_payload_new_table()
 		if isnil(table) {
 			node_payload_unlock()
 			panic('v3: could not allocate the node payload table')
@@ -251,7 +239,7 @@ pub fn node_payload(generic_params []string) u32 {
 		panic('v3: too many node payloads (${idx})')
 	}
 	if isnil(table.chunks[chunk_idx]) {
-		table.chunks[chunk_idx] = C.calloc(node_payload_chunk_size, sizeof(voidptr))
+		table.chunks[chunk_idx] = node_payload_new_chunk()
 		if isnil(table.chunks[chunk_idx]) {
 			node_payload_unlock()
 			panic('v3: could not allocate a node payload chunk')
