@@ -17,11 +17,12 @@ fn toolcache_test_dir(name string) string {
 	return directory
 }
 
-// cached_binaries returns the cached executables of `tool`, without the bookkeeping files.
-fn cached_binaries(directory string, tool string) []string {
+// cached_entry_dirs returns the content addressed entry directories of `tool`. Each holds one
+// build: the executable, named exactly like the tool, plus that build's bookkeeping files.
+fn cached_entry_dirs(directory string, tool string) []string {
 	names := os.ls(directory) or { return [] }
-	mut found := names.filter(it.starts_with('${tool}-') && !it.contains('.inputs')
-		&& !it.contains('.unbuildable') && !it.contains('.staged') && !it.contains('.sources'))
+	mut found := names.filter(is_cache_artifact_of(it, tool)
+		&& os.is_dir(os.join_path(directory, it)))
 	found.sort()
 	return found
 }
@@ -46,21 +47,28 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 
 	first := os.execute(command)
 	assert first.exit_code == 0, first.output
-	binaries := cached_binaries(cache, probe_tool)
-	assert binaries.len == 1, 'expected a single cached `${probe_tool}`, got ${binaries}'
-	binary := os.join_path(cache, binaries[0])
+	entries := cached_entry_dirs(cache, probe_tool)
+	assert entries.len == 1, 'expected a single cached `${probe_tool}`, got ${entries}'
+	entry_dir := os.join_path(cache, entries[0])
+	binary := os.join_path(entry_dir, probe_tool)
+	// The hash lives in the directory name, never in the executable's: tools read
+	// `os.file_name(os.executable())` and use it as their own name and cache directory.
+	assert os.file_name(binary) == probe_tool
+	assert os.is_executable(binary), 'expected an executable at `${binary}`'
 	before := os.stat(binary)!
 
 	// Every rebuild prunes the earlier entries of the same tool, so a decoy shaped like the
 	// entry of an older build, still being there afterwards, proves that the second
 	// invocation did not recompile anything.
 	decoy := os.join_path(cache, '${probe_tool}-' + 'a'.repeat(64))
-	os.write_file(decoy, 'decoy')!
+	os.mkdir_all(decoy)!
+	os.write_file(os.join_path(decoy, probe_tool), 'decoy')!
 
 	probe := ToolCacheEntry{
 		name:     probe_tool
+		dir:      entry_dir
 		binary:   binary
-		manifest: binary + '.inputs'
+		manifest: os.join_path(entry_dir, 'inputs')
 	}
 	reason := tool_cache_stale_reason(probe)
 	assert reason == '', 'the just built tool is already considered stale: ${reason}'
@@ -72,8 +80,8 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 	assert after.inode == before.inode, 'the cached binary was replaced'
 	assert after.mtime == before.mtime
 	assert after.size == before.size
-	remaining := cached_binaries(cache, probe_tool).filter(it != os.file_name(decoy))
-	assert remaining == binaries, 'a second entry appeared for the same tool: ${remaining}'
+	remaining := cached_entry_dirs(cache, probe_tool).filter(it != os.file_name(decoy))
+	assert remaining == entries, 'a second entry appeared for the same tool: ${remaining}'
 }
 
 fn test_the_cache_key_covers_the_tool_sources_the_compiler_and_the_flags() {
@@ -372,24 +380,28 @@ fn test_pruning_collects_binaries_that_were_replaced_while_in_use() {
 		os.rmdir_all(directory) or {}
 	}
 	key := 'a'.repeat(64)
-	binary := os.join_path(directory, 'vdemo-${key}')
+	entry_dir := os.join_path(directory, 'vdemo-${key}')
+	os.mkdir_all(entry_dir) or { panic(err) }
+	binary := os.join_path(entry_dir, 'vdemo')
 	entry := ToolCacheEntry{
 		name:     'vdemo'
 		vroot:    directory
+		dir:      entry_dir
 		binary:   binary
-		manifest: binary + '.inputs'
+		manifest: os.join_path(entry_dir, 'inputs')
 	}
 	os.write_file(binary, 'current') or { panic(err) }
-	os.write_file(binary + '.inputs', 'manifest') or { panic(err) }
+	os.write_file(entry.manifest, 'manifest') or { panic(err) }
 	displaced := '${binary}${tool_cache_replaced_marker}4242'
 	os.write_file(displaced, 'previous') or { panic(err) }
 	stale := os.join_path(directory, 'vdemo-' + 'b'.repeat(64))
-	os.write_file(stale, 'older build') or { panic(err) }
+	os.mkdir_all(stale) or { panic(err) }
+	os.write_file(os.join_path(stale, 'vdemo'), 'older build') or { panic(err) }
 
 	prune_stale_tool_binaries(entry)
 
 	assert os.exists(binary), 'the current binary must be kept'
-	assert os.exists(binary + '.inputs'), 'the current manifest must be kept'
+	assert os.exists(entry.manifest), 'the current manifest must be kept'
 	assert !os.exists(displaced), 'a binary replaced while in use must be collected'
 	assert !os.exists(stale), 'a previous build must be collected'
 }
@@ -609,4 +621,101 @@ fn test_the_cache_key_covers_the_pkgconfig_environment() {
 	assert tool_cache_key(vexe, 'vdemo', [source], []) != baseline, 'PKG_CONFIG_PATH must be part of the key'
 	os.setenv('PKG_CONFIG_PATH', '', true)
 	assert tool_cache_key(vexe, 'vdemo', [source], []) == baseline, 'clearing it must restore the key'
+}
+
+// Tools read `os.file_name(os.executable())` and use it as their displayed name and as their
+// own cache directory -- `cmd/tools/vshader.v` keys `~/.cache/v/<name>` on it, so a hashed
+// executable name made every compiler change re-download `sokol-shdc`. The hash belongs in
+// the directory, never in the executable's name.
+fn test_a_cached_tool_keeps_its_own_executable_name() {
+	vexe := @VEXE
+	if !os.is_executable(vexe) {
+		eprintln('> skipping, no V executable at `${vexe}`')
+		return
+	}
+	cache := toolcache_test_dir('exe_name')
+	defer {
+		os.rmdir_all(cache) or {}
+	}
+	os.setenv(tool_cache_dir_env, cache, true)
+	defer {
+		os.unsetenv(tool_cache_dir_env)
+	}
+	run := os.execute('${os.quoted_path(vexe)} timeout 60 ${os.quoted_path(vexe)} version')
+	assert run.exit_code == 0, run.output
+
+	entries := cached_entry_dirs(cache, probe_tool)
+	assert entries.len == 1, 'expected a single cached `${probe_tool}`, got ${entries}'
+	// The directory carries the content address ...
+	assert entries[0].starts_with('${probe_tool}-')
+	assert entries[0].len > probe_tool.len + 1 + 60
+	// ... and the executable inside it carries only the tool's name.
+	binary := os.join_path(cache, entries[0], probe_tool + tool_exe_suffix())
+	assert os.is_executable(binary), 'expected an executable at `${binary}`'
+	assert os.file_name(binary) == probe_tool + tool_exe_suffix()
+	assert !os.file_name(binary).contains('-')
+}
+
+fn test_unresolved_import_modules_are_read_from_the_failure() {
+	assert unresolved_import_modules('x.v:2:1: builder error: cannot import module "db.sqlite" (not found)') == [
+		'db.sqlite',
+	]
+	// Several unresolved imports, reported in a stable order and without duplicates.
+	many := 'cannot import module "b.c" (not found)\ncannot import module "a" (not found)\ncannot import module "b.c" (not found)'
+	assert unresolved_import_modules(many) == ['a', 'b.c']
+	// A failure that is not about imports contributes nothing.
+	assert unresolved_import_modules('x.v:1:1: error: unknown type `Foo`') == []
+	assert unresolved_import_modules('') == []
+}
+
+// A module that could not be resolved contributed no source file to the manifest, so the only
+// record of it is where it would have lived. Stamping just `vlib` and `vlib/v` caught a module
+// removed directly under them and nothing deeper: `db.sqlite` could be removed and restored
+// with both of those unchanged, replaying the recorded failure forever.
+fn test_a_restored_nested_module_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('nested_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	// A vroot whose `vlib/db` exists but whose `vlib/db/sqlite` does not, which is exactly
+	// the state a removed nested module leaves behind.
+	os.mkdir_all(os.join_path(directory, 'vlib', 'v'))!
+	os.mkdir_all(os.join_path(directory, 'vlib', 'db'))!
+	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  binary
+		binary:               os.join_path(binary, 'vdemo')
+		manifest:             os.join_path(binary, 'inputs')
+		unbuildable:          os.join_path(binary, 'unbuildable')
+		unbuildable_manifest: os.join_path(binary, 'unbuildable.inputs')
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "db.sqlite" (not found)'
+
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains(os.join_path(directory, 'vlib', 'db', 'sqlite')), 'the missing module path must be stamped, got:\n${recorded}'
+	assert unresolved_import_modules(details) == ['db.sqlite']
+	// While the module is still absent the failure stands, or every invocation would pay
+	// for the same failing compilation again.
+	assert unbuildable_tool_failure(entry) != none, 'the failure must stand while the module is missing'
+
+	// The premise of the bug: the two fixed roots record their *direct* children, so
+	// restoring a module one level deeper leaves both of them reading exactly as before.
+	// Without the module's own ancestors in the manifest nothing would ever notice.
+	vlib_root := os.join_path(directory, 'vlib')
+	v_root := os.join_path(directory, 'vlib', 'v')
+	vlib_before := module_root_stamp(vlib_root)
+	v_before := module_root_stamp(v_root)
+
+	os.mkdir_all(os.join_path(directory, 'vlib', 'db', 'sqlite'))!
+
+	assert module_root_stamp(vlib_root) == vlib_before, '`vlib` alone cannot see this change'
+	assert module_root_stamp(v_root) == v_before, '`vlib/v` alone cannot see this change'
+	assert unbuildable_tool_failure(entry) == none, 'restoring a nested module must retry the build'
 }
