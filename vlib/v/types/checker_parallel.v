@@ -2985,7 +2985,9 @@ fn brace_opens_a_literal(tokens []string, index int) bool {
 	if previous in ['return', 'in', 'is', 'as'] {
 		return true
 	}
-	return !is_ident_token(previous) && previous !in [')', ']', '}']
+	// A closing bracket or a literal ends an expression, so what follows them is
+	// a block: the condition of `if n == 1 {` leaves the literal placeholder.
+	return !is_ident_token(previous) && previous !in [')', ']', '}', '0']
 }
 
 fn is_keyword_token(word string) bool {

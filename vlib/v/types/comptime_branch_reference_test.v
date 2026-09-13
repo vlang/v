@@ -338,3 +338,20 @@ fn test_a_label_of_a_nested_block() {
 	assert code_references_ident('f({x: 1})', 'x', true)
 	assert code_references_ident('_ = [{x: 1}]', 'x', true)
 }
+
+fn test_a_literal_ended_condition_opens_a_block() {
+	assert !code_references_ident('if n == 1 {\n\tx: println(1)\n}', 'x', true)
+	assert !code_references_ident(scanned_code("if s == 'a' {\n\tx: println(1)\n}"), 'x', true)
+	assert !code_references_ident('if n == 1 {\n\tunsafe {\n\t\tgoto x\n\t}\n\tx:\n}', 'x', true)
+	// A map literal is still one wherever an expression may start.
+	assert code_references_ident('if n == 1 {\n\tm := {x: 1}\n}', 'x', true)
+	assert code_references_ident('_ = f(1, {x: 1})', 'x', true)
+}
+
+fn test_a_line_comment_keeps_its_newline() {
+	// Without the newline the `)` and the `x` would share a line, and the
+	// assignment below would read as one.
+	assert !code_references_ident(scanned_code('println(1) // comment\nx = 1'), 'x', false)
+	assert !code_references_ident(scanned_code('println(1) /* comment */\nx = 1'), 'x', false)
+	assert code_references_ident(scanned_code('println(1) // comment\ny = x'), 'x', false)
+}

@@ -75,3 +75,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:98:17: notice: 
       |                 ~~
    99 |     $if windows {
   100 |         if always() {
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:111:22: notice: unused parameter: `lc`
+  109 | 
+  110 | // The condition of the block may end in a literal.
+  111 | fn literal_condition(lc int) {
+      |                      ~~
+  112 |     $if windows {
+  113 |         n := 2
