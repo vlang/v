@@ -3746,6 +3746,12 @@ fn global_field_head(f &flat.Node, group_pub bool) string {
 	if 'const' in f.generic_params() {
 		head += 'const '
 	}
+	// `volatile` is not decoration: it is what keeps a global the bootloader or
+	// the hardware writes from being optimised away. Dropping it here would have
+	// let `v fmt` silently rewrite the declaration into a different program.
+	if 'volatile' in f.generic_params() {
+		head += 'volatile '
+	}
 	return head + f.value
 }
 

@@ -648,6 +648,41 @@ fn test_formatter_preserves_comptime_calls_attributes_and_volatile_fields() {
 	assert vfmt('more_source_only_twice', out) == out
 }
 
+// `volatile` on a global is what keeps memory the bootloader or the hardware
+// writes from being optimised away, so the formatter must not drop it: rewriting
+// the declaration without it produces a different program from the same source.
+fn test_formatter_preserves_volatile_globals() {
+	grouped := '__global (
+	volatile base_revision = u64(2)
+	plain_counter = u64(0)
+)
+'
+	grouped_out := vfmt('volatile_global_grouped', grouped)
+	assert grouped_out.contains('volatile base_revision = u64(2)'), grouped_out
+	assert !grouped_out.contains('volatile plain_counter'), grouped_out
+	assert vfmt('volatile_global_grouped_twice', grouped_out) == grouped_out
+
+	ungrouped := '__global volatile ticks = u64(3)\n'
+	ungrouped_out := vfmt('volatile_global_ungrouped', ungrouped)
+	assert ungrouped_out.contains('volatile ticks = u64(3)'), ungrouped_out
+	assert vfmt('volatile_global_ungrouped_twice', ungrouped_out) == ungrouped_out
+
+	// A `const` global keeps its qualifier, and the two do not borrow each
+	// other's.
+	both := '__global (
+	const fixed_limit = u64(8)
+	volatile live_counter = u64(0)
+)
+'
+	both_out := vfmt('volatile_and_const_globals', both)
+	// The qualifier widens the declaration head, so the values align past it.
+	assert both_out.contains('const fixed_limit '), both_out
+	assert both_out.contains('volatile live_counter = u64(0)'), both_out
+	assert !both_out.contains('const volatile'), both_out
+	assert !both_out.contains('volatile fixed_limit'), both_out
+	assert vfmt('volatile_and_const_globals_twice', both_out) == both_out
+}
+
 fn test_formatter_preserves_fixed_array_literal_prefixes() {
 	out := vfmt('fixed_array_literal_prefixes', 'fn main() {\n\ta := [4]f32[1, 2, 3, 4]\n\tb := [..]f32[1, 2, 3, 4]\n\t_ = a\n\t_ = b\n}\n')
 	assert out.contains('a := [4]f32[1, 2, 3, 4]'), out

@@ -4239,9 +4239,12 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					ft = g.tc.resolve_type(g.a.child(f, 0))
 				}
 				qname := qualify_name_in_module(cur_module, f.value)
+				// Keyed by the qualified name only, like every other global
+				// metadata map here. A bare key would let an unrelated
+				// `__global state` in main or builtin -- which deliberately use
+				// unqualified names -- inherit an imported module's qualifier.
 				if 'volatile' in f.generic_params() {
 					g.global_volatile_names[qname] = true
-					g.global_volatile_names[f.value] = true
 				}
 				g.global_types[qname] = ft
 				g.global_raw_type_texts[qname] = f.typ
@@ -16886,14 +16889,6 @@ fn (mut g FlatGen) preamble() {
 }
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
-	// A freestanding target has no host libc to include. Vinix is a kernel: it
-	// compiles with -nostdinc against its own freestanding headers, and its own
-	// `#include`s name those. Letting them select the system preamble emitted
-	// <sys/un.h> and the rest of the POSIX networking set into a translation
-	// unit where none of it exists.
-	if g.target.os == 'vinix' {
-		return false
-	}
 	for directive in g.preinclude_directives {
 		for line in directive.split_into_lines() {
 			clean := trimmed_space(line)
@@ -16929,11 +16924,40 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	return false
 }
 
+// c_freestanding_headers is the set C99 requires a freestanding implementation to
+// provide. Everything outside it belongs to a hosted libc and is emitted between
+// open_hosted_headers_guard() and close_hosted_headers_guard().
+const c_freestanding_headers = ['float.h', 'limits.h', 'stdbool.h', 'stddef.h', 'stdint.h']
+
+// open_hosted_headers_guard opens a block that only a hosted compilation sees.
+//
+// Whether a libc exists is the C compiler's answer, not the target's: the same
+// `-os vinix` is used for the kernel, which compiles -ffreestanding -nostdinc
+// against the C freestanding header set, and for util-vinix, which cross-compiles
+// as an ordinary hosted program. Gating on the target OS would have taken the
+// headerless preamble for both, which is the conflict the include-based detection
+// in c_directives_use_system_libc() exists to avoid. `__STDC_HOSTED__` separates
+// them exactly, and is already how manual_stdlib_c_headers.h tells the two apart.
+// A compiler too old to define it at all is treated as hosted, which is what it
+// was before this guard existed.
+fn (mut g FlatGen) open_hosted_headers_guard() {
+	g.writeln('#if !defined(__STDC_HOSTED__) || __STDC_HOSTED__')
+}
+
+fn (mut g FlatGen) close_hosted_headers_guard() {
+	g.writeln('#endif // __STDC_HOSTED__')
+}
+
 fn (mut g FlatGen) system_libc_headers() {
-	for header in ['assert.h', 'ctype.h', 'errno.h', 'float.h', 'inttypes.h', 'limits.h', 'math.h',
-		'setjmp.h', 'signal.h', 'stdbool.h', 'stddef.h', 'stdint.h', 'time.h', 'wchar.h'] {
+	for header in c_freestanding_headers {
 		g.writeln('#include <${header}>')
 	}
+	g.open_hosted_headers_guard()
+	for header in ['assert.h', 'ctype.h', 'errno.h', 'inttypes.h', 'math.h', 'setjmp.h', 'signal.h',
+		'time.h', 'wchar.h'] {
+		g.writeln('#include <${header}>')
+	}
+	g.close_hosted_headers_guard()
 	// GCC's Objective-C frontend does not implement the C11 `_Atomic` qualifier,
 	// but its stdatomic macros still work with volatile storage and __atomic builtins.
 	// Clang implements `_Atomic` in Objective-C and must retain the native qualifier.
@@ -16941,6 +16965,7 @@ fn (mut g FlatGen) system_libc_headers() {
 	// available before struct declarations that contain atomic_uintptr_t fields, and
 	// including both implementations redefines atomic_flag and the operation macros.
 	windows_atomic_header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
+	g.open_hosted_headers_guard()
 	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
 	g.writeln('#include "${windows_atomic_header}"')
 	g.writeln('#else')
@@ -16980,6 +17005,7 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#include <sys/event.h>')
 	g.writeln('#endif')
+	g.close_hosted_headers_guard()
 	g.system_execinfo_declarations()
 	g.writeln('')
 }

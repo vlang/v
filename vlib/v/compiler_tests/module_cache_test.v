@@ -77,6 +77,13 @@ fn run_module_cache_binary(path string) string {
 	return result.output.trim_space()
 }
 
+fn generate_module_cache_c(v3_bin string, cache_dir string, main_file string, c_path string) string {
+	result :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -enable-globals -o ${os.quoted_path(c_path)} ${os.quoted_path(main_file)}')
+	assert result.exit_code == 0, result.output
+	return os.read_file(c_path) or { panic(err) }
+}
+
 fn test_program_module_owns_synthetic_helpers_and_native_sources() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_program_module_inputs_${os.getpid()}')
@@ -8314,4 +8321,55 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(reordered_output)} ${os.quoted_path(main_file)}')
 	assert reordered.exit_code == 0, reordered.output
 	assert run_module_cache_binary(reordered_output) == '1'
+}
+
+// A cached module's global declarations are serialized as text and reparsed, so a
+// qualifier dropped on the way out is lost only for consumers of the cache. That
+// is the worst way for it to differ: an uncached build of the same source keeps
+// `volatile` and a cached one silently does not.
+fn test_cached_module_preserves_volatile_global_qualifier() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_volatile_global_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'beaconmod/beaconmod.v', 'module beaconmod
+
+__global (
+	volatile beacon = u64(7)
+	plain_counter   = u64(0)
+)
+
+pub fn bump() u64 {
+	beacon = beacon + 1
+	plain_counter = plain_counter + 1
+	return beacon
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import beaconmod
+
+fn main() {
+	println(u64__str(beaconmod.bump()))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+
+	// Cold cache: the module is compiled from its source.
+	cold_c := generate_module_cache_c(v3_bin, cache_dir, main_file, os.join_path(root, 'cold.c'))
+	assert cold_c.contains('volatile u64 beaconmod__beacon'), cold_c
+	assert !cold_c.contains('volatile u64 beaconmod__plain_counter'), cold_c
+
+	// Warm cache: the module comes back through its cached declarations.
+	warm_c := generate_module_cache_c(v3_bin, cache_dir, main_file, os.join_path(root, 'warm.c'))
+	assert warm_c.contains('volatile u64 beaconmod__beacon'), warm_c
+	assert !warm_c.contains('volatile u64 beaconmod__plain_counter'), warm_c
+
+	output := os.join_path(root, 'program')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '8'
 }
