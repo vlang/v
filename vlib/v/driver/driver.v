@@ -10033,17 +10033,29 @@ pub fn run(args []string) {
 		}
 		mut watched_files := watched.keys()
 		watched_files.sort()
+		// `$embed_file` reads a non-V file at compile time and puts its bytes in the binary,
+		// which makes it a build input exactly like a source file: changing it has to
+		// invalidate a cached build, and `v watch` has to rebuild on it. `-print-v-files` is
+		// deliberately left reporting V sources only, the way its name says.
+		mut watched_with_resources := watched_files.clone()
+		for resource in embedded_resource_paths(a) {
+			if resource !in watched {
+				watched_with_resources << resource
+			}
+		}
+		watched_with_resources.sort()
 		if dump_files != '' {
 			// `-dump-files <path>` records the exact source closure of this build, so that
 			// callers (notably the cached `cmd/tools/*` launcher) can tell later whether any
 			// input changed, without having to re-run the compiler frontend.
-			os.write_file(dump_files, watched_files.join('\n') + '\n') or {
+			os.write_file(dump_files, watched_with_resources.join('\n') + '\n') or {
 				eprintln('cannot write the `-dump-files` list to `${dump_files}`: ${err}')
 				exit(1)
 			}
 		}
 		if print_v_files || print_watched_files {
-			for file in watched_files {
+			reported := if print_watched_files { watched_with_resources } else { watched_files }
+			for file in reported {
 				println(file)
 			}
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
@@ -15565,6 +15577,33 @@ fn sync_import_node() flat.Node {
 		value: 'sync'
 		typ: 'sync'
 	}
+}
+
+// embedded_resource_paths returns the absolute paths of the files that `$embed_file` pulled
+// into this build. The parser resolves each one and records it as the `apath` field of the
+// `embed_file.EmbedFileData` literal it generates, which is the only place the path survives:
+// the file is not a V source, so nothing in the watched source closure covers it.
+fn embedded_resource_paths(a &flat.FlatAst) []string {
+	mut paths := map[string]bool{}
+	for index in 0 .. a.nodes.len {
+		node := a.nodes[index]
+		if node.kind != .struct_init || node.value != 'embed_file.EmbedFileData' {
+			continue
+		}
+		for child_index in 0 .. int(node.children_count) {
+			field := a.child_node(&node, child_index)
+			if field.kind != .field_init || field.value != 'apath' || field.children_count == 0 {
+				continue
+			}
+			value := a.child_node(field, 0)
+			if value.kind == .string_literal && value.value != '' && os.is_file(value.value) {
+				paths[value.value] = true
+			}
+		}
+	}
+	mut result := paths.keys()
+	result.sort()
+	return result
 }
 
 fn embed_file_import_node() flat.Node {

@@ -393,3 +393,46 @@ fn test_pruning_collects_binaries_that_were_replaced_while_in_use() {
 	assert !os.exists(displaced), 'a binary replaced while in use must be collected'
 	assert !os.exists(stale), 'a previous build must be collected'
 }
+
+// A single-file tool can pull in a sibling asset with `$embed_file`, whose bytes end up
+// inside the compiled binary. `cmd/tools/vgret.v` does exactly that with its
+// `vgret.defaults.toml`. The asset is not a V source, so only the compiler can report it,
+// and without it the cache would keep running a binary built from an older configuration.
+fn test_an_embedded_asset_is_recorded_and_invalidates_the_cache() {
+	vexe := @VEXE
+	if !os.is_executable(vexe) {
+		eprintln('> skipping, no V executable at `${vexe}`')
+		return
+	}
+	directory := toolcache_test_dir('embedded_asset')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	asset := os.join_path(directory, 'asset.txt')
+	os.write_file(asset, 'first revision')!
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, "module main\n\nconst asset = \$embed_file('asset.txt')\n\nfn main() {\n\tprintln(asset.len)\n}\n")!
+
+	dumped := os.join_path(directory, 'sources.txt')
+	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	build :=
+		os.execute('${os.quoted_path(vexe)} -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+	assert build.exit_code == 0, build.output
+
+	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
+	assert os.real_path(asset) in recorded, 'the embedded asset must be a recorded build input, got ${recorded.filter(!it.contains('/vlib/'))}'
+
+	// The recorded closure is what the manifest revalidates, so editing the asset has to
+	// make the cached binary stale even though every `.v` file is untouched.
+	entry := ToolCacheEntry{
+		name:     'vdemo'
+		binary:   binary
+		manifest: binary + '.inputs'
+	}
+	time.sleep(1100 * time.millisecond)
+	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, time.now().unix()))!
+	assert tool_cache_is_fresh(entry), 'the freshly built tool must not start out stale'
+
+	os.write_file(asset, 'second revision, a different length')!
+	assert !tool_cache_is_fresh(entry), 'editing an embedded asset must force a rebuild'
+}

@@ -2001,11 +2001,15 @@ fn (t &Transformer) sum_eq_type_for_operands(lhs_type string, rhs_type string) s
 	return ''
 }
 
-// expr_is_bare_nil reports whether an expression is literally `nil`, seeing through
+// expr_is_bare_nil reports whether an expression yields literally `nil`, seeing through
 // the wrappers it is usually written behind. `nil` is only reachable in unsafe code,
 // so `x == unsafe { nil }` is the normal spelling and the comparison has to recognise
 // the block as the nil it yields. Unlike `expr_is_nil_like` this does not accept `0`,
 // which for an option would turn `?int == 0` into a `none` test.
+//
+// A block is accepted on the strength of its last statement alone, so it may carry others
+// before it. The lowering discards the operand entirely, so a caller that acts on this has
+// to run `lower_discarded_nil_operand_effects` over the same node to keep them.
 fn (t &Transformer) expr_is_bare_nil(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -2033,6 +2037,8 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 	lhs := t.a.nodes[int(lhs_id)]
 	rhs := t.a.nodes[int(rhs_id)]
 	mut opt_id := flat.empty_node
+	// the operand that yielded the `nil`, when the comparison was written that way
+	mut nil_id := flat.empty_node
 	if lhs.kind == .none_expr {
 		opt_id = rhs_id
 	} else if rhs.kind == .none_expr {
@@ -2040,8 +2046,10 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 	} else if t.expr_is_bare_nil(lhs_id) && t.is_optional_type_name(t.node_type(rhs_id)) {
 		// `nil == x` on a `?&T` behaves like `none == x`
 		opt_id = rhs_id
+		nil_id = lhs_id
 	} else if t.expr_is_bare_nil(rhs_id) && t.is_optional_type_name(t.node_type(lhs_id)) {
 		opt_id = lhs_id
+		nil_id = rhs_id
 	} else {
 		mut lhs_type := t.raw_expr_type_without_smartcast(lhs_id)
 		mut rhs_type := t.raw_expr_type_without_smartcast(rhs_id)
@@ -2066,6 +2074,10 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 			return t.make_prefix(.not, t.make_paren(eq))
 		}
 		return eq
+	}
+	if nil_id == lhs_id {
+		// `unsafe { record(); nil } == opt`: the left operand is evaluated first.
+		t.lower_discarded_nil_operand_effects(nil_id)
 	}
 	mut opt_type := t.optional_result_expr_type_name(opt_id)
 	if opt_type.len == 0 {
@@ -2100,11 +2112,64 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 	}
 	mut opt_expr := t.transform_optional_wrapper_expr(opt_id)
 	opt_expr = t.optional_source_value_expr(opt_id, opt_expr, opt_type)
+	if nil_id == rhs_id && t.nil_operand_carries_statements(nil_id) {
+		// `opt == unsafe { record(); nil }`: the option is the left operand, so it has to be
+		// read before `record()` runs. Pin it to a temp first -- left in the expression, its
+		// own evaluation would happen after the statements lowered just below it.
+		pinned := t.new_temp('opt_nil_eq')
+		t.pending_stmts << t.make_decl_assign_typed(pinned, opt_expr, opt_type)
+		opt_expr = t.make_ident(pinned)
+		t.lower_discarded_nil_operand_effects(nil_id)
+	}
 	ok := t.make_selector(opt_expr, 'ok', 'bool')
 	if node.op == .eq {
 		return t.make_prefix(.not, ok)
 	}
 	return ok
+}
+
+// nil_operand_carries_statements reports whether a `nil` operand does anything besides
+// yielding the nil, i.e. whether lowering it can be skipped entirely.
+fn (t &Transformer) nil_operand_carries_statements(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return t.nil_operand_carries_statements(t.a.child(&node, 0))
+	}
+	if node.kind != .block || node.children_count == 0 {
+		return false
+	}
+	if node.children_count > 1 {
+		return true
+	}
+	return t.nil_operand_carries_statements(t.a.child(&node, 0))
+}
+
+// lower_discarded_nil_operand_effects evaluates the statements that a `nil` operand carries
+// besides the `nil` itself. The comparison lowers to a test on the option's `ok` field and
+// never mentions the operand again, so without this `opt == unsafe { record(); nil }` would
+// silently drop the `record()` call.
+fn (mut t Transformer) lower_discarded_nil_operand_effects(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		t.lower_discarded_nil_operand_effects(t.a.child(&node, 0))
+		return
+	}
+	if node.kind != .block || node.children_count == 0 {
+		return
+	}
+	for index in 0 .. int(node.children_count) - 1 {
+		for stmt in t.transform_stmt(t.a.child(&node, index)) {
+			t.pending_stmts << stmt
+		}
+	}
+	// the last statement is what yields the nil, and may itself be a nested block
+	t.lower_discarded_nil_operand_effects(t.a.child(&node, int(node.children_count) - 1))
 }
 
 // transform_optional_wrapper_expr preserves the Optional_T wrapper when a prior
