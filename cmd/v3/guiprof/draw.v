@@ -4,7 +4,7 @@
 module main
 
 import gg
-import v3.profiler
+import v.profiler
 
 // draw_header renders the top stats bar
 fn draw_header(mut app App) {

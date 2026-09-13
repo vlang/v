@@ -1,7 +1,7 @@
 import os
 import time
 import term
-import v.util.version
+import old.util.version
 import runtime
 
 struct App {

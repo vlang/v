@@ -1,6 +1,6 @@
 module main
 
-import v.ast
+import old.ast
 
 struct Data {
 }

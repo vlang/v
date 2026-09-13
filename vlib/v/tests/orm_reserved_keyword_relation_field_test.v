@@ -4,7 +4,7 @@
 // in `object_var`, so `write_orm_insert_with_last_ids` used to emit `parent.operator`
 // / `parent.explicit` against a struct whose members are declared `__v_operator` /
 // `__v_explicit`, failing during C compilation. See orm_field_access_name usage in
-// vlib/v/gen/c/orm.v.
+// vlib/old/gen/c/orm.v.
 import db.sqlite
 
 struct RKChild {

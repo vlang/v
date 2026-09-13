@@ -2,10 +2,10 @@ module main
 
 $if v1_fallback ? {
 } $else {
-	import v3.driver
+	import v.driver
 }
 
-// The V3 driver (vlib/v3) is linked directly into every native `cmd/v` build,
+// The V3 driver (vlib/v) is linked directly into every native `cmd/v` build,
 // where `v` can run the V3 compiler in the SAME process.
 //
 // The separately built `v1_fallback` command shell also takes the stub path, so

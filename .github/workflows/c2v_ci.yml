@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
+      - 'vlib/v/**'
       - '**.md'
       - '**.yml'
       - '!**/c2v_ci.yml'
@@ -16,7 +16,7 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v3/**'
+      - 'vlib/v/**'
       - '**.md'
       - '**.yml'
       - '!**/c2v_ci.yml'

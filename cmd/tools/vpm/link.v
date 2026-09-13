@@ -1,7 +1,7 @@
 module main
 
 import os
-import v.help
+import old.help
 import v.vmod
 
 struct LinkedProject {

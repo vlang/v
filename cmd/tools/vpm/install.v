@@ -2,7 +2,7 @@ module main
 
 import os
 import v.vmod
-import v.help
+import old.help
 
 enum InstallResult {
 	installed

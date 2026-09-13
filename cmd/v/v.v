@@ -6,17 +6,17 @@ module main
 import hash
 import os
 import term
-import v.help
-import v.pref
-import v.util
-import v.util.version
+import old.help
+import old.pref
+import old.util
+import old.util.version
 
 $if v1_fallback ?|| cross ? {
 	// The compatibility compiler and portable cross snapshots need the V1 builder.
 	// Keep this as one import site: a compatibility compiler generating a cross target
 	// can satisfy both parts of the condition.
-	import v.builder
-	import v.builder.cbuilder
+	import old.builder
+	import old.builder.cbuilder
 }
 
 @[markused]
@@ -316,7 +316,7 @@ fn v3_has_unsupported_preferences(prefs &pref.Preferences) bool {
 		return true
 	}
 	return prefs.sanitize || prefs.output_cross_c || prefs.experimental
-		|| prefs.use_os_system_to_run || prefs.is_apk || prefs.is_vsh
+		|| prefs.use_os_system_to_run || prefs.is_apk
 		|| prefs.json_errors || prefs.no_preludes || prefs.is_quiet
 		|| prefs.skip_warnings || prefs.skip_notes || prefs.fatal_errors
 		|| prefs.print_watched_files || prefs.dump_modules.len > 0
@@ -363,8 +363,8 @@ fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
 	tool_name := 'v3_ownership'
-	v3_main_source := os.join_path(vroot, 'vlib', 'v3', 'v3.v')
-	v3_src_dir := os.join_path(vroot, 'vlib', 'v3')
+	v3_main_source := os.join_path(vroot, 'vlib', 'v', 'v.v')
+	v3_src_dir := os.join_path(vroot, 'vlib', 'v')
 	v3_exe := cached_v3_ownership_executable_path(vroot)
 	v3_exe_dir := os.dir(v3_exe)
 	os.mkdir_all(v3_exe_dir) or {

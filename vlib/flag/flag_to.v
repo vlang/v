@@ -1,6 +1,6 @@
 module flag
 
-import v.ast
+import old.ast
 
 struct FlagData {
 	raw        string @[required]

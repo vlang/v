@@ -2,13 +2,13 @@ module document
 
 import os
 import time
-import v.ast
-import v.checker
-import v.fmt
-import v.parser
-import v.pref
-import v.scanner
-import v.token
+import old.ast
+import old.checker
+import old.fmt
+import old.parser
+import old.pref
+import old.scanner
+import old.token
 
 // SymbolKind categorizes the symbols it documents.
 // The names are intentionally not in order as a guide when sorting the nodes.

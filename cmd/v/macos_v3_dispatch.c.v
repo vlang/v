@@ -7,8 +7,8 @@ module main
 // shell execs the separately built full V1 command binary instead of linking
 // V1 back into the main `v` executable.
 import os
-import v.pref
-import v.util
+import old.pref
+import old.util
 
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
@@ -70,7 +70,7 @@ fn retry_macos_v3_with_v1(state &MacosV3RetryState) {
 		return
 	}
 	replace_macos_v3_process_environment(state.caller_environment)
-	launch_macos_v1_fallback(state.fallback_executable, state.retry_args, state.is_verbose, 'V3 compilation failed (${fallback_reason})')
+	launch_macos_v1_fallback(state.fallback_executable, state.retry_args, state.is_verbose, 'V compilation failed (${fallback_reason})')
 }
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
@@ -94,21 +94,21 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 	}
 	if !macos_v3_driver_is_available() {
 		if prefs.new_compiler {
-			eprintln('`-new-compiler` requires a build that embeds the V3 compiler, which this one does not.')
+			eprintln('`-new-compiler` requires a build that embeds the V compiler, which this one does not.')
 			exit(1)
 		}
 		if os.getenv(macos_v3_no_fallback_env) == '1' {
-			eprintln('the embedded V3 compiler is unavailable on this target, and fallback is disabled.')
+			eprintln('the embedded V compiler is unavailable on this target, and fallback is disabled.')
 			exit(1)
 		}
-		launch_macos_v1_fallback(fallback_executable, os.args[1..], prefs.is_verbose, 'the embedded V3 compiler is unavailable in this build')
+		launch_macos_v1_fallback(fallback_executable, os.args[1..], prefs.is_verbose, 'the embedded V compiler is unavailable in this build')
 	}
 	if message := macos_v3_fastc_incompatibility(prefs) {
 		eprintln(message)
 		exit(1)
 	}
 	if prefs.new_compiler && macos_v3_explicit_autofree_is_unsupported(prefs) {
-		eprintln('`-new-compiler` cannot be combined with `-autofree`: the embedded V3 compiler does not include ownership support.')
+		eprintln('`-new-compiler` cannot be combined with `-autofree`: the embedded V compiler does not include ownership support.')
 		exit(1)
 	}
 	all_args := util.join_env_vflags_and_os_args()
@@ -203,7 +203,8 @@ fn exec_command(executable string, args []string) string {
 }
 
 fn macos_v1_fallback_args(args []string) []string {
-	return args.filter(it !in [macos_v3_compat_c99_flag, macos_v3_internal_quiet_flag])
+	return args.filter(it !in ['-old-compiler', '-new-compiler', macos_v3_compat_c99_flag,
+		macos_v3_internal_quiet_flag])
 }
 
 fn macos_v3_v1_fallback_executable() string {
@@ -241,9 +242,16 @@ fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool
 	}
 	// Apart from the unsupported MSVC driver above, FastC and explicit
 	// `-new-compiler` are deliberately strict V3 requests.
-	if prefs.new_compiler || prefs.is_fastc || prefs.backend != .c || prefs.path == ''
-		|| command == 'test' || command in external_tools
-		|| macos_v3_non_compilation_command(command) {
+	if prefs.new_compiler || prefs.is_fastc || prefs.backend != .c || prefs.path == '' {
+		return false
+	}
+	vroot := os.real_path(os.dir(pref.vexe_path())).replace('\\', '/').trim_right('/')
+	target := os.real_path(prefs.path).replace('\\', '/').trim_right('/')
+	old_compiler_tree := '${vroot}/vlib/old'
+	if target == old_compiler_tree || target.starts_with(old_compiler_tree + '/') {
+		return true
+	}
+	if command == 'test' || command in external_tools || macos_v3_non_compilation_command(command) {
 		return false
 	}
 	// Preserve established flags that the V3 argument parser or backend does not
@@ -260,8 +268,6 @@ fn macos_v3_needs_v1_compatibility(command string, prefs &pref.Preferences) bool
 	// V's command tools are part of the compiler toolchain, not ordinary user
 	// programs. Until V3 can reliably self-host all of them, compile them with the
 	// same stable compatibility compiler used for V3 retries.
-	vroot := os.real_path(os.dir(pref.vexe_path())).replace('\\', '/').trim_right('/')
-	target := os.real_path(prefs.path).replace('\\', '/').trim_right('/')
 	tools := '${vroot}/cmd/tools'
 	return target == tools || target.starts_with(tools + '/')
 }
@@ -298,7 +304,7 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) {
 	util.set_vroot_folder(vroot)
 	forwarded_args := macos_v3_forwarded_args(prefs, raw_args)
 	if prefs.is_verbose {
-		println('Running V3 compiler in process: ${util.args_quote_paths(forwarded_args)}')
+		println('Running V compiler in process: ${util.args_quote_paths(forwarded_args)}')
 	}
 	dispatch_environment := os.environ()
 	caller_environment := macos_v3_original_caller_environment(dispatch_environment)

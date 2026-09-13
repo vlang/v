@@ -1,8 +1,8 @@
 // vtest build: !self_sandboxed_packaging? && !sanitized_job?
 import os
 import term
-import v.util.diff
-import v.util.vtest
+import old.util.diff
+import old.util.vtest
 import time
 import runtime
 import benchmark

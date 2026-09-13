@@ -6,7 +6,7 @@ import json2 as json
 import arrays
 import net.http
 import math
-import v.util.version
+import old.util.version
 
 @[table: 'benchmark']
 struct Task {

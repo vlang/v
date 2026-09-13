@@ -1,6 +1,6 @@
 module main
 
-import v.pref
+import old.pref
 
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
 const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'

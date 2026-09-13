@@ -4,7 +4,7 @@
 // generated assignment. Otherwise the source access is emitted as `ptr->operator`
 // while both type declarations name the member `__v_operator`, so the generated C
 // references a nonexistent member (and is invalid C++ for `operator`).
-// See write_sumtype_casting_fn in vlib/v/gen/c/cgen.v.
+// See write_sumtype_casting_fn in vlib/old/gen/c/cgen.v.
 module main
 
 struct ReservedAlpha {

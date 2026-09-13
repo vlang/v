@@ -5,7 +5,7 @@ const vroot = os.dir(vexe)
 
 fn assert_vself_preserves_full_cli(output string) {
 	assert !output.contains('-selfhost'), output
-	assert !output.contains('vlib/v3/v3.v'), output
+	assert !output.contains('vlib/v/v.v'), output
 	assert output.contains('cmd/v'), output
 }
 
@@ -207,7 +207,7 @@ fn test_other_native_host_self_replacement_preserves_cli_and_embedded_v3() {
 	}
 
 	// The stub keeps this test fast, but only emits a replacement when vself asks
-	// for cmd/v. Targeting standalone v3.v makes the replacement fail.
+	// for cmd/v. Targeting standalone v.v makes the replacement fail.
 	mock_source := os.join_path(root, 'mock_compiler.v')
 	os.write_file(mock_source, vself_mock_compiler_source()) or { panic(err) }
 	isolated_vexe := os.join_path(root, 'v')
@@ -221,7 +221,7 @@ fn test_other_native_host_self_replacement_preserves_cli_and_embedded_v3() {
 	assert self_result.exit_code == 0, self_result.output
 	assert self_result.output.contains('cmd/v'), self_result.output
 	assert self_result.output.contains('V1 compatibility compiler'), self_result.output
-	assert !self_result.output.contains('vlib/v3/v3.v'), self_result.output
+	assert !self_result.output.contains('vlib/v/v.v'), self_result.output
 	assert os.is_executable(isolated_vexe)
 	assert os.is_executable(os.join_path(root, 'v_old'))
 	assert os.is_executable(os.join_path(root, 'v1_fallback'))

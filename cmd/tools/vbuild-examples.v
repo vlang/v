@@ -2,7 +2,7 @@ module main
 
 import os
 import testing
-import v.util.vflags
+import old.util.vflags
 
 const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 

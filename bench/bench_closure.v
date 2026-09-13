@@ -4,7 +4,7 @@ import time
 import sync
 import os
 import runtime
-import v.util.version
+import old.util.version
 
 // Define closure type alias
 type ClosureFN = fn () int

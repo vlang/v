@@ -3,7 +3,7 @@
 module main
 
 import os
-import v.util
+import old.util
 
 const vexe = os.getenv('VEXE')
 

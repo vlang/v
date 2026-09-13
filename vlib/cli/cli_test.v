@@ -1,7 +1,7 @@
 // vtest build: tinyc
 module main
 
-import v.util.diff
+import old.util.diff
 import term
 import os
 

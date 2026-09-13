@@ -1,10 +1,10 @@
 import os
 import time
-import v.ast
-import v.pref
-import v.parser
-import v.errors
-import v.scanner
+import old.ast
+import old.pref
+import old.parser
+import old.errors
+import old.scanner
 import term
 import file_lists
 

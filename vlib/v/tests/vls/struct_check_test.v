@@ -1,6 +1,6 @@
 import os
 import term
-import v.util.diff
+import old.util.diff
 
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())

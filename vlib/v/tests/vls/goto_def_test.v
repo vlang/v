@@ -1,6 +1,6 @@
 import os
 import term
-import v.util.diff
+import old.util.diff
 
 const vroot = @VMODROOT
 const test_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'goto_def_test_data.vv')

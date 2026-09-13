@@ -186,12 +186,12 @@ If you read only one section for tests, **read Testing**.
 | Compiler (`vlib/v/`, `cmd/v/`) | Yes | `-silent vlib/v/compiler_errors_test.v`; `test vlib/v/` |
 | Core modules (builtin/strings/os/strconv/time) | Yes | Smallest relevant tests |
 | Parser-only (`vlib/v/parser/`) | Yes | `test vlib/v/parser/` |
-| Checker-only (`vlib/v/checker/`) | Yes | `test vlib/v/checker/` |
-| Comptime (`vlib/v/comptime/`) | Yes | `test vlib/v/tests/`; comptime-related tests |
+| Checker-only (`vlib/v/types/`) | Yes | `test vlib/v/types/` |
+| Comptime (`vlib/v/types/`, `vlib/v/transform/`) | Yes | `test vlib/v/tests/`; comptime-related tests |
 | vlib (non-compiler) | No | Nearest `*_test.v` or `test vlib/path/` |
 | Tools (`cmd/tools/`) | No | Tool-specific test; else nearest `*_test.v` |
 | Diagnostic/output changes | Yes | `vlib/v/slow_tests/inout/compiler_test.v` |
-| C codegen (`vlib/v/gen/c/`) | Yes | `vlib/v/gen/c/coutput_test.v` |
+| C codegen (`vlib/v/gen/c/`) | Yes | `test vlib/v/gen/c/` |
 
 ## Common Workflow
 0. Before work: `git status`; ensure `./vnew` exists; rebuild if needed.
@@ -466,8 +466,8 @@ for use in generic or comptime `$if` checks:
 Example: `$if field.typ is $int { ... }`
 
 ### Comptime changes and testing
-Comptime logic lives in `vlib/v/comptime/` and is exercised by the
-checker, parser, and cgen stages. Changes here require a rebuild of
+Comptime logic lives primarily in `vlib/v/types/checker_comptime.v` and
+`vlib/v/transform/comptime.v`. Changes here require a rebuild of
 `./vnew` and should be tested with `./vnew -silent test vlib/v/tests/` plus
 any comptime-specific tests. See the decision table and Testing.
 
@@ -504,18 +504,19 @@ When:
   `./vnew -silent test vlib/v/`.
 * Parser-only changes (`vlib/v/parser/`):
   Run `./vnew -silent test vlib/v/parser/`.
-* Checker-only changes (`vlib/v/checker`):
-  Run `./vnew -silent test vlib/v/checker/`.
+* Checker-only changes (`vlib/v/types`):
+  Run `./vnew -silent test vlib/v/types/`.
 * vlib changes: Run nearest `*_test.v` or
   `./vnew -silent test vlib/path/`.
 * Tool changes (`cmd/tools/`): Run tool-specific tests. If none exist,
   run the smallest relevant `*_test.v` that exercises the tool.
   Note: `cmd/v/` is compiler scope, not tools.
-  Examples: `cmd/tools/vfmt` -> `vlib/v/fmt/fmt_test.v` .
+  Examples: `cmd/tools/vfmt` -> `cmd/tools/vfmt_test.v` and
+  `vlib/v/gen/v/gen_test.v`.
   `cmd/tools/vdoc` -> `cmd/tools/vdoc/vdoc_test.v`.
 * Diagnostic/output changes:
   Run `./vnew -silent vlib/v/slow_tests/inout/compiler_test.v`.
-* C codegen changes: Run `./vnew -silent vlib/v/gen/c/coutput_test.v`.
+* C codegen changes: Run `./vnew -silent test vlib/v/gen/c/`.
   Consider a stricter validation pass:
   `./vnew -cstrict -cc clang -silent test vlib/v/`.
 * REPL changes: Run `./vnew -silent vlib/v/slow_tests/repl/repl_test.v`.
@@ -527,9 +528,8 @@ When:
 
 If time-constrained, prioritize
 `./vnew -silent vlib/v/compiler_errors_test.v` and the smallest targeted tests.
-Run `vlib/v/slow_tests/inout/compiler_test.v`
-and `vlib/v/gen/c/coutput_test.v` when output or codegen changes are
-likely.
+Run `vlib/v/slow_tests/inout/compiler_test.v` and the tests under
+`vlib/v/gen/c/` when output or codegen changes are likely.
 See `TESTS.md` for more guidance on test selection and output
 expectations.
 See `CONTRIBUTING.md` for broader workflow guidance.
@@ -537,8 +537,8 @@ See `CONTRIBUTING.md` for broader workflow guidance.
 Concrete triggers:
 * `vlib/v/slow_tests/inout/compiler_test.v` when error text or output
   formatting changes, or changes in checker/parser error reporting.
-* `vlib/v/gen/c/coutput_test.v` for changes under `vlib/v/gen/c/` or
-  C codegen output paths.
+* `./vnew -silent test vlib/v/gen/c/` for changes under `vlib/v/gen/c/`
+  or C codegen output paths.
 
 Types:
 * Standard: `*_test.v` files with `test_` functions.
@@ -595,7 +595,7 @@ skipped coverage in the summary.
   similar-looking output and you need to identify which path is actually used.
   Example:
   ```v
-  // In vlib/v/gen/c/assign.v:
+  // In vlib/v/gen/c/stmt.v:
   g.write('builtin___option_ok/*tom51*/(&(${styp}[]) { ')
 
   // After rebuild, search generated C code for "tom51":
@@ -604,15 +604,11 @@ skipped coverage in the summary.
   Remember to remove these debug tags after fixing the issue.
 
 ## Compiler Architecture
-The V compiler has the following stages, orchestrated by the
-`v.builder` module:
-`v.scanner` -> `v.parser` -> `v.checker` -> `v.transformer` ->
-`v.markused` -> `v.gen.c`
-Their corresponding folders are: vlib/v/scanner, vlib/v/parser,
-vlib/v/checker, vlib/v/transformer, vlib/v/markused, vlib/v/gen/c .
-There are additional subsystems (supporting or optional compiler
-modules) like v.comptime, v.generics, v.pref, v.reflection,
-v.callgraph, etc.
+The V compiler has the following stages, orchestrated by `v.driver`:
+`v.scanner` -> `v.parser`/`v.flat` -> `v.types` -> `v.transform` ->
+`v.markused` -> `v.gen.c`.
+Additional backends and lowerings include FastC, WebAssembly, SSA, MIR,
+instruction selection, and native ARM64 generation.
 
 ### Key Directories
 * `vlib/`: Standard library (changes here can affect the compiler
@@ -622,19 +618,16 @@ v.callgraph, etc.
 * `examples/`: Example programs.
 * `thirdparty/`: Bundled C libraries (tcc, mbedtls, sokol, etc.).
 * `vlib/v/`: Compiler modules.
-  * ast/ - AST node definitions
-  * fmt/ - Code formatter
   * scanner/ - Tokenizer
   * token/ - Token definitions
-  * parser/ - Produces AST from tokens
-  * checker/ - Type checking and resolution
-  * comptime/ - Compile-time evaluation support
-  * transformer/ - Common optimisations and simplifications, makes the
-    backends simpler
+  * parser/ - Produces a flat AST
+  * flat/ - Compact AST storage
+  * types/ - Name resolution and type checking
+  * transform/ - AST simplification
   * markused/ - Dead code eliminator
   * gen/c/ - C code generation (primary backend, known as cgen)
-  * gen/js/ - JavaScript backend
-  * gen/native/ - Machine code generation (ELF, Mach-O)
+  * gen/fastc/ - Scanner-to-C fast path
+  * gen/arm64/ - Native ARM64 backend
   * gen/wasm/ - WebAssembly backend
 
 ### Test Locations
@@ -643,18 +636,16 @@ v.callgraph, etc.
   compiler.
 * `vlib/v/slow_tests/inout/` - Output comparison tests
   (.vv + .out pairs)
-* `vlib/v/parser/` - Parser error tests
-* `vlib/v/checker/` - Checker error tests
-* `vlib/v/gen/c/testdata/` - C codegen tests (.vv + .c.must_have)
+* `vlib/v/parser/tests/` - Parser error tests
+* `vlib/v/checker/tests/` - Checker error tests
+* `vlib/v/gen/c/` - C codegen unit and integration tests
 * `examples/compiletime/` - Comptime usage examples (including
   `reflection.v`)
 
 ## Error Reporting (checker/parser)
-* Error: `c.error('message', pos)` - hard error, stops compilation.
-* Warning: `c.warn('message', pos)` - warning, allows compilation.
-* Notice: `c.note('message', pos)` - informational only.
-* Pattern: Most checker methods use `fn (mut c Checker)` receiver.
-* Location: `vlib/v/checker/errors.v`.
+Scanner and parser diagnostics carry `v.token.Pos` spans. Type-checker
+diagnostics are collected by `v.types.TypeChecker`; shared diagnostic
+formatting and message types live in `vlib/v/errors/`.
 
 ## Option/Result Types
 * Syntax: `?Type` (optional, can be none) vs `!Type` (result, can
@@ -679,7 +670,7 @@ v.callgraph, etc.
   (required before commits).
 * Code style checker: `./vnew vet vlib/v`
   Run only when asked or when making broad checker changes (more than
-  3 files in `vlib/v/checker/`).
+  3 files in `vlib/v/types/`).
 * Module docs: `./vnew doc -readme -all -l module_name`.
 * Search: `rg pattern` (or `git grep`); list files: `rg --files`.
 * Auto-format hook: `./vnew git-fmt-hook install`.

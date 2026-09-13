@@ -2,8 +2,8 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module main
 
-import v.ast
-import v.token
+import old.ast
+import old.token
 import os
 import arrays
 

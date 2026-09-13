@@ -1,8 +1,8 @@
 module main
 
 import os
-import v.pref
-import v.util.version
+import old.pref
+import old.util.version
 
 const vvmrc_file_name = '.vvmrc'
 

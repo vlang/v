@@ -1,6 +1,6 @@
-import v.ast
-import v.parser
-import v.pref
+import old.ast
+import old.parser
+import old.pref
 
 fn test_parser_map_type() {
 	mut table := ast.new_table()

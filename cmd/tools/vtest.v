@@ -3,8 +3,8 @@ module main
 import os
 import os.cmdline
 import testing
-import v.pref
-import v.util.vflags
+import old.pref
+import old.util.vflags
 
 struct Context {
 mut:

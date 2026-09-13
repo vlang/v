@@ -3,12 +3,12 @@ module main
 import os
 import time
 import flag
-import v.token
-import v.parser
-import v.ast
-import v.pref
-import v.errors
-import v.checker
+import old.token
+import old.parser
+import old.ast
+import old.pref
+import old.errors
+import old.checker
 import strings
 
 struct Context {

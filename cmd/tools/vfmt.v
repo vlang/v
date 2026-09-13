@@ -7,18 +7,18 @@ import os
 import os.cmdline
 import rand
 import term
-import v.ast
-import v.pref
-import v.fmt
-import v.util
-import v.util.diff
-import v.parser
-import v.help
-import v3.errors as v3errors
-import v3.flat
-import v3.gen.v as v3fmt
-import v3.parser as v3parser
-import v3.pref as v3pref
+import old.ast
+import old.pref
+import old.fmt
+import old.util
+import old.util.diff
+import old.parser
+import old.help
+import v.errors as compiler_errors
+import v.flat
+import v.gen.v as compiler_fmt
+import v.parser as compiler_parser
+import v.pref as compiler_pref
 
 struct FormatOptions {
 	is_l             bool
@@ -202,8 +202,8 @@ fn main() {
 	exit(0)
 }
 
-// verify_file accepts both V3 and legacy vfmt output while the existing source tree
-// transitions to V3 formatting.
+// verify_file accepts both the default and legacy vfmt output while the existing source tree
+// transitions to the new formatter.
 fn (foptions &FormatOptions) verify_file(fpath string) bool {
 	content := os.read_file(fpath) or { return false }
 	fcontent := foptions.formatted_content_from_file(fpath, false) or {
@@ -264,25 +264,25 @@ fn (foptions &FormatOptions) should_migrate_json2(file string) bool {
 }
 
 fn (foptions &FormatOptions) formatted_content_from_file(file string, report_diagnostics bool) !string {
-	foptions.vlog('vfmt running v3.gen.v over file: ${file}')
-	mut prefs := v3pref.new_preferences()
+	foptions.vlog('vfmt running v.gen.v over file: ${file}')
+	mut prefs := compiler_pref.new_preferences()
 	prefs.is_fmt = true
 	prefs.migrate_json2 = foptions.should_migrate_json2(file)
 	prefs.preserve_comptime_conditionals = true
 	prefs.supports_inline_asm = true
-	mut p := v3parser.Parser.new(prefs)
+	mut p := compiler_parser.Parser.new(prefs)
 	a := p.parse_file(file)
-	if report_v3_parser_diagnostics(p.diagnostics, a, report_diagnostics) {
+	if report_compiler_parser_diagnostics(p.diagnostics, a, report_diagnostics) {
 		return error('the file contains parser errors')
 	}
-	return v3fmt.format_with_options(a,
+	return compiler_fmt.format_with_options(a,
 		is_debug:   foptions.is_debug
 		is_new_int: foptions.is_new_int
 		backend:    foptions.backend
 	)
 }
 
-fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatAst, should_report bool) bool {
+fn report_compiler_parser_diagnostics(diagnostics []compiler_parser.Diagnostic, a &flat.FlatAst, should_report bool) bool {
 	mut has_errors := false
 	for diagnostic in diagnostics {
 		severity := if diagnostic.severity == '' { 'error:' } else { diagnostic.severity }
@@ -294,7 +294,7 @@ fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatA
 			continue
 		}
 		if diagnostic.pos.is_valid() && diagnostic.pos.id in a.source_files {
-			eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
+			eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
 				diagnostic.pos))
 		} else {
 			eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')

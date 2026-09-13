@@ -8,7 +8,7 @@ import term
 import rand
 import readline
 import os.cmdline
-import v.util.version
+import old.util.version
 
 struct Repl {
 mut:

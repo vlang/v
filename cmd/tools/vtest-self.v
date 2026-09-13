@@ -23,7 +23,7 @@ mut:
 
 const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
-const temporarily_disabled_self_test_vlib_dirs = ['v3']
+const temporarily_disabled_self_test_vlib_dirs = ['v/compiler_tests']
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
@@ -87,11 +87,11 @@ const essential_list = [
 	'vlib/time/time_test.v',
 	'vlib/toml/tests/toml_test.v',
 	'vlib/v/compiler_errors_test.v',
-	'vlib/v/fmt/fmt_keep_test.v',
-	'vlib/v/fmt/fmt_test.v',
-	'vlib/v/gen/c/coutput_test.v',
-	'vlib/v/gen/js/program_test.v',
-	'vlib/v/pkgconfig/pkgconfig_test.v',
+	'vlib/old/fmt/fmt_keep_test.v',
+	'vlib/old/fmt/fmt_test.v',
+	'vlib/old/gen/c/coutput_test.v',
+	'vlib/old/gen/js/program_test.v',
+	'vlib/old/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
 	'vlib/json2/tests/json2_test.v',
 ]
@@ -303,7 +303,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_module_table_prefix/orm_module_table_prefix_test.v',
 	'vlib/orm/orm_where_in_test.v',
 	'vlib/sokol/gfx/gfx_test.v', // sokol_app.h needs GL/gl.h, not installed in the musl Docker image
-	'vlib/v/gen/c/sql_assert_temp_var_test.v', // sqlite header dependency pulls in glibc sys/cdefs.h on musl-gcc
+	'vlib/old/gen/c/sql_assert_temp_var_test.v', // sqlite header dependency pulls in glibc sys/cdefs.h on musl-gcc
 	'vlib/v/tests/concurrency/shared_nested_lock_runtime_test.v', // nested shared lock times out on the musl image
 	'vlib/v/tests/orm_bulk_insert_update_test.v',
 	'vlib/v/tests/orm_enum_test.v',
@@ -435,8 +435,7 @@ fn main() {
 	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
-	// v2 and v3 have their own drivers and are still under heavy development,
-	// so their tests are excluded from `v test-self`.
+	// The compiler tests have their own driver, so they are excluded from `v test-self`.
 	for test_dir in temporarily_disabled_self_test_vlib_dirs {
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))

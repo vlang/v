@@ -1,7 +1,7 @@
 module main
 
 import os
-import v.pref
+import old.pref
 
 fn test_macos_v3_routes_cross_modes_to_v1_compatibility() {
 	cross_os := if pref.get_host_os() == .windows { pref.OS.linux } else { pref.OS.windows }
@@ -50,6 +50,19 @@ fn test_macos_v3_routes_internal_tool_bootstrap_to_v1_compatibility() {
 	assert !macos_v3_needs_v1_compatibility(tool_path, prefs)
 }
 
+fn test_macos_v3_routes_old_compiler_tree_to_v1_compatibility() {
+	vroot := os.dir(@VEXE)
+	for path in [os.join_path(vroot, 'vlib', 'old'), os.join_path(vroot, 'vlib', 'old', 'parser', 'parser.v')] {
+		mut prefs := &pref.Preferences{
+			path: path
+			backend: .c
+		}
+		assert macos_v3_needs_v1_compatibility(path, prefs)
+		prefs.new_compiler = true
+		assert !macos_v3_needs_v1_compatibility(path, prefs)
+	}
+}
+
 fn test_macos_v3_routes_unsupported_c_options_to_v1_compatibility() {
 	mut prefs := &pref.Preferences{
 		path: 'main.v'
@@ -62,7 +75,8 @@ fn test_macos_v3_routes_unsupported_c_options_to_v1_compatibility() {
 }
 
 fn test_macos_v3_does_not_forward_private_flags_to_v1() {
-	args := ['-silent', macos_v3_internal_quiet_flag, macos_v3_compat_c99_flag, 'main.v']
+	args := ['-silent', '-old-compiler', '-new-compiler', macos_v3_internal_quiet_flag,
+		macos_v3_compat_c99_flag, 'main.v']
 	assert macos_v1_fallback_args(args) == ['-silent', 'main.v']
 }
 

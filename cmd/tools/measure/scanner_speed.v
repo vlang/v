@@ -1,9 +1,9 @@
 import os
 import time
 import term
-import v.scanner
+import old.scanner
 import file_lists
-import v.pref
+import old.pref
 
 const skip_tests = os.getenv('SKIP_TESTS').bool()
 const fuzzer_mode = os.getenv('VFUZZER').bool()

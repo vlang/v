@@ -43,7 +43,7 @@ fn main() {
 	println('> Deprecations that happened before ${cut_time}')
 	all_v_files := os.walk_ext('.', '.v')
 	for v_file in all_v_files {
-		if v_file == './vlib/v/fmt/tests/attrs_keep.vv' {
+		if v_file == './vlib/old/fmt/tests/attrs_keep.vv' {
 			println(term.colorize(term.gray,
 				'>>> SKIPPING deprecations attrs formatting test file ${v_file}'))
 			continue

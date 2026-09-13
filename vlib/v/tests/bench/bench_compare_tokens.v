@@ -1,4 +1,4 @@
-import v.token
+import old.token
 import benchmark
 
 const max_repetitions = 4_000_000

@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 
 /*
-This source code originates from the internal V compiler 'vlib/v/parser/tmpl.v' and
+This source code originates from the internal V compiler 'vlib/old/parser/tmpl.v' and
 has been heavily modified for the needs of the Dynamic Template Manager. Thanks to its original author, Alexander Medvednikov.
 */
 

@@ -5,12 +5,12 @@ import net.urllib
 import encoding.html
 import strings
 import markdown
-import v.scanner
-import v.ast
-import v.token
+import old.scanner
+import old.ast
+import old.token
 import document as doc
-import v.pref
-import v.util { tabs }
+import old.pref
+import old.util { tabs }
 
 const css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
 const default_theme = os.resource_abs_path('theme')

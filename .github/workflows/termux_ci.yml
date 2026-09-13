@@ -6,7 +6,7 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
+      - 'vlib/v/**'
       - '**.md'
       - '**.yml'
       - '!**/termux_ci.yml'
@@ -27,7 +27,7 @@ on:
       - 'vlib/strconv/**'
       - 'vlib/strings/**'
       - 'vlib/sync/**'
-      - 'vlib/v/**'
+      - 'vlib/old/**'
       - 'thirdparty/**'
       - 'vc/**'
       - 'v.mod'

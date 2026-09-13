@@ -2,8 +2,8 @@
 import os
 import rand
 import term
-import v.util.vtest
-import v.util.diff
+import old.util.vtest
+import old.util.diff
 
 const vexe_path = @VEXE
 const vexe = os.quoted_path(vexe_path)

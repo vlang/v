@@ -1,7 +1,7 @@
 module main
 
 import os
-import v.help
+import old.help
 
 fn vpm_search(keywords []string) {
 	search_keys := keywords.map(it.replace('_', '-'))

@@ -1,6 +1,6 @@
 module document
 
-import v.token
+import old.token
 
 const example_pattern = '\x01 Example: '
 

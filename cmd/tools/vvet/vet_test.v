@@ -1,7 +1,7 @@
 import os
 import term
-import v.util.vtest
-import v.util.diff
+import old.util.vtest
+import old.util.diff
 
 struct FileOptions {
 mut:

@@ -1,7 +1,7 @@
 // Tests the `$if bsd` family predicate, which should evaluate to true on
 // any BSD-family host (macos, freebsd, openbsd, netbsd, dragonfly) and
 // false on every other host.  Prior to the fix in
-// vlib/v/ast/comptime_valid_idents.v, `$if bsd` was accepted by the parser
+// vlib/old/ast/comptime_valid_idents.v, `$if bsd` was accepted by the parser
 // but silently evaluated to false everywhere.
 
 // host_is_bsd returns the runtime truth: whether this build targets a

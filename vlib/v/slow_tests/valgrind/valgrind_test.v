@@ -2,7 +2,7 @@
 import os
 import term
 import benchmark
-import v.util.vtest
+import old.util.vtest
 
 @[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)

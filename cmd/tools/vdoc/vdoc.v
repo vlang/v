@@ -7,7 +7,7 @@ import strings
 import runtime
 import document as doc
 import v.vmod
-import v.util
+import old.util
 import json2
 import term
 

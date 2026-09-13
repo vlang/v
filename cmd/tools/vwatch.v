@@ -3,8 +3,8 @@ module main
 import os
 import time
 import term
-import v.help
-import v.util.vwatchtty
+import old.help
+import old.util.vwatchtty
 
 const scan_timeout_s = get_scan_timeout_seconds()
 

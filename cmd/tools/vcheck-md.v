@@ -7,7 +7,7 @@ import os
 import os.cmdline
 import rand
 import term
-import v.help
+import old.help
 import regex
 
 const too_long_line_length_example = 120

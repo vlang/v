@@ -1,6 +1,6 @@
 import os
 import time
-import v.pref
+import old.pref
 
 struct TestStruct {
 	test string

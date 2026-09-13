@@ -2,7 +2,7 @@ module main
 
 import os
 import sync.pool
-import v.help
+import old.help
 
 struct UpdateSession {
 	idents []string

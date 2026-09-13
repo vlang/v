@@ -6,7 +6,7 @@ on:
     branches:
       - master
     paths-ignore:
-      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
       # Linux, including this s390x runner.
       - '**.md'
       - '**.yml'
@@ -31,8 +31,8 @@ on:
       - 'vlib/strconv/**'
       - 'vlib/strings/**'
       - 'vlib/sync/**'
+      - 'vlib/old/**'
       - 'vlib/v/**'
-      - 'vlib/v3/**'
       - 'thirdparty/**'
       - 'vc/**'
       - 'v.mod'

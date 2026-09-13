@@ -6,7 +6,7 @@ on:
       - master
     paths:
       - 'vlib/**'
-      - '!vlib/v3/**'
+      - '!vlib/v/**'
       - 'examples/gg/multiwindow.v'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
@@ -15,7 +15,7 @@ on:
   pull_request:
     paths:
       - 'vlib/**'
-      - '!vlib/v3/**'
+      - '!vlib/v/**'
       - 'examples/gg/multiwindow.v'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'

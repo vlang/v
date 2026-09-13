@@ -7,7 +7,7 @@ on:
       - master
     paths:
       - 'vlib/**'
-      - '!vlib/v3/**'
+      - '!vlib/v/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/vab_ci.yml'
@@ -15,7 +15,7 @@ on:
   pull_request:
     paths:
       - 'vlib/**'
-      - '!vlib/v3/**'
+      - '!vlib/v/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/vab_ci.yml'

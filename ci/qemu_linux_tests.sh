@@ -35,9 +35,9 @@ Environment overrides:
 
 Examples:
   ci/qemu_linux_tests.sh
-  ci/qemu_linux_tests.sh -- -cc clang test vlib/v3/
+  ci/qemu_linux_tests.sh -- -cc clang test vlib/v/
   V_QEMU_CC=gcc V_QEMU_VFLAGS='-cc gcc -no-memory-limit' \
-    ci/qemu_linux_tests.sh -- -cc gcc test vlib/v3/
+    ci/qemu_linux_tests.sh -- -cc gcc test vlib/v/
   V_QEMU_NO_FALLBACK=0 ci/qemu_linux_tests.sh -- -old-compiler test-all
 EOF
 }

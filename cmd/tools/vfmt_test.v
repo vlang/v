@@ -83,7 +83,7 @@ fn test_fmt_uses_v3_formatter() {
 	res := os.execute('${os.quoted_path(vexe)} fmt -verbose ${os.quoted_path(source_path)}')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
 	assert res.output.contains("fn main() {\n\tprintln('v3')\n}"), res.output
 }
 
@@ -160,7 +160,7 @@ fn test_fmt_preserves_comments_with_v3() {
 	res, formatted := run_vfmt_write('comments', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
 	assert formatted.contains('// vfmt off')
 	assert formatted.contains('// vfmt on')
 	assert formatted.contains('println("keep this")')
@@ -172,7 +172,7 @@ fn test_fmt_keeps_regular_comments_attached_with_v3() {
 	res, formatted := run_vfmt_write('regular_comments', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
 	assert formatted.starts_with('// docs\nfn main() {')
 	assert formatted.contains('x := 1 // inline')
 }
@@ -210,7 +210,7 @@ fn only_comments() {
 	res, formatted := run_vfmt_write('construct_comment_boundaries', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
 	assert formatted == source, formatted
 	second_res, formatted_twice :=
 		run_vfmt_write('construct_comment_boundaries_twice', formatted, '')
@@ -591,7 +591,7 @@ fn test_fmt_preserves_comptime_if_with_v3() {
 	res, formatted := run_vfmt_write('comptime_if', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
 	assert formatted.contains('$if windows')
 	assert formatted.contains("println('windows')")
 	assert formatted.contains("println('other')")
@@ -1240,7 +1240,7 @@ fn test_fmt_preserves_c_string_prefix_with_v3() {
 	res, formatted := run_vfmt_write('c_string', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
 	assert formatted.contains("x := c' '")
 }
 
@@ -1257,7 +1257,7 @@ fn test_fmt_accepts_inline_asm_with_v3() {
 	res, formatted := run_vfmt_write('inline_asm', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert res.output.contains('vfmt running v.gen.v over file:'), res.output
 	assert formatted.contains('asm amd64 {')
 	assert formatted.contains('nop')
 }
@@ -1267,7 +1267,7 @@ fn test_fmt_preserves_json_migration_options_with_v3() {
 	migrate_res, migrated := run_vfmt_write('json_migrate', source, '')
 
 	assert migrate_res.exit_code == 0, migrate_res.output
-	assert migrate_res.output.contains('vfmt running v3.gen.v over file:'), migrate_res.output
+	assert migrate_res.output.contains('vfmt running v.gen.v over file:'), migrate_res.output
 	assert migrated.contains('import json2')
 	assert migrated.contains('json2.encode(')
 

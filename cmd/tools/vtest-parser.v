@@ -2,9 +2,9 @@ import os
 import flag
 import term
 import time
-import v.parser
-import v.ast
-import v.pref
+import old.parser
+import old.ast
+import old.pref
 
 const support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 const ecode_timeout = 101

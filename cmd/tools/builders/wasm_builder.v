@@ -1,6 +1,6 @@
 module main
 
-import v.builder.wasmbuilder
+import old.builder.wasmbuilder
 
 fn main() {
 	wasmbuilder.start()

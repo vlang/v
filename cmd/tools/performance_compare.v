@@ -114,9 +114,9 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	vcommit := scripting.run('git rev-parse --short  --verify HEAD')
 	println('V version is: ${vversion} , local source commit: ${vcommit}')
 	if vgit_context.vvlocation == 'cmd/v' {
-		if os.exists('vlib/v/ast/ast.v') {
+		if os.exists('vlib/old/ast/ast.v') {
 			println('Source lines of the compiler: ' +
-				scripting.run('find cmd/v/ vlib/v/ -name "*.v" | grep -v /tests/ | xargs wc | tail -n -1'))
+				scripting.run('find cmd/v/ vlib/old/ -name "*.v" | grep -v /tests/ | xargs wc | tail -n -1'))
 		} else {
 			println('Source lines of the compiler: ' +
 				scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))

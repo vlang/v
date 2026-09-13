@@ -1,7 +1,7 @@
 module main
 
-import v.builder
-import v.pref
+import old.builder
+import old.pref
 
 fn validate_windows_c_compiler_for_unknown_command(prefs &pref.Preferences) {
 	// An invalid `-cc` setting should take precedence over an unknown command,

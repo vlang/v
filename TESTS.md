@@ -73,17 +73,11 @@ The test runner will run each `.vv` file, and will check that its output, matche
 the contents of the `.out` file with the same base name. This is particularly useful
 for checking that errors and panics are printed.
 
-## `v vlib/v/gen/c/coutput_test.v`
+## `v test vlib/v/gen/c/`
 
-coutput_test.v is a *test runner*, that checks whether the generated C source
-code matches *all* expectations, specified in *.c.must_have files, in the
-folder vlib/v/gen/c/testdata/ .
-
-Each `.c.must_have` file, *has* to have a corresponding `.vv` file.
-
-Each `.c.must_have` file, consists of multiple lines. Each of these
-lines, *should* be present *at least once* in the output, when the .vv
-file is compiled with `-o -` .
+The C backend has focused unit and integration tests beside its implementation.
+Many tests compile a small V source to C and assert on the generated declarations,
+expressions, ABI, linker inputs, or runtime behavior.
 
 ## REPL tests
 
@@ -130,23 +124,9 @@ the `vlib/v/tests/known_errors/testdata/` folder.
 
 ## Formatting tests
 
-In `vlib/v/fmt/` there are:
-
-* `v vlib/v/fmt/fmt_test.v`
-
-This checks `.out` tests.
-
-* `v vlib/v/fmt/fmt_keep_test.v`
-
-This verifies that all `_keep.vv` files in the `vlib/v/fmt/tests/` folder,
-would be unchanged by `v fmt -w`, i.e. that the v source code formatter,
-generates a stable source output, that does not change, once it is already
-formatted once.
-
-* `v vlib/v/fmt/fmt_vlib_test.v`
-
-This checks that all V source files are formatted, and prints a summary.
-This is not required.
+`cmd/tools/vfmt_test.v` checks the formatter command, while
+`vlib/v/gen/v/gen_test.v` and the other tests in `vlib/v/gen/v/` check
+flat-AST-to-V formatting and round trips.
 
 * `v test-cleancode`
 

@@ -1,12 +1,12 @@
 module main
 
 import os
-import v.util
-import v.util.diff
-import v.pref
-import v.builder
-import v.builder.cbuilder
-import v.ast
+import old.util
+import old.util.diff
+import old.pref
+import old.builder
+import old.builder.cbuilder
+import old.ast
 import term
 
 const base_os = pref.get_host_os()

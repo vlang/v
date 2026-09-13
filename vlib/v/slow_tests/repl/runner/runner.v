@@ -1,7 +1,7 @@
 module runner
 
 import os
-import v.util.diff
+import old.util.diff
 
 const is_vautofix = os.getenv('VAUTOFIX') != ''
 

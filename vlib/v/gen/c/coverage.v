@@ -1,131 +1,131 @@
-// Copyright (c) 2024 Felipe Pena and Delyan Angelov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module c
 
-import os
-import rand
-import v.ast
-import v.token
-import v.util.version
 import hash
+import os
+import time
+import v.flat
 
-// V coverage info
 @[heap]
 struct CoverageInfo {
+	path  string
+	fhash string
 mut:
-	idx           int   // index
-	points        []u64 // code point line nr
-	file          &ast.File = unsafe { nil }
-	fhash         string // hash(fpath, build_options), prevents collisions for runs with different options, like `-os windows` or `-gc none`, which may affect the points, due to `$if ... {` etc
-	build_options string
+	points          []int
+	counters        []int
+	counter_by_line map[int]int
 }
 
-fn (mut g Gen) write_coverage_point(pos token.Pos) {
-	if g.unique_file_path_hash !in g.coverage_files {
-		build_options := g.pref.build_options.join(' ')
-		fhash := hash.sum64_string('${build_options}:${g.unique_file_path_hash}', 32).hex_full()
-		g.coverage_files[g.unique_file_path_hash] = &CoverageInfo{
-			points:        []
-			file:          g.file
-			fhash:         fhash
-			build_options: build_options
-		}
+// set_coverage enables V-compatible line coverage output.
+pub fn (mut g FlatGen) set_coverage(dir string, build_options string) {
+	g.coverage_dir = dir
+	g.coverage_build_options = build_options
+}
+
+fn (mut g FlatGen) write_coverage_point(node flat.Node) {
+	if g.coverage_dir.len == 0 || g.cur_fn_name.len == 0
+		|| node.kind !in [.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .return_stmt, .break_stmt, .continue_stmt, .defer_stmt, .assert_stmt, .goto_stmt] {
+		return
 	}
-	if g.fn_decl != unsafe { nil } {
-		curr_line := u64(pos.line_nr)
-		mut curr_cov := unsafe { g.coverage_files[g.unique_file_path_hash] }
-		if curr_line !in curr_cov.points {
-			curr_cov.points << curr_line
+	position := g.a.source_position(node.pos) or { return }
+	path := os.real_path(position.filename)
+	line := position.line
+	mut info := g.coverage_files[path] or {
+		fhash := hash.sum64_string('${g.coverage_build_options}:${path}', 32).hex_full()
+		created := &CoverageInfo{
+			path:            path
+			fhash:           fhash
+			points:          []
+			counter_by_line: map[int]int{}
 		}
-		stmt_str := g.go_before_last_stmt().trim_space()
-		g.empty_line = true
-		g.writeln('_v_cov[_v_cov_file_offset_${g.unique_file_path_hash}+${curr_cov.points.len - 1}]++;')
-		g.set_current_pos_as_last_stmt_pos()
-		g.write(stmt_str)
+		g.coverage_files[path] = created
+		created
+	}
+	mut counter := info.counter_by_line[line]
+	if line !in info.counter_by_line {
+		counter = g.coverage_counter_count
+		info.counter_by_line[line] = counter
+		info.points << line
+		info.counters << counter
+		g.coverage_counter_count++
+	}
+	g.writeln('_v3_cov[${counter}]++;')
+}
+
+fn (mut g FlatGen) gen_coverage_registration() {
+	if g.coverage_dir.len > 0 {
+		g.writeln('atexit(v3_write_coverage_stats);')
 	}
 }
 
-fn (mut g Gen) write_coverage_stats() {
-	build_options := g.pref.build_options.join(' ')
-	coverage_dir := os.real_path(g.pref.coverage_dir).replace('\\', '/')
-	coverage_meta_folder := '${coverage_dir}/meta'
-	if !os.exists(coverage_meta_folder) {
-		os.mkdir_all(coverage_meta_folder) or {}
+fn coverage_json_escape(value string) string {
+	return json_string_content_escape(value)
+}
+
+fn (mut g FlatGen) write_coverage_metadata() {
+	if g.coverage_dir.len == 0 {
+		return
 	}
-	counter_ulid :=
-		rand.ulid() // rand.ulid provides a hash+timestamp, so that a collision is extremely unlikely
-	g.cov_declarations.writeln('')
-	g.cov_declarations.writeln('void vprint_coverage_stats() {')
-	g.cov_declarations.writeln('\tchar cov_filename[2048];')
-	covdir := cesc(coverage_dir)
-	g.cov_declarations.writeln('\tchar *cov_dir = "${covdir}";')
-	for _, mut cov in g.coverage_files {
-		metadata_coverage_fpath := '${coverage_meta_folder}/${cov.fhash}.json'
-		filepath := os.real_path(cov.file.path).replace('\\', '/')
-		if os.exists(metadata_coverage_fpath) {
+	os.mkdir_all(g.coverage_dir) or { return }
+	meta_dir := os.join_path_single(g.coverage_dir, 'meta')
+	os.mkdir_all(meta_dir) or { return }
+	for _, info in g.coverage_files {
+		path := os.join_path_single(meta_dir, '${info.fhash}.json')
+		mut file := os.create(path) or { continue }
+		file.writeln('{') or { continue }
+		file.writeln('  "file": "${coverage_json_escape(info.path)}", "fhash": "${info.fhash}",') or {
 			continue
 		}
-		mut fmeta := os.create(metadata_coverage_fpath) or { continue }
-		fmeta.writeln('{') or { continue }
-		jfilepath := jesc(filepath)
-		jfhash := jesc(cov.fhash)
-		jversion := jesc(version.full_v_version(true))
-		jboptions := jesc(cov.build_options)
-		fmeta.writeln('  "file": "${jfilepath}", "fhash": "${jfhash}",') or { continue }
-		fmeta.writeln('  "v_version": "${jversion}",') or { continue }
-		fmeta.writeln('  "build_options": "${jboptions}",') or { continue }
-		fmeta.writeln('  "npoints": ${cov.points.len},') or { continue }
-		fmeta.write_string('  "points": [  ') or { continue }
-		for idx, p in cov.points {
-			fmeta.write_string('${p + 1}') or { continue }
-			if idx < cov.points.len - 1 {
-				fmeta.write_string(',') or { continue }
+		file.writeln('  "v_version": "V3 ${@VHASH}",') or { continue }
+		file.writeln('  "build_options": "${coverage_json_escape(g.coverage_build_options)}",') or {
+			continue
+		}
+		file.writeln('  "npoints": ${info.points.len},') or { continue }
+		file.write_string('  "points": [  ') or { continue }
+		for index, point in info.points {
+			file.write_string(point.str()) or { continue }
+			if index + 1 < info.points.len {
+				file.write_string(',') or { continue }
 			}
 		}
-		fmeta.writeln('  ]') or { continue }
-		fmeta.writeln('}') or { continue }
-		fmeta.close()
+		file.writeln('  ]') or { continue }
+		file.writeln('}') or { continue }
+		file.close()
 	}
-	g.cov_declarations.writeln('\tint secs = 0;')
-	g.cov_declarations.writeln('\tint nsecs = 0;')
-	g.cov_declarations.writeln('\t#if defined(_WIN32)')
-	g.cov_declarations.writeln('\tint ticks_passed = GetTickCount();')
-	g.cov_declarations.writeln('\nsecs = ticks_passed / 1000;')
-	g.cov_declarations.writeln('\nnsecs = (ticks_passed % 1000) * 1000000;')
-	g.cov_declarations.writeln('\t#endif')
-	g.cov_declarations.writeln('\t#if !defined(_WIN32)')
-	g.cov_declarations.writeln('\tstruct timespec ts;')
-	g.cov_declarations.writeln('\tclock_gettime(CLOCK_MONOTONIC, &ts);')
-	g.cov_declarations.writeln('\tsecs = ts.tv_sec;')
-	g.cov_declarations.writeln('\tnsecs = ts.tv_nsec;')
-	g.cov_declarations.writeln('\t#endif')
-	g.cov_declarations.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcounters_${counter_ulid}.%07ld.%09ld.csv", cov_dir, secs, nsecs);')
-	g.cov_declarations.writeln('\tFILE *fp = fopen(cov_filename, "wb+");')
-	g.cov_declarations.writeln('\tif (fp == NULL) { return; }')
-	cprefpath := cesc(os.real_path(g.pref.path))
-	cboptions := cesc(build_options)
-	g.cov_declarations.writeln('\tfprintf(fp, "# path: ${cprefpath}\\n");')
-	g.cov_declarations.writeln('\tfprintf(fp, "# build_options: ${cboptions}\\n");')
-	g.cov_declarations.writeln('\tfprintf(fp, "meta,point,hits\\n");')
-	for k, cov in g.coverage_files {
-		nr_points := cov.points.len
-		g.cov_declarations.writeln('\t{')
-		g.cov_declarations.writeln('\t\tfor (${ast.int_type_name} i = 0; i < ${nr_points}; ++i) {')
-		g.cov_declarations.writeln('\t\t\tif (_v_cov[_v_cov_file_offset_${k}+i]) {')
-		g.cov_declarations.writeln("\t\t\t\tfprintf(fp, \"%s,%d,%ld\\n\", \"${cov.fhash}\", i, _v_cov[_v_cov_file_offset_${k}+i]);")
-		g.cov_declarations.writeln('\t\t\t}')
-		g.cov_declarations.writeln('\t\t}')
-		g.cov_declarations.writeln('\t}')
-	}
-	g.cov_declarations.writeln('\tfclose(fp);')
-	g.cov_declarations.writeln('}')
 }
 
-fn cesc(s string) string {
-	return cescape_nonascii(cestring(s))
-}
-
-fn jesc(s string) string {
-	return escape_quotes(s)
+fn (mut g FlatGen) emit_coverage_support() {
+	if g.coverage_dir.len == 0 {
+		return
+	}
+	g.write_coverage_metadata()
+	counter_count := if g.coverage_counter_count > 0 { g.coverage_counter_count } else { 1 }
+	compile_tag := '${os.getpid()}_${time.now().unix_micro()}'
+	g.writeln('static unsigned long long _v3_cov[${counter_count}];')
+	g.writeln('static void v3_write_coverage_stats(void) {')
+	g.writeln('\tchar cov_filename[4096];')
+	g.writeln('\tlong long cov_secs = 0;')
+	g.writeln('\tlong cov_nsecs = 0;')
+	g.writeln('#if defined(_WIN32)')
+	g.writeln('\tcov_secs = (long long)(GetTickCount64() / 1000);')
+	g.writeln('\tcov_nsecs = (long)((GetTickCount64() % 1000) * 1000000);')
+	g.writeln('#else')
+	g.writeln('\tstruct timespec cov_ts;')
+	g.writeln('\tclock_gettime(CLOCK_MONOTONIC, &cov_ts);')
+	g.writeln('\tcov_secs = (long long)cov_ts.tv_sec;')
+	g.writeln('\tcov_nsecs = cov_ts.tv_nsec;')
+	g.writeln('#endif')
+	g.writeln('\tsnprintf(cov_filename, sizeof(cov_filename), "%s/vcounters_v3_${compile_tag}.%lld.%09ld.csv", "${c_escape(g.coverage_dir)}", cov_secs, cov_nsecs);')
+	g.writeln('\tFILE* cov_file = fopen(cov_filename, "wb+");')
+	g.writeln('\tif (cov_file == NULL) return;')
+	g.writeln('\tfprintf(cov_file, "# path: %s\\n", "${c_escape(g.coverage_dir)}");')
+	g.writeln('\tfprintf(cov_file, "# build_options: %s\\n", "${c_escape(g.coverage_build_options)}");')
+	g.writeln('\tfprintf(cov_file, "meta,point,hits\\n");')
+	for _, info in g.coverage_files {
+		for point_index, counter in info.counters {
+			g.writeln('\tif (_v3_cov[${counter}] != 0) fprintf(cov_file, "${info.fhash},${point_index},%llu\\n", _v3_cov[${counter}]);')
+		}
+	}
+	g.writeln('\tfclose(cov_file);')
+	g.writeln('}')
+	g.writeln('')
 }

@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module coroutines
 
-import v.util
+import old.util
 import time
 
 #flag -I @VEXEROOT/thirdparty/photon

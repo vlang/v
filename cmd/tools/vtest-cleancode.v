@@ -2,7 +2,7 @@ module main
 
 import os
 import testing
-import v.util
+import old.util
 import arrays
 
 const vet_known_failing = [
@@ -12,10 +12,10 @@ const vet_known_failing = [
 
 const vet_known_failing_windows = [
 	'do_not_delete_this',
-	'vlib/v/gen/js/tests/testdata/byte_is_space.v',
-	'vlib/v/gen/js/tests/testdata/compare_ints.v',
-	'vlib/v/gen/js/tests/testdata/hw.v',
-	'vlib/v/gen/js/tests/testdata/string_methods.v',
+	'vlib/old/gen/js/tests/testdata/byte_is_space.v',
+	'vlib/old/gen/js/tests/testdata/compare_ints.v',
+	'vlib/old/gen/js/tests/testdata/hw.v',
+	'vlib/old/gen/js/tests/testdata/string_methods.v',
 	'vlib/v/slow_tests/inout/vscript_using_generics_in_os.vsh',
 	'vlib/v/tests/project_with_modules_having_submodules/bin/main.vsh',
 	'vlib/v/slow_tests/valgrind/simple_interpolation_script_mode.v',

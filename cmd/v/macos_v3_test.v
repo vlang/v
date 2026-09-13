@@ -1,7 +1,7 @@
 module main
 
 import os
-import v.pref
+import old.pref
 
 const macos_v3_test_vroot = os.dir(@VEXE)
 
@@ -67,7 +67,7 @@ fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 	for command in ['main.v', 'build', 'run'] {
 		assert is_macos_v3_relevant_command(command, prefs)
 	}
-	for path in ['cmd/v', 'cmd/v/v.v', 'vlib/v3/v3.v', 'vlib/v/compiler_errors_test.v', 'fixture.vv'] {
+	for path in ['cmd/v', 'cmd/v/v.v', 'vlib/v/v.v', 'vlib/v/compiler_errors_test.v', 'fixture.vv'] {
 		prefs.path = path
 		assert is_macos_v3_relevant_command(path, prefs)
 	}
@@ -102,8 +102,8 @@ fn test_macos_v3_cmd_source_unlinks_v1_on_every_native_host() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'v.v'))!
 	assert source.contains('\$if v1_fallback ?|| cross ? {')
 	assert !source.contains('!bsd && !linux && !windows')
-	assert source.contains('import v.builder')
-	assert source.contains('import v.builder.cbuilder')
+	assert source.contains('import old.builder')
+	assert source.contains('import old.builder.cbuilder')
 	assert source.contains('\$if v1_fallback ?|| cross ? {\n\t\t\t\tbuilder.compile')
 	driver := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'v', 'macos_v3_driver_notd_cross.v'))!
 	assert driver.contains('\$if v1_fallback ? {')

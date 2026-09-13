@@ -179,7 +179,7 @@ static inline int v_os_exec_capture_start(char *const argv[], int *child_pid, in
 
 // v_os_fd_write_all writes the whole buffer to the fd, retrying short writes.
 // It is defined on all nix platforms because fastc references it
-// unconditionally (see vlib/v3/gen/fastc/unit_compile_nix.c.v); guarding it
+// unconditionally (see vlib/v/gen/fastc/unit_compile_nix.c.v); guarding it
 // behind __APPLE__ left it undefined at link time on Linux.
 static inline void v_os_fd_write_all(int fd, const char *data, size_t len) {
 	while (len > 0) {

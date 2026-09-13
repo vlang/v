@@ -26,8 +26,8 @@ V does not yet have a separate formal language specification document like the G
 Until V 1.0, the language reference is defined by:
 * This document (`doc/docs.md`) for syntax and semantics.
 * The compiler implementation in `vlib/v/`.
-* The executable language tests in `vlib/v/tests/`, `vlib/v/parser/`,
-  `vlib/v/checker/`, and `vlib/v/slow_tests/inout/`.
+* The executable language tests in `vlib/v/tests/`, `vlib/v/parser/tests/`,
+  `vlib/v/checker/tests/`, and `vlib/v/slow_tests/inout/`.
 
 When documentation and implementation diverge, compiler behavior and tests are the source of truth.
 
@@ -75,9 +75,9 @@ project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
 ## The default compiler
 
-On every native platform, the top-level `v` executable contains only the
-experimental **V3** C compiler (whose source lives in `vlib/v3`). Every direct C
-build, including compiler self-builds, is compiled by V3 in-process. The CLI and
+On every native platform, the top-level `v` executable contains the default
+compiler whose source lives in `vlib/v`. Every direct C build, including compiler
+self-builds, is compiled in-process. The CLI and
 tool commands remain in `cmd/v`; commands such as `test` and `fmt` are external
 tools, and non-C backends remain separate builder tools.
 
@@ -86,15 +86,15 @@ The standard bootstrap does not build the sibling `v1_fallback` executable
 sibling is missing, it reports that it is running `make v1` and builds the
 fallback from the current `vc` snapshot. You can run `make v1` explicitly to
 prepare it ahead of time. `-old-compiler` launches the fallback explicitly, and
-ordinary user builds retry through it after a V3 compiler or C compilation
+ordinary user builds retry through it after a compiler or C compilation
 failure. Explicit `-new-compiler` builds and native compiler self-builds remain
-strict V3 operations, except for `-new-compiler -cc msvc` on Windows. V3 does
+strict operations, except for `-new-compiler -cc msvc` on Windows. The compiler does
 not yet generate MSVC command lines, so that combination intentionally launches
 `v1_fallback.exe`. `-new-compiler` remains accepted for command-line
 compatibility and otherwise selects the same embedded driver.
 
-Portable cross-VC snapshots do not embed V3 and retain the established compiler
-from `vlib/v`.
+Portable cross-VC snapshots do not embed the new driver and retain the
+compatibility compiler from `vlib/old`.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
@@ -6196,8 +6196,8 @@ A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
 
-During the transition to the V3 formatter, `v fmt -verify` and `v fmt -c` accept
-files matching either V3 or legacy vfmt output. `v fmt -w` uses V3 formatting,
+During the formatter transition, `v fmt -verify` and `v fmt -c` accept
+files matching either current or legacy vfmt output. `v fmt -w` uses current formatting,
 so it may rewrite a file accepted by either check mode.
 
 #### Disabling the formatting locally
@@ -6238,8 +6238,8 @@ That will produce a `profile.txt` file when the program exits, which you can the
 analyze. If the output file is omitted, as in `v -profile run file.v`, the report
 is written to standard output. `-prof` is an alias for `-profile`.
 
-The V3 compiler supports profiling with its C backend. Other V3 backends reject
-`-profile`. V3 also supports these V1-compatible selection options:
+The compiler supports profiling with its C backend. Other backends reject
+`-profile`. It also supports these compatibility selection options:
 
 - `-profile-fns name1,name2` profiles only the named functions and functions
   called from them. Use the function names shown in profile output, such as
@@ -7238,7 +7238,7 @@ See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 
 #### `$vml` for compiling UI2 interfaces
 
-The V3 compiler can compile a VML file directly into an `ui2.Element` expression with
+The compiler can compile a VML file directly into an `ui2.Element` expression with
 `$vml(path)`. The VML is parsed while the application is compiled; the resulting program
 constructs UI2 elements directly and does not parse the VML file at runtime.
 

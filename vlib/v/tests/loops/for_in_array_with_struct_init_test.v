@@ -1,4 +1,4 @@
-import v.ast
+import old.ast
 
 fn test_main() {
 	for idx, s in [ast.Struct{

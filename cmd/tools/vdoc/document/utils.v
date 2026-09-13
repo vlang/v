@@ -1,8 +1,8 @@
 module document
 
 import strings
-import v.ast
-import v.token
+import old.ast
+import old.token
 
 const highlight_keys = ['note:', 'fixme:', 'todo:']
 const horizontal_rule_chars = ['-', '=', '*', '_', '~']

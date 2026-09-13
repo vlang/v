@@ -1,6 +1,6 @@
 module main
 
-import v.builder.jsbuilder
+import old.builder.jsbuilder
 
 fn main() {
 	jsbuilder.start()

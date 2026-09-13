@@ -4,10 +4,10 @@ module main
 
 import os
 import os.cmdline
-import v.pref
-import v.parser
-import v.ast
-import v.help
+import old.pref
+import old.parser
+import old.ast
+import old.help
 import term
 import arrays
 

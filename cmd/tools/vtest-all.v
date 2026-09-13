@@ -3,7 +3,7 @@ module main
 import os
 import term
 import time
-import v.util.vflags
+import old.util.vflags
 
 type FnCheck = fn () !
 

@@ -2,14 +2,14 @@ module main
 
 import os
 import os.cmdline
-import v.pref
-import v.util.recompilation
-import v.util.vflags
+import old.pref
+import old.util.recompilation
+import old.util.vflags
 
 const args_ = arguments()
 const is_debug = args_.contains('-debug')
 const full_v_cli_source = 'cmd/v'
-const standalone_v3_source = 'vlib/v3/v3.v'
+const standalone_v3_source = 'vlib/v/v.v'
 const v1_fallback_binary = 'v1_fallback'
 
 // support a renamed `v` executable too:

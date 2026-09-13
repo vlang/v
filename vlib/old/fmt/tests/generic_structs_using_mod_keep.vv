@@ -1,0 +1,8 @@
+import old.fmt.tests.obj
+
+struct GenericStruct[A, B] {
+}
+
+fn main() {
+	_ := GenericStruct[obj.Test, obj.Test]{}
+}
