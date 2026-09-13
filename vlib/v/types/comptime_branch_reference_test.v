@@ -317,3 +317,24 @@ fn test_a_short_struct_argument_of_a_dynamic_callee() {
 	assert code_references_ident('_ = make_handler()({x: 1})', 'x', true)
 	assert code_references_ident('_ = (handler)(x, y: 1)', 'x', true)
 }
+
+fn test_an_interpolation_format_is_not_a_name() {
+	assert !code_references_ident(scanned_code(r"println('${value:x}')"), 'x', true)
+	assert !code_references_ident(scanned_code(r"println('${value:-10}')"), 'x', true)
+	assert !code_references_ident(scanned_code(r"println('${value:.3f}')"), 'f', true)
+	// The expression before it is still code, nested colons included.
+	assert code_references_ident(scanned_code(r"println('${x:04}')"), 'x', true)
+	assert code_references_ident(scanned_code(r"println('${Config{x: 1}.y:04}')"), 'Config', true)
+	assert !code_references_ident(scanned_code(r"println('${Config{x: 1}.y:04}')"), 'x', true)
+}
+
+fn test_a_label_of_a_nested_block() {
+	assert !code_references_ident('if true {\n\tunsafe {\n\t\tgoto x\n\t}\n\tx:\n\tprintln(1)\n}', 'x', true)
+	assert !code_references_ident('if f() {\n\tx: println(1)\n}', 'x', true)
+	assert !code_references_ident('for i < n {\n\tx: println(1)\n}', 'x', true)
+	// A map literal in any of those still keys with an expression.
+	assert code_references_ident('if true {\n\tm := {x: 1}\n}', 'x', true)
+	assert code_references_ident('if true {\n\treturn {x: 1}\n}', 'x', true)
+	assert code_references_ident('f({x: 1})', 'x', true)
+	assert code_references_ident('_ = [{x: 1}]', 'x', true)
+}

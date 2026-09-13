@@ -82,7 +82,35 @@ fn goto_label(lbl int) {
 	}
 }
 
+// The `:x` of an interpolation is a format, not a name.
+fn interpolation_format(x int) {
+	$if windows {
+		value := 255
+		println('${value:x}')
+	}
+}
+
+fn always() bool {
+	return true
+}
+
+// A label may sit in a block nested inside the branch.
+fn nested_label(nl int) {
+	$if windows {
+		if always() {
+			unsafe {
+				goto nl
+			}
+			nl:
+			println('done')
+		}
+	}
+}
+
 fn main() {
+	interpolation_format(8)
+	nested_label(9)
+	println(always())
 	goto_label(7)
 	asm_register_name(6)
 	comptime_function('f')

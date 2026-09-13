@@ -2638,6 +2638,27 @@ fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranch
 	return []ComptimeBranchRange{}
 }
 
+// interpolation_expression drops the `:x` of a `${value:x}`, which the parser
+// keeps as the type of the directive rather than as code. Only a `:` of the
+// interpolation itself counts: the one of a `${Config{x: 1}.x}` is nested.
+fn interpolation_expression(text string) string {
+	mut depth := 0
+	mut format := -1
+	for i, c in text {
+		if c == `{` || c == `(` || c == `[` {
+			depth++
+		} else if c == `}` || c == `)` || c == `]` {
+			depth--
+		} else if c == `:` && depth == 1 {
+			format = i
+		}
+	}
+	if format < 0 {
+		return text
+	}
+	return text[..format] + '}'
+}
+
 // code_text_in_range returns `source[start..end]` with comments and literals
 // left out, so that a plain identifier search cannot match inside them. The
 // `${...}` interpolations of a string are kept, being ordinary code.
@@ -2737,7 +2758,7 @@ fn skip_non_code_at(source string, i int) (int, string) {
 			}
 			// The body is ordinary code, nested literals and comments included,
 			// so it goes through the same sanitizer.
-			interpolated << code_text_in_range(source, j + 1, k).bytes()
+			interpolated << interpolation_expression(code_text_in_range(source, j + 1, k)).bytes()
 			j = k
 			continue
 		}
@@ -2849,16 +2870,10 @@ fn colon_binds_a_field_or_label(tokens []string, index int) bool {
 					continue
 				}
 				if tokens[i] == '{' {
-					if map_literal_type_precedes(tokens, i) {
-						return false
-					}
-					if i > 0 && tokens[i - 1] in block_opening_keywords {
-						// `unsafe { x: .. }` opens a block, not a literal, so
-						// the name labels a statement of it. `return {x: 1}` is
-						// a map literal, hence the list rather than a keyword
-						// test.
-						return true
-					}
+					// A struct literal names its fields and a block labels its
+					// statements; only a map literal keys with an expression.
+					return !map_literal_type_precedes(tokens, i)
+						&& !brace_opens_a_literal(tokens, i)
 				}
 				return name_precedes_delimiter(tokens, i)
 			}
@@ -2959,9 +2974,19 @@ fn is_type_name_token(word string) bool {
 	return is_ident_token(word) && !is_keyword_token(word)
 }
 
-// block_opening_keywords are the keywords a `{` may follow as a block rather
-// than as a literal.
-const block_opening_keywords = ['unsafe', 'lock', 'rlock', 'else', 'defer', 'or', 'select', 'for']
+// brace_opens_a_literal reports whether the bare `{` at `index` stands where an
+// expression may start, which makes it a map literal. `unsafe {`, `if cond {`
+// and `fn f() {` open a block instead, and a `name:` of one labels a statement.
+fn brace_opens_a_literal(tokens []string, index int) bool {
+	if index == 0 {
+		return false
+	}
+	previous := tokens[index - 1]
+	if previous in ['return', 'in', 'is', 'as'] {
+		return true
+	}
+	return !is_ident_token(previous) && previous !in [')', ']', '}']
+}
 
 fn is_keyword_token(word string) bool {
 	return is_ident_token(word) && token.Token.from_string_tinyv(word).is_keyword()
