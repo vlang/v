@@ -259,6 +259,15 @@ ifdef WIN32
 	mv -f "$$candidate" "$(V1_FALLBACK_EXE)"; \
 	echo "Built V1 compatibility compiler: $(V1_FALLBACK_EXE)"
 else
+ifdef LEGACY
+	@set -e; \
+	if [ ! -f "$(LEGACYLIBS)/lib/libMacportsLegacySupport.a" ]; then \
+		'$(MAKE)' latest_legacy; \
+		'$(MAKE)' -C "$(TMPLEGACY)" CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)'; \
+		'$(MAKE)' -C "$(TMPLEGACY)" PREFIX="$(abspath $(LEGACYLIBS))" CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' install; \
+		rm -rf "$(TMPLEGACY)"; \
+	fi
+endif
 	@set -e; \
 	if [ ! -f "$(VC)/$(VCFILE)" ]; then '$(MAKE)' latest_vc; fi; \
 	mkdir -p "$(dir $(V1_FALLBACK_EXE))"; \
