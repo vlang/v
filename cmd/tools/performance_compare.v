@@ -115,7 +115,7 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	println('V version is: ${vversion} , local source commit: ${vcommit}')
 	if vgit_context.vvlocation == 'cmd/v' {
 		if os.exists('vlib/v') {
-			println('Source lines of the compiler: ' + scripting.run('find cmd/v/ vlib/v/ -name "*.v" | grep -v /tests/ | xargs wc | tail -n -1'))
+			println('Source lines of the compiler: ' + scripting.run('find cmd/v/ vlib/v/ -name "*.v" ! -path "*/tests/*" ! -path "*_tests/*" ! -name "*_test.v" ! -name "*_test.*.v" | xargs wc | tail -n -1'))
 		} else {
 			println('Source lines of the compiler: ' + scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
 		}
