@@ -15105,6 +15105,61 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string 
 	return ''
 }
 
+// generic_call_declared_return_type resolves the concrete return type of a call
+// to a generic function from that function's declared signature: it infers the
+// generic arguments from the call's argument types and substitutes them into the
+// declared return type (e.g. `[T] fn(a T) T` called as `f(1.0)` yields `f64`).
+// Returns none when the call is not generic, its signature is unknown, or the
+// arguments leave a generic parameter undetermined, so callers keep their
+// previous behaviour in those cases.
+fn (t &Transformer) generic_call_declared_return_type(id flat.NodeId, node flat.Node) ?string {
+	if isnil(t.tc) || node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	name := t.tc.resolved_call_name(id) or { t.resolve_call_name(node) }
+	if name.len == 0 {
+		return none
+	}
+	params := t.tc.fn_generic_params[name] or { return none }
+	if params.len == 0 {
+		return none
+	}
+	param_texts := t.tc.fn_param_type_texts[name] or { return none }
+	if param_texts.len == 0 {
+		return none
+	}
+	ret_text := t.tc.fn_ret_type_texts[name] or { return none }
+	if ret_text.len == 0 {
+		return none
+	}
+	mut inferred := map[string]string{}
+	for i, param_text in param_texts {
+		arg_idx := i + 1
+		if arg_idx >= node.children_count {
+			break
+		}
+		arg_type := t.expr_value_type(t.a.child(&node, arg_idx))
+		if arg_type.len == 0 || arg_type in ['unknown', 'generic', 'void'] {
+			continue
+		}
+		infer_generic_type_args(param_text, arg_type, mut inferred)
+	}
+	mut args := []string{cap: params.len}
+	for param in params {
+		inferred_arg := inferred[param] or { return none }
+		if inferred_arg.len == 0 || inferred_arg in ['unknown', 'generic', 'void'] {
+			return none
+		}
+		args << inferred_arg
+	}
+	resolved := substitute_generic_type_text_with_params(ret_text, args, params)
+	if resolved.len == 0 || resolved in ['unknown', 'generic', 'void']
+		|| is_generic_fn_placeholder_name(resolved) {
+		return none
+	}
+	return resolved
+}
+
 fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?string {
 	if node.children_count == 0 {
 		return none
