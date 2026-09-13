@@ -3538,7 +3538,20 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	if cross_cond := p.cross_deferred_comptime_cond(cond) {
 		then_block := p.top_level_block_stmt()
 		else_block := p.parse_top_level_comptime_else()
-		return p.comptime_if_node_at(cross_cond, then_block, else_block, dollar_start)
+		// Only `#include`/`#flag` directives can carry their condition into
+		// portable C, where the backend wraps them in `#if` (see
+		// `index_cross_directive_guards`). A declaration cannot be guarded that
+		// way - the generator collects nested functions, types, constants and
+		// globals directly - so a top-level `$if` holding one is resolved for the
+		// generating host, exactly as in an ordinary build. Keeping both branches
+		// would emit both declarations unguarded, and the first one would win.
+		if p.comptime_subtree_is_directives_only(then_block)
+			&& p.comptime_subtree_is_directives_only(else_block) {
+			return p.comptime_if_node_at(cross_cond, then_block, else_block, dollar_start)
+		}
+		taken := p.eval_comptime_cond(cond)
+		p.discard_comptime_branch(if taken { else_block } else { then_block })
+		return if taken { then_block } else { else_block }
 	}
 	if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
 		|| comptime_cond_has_builtin_threads(cond) {
@@ -4479,6 +4492,49 @@ fn (mut p Parser) parse_top_level_comptime_else() flat.NodeId {
 		return p.parse_top_level_comptime_if()
 	}
 	return p.top_level_block_stmt()
+}
+
+// comptime_subtree_is_directives_only reports whether a retained `$if` branch
+// holds nothing the C backend would have to guard by itself, i.e. only `#include`
+// and `#flag` directives (possibly nested in further blocks or `$if`s).
+fn (p &Parser) comptime_subtree_is_directives_only(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return true
+	}
+	node := p.a.nodes[int(id)]
+	match node.kind {
+		.directive, .empty {
+			return true
+		}
+		.block, .comptime_if {
+			for i in 0 .. node.children_count {
+				if !p.comptime_subtree_is_directives_only(p.a.child(&node, i)) {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// discard_comptime_branch empties the branch a host-resolved top-level `$if` did
+// not take. Both branches were parsed to find out whether they only held
+// directives, and a stage that scans every AST node instead of walking the file
+// index would otherwise still find the declarations in the unused one.
+fn (mut p Parser) discard_comptime_branch(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	for i in 0 .. node.children_count {
+		p.discard_comptime_branch(p.a.child(&node, i))
+	}
+	p.a.nodes[int(id)] = flat.Node{
+		kind: .empty
+	}
 }
 
 // cross_deferred_comptime_cond returns the condition to keep in the AST when

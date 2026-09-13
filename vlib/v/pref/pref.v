@@ -1146,7 +1146,6 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 // different meaning than an ordinary build does.
 pub const cross_target_c_macros = {
 	'windows':           '_WIN32'
-	'ios':               '__TARGET_IOS__'
 	'qnx':               '__QNX__'
 	'serenity':          '__serenity__'
 	'vinix':             '__vinix__'
@@ -1186,6 +1185,11 @@ pub const cross_target_c_macros = {
 	'big_endian':        'TARGET_ORDER_IS_BIG'
 }
 
+// ios_c_macro is the macro Clang defines from an iOS deployment target
+// (`-miphoneos-version-min`), for both devices and the simulator. It is what
+// tells iOS apart from macOS, which shares `__APPLE__`.
+const ios_c_macro = '__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__'
+
 // cross_target_c_condition returns the C preprocessor expression deciding a
 // target-dependent `$if` flag, or none when the flag is target independent and
 // can still be resolved while generating portable C.
@@ -1205,7 +1209,13 @@ pub fn cross_target_c_condition(name string) ?string {
 			return '(defined(__ANDROID__) && !defined(__TERMUX__))'
 		}
 		'macos', 'darwin', 'mac' {
-			return '(defined(__APPLE__) && !defined(__TARGET_IOS__))'
+			return '(defined(__APPLE__) && !defined(${ios_c_macro}))'
+		}
+		'ios' {
+			// Clang defines `__APPLE__` for iOS as well; what separates the two is
+			// the deployment-target macro it sets from `-miphoneos-version-min`.
+			// There is no `__TARGET_IOS__`.
+			return 'defined(${ios_c_macro})'
 		}
 		'gcc' {
 			// GCC defines `__GNUC__`, which clang and tcc define as well; V counts
@@ -1217,7 +1227,8 @@ pub fn cross_target_c_condition(name string) ?string {
 			return '!defined(_WIN32)'
 		}
 		'bsd' {
-			return '(defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__))'
+			// `comptime_flag_value` counts macOS but not iOS as BSD.
+			return '((defined(__APPLE__) && !defined(${ios_c_macro})) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__))'
 		}
 		else {}
 	}
