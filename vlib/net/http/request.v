@@ -120,6 +120,16 @@ fn (mut req Request) free() {
 			user_agent.free()
 			freed_ptrs[user_agent_ptr] = true
 		}
+		// The mirrored `Remote-Addr` header above can share this buffer:
+		// set_remote_addr stores the address unchanged as the header value when
+		// there is no port to strip. The freed_ptrs guard is what keeps that
+		// from being a double free, here as for every other field.
+		mut remote_addr := req.remote_addr
+		remote_addr_ptr := u64(usize(remote_addr.str))
+		if remote_addr_ptr !in freed_ptrs {
+			remote_addr.free()
+			freed_ptrs[remote_addr_ptr] = true
+		}
 		mut verify := req.verify
 		verify_ptr := u64(usize(verify.str))
 		if verify_ptr !in freed_ptrs {

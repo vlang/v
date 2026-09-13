@@ -17,45 +17,13 @@ fn (mut h RemoteAddrHandler) handle(req Request) Response {
 	}
 }
 
-// remote_addr_server binds a port the caller already knows, rather than passing
-// an empty `addr` and reading the bound one back out of the server afterwards.
-// `listen_and_serve` publishes that field from the server thread with no
-// synchronisation against `status()`, so a caller that has just seen the status
-// flip to .running can still read the empty string it started with -- which
-// shows up as `could not resolve address` from dial_tcp, on some builds every
-// single run.
-fn remote_addr_server(port int) &Server {
+fn remote_addr_server() &Server {
 	return &Server{
 		accept_timeout:       ratimeout
 		handler:              RemoteAddrHandler{}
-		addr:                 '127.0.0.1:${port}'
+		addr:                 ''
 		show_startup_message: false
 	}
-}
-
-// reserve_free_port asks the OS for an ephemeral port and gives it straight
-// back, so the server below can bind a port this test already knows.
-fn reserve_free_port() !int {
-	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
-	port := l.addr()!.port()!
-	l.close()!
-	return int(port)
-}
-
-// dial_with_retry connects to `addr`, retrying a refused connection briefly:
-// wait_till_running returns as soon as the status flips to .running, which can
-// be a hair before the listener is actually accepting.
-fn dial_with_retry(addr string) !&net.TcpConn {
-	mut last := ''
-	for _ in 0 .. 100 {
-		if conn := net.dial_tcp(addr) {
-			return conn
-		} else {
-			last = err.msg()
-			time.sleep(10 * time.millisecond)
-		}
-	}
-	return error('could not connect to ${addr}: ${last}')
 }
 
 // raw_request writes `head` verbatim to a fresh connection to `addr` and
@@ -63,7 +31,7 @@ fn dial_with_retry(addr string) !&net.TcpConn {
 // http.fetch is what lets a test send header names the client would
 // normally never produce.
 fn raw_request(addr string, head string) !string {
-	mut conn := dial_with_retry(addr)!
+	mut conn := net.dial_tcp(addr)!
 	defer {
 		conn.close() or {}
 	}
@@ -87,9 +55,7 @@ fn raw_request(addr string, head string) !string {
 // real ip:port, that remote_ip() drops the port, and that the historical
 // `Remote-Addr` header still carries the bare ip.
 fn test_remote_addr_is_the_peer_address() {
-	port := reserve_free_port()!
-	addr := '127.0.0.1:${port}'
-	mut server := remote_addr_server(port)
+	mut server := remote_addr_server()
 	t := spawn server.listen_and_serve()
 	server.wait_till_running() or {
 		assert false, 'server did not start: ${err}'
@@ -100,7 +66,7 @@ fn test_remote_addr_is_the_peer_address() {
 		t.wait()
 	}
 
-	body := raw_request(addr, 'GET / HTTP/1.1\r\nHost: ${addr}\r\nConnection: close\r\n\r\n')!
+	body := raw_request(server.addr, 'GET / HTTP/1.1\r\nHost: ${server.addr}\r\nConnection: close\r\n\r\n')!
 	parts := body.split('|')
 	assert parts.len == 3
 	// remote_addr keeps the port, like Go's RemoteAddr.
@@ -116,9 +82,7 @@ fn test_remote_addr_is_the_peer_address() {
 // canonical and a lowercase spelling are checked, since header names are
 // case-insensitive on the wire.
 fn test_remote_addr_cannot_be_spoofed_by_a_client_header() {
-	port := reserve_free_port()!
-	addr := '127.0.0.1:${port}'
-	mut server := remote_addr_server(port)
+	mut server := remote_addr_server()
 	t := spawn server.listen_and_serve()
 	server.wait_till_running() or {
 		assert false, 'server did not start: ${err}'
@@ -130,7 +94,7 @@ fn test_remote_addr_cannot_be_spoofed_by_a_client_header() {
 	}
 
 	for spelling in ['Remote-Addr', 'remote-addr', 'REMOTE-ADDR'] {
-		body := raw_request(addr, 'GET / HTTP/1.1\r\nHost: ${addr}\r\n${spelling}: 6.6.6.6\r\nConnection: close\r\n\r\n')!
+		body := raw_request(server.addr, 'GET / HTTP/1.1\r\nHost: ${server.addr}\r\n${spelling}: 6.6.6.6\r\nConnection: close\r\n\r\n')!
 		parts := body.split('|')
 		assert parts.len == 3
 		assert parts[0].starts_with('127.0.0.1:'), 'spoofed via ${spelling}: ${parts[0]}'
@@ -144,9 +108,7 @@ fn test_remote_addr_cannot_be_spoofed_by_a_client_header() {
 // the mirrored `Remote-Addr`. The field must still be set (and adding it must
 // not index past the end of the array).
 fn test_remote_addr_survives_a_full_header_table() {
-	port := reserve_free_port()!
-	addr := '127.0.0.1:${port}'
-	mut server := remote_addr_server(port)
+	mut server := remote_addr_server()
 	t := spawn server.listen_and_serve()
 	server.wait_till_running() or {
 		assert false, 'server did not start: ${err}'
@@ -157,12 +119,12 @@ fn test_remote_addr_survives_a_full_header_table() {
 		t.wait()
 	}
 
-	mut head := 'GET / HTTP/1.1\r\nHost: ${addr}\r\nConnection: close\r\n'
+	mut head := 'GET / HTTP/1.1\r\nHost: ${server.addr}\r\nConnection: close\r\n'
 	for i in 0 .. max_headers - 2 {
 		head += 'X-Filler-${i}: v\r\n'
 	}
 	head += '\r\n'
-	body := raw_request(addr, head)!
+	body := raw_request(server.addr, head)!
 	parts := body.split('|')
 	assert parts.len == 3
 	assert parts[0].starts_with('127.0.0.1:')
@@ -223,4 +185,36 @@ fn test_set_remote_addr_replaces_every_client_copy() {
 	assert req.header.custom_values('Remote-Addr') == ['10.0.0.5']
 	assert req.header.get_custom('Remote-Addr')? == '10.0.0.5'
 	assert req.header.get_custom('X-Keep')? == 'me'
+}
+
+// test_reset_clears_remote_addr pins reset()'s contract for the new field: it
+// runs the @[manualfree] cleanup and then restores defaults, so the address of
+// the previous peer must not survive into the reused request.
+fn test_reset_clears_remote_addr() {
+	mut req := Request{}
+	req.set_remote_addr('10.0.0.5:1234')
+	assert req.remote_addr == '10.0.0.5:1234'
+	assert req.header.get_custom('Remote-Addr')? == '10.0.0.5'
+
+	req.reset()
+	assert req.remote_addr == ''
+	assert req.remote_ip() == ''
+	assert req.header.get_custom('Remote-Addr') == none
+}
+
+// test_reset_with_remote_addr_sharing_the_header_buffer covers the aliasing case
+// the cleanup has to survive: strip_addr_port returns its argument untouched
+// when there is no port, so `remote_addr` and the mirrored `Remote-Addr` header
+// value are then the *same* allocation. free() must release it once -- that is
+// what the freed_ptrs map is for -- rather than twice. A heap string is required
+// here; a literal would make string.free() a no-op and prove nothing.
+fn test_reset_with_remote_addr_sharing_the_header_buffer() {
+	heap_addr := '10.0.0' + '.5'
+	mut req := Request{}
+	req.set_remote_addr(heap_addr)
+	assert req.remote_addr == '10.0.0.5'
+	assert req.header.get_custom('Remote-Addr')? == '10.0.0.5'
+
+	req.reset()
+	assert req.remote_addr == ''
 }
