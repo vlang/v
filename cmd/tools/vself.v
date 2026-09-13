@@ -45,14 +45,14 @@ fn main() {
 	}
 	if !fastc_self_build && !has_self_build_configuration_arg(effective_args) {
 		// compiling by default, i.e. `v self`:
-		uname := os.uname()
+		unam := os.uname()
 		if host_os == 'macos' {
 			// Apple Silicon's bundled TCC is much faster for compiler rebuilds. The
 			// generated compiler uses pthread-backed allocator state because native
 			// TinyCC TLS is not reliable on macOS.
-			default_cc := if uname.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+			default_cc := if unam.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
 			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
-		} else if host_os == 'linux' && uname.machine in ['arm64', 'aarch64'] {
+		} else if host_os == 'linux' && unam.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
 			// prefer the system compiler for self-builds there.
 			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
