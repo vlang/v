@@ -17453,6 +17453,38 @@ fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string
 			return project_path
 		}
 	}
+	// A `modules/` directory between the importing file and the project root
+	// declares modules for the whole project, not just for the files beside it, so
+	// a module in it has to shadow a vlib module of the same name for an import
+	// written inside a submodule too. Only the importing file's own `modules/` was
+	// probed above, so `import net` from `modules/a/b.v` reached past a project's
+	// `modules/net` and bound to vlib's `net` -- pulling vlib's `net` and every
+	// module it imports into the build with it.
+	//
+	// The walk stops at the project root, and otherwise at the filesystem root, so
+	// it cannot climb further than V1's own parent-directory search did.
+	if importing_file.len > 0 && project_root.len > 0 {
+		real_project_root := os.real_path(project_root).replace('\\', '/').trim_right('/')
+		mut current := os.dir(os.real_path(importing_file).replace('\\', '/'))
+		for {
+			modules_root := os.join_path_single(current, 'modules')
+			if alias_path := resolve_local_module_alias_path(modules_root, top_name, mod_name) {
+				return alias_path
+			}
+			modules_path := os.join_path_single(modules_root, mod_path)
+			if module_path_has_v_sources(modules_path, prefs) {
+				return modules_path
+			}
+			if current.trim_right('/') == real_project_root {
+				break
+			}
+			parent := os.dir(current)
+			if parent == current {
+				break
+			}
+			current = parent
+		}
+	}
 	// Preserve the existing resolver priority: explicit local `modules/` and
 	// project-root modules precede a module beside the importing file.
 	if importing_file.len > 0 {
