@@ -967,3 +967,93 @@ const base = 4
 	assert c_source.contains('#define Example__a ((Example)(302))'), c_source
 	assert tc.cur_module == 'shadow'
 }
+
+fn test_promoted_root_declared_default_recovers_generic_source() {
+	mut ast := flat.FlatAst.new()
+	size_value := ast.add_node(flat.Node{
+		kind: .sizeof_expr
+		value: 'T'
+	})
+	a_start := ast.children.len
+	ast.children << size_value
+	a_field := ast.add_node(flat.Node{
+		kind: .field_init
+		value: 'a'
+		children_start: a_start
+		children_count: 1
+	})
+	b_value := ast.add_node(flat.Node{
+		kind: .int_literal
+		value: '4'
+	})
+	b_start := ast.children.len
+	ast.children << b_value
+	b_field := ast.add_node(flat.Node{
+		kind: .field_init
+		value: 'b'
+		children_start: b_start
+		children_count: 1
+	})
+	init_start := ast.children.len
+	ast.children << a_field
+	ast.children << b_field
+	inner_init := ast.add_node(flat.Node{
+		kind: .struct_init
+		value: 'Inner'
+		typ: 'Inner'
+		children_start: init_start
+		children_count: 2
+	})
+	embed_start := ast.children.len
+	ast.children << inner_init
+	embed_field := ast.add_node(flat.Node{
+		kind: .field_decl
+		value: 'Inner'
+		children_start: embed_start
+		children_count: 1
+	})
+	struct_start := ast.children.len
+	ast.children << embed_field
+	mut outer_decl := flat.Node{
+		kind: .struct_decl
+		value: 'Outer'
+		children_start: struct_start
+		children_count: 1
+	}
+	outer_decl.set_generic_params(['T'])
+	outer_id := ast.add_node(outer_decl)
+	mut tc := types.TypeChecker.new(&ast)
+	tc.structs['Inner'] = [
+		types.StructField{ name: 'a', typ: types.Type(types.int_) },
+		types.StructField{ name: 'b', typ: types.Type(types.int_) },
+	]
+	tc.structs['Outer[i64]'] = [
+		types.StructField{
+			name: 'Inner'
+			typ: types.Type(types.Struct{ name: 'Inner' })
+			is_embed: true
+			has_default: true
+		},
+	]
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	g.struct_decl_infos['Outer'] = StructDeclInfo{
+		node: outer_decl
+		node_id: int(outer_id)
+		module: 'main'
+		file: 'main.v'
+		full_name: 'Outer'
+	}
+	g.struct_decl_short_infos['Outer'] = g.struct_decl_infos['Outer']
+
+	// Outer[i64]{ b: 7 } promotes b into the embedded root. Only a is still
+	// owed by the root's declared initializer.
+	mut set := map[string]bool{}
+	set['Inner.b'] = true
+	assert g.gen_promoted_root_declared_default('Outer_i64', 'Inner', 'Inner', 'Inner', mut set, false)
+	out := g.sb.str()
+	assert out == '.Inner.a = sizeof(i64)'
+	assert g.struct_default_generic_params.len == 0
+	assert g.struct_default_generic_args.len == 0
+}

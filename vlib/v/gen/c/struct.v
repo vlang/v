@@ -1978,13 +1978,22 @@ fn promoted_struct_init_has_descendant(set_fields map[string]bool, designator st
 }
 
 fn (mut g FlatGen) gen_promoted_root_declared_default(owner_type string, field_name string, field_type string, designator_prefix string, mut initialized_fields map[string]bool, has_field bool) bool {
-	info := g.find_struct_decl(owner_type) or { return has_field }
+	// A specialized generic outer (Outer[i64] or its flattened clone) has no
+	// declaration of its own, so the embedded root's declared initializer only
+	// exists on the generic source. Recover it together with the concrete generic
+	// arguments the initializer's expressions are specialized with.
+	source := g.struct_default_decl_source(owner_type) or { return has_field }
+	info := source.info
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
 	old_default_module := g.struct_default_module
+	old_default_generic_params := g.struct_default_generic_params
+	old_default_generic_args := g.struct_default_generic_args
 	g.tc.cur_module = info.module
 	g.tc.cur_file = info.file
 	g.struct_default_module = info.module
+	g.struct_default_generic_params = source.params
+	g.struct_default_generic_args = source.args
 	mut has := has_field
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
@@ -2000,6 +2009,8 @@ fn (mut g FlatGen) gen_promoted_root_declared_default(owner_type string, field_n
 	g.tc.cur_module = old_module
 	g.tc.cur_file = old_file
 	g.struct_default_module = old_default_module
+	g.struct_default_generic_params = old_default_generic_params
+	g.struct_default_generic_args = old_default_generic_args
 	return has
 }
 
@@ -2008,7 +2019,7 @@ fn (mut g FlatGen) gen_promoted_struct_literal_default(value_id flat.NodeId, typ
 	if value.kind != .struct_init {
 		return has_field
 	}
-	lookup_name := g.struct_init_fields_key(g.struct_init_lookup_type_name(value.value), type_name)
+	lookup_name := g.struct_init_fields_key(g.struct_init_lookup_type_name(g.generic_default_type_text(value.value)), type_name)
 	mut has := has_field
 	for i in 0 .. value.children_count {
 		field := g.a.child_node(value, i)

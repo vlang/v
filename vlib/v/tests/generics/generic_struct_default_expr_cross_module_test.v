@@ -97,3 +97,14 @@ fn test_nested_plain_generic_default_uses_source_defaults() {
 fn test_global_plain_generic_default_uses_source_defaults() {
 	assert global_plain_box.n == 5
 }
+
+fn test_recovered_generic_default_is_expr_uses_concrete_generic_argument() {
+	assert domainmain.ShapeHolder[domainmain.Square]{}.matches
+	assert !domainmain.ShapeHolder[domainmain.Circle]{}.matches
+	assert domainmain.SumHolder[int]{}.matches
+	assert !domainmain.SumHolder[string]{}.matches
+}
+
+fn test_recovered_generic_default_as_expr_uses_concrete_generic_argument() {
+	assert domainmain.AsHolder[int]{}.value == 5
+}

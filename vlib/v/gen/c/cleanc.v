@@ -15578,6 +15578,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.is_expr {
 			expr_id := g.a.child(node, 0)
+			is_pattern := g.generic_default_type_text(node.value)
 			expr_type := g.tc.resolve_type(expr_id)
 			clean := cgen_unalias_unwrap_all_pointers(expr_type)
 			expr_node := g.a.nodes[int(expr_id)]
@@ -15593,7 +15594,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			}
 			if clean is types.SumType {
-				idx := g.sum_type_index(clean.name, node.value)
+				idx := g.sum_type_index(clean.name, is_pattern)
 				g.write('(')
 				if subject_is_pointer {
 					g.gen_is_expr_subject(expr_id, extra_deref)
@@ -15605,9 +15606,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(')')
 			} else if clean is types.Interface {
 				idx := if g.is_ierror_type_name(clean.name) {
-					g.ierror_type_id_for_pattern(node.value)
+					g.ierror_type_id_for_pattern(is_pattern)
 				} else {
-					g.iface_type_id_for_pattern(clean.name, node.value)
+					g.iface_type_id_for_pattern(clean.name, is_pattern)
 				}
 				if idx == 0 {
 					g.write('0')
@@ -15623,7 +15624,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 				g.write(')')
 			} else if g.is_ierror_type_name(types.Type(clean).name()) {
-				idx := g.ierror_type_id_for_pattern(node.value)
+				idx := g.ierror_type_id_for_pattern(is_pattern)
 				if idx == 0 {
 					g.write('0')
 					return
@@ -15651,7 +15652,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			clean := types.unwrap_pointer(expr_type)
 			if clean is types.SumType {
-				qv := g.resolve_variant(clean.name, node.value)
+				qv := g.resolve_variant(clean.name, g.generic_default_type_text(node.value))
 				field := g.sum_field_name(qv)
 				if g.variant_references_sum(qv, clean.name) {
 					g.write('(*')
