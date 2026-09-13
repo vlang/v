@@ -2734,6 +2734,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		int_ct: g.int_ct
 		output_cross_c: g.output_cross_c
 		subsystem: g.subsystem
+		target_libc_headers: g.target_libc_headers
 		c_flags: g.c_flags
 		suppress_main: g.suppress_main
 		cur_param_names: if result_only {
