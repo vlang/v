@@ -1,7 +1,14 @@
-vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:15:2: warning: unused variable: `q`
-   13 | fn main() {
-   14 |     after_a_semicolon()
-   15 |     q := 1
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:15:2: warning: unused variable: `t`
+   13 | // The body may also be left for the next line.
+   14 | fn on_the_next_line() {
+   15 |     t := 1
       |     ^
    16 |     $if windows {
-   17 |         cb := |q| q + 1
+   17 |         cb := |t|
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:26:2: warning: unused variable: `q`
+   24 |     on_the_next_line()
+   25 |     after_a_semicolon()
+   26 |     q := 1
+      |     ^
+   27 |     $if windows {
+   28 |         cb := |q| q + 1

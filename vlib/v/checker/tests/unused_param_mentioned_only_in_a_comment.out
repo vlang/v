@@ -33,3 +33,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:41:21: notice: 
       |                     ~~
    42 |     $if windows {
    43 |         _ = c'${cs}'
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:48:18: notice: unused parameter: `fl`
+   46 | 
+   47 | // `$if fl ?` tests a compile-time flag, it does not read the parameter.
+   48 | fn comptime_flag(fl int) {
+      |                  ~~
+   49 |     $if windows {
+   50 |         $if fl ? {

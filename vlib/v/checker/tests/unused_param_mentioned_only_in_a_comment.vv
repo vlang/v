@@ -44,7 +44,17 @@ fn c_string_literal(cs string) {
 	}
 }
 
+// `$if fl ?` tests a compile-time flag, it does not read the parameter.
+fn comptime_flag(fl int) {
+	$if windows {
+		$if fl ? {
+			println('on')
+		}
+	}
+}
+
 fn main() {
+	comptime_flag(5)
 	c_string_literal('d')
 	commented(1)
 	quoted(2)

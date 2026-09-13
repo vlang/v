@@ -191,3 +191,18 @@ fn test_a_short_struct_argument_names_a_field() {
 	assert code_references_ident('configure({x: 1})', 'x', true)
 	assert code_references_ident('configure(x, y: 1)', 'x', true)
 }
+
+fn test_a_comptime_condition_is_not_a_read() {
+	assert !code_references_ident('\$if x ? {\n\tprintln(1)\n}', 'x', true)
+	assert !code_references_ident('\$if windows {\n} \$else \$if x ? {\n}', 'x', true)
+	assert !code_references_ident('\$if T is x {\n}', 'x', true)
+	// The body of such a branch is ordinary code again.
+	assert code_references_ident('\$if windows {\n\tprintln(x)\n}', 'x', true)
+	assert code_references_ident('\$if windows {\n}\nprintln(x)', 'x', true)
+}
+
+fn test_a_lambda_body_may_start_on_the_next_line() {
+	assert !code_references_ident('cb := |x|\n\tx + 1', 'x', true)
+	assert !code_references_ident('cb := |x|\n\t{\n\t\tx + 1\n\t}', 'x', true)
+	assert code_references_ident('cb := |y|\n\ty + 1\nprintln(x)', 'x', true)
+}

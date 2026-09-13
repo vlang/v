@@ -2754,11 +2754,18 @@ fn code_references_ident(code string, name string, writes_are_uses bool) bool {
 	}
 	tokens, lines := code_tokens(code)
 	shadowed := pipe_lambda_shadow_ranges(tokens, lines, name)
+	conditions := comptime_condition_token_ranges(tokens)
 	for i, word in tokens {
 		if word != name {
 			continue
 		}
-		if token_index_is_shadowed(shadowed, i) {
+		if token_index_is_in_ranges(conditions, i) {
+			// A name in a `$if x ? {` header is a compile-time flag, and one in
+			// a `$if T is int {` header a generic type: the parser makes no
+			// identifier node for either.
+			continue
+		}
+		if token_index_is_in_ranges(shadowed, i) {
 			// The parameter of a `|x| x + 1` lambda, and its body: a binding of
 			// the lambda's own, shadowed the way fn_body_read_names shadows it.
 			// An anonymous `fn (x int) { .. }` is deliberately not shadowed
@@ -3012,13 +3019,35 @@ struct TokenRange {
 	end   int
 }
 
-fn token_index_is_shadowed(ranges []TokenRange, index int) bool {
+fn token_index_is_in_ranges(ranges []TokenRange, index int) bool {
 	for range in ranges {
 		if index >= range.start && index <= range.end {
 			return true
 		}
 	}
 	return false
+}
+
+// comptime_condition_token_ranges returns the token range of every `$if` and
+// `$else if` condition, from its `$` up to the `{` that opens the body.
+fn comptime_condition_token_ranges(tokens []string) []TokenRange {
+	mut ranges := []TokenRange{}
+	for i, word in tokens {
+		if word != '$' || i + 1 >= tokens.len || tokens[i + 1] !in ['if', 'else'] {
+			continue
+		}
+		mut end := i + 1
+		for end < tokens.len && tokens[end] != '{' {
+			end++
+		}
+		if end < tokens.len {
+			ranges << TokenRange{
+				start: i
+				end:   end - 1
+			}
+		}
+	}
+	return ranges
 }
 
 // pipe_lambda_shadow_ranges returns the token range of every `|x| x + 1` lambda
@@ -3039,10 +3068,19 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 			continue
 		}
 		mut end := close + 1
+		if end >= tokens.len {
+			ranges << TokenRange{
+				start: i
+				end:   close
+			}
+			continue
+		}
 		mut depth := 0
 		// A block or a parenthesised body spans lines; a bare expression body
-		// ends with its own line.
-		for end < tokens.len && (depth > 0 || lines[end] == lines[close]) {
+		// ends with the line it starts on, which needs not be the line of the
+		// parameters: `cb := |x|` may leave its body for the next one.
+		body_line := lines[end]
+		for end < tokens.len && (depth > 0 || lines[end] == body_line) {
 			current := tokens[end]
 			if current in ['(', '[', '{'] {
 				depth++

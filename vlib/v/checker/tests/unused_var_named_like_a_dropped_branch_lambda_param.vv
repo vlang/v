@@ -10,7 +10,18 @@ fn after_a_semicolon() {
 	}
 }
 
+// The body may also be left for the next line.
+fn on_the_next_line() {
+	t := 1
+	$if windows {
+		cb := |t|
+			t + 1
+		_ = cb
+	}
+}
+
 fn main() {
+	on_the_next_line()
 	after_a_semicolon()
 	q := 1
 	$if windows {
