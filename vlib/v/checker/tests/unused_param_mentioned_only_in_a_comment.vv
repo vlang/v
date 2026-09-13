@@ -26,9 +26,22 @@ fn raw_prefixed(r string) {
 	}
 }
 
+fn lookup(k string) int {
+	return k.len
+}
+
+// The nested `'n'` is a literal, even though it sits in an interpolation.
+fn interpolated_literal(n string) {
+	$if windows {
+		println('${lookup('n')}')
+	}
+}
+
 fn main() {
 	commented(1)
 	quoted(2)
 	interpolated(3)
 	raw_prefixed('a')
+	interpolated_literal('b')
+	println(lookup('c'))
 }

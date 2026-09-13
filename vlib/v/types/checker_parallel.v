@@ -2711,6 +2711,13 @@ fn skip_non_code_at(source string, i int) (int, string) {
 			mut braces := 0
 			mut k := j + 1
 			for k < source.len {
+				// A brace of a nested comment or literal does not close the
+				// interpolation: `'${f("}")}'` ends at the second `}`.
+				skipped, _ := skip_non_code_at(source, k)
+				if skipped > k {
+					k = skipped
+					continue
+				}
 				if source[k] == `{` {
 					braces++
 				} else if source[k] == `}` {
@@ -2722,7 +2729,9 @@ fn skip_non_code_at(source string, i int) (int, string) {
 				}
 				k++
 			}
-			interpolated << source[j + 1..k].bytes()
+			// The body is ordinary code, nested literals and comments included,
+			// so it goes through the same sanitizer.
+			interpolated << code_text_in_range(source, j + 1, k).bytes()
 			j = k
 			continue
 		}

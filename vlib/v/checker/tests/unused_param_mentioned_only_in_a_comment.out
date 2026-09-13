@@ -19,3 +19,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:23:17: notice: 
       |                 ^
    24 |     $if windows {
    25 |         println(r'raw')
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:34:25: notice: unused parameter: `n`
+   32 | 
+   33 | // The nested `'n'` is a literal, even though it sits in an interpolation.
+   34 | fn interpolated_literal(n string) {
+      |                         ^
+   35 |     $if windows {
+   36 |         println('${lookup('n')}')

@@ -154,3 +154,14 @@ fn test_only_the_first_target_of_a_multi_assignment_is_written() {
 	// The unused parameter notice counts every write as a use.
 	assert code_references_ident('x, y = pair()', 'x', true)
 }
+
+fn test_a_nested_literal_inside_an_interpolation_is_sanitized_too() {
+	assert !code_references_ident(scanned_code('println("\${lookup(\'x\')}")'), 'x', true)
+	assert !code_references_ident(scanned_code('println(\'\${lookup("x")}\')'), 'x', true)
+	assert !code_references_ident(scanned_code('println("\${f(/* x */ 1)}")'), 'x', true)
+	// The body itself is still code, and a brace of a nested literal does not
+	// close the interpolation.
+	assert code_references_ident(scanned_code('println("\${lookup(x)}")'), 'x', true)
+	assert code_references_ident(scanned_code('println(\'\${f("}")}\') + x'), 'x', true)
+	assert code_references_ident(scanned_code('println(\'\${f("}")}\')'), 'f', true)
+}
