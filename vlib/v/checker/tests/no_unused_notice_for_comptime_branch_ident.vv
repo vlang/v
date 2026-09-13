@@ -1,0 +1,17 @@
+// `$if prealloc` is not taken by this build, so its body is never parsed. The
+// parameter and the variable it uses must still count as used.
+fn arena_leave(arena voidptr) {
+	$if prealloc {
+		if arena != unsafe { nil } {
+			unsafe { prealloc_scope_leave(arena) }
+		}
+	}
+}
+
+fn main() {
+	limit := 32
+	$if prealloc {
+		println(limit)
+	}
+	arena_leave(unsafe { nil })
+}

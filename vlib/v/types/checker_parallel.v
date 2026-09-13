@@ -1995,6 +1995,9 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
 			continue
 		}
+		if tc.fn_comptime_branch_may_use_ident(node, candidate.name) {
+			continue
+		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
 	}
 }
@@ -2420,6 +2423,9 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 		if tc.fn_body_reflects_param_type(node, param.typ) {
 			continue
 		}
+		if tc.fn_comptime_branch_may_use_ident(node, param.value) {
+			continue
+		}
 		mut has_param_error := false
 		for diagnostic in tc.errors {
 			if diagnostic.node == param_id
@@ -2501,6 +2507,113 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 			tc.record_warning_at(.unknown_ident, 'label `${label.value}` defined and not used', label_id, tc.a.node(label_id).pos)
 		}
 	}
+}
+
+// fn_comptime_branch_may_use_ident reports whether `name` may be used by a
+// branch of `node` that was never parsed. `$if` drops the branch the current
+// build does not take, so an identifier used only there is invisible to the AST
+// walks above, and reporting it as unused would be wrong for the build
+// configuration that does take the branch.
+fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	file := tc.a.source_files[node.pos.id] or { return false }
+	source := tc.source_texts_by_file[file.name] or { return false }
+	// A fn_decl only records where its declaration starts, so its body has to
+	// be recovered from the source.
+	text := declaration_source_text(source, node.pos.offset)
+	if !text.contains('$if') && !text.contains('$else') {
+		return false
+	}
+	// The declaration itself already contributes one occurrence of the name.
+	return whole_word_occurrences(text, name) > 1
+}
+
+// declaration_source_text returns the text of the declaration starting at
+// `start`, from there up to the closing brace of its body. It returns an empty
+// string for a declaration without a body, such as `fn C.uname(name &C.utsname) i32`.
+fn declaration_source_text(source string, start int) string {
+	if start < 0 || start >= source.len {
+		return ''
+	}
+	mut depth := 0
+	mut paren_depth := 0
+	mut i := start
+	for i < source.len {
+		c := source[i]
+		if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
+			i = source.index_after('\n', i) or { return '' }
+			continue
+		}
+		if c == `/` && i + 1 < source.len && source[i + 1] == `*` {
+			mut nesting := 1
+			i += 2
+			for i + 1 < source.len && nesting > 0 {
+				if source[i] == `/` && source[i + 1] == `*` {
+					nesting++
+					i += 2
+				} else if source[i] == `*` && source[i + 1] == `/` {
+					nesting--
+					i += 2
+				} else {
+					i++
+				}
+			}
+			continue
+		}
+		if c == `'` || c == `"` || c == `\`` {
+			i++
+			for i < source.len && source[i] != c {
+				if source[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		if c == `(` {
+			paren_depth++
+		} else if c == `)` {
+			paren_depth--
+		} else if c == `{` {
+			depth++
+		} else if c == `}` {
+			depth--
+			if depth == 0 {
+				return source[start..i + 1]
+			}
+		} else if c == `\n` && depth == 0 && paren_depth == 0 {
+			// The header is over and no body opened on it, so the next line
+			// starts a new declaration rather than continuing this one.
+			mut next := i + 1
+			for next < source.len && (source[next] == ` ` || source[next] == `\t`) {
+				next++
+			}
+			if next < source.len && source[next] != `{` {
+				return ''
+			}
+		}
+		i++
+	}
+	return ''
+}
+
+fn whole_word_occurrences(text string, word string) int {
+	mut count := 0
+	mut cursor := 0
+	for cursor < text.len {
+		relative := text[cursor..].index(word) or { break }
+		at := cursor + relative
+		end := at + word.len
+		if (at == 0 || !is_import_ident_byte(text[at - 1]))
+			&& (end == text.len || !is_import_ident_byte(text[end])) {
+			count++
+		}
+		cursor = end
+	}
+	return count
 }
 
 fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {

@@ -4794,6 +4794,38 @@ fn (tc &TypeChecker) local_bare_fn_key(name string) ?string {
 	return none
 }
 
+// shadowed_local_fn_key returns the signature key of the function that a local
+// variable named `name` shadows, i.e. one that the current module can already
+// call unprefixed. Functions of other modules are always called through their
+// module prefix (`os.uname()`), so `uname := os.uname()` shadows nothing.
+fn (tc &TypeChecker) shadowed_local_fn_key(name string) ?string {
+	if name.len == 0 || name.index_u8(`.`) >= 0 {
+		return none
+	}
+	qualified := tc.qualify_fn_name(name)
+	mut key := ''
+	if qualified != name && qualified in tc.fn_ret_types {
+		key = qualified
+	} else if name in tc.fn_ret_types {
+		key = name
+	} else {
+		return none
+	}
+	// `qualified` doubles as the declaration_visibility key, which records the
+	// declaring module of every source declaration. Going through it also skips
+	// `fn C.uname()`, which is registered under the lowered alias `uname` as
+	// well, yet is only ever callable as `C.uname()`.
+	visibility := tc.declaration_visibility[qualified] or { return none }
+	if visibility.kind != .fn_decl {
+		return none
+	}
+	if visibility.module_name == tc.cur_module
+		|| (visibility.module_name in ['', 'main'] && tc.cur_module in ['', 'main']) {
+		return key
+	}
+	return none
+}
+
 fn (tc &TypeChecker) local_bare_fn_signature_key(name string) ?string {
 	key := tc.local_bare_fn_key(name) or { return none }
 	if tc.fn_signature_known(key) {

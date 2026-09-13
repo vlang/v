@@ -2687,13 +2687,53 @@ fn (tc &TypeChecker) call_targets_later_local_binding(call flat.Node) bool {
 	return false
 }
 
+// text_is_a_single_parenthesised_group reports whether `text` is one `(...)`
+// group, i.e. whether its opening parenthesis is closed by its last character.
+// `(a + b)` is, `(a) + (b)` is not.
+fn text_is_a_single_parenthesised_group(text string) bool {
+	if text.len < 2 || text[0] != `(` || text[text.len - 1] != `)` {
+		return false
+	}
+	mut depth := 0
+	mut quote := u8(0)
+	for i := 0; i < text.len; i++ {
+		c := text[i]
+		if quote != 0 {
+			if c == `\\` {
+				i++
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c == `'` || c == `"` || c == `\`` {
+			quote = c
+		} else if c == `(` {
+			depth++
+		} else if c == `)` {
+			depth--
+			if depth == 0 {
+				return i == text.len - 1
+			}
+		}
+	}
+	return false
+}
+
 fn (tc &TypeChecker) paren_expr_has_redundant_parentheses(id flat.NodeId) bool {
 	parent_id := tc.direct_parent_id(id)
 	if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .paren {
 		return false
 	}
+	// The parser folds `((x))` into a single paren node, so redundancy can only
+	// be seen in the source text — but the inner group has to span the whole
+	// expression. Merely starting with `((` also matches the meaningful
+	// parentheses of `m * ((n - 1) / m)`.
 	text := tc.source_text_for_node(id).trim_space()
-	return text.starts_with('((')
+	if !text_is_a_single_parenthesised_group(text) {
+		return false
+	}
+	return text_is_a_single_parenthesised_group(text[1..text.len - 1].trim_space())
 }
 
 fn (mut tc TypeChecker) check_map_duplicate_keys(node flat.Node) {
@@ -2927,6 +2967,11 @@ fn (mut tc TypeChecker) record_implicit_slice_clone_notice(id flat.NodeId) {
 	}
 	node := tc.a.node(id)
 	if node.kind != .index || node.value != 'range' || node.children_count < 1 {
+		return
+	}
+	// Only array slices are implicitly cloned. `s[..n]` on a string or on a
+	// map/struct index yields no hidden copy, so reporting one there is wrong.
+	if unalias_type(tc.resolve_type(id)) !is Array {
 		return
 	}
 	pos := tc.index_suffix_diagnostic_pos(id)
@@ -12503,8 +12548,11 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				tc.record_warning_at(.duplicate_decl, 'duplicate of a const name `${tc.qualify_name(lhs_node.value)}`', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
 			}
 		}
-		mut shadows_fn := lhs_node.value in tc.fn_ret_types
-			|| tc.qualify_fn_name(lhs_node.value) in tc.fn_ret_types
+		// Test files (and the preludes loaded with them) routinely declare tiny
+		// fixture functions like `fn a() {}` and then shadow them freely in the
+		// test bodies, so the notice is pure noise there.
+		mut shadows_fn := !is_regular_v_test_file(tc.cur_file)
+			&& tc.shadowed_local_fn_key(lhs_node.value) != none
 		if shadows_fn && tc.imported_module_prefix(lhs_id, lhs_node.value) != none
 			&& !tc.source_module_declares_fn(lhs_node.value) {
 			shadows_fn = false
