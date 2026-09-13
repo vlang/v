@@ -201,7 +201,7 @@ fn (mut t Transformer) make_owned_array_repeat_value(base_id flat.NodeId, count_
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type), cloned_elem)
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
@@ -570,7 +570,7 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	// slot, the following real loop's per-iteration drops would be emitted here
 	// (referencing a variable not in scope) and dropped from their real loop.
 	for_id := t.make_for_stmt(init_idx, cond, post, loop_body, node)
-	t.a.nodes[int(for_id)].skip_ownership_drops = true
+	t.a.nodes[int(for_id)].set_skip_ownership_drops(true)
 	t.pending_stmts << for_id
 	result := t.make_ident(tmp_name)
 	t.set_node_typ(int(result), '[]${elem_type}')
@@ -795,7 +795,7 @@ fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id fl
 		t.make_prefix(.amp, t.make_ident(value_name)),
 	], 'void'))
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
@@ -2706,7 +2706,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	then_block := t.make_block(then_body)
 	loop_body << t.make_if(predicate, then_block, t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_needs_drop {
 		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))
@@ -2960,7 +2960,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.make_prefix(.amp, t.make_ident(pushed_name)),
 	], 'void'))
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_needs_drop {
 		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))
@@ -5842,7 +5842,7 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 	inc := t.make_assign_op(t.make_ident(result_name), t.make_int_literal(1), .plus_assign)
 	loop_body << t.make_if(predicate, t.make_block([inc]), t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_is_owned_temporary {
 		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))
@@ -5916,7 +5916,7 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 		loop_body << t.make_if(predicate, t.make_block([assign_true]), t.make_empty())
 	}
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_is_owned_temporary {
 		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))

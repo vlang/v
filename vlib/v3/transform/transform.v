@@ -436,10 +436,10 @@ mut:
 	// (0 == unset) into node_context_texts. A whole-AST table of 24-byte string
 	// headers costs hundreds of MiB on a compiler-sized program; the id table is
 	// 4 bytes per node and resolves to the same canonical spelling.
-	node_module_map_cache  []u32
-	node_file_map_cache    []u32
+	node_module_map_cache  []u16
+	node_file_map_cache    []u16
 	node_context_texts     []string
-	node_context_text_ids  map[string]u32
+	node_context_text_ids  map[string]u16
 	node_module_map_nodes  int = -1
 	node_context_read_only bool
 	// used_fns_log records names newly inserted into used_fns while the
@@ -1751,6 +1751,21 @@ fn (mut t Transformer) mark_used_fn_key(key string) {
 		t.used_fns_log << key
 	}
 	t.used_fns[key] = true
+}
+
+// used_fn_maps lists every map used_fn_contains_name consults. Scans over the
+// whole used set must walk all of them: a worker keeps only its own discoveries
+// in used_fns and reads the rest through its parent and root snapshots.
+fn (t &Transformer) used_fn_maps() []&map[string]bool {
+	mut maps := []&map[string]bool{cap: 3}
+	maps << unsafe { &t.used_fns }
+	if !isnil(t.used_fns_parent) {
+		maps << t.used_fns_parent
+	}
+	if !isnil(t.used_fns_root) {
+		maps << t.used_fns_root
+	}
+	return maps
 }
 
 fn (t &Transformer) has_any_used_fns() bool {
@@ -3820,7 +3835,6 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		map[string]bool{}
 	}
 	mut w := t.fork_program_view(ast, wtc, used, copy_used_fns)
-	w.used_struct_operator_fns = t.used_struct_operator_fns.clone()
 	if !copy_used_fns {
 		if t.node_context_read_only && isnil(t.used_fns_parent) && !isnil(t.used_fns_root) {
 			// A shared-base master is still recording helper names while its workers
@@ -3897,7 +3911,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		w.node_module_map_nodes = t.node_module_map_nodes
 		w.node_context_read_only = true
 	} else {
-		w.node_module_map_cache = []u32{}
+		w.node_module_map_cache = []u16{}
 		w.node_module_map_nodes = -1
 	}
 	w.var_types = []VarTypeBinding{}
@@ -4026,7 +4040,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
 	w.generic_call_spec_misses = map[int]bool{}
-	w.node_module_map_cache = []u32{}
+	w.node_module_map_cache = []u16{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
 	w.var_type_indices = map[string]int{}
@@ -4485,12 +4499,12 @@ fn (mut t Transformer) clone_scoped_worker_node(idx int, scope voidptr) {
 		_, typ := t.a.intern_text(node.typ)
 		node.typ = typ
 	}
-	if isnil(node.payload) {
+	if node.payload == 0 {
 		return
 	}
 	old_params := node.generic_params()
 	if old_params.len > 0 {
-		mut needs_owned_params := transform_scope_owns(scope, node.payload)
+		mut needs_owned_params := transform_scope_owns(scope, node.payload_ptr())
 			|| transform_scope_owns(scope, old_params.data)
 		if !needs_owned_params {
 			for param in old_params {
@@ -4882,25 +4896,7 @@ fn (mut t Transformer) set_generated_resolved_call(id flat.NodeId, name string) 
 }
 
 fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
-	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_fn_value_names.len {
-		t.tc.sparse_resolved_fn_values[idx] = t.tc.canonical_symbol(name)
-		return
-	}
-	if t.tc.resolved_fn_value_names.len <= idx {
-		start := t.tc.resolved_fn_value_names.len
-		set_start := t.tc.resolved_fn_value_set.len
-		amount := idx + 1 - start
-		// Merging an appended worker region can leave a large gap. Initialize
-		// that range once instead of growing both caches one element at a time.
-		unsafe {
-			t.tc.resolved_fn_value_names.grow_len(amount)
-			t.tc.resolved_fn_value_set.grow_len(amount)
-			vmemset(&t.tc.resolved_fn_value_names[start], 0, isize(amount) * isize(sizeof(&types.CachedName)))
-			vmemset(&t.tc.resolved_fn_value_set[set_start], 0, isize(amount))
-		}
-	}
-	t.tc.resolved_fn_value_names[idx] = types.cached_name(t.tc.canonical_symbol(name))
-	t.tc.resolved_fn_value_set[idx] = true
+	t.tc.sparse_resolved_fn_values[idx] = t.tc.canonical_symbol(name)
 }
 
 fn (mut t Transformer) record_refined_node_type(idx int, typ string) {
@@ -4929,19 +4925,6 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 		}
 		for k in start .. call_end {
 			t.tc.resolved_call_names[k] = unsafe { nil }
-		}
-	}
-	fn_value_end := if end < t.tc.resolved_fn_value_set.len {
-		end
-	} else {
-		t.tc.resolved_fn_value_set.len
-	}
-	if start < fn_value_end {
-		unsafe {
-			vmemset(&t.tc.resolved_fn_value_set[start], 0, fn_value_end - start)
-		}
-		for k in start .. fn_value_end {
-			t.tc.resolved_fn_value_names[k] = unsafe { nil }
 		}
 	}
 	expr_end := if end < t.tc.expr_type_set.len { end } else { t.tc.expr_type_set.len }
@@ -4982,10 +4965,6 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 	if idx < t.tc.resolved_call_set.len {
 		t.tc.resolved_call_names[idx] = unsafe { nil }
 		t.tc.resolved_call_set[idx] = false
-	}
-	if idx < t.tc.resolved_fn_value_set.len {
-		t.tc.resolved_fn_value_names[idx] = unsafe { nil }
-		t.tc.resolved_fn_value_set[idx] = false
 	}
 	if idx < t.tc.expr_type_set.len {
 		t.tc.expr_type_set[idx] = false
@@ -8831,7 +8810,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	// Generic specializations carry a template's `manualfree` attribute in the
 	// function node because the checker's declaration-attribute index only
 	// contains parsed declarations.
-	t.cur_fn_manualfree = fn_node.skip_ownership_drops
+	t.cur_fn_manualfree = fn_node.skip_ownership_drops()
 		|| t.tc.declaration_has_attribute(flat.NodeId(fn_idx), 'manualfree')
 	param_count := t.fn_body_param_count(fn_node)
 	param_types := t.fn_body_param_types(fn_node, param_count)
@@ -8999,8 +8978,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 			value: fn_node.value
 			typ: fn_node.typ
 			payload: fn_node.payload
-			skip_ownership_drops: fn_node.skip_ownership_drops
-			is_static_type_method: fn_node.is_static_type_method
+			flags: fn_node.flags
 		})
 	}
 	t.smartcast_stack.clear()
@@ -11611,7 +11589,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		t.update_option_assignment_smartcast(t.a.child(&node, 0), t.a.child(&node, 1))
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
-		&& !node.skip_ownership_drops && node.children_count == 2 && !isnil(t.tc) {
+		&& !node.skip_ownership_drops() && node.children_count == 2 && !isnil(t.tc) {
 		lhs_id := t.a.child(&node, 0)
 		rhs_id := t.a.child(&node, 1)
 		lhs_node := t.a.nodes[int(lhs_id)]
@@ -11736,7 +11714,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			pos: node.pos
 			value: node.value
 			typ: node.typ
-			skip_ownership_drops: node.skip_ownership_drops
+			flags: flat.node_flags(node.skip_ownership_drops(), false)
 		})
 	}
 	if node.kind == .assign && node.op == .left_shift_assign {
@@ -15357,7 +15335,7 @@ fn (mut t Transformer) rewrite_multi_return_match_assign(node flat.Node, lhs_ids
 			children_count: flat.child_count(branch_children.len)
 			pos: branch.pos
 			is_mut: branch.is_mut
-			skip_ownership_drops: branch.skip_ownership_drops
+			flags: flat.node_flags(branch.skip_ownership_drops(), false)
 		})
 	}
 	start := t.a.children.len
@@ -15372,7 +15350,7 @@ fn (mut t Transformer) rewrite_multi_return_match_assign(node flat.Node, lhs_ids
 		children_count: flat.child_count(match_children.len)
 		pos: node.pos
 		is_mut: node.is_mut
-		skip_ownership_drops: node.skip_ownership_drops
+		flags: flat.node_flags(node.skip_ownership_drops(), false)
 	}
 }
 
@@ -22289,7 +22267,7 @@ fn (mut t Transformer) make_assign_without_ownership_drop(lhs flat.NodeId, rhs f
 		op: .assign
 		children_start: start
 		children_count: 2
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 }
 
@@ -22298,7 +22276,7 @@ fn (mut t Transformer) make_assign_without_ownership_drop(lhs flat.NodeId, rhs f
 // nodes, so mark this assignment to prevent a second drop-before-assign pass.
 fn (mut t Transformer) make_assign_after_owned_drop(lhs flat.NodeId, rhs flat.NodeId) flat.NodeId {
 	id := t.make_assign(lhs, rhs)
-	t.a.nodes[int(id)].skip_ownership_drops = true
+	t.a.nodes[int(id)].set_skip_ownership_drops(true)
 	return id
 }
 
@@ -22405,14 +22383,14 @@ fn (mut t Transformer) make_if_with_ownership_drop_mode(cond flat.NodeId, then_b
 			kind: .if_expr
 			children_start: start
 			children_count: 3
-			skip_ownership_drops: skip_ownership_drops
+			flags: flat.node_flags(skip_ownership_drops, false)
 		})
 	}
 	return t.a.add_node(flat.Node{
 		kind: .if_expr
 		children_start: start
 		children_count: 2
-		skip_ownership_drops: skip_ownership_drops
+		flags: flat.node_flags(skip_ownership_drops, false)
 	})
 }
 
@@ -24706,7 +24684,7 @@ fn (mut t Transformer) clone_match_variant_sizeof(id flat.NodeId, subject string
 		is_mut: node.is_mut
 		children_start: start
 		children_count: node.children_count
-		skip_ownership_drops: node.skip_ownership_drops
+		flags: flat.node_flags(node.skip_ownership_drops(), false)
 	})
 }
 

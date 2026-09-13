@@ -269,13 +269,13 @@ fn (mut t Transformer) clone_promoted_default_in_decl_scope(id flat.NodeId, modu
 		if name.len > 0 {
 			if key := t.const_type_key_in_context(name, module_name, file) {
 				return t.a.add_node(flat.Node{
-					kind:                 .ident
-					op:                   node.op
-					pos:                  node.pos
-					value:                key
-					typ:                  node.typ
-					is_mut:               node.is_mut
-					skip_ownership_drops: node.skip_ownership_drops
+					kind:   .ident
+					op:     node.op
+					pos:    node.pos
+					value:  key
+					typ:    node.typ
+					is_mut: node.is_mut
+					flags:  flat.node_flags(node.skip_ownership_drops(), false)
 				})
 			}
 		}
@@ -289,16 +289,16 @@ fn (mut t Transformer) clone_promoted_default_in_decl_scope(id flat.NodeId, modu
 		t.a.children << child
 	}
 	return t.a.add_node(flat.Node{
-		kind:                 node.kind
-		op:                   node.op
-		pos:                  node.pos
-		value:                node.value
-		typ:                  node.typ
-		payload:              node.payload
-		is_mut:               node.is_mut
-		children_start:       start
-		children_count:       flat.child_count(children.len)
-		skip_ownership_drops: node.skip_ownership_drops
+		kind:           node.kind
+		op:             node.op
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+		payload:        node.payload
+		is_mut:         node.is_mut
+		children_start: start
+		children_count: flat.child_count(children.len)
+		flags:          flat.node_flags(node.skip_ownership_drops(), false)
 	})
 }
 
@@ -1543,7 +1543,7 @@ fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fi
 		t.make_prefix(.amp, t.make_ident(value_name)),
 	], 'void'))
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), array_type)

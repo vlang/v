@@ -177,7 +177,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	if !emitted_continue_label {
 		g.gen_loop_continue_label(label_state.label)
 	}
-	if !node.skip_ownership_drops {
+	if !node.skip_ownership_drops() {
 		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	}
 	g.trim_defers(defer_start)
@@ -188,7 +188,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 			g.writeln('${g.loop_control_c_label(label_state.label, false)}: {}')
 			g.emitted_loop_break_labels[label_state.label] = true
 		}
-		if !node.skip_ownership_drops {
+		if !node.skip_ownership_drops() {
 			g.gen_scope_ownership_drops()
 		}
 		g.indent--
@@ -500,7 +500,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			if !emitted_continue_label {
 				g.gen_loop_continue_label(label_state.label)
 			}
-			if !node.skip_ownership_drops {
+			if !node.skip_ownership_drops() {
 				g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 			}
 			g.trim_defers(defer_start)
@@ -529,7 +529,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	if !emitted_continue_label {
 		g.gen_loop_continue_label(label_state.label)
 	}
-	if !node.skip_ownership_drops {
+	if !node.skip_ownership_drops() {
 		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	}
 	g.trim_defers(defer_start)
@@ -609,7 +609,7 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 	if !emitted_continue_label {
 		g.gen_loop_continue_label(label)
 	}
-	if !node.skip_ownership_drops {
+	if !node.skip_ownership_drops() {
 		g.gen_loop_iteration_ownership_drops_for_label(label)
 	}
 	g.trim_defers(defer_start)

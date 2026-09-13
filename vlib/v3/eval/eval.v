@@ -744,7 +744,7 @@ fn (mut e Eval) register_function(module_name string, file_name string, id flat.
 	if module_name != 'main' && module_name != 'builtin' {
 		e.functions[module_name]['${module_name}.${node.value}'] = def
 	}
-	if !node.is_static_type_method && node.value.contains('.') {
+	if !node.is_static_type_method() && node.value.contains('.') {
 		short := node.value.all_after_last('.')
 		receiver := node.value.all_before_last('.').all_after_last('.')
 		e.functions[module_name]['${receiver}.${short}'] = def

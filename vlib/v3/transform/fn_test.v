@@ -1033,15 +1033,12 @@ fn test_merged_resolution_cache_initializes_gaps_and_preserves_entries() {
 	assert tc.resolved_call_set[1]
 	assert tc.resolved_call_names[4096].value == 'main.last'
 	assert tc.resolved_call_set[4096]
-	assert tc.resolved_fn_value_names[2].value == 'main.callback'
-	assert tc.resolved_fn_value_set[2]
-	assert tc.resolved_fn_value_names[8192].value == 'main.final_callback'
-	assert tc.resolved_fn_value_set[8192]
+	assert tc.resolved_fn_value_name(2)? == 'main.callback'
+	assert tc.resolved_fn_value_name(8192)? == 'main.final_callback'
 	for i in 3 .. 4096 {
 		assert isnil(tc.resolved_call_names[i])
 		assert !tc.resolved_call_set[i]
-		assert isnil(tc.resolved_fn_value_names[i])
-		assert !tc.resolved_fn_value_set[i]
+		assert tc.resolved_fn_value_name(i) == none
 	}
 }
 

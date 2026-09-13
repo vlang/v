@@ -95,8 +95,7 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 		kind: .for_stmt
 		op: .plus
 		is_mut: true
-		skip_ownership_drops: true
-		is_static_type_method: true
+		flags: node_flags(true, true)
 	}
 	cloned := node.clone_owned()
 	assert cloned.value == node.value
@@ -107,8 +106,8 @@ fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
 	assert cloned.kind == node.kind
 	assert cloned.op == node.op
 	assert cloned.is_mut
-	assert cloned.skip_ownership_drops
-	assert cloned.is_static_type_method
+	assert cloned.skip_ownership_drops()
+	assert cloned.is_static_type_method()
 }
 
 fn test_static_type_method_name_round_trip_with_marker_in_both_parts() {

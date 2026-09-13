@@ -258,6 +258,43 @@ $if !windows {
 		return
 	}
 
+	// precompute_consts_scoped lowers every const initializer on a private worker
+	// inside a disposable arena. The emitter's expression scratch (fixed-array
+	// tables, type lookups, name buffers) is by far the largest garbage this
+	// pool thread would otherwise leave in its persistent arena; only the C text,
+	// the runtime-init queue and the usual batch side tables are published.
+	fn (mut g FlatGen) precompute_consts_scoped() {
+		if !g.scope_parallel_workers {
+			g.parallel_const_code = g.precompute_consts()
+			return
+		}
+		// The dependency order comes from the master, whose memos are warm; a
+		// fresh worker would rescan the AST for every const reference.
+		names := g.const_emission_order_owned()
+		scope := cgen_worker_scope_begin(true)
+		mut worker := g.new_parallel_worker(max_flat_cgen_jobs + 2)
+		// Const initializers number their temporaries from the master counter.
+		worker.tmp_count = g.tmp_count
+		const_code := worker.precompute_consts_in_order(names)
+		cgen_worker_scope_leave(scope)
+		g.parallel_const_code = const_code.clone()
+		g.tmp_count = worker.tmp_count
+		// The worker started from a copy of the master's init queue and an empty
+		// module list, so its new entries are inits[base..] paired with modules[0..].
+		base := g.const_runtime_inits.len
+		for i in base .. worker.const_runtime_inits.len {
+			g.const_runtime_inits << worker.const_runtime_inits[i].clone()
+			mod_idx := i - base
+			g.const_runtime_init_modules << if mod_idx < worker.const_runtime_init_modules.len {
+				worker.const_runtime_init_modules[mod_idx].clone()
+			} else {
+				''
+			}
+		}
+		g.absorb_scoped_cgen_batch(worker, true)
+		cgen_worker_scope_free(scope)
+	}
+
 	fn parallel_type_decls_thread(arg voidptr) voidptr {
 		mut w := unsafe { &FlatGen(arg) }
 		tdsw := time.new_stopwatch()
@@ -272,7 +309,7 @@ $if !windows {
 		// repeatedly copying a geometrically growing builder.
 		w.sb.ensure_cap(4 * 1024 * 1024)
 		mut tdpsw := time.new_stopwatch()
-		w.parallel_const_code = w.precompute_consts()
+		w.precompute_consts_scoped()
 		w.timing_profile('  [ttime]       td consts    ${f64(tdpsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		tdpsw.restart()
 		w.gen_translation_unit_prefix()
@@ -2891,8 +2928,6 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		errors: g.tc.errors.clone()
 		resolved_call_names: g.tc.resolved_call_names
 		resolved_call_set: g.tc.resolved_call_set
-		resolved_fn_value_names: g.tc.resolved_fn_value_names
-		resolved_fn_value_set: g.tc.resolved_fn_value_set
 		statement_nodes: g.tc.statement_nodes
 		expr_type_values: g.tc.expr_type_values
 		expr_type_set: g.tc.expr_type_set

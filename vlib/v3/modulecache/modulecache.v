@@ -6179,7 +6179,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		}
 	}
 	decl_name := node.value
-	name := if node.is_static_type_method {
+	name := if node.is_static_type_method() {
 		if receiver, method := flat.decode_static_type_method_name(decl_name) {
 			'${receiver}.${method}'
 		} else {
@@ -6191,7 +6191,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 	visibility := if !is_c && (node.op == .arrow || source_is_public) { 'pub ' } else { '' }
 	mut head := if is_c { 'fn C.${name}' } else { '${visibility}fn ${name}' }
 	mut param_start := 0
-	if !is_c && !node.is_static_type_method && name.contains('.') && params.len > 0 {
+	if !is_c && !node.is_static_type_method() && name.contains('.') && params.len > 0 {
 		receiver_type := name.all_before_last('.')
 		first_type := clean_receiver_type(params[0].typ)
 		if first_type == receiver_type

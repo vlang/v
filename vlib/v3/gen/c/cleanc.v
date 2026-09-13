@@ -11591,7 +11591,7 @@ fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected ty
 }
 
 fn (g &FlatGen) array_index_type_for_expected_arg(actual types.Type, node flat.Node) types.Type {
-	if isnil(node.payload) || spread_index_expected_type_marker !in node.payload.generic_params {
+	if node.payload == 0 || spread_index_expected_type_marker !in node.generic_params() {
 		return actual
 	}
 	expected := g.expected_expr_type
@@ -14876,8 +14876,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			mut clone_receiver_fn := ''
 			mut generated_variant_access := false
 			mut borrow_receiver := false
-			if !isnil(node.payload) {
-				params := node.payload.generic_params
+			if node.payload != 0 {
+				params := node.generic_params()
 				generated_variant_access = '__v3_generated_variant_access' in params
 				borrow_receiver = flat.method_value_borrow_receiver_marker in params
 				for param in params {
@@ -21991,11 +21991,18 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 }
 
 fn (mut g FlatGen) precompute_consts() string {
+	names := g.const_emission_order_owned()
+	return g.precompute_consts_in_order(names)
+}
+
+// precompute_consts_in_order lowers the const initializers in the given
+// emission order (see precompute_consts_scoped, which resolves that order on
+// the master, whose dependency memos are warm, before lowering on a worker).
+fn (mut g FlatGen) precompute_consts_in_order(names []string) string {
 	old_sb := g.sb
 	old_line_start := g.line_start
 	g.sb = strings.new_builder(1024)
 	g.line_start = true
-	names := g.const_emission_order_owned()
 	for name in names {
 		val_id := g.const_vals[name]
 		g.emit_const(name, val_id)

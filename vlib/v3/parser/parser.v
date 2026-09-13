@@ -1473,7 +1473,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			payload: flat.node_payload(generic_params)
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
-			is_static_type_method: is_static_type_method
+			flags: flat.node_flags(false, is_static_type_method)
 			// Function nodes do not otherwise use is_mut. On a .vh declaration it
 			// records that the body lives in a cached object and must not be emitted;
 			// on a C declaration it preserves the parser's implicit unsafe/trusted state.
@@ -1568,7 +1568,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		payload: flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
-		is_static_type_method: is_static_type_method
+		flags: flat.node_flags(false, is_static_type_method)
 	})
 	if p.prefs.is_fmt && formatter_end > 0 {
 		p.a.formatter_node_ends[int(id)] = formatter_end

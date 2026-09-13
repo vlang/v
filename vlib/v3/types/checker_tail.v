@@ -3861,7 +3861,7 @@ fn (mut tc TypeChecker) check_c_alias_cast_call(id flat.NodeId, node flat.Node, 
 		pos: node.pos
 		is_mut: node.is_mut
 		op: node.op
-		skip_ownership_drops: node.skip_ownership_drops
+		flags: flat.node_flags(node.skip_ownership_drops(), false)
 	}
 	tc.check_cast_expr(id, cast_node)
 	return true
