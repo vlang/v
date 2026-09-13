@@ -19,3 +19,10 @@ vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:35:26: no
       |                          ^
    36 |     $if windows {
    37 |         configure(x: 1)
+vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:46:19: notice: unused parameter: `y`
+   44 | 
+   45 | // The callee may be an expression rather than a name.
+   46 | fn dynamic_callee(y int) {
+      |                   ^
+   47 |     $if windows {
+   48 |         _ = make_handler()(y: 1)

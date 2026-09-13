@@ -38,7 +38,20 @@ fn short_struct_argument(x int) {
 	}
 }
 
+fn make_handler() fn (Config) int {
+	return configure
+}
+
+// The callee may be an expression rather than a name.
+fn dynamic_callee(y int) {
+	$if windows {
+		_ = make_handler()(y: 1)
+	}
+}
+
 fn main() {
+	dynamic_callee(6)
+	println(make_handler()(x: 7))
 	short_struct_argument(4)
 	println(configure(x: 5))
 	field_label(1)

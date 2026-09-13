@@ -307,3 +307,13 @@ fn test_a_keyword_field_ends_a_lambda_body() {
 	// Without the selector it is the keyword it looks like.
 	assert !code_references_ident('cb := |x| unsafe\n{ x }', 'x', true)
 }
+
+fn test_a_short_struct_argument_of_a_dynamic_callee() {
+	assert !code_references_ident('_ = make_handler()(x: 1)', 'x', true)
+	assert !code_references_ident('_ = (handler)(x: 1)', 'x', true)
+	assert !code_references_ident('_ = handlers[i]()(x: 1)', 'x', true)
+	assert !code_references_ident('_ = f(a)(b)(x: 1)', 'x', true)
+	// A map literal argument still keys, and the other arguments still read.
+	assert code_references_ident('_ = make_handler()({x: 1})', 'x', true)
+	assert code_references_ident('_ = (handler)(x, y: 1)', 'x', true)
+}

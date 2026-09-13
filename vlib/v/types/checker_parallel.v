@@ -2930,6 +2930,11 @@ fn name_precedes_delimiter(tokens []string, index int) bool {
 		return false
 	}
 	mut before := index - 1
+	if tokens[index] == '(' && tokens[before] == ')' {
+		// `make_handler()(x: 1)` and `(handler)(x: 1)` call what the group
+		// evaluates to, so the argument names a field just the same.
+		return true
+	}
 	if tokens[before] == ']' {
 		mut depth := 0
 		for before >= 0 {
