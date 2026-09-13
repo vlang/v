@@ -32,6 +32,11 @@ mut:
 	testsuite_end   string
 	before_each     string
 	after_each      string
+	// the test file that declared each suite hook. A hook runs outside every per-file
+	// range, so its failures have to be charged back to the file that owns it, or that
+	// file reports `OK` while the process exits nonzero.
+	testsuite_begin_file string
+	testsuite_end_file   string
 }
 
 struct TopLevelStmt {
@@ -5253,7 +5258,12 @@ fn (mut g FlatGen) gen_test_main() {
 		g.writeln('double __v_test_suite_start_ms = __v_test_now_ms();')
 	}
 	if hooks.testsuite_begin.len > 0 {
+		// `testsuite_begin` runs before the first per-file baseline is taken, so a failing
+		// assertion inside it belongs to no file range. Measure it separately and charge it
+		// to the file that declared the hook.
+		g.writeln('int __v_test_suite_begin_before = __test_failures;')
 		g.writeln('${hooks.testsuite_begin}();')
+		g.writeln('int __v_test_suite_begin_failures = __test_failures - __v_test_suite_begin_before;')
 	}
 	if g.show_test_stats && tests.len > 0 {
 		g.writeln('printf("running tests in: %s\\n", "${c_escape(tests[0].file)}");')
@@ -5342,7 +5352,11 @@ fn (mut g FlatGen) gen_test_main() {
 		}
 	}
 	if hooks.testsuite_end.len > 0 {
+		// The same holds at the other end: every per-file result was finalized before this
+		// call, so a failure here would otherwise be invisible in the per-file lines.
+		g.writeln('int __v_test_suite_end_before = __test_failures;')
 		g.writeln('${hooks.testsuite_end}();')
+		g.writeln('int __v_test_suite_end_failures = __test_failures - __v_test_suite_end_before;')
 	}
 	if g.show_test_stats && tests.len > 0 {
 		file_name := os.file_name(tests[0].file)
@@ -5358,6 +5372,31 @@ fn (mut g FlatGen) gen_test_main() {
 		g.writeln('}')
 	}
 	if file_groups.len > 0 {
+		// Charge the suite hooks to the file that declared them, before anything is
+		// reported. When that file contributed no test function it has no range of its own;
+		// a single-file run is still unambiguous, and beyond that the failure is left to the
+		// summary and the exit status rather than blamed on an unrelated file.
+		for hook_file, counter in {
+			hooks.testsuite_begin_file: '__v_test_suite_begin_failures'
+			hooks.testsuite_end_file:   '__v_test_suite_end_failures'
+		} {
+			if hook_file.len == 0 {
+				continue
+			}
+			mut owner := -1
+			for group_idx, group in file_groups {
+				if group.file == hook_file {
+					owner = group_idx
+					break
+				}
+			}
+			if owner < 0 && file_groups.len == 1 {
+				owner = 0
+			}
+			if owner >= 0 {
+				g.writeln('__v_test_file_result_${owner} += ${counter};')
+			}
+		}
 		// The standalone test runner hides passing files on CI unless VTEST_HIDE_OK
 		// asks for them explicitly; failing files are always reported.
 		g.writeln('{')
@@ -5436,11 +5475,13 @@ fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 				'testsuite_begin' {
 					if hooks.testsuite_begin.len == 0 && g.is_supported_test_hook_decl(child) {
 						hooks.testsuite_begin = cname
+						hooks.testsuite_begin_file = file_node.value
 					}
 				}
 				'testsuite_end' {
 					if hooks.testsuite_end.len == 0 && g.is_supported_test_hook_decl(child) {
 						hooks.testsuite_end = cname
+						hooks.testsuite_end_file = file_node.value
 					}
 				}
 				'before_each' {
