@@ -227,7 +227,12 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		}
 	}
 
-	if w.enable_http2 && try_serve_h2c(mut reader, mut conn, mut w.handler) {
+	// The peer of a keep-alive connection never changes, so read it once here
+	// rather than per request. '0.0.0.0' preserves the fallback this server has
+	// always used when the address cannot be read back from the socket.
+	remote_addr := if paddr := conn.peer_addr() { paddr.str() } else { '0.0.0.0' }
+
+	if w.enable_http2 && try_serve_h2c(mut reader, mut conn, mut w.handler, remote_addr) {
 		return
 	}
 
@@ -244,8 +249,7 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 		}
 		request_count++
 
-		remote_ip := conn.peer_ip() or { '0.0.0.0' }
-		req.header.add_custom('Remote-Addr', remote_ip) or {}
+		req.set_remote_addr(remote_addr)
 
 		mut resp := w.handler.handle(req)
 		normalize_server_response(mut resp, req)
