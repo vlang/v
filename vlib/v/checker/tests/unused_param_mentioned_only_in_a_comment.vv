@@ -121,7 +121,29 @@ fn literal_condition(lc int) {
 	}
 }
 
+fn get_bool() !bool {
+	return true
+}
+
+// A propagated condition ends before the block it opens.
+fn propagated_condition(pc int) ! {
+	$if windows {
+		if get_bool()! {
+			mut n := 0
+			pc: n++
+			if n < 3 {
+				unsafe {
+					goto pc
+				}
+			}
+			println(n)
+		}
+	}
+}
+
 fn main() {
+	propagated_condition(11) or { println('e') }
+	_ = get_bool() or { false }
 	literal_condition(10)
 	interpolation_format(8)
 	nested_label(9)

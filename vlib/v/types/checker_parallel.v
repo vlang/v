@@ -2991,9 +2991,10 @@ fn brace_opens_a_literal(tokens []string, index int) bool {
 	if previous in ['return', 'in', 'is', 'as'] {
 		return true
 	}
-	// A closing bracket or a literal ends an expression, so what follows them is
-	// a block: the condition of `if n == 1 {` leaves the literal placeholder.
-	return !is_ident_token(previous) && previous !in [')', ']', '}', '0']
+	// A closing bracket, a literal or a propagation ends an expression, so what
+	// follows them is a block: the condition of `if n == 1 {` leaves the literal
+	// placeholder, and that of `if get_bool()! {` its `!`.
+	return !is_ident_token(previous) && previous !in [')', ']', '}', '0', '!', '?']
 }
 
 fn is_keyword_token(word string) bool {
@@ -3275,8 +3276,11 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 		for end < tokens.len {
 			if depth == 0 && lines[end] != body_line {
 				// `cb := |x| 1 +` continues on the next line, the way the
-				// scanner inserts no semicolon after an operator.
-				if end == 0 || token_may_end_an_expression(tokens, end - 1) {
+				// scanner inserts no semicolon after an operator, and so does
+				// the `.method()` of a chain: the parser consumes the newline
+				// before a `.` or a `(`.
+				if tokens[end] !in ['.', '(']
+					&& (end == 0 || token_may_end_an_expression(tokens, end - 1)) {
 					break
 				}
 				body_line = lines[end]

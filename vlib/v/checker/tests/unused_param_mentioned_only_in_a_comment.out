@@ -82,3 +82,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:111:22: notice:
       |                      ~~
   112 |     $if windows {
   113 |         n := 2
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:129:25: notice: unused parameter: `pc`
+  127 | 
+  128 | // A propagated condition ends before the block it opens.
+  129 | fn propagated_condition(pc int) ! {
+      |                         ~~
+  130 |     $if windows {
+  131 |         if get_bool()! {

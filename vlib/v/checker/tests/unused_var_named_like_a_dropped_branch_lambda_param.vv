@@ -70,7 +70,33 @@ fn keyword_field_body() {
 	_ = sel
 }
 
+struct Maker {
+	n int
+}
+
+fn (m Maker) consume(v int) int {
+	return m.n + v
+}
+
+fn make_maker() Maker {
+	return Maker{
+		n: 1
+	}
+}
+
+// A `.method()` on the next line continues the body.
+fn chained_body() {
+	c := 1
+	$if windows {
+		cb := |c| make_maker()
+			.consume(c)
+		_ = cb
+	}
+}
+
 fn main() {
+	chained_body()
+	println(make_maker().consume(1))
 	keyword_field_body()
 	keyword_led_body()
 	literal_body()

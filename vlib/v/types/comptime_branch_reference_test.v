@@ -379,3 +379,20 @@ fn test_an_addressed_map_literal_is_still_a_map() {
 	// And an array of maps still initialises an array.
 	assert !code_references_ident('_ = []map[string]int{len: 3}', 'len', true)
 }
+
+fn test_a_lambda_body_may_continue_with_a_selector() {
+	assert !code_references_ident('cb := |x| make()\n\t.consume(x)', 'x', true)
+	assert !code_references_ident('cb := |x| make()\n\t.a()\n\t.b(x)', 'x', true)
+	assert !code_references_ident('cb := |x| make\n\t(x)', 'x', true)
+	// A statement of its own on the next line still ends the body.
+	assert code_references_ident('cb := |y| make()\n\t.consume(y)\nprintln(x)', 'x', true)
+	assert code_references_ident('cb := |y| y\nprintln(x)', 'x', true)
+}
+
+fn test_a_propagated_condition_opens_a_block() {
+	assert !code_references_ident('if get_bool()! {\n\tx: println(1)\n}', 'x', true)
+	assert !code_references_ident('if get_bool()? {\n\tx: println(1)\n}', 'x', true)
+	// A map literal is still one after an operator.
+	assert code_references_ident('m := {x: 1}', 'x', true)
+	assert code_references_ident('if get_bool()! {\n\tm := {x: 1}\n}', 'x', true)
+}
