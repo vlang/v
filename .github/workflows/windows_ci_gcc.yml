@@ -6,7 +6,6 @@ on:
       - master
       - 'smoke/**'
     paths-ignore:
-      - 'vlib/v/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'
@@ -15,7 +14,6 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'

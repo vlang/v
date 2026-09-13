@@ -5,7 +5,6 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v/**'
       - '**.md'
       - '**.yml'
       - '!**/v_apps_and_modules_compile_ci.yml'
@@ -13,7 +12,6 @@ on:
       - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v/**'
       - '**.md'
       - '**.yml'
       - '!**/v_apps_and_modules_compile_ci.yml'

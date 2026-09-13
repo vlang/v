@@ -6,14 +6,12 @@ on:
       - master
     paths:
       - 'vlib/**'
-      - '!vlib/v/**'
       - '.github/actions/setup-v/**'
       - '**/toml_ci.yml'
       - '!**.md'
   pull_request:
     paths:
       - 'vlib/**'
-      - '!vlib/v/**'
       - '.github/actions/setup-v/**'
       - '**/toml_ci.yml'
       - '!**.md'

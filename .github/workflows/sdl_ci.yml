@@ -7,7 +7,6 @@ on:
       - master
     paths:
       - 'vlib/**'
-      - '!vlib/v/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - 'cmd/tools/vshader.v'
@@ -16,7 +15,6 @@ on:
   pull_request:
     paths:
       - 'vlib/**'
-      - '!vlib/v/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - 'cmd/tools/vshader.v'

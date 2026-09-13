@@ -6,7 +6,6 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v/**'
       - '**.md'
       - '**.yml'
       - '!**/termux_ci.yml'

@@ -6,7 +6,6 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v/**'
       - '**.yml'
       - '**.md'
       - '**.vv'
@@ -17,7 +16,6 @@ on:
       - '!**/bootstrapping_ci.yml'
   pull_request:
     paths-ignore:
-      - 'vlib/v/**'
       - '**.yml'
       - '**.md'
       - '**.vv'
