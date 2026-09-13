@@ -170,9 +170,21 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	steps := pattern.split(path_separator)
-	cwd := if pattern.starts_with(path_separator) { path_separator } else { '.' }
+	mut cwd := if pattern.starts_with(path_separator) { path_separator } else { '.' }
+	// A leading `.` or `..` says where the search starts; it is not a pattern to
+	// match the entries of a folder against. It is folded into the start folder,
+	// and put back in front of the results verbatim, the way `glob(3)` reports
+	// them: `./a/*.v` yields `./a/x.v`, not `a/x.v`.
+	mut first := 0
+	mut prefix := ''
+	for first + 1 < steps.len && (steps[first] == '.' || steps[first] == '..') {
+		prefix += '${steps[first]}${path_separator}'
+		cwd = if cwd == '.' { steps[first] } else { '${cwd}/${steps[first]}' }
+		first++
+	}
+	from := matches.len
 	mut subdirs := [cwd]
-	for i := 0; i < steps.len; i++ {
+	for i := first; i < steps.len; i++ {
 		step := steps[i]
 		step2 := if i + 1 == steps.len { step } else { steps[i + 1] }
 		if step == '' {
@@ -196,18 +208,23 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 		}
 		mut subs := []string{}
 		for sd in subdirs {
-			d := if cwd == '/' {
-				sd
-			} else {
-				if cwd == '.' || cwd == '' {
-					sd
-				} else {
-					if sd == '.' || sd == '/' { cwd } else { '${cwd}/${sd}' }
-				}
-			}
-			subs << glob_match(d.replace('//', '/'), step, step2, mut matches)
+			// The folders walked already carry the start folder in front.
+			subs << glob_match(sd.replace('//', '/'), step, step2, mut matches)
 		}
 		subdirs = subs.clone()
+	}
+	if prefix != '' {
+		// The walk reports paths rooted at the folded start folder; swap that
+		// root for the prefix as it was written in the pattern.
+		walked := if cwd == '.' { '' } else { '${cwd}${path_separator}' }
+		for i := from; i < matches.len; i++ {
+			found := matches[i]
+			matches[i] = if walked != '' && found.starts_with(walked) {
+				'${prefix}${found[walked.len..]}'
+			} else {
+				'${prefix}${found}'
+			}
+		}
 	}
 }
 
