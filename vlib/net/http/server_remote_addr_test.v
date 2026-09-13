@@ -17,13 +17,45 @@ fn (mut h RemoteAddrHandler) handle(req Request) Response {
 	}
 }
 
-fn remote_addr_server() &Server {
+// remote_addr_server binds a port the caller already knows, rather than passing
+// an empty `addr` and reading the bound one back out of the server afterwards.
+// `listen_and_serve` publishes that field from the server thread with no
+// synchronisation against `status()`, so a caller that has just seen the status
+// flip to .running can still read the empty string it started with -- which
+// shows up as `could not resolve address` from dial_tcp, on some builds every
+// single run.
+fn remote_addr_server(port int) &Server {
 	return &Server{
 		accept_timeout:       ratimeout
 		handler:              RemoteAddrHandler{}
-		addr:                 ''
+		addr:                 '127.0.0.1:${port}'
 		show_startup_message: false
 	}
+}
+
+// reserve_free_port asks the OS for an ephemeral port and gives it straight
+// back, so the server below can bind a port this test already knows.
+fn reserve_free_port() !int {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	port := l.addr()!.port()!
+	l.close()!
+	return int(port)
+}
+
+// dial_with_retry connects to `addr`, retrying a refused connection briefly:
+// wait_till_running returns as soon as the status flips to .running, which can
+// be a hair before the listener is actually accepting.
+fn dial_with_retry(addr string) !&net.TcpConn {
+	mut last := ''
+	for _ in 0 .. 100 {
+		if conn := net.dial_tcp(addr) {
+			return conn
+		} else {
+			last = err.msg()
+			time.sleep(10 * time.millisecond)
+		}
+	}
+	return error('could not connect to ${addr}: ${last}')
 }
 
 // raw_request writes `head` verbatim to a fresh connection to `addr` and
@@ -31,7 +63,7 @@ fn remote_addr_server() &Server {
 // http.fetch is what lets a test send header names the client would
 // normally never produce.
 fn raw_request(addr string, head string) !string {
-	mut conn := net.dial_tcp(addr)!
+	mut conn := dial_with_retry(addr)!
 	defer {
 		conn.close() or {}
 	}
@@ -55,7 +87,9 @@ fn raw_request(addr string, head string) !string {
 // real ip:port, that remote_ip() drops the port, and that the historical
 // `Remote-Addr` header still carries the bare ip.
 fn test_remote_addr_is_the_peer_address() {
-	mut server := remote_addr_server()
+	port := reserve_free_port()!
+	addr := '127.0.0.1:${port}'
+	mut server := remote_addr_server(port)
 	t := spawn server.listen_and_serve()
 	server.wait_till_running() or {
 		assert false, 'server did not start: ${err}'
@@ -66,7 +100,7 @@ fn test_remote_addr_is_the_peer_address() {
 		t.wait()
 	}
 
-	body := raw_request(server.addr, 'GET / HTTP/1.1\r\nHost: ${server.addr}\r\nConnection: close\r\n\r\n')!
+	body := raw_request(addr, 'GET / HTTP/1.1\r\nHost: ${addr}\r\nConnection: close\r\n\r\n')!
 	parts := body.split('|')
 	assert parts.len == 3
 	// remote_addr keeps the port, like Go's RemoteAddr.
@@ -82,7 +116,9 @@ fn test_remote_addr_is_the_peer_address() {
 // canonical and a lowercase spelling are checked, since header names are
 // case-insensitive on the wire.
 fn test_remote_addr_cannot_be_spoofed_by_a_client_header() {
-	mut server := remote_addr_server()
+	port := reserve_free_port()!
+	addr := '127.0.0.1:${port}'
+	mut server := remote_addr_server(port)
 	t := spawn server.listen_and_serve()
 	server.wait_till_running() or {
 		assert false, 'server did not start: ${err}'
@@ -94,7 +130,7 @@ fn test_remote_addr_cannot_be_spoofed_by_a_client_header() {
 	}
 
 	for spelling in ['Remote-Addr', 'remote-addr', 'REMOTE-ADDR'] {
-		body := raw_request(server.addr, 'GET / HTTP/1.1\r\nHost: ${server.addr}\r\n${spelling}: 6.6.6.6\r\nConnection: close\r\n\r\n')!
+		body := raw_request(addr, 'GET / HTTP/1.1\r\nHost: ${addr}\r\n${spelling}: 6.6.6.6\r\nConnection: close\r\n\r\n')!
 		parts := body.split('|')
 		assert parts.len == 3
 		assert parts[0].starts_with('127.0.0.1:'), 'spoofed via ${spelling}: ${parts[0]}'
@@ -108,7 +144,9 @@ fn test_remote_addr_cannot_be_spoofed_by_a_client_header() {
 // the mirrored `Remote-Addr`. The field must still be set (and adding it must
 // not index past the end of the array).
 fn test_remote_addr_survives_a_full_header_table() {
-	mut server := remote_addr_server()
+	port := reserve_free_port()!
+	addr := '127.0.0.1:${port}'
+	mut server := remote_addr_server(port)
 	t := spawn server.listen_and_serve()
 	server.wait_till_running() or {
 		assert false, 'server did not start: ${err}'
@@ -119,12 +157,12 @@ fn test_remote_addr_survives_a_full_header_table() {
 		t.wait()
 	}
 
-	mut head := 'GET / HTTP/1.1\r\nHost: ${server.addr}\r\nConnection: close\r\n'
+	mut head := 'GET / HTTP/1.1\r\nHost: ${addr}\r\nConnection: close\r\n'
 	for i in 0 .. max_headers - 2 {
 		head += 'X-Filler-${i}: v\r\n'
 	}
 	head += '\r\n'
-	body := raw_request(server.addr, head)!
+	body := raw_request(addr, head)!
 	parts := body.split('|')
 	assert parts.len == 3
 	assert parts[0].starts_with('127.0.0.1:')
@@ -155,6 +193,22 @@ fn test_remote_ip_leaves_an_address_without_a_port_alone() {
 	assert strip_addr_port('127.0.0.1:8080') == '127.0.0.1'
 	assert strip_addr_port('::1') == '::1'
 	assert strip_addr_port('[::1]:8080') == '::1'
+}
+
+// test_remote_ip_keeps_the_ipv6_zone covers scoped (link-local) peers. The RFC
+// 4007 zone belongs to the address, not to the port, so dropping the port must
+// not take it with it: two peers reached over different interfaces can share an
+// address and are told apart only by the zone, which is also what makes the
+// address dialable again.
+fn test_remote_ip_keeps_the_ipv6_zone() {
+	mut req := Request{}
+	req.set_remote_addr('[fe80::1%3]:40000')
+	assert req.remote_addr == '[fe80::1%3]:40000'
+	assert req.remote_ip() == 'fe80::1%3'
+	assert req.header.get_custom('Remote-Addr')? == 'fe80::1%3'
+
+	assert strip_addr_port('[fe80::1%3]:8080') == 'fe80::1%3'
+	assert strip_addr_port('fe80::1%3') == 'fe80::1%3'
 }
 
 // test_set_remote_addr_replaces_every_client_copy covers remove_custom_all's

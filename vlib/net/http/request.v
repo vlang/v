@@ -41,6 +41,10 @@ pub mut:
 	// It is empty for a request you build yourself to send with the client, and
 	// for one served by `veb`, which has its own server: use `ctx.ip()` there.
 	//
+	// A scoped IPv6 peer keeps its RFC 4007 zone, as in `[fe80::1%3]:8080`;
+	// without it a link-local address neither identifies an interface nor can
+	// be dialled back. The zone is the numeric interface index.
+	//
 	// When the server sits behind a reverse proxy this is the proxy's address.
 	// Recovering the original client then means trusting a header the proxy set
 	// (X-Forwarded-For, X-Real-Ip), which is only safe if nothing but that proxy
@@ -157,14 +161,17 @@ pub fn (mut req Request) add_custom_header(key string, val string) ! {
 }
 
 // remote_ip returns just the IP part of `req.remote_addr`, without the port,
-// for example `127.0.0.1` or `::1`. It returns an empty string for a request
-// that was not received by the V HTTP server. See `Request.remote_addr`.
+// for example `127.0.0.1` or `::1`. A scoped IPv6 address keeps its zone
+// (`fe80::1%3`), which is part of the address rather than of the port.
+// It returns an empty string for a request that was not received by
+// `http.Server`. See `Request.remote_addr`.
 pub fn (req &Request) remote_ip() string {
 	return strip_addr_port(req.remote_addr)
 }
 
-// strip_addr_port drops the `:port` suffix of a `ip:port` address, handling
-// the bracketed `[::1]:8080` form that IPv6 addresses use.
+// strip_addr_port drops the `:port` suffix of an `ip:port` address, handling
+// the bracketed `[::1]:8080` form that IPv6 addresses use. An RFC 4007 zone
+// sits inside the brackets (`[fe80::1%3]:8080`), so it survives untouched.
 fn strip_addr_port(addr string) string {
 	if addr.contains(']:') {
 		return addr.all_before(']:').all_after('[')
