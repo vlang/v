@@ -41,7 +41,19 @@ fn literal_body() {
 	}
 }
 
+// `unsafe` takes the block that follows it, so the body does not end with the
+// line: the `w` in the block belongs to the lambda.
+fn keyword_led_body() {
+	w := 1
+	$if windows {
+		cb := |w| unsafe
+		{ w }
+		_ = cb
+	}
+}
+
 fn main() {
+	keyword_led_body()
 	literal_body()
 	continued_after_an_operator()
 	on_the_next_line()

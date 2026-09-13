@@ -12,10 +12,17 @@ vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:25:2
       |     ^
    26 |     $if windows {
    27 |         cb := |u| 1 +
-vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:49:2: warning: unused variable: `q`
-   47 |     on_the_next_line()
-   48 |     after_a_semicolon()
-   49 |     q := 1
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:47:2: warning: unused variable: `w`
+   45 | // line: the `w` in the block belongs to the lambda.
+   46 | fn keyword_led_body() {
+   47 |     w := 1
       |     ^
-   50 |     $if windows {
-   51 |         cb := |q| q + 1
+   48 |     $if windows {
+   49 |         cb := |w| unsafe
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:61:2: warning: unused variable: `q`
+   59 |     on_the_next_line()
+   60 |     after_a_semicolon()
+   61 |     q := 1
+      |     ^
+   62 |     $if windows {
+   63 |         cb := |q| q + 1

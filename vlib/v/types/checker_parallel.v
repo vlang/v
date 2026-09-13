@@ -3242,8 +3242,11 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 
 // token_may_end_an_expression reports whether an expression can stop at `word`,
 // which is what lets the scanner end the statement at the following line break.
+// A keyword cannot, `unsafe` and `lock` taking the block that follows them, with
+// the literals as the exception.
 fn token_may_end_an_expression(word string) bool {
-	return word in [')', ']', '}', '?', '!', '0'] || is_ident_token(word)
+	return word in [')', ']', '}', '?', '!', '0', 'true', 'false', 'none', 'nil']
+		|| is_type_name_token(word)
 }
 
 // pipe_lambda_starts_at rejects the bitwise or of `a | b`: a lambda opens an

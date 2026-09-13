@@ -270,3 +270,19 @@ fn test_a_literal_lambda_body_still_leaves_a_token() {
 	assert code_references_ident(scanned_code(r"cb := |y| '${a}'\nprintln(x)"), 'x', true)
 	assert code_references_ident(scanned_code(r"cb := |y| '${x}'"), 'x', true)
 }
+
+fn test_a_keyword_does_not_end_a_lambda_body() {
+	assert !code_references_ident('cb := |x| unsafe\n{ x }', 'x', true)
+	assert !code_references_ident('cb := |x| lock\n{ x }', 'x', true)
+	assert code_references_ident('cb := |y| unsafe\n{ y }\nprintln(x)', 'x', true)
+	// The literals are the keywords an expression may stop at.
+	assert code_references_ident('cb := |y| true\nprintln(x)', 'x', true)
+	assert code_references_ident('cb := |y| none\nprintln(x)', 'x', true)
+	assert code_references_ident('cb := |y| y\nprintln(x)', 'x', true)
+}
+
+fn test_a_channel_valued_map_type_is_still_a_map() {
+	assert code_references_ident('m := map[string]chan int{x: ch}', 'x', true)
+	assert code_references_ident('m := map[string]thread int{x: t}', 'x', true)
+	assert code_references_ident('m := map[string]map[string]int{x: inner}', 'x', true)
+}
