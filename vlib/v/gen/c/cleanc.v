@@ -17333,15 +17333,33 @@ fn (g &FlatGen) is_module_qualified_enum(base flat.Node) bool {
 
 fn (mut g FlatGen) preamble() {
 	use_system_libc := g.c_directives_use_system_libc()
-	g.writeln('typedef signed char i8;')
-	g.writeln('typedef short i16;')
-	g.writeln('typedef int i32;')
-	g.writeln('typedef long long i64;')
-	g.writeln('typedef unsigned char u8;')
-	g.writeln('typedef unsigned char byte;')
-	g.writeln('typedef unsigned short u16;')
-	g.writeln('typedef unsigned int u32;')
-	g.writeln('typedef unsigned long long u64;')
+	if g.target_libc_headers {
+		// The target's own headers spell the fixed-width types, and every `fn C.xxx`
+		// prototype generated below is checked against them. `unsigned long long`
+		// where the target's <stdint.h> says `unsigned long` is a different type, not
+		// a wider spelling of the same one, so a `u64` parameter conflicts with the
+		// header's `uint64_t` or `size_t`. Alias the target's types instead.
+		g.writeln('#include <stdint.h>')
+		g.writeln('typedef int8_t i8;')
+		g.writeln('typedef int16_t i16;')
+		g.writeln('typedef int32_t i32;')
+		g.writeln('typedef int64_t i64;')
+		g.writeln('typedef uint8_t u8;')
+		g.writeln('typedef uint8_t byte;')
+		g.writeln('typedef uint16_t u16;')
+		g.writeln('typedef uint32_t u32;')
+		g.writeln('typedef uint64_t u64;')
+	} else {
+		g.writeln('typedef signed char i8;')
+		g.writeln('typedef short i16;')
+		g.writeln('typedef int i32;')
+		g.writeln('typedef long long i64;')
+		g.writeln('typedef unsigned char u8;')
+		g.writeln('typedef unsigned char byte;')
+		g.writeln('typedef unsigned short u16;')
+		g.writeln('typedef unsigned int u32;')
+		g.writeln('typedef unsigned long long u64;')
+	}
 	g.writeln('static inline i64 __v_pow_i64(i64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return -1; if (base != 1 && base != -1) return 0; return (exponent & 1) != 0 ? base : 1; } i64 value = 1; i64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
 	g.writeln('static inline u64 __v_pow_u64(u64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return (u64)-1; return base == 1 ? 1 : 0; } u64 value = 1; u64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
 	g.writeln('#ifdef _MSC_VER')
