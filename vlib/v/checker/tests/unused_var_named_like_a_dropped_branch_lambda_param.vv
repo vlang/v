@@ -1,7 +1,17 @@
 // The parameter of a `|x| x + 1` lambda is a binding of its own, so a dropped
 // `$if` branch that only uses it there leaves the outer variable unused - the
 // same answer the AST gives on the target that takes the branch.
+// A `;` ends the lambda, so what follows reads the outer name again.
+fn after_a_semicolon() {
+	s := 1
+	$if windows {
+		cb := |s| s + 1; println(s)
+		_ = cb
+	}
+}
+
 fn main() {
+	after_a_semicolon()
 	q := 1
 	$if windows {
 		cb := |q| q + 1

@@ -26,3 +26,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:34:25: notice: 
       |                         ^
    35 |     $if windows {
    36 |         println('${lookup('n')}')
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:41:21: notice: unused parameter: `cs`
+   39 | 
+   40 | // A C string is never interpolated, so `${cs}` is plain text in it too.
+   41 | fn c_string_literal(cs string) {
+      |                     ~~
+   42 |     $if windows {
+   43 |         _ = c'${cs}'

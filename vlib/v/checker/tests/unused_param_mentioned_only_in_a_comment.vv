@@ -37,7 +37,15 @@ fn interpolated_literal(n string) {
 	}
 }
 
+// A C string is never interpolated, so `${cs}` is plain text in it too.
+fn c_string_literal(cs string) {
+	$if windows {
+		_ = c'${cs}'
+	}
+}
+
 fn main() {
+	c_string_literal('d')
 	commented(1)
 	quoted(2)
 	interpolated(3)

@@ -165,3 +165,18 @@ fn test_a_nested_literal_inside_an_interpolation_is_sanitized_too() {
 	assert code_references_ident(scanned_code('println(\'\${f("}")}\') + x'), 'x', true)
 	assert code_references_ident(scanned_code('println(\'\${f("}")}\')'), 'f', true)
 }
+
+fn test_a_c_string_is_not_interpolated() {
+	assert !code_references_ident(scanned_code(r"_ = c'${x}'"), 'x', true)
+	assert !code_references_ident(scanned_code(r'_ = c"${x}"'), 'x', true)
+	// It does have escapes, unlike a raw string, so the literal runs on.
+	assert code_references_ident(scanned_code("_ = c'a\\'b' + x"), 'x', true)
+	// An ordinary string still holds code in its interpolation.
+	assert code_references_ident(scanned_code(r"_ = '${x}'"), 'x', true)
+}
+
+fn test_a_semicolon_ends_a_pipe_lambda_body() {
+	assert code_references_ident('cb := |x| x + 1; println(x)', 'x', true)
+	assert !code_references_ident('cb := |x| x + 1; _ = cb', 'x', true)
+	assert !code_references_ident('cb := |x| x + 1', 'x', true)
+}

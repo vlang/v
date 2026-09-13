@@ -2684,14 +2684,17 @@ fn skip_non_code_at(source string, i int) (int, string) {
 		}
 		return j, ''
 	}
-	// `r'..'`, `c'..'` and `js'..'` prefix their quote directly, and a raw
-	// string has neither escapes nor interpolations.
+	// `r'..'`, `c'..'` and `js'..'` prefix their quote directly. A raw string has
+	// neither escapes nor interpolations, and a C string is scanned by
+	// scan_char_literal, which escapes but never interpolates.
 	mut opening := i
-	mut raw := false
+	mut has_escapes := true
+	mut has_interpolation := true
 	if (source[i] == `r` || source[i] == `c`) && i + 1 < source.len
 		&& (source[i + 1] == `'` || source[i + 1] == `"`) {
 		opening = i + 1
-		raw = source[i] == `r`
+		has_escapes = source[i] == `c`
+		has_interpolation = false
 	} else if source[i] == `j` && i + 2 < source.len && source[i + 1] == `s`
 		&& (source[i + 2] == `'` || source[i + 2] == `"`) {
 		opening = i + 2
@@ -2703,11 +2706,11 @@ fn skip_non_code_at(source string, i int) (int, string) {
 	mut interpolated := []u8{}
 	mut j := opening + 1
 	for j < source.len && source[j] != quote {
-		if !raw && source[j] == `\\` {
+		if has_escapes && source[j] == `\\` {
 			j += 2
 			continue
 		}
-		if !raw && source[j] == `$` && j + 1 < source.len && source[j + 1] == `{` {
+		if has_interpolation && source[j] == `$` && j + 1 < source.len && source[j + 1] == `{` {
 			mut braces := 0
 			mut k := j + 1
 			for k < source.len {
@@ -3045,7 +3048,8 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 					break
 				}
 				depth--
-			} else if current == ',' && depth == 0 {
+			} else if (current == ',' || current == ';') && depth == 0 {
+				// `cb := |x| x + 1; println(x)` ends the lambda at the `;`.
 				break
 			}
 			end++
