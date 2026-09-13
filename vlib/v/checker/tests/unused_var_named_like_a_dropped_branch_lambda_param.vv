@@ -52,7 +52,26 @@ fn keyword_led_body() {
 	}
 }
 
+struct Selector {
+	type string
+}
+
+// A keyword after a `.` names a field, and ends the line like any other one.
+fn keyword_field_body() {
+	s := 1
+	sel := Selector{
+		type: 'a'
+	}
+	$if windows {
+		cb := |s| sel.type
+		println(s)
+		_ = cb
+	}
+	_ = sel
+}
+
 fn main() {
+	keyword_field_body()
 	keyword_led_body()
 	literal_body()
 	continued_after_an_operator()

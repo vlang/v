@@ -2790,6 +2790,11 @@ fn code_references_ident(code string, name string, writes_are_uses bool) bool {
 			// `cfg.x` or the enum value `.x`, a member of something else.
 			continue
 		}
+		if i > 0 && lines[i - 1] == lines[i] && tokens[i - 1] in ['goto', 'break', 'continue'] {
+			// The label of `goto x` or of `break outer`, which the parser keeps
+			// as the value of the statement without an identifier node.
+			continue
+		}
 		if i > 0 && tokens[i - 1] in ['$', '@'] {
 			// The name of a compile-time function or constant - `$env('HOME')`,
 			// `$embed_file(..)`, `@FILE` - which the parser replaces with its
@@ -2843,15 +2848,25 @@ fn colon_binds_a_field_or_label(tokens []string, index int) bool {
 					depth--
 					continue
 				}
-				if tokens[i] == '{' && map_literal_type_precedes(tokens, i) {
-					return false
+				if tokens[i] == '{' {
+					if map_literal_type_precedes(tokens, i) {
+						return false
+					}
+					if i > 0 && tokens[i - 1] in block_opening_keywords {
+						// `unsafe { x: .. }` opens a block, not a literal, so
+						// the name labels a statement of it. `return {x: 1}` is
+						// a map literal, hence the list rather than a keyword
+						// test.
+						return true
+					}
 				}
 				return name_precedes_delimiter(tokens, i)
 			}
 			else {}
 		}
 	}
-	return false
+	// No literal encloses it, so the name labels a statement of the branch.
+	return true
 }
 
 // map_literal_type_precedes reports whether the type written before the `{` at
@@ -2936,7 +2951,15 @@ fn name_precedes_delimiter(tokens []string, index int) bool {
 // is_type_name_token rejects the keywords that also read as a bare name, so
 // that the map literal of `return {x: 1}` is not taken for a struct one.
 fn is_type_name_token(word string) bool {
-	return is_ident_token(word) && !token.Token.from_string_tinyv(word).is_keyword()
+	return is_ident_token(word) && !is_keyword_token(word)
+}
+
+// block_opening_keywords are the keywords a `{` may follow as a block rather
+// than as a literal.
+const block_opening_keywords = ['unsafe', 'lock', 'rlock', 'else', 'defer', 'or', 'select', 'for']
+
+fn is_keyword_token(word string) bool {
+	return is_ident_token(word) && token.Token.from_string_tinyv(word).is_keyword()
 }
 
 // token_is_assignment_target reports whether `tokens[index]` is the whole left
@@ -3213,7 +3236,7 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 			if depth == 0 && lines[end] != body_line {
 				// `cb := |x| 1 +` continues on the next line, the way the
 				// scanner inserts no semicolon after an operator.
-				if end == 0 || token_may_end_an_expression(tokens[end - 1]) {
+				if end == 0 || token_may_end_an_expression(tokens, end - 1) {
 					break
 				}
 				body_line = lines[end]
@@ -3240,13 +3263,21 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 	return ranges
 }
 
-// token_may_end_an_expression reports whether an expression can stop at `word`,
-// which is what lets the scanner end the statement at the following line break.
-// A keyword cannot, `unsafe` and `lock` taking the block that follows them, with
-// the literals as the exception.
-fn token_may_end_an_expression(word string) bool {
-	return word in [')', ']', '}', '?', '!', '0', 'true', 'false', 'none', 'nil']
-		|| is_type_name_token(word)
+// token_may_end_an_expression reports whether an expression can stop at
+// `tokens[index]`, which is what lets the scanner end the statement at the
+// following line break. A keyword cannot, `unsafe` and `lock` taking the block
+// that follows them, with the literals and the selectors as the exceptions.
+fn token_may_end_an_expression(tokens []string, index int) bool {
+	word := tokens[index]
+	if word in [')', ']', '}', '?', '!', '0', 'true', 'false', 'none', 'nil'] {
+		return true
+	}
+	if index > 0 && tokens[index - 1] == '.' {
+		// `cfg.type`: a keyword after a `.` names a field, and the scanner ends
+		// the line on it like on any other one.
+		return is_ident_token(word)
+	}
+	return is_type_name_token(word)
 }
 
 // pipe_lambda_starts_at rejects the bitwise or of `a | b`: a lambda opens an

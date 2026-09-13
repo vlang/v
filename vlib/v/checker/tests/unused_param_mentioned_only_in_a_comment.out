@@ -54,3 +54,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:66:22: notice: 
       |                      ~~
    67 |     $if v_asm_probe ? {
    68 |         asm arm64 {
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:75:15: notice: unused parameter: `lbl`
+   73 | 
+   74 | // `goto lbl` and the `lbl:` it jumps to name a label, not a variable.
+   75 | fn goto_label(lbl int) {
+      |               ~~~
+   76 |     $if windows {
+   77 |         unsafe {

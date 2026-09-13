@@ -286,3 +286,24 @@ fn test_a_channel_valued_map_type_is_still_a_map() {
 	assert code_references_ident('m := map[string]thread int{x: t}', 'x', true)
 	assert code_references_ident('m := map[string]map[string]int{x: inner}', 'x', true)
 }
+
+fn test_a_label_is_not_a_variable() {
+	assert !code_references_ident('unsafe {\n\tgoto x\n}\nx:\nprintln(1)', 'x', true)
+	assert !code_references_ident('goto x', 'x', true)
+	assert !code_references_ident('break x', 'x', true)
+	assert !code_references_ident('continue x', 'x', true)
+	assert !code_references_ident('unsafe {\n\tx: println(1)\n}', 'x', true)
+	assert !code_references_ident('x: for {\n\tbreak x\n}', 'x', true)
+	// A statement of its own on the next line is not the label of a `break`.
+	assert code_references_ident('for {\n\tbreak\n}\nprintln(x)', 'x', true)
+	// And a map entry is still a key, inside a block as much as outside one.
+	assert code_references_ident('unsafe {\n\tm := {x: 1}\n}', 'x', true)
+	assert code_references_ident('return {x: 1}', 'x', true)
+}
+
+fn test_a_keyword_field_ends_a_lambda_body() {
+	assert code_references_ident('cb := |x| cfg.type\nprintln(x)', 'x', true)
+	assert code_references_ident('cb := |y| cfg.match\nprintln(x)', 'x', true)
+	// Without the selector it is the keyword it looks like.
+	assert !code_references_ident('cb := |x| unsafe\n{ x }', 'x', true)
+}

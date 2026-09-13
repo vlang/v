@@ -71,7 +71,19 @@ fn asm_register_name(x0 int) {
 	}
 }
 
+// `goto lbl` and the `lbl:` it jumps to name a label, not a variable.
+fn goto_label(lbl int) {
+	$if windows {
+		unsafe {
+			goto lbl
+		}
+		lbl:
+		println('done')
+	}
+}
+
 fn main() {
+	goto_label(7)
 	asm_register_name(6)
 	comptime_function('f')
 	comptime_flag(5)
