@@ -8415,6 +8415,7 @@ pub fn run(args []string) {
 	mut backend := 'c'
 	mut backend_explicit := false
 	mut target_os := os.user_os()
+	mut cross_output := false
 	mut target_os_explicit := false
 	mut target_arch := pref.host_arch()
 	mut target_arch_explicit := false
@@ -8547,9 +8548,9 @@ pub fn run(args []string) {
 			backend_explicit = true
 			i += 2
 		} else if args[i] == '-cross' {
-			// Long-standing spelling of `-os cross`; see `v help build-c`.
-			target_os = 'cross'
-			target_os_explicit = true
+			// A modifier, not a target: it combines with `-os`/`-cc`, as in
+			// `v -cross -os windows -cc msvc`. See `v help build-c`.
+			cross_output = true
 			i++
 		} else if args[i] == '-os' && i + 1 < args.len {
 			target_os = args[i + 1]
@@ -9114,10 +9115,20 @@ pub fn run(args []string) {
 	// one OS, architecture or C compiler, so that a single generated snapshot
 	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
 	// leave every target-dependent `$if` to the C preprocessor.
-	mut output_cross_c := false
+	mut output_cross_c := cross_output
 	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
 		output_cross_c = true
 		target_os = os.user_os()
+	}
+	if output_cross_c {
+		// A portable snapshot cannot use the platform backtrace APIs, and the
+		// `$if cross ?` guards in vlib select the portable path from this. Keep
+		// them first in the list: `gen_vc_ci.yml` checks the generated header.
+		for name in ['cross', 'no_backtrace'] {
+			if name !in user_defines {
+				user_defines.prepend(name)
+			}
+		}
 	}
 	target := pref.target_from(target_os, target_arch) or {
 		eprintln(err.msg())
@@ -11532,6 +11543,7 @@ pub fn run(args []string) {
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_output_cross_c(prefs.output_cross_c)
+			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
@@ -11593,6 +11605,7 @@ pub fn run(args []string) {
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
 			g.set_output_cross_c(prefs.output_cross_c)
+			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)

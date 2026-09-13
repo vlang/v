@@ -8408,7 +8408,7 @@ libraries and include files for Windows and Linux. V will provide you with a lin
 
 ### Portable C output (`-os cross`)
 
-`-os cross` (also spelled `-cross`) is not a platform. It asks for *portable* C,
+`-os cross` is not a platform. It asks for *portable* C,
 i.e. C that is not tied to one OS, architecture or C compiler, so that a single
 generated file can be compiled on any of them. It is how V's own bootstrap
 snapshot `vc/v.c` is produced, and it only makes sense with `-o file.c`:
@@ -8417,6 +8417,17 @@ snapshot `vc/v.c` is produced, and it only makes sense with `-o file.c`:
 v -os cross -o /tmp/v.c cmd/v
 cc -o v_from_c /tmp/v.c -lm -lpthread
 ```
+
+The `-cross` flag asks for the same output, but as a modifier that combines with
+an explicit target, which is how the Windows bootstrap snapshot is produced:
+
+```shell
+v -cross -os windows -cc msvc -o /tmp/v_win.c cmd/v
+```
+
+Either spelling also turns on the `cross` and `no_backtrace` custom defines, so
+that the `$if cross ?` guards in the standard library select their portable path
+instead of a platform syscall.
 
 In this mode V does not decide a target-dependent `$if` while generating. It
 keeps every branch and emits the condition as a C preprocessor guard, leaving
