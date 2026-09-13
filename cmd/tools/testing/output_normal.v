@@ -19,7 +19,7 @@ fn get_report_running_period_ms() time.Duration {
 
 // NormalReporter implements the interface testing.Reporter.
 // It is used by default by `v test .`
-// It was extracted by the original non customiseable output implementation directly in cmd/tools/modules/testing/common.v
+// It was extracted by the original non customiseable output implementation directly in cmd/tools/testing/common.v
 pub struct NormalReporter {
 mut:
 	vroot    string

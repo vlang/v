@@ -616,9 +616,9 @@ fn (mut ts TestSession) handle_test_runner_option() {
 	if test_runner !in pref.supported_test_runners {
 		eprintln('v test: `-test-runner ${test_runner}` is not using one of the supported test runners: ${pref.supported_test_runners_list()}')
 	}
-	test_runner_implementation_file := os.join_path(ts.vroot, 'cmd/tools/modules/testing/output_${test_runner}.v')
+	test_runner_implementation_file := os.join_path(ts.vroot, 'cmd/tools/testing/output_${test_runner}.v')
 	if !os.exists(test_runner_implementation_file) {
-		eprintln('v test: using `-test-runner ${test_runner}` needs ${test_runner_implementation_file} to exist, and contain a valid testing.Reporter implementation for that runner. See `cmd/tools/modules/testing/output_dump.v` for an example.')
+		eprintln('v test: using `-test-runner ${test_runner}` needs ${test_runner_implementation_file} to exist, and contain a valid testing.Reporter implementation for that runner. See `cmd/tools/testing/output_dump.v` for an example.')
 		exit(1)
 	}
 	match test_runner {

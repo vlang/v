@@ -381,7 +381,7 @@ fn test_main_error_propagation_panic_branches_do_not_fall_through() {
 
 fn test_imported_empty_interface_concat_does_not_emit_noop_array_cast_helper() {
 	os.chdir(vroot) or {}
-	path := os.join_path(vroot, 'vlib/v/tests/modules/interface_array_concat_from_another_module/main_test.v')
+	path := os.join_path(vroot, 'vlib/v/tests/interface_array_concat_from_another_module/main_test.v')
 	symbol := '__v_array_to_interface_array__Array_interface_array_concat_from_another_module__mod__Value__to__Array_interface_array_concat_from_another_module__mod__Value'
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(path)}'
 	compilation := os.execute(cmd)
