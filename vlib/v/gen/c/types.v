@@ -514,12 +514,6 @@ fn type_has_import_alias_text(typ types.Type) bool {
 }
 
 fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {
-	if os.getenv('V3_DEBUG_SIZEOF') == '1' {
-		probe := g.sizeof_target(value)
-		if probe.contains('io__') {
-			eprintln('[sizeof] value=${value} file=${file} cur_file=${g.tc.cur_file} cur_module=${g.tc.cur_module} target=${probe}')
-		}
-	}
 	canonical := g.canonical_import_alias_type_text_in_file(value, file)
 	if canonical != value {
 		if exact := g.exact_known_import_type_text(canonical) {

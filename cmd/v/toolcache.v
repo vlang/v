@@ -154,6 +154,11 @@ fn last_modified(path string) i64 {
 	return attributes.mtime
 }
 
+// ambient_build_variables are the environment variables that change what a tool build
+// produces without being part of its command line. `CFLAGS` and `LDFLAGS` are applied by the
+// driver to native compilation and linking; `VCOVDIR` turns on coverage instrumentation.
+const ambient_build_variables = ['CFLAGS', 'LDFLAGS', 'VCOVDIR']
+
 // tool_cache_key derives the content address of a cached tool binary. Everything that can
 // change the produced executable without being visible in the recorded source manifest has
 // to be part of it: the V executable, the tool's own sources, and the build flags.
@@ -164,6 +169,13 @@ fn tool_cache_key(vexe string, tool_name string, tool_sources []string, build_ar
 	parts << 'tool${tool_cache_field_separator}${tool_name}'
 	parts << 'args${tool_cache_field_separator}${build_args.join(tool_cache_field_separator)}'
 	parts << 'vflags${tool_cache_field_separator}${os.getenv('VFLAGS')}'
+	// The child compiler inherits the environment, and the driver reads these directly from
+	// it rather than from `build_args`, so they change the produced binary without appearing
+	// anywhere else in the identity. A tool first built with a sanitizer, an extra macro or a
+	// coverage directory must not be handed back once that setting is gone.
+	for name in ambient_build_variables {
+		parts << 'env${tool_cache_field_separator}${name}${tool_cache_field_separator}${os.getenv(name)}'
+	}
 	for source in tool_sources {
 		parts << 'src${tool_cache_field_separator}${source}${tool_cache_field_separator}${file_stamp(source)}'
 	}

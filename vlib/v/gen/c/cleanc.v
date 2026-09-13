@@ -1510,6 +1510,54 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 	return inputs, native_source_roots, has_untracked_include
 }
 
+// cache_native_flag_input_files returns the native sources and objects that `#flag`
+// directives name outright, for example `#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c` or the
+// prebuilt `sqlite3.o` used on Windows. The cache input scan follows `#include`/`#insert` and
+// forced includes, so a file named this way is compiled or linked into the binary while being
+// invisible to every other input record.
+//
+// Only directives that survive comptime branch resolution are seen, so a `#flag` guarded by
+// an `$if` for another platform is correctly left out.
+pub fn cache_native_flag_input_files(a &flat.FlatAst, vroot string, target pref.Target) []string {
+	mut cur_file := ''
+	mut paths := map[string]bool{}
+	for index in 0 .. a.nodes.len {
+		node := a.nodes[index]
+		if node.kind == .file {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value != 'flag' || node.typ.len == 0 {
+			continue
+		}
+		for flag in c_flag_args(node.typ, vroot, cur_file, target) {
+			token := flag.trim_space().trim('"\'')
+			if token.len == 0 || token.starts_with('-') || !c_is_native_input_path(token) {
+				continue
+			}
+			if os.is_file(token) {
+				paths[os.real_path(token)] = true
+			}
+		}
+	}
+	mut result := paths.keys()
+	result.sort()
+	return result
+}
+
+// c_is_native_input_path reports whether a bare `#flag` token names a file that is compiled
+// or linked in, rather than an option or a library search term.
+fn c_is_native_input_path(path string) bool {
+	lowered := path.to_lower()
+	for extension in ['.c', '.cc', '.cpp', '.cxx', '.m', '.mm', '.s', '.o', '.obj', '.a',
+		'.lib'] {
+		if lowered.ends_with(extension) {
+			return true
+		}
+	}
+	return false
+}
+
 // cache_external_input_files_with_resolved_flags collects cache inputs without
 // resolving source `#flag` directives a second time. unscoped_inputs contains the
 // dependency trees of native source roots and direct non-source includes whose

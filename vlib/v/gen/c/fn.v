@@ -9035,9 +9035,6 @@ fn (mut g FlatGen) gen_json_encode_call(node flat.Node, pretty bool) bool {
 }
 
 fn (mut g FlatGen) preintern_json_encode_strings() {
-	if os.getenv('V3_DEBUG_JSON_PREINTERN') == '1' {
-		eprintln('[preintern] enter legacy_json=${g.has_legacy_json_module()} nodes=${g.a.nodes.len}')
-	}
 	if !g.has_legacy_json_module() {
 		return
 	}
@@ -9062,9 +9059,6 @@ fn (mut g FlatGen) preintern_json_encode_strings() {
 		if typ is types.Void || typ is types.Unknown {
 			arg := g.a.nodes[int(arg_id)]
 			typ = g.tc.parse_type(arg.typ)
-		}
-		if os.getenv('V3_DEBUG_JSON_PREINTERN') == '1' {
-			eprintln('[preintern] call idx=${idx} resolved=${resolved} typ=${typ.name()}')
 		}
 		g.preintern_json_encode_value_strings(typ, []string{})
 	}

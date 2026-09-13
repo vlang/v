@@ -10038,10 +10038,24 @@ pub fn run(args []string) {
 		// invalidate a cached build, and `v watch` has to rebuild on it. `-print-v-files` is
 		// deliberately left reporting V sources only, the way its name says.
 		mut watched_with_resources := watched_files.clone()
+		mut reported := map[string]bool{}
 		for resource in embedded_resource_paths(a) {
 			if resource !in watched {
-				watched_with_resources << resource
+				reported[resource] = true
 			}
+		}
+		// A `#include "sqlite3.h"` or `#insert` reaches C sources and headers that are
+		// compiled into the binary just as much as the V sources are: `v sqlite` builds
+		// `thirdparty/sqlite/sqlite3.c`, and updating that amalgamation has to invalidate
+		// the cached tool. cgen already resolves these, so reuse its scan rather than
+		// guessing at the paths.
+		for native_input in native_build_input_paths(a, prefs.vroot, prefs.target) {
+			if native_input !in watched {
+				reported[native_input] = true
+			}
+		}
+		for path, _ in reported {
+			watched_with_resources << path
 		}
 		watched_with_resources.sort()
 		if dump_files != '' {
@@ -15577,6 +15591,46 @@ fn sync_import_node() flat.Node {
 		value: 'sync'
 		typ: 'sync'
 	}
+}
+
+// native_build_input_paths returns the local C sources and headers this build compiles or
+// includes. They reach the binary through `#include "x.h"`, `#insert` and the native source
+// roots pulled in behind them, so each one is a build input exactly like a V source is, and
+// none of them is otherwise recorded: the watched set holds V sources only.
+//
+// The scan is the same one the module cache uses, so an include form it cannot resolve
+// statically is simply not reported here either.
+fn native_build_input_paths(a &flat.FlatAst, vroot string, target pref.Target) []string {
+	mut modules := map[string]bool{}
+	for index in 0 .. a.nodes.len {
+		node := a.nodes[index]
+		if node.kind == .module_decl && node.value.len > 0 {
+			modules[node.value] = true
+		}
+	}
+	// a program file's directives belong to `main`, whether or not it declares the module
+	modules['main'] = true
+	inputs, native_source_roots, _ := cgen.cache_external_input_files(a, vroot, modules, [],
+		target)
+	mut paths := map[string]bool{}
+	for _, files in inputs {
+		for file in files {
+			paths[file] = true
+		}
+	}
+	for _, roots in native_source_roots {
+		for root in roots {
+			paths[root] = true
+		}
+	}
+	// A `#flag` can also name a native source or object outright, which the include scan
+	// above never sees: that is how `sqlite3.c` and its prebuilt `sqlite3.o` get in.
+	for flag_input in cgen.cache_native_flag_input_files(a, vroot, target) {
+		paths[flag_input] = true
+	}
+	mut result := paths.keys()
+	result.sort()
+	return result
 }
 
 // embedded_resource_paths returns the absolute paths of the files that `$embed_file` pulled

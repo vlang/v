@@ -436,3 +436,81 @@ fn test_an_embedded_asset_is_recorded_and_invalidates_the_cache() {
 	os.write_file(asset, 'second revision, a different length')!
 	assert !tool_cache_is_fresh(entry), 'editing an embedded asset must force a rebuild'
 }
+
+// `CFLAGS`, `LDFLAGS` and `VCOVDIR` are read straight from the environment by the child
+// compiler, not passed through `build_args`, so nothing else in the cache identity records
+// them. A tool built with a sanitizer or an extra macro must not be handed back once that
+// setting is gone.
+fn test_the_cache_key_covers_ambient_native_flags() {
+	directory := toolcache_test_dir('ambient')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	vexe := os.join_path(directory, 'v')
+	os.write_file(vexe, 'a pretend V executable')!
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, 'module main\n')!
+
+	mut previous := map[string]string{}
+	for name in ambient_build_variables {
+		previous[name] = os.getenv(name)
+		os.setenv(name, '', true)
+	}
+	defer {
+		for name, value in previous {
+			os.setenv(name, value, true)
+		}
+	}
+
+	baseline := tool_cache_key(vexe, 'vdemo', [source], [])
+	for name in ambient_build_variables {
+		os.setenv(name, '-DSOMETHING=1', true)
+		assert tool_cache_key(vexe, 'vdemo', [source], []) != baseline, '${name} must be part of the key'
+		os.setenv(name, '', true)
+		assert tool_cache_key(vexe, 'vdemo', [source], []) == baseline, 'clearing ${name} must restore the key'
+	}
+}
+
+// A tool that compiles local C sources or includes local headers has to be rebuilt when any
+// of them changes. `vlib/db/sqlite/sqlite.c.v` is the real case: it builds
+// `thirdparty/sqlite/sqlite3.c` and includes `sqlite3.h`, neither of which is a V source.
+fn test_a_native_input_is_recorded_and_invalidates_the_cache() {
+	vexe := @VEXE
+	if !os.is_executable(vexe) {
+		eprintln('> skipping, no V executable at `${vexe}`')
+		return
+	}
+	directory := toolcache_test_dir('native_input')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	os.write_file(os.join_path(directory, 'v.mod'), 'Module { name: "nativedemo" }\n')!
+	header := os.join_path(directory, 'helper.h')
+	os.write_file(header, '#ifndef HELPER_H\n#define HELPER_H\nint native_double(int x);\n#endif\n')!
+	native_source := os.join_path(directory, 'helper.c')
+	os.write_file(native_source, '#include "helper.h"\nint native_double(int x) { return x * 2; }\n')!
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, 'module main\n\n#flag -I@VMODROOT\n#flag @VMODROOT/helper.c\n#include "helper.h"\n\nfn C.native_double(int) int\n\nfn main() {\n\tprintln(C.native_double(21))\n}\n')!
+
+	dumped := os.join_path(directory, 'sources.txt')
+	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	build :=
+		os.execute('${os.quoted_path(vexe)} -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+	assert build.exit_code == 0, build.output
+
+	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
+	assert os.real_path(native_source) in recorded, 'the compiled C source must be recorded, got ${recorded}'
+	assert os.real_path(header) in recorded, 'the included C header must be recorded, got ${recorded}'
+
+	entry := ToolCacheEntry{
+		name:     'vdemo'
+		binary:   binary
+		manifest: binary + '.inputs'
+	}
+	time.sleep(1100 * time.millisecond)
+	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, time.now().unix()))!
+	assert tool_cache_is_fresh(entry), 'the freshly built tool must not start out stale'
+
+	os.write_file(native_source, '#include "helper.h"\nint native_double(int x) { return x * 3; }\n')!
+	assert !tool_cache_is_fresh(entry), 'editing a compiled C source must force a rebuild'
+}

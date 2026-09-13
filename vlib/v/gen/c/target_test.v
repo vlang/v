@@ -1306,3 +1306,53 @@ fn test_emscripten_comptime_branch_uses_canonical_target() {
 	assert 'wasm_selected' in fn_names
 	assert 'host_selected' !in fn_names
 }
+
+// A `#flag` can name a native source or object outright -- `vlib/db/sqlite/sqlite.c.v` builds
+// `@VEXEROOT/thirdparty/sqlite/sqlite3.c` that way, and uses a prebuilt `sqlite3.o` on
+// Windows. The include scan never sees those, so they need their own collection or a cached
+// build keeps running against a stale amalgamation.
+fn test_native_flag_inputs_are_collected() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_flag_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	native_source := os.join_path(dir, 'amalgamation.c')
+	os.write_file(native_source, 'int amalgamation(void) { return 0; }\n') or { panic(err) }
+	prebuilt := os.join_path(dir, 'prebuilt.o')
+	os.write_file(prebuilt, 'not really an object, only its path matters\n') or { panic(err) }
+
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#flag ${native_source}\n#flag ${prebuilt}\n#flag -lm\n#flag -I${dir}\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+
+	collected := cache_native_flag_input_files(a, '', prefs.target)
+	assert collected == [os.real_path(native_source), os.real_path(prebuilt)], collected.str()
+}
+
+// Only files are inputs: a library name, an option, and a path that does not exist must not
+// be reported, or every lookup would stat something that is never there and count it changed.
+fn test_native_flag_inputs_ignore_options_and_missing_paths() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_flag_skips_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#flag -lsqlite3\n#flag -L/usr/local/lib\n#flag -DSOME_MACRO\n#flag ${dir}/absent.c\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+
+	assert cache_native_flag_input_files(a, '', prefs.target) == []
+}
