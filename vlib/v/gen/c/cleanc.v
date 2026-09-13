@@ -1098,6 +1098,7 @@ pub fn FlatGen.new() FlatGen {
 		incremental_fn_names: map[string]bool{}
 		str_lit_ids: map[string]int{}
 		global_types: map[string]types.Type{}
+		global_volatile_names: map[string]bool{}
 		global_raw_type_texts: map[string]string{}
 		enum_vals: map[string]int{}
 		enum_value_exprs: map[string]string{}
@@ -2849,6 +2850,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.compiler_vroot = ''
 	g.str_lit_ids.clear()
 	g.global_types.clear()
+	g.global_volatile_names.clear()
 	g.global_raw_type_texts.clear()
 	g.enum_vals.clear()
 	g.enum_value_exprs.clear()
@@ -16924,40 +16926,11 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 	return false
 }
 
-// c_freestanding_headers is the set C99 requires a freestanding implementation to
-// provide. Everything outside it belongs to a hosted libc and is emitted between
-// open_hosted_headers_guard() and close_hosted_headers_guard().
-const c_freestanding_headers = ['float.h', 'limits.h', 'stdbool.h', 'stddef.h', 'stdint.h']
-
-// open_hosted_headers_guard opens a block that only a hosted compilation sees.
-//
-// Whether a libc exists is the C compiler's answer, not the target's: the same
-// `-os vinix` is used for the kernel, which compiles -ffreestanding -nostdinc
-// against the C freestanding header set, and for util-vinix, which cross-compiles
-// as an ordinary hosted program. Gating on the target OS would have taken the
-// headerless preamble for both, which is the conflict the include-based detection
-// in c_directives_use_system_libc() exists to avoid. `__STDC_HOSTED__` separates
-// them exactly, and is already how manual_stdlib_c_headers.h tells the two apart.
-// A compiler too old to define it at all is treated as hosted, which is what it
-// was before this guard existed.
-fn (mut g FlatGen) open_hosted_headers_guard() {
-	g.writeln('#if !defined(__STDC_HOSTED__) || __STDC_HOSTED__')
-}
-
-fn (mut g FlatGen) close_hosted_headers_guard() {
-	g.writeln('#endif // __STDC_HOSTED__')
-}
-
 fn (mut g FlatGen) system_libc_headers() {
-	for header in c_freestanding_headers {
+	for header in ['assert.h', 'ctype.h', 'errno.h', 'float.h', 'inttypes.h', 'limits.h', 'math.h',
+		'setjmp.h', 'signal.h', 'stdbool.h', 'stddef.h', 'stdint.h', 'time.h', 'wchar.h'] {
 		g.writeln('#include <${header}>')
 	}
-	g.open_hosted_headers_guard()
-	for header in ['assert.h', 'ctype.h', 'errno.h', 'inttypes.h', 'math.h', 'setjmp.h', 'signal.h',
-		'time.h', 'wchar.h'] {
-		g.writeln('#include <${header}>')
-	}
-	g.close_hosted_headers_guard()
 	// GCC's Objective-C frontend does not implement the C11 `_Atomic` qualifier,
 	// but its stdatomic macros still work with volatile storage and __atomic builtins.
 	// Clang implements `_Atomic` in Objective-C and must retain the native qualifier.
@@ -16965,7 +16938,6 @@ fn (mut g FlatGen) system_libc_headers() {
 	// available before struct declarations that contain atomic_uintptr_t fields, and
 	// including both implementations redefines atomic_flag and the operation macros.
 	windows_atomic_header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
-	g.open_hosted_headers_guard()
 	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
 	g.writeln('#include "${windows_atomic_header}"')
 	g.writeln('#else')
@@ -17005,7 +16977,6 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
 	g.writeln('#include <sys/event.h>')
 	g.writeln('#endif')
-	g.close_hosted_headers_guard()
 	g.system_execinfo_declarations()
 	g.writeln('')
 }
