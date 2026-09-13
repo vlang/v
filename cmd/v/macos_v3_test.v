@@ -145,6 +145,16 @@ fn test_gnumake_builds_the_v1_fallback_only_on_demand() {
 	assert source.contains('\nv1:\n')
 	assert source.contains('candidate="\$(V1_FALLBACK_EXE).tmp.\$\$\$\$"')
 	assert source.contains('Built V1 compatibility compiler: \$(V1_FALLBACK_EXE)')
+	v1_recipe := source.all_after('\nv1:\n').all_before('\nclean:\n')
+	legacy_prepare := "'\$(MAKE)' latest_legacy"
+	assert v1_recipe.contains('lib/libMacportsLegacySupport.a')
+	assert v1_recipe.contains(legacy_prepare)
+	assert v1_recipe.contains('\'\$(MAKE)\' -C "\$(TMPLEGACY)"')
+	assert v1_recipe.contains('PREFIX="\$(abspath \$(LEGACYLIBS))"')
+	legacy_prepare_index := v1_recipe.index(legacy_prepare) or { -1 }
+	compile_index := v1_recipe.last_index('if ! \$(CC)') or { -1 }
+	assert legacy_prepare_index >= 0
+	assert legacy_prepare_index < compile_index
 	assert !source.contains('-d v1_fallback -o \$(V1_FALLBACK_EXE)')
 }
 
