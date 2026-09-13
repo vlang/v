@@ -12,10 +12,10 @@ vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:25:2
       |     ^
    26 |     $if windows {
    27 |         cb := |u| 1 +
-vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:37:2: warning: unused variable: `q`
-   35 |     on_the_next_line()
-   36 |     after_a_semicolon()
-   37 |     q := 1
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:49:2: warning: unused variable: `q`
+   47 |     on_the_next_line()
+   48 |     after_a_semicolon()
+   49 |     q := 1
       |     ^
-   38 |     $if windows {
-   39 |         cb := |q| q + 1
+   50 |     $if windows {
+   51 |         cb := |q| q + 1

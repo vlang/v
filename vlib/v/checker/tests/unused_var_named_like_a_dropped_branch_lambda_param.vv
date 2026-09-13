@@ -30,7 +30,19 @@ fn continued_after_an_operator() {
 	}
 }
 
+// A body that is only a literal leaves no code behind, but still ends the
+// lambda: the `println` below reads the outer `v`.
+fn literal_body() {
+	v := 1
+	$if windows {
+		cb := |v| 'constant'
+		println(v)
+		_ = cb
+	}
+}
+
 fn main() {
+	literal_body()
 	continued_after_an_operator()
 	on_the_next_line()
 	after_a_semicolon()

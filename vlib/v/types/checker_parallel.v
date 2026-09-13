@@ -2648,10 +2648,10 @@ fn code_text_in_range(source string, start int, end int) string {
 	mut code := []u8{cap: end - start}
 	mut i := start
 	for i < end {
-		skipped, interpolated := skip_non_code_at(source, i)
+		skipped, stands_for := skip_non_code_at(source, i)
 		if skipped > i {
 			code << ` `
-			code << interpolated.bytes()
+			code << stands_for.bytes()
 			i = skipped
 			continue
 		}
@@ -2662,8 +2662,11 @@ fn code_text_in_range(source string, start int, end int) string {
 }
 
 // skip_non_code_at returns the index just past the comment or string literal
-// starting at `i`, together with the code text of the `${...}` interpolations
-// inside it. It returns `i` itself when `source[i]` starts neither.
+// starting at `i`, together with the code that stands for it: nothing for a
+// comment, and for a literal a placeholder value - it is one, and a lambda body
+// that is only a literal has to leave a token behind - plus the code of its
+// `${...}` interpolations. It returns `i` itself when `source[i]` starts
+// neither.
 fn skip_non_code_at(source string, i int) (int, string) {
 	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
 		return source.index_after('\n', i) or { source.len }, ''
@@ -2740,7 +2743,10 @@ fn skip_non_code_at(source string, i int) (int, string) {
 		}
 		j++
 	}
-	return int_min(j + 1, source.len), interpolated.bytestr()
+	mut value := []u8{cap: interpolated.len + 1}
+	value << `0`
+	value << interpolated
+	return int_min(j + 1, source.len), value.bytestr()
 }
 
 // code_references_ident reports whether `code` reads or writes `name`. A

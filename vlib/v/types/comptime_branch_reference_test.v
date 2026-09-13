@@ -259,3 +259,14 @@ fn test_assembly_instructions_are_not_v_code() {
 	assert code_references_ident('asm arm64 {\n\tmov x0, x1\n}\nprintln(x0)', 'x0', true)
 	assert code_references_ident('println(x0)\nasm arm64 {\n\tmov x0, x1\n}', 'x0', true)
 }
+
+fn test_a_literal_lambda_body_still_leaves_a_token() {
+	// The body disappears from the sanitized code, so it needs a placeholder;
+	// without one the range would run on to the statement below.
+	assert code_references_ident(scanned_code("cb := |y| 'constant'\nprintln(x)"), 'x', true)
+	assert !code_references_ident(scanned_code("cb := |x| 'constant'\nprintln(y)"), 'x', true)
+	assert code_references_ident(scanned_code("cb := |x| 'constant'\nprintln(x)"), 'x', true)
+	// An interpolated body keeps its own code, and still ends with its line.
+	assert code_references_ident(scanned_code(r"cb := |y| '${a}'\nprintln(x)"), 'x', true)
+	assert code_references_ident(scanned_code(r"cb := |y| '${x}'"), 'x', true)
+}
