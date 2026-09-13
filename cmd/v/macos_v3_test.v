@@ -134,24 +134,34 @@ fn test_netbsd_marks_the_v1_compatibility_compiler() {
 	assert makefile.contains('paxctl +m \$(V1_FALLBACK_EXE)')
 }
 
-fn test_gnumake_builds_the_v1_fallback_executable_for_every_native_host() {
+fn test_gnumake_builds_the_v1_fallback_only_on_demand() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
 	assert source.contains('V1_FALLBACK_EXE = \$(dir \$(VEXE))v1_fallback\$(EXE_EXT)')
-	installer := 'sh "\$(V1_FALLBACK_INSTALLER)" "./v1\$(EXE_EXT)" "\$(V1_FALLBACK_EXE)"'
-	assert source.count(installer) == 2
-	oldv_environment := 'CC="\$(CC)" OLDV_CCOPTIONS="\$(BOOTSTRAP_VC_CFLAGS)" OLDV_LDFLAGS="\$(BOOTSTRAP_LDFLAGS)"'
-	assert source.count(oldv_environment) == 2
+	all_recipe := source.all_after('all: latest_vc latest_tcc latest_legacy').all_before('\nv1:\n')
+	assert !all_recipe.contains('V1_FALLBACK_EXE')
+	assert all_recipe.contains('-new-compiler run cmd/tools/detect_tcc.v')
+	assert all_recipe.contains('-new-compiler run .github/problem-matchers/register_all.vsh')
+	assert source.contains('\n.PHONY: all v1 ')
+	assert source.contains('\nv1:\n')
+	assert source.contains('candidate="\$(V1_FALLBACK_EXE).tmp.\$\$\$\$"')
+	assert source.contains('Built V1 compatibility compiler: \$(V1_FALLBACK_EXE)')
 	assert !source.contains('-d v1_fallback -o \$(V1_FALLBACK_EXE)')
 }
 
-fn test_portable_make_builds_the_v1_fallback_executable_for_every_native_host() {
+fn test_portable_make_builds_the_v1_fallback_only_on_demand() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'Makefile'))!
-	assert source.count('sh ./cmd/tools/install_v1_fallback.sh ./v1 ./v1_fallback') == 1
-	assert source.contains('CC="\$(CC)" OLDV_CCOPTIONS="\$\$bootstrap_ccflags" OLDV_LDFLAGS="\$\$ldflags"')
+	v_recipe := source.all_after('\nv:\n').all_before('\nv1:\n')
+	assert !v_recipe.contains('v1_fallback')
+	assert v_recipe.contains('./v -new-compiler run ./cmd/tools/detect_tcc.v')
+	assert v_recipe.contains('./v -new-compiler run .github/problem-matchers/register_all.vsh')
+	assert source.contains('\n.PHONY: all check download_vc install v v1\n')
+	assert source.contains('\nv1:\n')
+	assert source.contains('candidate=./v1_fallback.tmp.\$\$\$\$')
+	assert source.contains('Built V1 compatibility compiler: ./v1_fallback')
 	assert !source.contains('set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback')
 }
 
-fn test_v1_fallback_installer_downloads_0_5_2_and_uses_oldv_on_failure() {
+fn test_v1_fallback_installer_downloads_0_5_2_and_uses_local_or_oldv_fallback() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'install_v1_fallback.sh'))!
 	assert source.contains('release_version=0.5.2')
 	assert source.contains('https://github.com/vlang/v/releases/download/\$release_version')
@@ -160,12 +170,17 @@ fn test_v1_fallback_installer_downloads_0_5_2_and_uses_oldv_on_failure() {
 		assert source.contains('asset=${asset}'), asset
 	}
 	assert source.contains('candidate_has_expected_version || {')
+	assert source.contains('if [ -n "\${V1_FALLBACK_LOCAL:-}" ]; then')
+	assert source.contains('"\$bootstrap_v" -no-parallel -gc none -d v1_fallback -o "\$candidate"')
 	assert source.contains('cmd/tools/oldv.v --cache=false --command "\$oldv_copy" "\$release_version"')
 	assert source.contains('actual_sha256=\$(sha256_of "\$archive")')
 	oldv_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'oldv.v'))!
 	assert oldv_source.contains("if use_cache {\n\t\t\ttools << 'rsync'")
 	assert oldv_source.contains('oldv_required_tools(context.use_cache, context.cc)')
 	assert oldv_source.contains('tools << cc')
+	assert oldv_source.contains("default_cc := if env_cc == '' { 'cc' } else { env_cc }")
+	assert oldv_source.contains("context.cc = fp.string('cc', 0, default_cc")
+	assert !oldv_source.contains("if env_cc != '' {\n\t\tcontext.cc = env_cc")
 	assert oldv_source.contains("env_ldflags := os.getenv('OLDV_LDFLAGS')")
 	vgit_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'modules', 'vgit', 'vgit.v'))!
 	assert vgit_source.contains("c_ldflags = '\${c_ldflags} \${vgit_context.cc_ldflags}'.trim_space()")

@@ -117,8 +117,7 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) {
 
 @[noreturn]
 fn launch_macos_v1_fallback(executable string, args []string, is_verbose bool, reason string) {
-	if !os.is_executable(executable) {
-		eprintln('${reason}, but the V1 compatibility compiler `${executable}` is missing. Rebuild V with `make` to create it.')
+	if !os.is_executable(executable) && !build_missing_macos_v1_fallback(executable, reason) {
 		exit(1)
 	}
 	// Keep nested tool/test compilations on V1 as well. Otherwise an inherited
@@ -144,6 +143,58 @@ fn launch_macos_v1_fallback(executable string, args []string, is_verbose bool, r
 		exit(1)
 	}
 	exit(1)
+}
+
+fn macos_v3_make_workdir(executable string) ?string {
+	mut current := os.real_path(os.dir(executable))
+	for _ in 0 .. 32 {
+		has_makefile := os.is_file(os.join_path(current, 'GNUmakefile'))
+			|| os.is_file(os.join_path(current, 'Makefile'))
+		if has_makefile && os.is_dir(os.join_path(current, 'cmd', 'v')) {
+			return current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return none
+}
+
+fn macos_v3_make_command() ?string {
+	for name in ['make', 'gmake'] {
+		path := os.find_abs_path_of_executable(name) or { continue }
+		return path
+	}
+	return none
+}
+
+fn build_missing_macos_v1_fallback(executable string, reason string) bool {
+	workdir := macos_v3_make_workdir(executable) or {
+		eprintln('${reason}, but the V1 compatibility compiler `${executable}` is missing and the V source tree could not be found. Run `make v1` in the V source directory.')
+		return false
+	}
+	make_command := macos_v3_make_command() or {
+		eprintln('${reason}, but the V1 compatibility compiler `${executable}` is missing and `make` was not found. Install make, then run `make v1` in `${workdir}`.')
+		return false
+	}
+	eprintln('${reason}, but the V1 compatibility compiler `${executable}` is missing; running `make v1` now...')
+	mut process := os.new_process(make_command)
+	process.set_args(['VEXE=${os.real_path(pref.vexe_path())}', 'v1'])
+	process.set_work_folder(workdir)
+	process.wait()
+	exit_code := process.code
+	process.close()
+	if exit_code != 0 {
+		eprintln('`make v1` failed with exit code ${exit_code}. Run it manually in `${workdir}` for more details.')
+		return false
+	}
+	if !os.is_executable(executable) {
+		eprintln('`make v1` completed without creating `${executable}`.')
+		return false
+	}
+	return true
 }
 
 // exec_command renders an argv for a shell, for the platforms that cannot exec.

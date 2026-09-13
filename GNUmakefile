@@ -7,7 +7,6 @@ VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
 V1_FALLBACK_EXE = $(dir $(VEXE))v1_fallback$(EXE_EXT)
-V1_FALLBACK_INSTALLER = $(VROOT)/cmd/tools/install_v1_fallback.sh
 # Portable VC snapshots do not embed V3. Keep their v1 executable on the full
 # compatibility compiler path even when the generated C is built on a V3 host.
 VC_BOOTSTRAP_DEFINE := -DCUSTOM_DEFINE_v1_fallback
@@ -136,7 +135,7 @@ GITFASTCLONE := $(GIT) clone --filter=blob:none --quiet
 
 TCCBUILDSCRIPT = $(VROOT)/thirdparty/build_scripts/thirdparty-$(TCCOS)-$(TCCARCH)_tcc.sh
 
-.PHONY: all clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
+.PHONY: all v1 clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
 
 ifdef prod
 VFLAGS+=-prod
@@ -217,7 +216,6 @@ all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
 	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
-	CC="$(CC)" OLDV_CCOPTIONS="$(BOOTSTRAP_VC_CFLAGS)" OLDV_LDFLAGS="$(BOOTSTRAP_LDFLAGS)" sh "$(V1_FALLBACK_INSTALLER)" "./v1$(EXE_EXT)" "$(V1_FALLBACK_EXE)"
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
 	$(RM) v2$(EXE_EXT)
@@ -236,20 +234,46 @@ endif
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
 endif
-	CC="$(CC)" OLDV_CCOPTIONS="$(BOOTSTRAP_VC_CFLAGS)" OLDV_LDFLAGS="$(BOOTSTRAP_LDFLAGS)" sh "$(V1_FALLBACK_INSTALLER)" "./v1$(EXE_EXT)" "$(V1_FALLBACK_EXE)"
-ifdef NETBSD
-	paxctl +m $(V1_FALLBACK_EXE)
-endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m $(VEXE)$(EXE_EXT)
 endif
 	rm -rf v1$(EXE_EXT) v2$(EXE_EXT)
 endif
-	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) run cmd/tools/detect_tcc.v
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	@$(VEXE)$(EXE_EXT) -version
-	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) run .github/problem-matchers/register_all.vsh
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run .github/problem-matchers/register_all.vsh
+
+v1:
+ifdef WIN32
+	@set -e; \
+	if [ ! -f "$(VC)/$(VCFILE)" ]; then '$(MAKE)' latest_vc; fi; \
+	mkdir -p "$(dir $(V1_FALLBACK_EXE))"; \
+	candidate="$(V1_FALLBACK_EXE).tmp.$$$$"; \
+	trap 'rm -f "$$candidate"' EXIT HUP INT TERM; \
+	if ! $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o "$$candidate" "$(VC)/$(VCFILE)" $(LDFLAGS) -lws2_32; then \
+		cmd/tools/cc_compilation_failed_windows.sh; \
+		exit 1; \
+	fi; \
+	mv -f "$$candidate" "$(V1_FALLBACK_EXE)"; \
+	echo "Built V1 compatibility compiler: $(V1_FALLBACK_EXE)"
+else
+	@set -e; \
+	if [ ! -f "$(VC)/$(VCFILE)" ]; then '$(MAKE)' latest_vc; fi; \
+	mkdir -p "$(dir $(V1_FALLBACK_EXE))"; \
+	candidate="$(V1_FALLBACK_EXE).tmp.$$$$"; \
+	trap 'rm -f "$$candidate"' EXIT HUP INT TERM; \
+	if ! $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o "$$candidate" "$(VC)/$(VCFILE)" -lm -lpthread $(BOOTSTRAP_LDFLAGS); then \
+		cmd/tools/cc_compilation_failed_non_windows.sh; \
+		exit 1; \
+	fi; \
+	mv -f "$$candidate" "$(V1_FALLBACK_EXE)"
+ifdef NETBSD
+	paxctl +m $(V1_FALLBACK_EXE)
+endif
+	@echo "Built V1 compatibility compiler: $(V1_FALLBACK_EXE)"
+endif
 
 clean:
 	rm -rf $(TMPTCC)
