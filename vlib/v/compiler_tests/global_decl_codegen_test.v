@@ -228,3 +228,23 @@ fn test_inferred_generic_atomic_globals_keep_concrete_types() {
 	out := global_decl_run_good(v3_bin, 'inferred_generic_atomic_globals', 'import sync.stdatomic\n\n__global flag = stdatomic.new_atomic(false)\n__global number = stdatomic.new_atomic(7)\n\nfn main() {\n\tprintln(int_str(number.load()))\n\tprintln(flag.load())\n}\n')
 	assert out == '7\nfalse'
 }
+
+fn test_volatile_global_keeps_its_name_and_qualifier() {
+	v3_bin := global_decl_build_v3()
+	// `volatile` is a qualifier on the global, not its name. The parser used to
+	// read it as the name and the real name as the type, so every use of the
+	// global reported an undefined identifier.
+	source := 'struct Rev {\npub mut:\n\trevision u64\n}\n\n__global (\n\tvolatile base_revision = Rev{\n\t\trevision: 2\n\t}\n)\n\nfn main() {\n\tif base_revision.revision != 0 {\n\t\tprintln(u64__str(base_revision.revision))\n\t}\n}\n'
+	out := global_decl_run_good(v3_bin, 'volatile_global_name', source)
+	assert out == '2'
+	// A kernel writes these where the hardware or the bootloader can see them,
+	// so the qualifier has to reach the C declaration too.
+	c_code := global_decl_generate_c(v3_bin, 'volatile_global_name_c', source)
+	assert c_code.contains('volatile main__Rev base_revision'), c_code
+}
+
+fn test_volatile_global_in_ungrouped_declaration_resolves() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'volatile_global_ungrouped', '__global volatile ticks = u64(3)\n\nfn main() {\n\tticks = ticks + 1\n\tprintln(u64__str(ticks))\n}\n')
+	assert out == '4'
+}

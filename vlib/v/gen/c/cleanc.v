@@ -345,6 +345,9 @@ mut:
 	str_lit_ids                    map[string]int
 	str_lits_shared                bool
 	global_types                   map[string]types.Type
+	// Globals declared `volatile`. A kernel writes these where the hardware or
+	// the bootloader can see them, so the qualifier has to survive into the C.
+	global_volatile_names          map[string]bool
 	global_raw_type_texts          map[string]string
 	enum_vals                      map[string]int
 	enum_value_exprs               map[string]string
@@ -4216,6 +4219,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 						if ft is types.Void {
 							ft = g.tc.resolve_type(g.a.child(f, 0))
 						}
+						if 'volatile' in f.generic_params() {
+							g.global_volatile_names[f.value] = true
+						}
 						g.global_types[f.value] = ft
 						g.global_raw_type_texts[f.value] = f.typ
 						g.global_modules[f.value] = cur_module
@@ -4233,6 +4239,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 					ft = g.tc.resolve_type(g.a.child(f, 0))
 				}
 				qname := qualify_name_in_module(cur_module, f.value)
+				if 'volatile' in f.generic_params() {
+					g.global_volatile_names[qname] = true
+					g.global_volatile_names[f.value] = true
+				}
 				g.global_types[qname] = ft
 				g.global_raw_type_texts[qname] = f.typ
 				g.global_modules[f.value] = cur_module
@@ -16876,6 +16886,14 @@ fn (mut g FlatGen) preamble() {
 }
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
+	// A freestanding target has no host libc to include. Vinix is a kernel: it
+	// compiles with -nostdinc against its own freestanding headers, and its own
+	// `#include`s name those. Letting them select the system preamble emitted
+	// <sys/un.h> and the rest of the POSIX networking set into a translation
+	// unit where none of it exists.
+	if g.target.os == 'vinix' {
+		return false
+	}
 	for directive in g.preinclude_directives {
 		for line in directive.split_into_lines() {
 			clean := trimmed_space(line)
@@ -20525,6 +20543,12 @@ fn (mut g FlatGen) emit_tinyc_pthread_pointer_slot(cname string, ct string) {
 	g.writeln('#define ${cname} (*${cname}_slot())')
 }
 
+// global_volatile_qualifier returns `volatile ` for a global declared with that
+// keyword, so the C declaration says what the V one did.
+fn (g &FlatGen) global_volatile_qualifier(name string) string {
+	return if name in g.global_volatile_names { 'volatile ' } else { '' }
+}
+
 fn (mut g FlatGen) global_decls() {
 	old_module := g.tc.cur_module
 	for name, typ in g.global_types {
@@ -20544,6 +20568,7 @@ fn (mut g FlatGen) global_decls() {
 				continue
 			}
 		}
+		vq := g.global_volatile_qualifier(name)
 		if decl_typ is types.ArrayFixed {
 			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
@@ -20552,7 +20577,7 @@ fn (mut g FlatGen) global_decls() {
 				g.emit_tinyc_pthread_value_slot(g.cname(name), c_elem, dims)
 				g.emit_thread_local_decl_after_tinyc('${c_elem} ${g.cname(name)}${dims}${init};')
 			} else {
-				g.writeln('${c_elem} ${g.cname(name)}${dims}${init};')
+				g.writeln('${vq}${c_elem} ${g.cname(name)}${dims}${init};')
 			}
 			continue
 		}
@@ -20569,12 +20594,12 @@ fn (mut g FlatGen) global_decls() {
 			ct = g.resolve_fn_ptr_type(ct)
 		}
 		if extern_name := g.c_extern_global_names[name] {
-			g.writeln('extern ${ct} ${extern_name};')
+			g.writeln('extern ${vq}${ct} ${extern_name};')
 			continue
 		}
 		if name.starts_with('C.') {
 			if name in g.global_inits {
-				g.writeln('${ct} ${g.global_c_name(name)};')
+				g.writeln('${vq}${ct} ${g.global_c_name(name)};')
 			}
 			continue
 		}
@@ -20611,7 +20636,7 @@ fn (mut g FlatGen) global_decls() {
 			g.writeln('#endif')
 			continue
 		}
-		g.writeln('${ct} ${g.cname(name)}${init};')
+		g.writeln('${vq}${ct} ${g.cname(name)}${init};')
 	}
 	g.tc.cur_module = old_module
 	if g.global_types.len > 0 {

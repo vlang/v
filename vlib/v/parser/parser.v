@@ -2200,6 +2200,14 @@ fn (mut p Parser) global_decl() flat.NodeId {
 			is_const = true
 			p.next()
 		}
+		// `volatile x = ...` is a qualifier on the global, not its name. Without
+		// this the name below ate `volatile`, the real name became the type, and
+		// every use of the global reported an undefined identifier.
+		mut is_volatile := false
+		if p.tok == .key_volatile {
+			is_volatile = true
+			p.next()
+		}
 		if p.tok == .name || p.tok.is_keyword() {
 			field_start := p.span_start()
 			gname := p.expect_name_or_keyword()
@@ -2219,6 +2227,13 @@ fn (mut p Parser) global_decl() flat.NodeId {
 				p.next()
 				val_id = p.expr(.lowest)
 			}
+			mut qualifiers := []string{}
+			if is_const {
+				qualifiers << 'const'
+			}
+			if is_volatile {
+				qualifiers << 'volatile'
+			}
 			if int(val_id) >= 0 {
 				vstart := p.add_child(val_id)
 				ids << p.add_node(flat.Node{
@@ -2226,7 +2241,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 					value: full_name
 					typ: gtype
 					op: if field_is_pub { .arrow } else { .none }
-					payload: flat.node_payload(if is_const { ['const'] } else { []string{} })
+					payload: flat.node_payload(qualifiers)
 					children_start: vstart
 					children_count: 1
 					pos: p.span_to(field_start)
@@ -2237,7 +2252,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 					value: full_name
 					typ: gtype
 					op: if field_is_pub { .arrow } else { .none }
-					payload: flat.node_payload(if is_const { ['const'] } else { []string{} })
+					payload: flat.node_payload(qualifiers)
 					pos: p.span_to(field_start)
 				})
 			}
@@ -13062,6 +13077,13 @@ fn (mut p Parser) parse_type_name() string {
 			type_list << p.parse_type_name()
 		}
 		p.check(.rpar)
+		// A single type in parentheses is a grouped type, not a one-element
+		// multi-return: `?([]u64)` means `?[]u64`. Keeping the parentheses in the
+		// type text made the checker look for a type literally named `([]u64)`,
+		// so the option unwrapped to something with no `len` and no index.
+		if type_list.len == 1 && type_list[0].len > 0 {
+			return type_list[0]
+		}
 		return '(' + type_list.join(', ') + ')'
 	}
 	// function type fn(T) U
