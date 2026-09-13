@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unused_in_dropped_branch_map_key_and_write.vv:14:6: warning: unused variable: `w`
+   12 | 
+   13 | fn write_only() {
+   14 |     mut w := 0
+      |         ^
+   15 |     $if windows {
+   16 |         w = 1

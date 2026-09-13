@@ -5,6 +5,7 @@ fn main() {
 	q := 1
 	$if windows {
 		cb := |q| q + 1
-		println(cb(2))
+		r := cb(2)
+		assert r == 3
 	}
 }

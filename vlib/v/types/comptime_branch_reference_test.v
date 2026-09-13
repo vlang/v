@@ -1,60 +1,95 @@
 module types
 
 fn test_reading_or_writing_a_name_is_a_reference() {
-	assert code_references_ident('println(x)', 'x')
-	assert code_references_ident('x = 1', 'x')
-	assert code_references_ident('x++', 'x')
-	assert code_references_ident('y := x + 1', 'x')
-	assert code_references_ident('for x < 3 {', 'x')
-	assert code_references_ident(r'${x}', 'x')
+	assert code_references_ident('println(x)', 'x', true)
+	assert code_references_ident('x = 1', 'x', true)
+	assert code_references_ident('x++', 'x', true)
+	assert code_references_ident('y := x + 1', 'x', true)
+	assert code_references_ident('for x < 3 {', 'x', true)
+	assert code_references_ident(r'${x}', 'x', true)
 }
 
 fn test_a_member_or_a_field_label_is_not_a_reference() {
-	assert !code_references_ident('cfg.x', 'x')
-	assert !code_references_ident('a.b.x', 'x')
-	assert !code_references_ident('match e { .x {} }', 'x')
-	assert !code_references_ident('_ = Config{ x: 1 }', 'x')
-	assert !code_references_ident('x: for {}', 'x')
+	assert !code_references_ident('cfg.x', 'x', true)
+	assert !code_references_ident('a.b.x', 'x', true)
+	assert !code_references_ident('match e { .x {} }', 'x', true)
+	assert !code_references_ident('_ = Config{ x: 1 }', 'x', true)
+	assert !code_references_ident('x: for {}', 'x', true)
 }
 
 fn test_a_new_binding_is_not_a_reference() {
-	assert !code_references_ident('x := 1', 'x')
-	assert !code_references_ident('mut x := 1', 'x')
-	assert !code_references_ident('a, x := pair()', 'x')
-	assert !code_references_ident('x, b := pair()', 'x')
-	assert !code_references_ident('mut a, mut x := pair()', 'x')
-	assert !code_references_ident('for x in list {', 'x')
-	assert !code_references_ident('for i, x in list {', 'x')
-	assert !code_references_ident('for mut x in list {', 'x')
+	assert !code_references_ident('x := 1', 'x', true)
+	assert !code_references_ident('mut x := 1', 'x', true)
+	assert !code_references_ident('a, x := pair()', 'x', true)
+	assert !code_references_ident('x, b := pair()', 'x', true)
+	assert !code_references_ident('mut a, mut x := pair()', 'x', true)
+	assert !code_references_ident('for x in list {', 'x', true)
+	assert !code_references_ident('for i, x in list {', 'x', true)
+	assert !code_references_ident('for mut x in list {', 'x', true)
 }
 
 fn test_a_longer_name_that_merely_contains_the_searched_one() {
-	assert !code_references_ident('println(x_ray)', 'x')
-	assert !code_references_ident('println(prefix)', 'fix')
-	assert !code_references_ident('', 'x')
-	assert !code_references_ident('println(x)', '')
+	assert !code_references_ident('println(x_ray)', 'x', true)
+	assert !code_references_ident('println(prefix)', 'fix', true)
+	assert !code_references_ident('', 'x', true)
+	assert !code_references_ident('println(x)', '', true)
 }
 
 fn test_a_number_does_not_turn_the_next_name_into_a_member() {
-	assert code_references_ident('println(1.5 + x)', 'x')
-	assert code_references_ident('for i in 0 .. x {', 'x')
+	assert code_references_ident('println(1.5 + x)', 'x', true)
+	assert code_references_ident('for i in 0 .. x {', 'x', true)
 }
 
 fn test_a_pipe_lambda_parameter_shadows_the_searched_name() {
-	assert !code_references_ident('cb := |x| x + 1', 'x')
-	assert !code_references_ident('arr.map(|x| x * 2)', 'x')
-	assert !code_references_ident('f(|mut x| x.len)', 'x')
-	assert !code_references_ident('cb := |a, x| a + x', 'x')
+	assert !code_references_ident('cb := |x| x + 1', 'x', true)
+	assert !code_references_ident('arr.map(|x| x * 2)', 'x', true)
+	assert !code_references_ident('f(|mut x| x.len)', 'x', true)
+	assert !code_references_ident('cb := |a, x| a + x', 'x', true)
 	// The body of such a lambda is one expression, so it ends with its line.
-	assert !code_references_ident('cb := |x| x + 1\nprintln(y)', 'x')
-	assert code_references_ident('cb := |y| y + 1\nprintln(x)', 'x')
+	assert !code_references_ident('cb := |x| x + 1\nprintln(y)', 'x', true)
+	assert code_references_ident('cb := |y| y + 1\nprintln(x)', 'x', true)
 	// A lambda binding another name still reads the searched one.
-	assert code_references_ident('arr.map(|i| i * x)', 'x')
-	assert code_references_ident('f(|i| i, x)', 'x')
+	assert code_references_ident('arr.map(|i| i * x)', 'x', true)
+	assert code_references_ident('f(|i| i, x)', 'x', true)
 }
 
 fn test_a_bitwise_or_does_not_open_a_lambda() {
-	assert code_references_ident('a | x', 'x')
-	assert code_references_ident('flags := a | x | b', 'x')
-	assert code_references_ident('f(a || x)', 'x')
+	assert code_references_ident('a | x', 'x', true)
+	assert code_references_ident('flags := a | x | b', 'x', true)
+	assert code_references_ident('f(a || x)', 'x', true)
+}
+
+fn test_a_map_key_expression_is_a_reference() {
+	assert code_references_ident('m := {x: 1}', 'x', true)
+	assert code_references_ident('m := {\n\tx: 1\n}', 'x', true)
+	assert code_references_ident('f({x: 1})', 'x', true)
+	assert code_references_ident('m := {k: {x: 1}}', 'x', true)
+	// A struct literal names its fields, and its own `{` follows the type.
+	assert !code_references_ident('_ = Config{x: 1}', 'x', true)
+	assert !code_references_ident('_ = []Config{}\n_ = Config{\n\tx: 1\n}', 'x', true)
+	assert !code_references_ident('_ = {k: Config{x: 1}}', 'x', true)
+	assert !code_references_ident('f(g(a), Config{x: 1})', 'x', true)
+}
+
+fn test_a_plain_assignment_writes_without_reading() {
+	assert !code_references_ident('x = 1', 'x', false)
+	assert !code_references_ident('println(1)\nx = 1', 'x', false)
+	assert !code_references_ident('if c { x = 1 }', 'x', false)
+	// Every other assignment, and every other position, still reads it.
+	assert code_references_ident('x += 1', 'x', false)
+	assert code_references_ident('x == 1', 'x', false)
+	assert code_references_ident('x != 1', 'x', false)
+	assert code_references_ident('y = x', 'x', false)
+	assert code_references_ident('x.field = 1', 'x', false)
+	assert code_references_ident('m[x] = 1', 'x', false)
+	// fn_body_read_names skips the first child of an assignment alone.
+	assert code_references_ident('a, x = pair()', 'x', false)
+	// The unused parameter notice counts a write, the way fn_body_uses_ident does.
+	assert code_references_ident('x = 1', 'x', true)
+}
+
+fn test_a_block_bodied_lambda_shadows_its_whole_body() {
+	assert !code_references_ident('cb := |x| {\n\tprintln(x)\n\tx + 1\n}', 'x', true)
+	assert !code_references_ident('cb := |x| (\n\tx + 1\n)', 'x', true)
+	assert code_references_ident('cb := |y| {\n\ty + 1\n}\nprintln(x)', 'x', true)
 }

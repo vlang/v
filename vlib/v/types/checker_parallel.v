@@ -1995,7 +1995,7 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
 			continue
 		}
-		if tc.fn_comptime_branch_may_use_ident(node, candidate.name) {
+		if tc.fn_comptime_branch_may_use_ident(node, candidate.name, false) {
 			continue
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
@@ -2423,7 +2423,7 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 		if tc.fn_body_reflects_param_type(node, param.typ) {
 			continue
 		}
-		if tc.fn_comptime_branch_may_use_ident(node, param.value) {
+		if tc.fn_comptime_branch_may_use_ident(node, param.value, true) {
 			continue
 		}
 		mut has_param_error := false
@@ -2519,7 +2519,7 @@ struct ComptimeBranchRange {
 // branch, so an identifier used only there is invisible to the AST walks above,
 // and reporting it as unused would be wrong for the build configuration that
 // does take the branch.
-fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name string) bool {
+fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name string, writes_are_uses bool) bool {
 	if name.len == 0 {
 		return false
 	}
@@ -2529,7 +2529,7 @@ fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name strin
 	// be recovered from the source.
 	for branch in declaration_comptime_branch_ranges(source, node.pos.offset) {
 		code := code_text_in_range(source, branch.start, branch.end)
-		if !code_references_ident(code, name) {
+		if !code_references_ident(code, name, writes_are_uses) {
 			continue
 		}
 		// A taken branch is parsed like any other code, so the walks above
@@ -2724,7 +2724,7 @@ fn skip_non_code_at(source string, i int) (int, string) {
 // token stream: an identifier that is a member name, a field label or the
 // declaration of a new binding does not reference the searched name, even
 // though it spells it.
-fn code_references_ident(code string, name string) bool {
+fn code_references_ident(code string, name string, writes_are_uses bool) bool {
 	if name.len == 0 {
 		return false
 	}
@@ -2745,16 +2745,71 @@ fn code_references_ident(code string, name string) bool {
 			// `cfg.x` or the enum value `.x`, a member of something else.
 			continue
 		}
-		if i + 1 < tokens.len && tokens[i + 1] == ':' {
-			// The field label of `Config{x: 1}`, or the `x: for {}` label.
+		if colon_binds_a_field_or_label(tokens, i) {
 			continue
 		}
 		if token_declares_new_binding(tokens, i) {
 			continue
 		}
+		if !writes_are_uses && token_is_assignment_target(tokens, lines, i) {
+			// `x = 1` writes without reading, which fn_body_read_names does not
+			// count either. fn_body_uses_ident, behind the unused *parameter*
+			// notice, has no such rule, hence the flag.
+			continue
+		}
 		return true
 	}
 	return false
+}
+
+// colon_binds_a_field_or_label reports whether the `:` after `tokens[index]`
+// makes it the field label of a struct literal or the label of a loop. The key
+// of a map literal is an expression, so it does reference the name.
+fn colon_binds_a_field_or_label(tokens []string, index int) bool {
+	if index + 1 >= tokens.len || tokens[index + 1] != ':' {
+		return false
+	}
+	if index + 2 < tokens.len && tokens[index + 2] == 'for' {
+		return true
+	}
+	// A struct literal is `Type{x: 1}`; a bare `{` opens a map literal.
+	mut depth := 0
+	for i := index - 1; i >= 0; i-- {
+		match tokens[i] {
+			'}', ')', ']' {
+				depth++
+			}
+			'(', '[' {
+				if depth == 0 {
+					return false
+				}
+				depth--
+			}
+			'{' {
+				if depth > 0 {
+					depth--
+					continue
+				}
+				return i > 0 && is_ident_token(tokens[i - 1])
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+// token_is_assignment_target reports whether `tokens[index]` is the whole left
+// hand side of a plain `=`, the one position fn_body_read_names skips.
+fn token_is_assignment_target(tokens []string, lines []int, index int) bool {
+	if index + 1 >= tokens.len || tokens[index + 1] != '=' {
+		return false
+	}
+	if index == 0 {
+		return true
+	}
+	// Only the first name of a statement: `a, x = pair()` reads `x` in the AST
+	// walk too, which skips the first child of the assignment alone.
+	return lines[index - 1] != lines[index] || tokens[index - 1] in ['{', '}', ';']
 }
 
 // token_declares_new_binding reports whether `tokens[index]` introduces a name
@@ -2869,6 +2924,13 @@ fn code_tokens(code string) ([]string, []int) {
 			i += 2
 			continue
 		}
+		if i + 1 < code.len && code[i + 1] == `=`
+			&& c in [`=`, `!`, `<`, `>`, `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`] {
+			// `x == y` and `x += 1` read x; only a bare `x =` does not.
+			tokens << code[i..i + 2]
+			i += 2
+			continue
+		}
 		tokens << code[i..i + 1]
 		i++
 	}
@@ -2890,8 +2952,9 @@ fn token_index_is_shadowed(ranges []TokenRange, index int) bool {
 }
 
 // pipe_lambda_shadow_ranges returns the token range of every `|x| x + 1` lambda
-// that binds `name`. Such a body is a single expression, so it ends with the
-// line, or with the `,` or the bracket that encloses the lambda.
+// that binds `name`. Its body ends with the line, or with the `,` or the bracket
+// that encloses the lambda, unless it is a `{ .. }` block or a parenthesised
+// group, which lambda_body_expr also accepts and which may span lines.
 fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenRange {
 	mut ranges := []TokenRange{}
 	for i, word in tokens {
@@ -2907,7 +2970,9 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 		}
 		mut end := close + 1
 		mut depth := 0
-		for end < tokens.len && lines[end] == lines[close] {
+		// A block or a parenthesised body spans lines; a bare expression body
+		// ends with its own line.
+		for end < tokens.len && (depth > 0 || lines[end] == lines[close]) {
 			current := tokens[end]
 			if current in ['(', '[', '{'] {
 				depth++

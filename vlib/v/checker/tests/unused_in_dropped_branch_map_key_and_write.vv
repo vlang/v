@@ -1,0 +1,23 @@
+// A dropped `$if` branch has to be read the way the AST reads a taken one: the
+// key of a map literal is an expression that references the name, while a plain
+// assignment writes to it without reading it.
+fn map_key(k string) {
+	$if windows {
+		m := {
+			k: 1
+		}
+		println(m)
+	}
+}
+
+fn write_only() {
+	mut w := 0
+	$if windows {
+		w = 1
+	}
+}
+
+fn main() {
+	map_key('a')
+	write_only()
+}
