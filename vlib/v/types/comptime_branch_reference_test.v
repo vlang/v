@@ -396,3 +396,18 @@ fn test_a_propagated_condition_opens_a_block() {
 	assert code_references_ident('m := {x: 1}', 'x', true)
 	assert code_references_ident('if get_bool()! {\n\tm := {x: 1}\n}', 'x', true)
 }
+
+fn test_a_type_marker_is_not_a_variable() {
+	assert !code_references_ident('c := chan int{}', 'chan', true)
+	assert !code_references_ident('c := chan []int{}', 'chan', true)
+	assert !code_references_ident('ts := []thread{}', 'thread', true)
+	assert !code_references_ident('ts := []thread int{}', 'thread', true)
+	// An ambiguous follower reads the variable of that name instead, which is
+	// the safe way round: `chan & 1` and `chan[0]` do read it, and a
+	// `chan &Config{}` that does not only costs a notice.
+	assert code_references_ident('_ = chan & 1', 'chan', true)
+	assert code_references_ident('_ = chan[0]', 'chan', true)
+	assert code_references_ident('println(chan)', 'chan', true)
+	assert code_references_ident('ts << thread', 'thread', true)
+	assert code_references_ident('_ = chan.cap', 'chan', true)
+}

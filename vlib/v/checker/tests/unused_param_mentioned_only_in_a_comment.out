@@ -89,3 +89,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:129:25: notice:
       |                         ~~
   130 |     $if windows {
   131 |         if get_bool()! {
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:147:24: notice: unused parameter: `chan`
+  145 | // names a type. `$if v_chan_probe ?` is never defined, so the branch is dropped
+  146 | // on every target and compiled on none.
+  147 | fn channel_type_marker(chan int) {
+      |                        ~~~~
+  148 |     $if v_chan_probe ? {
+  149 |         c := chan int{}

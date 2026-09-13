@@ -2811,6 +2811,12 @@ fn code_references_ident(code string, name string, writes_are_uses bool) bool {
 			// `cfg.x` or the enum value `.x`, a member of something else.
 			continue
 		}
+		if token_is_a_type_marker(tokens, i) {
+			// `chan int{}` and `[]thread{}` name a type. V accepts `chan` and
+			// `thread` as identifiers, so a parameter may be called one, but
+			// the parser gives the construction no child for the marker.
+			continue
+		}
 		if i > 0 && lines[i - 1] == lines[i] && tokens[i - 1] in ['goto', 'break', 'continue'] {
 			// The label of `goto x` or of `break outer`, which the parser keeps
 			// as the value of the statement without an identifier node.
@@ -3219,6 +3225,26 @@ fn asm_template_token_ranges(tokens []string) []TokenRange {
 		}
 	}
 	return ranges
+}
+
+// token_is_a_type_marker reports whether `tokens[index]` spells the type of what
+// follows it rather than a variable of that name. `chan` and `thread` are not
+// reserved, so `fn f(chan int)` declares a parameter, while `chan int{}` and
+// `[]thread{}` construct a value of a type. The ambiguous followers are left
+// out: `chan & 1` and `chan[0]` read a variable.
+fn token_is_a_type_marker(tokens []string, index int) bool {
+	if tokens[index] !in ['chan', 'thread', 'map'] {
+		return false
+	}
+	next := index + 1
+	if next >= tokens.len {
+		return false
+	}
+	if tokens[next] == '{' || is_ident_token(tokens[next]) {
+		return true
+	}
+	// `chan []int`, and not the `chan[0]` of an index.
+	return tokens[next] == '[' && next + 1 < tokens.len && tokens[next + 1] == ']'
 }
 
 // comptime_condition_token_ranges returns the token range of every `$if` and

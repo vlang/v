@@ -141,7 +141,18 @@ fn propagated_condition(pc int) ! {
 	}
 }
 
+// `chan` is not reserved, so it may name a parameter, and `chan int{}` still
+// names a type. `$if v_chan_probe ?` is never defined, so the branch is dropped
+// on every target and compiled on none.
+fn channel_type_marker(chan int) {
+	$if v_chan_probe ? {
+		c := chan int{}
+		println(c.cap)
+	}
+}
+
 fn main() {
+	channel_type_marker(12)
 	propagated_condition(11) or { println('e') }
 	_ = get_bool() or { false }
 	literal_condition(10)
