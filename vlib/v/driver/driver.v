@@ -10064,10 +10064,10 @@ pub fn run(args []string) {
 		// invalidate a cached build, and `v watch` has to rebuild on it. `-print-v-files` is
 		// deliberately left reporting V sources only, the way its name says.
 		mut watched_with_resources := watched_files.clone()
-		mut reported := map[string]bool{}
+		mut additional_inputs := map[string]bool{}
 		for resource in embedded_resource_paths(a) {
 			if resource !in watched {
-				reported[resource] = true
+				additional_inputs[resource] = true
 			}
 		}
 		// A `#include "sqlite3.h"` or `#insert` reaches C sources and headers that are
@@ -10077,10 +10077,10 @@ pub fn run(args []string) {
 		// guessing at the paths.
 		for native_input in native_build_input_paths(a, prefs.vroot, prefs.target) {
 			if native_input !in watched {
-				reported[native_input] = true
+				additional_inputs[native_input] = true
 			}
 		}
-		for path, _ in reported {
+		for path, _ in additional_inputs {
 			watched_with_resources << path
 		}
 		watched_with_resources.sort()
