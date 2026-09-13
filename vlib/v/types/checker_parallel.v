@@ -2776,6 +2776,13 @@ fn code_references_ident(code string, name string, writes_are_uses bool) bool {
 			// `cfg.x` or the enum value `.x`, a member of something else.
 			continue
 		}
+		if i > 0 && tokens[i - 1] in ['$', '@'] {
+			// The name of a compile-time function or constant - `$env('HOME')`,
+			// `$embed_file(..)`, `@FILE` - which the parser replaces with its
+			// value instead of making an identifier node for it. An interpolated
+			// `${x}` keeps no `$` by the time it reaches here.
+			continue
+		}
 		if colon_binds_a_field_or_label(tokens, i) {
 			continue
 		}
@@ -2822,12 +2829,35 @@ fn colon_binds_a_field_or_label(tokens []string, index int) bool {
 					depth--
 					continue
 				}
+				if tokens[i] == '{' && map_literal_type_precedes(tokens, i) {
+					return false
+				}
 				return name_precedes_delimiter(tokens, i)
 			}
 			else {}
 		}
 	}
 	return false
+}
+
+// map_literal_type_precedes reports whether the type written before the `{` at
+// `index` is a `map[..]..`, whose braces hold key expressions and not field
+// labels: `map[string]int{cap: 10}` is rejected as an undefined variable, so
+// every name there is read. The `len`/`cap`/`init` of `[]int{len: 3}` are
+// fields of an array initialisation and stay labels.
+fn map_literal_type_precedes(tokens []string, index int) bool {
+	mut first := index
+	for first > 0 && token_may_spell_a_type(tokens[first - 1]) {
+		first--
+	}
+	for first < index && tokens[first] in ['[', ']', '&', '?', '!'] {
+		first++
+	}
+	return first < index && tokens[first] == 'map'
+}
+
+fn token_may_spell_a_type(word string) bool {
+	return word in ['[', ']', '.', '&', '?', '!', '0'] || is_type_name_token(word)
 }
 
 // name_precedes_delimiter reports whether the `{` or `(` at `index` follows a

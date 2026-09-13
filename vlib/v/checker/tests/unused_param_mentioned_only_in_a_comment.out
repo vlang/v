@@ -40,3 +40,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:48:18: notice: 
       |                  ~~
    49 |     $if windows {
    50 |         $if fl ? {
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:57:22: notice: unused parameter: `env`
+   55 | 
+   56 | // `$env` is a compile-time function, not a read of the parameter.
+   57 | fn comptime_function(env string) {
+      |                      ~~~
+   58 |     $if windows {
+   59 |         _ = $env('PATH')

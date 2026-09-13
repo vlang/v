@@ -44,7 +44,18 @@ fn multi_assign() {
 	println(second)
 }
 
+// A typed map literal holds key expressions too.
+fn typed_map_key(tk string) {
+	$if windows {
+		m := map[string]int{
+			tk: 1
+		}
+		println(m)
+	}
+}
+
 fn main() {
+	typed_map_key('e')
 	map_key('a')
 	write_only()
 	multi_assign()

@@ -206,3 +206,23 @@ fn test_a_lambda_body_may_start_on_the_next_line() {
 	assert !code_references_ident('cb := |x|\n\t{\n\t\tx + 1\n\t}', 'x', true)
 	assert code_references_ident('cb := |y|\n\ty + 1\nprintln(x)', 'x', true)
 }
+
+fn test_a_typed_map_literal_holds_key_expressions() {
+	assert code_references_ident('m := map[string]int{x: 1}', 'x', true)
+	assert code_references_ident('return map[string]int{x: 1}', 'x', true)
+	assert code_references_ident('m := map[string]Box[int]{x: 1}', 'x', true)
+	// An array initialisation names its options, and still reads their values.
+	assert !code_references_ident('_ = []int{len: 3, cap: x}', 'len', true)
+	assert code_references_ident('_ = []int{len: 3, cap: x}', 'x', true)
+	assert !code_references_ident('_ = Config{x: 1}', 'x', true)
+}
+
+fn test_a_compile_time_name_is_not_a_variable() {
+	assert !code_references_ident('_ = \$env(h)', 'env', true)
+	assert !code_references_ident('_ = \$embed_file(p)', 'embed_file', true)
+	assert !code_references_ident('_ = \$d(n, 1)', 'd', true)
+	assert !code_references_ident('println(@FILE)', 'FILE', true)
+	// Their arguments are ordinary code, and an interpolation keeps no `$`.
+	assert code_references_ident('_ = \$d(n, x)', 'x', true)
+	assert code_references_ident(scanned_code(r"_ = '${env}'"), 'env', true)
+}

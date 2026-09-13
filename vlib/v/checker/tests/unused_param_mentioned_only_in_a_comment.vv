@@ -53,7 +53,15 @@ fn comptime_flag(fl int) {
 	}
 }
 
+// `$env` is a compile-time function, not a read of the parameter.
+fn comptime_function(env string) {
+	$if windows {
+		_ = $env('PATH')
+	}
+}
+
 fn main() {
+	comptime_function('f')
 	comptime_flag(5)
 	c_string_literal('d')
 	commented(1)
