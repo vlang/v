@@ -1,0 +1,14 @@
+vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:9:16: notice: unused parameter: `x`
+    7 | }
+    8 | 
+    9 | fn field_label(x int) {
+      |                ^
+   10 |     $if windows {
+   11 |         _ = Config{
+vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:17:11: notice: unused parameter: `y`
+   15 | }
+   16 | 
+   17 | fn member(y int) {
+      |           ^
+   18 |     $if windows {
+   19 |         cfg := Config{}

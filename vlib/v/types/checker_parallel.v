@@ -2529,13 +2529,11 @@ fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name strin
 	// be recovered from the source.
 	for branch in declaration_comptime_branch_ranges(source, node.pos.offset) {
 		code := code_text_in_range(source, branch.start, branch.end)
-		if whole_word_occurrences(code, name) == 0 {
+		if !code_references_ident(code, name) {
 			continue
 		}
 		// A taken branch is parsed like any other code, so the walks above
-		// already saw every use in it and this occurrence is not one: it is the
-		// declaration of the unused name itself (`$if linux { x := 1 }`), a
-		// field name, or another identifier that does not reference it.
+		// already saw every use in it, and what is left here cannot be one.
 		if !tc.subtree_has_node_in_range(node, branch.start, branch.end) {
 			return true
 		}
@@ -2721,23 +2719,142 @@ fn skip_non_code_at(source string, i int) (int, string) {
 	return int_min(j + 1, source.len), interpolated.bytestr()
 }
 
-fn whole_word_occurrences(text string, word string) int {
-	if word.len == 0 {
-		return 0
+// code_references_ident reports whether `code` reads or writes `name`. A
+// dropped `$if` branch has no AST to consult, so the distinction is made on the
+// token stream: an identifier that is a member name, a field label or the
+// declaration of a new binding does not reference the searched name, even
+// though it spells it.
+fn code_references_ident(code string, name string) bool {
+	if name.len == 0 {
+		return false
 	}
-	mut count := 0
-	mut cursor := 0
-	for cursor < text.len {
-		relative := text[cursor..].index(word) or { break }
-		at := cursor + relative
-		end := at + word.len
-		if (at == 0 || !is_import_ident_byte(text[at - 1]))
-			&& (end == text.len || !is_import_ident_byte(text[end])) {
-			count++
+	tokens := code_tokens(code)
+	for i, word in tokens {
+		if word != name {
+			continue
 		}
-		cursor = end
+		if i > 0 && tokens[i - 1] == '.' {
+			// `cfg.x` or the enum value `.x`, a member of something else.
+			continue
+		}
+		if i + 1 < tokens.len && tokens[i + 1] == ':' {
+			// The field label of `Config{x: 1}`, or the `x: for {}` label.
+			continue
+		}
+		if token_declares_new_binding(tokens, i) {
+			continue
+		}
+		return true
 	}
-	return count
+	return false
+}
+
+// token_declares_new_binding reports whether `tokens[index]` introduces a name
+// rather than referencing one: the left hand side of a `:=`, or the variable of
+// a `for .. in` loop. Both may come in a `mut`-prefixed comma separated list.
+fn token_declares_new_binding(tokens []string, index int) bool {
+	after := binding_list_end(tokens, index)
+	if after < tokens.len && tokens[after] == ':=' {
+		return true
+	}
+	start := binding_list_start(tokens, index)
+	// `for x < 3 {` also opens with a name, hence the `in` this list needs.
+	return start > 0 && tokens[start - 1] == 'for' && after < tokens.len
+		&& tokens[after] == 'in'
+}
+
+// binding_list_end returns the index just past the `a, mut b, c` list that
+// `tokens[index]` belongs to.
+fn binding_list_end(tokens []string, index int) int {
+	mut i := index + 1
+	for i < tokens.len && tokens[i] == ',' {
+		mut next := i + 1
+		if next < tokens.len && tokens[next] == 'mut' {
+			next++
+		}
+		if next < tokens.len && is_ident_token(tokens[next]) {
+			i = next + 1
+			continue
+		}
+		break
+	}
+	return i
+}
+
+// binding_list_start returns the index of the first element of that list, the
+// `mut` of a leading `mut name` included.
+fn binding_list_start(tokens []string, index int) int {
+	mut i := index
+	if i > 0 && tokens[i - 1] == 'mut' {
+		i--
+	}
+	for i > 0 && tokens[i - 1] == ',' {
+		mut previous := i - 2
+		if previous >= 0 && is_ident_token(tokens[previous]) {
+			if previous > 0 && tokens[previous - 1] == 'mut' {
+				previous--
+			}
+			i = previous
+			continue
+		}
+		break
+	}
+	return i
+}
+
+// code_tokens splits already sanitized code into identifiers and single
+// punctuation characters, with `:=` kept whole and every number reduced to one
+// token, so that the `.` of `1.5` cannot be read as a selector.
+fn code_tokens(code string) []string {
+	mut tokens := []string{}
+	mut i := 0
+	for i < code.len {
+		c := code[i]
+		if c == ` ` || c == `\t` || c == `\n` || c == `\r` {
+			i++
+			continue
+		}
+		if c.is_digit() {
+			mut end := i
+			for end < code.len && (is_import_ident_byte(code[end]) || code[end] == `.`) {
+				end++
+			}
+			tokens << '0'
+			i = end
+			continue
+		}
+		if is_import_ident_byte(c) {
+			mut end := i
+			for end < code.len && is_import_ident_byte(code[end]) {
+				end++
+			}
+			tokens << code[i..end]
+			i = end
+			continue
+		}
+		if c == `:` && i + 1 < code.len && code[i + 1] == `=` {
+			tokens << ':='
+			i += 2
+			continue
+		}
+		if c == `.` && i + 1 < code.len && code[i + 1] == `.` {
+			// `0 .. x` must not read as a member access of the range end.
+			mut end := i + 2
+			if end < code.len && code[end] == `.` {
+				end++
+			}
+			tokens << code[i..end]
+			i = end
+			continue
+		}
+		tokens << code[i..i + 1]
+		i++
+	}
+	return tokens
+}
+
+fn is_ident_token(word string) bool {
+	return word.len > 0 && (word[0] == `_` || word[0].is_letter())
 }
 
 fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
