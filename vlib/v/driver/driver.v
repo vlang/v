@@ -8546,6 +8546,11 @@ pub fn run(args []string) {
 			backend = if args[i + 1] in ['js_browser', 'js_node'] { 'js' } else { args[i + 1] }
 			backend_explicit = true
 			i += 2
+		} else if args[i] == '-cross' {
+			// Long-standing spelling of `-os cross`; see `v help build-c`.
+			target_os = 'cross'
+			target_os_explicit = true
+			i++
 		} else if args[i] == '-os' && i + 1 < args.len {
 			target_os = args[i + 1]
 			target_os_explicit = true
@@ -9105,6 +9110,15 @@ pub fn run(args []string) {
 		&& pref.normalized_os(target_os.trim_space().to_lower()) == 'wasm32_emscripten' {
 		target_arch = 'wasm32'
 	}
+	// `-os cross` is not a platform. It asks for portable C that is not tied to
+	// one OS, architecture or C compiler, so that a single generated snapshot
+	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
+	// leave every target-dependent `$if` to the C preprocessor.
+	mut output_cross_c := false
+	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
+		output_cross_c = true
+		target_os = os.user_os()
+	}
 	target := pref.target_from(target_os, target_arch) or {
 		eprintln(err.msg())
 		exit(1)
@@ -9316,6 +9330,7 @@ pub fn run(args []string) {
 		eprintln('fastc-phase driver.prefs ${driver_sw.elapsed().microseconds()}us')
 	}
 	prefs.target = target
+	prefs.output_cross_c = output_cross_c
 	prefs.thread_stack_size = if thread_stack_size_set {
 		thread_stack_size
 	} else {
@@ -11516,6 +11531,7 @@ pub fn run(args []string) {
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
+			g.set_output_cross_c(prefs.output_cross_c)
 			g.set_subsystem(prefs.subsystem)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
@@ -11576,6 +11592,7 @@ pub fn run(args []string) {
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
+			g.set_output_cross_c(prefs.output_cross_c)
 			g.set_subsystem(prefs.subsystem)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)

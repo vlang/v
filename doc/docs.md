@@ -8406,6 +8406,58 @@ v -os linux -cc cosmocc .
 You will need to install Clang, LLD linker, and download a zip file with
 libraries and include files for Windows and Linux. V will provide you with a link.
 
+### Portable C output (`-os cross`)
+
+`-os cross` (also spelled `-cross`) is not a platform. It asks for *portable* C,
+i.e. C that is not tied to one OS, architecture or C compiler, so that a single
+generated file can be compiled on any of them. It is how V's own bootstrap
+snapshot `vc/v.c` is produced, and it only makes sense with `-o file.c`:
+
+```shell
+v -os cross -o /tmp/v.c cmd/v
+cc -o v_from_c /tmp/v.c -lm -lpthread
+```
+
+In this mode V does not decide a target-dependent `$if` while generating. It
+keeps every branch and emits the condition as a C preprocessor guard, leaving
+the choice to whichever C compiler builds the file:
+
+```v okfmt
+$if linux {
+	linux_only()
+} $else {
+	everywhere_else()
+}
+```
+
+becomes
+
+```c
+#if (defined(__linux__) && !defined(__ANDROID__))
+linux_only();
+#else
+everywhere_else();
+#endif
+```
+
+Conditions that do not depend on the target - `$if prealloc`, `$if debug`, `-d`
+values - are still resolved while generating, exactly as in an ordinary build.
+`#include`s written inside a `$if`, or carrying a target prefix such as
+`#include linux <sys/timerfd.h>`, are guarded the same way, and headers or C
+sources shipped alongside your code are embedded into the output instead of
+being referenced by a path that will not exist on the machine that compiles it.
+
+Two limitations are worth knowing:
+
+* A `$if` used as an *expression* is resolved for the generating host rather
+  than guarded, because its branches may have different types. For example
+  `closure_thunk` in `vlib/builtin/closure` is a differently sized fixed array
+  per architecture, which no guard around an expression can express.
+* [Environment specific files](#environment-specific-files) are still selected
+  by the host V runs on. A module split into `x_linux.c.v` and `x_darwin.c.v`
+  contributes only the generating host's variant, so generate the portable C on
+  the platform whose variants are the portable ones.
+
 ## Compiling for iOS
 
 V can target iOS when run on macOS. The Xcode command line tools must be

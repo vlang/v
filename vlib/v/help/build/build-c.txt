@@ -152,7 +152,7 @@ see also `v help build`.
          implementation can be found in `vlib/builtin/linux_bare`.
 
    -cross
-      With `-cross`, V will attempt to output cross-platform C code.
+      A shorthand for `-os cross`. See the `-os` entry below.
 
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
@@ -172,6 +172,40 @@ see also `v help build`.
             `plan9`,
             `wasm32`, `wasm32-wasi`, `wasm32-emscripten`
 
+      The pseudo target `-os cross` is not a platform. It asks for portable C,
+      i.e. C that is not tied to one OS, architecture or C compiler, so that a
+      single generated `.c` file can be compiled on any of them. This is how
+      the bootstrap snapshot `vc/v.c` is produced. It only makes sense together
+      with `-o file.c`, since there is no single machine to build for.
+
+      In this mode V does not resolve a target-dependent `$if` while generating.
+      It keeps every branch and emits the condition as a C preprocessor guard,
+      so that the compiler that eventually builds the C file chooses:
+
+            $if linux { a() } $else { b() }
+
+      becomes
+
+            #if (defined(__linux__) && !defined(__ANDROID__))
+            a();
+            #else
+            b();
+            #endif
+
+      Conditions that do not depend on the target (`$if prealloc`, `-d` values,
+      `$if debug`) are still resolved while generating, exactly as usual.
+
+      Two limitations are worth knowing:
+
+        * A `$if` used as an *expression* is resolved for the generating host,
+          not guarded. Its branches may have different types - `closure_thunk`
+          in `vlib/builtin/closure` is a differently sized fixed array per
+          architecture - which no guard around an expression can express.
+        * Platform files (see below) are still selected by the host V runs on.
+          A module split into `x_linux.c.v` and `x_darwin.c.v` therefore
+          contributes only the generating host's variant, so generate the
+          portable C on the platform whose variants are the portable ones.
+
       Note that V has the concept of platform files, i.e. files ending
       with `_platform.c.v`, and usually only the matching files are used in
       a compilation, and also it supports a `_default.c.v` file, that will
@@ -186,10 +220,10 @@ see also `v help build`.
       If you compile with `-os freebsd`, then x_default.c.v will be used.
       If you compile with `-os linux`, then x_linux.c.v will be used.
       If you compile with `-os windows`, then x_windows.c.v will be used.
-      If you compile with `-cross`, then all, *except x_default.c.v*
-      will be used, wrapped in conditional compilation guards, so that
-      the generated C source code will be larger, but will compile on all
-      explicitly supported platforms without source changes.
+      If you compile with `-os cross`, the file for the host V runs on is
+      used, the same as without it: `-os cross` guards the target-dependent
+      `$if` conditions *inside* the selected files, it does not combine the
+      platform files themselves.
 
    -m32, -m64
       Whether 32-bit or 64-bit machine code will be generated.
