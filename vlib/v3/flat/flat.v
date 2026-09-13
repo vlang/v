@@ -197,8 +197,10 @@ pub:
 // (0 = none) instead of a pointer, so copying a node copies the id and the
 // node header stays 80 bytes. The table only grows (payloads are rare and
 // tiny), its chunks outlive every arena, and ids are handed out under a spin
-// lock while lookups are lock-free. The lock and the raw allocations live in
-// flat_payload.c.v.
+// lock while lookups are lock-free: an insert writes the chunk pointer and
+// the entry first and then publishes the new count with a release store, and
+// a lookup acquire-loads the count before it reads either. The lock, the
+// atomics and the raw allocations live in flat_payload.c.v.
 const node_payload_chunk_bits = 12
 const node_payload_chunk_size = 1 << node_payload_chunk_bits
 const node_payload_chunk_mask = node_payload_chunk_size - 1
@@ -207,7 +209,7 @@ const node_payload_max_chunks = 4096
 struct NodePayloadTable {
 mut:
 	chunks [node_payload_max_chunks]voidptr
-	count  int
+	count  u32 // published/read through node_payload_count_publish/_load
 }
 
 __global g_node_payload_table &NodePayloadTable
@@ -223,16 +225,16 @@ pub fn node_payload(generic_params []string) u32 {
 		generic_params: generic_params
 	}
 	node_payload_lock()
-	mut table := g_node_payload_table
+	mut table := node_payload_table_load()
 	if isnil(table) {
 		table = node_payload_new_table()
 		if isnil(table) {
 			node_payload_unlock()
 			panic('v3: could not allocate the node payload table')
 		}
-		g_node_payload_table = table
+		node_payload_table_publish(table)
 	}
-	idx := table.count
+	idx := int(table.count)
 	chunk_idx := idx >> node_payload_chunk_bits
 	if chunk_idx >= node_payload_max_chunks {
 		node_payload_unlock()
@@ -249,7 +251,7 @@ pub fn node_payload(generic_params []string) u32 {
 		mut chunk := &&NodePayload(table.chunks[chunk_idx])
 		chunk[idx & node_payload_chunk_mask] = payload
 	}
-	table.count = idx + 1
+	node_payload_count_publish(mut table, u32(idx + 1))
 	node_payload_unlock()
 	return u32(idx + 1)
 }
@@ -260,8 +262,8 @@ pub fn node_payload_at(id u32) &NodePayload {
 		return &NodePayload(unsafe { nil })
 	}
 	idx := int(id) - 1
-	table := g_node_payload_table
-	if isnil(table) || idx >= table.count {
+	table := node_payload_table_load()
+	if isnil(table) || idx >= int(node_payload_count_load(table)) {
 		return &NodePayload(unsafe { nil })
 	}
 	unsafe {

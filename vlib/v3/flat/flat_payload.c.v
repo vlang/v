@@ -13,6 +13,45 @@ fn C.atomic_compare_exchange_strong_u32(voidptr, voidptr, u32) bool
 
 fn C.atomic_store_u32(voidptr, u32)
 
+fn C.atomic_load_u32(voidptr) u32
+
+fn C.atomic_store_u64(voidptr, u64)
+
+fn C.atomic_load_u64(voidptr) u64
+
+// node_payload_table_load reads the published table pointer, or nil. The
+// pointer goes through the integer atomics of its width, like sync.stdatomic:
+// the header's atomic_load_ptr is a bare C11 generic on some compilers.
+fn node_payload_table_load() &NodePayloadTable {
+	$if x32 {
+		return unsafe { &NodePayloadTable(voidptr(C.atomic_load_u32(&g_node_payload_table))) }
+	} $else {
+		return unsafe { &NodePayloadTable(voidptr(C.atomic_load_u64(&g_node_payload_table))) }
+	}
+}
+
+// node_payload_table_publish makes the freshly allocated table visible to
+// lock-free lookups on other threads.
+fn node_payload_table_publish(table &NodePayloadTable) {
+	$if x32 {
+		C.atomic_store_u32(&g_node_payload_table, u32(voidptr(table)))
+	} $else {
+		C.atomic_store_u64(&g_node_payload_table, u64(voidptr(table)))
+	}
+}
+
+// node_payload_count_publish makes ids below `count` visible to lookups: the
+// atomic store orders the chunk pointer and entry writes before it.
+fn node_payload_count_publish(mut table NodePayloadTable, count u32) {
+	C.atomic_store_u32(&table.count, count)
+}
+
+// node_payload_count_load reads the published id count; entries below it,
+// and the chunk pointers that hold them, are visible after this load.
+fn node_payload_count_load(table &NodePayloadTable) u32 {
+	return C.atomic_load_u32(&table.count)
+}
+
 // node_payload_lock takes the payload table's insert lock.
 fn node_payload_lock() {
 	for {
