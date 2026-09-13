@@ -11063,7 +11063,7 @@ fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 		''
 	}
 	if fn_value.len == 0 {
-		fn_value = t.tc.sparse_resolved_fn_values[src_idx] or { '' }
+		fn_value = t.tc.resolved_fn_value_name(flat.NodeId(src_idx)) or { '' }
 	}
 	if fn_value.len > 0 {
 		overlay.resolved_fn_values[dst_idx] = fn_value

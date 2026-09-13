@@ -4776,10 +4776,10 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			}
 			t.set_resolved_fn_value_entry(shifted, owned_name)
 		}
-		// Source-node fn-value entries the worker recorded or cleared in its
-		// private snapshot (see TypeChecker.fork_for_parallel_transform).
-		for idx, name in w.tc.sparse_resolved_fn_values {
-			if !t.tc.forked_fn_value_changed(w.tc, idx, name) {
+		// Source-node fn-value entries the worker recorded or cleared (see
+		// TypeChecker.fork_for_parallel_transform).
+		for idx, name in w.tc.fork_fn_value_writes {
+			if !w.tc.fork_fn_value_replays_source(idx) {
 				continue
 			}
 			owned_name := if name.len > 0 && w.worker_scope != unsafe { nil }
@@ -4910,7 +4910,7 @@ fn (mut t Transformer) set_generated_resolved_call(id flat.NodeId, name string) 
 }
 
 fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
-	t.tc.sparse_resolved_fn_values[idx] = t.tc.canonical_symbol(name)
+	t.tc.set_resolved_fn_value(idx, t.tc.canonical_symbol(name))
 }
 
 fn (mut t Transformer) record_refined_node_type(idx int, typ string) {
@@ -4959,9 +4959,7 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 			if t.tc.sparse_resolved_call_names.len > 0 {
 				t.tc.sparse_resolved_call_names.delete(k)
 			}
-			if t.tc.sparse_resolved_fn_values.len > 0 {
-				t.tc.sparse_resolved_fn_values.delete(k)
-			}
+			t.tc.clear_resolved_fn_value(flat.NodeId(k))
 			if t.tc.sparse_expr_type_values.len > 0 {
 				t.tc.sparse_expr_type_values.delete(k)
 			}
@@ -4993,9 +4991,7 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 	if t.tc.sparse_resolved_call_names.len > 0 {
 		t.tc.sparse_resolved_call_names.delete(idx)
 	}
-	if t.tc.sparse_resolved_fn_values.len > 0 {
-		t.tc.sparse_resolved_fn_values.delete(idx)
-	}
+	t.tc.clear_resolved_fn_value(flat.NodeId(idx))
 	if t.tc.sparse_expr_type_values.len > 0 {
 		t.tc.sparse_expr_type_values.delete(idx)
 	}

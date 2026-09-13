@@ -845,6 +845,7 @@ pub mut:
 	check_range_hi                int = -1
 	sparse_resolved_call_names    map[int]string
 	sparse_resolved_fn_values     map[int]string // the only fn-value name store: a few dozen entries, a node-indexed array cost ~12 MB
+	fork_fn_value_writes          map[int]string // a transform fork's own fn-value writes ('' = cleared); its sparse map stays a read-only snapshot and only these are merged
 	sparse_statement_nodes        map[int]bool
 	sparse_expr_type_values       map[int]Type
 	sparse_checking_nodes         map[int]bool
@@ -1357,7 +1358,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_codegen() &TypeChecker {
 	// Fn-value names are the one sparse store the master may still write to
 	// while cgen workers read (a type query on the declaration task can record
 	// a resolution), so each worker reads a private snapshot of its few entries.
-	forked.sparse_resolved_fn_values = tc.sparse_resolved_fn_values.clone()
+	forked.sparse_resolved_fn_values = tc.fn_value_snapshot()
 	forked.visible_mutation_cache = unsafe { nil }
 	forked.inherit_ownership_codegen_metadata_from(tc)
 	forked.set_fresh_type_cache_based_on(tc, tc.type_cache_parse_enabled())
@@ -1438,11 +1439,13 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 		base_node_count: if os.getenv('V3_NO_OVERLAY_RANGE') == '' { ast.nodes.len } else { -1 }
 	}
 	// Source-node fn-value resolutions live only in the sparse map. The fork
-	// gets a private snapshot: reads see the master's entries, its own writes
-	// and tombstones (see clear_resolved_fn_value) stay private, and
-	// Transformer.merge_worker / absorb_scoped_batch replay them into the
-	// parent through apply_forked_fn_value.
-	forked.sparse_resolved_fn_values = tc.sparse_resolved_fn_values.clone()
+	// reads a private snapshot of the parent's effective entries; its own
+	// writes and tombstones go to fork_fn_value_writes (see
+	// set_resolved_fn_value / clear_resolved_fn_value), which
+	// Transformer.merge_worker / absorb_scoped_batch replay into the parent
+	// through apply_forked_fn_value.
+	forked.sparse_resolved_fn_values = tc.fn_value_snapshot()
+	forked.fork_fn_value_writes = map[int]string{}
 	// Transform helpers allocate inside disposable arenas. A shared interner
 	// would let one helper publish map/array storage owned by its arena and leave
 	// other helpers with dangling storage when that arena is released. Each
@@ -8413,18 +8416,36 @@ pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	if idx < 0 {
 		return none
 	}
-	name := tc.sparse_resolved_fn_values[idx] or { return none }
-	if name.len == 0 {
-		// A transform fork's tombstone (see clear_resolved_fn_value).
-		return none
+	if !isnil(tc.fork_overlay) {
+		if name := tc.fork_fn_value_writes[idx] {
+			if name.len == 0 {
+				// The fork cleared this entry (see clear_resolved_fn_value).
+				return none
+			}
+			return name
+		}
 	}
-	return name
+	return tc.sparse_resolved_fn_values[idx] or { none }
+}
+
+// set_resolved_fn_value records the resolved function-value target of a node.
+// A transform fork keeps the write private (its snapshot of the parent stays
+// read-only) until the merge replays it.
+pub fn (mut tc TypeChecker) set_resolved_fn_value(idx int, name string) {
+	if idx < 0 {
+		return
+	}
+	if !isnil(tc.fork_overlay) {
+		tc.fork_fn_value_writes[idx] = name
+		return
+	}
+	tc.sparse_resolved_fn_values[idx] = name
 }
 
 // clear_resolved_fn_value removes stale function-value metadata after a later
 // transform proves that an identifier refers to a value declaration. A
-// transform fork records a tombstone instead: deleting from its private
-// snapshot would not stop the merge from keeping the master's entry.
+// transform fork records a tombstone in its private writes instead, so the
+// snapshot entry stays hidden and the merge replays the clear.
 pub fn (mut tc TypeChecker) clear_resolved_fn_value(id flat.NodeId) {
 	idx := int(id)
 	if idx < 0 {
@@ -8432,7 +8453,14 @@ pub fn (mut tc TypeChecker) clear_resolved_fn_value(id flat.NodeId) {
 	}
 	if !isnil(tc.fork_overlay) {
 		tc.fork_overlay.resolved_fn_values.delete(idx)
-		tc.sparse_resolved_fn_values[idx] = ''
+		// A tombstone is only meaningful when the parent snapshot actually has
+		// an entry to hide; otherwise drop any own write so the cleared range
+		// does not bloat the replayed write set with no-op tombstones.
+		if tc.sparse_resolved_fn_values[idx] or { '' } != '' {
+			tc.fork_fn_value_writes[idx] = ''
+		} else {
+			tc.fork_fn_value_writes.delete(idx)
+		}
 		return
 	}
 	if tc.sparse_resolved_fn_values.len > 0 {
@@ -8440,21 +8468,34 @@ pub fn (mut tc TypeChecker) clear_resolved_fn_value(id flat.NodeId) {
 	}
 }
 
-// forked_fn_value_changed reports whether a transform fork's private
-// fn-value entry for a source node (below its overlay boundary) differs from
-// this parent's, i.e. whether the merge has to replay it.
-pub fn (tc &TypeChecker) forked_fn_value_changed(fork &TypeChecker, idx int, name string) bool {
-	if isnil(fork.fork_overlay) || fork.fork_overlay.base_node_count < 0
-		|| idx >= fork.fork_overlay.base_node_count {
-		// Transform-created nodes are published through the overlay under
-		// shifted ids; an unbounded overlay keeps every entry private.
-		return false
+// fn_value_snapshot returns this checker's effective source-node fn-value
+// entries: the shared store, with a transform fork's own writes and
+// tombstones applied. New forks read from such a snapshot.
+pub fn (tc &TypeChecker) fn_value_snapshot() map[int]string {
+	mut snapshot := tc.sparse_resolved_fn_values.clone()
+	if !isnil(tc.fork_overlay) {
+		for idx, name in tc.fork_fn_value_writes {
+			if name.len == 0 {
+				snapshot.delete(idx)
+			} else {
+				snapshot[idx] = name
+			}
+		}
 	}
-	existing := tc.sparse_resolved_fn_values[idx] or { '' }
-	return existing != name
+	return snapshot
 }
 
-// apply_forked_fn_value replays one source-node fn-value change from a
+// fork_fn_value_replays_source reports whether a transform fork's private
+// fn-value write at `idx` must be replayed into its parent on merge: only
+// source nodes below the overlay boundary keep their ids. Transform-created
+// nodes are published through the overlay under shifted ids; an unbounded
+// overlay keeps every write private.
+pub fn (tc &TypeChecker) fork_fn_value_replays_source(idx int) bool {
+	return !isnil(tc.fork_overlay) && tc.fork_overlay.base_node_count >= 0
+		&& idx < tc.fork_overlay.base_node_count
+}
+
+// apply_forked_fn_value replays one source-node fn-value write from a
 // transform fork: an empty name is a tombstone (the fork cleared the entry),
 // anything else replaces the entry. `name` must already be owned by an arena
 // that outlives this checker.
@@ -8463,7 +8504,7 @@ pub fn (mut tc TypeChecker) apply_forked_fn_value(idx int, name string) {
 		tc.clear_resolved_fn_value(flat.NodeId(idx))
 		return
 	}
-	tc.sparse_resolved_fn_values[idx] = tc.canonical_symbol(name)
+	tc.set_resolved_fn_value(idx, tc.canonical_symbol(name))
 }
 
 // direct_dependency_ids returns the checker-resolved function dependency
@@ -8680,9 +8721,10 @@ fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) 
 	}
 	symbol_id, canonical := tc.intern_symbol(name)
 	tc.record_direct_dependency(symbol_id)
-	// Parallel check workers write their private map; merge_worker_sparse_caches
-	// publishes it into the master's.
-	tc.sparse_resolved_fn_values[idx] = canonical
+	// Parallel check workers write their private map, which
+	// merge_worker_sparse_caches publishes into the master's; transform forks
+	// write their private write set (see set_resolved_fn_value).
+	tc.set_resolved_fn_value(idx, canonical)
 }
 
 fn (mut tc TypeChecker) remember_resolved_fn_value_chain(id flat.NodeId, name string) {

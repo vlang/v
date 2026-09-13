@@ -211,7 +211,7 @@ mut:
 }
 
 __global g_node_payload_table &NodePayloadTable
-__global g_node_payload_lock i32
+__global g_node_payload_lock u32
 
 // node_payload registers an uncommon node payload and returns its id, or 0
 // for an empty list.

@@ -226,3 +226,22 @@ fn test_ast_accessors_preserve_bounds_validation() {
 	a.children[0] = NodeId(a.nodes.len)
 	assert a.child_node(&parent, 0).kind == .empty
 }
+
+fn test_node_payloads_survive_gc_collections() {
+	// The payload table's chunks hold the only durable pointers to payloads
+	// (see flat_payload.c.v); a tracing GC must see through them.
+	mut ids := []u32{}
+	for i in 0 .. 4096 {
+		ids << node_payload(['T${i}', 'U'])
+	}
+	$if gcboehm ? {
+		gc_collect()
+		gc_collect()
+	}
+	for i, id in ids {
+		params := node_payload_at(id).generic_params
+		assert params.len == 2
+		assert params[0] == 'T${i}'
+		assert params[1] == 'U'
+	}
+}
