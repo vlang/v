@@ -4,6 +4,7 @@ import strconv
 import strings
 import v.errors as compiler_errors
 import v.flat
+import v.pref
 import v.token
 import v.util
 
@@ -5755,7 +5756,19 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	take_then := tc.comptime_type_condition_value(node.value) or { return }
+	take_then := tc.comptime_type_condition_value(node.value) or {
+		// Portable output (`-os cross`) keeps every branch of a target-dependent
+		// `$if` for the C preprocessor to choose between, so all of them have to be
+		// checked here: no later stage selects one.
+		if comptime_cond_has_target_flag(node.value) {
+			tc.comptime_static_depth++
+			for i in 0 .. node.children_count {
+				tc.check_branch_node(tc.a.child(&node, i), false)
+			}
+			tc.comptime_static_depth--
+		}
+		return
+	}
 	branch_index := if take_then { 0 } else { 1 }
 	if branch_index >= node.children_count {
 		return
@@ -5767,6 +5780,27 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 	tc.check_branch_node(tc.a.child(&node, branch_index), !tc.is_statement_node(id)
 		&& tc.expression_node_used_as_value(id))
 	tc.comptime_static_depth--
+}
+
+// comptime_cond_has_target_flag reports whether a condition names a flag decided
+// by the target platform, which is what the parser keeps for `-os cross`.
+fn comptime_cond_has_target_flag(cond string) bool {
+	mut i := 0
+	for i < cond.len {
+		c := cond[i]
+		if !(c.is_letter() || c == `_`) {
+			i++
+			continue
+		}
+		start := i
+		for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+			i++
+		}
+		if pref.comptime_flag_is_target_dependent(cond[start..i]) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node flat.Node) bool {

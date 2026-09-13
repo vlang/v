@@ -1306,3 +1306,25 @@ fn test_emscripten_comptime_branch_uses_canonical_target() {
 	assert 'wasm_selected' in fn_names
 	assert 'host_selected' !in fn_names
 }
+
+fn test_cross_c_condition_translates_retained_comptime_conditions() {
+	mut g := FlatGen.new()
+	g.set_output_cross_c(true)
+	assert g.cross_c_condition('linux') == 'defined(__linux__)'
+	assert g.cross_c_condition('!(windows)') == '(!defined(_WIN32))'
+	assert g.cross_c_condition('(macos || linux)') == '(defined(__APPLE__) || defined(__linux__))'
+	assert g.cross_c_condition('(arm64 && !(tinyc))') == '(defined(__V_arm64) && (!defined(__TINYC__)))'
+	// The parser folds target-independent parts of a retained condition before
+	// codegen, so only `true`/`false` reach this translation.
+	assert g.cross_c_condition('(true && x64)') == '(1 && defined(TARGET_IS_64BIT))'
+	assert g.cross_c_condition('(false || linux)') == '(0 || defined(__linux__))'
+}
+
+fn test_cross_directive_target_prefix_conditions() {
+	// `#include linux <sys/timerfd.h>` has to stay in portable output, guarded,
+	// instead of being resolved against the generating host.
+	assert c_directive_target_condition('linux <sys/timerfd.h>') or { '' } == 'defined(__linux__)'
+	assert c_directive_strip_target_prefix('linux <sys/timerfd.h>') == '<sys/timerfd.h>'
+	assert c_directive_target_condition('<stdio.h>') == none
+	assert c_directive_strip_target_prefix('<stdio.h>') == '<stdio.h>'
+}

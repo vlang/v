@@ -4,6 +4,7 @@ import os
 import time
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.types
 
 @[inline]
@@ -16220,7 +16221,16 @@ fn (mut t Transformer) transform_block_stmt(id flat.NodeId, node flat.Node) []fl
 }
 
 fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Node) []flat.NodeId {
-	take_then := t.comptime_type_condition_value(node.value) or { return [_id] }
+	take_then := t.comptime_type_condition_value(node.value) or {
+		// Portable output (`-os cross`) keeps both branches so that the C
+		// preprocessor can pick one. They are ordinary statements and still need
+		// lowering. Conditions deferred for any other reason (a `$for` loop var, a
+		// type test) are folded after monomorphization and must stay untouched.
+		if comptime_cond_has_target_flag(node.value) {
+			return [t.lower_retained_comptime_if(node)]
+		}
+		return [_id]
+	}
 	branch_index := if take_then { 0 } else { 1 }
 	for i in 0 .. node.children_count {
 		if i != branch_index {
@@ -16239,7 +16249,12 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 }
 
 fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	take_then := t.comptime_type_condition_value(node.value) or { return id }
+	take_then := t.comptime_type_condition_value(node.value) or {
+		if comptime_cond_has_target_flag(node.value) {
+			return t.lower_retained_comptime_if_expr(node)
+		}
+		return id
+	}
 	branch_index := if take_then { 0 } else { 1 }
 	for i in 0 .. node.children_count {
 		if i != branch_index {
@@ -16250,6 +16265,68 @@ fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node
 		return t.make_empty()
 	}
 	return t.transform_expr(t.a.child(&node, branch_index))
+}
+
+// lower_retained_comptime_if rebuilds a `$if` kept for portable output with both
+// of its branches lowered, so that a branch the host would have discarded still
+// gets the same treatment as any other statement.
+fn (mut t Transformer) lower_retained_comptime_if(node flat.Node) flat.NodeId {
+	mut branches := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		branch_id := t.a.child(&node, i)
+		branch := t.a.nodes[int(branch_id)]
+		stmts := if branch.kind == .block {
+			t.transform_stmts(t.a.children_of(&branch))
+		} else {
+			t.transform_stmt(branch_id)
+		}
+		branches << t.make_block(stmts)
+	}
+	return t.make_comptime_if(node.value, branches)
+}
+
+// lower_retained_comptime_if_expr is lower_retained_comptime_if for a `$if` used
+// as an expression, where each branch stays a single expression.
+fn (mut t Transformer) lower_retained_comptime_if_expr(node flat.Node) flat.NodeId {
+	mut branches := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		branches << t.transform_expr(t.a.child(&node, i))
+	}
+	return t.make_comptime_if(node.value, branches)
+}
+
+fn (mut t Transformer) make_comptime_if(cond string, branches []flat.NodeId) flat.NodeId {
+	start := t.a.children.len
+	for id in branches {
+		t.a.children << id
+	}
+	return t.a.add_node(flat.Node{
+		kind: .comptime_if
+		value: cond
+		children_start: start
+		children_count: flat.child_count(branches.len)
+	})
+}
+
+// comptime_cond_has_target_flag reports whether a condition names a flag that is
+// decided by the target platform, which is what the parser keeps for `-os cross`.
+fn comptime_cond_has_target_flag(cond string) bool {
+	mut i := 0
+	for i < cond.len {
+		c := cond[i]
+		if !(c.is_letter() || c == `_`) {
+			i++
+			continue
+		}
+		start := i
+		for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+			i++
+		}
+		if pref.comptime_flag_is_target_dependent(cond[start..i]) {
+			return true
+		}
+	}
+	return false
 }
 
 fn comptime_condition_matching_paren(s string, start int) int {

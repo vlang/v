@@ -3042,19 +3042,50 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		.asm_stmt {
 			g.gen_c_inline_asm_stmt(node)
 		}
+		.comptime_if {
+			// Only portable output (`-os cross`) keeps a target-dependent `$if` this
+			// far; every other build has already selected a branch before codegen.
+			if !g.output_cross_c {
+				g.gen_unsupported_node(node)
+				return
+			}
+			g.writeln('#if ${g.cross_c_condition(node.value)}')
+			if node.children_count > 0 {
+				g.gen_comptime_branch_stmts(g.a.child(&node, 0))
+			}
+			if node.children_count > 1 {
+				g.writeln('#else')
+				g.gen_comptime_branch_stmts(g.a.child(&node, 1))
+			}
+			g.writeln('#endif')
+		}
 		.empty {}
 		else {
 			// NOTE: match_stmt is intentionally absent — the transformer lowers every
 			// match into an if/else-if chain (see transform.lower_match_stmts), so the
 			// backend never sees one. Match lowering lives in the transformer, not here.
-			source_name := if source_file := g.a.source_files[node.pos.id] {
-				source_file.name
-			} else {
-				''
-			}
-			eprintln('gen_node: unsupported node kind: ${node.kind}; fn=${g.cur_fn_name}; source=${source_name}:${node.pos.offset}; value=${node.value}; typ=${node.typ}; op=${node.op}; children=${node.children_count}')
+			g.gen_unsupported_node(node)
 		}
 	}
+}
+
+fn (mut g FlatGen) gen_unsupported_node(node flat.Node) {
+	source_name := if source_file := g.a.source_files[node.pos.id] {
+		source_file.name
+	} else {
+		''
+	}
+	eprintln('gen_node: unsupported node kind: ${node.kind}; fn=${g.cur_fn_name}; source=${source_name}:${node.pos.offset}; value=${node.value}; typ=${node.typ}; op=${node.op}; children=${node.children_count}')
+}
+
+// gen_comptime_branch_stmts emits one retained `$if` branch. The branch keeps its
+// own block scope: a `$if` body is a scope in V, and its locals must be dropped
+// inside the preprocessor guard, where their declarations exist.
+fn (mut g FlatGen) gen_comptime_branch_stmts(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return
+	}
+	g.gen_node(id)
 }
 
 fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {

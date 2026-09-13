@@ -485,6 +485,12 @@ mut:
 	compiler_vexe_env_setup       bool = true
 	ccompiler                     string
 	target                        pref.Target
+	// output_cross_c keeps every target-dependent `$if` in the output, guarded by
+	// the C preprocessor, so one generated snapshot compiles on any target.
+	output_cross_c bool
+	// cross_directive_guards maps a `#include`/`#flag` node to the C preprocessor
+	// condition of the `$if` it was written in, for portable output.
+	cross_directive_guards        map[int]string
 	subsystem                     pref.Subsystem
 	windows_entry_point_generated bool
 	windows_gui_entry_point       bool
@@ -1300,6 +1306,85 @@ pub fn (mut g FlatGen) set_compiler_vexe_env_setup(enabled bool) {
 pub fn (mut g FlatGen) set_target(target pref.Target) {
 	g.target = target
 	g.int_ct = if target.pointer_bits == 32 { 'i32' } else { 'i64' }
+}
+
+// set_output_cross_c requests portable C that defers every target-dependent `$if`
+// to the C preprocessor instead of resolving it for one target.
+pub fn (mut g FlatGen) set_output_cross_c(enabled bool) {
+	g.output_cross_c = enabled
+}
+
+// cross_c_condition translates a retained comptime condition into the C
+// preprocessor expression that decides it. The parser has already folded every
+// target-independent part of the condition to `true`/`false`, so only target
+// flags and the boolean operators joining them are left here.
+fn (g &FlatGen) cross_c_condition(raw string) string {
+	clean := cross_cond_strip_outer_parens(raw.trim_space())
+	if clean.len == 0 {
+		return '0'
+	}
+	if or_idx := cross_cond_top_level_index(clean, '||') {
+		return '(${g.cross_c_condition(clean[..or_idx])} || ${g.cross_c_condition(clean[or_idx + 2..])})'
+	}
+	if and_idx := cross_cond_top_level_index(clean, '&&') {
+		return '(${g.cross_c_condition(clean[..and_idx])} && ${g.cross_c_condition(clean[and_idx + 2..])})'
+	}
+	if clean.starts_with('!') {
+		return '(!${g.cross_c_condition(clean[1..])})'
+	}
+	if clean == 'true' {
+		return '1'
+	}
+	if clean == 'false' {
+		return '0'
+	}
+	if condition := pref.cross_target_c_condition(clean) {
+		return condition
+	}
+	// An unmapped flag cannot be decided by the preprocessor. Keeping the branch
+	// out is the same choice the non-cross backend makes for an unknown flag.
+	return '0'
+}
+
+// cross_cond_strip_outer_parens removes the parentheses wrapping a whole condition.
+fn cross_cond_strip_outer_parens(cond string) string {
+	mut clean := cond.trim_space()
+	for clean.len >= 2 && clean.starts_with('(') && clean.ends_with(')') {
+		mut depth := 0
+		mut wraps_all := true
+		for i in 0 .. clean.len {
+			if clean[i] == `(` {
+				depth++
+			} else if clean[i] == `)` {
+				depth--
+				if depth == 0 && i != clean.len - 1 {
+					wraps_all = false
+					break
+				}
+			}
+		}
+		if !wraps_all {
+			break
+		}
+		clean = clean[1..clean.len - 1].trim_space()
+	}
+	return clean
+}
+
+// cross_cond_top_level_index finds an operator outside of any parentheses.
+fn cross_cond_top_level_index(cond string, op string) ?int {
+	mut depth := 0
+	for i := 0; i <= cond.len - op.len; i++ {
+		match cond[i] {
+			`(` { depth++ }
+			`)` { depth-- }
+			else {}
+		}
+		if depth == 0 && cond[i..i + op.len] == op {
+			return i
+		}
+	}
+	return none
 }
 
 // set_subsystem configures the Windows executable subsystem.
@@ -4068,6 +4153,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut preferred_shared_fn_params := map[string][]bool{}
 	mut fn_signature_registrations := []FnSignatureRegistration{cap: 16_384}
 	top_level_nodes := g.top_level_nodes()
+	if g.output_cross_c {
+		g.index_cross_directive_guards()
+	}
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel)
 	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
 	for top_level_pos, node_idx in top_level_nodes {
@@ -4192,7 +4280,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			continue
 		}
 		if node.kind == .directive {
-			directive_handled := g.collect_c_directive(cur_module, node, cur_file, !seen_import_in_file)
+			directive_handled := g.collect_c_directive_at(node_idx, cur_module, node, cur_file, !seen_import_in_file)
 			if directive_handled {
 				continue
 			}
@@ -4741,20 +4829,145 @@ fn (mut g FlatGen) note_c_flag_directive(module_name string, source_file string,
 }
 
 fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, source_file string, before_import bool) bool {
+	return g.collect_c_directive_at(-1, module_name, node, source_file, before_import)
+}
+
+// index_cross_directive_guards records, for portable output, the C preprocessor
+// condition guarding each `#include`/`#flag` written inside a `$if`. The
+// declaration index flattens those containers away, so the condition has to be
+// recovered from the AST before the directives are collected.
+fn (mut g FlatGen) index_cross_directive_guards() {
+	mut nested := map[int]bool{}
+	for _, node in g.a.nodes {
+		if node.kind != .comptime_if {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			g.mark_nested_comptime_ifs(g.a.child(&node, i), mut nested)
+		}
+	}
+	for idx, node in g.a.nodes {
+		if node.kind != .comptime_if || nested[idx] {
+			continue
+		}
+		g.mark_cross_directive_guards(flat.NodeId(idx), '')
+	}
+}
+
+fn (mut g FlatGen) mark_nested_comptime_ifs(id flat.NodeId, mut nested map[int]bool) {
+	idx := int(id)
+	if idx < 0 || idx >= g.a.nodes.len {
+		return
+	}
+	node := g.a.nodes[idx]
+	if node.kind == .comptime_if {
+		nested[idx] = true
+	}
+	for i in 0 .. node.children_count {
+		g.mark_nested_comptime_ifs(g.a.child(&node, i), mut nested)
+	}
+}
+
+fn (mut g FlatGen) mark_cross_directive_guards(id flat.NodeId, outer string) {
+	idx := int(id)
+	if idx < 0 || idx >= g.a.nodes.len {
+		return
+	}
+	node := g.a.nodes[idx]
+	if node.kind == .comptime_if {
+		condition := g.cross_c_condition(node.value)
+		for i in 0 .. node.children_count {
+			branch := if i == 0 { condition } else { '!(${condition})' }
+			g.mark_cross_directive_guards(g.a.child(&node, i), combined_c_condition(outer, branch))
+		}
+		return
+	}
+	if node.kind == .directive && outer.len > 0 {
+		g.cross_directive_guards[idx] = outer
+	}
+	for i in 0 .. node.children_count {
+		g.mark_cross_directive_guards(g.a.child(&node, i), outer)
+	}
+}
+
+fn combined_c_condition(outer string, inner string) string {
+	if outer.len == 0 {
+		return inner
+	}
+	if inner.len == 0 {
+		return outer
+	}
+	return '(${outer} && ${inner})'
+}
+
+// guarded_c_directive wraps a directive in the preprocessor condition of the
+// `$if` it came from, so portable output only applies it on the targets that
+// declared it.
+// c_local_header_directive renders an include of a header shipped with V. Portable
+// output carries the header text, because the absolute path only exists on the
+// machine that generated the C.
+fn (g &FlatGen) c_local_header_directive(path string) string {
+	if g.output_cross_c {
+		if text := os.read_file(path) {
+			return text
+		}
+	}
+	return '#include "${path}"'
+}
+
+// c_include_directive_text renders an `#include` for the output. Portable output
+// carries the text of a project-local header instead of an absolute path, which
+// only exists on the machine that generated the C.
+fn (mut g FlatGen) c_include_directive_text(node_idx int, prefix_condition string, include_arg string, source_file string) string {
+	mut directive := '#include ${include_arg}'
+	if g.output_cross_c && include_arg.trim_space().starts_with('"') {
+		include_dirs := c_flag_include_dirs(g.c_flags)
+		for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+			if text := os.read_file(path) {
+				directive = text
+				break
+			}
+		}
+	}
+	return g.guarded_c_directive(node_idx, prefix_condition, directive)
+}
+
+fn (g &FlatGen) guarded_c_directive(node_idx int, prefix_condition string, directive string) string {
+	mut guard := prefix_condition
+	if enclosing := g.cross_directive_guards[node_idx] {
+		guard = combined_c_condition(enclosing, guard)
+	}
+	if guard.len == 0 {
+		return directive
+	}
+	return '#if ${guard}\n${directive}\n#endif'
+}
+
+fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node flat.Node, source_file string, before_import bool) bool {
 	if node.kind != .directive {
 		return false
+	}
+	// For portable output a target-prefixed `#include` is kept for every target and
+	// guarded, so the generating host no longer decides whether it is present.
+	mut cross_prefix_condition := ''
+	mut directive_raw := node.typ
+	if g.output_cross_c {
+		if condition := c_directive_target_condition(node.typ) {
+			cross_prefix_condition = condition
+			directive_raw = c_directive_strip_target_prefix(node.typ)
+		}
 	}
 	if node.value in ['preinclude', 'postinclude'] {
 		if node.typ.len == 0 {
 			return true
 		}
-		include_arg := c_include_arg_for_target(node.typ, g.compiler_vroot, source_file, g.target)
+		include_arg := c_include_arg_for_target(directive_raw, g.compiler_vroot, source_file, g.target)
 		// A `#include linux <x.h>` contributes nothing when building for another
 		// target, so it must not make the file look header backed there.
 		if include_arg.len == 0 {
 			return true
 		}
-		directive := '#include ${include_arg}'
+		directive := g.c_include_directive_text(node_idx, cross_prefix_condition, include_arg, source_file)
 		if node.value == 'preinclude' {
 			g.note_c_include_directive(module_name, source_file)
 			if directive !in g.preinclude_directives {
@@ -4772,7 +4985,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if node.typ.len == 0 {
 			return true
 		}
-		include_arg := c_include_arg_for_target(node.typ, g.compiler_vroot, source_file, g.target)
+		include_arg := c_include_arg_for_target(directive_raw, g.compiler_vroot, source_file, g.target)
 		if include_arg.len == 0 {
 			return true
 		}
@@ -4824,7 +5037,12 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				g.collect_inlined_c_structs(source_text)
 				g.collect_inlined_c_fns_for_cache(source_text, true, false)
 				g.collect_inlined_c_declared_fns(source_text)
-				source_directive := c_native_source_context_include(source_path)
+				mut source_directive := c_native_source_context_include(source_path)
+				if g.output_cross_c {
+					// Portable output carries the source text: its path is gone on the
+					// machine that later compiles the generated C.
+					source_directive = source_text
+				}
 				if source_path.ends_with('.m') {
 					if g.c_source_defines_used_c_type(source_text) {
 						g.early_c_source_directives[source_directive] = true
@@ -4835,18 +5053,18 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				}
 				g.add_c_directive(module_name, source_directive, before_import)
 			} else {
-				g.add_c_directive(module_name, '#include ${include_arg}', before_import)
+				g.add_c_directive(module_name, g.c_include_directive_text(node_idx, cross_prefix_condition, include_arg, source_file), before_import)
 			}
 			return true
 		}
 		if !c_include_arg_is_source_file(include_arg) {
 			g.add_native_source_context_directive(module_name, c_native_source_context_header_include(include_arg, g.compiler_vroot, source_file, include_dirs), before_import)
-			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
+			g.add_c_directive(module_name, g.c_include_directive_text(node_idx, cross_prefix_condition, include_arg, source_file), before_import)
 			return true
 		}
 		// Ordinary native sources were handled above. `#insert` sources can also be
 		// left to the C preprocessor; V3 does not need to inspect their include tree.
-		g.add_c_directive(module_name, '#include ${include_arg}', before_import)
+		g.add_c_directive(module_name, g.c_include_directive_text(node_idx, cross_prefix_condition, include_arg, source_file), before_import)
 		return true
 	}
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
@@ -10023,6 +10241,45 @@ fn c_flag_path_is_relative(p string) bool {
 	return p.starts_with('./') || p.starts_with('../') || p.contains('/')
 }
 
+// c_directive_target_condition returns the C preprocessor condition for a
+// directive's target prefix (`#include linux <sys/timerfd.h>`). Portable output
+// keeps such a directive for every target and lets the preprocessor apply the
+// prefix, instead of resolving it against the generating host.
+fn c_directive_target_condition(raw string) ?string {
+	prefix := c_directive_target_prefix(raw) or { return none }
+	if target_os := c_flag_target_os(prefix) {
+		return pref.cross_target_c_condition(target_os)
+	}
+	if target_arch := c_flag_target_arch(prefix) {
+		return pref.cross_target_c_condition(target_arch)
+	}
+	return none
+}
+
+fn c_directive_target_prefix(raw string) ?string {
+	clean := raw.trim_space()
+	mut prefix_end := 0
+	for prefix_end < clean.len && !clean[prefix_end].is_space() {
+		prefix_end++
+	}
+	if prefix_end >= clean.len {
+		return none
+	}
+	prefix := clean[..prefix_end]
+	if !c_flag_has_target_prefix(prefix) {
+		return none
+	}
+	return prefix
+}
+
+// c_directive_strip_target_prefix removes a directive's target prefix, leaving
+// the argument to emit under the matching preprocessor guard.
+fn c_directive_strip_target_prefix(raw string) string {
+	clean := raw.trim_space()
+	prefix := c_directive_target_prefix(clean) or { return clean }
+	return clean[prefix.len..].trim_space()
+}
+
 fn c_directive_arg_for_target(raw string, target pref.Target) ?string {
 	clean := raw.trim_space()
 	if clean.len == 0 {
@@ -14124,7 +14381,18 @@ fn (g &FlatGen) infix_channel_type(id flat.NodeId, fallback types.Type) types.Ty
 }
 
 // gen_expr emits expr output for c.
+
+// gen_comptime_branch_expr emits one branch of a retained `$if` expression, or a
+// zero when that branch is absent.
 @[direct_array_access]
+fn (mut g FlatGen) gen_comptime_branch_expr(node &flat.Node, index int) {
+	if index >= node.children_count {
+		g.write('0')
+		return
+	}
+	g.gen_expr(g.a.child(node, index))
+}
+
 fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	if int(id) < 0 {
 		g.write('0')
@@ -14151,6 +14419,26 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.bool_literal {
 			g.write(node.value)
+		}
+		.comptime_if {
+			// Only portable output (`-os cross`) keeps a target-dependent `$if` this
+			// far; every other build selected a branch before codegen.
+			if !g.output_cross_c {
+				g.gen_unsupported_node(node)
+				g.write('0')
+				return
+			}
+			// C allows preprocessor directives between the tokens of an expression,
+			// so both branches stay in place and the preprocessor picks one.
+			g.writeln('(')
+			g.writeln('#if ${g.cross_c_condition(node.value)}')
+			g.gen_comptime_branch_expr(node, 0)
+			g.writeln('')
+			g.writeln('#else')
+			g.gen_comptime_branch_expr(node, 1)
+			g.writeln('')
+			g.writeln('#endif')
+			g.write(')')
 		}
 		.char_literal {
 			v := node.value
@@ -16938,7 +17226,7 @@ fn (mut g FlatGen) system_libc_headers() {
 	// including both implementations redefines atomic_flag and the operation macros.
 	windows_atomic_header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
 	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
-	g.writeln('#include "${windows_atomic_header}"')
+	g.writeln(g.c_local_header_directive(windows_atomic_header))
 	g.writeln('#else')
 	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
 	g.writeln('#define _Atomic volatile')
@@ -17092,7 +17380,10 @@ fn (mut g FlatGen) thread_stack_size_definition() {
 }
 
 fn (mut g FlatGen) c99_feature_test_macros() {
-	if !g.c99_mode {
+	// Portable output does not know which `-std=` the machine that compiles it
+	// will use. The bootstrap Makefile builds `vc/v.c` with `-std=c99`, where
+	// glibc hides the POSIX declarations this code needs, so always request them.
+	if !g.c99_mode && !g.output_cross_c {
 		return
 	}
 	g.writeln('#if defined(__linux__) && !defined(_GNU_SOURCE)')
@@ -19228,6 +19519,19 @@ fn (mut g FlatGen) write_arch_macros() {
 	g.writeln('#undef __V_architecture')
 	g.writeln('#define __V_architecture 12')
 	g.writeln('#endif')
+	// `$if x64`, `$if x32` and the endianness flags read these. They are derived
+	// from the C compiler's own target so that portable `-os cross` output stays
+	// correct on whichever machine later compiles it.
+	g.writeln('#if UINTPTR_MAX == 0xFFFFFFFFFFFFFFFFu')
+	g.writeln('#define TARGET_IS_64BIT 1')
+	g.writeln('#else')
+	g.writeln('#define TARGET_IS_32BIT 1')
+	g.writeln('#endif')
+	g.writeln('#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__')
+	g.writeln('#define TARGET_ORDER_IS_BIG 1')
+	g.writeln('#else')
+	g.writeln('#define TARGET_ORDER_IS_LITTLE 1')
+	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) libc_compat_decls() {
@@ -19297,7 +19601,7 @@ fn (mut g FlatGen) tinyc_atomic_libcall_decls() {
 fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	if g.target.os == 'windows' && (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc')) {
 		header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
-		g.writeln('#include "${header}"')
+		g.writeln(g.c_local_header_directive(header))
 		return
 	}
 	// Atomic helpers. We use compiler __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
