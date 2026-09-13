@@ -12,3 +12,10 @@ vlib/v/checker/tests/unused_in_dropped_branch_map_key_and_write.vv:37:6: warning
       |         ~~~~~
    38 |     mut second := 0
    39 |     $if windows {
+vlib/v/checker/tests/unused_in_dropped_branch_map_key_and_write.vv:74:6: warning: unused variable: `lv`
+   72 | // still only writes.
+   73 | fn labeled_assignment() {
+   74 |     mut lv := 0
+      |         ~~
+   75 |     $if windows {
+   76 |         mut n := 0

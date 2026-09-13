@@ -68,7 +68,25 @@ fn function_valued_map_key(fk string) {
 	}
 }
 
+// A statement label keeps its assignment on the same line, and the assignment
+// still only writes.
+fn labeled_assignment() {
+	mut lv := 0
+	$if windows {
+		mut n := 0
+		retry: lv = 1
+		n++
+		if n < 3 {
+			unsafe {
+				goto retry
+			}
+		}
+		println(n)
+	}
+}
+
 fn main() {
+	labeled_assignment()
 	function_valued_map_key('g')
 	println(double(2))
 	typed_map_key('e')

@@ -3009,7 +3009,9 @@ fn token_is_assignment_target(tokens []string, lines []int, index int) bool {
 	if index == 0 {
 		return true
 	}
-	return lines[index - 1] != lines[index] || tokens[index - 1] in ['{', '}', ';']
+	// `retry: x = 1` keeps the assignment on the line of its label, and a `:`
+	// before a name that a `=` follows can only be one.
+	return lines[index - 1] != lines[index] || tokens[index - 1] in ['{', '}', ';', ':']
 }
 
 // token_declares_new_binding reports whether `tokens[index]` introduces a name

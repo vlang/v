@@ -355,3 +355,14 @@ fn test_a_line_comment_keeps_its_newline() {
 	assert !code_references_ident(scanned_code('println(1) /* comment */\nx = 1'), 'x', false)
 	assert code_references_ident(scanned_code('println(1) // comment\ny = x'), 'x', false)
 }
+
+fn test_a_labeled_assignment_still_writes() {
+	assert !code_references_ident('retry: x = 1', 'x', false)
+	assert !code_references_ident('retry: x, y = pair()', 'x', false)
+	// The other positions of the statement are unchanged.
+	assert code_references_ident('retry: y = x', 'x', false)
+	assert code_references_ident('retry: x += 1', 'x', false)
+	assert code_references_ident('retry: x, y = pair()', 'y', false)
+	// And a write is a use of a parameter, label or not.
+	assert code_references_ident('retry: x = 1', 'x', true)
+}
