@@ -226,3 +226,24 @@ fn test_a_compile_time_name_is_not_a_variable() {
 	assert code_references_ident('_ = \$d(n, x)', 'x', true)
 	assert code_references_ident(scanned_code(r"_ = '${env}'"), 'env', true)
 }
+
+fn test_a_function_valued_map_type_is_still_a_map() {
+	assert code_references_ident('m := map[string]fn (int) int{x: cb}', 'x', true)
+	assert code_references_ident('m := map[string]fn (int) (int, int){x: cb}', 'x', true)
+	assert code_references_ident('m := map[string][]int{x: v}', 'x', true)
+	assert code_references_ident('return map[string]fn (int) int{x: cb}', 'x', true)
+	// An array of maps initialises an array, and names its options.
+	assert !code_references_ident('_ = []map[string]int{len: 3}', 'len', true)
+	assert !code_references_ident('_ = []int{len: 3}', 'len', true)
+	// A call before the literal does not extend its type.
+	assert !code_references_ident('_ = f(a)\n_ = Config{x: 1}', 'x', true)
+}
+
+fn test_a_lambda_body_may_continue_on_the_next_line() {
+	assert !code_references_ident('cb := |x| 1 +\n\tx', 'x', true)
+	assert !code_references_ident('cb := |x| 1 +\n\tx * 2', 'x', true)
+	assert code_references_ident('cb := |y| 1 +\n\ty\nprintln(x)', 'x', true)
+	// A line that can end an expression ends the body.
+	assert code_references_ident('cb := |y| y\nprintln(x)', 'x', true)
+	assert code_references_ident('cb := |y| f(y)?\nprintln(x)', 'x', true)
+}

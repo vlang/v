@@ -5,10 +5,17 @@ vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:15:2
       |     ^
    16 |     $if windows {
    17 |         cb := |t|
-vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:26:2: warning: unused variable: `q`
-   24 |     on_the_next_line()
-   25 |     after_a_semicolon()
-   26 |     q := 1
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:25:2: warning: unused variable: `u`
+   23 | // A bare body may also continue after a trailing operator.
+   24 | fn continued_after_an_operator() {
+   25 |     u := 1
       |     ^
-   27 |     $if windows {
-   28 |         cb := |q| q + 1
+   26 |     $if windows {
+   27 |         cb := |u| 1 +
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:37:2: warning: unused variable: `q`
+   35 |     on_the_next_line()
+   36 |     after_a_semicolon()
+   37 |     q := 1
+      |     ^
+   38 |     $if windows {
+   39 |         cb := |q| q + 1

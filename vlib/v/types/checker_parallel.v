@@ -2847,17 +2847,47 @@ fn colon_binds_a_field_or_label(tokens []string, index int) bool {
 // fields of an array initialisation and stay labels.
 fn map_literal_type_precedes(tokens []string, index int) bool {
 	mut first := index
-	for first > 0 && token_may_spell_a_type(tokens[first - 1]) {
-		first--
-	}
-	for first < index && tokens[first] in ['[', ']', '&', '?', '!'] {
-		first++
+	mut depth := 0
+	for i := index - 1; i >= 0; i-- {
+		word := tokens[i]
+		if word == ')' || word == ']' {
+			depth++
+			first = i
+			continue
+		}
+		if word == '(' || word == '[' {
+			if depth == 0 {
+				break
+			}
+			depth--
+			first = i
+			// The group of a `fn (int) int` or of a `Box[int]` is part of the
+			// type and continues to its left; a call or an index does not.
+			if depth == 0 && (i == 0 || !group_belongs_to_a_type(word, tokens[i - 1])) {
+				break
+			}
+			continue
+		}
+		if depth > 0 || token_may_spell_a_type(word) {
+			first = i
+			continue
+		}
+		break
 	}
 	return first < index && tokens[first] == 'map'
 }
 
+fn group_belongs_to_a_type(opening string, previous string) bool {
+	if opening == '[' {
+		// `Box[int]`, and the `[]int` of a `map[string][]int`.
+		return previous == ']' || is_type_name_token(previous)
+	}
+	// `fn (int) int` and the second group of `fn (int) (int, int)`.
+	return previous == 'fn' || previous == ')'
+}
+
 fn token_may_spell_a_type(word string) bool {
-	return word in ['[', ']', '.', '&', '?', '!', '0'] || is_type_name_token(word)
+	return word in ['.', '&', '?', '!', '0', 'fn'] || is_type_name_token(word)
 }
 
 // name_precedes_delimiter reports whether the `{` or `(` at `index` follows a
@@ -3109,8 +3139,16 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 		// A block or a parenthesised body spans lines; a bare expression body
 		// ends with the line it starts on, which needs not be the line of the
 		// parameters: `cb := |x|` may leave its body for the next one.
-		body_line := lines[end]
-		for end < tokens.len && (depth > 0 || lines[end] == body_line) {
+		mut body_line := lines[end]
+		for end < tokens.len {
+			if depth == 0 && lines[end] != body_line {
+				// `cb := |x| 1 +` continues on the next line, the way the
+				// scanner inserts no semicolon after an operator.
+				if end == 0 || token_may_end_an_expression(tokens[end - 1]) {
+					break
+				}
+				body_line = lines[end]
+			}
 			current := tokens[end]
 			if current in ['(', '[', '{'] {
 				depth++
@@ -3131,6 +3169,12 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 		}
 	}
 	return ranges
+}
+
+// token_may_end_an_expression reports whether an expression can stop at `word`,
+// which is what lets the scanner end the statement at the following line break.
+fn token_may_end_an_expression(word string) bool {
+	return word in [')', ']', '}', '?', '!', '0'] || is_ident_token(word)
 }
 
 // pipe_lambda_starts_at rejects the bitwise or of `a | b`: a lambda opens an

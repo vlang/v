@@ -54,7 +54,23 @@ fn typed_map_key(tk string) {
 	}
 }
 
+fn double(n int) int {
+	return n * 2
+}
+
+// A function-valued map type ends in punctuation, and is still a map.
+fn function_valued_map_key(fk string) {
+	$if windows {
+		m := map[string]fn (int) int{
+			fk: double
+		}
+		println(m.len)
+	}
+}
+
 fn main() {
+	function_valued_map_key('g')
+	println(double(2))
 	typed_map_key('e')
 	map_key('a')
 	write_only()

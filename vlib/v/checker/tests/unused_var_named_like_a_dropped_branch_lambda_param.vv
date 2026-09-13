@@ -20,7 +20,18 @@ fn on_the_next_line() {
 	}
 }
 
+// A bare body may also continue after a trailing operator.
+fn continued_after_an_operator() {
+	u := 1
+	$if windows {
+		cb := |u| 1 +
+			u
+		_ = cb
+	}
+}
+
 fn main() {
+	continued_after_an_operator()
 	on_the_next_line()
 	after_a_semicolon()
 	q := 1
