@@ -218,3 +218,55 @@ fn test_reset_with_remote_addr_sharing_the_header_buffer() {
 	req.reset()
 	assert req.remote_addr == ''
 }
+
+// test_remove_custom_all_keeps_a_buffer_a_survivor_shares is the use-after-free
+// half of the cleanup guard: remove_custom_all releases the key and value of
+// every entry it drops, so one allocation that a surviving entry also points at
+// has to be left alone. A heap string is required; a literal would make
+// string.free() a no-op and prove nothing.
+fn test_remove_custom_all_keeps_a_buffer_a_survivor_shares() {
+	shared_buf := '6.6' + '.6.6'
+	mut h := new_header()
+	h.add_custom('Remote-Addr', shared_buf)!
+	h.add_custom('X-Survivor', shared_buf)!
+
+	h.remove_custom_all('Remote-Addr')
+	assert h.get_custom('Remote-Addr') == none
+	assert h.get_custom('X-Survivor')? == '6.6.6.6'
+}
+
+// test_remove_custom_all_releases_a_shared_doomed_buffer_once covers the other
+// half: two entries being dropped can share one allocation, which must be
+// released once rather than twice.
+fn test_remove_custom_all_releases_a_shared_doomed_buffer_once() {
+	shared_buf := '7.7' + '.7.7'
+	mut h := new_header()
+	h.add_custom('Remote-Addr', shared_buf)!
+	h.add_custom('remote-addr', shared_buf)!
+	h.add_custom('X-Keep', 'me')!
+
+	h.remove_custom_all('Remote-Addr')
+	assert h.get_custom('Remote-Addr') == none
+	assert h.get_custom('X-Keep')? == 'me'
+	assert h.cur_pos == 1
+}
+
+// test_set_remote_addr_over_a_parsed_request exercises the whole path with
+// strings that came off the wire rather than from literals: parse a request
+// that carries a forged Remote-Addr, overwrite it, and confirm the surviving
+// headers are intact afterwards -- they would not be if the cleanup had freed a
+// buffer they share.
+fn test_set_remote_addr_over_a_parsed_request() {
+	raw := 'GET /x HTTP/1.1\r\nHost: example.com\r\nRemote-Addr: 6.6.6.6\r\nX-Trailer: kept\r\n\r\n'
+	mut req := parse_request_head_str(raw)!
+	assert req.header.get_custom('Remote-Addr')? == '6.6.6.6'
+
+	req.set_remote_addr('10.0.0.5:1234')
+	assert req.remote_addr == '10.0.0.5:1234'
+	assert req.header.custom_values('Remote-Addr') == ['10.0.0.5']
+	assert req.header.get(.host)? == 'example.com'
+	assert req.header.get_custom('X-Trailer')? == 'kept'
+
+	req.reset()
+	assert req.remote_addr == ''
+}

@@ -492,18 +492,84 @@ pub fn (mut h Header) delete(key CommonHeader) {
 	h.delete_custom(key.str())
 }
 
+// header_freed_cap bounds the released-pointer list remove_custom_all keeps on
+// the stack: at most a key and a value per entry it can drop.
+const header_freed_cap = 2 * max_headers
+
+// holds_pointer reports whether the entry at `i` still points at `ptr`, through
+// either its key or its value.
+fn (h &Header) holds_pointer(i int, ptr u64) bool {
+	return u64(usize(h.data[i].key.str)) == ptr || u64(usize(h.data[i].value.str)) == ptr
+}
+
 // remove_custom_all removes every header whose key matches `key`
 // case-insensitively, compacting the entries that follow so no empty
-// placeholder is left behind for a later lookup to find.
+// placeholder is left behind for a later lookup to find, and releasing the key
+// and value of each entry it drops.
+//
+// It has to do the releasing itself: compaction is the last reference to those
+// strings, and `Request.free()` only walks the entries below `cur_pos`, so
+// anything dropped here would be unreachable afterwards and would leak in
+// manual and no-GC builds. A buffer that a surviving entry still shares, or
+// that an earlier dropped entry already released, is left alone -- the same
+// aliasing guard `Request.free()` applies, since one allocation can sit in more
+// than one entry.
 //
 // This is deliberately stricter than `delete_custom`, which only matches the
 // exact casing and overwrites matches with an empty value in place -- a
 // tombstone that `get_custom` still returns, as an empty string, ahead of any
 // value added afterwards.
+@[manualfree]
 fn (mut h Header) remove_custom_all(key string) {
-	mut kept := 0
-	for i := 0; i < h.cur_pos; i++ {
+	old_pos := h.cur_pos
+	mut doomed := [max_headers]bool{}
+	mut n_doomed := 0
+	for i := 0; i < old_pos; i++ {
 		if header_key_eq(h.data[i].key, key) {
+			doomed[i] = true
+			n_doomed++
+		}
+	}
+	if n_doomed == 0 {
+		return
+	}
+	mut freed := [header_freed_cap]u64{}
+	mut n_freed := 0
+	for i := 0; i < old_pos; i++ {
+		if !doomed[i] {
+			continue
+		}
+		// key first, then value; both are separate allocations for a parsed
+		// request, where every header field is an implicit clone of its line.
+		for round in 0 .. 2 {
+			mut doomed_str := if round == 0 { h.data[i].key } else { h.data[i].value }
+			ptr := u64(usize(doomed_str.str))
+			if ptr == 0 {
+				continue
+			}
+			mut keep := false
+			for j := 0; j < old_pos; j++ {
+				if !doomed[j] && h.holds_pointer(j, ptr) {
+					keep = true
+					break
+				}
+			}
+			for j := 0; j < n_freed && !keep; j++ {
+				if freed[j] == ptr {
+					keep = true
+				}
+			}
+			if keep {
+				continue
+			}
+			unsafe { doomed_str.free() }
+			freed[n_freed] = ptr
+			n_freed++
+		}
+	}
+	mut kept := 0
+	for i := 0; i < old_pos; i++ {
+		if doomed[i] {
 			continue
 		}
 		if kept != i {
@@ -511,7 +577,7 @@ fn (mut h Header) remove_custom_all(key string) {
 		}
 		kept++
 	}
-	for i := kept; i < h.cur_pos; i++ {
+	for i := kept; i < old_pos; i++ {
 		h.data[i] = HeaderKV{}
 	}
 	h.cur_pos = kept
