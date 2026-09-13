@@ -10083,8 +10083,8 @@ pub fn run(args []string) {
 			}
 		}
 		if print_v_files || print_watched_files {
-			reported := if print_watched_files { watched_with_resources } else { watched_files }
-			for file in reported {
+			listed := if print_watched_files { watched_with_resources } else { watched_files }
+			for file in listed {
 				println(file)
 			}
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
