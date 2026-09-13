@@ -2790,12 +2790,39 @@ fn colon_binds_a_field_or_label(tokens []string, index int) bool {
 					depth--
 					continue
 				}
-				return i > 0 && is_ident_token(tokens[i - 1])
+				return brace_opens_a_typed_literal(tokens, i)
 			}
 			else {}
 		}
 	}
 	return false
+}
+
+// brace_opens_a_typed_literal reports whether the `{` at `index` follows a type
+// name, which makes it a struct literal rather than a map one. `Config{`,
+// `[]Config{` and `map[string]int{` all do, and so does the `Box[int]{` of a
+// generic type, whose argument list has to be stepped over first.
+fn brace_opens_a_typed_literal(tokens []string, index int) bool {
+	if index == 0 {
+		return false
+	}
+	mut before := index - 1
+	if tokens[before] == ']' {
+		mut depth := 0
+		for before >= 0 {
+			if tokens[before] == ']' {
+				depth++
+			} else if tokens[before] == '[' {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			before--
+		}
+		before--
+	}
+	return before >= 0 && is_ident_token(tokens[before])
 }
 
 // token_is_assignment_target reports whether `tokens[index]` is the whole left
@@ -2924,6 +2951,12 @@ fn code_tokens(code string) ([]string, []int) {
 			i += 2
 			continue
 		}
+		if (c == `<` || c == `>`) && i + 1 < code.len && code[i + 1] == c {
+			// `arr << |x| x + 1` pushes a lambda; `a < b` does not open one.
+			tokens << code[i..i + 2]
+			i += 2
+			continue
+		}
 		if i + 1 < code.len && code[i + 1] == `=`
 			&& c in [`=`, `!`, `<`, `>`, `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`] {
 			// `x == y` and `x += 1` read x; only a bare `x =` does not.
@@ -2995,9 +3028,10 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 }
 
 // pipe_lambda_starts_at rejects the bitwise or of `a | b`: a lambda opens an
-// expression, so an operator or an opening bracket comes before it.
+// expression, so an operator or an opening bracket comes before it. `:` is one
+// of them, for the `S{cb: |x| x + 1}` value of a struct field or of a map entry.
 fn pipe_lambda_starts_at(tokens []string, index int) bool {
-	return index == 0 || tokens[index - 1] in [':=', '=', '(', '[', '{', ',', 'return']
+	return index == 0 || tokens[index - 1] in [':=', '=', '(', '[', '{', ',', ':', '<<', 'return']
 }
 
 // pipe_params_bind reports whether `name` is one of the `|a, mut b|` parameters

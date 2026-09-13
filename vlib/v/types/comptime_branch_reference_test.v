@@ -93,3 +93,22 @@ fn test_a_block_bodied_lambda_shadows_its_whole_body() {
 	assert !code_references_ident('cb := |x| (\n\tx + 1\n)', 'x', true)
 	assert code_references_ident('cb := |y| {\n\ty + 1\n}\nprintln(x)', 'x', true)
 }
+
+fn test_a_generic_struct_literal_still_names_its_fields() {
+	assert !code_references_ident('_ = Box[int]{x: 1}', 'x', true)
+	assert !code_references_ident('_ = mymod.Box[int]{x: 1}', 'x', true)
+	assert !code_references_ident('_ = []Box[int]{}\n_ = Box[int]{\n\tx: 1\n}', 'x', true)
+	assert !code_references_ident('_ = Box[Pair[int]]{x: 1}', 'x', true)
+	assert !code_references_ident('_ = map[string]Box[int]{}\n_ = Box[int]{x: 1}', 'x', true)
+	// A bare brace still opens a map literal, whatever precedes the statement.
+	assert code_references_ident('_ = arr[i]\nm := {x: 1}', 'x', true)
+}
+
+fn test_a_pipe_lambda_may_follow_a_colon_or_a_push() {
+	assert !code_references_ident('s := S{cb: |x| x + 1}', 'x', true)
+	assert !code_references_ident('m := {k: |x| x + 1}', 'x', true)
+	assert !code_references_ident('arr << |x| x + 1', 'x', true)
+	// A bitwise or in the same places is not a lambda.
+	assert code_references_ident('s := S{flags: a | x}', 'x', true)
+	assert code_references_ident('arr << a | x', 'x', true)
+}

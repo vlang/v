@@ -1,0 +1,14 @@
+vlib/v/checker/tests/unused_in_dropped_branch_generic_literal_and_lambda_value.vv:12:24: notice: unused parameter: `x`
+   10 | }
+   11 | 
+   12 | fn generic_field_label(x int) {
+      |                        ^
+   13 |     $if windows {
+   14 |         _ = Box[int]{
+vlib/v/checker/tests/unused_in_dropped_branch_generic_literal_and_lambda_value.vv:21:2: warning: unused variable: `p`
+   19 | 
+   20 | fn lambda_after_a_colon() {
+   21 |     p := 1
+      |     ^
+   22 |     $if windows {
+   23 |         s := S{
