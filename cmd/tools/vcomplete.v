@@ -73,7 +73,7 @@ SUBCMD:
   zsh       : [QUERY]       - returns ZSH  compatible completion code with completions computed from QUERY
   powershell: [QUERY]       - returns PowerShell compatible completion code with completions computed from QUERY"
 
-// Snooped from cmd/v/v.v and vlib/old/pref/default.v.
+// Snooped from cmd/v/v.v and vlib/v/pref/default.v.
 const auto_complete_commands = [
 	// simple_cmd
 	'ast',

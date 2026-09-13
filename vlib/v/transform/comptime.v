@@ -3346,7 +3346,7 @@ fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
 }
 
 // comptime_builtin_type_idx maps a builtin type name to V's stable ast type index
-// (vlib/old/ast/types.v `*_type_idx` consts), so user code comparing `field.typ` /
+// (vlib/v/ast/types.v `*_type_idx` consts), so user code comparing `field.typ` /
 // `typeof[T]().idx` against `v.ast` constants (e.g. `int(ast.bool_type)` == 19) sees the
 // same values the reference compiler produces.
 fn comptime_builtin_type_idx(name string) int {

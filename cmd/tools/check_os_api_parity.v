@@ -1,12 +1,12 @@
 module main
 
 import os
-import old.util
-import old.util.diff
-import old.pref
-import old.builder
-import old.builder.cbuilder
-import old.ast
+import v.util
+import v.util.diff
+import v.pref
+import v.builder
+import v.builder.cbuilder
+import v.ast
 import term
 
 const base_os = pref.get_host_os()
@@ -96,8 +96,7 @@ fn gen_api_for_module_in_os(mod_name string, os_ pref.OS) string {
 			if s is ast.FnDecl && s.is_pub {
 				fn_mod := s.modname()
 				if fn_mod == mod_name {
-					fn_signature := b.table.stringify_fn_decl(&s, mod_name, map[string]string{},
-						false)
+					fn_signature := b.table.stringify_fn_decl(&s, mod_name, map[string]string{}, false)
 					fline := '${fn_mod}: ${fn_signature}'
 					res << fline
 				}

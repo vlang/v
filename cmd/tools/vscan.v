@@ -1,8 +1,8 @@
 module main
 
 import os
-import old.scanner
-import old.token
+import v.scanner
+import v.token
 import flag
 
 fn main() {

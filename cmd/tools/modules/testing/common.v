@@ -8,9 +8,9 @@ import term
 import benchmark
 import sync
 import sync.pool
-import old.pref
-import old.util.vtest
-import old.util.vflags
+import v.pref
+import v.util.vtest
+import v.util.vflags
 import runtime
 import rand
 import strings

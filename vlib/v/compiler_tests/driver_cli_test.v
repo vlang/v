@@ -1865,12 +1865,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
 	assert c_compile.exit_code == 0, c_compile.output
 	assert !c_compile.output.contains('[ttime]'), c_compile.output
-	$if macos {
-		rss_index := c_compile.output.index('MB RSS') or { -1 }
-		footprint_index := c_compile.output.index('MB physical footprint') or { -1 }
-		assert rss_index >= 0, c_compile.output
-		assert footprint_index > rss_index, c_compile.output
-	}
+	assert c_compile.output == '', c_compile.output
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
@@ -1895,7 +1890,8 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	assert compat_compile.exit_code == 0, compat_compile.output
 	assert os.is_file(compat_output)
 	assert !os.exists(compat_output + '.c')
-	new_kept_files := kept_c_files(os.vtmp_dir()).filter(it !in kept_before && os.file_name(it).starts_with('hello_compat.'))
+	new_kept_files := kept_c_files(os.vtmp_dir()).filter(it !in kept_before
+		&& os.file_name(it).starts_with('hello_compat.'))
 	assert new_kept_files.len == 1, new_kept_files.str()
 	os.rm(new_kept_files[0])!
 	debug_source := os.join_path(root, 'debug_comptime.v')

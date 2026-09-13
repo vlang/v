@@ -1,5 +1,5 @@
-import old.scanner
-import old.parser
+import v.scanner
+import v.parser
 import time { vpc_now }
 import io { ReaderWriterImpl }
 

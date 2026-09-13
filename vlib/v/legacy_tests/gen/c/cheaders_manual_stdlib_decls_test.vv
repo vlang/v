@@ -1,0 +1,356 @@
+import os
+
+const cheaders_manual_stdlib_vexe = @VEXE
+
+const cheaders_manual_stdlib_vroot = os.real_path(@VMODROOT)
+
+const cheaders_manual_stdlib_varargs_source = os.join_path(cheaders_manual_stdlib_vroot,
+	'vlib/v/gen/c/testdata/c_varargs.vv')
+
+const cheaders_manual_stdlib_stdio_source = os.join_path(cheaders_manual_stdlib_vroot,
+	'vlib/v/tests/c_shadowed_c_fn_call_test.v')
+
+fn test_default_c_prelude_uses_manual_stdio_stdlib_string_and_stdarg_decls() {
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o - ${os.quoted_path(cheaders_manual_stdlib_varargs_source)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := res.output.replace('\r\n', '\n')
+	assert generated_c.contains('typedef struct _iobuf FILE;'), generated_c
+	assert generated_c.contains('typedef struct __sFILE FILE;'), generated_c
+	assert generated_c.contains('typedef struct _IO_FILE FILE;'), generated_c
+	assert generated_c.contains('typedef __builtin_va_list va_list;'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
+
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('#if defined(_WIN32) || defined(_WIN64)\nV_CRT_STDIO_LINKAGE int V_CRT_CALL _fseeki64(FILE *stream, i64 offset, int whence);\nV_CRT_LINKAGE int V_CRT_CALL fgetpos(FILE *stream, i64 *pos);\nV_CRT_STDIO_LINKAGE int V_CRT_CALL _fileno(FILE *stream);\nV_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);\nV_CRT_STDIO_LINKAGE int V_CRT_CALL freopen_s(FILE **new_stream, const char *filename, const char *mode, FILE *stream);\nV_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfreopen(const unsigned short *filename, const unsigned short *mode, FILE *stream);\nV_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wpopen(const unsigned short *command, const unsigned short *mode);\nV_CRT_STDIO_LINKAGE int V_CRT_CALL _pclose(FILE *stream);\nV_CRT_STDIO_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);\nV_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);\nV_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);\nV_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);\nV_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);\nV_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);\n#endif'), generated_c
+
+	assert generated_c.contains('V_CRT_LINKAGE void V_CRT_CALL perror(const char *str);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL strcmp(const char *left, const char *right);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL strncmp(const char *left, const char *right, size_t n);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE char * V_CRT_CALL strstr(const char *haystack, const char *needle);'), generated_c
+	assert generated_c.contains('#if !defined(_WIN32) && !defined(_WIN64) && !defined(__BIONIC__)'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE char * V_CRT_CALL strdup(const char *str);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL rand(void);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE void V_CRT_CALL srand(unsigned int seed);'), generated_c
+	assert generated_c.contains('RAND_MAX = 2147483647'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL abs(int n);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE double V_CRT_CALL atof(const char *str);'), generated_c
+	assert generated_c.contains('extern FILE* stdout;'), generated_c
+	assert generated_c.contains('#define stdout (__acrt_iob_func(1))'), generated_c
+	assert generated_c.contains('#if (defined(_MSC_VER) && !defined(__clang__)) || defined(__cplusplus)\n// Under C++ (g++/clang++), let libc declare FILE/stdio/string/stdlib to keep\n// noexcept specifiers consistent'), generated_c
+	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
+	assert generated_c.contains('#if (defined(__MINGW32__) || defined(__MINGW64__)) && defined(__V_GCC__)\n\t#define V_CRT_STDIO_LINKAGE __attribute__((dllimport))\n#else\n\t#define V_CRT_STDIO_LINKAGE V_CRT_LINKAGE\n#endif'), generated_c
+	crt_stdio_linkage_decls :=
+		generated_c.split_into_lines().filter(it.starts_with('V_CRT_STDIO_LINKAGE '))
+	assert crt_stdio_linkage_decls == [
+		'V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL popen(const char *command, const char *mode);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL pclose(FILE *stream);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL _fseeki64(FILE *stream, i64 offset, int whence);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL _fileno(FILE *stream);',
+		'V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL freopen_s(FILE **new_stream, const char *filename, const char *mode, FILE *stream);',
+		'V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfreopen(const unsigned short *filename, const unsigned short *mode, FILE *stream);',
+		'V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wpopen(const unsigned short *command, const unsigned short *mode);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL _pclose(FILE *stream);',
+		'V_CRT_STDIO_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);',
+	], crt_stdio_linkage_decls.str()
+	assert !generated_c.contains('V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _popen('), generated_c
+	assert !generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _wremove('), generated_c
+	for declaration in [
+		'V_CRT_LINKAGE FILE * V_CRT_CALL fdopen(int fd, const char *mode);',
+		'V_CRT_LINKAGE int V_CRT_CALL fileno(FILE *stream);',
+		'V_CRT_LINKAGE int V_CRT_CALL atexit(void (*cb)(void));',
+		'V_CRT_LINKAGE int V_CRT_CALL mkstemp(char *stemplate);',
+		'V_CRT_LINKAGE void * V_CRT_CALL aligned_alloc(size_t alignment, size_t size);',
+		'V_CRT_LINKAGE int V_CRT_CALL posix_memalign(void **memptr, size_t alignment, size_t size);',
+		'V_CRT_LINKAGE int V_CRT_CALL setenv(const char *name, const char *value, int overwrite);',
+		'V_CRT_LINKAGE int V_CRT_CALL unsetenv(const char *name);',
+		'V_CRT_LINKAGE char * V_CRT_CALL realpath(const char *path, char *resolved_path);',
+		'V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);',
+		'V_CRT_LINKAGE int V_CRT_CALL fgetpos(FILE *stream, i64 *pos);',
+		'V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);',
+		'V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);',
+		'V_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);',
+		'V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);',
+		'V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);',
+	] {
+		assert generated_c.contains(declaration), declaration
+		assert !generated_c.contains(declaration.replace('V_CRT_LINKAGE', 'V_CRT_STDIO_LINKAGE')), declaration
+	}
+	assert generated_c.contains('#undef V_CRT_STDIO_LINKAGE\n#undef V_CRT_LINKAGE\n#undef V_CRT_CALL'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE unsigned short * V_CRT_CALL _wgetenv(const unsigned short *varname);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _wputenv(const unsigned short *envstring);'), generated_c
+	assert generated_c.contains('#elif (defined(__MINGW32__) || defined(__MINGW64__)) && defined(__V_GCC__)\n// mingw-w64 stdio.h provides fprintf/vfprintf as static inline overrides\n// when __USE_MINGW_ANSI_STDIO is enabled, so use the system declarations\n// instead of the manual formatted-stdio prototypes below.\n#include <stdarg.h>\n#include <stdio.h>\n#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))'), generated_c
+	assert generated_c.contains('#elif defined(__MINGW32__) || defined(__MINGW64__) || (defined(__clang__) && (defined(_WIN32) || defined(_WIN64)))\ntypedef struct _iobuf FILE;\nFILE* __cdecl __acrt_iob_func(unsigned index);\n#define stdin  (__acrt_iob_func(0))\n#define stdout (__acrt_iob_func(1))\n#define stderr (__acrt_iob_func(2))'), generated_c
+	assert generated_c.contains('#elif defined(__TINYC__) && (defined(_WIN32) || defined(_WIN64))'), generated_c
+	assert generated_c.contains('#ifndef _FILE_DEFINED\nstruct _iobuf {\n\tchar *_ptr;\n\tint _cnt;\n\tchar *_base;\n\tint _flag;\n\tint _file;\n\tint _charbuf;\n\tint _bufsiz;\n\tchar *_tmpfname;\n};\ntypedef struct _iobuf FILE;\n#define _FILE_DEFINED'), generated_c
+	assert generated_c.contains('FILE* __cdecl __iob_func(void);'), generated_c
+	assert generated_c.contains('extern FILE (*_imp___iob)[];'), generated_c
+	assert generated_c.contains('#define stdout (&__iob_func()[1])'), generated_c
+	assert generated_c.contains('#elif defined(__vinix__)\ntypedef struct __file FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;\nstruct __thread_data;\nstruct __threadattr;'), generated_c
+	assert generated_c.contains('#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ && defined(__has_include) && __has_include(<pthread.h>)\n#include <pthread.h>\n#else\ntypedef struct __thread_data *pthread_t;\n#endif\ntypedef __builtin_va_list va_list;'), generated_c
+	assert generated_c.contains('#if defined(__APPLE__) || defined(__FreeBSD__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
+	assert generated_c.contains('#elif defined(__DragonFly__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
+	assert generated_c.contains('#elif defined(__NetBSD__)\n// NetBSD exposes stdin/stdout/stderr as macros into a single `__sF[3]`\n// array whose element size (sizeof(FILE)) depends on the platform and libc\n// version, so we cannot forward-declare them. The FreeBSD-style\n// `__stdinp/__stdoutp/__stderrp` symbols also do not exist on NetBSD (see\n// vlang/v#27190). Defer to the system headers for FILE, the stdio streams,\n// and the libc prototypes that would otherwise clash with the\n// `__restrict`-qualified declarations in NetBSD libc.\n#include <stdarg.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>'), generated_c
+	assert generated_c.contains('#elif defined(__TINYC__) && (defined(__FreeBSD__) || defined(__OpenBSD__))\n// TinyCC reports a hard redefinition error if system OpenSSL pulls in\n// <stdarg.h> after V has provided its own va_start macro. Include it first,\n// but keep V manual FILE declarations on these BSD libc variants.\n#include <stdarg.h>\n#if defined(__FreeBSD__)\ntypedef struct __sFILE FILE;\nextern FILE* __stdinp;\nextern FILE* __stdoutp;\nextern FILE* __stderrp;\n#define stdin __stdinp\n#define stdout __stdoutp\n#define stderr __stderrp'), generated_c
+	assert generated_c.contains('#else\ntypedef struct __sFILE FILE;\n#ifndef _STDFILES_DECLARED\n\t#define _STDFILES_DECLARED\nstruct __sFstub { long _stub; };\nextern struct __sFstub __stdin[];\nextern struct __sFstub __stdout[];\nextern struct __sFstub __stderr[];\n#endif\n#define stdin ((struct __sFILE *)__stdin)\n#define stdout ((struct __sFILE *)__stdout)\n#define stderr ((struct __sFILE *)__stderr)\n#endif\n#elif (defined(__MINGW32__) || defined(__MINGW64__)) && defined(__V_GCC__)'), generated_c
+	assert generated_c.contains('#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus) && !defined(__NetBSD__)'), generated_c
+	assert generated_c.contains('#elif defined(__OpenBSD__)\ntypedef struct __sFILE FILE;\n#ifndef _STDFILES_DECLARED\n\t#define _STDFILES_DECLARED\nstruct __sFstub { long _stub; };\nextern struct __sFstub __stdin[];\nextern struct __sFstub __stdout[];\nextern struct __sFstub __stderr[];\n#endif\n#define stdin ((struct __sFILE *)__stdin)\n#define stdout ((struct __sFILE *)__stdout)\n#define stderr ((struct __sFILE *)__stderr)'), generated_c
+	assert generated_c.contains('#elif defined(__linux__) && !defined(__GLIBC__) && !defined(__GNU_LIBRARY__) && !defined(__BIONIC__) && !defined(__UCLIBC__)\ntypedef struct _IO_FILE FILE;\n// musl exposes the stdio streams as `FILE *const`, so match that to stay\n// compatible with later <stdio.h> includes from headers like miniz.h.\nextern FILE* const stdin;\nextern FILE* const stdout;\nextern FILE* const stderr'), generated_c
+	assert generated_c.contains('#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus)'), generated_c
+	assert generated_c.contains('#if defined(__vinix__)\nV_CRT_LINKAGE char * V_CRT_CALL fgets(char *str, size_t size, FILE *stream);\n#else\nV_CRT_LINKAGE char * V_CRT_CALL fgets(char *str, int size, FILE *stream);'), generated_c
+	assert generated_c.contains('#if defined(__vinix__)\nV_CRT_LINKAGE int V_CRT_CALL strcmp(char *left, char *right);\nV_CRT_LINKAGE int V_CRT_CALL strncmp(char *left, char *right, size_t n);\n#else\nV_CRT_LINKAGE int V_CRT_CALL strcmp(const char *left, const char *right);'), generated_c
+}
+
+fn test_android_prelude_uses_bionic_file_decls() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_android_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'android.v')
+	output_path := os.join_path(tmp_dir, 'android.c')
+	os.write_file(source_path, 'fn main() {\n\tprintln("hi")\n}\n')!
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -os android -apk -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
+	assert generated_c.contains('#elif defined(__BIONIC__)\nstruct __sFILE;\ntypedef struct __sFILE FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;'), generated_c
+	assert !generated_c.contains('extern FILE __sF[];'), generated_c
+	assert !generated_c.contains('#elif defined(__BIONIC__)\ntypedef struct _IO_FILE FILE;'), generated_c
+}
+
+fn test_vinix_prelude_leaves_stdio_and_stdlib_to_vinix_stubs() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_vinix_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'vinix.v')
+	output_path := os.join_path(tmp_dir, 'vinix.c')
+	os.write_file(source_path,
+		['fn C.printf_panic(charptr, ...voidptr)', 'fn C.text_start()', 'fn C.__builtin_return_address(int) voidptr', '', 'fn main() {', "\tC.printf_panic(c'%d', voidptr(1))", '\t_ = voidptr(C.text_start)', '\t_ = C.__builtin_return_address(0)', '}'].join('\n') +
+		'\n')!
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -os vinix -d no_backtrace -gc none -manualfree -enable-globals -nofloat -experimental -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
+	assert generated_c.contains('#elif defined(__vinix__)\ntypedef struct __file FILE;\nextern FILE* stdin;\nextern FILE* stdout;\nextern FILE* stderr;\nstruct __thread_data;\nstruct __threadattr;'), generated_c
+	assert generated_c.contains('#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ && defined(__has_include) && __has_include(<pthread.h>)\n#include <pthread.h>\n#else\ntypedef struct __thread_data *pthread_t;\n#endif\ntypedef __builtin_va_list va_list;'), generated_c
+	assert generated_c.contains('#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus)'), generated_c
+	assert generated_c.contains('extern void printf_panic(charptr _d1, ... );'), generated_c
+	assert !generated_c.contains('extern void printf_panic(charptr _d1, Array_voidptr _d2);'), generated_c
+	assert !generated_c.contains('extern void text_start();'), generated_c
+	assert !generated_c.contains('extern voidptr __builtin_return_address(int _d1);'), generated_c
+	assert !generated_c.contains('builtin__unbuffer_stdout();'), generated_c
+}
+
+fn test_msvc_windows_prelude_uses_msvc_crt_headers() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_msvc_windows_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'hello.v')
+	output_path := os.join_path(tmp_dir, 'hello.c')
+	os.write_file(source_path, 'fn main() {\n\tprintln("hi")\n}\n')!
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -cc msvc -os windows -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
+	assert generated_c.contains('#if (defined(_MSC_VER) && !defined(__clang__)) || defined(__cplusplus)\n// Under C++ (g++/clang++), let libc declare FILE/stdio/string/stdlib to keep\n// noexcept specifiers consistent'), generated_c
+	assert !generated_c.contains('V_CRT_IMPORT'), generated_c
+	assert !generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\ntypedef struct _iobuf FILE;'), generated_c
+	assert generated_c.contains('#ifndef va_copy\n\t#define va_copy(dest, src) ((dest) = (src))\n#endif\n#ifndef _TRUNCATE'), generated_c
+	assert generated_c.contains('#if defined(_MSC_VER) && !defined(__clang__)\n\t#define V_CRT_LINKAGE __declspec(dllimport)\n\t#define V_CRT_CALL VCALLCONV(cdecl)\n#else\n\t#define V_CRT_LINKAGE\n\t#define V_CRT_CALL\n#endif'), generated_c
+	assert generated_c.contains('#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus) && !defined(__NetBSD__)\n// mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides'), generated_c
+	assert generated_c.contains('#if !((defined(__MINGW32__) || defined(__MINGW64__)) && !defined(__clang__))\nV_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vscprintf(const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('V_CRT_LINKAGE int V_CRT_CALL _vsnprintf_s(char *buffer, size_t size, size_t count, const char *format, va_list ap);'), generated_c
+	assert generated_c.contains('#include <windows.h>'), generated_c
+}
+
+fn test_msvc_windows_splits_large_string_const_literals() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_msvc_long_string_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	long_text := 'a'.repeat(25000)
+	source_path := os.join_path(tmp_dir, 'long_string.v')
+	output_path := os.join_path(tmp_dir, 'long_string.c')
+	os.write_file(source_path,
+		"const long_literal = '${long_text}'\n\nfn main() {\n\tassert long_literal.len == ${long_text.len}\n}\n")!
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -cc msvc -os windows -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := os.read_file(output_path)!.replace('\r\n', '\n')
+	marker := 'long_literal = _S('
+	start := generated_c.index(marker) or {
+		assert false, generated_c
+		return
+	}
+	line := generated_c[start..].all_before(');')
+	assert line.contains('" "'), line
+	assert !line.contains('a'.repeat(20000)), line
+}
+
+fn test_manual_stdio_decls_do_not_conflict_with_later_stdio_includes() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	output_path := os.join_path(tmp_dir, 'shadowed_c_fn_call_test')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(cheaders_manual_stdlib_stdio_source)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_manual_stdio_decls_allow_headerless_perror_declarations() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_perror_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'c_perror.v')
+	os.write_file(source_path,
+
+		['fn C.perror(message &char)', '', 'fn main() {', "\tC.perror(c'')", '}'].join('\n') + '\n')!
+	output_path := os.join_path(tmp_dir, 'c_perror')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_manual_stdio_decls_allow_headerless_rand_declarations() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_rand_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'c_rand.v')
+	os.write_file(source_path,
+		['fn C.rand() int', 'fn C.srand(seed u32)', '', 'fn main() {', '\tC.srand(1)', '\t_ = C.rand()', '}'].join('\n') +
+		'\n')!
+	output_path := os.join_path(tmp_dir, 'c_rand')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_manual_stdio_decls_allow_rand_max_macro_usage() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_rand_max_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'c_rand_max.v')
+	os.write_file(source_path,
+		['const rand_max = C.RAND_MAX', '', 'fn main() {', '\tassert rand_max > 0', '}'].join('\n') +
+		'\n')!
+	output_path := os.join_path(tmp_dir, 'c_rand_max')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_manual_stdio_decls_allow_direct_atof_calls() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_atof_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'c_atof.v')
+	os.write_file(source_path, ['fn main() {', "\t_ = C.atof(c'1.25')", '}'].join('\n') + '\n')!
+	output_path := os.join_path(tmp_dir, 'c_atof')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_manual_stdio_decls_allow_translated_direct_abs_calls() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_abs_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'c_abs.v')
+	os.write_file(source_path, ['fn main() {', '\t_ = C.abs(-7)', '}'].join('\n') + '\n')!
+	output_path := os.join_path(tmp_dir, 'c_abs')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -translated -cc clang -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_manual_stdio_decls_allow_translated_direct_strdup_calls() {
+	$if windows {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_strdup_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'c_strdup.v')
+	os.write_file(source_path, ['fn main() {', "\t_ = C.strdup(c'abc')", '}'].join('\n') + '\n')!
+	output_path := os.join_path(tmp_dir, 'c_strdup')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -translated -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_manual_stdio_decls_allow_translated_direct_strncmp_calls() {
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_strncmp_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'c_strncmp.v')
+	os.write_file(source_path,
+
+		['fn main() {', "\t_ = C.strncmp(c'abc', c'abd', 2)", '}'].join('\n') + '\n')!
+	output_path := os.join_path(tmp_dir, 'c_strncmp')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -translated -cc clang -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_c_prelude_ctype_decls_do_not_conflict_with_later_ctype_includes() {
+	$if !linux {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'cheaders_manual_stdlib_ctype_${os.getpid()}')
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source_path := os.join_path(tmp_dir, 'c_ctype.v')
+	os.write_file(source_path,
+		['fn C.__ctype_b_loc() &&u16', '', 'fn main() {', '\tC.__ctype_b_loc()', '}'].join('\n') +
+		'\n')!
+	output_path := os.join_path(tmp_dir, 'c_ctype')
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -cc clang -show-c-output -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+}
+
+fn test_c_prelude_defines_l_tmpnam_on_glibc_without_including_stdio() {
+	// Regression test for https://github.com/vlang/v/issues/28108 :
+	// V does not #include <stdio.h> in its prelude. glibc only defines L_tmpnam while <stdio.h>
+	// is being processed, and uses it in the `tmpnam` prototype, so a <stdio.h> pulled in later by
+	// a module header (sqlite3.h, gc.h, ...) would fail with `L_tmpnam undeclared`. The prelude
+	// therefore defines L_tmpnam itself, on the glibc path, without adding an include.
+	cmd := '${os.quoted_path(cheaders_manual_stdlib_vexe)} -o - ${os.quoted_path(cheaders_manual_stdlib_varargs_source)}'
+	res := os.execute(cmd)
+	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	generated_c := res.output.replace('\r\n', '\n')
+	assert generated_c.contains('#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)'), generated_c
+	assert generated_c.contains('#ifndef L_tmpnam\n#define L_tmpnam 20\n#endif'), generated_c
+}

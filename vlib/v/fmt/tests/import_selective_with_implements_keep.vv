@@ -1,0 +1,10 @@
+import v.ast.walker { Visitor }
+import v.ast { Node }
+
+struct Walker implements Visitor {
+	aaa string
+}
+
+fn (mut n Walker) visit(node &Node) ! {
+	panic('not implemented')
+}

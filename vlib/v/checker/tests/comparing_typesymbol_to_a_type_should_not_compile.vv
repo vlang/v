@@ -1,4 +1,4 @@
-import old.ast
+import v.ast
 
 fn main() {
 	t := ast.new_table()

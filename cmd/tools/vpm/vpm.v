@@ -6,7 +6,7 @@ module main
 import os
 import os.cmdline
 import rand
-import old.help
+import v.help
 import v.vmod
 
 const server_url_option_names = ['-m', '--mirror', '-server-url', '--server-url', '--server-urls']

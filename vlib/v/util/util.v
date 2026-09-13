@@ -4,6 +4,63 @@ import os
 import strings
 import v.ansi
 
+const normalized_workdir = os.wd_at_startup.replace('\\', '/') + '/'
+
+// set_vroot_folder exposes the V executable and marks child tool processes.
+pub fn set_vroot_folder(vroot_path string) {
+	if os.getenv('VEXE') == '' {
+		vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+		os.setenv('VEXE', os.real_path(os.join_path_single(vroot_path, vname)), true)
+	}
+	os.setenv('VCHILD', 'true', true)
+}
+
+// quote_path quotes a path for use in a shell command.
+pub fn quote_path(path string) string {
+	return os.quoted_path(path)
+}
+
+// args_quote_paths quotes paths and joins them into a shell command fragment.
+pub fn args_quote_paths(args []string) string {
+	return args.map(os.quoted_path(it)).join(' ')
+}
+
+// find_all_v_files resolves V files below the supplied files and directories.
+pub fn find_all_v_files(roots []string) ![]string {
+	mut files := []string{}
+	for file in roots {
+		if os.is_dir(file) {
+			files << os.walk_ext(file, '.v')
+			files << os.walk_ext(file, '.vsh')
+			continue
+		}
+		if !file.ends_with('.v') && !file.ends_with('.vv') && !file.ends_with('.vsh') {
+			return error('v fmt can only be used on .v files.\nOffending file: "${file}"')
+		}
+		if !os.exists(file) {
+			return error('"${file}" does not exist')
+		}
+		files << file
+	}
+	return files
+}
+
+// path_styled_for_error_messages returns a stable path for diagnostics.
+pub fn path_styled_for_error_messages(path string) string {
+	mut real_path := os.real_path(path).replace('\\', '/')
+	if os.getenv('VERROR_PATHS') != 'absolute' && real_path.starts_with(normalized_workdir) {
+		real_path = real_path[normalized_workdir.len..]
+	}
+	return real_path
+}
+
+// verror prints a tool error and exits.
+@[noreturn]
+pub fn verror(kind string, message string) {
+	eprintln('${kind}: ${message}')
+	exit(1)
+}
+
 // is_escape_sequence reports whether c is a valid escape sequence denoter.
 @[inline]
 pub fn is_escape_sequence(c u8) bool {
@@ -91,13 +148,35 @@ pub fn nearest_vmod_root(path string) ?string {
 
 // githash returns the current seven-character Git commit hash for path.
 pub fn githash(path string) !string {
-	head_file := os.join_path(path, '.git', 'HEAD')
+	git_marker := os.join_path(path, '.git')
+	mut git_dir := git_marker
+	if os.is_file(git_marker) {
+		marker := os.read_file(git_marker) or { return error('failed to read `${git_marker}`') }
+		if !marker.starts_with('gitdir: ') {
+			return error('invalid Git worktree marker `${git_marker}`')
+		}
+		configured := marker.all_after('gitdir: ').trim_space()
+		git_dir = os.real_path(if os.is_abs_path(configured) {
+			configured
+		} else {
+			os.join_path(path, configured)
+		})
+	}
+	head_file := os.join_path(git_dir, 'HEAD')
 	if !os.exists(head_file) {
 		return error('failed to find `${head_file}`')
 	}
 	head_content := os.read_file(head_file) or { return error('failed to read `${head_file}`') }
 	hash := if head_content.starts_with('ref: ') {
-		revision_path := os.join_path(path, '.git', head_content[5..].trim_space())
+		reference := head_content[5..].trim_space()
+		mut revision_path := os.join_path(git_dir, reference)
+		if !os.exists(revision_path) {
+			common_dir_file := os.join_path(git_dir, 'commondir')
+			common_dir := os.read_file(common_dir_file) or {
+				return error('failed to find revision `${reference}`')
+			}
+			revision_path = os.real_path(os.join_path(git_dir, common_dir.trim_space(), reference))
+		}
 		if !os.exists(revision_path) {
 			return error('failed to find revision file `${revision_path}`')
 		}
@@ -140,11 +219,11 @@ pub mut:
 // new_suggestion creates a diagnostic suggestion from wanted and possibilities.
 pub fn new_suggestion(wanted string, possibilities []string, params SuggestionParams) Suggestion {
 	mut suggestion := Suggestion{
-		known:                []Possibility{cap: int(max_suggestions_limit)}
-		wanted:               wanted
-		swanted:              short_module_name(wanted)
+		known: []Possibility{cap: int(max_suggestions_limit)}
+		wanted: wanted
+		swanted: short_module_name(wanted)
 		similarity_threshold: params.similarity_threshold
-		similarity_fn:        params.similarity_fn
+		similarity_fn: params.similarity_fn
 	}
 	suggestion.add_many(possibilities)
 	suggestion.sort()
@@ -163,8 +242,8 @@ fn (mut s Suggestion) add(value string) {
 	}
 	similarity := f32(int(s.similarity_fn(s.swanted, short_value) * 1000)) / 1000
 	s.known << Possibility{
-		value:      value
-		svalue:     short_value
+		value: value
+		svalue: short_value
 		similarity: similarity
 	}
 }

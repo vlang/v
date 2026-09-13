@@ -1,4 +1,4 @@
-import old.util
+import v.util
 
 @[noreturn]
 fn exit_inner() {

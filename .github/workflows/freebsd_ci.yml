@@ -43,7 +43,6 @@ on:
       - 'vlib/sync/**'
       - 'vlib/time/**'
       - 'vlib/toml/**'
-      - 'vlib/old/**'
       - 'vlib/v/**'
       # build-examples / DB / Sokol deps exercised by ci/freebsd_ci.vsh
       - 'examples/**'

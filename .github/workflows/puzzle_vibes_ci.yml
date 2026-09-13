@@ -6,8 +6,8 @@ on:
     branches:
       - master
     paths:
-      - 'vlib/old/checker/**.v'
-      - 'vlib/old/gen/c/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - 'cmd/tools/vshader.v'
@@ -16,8 +16,8 @@ on:
       - '!**.md'
   pull_request:
     paths:
-      - 'vlib/old/checker/**'
-      - 'vlib/old/gen/c/**'
+      - 'vlib/v/checker/**'
+      - 'vlib/v/gen/c/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - 'cmd/tools/vshader.v'

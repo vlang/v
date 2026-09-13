@@ -77,24 +77,20 @@ project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
 On every native platform, the top-level `v` executable contains the default
 compiler whose source lives in `vlib/v`. Every direct C build, including compiler
-self-builds, is compiled in-process. The CLI and
-tool commands remain in `cmd/v`; commands such as `test` and `fmt` are external
-tools, and non-C backends remain separate builder tools.
+self-builds, is compiled in-process. The CLI remains in `cmd/v`; `test` is
+handled by the default compiler, and external tools are compiled with it first.
 
 The standard bootstrap does not build the sibling `v1_fallback` executable
 (`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
-sibling is missing, it reports that it is running `make v1` and builds the
-fallback from the current `vc` snapshot. You can run `make v1` explicitly to
-prepare it ahead of time. `-old-compiler` launches the fallback explicitly, and
-ordinary user builds retry through it after a compiler or C compilation
-failure. Explicit `-new-compiler` builds and native compiler self-builds remain
-strict operations, except for `-new-compiler -cc msvc` on Windows. The compiler does
-not yet generate MSVC command lines, so that combination intentionally launches
-`v1_fallback.exe`. `-new-compiler` remains accepted for command-line
-compatibility and otherwise selects the same embedded driver.
-
-Portable cross-VC snapshots do not embed the new driver and retain the
-compatibility compiler from `vlib/old`.
+sibling is missing, it reports that it is running `make v1`. That target reuses
+or downloads the complete 0.5.2 release under the user cache. If no release
+binary can run, `oldv` clones the 0.5.2 V sources and matching `vc` snapshot and
+builds the fallback there. You can run `make v1` explicitly to prepare it ahead
+of time. `-old-compiler` launches the fallback explicitly, and ordinary user
+builds and external tools retry through it after a compiler or C compilation
+failure. Explicit `-new-compiler` builds remain strict default-compiler
+operations. `-new-compiler` remains accepted for command-line compatibility and
+otherwise selects the same embedded driver.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .

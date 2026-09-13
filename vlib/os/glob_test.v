@@ -2,13 +2,13 @@ import os
 
 fn deep_glob() ! {
 	os.chdir(@VMODROOT)!
-	matches := os.glob('vlib/old/*/*.v') or { panic(err) }
+	matches := os.glob('vlib/v/*/*.v') or { panic(err) }
 	assert matches.len > 10
-	assert 'vlib/old/ast/ast.v' in matches
-	assert 'vlib/old/ast/table.v' in matches
-	assert 'vlib/old/token/token.v' in matches
+	assert 'vlib/v/ast/ast.v' in matches
+	assert 'vlib/v/ast/table.v' in matches
+	assert 'vlib/v/token/token.v' in matches
 	for f in matches {
-		if !f.starts_with('vlib/old/') {
+		if !f.starts_with('vlib/v/') {
 			assert false
 		}
 		assert f.ends_with('.v')
@@ -17,13 +17,13 @@ fn deep_glob() ! {
 
 fn redeep_glob() ! {
 	os.chdir(@VMODROOT)!
-	matches := os.glob('vlib/old/**/*.v') or { panic(err) }
+	matches := os.glob('vlib/v/**/*.v') or { panic(err) }
 	assert matches.len > 10
-	assert 'vlib/old/ast/ast.v' in matches
-	assert 'vlib/old/ast/table.v' in matches
-	assert 'vlib/old/token/token.v' in matches
+	assert 'vlib/v/ast/ast.v' in matches
+	assert 'vlib/v/ast/table.v' in matches
+	assert 'vlib/v/token/token.v' in matches
 	for f in matches {
-		if !f.starts_with('vlib/old/') {
+		if !f.starts_with('vlib/v/') {
 			assert false
 		}
 		assert f.ends_with('.v')

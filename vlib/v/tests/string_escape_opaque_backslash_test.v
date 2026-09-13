@@ -174,7 +174,7 @@ fn test_method_attr_arg_with_decoded_backslash_via_comptime_methods() {
 }
 
 // regression test for a fifth gap found in the same review round: an enum value's `@[json: ...]`
-// attribute arg is spliced directly into generated C by vlib/old/gen/c/json.v's gen_enum_to_str /
+// attribute arg is spliced directly into generated C by vlib/v/gen/c/json.v's gen_enum_to_str /
 // gen_str_to_enum, bypassing util.smart_quote()/arg_opaque_pos - a separate code path from every
 // ast.Attr consumer covered above, in a file the original fix never touched.
 enum JsonAttrHazardEnum {
@@ -209,7 +209,7 @@ fn test_json_field_attr_arg_with_decoded_backslash() {
 }
 
 // regression test for a sixth gap found in the same review round: get_table_name_by_struct_type()
-// (vlib/old/gen/c/orm.v) reads the ORM table name from a struct's @[table: ...] attribute arg but
+// (vlib/v/gen/c/orm.v) reads the ORM table name from a struct's @[table: ...] attribute arg but
 // was passing a hardcoded empty opaque_pos to smart_quote instead of attr.arg_opaque_pos - the
 // only smart_quote(attr.arg, ...) call site in orm.v that was missed during the original fix.
 @[table: 'T\x5cnU']

@@ -2,7 +2,7 @@
 import os
 import term
 import benchmark
-import old.util.vtest
+import v.util.vtest
 
 @[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
@@ -102,8 +102,7 @@ fn test_all() {
 		}
 		exe_filename := '${wrkdir}/${base_filename}'
 		full_path_to_source_file := os.join_path(vroot, test)
-		compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_filename)} -cg -cflags ' +
-			' "-w" -experimental -autofree ${os.quoted_path(full_path_to_source_file)}'
+		compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_filename)} -cg -cflags ' + ' "-w" -experimental -autofree ${os.quoted_path(full_path_to_source_file)}'
 		vprintln('compile cmd: ${bold(compile_cmd)}')
 		res := os.execute(compile_cmd)
 		if res.exit_code != 0 {

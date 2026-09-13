@@ -4,7 +4,7 @@
 // variable named after a C/C++ reserved word (`new`, `delete`, `operator`, ...) is
 // declared as `__v_delete` but referenced by the ORM codegen as `delete`, producing
 // an "undeclared identifier" C error. See write_orm_insert_with_last_ids /
-// write_orm_upsert / write_orm_bulk_insert in vlib/old/gen/c/orm.v.
+// write_orm_upsert / write_orm_bulk_insert in vlib/v/gen/c/orm.v.
 import db.sqlite
 
 struct User {

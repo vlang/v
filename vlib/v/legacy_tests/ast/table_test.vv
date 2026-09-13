@@ -1,0 +1,101 @@
+import v.ast
+import v.pref
+import v.parser
+
+fn test_update_sym_by_idx() {
+	old_size := 47
+	new_size := 100
+	b_old_size := 4 * old_size
+	b_new_size := 4 * new_size
+	source := 'type T001 = [${old_size}]u32' // u32 is an element type, with a known size, that is not going to change in the future, unlike int
+	// we will update the `size` & `size_expr` in sym.info for `T001`
+	mut t := ast.new_table()
+	parser.parse_text(source, '', mut t, .parse_comments, pref.new_preferences())
+
+	// retrieve old sym first:
+	typ := t.type_idxs['[${old_size}]u32']!
+	old_str := t.type_to_str(typ)
+	assert old_str == '[${old_size}]u32'
+	old_sym := t.sym(typ)
+	old_info := old_sym.info as ast.ArrayFixed
+
+	alias_typ := t.type_idxs['main.T001']!
+	alias_str := t.type_to_str(alias_typ)
+	assert alias_str == 'main.T001'
+	// make sure that the alias type had the correct size before the change (the size is stored in the alias type symbol)
+	alias_size, _ := t.type_size(alias_typ)
+	assert alias_size == b_old_size
+	alias_sym := t.sym(alias_typ)
+	assert (alias_sym.info as ast.Alias).parent_type == typ
+	assert alias_sym.size == b_old_size
+
+	// update the existing sym
+	new_info := ast.ArrayFixed{
+		...old_info
+		size:      new_size
+		size_expr: ast.empty_expr
+	}
+	new_sym := ast.TypeSymbol{
+		...old_sym
+		info: new_info
+	}
+	t.update_sym_by_idx(typ, new_sym)
+	new_str := t.type_to_str(typ)
+	assert new_str == '[${new_size}]u32'
+
+	// check again the alias size (it should be indirectly changed as well):
+	new_alias_sym := t.sym(alias_typ)
+	assert new_alias_sym.size == -1
+	new_alias_size, _ := t.type_size(alias_typ)
+	assert new_alias_size == b_new_size
+	assert new_alias_sym.size == b_new_size // make sure that `new_alias_sym` is now updated too (since it is a pointer to a symbol value stored in the table)
+}
+
+fn test_scoped_cname_prefers_escaped_cname_for_generic_scoped_names() {
+	sym := ast.TypeSymbol{
+		cname: 'x__json2__Node_T_x__json2__ValueInfo'
+		info:  ast.Struct{
+			scoped_name: 'x.json2.Node[x.json2.ValueInfo]'
+		}
+	}
+	assert sym.scoped_cname() == 'x__json2__Node_T_x__json2__ValueInfo'
+}
+
+fn test_fully_unaliased_type_preserves_nested_c_alias_pointers() {
+	source := 'type C.WCHAR = u16\ntype C.PWSTR = &C.WCHAR\ntype C.FILE_SHARE_MODE = u32'
+	mut t := ast.new_table()
+	parser.parse_text(source, '', mut t, .parse_comments, pref.new_preferences())
+
+	wchar_typ := t.type_idxs['C.WCHAR']!
+	pwide_typ := t.type_idxs['C.PWSTR']!
+	share_mode_typ := t.type_idxs['C.FILE_SHARE_MODE']!
+
+	assert t.fully_unaliased_type(wchar_typ) == ast.u16_type
+	assert t.fully_unaliased_type(pwide_typ) == ast.u16_type.ref()
+	assert t.is_scalar_ptr_type(pwide_typ)
+	assert t.fully_unaliased_type(share_mode_typ) == ast.u32_type
+}
+
+fn test_scalar_ptr_type_excludes_option_and_result_wrappers() {
+	t := ast.new_table()
+	assert t.is_scalar_ptr_type(ast.int_type.ref())
+	assert !t.is_scalar_ptr_type(ast.int_type.ref().set_flag(.option))
+	assert !t.is_scalar_ptr_type(ast.int_type.ref().set_flag(.result))
+	assert !t.is_scalar_ptr_type(ast.int_type.ref().set_flag(.shared_f))
+}
+
+fn test_known_type_names_skips_partial_array_symbols() {
+	mut t := ast.new_table()
+	broken_array_idx := t.register_sym(ast.TypeSymbol{
+		kind:     .array
+		name:     '[]Broken'
+		cname:    'Array_Broken'
+		mod:      'main'
+		is_pub:   true
+		language: .v
+	})
+	broken_array_type := ast.idx_to_type(broken_array_idx)
+
+	assert !t.known_type_idx(broken_array_type)
+	assert '[]Broken' !in t.known_type_names()
+}

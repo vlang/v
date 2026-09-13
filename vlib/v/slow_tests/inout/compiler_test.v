@@ -5,8 +5,8 @@
 import os
 import rand
 import term
-import old.util.diff
-import old.util.vtest
+import v.util.diff
+import v.util.vtest
 
 @[markused]
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)

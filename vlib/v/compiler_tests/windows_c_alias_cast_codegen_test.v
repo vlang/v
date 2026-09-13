@@ -17,7 +17,7 @@ fn test_windows_c_alias_cast_generates_a_c_cast() {
 	build := os.execute('${os.quoted_path(windows_c_alias_vexe)} -old-compiler -gc none -path "${windows_c_alias_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(windows_c_alias_v3_src)}')
 	assert build.exit_code == 0, build.output
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, "import os\nimport old.build_constraint\n\nfn main() {\n\t_ := os.stat('.') or { return }\n\tenvironment := build_constraint.new_environment(['windows'], [])\n\t_ := environment.eval('windows') or { false }\n}\n")!
+	os.write_file(source, "import os\nimport v.build_constraint\n\nfn main() {\n\t_ := os.stat('.') or { return }\n\tenvironment := build_constraint.new_environment(['windows'], [])\n\t_ := environment.eval('windows') or { false }\n}\n")!
 	c_path := os.join_path(root, 'main.c')
 	generate := os.execute('${os.quoted_path(v3_bin)} -silent -no-parallel -os windows -cc tcc -gc none -o ${os.quoted_path(c_path)} ${os.quoted_path(source)}')
 	assert generate.exit_code == 0, generate.output

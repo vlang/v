@@ -1,4 +1,4 @@
-import old.ast
+import v.ast
 
 type MyFnSumtype = fn () | fn (int) ast.Expr
 

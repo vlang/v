@@ -353,7 +353,8 @@ fn add_c_language_runtime_link_flags(mut prepared []string, original []string, l
 			prepared << cpp_runtime
 		}
 	}
-	if language in ['objective-c', 'objective-c++'] && '-lobjc' !in original && '-lobjc' !in prepared {
+	if language in ['objective-c', 'objective-c++'] && '-lobjc' !in original
+		&& '-lobjc' !in prepared {
 		prepared << '-lobjc'
 	}
 }
@@ -1251,8 +1252,7 @@ fn c_source_object_compiler(language string, c_compiler string, use_platform_non
 	if use_platform_non_c_compiler && language == 'objective-c' {
 		return v3_platform_c_compiler(target_os)
 	}
-	if language in ['c++', 'objective-c++']
-		&& (c_compiler == 'cc' || use_platform_non_c_compiler) {
+	if language in ['c++', 'objective-c++'] && (c_compiler == 'cc' || use_platform_non_c_compiler) {
 		return 'c++'
 	}
 	return c_compiler
@@ -2106,7 +2106,8 @@ fn v3_parallel_c_declaration_header(prefix string, include_dirs []string) (strin
 		if include_path := v3_parallel_local_include_path(line, '', include_dirs) {
 			mut active := map[string]bool{}
 			expanded, complete := v3_parallel_expand_local_includes(include_path, include_dirs, mut active)
-			variables, variables_complete := modulecache.c_source_static_variable_identifiers(expanded)
+			variables, variables_complete :=
+				modulecache.c_source_static_variable_identifiers(expanded)
 			if !complete || !variables_complete
 				|| modulecache.c_source_replicated_function_has_static_storage(expanded)
 				|| (variables.len > 0
@@ -2387,14 +2388,19 @@ fn v3_windows_executable_linker_flags(target_os string, c_compiler string, is_sh
 	if target_os == 'windows' && c_compiler != 'msvc' && !is_shared && !is_o {
 		mut flags := ['-municode']
 		match subsystem {
-			.console { flags << '-mconsole' }
-			.windows { flags << '-mwindows' }
+			.console {
+				flags << '-mconsole'
+			}
+			.windows {
+				flags << '-mwindows'
+			}
 			.auto {
 				if windows_gui_app {
 					flags << '-mwindows'
 				}
 			}
 		}
+
 		flags << '-Wl,--stack=33554432'
 		return flags
 	}
@@ -2503,8 +2509,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.target_os == 'macos' && !options.is_shared && !options.is_tcc {
 		before_inputs << '-Wl,-stack_size,0x4000000'
 	}
-	if options.is_c_debug && options.target_os == 'macos' && !options.is_shared
-		&& !options.is_tcc {
+	if options.is_c_debug && options.target_os == 'macos' && !options.is_shared && !options.is_tcc {
 		before_inputs << '-Wl,-export_dynamic'
 	}
 	if options.is_shared {
@@ -3265,8 +3270,7 @@ fn should_overlap_v3_native_inputs(backend string, external_inputs_ready bool, m
 	if backend != 'c' || external_inputs_ready || module_cache_enabled {
 		return false
 	}
-	return (native_inputs_needed && building_v)
-		|| (!native_inputs_needed && scope_prealloc_stages)
+	return (native_inputs_needed && building_v) || (!native_inputs_needed && scope_prealloc_stages)
 }
 
 fn native_source_typedefs(path string) map[string]bool {
@@ -4217,6 +4221,7 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 			macros.clear()
 		}
 	}
+
 	if macros.len > 0 {
 		match target.os {
 			'macos', 'ios' {
@@ -4254,6 +4259,7 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 			}
 			else {}
 		}
+
 		if ccompiler == 'msvc' {
 			match target.arch {
 				'amd64' { defined << ['_M_X64', '_M_AMD64'] }
@@ -4302,6 +4308,7 @@ fn cache_local_c_compiler_macros(flags []string, ccompiler string, target pref.T
 				}
 				else {}
 			}
+
 			if target.pointer_bits == 64 && target.os != 'windows' {
 				defined << ['__LP64__', '_LP64']
 			} else if target.pointer_bits == 32 {
@@ -4698,16 +4705,29 @@ fn cache_local_c_known_expression_rec(raw string, macros map[string]V3CacheLocal
 			return 0
 		}
 		active := match operator {
-			'==' { left == right }
-			'!=' { left != right }
-			'<' { left < right }
-			'<=' { left <= right }
-			'>' { left > right }
-			'>=' { left >= right }
+			'==' {
+				left == right
+			}
+			'!=' {
+				left != right
+			}
+			'<' {
+				left < right
+			}
+			'<=' {
+				left <= right
+			}
+			'>' {
+				left > right
+			}
+			'>=' {
+				left >= right
+			}
 			else {
 				return 0
 			}
 		}
+
 		return if active { 1 } else { -1 }
 	}
 	if value := cache_local_c_known_integer_value_rec(expression, macros, mut seen, depth + 1) {
@@ -5273,12 +5293,17 @@ fn decode_v3_cgen_metadata(metadata string) ?V3CgenCacheMetadata {
 		return none
 	}
 	windows_gui_entry_point := match parts[3] {
-		'true' { true }
-		'false' { false }
+		'true' {
+			true
+		}
+		'false' {
+			false
+		}
 		else {
 			return none
 		}
 	}
+
 	flag_count := strconv.atoi(parts[4]) or { return none }
 	if flag_count < 0 || 5 + flag_count >= parts.len {
 		return none
@@ -6709,8 +6734,7 @@ struct V3BundledTccProbeOptions {
 }
 
 fn v3_should_probe_bundled_tcc(options V3BundledTccProbeOptions) bool {
-	if options.backend != 'c' || options.c_only
-		|| options.target.os != options.host_target.os
+	if options.backend != 'c' || options.c_only || options.target.os != options.host_target.os
 		|| options.target.arch != options.host_target.arch {
 		return false
 	}
@@ -7485,7 +7509,8 @@ fn v3_ast_node_uses_interop_namespace(a &flat.FlatAst, node &flat.Node, namespac
 			return true
 		}
 	}
-	if node.kind !in [.string_literal, .string_interp, .char_literal, .directive, .file] && node.value.starts_with(namespace + '.') {
+	if node.kind !in [.string_literal, .string_interp, .char_literal, .directive, .file]
+		&& node.value.starts_with(namespace + '.') {
 		return true
 	}
 	return v3_type_text_uses_interop_namespace(node.typ, namespace)
@@ -7990,8 +8015,8 @@ fn v3_driver_option_requires_value(option string) bool {
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
-	return v3_driver_option_requires_value(option) || option in ['-cflags', '-ldflags',
-		'-dump-c-flags']
+	return v3_driver_option_requires_value(option)
+		|| option in ['-cflags', '-ldflags', '-dump-c-flags']
 }
 
 fn apply_v3_diagnostic_color_option(option string) {
@@ -8144,7 +8169,8 @@ $if !skip_fastc ? {
 					}
 					feeds_prestarted = true
 				} else {
-					rendering_units = fastc.fastc_begin_render_c_units(unit_prefix, pieces, units, jobs)
+					rendering_units =
+						fastc.fastc_begin_render_c_units(unit_prefix, pieces, units, jobs)
 				}
 			}
 		}
@@ -8539,14 +8565,21 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-subsystem' && i + 1 < args.len {
 			subsystem = match args[i + 1] {
-				'auto' { pref.Subsystem.auto }
-				'console' { pref.Subsystem.console }
-				'windows' { pref.Subsystem.windows }
+				'auto' {
+					pref.Subsystem.auto
+				}
+				'console' {
+					pref.Subsystem.console
+				}
+				'windows' {
+					pref.Subsystem.windows
+				}
 				else {
 					eprintln('invalid subsystem: ${args[i + 1]}')
 					exit(1)
 				}
 			}
+
 			i += 2
 		} else if args[i] == '-live' {
 			is_livemain = true
@@ -9254,7 +9287,7 @@ pub fn run(args []string) {
 	}
 	mut b := bench.new()
 	driver_sw := time.new_stopwatch()
-	if silent || c_to_stdout {
+	if !verbose || silent || c_to_stdout {
 		b.set_quiet()
 	}
 	if no_memory_limit {
@@ -9273,7 +9306,7 @@ pub fn run(args []string) {
 		b.stop_memory_monitor()
 	}
 	mut c_object_cache_stats := CObjectCacheStats{}
-	if !silent && !c_to_stdout {
+	if verbose && !silent && !c_to_stdout {
 		println('=== V compiler benchmark ===')
 	}
 
@@ -9319,9 +9352,8 @@ pub fn run(args []string) {
 		target: target
 		bundled_tcc: bundled_tcc
 	})
-	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug
-		&& !c_compiler_explicit && (!parallel_cc || target.os == 'windows')
-		&& target.os == host_target.os
+	allow_system_tcc := backend == 'c' && !c_only && !is_prod && !is_c_debug && !c_compiler_explicit
+		&& (!parallel_cc || target.os == 'windows') && target.os == host_target.os
 		&& target.arch == host_target.arch
 		&& v3_system_tcc_runtime_available(prefs.vroot, target.os)
 	implicit_tcc := v3_default_tcc_compiler(bundled_tcc, bundled_tcc_available, allow_system_tcc, dump_c_flags.len > 0, host_os)
@@ -9570,7 +9602,7 @@ pub fn run(args []string) {
 				''
 			}
 			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, fastc_generation.uses_threads, prefs.building_v && !is_debug && !no_cache && !fastc_bench, mut prestarted_fastc_units)
-			if (!silent || show_cc) && fastc_result.command.len > 0 {
+			if (verbose || show_cc) && fastc_result.command.len > 0 {
 				if c_to_stdout {
 					eprintln('  > ${fastc_result.command}')
 				} else {
@@ -9654,9 +9686,9 @@ pub fn run(args []string) {
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
-		&& !no_builtin && !parallel_cc
-		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
-		&& c_compiler == 'cc' && target.os == host_target.os && target.arch == host_target.arch
+		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit && !c_compiler_explicit
+		&& !minimal_literal_output && c_compiler == 'cc' && target.os == host_target.os
+		&& target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_candidate_enabled {
@@ -9823,7 +9855,8 @@ pub fn run(args []string) {
 	// Test mode is a compile-time define as well as a harness mode. Install it
 	// after parsing builtin, but before collecting and parsing user inputs, so
 	// `$if test` and `_d_test.v` apply to both file and directory test commands.
-	if 'test' !in prefs.user_defines && (is_test_command || is_v3_test_file(input_file, backend, target)) {
+	if 'test' !in prefs.user_defines
+		&& (is_test_command || is_v3_test_file(input_file, backend, target)) {
 		prefs.user_defines << 'test'
 	}
 
@@ -10024,11 +10057,11 @@ pub fn run(args []string) {
 		},
 	])
 	b.metric_items('parsed .vh files', p.parsed_v_header_files, 'files', '.vh files', p.parsed_v_header_file_paths)
-	if !silent {
+	if verbose && !silent {
 		println('    ${'parsed .vh lines':-28s} ${source_file_line_count(p.parsed_v_header_file_paths, a.source_files)} lines')
 	}
 	b.metric_items('parsed .v files', p.parsed_v_files, 'files', '.v files', p.parsed_v_file_paths)
-	if !silent {
+	if verbose && !silent {
 		println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths, a.source_files)} lines')
 	}
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
@@ -10366,13 +10399,19 @@ pub fn run(args []string) {
 			_ := <-native_inputs_done
 			// A spawned prealloc worker owns its base arena until it exits. Promote the
 			// published manifest on the caller while that arena is still alive.
-			cache_state.module_external_inputs = clone_string_list_map(cache_state.module_external_inputs)
+			cache_state.module_external_inputs =
+				clone_string_list_map(cache_state.module_external_inputs)
 			cache_state.module_native_roots = clone_string_list_map(cache_state.module_native_roots)
-			cache_state.native_root_contexts = clone_string_list_map(cache_state.native_root_contexts)
-			cache_state.external_input_signatures = clone_string_string_map(cache_state.external_input_signatures)
-			cache_state.external_input_digests = clone_string_string_map(cache_state.external_input_digests)
-			cache_state.external_resolution_dirs = clone_string_list(cache_state.external_resolution_dirs)
-			cache_state.external_missing_paths = clone_string_list(cache_state.external_missing_paths)
+			cache_state.native_root_contexts =
+				clone_string_list_map(cache_state.native_root_contexts)
+			cache_state.external_input_signatures =
+				clone_string_string_map(cache_state.external_input_signatures)
+			cache_state.external_input_digests =
+				clone_string_string_map(cache_state.external_input_digests)
+			cache_state.external_resolution_dirs =
+				clone_string_list(cache_state.external_resolution_dirs)
+			cache_state.external_missing_paths =
+				clone_string_list(cache_state.external_missing_paths)
 			native_inputs_release <- true
 			if backend == 'c' && cache_state.external_inputs_ready {
 				fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources, &cache_state)
@@ -12039,7 +12078,7 @@ pub fn run(args []string) {
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
-				cached_dev_dylib = compile_v3_dev_dylib(prefix_object, prepared_cache.objects, resolved_c_flags, &cache_state.manager, target_args, prefs.target, c_compiler, cc_dir, !silent || show_cc, mut c_object_cache_stats) or {
+				cached_dev_dylib = compile_v3_dev_dylib(prefix_object, prepared_cache.objects, resolved_c_flags, &cache_state.manager, target_args, prefs.target, c_compiler, cc_dir, verbose || show_cc, mut c_object_cache_stats) or {
 					message := err.msg()
 					if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
 						published_c_source,
@@ -12188,7 +12227,7 @@ pub fn run(args []string) {
 				tcc_cache_hit = os.is_file(cc_out)
 				used_tcc = tcc_cache_hit
 			}
-			if !silent || show_cc {
+			if verbose || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}${if tcc_cache_hit {
 					' (cached)'
 				} else {
@@ -12215,8 +12254,7 @@ pub fn run(args []string) {
 			&& (!cache_state.manager.enabled || cache_full_tcc_source.len > 0) && !is_c_debug
 			&& dump_c_flags.len == 0 && (explicit_tcc || implicit_tcc != '') {
 			tried_tcc = true
-			tcc_path := if explicit_tcc && c_compiler in ['tcc', 'tinyc']
-				&& bundled_tcc_available {
+			tcc_path := if explicit_tcc && c_compiler in ['tcc', 'tinyc'] && bundled_tcc_available {
 				bundled_tcc
 			} else if explicit_tcc {
 				c_compiler
@@ -12268,7 +12306,7 @@ pub fn run(args []string) {
 			if !is_o {
 				tcc_args << link_ld_flags
 			}
-			if !silent || show_cc {
+			if verbose || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
@@ -12279,8 +12317,7 @@ pub fn run(args []string) {
 			v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc)
 			return
 		}
-		if !retry_compilation && use_implicit_tcc_semantics
-			&& (!tried_tcc || result.exit_code != 0) {
+		if !retry_compilation && use_implicit_tcc_semantics && (!tried_tcc || result.exit_code != 0) {
 			if tried_tcc {
 				eprintln('C compilation error (from ${os.file_name(implicit_tcc)}):')
 				eprintln(result.output)
@@ -12321,10 +12358,10 @@ pub fn run(args []string) {
 			}
 			if use_parallel_c_compilation && cached_program_main_object.len == 0
 				&& fallback_source == 'src.c' {
-				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, !silent || show_cc, parallel_c_job_count, parallel_c_unit_count)
+				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count)
 			} else {
 				cc_args := c_flag_plan.compiler_args('out', compiler_inputs, [])
-				if !silent || show_cc {
+				if verbose || show_cc {
 					println('  > ${cmdexec.display(c_compiler, cc_args)}')
 				}
 				result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
@@ -13619,8 +13656,7 @@ fn valid_v3_large_cold_cache_marker(path string) bool {
 	}
 	content := os.read_file(path) or { return false }
 	parts := content.split('\x00')
-	if parts.len < 4 || parts[0] != v3_large_cold_cache_marker_version
-		|| (parts.len - 1) % 3 != 0 {
+	if parts.len < 4 || parts[0] != v3_large_cold_cache_marker_version || (parts.len - 1) % 3 != 0 {
 		os.rm(path) or {}
 		return false
 	}
@@ -14770,7 +14806,8 @@ fn type_diagnostic_enclosing_fn(a &flat.FlatAst, diagnostic types.TypeError) fla
 	mut nearest_offset := -1
 	for index, node in a.nodes {
 		if node.kind !in [.fn_decl, .struct_decl, .interface_decl, .type_decl, .enum_decl,
-			.const_decl, .global_decl, .c_fn_decl, .module_decl, .import_decl] || !node.pos.is_valid() || !diagnostic_pos.is_valid()
+			.const_decl, .global_decl, .c_fn_decl, .module_decl, .import_decl]
+			|| !node.pos.is_valid() || !diagnostic_pos.is_valid()
 			|| node.pos.id != diagnostic_pos.id || node.pos.offset > diagnostic_pos.offset
 			|| node.pos.offset <= nearest_offset {
 			continue
@@ -15115,6 +15152,7 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 		.power_assign { '**=' }
 		else { '' }
 	}
+
 	if op.len > 0 {
 		location := if source_pos := a.source_position(node.pos) {
 			'${source_pos}: '
@@ -15561,7 +15599,8 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 						break
 					}
 				}
-			} else if node.kind == .selector && node.children_count > 0 && i !in call_callees && i !in known_field_selectors && !implicit_selector_is_interop_symbol(a, node) {
+			} else if node.kind == .selector && node.children_count > 0 && i !in call_callees
+				&& i !in known_field_selectors && !implicit_selector_is_interop_symbol(a, node) {
 				// A remaining selector used as a value may be a bound method. Full type
 				// information is unavailable during import discovery, so conservatively
 				// load the runtime; calls, C/JS symbols, and provable fields are excluded.
@@ -15880,6 +15919,7 @@ fn implicit_expr_type(a &flat.FlatAst, id flat.NodeId, bindings map[string]strin
 		}
 		else {}
 	}
+
 	return ''
 }
 
@@ -16586,8 +16626,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		eager_selfhost_imports = false
 	}
 	if prefs.building_v && !prefs.selfhost && allow_parallel && !cache_state.manager.enabled
-		&& !initial_files.any(input_is_v3_compiler_entry(it))
-		&& eager_selfhost_imports {
+		&& !initial_files.any(input_is_v3_compiler_entry(it)) && eager_selfhost_imports {
 		modules := discover_eager_selfhost_modules(a, prefs, first_file, project_root, mut parsed_modules, mut module_path_cache)
 		mut eager_files := []string{}
 		mut eager_canons := []string{}

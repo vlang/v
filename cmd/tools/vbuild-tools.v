@@ -2,7 +2,7 @@ module main
 
 import os
 import testing
-import old.util
+import v.util
 
 // Note: tools like vdoc are compiled in their own subfolder
 // => cmd/tools/vdoc/vdoc.exe

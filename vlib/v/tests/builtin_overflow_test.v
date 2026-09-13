@@ -2,8 +2,8 @@
 import os
 import time
 import term
-import old.util.diff
-import old.util.vtest
+import v.util.diff
+import v.util.vtest
 
 const vexe = @VEXE
 

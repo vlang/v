@@ -3,7 +3,7 @@ module fastc
 import v.token
 
 // fastc_builtin_type_idx maps a primitive type name to V's canonical builtin
-// type index (vlib/old/ast/types.v). Used to evaluate `typeof[T]().idx`.
+// type index (vlib/v/ast/types.v). Used to evaluate `typeof[T]().idx`.
 fn fastc_builtin_type_idx(type_name string) ?int {
 	return match type_name {
 		'void' { 1 }
@@ -4031,7 +4031,7 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 	// sum type that lists `[]T` as a variant (a recursive sum type such as
 	// `type Value = []Value | int`), the array must be boxed as a single element
 	// instead. This mirrors the `sumtype_has_variant` guard the main C backend applies
-	// before selecting push-many (see vlib/old/gen/c/infix.v).
+	// before selecting push-many (see vlib/v/gen/c/infix.v).
 	is_array_append := normalized_right == left_array_type && !g.sumtype_has_variant(element_type, normalized_right)
 	separator := rendered_expression.index('<<') or { return none }
 	left_tokens := tokens[..operator_index]

@@ -1,4 +1,4 @@
-import old.token
+import v.token
 
 struct Foo {
 	bar int|string|token.Pos|bool|u32

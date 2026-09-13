@@ -1,0 +1,36 @@
+import time
+import semver as sv
+import term.ui as tui
+import v.ast
+
+interface Inter {
+	code tui.KeyCode
+}
+
+struct TuiStruct {
+	code tui.KeyCode
+}
+
+fn foo(f time.Time) time.Time {
+	f2 := time.Time{}
+	return f
+}
+
+fn bar(b sv.Version) sv.Version {
+	b2 := sv.Version{}
+	return b
+}
+
+fn bar_multi_return(b sv.Version) (sv.Version, int) {
+	b2 := sv.Version{}
+	return b, 0
+}
+
+struct SomeStruct {
+	a fn (ast.Stmt, voidptr) bool
+}
+
+fn main() {
+	if x is ast.FnDecl {
+	}
+}

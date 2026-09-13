@@ -1,9 +1,9 @@
 import os
 import time
 import term
-import old.scanner
+import v.scanner
 import file_lists
-import old.pref
+import v.pref
 
 const skip_tests = os.getenv('SKIP_TESTS').bool()
 const fuzzer_mode = os.getenv('VFUZZER').bool()
@@ -70,7 +70,6 @@ fn process_files(files []string) ! {
 	theader()
 	hline()
 	speed_mb_s := term.colorize(term.bright_yellow, '${(f64(total_bytes) / total_us):6.3f} MB/s')
-	speed_lines_s := term.colorize(term.bright_yellow,
-		'${(1_000_000 * f64(total_lines) / total_us):10.1f} lines/s')
+	speed_lines_s := term.colorize(term.bright_yellow, '${(1_000_000 * f64(total_lines) / total_us):10.1f} lines/s')
 	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${total_lines:10} ${(f64(total_bytes) / total_tokens):13.3} ${total_errors:10}   Scanner speed: ${speed_mb_s}, ${speed_lines_s}, ${nthreads:3} thread(s), ${total_files:5} files.')
 }

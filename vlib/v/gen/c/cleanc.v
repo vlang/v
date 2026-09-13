@@ -14,7 +14,7 @@ import v.util
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
-const v1_c_headers_source = $embed_file('../../../old/gen/c/cheaders.v').to_string()
+const manual_c_headers_source = $embed_file('manual_stdlib_c_headers.h').to_string()
 const c_objective_c_bridge_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer']
 const c_objective_c_ownership_qualifiers = ['__strong', '__weak', '__autoreleasing',
 	'__unsafe_unretained', '__kindof']
@@ -41,11 +41,9 @@ fn c_short_name_view(name string) string {
 }
 
 fn manual_stdlib_c_headers() string {
-	start := v1_c_headers_source.index('// c_headers\n') or { return '' }
-	relative_end := v1_c_headers_source[start..].index('static void v_stable_sort') or { return '' }
 	// Some platform headers expose formatted I/O and memory functions as fortified
 	// macros. Undefine those macros before replaying V1's manual declarations.
-	return '#ifdef sprintf\n#undef sprintf\n#endif\n#ifdef snprintf\n#undef snprintf\n#endif\n#ifdef vsnprintf\n#undef vsnprintf\n#endif\n#ifdef memcpy\n#undef memcpy\n#endif\n#ifdef memmove\n#undef memmove\n#endif\n#ifdef memset\n#undef memset\n#endif\n' + v1_c_headers_source[start..start + relative_end]
+	return '#ifdef sprintf\n#undef sprintf\n#endif\n#ifdef snprintf\n#undef snprintf\n#endif\n#ifdef vsnprintf\n#undef vsnprintf\n#endif\n#ifdef memcpy\n#undef memcpy\n#endif\n#ifdef memmove\n#undef memmove\n#endif\n#ifdef memset\n#undef memset\n#endif\n' + manual_c_headers_source
 }
 
 fn cgen_worker_scope_begin(enabled bool) voidptr {
@@ -16231,7 +16229,7 @@ fn (g &FlatGen) find_sum_type_for_variant(variant string) string {
 }
 
 // builtin_ast_type_idx maps a builtin type name to V's stable ast `*_type_idx` value
-// (vlib/old/ast/types.v), so `typeof[T]().idx` comparisons against `v.ast` constants behave
+// (vlib/v/ast/types.v), so `typeof[T]().idx` comparisons against `v.ast` constants behave
 // like the reference compiler. Returns 0 for non-builtin types.
 fn builtin_ast_type_idx(name string) int {
 	return match name {

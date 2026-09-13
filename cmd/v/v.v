@@ -1,26 +1,23 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2026 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
 
-import hash
 import os
-import term
-import old.help
-import old.pref
-import old.util
-import old.util.version
+import strings
+import v.cmdexec
+import v.driver
+import v.help
+import v.pref
 
-$if v1_fallback ?|| cross ? {
-	// The compatibility compiler and portable cross snapshots need the V1 builder.
-	// Keep this as one import site: a compatibility compiler generating a cross target
-	// can satisfy both parts of the condition.
-	import old.builder
-	import old.builder.cbuilder
-}
+const v_version = '0.5.2'
+const v1_fallback_binary = 'v1_fallback'
+const v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
+const v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
+const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
+const v3_retry_env = 'V_MACOS_V3_RETRY'
 
-@[markused]
-const external_tools = [
+const external_commands = [
 	'ast',
 	'bin2v',
 	'bug',
@@ -41,23 +38,31 @@ const external_tools = [
 	'fmt',
 	'git-fmt-hook',
 	'gret',
+	'init',
+	'install',
+	'link',
+	'list',
 	'ls',
 	'missdoc',
+	'new',
+	'outdated',
 	'quest',
 	'reduce',
+	'remove',
 	'repl',
 	'repeat',
 	'retry',
+	'search',
 	'self',
 	'setup-freetype',
 	'shader',
 	'share',
 	'should-compile-all',
+	'show',
 	'sqlite',
 	'symlink',
 	'scan',
-	'test',
-	'test-all', // runs most of the tests and other checking tools, that will be run by the CI
+	'test-all',
 	'test-cleancode',
 	'test-fmt',
 	'test-parser',
@@ -65,403 +70,406 @@ const external_tools = [
 	'time',
 	'timeout',
 	'tracev',
+	'translate',
+	'unlink',
 	'up',
+	'update',
+	'upgrade',
 	'vet',
-	'wipe-cache',
+	'vlib-docs',
 	'watch',
 	'where',
+	'wipe-cache',
 ]
 
+struct RetryState {
+	fallback_file string
+	c_error_dir   string
+	args          []string
+}
+
 @[unsafe]
-fn timers_pointer(p &util.Timers) &util.Timers {
-	// TODO: the static variable here is used as a workaround for the current incompatibility of -usecache and globals in the main module:
-	mut static ptimers := unsafe { &util.Timers(nil) }
-	if p != unsafe { nil } {
-		ptimers = p
+fn retry_state(value &RetryState) &RetryState {
+	mut static state := unsafe { &RetryState(nil) }
+	if value != unsafe { nil } {
+		state = value
 	}
-	return ptimers
+	return state
 }
 
 fn main() {
-	unbuffer_stdout()
-	mut timers_should_print := false
-	$if time_v ? {
-		timers_should_print = true
-	}
-	if '-show-timings' in os.args {
-		timers_should_print = true
-	}
-	mut timers := unsafe {
-		timers_pointer(util.new_timers(
-			should_print: timers_should_print
-			label: 'main'
-		))
-	}
-	timers.start('v start')
-	timers.show('v start')
-	timers.start('TOTAL')
-	// use at_exit here, instead of defer, since some code paths later do early exit(0) or exit(1), for showing errors, or after `v run`
-	at_exit(fn () {
-		mut timers := unsafe { timers_pointer(nil) }
-		timers.show('TOTAL')
-	})!
-	timers.start('v parsing CLI args')
-	args := os.args[1..]
-
-	if args.len == 0 || args[0] in ['-', 'repl'] {
-		if args.len == 0 {
-			// Running `./v` without args launches repl
-			if os.is_atty(0) == 0 {
-				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
-				args_and_flags << ['run', '-']
-				pref.parse_args_for_launcher(external_tools, args_and_flags, true)
-			}
-		}
-		util.launch_tool(false, 'vrepl', os.args[1..])
+	os.setenv('VEXE', os.real_path(os.executable()), true)
+	os.setenv('VCHILD', 'true', true)
+	mut args := merged_v_args()
+	if args.len == 0 {
+		run_external_tool(args, -1, 'repl')
 		return
 	}
-	mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
-	prefs, command, command_idx := pref.parse_args_for_launcher_with_command_index(external_tools, args_and_flags, true)
-	maybe_delegate_to_vvmrc(command, prefs)
-	$if v1_fallback ?|| cross ? {
-		// This binary is a stable compatibility compiler, including portable VC
-		// snapshots. Never delegate back to embedded V3 or the ownership compiler.
-	} $else {
-		maybe_delegate_to_ownership(command, prefs, args_and_flags)
-		maybe_delegate_to_macos_v3(command, prefs)
+	command_index, command := find_command(args)
+	if command in ['version', '-version', '--version'] {
+		println('V ${v_version} ${@VCURRENTHASH}')
+		return
 	}
-	if prefs.use_cache && os.user_os() == 'windows' {
-		eprintln('-usecache is currently disabled on windows')
+	if '-old-compiler' in args {
+		launch_v1(clean_compiler_selection_flags(args), '`-old-compiler` was requested', RetryState{})
+	}
+	if '-new-compiler' in args {
+		os.setenv(v3_no_fallback_env, '1', true)
+	}
+	if command in ['help', '-h', '--help'] {
+		print_help(args, command_index)
+		return
+	}
+	if command == 'get' {
+		eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
 		exit(1)
 	}
-	timers.show('v parsing CLI args')
-
-	setup_vbuild_env_vars(prefs)
-
-	// Start calling the correct functions/external tools
-	// Note for future contributors: Please add new subcommands in the `match` block below.
-	if command in external_tools {
-		// External tools
-		mut tool_args := os.args[1..].clone()
-		if command == 'self' {
-			// vself forwards compiler flags to the compiler it builds. Pass merged
-			// VFLAGS once as arguments, then keep them out of vself's own recompilation.
-			// Preserve the parser's authoritative command boundary so vself never
-			// interprets a flag value as one of its positional arguments.
-			tool_args = args_and_flags.clone()
-			os.setenv('VSELF_COMMAND_INDEX', command_idx.str(), true)
-			os.unsetenv('VFLAGS')
-			os.unsetenv('VOSARGS')
-		}
-		util.launch_tool(prefs.is_verbose, 'v' + command, tool_args)
+	if command == 'interpret' {
+		eprintln('The eval backend has been removed.')
+		exit(1)
+	}
+	if command in external_commands
+		|| command in ['new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search',
+			'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
+		run_external_tool(args, command_index, command)
 		return
 	}
-	match command {
-		'run', 'crun', 'build', 'build-module' {
-			rebuild(prefs)
-			return
+	args = clean_compiler_selection_flags(args)
+	run_with_fallback(args, args)
+}
+
+fn run_with_fallback(driver_args []string, retry_args []string) {
+	if os.getenv(v3_no_fallback_env) == '1' || os.getenv(v3_retry_env) == '1' {
+		driver.run(driver_args)
+		return
+	}
+	fallback_file := os.join_path(os.vtmp_dir(), 'v3_fallback_${os.getpid()}')
+	c_error_dir := fallback_file + '.c_error'
+	os.rm(fallback_file) or {}
+	os.rmdir_all(c_error_dir) or {}
+	os.setenv(v3_fallback_file_env, fallback_file, true)
+	os.setenv(v3_c_error_dir_env, c_error_dir, true)
+	state := &RetryState{
+		fallback_file: fallback_file
+		c_error_dir: c_error_dir
+		args: retry_args.clone()
+	}
+	unsafe { retry_state(state) }
+	at_exit(retry_with_v1_at_exit) or {
+		eprintln('cannot register the V compatibility fallback: ${err}')
+		exit(1)
+	}
+	driver.run(driver_args)
+	os.rm(fallback_file) or {}
+	os.rmdir_all(c_error_dir) or {}
+}
+
+fn find_command(args []string) (int, string) {
+	mut option_value_follows := false
+	for i, arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
 		}
-		'help' {
-			invoke_help_and_exit(args)
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
 		}
-		'version' {
-			println(version.full_v_version(prefs.is_verbose))
-			return
+		if arg in external_commands
+			|| arg in ['version', '-version', '--version', 'help', '-h', '--help', 'get', 'interpret',
+				'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show',
+				'unlink', 'update', 'upgrade', 'vlib-docs'] {
+			return i, arg
+		}
+		if !arg.starts_with('-') {
+			break
+		}
+	}
+	return -1, ''
+}
+
+fn run_external_tool(args []string, command_index int, command string) {
+	vroot := find_vroot(os.executable()) or {
+		find_vroot(@VEXEROOT) or {
+			eprintln('the V source tree could not be found')
+			exit(1)
+		}
+	}
+	tool_name := match command {
+		'translate' {
+			'translate'
 		}
 		'new', 'init' {
-			util.launch_tool(prefs.is_verbose, 'vcreate', os.args[1..])
-			return
+			'vcreate'
 		}
 		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade' {
-			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
-			return
+			'vpm'
 		}
 		'vlib-docs' {
-			util.launch_tool(prefs.is_verbose, 'vdoc', ['doc', 'vlib'])
-		}
-		'interpret' {
-			eprintln('The eval backend has been removed.')
-			exit(1)
-		}
-		'get' {
-			eprintln('V Error: Use `v install` to install modules from vpm.vlang.io')
-			exit(1)
-		}
-		'translate' {
-			util.launch_tool(prefs.is_verbose, 'translate', os.args[1..])
-			// exit(1)
-			// return
+			'vdoc'
 		}
 		else {
-			if command.ends_with('.v') || os.exists(command) {
-				// println('command')
-				// println(prefs.path)
-				rebuild(prefs)
-				return
-			}
+			'v' + command
 		}
 	}
 
-	if prefs.is_help {
-		invoke_help_and_exit(args)
-	}
-	validate_windows_c_compiler_for_unknown_command(prefs)
-
-	other_commands := ['run', 'crun', 'build', 'build-module', 'help', 'version', 'new', 'init',
-		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
-		'upgrade', 'vlib-docs', 'translate']
-	mut all_commands := []string{}
-	all_commands << external_tools
-	all_commands << other_commands
-	all_commands.sort()
-	eprintln(util.new_suggestion(command, all_commands, similarity_threshold: 0.2).say('v: unknown command `${command}`'))
-	eprintln('Run ${term.highlight_command('v help')} for usage.')
-	exit(1)
-}
-
-fn invoke_help_and_exit(remaining []string) {
-	match remaining.len {
-		0, 1 { help.print_and_exit('default', exit_code: 0) }
-		2 { help.print_and_exit(remaining[1], exit_code: 0) }
-		else {}
-	}
-
-	eprintln('${term.highlight_command('v help')}: provide only one help topic.')
-	eprintln('For usage information, use ${term.highlight_command('v help')}.')
-	exit(1)
-}
-
-fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_args []string) {
-	is_ownership := '-ownership' in merged_args
-	is_autofree := prefs.autofree
-	if prefs.is_fastc {
-		// FastC owns its whole invocation and must never launch the AST-based
-		// ownership compiler. Its direct parser reports unsupported modes.
-		return
-	}
-	if !ownership_delegation_is_requested(is_ownership, is_autofree, prefs.old_compiler, prefs.new_compiler, os.user_os()) {
-		return
-	}
-	if is_autofree && !is_ownership && (autofree_has_unsupported_ownership_preferences(prefs)
-		|| autofree_args_have_unsupported_ownership_option(merged_args, command)) {
-		return
-	}
-	if !is_ownership_relevant_command(command, prefs) {
-		// `-autofree` is also an established option for command modes such as `test`.
-		// Leave modes that do not compile one target directly on the regular
-		// command path instead of rejecting them in the ownership dispatcher.
-		if is_autofree && !is_ownership {
-			return
-		}
-		mode := if is_autofree { '-autofree' } else { '-ownership' }
-		eprintln('v: `${mode}` currently supports direct compilation and `run` only. Use `v ${mode} module_dir`.')
+	base := os.join_path(vroot, 'cmd', 'tools', tool_name)
+	tool_source := if os.is_dir(base) {
+		base
+	} else if os.is_file(base + '.v') {
+		base + '.v'
+	} else {
+		eprintln('cannot find the `${command}` tool source in `${vroot}`')
 		exit(1)
 	}
-	ownership_args := v3_ownership_forwarded_args(prefs, merged_args)
-	launch_v3_ownership_compiler(prefs.is_verbose, ownership_args)
+	mut driver_args := []string{}
+	if command_index > 0 {
+		driver_args << args[..command_index]
+	}
+	driver_args << ['run', tool_source]
+	if command_index >= 0 {
+		driver_args << args[command_index..]
+	}
+	run_with_fallback(clean_compiler_selection_flags(driver_args), clean_compiler_selection_flags(args))
 }
 
-fn autofree_args_have_unsupported_ownership_option(args []string, command string) bool {
-	$if bsd || linux {
-		return macos_v3_has_unsupported_leading_option(args, command)
+fn print_help(args []string, command_index int) {
+	if command_index >= 0 && command_index + 1 < args.len && args[command_index + 1] == 'self' {
+		println('Usage: v self [options]')
+		println('Rebuild V with the passed options.')
+		return
 	}
-	return false
+	topic := if command_index >= 0 && command_index + 1 < args.len {
+		args[command_index + 1]
+	} else {
+		'default'
+	}
+	help.print_and_exit(topic, exit_code: 0)
 }
 
-fn v3_ownership_forwarded_args(prefs &pref.Preferences, merged_args []string) []string {
-	mut ownership_args := merged_args.filter(it != '-ownership')
-	if !v3_args_have_ownership_define(ownership_args) {
-		ownership_args.prepend('ownership')
-		ownership_args.prepend('-d')
-	}
-	$if bsd || linux {
-		return macos_v3_forwarded_args(prefs, ownership_args)
-	}
-	return ownership_args
-}
-
-fn v3_args_have_ownership_define(args []string) bool {
-	for i, arg in args {
-		if arg == '-downership' {
-			return true
+fn merged_v_args() []string {
+	mut args := []string{}
+	if vflags := os.getenv_opt('VFLAGS') {
+		args << cmdexec.split_args(vflags) or {
+			eprintln('invalid VFLAGS: ${err.msg()}')
+			exit(1)
 		}
-		if arg == '-d' && i + 1 < args.len && args[i + 1] == 'ownership' {
-			return true
-		}
 	}
-	return false
+	args << os.args[1..]
+	return args
 }
 
-fn autofree_has_unsupported_ownership_preferences(prefs &pref.Preferences) bool {
-	// Autofree selects no-GC by default, but the ownership-enabled V3 compiler
-	// does not yet implement explicit collectors or these compatibility modes.
-	return v3_has_unsupported_preferences(prefs)
-		|| (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc)
+fn clean_compiler_selection_flags(args []string) []string {
+	return args.filter(it !in ['-old-compiler', '-new-compiler'])
 }
 
-fn v3_has_unsupported_preferences(prefs &pref.Preferences) bool {
-	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
-		|| prefs.div_by_zero_is_zero || prefs.obfuscate_removed || prefs.no_std
-		|| prefs.is_vls || prefs.new_transform || prefs.is_livemain
-		|| prefs.is_liveshared || prefs.show_asserts || prefs.show_callgraph
-		|| prefs.show_depgraph || prefs.hide_auto_str || prefs.no_rsp
-		|| prefs.message_limit != 200 || prefs.warn_about_allocs
-		|| prefs.c_error_bug_report_url.len > 0 || prefs.wasm_validate
-		|| prefs.wasm_stack_top != 1024 + (16 * 1024) || prefs.line_info.len > 0
-		|| prefs.use_coroutines || prefs.checker_match_exhaustive_cutoff_limit != 12
-		|| (prefs.backend == .c && !prefs.is_fastc && prefs.os != ._auto
-			&& prefs.os != pref.get_host_os())
-		|| prefs.build_options.any(it.starts_with('-debug-tcc')) || prefs.is_musl
-		|| prefs.build_options.any(it in ['-musl', '-glibc']) || !prefs.relaxed_gcc14 {
-		return true
+fn retry_with_v1_at_exit() {
+	state := unsafe { retry_state(nil) }
+	if state == unsafe { nil } || !os.is_file(state.fallback_file) {
+		return
 	}
-	return prefs.sanitize || prefs.output_cross_c || prefs.experimental
-		|| prefs.use_os_system_to_run || prefs.is_apk
-		|| prefs.json_errors || prefs.no_preludes || prefs.is_quiet
-		|| prefs.skip_warnings || prefs.skip_notes || prefs.fatal_errors
-		|| prefs.print_watched_files || prefs.dump_modules.len > 0
-		|| prefs.dump_files.len > 0 || prefs.dump_defines.len > 0
-		|| prefs.print_autofree_vars || prefs.is_vlines || prefs.warn_impure_v
-		|| prefs.trace_calls || prefs.trace_fns.len > 0 || prefs.test_runner.len > 0
-		|| prefs.exclude.len > 0 || prefs.ldflags.len > 0 || prefs.nofloat
-		|| prefs.fast_math || prefs.compress || prefs.is_bare || prefs.no_closures
-		|| prefs.disable_explicit_mutability || prefs.assert_failure_mode != .default
-		|| prefs.macosx_version_min != '0'
-		|| prefs.build_options.any(it in ['-m32', '-m64']) || prefs.backend.is_js()
-		|| (prefs.backend == .wasm && prefs.is_run) || prefs.path.ends_with('.vv')
-}
-
-fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, new_compiler bool, host_os string) bool {
-	if old_compiler {
-		return false
+	payload := os.read_file(state.fallback_file) or { return }
+	reason := payload.all_before('\n').trim_space()
+	if reason !in ['compiler_error', 'c_compilation_error', 'inline_asm'] {
+		return
 	}
-	if is_ownership {
-		return true
-	}
-	// Let the embedded dispatcher reject the unsupported explicit combination;
-	// ownership delegation would otherwise strip -new-compiler before it can do so.
-	if new_compiler {
-		return false
-	}
-	return is_autofree
-		&& host_os in ['macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
-}
-
-fn is_ownership_relevant_command(command string, prefs &pref.Preferences) bool {
-	if prefs.path == '' || prefs.is_crun {
-		return false
-	}
-	if prefs.is_run {
-		return command == 'run' && (prefs.path.ends_with('.v') || os.exists(prefs.path))
-	}
-	return prefs.path == command && (command.ends_with('.v') || os.exists(command))
+	os.setenv(v3_retry_env, '1', true)
+	launch_v1(state.args, 'V compilation failed (${reason})', *state)
 }
 
 @[noreturn]
-fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
-	vexe := pref.vexe_path()
-	vroot := os.dir(vexe)
-	util.set_vroot_folder(vroot)
-	tool_name := 'v3_ownership'
-	v3_main_source := os.join_path(vroot, 'vlib', 'v', 'v.v')
-	v3_src_dir := os.join_path(vroot, 'vlib', 'v')
-	v3_exe := cached_v3_ownership_executable_path(vroot)
-	v3_exe_dir := os.dir(v3_exe)
-	os.mkdir_all(v3_exe_dir) or {
-		eprintln('cannot create `${v3_exe_dir}`: ${err}')
+fn launch_v1(args []string, reason string, report_state RetryState) {
+	fallback := ensure_v1_fallback(reason) or {
+		eprintln(err.msg())
 		exit(1)
 	}
-	if util.should_recompile_tool(vexe, v3_src_dir, tool_name, v3_exe) {
-		compilation_command := '${os.quoted_path(vexe)} -no-parallel -nocache -gc none -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
-		if is_verbose {
-			println('Compiling ${tool_name} with: "${compilation_command}"')
-		}
-		current_work_dir := os.getwd()
-		caller_vflags := os.getenv('VFLAGS')
-		caller_vosargs := os.getenv('VOSARGS')
-		// The bootstrap command already supplies its compiler configuration. Do not
-		// let target flags recursively select this ownership launcher again.
-		os.unsetenv('VFLAGS')
-		os.unsetenv('VOSARGS')
-		os.chdir(vroot) or {}
-		tool_compilation := os.execute(compilation_command)
-		os.chdir(current_work_dir) or {}
-		os.setenv('VFLAGS', caller_vflags, true)
-		os.setenv('VOSARGS', caller_vosargs, true)
-		if tool_compilation.exit_code != 0 {
-			eprintln('cannot compile `${v3_main_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
-			exit(1)
-		}
-	}
-	mut forwarded_args := ['-ownership']
-	$if macos {
-		// The embedded/default V3 path disables its conservative compiler-memory
-		// guard on macOS too. Keep `-autofree` on the same footing when it uses the
-		// dedicated ownership-enabled V3 binary.
-		if '-no-memory-limit' !in args && '--no-memory-limit' !in args {
-			forwarded_args << '-no-memory-limit'
-		}
-	}
-	for arg in args {
-		forwarded_args << arg
-	}
-	quoted_args := forwarded_args.map(os.quoted_path(it)).join(' ')
-	if is_verbose {
-		println('Launching ${tool_name}: ${os.quoted_path(v3_exe)} ${quoted_args}')
-	}
+	os.setenv('VEXE', fallback, true)
 	os.setenv('VCHILD', 'true', true)
-	os.setenv('VEXE', os.real_path(vexe), true)
-	res := os.system('${os.quoted_path(v3_exe)} ${quoted_args}')
-	exit(res)
+	eprintln('${reason}; retrying with `${fallback}`.')
+	os.unsetenv(v3_fallback_file_env)
+	os.unsetenv(v3_c_error_dir_env)
+	mut process := os.new_process(fallback)
+	process.set_args(args)
+	process.wait()
+	if process.status == .aborted || process.code < 0 {
+		eprintln('failed to launch the V 0.5.2 compatibility compiler `${fallback}`: ${process.err}')
+		process.close()
+		exit(1)
+	}
+	code := process.code
+	process.close()
+	if code == 0 && report_state.fallback_file != '' {
+		submit_v3_fallback_report(fallback, report_state)
+	}
+	os.rm(report_state.fallback_file) or {}
+	os.rmdir_all(report_state.c_error_dir) or {}
+	exit(code)
 }
 
-fn cached_v3_ownership_executable_path(vroot string) string {
-	vroot_hash := hash.sum64_string(os.real_path(vroot), 0).hex_full()
-	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v3', vroot_hash, 'v3_ownership'))
+fn submit_v3_fallback_report(fallback string, state RetryState) {
+	payload := os.read_file(state.fallback_file) or { return }
+	kind := payload.all_before('\n').trim_space()
+	if kind == 'inline_asm'
+		|| os.getenv('V_C_ERROR_BUG_REPORT_DISABLED').trim_space().to_lower() in ['1', 'true', 'yes',
+			'on'] {
+		return
+	}
+	custom_url := os.getenv('V_C_ERROR_BUG_REPORT_URL').trim_space().trim_right('/')
+	if custom_url == '' && (os.getenv('GITHUB_ACTIONS') == 'true' || os.getenv('GITHUB_JOB') != '') {
+		return
+	}
+	report_url := if custom_url == '' { 'https://bugs.vlang.io/bug-report' } else { custom_url }
+	stage := payload.all_after('\n').trim_space()
+	mut ccompiler := stage
+	mut c_output := ''
+	mut report_kind := 'v3-compiler-error'
+	if kind == 'c_compilation_error' {
+		report_kind = 'v-c-compiler-error'
+		ccompiler = os.read_file(os.join_path(state.c_error_dir, 'compiler')) or { '' }
+		c_output = os.read_file(os.join_path(state.c_error_dir, 'output')) or { '' }
+		if c_output.len > 64 * 1024 {
+			c_output = c_output[..64 * 1024] + '\n... report truncated before upload ...\n'
+		}
+	}
+	report_file := os.join_path(os.vtmp_dir(), 'v3-fallback-report-${os.getpid()}.json')
+	report := '{"kind":${json_quote(report_kind)},"v_version":${json_quote('V ${v_version} ${@VCURRENTHASH}')},"target_os":${json_quote(os.user_os())},"target_backend":"c","arch":${json_quote(@PLATFORM)},"ccompiler":${json_quote(ccompiler)},"build_options":${json_quote(state.args.join(' '))},"c_error":${json_quote(c_output)},"c_file":"","c_line":0,"c_context":[],"v_file":"","v_line":0,"v_context":[],"v_source":""}'
+	os.write_file(report_file, report) or {
+		eprintln('V3 compiler bug report was not staged: ${err}')
+		return
+	}
+	defer {
+		os.rm(report_file) or {}
+	}
+	mut sender := os.new_process(fallback)
+	sender.set_args(['bug-report-send', '--url', report_url, '--file', report_file])
+	sender.set_redirect_stdio_merged()
+	sender.wait()
+	code := sender.code
+	output := sender.stdout_slurp().trim_space()
+	err := sender.err
+	sender.close()
+	if code != 0 {
+		details := if output == '' { err } else { output }
+		eprintln('V3 compiler bug report was not sent to ${report_url}: ${details}')
+		return
+	}
+	eprintln('note: V could not build this program with the default compiler, so it used V 0.5.2 instead.')
+	eprintln('A metadata-only bug report (no source) was submitted to ${report_url} so this can be fixed.')
+	if output != '' {
+		eprintln(output)
+	}
+	eprintln('Set V_C_ERROR_BUG_REPORT_DISABLED=1 to opt out of these automatic reports.')
 }
 
-fn rebuild(prefs &pref.Preferences) {
-	match prefs.backend {
-		.c {
-			$if v1_fallback ?|| cross ? {
-				builder.compile('build', prefs, cbuilder.compile_c)
-			} $else {
-
-				// Every C-backend build is dispatched to V3 before this point. Keeping
-				// this path fatal prevents an accidental dependency on the unlinked V1
-				// builder from being hidden behind an external tool bootstrap.
-				eprintln('internal error: C-backend compilation was not dispatched to V3')
-				exit(1)
+fn json_quote(value string) string {
+	mut out := strings.new_builder(value.len + 2)
+	out.write_u8(`\"`)
+	for byte in value.bytes() {
+		match byte {
+			`\"` {
+				out.write_string('\\"')
+			}
+			`\\` {
+				out.write_string('\\\\')
+			}
+			`\b` {
+				out.write_string('\\b')
+			}
+			`\f` {
+				out.write_string('\\f')
+			}
+			`\n` {
+				out.write_string('\\n')
+			}
+			`\r` {
+				out.write_string('\\r')
+			}
+			`\t` {
+				out.write_string('\\t')
+			}
+			else {
+				out.write_u8(if byte < 0x20 { ` ` } else { byte })
 			}
 		}
-		.js_node, .js_freestanding, .js_browser {
-			// Non-C backends remain external tools and are not linked into cmd/v.
-			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
+	}
+	out.write_u8(`\"`)
+	return out.str()
+}
+
+fn ensure_v1_fallback(reason string) !string {
+	vroot := find_vroot(os.executable()) or {
+		find_vroot(@VEXEROOT) or {
+			return error('${reason}, but the V source tree could not be found. Run `make v1` in the V source directory.')
 		}
-		.interpret {
-			eprintln('The eval backend has been removed.')
-			exit(1)
+	}
+	fallback := os.join_path(vroot, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	if installed := resolve_v1_fallback(fallback) {
+		return installed
+	} else {
+		make_command := find_make() or {
+			return error('${reason}, but `${fallback}` is missing and make was not found. Install make, then run `make v1` in `${vroot}`.')
 		}
-		.wasm {
-			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
+		eprintln('${reason}, but `${fallback}` is missing; running `make v1` now...')
+		mut process := os.new_process(make_command)
+		process.set_args(['VEXE=${os.real_path(os.executable())}', 'v1'])
+		process.set_work_folder(vroot)
+		process.wait()
+		code := process.code
+		process.close()
+		if code != 0 {
+			return error('`make v1` failed with exit code ${code}. Run it manually in `${vroot}` for more details.')
 		}
+	}
+	return resolve_v1_fallback(fallback) or {
+		return error('`make v1` completed without installing a usable V ${v_version} fallback at `${fallback}`.')
 	}
 }
 
-@[manualfree]
-fn setup_vbuild_env_vars(prefs &pref.Preferences) {
-	mut facts := []string{cap: 10}
-	facts << prefs.os.lower()
-	facts << prefs.ccompiler_type.str()
-	facts << prefs.arch.str()
-	if prefs.is_prod {
-		facts << 'prod'
+fn resolve_v1_fallback(fallback string) ?string {
+	if !os.is_executable(fallback) {
+		return none
 	}
-	github_job := os.getenv('GITHUB_JOB')
-	if github_job != '' {
-		facts << github_job
+	root_file := fallback + '.vroot'
+	if os.is_file(root_file) {
+		fallback_root := os.read_file(root_file) or { '' }.trim_space()
+		cached_fallback := os.join_path(fallback_root, 'v' + $if windows { '.exe' } $else { '' })
+		if os.is_executable(cached_fallback) && v1_fallback_has_expected_version(cached_fallback) {
+			return cached_fallback
+		}
 	}
-	pref.set_build_flags_and_defines(facts, prefs.compile_defines_all)
-	unsafe { github_job.free() }
-	unsafe { facts.free() }
+	return none
+}
+
+fn v1_fallback_has_expected_version(executable string) bool {
+	result := os.execute('${os.quoted_path(executable)} version')
+	return result.exit_code == 0 && result.output.starts_with('V ${v_version} ')
+}
+
+fn find_vroot(executable string) ?string {
+	mut current := if os.is_dir(executable) {
+		os.real_path(executable)
+	} else {
+		os.real_path(os.dir(executable))
+	}
+	for _ in 0 .. 32 {
+		if os.is_file(os.join_path(current, 'GNUmakefile'))
+			&& os.is_dir(os.join_path(current, 'vlib', 'v')) {
+			return current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return none
+}
+
+fn find_make() ?string {
+	for name in ['make', 'gmake'] {
+		if executable := os.find_abs_path_of_executable(name) {
+			return executable
+		}
+	}
+	return none
 }

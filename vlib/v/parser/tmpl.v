@@ -1,4 +1,4 @@
-// Template engine for v3, ported from vlib/old/parser/tmpl.v (v1).
+// Template engine for v3, ported from vlib/v/parser/tmpl.v (v1).
 //
 // `compile_template_file` reads a `.html` (or other) template and compiles it to
 // V source that accumulates the rendered output into a string builder variable.
@@ -18,9 +18,9 @@ import v.token
 
 enum TmplState {
 	simple // no special interpretation of tags
-	html   // default, only when the template extension is .html
-	css    // <style>
-	js     // <script>
+	html // default, only when the template extension is .html
+	css // <style>
+	js // <script>
 }
 
 fn (mut state TmplState) update(line string) {
@@ -313,8 +313,7 @@ fn escape_bare_tmpl_dollar_interpolations(line string) string {
 // are left verbatim, matching a normal text line's handling. The literal-dollar marker is
 // finalized to `\$` after the backslash escaping so its backslash is not doubled.
 fn escape_tmpl_comment_line(line string) string {
-	return escape_bare_tmpl_dollar_interpolations(line).replace('\\', '\\\\').replace("'", "\\'").replace(tmpl_literal_dollar_marker,
-		r'\$')
+	return escape_bare_tmpl_dollar_interpolations(line).replace('\\', '\\\\').replace("'", "\\'").replace(tmpl_literal_dollar_marker, r'\$')
 }
 
 // tmpl_interp_format_split splits an `@{expr:fmt}` interpolation body at its
@@ -443,8 +442,7 @@ fn tmpl_line_content(line string, escape bool) string {
 						if escape {
 							expr_end := find_tmpl_balanced_end(rewritten_line, i + 1, `{`, `}`)
 							if expr_end != -1 {
-								tmpl_write_escaped_interpolation(mut sb,
-									rewritten_line[i + 2..expr_end - 1])
+								tmpl_write_escaped_interpolation(mut sb, rewritten_line[i + 2..expr_end - 1])
 								i = expr_end
 								continue
 							}
@@ -564,8 +562,8 @@ fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
 	}
 	if remainder.ends_with('{') {
 		return TmplControlLine{
-			header:            remainder[..remainder.len - 1].trim_space()
-			prefix:            line[..pos]
+			header: remainder[..remainder.len - 1].trim_space()
+			prefix: line[..pos]
 			opens_brace_block: true
 		}
 	}
@@ -588,11 +586,11 @@ fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
 		}
 	}
 	return TmplControlLine{
-		header:              remainder[..open_pos].trim_space()
-		inline_body:         remainder[open_pos + 1..close_pos].trim_space()
-		prefix:              line[..pos]
-		has_inline_body:     open_pos + 1 < close_pos
-		opens_brace_block:   true
+		header: remainder[..open_pos].trim_space()
+		inline_body: remainder[open_pos + 1..close_pos].trim_space()
+		prefix: line[..pos]
+		has_inline_body: open_pos + 1 < close_pos
+		opens_brace_block: true
 		closes_inline_block: true
 	}
 }
@@ -609,8 +607,8 @@ fn parse_tmpl_else_line(line string) TmplControlLine {
 	if remainder.ends_with('{') {
 		suffix := remainder[..remainder.len - 1].trim_space()
 		return TmplControlLine{
-			header:            if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
-			prefix:            line[..pos]
+			header: if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
+			prefix: line[..pos]
 			opens_brace_block: true
 		}
 	}
@@ -634,11 +632,11 @@ fn parse_tmpl_else_line(line string) TmplControlLine {
 	}
 	suffix := remainder[..open_pos].trim_space()
 	return TmplControlLine{
-		header:              if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
-		inline_body:         remainder[open_pos + 1..close_pos].trim_space()
-		prefix:              line[..pos]
-		has_inline_body:     open_pos + 1 < close_pos
-		opens_brace_block:   true
+		header: if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
+		inline_body: remainder[open_pos + 1..close_pos].trim_space()
+		prefix: line[..pos]
+		has_inline_body: open_pos + 1 < close_pos
+		opens_brace_block: true
 		closes_inline_block: true
 	}
 }
@@ -648,60 +646,60 @@ fn template_control_source_map(line string) ?TemplateControlSourceMap {
 		control := parse_tmpl_control_line(line, '@if')
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
-			generated:        'if ${control.header} {'
-			inline_plain:     if control.has_inline_body {
+			generated: 'if ${control.header} {'
+			inline_plain: if control.has_inline_body {
 				tmpl_line_content(inline_source, false)
 			} else {
 				''
 			}
-			inline_escaped:   if control.has_inline_body {
+			inline_escaped: if control.has_inline_body {
 				tmpl_line_content(inline_source, true)
 			} else {
 				''
 			}
-			column_delta:     pos + 1
+			column_delta: pos + 1
 			directive_offset: pos
-			has_inline_body:  control.has_inline_body
+			has_inline_body: control.has_inline_body
 		}
 	}
 	if pos := tmpl_directive_pos(line, '@for', []) {
 		control := parse_tmpl_control_line(line, '@for')
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
-			generated:        'for ${control.header} {'
-			inline_plain:     if control.has_inline_body {
+			generated: 'for ${control.header} {'
+			inline_plain: if control.has_inline_body {
 				tmpl_line_content(inline_source, false)
 			} else {
 				''
 			}
-			inline_escaped:   if control.has_inline_body {
+			inline_escaped: if control.has_inline_body {
 				tmpl_line_content(inline_source, true)
 			} else {
 				''
 			}
-			column_delta:     pos + 1
+			column_delta: pos + 1
 			directive_offset: pos
-			has_inline_body:  control.has_inline_body
+			has_inline_body: control.has_inline_body
 		}
 	}
 	if pos := tmpl_directive_pos(line, '@else', []) {
 		control := parse_tmpl_else_line(line)
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
-			generated:        '} ${control.header} {'
-			inline_plain:     if control.has_inline_body {
+			generated: '} ${control.header} {'
+			inline_plain: if control.has_inline_body {
 				tmpl_line_content(inline_source, false)
 			} else {
 				''
 			}
-			inline_escaped:   if control.has_inline_body {
+			inline_escaped: if control.has_inline_body {
 				tmpl_line_content(inline_source, true)
 			} else {
 				''
 			}
-			column_delta:     pos - 1
+			column_delta: pos - 1
 			directive_offset: pos
-			has_inline_body:  control.has_inline_body
+			has_inline_body: control.has_inline_body
 		}
 	}
 	return none
@@ -792,13 +790,11 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 		// stop expanding, rather than silently dropping the include line. (A partial
 		// already fully expanded and popped is NOT in `seen`, so the same partial may
 		// legitimately be included more than once.)
-		p.record_diagnostic('circular veb template include `${file_name}${file_ext}` (${file_path})',
-			p.tok_pos)
+		p.record_diagnostic('circular veb template include `${file_name}${file_ext}` (${file_path})', p.tok_pos)
 		return []
 	}
 	content := os.read_lines(file_path) or {
-		p.record_diagnostic('veb template include `${file_name}${file_ext}` could not be opened (${file_path})',
-			p.tok_pos)
+		p.record_diagnostic('veb template include `${file_name}${file_ext}` could not be opened (${file_path})', p.tok_pos)
 		return []
 	}
 	// Mark this file as on the current recursion stack while its own includes are
@@ -883,7 +879,7 @@ fn expand_veb_tr_shorthand(line string, ctx_name string) string {
 fn (mut p Parser) compile_template_file(template_file string, bname string, escape bool) (string, []TemplateSourceLine) {
 	raw_lines := os.read_lines(template_file) or {
 		p.record_diagnostic('reading from template ${template_file} failed', p.tok_pos)
-		return 'mut ${bname} := \'\'\n', []TemplateSourceLine{}
+		return "mut ${bname} := ''\n", []TemplateSourceLine{}
 	}
 	root_path := os.real_path(template_file)
 	mut lines := []TemplateSourceLine{cap: raw_lines.len}
@@ -894,10 +890,10 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			line: line_index + 1
 		}
 	}
-	tmpl_str_start := '\t${bname} += \''
+	tmpl_str_start := "\t${bname} += '"
 	tmpl_str_end := "'\n"
 	mut source := strings.new_builder(1024)
-	source.writeln('mut ${bname} := \'\'')
+	source.writeln("mut ${bname} := ''")
 	source.write_string(tmpl_str_start)
 
 	mut state := TmplState.simple
@@ -1082,8 +1078,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 		// Only HTML text lines reach here (simple/js/css states are emitted and continue
 		// above), so expand veb's `%key` / `%raw key` translation shorthand before the
 		// line's `@`-interpolations are rendered, matching v1.
-		source.writeln(tmpl_line_content(expand_veb_tr_shorthand(line, p.veb_context_name()),
-			escape))
+		source.writeln(tmpl_line_content(expand_veb_tr_shorthand(line, p.veb_context_name()), escape))
 	}
 	source.writeln(tmpl_str_end)
 	return source.str(), lines
@@ -1152,17 +1147,16 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	// returned so parsing can continue past the recorded error.
 	if had_arg && arg.len == 0 {
 		call := if is_html { '\$veb.html' } else { '\$tmpl' }
-		p.record_diagnostic('${call}() template path must be a compile-time string (a string literal, `const`, or a `+` of those); dynamic paths are not supported',
-			p.tok_pos)
+		p.record_diagnostic('${call}() template path must be a compile-time string (a string literal, `const`, or a `+` of those); dynamic paths are not supported', p.tok_pos)
 		return p.add_val_id(5, '')
 	}
 	path := p.resolve_veb_template_path(is_html, arg)
 	p.has_veb_template = true
 	return p.add_node(flat.Node{
-		kind:  .veb_template
+		kind: .veb_template
 		value: path
-		typ:   if is_html { 'html' } else { 'tmpl' }
-		pos:   p.span_to(call_start)
+		typ: if is_html { 'html' } else { 'tmpl' }
+		pos: p.span_to(call_start)
 	})
 }
 
@@ -1316,8 +1310,7 @@ fn (mut p Parser) parse_stmts_from_source(src string, template_path string, call
 		}
 	}
 	p.end_local_binding_scope()
-	p.remap_template_source(first_node, first_diagnostic, file, stable_src, template_path,
-		call_pos, source_lines)
+	p.remap_template_source(first_node, first_diagnostic, file, stable_src, template_path, call_pos, source_lines)
 
 	p.s = saved_s
 	p.tok = saved_tok
@@ -1365,9 +1358,9 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		p.a.template_call_sites[template_id] = token.new_pos(call_pos.id, call_pos.offset)
 		p.a.template_actions[template_id] = action
 		registered_sources[path] = RegisteredTemplateSource{
-			file:  template_file
+			file: template_file
 			lines: source.split_into_lines()
-			id:    template_id
+			id: template_id
 		}
 	}
 
@@ -1396,7 +1389,7 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 				matches_inline_body = control.has_inline_body && ((control.inline_plain.len > 0
 					&& generated_line.contains(control.inline_plain))
 					|| (control.inline_escaped.len > 0
-					&& generated_line.contains(control.inline_escaped)))
+						&& generated_line.contains(control.inline_escaped)))
 				column_delta = control.column_delta
 				directive_offset = control.directive_offset
 				control_has_inline_body = control.has_inline_body
@@ -1427,10 +1420,7 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		}
 		source_line := source_lines[source_line_map[line_index]]
 		registered := registered_sources[source_line.path] or { continue }
-		mapped := template_mapped_pos(registered.file, registered.lines, source_line.line,
-			generated_lines[line_index], generated_position.column, node.pos.end - node.pos.offset,
-			registered.id, control_map[line_index], control_column_delta[line_index],
-			interpolation_skip_offset[line_index])
+		mapped := template_mapped_pos(registered.file, registered.lines, source_line.line, generated_lines[line_index], generated_position.column, node.pos.end - node.pos.offset, registered.id, control_map[line_index], control_column_delta[line_index], interpolation_skip_offset[line_index])
 		p.a.nodes[index] = flat.Node{
 			...node
 			pos: mapped
@@ -1445,15 +1435,12 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		}
 		source_line := source_lines[source_line_map[line_index]]
 		registered := registered_sources[source_line.path] or { continue }
-		mapped := template_mapped_pos(registered.file, registered.lines, source_line.line,
-			generated_lines[line_index], generated_position.column,
-			diagnostic.pos.end - diagnostic.pos.offset, registered.id, control_map[line_index],
-			control_column_delta[line_index], interpolation_skip_offset[line_index])
+		mapped := template_mapped_pos(registered.file, registered.lines, source_line.line, generated_lines[line_index], generated_position.column, diagnostic.pos.end - diagnostic.pos.offset, registered.id, control_map[line_index], control_column_delta[line_index], interpolation_skip_offset[line_index])
 		p.diagnostics[index] = Diagnostic{
 			...diagnostic
-			file:   source_line.path
-			pos:    mapped
-			line:   source_line.line
+			file: source_line.path
+			pos: mapped
+			line: source_line.line
 			column: generated_position.column
 		}
 	}
@@ -1476,10 +1463,10 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 				continue
 			}
 			p.append_diagnostic(Diagnostic{
-				file:    source_line.path
-				pos:     pos
-				line:    source_line.line
-				column:  30
+				file: source_line.path
+				pos: pos
+				line: source_line.line
+				column: 30
 				message: message
 			})
 		}
@@ -1507,11 +1494,8 @@ fn template_mapped_pos(template_file &token.File, template_lines []string, line 
 		column = int_max(1, generated_column + control_column_delta)
 		span_start = column - 1
 	} else {
-		interpolation_index := generated_template_interpolation_index(generated_line,
-			generated_column)
-		if at := template_interpolation_offset(raw_line, interpolation_index,
-			interpolation_skip_offset)
-		{
+		interpolation_index := generated_template_interpolation_index(generated_line, generated_column)
+		if at := template_interpolation_offset(raw_line, interpolation_index, interpolation_skip_offset) {
 			if expr_start, expr_end := template_interpolation_expr_span(raw_line, at) {
 				column = expr_start + 2
 				span_start = expr_start
@@ -2034,8 +2018,7 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			// The container (and optional range end) evaluate in the outer scope.
 			for i in 2 .. header {
 				if i < int(node.children_count) {
-					p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-						out, mut mut_names)
+					p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut out, mut mut_names)
 				}
 			}
 			// The key/value loop variables and any `:=` bindings inside the body are locals
@@ -2054,8 +2037,7 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 				p.declare_template_ident(p.a.child(&node, 1), mut declared)
 			}
 			for i in header .. int(node.children_count) {
-				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-					out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut out, mut mut_names)
 			}
 			mut body_local := []string{}
 			for name in declared.keys() {
@@ -2084,19 +2066,16 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			// the then branch, collected with that binding in scope. The guard RHS is evaluated
 			// in the outer scope (see `.decl_assign`), so an outer name reused there is captured.
 			if node.children_count > 0 {
-				p.collect_template_free_idents(p.a.child(&node, 0), mut declared, mut seen, mut
-					out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, 0), mut declared, mut seen, mut out, mut mut_names)
 			}
 			if node.children_count > 1 {
-				p.collect_template_free_idents(p.a.child(&node, 1), mut declared, mut seen, mut
-					out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, 1), mut declared, mut seen, mut out, mut mut_names)
 			}
 			// The else branch (children 2+: a block or nested `else if`) does not see the guard
 			// binding or the then-branch locals.
 			restore_template_declared(mut declared, outer_declared)
 			for i in 2 .. int(node.children_count) {
-				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-					out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut out, mut mut_names)
 			}
 			// Drop else-branch locals so a use AFTER the whole `if` captures the outer name.
 			restore_template_declared(mut declared, outer_declared)
@@ -2119,8 +2098,7 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 				p.declare_template_ident(p.a.child(&node, i), mut declared)
 			}
 			if node.children_count > 0 {
-				p.collect_template_free_idents(p.a.child(&node, int(node.children_count) - 1), mut
-					declared, mut seen, mut out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, int(node.children_count) - 1), mut declared, mut seen, mut out, mut mut_names)
 			}
 			mut lambda_local := []string{}
 			for name in declared.keys() {
@@ -2149,14 +2127,12 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 						&& base_node.value[0] >= `A` && base_node.value[0] <= `Z`
 						&& !p.is_local_binding(base_node.value)
 					if !base_is_type_name {
-						p.collect_template_free_idents(base, mut declared, mut seen, mut out, mut
-							mut_names)
+						p.collect_template_free_idents(base, mut declared, mut seen, mut out, mut mut_names)
 					}
 				}
 			}
 			for i in 1 .. node.children_count {
-				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-					out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut out, mut mut_names)
 			}
 		}
 		.call {
@@ -2174,14 +2150,12 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 					callee_is_local_binding := callee_node.kind == .ident
 						&& p.is_local_binding(callee_node.value)
 					if callee_node.kind != .ident || callee_is_local_binding {
-						p.collect_template_free_idents(callee, mut declared, mut seen, mut out, mut
-							mut_names)
+						p.collect_template_free_idents(callee, mut declared, mut seen, mut out, mut mut_names)
 					}
 				}
 			}
 			for i in 1 .. node.children_count {
-				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-					out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut out, mut mut_names)
 			}
 		}
 		.decl_assign {
@@ -2197,8 +2171,7 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			// declared, never collected.
 			lhs_slots, rhs_slots := decl_assign_lhs_rhs_slots(node)
 			for i in rhs_slots {
-				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-					out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut out, mut mut_names)
 			}
 			for i in lhs_slots {
 				p.declare_template_ident(p.a.child(&node, i), mut declared)
@@ -2206,8 +2179,7 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 		}
 		else {
 			for i in 0 .. node.children_count {
-				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut
-					out, mut mut_names)
+				p.collect_template_free_idents(p.a.child(&node, i), mut declared, mut seen, mut out, mut mut_names)
 			}
 		}
 	}

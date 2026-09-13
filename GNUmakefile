@@ -7,7 +7,7 @@ VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
 V1_FALLBACK_EXE = $(dir $(VEXE))v1_fallback$(EXE_EXT)
-# Portable VC snapshots do not embed V3. Keep their v1 executable on the full
+# Portable VC snapshots do not embed the default compiler. Keep their v1 executable on the full
 # compatibility compiler path even when the generated C is built on a V3 host.
 VC_BOOTSTRAP_DEFINE := -DCUSTOM_DEFINE_v1_fallback
 VCREPO ?= https://github.com/vlang/vc
@@ -164,9 +164,9 @@ ifneq ($(BOOTSTRAP_VC_UNSAFE_OPTFLAGS),)
 endif
 endif
 endif
-# A vc snapshot may use the lean V3 dispatcher when its generated C is built
+# A vc snapshot may use the lean compiler dispatcher when its generated C is built
 # on a Unix-like host. Keep the temporary v1 on the full compatibility path so
-# it can create v2 before either the embedded V3 driver or v1_fallback exists.
+# it can create v2 before either the compiler driver or v1_fallback exists.
 BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
@@ -246,19 +246,6 @@ endif
 	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run .github/problem-matchers/register_all.vsh
 
 v1:
-ifdef WIN32
-	@set -e; \
-	if [ ! -f "$(VC)/$(VCFILE)" ]; then '$(MAKE)' latest_vc; fi; \
-	mkdir -p "$(dir $(V1_FALLBACK_EXE))"; \
-	candidate="$(V1_FALLBACK_EXE).tmp.$$$$"; \
-	trap 'rm -f "$$candidate"' EXIT HUP INT TERM; \
-	if ! $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o "$$candidate" "$(VC)/$(VCFILE)" $(LDFLAGS) -lws2_32; then \
-		cmd/tools/cc_compilation_failed_windows.sh; \
-		exit 1; \
-	fi; \
-	mv -f "$$candidate" "$(V1_FALLBACK_EXE)"; \
-	echo "Built V1 compatibility compiler: $(V1_FALLBACK_EXE)"
-else
 ifdef LEGACY
 	@set -e; \
 	if [ ! -f "$(LEGACYLIBS)/lib/libMacportsLegacySupport.a" ]; then \
@@ -269,20 +256,13 @@ ifdef LEGACY
 	fi
 endif
 	@set -e; \
-	if [ ! -f "$(VC)/$(VCFILE)" ]; then '$(MAKE)' latest_vc; fi; \
-	mkdir -p "$(dir $(V1_FALLBACK_EXE))"; \
-	candidate="$(V1_FALLBACK_EXE).tmp.$$$$"; \
-	trap 'rm -f "$$candidate"' EXIT HUP INT TERM; \
-	if ! $(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o "$$candidate" "$(VC)/$(VCFILE)" -lm -lpthread $(BOOTSTRAP_LDFLAGS); then \
-		cmd/tools/cc_compilation_failed_non_windows.sh; \
-		exit 1; \
-	fi; \
-	mv -f "$$candidate" "$(V1_FALLBACK_EXE)"
+	CC='$(CC)' OLDV_CCOPTIONS='$(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS)' \
+		OLDV_LDFLAGS='$(BOOTSTRAP_LDFLAGS)' \
+		cmd/tools/install_v1_fallback.sh '$(VEXE)$(EXE_EXT)' '$(V1_FALLBACK_EXE)'
 ifdef NETBSD
 	paxctl +m $(V1_FALLBACK_EXE)
 endif
 	@echo "Built V1 compatibility compiler: $(V1_FALLBACK_EXE)"
-endif
 
 clean:
 	rm -rf $(TMPTCC)

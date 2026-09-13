@@ -62,7 +62,7 @@ jobs:
 
           # do some sanity checks for the generated v.c/v_win.c files. `-cross` makes `$if cross ?`
           # (and the `?`-guarded v1_fallback/musl branches that key off it, e.g. in
-          # cmd/v/macos_v3_driver_notd_cross.v) resolve statically instead of compiling out empty,
+          # target-specific compiler support files resolve statically instead of compiling out empty,
           # which is what lets GNUmakefile later recompile these snapshots with
           # -DCUSTOM_DEFINE_v1_fallback to build v1$(EXE_EXT).
           grep 'Turned ON custom defines: no_backtrace,cross'  vc/v.c

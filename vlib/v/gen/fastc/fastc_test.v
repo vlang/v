@@ -2866,7 +2866,7 @@ fn test_real_builtin_path_typeof_generic_reflection() {
 	// name string.
 	source := generate('module main\nconst i64_idx = typeof[i64]().idx\nconst str_idx = typeof[string]().idx\nconst int_name = typeof[int]().name\nfn main() {\n\tif i64_idx == 9 && str_idx == 21 {\n\t\tprintln(int_name)\n\t}\n}\n', 'typeof_reflection.v', prefs) or { panic(err) }
 	assert source.contains('_S("int")'), source
-	// i64 -> 9, string -> 21 (the canonical indices in vlib/old/ast/types.v).
+	// i64 -> 9, string -> 21 (the canonical indices in vlib/v/ast/types.v).
 	assert source.contains('main__i64_idx = 9'), source
 	assert source.contains('main__str_idx = 21'), source
 }

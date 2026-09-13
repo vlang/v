@@ -1,4 +1,4 @@
-#include "@VMODROOT/vlib/old/gen/c/testdata/multiple_c_cources/file3.c"
+#include "@VMODROOT/vlib/v/gen/c/testdata/multiple_c_cources/file3.c"
 
 @[typedef]
 struct C.CStruct {

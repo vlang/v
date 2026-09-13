@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # Install the V 0.5.2 release compiler used by cmd/v as its V1 fallback.
-# If GitHub does not provide a usable binary, preserve hermetic `make local=1`
-# builds by compiling from this checkout before trying the existing oldv tool.
+# If GitHub does not provide a usable binary, oldv checks out the 0.5.2 V
+# sources and their matching vc snapshot, then builds the fallback there.
 
 set -u
 
@@ -27,6 +27,8 @@ fallback_output=$fallback_dir/$(basename "$fallback_output")
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/v1-fallback.XXXXXX") || exit 1
 archive=$work_dir/release.zip
 candidate=$work_dir/v1_fallback
+candidate_root_file=$work_dir/v1_fallback.vroot
+release_tree=$work_dir/release
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
 asset=
@@ -55,6 +57,10 @@ case "$system:$architecture" in
 		expected_sha256=5f1d619b6b04a2b54b4ad21826a25bdcba2acf75a941c8f72fc95672b6b064ca
 		;;
 esac
+
+cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/v1-fallback}
+cache_root=$cache_parent/$release_version
+cached_candidate=$cache_root/$(basename "$member")
 
 sha256_of() {
 	if command -v sha256sum >/dev/null 2>&1; then
@@ -93,15 +99,17 @@ download_release() {
 		echo "V $release_version fallback archive checksum mismatch" >&2
 		return 1
 	fi
+	mkdir -p "$release_tree" || return 1
 	if command -v unzip >/dev/null 2>&1; then
-		unzip -p "$archive" "$member" > "$candidate" || return 1
+		unzip -q "$archive" -d "$release_tree" || return 1
 	elif command -v bsdtar >/dev/null 2>&1; then
-		bsdtar -xOf "$archive" "$member" > "$candidate" || return 1
+		bsdtar -xf "$archive" -C "$release_tree" || return 1
 	elif command -v tar >/dev/null 2>&1; then
-		tar -xOf "$archive" "$member" > "$candidate" || return 1
+		tar -xf "$archive" -C "$release_tree" || return 1
 	else
 		return 1
 	fi
+	candidate=$release_tree/$member
 	chmod +x "$candidate" || return 1
 	candidate_has_expected_version || {
 		echo "The V $release_version release fallback cannot run on this host." >&2
@@ -112,51 +120,53 @@ download_release() {
 build_with_oldv() {
 	echo "Building the V $release_version fallback with oldv..."
 	oldv_target=$candidate
-	oldv_copy='cp ./v "$V1_FALLBACK_TARGET"'
+	oldv_copy='cp ./v "$V1_FALLBACK_TARGET" && pwd > "$V1_FALLBACK_ROOT_TARGET"'
 	case "$system" in
 		MSYS*|MINGW*)
-			oldv_copy='copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL'
+			oldv_copy='copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL && cd > "%V1_FALLBACK_ROOT_TARGET%"'
 			if command -v cygpath >/dev/null 2>&1; then
 				oldv_target=$(cygpath -w "$candidate")
 			fi
 			;;
 	esac
-	V1_FALLBACK_TARGET=$oldv_target "$bootstrap_v" -no-parallel -gc none run \
+	V1_FALLBACK_TARGET=$oldv_target V1_FALLBACK_ROOT_TARGET=$candidate_root_file \
+		"$bootstrap_v" -no-parallel -gc none run \
 		cmd/tools/oldv.v --cache=false --command "$oldv_copy" "$release_version" || return 1
 	chmod +x "$candidate" || return 1
 }
 
-build_from_local_sources() {
-	echo "Building the V $release_version fallback from local sources..."
-	set -- "$bootstrap_v" -no-parallel -gc none -d v1_fallback -o "$candidate"
-	if [ -n "${CC:-}" ]; then
-		set -- "$@" -cc "$CC"
-	fi
-	if [ -n "${OLDV_CCOPTIONS:-}" ]; then
-		set -- "$@" -cflags "$OLDV_CCOPTIONS"
-	fi
-	if [ -n "${OLDV_LDFLAGS:-}" ]; then
-		set -- "$@" -ldflags "$OLDV_LDFLAGS"
-	fi
-	set -- "$@" cmd/v
-	"$@" || return 1
-	chmod +x "$candidate" || return 1
+use_cached_release() {
+	[ -d "$cache_root/vlib" ] || return 1
+	[ -x "$cached_candidate" ] || return 1
+	candidate=$cached_candidate
 	candidate_has_expected_version || return 1
+	printf '%s\n' "$cache_root" > "$candidate_root_file" || return 1
 }
 
-if download_release; then
+install_downloaded_release() {
+	mkdir -p "$cache_parent" || return 1
+	staged_cache=$cache_root.tmp.$$
+	rm -rf "$staged_cache"
+	mv "$release_tree/v" "$staged_cache" || return 1
+	if [ -e "$cache_root" ]; then
+		rm -rf "$cache_root" || return 1
+	fi
+	mv "$staged_cache" "$cache_root" || return 1
+	candidate=$cached_candidate
+	printf '%s\n' "$cache_root" > "$candidate_root_file" || return 1
+}
+
+if use_cached_release; then
+	echo "Using the cached V $release_version release fallback"
+elif download_release; then
 	echo "Installed the V $release_version release fallback from $asset"
+	install_downloaded_release || exit 1
 else
 	echo "Could not install a V $release_version release asset for $system/$architecture." >&2
-	if [ -n "${V1_FALLBACK_LOCAL:-}" ]; then
-		build_from_local_sources && local_build_succeeded=1
-	fi
-	if [ "${local_build_succeeded:-0}" -ne 1 ]; then
-		build_with_oldv || {
-			echo "Could not build the V $release_version fallback with oldv." >&2
-			exit 1
-		}
-	fi
+	build_with_oldv || {
+		echo "Could not build the V $release_version fallback with oldv." >&2
+		exit 1
+	}
 fi
 
 candidate_has_expected_version || {
@@ -168,5 +178,8 @@ candidate_has_expected_version || {
 	exit 1
 }
 
-rm -f "$fallback_output"
-mv "$candidate" "$fallback_output" || exit 1
+staged_output=$fallback_output.tmp.$$
+cp "$candidate" "$staged_output" || exit 1
+chmod +x "$staged_output" || exit 1
+mv -f "$staged_output" "$fallback_output" || exit 1
+mv -f "$candidate_root_file" "$fallback_output.vroot" || exit 1

@@ -1,8 +1,8 @@
 module main
 
 import os
-import old.util.version
-import old.util.recompilation
+import v.util.version
+import v.util.recompilation
 
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
@@ -95,7 +95,7 @@ fn (app App) update_from_master() {
 		app.git_command('git remote set-head origin ${v_upstream_branch}')
 		app.git_command('git reset --hard origin/${v_upstream_branch}')
 		// Note 1: patterns starting with /, will match only against the root;
-		//         `--exclude v` will match also vlib/old/ in addition to ./v; `--exclude /v` will only match ./v
+		//         `--exclude v` will match also vlib/v/ in addition to ./v; `--exclude /v` will only match ./v
 		// Note 2: patterns ending with / are treated as folders.
 		app.git_command('git clean -xfd --exclude /thirdparty/tcc/ --exclude /v --exclude /v.exe --exclude /v_old --exclude /v_old.exe --exclude /${app.current_vexe_name()} --exclude /${app.current_vbackup_name()} --exclude /.bin/ --exclude /cmd/tools/vup --exclude /cmd/tools/vup.exe')
 	} else {

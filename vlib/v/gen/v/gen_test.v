@@ -1232,7 +1232,7 @@ fn test_formatter_preserves_mut_type_check() {
 }
 
 fn test_json_migration_keeps_unsafe_legacy_uses() {
-	fixture_dir := os.join_path(@VEXEROOT, 'vlib/old/fmt/tests')
+	fixture_dir := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests')
 	mut files := os.walk_ext(fixture_dir, '_keep.vv')
 	files = files.filter(os.file_name(it).starts_with('json_migrate_'))
 	assert files.len > 0
@@ -1252,7 +1252,7 @@ fn test_json_migration_keeps_unsafe_legacy_uses() {
 }
 
 fn test_json_migration_matches_formatter_fixtures() {
-	fixture_dir := os.join_path(@VEXEROOT, 'vlib/old/fmt/tests')
+	fixture_dir := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests')
 	mut inputs := os.walk_ext(fixture_dir, '_input.vv')
 	inputs = inputs.filter(os.file_name(it).starts_with('json_migrate_'))
 	assert inputs.len > 0
@@ -1265,7 +1265,7 @@ fn test_json_migration_matches_formatter_fixtures() {
 }
 
 fn test_source_preservation_matches_formatter_fixtures() {
-	fixture_dir := os.join_path(@VEXEROOT, 'vlib/old/fmt/tests')
+	fixture_dir := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests')
 	for name in ['conditional_import', 'struct_decl_with_comments', 'vfmt_off_vfmt_on_with_crlf'] {
 		input := os.join_path(fixture_dir, '${name}_input.vv')
 		expected_path := os.join_path(fixture_dir, '${name}_expected.vv')

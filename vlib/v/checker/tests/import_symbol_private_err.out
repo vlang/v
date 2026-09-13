@@ -11,14 +11,14 @@ vlib/v/checker/tests/import_symbol_private_err.vv:13:6: notice: interface field 
       |         ~~~~~~~~~~~~~~~~~~
    14 | }
 vlib/v/checker/tests/import_symbol_private_err.vv:3:15: error: module `time` function `vpc_now()` is private
-    1 | import old.scanner
-    2 | import old.parser
+    1 | import v.scanner
+    2 | import v.parser
     3 | import time { vpc_now }
       |               ~~~~~~~
     4 | import io { ReaderWriterImpl }
     5 |
 vlib/v/checker/tests/import_symbol_private_err.vv:4:13: error: module `io` type `ReaderWriterImpl` is private
-    2 | import old.parser
+    2 | import v.parser
     3 | import time { vpc_now }
     4 | import io { ReaderWriterImpl }
       |             ~~~~~~~~~~~~~~~~

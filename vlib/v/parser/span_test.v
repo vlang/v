@@ -115,7 +115,7 @@ fn stop() {
 }
 
 fn test_module_qualified_double_pointer_cast_is_one_cast_expression() {
-	ast, _ := parse_span_source('module_pointer_cast', 'import old.ast
+	ast, _ := parse_span_source('module_pointer_cast', 'import v.ast
 
 fn cast_file(raw voidptr) &ast.File {
 	return unsafe { *(&&ast.File(raw)) }

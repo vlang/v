@@ -4,7 +4,7 @@
 // in `object_var`, so `write_orm_insert_with_last_ids` used to emit `parent.operator`
 // / `parent.explicit` against a struct whose members are declared `__v_operator` /
 // `__v_explicit`, failing during C compilation. See orm_field_access_name usage in
-// vlib/old/gen/c/orm.v.
+// vlib/v/gen/c/orm.v.
 import db.sqlite
 
 struct RKChild {
@@ -22,7 +22,7 @@ struct RKItem {
 struct RKParent {
 	id       int @[primary; sql: serial]
 	name     string
-	operator RKChild  @[fkey: 'parent_id'] // single relation named after a reserved word
+	operator RKChild @[fkey: 'parent_id'] // single relation named after a reserved word
 	explicit []RKItem @[fkey: 'parent_id'] // array relation named after a reserved word
 }
 
@@ -34,7 +34,7 @@ fn test_orm_insert_with_reserved_keyword_relation_fields() {
 		create table RKParent
 	}!
 	parent := RKParent{
-		name:     'root'
+		name: 'root'
 		operator: RKChild{
 			name: 'child'
 		}

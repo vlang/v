@@ -1,7 +1,7 @@
 module main
 
 import os
-import old.vcache
+import v.vcache
 
 fn main() {
 	wipe_path(vcache.new_cache_manager([]).basepath, 'V cache')

@@ -2,18 +2,18 @@ module pref
 
 import os
 
-// test_detect_vroot_from_subdir validates detect vroot from a compiler module directory.
+// test_detect_vroot_from_subdir validates detect vroot from subdir behavior in v3 tests.
 fn test_detect_vroot_from_subdir() {
 	vroot := @VMODROOT
-	compiler_dir := os.join_path(vroot, 'vlib', 'v')
-	assert detect_vroot_from(compiler_dir) == vroot
+	v3_dir := os.join_path(vroot, 'vlib', 'v3')
+	assert detect_vroot_from(v3_dir) == vroot
 }
 
-// test_detect_vroot_from_binary_path validates this compiler regression case.
-fn test_detect_vroot_from_compiler_binary_path() {
+// test_detect_vroot_from_binary_path validates this v3 regression case.
+fn test_detect_vroot_from_binary_path() {
 	vroot := @VMODROOT
-	compiler_bin := os.join_path(vroot, 'vlib', 'v', 'compiler')
-	assert detect_vroot_from(compiler_bin) == vroot
+	v3_bin := os.join_path(vroot, 'vlib', 'v3', 'v3')
+	assert detect_vroot_from(v3_bin) == vroot
 }
 
 fn test_get_module_path_resolves_alias_and_submodule() {
@@ -33,10 +33,12 @@ fn test_get_module_path_resolves_alias_and_submodule() {
 		panic(err)
 	}
 	os.write_file(os.join_path(canonical_dir, 'sub', 'sub.v'), 'module sub\n') or { panic(err) }
-	os.write_file(os.join_path(modules_dir, 'legacy', 'alias.v'), "@[alias: '@VMODROOT/modules/canonical'] module legacy\n") or { panic(err) }
+	os.write_file(os.join_path(modules_dir, 'legacy', 'alias.v'),
+		"@[alias: '@VMODROOT/modules/canonical'] module legacy\n") or { panic(err) }
 	main_file := os.join_path_single(root, 'main.v')
 	os.write_file(main_file, 'module main\n') or { panic(err) }
 	prefs := new_preferences()
 	assert prefs.get_module_path('modules.legacy', main_file) == os.real_path(canonical_dir)
-	assert prefs.get_module_path('modules.legacy.sub', main_file) == os.real_path(os.join_path_single(canonical_dir, 'sub'))
+	assert prefs.get_module_path('modules.legacy.sub', main_file) == os.real_path(os.join_path_single(canonical_dir,
+		'sub'))
 }

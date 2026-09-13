@@ -1,6 +1,6 @@
 module main
 
-import old.token
+import v.token
 
 type FilteredLines = map[ErrorType]map[int]bool
 

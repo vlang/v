@@ -1,9 +1,9 @@
 module document
 
 import os
-import old.ast
-import old.parser
-import old.pref
+import v.ast
+import v.parser
+import v.pref
 import v.vmod
 
 fn module_path_from_vmod_root(vmod_root string, mod string) !string {

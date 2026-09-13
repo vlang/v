@@ -174,11 +174,11 @@ pub fn target_from(os_name string, arch_name string) !Target {
 	}
 
 	return Target{
-		os:            target_os
-		arch:          target_arch
-		abi:           abi
-		endian:        endian
-		pointer_bits:  pointer_bits
+		os: target_os
+		arch: target_arch
+		abi: abi
+		endian: endian
+		pointer_bits: pointer_bits
 		object_format: object_format
 	}
 }
@@ -189,10 +189,23 @@ pub fn new_preferences() &Preferences {
 	// Formatted by hand: the first C strftime call of a process initializes
 	// the timezone data, which costs about half a millisecond per compile.
 	return &Preferences{
-		build_date:      '${build_time.year}-${two_digits(build_time.month)}-${two_digits(build_time.day)}'
-		build_time:      '${two_digits(build_time.hour)}:${two_digits(build_time.minute)}:${two_digits(build_time.second)}'
+		build_date: '${build_time.year}-${two_digits(build_time.month)}-${two_digits(build_time.day)}'
+		build_time: '${two_digits(build_time.hour)}:${two_digits(build_time.minute)}:${two_digits(build_time.second)}'
 		build_timestamp: build_time.unix().str()
 	}
+}
+
+// option_may_consume_value reports whether an option can consume the following argument.
+pub fn option_may_consume_value(option string) bool {
+	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
+		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof',
+		'-profile', '-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude',
+		'-file-list', '-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
+		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
+		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend',
+		'-compile-backend', '--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude',
+		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
 }
 
 fn two_digits(value int) string {
@@ -246,14 +259,11 @@ pub fn macos_v3_caller_env_value(name string) string {
 pub fn macos_v3_caller_environment() map[string]string {
 	mut environment := os.environ()
 	if has_macos_v3_caller_environment() {
-		restore_macos_v3_caller_environment_value(mut environment, 'VEXE',
-			macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
-		restore_macos_v3_caller_environment_value(mut environment, 'VCHILD',
-			macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+		restore_macos_v3_caller_environment_value(mut environment, 'VEXE', macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
+		restore_macos_v3_caller_environment_value(mut environment, 'VCHILD', macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
 	}
 	if os.getenv(macos_v3_caller_no_fallback_present_env) in ['0', '1'] {
-		restore_macos_v3_caller_environment_value(mut environment, 'V_MACOS_V3_NO_FALLBACK',
-			macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
+		restore_macos_v3_caller_environment_value(mut environment, 'V_MACOS_V3_NO_FALLBACK', macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
 	}
 	for name in macos_v3_private_environment_names {
 		environment.delete(name)
@@ -434,8 +444,7 @@ pub fn resolve_module_alias_path(search_root string, mod string) ?string {
 			target_dir = os.join_path_single(alias_dir, target_dir)
 		}
 		if part_count < parts.len {
-			target_dir = os.join_path_single(target_dir,
-				parts[part_count..].join(os.path_separator))
+			target_dir = os.join_path_single(target_dir, parts[part_count..].join(os.path_separator))
 		}
 		target_dir = os.real_path(target_dir)
 		if dir_is_module(target_dir) {
@@ -685,7 +694,7 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 	for file in sorted_files {
 		if !file.ends_with('.v') || file.ends_with('.js.v')
 			|| (file_name_has_marker(file, '_test.') && !file_name_has_marker(file, '_d_test.')
-			&& !file_name_has_marker(file, '_notd_test.')) {
+				&& !file_name_has_marker(file, '_notd_test.')) {
 			continue
 		}
 		if file_has_incompatible_os_only_suffix(file, target.os) {
@@ -747,8 +756,7 @@ struct VFileCandidate {
 
 // get_test_v_files_from_dir returns backend/target/define-compatible test files in dir.
 pub fn get_test_v_files_from_dir(dir string, user_defines []string, backend string, target_os string) []string {
-	return get_test_v_files_from_dir_for_target(dir, user_defines, backend, target_from(target_os,
-		host_arch()) or { host_target() })
+	return get_test_v_files_from_dir_for_target(dir, user_defines, backend, target_from(target_os, host_arch()) or { host_target() })
 }
 
 // get_test_v_files_from_dir_for_target returns tests compatible with the complete target.

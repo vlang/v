@@ -162,7 +162,7 @@ fn main() {
 
 fn test_sum_equality_uses_canonical_struct_field_types() {
 	v3_bin := build_v3_review_transform()
-	out := run_good_with_flags(v3_bin, 'sum_equality_canonical_struct_field_types', '-building-v', 'import old.token
+	out := run_good_with_flags(v3_bin, 'sum_equality_canonical_struct_field_types', '-building-v', 'import v.token
 
 struct Box {
 	pos token.Pos

@@ -180,8 +180,8 @@ fn main() {
 	}
 	context.path_v = vgit.normalized_workpath_for_commit(context.vgo.workdir, context.commit_v)
 	context.path_vc = vgit.normalized_workpath_for_commit(context.vgo.workdir, 'vc')
-	if !os.is_dir(context.vgo.workdir) {
-		eprintln('Work folder: ${context.vgo.workdir} , does not exist.')
+	os.mkdir_all(context.vgo.workdir) or {
+		eprintln('Could not create work folder `${context.vgo.workdir}`: ${err}')
 		exit(2)
 	}
 	if context.cleanup {

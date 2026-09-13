@@ -31,7 +31,6 @@ on:
       - 'vlib/strconv/**'
       - 'vlib/strings/**'
       - 'vlib/sync/**'
-      - 'vlib/old/**'
       - 'vlib/v/**'
       - 'thirdparty/**'
       - 'vc/**'

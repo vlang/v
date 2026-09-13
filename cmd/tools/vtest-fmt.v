@@ -2,7 +2,7 @@ module main
 
 import os
 import testing
-import old.util
+import v.util
 
 const known_failing_exceptions = [
 	// This file uses V3-only lifetime syntax, which the V1 formatter cannot parse.
@@ -33,7 +33,7 @@ fn v_files() []string {
 	mut files_that_can_be_formatted := []string{}
 	all_test_files := os.walk_ext('.', '.v')
 	for tfile in all_test_files {
-		if tfile.starts_with('./vlib/old/gen/c/testdata') {
+		if tfile.starts_with('./vlib/v/gen/c/testdata') {
 			continue
 		}
 		if tfile.ends_with('graceful_shutdown_test.v') {

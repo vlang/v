@@ -4,10 +4,10 @@ import os
 import testing
 
 struct Config {
-	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
-	is_musl_ci             bool   = os.getenv('V_CI_MUSL') != ''
-	is_ubuntu_musl_ci      bool   = os.getenv('V_CI_UBUNTU_MUSL') != ''
-	is_sandboxed_packaging bool   = os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
+	run_just_essential     bool = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
+	is_musl_ci             bool = os.getenv('V_CI_MUSL') != ''
+	is_ubuntu_musl_ci      bool = os.getenv('V_CI_UBUNTU_MUSL') != ''
+	is_sandboxed_packaging bool = os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
 	github_job             string = os.getenv('GITHUB_JOB')
 mut:
 	test_dirs         []string = ['cmd', 'vlib']
@@ -87,11 +87,11 @@ const essential_list = [
 	'vlib/time/time_test.v',
 	'vlib/toml/tests/toml_test.v',
 	'vlib/v/compiler_errors_test.v',
-	'vlib/old/fmt/fmt_keep_test.v',
-	'vlib/old/fmt/fmt_test.v',
-	'vlib/old/gen/c/coutput_test.v',
-	'vlib/old/gen/js/program_test.v',
-	'vlib/old/pkgconfig/pkgconfig_test.v',
+	'vlib/v/fmt/fmt_keep_test.v',
+	'vlib/v/fmt/fmt_test.v',
+	'vlib/v/gen/c/coutput_test.v',
+	'vlib/v/gen/js/program_test.v',
+	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
 	'vlib/json2/tests/json2_test.v',
 ]
@@ -303,7 +303,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_module_table_prefix/orm_module_table_prefix_test.v',
 	'vlib/orm/orm_where_in_test.v',
 	'vlib/sokol/gfx/gfx_test.v', // sokol_app.h needs GL/gl.h, not installed in the musl Docker image
-	'vlib/old/gen/c/sql_assert_temp_var_test.v', // sqlite header dependency pulls in glibc sys/cdefs.h on musl-gcc
+	'vlib/v/gen/c/sql_assert_temp_var_test.v', // sqlite header dependency pulls in glibc sys/cdefs.h on musl-gcc
 	'vlib/v/tests/concurrency/shared_nested_lock_runtime_test.v', // nested shared lock times out on the musl image
 	'vlib/v/tests/orm_bulk_insert_update_test.v',
 	'vlib/v/tests/orm_enum_test.v',
@@ -343,7 +343,9 @@ fn Config.init(vargs []string, targs []string) !Config {
 	mut cfg := Config{}
 	for arg in vargs {
 		match arg {
-			'-Werror', '-cstrict' { cfg.werror = true }
+			'-Werror', '-cstrict' {
+				cfg.werror = true
+			}
 			else {}
 		}
 

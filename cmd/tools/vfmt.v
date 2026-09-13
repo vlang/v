@@ -7,13 +7,9 @@ import os
 import os.cmdline
 import rand
 import term
-import old.ast
-import old.pref
-import old.fmt
-import old.util
-import old.util.diff
-import old.parser
-import old.help
+import v.util
+import v.util.diff
+import v.util.vflags
 import v.errors as compiler_errors
 import v.flat
 import v.gen.v as compiler_fmt
@@ -42,8 +38,6 @@ mut:
 const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 const vtmp_folder = os.vtmp_dir()
 const term_colors = term.can_show_color_on_stderr()
-const legacy_vfmt_only_flags = ['-backup', '-c', '-diff', '-inprocess', '-l', '-new_int',
-	'-no-migrate-json2', '-noerror', '-verbose', '--verbose', '-verify', '-w']
 
 fn formatter_backend(args []string) !string {
 	mut backend := 'c'
@@ -72,26 +66,26 @@ fn main() {
 	// }
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
-	args := util.join_env_vflags_and_os_args()
+	args := vflags.join_env_vflags_and_os_args()
 	backend := formatter_backend(args) or {
 		eprintln(err.msg())
 		exit(1)
 	}
 	mut foptions := FormatOptions{
-		is_c:             '-c' in args
-		is_l:             '-l' in args
-		is_w:             '-w' in args
-		is_diff:          '-diff' in args
-		is_verbose:       '-verbose' in args || '--verbose' in args
-		is_worker:        '-worker' in args
-		is_debug:         '-debug' in args
-		is_noerror:       '-noerror' in args
-		is_verify:        '-verify' in args
-		is_backup:        '-backup' in args
-		in_process:       '-inprocess' in args
-		is_new_int:       '-new_int' in args
+		is_c: '-c' in args
+		is_l: '-l' in args
+		is_w: '-w' in args
+		is_diff: '-diff' in args
+		is_verbose: '-verbose' in args || '--verbose' in args
+		is_worker: '-worker' in args
+		is_debug: '-debug' in args
+		is_noerror: '-noerror' in args
+		is_verify: '-verify' in args
+		is_backup: '-backup' in args
+		in_process: '-inprocess' in args
+		is_new_int: '-new_int' in args
 		no_migrate_json2: '-no-migrate-json2' in args
-		backend:          backend
+		backend: backend
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
@@ -115,7 +109,7 @@ fn main() {
 		eprintln('vfmt possible_files: ' + possible_files.str())
 	}
 	if '-help' in args || '--help' in args {
-		help.print_and_exit('fmt')
+		print_vfmt_help_and_exit()
 	}
 	files := util.find_all_v_files(possible_files) or {
 		verror(err.msg())
@@ -126,7 +120,7 @@ fn main() {
 		exit(0)
 	}
 	if files.len == 0 {
-		help.print_and_exit('fmt')
+		print_vfmt_help_and_exit()
 	}
 	mut cli_args_no_files := []string{}
 	for idx, a in os.args {
@@ -202,52 +196,10 @@ fn main() {
 	exit(0)
 }
 
-// verify_file accepts both the default and legacy vfmt output while the existing source tree
-// transitions to the new formatter.
 fn (foptions &FormatOptions) verify_file(fpath string) bool {
 	content := os.read_file(fpath) or { return false }
-	fcontent := foptions.formatted_content_from_file(fpath, false) or {
-		if foptions.is_legacy_formatted(fpath, content) {
-			return true
-		}
-		_ = foptions.formatted_content_from_file(fpath, true) or { return false }
-		return false
-	}
-	return fcontent == content || foptions.is_legacy_formatted(fpath, content)
-}
-
-fn (foptions &FormatOptions) is_legacy_formatted(fpath string, content string) bool {
-	args := util.join_env_vflags_and_os_args()
-	mut prefs, _ := pref.parse_args_and_show_errors(['fmt'], legacy_vfmt_args(args), false)
-	prefs.is_fmt = true
-	prefs.skip_warnings = true
-	prefs.output_mode = .silent
-	mut table := ast.new_table()
-	file_ast := parser.parse_file(fpath, mut table, .parse_comments, prefs)
-	if file_ast.errors.len > 0 {
-		return false
-	}
-	table.new_int = foptions.is_new_int
-	legacy_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
-		migrate_json2: foptions.should_migrate_json2(fpath)
-	)
-	return legacy_content == content
-}
-
-fn legacy_vfmt_args(args []string) []string {
-	mut res := []string{}
-	for i := 1; i < args.len; i++ {
-		arg := args[i]
-		if arg == '-worker' {
-			i++
-			continue
-		}
-		if arg in legacy_vfmt_only_flags {
-			continue
-		}
-		res << arg
-	}
-	return res
+	fcontent := foptions.formatted_content_from_file(fpath, false) or { return false }
+	return fcontent == content
 }
 
 fn (foptions &FormatOptions) vlog(msg string) {
@@ -276,9 +228,9 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string, report_dia
 		return error('the file contains parser errors')
 	}
 	return compiler_fmt.format_with_options(a,
-		is_debug:   foptions.is_debug
+		is_debug: foptions.is_debug
 		is_new_int: foptions.is_new_int
-		backend:    foptions.backend
+		backend: foptions.backend
 	)
 }
 
@@ -294,8 +246,7 @@ fn report_compiler_parser_diagnostics(diagnostics []compiler_parser.Diagnostic, 
 			continue
 		}
 		if diagnostic.pos.is_valid() && diagnostic.pos.id in a.source_files {
-			eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
-				diagnostic.pos))
+			eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
 		} else {
 			eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
 		}
@@ -316,12 +267,6 @@ fn (foptions &FormatOptions) format_file(file string) {
 	formatted_content := foptions.formatted_content_from_file(file, !foptions.is_verify
 		&& !foptions.is_c) or {
 		if foptions.is_verify || foptions.is_c {
-			content := os.read_file(file) or { exit(2) }
-			if foptions.is_legacy_formatted(file, content) {
-				os.cp(file, vfmt_output_path) or { exit(2) }
-				eprintln('${formatted_file_token}${vfmt_output_path}')
-				return
-			}
 			_ = foptions.formatted_content_from_file(file, true) or { exit(2) }
 		}
 		exit(2)
@@ -368,14 +313,14 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 		return error('')
 	}
 	if foptions.is_verify {
-		if !is_formatted_different || foptions.is_legacy_formatted(file, fc) {
+		if !is_formatted_different {
 			return
 		}
 		println("${file} is not vfmt'ed")
 		return error('')
 	}
 	if foptions.is_c {
-		if is_formatted_different && !foptions.is_legacy_formatted(file, fc) {
+		if is_formatted_different {
 			eprintln('File is not formatted: ${file}')
 			return error('')
 		}
@@ -413,13 +358,17 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 }
 
 @[noreturn]
+fn print_vfmt_help_and_exit() {
+	println('Usage: v fmt [options] <file|directory>...')
+	println('Options: -w, -verify, -diff, -l, -c, -backup, -inprocess')
+	exit(0)
+}
+
+@[noreturn]
 fn verror(s string) {
 	util.verror('vfmt error', s)
 }
 
 fn (f FormatOptions) str() string {
-	return
-		'FormatOptions{ is_l: ${f.is_l}, is_w: ${f.is_w}, is_diff: ${f.is_diff}, is_verbose: ${f.is_verbose},' +
-		' is_worker: ${f.is_worker}, is_debug: ${f.is_debug}, is_noerror: ${f.is_noerror},' +
-		' is_verify: ${f.is_verify}, backend: ${f.backend}" }'
+	return 'FormatOptions{ is_l: ${f.is_l}, is_w: ${f.is_w}, is_diff: ${f.is_diff}, is_verbose: ${f.is_verbose},' + ' is_worker: ${f.is_worker}, is_debug: ${f.is_debug}, is_noerror: ${f.is_noerror},' + ' is_verify: ${f.is_verify}, backend: ${f.backend}" }'
 }

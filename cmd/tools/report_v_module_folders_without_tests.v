@@ -18,7 +18,7 @@ const known_folder_patterns_that_are_not_module_ones = [
 	'vlib/sokol/gfx', // used by `gg`, `x.ttf`
 	'vlib/sokol/sgl', // used by `gg`
 	'vlib/toml', // toml is well tested, even if the top level folder does not have _test.v files, the ones below do
-	'vlib/old/', // the compiler itself is well tested
+	'vlib/v/', // the compiler itself is well tested
 ]
 
 fn main() {

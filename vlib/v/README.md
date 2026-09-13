@@ -39,28 +39,24 @@ plus production and shared builds and supported cross targets and backends. The 
 itself continues to use the established test dispatcher, while each discovered test file is
 compiled by the default compiler.
 
-`cmd/v` remains the full CLI and tool dispatcher. Native builds link the compiler in `vlib/v`.
-Compatibility-only compiler internals used by older tools live under `vlib/old` and are not the
-default compilation pipeline. Commands such as `test` remain external tools, while each discovered
-test file is compiled by the default compiler.
-Non-C backends remain separate builder tools.
+`cmd/v` is the compiler and tool dispatcher and links the compiler in `vlib/v`. The previous
+compiler implementation is no longer kept in this repository. External tools are first compiled
+with the default compiler, and `test` is handled by the default compiler directly.
 
 `-new-compiler` remains accepted for command-line compatibility and normally selects the same
 in-process driver. The standard bootstrap does not build the sibling `v1_fallback`
 (`v1_fallback.exe` on Windows). When a compatibility fallback is needed and the sibling is
-missing, V reports that it is running `make v1` and builds it from the current `vc` snapshot. Run
-`make v1` explicitly to prepare it ahead of time. `-old-compiler` launches the fallback
-explicitly, and ordinary user builds retry through it after a compiler or C compilation failure.
-On portable cross-VC builds, the new driver is not embedded and `cmd/v` retains the compatibility
-compiler.
+missing, V reports that it is running `make v1`. That target reuses or downloads the complete
+0.5.2 release under the user cache; if its release binary cannot be used, `oldv` clones the 0.5.2
+V sources and their matching `vc` snapshot and builds the fallback there. Run `make v1` explicitly
+to prepare it ahead of time. `-old-compiler` launches the fallback explicitly, and ordinary user
+builds and external tools retry through it after a compiler or C compilation failure.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
 
-Explicit `-new-compiler` builds and native `cmd/v` self-builds remain strict V3 operations and do
-not retry with V1, except for `-new-compiler -cc msvc` on Windows. V3 does not yet generate MSVC
-command lines, so that combination intentionally launches `v1_fallback.exe` instead of exercising
-V3.
+Explicit `-new-compiler` builds remain strict default-compiler operations and do not retry with
+V1.
 
 ## Profile-guided compiler build
 

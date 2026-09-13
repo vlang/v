@@ -1,4 +1,4 @@
-import old.ast
+import v.ast
 
 fn test_main() {
 	for idx, s in [ast.Struct{
@@ -7,8 +7,8 @@ fn test_main() {
 		embeds: [ast.Type(2), 3]
 	}, ast.Struct{
 		is_typedef: true
-		is_union:   true
-		is_heap:    true
+		is_union: true
+		is_heap: true
 	}, ast.Struct{
 		is_minify: ast.Struct{
 			is_anon: true
