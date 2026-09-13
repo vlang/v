@@ -39,3 +39,22 @@ fn test_a_number_does_not_turn_the_next_name_into_a_member() {
 	assert code_references_ident('println(1.5 + x)', 'x')
 	assert code_references_ident('for i in 0 .. x {', 'x')
 }
+
+fn test_a_pipe_lambda_parameter_shadows_the_searched_name() {
+	assert !code_references_ident('cb := |x| x + 1', 'x')
+	assert !code_references_ident('arr.map(|x| x * 2)', 'x')
+	assert !code_references_ident('f(|mut x| x.len)', 'x')
+	assert !code_references_ident('cb := |a, x| a + x', 'x')
+	// The body of such a lambda is one expression, so it ends with its line.
+	assert !code_references_ident('cb := |x| x + 1\nprintln(y)', 'x')
+	assert code_references_ident('cb := |y| y + 1\nprintln(x)', 'x')
+	// A lambda binding another name still reads the searched one.
+	assert code_references_ident('arr.map(|i| i * x)', 'x')
+	assert code_references_ident('f(|i| i, x)', 'x')
+}
+
+fn test_a_bitwise_or_does_not_open_a_lambda() {
+	assert code_references_ident('a | x', 'x')
+	assert code_references_ident('flags := a | x | b', 'x')
+	assert code_references_ident('f(a || x)', 'x')
+}

@@ -2728,9 +2728,17 @@ fn code_references_ident(code string, name string) bool {
 	if name.len == 0 {
 		return false
 	}
-	tokens := code_tokens(code)
+	tokens, lines := code_tokens(code)
+	shadowed := pipe_lambda_shadow_ranges(tokens, lines, name)
 	for i, word in tokens {
 		if word != name {
+			continue
+		}
+		if token_index_is_shadowed(shadowed, i) {
+			// The parameter of a `|x| x + 1` lambda, and its body: a binding of
+			// the lambda's own, shadowed the way fn_body_read_names shadows it.
+			// An anonymous `fn (x int) { .. }` is deliberately not shadowed
+			// here, because the AST walks do not shadow it either.
 			continue
 		}
 		if i > 0 && tokens[i - 1] == '.' {
@@ -2803,17 +2811,25 @@ fn binding_list_start(tokens []string, index int) int {
 }
 
 // code_tokens splits already sanitized code into identifiers and single
-// punctuation characters, with `:=` kept whole and every number reduced to one
-// token, so that the `.` of `1.5` cannot be read as a selector.
-fn code_tokens(code string) []string {
+// punctuation characters, with `:=`, `..` and `||` kept whole and every number
+// reduced to one token, so that the `.` of `1.5` cannot be read as a selector.
+// The second result is the line each token sits on, which bounds the one
+// expression that makes up the body of a `|x| x + 1` lambda.
+fn code_tokens(code string) ([]string, []int) {
 	mut tokens := []string{}
+	mut lines := []int{}
+	mut line := 0
 	mut i := 0
 	for i < code.len {
 		c := code[i]
 		if c == ` ` || c == `\t` || c == `\n` || c == `\r` {
+			if c == `\n` {
+				line++
+			}
 			i++
 			continue
 		}
+		lines << line
 		if c.is_digit() {
 			mut end := i
 			for end < code.len && (is_import_ident_byte(code[end]) || code[end] == `.`) {
@@ -2847,10 +2863,93 @@ fn code_tokens(code string) []string {
 			i = end
 			continue
 		}
+		if c == `|` && i + 1 < code.len && code[i + 1] == `|` {
+			// `a || b` is not the empty parameter list of a lambda.
+			tokens << '||'
+			i += 2
+			continue
+		}
 		tokens << code[i..i + 1]
 		i++
 	}
-	return tokens
+	return tokens, lines
+}
+
+struct TokenRange {
+	start int
+	end   int
+}
+
+fn token_index_is_shadowed(ranges []TokenRange, index int) bool {
+	for range in ranges {
+		if index >= range.start && index <= range.end {
+			return true
+		}
+	}
+	return false
+}
+
+// pipe_lambda_shadow_ranges returns the token range of every `|x| x + 1` lambda
+// that binds `name`. Such a body is a single expression, so it ends with the
+// line, or with the `,` or the bracket that encloses the lambda.
+fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenRange {
+	mut ranges := []TokenRange{}
+	for i, word in tokens {
+		if word != '|' || !pipe_lambda_starts_at(tokens, i) {
+			continue
+		}
+		mut close := i + 1
+		for close < tokens.len && tokens[close] != '|' {
+			close++
+		}
+		if close >= tokens.len || !pipe_params_bind(tokens, i + 1, close, name) {
+			continue
+		}
+		mut end := close + 1
+		mut depth := 0
+		for end < tokens.len && lines[end] == lines[close] {
+			current := tokens[end]
+			if current in ['(', '[', '{'] {
+				depth++
+			} else if current in [')', ']', '}'] {
+				if depth == 0 {
+					break
+				}
+				depth--
+			} else if current == ',' && depth == 0 {
+				break
+			}
+			end++
+		}
+		ranges << TokenRange{
+			start: i
+			end:   end - 1
+		}
+	}
+	return ranges
+}
+
+// pipe_lambda_starts_at rejects the bitwise or of `a | b`: a lambda opens an
+// expression, so an operator or an opening bracket comes before it.
+fn pipe_lambda_starts_at(tokens []string, index int) bool {
+	return index == 0 || tokens[index - 1] in [':=', '=', '(', '[', '{', ',', 'return']
+}
+
+// pipe_params_bind reports whether `name` is one of the `|a, mut b|` parameters
+// between `from` and `to`, and doubles as the check that this really is a
+// parameter list rather than a chain of bitwise ors.
+fn pipe_params_bind(tokens []string, from int, to int, name string) bool {
+	mut bound := false
+	for i := from; i < to; i++ {
+		if tokens[i] == name {
+			bound = true
+			continue
+		}
+		if tokens[i] != ',' && tokens[i] != 'mut' && !is_ident_token(tokens[i]) {
+			return false
+		}
+	}
+	return bound
 }
 
 fn is_ident_token(word string) bool {

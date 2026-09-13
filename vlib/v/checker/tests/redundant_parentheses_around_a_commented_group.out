@@ -1,0 +1,14 @@
+vlib/v/checker/tests/redundant_parentheses_around_a_commented_group.vv:5:7: notice: redundant parentheses are used
+    3 | fn main() {
+    4 |     value := 3
+    5 |     b := ((value /* ) */))
+      |          ~~~~~~~~~~~~~~~~~
+    6 |     c := ((value + ')'.len))
+    7 |     println(b + c)
+vlib/v/checker/tests/redundant_parentheses_around_a_commented_group.vv:6:7: notice: redundant parentheses are used
+    4 |     value := 3
+    5 |     b := ((value /* ) */))
+    6 |     c := ((value + ')'.len))
+      |          ~~~~~~~~~~~~~~~~~~~
+    7 |     println(b + c)
+    8 | }

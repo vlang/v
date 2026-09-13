@@ -1,0 +1,8 @@
+// A parenthesis of a comment or of a literal is not syntax, so both of these
+// are still one group wrapped in a redundant one.
+fn main() {
+	value := 3
+	b := ((value /* ) */))
+	c := ((value + ')'.len))
+	println(b + c)
+}

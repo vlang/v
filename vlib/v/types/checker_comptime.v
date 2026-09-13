@@ -2695,20 +2695,17 @@ fn text_is_a_single_parenthesised_group(text string) bool {
 		return false
 	}
 	mut depth := 0
-	mut quote := u8(0)
-	for i := 0; i < text.len; i++ {
-		c := text[i]
-		if quote != 0 {
-			if c == `\\` {
-				i++
-			} else if c == quote {
-				quote = 0
-			}
+	mut i := 0
+	for i < text.len {
+		// A parenthesis of a comment or of a literal is not syntax:
+		// `((value /* ) */))` is still one group wrapped in another.
+		skipped, _ := skip_non_code_at(text, i)
+		if skipped > i {
+			i = skipped
 			continue
 		}
-		if c == `'` || c == `"` || c == `\`` {
-			quote = c
-		} else if c == `(` {
+		c := text[i]
+		if c == `(` {
 			depth++
 		} else if c == `)` {
 			depth--
@@ -2716,6 +2713,7 @@ fn text_is_a_single_parenthesised_group(text string) bool {
 				return i == text.len - 1
 			}
 		}
+		i++
 	}
 	return false
 }

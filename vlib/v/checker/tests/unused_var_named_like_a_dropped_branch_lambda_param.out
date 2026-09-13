@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:5:2: warning: unused variable: `q`
+    3 | // same answer the AST gives on the target that takes the branch.
+    4 | fn main() {
+    5 |     q := 1
+      |     ^
+    6 |     $if windows {
+    7 |         cb := |q| q + 1
