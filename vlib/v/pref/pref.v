@@ -1133,40 +1133,37 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 	}
 }
 
-// cross_target_c_macros maps a target-dependent `$if` flag to the C preprocessor
-// macro that decides it. The architecture and word-size macros are the ones
-// `write_arch_macros` derives from the C compiler's own target, so one portable
-// snapshot stays correct on every platform it is later compiled on.
+// cross_target_c_macros maps a target-dependent `$if` flag to the single C
+// preprocessor macro that decides it. Flags whose C spelling needs more than one
+// macro (because a compiler defines several of them at once) are handled in
+// `cross_target_c_condition` instead. The architecture and word-size macros are
+// the ones `write_arch_macros` derives from the C compiler's own target, so one
+// portable snapshot stays correct on every platform it is later compiled on.
+//
+// Only flags that `comptime_flag_value` itself decides from the target belong
+// here: everything else (`$if glibc`, `$if mach`, ...) is a user define there and
+// must stay resolved while generating, or portable output would give it a
+// different meaning than an ordinary build does.
 pub const cross_target_c_macros = {
 	'windows':           '_WIN32'
 	'ios':               '__TARGET_IOS__'
-	'macos':             '__APPLE__'
-	'mac':               '__APPLE__'
-	'darwin':            '__APPLE__'
-	'mach':              '__MACH__'
-	'hpux':              '__HPUX__'
-	'gnu':               '__GNU__'
 	'qnx':               '__QNX__'
-	'linux':             '__linux__'
 	'serenity':          '__serenity__'
-	'plan9':             '__plan9__'
 	'vinix':             '__vinix__'
 	'freebsd':           '__FreeBSD__'
 	'openbsd':           '__OpenBSD__'
 	'netbsd':            '__NetBSD__'
 	'dragonfly':         '__DragonFly__'
-	'android':           '__ANDROID__'
 	'termux':            '__TERMUX__'
 	'solaris':           '__sun'
 	'haiku':             '__HAIKU__'
 	'wasm32_emscripten': '__EMSCRIPTEN__'
-	'gcc':               '__V_GCC__'
+	'wasm32':            '__wasm32__'
 	'tinyc':             '__TINYC__'
 	'clang':             '__clang__'
 	'mingw':             '__MINGW32__'
 	'msvc':              '_MSC_VER'
 	'cplusplus':         '__cplusplus'
-	'glibc':             '__GLIBC__'
 	'amd64':             '__V_amd64'
 	'aarch64':           '__V_arm64'
 	'arm64':             '__V_arm64'
@@ -1192,8 +1189,30 @@ pub const cross_target_c_macros = {
 // cross_target_c_condition returns the C preprocessor expression deciding a
 // target-dependent `$if` flag, or none when the flag is target independent and
 // can still be resolved while generating portable C.
+//
+// The expressions mirror `comptime_flag_value`, mutual exclusions included. A C
+// compiler targeting Android defines `__linux__` next to `__ANDROID__`, and the
+// iOS SDK defines `__APPLE__` next to the iOS marker, but V treats those as
+// distinct targets, so each broader guard excludes the narrower one. Without
+// that, `os.user_os()` - which tests `$if linux` before `$if android` - would
+// report `linux` on Android and select Linux-only code everywhere else.
 pub fn cross_target_c_condition(name string) ?string {
 	match name {
+		'linux' {
+			return '(defined(__linux__) && !defined(__ANDROID__))'
+		}
+		'android' {
+			return '(defined(__ANDROID__) && !defined(__TERMUX__))'
+		}
+		'macos', 'darwin', 'mac' {
+			return '(defined(__APPLE__) && !defined(__TARGET_IOS__))'
+		}
+		'gcc' {
+			// GCC defines `__GNUC__`, which clang and tcc define as well; V counts
+			// those as different compilers. `__V_GCC__` is not defined by anything
+			// that compiles a portable snapshot, so it cannot be used here.
+			return '(defined(__GNUC__) && !defined(__clang__) && !defined(__TINYC__))'
+		}
 		'posix', 'unix' {
 			return '!defined(_WIN32)'
 		}

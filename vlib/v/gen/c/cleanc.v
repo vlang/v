@@ -4908,7 +4908,7 @@ fn combined_c_condition(outer string, inner string) string {
 // machine that generated the C.
 fn (g &FlatGen) c_local_header_directive(path string) string {
 	if g.output_cross_c {
-		if text := os.read_file(path) {
+		if text := g.cross_embedded_header_text(path, []string{}) {
 			return text
 		}
 	}
@@ -4923,13 +4923,96 @@ fn (mut g FlatGen) c_include_directive_text(node_idx int, prefix_condition strin
 	if g.output_cross_c && include_arg.trim_space().starts_with('"') {
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
-			if text := os.read_file(path) {
+			if text := g.cross_embedded_header_text(path, include_dirs) {
 				directive = text
 				break
 			}
 		}
 	}
 	return g.guarded_c_directive(node_idx, prefix_condition, directive)
+}
+
+// cross_embedded_header_text returns a local header's text with the quoted
+// includes *inside* it embedded as well. The generated C is compiled far from the
+// source tree, where a nested `#include "sibling.h"` no longer resolves - for
+// example `thirdparty/fontstash/fontstash.h` includes its sibling
+// `stb_truetype.h` that way.
+fn (g &FlatGen) cross_embedded_header_text(path string, include_dirs []string) ?string {
+	mut embedded := map[string]bool{}
+	return g.cross_embed_header_file(path, include_dirs, mut embedded)
+}
+
+fn (g &FlatGen) cross_embed_header_file(path string, include_dirs []string, mut embedded map[string]bool) ?string {
+	real_path := os.real_path(path)
+	if real_path in embedded {
+		// Already carried by this expansion. C include guards would discard a
+		// second copy anyway, and dropping it here also stops an include cycle.
+		return ''
+	}
+	embedded[real_path] = true
+	text := os.read_file(real_path) or { return none }
+	return g.cross_embed_nested_includes(text, os.dir(real_path), include_dirs, mut embedded)
+}
+
+fn (g &FlatGen) cross_embed_nested_includes(text string, base_dir string, include_dirs []string, mut embedded map[string]bool) string {
+	if !text.contains('#include') {
+		return text
+	}
+	mut lines := []string{cap: 64}
+	for line in text.split_into_lines() {
+		if target := c_quoted_include_target(line) {
+			if resolved := c_resolve_quoted_include(target, base_dir, include_dirs) {
+				if nested := g.cross_embed_header_file(resolved, include_dirs, mut embedded) {
+					lines << nested
+					continue
+				}
+			}
+		}
+		// An unresolvable or angle-bracket include is left alone: it names a
+		// system header, or one the consumer supplies through `-I`.
+		lines << line
+	}
+	return lines.join('\n')
+}
+
+// c_quoted_include_target returns the path named by a `#include "..."` line.
+fn c_quoted_include_target(line string) ?string {
+	clean := line.trim_space()
+	if !clean.starts_with('#') {
+		return none
+	}
+	rest := clean[1..].trim_space()
+	if !rest.starts_with('include') {
+		return none
+	}
+	arg := rest['include'.len..].trim_space()
+	if arg.len < 2 || arg[0] != `"` {
+		return none
+	}
+	end := arg[1..].index_u8(`"`)
+	if end <= 0 {
+		return none
+	}
+	return arg[1..1 + end]
+}
+
+fn c_resolve_quoted_include(target string, base_dir string, include_dirs []string) ?string {
+	if os.is_abs_path(target) {
+		return if os.exists(target) { target } else { none }
+	}
+	if base_dir.len > 0 {
+		beside := os.join_path(base_dir, target)
+		if os.exists(beside) {
+			return beside
+		}
+	}
+	for dir in include_dirs {
+		candidate := os.join_path(dir, target)
+		if os.exists(candidate) {
+			return candidate
+		}
+	}
+	return none
 }
 
 fn (g &FlatGen) guarded_c_directive(node_idx int, prefix_condition string, directive string) string {
@@ -5040,8 +5123,11 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 				mut source_directive := c_native_source_context_include(source_path)
 				if g.output_cross_c {
 					// Portable output carries the source text: its path is gone on the
-					// machine that later compiles the generated C.
-					source_directive = source_text
+					// machine that later compiles the generated C. Its own quoted
+					// includes have to travel with it for the same reason.
+					mut embedded := map[string]bool{}
+					embedded[os.real_path(source_path)] = true
+					source_directive = g.cross_embed_nested_includes(source_text, os.dir(source_path), include_dirs, mut embedded)
 				}
 				if source_path.ends_with('.m') {
 					if g.c_source_defines_used_c_type(source_text) {

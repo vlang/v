@@ -297,8 +297,6 @@ fn test_remaining_native_os_source_selection_is_target_specific() {
 fn test_target_dependent_comptime_flags_map_to_c_conditions() {
 	// OS, architecture, word size and C compiler are all decided by the machine
 	// that compiles `-os cross` output, so each has to reach the preprocessor.
-	assert cross_target_c_condition('linux') or { '' } == 'defined(__linux__)'
-	assert cross_target_c_condition('macos') or { '' } == 'defined(__APPLE__)'
 	assert cross_target_c_condition('windows') or { '' } == 'defined(_WIN32)'
 	assert cross_target_c_condition('amd64') or { '' } == 'defined(__V_amd64)'
 	assert cross_target_c_condition('x64') or { '' } == 'defined(TARGET_IS_64BIT)'
@@ -317,4 +315,41 @@ fn test_target_dependent_comptime_flags_map_to_c_conditions() {
 	assert !comptime_flag_is_target_dependent('no_bounds_checking')
 	assert !comptime_flag_is_target_dependent('some_user_define')
 	assert cross_target_c_condition('prealloc') == none
+	// A flag `comptime_flag_value` resolves from `user_defines` rather than from
+	// the target must not silently gain a target meaning in portable output.
+	for user_flag in ['glibc', 'mach', 'hpux', 'gnu', 'plan9'] {
+		assert !comptime_flag_is_target_dependent(user_flag), user_flag
+	}
+}
+
+fn test_cross_c_conditions_are_mutually_exclusive_like_comptime_flag_value() {
+	// A C compiler targeting Android defines `__linux__` as well, and the iOS SDK
+	// defines `__APPLE__` as well, but `comptime_flag_value` treats each of those
+	// as a distinct target. `os.user_os()` tests `$if linux` before `$if android`,
+	// so a plain `defined(__linux__)` would make a cross-built Android compiler
+	// call itself Linux.
+	linux_condition := cross_target_c_condition('linux') or { '' }
+	assert linux_condition.contains('defined(__linux__)')
+	assert linux_condition.contains('!defined(__ANDROID__)')
+
+	android_condition := cross_target_c_condition('android') or { '' }
+	assert android_condition.contains('defined(__ANDROID__)')
+	assert android_condition.contains('!defined(__TERMUX__)')
+
+	for apple_alias in ['macos', 'darwin', 'mac'] {
+		condition := cross_target_c_condition(apple_alias) or { '' }
+		assert condition.contains('defined(__APPLE__)'), apple_alias
+		assert condition.contains('!defined(__TARGET_IOS__)'), apple_alias
+	}
+	assert cross_target_c_condition('ios') or { '' } == 'defined(__TARGET_IOS__)'
+}
+
+fn test_cross_gcc_condition_uses_a_macro_gcc_defines() {
+	// Nothing defines `__V_GCC__` for a snapshot compiled outside V's own build
+	// commands, and clang and tcc both define `__GNUC__`.
+	gcc_condition := cross_target_c_condition('gcc') or { '' }
+	assert gcc_condition.contains('defined(__GNUC__)')
+	assert gcc_condition.contains('!defined(__clang__)')
+	assert gcc_condition.contains('!defined(__TINYC__)')
+	assert !gcc_condition.contains('__V_GCC__')
 }

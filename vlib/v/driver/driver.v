@@ -8546,6 +8546,11 @@ pub fn run(args []string) {
 			backend = if args[i + 1] in ['js_browser', 'js_node'] { 'js' } else { args[i + 1] }
 			backend_explicit = true
 			i += 2
+		} else if args[i] == '-cross' {
+			// Long-standing spelling of `-os cross`; see `v help build-c`.
+			target_os = 'cross'
+			target_os_explicit = true
+			i++
 		} else if args[i] == '-os' && i + 1 < args.len {
 			target_os = args[i + 1]
 			target_os_explicit = true
