@@ -4776,6 +4776,20 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			}
 			t.set_resolved_fn_value_entry(shifted, owned_name)
 		}
+		// Source-node fn-value entries the worker recorded or cleared in its
+		// private snapshot (see TypeChecker.fork_for_parallel_transform).
+		for idx, name in w.tc.sparse_resolved_fn_values {
+			if !t.tc.forked_fn_value_changed(w.tc, idx, name) {
+				continue
+			}
+			owned_name := if name.len > 0 && w.worker_scope != unsafe { nil }
+				&& !t.retain_worker_results {
+				name.clone()
+			} else {
+				name
+			}
+			t.tc.apply_forked_fn_value(idx, owned_name)
+		}
 	}
 	for message in w.monomorph_errors {
 		owned_message := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {

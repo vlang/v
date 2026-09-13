@@ -1350,11 +1350,14 @@ pub fn (tc &TypeChecker) fork_for_parallel_codegen() &TypeChecker {
 	// maps just like the node-indexed semantic arrays in fork_program_view.
 	unsafe {
 		forked.sparse_resolved_call_names = tc.sparse_resolved_call_names
-		forked.sparse_resolved_fn_values = tc.sparse_resolved_fn_values
 		forked.sparse_statement_nodes = tc.sparse_statement_nodes
 		forked.sparse_expr_type_values = tc.sparse_expr_type_values
 		forked.sparse_checking_nodes = tc.sparse_checking_nodes
 	}
+	// Fn-value names are the one sparse store the master may still write to
+	// while cgen workers read (a type query on the declaration task can record
+	// a resolution), so each worker reads a private snapshot of its few entries.
+	forked.sparse_resolved_fn_values = tc.sparse_resolved_fn_values.clone()
 	forked.visible_mutation_cache = unsafe { nil }
 	forked.inherit_ownership_codegen_metadata_from(tc)
 	forked.set_fresh_type_cache_based_on(tc, tc.type_cache_parse_enabled())
@@ -1434,6 +1437,12 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	forked.fork_overlay = &TransformForkOverlay{
 		base_node_count: if os.getenv('V3_NO_OVERLAY_RANGE') == '' { ast.nodes.len } else { -1 }
 	}
+	// Source-node fn-value resolutions live only in the sparse map. The fork
+	// gets a private snapshot: reads see the master's entries, its own writes
+	// and tombstones (see clear_resolved_fn_value) stay private, and
+	// Transformer.merge_worker / absorb_scoped_batch replay them into the
+	// parent through apply_forked_fn_value.
+	forked.sparse_resolved_fn_values = tc.sparse_resolved_fn_values.clone()
 	// Transform helpers allocate inside disposable arenas. A shared interner
 	// would let one helper publish map/array storage owned by its arena and leave
 	// other helpers with dangling storage when that arena is released. Each
@@ -8404,11 +8413,18 @@ pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	if idx < 0 {
 		return none
 	}
-	return tc.sparse_resolved_fn_values[idx] or { none }
+	name := tc.sparse_resolved_fn_values[idx] or { return none }
+	if name.len == 0 {
+		// A transform fork's tombstone (see clear_resolved_fn_value).
+		return none
+	}
+	return name
 }
 
 // clear_resolved_fn_value removes stale function-value metadata after a later
-// transform proves that an identifier refers to a value declaration.
+// transform proves that an identifier refers to a value declaration. A
+// transform fork records a tombstone instead: deleting from its private
+// snapshot would not stop the merge from keeping the master's entry.
 pub fn (mut tc TypeChecker) clear_resolved_fn_value(id flat.NodeId) {
 	idx := int(id)
 	if idx < 0 {
@@ -8416,10 +8432,38 @@ pub fn (mut tc TypeChecker) clear_resolved_fn_value(id flat.NodeId) {
 	}
 	if !isnil(tc.fork_overlay) {
 		tc.fork_overlay.resolved_fn_values.delete(idx)
+		tc.sparse_resolved_fn_values[idx] = ''
+		return
 	}
 	if tc.sparse_resolved_fn_values.len > 0 {
 		tc.sparse_resolved_fn_values.delete(idx)
 	}
+}
+
+// forked_fn_value_changed reports whether a transform fork's private
+// fn-value entry for a source node (below its overlay boundary) differs from
+// this parent's, i.e. whether the merge has to replay it.
+pub fn (tc &TypeChecker) forked_fn_value_changed(fork &TypeChecker, idx int, name string) bool {
+	if isnil(fork.fork_overlay) || fork.fork_overlay.base_node_count < 0
+		|| idx >= fork.fork_overlay.base_node_count {
+		// Transform-created nodes are published through the overlay under
+		// shifted ids; an unbounded overlay keeps every entry private.
+		return false
+	}
+	existing := tc.sparse_resolved_fn_values[idx] or { '' }
+	return existing != name
+}
+
+// apply_forked_fn_value replays one source-node fn-value change from a
+// transform fork: an empty name is a tombstone (the fork cleared the entry),
+// anything else replaces the entry. `name` must already be owned by an arena
+// that outlives this checker.
+pub fn (mut tc TypeChecker) apply_forked_fn_value(idx int, name string) {
+	if name.len == 0 {
+		tc.clear_resolved_fn_value(flat.NodeId(idx))
+		return
+	}
+	tc.sparse_resolved_fn_values[idx] = tc.canonical_symbol(name)
 }
 
 // direct_dependency_ids returns the checker-resolved function dependency

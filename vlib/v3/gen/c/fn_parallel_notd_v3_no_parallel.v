@@ -275,6 +275,9 @@ $if !windows {
 		mut worker := g.new_parallel_worker(max_flat_cgen_jobs + 2)
 		// Const initializers number their temporaries from the master counter.
 		worker.tmp_count = g.tmp_count
+		// emit_const resolves file-local import aliases in the declaring file;
+		// body workers never need that table, so the fork does not carry it.
+		worker.const_files = g.const_files
 		const_code := worker.precompute_consts_in_order(names)
 		cgen_worker_scope_leave(scope)
 		g.parallel_const_code = const_code.clone()

@@ -2063,6 +2063,15 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 				t.tc.fork_overlay.resolved_fn_values[idx] = owned_name
 			}
 		}
+		// Source-node fn-value entries the batch recorded or cleared in its
+		// private snapshot (see TypeChecker.fork_for_parallel_transform).
+		for idx, name in batch.tc.sparse_resolved_fn_values {
+			if !t.tc.forked_fn_value_changed(batch.tc, idx, name) {
+				continue
+			}
+			owned_name := if name.len > 0 { t.promote_scoped_result_text(name) } else { name }
+			t.tc.apply_forked_fn_value(idx, owned_name)
+		}
 	}
 	if batch.ignored_comptime_for_nodes.len > 0 {
 		for idx, ignored in batch.ignored_comptime_for_nodes {

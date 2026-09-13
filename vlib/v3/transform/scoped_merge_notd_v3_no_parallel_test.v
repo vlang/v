@@ -39,3 +39,31 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	assert master.generic_call_spec_cache[12].decl_key == 'main.generic'
 	assert master.generic_call_spec_cache[12].args == ['[]int']
 }
+
+fn test_transform_fork_reads_and_merges_source_fn_values() {
+	mut a := flat.FlatAst.new()
+	for _ in 0 .. 8 {
+		a.add_node(flat.Node{
+			kind: .ident
+		})
+	}
+	mut tc := types.TypeChecker.new(&a)
+	tc.begin_sparse_transform_node_caches(a.nodes.len)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.set_resolved_fn_value_entry(3, 'main.callback')
+	master.set_resolved_fn_value_entry(4, 'main.stale')
+	mut helper := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
+	// The fork reads the master's source-node entries.
+	assert helper.tc.resolved_fn_value_name(3)? == 'main.callback'
+	// Its own clears and discoveries stay private until the merge.
+	helper.tc.clear_resolved_fn_value(4)
+	helper.set_resolved_fn_value_entry(5, 'main.discovered')
+	assert helper.tc.resolved_fn_value_name(4) == none
+	assert helper.tc.resolved_fn_value_name(5)? == 'main.discovered'
+	assert tc.resolved_fn_value_name(4)? == 'main.stale'
+	assert tc.resolved_fn_value_name(5) == none
+	master.merge_worker(helper, []FnWorkItem{}, 0, 0, false)
+	assert tc.resolved_fn_value_name(3)? == 'main.callback'
+	assert tc.resolved_fn_value_name(4) == none
+	assert tc.resolved_fn_value_name(5)? == 'main.discovered'
+}
