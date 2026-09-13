@@ -247,3 +247,15 @@ fn test_a_lambda_body_may_continue_on_the_next_line() {
 	assert code_references_ident('cb := |y| y\nprintln(x)', 'x', true)
 	assert code_references_ident('cb := |y| f(y)?\nprintln(x)', 'x', true)
 }
+
+fn test_assembly_instructions_are_not_v_code() {
+	assert !code_references_ident('asm arm64 {\n\tmov x0, x1\n}', 'x0', true)
+	assert !code_references_ident('asm amd64 {\n\txor rax, rax\n}', 'rax', true)
+	assert !code_references_ident('asm amd64 raw {\n\tmov eax, x0\n\t; r (b) as b\n}', 'x0', true)
+	// The expression of an output, input or clobber clause is V code.
+	assert code_references_ident('asm amd64 {\n\tmov eax, a\n\t; =r (a) as a\n}', 'a', true)
+	assert code_references_ident('asm amd64 {\n\tmov eax, x0\n\t; r (x0) as x0\n}', 'x0', true)
+	// And so is everything around the block.
+	assert code_references_ident('asm arm64 {\n\tmov x0, x1\n}\nprintln(x0)', 'x0', true)
+	assert code_references_ident('println(x0)\nasm arm64 {\n\tmov x0, x1\n}', 'x0', true)
+}

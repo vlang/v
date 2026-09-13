@@ -2755,8 +2755,16 @@ fn code_references_ident(code string, name string, writes_are_uses bool) bool {
 	tokens, lines := code_tokens(code)
 	shadowed := pipe_lambda_shadow_ranges(tokens, lines, name)
 	conditions := comptime_condition_token_ranges(tokens)
+	assembly := asm_template_token_ranges(tokens)
 	for i, word in tokens {
 		if word != name {
+			continue
+		}
+		if token_index_is_in_ranges(assembly, i) {
+			// The instructions of an `asm` block are raw text that the parser
+			// keeps as such, so a register spelled like the searched name is
+			// not a read of it. Its clause expressions are, and stay outside
+			// the excluded ranges.
 			continue
 		}
 		if token_index_is_in_ranges(conditions, i) {
@@ -3086,6 +3094,61 @@ fn token_index_is_in_ranges(ranges []TokenRange, index int) bool {
 		}
 	}
 	return false
+}
+
+// asm_template_token_ranges returns the token ranges of the inline assembly of
+// `tokens`, excluding the `(expr)` of each output, input or clobber clause: the
+// instructions are raw text, and only those expressions are V code.
+fn asm_template_token_ranges(tokens []string) []TokenRange {
+	mut ranges := []TokenRange{}
+	for i, word in tokens {
+		if word != 'asm' {
+			continue
+		}
+		mut body := i + 1
+		for body < tokens.len && tokens[body] != '{' {
+			body++
+		}
+		if body >= tokens.len {
+			continue
+		}
+		mut depth := 0
+		mut clauses := false
+		mut parens := 0
+		mut start := i
+		mut j := body
+		for ; j < tokens.len; j++ {
+			current := tokens[j]
+			if current == '{' {
+				depth++
+			} else if current == '}' {
+				depth--
+				if depth == 0 {
+					break
+				}
+			} else if !clauses {
+				clauses = current == ';'
+			} else if current == '(' {
+				if parens == 0 {
+					ranges << TokenRange{
+						start: start
+						end:   j
+					}
+				}
+				parens++
+			} else if current == ')' {
+				parens--
+				if parens == 0 {
+					start = j
+				}
+			}
+		}
+		ranges << TokenRange{
+			start: start
+			end:   j
+		}
+	}
+	return ranges
 }
 
 // comptime_condition_token_ranges returns the token range of every `$if` and

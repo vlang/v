@@ -60,7 +60,19 @@ fn comptime_function(env string) {
 	}
 }
 
+// The instructions of an `asm` block are raw text, so a register spelled like
+// the parameter is not a read of it. `$if v_asm_probe ?` is never defined, so
+// the block is dropped on every target and assembled on none.
+fn asm_register_name(x0 int) {
+	$if v_asm_probe ? {
+		asm arm64 {
+			mov x0, x1
+		}
+	}
+}
+
 fn main() {
+	asm_register_name(6)
 	comptime_function('f')
 	comptime_flag(5)
 	c_string_literal('d')

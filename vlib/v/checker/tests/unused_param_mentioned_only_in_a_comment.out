@@ -47,3 +47,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:57:22: notice: 
       |                      ~~~
    58 |     $if windows {
    59 |         _ = $env('PATH')
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:66:22: notice: unused parameter: `x0`
+   64 | // the parameter is not a read of it. `$if v_asm_probe ?` is never defined, so
+   65 | // the block is dropped on every target and assembled on none.
+   66 | fn asm_register_name(x0 int) {
+      |                      ~~
+   67 |     $if v_asm_probe ? {
+   68 |         asm arm64 {
