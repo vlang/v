@@ -2509,9 +2509,14 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 	}
 }
 
+struct ComptimeBranchRange {
+	start int
+	end   int
+}
+
 // fn_comptime_branch_may_use_ident reports whether `name` is used by a `$if`
-// branch of `node`. The parser drops the branch the current build does not
-// take, so an identifier used only there is invisible to the AST walks above,
+// branch of `node` that this build does not take. The parser drops such a
+// branch, so an identifier used only there is invisible to the AST walks above,
 // and reporting it as unused would be wrong for the build configuration that
 // does take the branch.
 fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name string) bool {
@@ -2522,93 +2527,70 @@ fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name strin
 	source := tc.source_texts_by_file[file.name] or { return false }
 	// A fn_decl only records where its declaration starts, so its body has to
 	// be recovered from the source.
-	code := declaration_comptime_branch_code(source, node.pos.offset)
-	return whole_word_occurrences(code, name) > 0
+	for branch in declaration_comptime_branch_ranges(source, node.pos.offset) {
+		code := code_text_in_range(source, branch.start, branch.end)
+		if whole_word_occurrences(code, name) == 0 {
+			continue
+		}
+		// A taken branch is parsed like any other code, so the walks above
+		// already saw every use in it and this occurrence is not one: it is the
+		// declaration of the unused name itself (`$if linux { x := 1 }`), a
+		// field name, or another identifier that does not reference it.
+		if !tc.subtree_has_node_in_range(node, branch.start, branch.end) {
+			return true
+		}
+	}
+	return false
 }
 
-// declaration_comptime_branch_code returns the code of the `$if` and `$else`
-// branches of the declaration starting at `start`, with comments and literals
-// left out so that a plain identifier search cannot match inside them. Only
-// those branches can hide an identifier from the AST, so the rest of the
-// declaration - where a field name or a comment could collide with the searched
-// name - is deliberately not part of the result. An empty string is returned
-// for a declaration without a body, such as `fn C.uname(name &C.utsname) i32`.
-fn declaration_comptime_branch_code(source string, start int) string {
-	if start < 0 || start >= source.len {
-		return ''
+// subtree_has_node_in_range reports whether any node below `node` was parsed
+// from `source[start..end]` of the same file, i.e. whether the parser kept that
+// source range instead of skipping over it.
+fn (tc &TypeChecker) subtree_has_node_in_range(node flat.Node, start int, end int) bool {
+	mut stack := []flat.NodeId{}
+	for i in 0 .. node.children_count {
+		stack << tc.a.child(&node, i)
 	}
-	mut code := []u8{}
+	for stack.len > 0 {
+		id := stack.pop()
+		if !tc.valid_node_id(id) {
+			continue
+		}
+		child := tc.a.node(id)
+		if child.pos.id == node.pos.id && child.pos.offset >= start && child.pos.offset < end {
+			return true
+		}
+		for i in 0 .. child.children_count {
+			stack << tc.a.child(child, i)
+		}
+	}
+	return false
+}
+
+// declaration_comptime_branch_ranges returns the source range of every `$if`
+// and `$else` body of the declaration starting at `start`, nested ones
+// included. Only those branches can hide an identifier from the AST, so the
+// rest of the declaration - where a field name or a comment could collide with
+// a searched name - is deliberately not covered. Nothing is returned for a
+// declaration without a body, such as `fn C.uname(name &C.utsname) i32`.
+fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranchRange {
+	mut ranges := []ComptimeBranchRange{}
+	if start < 0 || start >= source.len {
+		return ranges
+	}
+	mut open_starts := []int{}
+	mut open_depths := []int{}
 	mut depth := 0
 	mut paren_depth := 0
-	// The brace depth a `$if`/`$else` body was opened at, or -1 outside one.
-	mut branch_depth := -1
 	mut branch_expected := false
 	mut i := start
 	for i < source.len {
+		skipped, _ := skip_non_code_at(source, i)
+		if skipped > i {
+			i = skipped
+			continue
+		}
 		c := source[i]
-		if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
-			i = source.index_after('\n', i) or { return '' }
-			if branch_depth >= 0 {
-				code << ` `
-			}
-			continue
-		}
-		if c == `/` && i + 1 < source.len && source[i + 1] == `*` {
-			mut nesting := 1
-			i += 2
-			for i + 1 < source.len && nesting > 0 {
-				if source[i] == `/` && source[i + 1] == `*` {
-					nesting++
-					i += 2
-				} else if source[i] == `*` && source[i + 1] == `/` {
-					nesting--
-					i += 2
-				} else {
-					i++
-				}
-			}
-			if branch_depth >= 0 {
-				code << ` `
-			}
-			continue
-		}
-		if c == `'` || c == `"` || c == `\`` {
-			i++
-			for i < source.len && source[i] != c {
-				if source[i] == `\\` {
-					i += 2
-					continue
-				}
-				if source[i] == `$` && i + 1 < source.len && source[i + 1] == `{` {
-					// An interpolation holds ordinary code, so it keeps its text.
-					mut interpolation := 0
-					mut j := i + 1
-					for j < source.len {
-						if source[j] == `{` {
-							interpolation++
-						} else if source[j] == `}` {
-							interpolation--
-							if interpolation == 0 {
-								j++
-								break
-							}
-						}
-						j++
-					}
-					if branch_depth >= 0 {
-						code << source[i + 1..j].bytes()
-					}
-					i = j
-					continue
-				}
-				i++
-			}
-			i++
-			if branch_depth >= 0 {
-				code << ` `
-			}
-			continue
-		}
 		if c == `$` {
 			mut word_end := i + 1
 			for word_end < source.len && is_import_ident_byte(source[word_end]) {
@@ -2623,18 +2605,24 @@ fn declaration_comptime_branch_code(source string, start int) string {
 		} else if c == `)` {
 			paren_depth--
 		} else if c == `{` {
-			if branch_expected && branch_depth < 0 {
-				branch_depth = depth
+			if branch_expected {
+				open_starts << i + 1
+				open_depths << depth
 				branch_expected = false
 			}
 			depth++
 		} else if c == `}` {
 			depth--
-			if branch_depth >= 0 && depth == branch_depth {
-				branch_depth = -1
+			for open_depths.len > 0 && open_depths.last() == depth {
+				open_depths.pop()
+				branch_start := open_starts.pop()
+				ranges << ComptimeBranchRange{
+					start: branch_start
+					end:   i
+				}
 			}
 			if depth == 0 {
-				return code.bytestr()
+				return ranges
 			}
 		} else if c == `\n` && depth == 0 && paren_depth == 0 {
 			// The header is over and no body opened on it, so the next line
@@ -2644,15 +2632,93 @@ fn declaration_comptime_branch_code(source string, start int) string {
 				next++
 			}
 			if next < source.len && source[next] != `{` {
-				return ''
+				return []ComptimeBranchRange{}
 			}
-		}
-		if branch_depth >= 0 {
-			code << c
 		}
 		i++
 	}
-	return ''
+	return []ComptimeBranchRange{}
+}
+
+// code_text_in_range returns `source[start..end]` with comments and literals
+// left out, so that a plain identifier search cannot match inside them. The
+// `${...}` interpolations of a string are kept, being ordinary code.
+fn code_text_in_range(source string, start int, end int) string {
+	if start < 0 || end > source.len || end <= start {
+		return ''
+	}
+	mut code := []u8{cap: end - start}
+	mut i := start
+	for i < end {
+		skipped, interpolated := skip_non_code_at(source, i)
+		if skipped > i {
+			code << ` `
+			code << interpolated.bytes()
+			i = skipped
+			continue
+		}
+		code << source[i]
+		i++
+	}
+	return code.bytestr()
+}
+
+// skip_non_code_at returns the index just past the comment or string literal
+// starting at `i`, together with the code text of the `${...}` interpolations
+// inside it. It returns `i` itself when `source[i]` starts neither.
+fn skip_non_code_at(source string, i int) (int, string) {
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+		return source.index_after('\n', i) or { source.len }, ''
+	}
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+		mut nesting := 1
+		mut j := i + 2
+		for j + 1 < source.len && nesting > 0 {
+			if source[j] == `/` && source[j + 1] == `*` {
+				nesting++
+				j += 2
+			} else if source[j] == `*` && source[j + 1] == `/` {
+				nesting--
+				j += 2
+			} else {
+				j++
+			}
+		}
+		return j, ''
+	}
+	quote := source[i]
+	if quote != `'` && quote != `"` && quote != `\`` {
+		return i, ''
+	}
+	mut interpolated := []u8{}
+	mut j := i + 1
+	for j < source.len && source[j] != quote {
+		if source[j] == `\\` {
+			j += 2
+			continue
+		}
+		if source[j] == `$` && j + 1 < source.len && source[j + 1] == `{` {
+			mut braces := 0
+			mut k := j + 1
+			for k < source.len {
+				if source[k] == `{` {
+					braces++
+				} else if source[k] == `}` {
+					braces--
+					if braces == 0 {
+						k++
+						break
+					}
+				}
+				k++
+			}
+			interpolated << source[j + 1..k].bytes()
+			j = k
+			continue
+		}
+		j++
+	}
+	return int_min(j + 1, source.len), interpolated.bytestr()
 }
 
 fn whole_word_occurrences(text string, word string) int {
