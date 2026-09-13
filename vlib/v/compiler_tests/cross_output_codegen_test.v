@@ -3,6 +3,10 @@ import os
 const vexe = @VEXE
 
 fn cross_generate(name string, source string) string {
+	return cross_generate_with('-os cross', name, source)
+}
+
+fn cross_generate_with(flags string, name string, source string) string {
 	dir := os.join_path(os.vtmp_dir(), 'v3_cross_output_${name}_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
@@ -12,7 +16,7 @@ fn cross_generate(name string, source string) string {
 	src := os.join_path(dir, 'm.v')
 	os.write_file(src, source) or { panic(err) }
 	out := os.join_path(dir, 'out.c')
-	res := os.execute('${os.quoted_path(vexe)} -os cross -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+	res := os.execute('${os.quoted_path(vexe)} ${flags} -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
 	assert res.exit_code == 0, res.output
 	return os.read_file(out) or { panic(err) }
 }
@@ -53,4 +57,23 @@ fn test_cross_output_refuses_a_different_pointer_width() {
 	} $else {
 		assert c_code.contains('#if !defined(TARGET_IS_32BIT)')
 	}
+}
+
+fn test_cross_reports_its_custom_defines_in_the_generated_header() {
+	// `gen_vc_ci.yml` greps a freshly generated snapshot for exactly these lines
+	// to confirm it was built with `-cross`.
+	c_code := cross_generate_with('-cross', 'defines', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	assert c_code.contains('Turned ON custom defines: no_backtrace,cross'), c_code.all_before('typedef')
+	assert c_code.contains('#define CUSTOM_DEFINE_cross')
+	assert c_code.contains('#define CUSTOM_DEFINE_no_backtrace')
+}
+
+fn test_cross_is_a_modifier_that_keeps_an_explicit_target() {
+	// `v -cross -os windows -cc msvc` builds the Windows snapshot: `-cross` must
+	// not be swallowed by, or swallow, the `-os` that follows it.
+	c_code := cross_generate_with('-cross -os windows -cc msvc', 'windows', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+	assert c_code.contains('Turned ON custom defines: no_backtrace,cross'), 'cross mode was lost'
+	assert c_code.contains('#define CUSTOM_DEFINE_cross')
+	// The target still selected Windows.
+	assert c_code.contains('_WIN32'), 'the explicit -os windows target was lost'
 }

@@ -490,7 +490,10 @@ mut:
 	output_cross_c bool
 	// cross_directive_guards maps a `#include`/`#flag` node to the C preprocessor
 	// condition of the `$if` it was written in, for portable output.
-	cross_directive_guards        map[int]string
+	cross_directive_guards map[int]string
+	// compile_defines are the `-d`/`-define` names of this build, reported in the
+	// generated header the way the reference compiler did.
+	compile_defines               []string
 	subsystem                     pref.Subsystem
 	windows_entry_point_generated bool
 	windows_gui_entry_point       bool
@@ -1312,6 +1315,39 @@ pub fn (mut g FlatGen) set_target(target pref.Target) {
 // to the C preprocessor instead of resolving it for one target.
 pub fn (mut g FlatGen) set_output_cross_c(enabled bool) {
 	g.output_cross_c = enabled
+}
+
+// set_compile_defines records the `-d`/`-define` names to report in the header of
+// the generated C.
+pub fn (mut g FlatGen) set_compile_defines(defines []string) {
+	mut names := []string{cap: defines.len}
+	for define in defines {
+		// `-d name=value` is recorded both bare and valued; only the name is a
+		// custom define.
+		name := define.all_before('=').trim_space()
+		if name.len > 0 && name !in names {
+			names << name
+		}
+	}
+	g.compile_defines = names
+}
+
+// comptime_definitions reports the build's custom defines in the generated C and
+// defines a `CUSTOM_DEFINE_<name>` for each, as the reference compiler did.
+// `gen_vc_ci.yml` reads this header to confirm a snapshot was built with `-cross`.
+fn (mut g FlatGen) comptime_definitions() {
+	if g.compile_defines.len == 0 {
+		return
+	}
+	joined := g.compile_defines.join(',')
+	g.writeln('// V comptime_definitions:')
+	g.writeln('// V compile time defines by -d or -define flags:')
+	g.writeln('//     All custom defines      : ${joined}')
+	g.writeln('//     Turned ON custom defines: ${joined}')
+	for name in g.compile_defines {
+		g.writeln('#define CUSTOM_DEFINE_${name}')
+	}
+	g.writeln('')
 }
 
 // cross_c_condition translates a retained comptime condition into the C
@@ -3608,6 +3644,7 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 	if g.profile_file.len > 0 {
 		g.writeln('#define _VPROFILE (1)')
 	}
+	g.comptime_definitions()
 	g.thread_stack_size_definition()
 	g.emit_translation_unit_include_directives()
 	g.preamble()

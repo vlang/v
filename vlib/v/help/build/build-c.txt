@@ -152,7 +152,14 @@ see also `v help build`.
          implementation can be found in `vlib/builtin/linux_bare`.
 
    -cross
-      A shorthand for `-os cross`. See the `-os` entry below.
+      Produce portable C, like `-os cross` (see the `-os` entry below), but as a
+      modifier that combines with an explicit target, so that
+      `v -cross -os windows -cc msvc -o v_win.c cmd/v` generates the Windows
+      bootstrap snapshot.
+
+      It additionally turns on the `cross` and `no_backtrace` custom defines, so
+      that the `$if cross ?` guards in the standard library select their portable
+      path instead of a platform syscall, and no backtrace support is baked in.
 
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
