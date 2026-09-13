@@ -2733,6 +2733,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		// calls. Without copying it a worker keeps the 64-bit default and emits an
 		// `i64` body for a prototype the master declared as `i32` on a 32-bit target.
 		int_ct: g.int_ct
+		output_cross_c: g.output_cross_c
 		subsystem: g.subsystem
 		c_flags: g.c_flags
 		suppress_main: g.suppress_main

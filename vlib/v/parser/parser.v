@@ -2216,6 +2216,14 @@ fn (mut p Parser) global_decl() flat.NodeId {
 			is_const = true
 			p.next()
 		}
+		// `volatile x = ...` is a qualifier on the global, not its name. Without
+		// this the name below ate `volatile`, the real name became the type, and
+		// every use of the global reported an undefined identifier.
+		mut is_volatile := false
+		if p.tok == .key_volatile {
+			is_volatile = true
+			p.next()
+		}
 		if p.tok == .name || p.tok.is_keyword() {
 			field_start := p.span_start()
 			gname := p.expect_name_or_keyword()
@@ -2235,6 +2243,13 @@ fn (mut p Parser) global_decl() flat.NodeId {
 				p.next()
 				val_id = p.expr(.lowest)
 			}
+			mut qualifiers := []string{}
+			if is_const {
+				qualifiers << 'const'
+			}
+			if is_volatile {
+				qualifiers << 'volatile'
+			}
 			if int(val_id) >= 0 {
 				vstart := p.add_child(val_id)
 				ids << p.add_node(flat.Node{
@@ -2242,7 +2257,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 					value: full_name
 					typ: gtype
 					op: if field_is_pub { .arrow } else { .none }
-					payload: flat.node_payload(if is_const { ['const'] } else { []string{} })
+					payload: flat.node_payload(qualifiers)
 					children_start: vstart
 					children_count: 1
 					pos: p.span_to(field_start)
@@ -2253,7 +2268,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 					value: full_name
 					typ: gtype
 					op: if field_is_pub { .arrow } else { .none }
-					payload: flat.node_payload(if is_const { ['const'] } else { []string{} })
+					payload: flat.node_payload(qualifiers)
 					pos: p.span_to(field_start)
 				})
 			}
@@ -3223,6 +3238,11 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		return p.comptime_if_node_at(cond, then_block, else_block, dollar_start)
 	}
 	cond = p.resolve_comptime_const_values(p.resolve_comptime_at_values(cond))
+	if cross_cond := p.cross_deferred_comptime_cond(cond) {
+		then_block := p.block_stmt()
+		else_block := p.parse_comptime_else()
+		return p.comptime_if_node_at(cross_cond, then_block, else_block, dollar_start)
+	}
 	// Only defer conditions that need information unavailable at parse time: a `$for` loop var
 	// (`field.typ`, `field.indirections`, `value.value`), known once the loop is unrolled, or a
 	// type test (`T is int`), known after monomorphization. Ordinary platform/custom flags
@@ -3540,6 +3560,11 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 		return p.comptime_if_node_at(cond, then_block, else_block, dollar_start)
 	}
 	cond = p.resolve_comptime_const_values(p.resolve_comptime_at_values(cond))
+	if cross_cond := p.cross_deferred_comptime_cond(cond) {
+		then_block := p.top_level_block_stmt()
+		else_block := p.parse_top_level_comptime_else()
+		return p.comptime_if_node_at(cross_cond, then_block, else_block, dollar_start)
+	}
 	if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
 		|| comptime_cond_has_builtin_threads(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
@@ -4489,6 +4514,90 @@ fn (mut p Parser) parse_top_level_comptime_else() flat.NodeId {
 		return p.parse_top_level_comptime_if()
 	}
 	return p.top_level_block_stmt()
+}
+
+// cross_deferred_comptime_cond returns the condition to keep in the AST when
+// portable C output (`-os cross`) lets the C preprocessor decide a `$if` on the
+// machine that finally compiles the generated C, or none when the condition is
+// resolved here as usual.
+fn (p &Parser) cross_deferred_comptime_cond(cond string) ?string {
+	if !p.prefs.output_cross_c || !comptime_cond_has_target_flag(cond) {
+		return none
+	}
+	// A condition that also needs information unavailable at parse time keeps its
+	// existing deferral path, so that the transformer can still fold it once that
+	// information exists.
+	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
+		|| comptime_cond_has_type_metadata(cond) || comptime_cond_has_builtin_threads(cond)
+		|| p.comptime_cond_references_unresolved_local(cond) {
+		return none
+	}
+	return p.cross_normalized_comptime_cond(cond)
+}
+
+// cross_normalized_comptime_cond folds every target-independent part of a
+// condition to `true`/`false`, leaving only the target flags that the C
+// preprocessor has to decide. The C backend then needs no build settings to
+// translate what is left.
+fn (p &Parser) cross_normalized_comptime_cond(cond string) string {
+	clean := comptime_cond_strip_outer_parens(cond.trim_space())
+	if clean.len == 0 {
+		return 'false'
+	}
+	left_or, right_or, has_or := comptime_cond_split_top_level(clean, '||')
+	if has_or {
+		return '(${p.cross_normalized_comptime_cond(left_or)} || ${p.cross_normalized_comptime_cond(right_or)})'
+	}
+	left_and, right_and, has_and := comptime_cond_split_top_level(clean, '&&')
+	if has_and {
+		return '(${p.cross_normalized_comptime_cond(left_and)} && ${p.cross_normalized_comptime_cond(right_and)})'
+	}
+	if clean.starts_with('!') {
+		return '!(${p.cross_normalized_comptime_cond(clean[1..])})'
+	}
+	if comptime_cond_has_target_flag(clean) {
+		return clean
+	}
+	return if p.eval_comptime_cond(clean) { 'true' } else { 'false' }
+}
+
+// comptime_cond_has_target_flag reports whether any bare identifier in a comptime
+// condition names a target-dependent flag (OS, architecture, word size, byte
+// order or C compiler).
+fn comptime_cond_has_target_flag(cond string) bool {
+	mut i := 0
+	for i < cond.len {
+		c := cond[i]
+		if c in [`'`, `"`, `\``] {
+			i++
+			for i < cond.len && cond[i] != c {
+				i++
+			}
+			i++
+			continue
+		}
+		if !(c.is_letter() || c == `_`) {
+			i++
+			continue
+		}
+		start := i
+		for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+			i++
+		}
+		// `name ?` asks whether the user passed `-d name`. That is a build option
+		// even when it shares a spelling with a target flag, so it stays resolved.
+		mut j := i
+		for j < cond.len && cond[j] in [` `, `\t`] {
+			j++
+		}
+		if j < cond.len && cond[j] == `?` {
+			continue
+		}
+		if pref.comptime_flag_is_target_dependent(cond[start..i]) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (p &Parser) eval_comptime_cond(cond string) bool {
@@ -6223,6 +6332,11 @@ fn (mut p Parser) parse_comptime_if_expr_after_if(dollar_start int) flat.NodeId 
 		return p.comptime_if_node_at(cond, then_expr, else_expr, dollar_start)
 	}
 	cond = p.resolve_comptime_const_values(p.resolve_comptime_at_values(cond))
+	// A `$if` *expression* stays resolved here even for portable output. Its
+	// branches can have different types (`closure_thunk` is a differently sized
+	// fixed array per architecture), which no preprocessor guard around an
+	// expression can express. This matches what the bootstrap snapshot has always
+	// contained.
 	// Whether `threads` is enabled depends on spawn expressions in the completed AST,
 	// so expression branches must be retained for the checker/transformer to select.
 	if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
@@ -13171,6 +13285,13 @@ fn (mut p Parser) parse_type_name() string {
 			type_list << p.parse_type_name()
 		}
 		p.check(.rpar)
+		// A single type in parentheses is a grouped type, not a one-element
+		// multi-return: `?([]u64)` means `?[]u64`. Keeping the parentheses in the
+		// type text made the checker look for a type literally named `([]u64)`,
+		// so the option unwrapped to something with no `len` and no index.
+		if type_list.len == 1 && type_list[0].len > 0 {
+			return type_list[0]
+		}
 		return '(' + type_list.join(', ') + ')'
 	}
 	// function type fn(T) U

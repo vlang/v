@@ -6423,7 +6423,20 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 	out.writeln('__global (')
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
-		mut line := '\t${field.value}'
+		// The qualifiers the parser recorded have to survive the round trip. The
+		// cached header is reparsed, so a dropped `volatile` produces a global
+		// whose C declaration no longer says what the V one did -- and only for
+		// consumers of a cached module, which is the worst way for it to differ.
+		// `const` was being lost the same way.
+		mut line := '\t'
+		qualifiers := field.generic_params()
+		if 'const' in qualifiers {
+			line += 'const '
+		}
+		if 'volatile' in qualifiers {
+			line += 'volatile '
+		}
+		line += field.value
 		mut field_type := field.typ
 		if field_type.len == 0 {
 			field_type = cached_global_type_name(tc, module_name, field.value)

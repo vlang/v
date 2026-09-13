@@ -2,6 +2,10 @@ module modulecache
 
 import os
 import crypto.sha256
+import v.flat
+import v.parser
+import v.pref
+import v.types as vtypes
 
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
@@ -656,4 +660,92 @@ fn test_vmodhash_changes_cached_source_signature_without_source_edits() {
 	second := cached_source_signature(cache_dir, 'vmodhash', [source])
 	assert second.len > 0
 	assert second != first
+}
+
+fn global_qualifier_test_field(mut a flat.FlatAst, name string, type_text string, value string, qualifiers []string) flat.NodeId {
+	literal := a.add_node(flat.Node{
+		kind: .int_literal
+		value: value
+	})
+	start := a.children.len
+	a.children << literal
+	return a.add_node(flat.Node{
+		kind: .field_decl
+		value: name
+		typ: type_text
+		payload: flat.node_payload(qualifiers)
+		children_start: i32(start)
+		children_count: flat.child_count(1)
+	})
+}
+
+// A cached module's globals are written out as V source and parsed back, so a
+// qualifier dropped on the way out is lost only for consumers of the cache --
+// the worst way for it to differ, since an uncached build of the same source
+// keeps it. This walks that round trip: global_text() serializes, and the
+// parser reads the result back.
+fn test_cached_global_text_round_trips_qualifiers() {
+	mut a := flat.FlatAst.new()
+	fields := [
+		global_qualifier_test_field(mut a, 'beacon', 'u64', '7', ['volatile']),
+		global_qualifier_test_field(mut a, 'plain_counter', 'u64', '0', []),
+		global_qualifier_test_field(mut a, 'fixed_limit', 'u64', '8', ['const']),
+	]
+	start := a.children.len
+	a.children << fields
+	node_id := a.add_node(flat.Node{
+		kind: .global_decl
+		children_start: i32(start)
+		children_count: flat.child_count(fields.len)
+	})
+	mut tc := vtypes.TypeChecker.new(&a)
+	text := global_text(&a, &tc, 'beaconmod', a.nodes[int(node_id)])
+
+	assert text.contains('volatile beacon u64 = 7'), text
+	assert text.contains('const fixed_limit u64 = 8'), text
+	// The neighbours must not pick up a qualifier of their own.
+	assert text.contains('\n\tplain_counter u64 = 0\n'), text
+	assert !text.contains('volatile plain_counter'), text
+	assert !text.contains('volatile fixed_limit'), text
+	assert !text.contains('const beacon'), text
+
+	// And the reparse half: what a warm build reads back has to carry the
+	// qualifiers the original declaration did.
+	path := os.join_path(os.vtmp_dir(), 'v3_cached_global_round_trip_${os.getpid()}.v')
+	os.write_file(path, 'module beaconmod\n\n${text}\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
+	mut p := parser.Parser.new(prefs)
+	reparsed := p.parse_file(path)
+	mut seen := 0
+	for node in reparsed.nodes {
+		if node.kind != .global_decl {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := reparsed.child_node(&node, i)
+			qualifiers := field.generic_params()
+			match field.value {
+				'beacon' {
+					assert 'volatile' in qualifiers, 'beacon lost volatile: ${qualifiers}'
+					assert 'const' !in qualifiers, 'beacon gained const: ${qualifiers}'
+					seen++
+				}
+				'fixed_limit' {
+					assert 'const' in qualifiers, 'fixed_limit lost const: ${qualifiers}'
+					assert 'volatile' !in qualifiers, 'fixed_limit gained volatile: ${qualifiers}'
+					seen++
+				}
+				'plain_counter' {
+					assert qualifiers.len == 0, 'plain_counter gained ${qualifiers}'
+					seen++
+				}
+				else {}
+			}
+		}
+	}
+	assert seen == 3, 'the reparsed header did not describe all three globals (${seen})'
 }

@@ -571,7 +571,7 @@ skipped coverage in the summary.
   * Then run: `./w file.v`
 * Keep and inspect generated C:
   * `-keepc -cg` is the common combo.
-  * `-printfn <name> -o file.c` emits only the named C function to standart
+  * `-printfn <name> -o file.c` emits only the named C function to standard
     output. The `name` uses the `modulename__fnname` format (e.g.
     `main__main`). This flag can be repeated to print multiple
     functions. Methods/generics may use more complex C names; use
