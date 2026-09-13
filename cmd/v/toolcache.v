@@ -36,7 +36,13 @@ struct ToolCacheEntry {
 	// `<vroot>/cmd/tools/vfmt.v`, or a directory holding the tool's `.v` files
 	source string
 	vroot  string // the V source tree the tool is built from
-	binary string // the cached executable
+	// the content addressed directory holding this entry. The hash lives here rather than
+	// in the executable's name so that the executable can keep the tool's own name: tools
+	// read `os.file_name(os.executable())` and use it as their displayed name and as their
+	// own cache directory, and a hashed name would rename the tool and make every rebuild
+	// download its assets again.
+	dir    string
+	binary string // the cached executable, named exactly like the tool
 	// the build inputs recorded for `binary`
 	manifest string
 	// set when the current compiler is known to not be able to build the tool
@@ -217,15 +223,17 @@ fn pkgconfig_executable_stamp() string {
 fn tool_cache_entry(vexe string, vroot string, tool_name string, tool_source string, build_args []string) ?ToolCacheEntry {
 	directory := tool_cache_dir()?
 	key := tool_cache_key(vexe, tool_name, tool_key_sources(tool_source), build_args)
-	binary := os.join_path(directory, '${tool_name}-${key}${tool_exe_suffix()}')
+	entry_dir := os.join_path(directory, '${tool_name}-${key}')
+	binary := os.join_path(entry_dir, '${tool_name}${tool_exe_suffix()}')
 	return ToolCacheEntry{
 		name:                 tool_name
 		source:               tool_source
 		vroot:                vroot
+		dir:                  entry_dir
 		binary:               binary
-		manifest:             binary + '.inputs'
-		unbuildable:          binary + '.unbuildable'
-		unbuildable_manifest: binary + '.unbuildable.inputs'
+		manifest:             os.join_path(entry_dir, 'inputs')
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
 		build_args:           build_args.clone()
 	}
 }
@@ -370,6 +378,28 @@ fn is_all_digits(text string) bool {
 	return true
 }
 
+// unresolved_import_modules returns the modules that a failed build could not resolve at all.
+// Such a module contributed no source file to the dump, because there was nothing to read, so
+// stamping where it would have lived is the only way a later invocation notices it came back.
+fn unresolved_import_modules(details string) []string {
+	marker := 'cannot import module "'
+	mut names := map[string]bool{}
+	mut rest := details
+	for {
+		index := rest.index(marker) or { break }
+		rest = rest[index + marker.len..]
+		end := rest.index('"') or { break }
+		name := rest[..end].trim_space()
+		rest = rest[end + 1..]
+		if name.len > 0 {
+			names[name] = true
+		}
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
 // record_unbuildable_tool remembers a failed build together with the inputs that caused it,
 // so that the failing compilation is not repeated on every invocation, while fixing any of
 // those inputs still makes it be retried.
@@ -380,7 +410,27 @@ fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, det
 	// cannot describe that way is an import it could not resolve at all, because the module
 	// has no files to stamp. Recording the module roots as well is what makes the tool be
 	// retried as soon as a missing module reappears.
-	for root in [os.join_path(entry.vroot, 'vlib'), os.join_path(entry.vroot, 'vlib', 'v')] {
+	mut roots := map[string]bool{}
+	roots[os.join_path(entry.vroot, 'vlib')] = true
+	roots[os.join_path(entry.vroot, 'vlib', 'v')] = true
+	for module_name in unresolved_import_modules(details) {
+		// A root records its *direct* children only, so those two fixed entries see a module
+		// appear or vanish right under them and nothing deeper. `db.sqlite` could be removed
+		// and restored without either of them changing, which replayed the recorded failure
+		// forever. Stamp the module's own directory and every ancestor down to it, so the
+		// level that actually changes is always one of them.
+		mut path := os.join_path(entry.vroot, 'vlib')
+		for part in module_name.split('.') {
+			if part.trim_space() == '' {
+				break
+			}
+			path = os.join_path(path, part)
+			roots[path] = true
+		}
+	}
+	mut sorted_roots := roots.keys()
+	sorted_roots.sort()
+	for root in sorted_roots {
 		manifest += 'm${tool_cache_field_separator}${root}${tool_cache_field_separator}${module_root_stamp(root)}\n'
 	}
 	os.write_file(entry.unbuildable_manifest, manifest) or { return }
@@ -425,9 +475,10 @@ fn publish_atomically(staged string, destination string) bool {
 	return true
 }
 
-// is_cache_artifact_of reports whether `name` belongs to a cache entry of `tool`. The tool
-// name alone is not enough to tell them apart, because one tool's name can be a prefix of
-// another's (`v bug` and `v bug-report`), so the content address itself has to be matched.
+// is_cache_artifact_of reports whether `name` is the entry directory of a cache entry of
+// `tool`. The tool name alone is not enough to tell them apart, because one tool's name can
+// be a prefix of another's (`v bug` and `v bug-report`), so the content address itself has
+// to be matched.
 fn is_cache_artifact_of(name string, tool string) bool {
 	if !name.starts_with('${tool}-') {
 		return false
@@ -449,25 +500,26 @@ fn is_cache_artifact_of(name string, tool string) bool {
 // Unlinking an executable that another process is currently running is safe on POSIX: that
 // process keeps its own already opened image.
 fn prune_stale_tool_binaries(entry ToolCacheEntry) {
-	directory := os.dir(entry.binary)
-	keep := os.file_name(entry.binary)
+	// A binary that Windows would not let us overwrite while it was still being executed was
+	// renamed aside instead. It lives in this entry's own directory, so nothing below would
+	// ever reach it; once the process that held it has exited this is the only thing that
+	// deletes it.
+	for name in os.ls(entry.dir) or { [] } {
+		if name.contains(tool_cache_replaced_marker) {
+			os.rm(os.join_path(entry.dir, name)) or {}
+		}
+	}
+	directory := os.dir(entry.dir)
+	keep := os.file_name(entry.dir)
 	entries := os.ls(directory) or { return }
 	for name in entries {
 		if !is_cache_artifact_of(name, entry.name) {
 			continue
 		}
-		if name.contains(tool_cache_replaced_marker) {
-			// A binary that Windows would not let us overwrite while it was still being
-			// executed was renamed aside instead. It shares the current entry's prefix, so
-			// the `keep` test below would spare it forever; once the process that held it
-			// has exited this is the only thing that ever deletes it.
-			os.rm(os.join_path(directory, name)) or {}
-			continue
-		}
 		if name.starts_with(keep) {
 			continue
 		}
-		os.rm(os.join_path(directory, name)) or {}
+		os.rmdir_all(os.join_path(directory, name)) or {}
 	}
 }
 
@@ -475,6 +527,9 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 // It returns the compiler output when the build failed.
 fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	unique := '${os.getpid()}'
+	os.mkdir_all(entry.dir) or {
+		return error('cannot create the cache directory `${entry.dir}`: ${err}')
+	}
 	staged := '${entry.binary}.staged.${unique}'
 	dumped := '${entry.binary}.sources.${unique}'
 	defer {
