@@ -1324,6 +1324,9 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	}
 
 	mut result := []flat.NodeId{}
+	// set when the RHS was rebuilt into a freshly allocated array to box or widen its
+	// elements; that buffer has no other owner and has to be freed after the bulk append
+	mut converted_bulk_append := false
 	mut lhs := t.transform_lvalue(lhs_id)
 	// For an append whose RHS hoists a value `match`/`if` prelude — directly or nested inside
 	// a compound RHS (`arrays[next(mut trace)] << wrap(match ...)`) — stabilize the LHS
@@ -1344,6 +1347,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 					rhs = converted
 					rhs_type = array_type
 					push_many = true
+					converted_bulk_append = true
 				} else {
 					rhs = if elem_type in t.sum_types
 						|| t.resolve_sum_name(elem_type) in t.sum_types {
@@ -1360,6 +1364,16 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 				t.transform_expr_for_type(rhs_id, elem_type)
 			}
 		}
+	} else if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+		// `[]Iface << []Concrete` has to box every element. A bare `push_many` would
+		// memcpy the concrete values into interface-sized slots and leave the type tag
+		// unset, so the first method call on an appended element dispatches to nothing
+		// ("interface method X not implemented"). The same conversion covers sum-type
+		// and integer-width element changes; element slots that already match convert
+		// to `none` here and keep the plain bulk append.
+		rhs = converted
+		rhs_type = array_type
+		converted_bulk_append = true
 	} else {
 		// Route a value `match`/`if` push-many RHS (an array-producing match, e.g.
 		// `out << (match node { First { values_first(node)! } ... })`) through value
@@ -1402,6 +1416,9 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		rhs = t.make_ident(bulk_cleanup_name)
 		t.set_node_typ(int(rhs), bulk_cleanup_type)
 	}
+	converted_temp_name, converted_rhs := t.bind_converted_bulk_append_temp(converted_bulk_append,
+		push_many, rhs_type, bulk_cleanup_name, rhs, mut result)
+	rhs = converted_rhs
 
 	lhs_addr := t.runtime_addr(lhs, lhs_type)
 	if push_many {
@@ -1422,6 +1439,8 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 			// push_many transfers the cloned element bytes. Free only the temporary array's
 			// backing buffer; the destination now owns its elements.
 			result << t.make_expr_stmt(t.make_method_call(rhs, 'free', []flat.NodeId{}))
+		} else if converted_temp_name.len > 0 {
+			t.free_converted_bulk_append_temp(converted_temp_name, rhs_type, mut result)
 		}
 		return result
 	}
@@ -1438,6 +1457,36 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		result << t.make_local_closure_cleanup_defer(value_name)
 	}
 	return result
+}
+
+// bind_converted_bulk_append_temp pins a converted bulk-append RHS to a named temp, so that
+// its backing buffer can be freed once `push_many` has copied the elements out. The
+// conversion allocates a fresh array that nothing else ever refers to, and the
+// `borrowed_push_many_clone` path cannot cover it: that flag is derived from the original
+// RHS, which for a differently typed source array is not a borrow at all.
+fn (mut t Transformer) bind_converted_bulk_append_temp(converted bool, push_many bool, rhs_type string, existing_name string, rhs flat.NodeId, mut result []flat.NodeId) (string, flat.NodeId) {
+	if !converted || !push_many || rhs_type.len == 0 || t.is_fixed_array_type(rhs_type) {
+		return '', rhs
+	}
+	if existing_name.len > 0 {
+		// already bound for the closure cleanups, and freeing it twice would be a bug
+		return existing_name, rhs
+	}
+	name := t.new_temp('append_converted')
+	t.set_var_type(name, rhs_type)
+	result << t.make_decl_assign_typed(name, rhs, rhs_type)
+	bound := t.make_ident(name)
+	t.set_node_typ(int(bound), rhs_type)
+	return name, bound
+}
+
+// free_converted_bulk_append_temp releases the conversion buffer. Only the array's own
+// storage goes: `push_many` copied the element bytes into the destination, which owns them
+// now, exactly as for a borrowed clone.
+fn (mut t Transformer) free_converted_bulk_append_temp(name string, rhs_type string, mut result []flat.NodeId) {
+	value := t.make_ident(name)
+	t.set_node_typ(int(value), rhs_type)
+	result << t.make_expr_stmt(t.make_method_call(value, 'free', []flat.NodeId{}))
 }
 
 fn (t &Transformer) expr_contains_local_closure_field_cleanup(id flat.NodeId) bool {
@@ -1553,6 +1602,9 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	}
 
 	mut result := []flat.NodeId{}
+	// set when the RHS was rebuilt into a freshly allocated array to box or widen its
+	// elements; that buffer has no other owner and has to be freed after the bulk append
+	mut converted_bulk_append := false
 	source := t.transform_lvalue(source_id)
 	t.drain_pending(mut result)
 	not_ok := t.make_prefix(.not, t.make_selector(source, 'ok', 'bool'))
@@ -1583,6 +1635,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 					rhs_type = array_type
 					push_many = true
 					rhs = converted
+					converted_bulk_append = true
 				} else {
 					rhs = if elem_type in t.sum_types
 						|| t.resolve_sum_name(elem_type) in t.sum_types {
@@ -1599,6 +1652,16 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 				t.transform_expr_for_type(rhs_id, elem_type)
 			}
 		}
+	} else if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+		// `[]Iface << []Concrete` has to box every element. A bare `push_many` would
+		// memcpy the concrete values into interface-sized slots and leave the type tag
+		// unset, so the first method call on an appended element dispatches to nothing
+		// ("interface method X not implemented"). The same conversion covers sum-type
+		// and integer-width element changes; element slots that already match convert
+		// to `none` here and keep the plain bulk append.
+		rhs = converted
+		rhs_type = array_type
+		converted_bulk_append = true
 	} else {
 		// Route a value `match`/`if` push-many RHS (an array-producing match, e.g.
 		// `out << (match node { First { values_first(node)! } ... })`) through value
@@ -1632,6 +1695,9 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 		push_many = t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 	}
 
+	converted_temp_name, converted_rhs := t.bind_converted_bulk_append_temp(converted_bulk_append,
+		push_many, rhs_type, '', rhs, mut result)
+	rhs = converted_rhs
 	lhs_addr := if has_captured_addr {
 		captured_lhs_addr
 	} else {
@@ -1648,6 +1714,8 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 		result << t.make_expr_stmt(call)
 		if borrowed_push_many_clone && !t.is_fixed_array_type(rhs_type) {
 			result << t.make_expr_stmt(t.make_method_call(rhs, 'free', []flat.NodeId{}))
+		} else if converted_temp_name.len > 0 {
+			t.free_converted_bulk_append_temp(converted_temp_name, rhs_type, mut result)
 		}
 		return result
 	}

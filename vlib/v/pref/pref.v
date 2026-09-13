@@ -71,6 +71,11 @@ pub mut:
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm            bool
 	preserve_comptime_conditionals bool
+	// exclude holds the `-exclude` glob patterns, already expanded for `@vroot`,
+	// `@vlib` and `@vmodules`. A source file whose path matches one of them is
+	// dropped from every directory listing, e.g. `-exclude @vlib/math/*.c.v`
+	// selects the pure V implementations of the math module.
+	exclude []string
 	// output_cross_c requests portable C that is not tied to one target OS,
 	// architecture or C compiler (`-os cross`). Target-dependent `$if` branches
 	// are all kept and decided by the C preprocessor instead of by the checker.
@@ -79,6 +84,27 @@ pub:
 	build_date      string
 	build_time      string
 	build_timestamp string
+}
+
+// without_excluded returns files, minus the ones matched by a `-exclude` pattern.
+pub fn (p &Preferences) without_excluded(files []string) []string {
+	if p.exclude.len == 0 {
+		return files
+	}
+	mut kept := []string{cap: files.len}
+	for file in files {
+		mut is_excluded := false
+		for pattern in p.exclude {
+			if file.match_glob(pattern) {
+				is_excluded = true
+				break
+			}
+		}
+		if !is_excluded {
+			kept << file
+		}
+	}
+	return kept
 }
 
 // Target is the canonical description of the platform for which code is generated.
@@ -825,6 +851,17 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 	if !test_base.ends_with('_test') {
 		return false
 	}
+	if suffix_is_backend_name(backend_suffix) {
+		// A backend name wins over an architecture alias: `wasm` spells both, and
+		// `foo_test.wasm.v` is a WASM backend test, not an amd64/arm64 one.
+		return backend_suffix == backend
+	}
+	if _ := arch_from_string(backend_suffix) {
+		// `foo_test.arm64.v` names an architecture, not a backend. Whether this host
+		// can run it is decided by is_test_file_for_platform; every such test is a
+		// C-backend test.
+		return backend == 'c'
+	}
 	return backend_suffix == backend
 }
 
@@ -858,6 +895,17 @@ pub fn is_test_file_for_platform(path string, backend string, target Target) boo
 		if base.contains('.') {
 			test_base := base.all_before_last('.')
 			if test_base.ends_with('_test') {
+				suffix := base.all_after_last('.')
+				// A backend-qualified test (`foo_test.wasm.v`) is not architecture
+				// qualified, even when the backend name is also an architecture alias.
+				if !suffix_is_backend_name(suffix) {
+					if arch := arch_from_string(suffix) {
+						// An architecture-qualified test only belongs to that architecture.
+						if arch != target.arch {
+							return false
+						}
+					}
+				}
 				probe = test_base.all_before_last('_test') + '.v'
 			}
 		}

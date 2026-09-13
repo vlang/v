@@ -319,6 +319,7 @@ mut:
 	test_files                     map[string]bool
 	show_test_stats                bool
 	show_test_summary              bool
+	show_test_file_results         bool
 	test_run_only                  []string
 	assert_expr_overrides          map[int]string
 	print_fn_names                 []string
@@ -1416,6 +1417,11 @@ pub fn (mut g FlatGen) set_show_test_summary(enabled bool) {
 	g.show_test_summary = enabled
 }
 
+// set_show_test_file_results enables the per-test-file OK/FAIL lines of `v test`.
+pub fn (mut g FlatGen) set_show_test_file_results(enabled bool) {
+	g.show_test_file_results = enabled
+}
+
 // set_test_run_only limits the generated test harness to matching test functions.
 pub fn (mut g FlatGen) set_test_run_only(patterns []string) {
 	g.test_run_only = patterns.clone()
@@ -1591,6 +1597,54 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 	c_flags << initial_c_flags
 	inputs, native_source_roots, _, _, _, _, _, has_untracked_include := cache_external_input_files_with_resolved_flags(a, vroot, source_modules, c_flags, target, map[string]bool{}, map[string]string{}, false)
 	return inputs, native_source_roots, has_untracked_include
+}
+
+// cache_native_flag_input_files returns the native sources and objects that `#flag`
+// directives name outright, for example `#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c` or the
+// prebuilt `sqlite3.o` used on Windows. The cache input scan follows `#include`/`#insert` and
+// forced includes, so a file named this way is compiled or linked into the binary while being
+// invisible to every other input record.
+//
+// Only directives that survive comptime branch resolution are seen, so a `#flag` guarded by
+// an `$if` for another platform is correctly left out.
+pub fn cache_native_flag_input_files(a &flat.FlatAst, vroot string, target pref.Target) []string {
+	mut cur_file := ''
+	mut paths := map[string]bool{}
+	for index in 0 .. a.nodes.len {
+		node := a.nodes[index]
+		if node.kind == .file {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value != 'flag' || node.typ.len == 0 {
+			continue
+		}
+		for flag in c_flag_args(node.typ, vroot, cur_file, target) {
+			token := flag.trim_space().trim('"\'')
+			if token.len == 0 || token.starts_with('-') || !c_is_native_input_path(token) {
+				continue
+			}
+			if os.is_file(token) {
+				paths[os.real_path(token)] = true
+			}
+		}
+	}
+	mut result := paths.keys()
+	result.sort()
+	return result
+}
+
+// c_is_native_input_path reports whether a bare `#flag` token names a file that is compiled
+// or linked in, rather than an option or a library search term.
+fn c_is_native_input_path(path string) bool {
+	lowered := path.to_lower()
+	for extension in ['.c', '.cc', '.cpp', '.cxx', '.m', '.mm', '.s', '.o', '.obj', '.a',
+		'.lib'] {
+		if lowered.ends_with(extension) {
+			return true
+		}
+	}
+	return false
 }
 
 // cache_external_input_files_with_resolved_flags collects cache inputs without
@@ -17233,6 +17287,9 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('#include <features.h>')
 		g.writeln('#endif')
 		g.write(manual_stdlib_c_headers())
+		// The prelude `#undef`s its own V_CRT_* macros, so leave a marker that later
+		// blocks can test before repeating any of its declarations.
+		g.writeln('#define V_MANUAL_STDLIB_HEADERS 1')
 		g.writeln('void abort(void);')
 		g.system_libc_headers()
 		g.system_libc_preamble()
@@ -19902,11 +19959,17 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('static int v3_array_sort_${sort_type}_cmp(const void* a, const void* b) { ${c_type} av = *(const ${c_type}*)a; ${c_type} bv = *(const ${c_type}*)b; return (av > bv) - (av < bv); }')
 		g.writeln('static inline void v3_array_sort_${sort_type}(Array* a) { if (a != NULL && a->len > 1) qsort(a->data, (size_t)a->len, sizeof(${c_type}), v3_array_sort_${sort_type}_cmp); }')
 	}
+	// The manual stdlib prelude already declares these, with the CRT linkage the
+	// platform wants. Repeating them after `-is_o` pushes its `internal_linkage`
+	// attribute makes clang reject the second, attribute-less declaration, so only
+	// the headerless preamble needs them here.
+	g.writeln('#ifndef V_MANUAL_STDLIB_HEADERS')
 	g.writeln('#ifdef _WIN32')
 	g.writeln('void* _aligned_malloc(size_t size, size_t alignment);')
 	g.writeln('void _aligned_free(void* memblock);')
 	g.writeln('#else')
 	g.writeln('int posix_memalign(void** memptr, size_t alignment, size_t size);')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) { void* p = NULL; if (alignment < sizeof(void*)) alignment = sizeof(void*);')
 	g.writeln('#ifdef _WIN32')

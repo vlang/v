@@ -230,8 +230,8 @@ fn test_termux_source_selection_keeps_android_common_files_distinct() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	for name in ['platform_default.c.v', 'platform_android.c.v',
-		'platform_android_outside_termux.c.v', 'platform_termux.c.v'] {
+	for name in ['platform_default.c.v', 'platform_android.c.v', 'platform_android_outside_termux.c.v',
+		'platform_termux.c.v'] {
 		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
 	}
 
@@ -292,6 +292,76 @@ fn test_remaining_native_os_source_selection_is_target_specific() {
 			'platform_${os_name}.c.v',
 		]
 	}
+}
+
+fn test_os_is_target_of_rejects_foreign_platform_suffixes() {
+	// `v test` derives the target from the file name (`foo_haiku_test.v` -> `haiku`),
+	// so every platform V can target has to be denied on hosts that are not it. A name
+	// missing here does not fail closed: it falls through and the test runs anyway.
+	platforms := ['windows', 'linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris',
+		'qnx', 'haiku', 'serenity', 'vinix', 'plan9', 'ios', 'termux']
+	for host in platforms {
+		for target in platforms {
+			if host == target {
+				assert os_is_target_of(host, target), '${host} must run its own ${target} tests'
+				continue
+			}
+			assert !os_is_target_of(host, target), '${host} must not run ${target} tests'
+		}
+	}
+}
+
+fn test_os_is_target_of_keeps_grouping_suffixes() {
+	assert os_is_target_of('linux', 'nix')
+	assert os_is_target_of('macos', 'nix')
+	assert !os_is_target_of('windows', 'nix')
+	assert os_is_target_of('freebsd', 'bsd')
+	assert os_is_target_of('macos', 'bsd')
+	assert !os_is_target_of('haiku', 'bsd')
+	// `all` and an unrecognized suffix are not platform constraints at all.
+	assert os_is_target_of('haiku', 'all')
+	assert os_is_target_of('linux', 'utils')
+}
+
+fn test_os_is_target_of_rejects_emscripten_on_native_hosts() {
+	assert !os_is_target_of('linux', 'emscripten')
+	assert !os_is_target_of('macos', 'wasm32_emscripten')
+	assert os_is_target_of('emscripten', 'emscripten')
+	assert os_is_target_of('wasm32_emscripten', 'emscripten')
+}
+
+// `.wasm.v` names the WASM backend, not the `wasm` architecture. AGENTS.md documents it as a
+// backend split, and reading it as an architecture both hid such tests from `-b wasm` and
+// made every native host skip them as foreign.
+fn test_backend_suffixes_win_over_architecture_aliases() {
+	assert is_test_file_for_backend('foo_test.wasm.v', 'wasm')
+	assert !is_test_file_for_backend('foo_test.wasm.v', 'c')
+	assert !is_test_file_for_backend('foo_test.wasm.v', 'js')
+	assert is_test_file_for_backend('foo_test.native.v', 'native')
+	assert !is_test_file_for_backend('foo_test.native.v', 'c')
+	assert is_test_file_for_backend('foo_test.c.v', 'c')
+	assert is_test_file_for_backend('foo_test.js.v', 'js')
+}
+
+fn test_architecture_suffixes_are_still_c_backend_tests() {
+	assert is_test_file_for_backend('foo_test.arm64.v', 'c')
+	assert !is_test_file_for_backend('foo_test.arm64.v', 'wasm')
+	assert is_test_file_for_backend('foo_test.amd64.v', 'c')
+}
+
+// A WASM backend test is not architecture qualified, so a native host must not filter it out
+// as a foreign architecture before the backend selection is even consulted.
+fn test_wasm_backend_tests_are_not_filtered_by_host_architecture() {
+	for arch in ['amd64', 'arm64'] {
+		target := target_from('linux', arch) or { panic(err) }
+		assert is_test_file_for_platform('foo_test.wasm.v', 'wasm', target), 'wasm test on ${arch}'
+		assert !is_test_file_for_platform('foo_test.wasm.v', 'c', target)
+	}
+	// An architecture-qualified test still belongs only to its own architecture.
+	arm := target_from('linux', 'arm64') or { panic(err) }
+	assert is_test_file_for_platform('foo_test.arm64.v', 'c', arm)
+	amd := target_from('linux', 'amd64') or { panic(err) }
+	assert !is_test_file_for_platform('foo_test.arm64.v', 'c', amd)
 }
 
 fn test_target_dependent_comptime_flags_map_to_c_conditions() {

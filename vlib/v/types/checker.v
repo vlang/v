@@ -5030,6 +5030,15 @@ fn (tc &TypeChecker) qualify_name_uncached(name string) string {
 		|| name in tc.type_aliases) {
 		return name
 	}
+	// Resolving (as opposed to registering) must not invent a type. A capitalized
+	// name can reach a module that does not declare it -- a shared node resolved
+	// while another file is current -- and `io.Type` for `types.Type` is not just
+	// wrong, it survives into cgen as an undeclared C symbol. Leave such a name
+	// bare so the consumer's own module context can qualify it correctly.
+	if tc.resolution_type_mode && name.len > 0 && name[0] >= `A` && name[0] <= `Z`
+		&& !tc.qualify_candidate_type_exists(qualified) {
+		return name
+	}
 	return qualified
 }
 

@@ -21,7 +21,7 @@ fn test_the_v_compiler_can_be_invoked() {
 	assert r.exit_code == 0
 	// println('"${vcmd}" exit_code: ${r.exit_code} | output: ${r.output}')
 	// This assertion verifies the legacy builder's exact diagnostic text.
-	vcmd_error := '${os.quoted_path(vexec)} -old-compiler nonexisting.v'
+	vcmd_error := '${os.quoted_path(vexec)} nonexisting.v'
 	r_error := os.execute(vcmd_error)
 	if r_error.exit_code < 0 {
 		panic(r_error.output)

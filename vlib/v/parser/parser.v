@@ -817,6 +817,13 @@ fn (mut p Parser) peek_is(tok token.Token) bool {
 fn (mut p Parser) check(expected token.Token) {
 	if p.tok == expected {
 		p.next()
+		return
+	}
+	// Recovery is deliberately silent for most tokens, but a file can never legitimately end
+	// while a closing delimiter is still owed. Reporting it stops `v fmt` from accepting a
+	// truncated file and printing the balanced - i.e. invented - version of it.
+	if p.tok == .eof && expected in [token.Token.rcbr, .rpar, .rsbr] {
+		p.record_diagnostic('unexpected eof, expecting `${expected}`', p.tok_pos)
 	}
 }
 
@@ -2173,6 +2180,15 @@ fn (mut p Parser) global_decl() flat.NodeId {
 	header_pos := p.span_to(global_start)
 	mut ids := []flat.NodeId{}
 	for {
+		if p.tok == .eof {
+			// An unterminated `__global (` used to spin here forever: `p.next()` cannot
+			// advance past eof, and the grouped form never breaks on its own.
+			if is_grouped {
+				// The wording and the acute quotes match the existing fixtures.
+				p.record_diagnostic('unexpected eof, expecting ´)´', p.s.src.len)
+			}
+			break
+		}
 		if p.tok == .semicolon {
 			p.next()
 			if !is_grouped {
@@ -2304,6 +2320,15 @@ fn (mut p Parser) const_decl() flat.NodeId {
 	}
 	mut ids := []flat.NodeId{}
 	for {
+		if p.tok == .eof {
+			// An unterminated `const (` used to spin here forever: `p.next()` cannot
+			// advance past eof, and the grouped form never breaks on its own.
+			if is_grouped {
+				// The wording and the acute quotes match the existing fixtures.
+				p.record_diagnostic('unexpected eof, expecting ´)´', p.s.src.len)
+			}
+			break
+		}
 		if p.tok == .semicolon {
 			p.next()
 			if !is_grouped {
@@ -3890,11 +3915,21 @@ fn (mut p Parser) parse_comptime_cond() string {
 		} else {
 			raw_tok_str
 		}
+		if tok_str.len == 0 {
+			// A condition that wraps onto the next line gets an automatic semicolon, which has
+			// no textual form. Writing it would leave a double separator (`a  || b`) that the
+			// formatter then prints verbatim and collapses on the next run.
+			p.next()
+			continue
+		}
 		// Source style writes the optional-flag marker detached (`$if flag ? {`), but the
 		// condition is otherwise stored without that space so flag lookups can match on it.
 		// Keep it only when formatting, as parse_attribute_comptime_cond does for `@[if flag ?]`.
+		// `in`/`!in` must stay detached from the type list too: the scanner only recognises
+		// `!in` when a space follows, so `T !in[...]` would re-scan as `!` `in` `[`.
 		needs_space := comptime_cond_needs_space(prev_tok_str, tok_str)
 			|| (p.prefs.is_fmt && tok_str == '?')
+			|| (p.prefs.is_fmt && tok_str == '[' && prev_tok_str in ['in', '!in'])
 		if cond.len > 0 && needs_space {
 			cond.write_string(' ')
 		}
@@ -6533,8 +6568,14 @@ fn (mut p Parser) stmt() flat.NodeId {
 		}
 		.key_go, .key_spawn {
 			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
+			spawn_pos := p.span_start()
 			p.next()
 			inner := p.expr(.lowest)
+			// Capture the span before the terminating semicolon is consumed, so that the
+			// node covers exactly `spawn <call>`. Nodes left without a position inherit the
+			// *next* token's span (see add_node), which shifts every source-gap lookup that
+			// the formatter does for blank lines and comments by one statement.
+			spawn_span := p.span_to(spawn_pos)
 			if p.tok == .semicolon {
 				p.next()
 			}
@@ -6542,12 +6583,14 @@ fn (mut p Parser) stmt() flat.NodeId {
 			spawn_expr := p.add_node(flat.Node{
 				kind: .spawn_expr
 				value: keyword
+				pos: spawn_span
 				children_start: spawn_start
 				children_count: 1
 			})
 			sstart := p.add_child(spawn_expr)
 			return p.add_node(flat.Node{
 				kind: .expr_stmt
+				pos: spawn_span
 				children_start: sstart
 				children_count: 1
 			})
@@ -7850,7 +7893,11 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 
 	if p.tok == .decl_assign {
 		p.next()
-		rhs := if p.lhs_is_dynamic_sql_expr_alias(lhs) && p.tok == .lcbr
+		// The compiler only treats `x := { ... }` as an ORM dynamic-where literal when a `sql`
+		// block in the same file uses `x`. The formatter has no such luxury: the shape check
+		// alone already rules out map literals (a top level `:` disqualifies), and reading one
+		// as a map instead turns its conditions into keys with empty values.
+		rhs := if p.tok == .lcbr && (p.lhs_is_dynamic_sql_expr_alias(lhs) || p.prefs.is_fmt)
 			&& p.current_lcbr_looks_query_data_literal() {
 			p.sql_query_data_literal_expr()
 		} else {
@@ -9194,12 +9241,23 @@ fn (mut p Parser) sql_expr(sql_pos int) flat.NodeId {
 }
 
 fn (mut p Parser) sql_query_data_literal_expr() flat.NodeId {
+	start := p.span_start()
 	tokens := p.sql_block_tokens()
-	return p.add_node(flat.Node{
+	id := p.add_node(flat.Node{
 		kind: .sql_expr
 		value: 'querydata ${tokens.join(' ')}'
 		typ: 'orm.QueryData'
+		pos: p.span_to(start)
 	})
+	if p.prefs.is_fmt {
+		// The literal is a bare `{ ... }` block whose contents are not a general expression
+		// tree, so keep the original text: rebuilding it from `tokens` would drop the body.
+		end := int_min(p.a.node(id).pos.end, p.s.src.len)
+		if end > start {
+			p.a.formatter_sources[int(id)] = p.s.src[start..end]
+		}
+	}
+	return id
 }
 
 fn (mut p Parser) starts_sql_expr() bool {
@@ -10362,12 +10420,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_go, .key_spawn {
 			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
+			spawn_pos := p.span_start()
 			p.next()
 			inner := p.expr(.lowest)
 			sstart := p.add_child(inner)
 			return p.add_node(flat.Node{
 				kind: .spawn_expr
 				value: keyword
+				pos: p.span_to(spawn_pos)
 				children_start: sstart
 				children_count: 1
 			})
@@ -10444,6 +10504,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.ellipsis {
 			// spread: ...expr
+			spread_start := p.span_start()
 			p.next()
 			inner := p.expr(.lowest)
 			pstart := p.add_child(inner)
@@ -10451,6 +10512,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				kind: .prefix
 				op: .none
 				value: '...'
+				pos: p.span_to(spread_start)
 				children_start: pstart
 				children_count: 1
 			})
@@ -10733,6 +10795,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		// vararg spread: ...expr
 		if p.tok == .ellipsis {
+			spread_start := p.span_start()
 			p.next()
 			inner := p.expr(.lowest)
 			sstart := p.add_child(inner)
@@ -10740,6 +10803,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 				kind: .prefix
 				op: .none
 				value: '...'
+				pos: p.span_to(spread_start)
 				children_start: sstart
 				children_count: 1
 			})
@@ -11292,8 +11356,53 @@ fn type_name_can_init(type_name string) bool {
 	return short.len > 0 && short[0] >= `A` && short[0] <= `Z`
 }
 
+// struct_init_name_start returns the source offset where the type expression in front of the
+// `{` of a struct initializer begins. The resolved `name` is not always spelled the way the
+// source spells it (a type declared inside a function gets a qualified name), so subtracting
+// its length can reach back past the type and give the node a span that starts in the middle
+// of the preceding expression. Fall back to walking the source backwards in that case.
+fn (p &Parser) struct_init_name_start(name string) int {
+	lcbr := clamp_source_offset(p.tok_pos, p.s.src.len)
+	guess := lcbr - name.len
+	if guess >= 0 && p.s.src[guess..lcbr] == name {
+		return guess
+	}
+	mut start := lcbr
+	for start > 0 {
+		c := p.s.src[start - 1]
+		if c == `]` {
+			mut depth := 0
+			mut i := start - 1
+			for i >= 0 {
+				if p.s.src[i] == `]` {
+					depth++
+				} else if p.s.src[i] == `[` {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+				i--
+			}
+			if i < 0 {
+				break
+			}
+			start = i
+			continue
+		}
+		if !(c.is_letter() || c.is_digit() || c == `_` || c == `.`) {
+			break
+		}
+		start--
+	}
+	if start == lcbr {
+		return int_max(0, guess)
+	}
+	return start
+}
+
 fn (mut p Parser) struct_init(name string) flat.NodeId {
-	init_start := int_max(0, p.tok_pos - name.len)
+	init_start := p.struct_init_name_start(name)
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
 	// assoc syntax: Type{...base, field: val}

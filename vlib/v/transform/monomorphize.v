@@ -7636,7 +7636,8 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 		}
 		inference_param_type := generic_inference_param_type(child)
 		mut defer_numeric_literal := false
-		if t.a.nodes[int(arg_id)].kind in [.int_literal, .float_literal]
+		arg_kind := t.a.nodes[int(arg_id)].kind
+		if arg_kind in [.int_literal, .float_literal]
 			&& is_generic_fn_placeholder_name(inference_param_type) {
 			mut later_param_idx := param_idx + 1
 			for later_child_idx in i + 1 .. decl.node.children_count {
@@ -7650,8 +7651,16 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 				}
 				if generic_inference_param_type(later_child) == inference_param_type
 					&& int(later_arg_id) >= 0 {
-					defer_numeric_literal = true
-					break
+					later_kind := t.a.nodes[int(later_arg_id)].kind
+					// A later argument that carries a type of its own decides the
+					// placeholder. Between untyped numeric literals only a float may
+					// override an int, never the other way round: otherwise
+					// `f(0.0, 1, 1)` would take `int` from the trailing literal.
+					if later_kind !in [.int_literal, .float_literal]
+						|| (arg_kind == .int_literal && later_kind == .float_literal) {
+						defer_numeric_literal = true
+						break
+					}
 				}
 				later_param_idx++
 			}
@@ -12726,6 +12735,13 @@ fn (t &Transformer) generic_inference_expected_type(typ string) string {
 fn generic_type_indirections(typ string) int {
 	mut clean := typ.trim_space()
 	mut count := 0
+	// An option or result wrapper is not itself a level of indirection, but it does
+	// not hide the pointer inside it either: `?&Tag` reports one, the same as the
+	// `$for field` metadata does. Without this a `$if T.indirections != 0` branch is
+	// never taken for an option-of-pointer generic argument.
+	for clean.starts_with('?') || clean.starts_with('!') {
+		clean = clean[1..].trim_space()
+	}
 	if clean.starts_with('shared ') {
 		count++
 		clean = clean[7..].trim_space()

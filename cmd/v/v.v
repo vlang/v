@@ -138,8 +138,13 @@ fn main() {
 	run_with_fallback(args, args)
 }
 
+// fallback_is_disabled reports whether retrying with the compatibility compiler was turned off.
+fn fallback_is_disabled() bool {
+	return os.getenv(v3_no_fallback_env) == '1' || os.getenv(v3_retry_env) == '1'
+}
+
 fn run_with_fallback(driver_args []string, retry_args []string) {
-	if os.getenv(v3_no_fallback_env) == '1' || os.getenv(v3_retry_env) == '1' {
+	if fallback_is_disabled() {
 		driver.run(driver_args)
 		return
 	}
@@ -151,8 +156,8 @@ fn run_with_fallback(driver_args []string, retry_args []string) {
 	os.setenv(v3_c_error_dir_env, c_error_dir, true)
 	state := &RetryState{
 		fallback_file: fallback_file
-		c_error_dir: c_error_dir
-		args: retry_args.clone()
+		c_error_dir:   c_error_dir
+		args:          retry_args.clone()
 	}
 	unsafe { retry_state(state) }
 	at_exit(retry_with_v1_at_exit) or {
@@ -222,15 +227,66 @@ fn run_external_tool(args []string, command_index int, command string) {
 		eprintln('cannot find the `${command}` tool source in `${vroot}`')
 		exit(1)
 	}
-	mut driver_args := []string{}
+	mut prefix_args := []string{}
 	if command_index > 0 {
-		driver_args << args[..command_index]
+		prefix_args << args[..command_index]
 	}
-	driver_args << ['run', tool_source]
+	mut tool_args := []string{}
 	if command_index >= 0 {
-		driver_args << args[command_index..]
+		tool_args << args[command_index..]
 	}
-	run_with_fallback(clean_compiler_selection_flags(driver_args), clean_compiler_selection_flags(args))
+	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args, args)
+}
+
+// launch_external_tool starts a `cmd/tools/` program, reusing the binary that was compiled
+// for a previous invocation whenever all of its sources are unchanged. Compiling a tool takes
+// seconds, while running one usually takes milliseconds, so tools that are invoked once per
+// file (`v fmt -verify`, `v vet`) are unusable without this.
+fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string, args []string) {
+	retry_args := clean_compiler_selection_flags(args)
+	if !tool_cache_is_disabled() {
+		vexe := os.real_path(os.executable())
+		build_args := clean_compiler_selection_flags(prefix_args)
+		if entry := tool_cache_entry(vexe, vroot, tool_name, tool_source, build_args) {
+			reason := tool_cache_stale_reason(entry)
+			if reason == '' {
+				if tool_cache_is_verbose() {
+					eprintln('> reusing the cached `${tool_name}` at `${entry.binary}`')
+				}
+				exec_cached_tool(entry.binary, tool_args)
+			}
+			if recorded := unbuildable_tool_failure(entry) {
+				// Rebuilding a tool that is already known to not compile would cost seconds on
+				// every single invocation, so report the recorded failure straight away instead.
+				if fallback_is_disabled() {
+					eprintln(recorded.trim_space())
+					exit(1)
+				}
+				launch_v1(retry_args, unbuildable_tool_reason(tool_name, entry), RetryState{})
+			}
+			if tool_cache_is_verbose() {
+				eprintln('> recompiling `${tool_name}`, because ${reason}')
+			}
+			build_tool_binary(vexe, entry) or {
+				eprintln(err.msg().trim_space())
+				if fallback_is_disabled() {
+					exit(1)
+				}
+				launch_v1(retry_args, unbuildable_tool_reason(tool_name, entry), RetryState{})
+			}
+			exec_cached_tool(entry.binary, tool_args)
+		}
+	}
+	mut driver_args := []string{}
+	driver_args << prefix_args
+	driver_args << ['run', tool_source]
+	driver_args << tool_args
+	run_with_fallback(clean_compiler_selection_flags(driver_args), retry_args)
+}
+
+// unbuildable_tool_reason explains why a tool has to run on the compatibility compiler.
+fn unbuildable_tool_reason(tool_name string, entry ToolCacheEntry) string {
+	return 'the V compiler cannot build `cmd/tools/${tool_name}` (recorded in `${entry.unbuildable}`)'
 }
 
 fn print_help(args []string, command_index int) {
