@@ -180,3 +180,14 @@ fn test_a_semicolon_ends_a_pipe_lambda_body() {
 	assert !code_references_ident('cb := |x| x + 1; _ = cb', 'x', true)
 	assert !code_references_ident('cb := |x| x + 1', 'x', true)
 }
+
+fn test_a_short_struct_argument_names_a_field() {
+	assert !code_references_ident('configure(x: 1)', 'x', true)
+	assert !code_references_ident('_ = cfg.configure(x: 1)', 'x', true)
+	assert !code_references_ident('_ = build[int](x: 1)', 'x', true)
+	assert !code_references_ident('return configure(a: 1, x: 2)', 'x', true)
+	assert !code_references_ident('configure(f(a), x: 1)', 'x', true)
+	// A map literal passed as an argument keeps its key an expression.
+	assert code_references_ident('configure({x: 1})', 'x', true)
+	assert code_references_ident('configure(x, y: 1)', 'x', true)
+}

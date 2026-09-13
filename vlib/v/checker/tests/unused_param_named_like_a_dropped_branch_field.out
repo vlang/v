@@ -12,3 +12,10 @@ vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:17:11: no
       |           ^
    18 |     $if windows {
    19 |         cfg := Config{}
+vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:35:26: notice: unused parameter: `x`
+   33 | 
+   34 | // The short struct argument of a call names a field, it does not read one.
+   35 | fn short_struct_argument(x int) {
+      |                          ^
+   36 |     $if windows {
+   37 |         configure(x: 1)

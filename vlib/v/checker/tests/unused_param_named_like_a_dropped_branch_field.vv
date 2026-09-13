@@ -27,7 +27,20 @@ fn referenced(w int) {
 	}
 }
 
+fn configure(cfg Config) int {
+	return cfg.x
+}
+
+// The short struct argument of a call names a field, it does not read one.
+fn short_struct_argument(x int) {
+	$if windows {
+		configure(x: 1)
+	}
+}
+
 fn main() {
+	short_struct_argument(4)
+	println(configure(x: 5))
 	field_label(1)
 	member(2)
 	referenced(3)

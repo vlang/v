@@ -2796,25 +2796,26 @@ fn colon_binds_a_field_or_label(tokens []string, index int) bool {
 	if index + 2 < tokens.len && tokens[index + 2] == 'for' {
 		return true
 	}
-	// A struct literal is `Type{x: 1}`; a bare `{` opens a map literal.
+	// A struct literal is `Type{x: 1}` and a short struct argument is
+	// `configure(x: 1)`; a bare `{` opens a map literal, whose key is code.
 	mut depth := 0
 	for i := index - 1; i >= 0; i-- {
 		match tokens[i] {
 			'}', ')', ']' {
 				depth++
 			}
-			'(', '[' {
+			'[' {
 				if depth == 0 {
 					return false
 				}
 				depth--
 			}
-			'{' {
+			'(', '{' {
 				if depth > 0 {
 					depth--
 					continue
 				}
-				return brace_opens_a_typed_literal(tokens, i)
+				return name_precedes_delimiter(tokens, i)
 			}
 			else {}
 		}
@@ -2822,11 +2823,13 @@ fn colon_binds_a_field_or_label(tokens []string, index int) bool {
 	return false
 }
 
-// brace_opens_a_typed_literal reports whether the `{` at `index` follows a type
-// name, which makes it a struct literal rather than a map one. `Config{`,
-// `[]Config{` and `map[string]int{` all do, and so does the `Box[int]{` of a
-// generic type, whose argument list has to be stepped over first.
-fn brace_opens_a_typed_literal(tokens []string, index int) bool {
+// name_precedes_delimiter reports whether the `{` or `(` at `index` follows a
+// name: the type of a struct literal, or the function of a call taking a short
+// struct argument. `Config{`, `[]Config{`, `map[string]int{` and
+// `configure(` all do, and so does the `Box[int]{` of a generic type, whose
+// argument list has to be stepped over first. A bare `{` does not, and opens a
+// map literal instead.
+fn name_precedes_delimiter(tokens []string, index int) bool {
 	if index == 0 {
 		return false
 	}
