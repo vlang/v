@@ -12,3 +12,10 @@ vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:9:11: notice: u
       |           ^
    10 |     // y
    11 |     $if windows {
+vlib/v/checker/tests/unused_param_mentioned_only_in_a_comment.vv:23:17: notice: unused parameter: `r`
+   21 | 
+   22 | // `r` prefixes the literal here, it is not a name of its own.
+   23 | fn raw_prefixed(r string) {
+      |                 ^
+   24 |     $if windows {
+   25 |         println(r'raw')

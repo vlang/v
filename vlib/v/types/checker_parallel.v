@@ -2684,18 +2684,30 @@ fn skip_non_code_at(source string, i int) (int, string) {
 		}
 		return j, ''
 	}
-	quote := source[i]
+	// `r'..'`, `c'..'` and `js'..'` prefix their quote directly, and a raw
+	// string has neither escapes nor interpolations.
+	mut opening := i
+	mut raw := false
+	if (source[i] == `r` || source[i] == `c`) && i + 1 < source.len
+		&& (source[i + 1] == `'` || source[i + 1] == `"`) {
+		opening = i + 1
+		raw = source[i] == `r`
+	} else if source[i] == `j` && i + 2 < source.len && source[i + 1] == `s`
+		&& (source[i + 2] == `'` || source[i + 2] == `"`) {
+		opening = i + 2
+	}
+	quote := source[opening]
 	if quote != `'` && quote != `"` && quote != `\`` {
 		return i, ''
 	}
 	mut interpolated := []u8{}
-	mut j := i + 1
+	mut j := opening + 1
 	for j < source.len && source[j] != quote {
-		if source[j] == `\\` {
+		if !raw && source[j] == `\\` {
 			j += 2
 			continue
 		}
-		if source[j] == `$` && j + 1 < source.len && source[j + 1] == `{` {
+		if !raw && source[j] == `$` && j + 1 < source.len && source[j + 1] == `{` {
 			mut braces := 0
 			mut k := j + 1
 			for k < source.len {
@@ -2834,14 +2846,18 @@ fn is_type_name_token(word string) bool {
 // token_is_assignment_target reports whether `tokens[index]` is the whole left
 // hand side of a plain `=`, the one position fn_body_read_names skips.
 fn token_is_assignment_target(tokens []string, lines []int, index int) bool {
-	if index + 1 >= tokens.len || tokens[index + 1] != '=' {
+	// The AST walk skips the first child of the assignment alone, so `x` of
+	// `x, y = pair()` is written while `y` is read.
+	if binding_list_start(tokens, index) != index {
+		return false
+	}
+	after := binding_list_end(tokens, index)
+	if after >= tokens.len || tokens[after] != '=' {
 		return false
 	}
 	if index == 0 {
 		return true
 	}
-	// Only the first name of a statement: `a, x = pair()` reads `x` in the AST
-	// walk too, which skips the first child of the assignment alone.
 	return lines[index - 1] != lines[index] || tokens[index - 1] in ['{', '}', ';']
 }
 

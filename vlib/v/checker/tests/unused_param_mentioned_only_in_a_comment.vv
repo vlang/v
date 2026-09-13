@@ -19,8 +19,16 @@ fn interpolated(z int) {
 	}
 }
 
+// `r` prefixes the literal here, it is not a name of its own.
+fn raw_prefixed(r string) {
+	$if windows {
+		println(r'raw')
+	}
+}
+
 fn main() {
 	commented(1)
 	quoted(2)
 	interpolated(3)
+	raw_prefixed('a')
 }

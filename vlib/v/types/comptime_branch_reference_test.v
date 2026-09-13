@@ -121,3 +121,36 @@ fn test_a_keyword_before_the_brace_does_not_make_a_struct_literal() {
 	assert !code_references_ident('return Config{x: 1}', 'x', true)
 	assert !code_references_ident('return Box[int]{x: 1}', 'x', true)
 }
+
+// code_references_ident runs on the output of code_text_in_range, so a literal
+// has to go through the sanitizer to be tested.
+fn scanned_code(code string) string {
+	return code_text_in_range(code, 0, code.len)
+}
+
+fn test_a_string_prefix_is_not_a_name() {
+	assert !code_references_ident(scanned_code("println(r'hello')"), 'r', true)
+	assert !code_references_ident(scanned_code("println(c'hello')"), 'c', true)
+	assert !code_references_ident(scanned_code("println(js'hello')"), 'js', true)
+	assert !code_references_ident(scanned_code('println(r"hello")'), 'r', true)
+	// A raw string has no interpolation, so its `${..}` stays plain text.
+	assert !code_references_ident(scanned_code(r"println(r'${x}')"), 'x', true)
+	assert code_references_ident(scanned_code(r"println('${x}')"), 'x', true)
+	// Nor does it have escapes: the quote after the backslash still closes
+	// the literal, so what follows is code again.
+	assert code_references_ident(scanned_code(r"println(r'a\') + x"), 'x', true)
+	// The name itself still reads outside of a literal.
+	assert code_references_ident(scanned_code("println(r, r'hello')"), 'r', true)
+}
+
+fn test_only_the_first_target_of_a_multi_assignment_is_written() {
+	assert !code_references_ident('x, y = pair()', 'x', false)
+	assert !code_references_ident('x, b, c = triple()', 'x', false)
+	assert code_references_ident('x, y = pair()', 'y', false)
+	assert code_references_ident('a, x, c = triple()', 'x', false)
+	// Only a bare name is the target; an index or a field is read.
+	assert code_references_ident('m[x], y = pair()', 'x', false)
+	assert code_references_ident('x.f, y = pair()', 'x', false)
+	// The unused parameter notice counts every write as a use.
+	assert code_references_ident('x, y = pair()', 'x', true)
+}

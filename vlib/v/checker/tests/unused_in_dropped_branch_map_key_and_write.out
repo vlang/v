@@ -5,3 +5,10 @@ vlib/v/checker/tests/unused_in_dropped_branch_map_key_and_write.vv:14:6: warning
       |         ^
    15 |     $if windows {
    16 |         w = 1
+vlib/v/checker/tests/unused_in_dropped_branch_map_key_and_write.vv:37:6: warning: unused variable: `first`
+   35 | 
+   36 | fn multi_assign() {
+   37 |     mut first := 0
+      |         ~~~~~
+   38 |     mut second := 0
+   39 |     $if windows {

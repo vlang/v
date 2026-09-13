@@ -28,8 +28,25 @@ fn returned_map_key(r string) map[string]int {
 	}
 }
 
+// Only the first target of a multi-assignment is written without being read.
+fn pair() (int, int) {
+	return 1, 2
+}
+
+fn multi_assign() {
+	mut first := 0
+	mut second := 0
+	$if windows {
+		first, second = pair()
+	} $else {
+		_, second = pair()
+	}
+	println(second)
+}
+
 fn main() {
 	map_key('a')
 	write_only()
+	multi_assign()
 	println(returned_map_key('c'))
 }
