@@ -633,3 +633,15 @@ fn test_resolved_symbols_have_stable_ids_and_storage() {
 	assert first.str == second.str
 	assert tc.symbol_count() == 1
 }
+
+fn test_node_cache_reset_drops_stale_fn_values() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.reset_node_caches(8)
+	tc.set_resolved_fn_value(3, 'previous.callback')
+	assert tc.resolved_fn_value_name(3)? == 'previous.callback'
+	// A checker reused on another AST must not resolve recycled ids to the
+	// previous program's targets.
+	tc.reset_node_caches(8)
+	assert tc.resolved_fn_value_name(3) == none
+}

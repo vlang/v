@@ -1709,9 +1709,20 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 
 // reset_node_caches updates reset node caches state for types.
 fn (mut tc TypeChecker) reset_node_caches(n int) {
+	tc.reset_sparse_fn_values()
 	for group in 0 .. 2 {
 		tc.reset_node_cache_group(n, group)
 	}
+}
+
+// reset_sparse_fn_values drops the resolved function-value names of a
+// previous AST. The dense cache this map replaced was recreated by every
+// node-cache reset; without this, a checker collected again would resolve
+// recycled node ids to stale targets. Called on the collecting thread before
+// both the serial and the parallel cache initialization.
+fn (mut tc TypeChecker) reset_sparse_fn_values() {
+	tc.sparse_resolved_fn_values.clear()
+	tc.fork_fn_value_writes.clear()
 }
 
 // Independent arrays can be initialized on separate persistent worker arenas.

@@ -216,6 +216,9 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 		|| a.worker_pool.size() < 2 || a.nodes.len < 65536 {
 		return false
 	}
+	// The cache groups below reset the node-indexed arrays on pool lanes; the
+	// sparse fn-value store is cleared here, on the collecting thread.
+	tc.reset_sparse_fn_values()
 	tc.init_direct_parent_index(a)
 	parent_jobs := int_min(8, a.worker_pool.size() + 1)
 	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
