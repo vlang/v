@@ -81,11 +81,24 @@ fn tool_cache_dir() ?string {
 		if !os.is_dir(candidate) {
 			os.mkdir_all(candidate) or { continue }
 		}
-		if os.is_dir(candidate) {
+		if os.is_dir(candidate) && directory_is_writable(candidate) {
 			return candidate
 		}
 	}
 	return none
+}
+
+// directory_is_writable reports whether this process can actually create files in a
+// directory. Existing and being a directory does not answer that: a cache left behind by an
+// earlier `sudo` run belongs to another user, a `VTOOLS_CACHE_DIR` can point at a read-only
+// mount, and an ACL can deny what the mode bits allow. Writing a probe is the only reliable
+// test, and without it an unwritable first candidate is returned and every tool build then
+// fails at staging, rather than falling through to the temporary directory that would work.
+fn directory_is_writable(directory string) bool {
+	probe := os.join_path(directory, '.tool-cache-probe.${os.getpid()}')
+	os.write_file(probe, '') or { return false }
+	os.rm(probe) or {}
+	return true
 }
 
 // tool_key_sources returns the files that make up the tool itself, in a stable order.
@@ -156,8 +169,12 @@ fn last_modified(path string) i64 {
 
 // ambient_build_variables are the environment variables that change what a tool build
 // produces without being part of its command line. `CFLAGS` and `LDFLAGS` are applied by the
-// driver to native compilation and linking; `VCOVDIR` turns on coverage instrumentation.
-const ambient_build_variables = ['CFLAGS', 'LDFLAGS', 'VCOVDIR']
+// driver to native compilation and linking; `VCOVDIR` turns on coverage instrumentation. The
+// `PKG_CONFIG_*` ones decide what `$pkgconfig(...)` and `#pkgconfig` resolve to, which
+// selects whole native branches: `vlib/db/sqlite/sqlite.c.v` picks between the system SQLite
+// and the bundled amalgamation that way, and neither choice changes a single source stamp.
+const ambient_build_variables = ['CFLAGS', 'LDFLAGS', 'VCOVDIR', 'PKG_CONFIG_PATH',
+	'PKG_CONFIG_LIBDIR', 'PKG_CONFIG_SYSROOT_DIR']
 
 // tool_cache_key derives the content address of a cached tool binary. Everything that can
 // change the produced executable without being visible in the recorded source manifest has
@@ -176,10 +193,24 @@ fn tool_cache_key(vexe string, tool_name string, tool_sources []string, build_ar
 	for name in ambient_build_variables {
 		parts << 'env${tool_cache_field_separator}${name}${tool_cache_field_separator}${os.getenv(name)}'
 	}
+	// Which `pkg-config` is on PATH decides the same branches, and swapping it (a cross
+	// toolchain's wrapper, or simply installing one) leaves every environment variable above
+	// untouched. Stamping the resolved binary catches that without keying on all of PATH,
+	// which changes between shells and would defeat the cache outright.
+	parts << 'pkgconfig${tool_cache_field_separator}${pkgconfig_executable_stamp()}'
 	for source in tool_sources {
 		parts << 'src${tool_cache_field_separator}${source}${tool_cache_field_separator}${file_stamp(source)}'
 	}
 	return sha256.hexhash(parts.join('\n'))
+}
+
+// pkgconfig_executable_stamp identifies the `pkg-config` that a build would use. Resolving it
+// costs a short PATH scan and one stat, so it stays cheap enough for a launcher that runs once
+// per file. A `.pc` file appearing or disappearing without any of this changing is still not
+// detected; catching that would mean running `pkg-config` on every single tool launch.
+fn pkgconfig_executable_stamp() string {
+	path := os.find_abs_path_of_executable('pkg-config') or { return 'missing' }
+	return '${path}${tool_cache_field_separator}${file_stamp(path)}'
 }
 
 // tool_cache_entry locates the cache slot for a tool, or none when no cache is usable.
@@ -464,9 +495,15 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	process.set_args(build_args)
 	process.set_environment(environment)
 	process.set_redirect_stdio_merged()
+	// Drain the pipe while the child is still running. Waiting first deadlocks as soon as
+	// the build produces more output than the pipe buffer holds -- a few hundred V
+	// diagnostics, or a C compiler erroring out, is enough: the child blocks writing while
+	// the parent blocks waiting, and `v fmt`/`v vet` hang forever. `stdout_slurp` reads
+	// until the child closes its end, so it returns once the build is over.
+	process.run()
+	output := process.stdout_slurp()
 	process.wait()
 	code := process.code
-	output := process.stdout_slurp()
 	failure := process.err
 	process.close()
 	if code != 0 || !os.is_file(staged) {

@@ -847,6 +847,11 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 	if !test_base.ends_with('_test') {
 		return false
 	}
+	if suffix_is_backend_name(backend_suffix) {
+		// A backend name wins over an architecture alias: `wasm` spells both, and
+		// `foo_test.wasm.v` is a WASM backend test, not an amd64/arm64 one.
+		return backend_suffix == backend
+	}
 	if _ := arch_from_string(backend_suffix) {
 		// `foo_test.arm64.v` names an architecture, not a backend. Whether this host
 		// can run it is decided by is_test_file_for_platform; every such test is a
@@ -886,10 +891,15 @@ pub fn is_test_file_for_platform(path string, backend string, target Target) boo
 		if base.contains('.') {
 			test_base := base.all_before_last('.')
 			if test_base.ends_with('_test') {
-				if arch := arch_from_string(base.all_after_last('.')) {
-					// An architecture-qualified test only belongs to that architecture.
-					if arch != target.arch {
-						return false
+				suffix := base.all_after_last('.')
+				// A backend-qualified test (`foo_test.wasm.v`) is not architecture
+				// qualified, even when the backend name is also an architecture alias.
+				if !suffix_is_backend_name(suffix) {
+					if arch := arch_from_string(suffix) {
+						// An architecture-qualified test only belongs to that architecture.
+						if arch != target.arch {
+							return false
+						}
 					}
 				}
 				probe = test_base.all_before_last('_test') + '.v'

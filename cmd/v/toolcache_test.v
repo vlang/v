@@ -514,3 +514,99 @@ fn test_a_native_input_is_recorded_and_invalidates_the_cache() {
 	os.write_file(native_source, '#include "helper.h"\nint native_double(int x) { return x * 3; }\n')!
 	assert !tool_cache_is_fresh(entry), 'editing a compiled C source must force a rebuild'
 }
+
+// A build that writes more than the pipe buffer holds must not deadlock: the child blocks
+// writing while the parent blocks in `wait()`, and `v fmt`/`v vet` then hang forever. The
+// launcher has to drain the pipe while the child is still running.
+fn test_a_tool_build_with_large_output_does_not_deadlock() {
+	vexe := @VEXE
+	if !os.is_executable(vexe) {
+		eprintln('> skipping, no V executable at `${vexe}`')
+		return
+	}
+	directory := toolcache_test_dir('large_output')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	// Several thousand distinct diagnostics, comfortably past any pipe buffer.
+	mut lines := ['module main\n']
+	for i in 0 .. 4000 {
+		lines << 'fn broken_${i}() { undefined_call_${i}() }'
+	}
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, lines.join('\n'))!
+
+	entry := ToolCacheEntry{
+		name:     'vdemo'
+		source:   source
+		vroot:    directory
+		binary:   os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+		manifest: os.join_path(directory, 'vdemo-' + 'a'.repeat(64)) + '.inputs'
+	}
+	// The build must fail, but it must *return*. Before draining concurrently this call
+	// never came back at all.
+	output := build_tool_binary(vexe, entry) or { err.msg() }
+	assert output.len > 0, 'the failing build has to report something'
+	assert !os.exists(entry.binary), 'a failed build must not install a binary'
+}
+
+// An unwritable cache directory has to be passed over, not returned: staging into it fails
+// for every tool, while the next candidate would have worked.
+fn test_an_unwritable_cache_directory_is_skipped() {
+	if os.getuid() == 0 {
+		eprintln('> skipping, root can write into a read-only directory')
+		return
+	}
+	directory := toolcache_test_dir('unwritable')
+	defer {
+		os.chmod(os.join_path(directory, 'locked'), 0o755) or {}
+		os.rmdir_all(directory) or {}
+	}
+	locked := os.join_path(directory, 'locked')
+	os.mkdir_all(locked)!
+	os.chmod(locked, 0o500)!
+	assert !directory_is_writable(locked), 'a read-only directory must not pass the probe'
+
+	writable := os.join_path(directory, 'open')
+	os.mkdir_all(writable)!
+	assert directory_is_writable(writable), 'a normal directory must pass the probe'
+	// The probe must not leave anything behind that a later listing would trip over.
+	assert os.ls(writable)! == []
+
+	previous := os.getenv(tool_cache_dir_env)
+	defer {
+		os.setenv(tool_cache_dir_env, previous, true)
+	}
+	os.setenv(tool_cache_dir_env, locked, true)
+	chosen := tool_cache_dir() or { '' }
+	assert chosen != locked, 'the unwritable candidate must not be chosen'
+	assert chosen == '' || directory_is_writable(chosen), 'the chosen cache has to be writable'
+}
+
+// `$pkgconfig(...)` and `#pkgconfig` select whole native branches, so the pkg-config
+// environment decides what a tool is built against without touching a single source stamp.
+fn test_the_cache_key_covers_the_pkgconfig_environment() {
+	directory := toolcache_test_dir('pkgconfig')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	vexe := os.join_path(directory, 'v')
+	os.write_file(vexe, 'a pretend V executable')!
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, 'module main\n')!
+
+	for name in ['PKG_CONFIG_PATH', 'PKG_CONFIG_LIBDIR', 'PKG_CONFIG_SYSROOT_DIR'] {
+		assert name in ambient_build_variables, '${name} has to be part of the cache identity'
+	}
+
+	previous := os.getenv('PKG_CONFIG_PATH')
+	defer {
+		os.setenv('PKG_CONFIG_PATH', previous, true)
+	}
+	os.setenv('PKG_CONFIG_PATH', '', true)
+	baseline := tool_cache_key(vexe, 'vdemo', [source], [])
+	os.setenv('PKG_CONFIG_PATH', '/opt/custom/lib/pkgconfig', true)
+	assert tool_cache_key(vexe, 'vdemo', [source], []) != baseline, 'PKG_CONFIG_PATH must be part of the key'
+	os.setenv('PKG_CONFIG_PATH', '', true)
+	assert tool_cache_key(vexe, 'vdemo', [source], []) == baseline, 'clearing it must restore the key'
+}

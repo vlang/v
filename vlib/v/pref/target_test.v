@@ -329,3 +329,37 @@ fn test_os_is_target_of_rejects_emscripten_on_native_hosts() {
 	assert os_is_target_of('emscripten', 'emscripten')
 	assert os_is_target_of('wasm32_emscripten', 'emscripten')
 }
+
+// `.wasm.v` names the WASM backend, not the `wasm` architecture. AGENTS.md documents it as a
+// backend split, and reading it as an architecture both hid such tests from `-b wasm` and
+// made every native host skip them as foreign.
+fn test_backend_suffixes_win_over_architecture_aliases() {
+	assert is_test_file_for_backend('foo_test.wasm.v', 'wasm')
+	assert !is_test_file_for_backend('foo_test.wasm.v', 'c')
+	assert !is_test_file_for_backend('foo_test.wasm.v', 'js')
+	assert is_test_file_for_backend('foo_test.native.v', 'native')
+	assert !is_test_file_for_backend('foo_test.native.v', 'c')
+	assert is_test_file_for_backend('foo_test.c.v', 'c')
+	assert is_test_file_for_backend('foo_test.js.v', 'js')
+}
+
+fn test_architecture_suffixes_are_still_c_backend_tests() {
+	assert is_test_file_for_backend('foo_test.arm64.v', 'c')
+	assert !is_test_file_for_backend('foo_test.arm64.v', 'wasm')
+	assert is_test_file_for_backend('foo_test.amd64.v', 'c')
+}
+
+// A WASM backend test is not architecture qualified, so a native host must not filter it out
+// as a foreign architecture before the backend selection is even consulted.
+fn test_wasm_backend_tests_are_not_filtered_by_host_architecture() {
+	for arch in ['amd64', 'arm64'] {
+		target := target_from('linux', arch) or { panic(err) }
+		assert is_test_file_for_platform('foo_test.wasm.v', 'wasm', target), 'wasm test on ${arch}'
+		assert !is_test_file_for_platform('foo_test.wasm.v', 'c', target)
+	}
+	// An architecture-qualified test still belongs only to its own architecture.
+	arm := target_from('linux', 'arm64') or { panic(err) }
+	assert is_test_file_for_platform('foo_test.arm64.v', 'c', arm)
+	amd := target_from('linux', 'amd64') or { panic(err) }
+	assert !is_test_file_for_platform('foo_test.arm64.v', 'c', amd)
+}

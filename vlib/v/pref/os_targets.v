@@ -61,6 +61,18 @@ fn os_is_bsd_target(this_os string) bool {
 	return this_os in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
 }
 
+// known_backend_suffixes lists the backend names that a `.<backend>.v` file suffix may use.
+// They take precedence over known_arch_names when a suffix is read, because `wasm` spells
+// both a backend and an architecture and AGENTS.md documents `*.wasm.v` as the WASM backend
+// split. Reading it as an architecture instead both hides the file from `-b wasm` and makes
+// every native host skip it as foreign.
+pub const known_backend_suffixes = ['c', 'js', 'native', 'wasm']
+
+// suffix_is_backend_name reports whether a `.<name>.v` suffix names a backend.
+pub fn suffix_is_backend_name(name string) bool {
+	return name.trim_space().to_lower() in known_backend_suffixes
+}
+
 // known_arch_names lists every architecture name that a `_<arch>.v` file suffix or
 // an `-arch <name>` value may use, aliases included.
 pub const known_arch_names = ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486',
