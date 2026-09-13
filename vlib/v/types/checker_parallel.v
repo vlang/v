@@ -2822,7 +2822,13 @@ fn brace_opens_a_typed_literal(tokens []string, index int) bool {
 		}
 		before--
 	}
-	return before >= 0 && is_ident_token(tokens[before])
+	return before >= 0 && is_type_name_token(tokens[before])
+}
+
+// is_type_name_token rejects the keywords that also read as a bare name, so
+// that the map literal of `return {x: 1}` is not taken for a struct one.
+fn is_type_name_token(word string) bool {
+	return is_ident_token(word) && !token.Token.from_string_tinyv(word).is_keyword()
 }
 
 // token_is_assignment_target reports whether `tokens[index]` is the whole left

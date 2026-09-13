@@ -112,3 +112,12 @@ fn test_a_pipe_lambda_may_follow_a_colon_or_a_push() {
 	assert code_references_ident('s := S{flags: a | x}', 'x', true)
 	assert code_references_ident('arr << a | x', 'x', true)
 }
+
+fn test_a_keyword_before_the_brace_does_not_make_a_struct_literal() {
+	assert code_references_ident('return {x: 1}', 'x', true)
+	assert code_references_ident('return {\n\tx: 1\n}', 'x', true)
+	assert code_references_ident('_ = k in {x: 1}', 'x', true)
+	// A real type name before it still labels a field.
+	assert !code_references_ident('return Config{x: 1}', 'x', true)
+	assert !code_references_ident('return Box[int]{x: 1}', 'x', true)
+}

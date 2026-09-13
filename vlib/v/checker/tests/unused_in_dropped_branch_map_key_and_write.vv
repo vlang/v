@@ -17,7 +17,19 @@ fn write_only() {
 	}
 }
 
+// A map literal may be returned directly, where a keyword precedes its brace.
+fn returned_map_key(r string) map[string]int {
+	$if windows {
+		return {
+			r: 1
+		}
+	} $else {
+		return {}
+	}
+}
+
 fn main() {
 	map_key('a')
 	write_only()
+	println(returned_map_key('c'))
 }
