@@ -16200,7 +16200,12 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	} else if receiver_wants_ptr && g.gen_deref_method_receiver(receiver_id, params[0]) {
 		// handled
 	} else {
-		materialize_receiver := receiver_wants_ptr && !receiver_is_ptr && receiver.kind == .call
+		// A receiver that is a temporary has no address in C. `make().field` is the field
+		// of a call result, so writing `&make().field` directly is rejected with "cannot
+		// take the address of an rvalue". Copy such a receiver into a compound literal
+		// array and pass the address of that element instead.
+		materialize_receiver := receiver_wants_ptr && !receiver_is_ptr
+			&& (receiver.kind == .call || !g.expr_is_addressable(receiver_id))
 		if materialize_receiver {
 			receiver_ct := g.tc.c_type(types.unwrap_pointer(receiver_type))
 			g.write('&((${receiver_ct}[]){')
