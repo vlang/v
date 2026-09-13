@@ -6411,6 +6411,43 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 	return typ
 }
 
+// canonical_import_type_text_wins reports whether `typ` must keep its literal
+// spelling instead of being expanded through the import alias `alias` holds in
+// `file`. It holds when `alias` is itself the full path of a module that file
+// imports under another name -- `import x.benchmark` binds `benchmark` to
+// `x.benchmark` while `import benchmark as jj` keeps module `benchmark` in the
+// program -- and `typ` already names a declared type.
+//
+// Callers must only consult this for *canonical* type text (post-checking
+// annotations and synthesized specialization text), never for source spelling.
+// A `benchmark.Benchmark` written by hand in such a file means `x.benchmark`'s
+// type and has to keep resolving through the alias; only an annotation the
+// checker produced is already module-qualified and would be retargeted at the
+// same-named type in the other module by a second expansion. The checker gates
+// this on `resolution_type_mode`; C generation runs entirely post-checking.
+pub fn (tc &TypeChecker) canonical_import_type_text_wins(file string, alias string, typ string) bool {
+	if !tc.qualify_candidate_type_exists(typ) {
+		return false
+	}
+	info := tc.file_imports_by_file[file] or { return false }
+	if isnil(info) {
+		return false
+	}
+	for key, mod in info.imports {
+		if key == alias {
+			continue
+		}
+		// Compare the whole module path, not just `typ`'s first segment: a
+		// canonical name can live in a nested module, so `import x.foo` plus
+		// `import foo.bar as jj` has to keep `foo.bar.Thing` rather than rebase
+		// it onto `x.foo` and land on `x.foo.bar.Thing`.
+		if typ.len > mod.len && typ[mod.len] == `.` && typ.starts_with(mod) {
+			return true
+		}
+	}
+	return false
+}
+
 // imported_type_short_name returns the semantic short name for an active imported
 // module prefix. Some legacy module collections intentionally retain short symbols;
 // qualified source spelling still has to resolve to those symbols.

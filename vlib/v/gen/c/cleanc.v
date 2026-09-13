@@ -695,8 +695,49 @@ fn (g &FlatGen) timing_profile(message string) {
 	}
 }
 
+// canonical_annotation_leaf strips the wrappers an annotation can carry (`&`,
+// `?`, `!`, `[]`) so the module check below sees the bare type name. Without
+// this, `&bench.Thing` yields the alias `&bench` and a whole-wrapper lookup,
+// neither of which is registered, so a pointer to a shadowed type silently kept
+// being rebased onto the other module.
+fn canonical_annotation_leaf(typ string) string {
+	mut leaf := typ
+	for leaf.len > 0 {
+		if leaf.starts_with('[]') {
+			leaf = leaf[2..]
+			continue
+		}
+		if leaf[0] == `&` || leaf[0] == `?` || leaf[0] == `!` {
+			leaf = leaf[1..]
+			continue
+		}
+		break
+	}
+	return leaf
+}
+
+// parse_node_type resolves a node's `typ`, which is always a checker-produced
+// annotation: canonical module-qualified text. It must not be expanded again
+// through the referencing file's import aliases -- with `import x.benchmark`
+// plus `import benchmark as jj`, the recorded `benchmark.Benchmark` would
+// otherwise rebase onto `x.benchmark` and resolve to the same-named struct
+// there. Raw source spelling lives in `node.value` (struct literals, casts,
+// array initializers) and never reaches this function, so it keeps the normal
+// alias expansion.
 @[inline]
 fn (g &FlatGen) parse_node_type(node &flat.Node) types.Type {
+	leaf := canonical_annotation_leaf(node.typ)
+	dot := leaf.index_u8(`.`)
+	if dot > 0 {
+		alias := leaf[..dot]
+		if g.tc.canonical_import_type_text_wins(g.node_source_file(node), alias, leaf) {
+			// exact_known_import_type_text rebuilds the wrappers itself, so it
+			// gets the original spelling rather than the bare leaf.
+			if exact := g.exact_known_import_type_text(node.typ) {
+				return exact
+			}
+		}
+	}
 	return g.tc.parse_type_ref(node.typ, node.type_text_id())
 }
 
