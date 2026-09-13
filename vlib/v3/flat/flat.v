@@ -1,3 +1,4 @@
+@[has_globals]
 module flat
 
 import v3.token
@@ -192,30 +193,166 @@ pub:
 	pos  token.Pos
 }
 
-// node_payload creates an uncommon node payload, or nil for an empty list.
-pub fn node_payload(generic_params []string) &NodePayload {
-	if generic_params.len == 0 {
-		return &NodePayload(unsafe { nil })
+// Node payloads live in one process-wide table: a node carries a 4-byte id
+// (0 = none) instead of a pointer, so copying a node copies the id and the
+// node header stays 80 bytes. The table only grows (payloads are rare and
+// tiny), its chunks are plain C allocations that outlive every arena, and ids
+// are handed out under a spin lock while lookups are lock-free.
+const node_payload_chunk_bits = 12
+const node_payload_chunk_size = 1 << node_payload_chunk_bits
+const node_payload_chunk_mask = node_payload_chunk_size - 1
+const node_payload_max_chunks = 4096
+
+struct NodePayloadTable {
+mut:
+	chunks [node_payload_max_chunks]voidptr
+	count  int
+}
+
+__global g_node_payload_table &NodePayloadTable
+__global g_node_payload_lock i32
+
+fn C.v_prealloc_atomic_cas_i32(ptr &i32, expected int, desired int) int
+
+fn C.v_prealloc_atomic_store_i32(ptr &i32, val int) int
+
+fn node_payload_lock() {
+	for C.v_prealloc_atomic_cas_i32(&g_node_payload_lock, 0, 1) == 0 {
 	}
-	return &NodePayload{
+}
+
+fn node_payload_unlock() {
+	C.v_prealloc_atomic_store_i32(&g_node_payload_lock, 0)
+}
+
+// node_payload registers an uncommon node payload and returns its id, or 0
+// for an empty list.
+pub fn node_payload(generic_params []string) u32 {
+	if generic_params.len == 0 {
+		return 0
+	}
+	payload := &NodePayload{
 		generic_params: generic_params
 	}
+	node_payload_lock()
+	mut table := g_node_payload_table
+	if isnil(table) {
+		table = unsafe { &NodePayloadTable(C.calloc(1, sizeof(NodePayloadTable))) }
+		if isnil(table) {
+			node_payload_unlock()
+			panic('v3: could not allocate the node payload table')
+		}
+		g_node_payload_table = table
+	}
+	idx := table.count
+	chunk_idx := idx >> node_payload_chunk_bits
+	if chunk_idx >= node_payload_max_chunks {
+		node_payload_unlock()
+		panic('v3: too many node payloads (${idx})')
+	}
+	if isnil(table.chunks[chunk_idx]) {
+		table.chunks[chunk_idx] = C.calloc(node_payload_chunk_size, sizeof(voidptr))
+		if isnil(table.chunks[chunk_idx]) {
+			node_payload_unlock()
+			panic('v3: could not allocate a node payload chunk')
+		}
+	}
+	unsafe {
+		mut chunk := &&NodePayload(table.chunks[chunk_idx])
+		chunk[idx & node_payload_chunk_mask] = payload
+	}
+	table.count = idx + 1
+	node_payload_unlock()
+	return u32(idx + 1)
+}
+
+// node_payload_at resolves a payload id registered by node_payload; 0 yields nil.
+pub fn node_payload_at(id u32) &NodePayload {
+	if id == 0 {
+		return &NodePayload(unsafe { nil })
+	}
+	idx := int(id) - 1
+	table := g_node_payload_table
+	if isnil(table) || idx >= table.count {
+		return &NodePayload(unsafe { nil })
+	}
+	unsafe {
+		chunk := &&NodePayload(table.chunks[idx >> node_payload_chunk_bits])
+		return chunk[idx & node_payload_chunk_mask]
+	}
+}
+
+// node_flag_skip_ownership_drops marks a block/if/for/fn node whose scope must
+// not consume ownership drops (see Node.skip_ownership_drops()).
+pub const node_flag_skip_ownership_drops = u8(1)
+// node_flag_static_type_method marks a `fn Type.method()` declaration.
+pub const node_flag_static_type_method = u8(2)
+
+// node_flags packs the two rare node bools into Node.flags.
+@[inline]
+pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
+	mut flags := u8(0)
+	if skip_ownership_drops {
+		flags |= node_flag_skip_ownership_drops
+	}
+	if is_static_type_method {
+		flags |= node_flag_static_type_method
+	}
+	return flags
 }
 
 // Node represents node data used by flat.
 pub struct Node {
 pub mut:
-	value                 string
-	typ                   string
-	payload               &NodePayload = unsafe { nil }
-	children_start        i32
-	is_mut                bool
-	kind                  NodeKind
-	op                    Op
-	skip_ownership_drops  bool
-	is_static_type_method bool
-	children_count        i32
-	pos                   token.Pos
+	value          string
+	typ            string
+	children_start i32
+	payload        u32 // node_payload() id, 0 = none; see payload_ptr/generic_params
+	is_mut         bool
+	kind           NodeKind
+	op             Op
+	flags          u8 // node_flag_* bits; see skip_ownership_drops/is_static_type_method
+	children_count i32
+	pos            token.Pos
+}
+
+// skip_ownership_drops reports whether this scope node must not consume
+// ownership drops.
+@[inline]
+pub fn (n &Node) skip_ownership_drops() bool {
+	return (n.flags & node_flag_skip_ownership_drops) != 0
+}
+
+// set_skip_ownership_drops updates the skip-ownership-drops flag.
+@[inline]
+pub fn (mut n Node) set_skip_ownership_drops(value bool) {
+	if value {
+		n.flags |= node_flag_skip_ownership_drops
+	} else {
+		n.flags &= ~node_flag_skip_ownership_drops
+	}
+}
+
+// is_static_type_method reports whether this fn_decl is a `fn Type.method()`.
+@[inline]
+pub fn (n &Node) is_static_type_method() bool {
+	return (n.flags & node_flag_static_type_method) != 0
+}
+
+// set_is_static_type_method updates the static-type-method flag.
+@[inline]
+pub fn (mut n Node) set_is_static_type_method(value bool) {
+	if value {
+		n.flags |= node_flag_static_type_method
+	} else {
+		n.flags &= ~node_flag_static_type_method
+	}
+}
+
+// payload_ptr resolves this node's uncommon payload, or nil when it has none.
+@[inline]
+pub fn (n &Node) payload_ptr() &NodePayload {
+	return node_payload_at(n.payload)
 }
 
 // type_text_id returns the compact canonical identity carried in this node's
@@ -235,10 +372,10 @@ pub fn (mut n Node) set_type_text_id(id u16) {
 // generic_params returns this node's uncommon generic/attribute metadata.
 @[inline]
 pub fn (n &Node) generic_params() []string {
-	if isnil(n.payload) {
+	if n.payload == 0 {
 		return []string{}
 	}
-	return n.payload.generic_params
+	return node_payload_at(n.payload).generic_params
 }
 
 // set_generic_params replaces this node's uncommon managed payload.
@@ -757,8 +894,7 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 		kind: n.kind
 		op: n.op
 		is_mut: n.is_mut
-		skip_ownership_drops: n.skip_ownership_drops
-		is_static_type_method: n.is_static_type_method
+		flags: n.flags
 	}
 }
 
@@ -774,8 +910,7 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 		kind: n.kind
 		op: n.op
 		is_mut: n.is_mut
-		skip_ownership_drops: n.skip_ownership_drops
-		is_static_type_method: n.is_static_type_method
+		flags: n.flags
 	}
 }
 
@@ -795,8 +930,7 @@ pub fn (n Node) clone_owned() Node {
 		kind: n.kind
 		op: n.op
 		is_mut: n.is_mut
-		skip_ownership_drops: n.skip_ownership_drops
-		is_static_type_method: n.is_static_type_method
+		flags: n.flags
 	}
 }
 

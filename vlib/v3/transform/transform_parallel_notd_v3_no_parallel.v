@@ -35,7 +35,7 @@ const shared_transform_chunks_per_job = 1
 const shared_expansion_pool_divisor = 2
 const max_parallel_monomorph_jobs = 18
 // Recycle scratch arenas throughout large self-hosting transforms.
-const scoped_transform_batches = 8
+const scoped_transform_batches = 16
 const scoped_selfhost_transform_batches = 4
 const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
@@ -318,7 +318,7 @@ fn node_has_any_scoped_text(node &flat.Node, scopes []voidptr, lo usize, hi usiz
 	value_addr := usize(voidptr(node.value.str))
 	typ_addr := usize(voidptr(node.typ.str))
 	if (node.value.len == 0 || value_addr < lo || value_addr >= hi)
-		&& (node.typ.len == 0 || typ_addr < lo || typ_addr >= hi) && isnil(node.payload) {
+		&& (node.typ.len == 0 || typ_addr < lo || typ_addr >= hi) && node.payload == 0 {
 		return false
 	}
 	for scope in scopes {
@@ -357,13 +357,13 @@ fn node_has_scoped_text(node &flat.Node, scope voidptr) bool {
 	if node.typ.len > 0 && transform_scope_owns(scope, node.typ.str) {
 		return true
 	}
-	if isnil(node.payload) {
+	if node.payload == 0 {
 		return false
 	}
-	if transform_scope_owns(scope, node.payload) {
+	if transform_scope_owns(scope, node.payload_ptr()) {
 		return true
 	}
-	params := node.payload.generic_params
+	params := node.generic_params()
 	if params.len == 0 {
 		return false
 	}
@@ -584,7 +584,7 @@ fn scan_literal_decl_flags_parallel(t &Transformer, limit int, mut flags []u8, m
 // need erasure.
 @[inline]
 fn fn_decl_generic_candidate_prescreen(a &flat.FlatAst, node &flat.Node, prefix_param_scan bool) bool {
-	if !isnil(node.payload) && node.payload.generic_params.len > 0 {
+	if node.payload != 0 && node.generic_params().len > 0 {
 		return true
 	}
 	if generic_placeholder_prescreen(node.typ) || generic_placeholder_prescreen(node.value) {
@@ -675,14 +675,14 @@ $if !windows {
 			if node.typ.len > 0 && transform_scope_owns(a.scope, node.typ.str) {
 				node.typ = promote_scoped_text_read_only(ast, node.typ)
 			}
-			if isnil(node.payload) {
+			if node.payload == 0 {
 				continue
 			}
-			params := node.payload.generic_params
+			params := node.generic_params()
 			if params.len == 0 {
 				continue
 			}
-			mut needs := transform_scope_owns(a.scope, node.payload)
+			mut needs := transform_scope_owns(a.scope, node.payload_ptr())
 				|| transform_scope_owns(a.scope, params.data)
 			if !needs {
 				for param in params {
@@ -788,9 +788,6 @@ $if !windows {
 		for idx in a.start .. a.end {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
 				tc.resolved_call_names[idx] = types.promote_cached_name(tc.resolved_call_names[idx], a.scope)
-			}
-			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				tc.resolved_fn_value_names[idx] = types.promote_cached_name(tc.resolved_fn_value_names[idx], a.scope)
 			}
 			if idx >= a.generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx]
 				&& idx < tc.expr_type_values.len {
@@ -1874,14 +1871,14 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	if node.typ.len > 0 && transform_scope_owns(scope, node.typ.str) {
 		node.typ = t.promote_scoped_result_text(node.typ)
 	}
-	if isnil(node.payload) {
+	if node.payload == 0 {
 		return
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_owned_params := transform_scope_owns(scope, node.payload)
+	mut needs_owned_params := transform_scope_owns(scope, node.payload_ptr())
 		|| transform_scope_owns(scope, old_params.data)
 	if !needs_owned_params {
 		for param in old_params {
@@ -2269,8 +2266,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 						kind: write.node.kind
 						op: write.node.op
 						is_mut: write.node.is_mut
-						skip_ownership_drops: write.node.skip_ownership_drops
-						is_static_type_method: write.node.is_static_type_method
+						flags: write.node.flags
 					}
 				}
 			}
@@ -2636,7 +2632,11 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			view_ms := f64(sfsw.elapsed().microseconds()) / 1000.0
 			wtc := t.tc.fork_for_parallel_transform(view)
 			tc_ms := f64(sfsw.elapsed().microseconds()) / 1000.0
-			mut ww := t.fork_worker(view, wtc)
+			// Helpers read the immutable used-function snapshot installed above and
+			// record only their own discoveries, so they need no private copy of the
+			// whole used set (one clone per helper, and the merge re-inserted every
+			// entry of every copy).
+			mut ww := t.fork_worker_config(view, wtc, false)
 			ww.defer_oor_writes = false
 			args[ci + 1] = SharedChunkArgs{
 				worker: voidptr(ww)

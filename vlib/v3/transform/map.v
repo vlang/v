@@ -1970,7 +1970,7 @@ fn (mut t Transformer) lower_owned_map_index_move(source_id flat.NodeId, map_exp
 		kind: .if_expr
 		children_start: start
 		children_count: 2
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if !map_type.starts_with('&') && !t.expr_can_take_address(source_id) {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [map_expr], 'void'))

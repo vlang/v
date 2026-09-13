@@ -1173,15 +1173,17 @@ fn (t &Transformer) generic_struct_interfaces_by_method() map[string][]string {
 
 fn (t &Transformer) used_generic_method_names() map[string]bool {
 	mut methods := map[string]bool{}
-	for name, used in t.used_fns {
-		if !used || name.len == 0 {
-			continue
-		}
-		if name.contains('.') {
-			methods[name.all_after_last('.')] = true
-		}
-		if name.contains('__') {
-			methods[name.all_after_last('__')] = true
+	for used_map in t.used_fn_maps() {
+		for name, used in *used_map {
+			if !used || name.len == 0 {
+				continue
+			}
+			if name.contains('.') {
+				methods[name.all_after_last('.')] = true
+			}
+			if name.contains('__') {
+				methods[name.all_after_last('__')] = true
+			}
 		}
 	}
 	return methods
@@ -1472,10 +1474,12 @@ fn (t &Transformer) interface_dispatch_method_used(iface_name string, method str
 	}
 	semantic_prefix := '${iface_name}['
 	c_prefix := '${c_name(iface_name)}_'
-	for used_name, used in t.used_fns {
-		if used && ((used_name.starts_with(semantic_prefix) && used_name.ends_with('.${method}'))
-			|| (used_name.starts_with(c_prefix) && used_name.ends_with('__${method}'))) {
-			return true
+	for used_map in t.used_fn_maps() {
+		for used_name, used in *used_map {
+			if used && ((used_name.starts_with(semantic_prefix) && used_name.ends_with('.${method}'))
+				|| (used_name.starts_with(c_prefix) && used_name.ends_with('__${method}'))) {
+				return true
+			}
 		}
 	}
 	if decl_key := t.tc.interface_method_signature_key(iface_name, method) {
@@ -2674,7 +2678,7 @@ fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 				if node.generic_params().len == 0 || node.children_count == 0 {
 					continue
 				}
-				module_id := t.node_module_map_cache[i] or { u32(0) }
+				module_id := t.node_module_map_cache[i] or { u16(0) }
 				module_name := if module_id != 0 {
 					t.node_context_text(module_id)
 				} else {
@@ -3413,8 +3417,8 @@ fn (mut t Transformer) ensure_node_module_map() {
 		return
 	}
 	if t.node_module_map_nodes < 0 || t.node_module_map_nodes > t.a.nodes.len {
-		t.node_module_map_cache = []u32{len: t.a.nodes.len, cap: t.a.nodes.cap}
-		t.node_file_map_cache = []u32{len: t.a.nodes.len, cap: t.a.nodes.cap}
+		t.node_module_map_cache = []u16{len: t.a.nodes.len, cap: t.a.nodes.cap}
+		t.node_file_map_cache = []u16{len: t.a.nodes.len, cap: t.a.nodes.cap}
 		t.node_module_map_nodes = 0
 	} else {
 		t.ensure_node_context_map_capacity()
@@ -3454,14 +3458,14 @@ fn (mut t Transformer) ensure_node_context_map_capacity() {
 	grow_node_context_cache(mut t.node_file_map_cache, t.a.nodes.len, t.a.nodes.cap)
 }
 
-fn grow_node_context_cache(mut cache []u32, size int, capacity int) {
+fn grow_node_context_cache(mut cache []u16, size int, capacity int) {
 	old_len := cache.len
 	if old_len >= size {
 		return
 	}
 	if cache.cap < capacity {
 		// Use the AST's reserved size without rounding each side table up again.
-		mut grown := []u32{cap: capacity}
+		mut grown := []u16{cap: capacity}
 		grown << cache
 		// Transfer the new backing; this local has no other surviving reference.
 		cache = unsafe { grown }
@@ -3469,7 +3473,7 @@ fn grow_node_context_cache(mut cache []u32, size int, capacity int) {
 	// Extend in place instead of retaining a temporary zero-filled array.
 	unsafe {
 		cache.grow_len(size - old_len)
-		vmemset(&cache[old_len], 0, isize(size - old_len) * isize(sizeof(u32)))
+		vmemset(&cache[old_len], 0, isize(size - old_len) * isize(sizeof(u16)))
 	}
 }
 
@@ -3477,14 +3481,19 @@ fn grow_node_context_cache(mut cache []u32, size int, capacity int) {
 // module/file tables. Id 0 means "unset". Only the owning transformer interns
 // (workers run with node_context_read_only set), so the shared table needs no
 // synchronization.
-fn (mut t Transformer) node_context_text_id(value string) u32 {
+fn (mut t Transformer) node_context_text_id(value string) u16 {
 	if value.len == 0 {
 		return 0
 	}
 	if id := t.node_context_text_ids[value] {
 		return id
 	}
-	id := u32(t.node_context_texts.len + 1)
+	if t.node_context_texts.len >= max_u16 {
+		// Two bytes per node keep these whole-AST tables small; one compilation
+		// never declares anywhere near 65535 distinct file and module names.
+		panic('v3 transform: too many distinct declaration contexts (${t.node_context_texts.len})')
+	}
+	id := u16(t.node_context_texts.len + 1)
 	t.node_context_texts << value
 	t.node_context_text_ids[value] = id
 	return id
@@ -3492,7 +3501,7 @@ fn (mut t Transformer) node_context_text_id(value string) u32 {
 
 // node_context_text resolves an interned declaration-context spelling.
 @[inline]
-fn (t &Transformer) node_context_text(id u32) string {
+fn (t &Transformer) node_context_text(id u16) string {
 	idx := int(id) - 1
 	if idx < 0 || idx >= t.node_context_texts.len {
 		return ''
@@ -3714,8 +3723,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 			children_start: cloned_fn.children_start
 			children_count: cloned_fn.children_count
 			is_mut: cloned_fn.is_mut
-			skip_ownership_drops: true
-			is_static_type_method: cloned_fn.is_static_type_method
+			flags: flat.node_flags(true, cloned_fn.is_static_type_method())
 		})
 	}
 	t.a.specialized_fn_nodes[int(clone_id)] = true
@@ -9952,7 +9960,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			typ: cloned_typ
 			value: t.subst_node_value(node, args)
 			is_mut: node.is_mut
-			is_static_type_method: node.is_static_type_method
+			flags: flat.node_flags(false, node.is_static_type_method())
 		})
 		if node.kind == .ident && t.mut_param_values[node.value] {
 			t.mut_value_ident_nodes[int(clone_id)] = true
@@ -10023,7 +10031,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		typ: final_typ
 		value: cloned_value
 		is_mut: node.is_mut
-		is_static_type_method: node.is_static_type_method
+		flags: flat.node_flags(false, node.is_static_type_method())
 	})
 	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		lhs := t.a.nodes[int(children[0])]
@@ -11054,9 +11062,8 @@ fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 	} else {
 		''
 	}
-	if fn_value.len == 0 && src_idx < t.tc.resolved_fn_value_set.len
-		&& t.tc.resolved_fn_value_set[src_idx] {
-		fn_value = t.tc.resolved_fn_value_names[src_idx].value
+	if fn_value.len == 0 {
+		fn_value = t.tc.sparse_resolved_fn_values[src_idx] or { '' }
 	}
 	if fn_value.len > 0 {
 		overlay.resolved_fn_values[dst_idx] = fn_value

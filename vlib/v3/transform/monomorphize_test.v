@@ -4,16 +4,16 @@ import v3.flat
 import v3.types
 
 fn test_node_context_cache_growth_preserves_ids_and_initializes_new_slots() {
-	mut cache := []u32{}
+	mut cache := []u16{}
 	grow_node_context_cache(mut cache, 3, 8)
 	cache[0] = 7
 	cache[2] = 9
 	grow_node_context_cache(mut cache, 6, 8)
-	assert cache == [u32(7), 0, 9, 0, 0, 0]
+	assert cache == [u16(7), 0, 9, 0, 0, 0]
 	cache[5] = 11
 	grow_node_context_cache(mut cache, 12, 16)
-	assert cache[..6] == [u32(7), 0, 9, 0, 0, 11]
-	assert cache[6..] == [u32(0), 0, 0, 0, 0, 0]
+	assert cache[..6] == [u16(7), 0, 9, 0, 0, 11]
+	assert cache[6..] == [u16(0), 0, 0, 0, 0, 0]
 	grow_node_context_cache(mut cache, 2, 16)
 	assert cache.len == 12
 	assert cache[5] == 11

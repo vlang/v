@@ -282,14 +282,13 @@ fn test_nested_parallel_checker_merge_keeps_out_of_range_caches_sparse() {
 		assert false
 	}
 	assert !tc.resolved_call_set[2]
-	assert !tc.resolved_fn_value_set[2]
 	assert !tc.statement_nodes[2]
 	assert !tc.expr_type_set[2]
 
 	tc.parallel_check_sparse = false
 	tc.merge_own_sparse_caches()
 	assert tc.resolved_call_names[2].value == 'main.answer'
-	assert tc.resolved_fn_value_names[2].value == 'main.callback'
+	assert tc.resolved_fn_value_name(2)? == 'main.callback'
 	assert tc.statement_nodes[2]
 	assert tc.expr_type_values[2] is Primitive
 	worker.free_parallel_check_worker_cache()

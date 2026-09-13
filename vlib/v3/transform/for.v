@@ -131,14 +131,14 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 		start := t.a.children.len
 		t.a.children << new_children
 		t.a.add_node(flat.Node{
-			kind:                 .for_stmt
-			op:                   node.op
-			children_start:       start
-			children_count:       flat.child_count(new_children.len)
-			pos:                  node.pos
-			value:                node.value
-			typ:                  node.typ
-			skip_ownership_drops: node.skip_ownership_drops
+			kind:           .for_stmt
+			op:             node.op
+			children_start: start
+			children_count: flat.child_count(new_children.len)
+			pos:            node.pos
+			value:          node.value
+			typ:            node.typ
+			flags:          flat.node_flags(node.skip_ownership_drops(), false)
 		})
 	}
 	if synthetic_continue_label.len > 0 {
@@ -676,14 +676,14 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		})
 	}
 	prefix << t.a.add_node(flat.Node{
-		kind:                 .for_in_stmt
-		op:                   node.op
-		children_start:       start
-		children_count:       flat.child_count(ids.len)
-		pos:                  node.pos
-		value:                node.value
-		typ:                  if iter_type.len > 0 { iter_type } else { node.typ }
-		skip_ownership_drops: node.skip_ownership_drops
+		kind:           .for_in_stmt
+		op:             node.op
+		children_start: start
+		children_count: flat.child_count(ids.len)
+		pos:            node.pos
+		value:          node.value
+		typ:            if iter_type.len > 0 { iter_type } else { node.typ }
+		flags:          flat.node_flags(node.skip_ownership_drops(), false)
 	})
 	if cleanup_owned_container {
 		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [new_container], 'void'))
@@ -1218,13 +1218,13 @@ fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post fl
 		t.a.children << id
 	}
 	return t.a.add_node(flat.Node{
-		kind:                 .for_stmt
-		op:                   src.op
-		children_start:       start
-		children_count:       flat.child_count(3 + body.len)
-		pos:                  src.pos
-		typ:                  src.typ
-		skip_ownership_drops: src.skip_ownership_drops || src.kind == .empty
+		kind:           .for_stmt
+		op:             src.op
+		children_start: start
+		children_count: flat.child_count(3 + body.len)
+		pos:            src.pos
+		typ:            src.typ
+		flags:          flat.node_flags(src.skip_ownership_drops() || src.kind == .empty, false)
 	})
 }
 

@@ -9390,7 +9390,7 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_assign_without_ownership_drop(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type), cloned_elem)
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
@@ -9427,7 +9427,7 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_assign_without_ownership_drop(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type), cloned_elem)
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
@@ -9512,7 +9512,7 @@ fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId,
 		children_start: start
 		children_count: flat.child_count(3 + body.len)
 		value: '3'
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
@@ -10180,7 +10180,7 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 			kind: .if_expr
 			children_start: start
 			children_count: 2
-			skip_ownership_drops: true
+			flags: flat.node_flag_skip_ownership_drops
 		})
 	}
 
@@ -10209,7 +10209,7 @@ fn (mut t Transformer) append_owned_array_drop_prefix(array_value flat.NodeId, e
 	elem := t.make_index(array_value, t.make_ident(idx_name), elem_type)
 	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', [elem], 'void'))
 	stmts << t.make_for_stmt(init, cond, post, [drop_stmt], flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 }
 
@@ -10221,7 +10221,7 @@ fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, el
 	elem := t.make_index(array_value, t.make_ident(idx_name), elem_type)
 	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', [elem], 'void'))
 	stmts << t.make_for_stmt(init, cond, post, [drop_stmt], flat.Node{
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 }
 
@@ -10297,7 +10297,7 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 			kind: .if_expr
 			children_start: start
 			children_count: 2
-			skip_ownership_drops: true
+			flags: flat.node_flag_skip_ownership_drops
 		})
 	} else {
 		result << drop_result
@@ -10648,7 +10648,7 @@ fn (mut t Transformer) make_owned_map_items_value(source flat.NodeId, map_type s
 		children_start: start
 		children_count: flat.child_count(3 + body.len)
 		value: '3'
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
@@ -10715,7 +10715,7 @@ fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.
 		children_start: start
 		children_count: flat.child_count(3 + body.len)
 		value: '3'
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 }
 
@@ -10780,7 +10780,7 @@ fn (mut t Transformer) append_owned_map_entry_delete_with_drops(map_expr flat.No
 		kind: .if_expr
 		children_start: start
 		children_count: 2
-		skip_ownership_drops: true
+		flags: flat.node_flag_skip_ownership_drops
 	})
 	return true
 }

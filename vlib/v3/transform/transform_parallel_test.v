@@ -4892,7 +4892,7 @@ fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 					kind: 2
 					node: flat.Node{
 						kind: .for_stmt
-						skip_ownership_drops: true
+						flags: flat.node_flag_skip_ownership_drops
 					}
 				},
 			]
@@ -4901,7 +4901,7 @@ fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 		t.clone_deferred_worker_writes_from(0)
 		cloned := t.deferred_base_writes[0].node
 		assert cloned.kind == .for_stmt
-		assert cloned.skip_ownership_drops
+		assert cloned.skip_ownership_drops()
 	}
 }
 

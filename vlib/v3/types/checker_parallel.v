@@ -241,7 +241,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: 0, start: start, end: end }
 		start = end
 	}
-	for kind in [u8(1), 2, 3, 4] {
+	for kind in [u8(1), 2, 3] {
 		args << CollectIndexPrepArgs{ tc: voidptr(tc), a: a, kind: kind, n: a.nodes.len }
 	}
 	mut tasks := []workers.Task{cap: args.len}
@@ -1592,10 +1592,6 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 		tc.resolved_call_names[idx] = cached_name(name)
 		tc.resolved_call_set[idx] = true
 	}
-	for idx, name in tc.sparse_resolved_fn_values {
-		tc.resolved_fn_value_names[idx] = cached_name(name)
-		tc.resolved_fn_value_set[idx] = true
-	}
 	for idx, _ in tc.sparse_statement_nodes {
 		tc.statement_nodes[idx] = true
 	}
@@ -1604,7 +1600,6 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 		tc.expr_type_set[idx] = true
 	}
 	tc.sparse_resolved_call_names.clear()
-	tc.sparse_resolved_fn_values.clear()
 	tc.sparse_statement_nodes.clear()
 	tc.sparse_expr_type_values.clear()
 	tc.sparse_checking_nodes.clear()
@@ -2943,9 +2938,6 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
-			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				tc.resolved_fn_value_names[idx] = promote_cached_name_value(tc.resolved_fn_value_names[idx], mut names)
-			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false) {
 					tc.expr_type_values[idx] = canonical
@@ -2989,9 +2981,6 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 		for idx in item.range_lo .. item.fn_idx + 1 {
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
-			}
-			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				tc.resolved_fn_value_names[idx] = promote_cached_name_value(tc.resolved_fn_value_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true) or {
@@ -3091,12 +3080,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 	}
 	for idx, name in w.sparse_resolved_fn_values {
 		owned_name := if scoped { name.clone() } else { name }
-		if tc.parallel_check_sparse {
-			tc.sparse_resolved_fn_values[idx] = owned_name
-		} else {
-			tc.resolved_fn_value_names[idx] = cached_name(owned_name)
-			tc.resolved_fn_value_set[idx] = true
-		}
+		tc.sparse_resolved_fn_values[idx] = owned_name
 	}
 	for idx, _ in w.sparse_statement_nodes {
 		if tc.parallel_check_sparse {

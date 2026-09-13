@@ -5500,7 +5500,7 @@ fn c_hash_monomorph_node(initial u64, a &flat.FlatAst, id flat.NodeId, cacheable
 	}
 	node := a.nodes[idx]
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
-		u8(node.skip_ownership_drops), u8(node.is_static_type_method)])
+		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
 	hash = c_hash_tag(hash, node.children_count)
 	hash = c_hash_bytes(hash, node.typ.bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
@@ -5610,7 +5610,7 @@ fn incremental_qualified_fn_name(module_name string, name string) string {
 
 fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool) u64 {
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
-		u8(node.skip_ownership_drops), u8(node.is_static_type_method)])
+		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
 	hash = c_hash_tag(hash, node.children_count)
 	hash = c_hash_bytes(hash, node.typ.bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
@@ -5627,7 +5627,7 @@ fn incremental_hash_node_header(initial u64, node &flat.Node, include_value bool
 
 fn incremental_hash_fn_declaration(initial u64, node &flat.Node) u64 {
 	mut hash := c_hash_bytes(initial, [u8(node.kind), u8(node.op), u8(node.is_mut),
-		u8(node.skip_ownership_drops), u8(node.is_static_type_method)])
+		u8(node.skip_ownership_drops()), u8(node.is_static_type_method())])
 	hash = c_hash_bytes(hash, node.typ.bytes())
 	hash = c_hash_bytes(hash, [u8(0)])
 	hash = c_hash_bytes(hash, node.value.bytes())
@@ -6239,7 +6239,7 @@ fn promote_scoped_node(mut node flat.Node, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_promotion := scoped_value_owned(scope, node.payload)
+	mut needs_promotion := scoped_value_owned(scope, node.payload_ptr())
 		|| scoped_value_owned(scope, old_params.data)
 	if !needs_promotion {
 		for param in old_params {
@@ -6353,7 +6353,7 @@ fn canonicalize_scoped_node_cached(mut ast flat.FlatAst, idx int, scope voidptr,
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_params := scoped_value_owned(scope, node.payload)
+	mut needs_params := scoped_value_owned(scope, node.payload_ptr())
 		|| scoped_value_owned(scope, old_params.data)
 	if !needs_params {
 		for param in old_params {
@@ -6395,7 +6395,7 @@ fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
 	if old_params.len == 0 {
 		return
 	}
-	mut needs_params := scoped_value_owned(scope, node.payload)
+	mut needs_params := scoped_value_owned(scope, node.payload_ptr())
 		|| scoped_value_owned(scope, old_params.data)
 	if !needs_params {
 		for param in old_params {
@@ -6573,9 +6573,6 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
 				tc.resolved_call_names[idx] = types.promote_cached_name(tc.resolved_call_names[idx], scope)
 			}
-			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				tc.resolved_fn_value_names[idx] = types.promote_cached_name(tc.resolved_fn_value_names[idx], scope)
-			}
 			if idx >= generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
 			}
@@ -6598,12 +6595,6 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	}
 	if scoped_value_owned(scope, tc.resolved_call_set.data) {
 		tc.resolved_call_set = tc.resolved_call_set.clone()
-	}
-	if scoped_value_owned(scope, tc.resolved_fn_value_names.data) {
-		tc.resolved_fn_value_names = tc.resolved_fn_value_names.clone()
-	}
-	if scoped_value_owned(scope, tc.resolved_fn_value_set.data) {
-		tc.resolved_fn_value_set = tc.resolved_fn_value_set.clone()
 	}
 	if scoped_value_owned(scope, tc.statement_nodes.data) {
 		tc.statement_nodes = tc.statement_nodes.clone()
@@ -7264,16 +7255,10 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 		tc.expr_type_values << types.Type(types.void_)
 		tc.expr_type_set << false
 	}
-	limit := if tc.resolved_fn_value_names.len < a.nodes.len {
-		tc.resolved_fn_value_names.len
-	} else {
-		a.nodes.len
-	}
-	for idx in 0 .. limit {
-		if idx >= tc.resolved_fn_value_set.len || !tc.resolved_fn_value_set[idx] {
+	for idx, name in tc.sparse_resolved_fn_values {
+		if idx < 0 || idx >= a.nodes.len {
 			continue
 		}
-		name := tc.resolved_fn_value_names[idx].value
 		params := tc.fn_param_types[name] or { continue }
 		ret := tc.fn_ret_types[name] or { continue }
 		tc.expr_type_values[idx] = types.FnType{
@@ -10989,11 +10974,8 @@ pub fn run(args []string) {
 								}
 							}
 						}
-						if idx < pre_tc.resolved_fn_value_set.len
-							&& pre_tc.resolved_fn_value_set[idx] {
-							name := pre_tc.resolved_fn_value_names[idx]
-							if scoped_value_owned(transform_scope, name)
-								|| scoped_value_owned(transform_scope, name.value.str) {
+						if name := pre_tc.sparse_resolved_fn_values[idx] {
+							if scoped_value_owned(transform_scope, name.str) {
 								leaked_fv++
 							}
 						}
