@@ -6641,28 +6641,53 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 	return tc.cur_file in tc.diagnostic_files
 }
 
-// shadow_check_skips_compiler_code reports whether `file` belongs to V's own
-// standard library. A global's bare name reaches into vlib as well, so a user
-// global named something ordinary like `page_size` would otherwise make
-// vlib/builtin fail to compile -- a file the user cannot edit, and one whose
-// local was written long before that global existed. The user_code_start bound
-// alone does not cover this: modules parsed on demand, such as
-// builtin.closure, land after it.
-fn (tc &TypeChecker) shadow_check_skips_compiler_code(file string) bool {
-	if file.len == 0 || tc.compiler_vroot.len == 0 {
+// shadow_check_owns_file reports whether `file` is the project's own code, and
+// so is a file whose author can act on this error.
+//
+// A global's bare name reaches into every module that gets compiled, including
+// vlib and any third-party dependency, so ownership has to be decided by path.
+// user_code_start cannot do it: the driver sets it right after builtin is
+// parsed, before both the user's inputs and their imports, which leaves every
+// dependency on the same side of the mark as the project itself.
+//
+// diagnostic_files alone is too narrow in the other direction -- for a project
+// compiled as a directory it holds only the entry file, and a shadow inside one
+// of the project's own modules is exactly the case worth reporting. So the
+// project root extends it, the same way set_unsupported_generic_files extends
+// diagnostics over a directory build.
+fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
+	if file.len == 0 {
 		return false
 	}
-	normalized := file.replace('\\', '/')
-	vroot := tc.compiler_vroot.replace('\\', '/').trim_right('/')
-	return normalized.starts_with('${vroot}/vlib/')
+	if file in tc.diagnostic_files {
+		return true
+	}
+	if tc.shadow_diagnostic_root.len == 0 {
+		// No root to judge by: fall back to the explicit selection, and to
+		// "everything" only when no selection was made at all.
+		return tc.diagnostic_files.len == 0
+	}
+	root := tc.shadow_diagnostic_root
+	// Match the path as written first. A build tree assembled out of symlinks --
+	// Vinix compiles its kernel through one -- holds the sources under the root
+	// only by their link paths, so resolving up front would place every file in
+	// the project outside it.
+	abs_file := os.abs_path(file)
+	if abs_file == root || abs_file.starts_with(root + os.path_separator) {
+		return true
+	}
+	// Then the resolved path, for a project reached through a symlink itself.
+	real_file := os.real_path(file)
+	return real_file == root || real_file.starts_with(root + os.path_separator)
 }
 
 // record_global_shadow_error reports a local that shadows a global. The ordinary
 // diagnostic filter limits errors to the files named on the command line, which
 // for a project compiled as a directory is only its entry file -- so a shadow
 // inside one of the project's own modules, which is where this happens, would
-// never be reported. Only that per-file filter is skipped: the user-code bound
-// stays, and vlib is excluded by path as well.
+// never be reported. That per-file filter is widened to the project root rather
+// than dropped, so vlib and third-party dependencies stay out (see
+// shadow_check_owns_file); the user-code bound stays too.
 //
 // The kind is `.duplicate_decl` rather than `.unknown_ident`: the name does
 // resolve, it just resolves to the global. `.unknown_ident` errors are read
@@ -6675,7 +6700,7 @@ fn (mut tc TypeChecker) record_global_shadow_error(id flat.NodeId, name string) 
 	if !tc.a.nodes[int(id)].pos.is_valid() {
 		return
 	}
-	if tc.shadow_check_skips_compiler_code(tc.cur_file) {
+	if !tc.shadow_check_owns_file(tc.cur_file) {
 		return
 	}
 	msg := 'variable `${name}` shadows a global variable'

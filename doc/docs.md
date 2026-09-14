@@ -8349,6 +8349,11 @@ The check covers each declared name on the left of a declaration, so both target
 `value, devices := make_pair()` are checked. A name that shadows nothing, and `_`, are
 left alone.
 
+Only code the project owns is checked, which for a directory build means the whole
+project, not just the file named on the command line. An installed dependency is left
+alone: its author cannot see the globals your program declares, so a local of theirs
+that happens to collide will not stop your build.
+
 ## Static Variables
 
 V also supports *static variables*, which are like *global variables*, but

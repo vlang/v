@@ -860,6 +860,7 @@ pub mut:
 	is_prod                       bool
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
+	shadow_diagnostic_root        string
 	multiple_module_import_lines  map[u64]bool
 	source_texts_by_file          map[string]string
 	ct_update_pos                 map[int]token.Pos
@@ -1288,6 +1289,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		is_prod: tc.is_prod
 		suppress_dump_output: tc.suppress_dump_output
 		diagnostic_files: tc.diagnostic_files
+		shadow_diagnostic_root: tc.shadow_diagnostic_root
 		multiple_module_import_lines: tc.multiple_module_import_lines
 		source_texts_by_file: tc.source_texts_by_file
 		ct_update_pos: tc.ct_update_pos
