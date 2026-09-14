@@ -76,7 +76,7 @@ cache_lock_acquired=
 
 cleanup() {
 	if [ -n "$cache_lock_acquired" ]; then
-		owner_pid=$(cat "$cache_lock" 2>/dev/null || true)
+		owner_pid=$(sed -n '1p' "$cache_lock" 2>/dev/null || true)
 		if [ "$owner_pid" = "$$" ]; then
 			rm -f "$cache_lock"
 		fi
@@ -88,24 +88,67 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
+process_identity() {
+	identity_pid=$1
+	if [ -r "/proc/$identity_pid/stat" ]; then
+		identity_stat=$(cat "/proc/$identity_pid/stat") || return 1
+		identity_fields=${identity_stat##*) }
+		identity_start=$(printf '%s\n' "$identity_fields" | awk '{print $20}')
+		identity_boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)
+		[ -n "$identity_start" ] || return 1
+		printf '%s:%s\n' "$identity_boot" "$identity_start"
+		return
+	fi
+	ps -p "$identity_pid" -o lstart= 2>/dev/null | awk '{$1=$1; print}'
+}
+
 acquire_cache_lock() {
 	mkdir -p "$cache_parent" || return 1
-	printf '%s\n' "$$" > "$cache_lock_owner" || return 1
-	while ! ln "$cache_lock_owner" "$cache_lock" 2>/dev/null; do
-		existing_pid=$(cat "$cache_lock" 2>/dev/null || true)
+	owner_identity=$(process_identity "$$")
+	printf '%s\n%s\n' "$$" "$owner_identity" > "$cache_lock_owner" || return 1
+	wait_count=0
+	while :; do
+		if ln "$cache_lock_owner" "$cache_lock" 2>/dev/null; then
+			cache_lock_acquired=1
+			return
+		fi
+		if [ ! -e "$cache_lock" ]; then
+			if ln "$cache_lock_owner" "$cache_lock" 2>/dev/null; then
+				cache_lock_acquired=1
+				return
+			fi
+			if [ ! -e "$cache_lock" ]; then
+				echo "Could not create the V $release_version fallback cache lock (hard links may be unsupported)." >&2
+				return 1
+			fi
+		fi
+		existing_pid=$(sed -n '1p' "$cache_lock" 2>/dev/null || true)
+		existing_identity=$(sed -n '2p' "$cache_lock" 2>/dev/null || true)
 		case "$existing_pid" in
 			''|*[!0-9]*) stale_owner=invalid ;;
 			*)
 				if kill -0 "$existing_pid" 2>/dev/null; then
-					sleep 1
-					continue
+					current_identity=$(process_identity "$existing_pid")
+					if [ -n "$existing_identity" ] && [ "$current_identity" = "$existing_identity" ]; then
+						sleep 1
+						continue
+					fi
+					if [ -z "$existing_identity" ] || [ -z "$current_identity" ]; then
+						wait_count=$((wait_count + 1))
+						if [ "$wait_count" -ge 120 ]; then
+							echo "Timed out waiting for the V $release_version fallback cache lock." >&2
+							return 1
+						fi
+						sleep 1
+						continue
+					fi
 				fi
 				stale_owner=$existing_pid
 				;;
 		esac
 		reclaim=$cache_lock.reclaim-$stale_owner
 		if ln "$cache_lock" "$reclaim" 2>/dev/null; then
-			current_pid=$(cat "$cache_lock" 2>/dev/null || true)
+			current_pid=$(sed -n '1p' "$cache_lock" 2>/dev/null || true)
 			if [ "$current_pid" = "$existing_pid" ]; then
 				rm -f "$cache_lock"
 				case "$existing_pid" in
@@ -118,7 +161,6 @@ acquire_cache_lock() {
 		fi
 		sleep 1
 	done
-	cache_lock_acquired=1
 }
 
 write_candidate_root() {

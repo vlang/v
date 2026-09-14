@@ -579,7 +579,7 @@ fn ensure_v1_fallback(reason string) !string {
 fn v1_fallback_cache_parent() string {
 	configured := os.getenv('V1_FALLBACK_CACHE_DIR')
 	if configured != '' {
-		return configured
+		return os.abs_path(configured)
 	}
 	xdg := os.getenv('XDG_CACHE_HOME')
 	if xdg != '' {

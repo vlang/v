@@ -74,6 +74,8 @@ fn test_v1_fallback_installer_exposes_compatibility_modules() {
 	assert lock_index >= 0
 	assert lock_index < install_index
 	assert source.contains('kill -0 "$existing_pid"')
+	assert source.contains('process_identity "$existing_pid"')
+	assert source.contains('if [ ! -e "$cache_lock" ]')
 	assert source.contains('$cache_lock.reclaim-$stale_owner')
 	assert source.contains('fallback_compatibility_is_installed "$cache_root"')
 }
@@ -114,7 +116,7 @@ fn test_v1_fallback_resolution_requires_compatibility_modules() {
 }
 
 fn test_v1_fallback_cached_launcher_uses_the_configured_cache() {
-	configured := os.join_path(os.vtmp_dir(), 'configured_v1_cache_${os.getpid()}')
+	configured := 'configured_v1_cache_${os.getpid()}'
 	previous := os.getenv_opt('V1_FALLBACK_CACHE_DIR')
 	os.setenv('V1_FALLBACK_CACHE_DIR', configured, true)
 	defer {
@@ -124,7 +126,7 @@ fn test_v1_fallback_cached_launcher_uses_the_configured_cache() {
 			os.unsetenv('V1_FALLBACK_CACHE_DIR')
 		}
 	}
-	assert v1_fallback_cached_launcher() == os.join_path(configured, v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	assert v1_fallback_cached_launcher() == os.join_path(os.abs_path(configured), v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
 }
 
 fn test_v1_fallback_cache_without_a_home_is_private() {
