@@ -143,8 +143,7 @@ fn ascon_generic_hash(mut s State, msg []u8, size int) []u8 {
 	// Otherwise, just pad it
 	// NOTE: BUG on formatter ? This line gets on warning with message
 	// "warning: unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`"
-	cond := _likely_(msg.len > 0)
-	if cond {
+	if _likely_(msg.len > 0) {
 		mut msg_len := msg.len
 		for msg_len >= block_size {
 			block := unsafe { msg[pos..pos + block_size] }
