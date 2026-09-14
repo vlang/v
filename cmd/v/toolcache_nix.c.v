@@ -15,6 +15,8 @@ import os
 
 fn C.open(const_path &char, flags i32, mode ...int) i32
 
+fn C.openat(directory i32, const_path &char, flags i32, mode ...int) i32
+
 fn C.close(fd i32) i32
 
 fn C.dup(fd i32) i32
@@ -91,15 +93,16 @@ fn (entry ToolCacheEntryDir) stage_parent(path string) !string {
 	return parent
 }
 
-fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
+fn (entry ToolCacheEntryDir) child_names() []string {
+	mut names := []string{}
 	duplicate := C.dup(entry.fd)
 	if duplicate < 0 {
-		return
+		return names
 	}
 	directory := C.fdopendir(duplicate)
 	if isnil(directory) {
 		C.close(duplicate)
-		return
+		return names
 	}
 	defer {
 		C.closedir(directory)
@@ -111,6 +114,31 @@ fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
 			break
 		}
 		name := unsafe { tos_clone(&u8(&directory_entry.d_name[0])) }
+		if name != '.' && name != '..' {
+			names << name
+		}
+	}
+	return names
+}
+
+fn (entry ToolCacheEntryDir) remove_all_contents() {
+	for name in entry.child_names() {
+		child_fd := C.openat(entry.fd, &char(name.str), C.O_RDONLY | C.O_DIRECTORY | C.O_NOFOLLOW, 0)
+		if child_fd < 0 {
+			entry.remove(name)
+			continue
+		}
+		child := ToolCacheEntryDir{
+			fd: child_fd
+		}
+		child.remove_all_contents()
+		child.close()
+		C.unlinkat(entry.fd, &char(name.str), C.AT_REMOVEDIR)
+	}
+}
+
+fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
+	for name in entry.child_names() {
 		if name.contains(tool_cache_replaced_marker) {
 			entry.remove(name)
 		}

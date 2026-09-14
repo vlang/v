@@ -615,7 +615,13 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 			// rather than directory removal.
 			os.rm(path) or {}
 		} else {
-			os.rmdir_all(path) or {}
+			// Pin the directory before traversing it. An entry owned by another account in a
+			// sticky shared cache is deliberately left alone; a link substituted at any point
+			// is unlinked as a leaf by the platform implementation below.
+			stale_entry := open_tool_cache_entry_dir(path) or { continue }
+			stale_entry.remove_all_contents()
+			stale_entry.close()
+			os.rmdir(path) or {}
 		}
 	}
 }

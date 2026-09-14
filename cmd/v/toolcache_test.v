@@ -530,6 +530,36 @@ fn test_pinned_entry_publication_cannot_be_redirected() {
 	assert os.read_file(installed)! == 'the manifest'
 }
 
+fn test_pinned_stale_pruning_cannot_be_redirected() {
+	directory := toolcache_test_dir('pinned_prune')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	stale_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(stale_dir)!
+	os.write_file(os.join_path(stale_dir, 'cached-binary'), 'stale')!
+	stale_entry := open_tool_cache_entry_dir(stale_dir)!
+	defer {
+		stale_entry.close()
+	}
+
+	original_dir := stale_dir + '.original'
+	mut pathname_was_replaced := true
+	os.rename(stale_dir, original_dir) or { pathname_was_replaced = false }
+	outside := os.join_path(directory, 'outside')
+	os.mkdir(outside)!
+	must_survive := os.join_path(outside, 'must-survive')
+	os.write_file(must_survive, 'safe')!
+	if pathname_was_replaced {
+		os.symlink(outside, stale_dir)!
+	}
+
+	stale_entry.remove_all_contents()
+	assert os.read_file(must_survive)! == 'safe', 'recursive pruning must not follow a replacement symlink'
+	cleaned_dir := if pathname_was_replaced { original_dir } else { stale_dir }
+	assert os.ls(cleaned_dir)! == []
+}
+
 fn test_staging_directory_is_on_the_cache_filesystem() {
 	directory := toolcache_test_dir('stage_filesystem')
 	defer {

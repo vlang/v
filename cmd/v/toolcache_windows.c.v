@@ -99,6 +99,22 @@ fn (entry ToolCacheEntryDir) stage_parent(_ string) !string {
 	return entry.path
 }
 
+fn (entry ToolCacheEntryDir) remove_all_contents() {
+	for name in os.ls(entry.path) or { [] } {
+		child_path := os.join_path(entry.path, name)
+		child := open_tool_cache_entry_dir(child_path) or {
+			// Removing a file or reparse point does not traverse its target. If it changed
+			// into a directory after the open failed, both non-recursive removals are safe.
+			os.rm(child_path) or {}
+			os.rmdir(child_path) or {}
+			continue
+		}
+		child.remove_all_contents()
+		child.close()
+		os.rmdir(child_path) or {}
+	}
+}
+
 fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
 	for name in os.ls(entry.path) or { [] } {
 		if name.contains(tool_cache_replaced_marker) {
