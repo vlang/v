@@ -82,11 +82,14 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 		children_count: 2
 	}
 	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Context'] = []types.StructField{}
+	tc.interface_names['IError'] = true
+	tc.interface_abstract_methods['IError'] = ['msg']
 	tc.fn_implicit_veb_ctx['App.show'] = true
 	tc.fn_param_types['App.show'] = [types.Type(types.Struct{ name: 'App' }),
 		tc.parse_type('mut Context')]
 	tc.params_structs['RouteParams'] = true
-	t := new_transformer(mut a, &tc, map[string]bool{})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	base_method := MethodMeta{
 		name:        'show'
 		receiver:    'App'
@@ -94,38 +97,51 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	}
 	assert t.comptime_method_call_arity_matches(call_without_ctx, base_method)
 	assert t.comptime_method_call_arity_matches(call, base_method)
-	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+	assert t.comptime_method_call_matches(call, base_method)
+	optional_method := MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: '?string' }]
-	})
-	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+	}
+	assert t.comptime_method_call_arity_matches(call, optional_method)
+	assert t.comptime_method_call_matches(call, optional_method)
+	params_method := MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: 'RouteParams' }]
-	})
-	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+	}
+	assert t.comptime_method_call_arity_matches(call, params_method)
+	assert t.comptime_method_call_matches(call, params_method)
+	variadic_method := MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: '...bool' }]
-	})
+	}
+	assert t.comptime_method_call_arity_matches(call, variadic_method)
+	assert t.comptime_method_call_matches(call, variadic_method)
 	assert !t.comptime_method_call_arity_matches(call_without_ctx, MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: 'string' }]
 	})
-	assert !t.comptime_method_call_arity_matches(call, MethodMeta{
+	string_method := MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: 'string' }]
-	})
-	assert t.comptime_method_call_arity_matches(call_with_route_arg, MethodMeta{
+	}
+	assert t.comptime_method_call_arity_matches(call, string_method)
+	assert !t.comptime_method_call_matches(call, string_method)
+	route_method := MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: 'string' }]
-	})
+	}
+	assert t.comptime_method_call_arity_matches(call_with_route_arg, route_method)
+	assert t.comptime_method_call_matches(call_with_route_arg, route_method)
 	assert !t.comptime_method_call_arity_matches(call_without_ctx, MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: '!fn ()' }]
 	})
-	assert !t.comptime_method_call_arity_matches(call, MethodMeta{
+	result_callback_method := MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: '!fn ()' }]
-	})
+	}
+	assert t.comptime_method_call_arity_matches(call, result_callback_method)
+	assert !t.comptime_method_call_matches(call, result_callback_method)
 }
 
 fn test_comptime_method_call_arity_distinguishes_mut_route_arg_from_ctx() {
@@ -152,13 +168,51 @@ fn test_comptime_method_call_arity_distinguishes_mut_route_arg_from_ctx() {
 	tc.fn_implicit_veb_ctx['App.update'] = true
 	tc.fn_param_types['App.update'] = [types.Type(types.Struct{ name: 'App' }),
 		tc.parse_type('mut Context'), tc.parse_type('mut Item')]
-	t := new_transformer(mut a, &tc, map[string]bool{})
-	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	method := MethodMeta{
 		name:        'update'
 		receiver:    'App'
 		module_name: 'main'
 		params:      [ParamMeta{ typ: '&Item' }]
+	}
+	assert t.comptime_method_call_arity_matches(call, method)
+	assert t.comptime_method_call_matches(call, method)
+}
+
+fn test_comptime_method_call_arity_binds_context_value_to_declared_interface() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'call'
 	})
+	ctx := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'ctx'
+		typ:   '&main.Context'
+	})
+	children_start := a.children.len
+	a.children << callee
+	a.children << ctx
+	call := flat.Node{
+		kind:           .call
+		children_start: i32(children_start)
+		children_count: 2
+	}
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Context'] = []types.StructField{}
+	tc.interface_names['RouteArg'] = true
+	tc.fn_implicit_veb_ctx['App.show'] = true
+	tc.fn_param_types['App.show'] = [types.Type(types.Struct{ name: 'App' }),
+		tc.parse_type('mut Context'), tc.parse_type('RouteArg')]
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	method := MethodMeta{
+		name:        'show'
+		receiver:    'App'
+		module_name: 'main'
+		params:      [ParamMeta{ typ: 'RouteArg' }]
+	}
+	assert t.comptime_method_call_arity_matches(call, method)
+	assert t.comptime_method_call_matches(call, method)
 }
 
 fn test_comptime_method_call_arity_collapses_params_struct_fields() {

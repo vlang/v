@@ -352,3 +352,56 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['index called', 'explicit called'], run.output
 }
+
+// Arity decides whether a reflected argument occupies the hidden context slot.
+// A Context value can therefore bind to a declared interface route parameter
+// when that interface accepts Context; it must not be consumed as an explicit
+// copy of the hidden parameter merely because its concrete type is Context.
+fn test_veb_reflected_context_value_binds_to_declared_interface_param() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub interface RouteArg {}
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (mut app App) accepts(value RouteArg) veb.Result {
+	_ = value
+	println("interface called")
+	return veb.Result{}
+}
+
+pub fn (mut app App) needs_string(value string) veb.Result {
+	println(value)
+	return veb.Result{}
+}
+
+fn dispatch[A](mut app A, ctx &Context) {
+	$for method in A.methods {
+		$if method.return_type is veb.Result {
+			app.$method(ctx)
+		}
+	}
+}
+
+fn main() {
+	mut app := App{}
+	ctx := &Context{}
+	dispatch(mut app, ctx)
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg.v')
+	os.write_file(src_file, src) or { panic(err) }
+	bin_out := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg')
+	os.rm(bin_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'interface called', run.output
+}

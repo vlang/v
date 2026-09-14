@@ -819,6 +819,8 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['App'] = []types.StructField{}
+	tc.structs['Context'] = []types.StructField{}
+	tc.interface_names['RouteArg'] = true
 	tc.fn_implicit_veb_ctx['App.show'] = true
 	tc.fn_param_types['App.show'] = [types.Type(types.Struct{ name: 'App' }),
 		tc.parse_type('mut Context'), types.Type(types.String{})]
@@ -834,8 +836,11 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	assert reflected_params[1] is types.Pointer
 	assert reflected_params[2] is types.String
 	assert t.call_param_offset_for_node('App.show', a.node(reflected_call), reflected_params) == 1
-	assert t.call_param_offset_for_node('App.show', a.node(main_ctx_call), reflected_params) == 1
+	assert t.call_param_offset_for_node('App.show', a.node(main_ctx_call), reflected_params) == 2
 	assert t.call_param_offset_for_node('App.show', a.node(reflected_route_call), reflected_params) == 2
+	interface_params := [types.Type(types.Struct{ name: 'App' }), tc.parse_type('mut Context'),
+		types.Type(types.Interface{ name: 'RouteArg' })]
+	assert t.call_param_offset_for_node('App.show', a.node(main_ctx_call), interface_params) == 2
 }
 
 fn test_pending_generic_specialization_keys_are_private_initialized_maps() {
