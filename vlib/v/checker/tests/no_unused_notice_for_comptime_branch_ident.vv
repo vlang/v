@@ -28,9 +28,21 @@ fn keyword_shaped_ident(module string) {
 	}
 }
 
+// A name before a colon is an expression in a map key or string interpolation,
+// rather than a struct-field or named-argument label.
+fn colon_delimited_ident(key string, width int) {
+	$if prealloc {
+		_ := map[string]int{
+			key: 1
+		}
+		println('${width:4}')
+	}
+}
+
 fn main() {
 	println((Counter{1} + Counter{2}).n)
 	keyword_shaped_ident('v')
+	colon_delimited_ident('answer', 42)
 	// A capture used only in the dropped closure branch is still used.
 	captured := 64
 	only_in_skipped_branch := fn [captured] () {

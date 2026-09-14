@@ -5790,6 +5790,11 @@ fn skipped_pipe_starts_lambda(prev_tok token.Token) bool {
 		.key_false, .key_nil, .key_none, .rpar, .rsbr, .rcbr, .not, .question, .inc, .dec]
 }
 
+fn skipped_token_can_start_map_type(prev_tok token.Token) bool {
+	return prev_tok.is_assignment() || prev_tok.is_infix()
+		|| prev_tok in [.lcbr, .semicolon, .comma, .colon, .lpar, .lsbr, .key_return]
+}
+
 fn skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, tok token.Token, paren_depth int, bracket_depth int, brace_depth int) bool {
 	if scope.block_depth >= 0 {
 		return tok == .rcbr && brace_depth == scope.block_depth
@@ -5807,7 +5812,9 @@ fn skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, tok token.Token, 
 // interpolations and operators right. Only tokens the expression parser can
 // turn into identifiers are recorded; selector members follow a dot, while
 // struct-field and named-argument labels precede a colon, so neither is a local
-// reference. Only names bound in the current lexical scope can refer to a local.
+// reference. Map keys and interpolation expressions can also precede a colon;
+// their enclosing brace identifies them as expressions. Only names bound in the
+// current lexical scope can refer to a local.
 // A plain assignment target is an identifier occurrence, but not a read. Goto
 // operands are recorded only in the label namespace, while break and continue
 // label operands are not local references. Assembly template symbols are not V
@@ -5838,8 +5845,24 @@ fn (mut p Parser) skip_comptime_block() {
 	mut asm_base_paren_depth := 0
 	mut asm_section := 0
 	mut asm_is_goto := false
+	mut expression_colon_braces := [false]
+	mut map_type_depth := -1
+	mut map_type_paren_depth := -1
+	mut map_type_bracket_depth := -1
 	p.next()
 	for depth > 0 && p.tok != .eof {
+		if map_type_depth >= 0 && depth == map_type_depth
+			&& paren_depth == map_type_paren_depth && bracket_depth == map_type_bracket_depth
+			&& p.tok in [.comma, .semicolon] {
+			map_type_depth = -1
+		}
+		if !in_lambda_params && map_type_depth < 0 && p.tok == .name && p.lit == 'map'
+			&& p.peek() == .lsbr
+			&& skipped_token_can_start_map_type(prev_tok) {
+			map_type_depth = depth
+			map_type_paren_depth = paren_depth
+			map_type_bracket_depth = bracket_depth
+		}
 		if pending_comma_lhs_reads.len > 0
 			&& (depth != pending_comma_lhs_depth || p.tok in [.semicolon, .rcbr]) {
 			for key in pending_comma_lhs_reads {
@@ -5917,7 +5940,8 @@ fn (mut p Parser) skip_comptime_block() {
 		} else if prev_tok != .dot && prev_tok !in [.key_goto, .key_break, .key_continue]
 			&& (p.tok in [.name, .key_module]
 			|| (p.tok == .key_shared && p.shared_token_is_identifier(false)))
-			&& p.peek() != .colon && shadowed_names[p.lit] == 0 && p.is_local_binding(p.lit) {
+			&& (p.peek() != .colon || expression_colon_braces.last())
+			&& shadowed_names[p.lit] == 0 && p.is_local_binding(p.lit) {
 			key := prefix + p.lit
 			p.a.comptime_skipped_names[key] = true
 			if paren_depth == 0 && bracket_depth == 0 && p.peek() == .comma {
@@ -5937,8 +5961,19 @@ fn (mut p Parser) skip_comptime_block() {
 			pending_comma_lhs_reads.clear()
 		}
 		match p.tok {
-			.lcbr { depth++ }
-			.rcbr { depth-- }
+			.lcbr {
+				is_map_literal := (map_type_depth == depth
+					&& map_type_paren_depth == paren_depth
+					&& map_type_bracket_depth == bracket_depth) || prev_tok.is_assignment()
+					|| prev_tok in [.comma, .colon, .lpar, .lsbr, .key_return]
+				expression_colon_braces << (prev_tok == .str_dollar || is_map_literal)
+				map_type_depth = -1
+				depth++
+			}
+			.rcbr {
+				depth--
+				expression_colon_braces.delete_last()
+			}
 			.lpar { paren_depth++ }
 			.rpar { paren_depth-- }
 			.lsbr { bracket_depth++ }
