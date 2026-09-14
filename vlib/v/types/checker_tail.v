@@ -16353,13 +16353,22 @@ fn is_anonymous_struct_name(name string) bool {
 	return name.all_after_last('.').starts_with('AnonStruct_')
 }
 
+// is_synthesized_anon_struct reports whether `name` is an anonymous aggregate the
+// parser made up, rather than a type a user happened to name `AnonStruct_...`. Only
+// the former may be adopted as the type of a bare `struct { ... }` literal: adopting a
+// user-declared one lets `holder.consume(struct { x: 42 })` reach a private type of
+// another module that the caller could not have named.
+fn (tc &TypeChecker) is_synthesized_anon_struct(name string) bool {
+	return tc.a.synthesized_anon_struct_types[name.all_after_last('.')]
+}
+
 fn is_contextual_anonymous_struct_literal(name string) bool {
 	return name == 'struct' || is_anonymous_struct_name(name)
 }
 
 fn (mut tc TypeChecker) anonymous_struct_literal_compatible(node flat.Node, expected Type) bool {
 	struct_type := struct_type_from_type(expected) or { return false }
-	if !is_anonymous_struct_name(struct_type.name) {
+	if !tc.is_synthesized_anon_struct(struct_type.name) {
 		return false
 	}
 	fields := tc.struct_fields_for_init(struct_type.name)

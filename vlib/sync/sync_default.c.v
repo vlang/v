@@ -11,10 +11,6 @@ $if !android {
 
 #include <semaphore.h>
 
-// sem_poll_interval_ns caps how long the Apple fallback in `timed_wait` sleeps
-// between `sem_trywait` attempts, so a post is noticed promptly without spinning.
-const sem_poll_interval_ns = i64(1_000_000)
-
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
 fn C.pthread_mutex_lock(voidptr) i32
@@ -38,6 +34,22 @@ fn C.sem_trywait(voidptr) i32
 fn C.sem_timedwait(voidptr, voidptr) i32
 fn C.sem_destroy(voidptr) i32
 
+// Apple's libc has no working unnamed POSIX semaphores: `sem_init` fails with ENOSYS
+// there, and every later `sem_*` call on the still zeroed `sem_t` fails with EBADF.
+// Apple targets normally compile sync_darwin.c.v instead of this file, but the portable
+// `-os cross` snapshot (vc/v.c) is generated on Linux and then compiled on macOS to
+// bootstrap v1, which is how this file reaches an Apple C compiler. The `$if macos || ios`
+// branches below therefore route Semaphore through the same mutex/condvar implementation
+// that sync_darwin.c.v uses, so one snapshot works on both kinds of host.
+fn C.pthread_condattr_init(voidptr) i32
+fn C.pthread_condattr_setpshared(voidptr, i32) i32
+fn C.pthread_condattr_destroy(voidptr) i32
+fn C.pthread_cond_init(voidptr, voidptr) i32
+fn C.pthread_cond_signal(voidptr) i32
+fn C.pthread_cond_wait(voidptr, voidptr) i32
+fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) i32
+fn C.pthread_cond_destroy(voidptr) i32
+
 @[typedef]
 pub struct C.pthread_mutex_t {}
 
@@ -46,6 +58,12 @@ pub struct C.pthread_rwlock_t {}
 
 @[typedef]
 pub struct C.pthread_rwlockattr_t {}
+
+@[typedef]
+pub struct C.pthread_cond_t {}
+
+@[typedef]
+pub struct C.pthread_condattr_t {}
 
 @[typedef]
 pub struct C.sem_t {}
@@ -66,9 +84,19 @@ struct RwMutexAttr {
 	attr C.pthread_rwlockattr_t
 }
 
+struct CondAttr {
+	attr C.pthread_condattr_t
+}
+
 @[heap]
 pub struct Semaphore {
 	sem C.sem_t
+	// the mutex/condvar state of the Apple fallback described above; it is unused
+	// on the platforms where `sem_init` works
+	mtx  C.pthread_mutex_t
+	cond C.pthread_cond_t
+mut:
+	count u32
 }
 
 // new_mutex creates and initialises a new mutex instance on the heap, then returns a pointer to it.
@@ -228,7 +256,11 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 // resources needed for the semaphore to work properly.
 @[inline]
 pub fn (mut sem Semaphore) init(n u32) {
-	C.sem_init(&sem.sem, 0, n)
+	$if macos || ios {
+		sem.cond_init(n)
+	} $else {
+		C.sem_init(&sem.sem, 0, n)
+	}
 }
 
 // post increases/unlocks the counter of the semaphore by 1.
@@ -237,7 +269,11 @@ pub fn (mut sem Semaphore) init(n u32) {
 // (locking the semaphore), and then will continue running. See also .wait().
 @[inline]
 pub fn (mut sem Semaphore) post() {
-	C.sem_post(&sem.sem)
+	$if macos || ios {
+		sem.cond_post()
+	} $else {
+		C.sem_post(&sem.sem)
+	}
 }
 
 // wait will just decrement the semaphore count, if it was positive.
@@ -246,17 +282,21 @@ pub fn (mut sem Semaphore) post() {
 // In effect, it allows you to block threads, until the semaphore, is posted by another thread.
 // See also .post().
 pub fn (mut sem Semaphore) wait() {
-	for {
-		if C.sem_wait(&sem.sem) == 0 {
-			return
-		}
-		e := C.errno
-		match e {
-			C.EINTR {
-				continue // interrupted by signal
+	$if macos || ios {
+		sem.cond_wait()
+	} $else {
+		for {
+			if C.sem_wait(&sem.sem) == 0 {
+				return
 			}
-			else {
-				cpanic_errno()
+			e := C.errno
+			match e {
+				C.EINTR {
+					continue // interrupted by signal
+				}
+				else {
+					cpanic_errno()
+				}
 			}
 		}
 	}
@@ -267,21 +307,25 @@ pub fn (mut sem Semaphore) wait() {
 // try_wait should return as fast as possible so error handling is only
 // done when debugging.
 pub fn (mut sem Semaphore) try_wait() bool {
-	$if !debug {
-		return C.sem_trywait(&sem.sem) == 0
+	$if macos || ios {
+		return sem.cond_try_wait()
 	} $else {
-		if C.sem_trywait(&sem.sem) != 0 {
-			e := C.errno
-			match e {
-				C.EAGAIN {
-					return false
-				}
-				else {
-					cpanic_errno()
+		$if !debug {
+			return C.sem_trywait(&sem.sem) == 0
+		} $else {
+			if C.sem_trywait(&sem.sem) != 0 {
+				e := C.errno
+				match e {
+					C.EAGAIN {
+						return false
+					}
+					else {
+						cpanic_errno()
+					}
 				}
 			}
+			return true
 		}
-		return true
 	}
 }
 
@@ -289,32 +333,7 @@ pub fn (mut sem Semaphore) try_wait() bool {
 // thus it can return false early, if the timeout passed before the semaphore was posted.
 pub fn (mut sem Semaphore) timed_wait(timeout i64) bool {
 	$if macos || ios {
-		// Apple ships <semaphore.h> without `sem_timedwait`; it is the one POSIX
-		// semaphore entry point its libc has no symbol for at all, so referencing it
-		// breaks the link. Apple targets normally compile sync_darwin.c.v instead of
-		// this file, but the portable `-os cross` snapshot (vc/v.c) is generated on
-		// Linux and then compiled on macOS to bootstrap v1, which is how this file
-		// reaches an Apple C compiler. Poll `sem_trywait` until the deadline there.
-		deadline := sync_mono_now() + timeout
-		for {
-			if C.sem_trywait(&sem.sem) == 0 {
-				return true
-			}
-			e := C.errno
-			if e != C.EAGAIN && e != C.EINTR {
-				cpanic(e)
-			}
-			remaining := deadline - sync_mono_now()
-			if remaining <= 0 {
-				return false
-			}
-			sync_sleep_nanoseconds(if remaining < sem_poll_interval_ns {
-				remaining
-			} else {
-				sem_poll_interval_ns
-			})
-		}
-		return false
+		return sem.cond_timed_wait(timeout)
 	} $else {
 		t_spec := sync_realtime_deadline(timeout)
 		for {
@@ -341,5 +360,112 @@ pub fn (mut sem Semaphore) timed_wait(timeout i64) bool {
 // destroy frees the resources associated with the Semaphore instance.
 // Note: the semaphore instance itself is not freed.
 pub fn (mut sem Semaphore) destroy() {
-	should_be_zero(C.sem_destroy(&sem.sem))
+	$if macos || ios {
+		sem.cond_destroy()
+	} $else {
+		should_be_zero(C.sem_destroy(&sem.sem))
+	}
+}
+
+// The `cond_*` methods below are the Apple fallback announced at the top of this file:
+// a semaphore built from a mutex, a condition variable and an atomic counter, i.e. the
+// implementation sync_darwin.c.v uses on a native Apple build. They are compiled on
+// every platform, so that the portable `-os cross` snapshot carries both implementations
+// and lets the C preprocessor pick the one that the target's libc can actually run.
+fn (mut sem Semaphore) cond_init(n u32) {
+	C.atomic_store_u32(&sem.count, n)
+	should_be_zero(C.pthread_mutex_init(&sem.mtx, C.NULL))
+	attr := CondAttr{}
+	should_be_zero(C.pthread_condattr_init(&attr.attr))
+	C.pthread_condattr_setpshared(&attr.attr, C.PTHREAD_PROCESS_PRIVATE)
+	C.pthread_cond_init(&sem.cond, &attr.attr)
+	C.pthread_condattr_destroy(&attr.attr)
+}
+
+fn (mut sem Semaphore) cond_post() {
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 1 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c + 1) {
+			return
+		}
+	}
+	C.pthread_mutex_lock(&sem.mtx)
+	c = C.atomic_fetch_add_u32(&sem.count, 1)
+	if c == 0 {
+		C.pthread_cond_signal(&sem.cond)
+	}
+	C.pthread_mutex_unlock(&sem.mtx)
+}
+
+fn (mut sem Semaphore) cond_wait() {
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 0 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+			return
+		}
+	}
+	C.pthread_mutex_lock(&sem.mtx)
+	c = C.atomic_load_u32(&sem.count)
+	outer: for {
+		if c == 0 {
+			C.pthread_cond_wait(&sem.cond, &sem.mtx)
+			c = C.atomic_load_u32(&sem.count)
+		}
+		for c > 0 {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+				if c > 1 {
+					C.pthread_cond_signal(&sem.cond)
+				}
+				break outer
+			}
+		}
+	}
+	C.pthread_mutex_unlock(&sem.mtx)
+}
+
+fn (mut sem Semaphore) cond_try_wait() bool {
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 0 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut sem Semaphore) cond_timed_wait(timeout i64) bool {
+	mut c := C.atomic_load_u32(&sem.count)
+	for c > 0 {
+		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+			return true
+		}
+	}
+	C.pthread_mutex_lock(&sem.mtx)
+	t_spec := sync_realtime_deadline(timeout)
+	mut res := 0
+	c = C.atomic_load_u32(&sem.count)
+	outer: for {
+		if c == 0 {
+			res = C.pthread_cond_timedwait(&sem.cond, &sem.mtx, &t_spec)
+			if res == C.ETIMEDOUT {
+				break outer
+			}
+			c = C.atomic_load_u32(&sem.count)
+		}
+		for c > 0 {
+			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+				if c > 1 {
+					C.pthread_cond_signal(&sem.cond)
+				}
+				break outer
+			}
+		}
+	}
+	C.pthread_mutex_unlock(&sem.mtx)
+	return res == 0
+}
+
+fn (mut sem Semaphore) cond_destroy() {
+	should_be_zero(C.pthread_cond_destroy(&sem.cond))
+	should_be_zero(C.pthread_mutex_destroy(&sem.mtx))
 }

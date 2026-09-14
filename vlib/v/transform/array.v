@@ -714,7 +714,7 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 			continue
 		}
 		value_name := t.new_temp('arr_val')
-		value := t.transform_owned_array_literal_element(elem_id, elem_type)
+		value := t.transform_array_literal_element_isolated(elem_id, elem_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
 		call := t.make_call_typed('array_push', [
 			t.make_prefix(.amp, t.make_ident(tmp_name)),
@@ -743,6 +743,40 @@ fn (t &Transformer) array_literal_can_emit_direct(node flat.Node) bool {
 	return true
 }
 
+// begin_isolated_pending detaches the statements queued so far and returns them, so
+// that a transform which drains pending statements into an expression of its own
+// cannot capture them. Pair every call with end_isolated_pending.
+fn (mut t Transformer) begin_isolated_pending() []flat.NodeId {
+	outer := t.pending_stmts
+	t.pending_stmts = []flat.NodeId{}
+	return outer
+}
+
+// end_isolated_pending re-attaches `outer`, followed by whatever the isolated
+// transform queued for itself, keeping that transform's own prerequisites in front of
+// the statement that will use its result.
+fn (mut t Transformer) end_isolated_pending(outer []flat.NodeId) {
+	isolated := t.pending_stmts
+	t.pending_stmts = outer
+	for stmt in isolated {
+		t.pending_stmts << stmt
+	}
+}
+
+// transform_array_literal_element_isolated transforms one element of an array literal
+// that is built through a temporary, keeping the statements already queued for the
+// literal out of the element's own expression. A block element such as `unsafe { x }`
+// transforms its statements eagerly, and would otherwise drain the `arr_lit`
+// declaration and the earlier elements' pushes into that block, leaving the temporary
+// declared inside an expression the following `array_push` calls cannot see.
+// transform_call_arg_for_param keeps call arguments apart for the same reason.
+fn (mut t Transformer) transform_array_literal_element_isolated(elem_id flat.NodeId, elem_type string) flat.NodeId {
+	outer := t.begin_isolated_pending()
+	result := t.transform_owned_array_literal_element(elem_id, elem_type)
+	t.end_isolated_pending(outer)
+	return result
+}
+
 // append_array_literal_spread appends independent element clones when the destination
 // array will own and destroy its elements. Plain-data spreads keep the runtime bulk copy.
 fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id flat.NodeId, array_type string, elem_type string) {
@@ -760,7 +794,13 @@ fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id fl
 			}
 		}
 	}
+	// A spread source is an element too: `[...unsafe { xs }, 3]` transforms the block
+	// eagerly, and without this it drains the `arr_lit` declaration into the block, so
+	// the `array_push_many` below and every later push reference a temporary declared
+	// inside an expression they are not in.
+	outer_pending := t.begin_isolated_pending()
 	mut spread := t.transform_expr_for_type(spread_id, array_type)
+	t.end_isolated_pending(outer_pending)
 	spread_type := if t.node_type(spread_id).len > 0 {
 		t.node_type(spread_id)
 	} else {
@@ -975,7 +1015,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 			continue
 		}
 		value_name := t.new_temp('arr_val')
-		value := t.transform_owned_array_literal_element(elem_id, elem_type)
+		value := t.transform_array_literal_element_isolated(elem_id, elem_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
 		call := t.make_call_typed('array_push', [
 			t.make_prefix(.amp, t.make_ident(tmp_name)),
