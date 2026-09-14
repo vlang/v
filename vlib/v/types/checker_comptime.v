@@ -1933,7 +1933,9 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	if node.kind == .array_init {
 		tc.check_missing_array_init_interface_type_args(id, node)
 		tc.check_array_init(id, node)
-		tc.warn_alloc('array initialization', id, node.pos)
+		if unalias_type(tc.resolve_type(id)) is Array {
+			tc.warn_alloc('array initialization', id, node.pos)
+		}
 		$if ownership ? {
 			if !tc.ownership_aggregate_consumption_deferred(id) {
 				tc.ownership_consume_array_init_expr(node)
@@ -4417,7 +4419,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_interface_implementation_error(.assignment_mismatch, actual, target_iface, id, node.pos)
 		tc.record_error_at(.assignment_mismatch, 'type `${actual_name}` does not implement interface `${target_iface.name}`; `${actual_name}` does not implement interface `${target_iface.name}`, cannot cast `${actual_name}` to interface `${target_iface.name}`', id, node.pos)
 	}
-	if unalias_type(actual) !is Pointer {
+	if clean_actual !is Pointer && clean_actual !is Interface {
 		tc.warn_alloc('cast to interface', id, node.pos)
 	}
 }

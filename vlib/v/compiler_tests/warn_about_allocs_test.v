@@ -110,12 +110,24 @@ fn fixed_array() [3]int {
 	return [3]int[1, 2, 3]
 }
 
+fn empty_fixed_array() [3]int {
+	return [3]int{}
+}
+
+fn initialized_fixed_array() [3]int {
+	return [3]int{init: 1}
+}
+
 fn main() {
 	println(Token('a') + Token('b'))
 	person := Person{}
 	speaker := box(&person)
 	speaker.speak()
+	converted := Speaker(speaker)
+	converted.speak()
 	println(fixed_array())
+	println(empty_fixed_array())
+	println(initialized_fixed_array())
 }
 ")!
 	nonallocating := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
