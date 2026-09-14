@@ -18319,6 +18319,12 @@ fn (g &FlatGen) c_voidptr_param_arg_needs_cast(fn_name string, callee_name strin
 		|| callee_name.all_after_last('.') in g.inlined_c_active_macros {
 		return false
 	}
+	// A header that the selected compiler can find but CGen cannot inspect may
+	// provide a function-like macro. Keep the typed operand for C declarations
+	// from that V source file rather than guessing that the symbol is a function.
+	if g.c_symbol_may_be_from_unscanned_header(fn_name, callee_name) {
+		return false
+	}
 	if g.is_c_extern_fn_name_arg(arg_id) {
 		return false
 	}
@@ -18330,6 +18336,22 @@ fn (g &FlatGen) c_voidptr_param_arg_needs_cast(fn_name string, callee_name strin
 		return false
 	}
 	return true
+}
+
+fn (g &FlatGen) c_symbol_may_be_from_unscanned_header(fn_name string, callee_name string) bool {
+	if g.c_extern_forced_decls[fn_name] || g.c_extern_forced_decls[callee_name]
+		|| g.c_extern_forced_decls[fn_name.all_after_last('.')]
+		|| g.c_extern_forced_decls[callee_name.all_after_last('.')] {
+		return false
+	}
+	for name in [fn_name.all_after_last('.'), callee_name.all_after_last('.')] {
+		for source_file in g.c_fn_decl_source_files[name] {
+			if g.files_with_unscanned_c_includes[source_file] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // is_assumed_int_c_const_arg reports whether the argument expression is a bare

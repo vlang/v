@@ -40,6 +40,8 @@ static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
 '
 	os.write_file(os.join_path(root, 'strict_atomic.h'), header) or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_preinclude.h'), '#define strict_get_preincluded_count(p) ((p)->count)\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_state_a.h'), '#define V3_STRICT_ORDERED_LOAD 1\n#define strict_ordered_load_u64(p) (*(p))\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_state_b.h'), '#ifdef V3_STRICT_ORDERED_LOAD\n#undef strict_ordered_load_u64\n#endif\n#include <stdint.h>\nstatic inline uint64_t strict_ordered_load_u64(uint64_t* x) { return *x; }\n') or { panic(err) }
 	path := os.join_path(root, 'main.c.v')
 	os.write_file(path, source) or { panic(err) }
 	return path
@@ -51,6 +53,8 @@ fn test_c_voidptr_param_pointer_arg_goes_through_voidptr() {
 
 #preinclude "@DIR/strict_preinclude.h"
 #include "@DIR/strict_atomic.h"
+#include "@DIR/strict_state_a.h"
+#include "@DIR/strict_state_b.h"
 #define strict_get_direct_count(p) ((p)->count)
 #if 0
 #define strict_load_u64(p) (*(p))
@@ -61,6 +65,7 @@ fn C.strict_load_u64(voidptr) u64
 fn C.strict_store_u64(voidptr, u64)
 fn C.strict_load_any(voidptr) u64
 fn C.strict_is_nonnull_u64(voidptr) int
+fn C.strict_ordered_load_u64(voidptr) u64
 fn C.strict_get_count(voidptr) u32
 fn C.strict_get_direct_count(voidptr) u32
 fn C.strict_get_preincluded_count(voidptr) u32
@@ -81,6 +86,7 @@ fn main() {
 	// prototype declares.
 	C.strict_store_u64(&slot, u64(voidptr(table)))
 	loaded := unsafe { &Table(voidptr(C.strict_load_u64(&slot))) }
+	ordered_loaded := unsafe { &Table(voidptr(C.strict_ordered_load_u64(&slot))) }
 	// An argument that is already `voidptr` needs no conversion of its own.
 	same := C.strict_load_any(voidptr(&slot))
 	// Aliases to pointer types need the same conversion as direct pointers.
@@ -93,6 +99,7 @@ fn main() {
 	direct_macro_count := C.strict_get_direct_count(&item)
 	preincluded_macro_count := C.strict_get_preincluded_count(&item)
 	println(int(loaded.count).str())
+	println(int(ordered_loaded.count).str())
 	println((same == u64(voidptr(table))).str())
 	println(nonnull.str())
 	println(macro_count.str())
@@ -105,8 +112,8 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', 'true',
-		'1', '9', '9', '9']
+	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', '7',
+		'true', '1', '9', '9', '9']
 	generated := os.read_file(out + '.c') or { panic(err) }
 	// The macro is a no-op in C++, where `void*` does not convert back to a
 	// concrete pointer and the argument has to stay as written.
@@ -116,6 +123,9 @@ fn main() {
 	assert generated.contains('strict_load_u64(v_c_voidptr_arg(&slot))'), generated
 	assert generated.contains('strict_store_u64(v_c_voidptr_arg(&slot)'), generated
 	assert generated.contains('strict_is_nonnull_u64(v_c_voidptr_arg('), generated
+	// Macro state carries across top-level includes: the second header undefines
+	// the macro from the first one and exposes the real typed-pointer function.
+	assert generated.contains('strict_ordered_load_u64(v_c_voidptr_arg(&slot))'), generated
 	// ... but an active function-like macro receives the original typed pointer.
 	assert generated.contains('strict_get_count(&item)'), generated
 	assert !generated.contains('strict_get_count(v_c_voidptr_arg('), generated
@@ -171,4 +181,28 @@ fn main() {
 	compiler_builtin_generated := os.read_file(compiler_builtin_out + '.c') or { panic(err) }
 	assert compiler_builtin_generated.contains('__builtin_add_overflow((i32)(1), (i32)(2), &sum)'), compiler_builtin_generated
 	assert !compiler_builtin_generated.contains('__builtin_add_overflow((i32)(1), (i32)(2), v_c_voidptr_arg('), compiler_builtin_generated
+
+	$if macos {
+		system_macro_src := voidptr_arg_write_project('module main
+
+#include <sys/queue.h>
+
+fn C.TAILQ_FIRST(voidptr) voidptr
+
+struct QueueHead {
+	tqh_first voidptr
+}
+
+fn main() {
+	head := QueueHead{}
+	_ = C.TAILQ_FIRST(&head)
+}
+')
+		system_macro_out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_system_macro_${os.getpid()}')
+		system_macro_compile := os.execute('${v3_bin} -cc clang -b c -o ${system_macro_out} ${system_macro_src}')
+		assert system_macro_compile.exit_code == 0, system_macro_compile.output
+		system_macro_generated := os.read_file(system_macro_out + '.c') or { panic(err) }
+		assert system_macro_generated.contains('TAILQ_FIRST(&head)'), system_macro_generated
+		assert !system_macro_generated.contains('TAILQ_FIRST(v_c_voidptr_arg('), system_macro_generated
+	}
 }

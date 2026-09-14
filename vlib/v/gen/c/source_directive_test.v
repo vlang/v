@@ -135,6 +135,86 @@ fn test_preinclude_scans_macro_state_without_scanning_declarations() {
 	assert g.preinclude_directives == ['#include "${config_header}"', '#include "${api_header}"']
 }
 
+fn test_consecutive_includes_share_macro_state() {
+	root := os.join_path(os.vtmp_dir(), 'v3_ordered_include_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first_header := os.join_path(root, 'first.h')
+	second_header := os.join_path(root, 'second.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(first_header, '#define ENABLE_ORDERED_API 1\n#define ordered_api(p) ((p)->value)\n')!
+	os.write_file(second_header, '#if defined(ENABLE_ORDERED_API) && defined(ordered_api)\n#undef ordered_api\n#endif\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut g := FlatGen.new()
+	for header in [first_header, second_header] {
+		g.collect_c_directive('main', flat.Node{
+			kind:  .directive
+			value: 'include'
+			typ:   '"${header}"'
+		}, source, false)
+	}
+
+	assert 'ordered_api' !in g.inlined_c_active_macros
+}
+
+fn test_compiler_include_search_output_is_parsed() {
+	root := os.join_path(os.vtmp_dir(), 'v3_compiler_include_dirs_${os.getpid()}')
+	first := os.join_path(root, 'first')
+	second := os.join_path(root, 'second')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(first)!
+	os.mkdir_all(second)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+
+	gnu_output := '#include <...> search starts here:\n ${first}\n ${second} (framework directory)\nEnd of search list.\n'
+	assert c_compiler_include_dirs_from_output(gnu_output) == [os.real_path(first)]
+	tcc_output := 'install: /tmp/tcc\ninclude:\n  ${first}\n  ${second}\nlibraries:\n  /tmp/lib\n'
+	assert c_compiler_include_dirs_from_output(tcc_output) == [os.real_path(first),
+		os.real_path(second)]
+}
+
+fn test_compiler_default_include_paths_are_scanned() {
+	$if macos {
+		mut g := FlatGen.new()
+		g.ccompiler = 'clang'
+		source := os.join_path(os.vtmp_dir(), 'compiler_default_include.c.v')
+		g.collect_c_directive('main', flat.Node{
+			kind:  .directive
+			value: 'include'
+			typ:   '<stdatomic.h>'
+		}, source, false)
+
+		assert 'atomic_load' in g.inlined_c_active_macros
+		assert source !in g.files_with_unscanned_c_includes
+	}
+}
+
+fn test_unresolved_header_fallback_is_scoped_to_its_c_declarations() {
+	mut g := FlatGen.new()
+	g.ccompiler = 'compiler-that-does-not-exist'
+	source := os.join_path(os.vtmp_dir(), 'unresolved_default_include.c.v')
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '<v3_missing_default_header.h>'
+	}, source, false)
+	g.note_c_fn_decl_source('possibly_a_macro', source)
+	g.note_c_fn_decl_source('known_elsewhere', '/tmp/known_elsewhere.c.v')
+
+	assert g.c_symbol_may_be_from_unscanned_header('C.possibly_a_macro', 'possibly_a_macro')
+	assert !g.c_symbol_may_be_from_unscanned_header('C.known_elsewhere', 'known_elsewhere')
+	g.c_extern_forced_decls['definitely_a_function'] = true
+	g.note_c_fn_decl_source('definitely_a_function', source)
+	assert !g.c_symbol_may_be_from_unscanned_header('C.definitely_a_function',
+		'definitely_a_function')
+}
+
 fn test_direct_macro_tracking_honors_conditionals() {
 	mut g := FlatGen.new()
 	source := os.join_path(os.vtmp_dir(), 'direct_macro_conditionals.c.v')

@@ -414,9 +414,13 @@ mut:
 	mods_with_c_libs               map[string]bool
 	mods_with_c_includes           map[string]bool
 	inlined_c_active_macros        map[string]bool
+	files_with_unscanned_c_includes map[string]bool
+	c_fn_decl_source_files          map[string][]string
 	direct_c_macro_conditionals    []CCacheConditional
 	direct_c_include_macros        map[string][]string
 	direct_c_dynamic_macros        map[string]bool
+	compiler_default_include_dirs  []string
+	compiler_include_dirs_ready    bool
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
 	initial_c_flags                []string
@@ -1168,6 +1172,8 @@ pub fn FlatGen.new() FlatGen {
 		mods_with_c_libs: map[string]bool{}
 		mods_with_c_includes: map[string]bool{}
 		inlined_c_active_macros: map[string]bool{}
+		files_with_unscanned_c_includes: map[string]bool{}
+		c_fn_decl_source_files: map[string][]string{}
 		direct_c_include_macros: map[string][]string{}
 		direct_c_dynamic_macros: map[string]bool{}
 		inlined_c_static_fns: map[string]bool{}
@@ -2682,16 +2688,22 @@ fn c_record_include_macro_definition(directive string, ambiguous bool, mut inclu
 	}
 	definition := c_directive_arg(directive)
 	parts := definition.fields()
-	if parts.len == 0 || parts[0].contains('(') {
+	if parts.len == 0 {
 		return
 	}
-	name := parts[0]
+	macro_token := parts[0]
+	name := macro_token.all_before('(')
 	if ambiguous {
 		include_macros.delete(name)
 		dynamic_include_macros[name] = false
 		return
 	}
-	value := definition[name.len..].trim_space()
+	if macro_token.contains('(') {
+		dynamic_include_macros.delete(name)
+		include_macros[name] = []string{}
+		return
+	}
+	value := definition[macro_token.len..].trim_space()
 	c_record_include_macro_value(name, value, mut include_macros, mut dynamic_include_macros)
 }
 
@@ -3087,9 +3099,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.mods_with_c_libs.clear()
 	g.mods_with_c_includes.clear()
 	g.inlined_c_active_macros.clear()
+	g.files_with_unscanned_c_includes.clear()
+	g.c_fn_decl_source_files.clear()
 	g.direct_c_macro_conditionals.clear()
 	g.direct_c_include_macros.clear()
 	g.direct_c_dynamic_macros.clear()
+	g.compiler_default_include_dirs.clear()
+	g.compiler_include_dirs_ready = false
 	g.inlined_c_static_fns.clear()
 	g.cache_omitted_c_fns.clear()
 	g.inlined_c_typedef_names.clear()
@@ -4396,6 +4412,10 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		if node.kind == .directive && node.value == 'pkgconfig' {
 			continue
 		}
+		if kind_id == 76 {
+			g.note_c_fn_decl_source(node.value, cur_file)
+			continue
+		}
 		if kind_id == 62 {
 			full_name := qualify_name_in_module(cur_module, node.value)
 			g.tc.cur_file = cur_file
@@ -4901,6 +4921,24 @@ fn (mut g FlatGen) note_c_include_directive(module_name string, source_file stri
 	}
 	if module_name.len > 0 && !g.c_source_file_is_in_vlib(source_file) {
 		g.mods_with_c_includes[module_name] = true
+	}
+}
+
+// note_c_fn_decl_source records which V source file supplied a `fn C.foo`
+// declaration. If that file has a header the scanner could not resolve, the
+// declaration may name a pointer-sensitive macro from that header.
+fn (mut g FlatGen) note_c_fn_decl_source(name string, source_file string) {
+	if source_file.len == 0 {
+		return
+	}
+	short_name := name.trim_string_left('C.').all_after_last('.')
+	if short_name.len == 0 {
+		return
+	}
+	mut files := g.c_fn_decl_source_files[short_name]
+	if source_file !in files {
+		files << source_file
+		g.c_fn_decl_source_files[short_name] = files
 	}
 }
 
@@ -8066,17 +8104,22 @@ fn c_active_macro_directive_state(directive string, mut conditionals []CCacheCon
 // preprocessor directives, so their macro definitions have to be inspected
 // separately before call arguments are generated.
 fn (mut g FlatGen) collect_included_c_active_macros(include_arg string, source_file string, include_dirs []string) {
-	mut include_macros, mut dynamic_include_macros := c_flag_include_macro_definitions(g.c_flags, map[string]string{})
 	mut active_paths := map[string]bool{}
-	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+	mut found := false
+	for path in g.c_include_scan_paths(include_arg, source_file, include_dirs) {
 		if os.is_file(path) {
-			g.collect_included_c_active_macros_from_file(path, include_dirs, mut active_paths, mut include_macros, mut dynamic_include_macros, false)
+			found = true
+			g.collect_included_c_active_macros_from_file(path, include_dirs, mut active_paths,
+				false)
 			break
 		}
 	}
+	if !found && source_file.len > 0 {
+		g.files_with_unscanned_c_includes[source_file] = true
+	}
 }
 
-fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, include_dirs []string, mut active_paths map[string]bool, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, ambient_ambiguous bool) {
+fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, include_dirs []string, mut active_paths map[string]bool, ambient_ambiguous bool) {
 	real_path := os.real_path(path)
 	if real_path in active_paths {
 		return
@@ -8096,14 +8139,15 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 		in_block_comment = next_in_block_comment
 		directive_name := c_directive_name(clean)
 		directive_is_active, directive_is_ambiguous := c_active_macro_directive_state(clean,
-			mut conditionals, mut include_macros, mut dynamic_include_macros)
+			mut conditionals, mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros)
 		if !directive_is_active {
 			continue
 		}
 		mutation_is_ambiguous := ambient_ambiguous || directive_is_ambiguous
 		if directive_name in ['define', 'undef'] {
 			g.record_c_active_macro_directive(clean, mutation_is_ambiguous)
-			c_record_include_macro_definition(clean, mutation_is_ambiguous, mut include_macros, mut dynamic_include_macros, false)
+			c_record_include_macro_definition(clean, mutation_is_ambiguous,
+				mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros, false)
 			continue
 		}
 		if directive_name !in ['include', 'import'] {
@@ -8113,9 +8157,10 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 		if !c_include_arg_is_literal(include_arg) {
 			continue
 		}
-		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path, include_dirs) {
+		for nested_path in g.c_include_scan_paths(include_arg, real_path, include_dirs) {
 			if os.is_file(nested_path) {
-				g.collect_included_c_active_macros_from_file(nested_path, include_dirs, mut active_paths, mut include_macros, mut dynamic_include_macros, mutation_is_ambiguous)
+				g.collect_included_c_active_macros_from_file(nested_path, include_dirs,
+					mut active_paths, mutation_is_ambiguous)
 				break
 			}
 		}
@@ -8698,6 +8743,153 @@ fn c_include_arg_is_source_file(include_arg string) bool {
 	}
 	path := clean[1..clean.len - 1]
 	return path.ends_with('.c') || path.ends_with('.m') || path.ends_with('.mm')
+}
+
+// c_compiler_include_dirs_from_output extracts the system include search list
+// printed by GCC/Clang (`-E -v`) or TCC (`-print-search-dirs`).
+fn c_compiler_include_dirs_from_output(output string) []string {
+	mut dirs := []string{}
+	mut in_gnu_search := false
+	mut in_tcc_search := false
+	for raw_line in output.split_into_lines() {
+		line := raw_line.trim_space()
+		if line.contains('search starts here:') {
+			in_gnu_search = true
+			in_tcc_search = false
+			continue
+		}
+		if line == 'End of search list.' {
+			in_gnu_search = false
+			continue
+		}
+		if line == 'include:' {
+			in_tcc_search = true
+			in_gnu_search = false
+			continue
+		}
+		if in_tcc_search && line.ends_with(':') {
+			in_tcc_search = false
+			continue
+		}
+		if (!in_gnu_search && !in_tcc_search) || line.len == 0
+			|| line.starts_with('ignoring ') || line.ends_with('(framework directory)') {
+			continue
+		}
+		path := os.real_path(line)
+		if os.is_dir(path) && path !in dirs {
+			dirs << path
+		}
+	}
+	return dirs
+}
+
+// c_compiler_include_probe_flags retains only options that can affect the
+// compiler's header search. Linker and warning flags do not belong in the
+// preprocessor probe and can make otherwise valid compiler invocations fail.
+fn c_compiler_include_probe_flags(flags []string) []string {
+	mut result := []string{}
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i].trim_space()
+		if flag in ['-I', '-isystem', '-iquote', '-idirafter', '-isysroot', '--sysroot',
+			'-target', '--target', '-arch'] && i + 1 < flags.len {
+			result << flag
+			result << flags[i + 1]
+			i += 2
+			continue
+		}
+		if flag in ['-nostdinc', '-nostdinc++', '-m32', '-m64']
+			|| flag.starts_with('-I') || flag.starts_with('-isystem')
+			|| flag.starts_with('-iquote') || flag.starts_with('-idirafter')
+			|| flag.starts_with('-isysroot') || flag.starts_with('--sysroot=')
+			|| flag.starts_with('-target=') || flag.starts_with('--target=') {
+			result << flag
+		}
+		i++
+	}
+	return result
+}
+
+fn (g &FlatGen) c_compiler_include_probe_command() string {
+	compiler := g.ccompiler.trim_space()
+	if compiler in ['tinyc', 'tcc'] {
+		bundled := os.join_path(g.compiler_vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		if g.compiler_vroot.len > 0 && os.is_executable(bundled) {
+			return bundled
+		}
+		return 'tcc'
+	}
+	if compiler == 'msvc' {
+		return ''
+	}
+	return compiler
+}
+
+// compiler_default_c_include_dirs asks the selected compiler for the directories
+// it will search for angle-bracket headers. The result is cached because a C
+// translation unit can contain hundreds of nested includes.
+fn (mut g FlatGen) compiler_default_c_include_dirs() []string {
+	if g.compiler_include_dirs_ready {
+		return g.compiler_default_include_dirs
+	}
+	g.compiler_include_dirs_ready = true
+	mut dirs := []string{}
+	for raw_dir in os.getenv('INCLUDE').split(os.path_delimiter) {
+		path := os.real_path(raw_dir.trim_space().trim('"'))
+		if os.is_dir(path) && path !in dirs {
+			dirs << path
+		}
+	}
+	compiler := g.c_compiler_include_probe_command()
+	if compiler.len == 0 {
+		g.compiler_default_include_dirs = dirs
+		return g.compiler_default_include_dirs
+	}
+	if g.ccompiler in ['tinyc', 'tcc'] {
+		probe := cmdexec.run_with_timeout(compiler, ['-print-search-dirs'], 5000)
+		if probe.exit_code == 0 {
+			for path in c_compiler_include_dirs_from_output(probe.output) {
+				if path !in dirs {
+					dirs << path
+				}
+			}
+		}
+	} else {
+		probe_path := os.join_path(os.vtmp_dir(), 'v3_cgen_include_probe_${os.getpid()}_${time.sys_mono_now()}.c')
+		os.write_file(probe_path, '') or {
+			g.compiler_default_include_dirs = dirs
+			return g.compiler_default_include_dirs
+		}
+		defer {
+			os.rm(probe_path) or {}
+		}
+		mut args := c_compiler_include_probe_flags(g.c_flags)
+		args << ['-E', '-x', 'c', '-v', probe_path]
+		probe := cmdexec.run_with_timeout(compiler, args, 5000)
+		for path in c_compiler_include_dirs_from_output(probe.output) {
+			if path !in dirs {
+				dirs << path
+			}
+		}
+	}
+	g.compiler_default_include_dirs = dirs
+	return g.compiler_default_include_dirs
+}
+
+// c_include_scan_paths extends explicit include directories with the selected
+// compiler's defaults only when the ordinary lookup could not resolve a header.
+fn (mut g FlatGen) c_include_scan_paths(include_arg string, source_file string, include_dirs []string) []string {
+	paths := c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs)
+	if paths.any(os.is_file(it)) {
+		return paths
+	}
+	mut all_dirs := include_dirs.clone()
+	for dir in g.compiler_default_c_include_dirs() {
+		if dir !in all_dirs {
+			all_dirs << dir
+		}
+	}
+	return c_include_file_paths(include_arg, g.compiler_vroot, source_file, all_dirs)
 }
 
 fn c_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string) []string {
