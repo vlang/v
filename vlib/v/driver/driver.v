@@ -9245,6 +9245,10 @@ pub fn run(args []string) {
 		eprintln(err.msg())
 		exit(1)
 	}
+	if target_libc_headers && output_cross_c {
+		eprintln('option `-target-libc-headers` does not support portable cross output')
+		exit(1)
+	}
 	if target_libc_headers && target.os == 'windows' {
 		eprintln('option `-target-libc-headers` does not support Windows targets')
 		exit(1)
