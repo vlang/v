@@ -47,13 +47,15 @@ fn generic_comptime_shadow_scan(condition string) []TypeError {
 	})
 	fn_children := a.begin_children()
 	a.add_child(if_id)
-	fn_id := a.add_node(flat.Node{
+	mut fn_node := flat.Node{
 		kind:           .fn_decl
 		value:          'get'
 		children_start: fn_children
 		children_count: 1
 		pos:            token.new_span(1, 0, 12)
-	})
+	}
+	fn_node.set_generic_params(['T'])
+	fn_id := a.add_node(fn_node)
 
 	mut tc := TypeChecker.new(&a)
 	tc.global_names['counter'] = true
@@ -79,4 +81,8 @@ fn test_generic_shadow_scan_checks_portable_target_comptime_branches() {
 	errors := generic_comptime_shadow_scan('windows')
 	assert errors.len == 1
 	assert errors[0].msg == 'variable `counter` shadows a global variable'
+}
+
+fn test_generic_shadow_scan_defers_mixed_target_and_specialization_condition() {
+	assert generic_comptime_shadow_scan('windows && T is int').len == 0
 }

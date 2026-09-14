@@ -5804,6 +5804,11 @@ fn comptime_cond_has_target_flag(cond string) bool {
 	return false
 }
 
+fn comptime_cond_has_type_test(cond string) bool {
+	return cond.contains(' is ') || cond.contains(' !is ') || cond.contains(' in[')
+		|| cond.contains(' in [') || cond.contains(' !in[') || cond.contains(' !in [')
+}
+
 fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node flat.Node) bool {
 	metadata := node.generic_params()
 	if metadata.len < 7 || metadata[0] != '__v3_comptime_match' {

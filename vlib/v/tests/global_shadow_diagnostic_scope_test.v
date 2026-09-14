@@ -169,6 +169,26 @@ fn test_unselected_specialized_comptime_branch_does_not_report_shadow() {
 	assert !res.output.contains('variable `counter` shadows a global variable'), res.output
 }
 
+fn test_cross_target_mixed_unselected_specialization_does_not_report_shadow() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), "@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[string]('ok'))\n}\n")
+	out := os.join_path(tmp_root, 'app.c')
+	res := os.execute('${os.quoted_path(vexe)} -os cross -enable-globals -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('variable `counter` shadows a global variable'), res.output
+}
+
+fn test_cross_target_mixed_selected_specialization_reports_shadow() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if windows && T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
+	out := os.join_path(tmp_root, 'app.c')
+	res := os.execute('${os.quoted_path(vexe)} -os cross -enable-globals -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+}
+
 fn test_static_comptime_for_decl_shadow_is_reported() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
