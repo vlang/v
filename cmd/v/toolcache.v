@@ -8,6 +8,7 @@ import crypto.rand as crypto_rand
 import os
 import os.filelock
 import time
+import v.vmod
 
 // The external `cmd/tools/*` programs are compiled once and then cached, so that
 // repeated invocations of `v fmt`, `v vet`, `v doctor`, ... do not pay for a full
@@ -165,8 +166,9 @@ fn dir_stamp(path string) string {
 	return sha256.hexhash(names.join('\n'))
 }
 
-// module_root_stamp digests the names of the modules that live directly inside a directory.
-// It remains readable for failure manifests written before exact module-directory stamps were
+// module_root_stamp digests the names of the directories that live directly inside a directory.
+// Failure manifests use it to detect a new directory in a recursively searched `v.mod` subdir.
+// It also remains readable for manifests written before exact module-directory stamps were
 // introduced.
 fn module_root_stamp(path string) string {
 	entries := os.ls(path) or { return 'missing' }
@@ -645,6 +647,65 @@ fn module_alias_targets(search_root string, module_name string, mut manifest_inp
 	return targets
 }
 
+// append_module_source_tree_inputs records the directory structure and V source names below
+// one recursively searched `v.mod` subdir. Nested manifests stop that search, just as they do
+// in the module resolver; recording absent manifests detects a newly introduced boundary too.
+fn append_module_source_tree_inputs(source_root string, directory string, mut module_dirs map[string]bool, mut module_roots map[string]bool, mut module_source_dirs map[string]bool, mut module_manifests map[string]bool, mut seen_dirs map[string]bool) {
+	module_dirs[directory] = true
+	if !os.is_dir(directory) {
+		return
+	}
+	real_directory := os.real_path(directory)
+	if seen_dirs[real_directory] {
+		return
+	}
+	seen_dirs[real_directory] = true
+	nested_manifest := os.join_path(real_directory, 'v.mod')
+	if real_directory != source_root {
+		module_manifests[nested_manifest] = true
+		if os.is_file(nested_manifest) {
+			return
+		}
+	}
+	module_roots[real_directory] = true
+	module_source_dirs[real_directory] = true
+	for entry in os.ls(real_directory) or { return } {
+		entry_path := os.join_path(real_directory, entry)
+		if os.is_dir(entry_path) {
+			append_module_source_tree_inputs(source_root, entry_path, mut module_dirs, mut module_roots, mut module_source_dirs, mut module_manifests, mut seen_dirs)
+		}
+	}
+}
+
+// append_vmod_module_source_inputs records the alternate source root and recursive subdirs
+// that can make an existing, otherwise empty module directory usable.
+fn append_vmod_module_source_inputs(module_dir string, mut module_dirs map[string]bool, mut module_roots map[string]bool, mut module_source_dirs map[string]bool, mut module_manifests map[string]bool) {
+	if !os.is_dir(module_dir) {
+		return
+	}
+	real_module_dir := os.real_path(module_dir)
+	manifest_path := os.join_path(real_module_dir, 'v.mod')
+	module_manifests[manifest_path] = true
+	if !os.is_file(manifest_path) {
+		return
+	}
+	if (os.read_file(manifest_path) or { return }).trim_space() == '' {
+		return
+	}
+	manifest := vmod.from_file(manifest_path) or { return }
+	source_root_path := manifest.source_root(real_module_dir)
+	module_dirs[source_root_path] = true
+	if !os.is_dir(source_root_path) {
+		return
+	}
+	source_root := os.real_path(source_root_path)
+	module_source_dirs[source_root] = true
+	for subdir in manifest.unknown['subdirs'] or { [] } {
+		mut seen_dirs := map[string]bool{}
+		append_module_source_tree_inputs(source_root, os.join_path_single(source_root, subdir), mut module_dirs, mut module_roots, mut module_source_dirs, mut module_manifests, mut seen_dirs)
+	}
+}
+
 fn nearest_vmod_root(directory string) string {
 	inputs := vmod_manifest_inputs(directory)
 	if inputs.len > 0 && os.is_file(inputs.last()) {
@@ -717,6 +778,7 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 	// retried as soon as a missing module reappears.
 	search_roots := failure_module_search_roots(entry, source_files)
 	mut module_dirs := map[string]bool{}
+	mut module_roots := map[string]bool{}
 	mut module_source_dirs := map[string]bool{}
 	mut module_alias_files := map[string]bool{}
 	mut module_manifests := map[string]bool{}
@@ -736,6 +798,7 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 				module_alias_files[os.join_path(path, 'alias.v')] = true
 				if index == parts.len - 1 {
 					module_source_dirs[path] = true
+					append_vmod_module_source_inputs(path, mut module_dirs, mut module_roots, mut module_source_dirs, mut module_manifests)
 				}
 			}
 			for target in module_alias_targets(search_root, module_name, mut module_manifests) {
@@ -761,6 +824,11 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 	sorted_dirs.sort()
 	for directory in sorted_dirs {
 		manifest += 'p${tool_cache_field_separator}${directory}${tool_cache_field_separator}${module_directory_stamp(directory)}\n'
+	}
+	mut sorted_roots := module_roots.keys()
+	sorted_roots.sort()
+	for directory in sorted_roots {
+		manifest += 'm${tool_cache_field_separator}${directory}${tool_cache_field_separator}${module_root_stamp(directory)}\n'
 	}
 	mut sorted_source_dirs := module_source_dirs.keys()
 	sorted_source_dirs.sort()

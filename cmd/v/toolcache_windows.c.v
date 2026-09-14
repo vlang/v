@@ -9,7 +9,7 @@ import os
 
 #include "@VMODROOT/cmd/v/toolcache_windows_helpers.h"
 
-fn C.v_toolcache_move_file_ex_w(existing &u16, new &u16, flags u32) int
+fn C.v_toolcache_move_file_ex_w(const_existing &u16, const_new &u16, flags u32) int
 
 fn C.v_toolcache_create_file_w(const_path &u16, desired_access u32, share_mode u32,
 	security_attributes voidptr, creation_disposition u32, flags_and_attributes u32,
@@ -19,7 +19,7 @@ fn C.v_toolcache_get_file_information(handle voidptr, information voidptr) int
 
 fn C.v_toolcache_close_handle(handle voidptr) int
 
-fn C.v_toolcache_root_is_private(path &u16) int
+fn C.v_toolcache_root_is_private(const_path &u16) int
 
 struct WindowsToolCacheFileInformation {
 	file_attributes       u32
@@ -186,6 +186,7 @@ fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
 // published binaries. The creation time also guards against a later reuse of the same index.
 fn windows_binary_file_identity(path string) ?string {
 	w_path := path.replace('/', '\\').to_wide()
+	// to_wide owns an unmanaged buffer that CreateFileW borrows until it returns.
 	defer {
 		unsafe { free(voidptr(w_path)) }
 	}
@@ -235,7 +236,14 @@ fn replace_file_atomically(source string, destination string) bool {
 }
 
 fn move_file_replacing(source string, destination string) bool {
-	w_source := source.replace('/', '\\')
-	w_destination := destination.replace('/', '\\')
-	return C.v_toolcache_move_file_ex_w(w_source.to_wide(), w_destination.to_wide(), movefile_replace_existing) != 0
+	w_source := source.replace('/', '\\').to_wide()
+	w_destination := destination.replace('/', '\\').to_wide()
+	// to_wide owns both unmanaged buffers, and MoveFileExW only borrows them for this call.
+	defer {
+		unsafe {
+			free(voidptr(w_source))
+			free(voidptr(w_destination))
+		}
+	}
+	return C.v_toolcache_move_file_ex_w(w_source, w_destination, movefile_replace_existing) != 0
 }

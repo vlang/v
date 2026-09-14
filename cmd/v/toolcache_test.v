@@ -1018,6 +1018,48 @@ fn test_adding_the_first_source_to_a_missing_module_invalidates_a_recorded_failu
 	assert unbuildable_tool_failure(entry) == none, 'adding the first source must retry the build'
 }
 
+// A module directory can redirect its sources with `base_url` and recursively search named
+// `subdirs`. Adding a source anywhere in that configured tree must retry a cached failure.
+fn test_adding_a_source_under_a_vmod_subdir_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('vmod_subdir_missing_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	module_dir := os.join_path(directory, 'modules', 'acme', 'widget')
+	source_root := os.join_path(module_dir, 'src')
+	nested_dir := os.join_path(source_root, 'parts', 'deep')
+	os.mkdir_all(nested_dir)!
+	module_manifest := os.join_path(module_dir, 'v.mod')
+	os.write_file(module_manifest, "Module {\n\tname: 'widget'\n\tbase_url: 'src'\n\tsubdirs: ['parts']\n}\n")!
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', os.join_path(directory, 'modules')]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "acme.widget" (not found)'
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	real_module_manifest := os.real_path(module_manifest)
+	real_nested_dir := os.real_path(nested_dir)
+	assert recorded.contains('f${tool_cache_field_separator}${real_module_manifest}${tool_cache_field_separator}')
+	assert recorded.contains('d${tool_cache_field_separator}${real_nested_dir}${tool_cache_field_separator}${dir_stamp(real_nested_dir)}')
+	assert unbuildable_tool_failure(entry) != none, 'the failure must stand while the source tree is empty'
+	before := dir_stamp(nested_dir)
+
+	os.write_file(os.join_path(nested_dir, 'widget.v'), 'module widget\n')!
+
+	assert dir_stamp(nested_dir) != before, 'the recursive source stamp must see the first `.v` file'
+	assert unbuildable_tool_failure(entry) == none, 'adding a source under a declared subdir must retry the build'
+}
+
 // `-path` replaces the default vlib/vmodules search roots. A dependency restored below one
 // of those explicit roots must invalidate the failure recorded for that exact invocation.
 fn test_a_restored_module_under_an_explicit_path_invalidates_a_recorded_failure() {
