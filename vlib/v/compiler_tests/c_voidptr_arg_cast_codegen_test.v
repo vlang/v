@@ -46,6 +46,7 @@ static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
 #endif
 '
 	os.write_file(os.join_path(root, 'strict_atomic.h'), header) or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_no_builtin.h'), 'static inline int strict_is_nonnull_u64(unsigned long long* x) { return x != 0; }\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_forced_include.h'), '#define strict_get_forced_count(p) ((p)->count)\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_forced_imacros.h'), '#define strict_get_imacros_count(p) ((p)->count)\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_push_pop.h'), '#define strict_get_restored_count(p) ((p)->count)\n#pragma push_macro("strict_get_restored_count")\n#undef strict_get_restored_count\n#pragma pop_macro("strict_get_restored_count")\n') or { panic(err) }
@@ -71,6 +72,7 @@ fn test_c_voidptr_param_pointer_arg_goes_through_voidptr() {
 
 #flag -include @DIR/strict_forced_include.h
 #flag -imacros @DIR/strict_forced_imacros.h
+#flag -Dstrict_get_flag_count(p)=((p)->count)
 #preinclude "@DIR/strict_preinclude.h"
 #include "@DIR/strict_atomic.h"
 #include "@DIR/strict_push_pop.h"
@@ -99,6 +101,7 @@ fn C.strict_ordered_load_u64(voidptr) u64
 fn C.strict_get_count(voidptr) u32
 fn C.strict_get_count_alias(voidptr) u32
 fn C.strict_get_forward_count(voidptr) u32
+fn C.strict_get_flag_count(voidptr) u32
 fn C.strict_get_forced_count(voidptr) u32
 fn C.strict_get_imacros_count(voidptr) u32
 fn C.strict_get_restored_count(voidptr) u32
@@ -138,6 +141,7 @@ fn main() {
 	macro_count := C.strict_get_count(&item)
 	alias_macro_count := C.strict_get_count_alias(&item)
 	forward_macro_count := C.strict_get_forward_count(&item)
+	flag_macro_count := C.strict_get_flag_count(&item)
 	forced_macro_count := C.strict_get_forced_count(&item)
 	imacros_macro_count := C.strict_get_imacros_count(&item)
 	restored_macro_count := C.strict_get_restored_count(&item)
@@ -155,6 +159,7 @@ fn main() {
 	println(macro_count.str())
 	println(alias_macro_count.str())
 	println(forward_macro_count.str())
+	println(flag_macro_count.str())
 	println(forced_macro_count.str())
 	println(imacros_macro_count.str())
 	println(restored_macro_count.str())
@@ -173,7 +178,7 @@ fn main() {
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', '7', 'true',
-		'1', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9']
+		'1', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9']
 	generated := os.read_file(out + '.c') or { panic(err) }
 	// The macro is a no-op in C++, where `void*` does not convert back to a
 	// concrete pointer and the argument has to stay as written.
@@ -195,6 +200,9 @@ fn main() {
 	// A possible forward alias is retained until its function-like target is seen.
 	assert generated.contains('strict_get_forward_count(&item)'), generated
 	assert !generated.contains('strict_get_forward_count(v_c_voidptr_arg('), generated
+	// Function-like macros supplied through -D also keep their typed operands.
+	assert generated.contains('strict_get_flag_count(&item)'), generated
+	assert !generated.contains('strict_get_flag_count(v_c_voidptr_arg('), generated
 	// Forced include and imacros inputs are processed before the translation unit.
 	assert generated.contains('strict_get_forced_count(&item)'), generated
 	assert !generated.contains('strict_get_forced_count(v_c_voidptr_arg('), generated
@@ -228,7 +236,7 @@ fn main() {
 
 	no_builtin_src := voidptr_arg_write_project('module main
 
-#include "@DIR/strict_atomic.h"
+#include "@DIR/strict_no_builtin.h"
 
 fn C.strict_is_nonnull_u64(voidptr) int
 

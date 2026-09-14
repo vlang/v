@@ -427,6 +427,7 @@ mut:
 	direct_c_include_macros        map[string][]string
 	direct_c_dynamic_macros        map[string]bool
 	c_compiler_predefined_macros   map[string]string
+	c_compiler_function_macros     map[string]bool
 	c_compiler_macro_env_complete  bool
 	compiler_default_include_dirs  []string
 	compiler_include_dirs_ready    bool
@@ -755,7 +756,15 @@ pub fn (mut g FlatGen) set_ccompiler(name string) {
 // set_c_compiler_predefined_macros supplies the selected compiler's macro
 // environment for replaying conditional directives in included headers.
 pub fn (mut g FlatGen) set_c_compiler_predefined_macros(macros map[string]string, complete bool) {
-	g.c_compiler_predefined_macros = macros
+	g.c_compiler_function_macros.clear()
+	mut normalized := map[string]string{}
+	for name, value in macros {
+		if value.len > 0 && value[0] == `(` {
+			g.c_compiler_function_macros[name] = true
+		}
+		normalized[name] = value.trim_space()
+	}
+	g.c_compiler_predefined_macros = normalized
 	g.c_compiler_macro_env_complete = complete
 }
 
@@ -1206,6 +1215,7 @@ pub fn FlatGen.new() FlatGen {
 		direct_c_include_macros: map[string][]string{}
 		direct_c_dynamic_macros: map[string]bool{}
 		c_compiler_predefined_macros: map[string]string{}
+		c_compiler_function_macros: map[string]bool{}
 		inlined_c_static_fns: map[string]bool{}
 		cache_omitted_c_fns: map[string]bool{}
 		inlined_c_typedef_names: map[string]bool{}
@@ -2602,7 +2612,7 @@ fn c_cache_known_condition(directive string, include_macros map[string][]string,
 }
 
 fn c_cache_known_expression(raw_expression string, include_macros map[string][]string, dynamic_include_macros map[string]bool, compiler_macro_environment_complete bool) int {
-	expression := c_header_condition_without_outer_parens(raw_expression.trim_space())
+	expression := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw_expression))
 	or_parts := c_header_condition_top_level_parts(expression, '||')
 	if or_parts.len > 1 {
 		mut all_false := true
@@ -2634,13 +2644,103 @@ fn c_cache_known_expression(raw_expression string, include_macros map[string][]s
 	if macro_name := c_header_defined_macro_name(expression) {
 		return c_cache_macro_condition(macro_name, false, include_macros, dynamic_include_macros, compiler_macro_environment_complete)
 	}
-	if expression == '0' {
-		return -1
-	}
-	if expression == '1' {
-		return 1
+	mut seen := map[string]bool{}
+	if value := c_cache_integer_expression_value(expression, include_macros,
+		dynamic_include_macros, compiler_macro_environment_complete, mut seen, 0) {
+		return if value == 0 { -1 } else { 1 }
 	}
 	return 0
+}
+
+fn c_cache_integer_expression_value(raw string, include_macros map[string][]string, dynamic_include_macros map[string]bool, compiler_macro_environment_complete bool, mut seen map[string]bool, depth int) ?i64 {
+	if depth >= 64 {
+		return none
+	}
+	clean := c_header_condition_without_outer_parens(c_header_condition_without_comments(raw))
+	if value := c_header_objective_c_integer_value(clean) {
+		return value
+	}
+	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
+	if has_conditional {
+		known_condition := c_cache_known_expression(condition, include_macros,
+			dynamic_include_macros, compiler_macro_environment_complete)
+		if known_condition == 0 {
+			return none
+		}
+		return c_cache_integer_expression_value(if known_condition > 0 { if_true } else { if_false },
+			include_macros, dynamic_include_macros, compiler_macro_environment_complete, mut seen,
+			depth + 1)
+	}
+	operator_groups := [
+		['|'],
+		['^'],
+		['&'],
+		['==', '!='],
+		['<=', '>=', '<', '>'],
+		['<<', '>>'],
+		['+', '-'],
+		['*', '/', '%'],
+	]
+	for operators in operator_groups {
+		has_operator, left_text, operator, right_text := c_header_condition_top_level_binary(clean,
+			operators)
+		if !has_operator {
+			continue
+		}
+		left := c_cache_integer_expression_value(left_text, include_macros, dynamic_include_macros,
+			compiler_macro_environment_complete, mut seen, depth + 1) or { return none }
+		right := c_cache_integer_expression_value(right_text, include_macros,
+			dynamic_include_macros, compiler_macro_environment_complete, mut seen, depth + 1) or {
+			return none
+		}
+		return c_header_objective_c_checked_integer_binary(left, right, operator)
+	}
+	if clean.len > 1 && clean[0] in [`+`, `-`, `!`, `~`] {
+		value := c_cache_integer_expression_value(clean[1..], include_macros,
+			dynamic_include_macros, compiler_macro_environment_complete, mut seen, depth + 1) or {
+			return none
+		}
+		if clean[0] == `+` {
+			return value
+		}
+		if clean[0] == `!` {
+			return if value == 0 { i64(1) } else { i64(0) }
+		}
+		if clean[0] == `~` {
+			return ~value
+		}
+		if value == i64(-0x7fffffffffffffff - 1) {
+			return none
+		}
+		return -value
+	}
+	if macro_name := c_header_defined_macro_name(clean) {
+		condition := c_cache_macro_condition(macro_name, false, include_macros,
+			dynamic_include_macros, compiler_macro_environment_complete)
+		if condition == 0 {
+			return none
+		}
+		return if condition > 0 { i64(1) } else { i64(0) }
+	}
+	if clean.len == 0 || !c_identifier_start(clean[0]) || c_header_struct_tag(clean) != clean
+		|| seen[clean] {
+		return none
+	}
+	if clean in dynamic_include_macros && !dynamic_include_macros[clean] {
+		return none
+	}
+	if clean !in include_macros {
+		return if compiler_macro_environment_complete { i64(0) } else { none }
+	}
+	values := include_macros[clean]
+	if values.len != 1 {
+		return none
+	}
+	seen[clean] = true
+	value := c_cache_integer_expression_value(values[0], include_macros, dynamic_include_macros,
+		compiler_macro_environment_complete, mut seen, depth + 1)
+	seen.delete(clean)
+	return value
 }
 
 fn c_cache_macro_condition(macro_name string, invert bool, include_macros map[string][]string, dynamic_include_macros map[string]bool, compiler_macro_environment_complete bool) int {
@@ -2685,12 +2785,13 @@ fn c_record_cache_resolution_path(path string, mut resolution_dirs map[string]bo
 	}
 }
 
-fn c_flag_include_macro_definitions(flags []string, compiler_macros map[string]string) (map[string][]string, map[string]bool) {
-	mut include_macros := map[string][]string{}
-	mut dynamic_include_macros := map[string]bool{}
-	for name, value in compiler_macros {
-		c_record_include_macro_value(name, value, mut include_macros, mut dynamic_include_macros)
-	}
+struct CFlagMacroMutation {
+	definition string
+	is_undef   bool
+}
+
+fn c_flag_macro_mutations(flags []string) []CFlagMacroMutation {
+	mut mutations := []CFlagMacroMutation{}
 	mut i := 0
 	for i < flags.len {
 		clean := flags[i].trim_space()
@@ -2710,13 +2811,73 @@ fn c_flag_include_macro_definitions(flags []string, compiler_macros map[string]s
 			is_undef = true
 		}
 		if definition.len > 0 {
-			name := definition.all_before('=').trim_space()
-			if is_undef {
+			mutations << CFlagMacroMutation{
+				definition: definition
+				is_undef:   is_undef
+			}
+		}
+		i++
+	}
+	return mutations
+}
+
+fn c_macro_declarator_name(declarator string) (string, bool) {
+	clean := declarator.trim_space()
+	mut name_end := 0
+	for name_end < clean.len && c_ident_char(clean[name_end]) {
+		name_end++
+	}
+	if name_end == 0 {
+		return '', false
+	}
+	return clean[..name_end], name_end < clean.len && clean[name_end] == `(`
+}
+
+fn c_flag_macro_mutation_directive(mutation CFlagMacroMutation) string {
+	equals := mutation.definition.index_u8(`=`)
+	declarator := if equals >= 0 {
+		mutation.definition[..equals].trim_space()
+	} else {
+		mutation.definition.trim_space()
+	}
+	name, _ := c_macro_declarator_name(declarator)
+	if name.len == 0 {
+		return ''
+	}
+	if mutation.is_undef {
+		return '#undef ${name}'
+	}
+	if equals < 0 {
+		return '#define ${declarator}'
+	}
+	return '#define ${declarator} ${mutation.definition[equals + 1..].trim_space()}'
+}
+
+fn c_flag_include_macro_definitions(flags []string, compiler_macros map[string]string) (map[string][]string, map[string]bool) {
+	mut include_macros := map[string][]string{}
+	mut dynamic_include_macros := map[string]bool{}
+	for name, value in compiler_macros {
+		c_record_include_macro_value(name, value.trim_space(), mut include_macros,
+			mut dynamic_include_macros)
+	}
+	for mutation in c_flag_macro_mutations(flags) {
+		equals := mutation.definition.index_u8(`=`)
+		declarator := if equals >= 0 {
+			mutation.definition[..equals]
+		} else {
+			mutation.definition
+		}
+		name, is_function_like := c_macro_declarator_name(declarator)
+		if name.len > 0 {
+			if mutation.is_undef {
 				include_macros.delete(name)
 				dynamic_include_macros.delete(name)
+			} else if is_function_like {
+				include_macros[name] = []string{}
+				dynamic_include_macros.delete(name)
 			} else {
-				value := if definition.contains('=') {
-					definition.all_after('=').trim_space()
+				value := if equals >= 0 {
+					mutation.definition[equals + 1..].trim_space()
 				} else {
 					''
 				}
@@ -2724,7 +2885,6 @@ fn c_flag_include_macro_definitions(flags []string, compiler_macros map[string]s
 					mut dynamic_include_macros)
 			}
 		}
-		i++
 	}
 	return include_macros, dynamic_include_macros
 }
@@ -2780,28 +2940,26 @@ fn c_record_include_macro_value(name string, value string, mut include_macros ma
 	if name.len == 0 {
 		return
 	}
-	if value.len == 0 {
+	clean := value.trim_space()
+	if clean.len == 0 {
 		dynamic_include_macros.delete(name)
 		include_macros[name] = []string{}
 		return
 	}
-	if !c_include_arg_is_literal(value) {
-		is_alias := !value[0].is_digit() && value.bytes().all(it.is_alnum() || it == `_`)
-		if is_alias && value in include_macros && value !in dynamic_include_macros && include_macros[value].len > 0 {
+	if !c_include_arg_is_literal(clean) {
+		is_alias := !clean[0].is_digit() && clean.bytes().all(it.is_alnum() || it == `_`)
+		if is_alias && clean in include_macros && clean !in dynamic_include_macros
+			&& include_macros[clean].len > 0 {
 			dynamic_include_macros.delete(name)
-			include_macros[name] = include_macros[value].clone()
+			include_macros[name] = include_macros[clean].clone()
 			return
 		}
-		include_macros.delete(name)
+		include_macros[name] = [clean]
 		dynamic_include_macros[name] = true
 		return
 	}
 	dynamic_include_macros.delete(name)
-	mut values := include_macros[name]
-	if value !in values {
-		values << value
-		include_macros[name] = values
-	}
+	include_macros[name] = [clean]
 }
 
 fn c_embed_external_input_path(a &flat.FlatAst, node flat.Node) ?string {
@@ -5054,6 +5212,16 @@ fn (mut g FlatGen) initialize_c_active_macro_environment() {
 	g.direct_c_macro_conditionals.clear()
 	g.direct_c_include_macros = include_macros
 	g.direct_c_dynamic_macros = dynamic_macros
+	for name in g.c_compiler_function_macros.keys() {
+		g.c_function_like_macros[name] = true
+	}
+	for mutation in c_flag_macro_mutations(g.c_flags) {
+		directive := c_flag_macro_mutation_directive(mutation)
+		if directive.len > 0 {
+			g.record_c_active_macro_directive_deferred(directive, false)
+		}
+	}
+	g.refresh_c_active_macro_aliases()
 }
 
 // collect_forced_include_active_macros replays the headers passed through
@@ -8678,7 +8846,7 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 					break
 				}
 			}
-			if !found && is_macro_expanded {
+			if !found {
 				g.note_unscanned_c_macro_include(source_file)
 			}
 		}

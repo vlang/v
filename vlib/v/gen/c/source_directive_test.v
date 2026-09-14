@@ -172,6 +172,23 @@ fn test_c_flag_macros_override_compiler_predefined_environment() {
 	assert dynamic_macros['PROJECT_FEATURE']
 }
 
+fn test_active_macro_environment_classifies_function_like_c_flags() {
+	mut g := FlatGen.new()
+	g.c_flags = ['-Dstrict_flag_api(p)=((p)->value)', '-D', 'split_flag_api(p)=((p)->value)',
+		'-Dremoved_flag_api(p)=((p)->value)', '-Uremoved_flag_api']
+	g.set_c_compiler_predefined_macros({
+		'compiler_function_api': '(p) ((p)->value)'
+		'compiler_object_api':   ' (1)'
+	}, true)
+	g.initialize_c_active_macro_environment()
+
+	assert 'strict_flag_api' in g.inlined_c_active_macros
+	assert 'split_flag_api' in g.inlined_c_active_macros
+	assert 'compiler_function_api' in g.inlined_c_active_macros
+	assert 'compiler_object_api' !in g.inlined_c_active_macros
+	assert 'removed_flag_api' !in g.inlined_c_active_macros
+}
+
 fn test_consecutive_includes_share_macro_state() {
 	root := os.join_path(os.vtmp_dir(), 'v3_ordered_include_macro_state_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -424,7 +441,7 @@ fn test_header_macro_push_and_pop_restore_function_like_state() {
 	assert 'direct_restored_api' in direct.inlined_c_active_macros
 }
 
-fn test_macro_expanded_nested_include_is_scanned_or_marked_unresolved() {
+fn test_nested_include_is_scanned_or_marked_unresolved() {
 	root := os.join_path(os.vtmp_dir(), 'v3_macro_expanded_include_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
@@ -466,6 +483,19 @@ fn test_macro_expanded_nested_include_is_scanned_or_marked_unresolved() {
 		typ:   '<computed_wrapper.h>'
 	}, source, false)
 	assert source in computed_angle.files_with_unscanned_c_includes
+
+	// Some compiler search mechanisms, such as macOS framework roots, are not
+	// modeled by CGen. A missing literal include therefore needs the same fallback.
+	literal_wrapper := os.join_path(root, 'literal_wrapper.h')
+	os.write_file(literal_wrapper, '#include <MissingFramework/MissingFramework.h>\n')!
+	mut literal_angle := FlatGen.new()
+	literal_angle.c_flags = ['-I', root]
+	literal_angle.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '<literal_wrapper.h>'
+	}, source, false)
+	assert source in literal_angle.files_with_unscanned_c_includes
 }
 
 fn test_compiler_include_search_output_is_parsed() {
@@ -535,6 +565,42 @@ fn test_active_macro_scan_uses_complete_compiler_macro_environment() {
 		typ:   '"${header}"'
 	}, source, false)
 	assert 'compiler_selected_api' in unknown.inlined_c_active_macros
+}
+
+fn test_active_macro_scan_evaluates_compiler_macro_values() {
+	root := os.join_path(os.vtmp_dir(), 'v3_compiler_macro_value_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'version_selected.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(header, '#if __STDC_VERSION__ >= 201112L\n#else\n#define version_selected_api(p) ((p)->value)\n#endif\n')!
+
+	mut modern := FlatGen.new()
+	modern.set_c_compiler_predefined_macros({
+		'__STDC_VERSION__': ' 201710L'
+	}, true)
+	modern.initialize_c_active_macro_environment()
+	modern.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'version_selected_api' !in modern.inlined_c_active_macros
+
+	mut legacy := FlatGen.new()
+	legacy.set_c_compiler_predefined_macros({
+		'__STDC_VERSION__': ' 199901L'
+	}, true)
+	legacy.initialize_c_active_macro_environment()
+	legacy.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'version_selected_api' in legacy.inlined_c_active_macros
 }
 
 fn test_unresolved_header_fallback_is_scoped_to_its_c_declarations() {

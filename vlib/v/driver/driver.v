@@ -3427,9 +3427,10 @@ fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target p
 			continue
 		}
 		name := rest[..end]
-		// Function-like macros are still definitely defined, but their expansion
-		// cannot be used as a literal include target.
-		macros[name] = rest[end..].trim_space()
+		// Preserve the whitespace after the name: a function-like macro starts
+		// immediately with `(`, while an object-like replacement starts after a
+		// separating space. CGen uses that distinction when classifying C calls.
+		macros[name] = rest[end..]
 	}
 	return macros, true
 }
