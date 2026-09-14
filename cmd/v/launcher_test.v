@@ -143,7 +143,9 @@ fn test_moved_modules_are_staged_into_a_writable_overlay() {
 		os.unsetenv('XDG_CACHE_HOME')
 	}
 
-	overlay := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
+	overlay_result := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
+	assert !overlay_result.temporary
+	overlay := overlay_result.path
 	assert overlay.starts_with(overlay_home)
 	assert os.read_file(os.join_path(overlay, 'json2', 'json2.v'))! == 'module json2\n'
 	assert os.read_file(os.join_path(overlay, 'json2', 'decoder2', 'decoder.v'))! == 'module decoder2\n'
@@ -155,7 +157,8 @@ fn test_moved_modules_are_staged_into_a_writable_overlay() {
 	// A staged overlay is reused as is, rather than copied over every launch.
 	os.write_file(os.join_path(overlay, 'json2', 'json2.v'), 'module json2 // kept\n')!
 	reused := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
-	assert reused == overlay
+	assert reused.path == overlay
+	assert !reused.temporary
 	assert os.read_file(os.join_path(overlay, 'json2', 'json2.v'))! == 'module json2 // kept\n'
 }
 
@@ -176,7 +179,9 @@ fn test_a_read_only_fallback_tree_still_gets_its_moved_modules() {
 		os.unsetenv('XDG_CACHE_HOME')
 	}
 
-	overlay := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
+	overlay_result := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
+	assert !overlay_result.temporary
+	overlay := overlay_result.path
 	assert os.read_file(os.join_path(overlay, 'json2', 'json2.v'))! == 'module json2\n'
 	assert os.ls(vlib_dir)! == ['x']
 }
@@ -229,16 +234,30 @@ fn test_a_host_with_nowhere_to_stage_reports_it_instead_of_going_quiet() {
 	assert os.read_file(os.join_path(usable, 'json2', 'json2.v'))! == 'module json2\n'
 }
 
-fn test_the_overlay_is_looked_for_in_the_cache_before_the_temporary_directory() {
+fn test_xdg_cache_is_the_first_persistent_overlay_directory() {
 	cache := os.join_path(os.vtmp_dir(), 'v1_fallback_xdg_${os.getpid()}')
 	os.setenv('XDG_CACHE_HOME', cache, true)
 	defer {
 		os.unsetenv('XDG_CACHE_HOME')
 	}
-	dirs := v1_fallback_overlay_dirs()
-	assert dirs.len >= 2
+	dirs := v1_fallback_persistent_overlay_dirs()
+	assert dirs.len >= 1
 	assert dirs[0] == os.join_path(cache, 'v', 'v1-fallback-modules', v_version)
-	assert dirs.last().starts_with(os.temp_dir())
+}
+
+fn test_a_temporary_overlay_never_reuses_a_preexisting_directory() {
+	preexisting := v1_fallback_temporary_overlay_path(0)
+	os.rmdir_all(preexisting) or {}
+	os.mkdir(preexisting, mode: 0o700)!
+	os.mkdir_all(os.join_path(preexisting, 'json2'))!
+	os.write_file(os.join_path(preexisting, 'json2', 'json2.v'), 'module json2 // untrusted\n')!
+	temporary := v1_fallback_temporary_overlay_dir() or { panic('expected a temporary overlay') }
+	defer {
+		os.rmdir_all(preexisting) or {}
+		os.rmdir_all(temporary) or {}
+	}
+	assert temporary != preexisting
+	assert !os.exists(os.join_path(temporary, 'json2'))
 }
 
 fn test_the_overlay_is_searched_after_the_default_module_paths() {

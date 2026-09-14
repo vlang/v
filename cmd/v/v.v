@@ -19,6 +19,12 @@ const v1_fallback_binary = 'v1_fallback'
 const v1_fallback_module_shims = {
 	'json2': 'x/json2'
 }
+
+struct V1FallbackModuleOverlay {
+	path      string
+	temporary bool
+}
+
 const v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
@@ -349,8 +355,12 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	os.setenv('VEXE', fallback, true)
 	os.setenv('VCHILD', 'true', true)
 	mut fallback_args := args.clone()
+	mut temporary_overlay := ''
 	if overlay := v1_fallback_module_overlay(os.dir(fallback)) {
-		fallback_args = v1_fallback_args_with_module_overlay(args, overlay)
+		fallback_args = v1_fallback_args_with_module_overlay(args, overlay.path)
+		if overlay.temporary {
+			temporary_overlay = overlay.path
+		}
 	}
 	eprintln('${reason}; retrying with `${fallback}`.')
 	os.unsetenv(v3_fallback_file_env)
@@ -361,10 +371,16 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	if process.status == .aborted || process.code < 0 {
 		eprintln('failed to launch the V 0.5.2 compatibility compiler `${fallback}`: ${process.err}')
 		process.close()
+		if temporary_overlay != '' {
+			os.rmdir_all(temporary_overlay) or {}
+		}
 		exit(1)
 	}
 	code := process.code
 	process.close()
+	if temporary_overlay != '' {
+		os.rmdir_all(temporary_overlay) or {}
+	}
 	if code == 0 && report_state.fallback_file != '' {
 		submit_v3_fallback_report(fallback, report_state)
 	}
@@ -601,8 +617,25 @@ fn resolve_v1_fallback(fallback string) ?string {
 // Without this a retried build of any program that imports `json2` stops on the
 // fallback with a module-not-found error that has nothing to do with why V3
 // gave up.
-fn v1_fallback_module_overlay(fallback_root string) ?string {
-	return v1_fallback_module_overlay_in(fallback_root, v1_fallback_overlay_dirs())
+fn v1_fallback_module_overlay(fallback_root string) ?V1FallbackModuleOverlay {
+	mut candidates := v1_fallback_persistent_overlay_dirs()
+	temporary := v1_fallback_temporary_overlay_dir() or { '' }
+	if temporary != '' {
+		candidates << temporary
+	}
+	path := v1_fallback_module_overlay_in(fallback_root, candidates) or {
+		if temporary != '' {
+			os.rmdir_all(temporary) or {}
+		}
+		return none
+	}
+	if temporary != '' && path != temporary {
+		os.rmdir_all(temporary) or {}
+	}
+	return V1FallbackModuleOverlay{
+		path:      path
+		temporary: path == temporary
+	}
 }
 
 // v1_fallback_module_overlay_in stages the modules into the first of
@@ -677,11 +710,10 @@ fn stage_v1_fallback_module(overlay string, name string, source string) ! {
 	}
 }
 
-// v1_fallback_overlay_dirs lists the overlay locations to try, most durable
-// first. `os.cache_dir()` and `os.vtmp_dir()` are deliberately not used: both
-// panic when they cannot create their folder, which is the read only HOME this
-// has to survive.
-fn v1_fallback_overlay_dirs() []string {
+// v1_fallback_persistent_overlay_dirs lists durable overlay locations.
+// `os.cache_dir()` is deliberately not used because it panics when it cannot
+// create its folder, which is the read only HOME this has to survive.
+fn v1_fallback_persistent_overlay_dirs() []string {
 	// `v/` under the cache root is where `install_v1_fallback.sh` puts the
 	// fallback itself, so its modules stay in the same namespace.
 	mut roots := []string{}
@@ -694,7 +726,6 @@ fn v1_fallback_overlay_dirs() []string {
 	if home != '' {
 		roots << os.join_path(home, '.cache', 'v')
 	}
-	roots << os.join_path(os.temp_dir(), 'v_${os.getuid()}')
 	mut dirs := []string{cap: roots.len}
 	for root in roots {
 		dir := os.join_path(root, 'v1-fallback-modules', v_version)
@@ -703,6 +734,25 @@ fn v1_fallback_overlay_dirs() []string {
 		}
 	}
 	return dirs
+}
+
+fn v1_fallback_temporary_overlay_path(attempt int) string {
+	return os.join_path(os.temp_dir(), 'v1-fallback-modules-${os.getuid()}-${os.getpid()}-${attempt}')
+}
+
+// v1_fallback_temporary_overlay_dir atomically creates a private process-local
+// fallback. Existing paths are never accepted, so another user cannot seed an
+// overlay with code that a fallback build would compile.
+fn v1_fallback_temporary_overlay_dir() ?string {
+	for attempt in 0 .. 128 {
+		path := v1_fallback_temporary_overlay_path(attempt)
+		mut created := true
+		os.mkdir(path, mode: 0o700) or { created = false }
+		if created {
+			return path
+		}
+	}
+	return none
 }
 
 // v1_fallback_args_with_module_overlay keeps the overlay searchable when the
