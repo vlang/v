@@ -17890,45 +17890,49 @@ fn removed_modules_layout_hint(prefs &pref.Preferences, mod_name string, importi
 fn modules_layout_move_command(root string, relative string, top_name string) string {
 	top_source := os.join_path(root, 'modules', top_name)
 	top_target := os.join_path(root, top_name)
+	source := os.join_path(root, 'modules', relative)
+	target := os.join_path(root, relative)
+	if blocker := modules_layout_blocker(root, target) {
+		// Once it is out of the way, what is left is the move that would have been
+		// printed anyway: the whole top-level tree when that is what was blocked,
+		// and the leaf into the parents it needs when the blocker sits deeper.
+		rest := if blocker == top_target {
+			modules_layout_move(top_source, top_target)
+		} else {
+			'${modules_layout_mkdir(os.dir(target))} && ${modules_layout_move(source, target)}'
+		}
+		return modules_layout_blocked(blocker, rest)
+	}
 	if !os.exists(top_target) {
 		return modules_layout_move(top_source, top_target)
 	}
-	if !os.is_dir(top_target) {
-		return modules_layout_blocked(top_target, modules_layout_move(top_source, top_target))
-	}
-	source := os.join_path(root, 'modules', relative)
-	target := os.join_path(root, relative)
 	if os.exists(target) {
-		if !os.is_dir(target) {
-			return modules_layout_blocked(target, modules_layout_move(source, target))
-		}
 		return 'merge ${os.quoted_path(source)} into the existing ${os.quoted_path(target)}'
 	}
 	target_parent := os.dir(target)
 	if os.is_dir(target_parent) {
 		return modules_layout_move(source, target)
 	}
-	move := '${modules_layout_mkdir(target_parent)} && ${modules_layout_move(source, target)}'
-	if blocker := modules_layout_blocking_file(root, target_parent) {
-		return modules_layout_blocked(blocker, move)
-	}
-	return move
+	return '${modules_layout_mkdir(target_parent)} && ${modules_layout_move(source, target)}'
 }
 
-// A file where a module directory has to go blocks the move: `mv` onto it would
-// be a rename, and `mkdir -p` below it cannot be made at all. What to do with the
-// file is the author's to decide, so name it rather than paper over it.
+// Something that is not a directory of the project itself blocks the move, and
+// what to do with it is the author's to decide, so name it rather than paper over
+// it: `mv` onto a file is a rename, `mkdir -p` cannot descend into one, and a
+// link would take the module wherever it points instead of beside the v.mod.
 fn modules_layout_blocked(blocker string, command string) string {
-	return 'move ${os.quoted_path(blocker)} out of the way first -- a file is where the module directory has to go -- and then: ${command}'
+	kind := if os.is_link(blocker) { 'a link' } else { 'a file' }
+	return 'move ${os.quoted_path(blocker)} out of the way first -- ${kind} is where the module directory has to go -- and then: ${command}'
 }
 
-// The outermost thing between the root and the target that is in the way: the
-// file closest to the root is the one that has to move before any of the rest.
-fn modules_layout_blocking_file(root string, target_parent string) ?string {
+// The outermost thing on the way from the root down to the destination that is
+// not a real directory: the one closest to the root has to move before the rest,
+// and a link is one of them however directory-like it looks through it.
+fn modules_layout_blocker(root string, target string) ?string {
 	mut blocker := ''
-	mut current := target_parent
+	mut current := target
 	for current != root && current.len > root.len {
-		if os.exists(current) && !os.is_dir(current) {
+		if os.is_link(current) || (os.exists(current) && !os.is_dir(current)) {
 			blocker = current
 		}
 		parent := os.dir(current)

@@ -540,6 +540,43 @@ fn test_a_moved_project_keeps_its_local_installs() {
 	assert !os.exists(relocated)
 }
 
+// A project renamed in case alone is the same project. On a case-insensitive
+// filesystem the old spelling still leads to the same checkout, which answers
+// with the same token, and reading that as a copy of itself would leave the
+// install unmanageable until something else happened to rewrite its record.
+fn test_a_case_only_project_rename_keeps_its_local_installs() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_case_rename'))
+	project_dir := os.join_path(test_path, 'case_rename_project')
+	renamed_dir := os.join_path(test_path, 'CASE_RENAME_PROJECT')
+	os.rmdir_all(renamed_dir) or {}
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'case_rename'\n}\n") or {
+		panic(err)
+	}
+	installed := os.join_path(project_dir, 'case_pkg')
+	create_local_git_module(installed, 'case_pkg')
+	record_local_install(installed) or { panic(err) }
+
+	// Straight to the other spelling is a move onto itself on a case-insensitive
+	// filesystem, so go through a name that is nobody's.
+	staging_dir := os.join_path(test_path, 'case_rename_staging')
+	os.rmdir_all(staging_dir) or {}
+	os.mv(project_dir, staging_dir) or { panic(err) }
+	os.mv(staging_dir, renamed_dir) or { panic(err) }
+	relocated := os.join_path(renamed_dir, 'case_pkg')
+	assert os.is_dir(relocated)
+	assert is_recorded_local_install(relocated)
+	assert local_installed_modules(renamed_dir) == ['case_pkg']
+
+	old_dir := os.getwd()
+	os.chdir(renamed_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok(@LOCATION, '${vexe} remove --local case_pkg')
+	assert !os.exists(relocated)
+}
+
 // A copy of an install is not the install: while the original is still there to
 // answer with the same token, the duplicate inherits nothing from it.
 fn test_a_copy_of_a_local_install_is_not_one() {

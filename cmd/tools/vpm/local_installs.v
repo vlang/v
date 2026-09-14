@@ -97,12 +97,33 @@ fn is_recorded_local_install(install_path string) bool {
 	// the same token is what tells the two apart. A copy is not the install, and
 	// inherits nothing; a move is the same checkout, so the note follows it.
 	if original_token := read_local_install_token(recorded) {
-		if original_token == token {
+		if original_token == token && !same_filesystem_object(recorded, install_path) {
 			return false
 		}
 	}
 	os.write_file(local_install_record_path(token), canonical) or { return false }
 	return true
+}
+
+// Whether two paths lead to the same thing on disk. A project renamed in case
+// alone keeps both spellings working on a case-insensitive filesystem, and the
+// old one would otherwise read as a second copy of the install rather than as
+// the install itself.
+fn same_filesystem_object(left string, right string) bool {
+	left_canonical := canonical_install_path(left)
+	right_canonical := canonical_install_path(right)
+	if left_canonical == right_canonical {
+		return true
+	}
+	left_stat := os.stat(left) or { return false }
+	right_stat := os.stat(right) or { return false }
+	if left_stat.inode == 0 || right_stat.inode == 0 {
+		// Without inodes to compare -- Windows -- there is the filesystem's own
+		// idea of sameness, where a path differs from another by being spelled
+		// differently, not by being cased differently.
+		return left_canonical.to_lower() == right_canonical.to_lower()
+	}
+	return left_stat.dev == right_stat.dev && left_stat.inode == right_stat.inode
 }
 
 // local_installed_modules lists what VPM installed under a local root, by reading

@@ -220,6 +220,29 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	assert foreign.exit_code != 0, foreign.output
 	assert foreign.output.contains('cannot import module "stranger" (not found)'), foreign.output
 	assert !foreign.output.contains(hint), foreign.output
+
+	// A link where the module directory has to go is a blocker too: it looks like
+	// a directory through the link, but moving into it would put the module
+	// wherever the link points, which is not beside the project's v.mod.
+	linked_root := os.join_path(root, 'linked')
+	write_modules_layout_module(linked_root, os.join_path('modules', 'gpu', 'agx', 'fw'),
+		'fw')
+	link_target := os.join_path(root, 'outside_gpu')
+	os.mkdir_all(os.join_path(link_target, 'agx')) or { panic(err) }
+	os.symlink(link_target, os.join_path(linked_root, 'gpu')) or {
+		eprintln('skipping the symlinked destination case: ${err}')
+		return
+	}
+	write_modules_layout_main(linked_root, 'gpu.agx.fw')
+	linked := os.execute('${v3_bin} -nocache -o ${output} ${linked_root}/main.v')
+	assert linked.exit_code != 0, linked.output
+	assert linked.output.contains(hint), linked.output
+	linked_real := os.real_path(linked_root)
+	linked_blocker := os.join_path(linked_real, 'gpu')
+	assert linked.output.contains('move ${os.quoted_path(linked_blocker)} out of the way first'), linked.output
+	assert linked.output.contains('a link is where the module directory has to go'), linked.output
+	assert !linked.output.contains(modules_layout_expected_mkdir(os.join_path(linked_real,
+		'gpu', 'agx'))), linked.output
 }
 
 // The hint quotes the paths it prints and names the tool the host actually has,
