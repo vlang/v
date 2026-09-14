@@ -35,12 +35,10 @@ static inline uint64_t strict_load_u64(uint64_t* x) { return *x; }
 static inline void strict_store_u64(uint64_t* x, uint64_t y) { *x = y; }
 static inline uint64_t strict_load_any(void* x) { return *(uint64_t*)x; }
 static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
+#define strict_get_count(p) ((p)->count)
 #endif
 '
 	os.write_file(os.join_path(root, 'strict_atomic.h'), header) or { panic(err) }
-	os.write_file(os.join_path(root, 'strict_macro.c'), '#define strict_get_count(p) ((p)->count)\n') or {
-		panic(err)
-	}
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, source) or { panic(err) }
 	return path
@@ -51,7 +49,6 @@ fn test_c_voidptr_param_pointer_arg_goes_through_voidptr() {
 	src := voidptr_arg_write_project('module main
 
 #include "@DIR/strict_atomic.h"
-#include "@DIR/strict_macro.c"
 
 fn C.strict_load_u64(voidptr) u64
 fn C.strict_store_u64(voidptr, u64)

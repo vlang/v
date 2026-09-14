@@ -5240,6 +5240,7 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 			return true
 		}
 		if !c_include_arg_is_source_file(include_arg) {
+			g.collect_included_c_active_macros(include_arg, source_file, include_dirs)
 			g.add_native_source_context_directive(module_name, c_native_source_context_header_include(include_arg, g.compiler_vroot, source_file, include_dirs), before_import)
 			g.add_c_directive(module_name, g.c_include_directive_text(node_idx, cross_prefix_condition, include_arg, source_file), before_import)
 			return true
@@ -7960,6 +7961,117 @@ fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
 		}
 		if name_end > 0 {
 			g.inlined_c_active_macros[arg[..name_end]] = true
+		}
+	}
+}
+
+// collect_included_c_active_macros records function-like macros supplied by an
+// ordinary readable header. Unlike native source includes, headers stay as
+// preprocessor directives, so their macro definitions have to be inspected
+// separately before call arguments are generated.
+fn (mut g FlatGen) collect_included_c_active_macros(include_arg string, source_file string, include_dirs []string) {
+	mut include_macros, mut dynamic_include_macros := c_flag_include_macro_definitions(g.c_flags, map[string]string{})
+	mut active_paths := map[string]bool{}
+	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		if os.is_file(path) {
+			g.collect_included_c_active_macros_from_file(path, include_dirs, mut active_paths, mut include_macros, mut dynamic_include_macros, false)
+			break
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, include_dirs []string, mut active_paths map[string]bool, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, ambient_ambiguous bool) {
+	real_path := os.real_path(path)
+	if real_path in active_paths {
+		return
+	}
+	text := os.read_file(real_path) or { return }
+	defer {
+		unsafe { text.free() }
+	}
+	active_paths[real_path] = true
+	defer {
+		active_paths.delete(real_path)
+	}
+	mut conditionals := []CCacheConditional{}
+	mut in_block_comment := false
+	for line in c_join_continued_lines(text) {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		directive_name := c_directive_name(clean)
+		if directive_name in ['if', 'ifdef', 'ifndef'] {
+			parent_inactive := conditionals.any(it.inactive)
+			parent_ambiguous := conditionals.any(it.ambiguous)
+			condition := c_cache_known_condition(clean, include_macros, dynamic_include_macros, false)
+			conditionals << CCacheConditional{
+				parent_inactive: parent_inactive
+				condition:       condition
+				inactive:        parent_inactive || condition < 0
+				ambiguous:       parent_ambiguous || condition == 0
+			}
+			continue
+		}
+		if directive_name in ['else', 'elif'] && conditionals.len > 0 {
+			last := conditionals.len - 1
+			mut conditional := conditionals[last]
+			if directive_name == 'else' {
+				conditional.inactive = conditional.parent_inactive || conditional.condition > 0
+			} else if conditional.condition > 0 {
+				conditional.inactive = true
+			} else {
+				next_condition := c_cache_known_condition(clean, include_macros, dynamic_include_macros, false)
+				conditional.condition = next_condition
+				conditional.ambiguous = conditional.ambiguous || next_condition == 0
+				conditional.inactive = conditional.parent_inactive || next_condition < 0
+			}
+			conditionals[last] = conditional
+			continue
+		}
+		if directive_name == 'endif' {
+			if conditionals.len > 0 {
+				conditionals.delete_last()
+			}
+			continue
+		}
+		if conditionals.any(it.inactive) {
+			continue
+		}
+		mutation_is_ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
+		if directive_name in ['define', 'undef'] {
+			macro_arg := c_directive_arg(clean)
+			mut name_end := 0
+			for name_end < macro_arg.len && c_ident_char(macro_arg[name_end]) {
+				name_end++
+			}
+			if name_end > 0 {
+				macro_name := macro_arg[..name_end]
+				is_function_like := directive_name == 'define' && name_end < macro_arg.len
+					&& macro_arg[name_end] == `(`
+				if !mutation_is_ambiguous {
+					if is_function_like {
+						g.inlined_c_active_macros[macro_name] = true
+					} else {
+						g.inlined_c_active_macros.delete(macro_name)
+					}
+				} else if is_function_like {
+					g.inlined_c_active_macros[macro_name] = true
+				}
+			}
+			c_record_include_macro_definition(clean, mutation_is_ambiguous, mut include_macros, mut dynamic_include_macros, false)
+			continue
+		}
+		if directive_name !in ['include', 'import'] {
+			continue
+		}
+		include_arg := c_include_arg(c_directive_arg(clean), g.compiler_vroot, real_path)
+		if !c_include_arg_is_literal(include_arg) {
+			continue
+		}
+		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path, include_dirs) {
+			if os.is_file(nested_path) {
+				g.collect_included_c_active_macros_from_file(nested_path, include_dirs, mut active_paths, mut include_macros, mut dynamic_include_macros, mutation_is_ambiguous)
+				break
+			}
 		}
 	}
 }
