@@ -234,8 +234,8 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 	g.set_target_libc_headers(true)
 	g.preamble()
 	c_code := g.sb.str()
-	for header in ['stdint.h', 'stddef.h', 'stdatomic.h', 'errno.h', 'stdio.h', 'stdlib.h', 'string.h',
-		'math.h', 'time.h', 'pthread.h'] {
+	for header in ['stdint.h', 'stddef.h', 'stdatomic.h', 'errno.h', 'fcntl.h', 'signal.h', 'stdio.h',
+		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h', 'pthread.h'] {
 		assert c_code.contains('#include <${header}>'), header
 	}
 	assert c_code.contains('typedef uint64_t u64;')
@@ -245,6 +245,9 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 	assert c_code.contains('char** backtrace_symbols(void* const* __array, int __size);')
 	assert c_code.contains('void backtrace_symbols_fd(void* const* __array, int __size, int __fd);')
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
+	for name in ['open', 'read', 'close', 'pipe', 'signal', 'sysconf'] {
+		assert !g.should_emit_c_extern_decl(name), name
+	}
 }
 
 fn test_headerless_linux_stat_preamble_supports_s390x() {

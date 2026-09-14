@@ -17819,6 +17819,7 @@ const c_manual_stdlib_declared_fns = {
 fn c_target_libc_header_declares(cfn string) bool {
 	return cfn in c_manual_stdlib_declared_fns || cfn.starts_with('pthread_')
 		|| cfn in c_target_libc_additional_declared_fns
+		|| cfn in c_target_libc_posix_declared_fns
 }
 
 const c_target_libc_additional_declared_fns = {
@@ -17862,6 +17863,63 @@ const c_target_libc_additional_declared_fns = {
 	'time':                  true
 	'timegm':                true
 	'timespec_get':          true
+}
+
+// c_target_libc_posix_declared_fns contains declarations owned by <fcntl.h>,
+// <signal.h>, and <unistd.h> in target-header mode.
+const c_target_libc_posix_declared_fns = {
+	'_exit':        true
+	'access':       true
+	'alarm':        true
+	'chdir':        true
+	'chown':        true
+	'close':        true
+	'dup':          true
+	'dup2':         true
+	'execlp':       true
+	'execve':       true
+	'execvp':       true
+	'fcntl':        true
+	'fork':         true
+	'ftruncate':    true
+	'getcwd':       true
+	'getegid':      true
+	'geteuid':      true
+	'getgid':       true
+	'gethostname':  true
+	'getlogin':     true
+	'getpgid':      true
+	'getpgrp':      true
+	'getpid':       true
+	'getppid':      true
+	'getuid':       true
+	'isatty':       true
+	'kill':         true
+	'link':         true
+	'open':         true
+	'pipe':         true
+	'pread':        true
+	'raise':        true
+	'read':         true
+	'readlink':     true
+	'rmdir':        true
+	'setpgid':      true
+	'sigaction':    true
+	'sigaddset':    true
+	'sigemptyset':  true
+	'sigismember':  true
+	'signal':       true
+	'sigpending':   true
+	'sigprocmask':  true
+	'sigtimedwait': true
+	'sleep':        true
+	'symlink':      true
+	'sysconf':      true
+	'tcgetpgrp':    true
+	'tcsetpgrp':    true
+	'unlink':       true
+	'usleep':       true
+	'write':        true
 }
 
 fn (g &FlatGen) c_extern_decl_is_cached_object_fallback(cfn string) bool {
