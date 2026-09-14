@@ -15373,7 +15373,7 @@ fn shadow_dependency_roots_for(prefs &pref.Preferences) []string {
 		if root.len == 0 {
 			continue
 		}
-		real_root := os.real_path(root).trim_right(os.path_separator)
+		real_root := os.real_path(root)
 		if real_root.len > 0 && real_root !in roots {
 			roots << real_root
 		}
@@ -15386,7 +15386,7 @@ fn shadow_dependency_roots_for(prefs &pref.Preferences) []string {
 fn shadow_explicit_roots_for(prefs &pref.Preferences, dependency_roots []string) []string {
 	mut roots := []string{}
 	for root in prefs.module_search_paths {
-		real_root := os.real_path(root).trim_right(os.path_separator)
+		real_root := os.real_path(root)
 		if real_root.len > 0 && real_root !in dependency_roots && real_root !in roots {
 			roots << real_root
 		}
