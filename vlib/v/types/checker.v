@@ -16739,7 +16739,11 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			}
 			tc.cur_scope.insert(lhs.value, typ)
 		}
+		return
 	}
+	// Reflection-dependent nodes without dedicated semantic handling are still
+	// unrolled later, so inspect all source bindings they contain.
+	tc.check_generic_body_node_global_shadowing(id)
 }
 
 fn (mut tc TypeChecker) record_deferred_comptime_field_errors(id flat.NodeId, var_name string) bool {
