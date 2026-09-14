@@ -162,9 +162,12 @@ acquire_cache_lock() {
 				;;
 		esac
 		reclaim=$cache_lock.reclaim-$stale_owner
-		if ln "$cache_lock" "$reclaim" 2>/dev/null; then
+		if ln "$cache_lock_owner" "$reclaim" 2>/dev/null; then
 			current_pid=$(sed -n '1p' "$cache_lock" 2>/dev/null || true)
-			if [ "$current_pid" = "$existing_pid" ]; then
+			current_identity=$(sed -n '2p' "$cache_lock" 2>/dev/null || true)
+			current_owner=$(sed -n '3p' "$cache_lock" 2>/dev/null || true)
+			if [ "$current_pid" = "$existing_pid" ] && [ "$current_identity" = "$existing_identity" ] \
+				&& [ "$current_owner" = "$existing_owner" ]; then
 				rm -f "$cache_lock"
 				case "$existing_owner" in
 					.install-$release_version.owner.*) rm -f "$cache_parent/$existing_owner" ;;
@@ -173,6 +176,30 @@ acquire_cache_lock() {
 			rm -f "$reclaim"
 			continue
 		fi
+		reclaim_pid=$(sed -n '1p' "$reclaim" 2>/dev/null || true)
+		reclaim_identity=$(sed -n '2p' "$reclaim" 2>/dev/null || true)
+		case "$reclaim_pid" in
+			''|*[!0-9]*) ;;
+			*)
+				if kill -0 "$reclaim_pid" 2>/dev/null; then
+					current_identity=$(process_identity "$reclaim_pid")
+					if [ -n "$reclaim_identity" ] && [ "$current_identity" = "$reclaim_identity" ]; then
+						sleep 1
+						continue
+					fi
+					if [ -z "$reclaim_identity" ] || [ -z "$current_identity" ]; then
+						wait_count=$((wait_count + 1))
+						if [ "$wait_count" -ge 120 ]; then
+							echo "Timed out waiting for recovery of the V $release_version fallback cache lock." >&2
+							return 1
+						fi
+						sleep 1
+						continue
+					fi
+				fi
+				;;
+		esac
+		rm -f "$reclaim"
 		sleep 1
 	done
 }

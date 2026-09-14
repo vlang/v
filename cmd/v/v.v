@@ -374,6 +374,7 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 // successful compilation, so their nonzero exits are ambiguous and must not be
 // described as compiler failures.
 fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
+	backend := v1_fallback_selected_backend(args)
 	mut option_value_follows := false
 	for i, arg in args {
 		if option_value_follows {
@@ -395,11 +396,34 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			return false
 		}
 		if !arg.starts_with('-') {
-			return !arg.ends_with('_test.v') && !arg.ends_with('_test.vv')
+			return !pref.is_test_file_for_backend(arg, backend) && !arg.ends_with('_test.vv')
 				&& !arg.ends_with('.vsh')
 		}
 	}
 	return true
+}
+
+fn v1_fallback_selected_backend(args []string) string {
+	mut backend := 'c'
+	mut backend_value_follows := false
+	for arg in args {
+		if backend_value_follows {
+			backend = arg
+			backend_value_follows = false
+			continue
+		}
+		if arg in ['-b', '-backend', '-compile-backend', '--compile-backend'] {
+			backend_value_follows = true
+			continue
+		}
+		for option in ['-b=', '-backend=', '-compile-backend=', '--compile-backend='] {
+			if arg.starts_with(option) {
+				backend = arg.all_after(option)
+				break
+			}
+		}
+	}
+	return backend
 }
 
 // v1_fallback_profile_option_consumes_value mirrors the driver's compatibility

@@ -79,6 +79,8 @@ fn test_v1_fallback_installer_exposes_compatibility_modules() {
 	assert source.contains('process_identity "$existing_pid"')
 	assert source.contains('if [ ! -e "$cache_lock" ]')
 	assert source.contains('$cache_lock.reclaim-$stale_owner')
+	assert source.contains('ln "$cache_lock_owner" "$reclaim"')
+	assert source.contains('reclaim_pid=$(sed -n')
 	assert source.contains('fallback_compatibility_is_installed "$cache_root"')
 }
 
@@ -225,6 +227,9 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['-profile', 'test', 'vlib/context'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-profile', 'trace.out', 'run', 'main.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.c.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.js.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=wasm', 'example_test.wasm.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['fmt', '-verify', 'main.v'])
@@ -232,6 +237,7 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 
 	assert v1_fallback_exit_identifies_compiler_failure(['-profile', 'main.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-profile', 'trace.out', 'main.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.c.v'])
 }
 
 fn test_fallback_installer_writes_a_native_windows_root() {
