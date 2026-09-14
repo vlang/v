@@ -105,6 +105,60 @@ fn is_recorded_local_install(install_path string) bool {
 	return true
 }
 
+// local_installed_modules lists what VPM installed under a local root, by reading
+// its own records rather than by walking the root: that root is the project
+// itself, and a walk of it would descend through `.git`, build output,
+// `node_modules` and every source directory the project has, to find the handful
+// of directories the records already name.
+fn local_installed_modules(vmodules_path string) []string {
+	root := canonical_install_path(vmodules_path)
+	notes := os.ls(local_install_records_dir()) or { return [] }
+	mut modules := []string{}
+	for note in notes {
+		recorded := os.read_file(os.join_path(local_install_records_dir(), note)) or { continue }
+		install_path := recorded_install_under(note, recorded.trim_space(), root) or { continue }
+		modules << import_path_relative_to(install_path, root)
+	}
+	modules.sort()
+	verbose_println_more(@FILE_LINE, @FN, 'found local modules: ${modules}')
+	return modules
+}
+
+// A note holds where its install was last seen, and is named after the token in
+// it, so a directory proves itself by carrying a token that hashes to that name.
+fn install_dir_matches_note(install_path string, note string) bool {
+	token := read_local_install_token(install_path) or { return false }
+	return sha256.hexhash(token) == note
+}
+
+// Where the note's install is under this root, if it is here at all. A project
+// that was renamed or moved took its installs with it, keeping their path inside
+// it, so the same tail under this root is where they went -- a couple of reads
+// per record, still no walk of the project.
+fn recorded_install_under(note string, recorded string, root string) ?string {
+	if recorded == '' {
+		return none
+	}
+	if path_is_below(recorded, root) && install_dir_matches_note(recorded, note) {
+		return recorded
+	}
+	parts := recorded.split('/')
+	for i in 1 .. parts.len {
+		candidate := os.join_path(root, ...parts[i..])
+		if candidate == recorded {
+			continue
+		}
+		if install_dir_matches_note(candidate, note) {
+			// Seen at a new path: the note follows the install it stands for.
+			os.write_file(os.join_path(local_install_records_dir(), note), candidate) or {
+				return none
+			}
+			return candidate
+		}
+	}
+	return none
+}
+
 // vpm_owns_module_dir reports whether a directory is VPM's to act on. The global
 // modules directory holds nothing but installed packages, so everything in it
 // qualifies, including a checkout whose VCS directory is already gone. A local

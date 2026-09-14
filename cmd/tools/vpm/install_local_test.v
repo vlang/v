@@ -520,6 +520,9 @@ fn test_a_moved_project_keeps_its_local_installs() {
 	os.mv(project_dir, moved_dir) or { panic(err) }
 	relocated := os.join_path(moved_dir, 'moved_pkg')
 	assert is_recorded_local_install(relocated)
+	// Discovery finds it at the new path too, without walking the project: the
+	// install kept its place inside the project that moved around it.
+	assert local_installed_modules(moved_dir) == ['moved_pkg']
 
 	old_dir := os.getwd()
 	os.chdir(moved_dir) or { panic(err) }
@@ -571,6 +574,32 @@ fn test_a_failed_removal_keeps_the_local_install_record() {
 		}
 		assert false, 'removing from a read-only directory has to fail'
 	}
+}
+
+// Local discovery reads the records, so what it costs is the handful of installs
+// they name, not a walk of the project: a checkout buried in `node_modules` or a
+// module the project vendored itself is never even looked at, let alone listed.
+fn test_local_discovery_lists_the_records_not_the_project() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_discovery'))
+	project_dir := os.join_path(test_path, 'local_discovery_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'local_discovery'\n}\n") or {
+		panic(err)
+	}
+	installed := os.join_path(project_dir, 'plain_pkg')
+	create_local_git_module(installed, 'plain_pkg')
+	record_local_install(installed) or { panic(err) }
+	dotted := os.join_path(project_dir, 'dotted', 'pkg')
+	create_local_git_module(dotted, 'dotted.pkg')
+	record_local_install(dotted) or { panic(err) }
+
+	// Things a walk of the project would have had to visit and weed out.
+	vendored := os.join_path(project_dir, 'vendored')
+	create_local_git_module(vendored, 'vendored')
+	buried := os.join_path(project_dir, 'node_modules', 'dep', 'checkout')
+	create_local_git_module(buried, 'checkout')
+
+	assert local_installed_modules(project_dir) == ['dotted.pkg', 'plain_pkg']
 }
 
 // A record stands for the checkout VPM made, not for the path it sits at. When

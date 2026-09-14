@@ -356,6 +356,12 @@ fn normalize_clone_source_url(raw_url string) !string {
 }
 
 fn get_installed_modules() []string {
+	if settings.is_local {
+		// The local root is the project itself. What VPM installed there is what
+		// its records name, and finding it by walking the project would mean
+		// walking all of it.
+		return local_installed_modules(settings.vmodules_path)
+	}
 	return get_installed_modules_in(settings.vmodules_path)
 }
 
@@ -381,11 +387,8 @@ fn collect_installed_modules(path string, prefix string, is_root bool, mut modul
 		}
 		module_name := if prefix == '' { dir } else { '${prefix}.${dir}' }
 		if vcs := vcs_used_in_dir(module_path) {
-			// Under a local root the project's own modules are checkouts too, and
-			// they are not VPM's to list, update or remove.
-			if (os.is_file(os.join_path(module_path, 'v.mod'))
-				|| is_manifestless_registered_checkout(module_path, module_name, vcs))
-				&& vpm_owns_module_dir(module_path) {
+			if os.is_file(os.join_path(module_path, 'v.mod'))
+				|| is_manifestless_registered_checkout(module_path, module_name, vcs) {
 				modules << module_name
 			}
 			continue
