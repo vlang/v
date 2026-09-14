@@ -598,12 +598,15 @@ const c_string_literal_chunk_len = 2048
 
 // c_string_literal_max_total bounds how many bytes are spelled as a string
 // literal at all. Adjacent literals concatenate into a single literal, and the
-// *result* has a maximum length of its own (MSVC stops at 65535 bytes), which no
-// amount of splitting gets past. Past this, the bytes are written as an array
-// object instead, which has no such limit. The bound is half of the figure MSVC
-// documents, so that the choice does not turn on getting it exactly right for
-// every compiler.
-const c_string_literal_max_total = 32768
+// *result* has a maximum length of its own, which no amount of splitting gets
+// past. Past this, the bytes are written as an array object instead, which has
+// no such limit.
+//
+// This is the 4095 characters C99 5.2.4.1 requires an implementation to accept
+// in a string literal after concatenation, rather than the larger figure any
+// particular compiler happens to allow. `-os cross` output is documented as
+// compiling on any C compiler, so it has to hold to what C guarantees.
+const c_string_literal_max_total = 4095
 
 // embed_payload_needs_blob reports whether an `$embed_file` payload is too long
 // to spell as a string literal; see c_string_literal_max_total.

@@ -21,11 +21,12 @@ import os
 // staying under this covers it too.
 const c_min_logical_source_line = 4095
 
-// c_max_concatenated_string_literal is where MSVC stops accepting a string
-// literal, counted after adjacent literals have been joined. Splitting a payload
-// into short literals does not get past this, because the pieces still join into
-// one; a payload this long has to be written as an array object instead.
-const c_max_concatenated_string_literal = 65535
+// c_min_concatenated_string_literal is how much a conforming C implementation
+// has to accept in a string literal once adjacent literals have been joined
+// (C99 5.2.4.1). Splitting a payload into short literals does not get past this,
+// because the pieces still join into one; a payload this long has to be written
+// as an array object instead.
+const c_min_concatenated_string_literal = 4095
 
 // tricky_payload holds the bytes whose escaping a C compiler would otherwise
 // misread: a quote ends the literal, a backslash starts an escape, `??!` is a
@@ -34,10 +35,18 @@ const tricky_payload = 'quote:" backslash:\\ trigraph:??! nul:\x00 high:\xfe\xff
 
 // A payload short enough to still be spelled as a string literal, but long enough
 // that the literal has to be continued across several of them.
-const medium_payload_len = 16 * 1024
+const medium_payload_len = 3 * 1024
 
-// A payload past what any string literal can hold, joined or not.
+// Just past what C guarantees a literal can hold, and nowhere near what any one
+// compiler allows. This is the range a cutoff taken from a particular compiler's
+// figure gets wrong, so it has to be covered on its own.
+const over_guarantee_payload_len = 8 * 1024
+
+// Past what MSVC accepts either, joined or not.
 const large_payload_len = 96 * 1024
+
+// Every payload size above, smallest first.
+const probed_payload_lens = [medium_payload_len, over_guarantee_payload_len, large_payload_len]
 
 // payload_of returns `size` deterministic bytes, opening with the tricky ones so
 // that every snapshot below also covers escaping.
@@ -190,7 +199,7 @@ fn cross_probe_text(payload string) ?string {
 // big the embedded file was.
 fn test_cross_output_carries_the_embedded_bytes() {
 	small := cross_probe_text(tricky_payload) or { return }
-	payload := payload_of(large_payload_len)
+	payload := payload_of(over_guarantee_payload_len)
 	large := cross_probe_text(payload) or { return }
 	grew := large.len - small.len
 	expected := payload.len - tricky_payload.len
@@ -207,7 +216,7 @@ fn test_cross_output_keeps_source_lines_within_limits() {
 	if allowed < c_min_logical_source_line {
 		allowed = c_min_logical_source_line
 	}
-	for size in [medium_payload_len, large_payload_len] {
+	for size in probed_payload_lens {
 		payload := payload_of(size)
 		text := cross_probe_text(payload) or { return }
 		longest := max_line_len(text)
@@ -219,12 +228,24 @@ fn test_cross_output_keeps_source_lines_within_limits() {
 // splitting cannot answer: adjacent literals are joined back into one, so a
 // payload past the joined maximum has to be written as an array object.
 fn test_cross_output_never_builds_an_over_long_string_literal() {
-	payload := payload_of(large_payload_len)
-	// Otherwise the case this test is about would not arise.
-	assert payload.len > c_max_concatenated_string_literal
-	text := cross_probe_text(payload) or { return }
-	longest := longest_concatenated_string_literal(text)
-	assert longest <= c_max_concatenated_string_literal, '${payload.len} embedded bytes were spelled as string literals joining into ${longest} bytes, past the ${c_max_concatenated_string_literal} MSVC accepts'
+	small := cross_probe_text(tricky_payload) or { return }
+	// Ordinary V string constants are interned into this same output and some of
+	// them are already longer than C guarantees, so the payload is held to not
+	// making the longest literal any longer than it already was.
+	mut allowed := longest_concatenated_string_literal(small)
+	if allowed < c_min_concatenated_string_literal {
+		allowed = c_min_concatenated_string_literal
+	}
+	// One payload below the limit, which may still be spelled as literals, and two
+	// above it, which are what this test is about.
+	assert payload_of(medium_payload_len).len <= c_min_concatenated_string_literal
+	assert payload_of(over_guarantee_payload_len).len > c_min_concatenated_string_literal
+	for size in probed_payload_lens {
+		payload := payload_of(size)
+		text := cross_probe_text(payload) or { return }
+		longest := longest_concatenated_string_literal(text)
+		assert longest <= allowed, '${payload.len} embedded bytes were spelled as string literals joining into ${longest} bytes, past the ${allowed} a C implementation has to accept'
+	}
 }
 
 fn test_cross_snapshot_runs_without_the_embedded_file() {

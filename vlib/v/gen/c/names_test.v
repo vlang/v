@@ -763,7 +763,7 @@ fn test_embed_payload_needs_blob_switches_at_the_string_literal_limit() {
 	assert !embed_payload_needs_blob(c_string_literal_chunk_len)
 	assert !embed_payload_needs_blob(c_string_literal_max_total)
 	assert embed_payload_needs_blob(c_string_literal_max_total + 1)
-	// Half of the 65535 bytes MSVC documents for a joined literal, so the choice
-	// does not turn on getting that figure exactly right for every compiler.
-	assert c_string_literal_max_total < 65535
+	// What C99 5.2.4.1 requires every implementation to accept in a literal after
+	// concatenation. Portable output cannot assume more than that.
+	assert c_string_literal_max_total == 4095
 }
