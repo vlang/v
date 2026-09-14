@@ -17806,8 +17806,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// prototypes that go with them. A kernel defines those itself, in its own
 		// headers, and a second declaration of `struct stat` or `strlen` conflicts
 		// with the real one instead of describing it. The macros above are all
-		// `#ifndef`-guarded, so they stay. The thread runtime is V's own, not the
-		// target's, so it still has to be written.
+		// `#ifndef`-guarded, so they stay. The execinfo declarations and thread
+		// runtime are V's own, not the target's, so they still have to be written.
+		g.headerless_execinfo_declarations()
 		g.target_libc_thread_runtime()
 		return
 	}

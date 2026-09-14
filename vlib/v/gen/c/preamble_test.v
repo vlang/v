@@ -241,6 +241,9 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 	assert c_code.contains('typedef uint64_t u64;')
 	assert !c_code.contains('typedef long long time_t;')
 	assert !c_code.contains('typedef struct FILE FILE;')
+	assert c_code.contains('int backtrace(void** __array, int __size);')
+	assert c_code.contains('char** backtrace_symbols(void* const* __array, int __size);')
+	assert c_code.contains('void backtrace_symbols_fd(void* const* __array, int __size, int __fd);')
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
 }
 
