@@ -146,7 +146,7 @@ $if !windows {
 		incremental := g.incremental_fn_names.len > 0
 		for node_idx in a.start .. a.end {
 			node := g.a.nodes[node_idx]
-			if node.kind == .string_literal {
+			if node.kind == .string_literal && !node.is_embed_payload() {
 				a.string_pos++
 			}
 			if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
@@ -193,7 +193,7 @@ $if !windows {
 		mut string_pos := a.string_pos
 		for node_idx in a.start .. a.end {
 			node := g.a.nodes[node_idx]
-			if node.kind == .string_literal {
+			if node.kind == .string_literal && !node.is_embed_payload() {
 				unsafe {
 					literals[string_pos] = node.value
 				}
@@ -1032,7 +1032,7 @@ fn (mut g FlatGen) preintern_ast_string_literals() {
 	}
 	for i in 0 .. g.a.nodes.len {
 		node := unsafe { &g.a.nodes[i] }
-		if node.kind == .string_literal {
+		if node.kind == .string_literal && !node.is_embed_payload() {
 			g.intern_string(node.value)
 		}
 	}
@@ -2073,7 +2073,7 @@ fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 	// Intern all source literals before workers fork so their numeric IDs remain
 	// valid regardless of which chunk first references that metadata.
 	for node in g.a.nodes {
-		if node.kind == .string_literal {
+		if node.kind == .string_literal && !node.is_embed_payload() {
 			g.intern_string(node.value)
 		}
 	}
@@ -2107,7 +2107,7 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId
 			continue
 		}
 		node := unsafe { &g.a.nodes[idx] }
-		if node.kind == .string_literal {
+		if node.kind == .string_literal && !node.is_embed_payload() {
 			g.intern_string(node.value)
 		}
 		g.collect_c_extern_ref_from_node(node)

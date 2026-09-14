@@ -659,3 +659,134 @@ fn test_scratch_lookup_caches_leave_disabled_caches_disabled() {
 	assert isnil(g.struct_decl_pref_cache)
 	assert isnil(g.import_type_cache)
 }
+
+// c_string_literal_decode reads back what a C compiler would make of the escaped
+// body produced by c_byte_string_escape, so the tests below can compare bytes
+// instead of spelling. Adjacent literals are concatenated, as C does in
+// translation phase 6, and every escape is either `\` plus one character or a
+// three digit octal value.
+fn c_string_literal_decode(escaped string) []u8 {
+	mut out := []u8{cap: escaped.len}
+	mut i := 0
+	for i < escaped.len {
+		c := escaped[i]
+		if c == `"` {
+			// The boundary between two adjacent literals, which also ends the
+			// source line. A raw newline can only appear here: one inside the
+			// payload is escaped as `\012`.
+			assert escaped[i + 1] == `\n`
+			assert escaped[i + 2] == `"`
+			i += 3
+			continue
+		}
+		if c != `\\` {
+			out << c
+			i++
+			continue
+		}
+		n := escaped[i + 1]
+		if n >= `0` && n <= `7` {
+			mut v := 0
+			for d in escaped[i + 1..i + 4] {
+				assert d >= `0` && d <= `7`
+				v = v * 8 + int(d - `0`)
+			}
+			out << u8(v)
+			i += 4
+			continue
+		}
+		out << n
+		i += 2
+	}
+	return out
+}
+
+fn test_c_byte_string_escape_keeps_printable_bytes_verbatim() {
+	assert c_byte_string_escape('plain ASCII text (no escapes needed)') == 'plain ASCII text (no escapes needed)'
+	assert c_byte_string_escape('') == ''
+}
+
+fn test_c_byte_string_escape_escapes_only_what_c_would_misread() {
+	// A quote would end the literal, a backslash would start an escape, and `??x`
+	// would be read back as a trigraph.
+	assert c_byte_string_escape('say "hi"') == 'say \\"hi\\"'
+	assert c_byte_string_escape('a\\b') == 'a\\\\b'
+	assert c_byte_string_escape('what??!') == 'what\\?\\?!'
+	// Everything outside printable ASCII becomes a three digit octal escape, which
+	// a following digit cannot extend.
+	assert c_byte_string_escape('\n') == '\\012'
+	assert c_byte_string_escape('\x00') == '\\000'
+	assert c_byte_string_escape('\xff') == '\\377'
+	assert c_byte_string_escape('\x019') == '\\0019'
+}
+
+fn test_c_byte_string_escape_round_trips_every_byte_value() {
+	mut raw := []u8{cap: 256}
+	for i in 0 .. 256 {
+		raw << u8(i)
+	}
+	source := raw.bytestr()
+	assert c_string_literal_decode(c_byte_string_escape(source)) == raw
+}
+
+// test_c_byte_string_escape_splits_long_payloads_into_adjacent_literals covers the
+// two limits a long `$embed_file` payload would otherwise run into: the maximum
+// length of one string literal, and the maximum length of one logical source line.
+// MSVC is strict about both, so neither splitting alone is enough.
+fn test_c_byte_string_escape_splits_long_payloads_into_adjacent_literals() {
+	mut raw := []u8{cap: 40000}
+	for i in 0 .. 40000 {
+		// A mix of verbatim and escaped bytes, so that splits have to land between
+		// escapes rather than at a fixed stride.
+		raw << if i % 3 == 0 { u8(200 + i % 40) } else { u8(`a` + i % 26) }
+	}
+	escaped := c_byte_string_escape(raw.bytestr())
+	// Each continuation is both its own literal and its own source line.
+	assert escaped.contains('"\n"')
+	lines := escaped.split_into_lines()
+	assert lines.len > 1
+	for line in lines {
+		assert line.len <= c_string_literal_chunk_len + 4
+		// C requires an implementation to support only 4095 characters in one
+		// logical source line, and MSVC stops at 16384.
+		assert line.len < 4095
+	}
+	assert c_string_literal_decode(escaped) == raw
+}
+
+// test_embed_payload_needs_blob_switches_at_the_string_literal_limit pins where a
+// payload stops being written as a string literal. Adjacent literals join back
+// into one, so splitting cannot carry a payload past that maximum; only an array
+// object can.
+fn test_embed_payload_needs_blob_switches_at_the_string_literal_limit() {
+	assert !embed_payload_needs_blob(0)
+	assert !embed_payload_needs_blob(c_string_literal_chunk_len)
+	assert !embed_payload_needs_blob(c_string_literal_max_total)
+	assert embed_payload_needs_blob(c_string_literal_max_total + 1)
+	// What C99 5.2.4.1 requires every implementation to accept in a literal after
+	// concatenation. Portable output cannot assume more than that.
+	assert c_string_literal_max_total == 4095
+}
+
+// test_embed_blob_split_keeps_every_object_within_the_c_limit covers the sizes a
+// split payload is written at. C only requires an implementation to accept 65535
+// bytes in one object, and the tables listing the pieces are objects too.
+fn test_embed_blob_split_keeps_every_object_within_the_c_limit() {
+	assert embed_blob_part_count(0) == 0
+	assert embed_blob_part_count(1) == 1
+	assert embed_blob_part_count(c_max_object_size) == 1
+	assert embed_blob_part_count(c_max_object_size + 1) == 2
+	// One entry is a pointer and an int, 16 bytes where that pair is widest.
+	assert embed_chunk_table_entries * 16 <= c_max_object_size
+	// A table spends its last entry on the terminator, or on the link onwards.
+	per_table := embed_chunk_table_entries - 1
+	assert embed_blob_table_count(1) == 1
+	assert embed_blob_table_count(per_table) == 1
+	assert embed_blob_table_count(per_table + 1) == 2
+	assert embed_blob_table_count(per_table * 2) == 2
+	assert embed_blob_table_count(per_table * 2 + 1) == 3
+	// Linking them is what leaves the representation with no size of its own that
+	// it cannot describe.
+	parts := embed_blob_part_count(4 * 1024 * 1024 * 1024 - 1)
+	assert embed_blob_table_count(parts) * per_table >= parts
+}
