@@ -3249,7 +3249,9 @@ fn token_is_a_type_marker(tokens []string, index int) bool {
 		// `if chan {`, `if !chan {` and `match chan {` read a variable.
 		return index == 0 || tokens[index - 1] in type_opening_tokens
 	}
-	if is_ident_token(tokens[next]) {
+	if is_type_name_token(tokens[next]) {
+		// `chan int`, and not the `chan in list` of a membership test: an
+		// operator keyword reads the variable of that name.
 		return true
 	}
 	// `chan []int`, and not the `chan[0]` of an index.

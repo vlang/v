@@ -422,3 +422,14 @@ fn test_a_type_marker_needs_its_context() {
 	assert !code_references_ident('_ = f([]thread{})', 'thread', true)
 	assert !code_references_ident('return []thread{}', 'thread', true)
 }
+
+fn test_an_operator_keyword_after_a_marker_reads_it() {
+	assert code_references_ident('if chan in allowed {\n\tprintln(1)\n}', 'chan', true)
+	assert code_references_ident('if chan is Config {\n\tprintln(1)\n}', 'chan', true)
+	assert code_references_ident('_ = chan or { 0 }', 'chan', true)
+	assert code_references_ident('_ = thread as int', 'thread', true)
+	// A type name after it still names a type.
+	assert !code_references_ident('c := chan int{}', 'chan', true)
+	assert !code_references_ident('c := chan map[string]int{}', 'chan', true)
+	assert !code_references_ident('c := chan chan int{}', 'chan', true)
+}
