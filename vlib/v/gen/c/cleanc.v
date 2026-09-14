@@ -13126,7 +13126,10 @@ fn (mut g FlatGen) sizeof_selector_target(base string, fields []string) string {
 	for field in fields {
 		mut arrow := false
 		if typ := cur {
-			if typ is types.Pointer {
+			// An alias can stand for the pointer: `type Ref = &Node` records a
+			// types.Alias whose C storage is still a pointer, so erase the alias before
+			// asking. The field lookup below needs the same erasure to find the struct.
+			if cgen_unalias_type(typ) is types.Pointer {
 				arrow = true
 			}
 		}
@@ -13148,7 +13151,9 @@ fn (mut g FlatGen) sizeof_selector_base_type(base string) ?types.Type {
 // between `.` and `->` correctly.
 fn (mut g FlatGen) sizeof_selector_field_type(owner ?types.Type, field string) ?types.Type {
 	typ := owner or { return none }
-	clean := types.unwrap_all_pointers(typ)
+	// Erase aliases on both sides of the pointer: the owner may be an alias *of* a
+	// pointer, and the pointee may itself be an alias of the struct.
+	clean := cgen_unalias_type(types.unwrap_all_pointers(cgen_unalias_type(typ)))
 	name := if clean is types.Struct {
 		clean.name
 	} else {
