@@ -109,6 +109,15 @@ fn test_reachable_generic_local_shadow_is_reported() {
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
 
+fn test_reachable_generic_if_guard_shadow_is_reported() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn maybe[T](x T) ?T {\n\treturn x\n}\n\nfn get[T](x T) T {\n\tif counter := maybe(x) {\n\t\treturn counter\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
+	res := compile_project_with_path(app_dir, sibling_modules_dir, '')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+}
+
 fn test_inactive_custom_flag_branch_in_generic_does_not_report_shadow() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
@@ -191,6 +200,16 @@ fn test_static_comptime_for_call_argument_fn_literal_shadow_is_reported() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
 	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nstruct Item {\n\tname string\n}\n\n__global (\n\tcounter string\n)\n\nfn print_value(callback fn (string) string) {\n\tprintln(callback(" value"))\n}\n\nfn main() {\n\t$for field in Item.fields {\n\t\tprint_value(fn (counter string) string {\n\t\t\treturn field.name + counter\n\t\t})\n\t}\n}\n')
+	res := compile_project_with_path(app_dir, sibling_modules_dir, '')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+	assert !res.output.contains('unknown identifier'), res.output
+}
+
+fn test_static_comptime_for_assignment_fn_literal_shadow_is_reported() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nstruct Item {\n\tname string\n}\n\n__global (\n\tcounter string\n)\n\nfn main() {\n\tmut cb := fn (value string) string {\n\t\treturn value\n\t}\n\t$for field in Item.fields {\n\t\tcb = fn (counter string) string {\n\t\t\treturn field.name + counter\n\t\t}\n\t}\n\tprintln(cb(" value"))\n}\n')
 	res := compile_project_with_path(app_dir, sibling_modules_dir, '')
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output

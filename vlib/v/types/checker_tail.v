@@ -6829,6 +6829,16 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 	}
 	node := tc.a.nodes[int(id)]
 	match node.kind {
+		.if_expr {
+			if node.children_count > 0 {
+				condition := tc.a.child_node(&node, 0)
+				if condition.kind == .decl_assign {
+					for lhs_id in tc.if_guard_lhs_ids(condition) {
+						tc.check_local_binding_global_shadowing(lhs_id)
+					}
+				}
+			}
+		}
 		.decl_assign {
 			tc.check_decl_lhs_global_shadowing(node)
 		}

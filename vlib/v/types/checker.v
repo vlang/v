@@ -16689,6 +16689,9 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		return
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] {
+		for i in 0 .. node.children_count {
+			tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+		}
 		tc.check_comptime_static_assignment(node, var_name, field_cases)
 		return
 	}
