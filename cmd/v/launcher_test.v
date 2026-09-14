@@ -53,6 +53,30 @@ fn test_v1_fallback_installer_exposes_crypto_subtle() {
 	assert source.contains('mkdir .\\vlib\\crypto\\subtle')
 }
 
+fn test_v1_fallback_resolution_requires_crypto_subtle_compatibility() {
+	root := os.join_path(os.vtmp_dir(), 'v1_fallback_crypto_subtle_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	fallback := os.join_path(root, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	fallback_root := os.join_path(root, 'release')
+	cached_fallback := os.join_path(fallback_root, 'v' + $if windows { '.exe' } $else { '' })
+	os.mkdir_all(fallback_root)!
+	os.cp(@VEXE, fallback)!
+	os.cp(@VEXE, cached_fallback)!
+	os.chmod(fallback, 0o755)!
+	os.chmod(cached_fallback, 0o755)!
+	os.write_file(fallback + '.vroot', fallback_root)!
+	assert resolve_v1_fallback(fallback) == none
+	module_dir := os.join_path(fallback_root, 'vlib', 'crypto', 'subtle')
+	os.mkdir_all(module_dir)!
+	os.write_file(os.join_path(module_dir, 'aliasing.v'), 'module subtle\n')!
+	assert resolve_v1_fallback(fallback) == none
+	os.write_file(os.join_path(module_dir, 'comparison.v'), 'module subtle\n')!
+	assert resolve_v1_fallback(fallback) or { panic(err) } == cached_fallback
+}
+
 fn test_cached_fallback_root_is_preferred_when_installed() {
 	root := find_vroot(@FILE) or { panic(err) }
 	fallback := os.join_path(root, v1_fallback_binary + $if windows { '.exe' } $else { '' })
