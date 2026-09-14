@@ -226,17 +226,21 @@ pub fn to_slash(path string) string {
 }
 
 // parent_dir returns the parent directory of the given `path`, or an empty
-// string when `path` has no parent: a filesystem root (`/`, `C:\`, `C:`,
-// `\\server\share`), the current directory reference `.`, or a single path
-// element without any separator in it.
-// Every value it returns is safe to probe directly. That is what separates it
-// from `dir`, which has two Windows answers that are resolved against the
-// current directory rather than against the path they came from:
+// string when `path` has no parent. A path has no parent when it is a
+// filesystem root (`/`, `C:\`, `C:`, `\\server\share`), the current directory
+// reference `.`, or a single element that can only be resolved against a
+// current directory (`file.v`, and the drive relative `C:file.v`).
+// A separator is any byte the platform accepts as one, so a Windows path may
+// mix `/` and `\` freely.
+//
+// Every value parent_dir returns is safe to probe directly, and that is what
+// separates it from `dir`, which has two Windows answers that resolve against
+// a current directory rather than against the path they came from:
 // `dir('C:')` is the relative `.`, and `dir(r'C:\outside')` is the bare volume
 // `C:`, which names the current directory *on drive C*, not its root.
-// `parent_dir` reports "no parent" for the first and the absolute root `C:\`
-// for the second, so a parent directory walk can neither escape the drive nor
-// probe a drive-relative path on the way up.
+// parent_dir reports "no parent" for the first and the absolute root `C:\` for
+// the second, so a parent directory walk can neither escape the drive nor
+// probe a drive relative path on the way up.
 pub fn parent_dir(path string) string {
 	if path == '' {
 		return empty_str
@@ -246,21 +250,26 @@ pub fn parent_dir(path string) string {
 		// `C:`, `C:\`, `\\server\share` and `\\server\share\` are roots.
 		return empty_str
 	}
-	parent := dir(path)
+	// Scan for the last separator instead of delegating to `dir`, which commits
+	// to one separator kind for the whole path (`/` whenever the path holds any)
+	// and so answers `C:` for the mixed `C:/one\two` that Windows accepts,
+	// skipping the real parent `C:/one`.
+	mut pos := -1
+	for i := path.len - 1; i >= volume_len; i-- {
+		if is_slash(path[i]) {
+			pos = i
+			break
+		}
+	}
+	if pos < 0 {
+		// Nothing but a single element after the volume.
+		return empty_str
+	}
+	// When the parent is the volume itself, keep the separator: the result must
+	// be the absolute root (`/`, `C:\`), never the drive relative `C:`.
+	parent := if pos == volume_len { path[..pos + 1] } else { path[..pos] }
 	if parent == path {
 		return empty_str
-	}
-	if parent == dot_str && path != dot_str {
-		// `dir` returns `.` when `path` holds no separator at all; that is not a
-		// parent directory, it is "relative to wherever the caller happens to be".
-		return empty_str
-	}
-	if volume_len > 0 && parent.len == volume_len {
-		// The parent is the bare volume. Keep the separator that followed it in
-		// `path`, so the result is the absolute root (`C:\`) instead of the
-		// drive-relative `C:`. `path` is longer than `volume_len + 1` here, and
-		// `dir` stopped at the volume, so that byte is a separator.
-		return parent + path[volume_len..volume_len + 1]
 	}
 	return parent
 }

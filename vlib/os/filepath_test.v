@@ -215,6 +215,12 @@ fn test_parent_dir() {
 		assert parent_dir(r'\\Host\share\') == ''
 		assert parent_dir(r'\\Host\share\files') == r'\\Host\share' + '\\'
 		assert parent_dir(r'\\Host\share\files\file.v') == r'\\Host\share\files'
+		// Windows accepts both separators in one path, so the parent is decided by
+		// the last separator of either kind, not by whichever kind appears first.
+		assert parent_dir(r'C:/one\two') == 'C:/one'
+		assert parent_dir(r'C:\one/two') == r'C:\one'
+		assert parent_dir(r'C:/one\two/three') == r'C:/one\two'
+		assert parent_dir(r'\\Host\share/files\file.v') == r'\\Host\share/files'
 		assert parent_dir('\\') == ''
 		assert parent_dir('.') == ''
 		assert parent_dir('') == ''
@@ -228,6 +234,11 @@ fn test_parent_dir() {
 	assert parent_dir('') == ''
 	assert parent_dir('file.v') == ''
 	assert parent_dir('path/to/file.v') == 'path/to'
+	// A backslash is an ordinary file name byte outside Windows, so it does not
+	// split a path here. This is deliberately unlike `dir`, which treats it as a
+	// separator whenever the path holds no forward slash.
+	assert parent_dir(r'one\two') == ''
+	assert parent_dir(r'one/two\three') == 'one'
 }
 
 // test_parent_dir_walk_terminates guards the parent walks in the compiler
