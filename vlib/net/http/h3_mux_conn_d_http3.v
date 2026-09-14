@@ -489,21 +489,7 @@ fn (mut c H3MuxConn) driver_loop() {
 			c.start_request(mut p)
 		}
 
-		mut wait := h3_driver_poll_interval
-		if nt := next_timeout {
-			now_ms := h3_now_ms()
-			mut remaining := i64(0)
-			if nt > now_ms {
-				remaining = i64(nt - now_ms)
-			}
-			candidate := remaining * time.millisecond
-			if candidate < wait {
-				wait = candidate
-			}
-		}
-		if wait <= 0 {
-			wait = 1 * time.millisecond
-		}
+		wait := h3_driver_next_wait(next_timeout, h3_now_ns(), h3_driver_poll_interval)
 		c.transport.set_read_timeout(wait)
 
 		n := c.transport.read(mut buf) or {
@@ -513,14 +499,14 @@ fn (mut c H3MuxConn) driver_loop() {
 			}
 			0
 		}
-		now_ms := h3_now_ms()
+		now_ns := h3_now_ns()
 		result := if n > 0 {
-			c.h3.poll(buf[..n].clone(), now_ms) or {
+			c.h3.poll(buf[..n].clone(), now_ns) or {
 				c.fail_conn('h3: ${err.msg()}')
 				return
 			}
 		} else {
-			c.h3.process_timeouts(now_ms) or {
+			c.h3.process_timeouts(now_ns) or {
 				c.fail_conn('h3: ${err.msg()}')
 				return
 			}
@@ -779,6 +765,14 @@ fn (mut c H3MuxConn) dispatch_h3_event(ev quic.H3Event) {
 				s.cv.signal()
 			}
 			s.mu.unlock()
+		}
+		.request_headers, .request_data, .request_trailers, .request_ended {
+			// SERVER-role-only H3Event kinds (quic.H3Conn's own module doc
+			// comment, added in Phase 13e for h3_server.v): the H3Conn this
+			// H3MuxConn wraps is always CLIENT-role (h3_dial_udp_and_open),
+			// so quic.h3_conn.v never actually emits one of these to a
+			// caller here -- an unreachable no-op branch, present only so
+			// this match stays exhaustive as H3EventKind grows.
 		}
 	}
 }

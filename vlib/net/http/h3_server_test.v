@@ -1,0 +1,694 @@
+// vtest build: present_openssl?
+// vtest vflags: -d http3 -d use_openssl
+module http
+
+import net
+import net.quic
+import crypto.ecdsa
+import encoding.base64
+import time
+
+// h3_server_test.v: Phase 13e end-to-end coverage for H3Server -- a REAL
+// UDP socket, a REAL server goroutine (new_h3_server + serve(), exactly as
+// a real caller would run it), and a REAL client-side driving loop
+// (mirroring h3_udp_dial.v's own dial+drive shape, but inlined here rather
+// than reusing H3MuxConn's own driver thread, since this test needs to
+// inspect individual H3Events directly rather than going through
+// H3MuxConn's Request/Response conversion). No shortcuts: the request
+// travels as actual UDP datagrams over loopback, through this server's
+// own accept/demux/dispatch loop, same as it would for a real client.
+
+const h3_server_test_cert_pem = '-----BEGIN CERTIFICATE-----\nMIIBpTCCAUugAwIBAgIUetSYX9TDsFKNHR+Zy05VdXcp+1cwCgYIKoZIzj0EAwIw\nFDESMBAGA1UEAwwJbG9jYWxob3N0MCAXDTI2MDgyNDIyNTkyMloYDzIxMjYwNzMx\nMjI1OTIyWjAUMRIwEAYDVQQDDAlsb2NhbGhvc3QwWTATBgcqhkjOPQIBBggqhkjO\nPQMBBwNCAAS6mM0J/l1Y65oZMLxYPHvySK8RJbkuECLMXmF3+yeIdqH9cCtKqumw\nDpY+Kz9IjfoVcqdyH5DPE5i7aquc1pwno3kwdzAdBgNVHQ4EFgQU/r32o4XKdpEk\nhx2iVbRtvYuVsXswHwYDVR0jBBgwFoAU/r32o4XKdpEkhx2iVbRtvYuVsXswDwYD\nVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAoQwFAYDVR0RBA0wC4IJbG9jYWxo\nb3N0MAoGCCqGSM49BAMCA0gAMEUCIGVFw0ddsmDoAyFGVy/K+MlbKnboWRZ0ibkM\n1lLBebL2AiEAvXkEh3aKEztQlrTJwIfjjO7l488gaFTZi63ZuWDIkWY=\n-----END CERTIFICATE-----\n'
+
+const h3_server_test_key_seed = [
+	u8(0x4f),
+	0xd6,
+	0x31,
+	0x08,
+	0x03,
+	0xcb,
+	0xd1,
+	0x42,
+	0xd5,
+	0xc5,
+	0xac,
+	0xe4,
+	0xd1,
+	0xb1,
+	0xca,
+	0x06,
+	0xfb,
+	0xde,
+	0xc0,
+	0x5a,
+	0xc0,
+	0x6e,
+	0xb9,
+	0x58,
+	0x60,
+	0x01,
+	0x3f,
+	0x02,
+	0x79,
+	0x7c,
+	0xb3,
+	0x15,
+]
+
+fn h3_server_test_pem_to_der(pem string) []u8 {
+	body :=
+		pem.replace('-----BEGIN CERTIFICATE-----', '').replace('-----END CERTIFICATE-----', '').replace('\n', '').trim_space()
+	return base64.decode(body)
+}
+
+fn h3_server_test_transport_parameters() quic.QuicTransportParameters {
+	return quic.QuicTransportParameters{
+		max_idle_timeout: 30000
+		initial_max_data: 1 << 20
+		initial_max_stream_data_bidi_local: 1 << 16
+		initial_max_stream_data_bidi_remote: 1 << 16
+		initial_max_stream_data_uni: 1 << 16
+		initial_max_streams_bidi: 4
+		initial_max_streams_uni: 4
+	}
+}
+
+fn test_h3_server_params_have_usable_default_transport_limits() {
+	mut signing_key := ecdsa.new_key_from_seed(h3_server_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+	params := H3ServerParams{
+		signing_key: signing_key
+		handler: H3ServerTestEchoHandler{}
+	}
+	transport := params.transport_parameters
+	assert transport.initial_max_data or { 0 } > 0
+	assert transport.initial_max_stream_data_bidi_remote or { 0 } > 0
+	assert transport.initial_max_stream_data_uni or { 0 } > 0
+	assert transport.initial_max_streams_bidi or { 0 } > 0
+	assert transport.initial_max_streams_uni or { 0 } >= 3
+}
+
+fn test_h3_server_stream_stays_rejected_after_body_limit() {
+	mut stream := H3ServerStream{}
+	assert stream.append_body('prefix'.bytes())
+	assert !stream.append_body([]u8{len: h3_server_max_request_body})
+	assert stream.rejected
+	assert stream.body.len == 0
+	assert !stream.append_body('later'.bytes())
+	assert stream.rejected
+	assert stream.body.len == 0
+}
+
+fn test_h3_server_caps_aggregate_inflight_body_per_connection() {
+	mut budget := H3ServerBodyBudget{}
+	budget.by_conn['peer'] = h3_server_max_buffered_request_body_per_connection - 1
+	mut stream := H3ServerStream{}
+	assert !budget.append('peer', mut stream, 'xx'.bytes())
+	assert stream.rejected
+	assert stream.body.len == 0
+	assert budget.by_conn['peer'] == h3_server_max_buffered_request_body_per_connection - 1
+
+	budget.release('peer', h3_server_max_buffered_request_body_per_connection - 1)
+	mut next_stream := H3ServerStream{}
+	assert budget.append('peer', mut next_stream, 'xx'.bytes())
+	assert budget.by_conn['peer'] == 2
+	budget.release('peer', next_stream.body.len)
+	assert 'peer' !in budget.by_conn
+}
+
+fn test_h3_server_caps_and_releases_aggregate_inflight_headers_per_connection() {
+	mut budget := H3ServerHeadersBudget{}
+	first := h3_server_max_buffered_request_headers_per_connection - 1
+	assert budget.retain('peer', first)
+	assert !budget.retain('peer', 2)
+	assert budget.by_conn['peer'] == first
+
+	budget.release('peer', first)
+	assert budget.retain('peer', 2)
+	assert budget.by_conn['peer'] == 2
+	budget.release('peer', 2)
+	assert 'peer' !in budget.by_conn
+
+	assert h3_server_decoded_header_list_size([
+		quic.QpackFieldLine{
+			name: 'x-test'
+			value: 'value'
+		},
+	]) == 'x-test'.len + 'value'.len + 32
+}
+
+fn test_h3_server_validates_request_trailers() {
+	h3_validate_request_trailers([
+		quic.QpackFieldLine{
+			name: 'x-checksum'
+			value: 'ok'
+		},
+	])!
+	for invalid in [
+		quic.QpackFieldLine{
+			name: ':path'
+			value: '/late'
+		},
+		quic.QpackFieldLine{
+			name: 'connection'
+			value: 'close'
+		},
+		quic.QpackFieldLine{
+			name: 'bad name'
+			value: 'value'
+		},
+	] {
+		h3_validate_request_trailers([invalid]) or { continue }
+		assert false, 'expected request trailer ${invalid.name} to be rejected'
+	}
+}
+
+fn test_h3_server_suppresses_forbidden_response_content() {
+	assert !h3_response_allows_body(.head, 200)
+	assert !h3_response_allows_body(.get, 204)
+	assert !h3_response_allows_body(.get, 205)
+	assert !h3_response_allows_body(.get, 304)
+	assert h3_response_allows_body(.get, 200)
+}
+
+fn test_h3_server_strips_content_length_from_204_and_205_headers_and_trailers() {
+	for status in [204, 205] {
+		mut header := new_header()
+		header.add(.content_length, '99')
+		header.add_custom('x-response', 'kept')!
+		fields := h3_outbound_response_fields(status, .get, 0, header)
+		assert !fields.any(it.name == 'content-length')
+		assert fields.any(it.name == 'x-response' && it.value == 'kept')
+	}
+
+	mut trailers := new_header()
+	trailers.add(.content_length, '42')
+	trailers.add_custom('x-trailer', 'kept')!
+	trailer_fields := h3_outbound_trailer_fields(trailers)
+	assert !trailer_fields.any(it.name == 'content-length')
+	assert trailer_fields.any(it.name == 'x-trailer' && it.value == 'kept')
+}
+
+fn test_h3_server_filters_forbidden_response_header_values() {
+	mut header := new_header()
+	header.add_custom('x-good', 'kept')!
+	header.add_custom('x-nul', 'bad\x00value')!
+	header.add_custom('x-cr', 'bad\rvalue')!
+	header.add_custom('x-lf', 'bad\nvalue')!
+	fields := h3_outbound_response_fields(200, .get, 0, header)
+	assert fields.any(it.name == 'x-good' && it.value == 'kept')
+	assert !fields.any(it.name == 'x-nul')
+	assert !fields.any(it.name == 'x-cr')
+	assert !fields.any(it.name == 'x-lf')
+}
+
+fn test_h3_server_normalizes_content_length_to_emitted_body() {
+	mut header := new_header()
+	header.add(.content_length, '99')
+	header.add(.content_length, '7')
+	header.add_custom('x-response', 'kept')!
+	fields := h3_outbound_response_fields(200, .post, 3, header)
+	content_lengths := fields.filter(it.name == 'content-length')
+	assert content_lengths.len == 1
+	assert content_lengths[0].value == '3'
+	assert fields.any(it.name == 'x-response' && it.value == 'kept')
+
+	mut metadata_header := new_header()
+	metadata_header.add(.content_length, '42')
+	metadata_header.add(.content_length, '42')
+	head_fields := h3_outbound_response_fields(200, .head, 0, metadata_header)
+	assert head_fields.filter(it.name == 'content-length' && it.value == '42').len == 1
+	not_modified_fields := h3_outbound_response_fields(304, .get, 0, metadata_header)
+	assert not_modified_fields.filter(it.name == 'content-length' && it.value == '42').len == 1
+
+	mut conflicting_metadata := new_header()
+	conflicting_metadata.add(.content_length, '42')
+	conflicting_metadata.add(.content_length, '43')
+	assert !h3_outbound_response_fields(200, .head, 0, conflicting_metadata).any(it.name == 'content-length')
+	assert !h3_outbound_response_fields(304, .get, 0, conflicting_metadata).any(it.name == 'content-length')
+}
+
+fn test_h3_server_rejects_informational_terminal_response() {
+	assert h3_final_response_status(0)! == 200
+	assert h3_final_response_status(204)! == 204
+	for invalid in [-1, 99, 103, 600, 1000] {
+		h3_final_response_status(invalid) or { continue }
+		assert false, 'expected invalid terminal response status ${invalid} to be rejected'
+	}
+}
+
+// H3ServerTestEchoHandler answers every request with a fixed 200 response
+// -- this test only needs to prove the request reached the Handler and the
+// response reached the client, not exercise Handler-authoring variety.
+struct H3ServerTestEchoHandler {}
+
+fn (mut h H3ServerTestEchoHandler) handle(req Request) Response {
+	return Response{
+		status_code: 200
+		body: 'pong:${req.data}'
+	}
+}
+
+struct H3ServerTestConcurrentHandler {
+	slow_started chan bool
+	release_slow chan bool
+}
+
+fn (mut h H3ServerTestConcurrentHandler) handle(req Request) Response {
+	if req.url == '/slow' {
+		h.slow_started <- true
+		<-h.release_slow
+	}
+	return Response{
+		status_code: 200
+		body: req.url
+	}
+}
+
+fn test_h3_server_handler_work_does_not_block_dispatch_or_completion_queue() {
+	slow_started := chan bool{ cap: 1 }
+	release_slow := chan bool{ cap: 1 }
+	mut slow_released := false
+	defer {
+		if !slow_released {
+			release_slow <- true
+		}
+	}
+	mut completed := &H3ServerCompletedResponseQueue{}
+	mut admission := &H3ServerHandlerAdmission{
+		limit: 2
+	}
+	handler := H3ServerTestConcurrentHandler{
+		slow_started: slow_started
+		release_slow: release_slow
+	}
+	assert h3_server_dispatch_handler(handler, Request{ url: '/slow' }, 'conn', 0, .get, mut completed, mut admission)
+	select {
+		_ := <-slow_started {
+		}
+		2 * time.second {
+			assert false, 'slow handler did not start'
+		}
+	}
+
+	// A second handler must run to completion while the first remains blocked.
+	assert h3_server_dispatch_handler(handler, Request{ url: '/fast' }, 'conn', 4, .get, mut completed, mut admission)
+	mut fast_completed := false
+	for _ in 0 .. 2000 {
+		for item in completed.drain() {
+			if item.stream_id == 4 && item.response.body == '/fast' {
+				fast_completed = true
+			}
+		}
+		if fast_completed {
+			break
+		}
+		time.sleep(time.millisecond)
+	}
+	assert fast_completed, 'fast handler completion was blocked behind the slow handler'
+
+	release_slow <- true
+	slow_released = true
+	mut slow_completed := false
+	for _ in 0 .. 2000 {
+		for item in completed.drain() {
+			if item.stream_id == 0 && item.response.body == '/slow' {
+				slow_completed = true
+			}
+		}
+		if slow_completed {
+			break
+		}
+		time.sleep(time.millisecond)
+	}
+	assert slow_completed
+}
+
+fn test_h3_server_bounds_handler_worker_admission() {
+	slow_started := chan bool{ cap: 1 }
+	release_slow := chan bool{ cap: 1 }
+	mut slow_released := false
+	defer {
+		if !slow_released {
+			release_slow <- true
+		}
+	}
+	mut completed := &H3ServerCompletedResponseQueue{}
+	mut admission := &H3ServerHandlerAdmission{
+		limit: 1
+	}
+	handler := H3ServerTestConcurrentHandler{
+		slow_started: slow_started
+		release_slow: release_slow
+	}
+	assert h3_server_dispatch_handler(handler, Request{ url: '/slow' }, 'conn', 0, .get, mut completed, mut admission)
+	select {
+		_ := <-slow_started {
+		}
+		2 * time.second {
+			assert false, 'slow handler did not start'
+		}
+	}
+	assert !h3_server_dispatch_handler(handler, Request{ url: '/fast' }, 'conn', 4, .get, mut completed, mut admission)
+	release_slow <- true
+	slow_released = true
+	for _ in 0 .. 2000 {
+		if completed.drain().any(it.stream_id == 0) {
+			return
+		}
+		time.sleep(time.millisecond)
+	}
+	assert false, 'admitted handler did not finish'
+}
+
+// h3_server_test_run is a NAMED function (not a closure) for the spawned
+// server goroutine -- mirrors this project's own established caution
+// around spawned closures with mut captures (see conn.v/h3_mux_conn.v's
+// own doc comments on that pattern) by taking `s` as an explicit
+// parameter instead. Swallows serve()'s error return: this test always
+// ends the server via close(), which serve() reports as a clean (nil)
+// return per its own doc comment, so there is nothing here worth
+// asserting on if it ever DID return an error.
+fn h3_server_test_run(mut s H3Server) {
+	s.serve() or {}
+}
+
+// test_h3_server_real_udp_request_response_round_trip is 13e's own no-
+// shortcuts integration test: a real H3Server bound to a real loopback UDP
+// socket, driven by its own serve() goroutine exactly as a real deployment
+// would run it, and a real client-side QUIC/H3 dial+drive loop (mirroring
+// h3_udp_dial.v's own shape) sending an actual request and reading an
+// actual response back over the wire.
+fn test_h3_server_real_udp_request_response_round_trip() {
+	mut signing_key := ecdsa.new_key_from_seed(h3_server_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+
+	mut server := new_h3_server(':0', H3ServerParams{
+		alpn_protocols: ['h3']
+		certificate_chain: [
+			quic.CertificateEntry{
+				cert_data: h3_server_test_pem_to_der(h3_server_test_cert_pem)
+			},
+		]
+		signing_key: signing_key
+		transport_parameters: h3_server_test_transport_parameters()
+		handler: H3ServerTestEchoHandler{}
+	})!
+	server_addr := server.local_addr()!
+	port := server_addr.port()!
+
+	server_thread := spawn h3_server_test_run(mut server)
+	defer {
+		server.close() or {}
+		server_thread.wait()
+	}
+
+	mut udp := net.dial_udp('127.0.0.1:${port}')!
+	defer {
+		udp.close() or {}
+	}
+	udp.set_read_timeout(500 * time.millisecond)
+
+	now0 := h3_now_ns()
+	mut qc, first_dg := quic.dial(quic.DialParams{
+		server_name: 'localhost'
+		ca_bundle_pem: h3_server_test_cert_pem
+		alpn_protocols: ['h3']
+		transport_parameters: h3_server_test_transport_parameters()
+	}, now0)!
+	udp.write(first_dg.bytes)!
+	mut h3 := quic.new_h3_conn(mut qc, quic.H3ConnParams{
+		settings: [
+			quic.H3Setting{
+				identifier: quic.qpack_settings_max_table_capacity_id
+				value: 4096
+			},
+		]
+		own_qpack_max_table_capacity: 4096
+	})
+
+	mut buf := []u8{len: 65535}
+	mut stream_id := u64(0)
+	mut got_body := ''
+	mut got_status := ''
+	mut done := false
+	mut rounds := 0
+	mut read_failed := false
+	for !done && rounds < 200 {
+		rounds += 1
+		n, _ := udp.read(mut buf) or {
+			if err.code() != net.err_timed_out_code {
+				read_failed = true
+			}
+			0, net.Addr{}
+		}
+		if read_failed {
+			break
+		}
+		now := h3_now_ns()
+		result := if n > 0 {
+			h3.poll(buf[..n].clone(), now)!
+		} else {
+			h3.process_timeouts(now)!
+		}
+		for dg in result.outgoing {
+			udp.write(dg.bytes)!
+		}
+		if h3.established() && stream_id == 0 {
+			stream_id = h3.open_request_stream()!
+			h3.send_request_headers(stream_id, [
+				quic.QpackFieldLine{
+					name: ':method'
+					value: 'GET'
+				},
+				quic.QpackFieldLine{
+					name: ':path'
+					value: '/echo'
+				},
+				quic.QpackFieldLine{
+					name: ':scheme'
+					value: 'https'
+				},
+				quic.QpackFieldLine{
+					name: ':authority'
+					value: 'localhost'
+				},
+			], false)!
+			h3.send_request_data(stream_id, 'hi'.bytes(), true)!
+		}
+		for ev in result.events {
+			match ev.kind {
+				.response_headers {
+					for f in ev.headers {
+						if f.name == ':status' {
+							got_status = f.value
+						}
+					}
+				}
+				.response_data {
+					got_body += ev.data.bytestr()
+				}
+				.response_ended {
+					done = true
+				}
+				else {}
+			}
+		}
+	}
+	assert done, 'expected a response within ${rounds} rounds'
+	assert got_status == '200'
+	assert got_body == 'pong:hi'
+}
+
+// test_h3_server_request_split_across_two_datagrams_still_completes is the
+// dedicated regression test for the touched_conns fix (h3_server.v
+// absorb_and_dispatch / listener.v QuicListenerPollResult.touched_conns):
+// unlike the round-trip test above (which sends HEADERS then immediately,
+// same-iteration, DATA -- both get flushed together on the NEXT poll/
+// process_timeouts call, so they very likely coalesce into ONE UDP
+// datagram and never exercise the bug at all), this test deliberately
+// forces the client to flush and physically WRITE the HEADERS frame as
+// its own UDP datagram BEFORE queuing the DATA(fin) frame, guaranteeing
+// the server receives them as two separate socket.read() calls. UDP
+// preserves datagram boundaries (no TCP-style coalescing), so this is
+// deterministic, not timing-dependent.
+//
+// The server's FIRST read (HEADERS only) fires peer_stream_opened -- a
+// real QuicEvent, so absorb_and_dispatch would dispatch it even with the
+// bug present (this is the SAME path the always-passing round-trip test
+// above exercises). The server's SECOND read (DATA+fin on the
+// already-open stream) produces ZERO new QuicEvents -- this is the exact
+// condition the bug depended on: without touched_conns, that second
+// poll() call would never reach H3Conn.drive_events at all, and the
+// request would never complete. Phase-R'd: reverting absorb_and_dispatch
+// to drop the touched_conns-seeding block makes this test hang until the
+// 200-round budget is exhausted; restoring the fix makes it complete in
+// a handful of rounds, same as the round-trip test above.
+fn test_h3_server_request_split_across_two_datagrams_still_completes() {
+	mut signing_key := ecdsa.new_key_from_seed(h3_server_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+
+	mut server := new_h3_server(':0', H3ServerParams{
+		alpn_protocols: ['h3']
+		certificate_chain: [
+			quic.CertificateEntry{
+				cert_data: h3_server_test_pem_to_der(h3_server_test_cert_pem)
+			},
+		]
+		signing_key: signing_key
+		transport_parameters: h3_server_test_transport_parameters()
+		handler: H3ServerTestEchoHandler{}
+	})!
+	server_addr := server.local_addr()!
+	port := server_addr.port()!
+
+	server_thread := spawn h3_server_test_run(mut server)
+	defer {
+		server.close() or {}
+		server_thread.wait()
+	}
+
+	mut udp := net.dial_udp('127.0.0.1:${port}')!
+	defer {
+		udp.close() or {}
+	}
+	udp.set_read_timeout(500 * time.millisecond)
+
+	now0 := h3_now_ns()
+	mut qc, first_dg := quic.dial(quic.DialParams{
+		server_name: 'localhost'
+		ca_bundle_pem: h3_server_test_cert_pem
+		alpn_protocols: ['h3']
+		transport_parameters: h3_server_test_transport_parameters()
+	}, now0)!
+	udp.write(first_dg.bytes)!
+	mut h3 := quic.new_h3_conn(mut qc, quic.H3ConnParams{
+		settings: [
+			quic.H3Setting{
+				identifier: quic.qpack_settings_max_table_capacity_id
+				value: 4096
+			},
+		]
+		own_qpack_max_table_capacity: 4096
+	})
+
+	mut buf := []u8{len: 65535}
+	mut stream_id := u64(0)
+	mut data_sent := false
+	mut got_body := ''
+	mut got_status := ''
+	mut done := false
+	mut rounds := 0
+	mut read_failed := false
+	for !done && rounds < 200 {
+		rounds += 1
+		n, _ := udp.read(mut buf) or {
+			if err.code() != net.err_timed_out_code {
+				read_failed = true
+			}
+			0, net.Addr{}
+		}
+		if read_failed {
+			break
+		}
+		now := h3_now_ns()
+		result := if n > 0 {
+			h3.poll(buf[..n].clone(), now)!
+		} else {
+			h3.process_timeouts(now)!
+		}
+		for dg in result.outgoing {
+			udp.write(dg.bytes)!
+		}
+		if h3.established() && stream_id == 0 {
+			stream_id = h3.open_request_stream()!
+			// fin: false -- queues HEADERS only. Deliberately NOT
+			// followed by send_request_data in this same iteration (see
+			// this test's own doc comment): that queued frame isn't
+			// flushed into result.outgoing until the NEXT iteration's
+			// poll()/process_timeouts() call, at the TOP of the loop --
+			// so it goes out as its own, headers-only UDP datagram
+			// before send_request_data is ever called.
+			h3.send_request_headers(stream_id, [
+				quic.QpackFieldLine{
+					name: ':method'
+					value: 'GET'
+				},
+				quic.QpackFieldLine{
+					name: ':path'
+					value: '/echo'
+				},
+				quic.QpackFieldLine{
+					name: ':scheme'
+					value: 'https'
+				},
+				quic.QpackFieldLine{
+					name: ':authority'
+					value: 'localhost'
+				},
+			], false)!
+		} else if stream_id != 0 && !data_sent {
+			// Reached on the round AFTER the headers-only datagram above
+			// was already flushed and written (at the top of THIS same
+			// iteration) -- queuing DATA(fin) here guarantees it flushes
+			// as its own separate datagram on the round after this one.
+			h3.send_request_data(stream_id, 'hi'.bytes(), true)!
+			data_sent = true
+		}
+		for ev in result.events {
+			match ev.kind {
+				.response_headers {
+					for f in ev.headers {
+						if f.name == ':status' {
+							got_status = f.value
+						}
+					}
+				}
+				.response_data {
+					got_body += ev.data.bytestr()
+				}
+				.response_ended {
+					done = true
+				}
+				else {}
+			}
+		}
+	}
+	assert done, 'expected a response within ${rounds} rounds'
+	assert got_status == '200'
+	assert got_body == 'pong:hi'
+}
+
+// test_h3_server_local_addr_reports_os_assigned_port is a small,
+// dedicated regression test for local_addr() itself, independent of the
+// full round-trip test above -- a caller binding with ':0' has no other
+// way to discover which port new_h3_server actually got.
+fn test_h3_server_local_addr_reports_os_assigned_port() {
+	mut signing_key := ecdsa.new_key_from_seed(h3_server_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+	mut server := new_h3_server(':0', H3ServerParams{
+		alpn_protocols: ['h3']
+		certificate_chain: [
+			quic.CertificateEntry{
+				cert_data: h3_server_test_pem_to_der(h3_server_test_cert_pem)
+			},
+		]
+		signing_key: signing_key
+		transport_parameters: h3_server_test_transport_parameters()
+		handler: H3ServerTestEchoHandler{}
+	})!
+	defer {
+		server.close() or {}
+	}
+	addr := server.local_addr()!
+	port := addr.port()!
+	assert port != 0, 'an OS-assigned port must never report as 0'
+}
