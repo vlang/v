@@ -117,6 +117,12 @@ pub fn lookup_module_with_path(mod string, base_path string) !string {
 			break
 		}
 		current_dir = parent_dir
+		// The retired `modules/` namespace is passed by, as the compiler passes it
+		// by: what it holds is `modules.<name>`, so documenting a bare `bar` out of
+		// it would describe a layout the compiler rejects.
+		if pref.is_retired_modules_namespace(current_dir) {
+			continue
+		}
 		if path := module_path_from_search_root(current_dir, mod) {
 			return path
 		}

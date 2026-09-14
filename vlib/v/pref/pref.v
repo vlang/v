@@ -423,17 +423,12 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	// 5. walk up the parent directories of the importing file, like V1's
 	// Builder.find_module_path. This finds sibling projects: e.g. importing
 	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
-	// A `modules` directory is skipped on the way: it is no lookup root any more,
-	// so what it holds is `modules.<name>` even to the files inside it. Stopping
-	// there would keep the virtual layout alive between the modules left in it.
-	// Unless it carries a manifest, that is: a directory with a `v.mod` is a
-	// project root whatever it is called, and this walk is the only thing some
-	// callers have -- the FastC backend asks here directly, with no project-root
-	// probe of its own to fall back on.
+	// The retired `modules/` namespace is passed by on the way: what it holds is
+	// `modules.<name>` even to the files inside it, and stopping there would keep
+	// the virtual layout alive between the modules left in it.
 	mut current_dir := importer_dir
 	for {
-		if os.file_name(current_dir) != 'modules'
-			|| os.exists(os.join_path_single(current_dir, 'v.mod')) {
+		if !is_retired_modules_namespace(current_dir) {
 			if try_path := module_path_from_search_root(mod, mod_path, current_dir) {
 				return try_path
 			}
@@ -445,6 +440,38 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		current_dir = parent_dir
 	}
 	return ''
+}
+
+// is_retired_modules_namespace reports whether a directory is the `modules/` a
+// project used to keep its modules in -- the virtual lookup root this compiler no
+// longer searches. What tells it apart from a directory that merely carries that
+// name is the project around it: the namespace sits inside one, while a project
+// of its own, manifest or not, is the root its files are resolved against. That
+// distinction has to be made here, since a module-path walk is all some callers
+// have: the FastC backend asks `get_module_path` directly, with no project-root
+// probe of its own to fall back on.
+pub fn is_retired_modules_namespace(dir string) bool {
+	if os.file_name(dir) != 'modules' {
+		return false
+	}
+	if dir_is_a_source_root(dir) {
+		return false
+	}
+	return dir_is_a_source_root(os.dir(dir))
+}
+
+// A directory is a source root when a project is anchored there: by its manifest,
+// or -- projects need no manifest -- by the V sources lying in it.
+fn dir_is_a_source_root(dir string) bool {
+	if os.exists(os.join_path_single(dir, 'v.mod')) {
+		return true
+	}
+	for entry in os.ls(dir) or { return false } {
+		if entry.ends_with('.v') && os.is_file(os.join_path_single(dir, entry)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn module_path_from_search_root(mod string, mod_path string, search_root string) ?string {

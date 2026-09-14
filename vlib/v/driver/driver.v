@@ -17713,13 +17713,12 @@ fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_pa
 		// the directory itself, reached before the walk climbs past the project to a
 		// neighbour of it that happens to carry the same name.
 		//
-		// A `modules` directory is no lookup root of its own, not even for the files
-		// inside it: what it holds is `modules.<name>`, and letting the walk stop
-		// there would keep the virtual layout alive between the modules left in it.
-		// A directory that carries a manifest is a project root whatever it is
-		// called, so that one is searched like any other level.
-		if os.file_name(current) != 'modules'
-			|| os.exists(os.join_path_single(current, 'v.mod')) {
+		// The retired `modules/` namespace is no lookup root of its own, not even
+		// for the files inside it: what it holds is `modules.<name>`, and letting
+		// the walk stop there would keep the virtual layout alive between the
+		// modules left in it. A project that merely carries that name is a root
+		// like any other, and is searched.
+		if !pref.is_retired_modules_namespace(current) {
 			candidate := os.join_path_single(current, mod_path)
 			if module_path_has_v_sources(candidate, prefs)
 				&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {

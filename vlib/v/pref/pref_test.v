@@ -104,9 +104,27 @@ fn test_get_module_path_skips_a_modules_namespace_but_not_a_project_root() {
 	legacy_importer := os.join_path(legacy_importer_dir, 'foo.v')
 	os.write_file(legacy_importer, 'module foo\n') or { panic(err) }
 
+	// A project with no manifest at all, whose root is named `modules`: nothing
+	// but the sources in it says where the project is.
+	bare_root := os.join_path(root, 'bare', 'modules')
+	bare_entry_dir := os.join_path(bare_root, 'src')
+	bare_module := os.join_path(bare_root, 'foo')
+	os.mkdir_all(bare_entry_dir) or { panic(err) }
+	os.mkdir_all(bare_module) or { panic(err) }
+	os.write_file(os.join_path(bare_module, 'foo.v'), 'module foo\n') or { panic(err) }
+	bare_entry := os.join_path(bare_entry_dir, 'main.v')
+	os.write_file(bare_entry, 'module main\n') or { panic(err) }
+
 	prefs := new_preferences()
 	assert prefs.get_module_path('foo', entry_file) == os.real_path(root_module)
+	assert prefs.get_module_path('foo', bare_entry) == os.real_path(bare_module)
 	assert prefs.get_module_path('bar', legacy_importer) != os.real_path(legacy_neighbour)
 	// By the name the layout gives it, the neighbour resolves from the project.
 	assert prefs.get_module_path('modules.bar', legacy_importer) == os.real_path(legacy_neighbour)
+
+	// The rule itself: the namespace is the one with a project around it.
+	assert is_retired_modules_namespace(legacy_namespace)
+	assert !is_retired_modules_namespace(project_root)
+	assert !is_retired_modules_namespace(bare_root)
+	assert !is_retired_modules_namespace(legacy_root)
 }
