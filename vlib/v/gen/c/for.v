@@ -373,8 +373,8 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 						g.tmp_count++
 						map_writeback_stmt = 'if (!${map_copyback_dirty_var}) { void* ${copyback_slot} = map__get_check(${map_writeback_target}, &${map_writeback_key}); if (${copyback_slot} != 0) { map__set(${map_writeback_target}, &${map_writeback_key}, &${map_writeback_value}); } }'
 						map_copyback_guard = MapLoopCopybackGuard{
-							map_ref: original_map_ref
-							key_ref: key_ref
+							map_ref:   original_map_ref
+							key_ref:   key_ref
 							dirty_var: map_copyback_dirty_var
 						}
 					}
@@ -479,7 +479,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			if map_writeback_stmt.len > 0 {
 				g.loop_control_copybacks << LoopControlCopyback{
 					loop_depth: g.loop_depth
-					stmt: map_writeback_stmt
+					stmt:       map_writeback_stmt
 				}
 			}
 			mut emitted_continue_label := false
