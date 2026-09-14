@@ -275,15 +275,34 @@ fn test_preincludes_are_scanned_before_ordinary_includes() {
 	mut g := FlatGen.new()
 	g.a = ast
 	nodes := g.top_level_nodes()
-	g.collect_preinclude_active_macros(nodes)
-	for node_idx in nodes {
-		node := ast.nodes[node_idx]
-		if node.kind == .directive {
-			g.collect_c_directive_at(node_idx, 'main', node, source, false, false)
-		}
-	}
+	g.replay_c_active_macro_state(nodes)
 
 	assert 'reordered_api' in g.inlined_c_active_macros
+}
+
+fn test_c_macros_are_replayed_in_emitted_module_order() {
+	source := os.join_path(os.vtmp_dir(), 'macro_replay_main.c.v')
+	dependency_source := os.join_path(os.vtmp_dir(), 'macro_replay_dependency.c.v')
+	mut ast := &flat.FlatAst{}
+	ast.nodes = [
+		flat.Node{ kind: .file, value: source },
+		flat.Node{ kind: .module_decl, value: 'main' },
+		flat.Node{ kind: .import_decl, value: 'dependency' },
+		flat.Node{ kind: .directive, value: 'undef', typ: 'ordered_module_api' },
+		flat.Node{ kind: .file, value: dependency_source },
+		flat.Node{ kind: .module_decl, value: 'dependency' },
+		flat.Node{
+			kind:  .directive
+			value: 'define'
+			typ:   'ordered_module_api(p) ((p)->value)'
+		},
+	]
+	mut g := FlatGen.new()
+	g.a = ast
+	g.module_imports['main'] = ['dependency']
+	g.replay_c_active_macro_state(g.top_level_nodes())
+
+	assert 'ordered_module_api' !in g.inlined_c_active_macros
 }
 
 fn test_cross_guarded_include_macro_mutations_are_ambiguous() {
@@ -327,12 +346,7 @@ fn test_cross_guarded_include_macro_mutations_are_ambiguous() {
 	g.a = &ast
 	g.set_output_cross_c(true)
 	g.index_cross_directive_guards()
-	for node_idx in g.top_level_nodes() {
-		node := ast.nodes[node_idx]
-		if node.kind == .directive {
-			g.collect_c_directive_at(node_idx, 'main', node, source, false, false)
-		}
-	}
+	g.replay_c_active_macro_state(g.top_level_nodes())
 
 	assert int(guarded_include) in g.cross_directive_guards
 	assert 'cross_guarded_api' in g.inlined_c_active_macros
@@ -340,7 +354,9 @@ fn test_cross_guarded_include_macro_mutations_are_ambiguous() {
 
 fn test_inlined_c_macro_tracking_uses_final_state() {
 	mut g := FlatGen.new()
-	g.collect_inlined_c_declared_fns('#define final_api(p) ((p)->value)\n#undef final_api\nstatic inline int final_api(int *p) { return *p; }\n', false)
+	text := '#define final_api(p) ((p)->value)\n#undef final_api\nstatic inline int final_api(int *p) { return *p; }\n'
+	g.collect_inlined_c_declared_fns(text)
+	g.replay_inlined_c_macro_state(text, false)
 
 	assert 'final_api' !in g.inlined_c_active_macros
 }
@@ -439,6 +455,17 @@ fn test_macro_expanded_nested_include_is_scanned_or_marked_unresolved() {
 		typ:   '"${missing_header}"'
 	}, source, false)
 	assert source in unresolved.files_with_unscanned_c_includes
+
+	computed_wrapper := os.join_path(root, 'computed_wrapper.h')
+	os.write_file(computed_wrapper, '#include PICK(api.h)\n')!
+	mut computed_angle := FlatGen.new()
+	computed_angle.c_flags = ['-I', root]
+	computed_angle.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '<computed_wrapper.h>'
+	}, source, false)
+	assert source in computed_angle.files_with_unscanned_c_includes
 }
 
 fn test_compiler_include_search_output_is_parsed() {
