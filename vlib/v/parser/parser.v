@@ -64,6 +64,16 @@ struct SkippedComptimeLambdaScope {
 	body_pos      int
 }
 
+struct SkippedComptimeFnLiteralState {
+mut:
+	awaiting_params    bool
+	in_params          bool
+	base_paren_depth   int
+	base_bracket_depth int
+	base_brace_depth   int
+	param_paren_depth  int
+}
+
 // Parser represents parser data used by parser.
 pub struct Parser {
 	prefs &pref.Preferences
@@ -5842,7 +5852,8 @@ fn (mut p Parser) skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, to
 // A plain assignment target is an identifier occurrence, but not a read. Goto
 // operands are recorded only in the label namespace, while break and continue
 // label operands are not local references. Assembly template symbols are not V
-// names; only expressions in its input/output sections are local uses.
+// names; only expressions in its input/output sections are local uses. Function
+// literal parameter lists are declarations rather than reads of outer locals.
 fn (mut p Parser) skip_comptime_block() {
 	if p.tok != .lcbr {
 		p.skip_block()
@@ -5861,6 +5872,7 @@ fn (mut p Parser) skip_comptime_block() {
 	mut in_lambda_params := false
 	mut lambda_params := []string{}
 	mut lambda_scopes := []SkippedComptimeLambdaScope{}
+	mut fn_literal := SkippedComptimeFnLiteralState{}
 	mut shadowed_names := p.active_lambda_param_counts.clone()
 	mut pending_comma_lhs_reads := []string{}
 	mut pending_comma_lhs_depth := -1
@@ -5940,6 +5952,29 @@ fn (mut p Parser) skip_comptime_block() {
 		}
 		if skip_asm_token {
 			// Assembly-only symbols were handled by the section state above.
+		} else if fn_literal.in_params {
+			if p.tok == .rpar && paren_depth == fn_literal.param_paren_depth {
+				fn_literal = SkippedComptimeFnLiteralState{}
+			}
+		} else if fn_literal.awaiting_params
+			&& paren_depth == fn_literal.base_paren_depth
+			&& bracket_depth == fn_literal.base_bracket_depth && depth == fn_literal.base_brace_depth
+			&& p.tok == .lpar {
+			fn_literal.awaiting_params = false
+			fn_literal.in_params = true
+			fn_literal.param_paren_depth = paren_depth + 1
+		} else if fn_literal.awaiting_params
+			&& paren_depth == fn_literal.base_paren_depth
+			&& bracket_depth == fn_literal.base_bracket_depth && depth == fn_literal.base_brace_depth
+			&& p.tok in [.comma, .semicolon, .rcbr] {
+			fn_literal = SkippedComptimeFnLiteralState{}
+		} else if p.tok == .key_fn && p.peek() in [.lpar, .lsbr] {
+			fn_literal = SkippedComptimeFnLiteralState{
+				awaiting_params:    true
+				base_paren_depth:   paren_depth
+				base_bracket_depth: bracket_depth
+				base_brace_depth:   depth
+			}
 		} else if in_lambda_params {
 			if p.tok == .pipe {
 				in_lambda_params = false
@@ -12504,12 +12539,14 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		outer_defer_depth := p.defer_depth
 		outer_defer_result_allowed := p.defer_result_allowed
 		outer_nested_block_depth := p.nested_block_depth
+		outer_active_lambda_param_counts := p.active_lambda_param_counts.clone()
 		// Skipped compile-time bodies in this literal belong to its node, not to
 		// the enclosing named function or literal.
 		p.cur_fn_offset = fn_start
 		p.defer_depth = 0
 		p.defer_result_allowed = false
 		p.nested_block_depth = 0
+		p.active_lambda_param_counts.clear()
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.begin_comptime_value_scope()
@@ -12549,6 +12586,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		p.defer_depth = outer_defer_depth
 		p.defer_result_allowed = outer_defer_result_allowed
 		p.nested_block_depth = outer_nested_block_depth
+		p.active_lambda_param_counts = outer_active_lambda_param_counts
 	}
 	mut all_ids := []flat.NodeId{cap: capture_ids.len + param_ids.len + body_ids.len}
 	for id in capture_ids {

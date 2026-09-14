@@ -1,0 +1,28 @@
+fn consume_action(callback fn (int)) {
+	callback(1)
+}
+
+fn function_literal_parameter_shadows_outer() {
+	x := 1
+	$if prealloc {
+		callback := fn (x int) {}
+		_ = callback
+	}
+}
+
+fn nested_function_literal_capture_rebases_lambda_scope() {
+	consume_action(|x| { consume_closure(fn [x] () {
+		$if prealloc {
+			println(x)
+		}
+	}) })
+}
+
+fn consume_closure(callback fn ()) {
+	callback()
+}
+
+fn main() {
+	function_literal_parameter_shadows_outer()
+	nested_function_literal_capture_rebases_lambda_scope()
+}
