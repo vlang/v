@@ -584,12 +584,9 @@ fn ensure_v1_fallback(reason string) !string {
 		}
 		eprintln('${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...')
 		mut process := os.new_process(make_command)
-		process.set_args([
-			'VEXE=${os.real_path(os.executable())}',
-			'V1_FALLBACK_CACHE_DIR=${cache_parent}',
-			'V1_FALLBACK_EXE=${cached_launcher}',
-			'v1',
-		])
+		process.set_args(['v1'])
+		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()),
+			cache_parent, cached_launcher))
 		process.set_work_folder(vroot)
 		process.wait()
 		code := process.code
@@ -601,6 +598,17 @@ fn ensure_v1_fallback(reason string) !string {
 	return resolve_installed_v1_fallback(fallback, cached_launcher) or {
 		return error('`make v1` completed without installing a usable V ${v_version} fallback at `${cached_launcher}`.')
 	}
+}
+
+fn v1_fallback_make_environment(bootstrap string, cache_parent string, output string) map[string]string {
+	mut environment := os.environ()
+	// Keep path data out of make variable syntax and shell command text. The
+	// installer reads these inherited values directly without re-evaluating them.
+	environment['VEXE'] = './v'
+	environment['V1_FALLBACK_BOOTSTRAP'] = bootstrap
+	environment['V1_FALLBACK_CACHE_DIR'] = cache_parent
+	environment['V1_FALLBACK_OUTPUT'] = output
+	return environment
 }
 
 fn v1_fallback_cache_parent() !string {

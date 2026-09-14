@@ -16,8 +16,10 @@ if [ "$#" -ne 2 ]; then
 	exit 2
 fi
 
-bootstrap_v=$1
-fallback_output=$2
+# Automatic provisioning passes paths through the environment so make and its
+# recipe shell never parse valid path characters such as apostrophes or '$'.
+bootstrap_v=${V1_FALLBACK_BOOTSTRAP:-$1}
+fallback_output=${V1_FALLBACK_OUTPUT:-$2}
 system=$(uname -s 2>/dev/null || echo unknown)
 architecture=$(uname -m 2>/dev/null || echo unknown)
 

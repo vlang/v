@@ -64,6 +64,8 @@ fn test_v1_fallback_installer_exposes_compatibility_modules() {
 	assert moved.contains('vlib/x/json2')
 	assert moved.contains('vlib/json2')
 	assert source.contains('install_moved_module_compatibility "$1" || return 1')
+	assert source.contains(r'bootstrap_v=${V1_FALLBACK_BOOTSTRAP:-$1}')
+	assert source.contains(r'fallback_output=${V1_FALLBACK_OUTPUT:-$2}')
 	assert source.contains('install_fallback_compatibility "$cache_root" || return 1')
 	assert source.contains('install_fallback_compatibility "$staged_cache" || return 1')
 	assert source.contains('cp -R ./vlib/x/json2 ./vlib/json2')
@@ -132,6 +134,17 @@ fn test_v1_fallback_cached_launcher_uses_the_configured_cache() {
 	}
 	cache_parent := v1_fallback_cache_parent()!
 	assert v1_fallback_cached_launcher(cache_parent) == os.join_path(os.abs_path(configured), v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+}
+
+fn test_v1_fallback_make_environment_preserves_special_path_characters() {
+	bootstrap := os.join_path(os.vtmp_dir(), "o'connor", r'$compiler')
+	cache_parent := os.join_path(os.vtmp_dir(), "o'connor", r'$cache')
+	output := os.join_path(cache_parent, v_version, r'$fallback')
+	environment := v1_fallback_make_environment(bootstrap, cache_parent, output)
+	assert environment['VEXE'] == './v'
+	assert environment['V1_FALLBACK_BOOTSTRAP'] == bootstrap
+	assert environment['V1_FALLBACK_CACHE_DIR'] == cache_parent
+	assert environment['V1_FALLBACK_OUTPUT'] == output
 }
 
 fn test_v1_fallback_cache_without_a_home_is_private() {
