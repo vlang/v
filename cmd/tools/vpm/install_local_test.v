@@ -470,7 +470,11 @@ fn test_local_install_records_are_per_checkout() {
 	record_local_install(installed) or { panic(err) }
 	assert is_recorded_local_install(installed)
 	assert !is_recorded_local_install(sibling)
-	assert os.is_dir(os.join_path(vmodules_path, '.cache', 'local_installs'))
+	// The notes are kept where the records directory is configured to be, and that
+	// is never inside the project they describe.
+	records_dir := local_install_records_dir()
+	assert os.is_dir(records_dir)
+	assert !records_dir.starts_with(project_dir)
 	entries := os.ls(project_dir) or { panic(err) }
 	assert entries.sorted() == ['recorded_pkg', 'unrecorded_pkg']
 
@@ -483,22 +487,26 @@ fn test_local_install_records_are_per_checkout() {
 // recording has to fail loudly enough for the installation to be undone.
 fn test_recording_a_local_install_reports_failure() {
 	$if !windows {
-		vmodules_path := os.join_path(test_path, 'vmodules_unwritable_records')
-		test_utils.set_test_env(vmodules_path)
-		cache_dir := os.join_path(vmodules_path, '.cache')
-		os.mkdir_all(cache_dir) or { panic(err) }
+		test_utils.set_test_env(os.join_path(test_path, 'vmodules_unwritable_records'))
+		// A records directory that cannot be created, because what would hold it
+		// is read-only.
+		blocked_root := os.join_path(test_path, 'unwritable_records_root')
+		os.mkdir_all(blocked_root) or { panic(err) }
+		saved_records := os.getenv(local_installs_dir_env)
+		os.setenv(local_installs_dir_env, os.join_path(blocked_root, 'records'), true)
+		os.chmod(blocked_root, 0o500) or { panic(err) }
+		defer {
+			os.chmod(blocked_root, 0o700) or {}
+			os.setenv(local_installs_dir_env, saved_records, true)
+		}
 		installed := os.join_path(test_path, 'unrecordable_project', 'pkg')
 		os.mkdir_all(installed) or { panic(err) }
-		os.chmod(cache_dir, 0o500) or { panic(err) }
-		defer {
-			os.chmod(cache_dir, 0o700) or {}
-		}
 
 		record_local_install(installed) or {
 			assert !is_recorded_local_install(installed)
 			return
 		}
-		assert false, 'recording into an unwritable cache has to fail'
+		assert false, 'recording into an unwritable records directory has to fail'
 	}
 }
 

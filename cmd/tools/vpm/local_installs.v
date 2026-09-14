@@ -85,10 +85,17 @@ fn forget_local_install(token string) {
 // remove_installed_dir deletes a module directory and the record that it was a
 // local install. The token is read first, since it lives inside the directory,
 // and the note is only dropped once the directory is really gone: a removal that
-// failed has to leave a retry possible.
+// failed has to leave a retry possible. A removal that got partway through may
+// have taken the token with it, so what is left keeps a copy of it and stays
+// VPM's to finish.
 fn remove_installed_dir(module_path string) ! {
 	token := read_local_install_token(module_path) or { '' }
-	rmdir_all(module_path)!
+	rmdir_all(module_path) or {
+		if token != '' && os.is_dir(module_path) && read_local_install_token(module_path) == none {
+			os.write_file(local_install_token_path(module_path), token) or {}
+		}
+		return err
+	}
 	if token != '' {
 		forget_local_install(token)
 	}
