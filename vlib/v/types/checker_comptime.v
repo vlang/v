@@ -2687,13 +2687,129 @@ fn (tc &TypeChecker) call_targets_later_local_binding(call flat.Node) bool {
 	return false
 }
 
+// text_is_a_single_parenthesised_group reports whether `text` is one `(...)`
+// group, i.e. whether its opening parenthesis is closed by its last character.
+// `(a + b)` is, `(a) + (b)` is not.
+fn text_is_a_single_parenthesised_group(text string) bool {
+	// A comment is not part of the expression, at either end of it: the inner
+	// group of `((input) /* explanation */)` still spans the whole of it.
+	first, last := code_bounds_of(text)
+	if first < 0 || last <= first || text[first] != `(` || text[last] != `)` {
+		return false
+	}
+	mut depth := 0
+	mut i := first
+	for i <= last {
+		// A parenthesis of a comment or of a literal is not syntax:
+		// `((value /* ) */))` is still one group wrapped in another.
+		skipped := skip_non_code_at(text, i)
+		if skipped > i {
+			i = skipped
+			continue
+		}
+		c := text[i]
+		if c == `(` {
+			depth++
+		} else if c == `)` {
+			depth--
+			if depth == 0 {
+				return i == last
+			}
+		}
+		i++
+	}
+	return false
+}
+
+// skip_non_code_at returns the index just past the comment or string literal
+// starting at `i`, and `i` itself when `source[i]` starts neither. Its callers
+// only ask where code resumes, so what a literal holds - escapes, `${..}`
+// interpolations and all - is stepped over without being looked at.
+fn skip_non_code_at(source string, i int) int {
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+		return source.index_after('\n', i) or { source.len }
+	}
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+		mut nesting := 1
+		mut j := i + 2
+		for j + 1 < source.len && nesting > 0 {
+			if source[j] == `/` && source[j + 1] == `*` {
+				nesting++
+				j += 2
+			} else if source[j] == `*` && source[j + 1] == `/` {
+				nesting--
+				j += 2
+			} else {
+				j++
+			}
+		}
+		return j
+	}
+	// `r'..'`, `c'..'` and `js'..'` prefix their quote directly. A raw string
+	// has no escapes, so a trailing backslash does not swallow its quote.
+	mut opening := i
+	mut has_escapes := true
+	if (source[i] == `r` || source[i] == `c`) && i + 1 < source.len
+		&& (source[i + 1] == `'` || source[i + 1] == `"`) {
+		opening = i + 1
+		has_escapes = source[i] == `c`
+	} else if source[i] == `j` && i + 2 < source.len && source[i + 1] == `s`
+		&& (source[i + 2] == `'` || source[i + 2] == `"`) {
+		opening = i + 2
+	}
+	quote := source[opening]
+	if quote != `'` && quote != `"` && quote != `\`` {
+		return i
+	}
+	mut j := opening + 1
+	for j < source.len && source[j] != quote {
+		if has_escapes && source[j] == `\\` {
+			j += 2
+			continue
+		}
+		j++
+	}
+	return int_min(j + 1, source.len)
+}
+
+// code_bounds_of returns the first and the last index of `text` that hold code,
+// skipping the comments, the literals and the spaces around it. Both are -1 for
+// a text that holds none.
+fn code_bounds_of(text string) (int, int) {
+	mut first := -1
+	mut last := -1
+	mut i := 0
+	for i < text.len {
+		skipped := skip_non_code_at(text, i)
+		if skipped > i {
+			i = skipped
+			continue
+		}
+		if text[i] !in [` `, `\t`, `\n`, `\r`] {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+		i++
+	}
+	return first, last
+}
+
 fn (tc &TypeChecker) paren_expr_has_redundant_parentheses(id flat.NodeId) bool {
 	parent_id := tc.direct_parent_id(id)
 	if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .paren {
 		return false
 	}
+	// The parser folds `((x))` into a single paren node, so redundancy can only
+	// be seen in the source text — but the inner group has to span the whole
+	// expression. Merely starting with `((` also matches the meaningful
+	// parentheses of `m * ((n - 1) / m)`.
 	text := tc.source_text_for_node(id).trim_space()
-	return text.starts_with('((')
+	if !text_is_a_single_parenthesised_group(text) {
+		return false
+	}
+	return text_is_a_single_parenthesised_group(text[1..text.len - 1].trim_space())
 }
 
 fn (mut tc TypeChecker) check_map_duplicate_keys(node flat.Node) {
@@ -2927,6 +3043,11 @@ fn (mut tc TypeChecker) record_implicit_slice_clone_notice(id flat.NodeId) {
 	}
 	node := tc.a.node(id)
 	if node.kind != .index || node.value != 'range' || node.children_count < 1 {
+		return
+	}
+	// Only array slices are implicitly cloned. `s[..n]` on a string or on a
+	// map/struct index yields no hidden copy, so reporting one there is wrong.
+	if unalias_type(tc.resolve_type(id)) !is Array {
 		return
 	}
 	pos := tc.index_suffix_diagnostic_pos(id)
@@ -12503,8 +12624,11 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				tc.record_warning_at(.duplicate_decl, 'duplicate of a const name `${tc.qualify_name(lhs_node.value)}`', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
 			}
 		}
-		mut shadows_fn := lhs_node.value in tc.fn_ret_types
-			|| tc.qualify_fn_name(lhs_node.value) in tc.fn_ret_types
+		// Test files (and the preludes loaded with them) routinely declare tiny
+		// fixture functions like `fn a() {}` and then shadow them freely in the
+		// test bodies, so the notice is pure noise there.
+		mut shadows_fn := !is_regular_v_test_file(tc.cur_file)
+			&& tc.shadowed_local_fn_key(lhs_node.value) != none
 		if shadows_fn && tc.imported_module_prefix(lhs_id, lhs_node.value) != none
 			&& !tc.source_module_declares_fn(lhs_node.value) {
 			shadows_fn = false
