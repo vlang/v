@@ -247,3 +247,48 @@ fn main() {
 	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '1', '2',
 		'6'], res.output
 }
+
+// A shared local is passed as its wrapper storage, including when it is forwarded
+// as a shared argument or used as a shared receiver. That storage keeps the same
+// renamed identifier as the declaration when the source name shadows a C type.
+fn test_a_shared_local_is_forwarded_under_its_declared_name() {
+	v3_bin := local_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_shared_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := local_shadow_build_and_run(v3_bin, root, 'struct State {
+mut:
+	n int
+}
+
+fn read(shared state State) int {
+	rlock state {
+		return state.n
+	}
+}
+
+fn (shared state State) read_method() int {
+	rlock state {
+		return state.n
+	}
+}
+
+fn forward_local_arg() int {
+	shared array := State{ n: 9 }
+	return read(shared array)
+}
+
+fn forward_local_receiver() int {
+	shared array := State{ n: 11 }
+	return array.read_method()
+}
+
+fn main() {
+	println(forward_local_arg())
+	println(forward_local_receiver())
+}
+')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['9', '11'], res.output
+}

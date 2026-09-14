@@ -18814,7 +18814,7 @@ fn (mut g FlatGen) gen_shared_local_receiver_arg(base_id flat.NodeId) bool {
 	if base.kind != .ident || !g.local_ident_is_shared_wrapper(base.value) {
 		return false
 	}
-	g.write(g.cname(base.value))
+	g.write(g.shared_storage_ident_c_name(base.value))
 	return true
 }
 
