@@ -1502,12 +1502,12 @@ fn (g &FlatGen) struct_init_is_lowered_sum_literal(node flat.Node) bool {
 	if first.value != 'typ' {
 		return false
 	}
-	resolved := g.resolve_sum_name(node.value)
+	resolved := g.resolve_source_sum_name(node.value, g.node_source_file(&node))
 	return resolved in g.tc.sum_types
 }
 
 fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
-	for candidate in [node.typ, g.expected_expr_type.name(), node.value] {
+	for candidate in [node.typ, g.expected_expr_type.name()] {
 		resolved := g.resolve_sum_name(candidate)
 		if resolved in g.tc.sum_types {
 			return resolved
@@ -1521,7 +1521,19 @@ fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
 			}
 		}
 	}
-	return g.resolve_sum_name(node.value)
+	resolved_source := g.resolve_source_sum_name(node.value, g.node_source_file(&node))
+	if resolved_source in g.tc.sum_types {
+		return resolved_source
+	}
+	if node.value.contains('[') {
+		ct := g.tc.c_type(g.tc.parse_type(node.value))
+		for sum_name, _ in g.tc.sum_types {
+			if g.tc.c_type(g.interface_concrete_type(sum_name)) == ct {
+				return sum_name
+			}
+		}
+	}
+	return resolved_source
 }
 
 fn (g &FlatGen) lowered_sum_field_variant(sum_name string, field &flat.Node) ?string {

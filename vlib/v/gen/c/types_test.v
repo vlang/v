@@ -643,7 +643,7 @@ fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_su
 	assert g.resolve_sum_name('Any') == 'sum_mod.Any'
 	// Namesakes resolve to their concrete declarations, so they are not boxed
 	// into `sum_mod.Any` when a value is converted to them.
-	assert g.resolve_sum_name('iface_mod.Any') == 'pkg.iface_mod.Any'
+	assert g.resolve_source_sum_name('iface_mod.Any', 'main.v') == 'pkg.iface_mod.Any'
 	// A canonical name is not expanded again when its first component also
 	// happens to be an import alias in the current file.
 	assert g.resolve_sum_name('pkg.iface_mod.Any') == 'pkg.iface_mod.Any'
@@ -667,10 +667,11 @@ fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_s
 	g.tc = &tc
 	g.precompute_sum_name_lookup()
 
-	assert g.resolve_sum_name('iface_mod.Any') == 'pkg.iface_mod.Any'
-	// Without the file-local alias, the canonical sum type keeps its exact name.
-	tc.cur_file = 'dependency.v'
+	assert g.resolve_source_sum_name('iface_mod.Any', 'main.v') == 'pkg.iface_mod.Any'
+	// Resolved type metadata is canonical and must not be interpreted through the
+	// current source file's imports.
 	assert g.resolve_sum_name('iface_mod.Any') == 'iface_mod.Any'
+	assert g.resolve_source_sum_name('iface_mod.Any', 'dependency.v') == 'iface_mod.Any'
 }
 
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {

@@ -419,18 +419,33 @@ fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited
 	return false
 }
 
-// resolve_sum_name resolves resolve sum name information for c.
+// resolve_sum_name resolves a canonical or unqualified sum name without
+// interpreting its first component as a source-file import alias.
 fn (g &FlatGen) resolve_sum_name(sum_name string) string {
-	canonical_name := if sum_name.contains('.') {
-		g.canonical_import_alias_type_text(sum_name)
-	} else {
-		sum_name
+	if resolved := g.sum_name_lookup[sum_name] {
+		return resolved
 	}
 	if sum_name.contains('.') {
+		// A qualified name that already names a concrete type is that type. The
+		// short-name fallback below would otherwise hand `one.Any` the unrelated
+		// `two.Any` sum type and box the value into the wrong C struct.
+		if sum_name in g.tc.structs || sum_name in g.tc.interface_names
+			|| sum_name in g.tc.enum_names || sum_name in g.tc.type_aliases {
+			return sum_name
+		}
+		if resolved := g.sum_name_lookup[c_short_name_view(sum_name)] {
+			return resolved
+		}
+	}
+	return sum_name
+}
+
+// resolve_source_sum_name resolves a type name written in `file`, where its
+// first component can be an import alias rather than part of a canonical name.
+fn (g &FlatGen) resolve_source_sum_name(sum_name string, file string) string {
+	if sum_name.contains('.') {
+		canonical_name := g.canonical_import_alias_type_text_in_file(sum_name, file)
 		if canonical_name != sum_name {
-			// A live source import alias is authoritative when its expansion names a
-			// known type. An unrelated dependency may also have registered the alias-
-			// qualified spelling as its canonical sum type name.
 			if resolved := g.sum_name_lookup[canonical_name] {
 				return resolved
 			}
@@ -439,30 +454,8 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 				return canonical_name
 			}
 		}
-		if resolved := g.sum_name_lookup[sum_name] {
-			return resolved
-		}
-		if sum_name in g.tc.structs || sum_name in g.tc.interface_names
-			|| sum_name in g.tc.enum_names || sum_name in g.tc.type_aliases {
-			return sum_name
-		}
 	}
-	if resolved := g.sum_name_lookup[canonical_name] {
-		return resolved
-	}
-	if canonical_name.contains('.') {
-		// A qualified name that already names a concrete type is that type. The
-		// short-name fallback below would otherwise hand `one.Any` the unrelated
-		// `two.Any` sum type and box the value into the wrong C struct.
-		if canonical_name in g.tc.structs || canonical_name in g.tc.interface_names
-			|| canonical_name in g.tc.enum_names || canonical_name in g.tc.type_aliases {
-			return canonical_name
-		}
-		if resolved := g.sum_name_lookup[c_short_name_view(canonical_name)] {
-			return resolved
-		}
-	}
-	return canonical_name
+	return g.resolve_sum_name(sum_name)
 }
 
 fn (mut g FlatGen) precompute_sum_name_lookup() {
