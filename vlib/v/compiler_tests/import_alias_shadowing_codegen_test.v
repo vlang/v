@@ -143,3 +143,21 @@ fn test_a_source_cast_uses_the_shadowing_import() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '44', res.output
 }
+
+// Generic checker annotations retain the canonical module on their base and
+// arguments. Re-entering the source parser for `foo.Box[int]` would otherwise
+// bind `foo` to the colliding `x.foo` import.
+fn test_a_shadowed_module_keeps_its_generic_type() {
+	v3_bin := alias_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_generic_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := alias_shadow_build_and_run(v3_bin, root, {
+		'foo/foo.v':   'module foo\n\npub struct Box[T] {\npub mut:\n\tvalue T\n}\n\npub fn start() Box[int] {\n\treturn Box[int]{\n\t\tvalue: 31\n\t}\n}\n'
+		'x/foo/foo.v': 'module foo\n\npub struct Box[T] {\npub mut:\n\tother T\n}\n'
+		'main.v':      'module main\n\nimport x.foo\nimport foo as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.value)\n}\n'
+	})
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == '31', res.output
+}
