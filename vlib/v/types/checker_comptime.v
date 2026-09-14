@@ -13097,11 +13097,11 @@ fn (mut tc TypeChecker) call_immutable_alias_source(id flat.NodeId) ?flat.NodeId
 }
 
 // The `builtin` methods that answer with a new collection rather than a window onto
-// the one they were called on. `a[..]` is a slice and shares its storage; none of
-// these do.
+// the one they were called on, whatever they are given. `a[..]` is a slice and shares
+// its storage, so it is not one of them; neither is `reverse`, which hands the
+// receiver straight back when there are fewer than two elements to turn around.
 const fresh_collection_builtins = ['array.clone', 'array.filter', 'array.map', 'array.repeat',
-	'array.reverse', 'array.sorted', 'array.sorted_with_compare', 'map.clone', 'map.keys',
-	'map.values']
+	'array.sorted', 'array.sorted_with_compare', 'map.clone', 'map.keys', 'map.values']
 
 // Whether a call is one of those, decided by the declaration it resolved to rather
 // than by the name it was written with, so a method of one's own that happens to be

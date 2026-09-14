@@ -51,12 +51,12 @@ fn filtered(t Table) []int {
 	return t.widths.filter(it > 0)
 }
 
-fn reversed(t Table) []int {
-	return t.widths.reverse()
-}
-
 fn cloned(t Table) []int {
 	return t.widths.clone()
+}
+
+fn repeated(t Table) []int {
+	return t.widths.repeat(1)
 }
 
 fn main() {
@@ -65,9 +65,9 @@ fn main() {
 	a[0] = 9
 	mut b := filtered(t)
 	b[0] = 9
-	mut c := reversed(t)
+	mut c := cloned(t)
 	c[0] = 9
-	mut d := cloned(t)
+	mut d := repeated(t)
 	d[0] = 9
 	println(t.widths)
 	println(a[0])
@@ -139,6 +139,34 @@ fn borrowed(t Table) []int {
 fn main() {
 	t := Table{ widths: [1, 2, 3] }
 	mut a := borrowed(t)
+	a[0] = 9
+	println(t.widths)
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('aliases mutable data from an immutable value'), res.output
+}
+
+// `reverse` is not one of them. The builtin hands the receiver straight back when
+// there are fewer than two elements to turn around, so what it returns can be a
+// window onto an immutable value and has to stay in the analysis.
+fn test_reverse_is_not_treated_as_fresh() {
+	v3_bin := fresh_builtin_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_reverse_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := fresh_builtin_compile(v3_bin, root, 'struct Table {
+	widths []int
+}
+
+fn reversed(t Table) []int {
+	return t.widths.reverse()
+}
+
+fn main() {
+	t := Table{ widths: [1] }
+	mut a := reversed(t)
 	a[0] = 9
 	println(t.widths)
 }
