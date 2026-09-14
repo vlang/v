@@ -193,8 +193,10 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 fn type_references_thread(typ types.Type) bool {
 	return match typ {
 		types.Struct {
-			short_name := typ.name.all_after_last('.')
-			short_name == 'thread' || short_name.starts_with('thread ')
+			name := trimmed_space(typ.name)
+			short_name := name.all_after_last('.')
+			name == 'thread' || name.starts_with('thread ') || name.starts_with('thread[')
+				|| short_name == 'thread' || short_name.starts_with('thread ')
 				|| short_name.starts_with('thread[')
 		}
 		types.Array { type_references_thread(typ.elem_type) }

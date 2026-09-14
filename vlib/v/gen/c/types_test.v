@@ -15,6 +15,9 @@ fn test_type_references_thread_through_containers() {
 	})
 	assert type_references_thread(thread_type)
 	assert type_references_thread(thread_array)
+	assert type_references_thread(types.Type(types.Struct{
+		name: 'thread dep.Result'
+	}))
 	assert type_references_thread(types.Type(types.Pointer{
 		base_type: thread_array
 	}))
