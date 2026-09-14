@@ -221,6 +221,44 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	assert foreign.output.contains('cannot import module "stranger" (not found)'), foreign.output
 	assert !foreign.output.contains(hint), foreign.output
 
+	// A link in the legacy source path makes an otherwise correct `mv` operate
+	// inside an external directory. Report the link as a blocker without giving
+	// the user a command that would move the external module.
+	linked_source_root := os.join_path(root, 'linked_source')
+	linked_source_external := os.join_path(root, 'outside_source_modules')
+	write_modules_layout_module(linked_source_external, 'helper', 'helper')
+	os.mkdir_all(linked_source_root) or { panic(err) }
+	os.symlink(linked_source_external, os.join_path(linked_source_root, 'modules')) or {
+		eprintln('skipping the symlinked source cases: ${err}')
+		return
+	}
+	write_modules_layout_main(linked_source_root, 'helper')
+	linked_source := os.execute('${v3_bin} -nocache -o ${output} ${linked_source_root}/main.v')
+	assert linked_source.exit_code != 0, linked_source.output
+	assert linked_source.output.contains(hint), linked_source.output
+	linked_source_real := os.real_path(linked_source_root)
+	linked_source_blocker := os.join_path(linked_source_real, 'modules')
+	assert linked_source.output.contains('migration is blocked because the legacy module source passes through ${os.quoted_path(linked_source_blocker)}, which is a link'), linked_source.output
+	assert !linked_source.output.contains(modules_layout_expected_move(os.join_path(linked_source_blocker, 'helper'), os.join_path(linked_source_real, 'helper'))), linked_source.output
+
+	// The same protection applies when an intermediate namespace below the real
+	// `modules/` directory is the link.
+	linked_namespace_root := os.join_path(root, 'linked_source_namespace')
+	linked_namespace_external := os.join_path(root, 'outside_source_gpu')
+	write_modules_layout_module(linked_namespace_external, os.join_path('agx', 'fw'), 'fw')
+	os.mkdir_all(os.join_path(linked_namespace_root, 'modules')) or { panic(err) }
+	os.symlink(linked_namespace_external, os.join_path(linked_namespace_root, 'modules', 'gpu')) or {
+		panic(err)
+	}
+	write_modules_layout_main(linked_namespace_root, 'gpu.agx.fw')
+	linked_namespace := os.execute('${v3_bin} -nocache -o ${output} ${linked_namespace_root}/main.v')
+	assert linked_namespace.exit_code != 0, linked_namespace.output
+	assert linked_namespace.output.contains(hint), linked_namespace.output
+	linked_namespace_real := os.real_path(linked_namespace_root)
+	linked_namespace_blocker := os.join_path(linked_namespace_real, 'modules', 'gpu')
+	assert linked_namespace.output.contains('migration is blocked because the legacy module source passes through ${os.quoted_path(linked_namespace_blocker)}, which is a link'), linked_namespace.output
+	assert !linked_namespace.output.contains(modules_layout_expected_move(linked_namespace_blocker, os.join_path(linked_namespace_real, 'gpu'))), linked_namespace.output
+
 	// A link where the module directory has to go is a blocker too: it looks like
 	// a directory through the link, but moving into it would put the module
 	// wherever the link points, which is not beside the project's v.mod.

@@ -17889,6 +17889,9 @@ fn removed_modules_layout_hint(prefs &pref.Preferences, mod_name string, importi
 		candidate := os.join_path(current, 'modules', relative)
 		if module_path_has_v_sources(candidate, prefs)
 			&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
+			if source_link := modules_layout_source_link(current, candidate) {
+				return '\nthe virtual `modules/` directory is no longer searched for modules.\nThe migration is blocked because the legacy module source passes through ${os.quoted_path(source_link)}, which is a link. Move the module without modifying what that link points to.'
+			}
 			command := modules_layout_move_command(current, relative, top_name)
 			return '\nthe virtual `modules/` directory is no longer searched for modules.\nMove it up beside the v.mod it belongs to, which keeps the import path the same:\n\t${command}'
 		}
@@ -17899,6 +17902,28 @@ fn removed_modules_layout_hint(prefs &pref.Preferences, mod_name string, importi
 		current = parent
 	}
 	return ''
+}
+
+// The outermost link between the project root and the legacy source. A move
+// through any such ancestor operates inside the link target, so no runnable
+// migration command is safe to print.
+fn modules_layout_source_link(root string, source string) ?string {
+	mut linked_path := ''
+	mut current := source
+	for current != root && current.len > root.len {
+		if os.is_link(current) {
+			linked_path = current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if linked_path == '' {
+		return none
+	}
+	return linked_path
 }
 
 // modules_layout_move_command spells out a move that actually runs. A dotted
