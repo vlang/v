@@ -2687,6 +2687,35 @@ fn main() {
 	assert out == '3:1:3|run:1'
 }
 
+fn test_v_owned_matching_soa_companion_declaration_is_preserved() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'v_owned_matching_soa_companion', "@[soa]
+struct VOwnedSoaItem {
+	value int
+}
+
+struct C.VOwnedSoaItem_SOA {
+	len   int
+	cap   int
+	value &int
+}
+
+fn C.VOwnedSoaItem_SOA_new(int, int) C.VOwnedSoaItem_SOA
+fn C.VOwnedSoaItem_SOA_push(&C.VOwnedSoaItem_SOA, VOwnedSoaItem)
+fn C.VOwnedSoaItem_SOA_get(C.VOwnedSoaItem_SOA, int) VOwnedSoaItem
+fn C.VOwnedSoaItem_SOA_free(&C.VOwnedSoaItem_SOA)
+
+fn main() {
+	mut soa := C.VOwnedSoaItem_SOA_new(0, 2)
+	C.VOwnedSoaItem_SOA_push(&soa, VOwnedSoaItem{value: 5})
+	item := C.VOwnedSoaItem_SOA_get(soa, 0)
+	println(soa.cap.str() + ':' + soa.len.str() + ':' + item.value.str())
+	C.VOwnedSoaItem_SOA_free(&soa)
+}
+")
+	assert out == '2:1:5'
+}
+
 fn test_header_backed_soa_companion_uses_native_typedef() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'header_backed_soa_companion', {
