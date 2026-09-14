@@ -234,8 +234,8 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 	g.set_target_libc_headers(true)
 	g.preamble()
 	c_code := g.sb.str()
-	for header in ['stdint.h', 'stddef.h', 'stdatomic.h', 'stdio.h', 'stdlib.h', 'string.h', 'math.h',
-		'time.h', 'pthread.h'] {
+	for header in ['stdint.h', 'stddef.h', 'stdatomic.h', 'errno.h', 'stdio.h', 'stdlib.h', 'string.h',
+		'math.h', 'time.h', 'pthread.h'] {
 		assert c_code.contains('#include <${header}>'), header
 	}
 	assert c_code.contains('typedef uint64_t u64;')

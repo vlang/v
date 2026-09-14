@@ -17734,7 +17734,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// than a compatible redeclaration, and the same applies to every libc
 		// prototype further down. This is the set V's own runtime calls into.
 		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdbool.h', 'stdatomic.h',
-			'stdio.h', 'stdlib.h', 'string.h', 'strings.h', 'math.h', 'time.h', 'pthread.h'] {
+			'errno.h', 'stdio.h', 'stdlib.h', 'string.h', 'strings.h', 'math.h', 'time.h', 'pthread.h'] {
 			g.writeln('#include <${header}>')
 		}
 	} else {
