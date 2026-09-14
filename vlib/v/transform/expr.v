@@ -2259,6 +2259,16 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 	if type_name.len == 0 {
 		return ''
 	}
+	// Resolve aliases before consulting the enum and struct indexes. Large programs can
+	// contain a struct whose short name collides with an imported alias (notably
+	// `Type` beside `ast.Type = u32`). Treating the alias as that struct expands a
+	// scalar equality into field selectors on the generated C integer.
+	if t.is_type_alias_name(type_name) {
+		unalias := t.normalize_type_alias(type_name)
+		if unalias != type_name {
+			return t.struct_lookup_name(unalias)
+		}
+	}
 	if type_name.contains('.') && type_name in t.enum_types {
 		return ''
 	}
@@ -2269,16 +2279,6 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 			return selected
 		}
 		return ''
-	}
-	// Resolve aliases before consulting the struct indexes. Large programs can
-	// contain a struct whose short name collides with an imported alias (notably
-	// `Type` beside `ast.Type = u32`). Treating the alias as that struct expands a
-	// scalar equality into field selectors on the generated C integer.
-	if t.is_type_alias_name(type_name) {
-		unalias := t.normalize_type_alias(type_name)
-		if unalias != type_name {
-			return t.struct_lookup_name(unalias)
-		}
 	}
 	// Primitives, arrays and maps are never struct names. Bail before the qualified-name
 	// concatenation below — this runs for every infix operand, so the saved allocation

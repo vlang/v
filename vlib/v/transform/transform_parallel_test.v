@@ -5165,3 +5165,22 @@ fn test_struct_lookup_name_prefers_selected_struct_over_imported_enum_short_name
 	t.cur_file = 'without_selective_import.v'
 	assert t.struct_lookup_name('Lang') == ''
 }
+
+fn test_struct_lookup_name_resolves_alias_before_imported_enum_short_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Lang'] = 'Record'
+	tc.type_aliases['Count'] = 'other.Count'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	t.structs['Record'] = StructInfo{
+		name: 'Record'
+	}
+	t.enum_types['Lang'] = ['en']
+	t.enum_types['other.Lang'] = ['en']
+	t.enum_types['Count'] = ['one']
+	t.enum_types['other.Count'] = ['one']
+
+	assert t.struct_lookup_name('Lang') == 'Record'
+	assert t.struct_lookup_name('Count') == ''
+}
