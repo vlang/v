@@ -2602,6 +2602,9 @@ fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token
 	mut current := id
 	for tc.valid_node_id(current) {
 		node := tc.a.node(current)
+		if node.kind in [.fn_literal, .lambda_expr] {
+			break
+		}
 		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign]
 			&& node.is_freed_assignment() {
 			return

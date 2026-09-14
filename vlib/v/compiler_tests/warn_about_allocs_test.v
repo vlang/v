@@ -73,6 +73,10 @@ fn main() {
 	pointer_alias_speaker := Speaker(PersonPtr(&person))
 	pointer_speaker := box_pointer(&person)
 	freed := ['\${name}' + name] @[freed]
+	callback := fn () {
+		values := [1, 2, 3]
+		println(values)
+	} @[freed]
 	println(array)
 	println(interpolation)
 	println(concatenation)
@@ -83,6 +87,7 @@ fn main() {
 	pointer_alias_speaker.speak()
 	pointer_speaker.speak()
 	println(freed)
+	callback()
 }
 ")!
 
@@ -100,6 +105,8 @@ fn main() {
 			3
 		} else if description == 'cast to interface' {
 			4
+		} else if description == 'array initialization' {
+			2
 		} else {
 			1
 		}
