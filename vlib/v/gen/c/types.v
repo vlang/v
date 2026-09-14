@@ -131,6 +131,9 @@ fn (mut g FlatGen) current_fn_optional_type_name(t types.Type) string {
 }
 
 fn (mut g FlatGen) value_c_type(t types.Type) string {
+	if c_type := c_alias_value_c_type(t) {
+		return c_type
+	}
 	if shared_alias_ptr := g.shared_alias_pointer_type(t) {
 		return g.tc.c_type(shared_alias_ptr)
 	}
@@ -184,6 +187,18 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
 	}
 	return ct
+}
+
+fn c_alias_value_c_type(typ types.Type) ?string {
+	if typ is types.Alias && typ.name.starts_with('C.') {
+		return typ.name['C.'.len..]
+	}
+	if typ is types.Pointer {
+		if base := c_alias_value_c_type(typ.base_type) {
+			return '${base}*'
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
@@ -489,6 +504,12 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 		return typ
 	}
 	source := typ.name()
+	// This function receives a semantic Type, not raw source text. Preserve an
+	// exact registered name before repairing stale alias-qualified spellings;
+	// otherwise a current file import can retarget a canonical type from a call.
+	if exact := g.exact_known_import_type_text(source) {
+		return exact
+	}
 	// Only dotted names can reference an import alias. Primitive and local
 	// type spellings do not need a walk through synthesized child nodes.
 	file := if source.contains('.') { g.node_source_file(node) } else { '' }
@@ -563,6 +584,9 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 		return types.Type(types.Array{
 			elem_type: g.exact_known_import_type_text(clean[2..])?
 		})
+	}
+	if clean in g.tc.type_aliases {
+		return g.tc.parse_canonical_type(clean)
 	}
 	if clean in g.tc.structs {
 		return types.Type(types.Struct{
@@ -667,28 +691,23 @@ fn (g &FlatGen) canonical_import_alias_type_text_in_file_uncached(typ string, fi
 	if clean.contains('.') {
 		alias := clean.all_before('.')
 		if module_name := g.tc.file_imports['${file}\n${alias}'] {
-			// A prefix that is itself an imported module path is already canonical;
-			// expanding it through this file's alias would retarget a same-named
-			// type. See TypeChecker.canonical_import_type_text_wins.
-			//
-			// Not every caller reaches here with canonical text: the `.cast_expr`
-			// and `.array_init` branches in cleanc.v pass the node's raw source
-			// spelling. For those a colliding short import is already resolved to
-			// the wrong module before C generation -- `foo.Value(300)` with
-			// `import x.foo` + `import foo as jj` picks `foo`'s alias on master too
-			// -- so this guard does not change their (already wrong) outcome. That
-			// source-spelling direction is a separate pre-existing bug.
-			if !g.tc.canonical_import_type_text_wins(file, alias, clean) {
-				return module_name + clean[alias.len..]
-			}
+			return module_name + clean[alias.len..]
 		}
 	}
 	return clean
 }
 
 fn (g &FlatGen) node_source_file(node &flat.Node) string {
-	if source_file := g.a.source_files[node.pos.id] {
-		return source_file.name
+	// A synthesized node (a transform-created `sizeof`, a temporary, ...) carries no
+	// position, and `source_files` is keyed by file id where 0 is a real file. An
+	// unchecked lookup therefore resolves such a node against whichever file happens
+	// to be first, which qualified a bare `Type` against that file's imports (giving
+	// `io__Type` instead of `types__Type`). Fall through to the enclosing function's
+	// file instead.
+	if node.pos.is_valid() {
+		if source_file := g.a.source_files[node.pos.id] {
+			return source_file.name
+		}
 	}
 	mut pending := []flat.Node{cap: node.children_count}
 	for i in 0 .. node.children_count {
@@ -696,8 +715,10 @@ fn (g &FlatGen) node_source_file(node &flat.Node) string {
 	}
 	for pending.len > 0 {
 		child := pending.pop()
-		if source_file := g.a.source_files[child.pos.id] {
-			return source_file.name
+		if child.pos.is_valid() {
+			if source_file := g.a.source_files[child.pos.id] {
+				return source_file.name
+			}
 		}
 		for i in 0 .. child.children_count {
 			pending << g.a.child_node(&child, i)

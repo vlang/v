@@ -2,6 +2,7 @@ import os
 import time
 import v.cmdexec
 import v.pref
+import v.util
 
 const driver_cli_vlib_dir = os.dir(os.dir(os.dir(@FILE)))
 const driver_cli_v3_dir = os.dir(os.dir(@FILE))
@@ -365,10 +366,12 @@ fn test_v3_build_rejects_garbage_collectors() {
 	for mode in ['boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt', 'boehm_leak',
 		'vgc'] {
 		output := os.join_path(root, 'v3_${mode}')
-		result := cmdexec.run(@VEXE, ['-old-compiler', '-gc', mode, '-path',
+		result := cmdexec.run(@VEXE, ['-gc', mode, '-path',
 			'${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', output, driver_cli_v3_src])
 		assert result.exit_code != 0
-		assert result.output.contains('v3 must be built without a garbage collector'), result.output
+		// The driver refuses the flag up front; a compiler built from source refuses it
+		// again with `$compile_error`. Either way the reason names the collector.
+		assert result.output.contains('garbage collector'), result.output
 		assert !os.is_file(output)
 	}
 }
@@ -635,14 +638,22 @@ fn test_driver_macos_wrapv_and_cg_link_flags() {
 	}
 	v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc'])
 	source := os.join_path(root, 'signed_overflow.v')
+	// `int` is 64-bit on a 64-bit target, so the overflow point is spelled with the
+	// fixed-width types: each one must wrap (`-fwrapv`) instead of being folded away
+	// as undefined signed overflow.
 	os.write_file(source, '#flag -O2
 
-fn increment_is_greater(value int) bool {
+fn i32_increment_is_greater(value i32) bool {
+	return value + 1 > value
+}
+
+fn i64_increment_is_greater(value i64) bool {
 	return value + 1 > value
 }
 
 fn main() {
-	println(increment_is_greater(int(2147483647)))
+	println(i32_increment_is_greater(i32(2147483647)))
+	println(i64_increment_is_greater(i64(9223372036854775807)))
 }
 ')!
 	output := os.join_path(root, 'signed_overflow')
@@ -652,7 +663,7 @@ fn main() {
 	assert compile.output.contains('-fwrapv'), compile.output
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
-	assert run.output == 'false\n', run.output
+	assert run.output == 'false\nfalse\n', run.output
 
 	tcc_output := os.join_path(root, 'signed_overflow_tcc')
 	tcc_compile := cmdexec.run(v3_bin, ['-nocache', '-no-memory-limit', '-showcc', '-o', tcc_output,
@@ -1234,8 +1245,11 @@ pub fn values() []string {
 		environment['V_MACOS_V3_VHASH'] = 'delegated-build-hash'
 		environment['V_MACOS_V3_VCURRENT_HASH'] = 'delegated-current-hash'
 		environment['V3CACHE'] = os.join_path(root, 'cache')
+		// Pin the C compiler: the point here is that the selection reaches `$if clang`
+		// and `@CCOMPILER`, not which compiler the driver would pick by default (on
+		// macOS a non-prod build defaults to the bundled TCC).
 		compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
-			'-o', output, 'run', project], environment)
+			'-cc', 'clang', '-o', output, 'run', project], environment)
 		assert compile.exit_code == 0, compile.output
 		assert compile.output == 'clang|clang|delegated-build-hash|delegated-current-hash|hash-condition\n|\n', compile.output
 
@@ -1247,11 +1261,22 @@ pub fn values() []string {
 		environment['V_MACOS_V3_VCURRENT_HASH'] = 'second-current-hash'
 		second_output := os.join_path(root, 'compiler_hash_selection_second')
 		second_compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel',
-			'-no-memory-limit', '-o', second_output, project], environment)
+			'-no-memory-limit', '-cc', 'clang', '-o', second_output, project], environment)
 		assert second_compile.exit_code == 0, second_compile.output
 		second_run := cmdexec.run(second_output, [])
 		assert second_run.exit_code == 0, second_run.output
 		assert second_run.output == 'clang|clang|second-build-hash|second-current-hash\n|\n', second_run.output
+
+		// Self-builds must embed the hash of the compiler sources in the checkout,
+		// rather than carrying the bootstrap compiler's hash into the new binary.
+		self_output := os.join_path(root, 'compiler_hash_selection_self')
+		self_compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel',
+			'-no-memory-limit', '-building-v', '-cc', 'clang', '-o', self_output, project], environment)
+		assert self_compile.exit_code == 0, self_compile.output
+		self_run := cmdexec.run(self_output, [])
+		assert self_run.exit_code == 0, self_run.output
+		checkout_hash := util.githash(@VMODROOT)!
+		assert self_run.output == 'clang|clang|second-build-hash|${checkout_hash}\n|\n', self_run.output
 	}
 }
 

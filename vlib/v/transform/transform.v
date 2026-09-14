@@ -4,6 +4,7 @@ import os
 import time
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.types
 
 @[inline]
@@ -3802,6 +3803,8 @@ fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []fl
 		user_code_start: t.a.user_code_start
 		disabled_fns: t.a.disabled_fns
 		noreturn_fns: t.a.noreturn_fns
+		contextual_anon_struct_types: t.a.contextual_anon_struct_types
+		synthesized_anon_struct_types: t.a.synthesized_anon_struct_types
 		source_files: t.a.source_files
 		template_call_sites: t.a.template_call_sites
 		template_actions: t.a.template_actions
@@ -11842,7 +11845,21 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 	if !t.is_optional_type_name(lhs_type) {
 		return
 	}
+	// Assigning a payload only *keeps* an unwrap that was already in force, e.g.
+	// `if a != none { a = 5; println(a + 1) }`, where the assignment invalidates
+	// the smartcast the condition established. Outside such a region the variable
+	// stays a plain `?T`: re-reading it must still yield the option, or `if v := a`
+	// initialises an `Optional_T` from a payload and `'${a}'` prints the payload
+	// instead of `Option(...)`.
+	was_unwrapped := if sc := t.find_smartcast(key) {
+		sc.sum_type_name == option_unwrap_marker
+	} else {
+		false
+	}
 	t.invalidate_smartcast_for_lvalue(lhs_id)
+	if !was_unwrapped {
+		return
+	}
 	base_type := t.optional_base_type(t.qualify_optional_type(lhs_type))
 	mut rhs_type := t.node_type(rhs_id)
 	if rhs_type.len == 0 {
@@ -16220,7 +16237,16 @@ fn (mut t Transformer) transform_block_stmt(id flat.NodeId, node flat.Node) []fl
 }
 
 fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Node) []flat.NodeId {
-	take_then := t.comptime_type_condition_value(node.value) or { return [_id] }
+	take_then := t.comptime_type_condition_value(node.value) or {
+		// Portable output (`-os cross`) keeps both branches so that the C
+		// preprocessor can pick one. They are ordinary statements and still need
+		// lowering. Conditions deferred for any other reason (a `$for` loop var, a
+		// type test) are folded after monomorphization and must stay untouched.
+		if comptime_cond_has_target_flag(node.value) {
+			return [t.lower_retained_comptime_if(node)]
+		}
+		return [_id]
+	}
 	branch_index := if take_then { 0 } else { 1 }
 	for i in 0 .. node.children_count {
 		if i != branch_index {
@@ -16239,7 +16265,12 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 }
 
 fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	take_then := t.comptime_type_condition_value(node.value) or { return id }
+	take_then := t.comptime_type_condition_value(node.value) or {
+		if comptime_cond_has_target_flag(node.value) {
+			return t.lower_retained_comptime_if_expr(node)
+		}
+		return id
+	}
 	branch_index := if take_then { 0 } else { 1 }
 	for i in 0 .. node.children_count {
 		if i != branch_index {
@@ -16250,6 +16281,68 @@ fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node
 		return t.make_empty()
 	}
 	return t.transform_expr(t.a.child(&node, branch_index))
+}
+
+// lower_retained_comptime_if rebuilds a `$if` kept for portable output with both
+// of its branches lowered, so that a branch the host would have discarded still
+// gets the same treatment as any other statement.
+fn (mut t Transformer) lower_retained_comptime_if(node flat.Node) flat.NodeId {
+	mut branches := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		branch_id := t.a.child(&node, i)
+		branch := t.a.nodes[int(branch_id)]
+		stmts := if branch.kind == .block {
+			t.transform_stmts(t.a.children_of(&branch))
+		} else {
+			t.transform_stmt(branch_id)
+		}
+		branches << t.make_block(stmts)
+	}
+	return t.make_comptime_if(node.value, branches)
+}
+
+// lower_retained_comptime_if_expr is lower_retained_comptime_if for a `$if` used
+// as an expression, where each branch stays a single expression.
+fn (mut t Transformer) lower_retained_comptime_if_expr(node flat.Node) flat.NodeId {
+	mut branches := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		branches << t.transform_expr(t.a.child(&node, i))
+	}
+	return t.make_comptime_if(node.value, branches)
+}
+
+fn (mut t Transformer) make_comptime_if(cond string, branches []flat.NodeId) flat.NodeId {
+	start := t.a.children.len
+	for id in branches {
+		t.a.children << id
+	}
+	return t.a.add_node(flat.Node{
+		kind: .comptime_if
+		value: cond
+		children_start: start
+		children_count: flat.child_count(branches.len)
+	})
+}
+
+// comptime_cond_has_target_flag reports whether a condition names a flag that is
+// decided by the target platform, which is what the parser keeps for `-os cross`.
+fn comptime_cond_has_target_flag(cond string) bool {
+	mut i := 0
+	for i < cond.len {
+		c := cond[i]
+		if !(c.is_letter() || c == `_`) {
+			i++
+			continue
+		}
+		start := i
+		for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+			i++
+		}
+		if pref.comptime_flag_is_target_dependent(cond[start..i]) {
+			return true
+		}
+	}
+	return false
 }
 
 fn comptime_condition_matching_paren(s string, start int) int {
@@ -20727,7 +20820,15 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	if node.children_count == 0 {
 		return id
 	}
-	target_type := t.normalize_type_alias(node.value)
+	// Source cast text still contains the import spelling (`alias.Type`), while
+	// the checker sidecar holds its canonical identity. Normalize that semantic
+	// name so a real qualified alias with the same spelling cannot win first.
+	checker_target := t.raw_checker_node_type(id)
+	target_type := t.normalize_type_alias(if checker_target.len > 0 {
+		checker_target
+	} else {
+		node.value
+	})
 	// Materialize a value-context `match`/`if` cast operand into a value temp before
 	// the type-specific dispatch below. Several cast paths return early into helpers
 	// that lower the operand with plain `transform_expr` — the optional-sum branch
@@ -20877,7 +20978,13 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 			expr_type = t.resolve_expr_type(child_id)
 		}
 		if t.is_optional_type_name(expr_type) {
-			return t.coerce_transformed_expr_to_type(expr, child_id, optional_target)
+			coerced := t.coerce_transformed_expr_to_type(expr, child_id, optional_target)
+			// An option-to-option cast is representation-identical, so the coercion
+			// can hand the operand straight back and the cast's own spelling would be
+			// lost with it. Keep it: `?MyByte(?u8(0))` is a `?MyByte`, and printing it
+			// through the operand's `?u8` drops the alias (`Option(0)`).
+			t.set_node_typ(int(coerced), optional_cast_type)
+			return coerced
 		}
 		return t.make_optional_some(expr, optional_target)
 	}

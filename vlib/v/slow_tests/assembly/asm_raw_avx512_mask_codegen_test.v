@@ -34,7 +34,15 @@ fn main() {
 	masked()
 }
 ')!
-	res := os.execute('${os.quoted_path(vexe)} -cross -o ${os.quoted_path(out_c)} ${os.quoted_path(source)}')
+	// `-arch amd64` only selects the target; nothing is assembled or linked, so the
+	// template is checked on hosts that are not amd64 too.
+	res := os.execute('${os.quoted_path(vexe)} -arch amd64 -o ${os.quoted_path(out_c)} ${os.quoted_path(source)}')
+	if res.exit_code != 0 && res.output.contains('unexpected name `raw`') {
+		// The V 0.5.2 compatibility compiler behind `-old-compiler` predates the
+		// `raw` template modifier, so it has no codegen to check here.
+		eprintln('> skipping ${@FN}: `${vexe}` does not support `asm ... raw` templates')
+		return
+	}
 	assert res.exit_code == 0, res.output
 	generated := os.read_file(out_c)!
 	assert generated.contains(r'"vpxord %%zmm0, %%zmm0, %%zmm0%{%%k1%}%{z%}\n\t"'), generated

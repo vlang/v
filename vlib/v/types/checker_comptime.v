@@ -4,6 +4,7 @@ import strconv
 import strings
 import v.errors as compiler_errors
 import v.flat
+import v.pref
 import v.token
 import v.util
 
@@ -2686,13 +2687,163 @@ fn (tc &TypeChecker) call_targets_later_local_binding(call flat.Node) bool {
 	return false
 }
 
+// text_is_a_single_parenthesised_group reports whether `text` is one `(...)`
+// group, i.e. whether its opening parenthesis is closed by its last character.
+// `(a + b)` is, `(a) + (b)` is not.
+fn text_is_a_single_parenthesised_group(text string) bool {
+	// A comment is not part of the expression, at either end of it: the inner
+	// group of `((input) /* explanation */)` still spans the whole of it.
+	first, last := code_bounds_of(text)
+	if first < 0 || last <= first || text[first] != `(` || text[last] != `)` {
+		return false
+	}
+	mut depth := 0
+	mut i := first
+	for i <= last {
+		// A parenthesis of a comment or of a literal is not syntax:
+		// `((value /* ) */))` is still one group wrapped in another.
+		skipped := skip_non_code_at(text, i)
+		if skipped > i {
+			i = skipped
+			continue
+		}
+		c := text[i]
+		if c == `(` {
+			depth++
+		} else if c == `)` {
+			depth--
+			if depth == 0 {
+				return i == last
+			}
+		}
+		i++
+	}
+	return false
+}
+
+// skip_non_code_at returns the index just past the comment or string literal
+// starting at `i`, and `i` itself when `source[i]` starts neither. Its callers
+// only ask where code resumes, so what a literal holds - escapes, `${..}`
+// interpolations and all - is stepped over without being looked at.
+fn skip_non_code_at(source string, i int) int {
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+		return source.index_after('\n', i) or { source.len }
+	}
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+		mut nesting := 1
+		mut j := i + 2
+		for j + 1 < source.len && nesting > 0 {
+			if source[j] == `/` && source[j + 1] == `*` && (j + 2 >= source.len
+				|| source[j + 2] != `/`) {
+				// `Scanner.comment` opens a nested comment only when the `/*` is
+				// not immediately followed by a `/`, which is what lets the
+				// `/*/` idiom close the comment it stands in.
+				nesting++
+				j += 2
+			} else if source[j] == `*` && source[j + 1] == `/` {
+				nesting--
+				j += 2
+			} else {
+				j++
+			}
+		}
+		return j
+	}
+	// `r'..'`, `c'..'` and `js'..'` prefix their quote directly. A raw string
+	// has no escapes, so a trailing backslash does not swallow its quote.
+	mut opening := i
+	mut has_escapes := true
+	mut has_interpolation := true
+	if (source[i] == `r` || source[i] == `c`) && i + 1 < source.len
+		&& (source[i + 1] == `'` || source[i + 1] == `"`) {
+		opening = i + 1
+		has_escapes = source[i] == `c`
+		// A raw string has neither escapes nor interpolations, and a C string
+		// is scanned by scan_char_literal, which escapes but never interpolates.
+		has_interpolation = false
+	} else if source[i] == `j` && i + 2 < source.len && source[i + 1] == `s`
+		&& (source[i + 2] == `'` || source[i + 2] == `"`) {
+		opening = i + 2
+	}
+	quote := source[opening]
+	if quote != `'` && quote != `"` && quote != `\`` {
+		return i
+	}
+	mut j := opening + 1
+	for j < source.len && source[j] != quote {
+		if has_escapes && source[j] == `\\` {
+			j += 2
+			continue
+		}
+		if has_interpolation && source[j] == `$` && j + 1 < source.len && source[j + 1] == `{` {
+			// An interpolation holds code, which may hold a literal of its own,
+			// quoted the same way: `'${f('}')}'` ends at the second `}` and not
+			// at the quote before it.
+			mut braces := 0
+			mut k := j + 1
+			for k < source.len {
+				skipped := skip_non_code_at(source, k)
+				if skipped > k {
+					k = skipped
+					continue
+				}
+				if source[k] == `{` {
+					braces++
+				} else if source[k] == `}` {
+					braces--
+					if braces == 0 {
+						k++
+						break
+					}
+				}
+				k++
+			}
+			j = k
+			continue
+		}
+		j++
+	}
+	return int_min(j + 1, source.len)
+}
+
+// code_bounds_of returns the first and the last index of `text` that hold code,
+// skipping the comments, the literals and the spaces around it. Both are -1 for
+// a text that holds none.
+fn code_bounds_of(text string) (int, int) {
+	mut first := -1
+	mut last := -1
+	mut i := 0
+	for i < text.len {
+		skipped := skip_non_code_at(text, i)
+		if skipped > i {
+			i = skipped
+			continue
+		}
+		if text[i] !in [` `, `\t`, `\n`, `\r`] {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+		i++
+	}
+	return first, last
+}
+
 fn (tc &TypeChecker) paren_expr_has_redundant_parentheses(id flat.NodeId) bool {
 	parent_id := tc.direct_parent_id(id)
 	if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .paren {
 		return false
 	}
+	// The parser folds `((x))` into a single paren node, so redundancy can only
+	// be seen in the source text — but the inner group has to span the whole
+	// expression. Merely starting with `((` also matches the meaningful
+	// parentheses of `m * ((n - 1) / m)`.
 	text := tc.source_text_for_node(id).trim_space()
-	return text.starts_with('((')
+	if !text_is_a_single_parenthesised_group(text) {
+		return false
+	}
+	return text_is_a_single_parenthesised_group(text[1..text.len - 1].trim_space())
 }
 
 fn (mut tc TypeChecker) check_map_duplicate_keys(node flat.Node) {
@@ -2926,6 +3077,11 @@ fn (mut tc TypeChecker) record_implicit_slice_clone_notice(id flat.NodeId) {
 	}
 	node := tc.a.node(id)
 	if node.kind != .index || node.value != 'range' || node.children_count < 1 {
+		return
+	}
+	// Only array slices are implicitly cloned. `s[..n]` on a string or on a
+	// map/struct index yields no hidden copy, so reporting one there is wrong.
+	if unalias_type(tc.resolve_type(id)) !is Array {
 		return
 	}
 	pos := tc.index_suffix_diagnostic_pos(id)
@@ -5755,7 +5911,19 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	take_then := tc.comptime_type_condition_value(node.value) or { return }
+	take_then := tc.comptime_type_condition_value(node.value) or {
+		// Portable output (`-os cross`) keeps every branch of a target-dependent
+		// `$if` for the C preprocessor to choose between, so all of them have to be
+		// checked here: no later stage selects one.
+		if comptime_cond_has_target_flag(node.value) {
+			tc.comptime_static_depth++
+			for i in 0 .. node.children_count {
+				tc.check_branch_node(tc.a.child(&node, i), false)
+			}
+			tc.comptime_static_depth--
+		}
+		return
+	}
 	branch_index := if take_then { 0 } else { 1 }
 	if branch_index >= node.children_count {
 		return
@@ -5767,6 +5935,27 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 	tc.check_branch_node(tc.a.child(&node, branch_index), !tc.is_statement_node(id)
 		&& tc.expression_node_used_as_value(id))
 	tc.comptime_static_depth--
+}
+
+// comptime_cond_has_target_flag reports whether a condition names a flag decided
+// by the target platform, which is what the parser keeps for `-os cross`.
+fn comptime_cond_has_target_flag(cond string) bool {
+	mut i := 0
+	for i < cond.len {
+		c := cond[i]
+		if !(c.is_letter() || c == `_`) {
+			i++
+			continue
+		}
+		start := i
+		for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+			i++
+		}
+		if pref.comptime_flag_is_target_dependent(cond[start..i]) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node flat.Node) bool {
@@ -12469,8 +12658,11 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				tc.record_warning_at(.duplicate_decl, 'duplicate of a const name `${tc.qualify_name(lhs_node.value)}`', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
 			}
 		}
-		mut shadows_fn := lhs_node.value in tc.fn_ret_types
-			|| tc.qualify_fn_name(lhs_node.value) in tc.fn_ret_types
+		// Test files (and the preludes loaded with them) routinely declare tiny
+		// fixture functions like `fn a() {}` and then shadow them freely in the
+		// test bodies, so the notice is pure noise there.
+		mut shadows_fn := !is_regular_v_test_file(tc.cur_file)
+			&& tc.shadowed_local_fn_key(lhs_node.value) != none
 		if shadows_fn && tc.imported_module_prefix(lhs_id, lhs_node.value) != none
 			&& !tc.source_module_declares_fn(lhs_node.value) {
 			shadows_fn = false
@@ -13062,6 +13254,197 @@ fn (mut tc TypeChecker) call_immutable_alias_source(id flat.NodeId) ?flat.NodeId
 	return none
 }
 
+// The `builtin` methods that answer with a new collection rather than a window onto
+// the one they were called on, whatever they are given. `a[..]` is a slice and shares
+// its storage, so it is not one of them; neither is `reverse`, which hands the
+// receiver straight back when there are fewer than two elements to turn around.
+const fresh_collection_builtins = ['array.clone', 'array.filter', 'array.map', 'array.repeat',
+	'array.sorted', 'array.sorted_with_compare', 'map.clone', 'map.keys', 'map.values']
+
+// Whether a call is one of those, decided by the declaration it resolved to rather
+// than by the name it was written with, so a method of one's own that happens to be
+// called `map` is read like any other.
+fn fresh_collection_builtin(resolved_name string, decl_module string) bool {
+	return decl_module == 'builtin' && resolved_name in fresh_collection_builtins
+}
+
+// These build a new collection, but they fill it by copying elements across, and a
+// copied element is only a copy as deep as the element goes. Copying a struct copies
+// the array field inside it as a header, and the two arrays then share their data, so
+// what is handed back is independent of what it was called on only where the elements
+// carry nothing shareable.
+//
+// Which elements those are depends on the method. Most of them copy the receiver's
+// across as they are, so the receiver's element type decides. `map` fills its result
+// from a callback, so what the callback makes decides and the receiver's elements
+// need not appear in it at all. `keys` and `values` each hand back one side of a map,
+// and only that side is in what they return.
+fn (mut tc TypeChecker) builtin_result_shares_storage(builtin_name string, id flat.NodeId) bool {
+	receiver := tc.builtin_receiver_collection_type(id) or { return true }
+	mut seen := map[string]bool{}
+	match builtin_name {
+		'array.map' {
+			elem := tc.array_map_result_elem_type(id) or { return true }
+			return tc.type_can_hold_shared_storage(elem, mut seen)
+		}
+		'map.keys' {
+			if receiver is Map {
+				return tc.type_can_hold_shared_storage(receiver.key_type, mut seen)
+			}
+			return true
+		}
+		'map.values' {
+			if receiver is Map {
+				return tc.type_can_hold_shared_storage(receiver.value_type, mut seen)
+			}
+			return true
+		}
+		else {
+			return tc.collection_copy_shares_storage(receiver)
+		}
+	}
+}
+
+// What `map` puts in the array it builds. Its element type is not resolved where this
+// analysis runs, so it is read from the callback the same way the checker reads it:
+// a lambda is resolved through its body, a function value through its return type,
+// and an `it` expression under the binding that gives `it` its meaning.
+fn (mut tc TypeChecker) array_map_result_elem_type(id flat.NodeId) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	call := tc.a.node(id)
+	elem := tc.array_map_return_elem_type(*call)
+	clean := unalias_type(elem)
+	if clean is Void || clean is Unknown {
+		return none
+	}
+	return elem
+}
+
+fn (tc &TypeChecker) builtin_receiver_collection_type(id flat.NodeId) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	call := tc.a.node(id)
+	if call.children_count == 0 {
+		return none
+	}
+	callee := tc.a.child_node(call, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	receiver := unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(callee, 0))))
+	if receiver is Array || receiver is ArrayFixed || receiver is Map {
+		return receiver
+	}
+	return none
+}
+
+fn (tc &TypeChecker) collection_elements_are_known(collection Type) bool {
+	clean := unalias_type(collection)
+	if clean is Array {
+		return unalias_type(clean.elem_type) !is Unknown
+	}
+	if clean is ArrayFixed {
+		return unalias_type(clean.elem_type) !is Unknown
+	}
+	if clean is Map {
+		return unalias_type(clean.value_type) !is Unknown
+			&& unalias_type(clean.key_type) !is Unknown
+	}
+	return false
+}
+
+fn (tc &TypeChecker) collection_copy_shares_storage(collection Type) bool {
+	clean := unalias_type(collection)
+	mut seen := map[string]bool{}
+	if clean is Array {
+		return tc.type_can_hold_shared_storage(clean.elem_type, mut seen)
+	}
+	if clean is ArrayFixed {
+		return tc.type_can_hold_shared_storage(clean.elem_type, mut seen)
+	}
+	if clean is Map {
+		return tc.type_can_hold_shared_storage(clean.key_type, mut seen)
+			|| tc.type_can_hold_shared_storage(clean.value_type, mut seen)
+	}
+	return true
+}
+
+// Whether a value of this type can carry a reference to storage it shares with
+// whatever it was copied from. Anything that cannot be looked into is taken to be
+// able to, so an exemption resting on this is only given where it is certain.
+fn (tc &TypeChecker) type_can_hold_shared_storage(typ Type, mut seen map[string]bool) bool {
+	clean := unalias_type(typ)
+	if clean is Array || clean is Map || clean is Pointer || clean is Channel {
+		return true
+	}
+	if clean is Interface || clean is SumType || clean is FnType || clean is MultiReturn {
+		return true
+	}
+	if clean is Unknown {
+		return true
+	}
+	if clean is ArrayFixed {
+		return tc.type_can_hold_shared_storage(clean.elem_type, mut seen)
+	}
+	if clean is OptionType {
+		return tc.type_can_hold_shared_storage(clean.base_type, mut seen)
+	}
+	if clean is ResultType {
+		return tc.type_can_hold_shared_storage(clean.base_type, mut seen)
+	}
+	if clean is Struct {
+		if seen[clean.name] {
+			// Already on the way in; a cycle adds nothing that is not already known.
+			return false
+		}
+		seen[clean.name] = true
+		fields := tc.struct_fields_for_init(clean.name)
+		if fields.len == 0 {
+			// Nothing readable about it, so nothing about it can be ruled out.
+			return true
+		}
+		for field in fields {
+			if tc.type_can_hold_shared_storage(field.typ, mut seen) {
+				return true
+			}
+		}
+		return false
+	}
+	// A number, a boolean, a rune, an enum, a string: copied whole, sharing nothing
+	// that can be written through.
+	return false
+}
+
+fn (tc &TypeChecker) receiver_builtin_name(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	call := tc.a.node(id)
+	if call.children_count == 0 {
+		return none
+	}
+	callee := tc.a.child_node(call, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	receiver := unalias_type(tc.resolve_type(tc.a.child(callee, 0)))
+	mut qualified := ''
+	if receiver is Map {
+		qualified = 'map.${callee.value}'
+	} else if receiver is Array {
+		qualified = 'array.${callee.value}'
+	} else {
+		return none
+	}
+	if qualified in fresh_collection_builtins {
+		return qualified
+	}
+	return none
+}
+
 fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiting map[int]bool) []flat.NodeId {
 	if !tc.valid_node_id(id) {
 		return []flat.NodeId{}
@@ -13077,17 +13460,25 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	info := tc.resolve_call_info(id, *call) or {
 		return tc.conservative_call_alias_arguments(*call, false)
 	}
-	// The builtin map clone has no source-level declaration to inspect, but it
-	// always returns independent storage. User-defined clone methods have a
-	// nonempty resolved name and continue through the normal body analysis.
-	if info.name.len == 0 && info.has_receiver {
-		callee := tc.a.child_node(call, 0)
-		if callee.kind == .selector && callee.value == 'clone' && callee.children_count > 0
-			&& map_type_from_receiver(unalias_type(tc.resolve_type(tc.a.child(callee, 0)))) != none {
-			return []flat.NodeId{}
-		}
-	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
+	// A builtin that builds a new collection is not a window onto the one it was
+	// called on, so writing to what it hands back is not writing to the receiver.
+	// Reading its body does not say so: they work through pointers this analysis has
+	// to assume the worst of, and `map` and `filter` have no body here at all. They
+	// are settled by the declaration the call resolved to, so a method of one's own
+	// that happens to be called `map` is read like any other.
+	mut builtin_name := ''
+	if fresh_collection_builtin(info.name, decl_module) {
+		builtin_name = info.name
+	} else if info.name.len == 0 && info.has_receiver {
+		// Some of them resolve to no declaration at all. Nothing of one's own can be
+		// behind a name that resolved to nothing, so there it is what the receiver is
+		// that names the method, and a struct of one's own is never an array or a map.
+		builtin_name = tc.receiver_builtin_name(id) or { '' }
+	}
+	if builtin_name.len > 0 && !tc.builtin_result_shares_storage(builtin_name, id) {
+		return []flat.NodeId{}
+	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
 		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
 	}

@@ -225,7 +225,7 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	assert c_source.contains('__asm__ ('), c_source
 	assert c_source.contains('[b] "+r" (b)'), c_source
 	assert c_source.contains('[a] "r" (a)'), c_source
-	assert c_source.contains('[x] "+r" (x__local)'), c_source
+	assert c_source.contains('[x] "+r" (__v3_internal_symbol_local_x)'), c_source
 	assert c_source.contains('"+r" (value.v_index)'), c_source
 	assert c_source.contains('array_get(values, 0)'), c_source
 	assert c_source.contains('"+r" (value.ptr->v_index)'), c_source

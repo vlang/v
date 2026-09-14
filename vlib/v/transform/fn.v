@@ -6133,9 +6133,41 @@ fn (t &Transformer) alias_str_resolved_base_type(base_type string) string {
 	return clean
 }
 
+// optional_payload_alias_display_name returns the name an alias payload prints
+// itself with inside an option. A bare `'${x}'` on an alias of a primitive shows
+// just the underlying value, but the same value held in an option keeps the alias
+// name -- `Option(MyByte(0))`, not `Option(0)` -- so the wrapper the plain path
+// suppresses has to be added back here.
+fn (mut t Transformer) optional_payload_alias_display_name(typ string) ?string {
+	clean := typ.trim_space()
+	if isnil(t.tc) || clean.len == 0 || clean.starts_with('&') {
+		return none
+	}
+	if t.bare_struct_name_is_local_to_current_module(clean) {
+		return none
+	}
+	alias_name, base := t.lookup_str_alias(clean) or { return none }
+	if _ := t.alias_custom_str_method_name(alias_name) {
+		return none
+	}
+	resolved := t.alias_str_resolved_base_type(base)
+	if resolved !in ['string', 'bool', 'rune', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize',
+		'u8', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64'] {
+		return none
+	}
+	return struct_string_display_name(alias_name)
+}
+
 fn (t &Transformer) alias_str_needs_name_wrapper(base_type string) bool {
 	mut clean := t.alias_str_resolved_base_type(base_type)
 	if clean.starts_with('&') {
+		return false
+	}
+	// An alias of an option prints as the option it is: `type MaybeAorB = ?AorB`
+	// shows `Option(AorB(1))`. Wrapping the alias name around it would both hide
+	// the payload's own type name and claim a level of nesting the value does not
+	// have (`MaybeAorB(Option(1))`).
+	if t.is_optional_type_name(clean) {
 		return false
 	}
 	if clean.starts_with('builtin.') {
@@ -8254,7 +8286,13 @@ fn (mut t Transformer) mark_generic_str_method_specialization(method_name string
 	if args.len == 0 || isnil(t.tc) {
 		return
 	}
+	// A parallel transform worker shares the master's signature tables until it
+	// detaches them. Writing straight into the shared map races with the other
+	// workers, and leaves the master holding a key owned by this worker's
+	// disposable arena once the batch is merged and that arena is released.
+	t.tc.ensure_private_transform_signatures()
 	t.tc.specialized_generic_fns[method_name] = true
+	t.tc_signature_names_log << method_name
 	t.record_generic_specialization_args_for_names([method_name, c_name(method_name)], args)
 }
 
@@ -8701,15 +8739,27 @@ fn (mut t Transformer) wrap_optional_string_conversion(expr flat.NodeId, typ str
 		value
 	}
 	display_type := if pointer_payload { value_type[1..] } else { value_type }
+	// Rendering the payload emits statements of its own -- a struct payload copies
+	// itself into a temp, a `&T` payload dereferences first. Those belong inside the
+	// `ok` branch: hoisted in front of the check they run even for `none`, and
+	// `*opt.value` on a null payload pointer segfaults before anything is printed.
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
 	mut value_str := t.wrap_string_conversion(display_value, display_type)
 	if display_type == 'string' {
 		value_str = t.string_plus(t.string_plus(t.make_string_literal("'"), value_str), t.make_string_literal("'"))
 	}
+	if alias_display := t.optional_payload_alias_display_name(display_type) {
+		value_str = t.string_plus(t.string_plus(t.make_string_literal('${alias_display}('),
+			value_str), t.make_string_literal(')'))
+	}
 	some_str := t.string_plus(t.string_plus(t.make_string_literal(option_prefix), value_str), t.make_string_literal(')'))
-	assign_some := t.make_assign(t.make_ident(res_name), some_str)
-	t.pending_stmts << t.make_if(t.make_selector(t.make_ident(opt_name), 'ok', 'bool'), t.make_block([
-		assign_some,
-	]), t.make_empty())
+	mut some_stmts := []flat.NodeId{}
+	t.drain_pending(mut some_stmts)
+	some_stmts << t.make_assign(t.make_ident(res_name), some_str)
+	t.pending_stmts = outer_pending
+	t.pending_stmts << t.make_if(t.make_selector(t.make_ident(opt_name), 'ok', 'bool'),
+		t.make_block_skip_scope_drops(some_stmts), t.make_empty())
 	return t.make_ident(res_name)
 }
 
@@ -9356,6 +9406,10 @@ fn (mut t Transformer) build_default_clone_helper_fn(typ string) {
 	t.set_fn_ret_type(helper, typ)
 	t.mark_fn_used_name(helper)
 	if !isnil(t.tc) {
+		// Detach the signature tables first: a parallel transform worker still shares
+		// the master's maps here, so an in-place write would race with the other
+		// workers and publish a key owned by this worker's disposable arena.
+		t.tc.ensure_private_transform_signatures()
 		t.tc.fn_ret_types[helper] = t.tc.parse_type(typ)
 		t.tc.register_generated_fn_param_types(helper, [t.tc.parse_type('voidptr')])
 		t.tc.fn_variadic[helper] = false

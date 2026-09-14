@@ -934,7 +934,7 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
 
 fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 	for entry in entries {
-		cname := g.cname(entry.name)
+		cname := g.local_cname(entry.name)
 		typ := g.tc.parse_type(entry.type_name)
 		mut expr := cname
 		mut free_pointer_storage := false
@@ -3042,19 +3042,50 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		.asm_stmt {
 			g.gen_c_inline_asm_stmt(node)
 		}
+		.comptime_if {
+			// Only portable output (`-os cross`) keeps a target-dependent `$if` this
+			// far; every other build has already selected a branch before codegen.
+			if !g.output_cross_c {
+				g.gen_unsupported_node(node)
+				return
+			}
+			g.writeln('#if ${g.cross_c_condition(node.value)}')
+			if node.children_count > 0 {
+				g.gen_comptime_branch_stmts(g.a.child(&node, 0))
+			}
+			if node.children_count > 1 {
+				g.writeln('#else')
+				g.gen_comptime_branch_stmts(g.a.child(&node, 1))
+			}
+			g.writeln('#endif')
+		}
 		.empty {}
 		else {
 			// NOTE: match_stmt is intentionally absent — the transformer lowers every
 			// match into an if/else-if chain (see transform.lower_match_stmts), so the
 			// backend never sees one. Match lowering lives in the transformer, not here.
-			source_name := if source_file := g.a.source_files[node.pos.id] {
-				source_file.name
-			} else {
-				''
-			}
-			eprintln('gen_node: unsupported node kind: ${node.kind}; fn=${g.cur_fn_name}; source=${source_name}:${node.pos.offset}; value=${node.value}; typ=${node.typ}; op=${node.op}; children=${node.children_count}')
+			g.gen_unsupported_node(node)
 		}
 	}
+}
+
+fn (mut g FlatGen) gen_unsupported_node(node flat.Node) {
+	source_name := if source_file := g.a.source_files[node.pos.id] {
+		source_file.name
+	} else {
+		''
+	}
+	eprintln('gen_node: unsupported node kind: ${node.kind}; fn=${g.cur_fn_name}; source=${source_name}:${node.pos.offset}; value=${node.value}; typ=${node.typ}; op=${node.op}; children=${node.children_count}')
+}
+
+// gen_comptime_branch_stmts emits one retained `$if` branch. The branch keeps its
+// own block scope: a `$if` body is a scope in V, and its locals must be dropped
+// inside the preprocessor guard, where their declarations exist.
+fn (mut g FlatGen) gen_comptime_branch_stmts(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return
+	}
+	g.gen_node(id)
 }
 
 fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
@@ -7575,7 +7606,7 @@ fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 		} else {
 			'int'
 		}
-		lhs_name := g.cname(lhs.value)
+		lhs_name := g.local_decl_cname(lhs.value)
 		if j < multi_types.len {
 			if fixed := array_fixed_type(multi_types[j]) {
 				c_elem, dims := g.fixed_array_decl_parts(fixed)
@@ -8253,20 +8284,31 @@ fn (g &FlatGen) discard_name(id flat.NodeId) string {
 	return '__discard_${pos.id}_${pos.offset}_${pos.end}'
 }
 
+// The name a current parameter is read under. The identifier path reads one that
+// needs the global suffix the way it was declared, and one that merely shadows a
+// type the way it reads every other local; anything reading a parameter directly has
+// to make the same distinction or it names something that is not there.
+fn (g &FlatGen) current_param_use_cname(name string) string {
+	if g.local_name_needs_global_suffix(name) {
+		return g.local_decl_cname(name)
+	}
+	return g.local_cname(name)
+}
+
 fn (g &FlatGen) local_cname(name string) string {
 	if g.local_shadows_global(name) || local_name_shadows_c_runtime(name)
 		|| g.local_name_shadows_c_typedef(name) {
-		return '${g.cname(name)}__local'
+		return naming.local_rename(g.cname(name))
 	}
 	return g.cname(name)
 }
 
 fn (g &FlatGen) local_decl_cname(name string) string {
 	if local_name_shadows_c_runtime(name) || g.local_name_shadows_c_typedef(name) {
-		return '${g.cname(name)}__local'
+		return naming.local_rename(g.cname(name))
 	}
 	if g.local_name_needs_global_suffix(name) {
-		return '${g.cname(name)}__local'
+		return naming.local_rename(g.cname(name))
 	}
 	return g.cname(name)
 }
@@ -8310,6 +8352,15 @@ fn (mut g FlatGen) precompute_local_global_suffix_names() {
 	g.local_global_suffix_names_ready = true
 }
 
+// The runtime's own `array` struct is typed into C under that name, and a local
+// taking the name for its own hides the type from the rest of the function it is in:
+// a slice of `a.values` inside a function whose parameter is called `array` is built
+// with an `(array[]){...}` literal, and the literal no longer names a type. `map` and
+// `string` cannot arise the same way -- the parser refuses them as identifiers.
+const v_runtime_typedef_names = {
+	'array': true
+}
+
 fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
@@ -8319,8 +8370,8 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		}
 	}
 	cname := g.cname(name)
-	result := cname in g.inlined_c_typedef_names || cname in g.tc.c_typedef_structs
-		|| 'C.${cname}' in g.tc.c_typedef_structs
+	result := cname in v_runtime_typedef_names || cname in g.inlined_c_typedef_names
+		|| cname in g.tc.c_typedef_structs || 'C.${cname}' in g.tc.c_typedef_structs
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
 		cache.put(name, if result { i8(1) } else { i8(-1) })

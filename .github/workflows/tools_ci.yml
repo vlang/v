@@ -33,7 +33,7 @@ jobs:
         cc: [tcc, gcc, clang]
       fail-fast: false
     env:
-      VFLAGS: -old-compiler -cc ${{ matrix.cc }}
+      VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
       - name: Build V
@@ -73,7 +73,7 @@ jobs:
         cc: [clang]
       fail-fast: false
     env:
-      VFLAGS: -old-compiler -cc ${{ matrix.cc }}
+      VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
       - name: Build V
@@ -133,7 +133,7 @@ jobs:
       env:
         V_CI_MUSL: 1
         V_CI_UBUNTU_MUSL: 1
-        VFLAGS: -old-compiler -cc musl-gcc -gc none
+        VFLAGS: -cc musl-gcc -gc none
       volumes:
         - ${{github.workspace}}:/opt/vlang
     steps:

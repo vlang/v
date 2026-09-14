@@ -205,10 +205,13 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			children: []flat.NodeId{}
 			disabled_fns: map[string]bool{}
 			export_fn_names: map[string]string{}
+			contextual_anon_struct_types: map[string]bool{}
+			synthesized_anon_struct_types: map[string]bool{}
 			source_files: map[int]&token.File{}
 			template_call_sites: map[int]token.Pos{}
 			template_actions: map[int]string{}
 			missing_imports: map[int]string{}
+			missing_import_hints: map[int]string{}
 			formatter_sources: map[int]string{}
 			formatter_file_sources: map[int]string{}
 			formatter_node_ends: map[int]int{}
@@ -817,6 +820,13 @@ fn (mut p Parser) peek_is(tok token.Token) bool {
 fn (mut p Parser) check(expected token.Token) {
 	if p.tok == expected {
 		p.next()
+		return
+	}
+	// Recovery is deliberately silent for most tokens, but a file can never legitimately end
+	// while a closing delimiter is still owed. Reporting it stops `v fmt` from accepting a
+	// truncated file and printing the balanced - i.e. invented - version of it.
+	if p.tok == .eof && expected in [token.Token.rcbr, .rpar, .rsbr] {
+		p.record_diagnostic('unexpected eof, expecting `${expected}`', p.tok_pos)
 	}
 }
 
@@ -2173,6 +2183,15 @@ fn (mut p Parser) global_decl() flat.NodeId {
 	header_pos := p.span_to(global_start)
 	mut ids := []flat.NodeId{}
 	for {
+		if p.tok == .eof {
+			// An unterminated `__global (` used to spin here forever: `p.next()` cannot
+			// advance past eof, and the grouped form never breaks on its own.
+			if is_grouped {
+				// The wording and the acute quotes match the existing fixtures.
+				p.record_diagnostic('unexpected eof, expecting ´)´', p.s.src.len)
+			}
+			break
+		}
 		if p.tok == .semicolon {
 			p.next()
 			if !is_grouped {
@@ -2304,6 +2323,15 @@ fn (mut p Parser) const_decl() flat.NodeId {
 	}
 	mut ids := []flat.NodeId{}
 	for {
+		if p.tok == .eof {
+			// An unterminated `const (` used to spin here forever: `p.next()` cannot
+			// advance past eof, and the grouped form never breaks on its own.
+			if is_grouped {
+				// The wording and the acute quotes match the existing fixtures.
+				p.record_diagnostic('unexpected eof, expecting ´)´', p.s.src.len)
+			}
+			break
+		}
 		if p.tok == .semicolon {
 			p.next()
 			if !is_grouped {
@@ -3213,6 +3241,11 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		return p.comptime_if_node_at(cond, then_block, else_block, dollar_start)
 	}
 	cond = p.resolve_comptime_const_values(p.resolve_comptime_at_values(cond))
+	if cross_cond := p.cross_deferred_comptime_cond(cond) {
+		then_block := p.block_stmt()
+		else_block := p.parse_comptime_else()
+		return p.comptime_if_node_at(cross_cond, then_block, else_block, dollar_start)
+	}
 	// Only defer conditions that need information unavailable at parse time: a `$for` loop var
 	// (`field.typ`, `field.indirections`, `value.value`), known once the loop is unrolled, or a
 	// type test (`T is int`), known after monomorphization. Ordinary platform/custom flags
@@ -3530,6 +3563,24 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 		return p.comptime_if_node_at(cond, then_block, else_block, dollar_start)
 	}
 	cond = p.resolve_comptime_const_values(p.resolve_comptime_at_values(cond))
+	if cross_cond := p.cross_deferred_comptime_cond(cond) {
+		then_block := p.top_level_block_stmt()
+		else_block := p.parse_top_level_comptime_else()
+		// Only `#include`/`#flag` directives can carry their condition into
+		// portable C, where the backend wraps them in `#if` (see
+		// `index_cross_directive_guards`). A declaration cannot be guarded that
+		// way - the generator collects nested functions, types, constants and
+		// globals directly - so a top-level `$if` holding one is resolved for the
+		// generating host, exactly as in an ordinary build. Keeping both branches
+		// would emit both declarations unguarded, and the first one would win.
+		if p.comptime_subtree_is_directives_only(then_block)
+			&& p.comptime_subtree_is_directives_only(else_block) {
+			return p.comptime_if_node_at(cross_cond, then_block, else_block, dollar_start)
+		}
+		taken := p.eval_comptime_cond(cond)
+		p.discard_comptime_branch(if taken { else_block } else { then_block })
+		return if taken { then_block } else { else_block }
+	}
 	if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
 		|| comptime_cond_has_builtin_threads(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
@@ -3880,11 +3931,21 @@ fn (mut p Parser) parse_comptime_cond() string {
 		} else {
 			raw_tok_str
 		}
+		if tok_str.len == 0 {
+			// A condition that wraps onto the next line gets an automatic semicolon, which has
+			// no textual form. Writing it would leave a double separator (`a  || b`) that the
+			// formatter then prints verbatim and collapses on the next run.
+			p.next()
+			continue
+		}
 		// Source style writes the optional-flag marker detached (`$if flag ? {`), but the
 		// condition is otherwise stored without that space so flag lookups can match on it.
 		// Keep it only when formatting, as parse_attribute_comptime_cond does for `@[if flag ?]`.
+		// `in`/`!in` must stay detached from the type list too: the scanner only recognises
+		// `!in` when a space follows, so `T !in[...]` would re-scan as `!` `in` `[`.
 		needs_space := comptime_cond_needs_space(prev_tok_str, tok_str)
 			|| (p.prefs.is_fmt && tok_str == '?')
+			|| (p.prefs.is_fmt && tok_str == '[' && prev_tok_str in ['in', '!in'])
 		if cond.len > 0 && needs_space {
 			cond.write_string(' ')
 		}
@@ -4469,6 +4530,133 @@ fn (mut p Parser) parse_top_level_comptime_else() flat.NodeId {
 		return p.parse_top_level_comptime_if()
 	}
 	return p.top_level_block_stmt()
+}
+
+// comptime_subtree_is_directives_only reports whether a retained `$if` branch
+// holds nothing the C backend would have to guard by itself, i.e. only `#include`
+// and `#flag` directives (possibly nested in further blocks or `$if`s).
+fn (p &Parser) comptime_subtree_is_directives_only(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return true
+	}
+	node := p.a.nodes[int(id)]
+	match node.kind {
+		.directive, .empty {
+			return true
+		}
+		.block, .comptime_if {
+			for i in 0 .. node.children_count {
+				if !p.comptime_subtree_is_directives_only(p.a.child(&node, i)) {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// discard_comptime_branch empties the branch a host-resolved top-level `$if` did
+// not take. Both branches were parsed to find out whether they only held
+// directives, and a stage that scans every AST node instead of walking the file
+// index would otherwise still find the declarations in the unused one.
+fn (mut p Parser) discard_comptime_branch(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	for i in 0 .. node.children_count {
+		p.discard_comptime_branch(p.a.child(&node, i))
+	}
+	p.a.nodes[int(id)] = flat.Node{
+		kind: .empty
+	}
+}
+
+// cross_deferred_comptime_cond returns the condition to keep in the AST when
+// portable C output (`-os cross`) lets the C preprocessor decide a `$if` on the
+// machine that finally compiles the generated C, or none when the condition is
+// resolved here as usual.
+fn (p &Parser) cross_deferred_comptime_cond(cond string) ?string {
+	if !p.prefs.output_cross_c || !comptime_cond_has_target_flag(cond) {
+		return none
+	}
+	// A condition that also needs information unavailable at parse time keeps its
+	// existing deferral path, so that the transformer can still fold it once that
+	// information exists.
+	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
+		|| comptime_cond_has_type_metadata(cond) || comptime_cond_has_builtin_threads(cond)
+		|| p.comptime_cond_references_unresolved_local(cond) {
+		return none
+	}
+	return p.cross_normalized_comptime_cond(cond)
+}
+
+// cross_normalized_comptime_cond folds every target-independent part of a
+// condition to `true`/`false`, leaving only the target flags that the C
+// preprocessor has to decide. The C backend then needs no build settings to
+// translate what is left.
+fn (p &Parser) cross_normalized_comptime_cond(cond string) string {
+	clean := comptime_cond_strip_outer_parens(cond.trim_space())
+	if clean.len == 0 {
+		return 'false'
+	}
+	left_or, right_or, has_or := comptime_cond_split_top_level(clean, '||')
+	if has_or {
+		return '(${p.cross_normalized_comptime_cond(left_or)} || ${p.cross_normalized_comptime_cond(right_or)})'
+	}
+	left_and, right_and, has_and := comptime_cond_split_top_level(clean, '&&')
+	if has_and {
+		return '(${p.cross_normalized_comptime_cond(left_and)} && ${p.cross_normalized_comptime_cond(right_and)})'
+	}
+	if clean.starts_with('!') {
+		return '!(${p.cross_normalized_comptime_cond(clean[1..])})'
+	}
+	if comptime_cond_has_target_flag(clean) {
+		return clean
+	}
+	return if p.eval_comptime_cond(clean) { 'true' } else { 'false' }
+}
+
+// comptime_cond_has_target_flag reports whether any bare identifier in a comptime
+// condition names a target-dependent flag (OS, architecture, word size, byte
+// order or C compiler).
+fn comptime_cond_has_target_flag(cond string) bool {
+	mut i := 0
+	for i < cond.len {
+		c := cond[i]
+		if c in [`'`, `"`, `\``] {
+			i++
+			for i < cond.len && cond[i] != c {
+				i++
+			}
+			i++
+			continue
+		}
+		if !(c.is_letter() || c == `_`) {
+			i++
+			continue
+		}
+		start := i
+		for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+			i++
+		}
+		// `name ?` asks whether the user passed `-d name`. That is a build option
+		// even when it shares a spelling with a target flag, so it stays resolved.
+		mut j := i
+		for j < cond.len && cond[j] in [` `, `\t`] {
+			j++
+		}
+		if j < cond.len && cond[j] == `?` {
+			continue
+		}
+		if pref.comptime_flag_is_target_dependent(cond[start..i]) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (p &Parser) eval_comptime_cond(cond string) bool {
@@ -6118,8 +6306,8 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 		p.embed_file_field('apath', p.add_val_id(5, apath)),
 		p.embed_file_field('len', p.add_val_id(1, len.str())),
 	]
-	if uncompressed := p.embed_file_uncompressed_data(apath) {
-		field_ids << p.embed_file_field('uncompressed', uncompressed)
+	if payload := p.embed_file_uncompressed_data(apath) {
+		field_ids << p.embed_file_field('uncompressed', p.embed_file_payload_cast(payload, '&u8'))
 	}
 	if compression_type !in ['none', 'zlib'] {
 		field_ids << p.a.add_node(flat.Node{
@@ -6138,18 +6326,38 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 	})
 }
 
+// embed_file_uncompressed_data materializes the embedded file's bytes into the AST, so
+// that the generated C carries them and `EmbedFileData.data()` needs no IO. A plain debug
+// build skips it and re-reads `apath` at runtime instead, to keep rebuilds cheap.
+// Portable `-os cross` output cannot do that: `apath` names a directory on the machine
+// that generated the snapshot, and the snapshot is compiled and run somewhere else. That
+// is how `vc/v.c` bootstraps V, so a portable snapshot always embeds the bytes.
 fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
-	if !p.prefs.is_prod || apath.len == 0 || !os.is_file(apath) {
+	if !p.prefs.is_prod && !p.prefs.output_cross_c {
+		return none
+	}
+	if apath.len == 0 || !os.is_file(apath) {
 		return none
 	}
 	bytes := os.read_bytes(apath) or { return none }
-	data := p.add_val_id(5, bytes.bytestr().clone())
+	// Flagged, so that the literal table skips it: only the embed codegen reads
+	// this node, and an interned copy would repeat the payload verbatim.
+	return p.add_node(flat.Node{
+		kind: .string_literal
+		value: bytes.bytestr().clone()
+		flags: flat.node_flag_embed_payload
+	})
+}
+
+// embed_file_payload_cast points the payload field at `payload`. The backend
+// decides how the bytes are actually spelled; it only ever produces a `&u8`.
+fn (mut p Parser) embed_file_payload_cast(payload flat.NodeId, typ string) flat.NodeId {
 	return p.add_node(flat.Node{
 		kind: .cast_expr
-		value: '&u8'
-		typ: '&u8'
+		value: typ
+		typ: typ
 		is_mut: true // marks this compiler-generated trusted embed buffer cast
-		children_start: p.add_child(data)
+		children_start: p.add_child(payload)
 		children_count: 1
 	})
 }
@@ -6203,6 +6411,11 @@ fn (mut p Parser) parse_comptime_if_expr_after_if(dollar_start int) flat.NodeId 
 		return p.comptime_if_node_at(cond, then_expr, else_expr, dollar_start)
 	}
 	cond = p.resolve_comptime_const_values(p.resolve_comptime_at_values(cond))
+	// A `$if` *expression* stays resolved here even for portable output. Its
+	// branches can have different types (`closure_thunk` is a differently sized
+	// fixed array per architecture), which no preprocessor guard around an
+	// expression can express. This matches what the bootstrap snapshot has always
+	// contained.
 	// Whether `threads` is enabled depends on spawn expressions in the completed AST,
 	// so expression branches must be retained for the checker/transformer to select.
 	if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
@@ -6434,8 +6647,14 @@ fn (mut p Parser) stmt() flat.NodeId {
 		}
 		.key_go, .key_spawn {
 			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
+			spawn_pos := p.span_start()
 			p.next()
 			inner := p.expr(.lowest)
+			// Capture the span before the terminating semicolon is consumed, so that the
+			// node covers exactly `spawn <call>`. Nodes left without a position inherit the
+			// *next* token's span (see add_node), which shifts every source-gap lookup that
+			// the formatter does for blank lines and comments by one statement.
+			spawn_span := p.span_to(spawn_pos)
 			if p.tok == .semicolon {
 				p.next()
 			}
@@ -6443,12 +6662,14 @@ fn (mut p Parser) stmt() flat.NodeId {
 			spawn_expr := p.add_node(flat.Node{
 				kind: .spawn_expr
 				value: keyword
+				pos: spawn_span
 				children_start: spawn_start
 				children_count: 1
 			})
 			sstart := p.add_child(spawn_expr)
 			return p.add_node(flat.Node{
 				kind: .expr_stmt
+				pos: spawn_span
 				children_start: sstart
 				children_count: 1
 			})
@@ -7751,7 +7972,11 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 
 	if p.tok == .decl_assign {
 		p.next()
-		rhs := if p.lhs_is_dynamic_sql_expr_alias(lhs) && p.tok == .lcbr
+		// The compiler only treats `x := { ... }` as an ORM dynamic-where literal when a `sql`
+		// block in the same file uses `x`. The formatter has no such luxury: the shape check
+		// alone already rules out map literals (a top level `:` disqualifies), and reading one
+		// as a map instead turns its conditions into keys with empty values.
+		rhs := if p.tok == .lcbr && (p.lhs_is_dynamic_sql_expr_alias(lhs) || p.prefs.is_fmt)
 			&& p.current_lcbr_looks_query_data_literal() {
 			p.sql_query_data_literal_expr()
 		} else {
@@ -9095,12 +9320,23 @@ fn (mut p Parser) sql_expr(sql_pos int) flat.NodeId {
 }
 
 fn (mut p Parser) sql_query_data_literal_expr() flat.NodeId {
+	start := p.span_start()
 	tokens := p.sql_block_tokens()
-	return p.add_node(flat.Node{
+	id := p.add_node(flat.Node{
 		kind: .sql_expr
 		value: 'querydata ${tokens.join(' ')}'
 		typ: 'orm.QueryData'
+		pos: p.span_to(start)
 	})
+	if p.prefs.is_fmt {
+		// The literal is a bare `{ ... }` block whose contents are not a general expression
+		// tree, so keep the original text: rebuilding it from `tokens` would drop the body.
+		end := int_min(p.a.node(id).pos.end, p.s.src.len)
+		if end > start {
+			p.a.formatter_sources[int(id)] = p.s.src[start..end]
+		}
+	}
+	return id
 }
 
 fn (mut p Parser) starts_sql_expr() bool {
@@ -10263,12 +10499,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_go, .key_spawn {
 			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
+			spawn_pos := p.span_start()
 			p.next()
 			inner := p.expr(.lowest)
 			sstart := p.add_child(inner)
 			return p.add_node(flat.Node{
 				kind: .spawn_expr
 				value: keyword
+				pos: p.span_to(spawn_pos)
 				children_start: sstart
 				children_count: 1
 			})
@@ -10345,6 +10583,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.ellipsis {
 			// spread: ...expr
+			spread_start := p.span_start()
 			p.next()
 			inner := p.expr(.lowest)
 			pstart := p.add_child(inner)
@@ -10352,6 +10591,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				kind: .prefix
 				op: .none
 				value: '...'
+				pos: p.span_to(spread_start)
 				children_start: pstart
 				children_count: 1
 			})
@@ -10634,6 +10874,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		// vararg spread: ...expr
 		if p.tok == .ellipsis {
+			spread_start := p.span_start()
 			p.next()
 			inner := p.expr(.lowest)
 			sstart := p.add_child(inner)
@@ -10641,6 +10882,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 				kind: .prefix
 				op: .none
 				value: '...'
+				pos: p.span_to(spread_start)
 				children_start: sstart
 				children_count: 1
 			})
@@ -11193,8 +11435,53 @@ fn type_name_can_init(type_name string) bool {
 	return short.len > 0 && short[0] >= `A` && short[0] <= `Z`
 }
 
+// struct_init_name_start returns the source offset where the type expression in front of the
+// `{` of a struct initializer begins. The resolved `name` is not always spelled the way the
+// source spells it (a type declared inside a function gets a qualified name), so subtracting
+// its length can reach back past the type and give the node a span that starts in the middle
+// of the preceding expression. Fall back to walking the source backwards in that case.
+fn (p &Parser) struct_init_name_start(name string) int {
+	lcbr := clamp_source_offset(p.tok_pos, p.s.src.len)
+	guess := lcbr - name.len
+	if guess >= 0 && p.s.src[guess..lcbr] == name {
+		return guess
+	}
+	mut start := lcbr
+	for start > 0 {
+		c := p.s.src[start - 1]
+		if c == `]` {
+			mut depth := 0
+			mut i := start - 1
+			for i >= 0 {
+				if p.s.src[i] == `]` {
+					depth++
+				} else if p.s.src[i] == `[` {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+				i--
+			}
+			if i < 0 {
+				break
+			}
+			start = i
+			continue
+		}
+		if !(c.is_letter() || c.is_digit() || c == `_` || c == `.`) {
+			break
+		}
+		start--
+	}
+	if start == lcbr {
+		return int_max(0, guess)
+	}
+	return start
+}
+
 fn (mut p Parser) struct_init(name string) flat.NodeId {
-	init_start := int_max(0, p.tok_pos - name.len)
+	init_start := p.struct_init_name_start(name)
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
 	// assoc syntax: Type{...base, field: val}
@@ -13667,6 +13954,14 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 	p.anonymous_struct_count++
 	name_prefix := if is_union { 'AnonUnion' } else { 'AnonStruct' }
 	name := '${name_prefix}_${local_type_scope_part(p.cur_file)}_${p.anonymous_struct_count}'
+	p.a.synthesized_anon_struct_types[name] = true
+	if inferred {
+		// Synthesized to type a `struct { ... }` literal, not to declare a field. The
+		// literal's type is whatever the context expects, so this name only stands in for
+		// it; the checker uses that to tell such an initializer apart from an attempt to
+		// name another module's anonymous declaration outright.
+		p.a.contextual_anon_struct_types[name] = true
+	}
 	start := p.add_children(ids)
 	decl_id := p.add_node(flat.Node{
 		kind: .struct_decl

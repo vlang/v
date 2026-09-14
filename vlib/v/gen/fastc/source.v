@@ -16,6 +16,14 @@ fn fastc_vmod_root_for_file(source_file string) string {
 	return util.nearest_vmod_root(source_file) or { os.real_path(dir) }
 }
 
+fn fastc_preferences_for_entry_paths(paths []string, prefs &pref.Preferences) pref.Preferences {
+	mut scoped := *prefs
+	if scoped.module_resolution_root == '' && paths.len > 0 {
+		scoped.module_resolution_root = os.dir(os.real_path(paths[0]))
+	}
+	return scoped
+}
+
 fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) string {
 	mut result := raw
 	if result.contains('@VEXEROOT') && vroot.len > 0 {
@@ -77,7 +85,8 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 // resolve memo before returning.
 fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]FastcSourceFile, map[string]string) {
 	mut pending_memo_store := FastcPendingMemoStore{}
-	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, prefs, mut pending_memo_store)!
+	scoped_prefs := fastc_preferences_for_entry_paths(paths, prefs)
+	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, &scoped_prefs, mut pending_memo_store)!
 	fastc_wait_memo_store(mut pending_memo_store)
 	return sources, module_aliases
 }
@@ -1161,7 +1170,7 @@ fn fastc_module_source_files(module_dir string, prefs &pref.Preferences, mut mod
 // fastc_list_module_sources lists the backend-relevant .v files of `dir`.
 fn fastc_list_module_sources(dir string, prefs &pref.Preferences) []string {
 	mut module_files := []string{}
-	for module_file in pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target) {
+	for module_file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)) {
 		if fastc_source_file_matches_backend(module_file) {
 			module_files << module_file
 		}
@@ -1217,7 +1226,7 @@ fn fastc_entry_module_files(entry_path string, prefs &pref.Preferences) []string
 	if entry_dir == '' {
 		return []string{}
 	}
-	mut files := pref.get_v_files_from_dir_for_target(entry_dir, prefs.user_defines, prefs.target)
+	mut files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(entry_dir, prefs.user_defines, prefs.target))
 	// Only the module root (where v.mod lives) pulls in the declared subdirs, so
 	// an entry file already inside a subdir does not re-expand the whole project.
 	vmod_root := fastc_vmod_root_for_file(entry_path)
@@ -1225,7 +1234,7 @@ fn fastc_entry_module_files(entry_path string, prefs &pref.Preferences) []string
 		for subdir in fastc_vmod_subdirs(vmod_root) {
 			subdir_path := os.join_path(vmod_root, subdir)
 			if os.is_dir(subdir_path) {
-				files << pref.get_v_files_from_dir_for_target(subdir_path, prefs.user_defines, prefs.target)
+				files << prefs.without_excluded(pref.get_v_files_from_dir_for_target(subdir_path, prefs.user_defines, prefs.target))
 			}
 		}
 	}
@@ -1265,8 +1274,10 @@ fn fastc_vmod_root_matches(entry_path string, expected_root string) bool {
 		if os.exists(os.join_path(dir, 'v.mod')) {
 			return dir == expected_root
 		}
-		parent := os.dir(dir)
-		if parent == dir || parent.len == 0 {
+		// `os.dir` answers `.` for a bare Windows drive, which would keep the walk
+		// going against the current directory; `os.parent_dir` stops at the root.
+		parent := os.parent_dir(dir)
+		if parent.len == 0 {
 			return original_dir == expected_root
 		}
 		dir = parent

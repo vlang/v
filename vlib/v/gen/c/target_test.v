@@ -1306,3 +1306,124 @@ fn test_emscripten_comptime_branch_uses_canonical_target() {
 	assert 'wasm_selected' in fn_names
 	assert 'host_selected' !in fn_names
 }
+
+fn test_cross_c_condition_translates_retained_comptime_conditions() {
+	mut g := FlatGen.new()
+	g.set_output_cross_c(true)
+	assert g.cross_c_condition('linux') == '(defined(__linux__) && !defined(__ANDROID__))'
+	assert g.cross_c_condition('!(windows)') == '(!defined(_WIN32))'
+	assert g.cross_c_condition('(macos || linux)') == '((defined(__APPLE__) && !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)) || (defined(__linux__) && !defined(__ANDROID__)))'
+	assert g.cross_c_condition('(arm64 && !(tinyc))') == '(defined(__V_arm64) && (!defined(__TINYC__)))'
+	// The parser folds target-independent parts of a retained condition before
+	// codegen, so only `true`/`false` reach this translation.
+	assert g.cross_c_condition('(true && x64)') == '(1 && defined(TARGET_IS_64BIT))'
+	assert g.cross_c_condition('(false || linux)') == '(0 || (defined(__linux__) && !defined(__ANDROID__)))'
+}
+
+fn test_cross_directive_target_prefix_conditions() {
+	// `#include linux <sys/timerfd.h>` has to stay in portable output, guarded,
+	// instead of being resolved against the generating host.
+	// `#include linux <...>` uses the same mutually exclusive condition as `$if
+	// linux`: `c_flag_target_enabled` compares V's target OS, where `android` is
+	// not `linux` either.
+	assert c_directive_target_condition('linux <sys/timerfd.h>') or { '' } == '(defined(__linux__) && !defined(__ANDROID__))'
+	assert c_directive_strip_target_prefix('linux <sys/timerfd.h>') == '<sys/timerfd.h>'
+	assert c_directive_target_condition('<stdio.h>') == none
+	assert c_directive_strip_target_prefix('<stdio.h>') == '<stdio.h>'
+}
+
+fn test_cross_embeds_transitive_local_includes() {
+	// A header embedded into portable output takes its own quoted includes with
+	// it: the generated C is compiled far from the source tree, where a sibling
+	// `#include "..."` would no longer resolve.
+	dir := os.join_path(os.vtmp_dir(), 'v3_cross_embed_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'sibling.h'), '#define SIBLING_MARKER 1\n') or { panic(err) }
+	os.write_file(os.join_path(dir, 'outer.h'), '#include "sibling.h"\n#include <stdio.h>\n#define OUTER_MARKER 1\n') or {
+		panic(err)
+	}
+
+	mut g := FlatGen.new()
+	g.set_output_cross_c(true)
+	embedded := g.cross_embedded_header_text(os.join_path(dir, 'outer.h'), []string{}) or {
+		panic('header not embedded')
+	}
+	assert embedded.contains('SIBLING_MARKER')
+	assert embedded.contains('OUTER_MARKER')
+	assert !embedded.contains('#include "sibling.h"')
+	// A system header stays an include; the consumer's C compiler supplies it.
+	assert embedded.contains('#include <stdio.h>')
+}
+
+fn test_cross_embedding_stops_at_an_include_cycle() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_cross_embed_cycle_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'a.h'), '#include "b.h"\n#define A_MARKER 1\n') or { panic(err) }
+	os.write_file(os.join_path(dir, 'b.h'), '#include "a.h"\n#define B_MARKER 1\n') or { panic(err) }
+
+	mut g := FlatGen.new()
+	g.set_output_cross_c(true)
+	embedded := g.cross_embedded_header_text(os.join_path(dir, 'a.h'), []string{}) or {
+		panic('header not embedded')
+	}
+	assert embedded.contains('A_MARKER')
+	assert embedded.contains('B_MARKER')
+}
+
+// A `#flag` can name a native source or object outright -- `vlib/db/sqlite/sqlite.c.v` builds
+// `@VEXEROOT/thirdparty/sqlite/sqlite3.c` that way, and uses a prebuilt `sqlite3.o` on
+// Windows. The include scan never sees those, so they need their own collection or a cached
+// build keeps running against a stale amalgamation.
+fn test_native_flag_inputs_are_collected() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_flag_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	native_source := os.join_path(dir, 'amalgamation.c')
+	os.write_file(native_source, 'int amalgamation(void) { return 0; }\n') or { panic(err) }
+	prebuilt := os.join_path(dir, 'prebuilt.o')
+	os.write_file(prebuilt, 'not really an object, only its path matters\n') or { panic(err) }
+
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#flag ${native_source}\n#flag ${prebuilt}\n#flag -lm\n#flag -I${dir}\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+
+	collected := cache_native_flag_input_files(a, '', prefs.target)
+	assert collected == [os.real_path(native_source), os.real_path(prebuilt)], collected.str()
+}
+
+// Only files are inputs: a library name, an option, and a path that does not exist must not
+// be reported, or every lookup would stat something that is never there and count it changed.
+fn test_native_flag_inputs_ignore_options_and_missing_paths() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_flag_skips_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#flag -lsqlite3\n#flag -L/usr/local/lib\n#flag -DSOME_MACRO\n#flag ${dir}/absent.c\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+
+	assert cache_native_flag_input_files(a, '', prefs.target) == []
+}

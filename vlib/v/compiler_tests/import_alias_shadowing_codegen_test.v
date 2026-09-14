@@ -13,7 +13,7 @@ const alias_shadow_vlib_dir = os.dir(alias_shadow_v3_dir)
 const alias_shadow_v3_src = os.join_path(alias_shadow_v3_dir, 'v.v')
 
 // The fixtures have to be compiled by the V3 compiler built from this checkout.
-// Building `vlib/v/v3.v` is also what lets the suite's unit-test wrapper hand
+// Building `vlib/v/v.v` is also what lets the suite's unit-test wrapper hand
 // back its shared V3 binary; any other invocation is forwarded to the host
 // compiler instead, which would not exercise this code path at all.
 fn alias_shadow_build_v3() string {
@@ -92,4 +92,54 @@ fn test_a_shadowed_module_keeps_its_own_type_through_a_pointer() {
 	})
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '5', res.output
+}
+
+// The module that owns the canonical annotation need not be imported by the
+// current file. A public signature can carry it across a transitive dependency.
+fn test_a_transitive_shadowed_module_keeps_its_own_type() {
+	v3_bin := alias_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_transitive_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := alias_shadow_build_and_run(v3_bin, root, {
+		'bench/bench.v':   'module bench\n\npub struct Thing {\npub mut:\n\tn int\n}\n'
+		'bridge/bridge.v': 'module bridge\n\nimport bench\n\npub fn start() bench.Thing {\n\treturn bench.Thing{\n\t\tn: 17\n\t}\n}\n'
+		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n'
+		'main.v':          'module main\n\nimport bridge\nimport x.bench\n\nfn main() {\n\tb := bridge.start()\n\tprintln(b.n)\n\tprintln(bench.Thing{\n\t\tm: 3\n\t}.m)\n}\n'
+	})
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['17', '3'], res.output
+}
+
+fn test_a_shadowed_module_keeps_its_declared_alias() {
+	v3_bin := alias_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_declared_alias_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := alias_shadow_build_and_run(v3_bin, root, {
+		'bench/bench.v':   'module bench\n\npub struct Thing {\npub mut:\n\tn int\n}\n\npub type Alias = Thing\n\npub fn start() Alias {\n\treturn Alias(Thing{\n\t\tn: 23\n\t})\n}\n'
+		'x/bench/bench.v': 'module bench\n\npub struct Thing {\npub mut:\n\tm int\n}\n\npub type Alias = Thing\n'
+		'main.v':          'module main\n\nimport x.bench\nimport bench as jj\n\nfn main() {\n\tb := jj.start()\n\tprintln(b.n)\n}\n'
+	})
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == '23', res.output
+}
+
+// A cast's checker sidecar records the canonical target even though its
+// `node.value` still has the import spelling used in source.
+fn test_a_source_cast_uses_the_shadowing_import() {
+	v3_bin := alias_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_alias_shadow_source_cast_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := alias_shadow_build_and_run(v3_bin, root, {
+		'foo/foo.v':   'module foo\n\npub type Value = int\n'
+		'x/foo/foo.v': 'module foo\n\npub type Value = u8\n'
+		'main.v':      'module main\n\nimport x.foo\nimport foo as jj\n\nfn main() {\n\t_ = jj.Value(1)\n\tmut value := foo.Value(200)\n\tvalue += foo.Value(100)\n\tprintln(value)\n}\n'
+	})
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == '44', res.output
 }

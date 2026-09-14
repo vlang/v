@@ -104,6 +104,11 @@ fn configure_selfhost_parallelism(building_v bool, prod_parallel_cc bool) {
 	}
 }
 
+fn self_build_current_hash(vroot string) string {
+	// Source archives intentionally have no current Git hash.
+	return util.githash(vroot) or { '' }
+}
+
 const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_serial_user_check_node_threshold = 1_000_000
 const scoped_serial_user_transform_node_threshold = 1_000_000
@@ -1767,6 +1772,35 @@ fn input_implies_building_v(input_file string) bool {
 	return false
 }
 
+// error_message_path shortens a path that lives under the current directory, so a
+// diagnostic reads `vlib/v/...` instead of a machine-specific absolute path.
+fn error_message_path(path string) string {
+	if os.getenv('VERROR_PATHS') == 'absolute' {
+		return path
+	}
+	normalized := path.replace('\\', '/')
+	workdir := os.getwd().replace('\\', '/').trim_right('/') + '/'
+	if normalized.starts_with(workdir) {
+		return normalized[workdir.len..]
+	}
+	return normalized
+}
+
+// input_looks_like_a_command reports whether a missing input is a mistyped
+// subcommand (`v wrong_command`) rather than a path (`v app.v`, `v ./dir`).
+fn input_looks_like_a_command(input_file string) bool {
+	if input_file.len == 0 || input_file.contains('/') || input_file.contains('\\')
+		|| input_file.contains('.') {
+		return false
+	}
+	for c in input_file {
+		if !c.is_letter() && !c.is_digit() && c != `_` && c != `-` {
+			return false
+		}
+	}
+	return true
+}
+
 fn input_is_v3_compiler_entry(input_file string) bool {
 	normalized := os.real_path(input_file).replace('\\', '/').trim_right('/')
 	return normalized.ends_with('/vlib/v/v.v')
@@ -3317,13 +3351,20 @@ fn register_native_source_typedefs(mut tc types.TypeChecker, state &V3ModuleCach
 		}
 	}
 	for name, is_struct in typedefs {
+		if !is_struct {
+			// A function-pointer typedef is not an aggregate, and `struct F` does
+			// not name it. Registering it as a C struct made the backend declare
+			// `typedef struct F F;` and an empty `struct F` body of its own, next
+			// to the header's `typedef int (*F)(...)`, which C rejects as a typedef
+			// redefinition with a different type. The header that the program
+			// includes already declares the name, so V needs nothing here.
+			continue
+		}
 		c_name := 'C.${name}'
 		if c_name !in tc.structs {
 			tc.structs[c_name] = []types.StructField{}
 		}
-		if is_struct {
-			tc.c_typedef_structs[c_name] = true
-		}
+		tc.c_typedef_structs[c_name] = true
 	}
 }
 
@@ -6508,6 +6549,8 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		disabled_fns: ast.disabled_fns
 		export_fn_names: ast.export_fn_names
 		noreturn_fns: ast.noreturn_fns
+		contextual_anon_struct_types: ast.contextual_anon_struct_types
+		synthesized_anon_struct_types: ast.synthesized_anon_struct_types
 		source_files: ast.source_files
 		template_call_sites: ast.template_call_sites.clone()
 		template_actions: clone_int_string_map(ast.template_actions)
@@ -6679,11 +6722,14 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 		}
 		variadic := tc.fn_variadic[name]
 		specialized := tc.specialized_generic_fns[name]
-		tc.fn_ret_types.delete(name)
-		tc.fn_param_types.delete(name)
-		tc.fn_variadic.delete(name)
-		tc.specialized_generic_fns.delete(name)
+		// `map.delete` frees the key it stored, and `name` still aliases that text.
+		// Take the owned copy first, then delete and re-insert through it; using
+		// `name` after the first delete reads (and re-hashes) freed memory.
 		owned_name := name.clone()
+		tc.fn_ret_types.delete(owned_name)
+		tc.fn_param_types.delete(owned_name)
+		tc.fn_variadic.delete(owned_name)
+		tc.specialized_generic_fns.delete(owned_name)
 		tc.fn_ret_types[owned_name] = ret
 		tc.register_generated_fn_param_types(owned_name, params)
 		tc.fn_variadic[owned_name] = variadic
@@ -6861,6 +6907,16 @@ fn v3_select_implicit_c_compiler(c_compiler string, c_compiler_explicit bool, im
 
 fn v3_platform_c_compiler(host_os string) string {
 	return if host_os == 'windows' { 'gcc' } else { 'cc' }
+}
+
+// v3_platform_c_compiler_command is v3_platform_c_compiler, resolved through
+// PATH when possible. The compilation retries below re-execute V with
+// `-cc <name>`; a bare name has to be found again by the child process, and on
+// Windows that spawn fails with "The system cannot find the file specified"
+// even when `gcc.exe` is on PATH. Hand the retry an absolute path instead.
+fn v3_platform_c_compiler_command(host_os string) string {
+	name := v3_platform_c_compiler(host_os)
+	return os.find_abs_path_of_executable(name) or { name }
 }
 
 fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_tcc_semantics bool, tried_tcc bool, tcc_exit_code int) bool {
@@ -8007,11 +8063,33 @@ fn expand_v3_module_search_paths(spec string, vroot string) []string {
 	return expanded
 }
 
+// expand_v3_exclude_patterns resolves the `@vroot`, `@vlib` and `@vmodules`
+// placeholders of the `-exclude` glob patterns. `@vmodules` stands for a list of
+// directories, so a pattern that uses it expands to one pattern per directory.
+fn expand_v3_exclude_patterns(patterns []string, vroot string) []string {
+	if patterns.len == 0 {
+		return []
+	}
+	vmodules_paths := os.vmodules_paths()
+	mut expanded := []string{cap: patterns.len}
+	for pattern in patterns {
+		resolved := pattern.replace('@vlib', os.join_path_single(vroot, 'vlib')).replace('@vroot', vroot)
+		if resolved.contains('@vmodules') {
+			for vmodules_path in vmodules_paths {
+				expanded << resolved.replace('@vmodules', vmodules_path)
+			}
+			continue
+		}
+		expanded << resolved
+	}
+	return expanded
+}
+
 fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only', '-profile-fns', '-subsystem']
+		'-run-only', '-profile-fns', '-subsystem', '-exclude', '-dump-files']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -8415,6 +8493,7 @@ pub fn run(args []string) {
 	mut backend := 'c'
 	mut backend_explicit := false
 	mut target_os := os.user_os()
+	mut cross_output := false
 	mut target_os_explicit := false
 	mut target_arch := pref.host_arch()
 	mut target_arch_explicit := false
@@ -8481,8 +8560,10 @@ pub fn run(args []string) {
 	mut is_checker_fixture := false
 	mut coverage_dir := v3_environment_coverage_dir()
 	mut dump_c_flags := ''
+	mut dump_files := ''
 	mut generate_c_project := ''
 	mut module_search_path_spec := ''
+	mut exclude_patterns := []string{}
 	mut file_list := []string{}
 	mut run_args := []string{}
 	mut run_only := v3_environment_run_only()
@@ -8546,6 +8627,11 @@ pub fn run(args []string) {
 			backend = if args[i + 1] in ['js_browser', 'js_node'] { 'js' } else { args[i + 1] }
 			backend_explicit = true
 			i += 2
+		} else if args[i] == '-cross' {
+			// A modifier, not a target: it combines with `-os`/`-cc`, as in
+			// `v -cross -os windows -cc msvc`. See `v help build-c`.
+			cross_output = true
+			i++
 		} else if args[i] == '-os' && i + 1 < args.len {
 			target_os = args[i + 1]
 			target_os_explicit = true
@@ -8650,6 +8736,9 @@ pub fn run(args []string) {
 			define := args[i + 1]
 			record_user_define(mut user_defines, mut compile_values, define)
 			i += 2
+		} else if args[i] == '-dump-files' && i + 1 < args.len {
+			dump_files = args[i + 1]
+			i += 2
 		} else if args[i] == '-dump-c-flags' {
 			dump_c_flags = if i + 1 < args.len { args[i + 1] } else { '-' }
 			// The dump is derived from the monolithic native compiler command below.
@@ -8731,6 +8820,14 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-path' && i + 1 < args.len {
 			module_search_path_spec = args[i + 1]
+			i += 2
+		} else if args[i] == '-exclude' && i + 1 < args.len {
+			for pattern in args[i + 1].split_any(',') {
+				trimmed := pattern.trim_space()
+				if trimmed.len > 0 {
+					exclude_patterns << trimmed
+				}
+			}
 			i += 2
 		} else if args[i] == '-cflags' && i + 1 < args.len {
 			parsed_c_flags := cmdexec.split_args(args[i + 1]) or {
@@ -8862,10 +8959,11 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-retry-compilation' {
 			retry_compilation = false
 			i++
-		} else if args[i] in ['-show-timings', '-w', '-usecache', '-new-generic-solver'] {
+		} else if args[i] in ['-show-timings', '-w', '-usecache', '-new-generic-solver', '-progress'] {
 			// v3 already reports phase metrics, suppresses C warnings, leaves
 			// explicit-output tests unrun, caches modules by default, and uses
 			// its current generic solver without a legacy selection switch.
+			// `-progress` selects a reporter in the test runner, not in the compiler.
 			// Accept the corresponding V flags for compatibility.
 			i++
 		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
@@ -8972,11 +9070,21 @@ pub fn run(args []string) {
 	}
 
 	if input_file == '' {
+		// A malformed command line is the user's error, not a compiler error, so it
+		// must not stage the V1 compatibility retry: the fallback would repeat the
+		// same diagnostic after an unexplained "retrying with ..." line.
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		eprintln('no input file')
 		exit(1)
 	}
 	if input_file != '-' && !os.exists(input_file) {
-		eprintln("builder error: ${input_file} doesn't exist")
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		if input_looks_like_a_command(input_file) {
+			eprintln('unknown command `${input_file}`')
+			eprintln('Run `v help` for usage.')
+		} else {
+			eprintln("builder error: ${input_file} doesn't exist")
+		}
 		exit(1)
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
@@ -9067,8 +9175,10 @@ pub fn run(args []string) {
 		}
 		// A standard V3 compiler must be able to build the ownership-enabled V3
 		// executable before that executable can perform ownership analysis itself.
+		// Both compiler entry points count: `vlib/v/v.v` is the bare frontend, while
+		// `cmd/v` is the driver that `-autofree` users actually run.
 		if define_name == 'ownership' && backend != 'fastc' && !ownership_checker_compiled()
-			&& !input_is_v3_compiler_entry(input_file) {
+			&& !input_is_v3_compiler_entry(input_file) && !input_is_cmd_v(input_file) {
 			eprintln('ownership support is not compiled into this v3 executable')
 			exit(1)
 		}
@@ -9104,6 +9214,25 @@ pub fn run(args []string) {
 	if !target_arch_explicit
 		&& pref.normalized_os(target_os.trim_space().to_lower()) == 'wasm32_emscripten' {
 		target_arch = 'wasm32'
+	}
+	// `-os cross` is not a platform. It asks for portable C that is not tied to
+	// one OS, architecture or C compiler, so that a single generated snapshot
+	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
+	// leave every target-dependent `$if` to the C preprocessor.
+	mut output_cross_c := cross_output
+	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
+		output_cross_c = true
+		target_os = os.user_os()
+	}
+	if output_cross_c {
+		// A portable snapshot cannot use the platform backtrace APIs, and the
+		// `$if cross ?` guards in vlib select the portable path from this. Keep
+		// them first in the list: `gen_vc_ci.yml` checks the generated header.
+		for name in ['cross', 'no_backtrace'] {
+			if name !in user_defines {
+				user_defines.prepend(name)
+			}
+		}
 	}
 	target := pref.target_from(target_os, target_arch) or {
 		eprintln(err.msg())
@@ -9316,6 +9445,7 @@ pub fn run(args []string) {
 		eprintln('fastc-phase driver.prefs ${driver_sw.elapsed().microseconds()}us')
 	}
 	prefs.target = target
+	prefs.output_cross_c = output_cross_c
 	prefs.thread_stack_size = if thread_stack_size_set {
 		thread_stack_size
 	} else {
@@ -9390,6 +9520,8 @@ pub fn run(args []string) {
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
+	prefs.module_resolution_root = v3_module_resolution_root(input_file)
+	prefs.exclude = expand_v3_exclude_patterns(exclude_patterns, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
 		if bundled_tcc_available {
 			c_compiler = bundled_tcc
@@ -9402,6 +9534,12 @@ pub fn run(args []string) {
 	prefs.vcurrent_hash = os.getenv(macos_v3_vcurrent_hash_env)
 	if prefs.vcurrent_hash == '' {
 		prefs.vcurrent_hash = @VCURRENTHASH
+	}
+	if building_v {
+		// A self-build must describe the sources being compiled, not the compiler
+		// that happened to bootstrap them. Otherwise every `make`/`v up` keeps
+		// reporting the bootstrap snapshot's commit indefinitely.
+		prefs.vcurrent_hash = self_build_current_hash(prefs.vroot)
 	}
 	prefs.selfhost = is_selfhost || fastc_selfhost_build
 	prefs.building_v = building_v
@@ -9727,6 +9865,7 @@ pub fn run(args []string) {
 		'show_test_stats=${show_test_stats}',
 		'run_only=${v3_run_only_cache_identity(run_only)}',
 		'defines=${prefs.user_defines.join(',')}',
+		'exclude=${prefs.exclude.join(',')}',
 	].join('\n')
 	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp].join('\n')
 	version_pseudo_values := [prefs.vhash, prefs.vcurrent_hash].join('\n')
@@ -9764,7 +9903,7 @@ pub fn run(args []string) {
 	if ownership_mode && 'ownership' !in builtin_defines {
 		builtin_defines << 'ownership'
 	}
-	mut builtin_files := pref.get_v_files_from_dir_for_target(builtin_dir, builtin_defines, prefs.target)
+	mut builtin_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(builtin_dir, builtin_defines, prefs.target))
 	// `map.v` retains the regular-backend layout so the stable V1 fallback can
 	// compile tools against the current tree. V3 selects its pointer-sized map
 	// implementation through the internal backend define above.
@@ -9934,7 +10073,7 @@ pub fn run(args []string) {
 	// this staging directory and forwards only content plus verification metadata.
 	mut fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot, cache_state.cached_source_digests, v3_fallback_ignored_warmup_source_paths(cache_state))
 	_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
-	if print_v_files || print_watched_files {
+	if print_v_files || print_watched_files || dump_files != '' {
 		mut watched := map[string]bool{}
 		for _, file in a.source_files {
 			if file.name.ends_with('.v') || file.name.ends_with('.vv')
@@ -9951,11 +10090,48 @@ pub fn run(args []string) {
 		}
 		mut watched_files := watched.keys()
 		watched_files.sort()
-		for file in watched_files {
-			println(file)
+		// `$embed_file` reads a non-V file at compile time and puts its bytes in the binary,
+		// which makes it a build input exactly like a source file: changing it has to
+		// invalidate a cached build, and `v watch` has to rebuild on it. `-print-v-files` is
+		// deliberately left reporting V sources only, the way its name says.
+		mut watched_with_resources := watched_files.clone()
+		mut additional_inputs := map[string]bool{}
+		for resource in embedded_resource_paths(a) {
+			if resource !in watched {
+				additional_inputs[resource] = true
+			}
 		}
-		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-		return
+		// A `#include "sqlite3.h"` or `#insert` reaches C sources and headers that are
+		// compiled into the binary just as much as the V sources are: `v sqlite` builds
+		// `thirdparty/sqlite/sqlite3.c`, and updating that amalgamation has to invalidate
+		// the cached tool. cgen already resolves these, so reuse its scan rather than
+		// guessing at the paths.
+		for native_input in native_build_input_paths(a, prefs.vroot, prefs.target) {
+			if native_input !in watched {
+				additional_inputs[native_input] = true
+			}
+		}
+		for path, _ in additional_inputs {
+			watched_with_resources << path
+		}
+		watched_with_resources.sort()
+		if dump_files != '' {
+			// `-dump-files <path>` records the exact source closure of this build, so that
+			// callers (notably the cached `cmd/tools/*` launcher) can tell later whether any
+			// input changed, without having to re-run the compiler frontend.
+			os.write_file(dump_files, watched_with_resources.join('\n') + '\n') or {
+				eprintln('cannot write the `-dump-files` list to `${dump_files}`: ${err}')
+				exit(1)
+			}
+		}
+		if print_v_files || print_watched_files {
+			reported := if print_watched_files { watched_with_resources } else { watched_files }
+			for file in reported {
+				println(file)
+			}
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			return
+		}
 	}
 	if p.diagnostics.len > 0 {
 		parser_has_native_errors := p.diagnostics.any(it.severity.len == 0
@@ -11516,10 +11692,13 @@ pub fn run(args []string) {
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
+			g.set_output_cross_c(prefs.output_cross_c)
+			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
+			g.set_show_test_file_results(is_test_command && 'silent' !in prefs.user_defines)
 			g.set_test_run_only(run_only)
 			g.set_print_fn_names(print_fn_names)
 			g.set_profile(profile_file, profile_no_inline, profile_fns)
@@ -11576,10 +11755,13 @@ pub fn run(args []string) {
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
 			g.set_target(prefs.target)
+			g.set_output_cross_c(prefs.output_cross_c)
+			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
+			g.set_show_test_file_results(is_test_command && 'silent' !in prefs.user_defines)
 			g.set_test_run_only(run_only)
 			g.set_print_fn_names(print_fn_names)
 			g.set_profile(profile_file, profile_no_inline, profile_fns)
@@ -12387,7 +12569,7 @@ pub fn run(args []string) {
 			show_v3_c_compiler_output(show_c_output, c_compiler, result)
 			if result.exit_code != 0 {
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
-					fallback := v3_platform_c_compiler(host_os)
+					fallback := v3_platform_c_compiler_command(host_os)
 					eprintln('warning: tcc compilation failed, falling back to ${fallback}')
 					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 					cleanup_c_build_dir(cc_dir)
@@ -12618,7 +12800,7 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 }
 
 fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_dir string, verbose bool, show_cc bool) {
-	fallback := v3_platform_c_compiler(os.user_os())
+	fallback := v3_platform_c_compiler_command(os.user_os())
 	if verbose || show_cc {
 		eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
 	}
@@ -12709,7 +12891,7 @@ fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) 
 		if !os.is_dir(dir) {
 			continue
 		}
-		for file in pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target) {
+		for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)) {
 			key := os.real_path(file)
 			if seen[key] {
 				continue
@@ -14349,11 +14531,11 @@ fn collect_v3_directory_user_files_rec(module_root string, dir string, prefs &pr
 }
 
 fn append_v3_directory_user_files(dir string, prefs &pref.Preferences, is_test_command bool, mut seen map[string]bool, mut files []string) {
-	for file in pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target) {
+	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)) {
 		append_unique_file(mut files, mut seen, file)
 	}
 	if is_test_command {
-		for file in pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.backend, prefs.target) {
+		for file in prefs.without_excluded(pref.get_test_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.backend, prefs.target)) {
 			append_unique_file(mut files, mut seen, file)
 		}
 	}
@@ -14412,7 +14594,7 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 
 fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
-	mut all_files := pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)
+	mut all_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target))
 	// A `subdirs` manifest makes several directories one source module. When a
 	// test file sits beside a source in one of those virtual directories, include
 	// the complete module instead of only its physical-directory siblings.
@@ -14596,6 +14778,17 @@ fn project_root_for_files(files []string) string {
 	return os.getwd()
 }
 
+fn v3_module_resolution_root(input string) string {
+	if input == '' || input == '-' {
+		return os.real_path(os.getwd())
+	}
+	input_dir := if os.is_dir(input) { os.real_path(input) } else { os.dir(os.real_path(input)) }
+	if vmod_root := util.nearest_vmod_root(input_dir) {
+		return os.real_path(v3_directory_source_root(vmod_root))
+	}
+	return input_dir
+}
+
 fn nearest_vmod_root_for_file(path string) string {
 	return util.nearest_vmod_root(path) or { '' }
 }
@@ -14643,8 +14836,13 @@ fn nearest_vroot_for_path(path string) ?string {
 		if is_valid_vroot(dir) {
 			return dir
 		}
-		parent := os.dir(dir)
-		if parent == dir {
+		// `os.parent_dir` stops at a filesystem root. `os.dir` would answer `.`
+		// for a bare Windows drive (`os.dir('S:') == '.'`), and `is_valid_vroot('.')`
+		// then probes `vlib/builtin` relative to the *current* directory, so any
+		// input outside a V checkout resolved to the relative `.` whenever V was
+		// run from the V root itself.
+		parent := os.parent_dir(dir)
+		if parent.len == 0 {
 			break
 		}
 		dir = parent
@@ -15472,6 +15670,73 @@ fn sync_import_node() flat.Node {
 	}
 }
 
+// native_build_input_paths returns the local C sources and headers this build compiles or
+// includes. They reach the binary through `#include "x.h"`, `#insert` and the native source
+// roots pulled in behind them, so each one is a build input exactly like a V source is, and
+// none of them is otherwise recorded: the watched set holds V sources only.
+//
+// The scan is the same one the module cache uses, so an include form it cannot resolve
+// statically is simply not reported here either.
+fn native_build_input_paths(a &flat.FlatAst, vroot string, target pref.Target) []string {
+	mut modules := map[string]bool{}
+	for index in 0 .. a.nodes.len {
+		node := a.nodes[index]
+		if node.kind == .module_decl && node.value.len > 0 {
+			modules[node.value] = true
+		}
+	}
+	// a program file's directives belong to `main`, whether or not it declares the module
+	modules['main'] = true
+	inputs, native_source_roots, _ := cgen.cache_external_input_files(a, vroot, modules, [],
+		target)
+	mut paths := map[string]bool{}
+	for _, files in inputs {
+		for file in files {
+			paths[file] = true
+		}
+	}
+	for _, roots in native_source_roots {
+		for root in roots {
+			paths[root] = true
+		}
+	}
+	// A `#flag` can also name a native source or object outright, which the include scan
+	// above never sees: that is how `sqlite3.c` and its prebuilt `sqlite3.o` get in.
+	for flag_input in cgen.cache_native_flag_input_files(a, vroot, target) {
+		paths[flag_input] = true
+	}
+	mut result := paths.keys()
+	result.sort()
+	return result
+}
+
+// embedded_resource_paths returns the absolute paths of the files that `$embed_file` pulled
+// into this build. The parser resolves each one and records it as the `apath` field of the
+// `embed_file.EmbedFileData` literal it generates, which is the only place the path survives:
+// the file is not a V source, so nothing in the watched source closure covers it.
+fn embedded_resource_paths(a &flat.FlatAst) []string {
+	mut paths := map[string]bool{}
+	for index in 0 .. a.nodes.len {
+		node := a.nodes[index]
+		if node.kind != .struct_init || node.value != 'embed_file.EmbedFileData' {
+			continue
+		}
+		for child_index in 0 .. int(node.children_count) {
+			field := a.child_node(&node, child_index)
+			if field.kind != .field_init || field.value != 'apath' || field.children_count == 0 {
+				continue
+			}
+			value := a.child_node(field, 0)
+			if value.kind == .string_literal && value.value != '' && os.is_file(value.value) {
+				paths[value.value] = true
+			}
+		}
+	}
+	mut result := paths.keys()
+	result.sort()
+	return result
+}
+
 fn embed_file_import_node() flat.Node {
 	return flat.Node{
 		kind: .import_decl
@@ -16248,7 +16513,7 @@ fn eager_selfhost_resolve_thread(arg voidptr) voidptr {
 	result.dir = resolve_project_or_pref_module_path(prefs, result.path, result.importing_file, result.project_root, mut local_cache)
 	if result.dir.len > 0 && os.is_dir(result.dir) {
 		result.real_dir = os.real_path(result.dir)
-		result.files = pref.get_v_files_from_dir_for_target(result.dir, prefs.user_defines, prefs.target)
+		result.files = prefs.without_excluded(pref.get_v_files_from_dir_for_target(result.dir, prefs.user_defines, prefs.target))
 		if result.files.len > 0 {
 			result.identity = import_module_identity_with_path_cache(prefs, result.path, result.importing_file, result.project_root, result.dir, mut local_cache)
 		}
@@ -16823,7 +17088,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			if is_bundle_warmup_import && cache_state.bundle_valid {
 				warmup_dir := prefs.get_vlib_module_path(mod_name)
-				warmup_files := pref.get_v_files_from_dir_for_target(warmup_dir, prefs.user_defines, prefs.target)
+				warmup_files := prefs.without_excluded(pref.get_v_files_from_dir_for_target(warmup_dir, prefs.user_defines, prefs.target))
 				if cache_state.manager.valid_header(mod_name, warmup_files) == none {
 					// The cached bundle may have been built while a project module
 					// shadowed this optional warmup import. An actual user import was
@@ -16832,8 +17097,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					continue
 				}
 			}
+			importing_file := cached_header_source_contexts[cur_file] or {
+				if cur_file.len > 0 { cur_file } else { first_file }
+			}
 			if unresolved_modules[mod_name] {
 				a.missing_imports[node_idx] = mod_name
+				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 			}
 			if module_identity := parsed_module_identities[mod_name] {
 				if module_identity.len > 0 {
@@ -16851,9 +17120,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				continue
 			}
 
-			importing_file := cached_header_source_contexts[cur_file] or {
-				if cur_file.len > 0 { cur_file } else { first_file }
-			}
 			mod_dir := if is_bundle_warmup_import {
 				prefs.get_vlib_module_path(mod_name)
 			} else {
@@ -16882,7 +17148,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			mod_files := if mod_dir_exists {
 				v3_directory_user_files(mod_dir, prefs, false, false) or {
-					pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines, prefs.target)
+					prefs.without_excluded(pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines, prefs.target))
 				}
 			} else {
 				[]string{}
@@ -16890,6 +17156,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			module_resolved := mod_dir_exists && mod_files.len > 0
 			if !module_resolved && !is_bundle_warmup_import {
 				a.missing_imports[node_idx] = mod_name
+				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 				unresolved_modules[mod_name] = true
 			}
 			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
@@ -16920,7 +17187,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						// entirely commented file) belongs to `main`.
 						declared_module := if declared.len > 0 { declared } else { 'main' }
 						if declared_module.all_after_last('.') != expected_module {
-							message := 'bad module definition: ${importing_file} imports module "${mod_name}" but ${imported_file} is defined as module `${declared_module}`'
+							message := 'bad module definition: ${error_message_path(importing_file)} imports module "${mod_name}" but ${error_message_path(imported_file)} is defined as module `${declared_module}`'
+							// A mismatched module declaration is the project's error, and the
+							// diagnostic below names it exactly. Do not hand the build to the
+							// V1 compatibility compiler, which would repeat it against its own
+							// source tree.
+							clear_macos_v3_compiler_error_fallback(os.getenv(macos_v3_fallback_file_env))
 							eprintln('error: ${message}')
 							formatted := compiler_errors.formatted_error('error:', message, a, flat.NodeId(node_idx), a.nodes[node_idx].pos)
 							context := formatted.all_after_first('\n')
@@ -17147,6 +17419,7 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_import
 		selected_files[file] = true
 		selected_files[os.real_path(file)] = true
 	}
+	mut declared_modules := map[string]bool{}
 	for file_idx, file_node in a.nodes {
 		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
 			continue
@@ -17155,12 +17428,33 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, explicit_import
 			continue
 		}
 		module_name := test_file_module_name(a, file_node)
-		// A package can deliberately import a different package whose declared
-		// short name matches its own (v.gen.wasm imports the top-level wasm module).
-		// Do not let the initial package's seed suppress that explicit import.
-		if module_name.len > 0 && module_name !in explicit_imports {
-			parsed_modules[module_name] = true
+		if module_name.len > 0 {
+			declared_modules[module_name] = true
 		}
+	}
+	// A directory that declares more than one module keeps its extra modules
+	// locally: a submodule source file may live right next to `main.v` in the
+	// project root (issue #28074), and that local module must win over the path
+	// lookup, which only ever looks for a subdirectory of the same name.
+	holds_local_submodules := declared_modules.len > 1
+	for file_idx, file_node in a.nodes {
+		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
+			continue
+		}
+		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
+			continue
+		}
+		module_name := test_file_module_name(a, file_node)
+		if module_name.len == 0 {
+			continue
+		}
+		// A single-module package can deliberately import a different package whose
+		// declared short name matches its own (v.gen.wasm imports the top-level wasm
+		// module). Do not let the initial package's seed suppress that explicit import.
+		if module_name in explicit_imports && !holds_local_submodules {
+			continue
+		}
+		parsed_modules[module_name] = true
 	}
 }
 
@@ -17368,7 +17662,7 @@ fn aliased_import_module_identity(prefs &pref.Preferences, import_path string, i
 	if os.real_path(requested_dir) == os.real_path(import_dir) {
 		return none
 	}
-	for file in pref.get_v_files_from_dir_for_target(import_dir, prefs.user_defines, prefs.target) {
+	for file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(import_dir, prefs.user_defines, prefs.target)) {
 		module_name := declared_module_in_file(file)
 		if module_name.len > 0 {
 			return module_name
@@ -17425,7 +17719,78 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 			return global_path
 		}
 	}
+	ancestor_path := resolve_ancestor_module_path(prefs, mod_name, mod_path, importing_file)
+	if ancestor_path.len > 0 {
+		return ancestor_path
+	}
 	return prefs.get_module_path(mod_name, importing_file)
+}
+
+// A module that is neither in vlib nor in a module directory nor beside the importing
+// file can still be a project checked out next to the one being built. Walking up
+// from the importing file finds it, which is how two sibling checkouts build against
+// each other without either having to be installed first.
+//
+// Ancestors are searched last, after the module directories, so an installed module
+// is still what an import means when both exist.
+fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_path string, importing_file string) string {
+	if importing_file.len == 0 {
+		return ''
+	}
+	importer_vmod_root := nearest_vmod_root_for_file(importing_file)
+	mut current := os.real_path(os.dir(importing_file))
+	for {
+		// The one place a level can hold the module: its path under that level. A
+		// level's `modules/` is not searched here either, so a project's own copy is
+		// the directory itself, reached before the walk climbs past the project to a
+		// neighbour of it that happens to carry the same name.
+		//
+		// The retired `modules/` namespace is no lookup root of its own, not even
+		// for the files inside it: what it holds is `modules.<name>`, and letting
+		// the walk stop there would keep the virtual layout alive between the
+		// modules left in it. A project that merely carries that name is a root
+		// like any other, and is searched.
+		if !pref.is_retired_modules_namespace(current, prefs.module_resolution_root) {
+			candidate := os.join_path_single(current, mod_path)
+			if module_path_has_v_sources(candidate, prefs)
+				&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
+				return candidate
+			}
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ''
+}
+
+// Whether a directory that happens to carry the module's name belongs to something
+// else. It is the module being imported when it is part of the importer's own
+// project, or when its own manifest claims that name; anything else above the
+// importer is a stranger that merely shares a directory name.
+fn module_dir_belongs_to_other_project(candidate string, importer_vmod_root string, mod_name string) bool {
+	if importer_vmod_root.len == 0 {
+		return false
+	}
+	real_candidate := os.real_path(candidate).replace('\\', '/')
+	real_importer := os.real_path(importer_vmod_root).replace('\\', '/')
+	if real_candidate == real_importer || real_candidate.starts_with(real_importer + '/') {
+		return false
+	}
+	return !vmod_manifest_declares_module(candidate, mod_name)
+}
+
+// The manifest that owns a directory is not necessarily in it. An import written
+// `foo.bar` is the directory `foo/bar`, and it is the project above that directory
+// which carries the manifest, naming `foo`. So the nearest manifest at or above the
+// candidate is the one to ask, and it owns the module when it names it, or names a
+// prefix of it.
+fn vmod_manifest_declares_module(dir string, mod_name string) bool {
+	root := util.nearest_vmod_root(dir) or { return false }
+	manifest := vmod.from_file(os.join_path_single(root, 'v.mod')) or { return false }
+	return manifest.name == mod_name || mod_name.starts_with(manifest.name + '.')
 }
 
 fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string, mod_path string, importing_file string, project_root string) string {
@@ -17434,14 +17799,6 @@ fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string
 		importer_dir := os.dir(importing_file)
 		if alias_path := resolve_local_module_alias_path(importer_dir, top_name, mod_name) {
 			return alias_path
-		}
-		local_modules_root := os.join_path_single(importer_dir, 'modules')
-		if alias_path := resolve_local_module_alias_path(local_modules_root, top_name, mod_name) {
-			return alias_path
-		}
-		local_modules_path := os.join_path_single(local_modules_root, mod_path)
-		if module_path_has_v_sources(local_modules_path, prefs) {
-			return local_modules_path
 		}
 	}
 	if project_root.len > 0 {
@@ -17478,11 +17835,9 @@ fn import_uses_explicit_module_alias(prefs &pref.Preferences, mod_name string, i
 	if importing_file.len > 0 {
 		importer_dir := os.dir(importing_file)
 		roots << importer_dir
-		roots << os.join_path_single(importer_dir, 'modules')
 	}
 	if project_root.len > 0 {
 		roots << project_root
-		roots << os.join_path_single(project_root, 'modules')
 	}
 	if prefs.module_search_paths.len > 0 {
 		roots << prefs.module_search_paths
@@ -17524,12 +17879,166 @@ fn resolve_global_module_path(prefs &pref.Preferences, mod_name string, mod_path
 	return ''
 }
 
+// record_missing_import_hint stores the migration hint for an import that a
+// `modules/` directory would have satisfied, so the checker can print it next to
+// the "not found" error. Nothing is stored when no such directory exists.
+fn record_missing_import_hint(mut a flat.FlatAst, prefs &pref.Preferences, node_idx int, mod_name string, importing_file string) {
+	hint := removed_modules_layout_hint(prefs, mod_name, importing_file)
+	if hint.len > 0 {
+		a.missing_import_hints[node_idx] = hint
+	}
+}
+
+// removed_modules_layout_hint explains an import that a `modules/` directory
+// would have satisfied. The virtual `modules/` lookup is gone, the same way the
+// virtual `src/` source root is: a module's import path is its path under the
+// nearest v.mod, so the directory has to sit there rather than one level down.
+// The directory has to hold a module this build could actually use, and it has
+// to be the importer's to move: the same ownership boundary the ancestor walk
+// applies, so the hint never points at the source of an unrelated project that
+// happens to sit above the importer.
+fn removed_modules_layout_hint(prefs &pref.Preferences, mod_name string, importing_file string) string {
+	if importing_file.len == 0 {
+		return ''
+	}
+	relative := mod_name.replace('.', os.path_separator)
+	top_name := mod_name.all_before('.')
+	importer_vmod_root := nearest_vmod_root_for_file(importing_file)
+	mut current := os.dir(os.real_path(importing_file))
+	for {
+		candidate := os.join_path(current, 'modules', relative)
+		if module_path_has_v_sources(candidate, prefs)
+			&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
+			if source_link := modules_layout_source_link(current, candidate) {
+				return '\nthe virtual `modules/` directory is no longer searched for modules.\nThe migration is blocked because the legacy module source passes through ${os.quoted_path(source_link)}, which is a link. Move the module without modifying what that link points to.'
+			}
+			command := modules_layout_move_command(current, relative, top_name)
+			return '\nthe virtual `modules/` directory is no longer searched for modules.\nMove it up beside the v.mod it belongs to, which keeps the import path the same:\n\t${command}'
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ''
+}
+
+// The outermost link between the project root and the legacy source. A move
+// through any such ancestor operates inside the link target, so no runnable
+// migration command is safe to print.
+fn modules_layout_source_link(root string, source string) ?string {
+	mut linked_path := ''
+	mut current := source
+	for current != root && current.len > root.len {
+		if os.is_link(current) {
+			linked_path = current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if linked_path == '' {
+		return none
+	}
+	return linked_path
+}
+
+// modules_layout_move_command spells out a move that actually runs. A dotted
+// import lives several directories deep, so moving just the leaf would need a
+// destination parent that does not exist yet: move the whole top-level module
+// tree when its destination is free, and create the parents otherwise. A
+// destination that is already taken cannot be moved onto at all, since `mv`
+// would put the module *inside* it, so that one asks for a merge instead.
+fn modules_layout_move_command(root string, relative string, top_name string) string {
+	top_source := os.join_path(root, 'modules', top_name)
+	top_target := os.join_path(root, top_name)
+	source := os.join_path(root, 'modules', relative)
+	target := os.join_path(root, relative)
+	if blocker := modules_layout_blocker(root, target) {
+		// Once it is out of the way, what is left is the move that would have been
+		// printed anyway: the whole top-level tree when that is what was blocked,
+		// and the leaf into the parents it needs when the blocker sits deeper.
+		rest := if blocker == top_target {
+			modules_layout_move(top_source, top_target)
+		} else {
+			'${modules_layout_mkdir(os.dir(target))} && ${modules_layout_move(source, target)}'
+		}
+		return modules_layout_blocked(blocker, rest)
+	}
+	if !os.exists(top_target) {
+		return modules_layout_move(top_source, top_target)
+	}
+	if os.exists(target) {
+		return 'merge ${os.quoted_path(source)} into the existing ${os.quoted_path(target)}'
+	}
+	target_parent := os.dir(target)
+	if os.is_dir(target_parent) {
+		return modules_layout_move(source, target)
+	}
+	return '${modules_layout_mkdir(target_parent)} && ${modules_layout_move(source, target)}'
+}
+
+// Something that is not a directory of the project itself blocks the move, and
+// what to do with it is the author's to decide, so name it rather than paper over
+// it: `mv` onto a file is a rename, `mkdir -p` cannot descend into one, and a
+// link would take the module wherever it points instead of beside the v.mod.
+fn modules_layout_blocked(blocker string, command string) string {
+	kind := if os.is_link(blocker) { 'a link' } else { 'a file' }
+	return 'move ${os.quoted_path(blocker)} out of the way first -- ${kind} is where the module directory has to go -- and then: ${command}'
+}
+
+// The outermost thing on the way from the root down to the destination that is
+// not a real directory: the one closest to the root has to move before the rest,
+// and a link is one of them however directory-like it looks through it.
+fn modules_layout_blocker(root string, target string) ?string {
+	mut blocker := ''
+	mut current := target
+	for current != root && current.len > root.len {
+		if os.is_link(current) || (os.exists(current) && !os.is_dir(current)) {
+			blocker = current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if blocker == '' {
+		return none
+	}
+	return blocker
+}
+
+// modules_layout_move and modules_layout_mkdir quote the paths they are given,
+// so a project directory with a space or a shell metacharacter in it still
+// produces a command that can be pasted as printed, and they name the tool the
+// host actually has: `mv` and `mkdir -p` are not available in Windows cmd.exe.
+fn modules_layout_move(source string, target string) string {
+	$if windows {
+		return 'move ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	} $else {
+		return 'mv ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	}
+}
+
+fn modules_layout_mkdir(dir string) string {
+	$if windows {
+		// cmd.exe's `mkdir` creates the intermediate directories itself.
+		return 'mkdir ${os.quoted_path(dir)}'
+	} $else {
+		return 'mkdir -p ${os.quoted_path(dir)}'
+	}
+}
+
 fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {
 	if path.len == 0 || !os.is_dir(path) {
 		return false
 	}
 	source_root := v3_directory_source_root(path)
-	if pref.get_v_files_from_dir_for_target(source_root, prefs.user_defines, prefs.target).len > 0 {
+	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(source_root, prefs.user_defines, prefs.target)).len > 0 {
 		return true
 	}
 	// A v.mod can expose one logical module from source-only subdirectories. The
@@ -17557,7 +18066,7 @@ fn module_subdir_has_v_sources(module_root string, dir string, prefs &pref.Prefe
 	if real_dir != module_root && os.is_file(os.join_path_single(real_dir, 'v.mod')) {
 		return false
 	}
-	if pref.get_v_files_from_dir_for_target(real_dir, prefs.user_defines, prefs.target).len > 0 {
+	if prefs.without_excluded(pref.get_v_files_from_dir_for_target(real_dir, prefs.user_defines, prefs.target)).len > 0 {
 		return true
 	}
 	entries := os.ls(real_dir) or { return false }

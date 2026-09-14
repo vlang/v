@@ -277,6 +277,9 @@ pub fn node_payload_at(id u32) &NodePayload {
 pub const node_flag_skip_ownership_drops = u8(1)
 // node_flag_static_type_method marks a `fn Type.method()` declaration.
 pub const node_flag_static_type_method = u8(2)
+// node_flag_embed_payload marks the string literal holding the bytes that
+// `$embed_file` materialized (see Node.is_embed_payload()).
+pub const node_flag_embed_payload = u8(4)
 
 // node_flags packs the two rare node bools into Node.flags.
 @[inline]
@@ -288,6 +291,20 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 	if is_static_type_method {
 		flags |= node_flag_static_type_method
 	}
+	return flags
+}
+
+// clone_node_flags rebuilds the flags of a node copied from `source`.
+//
+// `skip_ownership_drops` describes the scope a node sits in, so a copy is given
+// whatever its new position calls for. The rest describe the node itself and
+// have to survive being copied: a generic specialization that dropped
+// node_flag_embed_payload would turn the payload back into an ordinary literal,
+// which the backend would then intern and spell out in full.
+@[inline]
+pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
+	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
+	flags |= source.flags & node_flag_embed_payload
 	return flags
 }
 
@@ -327,6 +344,16 @@ pub fn (mut n Node) set_skip_ownership_drops(value bool) {
 @[inline]
 pub fn (n &Node) is_static_type_method() bool {
 	return (n.flags & node_flag_static_type_method) != 0
+}
+
+// is_embed_payload reports whether this string literal holds the bytes that
+// `$embed_file` materialized. Such a literal is written out by the embed
+// codegen alone, so it must be kept out of the interned literal table: an
+// entry there is never referenced, and it repeats the whole payload on a
+// single source line.
+@[inline]
+pub fn (n &Node) is_embed_payload() bool {
+	return (n.flags & node_flag_embed_payload) != 0
 }
 
 // set_is_static_type_method updates the static-type-method flag.
@@ -412,6 +439,9 @@ pub mut:
 	template_actions    map[int]string
 	// missing_imports retains source import paths for unresolved import nodes.
 	missing_imports map[int]string
+	// missing_import_hints holds the migration hint the resolver produced for an
+	// unresolved import node, when it can explain the failure. Usually empty.
+	missing_import_hints map[int]string
 	// file_node_ids records every .file node the parser creates, in creation
 	// order: (marker, trailing) pairs per source file. The trailing node's
 	// children are the file's top-level declarations, letting collect build
@@ -434,6 +464,20 @@ pub mut:
 	text_values []string
 	text_ids    map[string]TextId
 	worker_pool &workers.Pool = unsafe { nil }
+	// contextual_anon_struct_types names the anonymous aggregates the parser
+	// synthesized to type a `struct { ... }` literal rather than to declare a field.
+	// Such a name only ever stands in for a literal whose type the context supplies, so
+	// the checker lets it initialize another module's anonymous field. The declarations
+	// themselves keep the visibility they were written with, so neither their generated
+	// names nor a type a user happened to call `AnonStruct_...` become reachable across
+	// module boundaries.
+	contextual_anon_struct_types map[string]bool
+	// synthesized_anon_struct_types names every anonymous aggregate the parser made up,
+	// for a declaration as well as for a literal. A name matching `AnonStruct_` proves
+	// nothing on its own - a user may declare a type so named - so this is what tells
+	// the checker that an expected type really is one it may adopt a bare
+	// `struct { ... }` literal into.
+	synthesized_anon_struct_types map[string]bool
 	// specialized_fn_nodes identifies program-specific monomorphized function
 	// declarations appended after parsing. Module-cache cgen keeps them with main.
 	specialized_fn_nodes   map[int]bool
@@ -501,10 +545,13 @@ pub fn FlatAst.new() FlatAst {
 		disabled_fns: map[string]bool{}
 		export_fn_names: map[string]string{}
 		noreturn_fns: map[string]bool{}
+		contextual_anon_struct_types: map[string]bool{}
+		synthesized_anon_struct_types: map[string]bool{}
 		source_files: map[int]&token.File{}
 		template_call_sites: map[int]token.Pos{}
 		template_actions: map[int]string{}
 		missing_imports: map[int]string{}
+		missing_import_hints: map[int]string{}
 		formatter_sources: map[int]string{}
 		formatter_file_sources: map[int]string{}
 		formatter_node_ends: map[int]int{}

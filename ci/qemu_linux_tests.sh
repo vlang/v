@@ -38,7 +38,7 @@ Examples:
   ci/qemu_linux_tests.sh -- -cc clang test vlib/v/
   V_QEMU_CC=gcc V_QEMU_VFLAGS='-cc gcc -no-memory-limit' \
     ci/qemu_linux_tests.sh -- -cc gcc test vlib/v/
-  V_QEMU_NO_FALLBACK=0 ci/qemu_linux_tests.sh -- -old-compiler test-all
+  V_QEMU_NO_FALLBACK=0 ci/qemu_linux_tests.sh -- test-all
 EOF
 }
 
@@ -311,10 +311,10 @@ remote_command+=" && export PATH=${guest_repo_q}:\$PATH"
 remote_command+=" TMPDIR=/tmp VTMP=\$qemu_tmp"
 remote_command+=" V_C_ERROR_BUG_REPORT_DISABLED=1"
 remote_command+=" && if [ ! -x thirdparty/tcc/tcc.exe ] || [ ! -f thirdparty/tcc/lib/libgc.a ]; then make; fi"
-remote_command+=" && ./v -old-compiler -o ./vnew cmd/v"
+remote_command+=" && ./v -o ./vnew cmd/v"
 if ((provision)); then
 	remote_command+=" && ./vnew retry -- ./vnew install markdown"
-	remote_command+=" && if [ ! -f thirdparty/sqlite/sqlite3.c ]; then ./vnew -old-compiler run vlib/db/sqlite/install_thirdparty_sqlite.vsh; fi"
+	remote_command+=" && if [ ! -f thirdparty/sqlite/sqlite3.c ]; then ./vnew run vlib/db/sqlite/install_thirdparty_sqlite.vsh; fi"
 fi
 remote_command+=" && ./vnew wipe-cache"
 remote_command+=" && mkdir -p \"\$qemu_tmp/bin\""

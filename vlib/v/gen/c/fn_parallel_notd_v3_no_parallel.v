@@ -146,7 +146,7 @@ $if !windows {
 		incremental := g.incremental_fn_names.len > 0
 		for node_idx in a.start .. a.end {
 			node := g.a.nodes[node_idx]
-			if node.kind == .string_literal {
+			if node.kind == .string_literal && !node.is_embed_payload() {
 				a.string_pos++
 			}
 			if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
@@ -193,7 +193,7 @@ $if !windows {
 		mut string_pos := a.string_pos
 		for node_idx in a.start .. a.end {
 			node := g.a.nodes[node_idx]
-			if node.kind == .string_literal {
+			if node.kind == .string_literal && !node.is_embed_payload() {
 				unsafe {
 					literals[string_pos] = node.value
 				}
@@ -1032,7 +1032,7 @@ fn (mut g FlatGen) preintern_ast_string_literals() {
 	}
 	for i in 0 .. g.a.nodes.len {
 		node := unsafe { &g.a.nodes[i] }
-		if node.kind == .string_literal {
+		if node.kind == .string_literal && !node.is_embed_payload() {
 			g.intern_string(node.value)
 		}
 	}
@@ -1098,7 +1098,6 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 				}
 			}
 			g.fn_gen_items = owned_items
-			g.emitted_fns = clone_cgen_string_bool_map(g.emitted_fns)
 			cgen_worker_scope_leave(items_scope)
 			g.scoped_fn_items_scope = items_scope
 			// These tables remain live after release_scoped_fn_items, so promote them
@@ -2074,7 +2073,7 @@ fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 	// Intern all source literals before workers fork so their numeric IDs remain
 	// valid regardless of which chunk first references that metadata.
 	for node in g.a.nodes {
-		if node.kind == .string_literal {
+		if node.kind == .string_literal && !node.is_embed_payload() {
 			g.intern_string(node.value)
 		}
 	}
@@ -2108,7 +2107,7 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId
 			continue
 		}
 		node := unsafe { &g.a.nodes[idx] }
-		if node.kind == .string_literal {
+		if node.kind == .string_literal && !node.is_embed_payload() {
 			g.intern_string(node.value)
 		}
 		g.collect_c_extern_ref_from_node(node)
@@ -2729,6 +2728,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe_env_setup: g.compiler_vexe_env_setup
 		ccompiler: g.ccompiler
 		target: g.target
+		// `int_ct` is derived from the target by set_target, which a worker never
+		// calls. Without copying it a worker keeps the 64-bit default and emits an
+		// `i64` body for a prototype the master declared as `i32` on a 32-bit target.
+		int_ct: g.int_ct
+		output_cross_c: g.output_cross_c
 		subsystem: g.subsystem
 		c_flags: g.c_flags
 		suppress_main: g.suppress_main
@@ -2786,9 +2790,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		} else {
 			g.emitted_optional_types.clone()
 		}
-		// Function selection is complete before workers are created; body
-		// generation only reads this set.
-		emitted_fns: g.emitted_fns
 		array_method_cache: if result_only {
 			g.array_method_cache
 		} else {

@@ -3,6 +3,8 @@
 # Install the V 0.5.2 release compiler used by cmd/v as its V1 fallback.
 # If GitHub does not provide a usable binary, oldv checks out the 0.5.2 V
 # sources and their matching vc snapshot, then builds the fallback there.
+# The release vlib is supplemented with modules whose public paths changed
+# after 0.5.2, while their source was still compatible with V1.
 
 set -u
 
@@ -62,6 +64,29 @@ cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/
 cache_root=$cache_parent/$release_version
 cached_candidate=$cache_root/$(basename "$member")
 
+write_candidate_root() {
+	root=$cache_root
+	case "$system" in
+		MSYS*|MINGW*)
+			if command -v cygpath >/dev/null 2>&1; then
+				root=$(cygpath -w "$cache_root") || return 1
+			else
+				root=$(cd "$cache_root" && pwd -W) || return 1
+			fi
+			;;
+	esac
+	printf '%s\n' "$root" > "$candidate_root_file"
+}
+
+install_crypto_subtle_compatibility() {
+	source=$1/vlib/crypto/internal/subtle
+	target=$1/vlib/crypto/subtle
+	[ -f "$source/aliasing.v" ] || return 1
+	[ -f "$source/comparison.v" ] || return 1
+	mkdir -p "$target" || return 1
+	cp "$source/aliasing.v" "$source/comparison.v" "$target/" || return 1
+}
+
 sha256_of() {
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'
@@ -120,10 +145,10 @@ download_release() {
 build_with_oldv() {
 	echo "Building the V $release_version fallback with oldv..."
 	oldv_target=$candidate
-	oldv_copy='cp ./v "$V1_FALLBACK_TARGET" && pwd > "$V1_FALLBACK_ROOT_TARGET"'
+	oldv_copy='mkdir -p ./vlib/crypto/subtle && cp ./vlib/crypto/internal/subtle/aliasing.v ./vlib/crypto/internal/subtle/comparison.v ./vlib/crypto/subtle/ && cp ./v "$V1_FALLBACK_TARGET" && pwd > "$V1_FALLBACK_ROOT_TARGET"'
 	case "$system" in
 		MSYS*|MINGW*)
-			oldv_copy='copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL && cd > "%V1_FALLBACK_ROOT_TARGET%"'
+			oldv_copy='if not exist .\vlib\crypto\subtle mkdir .\vlib\crypto\subtle && copy /Y .\vlib\crypto\internal\subtle\aliasing.v .\vlib\crypto\subtle\ >NUL && copy /Y .\vlib\crypto\internal\subtle\comparison.v .\vlib\crypto\subtle\ >NUL && copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL && cd > "%V1_FALLBACK_ROOT_TARGET%"'
 			if command -v cygpath >/dev/null 2>&1; then
 				oldv_target=$(cygpath -w "$candidate")
 			fi
@@ -140,7 +165,8 @@ use_cached_release() {
 	[ -x "$cached_candidate" ] || return 1
 	candidate=$cached_candidate
 	candidate_has_expected_version || return 1
-	printf '%s\n' "$cache_root" > "$candidate_root_file" || return 1
+	install_crypto_subtle_compatibility "$cache_root" || return 1
+	write_candidate_root || return 1
 }
 
 install_downloaded_release() {
@@ -153,7 +179,8 @@ install_downloaded_release() {
 	fi
 	mv "$staged_cache" "$cache_root" || return 1
 	candidate=$cached_candidate
-	printf '%s\n' "$cache_root" > "$candidate_root_file" || return 1
+	install_crypto_subtle_compatibility "$cache_root" || return 1
+	write_candidate_root || return 1
 }
 
 if use_cached_release; then

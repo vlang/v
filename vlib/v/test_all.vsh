@@ -244,7 +244,7 @@ fn run_v3_unit_tests(cfg Config) {
 		for path in test_files[start..end] {
 			quoted_files << q(path)
 		}
-		run('${q(wrapper_vexe)} -old-compiler -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${quoted_files.join(' ')}')
+		run('${q(wrapper_vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${quoted_files.join(' ')}')
 		if os.exists(unit_cache) {
 			os.rmdir_all(unit_cache) or {
 				fail('failed to reset V3 unit-test cache ${unit_cache}: ${err}')
@@ -364,10 +364,6 @@ fn unit_shared_compiler_request(args []string, v3_src string) ?string {
 				output = args[i + 1]
 			}
 			i += 2
-			continue
-		}
-		if arg == '-old-compiler' {
-			i++
 			continue
 		}
 		// Compiler-build flags can change compiled-in behavior. Those requests
