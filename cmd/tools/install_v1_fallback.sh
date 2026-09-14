@@ -26,7 +26,8 @@ system=$(uname -s 2>/dev/null || echo unknown)
 source_root=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
 cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/v1-fallback}
 oldv_workdir=$cache_parent/sources/${fallback_short_revision}_${fallback_vc_short_revision}
-oldv_source_dir=$oldv_workdir/v_at_$fallback_revision
+oldv_source_dir=$oldv_workdir/v_at_${fallback_revision}_vc_${fallback_vc_revision}
+lock_dir=$oldv_workdir.lock
 
 fallback_dir=$(dirname "$fallback_output")
 mkdir -p "$fallback_dir" || exit 1
@@ -36,7 +37,36 @@ fallback_output=$fallback_dir/$(basename "$fallback_output")
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/v1-fallback.XXXXXX") || exit 1
 candidate=$work_dir/v1_fallback
 candidate_root_file=$work_dir/v1_fallback.vroot
-trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
+lock_acquired=0
+
+cleanup() {
+	rm -rf "$work_dir"
+	if [ "$lock_acquired" -eq 1 ]; then
+		lock_acquired=0
+		rmdir "$lock_dir" 2>/dev/null || true
+	fi
+}
+
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+acquire_cache_lock() {
+	mkdir -p "$cache_parent/sources" || return 1
+	waiting=0
+	while ! mkdir "$lock_dir" 2>/dev/null; do
+		if [ "$waiting" -eq 0 ]; then
+			echo "Waiting for another V1 fallback installation..."
+			waiting=1
+		fi
+		sleep 1 || return 1
+	done
+	lock_acquired=1
+}
+
+acquire_cache_lock || {
+	echo "Could not lock the V1 fallback cache at $lock_dir." >&2
+	exit 1
+}
 
 write_candidate_root() {
 	root=$1

@@ -184,7 +184,12 @@ fn main() {
 	if !context.show_vccommit {
 		scripting.cprintln('#################  context.commit_v: ${context.commit_v} #####################')
 	}
-	context.path_v = vgit.normalized_workpath_for_commit(context.vgo.workdir, context.commit_v)
+	workpath_commit := if context.commit_vc == '' {
+		context.commit_v
+	} else {
+		'${context.commit_v}_vc_${context.commit_vc}'
+	}
+	context.path_v = vgit.normalized_workpath_for_commit(context.vgo.workdir, workpath_commit)
 	context.path_vc = vgit.normalized_workpath_for_commit(context.vgo.workdir, 'vc')
 	os.mkdir_all(context.vgo.workdir) or {
 		eprintln('Could not create work folder `${context.vgo.workdir}`: ${err}')
