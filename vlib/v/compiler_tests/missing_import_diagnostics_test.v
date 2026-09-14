@@ -23,7 +23,7 @@ fn test_each_unresolved_module_import_is_reported() {
 	os.mkdir_all(root) or { panic(err) }
 	module_name := 'definitely_missing_v3_review_module'
 	empty_module_name := 'empty_target_v3_review_module'
-	empty_module_dir := os.join_path(root, 'modules', empty_module_name)
+	empty_module_dir := os.join_path(root, empty_module_name)
 	os.mkdir_all(empty_module_dir) or { panic(err) }
 	os.write_file(os.join_path(empty_module_dir, 'only_d_v3_review_never.v'),
 		'module ${empty_module_name}\n') or { panic(err) }
@@ -58,6 +58,138 @@ fn helper() {}
 	}
 }
 
+// The virtual `modules/` directory is no longer searched, so an import that it
+// would have satisfied has to report the move instead of a bare "not found".
+// The command has to be runnable as printed, and it may only be printed when the
+// directory really holds a module this build could have used.
+fn test_removed_modules_directory_reports_the_move_it_needs() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_modules_layout_hint_${os.getpid()}')
+	root := os.join_path(os.temp_dir(), 'v3_modules_layout_project_${os.getpid()}')
+	output := os.join_path(os.temp_dir(), 'v3_modules_layout_output_${os.getpid()}')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rmdir_all(root) or {}
+		os.rm(output) or {}
+		os.rm(output + '.c') or {}
+	}
+	build :=
+		os.execute('${missing_import_vexe} -gc none -path "${missing_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${missing_import_v3_src}')
+	assert build.exit_code == 0, build.output
+
+	hint := 'the virtual `modules/` directory is no longer searched for modules.'
+
+	// A plain import moves the module directory itself. The project directory
+	// holds a space, so the printed command is only runnable when it is quoted.
+	plain_root := os.join_path(root, 'plain project')
+	write_modules_layout_module(plain_root, os.join_path('modules', 'helper'), 'helper')
+	write_modules_layout_main(plain_root, 'helper')
+	plain := os.execute('${v3_bin} -nocache -o ${output} ${os.quoted_path(os.join_path(plain_root,
+		'main.v'))}')
+	assert plain.exit_code != 0, plain.output
+	assert plain.output.contains('cannot import module "helper" (not found)'), plain.output
+	assert plain.output.contains(hint), plain.output
+	plain_real := os.real_path(plain_root)
+	plain_source := os.join_path(plain_real, 'modules', 'helper')
+	plain_target := os.join_path(plain_real, 'helper')
+	assert plain.output.contains(modules_layout_expected_move(plain_source, plain_target)), plain.output
+
+	// A dotted import lives several directories deep, so moving just the leaf
+	// would need a destination parent that does not exist yet. Move the whole
+	// top-level module tree instead, which keeps every import path intact.
+	dotted_root := os.join_path(root, 'dotted')
+	write_modules_layout_module(dotted_root, os.join_path('modules', 'gpu', 'agx', 'fw'),
+		'fw')
+	write_modules_layout_main(dotted_root, 'gpu.agx.fw')
+	dotted := os.execute('${v3_bin} -nocache -o ${output} ${dotted_root}/main.v')
+	assert dotted.exit_code != 0, dotted.output
+	assert dotted.output.contains('cannot import module "gpu.agx.fw" (not found)'), dotted.output
+	dotted_real := os.real_path(dotted_root)
+	dotted_source := os.join_path(dotted_real, 'modules', 'gpu')
+	dotted_target := os.join_path(dotted_real, 'gpu')
+	assert dotted.output.contains(modules_layout_expected_move(dotted_source, dotted_target)), dotted.output
+
+	// When the top-level destination is already taken, only the leaf can move,
+	// and the command has to create the parents that move needs.
+	taken_root := os.join_path(root, 'taken')
+	write_modules_layout_module(taken_root, os.join_path('modules', 'gpu', 'agx', 'fw'),
+		'fw')
+	write_modules_layout_module(taken_root, os.join_path('gpu', 'other'), 'other')
+	write_modules_layout_main(taken_root, 'gpu.agx.fw')
+	taken := os.execute('${v3_bin} -nocache -o ${output} ${taken_root}/main.v')
+	assert taken.exit_code != 0, taken.output
+	taken_real := os.real_path(taken_root)
+	taken_source := os.join_path(taken_real, 'modules', 'gpu', 'agx', 'fw')
+	taken_target := os.join_path(taken_real, 'gpu', 'agx', 'fw')
+	taken_parent := os.join_path(taken_real, 'gpu', 'agx')
+	assert taken.output.contains('${modules_layout_expected_mkdir(taken_parent)} && ${modules_layout_expected_move(taken_source,
+		taken_target)}'), taken.output
+
+	// When the destination itself already exists, `mv` would move the module
+	// *into* it and nest it one level deeper, so the hint has to ask for a merge
+	// rather than print a command that leaves the import unresolved.
+	occupied_root := os.join_path(root, 'occupied')
+	write_modules_layout_module(occupied_root, os.join_path('modules', 'gpu', 'agx', 'fw'),
+		'fw')
+	occupied_target_dir := os.join_path(occupied_root, 'gpu', 'agx', 'fw')
+	os.mkdir_all(occupied_target_dir) or { panic(err) }
+	os.write_file(os.join_path(occupied_target_dir, 'fw_d_v3_layout_never.v'), 'module fw\n') or {
+		panic(err)
+	}
+	write_modules_layout_main(occupied_root, 'gpu.agx.fw')
+	occupied := os.execute('${v3_bin} -nocache -o ${output} ${occupied_root}/main.v')
+	assert occupied.exit_code != 0, occupied.output
+	occupied_real := os.real_path(occupied_root)
+	occupied_source := os.join_path(occupied_real, 'modules', 'gpu', 'agx', 'fw')
+	occupied_target := os.join_path(occupied_real, 'gpu', 'agx', 'fw')
+	assert occupied.output.contains('merge ${os.quoted_path(occupied_source)} into the existing ${os.quoted_path(occupied_target)}'), occupied.output
+	assert !occupied.output.contains('mv ${occupied_source} ${occupied_target}'), occupied.output
+
+	// A directory whose only source is disabled for this build is not a module
+	// the move would recover, so it must not be advertised as one.
+	disabled_root := os.join_path(root, 'disabled')
+	disabled_dir := os.join_path(disabled_root, 'modules', 'disabled_helper')
+	os.mkdir_all(disabled_dir) or { panic(err) }
+	os.write_file(os.join_path(disabled_dir, 'helper_d_v3_layout_never.v'), 'module disabled_helper\n') or {
+		panic(err)
+	}
+	write_modules_layout_main(disabled_root, 'disabled_helper')
+	disabled := os.execute('${v3_bin} -nocache -o ${output} ${disabled_root}/main.v')
+	assert disabled.exit_code != 0, disabled.output
+	assert disabled.output.contains('cannot import module "disabled_helper" (not found)'), disabled.output
+	assert !disabled.output.contains(hint), disabled.output
+}
+
+// The hint quotes the paths it prints and names the tool the host actually has,
+// so the expectations here have to be built the same way.
+fn modules_layout_expected_move(source string, target string) string {
+	$if windows {
+		return 'move ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	} $else {
+		return 'mv ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	}
+}
+
+fn modules_layout_expected_mkdir(dir string) string {
+	$if windows {
+		return 'mkdir ${os.quoted_path(dir)}'
+	} $else {
+		return 'mkdir -p ${os.quoted_path(dir)}'
+	}
+}
+
+fn write_modules_layout_module(root string, relative string, name string) {
+	dir := os.join_path(root, relative)
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, '${name}.v'), 'module ${name}\n') or { panic(err) }
+}
+
+fn write_modules_layout_main(root string, import_path string) {
+	os.mkdir_all(root) or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), 'module main\n\nimport ${import_path}\n\nfn main() {}\n') or {
+		panic(err)
+	}
+}
+
 fn test_eager_import_resolution_matches_authoritative_resolution() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_eager_import_resolution_${os.getpid()}')
 	root := os.join_path(os.temp_dir(), 'v3_eager_import_project_${os.getpid()}')
@@ -73,7 +205,7 @@ fn test_eager_import_resolution_matches_authoritative_resolution() {
 	assert build.exit_code == 0, build.output
 
 	precedence_root := os.join_path(root, 'precedence')
-	local_arrays_dir := os.join_path(precedence_root, 'modules', 'arrays')
+	local_arrays_dir := os.join_path(precedence_root, 'arrays')
 	os.mkdir_all(local_arrays_dir) or { panic(err) }
 	os.write_file(os.join_path(local_arrays_dir, 'arrays.v'), "module arrays
 
@@ -101,8 +233,8 @@ fn main() {
 	assert precedence_run.output.trim_space() == 'local arrays', precedence_run.output
 
 	string_root := os.join_path(root, 'string_literal')
-	bridge_dir := os.join_path(string_root, 'modules', 'eager_string_bridge')
-	trap_dir := os.join_path(string_root, 'modules', 'eager_string_literal_trap')
+	bridge_dir := os.join_path(string_root, 'eager_string_bridge')
+	trap_dir := os.join_path(string_root, 'eager_string_literal_trap')
 	os.mkdir_all(bridge_dir) or { panic(err) }
 	os.mkdir_all(trap_dir) or { panic(err) }
 	os.write_file(os.join_path(bridge_dir, 'bridge.v'), "module eager_string_bridge
@@ -188,8 +320,8 @@ fn main() {
 	assert collision_run.output.trim_space() == 'plain bar\ndotted bar', collision_run.output
 
 	alias_root := os.join_path(root, 'module_alias')
-	legacy_dir := os.join_path(alias_root, 'modules', 'legacy')
-	canonical_dir := os.join_path(alias_root, 'modules', 'canonical')
+	legacy_dir := os.join_path(alias_root, 'legacy')
+	canonical_dir := os.join_path(alias_root, 'canonical')
 	os.mkdir_all(legacy_dir) or { panic(err) }
 	os.mkdir_all(canonical_dir) or { panic(err) }
 	os.write_file(os.join_path(alias_root, 'v.mod'), "Module {
@@ -199,7 +331,7 @@ fn main() {
 		panic(err)
 	}
 	os.write_file(os.join_path(legacy_dir, 'alias.v'),
-		"@[alias: '@VMODROOT/modules/canonical'] module legacy\n") or { panic(err) }
+		"@[alias: '@VMODROOT/canonical'] module legacy\n") or { panic(err) }
 	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical
 
 pub struct Value {

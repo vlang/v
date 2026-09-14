@@ -110,10 +110,6 @@ pub fn lookup_module_with_path(mod string, base_path string) !string {
 	if path := module_path_from_search_root(compile_dir, mod) {
 		return path
 	}
-	modules_dir := os.join_path(compile_dir, 'modules')
-	if path := module_path_from_search_root(modules_dir, mod) {
-		return path
-	}
 	mut current_dir := compile_dir
 	for {
 		parent_dir := os.dir(current_dir)

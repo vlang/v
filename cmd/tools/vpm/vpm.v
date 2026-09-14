@@ -155,13 +155,37 @@ fn vpm_remove(query []string) {
 		vpm_error('specify at least one module name for removal.')
 		exit(2)
 	}
+	mut errors := 0
 	for m in query {
 		final_module_path := get_path_of_existing_module(m) or { continue }
+		if !is_removable_module_dir(final_module_path) {
+			vpm_error('refusing to remove `${m}`: `${fmt_mod_path(final_module_path)}` was not installed by VPM.',
+				details: "A local install shares the module lookup root with the project's own modules, so only the checkouts VPM made there can be removed by it. Delete the directory by hand, if that is really what you want."
+			)
+			errors++
+			continue
+		}
 		println('Removing module "${m}" from ${fmt_mod_path(final_module_path)} ...')
 		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
 		rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
 		cleanup_empty_module_parent_dirs(final_module_path)
 	}
+	if errors > 0 {
+		exit(1)
+	}
+}
+
+// is_removable_module_dir reports whether VPM may delete a directory. With
+// `--local` the module lookup root is the project root itself, so the modules
+// the project writes by hand sit next to the ones VPM installed; a VPM install
+// is always a VCS checkout, which is what tells the two apart. Outside a local
+// install the root holds nothing but installed packages, so everything in it
+// stays removable, including a checkout whose VCS directory is already gone.
+fn is_removable_module_dir(module_path string) bool {
+	if !settings.is_local {
+		return true
+	}
+	return vcs_used_in_dir(module_path) != none
 }
 
 fn vpm_show(query []string) {

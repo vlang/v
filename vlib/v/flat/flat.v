@@ -439,6 +439,9 @@ pub mut:
 	template_actions    map[int]string
 	// missing_imports retains source import paths for unresolved import nodes.
 	missing_imports map[int]string
+	// missing_import_hints holds the migration hint the resolver produced for an
+	// unresolved import node, when it can explain the failure. Usually empty.
+	missing_import_hints map[int]string
 	// file_node_ids records every .file node the parser creates, in creation
 	// order: (marker, trailing) pairs per source file. The trailing node's
 	// children are the file's top-level declarations, letting collect build
@@ -532,6 +535,7 @@ pub fn FlatAst.new() FlatAst {
 		template_call_sites: map[int]token.Pos{}
 		template_actions: map[int]string{}
 		missing_imports: map[int]string{}
+		missing_import_hints: map[int]string{}
 		formatter_sources: map[int]string{}
 		formatter_file_sources: map[int]string{}
 		formatter_node_ends: map[int]int{}

@@ -209,6 +209,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			template_call_sites: map[int]token.Pos{}
 			template_actions: map[int]string{}
 			missing_imports: map[int]string{}
+			missing_import_hints: map[int]string{}
 			formatter_sources: map[int]string{}
 			formatter_file_sources: map[int]string{}
 			formatter_node_ends: map[int]int{}

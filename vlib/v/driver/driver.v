@@ -17065,8 +17065,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					continue
 				}
 			}
+			importing_file := cached_header_source_contexts[cur_file] or {
+				if cur_file.len > 0 { cur_file } else { first_file }
+			}
 			if unresolved_modules[mod_name] {
 				a.missing_imports[node_idx] = mod_name
+				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 			}
 			if module_identity := parsed_module_identities[mod_name] {
 				if module_identity.len > 0 {
@@ -17084,9 +17088,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				continue
 			}
 
-			importing_file := cached_header_source_contexts[cur_file] or {
-				if cur_file.len > 0 { cur_file } else { first_file }
-			}
 			mod_dir := if is_bundle_warmup_import {
 				prefs.get_vlib_module_path(mod_name)
 			} else {
@@ -17123,6 +17124,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			module_resolved := mod_dir_exists && mod_files.len > 0
 			if !module_resolved && !is_bundle_warmup_import {
 				a.missing_imports[node_idx] = mod_name
+				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 				unresolved_modules[mod_name] = true
 			}
 			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
@@ -17837,6 +17839,89 @@ fn resolve_global_module_path(prefs &pref.Preferences, mod_name string, mod_path
 		}
 	}
 	return ''
+}
+
+// record_missing_import_hint stores the migration hint for an import that a
+// `modules/` directory would have satisfied, so the checker can print it next to
+// the "not found" error. Nothing is stored when no such directory exists.
+fn record_missing_import_hint(mut a flat.FlatAst, prefs &pref.Preferences, node_idx int, mod_name string, importing_file string) {
+	hint := removed_modules_layout_hint(prefs, mod_name, importing_file)
+	if hint.len > 0 {
+		a.missing_import_hints[node_idx] = hint
+	}
+}
+
+// removed_modules_layout_hint explains an import that a `modules/` directory
+// would have satisfied. The virtual `modules/` lookup is gone, the same way the
+// virtual `src/` source root is: a module's import path is its path under the
+// nearest v.mod, so the directory has to sit there rather than one level down.
+// The directory has to hold a module this build could actually use, otherwise
+// moving it up would not resolve the import either.
+fn removed_modules_layout_hint(prefs &pref.Preferences, mod_name string, importing_file string) string {
+	if importing_file.len == 0 {
+		return ''
+	}
+	relative := mod_name.replace('.', os.path_separator)
+	top_name := mod_name.all_before('.')
+	mut current := os.dir(os.real_path(importing_file))
+	for {
+		candidate := os.join_path(current, 'modules', relative)
+		if module_path_has_v_sources(candidate, prefs) {
+			command := modules_layout_move_command(current, relative, top_name)
+			return '\nthe virtual `modules/` directory is no longer searched for modules.\nMove it up beside the v.mod it belongs to, which keeps the import path the same:\n\t${command}'
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ''
+}
+
+// modules_layout_move_command spells out a move that actually runs. A dotted
+// import lives several directories deep, so moving just the leaf would need a
+// destination parent that does not exist yet: move the whole top-level module
+// tree when its destination is free, and create the parents otherwise. A
+// destination that is already taken cannot be moved onto at all, since `mv`
+// would put the module *inside* it, so that one asks for a merge instead.
+fn modules_layout_move_command(root string, relative string, top_name string) string {
+	top_source := os.join_path(root, 'modules', top_name)
+	top_target := os.join_path(root, top_name)
+	if !os.exists(top_target) {
+		return modules_layout_move(top_source, top_target)
+	}
+	source := os.join_path(root, 'modules', relative)
+	target := os.join_path(root, relative)
+	if os.exists(target) {
+		return 'merge ${os.quoted_path(source)} into the existing ${os.quoted_path(target)}'
+	}
+	target_parent := os.dir(target)
+	if os.is_dir(target_parent) {
+		return modules_layout_move(source, target)
+	}
+	return '${modules_layout_mkdir(target_parent)} && ${modules_layout_move(source, target)}'
+}
+
+// modules_layout_move and modules_layout_mkdir quote the paths they are given,
+// so a project directory with a space or a shell metacharacter in it still
+// produces a command that can be pasted as printed, and they name the tool the
+// host actually has: `mv` and `mkdir -p` are not available in Windows cmd.exe.
+fn modules_layout_move(source string, target string) string {
+	$if windows {
+		return 'move ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	} $else {
+		return 'mv ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	}
+}
+
+fn modules_layout_mkdir(dir string) string {
+	$if windows {
+		// cmd.exe's `mkdir` creates the intermediate directories itself.
+		return 'mkdir ${os.quoted_path(dir)}'
+	} $else {
+		return 'mkdir -p ${os.quoted_path(dir)}'
+	}
 }
 
 fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {

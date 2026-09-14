@@ -394,6 +394,54 @@ fn test_install_does_not_warn_about_valid_module_name() {
 	assert !res.output.contains('is not a valid V import path'), res.output
 }
 
+// `v install --local` installs into the project's own module lookup root, the
+// folder holding its `v.mod`, so that root is now shared with the modules the
+// project writes by hand. A destructive command may only touch the checkouts
+// VPM put there: an ordinary module directory is project source.
+fn test_local_remove_refuses_a_module_vpm_did_not_install() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_remove'))
+	project_dir := os.join_path(test_path, 'local_remove_project')
+	handwritten := os.join_path(project_dir, 'mymod')
+	os.mkdir_all(handwritten) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'local_remove_project'\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(handwritten, 'mymod.v'), 'module mymod\n') or { panic(err) }
+
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	res := cmd_fail(@LOCATION, '${vexe} remove --local mymod')
+	assert res.output.contains('refusing to remove `mymod`'), res.output
+	assert os.is_file(os.join_path(handwritten, 'mymod.v'))
+}
+
+// What VPM installed into that shared root, VPM can still take back: an install
+// is a VCS checkout, which is what separates it from the project's own modules.
+fn test_local_remove_deletes_what_vpm_installed() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_remove_installed'))
+	project_dir := os.join_path(test_path, 'local_remove_installed_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'local_remove_installed'\n}\n") or {
+		panic(err)
+	}
+	// The post-install state of `v install --local <repo>`: the package sits in
+	// the lookup root as the checkout VPM cloned there.
+	installed := os.join_path(project_dir, 'local_pkg')
+	create_local_git_module(installed, 'local_pkg')
+
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok(@LOCATION, '${vexe} remove --local local_pkg')
+	assert !os.exists(installed)
+	assert os.is_file(os.join_path(project_dir, 'v.mod'))
+}
+
 fn create_local_git_module(repo_path string, module_name string) {
 	os.mkdir_all(repo_path) or { panic(err) }
 	os.write_file(os.join_path(repo_path, 'v.mod'),

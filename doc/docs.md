@@ -6296,6 +6296,10 @@ folder containing `v.mod`.
 V packages are installed normally in your `~/.vmodules` folder. That
 location can be overridden by setting the env variable `VMODULES`.
 
+`v install --local` installs into the project's own lookup root instead, i.e.
+the folder holding its `v.mod`, so the package lands beside the project's own
+modules and is imported by its name just like they are.
+
 ### Package names and import paths
 
 A package name can contain characters that are not valid in a V import

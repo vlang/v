@@ -26,6 +26,20 @@ mut:
 	logger &log.Logger
 }
 
+// local_vmodules_path returns the directory `v install --local` installs into:
+// the nearest v.mod folder, or the working directory when there is none. That
+// folder is the module lookup root and a module's import path is its path under
+// it, so a locally installed package has to sit there directly. There is no
+// virtual `modules/` directory left to hide it in.
+fn local_vmodules_path(wrkdir string) string {
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(wrkdir)
+	if vmod_file_location.vmod_file.len == 0 {
+		return wrkdir
+	}
+	return vmod_file_location.vmod_folder
+}
+
 fn init_settings() VpmSettings {
 	args := os.args[1..]
 	opts := cmdline.only_options(args)
@@ -36,15 +50,8 @@ fn init_settings() VpmSettings {
 	is_local := '-l' in opts || '--local' in opts
 	if is_local {
 		wrkdir := os.getwd()
-		mut mcache := vmod.get_cache()
-		vmod_file_location := mcache.get_by_folder(wrkdir)
-		project_root_dir := if vmod_file_location.vmod_file.len == 0 {
-			wrkdir
-		} else {
-			vmod_file_location.vmod_folder
-		}
-		vmodules_path = os.join_path(project_root_dir, 'modules')
-		verbose_println('init_settings, local installation, wrkdir: ${wrkdir} | project_root_dir: ${project_root_dir} | vmodules_path: ${vmodules_path}')
+		vmodules_path = local_vmodules_path(wrkdir)
+		verbose_println('init_settings, local installation, wrkdir: ${wrkdir} | vmodules_path: ${vmodules_path}')
 	}
 	verbose_println('init_settings, final is_local: ${is_local} | vmodules_path: `${vmodules_path}`')
 
