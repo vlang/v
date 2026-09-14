@@ -95,7 +95,22 @@ fn addressed_map_key(ak string) {
 	}
 }
 
+// The value type may be an anonymous struct, whose braces belong to it.
+fn anonymous_value_type_key(nk string) {
+	$if windows {
+		m := map[string]struct {
+			n int
+		}{
+			nk: struct {
+				n: 1
+			}
+		}
+		println(m.len)
+	}
+}
+
 fn main() {
+	anonymous_value_type_key('i')
 	addressed_map_key('h')
 	labeled_assignment()
 	function_valued_map_key('g')

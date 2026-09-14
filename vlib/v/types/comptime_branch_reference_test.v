@@ -433,3 +433,16 @@ fn test_an_operator_keyword_after_a_marker_reads_it() {
 	assert !code_references_ident('c := chan map[string]int{}', 'chan', true)
 	assert !code_references_ident('c := chan chan int{}', 'chan', true)
 }
+
+fn test_an_anonymous_struct_value_type_is_traversed() {
+	assert code_references_ident('m := map[string]struct { n int }{x: 1}', 'x', true)
+	assert code_references_ident('m := map[string]struct { n int, o int }{x: 1}', 'x', true)
+	assert code_references_ident('return map[string]struct { n int }{x: 1}', 'x', true)
+	// A struct literal is still one, and a block still labels its statements.
+	assert !code_references_ident('c := Config{x: 1}', 'x', true)
+	assert !code_references_ident('if cond {\n\tx: println(1)\n}', 'x', true)
+	assert !code_references_ident('unsafe {\n\tx: println(1)\n}', 'x', true)
+	assert !code_references_ident('if a {\n} else {\n\tx: println(1)\n}', 'x', true)
+	// An array of those still initialises an array.
+	assert !code_references_ident('_ = []struct { n int }{len: 3}', 'len', true)
+}

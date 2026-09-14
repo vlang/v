@@ -2900,12 +2900,12 @@ fn map_literal_type_precedes(tokens []string, index int) bool {
 	mut depth := 0
 	for i := index - 1; i >= 0; i-- {
 		word := tokens[i]
-		if word == ')' || word == ']' {
+		if word == ')' || word == ']' || word == '}' {
 			depth++
 			first = i
 			continue
 		}
-		if word == '(' || word == '[' {
+		if word == '(' || word == '[' || word == '{' {
 			if depth == 0 {
 				break
 			}
@@ -2938,12 +2938,16 @@ fn group_belongs_to_a_type(opening string, previous string) bool {
 		// `Box[int]`, and the `[]int` of a `map[string][]int`.
 		return previous == ']' || is_type_name_token(previous)
 	}
+	if opening == '{' {
+		// The body of the anonymous `struct { n int }` of a value type.
+		return previous in ['struct', 'union']
+	}
 	// `fn (int) int` and the second group of `fn (int) (int, int)`.
 	return previous == 'fn' || previous == ')'
 }
 
 fn token_may_spell_a_type(word string) bool {
-	return word in ['.', '&', '?', '!', '0', 'fn'] || is_type_name_token(word)
+	return word in ['.', '&', '?', '!', '0', 'fn', 'struct', 'union'] || is_type_name_token(word)
 }
 
 // name_precedes_delimiter reports whether the `{` or `(` at `index` follows a
