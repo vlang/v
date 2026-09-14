@@ -21,12 +21,15 @@ fn C.atomic_load_u64(voidptr) u64
 
 // node_payload_table_load reads the published table pointer, or nil. The
 // pointer goes through the integer atomics of its width, like sync.stdatomic:
-// the header's atomic_load_ptr is a bare C11 generic on some compilers.
+// the header's atomic_load_ptr is a bare C11 generic on some compilers. The
+// slot address is passed as an explicit `voidptr`, because the atomics take a
+// `uint64_t*`/`uint32_t*` in C, and a bare `&g_node_payload_table` would reach
+// them as an incompatible `NodePayloadTable**`.
 fn node_payload_table_load() &NodePayloadTable {
 	$if x32 {
-		return unsafe { &NodePayloadTable(voidptr(C.atomic_load_u32(&g_node_payload_table))) }
+		return unsafe { &NodePayloadTable(voidptr(C.atomic_load_u32(voidptr(&g_node_payload_table)))) }
 	} $else {
-		return unsafe { &NodePayloadTable(voidptr(C.atomic_load_u64(&g_node_payload_table))) }
+		return unsafe { &NodePayloadTable(voidptr(C.atomic_load_u64(voidptr(&g_node_payload_table)))) }
 	}
 }
 
@@ -34,9 +37,9 @@ fn node_payload_table_load() &NodePayloadTable {
 // lock-free lookups on other threads.
 fn node_payload_table_publish(table &NodePayloadTable) {
 	$if x32 {
-		C.atomic_store_u32(&g_node_payload_table, u32(voidptr(table)))
+		C.atomic_store_u32(voidptr(&g_node_payload_table), u32(voidptr(table)))
 	} $else {
-		C.atomic_store_u64(&g_node_payload_table, u64(voidptr(table)))
+		C.atomic_store_u64(voidptr(&g_node_payload_table), u64(voidptr(table)))
 	}
 }
 
