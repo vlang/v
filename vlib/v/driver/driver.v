@@ -17691,10 +17691,16 @@ fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_pa
 	importer_vmod_root := nearest_vmod_root_for_file(importing_file)
 	mut current := os.real_path(os.dir(importing_file))
 	for {
-		candidate := os.join_path_single(current, mod_path)
-		if module_path_has_v_sources(candidate, prefs)
-			&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
-			return candidate
+		// Both places a level can hold the module, in the order the module path
+		// fallback tries them, so a project's own `modules/` is reached at the level
+		// it sits on -- before the walk has climbed past the project to a neighbour
+		// of it that happens to carry the same name.
+		for candidate in [os.join_path_single(current, mod_path),
+			os.join_path(current, 'modules', mod_path)] {
+			if module_path_has_v_sources(candidate, prefs)
+				&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
+				return candidate
+			}
 		}
 		parent := os.dir(current)
 		if parent == current {
