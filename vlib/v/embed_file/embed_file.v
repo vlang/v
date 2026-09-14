@@ -25,7 +25,7 @@ pub:
 fn join_chunks_buffer(size int) &u8 {
 	$if prealloc {
 		unsafe {
-			buffer := &u8(C.malloc(usize(size)))
+			buffer := join_chunks_raw_alloc(size)
 			if buffer == nil {
 				panic('EmbedFileData error: could not reserve ${size} bytes for a joined payload')
 			}
