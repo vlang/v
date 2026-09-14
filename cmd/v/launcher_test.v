@@ -70,6 +70,12 @@ fn test_gnumake_avoids_duplicate_windows_executable_suffix_for_fallback_bootstra
 	assert !makefile.contains("install_v1_fallback.sh '\$(VEXE)\$(EXE_EXT)'")
 }
 
+fn test_gnumake_uses_absolute_legacy_paths_for_fallback() {
+	root := find_vroot(@FILE) or { panic(err) }
+	makefile := os.read_file(os.join_path(root, 'GNUmakefile')) or { panic(err) }
+	assert makefile.contains('LEGACYLIBS := \$(abspath \$(VROOT)/thirdparty/legacy)')
+}
+
 fn test_portable_make_uses_the_pinned_v1_fallback_installer() {
 	root := find_vroot(@FILE) or { panic(err) }
 	makefile := os.read_file(os.join_path(root, 'Makefile')) or { panic(err) }

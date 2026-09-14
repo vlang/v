@@ -137,6 +137,7 @@ fn test_netbsd_marks_the_v1_compatibility_compiler() {
 fn test_gnumake_builds_the_v1_fallback_only_on_demand() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
 	assert source.contains('V1_FALLBACK_EXE = \$(dir \$(VEXE))v1_fallback\$(EXE_EXT)')
+	assert source.contains('LEGACYLIBS := \$(abspath \$(VROOT)/thirdparty/legacy)')
 	all_recipe := source.all_after('all: latest_vc latest_tcc latest_legacy').all_before('\nv1:\n')
 	assert !all_recipe.contains('V1_FALLBACK_EXE')
 	assert all_recipe.contains('-new-compiler run cmd/tools/detect_tcc.v')

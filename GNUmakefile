@@ -22,7 +22,7 @@ unexport GIT
 
 VCFILE := v.c
 TMPTCC := $(VROOT)/thirdparty/tcc
-LEGACYLIBS := $(VROOT)/thirdparty/legacy
+LEGACYLIBS := $(abspath $(VROOT)/thirdparty/legacy)
 TMPLEGACY := $(LEGACYLIBS)/source
 TCCOS := unknown
 TCCARCH := unknown
