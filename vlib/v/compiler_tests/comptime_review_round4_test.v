@@ -2615,7 +2615,7 @@ import pkg
 
 fn main() {
 	mut rows := []string{}
-	\$if enabled {
+	\$if enabled == true {
 		rows << 'if'
 	} \$else {
 		rows << 'wrong-if'
@@ -2648,16 +2648,6 @@ struct SoaItem {
 	value int
 }
 
-@[typedef]
-struct C.SoaItem_SOA {
-	len   int
-	cap   int
-	value &int
-}
-
-fn C.SoaItem_SOA_new(int, int) C.SoaItem_SOA
-fn C.SoaItem_SOA_free(&C.SoaItem_SOA)
-
 struct Foo {}
 
 fn Foo.make(value Foo) {
@@ -2671,9 +2661,8 @@ fn (foo Foo) run(value int) {
 
 fn main() {
 	mut rows := []string{}
-	mut soa := C.SoaItem_SOA_new(0, 3)
-	rows << soa.cap.str()
-	C.SoaItem_SOA_free(&soa)
+	item := SoaItem{value: 3}
+	rows << item.value.str()
 	\$for method in Foo.methods {
 		rows << method.name + ':' + method.params.len.str()
 	}

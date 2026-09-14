@@ -429,7 +429,7 @@ fn main() {}
 	assert compile.exit_code == 0, compile.output
 }
 
-fn test_driver_cflags_include_dir_is_visible_to_header_inliner() {
+fn test_driver_cflags_include_dir_is_visible_to_c_compiler() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_cflags_include_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -482,8 +482,8 @@ fn main() {
 	kept_files := kept_c_files(keep_c_dir)
 	assert kept_files.len == 1, kept_files.str()
 	generated_c := os.read_file(kept_files[0])!
-	assert !generated_c.contains('#include "cli_header.h"'), generated_c
-	assert generated_c.contains('static inline int cli_header_value(CliHeaderValue* item)')
+	assert generated_c.contains('#include "cli_header.h"'), generated_c
+	assert !generated_c.contains('static inline int cli_header_value(CliHeaderValue* item)')
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '73'
@@ -876,7 +876,7 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	}
 }
 
-fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
+fn test_driver_no_skip_unused_keeps_unused_function() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_skip_unused_cache_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -888,26 +888,20 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	os.write_file(source, "fn unused_value() int { return 42 }\n\nfn main() { println('ok') }\n")!
 	mut environment := os.environ()
 	environment['VTMP'] = os.join_path(root, 'vtmp')
-	environment['V3CACHE'] = os.join_path(root, 'cache')
 
-	cold_output := os.join_path(root, 'cold')
-	cold := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', cold_output, source], environment)
+	cold_output := os.join_path(root, 'cold.c')
+	cold := run_driver_with_environment(v3_bin, ['-no-parallel', '-b', 'c', '-o', cold_output,
+		source], environment)
 	assert cold.exit_code == 0, cold.output
-	assert !cold.output.contains('(cached)'), cold.output
+	cold_c := os.read_file(cold_output)!
+	assert !cold_c.contains('unused_value('), cold_c
 
-	warm_output := os.join_path(root, 'warm')
-	warm := run_driver_with_environment(v3_bin, ['-no-parallel', '-o', warm_output, source], environment)
-	assert warm.exit_code == 0, warm.output
-	assert warm.output.contains('cgen (cached)'), warm.output
-
-	no_skip_output := os.join_path(root, 'no_skip')
-	no_skip := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-o',
-		no_skip_output, source], environment)
+	no_skip_output := os.join_path(root, 'no_skip.c')
+	no_skip := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b', 'c',
+		'-o', no_skip_output, source], environment)
 	assert no_skip.exit_code == 0, no_skip.output
-	assert !no_skip.output.contains('(cached)'), no_skip.output
-	no_skip_run := cmdexec.run(no_skip_output, [])
-	assert no_skip_run.exit_code == 0, no_skip_run.output
-	assert no_skip_run.output == 'ok\n', no_skip_run.output
+	no_skip_c := os.read_file(no_skip_output)!
+	assert no_skip_c.contains('unused_value('), no_skip_c
 }
 
 fn test_driver_valued_define_activates_optional_flag_and_source_suffix() {

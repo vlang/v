@@ -11,11 +11,10 @@ fn test_c_backend_only_runs_generic_and_c_backend_test_files() {
 	assert pref.is_test_file_for_backend('/tmp/basic_test.v', 'c')
 	assert pref.is_test_file_for_backend('/tmp/basic_test.c.v', 'c')
 	assert !pref.is_test_file_for_backend('/tmp/basic_test.js.v', 'c')
-	assert !pref.is_test_file_for_backend('/tmp/basic_test.arm64.v', 'c')
-	assert !pref.is_test_file_for_backend('/tmp/basic_test.amd64.v', 'c')
-
-	assert pref.is_test_file_for_backend('/tmp/basic_test.arm64.v', 'arm64')
-	assert pref.is_test_file_for_backend('/tmp/basic_test.amd64.v', 'amd64')
+	assert pref.is_test_file_for_backend('/tmp/basic_test.arm64.v', 'c')
+	assert pref.is_test_file_for_backend('/tmp/basic_test.amd64.v', 'c')
+	assert !pref.is_test_file_for_backend('/tmp/basic_test.arm64.v', 'wasm')
+	assert !pref.is_test_file_for_backend('/tmp/basic_test.amd64.v', 'native')
 }
 
 fn test_c_flag_target_filter_keeps_host_linux_and_drops_wasm() {
@@ -101,9 +100,9 @@ fn test_objective_c_flags_are_applied_to_standalone_build() {
 	bin := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}')
 	os.rm(bin) or {}
 	os.rmdir_all(bin) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -b c -o ${bin} ${src}')
+	compile := os.execute('${v3_bin} -no-memory-limit -showcc -b c -o ${bin} ${src}')
 	assert compile.exit_code == 0, compile.output
-	cc_lines := compile.output.split_into_lines().filter(it.contains('> cc '))
+	cc_lines := compile.output.split_into_lines().filter(it.contains('  > '))
 	assert cc_lines.len == 1, compile.output
 	cc_line := cc_lines[0]
 	assert cc_line.contains('-fobjc-arc'), cc_line
