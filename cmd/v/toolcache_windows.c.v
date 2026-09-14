@@ -55,6 +55,8 @@ struct ToolCacheEntryDir {
 fn open_tool_cache_entry_dir(path string) !ToolCacheEntryDir {
 	os.mkdir(path, mode: 0o700) or {}
 	w_path := path.replace('/', '\\').to_wide()
+	// to_wide allocates outside V's managed heap, and CreateFileW borrows that buffer, so
+	// keep it alive through the final API use and release it explicitly afterwards.
 	defer {
 		unsafe { free(voidptr(w_path)) }
 	}

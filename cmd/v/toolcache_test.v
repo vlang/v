@@ -919,11 +919,13 @@ fn test_a_restored_nested_module_invalidates_a_recorded_failure() {
 	// While the module is still absent the failure stands, or every invocation would pay
 	// for the same failing compilation again.
 	assert unbuildable_tool_failure(entry) != none, 'the failure must stand while the module is missing'
+	vlib_root := os.join_path(directory, 'vlib')
+	os.mkdir_all(os.join_path(vlib_root, 'unrelated'))!
+	assert unbuildable_tool_failure(entry) != none, 'an unrelated sibling module must not invalidate the failure'
 
 	// The premise of the bug: the two fixed roots record their *direct* children, so
 	// restoring a module one level deeper leaves both of them reading exactly as before.
 	// Without the module's own ancestors in the manifest nothing would ever notice.
-	vlib_root := os.join_path(directory, 'vlib')
 	v_root := os.join_path(directory, 'vlib', 'v')
 	vlib_before := module_root_stamp(vlib_root)
 	v_before := module_root_stamp(v_root)
@@ -1082,6 +1084,8 @@ fn test_a_restored_importer_local_module_invalidates_a_recorded_failure() {
 	assert recorded.contains(os.join_path(tool_dir, 'acme', 'widget'))
 	assert recorded.contains(os.join_path(local_modules, 'acme', 'widget'))
 	assert recorded.contains(os.join_path(project_root, 'acme', 'widget'))
+	reason := recorded_inputs_changed(entry.unbuildable_manifest)
+	assert reason == '', 'the just-recorded local-module failure is stale: ${reason}'
 	assert unbuildable_tool_failure(entry) != none
 
 	module_dir := os.join_path(local_modules, 'acme', 'widget')
@@ -1123,6 +1127,58 @@ fn test_adding_an_alias_at_a_module_prefix_invalidates_a_recorded_failure() {
 
 	os.write_file(alias_file, "@[alias: '${canonical}'] module foo\n")!
 	assert unbuildable_tool_failure(entry) == none, 'adding an alias at an ancestor prefix must retry the build'
+}
+
+// Ancestor resolution rejects a sibling module whose nearest v.mod declares another name.
+// Editing that manifest can make an otherwise unchanged directory resolve successfully.
+fn test_changing_an_ancestor_module_manifest_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('ancestor_module_manifest')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	project_root := os.join_path(directory, 'importer')
+	tool_dir := os.join_path(project_root, 'cmd', 'demo')
+	os.mkdir_all(tool_dir)!
+	os.write_file(os.join_path(project_root, 'v.mod'), "Module {\n\tname: 'importer'\n}\n")!
+	source := os.join_path(tool_dir, 'main.v')
+	os.write_file(source, 'module main\n\nimport foo.bar\n')!
+
+	sibling_root := os.join_path(directory, 'foo')
+	module_dir := os.join_path(sibling_root, 'bar')
+	os.mkdir_all(module_dir)!
+	os.write_file(os.join_path(module_dir, 'bar.v'), 'module bar\n')!
+	module_manifest_path := os.join_path(sibling_root, 'v.mod')
+	os.write_file(module_manifest_path, "Module {\n\tname: 'not_foo'\n}\n")!
+	module_manifest := os.join_path(os.real_path(sibling_root), 'v.mod')
+
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		source:               source
+		vroot:                project_root
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', os.join_path(directory, 'explicit')]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := '${source}:3:1: builder error: cannot import module "foo.bar" (not found)'
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert vmod_manifest_inputs(module_dir) == [
+		os.join_path(os.real_path(module_dir), 'v.mod'),
+		module_manifest,
+	]
+	assert recorded.contains('f${tool_cache_field_separator}${module_manifest}${tool_cache_field_separator}${file_stamp(module_manifest)}')
+	reason := recorded_inputs_changed(entry.unbuildable_manifest)
+	assert reason == '', 'the just-recorded ancestor-module failure is stale: ${reason}'
+	assert unbuildable_tool_failure(entry) != none
+
+	os.write_file(module_manifest_path, "Module {\n\tname: 'foo'\n}\n")!
+	assert unbuildable_tool_failure(entry) == none, 'changing the owning manifest must retry ancestor module resolution'
 }
 
 // `VMODULES` decides which copy of a module an import resolves to, so it selects sources

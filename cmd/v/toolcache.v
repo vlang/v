@@ -166,13 +166,25 @@ fn dir_stamp(path string) string {
 }
 
 // module_root_stamp digests the names of the modules that live directly inside a directory.
-// It is only used to revalidate a recorded build failure, so paying for an `is_dir` call per
-// entry is fine here: it is what makes "the module you could not import came back" visible.
+// It remains readable for failure manifests written before exact module-directory stamps were
+// introduced.
 fn module_root_stamp(path string) string {
 	entries := os.ls(path) or { return 'missing' }
 	mut names := entries.filter(os.is_dir(os.join_path(path, it)))
 	names.sort()
 	return sha256.hexhash(names.join('\n'))
+}
+
+// module_directory_stamp records whether one exact module path is a directory. Unlike a
+// parent-directory listing, it is unaffected when an unrelated sibling module is added.
+fn module_directory_stamp(path string) string {
+	if os.is_dir(path) {
+		return 'directory:${os.real_path(path)}'
+	}
+	if os.exists(path) {
+		return 'not-directory'
+	}
+	return file_stamp_missing
 }
 
 // binary_identity identifies one published executable, so that a manifest can name the exact
@@ -309,6 +321,7 @@ fn recorded_inputs_changed(manifest_path string) string {
 		current := match kind {
 			'd' { dir_stamp(path) }
 			'm' { module_root_stamp(path) }
+			'p' { module_directory_stamp(path) }
 			'b' { binary_identity(path) }
 			else { file_stamp(path) }
 		}
@@ -481,12 +494,7 @@ fn append_module_search_root(path string, mut roots []string, mut seen map[strin
 	}
 }
 
-// failure_module_search_roots covers the importer-local and project/ancestor locations that
-// V3 tries in addition to the configured global roots. A failed transitive import can come
-// from any V source already read before the failure, so each such importer contributes roots.
-fn failure_module_search_roots(entry ToolCacheEntry, source_files []string) []string {
-	mut roots := []string{}
-	mut seen := map[string]bool{}
+fn failure_importer_dirs(entry ToolCacheEntry, source_files []string) []string {
 	mut importer_dirs := map[string]bool{}
 	if entry.source != '' {
 		source_dir := if os.is_dir(entry.source) {
@@ -501,7 +509,19 @@ fn failure_module_search_roots(entry ToolCacheEntry, source_files []string) []st
 			importer_dirs[os.dir(os.real_path(source))] = true
 		}
 	}
-	for importer_dir in importer_dirs.keys() {
+	mut result := importer_dirs.keys()
+	result.sort()
+	return result
+}
+
+// failure_module_search_roots covers the importer-local and project/ancestor locations that
+// V3 tries in addition to the configured global roots. A failed transitive import can come
+// from any V source already read before the failure, so each such importer contributes roots.
+fn failure_module_search_roots(entry ToolCacheEntry, source_files []string) []string {
+	mut roots := []string{}
+	mut seen := map[string]bool{}
+	importer_dirs := failure_importer_dirs(entry, source_files)
+	for importer_dir in importer_dirs {
 		append_module_search_root(importer_dir, mut roots, mut seen)
 		append_module_search_root(os.join_path(importer_dir, 'modules'), mut roots, mut seen)
 	}
@@ -515,7 +535,7 @@ fn failure_module_search_roots(entry ToolCacheEntry, source_files []string) []st
 		append_module_search_root(root, mut roots, mut seen)
 	}
 	// Finally mirror the sibling-project fallback that walks upward from each importer.
-	for importer_dir in importer_dirs.keys() {
+	for importer_dir in importer_dirs {
 		mut current := importer_dir
 		for {
 			append_module_search_root(current, mut roots, mut seen)
@@ -530,6 +550,91 @@ fn failure_module_search_roots(entry ToolCacheEntry, source_files []string) []st
 	return roots
 }
 
+// vmod_manifest_inputs returns every path inspected while finding the manifest that would own
+// an existing module directory. Ancestor module resolution consults these paths before
+// accepting a module outside the importer's project, so changing the declaration or creating
+// a nearer manifest has to invalidate a cached failure.
+fn vmod_manifest_inputs(directory string) []string {
+	if !os.is_dir(directory) {
+		return []
+	}
+	mut inputs := []string{}
+	mut current := os.real_path(directory)
+	for {
+		manifest := os.join_path(current, 'v.mod')
+		inputs << manifest
+		if os.is_file(manifest) {
+			break
+		}
+		parent := os.parent_dir(current)
+		if parent == '' || parent == current {
+			break
+		}
+		current = parent
+	}
+	return inputs
+}
+
+fn nearest_vmod_root(directory string) string {
+	inputs := vmod_manifest_inputs(directory)
+	if inputs.len > 0 && os.is_file(inputs.last()) {
+		return os.dir(inputs.last())
+	}
+	return ''
+}
+
+fn path_is_within_directory(path string, directory string) bool {
+	mut real_path := os.real_path(path).replace('\\', '/')
+	mut real_directory := os.real_path(directory).replace('\\', '/')
+	$if windows {
+		real_path = real_path.to_lower()
+		real_directory = real_directory.to_lower()
+	}
+	if real_path == real_directory {
+		return true
+	}
+	return if real_directory.ends_with('/') {
+		real_path.starts_with(real_directory)
+	} else {
+		real_path.starts_with(real_directory + '/')
+	}
+}
+
+// failure_module_manifest_inputs mirrors the ancestor resolver's manifest probes. These are
+// separate from ordinary module roots: only candidates outside an importer's v.mod project
+// have their owning manifest checked before they can satisfy an import.
+fn failure_module_manifest_inputs(entry ToolCacheEntry, source_files []string, module_name string) []string {
+	module_path := module_name.replace('.', os.path_separator)
+	mut inputs := map[string]bool{}
+	importer_dirs := failure_importer_dirs(entry, source_files)
+	for importer_dir in importer_dirs {
+		importer_root := nearest_vmod_root(importer_dir)
+		if importer_root == '' {
+			continue
+		}
+		mut current := importer_dir
+		for {
+			for candidate in [os.join_path(current, module_path),
+				os.join_path(current, 'modules', module_path)] {
+				if path_is_within_directory(candidate, importer_root) {
+					continue
+				}
+				for manifest in vmod_manifest_inputs(candidate) {
+					inputs[manifest] = true
+				}
+			}
+			parent := os.parent_dir(current)
+			if parent == '' || parent == current {
+				break
+			}
+			current = parent
+		}
+	}
+	mut result := inputs.keys()
+	result.sort()
+	return result
+}
+
 // record_unbuildable_tool remembers a failed build together with the inputs that caused it,
 // so that the failing compilation is not repeated on every invocation, while fixing any of
 // those inputs still makes it be retried.
@@ -541,18 +646,14 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 	// has no files to stamp. Recording the module roots as well is what makes the tool be
 	// retried as soon as a missing module reappears.
 	search_roots := failure_module_search_roots(entry, source_files)
-	mut module_roots := map[string]bool{}
+	mut module_dirs := map[string]bool{}
 	mut module_source_dirs := map[string]bool{}
 	mut module_alias_files := map[string]bool{}
-	for root in search_roots {
-		module_roots[root] = true
-	}
+	mut module_manifests := map[string]bool{}
 	for module_name in unresolved_import_modules(details) {
-		// A module-root stamp records its *direct* child directories only, so `db.sqlite`
-		// could be removed and restored without `vlib` itself changing. Stamp each ancestor,
-		// then stamp the final module directory's V source names: an existing empty directory
-		// becomes usable when its first `.v` file appears. Every root the compiler would have
-		// searched counts because the module may reappear in any of them.
+		// Stamp each exact module directory, then stamp the final directory's V source names:
+		// an existing empty directory becomes usable when its first `.v` file appears. Every
+		// root the compiler would have searched counts because the module may reappear there.
 		for search_root in search_roots {
 			mut path := search_root
 			parts := module_name.split('.')
@@ -561,13 +662,15 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 					break
 				}
 				path = os.join_path(path, part)
+				module_dirs[path] = true
 				module_alias_files[os.join_path(path, 'alias.v')] = true
 				if index == parts.len - 1 {
 					module_source_dirs[path] = true
-				} else {
-					module_roots[path] = true
 				}
 			}
+		}
+		for module_manifest in failure_module_manifest_inputs(entry, source_files, module_name) {
+			module_manifests[module_manifest] = true
 		}
 	}
 	mut sorted_alias_files := module_alias_files.keys()
@@ -575,10 +678,15 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 	for alias_file in sorted_alias_files {
 		manifest += 'f${tool_cache_field_separator}${alias_file}${tool_cache_field_separator}${file_stamp(alias_file)}\n'
 	}
-	mut sorted_roots := module_roots.keys()
-	sorted_roots.sort()
-	for root in sorted_roots {
-		manifest += 'm${tool_cache_field_separator}${root}${tool_cache_field_separator}${module_root_stamp(root)}\n'
+	mut sorted_manifests := module_manifests.keys()
+	sorted_manifests.sort()
+	for module_manifest in sorted_manifests {
+		manifest += 'f${tool_cache_field_separator}${module_manifest}${tool_cache_field_separator}${file_stamp(module_manifest)}\n'
+	}
+	mut sorted_dirs := module_dirs.keys()
+	sorted_dirs.sort()
+	for directory in sorted_dirs {
+		manifest += 'p${tool_cache_field_separator}${directory}${tool_cache_field_separator}${module_directory_stamp(directory)}\n'
 	}
 	mut sorted_source_dirs := module_source_dirs.keys()
 	sorted_source_dirs.sort()
