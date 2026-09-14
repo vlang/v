@@ -8287,17 +8287,17 @@ fn (g &FlatGen) discard_name(id flat.NodeId) string {
 fn (g &FlatGen) local_cname(name string) string {
 	if g.local_shadows_global(name) || local_name_shadows_c_runtime(name)
 		|| g.local_name_shadows_c_typedef(name) {
-		return '${g.cname(name)}__local'
+		return naming.local_rename(g.cname(name))
 	}
 	return g.cname(name)
 }
 
 fn (g &FlatGen) local_decl_cname(name string) string {
 	if local_name_shadows_c_runtime(name) || g.local_name_shadows_c_typedef(name) {
-		return '${g.cname(name)}__local'
+		return naming.local_rename(g.cname(name))
 	}
 	if g.local_name_needs_global_suffix(name) {
-		return '${g.cname(name)}__local'
+		return naming.local_rename(g.cname(name))
 	}
 	return g.cname(name)
 }

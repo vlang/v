@@ -5749,7 +5749,9 @@ fn (mut g FlatGen) gen_function_defer_prelude() {
 	for name in g.defer_capture_names {
 		typ := g.defer_capture_types[name] or { continue }
 		ct := g.value_c_type(typ)
-		g.write('${ct} ${g.cname(name)} = ')
+		// The slot a deferred closure reads through is the local itself, so it is
+		// declared under the name every read of that local uses.
+		g.write('${ct} ${g.local_decl_cname(name)} = ')
 		g.gen_default_value_for_type(typ)
 		g.writeln(';')
 		g.tc.cur_scope.insert(name, typ)

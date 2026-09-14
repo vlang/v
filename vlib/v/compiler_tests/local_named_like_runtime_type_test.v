@@ -124,3 +124,62 @@ fn main() {
 	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['5', '7', '3', '9'],
 		res.output
 }
+
+// A deferred closure reads the local through a slot declared at the top of the
+// function, and that slot is the local: it has to carry the same name every read of
+// it uses, or the reads inside the closure name something that was never declared.
+fn test_a_deferred_closure_reads_the_local_it_captured() {
+	v3_bin := local_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_defer_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := local_shadow_build_and_run(v3_bin, root, 'fn with_defer() {
+	array := 1
+	defer(fn) {
+		println(array)
+	}
+	println("body")
+}
+
+fn main() {
+	with_defer()
+}
+')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['body', '1'], res.output
+}
+
+// The renamed name is taken out of the namespace reserved for generated symbols
+// rather than built by adding a suffix. A suffix would bring a function that has both
+// `array` and a name spelled like the renamed one under a single name: as parameters
+// that is two parameters called the same thing, and as locals the outer one quietly
+// becomes the inner one.
+fn test_a_source_name_cannot_collide_with_the_renamed_one() {
+	v3_bin := local_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_collision_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := local_shadow_build_and_run(v3_bin, root, 'struct Arg {
+	values []int
+}
+
+fn both_params(array Arg, array__local int) int {
+	return array.values.len + array__local
+}
+
+fn both_locals() int {
+	array__local := 10
+	array := 1
+	return array + array__local
+}
+
+fn main() {
+	println(both_params(Arg{ values: [1, 2, 3] }, 7))
+	println(both_locals())
+}
+')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['10', '11'], res.output
+}
