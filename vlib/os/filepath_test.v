@@ -288,7 +288,8 @@ fn test_parent_dir() {
 // bounded number of steps, and must never hand the walk a drive relative value
 // to probe on the way up, from any starting path, on any platform.
 fn test_parent_dir_walk_terminates() {
-	for start in ['/a/b/c', 'a/b/c', '.', '/', '', r'S:\a\b', 'S:', 'S:outside', r'\\Host\share\a'] {
+	for start in ['/a/b/c', 'a/b/c', '/a/b/', '.', '/', '', r'S:\a\b', 'S:', 'S:outside',
+		r'S:foo\bar\baz', r'\\Host\share\a', r'\\?\UNC\srv\shr\a'] {
 		mut dir := start
 		mut steps := 0
 		for dir.len > 0 {
