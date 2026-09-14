@@ -11,6 +11,10 @@ $if !android {
 
 #include <semaphore.h>
 
+// sem_poll_interval_ns caps how long the Apple fallback in `timed_wait` sleeps
+// between `sem_trywait` attempts, so a post is noticed promptly without spinning.
+const sem_poll_interval_ns = i64(1_000_000)
+
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
 fn C.pthread_mutex_lock(voidptr) i32
@@ -284,25 +288,54 @@ pub fn (mut sem Semaphore) try_wait() bool {
 // timed_wait is similar to .wait(), but it also accepts a timeout duration,
 // thus it can return false early, if the timeout passed before the semaphore was posted.
 pub fn (mut sem Semaphore) timed_wait(timeout i64) bool {
-	t_spec := sync_realtime_deadline(timeout)
-	for {
-		if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
-			return true
-		}
-		e := C.errno
-		match e {
-			C.EINTR {
-				continue // interrupted by signal
+	$if macos || ios {
+		// Apple ships <semaphore.h> without `sem_timedwait`; it is the one POSIX
+		// semaphore entry point its libc has no symbol for at all, so referencing it
+		// breaks the link. Apple targets normally compile sync_darwin.c.v instead of
+		// this file, but the portable `-os cross` snapshot (vc/v.c) is generated on
+		// Linux and then compiled on macOS to bootstrap v1, which is how this file
+		// reaches an Apple C compiler. Poll `sem_trywait` until the deadline there.
+		deadline := sync_mono_now() + timeout
+		for {
+			if C.sem_trywait(&sem.sem) == 0 {
+				return true
 			}
-			C.ETIMEDOUT {
-				break
-			}
-			else {
+			e := C.errno
+			if e != C.EAGAIN && e != C.EINTR {
 				cpanic(e)
 			}
+			remaining := deadline - sync_mono_now()
+			if remaining <= 0 {
+				return false
+			}
+			sync_sleep_nanoseconds(if remaining < sem_poll_interval_ns {
+				remaining
+			} else {
+				sem_poll_interval_ns
+			})
 		}
+		return false
+	} $else {
+		t_spec := sync_realtime_deadline(timeout)
+		for {
+			if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
+				return true
+			}
+			e := C.errno
+			match e {
+				C.EINTR {
+					continue // interrupted by signal
+				}
+				C.ETIMEDOUT {
+					break
+				}
+				else {
+					cpanic(e)
+				}
+			}
+		}
+		return false
 	}
-	return false
 }
 
 // destroy frees the resources associated with the Semaphore instance.
