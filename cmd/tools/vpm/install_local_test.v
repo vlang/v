@@ -855,6 +855,42 @@ fn test_adoption_refuses_a_git_worktree_without_dirtying_it() {
 	assert cmd_ok(@LOCATION, 'git -C ${os.quoted_path(worktree)} status --porcelain').output.trim_space() == ''
 }
 
+fn test_adoption_refuses_symlinked_vcs_metadata() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_adopt_linked_metadata'))
+	project_dir := os.join_path(test_path, 'adopt_linked_metadata_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'adopt_linked_metadata_project'\n}\n") or { panic(err) }
+	for vcs_dir in ['.git', '.hg'] {
+		module_name := '${vcs_dir[1..]}_linked_metadata_pkg'
+		module_dir := os.join_path(project_dir, module_name)
+		external_metadata := os.join_path(test_path, '${module_name}_external_metadata')
+		os.mkdir_all(module_dir) or { panic(err) }
+		os.mkdir_all(external_metadata) or { panic(err) }
+		os.write_file(os.join_path(module_dir, 'v.mod'), "Module{\n\tname: '${module_name}'\n}\n") or {
+			panic(err)
+		}
+		os.symlink(external_metadata, os.join_path(module_dir, vcs_dir)) or {
+			eprintln('Skipping symlinked VCS metadata test due to missing privileges: ${err}')
+			return
+		}
+	}
+
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	for vcs_name in ['git', 'hg'] {
+		module_name := '${vcs_name}_linked_metadata_pkg'
+		module_dir := os.join_path(project_dir, module_name)
+		external_metadata := os.join_path(test_path, '${module_name}_external_metadata')
+		adopted := cmd_fail(@LOCATION, '${vexe} install --local --adopt ${module_name}')
+		assert adopted.output.contains('has symlinked `.${vcs_name}` metadata'), adopted.output
+		assert !is_recorded_local_install(module_dir)
+		assert !os.exists(os.join_path(external_metadata, local_install_token_name))
+	}
+}
+
 // A name in the lookup root that leads out of the project is not the project's,
 // whatever it points at. Adopting it would hand VPM a checkout it has no business
 // touching, and `v remove --local` resolves the link before deleting: it would

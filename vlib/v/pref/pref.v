@@ -452,7 +452,7 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 // sources. A `modules` ancestor of that root is a project which merely carries
 // the name; a sibling beneath the same project root is the retired namespace.
 pub fn is_retired_modules_namespace(dir string, module_resolution_root string) bool {
-	if os.file_name(dir) != 'modules' {
+	if !module_resolution_dir_matches_modules_namespace(dir) {
 		return false
 	}
 	if os.is_file(os.join_path_single(dir, 'v.mod')) {
@@ -469,6 +469,32 @@ pub fn is_retired_modules_namespace(dir string, module_resolution_root string) b
 		}
 	}
 	return os.is_file(os.join_path_single(os.dir(dir), 'v.mod'))
+}
+
+fn module_resolution_dir_matches_modules_namespace(dir string) bool {
+	name := os.file_name(dir)
+	if name == 'modules' {
+		return true
+	}
+	if name.to_lower_ascii() != 'modules' {
+		return false
+	}
+	// A case variant is `modules` only when the filesystem resolves the literal
+	// spelling to this same directory. This keeps `Modules` distinct on a
+	// case-sensitive filesystem while covering Windows and case-insensitive macOS.
+	literal_path := os.join_path_single(os.dir(dir), 'modules')
+	if !os.is_dir(literal_path) {
+		return false
+	}
+	dir_stat := os.stat(dir) or { return false }
+	literal_stat := os.stat(literal_path) or { return false }
+	if dir_stat.inode != 0 && literal_stat.inode != 0 {
+		return dir_stat.dev == literal_stat.dev && dir_stat.inode == literal_stat.inode
+	}
+	$if windows {
+		return true
+	}
+	return canonical_module_resolution_path(dir) == canonical_module_resolution_path(literal_path)
 }
 
 fn canonical_module_resolution_path(path string) string {

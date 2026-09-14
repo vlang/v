@@ -60,6 +60,15 @@ fn local_install_token_path(install_path string) string {
 	return os.join_path(install_path, '.${local_install_token_name}')
 }
 
+fn symlinked_vcs_metadata(install_path string) ?string {
+	for vcs_dir in ['.git', '.hg'] {
+		if os.is_link(os.join_path_single(install_path, vcs_dir)) {
+			return vcs_dir
+		}
+	}
+	return none
+}
+
 fn read_local_install_token(install_path string) ?string {
 	token := os.read_file(local_install_token_path(install_path)) or { return none }
 	trimmed := token.trim_space()
@@ -288,6 +297,13 @@ fn vpm_adopt(query []string) {
 			continue
 		}
 		path := os.real_path(module_path)
+		if vcs_dir := symlinked_vcs_metadata(path) {
+			vpm_error('refusing to adopt `${m}`: `${fmt_mod_path(path)}` has symlinked `${vcs_dir}` metadata.',
+				details: 'Recording ownership through the link would modify VCS metadata outside the checkout, and that record would not travel with the adopted sources.'
+			)
+			errors++
+			continue
+		}
 		if is_recorded_local_install(path) {
 			println('Module `${m}` in ${fmt_mod_path(path)} is already recorded as installed by VPM.')
 			continue

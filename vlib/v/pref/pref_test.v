@@ -149,3 +149,35 @@ fn test_get_module_path_skips_a_modules_namespace_but_not_a_project_root() {
 	assert !is_retired_modules_namespace(bare_root, bare_entry_dir)
 	assert !is_retired_modules_namespace(legacy_root, legacy_root)
 }
+
+fn test_retired_modules_namespace_follows_filesystem_case_semantics() {
+	root := os.join_path(os.vtmp_dir(), 'v3_pref_modules_case_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	entry_dir := os.join_path(root, 'src')
+	namespace := os.join_path(root, 'Modules')
+	importer_dir := os.join_path(namespace, 'case_user_28575')
+	neighbour := os.join_path(namespace, 'case_peer_28575')
+	os.mkdir_all(entry_dir) or { panic(err) }
+	os.mkdir_all(importer_dir) or { panic(err) }
+	os.mkdir_all(neighbour) or { panic(err) }
+	importer := os.join_path(importer_dir, 'user.v')
+	os.write_file(importer, 'module case_user_28575\n') or { panic(err) }
+	os.write_file(os.join_path(neighbour, 'peer.v'), 'module case_peer_28575\n') or { panic(err) }
+
+	// On a case-sensitive filesystem `Modules` is an ordinary, distinct name.
+	// Elsewhere the literal `modules` path reaches this same directory and the
+	// retired-namespace rule must therefore apply to its actual spelling too.
+	literal_namespace_resolves := os.is_dir(os.join_path(root, 'modules'))
+	assert is_retired_modules_namespace(namespace, entry_dir) == literal_namespace_resolves
+	if !literal_namespace_resolves {
+		return
+	}
+	mut prefs := new_preferences()
+	prefs.module_resolution_root = entry_dir
+	assert prefs.get_module_path('case_peer_28575', importer) != os.real_path(neighbour)
+	qualified := prefs.get_module_path('modules.case_peer_28575', importer)
+	assert qualified.to_lower_ascii() == os.real_path(neighbour).to_lower_ascii()
+}
