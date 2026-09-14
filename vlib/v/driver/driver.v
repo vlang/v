@@ -6077,6 +6077,10 @@ fn merge_incremental_program_body(cached_source string, cached_prefix string, ch
 }
 
 fn target_libc_cached_prefix_needs_thread_refresh(cached_prefix string, current_body string) bool {
+	if c_source_references_identifier_prefix(current_body, 'pthread_')
+		&& !cached_prefix.contains('#include <pthread.h>') {
+		return true
+	}
 	runtime_identifiers := {
 		'__v_thread_equal': true
 		'__v_thread_alloc': true
@@ -14229,6 +14233,16 @@ fn c_source_references_identifiers(source string, identifiers map[string]bool) b
 	return false
 }
 
+fn c_source_references_identifier_prefix(source string, prefix string) bool {
+	if prefix.len == 0 {
+		return false
+	}
+	if _ := c_source_referenced_identifier_with_prefix(source, map[string]bool{}, prefix) {
+		return true
+	}
+	return false
+}
+
 fn c_source_file_scope_identifiers(source string) map[string]bool {
 	mut identifiers := map[string]bool{}
 	mut brace_depth := 0
@@ -14315,6 +14329,10 @@ fn c_source_file_scope_identifiers(source string) map[string]bool {
 }
 
 fn c_source_referenced_identifier(source string, identifiers map[string]bool) ?string {
+	return c_source_referenced_identifier_with_prefix(source, identifiers, '')
+}
+
+fn c_source_referenced_identifier_with_prefix(source string, identifiers map[string]bool, prefix string) ?string {
 	mut i := 0
 	for i < source.len {
 		if source[i] in [`"`, `'`] {
@@ -14357,7 +14375,7 @@ fn c_source_referenced_identifier(source string, identifiers map[string]bool) ?s
 			i++
 		}
 		identifier := source[start..i]
-		if identifiers[identifier] {
+		if identifiers[identifier] || (prefix.len > 0 && identifier.starts_with(prefix)) {
 			return identifier
 		}
 	}
