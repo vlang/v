@@ -10522,6 +10522,7 @@ pub fn run(args []string) {
 	// so that a directory project's own modules are covered while vlib and
 	// anything under ~/.vmodules are not.
 	pre_tc.shadow_diagnostic_root = diagnostic_root_for_input(input_file, user_files)
+	pre_tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
@@ -15358,6 +15359,24 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 		}
 	}
 	return none
+}
+
+// shadow_dependency_roots_for returns the installed-module directories, resolved
+// once here so the checker only has to compare prefixes. One of them can sit
+// inside the project root -- `$PWD/.vmodules` does -- so the shadowing check
+// has to subtract them from the root rather than rely on containment alone.
+fn shadow_dependency_roots_for(prefs &pref.Preferences) []string {
+	mut roots := []string{}
+	for root in prefs.installed_module_roots() {
+		if root.len == 0 {
+			continue
+		}
+		real_root := os.real_path(root).trim_right(os.path_separator)
+		if real_root.len > 0 && real_root !in roots {
+			roots << real_root
+		}
+	}
+	return roots
 }
 
 fn diagnostic_root_for_input(input_file string, user_files []string) string {

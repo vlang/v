@@ -6660,6 +6660,8 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 		return false
 	}
 	if file in tc.diagnostic_files {
+		// Named on the command line, so the user is working on it whatever
+		// directory it happens to live in.
 		return true
 	}
 	if tc.shadow_diagnostic_root.len == 0 {
@@ -6667,18 +6669,33 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 		// "everything" only when no selection was made at all.
 		return tc.diagnostic_files.len == 0
 	}
-	root := tc.shadow_diagnostic_root
-	// Match the path as written first. A build tree assembled out of symlinks --
-	// Vinix compiles its kernel through one -- holds the sources under the root
-	// only by their link paths, so resolving up front would place every file in
-	// the project outside it.
+	// A path is matched both as written and resolved. A build tree assembled out
+	// of symlinks -- Vinix compiles its kernel through one -- holds its sources
+	// under the root only by their link paths, so resolving up front would place
+	// the whole project outside itself; resolving is what catches a directory
+	// reached through a symlink.
 	abs_file := os.abs_path(file)
-	if abs_file == root || abs_file.starts_with(root + os.path_separator) {
-		return true
-	}
-	// Then the resolved path, for a project reached through a symlink itself.
 	real_file := os.real_path(file)
-	return real_file == root || real_file.starts_with(root + os.path_separator)
+	// Installed modules first. A module root may sit inside the project being
+	// compiled -- `$PWD/.vmodules` in an isolated or reproducible build does --
+	// and containment alone would then read every dependency as project code.
+	for dependency_root in tc.shadow_dependency_roots {
+		if shadow_path_is_within(abs_file, real_file, dependency_root) {
+			return false
+		}
+	}
+	return shadow_path_is_within(abs_file, real_file, tc.shadow_diagnostic_root)
+}
+
+// shadow_path_is_within reports whether a file given by both its written and
+// its resolved path lies in `dir`.
+fn shadow_path_is_within(abs_file string, real_file string, dir string) bool {
+	if dir.len == 0 {
+		return false
+	}
+	prefix := dir + os.path_separator
+	return abs_file == dir || abs_file.starts_with(prefix) || real_file == dir
+		|| real_file.starts_with(prefix)
 }
 
 // record_global_shadow_error reports a local that shadows a global. The ordinary
