@@ -13407,3 +13407,30 @@ pub:
 	}, 'main.v')
 	assert out == 'ru'
 }
+
+fn test_local_struct_equality_ignores_same_named_imported_enum() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'local_struct_imported_enum_collision', {
+		'main.v':        'module main
+
+import other
+
+struct Lang {
+	code int
+}
+
+fn main() {
+	println(Lang{code: 7} == Lang{code: 7})
+	_ = other.Lang.en
+}
+'
+		'other/other.v': 'module other
+
+pub enum Lang {
+	en
+	ru
+}
+'
+	}, 'main.v')
+	assert out == 'true'
+}

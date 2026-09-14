@@ -2259,8 +2259,12 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 	if type_name.len == 0 {
 		return ''
 	}
-	if type_name in t.enum_types
-		|| (!type_name.contains('.') && '${t.cur_module}.${type_name}' in t.enum_types) {
+	if type_name.contains('.') && type_name in t.enum_types {
+		return ''
+	}
+	if !type_name.contains('.')
+		&& (type_name in t.enum_types || '${t.cur_module}.${type_name}' in t.enum_types)
+		&& !t.bare_struct_name_is_local_to_current_module(type_name) {
 		return ''
 	}
 	// Resolve aliases before consulting the struct indexes. Large programs can
