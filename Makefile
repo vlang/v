@@ -1,4 +1,5 @@
 CC ?= cc
+VEXE ?= ./v
 VFLAGS ?=
 CFLAGS ?=
 LDFLAGS ?=
@@ -145,7 +146,6 @@ v:
 
 v1:
 	@set -e; \
-	if [ ! -f vc/v.c ]; then $(MAKE) download_vc; fi; \
 	sys=`uname -s 2>/dev/null || echo unknown`; \
 	arch=`uname -m 2>/dev/null || echo unknown`; \
 	set -- $(CFLAGS); \
@@ -185,13 +185,9 @@ v1:
 				fi;; \
 		esac; \
 	fi; \
-	candidate=./v1_fallback.tmp.$$$$; \
-	trap 'rm -f "$$candidate"' EXIT HUP INT TERM; \
-	if ! $(CC) $$bootstrap_ccflags $(VC_BOOTSTRAP_DEFINE) -std=gnu11 -w -o "$$candidate" vc/v.c -lm -lpthread $$ldflags; then \
-		cmd/tools/cc_compilation_failed_non_windows.sh; \
-		exit 1; \
-	fi; \
-	mv -f "$$candidate" ./v1_fallback; \
+	CC='$(CC)' OLDV_CCOPTIONS='$(CPPFLAGS) '"$$bootstrap_ccflags" \
+		OLDV_LDFLAGS="$$ldflags" \
+		cmd/tools/install_v1_fallback.sh '$(VEXE)' './v1_fallback'; \
 	echo "Built V1 compatibility compiler: ./v1_fallback"
 
 check:

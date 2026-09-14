@@ -1,0 +1,8 @@
+fn a() {}
+
+// Test files routinely declare tiny fixture functions and then shadow them in
+// the test bodies, so the shadow notice is suppressed for them.
+fn test_shadowing_a_fixture_fn_is_not_reported() {
+	a := 1
+	assert a == 1
+}

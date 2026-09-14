@@ -1055,8 +1055,10 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 		// that you *do not want* the test framework to find incidentally for various reasons,
 		// for example module import tests, or subtests, that are compiled/run by other parent tests
 		// in specific configurations, etc.
-		if fnormalised.contains('testdata/') || fnormalised.contains('modules/')
-			|| fnormalised.contains('preludes/') {
+		// A `modules` folder used to be skipped along with those: it was a virtual
+		// lookup root, holding library code rather than programs. It is an ordinary
+		// directory now, so a program in one is built like any other.
+		if fnormalised.contains('testdata/') || fnormalised.contains('preludes/') {
 			continue
 		}
 		$if windows {

@@ -77,3 +77,81 @@ fn test_cross_is_a_modifier_that_keeps_an_explicit_target() {
 	// The target still selected Windows.
 	assert c_code.contains('_WIN32'), 'the explicit -os windows target was lost'
 }
+
+fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
+	// The snapshot does not know its C compiler yet. V's WinAPI atomic header is
+	// emitted behind `_WIN32 && __TINYC__` and defines `atomic_fetch_add_byte` and
+	// friends as function-like macros, so the backend's own `static inline`
+	// definitions have to sit behind the negation of that same guard. Without it
+	// the macro expanded over the definition and tcc rejected `vc/v_win.c` with
+	// `redefinition of 'ManualInterlockedExchangeAdd8'`.
+	for flags in ['-cross -os windows -cc msvc', '-os cross'] {
+		c_code := cross_generate_with(flags, 'atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+		guard := '#if !(defined(_WIN32) && defined(__TINYC__))'
+		definition := 'static inline byte atomic_fetch_add_byte('
+		at := c_code.index(definition) or {
+			assert false, '${flags}: the atomic helpers are missing from the snapshot'
+			return
+		}
+		opened := c_code[..at].clone().last_index(guard) or {
+			assert false, '${flags}: the atomic helpers are not guarded against the Windows TCC header'
+			return
+		}
+		// The guard has to still be open where the helper is defined.
+		between := c_code[opened..at].clone()
+		assert between.count('#endif') < between.count('#if'), '${flags}: the guard closed before the atomic helpers'
+	}
+}
+
+fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
+	// A snapshot generated on Linux is compiled on macOS to bootstrap v1, and the
+	// `sync` file it bakes in is the POSIX one. Apple has no `sem_timedwait` symbol
+	// at all, and the rest of its unnamed POSIX semaphore API is a stub: `sem_init`
+	// fails with ENOSYS and every later call on that `sem_t` fails with EBADF. So
+	// each of these calls has to stay behind a guard that is false on Apple, or the
+	// snapshot either fails to compile there, or panics with `Bad file descriptor`
+	// on the first semaphore it waits on.
+	c_code := cross_generate_with('-cross -os linux', 'semaphore', 'module main\n\nimport sync\n\nfn main() {\n\tmut sem := sync.new_semaphore()\n\tsem.post()\n\tsem.wait()\n\tprintln(sem.try_wait())\n\tprintln(sem.timed_wait(1))\n\tsem.destroy()\n}\n')
+	for call in ['sem_init(', 'sem_post(', 'sem_wait(', 'sem_trywait(', 'sem_timedwait(',
+		'sem_destroy('] {
+		assert c_code.contains(call), '`${call}` is missing from the snapshot'
+		mut searched := c_code
+		for {
+			at := searched.index(call) or { break }
+			before := searched[..at].clone()
+			opened := before.last_index('#if ') or {
+				assert false, 'a ${call} call is not behind any preprocessor guard'
+				return
+			}
+			condition := before[opened..].all_before('\n')
+			assert condition.contains('__APPLE__'), 'a ${call} call is guarded by `${condition}`, which is also true on Apple'
+			searched = searched[at + call.len..].clone()
+		}
+	}
+}
+
+fn test_cross_output_keeps_a_working_clock_on_apple() {
+	// `time` splits per platform too, so a snapshot generated on Linux bakes the
+	// stand-ins from time_linux.c.v, while the preprocessor still takes the
+	// `__APPLE__` branch of the shared code when it is compiled on macOS. Those
+	// stand-ins used to return zero, which left the bootstrapped compiler with a
+	// clock that never advanced: `v` divided by its own elapsed parse time and
+	// died with `division by zero`. They have to answer with real POSIX time.
+	c_code := cross_generate_with('-cross -os linux', 'clock', 'module main\n\nimport time\n\nfn main() {\n\tprintln(time.sys_mono_now())\n\tprintln(time.now())\n\tprintln(time.utc())\n}\n')
+	mono := function_body(c_code, 'u64 time__sys_mono_now_darwin(void) {')
+	assert mono.contains('clock_gettime'), 'the snapshot cannot read a monotonic clock on Apple: ${mono}'
+	now := function_body(c_code, 'time__Time time__darwin_now(void) {')
+	assert now.contains('time__linux_now()'), 'the snapshot cannot read the local time on Apple: ${now}'
+	utc := function_body(c_code, 'time__Time time__darwin_utc(void) {')
+	assert utc.contains('time__linux_utc()'), 'the snapshot cannot read UTC on Apple: ${utc}'
+}
+
+// function_body returns the source of the C function that `signature` opens.
+fn function_body(c_code string, signature string) string {
+	at := c_code.index(signature) or {
+		assert false, '`${signature}` is missing from the snapshot'
+		return ''
+	}
+	rest := c_code[at + signature.len..]
+	return rest.all_before('\n}')
+}

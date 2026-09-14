@@ -11638,7 +11638,9 @@ fn (mut g FlatGen) gen_current_mut_param_address(id flat.NodeId) bool {
 	if param_type !is types.Pointer {
 		return false
 	}
-	g.write(g.cname(child.value))
+	// Taking the address of a mutable parameter is the parameter, which already
+	// holds one, so it is written under the name the parameter was declared with.
+	g.write(g.current_param_use_cname(child.value))
 	return true
 }
 
@@ -17380,7 +17382,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('typedef __UINTPTR_TYPE__ uintptr_t;')
 	g.writeln('typedef __INTPTR_TYPE__ intptr_t;')
 	g.writeln('#endif')
-	if !use_system_libc {
+	if !use_system_libc && !g.target_libc_headers {
 		g.writeln('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && !defined(_BSD_TIME_T_DEFINED_) && !defined(_TIME_T_DECLARED)')
 		g.writeln('typedef long long time_t;')
 		g.writeln('#endif')
@@ -17733,8 +17735,8 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// where this says `unsigned long long` -- which is a typedef conflict rather
 		// than a compatible redeclaration, and the same applies to every libc
 		// prototype further down. This is the set V's own runtime calls into.
-		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdio.h', 'stdlib.h',
-			'string.h', 'math.h', 'pthread.h'] {
+		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdbool.h', 'stdatomic.h',
+			'stdio.h', 'stdlib.h', 'string.h', 'strings.h', 'math.h', 'time.h', 'pthread.h'] {
 			g.writeln('#include <${header}>')
 		}
 	} else {
@@ -19955,10 +19957,25 @@ fn (mut g FlatGen) tinyc_atomic_libcall_decls() {
 }
 
 fn (mut g FlatGen) atomic_builtin_compat_decls() {
-	if g.target.os == 'windows' && (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc')) {
+	// Windows TCC takes its atomics from V's WinAPI compatibility header, which
+	// defines these helpers as function-like macros of its own.
+	windows_tcc := g.target.os == 'windows'
+		&& (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc'))
+	if windows_tcc && !g.output_cross_c {
 		header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
 		g.writeln(g.c_local_header_directive(header))
 		return
+	}
+	// A portable snapshot is compiled by a C compiler that is not known yet, so the
+	// choice above cannot be made from `g.ccompiler`; the preprocessor has to make
+	// it instead. system_libc_headers() already includes that header behind
+	// `_WIN32 && __TINYC__`, so defining the helpers again wherever it is in effect
+	// expands its macros over the definitions - `atomic_fetch_add_byte(void* ptr,
+	// byte delta)` becomes `ManualInterlockedExchangeAdd8(void* ptr, byte delta)`,
+	// which redefines the header's own function. Leave the block out exactly there.
+	guard_windows_tcc := g.output_cross_c
+	if guard_windows_tcc {
+		g.writeln('#if !(defined(_WIN32) && defined(__TINYC__))')
 	}
 	// Atomic helpers. We use compiler __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
 	// clang/gcc inline the generic _n / RMW builtins. tcc only implements the inline
@@ -20039,6 +20056,9 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('#else')
 	g.writeln('static inline void cpu_relax(void) { __asm__ __volatile__("" ::: "memory"); }')
 	g.writeln('#endif')
+	if guard_windows_tcc {
+		g.writeln('#endif')
+	}
 }
 
 fn (mut g FlatGen) atomic_thread_fence_compat_decls() {

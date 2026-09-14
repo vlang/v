@@ -6146,6 +6146,10 @@ fn (mut g FlatGen) emit_struct(name string) {
 		// opaque type gets, and the header completes it.
 		if g.target_libc_headers && fields.len == 0 && name.starts_with('C.') {
 			g.writeln('${g.struct_decl_head(name)};')
+			if pack.len > 0 {
+				g.writeln('#pragma pack(pop)')
+			}
+			g.writeln('')
 			g.tc.cur_module = old_module
 			return
 		}

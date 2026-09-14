@@ -444,6 +444,16 @@ fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	assert !system_libc.should_emit_c_extern_decl('sendfile')
 }
 
+fn test_target_libc_headers_own_their_c_extern_declarations() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	source := '/project/include_less.v'
+	for name in ['strlen', 'puts', 'pthread_sigmask', 'clock_gettime', 'nanosleep', 'sqrtf'] {
+		assert !g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
+	}
+	assert g.should_emit_c_extern_decl_from_file('target_specific_api', source, 'main')
+}
+
 fn test_builtin_boehm_directives_use_system_libc() {
 	mut boehm := FlatGen.new()
 	boehm.add_c_directive('builtin', '#include <gc.h>', false)

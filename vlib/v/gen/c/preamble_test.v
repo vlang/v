@@ -162,6 +162,13 @@ fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	}
 }
 
+fn test_manual_stdlib_headers_identify_gcc_without_matching_clang_or_tcc() {
+	headers := manual_stdlib_c_headers()
+	assert headers.contains('#if defined(__GNUC__) && !defined(__TINYC__) && !defined(__cplusplus) && !defined(__clang__)')
+	assert headers.contains('#define __V_GCC__')
+	assert headers.index('#define __V_GCC__')? < headers.index('defined(__V_GCC__)')?
+}
+
 fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	mut g := FlatGen.new()
 	g.system_libc_preamble()
@@ -220,6 +227,21 @@ fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));'), c_code
+}
+
+fn test_target_libc_preamble_uses_target_header_declarations() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.preamble()
+	c_code := g.sb.str()
+	for header in ['stdint.h', 'stddef.h', 'stdatomic.h', 'stdio.h', 'stdlib.h', 'string.h',
+		'math.h', 'time.h', 'pthread.h'] {
+		assert c_code.contains('#include <${header}>'), header
+	}
+	assert c_code.contains('typedef uint64_t u64;')
+	assert !c_code.contains('typedef long long time_t;')
+	assert !c_code.contains('typedef struct FILE FILE;')
+	assert c_code.contains('static __v_thread __v_thread_spawn(')
 }
 
 fn test_headerless_linux_stat_preamble_supports_s390x() {

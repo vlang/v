@@ -2104,6 +2104,36 @@ fn test_generate_files_resolves_modules_without_an_ast() {
 	assert run_result.output.trim_space() == '42'
 }
 
+fn test_source_resolver_skips_a_manifestless_modules_namespace_from_a_nested_entry() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_nested_modules_${os.getpid()}')
+	entry_dir := os.join_path(root, 'src')
+	legacy_dir := os.join_path(root, 'modules', 'legacy_user_28575')
+	neighbour_dir := os.join_path(root, 'modules', 'legacy_peer_28575')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(entry_dir) or { panic(err) }
+	os.mkdir_all(legacy_dir) or { panic(err) }
+	os.mkdir_all(neighbour_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(entry_dir, 'main.v')
+	os.write_file(main_file, 'module main\nimport modules.legacy_user_28575\nfn main() {}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(legacy_dir, 'legacy_user.v'), 'module legacy_user_28575\nimport legacy_peer_28575\n') or { panic(err) }
+	os.write_file(os.join_path(neighbour_dir, 'legacy_peer.v'), 'module legacy_peer_28575\n') or {
+		panic(err)
+	}
+
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('cannot resolve imported module `legacy_peer_28575`'), message
+}
+
 fn test_source_resolver_preserves_aliases_for_scheduled_files() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_scheduled_alias_${os.getpid()}')
 	os.rmdir_all(root) or {}

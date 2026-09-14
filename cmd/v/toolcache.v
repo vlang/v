@@ -56,6 +56,13 @@ fn tool_exe_suffix() string {
 	}
 }
 
+// staged_tool_binary_path returns a temporary output path that keeps the platform's
+// executable suffix. V appends `.exe` to other output names on Windows, so omitting it
+// would make the compiler and the cache disagree about which file was produced.
+fn staged_tool_binary_path(binary string, unique string) string {
+	return '${binary}.staged.${unique}${tool_exe_suffix()}'
+}
+
 // tool_cache_is_disabled reports whether the user asked for the tools to always be rebuilt.
 fn tool_cache_is_disabled() bool {
 	return os.getenv(tool_cache_disable_env).trim_space().to_lower() in ['1', 'true', 'yes', 'on']
@@ -475,7 +482,7 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 // It returns the compiler output when the build failed.
 fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	unique := '${os.getpid()}'
-	staged := '${entry.binary}.staged.${unique}'
+	staged := staged_tool_binary_path(entry.binary, unique)
 	dumped := '${entry.binary}.sources.${unique}'
 	defer {
 		os.rm(dumped) or {}
@@ -508,7 +515,10 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	process.close()
 	if code != 0 || !os.is_file(staged) {
 		os.rm(staged) or {}
-		details := if output.trim_space() != '' { output } else { failure }
+		mut details := if output.trim_space() != '' { output } else { failure }
+		if details.trim_space() == '' && code == 0 {
+			details = 'compiler exited successfully but did not produce `${staged}`'
+		}
 		// Only a failure the tool's own V sources explain may be cached against them. A C
 		// toolchain that was missing, out of memory or momentarily broken says nothing about
 		// those sources, and the manifest does not describe it, so recording it would replay
