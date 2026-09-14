@@ -417,6 +417,8 @@ fn test_tool_cache_lock_path_is_persistent_between_owners() {
 		name: 'vdemo'
 		dir:  entry_dir
 	}
+	assert tool_cache_lock_path_for_uid(entry, 1000) != tool_cache_lock_path_for_uid(entry, 1001), 'accounts sharing a sticky cache root need separate mutex pathnames'
+	assert tool_cache_lock_path(entry) == tool_cache_lock_path_for_uid(entry, os.getuid())
 	mut first_owner := tool_cache_lock(entry)!
 	first_owner.acquire()!
 	first_owner.release()

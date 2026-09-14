@@ -903,9 +903,16 @@ fn is_cache_artifact_of(name string, tool string) bool {
 	return suffix == '' || suffix.starts_with('.')
 }
 
-// tool_cache_lock_path names the persistent mutex shared by every cache key for one tool.
+// tool_cache_lock_path_for_uid namespaces one tool's persistent mutex in a sticky shared
+// cache root. Otherwise the first account leaves an inode that every other account rejects.
+fn tool_cache_lock_path_for_uid(entry ToolCacheEntry, uid int) string {
+	return os.join_path(os.dir(entry.dir), '.${entry.name}.${uid}.toolcache.lock')
+}
+
+// tool_cache_lock_path names the persistent mutex shared by this user's cache keys for one
+// tool. Windows cache roots have private ACLs, so its synthetic UID 0 remains owner-private.
 fn tool_cache_lock_path(entry ToolCacheEntry) string {
-	return os.join_path(os.dir(entry.dir), '.${entry.name}.toolcache.lock')
+	return tool_cache_lock_path_for_uid(entry, os.getuid())
 }
 
 // tool_cache_lock opens the persistent lock file without removing it between owners.
