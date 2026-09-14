@@ -16602,6 +16602,9 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	}
 	if node.kind == .defer_stmt && loop_kind == 'fields'
 		&& tc.comptime_subtree_references_var(id, var_name) {
+		for i in 0 .. node.children_count {
+			tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+		}
 		tc.record_deferred_comptime_field_errors(id, var_name)
 		return
 	}
