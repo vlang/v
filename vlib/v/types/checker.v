@@ -6414,10 +6414,42 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 	}
 	if resolved := tc.resolve_import_alias(alias) {
 		if resolved != alias {
-			return resolved + typ[dot..]
+			expanded := resolved + typ[dot..]
+			// A file's import map can bind a bare first path segment to a relative
+			// candidate: inside `gpu.agx.file`, `gpu` maps to `gpu.agx.gpu`. Expanding
+			// that against an already-resolved `gpu.agx.bo.Table` rebases the name onto
+			// itself, once per remaining segment, until cgen emits a C type name no
+			// typedef declares.
+			//
+			// Deciding by prefix alone is not enough: a file that imports `benchmark as
+			// jj` beside `x.benchmark` has `benchmark` as an import value too, and the
+			// source spelling `benchmark.Benchmark` does still have to expand, to
+			// `x.benchmark.Benchmark`. So ask which of the two names the program
+			// actually declares, and only keep the original when the expansion names
+			// nothing and it does. When neither resolves, expansion stands, as before.
+			if tc.import_type_text_resolves(expanded) {
+				return expanded
+			}
+			if tc.import_type_text_resolves(typ) {
+				return typ
+			}
+			return expanded
 		}
 	}
 	return typ
+}
+
+// import_type_text_resolves reports whether `text` names something this program
+// declares -- a type, or a function or method key. Used to choose between a
+// spelling and its alias expansion.
+fn (tc &TypeChecker) import_type_text_resolves(text string) bool {
+	if text.len == 0 {
+		return false
+	}
+	if tc.qualify_candidate_type_exists(text) {
+		return true
+	}
+	return tc.fn_signature_known(text)
 }
 
 // imported_type_short_name returns the semantic short name for an active imported

@@ -66,7 +66,7 @@ fn C.exit(code i32)
 
 fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
 
-fn C.strlen(s &char) i32
+fn C.strlen(s &char) usize
 
 @[trusted]
 fn C.isdigit(c i32) bool

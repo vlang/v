@@ -1271,11 +1271,6 @@ fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, m
 	if fn_decl_key_is_exact_for_info(callee, alias, callee_info.module) {
 		return
 	}
-	alias_lowered := markused_c_name(alias)
-	if (callee == alias || callee == alias_lowered)
-		&& markused_is_unqualified_receiver_method_name(alias) {
-		return
-	}
 	mut aliases := []string{cap: 3}
 	aliases << alias
 	qalias := qualify_fn(callee_info.module, alias)

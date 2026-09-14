@@ -13100,10 +13100,10 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 		parts := value.split('.')
 		if parts.len > 1 {
 			if g.cur_scope_has_local_name(parts[0]) {
-				return sizeof_selector_target(parts[0], parts[1..])
+				return g.sizeof_selector_target(parts[0], parts[1..])
 			}
 			if global := g.sizeof_global_selector_base(parts[0]) {
-				return sizeof_selector_target(global, parts[1..])
+				return g.sizeof_selector_target(global, parts[1..])
 			}
 		}
 	}
@@ -13133,12 +13133,55 @@ fn c_fixed_array_typedef_sizeof_target(value string) ?string {
 	return '${elem}[${len}]'
 }
 
-fn sizeof_selector_target(base string, fields []string) string {
+// sizeof_selector_target spells a `sizeof(a.b.c)` target in C. A step through a
+// pointer needs `->`: `sizeof(inode.blocks)` on a `&EXT2Inode` receiver used to
+// emit `sizeof(inode.blocks)`, which C rejects, since `inode` is a pointer there.
+fn (mut g FlatGen) sizeof_selector_target(base string, fields []string) string {
 	mut expr := c_name(base)
+	mut cur := g.sizeof_selector_base_type(base)
 	for field in fields {
-		expr += '.${c_field_name(field)}'
+		mut arrow := false
+		if typ := cur {
+			// An alias can stand for the pointer: `type Ref = &Node` records a
+			// types.Alias whose C storage is still a pointer, so erase the alias before
+			// asking. The field lookup below needs the same erasure to find the struct.
+			if cgen_unalias_type(typ) is types.Pointer {
+				arrow = true
+			}
+		}
+		expr += if arrow { '->${c_field_name(field)}' } else { '.${c_field_name(field)}' }
+		cur = g.sizeof_selector_field_type(cur, field)
 	}
 	return expr
+}
+
+// sizeof_selector_base_type resolves the declared type of a `sizeof` selector base.
+fn (mut g FlatGen) sizeof_selector_base_type(base string) ?types.Type {
+	if typ := g.current_param_type(base) {
+		return typ
+	}
+	return g.tc.cur_scope.lookup(base)
+}
+
+// sizeof_selector_field_type follows one field step, so a chain keeps choosing
+// between `.` and `->` correctly.
+fn (mut g FlatGen) sizeof_selector_field_type(owner ?types.Type, field string) ?types.Type {
+	typ := owner or { return none }
+	// Erase aliases on both sides of the pointer: the owner may be an alias *of* a
+	// pointer, and the pointee may itself be an alias of the struct.
+	clean := cgen_unalias_type(types.unwrap_all_pointers(cgen_unalias_type(typ)))
+	name := if clean is types.Struct {
+		clean.name
+	} else {
+		return none
+	}
+	fields := g.struct_fields_for_type(name) or { return none }
+	for f in fields {
+		if f.name == field {
+			return f.typ
+		}
+	}
+	return none
 }
 
 fn (g &FlatGen) cur_scope_has_local_name(name string) bool {
