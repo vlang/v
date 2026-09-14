@@ -86,11 +86,13 @@ sibling is missing, it reports that it is running `make v1`. That target reuses
 or downloads the complete 0.5.2 release under the user cache. If no release
 binary can run, `oldv` clones the 0.5.2 V sources and matching `vc` snapshot and
 builds the fallback there. You can run `make v1` explicitly to prepare it ahead
-of time. `-old-compiler` launches the fallback explicitly, and ordinary user
-builds and external tools retry through it after a compiler or C compilation
-failure. Explicit `-new-compiler` builds remain strict default-compiler
-operations. `-new-compiler` remains accepted for command-line compatibility and
-otherwise selects the same embedded driver.
+of time. Automatic provisioning keeps its launcher metadata in the user cache,
+so an older read-only sibling installation can remain untouched. `-old-compiler`
+launches the fallback explicitly, and ordinary user builds and external tools
+retry through it after a compiler or C compilation failure. Explicit
+`-new-compiler` builds remain strict default-compiler operations.
+`-new-compiler` remains accepted for command-line compatibility and otherwise
+selects the same embedded driver.
 
 The installer supplements the cached fallback vlib with modules whose public
 paths moved after 0.5.2. Fallback roots missing these compatibility modules are

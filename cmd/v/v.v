@@ -547,15 +547,20 @@ fn ensure_v1_fallback(reason string) !string {
 		}
 	}
 	fallback := os.join_path(vroot, v1_fallback_binary + $if windows { '.exe' } $else { '' })
-	if installed := resolve_v1_fallback(fallback) {
+	cached_launcher := v1_fallback_cached_launcher()
+	if installed := resolve_installed_v1_fallback(fallback, cached_launcher) {
 		return installed
 	} else {
 		make_command := find_make() or {
-			return error('${reason}, but `${fallback}` is missing and make was not found. Install make, then run `make v1` in `${vroot}`.')
+			return error('${reason}, but no usable V ${v_version} fallback was found and make is unavailable. Install make, then run `make v1` in `${vroot}`.')
 		}
-		eprintln('${reason}, but `${fallback}` is missing; running `make v1` now...')
+		eprintln('${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...')
 		mut process := os.new_process(make_command)
-		process.set_args(['VEXE=${os.real_path(os.executable())}', 'v1'])
+		process.set_args([
+			'VEXE=${os.real_path(os.executable())}',
+			'V1_FALLBACK_EXE=${cached_launcher}',
+			'v1',
+		])
 		process.set_work_folder(vroot)
 		process.wait()
 		code := process.code
@@ -564,9 +569,34 @@ fn ensure_v1_fallback(reason string) !string {
 			return error('`make v1` failed with exit code ${code}. Run it manually in `${vroot}` for more details.')
 		}
 	}
-	return resolve_v1_fallback(fallback) or {
-		return error('`make v1` completed without installing a usable V ${v_version} fallback at `${fallback}`.')
+	return resolve_installed_v1_fallback(fallback, cached_launcher) or {
+		return error('`make v1` completed without installing a usable V ${v_version} fallback at `${cached_launcher}`.')
 	}
+}
+
+fn v1_fallback_cached_launcher() string {
+	configured := os.getenv('V1_FALLBACK_CACHE_DIR')
+	if configured != '' {
+		return os.join_path(configured, v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	}
+	xdg := os.getenv('XDG_CACHE_HOME')
+	home_cache := if xdg != '' {
+		xdg
+	} else {
+		home := os.getenv('HOME')
+		os.join_path(if home == '' { '/tmp' } else { home }, '.cache')
+	}
+	return os.join_path(home_cache, 'v', 'v1-fallback', v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+}
+
+fn resolve_installed_v1_fallback(fallback string, cached_launcher string) ?string {
+	if installed := resolve_v1_fallback(fallback) {
+		return installed
+	}
+	if cached_launcher != fallback {
+		return resolve_v1_fallback(cached_launcher)
+	}
+	return none
 }
 
 fn resolve_v1_fallback(fallback string) ?string {

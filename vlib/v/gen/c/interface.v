@@ -421,22 +421,27 @@ fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited
 
 // resolve_sum_name resolves resolve sum name information for c.
 fn (g &FlatGen) resolve_sum_name(sum_name string) string {
-	if resolved := g.sum_name_lookup[sum_name] {
+	canonical_name := if sum_name.contains('.') {
+		g.canonical_import_alias_type_text(sum_name)
+	} else {
+		sum_name
+	}
+	if resolved := g.sum_name_lookup[canonical_name] {
 		return resolved
 	}
-	if sum_name.contains('.') {
+	if canonical_name.contains('.') {
 		// A qualified name that already names a concrete type is that type. The
 		// short-name fallback below would otherwise hand `one.Any` the unrelated
 		// `two.Any` sum type and box the value into the wrong C struct.
-		if sum_name in g.tc.structs || sum_name in g.tc.interface_names
-			|| sum_name in g.tc.enum_names {
-			return sum_name
+		if canonical_name in g.tc.structs || canonical_name in g.tc.interface_names
+			|| canonical_name in g.tc.enum_names {
+			return canonical_name
 		}
-		if resolved := g.sum_name_lookup[c_short_name_view(sum_name)] {
+		if resolved := g.sum_name_lookup[c_short_name_view(canonical_name)] {
 			return resolved
 		}
 	}
-	return sum_name
+	return canonical_name
 }
 
 fn (mut g FlatGen) precompute_sum_name_lookup() {

@@ -96,6 +96,27 @@ fn test_v1_fallback_resolution_requires_compatibility_modules() {
 	os.mkdir_all(json2_dir)!
 	os.write_file(os.join_path(json2_dir, 'json2.v'), 'module json2\n')!
 	assert resolve_v1_fallback(fallback) or { panic(err) } == cached_fallback
+	legacy := os.join_path(root, 'legacy_' + v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	legacy_root := os.join_path(root, 'legacy_release')
+	os.mkdir_all(legacy_root)!
+	os.cp(@VEXE, legacy)!
+	os.chmod(legacy, 0o755)!
+	os.write_file(legacy + '.vroot', legacy_root)!
+	assert resolve_installed_v1_fallback(legacy, fallback) or { panic(err) } == cached_fallback
+}
+
+fn test_v1_fallback_cached_launcher_uses_the_configured_cache() {
+	configured := os.join_path(os.vtmp_dir(), 'configured_v1_cache_${os.getpid()}')
+	previous := os.getenv_opt('V1_FALLBACK_CACHE_DIR')
+	os.setenv('V1_FALLBACK_CACHE_DIR', configured, true)
+	defer {
+		if value := previous {
+			os.setenv('V1_FALLBACK_CACHE_DIR', value, true)
+		} else {
+			os.unsetenv('V1_FALLBACK_CACHE_DIR')
+		}
+	}
+	assert v1_fallback_cached_launcher() == os.join_path(configured, v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
 }
 
 fn test_cached_fallback_root_is_preferred_when_installed() {
