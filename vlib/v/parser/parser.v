@@ -5804,10 +5804,15 @@ fn (mut p Parser) skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, to
 		|| brace_depth != scope.brace_depth {
 		return false
 	}
-	if tok == .semicolon && prev_tok in [.name, .key_module, .key_shared]
-		&& p.current_token_is_newline_semicolon() && p.peek() == .lpar
-		&& p.line_indent_for_pos(p.peek_pos) > p.line_indent_for_pos(scope.body_pos) {
-		return false
+	if tok == .semicolon && p.current_token_is_newline_semicolon() {
+		next_tok := p.peek()
+		if next_tok == .dot {
+			return false
+		}
+		if next_tok == .lpar && prev_tok in [.name, .key_module, .key_shared]
+			&& p.line_indent_for_pos(p.peek_pos) > p.line_indent_for_pos(scope.body_pos) {
+			return false
+		}
 	}
 	return tok in [.comma, .colon, .semicolon, .rpar, .rsbr, .rcbr]
 }

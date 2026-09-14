@@ -12,3 +12,10 @@ vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:31:2:
       |     ^
    32 |     $if prealloc {
    33 |         callback := |x| identity
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:40:2: warning: unused variable: `x`
+   38 |
+   39 | fn newline_selector_lambda_parameter_shadows_outer() {
+   40 |     x := 1
+      |     ^
+   41 |     $if prealloc {
+   42 |         callback := |x| [1]
