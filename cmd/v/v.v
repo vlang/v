@@ -722,7 +722,11 @@ fn v1_fallback_args_with_module_overlay(args []string, overlay string) []string 
 	mut forwarded := args.clone()
 	mut option_value_follows := false
 	mut run_command_seen := false
+	external_command_index, _ := find_command(args)
 	for i, arg in args {
+		if i == external_command_index {
+			break
+		}
 		if option_value_follows {
 			option_value_follows = false
 			continue
@@ -745,14 +749,11 @@ fn v1_fallback_args_with_module_overlay(args []string, overlay string) []string 
 			option_value_follows = true
 			continue
 		}
-		if arg in external_commands {
-			break
-		}
 		if arg in ['run', 'crun'] {
 			run_command_seen = true
 			continue
 		}
-		if run_command_seen && !arg.starts_with('-') {
+		if run_command_seen && (!arg.starts_with('-') || arg == '-') {
 			break
 		}
 		if arg.ends_with('.vsh') {

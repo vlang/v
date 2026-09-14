@@ -278,6 +278,17 @@ fn test_the_overlay_is_added_to_explicit_module_search_paths() {
 		'-path',
 		'/script/arg',
 	]
+	assert v1_fallback_args_with_module_overlay(['run', '-', '-path', '/program/arg'], '/overlay') == [
+		'run',
+		'-',
+		'-path',
+		'/program/arg',
+	]
+	assert v1_fallback_args_with_module_overlay(['interpret', '-path', '/tool/arg'], '/overlay') == [
+		'interpret',
+		'-path',
+		'/tool/arg',
+	]
 }
 
 fn test_fallback_installer_writes_a_native_windows_root() {
