@@ -13148,24 +13148,17 @@ fn (mut tc TypeChecker) builtin_result_shares_storage(builtin_name string, id fl
 }
 
 // What `map` puts in the array it builds. Its element type is not resolved where this
-// analysis runs, so the callback is read for it, under the same binding of `it` the
-// checker gives that callback when it checks it.
+// analysis runs, so it is read from the callback the same way the checker reads it:
+// a lambda is resolved through its body, a function value through its return type,
+// and an `it` expression under the binding that gives `it` its meaning.
 fn (mut tc TypeChecker) array_map_result_elem_type(id flat.NodeId) ?Type {
 	if !tc.valid_node_id(id) {
 		return none
 	}
 	call := tc.a.node(id)
-	if call.children_count < 2 {
-		return none
-	}
-	arg_id := tc.call_arg_value(tc.a.child(call, 1))
-	if !tc.valid_node_id(arg_id) {
-		return none
-	}
-	tc.push_array_dsl_scope(*call, 'array.map')
-	elem := tc.resolve_type(arg_id)
-	tc.pop_scope()
-	if unalias_type(elem) is Unknown {
+	elem := tc.array_map_return_elem_type(*call)
+	clean := unalias_type(elem)
+	if clean is Void || clean is Unknown {
 		return none
 	}
 	return elem
