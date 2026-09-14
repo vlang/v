@@ -84,6 +84,31 @@ fn test_retry_keeps_arguments_that_contain_spaces_together() {
 	assert os.is_dir(os.join_path(target, '.git')), 'the spaced destination was split: ${res.output}'
 }
 
+// A command can also be given as shell syntax in one argument, which is the form the
+// SDL workflow uses: `v retry 'sudo apt update'`. That argument has to reach the shell
+// untouched - quoting it asks for a program whose name contains spaces, which fails
+// with `command not found` before the dependencies are ever installed.
+fn test_retry_runs_a_command_given_as_one_shell_string() {
+	log.use_stdout()
+	res := run("${os.quoted_path(vexe)} retry -r 1 'echo one two three'")
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('command not found'), res.output
+	assert res.output.trim_space().ends_with('one two three'), res.output
+}
+
+// The same form, with quoting of its own inside the string.
+fn test_retry_keeps_shell_syntax_inside_one_command_string() {
+	$if windows {
+		return
+	}
+	log.use_stdout()
+	res := run('${os.quoted_path(vexe)} retry -r 1 "sh -c \'echo four five\'"')
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().ends_with('four five'), res.output
+}
+
 // Quoting the caller put inside a single argument has to survive too, so that a
 // command like `sh -c 'echo one two'` still receives one argument after `-c`.
 fn test_retry_keeps_a_quoted_argument_whole() {

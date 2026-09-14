@@ -26,11 +26,11 @@ fn arg_needs_no_quoting(arg string) bool {
 	return true
 }
 
-// quote_arg spells `arg` so that the shell hands the command the single argument it
-// already is. The command reaches here as a vector - `v retry -- git clone URL DEST`
-// arrives as four arguments, whatever quoting the caller's own shell removed - and it
-// is run through a shell again, so joining the vector with spaces would split a DEST
-// like `C:\Users\Jane Doe\.vmodules\markdown` back into two arguments.
+// quote_arg spells one argument of a vector-form command so that the shell hands the
+// command the single argument it already is. `v retry -- git clone URL DEST` arrives
+// as four arguments, whatever quoting the caller's own shell removed, and is run
+// through a shell again, so joining them with spaces would split a DEST like
+// `C:\Users\Jane Doe\.vmodules\markdown` back into two arguments.
 fn quote_arg(arg string) string {
 	if arg_needs_no_quoting(arg) {
 		return arg
@@ -75,7 +75,17 @@ fn main() {
 		eprintln('error: ${err}')
 		exit(1)
 	}
-	cmd := command_args.map(quote_arg(it)).join(' ')
+	// Two call forms reach here. `v retry -- git clone URL DEST` passes the command as a
+	// vector: the arguments arrive already split, whatever quoting the caller's own shell
+	// removed, so each has to be quoted again before the shell that runs them sees it.
+	// `v retry 'sudo apt update'` passes the command as shell syntax in a single argument,
+	// which has to go through untouched - quoting that would ask the shell for a program
+	// whose name contains spaces.
+	cmd := if fp.idx_dashdash >= 0 {
+		command_args.map(quote_arg(it)).join(' ')
+	} else {
+		command_args.join(' ')
+	}
 	// dump(cmd)
 
 	spawn fn (context Context) {
