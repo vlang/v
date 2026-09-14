@@ -3227,6 +3227,9 @@ fn asm_template_token_ranges(tokens []string) []TokenRange {
 	return ranges
 }
 
+// type_opening_tokens are the tokens a constructed type may follow.
+const type_opening_tokens = [':=', '=', '(', ',', '[', ']', '<<', ':', 'return']
+
 // token_is_a_type_marker reports whether `tokens[index]` spells the type of what
 // follows it rather than a variable of that name. `chan` and `thread` are not
 // reserved, so `fn f(chan int)` declares a parameter, while `chan int{}` and
@@ -3240,7 +3243,13 @@ fn token_is_a_type_marker(tokens []string, index int) bool {
 	if next >= tokens.len {
 		return false
 	}
-	if tokens[next] == '{' || is_ident_token(tokens[next]) {
+	if tokens[next] == '{' {
+		// `{` follows a condition as readily as a type, so the left side
+		// decides: `[]thread{}` constructs a value where one may start, while
+		// `if chan {`, `if !chan {` and `match chan {` read a variable.
+		return index == 0 || tokens[index - 1] in type_opening_tokens
+	}
+	if is_ident_token(tokens[next]) {
 		return true
 	}
 	// `chan []int`, and not the `chan[0]` of an index.

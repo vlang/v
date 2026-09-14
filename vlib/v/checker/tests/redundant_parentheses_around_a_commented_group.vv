@@ -4,5 +4,7 @@ fn main() {
 	value := 3
 	b := ((value /* ) */))
 	c := ((value + ')'.len))
-	println(b + c)
+	d := ((value) /* explanation */)
+	e := (/* leading */ (value))
+	println(b + c + d + e)
 }

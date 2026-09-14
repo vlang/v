@@ -411,3 +411,14 @@ fn test_a_type_marker_is_not_a_variable() {
 	assert code_references_ident('ts << thread', 'thread', true)
 	assert code_references_ident('_ = chan.cap', 'chan', true)
 }
+
+fn test_a_type_marker_needs_its_context() {
+	// `{` also follows a condition, so the token before the marker decides.
+	assert code_references_ident('if chan {\n\tprintln(1)\n}', 'chan', true)
+	assert code_references_ident('match chan {\n\t1 {}\n}', 'chan', true)
+	assert code_references_ident('for chan {\n\tbreak\n}', 'chan', true)
+	assert code_references_ident('if !chan {\n\tprintln(1)\n}', 'chan', true)
+	assert !code_references_ident('ts := []thread{}', 'thread', true)
+	assert !code_references_ident('_ = f([]thread{})', 'thread', true)
+	assert !code_references_ident('return []thread{}', 'thread', true)
+}

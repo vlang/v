@@ -2691,12 +2691,15 @@ fn (tc &TypeChecker) call_targets_later_local_binding(call flat.Node) bool {
 // group, i.e. whether its opening parenthesis is closed by its last character.
 // `(a + b)` is, `(a) + (b)` is not.
 fn text_is_a_single_parenthesised_group(text string) bool {
-	if text.len < 2 || text[0] != `(` || text[text.len - 1] != `)` {
+	// A comment is not part of the expression, at either end of it: the inner
+	// group of `((input) /* explanation */)` still spans the whole of it.
+	first, last := code_bounds_of(text)
+	if first < 0 || last <= first || text[first] != `(` || text[last] != `)` {
 		return false
 	}
 	mut depth := 0
-	mut i := 0
-	for i < text.len {
+	mut i := first
+	for i <= last {
 		// A parenthesis of a comment or of a literal is not syntax:
 		// `((value /* ) */))` is still one group wrapped in another.
 		skipped, _ := skip_non_code_at(text, i)
@@ -2710,12 +2713,36 @@ fn text_is_a_single_parenthesised_group(text string) bool {
 		} else if c == `)` {
 			depth--
 			if depth == 0 {
-				return i == text.len - 1
+				return i == last
 			}
 		}
 		i++
 	}
 	return false
+}
+
+// code_bounds_of returns the first and the last index of `text` that hold code,
+// skipping the comments, the literals and the spaces around it. Both are -1 for
+// a text that holds none.
+fn code_bounds_of(text string) (int, int) {
+	mut first := -1
+	mut last := -1
+	mut i := 0
+	for i < text.len {
+		skipped, _ := skip_non_code_at(text, i)
+		if skipped > i {
+			i = skipped
+			continue
+		}
+		if text[i] !in [` `, `\t`, `\n`, `\r`] {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+		i++
+	}
+	return first, last
 }
 
 fn (tc &TypeChecker) paren_expr_has_redundant_parentheses(id flat.NodeId) bool {

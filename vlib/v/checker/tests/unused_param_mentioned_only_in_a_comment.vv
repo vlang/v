@@ -151,7 +151,17 @@ fn channel_type_marker(chan int) {
 	}
 }
 
+// A `{` follows a condition too, so `if chan {` reads the parameter.
+fn channel_condition(chan bool) {
+	$if windows {
+		if chan {
+			println('on')
+		}
+	}
+}
+
 fn main() {
+	channel_condition(true)
 	channel_type_marker(12)
 	propagated_condition(11) or { println('e') }
 	_ = get_bool() or { false }

@@ -4,11 +4,25 @@ vlib/v/checker/tests/redundant_parentheses_around_a_commented_group.vv:5:7: noti
     5 |     b := ((value /* ) */))
       |          ~~~~~~~~~~~~~~~~~
     6 |     c := ((value + ')'.len))
-    7 |     println(b + c)
+    7 |     d := ((value) /* explanation */)
 vlib/v/checker/tests/redundant_parentheses_around_a_commented_group.vv:6:7: notice: redundant parentheses are used
     4 |     value := 3
     5 |     b := ((value /* ) */))
     6 |     c := ((value + ')'.len))
       |          ~~~~~~~~~~~~~~~~~~~
-    7 |     println(b + c)
-    8 | }
+    7 |     d := ((value) /* explanation */)
+    8 |     e := (/* leading */ (value))
+vlib/v/checker/tests/redundant_parentheses_around_a_commented_group.vv:7:7: notice: redundant parentheses are used
+    5 |     b := ((value /* ) */))
+    6 |     c := ((value + ')'.len))
+    7 |     d := ((value) /* explanation */)
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 |     e := (/* leading */ (value))
+    9 |     println(b + c + d + e)
+vlib/v/checker/tests/redundant_parentheses_around_a_commented_group.vv:8:7: notice: redundant parentheses are used
+    6 |     c := ((value + ')'.len))
+    7 |     d := ((value) /* explanation */)
+    8 |     e := (/* leading */ (value))
+      |          ~~~~~~~~~~~~~~~~~~~~~~~
+    9 |     println(b + c + d + e)
+   10 | }
