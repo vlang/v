@@ -477,6 +477,7 @@ mut:
 	shared_alias_pointer_shorts   map[string]string // alias short name -> shared inner type; '' means ambiguous
 	shared_alias_index_ready      bool
 	needs_shared_runtime          bool
+	needs_thread_type             bool
 	needs_thread_runtime          bool
 	const_runtime_inits           []string
 	const_runtime_init_modules    []string
@@ -3148,6 +3149,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.shared_type_names.clear()
 	g.shared_alias_pointer_shorts.clear()
 	g.needs_shared_runtime = false
+	g.needs_thread_type = false
 	g.needs_thread_runtime = false
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
@@ -3234,6 +3236,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
 	g.collect_gen_info(effective_no_parallel)
+	if g.target_libc_headers {
+		g.precompute_thread_type_usage()
+	}
 	g.precompute_qualified_struct_c_types()
 	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
@@ -17701,12 +17706,17 @@ fn (mut g FlatGen) headerless_darwin_pthread_alias(alias string, typ string, gua
 	g.writeln('#endif')
 }
 
+// target_libc_thread_type writes the target-owned representation of a V thread.
+fn (mut g FlatGen) target_libc_thread_type() {
+	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
+}
+
 // target_libc_thread_runtime writes the pthread-backed thread runtime. The hosted
 // and headerless preambles emit it inside a `#ifdef _WIN32` pair; a target that
 // supplies its own libc headers is not Windows, so only this half is needed, and
 // it is written without the guard. It needs <pthread.h>, which that path includes.
 fn (mut g FlatGen) target_libc_thread_runtime() {
-	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
+	g.target_libc_thread_type()
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
 	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
@@ -17750,10 +17760,10 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// prototype further down. This is the set V's own runtime calls into.
 		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdbool.h', 'stdatomic.h',
 			'errno.h', 'fcntl.h', 'signal.h', 'stdio.h', 'stdlib.h', 'string.h', 'strings.h', 'math.h',
-			'time.h', 'unistd.h'] {
+			'time.h', 'unistd.h', 'sys/stat.h'] {
 			g.writeln('#include <${header}>')
 		}
-		if g.uses_pthread() {
+		if g.needs_thread_type || g.uses_pthread() {
 			g.writeln('#include <pthread.h>')
 		}
 	} else {
@@ -17830,6 +17840,8 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		g.headerless_execinfo_declarations()
 		if g.needs_thread_runtime {
 			g.target_libc_thread_runtime()
+		} else if g.needs_thread_type {
+			g.target_libc_thread_type()
 		}
 		return
 	}

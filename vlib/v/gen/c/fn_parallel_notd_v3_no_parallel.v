@@ -1298,6 +1298,9 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 	if batch.needs_thread_runtime {
 		g.needs_thread_runtime = true
 	}
+	if batch.needs_thread_type {
+		g.needs_thread_type = true
+	}
 	for name, enabled in batch.libc_compat_fns {
 		if enabled {
 			g.libc_compat_fns[name.clone()] = true
@@ -2717,6 +2720,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		shared_type_names: g.shared_type_names
 		shared_alias_pointer_shorts: g.shared_alias_pointer_shorts
 		shared_alias_index_ready: g.shared_alias_index_ready
+		needs_thread_type: g.needs_thread_type
 		needs_thread_runtime: g.needs_thread_runtime
 		const_runtime_inits: if result_only {
 			g.const_runtime_inits
@@ -3157,6 +3161,9 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	if w.needs_thread_runtime {
 		g.needs_thread_runtime = true
+	}
+	if w.needs_thread_type {
+		g.needs_thread_type = true
 	}
 	for name, enabled in w.libc_compat_fns {
 		if enabled {

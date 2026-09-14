@@ -236,7 +236,7 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 	g.preamble()
 	c_code := g.sb.str()
 	for header in ['stdint.h', 'stddef.h', 'stdatomic.h', 'errno.h', 'fcntl.h', 'signal.h', 'stdio.h',
-		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h'] {
+		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h', 'sys/stat.h'] {
 		assert c_code.contains('#include <${header}>'), header
 	}
 	assert !c_code.contains('#include <pthread.h>')
@@ -251,6 +251,19 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 		'mempcpy'] {
 		assert !g.should_emit_c_extern_decl(name), name
 	}
+}
+
+fn test_target_libc_preamble_emits_only_thread_type_for_type_only_usage() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.needs_thread_type = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <pthread.h>')
+	assert c_code.contains('typedef struct { pthread_t handle; } __v_thread;')
+	assert !c_code.contains('static __v_thread __v_thread_spawn(')
+	assert !c_code.contains('static void* __v_thread_join(')
+	assert !c_code.contains('pthread_equal(a.handle, b.handle)')
 }
 
 fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {

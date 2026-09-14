@@ -6,6 +6,23 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_type_references_thread_through_containers() {
+	thread_type := types.Type(types.Struct{
+		name: 'thread'
+	})
+	thread_array := types.Type(types.Array{
+		elem_type: thread_type
+	})
+	assert type_references_thread(thread_type)
+	assert type_references_thread(thread_array)
+	assert type_references_thread(types.Type(types.Pointer{
+		base_type: thread_array
+	}))
+	assert !type_references_thread(types.Type(types.Array{
+		elem_type: types.Type(types.int_)
+	}))
+}
+
 fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 	$if !windows && !v3_no_parallel ? {
 		mut ast := flat.FlatAst.new()
