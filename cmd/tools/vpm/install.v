@@ -176,6 +176,12 @@ fn (m Module) install() InstallResult {
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
 		if settings.is_force || m.confirm_install() {
+			if !is_removable_module_dir(m.install_path) {
+				vpm_error('refusing to replace `${m.name}`: `${m.install_path_fmted}` was not installed by VPM.',
+					details: not_installed_by_vpm_details()
+				)
+				return .failed
+			}
 			m.remove() or {
 				vpm_error('failed to remove `${m.name}`.', details: err.msg())
 				return .failed
@@ -201,6 +207,11 @@ fn (m Module) install() InstallResult {
 	os.mv(m.tmp_path, m.install_path) or {
 		vpm_error('failed to install `${m.name}`.', details: err.msg())
 		return .failed
+	}
+	if settings.is_local {
+		// The local root is shared with the project's own modules, so this is the
+		// only thing that will later tell VPM the directory is one it may remove.
+		record_local_install(m.install_path)
 	}
 	return .installed
 }
@@ -329,5 +340,6 @@ fn local_git_changes_reason(path string) string {
 fn (m Module) remove() ! {
 	verbose_println('Removing `${m.name}` from `${m.install_path_fmted}`...')
 	rmdir_all(m.install_path)!
+	forget_local_install(m.install_path)
 	verbose_println('Removed `${m.name}`.')
 }

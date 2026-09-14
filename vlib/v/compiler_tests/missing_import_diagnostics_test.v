@@ -174,6 +174,22 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	assert disabled.exit_code != 0, disabled.output
 	assert disabled.output.contains('cannot import module "disabled_helper" (not found)'), disabled.output
 	assert !disabled.output.contains(hint), disabled.output
+
+	// A `modules/` directory above the importer's own project belongs to whatever
+	// lives there, not to the importer. Resolution would not have taken it, so the
+	// hint may not tell anyone to move another project's source either.
+	foreign_root := os.join_path(root, 'foreign')
+	write_modules_layout_module(foreign_root, os.join_path('modules', 'stranger'), 'stranger')
+	foreign_app := os.join_path(foreign_root, 'app')
+	os.mkdir_all(foreign_app) or { panic(err) }
+	os.write_file(os.join_path(foreign_app, 'v.mod'), "Module { name: 'foreign_app' }\n") or {
+		panic(err)
+	}
+	write_modules_layout_main(foreign_app, 'stranger')
+	foreign := os.execute('${v3_bin} -nocache -o ${output} ${foreign_app}/main.v')
+	assert foreign.exit_code != 0, foreign.output
+	assert foreign.output.contains('cannot import module "stranger" (not found)'), foreign.output
+	assert !foreign.output.contains(hint), foreign.output
 }
 
 // The hint quotes the paths it prints and names the tool the host actually has,

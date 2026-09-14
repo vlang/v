@@ -17853,18 +17853,22 @@ fn record_missing_import_hint(mut a flat.FlatAst, prefs &pref.Preferences, node_
 // would have satisfied. The virtual `modules/` lookup is gone, the same way the
 // virtual `src/` source root is: a module's import path is its path under the
 // nearest v.mod, so the directory has to sit there rather than one level down.
-// The directory has to hold a module this build could actually use, otherwise
-// moving it up would not resolve the import either.
+// The directory has to hold a module this build could actually use, and it has
+// to be the importer's to move: the same ownership boundary the ancestor walk
+// applies, so the hint never points at the source of an unrelated project that
+// happens to sit above the importer.
 fn removed_modules_layout_hint(prefs &pref.Preferences, mod_name string, importing_file string) string {
 	if importing_file.len == 0 {
 		return ''
 	}
 	relative := mod_name.replace('.', os.path_separator)
 	top_name := mod_name.all_before('.')
+	importer_vmod_root := nearest_vmod_root_for_file(importing_file)
 	mut current := os.dir(os.real_path(importing_file))
 	for {
 		candidate := os.join_path(current, 'modules', relative)
-		if module_path_has_v_sources(candidate, prefs) {
+		if module_path_has_v_sources(candidate, prefs)
+			&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
 			command := modules_layout_move_command(current, relative, top_name)
 			return '\nthe virtual `modules/` directory is no longer searched for modules.\nMove it up beside the v.mod it belongs to, which keeps the import path the same:\n\t${command}'
 		}

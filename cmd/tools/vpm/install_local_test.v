@@ -396,30 +396,41 @@ fn test_install_does_not_warn_about_valid_module_name() {
 
 // `v install --local` installs into the project's own module lookup root, the
 // folder holding its `v.mod`, so that root is now shared with the modules the
-// project writes by hand. A destructive command may only touch the checkouts
-// VPM put there: an ordinary module directory is project source.
+// project writes by hand. Version control does not tell those apart -- a project
+// may well keep a module of its own as a submodule or a manual clone -- so a
+// destructive command may only touch what VPM recorded installing there.
 fn test_local_remove_refuses_a_module_vpm_did_not_install() {
 	test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_remove'))
 	project_dir := os.join_path(test_path, 'local_remove_project')
-	handwritten := os.join_path(project_dir, 'mymod')
-	os.mkdir_all(handwritten) or { panic(err) }
+	os.mkdir_all(project_dir) or { panic(err) }
 	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'local_remove_project'\n}\n") or {
 		panic(err)
 	}
+	// A module the project wrote itself, and one it vendored as a checkout of its
+	// own, the way a submodule or a manual clone sits in a project.
+	handwritten := os.join_path(project_dir, 'mymod')
+	os.mkdir_all(handwritten) or { panic(err) }
 	os.write_file(os.join_path(handwritten, 'mymod.v'), 'module mymod\n') or { panic(err) }
+	vendored := os.join_path(project_dir, 'vendored')
+	create_local_git_module(vendored, 'vendored')
 
 	old_dir := os.getwd()
 	os.chdir(project_dir) or { panic(err) }
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	res := cmd_fail(@LOCATION, '${vexe} remove --local mymod')
-	assert res.output.contains('refusing to remove `mymod`'), res.output
+	plain := cmd_fail(@LOCATION, '${vexe} remove --local mymod')
+	assert plain.output.contains('refusing to remove `mymod`'), plain.output
 	assert os.is_file(os.join_path(handwritten, 'mymod.v'))
+
+	checkout := cmd_fail(@LOCATION, '${vexe} remove --local vendored')
+	assert checkout.output.contains('refusing to remove `vendored`'), checkout.output
+	assert os.is_file(os.join_path(vendored, 'v.mod'))
+	assert os.is_dir(os.join_path(vendored, '.git'))
 }
 
-// What VPM installed into that shared root, VPM can still take back: an install
-// is a VCS checkout, which is what separates it from the project's own modules.
+// What VPM installed into that shared root, VPM can still take back, and the
+// record of the install goes with the directory.
 fn test_local_remove_deletes_what_vpm_installed() {
 	test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_remove_installed'))
 	project_dir := os.join_path(test_path, 'local_remove_installed_project')
@@ -427,10 +438,12 @@ fn test_local_remove_deletes_what_vpm_installed() {
 	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'local_remove_installed'\n}\n") or {
 		panic(err)
 	}
-	// The post-install state of `v install --local <repo>`: the package sits in
-	// the lookup root as the checkout VPM cloned there.
+	// The post-install state of `v install --local <repo>`: the package cloned
+	// into the lookup root, and VPM's record that it put it there.
 	installed := os.join_path(project_dir, 'local_pkg')
 	create_local_git_module(installed, 'local_pkg')
+	record_local_install(installed)
+	assert is_recorded_local_install(installed)
 
 	old_dir := os.getwd()
 	os.chdir(project_dir) or { panic(err) }
@@ -440,6 +453,29 @@ fn test_local_remove_deletes_what_vpm_installed() {
 	cmd_ok(@LOCATION, '${vexe} remove --local local_pkg')
 	assert !os.exists(installed)
 	assert os.is_file(os.join_path(project_dir, 'v.mod'))
+	assert !is_recorded_local_install(installed)
+}
+
+// The record stands for one directory only, so it can never be read as
+// provenance for another one, and it lives outside the project it describes.
+fn test_local_install_records_are_per_directory() {
+	vmodules_path := os.join_path(test_path, 'vmodules_local_records')
+	test_utils.set_test_env(vmodules_path)
+	project_dir := os.join_path(test_path, 'local_records_project')
+	installed := os.join_path(project_dir, 'recorded_pkg')
+	sibling := os.join_path(project_dir, 'unrecorded_pkg')
+	os.mkdir_all(installed) or { panic(err) }
+	os.mkdir_all(sibling) or { panic(err) }
+
+	record_local_install(installed)
+	assert is_recorded_local_install(installed)
+	assert !is_recorded_local_install(sibling)
+	assert os.is_dir(os.join_path(vmodules_path, '.cache', 'local_installs'))
+	entries := os.ls(project_dir) or { panic(err) }
+	assert entries.sorted() == ['recorded_pkg', 'unrecorded_pkg']
+
+	forget_local_install(installed)
+	assert !is_recorded_local_install(installed)
 }
 
 fn create_local_git_module(repo_path string, module_name string) {
