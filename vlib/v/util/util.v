@@ -137,11 +137,10 @@ pub fn nearest_vmod_root(path string) ?string {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
 			return dir
 		}
-		parent := os.dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+		// `os.dir` answers `.` for a bare Windows drive (`os.dir('S:') == '.'`),
+		// which would continue the walk against the current directory and report
+		// an unrelated project root. `os.parent_dir` stops at the root instead.
+		dir = os.parent_dir(dir)
 	}
 	return none
 }

@@ -6895,6 +6895,16 @@ fn v3_platform_c_compiler(host_os string) string {
 	return if host_os == 'windows' { 'gcc' } else { 'cc' }
 }
 
+// v3_platform_c_compiler_command is v3_platform_c_compiler, resolved through
+// PATH when possible. The compilation retries below re-execute V with
+// `-cc <name>`; a bare name has to be found again by the child process, and on
+// Windows that spawn fails with "The system cannot find the file specified"
+// even when `gcc.exe` is on PATH. Hand the retry an absolute path instead.
+fn v3_platform_c_compiler_command(host_os string) string {
+	name := v3_platform_c_compiler(host_os)
+	return os.find_abs_path_of_executable(name) or { name }
+}
+
 fn v3_should_regenerate_after_implicit_tcc(retry_compilation bool, use_implicit_tcc_semantics bool, tried_tcc bool, tcc_exit_code int) bool {
 	return retry_compilation && use_implicit_tcc_semantics && (!tried_tcc || tcc_exit_code != 0)
 }
@@ -12538,7 +12548,7 @@ pub fn run(args []string) {
 			show_v3_c_compiler_output(show_c_output, c_compiler, result)
 			if result.exit_code != 0 {
 				if retry_compilation && v3_is_tcc_compilation_failure(c_compiler, result.output) {
-					fallback := v3_platform_c_compiler(host_os)
+					fallback := v3_platform_c_compiler_command(host_os)
 					eprintln('warning: tcc compilation failed, falling back to ${fallback}')
 					retry_args := v3_retry_compilation_args(args, c_compiler_arg_index, fallback)
 					cleanup_c_build_dir(cc_dir)
@@ -12769,7 +12779,7 @@ fn v3_retry_compilation_args(args []string, c_compiler_arg_index int, fallback s
 }
 
 fn v3_regenerate_after_implicit_tcc(args []string, c_compiler_arg_index int, cc_dir string, verbose bool, show_cc bool) {
-	fallback := v3_platform_c_compiler(os.user_os())
+	fallback := v3_platform_c_compiler_command(os.user_os())
 	if verbose || show_cc {
 		eprintln('warning: regenerating the tcc-targeted unit with ${fallback}')
 	}
@@ -14794,8 +14804,13 @@ fn nearest_vroot_for_path(path string) ?string {
 		if is_valid_vroot(dir) {
 			return dir
 		}
-		parent := os.dir(dir)
-		if parent == dir {
+		// `os.parent_dir` stops at a filesystem root. `os.dir` would answer `.`
+		// for a bare Windows drive (`os.dir('S:') == '.'`), and `is_valid_vroot('.')`
+		// then probes `vlib/builtin` relative to the *current* directory, so any
+		// input outside a V checkout resolved to the relative `.` whenever V was
+		// run from the V root itself.
+		parent := os.parent_dir(dir)
+		if parent.len == 0 {
 			break
 		}
 		dir = parent

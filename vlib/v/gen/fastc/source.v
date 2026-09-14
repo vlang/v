@@ -1265,8 +1265,10 @@ fn fastc_vmod_root_matches(entry_path string, expected_root string) bool {
 		if os.exists(os.join_path(dir, 'v.mod')) {
 			return dir == expected_root
 		}
-		parent := os.dir(dir)
-		if parent == dir || parent.len == 0 {
+		// `os.dir` answers `.` for a bare Windows drive, which would keep the walk
+		// going against the current directory; `os.parent_dir` stops at the root.
+		parent := os.parent_dir(dir)
+		if parent.len == 0 {
 			return original_dir == expected_root
 		}
 		dir = parent

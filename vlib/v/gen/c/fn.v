@@ -176,6 +176,13 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		preferred_fns[candidate.preferred_name] = preferred
 	}
 	mut items := []FlatFnGenItem{cap: candidates.len}
+	// Dedup the selected C names within this pass only. This used to be the
+	// generator-wide `emitted_fns` field, which new_parallel_worker_config handed
+	// to every forked cgen worker; since the map header became pointer sized that
+	// sharing is a true alias rather than a private header copy, so an entry a
+	// worker added would make this pass drop the function instead of selecting it.
+	mut emitted := map[string]bool{}
+	emitted.reserve(u32(candidates.len))
 	mut prep_stack := []flat.NodeId{cap: 256}
 	mut prep_type_text_cache := map[string]bool{}
 	// In parallel-prep mode the exact-cost pass (or its serial fallback) also
@@ -196,10 +203,12 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		}
 		item := candidate.item
 		qfn := item.c_name
-		if g.emitted_fn_contains(qfn) {
-			continue
+		if qfn.len > 0 {
+			if emitted[qfn] {
+				continue
+			}
+			emitted[qfn] = true
 		}
-		g.emitted_fns[qfn] = true
 		cost := if par_prep {
 			// The parallel exact-cost pass overwrites this value before cgen
 			// dispatch. Retain the O(1) source-span estimate meanwhile so that
@@ -1048,11 +1057,6 @@ fn (g &FlatGen) used_fn_contains_in_module(name string, module_name string) bool
 // has_used_fn_filter reports whether has used fn filter applies in c.
 fn (g &FlatGen) has_used_fn_filter() bool {
 	return !isnil(g.used_fns) && g.used_fns.len > 0 && g.used_fn_contains('main')
-}
-
-// emitted_fn_contains reports whether emitted fn contains applies in c.
-fn (g &FlatGen) emitted_fn_contains(name string) bool {
-	return name.len > 0 && g.emitted_fns[name]
 }
 
 fn generic_method_candidate_key(receiver string, method string) string {
