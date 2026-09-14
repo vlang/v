@@ -12512,6 +12512,13 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		if shadows_fn {
 			tc.record_notice_at(.unknown_ident, 'variable `${lhs_node.value}` shadows a function declaration', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
 		}
+		// A local of the same name as a global is resolved to the global, including a
+		// global in a module this file does not import, so the local is declared and
+		// then never read. Report it rather than letting the two names silently mean
+		// different things.
+		if lhs_node.value != '_' && tc.global_names[lhs_node.value] {
+			tc.record_global_shadow_notice(lhs_id, lhs_node.value)
+		}
 		explicit_expected := if node.children_count == 2 && node.typ.len > 0 {
 			tc.parse_type(node.typ)
 		} else {

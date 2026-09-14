@@ -6641,6 +6641,27 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 	return tc.cur_file in tc.diagnostic_files
 }
 
+// record_global_shadow_notice reports a local that shadows a global. The ordinary
+// diagnostic filter limits notices to the files named on the command line, which
+// for a project compiled as a directory is only its entry file -- so a shadow
+// inside one of the project's own modules, which is where this happens, would
+// never be reported. The user-code boundary is kept, so vlib stays silent; only
+// the per-file filter is skipped.
+fn (mut tc TypeChecker) record_global_shadow_notice(id flat.NodeId, name string) {
+	if int(id) < tc.a.user_code_start || int(id) >= tc.a.nodes.len {
+		return
+	}
+	if !tc.a.nodes[int(id)].pos.is_valid() {
+		return
+	}
+	msg := 'variable `${name}` shadows a global variable'
+	pos := tc.node_value_diagnostic_pos(id)
+	if tc.notices.any(it.msg == msg && it.pos == pos) {
+		return
+	}
+	tc.notices << tc.make_type_error_at(.unknown_ident, msg, id, pos)
+}
+
 fn (tc &TypeChecker) current_fn_is_concrete_generic_receiver_specialization() bool {
 	return tc.fn_context.concrete_generic_receiver_specialization
 		&& tc.fn_context.generic_params.len == 0
