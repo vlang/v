@@ -1933,6 +1933,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	if node.kind == .array_init {
 		tc.check_missing_array_init_interface_type_args(id, node)
 		tc.check_array_init(id, node)
+		tc.warn_alloc('array initialization', id, node.pos)
 		$if ownership ? {
 			if !tc.ownership_aggregate_consumption_deferred(id) {
 				tc.ownership_consume_array_init_expr(node)
@@ -2024,6 +2025,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		if specialized_invalid_selector {
 			tc.record_enclosing_print_void(id)
 		}
+		tc.warn_alloc('string interpolation', id, node.pos)
 		return
 	}
 	if node.kind == .paren && node.value == '__v3_comptime_d' && node.children_count > 0 {
@@ -2042,6 +2044,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	// A method value stored in a container escapes the single-use guarantee of its per-site
 	// static receiver, so reject `[obj.method]` / `arr << obj.method` / `{'k': obj.method}`.
 	if node.kind == .array_literal {
+		tc.warn_alloc('array initialization', id, node.pos)
 		if expected := tc.expected_context_for_expr(id) {
 			context_type := unalias_type(contextual_payload_type(expected) or { expected })
 			if elem_type := array_like_elem_type(context_type) {
@@ -4411,6 +4414,9 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		actual_name := actual.name()
 		tc.record_interface_implementation_error(.assignment_mismatch, actual, target_iface, id, node.pos)
 		tc.record_error_at(.assignment_mismatch, 'type `${actual_name}` does not implement interface `${target_iface.name}`; `${actual_name}` does not implement interface `${target_iface.name}`, cannot cast `${actual_name}` to interface `${target_iface.name}`', id, node.pos)
+	}
+	if target is Interface {
+		tc.warn_alloc('cast to interface', id, node.pos)
 	}
 }
 
@@ -6824,6 +6830,9 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	// of the aliased storage type. This is especially important for aliases of
 	// maps, arrays, pointers, and primitives: validating their unaliased type
 	// first would reject the expression before its operator method can be used.
+	if node.op == .plus && is_string_concat_pair(lhs_type, rhs_type) {
+		tc.warn_alloc('string concatenation', id, node.pos)
+	}
 	if _ := tc.infix_operator_return_type(node.op, lhs_type, rhs_type) {
 		return
 	}
@@ -7787,6 +7796,14 @@ fn type_is_string_like(typ Type) bool {
 		return type_is_string_like(typ.base_type)
 	}
 	return false
+}
+
+fn is_string_concat_pair(left Type, right Type) bool {
+	left_is_string := left is String
+	right_is_string := right is String
+	left_is_concat := left_is_string || left is Char || left is Rune
+	right_is_concat := right_is_string || right is Char || right is Rune
+	return left_is_concat && right_is_concat && (left_is_string || right_is_string)
 }
 
 fn (tc &TypeChecker) select_branch_is_timeout(branch flat.Node) bool {

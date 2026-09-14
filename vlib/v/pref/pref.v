@@ -55,6 +55,7 @@ pub mut:
 	selfhost              bool
 	building_v            bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod               bool
+	warn_about_allocs     bool
 	is_debug              bool
 	is_test               bool // at least one compatible user test file is being compiled
 	is_fmt                bool // preserve source-only syntax needed by the V formatter

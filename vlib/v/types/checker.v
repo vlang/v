@@ -855,6 +855,7 @@ pub mut:
 	checker_fixture_mode          bool
 	autofree_mode                 bool
 	no_main                       bool
+	warn_about_allocs             bool
 	warns_are_errors              bool
 	notes_are_errors              bool
 	is_prod                       bool
@@ -1283,6 +1284,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		checker_fixture_mode: tc.checker_fixture_mode
 		autofree_mode: tc.autofree_mode
 		no_main: tc.no_main
+		warn_about_allocs: tc.warn_about_allocs
 		warns_are_errors: tc.warns_are_errors
 		notes_are_errors: tc.notes_are_errors
 		is_prod: tc.is_prod
@@ -2590,6 +2592,27 @@ fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node f
 		...base
 		severity: 'warning:'
 	}
+}
+
+fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token.Pos) {
+	if !tc.warn_about_allocs || tc.cur_module in ['strings', 'math', 'math.bits', 'builtin',
+		'strconv'] {
+		return
+	}
+	mut current := id
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign]
+			&& node.is_freed_assignment() {
+			return
+		}
+		parent := tc.direct_parent_id(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	tc.record_warning_at(.compile_error, 'allocation (${description})', id, pos)
 }
 
 fn (tc &TypeChecker) has_type_error(kind TypeErrorKind, msg string, node flat.NodeId) bool {

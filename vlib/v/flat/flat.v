@@ -280,8 +280,10 @@ pub const node_flag_static_type_method = u8(2)
 // node_flag_embed_payload marks the string literal holding the bytes that
 // `$embed_file` materialized (see Node.is_embed_payload()).
 pub const node_flag_embed_payload = u8(4)
+// node_flag_freed_assignment marks an assignment annotated with `@[freed]`.
+pub const node_flag_freed_assignment = u8(8)
 
-// node_flags packs the two rare node bools into Node.flags.
+// node_flags packs rare node bools into Node.flags.
 @[inline]
 pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 	mut flags := u8(0)
@@ -300,11 +302,12 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 // whatever its new position calls for. The rest describe the node itself and
 // have to survive being copied: a generic specialization that dropped
 // node_flag_embed_payload would turn the payload back into an ordinary literal,
-// which the backend would then intern and spell out in full.
+// which the backend would then intern and spell out in full. Assignment
+// attributes likewise remain attached when a statement is specialized.
 @[inline]
 pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
-	flags |= source.flags & node_flag_embed_payload
+	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment)
 	return flags
 }
 
@@ -354,6 +357,22 @@ pub fn (n &Node) is_static_type_method() bool {
 @[inline]
 pub fn (n &Node) is_embed_payload() bool {
 	return (n.flags & node_flag_embed_payload) != 0
+}
+
+// is_freed_assignment reports whether an assignment has the `@[freed]` attribute.
+@[inline]
+pub fn (n &Node) is_freed_assignment() bool {
+	return (n.flags & node_flag_freed_assignment) != 0
+}
+
+// set_freed_assignment updates the assignment's `@[freed]` marker.
+@[inline]
+pub fn (mut n Node) set_freed_assignment(value bool) {
+	if value {
+		n.flags |= node_flag_freed_assignment
+	} else {
+		n.flags &= ~node_flag_freed_assignment
+	}
 }
 
 // set_is_static_type_method updates the static-type-method flag.

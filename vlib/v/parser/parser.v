@@ -8041,21 +8041,19 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
-	if p.prefs.is_fmt && p.tok == .attribute && p.prev_tok_end > 0
+	if p.tok == .attribute && p.prev_tok_end > 0
 		&& p.line_nr_for_pos(p.prev_tok_end - 1) == p.line_nr_for_pos(p.tok_pos) {
 		attr_start := clamp_source_offset(p.tok_pos, p.s.src.len)
-		p.next() // skip `@[` token
-		mut depth := 1
-		for depth > 0 && p.tok != .eof {
-			if p.tok == .lsbr {
-				depth++
-			} else if p.tok == .rsbr {
-				depth--
-			}
-			p.next()
+		parsed := p.parse_field_attrs_with_kinds()
+		if parsed.attrs.len != 1 {
+			p.record_diagnostic_span('assignment attributes support at most one argument', attr_start,
+				clamp_source_offset(p.prev_tok_end, p.s.src.len))
+		} else if parsed.attrs[0].all_before(':').trim_space() == 'freed' && int(id) >= 0
+			&& int(id) < p.a.nodes.len {
+			p.a.nodes[int(id)].set_freed_assignment(true)
 		}
 		attr_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
-		if attr_end >= attr_start {
+		if p.prefs.is_fmt && attr_end >= attr_start {
 			p.a.formatter_sources[int(id)] = p.s.src[attr_start..attr_end].clone()
 		}
 	}
