@@ -428,8 +428,8 @@ fn main() {
 	_ := sum_entries({1: 2})
 }
 ')
-	assert c_code.contains('i64 id__local = *(i64*)'), c_code
-	assert c_code.contains('total += id__local + value;'), c_code
+	assert c_code.contains('i64 __v3_internal_symbol_local_id = *(i64*)'), c_code
+	assert c_code.contains('total += __v3_internal_symbol_local_id + value;'), c_code
 	assert !c_code.contains('i64 id = *(i64*)'), c_code
 }
 
@@ -451,8 +451,8 @@ fn main() {
 	_ := cast_buffer(mut ptr)
 }
 ')
-	assert c_code.contains('u8* cast_buffer(u8** buf__local)'), c_code
-	assert c_code.contains('return (u8*)(*buf__local);'), c_code
+	assert c_code.contains('u8* cast_buffer(u8** __v3_internal_symbol_local_buf)'), c_code
+	assert c_code.contains('return (u8*)(*__v3_internal_symbol_local_buf);'), c_code
 	assert !c_code.contains('return (u8*)(*buf);'), c_code
 }
 
@@ -477,8 +477,8 @@ fn main() {
 	_ := copy_buffer(mut values)
 }
 ')
-	assert c_code.contains('i64 copy_buffer(Array* buf__local)'), c_code
-	assert c_code.contains('return copy(buf__local, '), c_code
+	assert c_code.contains('i64 copy_buffer(Array* __v3_internal_symbol_local_buf)'), c_code
+	assert c_code.contains('return copy(__v3_internal_symbol_local_buf, '), c_code
 	assert !c_code.contains('return copy(buf, '), c_code
 }
 
@@ -499,8 +499,8 @@ fn main() {
 	_ := buffer_size()
 }
 ')
-	assert c_code.contains('u8 buf__local[1024]'), c_code
-	assert c_code.contains('return (i64)(sizeof(buf__local));'), c_code
+	assert c_code.contains('u8 __v3_internal_symbol_local_buf[1024]'), c_code
+	assert c_code.contains('return (i64)(sizeof(__v3_internal_symbol_local_buf));'), c_code
 	assert !c_code.contains('return (int)(sizeof(buf));'), c_code
 }
 
