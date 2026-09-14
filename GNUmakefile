@@ -6,6 +6,7 @@ TMPDIR ?= /tmp
 VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
+V1_FALLBACK_BOOTSTRAP = $(if $(EXE_EXT),$(if $(filter %$(EXE_EXT),$(VEXE)),$(VEXE),$(VEXE)$(EXE_EXT)),$(VEXE))
 V1_FALLBACK_EXE = $(dir $(VEXE))v1_fallback$(EXE_EXT)
 # Portable VC snapshots do not embed the default compiler. Keep their v1 executable on the full
 # compatibility compiler path even when the generated C is built on a V3 host.
@@ -258,7 +259,7 @@ endif
 	@set -e; \
 	CC='$(CC)' OLDV_CCOPTIONS='$(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS)' \
 		OLDV_LDFLAGS='$(BOOTSTRAP_LDFLAGS)' \
-		cmd/tools/install_v1_fallback.sh '$(VEXE)$(EXE_EXT)' '$(V1_FALLBACK_EXE)'
+		cmd/tools/install_v1_fallback.sh '$(V1_FALLBACK_BOOTSTRAP)' '$(V1_FALLBACK_EXE)'
 ifdef NETBSD
 	paxctl +m $(V1_FALLBACK_EXE)
 endif
