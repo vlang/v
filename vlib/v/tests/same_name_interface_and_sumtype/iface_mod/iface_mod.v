@@ -5,11 +5,13 @@ module iface_mod
 // module, which does not even compile.
 pub interface Any {}
 
+// Holder returns a value through the namesake interface.
 pub struct Holder {
 pub:
 	label string
 }
 
+// get returns the holder label as an Any value.
 pub fn (h &Holder) get() ?Any {
 	return h.label
 }

@@ -350,7 +350,6 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	os.setenv('VCHILD', 'true', true)
 	mut fallback_args := args.clone()
 	if overlay := v1_fallback_module_overlay(os.dir(fallback)) {
-		os.setenv('VMODULES', v1_fallback_vmodules_env(overlay), true)
 		fallback_args = v1_fallback_args_with_module_overlay(args, overlay)
 	}
 	eprintln('${reason}; retrying with `${fallback}`.')
@@ -393,7 +392,7 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			return false
 		}
 		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i, false)
 			continue
 		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
@@ -413,7 +412,7 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 
 // v1_fallback_profile_option_consumes_value mirrors the driver's compatibility
 // rule for V1's optional `-profile [file]` argument.
-fn v1_fallback_profile_option_consumes_value(args []string, idx int) bool {
+fn v1_fallback_profile_option_consumes_value(args []string, idx int, command_seen bool) bool {
 	next := args[idx + 1] or { return false }
 	if next == '-' {
 		return true
@@ -421,8 +420,8 @@ fn v1_fallback_profile_option_consumes_value(args []string, idx int) bool {
 	if next.starts_with('-') {
 		return false
 	}
-	if next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
-		|| next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next) {
+	if !command_seen && (next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
+		|| next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next)) {
 		return false
 	}
 	for later in args[idx + 2..] {
@@ -596,8 +595,9 @@ fn resolve_v1_fallback(fallback string) ?string {
 
 // v1_fallback_module_overlay stages every module of `v1_fallback_module_shims`
 // that `fallback_root` only carries under its previous name, and returns the
-// directory to append to VMODULES. The fallback tree is only ever read from: it
-// can be shared between users or read only, as a system packaged V 0.5.2 is.
+// directory to append to the fallback module lookup path. The fallback tree is
+// only ever read from: it can be shared between users or read only, as a system
+// packaged V 0.5.2 is.
 // Without this a retried build of any program that imports `json2` stops on the
 // fallback with a module-not-found error that has nothing to do with why V3
 // gave up.
@@ -639,7 +639,7 @@ fn v1_fallback_module_overlay_in(fallback_root string, candidates []string) ?str
 			}
 		}
 		if staged_all {
-			// VMODULES is read by a process with its own working directory, so
+			// The path is passed to a process with its own working directory, so
 			// only an absolute path means the same thing there.
 			return os.abs_path(overlay)
 		}
@@ -705,23 +705,14 @@ fn v1_fallback_overlay_dirs() []string {
 	return dirs
 }
 
-// v1_fallback_vmodules_env appends `overlay` to the module paths the fallback
-// searches. It goes last, so a module the user installed themselves still wins,
-// and vlib already wins over every vmodules path.
-fn v1_fallback_vmodules_env(overlay string) string {
-	mut paths := os.vmodules_paths()
-	if overlay !in paths {
-		paths << overlay
-	}
-	return paths.join(os.path_delimiter)
-}
-
 // v1_fallback_args_with_module_overlay keeps the overlay searchable when the
-// user replaces the default `@vlib|@vmodules` lookup order with `-path`.
+// fallback uses the default lookup order or the user replaces it with `-path`.
 fn v1_fallback_args_with_module_overlay(args []string, overlay string) []string {
 	mut forwarded := args.clone()
 	mut option_value_follows := false
+	mut command_seen := false
 	mut run_command_seen := false
+	mut explicit_path_seen := false
 	external_command_index, _ := find_command(args)
 	for i, arg in args {
 		if i == external_command_index {
@@ -732,11 +723,12 @@ fn v1_fallback_args_with_module_overlay(args []string, overlay string) []string 
 			continue
 		}
 		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i, command_seen)
 			continue
 		}
 		if arg == '-path' {
 			if value := args[i + 1] {
+				explicit_path_seen = true
 				paths := value.split('|')
 				if overlay !in paths {
 					forwarded[i + 1] = if value == '' { overlay } else { '${value}|${overlay}' }
@@ -749,8 +741,9 @@ fn v1_fallback_args_with_module_overlay(args []string, overlay string) []string 
 			option_value_follows = true
 			continue
 		}
-		if arg in ['run', 'crun'] {
-			run_command_seen = true
+		if arg in ['run', 'crun', 'build', 'test'] {
+			command_seen = true
+			run_command_seen = arg in ['run', 'crun']
 			continue
 		}
 		if run_command_seen && (!arg.starts_with('-') || arg == '-') {
@@ -759,6 +752,9 @@ fn v1_fallback_args_with_module_overlay(args []string, overlay string) []string 
 		if arg.ends_with('.vsh') {
 			break
 		}
+	}
+	if !explicit_path_seen {
+		return ['-path', '@vlib|@vmodules|${overlay}', ...forwarded]
 	}
 	return forwarded
 }

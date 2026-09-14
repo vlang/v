@@ -241,14 +241,12 @@ fn test_the_overlay_is_looked_for_in_the_cache_before_the_temporary_directory() 
 	assert dirs.last().starts_with(os.temp_dir())
 }
 
-fn test_the_overlay_is_searched_after_the_module_paths_the_user_has() {
-	os.setenv('VMODULES', ['/one', '/two'].join(os.path_delimiter), true)
-	defer {
-		os.unsetenv('VMODULES')
-	}
-	assert v1_fallback_vmodules_env('/overlay') == ['/one', '/two', '/overlay'].join(os.path_delimiter)
-	// An overlay that is already on the list must not be repeated.
-	assert v1_fallback_vmodules_env('/two') == ['/one', '/two'].join(os.path_delimiter)
+fn test_the_overlay_is_searched_after_the_default_module_paths() {
+	assert v1_fallback_args_with_module_overlay(['main.v'], '/overlay') == [
+		'-path',
+		'@vlib|@vmodules|/overlay',
+		'main.v',
+	]
 }
 
 fn test_the_overlay_is_added_to_explicit_module_search_paths() {
@@ -262,29 +260,48 @@ fn test_the_overlay_is_added_to_explicit_module_search_paths() {
 		'@vlib|/overlay',
 		'main.v',
 	]
+	assert v1_fallback_args_with_module_overlay(['run', '-profile', 'trace.v', '-path', '@vlib',
+		'main.v'], '/overlay') == [
+		'run',
+		'-profile',
+		'trace.v',
+		'-path',
+		'@vlib|/overlay',
+		'main.v',
+	]
 	assert v1_fallback_args_with_module_overlay(['-o', '-path', 'main.v'], '/overlay') == [
+		'-path',
+		'@vlib|@vmodules|/overlay',
 		'-o',
 		'-path',
 		'main.v',
 	]
 	assert v1_fallback_args_with_module_overlay(['run', 'main.v', '-path', '/program/arg'], '/overlay') == [
+		'-path',
+		'@vlib|@vmodules|/overlay',
 		'run',
 		'main.v',
 		'-path',
 		'/program/arg',
 	]
 	assert v1_fallback_args_with_module_overlay(['script.vsh', '-path', '/script/arg'], '/overlay') == [
+		'-path',
+		'@vlib|@vmodules|/overlay',
 		'script.vsh',
 		'-path',
 		'/script/arg',
 	]
 	assert v1_fallback_args_with_module_overlay(['run', '-', '-path', '/program/arg'], '/overlay') == [
+		'-path',
+		'@vlib|@vmodules|/overlay',
 		'run',
 		'-',
 		'-path',
 		'/program/arg',
 	]
 	assert v1_fallback_args_with_module_overlay(['interpret', '-path', '/tool/arg'], '/overlay') == [
+		'-path',
+		'@vlib|@vmodules|/overlay',
 		'interpret',
 		'-path',
 		'/tool/arg',
