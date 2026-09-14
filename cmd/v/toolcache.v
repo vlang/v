@@ -470,6 +470,66 @@ fn module_search_roots(vroot string, build_args []string) []string {
 	return roots
 }
 
+fn append_module_search_root(path string, mut roots []string, mut seen map[string]bool) {
+	if path.trim_space() == '' {
+		return
+	}
+	root := os.real_path(path)
+	if !seen[root] {
+		seen[root] = true
+		roots << root
+	}
+}
+
+// failure_module_search_roots covers the importer-local and project/ancestor locations that
+// V3 tries in addition to the configured global roots. A failed transitive import can come
+// from any V source already read before the failure, so each such importer contributes roots.
+fn failure_module_search_roots(entry ToolCacheEntry, source_files []string) []string {
+	mut roots := []string{}
+	mut seen := map[string]bool{}
+	mut importer_dirs := map[string]bool{}
+	if entry.source != '' {
+		source_dir := if os.is_dir(entry.source) {
+			os.real_path(entry.source)
+		} else {
+			os.dir(os.real_path(entry.source))
+		}
+		importer_dirs[source_dir] = true
+	}
+	for source in source_files {
+		if source.ends_with('.v') || source.ends_with('.vv') || source.ends_with('.vsh') {
+			importer_dirs[os.dir(os.real_path(source))] = true
+		}
+	}
+	for importer_dir in importer_dirs.keys() {
+		append_module_search_root(importer_dir, mut roots, mut seen)
+		append_module_search_root(os.join_path(importer_dir, 'modules'), mut roots, mut seen)
+	}
+	// project_root_for_files resolves to the surrounding v.mod root. Cached tools are sources
+	// inside the V project, whose root is already carried explicitly by the cache entry.
+	if entry.vroot != '' {
+		append_module_search_root(entry.vroot, mut roots, mut seen)
+		append_module_search_root(os.join_path(entry.vroot, 'modules'), mut roots, mut seen)
+	}
+	for root in module_search_roots(entry.vroot, entry.build_args) {
+		append_module_search_root(root, mut roots, mut seen)
+	}
+	// Finally mirror the sibling-project fallback that walks upward from each importer.
+	for importer_dir in importer_dirs.keys() {
+		mut current := importer_dir
+		for {
+			append_module_search_root(current, mut roots, mut seen)
+			append_module_search_root(os.join_path(current, 'modules'), mut roots, mut seen)
+			parent := os.parent_dir(current)
+			if parent == '' || parent == current {
+				break
+			}
+			current = parent
+		}
+	}
+	return roots
+}
+
 // record_unbuildable_tool remembers a failed build together with the inputs that caused it,
 // so that the failing compilation is not repeated on every invocation, while fixing any of
 // those inputs still makes it be retried.
@@ -480,9 +540,10 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 	// cannot describe that way is an import it could not resolve at all, because the module
 	// has no files to stamp. Recording the module roots as well is what makes the tool be
 	// retried as soon as a missing module reappears.
-	search_roots := module_search_roots(entry.vroot, entry.build_args)
+	search_roots := failure_module_search_roots(entry, source_files)
 	mut module_roots := map[string]bool{}
 	mut module_source_dirs := map[string]bool{}
+	mut module_alias_files := map[string]bool{}
 	for root in search_roots {
 		module_roots[root] = true
 	}
@@ -500,6 +561,7 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 					break
 				}
 				path = os.join_path(path, part)
+				module_alias_files[os.join_path(path, 'alias.v')] = true
 				if index == parts.len - 1 {
 					module_source_dirs[path] = true
 				} else {
@@ -507,6 +569,11 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 				}
 			}
 		}
+	}
+	mut sorted_alias_files := module_alias_files.keys()
+	sorted_alias_files.sort()
+	for alias_file in sorted_alias_files {
+		manifest += 'f${tool_cache_field_separator}${alias_file}${tool_cache_field_separator}${file_stamp(alias_file)}\n'
 	}
 	mut sorted_roots := module_roots.keys()
 	sorted_roots.sort()

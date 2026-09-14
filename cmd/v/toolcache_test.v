@@ -1052,6 +1052,79 @@ fn test_a_restored_module_under_an_explicit_path_invalidates_a_recorded_failure(
 	assert unbuildable_tool_failure(entry) == none, 'restoring an explicit-path module must retry the build'
 }
 
+fn test_a_restored_importer_local_module_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('local_missing_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	project_root := os.join_path(directory, 'project')
+	tool_dir := os.join_path(project_root, 'cmd', 'demo')
+	local_modules := os.join_path(tool_dir, 'modules')
+	os.mkdir_all(os.join_path(local_modules, 'acme'))!
+	source := os.join_path(tool_dir, 'main.v')
+	os.write_file(source, 'module main\n\nimport acme.widget\n')!
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		source:               source
+		vroot:                project_root
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', os.join_path(directory, 'explicit')]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := '${source}:3:1: builder error: cannot import module "acme.widget" (not found)'
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains(os.join_path(tool_dir, 'acme', 'widget'))
+	assert recorded.contains(os.join_path(local_modules, 'acme', 'widget'))
+	assert recorded.contains(os.join_path(project_root, 'acme', 'widget'))
+	assert unbuildable_tool_failure(entry) != none
+
+	module_dir := os.join_path(local_modules, 'acme', 'widget')
+	os.mkdir_all(module_dir)!
+	os.write_file(os.join_path(module_dir, 'widget.v'), 'module widget\n')!
+	assert unbuildable_tool_failure(entry) == none, 'restoring an importer-local module must retry the build'
+}
+
+fn test_adding_an_alias_at_a_module_prefix_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('missing_alias')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	search_root := os.join_path(directory, 'modules')
+	alias_dir := os.join_path(search_root, 'foo')
+	os.mkdir_all(alias_dir)!
+	canonical := os.join_path(directory, 'canonical')
+	os.mkdir_all(os.join_path(canonical, 'bar'))!
+	os.write_file(os.join_path(canonical, 'bar', 'bar.v'), 'module bar\n')!
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', search_root]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "foo.bar" (not found)'
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	alias_file := os.join_path(alias_dir, 'alias.v')
+	recorded_alias_file := os.join_path(os.real_path(search_root), 'foo', 'alias.v')
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains('f${tool_cache_field_separator}${recorded_alias_file}${tool_cache_field_separator}${file_stamp_missing}')
+	assert unbuildable_tool_failure(entry) != none
+
+	os.write_file(alias_file, "@[alias: '${canonical}'] module foo\n")!
+	assert unbuildable_tool_failure(entry) == none, 'adding an alias at an ancestor prefix must retry the build'
+}
+
 // `VMODULES` decides which copy of a module an import resolves to, so it selects sources
 // without changing any path already recorded in a manifest.
 fn test_the_cache_key_covers_vmodules() {
