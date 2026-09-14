@@ -9490,7 +9490,7 @@ fn (mut g FlatGen) ordered_c_directives(late bool) []string {
 		g.visit_c_directive_module(mod, directives_by_module, mut visiting, mut visited, mut result)
 	}
 	ordered := dedupe_top_level_c_includes(result)
-	if g.c_directives_use_system_libc() {
+	if g.target_libc_headers || g.c_directives_use_system_libc() {
 		return ordered
 	}
 	mut headerless := []string{cap: ordered.len}

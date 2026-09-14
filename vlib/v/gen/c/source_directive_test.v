@@ -464,6 +464,17 @@ fn test_builtin_boehm_directives_use_system_libc() {
 	assert !closure.c_directives_use_system_libc()
 }
 
+fn test_target_libc_headers_preserve_explicit_pthread_include() {
+	mut target := FlatGen.new()
+	target.set_target_libc_headers(true)
+	target.add_c_directive('binding', '#include <pthread.h>', false)
+	assert target.ordered_c_directives(false) == ['#include <pthread.h>']
+
+	mut headerless := FlatGen.new()
+	headerless.add_c_directive('closure', '#include <sys/mman.h>\n#include <pthread.h>', false)
+	assert headerless.ordered_c_directives(false) == ['#include <sys/mman.h>']
+}
+
 fn test_builtin_abi_compat_macros_precede_late_c_source() {
 	mut g := FlatGen.new()
 	g.has_builtins = true
