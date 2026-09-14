@@ -235,6 +235,11 @@ fn test_fallback_failure_notes_name_the_stage_v_stopped_in() {
 }
 
 fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
+	previous_norun := os.getenv_opt('VNORUN')
+	os.unsetenv('VNORUN')
+	defer {
+		restore_environment('VNORUN', previous_norun)
+	}
 	assert v1_fallback_exit_identifies_compiler_failure(['main.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-prod', '-o', 'app', 'main.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['build', 'main.v'])
@@ -260,6 +265,12 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	assert v1_fallback_exit_identifies_compiler_failure(['-profile', 'main.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-profile', 'trace.out', 'main.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.c.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', 'example_test.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', 'script.vsh'])
+	os.setenv('VNORUN', '1', true)
+	assert v1_fallback_exit_identifies_compiler_failure(['example_test.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['test', 'vlib/context'])
 }
 
 fn test_fallback_installer_writes_a_native_windows_root() {
