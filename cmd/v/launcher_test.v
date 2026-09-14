@@ -47,7 +47,7 @@ fn test_v1_fallback_installer_uses_last_v1_snapshot() {
 	}
 	assert installer.contains('fallback_revision=0613e1f6fc68573f5b679e406ce58a00d6ebeb30')
 	assert installer.contains('fallback_vc_revision=e658629fc4bd59826bd7637cde498d0c6236b14b')
-	assert installer.contains("OLDV_VFLAGS='-d v1_fallback'")
+	assert installer.contains("VFLAGS= OLDV_VFLAGS='-d v1_fallback'")
 	assert installer.contains('set -- "$@" "$fallback_revision"')
 	assert installer.contains("config --get-regexp '^remote\\..*\\.promisor$'")
 	assert installer.contains('[ -z "$promisor_config" ] || return 1')

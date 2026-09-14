@@ -97,7 +97,7 @@ build_with_oldv() {
 		set -- "$@" --vcrepo "$local_vc_repo"
 	fi
 	set -- "$@" "$fallback_revision"
-	OLDV_VFLAGS='-d v1_fallback' V1_FALLBACK_TARGET=$oldv_target \
+	VFLAGS= OLDV_VFLAGS='-d v1_fallback' V1_FALLBACK_TARGET=$oldv_target \
 		V1_FALLBACK_ROOT_TARGET=$candidate_root_file \
 		"$@" || return 1
 	candidate_root=$(sed -n '1p' "$candidate_root_file") || return 1
