@@ -9,5 +9,7 @@ fn main() {
 	// An interpolation holds code, which may quote the same way the string
 	// around it does: the `)` in it is inside the literal all the same.
 	f := ((value + '${')'}'.len))
-	println(b + c + d + e + f)
+	// `/*/` closes the comment it stands in rather than opening a nested one.
+	g := ((value /* note /*/))
+	println(b + c + d + e + f + g)
 }

@@ -38,3 +38,14 @@ fn test_a_literal_inside_an_interpolation_does_not_end_the_string() {
 	assert text_is_a_single_parenthesised_group("(r'\${' + ')')")
 	assert !text_is_a_single_parenthesised_group("(r'\${') + (b)")
 }
+
+fn test_a_slash_star_slash_closes_the_comment_it_stands_in() {
+	// `Scanner.comment` opens a nested comment only when the `/*` is not
+	// immediately followed by a `/`, which is what the `/*/` idiom relies on.
+	assert text_is_a_single_parenthesised_group('(value /* note /*/)')
+	assert text_is_a_single_parenthesised_group('((value /* note /*/))')
+	assert !text_is_a_single_parenthesised_group('(a /* note /*/) + (b)')
+	// A `/*` that no `/` follows still opens one, so the first `*/` does not
+	// close the outer comment.
+	assert text_is_a_single_parenthesised_group('(value /* a /* b */ ) */)')
+}

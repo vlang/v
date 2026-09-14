@@ -60,3 +60,19 @@ fn test_local_variable_does_not_shadow_a_function_of_another_module() {
 	assert shadowed_key(mut tc, 'foo', 'new_node') == ''
 	assert shadowed_key(mut tc, 'builtin', 'new_node') == 'new_node'
 }
+
+fn test_a_script_shadows_the_os_functions_it_calls_unqualified() {
+	mut a, mut tc := shadow_checker()
+	// Without a script in the compilation an `os` function stays out of reach.
+	assert shadowed_key(mut tc, 'main', 'uname') == ''
+	a.has_vsh_source = true
+	assert shadowed_key(mut tc, 'main', 'uname') == 'os.uname'
+	assert shadowed_key(mut tc, 'foo', 'uname') == 'os.uname'
+	// Only a public `os` declaration is reachable that way, and a name that has
+	// no `os` function behind it is not shadowed by anything.
+	assert shadowed_key(mut tc, 'main', 'new_node') == ''
+	assert shadowed_key(mut tc, 'main', 'absent') == ''
+	// The module tiers still answer first.
+	assert shadowed_key(mut tc, 'main', 'helper') == 'helper'
+	assert shadowed_key(mut tc, 'main', 'println') == 'println'
+}

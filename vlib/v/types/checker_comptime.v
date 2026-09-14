@@ -2733,7 +2733,11 @@ fn skip_non_code_at(source string, i int) int {
 		mut nesting := 1
 		mut j := i + 2
 		for j + 1 < source.len && nesting > 0 {
-			if source[j] == `/` && source[j + 1] == `*` {
+			if source[j] == `/` && source[j + 1] == `*` && (j + 2 >= source.len
+				|| source[j + 2] != `/`) {
+				// `Scanner.comment` opens a nested comment only when the `/*` is
+				// not immediately followed by a `/`, which is what lets the
+				// `/*/` idiom close the comment it stands in.
 				nesting++
 				j += 2
 			} else if source[j] == `*` && source[j + 1] == `/` {
