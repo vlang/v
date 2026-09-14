@@ -92,13 +92,13 @@ failure. Explicit `-new-compiler` builds remain strict default-compiler
 operations. `-new-compiler` remains accepted for command-line compatibility and
 otherwise selects the same embedded driver.
 
-Before a retry, V exposes modules that moved after 0.5.2 through a writable
-module-path overlay; it does not modify the fallback installation. If the
-fallback compilation fails too, V reports its diagnostics and notes where the
-default compiler stopped. Re-run the command with `-new-compiler` to see the
-suppressed default-compiler diagnostics without a fallback retry. A program or
-test that compiles and then exits unsuccessfully keeps its own status and is not
-reported as a compiler failure.
+The installer supplements the cached fallback vlib with modules whose public
+paths moved after 0.5.2. Fallback roots missing these compatibility modules are
+not used. If the fallback compilation fails too, V reports its diagnostics and
+notes where the default compiler stopped. Re-run the command with
+`-new-compiler` to see the suppressed default-compiler diagnostics without a
+fallback retry. A program or test that compiles and then exits unsuccessfully
+keeps its own status and is not reported as a compiler failure.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .

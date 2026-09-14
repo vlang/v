@@ -40,20 +40,28 @@ fn test_json_quote_escapes_report_content() {
 	assert json_quote('a\n"b"\\c\t') == '"a\\n\\"b\\"\\\\c\\t"'
 }
 
-fn test_v1_fallback_installer_exposes_crypto_subtle() {
+fn test_v1_fallback_installer_exposes_compatibility_modules() {
 	root := find_vroot(@FILE) or { panic(err) }
 	source := os.read_file(os.join_path(root, 'cmd', 'tools', 'install_v1_fallback.sh'))!
-	compatibility := source.all_after('install_crypto_subtle_compatibility() {').all_before('\n}')
-	assert compatibility.contains('vlib/crypto/internal/subtle')
-	assert compatibility.contains('vlib/crypto/subtle')
-	assert compatibility.contains('aliasing.v')
-	assert compatibility.contains('comparison.v')
-	assert source.count('install_crypto_subtle_compatibility "$cache_root" || return 1') == 2
+	crypto := source.all_after('install_crypto_subtle_compatibility() {').all_before('\n}')
+	assert crypto.contains('vlib/crypto/internal/subtle')
+	assert crypto.contains('vlib/crypto/subtle')
+	assert crypto.contains('aliasing.v')
+	assert crypto.contains('comparison.v')
+	assert source.contains('install_crypto_subtle_compatibility "$1" || return 1')
 	assert source.contains('mkdir -p ./vlib/crypto/subtle')
 	assert source.contains('mkdir .\\vlib\\crypto\\subtle')
+	moved := source.all_after('install_moved_module_compatibility() {').all_before('\n}')
+	assert moved.contains('vlib/x/json2')
+	assert moved.contains('vlib/json2')
+	assert source.contains('install_moved_module_compatibility "$1" || return 1')
+	assert source.contains('install_fallback_compatibility "$cache_root" || return 1')
+	assert source.contains('install_fallback_compatibility "$staged_cache" || return 1')
+	assert source.contains('cp -R ./vlib/x/json2 ./vlib/json2')
+	assert source.contains('xcopy /E /I /Y .\\vlib\\x\\json2 .\\vlib\\json2')
 }
 
-fn test_v1_fallback_resolution_requires_crypto_subtle_compatibility() {
+fn test_v1_fallback_resolution_requires_compatibility_modules() {
 	root := os.join_path(os.vtmp_dir(), 'v1_fallback_crypto_subtle_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	defer {
@@ -74,6 +82,10 @@ fn test_v1_fallback_resolution_requires_crypto_subtle_compatibility() {
 	os.write_file(os.join_path(module_dir, 'aliasing.v'), 'module subtle\n')!
 	assert resolve_v1_fallback(fallback) == none
 	os.write_file(os.join_path(module_dir, 'comparison.v'), 'module subtle\n')!
+	assert resolve_v1_fallback(fallback) == none
+	json2_dir := os.join_path(fallback_root, 'vlib', 'json2')
+	os.mkdir_all(json2_dir)!
+	os.write_file(os.join_path(json2_dir, 'json2.v'), 'module json2\n')!
 	assert resolve_v1_fallback(fallback) or { panic(err) } == cached_fallback
 }
 
@@ -117,214 +129,6 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 
 	assert v1_fallback_exit_identifies_compiler_failure(['-profile', 'main.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-profile', 'trace.out', 'main.v'])
-}
-
-fn fake_v1_fallback_tree(tag string) string {
-	root := os.join_path(os.vtmp_dir(), 'v1_fallback_${tag}_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	previous := os.join_path(root, 'vlib', 'x', 'json2')
-	os.mkdir_all(os.join_path(previous, 'decoder2')) or { panic(err) }
-	os.write_file(os.join_path(previous, 'json2.v'), 'module json2\n') or { panic(err) }
-	os.write_file(os.join_path(previous, 'decoder2', 'decoder.v'), 'module decoder2\n') or {
-		panic(err)
-	}
-	return root
-}
-
-fn test_moved_modules_are_staged_into_a_writable_overlay() {
-	root := fake_v1_fallback_tree('overlay')
-	overlay_home := os.join_path(root, 'writable_home')
-	os.mkdir_all(overlay_home)!
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	os.setenv('XDG_CACHE_HOME', overlay_home, true)
-	defer {
-		os.unsetenv('XDG_CACHE_HOME')
-	}
-
-	overlay_result := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
-	assert !overlay_result.temporary
-	overlay := overlay_result.path
-	assert overlay.starts_with(overlay_home)
-	assert os.read_file(os.join_path(overlay, 'json2', 'json2.v'))! == 'module json2\n'
-	assert os.read_file(os.join_path(overlay, 'json2', 'decoder2', 'decoder.v'))! == 'module decoder2\n'
-	// The fallback tree itself must stay exactly as it was found.
-	assert os.ls(os.join_path(root, 'vlib'))! == ['x']
-	// Staging directories must not survive as importable modules.
-	assert os.ls(overlay)!.filter(it.starts_with('.')).len == 0
-
-	// A staged overlay is reused as is, rather than copied over every launch.
-	os.write_file(os.join_path(overlay, 'json2', 'json2.v'), 'module json2 // kept\n')!
-	reused := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
-	assert reused.path == overlay
-	assert !reused.temporary
-	assert os.read_file(os.join_path(overlay, 'json2', 'json2.v'))! == 'module json2 // kept\n'
-}
-
-fn test_a_read_only_fallback_tree_still_gets_its_moved_modules() {
-	root := fake_v1_fallback_tree('readonly')
-	overlay_home := os.join_path(os.vtmp_dir(), 'v1_fallback_readonly_home_${os.getpid()}')
-	os.rmdir_all(overlay_home) or {}
-	os.mkdir_all(overlay_home)!
-	vlib_dir := os.join_path(root, 'vlib')
-	os.chmod(vlib_dir, 0o500)!
-	defer {
-		os.chmod(vlib_dir, 0o700) or {}
-		os.rmdir_all(root) or {}
-		os.rmdir_all(overlay_home) or {}
-	}
-	os.setenv('XDG_CACHE_HOME', overlay_home, true)
-	defer {
-		os.unsetenv('XDG_CACHE_HOME')
-	}
-
-	overlay_result := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
-	assert !overlay_result.temporary
-	overlay := overlay_result.path
-	assert os.read_file(os.join_path(overlay, 'json2', 'json2.v'))! == 'module json2\n'
-	assert os.ls(vlib_dir)! == ['x']
-}
-
-fn test_a_fallback_tree_that_already_carries_the_module_needs_no_overlay() {
-	root := fake_v1_fallback_tree('current')
-	os.mkdir_all(os.join_path(root, 'vlib', 'json2'))!
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	if _ := v1_fallback_module_overlay(root) {
-		assert false, 'a tree that carries `json2` needs no overlay'
-	}
-}
-
-fn test_staging_skips_a_fallback_tree_without_the_previous_location() {
-	root := os.join_path(os.vtmp_dir(), 'v1_fallback_nostage_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	os.mkdir_all(os.join_path(root, 'vlib'))!
-	if _ := v1_fallback_module_overlay(root) {
-		assert false, 'a tree without `x/json2` has nothing to stage'
-	}
-}
-
-fn test_a_host_with_nowhere_to_stage_reports_it_instead_of_going_quiet() {
-	if os.getuid() == 0 {
-		// root writes through the mode bits this case is built from.
-		return
-	}
-	root := fake_v1_fallback_tree('nowhere')
-	blocked := os.join_path(os.vtmp_dir(), 'v1_fallback_blocked_${os.getpid()}')
-	os.rmdir_all(blocked) or {}
-	os.mkdir_all(blocked)!
-	os.chmod(blocked, 0o500)!
-	defer {
-		os.chmod(blocked, 0o700) or {}
-		os.rmdir_all(blocked) or {}
-		os.rmdir_all(root) or {}
-	}
-
-	if _ := v1_fallback_module_overlay_in(root, [os.join_path(blocked, 'overlay')]) {
-		assert false, 'nothing is writable, so there is no overlay to return'
-	}
-	// A later candidate that does accept the copy is still used.
-	usable := os.join_path(root, 'usable_overlay')
-	assert v1_fallback_module_overlay_in(root, [os.join_path(blocked, 'overlay'), usable])? == usable
-	assert os.read_file(os.join_path(usable, 'json2', 'json2.v'))! == 'module json2\n'
-}
-
-fn test_xdg_cache_is_the_first_persistent_overlay_directory() {
-	cache := os.join_path(os.vtmp_dir(), 'v1_fallback_xdg_${os.getpid()}')
-	os.setenv('XDG_CACHE_HOME', cache, true)
-	defer {
-		os.unsetenv('XDG_CACHE_HOME')
-	}
-	dirs := v1_fallback_persistent_overlay_dirs()
-	assert dirs.len >= 1
-	assert dirs[0] == os.join_path(cache, 'v', 'v1-fallback-modules', v_version)
-}
-
-fn test_a_temporary_overlay_never_reuses_a_preexisting_directory() {
-	preexisting := v1_fallback_temporary_overlay_path(0)
-	os.rmdir_all(preexisting) or {}
-	os.mkdir(preexisting, mode: 0o700)!
-	os.mkdir_all(os.join_path(preexisting, 'json2'))!
-	os.write_file(os.join_path(preexisting, 'json2', 'json2.v'), 'module json2 // untrusted\n')!
-	temporary := v1_fallback_temporary_overlay_dir() or { panic('expected a temporary overlay') }
-	defer {
-		os.rmdir_all(preexisting) or {}
-		os.rmdir_all(temporary) or {}
-	}
-	assert temporary != preexisting
-	assert !os.exists(os.join_path(temporary, 'json2'))
-}
-
-fn test_the_overlay_is_searched_after_the_default_module_paths() {
-	assert v1_fallback_args_with_module_overlay(['main.v'], '/overlay') == [
-		'-path',
-		'@vlib|@vmodules|/overlay',
-		'main.v',
-	]
-}
-
-fn test_the_overlay_is_added_to_explicit_module_search_paths() {
-	assert v1_fallback_args_with_module_overlay(['-path', '@vlib|/private', 'main.v'], '/overlay') == [
-		'-path',
-		'@vlib|/private|/overlay',
-		'main.v',
-	]
-	assert v1_fallback_args_with_module_overlay(['-path', '@vlib|/overlay', 'main.v'], '/overlay') == [
-		'-path',
-		'@vlib|/overlay',
-		'main.v',
-	]
-	assert v1_fallback_args_with_module_overlay(['run', '-profile', 'trace.v', '-path', '@vlib',
-		'main.v'], '/overlay') == [
-		'run',
-		'-profile',
-		'trace.v',
-		'-path',
-		'@vlib|/overlay',
-		'main.v',
-	]
-	assert v1_fallback_args_with_module_overlay(['-o', '-path', 'main.v'], '/overlay') == [
-		'-path',
-		'@vlib|@vmodules|/overlay',
-		'-o',
-		'-path',
-		'main.v',
-	]
-	assert v1_fallback_args_with_module_overlay(['run', 'main.v', '-path', '/program/arg'], '/overlay') == [
-		'-path',
-		'@vlib|@vmodules|/overlay',
-		'run',
-		'main.v',
-		'-path',
-		'/program/arg',
-	]
-	assert v1_fallback_args_with_module_overlay(['script.vsh', '-path', '/script/arg'], '/overlay') == [
-		'-path',
-		'@vlib|@vmodules|/overlay',
-		'script.vsh',
-		'-path',
-		'/script/arg',
-	]
-	assert v1_fallback_args_with_module_overlay(['run', '-', '-path', '/program/arg'], '/overlay') == [
-		'-path',
-		'@vlib|@vmodules|/overlay',
-		'run',
-		'-',
-		'-path',
-		'/program/arg',
-	]
-	assert v1_fallback_args_with_module_overlay(['interpret', '-path', '/tool/arg'], '/overlay') == [
-		'-path',
-		'@vlib|@vmodules|/overlay',
-		'interpret',
-		'-path',
-		'/tool/arg',
-	]
 }
 
 fn test_fallback_installer_writes_a_native_windows_root() {

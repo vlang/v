@@ -12,19 +12,9 @@ import v.pref
 
 const v_version = '0.5.2'
 const v1_fallback_binary = 'v1_fallback'
-// Modules that V3 ships at a new place inside vlib, mapped to where the V 0.5.2
-// tree behind the fallback compiler still keeps them. A program written for V3
-// fails there with `cannot import module ...` until the fallback is pointed at a
-// copy that carries them under their current name.
-const v1_fallback_module_shims = {
-	'json2': 'x/json2'
-}
-
-struct V1FallbackModuleOverlay {
-	path      string
-	temporary bool
-}
-
+// Modules that the fallback installer copies to their current public paths.
+// Cached fallback trees are not used until they carry every listed module.
+const v1_fallback_compatibility_modules = ['json2']
 const v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
@@ -354,33 +344,19 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	os.setenv('VEXE', fallback, true)
 	os.setenv('VCHILD', 'true', true)
-	mut fallback_args := args.clone()
-	mut temporary_overlay := ''
-	if overlay := v1_fallback_module_overlay(os.dir(fallback)) {
-		fallback_args = v1_fallback_args_with_module_overlay(args, overlay.path)
-		if overlay.temporary {
-			temporary_overlay = overlay.path
-		}
-	}
 	eprintln('${reason}; retrying with `${fallback}`.')
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
 	mut process := os.new_process(fallback)
-	process.set_args(fallback_args)
+	process.set_args(args)
 	process.wait()
 	if process.status == .aborted || process.code < 0 {
 		eprintln('failed to launch the V 0.5.2 compatibility compiler `${fallback}`: ${process.err}')
 		process.close()
-		if temporary_overlay != '' {
-			os.rmdir_all(temporary_overlay) or {}
-		}
 		exit(1)
 	}
 	code := process.code
 	process.close()
-	if temporary_overlay != '' {
-		os.rmdir_all(temporary_overlay) or {}
-	}
 	if code == 0 && report_state.fallback_file != '' {
 		submit_v3_fallback_report(fallback, report_state)
 	}
@@ -408,7 +384,7 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			return false
 		}
 		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i, false)
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
 			continue
 		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
@@ -428,7 +404,7 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 
 // v1_fallback_profile_option_consumes_value mirrors the driver's compatibility
 // rule for V1's optional `-profile [file]` argument.
-fn v1_fallback_profile_option_consumes_value(args []string, idx int, command_seen bool) bool {
+fn v1_fallback_profile_option_consumes_value(args []string, idx int) bool {
 	next := args[idx + 1] or { return false }
 	if next == '-' {
 		return true
@@ -436,8 +412,8 @@ fn v1_fallback_profile_option_consumes_value(args []string, idx int, command_see
 	if next.starts_with('-') {
 		return false
 	}
-	if !command_seen && (next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
-		|| next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next)) {
+	if next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
+		|| next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next) {
 		return false
 	}
 	for later in args[idx + 2..] {
@@ -602,217 +578,27 @@ fn resolve_v1_fallback(fallback string) ?string {
 		fallback_root := os.read_file(root_file) or { '' }.trim_space()
 		cached_fallback := os.join_path(fallback_root, 'v' + $if windows { '.exe' } $else { '' })
 		if os.is_executable(cached_fallback) && v1_fallback_has_expected_version(cached_fallback)
-			&& v1_fallback_has_crypto_subtle(fallback_root) {
+			&& v1_fallback_has_crypto_subtle(fallback_root)
+			&& v1_fallback_has_moved_modules(fallback_root) {
 			return cached_fallback
 		}
 	}
 	return none
 }
 
-// v1_fallback_module_overlay stages every module of `v1_fallback_module_shims`
-// that `fallback_root` only carries under its previous name, and returns the
-// directory to append to the fallback module lookup path. The fallback tree is
-// only ever read from: it can be shared between users or read only, as a system
-// packaged V 0.5.2 is.
-// Without this a retried build of any program that imports `json2` stops on the
-// fallback with a module-not-found error that has nothing to do with why V3
-// gave up.
-fn v1_fallback_module_overlay(fallback_root string) ?V1FallbackModuleOverlay {
-	mut candidates := v1_fallback_persistent_overlay_dirs()
-	temporary := v1_fallback_temporary_overlay_dir() or { '' }
-	if temporary != '' {
-		candidates << temporary
-	}
-	path := v1_fallback_module_overlay_in(fallback_root, candidates) or {
-		if temporary != '' {
-			os.rmdir_all(temporary) or {}
-		}
-		return none
-	}
-	if temporary != '' && path != temporary {
-		os.rmdir_all(temporary) or {}
-	}
-	return V1FallbackModuleOverlay{
-		path:      path
-		temporary: path == temporary
-	}
-}
-
-// v1_fallback_module_overlay_in stages the modules into the first of
-// `candidates` that accepts them.
-fn v1_fallback_module_overlay_in(fallback_root string, candidates []string) ?string {
-	vlib_dir := os.join_path(fallback_root, 'vlib')
-	mut sources := map[string]string{}
-	for name, previous_path in v1_fallback_module_shims {
-		if os.is_dir(os.join_path(vlib_dir, name)) {
-			// This tree is new enough to carry the module under its current name.
-			continue
-		}
-		mut source := vlib_dir
-		for segment in previous_path.split('/') {
-			source = os.join_path(source, segment)
-		}
-		if os.is_dir(source) {
-			sources[name] = source
-		}
-	}
-	if sources.len == 0 {
-		return none
-	}
-	mut failure := ''
-	for overlay in candidates {
-		mut staged_all := true
-		for name, source in sources {
-			stage_v1_fallback_module(overlay, name, source) or {
-				if failure == '' {
-					failure = '`${overlay}`: ${err.msg()}'
-				}
-				staged_all = false
-				break
-			}
-		}
-		if staged_all {
-			// The path is passed to a process with its own working directory, so
-			// only an absolute path means the same thing there.
-			return os.abs_path(overlay)
-		}
-	}
-	// Continuing without the overlay is still better than refusing to run the
-	// fallback at all, since only a program that imports one of these modules is
-	// affected. Say so, rather than letting it fail as a missing module.
-	reason := if failure == '' { 'there was nowhere to put them' } else { failure }
-	eprintln('note: the V ${v_version} fallback will not be able to import `${sources.keys().join('`, `')}`, because none of its copies could be staged (${reason}).')
-	return none
-}
-
-// stage_v1_fallback_module copies `source` to `<overlay>/<name>` unless it is
-// already there. The copy is staged beside its destination and renamed into
-// place, so that a concurrent `v` never sees a half written directory as an
-// importable module.
-fn stage_v1_fallback_module(overlay string, name string, source string) ! {
-	shim := os.join_path(overlay, name)
-	if os.is_dir(shim) {
-		return
-	}
-	os.mkdir_all(overlay)!
-	staged := os.join_path(overlay, '.${name}.staged.${os.getpid()}')
-	os.rmdir_all(staged) or {}
-	os.cp_all(source, staged, true) or {
-		os.rmdir_all(staged) or {}
-		return err
-	}
-	os.mv(staged, shim, overwrite: false) or {
-		os.rmdir_all(staged) or {}
-		if !os.is_dir(shim) {
-			return err
-		}
-		// A concurrent `v` staged the same module first, which is the same result.
-	}
-}
-
-// v1_fallback_persistent_overlay_dirs lists durable overlay locations.
-// `os.cache_dir()` is deliberately not used because it panics when it cannot
-// create its folder, which is the read only HOME this has to survive.
-fn v1_fallback_persistent_overlay_dirs() []string {
-	// `v/` under the cache root is where `install_v1_fallback.sh` puts the
-	// fallback itself, so its modules stay in the same namespace.
-	mut roots := []string{}
-	if xdg_cache := os.getenv_opt('XDG_CACHE_HOME') {
-		if xdg_cache != '' {
-			roots << os.join_path(xdg_cache, 'v')
-		}
-	}
-	home := os.home_dir()
-	if home != '' {
-		roots << os.join_path(home, '.cache', 'v')
-	}
-	mut dirs := []string{cap: roots.len}
-	for root in roots {
-		dir := os.join_path(root, 'v1-fallback-modules', v_version)
-		if dir !in dirs {
-			dirs << dir
-		}
-	}
-	return dirs
-}
-
-fn v1_fallback_temporary_overlay_path(attempt int) string {
-	return os.join_path(os.temp_dir(), 'v1-fallback-modules-${os.getuid()}-${os.getpid()}-${attempt}')
-}
-
-// v1_fallback_temporary_overlay_dir atomically creates a private process-local
-// fallback. Existing paths are never accepted, so another user cannot seed an
-// overlay with code that a fallback build would compile.
-fn v1_fallback_temporary_overlay_dir() ?string {
-	for attempt in 0 .. 128 {
-		path := v1_fallback_temporary_overlay_path(attempt)
-		mut created := true
-		os.mkdir(path, mode: 0o700) or { created = false }
-		if created {
-			return path
-		}
-	}
-	return none
-}
-
-// v1_fallback_args_with_module_overlay keeps the overlay searchable when the
-// fallback uses the default lookup order or the user replaces it with `-path`.
-fn v1_fallback_args_with_module_overlay(args []string, overlay string) []string {
-	mut forwarded := args.clone()
-	mut option_value_follows := false
-	mut command_seen := false
-	mut run_command_seen := false
-	mut explicit_path_seen := false
-	external_command_index, _ := find_command(args)
-	for i, arg in args {
-		if i == external_command_index {
-			break
-		}
-		if option_value_follows {
-			option_value_follows = false
-			continue
-		}
-		if arg in ['-prof', '-profile'] {
-			option_value_follows = v1_fallback_profile_option_consumes_value(args, i, command_seen)
-			continue
-		}
-		if arg == '-path' {
-			if value := args[i + 1] {
-				explicit_path_seen = true
-				paths := value.split('|')
-				if overlay !in paths {
-					forwarded[i + 1] = if value == '' { overlay } else { '${value}|${overlay}' }
-				}
-				option_value_follows = true
-			}
-			continue
-		}
-		if arg == '-cf' || pref.option_may_consume_value(arg) {
-			option_value_follows = true
-			continue
-		}
-		if arg in ['run', 'crun', 'build', 'test'] {
-			command_seen = true
-			run_command_seen = arg in ['run', 'crun']
-			continue
-		}
-		if run_command_seen && (!arg.starts_with('-') || arg == '-') {
-			break
-		}
-		if arg.ends_with('.vsh') {
-			break
-		}
-	}
-	if !explicit_path_seen {
-		return ['-path', '@vlib|@vmodules|${overlay}', ...forwarded]
-	}
-	return forwarded
-}
-
 fn v1_fallback_has_crypto_subtle(root string) bool {
 	module_dir := os.join_path(root, 'vlib', 'crypto', 'subtle')
 	return os.is_file(os.join_path(module_dir, 'aliasing.v'))
 		&& os.is_file(os.join_path(module_dir, 'comparison.v'))
+}
+
+fn v1_fallback_has_moved_modules(root string) bool {
+	for name in v1_fallback_compatibility_modules {
+		if !os.is_file(os.join_path(root, 'vlib', name, '${name}.v')) {
+			return false
+		}
+	}
+	return true
 }
 
 fn v1_fallback_has_expected_version(executable string) bool {

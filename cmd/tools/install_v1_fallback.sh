@@ -87,6 +87,31 @@ install_crypto_subtle_compatibility() {
 	cp "$source/aliasing.v" "$source/comparison.v" "$target/" || return 1
 }
 
+install_moved_module_compatibility() {
+	source=$1/vlib/x/json2
+	target=$1/vlib/json2
+	staged=$target.tmp.$$
+	[ -f "$source/json2.v" ] || return 1
+	rm -rf "$staged" || return 1
+	cp -R "$source" "$staged" || {
+		rm -rf "$staged"
+		return 1
+	}
+	rm -rf "$target" || {
+		rm -rf "$staged"
+		return 1
+	}
+	mv "$staged" "$target" || {
+		rm -rf "$staged"
+		return 1
+	}
+}
+
+install_fallback_compatibility() {
+	install_crypto_subtle_compatibility "$1" || return 1
+	install_moved_module_compatibility "$1" || return 1
+}
+
 sha256_of() {
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'
@@ -145,10 +170,10 @@ download_release() {
 build_with_oldv() {
 	echo "Building the V $release_version fallback with oldv..."
 	oldv_target=$candidate
-	oldv_copy='mkdir -p ./vlib/crypto/subtle && cp ./vlib/crypto/internal/subtle/aliasing.v ./vlib/crypto/internal/subtle/comparison.v ./vlib/crypto/subtle/ && cp ./v "$V1_FALLBACK_TARGET" && pwd > "$V1_FALLBACK_ROOT_TARGET"'
+	oldv_copy='mkdir -p ./vlib/crypto/subtle && cp ./vlib/crypto/internal/subtle/aliasing.v ./vlib/crypto/internal/subtle/comparison.v ./vlib/crypto/subtle/ && rm -rf ./vlib/json2 && cp -R ./vlib/x/json2 ./vlib/json2 && cp ./v "$V1_FALLBACK_TARGET" && pwd > "$V1_FALLBACK_ROOT_TARGET"'
 	case "$system" in
 		MSYS*|MINGW*)
-			oldv_copy='if not exist .\vlib\crypto\subtle mkdir .\vlib\crypto\subtle && copy /Y .\vlib\crypto\internal\subtle\aliasing.v .\vlib\crypto\subtle\ >NUL && copy /Y .\vlib\crypto\internal\subtle\comparison.v .\vlib\crypto\subtle\ >NUL && copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL && cd > "%V1_FALLBACK_ROOT_TARGET%"'
+			oldv_copy='if not exist .\vlib\crypto\subtle mkdir .\vlib\crypto\subtle && copy /Y .\vlib\crypto\internal\subtle\aliasing.v .\vlib\crypto\subtle\ >NUL && copy /Y .\vlib\crypto\internal\subtle\comparison.v .\vlib\crypto\subtle\ >NUL && xcopy /E /I /Y .\vlib\x\json2 .\vlib\json2 >NUL && copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL && cd > "%V1_FALLBACK_ROOT_TARGET%"'
 			if command -v cygpath >/dev/null 2>&1; then
 				oldv_target=$(cygpath -w "$candidate")
 			fi
@@ -165,7 +190,7 @@ use_cached_release() {
 	[ -x "$cached_candidate" ] || return 1
 	candidate=$cached_candidate
 	candidate_has_expected_version || return 1
-	install_crypto_subtle_compatibility "$cache_root" || return 1
+	install_fallback_compatibility "$cache_root" || return 1
 	write_candidate_root || return 1
 }
 
@@ -174,12 +199,12 @@ install_downloaded_release() {
 	staged_cache=$cache_root.tmp.$$
 	rm -rf "$staged_cache"
 	mv "$release_tree/v" "$staged_cache" || return 1
+	install_fallback_compatibility "$staged_cache" || return 1
 	if [ -e "$cache_root" ]; then
 		rm -rf "$cache_root" || return 1
 	fi
 	mv "$staged_cache" "$cache_root" || return 1
 	candidate=$cached_candidate
-	install_crypto_subtle_compatibility "$cache_root" || return 1
 	write_candidate_root || return 1
 }
 
