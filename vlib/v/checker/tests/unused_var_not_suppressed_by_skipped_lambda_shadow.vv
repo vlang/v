@@ -89,4 +89,15 @@ fn keyword_lambda_parameters_shadow_outer() {
 		consume_lambda(|type| type + 1)
 		consume_lambda(|shared| shared + 1)
 	}
+	type_newline_call_lambda_parameter_shadows_outer()
+}
+
+fn type_newline_call_lambda_parameter_shadows_outer() {
+	type := identity
+	x := 1
+	$if prealloc {
+		callback := |x| type
+			(x)
+		_ = callback
+	}
 }

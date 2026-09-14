@@ -5823,7 +5823,7 @@ fn (mut p Parser) skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, to
 		if next_tok == .dot {
 			return false
 		}
-		if next_tok == .lpar && prev_tok in [.name, .key_module, .key_shared]
+		if next_tok == .lpar && prev_tok in [.name, .key_module, .key_shared, .key_type]
 			&& p.line_indent_for_pos(p.peek_pos) > p.line_indent_for_pos(scope.body_pos) {
 			return false
 		}
