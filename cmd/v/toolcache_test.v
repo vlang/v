@@ -719,3 +719,77 @@ fn test_a_restored_nested_module_invalidates_a_recorded_failure() {
 	assert module_root_stamp(v_root) == v_before, '`vlib/v` alone cannot see this change'
 	assert unbuildable_tool_failure(entry) == none, 'restoring a nested module must retry the build'
 }
+
+// `vlib` is only the first place an import is resolved against; `$VMODULES` (`~/.vmodules`
+// by default) is the second. A module that failed to resolve can come back in either, so a
+// recorded failure has to watch both or it is replayed forever in the `~/.vmodules` case.
+fn test_a_restored_vmodules_module_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('vmodules_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	vmodules := os.join_path(directory, 'vmodules')
+	os.mkdir_all(os.join_path(vmodules, 'acme'))!
+	os.mkdir_all(os.join_path(directory, 'vlib', 'v'))!
+
+	previous := os.getenv('VMODULES')
+	os.setenv('VMODULES', vmodules, true)
+	defer {
+		os.setenv('VMODULES', previous, true)
+	}
+	assert vmodules in module_search_roots(directory), 'the vmodules root has to be searched'
+
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		binary:               os.join_path(entry_dir, 'vdemo')
+		manifest:             os.join_path(entry_dir, 'inputs')
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "acme.widget" (not found)'
+
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains(os.join_path(vmodules, 'acme', 'widget')), 'the vmodules path must be stamped, got:\n${recorded}'
+	assert unbuildable_tool_failure(entry) != none, 'the failure must stand while the module is missing'
+
+	// It reappears under `~/.vmodules`, not under `vlib`, so nothing rooted at the tree can
+	// see it: only the vmodules ancestors make the build be retried.
+	vlib_root := os.join_path(directory, 'vlib')
+	vlib_before := module_root_stamp(vlib_root)
+	os.mkdir_all(os.join_path(vmodules, 'acme', 'widget'))!
+	assert module_root_stamp(vlib_root) == vlib_before, '`vlib` cannot see a vmodules change'
+	assert unbuildable_tool_failure(entry) == none, 'restoring a vmodules module must retry the build'
+}
+
+// `VMODULES` decides which copy of a module an import resolves to, so it selects sources
+// without changing any path already recorded in a manifest.
+fn test_the_cache_key_covers_vmodules() {
+	directory := toolcache_test_dir('vmodules_key')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	vexe := os.join_path(directory, 'v')
+	os.write_file(vexe, 'a pretend V executable')!
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, 'module main\n')!
+
+	assert 'VMODULES' in ambient_build_variables
+	previous := os.getenv('VMODULES')
+	defer {
+		os.setenv('VMODULES', previous, true)
+	}
+	os.setenv('VMODULES', '', true)
+	baseline := tool_cache_key(vexe, 'vdemo', [source], [])
+	os.setenv('VMODULES', os.join_path(directory, 'elsewhere'), true)
+	assert tool_cache_key(vexe, 'vdemo', [source], []) != baseline, 'VMODULES must be part of the key'
+	os.setenv('VMODULES', '', true)
+	assert tool_cache_key(vexe, 'vdemo', [source], []) == baseline, 'clearing it must restore the key'
+}

@@ -179,8 +179,10 @@ fn last_modified(path string) i64 {
 // `PKG_CONFIG_*` ones decide what `$pkgconfig(...)` and `#pkgconfig` resolve to, which
 // selects whole native branches: `vlib/db/sqlite/sqlite.c.v` picks between the system SQLite
 // and the bundled amalgamation that way, and neither choice changes a single source stamp.
+// `VMODULES` moves the second module search root, which decides which copy of a module an
+// import resolves to, so it selects sources without changing any recorded path.
 const ambient_build_variables = ['CFLAGS', 'LDFLAGS', 'VCOVDIR', 'PKG_CONFIG_PATH',
-	'PKG_CONFIG_LIBDIR', 'PKG_CONFIG_SYSROOT_DIR']
+	'PKG_CONFIG_LIBDIR', 'PKG_CONFIG_SYSROOT_DIR', 'VMODULES']
 
 // tool_cache_key derives the content address of a cached tool binary. Everything that can
 // change the produced executable without being visible in the recorded source manifest has
@@ -400,6 +402,21 @@ fn unresolved_import_modules(details string) []string {
 	return result
 }
 
+// module_search_roots returns the directories an import is resolved against, in the order
+// `pref` searches them: the tree's own `vlib`, then every `~/.vmodules` entry (`$VMODULES`
+// may list several). A module that failed to resolve can reappear in any of them, so a
+// recorded failure has to watch all of them rather than `vlib` alone.
+fn module_search_roots(vroot string) []string {
+	mut roots := [os.join_path(vroot, 'vlib')]
+	for path in os.vmodules_paths() {
+		clean := path.trim_space()
+		if clean.len > 0 && clean !in roots {
+			roots << clean
+		}
+	}
+	return roots
+}
+
 // record_unbuildable_tool remembers a failed build together with the inputs that caused it,
 // so that the failing compilation is not repeated on every invocation, while fixing any of
 // those inputs still makes it be retried.
@@ -418,14 +435,17 @@ fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, det
 		// appear or vanish right under them and nothing deeper. `db.sqlite` could be removed
 		// and restored without either of them changing, which replayed the recorded failure
 		// forever. Stamp the module's own directory and every ancestor down to it, so the
-		// level that actually changes is always one of them.
-		mut path := os.join_path(entry.vroot, 'vlib')
-		for part in module_name.split('.') {
-			if part.trim_space() == '' {
-				break
+		// level that actually changes is always one of them. Every root the compiler would
+		// have searched counts: the module may reappear in any of them.
+		for search_root in module_search_roots(entry.vroot) {
+			mut path := search_root
+			for part in module_name.split('.') {
+				if part.trim_space() == '' {
+					break
+				}
+				path = os.join_path(path, part)
+				roots[path] = true
 			}
-			path = os.join_path(path, part)
-			roots[path] = true
 		}
 	}
 	mut sorted_roots := roots.keys()
