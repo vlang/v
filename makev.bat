@@ -188,11 +188,11 @@ if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
 
 :build_fresh_v_with_tcc
-set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!" -cflags -Bthirdparty/tcc
+set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!"
 echo  ^> Compiling "%V_STAGE%" with "%V_BOOTSTRAP%"
-REM Keep the V1 bootstrap's TCC root relative; it forwards -cflags through a
-REM response file, where an absolute -B path breaks when the checkout has spaces.
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o "%V_STAGE%" cmd/v
+REM V3 supplies the absolute bundled-TCC root itself. A relative -B here would
+REM override it after V3 changes into its isolated link directory.
+"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_STAGE%" cmd/v
 set stage_error=!ERRORLEVEL!
 if !stage_error! NEQ 0 (
 	if exist "%V_STAGE%" del "%V_STAGE%"
@@ -274,7 +274,7 @@ if !ERRORLEVEL! EQU 0 (
 		set stage_vflags=-cc "!gcc_exe!"
 	) else (
 		call :build_bootstrap_with_tcc
-		if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!tcc_exe!" -cflags -Bthirdparty/tcc
+		if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!tcc_exe!"
 	)
 )
 if not defined stage_vflags (
