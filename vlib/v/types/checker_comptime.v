@@ -5940,6 +5940,9 @@ fn (tc &TypeChecker) interface_pointer_target_cast_needs_heap_copy(target Type, 
 		return false
 	}
 	clean_actual := unalias_type(actual)
+	if clean_actual is Interface {
+		return true
+	}
 	if clean_actual !is Pointer {
 		return false
 	}

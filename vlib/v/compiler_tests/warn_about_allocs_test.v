@@ -60,6 +60,10 @@ fn box_pointer(p &Person) &Speaker {
 	return &Speaker(p)
 }
 
+fn box_interface(s Speaker) &Speaker {
+	return &Speaker(s)
+}
+
 fn main() {
 	name := 'V'
 	array := [1, 2, 3]
@@ -72,6 +76,7 @@ fn main() {
 	person := Person{}
 	pointer_alias_speaker := Speaker(PersonPtr(&person))
 	pointer_speaker := box_pointer(&person)
+	interface_speaker := box_interface(speaker)
 	freed := ['\${name}' + name] @[freed]
 	callback := fn () {
 		values := [1, 2, 3]
@@ -86,6 +91,7 @@ fn main() {
 	alias_speaker.speak()
 	pointer_alias_speaker.speak()
 	pointer_speaker.speak()
+	interface_speaker.speak()
 	println(freed)
 	callback()
 }
@@ -104,7 +110,7 @@ fn main() {
 		expected_count := if description == 'string concatenation' {
 			3
 		} else if description == 'cast to interface' {
-			4
+			5
 		} else if description == 'array initialization' {
 			2
 		} else {
@@ -132,6 +138,18 @@ fn main() {
 	assignment := cmdexec.run(v3_bin, ['-silent', '-nocache', '-o',
 		os.join_path(root, 'assignment_attribute.c'), assignment_source])
 	assert assignment.exit_code == 0, assignment.output
+
+	invalid_assignment_attribute_source := os.join_path(root, 'invalid_assignment_attribute.v')
+	os.write_file(invalid_assignment_attribute_source, 'fn main() {
+	values := [1] @[freed: false]
+	println(values)
+}
+')!
+	invalid_assignment_attribute := cmdexec.run(v3_bin, ['-silent', '-nocache',
+		'-no-retry-compilation', '-warn-about-allocs', '-o',
+		os.join_path(root, 'invalid_assignment_attribute.c'), invalid_assignment_attribute_source])
+	assert invalid_assignment_attribute.exit_code != 0, invalid_assignment_attribute.output
+	assert invalid_assignment_attribute.output.contains('assignment attribute `freed` does not accept an argument'), invalid_assignment_attribute.output
 
 	nonallocating_source := os.join_path(root, 'nonallocating.v')
 	os.write_file(nonallocating_source, "import os

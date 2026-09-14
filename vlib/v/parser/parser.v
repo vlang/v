@@ -8060,9 +8060,14 @@ fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
 		if parsed.attrs.len != 1 {
 			p.record_diagnostic_span('assignment attributes support at most one argument', attr_start,
 				clamp_source_offset(p.prev_tok_end, p.s.src.len))
-		} else if parsed.attrs[0].all_before(':').trim_space() == 'freed' && int(id) >= 0
-			&& int(id) < p.a.nodes.len {
-			p.a.nodes[int(id)].set_freed_assignment(true)
+		} else {
+			attr := parsed.attrs[0].trim_space()
+			if attr == 'freed' && int(id) >= 0 && int(id) < p.a.nodes.len {
+				p.a.nodes[int(id)].set_freed_assignment(true)
+			} else if attr.starts_with('freed:') {
+				p.record_diagnostic_span('assignment attribute `freed` does not accept an argument',
+					attr_start, clamp_source_offset(p.prev_tok_end, p.s.src.len))
+			}
 		}
 		attr_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 		if p.prefs.is_fmt && attr_end >= attr_start {
