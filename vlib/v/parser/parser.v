@@ -5956,7 +5956,7 @@ fn (mut p Parser) skip_comptime_block() {
 				for name in lambda_params {
 					shadowed_names[name]++
 				}
-			} else if p.tok == .name {
+			} else if p.tok != .key_mut && p.tok_can_be_decl_name() {
 				lambda_params << p.lit
 			}
 		} else if p.tok == .pipe && skipped_pipe_starts_lambda(prev_tok) {
@@ -5967,8 +5967,7 @@ fn (mut p Parser) skip_comptime_block() {
 		} else if prev_tok == .key_goto && p.tok == .name {
 			p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
 		} else if prev_tok != .dot && prev_tok !in [.key_goto, .key_break, .key_continue]
-			&& (p.tok in [.name, .key_module]
-			|| (p.tok == .key_shared && p.shared_token_is_identifier(false)))
+			&& (p.tok == .name || p.keyword_token_is_ident_expr())
 			&& (p.peek() != .colon || expression_colon_braces.last())
 			&& shadowed_names[p.lit] == 0 && p.is_local_binding(p.lit) {
 			key := prefix + p.lit
@@ -9966,6 +9965,15 @@ fn (mut p Parser) keyword_ident_expr() flat.NodeId {
 	})
 }
 
+fn (mut p Parser) keyword_token_is_ident_expr() bool {
+	return match p.tok {
+		.key_module, .key_type { true }
+		.key_shared { p.shared_token_is_identifier(false) }
+		.key_lock, .key_rlock, .key_select { p.peek() in [.lpar, .lsbr] }
+		else { false }
+	}
+}
+
 fn sql_type_name(raw string) string {
 	mut out := strings.new_builder(raw.len)
 	for ch in raw {
@@ -10129,7 +10137,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return id
 		}
 		.key_shared {
-			if p.shared_token_is_identifier(false) {
+			if p.keyword_token_is_ident_expr() {
 				name_pos := p.tok_pos
 				name_end := p.tok_end
 				p.next()
@@ -10768,13 +10776,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			})
 		}
 		.key_lock, .key_rlock {
-			if p.peek() == .lpar || p.peek() == .lsbr {
+			if p.keyword_token_is_ident_expr() {
 				return p.keyword_ident_expr()
 			}
 			return p.lock_expr()
 		}
 		.key_select {
-			if p.peek() == .lpar || p.peek() == .lsbr {
+			if p.keyword_token_is_ident_expr() {
 				return p.keyword_ident_expr()
 			}
 			return p.select_expr()
