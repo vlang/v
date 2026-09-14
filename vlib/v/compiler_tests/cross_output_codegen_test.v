@@ -77,3 +77,50 @@ fn test_cross_is_a_modifier_that_keeps_an_explicit_target() {
 	// The target still selected Windows.
 	assert c_code.contains('_WIN32'), 'the explicit -os windows target was lost'
 }
+
+fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
+	// The snapshot does not know its C compiler yet. V's WinAPI atomic header is
+	// emitted behind `_WIN32 && __TINYC__` and defines `atomic_fetch_add_byte` and
+	// friends as function-like macros, so the backend's own `static inline`
+	// definitions have to sit behind the negation of that same guard. Without it
+	// the macro expanded over the definition and tcc rejected `vc/v_win.c` with
+	// `redefinition of 'ManualInterlockedExchangeAdd8'`.
+	for flags in ['-cross -os windows -cc msvc', '-os cross'] {
+		c_code := cross_generate_with(flags, 'atomics', "module main\n\nfn main() {\n\tprintln('ok')\n}\n")
+		guard := '#if !(defined(_WIN32) && defined(__TINYC__))'
+		definition := 'static inline byte atomic_fetch_add_byte('
+		at := c_code.index(definition) or {
+			assert false, '${flags}: the atomic helpers are missing from the snapshot'
+			return
+		}
+		opened := c_code[..at].clone().last_index(guard) or {
+			assert false, '${flags}: the atomic helpers are not guarded against the Windows TCC header'
+			return
+		}
+		// The guard has to still be open where the helper is defined.
+		between := c_code[opened..at].clone()
+		assert between.count('#endif') < between.count('#if'), '${flags}: the guard closed before the atomic helpers'
+	}
+}
+
+fn test_cross_output_keeps_sem_timedwait_off_apple() {
+	// A snapshot generated on Linux is compiled on macOS to bootstrap v1, and the
+	// `sync` file it bakes in is the POSIX one. Apple's libc has no `sem_timedwait`
+	// symbol at all, so every reference to it has to stay behind a guard that is
+	// false there, or `cc` fails with `call to undeclared function 'sem_timedwait'`.
+	c_code := cross_generate_with('-cross -os linux', 'semaphore', "module main\n\nimport sync\n\nfn main() {\n\tmut sem := sync.new_semaphore()\n\tprintln(sem.timed_wait(1))\n}\n")
+	call := 'sem_timedwait('
+	assert c_code.contains(call), 'the POSIX semaphore implementation is missing from the snapshot'
+	mut searched := c_code
+	for {
+		at := searched.index(call) or { break }
+		before := searched[..at].clone()
+		opened := before.last_index('#if ') or {
+			assert false, 'a sem_timedwait call is not behind any preprocessor guard'
+			return
+		}
+		condition := before[opened..].all_before('\n')
+		assert condition.contains('__APPLE__'), 'a sem_timedwait call is guarded by `${condition}`, which is also true on Apple'
+		searched = searched[at + call.len..].clone()
+	}
+}
