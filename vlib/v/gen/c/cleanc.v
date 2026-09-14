@@ -12522,7 +12522,7 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 			}
 			g.write('}')
 		} else if inner.kind == .struct_init
-			&& g.resolve_source_sum_name(inner.value, g.node_source_file(&inner)) == g.resolve_sum_name(target_type.name) {
+			&& g.lowered_struct_init_sum_name(inner) == g.resolve_sum_name(target_type.name) {
 			g.write('(${ct}){')
 			for si in 0 .. inner.children_count {
 				sf := g.a.child_node(&inner, si)

@@ -672,6 +672,19 @@ fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_s
 	// current source file's imports.
 	assert g.resolve_sum_name('iface_mod.Any') == 'iface_mod.Any'
 	assert g.resolve_source_sum_name('iface_mod.Any', 'dependency.v') == 'iface_mod.Any'
+	typ_field := ast.add_node(flat.Node{ kind: .field_init, value: 'typ' })
+	payload_field := ast.add_node(flat.Node{ kind: .field_init, value: '_string' })
+	children_start := ast.children.len
+	ast.children << typ_field
+	ast.children << payload_field
+	generated := flat.Node{
+		kind:           .struct_init
+		children_start: i32(children_start)
+		children_count: 2
+		value:          'iface_mod.Any'
+		typ:            'iface_mod.Any'
+	}
+	assert g.lowered_struct_init_sum_name(generated) == 'iface_mod.Any'
 }
 
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
