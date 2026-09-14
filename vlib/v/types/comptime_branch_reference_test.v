@@ -614,3 +614,19 @@ fn test_the_body_is_found_past_an_unusual_signature() {
 		' A ',
 	]
 }
+
+fn test_a_brace_after_a_keyword_that_takes_an_expression() {
+	// `assert`, `if` and `match` all want an expression before their block, so
+	// a brace standing directly after one opens a map, whose key is code.
+	assert code_references_ident('assert {x: 1}.len == 1', 'x', true)
+	assert code_references_ident('if {x: 1}.len == 1 {\nA\n}', 'x', true)
+	assert code_references_ident('match {x: 1}.len {\n1 { A }\nelse { B }\n}', 'x', true)
+	assert code_references_ident('return {x: 1}', 'x', true)
+	// A condition before the brace still opens a block, whose `name:` labels a
+	// statement, and a type before it a struct literal, whose `name:` is a
+	// field.
+	assert !code_references_ident('if ok {\nx: for i in a {\nbreak x\n}\n}', 'x', true)
+	assert !code_references_ident('match v {\n1 { Cfg{x: 1} }\nelse {}\n}', 'x', true)
+	assert !code_references_ident('assert configure(x: 1) == 1', 'x', true)
+	assert !code_references_ident('assert Cfg{x: 1}.x == 1', 'x', true)
+}

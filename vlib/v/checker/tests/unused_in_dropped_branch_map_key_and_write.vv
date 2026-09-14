@@ -109,7 +109,55 @@ fn anonymous_value_type_key(nk string) {
 	}
 }
 
+// `assert`, `if` and `match` all want an expression before their block, so a
+// brace standing directly after one opens a map and keys it with code.
+fn asserted_map_key(sk string) {
+	$if windows {
+		assert {
+			sk: 1
+		}.len == 1
+	}
+}
+
+fn condition_map_key(ck string) {
+	$if windows {
+		if {
+			ck: 1
+		}.len == 1 {
+			println('one')
+		}
+	}
+}
+
+fn matched_map_key(mk string) {
+	$if windows {
+		match {
+			mk: 1
+		}.len {
+			1 { println('one') }
+			else { println('other') }
+		}
+	}
+}
+
+// A condition before the brace still opens a block, and the `name:` of one
+// labels a statement rather than keying a map, so the parameter it is spelled
+// like stays unused.
+fn condition_block(bk int) {
+	$if windows {
+		if double(1) > 0 {
+			bk: for i := 0; i < 2; i++ {
+				break bk
+			}
+		}
+	}
+}
+
 fn main() {
+	condition_block(9)
+	matched_map_key('l')
+	condition_map_key('k')
+	asserted_map_key('j')
 	anonymous_value_type_key('i')
 	addressed_map_key('h')
 	labeled_assignment()

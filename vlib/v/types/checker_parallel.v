@@ -3156,7 +3156,10 @@ fn brace_opens_a_literal(tokens []string, index int) bool {
 		return false
 	}
 	previous := tokens[index - 1]
-	if previous in ['return', 'in', 'is', 'as'] {
+	if previous in ['return', 'in', 'is', 'as', 'assert', 'if', 'match'] {
+		// A keyword an expression may follow. `if` and `match` want one before
+		// their block, so a brace standing directly after either opens a map
+		// and never a block: `if {x: 1}.len == 1 { .. }` compiles.
 		return true
 	}
 	// A closing bracket, a literal or a propagation ends an expression, so what

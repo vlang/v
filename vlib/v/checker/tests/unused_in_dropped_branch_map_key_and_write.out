@@ -1,3 +1,10 @@
+vlib/v/checker/tests/unused_in_dropped_branch_map_key_and_write.vv:146:20: notice: unused parameter: `bk`
+  144 | // labels a statement rather than keying a map, so the parameter it is spelled
+  145 | // like stays unused.
+  146 | fn condition_block(bk int) {
+      |                    ~~
+  147 |     $if windows {
+  148 |         if double(1) > 0 {
 vlib/v/checker/tests/unused_in_dropped_branch_map_key_and_write.vv:14:6: warning: unused variable: `w`
    12 | 
    13 | fn write_only() {
