@@ -9622,6 +9622,9 @@ pub fn run(args []string) {
 			if warn_impure_v {
 				unsupported_modes << '`-Wimpure-v`'
 			}
+			if warn_about_allocs {
+				unsupported_modes << '`-warn-about-allocs`'
+			}
 			if print_fn_names.len > 0 || print_v_files || print_watched_files
 				|| dump_c_flags.len > 0 || generate_c_project.len > 0 {
 				unsupported_modes << 'compiler inspection output'

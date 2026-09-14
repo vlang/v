@@ -2596,26 +2596,40 @@ fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node f
 
 fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token.Pos) {
 	if !tc.warn_about_allocs || tc.cur_module in ['strings', 'math', 'math.bits', 'builtin',
-		'builtin.closure', 'strconv', 'os'] {
+		'builtin.closure', 'strconv', 'os', 'sync'] {
 		return
 	}
 	mut current := id
+	mut direct_child := flat.empty_node
 	for tc.valid_node_id(current) {
 		node := tc.a.node(current)
 		if node.kind in [.fn_literal, .lambda_expr] {
 			break
 		}
 		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign]
-			&& node.is_freed_assignment() {
+			&& node.is_freed_assignment() && tc.assignment_child_is_value(node, direct_child) {
 			return
 		}
 		parent := tc.direct_parent_id(current)
 		if parent == current {
 			break
 		}
+		direct_child = current
 		current = parent
 	}
 	tc.record_warning_at(.compile_error, 'allocation (${description})', id, pos)
+}
+
+fn (tc &TypeChecker) assignment_child_is_value(node flat.Node, child_id flat.NodeId) bool {
+	if !tc.valid_node_id(child_id) {
+		return false
+	}
+	for i in 0 .. tc.multi_assign_rhs_count(node) {
+		if tc.multi_assign_rhs_id(node, i) == child_id {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) has_type_error(kind TypeErrorKind, msg string, node flat.NodeId) bool {

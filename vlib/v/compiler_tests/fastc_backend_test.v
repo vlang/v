@@ -740,6 +740,11 @@ fn main() {
 			expected: 'fastc parser does not support `-Wimpure-v`'
 		},
 		UnsupportedFastCInvocation{
+			args:     ['-silent', '-W', '-warn-about-allocs', '-b', 'fastc', '-o',
+				os.join_path(root, 'warn_allocs'), valid_source]
+			expected: 'fastc parser does not support `-warn-about-allocs`'
+		},
+		UnsupportedFastCInvocation{
 			args:     ['-silent', '-skip-running', '-b', 'fastc', '-o',
 				os.join_path(root, 'discovered_test'), discovered_test_source]
 			expected: 'fastc parser does not support test/checker mode'

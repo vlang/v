@@ -64,6 +64,10 @@ fn box_interface(s Speaker) &Speaker {
 	return &Speaker(s)
 }
 
+fn replace_freed(mut arrays [][]int) {
+	arrays[[0][0]] = [1] @[freed]
+}
+
 fn main() {
 	name := 'V'
 	array := [1, 2, 3]
@@ -78,6 +82,8 @@ fn main() {
 	pointer_alias_speaker := Speaker(PersonPtr(&person))
 	pointer_speaker := box_pointer(&person)
 	interface_speaker := box_interface(speaker)
+	mut arrays := [][]int{}
+	replace_freed(mut arrays)
 	freed := ['\${name}' + name] @[freed]
 	callback := fn () {
 		values := [1, 2, 3]
@@ -114,7 +120,7 @@ fn main() {
 		} else if description == 'cast to interface' {
 			5
 		} else if description == 'array initialization' {
-			3
+			4
 		} else {
 			1
 		}
@@ -211,8 +217,19 @@ fn zero_length_capacity_array() []int {
 	return []int{len: 0, cap: 0}
 }
 
+fn receive_channel(ch chan int) {
+	select {
+		value := <-ch {
+			println(value)
+		}
+	}
+}
+
 fn main() {
 	println(os.args.len)
+	channel := chan int{cap: 1}
+	channel <- 1
+	receive_channel(channel)
 	println(Token('a') + Token('b'))
 	person := Person{}
 	speaker := box(&person)
