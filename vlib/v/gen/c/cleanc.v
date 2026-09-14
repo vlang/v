@@ -704,8 +704,32 @@ fn (g &FlatGen) timing_profile(message string) {
 	}
 }
 
+// canonical_annotation_leaf strips wrappers so qualified semantic names can be
+// recognized without changing how ordinary unqualified annotations are parsed.
+fn canonical_annotation_leaf(typ string) string {
+	mut leaf := typ
+	for leaf.len > 0 {
+		if leaf.starts_with('[]') {
+			leaf = leaf[2..]
+			continue
+		}
+		if leaf[0] == `&` || leaf[0] == `?` || leaf[0] == `!` {
+			leaf = leaf[1..]
+			continue
+		}
+		break
+	}
+	return leaf
+}
+
+// parse_node_type resolves a node's `typ`, which is a checker-produced
+// annotation. Parse qualified semantic names without resolving them through the
+// source file's import aliases again; raw source spelling remains in `node.value`.
 @[inline]
 fn (g &FlatGen) parse_node_type(node &flat.Node) types.Type {
+	if canonical_annotation_leaf(node.typ).contains('.') {
+		return g.tc.parse_canonical_type(node.typ)
+	}
 	return g.tc.parse_type_ref(node.typ, node.type_text_id())
 }
 
