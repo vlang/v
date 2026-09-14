@@ -604,6 +604,7 @@ mut:
 	callback_wrapper_names          map[string]string
 	callback_wrapper_defs           []string
 	callback_wrapper_defs_seen      map[string]bool
+	callback_identity_used          bool
 	parallel_used                   bool
 	c_name_cache                    &CNameCache = unsafe { nil }
 	emitted_fn_ptr_typedefs         map[string]bool
@@ -1250,6 +1251,7 @@ pub fn FlatGen.new() FlatGen {
 		callback_wrapper_names: map[string]string{}
 		callback_wrapper_defs: []string{}
 		callback_wrapper_defs_seen: map[string]bool{}
+		callback_identity_used: false
 		emitted_loop_break_labels: map[string]bool{}
 		goto_label_c_names: map[string]string{}
 		c_name_cache: &CNameCache{}
@@ -3188,6 +3190,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.callback_wrapper_names.clear()
 	g.callback_wrapper_defs = []string{}
 	g.callback_wrapper_defs_seen.clear()
+	g.callback_identity_used = false
 	g.parallel_used = false
 	g.c_name_cache = &CNameCache{}
 	g.emitted_fn_ptr_typedefs.clear()

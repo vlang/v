@@ -130,6 +130,12 @@ fn main() {
 	alias_desc.cb = concrete_event
 	assert alias_desc.cb == concrete_event
 	alias_desc.cb(&event, alias_desc.user_data)
+	desc.cb = concrete_event
+	desc.plain = concrete_event
+	assert desc.cb == desc.plain
+	assert desc.plain == desc.cb
+	assert !(desc.cb != desc.plain)
+	assert !(desc.plain != desc.cb)
 	println(int_str(app.hits))
 }
 ')
@@ -302,6 +308,14 @@ mut:
 	user_data voidptr
 }
 
+@[typedef]
+struct C.native_desc {
+mut:
+	cb fn (const_event &C.native_event, voidptr) = unsafe { nil }
+	plain fn (&C.native_event, voidptr) = unsafe { nil }
+	user_data voidptr
+}
+
 struct App {
 mut:
 	hits int
@@ -318,10 +332,14 @@ fn concrete_event(e &C.native_event, data voidptr) {
 	}
 	src.write_string('
 fn run_parallel(mut app App) {
-	mut desc := C.alias_desc{
+	mut desc := C.native_desc{
 		user_data: voidptr(app)
 	}
 	desc.cb = concrete_event
+	desc.plain = concrete_event
+	assert desc.cb == desc.plain
+	assert desc.plain == desc.cb
+	assert !(desc.cb != desc.plain)
 	event := C.native_event{value: 7}
 	desc.cb(&event, desc.user_data)
 }

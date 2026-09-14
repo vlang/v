@@ -3676,16 +3676,30 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 }
 
 fn (mut g FlatGen) callback_wrapper_decls() {
-	if g.cache_split && g.callback_wrapper_defs.len > 0 {
+	has_callback_support := g.callback_wrapper_defs.len > 0 || g.callback_identity_used
+	if g.cache_split && has_callback_support {
 		g.writeln('/* V3CACHE_PROGRAM_WRAPPERS */')
 	}
 	for def in g.callback_wrapper_defs {
 		g.writeln(def)
 	}
-	if g.cache_split && g.callback_wrapper_defs.len > 0 {
+	if g.callback_identity_used {
+		g.writeln('typedef void (*__v3_callback_identity_fn)(void);')
+		g.writeln('static __v3_callback_identity_fn __v3_callback_identity(__v3_callback_identity_fn __v3_identity_candidate) {')
+		mut keys := g.callback_wrapper_names.keys()
+		keys.sort()
+		for key in keys {
+			wrapper_name := g.callback_wrapper_names[key]
+			actual_name := key.all_before('|')
+			g.writeln('\tif (__v3_identity_candidate == (__v3_callback_identity_fn)${wrapper_name}) { return (__v3_callback_identity_fn)${actual_name}; }')
+		}
+		g.writeln('\treturn __v3_identity_candidate;')
+		g.writeln('}')
+	}
+	if g.cache_split && has_callback_support {
 		g.writeln('/* V3CACHE_PROGRAM_WRAPPERS_END */')
 	}
-	if g.callback_wrapper_defs.len > 0 {
+	if has_callback_support {
 		g.writeln('')
 	}
 }
@@ -13357,26 +13371,44 @@ fn (mut g FlatGen) gen_callback_infix_direct_operand(id flat.NodeId, expected ty
 	g.gen_expr_with_expected_type(id, expected)
 }
 
+fn (mut g FlatGen) gen_callback_identity_operand(id flat.NodeId) {
+	g.write('__v3_callback_identity((__v3_callback_identity_fn)(')
+	g.gen_expr(id)
+	g.write('))')
+}
+
 fn (mut g FlatGen) gen_callback_infix_equality(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
 	if op !in [.eq, .ne] || fn_type_from(lhs_type) == none || fn_type_from(rhs_type) == none {
 		return false
 	}
 	lhs_direct := g.callback_fn_value_is_direct(lhs_id, rhs_type)
 	rhs_direct := g.callback_fn_value_is_direct(rhs_id, lhs_type)
-	if lhs_direct == rhs_direct {
-		return false
+	if lhs_direct != rhs_direct {
+		if lhs_direct {
+			g.gen_callback_infix_direct_operand(lhs_id, rhs_type, rhs_id)
+		} else {
+			g.gen_expr(lhs_id)
+		}
+		g.write(' ${g.op_str(op)} ')
+		if rhs_direct {
+			g.gen_callback_infix_direct_operand(rhs_id, lhs_type, lhs_id)
+		} else {
+			g.gen_expr(rhs_id)
+		}
+		return true
 	}
 	if lhs_direct {
-		g.gen_callback_infix_direct_operand(lhs_id, rhs_type, rhs_id)
-	} else {
-		g.gen_expr(lhs_id)
+		return false
 	}
+	lhs_c_abi := g.expr_c_abi_fn_ptr_type(lhs_id) or { '' }
+	rhs_c_abi := g.expr_c_abi_fn_ptr_type(rhs_id) or { '' }
+	if lhs_c_abi == rhs_c_abi {
+		return false
+	}
+	g.callback_identity_used = true
+	g.gen_callback_identity_operand(lhs_id)
 	g.write(' ${g.op_str(op)} ')
-	if rhs_direct {
-		g.gen_callback_infix_direct_operand(rhs_id, lhs_type, lhs_id)
-	} else {
-		g.gen_expr(rhs_id)
-	}
+	g.gen_callback_identity_operand(rhs_id)
 	return true
 }
 
