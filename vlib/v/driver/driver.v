@@ -9530,6 +9530,12 @@ pub fn run(args []string) {
 	if prefs.vcurrent_hash == '' {
 		prefs.vcurrent_hash = @VCURRENTHASH
 	}
+	if building_v {
+		// A self-build must describe the sources being compiled, not the compiler
+		// that happened to bootstrap them. Otherwise every `make`/`v up` keeps
+		// reporting the bootstrap snapshot's commit indefinitely.
+		prefs.vcurrent_hash = util.githash(prefs.vroot) or { prefs.vcurrent_hash }
+	}
 	prefs.selfhost = is_selfhost || fastc_selfhost_build
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
