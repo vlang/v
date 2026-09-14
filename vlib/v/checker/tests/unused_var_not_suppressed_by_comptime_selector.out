@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unused_var_not_suppressed_by_comptime_selector.vv:6:2: warning: unused variable: `value`
+    4 | 
+    5 | fn main() {
+    6 |     value := 1
+      |     ~~~~~
+    7 |     $if prealloc {
+    8 |         println(Foo{}.value)

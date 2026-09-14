@@ -1,0 +1,10 @@
+struct Foo {
+	value int
+}
+
+fn main() {
+	value := 1
+	$if prealloc {
+		println(Foo{}.value)
+	}
+}
