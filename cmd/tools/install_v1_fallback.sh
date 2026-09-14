@@ -23,6 +23,16 @@ fi
 bootstrap_v=$1
 fallback_output=$2
 selected_cc=${CC:-cc}
+# Automatic `make v1` uses make's implicit `CC=cc`. Recover when the host only
+# provides one of the other supported system compiler executables.
+if [ "$selected_cc" = cc ] && ! command -v "$selected_cc" >/dev/null 2>&1; then
+	for fallback_cc in clang gcc; do
+		if command -v "$fallback_cc" >/dev/null 2>&1; then
+			selected_cc=$fallback_cc
+			break
+		fi
+	done
+fi
 system=$(uname -s 2>/dev/null || echo unknown)
 source_root=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
 cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/v1-fallback}
