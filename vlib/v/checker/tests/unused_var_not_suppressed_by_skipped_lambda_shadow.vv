@@ -1,0 +1,31 @@
+fn consume_lambda(callback fn (int) int) {
+	_ = callback(1)
+}
+
+fn lambda_parameter_shadows_outer() {
+	// The lambda parameter below shadows this binding.
+	x := 1
+	$if prealloc {
+		consume_lambda(|x| x + 1)
+	}
+}
+
+fn lambda_uses_outer(x int) {
+	$if prealloc {
+		consume_lambda(|y| x + y)
+	}
+}
+
+fn lambda_scope_restores_outer(x int) {
+	$if prealloc {
+		consume_lambda(|x| x + 1)
+		println(x)
+	}
+}
+
+fn main() {
+	consume_lambda(|x| x)
+	lambda_parameter_shadows_outer()
+	lambda_uses_outer(1)
+	lambda_scope_restores_outer(1)
+}
