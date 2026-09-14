@@ -6794,7 +6794,7 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 	if !tc.valid_node_id(id) {
 		return
 	}
-	node := tc.a.node(id)
+	node := tc.a.nodes[int(id)]
 	match node.kind {
 		.decl_assign {
 			tc.check_decl_lhs_global_shadowing(node)
@@ -6812,6 +6812,23 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 		}
 		.comptime_for {
 			tc.check_comptime_for_global_shadowing(id, node)
+		}
+		.comptime_if {
+			take_then := tc.comptime_type_condition_value(node.value) or {
+				// Portable output keeps all target-dependent branches for the C
+				// preprocessor. Other unresolved conditions depend on specialization.
+				if comptime_cond_has_target_flag(node.value) {
+					for i in 0 .. node.children_count {
+						tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+					}
+				}
+				return
+			}
+			branch_index := if take_then { 0 } else { 1 }
+			if branch_index < node.children_count {
+				tc.check_generic_body_node_global_shadowing(tc.a.child(&node, branch_index))
+			}
+			return
 		}
 		.param {
 			tc.check_local_binding_global_shadowing(id)
