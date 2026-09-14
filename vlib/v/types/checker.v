@@ -2652,6 +2652,9 @@ fn (tc &TypeChecker) child_is_value_producing_path(parent flat.Node, child_id fl
 			}
 			return false
 		}
+		.call {
+			return false
+		}
 		else {
 			return true
 		}

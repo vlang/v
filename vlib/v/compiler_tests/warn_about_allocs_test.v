@@ -68,6 +68,10 @@ fn replace_freed(mut arrays [][]int) {
 	arrays[[0][0]] = [1] @[freed]
 }
 
+fn array_length(values []int) int {
+	return values.len
+}
+
 fn main() {
 	name := 'V'
 	array := [1, 2, 3]
@@ -96,6 +100,7 @@ fn main() {
 	} else {
 		[6]
 	} @[freed]
+	freed_length := array_length([7]) @[freed]
 	println(array)
 	println(reserved)
 	println(interpolation)
@@ -109,6 +114,7 @@ fn main() {
 	interface_speaker.speak()
 	println(freed)
 	println(freed_branch)
+	println(freed_length)
 	callback()
 }
 ")!
@@ -128,7 +134,7 @@ fn main() {
 		} else if description == 'cast to interface' {
 			5
 		} else if description == 'array initialization' {
-			5
+			6
 		} else {
 			1
 		}
