@@ -101,7 +101,7 @@ pub fn (mut h Hash256) free() {
 // write writes out the content of message and updates internal Hash256 state.
 pub fn (mut h Hash256) write(msg []u8) !int {
 	if h.Digest.done {
-		panic('Digest: writing after done ')
+		return error('Digest: writing after done ')
 	}
 	return h.absorb(msg)
 }
@@ -109,10 +109,10 @@ pub fn (mut h Hash256) write(msg []u8) !int {
 // clone returns the clone of the current Hash256
 fn (h &Hash256) clone() &Hash256 {
 	digest := Digest{
-		State: h.Digest.State
-		buf: h.Digest.buf.clone()
+		State:  h.Digest.State
+		buf:    h.Digest.buf.clone()
 		length: h.Digest.length
-		done: h.Digest.done
+		done:   h.Digest.done
 	}
 	return &Hash256{digest}
 }
