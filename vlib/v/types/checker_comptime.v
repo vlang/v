@@ -7799,10 +7799,12 @@ fn type_is_string_like(typ Type) bool {
 }
 
 fn is_string_concat_pair(left Type, right Type) bool {
-	left_is_string := left is String
-	right_is_string := right is String
-	left_is_concat := left_is_string || left is Char || left is Rune
-	right_is_concat := right_is_string || right is Char || right is Rune
+	left_base := unalias_type(left)
+	right_base := unalias_type(right)
+	left_is_string := left_base is String
+	right_is_string := right_base is String
+	left_is_concat := left_is_string || left_base is Char || left_base is Rune
+	right_is_concat := right_is_string || right_base is Char || right_base is Rune
 	return left_is_concat && right_is_concat && (left_is_string || right_is_string)
 }
 

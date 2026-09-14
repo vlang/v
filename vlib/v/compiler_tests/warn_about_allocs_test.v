@@ -24,7 +24,9 @@ fn test_warn_about_allocs_reports_v1_allocation_sites() {
 	}
 	v3_bin := build_warn_allocs_v3(root)
 	source := os.join_path(root, 'main.v')
-	os.write_file(source, "interface Speaker {
+	os.write_file(source, "type Name = string
+
+interface Speaker {
 	speak()
 }
 
@@ -37,11 +39,15 @@ fn main() {
 	array := [1, 2, 3]
 	interpolation := 'hello \${name}'
 	concatenation := 'hello ' + name
+	alias_string_left := Name('a') + 'b'
+	alias_string_right := 'a' + Name('b')
 	speaker := Speaker(Person{})
 	freed := ['\${name}' + name] @[freed]
 	println(array)
 	println(interpolation)
 	println(concatenation)
+	println(alias_string_left)
+	println(alias_string_right)
 	speaker.speak()
 	println(freed)
 }
@@ -57,7 +63,8 @@ fn main() {
 	for description in ['array initialization', 'string interpolation', 'string concatenation',
 		'cast to interface'] {
 		message := 'allocation (${description})'
-		assert warned.output.count(message) == 1, warned.output
+		expected_count := if description == 'string concatenation' { 3 } else { 1 }
+		assert warned.output.count(message) == expected_count, warned.output
 		assert warned.output.contains('warning: ${message}'), warned.output
 	}
 
