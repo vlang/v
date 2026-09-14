@@ -14828,7 +14828,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(g.local_cname(node.value))
 			} else if is_local && g.local_name_shadows_c_typedef(node.value) {
 				g.write(g.local_cname(node.value))
-			} else if node.value in g.global_modules {
+			} else if !is_local && node.value in g.global_modules {
+				// `global_modules` maps a bare name to whichever module declares a global
+				// of that name, so without the `is_local` guard a local binding was
+				// resolved to another module's global -- one the file need not even
+				// import. `local_shadows_global` above does not cover it: that only
+				// tracks the names needing a C suffix, which are the `main` and
+				// `builtin` globals whose C name would otherwise collide.
 				mod := g.global_modules[node.value]
 				if mod.len > 0 && mod != 'main' && mod != 'builtin' {
 					g.write(g.global_c_name('${mod}.${node.value}'))
