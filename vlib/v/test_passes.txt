@@ -1971,6 +1971,7 @@ vlib/v/tests/global_fixed_arr_init_test.v
 vlib/v/tests/global_generic_sumtype_test.v
 vlib/v/tests/global_init_array_test.v
 vlib/v/tests/global_init_test.v
+vlib/v/tests/global_shadow_diagnostic_scope_test.v
 vlib/v/tests/goto_test.v
 vlib/v/tests/hyphenated_module_path_test.v
 vlib/v/tests/if_elseif_else_test.v
@@ -2592,7 +2593,7 @@ vlib/v/tests/structs/struct_eq_op_test.v
 vlib/v/tests/structs/struct_equality_test.v
 vlib/v/tests/structs/struct_field_array_index_test.v
 vlib/v/tests/structs/struct_field_default_fn_type_value_init_test.v
-vlib/v/tests/structs/struct_field_default_shadowed_global_test.v
+vlib/v/tests/structs/struct_field_default_global_test.v
 vlib/v/tests/structs/struct_field_default_union_of_structs_marked_with_noinit_test.v
 vlib/v/tests/structs/struct_field_default_value_interface_cast_test.v
 vlib/v/tests/structs/struct_field_default_value_optional_test.v
