@@ -1,0 +1,27 @@
+fn skipped_assignment_target() {
+	mut x := 1
+	$if prealloc {
+		x = 2
+	}
+}
+
+fn skipped_control_flow_labels() {
+	goto_target := 1
+	break_target := 2
+	continue_target := 3
+	$if prealloc {
+		goto goto_target
+		goto_target:
+		break_target: for {
+			break break_target
+		}
+		continue_target: for {
+			continue continue_target
+		}
+	}
+}
+
+fn main() {
+	skipped_assignment_target()
+	skipped_control_flow_labels()
+}

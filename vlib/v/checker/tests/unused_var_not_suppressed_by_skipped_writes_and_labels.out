@@ -1,0 +1,27 @@
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_writes_and_labels.vv:2:6: warning: unused variable: `x`
+    1 | fn skipped_assignment_target() {
+    2 |     mut x := 1
+      |         ^
+    3 |     $if prealloc {
+    4 |         x = 2
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_writes_and_labels.vv:9:2: warning: unused variable: `goto_target`
+    7 |
+    8 | fn skipped_control_flow_labels() {
+    9 |     goto_target := 1
+      |     ~~~~~~~~~~~
+   10 |     break_target := 2
+   11 |     continue_target := 3
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_writes_and_labels.vv:10:2: warning: unused variable: `break_target`
+    8 | fn skipped_control_flow_labels() {
+    9 |     goto_target := 1
+   10 |     break_target := 2
+      |     ~~~~~~~~~~~~
+   11 |     continue_target := 3
+   12 |     $if prealloc {
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_writes_and_labels.vv:11:2: warning: unused variable: `continue_target`
+    9 |     goto_target := 1
+   10 |     break_target := 2
+   11 |     continue_target := 3
+      |     ~~~~~~~~~~~~~~~
+   12 |     $if prealloc {
+   13 |         goto goto_target

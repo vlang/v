@@ -39,6 +39,15 @@ fn main() {
 		}
 	}
 	only_in_skipped_branch()
+	// A captured assignment is still an identifier occurrence even though it is
+	// not a read for local-variable diagnostics.
+	mut assigned_capture := 0
+	assigned_in_skipped_branch := fn [mut assigned_capture] () {
+		$if prealloc {
+			assigned_capture = 1
+		}
+	}
+	assigned_in_skipped_branch()
 	// Parsing the literal above must restore the enclosing function's offset.
 	limit := 32
 	$if prealloc {

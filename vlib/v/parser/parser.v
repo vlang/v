@@ -213,6 +213,8 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			nodes: []flat.Node{}
 			children: []flat.NodeId{}
 			disabled_fns: map[string]bool{}
+			comptime_skipped_names: map[string]bool{}
+			comptime_skipped_read_names: map[string]bool{}
 			export_fn_names: map[string]string{}
 			contextual_anon_struct_types: map[string]bool{}
 			synthesized_anon_struct_types: map[string]bool{}
@@ -5804,7 +5806,8 @@ fn skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, tok token.Token, 
 // interpolations and operators right. Only tokens the expression parser can
 // turn into identifiers are recorded; selector members follow a dot, while
 // struct-field and named-argument labels precede a colon, so neither is a local
-// reference.
+// reference. A plain assignment target is an identifier occurrence, but not a
+// read; control-flow label operands are neither.
 fn (mut p Parser) skip_comptime_block() {
 	if p.tok != .lcbr {
 		p.skip_block()
@@ -5854,11 +5857,15 @@ fn (mut p Parser) skip_comptime_block() {
 		} else if p.tok == .pipe && skipped_pipe_starts_lambda(prev_tok) {
 			in_lambda_params = true
 			lambda_params = []string{}
-		} else if prev_tok != .dot
+		} else if prev_tok != .dot && prev_tok !in [.key_goto, .key_break, .key_continue]
 			&& (p.tok in [.name, .key_module]
 			|| (p.tok == .key_shared && p.shared_token_is_identifier(false)))
 			&& p.peek() != .colon && shadowed_names[p.lit] == 0 {
-			p.a.comptime_skipped_names[prefix + p.lit] = true
+			key := prefix + p.lit
+			p.a.comptime_skipped_names[key] = true
+			if p.peek() != .assign {
+				p.a.comptime_skipped_read_names[key] = true
+			}
 		}
 		match p.tok {
 			.lcbr { depth++ }

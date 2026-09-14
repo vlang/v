@@ -1946,6 +1946,17 @@ fn (tc &TypeChecker) comptime_skipped_body_uses(node flat.Node, name string) boo
 	return '${file.name}:${node.pos.offset}|${name}' in tc.a.comptime_skipped_names
 }
 
+// comptime_skipped_body_reads reports whether `name` is read inside a skipped
+// compile-time branch. Unlike comptime_skipped_body_uses, write-only plain
+// assignment targets do not count.
+fn (tc &TypeChecker) comptime_skipped_body_reads(node flat.Node, name string) bool {
+	if name.len == 0 || tc.a.comptime_skipped_read_names.len == 0 {
+		return false
+	}
+	file := tc.a.source_files[node.pos.id] or { return false }
+	return '${file.name}:${node.pos.offset}|${name}' in tc.a.comptime_skipped_read_names
+}
+
 fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	if tc.node_is_from_translated_file(node) {
 		return
@@ -2010,7 +2021,7 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
 			continue
 		}
-		if tc.comptime_skipped_body_uses(node, candidate.name) {
+		if tc.comptime_skipped_body_reads(node, candidate.name) {
 			continue
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
