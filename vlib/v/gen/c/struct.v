@@ -1740,18 +1740,22 @@ fn (mut g FlatGen) gen_struct_default_fields_deferring_fixed_arrays(type_name st
 			continue
 		}
 		field_default_type := g.struct_default_field_type(info, field)
-		if defer_fixed_arrays {
-			if _ := array_fixed_type(field_default_type) {
-				deferred << DeferredFixedArrayDefault{
-					name: field.value
-					value: g.a.child(field, 0)
-					typ: field_default_type
-					module_name: info.module
-					file: info.file
-				}
-				set_fields[field.value] = true
-				continue
+		// A `shared` fixed array is pointer-backed wrapper storage, not an inline array
+		// member, so it belongs in the compound literal below, where the wrapper is
+		// allocated. Deferring it would memcpy into a null pointer. The two paths that
+		// collect explicitly set fixed-array fields make the same exclusion.
+		defer_this_field := defer_fixed_arrays && array_fixed_type(field_default_type) != none
+			&& g.shared_field_info(info.full_name, field.value) == none
+		if defer_this_field {
+			deferred << DeferredFixedArrayDefault{
+				name:        field.value
+				value:       g.a.child(field, 0)
+				typ:         field_default_type
+				module_name: info.module
+				file:        info.file
 			}
+			set_fields[field.value] = true
+			continue
 		}
 		if has {
 			g.write(', ')
@@ -2495,7 +2499,7 @@ fn (g &FlatGen) shared_generic_app_parts(typ string) (string, []string, bool) {
 		cache.entries[typ] = GenericAppInfo{
 			base: base
 			args: args
-			ok: ok
+			ok:   ok
 		}
 	}
 	return base, args, ok
@@ -2922,7 +2926,7 @@ fn (mut g FlatGen) register_shared_type_name(inner string, module_name string) {
 	}
 	wrapper := g.shared_wrapper_c_name(inner)
 	g.shared_type_names[wrapper] = SharedTypeInfo{
-		inner: inner
+		inner:  inner
 		module: module_name
 	}
 	g.needs_shared_runtime = true
@@ -3034,10 +3038,10 @@ fn (mut g FlatGen) shared_array_info_from_raw(raw string, module_name string, is
 	inner := shared_array_inner_type_text(raw) or { return none }
 	qualified := g.shared_qualify_type_text(inner, module_name)
 	return SharedArrayInfo{
-		inner: qualified
+		inner:   qualified
 		wrapper: g.shared_wrapper_c_name(qualified)
-		module: module_name
-		is_ptr: is_ptr
+		module:  module_name
+		is_ptr:  is_ptr
 	}
 }
 
@@ -3066,10 +3070,10 @@ fn (mut g FlatGen) shared_array_info_for_expr(id flat.NodeId) ?SharedArrayInfo {
 			return info
 		}
 		return SharedArrayInfo{
-			inner: info.inner
+			inner:   info.inner
 			wrapper: info.wrapper
-			module: info.module
-			is_ptr: false
+			module:  info.module
+			is_ptr:  false
 		}
 	}
 	if node.kind == .ident {
@@ -3190,9 +3194,9 @@ fn (mut g FlatGen) generic_shared_field_info(type_name string, field_name string
 			substitute_shared_generic_type_text(inner, info.node.generic_params(), args)
 		qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
 		return SharedFieldInfo{
-			inner: qualified_inner
+			inner:   qualified_inner
 			wrapper: g.shared_wrapper_c_name(qualified_inner)
-			module: info.module
+			module:  info.module
 		}
 	}
 	return none
@@ -3218,9 +3222,9 @@ fn (mut g FlatGen) shared_field_info(type_name string, field_name string) ?Share
 		inner := shared_inner_type_text(field.typ) or { return none }
 		qualified_inner := g.shared_qualify_type_text(inner, info.module)
 		return SharedFieldInfo{
-			inner: qualified_inner
+			inner:   qualified_inner
 			wrapper: g.shared_wrapper_c_name(qualified_inner)
-			module: info.module
+			module:  info.module
 		}
 	}
 	return none
@@ -4482,7 +4486,7 @@ fn (g &FlatGen) embedded_field_for_embed_key(type_name string, key string) ?type
 		if field.value == key || short == key_short {
 			return types.StructField{
 				name: field.value
-				typ: g.tc.parse_type(field.typ)
+				typ:  g.tc.parse_type(field.typ)
 			}
 		}
 	}
@@ -4512,11 +4516,11 @@ fn (g &FlatGen) promoted_struct_init_field(type_name string, field_name string) 
 	}
 	parts << c_field_name(field_name)
 	return PromotedStructInitField{
-		root: path[0].name
-		root_type: g.embedded_field_type_name(path[0])
-		owner: owner
+		root:       path[0].name
+		root_type:  g.embedded_field_type_name(path[0])
+		owner:      owner
 		designator: parts.join('.')
-		typ: field_type
+		typ:        field_type
 	}
 }
 
@@ -4963,7 +4967,7 @@ fn (mut g FlatGen) refined_map_init_type(node flat.Node, map_type types.Map) typ
 		value_type := g.usable_expr_type(value_id)
 		if g.tc.c_type(value_type) == g.tc.c_type(map_fixed.elem_type) {
 			return types.Map{
-				key_type: map_type.key_type
+				key_type:   map_type.key_type
 				value_type: map_fixed.elem_type
 			}
 		}
@@ -4980,7 +4984,7 @@ fn (mut g FlatGen) refined_map_init_type(node flat.Node, map_type types.Map) typ
 		if value_elem_ct == fixed_elem_ct || value_elem_ct in ['map', 'Map']
 			|| map_type.value_type is types.Unknown {
 			return types.Map{
-				key_type: map_type.key_type
+				key_type:   map_type.key_type
 				value_type: value_type
 			}
 		}
@@ -5004,7 +5008,7 @@ fn (mut g FlatGen) fixed_array_map_init_value_type(id flat.NodeId) ?types.ArrayF
 			}
 			return types.ArrayFixed{
 				elem_type: elem_type
-				len: child.children_count
+				len:       child.children_count
 			}
 		}
 	}
@@ -5016,7 +5020,7 @@ fn (mut g FlatGen) fixed_array_map_init_value_type(id flat.NodeId) ?types.ArrayF
 		}
 		return types.ArrayFixed{
 			elem_type: elem_type
-			len: node.children_count
+			len:       node.children_count
 		}
 	}
 	if fixed := array_fixed_type(g.usable_expr_type(id)) {
@@ -6175,9 +6179,9 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 		field_name := g.cname(f.name)
 		is_fixed_array := if _ := array_fixed_type(f.typ) { true } else { false }
 		soa_fields << SoaFieldInfo{
-			name: field_name
-			soa_name: soa_companion_field_name(field_name, mut used_soa_names)
-			c_type: g.soa_field_c_type(struct_name, f)
+			name:           field_name
+			soa_name:       soa_companion_field_name(field_name, mut used_soa_names)
+			c_type:         g.soa_field_c_type(struct_name, f)
 			is_fixed_array: is_fixed_array
 		}
 	}

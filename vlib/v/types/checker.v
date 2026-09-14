@@ -6414,35 +6414,42 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 	}
 	if resolved := tc.resolve_import_alias(alias) {
 		if resolved != alias {
-			// `typ` can already be fully qualified. A file's import map may carry a
-			// relative candidate for a bare first path segment -- inside
-			// `gpu.agx.file`, `gpu` maps to `gpu.agx.gpu` -- and expanding that
-			// against an already-resolved `gpu.agx.bo.Table` rebases the name onto
-			// itself, once per remaining segment, producing
-			// `gpu.agx.gpu.agx.bo.Table`. cgen then emits a C type name no typedef
-			// declares.
-			if tc.type_text_is_already_qualified(typ) {
+			expanded := resolved + typ[dot..]
+			// A file's import map can bind a bare first path segment to a relative
+			// candidate: inside `gpu.agx.file`, `gpu` maps to `gpu.agx.gpu`. Expanding
+			// that against an already-resolved `gpu.agx.bo.Table` rebases the name onto
+			// itself, once per remaining segment, until cgen emits a C type name no
+			// typedef declares.
+			//
+			// Deciding by prefix alone is not enough: a file that imports `benchmark as
+			// jj` beside `x.benchmark` has `benchmark` as an import value too, and the
+			// source spelling `benchmark.Benchmark` does still have to expand, to
+			// `x.benchmark.Benchmark`. So ask which of the two names the program
+			// actually declares, and only keep the original when the expansion names
+			// nothing and it does. When neither resolves, expansion stands, as before.
+			if tc.import_type_text_resolves(expanded) {
+				return expanded
+			}
+			if tc.import_type_text_resolves(typ) {
 				return typ
 			}
-			return resolved + typ[dot..]
+			return expanded
 		}
 	}
 	return typ
 }
 
-// type_text_is_already_qualified reports whether `typ` is spelled under one of the
-// modules this file imports, and so needs no further alias expansion.
-fn (tc &TypeChecker) type_text_is_already_qualified(typ string) bool {
-	info := tc.current_file_import_info()
-	if isnil(info) {
+// import_type_text_resolves reports whether `text` names something this program
+// declares -- a type, or a function or method key. Used to choose between a
+// spelling and its alias expansion.
+fn (tc &TypeChecker) import_type_text_resolves(text string) bool {
+	if text.len == 0 {
 		return false
 	}
-	for _, mod in info.imports {
-		if mod.len > 0 && mod.len < typ.len && typ[mod.len] == `.` && typ.starts_with(mod) {
-			return true
-		}
+	if tc.qualify_candidate_type_exists(text) {
+		return true
 	}
-	return false
+	return tc.fn_signature_known(text)
 }
 
 // imported_type_short_name returns the semantic short name for an active imported
