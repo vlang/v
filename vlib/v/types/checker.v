@@ -2596,7 +2596,7 @@ fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node f
 
 fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token.Pos) {
 	if !tc.warn_about_allocs || tc.cur_module in ['strings', 'math', 'math.bits', 'builtin',
-		'builtin.closure', 'strconv', 'os', 'sync', 'v.embed_file'] {
+		'builtin.closure', 'strconv', 'os', 'sync', 'v.debug', 'v.embed_file'] {
 		return
 	}
 	mut current := id
@@ -2652,7 +2652,7 @@ fn (tc &TypeChecker) child_is_value_producing_path(parent flat.Node, child_id fl
 			}
 			return false
 		}
-		.call {
+		.call, .selector, .index {
 			return false
 		}
 		else {

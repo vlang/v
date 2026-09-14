@@ -101,6 +101,8 @@ fn main() {
 		[6]
 	} @[freed]
 	freed_length := array_length([7]) @[freed]
+	freed_length_projection := ('a' + name).len @[freed]
+	freed_index_projection := [8][0] @[freed]
 	println(array)
 	println(reserved)
 	println(interpolation)
@@ -115,6 +117,8 @@ fn main() {
 	println(freed)
 	println(freed_branch)
 	println(freed_length)
+	println(freed_length_projection)
+	println(freed_index_projection)
 	callback()
 }
 ")!
@@ -130,11 +134,11 @@ fn main() {
 		'cast to interface'] {
 		message := 'allocation (${description})'
 		expected_count := if description == 'string concatenation' {
-			3
+			4
 		} else if description == 'cast to interface' {
 			5
 		} else if description == 'array initialization' {
-			6
+			7
 		} else {
 			1
 		}
@@ -248,6 +252,7 @@ fn receive_channel(ch chan int) {
 }
 
 fn main() {
+	\$dbg
 	println(os.args.len)
 	channel := chan int{cap: 1}
 	channel <- 1
