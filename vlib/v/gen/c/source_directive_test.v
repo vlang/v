@@ -135,6 +135,33 @@ fn test_preinclude_scans_macro_state_without_scanning_declarations() {
 	assert g.preinclude_directives == ['#include "${config_header}"', '#include "${api_header}"']
 }
 
+fn test_forced_include_flags_scan_macro_state() {
+	root := os.join_path(os.vtmp_dir(), 'v3_forced_include_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	include_header := os.join_path(root, 'include.h')
+	imacros_header := os.join_path(root, 'imacros.h')
+	os.write_file(include_header, '#define forced_include_api(p) ((p)->value)\n#undef forced_ordered_api\n')!
+	os.write_file(imacros_header, '#define forced_imacros_api(p) ((p)->value)\n#define forced_ordered_api(p) ((p)->value)\n')!
+
+	mut g := FlatGen.new()
+	g.c_flags = ['-include=${include_header}', '-imacros', imacros_header]
+	g.collect_forced_include_active_macros()
+
+	assert 'forced_include_api' in g.inlined_c_active_macros
+	assert 'forced_imacros_api' in g.inlined_c_active_macros
+	assert 'forced_ordered_api' !in g.inlined_c_active_macros
+
+	mut unresolved := FlatGen.new()
+	unresolved.c_flags = ['-include', os.join_path(root, 'missing.h')]
+	unresolved.collect_forced_include_active_macros()
+	assert unresolved.has_unscanned_forced_c_include
+	assert unresolved.c_symbol_may_be_from_unscanned_header('C.unknown_api', 'unknown_api')
+}
+
 fn test_consecutive_includes_share_macro_state() {
 	root := os.join_path(os.vtmp_dir(), 'v3_ordered_include_macro_state_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -212,6 +239,49 @@ fn test_function_macro_status_propagates_through_aliases() {
 		typ:   'alias_impl'
 	}, source, false)
 	assert 'alias_api' !in g.inlined_c_active_macros
+
+	mut forward := FlatGen.new()
+	for directive in [
+		flat.Node{ kind: .directive, value: 'ifdef', typ: '__GNUC__' },
+		flat.Node{ kind: .directive, value: 'define', typ: 'forward_api forward_impl' },
+		flat.Node{ kind: .directive, value: 'endif' },
+		flat.Node{ kind: .directive, value: 'define', typ: 'forward_impl(p) ((p)->value)' },
+	] {
+		forward.collect_c_directive('main', directive, source, false)
+	}
+	assert 'forward_api' in forward.inlined_c_active_macros
+}
+
+fn test_header_macro_push_and_pop_restore_function_like_state() {
+	root := os.join_path(os.vtmp_dir(), 'v3_macro_push_pop_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'push_pop.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(header, '#define restored_api(p) ((p)->value)\n#pragma push_macro("restored_api")\n#undef restored_api\n#pragma pop_macro("restored_api")\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+
+	assert 'restored_api' in g.inlined_c_active_macros
+
+	mut direct := FlatGen.new()
+	for directive in [
+		flat.Node{ kind: .directive, value: 'define', typ: 'direct_restored_api(p) ((p)->value)' },
+		flat.Node{ kind: .directive, value: 'pragma', typ: 'push_macro("direct_restored_api")' },
+		flat.Node{ kind: .directive, value: 'undef', typ: 'direct_restored_api' },
+		flat.Node{ kind: .directive, value: 'pragma', typ: 'pop_macro("direct_restored_api")' },
+	] {
+		direct.collect_c_directive('main', directive, source, false)
+	}
+	assert 'direct_restored_api' in direct.inlined_c_active_macros
 }
 
 fn test_macro_expanded_nested_include_is_scanned_or_marked_unresolved() {

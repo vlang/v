@@ -37,9 +37,18 @@ static inline uint64_t strict_load_any(void* x) { return *(uint64_t*)x; }
 static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
 #define strict_get_count(p) ((p)->count)
 #define strict_get_count_alias strict_get_count
+#ifdef __GNUC__
+#define strict_get_forward_count strict_get_forward_impl
+#else
+#define strict_get_forward_count strict_get_forward_impl
+#endif
+#define strict_get_forward_impl(p) ((p)->count)
 #endif
 '
 	os.write_file(os.join_path(root, 'strict_atomic.h'), header) or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_forced_include.h'), '#define strict_get_forced_count(p) ((p)->count)\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_forced_imacros.h'), '#define strict_get_imacros_count(p) ((p)->count)\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_push_pop.h'), '#define strict_get_restored_count(p) ((p)->count)\n#pragma push_macro("strict_get_restored_count")\n#undef strict_get_restored_count\n#pragma pop_macro("strict_get_restored_count")\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_preinclude.h'), '#define strict_get_preincluded_count(p) ((p)->count)\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_reordered_define.h'), '#define strict_get_reordered_count(p) ((p)->count)\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_reordered_undef.h'), '#undef strict_get_reordered_count\n') or { panic(err) }
@@ -56,8 +65,11 @@ fn test_c_voidptr_param_pointer_arg_goes_through_voidptr() {
 	v3_bin := voidptr_arg_build_v3()
 	src := voidptr_arg_write_project('module main
 
+#flag -include @DIR/strict_forced_include.h
+#flag -imacros @DIR/strict_forced_imacros.h
 #preinclude "@DIR/strict_preinclude.h"
 #include "@DIR/strict_atomic.h"
+#include "@DIR/strict_push_pop.h"
 #include "@DIR/strict_reordered_define.h"
 #preinclude "@DIR/strict_reordered_undef.h"
 #include "@DIR/strict_nested_wrapper.h"
@@ -76,6 +88,10 @@ fn C.strict_is_nonnull_u64(voidptr) int
 fn C.strict_ordered_load_u64(voidptr) u64
 fn C.strict_get_count(voidptr) u32
 fn C.strict_get_count_alias(voidptr) u32
+fn C.strict_get_forward_count(voidptr) u32
+fn C.strict_get_forced_count(voidptr) u32
+fn C.strict_get_imacros_count(voidptr) u32
+fn C.strict_get_restored_count(voidptr) u32
 fn C.strict_get_direct_count(voidptr) u32
 fn C.strict_get_preincluded_count(voidptr) u32
 fn C.strict_get_reordered_count(voidptr) u32
@@ -108,6 +124,10 @@ fn main() {
 	}
 	macro_count := C.strict_get_count(&item)
 	alias_macro_count := C.strict_get_count_alias(&item)
+	forward_macro_count := C.strict_get_forward_count(&item)
+	forced_macro_count := C.strict_get_forced_count(&item)
+	imacros_macro_count := C.strict_get_imacros_count(&item)
+	restored_macro_count := C.strict_get_restored_count(&item)
 	direct_macro_count := C.strict_get_direct_count(&item)
 	preincluded_macro_count := C.strict_get_preincluded_count(&item)
 	reordered_macro_count := C.strict_get_reordered_count(&item)
@@ -118,6 +138,10 @@ fn main() {
 	println(nonnull.str())
 	println(macro_count.str())
 	println(alias_macro_count.str())
+	println(forward_macro_count.str())
+	println(forced_macro_count.str())
+	println(imacros_macro_count.str())
+	println(restored_macro_count.str())
 	println(direct_macro_count.str())
 	println(preincluded_macro_count.str())
 	println(reordered_macro_count.str())
@@ -130,7 +154,7 @@ fn main() {
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', '7', 'true',
-		'1', '9', '9', '9', '9', '9', '9']
+		'1', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9']
 	generated := os.read_file(out + '.c') or { panic(err) }
 	// The macro is a no-op in C++, where `void*` does not convert back to a
 	// concrete pointer and the argument has to stay as written.
@@ -149,6 +173,17 @@ fn main() {
 	// Object-like aliases inherit function-like macro status.
 	assert generated.contains('strict_get_count_alias(&item)'), generated
 	assert !generated.contains('strict_get_count_alias(v_c_voidptr_arg('), generated
+	// A possible forward alias is retained until its function-like target is seen.
+	assert generated.contains('strict_get_forward_count(&item)'), generated
+	assert !generated.contains('strict_get_forward_count(v_c_voidptr_arg('), generated
+	// Forced include and imacros inputs are processed before the translation unit.
+	assert generated.contains('strict_get_forced_count(&item)'), generated
+	assert !generated.contains('strict_get_forced_count(v_c_voidptr_arg('), generated
+	assert generated.contains('strict_get_imacros_count(&item)'), generated
+	assert !generated.contains('strict_get_imacros_count(v_c_voidptr_arg('), generated
+	// push_macro/pop_macro restores the original function-like definition.
+	assert generated.contains('strict_get_restored_count(&item)'), generated
+	assert !generated.contains('strict_get_restored_count(v_c_voidptr_arg('), generated
 	// A function-like macro declared directly in V source also keeps the typed pointer.
 	assert generated.contains('strict_get_direct_count(&item)'), generated
 	assert !generated.contains('strict_get_direct_count(v_c_voidptr_arg('), generated

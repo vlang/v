@@ -18344,6 +18344,9 @@ fn (g &FlatGen) c_symbol_may_be_from_unscanned_header(fn_name string, callee_nam
 		|| g.c_extern_forced_decls[callee_name.all_after_last('.')] {
 		return false
 	}
+	if g.has_unscanned_forced_c_include {
+		return true
+	}
 	for name in [fn_name.all_after_last('.'), callee_name.all_after_last('.')] {
 		for source_file in g.c_fn_decl_source_files[name] {
 			if g.files_with_unscanned_c_includes[source_file] {
