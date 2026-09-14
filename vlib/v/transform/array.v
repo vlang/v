@@ -714,7 +714,7 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 			continue
 		}
 		value_name := t.new_temp('arr_val')
-		value := t.transform_owned_array_literal_element(elem_id, elem_type)
+		value := t.transform_array_literal_element_isolated(elem_id, elem_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
 		call := t.make_call_typed('array_push', [
 			t.make_prefix(.amp, t.make_ident(tmp_name)),
@@ -741,6 +741,25 @@ fn (t &Transformer) array_literal_can_emit_direct(node flat.Node) bool {
 		}
 	}
 	return true
+}
+
+// transform_array_literal_element_isolated transforms one element of an array literal
+// that is built through a temporary, keeping the statements already queued for the
+// literal out of the element's own expression. A block element such as `unsafe { x }`
+// transforms its statements eagerly, and would otherwise drain the `arr_lit`
+// declaration and the earlier elements' pushes into that block, leaving the temporary
+// declared inside an expression the following `array_push` calls cannot see.
+// transform_call_arg_for_param keeps call arguments apart for the same reason.
+fn (mut t Transformer) transform_array_literal_element_isolated(elem_id flat.NodeId, elem_type string) flat.NodeId {
+	outer_pending := t.pending_stmts
+	t.pending_stmts = []flat.NodeId{}
+	result := t.transform_owned_array_literal_element(elem_id, elem_type)
+	elem_pending := t.pending_stmts
+	t.pending_stmts = outer_pending
+	for stmt in elem_pending {
+		t.pending_stmts << stmt
+	}
+	return result
 }
 
 // append_array_literal_spread appends independent element clones when the destination
@@ -975,7 +994,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 			continue
 		}
 		value_name := t.new_temp('arr_val')
-		value := t.transform_owned_array_literal_element(elem_id, elem_type)
+		value := t.transform_array_literal_element_isolated(elem_id, elem_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
 		call := t.make_call_typed('array_push', [
 			t.make_prefix(.amp, t.make_ident(tmp_name)),

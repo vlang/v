@@ -3395,10 +3395,17 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if init_struct := struct_type_from_type(init_type) {
 		is_synthetic_embed_file := node.value == 'embed_file.EmbedFileData'
-		if _ := tc.private_declaration(init_struct.name) {
-			inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-			tc.record_error_at(.unknown_type, 'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
-			tc.record_error_at(.unknown_type, 'type `${init_struct.name}` is private', id, node.pos)
+		// An anonymous struct carries no `pub` of its own and cannot be named from
+		// anywhere: it is reachable only through the field that declares it, so that
+		// field's own declaration already decided who may see it. `cli.Command.defaults`
+		// is one, on a public struct, and `defaults: struct { man: false }` from another
+		// module is exactly what such a field is initialized with.
+		if !is_anonymous_struct_name(init_struct.name) {
+			if _ := tc.private_declaration(init_struct.name) {
+				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+				tc.record_error_at(.unknown_type, 'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
+				tc.record_error_at(.unknown_type, 'type `${init_struct.name}` is private', id, node.pos)
+			}
 		}
 		if deprecation := tc.deprecated_symbols[init_struct.name] {
 			tc.record_deprecation(id, 'struct', deprecation, tc.struct_init_deprecation_pos(node))
