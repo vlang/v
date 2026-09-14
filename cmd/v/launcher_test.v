@@ -21,6 +21,15 @@ fn test_launcher_finds_the_source_root() {
 	assert directory_root == root
 }
 
+fn test_windows_makev_keeps_the_v3_tcc_root_absolute() {
+	root := find_vroot(@FILE) or { panic(err) }
+	source := os.read_file(os.join_path(root, 'makev.bat'))!
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!"')
+	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_STAGE%" cmd/v')
+	assert source.contains('if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!tcc_exe!"')
+	assert !source.contains('-cflags -Bthirdparty/tcc')
+}
+
 fn test_launcher_finds_external_commands() {
 	index, command := find_command(['-cc', 'clang', 'fmt', '-w', 'main.v'])
 	assert index == 2
