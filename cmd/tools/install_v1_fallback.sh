@@ -26,6 +26,7 @@ system=$(uname -s 2>/dev/null || echo unknown)
 source_root=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
 cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/v1-fallback}
 oldv_workdir=$cache_parent/sources/${fallback_short_revision}_${fallback_vc_short_revision}
+oldv_source_dir=$oldv_workdir/v_at_$fallback_revision
 
 fallback_dir=$(dirname "$fallback_output")
 mkdir -p "$fallback_dir" || exit 1
@@ -79,10 +80,10 @@ candidate_has_expected_version() {
 build_with_oldv() {
 	echo "Building the V $release_version fallback with oldv..."
 	oldv_target=$candidate
-	oldv_copy='cp ./v "$V1_FALLBACK_TARGET" && pwd > "$V1_FALLBACK_ROOT_TARGET"'
+	oldv_copy='cp ./v "$V1_FALLBACK_TARGET"'
 	case "$system" in
 		MSYS*|MINGW*)
-			oldv_copy='copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL && cd > "%V1_FALLBACK_ROOT_TARGET%"'
+			oldv_copy='copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL'
 			if command -v cygpath >/dev/null 2>&1; then
 				oldv_target=$(cygpath -w "$candidate")
 			fi
@@ -100,10 +101,8 @@ build_with_oldv() {
 	set -- "$@" --vccommit "$fallback_vc_revision"
 	set -- "$@" "$fallback_revision"
 	VFLAGS= OLDV_VFLAGS='-d v1_fallback' V1_FALLBACK_TARGET=$oldv_target \
-		V1_FALLBACK_ROOT_TARGET=$candidate_root_file \
 		"$@" || return 1
-	candidate_root=$(sed -n '1p' "$candidate_root_file") || return 1
-	[ -n "$candidate_root" ] || return 1
+	candidate_root=$(cd "$oldv_source_dir" && pwd) || return 1
 	write_candidate_root "$candidate_root" || return 1
 	chmod +x "$candidate" || return 1
 }

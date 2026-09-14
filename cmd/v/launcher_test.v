@@ -48,6 +48,7 @@ fn test_v1_fallback_installer_uses_last_v1_snapshot() {
 	assert installer.contains('fallback_revision=0613e1f6fc68573f5b679e406ce58a00d6ebeb30')
 	assert installer.contains('fallback_vc_revision=e658629fc4bd59826bd7637cde498d0c6236b14b')
 	assert installer.contains('oldv_workdir=\$cache_parent/sources/\${fallback_short_revision}_\${fallback_vc_short_revision}')
+	assert installer.contains('oldv_source_dir=\$oldv_workdir/v_at_\$fallback_revision')
 	assert installer.contains("VFLAGS= OLDV_VFLAGS='-d v1_fallback'")
 	assert installer.contains('set -- "$@" --vccommit "$fallback_vc_revision"')
 	assert installer.contains('set -- "$@" "$fallback_revision"')
@@ -55,6 +56,8 @@ fn test_v1_fallback_installer_uses_last_v1_snapshot() {
 	assert installer.contains('[ -z "$promisor_config" ] || return 1')
 	assert installer.contains('rev-parse --is-shallow-repository')
 	assert installer.contains('[ "$is_shallow" = false ] || return 1')
+	assert installer.contains('oldv_copy=\'copy /Y .\\v.exe "%V1_FALLBACK_TARGET%" >NUL\'')
+	assert !installer.contains('V1_FALLBACK_ROOT_TARGET')
 	assert !installer.contains('releases/download')
 }
 
