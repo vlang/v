@@ -35,8 +35,67 @@ struct WindowsToolCacheFileInformation {
 // fails outright whenever the destination already exists.
 const movefile_replace_existing = u32(0x00000001)
 const toolcache_windows_file_share_all = u32(0x00000001 | 0x00000002 | 0x00000004)
+const toolcache_windows_file_share_read_write = u32(0x00000001 | 0x00000002)
 const toolcache_windows_open_existing = u32(3)
 const toolcache_windows_file_attribute_normal = u32(0x00000080)
+const toolcache_windows_file_attribute_directory = u32(0x00000010)
+const toolcache_windows_file_attribute_reparse_point = u32(0x00000400)
+const toolcache_windows_file_flag_open_reparse_point = u32(0x00200000)
+const toolcache_windows_file_flag_backup_semantics = u32(0x02000000)
+
+// ToolCacheEntryDir pins the directory that receives a compiled tool. Omitting
+// FILE_SHARE_DELETE keeps the pathname bound to this directory until the build is over;
+// FILE_FLAG_OPEN_REPARSE_POINT makes the attributes below describe the link itself.
+struct ToolCacheEntryDir {
+	path   string
+	handle voidptr
+}
+
+fn open_tool_cache_entry_dir(path string) !ToolCacheEntryDir {
+	os.mkdir(path, mode: 0o700) or {}
+	w_path := path.replace('/', '\\').to_wide()
+	defer {
+		unsafe { free(voidptr(w_path)) }
+	}
+	handle := C.CreateFileW(w_path, 0, toolcache_windows_file_share_read_write, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_flag_backup_semantics | toolcache_windows_file_flag_open_reparse_point, unsafe { nil })
+	if handle == voidptr(-1) || handle == unsafe { nil } {
+		return error('cannot safely open the tool cache entry `${path}`')
+	}
+	mut information := WindowsToolCacheFileInformation{}
+	if !C.GetFileInformationByHandle(handle, voidptr(&information))
+		|| information.file_attributes & toolcache_windows_file_attribute_directory == 0
+		|| information.file_attributes & toolcache_windows_file_attribute_reparse_point != 0 {
+		C.CloseHandle(handle)
+		if os.is_link(path) {
+			return error('the tool cache entry `${path}` is a symbolic link')
+		}
+		return error('the tool cache entry `${path}` is not a safe directory')
+	}
+	return ToolCacheEntryDir{
+		path:   path
+		handle: handle
+	}
+}
+
+fn (entry ToolCacheEntryDir) close() {
+	C.CloseHandle(entry.handle)
+}
+
+fn (entry ToolCacheEntryDir) publish(source string, name string) bool {
+	return publish_atomically(source, os.join_path(entry.path, name))
+}
+
+fn (entry ToolCacheEntryDir) remove(name string) {
+	os.rm(os.join_path(entry.path, name)) or {}
+}
+
+fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
+	for name in os.ls(entry.path) or { [] } {
+		if name.contains(tool_cache_replaced_marker) {
+			entry.remove(name)
+		}
+	}
+}
 
 // windows_binary_file_identity returns the stable identity Windows assigns to an open file.
 // Unlike the CRT inode, the volume serial and 64-bit file index distinguish concurrently

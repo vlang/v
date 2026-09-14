@@ -4,6 +4,7 @@
 module main
 
 import crypto.sha256
+import crypto.rand as crypto_rand
 import os
 import time
 
@@ -469,7 +470,7 @@ fn module_search_roots(vroot string, build_args []string) []string {
 // record_unbuildable_tool remembers a failed build together with the inputs that caused it,
 // so that the failing compilation is not repeated on every invocation, while fixing any of
 // those inputs still makes it be retried.
-fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, details string) {
+fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started i64, details string) string {
 	source_files := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
 	mut manifest := encode_tool_cache_manifest(source_files, started)
 	// The compiler reports what it read even for most failures, but the one failure it
@@ -514,6 +515,11 @@ fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, det
 	for directory in sorted_source_dirs {
 		manifest += 'd${tool_cache_field_separator}${directory}${tool_cache_field_separator}${dir_stamp(directory)}\n'
 	}
+	return manifest
+}
+
+fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, details string) {
+	manifest := encode_unbuildable_tool_manifest(entry, dumped, started, details)
 	os.write_file(entry.unbuildable_manifest, manifest) or { return }
 	os.write_file(entry.unbuildable, details) or {}
 }
@@ -582,14 +588,11 @@ fn is_cache_artifact_of(name string, tool string) bool {
 // process keeps its own already opened image.
 fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 	// A binary that Windows would not let us overwrite while it was still being executed was
-	// renamed aside instead. It lives in this entry's own directory, so nothing below would
-	// ever reach it; once the process that held it has exited this is the only thing that
-	// deletes it.
-	for name in os.ls(entry.dir) or { [] } {
-		if name.contains(tool_cache_replaced_marker) {
-			os.rm(os.join_path(entry.dir, name)) or {}
-		}
-	}
+	// renamed aside instead. Open the entry without following links and enumerate/remove its
+	// children through that pinned directory, rather than through its replaceable pathname.
+	cache_entry := open_tool_cache_entry_dir(entry.dir) or { return }
+	cache_entry.prune_replaced_binaries()
+	cache_entry.close()
 	directory := os.dir(entry.dir)
 	keep := os.file_name(entry.dir)
 	entries := os.ls(directory) or { return }
@@ -616,34 +619,36 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 	}
 }
 
-// prepare_tool_cache_entry_dir creates a cache entry without following a pre-planted symlink.
-// The cache root already exists, so a single atomic mkdir is sufficient. An existing real
-// directory is reusable, while any link or non-directory at the predictable entry path makes
-// the cache unsafe for this build.
-fn prepare_tool_cache_entry_dir(path string) ! {
-	os.mkdir(path) or {
-		if os.is_link(path) {
-			return error('the tool cache entry `${path}` is a symbolic link')
-		}
-		if !os.is_dir(path) {
-			return error('cannot create the tool cache entry `${path}`: ${err}')
-		}
+// create_tool_cache_stage_dir makes an unpredictable, private directory for compiler output.
+// The child compiler never writes through the predictable entry pathname; only completed
+// files are moved into the entry through its pinned no-follow handle.
+fn create_tool_cache_stage_dir() !string {
+	parent := os.real_path(os.temp_dir())
+	if !os.is_dir(parent) {
+		return error('cannot find a temporary directory for the tool cache')
 	}
-	if os.is_link(path) || !os.is_dir(path) {
-		return error('the tool cache entry `${path}` is not a safe directory')
+	for _ in 0 .. 16 {
+		token := crypto_rand.bytes(16)!.hex()
+		path := os.join_path(parent, '.v-toolcache-${os.getuid()}-${token}')
+		os.mkdir(path, mode: 0o700) or { continue }
+		return path
 	}
+	return error('cannot create a private temporary directory for the tool cache')
 }
 
 // build_tool_binary compiles the tool into its cache slot and records its source closure.
 // It returns the compiler output when the build failed.
 fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
-	unique := '${os.getpid()}'
-	prepare_tool_cache_entry_dir(entry.dir)!
-	staged := '${entry.binary}.staged.${unique}'
-	dumped := '${entry.binary}.sources.${unique}'
+	cache_entry := open_tool_cache_entry_dir(entry.dir)!
 	defer {
-		os.rm(dumped) or {}
+		cache_entry.close()
 	}
+	stage_dir := create_tool_cache_stage_dir()!
+	defer {
+		os.rmdir_all(stage_dir) or {}
+	}
+	staged := os.join_path(stage_dir, os.file_name(entry.binary))
+	dumped := os.join_path(stage_dir, 'sources')
 	started := time.now().unix()
 	mut build_args := entry.build_args.clone()
 	build_args << ['-dump-files', dumped, '-o', staged, entry.source]
@@ -678,7 +683,15 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 		// those sources, and the manifest does not describe it, so recording it would replay
 		// the same error until a source file happened to change.
 		if build_failure_is_source_dependent(details) {
-			record_unbuildable_tool(entry, dumped, started, details)
+			unbuildable_manifest := os.join_path(stage_dir, 'unbuildable.inputs')
+			unbuildable_details := os.join_path(stage_dir, 'unbuildable')
+			manifest := encode_unbuildable_tool_manifest(entry, dumped, started, details)
+			os.write_file(unbuildable_manifest, manifest) or {}
+			os.write_file(unbuildable_details, details) or {}
+			// Publish the details before the manifest that makes them reusable. A concurrent
+			// reader can then see either the previous complete failure or no reusable failure.
+			cache_entry.publish(unbuildable_details, os.file_name(entry.unbuildable))
+			cache_entry.publish(unbuildable_manifest, os.file_name(entry.unbuildable_manifest))
 		}
 		return error(details)
 	}
@@ -693,16 +706,16 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	// Publish the executable before its manifest. A lookup requires both, so the worst that
 	// a concurrent reader can observe is "binary present, manifest not updated yet", which
 	// is simply treated as a miss. The reverse order could hand out a stale binary.
-	if !publish_atomically(staged, entry.binary) {
+	if !cache_entry.publish(staged, os.file_name(entry.binary)) {
 		return error('cannot install the compiled `${entry.name}` into `${entry.binary}`')
 	}
-	staged_manifest := '${entry.manifest}.staged.${unique}'
+	staged_manifest := os.join_path(stage_dir, 'inputs')
 	os.write_file(staged_manifest, manifest) or {
 		return error('cannot record the inputs of `${entry.name}`: ${err}')
 	}
-	publish_atomically(staged_manifest, entry.manifest)
-	os.rm(entry.unbuildable) or {}
-	os.rm(entry.unbuildable_manifest) or {}
+	cache_entry.publish(staged_manifest, os.file_name(entry.manifest))
+	cache_entry.remove(os.file_name(entry.unbuildable))
+	cache_entry.remove(os.file_name(entry.unbuildable_manifest))
 	prune_stale_tool_binaries(entry)
 	return ''
 }

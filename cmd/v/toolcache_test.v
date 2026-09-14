@@ -494,6 +494,42 @@ fn test_building_rejects_a_symlinked_current_entry() {
 	assert false, 'a symlinked current cache entry must be rejected'
 }
 
+// The entry pathname can change after it has been checked when the cache root is shared.
+// POSIX publication has to stay bound to the opened directory, while Windows keeps the
+// pathname from being renamed until the entry handle is closed.
+fn test_pinned_entry_publication_cannot_be_redirected() {
+	directory := toolcache_test_dir('pinned_entry')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(entry_dir)!
+	cache_entry := open_tool_cache_entry_dir(entry_dir)!
+	defer {
+		cache_entry.close()
+	}
+
+	original_dir := entry_dir + '.original'
+	mut pathname_was_replaced := true
+	os.rename(entry_dir, original_dir) or { pathname_was_replaced = false }
+	outside := os.join_path(directory, 'outside')
+	os.mkdir(outside)!
+	if pathname_was_replaced {
+		os.symlink(outside, entry_dir)!
+	}
+	staged := os.join_path(directory, 'staged-inputs')
+	os.write_file(staged, 'the manifest')!
+
+	assert cache_entry.publish(staged, 'inputs')
+	assert os.ls(outside)! == [], 'publication must not follow a replacement symlink'
+	installed := if pathname_was_replaced {
+		os.join_path(original_dir, 'inputs')
+	} else {
+		os.join_path(entry_dir, 'inputs')
+	}
+	assert os.read_file(installed)! == 'the manifest'
+}
+
 // A single-file tool can pull in a sibling asset with `$embed_file`, whose bytes end up
 // inside the compiled binary. `cmd/tools/vgret.v` does exactly that with its
 // `vgret.defaults.toml`. The asset is not a V source, so only the compiler can report it,
