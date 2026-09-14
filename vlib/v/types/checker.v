@@ -16645,11 +16645,14 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	if node.kind == .decl_assign && node.children_count >= 2 {
 		tc.check_decl_lhs_global_shadowing(node)
 		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			rhs_id := tc.a.child(&node, i + 1)
+			// The initializer itself is not semantically checked when it depends on
+			// reflection metadata, but nested source bindings still need diagnostics.
+			tc.check_generic_body_node_global_shadowing(rhs_id)
 			lhs := tc.a.child_node(&node, i)
 			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 				continue
 			}
-			rhs_id := tc.a.child(&node, i + 1)
 			rhs_typ := tc.comptime_static_method_call_return_type(rhs_id, var_name, loop_kind, value_cases) or { tc.resolve_type(rhs_id) }
 			typ := if rhs_typ is Unknown {
 				tc.comptime_static_reflected_field_expr_type(rhs_id, var_name, field_cases) or {
