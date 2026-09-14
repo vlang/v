@@ -19992,6 +19992,15 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('\treturn h;')
 	g.writeln('}')
 	g.writeln('#define v_signal_with_handler_cast(sig, handler) signal((sig), ((void (*)(int))(handler)))')
+	// A pointer argument for a `voidptr` parameter of a `C.` function goes through
+	// `void*`, because the real prototype behind the declaration may spell that slot
+	// as a concrete pointer and C converts only to and from `void*`. C++ has no such
+	// conversion, so there the argument is passed as written, exactly as before.
+	g.writeln('#ifdef __cplusplus')
+	g.writeln('#define v_c_voidptr_arg(x) (x)')
+	g.writeln('#else')
+	g.writeln('#define v_c_voidptr_arg(x) ((void*)(x))')
+	g.writeln('#endif')
 	g.writeln('string string__clone(string a);')
 	g.writeln('void string__free(string* s);')
 	g.writeln('string string__plus(string s, string a);')

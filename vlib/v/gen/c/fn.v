@@ -15792,6 +15792,13 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				&& g.voidptr_value_arg_needs_address(arg_id, arg_node, g.usable_expr_type(arg_id), param_types[arg_idx], true) {
 				g.write('&')
 				g.gen_expr(arg_id)
+			} else if arg_idx < typed_param_count
+				&& g.c_voidptr_param_arg_needs_cast(param_types[arg_idx], arg_id) {
+				// A pointer handed to a `voidptr` parameter goes through `void*`, so it
+				// converts to whatever pointer the real C prototype declares.
+				g.write('v_c_voidptr_arg(')
+				g.gen_expr(arg_id)
+				g.write(')')
 			} else if cabi := g.c_call_arg_cabi_cast(arg_idx, typed_param_count, param_types, arg_id, is_native_variadic_fn) {
 				// Lower the argument to the C ABI: platform `int` stays C `int` (value
 				// and callback-pointer args, plus `%d`-style value varargs), matching the
@@ -18272,6 +18279,39 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 		}
 	}
 	return none
+}
+
+// c_voidptr_param_arg_needs_cast reports whether the argument for a `voidptr`
+// parameter of a `C.` function has to be cast to `void*` at the call site.
+//
+// A `fn C.` declaration can only spell such a slot as `voidptr`, but the C
+// function behind it is free to declare it as a concrete pointer — the atomics in
+// thirdparty/stdatomic are `atomic_load_u64(uint64_t*)`, not `(void*)`. C
+// converts implicitly only to and from `void*`, never between two incompatible
+// pointer types, so handing a `NodePayloadTable**` straight to `uint64_t*` is an
+// error on every compiler that does not downgrade it to a warning (GCC 14+,
+// Clang 16+). Casting to the declared `void*` makes the argument convert to
+// whichever pointer the real prototype uses.
+//
+// Only a pointer argument is cast. A value, a null literal and an expression that
+// is already `voidptr` need nothing, and a bare `C.` function name is left alone
+// for the same reason the fn-pointer path above leaves it alone: the C compiler
+// already has its real prototype, including qualifiers no `fn C.` can spell.
+fn (g &FlatGen) c_voidptr_param_arg_needs_cast(param_type types.Type, arg_id flat.NodeId) bool {
+	if !type_is_void_pointer(param_type) {
+		return false
+	}
+	if g.is_c_extern_fn_name_arg(arg_id) {
+		return false
+	}
+	arg_type := g.usable_expr_type(arg_id)
+	if arg_type !is types.Pointer {
+		return false
+	}
+	if type_is_void_pointer(arg_type) || type_is_fn_value(arg_type) {
+		return false
+	}
+	return true
 }
 
 // is_assumed_int_c_const_arg reports whether the argument expression is a bare
