@@ -28,6 +28,8 @@ cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/
 oldv_workdir=$cache_parent/sources/${fallback_short_revision}_${fallback_vc_short_revision}
 oldv_source_dir=$oldv_workdir/v_at_${fallback_revision}_vc_${fallback_vc_revision}
 lock_dir=$oldv_workdir.lock
+lock_owner_file=$lock_dir/owner
+lock_timeout_seconds=600
 
 fallback_dir=$(dirname "$fallback_output")
 mkdir -p "$fallback_dir" || exit 1
@@ -43,6 +45,7 @@ cleanup() {
 	rm -rf "$work_dir"
 	if [ "$lock_acquired" -eq 1 ]; then
 		lock_acquired=0
+		rm -f "$lock_owner_file"
 		rmdir "$lock_dir" 2>/dev/null || true
 	fi
 }
@@ -53,13 +56,38 @@ trap 'exit 1' HUP INT TERM
 acquire_cache_lock() {
 	mkdir -p "$cache_parent/sources" || return 1
 	waiting=0
+	waited=0
 	while ! mkdir "$lock_dir" 2>/dev/null; do
+		lock_owner_pid=$(sed -n '1p' "$lock_owner_file" 2>/dev/null || true)
+		case "$lock_owner_pid" in
+			''|*[!0-9]*) ;;
+			*)
+				if ! kill -0 "$lock_owner_pid" 2>/dev/null; then
+					stale_lock=$lock_dir.reclaim.$$.$waited
+					if [ ! -e "$stale_lock" ] && mv "$lock_dir" "$stale_lock" 2>/dev/null; then
+						rm -rf "$stale_lock"
+						continue
+					fi
+				fi
+				;;
+		esac
+		if [ "$waited" -ge "$lock_timeout_seconds" ]; then
+			echo "Timed out waiting for the V1 fallback cache lock at $lock_dir." >&2
+			echo "If no other V1 fallback installation is running, remove that directory and retry." >&2
+			return 1
+		fi
 		if [ "$waiting" -eq 0 ]; then
 			echo "Waiting for another V1 fallback installation..."
 			waiting=1
 		fi
 		sleep 1 || return 1
+		waited=$((waited + 1))
 	done
+	printf '%s\n' "$$" > "$lock_owner_file" || {
+		rm -f "$lock_owner_file"
+		rmdir "$lock_dir" 2>/dev/null || true
+		return 1
+	}
 	lock_acquired=1
 }
 
