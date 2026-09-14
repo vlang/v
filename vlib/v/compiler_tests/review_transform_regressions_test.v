@@ -13458,3 +13458,34 @@ pub enum Lang {
 	}, 'main.v')
 	assert out == 'true'
 }
+
+fn test_builtin_struct_equality_ignores_same_named_imported_enum() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'builtin_struct_imported_enum_collision', {
+		'main.v':          'module main
+
+import other
+import sample
+
+fn main() {
+	left := SliceIndex{value: 7}
+	right := SliceIndex{value: 7}
+	println(sample.slice_indexes_equal(left, right))
+	_ = other.SliceIndex.value
+}
+'
+		'other/other.v':   'module other
+
+pub enum SliceIndex {
+	value
+}
+'
+		'sample/sample.v': 'module sample
+
+pub fn slice_indexes_equal(left SliceIndex, right SliceIndex) bool {
+	return left == right
+}
+'
+	}, 'main.v')
+	assert out == 'true'
+}

@@ -5184,3 +5184,28 @@ fn test_struct_lookup_name_resolves_alias_before_imported_enum_short_name() {
 	assert t.struct_lookup_name('Lang') == 'Record'
 	assert t.struct_lookup_name('Count') == ''
 }
+
+fn test_struct_lookup_name_preserves_builtin_struct_over_imported_enum_short_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['SliceIndex'] = []types.StructField{}
+	tc.struct_modules['SliceIndex'] = 'builtin'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'sample'
+	t.cur_file = 'sample.v'
+	t.structs['SliceIndex'] = StructInfo{
+		name:   'SliceIndex'
+		module: 'builtin'
+	}
+	t.enum_types['SliceIndex'] = ['value']
+	t.enum_types['other.SliceIndex'] = ['value']
+
+	assert t.struct_lookup_name('SliceIndex') == 'SliceIndex'
+	t.enum_types['sample.SliceIndex'] = ['local']
+	assert t.struct_lookup_name('SliceIndex') == ''
+	t.enum_types.delete('sample.SliceIndex')
+	tc.file_selective_imports[file_import_key('sample.v', 'SliceIndex')] = [
+		'other.SliceIndex',
+	]
+	assert t.struct_lookup_name('SliceIndex') == ''
+}
