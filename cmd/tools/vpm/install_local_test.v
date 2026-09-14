@@ -523,6 +523,13 @@ fn test_a_moved_project_keeps_its_local_installs() {
 	// Discovery finds it at the new path too, without walking the project: the
 	// install kept its place inside the project that moved around it.
 	assert local_installed_modules(moved_dir) == ['moved_pkg']
+	// What it wrote down about the move is in the one convention records use, so
+	// the next pass reads back the same checkout rather than a stranger.
+	token := read_local_install_token(relocated) or { panic('no token after the move') }
+	note := os.read_file(local_install_record_path(token)) or { panic(err) }
+	assert note.trim_space() == canonical_install_path(relocated)
+	assert !note.contains('\\'), note
+	assert local_installed_modules(moved_dir) == ['moved_pkg']
 
 	old_dir := os.getwd()
 	os.chdir(moved_dir) or { panic(err) }
@@ -660,6 +667,50 @@ fn test_local_list_and_update_skip_modules_vpm_did_not_install() {
 	by_name := cmd_fail(@LOCATION, '${vexe} update --local vendored')
 	assert by_name.output.contains('refusing to update `vendored`'), by_name.output
 	assert os.is_file(os.join_path(vendored, 'v.mod'))
+}
+
+// Records are absolute and `/`-separated whatever the host, so containment has to
+// be judged in that convention too: `os.path_separator` would be `\` on Windows,
+// where no record could ever be found under its own root again.
+fn test_record_containment_uses_the_record_convention() {
+	assert canonical_path_is_below('C:/proj/pkg', 'C:/proj')
+	assert canonical_path_is_below('C:/proj/nested/pkg', 'C:/proj')
+	assert canonical_path_is_below('/home/me/proj/pkg', '/home/me/proj')
+	assert !canonical_path_is_below('C:/proj', 'C:/proj')
+	assert !canonical_path_is_below('C:/projected/pkg', 'C:/proj')
+	assert !canonical_path_is_below('/elsewhere/pkg', '/home/me/proj')
+	// A root that already ends in a separator does not grow a second one.
+	assert canonical_path_is_below('C:/pkg', 'C:/')
+}
+
+// A bare relative name that exists on disk is a local repository, unless it is a
+// module already installed in the store, shadowing a registered name. Under
+// `--local` the store is the project itself, so only what VPM installed there
+// shadows: `v install --local vendor/dep` still means the repository at that
+// path, not a query to VPM for a package called `vendor.dep`.
+fn test_a_bare_relative_repository_under_the_local_root_is_still_a_repository() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_bare_relative'))
+	project_dir := os.join_path(test_path, 'bare_relative_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'bare_relative'\n}\n") or {
+		panic(err)
+	}
+	vendored := os.join_path(project_dir, 'vendor', 'dep')
+	create_local_git_module(vendored, 'dep')
+	installed := os.join_path(project_dir, 'shadow_pkg')
+	create_local_git_module(installed, 'shadow_pkg')
+	record_local_install(installed) or { panic(err) }
+
+	root := os.real_path(project_dir)
+	// The project's own repository, in the root `--local` points at.
+	assert !path_shadows_installed_module(os.real_path(vendored), root, true)
+	// What VPM installed there does shadow the registered name.
+	assert path_shadows_installed_module(os.real_path(installed), root, true)
+	// The global store holds nothing but installed packages, so all of it does.
+	assert path_shadows_installed_module(os.real_path(vendored), root, false)
+	assert path_shadows_installed_module(root, root, true)
+	// Nothing outside the root is the store's to shadow.
+	assert !path_shadows_installed_module(os.real_path(test_path), root, false)
 }
 
 fn create_local_git_module(repo_path string, module_name string) {

@@ -131,6 +131,18 @@ fn install_dir_matches_note(install_path string, note string) bool {
 	return sha256.hexhash(token) == note
 }
 
+// Records are written and compared in one convention: absolute, with `/` for a
+// separator, on every host. `os.join_path` and `path_is_below` would hand back
+// `\` on Windows, where a record written that way could not be split on `/`
+// again, and the same checkout would read as a stranger the next time.
+fn canonical_path_is_below(path string, root string) bool {
+	if path == root {
+		return false
+	}
+	boundary := if root.ends_with('/') { root } else { root + '/' }
+	return path.starts_with(boundary)
+}
+
 // Where the note's install is under this root, if it is here at all. A project
 // that was renamed or moved took its installs with it, keeping their path inside
 // it, so the same tail under this root is where they went -- a couple of reads
@@ -139,12 +151,12 @@ fn recorded_install_under(note string, recorded string, root string) ?string {
 	if recorded == '' {
 		return none
 	}
-	if path_is_below(recorded, root) && install_dir_matches_note(recorded, note) {
+	if canonical_path_is_below(recorded, root) && install_dir_matches_note(recorded, note) {
 		return recorded
 	}
 	parts := recorded.split('/')
 	for i in 1 .. parts.len {
-		candidate := os.join_path(root, ...parts[i..])
+		candidate := canonical_install_path(os.join_path(root, ...parts[i..]))
 		if candidate == recorded {
 			continue
 		}
