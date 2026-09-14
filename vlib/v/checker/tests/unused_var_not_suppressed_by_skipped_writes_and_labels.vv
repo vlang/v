@@ -21,7 +21,31 @@ fn skipped_control_flow_labels() {
 	}
 }
 
+fn skipped_multi_assignment_targets() {
+	mut x := 1
+	mut y := 2
+	$if prealloc {
+		x, y = 3, 4
+	}
+}
+
+fn parsed_multi_assignment_targets() {
+	mut x := 1
+	mut y := 2
+	x, y = 3, 4
+}
+
+fn label_used_only_in_skipped_goto() {
+	done:
+	$if prealloc {
+		goto done
+	}
+}
+
 fn main() {
 	skipped_assignment_target()
 	skipped_control_flow_labels()
+	skipped_multi_assignment_targets()
+	parsed_multi_assignment_targets()
+	label_used_only_in_skipped_goto()
 }

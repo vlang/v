@@ -215,6 +215,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			disabled_fns: map[string]bool{}
 			comptime_skipped_names: map[string]bool{}
 			comptime_skipped_read_names: map[string]bool{}
+			comptime_skipped_goto_labels: map[string]bool{}
 			export_fn_names: map[string]string{}
 			contextual_anon_struct_types: map[string]bool{}
 			synthesized_anon_struct_types: map[string]bool{}
@@ -5807,7 +5808,8 @@ fn skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, tok token.Token, 
 // turn into identifiers are recorded; selector members follow a dot, while
 // struct-field and named-argument labels precede a colon, so neither is a local
 // reference. A plain assignment target is an identifier occurrence, but not a
-// read; control-flow label operands are neither.
+// read. Goto operands are recorded only in the label namespace, while break and
+// continue label operands are not local references.
 fn (mut p Parser) skip_comptime_block() {
 	if p.tok != .lcbr {
 		p.skip_block()
@@ -5827,8 +5829,17 @@ fn (mut p Parser) skip_comptime_block() {
 	mut lambda_params := []string{}
 	mut lambda_scopes := []SkippedComptimeLambdaScope{}
 	mut shadowed_names := map[string]int{}
+	mut pending_comma_lhs_reads := []string{}
+	mut pending_comma_lhs_depth := -1
 	p.next()
 	for depth > 0 && p.tok != .eof {
+		if pending_comma_lhs_reads.len > 0
+			&& (depth != pending_comma_lhs_depth || p.tok in [.semicolon, .rcbr]) {
+			for key in pending_comma_lhs_reads {
+				p.a.comptime_skipped_read_names[key] = true
+			}
+			pending_comma_lhs_reads.clear()
+		}
 		for lambda_scopes.len > 0
 			&& skipped_lambda_scope_ends(lambda_scopes.last(), p.tok, paren_depth,
 				bracket_depth, depth) {
@@ -5857,15 +5868,29 @@ fn (mut p Parser) skip_comptime_block() {
 		} else if p.tok == .pipe && skipped_pipe_starts_lambda(prev_tok) {
 			in_lambda_params = true
 			lambda_params = []string{}
+		} else if prev_tok == .key_goto && p.tok == .name {
+			p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
 		} else if prev_tok != .dot && prev_tok !in [.key_goto, .key_break, .key_continue]
 			&& (p.tok in [.name, .key_module]
 			|| (p.tok == .key_shared && p.shared_token_is_identifier(false)))
 			&& p.peek() != .colon && shadowed_names[p.lit] == 0 {
 			key := prefix + p.lit
 			p.a.comptime_skipped_names[key] = true
-			if p.peek() != .assign {
+			if paren_depth == 0 && bracket_depth == 0 && p.peek() == .comma {
+				if pending_comma_lhs_reads.len == 0 {
+					pending_comma_lhs_depth = depth
+				}
+				if depth == pending_comma_lhs_depth {
+					pending_comma_lhs_reads << key
+				} else {
+					p.a.comptime_skipped_read_names[key] = true
+				}
+			} else if !(paren_depth == 0 && bracket_depth == 0 && p.peek() == .assign) {
 				p.a.comptime_skipped_read_names[key] = true
 			}
+		} else if p.tok == .assign && paren_depth == 0 && bracket_depth == 0
+			&& depth == pending_comma_lhs_depth {
+			pending_comma_lhs_reads.clear()
 		}
 		match p.tok {
 			.lcbr { depth++ }
@@ -5878,6 +5903,9 @@ fn (mut p Parser) skip_comptime_block() {
 		}
 		prev_tok = p.tok
 		p.next()
+	}
+	for key in pending_comma_lhs_reads {
+		p.a.comptime_skipped_read_names[key] = true
 	}
 }
 

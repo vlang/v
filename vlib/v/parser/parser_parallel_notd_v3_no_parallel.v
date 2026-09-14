@@ -1222,6 +1222,12 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 			p.a.comptime_skipped_read_names[canonical] = true
 		}
 	}
+	for key, skipped in w.a.comptime_skipped_goto_labels {
+		if skipped {
+			_, canonical := p.a.intern_text(key)
+			p.a.comptime_skipped_goto_labels[canonical] = true
+		}
+	}
 	for name, is_contextual in w.a.contextual_anon_struct_types {
 		if is_contextual {
 			_, canonical := p.a.intern_text(name)

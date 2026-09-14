@@ -1957,6 +1957,16 @@ fn (tc &TypeChecker) comptime_skipped_body_reads(node flat.Node, name string) bo
 	return '${file.name}:${node.pos.offset}|${name}' in tc.a.comptime_skipped_read_names
 }
 
+// comptime_skipped_body_uses_goto_label reports whether a skipped compile-time
+// branch jumps to `name`.
+fn (tc &TypeChecker) comptime_skipped_body_uses_goto_label(node flat.Node, name string) bool {
+	if name.len == 0 || tc.a.comptime_skipped_goto_labels.len == 0 {
+		return false
+	}
+	file := tc.a.source_files[node.pos.id] or { return false }
+	return '${file.name}:${node.pos.offset}|${name}' in tc.a.comptime_skipped_goto_labels
+}
+
 fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	if tc.node_is_from_translated_file(node) {
 		return
@@ -2411,6 +2421,10 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 			&& shadow_depth[current.typ] == 0 {
 			used_names[current.typ] = true
 		}
+		mut write_only_lhs_ids := []flat.NodeId{}
+		if current.kind == .assign && current.op == .assign {
+			write_only_lhs_ids = tc.multi_assign_lhs_ids(current)
+		}
 		for i in 0 .. current.children_count {
 			if i % 2 == 0 && current.kind == .decl_assign {
 				lhs := tc.a.child_node(current, i)
@@ -2418,13 +2432,14 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 					continue
 				}
 			}
-			if i == 0 && current.kind == .assign && current.op == .assign {
-				lhs := tc.a.child_node(current, i)
+			child_id := tc.a.child(current, i)
+			if child_id in write_only_lhs_ids {
+				lhs := tc.a.node(child_id)
 				if lhs.kind == .ident {
 					continue
 				}
 			}
-			stack << tc.a.child(current, i)
+			stack << child_id
 		}
 	}
 	return used_names
@@ -2529,7 +2544,8 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 		if tc.label_starts_loop(label_id) {
 			continue
 		}
-		if !used[label.value] {
+		if !used[label.value]
+			&& !tc.comptime_skipped_body_uses_goto_label(node, label.value) {
 			tc.record_warning_at(.unknown_ident, 'label `${label.value}` defined and not used', label_id, tc.a.node(label_id).pos)
 		}
 	}
