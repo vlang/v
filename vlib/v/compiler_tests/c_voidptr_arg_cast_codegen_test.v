@@ -36,10 +36,15 @@ static inline void strict_store_u64(uint64_t* x, uint64_t y) { *x = y; }
 static inline uint64_t strict_load_any(void* x) { return *(uint64_t*)x; }
 static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
 #define strict_get_count(p) ((p)->count)
+#define strict_get_count_alias strict_get_count
 #endif
 '
 	os.write_file(os.join_path(root, 'strict_atomic.h'), header) or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_preinclude.h'), '#define strict_get_preincluded_count(p) ((p)->count)\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_reordered_define.h'), '#define strict_get_reordered_count(p) ((p)->count)\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_reordered_undef.h'), '#undef strict_get_reordered_count\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_nested_api.h'), '#define strict_get_nested_count(p) ((p)->count)\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_nested_wrapper.h'), '#define V3_STRICT_NESTED_HEADER "strict_nested_api.h"\n#include V3_STRICT_NESTED_HEADER\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_state_a.h'), '#define V3_STRICT_ORDERED_LOAD 1\n#define strict_ordered_load_u64(p) (*(p))\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_state_b.h'), '#ifdef V3_STRICT_ORDERED_LOAD\n#undef strict_ordered_load_u64\n#endif\n#include <stdint.h>\nstatic inline uint64_t strict_ordered_load_u64(uint64_t* x) { return *x; }\n') or { panic(err) }
 	path := os.join_path(root, 'main.c.v')
@@ -53,6 +58,9 @@ fn test_c_voidptr_param_pointer_arg_goes_through_voidptr() {
 
 #preinclude "@DIR/strict_preinclude.h"
 #include "@DIR/strict_atomic.h"
+#include "@DIR/strict_reordered_define.h"
+#preinclude "@DIR/strict_reordered_undef.h"
+#include "@DIR/strict_nested_wrapper.h"
 #include "@DIR/strict_state_a.h"
 #include "@DIR/strict_state_b.h"
 #define strict_get_direct_count(p) ((p)->count)
@@ -67,8 +75,11 @@ fn C.strict_load_any(voidptr) u64
 fn C.strict_is_nonnull_u64(voidptr) int
 fn C.strict_ordered_load_u64(voidptr) u64
 fn C.strict_get_count(voidptr) u32
+fn C.strict_get_count_alias(voidptr) u32
 fn C.strict_get_direct_count(voidptr) u32
 fn C.strict_get_preincluded_count(voidptr) u32
+fn C.strict_get_reordered_count(voidptr) u32
+fn C.strict_get_nested_count(voidptr) u32
 
 struct Table {
 mut:
@@ -96,15 +107,21 @@ fn main() {
 		count: 9
 	}
 	macro_count := C.strict_get_count(&item)
+	alias_macro_count := C.strict_get_count_alias(&item)
 	direct_macro_count := C.strict_get_direct_count(&item)
 	preincluded_macro_count := C.strict_get_preincluded_count(&item)
+	reordered_macro_count := C.strict_get_reordered_count(&item)
+	nested_macro_count := C.strict_get_nested_count(&item)
 	println(int(loaded.count).str())
 	println(int(ordered_loaded.count).str())
 	println((same == u64(voidptr(table))).str())
 	println(nonnull.str())
 	println(macro_count.str())
+	println(alias_macro_count.str())
 	println(direct_macro_count.str())
 	println(preincluded_macro_count.str())
+	println(reordered_macro_count.str())
+	println(nested_macro_count.str())
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_out_${os.getpid()}')
@@ -112,8 +129,8 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', '7',
-		'true', '1', '9', '9', '9']
+	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', '7', 'true',
+		'1', '9', '9', '9', '9', '9', '9']
 	generated := os.read_file(out + '.c') or { panic(err) }
 	// The macro is a no-op in C++, where `void*` does not convert back to a
 	// concrete pointer and the argument has to stay as written.
@@ -129,12 +146,21 @@ fn main() {
 	// ... but an active function-like macro receives the original typed pointer.
 	assert generated.contains('strict_get_count(&item)'), generated
 	assert !generated.contains('strict_get_count(v_c_voidptr_arg('), generated
+	// Object-like aliases inherit function-like macro status.
+	assert generated.contains('strict_get_count_alias(&item)'), generated
+	assert !generated.contains('strict_get_count_alias(v_c_voidptr_arg('), generated
 	// A function-like macro declared directly in V source also keeps the typed pointer.
 	assert generated.contains('strict_get_direct_count(&item)'), generated
 	assert !generated.contains('strict_get_direct_count(v_c_voidptr_arg('), generated
 	// A function-like macro from a preincluded header also keeps the typed pointer.
 	assert generated.contains('strict_get_preincluded_count(&item)'), generated
 	assert !generated.contains('strict_get_preincluded_count(v_c_voidptr_arg('), generated
+	// Preincludes are scanned in the order they are emitted, before ordinary headers.
+	assert generated.contains('strict_get_reordered_count(&item)'), generated
+	assert !generated.contains('strict_get_reordered_count(v_c_voidptr_arg('), generated
+	// Literal-valued include macros are resolved so nested macro definitions are visible.
+	assert generated.contains('strict_get_nested_count(&item)'), generated
+	assert !generated.contains('strict_get_nested_count(v_c_voidptr_arg('), generated
 	// ... while an argument that is already `voidptr` is passed unchanged.
 	assert !generated.contains('strict_load_any(v_c_voidptr_arg('), generated
 

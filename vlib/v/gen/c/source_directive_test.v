@@ -49,9 +49,9 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	// cannot be the declaration they use and the prototype has to stay.
 	mut postinclude_g := FlatGen.new()
 	postinclude_g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'postinclude'
-		typ: '"${header}"'
+		typ:   '"${header}"'
 	}, source, false)
 	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
 	assert '#include "${header}"' in postinclude_g.postinclude_directives
@@ -60,9 +60,9 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	// A preincluded header comes first, so it owns what it declares.
 	mut preinclude_g := FlatGen.new()
 	preinclude_g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'preinclude'
-		typ: '"${header}"'
+		typ:   '"${header}"'
 	}, source, false)
 	assert 'postinclude_api' !in preinclude_g.inlined_c_declared_fns
 	assert !preinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source, 'main')
@@ -83,9 +83,9 @@ fn test_include_preserves_header_without_scanning_declarations() {
 
 	mut g := FlatGen.new()
 	g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'include'
-		typ: '"${header}"'
+		typ:   '"${header}"'
 	}, source, false)
 
 	assert g.c_directives.len == 1
@@ -119,14 +119,14 @@ fn test_preinclude_scans_macro_state_without_scanning_declarations() {
 
 	mut g := FlatGen.new()
 	g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'preinclude'
-		typ: '"${config_header}"'
+		typ:   '"${config_header}"'
 	}, source, false)
 	g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'preinclude'
-		typ: '"${api_header}"'
+		typ:   '"${api_header}"'
 	}, source, false)
 
 	assert 'chained_api' in g.inlined_c_active_macros
@@ -159,6 +159,92 @@ fn test_consecutive_includes_share_macro_state() {
 	}
 
 	assert 'ordered_api' !in g.inlined_c_active_macros
+}
+
+fn test_preincludes_are_scanned_before_ordinary_includes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preinclude_macro_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	define_header := os.join_path(root, 'define.h')
+	undef_header := os.join_path(root, 'undef.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(define_header, '#define reordered_api(p) ((p)->value)\n')!
+	os.write_file(undef_header, '#undef reordered_api\n')!
+
+	mut ast := &flat.FlatAst{}
+	ast.nodes = [
+		flat.Node{ kind: .file, value: source },
+		flat.Node{ kind: .directive, value: 'include', typ: '"${define_header}"' },
+		flat.Node{ kind: .directive, value: 'preinclude', typ: '"${undef_header}"' },
+	]
+	mut g := FlatGen.new()
+	g.a = ast
+	nodes := g.top_level_nodes()
+	g.collect_preinclude_active_macros(nodes)
+	for node_idx in nodes {
+		node := ast.nodes[node_idx]
+		if node.kind == .directive {
+			g.collect_c_directive_at(node_idx, 'main', node, source, false, false)
+		}
+	}
+
+	assert 'reordered_api' in g.inlined_c_active_macros
+}
+
+fn test_function_macro_status_propagates_through_aliases() {
+	mut g := FlatGen.new()
+	source := os.join_path(os.vtmp_dir(), 'macro_alias.c.v')
+	for directive in [
+		flat.Node{ kind: .directive, value: 'define', typ: 'alias_impl(p) ((p)->value)' },
+		flat.Node{ kind: .directive, value: 'define', typ: 'alias_middle alias_impl' },
+		flat.Node{ kind: .directive, value: 'define', typ: 'alias_api alias_middle' },
+	] {
+		g.collect_c_directive('main', directive, source, false)
+	}
+	assert 'alias_api' in g.inlined_c_active_macros
+
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'undef'
+		typ:   'alias_impl'
+	}, source, false)
+	assert 'alias_api' !in g.inlined_c_active_macros
+}
+
+fn test_macro_expanded_nested_include_is_scanned_or_marked_unresolved() {
+	root := os.join_path(os.vtmp_dir(), 'v3_macro_expanded_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.c.v')
+	nested_header := os.join_path(root, 'nested.h')
+	wrapper_header := os.join_path(root, 'wrapper.h')
+	os.write_file(nested_header, '#define nested_impl(p) ((p)->value)\n#define nested_api nested_impl\n')!
+	os.write_file(wrapper_header, '#define NESTED_HEADER "nested.h"\n#include NESTED_HEADER\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${wrapper_header}"'
+	}, source, false)
+	assert 'nested_api' in g.inlined_c_active_macros
+	assert source !in g.files_with_unscanned_c_includes
+
+	missing_header := os.join_path(root, 'missing_wrapper.h')
+	os.write_file(missing_header, '#define MISSING_HEADER "missing.h"\n#include MISSING_HEADER\n')!
+	mut unresolved := FlatGen.new()
+	unresolved.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${missing_header}"'
+	}, source, false)
+	assert source in unresolved.files_with_unscanned_c_includes
 }
 
 fn test_compiler_include_search_output_is_parsed() {
@@ -211,8 +297,7 @@ fn test_unresolved_header_fallback_is_scoped_to_its_c_declarations() {
 	assert !g.c_symbol_may_be_from_unscanned_header('C.known_elsewhere', 'known_elsewhere')
 	g.c_extern_forced_decls['definitely_a_function'] = true
 	g.note_c_fn_decl_source('definitely_a_function', source)
-	assert !g.c_symbol_may_be_from_unscanned_header('C.definitely_a_function',
-		'definitely_a_function')
+	assert !g.c_symbol_may_be_from_unscanned_header('C.definitely_a_function', 'definitely_a_function')
 }
 
 fn test_direct_macro_tracking_honors_conditionals() {
@@ -606,9 +691,9 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 	g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
 	for kind in ['include', 'preinclude'] {
 		g.collect_c_directive('main', flat.Node{
-			kind: .directive
+			kind:  .directive
 			value: kind
-			typ: '${inactive_target} <ownership_probe.h>'
+			typ:   '${inactive_target} <ownership_probe.h>'
 		}, source, false)
 	}
 	assert source !in g.files_with_c_includes
@@ -620,9 +705,9 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 	active_g.set_target(pref.target_from(os.user_os(), 'amd64') or { panic(err) })
 	active_g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
 	active_g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'include'
-		typ: '${os.user_os()} <ownership_probe.h>'
+		typ:   '${os.user_os()} <ownership_probe.h>'
 	}, source, false)
 	assert source in active_g.files_with_c_includes
 	assert !active_g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')

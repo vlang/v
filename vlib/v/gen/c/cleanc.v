@@ -414,6 +414,9 @@ mut:
 	mods_with_c_libs               map[string]bool
 	mods_with_c_includes           map[string]bool
 	inlined_c_active_macros        map[string]bool
+	c_function_like_macros         map[string]bool
+	c_maybe_function_like_macros   map[string]bool
+	c_function_macro_aliases       map[string]string
 	files_with_unscanned_c_includes map[string]bool
 	c_fn_decl_source_files          map[string][]string
 	direct_c_macro_conditionals    []CCacheConditional
@@ -1172,6 +1175,9 @@ pub fn FlatGen.new() FlatGen {
 		mods_with_c_libs: map[string]bool{}
 		mods_with_c_includes: map[string]bool{}
 		inlined_c_active_macros: map[string]bool{}
+		c_function_like_macros: map[string]bool{}
+		c_maybe_function_like_macros: map[string]bool{}
+		c_function_macro_aliases: map[string]string{}
 		files_with_unscanned_c_includes: map[string]bool{}
 		c_fn_decl_source_files: map[string][]string{}
 		direct_c_include_macros: map[string][]string{}
@@ -3099,6 +3105,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.mods_with_c_libs.clear()
 	g.mods_with_c_includes.clear()
 	g.inlined_c_active_macros.clear()
+	g.c_function_like_macros.clear()
+	g.c_maybe_function_like_macros.clear()
+	g.c_function_macro_aliases.clear()
 	g.files_with_unscanned_c_includes.clear()
 	g.c_fn_decl_source_files.clear()
 	g.direct_c_macro_conditionals.clear()
@@ -4273,6 +4282,9 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut preferred_shared_fn_params := map[string][]bool{}
 	mut fn_signature_registrations := []FnSignatureRegistration{cap: 16_384}
 	top_level_nodes := g.top_level_nodes()
+	if g.incremental_fn_names.len == 0 {
+		g.collect_preinclude_active_macros(top_level_nodes)
+	}
 	if g.output_cross_c {
 		g.index_cross_directive_guards()
 	}
@@ -4401,7 +4413,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			continue
 		}
 		if node.kind == .directive {
-			directive_handled := g.collect_c_directive_at(node_idx, cur_module, node, cur_file, !seen_import_in_file)
+			directive_handled := g.collect_c_directive_at(node_idx, cur_module, node, cur_file,
+				!seen_import_in_file, false)
 			if directive_handled {
 				continue
 			}
@@ -4972,7 +4985,35 @@ fn (mut g FlatGen) note_c_flag_directive(module_name string, source_file string,
 }
 
 fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, source_file string, before_import bool) bool {
-	return g.collect_c_directive_at(-1, module_name, node, source_file, before_import)
+	return g.collect_c_directive_at(-1, module_name, node, source_file, before_import, true)
+}
+
+// collect_preinclude_active_macros replays preincluded headers before ordinary
+// directives, matching their placement at the start of the generated C unit.
+fn (mut g FlatGen) collect_preinclude_active_macros(top_level_nodes []i32) {
+	include_dirs := c_flag_include_dirs(g.c_flags)
+	mut source_file := ''
+	for node_idx in top_level_nodes {
+		node := g.a.nodes[node_idx]
+		if node.kind == .file {
+			source_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value != 'preinclude' || node.typ.len == 0 {
+			continue
+		}
+		mut directive_raw := node.typ
+		if g.output_cross_c {
+			if _ := c_directive_target_condition(node.typ) {
+				directive_raw = c_directive_strip_target_prefix(node.typ)
+			}
+		}
+		include_arg := c_include_arg_for_target(directive_raw, g.compiler_vroot, source_file,
+			g.target)
+		if include_arg.len > 0 && !c_include_arg_is_source_file(include_arg) {
+			g.collect_included_c_active_macros(include_arg, source_file, include_dirs)
+		}
+	}
 }
 
 // index_cross_directive_guards records, for portable output, the C preprocessor
@@ -5169,7 +5210,7 @@ fn (g &FlatGen) guarded_c_directive(node_idx int, prefix_condition string, direc
 	return '#if ${guard}\n${directive}\n#endif'
 }
 
-fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node flat.Node, source_file string, before_import bool) bool {
+fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node flat.Node, source_file string, before_import bool, scan_preinclude_macros bool) bool {
 	if node.kind != .directive {
 		return false
 	}
@@ -5196,7 +5237,7 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		directive := g.c_include_directive_text(node_idx, cross_prefix_condition, include_arg, source_file)
 		if node.value == 'preinclude' {
 			g.note_c_include_directive(module_name, source_file)
-			if !c_include_arg_is_source_file(include_arg) {
+			if scan_preinclude_macros && !c_include_arg_is_source_file(include_arg) {
 				g.collect_included_c_active_macros(include_arg, source_file, c_flag_include_dirs(g.c_flags))
 			}
 			if directive !in g.preinclude_directives {
@@ -8023,12 +8064,18 @@ fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
 			name_end++
 		}
 		if name_end > 0 {
-			g.inlined_c_active_macros[arg[..name_end]] = true
+			g.c_maybe_function_like_macros[arg[..name_end]] = true
 		}
 	}
+	g.refresh_c_active_macro_aliases()
 }
 
 fn (mut g FlatGen) record_c_active_macro_directive(directive string, ambiguous bool) {
+	g.record_c_active_macro_directive_deferred(directive, ambiguous)
+	g.refresh_c_active_macro_aliases()
+}
+
+fn (mut g FlatGen) record_c_active_macro_directive_deferred(directive string, ambiguous bool) {
 	directive_name := c_directive_name(directive)
 	if directive_name !in ['define', 'undef'] {
 		return
@@ -8044,10 +8091,71 @@ fn (mut g FlatGen) record_c_active_macro_directive(directive string, ambiguous b
 	macro_name := macro_arg[..name_end]
 	is_function_like := directive_name == 'define' && name_end < macro_arg.len
 		&& macro_arg[name_end] == `(`
+	if ambiguous {
+		if is_function_like {
+			g.c_maybe_function_like_macros[macro_name] = true
+		} else if directive_name == 'define' {
+			alias := c_object_macro_alias_target(macro_arg[name_end..])
+			if g.c_macro_name_may_be_function_like(alias) {
+				g.c_maybe_function_like_macros[macro_name] = true
+			}
+		}
+		return
+	}
+	g.c_function_like_macros.delete(macro_name)
+	g.c_maybe_function_like_macros.delete(macro_name)
+	g.c_function_macro_aliases.delete(macro_name)
 	if is_function_like {
-		g.inlined_c_active_macros[macro_name] = true
-	} else if !ambiguous {
-		g.inlined_c_active_macros.delete(macro_name)
+		g.c_function_like_macros[macro_name] = true
+	} else if directive_name == 'define' {
+		alias := c_object_macro_alias_target(macro_arg[name_end..])
+		if alias.len > 0 {
+			g.c_function_macro_aliases[macro_name] = alias
+		}
+	}
+}
+
+fn (g &FlatGen) c_macro_name_may_be_function_like(name string) bool {
+	mut current := name
+	mut seen := map[string]bool{}
+	for current.len > 0 && current !in seen {
+		if current in g.c_function_like_macros || current in g.c_maybe_function_like_macros {
+			return true
+		}
+		seen[current] = true
+		current = g.c_function_macro_aliases[current]
+	}
+	return false
+}
+
+fn c_object_macro_alias_target(replacement string) string {
+	alias := replacement.trim_space()
+	if alias.len == 0 || alias[0].is_digit()
+		|| !alias.bytes().all(c_ident_char(it)) {
+		return ''
+	}
+	return alias
+}
+
+fn (mut g FlatGen) refresh_c_active_macro_aliases() {
+	g.inlined_c_active_macros.clear()
+	for name in g.c_function_like_macros.keys() {
+		g.inlined_c_active_macros[name] = true
+	}
+	for name in g.c_maybe_function_like_macros.keys() {
+		g.inlined_c_active_macros[name] = true
+	}
+	for _ in 0 .. g.c_function_macro_aliases.len {
+		mut changed := false
+		for alias, target in g.c_function_macro_aliases {
+			if target in g.inlined_c_active_macros && alias !in g.inlined_c_active_macros {
+				g.inlined_c_active_macros[alias] = true
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
 	}
 }
 
@@ -8110,16 +8218,17 @@ fn (mut g FlatGen) collect_included_c_active_macros(include_arg string, source_f
 		if os.is_file(path) {
 			found = true
 			g.collect_included_c_active_macros_from_file(path, include_dirs, mut active_paths,
-				false)
+				source_file, include_arg.trim_space().starts_with('"'), false)
 			break
 		}
 	}
+	g.refresh_c_active_macro_aliases()
 	if !found && source_file.len > 0 {
 		g.files_with_unscanned_c_includes[source_file] = true
 	}
 }
 
-fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, include_dirs []string, mut active_paths map[string]bool, ambient_ambiguous bool) {
+fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, include_dirs []string, mut active_paths map[string]bool, source_file string, mark_unscanned_nested_includes bool, ambient_ambiguous bool) {
 	real_path := os.real_path(path)
 	if real_path in active_paths {
 		return
@@ -8145,7 +8254,7 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 		}
 		mutation_is_ambiguous := ambient_ambiguous || directive_is_ambiguous
 		if directive_name in ['define', 'undef'] {
-			g.record_c_active_macro_directive(clean, mutation_is_ambiguous)
+			g.record_c_active_macro_directive_deferred(clean, mutation_is_ambiguous)
 			c_record_include_macro_definition(clean, mutation_is_ambiguous,
 				mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros, false)
 			continue
@@ -8154,17 +8263,50 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 			continue
 		}
 		include_arg := c_include_arg(c_directive_arg(clean), g.compiler_vroot, real_path)
-		if !c_include_arg_is_literal(include_arg) {
+		is_macro_expanded := !c_include_arg_is_literal(include_arg)
+		include_args := c_active_macro_include_args(include_arg, g.direct_c_include_macros,
+			g.direct_c_dynamic_macros)
+		if include_args.len == 0 {
+			if is_macro_expanded && mark_unscanned_nested_includes && source_file.len > 0 {
+				g.files_with_unscanned_c_includes[source_file] = true
+			}
 			continue
 		}
-		for nested_path in g.c_include_scan_paths(include_arg, real_path, include_dirs) {
-			if os.is_file(nested_path) {
-				g.collect_included_c_active_macros_from_file(nested_path, include_dirs,
-					mut active_paths, mutation_is_ambiguous)
-				break
+		for nested_include_arg in include_args {
+			mut found := false
+			for nested_path in g.c_include_scan_paths(nested_include_arg, real_path, include_dirs) {
+				if os.is_file(nested_path) {
+					found = true
+					g.collect_included_c_active_macros_from_file(nested_path, include_dirs,
+						mut active_paths, source_file, mark_unscanned_nested_includes
+							&& nested_include_arg.trim_space().starts_with('"'),
+						mutation_is_ambiguous)
+					break
+				}
+			}
+			if !found && is_macro_expanded && mark_unscanned_nested_includes
+				&& source_file.len > 0 {
+				g.files_with_unscanned_c_includes[source_file] = true
 			}
 		}
 	}
+}
+
+fn c_active_macro_include_args(include_arg string, include_macros map[string][]string, dynamic_include_macros map[string]bool) []string {
+	if c_include_arg_is_literal(include_arg) {
+		return [include_arg]
+	}
+	macro_name := include_arg.trim_space()
+	if macro_name.len == 0 || macro_name in dynamic_include_macros {
+		return []string{}
+	}
+	mut result := []string{}
+	for value in include_macros[macro_name] {
+		if c_include_arg_is_literal(value) && value !in result {
+			result << value
+		}
+	}
+	return result
 }
 
 fn (mut g FlatGen) collect_inlined_c_declarations(text string) {
