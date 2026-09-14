@@ -4058,11 +4058,19 @@ fn c_identifier_continue(c u8) bool {
 }
 
 fn cache_string_symbol(value string) string {
+	return '_v3_lit_${content_symbol_suffix(value)}'
+}
+
+// content_symbol_suffix names a symbol after what it holds rather than after
+// where it turned up, so that two separately generated translation units agree
+// on it. The length goes in alongside the hash, so agreeing takes more than a
+// hash collision.
+fn content_symbol_suffix(value string) string {
 	mut hash := u64(1469598103934665603)
 	for c in value.bytes() {
 		hash = (hash ^ u64(c)) * u64(1099511628211)
 	}
-	return '_v3_lit_${value.len}_${hash.hex()}'
+	return '${value.len}_${hash.hex()}'
 }
 
 // node_kind_id supports node kind id handling for c.

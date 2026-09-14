@@ -202,12 +202,18 @@ fn cross_compile_probe(payload string) ?(string, string) {
 
 // cross_compile_probe_with does the same with extra flags on the V command line.
 fn cross_compile_probe_with(payload string, extra string) ?(string, string) {
+	return cross_compile_probe_full(payload, extra, '')
+}
+
+// cross_compile_probe_full also puts `prelude` in front of the embedded constant,
+// which moves everything after it in the AST.
+fn cross_compile_probe_full(payload string, extra string, prelude string) ?(string, string) {
 	vexe := os.getenv('VEXE')
 	if vexe == '' {
 		return none
 	}
 	tag := if extra == '' { '' } else { '_${extra.replace('-', '')}' }
-	dir := os.join_path(os.vtmp_dir(), 'embed_file_cross_${os.getpid()}_${payload.len}${tag}')
+	dir := os.join_path(os.vtmp_dir(), 'embed_file_cross_${os.getpid()}_${payload.len}${tag}_${prelude.len}')
 	os.mkdir_all(dir) or { return none }
 	os.write_file(os.join_path(dir, 'payload.bin'), payload) or { return none }
 	src := os.join_path(dir, 'prog.v')
@@ -216,6 +222,7 @@ fn cross_compile_probe_with(payload string, extra string) ?(string, string) {
 	// that first read, which made this a race over one shared constant.
 	os.write_file(src, "module main
 
+${prelude}
 const embedded = \$embed_file('payload.bin')
 
 // The same file embedded a second time must not get a second copy of the bytes.
@@ -385,6 +392,52 @@ fn test_cross_output_never_declares_an_over_large_object() {
 // reserved. Under `-prealloc` it must not come out of the preallocator, because
 // `_vinit` fills it before `prealloc_vinit()` has installed the first arena, and
 // that installation would then orphan whatever the join had already taken.
+// externally_linked_u8_buffers returns the names the generated C imports as
+// `extern u8*`. A split payload is joined into one of those, and a cached module
+// keeps that name in its object file, so the name has to come out the same in
+// the next program that links against it.
+fn externally_linked_u8_buffers(text string) []string {
+	mut names := []string{}
+	mut rest := text
+	for {
+		at := rest.index('extern u8* ') or { break }
+		rest = rest[at + 'extern u8* '.len..]
+		name := rest.all_before(';')
+		if name.len > 0 && !name.contains(' ') && !name.contains('\n') {
+			names << name
+		}
+	}
+	names.sort()
+	return names
+}
+
+// test_cross_output_names_joined_buffers_after_their_contents covers what a
+// cached module needs from those names. Naming them after a position in the AST
+// would give the same payload a different name in the next program, which either
+// fails to link or, worse, finds something else.
+fn test_cross_output_names_joined_buffers_after_their_contents() {
+	if !probe_splits_over_large_payloads() {
+		return
+	}
+	payload := payload_of(large_payload_len)
+	_, plain := cross_compile_probe_full(payload, '', '') or { return }
+	plain_text := os.read_file(plain) or { '' }
+	os.rmdir_all(os.dir(plain)) or {}
+	// The same payload, with everything around it moved.
+	shifted_prelude := 'fn shifted_a() int { return 1 }
+fn shifted_b(x int) int { return x + 2 }
+struct Shifted { field int }
+'
+	_, shifted := cross_compile_probe_full(payload, '', shifted_prelude) or { return }
+	shifted_text := os.read_file(shifted) or { '' }
+	os.rmdir_all(os.dir(shifted)) or {}
+	assert plain_text != '' && shifted_text != ''
+	names := externally_linked_u8_buffers(plain_text)
+	// Otherwise the case this test is about would not arise.
+	assert names.len > 0
+	assert names == externally_linked_u8_buffers(shifted_text), 'the joined buffer is named after where the payload sits rather than after what it holds'
+}
+
 fn test_cross_snapshot_runs_under_prealloc() {
 	$if windows {
 		return

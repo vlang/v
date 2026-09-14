@@ -290,52 +290,37 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 	if data.kind != .string_literal || !data.is_embed_payload() {
 		return false
 	}
-	// The objects are named after the first node carrying these bytes, so the same
-	// file embedded twice, or an expression a generic specialization cloned, ends
-	// up pointing at one copy rather than at a private one each.
-	blob_id := g.embed_blob_symbol_index(data_id, data.value)
+	// The objects are named after the bytes they hold, not after where in the AST
+	// they turned up. That shares one copy between the same file embedded twice
+	// and between the specializations of a generic that cloned the expression,
+	// and it keeps the externally linked joined buffer nameable by a separately
+	// generated translation unit, which is what the module cache produces.
 	if data.value.len > c_max_object_size {
 		// Split across several objects, which `_vinit` joins once into the buffer
 		// named here. Reading a pointer rather than joining at every evaluation is
 		// what keeps a `$embed_file` inside a called function from allocating a
 		// copy per call, and doing it before any thread starts is what keeps two
 		// readers of the same embedded constant off a lazy initialization.
-		g.write('_v_embed_joined_')
-		g.sb.write_decimal(i64(blob_id))
+		g.write('_v_embed_joined_${embed_blob_symbol(data.value)}')
 		return true
 	}
 	if embed_payload_needs_blob(data.value.len) {
 		// Too long to spell as a literal here; gen_embed_file_blobs defines the
 		// object this points at, keyed by the same node.
-		g.write('(u8*)_v_embed_blob_${blob_id}')
+		g.write('(u8*)_v_embed_blob_${embed_blob_symbol(data.value)}')
 		return true
 	}
 	g.write('(u8*)"${c_byte_string_escape(data.value)}"')
 	return true
 }
 
-// embed_blob_symbol_index returns the node index whose name the objects holding
-// `payload` are built from: the first node carrying exactly these bytes. Identical
-// payloads therefore share one set of objects, the way the interned literal table
-// shared identical literals before this took over from it.
-fn (g &FlatGen) embed_blob_symbol_index(node_id flat.NodeId, payload string) int {
-	for i in 0 .. g.a.nodes.len {
-		node := unsafe { &g.a.nodes[i] }
-		if node.kind == .string_literal && node.is_embed_payload() && node.value == payload {
-			return i
-		}
-	}
-	return int(node_id)
-}
-
-// embed_blob_is_canonical reports whether the node at `i` is the one the objects
-// for its payload are named after, so that the definitions are emitted once.
-fn (g &FlatGen) embed_blob_is_canonical(i int) bool {
-	node := unsafe { &g.a.nodes[i] }
-	if node.kind != .string_literal || !node.is_embed_payload() {
-		return false
-	}
-	return g.embed_blob_symbol_index(flat.NodeId(i), node.value) == i
+// embed_blob_symbol names the objects holding `payload` after its content, in
+// the same shape the module cache uses for ordinary literals. A whole-program
+// AST node index would not do: a cached module's object file keeps an external
+// reference to the joined buffer, and the next program to reuse that object can
+// place the same payload at a different index.
+fn embed_blob_symbol(payload string) string {
+	return content_symbol_suffix(payload)
 }
 
 // gen_embed_file_blobs defines the file scope arrays that hold the `$embed_file`
@@ -352,29 +337,32 @@ fn (g &FlatGen) embed_blob_is_canonical(i int) bool {
 // of being spelled take this path.
 fn (mut g FlatGen) gen_embed_file_blobs() {
 	mut defined := 0
+	mut seen := map[string]bool{}
 	for i in 0 .. g.a.nodes.len {
-		if !g.embed_blob_is_canonical(i) {
+		node := unsafe { &g.a.nodes[i] }
+		if node.kind != .string_literal || !node.is_embed_payload() {
 			continue
 		}
-		node := unsafe { &g.a.nodes[i] }
 		if !embed_payload_needs_blob(node.value.len) {
 			continue
 		}
+		sym := embed_blob_symbol(node.value)
+		if seen[sym] {
+			continue
+		}
+		seen[sym] = true
 		if node.value.len <= c_max_object_size {
-			g.write('static const unsigned char _v_embed_blob_')
-			g.sb.write_decimal(i64(i))
+			g.write('static const unsigned char _v_embed_blob_${sym}')
 			g.write_embed_blob_bytes(node.value, 0, node.value.len)
 			defined++
 			continue
 		}
-		g.write_embed_blob_chunks(i, node.value)
+		g.write_embed_blob_chunks(sym, node.value)
 		// The joined buffer has external linkage: a parallel C build repeats this
 		// prefix per unit, and a `static` pointer would leave every unit but the
 		// one that runs `_vinit` holding its own null copy. gen_embed_blob_joined
 		// defines it, next to the `_vinit` that fills it.
-		g.write('extern u8* _v_embed_joined_')
-		g.sb.write_decimal(i64(i))
-		g.writeln(';')
+		g.writeln('extern u8* _v_embed_joined_${sym};')
 		defined++
 	}
 	if defined > 0 {
@@ -386,16 +374,22 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 // every embedded file that had to be split. Both the declarations and the
 // `_vinit` lines are derived from the AST this way, so the parallel tail worker,
 // which generates `_vinit` from its own FlatGen, arrives at the same list.
-fn (mut g FlatGen) for_each_embed_blob_chunked(each fn (mut FlatGen, int, string)) {
+fn (mut g FlatGen) for_each_embed_blob_chunked(each fn (mut FlatGen, string, string)) {
+	mut seen := map[string]bool{}
 	for i in 0 .. g.a.nodes.len {
-		if !g.embed_blob_is_canonical(i) {
+		node := unsafe { &g.a.nodes[i] }
+		if node.kind != .string_literal || !node.is_embed_payload() {
 			continue
 		}
-		node := unsafe { &g.a.nodes[i] }
 		if node.value.len <= c_max_object_size {
 			continue
 		}
-		each(mut g, i, node.value)
+		sym := embed_blob_symbol(node.value)
+		if seen[sym] {
+			continue
+		}
+		seen[sym] = true
+		each(mut g, sym, node.value)
 	}
 }
 
@@ -408,18 +402,14 @@ fn (g &FlatGen) has_chunked_embed_blobs() bool {
 			return true
 		}
 	}
-	// Duplicates change nothing here: if any payload needs joining, so does the
-	// node its objects are named after.
 	return false
 }
 
 // gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
 // right before it so that the definition lands in the same translation unit.
 fn (mut g FlatGen) gen_embed_blob_joined() {
-	g.for_each_embed_blob_chunked(fn (mut g FlatGen, node_idx int, payload string) {
-		g.write('u8* _v_embed_joined_')
-		g.sb.write_decimal(i64(node_idx))
-		g.writeln(' = NULL;')
+	g.for_each_embed_blob_chunked(fn (mut g FlatGen, sym string, payload string) {
+		g.writeln('u8* _v_embed_joined_${sym} = NULL;')
 	})
 }
 
@@ -428,12 +418,8 @@ fn (mut g FlatGen) gen_embed_blob_joined() {
 fn (mut g FlatGen) gen_embed_blob_joins() {
 	chunk_ct := g.cname('embed_file.EmbedFileChunk')
 	join_fn := g.cname('embed_file.join_chunks')
-	g.for_each_embed_blob_chunked(fn [chunk_ct, join_fn] (mut g FlatGen, node_idx int, payload string) {
-		g.write('\t_v_embed_joined_')
-		g.sb.write_decimal(i64(node_idx))
-		g.sb.write_string(' = ${join_fn}((${chunk_ct}*)_v_embed_blob_')
-		g.sb.write_decimal(i64(node_idx))
-		g.sb.write_string(', ')
+	g.for_each_embed_blob_chunked(fn [chunk_ct, join_fn] (mut g FlatGen, sym string, payload string) {
+		g.write('\t_v_embed_joined_${sym} = ${join_fn}((${chunk_ct}*)_v_embed_blob_${sym}, ')
 		g.sb.write_decimal(i64(payload.len))
 		g.writeln(');')
 	})
@@ -442,7 +428,7 @@ fn (mut g FlatGen) gen_embed_blob_joins() {
 // write_embed_blob_chunks emits `payload` as byte objects of an acceptable size,
 // followed by the tables that list them. Table `n` is named with the suffix `_tn`,
 // except the first, which carries the bare name the initializer points at.
-fn (mut g FlatGen) write_embed_blob_chunks(node_idx int, payload string) {
+fn (mut g FlatGen) write_embed_blob_chunks(sym string, payload string) {
 	parts := embed_blob_part_count(payload.len)
 	for part in 0 .. parts {
 		offset := part * c_max_object_size
@@ -450,9 +436,7 @@ fn (mut g FlatGen) write_embed_blob_chunks(node_idx int, payload string) {
 		if part_len > c_max_object_size {
 			part_len = c_max_object_size
 		}
-		g.write('static const unsigned char _v_embed_blob_')
-		g.sb.write_decimal(i64(node_idx))
-		g.sb.write_u8(`_`)
+		g.write('static const unsigned char _v_embed_blob_${sym}_')
 		g.sb.write_decimal(i64(part))
 		g.write_embed_blob_bytes(payload, offset, part_len)
 	}
@@ -467,7 +451,7 @@ fn (mut g FlatGen) write_embed_blob_chunks(node_idx int, payload string) {
 			listed = per_table
 		}
 		g.write('static const ${chunk_ct} ')
-		g.write_embed_blob_table_name(node_idx, table)
+		g.write_embed_blob_table_name(sym, table)
 		g.sb.write_string('[')
 		g.sb.write_decimal(i64(listed + 1))
 		g.writeln('] = {')
@@ -478,9 +462,7 @@ fn (mut g FlatGen) write_embed_blob_chunks(node_idx int, payload string) {
 			if part_len > c_max_object_size {
 				part_len = c_max_object_size
 			}
-			g.write('{.data = (u8*)_v_embed_blob_')
-			g.sb.write_decimal(i64(node_idx))
-			g.sb.write_u8(`_`)
+			g.write('{.data = (u8*)_v_embed_blob_${sym}_')
 			g.sb.write_decimal(i64(part))
 			g.sb.write_string(', .len = ')
 			g.sb.write_decimal(i64(part_len))
@@ -489,7 +471,7 @@ fn (mut g FlatGen) write_embed_blob_chunks(node_idx int, payload string) {
 		if table + 1 < tables {
 			// A zero length entry that still carries a pointer continues the list.
 			g.write('{.data = (u8*)')
-			g.write_embed_blob_table_name(node_idx, table + 1)
+			g.write_embed_blob_table_name(sym, table + 1)
 			g.writeln(', .len = 0},')
 		} else {
 			g.writeln('{.data = NULL, .len = 0},')
@@ -498,9 +480,8 @@ fn (mut g FlatGen) write_embed_blob_chunks(node_idx int, payload string) {
 	}
 }
 
-fn (mut g FlatGen) write_embed_blob_table_name(node_idx int, table int) {
-	g.sb.write_string('_v_embed_blob_')
-	g.sb.write_decimal(i64(node_idx))
+fn (mut g FlatGen) write_embed_blob_table_name(sym string, table int) {
+	g.sb.write_string('_v_embed_blob_${sym}')
 	if table > 0 {
 		g.sb.write_string('_t')
 		g.sb.write_decimal(i64(table))
