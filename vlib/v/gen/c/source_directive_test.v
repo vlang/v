@@ -249,7 +249,7 @@ fn test_include_next_activates_unscanned_header_fallback() {
 	assert source in g.files_with_unscanned_c_includes
 
 	mut forced := FlatGen.new()
-	forced.collect_included_c_active_macros('"${wrapper}"', '', []string{})
+	forced.collect_included_c_active_macros('"${wrapper}"', '', []string{}, false)
 	assert forced.has_unscanned_forced_c_include
 }
 
@@ -284,6 +284,65 @@ fn test_preincludes_are_scanned_before_ordinary_includes() {
 	}
 
 	assert 'reordered_api' in g.inlined_c_active_macros
+}
+
+fn test_cross_guarded_include_macro_mutations_are_ambiguous() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cross_guarded_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	define_header := os.join_path(root, 'define.h')
+	undef_header := os.join_path(root, 'undef.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(define_header, '#define cross_guarded_api(p) ((p)->value)\n')!
+	os.write_file(undef_header, '#undef cross_guarded_api\n')!
+
+	mut ast := flat.FlatAst.new()
+	ast.add_node(flat.Node{ kind: .file, value: source })
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: '"${define_header}"' })
+	guarded_include := ast.add_node(flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${undef_header}"'
+	})
+	block_children_start := ast.children.len
+	ast.children << guarded_include
+	block := ast.add_node(flat.Node{
+		kind:           .block
+		children_start: i32(block_children_start)
+		children_count: 1
+	})
+	if_children_start := ast.children.len
+	ast.children << block
+	ast.add_node(flat.Node{
+		kind:           .comptime_if
+		value:          'windows'
+		children_start: i32(if_children_start)
+		children_count: 1
+	})
+
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.set_output_cross_c(true)
+	g.index_cross_directive_guards()
+	for node_idx in g.top_level_nodes() {
+		node := ast.nodes[node_idx]
+		if node.kind == .directive {
+			g.collect_c_directive_at(node_idx, 'main', node, source, false, false)
+		}
+	}
+
+	assert int(guarded_include) in g.cross_directive_guards
+	assert 'cross_guarded_api' in g.inlined_c_active_macros
+}
+
+fn test_inlined_c_macro_tracking_uses_final_state() {
+	mut g := FlatGen.new()
+	g.collect_inlined_c_declared_fns('#define final_api(p) ((p)->value)\n#undef final_api\nstatic inline int final_api(int *p) { return *p; }\n', false)
+
+	assert 'final_api' !in g.inlined_c_active_macros
 }
 
 fn test_function_macro_status_propagates_through_aliases() {
