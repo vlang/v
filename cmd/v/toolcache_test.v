@@ -793,3 +793,108 @@ fn test_the_cache_key_covers_vmodules() {
 	os.setenv('VMODULES', '', true)
 	assert tool_cache_key(vexe, 'vdemo', [source], []) == baseline, 'clearing it must restore the key'
 }
+
+// `$embed_file` on an asset that is not there compiles: the binary simply carries no payload.
+// Recording where the asset should have been is the only thing that lets a later invocation
+// notice it was restored, so the path has to reach the manifest precisely while it is absent.
+fn test_a_missing_embedded_asset_is_recorded_and_invalidates_the_cache() {
+	vexe := @VEXE
+	if !os.is_executable(vexe) {
+		eprintln('> skipping, no V executable at `${vexe}`')
+		return
+	}
+	directory := toolcache_test_dir('missing_embed')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	os.write_file(os.join_path(directory, 'v.mod'), 'Module { name: "embdemo" }\n')!
+	asset := os.join_path(directory, 'config.toml')
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, "module main\n\nconst asset = \$embed_file('config.toml')\n\nfn main() {\n\tprintln(asset.len)\n}\n")!
+	assert !os.exists(asset), 'the asset must be absent for this build'
+
+	dumped := os.join_path(directory, 'sources.txt')
+	binary := os.join_path(directory, 'vdemo')
+	build :=
+		os.execute('${os.quoted_path(vexe)} -prod -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+	assert build.exit_code == 0, build.output
+
+	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
+	assert os.real_path(asset) in recorded || asset in recorded, 'the absent asset must be recorded, got ${recorded.filter(!it.contains('/vlib/'))}'
+
+	entry := ToolCacheEntry{
+		name:     'vdemo'
+		binary:   binary
+		manifest: binary + '.inputs'
+	}
+	time.sleep(1100 * time.millisecond)
+	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, time.now().unix()))!
+	// An input that was absent when recorded and still is must read as unchanged. `os.stat`
+	// cannot date it, so a freshness check that trusted `last_modified` here would call it
+	// changed on every lookup and rebuild the tool forever.
+	assert tool_cache_is_fresh(entry), 'a still absent asset must not force a rebuild'
+	assert tool_cache_is_fresh(entry), 'the answer has to be stable across lookups'
+
+	// Restoring it has to invalidate the binary that was built without a payload.
+	os.write_file(asset, 'key = "value"\n')!
+	assert !tool_cache_is_fresh(entry), 'restoring an embedded asset must force a rebuild'
+}
+
+fn test_a_missing_input_stamps_as_missing() {
+	directory := toolcache_test_dir('missing_stamp')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	absent := os.join_path(directory, 'not-there')
+	assert file_stamp(absent) == file_stamp_missing
+	os.write_file(absent, 'now it is')!
+	assert file_stamp(absent) != file_stamp_missing, 'appearing has to change the stamp'
+}
+
+// Publishing the executable and publishing the manifest are two separate steps, so two
+// processes rebuilding one key across a source edit can interleave: the newer build installs
+// its binary, the older one replaces it and publishes its old manifest, then the newer one
+// publishes its manifest. That leaves the older executable vouched for by a current, fresh
+// manifest, and every later invocation runs stale code. The manifest names the exact build it
+// describes so a reader can see the mismatch.
+fn test_a_binary_from_another_build_is_not_trusted_by_a_fresh_manifest() {
+	entry, _ := fresh_cache_fixture('interleaved')
+	defer {
+		os.rmdir_all(os.dir(entry.binary)) or {}
+	}
+	// The fixture's manifest has no binary line, so pair it the way a real build does.
+	paired := (os.read_file(entry.manifest) or { '' }) + 'b${tool_cache_field_separator}${entry.binary}${tool_cache_field_separator}${binary_identity(entry.binary)}\n'
+	os.write_file(entry.manifest, paired)!
+	assert tool_cache_is_fresh(entry), 'a binary and the manifest that describes it must pair'
+
+	// Another build of the same key replaces the executable. Its sources are identical, so
+	// nothing else in the manifest can notice; only the pairing can.
+	other := entry.binary + '.other'
+	os.write_file(other, 'a different build of the same key')!
+	os.chmod(other, 0o755)!
+	os.mv(other, entry.binary)!
+
+	assert !tool_cache_is_fresh(entry), 'an executable from another build must not be reused'
+	reason := tool_cache_stale_reason(entry)
+	assert reason.contains(entry.binary), 'the reason has to name the binary, got `${reason}`'
+}
+
+fn test_binary_identity_separates_two_builds() {
+	directory := toolcache_test_dir('identity')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	first := os.join_path(directory, 'first')
+	os.write_file(first, 'build one')!
+	identity := binary_identity(first)
+	assert identity != file_stamp_missing
+	// Re-reading the same file has to give the same answer, or every lookup would rebuild.
+	assert binary_identity(first) == identity
+
+	// A separately created file is a different build, even with identical contents.
+	second := os.join_path(directory, 'second')
+	os.write_file(second, 'build one')!
+	assert binary_identity(second) != identity, 'two builds must not share an identity'
+
+	assert binary_identity(os.join_path(directory, 'absent')) == file_stamp_missing
+}

@@ -140,9 +140,14 @@ fn collect_tool_key_sources(directory string, mut files []string) {
 
 // file_stamp returns a cheap identity for a path: its modification time and size.
 fn file_stamp(path string) string {
-	attributes := os.stat(path) or { return 'missing' }
+	attributes := os.stat(path) or { return file_stamp_missing }
 	return '${attributes.mtime}${tool_cache_field_separator}${attributes.size}'
 }
+
+// file_stamp_missing is the stamp of a path that does not exist. A build input can legitimately
+// be absent -- `$embed_file` records where its asset should be so that restoring it invalidates
+// the build -- and an absent path is a stable value rather than an error.
+const file_stamp_missing = 'missing'
 
 // dir_stamp digests the names of the V sources in a directory. It exists to catch the one
 // change a per file stamp cannot see: a source file appearing in, or disappearing from, a
@@ -164,6 +169,16 @@ fn module_root_stamp(path string) string {
 	mut names := entries.filter(os.is_dir(os.join_path(path, it)))
 	names.sort()
 	return sha256.hexhash(names.join('\n'))
+}
+
+// binary_identity identifies one published executable, so that a manifest can name the exact
+// build it describes. The device and inode make it exact wherever they are real: every build
+// stages a fresh file and a rename carries its identity over, so two builds of the same key
+// never share one. Where they are not reported it degrades to the size and modification time,
+// which still separates two builds of different sources.
+fn binary_identity(path string) string {
+	attributes := os.stat(path) or { return file_stamp_missing }
+	return '${attributes.dev}:${attributes.inode}:${attributes.size}:${attributes.mtime}'
 }
 
 // last_modified returns the modification time of a path, or the largest possible time when
@@ -280,12 +295,19 @@ fn recorded_inputs_changed(manifest_path string) string {
 		current := match kind {
 			'd' { dir_stamp(path) }
 			'm' { module_root_stamp(path) }
+			'b' { binary_identity(path) }
 			else { file_stamp(path) }
 		}
 		if current != recorded {
 			return '`${path}` changed (recorded `${recorded}`, found `${current}`)'
 		}
 		if kind != 'f' {
+			continue
+		}
+		if current == file_stamp_missing {
+			// The input was absent when it was recorded and still is. `last_modified` cannot
+			// date a file that does not exist and reports the end of time, which would make
+			// the check below call it changed on every single lookup and rebuild forever.
 			continue
 		}
 		// `os.stat` only resolves modification times down to the second, so a file that was
@@ -594,7 +616,13 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 		return error(details)
 	}
 	source_files := os.read_file(dumped) or { '' }.split_into_lines()
-	manifest := encode_tool_cache_manifest(source_files, started)
+	// Identify the executable this manifest describes, taken from the staged file before it
+	// is published: a rename carries the identity across unchanged. Publishing the binary and
+	// the manifest are two separate steps, so two builds racing over one key can interleave
+	// and leave one build's executable paired with the other's manifest. Recording the pairing
+	// lets a reader see that and rebuild, instead of running stale code that a fresh manifest
+	// vouches for.
+	manifest := encode_tool_cache_manifest(source_files, started) + 'b${tool_cache_field_separator}${entry.binary}${tool_cache_field_separator}${binary_identity(staged)}\n'
 	// Publish the executable before its manifest. A lookup requires both, so the worst that
 	// a concurrent reader can observe is "binary present, manifest not updated yet", which
 	// is simply treated as a miss. The reverse order could hand out a stale binary.
