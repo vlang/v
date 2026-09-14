@@ -1995,7 +1995,12 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
 			continue
 		}
-		if tc.fn_comptime_branch_may_use_ident(node, candidate.name, false) {
+		declared_at := if tc.valid_node_id(candidate.lhs_id) {
+			tc.a.node(candidate.lhs_id).pos.offset
+		} else {
+			-1
+		}
+		if tc.fn_comptime_branch_may_use_ident(node, candidate.name, false, declared_at) {
 			continue
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
@@ -2423,7 +2428,7 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 		if tc.fn_body_reflects_param_type(node, param.typ) {
 			continue
 		}
-		if tc.fn_comptime_branch_may_use_ident(node, param.value, true) {
+		if tc.fn_comptime_branch_may_use_ident(node, param.value, true, -1) {
 			continue
 		}
 		mut has_param_error := false
@@ -2519,7 +2524,7 @@ struct ComptimeBranchRange {
 // branch, so an identifier used only there is invisible to the AST walks above,
 // and reporting it as unused would be wrong for the build configuration that
 // does take the branch.
-fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name string, writes_are_uses bool) bool {
+fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name string, writes_are_uses bool, declared_at int) bool {
 	if name.len == 0 {
 		return false
 	}
@@ -2527,7 +2532,13 @@ fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name strin
 	source := tc.source_texts_by_file[file.name] or { return false }
 	// A fn_decl only records where its declaration starts, so its body has to
 	// be recovered from the source.
-	for branch in declaration_comptime_branch_ranges(source, node.pos.offset) {
+	branches := declaration_comptime_branch_ranges(source, node.pos.offset)
+	for branch in branches {
+		if declaration_is_in_a_sibling_branch(branches, declared_at, branch) {
+			// `$if linux { x := 1 } $else { x := 2 \n println(x) }` binds one in
+			// each branch, and a sibling cannot read the other's.
+			continue
+		}
 		code := code_text_in_range(source, branch.start, branch.end)
 		if !code_references_ident(code, name, writes_are_uses) {
 			continue
@@ -2535,6 +2546,24 @@ fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name strin
 		// A taken branch is parsed like any other code, so the walks above
 		// already saw every use in it, and what is left here cannot be one.
 		if !tc.subtree_has_node_in_range(node, branch.start, branch.end) {
+			return true
+		}
+	}
+	return false
+}
+
+// declaration_is_in_a_sibling_branch reports whether the candidate declared at
+// `declared_at` belongs to a comptime branch that `branch` is no part of, which
+// makes the two bindings different ones. A parameter passes `-1`, as does a
+// variable that no branch declares: the walks of the AST resolve no scope, so
+// what such a branch spells is a read of them.
+fn declaration_is_in_a_sibling_branch(branches []ComptimeBranchRange, declared_at int, branch ComptimeBranchRange) bool {
+	if declared_at < 0 || (declared_at >= branch.start && declared_at < branch.end) {
+		return false
+	}
+	for other in branches {
+		if declared_at >= other.start && declared_at < other.end
+			&& (other.end <= branch.start || other.start >= branch.end) {
 			return true
 		}
 	}
@@ -2966,7 +2995,9 @@ fn name_precedes_delimiter(tokens []string, index int) bool {
 		// evaluates to, so the argument names a field just the same.
 		return true
 	}
-	if tokens[before] == ']' {
+	// `handlers[i][j](x: 1)` indexes twice before it calls, so every group of
+	// the callee has to be stepped over, not just the last one.
+	for before >= 0 && tokens[before] == ']' {
 		mut depth := 0
 		for before >= 0 {
 			if tokens[before] == ']' {

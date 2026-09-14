@@ -446,3 +446,26 @@ fn test_an_anonymous_struct_value_type_is_traversed() {
 	// An array of those still initialises an array.
 	assert !code_references_ident('_ = []struct { n int }{len: 3}', 'len', true)
 }
+
+fn test_a_sibling_branch_binds_its_own() {
+	branches := [ComptimeBranchRange{10, 20}, ComptimeBranchRange{30, 40}]
+	// Declared in the first branch, so the second cannot read it.
+	assert declaration_is_in_a_sibling_branch(branches, 12, branches[1])
+	assert declaration_is_in_a_sibling_branch(branches, 35, branches[0])
+	// Its own branch reads it, and so does one that encloses the declaration.
+	assert !declaration_is_in_a_sibling_branch(branches, 12, branches[0])
+	assert !declaration_is_in_a_sibling_branch([ComptimeBranchRange{0, 50},
+		ComptimeBranchRange{10, 20}], 12, ComptimeBranchRange{0, 50})
+	// A parameter, and a variable that no branch declares, are read by any.
+	assert !declaration_is_in_a_sibling_branch(branches, -1, branches[0])
+	assert !declaration_is_in_a_sibling_branch(branches, 25, branches[0])
+}
+
+fn test_a_chained_index_still_calls() {
+	assert !code_references_ident('_ = handlers[i][j](x: 1)', 'x', true)
+	assert !code_references_ident('_ = handlers[i][j][k](x: 1)', 'x', true)
+	assert !code_references_ident('_ = hs[0]()(x: 1)', 'x', true)
+	// The indices themselves are still read.
+	assert code_references_ident('_ = handlers[x][j](y: 1)', 'x', true)
+	assert code_references_ident('_ = handlers[i][x](y: 1)', 'x', true)
+}

@@ -49,7 +49,21 @@ fn dynamic_callee(y int) {
 	}
 }
 
+fn handlers() [][]fn (Config) int {
+	return [[configure]]
+}
+
+// The callee may be indexed more than once before it is called.
+fn chained_index_callee(y int) {
+	$if windows {
+		hs := handlers()
+		_ = hs[0][0](y: 1)
+	}
+}
+
 fn main() {
+	chained_index_callee(8)
+	println(handlers()[0][0](x: 9))
 	dynamic_callee(6)
 	println(make_handler()(x: 7))
 	short_struct_argument(4)

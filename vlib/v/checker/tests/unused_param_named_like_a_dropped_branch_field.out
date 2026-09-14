@@ -26,3 +26,10 @@ vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:46:19: no
       |                   ^
    47 |     $if windows {
    48 |         _ = make_handler()(y: 1)
+vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:57:25: notice: unused parameter: `y`
+   55 | 
+   56 | // The callee may be indexed more than once before it is called.
+   57 | fn chained_index_callee(y int) {
+      |                         ^
+   58 |     $if windows {
+   59 |         hs := handlers()
