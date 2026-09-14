@@ -200,6 +200,7 @@ fn test_v1_fallback_installer_builds_the_last_v1_snapshot() {
 	assert source.contains('set -- "\$@" --vccommit "\$fallback_vc_revision"')
 	assert source.contains("config --get-regexp '^remote\\..*\\.promisor$'")
 	assert source.contains('[ -z "\$promisor_config" ] || return 1')
+	assert source.contains('[ ! -f "\$common_dir/objects/info/alternates" ] || return 1')
 	assert source.contains('[ "\$is_shallow" = false ] || return 1')
 	assert source.contains('show-ref --verify --quiet refs/heads/master || return 1')
 	assert !source.contains('releases/download')

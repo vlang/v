@@ -124,6 +124,12 @@ write_candidate_root() {
 local_git_repo() {
 	repository=$1
 	revision=$2
+	common_dir=$(git -C "$repository" rev-parse --git-common-dir 2>/dev/null) || return 1
+	case "$common_dir" in
+		/*) ;;
+		*) common_dir=$(cd "$repository/$common_dir" && pwd) || return 1 ;;
+	esac
+	[ ! -f "$common_dir/objects/info/alternates" ] || return 1
 	promisor_config=$(git -C "$repository" config --get-regexp '^remote\..*\.promisor$' 2>/dev/null) \
 		|| promisor_config=
 	[ -z "$promisor_config" ] || return 1
@@ -132,11 +138,7 @@ local_git_repo() {
 	git -C "$repository" show-ref --verify --quiet refs/heads/master || return 1
 	git -C "$repository" cat-file -e "$revision^{commit}" 2>/dev/null || return 1
 	git -C "$repository" archive --format=tar "$revision" >/dev/null 2>&1 || return 1
-	common_dir=$(git -C "$repository" rev-parse --git-common-dir 2>/dev/null) || return 1
-	case "$common_dir" in
-		/*) printf '%s\n' "$common_dir" ;;
-		*) (cd "$repository/$common_dir" && pwd) ;;
-	esac
+	printf '%s\n' "$common_dir"
 }
 
 candidate_has_expected_version() {

@@ -67,6 +67,7 @@ fn test_v1_fallback_installer_uses_last_v1_snapshot() {
 	assert installer.contains('set -- "$@" "$fallback_revision"')
 	assert installer.contains("config --get-regexp '^remote\\..*\\.promisor$'")
 	assert installer.contains('[ -z "$promisor_config" ] || return 1')
+	assert installer.contains('[ ! -f "$common_dir/objects/info/alternates" ] || return 1')
 	assert installer.contains('rev-parse --is-shallow-repository')
 	assert installer.contains('[ "$is_shallow" = false ] || return 1')
 	assert installer.contains('show-ref --verify --quiet refs/heads/master || return 1')
