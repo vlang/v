@@ -17698,6 +17698,32 @@ fn (mut g FlatGen) headerless_darwin_pthread_alias(alias string, typ string, gua
 	g.writeln('#endif')
 }
 
+// target_libc_thread_runtime writes the pthread-backed thread runtime. The hosted
+// and headerless preambles emit it inside a `#ifdef _WIN32` pair; a target that
+// supplies its own libc headers is not Windows, so only this half is needed, and
+// it is written without the guard. It needs <pthread.h>, which that path includes.
+fn (mut g FlatGen) target_libc_thread_runtime() {
+	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
+	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) { fprintf(stderr, "V thread allocation failed\\n"); abort(); } return p; }')
+	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_thread result;')
+	g.writeln('\tpthread_attr_t attr;')
+	g.writeln('\tint rc = pthread_attr_init(&attr);')
+	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread attribute initialization failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_attr_setstacksize(&attr, __v_thread_stack_size);')
+	g.writeln('\tif (rc != 0) { pthread_attr_destroy(&attr); if (cleanup) cleanup(arg); fprintf(stderr, "V thread stack size setup failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_create(&result.handle, &attr, (void*)start, arg);')
+	g.writeln('\tint attr_rc = pthread_attr_destroy(&attr);')
+	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %d\\n", rc); abort(); }')
+	g.writeln('\tif (attr_rc != 0) { fprintf(stderr, "V thread attribute cleanup failed: %d\\n", attr_rc); abort(); }')
+	g.writeln('\treturn result;')
+	g.writeln('}')
+	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
+}
+
 fn (mut g FlatGen) headerless_libc_preamble() {
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	if g.target_libc_headers {
@@ -17708,7 +17734,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// than a compatible redeclaration, and the same applies to every libc
 		// prototype further down. This is the set V's own runtime calls into.
 		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdio.h', 'stdlib.h',
-			'string.h', 'math.h'] {
+			'string.h', 'math.h', 'pthread.h'] {
 			g.writeln('#include <${header}>')
 		}
 	} else {
@@ -17780,7 +17806,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// prototypes that go with them. A kernel defines those itself, in its own
 		// headers, and a second declaration of `struct stat` or `strlen` conflicts
 		// with the real one instead of describing it. The macros above are all
-		// `#ifndef`-guarded, so they stay.
+		// `#ifndef`-guarded, so they stay. The thread runtime is V's own, not the
+		// target's, so it still has to be written.
+		g.target_libc_thread_runtime()
 		return
 	}
 	g.headerless_windows_sdk_types()
