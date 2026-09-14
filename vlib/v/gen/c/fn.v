@@ -17912,6 +17912,7 @@ const c_target_libc_posix_declared_fns = {
 	'pread':        true
 	'raise':        true
 	'read':         true
+	'readdir':      true
 	'readlink':     true
 	'rmdir':        true
 	'setpgid':      true
@@ -17925,6 +17926,7 @@ const c_target_libc_posix_declared_fns = {
 	'sigtimedwait': true
 	'sleep':        true
 	'symlink':      true
+	'syscall':      true
 	'sysconf':      true
 	'tcgetpgrp':    true
 	'tcsetpgrp':    true

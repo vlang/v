@@ -448,7 +448,8 @@ fn test_target_libc_headers_own_their_c_extern_declarations() {
 	mut g := FlatGen.new()
 	g.set_target_libc_headers(true)
 	source := '/project/include_less.v'
-	for name in ['strlen', 'puts', 'fseeko', 'pthread_sigmask', 'clock_gettime', 'nanosleep', 'sqrtf'] {
+	for name in ['strlen', 'puts', 'fseeko', 'pthread_sigmask', 'clock_gettime', 'nanosleep', 'sqrtf',
+		'readdir', 'syscall'] {
 		assert !g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
 	}
 	assert g.should_emit_c_extern_decl_from_file('target_specific_api', source, 'main')
