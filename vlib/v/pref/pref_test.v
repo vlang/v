@@ -115,16 +115,37 @@ fn test_get_module_path_skips_a_modules_namespace_but_not_a_project_root() {
 	bare_entry := os.join_path(bare_entry_dir, 'main.v')
 	os.write_file(bare_entry, 'module main\n') or { panic(err) }
 
+	// A manifestless project whose entry sources are nested outside `modules/`.
+	// The entry root, rather than a shallow scan of its parent, identifies the
+	// sibling `modules/` directory as the retired lookup level.
+	nested_root := os.join_path(root, 'nested')
+	nested_entry_dir := os.join_path(nested_root, 'src')
+	nested_namespace := os.join_path(nested_root, 'modules')
+	nested_importer_dir := os.join_path(nested_namespace, 'foo')
+	nested_neighbour := os.join_path(nested_namespace, 'bar')
+	os.mkdir_all(nested_entry_dir) or { panic(err) }
+	os.mkdir_all(nested_importer_dir) or { panic(err) }
+	os.mkdir_all(nested_neighbour) or { panic(err) }
+	os.write_file(os.join_path(nested_entry_dir, 'main.v'), 'module main\n') or { panic(err) }
+	nested_importer := os.join_path(nested_importer_dir, 'foo.v')
+	os.write_file(nested_importer, 'module foo\n') or { panic(err) }
+	os.write_file(os.join_path(nested_neighbour, 'bar.v'), 'module bar\n') or { panic(err) }
+
 	prefs := new_preferences()
 	assert prefs.get_module_path('foo', entry_file) == os.real_path(root_module)
 	assert prefs.get_module_path('foo', bare_entry) == os.real_path(bare_module)
 	assert prefs.get_module_path('bar', legacy_importer) != os.real_path(legacy_neighbour)
 	// By the name the layout gives it, the neighbour resolves from the project.
 	assert prefs.get_module_path('modules.bar', legacy_importer) == os.real_path(legacy_neighbour)
+	mut nested_prefs := new_preferences()
+	nested_prefs.module_resolution_root = nested_entry_dir
+	assert nested_prefs.get_module_path('bar', nested_importer) != os.real_path(nested_neighbour)
+	assert nested_prefs.get_module_path('modules.bar', nested_importer) == os.real_path(nested_neighbour)
 
 	// The rule itself: the namespace is the one with a project around it.
-	assert is_retired_modules_namespace(legacy_namespace)
-	assert !is_retired_modules_namespace(project_root)
-	assert !is_retired_modules_namespace(bare_root)
-	assert !is_retired_modules_namespace(legacy_root)
+	assert is_retired_modules_namespace(legacy_namespace, legacy_root)
+	assert is_retired_modules_namespace(nested_namespace, nested_entry_dir)
+	assert !is_retired_modules_namespace(project_root, entry_dir)
+	assert !is_retired_modules_namespace(bare_root, bare_entry_dir)
+	assert !is_retired_modules_namespace(legacy_root, legacy_root)
 }

@@ -828,6 +828,33 @@ fn test_adopting_a_legacy_local_install_makes_it_managed() {
 	assert !os.exists(legacy)
 }
 
+// A Git worktree or submodule carries a `.git` file whose metadata belongs to
+// another checkout. Adoption must not fall back to a token among its sources,
+// because that immediately makes the checkout dirty.
+fn test_adoption_refuses_a_git_worktree_without_dirtying_it() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_adopt_worktree'))
+	project_dir := os.join_path(test_path, 'adopt_worktree_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'adopt_worktree_project'\n}\n") or { panic(err) }
+	source_repo := os.join_path(test_path, 'adopt_worktree_source')
+	create_local_git_module(source_repo, 'worktree_pkg')
+	worktree := os.join_path(project_dir, 'worktree_pkg')
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(source_repo)} worktree add -b vpm-adopt-worktree ${os.quoted_path(worktree)}')
+	assert os.is_file(os.join_path(worktree, '.git'))
+	assert cmd_ok(@LOCATION, 'git -C ${os.quoted_path(worktree)} status --porcelain').output.trim_space() == ''
+
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	adopted := cmd_fail(@LOCATION, '${vexe} install --local --adopt worktree_pkg')
+	assert adopted.output.contains('is a Git worktree or submodule'), adopted.output
+	assert !is_recorded_local_install(worktree)
+	assert !os.exists(os.join_path(worktree, '.${local_install_token_name}'))
+	assert cmd_ok(@LOCATION, 'git -C ${os.quoted_path(worktree)} status --porcelain').output.trim_space() == ''
+}
+
 // A name in the lookup root that leads out of the project is not the project's,
 // whatever it points at. Adopting it would hand VPM a checkout it has no business
 // touching, and `v remove --local` resolves the link before deleting: it would

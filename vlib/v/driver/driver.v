@@ -9506,6 +9506,7 @@ pub fn run(args []string) {
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
+	prefs.module_resolution_root = v3_module_resolution_root(input_file)
 	prefs.exclude = expand_v3_exclude_patterns(exclude_patterns, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
 		if bundled_tcc_available {
@@ -14757,6 +14758,17 @@ fn project_root_for_files(files []string) string {
 	return os.getwd()
 }
 
+fn v3_module_resolution_root(input string) string {
+	if input == '' || input == '-' {
+		return os.real_path(os.getwd())
+	}
+	input_dir := if os.is_dir(input) { os.real_path(input) } else { os.dir(os.real_path(input)) }
+	if vmod_root := util.nearest_vmod_root(input_dir) {
+		return os.real_path(v3_directory_source_root(vmod_root))
+	}
+	return input_dir
+}
+
 fn nearest_vmod_root_for_file(path string) string {
 	return util.nearest_vmod_root(path) or { '' }
 }
@@ -17718,7 +17730,7 @@ fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_pa
 		// the walk stop there would keep the virtual layout alive between the
 		// modules left in it. A project that merely carries that name is a root
 		// like any other, and is searched.
-		if !pref.is_retired_modules_namespace(current) {
+		if !pref.is_retired_modules_namespace(current, prefs.module_resolution_root) {
 			candidate := os.join_path_single(current, mod_path)
 			if module_path_has_v_sources(candidate, prefs)
 				&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {

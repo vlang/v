@@ -66,7 +66,11 @@ pub mut:
 	no_builtin            bool
 	no_preludes           bool
 	module_search_paths   []string
-	thread_stack_size     int = 8 * 1024 * 1024
+	// module_resolution_root is the directory that owns the entry sources. It
+	// distinguishes a project's retired `modules/` lookup level from a project
+	// whose own root happens to carry that name.
+	module_resolution_root string
+	thread_stack_size      int = 8 * 1024 * 1024
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm            bool
@@ -428,7 +432,7 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	// the virtual layout alive between the modules left in it.
 	mut current_dir := importer_dir
 	for {
-		if !is_retired_modules_namespace(current_dir) {
+		if !is_retired_modules_namespace(current_dir, p.module_resolution_root) {
 			if try_path := module_path_from_search_root(mod, mod_path, current_dir) {
 				return try_path
 			}
@@ -444,34 +448,51 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 
 // is_retired_modules_namespace reports whether a directory is the `modules/` a
 // project used to keep its modules in -- the virtual lookup root this compiler no
-// longer searches. What tells it apart from a directory that merely carries that
-// name is the project around it: the namespace sits inside one, while a project
-// of its own, manifest or not, is the root its files are resolved against. That
-// distinction has to be made here, since a module-path walk is all some callers
-// have: the FastC backend asks `get_module_path` directly, with no project-root
-// probe of its own to fall back on.
-pub fn is_retired_modules_namespace(dir string) bool {
+// longer searches. `module_resolution_root` is the root holding the active entry
+// sources. A `modules` ancestor of that root is a project which merely carries
+// the name; a sibling beneath the same project root is the retired namespace.
+pub fn is_retired_modules_namespace(dir string, module_resolution_root string) bool {
 	if os.file_name(dir) != 'modules' {
 		return false
 	}
-	if dir_is_a_source_root(dir) {
+	if os.is_file(os.join_path_single(dir, 'v.mod')) {
 		return false
 	}
-	return dir_is_a_source_root(os.dir(dir))
-}
-
-// A directory is a source root when a project is anchored there: by its manifest,
-// or -- projects need no manifest -- by the V sources lying in it.
-fn dir_is_a_source_root(dir string) bool {
-	if os.exists(os.join_path_single(dir, 'v.mod')) {
-		return true
-	}
-	for entry in os.ls(dir) or { return false } {
-		if entry.ends_with('.v') && os.is_file(os.join_path_single(dir, entry)) {
+	if module_resolution_root != '' {
+		resolved_dir := canonical_module_resolution_path(dir)
+		resolved_root := canonical_module_resolution_path(module_resolution_root)
+		if module_resolution_path_is_within(resolved_root, resolved_dir) {
+			return false
+		}
+		if module_resolution_path_is_within(resolved_root, canonical_module_resolution_path(os.dir(dir))) {
 			return true
 		}
 	}
-	return false
+	return os.is_file(os.join_path_single(os.dir(dir), 'v.mod'))
+}
+
+fn canonical_module_resolution_path(path string) string {
+	mut resolved := os.real_path(path).replace('\\', '/')
+	if resolved != '/' && !(resolved.len == 3 && resolved[1] == `:` && resolved[2] == `/`) {
+		resolved = resolved.trim_right('/')
+	}
+	$if windows {
+		resolved = resolved.to_lower()
+	}
+	return resolved
+}
+
+fn module_resolution_path_is_within(path string, root string) bool {
+	if path == root {
+		return true
+	}
+	if root == '' {
+		return false
+	}
+	if root == '/' || (root.len == 3 && root[1] == `:` && root[2] == `/`) {
+		return path.starts_with(root)
+	}
+	return path.starts_with(root + '/')
 }
 
 fn module_path_from_search_root(mod string, mod_path string, search_root string) ?string {

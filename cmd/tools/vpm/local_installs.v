@@ -299,6 +299,13 @@ fn vpm_adopt(query []string) {
 			errors++
 			continue
 		}
+		if os.is_file(os.join_path_single(path, '.git')) {
+			vpm_error('refusing to adopt `${m}`: `${fmt_mod_path(path)}` is a Git worktree or submodule.',
+				details: 'Its Git metadata belongs to another checkout. Recording ownership beside the module sources would make the checkout dirty, while recording it in the shared Git metadata would not travel with this project.'
+			)
+			errors++
+			continue
+		}
 		record_local_install(path) or {
 			vpm_error('failed to adopt `${m}`.', details: err.msg())
 			errors++
