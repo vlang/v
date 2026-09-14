@@ -3370,7 +3370,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	if is_contextual_anonymous_struct_literal(init_type_text) && tc.expected_expr_id >= 0
 		&& tc.expr_is_value_tail_of(flat.NodeId(tc.expected_expr_id), id) {
 		expected := unalias_type(tc.expected_expr_type)
-		if expected is Struct && is_anonymous_struct_name(expected.name) {
+		// Only a type the parser itself made up may be adopted here. A user-declared
+		// `AnonStruct_Secret` is an ordinary private type, and adopting it would let a
+		// bare literal stand in for a name the caller is not allowed to write.
+		if expected is Struct && tc.is_synthesized_anon_struct(expected.name) {
 			init_type = expected
 			tc.remember_expr_type(id, expected)
 		}

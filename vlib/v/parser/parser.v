@@ -206,6 +206,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			disabled_fns: map[string]bool{}
 			export_fn_names: map[string]string{}
 			contextual_anon_struct_types: map[string]bool{}
+			synthesized_anon_struct_types: map[string]bool{}
 			source_files: map[int]&token.File{}
 			template_call_sites: map[int]token.Pos{}
 			template_actions: map[int]string{}
@@ -13952,6 +13953,7 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 	p.anonymous_struct_count++
 	name_prefix := if is_union { 'AnonUnion' } else { 'AnonStruct' }
 	name := '${name_prefix}_${local_type_scope_part(p.cur_file)}_${p.anonymous_struct_count}'
+	p.a.synthesized_anon_struct_types[name] = true
 	if inferred {
 		// Synthesized to type a `struct { ... }` literal, not to declare a field. The
 		// literal's type is whatever the context expects, so this name only stands in for

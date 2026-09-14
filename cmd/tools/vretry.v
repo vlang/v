@@ -36,11 +36,37 @@ fn quote_arg(arg string) string {
 		return arg
 	}
 	$if windows {
-		// A Windows path cannot contain `"`, so wrapping is enough to keep spaces.
-		return '"' + arg.replace('"', '""') + '"'
+		return windows_quote_arg(arg)
 	} $else {
 		return "'" + arg.replace("'", "'\\''") + "'"
 	}
+}
+
+// windows_quote_arg applies the backslash-and-quote rules Windows uses when it
+// rebuilds argv from a command line. Wrapping in quotes is not enough on its own: a
+// trailing backslash would escape the closing quote, so `C:\work space\` has to come
+// out as `"C:\work space\\"` or it swallows the argument after it. This is the same
+// escaping `os.Process` does in vlib/os/process_windows.c.v.
+fn windows_quote_arg(arg string) string {
+	mut out := '"'
+	mut pending_backslashes := 0
+	for c in arg {
+		if c == `\\` {
+			pending_backslashes++
+			continue
+		}
+		if c == `"` {
+			// Each backslash run before a quote is doubled, and the quote escaped.
+			out += '\\'.repeat(pending_backslashes * 2 + 1) + '"'
+			pending_backslashes = 0
+			continue
+		}
+		out += '\\'.repeat(pending_backslashes) + c.ascii_str()
+		pending_backslashes = 0
+	}
+	// The run that ends the argument is doubled, so none of it escapes the closing quote.
+	out += '\\'.repeat(pending_backslashes * 2) + '"'
+	return out
 }
 
 // seconds_to_duration converts a fractional number of seconds, as given on the

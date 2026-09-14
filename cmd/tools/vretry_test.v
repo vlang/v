@@ -84,6 +84,23 @@ fn test_retry_keeps_arguments_that_contain_spaces_together() {
 	assert os.is_dir(os.join_path(target, '.git')), 'the spaced destination was split: ${res.output}'
 }
 
+// Wrapping an argument in quotes is not enough on Windows: a trailing backslash
+// escapes the closing quote, so `C:\work space\` swallows whatever follows it. Pass
+// such an argument with another one behind it and check both arrive whole. On unix
+// the single-quoted form has to keep the backslash literal for the same reason.
+fn test_retry_keeps_a_trailing_backslash_argument_separate() {
+	log.use_stdout()
+	os.chdir(vroot)!
+	script := os.join_path('cmd', 'tools', 'check_retry.vsh')
+	trailing := 'a\\'
+	res := run('${os.quoted_path(vexe)} retry -r 1 -- ${os.quoted_path(vexe)} run ${os.quoted_path(script)} ${os.quoted_path(trailing)} b')
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	// `check_retry.vsh` prints its arguments, so `b` staying the last element is what
+	// says it was not merged into the argument before it.
+	assert res.output.trim_space().ends_with("'b']"), res.output
+}
+
 // A command can also be given as shell syntax in one argument, which is the form the
 // SDL workflow uses: `v retry 'sudo apt update'`. That argument has to reach the shell
 // untouched - quoting it asks for a program whose name contains spaces, which fails

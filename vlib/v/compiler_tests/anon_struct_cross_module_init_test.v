@@ -209,3 +209,58 @@ fn main() {
 	assert found > 0, 'no generated anonymous type names were found in the output'
 	assert accepted.len == 0, 'generated anonymous types were nameable from another module: ${accepted}'
 }
+
+// Adopting the expected type for a bare `struct { ... }` literal is the other way into
+// a private declaration. The adoption used to accept any expected type whose name
+// started with `AnonStruct_`, so a public function taking a private one could be
+// called with a literal from another module - reaching a type the caller could not
+// have named - and the privacy check was then skipped because the literal's own
+// generated name is a contextual one.
+fn test_a_literal_cannot_stand_in_for_a_private_type_named_like_a_synthesized_one() {
+	ok, output := compiles('adopt_private', "module holder
+
+// Named the way the compiler names what it synthesizes, but an ordinary private type.
+struct AnonStruct_Secret {
+pub mut:
+	x int
+}
+
+pub fn consume(s AnonStruct_Secret) int {
+	return s.x
+}
+", "module main
+
+import holder
+
+fn main() {
+	println(holder.consume(struct {
+		x: 42
+	}))
+}
+")
+	assert !ok, 'a literal stood in for another module\'s private type'
+	assert output.contains('holder.AnonStruct_Secret'), output
+}
+
+// The genuine case still has to work: a parameter whose type really is an anonymous
+// struct the parser synthesized takes a literal from another module.
+fn test_a_literal_still_fills_a_genuinely_anonymous_parameter() {
+	ok, output := compiles('adopt_anon', "module holder
+
+pub fn consume(s struct {
+	x int
+}) int {
+	return s.x
+}
+", "module main
+
+import holder
+
+fn main() {
+	println(holder.consume(struct {
+		x: 42
+	}))
+}
+")
+	assert ok, output
+}

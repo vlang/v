@@ -469,6 +469,12 @@ pub mut:
 	// names nor a type a user happened to call `AnonStruct_...` become reachable across
 	// module boundaries.
 	contextual_anon_struct_types map[string]bool
+	// synthesized_anon_struct_types names every anonymous aggregate the parser made up,
+	// for a declaration as well as for a literal. A name matching `AnonStruct_` proves
+	// nothing on its own - a user may declare a type so named - so this is what tells
+	// the checker that an expected type really is one it may adopt a bare
+	// `struct { ... }` literal into.
+	synthesized_anon_struct_types map[string]bool
 	// specialized_fn_nodes identifies program-specific monomorphized function
 	// declarations appended after parsing. Module-cache cgen keeps them with main.
 	specialized_fn_nodes   map[int]bool
@@ -537,6 +543,7 @@ pub fn FlatAst.new() FlatAst {
 		export_fn_names: map[string]string{}
 		noreturn_fns: map[string]bool{}
 		contextual_anon_struct_types: map[string]bool{}
+		synthesized_anon_struct_types: map[string]bool{}
 		source_files: map[int]&token.File{}
 		template_call_sites: map[int]token.Pos{}
 		template_actions: map[int]string{}
