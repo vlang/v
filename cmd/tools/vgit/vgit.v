@@ -187,7 +187,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v, vgit_context.vexename))
 	if os.is_dir(vgit_context.path_v) && os.is_executable(vgit_context.vexepath)
-		&& !vgit_context.show_vccommit {
+		&& !vgit_context.show_vccommit && vgit_context.requested_vc_commit == '' {
 		// already compiled, no need to compile that specific v executable again
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
@@ -200,7 +200,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		co_fail(err, vgit_context.commit_v)
 	}
 	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath)
-		&& !vgit_context.show_vccommit {
+		&& !vgit_context.show_vccommit && vgit_context.requested_vc_commit == '' {
 		// already compiled, so no need to compile v again
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
@@ -221,7 +221,8 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	} else {
 		vgit_context.vvlocation = if os.exists('v.v') { 'v.v' } else { 'compiler' }
 	}
-	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath) {
+	if os.is_dir(vgit_context.path_v) && os.exists(vgit_context.vexepath)
+		&& vgit_context.requested_vc_commit == '' {
 		// already compiled, so no need to compile v again
 		return
 	}
