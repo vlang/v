@@ -426,7 +426,7 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 			return resolved
 		}
 		if sum_name in g.tc.structs || sum_name in g.tc.interface_names
-			|| sum_name in g.tc.enum_names {
+			|| sum_name in g.tc.enum_names || sum_name in g.tc.type_aliases {
 			return sum_name
 		}
 	}
@@ -443,7 +443,7 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 		// short-name fallback below would otherwise hand `one.Any` the unrelated
 		// `two.Any` sum type and box the value into the wrong C struct.
 		if canonical_name in g.tc.structs || canonical_name in g.tc.interface_names
-			|| canonical_name in g.tc.enum_names {
+			|| canonical_name in g.tc.enum_names || canonical_name in g.tc.type_aliases {
 			return canonical_name
 		}
 		if resolved := g.sum_name_lookup[c_short_name_view(canonical_name)] {

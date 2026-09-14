@@ -629,6 +629,7 @@ fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_su
 	tc.interface_names['pkg.iface_mod.Any'] = true
 	tc.structs['struct_mod.Any'] = []types.StructField{}
 	tc.enum_names['enum_mod.Any'] = true
+	tc.type_aliases['alias_mod.Any'] = 'struct_mod.Any'
 	tc.cur_file = 'main.v'
 	tc.file_imports['main.v\niface_mod'] = 'pkg.iface_mod'
 	tc.file_imports['main.v\npkg'] = 'unrelated.module'
@@ -648,6 +649,7 @@ fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_su
 	assert g.resolve_sum_name('pkg.iface_mod.Any') == 'pkg.iface_mod.Any'
 	assert g.resolve_sum_name('struct_mod.Any') == 'struct_mod.Any'
 	assert g.resolve_sum_name('enum_mod.Any') == 'enum_mod.Any'
+	assert g.resolve_sum_name('alias_mod.Any') == 'alias_mod.Any'
 	// An unknown qualified name keeps the short-name fallback, which is what
 	// resolves aliased module paths such as `x.json2.Any`.
 	assert g.resolve_sum_name('unknown_mod.Any') == 'sum_mod.Any'

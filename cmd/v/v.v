@@ -613,7 +613,7 @@ fn v1_fallback_private_temp_cache_parent(temp_root string) !string {
 		return error('refusing unsafe V1 fallback cache path `${candidate}`: expected a real directory')
 	}
 	$if !windows {
-		if attributes.uid != u32(os.geteuid()) || attributes.mode & 0o077 != 0 {
+		if attributes.uid != u32(os.geteuid()) || attributes.get_mode().bitmask() != 0o700 {
 			return error('refusing unsafe V1 fallback cache path `${candidate}`: expected user-owned mode 0700')
 		}
 	}

@@ -153,7 +153,7 @@ fn test_v1_fallback_cache_without_a_home_is_private() {
 	$if !windows {
 		attributes := os.lstat(first)!
 		assert attributes.uid == u32(os.geteuid())
-		assert attributes.mode & 0o077 == 0
+		assert attributes.get_mode().bitmask() == 0o700
 	}
 }
 
@@ -172,6 +172,14 @@ fn test_v1_fallback_private_temp_cache_rejects_a_symlink() {
 			assert false, 'accepted unsafe fallback cache `${unsafe_cache}`'
 		} else {
 			assert err.msg().contains('expected a real directory')
+		}
+		os.rm(candidate)!
+		os.mkdir(candidate)!
+		os.chmod(candidate, 0o755)!
+		if permissive_cache := v1_fallback_private_temp_cache_parent(base) {
+			assert false, 'accepted unsafe fallback cache `${permissive_cache}`'
+		} else {
+			assert err.msg().contains('expected user-owned mode 0700')
 		}
 	}
 }
