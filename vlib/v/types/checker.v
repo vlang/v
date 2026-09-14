@@ -16614,9 +16614,20 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		tc.comptime_static_depth--
 		return
 	}
-	if node.kind == .for_in_stmt && node.children_count >= 2 {
-		tc.check_local_binding_global_shadowing(tc.a.child(&node, 0))
-		tc.check_local_binding_global_shadowing(tc.a.child(&node, 1))
+	if node.kind == .for_in_stmt {
+		header := node.value.int()
+		if header < 3 || node.children_count < 3 {
+			return
+		}
+		tc.push_scope()
+		loop_var_type := unknown_type('runtime loop variable in static comptime body')
+		tc.insert_loop_var(tc.a.child(&node, 0), loop_var_type)
+		tc.insert_loop_var(tc.a.child(&node, 1), loop_var_type)
+		for i in header .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind,
+				field_cases, value_cases)
+		}
+		tc.pop_scope()
 		return
 	}
 	if node.kind in [.assign, .selector_assign, .index_assign] {
