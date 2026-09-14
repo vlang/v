@@ -1319,12 +1319,16 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
 		prev_fn := p.cur_fn
+		prev_fn_offset := p.cur_fn_offset
 		prev_struct := p.cur_struct
 		prev_method_is_static := p.cur_method_is_static
 		outer_defer_depth := p.defer_depth
 		outer_defer_result_allowed := p.defer_result_allowed
 		outer_nested_block_depth := p.nested_block_depth
 		p.cur_fn = name
+		// The declaration records `name_pos` as its position, the same as
+		// `fn_decl_body` does, so a skipped body of it is keyed on it too.
+		p.cur_fn_offset = name_pos
 		p.cur_struct = method_receiver_type_name(receiver_type).all_after_last('.')
 		p.cur_method_is_static = false
 		p.defer_depth = 0
@@ -1370,6 +1374,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 		p.cur_fn = prev_fn
+		p.cur_fn_offset = prev_fn_offset
 		p.cur_struct = prev_struct
 		p.cur_method_is_static = prev_method_is_static
 		p.defer_depth = outer_defer_depth

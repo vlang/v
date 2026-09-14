@@ -8,7 +8,21 @@ fn arena_leave(arena voidptr) {
 	}
 }
 
+struct Counter {
+	n int
+}
+
+// An operator overload has a body of its own, parsed apart from `fn_decl_body`,
+// and a branch dropped inside it hides a use just the same.
+fn (a Counter) + (b Counter) Counter {
+	$if prealloc {
+		return b
+	}
+	return a
+}
+
 fn main() {
+	println((Counter{1} + Counter{2}).n)
 	limit := 32
 	$if prealloc {
 		println(limit)
