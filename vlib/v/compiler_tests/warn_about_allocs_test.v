@@ -103,6 +103,9 @@ fn main() {
 	freed_length := array_length([7]) @[freed]
 	freed_length_projection := ('a' + name).len @[freed]
 	freed_index_projection := [8][0] @[freed]
+	freed_comparison := ('b' + name) == 'bV' @[freed]
+	freed_membership := 1 in [1] @[freed]
+	freed_concat := ('c' + name) + 'V' @[freed]
 	println(array)
 	println(reserved)
 	println(interpolation)
@@ -119,6 +122,9 @@ fn main() {
 	println(freed_length)
 	println(freed_length_projection)
 	println(freed_index_projection)
+	println(freed_comparison)
+	println(freed_membership)
+	println(freed_concat)
 	callback()
 }
 ")!
@@ -134,11 +140,11 @@ fn main() {
 		'cast to interface'] {
 		message := 'allocation (${description})'
 		expected_count := if description == 'string concatenation' {
-			4
+			5
 		} else if description == 'cast to interface' {
 			5
 		} else if description == 'array initialization' {
-			7
+			8
 		} else {
 			1
 		}

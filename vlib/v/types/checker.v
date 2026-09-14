@@ -2616,8 +2616,7 @@ fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token
 		if parent == current {
 			break
 		}
-		if tc.valid_node_id(parent)
-			&& !tc.child_is_value_producing_path(tc.a.node(parent), current) {
+		if tc.valid_node_id(parent) && !tc.child_is_value_producing_path(parent, current) {
 			value_path = false
 		}
 		direct_child = current
@@ -2638,7 +2637,8 @@ fn (tc &TypeChecker) assignment_child_is_value(node flat.Node, child_id flat.Nod
 	return false
 }
 
-fn (tc &TypeChecker) child_is_value_producing_path(parent flat.Node, child_id flat.NodeId) bool {
+fn (tc &TypeChecker) child_is_value_producing_path(parent_id flat.NodeId, child_id flat.NodeId) bool {
+	parent := tc.a.node(parent_id)
 	match parent.kind {
 		.block, .match_branch, .lock_expr {
 			return parent.children_count > 0
@@ -2655,8 +2655,35 @@ fn (tc &TypeChecker) child_is_value_producing_path(parent flat.Node, child_id fl
 		.call, .selector, .index {
 			return false
 		}
+		.infix {
+			return tc.type_can_own_warned_allocation(tc.resolve_type(parent_id))
+		}
+		.in_expr {
+			return false
+		}
 		else {
 			return true
+		}
+	}
+}
+
+fn (tc &TypeChecker) type_can_own_warned_allocation(typ Type) bool {
+	clean := unalias_type(typ)
+	return match clean {
+		String, Array, ArrayFixed, Channel, Map, Pointer, FnType, Struct, Interface, SumType {
+			true
+		}
+		OptionType {
+			tc.type_can_own_warned_allocation(clean.base_type)
+		}
+		ResultType {
+			tc.type_can_own_warned_allocation(clean.base_type)
+		}
+		MultiReturn {
+			clean.types.any(tc.type_can_own_warned_allocation(it))
+		}
+		else {
+			false
 		}
 	}
 }
