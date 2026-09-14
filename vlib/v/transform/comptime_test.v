@@ -235,6 +235,10 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		kind:  .field_init
 		value: 'b'
 	})
+	third_field := a.add_node(flat.Node{
+		kind:  .field_init
+		value: 'c'
+	})
 	children_start := a.children.len
 	a.children << callee
 	a.children << ctx
@@ -244,6 +248,17 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		kind:           .call
 		children_start: i32(children_start)
 		children_count: 4
+	}
+	required_children_start := a.children.len
+	a.children << callee
+	a.children << ctx
+	a.children << first_field
+	a.children << second_field
+	a.children << third_field
+	call_with_required := flat.Node{
+		kind:           .call
+		children_start: i32(required_children_start)
+		children_count: 5
 	}
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['Context'] = []types.StructField{}
@@ -261,11 +276,26 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		name: 'a'
 		typ:  tc.parse_type('int')
 	}]
+	tc.structs['RequiredParams'] = [
+		types.StructField{
+			name: 'a'
+			typ:  tc.parse_type('int')
+		},
+		types.StructField{
+			name: 'b'
+			typ:  tc.parse_type('int')
+		},
+		types.StructField{
+			name: 'c'
+			typ:  tc.parse_type('int')
+		},
+	]
 	tc.fn_implicit_veb_ctx['App.configure'] = true
 	tc.fn_param_types['App.configure'] = [types.Type(types.Struct{ name: 'App' }),
 		tc.parse_type('mut Context'), tc.parse_type('RouteParams')]
 	tc.params_structs['RouteParams'] = true
 	tc.params_structs['OtherParams'] = true
+	tc.params_structs['RequiredParams'] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.structs['RouteParams'] = StructInfo{
 		name:      'RouteParams'
@@ -294,6 +324,32 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 			},
 		]
 	}
+	t.structs['RequiredParams'] = StructInfo{
+		name:      'RequiredParams'
+		is_params: true
+		fields:    [
+			FieldInfo{
+				name:    'a'
+				typ:     'int'
+				raw_typ: 'int'
+			},
+			FieldInfo{
+				name:    'b'
+				typ:     'int'
+				raw_typ: 'int'
+			},
+			FieldInfo{
+				name:    'c'
+				typ:     'int'
+				raw_typ: 'int'
+			},
+		]
+	}
+	t.struct_field_decl_metas_cache['RequiredParams'] = {
+		'c': FieldDeclMeta{
+			attrs: ['required']
+		}
+	}
 	method := MethodMeta{
 		name:        'configure'
 		receiver:    'App'
@@ -310,6 +366,12 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		...method
 		params: [ParamMeta{ typ: 'OtherParams' }]
 	})
+	required_method := MethodMeta{
+		...method
+		params: [ParamMeta{ typ: 'RequiredParams' }]
+	}
+	assert !t.comptime_method_call_matches(call, required_method)
+	assert t.comptime_method_call_matches(call_with_required, required_method)
 }
 
 fn test_comptime_sum_variants_normalize_main_specialization_lock() {

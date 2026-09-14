@@ -13090,12 +13090,14 @@ fn (t &Transformer) receiver_call_uses_comptime_method_selector(node flat.Node) 
 
 fn (mut t Transformer) specialized_struct_field_args_match(node flat.Node, field_start int, struct_type string, report_errors bool) bool {
 	mut valid := true
+	mut supplied_fields := map[string]bool{}
 	mut i := field_start
 	for i < node.children_count {
 		field := t.a.child_node(&node, i)
 		if field.kind != .field_init {
 			break
 		}
+		supplied_fields[field.value] = true
 		field_type := t.lookup_struct_field_type(struct_type, field.value) or {
 			if report_errors {
 				t.record_monomorph_error('unknown field `${field.value}` in `${struct_type.all_after_last('.')}`')
@@ -13118,7 +13120,33 @@ fn (mut t Transformer) specialized_struct_field_args_match(node flat.Node, field
 		}
 		i++
 	}
+	info := t.lookup_struct_info(struct_type) or { return false }
+	decl_metas := t.struct_field_decl_metas_in_module(comptime_struct_info_cache_key(info),
+		info.module)
+	for struct_field in info.fields {
+		if struct_field.name in supplied_fields {
+			continue
+		}
+		meta := decl_metas[struct_field.name] or { continue }
+		if !field_decl_meta_has_attr(meta, 'required') {
+			continue
+		}
+		if report_errors {
+			display_name := info.name.all_after_last('.')
+			t.record_monomorph_error('field `${display_name}.${struct_field.name}` must be initialized')
+		}
+		valid = false
+	}
 	return valid
+}
+
+fn field_decl_meta_has_attr(meta FieldDeclMeta, name string) bool {
+	for attr in meta.attrs {
+		if attr.all_before(':').trim_space() == name {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node flat.Node, base_id flat.NodeId, field_type string) bool {
