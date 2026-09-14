@@ -215,7 +215,7 @@ fn test_comptime_method_call_arity_binds_context_value_to_declared_interface() {
 	assert t.comptime_method_call_matches(call, method)
 }
 
-fn test_comptime_method_call_arity_collapses_params_struct_fields() {
+fn test_comptime_method_call_matches_params_struct_fields() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{
 		kind:  .ident
@@ -246,16 +246,69 @@ fn test_comptime_method_call_arity_collapses_params_struct_fields() {
 		children_count: 4
 	}
 	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Context'] = []types.StructField{}
+	tc.structs['RouteParams'] = [
+		types.StructField{
+			name: 'a'
+			typ:  tc.parse_type('int')
+		},
+		types.StructField{
+			name: 'b'
+			typ:  tc.parse_type('int')
+		},
+	]
+	tc.structs['OtherParams'] = [types.StructField{
+		name: 'a'
+		typ:  tc.parse_type('int')
+	}]
 	tc.fn_implicit_veb_ctx['App.configure'] = true
 	tc.fn_param_types['App.configure'] = [types.Type(types.Struct{ name: 'App' }),
 		tc.parse_type('mut Context'), tc.parse_type('RouteParams')]
 	tc.params_structs['RouteParams'] = true
-	t := new_transformer(mut a, &tc, map[string]bool{})
-	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+	tc.params_structs['OtherParams'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['RouteParams'] = StructInfo{
+		name:      'RouteParams'
+		is_params: true
+		fields:    [
+			FieldInfo{
+				name:    'a'
+				typ:     'int'
+				raw_typ: 'int'
+			},
+			FieldInfo{
+				name:    'b'
+				typ:     'int'
+				raw_typ: 'int'
+			},
+		]
+	}
+	t.structs['OtherParams'] = StructInfo{
+		name:      'OtherParams'
+		is_params: true
+		fields:    [
+			FieldInfo{
+				name:    'a'
+				typ:     'int'
+				raw_typ: 'int'
+			},
+		]
+	}
+	method := MethodMeta{
 		name:        'configure'
 		receiver:    'App'
 		module_name: 'main'
 		params:      [ParamMeta{ typ: 'RouteParams' }]
+	}
+	assert t.comptime_method_call_arity_matches(call, method)
+	assert t.comptime_method_call_matches(call, method)
+	assert !t.comptime_method_call_matches(call, MethodMeta{
+		...method
+		params: [ParamMeta{ typ: 'int' }]
+	})
+	assert !t.comptime_method_call_matches(call, MethodMeta{
+		...method
+		params: [ParamMeta{ typ: 'OtherParams' }]
 	})
 }
 

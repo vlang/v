@@ -13038,7 +13038,7 @@ fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, ba
 				t.struct_arg_type_name(expected_name) or { '' }
 			}
 			if struct_type.len == 0
-				|| !t.validate_specialized_struct_field_args(node, child_idx, struct_type) {
+				|| !t.specialized_struct_field_args_match(node, child_idx, struct_type, true) {
 				valid = false
 			}
 			child_idx = t.next_non_field_init_arg(node, child_idx)
@@ -13088,7 +13088,7 @@ fn (t &Transformer) receiver_call_uses_comptime_method_selector(node flat.Node) 
 	return fn_node.kind == .selector && comptime_method_selector_marker in fn_node.generic_params()
 }
 
-fn (mut t Transformer) validate_specialized_struct_field_args(node flat.Node, field_start int, struct_type string) bool {
+fn (mut t Transformer) specialized_struct_field_args_match(node flat.Node, field_start int, struct_type string, report_errors bool) bool {
 	mut valid := true
 	mut i := field_start
 	for i < node.children_count {
@@ -13097,7 +13097,9 @@ fn (mut t Transformer) validate_specialized_struct_field_args(node flat.Node, fi
 			break
 		}
 		field_type := t.lookup_struct_field_type(struct_type, field.value) or {
-			t.record_monomorph_error('unknown field `${field.value}` in `${struct_type.all_after_last('.')}`')
+			if report_errors {
+				t.record_monomorph_error('unknown field `${field.value}` in `${struct_type.all_after_last('.')}`')
+			}
 			valid = false
 			i++
 			continue
@@ -13109,7 +13111,9 @@ fn (mut t Transformer) validate_specialized_struct_field_args(node flat.Node, fi
 		value_id := t.a.child(field, 0)
 		actual_type := t.specialized_expr_type_name(value_id)
 		if !t.resolved_receiver_arg_compatible(value_id, actual_type, field_type) {
-			t.record_monomorph_error('cannot initialize field `${field.value}` with `${actual_type}`; expected `${field_type}`')
+			if report_errors {
+				t.record_monomorph_error('cannot initialize field `${field.value}` with `${actual_type}`; expected `${field_type}`')
+			}
 			valid = false
 		}
 		i++

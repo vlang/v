@@ -1279,16 +1279,16 @@ fn (mut t Transformer) comptime_method_call_matches(node flat.Node, method Metho
 	// Match the checker's omission rule first: while the call does not exceed the
 	// declared route arity, its first argument belongs to the first route param.
 	ctx_omitted := args.len <= method.params.len
-	if t.comptime_method_call_args_match_with_ctx(args, method, !ctx_omitted) {
+	if t.comptime_method_call_args_match_with_ctx(node, args, method, !ctx_omitted) {
 		return true
 	}
 	// An explicit ctx can still be followed only by omittable route params. This
 	// is the second valid interpretation of an otherwise incompatible omitted-ctx
 	// binding, not a type-based override of the checker's arity decision.
-	return ctx_omitted && t.comptime_method_call_args_match_with_ctx(args, method, true)
+	return ctx_omitted && t.comptime_method_call_args_match_with_ctx(node, args, method, true)
 }
 
-fn (mut t Transformer) comptime_method_call_args_match_with_ctx(args []flat.NodeId, method MethodMeta, explicit_ctx bool) bool {
+fn (mut t Transformer) comptime_method_call_args_match_with_ctx(node flat.Node, args []flat.NodeId, method MethodMeta, explicit_ctx bool) bool {
 	mut route_start := 0
 	if explicit_ctx {
 		if args.len == 0 || !t.comptime_method_call_arg_matches_hidden_veb_ctx(args[0], method) {
@@ -1305,29 +1305,57 @@ fn (mut t Transformer) comptime_method_call_args_match_with_ctx(args []flat.Node
 	}
 	for route_idx in 0 .. route_count {
 		param_idx := if route_idx < method.params.len { route_idx } else { method.params.len - 1 }
-		if param_idx < 0 || t.a.node(args[route_start + route_idx]).kind == .field_init {
+		if param_idx < 0 {
 			continue
 		}
 		param := method.params[param_idx]
-		decl_module := if param.module_name.len > 0 { param.module_name } else { method.module_name }
+		decl_module := if param.module_name.len > 0 {
+			param.module_name
+		} else {
+			method.module_name
+		}
 		mut expected := param.typ
 		if is_variadic && param_idx == method.params.len - 1 && expected.starts_with('...') {
 			expected = expected[3..]
 		}
 		expected = t.qualify_generic_arg_for_decl_module(expected, decl_module)
-		mut actual := t.specialized_expr_type_name(args[route_start + route_idx])
+		arg_id := args[route_start + route_idx]
+		if t.a.node(arg_id).kind == .field_init {
+			if !t.comptime_method_field_group_matches(node, arg_id, expected) {
+				return false
+			}
+			continue
+		}
+		mut actual := t.specialized_expr_type_name(arg_id)
 		if actual == 'unknown' {
-			actual = t.a.node(args[route_start + route_idx]).typ
+			actual = t.a.node(arg_id).typ
 		}
 		if decl_module in ['', 'main'] {
 			expected = type_text_without_main_locks(expected)
 			actual = type_text_without_main_locks(actual)
 		}
-		if !t.resolved_receiver_arg_compatible(args[route_start + route_idx], actual, expected) {
+		if !t.resolved_receiver_arg_compatible(arg_id, actual, expected) {
 			return false
 		}
 	}
 	return true
+}
+
+fn (mut t Transformer) comptime_method_field_group_matches(node flat.Node, first_field_id flat.NodeId, expected string) bool {
+	struct_type := t.params_struct_type_name(expected) or {
+		t.struct_arg_type_name(expected) or { return false }
+	}
+	mut field_start := -1
+	for i in 1 .. node.children_count {
+		if t.a.child(&node, i) == first_field_id {
+			field_start = i
+			break
+		}
+	}
+	if field_start < 0 {
+		return false
+	}
+	return t.specialized_struct_field_args_match(node, field_start, struct_type, false)
 }
 
 fn (t &Transformer) comptime_method_call_arg_matches_hidden_veb_ctx(arg_id flat.NodeId, method MethodMeta) bool {
