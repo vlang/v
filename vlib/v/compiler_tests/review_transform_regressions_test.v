@@ -13303,3 +13303,200 @@ fn main() {
 ')
 	assert out == '7'
 }
+
+fn test_comptime_method_multi_return_type_guard_is_folded() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'comptime_method_multi_return_guard', {
+		'main.v': 'module main
+
+struct Marker {}
+
+struct Item {}
+
+struct App {}
+
+fn (App) route() Marker {
+	return Marker{}
+}
+
+fn (App) helper() !(Item, []u8) {
+	return Item{}, []u8{}
+}
+
+fn inspect[A]() {
+	$for method in A.methods {
+		$if method.return_type is Marker {
+			println(method.name)
+		}
+	}
+}
+
+fn main() {
+	inspect[App]()
+}
+'
+	}, 'main.v')
+	assert out == 'route'
+}
+
+fn test_implicit_clone_ignores_incompatible_user_clone_method() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'incompatible_user_clone_method', 'struct Item {
+mut:
+	name string
+}
+
+fn (mut item Item) clone(force bool) {
+	_ = force
+	item.name = item.name
+}
+
+fn main() {
+	item := Item{
+		name: "ok"
+	}
+	mut items := []Item{}
+	items << item
+	println(items[0].name)
+}
+')
+	assert out == 'ok'
+}
+
+fn test_implicit_clone_uses_zero_argument_variadic_clone_method() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'zero_argument_variadic_clone_method', 'struct Item {
+	name string
+}
+
+fn (item Item) clone(_ ...bool) Item {
+	return Item{
+		name: "custom:" + item.name
+	}
+}
+
+fn main() {
+	item := Item{
+		name: "ok"
+	}
+	mut items := []Item{}
+	items << item
+	println(items[0].name)
+}
+')
+	assert out == 'custom:ok'
+}
+
+fn test_generic_inference_prefers_local_over_same_named_function() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_local_function_name_collision', 'import math
+
+struct Log {}
+
+fn type_name[T](_ T) string {
+	return typeof(T).name
+}
+
+fn main() {
+	logs := [Log{}]
+	for log in logs {
+		println(type_name(log))
+	}
+	_ = math.log(1.0)
+}
+')
+	assert out == 'Log'
+}
+
+fn test_local_enum_equality_ignores_same_named_imported_struct() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'local_enum_imported_struct_collision', {
+		'main.v':        'module main
+
+import other
+
+enum Lang {
+	en
+	ru
+}
+
+fn lang_name(lang Lang) string {
+	return match lang {
+		.ru { "ru" }
+		.en { "en" }
+	}
+}
+
+fn main() {
+	println(lang_name(.ru))
+	_ = other.Lang{}
+}
+'
+		'other/other.v': 'module other
+
+pub struct Lang {
+pub:
+	keywords []string
+}
+'
+	}, 'main.v')
+	assert out == 'ru'
+}
+
+fn test_local_struct_equality_ignores_same_named_imported_enum() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'local_struct_imported_enum_collision', {
+		'main.v':        'module main
+
+import other
+
+struct Lang {
+	code int
+}
+
+fn main() {
+	println(Lang{code: 7} == Lang{code: 7})
+	_ = other.Lang.en
+}
+'
+		'other/other.v': 'module other
+
+pub enum Lang {
+	en
+	ru
+}
+'
+	}, 'main.v')
+	assert out == 'true'
+}
+
+fn test_builtin_struct_equality_ignores_same_named_imported_enum() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'builtin_struct_imported_enum_collision', {
+		'main.v':          'module main
+
+import other
+import sample
+
+fn main() {
+	left := SliceIndex{value: 7}
+	right := SliceIndex{value: 7}
+	println(sample.slice_indexes_equal(left, right))
+	_ = other.SliceIndex.value
+}
+'
+		'other/other.v':   'module other
+
+pub enum SliceIndex {
+	value
+}
+'
+		'sample/sample.v': 'module sample
+
+pub fn slice_indexes_equal(left SliceIndex, right SliceIndex) bool {
+	return left == right
+}
+'
+	}, 'main.v')
+	assert out == 'true'
+}

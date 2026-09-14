@@ -2108,7 +2108,7 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 	return 0
 }
 
-fn (t &Transformer) call_param_offset_for_node(call_name string, node flat.Node, params []types.Type) int {
+fn (mut t Transformer) call_param_offset_for_node(call_name string, node flat.Node, params []types.Type) int {
 	mut param_offset := t.call_param_offset(call_name, node, params)
 	if param_offset != 0 || call_name.len == 0 || params.len == 0 {
 		return param_offset + t.implicit_veb_ctx_param_offset(call_name, node, params)
@@ -2137,16 +2137,149 @@ fn (t &Transformer) call_param_offset_for_node(call_name string, node flat.Node,
 	return param_offset + t.implicit_veb_ctx_param_offset(call_name, node, params)
 }
 
-fn (t &Transformer) implicit_veb_ctx_param_offset(call_name string, node flat.Node, params []types.Type) int {
-	// Reflected veb calls supply the context explicitly; ordinary source calls omit it.
-	if t.receiver_call_uses_comptime_method_selector(node) {
-		return 0
-	}
+fn (mut t Transformer) implicit_veb_ctx_param_offset(call_name string, node flat.Node, params []types.Type) int {
 	abi_params := t.implicit_veb_call_param_types(call_name) or { return 0 }
+	if t.receiver_call_uses_comptime_method_selector(node) {
+		if params.len < 2 {
+			return 0
+		}
+		args, has_spread := t.logical_call_arg_ids(node)
+		mut module_name := t.cur_module
+		if !isnil(t.tc) {
+			module_name = t.tc.fn_type_modules[call_name] or { t.cur_module }
+		}
+		if has_spread {
+			if args.len > 0 && t.call_arg_matches_abi_type(args[0], params[1], module_name) {
+				return 0
+			}
+			return 1
+		}
+		declared_count := params.len - 2
+		if args.len > declared_count {
+			return 0
+		}
+		// Follow the checker's arity-based omission rule. In the ambiguous range,
+		// prefer binding arguments to declared route params, including interfaces
+		// implemented by the concrete Context type.
+		if t.reflected_veb_route_args_match(args, params, 0, module_name) {
+			return 1
+		}
+		// If that binding is invalid, the first argument may instead be the explicit
+		// ctx when every omitted trailing route parameter has a default shape.
+		if args.len > 0 && t.call_arg_matches_abi_type(args[0], params[1], module_name)
+			&& args.len - 1 >= t.implicit_veb_min_required_route_args(call_name, params)
+			&& t.reflected_veb_route_args_match(args, params, 1, module_name) {
+			return 0
+		}
+		return 1
+	}
 	if params.len != abi_params.len {
 		return 0
 	}
 	return 1
+}
+
+fn (t &Transformer) logical_call_arg_ids(node flat.Node) ([]flat.NodeId, bool) {
+	mut args := []flat.NodeId{cap: int(node.children_count)}
+	mut has_spread := false
+	mut added_field_group := false
+	for i in 1 .. node.children_count {
+		arg_id := t.a.child(&node, i)
+		if t.call_arg_is_spread(arg_id) {
+			has_spread = true
+		}
+		if t.a.node(arg_id).kind == .field_init {
+			if added_field_group {
+				continue
+			}
+			added_field_group = true
+		}
+		args << arg_id
+	}
+	return args, has_spread
+}
+
+fn (mut t Transformer) reflected_veb_route_args_match(args []flat.NodeId, params []types.Type, arg_start int, module_name string) bool {
+	route_count := args.len - arg_start
+	if route_count < 0 || route_count > params.len - 2 {
+		return false
+	}
+	for route_idx in 0 .. route_count {
+		arg_id := args[arg_start + route_idx]
+		if t.a.node(arg_id).kind == .field_init {
+			continue
+		}
+		mut actual := t.specialized_expr_type_name(arg_id)
+		if actual == 'unknown' {
+			actual = t.a.node(arg_id).typ
+		}
+		mut expected := t.semantic_type_name(params[route_idx + 2])
+		if module_name in ['', 'main'] {
+			actual = type_text_without_main_locks(actual)
+			expected = type_text_without_main_locks(expected)
+		}
+		if !t.resolved_receiver_arg_compatible(arg_id, actual, expected) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Transformer) implicit_veb_min_required_route_args(call_name string, params []types.Type) int {
+	mut count := params.len - 2
+	if count > 0 && t.call_is_variadic(call_name) {
+		count--
+	}
+	for count > 0 {
+		param := params[count + 1]
+		if param is types.OptionType {
+			count--
+			continue
+		}
+		if _ := t.params_struct_type_name(t.semantic_type_name(param)) {
+			count--
+			continue
+		}
+		break
+	}
+	return count
+}
+
+fn (t &Transformer) call_arg_matches_abi_type(arg_id flat.NodeId, expected types.Type, expected_module string) bool {
+	if int(arg_id) < 0 {
+		return false
+	}
+	arg := t.a.node(arg_id)
+	expected_name := t.semantic_type_name(expected)
+	expected_type := type_text_without_main_locks(t.normalize_type_in_module(expected_name,
+		expected_module))
+	mut candidates := [t.node_type(arg_id), arg.typ]
+	if arg.kind == .ident {
+		candidates << t.raw_var_type(arg.value)
+		candidates << t.var_type(arg.value)
+	}
+	for candidate in candidates {
+		if candidate.len == 0 {
+			continue
+		}
+		arg_type := if arg.is_mut && !candidate.starts_with('&')
+			&& !candidate.starts_with('mut ') {
+			'&${candidate}'
+		} else {
+			candidate
+		}
+		// ABI metadata stores main-module types bare, while an imported generic
+		// specialization locks the same type as `main.X` to avoid local collisions.
+		if expected_module in ['', 'main'] && arg_type.contains('main.')
+			&& type_text_without_main_locks(arg_type) == type_text_without_main_locks(expected_name) {
+			return true
+		}
+		actual := type_text_without_main_locks(t.normalize_type_in_module(arg_type, t.cur_module))
+		if actual.len > 0 && actual == expected_type {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) call_selector_callee_id(node flat.Node) ?flat.NodeId {
@@ -12905,7 +13038,7 @@ fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, ba
 				t.struct_arg_type_name(expected_name) or { '' }
 			}
 			if struct_type.len == 0
-				|| !t.validate_specialized_struct_field_args(node, child_idx, struct_type) {
+				|| !t.specialized_struct_field_args_match(node, child_idx, struct_type, true) {
 				valid = false
 			}
 			child_idx = t.next_non_field_init_arg(node, child_idx)
@@ -12955,16 +13088,20 @@ fn (t &Transformer) receiver_call_uses_comptime_method_selector(node flat.Node) 
 	return fn_node.kind == .selector && comptime_method_selector_marker in fn_node.generic_params()
 }
 
-fn (mut t Transformer) validate_specialized_struct_field_args(node flat.Node, field_start int, struct_type string) bool {
+fn (mut t Transformer) specialized_struct_field_args_match(node flat.Node, field_start int, struct_type string, report_errors bool) bool {
 	mut valid := true
+	mut supplied_fields := map[string]bool{}
 	mut i := field_start
 	for i < node.children_count {
 		field := t.a.child_node(&node, i)
 		if field.kind != .field_init {
 			break
 		}
+		supplied_fields[field.value] = true
 		field_type := t.lookup_struct_field_type(struct_type, field.value) or {
-			t.record_monomorph_error('unknown field `${field.value}` in `${struct_type.all_after_last('.')}`')
+			if report_errors {
+				t.record_monomorph_error('unknown field `${field.value}` in `${struct_type.all_after_last('.')}`')
+			}
 			valid = false
 			i++
 			continue
@@ -12976,12 +13113,40 @@ fn (mut t Transformer) validate_specialized_struct_field_args(node flat.Node, fi
 		value_id := t.a.child(field, 0)
 		actual_type := t.specialized_expr_type_name(value_id)
 		if !t.resolved_receiver_arg_compatible(value_id, actual_type, field_type) {
-			t.record_monomorph_error('cannot initialize field `${field.value}` with `${actual_type}`; expected `${field_type}`')
+			if report_errors {
+				t.record_monomorph_error('cannot initialize field `${field.value}` with `${actual_type}`; expected `${field_type}`')
+			}
 			valid = false
 		}
 		i++
 	}
+	info := t.lookup_struct_info(struct_type) or { return false }
+	decl_metas := t.struct_field_decl_metas_in_module(comptime_struct_info_cache_key(info),
+		info.module)
+	for struct_field in info.fields {
+		if struct_field.name in supplied_fields {
+			continue
+		}
+		meta := decl_metas[struct_field.name] or { continue }
+		if !field_decl_meta_has_attr(meta, 'required') {
+			continue
+		}
+		if report_errors {
+			display_name := info.name.all_after_last('.')
+			t.record_monomorph_error('field `${display_name}.${struct_field.name}` must be initialized')
+		}
+		valid = false
+	}
 	return valid
+}
+
+fn field_decl_meta_has_attr(meta FieldDeclMeta, name string) bool {
+	for attr in meta.attrs {
+		if attr.all_before(':').trim_space() == name {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node flat.Node, base_id flat.NodeId, field_type string) bool {

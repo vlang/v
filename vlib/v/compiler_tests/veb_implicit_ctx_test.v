@@ -16,7 +16,7 @@ fn build_v3() string {
 // called by another handler without passing ctx explicitly. The call must
 // type-check (not report a missing argument) and forward the enclosing `ctx`,
 // not a zero/default value.
-fn test_veb_implicit_ctx_forwarded_at_call_site() {
+fn test_veb_implicit_ctx_forwarded_at_direct_and_reflected_call_sites() {
 	v3_bin := build_v3()
 	src := '
 import veb
@@ -32,7 +32,12 @@ mut:
 
 pub fn (app &App) index() veb.Result {
 	app.show(5)
-	return app.helper()
+	$for method in App.methods {
+		if method.name == "helper" {
+			return app.$method()
+		}
+	}
+	return veb.Result{}
 }
 
 pub fn (app &App) helper() veb.Result {
@@ -55,7 +60,7 @@ fn main() {
 	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${c_out}')
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
-	// No-arg delegation forwards the enclosing ctx in the ctx slot.
+	// No-arg reflected delegation forwards the enclosing ctx in the ctx slot.
 	assert c_code.contains('App__helper(app, ctx)'), c_code
 	// Delegation that also passes a real argument keeps ctx at its slot,
 	// so the explicit argument still lines up with its parameter.
@@ -127,6 +132,12 @@ fn (mut ctx Context) coming_soon() veb.Result {
 pub fn (app App) bookmark(_ string, _ string) veb.Result {
 	_ = app
 	return ctx.coming_soon()
+}
+
+@["/change/:lang"; get]
+pub fn (mut app App) change_lang(lang string) veb.Result {
+	_ = app
+	return ctx.text(lang)
 }
 
 fn main() {
@@ -312,6 +323,11 @@ pub fn (mut app App) explicit(mut ctx Context) veb.Result {
 	return veb.Result{}
 }
 
+pub fn (mut app App) show(id string) veb.Result {
+	println(id)
+	return veb.Result{}
+}
+
 fn dispatch[A, X](mut app A, mut ctx X) {
 	$for method in A.methods {
 		$if method.return_type is veb.Result {
@@ -335,4 +351,57 @@ fn main() {
 	run := os.execute(bin_out)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['index called', 'explicit called'], run.output
+}
+
+// Arity decides whether a reflected argument occupies the hidden context slot.
+// A Context value can therefore bind to a declared interface route parameter
+// when that interface accepts Context; it must not be consumed as an explicit
+// copy of the hidden parameter merely because its concrete type is Context.
+fn test_veb_reflected_context_value_binds_to_declared_interface_param() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub interface RouteArg {}
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (mut app App) accepts(value RouteArg) veb.Result {
+	_ = value
+	println("interface called")
+	return veb.Result{}
+}
+
+pub fn (mut app App) needs_string(value string) veb.Result {
+	println(value)
+	return veb.Result{}
+}
+
+fn dispatch[A](mut app A, ctx &Context) {
+	$for method in A.methods {
+		$if method.return_type is veb.Result {
+			app.$method(ctx)
+		}
+	}
+}
+
+fn main() {
+	mut app := App{}
+	ctx := &Context{}
+	dispatch(mut app, ctx)
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg.v')
+	os.write_file(src_file, src) or { panic(err) }
+	bin_out := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg')
+	os.rm(bin_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'interface called', run.output
 }
