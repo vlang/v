@@ -111,7 +111,7 @@ This module support both of form, but the size (length) is limited to `max_tag_l
 currently set to 3 bytes length. This effectively limits the tag number supported by this 
 module to be in 0..16.383 number ranges. See comment on `core.v` file for the background on this.
 
-When your tag has a class of `universal` type, your tag nunber also be limited to be under 255, 
+When your tag has a class of `universal` type, your tag number also be limited to be under 255, 
 hopefully if your tag is universal type, just use universal type supported by this module.
 
 ### Create ASN.1 Tag
@@ -187,7 +187,7 @@ and, you can read a length from bytes with
 fn Length.from_bytes(bytes []u8) !(Length, []u8)
 ```
 
-It would return a length and remaining bytes on succes or error on fails.
+It would return a length and remaining bytes on success or error on fails.
 
 ### Serializing ASN.1 Length
 
@@ -227,13 +227,13 @@ your payload manually, but this `asn1` module has provides helper routine to do 
 fn make_payload[T](val T, kd KeyDefault) ![]u8 
 ```
 > ***Note***
-> - `T` is struct contains one or more fields that fullfills Element interface.
+> - `T` is struct contains one or more fields that fulfills Element interface.
 > - KeyDefault is map of `field.name` key with some element value 
 > (only the field has DEFAULT keyword) to setup default value.
 
 Its would produces only element's payload without tag or length bytes included. 
 When your structures does not contains the fields that 
-fullfills interfaces, it would produces and return empty bytes.
+fulfills interfaces, it would produces and return empty bytes.
 
 ### Serializing ASN.1 Element
 
@@ -351,7 +351,7 @@ mut:
 The main purpose of this options structures is used for:
 - handling of wrapping some element, turn some element into another element.
 - handling of OPTIONAL element.
-- handling of element with DEFAULT keywoard.
+- handling of element with DEFAULT keyword.
 
 ### Wrapping an Element through FieldOptions
 There are two constructor for construct a `FieldOptions`, ie 
@@ -385,7 +385,7 @@ out := asn1.encode_with_field_options(p.name, fo)!
 
 ### Handling optional with FieldOptions
 The field `optional` and `present` of the `FieldOptions` was used for handling element 
-with OPTINAL keyword within element definition.
+with OPTIONAL keyword within element definition.
 The mean of the flags:
 - when `optional` bit was set into `true`, thats mean, the element treated as element 
 with OPTIONAL semantic.

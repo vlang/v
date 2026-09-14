@@ -166,8 +166,9 @@ fn (m Module) install() InstallResult {
 		// Case: installed, but not an explicit version. Update instead of continuing the installation.
 		if m.version == '' && m.installed_version == '' {
 			if m.is_external && m.url.starts_with('http://') {
-				vpm_update([m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator,
-					'.')])
+				vpm_update([
+					m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator, '.'),
+				])
 			} else {
 				vpm_update([m.name])
 			}

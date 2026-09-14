@@ -51,8 +51,8 @@ fn main() {
 	// 1.1: Anonymous function callback with optional callback
 	println('1.1: Anonymous function with optional callback')
 	foo(
-		name:        'item 1'
-		update:      fn (name string) {
+		name: 'item 1'
+		update: fn (name string) {
 			println('update ${name}')
 		}
 		optional_cb: fn () {
@@ -70,7 +70,7 @@ fn main() {
 	// 1.3: Anonymous function field
 	println('\n1.3: Anonymous function field')
 	item_3 := FooProps{
-		name:   'item 3'
+		name: 'item 3'
 		update: fn (name string) {
 			println('update ${name}')
 		}
@@ -80,7 +80,7 @@ fn main() {
 	// 1.4: Lambda function field
 	println('\n1.4: Lambda function field')
 	item_4 := FooProps{
-		name:   'item 4'
+		name: 'item 4'
 		update: update
 	}
 	item_4.update(item_4.name)

@@ -44,9 +44,7 @@ fn compile_project(target string) os.Result {
 		os.rmdir_all(basepath) or {}
 		os.rm(out_name) or {}
 	}
-	// `-old-compiler` forces the compatibility compiler (the default on non-macOS,
-	// a fallback on macOS) where the mis-qualification happened.
-	return os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(out_name)} ${os.quoted_path(target)}')
+	return os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out_name)} ${os.quoted_path(target)}')
 }
 
 fn test_root_submodule_with_enum_compiles_from_project_dir() {

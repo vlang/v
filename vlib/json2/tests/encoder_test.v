@@ -204,3 +204,27 @@ fn test_encode_float() {
 	assert json.encode(1.0e-10) == '1e-10'
 	assert json.encode(1.1e10) == '1.1e+10'
 }
+
+struct PrettifyEmptyCollectionsFixture {
+	empty_list []int
+	empty_map  map[string]int
+	plain      int
+}
+
+fn test_encoder_prettify_empty_collections() {
+	// An empty collection used to raise the indentation level when it was opened, but
+	// the matching lowering lived in the loop body that an empty collection never
+	// enters. The leaked level pushed every later member one level too deep, and one
+	// level deeper again for each further empty collection, so the indentation grew
+	// with the position in the document instead of with the nesting.
+	fixture := PrettifyEmptyCollectionsFixture{
+		empty_list: []
+		empty_map:  {}
+		plain:      1
+	}
+	assert json.encode(fixture, prettify: true, indent_string: '  ') == '{
+  "empty_list": [],
+  "empty_map": {},
+  "plain": 1
+}'
+}

@@ -32,8 +32,26 @@ pub mut:
 	url        string
 	user_agent string = 'v.http'
 	verbose    bool
-	user_ptr   voidptr
-	proxy      &HttpProxy = unsafe { nil }
+	// remote_addr is the network address of the peer that sent this request,
+	// in `ip:port` form (`[ipv6]:port` for IPv6) -- the equivalent of Go's
+	// http.Request.RemoteAddr. `http.Server` fills it in for every request it
+	// hands to a `Handler`, over HTTP/1.1 and HTTP/2, plain and TLS, reading it
+	// straight off the accepted socket, so a client cannot forge it.
+	//
+	// It is empty for a request you build yourself to send with the client, and
+	// for one served by `veb`, which has its own server: use `ctx.ip()` there.
+	//
+	// A scoped IPv6 peer keeps its RFC 4007 zone, as in `[fe80::1%3]:8080`;
+	// without it a link-local address neither identifies an interface nor can
+	// be dialled back. The zone is the numeric interface index.
+	//
+	// When the server sits behind a reverse proxy this is the proxy's address.
+	// Recovering the original client then means trusting a header the proxy set
+	// (X-Forwarded-For, X-Real-Ip), which is only safe if nothing but that proxy
+	// can reach the server.
+	remote_addr string
+	user_ptr    voidptr
+	proxy       &HttpProxy = unsafe { nil }
 	// NOT implemented for ssl connections
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
@@ -102,6 +120,16 @@ fn (mut req Request) free() {
 			user_agent.free()
 			freed_ptrs[user_agent_ptr] = true
 		}
+		// The mirrored `Remote-Addr` header above can share this buffer:
+		// set_remote_addr stores the address unchanged as the header value when
+		// there is no port to strip. The freed_ptrs guard is what keeps that
+		// from being a double free, here as for every other field.
+		mut remote_addr := req.remote_addr
+		remote_addr_ptr := u64(usize(remote_addr.str))
+		if remote_addr_ptr !in freed_ptrs {
+			remote_addr.free()
+			freed_ptrs[remote_addr_ptr] = true
+		}
 		mut verify := req.verify
 		verify_ptr := u64(usize(verify.str))
 		if verify_ptr !in freed_ptrs {
@@ -140,6 +168,50 @@ pub fn (mut req Request) add_header(key CommonHeader, val string) {
 // This method may fail if the key contains characters that are not permitted
 pub fn (mut req Request) add_custom_header(key string, val string) ! {
 	return req.header.add_custom(key, val)
+}
+
+// remote_ip returns just the IP part of `req.remote_addr`, without the port,
+// for example `127.0.0.1` or `::1`. A scoped IPv6 address keeps its zone
+// (`fe80::1%3`), which is part of the address rather than of the port.
+// It returns an empty string for a request that was not received by
+// `http.Server`. See `Request.remote_addr`.
+pub fn (req &Request) remote_ip() string {
+	return strip_addr_port(req.remote_addr)
+}
+
+// strip_addr_port drops the `:port` suffix of an `ip:port` address, handling
+// the bracketed `[::1]:8080` form that IPv6 addresses use. An RFC 4007 zone
+// sits inside the brackets (`[fe80::1%3]:8080`), so it survives untouched.
+fn strip_addr_port(addr string) string {
+	if addr.contains(']:') {
+		return addr.all_before(']:').all_after('[')
+	}
+	if addr.count(':') != 1 {
+		// A bare IPv6 address without a port, or an empty string: nothing to strip.
+		return addr
+	}
+	return addr.all_before(':')
+}
+
+// set_remote_addr records `addr` (an `ip:port` string read from the accepted
+// socket) as the address of the peer that sent this request, and mirrors it
+// into the legacy `Remote-Addr` header that the V server has always set.
+//
+// Any `Remote-Addr` header the client sent is dropped first, in any casing:
+// header lookups return the *first* match, so a client that sent its own
+// `Remote-Addr` would otherwise shadow the real one and hand every reader a
+// forged source address. The header is only a best-effort mirror -- headers
+// live in a fixed-size array, so a request that already filled it leaves no
+// room -- while `req.remote_addr` is always set.
+fn (mut req Request) set_remote_addr(addr string) {
+	req.remote_addr = addr
+	req.header.remove_custom_all('Remote-Addr')
+	if addr == '' {
+		return
+	}
+	if req.header.cur_pos < max_headers {
+		req.header.add_custom('Remote-Addr', strip_addr_port(addr)) or {}
+	}
 }
 
 // add_cookie adds a cookie to the request.

@@ -3,11 +3,13 @@
 // that can be found in the LICENSE file.
 module coroutines
 
-import v.util
+import runtime
 import time
 
 #flag -I @VEXEROOT/thirdparty/photon
+
 #flag @VEXEROOT/thirdparty/photon/photonwrapper.so
+
 #include "photonwrapper.h"
 
 $if windows {
@@ -15,7 +17,9 @@ $if windows {
 } $else {
 	#include <pthread.h>
 }
+
 #flag -I @VEXEROOT/vlib/coroutines
+
 #include "sp_corrector.c"
 
 fn C.set_photon_thread_stack_allocator(fn (voidptr, int) voidptr, fn (voidptr, voidptr, int))
@@ -23,19 +27,30 @@ fn C.set_photon_thread_stack_allocator(fn (voidptr, int) voidptr, fn (voidptr, v
 // fn C.default_photon_thread_stack_alloc(voidptr, int) voidptr
 // fn C.default_photon_thread_stack_dealloc(voidptr, voidptr, int)
 fn C.new_photon_work_pool(i32) voidptr
+
 fn C.delete_photon_work_pool()
+
 fn C.init_photon_work_pool(i32)
+
 fn C.photon_set_log_output_stdout()
+
 fn C.photon_set_log_output_stderr()
+
 fn C.photon_set_log_output_null()
+
 fn C.photon_join_current_thread_into_workpool() i32
+
 fn C.photon_thread_create_and_migrate_to_work_pool(f voidptr, arg voidptr)
+
 fn C.photon_thread_create(f voidptr, arg voidptr, stack_size u64)
+
 fn C.photon_thread_migrate()
 
 // fn C.photon_thread_migrate(work_pool voidptr)
 fn C.photon_init_default() i32
+
 fn C.photon_sleep_s(n i32)
+
 fn C.photon_sleep_ms(n i32)
 
 fn C.sp_corrector(voidptr, voidptr)
@@ -101,13 +116,13 @@ fn init() {
 	C.set_photon_thread_stack_allocator(alloc, dealloc)
 	ret := C.photon_init_default()
 
-	if util.nr_jobs >= 1 {
+	if runtime.nr_jobs() >= 1 {
 		// automatic
-		// C.init_photon_work_pool(util.nr_jobs)
+		// C.init_photon_work_pool(runtime.nr_jobs())
 		// manual - pass 0 because we will start our own
 		C.init_photon_work_pool(0)
 		// start our own vcpu's manually
-		for _ in 1 .. util.nr_jobs {
+		for _ in 1 .. runtime.nr_jobs() {
 			spawn init_photon_vcpu()
 		}
 	}

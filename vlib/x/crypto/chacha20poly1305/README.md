@@ -15,7 +15,7 @@ The implemented features at the time of writing (2025/10/08) are:
 - The standard ChaCha20 and Poly1305 construct for IETF Protocols defined in [RFC 8439](https://datatracker.ietf.org/doc/html/rfc8439)
 - ChaCha20 Poly1305 AEAD construct with 8-bytes nonce.
 - Support for eXtended ChaCha20 Poly1305 AEAD construct with 24 bytes nonce.
-- Support for nonce-misuse resistent and key-commiting AEAD through ChaCha20-Poly1305-PSIV construction defined in the [A Robust Variant of ChaCha20-Poly1305](https://eprint.iacr.org/2025/222) paper. 
+- Support for nonce-misuse resistant and key-committing AEAD through ChaCha20-Poly1305-PSIV construction defined in the [A Robust Variant of ChaCha20-Poly1305](https://eprint.iacr.org/2025/222) paper. 
 
 ## Examples
 

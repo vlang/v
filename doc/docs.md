@@ -26,8 +26,8 @@ V does not yet have a separate formal language specification document like the G
 Until V 1.0, the language reference is defined by:
 * This document (`doc/docs.md`) for syntax and semantics.
 * The compiler implementation in `vlib/v/`.
-* The executable language tests in `vlib/v/tests/`, `vlib/v/parser/`,
-  `vlib/v/checker/`, and `vlib/v/slow_tests/inout/`.
+* The executable language tests in `vlib/v/tests/`, `vlib/v/parser/tests/`,
+  `vlib/v/checker/tests/`, and `vlib/v/slow_tests/inout/`.
 
 When documentation and implementation diverge, compiler behavior and tests are the source of truth.
 
@@ -75,24 +75,22 @@ project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
 ## The default compiler
 
-On every native platform, the top-level `v` executable contains only the
-experimental **V3** C compiler (whose source lives in `vlib/v3`). Every direct C
-build, including compiler self-builds, is compiled by V3 in-process. The CLI and
-tool commands remain in `cmd/v`; commands such as `test` and `fmt` are external
-tools, and non-C backends remain separate builder tools.
+On every native platform, the top-level `v` executable contains the default
+compiler whose source lives in `vlib/v`. Every direct C build, including compiler
+self-builds, is compiled in-process. The CLI remains in `cmd/v`; `test` is
+handled by the default compiler, and external tools are compiled with it first.
 
-The standard bootstrap builds a sibling `v1_fallback` executable
-(`v1_fallback.exe` on Windows). `-old-compiler` launches it explicitly, and
-ordinary user builds retry through it after a V3 compiler or C compilation
-failure. Explicit `-new-compiler` builds and native compiler self-builds remain
-strict V3 operations, except for `-new-compiler -cc msvc` on Windows. V3 does
-not yet generate MSVC command lines, so that combination intentionally launches
-`v1_fallback.exe`. A separately built V3-only executable without the sibling
-cannot use the fallback. `-new-compiler` remains accepted for command-line
-compatibility and otherwise selects the same embedded driver.
-
-Portable cross-VC snapshots do not embed V3 and retain the established compiler
-from `vlib/v`.
+The standard bootstrap does not build the sibling `v1_fallback` executable
+(`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
+sibling is missing, it reports that it is running `make v1`. That target reuses
+or downloads the complete 0.5.2 release under the user cache. If no release
+binary can run, `oldv` clones the 0.5.2 V sources and matching `vc` snapshot and
+builds the fallback there. You can run `make v1` explicitly to prepare it ahead
+of time. `-old-compiler` launches the fallback explicitly, and ordinary user
+builds and external tools retry through it after a compiler or C compilation
+failure. Explicit `-new-compiler` builds remain strict default-compiler
+operations. `-new-compiler` remains accepted for command-line compatibility and
+otherwise selects the same embedded driver.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
@@ -745,7 +743,7 @@ and conversions, refer to the
 Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
 quotes to single quotes unless the string contains a single quote character.
 
-Prepend `r` for raw strings. Escapes are not handled, so you will get exacly what you type:
+Prepend `r` for raw strings. Escapes are not handled, so you will get exactly what you type:
 
 ```v
 s := r'hello\nworld' // the `\n` will be preserved as two characters
@@ -6194,8 +6192,8 @@ A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
 
-During the transition to the V3 formatter, `v fmt -verify` and `v fmt -c` accept
-files matching either V3 or legacy vfmt output. `v fmt -w` uses V3 formatting,
+During the formatter transition, `v fmt -verify` and `v fmt -c` accept
+files matching either current or legacy vfmt output. `v fmt -w` uses current formatting,
 so it may rewrite a file accepted by either check mode.
 
 #### Disabling the formatting locally
@@ -6236,8 +6234,8 @@ That will produce a `profile.txt` file when the program exits, which you can the
 analyze. If the output file is omitted, as in `v -profile run file.v`, the report
 is written to standard output. `-prof` is an alias for `-profile`.
 
-The V3 compiler supports profiling with its C backend. Other V3 backends reject
-`-profile`. V3 also supports these V1-compatible selection options:
+The compiler supports profiling with its C backend. Other backends reject
+`-profile`. It also supports these compatibility selection options:
 
 - `-profile-fns name1,name2` profiles only the named functions and functions
   called from them. Use the function names shown in profile output, such as
@@ -7236,7 +7234,7 @@ See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 
 #### `$vml` for compiling UI2 interfaces
 
-The V3 compiler can compile a VML file directly into an `ui2.Element` expression with
+The compiler can compile a VML file directly into an `ui2.Element` expression with
 `$vml(path)`. The VML is parsed while the application is compiled; the resulting program
 constructs UI2 elements directly and does not parse the VML file at runtime.
 
@@ -8407,6 +8405,77 @@ v -os linux -cc cosmocc .
 
 You will need to install Clang, LLD linker, and download a zip file with
 libraries and include files for Windows and Linux. V will provide you with a link.
+
+### Portable C output (`-os cross`)
+
+`-os cross` is not a platform. It asks for *portable* C,
+i.e. C that is not tied to one OS, architecture or C compiler, so that a single
+generated file can be compiled on any of them. It is how V's own bootstrap
+snapshot `vc/v.c` is produced, and it only makes sense with `-o file.c`:
+
+```shell
+v -os cross -o /tmp/v.c cmd/v
+cc -o v_from_c /tmp/v.c -lm -lpthread
+```
+
+The `-cross` flag asks for the same output, but as a modifier that combines with
+an explicit target, which is how the Windows bootstrap snapshot is produced:
+
+```shell
+v -cross -os windows -cc msvc -o /tmp/v_win.c cmd/v
+```
+
+Either spelling also turns on the `cross` and `no_backtrace` custom defines, so
+that the `$if cross ?` guards in the standard library select their portable path
+instead of a platform syscall.
+
+In this mode V does not decide a target-dependent `$if` while generating. It
+keeps every branch and emits the condition as a C preprocessor guard, leaving
+the choice to whichever C compiler builds the file:
+
+```v okfmt
+$if linux {
+	linux_only()
+} $else {
+	everywhere_else()
+}
+```
+
+becomes
+
+```c
+#if (defined(__linux__) && !defined(__ANDROID__))
+linux_only();
+#else
+everywhere_else();
+#endif
+```
+
+Conditions that do not depend on the target - `$if prealloc`, `$if debug`, `-d`
+values - are still resolved while generating, exactly as in an ordinary build.
+`#include`s written inside a `$if`, or carrying a target prefix such as
+`#include linux <sys/timerfd.h>`, are guarded the same way, and headers or C
+sources shipped alongside your code are embedded into the output instead of
+being referenced by a path that will not exist on the machine that compiles it.
+
+What is *not* portable, and is therefore decided while generating, for the host
+V runs on:
+
+* A `$if` used as an *expression*. Its branches may have different types - for
+  example `closure_thunk` in `vlib/builtin/closure` is a differently sized fixed
+  array per architecture - which no guard around an expression can express.
+* A `$if` at file scope holding *declarations*. A function, type, constant or
+  global cannot be wrapped in `#if` by the backend, so only the host's branch is
+  emitted. Directives (`#include`, `#flag`) written at file scope *are* kept
+  from every branch and guarded, which is what makes the headers portable.
+* [Environment specific files](#environment-specific-files). A module split into
+  `x_linux.c.v` and `x_darwin.c.v` contributes only the generating host's
+  variant, so generate the portable C on the platform whose variants are the
+  portable ones.
+* The pointer width. V's `int`, the type layouts and the literal ranges are
+  baked for the generating target, so the output carries a check that fails the
+  build with a clear `#error` when it is compiled for a different width. The
+  output stays portable across targets of the same width.
 
 ## Compiling for iOS
 

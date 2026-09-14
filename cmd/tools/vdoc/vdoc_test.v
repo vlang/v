@@ -210,8 +210,7 @@ pub fn greet() string {
 	return 'hello'
 }
 ")!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - -readme -comments ${os.quoted_path(
-		'./' + mod_dir)}') or { panic(err) }
+	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - -readme -comments ${os.quoted_path('./' + mod_dir)}') or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.replace('\r\n', '\n').trim_space() == 'module overview
     `overview` uses the first comment after the module declaration as the module overview.
@@ -237,8 +236,7 @@ pub enum Bar {
 	bar
 }
 ')!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -m -f html -o - -html-only-contents ${os.quoted_path(
-		'./' + mod_dir)}') or { panic(err) }
+	res := os.execute_opt('${vexe_} doc -no-timestamp -m -f html -o - -html-only-contents ${os.quoted_path('./' + mod_dir)}') or { panic(err) }
 	assert res.exit_code == 0
 	output := res.output.replace('\r\n', '\n')
 	assert output.contains('Foo lorem ipsum foo.')
@@ -277,7 +275,7 @@ fn test_markdown_renderer_resolves_relative_links() ! {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
-			table:              ast.new_table()
+			table: ast.new_table()
 			relative_link_base: base
 		}
 	}
@@ -291,8 +289,7 @@ fn test_prepare_markdown_for_html_preserves_blockquote_linebreaks() ! {
 			table: ast.new_table()
 		}
 	}
-	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut
-		renderer)!
+	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut renderer)!
 	assert out.contains('<blockquote>')
 	assert out.contains('<strong>Note</strong><br />line one<br />line two')
 }
@@ -346,8 +343,7 @@ pub fn only_win() int {
 }
 ')!
 	// `-color` exercises the original crash path in `gen_plaintext`.
-	res := os.execute_opt('${vexe_} doc -no-timestamp -m -color -f text -o - ${os.quoted_path(
-		'./' + base_dir)}') or { panic(err) }
+	res := os.execute_opt('${vexe_} doc -no-timestamp -m -color -f text -o - ${os.quoted_path('./' + base_dir)}') or { panic(err) }
 	// The crash showed up as a non-zero exit code (V panic), so this is the key check.
 	assert res.exit_code == 0
 	assert res.output.contains('hello')
@@ -374,8 +370,7 @@ pub fn only_win() int {
 }
 ')!
 	// `os.execute` (not `execute_opt`) so the expected non-zero exit is not an error.
-	res := os.execute('${vexe_} doc -no-timestamp -m -f html -o ${os.quoted_path('./' + out_dir)} ${os.quoted_path(
-		'./' + base_dir)}')
+	res := os.execute('${vexe_} doc -no-timestamp -m -f html -o ${os.quoted_path('./' + out_dir)} ${os.quoted_path('./' + base_dir)}')
 	assert res.exit_code != 0
 	assert res.output.contains('No documentation found')
 	// The output directory must not have been created.

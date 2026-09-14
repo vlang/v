@@ -1,5 +1,6 @@
 module sqlite
 
+const sqlite_text = 3
 const sqlite_null = 5
 
 fn C.sqlite3_bind_null(&C.sqlite3_stmt, i32) i32
@@ -87,6 +88,10 @@ fn (stmt &Stmt) get_text(idx int) ?string {
 		l := C.sqlite3_column_bytes(stmt.stmt, idx)
 		return unsafe { b.vstring_with_len(l) }
 	}
+}
+
+fn (stmt &Stmt) get_column_type(idx int) int {
+	return C.sqlite3_column_type(stmt.stmt, idx)
 }
 
 fn (stmt &Stmt) get_count() int {

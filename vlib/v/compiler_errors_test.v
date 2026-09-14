@@ -114,9 +114,9 @@ fn test_all() {
 
 	if os.user_os() == 'linux' {
 		mut su_tasks := Tasks{
-			vexe:          vexe
+			vexe: vexe
 			parallel_jobs: 1
-			label:         '-skip-unused tests'
+			label: '-skip-unused tests'
 		}
 		su_tasks.add('', su_dir, ' run ', '.run.out', su_dir_tests, false)
 		su_tasks.run()
@@ -127,23 +127,25 @@ fn test_all() {
 		// Note: the tasks should be run serially, since they depend on
 		// setting and using environment variables.
 		mut cte_tasks := Tasks{
-			vexe:          vexe
+			vexe: vexe
 			parallel_jobs: 1
-			label:         'comptime env tests'
+			label: 'comptime env tests'
 		}
 		cte_dir := '${checker_dir}/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
 		cte_tasks.add('', cte_dir, '-no-retry-compilation run', '.run.out', files, false)
-		cte_tasks.add_evars('VAR=/usr/include', '', cte_dir, '-no-retry-compilation run',
-			'.var.run.out', ['using_comptime_env.vv'], false)
-		cte_tasks.add_evars('VAR=/opt/invalid/path', '', cte_dir, '-no-retry-compilation run',
-			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
+		cte_tasks.add_evars('VAR=/usr/include', '', cte_dir, '-no-retry-compilation run', '.var.run.out', [
+			'using_comptime_env.vv',
+		], false)
+		cte_tasks.add_evars('VAR=/opt/invalid/path', '', cte_dir, '-no-retry-compilation run', '.var_invalid.run.out', [
+			'using_comptime_env.vv',
+		], false)
 		cte_tasks.run()
 	}
 	mut ct_tasks := Tasks{
-		vexe:          vexe
+		vexe: vexe
 		parallel_jobs: 1
-		label:         'comptime define tests'
+		label: 'comptime define tests'
 	}
 	ct_tasks.add_checked_run('-d mysymbol run', '.mysymbol.run.out', [
 		'custom_comptime_define_error.vv',
@@ -170,7 +172,7 @@ fn test_all() {
 	ct_tasks.run()
 
 	mut tasks := Tasks{
-		vexe:  vexe
+		vexe: vexe
 		label: 'all tests'
 	}
 	tasks.add('', parser_dir, '', '.out', parser_tests, false)
@@ -182,10 +184,8 @@ fn test_all() {
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
-	tasks.add('', checker_dir, '-disable-explicit-mutability run',
-		'.disable_explicit_mutability.run.out', disable_explicit_mutability_tests, false)
-	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
-		false)
+	tasks.add('', checker_dir, '-disable-explicit-mutability run', '.disable_explicit_mutability.run.out', disable_explicit_mutability_tests, false)
+	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests, false)
 	tasks.add('', no_closures_dir, '-no-closures run', '.out', no_closures_tests, false)
 	tasks.run()
 }
@@ -206,14 +206,14 @@ fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, vop
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		tasks.all << TaskDescription{
-			evars:            evars
-			vexe:             if custom_vexe != '' { custom_vexe } else { tasks.vexe }
-			dir:              dir
-			voptions:         voptions
+			evars: evars
+			vexe: if custom_vexe != '' { custom_vexe } else { tasks.vexe }
+			dir: dir
+			voptions: voptions
 			result_extension: result_extension
-			path:             path
-			is_module:        is_module
-			max_ntries:       max_ntries
+			path: path
+			is_module: is_module
+			max_ntries: max_ntries
 		}
 	}
 }
@@ -231,8 +231,8 @@ fn (mut tasks Tasks) run() {
 	vjobs := if tasks.parallel_jobs > 0 { tasks.parallel_jobs } else { runtime.nr_jobs() }
 	mut bench := benchmark.new_benchmark()
 	bench.set_total_expected_steps(tasks.all.len)
-	mut work := chan TaskDescription{cap: tasks.all.len}
-	mut results := chan TaskDescription{cap: tasks.all.len}
+	mut work := chan TaskDescription{ cap: tasks.all.len }
+	mut results := chan TaskDescription{ cap: tasks.all.len }
 	mut m_skip_files := skip_files.clone()
 	if v_ci_ubuntu_musl {
 		m_skip_files << skip_on_ubuntu_musl

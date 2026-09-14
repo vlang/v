@@ -90,7 +90,7 @@ fn benchmark_closure_creation(iterations int) []TestResult {
 	}
 	large_time := time.ticks() - start
 	ops_per_sec = f64(large_iter) * 1000.0 / f64(large_time)
-	results << TestResult{'Large Closure Creation', large_iter, large_time, ops_per_sec, ''} //, "Equivalent iterations: ${iterations/10}"}
+	results << TestResult{'Large Closure Creation', large_iter, large_time, ops_per_sec, ''} // , "Equivalent iterations: ${iterations/10}"}
 	return results
 }
 
@@ -154,11 +154,11 @@ fn benchmark_threaded_creation(threads int, iterations_per_thread int) TestResul
 	ops_per_sec := f64(total_iterations) * 1000.0 / f64(elapsed)
 
 	return TestResult{
-		test_name:   'Multi-threaded Creation'
-		iterations:  total_iterations
-		time_ms:     elapsed
+		test_name: 'Multi-threaded Creation'
+		iterations: total_iterations
+		time_ms: elapsed
 		ops_per_sec: ops_per_sec
-		notes:       'Threads: ${threads} Iterations per thread: ${iterations_per_thread}'
+		notes: 'Threads: ${threads} Iterations per thread: ${iterations_per_thread}'
 	}
 }
 
@@ -171,11 +171,11 @@ fn baseline_call_performance(iterations int) TestResult {
 	ops_per_sec := f64(iterations) * 1000.0 / f64(elapsed)
 
 	return TestResult{
-		test_name:   'Normal Function Call'
-		iterations:  iterations
-		time_ms:     elapsed
+		test_name: 'Normal Function Call'
+		iterations: iterations
+		time_ms: elapsed
 		ops_per_sec: ops_per_sec
-		notes:       'Baseline'
+		notes: 'Baseline'
 	}
 }
 
@@ -204,13 +204,13 @@ fn benchmark_memory_usage(count int) MemoryResult {
 	}
 
 	return MemoryResult{
-		test_name:         'Closure Memory Overhead'
-		count:             count
-		start_mem_kb:      int(start_mem / 1024)
-		end_mem_kb:        int(end_mem / 1024)
-		delta_kb:          delta / 1024
+		test_name: 'Closure Memory Overhead'
+		count: count
+		start_mem_kb: int(start_mem / 1024)
+		end_mem_kb: int(end_mem / 1024)
+		delta_kb: delta / 1024
 		bytes_per_closure: bytes_per_closure
-		check_sum:         check_sum
+		check_sum: check_sum
 	}
 }
 

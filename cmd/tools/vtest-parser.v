@@ -23,15 +23,15 @@ mut:
 	is_linear  bool // print linear progress log, without trying to do term cursor up + \r msg. Easier to use in a CI job
 	show_src   bool // show the partial source, that cause the parser to panic/fault, when it happens.
 	timeout_ms int
-	myself     string   // path to this executable, so the supervisor can launch worker processes
+	myself     string // path to this executable, so the supervisor can launch worker processes
 	all_paths  []string // all files given to the supervisor process
-	path       string   // the current path, given to a worker process
-	cut_index  int      // the cut position in the source from context.path
-	max_index  int      // the maximum index (equivalent to the file content length)
+	path       string // the current path, given to a worker process
+	cut_index  int // the cut position in the source from context.path
+	max_index  int // the maximum index (equivalent to the file content length)
 	// parser context in the worker processes:
 	table      ast.Table
 	pref       &pref.Preferences = unsafe { nil }
-	period_ms  int  // print periodic progress
+	period_ms  int // print periodic progress
 	stop_print bool // stop printing the periodic progress
 }
 
@@ -53,8 +53,7 @@ fn main() {
 			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
-		_ := parser.parse_text(source, context.path, mut context.table, .skip_comments,
-			context.pref)
+		_ := parser.parse_text(source, context.path, mut context.table, .skip_comments, context.pref)
 		context.log('> worker ${pid:5} finished parsing ${context.path}')
 		exit(0)
 	} else {
@@ -93,28 +92,19 @@ fn process_cli_args() &Context {
 	mut fp := flag.new_flag_parser(os.args_after('test-parser'))
 	fp.application(os.file_name(context.myself))
 	fp.version('0.0.1')
-	fp.description('Test the V parser, by parsing each .v file in each PATH,\n' +
-		'as if it was typed character by character by the user.\n' +
-		'A PATH can be either a folder, or a specific .v file.\n' +
-		'Note: you *have to quote* the PATH, if it contains spaces/punctuation.')
+	fp.description('Test the V parser, by parsing each .v file in each PATH,\n' + 'as if it was typed character by character by the user.\n' + 'A PATH can be either a folder, or a specific .v file.\n' + 'Note: you *have to quote* the PATH, if it contains spaces/punctuation.')
 	fp.arguments_description('PATH1 PATH2 ...')
 	fp.skip_executable()
 	context.is_help = fp.bool('help', `h`, false, 'Show help/usage screen.')
 	context.is_verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.is_silent = fp.bool('silent', `S`, false, 'Do not print progress at all.')
 	context.is_linear = fp.bool('linear', `L`, false, 'Print linear progress log. Suitable for CI.')
-	context.show_src = fp.bool('show_source', `E`, false,
-		'Print the partial source code that caused a fault/panic in the parser.')
-	context.period_ms = fp.int('progress_ms', `s`, 500,
-		'print a status report periodically, the period is given in milliseconds.')
-	context.is_worker = fp.bool('worker', `w`, false,
-		'worker specific flag - is this a worker process, that can crash/panic.')
-	context.cut_index = fp.int('cut_index', `c`, 1,
-		'worker specific flag - cut index in the source file, everything before that will be parsed, the rest - ignored.')
-	context.timeout_ms = fp.int('timeout_ms', `t`, 250,
-		'worker specific flag - timeout in ms; a worker taking longer, will self terminate.')
-	context.path = fp.string('path', `p`, '',
-		'worker specific flag - path to the current source file, which will be parsed.')
+	context.show_src = fp.bool('show_source', `E`, false, 'Print the partial source code that caused a fault/panic in the parser.')
+	context.period_ms = fp.int('progress_ms', `s`, 500, 'print a status report periodically, the period is given in milliseconds.')
+	context.is_worker = fp.bool('worker', `w`, false, 'worker specific flag - is this a worker process, that can crash/panic.')
+	context.cut_index = fp.int('cut_index', `c`, 1, 'worker specific flag - cut index in the source file, everything before that will be parsed, the rest - ignored.')
+	context.timeout_ms = fp.int('timeout_ms', `t`, 250, 'worker specific flag - timeout in ms; a worker taking longer, will self terminate.')
+	context.path = fp.string('path', `p`, '', 'worker specific flag - path to the current source file, which will be parsed.')
 
 	if context.is_help {
 		println(fp.usage())

@@ -102,3 +102,36 @@ fn test_generate_key_for_every_curve() ! {
 		pv.free()
 	}
 }
+
+// test_new_key_from_seed_rejects_out_of_range_scalar locks in the one
+// documented divergence from the OpenSSL backend (README.md): mbedTLS's
+// mbedtls_ecp_read_key range-checks the scalar to [1, curve_order-1], so a
+// zero seed and an all-0xff seed (> n for every supported curve) are
+// rejected with an error rather than silently producing a key. Skipped
+// under -d use_openssl, which performs no such check.
+fn test_new_key_from_seed_rejects_out_of_range_scalar() ! {
+	$if use_openssl ? {
+		eprintln('skipping: the OpenSSL backend does not range-check the seed')
+		return
+	}
+	// Sizes are spelled out rather than read via Nid.byte_size(), which only
+	// the mbedTLS backend's Nid has -- this code must still compile under
+	// -d use_openssl even though the runtime check above skips it there.
+	for nid, size in {
+		Nid.prime256v1: 32
+		.secp384r1:     48
+		.secp521r1:     66
+		.secp256k1:     32
+	} {
+		if _ := new_key_from_seed([]u8{len: size}, nid: nid, fixed_size: true) {
+			assert false, 'zero seed should be rejected on ${nid}'
+		} else {
+			assert err.msg().contains('mbedtls_ecp_read_key failed'), err.msg()
+		}
+		if _ := new_key_from_seed([]u8{len: size, init: 0xff}, nid: nid, fixed_size: true) {
+			assert false, 'all-0xff seed should be rejected on ${nid}'
+		} else {
+			assert err.msg().contains('mbedtls_ecp_read_key failed'), err.msg()
+		}
+	}
+}

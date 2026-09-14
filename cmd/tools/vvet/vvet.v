@@ -47,15 +47,15 @@ fn main() {
 	vet_options := cmdline.options_after(os.args, ['vet'])
 	mut vt := Vet{
 		opt: Options{
-			is_werror:           '-W' in vet_options
-			is_verbose:          '-verbose' in vet_options || '-v' in vet_options
-			show_warnings:       '-hide-warnings' !in vet_options && '-w' !in vet_options
+			is_werror: '-W' in vet_options
+			is_verbose: '-verbose' in vet_options || '-v' in vet_options
+			show_warnings: '-hide-warnings' !in vet_options && '-w' !in vet_options
 			doc_private_fns_too: '-p' in vet_options
-			use_color:           '-color' in vet_options
+			use_color: '-color' in vet_options
 				|| (term_colors && '-nocolor' !in vet_options)
-			repeated_code:       '-r' in vet_options
-			fn_sizing:           '-F' in vet_options
-			fn_inlining:         '-I' in vet_options
+			repeated_code: '-r' in vet_options
+			fn_sizing: '-F' in vet_options
+			fn_inlining: '-I' in vet_options
 		}
 	}
 	mut paths := cmdline.only_non_options(vet_options)
@@ -226,8 +226,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 		}
 		if grab {
 			clean_line := line.all_before_last('{').trim(' ')
-			vt.warn('Function documentation seems to be missing for "${clean_line}".', lnumber,
-				.doc)
+			vt.warn('Function documentation seems to be missing for "${clean_line}".', lnumber, .doc)
 		}
 	} else {
 		fn_name := ident_fn_name(line)
@@ -247,8 +246,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 					&& !prev_prev_line.starts_with('//') {
 					grab = false
 					clean_line := line.all_before_last('{').trim(' ')
-					vt.warn('The documentation for "${clean_line}" seems incomplete.', lnumber,
-						.doc)
+					vt.warn('The documentation for "${clean_line}" seems incomplete.', lnumber, .doc)
 					break
 				}
 
@@ -264,8 +262,7 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 		}
 		if grab {
 			clean_line := line.all_before_last('{').trim(' ')
-			vt.warn('A function name is missing from the documentation of "${clean_line}".',
-				lnumber, .doc)
+			vt.warn('A function name is missing from the documentation of "${clean_line}".', lnumber, .doc)
 		}
 	}
 }
@@ -419,8 +416,7 @@ fn (mut vt Vet) expr(expr ast.Expr) {
 fn (mut vt Vet) const_decl(stmt ast.ConstDecl) {
 	for field in stmt.fields {
 		if field.expr is ast.ArrayInit && !field.expr.is_fixed {
-			vt.notice('Use a fixed array instead of a dynamic one', field.expr.pos.line_nr,
-				.unknown)
+			vt.notice('Use a fixed array instead of a dynamic one', field.expr.pos.line_nr, .unknown)
 		}
 		vt.expr(field.expr)
 	}
@@ -454,10 +450,13 @@ fn (mut vt Vet) vet_confusing_regex(expr ast.CallExpr) {
 		return
 	}
 	pattern_expr := expr.args[0].expr
-	pattern := if pattern_expr is ast.StringLiteral { pattern_expr } else { return }
+	pattern := if pattern_expr is ast.StringLiteral {
+		pattern_expr
+	} else {
+		return
+	}
 	snippet, suggestion := confusing_regex_branch(pattern.val) or { return }
-	vt.warn('Confusing regex `|` in `${snippet}`: V regex applies `|` to adjacent tokens, not whole branches. Use `${suggestion}` if you intended alternation.',
-		pattern.pos.line_nr, .unknown)
+	vt.warn('Confusing regex `|` in `${snippet}`: V regex applies `|` to adjacent tokens, not whole branches. Use `${suggestion}` if you intended alternation.', pattern.pos.line_nr, .unknown)
 }
 
 fn (vt &Vet) is_regex_pattern_call(expr ast.CallExpr) bool {
@@ -556,18 +555,18 @@ fn is_regex_plain_letter(ch u8) bool {
 
 fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
 	if expr.left is ast.SelectorExpr && expr.right is ast.IntegerLiteral {
-		operand := (expr.left as ast.SelectorExpr) // TODO: remove as-casts when multiple conds can be smart-casted.
+		operand := ( // TODO: remove as-casts when multiple conds can be smart-casted.
+			expr.left as ast.SelectorExpr
+		)
 		if operand.expr is ast.Ident && operand.field_name == 'len'
 			&& operand.expr.info.typ == ast.string_type_idx {
 			if expr.op != .lt && expr.right.val == '0' {
 				// Case: `var.len > 0`, `var.len == 0`, `var.len != 0`
 				op := if expr.op == .gt { '!=' } else { expr.op.str() }
-				vt.notice("Use `${operand.expr.name} ${op} ''` instead of `${operand.expr.name}.len ${expr.op} 0`",
-					expr.pos.line_nr, .unknown)
+				vt.notice("Use `${operand.expr.name} ${op} ''` instead of `${operand.expr.name}.len ${expr.op} 0`", expr.pos.line_nr, .unknown)
 			} else if expr.op == .lt && expr.right.val == '1' {
 				// Case: `var.len < 1`
-				vt.notice("Use `${operand.expr.name} == ''` instead of `${operand.expr.name}.len ${expr.op} 1`",
-					expr.pos.line_nr, .unknown)
+				vt.notice("Use `${operand.expr.name} == ''` instead of `${operand.expr.name}.len ${expr.op} 1`", expr.pos.line_nr, .unknown)
 			}
 		}
 	} else if expr.left is ast.IntegerLiteral && expr.right is ast.SelectorExpr {
@@ -577,12 +576,10 @@ fn (mut vt Vet) vet_empty_str(expr ast.InfixExpr) {
 			if expr.op != .gt && (expr.left as ast.IntegerLiteral).val == '0' {
 				// Case: `0 < var.len`, `0 == var.len`, `0 != var.len`
 				op := if expr.op == .lt { '!=' } else { expr.op.str() }
-				vt.notice("Use `'' ${op} ${operand.expr.name}` instead of `0 ${expr.op} ${operand.expr.name}.len`",
-					expr.pos.line_nr, .unknown)
+				vt.notice("Use `'' ${op} ${operand.expr.name}` instead of `0 ${expr.op} ${operand.expr.name}.len`", expr.pos.line_nr, .unknown)
 			} else if expr.op == .gt && (expr.left as ast.IntegerLiteral).val == '1' {
 				// Case: `1 > var.len`
-				vt.notice("Use `'' == ${operand.expr.name}` instead of `1 ${expr.op} ${operand.expr.name}.len`",
-					expr.pos.line_nr, .unknown)
+				vt.notice("Use `'' == ${operand.expr.name}` instead of `1 ${expr.op} ${operand.expr.name}.len`", expr.pos.line_nr, .unknown)
 			}
 		}
 	}
@@ -600,7 +597,6 @@ fn (mut vt Vet) vet_in_condition(expr ast.InfixExpr) {
 		left := expr.left.str()
 		right := expr.right.exprs[0].str()
 		eq := if expr.op == .key_in { '==' } else { '!=' }
-		vt.error('Use `${left} ${eq} ${right}` instead of `${left} ${expr.op} [${right}]`',
-			expr.pos.line_nr, .vfmt)
+		vt.error('Use `${left} ${eq} ${right}` instead of `${left} ${expr.op} [${right}]`', expr.pos.line_nr, .vfmt)
 	}
 }

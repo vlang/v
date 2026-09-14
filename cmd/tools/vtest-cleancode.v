@@ -66,17 +66,13 @@ fn main() {
 	v_test_vetting(pass_args)!
 }
 
-fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
+fn tsession(vargs string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
 	os.chdir(vroot) or {}
 	title_message := 'running ${tool_cmd} over most .v files'
 	testing.eheader(title_message)
 	mut test_session := testing.new_test_session('${vargs} ${tool_args}', false)
 	test_session.files << flist
 	test_session.skip_files << slist
-	util.prepare_tool_when_needed(tool_source)
-	// note that util.prepare_tool_when_needed will put its temporary files
-	// in the VTMP from the test session too, so they will be cleaned up
-	// at the end
 	test_session.test()
 	eprintln(test_session.benchmark.total_message(title_message))
 	return test_session
@@ -90,8 +86,7 @@ fn v_test_vetting(vargs string) ! {
 	vet_known_exceptions = vet_known_exceptions.map(os.abs_path(os.join_path(vroot, it)))
 	expanded_vet_list :=
 		(util.find_all_v_files(vet_folders)!).filter(os.abs_path(it) !in vet_known_exceptions)
-	vet_session := tsession(vargs, 'vvet', '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list,
-		vet_known_exceptions)
+	vet_session := tsession(vargs, '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list, vet_known_exceptions)
 
 	fmt_cmd, fmt_args := if is_fix {
 		'${os.quoted_path(vexe)} fmt -w', 'fmt -w'
@@ -102,7 +97,7 @@ fn v_test_vetting(vargs string) ! {
 	exceptions :=
 		(util.find_all_v_files(vfmt_known_failing_exceptions) or { return }).map(os.abs_path)
 	filtered_vfmt_list := vfmt_list.filter(os.abs_path(it) !in exceptions)
-	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, filtered_vfmt_list, exceptions)
+	verify_session := tsession(vargs, fmt_cmd, fmt_args, filtered_vfmt_list, exceptions)
 
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')

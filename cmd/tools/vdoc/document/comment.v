@@ -7,7 +7,7 @@ const example_pattern = '\x01 Example: '
 pub struct DocComment {
 pub mut:
 	text        string // Raw text content of the comment, excluding the comment token chars ('//, /*, */')
-	is_multi    bool   // Is a block / multi-line comment
+	is_multi    bool // Is a block / multi-line comment
 	pos         token.Pos
 	is_readme   bool
 	frontmatter map[string]string

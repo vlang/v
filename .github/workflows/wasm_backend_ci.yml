@@ -7,6 +7,7 @@ on:
     paths:
       - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
+      - 'vlib/v/**.v'
       - 'vlib/v/ast/**.v'
       - 'vlib/v/scanner/**.v'
       - 'vlib/v/parser/**.v'
@@ -17,7 +18,6 @@ on:
       - 'vlib/v/live/**.v'
       - 'vlib/v/util/**.v'
       - 'vlib/v/markused/**.v'
-      - 'vlib/v/preludes/**.v'
       - 'vlib/v/gen/wasm/**.v'
       - 'vlib/v/gen/wasm/tests/**.v'
       - 'vlib/v/gen/wasm/tests/**.vv'
@@ -28,6 +28,7 @@ on:
     paths:
       - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
+      - 'vlib/v/**.v'
       - 'vlib/v/ast/**.v'
       - 'vlib/v/scanner/**.v'
       - 'vlib/v/parser/**.v'
@@ -38,7 +39,6 @@ on:
       - 'vlib/v/live/**.v'
       - 'vlib/v/util/**.v'
       - 'vlib/v/markused/**.v'
-      - 'vlib/v/preludes/**.v'
       - 'vlib/v/gen/wasm/**.v'
       - 'vlib/v/gen/wasm/tests/**.v'
       - 'vlib/v/gen/wasm/tests/**.vv'
@@ -76,6 +76,8 @@ jobs:
 
       - name: Setup Wasmer
         uses: wasmerio/setup-wasmer@v3.1
+        with:
+          version: v4.4.0
 
       - name: Prebuild the WASM backend
         run: ./v cmd/tools/builders/wasm_builder.v

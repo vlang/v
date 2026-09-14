@@ -1,0 +1,44 @@
+// Copyright (c) 2019-2026 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+module main
+
+import os
+
+fn C.MoveFileExW(existing &u16, new &u16, flags u32) i32
+
+// MOVEFILE_REPLACE_EXISTING, the flag that makes `MoveFileExW` overwrite the destination
+// instead of failing. `os.rename` cannot express this: on Windows it is `_wrename`, which
+// fails outright whenever the destination already exists.
+const movefile_replace_existing = u32(0x00000001)
+
+// replace_file_atomically moves `source` onto `destination`, replacing it if it is already
+// there. A tool that only imports a vlib module which changed keeps its cache key, so a
+// rebuild lands on the very same destination and has to be able to overwrite it.
+fn replace_file_atomically(source string, destination string) bool {
+	if move_file_replacing(source, destination) {
+		return true
+	}
+	// Windows refuses to delete an executable while a process is still running it, so the
+	// replacement above fails whenever another `v` is using the cached tool. Renaming the
+	// old binary out of the way *is* permitted in that state, and is what makes a
+	// self-replacing cache possible at all. The displaced file stays locked until that
+	// process exits, so it is left for `prune_stale_tool_binaries` to collect later.
+	displaced := '${destination}${tool_cache_replaced_marker}${os.getpid()}'
+	os.rm(displaced) or {}
+	os.rename(destination, displaced) or { return false }
+	if move_file_replacing(source, destination) {
+		os.rm(displaced) or {}
+		return true
+	}
+	// Nothing was installed, so put the previous binary back rather than leaving the
+	// cache slot empty.
+	os.rename(displaced, destination) or {}
+	return false
+}
+
+fn move_file_replacing(source string, destination string) bool {
+	w_source := source.replace('/', '\\')
+	w_destination := destination.replace('/', '\\')
+	return C.MoveFileExW(w_source.to_wide(), w_destination.to_wide(), movefile_replace_existing) != 0
+}

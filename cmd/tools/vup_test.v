@@ -35,6 +35,7 @@ fn test_vup_checks_primary_compiler_when_built_by_v1_fallback() ! {
 	write_executable(os.join_path(test_root, 'v1_fallback'), '#!/bin/sh\n' + 'printf "fallback %s\\n" "\$*" >> ${os.quoted_path(log_file)}\n' + 'exit 1\n')!
 	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' + 'if [ "\$1" = "pull" ]; then\n' + '  echo "Already up to date."\n' + 'fi\n' + 'exit 0\n')!
 	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 0\n')!
+	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\nexit 0\n')!
 
 	path := '${bin_dir}:${os.getenv('PATH')}'
 	result := os.execute('PATH=${os.quoted_path(path)} VEXE=${os.quoted_path(os.join_path(test_root, 'v1_fallback'))} ${os.quoted_path(tool)}')
@@ -78,6 +79,7 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 	write_executable(os.join_path(test_root, 'v1_fallback'), '#!/bin/sh\n' + 'printf "%s\\n" "\$*" >> ${os.quoted_path(fallback_log)}\n' + 'if [ "\$1" = "version" ]; then\n' + '  echo "V 0.5.2 abcdef0"\n' + '  exit 0\n' + 'fi\n' + 'exit 1\n')!
 	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' + 'if [ "\$1" = "pull" ]; then\n' + '  echo "Already up to date."\n' + 'fi\n' + 'exit 0\n')!
 	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\n' + 'printf "make:%s\\n" "\$*" >> ${os.quoted_path(make_log)}\n' + 'exit 0\n')!
+	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\n' + 'printf "gmake:%s\\n" "\$*" >> ${os.quoted_path(make_log)}\n' + 'exit 0\n')!
 
 	path := '${bin_dir}:${os.getenv('PATH')}'
 	primary_vexe := os.join_path(os.real_path(test_root), 'v')
@@ -85,6 +87,7 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('`${primary_vexe}` is missing, trying `make` to restore it...'), result.output
 	make_calls := os.read_file(make_log)!
-	assert make_calls.trim_space().split_into_lines() == ['make:latest_tcc', 'make:'], make_calls
+	tcc_make_call := $if freebsd || openbsd || netbsd || dragonfly || solaris { 'gmake:latest_tcc' } $else { 'make:latest_tcc' }
+	assert make_calls.trim_space().split_into_lines() == [tcc_make_call, 'make:'], make_calls
 	assert !os.exists(fallback_log), os.read_file(fallback_log) or { '' }
 }

@@ -33,10 +33,10 @@ pub mut:
 pub:
 	// General message
 	message   string @[required]
-	details   string    // Details about how to resolve or fix the situation
-	file_path string    // file where the error have origin
+	details   string // Details about how to resolve or fix the situation
+	file_path string // file where the error have origin
 	pos       token.Pos // position in the file
-	fix       FixKind   @[required]
+	fix       FixKind @[required]
 	typ       ErrorType @[required]
 }
 
@@ -46,12 +46,12 @@ fn (mut vt Vet) error(msg string, line int, fix FixKind) {
 	}
 	lock vt.errors {
 		vt.errors << VetError{
-			message:   msg
+			message: msg
 			file_path: vt.file
-			pos:       pos
-			kind:      .error
-			fix:       fix
-			typ:       .default
+			pos: pos
+			kind: .error
+			fix: fix
+			typ: .default
 		}
 	}
 }
@@ -61,12 +61,12 @@ fn (mut vt Vet) warn(msg string, line int, fix FixKind) {
 		line_nr: line + 1
 	}
 	mut w := VetError{
-		message:   msg
+		message: msg
 		file_path: vt.file
-		pos:       pos
-		kind:      .warning
-		fix:       fix
-		typ:       .default
+		pos: pos
+		kind: .warning
+		fix: fix
+		typ: .default
 	}
 	if vt.opt.is_werror {
 		w.kind = .error
@@ -86,12 +86,12 @@ fn (mut vt Vet) notice(msg string, line int, fix FixKind) {
 	}
 	lock vt.notices {
 		vt.notices << VetError{
-			message:   msg
+			message: msg
 			file_path: vt.file
-			pos:       pos
-			kind:      .notice
-			fix:       fix
-			typ:       .default
+			pos: pos
+			kind: .notice
+			fix: fix
+			typ: .default
 		}
 	}
 }
@@ -102,12 +102,12 @@ fn (mut vt Vet) notice_with_file(file string, msg string, line int, fix FixKind)
 	}
 	lock vt.notices {
 		vt.notices << VetError{
-			message:   msg
+			message: msg
 			file_path: file
-			pos:       pos
-			kind:      .notice
-			fix:       fix
-			typ:       .default
+			pos: pos
+			kind: .notice
+			fix: fix
+			typ: .default
 		}
 	}
 }

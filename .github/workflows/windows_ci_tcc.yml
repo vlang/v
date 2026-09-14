@@ -6,7 +6,6 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'
@@ -15,7 +14,6 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'
@@ -166,8 +164,8 @@ jobs:
           .\cmd\tools\test_if_v_test_system_works.exe
       - name: Legacy gg import multiwindow isolation
         run: v test vlib/gg/legacy_import_multiwindow_isolation_test.v
-      - name: Verify `v vlib/v/gen/c/coutput_test.v` works
-        run: v vlib/v/gen/c/coutput_test.v
+      - name: Verify a C generator unit test works
+        run: v vlib/v/gen/c/target_test.v
       - name: Make sure running TCC64 instead of TCC32
         run: v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
       - name: Test ./v doc -v clipboard *BEFORE building tools*

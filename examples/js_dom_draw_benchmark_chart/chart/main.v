@@ -107,8 +107,7 @@ pub fn (mut app App) controller_get_all_task(mut ctx Context) !veb.Result {
 		}
 
 		from_framework[orm_stmt_kind] = json.encode(framework_platform[orm_stmt_kind])
-		table[orm_stmt_kind] = gen_table_info(attribute_names[orm_stmt_kind],
-			framework_platform[orm_stmt_kind])
+		table[orm_stmt_kind] = gen_table_info(attribute_names[orm_stmt_kind], framework_platform[orm_stmt_kind])
 		max_benchmark[orm_stmt_kind] = arrays.max(maxs[orm_stmt_kind]) or { continue }
 	}
 

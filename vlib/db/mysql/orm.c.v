@@ -458,7 +458,19 @@ fn data_pointers_to_primitives(is_null []C.v_mysql_bool, data_pointers []&u8, ty
 					}
 				}
 				orm.enum_ {
-					primitive = *(unsafe { &i64(data) })
+					// V's ORM stores enums in a `BIGINT` column, but a native MySQL
+					// `ENUM(...)` column returns the label of the value instead. Pass
+					// such a label on unchanged, so that the ORM can match it against
+					// the names of the enum values.
+					primitive = match field_types[i] {
+						.type_string, .type_var_string, .type_blob, .type_tiny_blob,
+						.type_medium_blob, .type_long_blob {
+							orm.Primitive(unsafe { cstring_to_vstring(&char(data)) })
+						}
+						else {
+							orm.Primitive(*(unsafe { &i64(data) }))
+						}
+					}
 				}
 				else {
 					return error('Unknown type ${types[i]}')

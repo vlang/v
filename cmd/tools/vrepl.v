@@ -13,31 +13,31 @@ import v.util.version
 struct Repl {
 mut:
 	readline     readline.Readline
-	indent       int    // indentation level
-	in_func      bool   // inside function decl
-	in_struct    bool   // inside struct decl
-	in_enum      bool   // inside enum decl
-	in_interface bool   // inside interface decl
+	indent       int // indentation level
+	in_func      bool // inside function decl
+	in_struct    bool // inside struct decl
+	in_enum      bool // inside enum decl
+	in_interface bool // inside interface decl
 	line         string // the current line entered by the user
-	is_pin       bool   // does the repl 'pin' entered source code
+	is_pin       bool // does the repl 'pin' entered source code
 	folder       string // the folder in which the repl will write its temporary source files
 	last_output  string // the last repl output
 
 	modules         map[string][]string // all the import modules
-	alias           map[string]string   // all the alias used in the import
-	includes        []string            // all the #include statements
-	functions       []string            // all the user function declarations
-	functions_name  []string            // all the user function names
-	structs         []string            // all the struct definitions
-	enums           []string            // all the enum definitions
-	consts          []string            // all the const definitions
-	types           []string            // all the type definitions
-	interfaces      []string            // all the interface definitions
-	lines           []string            // all the other lines/statements
-	exec_lines      []string            // executable statements with restored runtime values
-	temp_lines      []string            // all the temporary expressions/printlns
-	vstartup_lines  []string            // lines in the `VSTARTUP` file
-	eval_func_lines []string            // same line of the `VSTARTUP` file, but used to test fn type
+	alias           map[string]string // all the alias used in the import
+	includes        []string // all the #include statements
+	functions       []string // all the user function declarations
+	functions_name  []string // all the user function names
+	structs         []string // all the struct definitions
+	enums           []string // all the enum definitions
+	consts          []string // all the const definitions
+	types           []string // all the type definitions
+	interfaces      []string // all the interface definitions
+	lines           []string // all the other lines/statements
+	exec_lines      []string // executable statements with restored runtime values
+	temp_lines      []string // all the temporary expressions/printlns
+	vstartup_lines  []string // lines in the `VSTARTUP` file
+	eval_func_lines []string // same line of the `VSTARTUP` file, but used to test fn type
 }
 
 const is_stdin_a_pipe = os.is_atty(0) == 0
@@ -73,14 +73,14 @@ enum FnType {
 }
 
 enum DeclType {
-	include   // #include ...
-	const     // const ...
-	type      // type ...
-	enum      // enum ...
-	fn        // fn ...
-	struct    // struct ...
+	include // #include ...
+	const // const ...
+	type // type ...
+	enum // enum ...
+	fn // fn ...
+	struct // struct ...
 	interface // interface ...
-	stmt      // statement
+	stmt // statement
 }
 
 struct SnapshotAssignment {
@@ -99,11 +99,11 @@ fn new_repl(folder string) Repl {
 	vstartup_source := os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
 	os.mkdir_all(folder) or {}
 	return Repl{
-		readline:       readline.Readline{
+		readline: readline.Readline{
 			skip_empty: true
 		}
-		folder:         folder
-		modules:        {
+		folder: folder
+		modules: {
 			'os':   []
 			'time': []
 			'math': []
@@ -554,7 +554,8 @@ fn find_assignment_operator(line string) (int, string) {
 			}
 			`=` {
 				prev_is_assignment_op := i > 0
-					&& line[i - 1] in [`!`, `<`, `>`, `=`, `:`, `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`]
+					&& line[i - 1] in [`!`, `<`, `>`, `=`, `:`, `+`, `-`, `*`, `/`, `%`, `&`, `|`,
+						`^`]
 				next_is_assignment_op := i + 1 < line.len && line[i + 1] == `=`
 				if !inside_string && !prev_is_assignment_op && !next_is_assignment_op {
 					return i, '='
@@ -590,9 +591,9 @@ fn parse_simple_assignment(line string) ?SnapshotAssignment {
 		return none
 	}
 	return SnapshotAssignment{
-		lhs:  lhs
+		lhs: lhs
 		name: name
-		op:   op
+		op: op
 	}
 }
 
@@ -616,7 +617,7 @@ fn (mut r Repl) add_statement_lines(lines []string) {
 fn (r &Repl) capture_time_snapshot(source_code string, assignment SnapshotAssignment) ?TimeSnapshot {
 	marker := '__vrepl_time_snapshot__${rand.ulid()}'
 	mut probe_source := source_code
-	probe_source += '\nprintln(${repl_string_literal(marker)} + \'\\t\' + typeof(${assignment.name}).name + \'\\t\' + ${assignment.name}.unix().str() + \'\\t\' + ${assignment.name}.nanosecond.str() + \'\\t\' + ${assignment.name}.is_local.str())\n'
+	probe_source += "\nprintln(${repl_string_literal(marker)} + '\\t' + typeof(${assignment.name}).name + '\\t' + ${assignment.name}.unix().str() + '\\t' + ${assignment.name}.nanosecond.str() + '\\t' + ${assignment.name}.is_local.str())\n"
 	probe_file := os.join_path(r.folder, '${rand.ulid()}.vrepl.time_snapshot.v')
 	os.write_file(probe_file, probe_source) or { return none }
 	defer {
@@ -637,9 +638,9 @@ fn (r &Repl) capture_time_snapshot(source_code string, assignment SnapshotAssign
 			return none
 		}
 		return TimeSnapshot{
-			unix:       parts[1].i64()
+			unix: parts[1].i64()
 			nanosecond: parts[2].int()
-			is_local:   parts[3] == 'true'
+			is_local: parts[3] == 'true'
 		}
 	}
 	return none
@@ -1049,7 +1050,7 @@ fn execute_repl_v_command(v_path string, args []string) !os.Result {
 		process.close()
 		return os.Result{
 			exit_code: exit_code
-			output:    stdout_output + stderr_output
+			output: stdout_output + stderr_output
 		}
 	} $else {
 		mut cmd := os.quoted_path(v_path)

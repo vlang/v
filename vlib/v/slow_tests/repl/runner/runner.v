@@ -107,7 +107,7 @@ pub fn new_options() RunnerOptions {
 		files = os.walk_ext('.', '.repl')
 	}
 	return RunnerOptions{
-		wd:    wd
+		wd: wd
 		vexec: vexec
 		files: files
 	}
@@ -123,7 +123,7 @@ pub fn new_prod_options() RunnerOptions {
 		files = os.walk_ext(wd, '.prod.v')
 	}
 	return RunnerOptions{
-		wd:    wd
+		wd: wd
 		vexec: vexec
 		files: files
 	}

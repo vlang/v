@@ -137,7 +137,7 @@ fn (mut vd VDoc) collect_search_index(out Output) {
 		}
 		vd.search_module_data << SearchModuleResult{
 			description: trim_doc_node_description(mod, comments)
-			link:        vd.get_file_name(mod, out)
+			link: vd.get_file_name(mod, out)
 		}
 		for _, dn in doc.contents {
 			vd.create_search_results(mod, dn, out)
@@ -158,14 +158,14 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	dn_description := trim_doc_node_description(dn.name, comments)
 	vd.search_index << dn.name
 	vd.search_data << SearchResult{
-		prefix:      if dn.parent_name != '' {
+		prefix: if dn.parent_name != '' {
 			'${dn.kind} (${dn.parent_name})'
 		} else {
 			'${dn.kind} '
 		}
 		description: dn_description
-		badge:       mod
-		link:        vd.get_file_name(mod, out) + '#' + get_node_id(dn)
+		badge: mod
+		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)
 	}
 	for child in dn.children {
 		vd.create_search_results(mod, child, out)
@@ -191,23 +191,17 @@ fn (vd &VDoc) get_repo_file_path_for_links(file_path string) string {
 fn (vd &VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
 	cfg := vd.cfg
 	file_path_name := vd.get_repo_file_path_for_links(cn.file_path)
-	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name,
-
-		cn.pos.line_nr + 1)
+	src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name, cn.pos.line_nr + 1)
 	md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, file_path_name)
 	if cn.content.len != 0 || cn.name == 'Constants' {
-		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples,
-			d.table))
+		hw.write_string(vd.doc_node_html(cn, src_link, md_link_base, false, cfg.include_examples, d.table))
 		hw.write_string('\n')
 	}
 	for child in cn.children {
 		child_file_path_name := vd.get_repo_file_path_for_links(child.file_path)
-		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch,
-			child_file_path_name, child.pos.line_nr + 1)
-		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch,
-			child_file_path_name)
-		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false,
-			cfg.include_examples, d.table))
+		child_src_link := get_src_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name, child.pos.line_nr + 1)
+		child_md_link_base := get_src_dir_link(vd.manifest.repo_url, vd.manifest.repo_branch, child_file_path_name)
+		hw.write_string(vd.doc_node_html(child, child_src_link, child_md_link_base, false, cfg.include_examples, d.table))
 		hw.write_string('\n')
 	}
 }
@@ -224,8 +218,7 @@ fn (vd &VDoc) gen_html(d doc.Doc) string {
 	} else {
 		''
 	}
-	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples,
-		d.table))
+	contents.writeln(vd.doc_node_html(d.head, '', head_md_link_base, true, cfg.include_examples, d.table))
 	if is_module_readme(d.head) {
 		write_toc(d.head, mut symbols_toc)
 	}
@@ -590,8 +583,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 			.key_true, .key_false {
 				tok_typ = .boolean
 			}
-			.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot, .dotdot,
-			.ellipsis {
+			.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot, .dotdot, .ellipsis {
 				tok_typ = .punctuation
 			}
 			else {
@@ -665,7 +657,7 @@ fn (vd &VDoc) doc_node_html(dn doc.DocNode, link string, md_link_base string, he
 	head_tag := if head { 'h1' } else { 'h2' }
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
-			table:              tb
+			table: tb
 			relative_link_base: md_link_base
 		}
 	}

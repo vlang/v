@@ -40,18 +40,13 @@ fn main() {
 	fp.description('Dump a JSON representation of the V AST for a given .v or .vsh file.')
 	fp.description('By default, `v ast` will save the JSON to a .json file, named after the .v file.')
 	fp.description('Pass -p to see it instead.')
-	ctx.is_watch = fp.bool('watch', `w`, false,
-		'watch a .v file for changes, rewrite the .json file, when a change is detected')
+	ctx.is_watch = fp.bool('watch', `w`, false, 'watch a .v file for changes, rewrite the .json file, when a change is detected')
 	ctx.is_print = fp.bool('print', `p`, false, 'print the AST to stdout')
-	ctx.is_compile = fp.bool('compile', `c`, false,
-		'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
-	ctx.is_terse = fp.bool('terse', `t`, false,
-		'terse output, only with tree node names (AST structure), no details')
-	ctx.is_skip_defaults = fp.bool('skip-defaults', `s`, false,
-		'skip properties that have default values like false, 0, "", etc')
+	ctx.is_compile = fp.bool('compile', `c`, false, 'watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change')
+	ctx.is_terse = fp.bool('terse', `t`, false, 'terse output, only with tree node names (AST structure), no details')
+	ctx.is_skip_defaults = fp.bool('skip-defaults', `s`, false, 'skip properties that have default values like false, 0, "", etc')
 	ctx.check = fp.bool('check', `k`, false, 'run v.checker as well (it may modify the AST)')
-	hfields := fp.string_multi('hide', 0,
-		'hide the specified fields. You can give several, by separating them with `,`').join(',')
+	hfields := fp.string_multi('hide', 0, 'hide the specified fields. You can give several, by separating them with `,`').join(',')
 	for hf in hfields.split(',') {
 		ctx.hide_names[hf] = true
 	}
@@ -173,9 +168,9 @@ fn json(file string) string {
 	pref_.is_fmt = true
 
 	mut t := Tree{
-		root:  create_object()
+		root: create_object()
 		table: ast.new_table()
-		pref:  pref_
+		pref: pref_
 	}
 	// parse file with comment
 	mut ast_file := parser.parse_file(file, mut t.table, .parse_comments, t.pref)
@@ -459,35 +454,93 @@ fn (t Tree) stmts(stmts []ast.Stmt) &Node {
 
 fn (t Tree) stmt(node ast.Stmt) &Node {
 	match node {
-		ast.Module { return t.mod(node) }
-		ast.Import { return t.import_module(node) }
-		ast.ConstDecl { return t.const_decl(node) }
-		ast.FnDecl { return t.fn_decl(node) }
-		ast.StructDecl { return t.struct_decl(node) }
-		ast.EnumDecl { return t.enum_decl(node) }
-		ast.InterfaceDecl { return t.interface_decl(node) }
-		ast.HashStmt { return t.hash_stmt(node) }
-		ast.ComptimeFor { return t.comptime_for(node) }
-		ast.GlobalDecl { return t.global_decl(node) }
-		ast.DeferStmt { return t.defer_stmt(node) }
-		ast.TypeDecl { return t.type_decl(node) }
-		ast.GotoLabel { return t.goto_label(node) }
-		ast.GotoStmt { return t.goto_stmt(node) }
-		ast.AssignStmt { return t.assign_stmt(node) }
-		ast.Return { return t.return_(node) }
-		ast.ForCStmt { return t.for_c_stmt(node) }
-		ast.ForStmt { return t.for_stmt(node) }
-		ast.ForInStmt { return t.for_in_stmt(node) }
-		ast.BranchStmt { return t.branch_stmt(node) }
-		ast.AssertStmt { return t.assert_stmt(node) }
-		ast.ExprStmt { return t.expr_stmt(node) }
-		ast.Block { return t.block(node) }
-		ast.SemicolonStmt { return t.semicolon_stmt(node) }
-		ast.SqlStmt { return t.sql_stmt(node) }
-		ast.AsmStmt { return t.asm_stmt(node) }
-		ast.NodeError { return t.node_error(node) }
-		ast.EmptyStmt { return t.empty_stmt(node) }
-		ast.DebuggerStmt { return t.debugger_stmt(node) }
+		ast.Module {
+			return t.mod(node)
+		}
+		ast.Import {
+			return t.import_module(node)
+		}
+		ast.ConstDecl {
+			return t.const_decl(node)
+		}
+		ast.FnDecl {
+			return t.fn_decl(node)
+		}
+		ast.StructDecl {
+			return t.struct_decl(node)
+		}
+		ast.EnumDecl {
+			return t.enum_decl(node)
+		}
+		ast.InterfaceDecl {
+			return t.interface_decl(node)
+		}
+		ast.HashStmt {
+			return t.hash_stmt(node)
+		}
+		ast.ComptimeFor {
+			return t.comptime_for(node)
+		}
+		ast.GlobalDecl {
+			return t.global_decl(node)
+		}
+		ast.DeferStmt {
+			return t.defer_stmt(node)
+		}
+		ast.TypeDecl {
+			return t.type_decl(node)
+		}
+		ast.GotoLabel {
+			return t.goto_label(node)
+		}
+		ast.GotoStmt {
+			return t.goto_stmt(node)
+		}
+		ast.AssignStmt {
+			return t.assign_stmt(node)
+		}
+		ast.Return {
+			return t.return_(node)
+		}
+		ast.ForCStmt {
+			return t.for_c_stmt(node)
+		}
+		ast.ForStmt {
+			return t.for_stmt(node)
+		}
+		ast.ForInStmt {
+			return t.for_in_stmt(node)
+		}
+		ast.BranchStmt {
+			return t.branch_stmt(node)
+		}
+		ast.AssertStmt {
+			return t.assert_stmt(node)
+		}
+		ast.ExprStmt {
+			return t.expr_stmt(node)
+		}
+		ast.Block {
+			return t.block(node)
+		}
+		ast.SemicolonStmt {
+			return t.semicolon_stmt(node)
+		}
+		ast.SqlStmt {
+			return t.sql_stmt(node)
+		}
+		ast.AsmStmt {
+			return t.asm_stmt(node)
+		}
+		ast.NodeError {
+			return t.node_error(node)
+		}
+		ast.EmptyStmt {
+			return t.empty_stmt(node)
+		}
+		ast.DebuggerStmt {
+			return t.debugger_stmt(node)
+		}
 	}
 
 	return t.null_node()
@@ -871,9 +924,15 @@ fn (t Tree) defer_stmt(node ast.DeferStmt) &Node {
 
 fn (t Tree) type_decl(node ast.TypeDecl) &Node {
 	match node {
-		ast.AliasTypeDecl { return t.alias_type_decl(node) }
-		ast.FnTypeDecl { return t.fn_type_decl(node) }
-		ast.SumTypeDecl { return t.sum_type_decl(node) }
+		ast.AliasTypeDecl {
+			return t.alias_type_decl(node)
+		}
+		ast.FnTypeDecl {
+			return t.fn_type_decl(node)
+		}
+		ast.SumTypeDecl {
+			return t.sum_type_decl(node)
+		}
 	}
 }
 
@@ -1580,8 +1639,12 @@ fn (t Tree) ident(node ast.Ident) &Node {
 
 fn (t Tree) ident_info(node ast.IdentInfo) &Node {
 	match node {
-		ast.IdentVar { return t.ident_var(node) }
-		ast.IdentFn { return t.ident_fn(node) }
+		ast.IdentVar {
+			return t.ident_var(node)
+		}
+		ast.IdentFn {
+			return t.ident_fn(node)
+		}
 	}
 }
 

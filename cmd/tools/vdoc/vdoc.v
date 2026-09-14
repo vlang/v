@@ -200,7 +200,7 @@ fn (mut vd VDoc) work_processor(work chan ParallelDoc) {
 }
 
 fn (mut vd VDoc) render_parallel(out Output) {
-	mut work := chan ParallelDoc{cap: vd.docs.len}
+	mut work := chan ParallelDoc{ cap: vd.docs.len }
 	for i in 0 .. vd.docs.len {
 		work <- ParallelDoc{vd.docs[i], out}
 	}
@@ -260,8 +260,8 @@ fn (vd &VDoc) get_readme(path string) Readme {
 	}
 	return Readme{
 		frontmatter: readme_frontmatter
-		content:     readme_contents
-		path:        readme_path
+		content: readme_contents
+		path: readme_path
 	}
 }
 
@@ -290,7 +290,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	cfg := vd.cfg
 	mut out := Output{
 		path: cfg.output_path
-		typ:  cfg.output_type
+		typ: cfg.output_type
 	}
 	if out.path == '' {
 		if cfg.output_type == .unset {
@@ -335,20 +335,20 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			readme_name = page
 		}
 		comment := doc.DocComment{
-			is_readme:   true
+			is_readme: true
 			frontmatter: readme.frontmatter
-			text:        readme.content
+			text: readme.content
 		}
 		if out.typ == .ansi {
 			println(markdown.to_plain(readme.content))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
-				head:           doc.DocNode{
-					is_readme:   true
-					name:        readme_name
-					file_path:   readme.path
+				head: doc.DocNode{
+					is_readme: true
+					name: readme_name
+					file_path: readme.path
 					frontmatter: readme.frontmatter
-					comments:    [comment]
+					comments: [comment]
 				}
 				time_generated: time.now()
 			}
@@ -360,8 +360,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 			// TODO: use a variable like `src_path := os.join_path(dirpath, 'src')` after `https://github.com/vlang/v/issues/21504`
 			if os.exists(os.join_path(dirpath, 'src')) {
-				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform,
-					cfg.symbol_name) or {
+				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
 					vd.emit_generate_err(err)
 					exit(1)
 				}
@@ -381,9 +380,9 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			readme := vd.get_readme(dirpath)
 			if readme.path != '' {
 				comment := doc.DocComment{
-					is_readme:   true
+					is_readme: true
 					frontmatter: readme.frontmatter
-					text:        readme.content
+					text: readme.content
 				}
 				dcs.head.comments = [comment]
 				dcs.head.file_path = readme.path

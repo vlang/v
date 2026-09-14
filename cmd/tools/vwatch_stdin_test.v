@@ -52,8 +52,7 @@ fn test_background_watch_does_not_take_terminal() {
 		marker_path := os.join_path(tmp_dir, 'handed_off.txt')
 		shell_path := os.join_path(tmp_dir, 'run_background.sh')
 		sleep_exe := os.find_abs_path_of_executable('sleep') or { return }
-		os.write_file(source_path,
-			"import os\nimport v.util.vwatchtty\n\nfn main() {\n\tmut child := os.new_process(os.args[1])\n\tchild.use_pgroup = true\n\tchild.set_args(['10'])\n\tchild.run()\n\twatcher_pgid := vwatchtty.process_group()\n\thanded_off := vwatchtty.set_foreground_process_group(child.pid, watcher_pgid)\n\tworker_pgid := vwatchtty.process_group()\n\tchild.signal_term()\n\tchild.wait()\n\tchild.close()\n\tos.write_file(os.args[2], '\${handed_off},\${watcher_pgid},\${worker_pgid},\${child.pid}')!\n}\n")!
+		os.write_file(source_path, "import os\nimport v.util.vwatchtty\n\nfn main() {\n\tmut child := os.new_process(os.args[1])\n\tchild.use_pgroup = true\n\tchild.set_args(['10'])\n\tchild.run()\n\twatcher_pgid := vwatchtty.process_group()\n\thanded_off := vwatchtty.set_foreground_process_group(child.pid, watcher_pgid)\n\tworker_pgid := vwatchtty.process_group()\n\tchild.signal_term()\n\tchild.wait()\n\tchild.close()\n\tos.write_file(os.args[2], '\${handed_off},\${watcher_pgid},\${worker_pgid},\${child.pid}')!\n}\n")!
 		build_result :=
 			os.execute('${os.quoted_path(vwatch_stdin_vexe)} -o ${os.quoted_path(helper_path)} ${os.quoted_path(source_path)}')
 		assert build_result.exit_code == 0, build_result.output
@@ -108,8 +107,7 @@ fn test_background_restore_does_not_reclaim_terminal() {
 		helper_path := os.join_path(tmp_dir, 'restore_tty')
 		marker_path := os.join_path(tmp_dir, 'terminal_groups.txt')
 		shell_path := os.join_path(tmp_dir, 'run_background_restore.sh')
-		os.write_file(source_path,
-			"module main\n\nimport os\nimport v.util.vwatchtty\n\n#include <unistd.h>\n\nfn C.tcgetpgrp(fd int) int\n\nfn main() {\n\tbefore := C.tcgetpgrp(0)\n\tmanager_pgid := os.args[1].int()\n\tvwatchtty.restore_foreground_process_group(manager_pgid)\n\tafter := C.tcgetpgrp(0)\n\tos.write_file(os.args[2], '\${before},\${after},\${manager_pgid}')!\n}\n")!
+		os.write_file(source_path, "module main\n\nimport os\nimport v.util.vwatchtty\n\n#include <unistd.h>\n\nfn C.tcgetpgrp(fd int) int\n\nfn main() {\n\tbefore := C.tcgetpgrp(0)\n\tmanager_pgid := os.args[1].int()\n\tvwatchtty.restore_foreground_process_group(manager_pgid)\n\tafter := C.tcgetpgrp(0)\n\tos.write_file(os.args[2], '\${before},\${after},\${manager_pgid}')!\n}\n")!
 		build_result :=
 			os.execute('${os.quoted_path(vwatch_stdin_vexe)} -o ${os.quoted_path(helper_path)} ${os.quoted_path(source_path)}')
 		assert build_result.exit_code == 0, build_result.output
@@ -162,8 +160,7 @@ fn test_watch_run_forwards_terminal_input() {
 		source_path := os.join_path(tmp_dir, 'input.v')
 		marker_path := os.join_path(tmp_dir, 'input.txt')
 		ready_path := os.join_path(tmp_dir, 'pty_ready')
-		os.write_file(source_path,
-			"import os\n\nfn main() {\n\tname := os.input('Enter name: ')\n\tos.write_file(os.args[1], name)!\n}\n")!
+		os.write_file(source_path, "import os\n\nfn main() {\n\tname := os.input('Enter name: ')\n\tos.write_file(os.args[1], name)!\n}\n")!
 		mut process := os.new_process(script_exe)
 		process.set_redirect_stdio()
 		process.use_pgroup = true

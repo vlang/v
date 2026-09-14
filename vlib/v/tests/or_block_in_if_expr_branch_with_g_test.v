@@ -17,7 +17,7 @@ fn test_or_block_in_if_expr_branch_compiles_with_g() {
 	}
 	source := os.join_path(test_dir, 'test.v')
 	out_c := os.join_path(test_dir, 'test.c')
-	os.write_file(source, "struct Params {
+	os.write_file(source, 'struct Params {
 	initial_max_stream_data_bidi_remote ?u64
 	initial_max_stream_data_bidi_local  ?u64
 }
@@ -51,7 +51,7 @@ fn main() {
 	println(c.process(true) or { -1 })
 	println(c.process(false) or { -1 })
 }
-")!
+')!
 	res :=
 		os.execute('${os.quoted_path(vexe)} -g -o ${os.quoted_path(out_c)} -b c ${os.quoted_path(source)}')
 	assert res.exit_code == 0, res.output

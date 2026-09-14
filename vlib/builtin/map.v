@@ -323,6 +323,27 @@ fn map_free_string(pkey voidptr) {
 fn map_free_nop(_ voidptr) {
 }
 
+fn new_map_with_dense_array(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
+	clone_fn MapCloneFn, free_fn MapFreeFn, key_values DenseArray, metas &u32) map {
+	has_string_keys := key_bytes > int(sizeof(voidptr))
+	return map{
+		key_bytes: key_bytes
+		value_bytes: value_bytes
+		even_index: init_even_index
+		cached_hashbits: max_cached_hashbits
+		shift: init_log_capicity
+		key_values: key_values
+		metas: unsafe { metas }
+		extra_metas: extra_metas_inc
+		len: 0
+		has_string_keys: has_string_keys
+		hash_fn: hash_fn
+		key_eq_fn: key_eq_fn
+		clone_fn: clone_fn
+		free_fn: free_fn
+	}
+}
+
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > int(sizeof(voidptr))
@@ -377,13 +398,13 @@ fn new_map_update_init(update &map, n int, key_bytes int, value_bytes int, keys 
 	return out
 }
 
-// move moves the map to a new location in memory.
-// It does this by copying to a new location, then setting the
-// old location to all `0` with `vmemset`
+// move moves the map to a new location in memory and resets the old location
+// to an empty map with the same key/value operations.
 pub fn (mut m map) move() map {
 	r := *m
 	unsafe {
-		vmemset(m, 0, int(sizeof(map)))
+		*m = new_map(r.key_bytes, r.value_bytes, r.hash_fn, r.key_eq_fn, r.clone_fn,
+			r.free_fn)
 	}
 	return r
 }

@@ -501,3 +501,64 @@ fn test_slurping_utf16le_output_on_windows() {
 	assert output == 'OK\n', output
 	assert errors == ''
 }
+
+// concurrent_spawn_worker runs and reaps `spawns` short lived child processes.
+fn concurrent_spawn_worker(id int, spawns int) int {
+	mut oks := 0
+	for i in 0 .. spawns {
+		expected := (id + i) % 5
+		mut p := os.new_process(test_os_process)
+		p.set_args(['-exitcode', '${expected}', '-timeout_ms', '50', '-period_ms', '200'])
+		p.set_redirect_stdio()
+		p.wait()
+		_ = p.stdout_slurp()
+		_ = p.stderr_slurp()
+		if p.status == .exited && p.code == expected {
+			oks++
+		}
+		p.close()
+	}
+	return oks
+}
+
+// concurrent_spawn_noise keeps a thread busy allocating, so that the spawning
+// threads are likely to start a child while another thread holds the allocator
+// or GC lock.
+fn concurrent_spawn_noise(rounds int) int {
+	mut sink := []string{cap: 256}
+	for r in 0 .. rounds {
+		sink << 'os process fork safety ${r}'
+		if sink.len == 256 {
+			sink = []string{cap: 256}
+		}
+	}
+	return sink.len
+}
+
+// test_concurrent_spawns_from_multiple_threads starts child processes from
+// several threads at once, while other threads keep allocating.
+//
+// On unix that is a fork() from a multi threaded process: between fork() and
+// execve() the child is the only thread in a copy of the parent's address
+// space, so every lock another thread happened to hold at fork time is copied
+// in the locked state and is never released. A child that allocates there
+// (looking the executable up in PATH, building argv/envp, formatting an error
+// message) can block on such a lock forever - it then never exec's, never
+// exits, and the parent waiting for it hangs too. See vlang/v#28509.
+fn test_concurrent_spawns_from_multiple_threads() {
+	eprintln(@FN)
+	spawns_per_thread := 8
+	mut noise := []thread int{}
+	for _ in 0 .. 2 {
+		noise << spawn concurrent_spawn_noise(300000)
+	}
+	mut workers := []thread int{}
+	for id in 0 .. 4 {
+		workers << spawn concurrent_spawn_worker(id, spawns_per_thread)
+	}
+	results := workers.wait()
+	noise.wait()
+	for id, oks in results {
+		assert oks == spawns_per_thread, 'worker ${id} completed only ${oks}/${spawns_per_thread} spawns'
+	}
+}

@@ -83,21 +83,20 @@ fn process_files(files []string) ! {
 	theader()
 	hline()
 	speed_mb_s := term.colorize(term.bright_yellow, '${(f64(total_bytes) / total_us):6.3f} MB/s')
-	speed_lines_s := term.colorize(term.bright_yellow,
-		'${(1_000_000 * f64(total_lines) / total_us):10.1f} lines/s')
+	speed_lines_s := term.colorize(term.bright_yellow, '${(1_000_000 * f64(total_lines) / total_us):10.1f} lines/s')
 	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${total_lines:10} ${(f64(total_bytes) / total_tokens):13.3} ${total_errors:10}   ${total_fmt_len:7}   FMT speed: ${speed_mb_s}, ${speed_lines_s}, ${nthreads:3} thread(s), ${total_files:5} files.')
 }
 
 fn new_parser(path string, comments_mode scanner.CommentsMode, table &ast.Table, pref_ &pref.Preferences) &parser.Parser {
 	mut p := &parser.Parser{
-		scanner:  scanner.new_scanner_file(path, -1, comments_mode, pref_) or { panic(err) }
-		table:    table
-		pref:     pref_
-		scope:    &ast.Scope{
+		scanner: scanner.new_scanner_file(path, -1, comments_mode, pref_) or { panic(err) }
+		table: table
+		pref: pref_
+		scope: &ast.Scope{
 			start_pos: 0
-			parent:    table.global_scope
+			parent: table.global_scope
 		}
-		errors:   []errors.Error{}
+		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 	}
 	p.set_path(path)

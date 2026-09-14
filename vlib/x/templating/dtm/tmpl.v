@@ -16,10 +16,9 @@ enum State {
 	simple // default - no special interpretation of tags, *at all*!
 	// That is suitable for the general case of text template interpolation,
 	// for example for interpolating arbitrary source code (even V source) templates.
-
 	html // default, only when the template extension is .html
-	css  // <style>
-	js   // <script>
+	css // <style>
+	js // <script>
 	// span // span.{
 }
 
@@ -85,7 +84,7 @@ fn replace_placeholders_with_data(line string, data &map[string]DtmMultiTypeMap,
 	mut need_include_html := false
 
 	for key, value in data {
-		mut placeholder := '$${key}'
+		mut placeholder := '\$${key}'
 
 		if placeholder.ends_with(include_html_key_tag) {
 			placeholder = placeholder.all_before_last(include_html_key_tag)
@@ -205,7 +204,7 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 			} else {
 				s := '@include '
 				position := line.index(s) or { 0 }
-				eprintln("${message_signature_error} path for @include must be quoted with ' or \" without line breaks or extraneous characters between @include and the quotes, position : ${position}")
+				eprintln('${message_signature_error} path for @include must be quoted with \' or " without line breaks or extraneous characters between @include and the quotes, position : ${position}')
 				return internat_server_error
 			}
 			mut file_ext := os.file_ext(file_name)
@@ -219,8 +218,7 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 				// an absolute path
 				templates_folder = ''
 			}
-			file_path := os.real_path(os.join_path_single(templates_folder,
-				'${file_name}${file_ext}'))
+			file_path := os.real_path(os.join_path_single(templates_folder, '${file_name}${file_ext}'))
 			$if trace_tmpl ? {
 				eprintln('>>> basepath: "${basepath}" , template_file: "${template_file}" , fn_name: "${fn_name}" , @include line: "${line}" , file_name: "${file_name}" , file_ext: "${file_ext}" , templates_folder: "${templates_folder}" , file_path: "${file_path}"')
 			}
@@ -273,6 +271,7 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 			source.writeln(insert_template_code(fn_name, tmpl_str_start, line, data, state))
 			continue
 		}
+
 		// The .simple mode ends here. The rest handles .html/.css/.js state transitions.
 
 		if state != .simple {
@@ -296,20 +295,20 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 			.html {
 				line_t := line.trim_space()
 				if line_t.starts_with('span.') && line.ends_with('{') {
-					//`span.header {` => `<span class='header'>`
+					// `span.header {` => `<span class='header'>`
 					class := line.find_between('span.', '{').trim_space()
 					source.writeln('<span class="${class}">')
 					in_span = true
 					continue
 				} else if line_t.starts_with('.') && line.ends_with('{') {
-					//`.header {` => `<div class='header'>`
+					// `.header {` => `<div class='header'>`
 					class := line.find_between('.', '{').trim_space()
 					trimmed := line.trim_space()
 					source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
 					source.writeln('<div class="${class}">')
 					continue
 				} else if line_t.starts_with('#') && line.ends_with('{') {
-					//`#header {` => `<div id='header'>`
+					// `#header {` => `<div id='header'>`
 					class := line.find_between('#', '{').trim_space()
 					source.writeln('<div id="${class}">')
 					continue
@@ -327,11 +326,11 @@ fn compile_template_file(template_file string, fn_name string, data &map[string]
 			.js {
 				// if line.contains('//V_TEMPLATE') {
 				source.writeln(insert_template_code(fn_name, tmpl_str_start, line, data, state))
-				//} else {
+				// } else {
 				// replace `$` to `\$` at first to escape JavaScript template literal syntax
 				// source.writeln(line.replace(r'$', r'\$').replace(r'$$', r'@').replace(r'.$',
 				// r'.@').replace(r"'", r"\'"))
-				//}
+				// }
 				continue
 			}
 			.css {

@@ -105,9 +105,9 @@ fn get_project_for_linking() !LinkedProject {
 		settings.vmodules_path
 	}
 	return LinkedProject{
-		name:        manifest.name
+		name: manifest.name
 		project_dir: os.real_path(vmod_location.vmod_folder)
-		link_path:   os.join_path(vmodules_path, mod_path)
+		link_path: os.join_path(vmodules_path, mod_path)
 	}
 }
 

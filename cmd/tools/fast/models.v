@@ -18,7 +18,7 @@ mut:
 	message      string    // commit subject line
 	commit_date  time.Time // committer date (%ct); monotonic along first-parent
 	created_at   time.Time // when this benchmark was actually run
-	v_c_ms       int       // self compile to C (`cmd/v` historically, `vlib/v3/v3.v` now)
+	v_c_ms       int       // self compile to C (`cmd/v` historically, `vlib/v/v.v` now)
 	v_self_ms    int       // self compile to a binary (same source selection as v_c_ms)
 	hello_ms     int       // `v hello_world.v`  : compile a tiny program
 	vc_size_kb   int       // size of the generated v.c, in KB

@@ -44,7 +44,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	}
 	return {
 		VCS.git: VCSInfo{
-			dir:  '.git'
+			dir: '.git'
 			args: struct {
 				install:  git_install_cmd
 				version:  '--single-branch -b'
@@ -54,7 +54,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 			}
 		}
 		VCS.hg:  VCSInfo{
-			dir:  '.hg'
+			dir: '.hg'
 			args: struct {
 				install:  'clone'
 				version:  '--rev'
@@ -69,7 +69,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 fn (vcs VCS) clone(url string, version string, path string) ! {
 	args := vcs_info[vcs].args
 	version_opt := if version != '' { '${args.version} ${version}' } else { '' }
-	cmd := [vcs.str(), args.install, version_opt, url, os.quoted_path(path)].join(' ')
+	cmd := [vcs.str(), args.install, version_opt, os.quoted_path(url), os.quoted_path(path)].join(' ')
 	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
 	res := os.execute_opt(cmd)!
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')

@@ -66,11 +66,11 @@ fn (r &NormalReporter) report_current_running_and_compiling_status_periodically(
 		sb.writeln('')
 		sb.writeln('       >>>>> ${t.format_ss_micro()} | period ${pi:2} | started: ${t - start_t:10} ago | vjobs: ${r.njobs} | _test.v files: ${r.nfiles:5} | C: ${ckeys.len:3} | R: ${rkeys.len:3}')
 		for ik, k in ckeys {
-			cval := ccompiling[k]
+			cval := ccompiling[k] or { continue }
 			sb.writeln('       >>>>> compiling ${ik + 1:2}/${ckeys.len:-2}, T: ${cval.flow_id:2}, started: ${t - cval.when:10} ago, `${k}`')
 		}
 		for ik, k in rkeys {
-			cval := crunning[k]
+			cval := crunning[k] or { continue }
 			sb.writeln('       >>>>>   running ${ik + 1:2}/${rkeys.len:-2}, T: ${cval.flow_id:2}, started: ${t - cval.when:10} ago, `${k}`')
 		}
 		sb.writeln('')

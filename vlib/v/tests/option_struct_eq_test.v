@@ -164,7 +164,7 @@ struct OptionPointerOverloadValue {
 	value int
 }
 
-fn (a &OptionPointerOverloadValue) ==(b &OptionPointerOverloadValue) bool {
+fn (a &OptionPointerOverloadValue) == (b &OptionPointerOverloadValue) bool {
 	return a.value == b.value
 }
 

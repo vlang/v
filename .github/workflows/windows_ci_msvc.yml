@@ -6,7 +6,6 @@ on:
       - master
       - 'smoke/**'
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'
@@ -15,7 +14,6 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'
@@ -69,7 +67,7 @@ jobs:
           # `#flag` mechanism has no compiler-specific gating that can
           # special-case MSVC here (only OS-name gates and one hardcoded
           # `mingw` case are ever actually selected at build time, verified
-          # by reading vlib/v/builder/cflags.v's get_os_cflags()), so fix
+          # by the compiler's platform flag selection), so fix
           # it here instead: alias the file under the name MSVC expects.
           # A plain copy is safe -- a Windows import library doesn't embed
           # its own filename.

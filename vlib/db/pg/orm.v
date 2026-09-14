@@ -736,7 +736,14 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 				return orm.Primitive(pg_parse_timestamp(str)!)
 			}
 			orm.enum_ {
-				return orm.Primitive(str.i64())
+				// V's ORM stores enums in a `BIGINT` column, but a native PostgreSQL
+				// enum type (`CREATE TYPE ... AS ENUM`) returns the label of the value
+				// instead. Pass such a label on unchanged, so that the ORM can match it
+				// against the names of the enum values.
+				if number := strconv.atoi64(str.trim_space()) {
+					return orm.Primitive(number)
+				}
+				return orm.Primitive(str)
 			}
 			else {}
 		}

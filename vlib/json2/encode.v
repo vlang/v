@@ -89,7 +89,10 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 		encoder.encode_array(val)
 	} $else $if T.unaliased_typ is $map {
 		encoder.output << `{`
-		if encoder.prettify {
+		// An empty map is written as `{}`, for the same reason as in encode_map: the
+		// level raised here would never be lowered, because the lowering lives in the
+		// loop below.
+		if encoder.prettify && val.len > 0 {
 			encoder.increment_level()
 			encoder.add_indent()
 		}
@@ -349,7 +352,10 @@ fn (mut encoder Encoder) encode_null() {
 
 fn (mut encoder Encoder) encode_array[T](val T) {
 	encoder.output << `[`
-	if encoder.prettify {
+	// An empty array is written as `[]`: there is no element to indent, and a level
+	// raised here would never be lowered, because the matching lowering happens in
+	// the loop below, which an empty array never enters.
+	if encoder.prettify && val.len > 0 {
 		encoder.increment_level()
 		encoder.add_indent()
 	}
@@ -387,7 +393,10 @@ fn (mut encoder Encoder) encode_pointer_array_item[T](item T) {
 
 fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 	encoder.output << `{`
-	if encoder.prettify {
+	// An empty map is written as `{}`: there is no member to indent, and a level
+	// raised here would never be lowered, because the matching lowering happens in
+	// the loop below, which an empty map never enters.
+	if encoder.prettify && val.len > 0 {
 		encoder.increment_level()
 		encoder.add_indent()
 	}
@@ -519,7 +528,10 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant[T](val T, variant_name st
 
 fn (mut encoder Encoder) encode_array_of_sumtype_variants[T](val []T) {
 	encoder.output << `[`
-	if encoder.prettify {
+	// An empty array is written as `[]`, for the same reason as in encode_array: the
+	// level raised here would never be lowered, because the lowering lives in the
+	// loop below.
+	if encoder.prettify && val.len > 0 {
 		encoder.increment_level()
 		encoder.add_indent()
 	}

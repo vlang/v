@@ -20,13 +20,13 @@ pub fn merge_comments(comments []ast.Comment) string {
 pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
 	text := ast_node.text // TODO: .trim_left('\x01') // BUG why are this byte here in the first place?
 	return DocComment{
-		text:     text
+		text: text
 		is_multi: ast_node.is_multi
-		pos:      token.Pos{
-			line_nr:   ast_node.pos.line_nr
+		pos: token.Pos{
+			line_nr: ast_node.pos.line_nr
 			last_line: ast_node.pos.last_line
-			col:       0 // ast_node.pos.pos - ast_node.text.len
-			len:       text.len
+			col: 0 // ast_node.pos.pos - ast_node.text.len
+			len: text.len
 		}
 	}
 }
@@ -193,7 +193,9 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 		}
 		ast.TypeDecl {
 			match stmt {
-				ast.FnTypeDecl, ast.AliasTypeDecl, ast.SumTypeDecl { return stmt.name }
+				ast.FnTypeDecl, ast.AliasTypeDecl, ast.SumTypeDecl {
+					return stmt.name
+				}
 			}
 		}
 		ast.ConstDecl {
@@ -249,7 +251,9 @@ pub fn (d Doc) stmt_pub(stmt ast.Stmt) bool {
 		}
 		ast.TypeDecl {
 			match stmt {
-				ast.FnTypeDecl, ast.AliasTypeDecl, ast.SumTypeDecl { return stmt.is_pub }
+				ast.FnTypeDecl, ast.AliasTypeDecl, ast.SumTypeDecl {
+					return stmt.is_pub
+				}
 			}
 		}
 		else {

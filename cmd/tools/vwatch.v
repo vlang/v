@@ -79,7 +79,7 @@ enum RerunCommand {
 
 struct Context {
 mut:
-	pid             int  // the pid of the current process; useful while debugging manager/worker interactions
+	pid             int // the pid of the current process; useful while debugging manager/worker interactions
 	is_worker       bool // true in the workers, false in the manager process
 	check_period_ms int = scan_period_ms
 	vexe            string
@@ -91,16 +91,16 @@ mut:
 	child_has_tty   bool
 	watcher_pgid    int
 	resume_worker   bool
-	is_exiting      bool     // set by SIGINT/Ctrl-C
-	v_cycles        int      // how many times the worker has restarted the V compiler
-	scan_cycles     int      // how many times the worker has scanned for source file changes
-	clear_terminal  bool     // whether to clear the terminal before each re-run
-	keep_running    bool     // when true, re-run the program automatically if it exits on its own. Useful for gg apps.
-	silent          bool     // when true, watch will not print a timestamp line before each re-run
+	is_exiting      bool // set by SIGINT/Ctrl-C
+	v_cycles        int // how many times the worker has restarted the V compiler
+	scan_cycles     int // how many times the worker has scanned for source file changes
+	clear_terminal  bool // whether to clear the terminal before each re-run
+	keep_running    bool // when true, re-run the program automatically if it exits on its own. Useful for gg apps.
+	silent          bool // when true, watch will not print a timestamp line before each re-run
 	add_files       []string // path to additional files that have to be watched for changes
 	ignore_exts     []string // extensions of files that will be ignored, even if they change (useful for sqlite.db files for example)
-	cmd_before_run  string   // a command to run before each re-run
-	cmd_after_run   string   // a command to run after each re-run
+	cmd_before_run  string // a command to run before each re-run
+	cmd_after_run   string // a command to run after each re-run
 	only_watch      []string // If not empty, *all* files that trigger updates, should match *at least one* of these s.match_glob() patterns. This is also triggered for veb apps, to monitor for just *.v,*.js,*.css,*.html in veb projects.
 }
 
@@ -356,8 +356,7 @@ fn (mut context Context) compilation_runner_loop() {
 		context.child_process.use_pgroup = true
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
-		context.child_has_tty = vwatchtty.set_foreground_process_group(context.child_process.pid,
-			context.watcher_pgid)
+		context.child_has_tty = vwatchtty.set_foreground_process_group(context.child_process.pid, context.watcher_pgid)
 		if !context.silent {
 			eprintln('${timestamp}: ${cmd} | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
 		}
@@ -432,6 +431,7 @@ fn main() {
 	watch_pos := os.args.index('watch')
 	all_args_before_watch_cmd := os.args#[1..watch_pos]
 	all_args_after_watch_cmd := os.args#[watch_pos + 1..]
+
 	// dump(os.getpid())
 	// dump(all_args_before_watch_cmd)
 	// dump(all_args_after_watch_cmd)
@@ -657,7 +657,7 @@ fn propagate_terminal_stop(_ os.Signal) {
 
 fn (mut context Context) worker_main() {
 	context.watcher_pgid = vwatchtty.process_group()
-	context.rerun_channel = chan RerunCommand{cap: 10}
+	context.rerun_channel = chan RerunCommand{ cap: 10 }
 	os.signal_opt(.int, fn (_ os.Signal) {
 		mut context := unsafe { &Context(voidptr(&ccontext)) }
 		context.is_exiting = true

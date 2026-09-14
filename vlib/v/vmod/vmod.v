@@ -37,7 +37,7 @@ pub fn (manifest Manifest) source_root(vmod_root string) string {
 // ModFileCacher.get(folder) works in such a way, that given this tree:
 // examples/hanoi.v
 // vlib/v.mod
-// vlib/v/tests/project_with_c_code/mod1/v.mod
+// vlib/v/tests/project_with_c_code/v.mod
 // vlib/v/tests/project_with_c_code/mod1/wrapper.c.v
 // -----------------
 // ModFileCacher.get('examples')
@@ -46,8 +46,8 @@ pub fn (manifest Manifest) source_root(vmod_root string) string {
 // => ModFileAndFolder{'vlib/v.mod', 'vlib'}
 // ModFileCacher.get('vlib/v')
 // => ModFileAndFolder{'vlib/v.mod', 'vlib'}
-// ModFileCacher.get('vlib/v/test/project_with_c_code/mod1')
-// => ModFileAndFolder{'vlib/v/test/project_with_c_code/mod1/v.mod', 'vlib/v/test/project_with_c_code/mod1'}
+// ModFileCacher.get('vlib/v/tests/project_with_c_code/mod1')
+// => ModFileAndFolder{'vlib/v/tests/project_with_c_code/v.mod', 'vlib/v/tests/project_with_c_code'}
 pub struct ModFileAndFolder {
 pub:
 	// vmod_file contains the full path of the found 'v.mod' file, or ''
