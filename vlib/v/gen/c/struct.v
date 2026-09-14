@@ -359,6 +359,10 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			g.write_embed_blob_bytes(node.value, offset, part_len)
 			parts++
 		}
+		// The table is an object in its own right, so it has the same ceiling: at
+		// 16 bytes an entry it holds 4095 of them, which covers a payload of about
+		// 256MB. Past that the table would be the oversized object, but V warns
+		// well before an embedded file gets near it.
 		chunk_ct := g.cname('embed_file.EmbedFileChunk')
 		g.write('static const ${chunk_ct} _v_embed_blob_')
 		g.sb.write_decimal(i64(i))
