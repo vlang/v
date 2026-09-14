@@ -86,3 +86,8 @@ fn test_generic_shadow_scan_checks_portable_target_comptime_branches() {
 fn test_generic_shadow_scan_defers_mixed_target_and_specialization_condition() {
 	assert generic_comptime_shadow_scan('windows && T is int').len == 0
 }
+
+fn test_generic_shadow_scan_defers_mixed_target_and_metadata_condition() {
+	assert generic_comptime_shadow_scan('windows && T.indirections != 0').len == 0
+	assert generic_comptime_shadow_scan('windows && sizeof(T) == 0').len == 0
+}

@@ -5809,6 +5809,23 @@ fn comptime_cond_has_type_test(cond string) bool {
 		|| cond.contains(' in [') || cond.contains(' !in[') || cond.contains(' !in [')
 }
 
+fn comptime_cond_has_type_metadata(cond string) bool {
+	if cond.contains('sizeof(') || cond.contains('sizeof (') {
+		return true
+	}
+	if (cond.contains('typeof[') || cond.contains('typeof(')
+		|| cond.contains('typeof (')) && cond.contains('.idx') {
+		return true
+	}
+	for member in ['.indirections', '.typ', '.unaliased_typ', '.key_type', '.value_type',
+		'.element_type', '.pointee_type', '.payload_type', '.variant_types'] {
+		if cond.contains(member) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node flat.Node) bool {
 	metadata := node.generic_params()
 	if metadata.len < 7 || metadata[0] != '__v3_comptime_match' {

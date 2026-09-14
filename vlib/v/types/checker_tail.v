@@ -6859,10 +6859,11 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 		.comptime_if {
 			take_then := tc.comptime_type_condition_value(node.value) or {
 				// Portable output keeps all target-dependent branches for the C
-				// preprocessor. A mixed type condition stays deferred until the
-				// concrete clone folds its specialization-dependent part first.
+				// preprocessor. A mixed type or metadata condition stays deferred
+				// until the concrete clone folds its specialization-dependent part.
 				if comptime_cond_has_target_flag(node.value)
-					&& !comptime_cond_has_type_test(node.value) {
+					&& !comptime_cond_has_type_test(node.value)
+					&& !comptime_cond_has_type_metadata(node.value) {
 					for i in 0 .. node.children_count {
 						tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
 					}

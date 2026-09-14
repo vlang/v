@@ -76,7 +76,7 @@ fn test_comptime_loop_type_metadata_survives_generic_specialization() {
 	]) == "field.name == 'Middleware'"
 }
 
-fn test_comptime_condition_substitution_folds_type_test_beside_target_flag() {
+fn test_comptime_condition_substitution_folds_type_condition_beside_target_flag() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -84,6 +84,8 @@ fn test_comptime_condition_substitution_folds_type_test_beside_target_flag() {
 
 	assert t.subst_comptime_type_condition('windows && T is int', ['string']) == 'false'
 	assert t.subst_comptime_type_condition('windows && T is int', ['int']) == 'windows'
+	assert t.subst_comptime_type_condition('windows && T.indirections != 0', ['int']) == 'false'
+	assert t.subst_comptime_type_condition('windows && T.indirections != 0', ['&int']) == 'windows'
 }
 
 fn test_generic_unresolved_type_detects_multi_return_placeholders() {
