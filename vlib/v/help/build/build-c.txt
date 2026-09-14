@@ -176,7 +176,7 @@ see also `v help build`.
 
       This is not `-freestanding`, which means no libc at all and needs a
       `-bare-builtin-dir`. Here there is a libc; it is the target's own. Windows
-      targets, the FastC backend, and portable `-os cross`/`-cross` output are
+      targets, non-C backends, and portable `-os cross`/`-cross` output are
       not currently supported by this mode.
 
    -os <os>, -target-os <os>

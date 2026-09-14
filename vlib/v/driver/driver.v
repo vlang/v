@@ -9146,6 +9146,11 @@ pub fn run(args []string) {
 	if os.getenv(v3_embedded_env) != '1' {
 		maybe_delegate_v3_to_vvmrc(input_file, verbose)
 	}
+	// The JS compatibility path returns before the common backend validation below.
+	if target_libc_headers && backend == 'js' {
+		eprintln('option `-target-libc-headers` requires the C backend')
+		exit(1)
+	}
 	if backend == 'js' {
 		js_output := if output_file.len > 0 {
 			output_file
@@ -9253,8 +9258,8 @@ pub fn run(args []string) {
 		eprintln('option `-target-libc-headers` does not support Windows targets')
 		exit(1)
 	}
-	if target_libc_headers && backend == 'fastc' {
-		eprintln('option `-target-libc-headers` does not support the FastC backend')
+	if target_libc_headers && backend != 'c' {
+		eprintln('option `-target-libc-headers` requires the C backend')
 		exit(1)
 	}
 	if backend == 'fastc' && target.os == 'windows' && subsystem == .windows {

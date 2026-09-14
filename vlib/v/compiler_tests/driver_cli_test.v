@@ -1988,8 +1988,10 @@ fn main() {
 		source], 'option `-target-libc-headers` does not support portable cross output')
 	assert_driver_cli_failure(v3_bin, ['-target-libc-headers', '-cross', '-o', c_output, source],
 		'option `-target-libc-headers` does not support portable cross output')
-	assert_driver_cli_failure(v3_bin, ['-b', 'fastc', '-target-libc-headers', '-o', c_output,
-		source], 'option `-target-libc-headers` does not support the FastC backend')
+	for backend in ['fastc', 'arm64', 'wasm', 'eval', 'js'] {
+		assert_driver_cli_failure(v3_bin, ['-b', backend, '-target-libc-headers', '-o', c_output,
+			source], 'option `-target-libc-headers` requires the C backend')
+	}
 
 	if false_exe := os.find_abs_path_of_executable('false') {
 		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, source, '-o',

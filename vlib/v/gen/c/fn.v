@@ -17759,6 +17759,7 @@ const c_manual_stdlib_declared_fns = {
 	'freopen':          true
 	'freopen_s':        true
 	'fseek':            true
+	'fseeko':           true
 	'ftell':            true
 	'fwrite':           true
 	'getc':             true
