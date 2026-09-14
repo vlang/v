@@ -5790,8 +5790,9 @@ fn (mut p Parser) skip_block() {
 }
 
 fn skipped_pipe_starts_lambda(prev_tok token.Token) bool {
-	return prev_tok !in [.name, .key_module, .key_shared, .number, .string, .char, .key_true,
-		.key_false, .key_nil, .key_none, .rpar, .rsbr, .rcbr, .not, .question, .inc, .dec]
+	return prev_tok !in [.name, .key_module, .key_shared, .key_type, .number, .string, .char,
+		.key_true, .key_false, .key_nil, .key_none, .rpar, .rsbr, .rcbr, .not, .question, .inc,
+		.dec]
 }
 
 fn skipped_token_can_start_map_type(prev_tok token.Token) bool {

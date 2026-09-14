@@ -39,6 +39,12 @@ fn remaining_keyword_shaped_idents(type int, lock []int, rlock []int, select []i
 	}
 }
 
+fn bitwise_keyword_ident(type int, x int) {
+	$if prealloc {
+		println(type | x)
+	}
+}
+
 // A name before a colon is an expression in a map key or string interpolation,
 // rather than a struct-field or named-argument label.
 fn colon_delimited_ident(key string, width int) {
@@ -75,6 +81,7 @@ fn main() {
 	println((Counter{1} + Counter{2}).n)
 	keyword_shaped_ident('v')
 	remaining_keyword_shaped_idents(1, [2], [3], [4])
+	bitwise_keyword_ident(1, 2)
 	colon_delimited_ident('answer', 42)
 	infix_bare_map_key(1)
 	braced_asm_operand(42)
