@@ -5972,8 +5972,10 @@ fn (mut p Parser) skip_comptime_block() {
 			&& (p.peek() != .colon || expression_colon_braces.last())
 			&& shadowed_names[p.lit] == 0 && p.is_local_binding(p.lit) {
 			key := prefix + p.lit
+			is_direct_lhs_name := prev_tok !in [.mul, .power]
 			p.a.comptime_skipped_names[key] = true
-			if paren_depth == 0 && bracket_depth == 0 && p.peek() == .comma {
+			if is_direct_lhs_name && paren_depth == 0 && bracket_depth == 0
+				&& p.peek() == .comma {
 				if pending_comma_lhs_reads.len == 0 {
 					pending_comma_lhs_depth = depth
 				}
@@ -5982,7 +5984,8 @@ fn (mut p Parser) skip_comptime_block() {
 				} else {
 					p.a.comptime_skipped_read_names[key] = true
 				}
-			} else if !(paren_depth == 0 && bracket_depth == 0 && p.peek() == .assign) {
+			} else if !(is_direct_lhs_name && paren_depth == 0 && bracket_depth == 0
+				&& p.peek() == .assign) {
 				p.a.comptime_skipped_read_names[key] = true
 			}
 		} else if p.tok == .assign && paren_depth == 0 && bracket_depth == 0
