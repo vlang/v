@@ -103,24 +103,55 @@ fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 	}
 }
 
-fn test_cross_output_keeps_sem_timedwait_off_apple() {
+fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 	// A snapshot generated on Linux is compiled on macOS to bootstrap v1, and the
-	// `sync` file it bakes in is the POSIX one. Apple's libc has no `sem_timedwait`
-	// symbol at all, so every reference to it has to stay behind a guard that is
-	// false there, or `cc` fails with `call to undeclared function 'sem_timedwait'`.
-	c_code := cross_generate_with('-cross -os linux', 'semaphore', "module main\n\nimport sync\n\nfn main() {\n\tmut sem := sync.new_semaphore()\n\tprintln(sem.timed_wait(1))\n}\n")
-	call := 'sem_timedwait('
-	assert c_code.contains(call), 'the POSIX semaphore implementation is missing from the snapshot'
-	mut searched := c_code
-	for {
-		at := searched.index(call) or { break }
-		before := searched[..at].clone()
-		opened := before.last_index('#if ') or {
-			assert false, 'a sem_timedwait call is not behind any preprocessor guard'
-			return
+	// `sync` file it bakes in is the POSIX one. Apple has no `sem_timedwait` symbol
+	// at all, and the rest of its unnamed POSIX semaphore API is a stub: `sem_init`
+	// fails with ENOSYS and every later call on that `sem_t` fails with EBADF. So
+	// each of these calls has to stay behind a guard that is false on Apple, or the
+	// snapshot either fails to compile there, or panics with `Bad file descriptor`
+	// on the first semaphore it waits on.
+	c_code := cross_generate_with('-cross -os linux', 'semaphore', 'module main\n\nimport sync\n\nfn main() {\n\tmut sem := sync.new_semaphore()\n\tsem.post()\n\tsem.wait()\n\tprintln(sem.try_wait())\n\tprintln(sem.timed_wait(1))\n\tsem.destroy()\n}\n')
+	for call in ['sem_init(', 'sem_post(', 'sem_wait(', 'sem_trywait(', 'sem_timedwait(',
+		'sem_destroy('] {
+		assert c_code.contains(call), '`${call}` is missing from the snapshot'
+		mut searched := c_code
+		for {
+			at := searched.index(call) or { break }
+			before := searched[..at].clone()
+			opened := before.last_index('#if ') or {
+				assert false, 'a ${call} call is not behind any preprocessor guard'
+				return
+			}
+			condition := before[opened..].all_before('\n')
+			assert condition.contains('__APPLE__'), 'a ${call} call is guarded by `${condition}`, which is also true on Apple'
+			searched = searched[at + call.len..].clone()
 		}
-		condition := before[opened..].all_before('\n')
-		assert condition.contains('__APPLE__'), 'a sem_timedwait call is guarded by `${condition}`, which is also true on Apple'
-		searched = searched[at + call.len..].clone()
 	}
+}
+
+fn test_cross_output_keeps_a_working_clock_on_apple() {
+	// `time` splits per platform too, so a snapshot generated on Linux bakes the
+	// stand-ins from time_linux.c.v, while the preprocessor still takes the
+	// `__APPLE__` branch of the shared code when it is compiled on macOS. Those
+	// stand-ins used to return zero, which left the bootstrapped compiler with a
+	// clock that never advanced: `v` divided by its own elapsed parse time and
+	// died with `division by zero`. They have to answer with real POSIX time.
+	c_code := cross_generate_with('-cross -os linux', 'clock', 'module main\n\nimport time\n\nfn main() {\n\tprintln(time.sys_mono_now())\n\tprintln(time.now())\n\tprintln(time.utc())\n}\n')
+	mono := function_body(c_code, 'u64 time__sys_mono_now_darwin(void) {')
+	assert mono.contains('clock_gettime'), 'the snapshot cannot read a monotonic clock on Apple: ${mono}'
+	now := function_body(c_code, 'time__Time time__darwin_now(void) {')
+	assert now.contains('time__linux_now()'), 'the snapshot cannot read the local time on Apple: ${now}'
+	utc := function_body(c_code, 'time__Time time__darwin_utc(void) {')
+	assert utc.contains('time__linux_utc()'), 'the snapshot cannot read UTC on Apple: ${utc}'
+}
+
+// function_body returns the source of the C function that `signature` opens.
+fn function_body(c_code string, signature string) string {
+	at := c_code.index(signature) or {
+		assert false, '`${signature}` is missing from the snapshot'
+		return ''
+	}
+	rest := c_code[at + signature.len..]
+	return rest.all_before('\n}')
 }
