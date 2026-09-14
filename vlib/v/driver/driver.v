@@ -6076,6 +6076,37 @@ fn merge_incremental_program_body(cached_source string, cached_prefix string, ch
 	return merged[..body_start] + new_section_text + merged[body_start..]
 }
 
+fn target_libc_cached_prefix_needs_thread_refresh(cached_prefix string, current_body string) bool {
+	runtime_identifiers := {
+		'__v_thread_equal': true
+		'__v_thread_alloc': true
+		'__v_thread_spawn': true
+		'__v_thread_join':  true
+	}
+	body_level := if c_source_references_identifiers(current_body, runtime_identifiers) {
+		2
+	} else if c_source_references_identifiers(current_body, {
+		'__v_thread': true
+	}) {
+		1
+	} else {
+		0
+	}
+	if body_level == 0 {
+		return false
+	}
+	prefix_level := if c_source_references_identifiers(cached_prefix, runtime_identifiers) {
+		2
+	} else if c_source_references_identifiers(cached_prefix, {
+		'__v_thread': true
+	}) {
+		1
+	} else {
+		0
+	}
+	return prefix_level < body_level
+}
+
 fn merge_cached_generic_program_body(cached_source string, changed_source string) ?string {
 	cached_sections := incremental_c_function_sections(cached_source) or { return none }
 	changed_sections := incremental_c_function_sections(changed_source) or { return none }
@@ -12110,6 +12141,13 @@ pub fn run(args []string) {
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
+						if prefs.target_libc_headers
+							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix,
+								generated_source) {
+							trace_v3_cache_fallback('cached program prefix lacks required target thread support')
+							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+							restart_v3_after_cache_invalidation()
+						}
 						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file, incremental_prefix_path, incremental_tcc_declarations_path, cached_prefix, compile_signature, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
@@ -12130,6 +12168,13 @@ pub fn run(args []string) {
 							eprintln('error reading cached generic prefix ${generic_cache_entry.prefix}: ${err.msg()}')
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
+						}
+						if prefs.target_libc_headers
+							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix,
+								generated_source) {
+							trace_v3_cache_fallback('cached program prefix lacks required target thread support')
+							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+							restart_v3_after_cache_invalidation()
 						}
 						cached_declarations := os.read_file(generic_cache_entry.declarations) or {
 							eprintln('error reading cached generic declarations ${generic_cache_entry.declarations}: ${err.msg()}')
