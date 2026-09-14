@@ -3715,11 +3715,14 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if tc.check_call_privacy(id, node, info) {
 			return
 		}
+		callee := tc.a.child_node(node, 0)
+		// The safe array.repeat wrapper resolves to its unsafe helper for reachability.
+		calls_safe_array_repeat := info.name == 'array.repeat_to_depth' && callee.kind == .selector
+			&& callee.value == 'repeat'
 		if tc.unsafe_depth == 0 && !tc.current_fn_declared_unsafe()
 			&& !tc.node_is_in_translated_file(id)
 			&& (info.name in tc.unsafe_fns || tc.is_builtin_unsafe_c_call(node, info.name))
-			&& info.name !in ['map.delete', 'builtin.map.delete'] {
-			callee := tc.a.child_node(node, 0)
+			&& info.name !in ['map.delete', 'builtin.map.delete'] && !calls_safe_array_repeat {
 			if info.has_receiver && callee.kind == .selector {
 				method_name := info.name.trim_string_left('main.')
 				name_pos := tc.method_call_name_pos(node, callee)
