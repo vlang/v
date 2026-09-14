@@ -276,7 +276,7 @@ fn run_v3_unit_tests(cfg Config) {
 		println('  Unit test batch ${start / unit_test_batch_size + 1}: ${start + 1}-${end}/${test_files.len}')
 		for path in test_files[start..end] {
 			run_only_arg := unit_test_run_only_arg(cfg, path)
-			run('${q(wrapper_vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals ${run_only_arg} -silent test ${q(path)}')
+			run('${q(wrapper_vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${run_only_arg} ${q(path)}')
 		}
 		if os.exists(unit_cache) {
 			os.rmdir_all(unit_cache) or {
