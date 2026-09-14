@@ -47,10 +47,24 @@ vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:132:
       |     ^
   133 |     $if windows {
   134 |         cb := |g| twice
-vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:166:2: warning: unused variable: `q`
-  164 |     on_the_next_line()
-  165 |     after_a_semicolon()
-  166 |     q := 1
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:173:2: warning: unused variable: `i`
+  171 | // on over one.
+  172 | fn leading_infix() {
+  173 |     i := true
       |     ^
-  167 |     $if windows {
-  168 |         cb := |q| q + 1
+  174 |     $if windows {
+  175 |         cb := |i| true
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:184:2: warning: unused variable: `d`
+  182 | // the expression starts on.
+  183 | fn deeper_plus() {
+  184 |     d := 1
+      |     ^
+  185 |     $if windows {
+  186 |         cb := |d| 1
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:210:2: warning: unused variable: `q`
+  208 |     on_the_next_line()
+  209 |     after_a_semicolon()
+  210 |     q := 1
+      |     ^
+  211 |     $if windows {
+  212 |         cb := |q| q + 1

@@ -3314,6 +3314,12 @@ fn code_tokens(code string) ([]string, []int, []int) {
 			i += 2
 			continue
 		}
+		if c == `&` && i + 1 < code.len && code[i + 1] == `&` {
+			// `a && b` is an operator of its own; a lone `&` addresses.
+			tokens << '&&'
+			i += 2
+			continue
+		}
 		if (c == `<` || c == `>`) && i + 1 < code.len && code[i + 1] == c {
 			// `arr << |x| x + 1` pushes a lambda; `a < b` does not open one.
 			tokens << code[i..i + 2]
@@ -3484,13 +3490,14 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, indents []int, name s
 		// A block or a parenthesised body spans lines; a bare expression body
 		// ends with the line it starts on, which needs not be the line of the
 		// parameters: `cb := |x|` may leave its body for the next one.
+		body_start := end
 		mut body_line := lines[end]
 		for end < tokens.len {
 			if depth == 0 && lines[end] != body_line {
 				// `cb := |x| 1 +` continues on the next line, the way the
 				// scanner inserts no semicolon after an operator, and so does
 				// the `.method()` of a chain.
-				if !token_continues_the_previous_line(tokens, indents, end)
+				if !token_continues_the_previous_line(tokens, indents, end, body_start)
 					&& (end == 0 || token_may_end_an_expression(tokens, end - 1)) {
 					break
 				}
@@ -3522,15 +3529,40 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, indents []int, name s
 // `tokens[index]`, which is what lets the scanner end the statement at the
 // following line break. A keyword cannot, `unsafe` and `lock` taking the block
 // that follows them, with the literals and the selectors as the exceptions.
+// The operators the parser consumes a newline before, i.e. those its
+// `token_is_infix(peek) && peek !in [.mul, .amp, .arrow]` accepts. A line may
+// start with a dereference or an address-of, which is why `*` and `&` are not
+// among them, and `+`/`-` are handled apart because they continue only when
+// they are indented deeper than the expression they belong to.
+const leading_infix_tokens = ['||', '&&', '==', '!=', '<', '<=', '>', '>=', '<<', '>>', '|', '^',
+	'/', '%', 'in', 'is', 'as']
+
 // token_continues_the_previous_line reports whether the parser consumes the
 // newline standing before the token at `index` instead of ending a statement on
 // it. It skips the auto-semicolon before the `.` of a chained call, before the
 // `{` of a block written on its own line, and between a `}` and the `else` that
 // continues the control-flow expression it closes.
-fn token_continues_the_previous_line(tokens []string, indents []int, index int) bool {
+fn token_continues_the_previous_line(tokens []string, indents []int, index int, lhs_start int) bool {
 	word := tokens[index]
-	if word in ['.', '{', 'else'] {
+	if word in ['{', 'else'] {
 		return true
+	}
+	if word == '.' {
+		// `newline_dot_starts_map_entry`: a `.name:` on the next line opens the
+		// next entry of an enum-keyed map rather than selecting from the value
+		// written before it.
+		return index + 2 >= tokens.len || !is_ident_token(tokens[index + 1])
+			|| tokens[index + 2] != ':'
+	}
+	if word in leading_infix_tokens {
+		// The parser consumes the newline before an infix operator, so the
+		// expression continues on the line that starts with one.
+		return true
+	}
+	if word == '+' || word == '-' {
+		// Apart from these two: at the same depth a leading `+`/`-` opens the
+		// next expression, and only a more deeply indented one continues.
+		return lhs_start >= 0 && lhs_start < indents.len && indents[index] > indents[lhs_start]
 	}
 	if word != '(' || index == 0 {
 		return false

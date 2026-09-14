@@ -148,7 +148,51 @@ fn a_group_at_the_same_depth() {
 	}
 }
 
+enum Key {
+	a
+	b
+}
+
+// `.name:` on the next line opens the next entry of an enum-keyed map, so the
+// first lambda ends there and what the second entry spells reads the outer
+// binding: `n` is used here.
+fn enum_keyed_entries() {
+	n := 1
+	$if windows {
+		m := {
+			Key.a: |n| n + 1
+			.b:    |o| o + n
+		}
+		println(m.len)
+	}
+}
+
+// The parser consumes the newline before an infix operator, so the body goes
+// on over one.
+fn leading_infix() {
+	i := true
+	$if windows {
+		cb := |i| true
+		|| i
+		_ = cb
+	}
+}
+
+// Except `+` and `-`, which continue only when indented deeper than the line
+// the expression starts on.
+fn deeper_plus() {
+	d := 1
+	$if windows {
+		cb := |d| 1
+			+ d
+		_ = cb
+	}
+}
+
 fn main() {
+	deeper_plus()
+	leading_infix()
+	enum_keyed_entries()
 	println(twice(1))
 	a_group_at_the_same_depth()
 	a_deeper_newline_call()

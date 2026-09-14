@@ -630,3 +630,34 @@ fn test_a_brace_after_a_keyword_that_takes_an_expression() {
 	assert !code_references_ident('assert configure(x: 1) == 1', 'x', true)
 	assert !code_references_ident('assert Cfg{x: 1}.x == 1', 'x', true)
 }
+
+fn test_a_lambda_body_continues_over_a_leading_infix_operator() {
+	// The parser consumes the newline before an infix operator, so the body
+	// goes on and the name after it is still the parameter.
+	assert !code_references_ident('cb := |x| true\n|| x', 'x', true)
+	assert !code_references_ident('cb := |x| true\n&& x', 'x', true)
+	assert !code_references_ident('cb := |x| 1\n== x', 'x', true)
+	assert !code_references_ident('cb := |x| 1\n<< x', 'x', true)
+	assert !code_references_ident('cb := |x| a\nin x', 'x', true)
+	// `*` and `&` are not among them: a line may open with a dereference or an
+	// address-of, which the parser reads as a statement of its own.
+	assert code_references_ident('cb := |x| 1\n* x', 'x', true)
+	assert code_references_ident('cb := |x| 1\n& x', 'x', true)
+	// `+` and `-` continue only when indented deeper than the line the body
+	// starts on.
+	assert !code_references_ident('cb := |x| 1\n\t+ x', 'x', true)
+	assert !code_references_ident('cb := |x| 1\n\t- x', 'x', true)
+	assert code_references_ident('cb := |x| 1\n+ x', 'x', true)
+	assert code_references_ident('cb := |x| 1\n- x', 'x', true)
+}
+
+fn test_a_lambda_body_stops_at_an_enum_keyed_map_entry() {
+	// `newline_dot_starts_map_entry`: a `.name:` on the next line opens the
+	// next entry instead of selecting from the value before it.
+	assert code_references_ident('m := {\nK.a: |x| 1\n.b: |y| x\n}', 'x', true)
+	// A selector on the next line still continues the body.
+	assert !code_references_ident('cb := |x| maker()\n.consume(x)', 'x', true)
+	assert !code_references_ident('cb := |x| maker()\n.field\n.take(x)', 'x', true)
+	// A `.name` that no `:` follows selects, entry or not.
+	assert !code_references_ident('cb := |x| maker()\n.consume(x)\n.field', 'x', true)
+}
