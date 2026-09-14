@@ -12,10 +12,12 @@ import os
 // update or remove.
 //
 // The record has two halves: a token inside the checkout VPM made, and the note
-// of that token in the global cache, never in the project. Both have to agree, so
-// a path whose install was deleted or moved by hand cannot pass its authority on
-// to whatever the project puts there next: the leftover note is for a directory
-// that can no longer answer with its token.
+// of that token in the global cache, never in the project. The note is named
+// after the token rather than after a path, so a project can be renamed or moved
+// and take its installs with it; the path the note holds is where the install was
+// last seen, which is what separates a checkout that moved from a copy of it made
+// by hand. Neither half is any use alone: a path emptied and filled again by the
+// project cannot answer with the token, so it inherits nothing.
 
 const local_install_token_name = 'vpm_local_install'
 
@@ -23,10 +25,8 @@ fn local_install_records_dir() string {
 	return os.join_path(os.vmodules_dir(), '.cache', 'local_installs')
 }
 
-// The note is named after the path it stands for, and holds that path, so a stale
-// or colliding name can never be read as provenance for another directory.
-fn local_install_record_path(install_path string) string {
-	return os.join_path(local_install_records_dir(), sha256.hexhash(canonical_install_path(install_path)))
+fn local_install_record_path(token string) string {
+	return os.join_path(local_install_records_dir(), sha256.hexhash(token))
 }
 
 fn canonical_install_path(install_path string) string {
@@ -47,50 +47,62 @@ fn local_install_token_path(install_path string) string {
 	return os.join_path(install_path, '.${local_install_token_name}')
 }
 
-fn record_local_install(install_path string) {
-	token_bytes := rand.bytes(32) or {
-		vpm_error('failed to record the local installation at `${fmt_mod_path(install_path)}`.',
-			details: err.msg()
-		)
-		return
+fn read_local_install_token(install_path string) ?string {
+	token := os.read_file(local_install_token_path(install_path)) or { return none }
+	trimmed := token.trim_space()
+	if trimmed == '' {
+		return none
 	}
-	token := token_bytes.hex()
-	os.mkdir_all(local_install_records_dir(), mode: 0o700) or {
-		vpm_error('failed to record the local installation at `${fmt_mod_path(install_path)}`.',
-			details: err.msg()
-		)
-		return
-	}
-	os.write_file(local_install_token_path(install_path), token) or {
-		vpm_error('failed to record the local installation at `${fmt_mod_path(install_path)}`.',
-			details: err.msg()
-		)
-		return
-	}
-	os.write_file(local_install_record_path(install_path), '${canonical_install_path(install_path)}\n${token}\n') or {
-		vpm_error('failed to record the local installation at `${fmt_mod_path(install_path)}`.',
-			details: err.msg()
-		)
-	}
+	return trimmed
 }
 
-// The token goes with the directory it sat in, so only the note is left to drop.
-fn forget_local_install(install_path string) {
-	os.rm(local_install_record_path(install_path)) or {}
+// An install VPM cannot record is one it could never update or remove again, so
+// the caller has to treat a failure here as a failed installation.
+fn record_local_install(install_path string) ! {
+	token := rand.bytes(32)!.hex()
+	os.mkdir_all(local_install_records_dir(), mode: 0o700)!
+	os.write_file(local_install_token_path(install_path), token)!
+	os.write_file(local_install_record_path(token), canonical_install_path(install_path))!
+}
+
+fn forget_local_install(token string) {
+	os.rm(local_install_record_path(token)) or {}
+}
+
+// remove_installed_dir deletes a module directory and the record that it was a
+// local install. The token is read first, since it lives inside the directory,
+// and the note is only dropped once the directory is really gone: a removal that
+// failed has to leave a retry possible.
+fn remove_installed_dir(module_path string) ! {
+	token := read_local_install_token(module_path) or { '' }
+	rmdir_all(module_path)!
+	if token != '' {
+		forget_local_install(token)
+	}
 }
 
 fn is_recorded_local_install(install_path string) bool {
-	record := os.read_file(local_install_record_path(install_path)) or { return false }
-	lines := record.split_into_lines()
-	if lines.len < 2 || lines[0].trim_space() != canonical_install_path(install_path) {
+	token := read_local_install_token(install_path) or { return false }
+	note := os.read_file(local_install_record_path(token)) or { return false }
+	recorded := note.trim_space()
+	if recorded == '' {
 		return false
 	}
-	token := lines[1].trim_space()
-	if token == '' {
-		return false
+	canonical := canonical_install_path(install_path)
+	if recorded == canonical {
+		return true
 	}
-	stored := os.read_file(local_install_token_path(install_path)) or { return false }
-	return stored.trim_space() == token
+	// The note names another path. Either the install moved there from here, with
+	// the project around it, or this is a copy of it: the original answering with
+	// the same token is what tells the two apart. A copy is not the install, and
+	// inherits nothing; a move is the same checkout, so the note follows it.
+	if original_token := read_local_install_token(recorded) {
+		if original_token == token {
+			return false
+		}
+	}
+	os.write_file(local_install_record_path(token), canonical) or { return false }
+	return true
 }
 
 // vpm_owns_module_dir reports whether a directory is VPM's to act on. The global

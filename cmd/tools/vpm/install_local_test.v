@@ -442,7 +442,7 @@ fn test_local_remove_deletes_what_vpm_installed() {
 	// into the lookup root, and VPM's record that it put it there.
 	installed := os.join_path(project_dir, 'local_pkg')
 	create_local_git_module(installed, 'local_pkg')
-	record_local_install(installed)
+	record_local_install(installed) or { panic(err) }
 	assert is_recorded_local_install(installed)
 
 	old_dir := os.getwd()
@@ -456,9 +456,9 @@ fn test_local_remove_deletes_what_vpm_installed() {
 	assert !is_recorded_local_install(installed)
 }
 
-// The record stands for one directory only, so it can never be read as
-// provenance for another one, and it lives outside the project it describes.
-fn test_local_install_records_are_per_directory() {
+// The record stands for one checkout only, so it can never be read as provenance
+// for another one, and the note of it lives outside the project it describes.
+fn test_local_install_records_are_per_checkout() {
 	vmodules_path := os.join_path(test_path, 'vmodules_local_records')
 	test_utils.set_test_env(vmodules_path)
 	project_dir := os.join_path(test_path, 'local_records_project')
@@ -467,15 +467,110 @@ fn test_local_install_records_are_per_directory() {
 	os.mkdir_all(installed) or { panic(err) }
 	os.mkdir_all(sibling) or { panic(err) }
 
-	record_local_install(installed)
+	record_local_install(installed) or { panic(err) }
 	assert is_recorded_local_install(installed)
 	assert !is_recorded_local_install(sibling)
 	assert os.is_dir(os.join_path(vmodules_path, '.cache', 'local_installs'))
 	entries := os.ls(project_dir) or { panic(err) }
 	assert entries.sorted() == ['recorded_pkg', 'unrecorded_pkg']
 
-	forget_local_install(installed)
+	token := read_local_install_token(installed) or { panic('no token was written') }
+	forget_local_install(token)
 	assert !is_recorded_local_install(installed)
+}
+
+// An install VPM cannot record is one it could never update or remove again, so
+// recording has to fail loudly enough for the installation to be undone.
+fn test_recording_a_local_install_reports_failure() {
+	$if !windows {
+		vmodules_path := os.join_path(test_path, 'vmodules_unwritable_records')
+		test_utils.set_test_env(vmodules_path)
+		cache_dir := os.join_path(vmodules_path, '.cache')
+		os.mkdir_all(cache_dir) or { panic(err) }
+		installed := os.join_path(test_path, 'unrecordable_project', 'pkg')
+		os.mkdir_all(installed) or { panic(err) }
+		os.chmod(cache_dir, 0o500) or { panic(err) }
+		defer {
+			os.chmod(cache_dir, 0o700) or {}
+		}
+
+		record_local_install(installed) or {
+			assert !is_recorded_local_install(installed)
+			return
+		}
+		assert false, 'recording into an unwritable cache has to fail'
+	}
+}
+
+// A project can be renamed or moved. Its installs travel with it, answering with
+// the token they were given, so the record follows them to the new path.
+fn test_a_moved_project_keeps_its_local_installs() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_moved'))
+	project_dir := os.join_path(test_path, 'local_moved_project')
+	moved_dir := os.join_path(test_path, 'local_moved_project_renamed')
+	os.rmdir_all(moved_dir) or {}
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'local_moved'\n}\n") or {
+		panic(err)
+	}
+	installed := os.join_path(project_dir, 'moved_pkg')
+	create_local_git_module(installed, 'moved_pkg')
+	record_local_install(installed) or { panic(err) }
+
+	os.mv(project_dir, moved_dir) or { panic(err) }
+	relocated := os.join_path(moved_dir, 'moved_pkg')
+	assert is_recorded_local_install(relocated)
+
+	old_dir := os.getwd()
+	os.chdir(moved_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	cmd_ok(@LOCATION, '${vexe} remove --local moved_pkg')
+	assert !os.exists(relocated)
+}
+
+// A copy of an install is not the install: while the original is still there to
+// answer with the same token, the duplicate inherits nothing from it.
+fn test_a_copy_of_a_local_install_is_not_one() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_copied'))
+	project_dir := os.join_path(test_path, 'local_copied_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	installed := os.join_path(project_dir, 'copied_pkg')
+	create_local_git_module(installed, 'copied_pkg')
+	record_local_install(installed) or { panic(err) }
+
+	elsewhere := os.join_path(test_path, 'local_copy_target')
+	os.rmdir_all(elsewhere) or {}
+	os.mkdir_all(elsewhere) or { panic(err) }
+	os.cp_all(installed, os.join_path(elsewhere, 'copied_pkg'), true) or { panic(err) }
+
+	assert !is_recorded_local_install(os.join_path(elsewhere, 'copied_pkg'))
+	assert is_recorded_local_install(installed)
+}
+
+// A removal that failed has to leave a retry possible: the record only goes once
+// the directory is really gone.
+fn test_a_failed_removal_keeps_the_local_install_record() {
+	$if !windows {
+		test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_failed_removal'))
+		project_dir := os.join_path(test_path, 'local_failed_removal_project')
+		installed := os.join_path(project_dir, 'locked_pkg')
+		create_local_git_module(installed, 'locked_pkg')
+		record_local_install(installed) or { panic(err) }
+		// A read-only parent is a directory whose entries cannot be unlinked.
+		os.chmod(project_dir, 0o500) or { panic(err) }
+		defer {
+			os.chmod(project_dir, 0o700) or {}
+		}
+
+		remove_installed_dir(installed) or {
+			assert os.is_dir(installed)
+			assert is_recorded_local_install(installed)
+			return
+		}
+		assert false, 'removing from a read-only directory has to fail'
+	}
 }
 
 // A record stands for the checkout VPM made, not for the path it sits at. When
@@ -490,7 +585,7 @@ fn test_a_reused_path_does_not_inherit_a_local_install() {
 	}
 	installed := os.join_path(project_dir, 'reused_pkg')
 	create_local_git_module(installed, 'reused_pkg')
-	record_local_install(installed)
+	record_local_install(installed) or { panic(err) }
 	assert is_recorded_local_install(installed)
 
 	// The install is gone, and the project writes its own module at that path.

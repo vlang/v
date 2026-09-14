@@ -167,8 +167,16 @@ fn vpm_remove(query []string) {
 		}
 		println('Removing module "${m}" from ${fmt_mod_path(final_module_path)} ...')
 		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
-		rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
-		forget_local_install(final_module_path)
+		// Whatever is left behind by a failed removal stays VPM's, so the command
+		// can be retried. Losing the record here would make the leftovers look like
+		// the project's own, and nothing could finish the removal.
+		remove_installed_dir(final_module_path) or {
+			vpm_error('failed to remove `${m}` from `${fmt_mod_path(final_module_path)}`.',
+				details: err.msg()
+			)
+			errors++
+			continue
+		}
 		cleanup_empty_module_parent_dirs(final_module_path)
 	}
 	if errors > 0 {

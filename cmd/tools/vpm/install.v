@@ -209,9 +209,21 @@ fn (m Module) install() InstallResult {
 		return .failed
 	}
 	if settings.is_local {
-		// The local root is shared with the project's own modules, so this is the
-		// only thing that will later tell VPM the directory is one it may remove.
-		record_local_install(m.install_path)
+		// The local root is shared with the project's own modules, so this record is
+		// the only thing that will later tell VPM the directory is one it may touch.
+		// An install it cannot own could neither be updated nor removed afterwards,
+		// which is worse than no install at all, so undo it.
+		record_local_install(m.install_path) or {
+			vpm_error('failed to record the local installation of `${m.name}`.',
+				details: err.msg()
+			)
+			rmdir_all(m.install_path) or {
+				vpm_error('failed to undo the unrecorded installation at `${m.install_path_fmted}`.',
+					details: err.msg()
+				)
+			}
+			return .failed
+		}
 	}
 	return .installed
 }
@@ -339,7 +351,6 @@ fn local_git_changes_reason(path string) string {
 
 fn (m Module) remove() ! {
 	verbose_println('Removing `${m.name}` from `${m.install_path_fmted}`...')
-	rmdir_all(m.install_path)!
-	forget_local_install(m.install_path)
+	remove_installed_dir(m.install_path)!
 	verbose_println('Removed `${m.name}`.')
 }
