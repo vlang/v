@@ -647,7 +647,9 @@ fn v1_fallback_cache_parent() !string {
 }
 
 fn v1_fallback_private_temp_cache_parent(temp_root string) !string {
-	$if !windows {
+	$if windows {
+		return v1_fallback_private_windows_temp_cache_parent(temp_root)
+	} $else {
 		root_attributes := os.stat(temp_root) or {
 			return error('could not inspect the temporary directory `${temp_root}`: ${err}')
 		}
@@ -657,21 +659,19 @@ fn v1_fallback_private_temp_cache_parent(temp_root string) !string {
 		if root_attributes.mode & 0o022 != 0 && root_attributes.mode & os.s_isvtx == 0 {
 			return error('temporary directory `${temp_root}` is writable by other users without the sticky bit')
 		}
-	}
-	candidate := os.join_path(temp_root, 'v1-fallback-cache-${os.geteuid()}')
-	os.mkdir(candidate, mode: 0o700) or {}
-	attributes := os.lstat(candidate) or {
-		return error('could not create a private V1 fallback cache at `${candidate}`: ${err}')
-	}
-	if os.is_link(candidate) || attributes.get_filetype() != .directory {
-		return error('refusing unsafe V1 fallback cache path `${candidate}`: expected a real directory')
-	}
-	$if !windows {
+		candidate := os.join_path(temp_root, 'v1-fallback-cache-${os.geteuid()}')
+		os.mkdir(candidate, mode: 0o700) or {}
+		attributes := os.lstat(candidate) or {
+			return error('could not create a private V1 fallback cache at `${candidate}`: ${err}')
+		}
+		if os.is_link(candidate) || attributes.get_filetype() != .directory {
+			return error('refusing unsafe V1 fallback cache path `${candidate}`: expected a real directory')
+		}
 		if attributes.uid != u32(os.geteuid()) || attributes.get_mode().bitmask() != 0o700 {
 			return error('refusing unsafe V1 fallback cache path `${candidate}`: expected user-owned mode 0700')
 		}
+		return candidate
 	}
-	return candidate
 }
 
 fn v1_fallback_temp_root_owner_is_trusted(owner u32, effective_user u32) bool {

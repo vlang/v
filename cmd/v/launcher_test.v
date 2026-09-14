@@ -169,11 +169,22 @@ fn test_v1_fallback_cache_without_a_home_is_private() {
 	}
 	first := v1_fallback_cache_parent()!
 	second := v1_fallback_cache_parent()!
-	assert first == second
-	assert first == os.join_path(os.temp_dir(), 'v1-fallback-cache-${os.geteuid()}')
-	assert os.is_dir(first)
-	assert !os.is_link(first)
-	$if !windows {
+	$if windows {
+		defer {
+			os.rmdir(first) or {}
+			os.rmdir(second) or {}
+		}
+		assert first != second
+		assert os.is_dir(first)
+		assert os.is_dir(second)
+		windows_source := os.read_file(os.join_path(find_vroot(@FILE)!, 'cmd', 'v', 'v1_fallback_cache_windows.c.v'))!
+		assert windows_source.contains('rand.bytes(16)')
+		assert windows_source.contains('os.mkdir(candidate, mode: 0o700)')
+	} $else {
+		assert first == second
+		assert first == os.join_path(os.temp_dir(), 'v1-fallback-cache-${os.geteuid()}')
+		assert os.is_dir(first)
+		assert !os.is_link(first)
 		attributes := os.lstat(first)!
 		assert attributes.uid == u32(os.geteuid())
 		assert attributes.get_mode().bitmask() == 0o700
