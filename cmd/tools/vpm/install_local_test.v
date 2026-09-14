@@ -486,28 +486,26 @@ fn test_local_install_records_are_per_checkout() {
 // An install VPM cannot record is one it could never update or remove again, so
 // recording has to fail loudly enough for the installation to be undone.
 fn test_recording_a_local_install_reports_failure() {
-	$if !windows {
-		test_utils.set_test_env(os.join_path(test_path, 'vmodules_unwritable_records'))
-		// A records directory that cannot be created, because what would hold it
-		// is read-only.
-		blocked_root := os.join_path(test_path, 'unwritable_records_root')
-		os.mkdir_all(blocked_root) or { panic(err) }
-		saved_records := os.getenv(local_installs_dir_env)
-		os.setenv(local_installs_dir_env, os.join_path(blocked_root, 'records'), true)
-		os.chmod(blocked_root, 0o500) or { panic(err) }
-		defer {
-			os.chmod(blocked_root, 0o700) or {}
-			os.setenv(local_installs_dir_env, saved_records, true)
-		}
-		installed := os.join_path(test_path, 'unrecordable_project', 'pkg')
-		os.mkdir_all(installed) or { panic(err) }
-
-		record_local_install(installed) or {
-			assert !is_recorded_local_install(installed)
-			return
-		}
-		assert false, 'recording into an unwritable records directory has to fail'
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_unwritable_records'))
+	// A records directory that cannot be made, because a file is already in its
+	// place: a blocker no permissions can talk their way past, root included.
+	blocked_root := os.join_path(test_path, 'unwritable_records_root')
+	os.mkdir_all(blocked_root) or { panic(err) }
+	records_path := os.join_path(blocked_root, 'records')
+	os.write_file(records_path, 'not a directory\n') or { panic(err) }
+	saved_records := os.getenv(local_installs_dir_env)
+	os.setenv(local_installs_dir_env, records_path, true)
+	defer {
+		os.setenv(local_installs_dir_env, saved_records, true)
 	}
+	installed := os.join_path(test_path, 'unrecordable_project', 'pkg')
+	os.mkdir_all(installed) or { panic(err) }
+
+	record_local_install(installed) or {
+		assert !is_recorded_local_install(installed)
+		return
+	}
+	assert false, 'recording where the records directory cannot be made has to fail'
 }
 
 // A project can be renamed or moved. Its installs travel with it, answering with
@@ -683,6 +681,12 @@ fn test_a_copy_of_a_local_install_is_not_one() {
 // the directory is really gone.
 fn test_a_failed_removal_keeps_the_local_install_record() {
 	$if !windows {
+		if os.getuid() == 0 {
+			// A read-only directory is the portable way to make a removal fail, and
+			// it does not stop root, who may unlink from one regardless.
+			eprintln('skipping the failed-removal case, which needs a user permissions apply to')
+			return
+		}
 		test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_failed_removal'))
 		project_dir := os.join_path(test_path, 'local_failed_removal_project')
 		installed := os.join_path(project_dir, 'locked_pkg')

@@ -17712,10 +17712,18 @@ fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_pa
 		// level's `modules/` is not searched here either, so a project's own copy is
 		// the directory itself, reached before the walk climbs past the project to a
 		// neighbour of it that happens to carry the same name.
-		candidate := os.join_path_single(current, mod_path)
-		if module_path_has_v_sources(candidate, prefs)
-			&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
-			return candidate
+		//
+		// A `modules` directory is no lookup root of its own, not even for the files
+		// inside it: what it holds is `modules.<name>`, and letting the walk stop
+		// there would keep the virtual layout alive between the modules left in it.
+		// A project whose own root is named `modules` still resolves its modules --
+		// that root is probed before this walk, by the project itself.
+		if os.file_name(current) != 'modules' {
+			candidate := os.join_path_single(current, mod_path)
+			if module_path_has_v_sources(candidate, prefs)
+				&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
+				return candidate
+			}
 		}
 		parent := os.dir(current)
 		if parent == current {

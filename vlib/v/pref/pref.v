@@ -423,10 +423,15 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	// 5. walk up the parent directories of the importing file, like V1's
 	// Builder.find_module_path. This finds sibling projects: e.g. importing
 	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
+	// A `modules` directory is skipped on the way: it is no lookup root any more,
+	// so what it holds is `modules.<name>` even to the files inside it. Stopping
+	// there would keep the virtual layout alive between the modules left in it.
 	mut current_dir := importer_dir
 	for {
-		if try_path := module_path_from_search_root(mod, mod_path, current_dir) {
-			return try_path
+		if os.file_name(current_dir) != 'modules' {
+			if try_path := module_path_from_search_root(mod, mod_path, current_dir) {
+				return try_path
+			}
 		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
