@@ -176,7 +176,12 @@ pub fn githash(path string) !string {
 				common_dir := os.read_file(common_dir_file) or {
 					return error('failed to read `${common_dir_file}`')
 				}
-				reference_root = os.real_path(os.join_path(git_dir, common_dir.trim_space()))
+				configured := common_dir.trim_space()
+				reference_root = os.real_path(if os.is_abs_path(configured) {
+					configured
+				} else {
+					os.join_path(git_dir, configured)
+				})
 				revision_path = os.join_path(reference_root, reference)
 			}
 		}

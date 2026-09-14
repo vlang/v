@@ -39,6 +39,30 @@ fn test_githash_reads_packed_repository_head() {
 	assert githash(root)! == '1234567'
 }
 
+fn test_githash_honors_absolute_worktree_common_dir() {
+	root := os.join_path(os.vtmp_dir(), 'util_githash_commondir_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	checkout := os.join_path(root, 'checkout')
+	common_dir := os.join_path(root, 'common.git')
+	git_dir := os.join_path(common_dir, 'worktrees', 'checkout')
+	reference := 'refs/heads/main'
+	os.mkdir_all(checkout)!
+	os.mkdir_all(git_dir)!
+	os.mkdir_all(os.join_path(common_dir, 'refs', 'heads'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(checkout, '.git'), 'gitdir: ${git_dir}\n')!
+	os.write_file(os.join_path(git_dir, 'HEAD'), 'ref: ${reference}\n')!
+	os.write_file(os.join_path(git_dir, 'commondir'), '${common_dir}\n')!
+	loose_reference := os.join_path(common_dir, reference)
+	os.write_file(loose_reference, 'abcdef1234567890abcdef1234567890abcdef12\n')!
+	assert githash(checkout)! == 'abcdef1'
+	os.rm(loose_reference)!
+	os.write_file(os.join_path(common_dir, 'packed-refs'), 'fedcba9876543210fedcba9876543210fedcba98 ${reference}\n')!
+	assert githash(checkout)! == 'fedcba9'
+}
+
 fn test_parse_inline_asm_header_reads_arch_and_modifiers() {
 	plain := parse_inline_asm_header('asm amd64 ')
 	assert plain.arch == 'amd64'
