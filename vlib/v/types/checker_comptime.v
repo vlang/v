@@ -4419,7 +4419,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_interface_implementation_error(.assignment_mismatch, actual, target_iface, id, node.pos)
 		tc.record_error_at(.assignment_mismatch, 'type `${actual_name}` does not implement interface `${target_iface.name}`; `${actual_name}` does not implement interface `${target_iface.name}`, cannot cast `${actual_name}` to interface `${target_iface.name}`', id, node.pos)
 	}
-	if clean_actual !is Pointer && clean_actual !is Interface {
+	if tc.warn_about_allocs && ((clean_actual !is Pointer && clean_actual !is Interface)
+		|| tc.interface_pointer_alias_cast_needs_heap_copy(child_id, actual)) {
 		tc.warn_alloc('cast to interface', id, node.pos)
 	}
 }
@@ -5908,6 +5909,90 @@ fn cast_target_interface(target Type) ?Interface {
 		return none
 	}
 	return none
+}
+
+fn (tc &TypeChecker) interface_pointer_alias_cast_needs_heap_copy(id flat.NodeId, actual Type) bool {
+	if unalias_type(actual) !is Pointer || !tc.valid_node_id(id) {
+		return false
+	}
+	cast := tc.a.node(id)
+	if cast.kind != .cast_expr || cast.children_count == 0 {
+		return false
+	}
+	alias_target := tc.alias_target_type_text(cast.value) or { return false }
+	if unalias_type(tc.parse_type(alias_target)) !is Pointer {
+		return false
+	}
+	arg_id := tc.first_parsed_child(id)
+	if !tc.valid_node_id(arg_id) {
+		return false
+	}
+	arg := tc.a.node(arg_id)
+	if arg.kind != .prefix || arg.op != .amp || arg.children_count == 0 {
+		return false
+	}
+	return tc.interface_pointer_source_root_is_local(tc.first_parsed_child(arg_id))
+}
+
+fn (tc &TypeChecker) first_parsed_child(id flat.NodeId) flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return flat.empty_node
+	}
+	node := tc.a.node(id)
+	child_id := tc.a.child(node, 0)
+	if tc.valid_node_id(child_id) {
+		return child_id
+	}
+	// Semantic checking may detach a consumed child edge; the immutable parent index
+	// still records the original parsed relationship.
+	for index, parent_id in tc.direct_parent_ids {
+		if parent_id == id {
+			return flat.NodeId(index)
+		}
+	}
+	return flat.empty_node
+}
+
+fn (tc &TypeChecker) interface_pointer_source_root_is_local(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.ident {
+			return node.value.len > 0 && tc.cur_scope.lookup(node.value) != none
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := tc.first_parsed_child(id)
+			base_type := unalias_type(tc.resolve_type(base_id))
+			if base_type is Pointer || base_type is Array || base_type is Map {
+				return false
+			}
+			return tc.interface_pointer_source_root_is_local(base_id)
+		}
+		.index {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := tc.first_parsed_child(id)
+			if unalias_type(tc.resolve_type(base_id)) !is ArrayFixed {
+				return false
+			}
+			return tc.interface_pointer_source_root_is_local(base_id)
+		}
+		.paren {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.interface_pointer_source_root_is_local(tc.first_parsed_child(id))
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {

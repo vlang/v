@@ -34,7 +34,11 @@ type Expr = Speaker
 
 struct Person {}
 
+type PersonPtr = &Person
+
 fn (p Person) speak() {}
+
+fn (p PersonPtr) speak() {}
 
 fn main() {
 	name := 'V'
@@ -45,6 +49,8 @@ fn main() {
 	alias_string_right := 'a' + Name('b')
 	speaker := Speaker(Person{})
 	alias_speaker := Expr(Person{})
+	person := Person{}
+	pointer_alias_speaker := Speaker(PersonPtr(&person))
 	freed := ['\${name}' + name] @[freed]
 	println(array)
 	println(interpolation)
@@ -53,6 +59,7 @@ fn main() {
 	println(alias_string_right)
 	speaker.speak()
 	alias_speaker.speak()
+	pointer_alias_speaker.speak()
 	println(freed)
 }
 ")!
@@ -70,7 +77,7 @@ fn main() {
 		expected_count := if description == 'string concatenation' {
 			3
 		} else if description == 'cast to interface' {
-			2
+			3
 		} else {
 			1
 		}
@@ -86,8 +93,21 @@ fn main() {
 		assert as_errors.output.contains('error: allocation (${description})'), as_errors.output
 	}
 
+	assignment_source := os.join_path(root, 'assignment_attribute.v')
+	os.write_file(assignment_source, 'fn main() {
+	freed := [1] @[freed]
+	[2].map(it * 2)
+	println(freed)
+}
+')!
+	assignment := cmdexec.run(v3_bin, ['-silent', '-nocache', '-o',
+		os.join_path(root, 'assignment_attribute.c'), assignment_source])
+	assert assignment.exit_code == 0, assignment.output
+
 	nonallocating_source := os.join_path(root, 'nonallocating.v')
-	os.write_file(nonallocating_source, "type Token = string
+	os.write_file(nonallocating_source, "import os
+
+type Token = string
 
 interface Speaker {
 	speak()
@@ -95,7 +115,11 @@ interface Speaker {
 
 struct Person {}
 
+type PersonPtr = &Person
+
 fn (p Person) speak() {}
+
+fn (p PersonPtr) speak() {}
 
 fn (a Token) + (b Token) Token {
 	_ = b
@@ -103,6 +127,10 @@ fn (a Token) + (b Token) Token {
 }
 
 fn box(p &Person) Speaker {
+	return Speaker(p)
+}
+
+fn box_alias(p PersonPtr) Speaker {
 	return Speaker(p)
 }
 
@@ -119,6 +147,7 @@ fn initialized_fixed_array() [3]int {
 }
 
 fn main() {
+	println(os.args.len)
 	println(Token('a') + Token('b'))
 	person := Person{}
 	speaker := box(&person)

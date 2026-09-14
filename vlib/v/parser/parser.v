@@ -3025,11 +3025,23 @@ fn (mut p Parser) parse_field_attrs() []string {
 // attribute. Regardless of how the content splits, the loop always consumes through the closing
 // `]`, so parsing stays correct even for attribute forms it does not fully model.
 fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
+	return p.parse_field_attrs_with_kinds_mode(false)
+}
+
+// parse_single_field_attr_group consumes only the trailing `@[]` group attached to an assignment.
+fn (mut p Parser) parse_single_field_attr_group() ParsedFieldAttrs {
+	return p.parse_field_attrs_with_kinds_mode(true)
+}
+
+fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFieldAttrs {
 	mut attrs := []string{}
 	mut kinds := []int{}
 	mut sources := []string{}
 	mut groups := 0
 	for p.tok == .attribute || p.tok == .lsbr {
+		if single_group && groups > 0 {
+			break
+		}
 		group_start := p.span_start()
 		if groups > 0 {
 			p.record_diagnostic_span('multiple attributes should be in the same @[], with ; separators', int_max(0, p.tok_pos - 1), p.tok_pos + 1)
@@ -8044,7 +8056,7 @@ fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
 	if p.tok == .attribute && p.prev_tok_end > 0
 		&& p.line_nr_for_pos(p.prev_tok_end - 1) == p.line_nr_for_pos(p.tok_pos) {
 		attr_start := clamp_source_offset(p.tok_pos, p.s.src.len)
-		parsed := p.parse_field_attrs_with_kinds()
+		parsed := p.parse_single_field_attr_group()
 		if parsed.attrs.len != 1 {
 			p.record_diagnostic_span('assignment attributes support at most one argument', attr_start,
 				clamp_source_offset(p.prev_tok_end, p.s.src.len))
