@@ -11470,6 +11470,9 @@ pub fn run(args []string) {
 			pre_tc.notices.clear()
 		}
 		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
+			if has_v3_authoritative_error(pre_tc.errors) {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			}
 			if cache_state.manager.enabled {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}

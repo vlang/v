@@ -127,6 +127,21 @@ fn test_selected_specialized_comptime_branch_reports_shadow() {
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
 
+fn test_selected_specialized_shadow_clears_macos_fallback() {
+	$if !macos {
+		return
+	}
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
+	fallback_file := os.join_path(tmp_root, 'fallback')
+	out := os.join_path(tmp_root, 'fallback_app')
+	res := os.execute('V_C_ERROR_BUG_REPORT_DISABLED=1 V_MACOS_V3_NO_FALLBACK= V_MACOS_V3_FALLBACK_FILE=${os.quoted_path(fallback_file)} ${os.quoted_path(vexe)} -enable-globals -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+	assert !os.exists(fallback_file), 'authoritative shadow errors must disable the compatibility fallback'
+}
+
 fn test_unselected_specialized_comptime_branch_does_not_report_shadow() {
 	os.rmdir_all(tmp_root) or {}
 	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
