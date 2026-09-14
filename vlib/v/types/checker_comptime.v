@@ -13110,6 +13110,122 @@ fn fresh_collection_builtin(resolved_name string, decl_module string) bool {
 	return decl_module == 'builtin' && resolved_name in fresh_collection_builtins
 }
 
+// These build a new collection, but they fill it by copying elements across, and a
+// copied element is only a copy as deep as the element goes. Copying a struct copies
+// the array field inside it as a header, and the two arrays then share their data, so
+// what is handed back is independent of what it was called on only where the elements
+// carry nothing shareable.
+//
+// It is the receiver's elements that decide, because they are what the result is
+// built from. `map` builds its elements out of a callback instead and its own element
+// type is not known here, so it is checked too whenever it is.
+fn (tc &TypeChecker) builtin_result_shares_storage(id flat.NodeId, return_type Type) bool {
+	receiver := tc.builtin_receiver_collection_type(id) or { return true }
+	if tc.collection_copy_shares_storage(receiver) {
+		return true
+	}
+	if tc.collection_elements_are_known(return_type) {
+		return tc.collection_copy_shares_storage(return_type)
+	}
+	return false
+}
+
+fn (tc &TypeChecker) builtin_receiver_collection_type(id flat.NodeId) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	call := tc.a.node(id)
+	if call.children_count == 0 {
+		return none
+	}
+	callee := tc.a.child_node(call, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	receiver := unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(callee, 0))))
+	if receiver is Array || receiver is ArrayFixed || receiver is Map {
+		return receiver
+	}
+	return none
+}
+
+fn (tc &TypeChecker) collection_elements_are_known(collection Type) bool {
+	clean := unalias_type(collection)
+	if clean is Array {
+		return unalias_type(clean.elem_type) !is Unknown
+	}
+	if clean is ArrayFixed {
+		return unalias_type(clean.elem_type) !is Unknown
+	}
+	if clean is Map {
+		return unalias_type(clean.value_type) !is Unknown
+			&& unalias_type(clean.key_type) !is Unknown
+	}
+	return false
+}
+
+fn (tc &TypeChecker) collection_copy_shares_storage(collection Type) bool {
+	clean := unalias_type(collection)
+	mut seen := map[string]bool{}
+	if clean is Array {
+		return tc.type_can_hold_shared_storage(clean.elem_type, mut seen)
+	}
+	if clean is ArrayFixed {
+		return tc.type_can_hold_shared_storage(clean.elem_type, mut seen)
+	}
+	if clean is Map {
+		return tc.type_can_hold_shared_storage(clean.key_type, mut seen)
+			|| tc.type_can_hold_shared_storage(clean.value_type, mut seen)
+	}
+	return true
+}
+
+// Whether a value of this type can carry a reference to storage it shares with
+// whatever it was copied from. Anything that cannot be looked into is taken to be
+// able to, so an exemption resting on this is only given where it is certain.
+fn (tc &TypeChecker) type_can_hold_shared_storage(typ Type, mut seen map[string]bool) bool {
+	clean := unalias_type(typ)
+	if clean is Array || clean is Map || clean is Pointer || clean is Channel {
+		return true
+	}
+	if clean is Interface || clean is SumType || clean is FnType || clean is MultiReturn {
+		return true
+	}
+	if clean is Unknown {
+		return true
+	}
+	if clean is ArrayFixed {
+		return tc.type_can_hold_shared_storage(clean.elem_type, mut seen)
+	}
+	if clean is OptionType {
+		return tc.type_can_hold_shared_storage(clean.base_type, mut seen)
+	}
+	if clean is ResultType {
+		return tc.type_can_hold_shared_storage(clean.base_type, mut seen)
+	}
+	if clean is Struct {
+		if seen[clean.name] {
+			// Already on the way in; a cycle adds nothing that is not already known.
+			return false
+		}
+		seen[clean.name] = true
+		fields := tc.struct_fields_for_init(clean.name)
+		if fields.len == 0 {
+			// Nothing readable about it, so nothing about it can be ruled out.
+			return true
+		}
+		for field in fields {
+			if tc.type_can_hold_shared_storage(field.typ, mut seen) {
+				return true
+			}
+		}
+		return false
+	}
+	// A number, a boolean, a rune, an enum, a string: copied whole, sharing nothing
+	// that can be written through.
+	return false
+}
+
 fn (tc &TypeChecker) receiver_builtin_returns_fresh(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -13154,13 +13270,15 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	// to assume the worst of, and `map` and `filter` have no body here at all. They
 	// are settled by the declaration the call resolved to, so a method of one's own
 	// that happens to be called `map` is read like any other.
-	if fresh_collection_builtin(info.name, decl_module) {
+	if fresh_collection_builtin(info.name, decl_module)
+		&& !tc.builtin_result_shares_storage(id, return_type) {
 		return []flat.NodeId{}
 	}
 	// Some of them resolve to no declaration at all. Nothing of one's own can be
 	// behind a name that resolved to nothing, so there it is what the receiver is
 	// that decides, and a struct of one's own is never an array or a map.
-	if info.name.len == 0 && info.has_receiver && tc.receiver_builtin_returns_fresh(id) {
+	if info.name.len == 0 && info.has_receiver && tc.receiver_builtin_returns_fresh(id)
+		&& !tc.builtin_result_shares_storage(id, return_type) {
 		return []flat.NodeId{}
 	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {

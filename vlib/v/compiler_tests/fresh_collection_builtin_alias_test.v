@@ -174,3 +174,77 @@ fn main() {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('aliases mutable data from an immutable value'), res.output
 }
+
+// Building a new collection copies the elements across, and a copied element is only
+// a copy as deep as the element goes: a struct with an array field is copied with the
+// array's header, and the two then share the data behind it. So the new outer array
+// is fresh while what is reachable through its elements is not.
+fn test_a_copied_collection_of_structs_is_not_fresh_underneath() {
+	v3_bin := fresh_builtin_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_nested_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := fresh_builtin_compile(v3_bin, root, 'struct Row {
+mut:
+	cells []int
+}
+
+struct Table {
+	rows []Row
+}
+
+fn picked(t Table) []Row {
+	return t.rows.filter(true)
+}
+
+fn main() {
+	t := Table{ rows: [Row{ cells: [1, 2, 3] }] }
+	mut rows := picked(t)
+	rows[0].cells[0] = 9
+	println(t.rows[0].cells)
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('aliases mutable data from an immutable value'), res.output
+}
+
+// The exemption still holds where the elements really do carry nothing shareable.
+// A string is copied whole and shares nothing that can be written through it.
+fn test_a_copied_collection_of_flat_elements_is_still_fresh() {
+	v3_bin := fresh_builtin_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_flat_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := fresh_builtin_compile(v3_bin, root, 'enum Colour {
+	red
+	green
+}
+
+struct Names {
+	names   []string
+	colours []Colour
+}
+
+fn picked(n Names) []string {
+	return n.names.filter(it.len > 0)
+}
+
+fn shades(n Names) []Colour {
+	return n.colours.clone()
+}
+
+fn main() {
+	n := Names{ names: ["a", "b"], colours: [Colour.red] }
+	mut p := picked(n)
+	p[0] = "z"
+	mut c := shades(n)
+	c[0] = .green
+	println(n.names)
+	println(n.colours)
+}
+')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ["['a', 'b']", '[red]'], res.output
+}
