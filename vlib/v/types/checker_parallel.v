@@ -1750,7 +1750,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 			continue
 		}
 		p := tc.a.node(param_id)
-		tc.insert_fn_param_binding(p)
+		tc.insert_fn_param_binding(param_id, p)
 	}
 	tc.insert_implicit_veb_ctx(node)
 	if !fast_valid_build {

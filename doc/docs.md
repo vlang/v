@@ -8349,8 +8349,10 @@ fn mount_dev(root &Node) bool {
 }
 ```
 
-The check covers each declared name on the left of a declaration, so both targets of
-`value, devices := make_pair()` are checked. A name that shadows nothing, and `_`, are
+The check covers every source-level local binding: declaration targets, function and
+lambda parameters, `for` variables, `if` guards, `select` receive declarations, and
+compile-time `\$for` variables. Each name is checked, so both targets of
+`value, devices := make_pair()` are covered. A name that shadows nothing, and `_`, are
 left alone.
 
 Only code the project owns is checked, which for a directory build means the whole

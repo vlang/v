@@ -6754,10 +6754,11 @@ fn (mut tc TypeChecker) register_c_variadic_fn_with_lowered(name string, lowered
 	}
 }
 
-fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
+fn (mut tc TypeChecker) insert_fn_param_binding(id flat.NodeId, p flat.Node) {
 	if p.kind != .param || p.value.len == 0 {
 		return
 	}
+	tc.check_local_binding_global_shadowing(id)
 	parsed_type := tc.parse_scope_param_type(p.typ)
 	typ := mut_param_binding_type(parsed_type, p.is_mut, p.op == .amp)
 	owner := tc.cur_scope.insert_with_owner(p.value, typ)
@@ -6933,8 +6934,8 @@ fn (mut tc TypeChecker) annotate_fn_node(node flat.Node) {
 	tc.cur_scope = tc.file_scope
 	tc.push_scope()
 	for pi in 0 .. node.children_count {
-		p := tc.a.child_node(&node, pi)
-		tc.insert_fn_param_binding(p)
+		param_id := tc.a.child(&node, pi)
+		tc.insert_fn_param_binding(param_id, tc.a.node(param_id))
 	}
 	tc.insert_implicit_veb_ctx(node)
 	for i in 0 .. node.children_count {
@@ -7367,7 +7368,8 @@ fn (mut tc TypeChecker) annotate_fn_literal(node flat.Node) {
 	tc.fn_context.return_type = tc.parse_type(node.typ)
 	tc.push_scope()
 	for i in 0 .. node.children_count {
-		tc.insert_fn_param_binding(tc.a.child_node(&node, i))
+		child_id := tc.a.child(&node, i)
+		tc.insert_fn_param_binding(child_id, tc.a.node(child_id))
 	}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -8136,6 +8138,7 @@ fn (mut tc TypeChecker) insert_loop_var(id flat.NodeId, typ Type) ScopeBindingOw
 	if int(id) < 0 {
 		return ScopeBindingOwner{}
 	}
+	tc.check_local_binding_global_shadowing(id)
 	v := tc.a.nodes[int(id)]
 	if v.kind == .ident && v.value.len > 0 {
 		owner := tc.cur_scope.insert_with_owner(v.value, typ)
@@ -15645,6 +15648,14 @@ mut:
 struct ComptimeDeferredDeclSource {
 	module_name string
 	decl_name   string
+}
+
+fn (mut tc TypeChecker) check_comptime_for_global_shadowing(id flat.NodeId, node flat.Node) {
+	parts := node.value.split('|')
+	if parts.len != 2 || parts[0].len == 0 || !tc.global_names[parts[0]] {
+		return
+	}
+	tc.record_global_shadow_error_at(id, parts[0], tc.comptime_for_variable_pos(node, parts[0]))
 }
 
 fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.Node) {

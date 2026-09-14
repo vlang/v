@@ -6710,22 +6710,45 @@ fn shadow_path_is_within(abs_file string, real_file string, dir string) bool {
 // resolve, it just resolves to the global. `.unknown_ident` errors are read
 // elsewhere as "this name has no meaning, stop reporting on it", which would
 // suppress later real errors on the same node.
-fn (mut tc TypeChecker) record_global_shadow_error(id flat.NodeId, name string) {
+fn (mut tc TypeChecker) record_global_shadow_error_at(id flat.NodeId, name string, pos token.Pos) {
 	if int(id) < tc.a.user_code_start || int(id) >= tc.a.nodes.len {
 		return
 	}
-	if !tc.a.nodes[int(id)].pos.is_valid() {
+	if !pos.is_valid() {
 		return
 	}
-	if !tc.shadow_check_owns_file(tc.cur_file) {
+	file := tc.a.source_files[pos.id] or { return }
+	if !tc.shadow_check_owns_file(file.name) {
 		return
 	}
 	msg := 'variable `${name}` shadows a global variable'
-	pos := tc.node_value_diagnostic_pos(id)
 	if tc.errors.any(it.kind == .duplicate_decl && it.msg == msg && it.pos == pos) {
 		return
 	}
 	tc.errors << tc.make_type_error_at(.duplicate_decl, msg, id, pos)
+}
+
+fn (mut tc TypeChecker) record_global_shadow_error(id flat.NodeId, name string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	tc.record_global_shadow_error_at(id, name, tc.node_value_diagnostic_pos(id))
+}
+
+// check_local_binding_global_shadowing reports a source-level local binding
+// whose name is already used by a global. Compiler-supplied bindings do not
+// have a source identifier and deliberately do not pass through this helper.
+fn (mut tc TypeChecker) check_local_binding_global_shadowing(id flat.NodeId) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	binding := tc.a.nodes[int(id)]
+	if binding.kind !in [.ident, .param] || binding.value.len == 0 || binding.value == '_' {
+		return
+	}
+	if tc.global_names[binding.value] {
+		tc.record_global_shadow_error(id, binding.value)
+	}
 }
 
 // check_decl_lhs_global_shadowing reports every declared name in `node` that
@@ -6734,16 +6757,7 @@ fn (mut tc TypeChecker) record_global_shadow_error(id flat.NodeId, name string) 
 // side here is what covers `value, devices := make_pair()`.
 fn (mut tc TypeChecker) check_decl_lhs_global_shadowing(node flat.Node) {
 	for lhs_id in tc.multi_assign_lhs_ids(node) {
-		if !tc.valid_node_id(lhs_id) {
-			continue
-		}
-		lhs := tc.a.nodes[int(lhs_id)]
-		if lhs.kind != .ident || lhs.value == '_' || lhs.value.len == 0 {
-			continue
-		}
-		if tc.global_names[lhs.value] {
-			tc.record_global_shadow_error(lhs_id, lhs.value)
-		}
+		tc.check_local_binding_global_shadowing(lhs_id)
 	}
 }
 

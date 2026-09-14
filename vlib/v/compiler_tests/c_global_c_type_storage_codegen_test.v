@@ -411,15 +411,15 @@ pub fn owned_score() int {
 	assert !c_code.contains('\nFILE* stdout'), c_code
 }
 
-fn test_map_for_bindings_shadowing_global_use_local_c_name() {
-	c_code := gen_c_for_c_global_source('map_for_binding_shadows_global', 'module main
+fn test_map_for_bindings_with_global_use_distinct_c_name() {
+	c_code := gen_c_for_c_global_source('map_for_binding_with_global', 'module main
 
 __global id int
 
 fn sum_entries(values map[int]int) int {
 	mut total := 0
-	for id, value in values {
-		total += id + value
+	for entry_id, value in values {
+		total += entry_id + value
 	}
 	return total
 }
@@ -428,9 +428,8 @@ fn main() {
 	_ := sum_entries({1: 2})
 }
 ')
-	assert c_code.contains('i64 id__local = *(i64*)'), c_code
-	assert c_code.contains('total += id__local + value;'), c_code
-	assert !c_code.contains('i64 id = *(i64*)'), c_code
+	assert c_code.contains('i64 entry_id = *(i64*)'), c_code
+	assert c_code.contains('total += entry_id + value;'), c_code
 }
 
 fn test_mut_pointer_cast_uses_c_typedef_safe_parameter_name() {

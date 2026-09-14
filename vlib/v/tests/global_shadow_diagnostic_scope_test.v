@@ -22,6 +22,8 @@ const sibling_modules_dir = os.join_path(tmp_root, 'vmods')
 
 const nested_modules_dir = os.join_path(app_dir, '.vmodules')
 
+const private_modules_dir = os.join_path(app_dir, 'private_modules')
+
 fn write_file(path string, content string) {
 	os.mkdir_all(os.dir(path)) or { panic(err) }
 	os.write_file(path, content) or { panic(err) }
@@ -45,10 +47,19 @@ fn testsuite_end() {
 	os.rmdir_all(tmp_root) or {}
 }
 
-fn compile_app(modules_dir string) os.Result {
+fn compile_app_with_path(modules_dir string, module_path string) os.Result {
 	os.setenv('VMODULES', modules_dir, true)
 	out := os.join_path(tmp_root, 'app.c')
-	return os.execute('${os.quoted_path(vexe)} -enable-globals -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	path_option := if module_path.len > 0 {
+		' -path ${os.quoted_path(module_path)}'
+	} else {
+		''
+	}
+	return os.execute('${os.quoted_path(vexe)} -enable-globals${path_option} -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+}
+
+fn compile_app(modules_dir string) os.Result {
+	return compile_app_with_path(modules_dir, '')
 }
 
 fn test_project_module_shadow_is_reported() {
@@ -88,5 +99,21 @@ fn test_nested_module_root_still_reports_the_project() {
 	res := compile_app(nested_modules_dir)
 	assert res.exit_code != 0, res.output
 	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
+	assert !res.output.contains('shadowdep.v'), res.output
+}
+
+// An explicit `-path` root can hold project-private modules, so it remains
+// eligible for diagnostics even though it participates in module resolution.
+fn test_private_path_module_is_reported() {
+	write_project(sibling_modules_dir, false)
+	write_file(os.join_path(private_modules_dir, 'privatehelper', 'privatehelper.v'), 'module privatehelper\n\npub fn helper() int {\n\tcounter := 7\n\treturn counter\n}\n')
+	main_file := os.join_path(app_dir, 'main.v')
+	main_source := os.read_file(main_file) or { panic(err) }
+	write_file(main_file, main_source.replace('import helpers', 'import helpers\nimport privatehelper').replace('helpers.helper()', 'helpers.helper() + privatehelper.helper()'))
+	module_path := '${private_modules_dir}|@vlib|@vmodules'
+	res := compile_app_with_path(sibling_modules_dir, module_path)
+	assert res.exit_code != 0, res.output
+	assert res.output.contains(os.join_path('privatehelper', 'privatehelper.v')), res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 	assert !res.output.contains('shadowdep.v'), res.output
 }

@@ -1798,6 +1798,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		// exists once the transformer unrolls the loop against a concrete type, so it cannot
 		// be type-checked here. Validate the known compile-time member surface, then skip it;
 		// the unrolled statements are concrete.
+		tc.check_comptime_for_global_shadowing(id, node)
 		tc.check_comptime_for_members(id, node)
 		return
 	}
@@ -7752,6 +7753,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 				if tc.valid_node_id(var_id) {
 					var_node := tc.a.nodes[int(var_id)]
 					if var_node.kind == .ident && var_node.value.len > 0 {
+						tc.check_local_binding_global_shadowing(var_id)
 						owner := tc.cur_scope.insert_with_owner(var_node.value, elem_type)
 						tc.initialize_unknown_pointer_binding(owner, elem_type)
 						tc.remember_expr_type(var_id, elem_type)
@@ -10488,8 +10490,9 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	tc.push_scope()
 	tc.fn_context.closure_scope = tc.cur_scope
 	for i in 0 .. node.children_count {
-		child := tc.a.child_node(&node, i)
-		tc.insert_fn_param_binding(child)
+		child_id := tc.a.child(&node, i)
+		child := tc.a.node(child_id)
+		tc.insert_fn_param_binding(child_id, child)
 		if child.kind == .ident && (child.is_mut || child.typ == 'atomic') && child.value.len > 0 {
 			if owner := tc.cur_scope.lookup_owner(child.value) {
 				tc.fn_context.mut_local_owners[child.value] = owner
@@ -10752,8 +10755,10 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 	}
 	tc.push_scope()
 	for i in 0 .. node.children_count - 1 {
-		child := tc.a.child_node(&node, i)
+		child_id := tc.a.child(&node, i)
+		child := tc.a.node(child_id)
 		if child.kind == .ident && child.value.len > 0 {
+			tc.check_local_binding_global_shadowing(child_id)
 			param_type := if i < expected_fn.params.len {
 				fn_compatible_param_type(expected_fn, i)
 			} else {

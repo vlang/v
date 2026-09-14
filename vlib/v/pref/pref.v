@@ -555,14 +555,11 @@ fn dir_is_module(dir string) bool {
 	return false
 }
 
-// installed_module_roots returns the directories modules are installed into,
-// as opposed to written in: the explicit `-path` roots, vlib, and the user's
-// vmodules directories. A file under one of these belongs to a dependency even
-// when the directory itself sits inside the project being compiled, which
-// `$PWD/.vmodules` in an isolated build does.
+// installed_module_roots returns the directories modules are installed into:
+// vlib and the user's vmodules directories. Explicit `-path` roots are not
+// included because they may contain modules owned by the current project.
 pub fn (p &Preferences) installed_module_roots() []string {
 	mut roots := []string{}
-	roots << p.module_search_paths
 	roots << os.join_path_single(p.vroot, 'vlib')
 	// $VMODULES takes a list, the same as it does when modules are resolved.
 	roots << vmodules_dir().split(os.path_delimiter).filter(it.len > 0)

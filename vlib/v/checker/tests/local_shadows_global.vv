@@ -39,10 +39,77 @@ fn shadows_through_a_multi_value_list() int {
 	return counter + other
 }
 
+fn shadows_through_a_parameter(counter int) int {
+	return counter
+}
+
+fn shadows_through_for_in(values []int) int {
+	mut total := 0
+	for counter in values {
+		total += counter
+	}
+	return total
+}
+
+fn maybe_value() ?int {
+	return 1
+}
+
+fn shadows_through_if_guard() int {
+	if counter := maybe_value() {
+		return counter
+	}
+	return 0
+}
+
+fn shadows_through_fn_literal() int {
+	transform := fn (devices []int) int {
+		return devices.len
+	}
+	return transform([1])
+}
+
+fn apply_transform(transform fn (int) int) int {
+	return transform(1)
+}
+
+fn shadows_through_lambda() int {
+	return apply_transform(|counter| counter + 1)
+}
+
+fn shadows_through_select(ch chan int) int {
+	select {
+		counter := <-ch {
+			return counter
+		}
+	}
+	return 0
+}
+
+struct ShadowField {
+	value int
+}
+
+fn shadows_through_comptime_for() int {
+	$for counter in ShadowField.fields {
+		if counter.name == 'value' {
+			return 1
+		}
+	}
+	return 0
+}
+
 fn main() {
 	println(uses_a_shadowing_local())
 	println(uses_a_shadowing_local_from_another_statement())
 	println(uses_its_own_name())
 	println(shadows_through_a_multi_return())
 	println(shadows_through_a_multi_value_list())
+	println(shadows_through_a_parameter(1))
+	println(shadows_through_for_in([1]))
+	println(shadows_through_if_guard())
+	println(shadows_through_fn_literal())
+	println(shadows_through_lambda())
+	println(shadows_through_select(chan int{}))
+	println(shadows_through_comptime_for())
 }
