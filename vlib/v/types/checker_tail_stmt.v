@@ -1647,6 +1647,13 @@ fn (mut tc TypeChecker) check_match_branch_tail_type_diagnostics(id flat.NodeId,
 			if _ := tc.multi_expr_tail_value_groups(id, multi_context.types.len, false) {
 				return
 			}
+			// A branch can hand over the whole tuple at once — a call that returns it,
+			// say — instead of listing its parts, and then there are no separate value
+			// nodes to collect from that branch. Its types still line up with the ones
+			// the other branches list, which is all this diagnostic needs to know.
+			if _ := tc.multi_expr_tail_type_groups(id, multi_context.types.len) {
+				return
+			}
 		}
 	}
 	if context_type !is Void && tc.branches_compatible_with(id, context_type) {
@@ -2154,18 +2161,25 @@ fn match_char_literal_value(value string) ?int {
 	if value.len < 2 {
 		return none
 	}
-	if value[1] == `x` && value.len > 2 {
+	// A rune names its code point in hex, in 16- or 32-bit unicode, or in octal, and
+	// every one of those spellings has to be read as the number it is. Taking only
+	// the letter after the backslash would make `\u2028` and `\u000c` both the letter
+	// `u`, and two cases with nothing in common would be read as the same one.
+	if value[1] in [`x`, `u`, `U`] && value.len > 2 {
 		return v_int_literal_value('0x${value[2..]}')
+	}
+	if value[1].is_oct_digit() {
+		return v_int_literal_value('0o${value[1..]}')
 	}
 	return match value[1] {
 		`n` { int(`\n`) }
 		`t` { int(`\t`) }
 		`r` { int(`\r`) }
+		`e` { 27 }
 		`\\` { int(`\\`) }
 		`'` { int(`'`) }
 		`"` { int(`"`) }
 		`$` { int(`$`) }
-		`0` { 0 }
 		`a` { 7 }
 		`b` { 8 }
 		`f` { 12 }
