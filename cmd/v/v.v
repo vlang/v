@@ -547,6 +547,7 @@ fn ensure_v1_fallback(reason string) !string {
 		}
 	}
 	fallback := os.join_path(vroot, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	cache_parent := v1_fallback_cache_parent()
 	cached_launcher := v1_fallback_cached_launcher()
 	if installed := resolve_installed_v1_fallback(fallback, cached_launcher) {
 		return installed
@@ -558,6 +559,7 @@ fn ensure_v1_fallback(reason string) !string {
 		mut process := os.new_process(make_command)
 		process.set_args([
 			'VEXE=${os.real_path(os.executable())}',
+			'V1_FALLBACK_CACHE_DIR=${cache_parent}',
 			'V1_FALLBACK_EXE=${cached_launcher}',
 			'v1',
 		])
@@ -574,19 +576,24 @@ fn ensure_v1_fallback(reason string) !string {
 	}
 }
 
-fn v1_fallback_cached_launcher() string {
+fn v1_fallback_cache_parent() string {
 	configured := os.getenv('V1_FALLBACK_CACHE_DIR')
 	if configured != '' {
-		return os.join_path(configured, v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+		return configured
 	}
 	xdg := os.getenv('XDG_CACHE_HOME')
-	home_cache := if xdg != '' {
-		xdg
-	} else {
-		home := os.getenv('HOME')
-		os.join_path(if home == '' { '/tmp' } else { home }, '.cache')
+	if xdg != '' {
+		return os.join_path(xdg, 'v', 'v1-fallback')
 	}
-	return os.join_path(home_cache, 'v', 'v1-fallback', v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	home := os.getenv('HOME')
+	if home != '' {
+		return os.join_path(home, '.cache', 'v', 'v1-fallback')
+	}
+	return os.join_path(os.vtmp_dir(), 'v1-fallback')
+}
+
+fn v1_fallback_cached_launcher() string {
+	return os.join_path(v1_fallback_cache_parent(), v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
 }
 
 fn resolve_installed_v1_fallback(fallback string, cached_launcher string) ?string {

@@ -31,7 +31,6 @@ archive=$work_dir/release.zip
 candidate=$work_dir/v1_fallback
 candidate_root_file=$work_dir/v1_fallback.vroot
 release_tree=$work_dir/release
-trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
 asset=
 member=v/v
@@ -60,9 +59,43 @@ case "$system:$architecture" in
 		;;
 esac
 
-cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/v1-fallback}
+if [ -n "${V1_FALLBACK_CACHE_DIR:-}" ]; then
+	cache_parent=$V1_FALLBACK_CACHE_DIR
+elif [ -n "${XDG_CACHE_HOME:-}" ]; then
+	cache_parent=$XDG_CACHE_HOME/v/v1-fallback
+elif [ -n "${HOME:-}" ]; then
+	cache_parent=$HOME/.cache/v/v1-fallback
+else
+	cache_parent=$(mktemp -d "${TMPDIR:-/tmp}/v1-fallback-cache.XXXXXX") || exit 1
+fi
 cache_root=$cache_parent/$release_version
 cached_candidate=$cache_root/$(basename "$member")
+cache_lock=$cache_parent/.install-$release_version.lock
+cache_lock_acquired=
+
+cleanup() {
+	if [ -n "$cache_lock_acquired" ]; then
+		rmdir "$cache_lock" 2>/dev/null || true
+	fi
+	rm -rf "$work_dir"
+}
+
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+acquire_cache_lock() {
+	mkdir -p "$cache_parent" || return 1
+	attempt=0
+	while ! mkdir "$cache_lock" 2>/dev/null; do
+		attempt=$((attempt + 1))
+		if [ "$attempt" -ge 120 ]; then
+			echo "Timed out waiting for the V $release_version fallback cache lock." >&2
+			return 1
+		fi
+		sleep 1
+	done
+	cache_lock_acquired=1
+}
 
 write_candidate_root() {
 	root=$cache_root
@@ -110,6 +143,13 @@ install_moved_module_compatibility() {
 install_fallback_compatibility() {
 	install_crypto_subtle_compatibility "$1" || return 1
 	install_moved_module_compatibility "$1" || return 1
+}
+
+fallback_compatibility_is_installed() {
+	root=$1
+	[ -f "$root/vlib/crypto/subtle/aliasing.v" ] || return 1
+	[ -f "$root/vlib/crypto/subtle/comparison.v" ] || return 1
+	[ -f "$root/vlib/json2/json2.v" ] || return 1
 }
 
 sha256_of() {
@@ -190,7 +230,8 @@ use_cached_release() {
 	[ -x "$cached_candidate" ] || return 1
 	candidate=$cached_candidate
 	candidate_has_expected_version || return 1
-	install_fallback_compatibility "$cache_root" || return 1
+	fallback_compatibility_is_installed "$cache_root" ||
+		install_fallback_compatibility "$cache_root" || return 1
 	write_candidate_root || return 1
 }
 
@@ -207,6 +248,8 @@ install_downloaded_release() {
 	candidate=$cached_candidate
 	write_candidate_root || return 1
 }
+
+acquire_cache_lock || exit 1
 
 if use_cached_release; then
 	echo "Using the cached V $release_version release fallback"

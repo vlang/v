@@ -68,6 +68,12 @@ fn test_v1_fallback_installer_exposes_compatibility_modules() {
 	assert source.contains('install_fallback_compatibility "$staged_cache" || return 1')
 	assert source.contains('cp -R ./vlib/x/json2 ./vlib/json2')
 	assert source.contains('xcopy /E /I /Y .\\vlib\\x\\json2 .\\vlib\\json2')
+	assert source.contains('acquire_cache_lock || exit 1')
+	lock_index := source.index('acquire_cache_lock || exit 1') or { -1 }
+	install_index := source.index('if use_cached_release') or { -1 }
+	assert lock_index >= 0
+	assert lock_index < install_index
+	assert source.contains('fallback_compatibility_is_installed "$cache_root"')
 }
 
 fn test_v1_fallback_resolution_requires_compatibility_modules() {
@@ -117,6 +123,29 @@ fn test_v1_fallback_cached_launcher_uses_the_configured_cache() {
 		}
 	}
 	assert v1_fallback_cached_launcher() == os.join_path(configured, v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+}
+
+fn test_v1_fallback_cache_without_a_home_is_private() {
+	previous_cache := os.getenv_opt('V1_FALLBACK_CACHE_DIR')
+	previous_xdg := os.getenv_opt('XDG_CACHE_HOME')
+	previous_home := os.getenv_opt('HOME')
+	os.unsetenv('V1_FALLBACK_CACHE_DIR')
+	os.unsetenv('XDG_CACHE_HOME')
+	os.unsetenv('HOME')
+	defer {
+		restore_environment('V1_FALLBACK_CACHE_DIR', previous_cache)
+		restore_environment('XDG_CACHE_HOME', previous_xdg)
+		restore_environment('HOME', previous_home)
+	}
+	assert v1_fallback_cache_parent() == os.join_path(os.vtmp_dir(), 'v1-fallback')
+}
+
+fn restore_environment(name string, previous ?string) {
+	if original := previous {
+		os.setenv(name, original, true)
+	} else {
+		os.unsetenv(name)
+	}
 }
 
 fn test_cached_fallback_root_is_preferred_when_installed() {
