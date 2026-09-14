@@ -2138,6 +2138,7 @@ fn (mut t Transformer) call_param_offset_for_node(call_name string, node flat.No
 }
 
 fn (mut t Transformer) implicit_veb_ctx_param_offset(call_name string, node flat.Node, params []types.Type) int {
+	abi_params := t.implicit_veb_call_param_types(call_name) or { return 0 }
 	if t.receiver_call_uses_comptime_method_selector(node) {
 		if params.len < 2 {
 			return 0
@@ -2172,7 +2173,6 @@ fn (mut t Transformer) implicit_veb_ctx_param_offset(call_name string, node flat
 		}
 		return 1
 	}
-	abi_params := t.implicit_veb_call_param_types(call_name) or { return 0 }
 	if params.len != abi_params.len {
 		return 0
 	}

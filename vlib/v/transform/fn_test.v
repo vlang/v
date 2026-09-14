@@ -843,6 +843,75 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	assert t.call_param_offset_for_node('App.show', a.node(main_ctx_call), interface_params) == 2
 }
 
+fn test_non_veb_reflected_call_keeps_receiver_param_offset() {
+	mut a := flat.FlatAst.new()
+	receiver := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'value'
+		typ:   'Value'
+	})
+	run_selector_start := a.children.len
+	a.children << receiver
+	run_selector := a.add_node(flat.Node{
+		kind:           .selector
+		value:          'run'
+		children_start: run_selector_start
+		children_count: 1
+		payload:        flat.node_payload([comptime_method_selector_marker])
+	})
+	run_call_start := a.children.len
+	a.children << run_selector
+	run_call := a.add_node(flat.Node{
+		kind:           .call
+		children_start: run_call_start
+		children_count: 1
+	})
+	configure_selector_start := a.children.len
+	a.children << receiver
+	configure_selector := a.add_node(flat.Node{
+		kind:           .selector
+		value:          'configure'
+		children_start: configure_selector_start
+		children_count: 1
+		payload:        flat.node_payload([comptime_method_selector_marker])
+	})
+	configure_call_start := a.children.len
+	a.children << configure_selector
+	configure_call := a.add_node(flat.Node{
+		kind:           .call
+		children_start: configure_call_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Value'] = []types.StructField{}
+	tc.structs['Config'] = []types.StructField{}
+	tc.params_structs['Config'] = true
+	tc.fn_param_types['Value.run'] = [types.Type(types.Struct{ name: 'Value' }),
+		tc.parse_type('?string')]
+	tc.fn_param_types['Value.configure'] = [types.Type(types.Struct{ name: 'Value' }),
+		types.Type(types.Struct{ name: 'Config' })]
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Config'] = StructInfo{
+		name:      'Config'
+		is_params: true
+	}
+	run_params := t.call_param_types_for_node('Value.run', a.node(run_call))
+	run_offset := t.call_param_offset_for_node('Value.run', a.node(run_call), run_params)
+	assert run_offset == 1
+	mut run_args := [run_selector]
+	t.append_missing_params_struct_args(mut run_args, run_params, run_offset)
+	assert run_args.len == 2
+	assert t.a.node(run_args[1]).kind == .none_expr
+	configure_params := t.call_param_types_for_node('Value.configure', a.node(configure_call))
+	configure_offset := t.call_param_offset_for_node('Value.configure', a.node(configure_call), configure_params)
+	assert configure_offset == 1
+	mut configure_args := [configure_selector]
+	t.append_missing_params_struct_args(mut configure_args, configure_params, configure_offset)
+	assert configure_args.len == 2
+	assert t.a.node(configure_args[1]).kind == .struct_init
+	assert t.a.node(configure_args[1]).value == 'Config'
+}
+
 fn test_pending_generic_specialization_keys_are_private_initialized_maps() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
