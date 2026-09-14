@@ -158,7 +158,7 @@ fn vpm_remove(query []string) {
 	mut errors := 0
 	for m in query {
 		final_module_path := get_path_of_existing_module(m) or { continue }
-		if !is_removable_module_dir(final_module_path) {
+		if !vpm_owns_module_dir(final_module_path) {
 			vpm_error('refusing to remove `${m}`: `${fmt_mod_path(final_module_path)}` was not installed by VPM.',
 				details: not_installed_by_vpm_details()
 			)

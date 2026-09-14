@@ -381,8 +381,11 @@ fn collect_installed_modules(path string, prefix string, is_root bool, mut modul
 		}
 		module_name := if prefix == '' { dir } else { '${prefix}.${dir}' }
 		if vcs := vcs_used_in_dir(module_path) {
-			if os.is_file(os.join_path(module_path, 'v.mod'))
-				|| is_manifestless_registered_checkout(module_path, module_name, vcs) {
+			// Under a local root the project's own modules are checkouts too, and
+			// they are not VPM's to list, update or remove.
+			if (os.is_file(os.join_path(module_path, 'v.mod'))
+				|| is_manifestless_registered_checkout(module_path, module_name, vcs))
+				&& vpm_owns_module_dir(module_path) {
 				modules << module_name
 			}
 			continue

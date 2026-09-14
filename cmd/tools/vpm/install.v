@@ -176,7 +176,7 @@ fn (m Module) install() InstallResult {
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
 		if settings.is_force || m.confirm_install() {
-			if !is_removable_module_dir(m.install_path) {
+			if !vpm_owns_module_dir(m.install_path) {
 				vpm_error('refusing to replace `${m.name}`: `${m.install_path_fmted}` was not installed by VPM.',
 					details: not_installed_by_vpm_details()
 				)

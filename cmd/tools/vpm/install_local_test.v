@@ -478,6 +478,66 @@ fn test_local_install_records_are_per_directory() {
 	assert !is_recorded_local_install(installed)
 }
 
+// A record stands for the checkout VPM made, not for the path it sits at. When
+// that install is deleted or moved by hand and the project puts a module of its
+// own there, the leftover record may not hand its authority to the replacement.
+fn test_a_reused_path_does_not_inherit_a_local_install() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_reused_path'))
+	project_dir := os.join_path(test_path, 'local_reused_path_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'local_reused_path'\n}\n") or {
+		panic(err)
+	}
+	installed := os.join_path(project_dir, 'reused_pkg')
+	create_local_git_module(installed, 'reused_pkg')
+	record_local_install(installed)
+	assert is_recorded_local_install(installed)
+
+	// The install is gone, and the project writes its own module at that path.
+	os.rmdir_all(installed) or { panic(err) }
+	os.mkdir_all(installed) or { panic(err) }
+	os.write_file(os.join_path(installed, 'reused_pkg.v'), 'module reused_pkg\n') or { panic(err) }
+	assert !is_recorded_local_install(installed)
+
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	res := cmd_fail(@LOCATION, '${vexe} remove --local reused_pkg')
+	assert res.output.contains('refusing to remove `reused_pkg`'), res.output
+	assert os.is_file(os.join_path(installed, 'reused_pkg.v'))
+}
+
+// Listing and updating go by the same record. A module the project vendored
+// itself is a checkout like any other, and `git pull` in it would rewrite source
+// VPM never installed, so it is not discovered and not updated by name either.
+fn test_local_list_and_update_skip_modules_vpm_did_not_install() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_local_update'))
+	project_dir := os.join_path(test_path, 'local_update_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'local_update_project'\n}\n") or {
+		panic(err)
+	}
+	vendored := os.join_path(project_dir, 'vendored')
+	create_local_git_module(vendored, 'vendored')
+
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	listed := cmd_ok(@LOCATION, '${vexe} list --local')
+	assert !listed.output.contains('vendored'), listed.output
+
+	updated := cmd_ok(@LOCATION, '${vexe} update --local')
+	assert !updated.output.contains('vendored'), updated.output
+
+	by_name := cmd_fail(@LOCATION, '${vexe} update --local vendored')
+	assert by_name.output.contains('refusing to update `vendored`'), by_name.output
+	assert os.is_file(os.join_path(vendored, 'v.mod'))
+}
+
 fn create_local_git_module(repo_path string, module_name string) {
 	os.mkdir_all(repo_path) or { panic(err) }
 	os.write_file(os.join_path(repo_path, 'v.mod'),
