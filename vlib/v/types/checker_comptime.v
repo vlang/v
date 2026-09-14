@@ -1933,7 +1933,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	if node.kind == .array_init {
 		tc.check_missing_array_init_interface_type_args(id, node)
 		tc.check_array_init(id, node)
-		if unalias_type(tc.resolve_type(id)) is Array {
+		if unalias_type(tc.resolve_type(id)) is Array && tc.array_init_may_allocate(node) {
 			tc.warn_alloc('array initialization', id, node.pos)
 		}
 		$if ownership ? {
@@ -2046,7 +2046,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	// A method value stored in a container escapes the single-use guarantee of its per-site
 	// static receiver, so reject `[obj.method]` / `arr << obj.method` / `{'k': obj.method}`.
 	if node.kind == .array_literal {
-		if unalias_type(tc.resolve_type(id)) is Array {
+		if unalias_type(tc.resolve_type(id)) is Array && !tc.array_literal_is_inferred_fixed(id) {
 			tc.warn_alloc('array initialization', id, node.pos)
 		}
 		if expected := tc.expected_context_for_expr(id) {
@@ -8226,6 +8226,38 @@ fn (mut tc TypeChecker) check_array_init(id flat.NodeId, node flat.Node) {
 			tc.check_node(child_id)
 		}
 	}
+}
+
+fn (tc &TypeChecker) array_init_may_allocate(node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		field_id := tc.a.child(&node, i)
+		field := tc.a.node(field_id)
+		if field.kind != .field_init || field.value !in ['len', 'cap'] {
+			continue
+		}
+		if field.children_count == 0 {
+			return true
+		}
+		value_id := tc.first_parsed_child(field_id)
+		if !tc.valid_node_id(value_id) {
+			return true
+		}
+		value := tc.index_literal_value(value_id) or { return true }
+		if value != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) array_literal_is_inferred_fixed(id flat.NodeId) bool {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
+	return parent.kind == .postfix && parent.op == .not && parent.children_count > 0
+		&& tc.first_parsed_child(parent_id) == id
 }
 
 fn (mut tc TypeChecker) discard_unknown_type_errors_inside_node(node flat.Node) {

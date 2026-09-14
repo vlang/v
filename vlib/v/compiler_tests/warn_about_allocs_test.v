@@ -67,6 +67,7 @@ fn box_interface(s Speaker) &Speaker {
 fn main() {
 	name := 'V'
 	array := [1, 2, 3]
+	reserved := []int{cap: 1}
 	interpolation := 'hello \${name}'
 	concatenation := 'hello ' + name
 	alias_string_left := Name('a') + 'b'
@@ -83,6 +84,7 @@ fn main() {
 		println(values)
 	} @[freed]
 	println(array)
+	println(reserved)
 	println(interpolation)
 	println(concatenation)
 	println(alias_string_left)
@@ -112,7 +114,7 @@ fn main() {
 		} else if description == 'cast to interface' {
 			5
 		} else if description == 'array initialization' {
-			2
+			3
 		} else {
 			1
 		}
@@ -197,6 +199,18 @@ fn initialized_fixed_array() [3]int {
 	return [3]int{init: 1}
 }
 
+fn inferred_fixed_array() [3]int {
+	return [1, 2, 3]!
+}
+
+fn empty_dynamic_array() []int {
+	return []int{}
+}
+
+fn zero_length_capacity_array() []int {
+	return []int{len: 0, cap: 0}
+}
+
 fn main() {
 	println(os.args.len)
 	println(Token('a') + Token('b'))
@@ -215,6 +229,9 @@ fn main() {
 	println(fixed_array())
 	println(empty_fixed_array())
 	println(initialized_fixed_array())
+	println(inferred_fixed_array())
+	println(empty_dynamic_array())
+	println(zero_length_capacity_array())
 }
 ")!
 	nonallocating := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
