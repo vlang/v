@@ -161,6 +161,36 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	assert occupied.output.contains('merge ${os.quoted_path(occupied_source)} into the existing ${os.quoted_path(occupied_target)}'), occupied.output
 	assert !occupied.output.contains('mv ${occupied_source} ${occupied_target}'), occupied.output
 
+	// A file where the module directory has to go blocks the move: `mv` onto it
+	// would be a rename, so the hint has to name the file instead of pretending
+	// the destination is a directory to merge into.
+	blocked_root := os.join_path(root, 'blocked')
+	write_modules_layout_module(blocked_root, os.join_path('modules', 'helper'), 'helper')
+	blocked_real_pre := os.join_path(blocked_root, 'helper')
+	os.write_file(blocked_real_pre, 'not a module\n') or { panic(err) }
+	write_modules_layout_main(blocked_root, 'helper')
+	blocked := os.execute('${v3_bin} -nocache -o ${output} ${blocked_root}/main.v')
+	assert blocked.exit_code != 0, blocked.output
+	assert blocked.output.contains(hint), blocked.output
+	blocked_real := os.real_path(blocked_root)
+	blocked_target := os.join_path(blocked_real, 'helper')
+	assert blocked.output.contains('move ${os.quoted_path(blocked_target)} out of the way first'), blocked.output
+	assert !blocked.output.contains('merge '), blocked.output
+
+	// The same for a dotted import, where the file sits on the way to the module
+	// directory: `mkdir -p` cannot make a directory below a file.
+	blocked_dotted_root := os.join_path(root, 'blocked_dotted')
+	write_modules_layout_module(blocked_dotted_root, os.join_path('modules', 'gpu', 'agx', 'fw'),
+		'fw')
+	os.write_file(os.join_path(blocked_dotted_root, 'gpu'), 'not a module\n') or { panic(err) }
+	write_modules_layout_main(blocked_dotted_root, 'gpu.agx.fw')
+	blocked_dotted := os.execute('${v3_bin} -nocache -o ${output} ${blocked_dotted_root}/main.v')
+	assert blocked_dotted.exit_code != 0, blocked_dotted.output
+	assert blocked_dotted.output.contains(hint), blocked_dotted.output
+	blocked_dotted_real := os.real_path(blocked_dotted_root)
+	blocked_dotted_file := os.join_path(blocked_dotted_real, 'gpu')
+	assert blocked_dotted.output.contains('move ${os.quoted_path(blocked_dotted_file)} out of the way first'), blocked_dotted.output
+
 	// A directory whose only source is disabled for this build is not a module
 	// the move would recover, so it must not be advertised as one.
 	disabled_root := os.join_path(root, 'disabled')

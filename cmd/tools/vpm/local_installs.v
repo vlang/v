@@ -174,12 +174,24 @@ fn recorded_install_under(note string, recorded string, root string) ?string {
 // vpm_owns_module_dir reports whether a directory is VPM's to act on. The global
 // modules directory holds nothing but installed packages, so everything in it
 // qualifies, including a checkout whose VCS directory is already gone. A local
-// root is shared with the project's own source, so only a recorded install does.
+// root is shared with the project's own source, so only a recorded install does,
+// and only where the project itself is: a name in the root that leads out of it,
+// through a symlink, is something else's, whatever it turns out to be.
 fn vpm_owns_module_dir(module_path string) bool {
 	if !settings.is_local {
 		return true
 	}
+	if !local_root_contains(module_path) {
+		return false
+	}
 	return is_recorded_local_install(module_path)
+}
+
+// Whether a path resolves to somewhere inside the local root. Resolving first is
+// the point: `<project>/foo` may be a symlink to a checkout elsewhere, and the
+// commands that act on it -- remove above all -- act on what it resolves to.
+fn local_root_contains(module_path string) bool {
+	return canonical_path_is_below(canonical_install_path(module_path), canonical_install_path(settings.vmodules_path))
 }
 
 fn not_installed_by_vpm_details() string {
@@ -210,6 +222,20 @@ fn vpm_adopt(query []string) {
 		module_path := os.join_path(settings.vmodules_path, rel_path)
 		if !os.is_dir(module_path) {
 			vpm_error('failed to find `${m}` at `${fmt_mod_path(module_path)}`.')
+			errors++
+			continue
+		}
+		if os.is_link(module_path) || !local_root_contains(module_path) {
+			vpm_error('refusing to adopt `${m}`: `${fmt_mod_path(module_path)}` leads out of the project.',
+				details: "It resolves to `${canonical_install_path(module_path)}`. Adopting it would hand VPM a checkout that is not the project's to update or delete -- and `v remove --local` would delete what the link points at, not the link."
+			)
+			errors++
+			continue
+		}
+		if install_path_has_symlinked_ancestor(module_path, settings.vmodules_path) {
+			vpm_error('refusing to adopt `${m}`: `${fmt_mod_path(module_path)}` is reached through a symlink.',
+				details: "A module namespace that is a link can point anywhere tomorrow, so what it holds today is not VPM's to record."
+			)
 			errors++
 			continue
 		}

@@ -704,6 +704,44 @@ fn test_adopting_a_legacy_local_install_makes_it_managed() {
 	assert !os.exists(legacy)
 }
 
+// A name in the lookup root that leads out of the project is not the project's,
+// whatever it points at. Adopting it would hand VPM a checkout it has no business
+// touching, and `v remove --local` resolves the link before deleting: it would
+// take the checkout rather than the link.
+fn test_a_symlink_out_of_the_project_is_neither_adopted_nor_removed() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_symlinked_adopt'))
+	project_dir := os.join_path(test_path, 'symlinked_adopt_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'symlinked_adopt'\n}\n") or {
+		panic(err)
+	}
+	external := os.join_path(test_path, 'external_checkout')
+	create_local_git_module(external, 'external_pkg')
+	link_path := os.join_path(project_dir, 'external_pkg')
+	os.symlink(external, link_path) or {
+		eprintln('Skipping symlink test due to missing privileges: ${err}')
+		return
+	}
+
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	adopt := cmd_fail(@LOCATION, '${vexe} install --local --adopt external_pkg')
+	assert adopt.output.contains('refusing to adopt `external_pkg`'), adopt.output
+	assert !is_recorded_local_install(external)
+
+	// Even a checkout VPM installed for some other project stays out of reach
+	// through a link into it.
+	record_local_install(external) or { panic(err) }
+	removal := cmd_fail(@LOCATION, '${vexe} remove --local external_pkg')
+	assert removal.output.contains('refusing to remove `external_pkg`'), removal.output
+	assert os.is_dir(external)
+	assert os.is_file(os.join_path(external, 'v.mod'))
+	assert os.is_link(link_path)
+}
+
 // Adoption is for what VPM would have installed, which is always a checkout, and
 // it is meaningless outside a local root, where everything is VPM's already.
 fn test_adoption_refuses_what_vpm_could_not_have_installed() {

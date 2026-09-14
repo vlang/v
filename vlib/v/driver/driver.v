@@ -17893,16 +17893,54 @@ fn modules_layout_move_command(root string, relative string, top_name string) st
 	if !os.exists(top_target) {
 		return modules_layout_move(top_source, top_target)
 	}
+	if !os.is_dir(top_target) {
+		return modules_layout_blocked(top_target, modules_layout_move(top_source, top_target))
+	}
 	source := os.join_path(root, 'modules', relative)
 	target := os.join_path(root, relative)
 	if os.exists(target) {
+		if !os.is_dir(target) {
+			return modules_layout_blocked(target, modules_layout_move(source, target))
+		}
 		return 'merge ${os.quoted_path(source)} into the existing ${os.quoted_path(target)}'
 	}
 	target_parent := os.dir(target)
 	if os.is_dir(target_parent) {
 		return modules_layout_move(source, target)
 	}
-	return '${modules_layout_mkdir(target_parent)} && ${modules_layout_move(source, target)}'
+	move := '${modules_layout_mkdir(target_parent)} && ${modules_layout_move(source, target)}'
+	if blocker := modules_layout_blocking_file(root, target_parent) {
+		return modules_layout_blocked(blocker, move)
+	}
+	return move
+}
+
+// A file where a module directory has to go blocks the move: `mv` onto it would
+// be a rename, and `mkdir -p` below it cannot be made at all. What to do with the
+// file is the author's to decide, so name it rather than paper over it.
+fn modules_layout_blocked(blocker string, command string) string {
+	return 'move ${os.quoted_path(blocker)} out of the way first -- a file is where the module directory has to go -- and then: ${command}'
+}
+
+// The outermost thing between the root and the target that is in the way: the
+// file closest to the root is the one that has to move before any of the rest.
+fn modules_layout_blocking_file(root string, target_parent string) ?string {
+	mut blocker := ''
+	mut current := target_parent
+	for current != root && current.len > root.len {
+		if os.exists(current) && !os.is_dir(current) {
+			blocker = current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if blocker == '' {
+		return none
+	}
+	return blocker
 }
 
 // modules_layout_move and modules_layout_mkdir quote the paths they are given,
