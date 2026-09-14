@@ -85,6 +85,51 @@ fn test_comptime_method_call_arity_allows_omitted_optional_params() {
 		...base_method
 		params: [ParamMeta{ typ: 'string' }]
 	})
+	assert !t.comptime_method_call_arity_matches(call, MethodMeta{
+		...base_method
+		params: [ParamMeta{ typ: '!fn ()' }]
+	})
+}
+
+fn test_comptime_method_call_arity_collapses_params_struct_fields() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'call'
+	})
+	ctx := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'ctx'
+		typ:   '&Context'
+	})
+	first_field := a.add_node(flat.Node{
+		kind:  .field_init
+		value: 'a'
+	})
+	second_field := a.add_node(flat.Node{
+		kind:  .field_init
+		value: 'b'
+	})
+	children_start := a.children.len
+	a.children << callee
+	a.children << ctx
+	a.children << first_field
+	a.children << second_field
+	call := flat.Node{
+		kind:           .call
+		children_start: i32(children_start)
+		children_count: 4
+	}
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_implicit_veb_ctx['App.configure'] = true
+	tc.params_structs['RouteParams'] = true
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+		name:        'configure'
+		receiver:    'App'
+		module_name: 'main'
+		params:      [ParamMeta{ typ: 'RouteParams' }]
+	})
 }
 
 fn test_comptime_sum_variants_normalize_main_specialization_lock() {

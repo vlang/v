@@ -1250,12 +1250,18 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 }
 
 fn (t &Transformer) comptime_method_call_arity_matches(node flat.Node, method MethodMeta) bool {
+	mut field_init_args := 0
 	for i in 1 .. node.children_count {
-		if t.call_arg_is_spread(t.a.child(&node, i)) {
+		arg_id := t.a.child(&node, i)
+		if t.call_arg_is_spread(arg_id) {
 			return true
 		}
+		if t.a.node(arg_id).kind == .field_init {
+			field_init_args++
+		}
 	}
-	actual_count := int(node.children_count) - 1
+	collapsed_field_args := if field_init_args > 0 { 1 } else { 0 }
+	actual_count := int(node.children_count) - 1 - field_init_args + collapsed_field_args
 	hidden_ctx_count := if t.method_has_implicit_veb_ctx(method) { 1 } else { 0 }
 	expected_count := method.params.len + hidden_ctx_count
 	min_count := t.comptime_method_min_required_arg_count(method) + hidden_ctx_count
@@ -1277,7 +1283,7 @@ fn (t &Transformer) comptime_method_min_required_arg_count(method MethodMeta) in
 	mut count := method.params.len
 	for count > 0 {
 		param := method.params[count - 1]
-		if t.is_optional_type_name(param.typ) {
+		if param.typ.starts_with('?') {
 			count--
 			continue
 		}
