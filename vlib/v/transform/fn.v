@@ -2138,15 +2138,60 @@ fn (t &Transformer) call_param_offset_for_node(call_name string, node flat.Node,
 }
 
 fn (t &Transformer) implicit_veb_ctx_param_offset(call_name string, node flat.Node, params []types.Type) int {
-	// Reflected veb calls supply the context explicitly; ordinary source calls omit it.
 	if t.receiver_call_uses_comptime_method_selector(node) {
-		return 0
+		if node.children_count > 1 && params.len > 1 {
+			mut module_name := t.cur_module
+			if !isnil(t.tc) {
+				module_name = t.tc.fn_type_modules[call_name] or { t.cur_module }
+			}
+			if t.call_arg_matches_abi_type(t.a.child(&node, 1), params[1], module_name) {
+				return 0
+			}
+		}
+		return 1
 	}
 	abi_params := t.implicit_veb_call_param_types(call_name) or { return 0 }
 	if params.len != abi_params.len {
 		return 0
 	}
 	return 1
+}
+
+fn (t &Transformer) call_arg_matches_abi_type(arg_id flat.NodeId, expected types.Type, expected_module string) bool {
+	if int(arg_id) < 0 {
+		return false
+	}
+	arg := t.a.node(arg_id)
+	expected_name := t.semantic_type_name(expected)
+	expected_type := type_text_without_main_locks(t.normalize_type_in_module(expected_name,
+		expected_module))
+	mut candidates := [t.node_type(arg_id), arg.typ]
+	if arg.kind == .ident {
+		candidates << t.raw_var_type(arg.value)
+		candidates << t.var_type(arg.value)
+	}
+	for candidate in candidates {
+		if candidate.len == 0 {
+			continue
+		}
+		arg_type := if arg.is_mut && !candidate.starts_with('&')
+			&& !candidate.starts_with('mut ') {
+			'&${candidate}'
+		} else {
+			candidate
+		}
+		// ABI metadata stores main-module types bare, while an imported generic
+		// specialization locks the same type as `main.X` to avoid local collisions.
+		if expected_module in ['', 'main'] && arg_type.contains('main.')
+			&& type_text_without_main_locks(arg_type) == type_text_without_main_locks(expected_name) {
+			return true
+		}
+		actual := type_text_without_main_locks(t.normalize_type_in_module(arg_type, t.cur_module))
+		if actual.len > 0 && actual == expected_type {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) call_selector_callee_id(node flat.Node) ?flat.NodeId {

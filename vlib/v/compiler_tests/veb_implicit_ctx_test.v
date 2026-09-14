@@ -134,6 +134,12 @@ pub fn (app App) bookmark(_ string, _ string) veb.Result {
 	return ctx.coming_soon()
 }
 
+@["/change/:lang"; get]
+pub fn (mut app App) change_lang(lang string) veb.Result {
+	_ = app
+	return ctx.text(lang)
+}
+
 fn main() {
 	mut app := &App{}
 	veb.run_at[App, Context](mut app, port: 0) or { panic(err) }

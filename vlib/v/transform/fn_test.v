@@ -789,6 +789,34 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 		children_start: reflected_call_children
 		children_count: 3
 	})
+	main_ctx_arg := a.add_node(flat.Node{
+		kind:   .ident
+		value:  'ctx'
+		typ:    'main.Context'
+		is_mut: true
+	})
+	main_ctx_call_children := a.children.len
+	a.children << reflected_selector
+	a.children << main_ctx_arg
+	main_ctx_call := a.add_node(flat.Node{
+		kind:           .call
+		children_start: main_ctx_call_children
+		children_count: 2
+	})
+	mut_route_arg := a.add_node(flat.Node{
+		kind:   .ident
+		value:  'item'
+		typ:    'main.Item'
+		is_mut: true
+	})
+	reflected_route_call_children := a.children.len
+	a.children << reflected_selector
+	a.children << mut_route_arg
+	reflected_route_call := a.add_node(flat.Node{
+		kind:           .call
+		children_start: reflected_route_call_children
+		children_count: 2
+	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.structs['App'] = []types.StructField{}
 	tc.fn_implicit_veb_ctx['App.show'] = true
@@ -806,6 +834,8 @@ fn test_implicit_veb_call_aligns_ordinary_and_reflected_args_with_abi_params() {
 	assert reflected_params[1] is types.Pointer
 	assert reflected_params[2] is types.String
 	assert t.call_param_offset_for_node('App.show', a.node(reflected_call), reflected_params) == 1
+	assert t.call_param_offset_for_node('App.show', a.node(main_ctx_call), reflected_params) == 1
+	assert t.call_param_offset_for_node('App.show', a.node(reflected_route_call), reflected_params) == 2
 }
 
 fn test_pending_generic_specialization_keys_are_private_initialized_maps() {

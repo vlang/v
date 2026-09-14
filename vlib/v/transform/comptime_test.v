@@ -83,6 +83,8 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	}
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_implicit_veb_ctx['App.show'] = true
+	tc.fn_param_types['App.show'] = [types.Type(types.Struct{ name: 'App' }),
+		tc.parse_type('mut Context')]
 	tc.params_structs['RouteParams'] = true
 	t := new_transformer(mut a, &tc, map[string]bool{})
 	base_method := MethodMeta{
@@ -126,6 +128,39 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	})
 }
 
+fn test_comptime_method_call_arity_distinguishes_mut_route_arg_from_ctx() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'call'
+	})
+	item := a.add_node(flat.Node{
+		kind:   .ident
+		value:  'item'
+		typ:    'main.Item'
+		is_mut: true
+	})
+	children_start := a.children.len
+	a.children << callee
+	a.children << item
+	call := flat.Node{
+		kind:           .call
+		children_start: i32(children_start)
+		children_count: 2
+	}
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_implicit_veb_ctx['App.update'] = true
+	tc.fn_param_types['App.update'] = [types.Type(types.Struct{ name: 'App' }),
+		tc.parse_type('mut Context'), tc.parse_type('mut Item')]
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+		name:        'update'
+		receiver:    'App'
+		module_name: 'main'
+		params:      [ParamMeta{ typ: '&Item' }]
+	})
+}
+
 fn test_comptime_method_call_arity_collapses_params_struct_fields() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{
@@ -158,6 +193,8 @@ fn test_comptime_method_call_arity_collapses_params_struct_fields() {
 	}
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_implicit_veb_ctx['App.configure'] = true
+	tc.fn_param_types['App.configure'] = [types.Type(types.Struct{ name: 'App' }),
+		tc.parse_type('mut Context'), tc.parse_type('RouteParams')]
 	tc.params_structs['RouteParams'] = true
 	t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.comptime_method_call_arity_matches(call, MethodMeta{

@@ -1264,20 +1264,36 @@ fn (t &Transformer) comptime_method_call_arity_matches(node flat.Node, method Me
 	actual_count := int(node.children_count) - 1 - field_init_args + collapsed_field_args
 	hidden_ctx_count := if t.method_has_implicit_veb_ctx(method) { 1 } else { 0 }
 	explicit_ctx_count := if hidden_ctx_count > 0 && node.children_count > 1
-		&& t.a.child_node(&node, 1).is_mut {
+		&& t.comptime_method_call_has_explicit_veb_ctx(node, method) {
 		1
 	} else {
 		0
 	}
-	max_count := method.params.len + hidden_ctx_count
+	max_count := method.params.len + explicit_ctx_count
 	min_count := t.comptime_method_min_required_arg_count(method) + explicit_ctx_count
 	if actual_count < min_count {
 		return false
 	}
-	// An explicitly supplied hidden veb context is a `mut` first argument and
-	// consumes one call slot. Without it, the context is inherited by the handler.
 	return (method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...'))
 		|| actual_count <= max_count
+}
+
+fn (t &Transformer) comptime_method_call_has_explicit_veb_ctx(node flat.Node, method MethodMeta) bool {
+	if node.children_count <= 1 {
+		return false
+	}
+	receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
+	if receiver_name.len == 0 {
+		return false
+	}
+	params := t.implicit_veb_call_param_types('${receiver_name}.${method.name}') or {
+		return false
+	}
+	// Method ABI parameters start with the receiver, followed by the inserted ctx.
+	if params.len < 2 {
+		return false
+	}
+	return t.call_arg_matches_abi_type(t.a.child(&node, 1), params[1], method.module_name)
 }
 
 fn (t &Transformer) comptime_method_min_required_arg_count(method MethodMeta) int {
