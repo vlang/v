@@ -16699,6 +16699,9 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		return
 	}
 	if node.kind == .call {
+		if node.children_count > 0 {
+			tc.check_generic_body_node_global_shadowing(tc.a.child(&node, 0))
+		}
 		tc.check_comptime_static_call(id, node, var_name, loop_kind, field_cases, value_cases)
 		return
 	}
