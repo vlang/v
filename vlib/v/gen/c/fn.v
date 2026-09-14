@@ -17786,6 +17786,7 @@ const c_manual_stdlib_declared_fns = {
 	'rewind':           true
 	'scanf':            true
 	'setenv':           true
+	'setbuf':           true
 	'setvbuf':          true
 	'snprintf':         true
 	'sprintf':          true

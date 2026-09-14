@@ -9253,6 +9253,10 @@ pub fn run(args []string) {
 		eprintln('option `-target-libc-headers` does not support Windows targets')
 		exit(1)
 	}
+	if target_libc_headers && backend == 'fastc' {
+		eprintln('option `-target-libc-headers` does not support the FastC backend')
+		exit(1)
+	}
 	if backend == 'fastc' && target.os == 'windows' && subsystem == .windows {
 		eprintln('the V3 fastc backend does not support `-subsystem windows`')
 		exit(1)
