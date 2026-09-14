@@ -184,7 +184,7 @@ fn binary_identity(path string) string {
 	} $else {
 		attributes := os.stat(path) or { return file_stamp_missing }
 		if attributes.inode != 0 {
-			return 'stat:${attributes.dev}:${attributes.inode}:${attributes.size}:${attributes.mtime}:${attributes.ctime}'
+			return 'stat:${attributes.dev}:${attributes.inode}:${attributes.size}:${attributes.mtime}'
 		}
 	}
 	contents := os.read_bytes(path) or { return file_stamp_missing }
@@ -616,13 +616,29 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 	}
 }
 
+// prepare_tool_cache_entry_dir creates a cache entry without following a pre-planted symlink.
+// The cache root already exists, so a single atomic mkdir is sufficient. An existing real
+// directory is reusable, while any link or non-directory at the predictable entry path makes
+// the cache unsafe for this build.
+fn prepare_tool_cache_entry_dir(path string) ! {
+	os.mkdir(path) or {
+		if os.is_link(path) {
+			return error('the tool cache entry `${path}` is a symbolic link')
+		}
+		if !os.is_dir(path) {
+			return error('cannot create the tool cache entry `${path}`: ${err}')
+		}
+	}
+	if os.is_link(path) || !os.is_dir(path) {
+		return error('the tool cache entry `${path}` is not a safe directory')
+	}
+}
+
 // build_tool_binary compiles the tool into its cache slot and records its source closure.
 // It returns the compiler output when the build failed.
 fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	unique := '${os.getpid()}'
-	os.mkdir_all(entry.dir) or {
-		return error('cannot create the cache directory `${entry.dir}`: ${err}')
-	}
+	prepare_tool_cache_entry_dir(entry.dir)!
 	staged := '${entry.binary}.staged.${unique}'
 	dumped := '${entry.binary}.sources.${unique}'
 	defer {

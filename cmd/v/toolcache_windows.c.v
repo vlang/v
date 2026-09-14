@@ -7,7 +7,7 @@ import os
 
 fn C.MoveFileExW(existing &u16, new &u16, flags u32) i32
 
-fn C.CreateFileW(path &u16, desired_access u32, share_mode u32, security_attributes &u16,
+fn C.CreateFileW(const_path &u16, desired_access u32, share_mode u32, security_attributes &u16,
 	creation_disposition u32, flags_and_attributes u32, template_file voidptr) voidptr
 
 fn C.GetFileInformationByHandle(handle voidptr, information voidptr) bool

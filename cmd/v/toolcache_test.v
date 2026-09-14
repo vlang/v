@@ -465,6 +465,35 @@ fn test_pruning_unlinks_stale_symlinks_without_touching_their_targets() {
 	assert os.read_file(payload)! == 'safe', 'the symlink target must not be traversed'
 }
 
+// The current entry path is predictable from the tool inputs. A shared cache must reject a
+// link planted there instead of staging the executable and manifest through it.
+fn test_building_rejects_a_symlinked_current_entry() {
+	directory := toolcache_test_dir('current_symlink')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	target := os.join_path(directory, 'outside')
+	os.mkdir_all(target)!
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.symlink(target, entry_dir) or {
+		eprintln('> skipping current-entry symlink test: ${err}')
+		return
+	}
+	entry := ToolCacheEntry{
+		name:     'vdemo'
+		dir:      entry_dir
+		binary:   os.join_path(entry_dir, 'vdemo' + tool_exe_suffix())
+		manifest: os.join_path(entry_dir, 'inputs')
+	}
+
+	build_tool_binary('', entry) or {
+		assert err.msg().contains('symbolic link'), 'unexpected error: ${err}'
+		assert os.ls(target)! == [], 'nothing may be written through the cache-entry link'
+		return
+	}
+	assert false, 'a symlinked current cache entry must be rejected'
+}
+
 // A single-file tool can pull in a sibling asset with `$embed_file`, whose bytes end up
 // inside the compiled binary. `cmd/tools/vgret.v` does exactly that with its
 // `vgret.defaults.toml`. The asset is not a V source, so only the compiler can report it,
