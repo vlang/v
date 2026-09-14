@@ -22,6 +22,7 @@ fi
 
 bootstrap_v=$1
 fallback_output=$2
+selected_cc=${CC:-cc}
 system=$(uname -s 2>/dev/null || echo unknown)
 source_root=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
 cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/v1-fallback}
@@ -149,7 +150,7 @@ build_with_oldv() {
 		;;
 	esac
 	mkdir -p "$oldv_workdir" || return 1
-	set -- "$bootstrap_v" -no-parallel -gc none run cmd/tools/oldv.v \
+	set -- "$bootstrap_v" -no-parallel -gc none -cc "$selected_cc" run cmd/tools/oldv.v \
 		--cache=false --workdir "$oldv_workdir" --command "$oldv_copy"
 	if local_v_repo=$(local_git_repo "$source_root" "$fallback_revision"); then
 		set -- "$@" --vrepo "$local_v_repo"
@@ -159,7 +160,8 @@ build_with_oldv() {
 	fi
 	set -- "$@" --vccommit "$fallback_vc_revision"
 	set -- "$@" "$fallback_revision"
-	VFLAGS= OLDV_VFLAGS='-d v1_fallback' V1_FALLBACK_TARGET=$oldv_target \
+	VFLAGS= CC=$selected_cc OLDV_VFLAGS="-d v1_fallback -cc \"$selected_cc\"" \
+		V1_FALLBACK_TARGET=$oldv_target \
 		"$@" || return 1
 	candidate_root=$(cd "$oldv_source_dir" && pwd) || return 1
 	write_candidate_root "$candidate_root" || return 1

@@ -47,6 +47,7 @@ fn test_v1_fallback_installer_uses_last_v1_snapshot() {
 	}
 	assert installer.contains('fallback_revision=0613e1f6fc68573f5b679e406ce58a00d6ebeb30')
 	assert installer.contains('fallback_vc_revision=e658629fc4bd59826bd7637cde498d0c6236b14b')
+	assert installer.contains('selected_cc=\${CC:-cc}')
 	assert installer.contains('oldv_workdir=\$cache_parent/sources/\${fallback_short_revision}_\${fallback_vc_short_revision}')
 	assert installer.contains('oldv_source_dir=\$oldv_workdir/v_at_\${fallback_revision}_vc_\${fallback_vc_revision}')
 	assert installer.contains('lock_dir=\$oldv_workdir.lock')
@@ -57,7 +58,8 @@ fn test_v1_fallback_installer_uses_last_v1_snapshot() {
 	assert installer.contains('mv "$lock_dir" "$stale_lock" 2>/dev/null')
 	assert installer.contains('Timed out waiting for the V1 fallback cache lock')
 	assert installer.contains('rmdir "$lock_dir" 2>/dev/null || true')
-	assert installer.contains("VFLAGS= OLDV_VFLAGS='-d v1_fallback'")
+	assert installer.contains('set -- "$bootstrap_v" -no-parallel -gc none -cc "$selected_cc" run cmd/tools/oldv.v')
+	assert installer.contains('VFLAGS= CC=\$selected_cc OLDV_VFLAGS="-d v1_fallback -cc \\"\$selected_cc\\""')
 	assert installer.contains('set -- "$@" --vccommit "$fallback_vc_revision"')
 	assert installer.contains('set -- "$@" "$fallback_revision"')
 	assert installer.contains("config --get-regexp '^remote\\..*\\.promisor$'")
