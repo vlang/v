@@ -585,14 +585,42 @@ fn c_escape_into(mut out strings.Builder, s string) {
 	}
 }
 
+// c_string_literal_chunk_len bounds how much of an escaped byte string is written
+// before it is continued in the next adjacent literal. A single string literal has an
+// implementation defined maximum length (C requires only 4095 bytes of it, and MSVC
+// rejects long ones outright), while the concatenation of adjacent literals does not.
+const c_string_literal_chunk_len = 3800
+
+// c_byte_string_escape renders arbitrary bytes as the body of a C string literal.
+// Bytes that a C compiler reads back unchanged are kept as they are, and the rest become
+// three digit octal escapes, which are never continued by the character after them.
+// Keeping the common case one character wide matters for size: `$embed_file` payloads go
+// through here, so escaping every byte would make each embedded byte cost four.
 fn c_byte_string_escape(s string) string {
-	mut out := strings.new_builder(s.len * 4)
-	for b in s.bytes() {
-		v := int(b)
-		out.write_u8(`\\`)
-		out.write_u8(u8(`0` + ((v >> 6) & 7)))
-		out.write_u8(u8(`0` + ((v >> 3) & 7)))
-		out.write_u8(u8(`0` + (v & 7)))
+	mut out := strings.new_builder(s.len + (s.len >> 2))
+	mut chunk := 0
+	for i in 0 .. s.len {
+		b := s[i]
+		if chunk >= c_string_literal_chunk_len {
+			out.write_string('" "')
+			chunk = 0
+		}
+		if b == `"` || b == `\\` || b == `?` {
+			// `?` is escaped so that `??x` cannot be read back as a trigraph.
+			out.write_u8(`\\`)
+			out.write_u8(b)
+			chunk += 2
+		} else if b >= 0x20 && b < 0x7f {
+			out.write_u8(b)
+			chunk++
+		} else {
+			v := int(b)
+			out.write_u8(`\\`)
+			out.write_u8(u8(`0` + ((v >> 6) & 7)))
+			out.write_u8(u8(`0` + ((v >> 3) & 7)))
+			out.write_u8(u8(`0` + (v & 7)))
+			chunk += 4
+		}
 	}
 	return out.str()
 }

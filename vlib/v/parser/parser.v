@@ -6323,8 +6323,17 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 	})
 }
 
+// embed_file_uncompressed_data materializes the embedded file's bytes into the AST, so
+// that the generated C carries them and `EmbedFileData.data()` needs no IO. A plain debug
+// build skips it and re-reads `apath` at runtime instead, to keep rebuilds cheap.
+// Portable `-os cross` output cannot do that: `apath` names a directory on the machine
+// that generated the snapshot, and the snapshot is compiled and run somewhere else. That
+// is how `vc/v.c` bootstraps V, so a portable snapshot always embeds the bytes.
 fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
-	if !p.prefs.is_prod || apath.len == 0 || !os.is_file(apath) {
+	if !p.prefs.is_prod && !p.prefs.output_cross_c {
+		return none
+	}
+	if apath.len == 0 || !os.is_file(apath) {
 		return none
 	}
 	bytes := os.read_bytes(apath) or { return none }

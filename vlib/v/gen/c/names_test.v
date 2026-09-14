@@ -659,3 +659,88 @@ fn test_scratch_lookup_caches_leave_disabled_caches_disabled() {
 	assert isnil(g.struct_decl_pref_cache)
 	assert isnil(g.import_type_cache)
 }
+
+// c_string_literal_decode reads back what a C compiler would make of the escaped
+// body produced by c_byte_string_escape, so the tests below can compare bytes
+// instead of spelling. Adjacent literals are concatenated, as C does in
+// translation phase 6, and every escape is either `\` plus one character or a
+// three digit octal value.
+fn c_string_literal_decode(escaped string) []u8 {
+	mut out := []u8{cap: escaped.len}
+	mut i := 0
+	for i < escaped.len {
+		c := escaped[i]
+		if c == `"` {
+			// `" "`, the boundary between two adjacent literals.
+			assert escaped[i + 1] == ` `
+			assert escaped[i + 2] == `"`
+			i += 3
+			continue
+		}
+		if c != `\\` {
+			out << c
+			i++
+			continue
+		}
+		n := escaped[i + 1]
+		if n >= `0` && n <= `7` {
+			mut v := 0
+			for d in escaped[i + 1..i + 4] {
+				assert d >= `0` && d <= `7`
+				v = v * 8 + int(d - `0`)
+			}
+			out << u8(v)
+			i += 4
+			continue
+		}
+		out << n
+		i += 2
+	}
+	return out
+}
+
+fn test_c_byte_string_escape_keeps_printable_bytes_verbatim() {
+	assert c_byte_string_escape('plain ASCII text (no escapes needed)') == 'plain ASCII text (no escapes needed)'
+	assert c_byte_string_escape('') == ''
+}
+
+fn test_c_byte_string_escape_escapes_only_what_c_would_misread() {
+	// A quote would end the literal, a backslash would start an escape, and `??x`
+	// would be read back as a trigraph.
+	assert c_byte_string_escape('say "hi"') == 'say \\"hi\\"'
+	assert c_byte_string_escape('a\\b') == 'a\\\\b'
+	assert c_byte_string_escape('what??!') == 'what\\?\\?!'
+	// Everything outside printable ASCII becomes a three digit octal escape, which
+	// a following digit cannot extend.
+	assert c_byte_string_escape('\n') == '\\012'
+	assert c_byte_string_escape('\x00') == '\\000'
+	assert c_byte_string_escape('\xff') == '\\377'
+	assert c_byte_string_escape('\x019') == '\\0019'
+}
+
+fn test_c_byte_string_escape_round_trips_every_byte_value() {
+	mut raw := []u8{cap: 256}
+	for i in 0 .. 256 {
+		raw << u8(i)
+	}
+	source := raw.bytestr()
+	assert c_string_literal_decode(c_byte_string_escape(source)) == raw
+}
+
+// test_c_byte_string_escape_splits_long_payloads_into_adjacent_literals covers the
+// size limit a single C string literal has. `$embed_file` payloads go through this
+// function, and MSVC rejects one long literal outright.
+fn test_c_byte_string_escape_splits_long_payloads_into_adjacent_literals() {
+	mut raw := []u8{cap: 40000}
+	for i in 0 .. 40000 {
+		// A mix of verbatim and escaped bytes, so that splits have to land between
+		// escapes rather than at a fixed stride.
+		raw << if i % 3 == 0 { u8(200 + i % 40) } else { u8(`a` + i % 26) }
+	}
+	escaped := c_byte_string_escape(raw.bytestr())
+	assert escaped.contains('" "')
+	for part in escaped.split('" "') {
+		assert part.len <= c_string_literal_chunk_len + 4
+	}
+	assert c_string_literal_decode(escaped) == raw
+}
