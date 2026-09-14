@@ -61,7 +61,21 @@ fn chained_index_callee(y int) {
 	}
 }
 
+// The callee may be an anonymous function, which closes with `}` before its
+// argument list rather than with a name.
+fn literal_callee(y int) {
+	$if windows {
+		fn (cfg Config) {
+			println(cfg.x)
+		}(y: 1)
+	}
+}
+
 fn main() {
+	literal_callee(10)
+	fn (cfg Config) {
+		println(cfg.x)
+	}(x: 11)
 	chained_index_callee(8)
 	println(handlers()[0][0](x: 9))
 	dynamic_callee(6)

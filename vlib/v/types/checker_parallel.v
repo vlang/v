@@ -1781,8 +1781,11 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		tc.check_unreachable_after_noreturn_call(node)
 		if !is_specialized {
 			if tc.should_diagnose(flat.NodeId(fn_idx)) {
-				tc.record_unused_fn_vars(node)
-				tc.record_unused_fn_params(node)
+				// One scan of the declaration's comptime branches serves every
+				// name both recorders check.
+				mut comptime_branches := FnComptimeBranches{}
+				tc.record_unused_fn_vars(node, mut comptime_branches)
+				tc.record_unused_fn_params(node, mut comptime_branches)
 				tc.record_unused_fn_labels(node)
 			}
 			tc.check_fn_bare_generic_fntype_params(node)
@@ -1931,7 +1934,7 @@ fn (tc &TypeChecker) operator_receiver_without_mut_pos(node flat.Node) token.Pos
 	return pos
 }
 
-fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
+fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node, mut branches FnComptimeBranches) {
 	if tc.node_is_from_translated_file(node) {
 		return
 	}
@@ -2000,7 +2003,7 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		} else {
 			-1
 		}
-		if tc.fn_comptime_branch_may_use_ident(node, candidate.name, false, declared_at) {
+		if tc.fn_comptime_branch_may_use_ident(node, candidate.name, false, declared_at, mut branches) {
 			continue
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
@@ -2409,7 +2412,7 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 	return used_names
 }
 
-fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
+fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node, mut branches FnComptimeBranches) {
 	if tc.node_is_from_translated_file(node) || node.op == .arrow
 		|| node.value in tc.a.disabled_fns
 		|| (is_regular_v_test_file(tc.cur_file) && is_v_test_fn_name(node.value)) {
@@ -2428,7 +2431,7 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 		if tc.fn_body_reflects_param_type(node, param.typ) {
 			continue
 		}
-		if tc.fn_comptime_branch_may_use_ident(node, param.value, true, -1) {
+		if tc.fn_comptime_branch_may_use_ident(node, param.value, true, -1, mut branches) {
 			continue
 		}
 		mut has_param_error := false
@@ -2519,33 +2522,71 @@ struct ComptimeBranchRange {
 	end   int
 }
 
+// FnComptimeBranches holds the comptime branches of one function declaration,
+// tokenized once and shared by every name checked against them. Scanning the
+// source is the expensive part, and a function with many unused declarations
+// would otherwise repeat it once per name.
+struct FnComptimeBranches {
+mut:
+	scanned  bool
+	branches []ComptimeBranchRange
+	tokens   [][]string
+	lines    [][]int
+	// A branch is only walked for AST nodes when a name is actually spelled in
+	// it, so whether it was dropped is answered on demand and kept.
+	dropped       []bool
+	dropped_known []bool
+}
+
+// ensure_fn_comptime_branches tokenizes every comptime branch of `node`, once.
+// Nothing is scanned for a function that no unused declaration is reported in,
+// because the first name to be checked is what triggers this.
+fn (tc &TypeChecker) ensure_fn_comptime_branches(node flat.Node, mut scan FnComptimeBranches) {
+	if scan.scanned {
+		return
+	}
+	scan.scanned = true
+	file := tc.a.source_files[node.pos.id] or { return }
+	source := tc.source_texts_by_file[file.name] or { return }
+	// A fn_decl only records where its declaration starts, so its body has to
+	// be recovered from the source.
+	scan.branches = declaration_comptime_branch_ranges(source, node.pos.offset)
+	for branch in scan.branches {
+		code := code_text_in_range(source, branch.start, branch.end)
+		tokens, lines := code_tokens(code)
+		scan.tokens << tokens
+		scan.lines << lines
+	}
+	scan.dropped = []bool{len: scan.branches.len}
+	scan.dropped_known = []bool{len: scan.branches.len}
+}
+
 // fn_comptime_branch_may_use_ident reports whether `name` is used by a `$if`
 // branch of `node` that this build does not take. The parser drops such a
 // branch, so an identifier used only there is invisible to the AST walks above,
 // and reporting it as unused would be wrong for the build configuration that
 // does take the branch.
-fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name string, writes_are_uses bool, declared_at int) bool {
+fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name string, writes_are_uses bool, declared_at int, mut scan FnComptimeBranches) bool {
 	if name.len == 0 {
 		return false
 	}
-	file := tc.a.source_files[node.pos.id] or { return false }
-	source := tc.source_texts_by_file[file.name] or { return false }
-	// A fn_decl only records where its declaration starts, so its body has to
-	// be recovered from the source.
-	branches := declaration_comptime_branch_ranges(source, node.pos.offset)
-	for branch in branches {
-		if declaration_is_in_a_sibling_branch(branches, declared_at, branch) {
+	tc.ensure_fn_comptime_branches(node, mut scan)
+	for index, branch in scan.branches {
+		if declaration_is_in_a_sibling_branch(scan.branches, declared_at, branch) {
 			// `$if linux { x := 1 } $else { x := 2 \n println(x) }` binds one in
 			// each branch, and a sibling cannot read the other's.
 			continue
 		}
-		code := code_text_in_range(source, branch.start, branch.end)
-		if !code_references_ident(code, name, writes_are_uses) {
+		if !tokens_reference_ident(scan.tokens[index], scan.lines[index], name, writes_are_uses) {
 			continue
 		}
-		// A taken branch is parsed like any other code, so the walks above
-		// already saw every use in it, and what is left here cannot be one.
-		if !tc.subtree_has_node_in_range(node, branch.start, branch.end) {
+		if !scan.dropped_known[index] {
+			// A taken branch is parsed like any other code, so the walks above
+			// already saw every use in it, and what is left here cannot be one.
+			scan.dropped[index] = !tc.subtree_has_node_in_range(node, branch.start, branch.end)
+			scan.dropped_known[index] = true
+		}
+		if scan.dropped[index] {
 			return true
 		}
 	}
@@ -2805,10 +2846,16 @@ fn skip_non_code_at(source string, i int) (int, string) {
 // declaration of a new binding does not reference the searched name, even
 // though it spells it.
 fn code_references_ident(code string, name string, writes_are_uses bool) bool {
+	tokens, lines := code_tokens(code)
+	return tokens_reference_ident(tokens, lines, name, writes_are_uses)
+}
+
+// tokens_reference_ident answers the same question for an already tokenized
+// branch, so that the tokens of a function can be reused across its names.
+fn tokens_reference_ident(tokens []string, lines []int, name string, writes_are_uses bool) bool {
 	if name.len == 0 {
 		return false
 	}
-	tokens, lines := code_tokens(code)
 	shadowed := pipe_lambda_shadow_ranges(tokens, lines, name)
 	conditions := comptime_condition_token_ranges(tokens)
 	assembly := asm_template_token_ranges(tokens)
@@ -2990,9 +3037,10 @@ fn name_precedes_delimiter(tokens []string, index int) bool {
 		return false
 	}
 	mut before := index - 1
-	if tokens[index] == '(' && tokens[before] == ')' {
+	if tokens[index] == '(' && tokens[before] in [')', '}'] {
 		// `make_handler()(x: 1)` and `(handler)(x: 1)` call what the group
-		// evaluates to, so the argument names a field just the same.
+		// evaluates to, and `fn (_ Config) {}(x: 1)` the literal the `}`
+		// closes, so the argument names a field just the same.
 		return true
 	}
 	// `handlers[i][j](x: 1)` indexes twice before it calls, so every group of

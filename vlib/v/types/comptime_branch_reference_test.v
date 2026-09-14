@@ -469,3 +469,30 @@ fn test_a_chained_index_still_calls() {
 	assert code_references_ident('_ = handlers[x][j](y: 1)', 'x', true)
 	assert code_references_ident('_ = handlers[i][x](y: 1)', 'x', true)
 }
+
+fn test_a_short_struct_argument_of_a_block_ended_callee() {
+	assert !code_references_ident('fn (_ Config) {}(x: 1)', 'x', true)
+	assert !code_references_ident('fn (c Config) {\nprintln(c)\n}(x: 1)', 'x', true)
+	// The other arguments of such a call still read.
+	assert code_references_ident('fn (_ Config) {}(x, y: 1)', 'x', true)
+	// The `}` of an unrelated block does not turn what follows into a call,
+	// and a map literal after one still keys with an expression.
+	assert code_references_ident('if ok {\n}\nm := {\nx: 1\n}', 'x', true)
+	assert code_references_ident('if ok {\n}\n_ = (x + 1).str()', 'x', true)
+}
+
+fn test_one_branch_scan_answers_every_name() {
+	// The tokens of a branch are shared by the names checked against it, so
+	// the tokenized form has to answer exactly what the text one does.
+	code := scanned_code('cfg.x = 1\nprintln(y)\nfn (_ Config) {}(z: 1)')
+	tokens, lines := code_tokens(code)
+	for name in ['x', 'y', 'z'] {
+		for writes in [true, false] {
+			from_tokens := tokens_reference_ident(tokens, lines, name, writes)
+			assert from_tokens == code_references_ident(code, name, writes)
+		}
+	}
+	assert tokens_reference_ident(tokens, lines, 'y', true)
+	assert !tokens_reference_ident(tokens, lines, 'z', true)
+	assert !tokens_reference_ident(tokens, lines, '', true)
+}

@@ -33,3 +33,10 @@ vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:57:25: no
       |                         ^
    58 |     $if windows {
    59 |         hs := handlers()
+vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:66:19: notice: unused parameter: `y`
+   64 | // The callee may be an anonymous function, which closes with `}` before its
+   65 | // argument list rather than with a name.
+   66 | fn literal_callee(y int) {
+      |                   ^
+   67 |     $if windows {
+   68 |         fn (cfg Config) {
