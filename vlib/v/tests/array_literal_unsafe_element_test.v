@@ -49,3 +49,26 @@ fn test_unsafe_elements_in_a_string_array() {
 	prefix := 'v'
 	assert [unsafe { prefix + '1' }, unsafe { prefix + '2' }] == ['v1', 'v2']
 }
+
+// A spread source is an element too, and reaches the same lowering: the pushes that
+// follow it referenced the temporary from outside the block the declaration had been
+// drained into.
+fn test_a_spread_of_an_unsafe_block() {
+	xs := [1, 2]
+	assert [...unsafe { xs }, 3] == [1, 2, 3]
+	assert [0, ...unsafe { xs }, 3] == [0, 1, 2, 3]
+	assert [unsafe { int(9) }, ...unsafe { xs }] == [9, 1, 2]
+}
+
+// Elements the destination has to own take a different path through the lowering,
+// cloning each one in a loop instead of a bulk copy, so it needs covering too.
+fn test_a_spread_of_an_unsafe_block_with_owned_elements() {
+	xs := ['a', 'b']
+	assert [...unsafe { xs }, 'c'] == ['a', 'b', 'c']
+}
+
+// A plain spread has to keep working unchanged.
+fn test_a_plain_spread_is_unaffected() {
+	xs := [1, 2]
+	assert [...xs, 3] == [1, 2, 3]
+}

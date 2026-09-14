@@ -2532,6 +2532,7 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		user_code_start: a.user_code_start
 		disabled_fns: a.disabled_fns
 		noreturn_fns: a.noreturn_fns
+		contextual_anon_struct_types: a.contextual_anon_struct_types
 		source_files: a.source_files
 		template_call_sites: a.template_call_sites
 		template_actions: a.template_actions

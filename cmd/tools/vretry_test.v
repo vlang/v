@@ -61,3 +61,38 @@ fn test_retry() {
 	output_trimmed := res.output.trim_space()
 	assert output_trimmed == "['--list', '-x', '--', '-b', 'js', 'arguments']"
 }
+
+// The command reaches `v retry` as an argument vector, whatever quoting the caller's
+// own shell already removed, and is run through a shell again. Joining that vector
+// with plain spaces split a destination like `C:\Users\Jane Doe\.vmodules\markdown`
+// back into two arguments, which is how `v build-tools` failed to install `markdown`
+// on a checkout under such a path.
+fn test_retry_keeps_arguments_that_contain_spaces_together() {
+	log.use_stdout()
+	tpath := os.join_path(os.vtmp_dir(), 'vretry space test ${os.getpid()}')
+	os.rmdir_all(tpath) or {}
+	os.mkdir_all(tpath)!
+	defer {
+		os.rmdir_all(tpath) or {}
+	}
+	// `v retry -- git init <dir with spaces>`: the directory has to arrive as one
+	// argument, or git reports a usage error over the extra ones.
+	target := os.join_path(tpath, 'a repo')
+	res := run('${os.quoted_path(vexe)} retry -r 1 -- git init -q ${os.quoted_path(target)}')
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	assert os.is_dir(os.join_path(target, '.git')), 'the spaced destination was split: ${res.output}'
+}
+
+// Quoting the caller put inside a single argument has to survive too, so that a
+// command like `sh -c 'echo one two'` still receives one argument after `-c`.
+fn test_retry_keeps_a_quoted_argument_whole() {
+	$if windows {
+		return
+	}
+	log.use_stdout()
+	res := run("${os.quoted_path(vexe)} retry -r 1 -- sh -c 'echo one two'")
+	dump_on_ci(res)
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().ends_with('one two'), res.output
+}

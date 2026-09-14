@@ -10,6 +10,39 @@ mut:
 	retries   int
 }
 
+// arg_needs_no_quoting reports whether `arg` survives a trip through the shell
+// unchanged. Everything else is quoted rather than enumerated, so a character that
+// is special on only some shells is still handled.
+fn arg_needs_no_quoting(arg string) bool {
+	if arg.len == 0 {
+		return false
+	}
+	for c in arg {
+		if c.is_alnum() || c in [`_`, `-`, `.`, `/`, `:`, `=`, `@`, `+`, `,`, `%`] {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// quote_arg spells `arg` so that the shell hands the command the single argument it
+// already is. The command reaches here as a vector - `v retry -- git clone URL DEST`
+// arrives as four arguments, whatever quoting the caller's own shell removed - and it
+// is run through a shell again, so joining the vector with spaces would split a DEST
+// like `C:\Users\Jane Doe\.vmodules\markdown` back into two arguments.
+fn quote_arg(arg string) string {
+	if arg_needs_no_quoting(arg) {
+		return arg
+	}
+	$if windows {
+		// A Windows path cannot contain `"`, so wrapping is enough to keep spaces.
+		return '"' + arg.replace('"', '""') + '"'
+	} $else {
+		return "'" + arg.replace("'", "'\\''") + "'"
+	}
+}
+
 // seconds_to_duration converts a fractional number of seconds, as given on the
 // command line, to a Duration. The scaling is done in floating point so that a
 // value like `--delay 0.5` keeps its sub-second part.
@@ -42,7 +75,7 @@ fn main() {
 		eprintln('error: ${err}')
 		exit(1)
 	}
-	cmd := command_args.join(' ')
+	cmd := command_args.map(quote_arg(it)).join(' ')
 	// dump(cmd)
 
 	spawn fn (context Context) {

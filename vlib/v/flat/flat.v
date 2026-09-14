@@ -461,6 +461,14 @@ pub mut:
 	text_values []string
 	text_ids    map[string]TextId
 	worker_pool &workers.Pool = unsafe { nil }
+	// contextual_anon_struct_types names the anonymous aggregates the parser
+	// synthesized to type a `struct { ... }` literal rather than to declare a field.
+	// Such a name only ever stands in for a literal whose type the context supplies, so
+	// the checker lets it initialize another module's anonymous field. The declarations
+	// themselves keep the visibility they were written with, so neither their generated
+	// names nor a type a user happened to call `AnonStruct_...` become reachable across
+	// module boundaries.
+	contextual_anon_struct_types map[string]bool
 	// specialized_fn_nodes identifies program-specific monomorphized function
 	// declarations appended after parsing. Module-cache cgen keeps them with main.
 	specialized_fn_nodes   map[int]bool
@@ -528,6 +536,7 @@ pub fn FlatAst.new() FlatAst {
 		disabled_fns: map[string]bool{}
 		export_fn_names: map[string]string{}
 		noreturn_fns: map[string]bool{}
+		contextual_anon_struct_types: map[string]bool{}
 		source_files: map[int]&token.File{}
 		template_call_sites: map[int]token.Pos{}
 		template_actions: map[int]string{}

@@ -3803,6 +3803,7 @@ fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []fl
 		user_code_start: t.a.user_code_start
 		disabled_fns: t.a.disabled_fns
 		noreturn_fns: t.a.noreturn_fns
+		contextual_anon_struct_types: t.a.contextual_anon_struct_types
 		source_files: t.a.source_files
 		template_call_sites: t.a.template_call_sites
 		template_actions: t.a.template_actions

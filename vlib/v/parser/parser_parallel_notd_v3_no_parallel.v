@@ -1208,6 +1208,12 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 			p.a.disabled_fns[canonical] = true
 		}
 	}
+	for name, is_contextual in w.a.contextual_anon_struct_types {
+		if is_contextual {
+			_, canonical := p.a.intern_text(name)
+			p.a.contextual_anon_struct_types[canonical] = true
+		}
+	}
 	for name, is_noreturn in w.a.noreturn_fns {
 		if is_noreturn {
 			_, canonical := p.a.intern_text(name)

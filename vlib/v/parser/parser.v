@@ -205,6 +205,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			children: []flat.NodeId{}
 			disabled_fns: map[string]bool{}
 			export_fn_names: map[string]string{}
+			contextual_anon_struct_types: map[string]bool{}
 			source_files: map[int]&token.File{}
 			template_call_sites: map[int]token.Pos{}
 			template_actions: map[int]string{}
@@ -13951,19 +13952,18 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 	p.anonymous_struct_count++
 	name_prefix := if is_union { 'AnonUnion' } else { 'AnonStruct' }
 	name := '${name_prefix}_${local_type_scope_part(p.cur_file)}_${p.anonymous_struct_count}'
+	if inferred {
+		// Synthesized to type a `struct { ... }` literal, not to declare a field. The
+		// literal's type is whatever the context expects, so this name only stands in for
+		// it; the checker uses that to tell such an initializer apart from an attempt to
+		// name another module's anonymous declaration outright.
+		p.a.contextual_anon_struct_types[name] = true
+	}
 	start := p.add_children(ids)
 	decl_id := p.add_node(flat.Node{
 		kind: .struct_decl
 		value: name
 		typ: if is_union { 'union' } else { '' }
-		// `.arrow` is how a declaration records `pub`. This one is synthesized for a
-		// `struct { ... }` written inside another declaration: it cannot be named from
-		// anywhere, so it imposes no visibility of its own and the field that exposes it
-		// is what decides who may see it. Leaving it private instead made the checker
-		// reject `defaults: struct { man: false }` on `cli.Command` from another module.
-		// Marking the declaration is what distinguishes these from a type the user
-		// happened to name `AnonStruct_...`, which stays as private as it was written.
-		op: .arrow
 		pos: if aggregate_start >= 0 {
 			p.span_to(aggregate_start)
 		} else {

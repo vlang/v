@@ -35,6 +35,57 @@ fn compiles(name string, mod_source string, main_source string) (bool, string) {
 	return res.exit_code == 0, res.output
 }
 
+// naming_generated_types_is_rejected builds `mod_source` once to read back the names
+// the compiler made up for its anonymous fields, then tries to name each of them from
+// another module. Both steps share one directory because the generated names encode
+// the module's source path, so a name read from one temporary tree does not exist in
+// another. Reading them is also the point: knowing the name is exactly what an attempt
+// to name such a type needs.
+fn naming_generated_types_is_rejected(mod_source string, reader_source string) (int, []string) {
+	dir := os.join_path(os.vtmp_dir(), 'v3_anon_generated_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'holder')) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'holder', 'holder.v'), mod_source) or { panic(err) }
+	src := os.join_path(dir, 'm.v')
+	os.write_file(src, reader_source) or { panic(err) }
+	c_out := os.join_path(dir, 'm.c')
+	gen := os.execute('${os.quoted_path(vexe)} -new-compiler -o ${os.quoted_path(c_out)} ${os.quoted_path(src)}')
+	if gen.exit_code != 0 {
+		return 0, ['generating C for the reader failed: ${gen.output}']
+	}
+	text := os.read_file(c_out) or { return 0, ['the generated C could not be read'] }
+	mut names := []string{}
+	mut rest := text
+	for {
+		at := rest.index('holder__AnonStruct_') or { break }
+		rest = rest[at + 'holder__'.len..].clone()
+		mut end := 0
+		for end < rest.len && (rest[end].is_alnum() || rest[end] == `_`) {
+			end++
+		}
+		candidate := 'holder.' + rest[..end].clone()
+		if candidate !in names {
+			names << candidate
+		}
+		rest = rest[end..].clone()
+	}
+	mut accepted := []string{}
+	exe := os.join_path(dir, 'm.exe')
+	for generated in names {
+		attempt := 'module main\n\nimport holder\n\nfn main() {\n\ts := ' + generated +
+			'{}\n\tprintln(s)\n}\n'
+		os.write_file(src, attempt) or { panic(err) }
+		res := os.execute('${os.quoted_path(vexe)} -new-compiler -o ${os.quoted_path(exe)} ${os.quoted_path(src)}')
+		if res.exit_code == 0 || !res.output.contains('declared as private to module `holder`') {
+			accepted << '${generated}: ${res.output}'
+		}
+	}
+	return names.len, accepted
+}
+
 const holder_module = "module holder
 
 // Hidden has no `pub`, so only `holder` may name it.
@@ -114,4 +165,47 @@ fn main() {
 ")
 	assert !ok, 'a private struct of another module was accepted'
 	assert output.contains('declared as private to module `holder`'), output
+}
+
+// The exemption belongs to the literal, not to the declaration. Publishing the
+// synthesized declarations instead would let another module name one of them
+// outright - the generated names are deterministic, valid identifiers - and so reach
+// an anonymous type that only a private field exposes.
+fn test_naming_a_generated_anonymous_type_outright_is_rejected() {
+	private_anon_holder := "module holder
+
+// The anonymous type of `secret` is reachable only through a private field.
+struct Hidden {
+pub mut:
+	secret struct {
+	pub mut:
+		token string
+	}
+}
+
+pub struct Visible {
+pub mut:
+	cfg struct {
+	pub mut:
+		on bool
+	}
+}
+
+pub fn make() Visible {
+	return Visible{}
+}
+"
+	reader := "module main
+
+import holder
+
+fn main() {
+	v := holder.make()
+	println(v.cfg.on)
+}
+"
+	found, accepted := naming_generated_types_is_rejected(private_anon_holder, reader)
+	// Otherwise the case this test is about would not arise.
+	assert found > 0, 'no generated anonymous type names were found in the output'
+	assert accepted.len == 0, 'generated anonymous types were nameable from another module: ${accepted}'
 }
