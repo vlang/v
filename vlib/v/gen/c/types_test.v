@@ -26,6 +26,22 @@ fn test_type_references_thread_through_containers() {
 	}))
 }
 
+fn test_precompute_thread_type_usage_scans_interface_fields() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.interface_fields['ThreadHolder'] = [
+		types.StructField{
+			name: 'worker'
+			typ:  types.Type(types.Struct{ name: 'thread' })
+		},
+	]
+	mut g := FlatGen.new()
+	g.tc = &tc
+	g.set_target_libc_headers(true)
+	g.precompute_thread_type_usage()
+	assert g.needs_thread_type
+}
+
 fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 	$if !windows && !v3_no_parallel ? {
 		mut ast := flat.FlatAst.new()

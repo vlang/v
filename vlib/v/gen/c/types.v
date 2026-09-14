@@ -232,6 +232,11 @@ fn (mut g FlatGen) precompute_thread_type_usage() {
 			g.note_thread_type_usage(field.typ)
 		}
 	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			g.note_thread_type_usage(field.typ)
+		}
+	}
 	for _, typ in g.global_types {
 		g.note_thread_type_usage(typ)
 	}
