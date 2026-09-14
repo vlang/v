@@ -13,6 +13,7 @@ release_version=0.5.2
 fallback_revision=0613e1f6fc68573f5b679e406ce58a00d6ebeb30
 fallback_short_revision=0613e1f
 fallback_vc_revision=e658629fc4bd59826bd7637cde498d0c6236b14b
+fallback_vc_short_revision=e658629
 
 if [ "$#" -ne 2 ]; then
 	echo "usage: $0 <bootstrap-v> <v1-fallback-output>" >&2
@@ -24,7 +25,7 @@ fallback_output=$2
 system=$(uname -s 2>/dev/null || echo unknown)
 source_root=$(cd "$(dirname "$0")/../.." && pwd) || exit 1
 cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/v1-fallback}
-oldv_workdir=$cache_parent/sources/$fallback_short_revision
+oldv_workdir=$cache_parent/sources/${fallback_short_revision}_${fallback_vc_short_revision}
 
 fallback_dir=$(dirname "$fallback_output")
 mkdir -p "$fallback_dir" || exit 1
@@ -96,6 +97,7 @@ build_with_oldv() {
 	if local_vc_repo=$(local_git_repo "$source_root/vc" "$fallback_vc_revision"); then
 		set -- "$@" --vcrepo "$local_vc_repo"
 	fi
+	set -- "$@" --vccommit "$fallback_vc_revision"
 	set -- "$@" "$fallback_revision"
 	VFLAGS= OLDV_VFLAGS='-d v1_fallback' V1_FALLBACK_TARGET=$oldv_target \
 		V1_FALLBACK_ROOT_TARGET=$candidate_root_file \

@@ -31,6 +31,7 @@ mut:
 	vgcontext     vgit.VGitContext
 	commit_v      string = 'master' // the commit from which you want to produce a working v compiler (this may be a commit-ish too)
 	commit_v_hash string // this will be filled from the commit-ish commit_v using rev-list. It IS a commit hash.
+	commit_vc     string // the exact vc commit to use; empty selects one based on commit_v
 	path_v        string // the full path to the v folder inside workdir.
 	path_vc       string // the full path to the vc folder inside workdir.
 	cmd_to_run    string // the command that you want to run *in* the oldv repo
@@ -47,18 +48,19 @@ mut:
 
 fn (mut c Context) compile_oldv_if_needed() {
 	c.vgcontext = vgit.VGitContext{
-		workdir:        c.vgo.workdir
-		v_repo_url:     c.vgo.v_repo_url
-		vc_repo_url:    c.vgo.vc_repo_url
-		cc:             c.cc
-		cc_options:     c.cc_options
-		cc_ldflags:     c.cc_ldflags
-		vflags:         c.vflags
-		commit_v:       c.commit_v
-		path_v:         c.path_v
-		path_vc:        c.path_vc
-		make_fresh_tcc: c.fresh_tcc
-		show_vccommit:  c.show_vccommit
+		workdir:             c.vgo.workdir
+		v_repo_url:          c.vgo.v_repo_url
+		vc_repo_url:         c.vgo.vc_repo_url
+		cc:                  c.cc
+		cc_options:          c.cc_options
+		cc_ldflags:          c.cc_ldflags
+		vflags:              c.vflags
+		commit_v:            c.commit_v
+		requested_vc_commit: c.commit_vc
+		path_v:              c.path_v
+		path_vc:             c.path_vc
+		make_fresh_tcc:      c.fresh_tcc
+		show_vccommit:       c.show_vccommit
 	}
 	c.vgcontext.compile_oldv_if_needed()
 	c.commit_v_hash = c.vgcontext.commit_v__hash
@@ -150,6 +152,7 @@ fn main() {
 	context.fresh_tcc = fp.bool('fresh_tcc', 0, true, 'Do `make fresh_tcc` when preparing a V compiler.')
 	context.cmd_to_run = fp.string('command', `c`, '', 'Command to run in the old V repo.\n')
 	context.show_vccommit = fp.bool('show_VC_commit', 0, false, 'Show the VC commit, that can be used to compile the given V commit, and exit.\n')
+	context.commit_vc = fp.string('vccommit', 0, '', 'Use this exact vc commit instead of selecting one from the V commit.')
 	context.is_bisect = fp.bool('bisect', `b`, false, 'Bisect mode. Use the current commit in the repo where oldv is.')
 
 	should_sync := fp.bool('cache-sync', `s`, false, 'Update the local cache')
@@ -181,7 +184,12 @@ fn main() {
 	if !context.show_vccommit {
 		scripting.cprintln('#################  context.commit_v: ${context.commit_v} #####################')
 	}
-	context.path_v = vgit.normalized_workpath_for_commit(context.vgo.workdir, context.commit_v)
+	workpath_commit := if context.commit_vc == '' {
+		context.commit_v
+	} else {
+		'${context.commit_v}_vc_${context.commit_vc}'
+	}
+	context.path_v = vgit.normalized_workpath_for_commit(context.vgo.workdir, workpath_commit)
 	context.path_vc = vgit.normalized_workpath_for_commit(context.vgo.workdir, 'vc')
 	os.mkdir_all(context.vgo.workdir) or {
 		eprintln('Could not create work folder `${context.vgo.workdir}`: ${err}')

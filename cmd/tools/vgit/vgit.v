@@ -62,7 +62,13 @@ fn net_fail(error IError, what string) {
 	fatal_error(error, 'git failed at `${what}`')
 }
 
+// prepare_vc_source checks out the vc revision associated with commit and returns both hashes and
+// the V commit timestamp.
 pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string, u64) {
+	return prepare_vc_source_with_override(vcdir, cdir, commit, '')
+}
+
+fn prepare_vc_source_with_override(vcdir string, cdir string, commit string, requested_vc_commit string) (string, string, u64) {
 	scripting.chdir(cdir)
 	// Building a historic v with the latest vc is not always possible ...
 	// It is more likely, that the vc *at the time of the v commit*,
@@ -72,26 +78,31 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 	scripting.verbose_trace(@FN, 'v_timestamp: ${v_timestamp} | v_commithash: ${v_commithash}')
 	check_v_commit_timestamp_before_self_rebuilding(v_timestamp)
 	scripting.chdir(vcdir)
-	scripting.frun('git checkout --quiet master') or { co_fail(err, 'master') }
 
-	mut vccommit := ''
-	mut partial_hash := v_commithash[0..7]
-	if '5b7a1e8'.starts_with(partial_hash) {
-		// we need the following, otherwise --grep= below would find a93ef6e, which does include 5b7a1e8 in the commit message ... 🤦‍♂️
-		partial_hash = '5b7a1e84a4d283071d12cb86dc17aeda9b5306a8'
-	}
-	vcbefore_subject_match :=
-		scripting.run('git rev-list HEAD -n1 --timestamp --grep=${partial_hash} ')
-	scripting.verbose_trace(@FN, 'vcbefore_subject_match: ${vcbefore_subject_match}')
-	if vcbefore_subject_match.len > 3 {
-		_, vccommit = line_to_timestamp_and_commit(vcbefore_subject_match)
+	mut vccommit := requested_vc_commit
+	if vccommit == '' {
+		scripting.frun('git checkout --quiet master') or { co_fail(err, 'master') }
+		mut partial_hash := v_commithash[0..7]
+		if '5b7a1e8'.starts_with(partial_hash) {
+			// we need the following, otherwise --grep= below would find a93ef6e, which does include 5b7a1e8 in the commit message ... 🤦‍♂️
+			partial_hash = '5b7a1e84a4d283071d12cb86dc17aeda9b5306a8'
+		}
+		vcbefore_subject_match :=
+			scripting.run('git rev-list HEAD -n1 --timestamp --grep=${partial_hash} ')
+		scripting.verbose_trace(@FN, 'vcbefore_subject_match: ${vcbefore_subject_match}')
+		if vcbefore_subject_match.len > 3 {
+			_, vccommit = line_to_timestamp_and_commit(vcbefore_subject_match)
+		} else {
+			scripting.verbose_trace(@FN, 'the v commit did not match anything in the vc log; try --timestamp instead.')
+			vcbefore := scripting.run('git rev-list HEAD -n1 --timestamp --before=${v_timestamp} ')
+			_, vccommit = line_to_timestamp_and_commit(vcbefore)
+		}
 	} else {
-		scripting.verbose_trace(@FN, 'the v commit did not match anything in the vc log; try --timestamp instead.')
-		vcbefore := scripting.run('git rev-list HEAD -n1 --timestamp --before=${v_timestamp} ')
-		_, vccommit = line_to_timestamp_and_commit(vcbefore)
+		scripting.verbose_trace(@FN, 'using requested vc commit: ${vccommit}')
 	}
 	scripting.verbose_trace(@FN, 'vccommit: ${vccommit}')
 	scripting.frun('git checkout --quiet "${vccommit}" ') or { co_fail(err, vccommit) }
+	vccommit = get_current_folder_commit_hash()
 	scripting.run('wc *.c')
 	scripting.chdir(cdir)
 	return v_commithash, vccommit, v_timestamp
@@ -149,16 +160,17 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 
 pub struct VGitContext {
 pub:
-	cc          string = 'cc' // what C compiler to use for bootstrapping
-	cc_options  string // what additional C compiler options to use for bootstrapping
-	cc_ldflags  string // what additional linker options to use for bootstrapping
-	vflags      string // additional options to pass to the bootstrap V compiler
-	workdir     string = '/tmp'   // the base working folder
-	commit_v    string = 'master' // the commit-ish that needs to be prepared
-	path_v      string // where is the local working copy v repo
-	path_vc     string // where is the local working copy vc repo
-	v_repo_url  string // the remote v repo URL
-	vc_repo_url string // the remote vc repo URL
+	cc                  string = 'cc' // what C compiler to use for bootstrapping
+	cc_options          string // what additional C compiler options to use for bootstrapping
+	cc_ldflags          string // what additional linker options to use for bootstrapping
+	vflags              string // additional options to pass to the bootstrap V compiler
+	workdir             string = '/tmp'   // the base working folder
+	commit_v            string = 'master' // the commit-ish that needs to be prepared
+	path_v              string // where is the local working copy v repo
+	path_vc             string // where is the local working copy vc repo
+	v_repo_url          string // the remote v repo URL
+	vc_repo_url         string // the remote vc repo URL
+	requested_vc_commit string // the exact vc commit to use; empty selects one from commit_v
 pub mut:
 	// these will be filled by vgitcontext.compile_oldv_if_needed()
 	commit_v__hash string // the git commit of the v repo that should be prepared
@@ -193,7 +205,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 		vgit_context.commit_v__hash = get_current_folder_commit_hash()
 		return
 	}
-	v_commithash, vccommit_before, v_timestamp := prepare_vc_source(vgit_context.path_vc, vgit_context.path_v, 'HEAD')
+	v_commithash, vccommit_before, v_timestamp := prepare_vc_source_with_override(vgit_context.path_vc, vgit_context.path_v, 'HEAD', vgit_context.requested_vc_commit)
 	vgit_context.commit_v__hash = v_commithash
 	vgit_context.commit_v__ts = v_timestamp
 	vgit_context.commit_vc_hash = vccommit_before

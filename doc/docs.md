@@ -83,14 +83,14 @@ handled by the default compiler, and external tools are compiled with it first.
 The standard bootstrap does not build the sibling `v1_fallback` executable
 (`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
 sibling is missing, it reports that it is running `make v1`. That target reuses
-or downloads the complete 0.5.2 release under the user cache. If no release
-binary can run, `oldv` clones the 0.5.2 V sources and matching `vc` snapshot and
-builds the fallback there. You can run `make v1` explicitly to prepare it ahead
-of time. `-old-compiler` launches the fallback explicitly, and ordinary user
-builds and external tools retry through it after a compiler or C compilation
-failure. Explicit `-new-compiler` builds remain strict default-compiler
-operations. `-new-compiler` remains accepted for command-line compatibility and
-otherwise selects the same embedded driver.
+the final V1 snapshot from the 0.5.2 development line and its matching `vc`
+snapshot under the user cache, then builds or reuses the fallback there. You can
+run `make v1` explicitly to prepare it ahead of time. `-old-compiler` launches
+the fallback explicitly, and ordinary user builds and external tools retry
+through it after a compiler or C compilation failure. Explicit `-new-compiler`
+builds remain strict default-compiler operations. `-new-compiler` remains
+accepted for command-line compatibility and otherwise selects the same embedded
+driver.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
