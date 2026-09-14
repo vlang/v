@@ -17326,7 +17326,7 @@ pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
 }
 
 fn (tc &TypeChecker) ownership_clone_method_matches_type(info CallInfo, typ Type) bool {
-	return info.params_known && info.params.len == 1
+	return info.params_known && tc.min_required_arg_count(info) == 1
 		&& semantic_types_equal(unalias_type(info.return_type), unalias_type(typ))
 }
 

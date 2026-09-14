@@ -13352,6 +13352,30 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_implicit_clone_uses_zero_argument_variadic_clone_method() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'zero_argument_variadic_clone_method', 'struct Item {
+	name string
+}
+
+fn (item Item) clone(_ ...bool) Item {
+	return Item{
+		name: "custom:" + item.name
+	}
+}
+
+fn main() {
+	item := Item{
+		name: "ok"
+	}
+	mut items := []Item{}
+	items << item
+	println(items[0].name)
+}
+')
+	assert out == 'custom:ok'
+}
+
 fn test_generic_inference_prefers_local_over_same_named_function() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_local_function_name_collision', 'import math
