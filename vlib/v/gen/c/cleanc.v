@@ -419,12 +419,15 @@ mut:
 	c_function_macro_aliases       map[string]string
 	c_maybe_function_macro_aliases map[string][]string
 	c_active_macro_push_stacks     map[string][]CActiveMacroSnapshot
+	c_active_macro_once_paths      map[string]bool
 	has_unscanned_forced_c_include bool
 	files_with_unscanned_c_includes map[string]bool
 	c_fn_decl_source_files          map[string][]string
 	direct_c_macro_conditionals    []CCacheConditional
 	direct_c_include_macros        map[string][]string
 	direct_c_dynamic_macros        map[string]bool
+	c_compiler_predefined_macros   map[string]string
+	c_compiler_macro_env_complete  bool
 	compiler_default_include_dirs  []string
 	compiler_include_dirs_ready    bool
 	inlined_c_static_fns           map[string]bool
@@ -740,6 +743,13 @@ pub fn (mut g FlatGen) set_c99_mode(enabled bool) {
 // set_ccompiler records the selected C compiler for compiler-specific output constraints.
 pub fn (mut g FlatGen) set_ccompiler(name string) {
 	g.ccompiler = name
+}
+
+// set_c_compiler_predefined_macros supplies the selected compiler's macro
+// environment for replaying conditional directives in included headers.
+pub fn (mut g FlatGen) set_c_compiler_predefined_macros(macros map[string]string, complete bool) {
+	g.c_compiler_predefined_macros = macros
+	g.c_compiler_macro_env_complete = complete
 }
 
 // set_prod controls production-only code generation such as removing assertions.
@@ -1183,10 +1193,12 @@ pub fn FlatGen.new() FlatGen {
 		c_function_macro_aliases: map[string]string{}
 		c_maybe_function_macro_aliases: map[string][]string{}
 		c_active_macro_push_stacks: map[string][]CActiveMacroSnapshot{}
+		c_active_macro_once_paths: map[string]bool{}
 		files_with_unscanned_c_includes: map[string]bool{}
 		c_fn_decl_source_files: map[string][]string{}
 		direct_c_include_macros: map[string][]string{}
 		direct_c_dynamic_macros: map[string]bool{}
+		c_compiler_predefined_macros: map[string]string{}
 		inlined_c_static_fns: map[string]bool{}
 		cache_omitted_c_fns: map[string]bool{}
 		inlined_c_typedef_names: map[string]bool{}
@@ -2676,20 +2688,34 @@ fn c_flag_include_macro_definitions(flags []string, compiler_macros map[string]s
 	for i < flags.len {
 		clean := flags[i].trim_space()
 		mut definition := ''
+		mut is_undef := false
 		if clean == '-D' && i + 1 < flags.len {
 			i++
 			definition = flags[i].trim_space()
 		} else if clean.starts_with('-D') {
 			definition = clean[2..].trim_space()
+		} else if clean == '-U' && i + 1 < flags.len {
+			i++
+			definition = flags[i].trim_space()
+			is_undef = true
+		} else if clean.starts_with('-U') {
+			definition = clean[2..].trim_space()
+			is_undef = true
 		}
 		if definition.len > 0 {
 			name := definition.all_before('=').trim_space()
-			value := if definition.contains('=') {
-				definition.all_after('=').trim_space()
+			if is_undef {
+				include_macros.delete(name)
+				dynamic_include_macros.delete(name)
 			} else {
-				''
+				value := if definition.contains('=') {
+					definition.all_after('=').trim_space()
+				} else {
+					''
+				}
+				c_record_include_macro_value(name, value, mut include_macros,
+					mut dynamic_include_macros)
 			}
-			c_record_include_macro_value(name, value, mut include_macros, mut dynamic_include_macros)
 		}
 		i++
 	}
@@ -3140,6 +3166,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_function_macro_aliases.clear()
 	g.c_maybe_function_macro_aliases.clear()
 	g.c_active_macro_push_stacks.clear()
+	g.c_active_macro_once_paths.clear()
 	g.has_unscanned_forced_c_include = false
 	g.files_with_unscanned_c_includes.clear()
 	g.c_fn_decl_source_files.clear()
@@ -4289,11 +4316,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		g.collect_c_flags_from_directives()
 	}
 	g.c_flags << g.initial_c_flags
-	direct_include_macros, direct_dynamic_macros := c_flag_include_macro_definitions(g.c_flags,
-		map[string]string{})
-	g.direct_c_macro_conditionals.clear()
-	g.direct_c_include_macros = direct_include_macros
-	g.direct_c_dynamic_macros = direct_dynamic_macros
+	g.initialize_c_active_macro_environment()
 	if g.incremental_fn_names.len == 0 {
 		g.collect_forced_include_active_macros()
 	}
@@ -5024,6 +5047,14 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	return g.collect_c_directive_at(-1, module_name, node, source_file, before_import, true)
 }
 
+fn (mut g FlatGen) initialize_c_active_macro_environment() {
+	include_macros, dynamic_macros := c_flag_include_macro_definitions(g.c_flags,
+		g.c_compiler_predefined_macros)
+	g.direct_c_macro_conditionals.clear()
+	g.direct_c_include_macros = include_macros
+	g.direct_c_dynamic_macros = dynamic_macros
+}
+
 // collect_forced_include_active_macros replays the headers passed through
 // `-include` and `-imacros`, which the C compiler processes before source input.
 fn (mut g FlatGen) collect_forced_include_active_macros() {
@@ -5401,11 +5432,12 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		directive := c_preprocessor_directive_line(node.value, node.typ)
 		mutation_is_active, mutation_is_ambiguous := c_active_macro_directive_state(directive,
 			mut g.direct_c_macro_conditionals, mut g.direct_c_include_macros,
-			mut g.direct_c_dynamic_macros)
+			mut g.direct_c_dynamic_macros, g.c_compiler_macro_env_complete)
 		if node.value in ['define', 'undef'] && mutation_is_active {
 			g.record_c_active_macro_directive(directive, mutation_is_ambiguous)
 			c_record_include_macro_definition(directive, mutation_is_ambiguous,
-				mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros, false)
+				mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros,
+				g.c_compiler_macro_env_complete)
 		}
 		if node.value == 'pragma' && mutation_is_active
 			&& g.record_c_active_macro_pragma(directive) {
@@ -8310,13 +8342,13 @@ fn (mut g FlatGen) refresh_c_active_macro_aliases() {
 // and reports whether a non-conditional directive can be active. Unknown
 // conditions are ambiguous, so definitions are retained while destructive
 // mutations do not erase a macro that may still be active.
-fn c_active_macro_directive_state(directive string, mut conditionals []CCacheConditional, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) (bool, bool) {
+fn c_active_macro_directive_state(directive string, mut conditionals []CCacheConditional, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, compiler_macro_environment_complete bool) (bool, bool) {
 	directive_name := c_directive_name(directive)
 	if directive_name in ['if', 'ifdef', 'ifndef'] {
 		parent_inactive := conditionals.any(it.inactive)
 		parent_ambiguous := conditionals.any(it.ambiguous)
 		condition := c_cache_known_condition(directive, include_macros, dynamic_include_macros,
-			false)
+			compiler_macro_environment_complete)
 		conditionals << CCacheConditional{
 			parent_inactive: parent_inactive
 			condition:       condition
@@ -8334,7 +8366,7 @@ fn c_active_macro_directive_state(directive string, mut conditionals []CCacheCon
 			conditional.inactive = true
 		} else {
 			next_condition := c_cache_known_condition(directive, include_macros,
-				dynamic_include_macros, false)
+				dynamic_include_macros, compiler_macro_environment_complete)
 			conditional.condition = next_condition
 			conditional.ambiguous = conditional.ambiguous || next_condition == 0
 			conditional.inactive = conditional.parent_inactive || next_condition < 0
@@ -8378,7 +8410,7 @@ fn (mut g FlatGen) collect_included_c_active_macros(include_arg string, source_f
 
 fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, include_dirs []string, mut active_paths map[string]bool, source_file string, mark_unscanned_nested_includes bool, ambient_ambiguous bool) {
 	real_path := os.real_path(path)
-	if real_path in active_paths {
+	if real_path in active_paths || real_path in g.c_active_macro_once_paths {
 		return
 	}
 	text := os.read_file(real_path) or { return }
@@ -8396,7 +8428,8 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 		in_block_comment = next_in_block_comment
 		directive_name := c_directive_name(clean)
 		directive_is_active, directive_is_ambiguous := c_active_macro_directive_state(clean,
-			mut conditionals, mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros)
+			mut conditionals, mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros,
+			g.c_compiler_macro_env_complete)
 		if !directive_is_active {
 			continue
 		}
@@ -8404,11 +8437,29 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 		if directive_name in ['define', 'undef'] {
 			g.record_c_active_macro_directive_deferred(clean, mutation_is_ambiguous)
 			c_record_include_macro_definition(clean, mutation_is_ambiguous,
-				mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros, false)
+				mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros,
+				g.c_compiler_macro_env_complete)
 			continue
 		}
 		if directive_name == 'pragma' {
-			g.record_c_active_macro_pragma(clean)
+			if c_directive_arg(clean).trim_space() == 'once' {
+				if !mutation_is_ambiguous {
+					g.c_active_macro_once_paths[real_path] = true
+				}
+			} else {
+				g.record_c_active_macro_pragma(clean)
+			}
+			continue
+		}
+		if directive_name == 'include_next' {
+			// Resolving include_next requires the exact directory entry used for the
+			// current file, not just its path. Keep typed pointer operands when that
+			// hidden continuation may provide a function-like macro.
+			if source_file.len > 0 {
+				g.files_with_unscanned_c_includes[source_file] = true
+			} else {
+				g.has_unscanned_forced_c_include = true
+			}
 			continue
 		}
 		if directive_name !in ['include', 'import'] {

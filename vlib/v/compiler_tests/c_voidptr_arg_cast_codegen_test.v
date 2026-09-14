@@ -56,6 +56,9 @@ static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
 	os.write_file(os.join_path(root, 'strict_nested_wrapper.h'), '#define V3_STRICT_NESTED_HEADER "strict_nested_api.h"\n#include V3_STRICT_NESTED_HEADER\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_state_a.h'), '#define V3_STRICT_ORDERED_LOAD 1\n#define strict_ordered_load_u64(p) (*(p))\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_state_b.h'), '#ifdef V3_STRICT_ORDERED_LOAD\n#undef strict_ordered_load_u64\n#endif\n#include <stdint.h>\nstatic inline uint64_t strict_ordered_load_u64(uint64_t* x) { return *x; }\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_once_macro.h'), '#pragma once\n#define strict_once_load(p) ((p)->count)\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_once_function.h'), '#include <stdint.h>\nstatic inline uint32_t strict_once_load(uint64_t* p) { (void)p; return 9; }\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_compiler_selected.h'), '#include <stdint.h>\n#ifndef __GNUC__\n#define strict_compiler_selected(p) ((p)->count)\n#else\nstatic inline uint32_t strict_compiler_selected(uint64_t* p) { (void)p; return 9; }\n#endif\n') or { panic(err) }
 	path := os.join_path(root, 'main.c.v')
 	os.write_file(path, source) or { panic(err) }
 	return path
@@ -75,6 +78,11 @@ fn test_c_voidptr_param_pointer_arg_goes_through_voidptr() {
 #include "@DIR/strict_nested_wrapper.h"
 #include "@DIR/strict_state_a.h"
 #include "@DIR/strict_state_b.h"
+#include "@DIR/strict_once_macro.h"
+#undef strict_once_load
+#include "@DIR/strict_once_function.h"
+#include "@DIR/strict_once_macro.h"
+#include "@DIR/strict_compiler_selected.h"
 #define strict_get_direct_count(p) ((p)->count)
 #if 0
 #define strict_load_u64(p) (*(p))
@@ -96,6 +104,8 @@ fn C.strict_get_direct_count(voidptr) u32
 fn C.strict_get_preincluded_count(voidptr) u32
 fn C.strict_get_reordered_count(voidptr) u32
 fn C.strict_get_nested_count(voidptr) u32
+fn C.strict_once_load(voidptr) u32
+fn C.strict_compiler_selected(voidptr) u32
 
 struct Table {
 mut:
@@ -132,6 +142,8 @@ fn main() {
 	preincluded_macro_count := C.strict_get_preincluded_count(&item)
 	reordered_macro_count := C.strict_get_reordered_count(&item)
 	nested_macro_count := C.strict_get_nested_count(&item)
+	once_count := C.strict_once_load(&item)
+	compiler_selected_count := C.strict_compiler_selected(&item)
 	println(int(loaded.count).str())
 	println(int(ordered_loaded.count).str())
 	println((same == u64(voidptr(table))).str())
@@ -146,6 +158,8 @@ fn main() {
 	println(preincluded_macro_count.str())
 	println(reordered_macro_count.str())
 	println(nested_macro_count.str())
+	println(once_count.str())
+	println(compiler_selected_count.str())
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_out_${os.getpid()}')
@@ -154,7 +168,7 @@ fn main() {
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', '7', 'true',
-		'1', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9']
+		'1', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9', '9']
 	generated := os.read_file(out + '.c') or { panic(err) }
 	// The macro is a no-op in C++, where `void*` does not convert back to a
 	// concrete pointer and the argument has to stay as written.
@@ -196,6 +210,12 @@ fn main() {
 	// Literal-valued include macros are resolved so nested macro definitions are visible.
 	assert generated.contains('strict_get_nested_count(&item)'), generated
 	assert !generated.contains('strict_get_nested_count(v_c_voidptr_arg('), generated
+	// A pragma-once header is not replayed after its macro is undefined.
+	assert generated.contains('strict_once_load(v_c_voidptr_arg(&item))'), generated
+	// The selected compiler's predefined macros choose the same header branch as CGen.
+	$if !windows {
+		assert generated.contains('strict_compiler_selected(v_c_voidptr_arg(&item))'), generated
+	}
 	// ... while an argument that is already `voidptr` is passed unchanged.
 	assert !generated.contains('strict_load_any(v_c_voidptr_arg('), generated
 

@@ -162,6 +162,16 @@ fn test_forced_include_flags_scan_macro_state() {
 	assert unresolved.c_symbol_may_be_from_unscanned_header('C.unknown_api', 'unknown_api')
 }
 
+fn test_c_flag_macros_override_compiler_predefined_environment() {
+	include_macros, dynamic_macros := c_flag_include_macro_definitions(['-U__GNUC__',
+		'-DPROJECT_FEATURE=1'], {
+		'__GNUC__': '14'
+	})
+	assert '__GNUC__' !in include_macros
+	assert '__GNUC__' !in dynamic_macros
+	assert dynamic_macros['PROJECT_FEATURE']
+}
+
 fn test_consecutive_includes_share_macro_state() {
 	root := os.join_path(os.vtmp_dir(), 'v3_ordered_include_macro_state_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -186,6 +196,61 @@ fn test_consecutive_includes_share_macro_state() {
 	}
 
 	assert 'ordered_api' !in g.inlined_c_active_macros
+}
+
+fn test_pragma_once_header_is_not_replayed_after_undef() {
+	root := os.join_path(os.vtmp_dir(), 'v3_pragma_once_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'once.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(header, '#pragma once\n#define once_api(p) ((p)->value)\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'undef'
+		typ:   'once_api'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+
+	assert 'once_api' !in g.inlined_c_active_macros
+}
+
+fn test_include_next_activates_unscanned_header_fallback() {
+	root := os.join_path(os.vtmp_dir(), 'v3_include_next_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	wrapper := os.join_path(root, 'wrapper.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(wrapper, '#include_next <wrapped_api.h>\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${wrapper}"'
+	}, source, false)
+	assert source in g.files_with_unscanned_c_includes
+
+	mut forced := FlatGen.new()
+	forced.collect_included_c_active_macros('"${wrapper}"', '', []string{})
+	assert forced.has_unscanned_forced_c_include
 }
 
 fn test_preincludes_are_scanned_before_ordinary_includes() {
@@ -347,8 +412,43 @@ fn test_compiler_default_include_paths_are_scanned() {
 		}, source, false)
 
 		assert 'atomic_load' in g.inlined_c_active_macros
-		assert source !in g.files_with_unscanned_c_includes
+		// Darwin's wrapper reaches the implementation through `#include_next`;
+		// preserving the fallback is conservative when that continuation is opaque.
+		assert source in g.files_with_unscanned_c_includes
 	}
+}
+
+fn test_active_macro_scan_uses_complete_compiler_macro_environment() {
+	root := os.join_path(os.vtmp_dir(), 'v3_compiler_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'compiler_selected.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(header, '#ifndef __GNUC__\n#define compiler_selected_api(p) ((p)->value)\n#endif\n')!
+
+	mut gcc := FlatGen.new()
+	gcc.set_c_compiler_predefined_macros({
+		'__GNUC__': '14'
+	}, true)
+	gcc.initialize_c_active_macro_environment()
+	gcc.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'compiler_selected_api' !in gcc.inlined_c_active_macros
+
+	mut unknown := FlatGen.new()
+	unknown.initialize_c_active_macro_environment()
+	unknown.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'compiler_selected_api' in unknown.inlined_c_active_macros
 }
 
 fn test_unresolved_header_fallback_is_scoped_to_its_c_declarations() {
