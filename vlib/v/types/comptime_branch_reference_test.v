@@ -485,16 +485,16 @@ fn test_one_branch_scan_answers_every_name() {
 	// The tokens of a branch are shared by the names checked against it, so
 	// the tokenized form has to answer exactly what the text one does.
 	code := scanned_code('cfg.x = 1\nprintln(y)\nfn (_ Config) {}(z: 1)')
-	tokens, lines := code_tokens(code)
+	tokens, lines, indents := code_tokens(code)
 	for name in ['x', 'y', 'z'] {
 		for writes in [true, false] {
-			from_tokens := tokens_reference_ident(tokens, lines, name, writes)
+			from_tokens := tokens_reference_ident(tokens, lines, indents, name, writes)
 			assert from_tokens == code_references_ident(code, name, writes)
 		}
 	}
-	assert tokens_reference_ident(tokens, lines, 'y', true)
-	assert !tokens_reference_ident(tokens, lines, 'z', true)
-	assert !tokens_reference_ident(tokens, lines, '', true)
+	assert tokens_reference_ident(tokens, lines, indents, 'y', true)
+	assert !tokens_reference_ident(tokens, lines, indents, 'z', true)
+	assert !tokens_reference_ident(tokens, lines, indents, '', true)
 }
 
 fn test_a_lambda_body_continues_over_a_consumed_newline() {
@@ -519,4 +519,24 @@ fn test_a_short_struct_argument_of_a_keyword_selector_callee() {
 	// The arguments of such a call still read, and so do its indices.
 	assert code_references_ident('_ = cfg.type(x, y: 1)', 'x', true)
 	assert code_references_ident('_ = cfg.type[x](y: 1)', 'x', true)
+}
+
+fn test_a_newline_call_continues_only_where_the_parser_joins_it() {
+	// `expr_can_continue_with_newline_call` wants a name or a selector before
+	// the `(`, and the call indented deeper than the line that name starts on.
+	assert !code_references_ident('cb := |x| foo\n\t(x)', 'x', true)
+	assert !code_references_ident('cb := |x| a.b\n\t(x)', 'x', true)
+	assert !code_references_ident('cb := |x| cfg.type\n\t(x)', 'x', true)
+	// Written at the same depth it is a statement of its own, whose name reads
+	// whatever encloses the lambda.
+	assert code_references_ident('cb := |x| 1\n(x).str()', 'x', true)
+	assert code_references_ident('cb := |x| foo\n(x).str()', 'x', true)
+	// Indented deeper, but what precedes is neither a name nor a selector.
+	assert code_references_ident('cb := |x| 1\n\t(x)', 'x', true)
+	assert code_references_ident('cb := |x| (1)\n\t(x)', 'x', true)
+	assert code_references_ident('cb := |x| foo()\n\t(x)', 'x', true)
+	// The depth is the one of the line the chain starts on, not of its last
+	// member.
+	assert !code_references_ident('cb := |x| a\n\t.b\n\t\t(x)', 'x', true)
+	assert code_references_ident('cb := |x| a\n\t.b\n(x)', 'x', true)
 }

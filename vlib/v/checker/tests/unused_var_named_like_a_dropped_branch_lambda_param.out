@@ -40,10 +40,17 @@ vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:116:
       |     ^
   117 |     $if windows {
   118 |         cb := |f| if truthy()
-vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:136:2: warning: unused variable: `q`
-  134 |     on_the_next_line()
-  135 |     after_a_semicolon()
-  136 |     q := 1
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:132:2: warning: unused variable: `g`
+  130 | // the lambda and its `g` is the parameter.
+  131 | fn a_deeper_newline_call() {
+  132 |     g := 1
       |     ^
-  137 |     $if windows {
-  138 |         cb := |q| q + 1
+  133 |     $if windows {
+  134 |         cb := |g| twice
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:166:2: warning: unused variable: `q`
+  164 |     on_the_next_line()
+  165 |     after_a_semicolon()
+  166 |     q := 1
+      |     ^
+  167 |     $if windows {
+  168 |         cb := |q| q + 1

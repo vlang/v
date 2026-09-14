@@ -2532,6 +2532,7 @@ mut:
 	branches []ComptimeBranchRange
 	tokens   [][]string
 	lines    [][]int
+	indents  [][]int
 	// A branch is only walked for AST nodes when a name is actually spelled in
 	// it, so whether it was dropped is answered on demand and kept.
 	dropped       []bool
@@ -2553,9 +2554,10 @@ fn (tc &TypeChecker) ensure_fn_comptime_branches(node flat.Node, mut scan FnComp
 	scan.branches = declaration_comptime_branch_ranges(source, node.pos.offset)
 	for branch in scan.branches {
 		code := code_text_in_range(source, branch.start, branch.end)
-		tokens, lines := code_tokens(code)
+		tokens, lines, indents := code_tokens(code)
 		scan.tokens << tokens
 		scan.lines << lines
+		scan.indents << indents
 	}
 	scan.dropped = []bool{len: scan.branches.len}
 	scan.dropped_known = []bool{len: scan.branches.len}
@@ -2577,7 +2579,10 @@ fn (tc &TypeChecker) fn_comptime_branch_may_use_ident(node flat.Node, name strin
 			// each branch, and a sibling cannot read the other's.
 			continue
 		}
-		if !tokens_reference_ident(scan.tokens[index], scan.lines[index], name, writes_are_uses) {
+		tokens := scan.tokens[index]
+		lines := scan.lines[index]
+		indents := scan.indents[index]
+		if !tokens_reference_ident(tokens, lines, indents, name, writes_are_uses) {
 			continue
 		}
 		if !scan.dropped_known[index] {
@@ -2846,17 +2851,17 @@ fn skip_non_code_at(source string, i int) (int, string) {
 // declaration of a new binding does not reference the searched name, even
 // though it spells it.
 fn code_references_ident(code string, name string, writes_are_uses bool) bool {
-	tokens, lines := code_tokens(code)
-	return tokens_reference_ident(tokens, lines, name, writes_are_uses)
+	tokens, lines, indents := code_tokens(code)
+	return tokens_reference_ident(tokens, lines, indents, name, writes_are_uses)
 }
 
 // tokens_reference_ident answers the same question for an already tokenized
 // branch, so that the tokens of a function can be reused across its names.
-fn tokens_reference_ident(tokens []string, lines []int, name string, writes_are_uses bool) bool {
+fn tokens_reference_ident(tokens []string, lines []int, indents []int, name string, writes_are_uses bool) bool {
 	if name.len == 0 {
 		return false
 	}
-	shadowed := pipe_lambda_shadow_ranges(tokens, lines, name)
+	shadowed := pipe_lambda_shadow_ranges(tokens, lines, indents, name)
 	conditions := comptime_condition_token_ranges(tokens)
 	assembly := asm_template_token_ranges(tokens)
 	for i, word in tokens {
@@ -3174,21 +3179,31 @@ fn binding_list_start(tokens []string, index int) int {
 // reduced to one token, so that the `.` of `1.5` cannot be read as a selector.
 // The second result is the line each token sits on, which bounds the one
 // expression that makes up the body of a `|x| x + 1` lambda.
-fn code_tokens(code string) ([]string, []int) {
+fn code_tokens(code string) ([]string, []int, []int) {
 	mut tokens := []string{}
 	mut lines := []int{}
+	mut indents := []int{}
 	mut line := 0
+	mut indent := 0
+	mut at_line_start := true
 	mut i := 0
 	for i < code.len {
 		c := code[i]
 		if c == ` ` || c == `\t` || c == `\n` || c == `\r` {
 			if c == `\n` {
 				line++
+				indent = 0
+				at_line_start = true
+			} else if at_line_start && c != `\r` {
+				// The parser counts a space and a tab as one column each.
+				indent++
 			}
 			i++
 			continue
 		}
+		at_line_start = false
 		lines << line
+		indents << indent
 		if c.is_digit() {
 			mut end := i
 			for end < code.len && (is_import_ident_byte(code[end]) || code[end] == `.`) {
@@ -3244,7 +3259,7 @@ fn code_tokens(code string) ([]string, []int) {
 		tokens << code[i..i + 1]
 		i++
 	}
-	return tokens, lines
+	return tokens, lines, indents
 }
 
 struct TokenRange {
@@ -3373,7 +3388,7 @@ fn comptime_condition_token_ranges(tokens []string) []TokenRange {
 // that binds `name`. Its body ends with the line, or with the `,` or the bracket
 // that encloses the lambda, unless it is a `{ .. }` block or a parenthesised
 // group, which lambda_body_expr also accepts and which may span lines.
-fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenRange {
+fn pipe_lambda_shadow_ranges(tokens []string, lines []int, indents []int, name string) []TokenRange {
 	mut ranges := []TokenRange{}
 	for i, word in tokens {
 		if word != '|' || !pipe_lambda_starts_at(tokens, i) {
@@ -3404,7 +3419,7 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 				// `cb := |x| 1 +` continues on the next line, the way the
 				// scanner inserts no semicolon after an operator, and so does
 				// the `.method()` of a chain.
-				if !token_continues_the_previous_line(tokens, end)
+				if !token_continues_the_previous_line(tokens, indents, end)
 					&& (end == 0 || token_may_end_an_expression(tokens, end - 1)) {
 					break
 				}
@@ -3438,12 +3453,50 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 // that follows them, with the literals and the selectors as the exceptions.
 // token_continues_the_previous_line reports whether the parser consumes the
 // newline standing before the token at `index` instead of ending a statement on
-// it. It skips the auto-semicolon before the `.` or the `(` of a chained call
-// (parser.v, `p.tok == .semicolon && p.peek() == .dot`), before the `{` of a
-// block written on its own line, and between a `}` and the `else` that
+// it. It skips the auto-semicolon before the `.` of a chained call, before the
+// `{` of a block written on its own line, and between a `}` and the `else` that
 // continues the control-flow expression it closes.
-fn token_continues_the_previous_line(tokens []string, index int) bool {
-	return tokens[index] in ['.', '(', '{', 'else']
+fn token_continues_the_previous_line(tokens []string, indents []int, index int) bool {
+	word := tokens[index]
+	if word in ['.', '{', 'else'] {
+		return true
+	}
+	if word != '(' || index == 0 {
+		return false
+	}
+	// A `(` is different: `expr_can_continue_with_newline_call` only joins it
+	// when what precedes it is an identifier or a selector *and* the call is
+	// indented deeper than the line that expression starts on. Written at the
+	// same depth, `(x).str()` is a statement of its own, and the `x` in it
+	// reads whatever the enclosing scope binds.
+	if !token_ends_an_ident_or_selector(tokens, index - 1) {
+		return false
+	}
+	return indents[index] > indents[ident_chain_start(tokens, index - 1)]
+}
+
+// token_ends_an_ident_or_selector reports whether the token at `index` is the
+// last one of a bare name or of a `a.b.c` chain, the two expression kinds the
+// parser lets a newline call continue. A keyword only ever spells the selected
+// member of one, never the name itself.
+fn token_ends_an_ident_or_selector(tokens []string, index int) bool {
+	if !is_ident_token(tokens[index]) {
+		return false
+	}
+	if index > 0 && tokens[index - 1] == '.' {
+		return true
+	}
+	return is_type_name_token(tokens[index])
+}
+
+// ident_chain_start returns the index of the name such a chain begins with,
+// which is where the parser reads the indentation of the expression from.
+fn ident_chain_start(tokens []string, index int) int {
+	mut start := index
+	for start >= 2 && tokens[start - 1] == '.' && is_ident_token(tokens[start - 2]) {
+		start -= 2
+	}
+	return start
 }
 
 fn token_may_end_an_expression(tokens []string, index int) bool {

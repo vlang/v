@@ -121,7 +121,37 @@ fn newline_before_a_block() {
 	}
 }
 
+fn twice(n int) int {
+	return n * 2
+}
+
+// The parser joins a `(` on the next line only when a name or a selector
+// stands before it and the call is indented deeper, so this group belongs to
+// the lambda and its `g` is the parameter.
+fn a_deeper_newline_call() {
+	g := 1
+	$if windows {
+		cb := |g| twice
+			(g)
+		_ = cb
+	}
+}
+
+// Written at the same depth it is a statement of its own, and the name in it
+// reads what encloses the lambda: `h` is used here.
+fn a_group_at_the_same_depth() {
+	h := 1
+	$if windows {
+		cb := |h| h + 1
+		(h).str()
+		_ = cb
+	}
+}
+
 fn main() {
+	println(twice(1))
+	a_group_at_the_same_depth()
+	a_deeper_newline_call()
 	assert truthy()
 	newline_before_a_block()
 	newline_before_else()
