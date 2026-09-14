@@ -5253,6 +5253,9 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
 		'error', 'warning'] {
 		directive := c_preprocessor_directive_line(node.value, node.typ)
+		if node.value in ['define', 'undef'] {
+			g.record_c_active_macro_directive(directive, false)
+		}
 		g.add_native_source_context_directive(module_name, directive, before_import)
 		g.add_c_directive(module_name, directive, before_import)
 		return true
@@ -7965,6 +7968,29 @@ fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
 	}
 }
 
+fn (mut g FlatGen) record_c_active_macro_directive(directive string, ambiguous bool) {
+	directive_name := c_directive_name(directive)
+	if directive_name !in ['define', 'undef'] {
+		return
+	}
+	macro_arg := c_directive_arg(directive)
+	mut name_end := 0
+	for name_end < macro_arg.len && c_ident_char(macro_arg[name_end]) {
+		name_end++
+	}
+	if name_end == 0 {
+		return
+	}
+	macro_name := macro_arg[..name_end]
+	is_function_like := directive_name == 'define' && name_end < macro_arg.len
+		&& macro_arg[name_end] == `(`
+	if is_function_like {
+		g.inlined_c_active_macros[macro_name] = true
+	} else if !ambiguous {
+		g.inlined_c_active_macros.delete(macro_name)
+	}
+}
+
 // collect_included_c_active_macros records function-like macros supplied by an
 // ordinary readable header. Unlike native source includes, headers stay as
 // preprocessor directives, so their macro definitions have to be inspected
@@ -8038,25 +8064,7 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 		}
 		mutation_is_ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
 		if directive_name in ['define', 'undef'] {
-			macro_arg := c_directive_arg(clean)
-			mut name_end := 0
-			for name_end < macro_arg.len && c_ident_char(macro_arg[name_end]) {
-				name_end++
-			}
-			if name_end > 0 {
-				macro_name := macro_arg[..name_end]
-				is_function_like := directive_name == 'define' && name_end < macro_arg.len
-					&& macro_arg[name_end] == `(`
-				if !mutation_is_ambiguous {
-					if is_function_like {
-						g.inlined_c_active_macros[macro_name] = true
-					} else {
-						g.inlined_c_active_macros.delete(macro_name)
-					}
-				} else if is_function_like {
-					g.inlined_c_active_macros[macro_name] = true
-				}
-			}
+			g.record_c_active_macro_directive(clean, mutation_is_ambiguous)
 			c_record_include_macro_definition(clean, mutation_is_ambiguous, mut include_macros, mut dynamic_include_macros, false)
 			continue
 		}
