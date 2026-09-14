@@ -14250,7 +14250,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		}
 		.struct_init {
 			ct := g.struct_init_c_type_name(node.value)
-			sum_name := g.resolve_source_sum_name(node.value, g.node_source_file(&node))
+			sum_name := g.lowered_struct_init_sum_name(node)
 			is_sum_literal := sum_name in g.tc.sum_types
 			mut parts := []string{}
 			for i in 0 .. node.children_count {
