@@ -1258,14 +1258,43 @@ fn (t &Transformer) comptime_method_call_arity_matches(node flat.Node, method Me
 	actual_count := int(node.children_count) - 1
 	hidden_ctx_count := if t.method_has_implicit_veb_ctx(method) { 1 } else { 0 }
 	expected_count := method.params.len + hidden_ctx_count
-	if method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...') {
-		return actual_count >= expected_count - 1
+	min_count := t.comptime_method_min_required_arg_count(method) + hidden_ctx_count
+	if actual_count < min_count {
+		return false
 	}
 	// A veb route handler may omit its `ctx` parameter, in which case it is not in
 	// the reflected parameter list but still exists in the signature. Reflected
 	// `app.$method(mut ctx)` calls pass that context explicitly, so one extra
 	// argument is the correct arity for such a method.
-	return actual_count == expected_count
+	return (method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...'))
+		|| actual_count <= expected_count
+}
+
+fn (t &Transformer) comptime_method_min_required_arg_count(method MethodMeta) int {
+	if method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...') {
+		return method.params.len - 1
+	}
+	mut count := method.params.len
+	for count > 0 {
+		param := method.params[count - 1]
+		if t.is_optional_type_name(param.typ) {
+			count--
+			continue
+		}
+		if _ := t.params_struct_type_name(param.typ) {
+			count--
+			continue
+		}
+		qualified := t.qualify_generic_arg_for_decl_module(param.typ, param.module_name)
+		if qualified != param.typ {
+			if _ := t.params_struct_type_name(qualified) {
+				count--
+				continue
+			}
+		}
+		break
+	}
+	return count
 }
 
 // method_has_implicit_veb_ctx reports whether `method` is a veb route handler that

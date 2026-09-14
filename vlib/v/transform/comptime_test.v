@@ -1,6 +1,7 @@
 module transform
 
 import v.flat
+import v.types
 
 fn test_comptime_field_function_type_keeps_declaring_module() {
 	mut a := flat.FlatAst.new()
@@ -38,6 +39,52 @@ fn test_comptime_for_base_type_unwraps_storage_indirections() {
 fn test_comptime_method_receiver_name_normalizes_main_qualification() {
 	assert comptime_method_receiver_name('main.App', 'veb') == 'App'
 	assert comptime_method_receiver_matches('App', 'main.App', 'main.App', 'main', 'veb')
+}
+
+fn test_comptime_method_call_arity_allows_omitted_optional_params() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'call'
+	})
+	ctx := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'ctx'
+		typ:   '&Context'
+	})
+	children_start := a.children.len
+	a.children << callee
+	a.children << ctx
+	call := flat.Node{
+		kind:           .call
+		children_start: i32(children_start)
+		children_count: 2
+	}
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_implicit_veb_ctx['App.show'] = true
+	tc.params_structs['RouteParams'] = true
+	t := new_transformer(mut a, &tc, map[string]bool{})
+	base_method := MethodMeta{
+		name:        'show'
+		receiver:    'App'
+		module_name: 'main'
+	}
+	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+		...base_method
+		params: [ParamMeta{ typ: '?string' }]
+	})
+	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+		...base_method
+		params: [ParamMeta{ typ: 'RouteParams' }]
+	})
+	assert t.comptime_method_call_arity_matches(call, MethodMeta{
+		...base_method
+		params: [ParamMeta{ typ: '...bool' }]
+	})
+	assert !t.comptime_method_call_arity_matches(call, MethodMeta{
+		...base_method
+		params: [ParamMeta{ typ: 'string' }]
+	})
 }
 
 fn test_comptime_sum_variants_normalize_main_specialization_lock() {
