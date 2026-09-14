@@ -17871,8 +17871,8 @@ const c_target_libc_additional_declared_fns = {
 	'timespec_get':          true
 }
 
-// c_target_libc_posix_declared_fns contains declarations owned by <fcntl.h>,
-// <signal.h>, <sys/stat.h>, and <unistd.h> in target-header mode.
+// c_target_libc_posix_declared_fns contains declarations owned by <dirent.h>,
+// <fcntl.h>, <signal.h>, <sys/stat.h>, and <unistd.h> in target-header mode.
 const c_target_libc_posix_declared_fns = {
 	'_exit':        true
 	'access':       true
@@ -17906,6 +17906,7 @@ const c_target_libc_posix_declared_fns = {
 	'lstat':        true
 	'mkdir':        true
 	'open':         true
+	'opendir':      true
 	'pipe':         true
 	'pread':        true
 	'raise':        true
