@@ -58,3 +58,69 @@ fn main() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2]'], res.output
 }
+
+// Wherever such a local is introduced, the name it is declared under has to be the
+// name the body will go on using. An if guard, an if guard over several values, a
+// multi-return declaration and a smartcast each introduce one, and each of them once
+// wrote the declaration through the plain name while the body read the renamed one.
+fn test_every_way_of_introducing_such_a_local_agrees_on_its_name() {
+	v3_bin := local_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_bindings_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := local_shadow_build_and_run(v3_bin, root, 'struct Box {
+	n int
+}
+
+type Shape = Box | int
+
+fn maybe() ?Box {
+	return Box{ n: 5 }
+}
+
+fn maybe_pair() ?(int, int) {
+	return 3, 4
+}
+
+fn pair() (int, int) {
+	return 1, 2
+}
+
+fn from_guard() int {
+	if array := maybe() {
+		return array.n
+	}
+	return -1
+}
+
+fn from_guard_pair() int {
+	if array, other := maybe_pair() {
+		return array + other
+	}
+	return -1
+}
+
+fn from_multi_return() int {
+	array, other := pair()
+	return array + other
+}
+
+fn from_smartcast(array Shape) int {
+	if array is Box {
+		return array.n
+	}
+	return -1
+}
+
+fn main() {
+	println(from_guard())
+	println(from_guard_pair())
+	println(from_multi_return())
+	println(from_smartcast(Shape(Box{ n: 9 })))
+}
+')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['5', '7', '3', '9'],
+		res.output
+}

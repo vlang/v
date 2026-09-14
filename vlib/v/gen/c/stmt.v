@@ -7606,7 +7606,7 @@ fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 		} else {
 			'int'
 		}
-		lhs_name := g.cname(lhs.value)
+		lhs_name := g.local_decl_cname(lhs.value)
 		if j < multi_types.len {
 			if fixed := array_fixed_type(multi_types[j]) {
 				c_elem, dims := g.fixed_array_decl_parts(fixed)
