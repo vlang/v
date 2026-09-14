@@ -10517,11 +10517,9 @@ pub fn run(args []string) {
 	mut checker_warning_count := 0
 	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
 	pre_tc.compiler_vroot = prefs.vroot
-	// Which files the shadowing check may blame. `diagnostic_root` above is only
-	// filled in for a selfhost build, but the check needs a root for every build,
-	// so that a directory project's own modules are covered while vlib and
-	// anything under ~/.vmodules are not.
-	pre_tc.shadow_diagnostic_root = diagnostic_root_for_input(input_file, user_files)
+	// Which files the shadowing check may blame. Use the same nearest-v.mod root
+	// as import resolution, so a nested entry directory still owns sibling modules.
+	pre_tc.shadow_diagnostic_root = os.real_path(project_root_for_files(user_files))
 	pre_tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture

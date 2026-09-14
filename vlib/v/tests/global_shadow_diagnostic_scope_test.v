@@ -18,6 +18,8 @@ const tmp_root = os.join_path(os.vtmp_dir(), 'v_global_shadow_scope')
 
 const app_dir = os.join_path(tmp_root, 'app')
 
+const nested_entry_dir = os.join_path(app_dir, 'cmd', 'tool')
+
 const sibling_modules_dir = os.join_path(tmp_root, 'vmods')
 
 const installed_app_dir = os.join_path(sibling_modules_dir, 'my_package')
@@ -78,6 +80,21 @@ fn test_project_module_shadow_is_reported() {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
+}
+
+// Imports resolve from the nearest `v.mod`, even when the explicit entry is a
+// nested directory. The same project root must own sibling modules for diagnostics.
+fn test_vmod_root_owns_sibling_module_of_nested_entry() {
+	write_project(sibling_modules_dir, true)
+	main_file := os.join_path(app_dir, 'main.v')
+	main_source := os.read_file(main_file) or { panic(err) }
+	write_file(os.join_path(nested_entry_dir, 'main.v'), main_source)
+	os.rm(main_file) or { panic(err) }
+	res := compile_project_with_path(nested_entry_dir, sibling_modules_dir, '')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+	assert !res.output.contains('shadowdep.v'), res.output
 }
 
 fn test_dependency_shadow_is_not_reported() {
