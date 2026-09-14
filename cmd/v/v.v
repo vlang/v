@@ -406,8 +406,11 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			option_value_follows = true
 			continue
 		}
-		if arg in external_commands || arg in ['run', 'crun', 'test'] {
+		if arg in external_commands || arg == 'test' {
 			return false
+		}
+		if arg in ['run', 'crun'] {
+			return skip_running
 		}
 		if !arg.starts_with('-') {
 			is_test := pref.is_test_file_for_backend(arg, backend) || arg.ends_with('_test.vv')

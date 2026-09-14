@@ -278,7 +278,10 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	assert v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.c.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', 'example_test.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', 'script.vsh'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', 'run', 'main.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', 'crun', 'main.c'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-check', 'example_test.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-check', 'run', 'main.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-check-syntax', 'script.vsh'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-output', 'test-bin', 'example_test.v'])
@@ -291,6 +294,7 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	os.setenv('VNORUN', '1', true)
 	assert v1_fallback_exit_identifies_compiler_failure(['example_test.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
+	assert v1_fallback_exit_identifies_compiler_failure(['run', 'main.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['test', 'vlib/context'])
 }
 
