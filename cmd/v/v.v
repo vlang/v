@@ -489,11 +489,18 @@ fn resolve_v1_fallback(fallback string) ?string {
 	if os.is_file(root_file) {
 		fallback_root := os.read_file(root_file) or { '' }.trim_space()
 		cached_fallback := os.join_path(fallback_root, 'v' + $if windows { '.exe' } $else { '' })
-		if os.is_executable(cached_fallback) && v1_fallback_has_expected_version(cached_fallback) {
+		if os.is_executable(cached_fallback) && v1_fallback_has_expected_version(cached_fallback)
+			&& v1_fallback_has_crypto_subtle(fallback_root) {
 			return cached_fallback
 		}
 	}
 	return none
+}
+
+fn v1_fallback_has_crypto_subtle(root string) bool {
+	module_dir := os.join_path(root, 'vlib', 'crypto', 'subtle')
+	return os.is_file(os.join_path(module_dir, 'aliasing.v'))
+		&& os.is_file(os.join_path(module_dir, 'comparison.v'))
 }
 
 fn v1_fallback_has_expected_version(executable string) bool {
