@@ -131,7 +131,7 @@ fn test_vc_bootstrap_builds_a_v1_compatibility_compiler() {
 
 fn test_netbsd_marks_the_v1_compatibility_compiler() {
 	makefile := os.read_file(os.join_path(macos_v3_test_vroot, 'GNUmakefile'))!
-	assert makefile.contains('paxctl +m \$(V1_FALLBACK_EXE)')
+	assert makefile.contains(r'paxctl +m "$${V1_FALLBACK_OUTPUT:-$(V1_FALLBACK_EXE)}"')
 }
 
 fn test_gnumake_builds_the_v1_fallback_only_on_demand() {
