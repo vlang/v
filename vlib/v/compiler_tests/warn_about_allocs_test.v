@@ -108,6 +108,7 @@ fn main() {
 	freed_concat := ('c' + name) + 'V' @[freed]
 	freed_type_check := Speaker(Person{}) is Person @[freed]
 	freed_negated_type_check := Speaker(Person{}) !is Person @[freed]
+	freed_as := (Speaker(Person{}) as Person) @[freed]
 	println(array)
 	println(reserved)
 	println(interpolation)
@@ -129,6 +130,7 @@ fn main() {
 	println(freed_concat)
 	println(freed_type_check)
 	println(freed_negated_type_check)
+	freed_as.speak()
 	callback()
 }
 ")!
@@ -146,7 +148,7 @@ fn main() {
 		expected_count := if description == 'string concatenation' {
 			5
 		} else if description == 'cast to interface' {
-			7
+			8
 		} else if description == 'array initialization' {
 			8
 		} else {
@@ -163,6 +165,19 @@ fn main() {
 		'cast to interface'] {
 		assert as_errors.output.contains('error: allocation (${description})'), as_errors.output
 	}
+
+	runtime_typeof_source := os.join_path(root, 'runtime_typeof.v')
+	os.write_file(runtime_typeof_source, "type RuntimeValue = int | string
+
+fn main() {
+	name := 'V'
+	println(unsafe { typeof(RuntimeValue('d' + name)) })
+}
+")!
+	runtime_typeof := cmdexec.run(v3_bin, ['-silent', '-nocache', '-warn-about-allocs', '-o',
+		os.join_path(root, 'runtime_typeof.c'), runtime_typeof_source])
+	assert runtime_typeof.exit_code == 0, runtime_typeof.output
+	assert runtime_typeof.output.count('allocation (string concatenation)') == 1, runtime_typeof.output
 
 	assignment_source := os.join_path(root, 'assignment_attribute.v')
 	os.write_file(assignment_source, 'fn main() {
@@ -287,6 +302,7 @@ fn main() {
 	println(empty_dynamic_array())
 	println(zero_length_capacity_array())
 	println(constant_zero_length_capacity_array())
+	println(typeof([1, 2, 3]).name)
 	println(embedded.len)
 }
 ")!

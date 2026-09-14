@@ -2607,6 +2607,9 @@ fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token
 		if node.kind in [.fn_literal, .lambda_expr] {
 			break
 		}
+		if node.kind == .typeof_expr && !tc.typeof_operand_is_runtime(current, node) {
+			return
+		}
 		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign]
 			&& node.is_freed_assignment() && value_path
 			&& tc.assignment_child_is_value(node, direct_child) {
@@ -2623,6 +2626,25 @@ fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token
 		current = parent
 	}
 	tc.record_warning_at(.compile_error, 'allocation (${description})', id, pos)
+}
+
+fn (tc &TypeChecker) typeof_operand_is_runtime(id flat.NodeId, node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	parent_id := tc.direct_parent_id(id)
+	if tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .selector && parent.children_count > 0
+			&& tc.a.child(parent, 0) == id {
+			return false
+		}
+	}
+	mut operand_type := unalias_type(tc.resolve_type(tc.a.child(node, 0)))
+	if operand_type is Pointer {
+		operand_type = unalias_type(operand_type.base_type)
+	}
+	return operand_type is SumType
 }
 
 fn (tc &TypeChecker) assignment_child_is_value(node flat.Node, child_id flat.NodeId) bool {
@@ -2658,7 +2680,7 @@ fn (tc &TypeChecker) child_is_value_producing_path(parent_id flat.NodeId, child_
 		.infix {
 			return tc.type_can_own_warned_allocation(tc.resolve_type(parent_id))
 		}
-		.in_expr, .is_expr {
+		.as_expr, .in_expr, .is_expr {
 			return false
 		}
 		else {
