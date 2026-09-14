@@ -172,6 +172,12 @@ fn test_v1_fallback_cache_without_a_home_is_private() {
 	}
 }
 
+fn test_v1_fallback_temp_root_requires_a_trusted_owner() {
+	assert v1_fallback_temp_root_owner_is_trusted(0, 501)
+	assert v1_fallback_temp_root_owner_is_trusted(501, 501)
+	assert !v1_fallback_temp_root_owner_is_trusted(502, 501)
+}
+
 fn test_v1_fallback_private_temp_cache_rejects_a_symlink() {
 	$if !windows {
 		base := os.join_path(os.vtmp_dir(), 'v1_fallback_unsafe_cache_${os.getpid()}')

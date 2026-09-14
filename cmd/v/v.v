@@ -632,6 +632,9 @@ fn v1_fallback_private_temp_cache_parent(temp_root string) !string {
 		root_attributes := os.stat(temp_root) or {
 			return error('could not inspect the temporary directory `${temp_root}`: ${err}')
 		}
+		if !v1_fallback_temp_root_owner_is_trusted(root_attributes.uid, u32(os.geteuid())) {
+			return error('temporary directory `${temp_root}` is not owned by the current user or root')
+		}
 		if root_attributes.mode & 0o022 != 0 && root_attributes.mode & os.s_isvtx == 0 {
 			return error('temporary directory `${temp_root}` is writable by other users without the sticky bit')
 		}
@@ -650,6 +653,10 @@ fn v1_fallback_private_temp_cache_parent(temp_root string) !string {
 		}
 	}
 	return candidate
+}
+
+fn v1_fallback_temp_root_owner_is_trusted(owner u32, effective_user u32) bool {
+	return owner == 0 || owner == effective_user
 }
 
 fn v1_fallback_cached_launcher(cache_parent string) string {
