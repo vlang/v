@@ -348,14 +348,16 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	os.setenv('VEXE', fallback, true)
 	os.setenv('VCHILD', 'true', true)
+	mut fallback_args := args.clone()
 	if overlay := v1_fallback_module_overlay(os.dir(fallback)) {
 		os.setenv('VMODULES', v1_fallback_vmodules_env(overlay), true)
+		fallback_args = v1_fallback_args_with_module_overlay(args, overlay)
 	}
 	eprintln('${reason}; retrying with `${fallback}`.')
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
 	mut process := os.new_process(fallback)
-	process.set_args(args)
+	process.set_args(fallback_args)
 	process.wait()
 	if process.status == .aborted || process.code < 0 {
 		eprintln('failed to launch the V 0.5.2 compatibility compiler `${fallback}`: ${process.err}')
@@ -712,6 +714,52 @@ fn v1_fallback_vmodules_env(overlay string) string {
 		paths << overlay
 	}
 	return paths.join(os.path_delimiter)
+}
+
+// v1_fallback_args_with_module_overlay keeps the overlay searchable when the
+// user replaces the default `@vlib|@vmodules` lookup order with `-path`.
+fn v1_fallback_args_with_module_overlay(args []string, overlay string) []string {
+	mut forwarded := args.clone()
+	mut option_value_follows := false
+	mut run_command_seen := false
+	for i, arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
+		if arg == '-path' {
+			if value := args[i + 1] {
+				paths := value.split('|')
+				if overlay !in paths {
+					forwarded[i + 1] = if value == '' { overlay } else { '${value}|${overlay}' }
+				}
+				option_value_follows = true
+			}
+			continue
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if arg in external_commands {
+			break
+		}
+		if arg in ['run', 'crun'] {
+			run_command_seen = true
+			continue
+		}
+		if run_command_seen && !arg.starts_with('-') {
+			break
+		}
+		if arg.ends_with('.vsh') {
+			break
+		}
+	}
+	return forwarded
 }
 
 fn v1_fallback_has_crypto_subtle(root string) bool {

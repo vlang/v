@@ -251,6 +251,35 @@ fn test_the_overlay_is_searched_after_the_module_paths_the_user_has() {
 	assert v1_fallback_vmodules_env('/two') == ['/one', '/two'].join(os.path_delimiter)
 }
 
+fn test_the_overlay_is_added_to_explicit_module_search_paths() {
+	assert v1_fallback_args_with_module_overlay(['-path', '@vlib|/private', 'main.v'], '/overlay') == [
+		'-path',
+		'@vlib|/private|/overlay',
+		'main.v',
+	]
+	assert v1_fallback_args_with_module_overlay(['-path', '@vlib|/overlay', 'main.v'], '/overlay') == [
+		'-path',
+		'@vlib|/overlay',
+		'main.v',
+	]
+	assert v1_fallback_args_with_module_overlay(['-o', '-path', 'main.v'], '/overlay') == [
+		'-o',
+		'-path',
+		'main.v',
+	]
+	assert v1_fallback_args_with_module_overlay(['run', 'main.v', '-path', '/program/arg'], '/overlay') == [
+		'run',
+		'main.v',
+		'-path',
+		'/program/arg',
+	]
+	assert v1_fallback_args_with_module_overlay(['script.vsh', '-path', '/script/arg'], '/overlay') == [
+		'script.vsh',
+		'-path',
+		'/script/arg',
+	]
+}
+
 fn test_fallback_installer_writes_a_native_windows_root() {
 	root := find_vroot(@FILE) or { panic(err) }
 	source := os.read_file(os.join_path(root, 'cmd', 'tools', 'install_v1_fallback.sh'))!
