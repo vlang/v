@@ -26,7 +26,7 @@ const installed_app_dir = os.join_path(sibling_modules_dir, 'my_package')
 
 const nested_modules_dir = os.join_path(app_dir, '.vmodules')
 
-const private_modules_dir = os.join_path(app_dir, 'private_modules')
+const private_modules_dir = os.join_path(tmp_root, 'private_modules')
 
 fn write_file(path string, content string) {
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -95,6 +95,18 @@ fn test_vmod_root_owns_sibling_module_of_nested_entry() {
 	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 	assert !res.output.contains('shadowdep.v'), res.output
+}
+
+// Open generic bodies are deferred until a concrete specialization is needed.
+// Their source bindings still obey the global-shadow invariant in normal builds.
+fn test_reachable_generic_local_shadow_is_reported() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\tcounter := x\n\treturn counter\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
+	res := compile_project_with_path(app_dir, sibling_modules_dir, '')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('main.v'), res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
 
 fn test_dependency_shadow_is_not_reported() {

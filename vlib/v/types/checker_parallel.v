@@ -1756,13 +1756,16 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	if !fast_valid_build {
 		tc.check_veb_app_method_params(flat.NodeId(fn_idx), node)
 	}
-	// Open generic declarations are checked when they are instantiated.  Walking every
-	// template in a selected module diagnoses names that only exist after comptime
-	// expansion (and even dead generic helpers), unlike the reference compiler.
+	// Full semantics for open generic declarations are checked when they are instantiated.
+	// The source-level global-shadow rule does not depend on concrete types, so inspect
+	// those bindings now before deferring expression and control-flow checks.
 	generic_params := if is_specialized {
 		map[string]bool{}
 	} else {
 		tc.infer_decl_generic_params(node)
+	}
+	if generic_params.len > 0 {
+		tc.check_generic_fn_body_global_shadowing(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0

@@ -10521,6 +10521,7 @@ pub fn run(args []string) {
 	// as import resolution, so a nested entry directory still owns sibling modules.
 	pre_tc.shadow_diagnostic_root = os.real_path(project_root_for_files(user_files))
 	pre_tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
+	pre_tc.shadow_explicit_roots = shadow_explicit_roots_for(prefs, pre_tc.shadow_dependency_roots)
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
@@ -15371,6 +15372,19 @@ fn shadow_dependency_roots_for(prefs &pref.Preferences) []string {
 		}
 		real_root := os.real_path(root).trim_right(os.path_separator)
 		if real_root.len > 0 && real_root !in roots {
+			roots << real_root
+		}
+	}
+	return roots
+}
+
+// shadow_explicit_roots_for returns explicit search roots that may contain
+// project-private modules. Installed roots named in `-path` remain dependencies.
+fn shadow_explicit_roots_for(prefs &pref.Preferences, dependency_roots []string) []string {
+	mut roots := []string{}
+	for root in prefs.module_search_paths {
+		real_root := os.real_path(root).trim_right(os.path_separator)
+		if real_root.len > 0 && real_root !in dependency_roots && real_root !in roots {
 			roots << real_root
 		}
 	}
