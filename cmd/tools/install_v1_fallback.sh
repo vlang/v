@@ -71,12 +71,17 @@ fi
 cache_root=$cache_parent/$release_version
 cached_candidate=$cache_root/$(basename "$member")
 cache_lock=$cache_parent/.install-$release_version.lock
+cache_lock_owner=$cache_parent/.install-$release_version.owner.$$
 cache_lock_acquired=
 
 cleanup() {
 	if [ -n "$cache_lock_acquired" ]; then
-		rmdir "$cache_lock" 2>/dev/null || true
+		owner_pid=$(cat "$cache_lock" 2>/dev/null || true)
+		if [ "$owner_pid" = "$$" ]; then
+			rm -f "$cache_lock"
+		fi
 	fi
+	rm -f "$cache_lock_owner"
 	rm -rf "$work_dir"
 }
 
@@ -85,12 +90,31 @@ trap 'exit 1' HUP INT TERM
 
 acquire_cache_lock() {
 	mkdir -p "$cache_parent" || return 1
-	attempt=0
-	while ! mkdir "$cache_lock" 2>/dev/null; do
-		attempt=$((attempt + 1))
-		if [ "$attempt" -ge 120 ]; then
-			echo "Timed out waiting for the V $release_version fallback cache lock." >&2
-			return 1
+	printf '%s\n' "$$" > "$cache_lock_owner" || return 1
+	while ! ln "$cache_lock_owner" "$cache_lock" 2>/dev/null; do
+		existing_pid=$(cat "$cache_lock" 2>/dev/null || true)
+		case "$existing_pid" in
+			''|*[!0-9]*) stale_owner=invalid ;;
+			*)
+				if kill -0 "$existing_pid" 2>/dev/null; then
+					sleep 1
+					continue
+				fi
+				stale_owner=$existing_pid
+				;;
+		esac
+		reclaim=$cache_lock.reclaim-$stale_owner
+		if ln "$cache_lock" "$reclaim" 2>/dev/null; then
+			current_pid=$(cat "$cache_lock" 2>/dev/null || true)
+			if [ "$current_pid" = "$existing_pid" ]; then
+				rm -f "$cache_lock"
+				case "$existing_pid" in
+					''|*[!0-9]*) ;;
+					*) rm -f "$cache_parent/.install-$release_version.owner.$existing_pid" ;;
+				esac
+			fi
+			rm -f "$reclaim"
+			continue
 		fi
 		sleep 1
 	done

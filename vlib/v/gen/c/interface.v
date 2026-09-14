@@ -421,6 +421,15 @@ fn (g &FlatGen) type_references_sum(typ types.Type, sum_name string, mut visited
 
 // resolve_sum_name resolves resolve sum name information for c.
 fn (g &FlatGen) resolve_sum_name(sum_name string) string {
+	if sum_name.contains('.') {
+		if resolved := g.sum_name_lookup[sum_name] {
+			return resolved
+		}
+		if sum_name in g.tc.structs || sum_name in g.tc.interface_names
+			|| sum_name in g.tc.enum_names {
+			return sum_name
+		}
+	}
 	canonical_name := if sum_name.contains('.') {
 		g.canonical_import_alias_type_text(sum_name)
 	} else {

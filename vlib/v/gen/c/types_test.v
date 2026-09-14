@@ -631,6 +631,7 @@ fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_su
 	tc.enum_names['enum_mod.Any'] = true
 	tc.cur_file = 'main.v'
 	tc.file_imports['main.v\niface_mod'] = 'pkg.iface_mod'
+	tc.file_imports['main.v\npkg'] = 'unrelated.module'
 	mut g := FlatGen.new()
 	g.a = ast
 	g.tc = &tc
@@ -642,6 +643,9 @@ fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_su
 	// Namesakes resolve to their concrete declarations, so they are not boxed
 	// into `sum_mod.Any` when a value is converted to them.
 	assert g.resolve_sum_name('iface_mod.Any') == 'pkg.iface_mod.Any'
+	// A canonical name is not expanded again when its first component also
+	// happens to be an import alias in the current file.
+	assert g.resolve_sum_name('pkg.iface_mod.Any') == 'pkg.iface_mod.Any'
 	assert g.resolve_sum_name('struct_mod.Any') == 'struct_mod.Any'
 	assert g.resolve_sum_name('enum_mod.Any') == 'enum_mod.Any'
 	// An unknown qualified name keeps the short-name fallback, which is what

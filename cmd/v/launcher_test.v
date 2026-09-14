@@ -73,6 +73,8 @@ fn test_v1_fallback_installer_exposes_compatibility_modules() {
 	install_index := source.index('if use_cached_release') or { -1 }
 	assert lock_index >= 0
 	assert lock_index < install_index
+	assert source.contains('kill -0 "$existing_pid"')
+	assert source.contains('$cache_lock.reclaim-$stale_owner')
 	assert source.contains('fallback_compatibility_is_installed "$cache_root"')
 }
 
