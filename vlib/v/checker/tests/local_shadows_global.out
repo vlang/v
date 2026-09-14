@@ -75,3 +75,10 @@ vlib/v/checker/tests/local_shadows_global.vv:94:7: error: variable `counter` sha
       |          ~~~~~~~
    95 |         if counter.name == 'value' {
    96 |             return 1
+vlib/v/checker/tests/local_shadows_global.vv:104:8: error: variable `counter` shadows a global variable
+  102 | fn shadows_through_nested_comptime_for() int {
+  103 |     $for field in ShadowField.fields {
+  104 |         $for counter in ShadowField.fields {
+      |              ~~~~~~~
+  105 |             if counter.name == field.name {
+  106 |                 return 1

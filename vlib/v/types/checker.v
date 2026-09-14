@@ -16570,6 +16570,7 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	if node.kind == .comptime_for {
 		// Check nested reflection loops only after earlier declarations in the
 		// enclosing static body have entered the current scope.
+		tc.check_comptime_for_global_shadowing(id, node)
 		tc.check_comptime_for_members(id, node)
 		return
 	}

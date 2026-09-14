@@ -99,6 +99,17 @@ fn shadows_through_comptime_for() int {
 	return 0
 }
 
+fn shadows_through_nested_comptime_for() int {
+	$for field in ShadowField.fields {
+		$for counter in ShadowField.fields {
+			if counter.name == field.name {
+				return 1
+			}
+		}
+	}
+	return 0
+}
+
 fn main() {
 	println(uses_a_shadowing_local())
 	println(uses_a_shadowing_local_from_another_statement())
@@ -112,4 +123,5 @@ fn main() {
 	println(shadows_through_lambda())
 	println(shadows_through_select(chan int{}))
 	println(shadows_through_comptime_for())
+	println(shadows_through_nested_comptime_for())
 }
