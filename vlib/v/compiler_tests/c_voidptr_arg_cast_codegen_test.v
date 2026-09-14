@@ -34,6 +34,7 @@ fn voidptr_arg_write_project(source string) string {
 static inline uint64_t strict_load_u64(uint64_t* x) { return *x; }
 static inline void strict_store_u64(uint64_t* x, uint64_t y) { *x = y; }
 static inline uint64_t strict_load_any(void* x) { return *(uint64_t*)x; }
+static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
 #endif
 '
 	os.write_file(os.join_path(root, 'strict_atomic.h'), header) or { panic(err) }
@@ -51,11 +52,14 @@ fn test_c_voidptr_param_pointer_arg_goes_through_voidptr() {
 fn C.strict_load_u64(voidptr) u64
 fn C.strict_store_u64(voidptr, u64)
 fn C.strict_load_any(voidptr) u64
+fn C.strict_is_nonnull_u64(voidptr) int
 
 struct Table {
 mut:
 	count u32
 }
+
+type TableRef = &Table
 
 fn main() {
 	table := &Table{
@@ -68,8 +72,11 @@ fn main() {
 	loaded := unsafe { &Table(voidptr(C.strict_load_u64(&slot))) }
 	// An argument that is already `voidptr` needs no conversion of its own.
 	same := C.strict_load_any(voidptr(&slot))
+	// Aliases to pointer types need the same conversion as direct pointers.
+	nonnull := C.strict_is_nonnull_u64(TableRef(table))
 	println(int(loaded.count).str())
 	println((same == u64(voidptr(table))).str())
+	println(nonnull.str())
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_out_${os.getpid()}')
@@ -77,7 +84,8 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', 'true']
+	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', 'true',
+		'1']
 	generated := os.read_file(out + '.c') or { panic(err) }
 	// The macro is a no-op in C++, where `void*` does not convert back to a
 	// concrete pointer and the argument has to stay as written.
@@ -86,6 +94,33 @@ fn main() {
 	// The `Table**` argument is routed through `void*` ...
 	assert generated.contains('strict_load_u64(v_c_voidptr_arg(&slot))'), generated
 	assert generated.contains('strict_store_u64(v_c_voidptr_arg(&slot)'), generated
+	assert generated.contains('strict_is_nonnull_u64(v_c_voidptr_arg('), generated
 	// ... while an argument that is already `voidptr` is passed unchanged.
 	assert !generated.contains('strict_load_any(v_c_voidptr_arg('), generated
+
+	no_builtin_src := voidptr_arg_write_project('module main
+
+#include "@DIR/strict_atomic.h"
+
+fn C.strict_is_nonnull_u64(voidptr) int
+
+struct Table {
+	count u32
+}
+
+type TableRef = &Table
+
+fn main() {
+	table := Table{
+		count: 7
+	}
+	_ = C.strict_is_nonnull_u64(TableRef(&table))
+}
+')
+	no_builtin_out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_no_builtin_${os.getpid()}')
+	no_builtin_compile := os.execute('${v3_bin} -no-builtin -gc none -b c -o ${no_builtin_out} ${no_builtin_src}')
+	assert no_builtin_compile.exit_code == 0, no_builtin_compile.output
+	no_builtin_generated := os.read_file(no_builtin_out + '.c') or { panic(err) }
+	assert no_builtin_generated.contains('#define v_c_voidptr_arg(x) ((void*)(x))'), no_builtin_generated
+	assert no_builtin_generated.contains('strict_is_nonnull_u64(v_c_voidptr_arg('), no_builtin_generated
 }

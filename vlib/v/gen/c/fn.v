@@ -18304,7 +18304,7 @@ fn (g &FlatGen) c_voidptr_param_arg_needs_cast(param_type types.Type, arg_id fla
 	if g.is_c_extern_fn_name_arg(arg_id) {
 		return false
 	}
-	arg_type := g.usable_expr_type(arg_id)
+	arg_type := cgen_unalias_type(g.usable_expr_type(arg_id))
 	if arg_type !is types.Pointer {
 		return false
 	}
