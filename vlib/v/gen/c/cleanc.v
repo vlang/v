@@ -3805,12 +3805,21 @@ fn (mut g FlatGen) write_type_declaration_block() {
 
 fn (mut g FlatGen) gen_vinit() {
 	needs_closure_init := g.needs_closure_runtime_init()
+	has_embed_joins := g.has_chunked_embed_blobs()
 	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
-		&& g.global_inits.len == 0 && !needs_closure_init {
+		&& g.global_inits.len == 0 && !needs_closure_init && !has_embed_joins {
 		return
 	}
 	fn_start_pos := g.sb.len
+	// The buffers are defined here rather than with the rest of the declaration
+	// prefix: a parallel C build repeats that prefix per unit, and only the unit
+	// holding `_vinit` may define them.
+	g.gen_embed_blob_joined()
 	g.writeln('void _vinit() {')
+	// A split `$embed_file` payload is put back together before anything else can
+	// look at it, which is both what makes it a one-time cost and what keeps it
+	// off a lazy path that concurrent readers would race on.
+	g.gen_embed_blob_joins()
 	mut emitted_const := []bool{len: g.const_runtime_inits.len}
 	mut emitted_runtime := []bool{len: g.runtime_inits.len}
 	g.emit_const_referenced_global_defaults(mut emitted_runtime)

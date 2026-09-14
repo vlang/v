@@ -225,6 +225,15 @@ fn reader(id int, mut seen []string) {
 	seen[id] = checksum()
 }
 
+// An `\$embed_file` written inside a function, rather than kept in a constant,
+// is evaluated again on every call. Its bytes are embedded once either way, so
+// every evaluation has to arrive at the same pointer; building a fresh buffer
+// per call would allocate a copy of the payload each time round a loop.
+fn evaluated_in_a_call() voidptr {
+	local := \$embed_file('payload.bin')
+	return local.data()
+}
+
 fn main() {
 	mut seen := []string{len: 4, init: ''}
 	mut readers := []thread{}
@@ -235,6 +244,13 @@ fn main() {
 	for got in seen {
 		if got != seen[0] {
 			println('threads disagreed: \${got} != \${seen[0]}')
+			exit(1)
+		}
+	}
+	first := evaluated_in_a_call()
+	for _ in 0 .. 3 {
+		if evaluated_in_a_call() != first {
+			println('the payload was materialized again on a later evaluation')
 			exit(1)
 		}
 	}

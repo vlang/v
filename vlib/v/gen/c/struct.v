@@ -291,15 +291,13 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 		return false
 	}
 	if data.value.len > c_max_object_size {
-		// Split across several objects, so the bytes are put back together while
-		// this value is being built. Doing it here rather than on first read keeps
-		// the finished value immutable, which is what two threads reading the same
-		// embedded constant need.
-		g.write('${g.cname('embed_file.join_chunks')}((${g.cname('embed_file.EmbedFileChunk')}*)_v_embed_blob_')
+		// Split across several objects, which `_vinit` joins once into the buffer
+		// named here. Reading a pointer rather than joining at every evaluation is
+		// what keeps a `$embed_file` inside a called function from allocating a
+		// copy per call, and doing it before any thread starts is what keeps two
+		// readers of the same embedded constant off a lazy initialization.
+		g.write('_v_embed_joined_')
 		g.sb.write_decimal(i64(data_id))
-		g.sb.write_string(', ')
-		g.sb.write_decimal(i64(data.value.len))
-		g.sb.write_u8(`)`)
 		return true
 	}
 	if embed_payload_needs_blob(data.value.len) {
@@ -342,11 +340,73 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			continue
 		}
 		g.write_embed_blob_chunks(i, node.value)
+		// The joined buffer has external linkage: a parallel C build repeats this
+		// prefix per unit, and a `static` pointer would leave every unit but the
+		// one that runs `_vinit` holding its own null copy. gen_embed_blob_joined
+		// defines it, next to the `_vinit` that fills it.
+		g.write('extern u8* _v_embed_joined_')
+		g.sb.write_decimal(i64(i))
+		g.writeln(';')
 		defined++
 	}
 	if defined > 0 {
 		g.writeln('')
 	}
+}
+
+// for_each_embed_blob_chunked calls `each` with the node index and payload of
+// every embedded file that had to be split. Both the declarations and the
+// `_vinit` lines are derived from the AST this way, so the parallel tail worker,
+// which generates `_vinit` from its own FlatGen, arrives at the same list.
+fn (mut g FlatGen) for_each_embed_blob_chunked(each fn (mut FlatGen, int, string)) {
+	for i in 0 .. g.a.nodes.len {
+		node := unsafe { &g.a.nodes[i] }
+		if node.kind != .string_literal || !node.is_embed_payload() {
+			continue
+		}
+		if node.value.len <= c_max_object_size {
+			continue
+		}
+		each(mut g, i, node.value)
+	}
+}
+
+// has_chunked_embed_blobs reports whether `_vinit` has any payload to join.
+fn (g &FlatGen) has_chunked_embed_blobs() bool {
+	for i in 0 .. g.a.nodes.len {
+		node := unsafe { &g.a.nodes[i] }
+		if node.kind == .string_literal && node.is_embed_payload()
+			&& node.value.len > c_max_object_size {
+			return true
+		}
+	}
+	return false
+}
+
+// gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
+// right before it so that the definition lands in the same translation unit.
+fn (mut g FlatGen) gen_embed_blob_joined() {
+	g.for_each_embed_blob_chunked(fn (mut g FlatGen, node_idx int, payload string) {
+		g.write('u8* _v_embed_joined_')
+		g.sb.write_decimal(i64(node_idx))
+		g.writeln(' = NULL;')
+	})
+}
+
+// gen_embed_blob_joins writes the _vinit lines that put each split payload back
+// together, once per program and before anything else _vinit does.
+fn (mut g FlatGen) gen_embed_blob_joins() {
+	chunk_ct := g.cname('embed_file.EmbedFileChunk')
+	join_fn := g.cname('embed_file.join_chunks')
+	g.for_each_embed_blob_chunked(fn [chunk_ct, join_fn] (mut g FlatGen, node_idx int, payload string) {
+		g.write('\t_v_embed_joined_')
+		g.sb.write_decimal(i64(node_idx))
+		g.sb.write_string(' = ${join_fn}((${chunk_ct}*)_v_embed_blob_')
+		g.sb.write_decimal(i64(node_idx))
+		g.sb.write_string(', ')
+		g.sb.write_decimal(i64(payload.len))
+		g.writeln(');')
+	})
 }
 
 // write_embed_blob_chunks emits `payload` as byte objects of an acceptable size,
