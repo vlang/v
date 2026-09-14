@@ -1,0 +1,45 @@
+// The body of a declaration has to be found before its `$if` branches can be.
+// The brace that opens it may stand on a line of its own, with blank and
+// commented lines before it, and a declaration without a body contributes no
+// branch to the one that follows it. Either way an identifier used only by a
+// dropped branch is still used.
+fn body_after_a_blank_line(z int)
+
+{
+	$if windows {
+		println(z)
+	}
+}
+
+fn body_after_a_comment(w int)
+	// the body opens below
+{
+	$if windows {
+		println(w)
+	}
+}
+
+fn C.abs(n i32) i32
+
+fn after_a_bodyless_declaration(u int) {
+	$if windows {
+		println(u)
+	}
+}
+
+// The machinery still reports what no branch mentions.
+fn never_mentioned(t int)
+
+{
+	$if windows {
+		println('w')
+	}
+}
+
+fn main() {
+	body_after_a_blank_line(1)
+	body_after_a_comment(2)
+	after_a_bodyless_declaration(3)
+	never_mentioned(4)
+	println(C.abs(-5))
+}

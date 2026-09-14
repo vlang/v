@@ -2640,6 +2640,28 @@ fn (tc &TypeChecker) subtree_has_node_in_range(node flat.Node, start int, end in
 	return false
 }
 
+// next_code_index returns the index of the first character at or after `start`
+// that is neither whitespace nor a comment, i.e. the next one the parser reads.
+fn next_code_index(source string, start int) int {
+	mut i := start
+	for i < source.len {
+		c := source[i]
+		if c == ` ` || c == `\t` || c == `\r` || c == `\n` {
+			i++
+			continue
+		}
+		skipped, code := skip_non_code_at(source, i)
+		if skipped > i && code.len == 0 {
+			// A comment stands for nothing, so what follows it is what
+			// continues the declaration.
+			i = skipped
+			continue
+		}
+		break
+	}
+	return i
+}
+
 // declaration_comptime_branch_ranges returns the source range of every `$if`
 // and `$else` body of the declaration starting at `start`, and of every arm of
 // a `$match`, nested ones included. `parse_known_comptime_match_value` skips
@@ -2662,6 +2684,11 @@ fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranch
 	// told apart from the one that opened the `$match` itself.
 	mut arm_depths := []int{}
 	mut match_expected := false
+	// The `{` of an anonymous `struct { .. }` parameter or return type also
+	// stands at depth zero, so the end of the declaration is only recognized
+	// once the brace that opens its body has been seen.
+	mut body_opened := false
+	mut last_word := ''
 	mut i := start
 	for i < source.len {
 		skipped, _ := skip_non_code_at(source, i)
@@ -2670,6 +2697,18 @@ fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranch
 			continue
 		}
 		c := source[i]
+		if is_import_ident_byte(c) {
+			mut end := i
+			for end < source.len && is_import_ident_byte(source[end]) {
+				end++
+			}
+			last_word = source[i..end]
+			i = end
+			continue
+		}
+		if c !in [` `, `\t`, `\r`, `\n`, `{`] {
+			last_word = ''
+		}
 		if c == `$` {
 			mut word_end := i + 1
 			for word_end < source.len && is_import_ident_byte(source[word_end]) {
@@ -2690,7 +2729,10 @@ fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranch
 			// The `{` of a `$match` opens its arms, not a body of its own; the
 			// bodies are the braces standing directly in it.
 			opens_arms := match_expected
-			opens_branch := !opens_arms && (branch_expected
+			// `fn f(_ struct { y int })` and `fn f() struct { y int } {` both
+			// write a type where the body would otherwise stand.
+			opens_type := last_word in ['struct', 'union']
+			opens_branch := !opens_arms && !opens_type && (branch_expected
 				|| (arm_depths.len > 0 && arm_depths.last() == depth))
 			if opens_arms {
 				arm_depths << depth + 1
@@ -2699,8 +2741,12 @@ fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranch
 				open_starts << i + 1
 				open_depths << depth
 			}
+			if !opens_arms && !opens_type && !opens_branch && depth == 0 && paren_depth == 0 {
+				body_opened = true
+			}
 			branch_expected = false
 			match_expected = false
+			last_word = ''
 			depth++
 		} else if c == `}` {
 			depth--
@@ -2715,16 +2761,15 @@ fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranch
 					end:   i
 				}
 			}
-			if depth == 0 {
+			if body_opened && depth == 0 {
 				return ranges
 			}
-		} else if c == `\n` && depth == 0 && paren_depth == 0 {
-			// The header is over and no body opened on it, so the next line
-			// starts a new declaration rather than continuing this one.
-			mut next := i + 1
-			for next < source.len && (source[next] == ` ` || source[next] == `\t`) {
-				next++
-			}
+		} else if c == `\n` && depth == 0 && paren_depth == 0 && !body_opened {
+			// The header is over and no body opened on it, so what follows
+			// starts a new declaration rather than continuing this one - unless
+			// it is the brace of the body, which the parser accepts on a line
+			// of its own, blank and commented lines in between included.
+			next := next_code_index(source, i + 1)
 			if next < source.len && source[next] != `{` {
 				return []ComptimeBranchRange{}
 			}

@@ -588,3 +588,29 @@ fn test_a_short_struct_argument_of_an_indexed_dynamic_callee() {
 	assert code_references_ident('_ = make_handlers()[x](y: 1)', 'x', true)
 	assert code_references_ident('_ = make_handlers()[0][x](y: 1)', 'x', true)
 }
+
+fn test_the_body_is_found_past_an_unusual_signature() {
+	// An anonymous aggregate in the signature closes a brace at the depth the
+	// declaration itself does, which is not the end of it.
+	assert branch_bodies('fn f(x int, _ struct {\n\ty int\n}) {\n\t\$if w { A }\n}') == [
+		' A ',
+	]
+	assert branch_bodies('fn f(_ union { a int }) {\n\t\$if w { A }\n}') == [' A ']
+	assert branch_bodies('fn f() struct {\n\ty int\n} {\n\t\$if w { A }\n}') == [' A ']
+	assert branch_bodies('fn f() struct { y int } {\n\t\$if w { A }\n}') == [' A ']
+	// The brace of the body may stand on a line of its own.
+	assert branch_bodies('fn f(x int)\n{\n\t\$if w { A }\n}') == [' A ']
+	assert branch_bodies('fn f(x int)\n\n\n{\n\t\$if w { A }\n}') == [' A ']
+	assert branch_bodies('fn f(x int)\n\t// why not\n{\n\t\$if w { A }\n}') == [' A ']
+	assert branch_bodies('fn f(x int)\n\n\t/* why not */\n\n{\n\t\$if w { A }\n}') == [
+		' A ',
+	]
+	// A declaration without a body still contributes nothing, and does not
+	// reach into the one that follows it.
+	assert branch_bodies('fn C.u(n voidptr) i32\n\nfn g() {\n\t\$if w { A }\n}') == []string{}
+	assert branch_bodies('fn C.u() int\n// a comment\nfn g() {\n\t\$if w { A }\n}') == []string{}
+	// The end of the declaration is still the end.
+	assert branch_bodies('fn f() {\n\t\$if w { A }\n}\nfn g() {\n\t\$if w { B }\n}') == [
+		' A ',
+	]
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unused_param_past_an_unusual_signature.vv:31:20: notice: unused parameter: `t`
+   29 | 
+   30 | // The machinery still reports what no branch mentions.
+   31 | fn never_mentioned(t int)
+      |                    ^
+   32 | 
+   33 | {
