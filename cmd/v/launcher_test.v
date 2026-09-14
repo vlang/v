@@ -50,3 +50,13 @@ fn test_cached_fallback_root_is_preferred_when_installed() {
 	resolved := ensure_v1_fallback('test') or { panic(err) }
 	assert os.dir(resolved) == os.read_file(root_file)!.trim_space()
 }
+
+fn test_fallback_installer_writes_a_native_windows_root() {
+	root := find_vroot(@FILE) or { panic(err) }
+	source := os.read_file(os.join_path(root, 'cmd', 'tools', 'install_v1_fallback.sh'))!
+	writer := source.all_after('write_candidate_root() {').all_before('\n}\n\nsha256_of()')
+	assert writer.contains('MSYS*|MINGW*')
+	assert writer.contains('cygpath -w')
+	assert writer.contains('pwd -W')
+	assert source.count('write_candidate_root || return 1') == 2
+}

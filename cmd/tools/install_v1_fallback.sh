@@ -62,6 +62,20 @@ cache_parent=${V1_FALLBACK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/v/
 cache_root=$cache_parent/$release_version
 cached_candidate=$cache_root/$(basename "$member")
 
+write_candidate_root() {
+	root=$cache_root
+	case "$system" in
+		MSYS*|MINGW*)
+			if command -v cygpath >/dev/null 2>&1; then
+				root=$(cygpath -w "$cache_root") || return 1
+			else
+				root=$(cd "$cache_root" && pwd -W) || return 1
+			fi
+			;;
+	esac
+	printf '%s\n' "$root" > "$candidate_root_file"
+}
+
 sha256_of() {
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'
@@ -140,7 +154,7 @@ use_cached_release() {
 	[ -x "$cached_candidate" ] || return 1
 	candidate=$cached_candidate
 	candidate_has_expected_version || return 1
-	printf '%s\n' "$cache_root" > "$candidate_root_file" || return 1
+	write_candidate_root || return 1
 }
 
 install_downloaded_release() {
@@ -153,7 +167,7 @@ install_downloaded_release() {
 	fi
 	mv "$staged_cache" "$cache_root" || return 1
 	candidate=$cached_candidate
-	printf '%s\n' "$cache_root" > "$candidate_root_file" || return 1
+	write_candidate_root || return 1
 }
 
 if use_cached_release; then

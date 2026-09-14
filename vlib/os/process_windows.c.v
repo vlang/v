@@ -340,7 +340,7 @@ fn (mut p Process) win_is_pending(idx int) bool {
 	if rhandle == 0 {
 		return false
 	}
-	mut bytes_avail := int(0)
+	mut bytes_avail := C.DWORD(0)
 	if C.PeekNamedPipe(rhandle, 0, 0, 0, &bytes_avail, 0) {
 		return bytes_avail > 0
 	}
