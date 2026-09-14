@@ -5698,10 +5698,10 @@ fn main() {
 fn test_moved_module_alias_uses_target_module_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'moved_module_alias_identity', {
-		'v.mod':                      "Module { name: 'moved_module_alias_identity' }\n"
-		'modules/legacy/alias.v':     "@[alias: '@VMODROOT/modules/canonical'] module legacy\n"
-		'modules/canonical/module.v': 'module canonical\n\npub fn answer() int {\n\treturn 42\n}\n'
-		'main.v':                     'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
+		'v.mod':              "Module { name: 'moved_module_alias_identity' }\n"
+		'legacy/alias.v':     "@[alias: '@VMODROOT/canonical'] module legacy\n"
+		'canonical/module.v': 'module canonical\n\npub fn answer() int {\n\treturn 42\n}\n'
+		'main.v':             'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '42'
 }

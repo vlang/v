@@ -1485,7 +1485,8 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	// The resolve memo is written while the program is generated and joined
 	// once the C pieces exist.
 	mut pending_memo_store := FastcPendingMemoStore{}
-	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, prefs, mut pending_memo_store)!
+	scoped_prefs := fastc_preferences_for_entry_paths(paths, prefs)
+	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
 	for source_file in sources {
@@ -1495,7 +1496,8 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	// multi-return component is not carried correctly by the self-hosted
 	// generator yet.
 	mut units := FastcUnitLayout{}
-	c_pieces, uses_threads, c_flags := generate_source_pieces(sources, module_aliases, prefs, mut units)!
+	c_pieces, uses_threads, c_flags := generate_source_pieces(sources, module_aliases, &scoped_prefs,
+		mut units)!
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{

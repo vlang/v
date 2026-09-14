@@ -192,7 +192,7 @@ fn test_v1_fallback_installer_downloads_0_5_2_and_uses_local_or_oldv_fallback() 
 	assert oldv_source.contains("context.cc = fp.string('cc', 0, default_cc")
 	assert !oldv_source.contains("if env_cc != '' {\n\t\tcontext.cc = env_cc")
 	assert oldv_source.contains("env_ldflags := os.getenv('OLDV_LDFLAGS')")
-	vgit_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'modules', 'vgit', 'vgit.v'))!
+	vgit_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'vgit', 'vgit.v'))!
 	assert vgit_source.contains("c_ldflags = '\${c_ldflags} \${vgit_context.cc_ldflags}'.trim_space()")
 	assert vgit_source.contains('\'-ldflags "\${vgit_context.cc_ldflags}"\'')
 }

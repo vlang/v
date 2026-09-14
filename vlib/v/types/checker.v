@@ -5516,7 +5516,10 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		module_base := module_path.all_after_last('.')
 		explicit_alias := tc.import_has_explicit_alias(node)
 		if missing_path := tc.a.missing_imports[idx] {
-			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)', flat.NodeId(idx), node.pos, 'builder error:')
+			// The resolver knows whether a `modules/` directory would have
+			// satisfied this import, and leaves the migration hint for it here.
+			layout_hint := tc.a.missing_import_hints[idx]
+			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)${layout_hint}', flat.NodeId(idx), node.pos, 'builder error:')
 		}
 		tc.check_import_source_syntax(flat.NodeId(idx), node)
 		if tc.selective_import_has_missing_value_symbol(node, module_path)

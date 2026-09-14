@@ -3789,13 +3789,28 @@ myapp/
 `main.v` can use `import myapp.common`, and `structs.v` should still
 declare `module common`.
 
+A module's import path is its path under that lookup root, so the directory
+holding a module has to sit at the root itself. There is no virtual `modules/`
+directory anymore: `modules/mymod` is not searched, the same way the virtual
+`src/` source root is no longer searched. Move such a directory up beside the
+`v.mod` it belongs to, which leaves every `import` unchanged:
+
+```text
+myapp/
+├── v.mod
+├── main.v
+└── mymod/            # was myapp/modules/mymod
+```
+
+V reports the move for you when an import would otherwise have resolved there.
+
 ### Module aliases
 
 When a module moves, an `alias.v` file can keep its old import path working without copying its
 implementation. The alias module contains only a module declaration with an `alias` attribute:
 
 ```v ignore
-@[alias: '@VMODROOT/modules/new_name']
+@[alias: '@VMODROOT/new_name']
 module old_name
 ```
 
@@ -6280,6 +6295,14 @@ folder containing `v.mod`.
 
 V packages are installed normally in your `~/.vmodules` folder. That
 location can be overridden by setting the env variable `VMODULES`.
+
+`v install --local` installs into the project's own lookup root instead, i.e.
+the folder holding its `v.mod`, so the package lands beside the project's own
+modules and is imported by its name just like they are. That root is shared with
+the modules the project writes itself, so VPM keeps a record of what it installed
+there and only updates or removes those. A package an older V installed into the
+project's `modules/` directory has no such record; after moving it up beside the
+`v.mod`, `v install --local --adopt <module>` tells VPM it is one of its own.
 
 ### Package names and import paths
 
