@@ -104,6 +104,11 @@ fn configure_selfhost_parallelism(building_v bool, prod_parallel_cc bool) {
 	}
 }
 
+fn self_build_current_hash(vroot string) string {
+	// Source archives intentionally have no current Git hash.
+	return util.githash(vroot) or { '' }
+}
+
 const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_serial_user_check_node_threshold = 1_000_000
 const scoped_serial_user_transform_node_threshold = 1_000_000
@@ -9529,6 +9534,12 @@ pub fn run(args []string) {
 	prefs.vcurrent_hash = os.getenv(macos_v3_vcurrent_hash_env)
 	if prefs.vcurrent_hash == '' {
 		prefs.vcurrent_hash = @VCURRENTHASH
+	}
+	if building_v {
+		// A self-build must describe the sources being compiled, not the compiler
+		// that happened to bootstrap them. Otherwise every `make`/`v up` keeps
+		// reporting the bootstrap snapshot's commit indefinitely.
+		prefs.vcurrent_hash = self_build_current_hash(prefs.vroot)
 	}
 	prefs.selfhost = is_selfhost || fastc_selfhost_build
 	prefs.building_v = building_v

@@ -32,6 +32,16 @@ fn test_default_selfhost_job_count() {
 	assert default_selfhost_job_count(16, true, true, true, u64(16) * 1024 * 1024 * 1024) == 8
 }
 
+fn test_self_build_current_hash_is_empty_without_git_metadata() {
+	root := os.join_path(os.vtmp_dir(), 'v3_self_build_hash_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	assert self_build_current_hash(root) == ''
+}
+
 fn test_v3_parallel_c_job_count() {
 	assert v3_parallel_c_job_count(0, false, false, false) == 1
 	assert v3_parallel_c_job_count(8, false, false, false) == v3_parallel_cc_max_jobs
