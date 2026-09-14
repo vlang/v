@@ -16630,6 +16630,26 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		tc.pop_scope()
 		return
 	}
+	if node.kind == .match_stmt {
+		for i in 1 .. node.children_count {
+			branch_id := tc.a.child(&node, i)
+			branch := tc.a.node(branch_id)
+			if branch.kind != .match_branch {
+				continue
+			}
+			body_start := if branch.value == 'else' { 0 } else { branch.value.int() }
+			if body_start < 0 || body_start > branch.children_count {
+				continue
+			}
+			tc.push_scope()
+			for j in body_start .. branch.children_count {
+				tc.check_comptime_static_body(tc.a.child(branch, j), var_name, loop_kind,
+					field_cases, value_cases)
+			}
+			tc.pop_scope()
+		}
+		return
+	}
 	if node.kind in [.assign, .selector_assign, .index_assign] {
 		tc.check_comptime_static_assignment(node, var_name, field_cases)
 		return

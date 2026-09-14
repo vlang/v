@@ -187,6 +187,15 @@ fn test_static_comptime_for_decl_initializer_binding_shadow_is_reported() {
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
 
+fn test_static_comptime_for_match_branch_shadow_is_reported() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nenum Choice {\n\tfoo\n\tbar\n}\n\n__global (\n\tcounter string\n)\n\nfn main() {\n\t$for item in Choice.values {\n\t\tmatch item.value {\n\t\t\t.foo {\n\t\t\t\tcounter := item.name\n\t\t\t\tprintln(counter)\n\t\t\t}\n\t\t\t.bar {\n\t\t\t\tprintln(item.name)\n\t\t\t}\n\t\t}\n\t}\n}\n')
+	res := compile_project_with_path(app_dir, sibling_modules_dir, '')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+}
+
 fn test_warm_owned_module_cache_reports_new_global_shadow() {
 	$if windows {
 		return
