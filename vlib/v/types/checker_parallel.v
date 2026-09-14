@@ -3060,6 +3060,12 @@ fn name_precedes_delimiter(tokens []string, index int) bool {
 		}
 		before--
 	}
+	if before > 0 && tokens[before - 1] == '.' {
+		// `cfg.type(x: 1)` calls a field whose name is spelled like a keyword.
+		// The parser accepts a keyword after a `.` as a selector, so what such
+		// a call names is a field just as much.
+		return is_ident_token(tokens[before])
+	}
 	return before >= 0 && is_type_name_token(tokens[before])
 }
 
@@ -3397,9 +3403,8 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 			if depth == 0 && lines[end] != body_line {
 				// `cb := |x| 1 +` continues on the next line, the way the
 				// scanner inserts no semicolon after an operator, and so does
-				// the `.method()` of a chain: the parser consumes the newline
-				// before a `.` or a `(`.
-				if tokens[end] !in ['.', '(']
+				// the `.method()` of a chain.
+				if !token_continues_the_previous_line(tokens, end)
 					&& (end == 0 || token_may_end_an_expression(tokens, end - 1)) {
 					break
 				}
@@ -3431,6 +3436,16 @@ fn pipe_lambda_shadow_ranges(tokens []string, lines []int, name string) []TokenR
 // `tokens[index]`, which is what lets the scanner end the statement at the
 // following line break. A keyword cannot, `unsafe` and `lock` taking the block
 // that follows them, with the literals and the selectors as the exceptions.
+// token_continues_the_previous_line reports whether the parser consumes the
+// newline standing before the token at `index` instead of ending a statement on
+// it. It skips the auto-semicolon before the `.` or the `(` of a chained call
+// (parser.v, `p.tok == .semicolon && p.peek() == .dot`), before the `{` of a
+// block written on its own line, and between a `}` and the `else` that
+// continues the control-flow expression it closes.
+fn token_continues_the_previous_line(tokens []string, index int) bool {
+	return tokens[index] in ['.', '(', '{', 'else']
+}
+
 fn token_may_end_an_expression(tokens []string, index int) bool {
 	word := tokens[index]
 	if word in [')', ']', '}', '?', '!', '0', 'true', 'false', 'none', 'nil'] {

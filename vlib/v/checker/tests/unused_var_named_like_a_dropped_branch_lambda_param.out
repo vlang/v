@@ -26,10 +26,24 @@ vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:89:2
       |     ^
    90 |     $if windows {
    91 |         cb := |c| make_maker()
-vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:106:2: warning: unused variable: `q`
-  104 |     on_the_next_line()
-  105 |     after_a_semicolon()
-  106 |     q := 1
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:105:2: warning: unused variable: `e`
+  103 | // the lambda.
+  104 | fn newline_before_else() {
+  105 |     e := 1
       |     ^
-  107 |     $if windows {
-  108 |         cb := |q| q + 1
+  106 |     $if windows {
+  107 |         cb := |e| if truthy() { 1 }
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:116:2: warning: unused variable: `f`
+  114 | // and needs the same newline consumed.
+  115 | fn newline_before_a_block() {
+  116 |     f := 1
+      |     ^
+  117 |     $if windows {
+  118 |         cb := |f| if truthy()
+vlib/v/checker/tests/unused_var_named_like_a_dropped_branch_lambda_param.vv:136:2: warning: unused variable: `q`
+  134 |     on_the_next_line()
+  135 |     after_a_semicolon()
+  136 |     q := 1
+      |     ^
+  137 |     $if windows {
+  138 |         cb := |q| q + 1

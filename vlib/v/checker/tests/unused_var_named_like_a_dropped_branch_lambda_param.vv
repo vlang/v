@@ -94,7 +94,37 @@ fn chained_body() {
 	}
 }
 
+fn truthy() bool {
+	return true
+}
+
+// The parser consumes the newline between a `}` and the `else` that continues
+// the control-flow expression it closes, so the `else` body still belongs to
+// the lambda.
+fn newline_before_else() {
+	e := 1
+	$if windows {
+		cb := |e| if truthy() { 1 }
+		else { e }
+		_ = cb
+	}
+}
+
+// A `{` written on its own line opens the block of the condition before it,
+// and needs the same newline consumed.
+fn newline_before_a_block() {
+	f := 1
+	$if windows {
+		cb := |f| if truthy()
+		{ f } else { 0 }
+		_ = cb
+	}
+}
+
 fn main() {
+	assert truthy()
+	newline_before_a_block()
+	newline_before_else()
 	chained_body()
 	println(make_maker().consume(1))
 	keyword_field_body()

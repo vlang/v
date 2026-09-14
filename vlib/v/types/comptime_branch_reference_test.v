@@ -496,3 +496,27 @@ fn test_one_branch_scan_answers_every_name() {
 	assert !tokens_reference_ident(tokens, lines, 'z', true)
 	assert !tokens_reference_ident(tokens, lines, '', true)
 }
+
+fn test_a_lambda_body_continues_over_a_consumed_newline() {
+	// The parser consumes the newline between a `}` and an `else`, and before
+	// the `{` of a block written on its own line, so both bodies are still the
+	// lambda's and shadow the searched name.
+	assert !code_references_ident('cb := |x| if c { 1 }\nelse { x }', 'x', true)
+	assert !code_references_ident('cb := |x| if c\n{ x } else { 0 }', 'x', true)
+	assert !code_references_ident('cb := |x| if c { 1 } else if d\n{ x }', 'x', true)
+	// What nothing continues still ends the body.
+	assert code_references_ident('cb := |x| x + 1\nprintln(x)', 'x', true)
+	assert code_references_ident('cb := |x| x + 1\nx = 2', 'x', true)
+	assert code_references_ident('cb := |y| y + 1\nif c {\n}\nelse { x }', 'x', true)
+}
+
+fn test_a_short_struct_argument_of_a_keyword_selector_callee() {
+	assert !code_references_ident('_ = cfg.type(x: 1)', 'x', true)
+	assert !code_references_ident('_ = cfg.map(x: 1)', 'x', true)
+	assert !code_references_ident('_ = make().type(x: 1)', 'x', true)
+	// A module-qualified type answers the same as before.
+	assert !code_references_ident('_ = mod.Config{x: 1}', 'x', true)
+	// The arguments of such a call still read, and so do its indices.
+	assert code_references_ident('_ = cfg.type(x, y: 1)', 'x', true)
+	assert code_references_ident('_ = cfg.type[x](y: 1)', 'x', true)
+}
