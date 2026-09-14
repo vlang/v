@@ -225,6 +225,35 @@ pub fn to_slash(path string) string {
 	}
 }
 
+// parent_dir returns the parent directory of the given `path`, or an empty
+// string when `path` has no parent: a filesystem root (`/`, `C:\`, `C:`,
+// `\\server\share`), the current directory reference `.`, or a single path
+// element without any separator in it.
+// Unlike `dir`, it never turns an absolute path into the relative `.` that
+// `dir` falls back to for a path without a separator (`dir('C:') == '.'`), so
+// it is safe for parent directory walks: those would otherwise escape the
+// drive on Windows and keep searching relative to the current directory.
+pub fn parent_dir(path string) string {
+	if path == '' {
+		return empty_str
+	}
+	volume_len := win_volume_len(path)
+	if volume_len > 0 && path.len <= volume_len + 1 {
+		// `C:`, `C:\`, `\\server\share` and `\\server\share\` are roots.
+		return empty_str
+	}
+	parent := dir(path)
+	if parent == path {
+		return empty_str
+	}
+	if parent == dot_str && path != dot_str {
+		// `dir` returns `.` when `path` holds no separator at all; that is not a
+		// parent directory, it is "relative to wherever the caller happens to be".
+		return empty_str
+	}
+	return parent
+}
+
 // from_slash returns the result of replacing each slash (`/`) character is path with a separator character.
 pub fn from_slash(path string) string {
 	return $if windows {

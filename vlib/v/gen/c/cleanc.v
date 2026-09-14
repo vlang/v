@@ -581,7 +581,6 @@ mut:
 	// nested calls never collide.
 	cabi_int_out_args               map[flat.NodeId]string
 	emitted_optional_types          map[string]bool
-	emitted_fns                     map[string]bool
 	array_method_cache              map[string]string
 	param_types_cache               map[string][]types.Type // (name|fallback) -> resolved param types
 	interface_receiver_cache        &StringLookupCache = unsafe { nil }
@@ -1228,7 +1227,6 @@ pub fn FlatGen.new() FlatGen {
 		needed_optional_types: map[string]string{}
 		cabi_int_out_args: map[flat.NodeId]string{}
 		emitted_optional_types: map[string]bool{}
-		emitted_fns: map[string]bool{}
 		array_method_cache: map[string]string{}
 		param_types_cache: map[string][]types.Type{}
 		interface_receiver_cache: &StringLookupCache{}
@@ -2611,8 +2609,10 @@ fn c_record_cache_resolution_path(path string, mut resolution_dirs map[string]bo
 			return
 		}
 		first_missing = dir
-		parent := os.dir(dir)
-		if parent == dir {
+		// `os.dir` answers `.` for a bare Windows drive, which would record the
+		// current directory as a cache resolution path; `os.parent_dir` stops.
+		parent := os.parent_dir(dir)
+		if parent.len == 0 {
 			return
 		}
 		dir = parent
@@ -2845,7 +2845,6 @@ fn (mut g FlatGen) release_scoped_fn_items() {
 	}
 	scope := g.scoped_fn_items_scope
 	g.fn_gen_items = []FlatFnGenItem{}
-	g.emitted_fns = map[string]bool{}
 	g.tc.cur_file = ''
 	g.tc.cur_module = ''
 	g.scoped_fn_items_scope = unsafe { nil }
@@ -2975,6 +2974,17 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	effective_no_parallel := no_parallel || g.profile_file.len > 0
+	// Every cgen stage below takes its serial `$if windows` branch on Windows:
+	// run_pre_dispatch_parallel bails out, gen_fns_dispatch emits every body on
+	// this thread, and the support scans are inlined. Only the *preparation*
+	// choices were still keyed off `effective_no_parallel`, so a default Windows
+	// build ran neither prepare_pre_dispatch_master (parallel-only) nor
+	// prepare_serial_fn_tables, and function selection first happened inside one
+	// of the forked scoped preseed helpers instead of on the master.
+	mut parallel_cgen := !effective_no_parallel
+	$if windows {
+		parallel_cgen = false
+	}
 	if g.profile_file.len > 0 {
 		// Counter metadata and numbering are accumulated by one serial generator.
 		g.scope_parallel_workers = false
@@ -3155,7 +3165,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.pending_loop_label = ''
 	g.needed_optional_types.clear()
 	g.emitted_optional_types.clear()
-	g.emitted_fns.clear()
 	g.array_method_cache.clear()
 	g.param_types_cache.clear()
 	g.interface_receiver_cache = &StringLookupCache{}
@@ -3308,7 +3317,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			}
 			g.precompute_param_type_index()
 			g.precompute_concrete_optional_abi_fns()
-			if effective_no_parallel {
+			if !parallel_cgen {
+				// Select the functions and intern the literal table here. The
+				// scoped preseed helpers below fork workers off this generator,
+				// so its selection state has to be complete first.
 				g.prepare_serial_fn_tables()
 			}
 		}
@@ -3348,7 +3360,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.precompute_ownership_recursive_drop_helpers()
 		g.precompute_fixed_array_map_key_types()
 	}
-	defer_parallel_support := g.scope_parallel_workers && !effective_no_parallel && !g.program_body_only && g.incremental_fn_names.len == 0
+	// Deferring const lowering and the libc compatibility preseed only pays off
+	// when gen_fns_dispatch actually starts a declaration task. It never does on
+	// Windows, where this would just move the work behind an early selection.
+	defer_parallel_support := g.scope_parallel_workers && parallel_cgen && !g.program_body_only
+		&& g.incremental_fn_names.len == 0
 	mut const_code := if g.program_body_only || defer_parallel_support {
 		''
 	} else {

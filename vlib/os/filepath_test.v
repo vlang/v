@@ -195,3 +195,44 @@ fn test_trim_extended_length_path_prefix() {
 		assert trim_extended_length_path_prefix('') == ''
 	}
 }
+
+fn test_parent_dir() {
+	$if windows {
+		assert parent_dir(r'S:\repo\vlang') == r'S:\repo'
+		assert parent_dir(r'S:\repo') == 'S:'
+		// `dir('S:')` is `.`, which would restart a parent walk at the current
+		// directory; `parent_dir` reports "no parent" instead.
+		assert parent_dir('S:') == ''
+		assert parent_dir('S:\\') == ''
+		assert parent_dir(r'\\Host\share') == ''
+		assert parent_dir(r'\\Host\share\') == ''
+		assert parent_dir(r'\\Host\share\files\file.v') == r'\\Host\share\files'
+		assert parent_dir('\\') == ''
+		assert parent_dir('.') == ''
+		assert parent_dir('') == ''
+		assert parent_dir('file.v') == ''
+		return
+	}
+	assert parent_dir('/path/to/files/file.v') == '/path/to/files'
+	assert parent_dir('/path') == '/'
+	assert parent_dir('/') == ''
+	assert parent_dir('.') == ''
+	assert parent_dir('') == ''
+	assert parent_dir('file.v') == ''
+	assert parent_dir('path/to/file.v') == 'path/to'
+}
+
+// test_parent_dir_walk_terminates guards the parent walks in the compiler
+// (vroot and v.mod root detection): every one of them must reach a root in a
+// bounded number of steps, from any starting path, on any platform.
+fn test_parent_dir_walk_terminates() {
+	for start in ['/a/b/c', 'a/b/c', '.', '/', '', r'S:\a\b', 'S:', r'\\Host\share\a'] {
+		mut dir := start
+		mut steps := 0
+		for dir.len > 0 {
+			dir = parent_dir(dir)
+			steps++
+			assert steps < 16
+		}
+	}
+}

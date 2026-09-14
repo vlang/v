@@ -370,8 +370,11 @@ fn detect_vroot_from(start string) string {
 		if os.is_dir(os.join_path_single(os.join_path_single(dir, 'vlib'), 'builtin')) {
 			return dir
 		}
-		parent := os.dir(dir)
-		if parent == dir {
+		// See nearest_vroot_for_path in v.driver: walking with `os.dir` escapes a
+		// bare Windows drive into the relative `.`, which then matches the current
+		// directory instead of the directory the input actually lives in.
+		parent := os.parent_dir(dir)
+		if parent.len == 0 {
 			break
 		}
 		dir = parent
@@ -520,15 +523,11 @@ fn module_alias_target_from_source(source string) ?string {
 
 fn vmod_root_for_dir(start string) ?string {
 	mut dir := os.real_path(start)
-	for {
+	for dir.len > 0 {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
 			return dir
 		}
-		parent := os.dir(dir)
-		if parent == dir {
-			return none
-		}
-		dir = parent
+		dir = os.parent_dir(dir)
 	}
 	return none
 }

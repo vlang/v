@@ -842,11 +842,9 @@ fn signature_vmod_root(source_file string) (string, string) {
 		if os.exists(vmod_file) {
 			return os.real_path(dir), os.real_path(vmod_file)
 		}
-		parent := os.dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
+		// Windows drive into the relative `.` and match the current directory.
+		dir = os.parent_dir(dir)
 	}
 	return os.real_path(original_dir), ''
 }
@@ -6144,11 +6142,9 @@ fn cached_vmod_root(source_file string) string {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
 			return dir
 		}
-		parent := os.dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
+		// Windows drive into the relative `.` and match the current directory.
+		dir = os.parent_dir(dir)
 	}
 	return os.dir(os.real_path(source_file))
 }
