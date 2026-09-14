@@ -39,10 +39,34 @@ fn colon_delimited_ident(key string, width int) {
 	}
 }
 
+fn infix_bare_map_key(key int) {
+	$if prealloc {
+		_ := 1 in {
+			key: 'one'
+		}
+	}
+}
+
+fn maybe_number() ?int {
+	return none
+}
+
+fn braced_asm_operand(input int) {
+	$if prealloc {
+		asm arm64 {
+			mov x0, x1
+			; ; r (maybe_number() or { input })
+		}
+	}
+}
+
 fn main() {
 	println((Counter{1} + Counter{2}).n)
 	keyword_shaped_ident('v')
 	colon_delimited_ident('answer', 42)
+	infix_bare_map_key(1)
+	braced_asm_operand(42)
+	_ = maybe_number()
 	// A capture used only in the dropped closure branch is still used.
 	captured := 64
 	only_in_skipped_branch := fn [captured] () {

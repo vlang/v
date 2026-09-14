@@ -5846,6 +5846,7 @@ fn (mut p Parser) skip_comptime_block() {
 	mut asm_section := 0
 	mut asm_is_goto := false
 	mut expression_colon_braces := [false]
+	mut next_lcbr_is_lambda_body := false
 	mut map_type_depth := -1
 	mut map_type_paren_depth := -1
 	mut map_type_bracket_depth := -1
@@ -5873,12 +5874,12 @@ fn (mut p Parser) skip_comptime_block() {
 		mut skip_asm_token := false
 		if asm_body_depth >= 0 {
 			skip_asm_token = true
+			if asm_section in [1, 2] && paren_depth > asm_base_paren_depth {
+				skip_asm_token = false
+			}
 			if depth == asm_body_depth {
 				if asm_is_goto && asm_section == 4 && p.tok == .name {
 					p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
-				}
-				if asm_section in [1, 2] && paren_depth > asm_base_paren_depth {
-					skip_asm_token = false
 				}
 				if p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
 					&& p.s.src[p.tok_pos] == `;` {
@@ -5918,6 +5919,7 @@ fn (mut p Parser) skip_comptime_block() {
 		} else if in_lambda_params {
 			if p.tok == .pipe {
 				in_lambda_params = false
+				next_lcbr_is_lambda_body = p.peek() == .lcbr
 				block_depth := if p.peek() == .lcbr { depth + 1 } else { -1 }
 				lambda_scopes << SkippedComptimeLambdaScope{
 					names: lambda_params.clone()
@@ -5935,6 +5937,8 @@ fn (mut p Parser) skip_comptime_block() {
 		} else if p.tok == .pipe && skipped_pipe_starts_lambda(prev_tok) {
 			in_lambda_params = true
 			lambda_params = []string{}
+		} else if p.tok == .logical_or && skipped_pipe_starts_lambda(prev_tok) {
+			next_lcbr_is_lambda_body = p.peek() == .lcbr
 		} else if prev_tok == .key_goto && p.tok == .name {
 			p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
 		} else if prev_tok != .dot && prev_tok !in [.key_goto, .key_break, .key_continue]
@@ -5965,8 +5969,10 @@ fn (mut p Parser) skip_comptime_block() {
 				is_map_literal := (map_type_depth == depth
 					&& map_type_paren_depth == paren_depth
 					&& map_type_bracket_depth == bracket_depth) || prev_tok.is_assignment()
+					|| (prev_tok.is_infix() && !next_lcbr_is_lambda_body)
 					|| prev_tok in [.comma, .colon, .lpar, .lsbr, .key_return]
 				expression_colon_braces << (prev_tok == .str_dollar || is_map_literal)
+				next_lcbr_is_lambda_body = false
 				map_type_depth = -1
 				depth++
 			}
