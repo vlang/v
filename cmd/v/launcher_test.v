@@ -229,6 +229,9 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.c.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.js.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js_node', 'example_test.js.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser',
+		'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=wasm', 'example_test.wasm.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])

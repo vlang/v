@@ -423,7 +423,7 @@ fn v1_fallback_selected_backend(args []string) string {
 			}
 		}
 	}
-	return backend
+	return if backend in ['js_browser', 'js_node'] { 'js' } else { backend }
 }
 
 // v1_fallback_profile_option_consumes_value mirrors the driver's compatibility
