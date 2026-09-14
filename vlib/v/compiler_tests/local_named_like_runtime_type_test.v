@@ -290,3 +290,33 @@ fn main() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['9', '11'], res.output
 }
+
+// Main-module object wrappers declare their parameters through the normal function
+// parameter path. Their call into the object-local implementation must use the same
+// renamed parameter spelling.
+fn test_an_object_file_wrapper_forwards_a_renamed_parameter() {
+	v3_bin := local_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_object_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_v := os.join_path(root, 'main.v')
+	os.write_file(main_v, 'module main
+
+pub fn answer(array int) int {
+	return array + 1
+}
+
+fn main() {
+	println(answer(1))
+}
+') or {
+		panic(err)
+	}
+	object_path := os.join_path(root, 'answer.o')
+	compile := os.execute('${v3_bin} -nocache -cc cc -o ${object_path} ${main_v}')
+	assert compile.exit_code == 0, compile.output
+	assert os.is_file(object_path)
+}

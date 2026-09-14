@@ -4932,7 +4932,11 @@ fn (mut g FlatGen) export_wrapper_arg_names(node flat.Node) []string {
 		if p.kind != .param {
 			continue
 		}
-		param_name := if p.value == '_' { '_${written}' } else { g.cname(p.value) }
+		param_name := if p.value == '_' {
+			'_${written}'
+		} else {
+			g.current_param_use_cname(p.value)
+		}
 		args << param_name
 		written++
 		if insert_implicit_ctx_after_first && !implicit_ctx_written {
@@ -5038,7 +5042,11 @@ fn (mut g FlatGen) write_export_wrapper_v_c_abi_params(node flat.Node, module_na
 		g.write(ct)
 		if param.value.len > 0 {
 			g.write(' ')
-			g.write(if param.value == '_' { '_${written}' } else { g.cname(param.value) })
+			g.write(if param.value == '_' {
+				'_${written}'
+			} else {
+				g.current_param_use_cname(param.value)
+			})
 		}
 		written++
 	}
@@ -7734,7 +7742,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			}
 			forward_ctx := may_forward_ctx && current_ctx_name.len > 0
 			if forward_ctx && is_method {
-				g.write(', ${g.cname(current_ctx_name)}')
+				g.write(', ${g.current_param_use_cname(current_ctx_name)}')
 			}
 			mut emitted_arg_count := 0
 			for i in arg_start .. node.children_count {
@@ -8044,7 +8052,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				// A no-arg delegation leaves the forwarded ctx as the final argument;
 				// emit it here, right after the receiver, for the lowered free call.
 				if forward_ctx && !is_method && i - arg_start == 0 {
-					g.write(', ${g.cname(current_ctx_name)}')
+					g.write(', ${g.current_param_use_cname(current_ctx_name)}')
 				}
 			}
 			// Count the forwarded ctx (if any) as already supplied.
@@ -8072,7 +8080,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						current_ctx_name = g.cur_veb_ctx_name() or { '' }
 					}
 					if implicit_ctx && current_ctx_name.len > 0 {
-						g.write(g.cname(current_ctx_name))
+						g.write(g.current_param_use_cname(current_ctx_name))
 					} else {
 						g.gen_default_value_for_type(pt)
 					}
@@ -16353,7 +16361,7 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	current_ctx_name := if may_forward_ctx { g.cur_veb_ctx_name() or { '' } } else { '' }
 	forward_ctx := may_forward_ctx && current_ctx_name.len > 0
 	if forward_ctx {
-		g.write(', ${g.cname(current_ctx_name)}')
+		g.write(', ${g.current_param_use_cname(current_ctx_name)}')
 	}
 	mut next_param_idx := if forward_ctx { 2 } else { 1 }
 	concrete_optional_args := g.call_uses_concrete_optional_params(emitted_name)
