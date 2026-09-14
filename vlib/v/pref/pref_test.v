@@ -42,3 +42,25 @@ fn test_get_module_path_resolves_alias_and_submodule() {
 	assert prefs.get_module_path('modules.legacy.sub', main_file) == os.real_path(os.join_path_single(canonical_dir,
 		'sub'))
 }
+
+// test_detect_vroot_from_outside_a_checkout pins the twin of the driver walk in
+// https://github.com/vlang/v/issues/28583: the walk must reach a filesystem
+// root rather than the relative `.` that `os.dir` returns for a bare Windows
+// drive, which would otherwise match the current directory.
+fn test_detect_vroot_from_outside_a_checkout() {
+	outside := os.join_path(os.vtmp_dir(), 'v_pref_outside_${os.getpid()}', 'a', 'b')
+	os.mkdir_all(outside) or { panic(err) }
+	defer {
+		os.rmdir_all(os.dir(os.dir(outside))) or {}
+	}
+	cwd := os.getwd()
+	os.chdir(@VMODROOT) or { panic(err) }
+	defer {
+		os.chdir(cwd) or {}
+	}
+	detected := detect_vroot_from(os.join_path(outside, 'hello.v'))
+	assert detected != '.'
+	if detected.len > 0 {
+		assert os.is_dir(os.join_path(detected, 'vlib', 'builtin'))
+	}
+}

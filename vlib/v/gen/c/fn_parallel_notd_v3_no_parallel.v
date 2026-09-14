@@ -1098,7 +1098,6 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 				}
 			}
 			g.fn_gen_items = owned_items
-			g.emitted_fns = clone_cgen_string_bool_map(g.emitted_fns)
 			cgen_worker_scope_leave(items_scope)
 			g.scoped_fn_items_scope = items_scope
 			// These tables remain live after release_scoped_fn_items, so promote them
@@ -2791,9 +2790,6 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		} else {
 			g.emitted_optional_types.clone()
 		}
-		// Function selection is complete before workers are created; body
-		// generation only reads this set.
-		emitted_fns: g.emitted_fns
 		array_method_cache: if result_only {
 			g.array_method_cache
 		} else {
