@@ -33,8 +33,11 @@ It differs from `os.dir()` in three ways:
   `\\?\UNC\server\share` all give `''` and end the loop above.
 - The parent of a top level entry is the absolute root, so `os.parent_dir(r'C:\dir')`
   is `C:\`, never the drive relative `C:`.
-- A single element that needs a current directory to resolve has no parent
-  either, so `file.v` and the drive relative `C:file.v` both give `''`.
+- A single element with no directory in it has no parent, so `file.v` gives `''`.
+- A Windows drive relative path (`C:`, `C:file.v`, `C:dir\file.v`) gives `''` as
+  well, however many components it has. It resolves against the current
+  directory *of that drive*, which is state the caller cannot see, and so does
+  every one of its ancestors, so none of them is safe to hand back.
 
 Each step is guaranteed to make progress: trailing separators name the same
 directory, so they are ignored, and `os.parent_dir('/a/b/')` is `/a` rather than

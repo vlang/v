@@ -209,8 +209,15 @@ fn test_parent_dir() {
 		assert parent_dir('S:\\') == ''
 		assert parent_dir('S:/') == ''
 		// A drive relative path has no parent that can be named without the
-		// current directory on that drive.
+		// current directory on that drive, however many components it has: the
+		// ancestors resolve against that same hidden per-drive state.
 		assert parent_dir('S:outside') == ''
+		assert parent_dir(r'S:foo\bar') == ''
+		assert parent_dir('S:foo/bar') == ''
+		assert parent_dir(r'S:foo\bar\baz') == ''
+		assert parent_dir(r'S:foo\bar' + '\\') == ''
+		assert !is_drive_relative_path(r'S:\foo')
+		assert is_drive_relative_path(r'S:foo\bar')
 		assert parent_dir(r'\\Host\share') == ''
 		assert parent_dir(r'\\Host\share\') == ''
 		assert parent_dir(r'\\Host\share\files') == r'\\Host\share' + '\\'
@@ -297,15 +304,4 @@ fn test_parent_dir_walk_terminates() {
 			assert steps < 16
 		}
 	}
-}
-
-// is_drive_relative_path reports whether `path` names a location relative to
-// the current directory of a Windows drive (`C:` or `C:sub`). Such a path
-// resolves against per-drive state, so a parent walk must never probe one.
-// Elsewhere `S:\x` is an ordinary file name, so this is Windows only.
-fn is_drive_relative_path(path string) bool {
-	$if !windows {
-		return false
-	}
-	return has_drive_letter(path) && (path.len == 2 || !is_slash(path[2]))
 }

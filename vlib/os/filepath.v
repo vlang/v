@@ -227,10 +227,12 @@ pub fn to_slash(path string) string {
 
 // parent_dir returns the parent directory of the given `path`, or an empty
 // string when `path` has no parent. A path has no parent when it is a
-// filesystem root (`/`, `C:\`, `C:`, `\\server\share`, `\\?\UNC\server\share`),
-// the current directory reference `.`, or a single element that can only be
-// resolved against a current directory (`file.v`, and the drive relative
-// `C:file.v`).
+// filesystem root (`/`, `C:\`, `\\server\share`, `\\?\UNC\server\share`), the
+// current directory reference `.`, a single element with no directory in it
+// (`file.v`), or a Windows drive relative path (`C:`, `C:file.v`,
+// `C:dir\file.v`), which resolves against the current directory *of that
+// drive* - state the caller cannot see, and which every one of its ancestors
+// shares, so none of them is safe to hand back.
 // A separator is any byte the platform accepts as one, so a Windows path may
 // mix `/` and `\` freely, and trailing separators are ignored: they name the
 // same directory, so `parent_dir('/a/b/')` is `/a`, exactly like `/a/b`.
@@ -245,6 +247,12 @@ pub fn to_slash(path string) string {
 // probe a drive relative path on the way up.
 pub fn parent_dir(path string) string {
 	if path == '' {
+		return empty_str
+	}
+	if is_drive_relative_path(path) {
+		// `C:`, `C:file.v` and `C:dir\file.v` all resolve against the current
+		// directory of drive C, and so does every ancestor of them, `C:dir`
+		// included. There is no parent here that a caller could safely probe.
 		return empty_str
 	}
 	root_len := win_root_len(path)
@@ -268,8 +276,7 @@ pub fn parent_dir(path string) string {
 		}
 	}
 	if pos < 0 {
-		// Nothing but a single element after the root: `file.v`, the drive
-		// relative `C:file.v`, and the bare volume `C:` itself.
+		// A single element with no directory in it, such as `file.v`.
 		return empty_str
 	}
 	if pos == end - 1 {
@@ -349,6 +356,18 @@ fn win_root_len(path string) int {
 		}
 	}
 	return i
+}
+
+// is_drive_relative_path reports whether `path` names a location relative to
+// the current directory of a Windows drive: `C:`, `C:file.v`, `C:dir\file.v`.
+// Windows keeps one current directory per drive, so such a path resolves
+// against state a caller cannot see. Elsewhere `C:dir` is an ordinary file
+// name, so this is Windows only.
+fn is_drive_relative_path(path string) bool {
+	$if !windows {
+		return false
+	}
+	return has_drive_letter(path) && (path.len == 2 || !is_slash(path[2]))
 }
 
 // is_extended_unc_tag reports whether `win_volume_len` stopped at the `\\?\UNC`
