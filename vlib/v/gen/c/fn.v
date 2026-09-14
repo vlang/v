@@ -3691,6 +3691,7 @@ fn (mut g FlatGen) callback_wrapper_decls() {
 }
 
 fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
+	g.needs_thread_runtime = true
 	if node.children_count == 0 {
 		g.write('(__v_thread){0}')
 		return
@@ -4580,6 +4581,7 @@ fn (mut g FlatGen) gen_thread_wait_call(fn_node &flat.Node) bool {
 	} else {
 		return false
 	}
+	g.needs_thread_runtime = true
 	tmp := g.tmp_count
 	g.tmp_count++
 	res_name := '__twres${tmp}'
@@ -17412,7 +17414,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		}
 		cfn := c_winapi_wide_export_name(mapped_cfn)
 		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
-		if g.has_used_fn_filter() && !(g.spawn_wrapper_defs.len > 0
+		if g.has_used_fn_filter() && !(g.needs_thread_runtime
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
 			&& !g.used_fn_contains(raw_name) && !g.used_fn_contains(raw_cfn)
 			&& !g.used_fn_contains(cfn) && !referenced_c_externs[raw_name]
@@ -17578,7 +17580,7 @@ fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_with_filter(referenced map[stri
 		}
 		cfn := c_winapi_wide_export_name(mapped_cfn)
 		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
-		if filter_used && g.has_used_fn_filter() && !(g.spawn_wrapper_defs.len > 0
+		if filter_used && g.has_used_fn_filter() && !(g.needs_thread_runtime
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
 			&& !g.used_fn_contains(raw_name) && !g.used_fn_contains(raw_cfn)
 			&& !g.used_fn_contains(cfn) && !referenced[raw_name] && !referenced[raw_cfn]
@@ -17767,7 +17769,9 @@ const c_manual_stdlib_declared_fns = {
 	'memchr':           true
 	'memcmp':           true
 	'memcpy':           true
+	'memmem':           true
 	'memmove':          true
+	'mempcpy':          true
 	'memset':           true
 	'mkstemp':          true
 	'pclose':           true

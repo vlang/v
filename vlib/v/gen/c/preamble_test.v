@@ -232,22 +232,46 @@ fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {
 fn test_target_libc_preamble_uses_target_header_declarations() {
 	mut g := FlatGen.new()
 	g.set_target_libc_headers(true)
+	g.add_spawn_wrapper_def('static void closure_wrapper(void) {}')
 	g.preamble()
 	c_code := g.sb.str()
 	for header in ['stdint.h', 'stddef.h', 'stdatomic.h', 'errno.h', 'fcntl.h', 'signal.h', 'stdio.h',
-		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h', 'pthread.h'] {
+		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h'] {
 		assert c_code.contains('#include <${header}>'), header
 	}
+	assert !c_code.contains('#include <pthread.h>')
 	assert c_code.contains('typedef uint64_t u64;')
 	assert !c_code.contains('typedef long long time_t;')
 	assert !c_code.contains('typedef struct FILE FILE;')
 	assert c_code.contains('int backtrace(void** __array, int __size);')
 	assert c_code.contains('char** backtrace_symbols(void* const* __array, int __size);')
 	assert c_code.contains('void backtrace_symbols_fd(void* const* __array, int __size, int __fd);')
-	assert c_code.contains('static __v_thread __v_thread_spawn(')
-	for name in ['open', 'read', 'close', 'pipe', 'signal', 'sysconf', 'setbuf'] {
+	assert !c_code.contains('static __v_thread __v_thread_spawn(')
+	for name in ['open', 'read', 'close', 'pipe', 'signal', 'sysconf', 'setbuf', 'memmem', 'mempcpy'] {
 		assert !g.should_emit_c_extern_decl(name), name
 	}
+}
+
+fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.needs_thread_runtime = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <pthread.h>')
+	assert c_code.contains('static __v_thread __v_thread_spawn(')
+	assert c_code.contains('static void* __v_thread_join(')
+	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
+}
+
+fn test_target_libc_preamble_includes_pthread_for_direct_calls_without_thread_runtime() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.c_extern_refs['pthread_mutex_lock'] = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <pthread.h>')
+	assert !c_code.contains('static __v_thread __v_thread_spawn(')
 }
 
 fn test_headerless_linux_stat_preamble_supports_s390x() {

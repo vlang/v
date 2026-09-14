@@ -477,6 +477,7 @@ mut:
 	shared_alias_pointer_shorts   map[string]string // alias short name -> shared inner type; '' means ambiguous
 	shared_alias_index_ready      bool
 	needs_shared_runtime          bool
+	needs_thread_runtime          bool
 	const_runtime_inits           []string
 	const_runtime_init_modules    []string
 	runtime_inits                 []string
@@ -3147,6 +3148,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.shared_type_names.clear()
 	g.shared_alias_pointer_shorts.clear()
 	g.needs_shared_runtime = false
+	g.needs_thread_runtime = false
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types.clear()
@@ -16904,6 +16906,7 @@ fn (mut g FlatGen) gen_thread_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_i
 	if node.op !in [.eq, .ne] || lhs_type is types.Pointer || rhs_type is types.Pointer || g.tc.c_type(lhs_type) != '__v_thread' || g.tc.c_type(rhs_type) != '__v_thread' {
 		return false
 	}
+	g.needs_thread_runtime = true
 	lhs_name := g.tmp_name()
 	rhs_name := g.tmp_name()
 	g.write('({ __v_thread ${lhs_name} = ')
@@ -17724,6 +17727,18 @@ fn (mut g FlatGen) target_libc_thread_runtime() {
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
 }
 
+fn (g &FlatGen) uses_pthread() bool {
+	if g.needs_thread_runtime {
+		return true
+	}
+	for name in g.c_extern_refs.keys() {
+		if name.starts_with('pthread_') || name.starts_with('C.pthread_') {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut g FlatGen) headerless_libc_preamble() {
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	if g.target_libc_headers {
@@ -17735,8 +17750,11 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// prototype further down. This is the set V's own runtime calls into.
 		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdbool.h', 'stdatomic.h',
 			'errno.h', 'fcntl.h', 'signal.h', 'stdio.h', 'stdlib.h', 'string.h', 'strings.h', 'math.h',
-			'time.h', 'unistd.h', 'pthread.h'] {
+			'time.h', 'unistd.h'] {
 			g.writeln('#include <${header}>')
+		}
+		if g.uses_pthread() {
+			g.writeln('#include <pthread.h>')
 		}
 	} else {
 		g.writeln(c_stdint_header_text())
@@ -17807,10 +17825,12 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// prototypes that go with them. A kernel defines those itself, in its own
 		// headers, and a second declaration of `struct stat` or `strlen` conflicts
 		// with the real one instead of describing it. The macros above are all
-		// `#ifndef`-guarded, so they stay. The execinfo declarations and thread
-		// runtime are V's own, not the target's, so they still have to be written.
+		// `#ifndef`-guarded, so they stay. The execinfo declarations are V's own,
+		// not the target's, so they still have to be written.
 		g.headerless_execinfo_declarations()
-		g.target_libc_thread_runtime()
+		if g.needs_thread_runtime {
+			g.target_libc_thread_runtime()
+		}
 		return
 	}
 	g.headerless_windows_sdk_types()

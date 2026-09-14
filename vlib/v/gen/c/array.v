@@ -898,6 +898,7 @@ fn (mut g FlatGen) gen_fixed_array_pointers_expr(base_id flat.NodeId, is_ptr boo
 // `[]thread T` receiver. The element type carries the thread's return type in its
 // name (`thread T`); a bare `thread` denotes a void payload.
 fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_type types.Type) {
+	g.needs_thread_runtime = true
 	mut ret_name := ''
 	if elem_type is types.Struct {
 		trimmed := trimmed_space(elem_type.name)
