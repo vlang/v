@@ -66,7 +66,7 @@ fn C.exit(code i32)
 
 fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
 
-fn C.strlen(s &char) i32
+fn C.strlen(s &char) usize
 
 @[trusted]
 fn C.isdigit(c i32) bool
@@ -160,7 +160,7 @@ fn C.execvp(cmd_path &char, args &&char) i32
 
 fn C._execve(cmd_path &char, args voidptr, envs voidptr) i32
 
-fn C._execvp(cmd_path &char, args &&char) i32
+fn C._execvp(cmd_path &char, args voidptr) i32
 
 fn C.strcmp(s1 &char, s2 &char) i32
 

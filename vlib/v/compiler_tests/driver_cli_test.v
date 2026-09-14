@@ -2,6 +2,7 @@ import os
 import time
 import v.cmdexec
 import v.pref
+import v.util
 
 const driver_cli_vlib_dir = os.dir(os.dir(os.dir(@FILE)))
 const driver_cli_v3_dir = os.dir(os.dir(@FILE))
@@ -1265,6 +1266,17 @@ pub fn values() []string {
 		second_run := cmdexec.run(second_output, [])
 		assert second_run.exit_code == 0, second_run.output
 		assert second_run.output == 'clang|clang|second-build-hash|second-current-hash\n|\n', second_run.output
+
+		// Self-builds must embed the hash of the compiler sources in the checkout,
+		// rather than carrying the bootstrap compiler's hash into the new binary.
+		self_output := os.join_path(root, 'compiler_hash_selection_self')
+		self_compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel',
+			'-no-memory-limit', '-building-v', '-cc', 'clang', '-o', self_output, project], environment)
+		assert self_compile.exit_code == 0, self_compile.output
+		self_run := cmdexec.run(self_output, [])
+		assert self_run.exit_code == 0, self_run.output
+		checkout_hash := util.githash(@VMODROOT)!
+		assert self_run.output == 'clang|clang|second-build-hash|${checkout_hash}\n|\n', self_run.output
 	}
 }
 

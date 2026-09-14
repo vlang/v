@@ -104,6 +104,11 @@ fn configure_selfhost_parallelism(building_v bool, prod_parallel_cc bool) {
 	}
 }
 
+fn self_build_current_hash(vroot string) string {
+	// Source archives intentionally have no current Git hash.
+	return util.githash(vroot) or { '' }
+}
+
 const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_serial_user_check_node_threshold = 1_000_000
 const scoped_serial_user_transform_node_threshold = 1_000_000
@@ -3346,13 +3351,20 @@ fn register_native_source_typedefs(mut tc types.TypeChecker, state &V3ModuleCach
 		}
 	}
 	for name, is_struct in typedefs {
+		if !is_struct {
+			// A function-pointer typedef is not an aggregate, and `struct F` does
+			// not name it. Registering it as a C struct made the backend declare
+			// `typedef struct F F;` and an empty `struct F` body of its own, next
+			// to the header's `typedef int (*F)(...)`, which C rejects as a typedef
+			// redefinition with a different type. The header that the program
+			// includes already declares the name, so V needs nothing here.
+			continue
+		}
 		c_name := 'C.${name}'
 		if c_name !in tc.structs {
 			tc.structs[c_name] = []types.StructField{}
 		}
-		if is_struct {
-			tc.c_typedef_structs[c_name] = true
-		}
+		tc.c_typedef_structs[c_name] = true
 	}
 }
 
@@ -6537,6 +6549,8 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		disabled_fns: ast.disabled_fns
 		export_fn_names: ast.export_fn_names
 		noreturn_fns: ast.noreturn_fns
+		contextual_anon_struct_types: ast.contextual_anon_struct_types
+		synthesized_anon_struct_types: ast.synthesized_anon_struct_types
 		source_files: ast.source_files
 		template_call_sites: ast.template_call_sites.clone()
 		template_actions: clone_int_string_map(ast.template_actions)
@@ -9506,6 +9520,7 @@ pub fn run(args []string) {
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
+	prefs.module_resolution_root = v3_module_resolution_root(input_file)
 	prefs.exclude = expand_v3_exclude_patterns(exclude_patterns, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
 		if bundled_tcc_available {
@@ -9519,6 +9534,12 @@ pub fn run(args []string) {
 	prefs.vcurrent_hash = os.getenv(macos_v3_vcurrent_hash_env)
 	if prefs.vcurrent_hash == '' {
 		prefs.vcurrent_hash = @VCURRENTHASH
+	}
+	if building_v {
+		// A self-build must describe the sources being compiled, not the compiler
+		// that happened to bootstrap them. Otherwise every `make`/`v up` keeps
+		// reporting the bootstrap snapshot's commit indefinitely.
+		prefs.vcurrent_hash = self_build_current_hash(prefs.vroot)
 	}
 	prefs.selfhost = is_selfhost || fastc_selfhost_build
 	prefs.building_v = building_v
@@ -14757,6 +14778,17 @@ fn project_root_for_files(files []string) string {
 	return os.getwd()
 }
 
+fn v3_module_resolution_root(input string) string {
+	if input == '' || input == '-' {
+		return os.real_path(os.getwd())
+	}
+	input_dir := if os.is_dir(input) { os.real_path(input) } else { os.dir(os.real_path(input)) }
+	if vmod_root := util.nearest_vmod_root(input_dir) {
+		return os.real_path(v3_directory_source_root(vmod_root))
+	}
+	return input_dir
+}
+
 fn nearest_vmod_root_for_file(path string) string {
 	return util.nearest_vmod_root(path) or { '' }
 }
@@ -17065,8 +17097,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					continue
 				}
 			}
+			importing_file := cached_header_source_contexts[cur_file] or {
+				if cur_file.len > 0 { cur_file } else { first_file }
+			}
 			if unresolved_modules[mod_name] {
 				a.missing_imports[node_idx] = mod_name
+				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 			}
 			if module_identity := parsed_module_identities[mod_name] {
 				if module_identity.len > 0 {
@@ -17084,9 +17120,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				continue
 			}
 
-			importing_file := cached_header_source_contexts[cur_file] or {
-				if cur_file.len > 0 { cur_file } else { first_file }
-			}
 			mod_dir := if is_bundle_warmup_import {
 				prefs.get_vlib_module_path(mod_name)
 			} else {
@@ -17123,6 +17156,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			module_resolved := mod_dir_exists && mod_files.len > 0
 			if !module_resolved && !is_bundle_warmup_import {
 				a.missing_imports[node_idx] = mod_name
+				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 				unresolved_modules[mod_name] = true
 			}
 			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
@@ -17685,7 +17719,78 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 			return global_path
 		}
 	}
+	ancestor_path := resolve_ancestor_module_path(prefs, mod_name, mod_path, importing_file)
+	if ancestor_path.len > 0 {
+		return ancestor_path
+	}
 	return prefs.get_module_path(mod_name, importing_file)
+}
+
+// A module that is neither in vlib nor in a module directory nor beside the importing
+// file can still be a project checked out next to the one being built. Walking up
+// from the importing file finds it, which is how two sibling checkouts build against
+// each other without either having to be installed first.
+//
+// Ancestors are searched last, after the module directories, so an installed module
+// is still what an import means when both exist.
+fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_path string, importing_file string) string {
+	if importing_file.len == 0 {
+		return ''
+	}
+	importer_vmod_root := nearest_vmod_root_for_file(importing_file)
+	mut current := os.real_path(os.dir(importing_file))
+	for {
+		// The one place a level can hold the module: its path under that level. A
+		// level's `modules/` is not searched here either, so a project's own copy is
+		// the directory itself, reached before the walk climbs past the project to a
+		// neighbour of it that happens to carry the same name.
+		//
+		// The retired `modules/` namespace is no lookup root of its own, not even
+		// for the files inside it: what it holds is `modules.<name>`, and letting
+		// the walk stop there would keep the virtual layout alive between the
+		// modules left in it. A project that merely carries that name is a root
+		// like any other, and is searched.
+		if !pref.is_retired_modules_namespace(current, prefs.module_resolution_root) {
+			candidate := os.join_path_single(current, mod_path)
+			if module_path_has_v_sources(candidate, prefs)
+				&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
+				return candidate
+			}
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ''
+}
+
+// Whether a directory that happens to carry the module's name belongs to something
+// else. It is the module being imported when it is part of the importer's own
+// project, or when its own manifest claims that name; anything else above the
+// importer is a stranger that merely shares a directory name.
+fn module_dir_belongs_to_other_project(candidate string, importer_vmod_root string, mod_name string) bool {
+	if importer_vmod_root.len == 0 {
+		return false
+	}
+	real_candidate := os.real_path(candidate).replace('\\', '/')
+	real_importer := os.real_path(importer_vmod_root).replace('\\', '/')
+	if real_candidate == real_importer || real_candidate.starts_with(real_importer + '/') {
+		return false
+	}
+	return !vmod_manifest_declares_module(candidate, mod_name)
+}
+
+// The manifest that owns a directory is not necessarily in it. An import written
+// `foo.bar` is the directory `foo/bar`, and it is the project above that directory
+// which carries the manifest, naming `foo`. So the nearest manifest at or above the
+// candidate is the one to ask, and it owns the module when it names it, or names a
+// prefix of it.
+fn vmod_manifest_declares_module(dir string, mod_name string) bool {
+	root := util.nearest_vmod_root(dir) or { return false }
+	manifest := vmod.from_file(os.join_path_single(root, 'v.mod')) or { return false }
+	return manifest.name == mod_name || mod_name.starts_with(manifest.name + '.')
 }
 
 fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string, mod_path string, importing_file string, project_root string) string {
@@ -17694,14 +17799,6 @@ fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string
 		importer_dir := os.dir(importing_file)
 		if alias_path := resolve_local_module_alias_path(importer_dir, top_name, mod_name) {
 			return alias_path
-		}
-		local_modules_root := os.join_path_single(importer_dir, 'modules')
-		if alias_path := resolve_local_module_alias_path(local_modules_root, top_name, mod_name) {
-			return alias_path
-		}
-		local_modules_path := os.join_path_single(local_modules_root, mod_path)
-		if module_path_has_v_sources(local_modules_path, prefs) {
-			return local_modules_path
 		}
 	}
 	if project_root.len > 0 {
@@ -17738,11 +17835,9 @@ fn import_uses_explicit_module_alias(prefs &pref.Preferences, mod_name string, i
 	if importing_file.len > 0 {
 		importer_dir := os.dir(importing_file)
 		roots << importer_dir
-		roots << os.join_path_single(importer_dir, 'modules')
 	}
 	if project_root.len > 0 {
 		roots << project_root
-		roots << os.join_path_single(project_root, 'modules')
 	}
 	if prefs.module_search_paths.len > 0 {
 		roots << prefs.module_search_paths
@@ -17782,6 +17877,160 @@ fn resolve_global_module_path(prefs &pref.Preferences, mod_name string, mod_path
 		}
 	}
 	return ''
+}
+
+// record_missing_import_hint stores the migration hint for an import that a
+// `modules/` directory would have satisfied, so the checker can print it next to
+// the "not found" error. Nothing is stored when no such directory exists.
+fn record_missing_import_hint(mut a flat.FlatAst, prefs &pref.Preferences, node_idx int, mod_name string, importing_file string) {
+	hint := removed_modules_layout_hint(prefs, mod_name, importing_file)
+	if hint.len > 0 {
+		a.missing_import_hints[node_idx] = hint
+	}
+}
+
+// removed_modules_layout_hint explains an import that a `modules/` directory
+// would have satisfied. The virtual `modules/` lookup is gone, the same way the
+// virtual `src/` source root is: a module's import path is its path under the
+// nearest v.mod, so the directory has to sit there rather than one level down.
+// The directory has to hold a module this build could actually use, and it has
+// to be the importer's to move: the same ownership boundary the ancestor walk
+// applies, so the hint never points at the source of an unrelated project that
+// happens to sit above the importer.
+fn removed_modules_layout_hint(prefs &pref.Preferences, mod_name string, importing_file string) string {
+	if importing_file.len == 0 {
+		return ''
+	}
+	relative := mod_name.replace('.', os.path_separator)
+	top_name := mod_name.all_before('.')
+	importer_vmod_root := nearest_vmod_root_for_file(importing_file)
+	mut current := os.dir(os.real_path(importing_file))
+	for {
+		candidate := os.join_path(current, 'modules', relative)
+		if module_path_has_v_sources(candidate, prefs)
+			&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
+			if source_link := modules_layout_source_link(current, candidate) {
+				return '\nthe virtual `modules/` directory is no longer searched for modules.\nThe migration is blocked because the legacy module source passes through ${os.quoted_path(source_link)}, which is a link. Move the module without modifying what that link points to.'
+			}
+			command := modules_layout_move_command(current, relative, top_name)
+			return '\nthe virtual `modules/` directory is no longer searched for modules.\nMove it up beside the v.mod it belongs to, which keeps the import path the same:\n\t${command}'
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ''
+}
+
+// The outermost link between the project root and the legacy source. A move
+// through any such ancestor operates inside the link target, so no runnable
+// migration command is safe to print.
+fn modules_layout_source_link(root string, source string) ?string {
+	mut linked_path := ''
+	mut current := source
+	for current != root && current.len > root.len {
+		if os.is_link(current) {
+			linked_path = current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if linked_path == '' {
+		return none
+	}
+	return linked_path
+}
+
+// modules_layout_move_command spells out a move that actually runs. A dotted
+// import lives several directories deep, so moving just the leaf would need a
+// destination parent that does not exist yet: move the whole top-level module
+// tree when its destination is free, and create the parents otherwise. A
+// destination that is already taken cannot be moved onto at all, since `mv`
+// would put the module *inside* it, so that one asks for a merge instead.
+fn modules_layout_move_command(root string, relative string, top_name string) string {
+	top_source := os.join_path(root, 'modules', top_name)
+	top_target := os.join_path(root, top_name)
+	source := os.join_path(root, 'modules', relative)
+	target := os.join_path(root, relative)
+	if blocker := modules_layout_blocker(root, target) {
+		// Once it is out of the way, what is left is the move that would have been
+		// printed anyway: the whole top-level tree when that is what was blocked,
+		// and the leaf into the parents it needs when the blocker sits deeper.
+		rest := if blocker == top_target {
+			modules_layout_move(top_source, top_target)
+		} else {
+			'${modules_layout_mkdir(os.dir(target))} && ${modules_layout_move(source, target)}'
+		}
+		return modules_layout_blocked(blocker, rest)
+	}
+	if !os.exists(top_target) {
+		return modules_layout_move(top_source, top_target)
+	}
+	if os.exists(target) {
+		return 'merge ${os.quoted_path(source)} into the existing ${os.quoted_path(target)}'
+	}
+	target_parent := os.dir(target)
+	if os.is_dir(target_parent) {
+		return modules_layout_move(source, target)
+	}
+	return '${modules_layout_mkdir(target_parent)} && ${modules_layout_move(source, target)}'
+}
+
+// Something that is not a directory of the project itself blocks the move, and
+// what to do with it is the author's to decide, so name it rather than paper over
+// it: `mv` onto a file is a rename, `mkdir -p` cannot descend into one, and a
+// link would take the module wherever it points instead of beside the v.mod.
+fn modules_layout_blocked(blocker string, command string) string {
+	kind := if os.is_link(blocker) { 'a link' } else { 'a file' }
+	return 'move ${os.quoted_path(blocker)} out of the way first -- ${kind} is where the module directory has to go -- and then: ${command}'
+}
+
+// The outermost thing on the way from the root down to the destination that is
+// not a real directory: the one closest to the root has to move before the rest,
+// and a link is one of them however directory-like it looks through it.
+fn modules_layout_blocker(root string, target string) ?string {
+	mut blocker := ''
+	mut current := target
+	for current != root && current.len > root.len {
+		if os.is_link(current) || (os.exists(current) && !os.is_dir(current)) {
+			blocker = current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if blocker == '' {
+		return none
+	}
+	return blocker
+}
+
+// modules_layout_move and modules_layout_mkdir quote the paths they are given,
+// so a project directory with a space or a shell metacharacter in it still
+// produces a command that can be pasted as printed, and they name the tool the
+// host actually has: `mv` and `mkdir -p` are not available in Windows cmd.exe.
+fn modules_layout_move(source string, target string) string {
+	$if windows {
+		return 'move ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	} $else {
+		return 'mv ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	}
+}
+
+fn modules_layout_mkdir(dir string) string {
+	$if windows {
+		// cmd.exe's `mkdir` creates the intermediate directories itself.
+		return 'mkdir ${os.quoted_path(dir)}'
+	} $else {
+		return 'mkdir -p ${os.quoted_path(dir)}'
+	}
 }
 
 fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {

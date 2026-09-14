@@ -522,7 +522,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2',
 			'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_clone_string', 'map_clone_int_1',
 			'map_clone_int_2', 'map_free_string', '[]string.join', 'Array_string__join',
-			'embed_file.Decoder.decompress', 'exit', 'v_exit'] {
+			'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit'] {
 			queue << seed
 			used[seed] = true
 		}
@@ -1269,11 +1269,6 @@ fn fn_decl_key_is_exact_for_info(name string, decl_name string, module_name stri
 fn add_safe_decl_alias(callee string, callee_info FnDeclInfo, a &flat.FlatAst, mut used map[string]bool, mut queue []string) {
 	alias := a.node(callee_info.node_id).value
 	if fn_decl_key_is_exact_for_info(callee, alias, callee_info.module) {
-		return
-	}
-	alias_lowered := markused_c_name(alias)
-	if (callee == alias || callee == alias_lowered)
-		&& markused_is_unqualified_receiver_method_name(alias) {
 		return
 	}
 	mut aliases := []string{cap: 3}

@@ -62,6 +62,49 @@ fn main() {
 	assert c_code.contains('App__show(app, ctx, 5)'), c_code
 }
 
+// An explicitly named handler context is still the context forwarded to a handler
+// whose context is implicit. Its call-site spelling must match its parameter
+// declaration even when the source name shadows a runtime C type.
+fn test_veb_explicit_ctx_named_like_runtime_type_is_forwarded() {
+	v3_bin := build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_veb_renamed_ctx_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	src_file := os.join_path(root, 'main.v')
+	os.write_file(src_file, 'module main
+
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (app &App) index(mut array Context) veb.Result {
+	return app.helper()
+}
+
+pub fn (app &App) helper() veb.Result {
+	return veb.Result{}
+}
+
+fn main() {
+	app := &App{}
+	mut ctx := Context{}
+	_ := app.index(mut ctx)
+}
+') or {
+		panic(err)
+	}
+	bin_out := os.join_path(root, 'app')
+	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${bin_out}')
+	assert compile.exit_code == 0, compile.output
+}
+
 // Route handlers that omit their context parameter can still use the implicit
 // mutable `ctx` binding in their body, including when all declared route
 // parameters are unnamed.
@@ -114,8 +157,7 @@ fn test_veb_imported_context_alias_param_still_gets_hidden_ctx() {
 	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'vebimportedctx' }\n") or {
 		panic(err)
 	}
-	os.write_file(os.join_path(root, 'other', 'other.v'),
-		'module other\n\npub type Context = string\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'other', 'other.v'), 'module other\n\npub type Context = string\n') or { panic(err) }
 	main_src := "module main
 
 import veb

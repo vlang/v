@@ -16,6 +16,10 @@ pub fn set_test_env(test_path string) {
 	// can do clones to the same exact folders at the same time, which can make them
 	// fail on the CI, with hard to diagnose spurious errors.
 	os.setenv('VTMP', os.join_path(test_path, 'vtmp'), true)
+	// The records of what `v install --local` installed live in the user's cache,
+	// deliberately away from VMODULES. Point them at the test's own directory --
+	// rather than moving the whole cache, which the compiled tools also live in.
+	os.setenv('VPM_LOCAL_INSTALLS', os.join_path(test_path, 'local_installs'), true)
 }
 
 pub fn hg_serve(hg_path string, path string, start_port int) (&os.Process, int) {

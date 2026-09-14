@@ -3422,6 +3422,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		json_encode_pointer_helpers := g.prepare_json_encode_pointer_helpers()
 		json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 		g.string_literals()
+		g.gen_embed_file_blobs()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
 			g.fixed_array_early_typedefs()
@@ -3537,6 +3538,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	json_encode_pointer_helpers := g.prepare_json_encode_pointer_helpers()
 	json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 	g.string_literals()
+	g.gen_embed_file_blobs()
 	if g.cache_split {
 		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, false)
@@ -3819,12 +3821,21 @@ fn (mut g FlatGen) write_type_declaration_block() {
 
 fn (mut g FlatGen) gen_vinit() {
 	needs_closure_init := g.needs_closure_runtime_init()
+	has_embed_joins := g.has_chunked_embed_blobs()
 	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
-		&& g.global_inits.len == 0 && !needs_closure_init {
+		&& g.global_inits.len == 0 && !needs_closure_init && !has_embed_joins {
 		return
 	}
 	fn_start_pos := g.sb.len
+	// The buffers are defined here rather than with the rest of the declaration
+	// prefix: a parallel C build repeats that prefix per unit, and only the unit
+	// holding `_vinit` may define them.
+	g.gen_embed_blob_joined()
 	g.writeln('void _vinit() {')
+	// A split `$embed_file` payload is put back together before anything else can
+	// look at it, which is both what makes it a one-time cost and what keeps it
+	// off a lazy path that concurrent readers would race on.
+	g.gen_embed_blob_joins()
 	mut emitted_const := []bool{len: g.const_runtime_inits.len}
 	mut emitted_runtime := []bool{len: g.runtime_inits.len}
 	g.emit_const_referenced_global_defaults(mut emitted_runtime)
@@ -4063,11 +4074,19 @@ fn c_identifier_continue(c u8) bool {
 }
 
 fn cache_string_symbol(value string) string {
+	return '_v3_lit_${content_symbol_suffix(value)}'
+}
+
+// content_symbol_suffix names a symbol after what it holds rather than after
+// where it turned up, so that two separately generated translation units agree
+// on it. The length goes in alongside the hash, so agreeing takes more than a
+// hash collision.
+fn content_symbol_suffix(value string) string {
 	mut hash := u64(1469598103934665603)
 	for c in value.bytes() {
 		hash = (hash ^ u64(c)) * u64(1099511628211)
 	}
-	return '_v3_lit_${value.len}_${hash.hex()}'
+	return '${value.len}_${hash.hex()}'
 }
 
 // node_kind_id supports node kind id handling for c.
@@ -4602,7 +4621,7 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 	g.ast_string_literals = []string{cap: 4096}
 	g.top_level_node_ids = []i32{cap: 4096}
 	for node_idx, node in g.a.nodes {
-		if node.kind == .string_literal {
+		if node.kind == .string_literal && !node.is_embed_payload() {
 			g.ast_string_literals << node.value
 		}
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
@@ -10903,7 +10922,7 @@ fn (mut g FlatGen) preseed_struct_default_string_literals() {
 				}
 				seen[idx] = true
 				node := g.a.nodes[idx]
-				if node.kind == .string_literal {
+				if node.kind == .string_literal && !node.is_embed_payload() {
 					g.intern_string(node.value)
 				}
 				for child_idx := node.children_count - 1; child_idx >= 0; child_idx-- {
@@ -11611,7 +11630,9 @@ fn (mut g FlatGen) gen_current_mut_param_address(id flat.NodeId) bool {
 	if param_type !is types.Pointer {
 		return false
 	}
-	g.write(g.cname(child.value))
+	// Taking the address of a mutable parameter is the parameter, which already
+	// holds one, so it is written under the name the parameter was declared with.
+	g.write(g.current_param_use_cname(child.value))
 	return true
 }
 
@@ -13100,10 +13121,10 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 		parts := value.split('.')
 		if parts.len > 1 {
 			if g.cur_scope_has_local_name(parts[0]) {
-				return sizeof_selector_target(parts[0], parts[1..])
+				return g.sizeof_selector_target(parts[0], parts[1..])
 			}
 			if global := g.sizeof_global_selector_base(parts[0]) {
-				return sizeof_selector_target(global, parts[1..])
+				return g.sizeof_selector_target(global, parts[1..])
 			}
 		}
 	}
@@ -13133,12 +13154,55 @@ fn c_fixed_array_typedef_sizeof_target(value string) ?string {
 	return '${elem}[${len}]'
 }
 
-fn sizeof_selector_target(base string, fields []string) string {
+// sizeof_selector_target spells a `sizeof(a.b.c)` target in C. A step through a
+// pointer needs `->`: `sizeof(inode.blocks)` on a `&EXT2Inode` receiver used to
+// emit `sizeof(inode.blocks)`, which C rejects, since `inode` is a pointer there.
+fn (mut g FlatGen) sizeof_selector_target(base string, fields []string) string {
 	mut expr := c_name(base)
+	mut cur := g.sizeof_selector_base_type(base)
 	for field in fields {
-		expr += '.${c_field_name(field)}'
+		mut arrow := false
+		if typ := cur {
+			// An alias can stand for the pointer: `type Ref = &Node` records a
+			// types.Alias whose C storage is still a pointer, so erase the alias before
+			// asking. The field lookup below needs the same erasure to find the struct.
+			if cgen_unalias_type(typ) is types.Pointer {
+				arrow = true
+			}
+		}
+		expr += if arrow { '->${c_field_name(field)}' } else { '.${c_field_name(field)}' }
+		cur = g.sizeof_selector_field_type(cur, field)
 	}
 	return expr
+}
+
+// sizeof_selector_base_type resolves the declared type of a `sizeof` selector base.
+fn (mut g FlatGen) sizeof_selector_base_type(base string) ?types.Type {
+	if typ := g.current_param_type(base) {
+		return typ
+	}
+	return g.tc.cur_scope.lookup(base)
+}
+
+// sizeof_selector_field_type follows one field step, so a chain keeps choosing
+// between `.` and `->` correctly.
+fn (mut g FlatGen) sizeof_selector_field_type(owner ?types.Type, field string) ?types.Type {
+	typ := owner or { return none }
+	// Erase aliases on both sides of the pointer: the owner may be an alias *of* a
+	// pointer, and the pointee may itself be an alias of the struct.
+	clean := cgen_unalias_type(types.unwrap_all_pointers(cgen_unalias_type(typ)))
+	name := if clean is types.Struct {
+		clean.name
+	} else {
+		return none
+	}
+	fields := g.struct_fields_for_type(name) or { return none }
+	for f in fields {
+		if f.name == field {
+			return f.typ
+		}
+	}
+	return none
 }
 
 fn (g &FlatGen) cur_scope_has_local_name(name string) bool {
@@ -19810,10 +19874,25 @@ fn (mut g FlatGen) tinyc_atomic_libcall_decls() {
 }
 
 fn (mut g FlatGen) atomic_builtin_compat_decls() {
-	if g.target.os == 'windows' && (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc')) {
+	// Windows TCC takes its atomics from V's WinAPI compatibility header, which
+	// defines these helpers as function-like macros of its own.
+	windows_tcc := g.target.os == 'windows'
+		&& (g.ccompiler == 'tinyc' || g.ccompiler.to_lower().contains('tcc'))
+	if windows_tcc && !g.output_cross_c {
 		header := os.join_path(g.compiler_vroot, 'thirdparty', 'stdatomic', 'win', 'atomic.h').replace('\\', '/')
 		g.writeln(g.c_local_header_directive(header))
 		return
+	}
+	// A portable snapshot is compiled by a C compiler that is not known yet, so the
+	// choice above cannot be made from `g.ccompiler`; the preprocessor has to make
+	// it instead. system_libc_headers() already includes that header behind
+	// `_WIN32 && __TINYC__`, so defining the helpers again wherever it is in effect
+	// expands its macros over the definitions - `atomic_fetch_add_byte(void* ptr,
+	// byte delta)` becomes `ManualInterlockedExchangeAdd8(void* ptr, byte delta)`,
+	// which redefines the header's own function. Leave the block out exactly there.
+	guard_windows_tcc := g.output_cross_c
+	if guard_windows_tcc {
+		g.writeln('#if !(defined(_WIN32) && defined(__TINYC__))')
 	}
 	// Atomic helpers. We use compiler __atomic_* builtins (memory order 5 == __ATOMIC_SEQ_CST).
 	// clang/gcc inline the generic _n / RMW builtins. tcc only implements the inline
@@ -19894,6 +19973,9 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('#else')
 	g.writeln('static inline void cpu_relax(void) { __asm__ __volatile__("" ::: "memory"); }')
 	g.writeln('#endif')
+	if guard_windows_tcc {
+		g.writeln('#endif')
+	}
 }
 
 fn (mut g FlatGen) atomic_thread_fence_compat_decls() {

@@ -2010,11 +2010,6 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
 			continue
 		}
-		declared_at := if tc.valid_node_id(candidate.lhs_id) {
-			tc.a.node(candidate.lhs_id).pos.offset
-		} else {
-			-1
-		}
 		if tc.comptime_skipped_body_uses(node, candidate.name) {
 			continue
 		}
@@ -2528,7 +2523,6 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 		}
 	}
 }
-
 
 fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
 	mut stack := []flat.NodeId{}

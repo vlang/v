@@ -131,6 +131,9 @@ fn (mut g FlatGen) current_fn_optional_type_name(t types.Type) string {
 }
 
 fn (mut g FlatGen) value_c_type(t types.Type) string {
+	if c_type := c_alias_value_c_type(t) {
+		return c_type
+	}
 	if shared_alias_ptr := g.shared_alias_pointer_type(t) {
 		return g.tc.c_type(shared_alias_ptr)
 	}
@@ -184,6 +187,18 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
 	}
 	return ct
+}
+
+fn c_alias_value_c_type(typ types.Type) ?string {
+	if typ is types.Alias && typ.name.starts_with('C.') {
+		return typ.name['C.'.len..]
+	}
+	if typ is types.Pointer {
+		if base := c_alias_value_c_type(typ.base_type) {
+			return '${base}*'
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
