@@ -294,11 +294,35 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	assert v1_fallback_exit_identifies_compiler_failure(['-check', 'example_test.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-check', 'run', 'main.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-check-syntax', 'script.vsh'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-generate-c-project', 'generated', 'run',
+		'main.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-o', '-', 'run', 'main.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.c', 'run', 'main.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-b', 'c', '-o', 'generated.js', 'run',
+		'main.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.js', 'run', 'main.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js', '-o', 'generated.c', 'run',
+		'main.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'c', '-os', 'wasm32_emscripten',
+		'-o', 'generated.js', 'run', 'main.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['run', 'main.v', '-skip-running'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['run', 'main.v', '-generate-c-project',
+		'generated'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.c', 'run', 'main.v', '-b',
+		'js'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.js', 'run', 'main.v',
+		'-b', 'c'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-output', 'test-bin', 'example_test.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-stats', '-o', 'test-bin', 'example_test.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-checker-fixture', '-output', 'test-bin',
 		'example_test.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v', '-stats'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.v', '-output', 'test-bin',
+		'-checker-fixture'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v',
+		'-skip-running', '-stats'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.js.v', '-b', 'js'])
 	os.setenv('VTEST_SHOW_ASSERTS', '1', true)
 	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v'])
 	os.unsetenv('VTEST_SHOW_ASSERTS')
