@@ -12,6 +12,7 @@ import v.pref
 
 const v_version = '0.5.2'
 const v1_fallback_binary = 'v1_fallback'
+const v1_fallback_revision = '0613e1f'
 const v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
@@ -498,7 +499,8 @@ fn resolve_v1_fallback(fallback string) ?string {
 
 fn v1_fallback_has_expected_version(executable string) bool {
 	result := os.execute('${os.quoted_path(executable)} version')
-	return result.exit_code == 0 && result.output.starts_with('V ${v_version} ')
+	return result.exit_code == 0
+		&& result.output.starts_with('V ${v_version} ${v1_fallback_revision}')
 }
 
 fn find_vroot(executable string) ?string {

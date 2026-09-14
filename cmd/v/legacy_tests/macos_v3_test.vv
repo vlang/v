@@ -171,19 +171,16 @@ fn test_portable_make_builds_the_v1_fallback_only_on_demand() {
 	assert !source.contains('set -- ./v1 -no-parallel -d v1_fallback -o v1_fallback')
 }
 
-fn test_v1_fallback_installer_downloads_0_5_2_and_uses_local_or_oldv_fallback() {
+fn test_v1_fallback_installer_builds_the_last_v1_snapshot() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'install_v1_fallback.sh'))!
 	assert source.contains('release_version=0.5.2')
-	assert source.contains('https://github.com/vlang/v/releases/download/\$release_version')
-	for asset in ['v_linux.zip', 'v_linux_arm64.zip', 'v_macos_arm64.zip', 'v_macos_x86_64.zip',
-		'v_windows.zip'] {
-		assert source.contains('asset=${asset}'), asset
-	}
+	assert source.contains('fallback_revision=0613e1f6fc68573f5b679e406ce58a00d6ebeb30')
+	assert source.contains('fallback_vc_revision=e658629fc4bd59826bd7637cde498d0c6236b14b')
 	assert source.contains('candidate_has_expected_version || {')
-	assert source.contains('if [ -n "\${V1_FALLBACK_LOCAL:-}" ]; then')
-	assert source.contains('"\$bootstrap_v" -no-parallel -gc none -d v1_fallback -o "\$candidate"')
-	assert source.contains('cmd/tools/oldv.v --cache=false --command "\$oldv_copy" "\$release_version"')
-	assert source.contains('actual_sha256=\$(sha256_of "\$archive")')
+	assert source.contains("OLDV_VFLAGS='-d v1_fallback'")
+	assert source.contains('cmd/tools/oldv.v \\\n\t\t--cache=false --workdir "\$oldv_workdir" --command "\$oldv_copy"')
+	assert source.contains('set -- "\$@" "\$fallback_revision"')
+	assert !source.contains('releases/download')
 	oldv_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'oldv.v'))!
 	assert oldv_source.contains("if use_cache {\n\t\t\ttools << 'rsync'")
 	assert oldv_source.contains('oldv_required_tools(context.use_cache, context.cc)')
@@ -192,7 +189,9 @@ fn test_v1_fallback_installer_downloads_0_5_2_and_uses_local_or_oldv_fallback() 
 	assert oldv_source.contains("context.cc = fp.string('cc', 0, default_cc")
 	assert !oldv_source.contains("if env_cc != '' {\n\t\tcontext.cc = env_cc")
 	assert oldv_source.contains("env_ldflags := os.getenv('OLDV_LDFLAGS')")
+	assert oldv_source.contains("context.vflags = os.getenv('OLDV_VFLAGS')")
 	vgit_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'vgit', 'vgit.v'))!
+	assert vgit_source.contains('mut vc_v_bootstrap_flags := vgit_context.vflags')
 	assert vgit_source.contains("c_ldflags = '\${c_ldflags} \${vgit_context.cc_ldflags}'.trim_space()")
 	assert vgit_source.contains('\'-ldflags "\${vgit_context.cc_ldflags}"\'')
 }
@@ -212,14 +211,14 @@ fn test_windows_makev_builds_the_v1_fallback_executable() {
 	assert normalized.count('call :move_updated_to_v\nif !ERRORLEVEL! NEQ 0 goto :compile_error') == 5
 }
 
-fn test_v1_fallback_reports_the_requested_release_version() {
+fn test_v1_fallback_reports_the_pinned_snapshot() {
 	fallback := macos_v3_v1_fallback_executable()
 	if !os.is_executable(fallback) {
 		return
 	}
 	result := os.execute('${os.quoted_path(fallback)} version')
 	assert result.exit_code == 0, result.output
-	assert result.output.starts_with('V 0.5.2 '), result.output
+	assert result.output.starts_with('V 0.5.2 0613e1f'), result.output
 }
 
 fn test_macos_v3_old_compiler_uses_external_v1_command() {

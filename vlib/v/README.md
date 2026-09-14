@@ -46,11 +46,11 @@ with the default compiler, and `test` is handled by the default compiler directl
 `-new-compiler` remains accepted for command-line compatibility and normally selects the same
 in-process driver. The standard bootstrap does not build the sibling `v1_fallback`
 (`v1_fallback.exe` on Windows). When a compatibility fallback is needed and the sibling is
-missing, V reports that it is running `make v1`. That target reuses or downloads the complete
-0.5.2 release under the user cache; if its release binary cannot be used, `oldv` clones the 0.5.2
-V sources and their matching `vc` snapshot and builds the fallback there. Run `make v1` explicitly
-to prepare it ahead of time. `-old-compiler` launches the fallback explicitly, and ordinary user
-builds and external tools retry through it after a compiler or C compilation failure.
+missing, V reports that it is running `make v1`. That target checks out the final V1 snapshot from
+the 0.5.2 development line and its matching `vc` snapshot under the user cache, then builds or
+reuses the fallback there. Run `make v1` explicitly to prepare it ahead of time.
+`-old-compiler` launches the fallback explicitly, and ordinary user builds and external tools retry
+through it after a compiler or C compilation failure.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.

@@ -152,7 +152,8 @@ pub:
 	cc          string = 'cc' // what C compiler to use for bootstrapping
 	cc_options  string // what additional C compiler options to use for bootstrapping
 	cc_ldflags  string // what additional linker options to use for bootstrapping
-	workdir     string = '/tmp' // the base working folder
+	vflags      string // additional options to pass to the bootstrap V compiler
+	workdir     string = '/tmp'   // the base working folder
 	commit_v    string = 'master' // the commit-ish that needs to be prepared
 	path_v      string // where is the local working copy v repo
 	path_vc     string // where is the local working copy vc repo
@@ -162,12 +163,12 @@ pub mut:
 	// these will be filled by vgitcontext.compile_oldv_if_needed()
 	commit_v__hash string // the git commit of the v repo that should be prepared
 	commit_vc_hash string // the git commit of the vc repo, corresponding to commit_v__hash
-	commit_v__ts   u64 // unix timestamp, that corresponds to commit_v__hash; filled by prepare_vc_source
+	commit_v__ts   u64    // unix timestamp, that corresponds to commit_v__hash; filled by prepare_vc_source
 	vexename       string // v or v.exe
 	vexepath       string // the full absolute path to the prepared v/v.exe
 	vvlocation     string // v.v or compiler/ or cmd/v, depending on v version
-	make_fresh_tcc bool // whether to do 'make fresh_tcc' before compiling an old V.
-	show_vccommit  bool // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
+	make_fresh_tcc bool   // whether to do 'make fresh_tcc' before compiling an old V.
+	show_vccommit  bool   // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
 }
 
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
@@ -228,7 +229,7 @@ pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	mut vc_source_file_location := os.join_path_single(vgit_context.path_vc, 'v.c')
 	mut vc_v_cpermissive_flags := '${vgit_context.cc_options} -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion -fpermissive'
 	// after 85b58b0 2021-09-28, -no-parallel is supported, and can be used to force the cgen stage to be single threaded, which increases the chances of successful bootstraps
-	mut vc_v_bootstrap_flags := ''
+	mut vc_v_bootstrap_flags := vgit_context.vflags
 	if vgit_context.commit_v__ts >= 1632778086 {
 		vc_v_bootstrap_flags += ' -no-parallel'
 	}
@@ -288,8 +289,8 @@ pub mut:
 	workdir     string = os.temp_dir() // the working folder (typically /tmp), where the tool will write
 	v_repo_url  string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
 	vc_repo_url string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
-	show_help   bool // whether to show the usage screen
-	verbose     bool // should the tool be much more verbose
+	show_help   bool   // whether to show the usage screen
+	verbose     bool   // should the tool be much more verbose
 }
 
 pub fn add_common_tool_options(mut context VGitOptions, mut fp flag.FlagParser) []string {
