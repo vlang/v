@@ -73,6 +73,8 @@ fn test_v1_fallback_installer_exposes_compatibility_modules() {
 	install_index := source.index('if use_cached_release') or { -1 }
 	assert lock_index >= 0
 	assert lock_index < install_index
+	assert source.contains('cache_lock_owner=$(mktemp')
+	assert source.contains('cache_lock_probe=$cache_lock_owner.probe')
 	assert source.contains('kill -0 "$existing_pid"')
 	assert source.contains('process_identity "$existing_pid"')
 	assert source.contains('if [ ! -e "$cache_lock" ]')
@@ -126,7 +128,8 @@ fn test_v1_fallback_cached_launcher_uses_the_configured_cache() {
 			os.unsetenv('V1_FALLBACK_CACHE_DIR')
 		}
 	}
-	assert v1_fallback_cached_launcher() == os.join_path(os.abs_path(configured), v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	cache_parent := v1_fallback_cache_parent()!
+	assert v1_fallback_cached_launcher(cache_parent) == os.join_path(os.abs_path(configured), v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
 }
 
 fn test_v1_fallback_cache_without_a_home_is_private() {
@@ -141,7 +144,22 @@ fn test_v1_fallback_cache_without_a_home_is_private() {
 		restore_environment('XDG_CACHE_HOME', previous_xdg)
 		restore_environment('HOME', previous_home)
 	}
-	assert v1_fallback_cache_parent() == os.join_path(os.vtmp_dir(), 'v1-fallback')
+	first := v1_fallback_cache_parent()!
+	second := v1_fallback_cache_parent()!
+	defer {
+		os.rmdir_all(first) or {}
+		os.rmdir_all(second) or {}
+	}
+	assert first != second
+	assert os.is_dir(first)
+	assert os.is_dir(second)
+	assert !os.is_link(first)
+	assert !os.is_link(second)
+	$if !windows {
+		attributes := os.lstat(first)!
+		assert attributes.uid == u32(os.geteuid())
+		assert attributes.mode & 0o077 == 0
+	}
 }
 
 fn restore_environment(name string, previous ?string) {

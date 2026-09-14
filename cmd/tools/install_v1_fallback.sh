@@ -71,7 +71,8 @@ fi
 cache_root=$cache_parent/$release_version
 cached_candidate=$cache_root/$(basename "$member")
 cache_lock=$cache_parent/.install-$release_version.lock
-cache_lock_owner=$cache_parent/.install-$release_version.owner.$$
+cache_lock_owner=
+cache_lock_probe=
 cache_lock_acquired=
 
 cleanup() {
@@ -81,7 +82,12 @@ cleanup() {
 			rm -f "$cache_lock"
 		fi
 	fi
-	rm -f "$cache_lock_owner"
+	if [ -n "$cache_lock_probe" ]; then
+		rm -f "$cache_lock_probe"
+	fi
+	if [ -n "$cache_lock_owner" ]; then
+		rm -f "$cache_lock_owner"
+	fi
 	rm -rf "$work_dir"
 }
 
@@ -104,8 +110,16 @@ process_identity() {
 
 acquire_cache_lock() {
 	mkdir -p "$cache_parent" || return 1
+	cache_lock_owner=$(mktemp "$cache_parent/.install-$release_version.owner.XXXXXX") || return 1
+	cache_lock_probe=$cache_lock_owner.probe
 	owner_identity=$(process_identity "$$")
-	printf '%s\n%s\n' "$$" "$owner_identity" > "$cache_lock_owner" || return 1
+	owner_name=$(basename "$cache_lock_owner")
+	printf '%s\n%s\n%s\n' "$$" "$owner_identity" "$owner_name" > "$cache_lock_owner" || return 1
+	if ! ln "$cache_lock_owner" "$cache_lock_probe" 2>/dev/null; then
+		echo "Could not create the V $release_version fallback cache lock (hard links are unsupported)." >&2
+		return 1
+	fi
+	rm -f "$cache_lock_probe"
 	wait_count=0
 	while :; do
 		if ln "$cache_lock_owner" "$cache_lock" 2>/dev/null; then
@@ -124,6 +138,7 @@ acquire_cache_lock() {
 		fi
 		existing_pid=$(sed -n '1p' "$cache_lock" 2>/dev/null || true)
 		existing_identity=$(sed -n '2p' "$cache_lock" 2>/dev/null || true)
+		existing_owner=$(sed -n '3p' "$cache_lock" 2>/dev/null || true)
 		case "$existing_pid" in
 			''|*[!0-9]*) stale_owner=invalid ;;
 			*)
@@ -151,9 +166,8 @@ acquire_cache_lock() {
 			current_pid=$(sed -n '1p' "$cache_lock" 2>/dev/null || true)
 			if [ "$current_pid" = "$existing_pid" ]; then
 				rm -f "$cache_lock"
-				case "$existing_pid" in
-					''|*[!0-9]*) ;;
-					*) rm -f "$cache_parent/.install-$release_version.owner.$existing_pid" ;;
+				case "$existing_owner" in
+					.install-$release_version.owner.*) rm -f "$cache_parent/$existing_owner" ;;
 				esac
 			fi
 			rm -f "$reclaim"

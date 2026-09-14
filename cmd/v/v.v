@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
+import crypto.rand
 import os
 import strings
 import v.cmdexec
@@ -547,8 +548,8 @@ fn ensure_v1_fallback(reason string) !string {
 		}
 	}
 	fallback := os.join_path(vroot, v1_fallback_binary + $if windows { '.exe' } $else { '' })
-	cache_parent := v1_fallback_cache_parent()
-	cached_launcher := v1_fallback_cached_launcher()
+	cache_parent := v1_fallback_cache_parent()!
+	cached_launcher := v1_fallback_cached_launcher(cache_parent)
 	if installed := resolve_installed_v1_fallback(fallback, cached_launcher) {
 		return installed
 	} else {
@@ -576,24 +577,35 @@ fn ensure_v1_fallback(reason string) !string {
 	}
 }
 
-fn v1_fallback_cache_parent() string {
+fn v1_fallback_cache_parent() !string {
 	configured := os.getenv('V1_FALLBACK_CACHE_DIR')
 	if configured != '' {
 		return os.abs_path(configured)
 	}
 	xdg := os.getenv('XDG_CACHE_HOME')
 	if xdg != '' {
-		return os.join_path(xdg, 'v', 'v1-fallback')
+		return os.abs_path(os.join_path(xdg, 'v', 'v1-fallback'))
 	}
 	home := os.getenv('HOME')
 	if home != '' {
-		return os.join_path(home, '.cache', 'v', 'v1-fallback')
+		return os.abs_path(os.join_path(home, '.cache', 'v', 'v1-fallback'))
 	}
-	return os.join_path(os.vtmp_dir(), 'v1-fallback')
+	for _ in 0 .. 10 {
+		token := rand.bytes(16)!.hex()
+		candidate := os.join_path(os.temp_dir(), 'v1-fallback-cache.${token}')
+		os.mkdir(candidate, mode: 0o700) or {
+			if os.exists(candidate) || os.is_link(candidate) {
+				continue
+			}
+			return error('could not create a private V1 fallback cache: ${err}')
+		}
+		return candidate
+	}
+	return error('could not create a unique private V1 fallback cache')
 }
 
-fn v1_fallback_cached_launcher() string {
-	return os.join_path(v1_fallback_cache_parent(), v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+fn v1_fallback_cached_launcher(cache_parent string) string {
+	return os.join_path(cache_parent, v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
 }
 
 fn resolve_installed_v1_fallback(fallback string, cached_launcher string) ?string {
