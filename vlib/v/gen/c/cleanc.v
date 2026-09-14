@@ -15019,6 +15019,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else if rhs_type is types.Enum {
 				g.expected_enum = rhs_type.name
 			}
+			if g.gen_callback_infix_equality(lhs_id, rhs_id, lhs_type, rhs_type, node.op) {
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if lhs_type is types.Struct {
 				op_name := match node.op {
 					.minus { '__minus' }

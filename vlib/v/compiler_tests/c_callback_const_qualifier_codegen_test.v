@@ -113,17 +113,22 @@ fn main() {
 	}
 	event := C.native_event{value: 3}
 	desc.cb = erased_event
+	assert desc.cb == erased_event
+	assert erased_event == desc.cb
 	desc.cb(&event, desc.user_data)
 	desc.plain(&event, desc.user_data)
 	mut concrete := C.native_desc{
 		user_data: voidptr(&app)
 	}
 	concrete.cb = concrete_event
+	assert concrete.cb == concrete_event
+	assert concrete_event == concrete.cb
 	concrete.cb(&event, concrete.user_data)
 	mut alias_desc := C.alias_desc{
 		user_data: voidptr(&app)
 	}
 	alias_desc.cb = concrete_event
+	assert alias_desc.cb == concrete_event
 	alias_desc.cb(&event, alias_desc.user_data)
 	println(int_str(app.hits))
 }

@@ -13338,6 +13338,48 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_type(arg_id flat.NodeId, e
 	return g.gen_callback_fn_value_for_expected_c_abi(arg_id, expected, '')
 }
 
+fn (mut g FlatGen) callback_fn_value_is_direct(id flat.NodeId, expected types.Type) bool {
+	if name := g.callback_fn_value_name(id, expected) {
+		return name.len > 0
+	}
+	if name := g.direct_callback_ident_name(id) {
+		return name.len > 0
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_callback_infix_direct_operand(id flat.NodeId, expected types.Type, expected_id flat.NodeId) {
+	if expected_c_abi := g.expr_c_abi_fn_ptr_type(expected_id) {
+		if g.gen_callback_fn_value_for_expected_c_abi(id, expected, expected_c_abi) {
+			return
+		}
+	}
+	g.gen_expr_with_expected_type(id, expected)
+}
+
+fn (mut g FlatGen) gen_callback_infix_equality(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	if op !in [.eq, .ne] || fn_type_from(lhs_type) == none || fn_type_from(rhs_type) == none {
+		return false
+	}
+	lhs_direct := g.callback_fn_value_is_direct(lhs_id, rhs_type)
+	rhs_direct := g.callback_fn_value_is_direct(rhs_id, lhs_type)
+	if lhs_direct == rhs_direct {
+		return false
+	}
+	if lhs_direct {
+		g.gen_callback_infix_direct_operand(lhs_id, rhs_type, rhs_id)
+	} else {
+		g.gen_expr(lhs_id)
+	}
+	g.write(' ${g.op_str(op)} ')
+	if rhs_direct {
+		g.gen_callback_infix_direct_operand(rhs_id, lhs_type, lhs_id)
+	} else {
+		g.gen_expr(rhs_id)
+	}
+	return true
+}
+
 fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, expected types.Type, expected_c_abi string) bool {
 	expected_fn := fn_type_from(expected) or { return false }
 	actual_name := g.callback_fn_value_name(arg_id, expected) or {

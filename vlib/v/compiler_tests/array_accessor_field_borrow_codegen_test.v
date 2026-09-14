@@ -10,8 +10,12 @@ fn tmp_array_accessor_borrow_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 }
 
+fn tmp_array_accessor_borrow_executable_path(name string) string {
+	return tmp_array_accessor_borrow_path(name) + $if windows { '.exe' } $else { '' }
+}
+
 fn build_v3_array_accessor_borrow() string {
-	v3_bin := tmp_array_accessor_borrow_path('array_accessor_borrow')
+	v3_bin := tmp_array_accessor_borrow_executable_path('array_accessor_borrow')
 	cache_key := 'V3_ARRAY_ACCESSOR_BORROW_V3_${os.getpid()}'
 	if os.getenv(cache_key) == v3_bin && os.is_executable(v3_bin) {
 		return v3_bin
@@ -91,7 +95,7 @@ fn test_first_last_field_borrow_in_imported_module() {
 // the accessor would otherwise take its independent-clone path. These cases exercise that
 // path directly. The build compiler must itself embed the ownership checker.
 fn build_v3_array_accessor_borrow_ownership() ?string {
-	v3_bin := tmp_array_accessor_borrow_path('array_accessor_borrow_ownership')
+	v3_bin := tmp_array_accessor_borrow_executable_path('array_accessor_borrow_ownership')
 	cache_key := 'V3_ARRAY_ACCESSOR_BORROW_OWNERSHIP_V3_${os.getpid()}'
 	if os.getenv(cache_key) == v3_bin && os.is_executable(v3_bin) {
 		return v3_bin
