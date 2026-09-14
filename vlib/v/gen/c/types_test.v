@@ -655,6 +655,24 @@ fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_su
 	assert g.resolve_sum_name('unknown_mod.Any') == 'sum_mod.Any'
 }
 
+fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_sum() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.sum_types['iface_mod.Any'] = ['int', 'string']
+	tc.interface_names['pkg.iface_mod.Any'] = true
+	tc.cur_file = 'main.v'
+	tc.file_imports['main.v\niface_mod'] = 'pkg.iface_mod'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.precompute_sum_name_lookup()
+
+	assert g.resolve_sum_name('iface_mod.Any') == 'pkg.iface_mod.Any'
+	// Without the file-local alias, the canonical sum type keeps its exact name.
+	tc.cur_file = 'dependency.v'
+	assert g.resolve_sum_name('iface_mod.Any') == 'iface_mod.Any'
+}
+
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{
