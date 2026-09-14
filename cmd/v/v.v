@@ -377,11 +377,7 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 	compiler_args := args[..v1_fallback_compiler_prefix_len(args)]
 	backend := v1_fallback_selected_backend(compiler_args)
-	backend_was_explicit := v1_fallback_backend_was_explicit(compiler_args)
-	target_os := v1_fallback_selected_os(compiler_args)
-	mut skip_running := os.getenv('VNORUN') == '1'
-	mut explicit_output := false
-	mut run_explicit_output_tests := os.getenv('VTEST_SHOW_ASSERTS').len > 0
+	mut skip_running := os.getenv('VNORUN') != ''
 	mut direct_test := false
 	mut option_value_follows := false
 	for i, arg in args {
@@ -396,19 +392,12 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
 			continue
 		}
-		if arg in ['-stats', '-checker-fixture'] {
-			run_explicit_output_tests = true
-			continue
-		}
 		if arg in ['-skip-running', '-check', '-check-syntax', '-generate-c-project'] {
 			skip_running = true
 		}
 		if arg in ['-o', '-output'] {
-			explicit_output = true
 			output := args[i + 1] or { '' }
-			if output == '-' || (backend == 'c' && output.ends_with('.c'))
-				|| (backend == 'c' && backend_was_explicit && target_os != 'wasm32_emscripten'
-					&& output.ends_with('.js')) {
+			if output == '-' || (backend == 'c' && output.ends_with('.c')) {
 				skip_running = true
 			}
 			option_value_follows = true
@@ -437,7 +426,9 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 		}
 	}
 	if direct_test {
-		return skip_running || (explicit_output && !run_explicit_output_tests)
+		// The retry runs under V 0.5.2, which executes direct tests even when an
+		// explicit executable output is requested. Model the retry, not V3 here.
+		return skip_running
 	}
 	return true
 }
@@ -465,31 +456,18 @@ fn v1_fallback_compiler_prefix_len(args []string) int {
 	return args.len
 }
 
-fn v1_fallback_backend_was_explicit(args []string) bool {
-	return args.any(it in ['-b', '-backend', '-compile-backend', '--compile-backend']
-		|| it.starts_with('-b=') || it.starts_with('-backend=')
-		|| it.starts_with('-compile-backend=') || it.starts_with('--compile-backend='))
-}
-
-fn v1_fallback_selected_os(args []string) string {
-	for i, arg in args {
-		if arg == '-os' {
-			return args[i + 1] or { '' }
-		}
-		if arg.starts_with('-os=') {
-			return arg.all_after('-os=')
-		}
-	}
-	return ''
-}
-
 fn v1_fallback_selected_backend(args []string) string {
 	mut backend := 'c'
 	mut backend_value_follows := false
-	for arg in args {
+	mut option_value_follows := false
+	for i, arg in args {
 		if backend_value_follows {
 			backend = arg
 			backend_value_follows = false
+			continue
+		}
+		if option_value_follows {
+			option_value_follows = false
 			continue
 		}
 		if arg in ['-b', '-backend', '-compile-backend', '--compile-backend'] {
@@ -501,6 +479,13 @@ fn v1_fallback_selected_backend(args []string) string {
 				backend = arg.all_after(option)
 				break
 			}
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
 		}
 	}
 	return if backend in ['js_browser', 'js_node'] { 'js' } else { backend }
