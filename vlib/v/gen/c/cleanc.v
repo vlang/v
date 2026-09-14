@@ -17533,13 +17533,7 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
 	g.writeln(g.c_local_header_directive(windows_atomic_header))
 	g.writeln('#else')
-	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
-	g.writeln('#define _Atomic volatile')
-	g.writeln('#endif')
-	g.writeln('#include <stdatomic.h>')
-	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
-	g.writeln('#undef _Atomic')
-	g.writeln('#endif')
+	g.gnu_objc_compatible_stdatomic_header()
 	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/syscall.h>')
@@ -17571,6 +17565,16 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.system_execinfo_declarations()
 	g.writeln('')
+}
+
+fn (mut g FlatGen) gnu_objc_compatible_stdatomic_header() {
+	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
+	g.writeln('#define _Atomic volatile')
+	g.writeln('#endif')
+	g.writeln('#include <stdatomic.h>')
+	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
+	g.writeln('#undef _Atomic')
+	g.writeln('#endif')
 }
 
 // system_execinfo_declarations owns the backtrace API the same way the V1 backend
@@ -17761,7 +17765,11 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdbool.h', 'stdatomic.h',
 			'errno.h', 'fcntl.h', 'signal.h', 'stdio.h', 'stdlib.h', 'string.h', 'strings.h', 'math.h',
 			'time.h', 'unistd.h', 'sys/stat.h'] {
-			g.writeln('#include <${header}>')
+			if header == 'stdatomic.h' {
+				g.gnu_objc_compatible_stdatomic_header()
+			} else {
+				g.writeln('#include <${header}>')
+			}
 		}
 		if g.needs_thread_type || g.uses_pthread() {
 			g.writeln('#include <pthread.h>')

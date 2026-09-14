@@ -239,6 +239,9 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h', 'sys/stat.h'] {
 		assert c_code.contains('#include <${header}>'), header
 	}
+	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
+	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
+	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
 	assert !c_code.contains('#include <pthread.h>')
 	assert c_code.contains('typedef uint64_t u64;')
 	assert !c_code.contains('typedef long long time_t;')
