@@ -3382,7 +3382,7 @@ fn (mut g FlatGen) gen_mut_sum_lvalue_arg(arg_id flat.NodeId, expected types.Typ
 	// and leave the caller's sum value unchanged.
 	lvalue_node := g.a.nodes[int(lvalue_id)]
 	if lvalue_node.kind == .ident && g.current_param_is_mut(lvalue_node.value) {
-		g.write(g.cname(lvalue_node.value))
+		g.write(g.current_param_use_cname(lvalue_node.value))
 		return true
 	}
 	if !g.expr_is_addressable(lvalue_id) {
@@ -8460,7 +8460,7 @@ fn (mut g FlatGen) gen_current_mut_param_method_receiver(base_id flat.NodeId, wa
 	if g.current_param_is_mut_pointer(base.value) {
 		g.gen_expr(base_id)
 	} else {
-		g.write(g.cname(base.value))
+		g.write(g.current_param_use_cname(base.value))
 	}
 	return true
 }

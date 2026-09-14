@@ -183,3 +183,67 @@ fn main() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['10', '11'], res.output
 }
+
+// A mutable parameter already holds an address, so taking one of it is the parameter
+// itself, and passing it on is written as the parameter's own name. That name is the
+// renamed one, the same as every other read of it.
+fn test_a_mutable_parameter_is_passed_on_under_its_declared_name() {
+	v3_bin := local_shadow_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_local_shadow_mut_param_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := local_shadow_build_and_run(v3_bin, root, 'struct Box {
+mut:
+	n int
+}
+
+fn (mut b Box) bump() {
+	b.n++
+}
+
+type Shape = Box | int
+
+fn sort_them(mut array []int) {
+	array.sort()
+}
+
+fn fill(mut array map[string]int) {
+	array["a"] = 1
+}
+
+fn take_sum(mut s Shape) {
+	if mut s is Box {
+		s.bump()
+	}
+}
+
+fn pass_on(mut array Shape) {
+	take_sum(mut array)
+}
+
+fn bump_it(mut array Box) {
+	array.bump()
+}
+
+fn main() {
+	mut a := [3, 1, 2]
+	sort_them(mut a)
+	println(a)
+	mut m := map[string]int{}
+	fill(mut m)
+	println(m["a"])
+	mut sh := Shape(Box{ n: 1 })
+	pass_on(mut sh)
+	if sh is Box {
+		println(sh.n)
+	}
+	mut b := Box{ n: 5 }
+	bump_it(mut b)
+	println(b.n)
+}
+')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '1', '2',
+		'6'], res.output
+}

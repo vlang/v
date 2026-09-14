@@ -934,7 +934,7 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
 
 fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 	for entry in entries {
-		cname := g.cname(entry.name)
+		cname := g.local_cname(entry.name)
 		typ := g.tc.parse_type(entry.type_name)
 		mut expr := cname
 		mut free_pointer_storage := false
@@ -8282,6 +8282,17 @@ fn (mut g FlatGen) decl_lhs_str(id flat.NodeId) string {
 fn (g &FlatGen) discard_name(id flat.NodeId) string {
 	pos := g.a.nodes[int(id)].pos
 	return '__discard_${pos.id}_${pos.offset}_${pos.end}'
+}
+
+// The name a current parameter is read under. The identifier path reads one that
+// needs the global suffix the way it was declared, and one that merely shadows a
+// type the way it reads every other local; anything reading a parameter directly has
+// to make the same distinction or it names something that is not there.
+fn (g &FlatGen) current_param_use_cname(name string) string {
+	if g.local_name_needs_global_suffix(name) {
+		return g.local_decl_cname(name)
+	}
+	return g.local_cname(name)
 }
 
 fn (g &FlatGen) local_cname(name string) string {
