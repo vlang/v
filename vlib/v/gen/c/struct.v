@@ -6138,6 +6138,17 @@ fn (mut g FlatGen) emit_struct(name string) {
 		if pack.len > 0 {
 			g.writeln('#pragma pack(push, ${pack})')
 		}
+		// `struct C.X {}` says the struct is defined in C. V normally still emits a
+		// definition, with a dummy member because C has no empty struct -- fine when
+		// nothing else declares it. On a target that supplies its own headers those
+		// headers are included and do define it, so the synthesized one is a
+		// redefinition; a forward declaration is enough for the pointer use such an
+		// opaque type gets, and the header completes it.
+		if g.target_libc_headers && fields.len == 0 && name.starts_with('C.') {
+			g.writeln('${g.struct_decl_head(name)};')
+			g.tc.cur_module = old_module
+			return
+		}
 		g.writeln('${g.struct_decl_head(name)} {')
 		if fields.len == 0 {
 			g.writeln('\tu8 _dummy;')
