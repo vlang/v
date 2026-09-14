@@ -575,6 +575,76 @@ fn vmod_manifest_inputs(directory string) []string {
 	return inputs
 }
 
+fn module_alias_target_from_source(source string) ?string {
+	marker := '@[alias'
+	marker_pos := source.index(marker) or { return none }
+	mut rest := source[marker_pos + marker.len..].trim_space()
+	if !rest.starts_with(':') {
+		return none
+	}
+	rest = rest[1..].trim_space()
+	if rest.len < 2 || rest[0] !in [`'`, `"`] {
+		return none
+	}
+	quote := rest[0]
+	mut end := 1
+	for end < rest.len && rest[end] != quote {
+		end++
+	}
+	if end >= rest.len {
+		return none
+	}
+	target := rest[1..end].clone()
+	if target == '' {
+		return none
+	}
+	rest = rest[end + 1..].trim_space()
+	if !rest.starts_with(']') {
+		return none
+	}
+	rest = rest[1..].trim_space()
+	if !rest.starts_with('module ') {
+		return none
+	}
+	return target
+}
+
+// module_alias_targets returns every parseable alias target the resolver checks for an import.
+// Targets that are currently absent or empty still matter because either can later become a
+// usable module without changing the alias declaration itself.
+fn module_alias_targets(search_root string, module_name string, mut manifest_inputs map[string]bool) []string {
+	parts := module_name.split('.')
+	mut targets := []string{}
+	for part_count := parts.len; part_count > 0; part_count-- {
+		alias_dir := os.join_path(search_root, parts[..part_count].join(os.path_separator))
+		alias_file := os.join_path(alias_dir, 'alias.v')
+		if !os.is_file(alias_file) {
+			continue
+		}
+		source := os.read_file(alias_file) or { continue }
+		mut target := module_alias_target_from_source(source) or { continue }
+		if target.contains('@VMODROOT') {
+			vmod_inputs := vmod_manifest_inputs(alias_dir)
+			if vmod_inputs.len == 0 || !os.is_file(vmod_inputs.last()) {
+				continue
+			}
+			for input in vmod_inputs {
+				manifest_inputs[input] = true
+			}
+			vmod_root := os.dir(vmod_inputs.last())
+			target = target.replace('@VMODROOT', vmod_root)
+		}
+		if !os.is_abs_path(target) {
+			target = os.join_path(alias_dir, target)
+		}
+		if part_count < parts.len {
+			target = os.join_path(target, parts[part_count..].join(os.path_separator))
+		}
+		targets << os.real_path(target)
+	}
+	return targets
+}
+
 fn nearest_vmod_root(directory string) string {
 	inputs := vmod_manifest_inputs(directory)
 	if inputs.len > 0 && os.is_file(inputs.last()) {
@@ -667,6 +737,10 @@ fn encode_unbuildable_tool_manifest(entry ToolCacheEntry, dumped string, started
 				if index == parts.len - 1 {
 					module_source_dirs[path] = true
 				}
+			}
+			for target in module_alias_targets(search_root, module_name, mut module_manifests) {
+				module_dirs[target] = true
+				module_source_dirs[target] = true
 			}
 		}
 		for module_manifest in failure_module_manifest_inputs(entry, source_files, module_name) {

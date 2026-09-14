@@ -5,14 +5,21 @@ module main
 
 import os
 
-fn C.MoveFileExW(existing &u16, new &u16, flags u32) i32
+#flag windows -l advapi32
 
-fn C.CreateFileW(const_path &u16, desired_access u32, share_mode u32, security_attributes &u16,
-	creation_disposition u32, flags_and_attributes u32, template_file voidptr) voidptr
+#include "@VMODROOT/cmd/v/toolcache_windows_helpers.h"
 
-fn C.GetFileInformationByHandle(handle voidptr, information voidptr) bool
+fn C.v_toolcache_move_file_ex_w(existing &u16, new &u16, flags u32) int
 
-fn C.CloseHandle(handle voidptr) bool
+fn C.v_toolcache_create_file_w(const_path &u16, desired_access u32, share_mode u32,
+	security_attributes voidptr, creation_disposition u32, flags_and_attributes u32,
+	template_file voidptr) voidptr
+
+fn C.v_toolcache_get_file_information(handle voidptr, information voidptr) int
+
+fn C.v_toolcache_close_handle(handle voidptr) int
+
+fn C.v_toolcache_root_is_private(path &u16) int
 
 struct WindowsToolCacheFileInformation {
 	file_attributes       u32
@@ -60,15 +67,15 @@ fn open_tool_cache_entry_dir(path string) !ToolCacheEntryDir {
 	defer {
 		unsafe { free(voidptr(w_path)) }
 	}
-	handle := C.CreateFileW(w_path, 0, toolcache_windows_file_share_read_write, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_flag_backup_semantics | toolcache_windows_file_flag_open_reparse_point, unsafe { nil })
+	handle := C.v_toolcache_create_file_w(w_path, 0, toolcache_windows_file_share_read_write, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_flag_backup_semantics | toolcache_windows_file_flag_open_reparse_point, unsafe { nil })
 	if handle == voidptr(-1) || handle == unsafe { nil } {
 		return error('cannot safely open the tool cache entry `${path}`')
 	}
 	mut information := WindowsToolCacheFileInformation{}
-	if !C.GetFileInformationByHandle(handle, voidptr(&information))
+	if C.v_toolcache_get_file_information(handle, voidptr(&information)) == 0
 		|| information.file_attributes & toolcache_windows_file_attribute_directory == 0
 		|| information.file_attributes & toolcache_windows_file_attribute_reparse_point != 0 {
-		C.CloseHandle(handle)
+		C.v_toolcache_close_handle(handle)
 		if os.is_link(path) {
 			return error('the tool cache entry `${path}` is a symbolic link')
 		}
@@ -81,7 +88,7 @@ fn open_tool_cache_entry_dir(path string) !ToolCacheEntryDir {
 }
 
 fn (entry ToolCacheEntryDir) close() {
-	C.CloseHandle(entry.handle)
+	C.v_toolcache_close_handle(entry.handle)
 }
 
 fn (entry ToolCacheEntryDir) publish(source string, name string) bool {
@@ -103,28 +110,33 @@ fn ensure_tool_cache_lock_file(path string) ! {
 		unsafe { free(voidptr(w_path)) }
 	}
 	desired_access := u32(0x80000000) | u32(0x40000000)
-	created := C.CreateFileW(w_path, desired_access, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_create_new, toolcache_windows_file_attribute_normal, unsafe { nil })
+	created := C.v_toolcache_create_file_w(w_path, desired_access, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_create_new, toolcache_windows_file_attribute_normal, unsafe { nil })
 	if created != voidptr(-1) && created != unsafe { nil } {
-		C.CloseHandle(created)
+		C.v_toolcache_close_handle(created)
 		return
 	}
-	handle := C.CreateFileW(w_path, desired_access, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_attribute_normal | toolcache_windows_file_flag_open_reparse_point, unsafe { nil })
+	handle := C.v_toolcache_create_file_w(w_path, desired_access, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_attribute_normal | toolcache_windows_file_flag_open_reparse_point, unsafe { nil })
 	if handle == voidptr(-1) || handle == unsafe { nil } {
 		return error('cannot open the tool cache lock `${path}`')
 	}
 	defer {
-		C.CloseHandle(handle)
+		C.v_toolcache_close_handle(handle)
 	}
 	mut information := WindowsToolCacheFileInformation{}
-	if !C.GetFileInformationByHandle(handle, voidptr(&information))
+	if C.v_toolcache_get_file_information(handle, voidptr(&information)) == 0
 		|| information.file_attributes & toolcache_windows_file_attribute_directory != 0
 		|| information.file_attributes & toolcache_windows_file_attribute_reparse_point != 0 {
 		return error('the tool cache lock `${path}` is not a safe file')
 	}
 }
 
-fn tool_cache_root_can_stage(_ string) bool {
-	return true
+fn tool_cache_root_can_stage(path string) bool {
+	w_path := path.replace('/', '\\').to_wide()
+	// to_wide owns an unmanaged buffer that the ACL query borrows until it returns.
+	defer {
+		unsafe { free(voidptr(w_path)) }
+	}
+	return C.v_toolcache_root_is_private(w_path) != 0
 }
 
 fn (entry ToolCacheEntryDir) stage_parent(_ string) !string {
@@ -177,15 +189,15 @@ fn windows_binary_file_identity(path string) ?string {
 	defer {
 		unsafe { free(voidptr(w_path)) }
 	}
-	handle := C.CreateFileW(w_path, 0, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_attribute_normal, unsafe { nil })
+	handle := C.v_toolcache_create_file_w(w_path, 0, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_attribute_normal, unsafe { nil })
 	if handle == voidptr(-1) || handle == unsafe { nil } {
 		return none
 	}
 	defer {
-		C.CloseHandle(handle)
+		C.v_toolcache_close_handle(handle)
 	}
 	mut information := WindowsToolCacheFileInformation{}
-	if !C.GetFileInformationByHandle(handle, voidptr(&information)) {
+	if C.v_toolcache_get_file_information(handle, voidptr(&information)) == 0 {
 		return none
 	}
 	index := (u64(information.file_index_high) << 32) | u64(information.file_index_low)
@@ -225,5 +237,5 @@ fn replace_file_atomically(source string, destination string) bool {
 fn move_file_replacing(source string, destination string) bool {
 	w_source := source.replace('/', '\\')
 	w_destination := destination.replace('/', '\\')
-	return C.MoveFileExW(w_source.to_wide(), w_destination.to_wide(), movefile_replace_existing) != 0
+	return C.v_toolcache_move_file_ex_w(w_source.to_wide(), w_destination.to_wide(), movefile_replace_existing) != 0
 }

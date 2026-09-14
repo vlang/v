@@ -1129,6 +1129,48 @@ fn test_adding_an_alias_at_a_module_prefix_invalidates_a_recorded_failure() {
 	assert unbuildable_tool_failure(entry) == none, 'adding an alias at an ancestor prefix must retry the build'
 }
 
+fn test_restoring_an_existing_alias_target_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('missing_alias_target')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	search_root := os.join_path(directory, 'modules')
+	alias_dir := os.join_path(search_root, 'foo')
+	os.mkdir_all(alias_dir)!
+	project_manifest := os.join_path(directory, 'v.mod')
+	os.write_file(project_manifest, "Module { name: 'alias_target_test' }\n")!
+	os.write_file(os.join_path(alias_dir, 'alias.v'), "@[alias: '@VMODROOT/canonical'] module foo\n")!
+	target := os.join_path(os.real_path(directory), 'canonical', 'bar')
+
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', search_root]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "foo.bar" (not found)'
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	mut alias_manifests := map[string]bool{}
+	assert module_alias_targets(os.real_path(search_root), 'foo.bar', mut alias_manifests) == [
+		target,
+	]
+	assert os.real_path(project_manifest) in alias_manifests
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains('d${tool_cache_field_separator}${target}${tool_cache_field_separator}${dir_stamp(target)}')
+	assert unbuildable_tool_failure(entry) != none
+
+	os.mkdir_all(target)!
+	os.write_file(os.join_path(target, 'bar.v'), 'module bar\n')!
+	assert unbuildable_tool_failure(entry) == none, 'restoring an alias target must retry module resolution'
+}
+
 // Ancestor resolution rejects a sibling module whose nearest v.mod declares another name.
 // Editing that manifest can make an otherwise unchanged directory resolve successfully.
 fn test_changing_an_ancestor_module_manifest_invalidates_a_recorded_failure() {
