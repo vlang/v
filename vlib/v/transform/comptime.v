@@ -1256,17 +1256,16 @@ fn (t &Transformer) comptime_method_call_arity_matches(node flat.Node, method Me
 		}
 	}
 	actual_count := int(node.children_count) - 1
+	hidden_ctx_count := if t.method_has_implicit_veb_ctx(method) { 1 } else { 0 }
+	expected_count := method.params.len + hidden_ctx_count
 	if method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...') {
-		return actual_count >= method.params.len - 1
-	}
-	if actual_count == method.params.len {
-		return true
+		return actual_count >= expected_count - 1
 	}
 	// A veb route handler may omit its `ctx` parameter, in which case it is not in
 	// the reflected parameter list but still exists in the signature. Reflected
 	// `app.$method(mut ctx)` calls pass that context explicitly, so one extra
 	// argument is the correct arity for such a method.
-	return actual_count == method.params.len + 1 && t.method_has_implicit_veb_ctx(method)
+	return actual_count == expected_count
 }
 
 // method_has_implicit_veb_ctx reports whether `method` is a veb route handler that
@@ -3432,6 +3431,16 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 				out += '[${dim}]'
 			}
 			return out
+		}
+	}
+	if core.starts_with('(') && core.ends_with(')') {
+		parts := split_generic_args(core[1..core.len - 1])
+		if parts.len > 1 {
+			mut qualified_parts := []string{cap: parts.len}
+			for part in parts {
+				qualified_parts << t.comptime_field_type_id_key(part, decl_module)
+			}
+			return '(${qualified_parts.join(', ')})'
 		}
 	}
 	if core.starts_with('fn(') || core.starts_with('fn (') {

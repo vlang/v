@@ -226,6 +226,10 @@ fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
 	assert c_generic
 	assert c_base == 'json2.StructKeyDecodeResult'
 	assert c_args == ['C.sg_pass_action']
+	_, _, tuple_array := generic_app_parts('(Item, []u8)')
+	assert !tuple_array
+	_, _, result_tuple_array := generic_app_parts('!(Item, []u8)')
+	assert !result_tuple_array
 }
 
 fn test_normalize_function_type_preserves_mut_parameter() {

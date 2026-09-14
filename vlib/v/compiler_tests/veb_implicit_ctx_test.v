@@ -312,6 +312,11 @@ pub fn (mut app App) explicit(mut ctx Context) veb.Result {
 	return veb.Result{}
 }
 
+pub fn (mut app App) show(id string) veb.Result {
+	println(id)
+	return veb.Result{}
+}
+
 fn dispatch[A, X](mut app A, mut ctx X) {
 	$for method in A.methods {
 		$if method.return_type is veb.Result {

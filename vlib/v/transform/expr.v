@@ -2259,6 +2259,10 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 	if type_name.len == 0 {
 		return ''
 	}
+	if type_name in t.enum_types
+		|| (!type_name.contains('.') && '${t.cur_module}.${type_name}' in t.enum_types) {
+		return ''
+	}
 	// Resolve aliases before consulting the struct indexes. Large programs can
 	// contain a struct whose short name collides with an imported alias (notably
 	// `Type` beside `ast.Type = u32`). Treating the alias as that struct expands a

@@ -17310,15 +17310,24 @@ pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
 	if name.len == 0 {
 		return false
 	}
-	if _ := tc.resolve_generic_struct_method(name, 'clone') {
-		return true
-	}
-	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
-		if method_name in tc.fn_ret_types {
+	if info := tc.resolve_generic_struct_method(name, 'clone') {
+		if tc.ownership_clone_method_matches_type(info, typ) {
 			return true
 		}
 	}
+	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
+		if method_name in tc.fn_ret_types {
+			if tc.ownership_clone_method_matches_type(tc.call_info(method_name, true), typ) {
+				return true
+			}
+		}
+	}
 	return false
+}
+
+fn (tc &TypeChecker) ownership_clone_method_matches_type(info CallInfo, typ Type) bool {
+	return info.params_known && info.params.len == 1
+		&& semantic_types_equal(unalias_type(info.return_type), unalias_type(typ))
 }
 
 fn receiver_type_name_variant(t Type, fixed_array_prefix bool, shorten_modules bool) string {

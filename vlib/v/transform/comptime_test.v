@@ -11,6 +11,7 @@ fn test_comptime_field_function_type_keeps_declaring_module() {
 	assert qualified == '?fn(mut mbedtls.SSLListener, string) !&mbedtls.SSLCerts'
 	assert t.comptime_field_type_id_key('Registry[string]', 'eventbus') == 'eventbus.Registry[string]'
 	assert t.comptime_field_type_id_key('Container[T]', 'eventbus') == 'eventbus.Container[T]'
+	assert t.comptime_field_type_id_key('!(Item, []u8)', 'main') == '!(Item, []u8)'
 }
 
 fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
