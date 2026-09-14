@@ -23,6 +23,15 @@ fn (a Counter) + (b Counter) Counter {
 
 fn main() {
 	println((Counter{1} + Counter{2}).n)
+	// A capture used only in the dropped closure branch is still used.
+	captured := 64
+	only_in_skipped_branch := fn [captured] () {
+		$if prealloc {
+			println(captured)
+		}
+	}
+	only_in_skipped_branch()
+	// Parsing the literal above must restore the enclosing function's offset.
 	limit := 32
 	$if prealloc {
 		println(limit)

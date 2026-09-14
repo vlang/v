@@ -12262,9 +12262,13 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	}
 	has_body := p.tok == .lcbr
 	if has_body {
+		prev_fn_offset := p.cur_fn_offset
 		outer_defer_depth := p.defer_depth
 		outer_defer_result_allowed := p.defer_result_allowed
 		outer_nested_block_depth := p.nested_block_depth
+		// Skipped compile-time bodies in this literal belong to its node, not to
+		// the enclosing named function or literal.
+		p.cur_fn_offset = fn_start
 		p.defer_depth = 0
 		p.defer_result_allowed = false
 		p.nested_block_depth = 0
@@ -12303,6 +12307,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		p.end_local_binding_scope()
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
+		p.cur_fn_offset = prev_fn_offset
 		p.defer_depth = outer_defer_depth
 		p.defer_result_allowed = outer_defer_result_allowed
 		p.nested_block_depth = outer_nested_block_depth

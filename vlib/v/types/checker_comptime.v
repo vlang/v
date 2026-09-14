@@ -10685,7 +10685,8 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		capture_has_open_generic :=
 			saved_fn_context.generic_params.any(type_text_contains_symbol(capture_type_text, it))
 		if capture.kind == .ident && capture.value.len > 0 && !capture_has_open_generic
-			&& !tc.fn_literal_body_uses_ident(node, capture.value) {
+			&& !tc.fn_literal_body_uses_ident(node, capture.value)
+			&& !tc.comptime_skipped_body_uses(node, capture.value) {
 			tc.record_notice_at(.unknown_ident, 'unused parameter: `${capture.value}`', capture_id, tc.node_value_diagnostic_pos(capture_id))
 		}
 	}
