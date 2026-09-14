@@ -123,9 +123,8 @@ fn (entry ToolCacheEntryDir) child_names() []string {
 	defer {
 		C.closedir(directory)
 	}
-	mut directory_entry := &C.dirent(unsafe { nil })
 	for {
-		directory_entry = C.readdir(directory)
+		directory_entry := C.readdir(directory)
 		if isnil(directory_entry) {
 			break
 		}
