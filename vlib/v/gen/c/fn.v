@@ -3676,16 +3676,30 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 }
 
 fn (mut g FlatGen) callback_wrapper_decls() {
-	if g.cache_split && g.callback_wrapper_defs.len > 0 {
+	has_callback_support := g.callback_wrapper_defs.len > 0 || g.callback_identity_used
+	if g.cache_split && has_callback_support {
 		g.writeln('/* V3CACHE_PROGRAM_WRAPPERS */')
 	}
 	for def in g.callback_wrapper_defs {
 		g.writeln(def)
 	}
-	if g.cache_split && g.callback_wrapper_defs.len > 0 {
+	if g.callback_identity_used {
+		g.writeln('typedef void (*__v3_callback_identity_fn)(void);')
+		g.writeln('static __v3_callback_identity_fn __v3_callback_identity(__v3_callback_identity_fn __v3_identity_candidate) {')
+		mut keys := g.callback_wrapper_names.keys()
+		keys.sort()
+		for key in keys {
+			wrapper_name := g.callback_wrapper_names[key]
+			actual_name := key.all_before('|')
+			g.writeln('\tif (__v3_identity_candidate == (__v3_callback_identity_fn)${wrapper_name}) { return (__v3_callback_identity_fn)${actual_name}; }')
+		}
+		g.writeln('\treturn __v3_identity_candidate;')
+		g.writeln('}')
+	}
+	if g.cache_split && has_callback_support {
 		g.writeln('/* V3CACHE_PROGRAM_WRAPPERS_END */')
 	}
-	if g.callback_wrapper_defs.len > 0 {
+	if has_callback_support {
 		g.writeln('')
 	}
 }
@@ -13338,6 +13352,66 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_type(arg_id flat.NodeId, e
 	return g.gen_callback_fn_value_for_expected_c_abi(arg_id, expected, '')
 }
 
+fn (mut g FlatGen) callback_fn_value_is_direct(id flat.NodeId, expected types.Type) bool {
+	if name := g.callback_fn_value_name(id, expected) {
+		return name.len > 0
+	}
+	if name := g.direct_callback_ident_name(id) {
+		return name.len > 0
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_callback_infix_direct_operand(id flat.NodeId, expected types.Type, expected_id flat.NodeId) {
+	if expected_c_abi := g.expr_c_abi_fn_ptr_type(expected_id) {
+		if g.gen_callback_fn_value_for_expected_c_abi(id, expected, expected_c_abi) {
+			return
+		}
+	}
+	g.gen_expr_with_expected_type(id, expected)
+}
+
+fn (mut g FlatGen) gen_callback_identity_operand(id flat.NodeId) {
+	g.write('__v3_callback_identity((__v3_callback_identity_fn)(')
+	g.gen_expr(id)
+	g.write('))')
+}
+
+fn (mut g FlatGen) gen_callback_infix_equality(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	if op !in [.eq, .ne] || fn_type_from(lhs_type) == none || fn_type_from(rhs_type) == none {
+		return false
+	}
+	lhs_direct := g.callback_fn_value_is_direct(lhs_id, rhs_type)
+	rhs_direct := g.callback_fn_value_is_direct(rhs_id, lhs_type)
+	if lhs_direct != rhs_direct {
+		if lhs_direct {
+			g.gen_callback_infix_direct_operand(lhs_id, rhs_type, rhs_id)
+		} else {
+			g.gen_expr(lhs_id)
+		}
+		g.write(' ${g.op_str(op)} ')
+		if rhs_direct {
+			g.gen_callback_infix_direct_operand(rhs_id, lhs_type, lhs_id)
+		} else {
+			g.gen_expr(rhs_id)
+		}
+		return true
+	}
+	if lhs_direct {
+		return false
+	}
+	lhs_c_abi := g.expr_c_abi_fn_ptr_type(lhs_id) or { '' }
+	rhs_c_abi := g.expr_c_abi_fn_ptr_type(rhs_id) or { '' }
+	if lhs_c_abi == rhs_c_abi {
+		return false
+	}
+	g.callback_identity_used = true
+	g.gen_callback_identity_operand(lhs_id)
+	g.write(' ${g.op_str(op)} ')
+	g.gen_callback_identity_operand(rhs_id)
+	return true
+}
+
 fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, expected types.Type, expected_c_abi string) bool {
 	expected_fn := fn_type_from(expected) or { return false }
 	actual_name := g.callback_fn_value_name(arg_id, expected) or {
@@ -13614,12 +13688,6 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	actual_ret_ct := g.callback_c_type(actual.return_type)
 	expected_ret_ct := g.callback_expected_return_c_type(expected.return_type, expected_c_abi)
 	mut needs_wrapper := false
-	// A thunk is only warranted when some argument or the return value has to be
-	// *converted*. Pointer-to-pointer and const differences are ABI-identical, so
-	// wrapping them would cost an indirection and, worse, hand out the thunk's
-	// address instead of the function's: `t.func? == callback` then compares two
-	// unrelated symbols and is always false. Those fall through to a plain cast.
-	mut needs_conversion := false
 	mut cast_return := false
 	if actual_ret_ct != expected_ret_ct {
 		if !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct)
@@ -13627,7 +13695,6 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 			return none
 		}
 		needs_wrapper = true
-		needs_conversion = true
 		cast_return = true
 	}
 	mut param_decls := []string{}
@@ -13657,7 +13724,6 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 			setup_lines << '${slot_ct} arg${i}_slot = (${slot_ct})arg${i};'
 			call_args << '&arg${i}_slot'
 			needs_wrapper = true
-			needs_conversion = true
 			continue
 		}
 		if callback_can_cast_scalar_int_param(actual_ct, expected_ct) {
@@ -13667,12 +13733,11 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 			// by C with `-1` reaches the V body as -1 (not 0xffffffff).
 			call_args << '(${actual_ct})arg${i}'
 			needs_wrapper = true
-			needs_conversion = true
 			continue
 		}
 		return none
 	}
-	if !needs_wrapper || !needs_conversion {
+	if !needs_wrapper {
 		return none
 	}
 	actual_c_name := g.callback_c_fn_name(actual_name)
@@ -17841,8 +17906,9 @@ fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name stri
 
 fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string, module_name string) bool {
 	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
-	// A user C.request declaration is unrelated and still needs an extern prototype.
-	if cfn == 'request' && source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {
+	// A user C.request declaration is unrelated and follows the normal header checks.
+	if cfn == 'request'
+		&& source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {
 		return false
 	}
 	if g.target.os == 'vinix' {

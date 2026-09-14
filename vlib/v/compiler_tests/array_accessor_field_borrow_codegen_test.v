@@ -10,11 +10,20 @@ fn tmp_array_accessor_borrow_path(name string) string {
 	return os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 }
 
+fn tmp_array_accessor_borrow_executable_path(name string) string {
+	return tmp_array_accessor_borrow_path(name) + $if windows { '.exe' } $else { '' }
+}
+
 fn build_v3_array_accessor_borrow() string {
-	v3_bin := tmp_array_accessor_borrow_path('array_accessor_borrow')
+	v3_bin := tmp_array_accessor_borrow_executable_path('array_accessor_borrow')
+	cache_key := 'V3_ARRAY_ACCESSOR_BORROW_V3_${os.getpid()}'
+	if os.getenv(cache_key) == v3_bin && os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${os.quoted_path(array_accessor_borrow_vexe)} -gc none -path "${array_accessor_borrow_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(array_accessor_borrow_v3_src)}')
 	assert build.exit_code == 0, build.output
+	os.setenv(cache_key, v3_bin, true)
 	return v3_bin
 }
 
@@ -86,7 +95,11 @@ fn test_first_last_field_borrow_in_imported_module() {
 // the accessor would otherwise take its independent-clone path. These cases exercise that
 // path directly. The build compiler must itself embed the ownership checker.
 fn build_v3_array_accessor_borrow_ownership() ?string {
-	v3_bin := tmp_array_accessor_borrow_path('array_accessor_borrow_ownership')
+	v3_bin := tmp_array_accessor_borrow_executable_path('array_accessor_borrow_ownership')
+	cache_key := 'V3_ARRAY_ACCESSOR_BORROW_OWNERSHIP_V3_${os.getpid()}'
+	if os.getenv(cache_key) == v3_bin && os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${os.quoted_path(array_accessor_borrow_vexe)} -gc none -d ownership -path "${array_accessor_borrow_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(array_accessor_borrow_v3_src)}')
 	if build.output.contains('ownership support is not compiled into this v3 executable') {
@@ -95,6 +108,7 @@ fn build_v3_array_accessor_borrow_ownership() ?string {
 		return none
 	}
 	assert build.exit_code == 0, build.output
+	os.setenv(cache_key, v3_bin, true)
 	return v3_bin
 }
 
@@ -103,6 +117,13 @@ fn compile_v3_ownership_program(v3_bin string, name string, src string, extra_ar
 	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
 	os.write_file(src_path, src) or { panic(err) }
 	return os.execute('${os.quoted_path(v3_bin)} -ownership -d ownership -no-parallel ${extra_args} -o ${os.quoted_path(bin_path)} ${os.quoted_path(src_path)}')
+}
+
+fn compile_v3_uncloneable_array_ownership_program(v3_bin string, name string, src string, extra_args string) os.Result {
+	e_decl := 'struct E {'
+	assert src.count(e_decl) == 1
+	uncloneable_src := 'interface Drop {\nmut:\n\tdrop()\n}\n\n' + src.replace_once(e_decl, 'struct E implements Drop {') + '\nfn (mut value E) drop() {}\n'
+	return compile_v3_ownership_program(v3_bin, name, uncloneable_src, extra_args)
 }
 
 // Concern: `last()` reads its receiver twice (`arr[arr.len - 1]`), so a non-lvalue receiver
@@ -142,7 +163,7 @@ fn test_owned_parenthesized_field_borrow() {
 // accessor is genuinely impossible, so this must be rejected rather than silently miscompiled.
 fn test_owned_method_value_receiver_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value', "struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_method_value', "struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n", '')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
@@ -166,7 +187,7 @@ fn test_owned_method_value_with_clone_runs() {
 // is destroyed. A clone-less owned element must therefore be rejected, not borrowed.
 fn test_owned_escaping_field_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_escaping_field', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(t.last_name())\n}\n", '')
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_escaping_field', "struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(t.last_name())\n}\n", '')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
@@ -243,7 +264,7 @@ fn main() {
 
 fn test_owned_field_overloaded_membership_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_membership', "struct Needle {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_membership', "struct Needle {
 	text string
 }
 
@@ -275,7 +296,7 @@ fn main() {
 // must not use the in-place borrow path.
 fn test_owned_pointer_field_escape_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_pointer_field_escape', "struct E {\n\tname string\n}\n\nfn last_name_ptr() &u8 {\n\tarr := [E{ name: 'hello' }]\n\treturn arr.last().name.str\n}\n\nfn main() {\n\tprintln(unsafe { cstring_to_vstring(last_name_ptr()) })\n}\n", '')
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_pointer_field_escape', "struct E {\n\tname string\n}\n\nfn last_name_ptr() &u8 {\n\tarr := [E{ name: 'hello' }]\n\treturn arr.last().name.str\n}\n\nfn main() {\n\tprintln(unsafe { cstring_to_vstring(last_name_ptr()) })\n}\n", '')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
@@ -299,7 +320,7 @@ fn test_owned_field_scalar_index_borrows() {
 // merely because the aggregate itself has no destructor.
 fn test_owned_nested_pointer_aggregate_escape_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_nested_pointer_aggregate_escape', "struct View {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_pointer_aggregate_escape', "struct View {
 	ptr &u8
 }
 
@@ -433,7 +454,7 @@ fn main() {
 // delete the selected element before string concatenation consumes the field.
 fn test_owned_string_consumer_with_mutating_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	concat := compile_v3_ownership_program(v3_bin, 'owned_string_concat_mutating_sibling', "struct E {
+	concat := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_concat_mutating_sibling', "struct E {
 	name string
 }
 
@@ -454,7 +475,7 @@ fn main() {
 	assert concat.exit_code != 0, concat.output
 	assert concat.output.contains('cannot return an independent array element'), concat.output
 
-	interp := compile_v3_ownership_program(v3_bin, 'owned_string_interp_mutating_sibling', "struct E {
+	interp := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_mutating_sibling', "struct E {
 	name string
 }
 
@@ -475,7 +496,7 @@ fn main() {
 	assert interp.exit_code != 0, interp.output
 	assert interp.output.contains('cannot return an independent array element'), interp.output
 
-	stringifier := compile_v3_ownership_program(v3_bin, 'owned_string_interp_mutating_stringifier', "struct E {
+	stringifier := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_mutating_stringifier', "struct E {
 	name string
 }
 
@@ -500,7 +521,7 @@ fn main() {
 	assert stringifier.exit_code != 0, stringifier.output
 	assert stringifier.output.contains('cannot return an independent array element'), stringifier.output
 
-	nested_stringifier := compile_v3_ownership_program(v3_bin, 'owned_string_interp_nested_mutating_stringifier', "struct E {
+	nested_stringifier := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_nested_mutating_stringifier', "struct E {
 	name string
 }
 
@@ -549,7 +570,7 @@ fn main() {
 	assert stable_stringifier.exit_code == 0, stable_stringifier.output
 	assert !stable_stringifier.output.contains('cannot return an independent array element'), stable_stringifier.output
 
-	comparison := compile_v3_ownership_program(v3_bin, 'owned_string_comparison_mutating_sibling', "struct E {
+	comparison := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_comparison_mutating_sibling', "struct E {
 	name string
 }
 
@@ -576,7 +597,7 @@ fn test_owned_string_interpolation_with_custom_stringifier_part_is_rejected() {
 	// The borrowed interpolation part is itself a string alias with a custom `str()`. The
 	// interpolation dispatches through that method (not the builtin stringifier), and it mutates
 	// the source array before the borrowed shallow receiver is read, so the borrow is unsafe.
-	compile := compile_v3_ownership_program(v3_bin, 'owned_string_interp_self_stringifier', "type Name = string
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_interp_self_stringifier', "type Name = string
 
 struct E {
 	name Name
@@ -624,7 +645,7 @@ fn main() {
 
 fn test_owned_string_index_with_mutating_index_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_string_index_mutating_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_string_index_mutating_sibling', "struct E {
 	name string
 }
 
@@ -648,7 +669,7 @@ fn main() {
 
 fn test_owned_field_overloaded_comparison_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_comparison', "struct Name {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_comparison', "struct Name {
 	text string
 }
 
@@ -695,7 +716,7 @@ fn main() {
 	assert builtin_run.exit_code == 0, builtin_run.output
 	assert builtin_run.output.trim_space() == 'true', builtin_run.output
 
-	overloaded := compile_v3_ownership_program(v3_bin, 'owned_overloaded_infix_sibling', "struct E {
+	overloaded := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_overloaded_infix_sibling', "struct E {
 	name string
 }
 
@@ -725,7 +746,7 @@ fn main() {
 
 fn test_owned_aggregate_field_overloaded_comparison_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_comparison', "struct Name {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_comparison', "struct Name {
 	text string
 }
 
@@ -755,7 +776,7 @@ fn main() {
 
 fn test_owned_aggregate_field_overloaded_inequality_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_inequality', "struct Name {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_inequality', "struct Name {
 	text string
 }
 
@@ -785,7 +806,7 @@ fn main() {
 
 fn test_owned_interface_field_overloaded_comparison_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_interface_field_overloaded_comparison', "interface Named {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_interface_field_overloaded_comparison', "interface Named {
 	name() string
 }
 
@@ -823,7 +844,7 @@ fn main() {
 
 fn test_owned_field_with_overloaded_membership_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_membership_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_membership_sibling', "struct E {
 	name string
 }
 
@@ -857,7 +878,7 @@ fn main() {
 
 fn test_owned_nested_string_consumer_with_mutating_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_nested_string_mutating_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_string_mutating_sibling', "struct E {
 	name string
 }
 
@@ -878,7 +899,7 @@ fn main() {
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 
-	call := compile_v3_ownership_program(v3_bin, 'owned_call_argument_mutating_sibling', "struct E {
+	call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_call_argument_mutating_sibling', "struct E {
 	name string
 }
 
@@ -903,7 +924,7 @@ fn main() {
 	assert call.exit_code != 0, call.output
 	assert call.output.contains('cannot return an independent array element'), call.output
 
-	interpolation_call := compile_v3_ownership_program(v3_bin, 'owned_interpolation_call_argument_mutating_sibling', "struct E {
+	interpolation_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_interpolation_call_argument_mutating_sibling', "struct E {
 	name string
 }
 
@@ -928,7 +949,7 @@ fn main() {
 	assert interpolation_call.exit_code != 0, interpolation_call.output
 	assert interpolation_call.output.contains('cannot return an independent array element'), interpolation_call.output
 
-	comparison_call := compile_v3_ownership_program(v3_bin, 'owned_comparison_call_argument_mutating_sibling', "struct E {
+	comparison_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_comparison_call_argument_mutating_sibling', "struct E {
 	name string
 }
 
@@ -953,7 +974,7 @@ fn main() {
 	assert comparison_call.exit_code != 0, comparison_call.output
 	assert comparison_call.output.contains('cannot return an independent array element'), comparison_call.output
 
-	wrapped_comparison_call := compile_v3_ownership_program(v3_bin, 'owned_wrapped_comparison_call_argument_mutating_sibling', "struct E {
+	wrapped_comparison_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_wrapped_comparison_call_argument_mutating_sibling', "struct E {
 	name string
 }
 
@@ -978,7 +999,7 @@ fn main() {
 	assert wrapped_comparison_call.exit_code != 0, wrapped_comparison_call.output
 	assert wrapped_comparison_call.output.contains('cannot return an independent array element'), wrapped_comparison_call.output
 
-	scalar_selector_call := compile_v3_ownership_program(v3_bin, 'owned_scalar_selector_call_argument_mutating_sibling', "struct E {
+	scalar_selector_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_selector_call_argument_mutating_sibling', "struct E {
 	name string
 }
 
@@ -1003,7 +1024,7 @@ fn main() {
 	assert scalar_selector_call.exit_code != 0, scalar_selector_call.output
 	assert scalar_selector_call.output.contains('cannot return an independent array element'), scalar_selector_call.output
 
-	conditional_call := compile_v3_ownership_program(v3_bin, 'owned_conditional_call_argument_mutating_sibling', "struct E {
+	conditional_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_conditional_call_argument_mutating_sibling', "struct E {
 	name string
 }
 
@@ -1028,7 +1049,7 @@ fn main() {
 	assert conditional_call.exit_code != 0, conditional_call.output
 	assert conditional_call.output.contains('cannot return an independent array element'), conditional_call.output
 
-	logical_wrapper_call := compile_v3_ownership_program(v3_bin, 'owned_logical_wrapper_call_argument_mutating_sibling', "struct E {
+	logical_wrapper_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_logical_wrapper_call_argument_mutating_sibling', "struct E {
 	name string
 }
 
@@ -1053,7 +1074,7 @@ fn main() {
 	assert logical_wrapper_call.exit_code != 0, logical_wrapper_call.output
 	assert logical_wrapper_call.output.contains('cannot return an independent array element'), logical_wrapper_call.output
 
-	nested_call := compile_v3_ownership_program(v3_bin, 'owned_nested_call_argument_mutating_outer_sibling', "struct E {
+	nested_call := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_call_argument_mutating_outer_sibling', "struct E {
 	name string
 }
 
@@ -1085,7 +1106,7 @@ fn main() {
 
 fn test_owned_scalar_consumer_in_aggregate_with_mutating_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_aggregate_mutating_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_aggregate_mutating_sibling', "struct E {
 	name string
 }
 
@@ -1193,7 +1214,7 @@ fn main() {
 
 fn test_owned_conditional_prerequisites_that_mutate_source_are_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	if_compile := compile_v3_ownership_program(v3_bin, 'owned_mutating_if_prerequisite', "struct E {
+	if_compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_if_prerequisite', "struct E {
 	name string
 }
 
@@ -1214,7 +1235,7 @@ fn main() {
 	assert if_compile.exit_code != 0, if_compile.output
 	assert if_compile.output.contains('cannot return an independent array element'), if_compile.output
 
-	match_compile := compile_v3_ownership_program(v3_bin, 'owned_mutating_match_prerequisite', "struct E {
+	match_compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_match_prerequisite', "struct E {
 	name string
 }
 
@@ -1238,7 +1259,7 @@ fn main() {
 	assert match_compile.exit_code != 0, match_compile.output
 	assert match_compile.output.contains('cannot return an independent array element'), match_compile.output
 
-	or_compile := compile_v3_ownership_program(v3_bin, 'owned_mutating_or_prerequisite', "struct E {
+	or_compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_mutating_or_prerequisite', "struct E {
 	name string
 }
 
@@ -1264,7 +1285,7 @@ fn test_owned_match_branch_condition_that_mutates_source_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	// A branch condition is evaluated before the branch tail, so a condition that empties the
 	// array invalidates the accessor borrowed in that tail. It must keep copying semantics.
-	compile := compile_v3_ownership_program(v3_bin, 'owned_match_branch_condition_mutating', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_match_branch_condition_mutating', "struct E {
 	name string
 }
 
@@ -1314,7 +1335,7 @@ fn main() {
 
 fn test_owned_scalar_consumer_with_mutating_struct_default_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_mutating_struct_default_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_mutating_struct_default_sibling', "struct E {
 	name string
 }
 
@@ -1349,7 +1370,7 @@ fn main() {
 
 fn test_owned_scalar_consumer_with_cloning_method_value_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_cloning_method_value_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_cloning_method_value_sibling', "struct E {
 	name string
 }
 
@@ -1442,7 +1463,7 @@ fn main() {
 
 fn test_owned_scalar_consumer_with_alias_clone_method_value_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_alias_clone_method_value_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_alias_clone_method_value_sibling', "struct E {
 	name string
 }
 
@@ -1480,7 +1501,7 @@ fn main() {
 
 fn test_owned_scalar_consumer_with_cloning_array_spread_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_cloning_array_spread_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_cloning_array_spread_sibling', "struct E {
 	name string
 }
 
@@ -1515,7 +1536,7 @@ fn main() {
 
 fn test_owned_scalar_multi_return_with_mutating_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_multi_return_mutating_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_scalar_multi_return_mutating_sibling', "struct E {
 	name string
 }
 
@@ -1540,7 +1561,7 @@ fn main() {
 
 fn test_owned_field_overloaded_index_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_index', "struct Name {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_field_overloaded_index', "struct Name {
 	text string
 }
 
@@ -1567,7 +1588,7 @@ fn main() {
 
 fn test_owned_string_comparison_with_overloaded_index_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
-	compile := compile_v3_ownership_program(v3_bin, 'owned_overloaded_index_sibling', "struct E {
+	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_overloaded_index_sibling', "struct E {
 	name string
 }
 

@@ -113,18 +113,29 @@ fn main() {
 	}
 	event := C.native_event{value: 3}
 	desc.cb = erased_event
+	assert desc.cb == erased_event
+	assert erased_event == desc.cb
 	desc.cb(&event, desc.user_data)
 	desc.plain(&event, desc.user_data)
 	mut concrete := C.native_desc{
 		user_data: voidptr(&app)
 	}
 	concrete.cb = concrete_event
+	assert concrete.cb == concrete_event
+	assert concrete_event == concrete.cb
 	concrete.cb(&event, concrete.user_data)
 	mut alias_desc := C.alias_desc{
 		user_data: voidptr(&app)
 	}
 	alias_desc.cb = concrete_event
+	assert alias_desc.cb == concrete_event
 	alias_desc.cb(&event, alias_desc.user_data)
+	desc.cb = concrete_event
+	desc.plain = concrete_event
+	assert desc.cb == desc.plain
+	assert desc.plain == desc.cb
+	assert !(desc.cb != desc.plain)
+	assert !(desc.plain != desc.cb)
 	println(int_str(app.hits))
 }
 ')
@@ -136,8 +147,8 @@ fn main() {
 	assert run.output.trim_space() == '633'
 	generated := os.read_file(out + '.c') or { panic(err) }
 	assert generated.contains('typedef void (*'), generated
-	assert generated.contains('(const struct native_event*, void*)'), generated
-	assert generated.contains('(struct native_event*, void*)'), generated
+	assert generated.contains('(const native_event*, void*)'), generated
+	assert generated.contains('(native_event*, void*)'), generated
 	assert generated.contains('erased_event_callback_adapter_'), generated
 	assert generated.contains('concrete_event_callback_adapter_'), generated
 	assert generated.contains('const native_event* arg0, void* arg1'), generated
@@ -146,7 +157,7 @@ fn main() {
 	assert generated.contains('.cb = erased_event_callback_adapter_'), generated
 	assert generated.contains('desc.cb = erased_event_callback_adapter_'), generated
 	assert generated.contains('concrete.cb = concrete_event_callback_adapter_'), generated
-	assert generated.contains('alias_desc__local.cb = concrete_event_callback_adapter_'), generated
+	assert generated.contains('__v3_internal_symbol_local_alias_desc.cb = concrete_event_callback_adapter_'), generated
 	assert generated.contains('.plain = plain_event'), generated
 	assert !generated.contains('.cb = (_fn_ptr'), generated
 	assert !generated.contains('desc.cb = (_fn_ptr'), generated
@@ -264,7 +275,7 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '22'
 	generated := os.read_file(out + '.c') or { panic(err) }
-	assert generated.contains('(const struct native_event*, void*)'), generated
+	assert generated.contains('(const native_event*, void*)'), generated
 	assert generated.contains('late_alias_event_callback_adapter_'), generated
 	assert generated.contains('const native_event* arg0, void* arg1'), generated
 	assert generated.contains('late_alias_event((native_event*)arg0, arg1);'), generated
@@ -297,6 +308,14 @@ mut:
 	user_data voidptr
 }
 
+@[typedef]
+struct C.native_desc {
+mut:
+	cb fn (const_event &C.native_event, voidptr) = unsafe { nil }
+	plain fn (&C.native_event, voidptr) = unsafe { nil }
+	user_data voidptr
+}
+
 struct App {
 mut:
 	hits int
@@ -313,10 +332,14 @@ fn concrete_event(e &C.native_event, data voidptr) {
 	}
 	src.write_string('
 fn run_parallel(mut app App) {
-	mut desc := C.alias_desc{
+	mut desc := C.native_desc{
 		user_data: voidptr(app)
 	}
 	desc.cb = concrete_event
+	desc.plain = concrete_event
+	assert desc.cb == desc.plain
+	assert desc.plain == desc.cb
+	assert !(desc.cb != desc.plain)
 	event := C.native_event{value: 7}
 	desc.cb(&event, desc.user_data)
 }

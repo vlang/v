@@ -111,8 +111,11 @@ fn main() {
 	_ := wrap(mut reader)
 }
 ')
-	assert c_code.contains('ReaderBox__new(read_from)'), c_code
-	assert !c_code.contains('ReaderBox__new(&read_from)'), c_code
+	wrap_start := 'main__ReaderBox wrap(main__Reader* read_from) {'
+	assert c_code.contains(wrap_start), c_code
+	wrap_body := c_code.all_after(wrap_start).all_before('\n}')
+	assert wrap_body.contains('(read_from);'), wrap_body
+	assert !wrap_body.contains('(&read_from);'), wrap_body
 }
 
 fn test_mut_parameter_address_boxed_as_interface_uses_concrete_pointer() {

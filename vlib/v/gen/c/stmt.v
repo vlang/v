@@ -8094,24 +8094,31 @@ fn (mut g FlatGen) gen_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.N
 	return true
 }
 
-fn (g &FlatGen) assign_lhs_c_abi_fn_ptr_type(lhs_id flat.NodeId) ?string {
-	if int(lhs_id) < 0 || int(lhs_id) >= g.a.nodes.len {
+fn (g &FlatGen) expr_c_abi_fn_ptr_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
 	}
-	lhs := g.a.nodes[int(lhs_id)]
-	if lhs.kind != .selector || lhs.children_count == 0 || lhs.value.len == 0 {
+	expr := g.a.nodes[int(id)]
+	if expr.kind in [.expr_stmt, .paren, .postfix] && expr.children_count > 0 {
+		return g.expr_c_abi_fn_ptr_type(g.a.child(&expr, 0))
+	}
+	if expr.kind != .selector || expr.children_count == 0 || expr.value.len == 0 {
 		return none
 	}
-	base_id := g.a.child(&lhs, 0)
+	base_id := g.a.child(&expr, 0)
 	base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
 	mut clean := base_type
 	if base_type is types.Alias {
 		clean = base_type.base_type
 	}
 	if clean is types.Struct {
-		return g.struct_field_c_abi_fn_ptr_type(clean.name, lhs.value)
+		return g.struct_field_c_abi_fn_ptr_type(clean.name, expr.value)
 	}
 	return none
+}
+
+fn (g &FlatGen) assign_lhs_c_abi_fn_ptr_type(lhs_id flat.NodeId) ?string {
+	return g.expr_c_abi_fn_ptr_type(lhs_id)
 }
 
 fn (g &FlatGen) assign_struct_operator_method(lhs_type types.Type, op flat.Op) ?string {
