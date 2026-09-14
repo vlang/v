@@ -199,13 +199,21 @@ fn test_trim_extended_length_path_prefix() {
 fn test_parent_dir() {
 	$if windows {
 		assert parent_dir(r'S:\repo\vlang') == r'S:\repo'
-		assert parent_dir(r'S:\repo') == 'S:'
+		// The parent of a top level directory is the absolute drive root, not the
+		// bare volume `S:`, which names the current directory *on that drive*.
+		assert parent_dir(r'S:\repo') == 'S:\\'
+		assert parent_dir('S:/repo') == 'S:/'
 		// `dir('S:')` is `.`, which would restart a parent walk at the current
 		// directory; `parent_dir` reports "no parent" instead.
 		assert parent_dir('S:') == ''
 		assert parent_dir('S:\\') == ''
+		assert parent_dir('S:/') == ''
+		// A drive relative path has no parent that can be named without the
+		// current directory on that drive.
+		assert parent_dir('S:outside') == ''
 		assert parent_dir(r'\\Host\share') == ''
 		assert parent_dir(r'\\Host\share\') == ''
+		assert parent_dir(r'\\Host\share\files') == r'\\Host\share' + '\\'
 		assert parent_dir(r'\\Host\share\files\file.v') == r'\\Host\share\files'
 		assert parent_dir('\\') == ''
 		assert parent_dir('.') == ''
@@ -224,15 +232,29 @@ fn test_parent_dir() {
 
 // test_parent_dir_walk_terminates guards the parent walks in the compiler
 // (vroot and v.mod root detection): every one of them must reach a root in a
-// bounded number of steps, from any starting path, on any platform.
+// bounded number of steps, and must never hand the walk a drive relative value
+// to probe on the way up, from any starting path, on any platform.
 fn test_parent_dir_walk_terminates() {
-	for start in ['/a/b/c', 'a/b/c', '.', '/', '', r'S:\a\b', 'S:', r'\\Host\share\a'] {
+	for start in ['/a/b/c', 'a/b/c', '.', '/', '', r'S:\a\b', 'S:', 'S:outside', r'\\Host\share\a'] {
 		mut dir := start
 		mut steps := 0
 		for dir.len > 0 {
 			dir = parent_dir(dir)
+			assert dir != '.'
+			assert !is_drive_relative_path(dir)
 			steps++
 			assert steps < 16
 		}
 	}
+}
+
+// is_drive_relative_path reports whether `path` names a location relative to
+// the current directory of a Windows drive (`C:` or `C:sub`). Such a path
+// resolves against per-drive state, so a parent walk must never probe one.
+// Elsewhere `S:\x` is an ordinary file name, so this is Windows only.
+fn is_drive_relative_path(path string) bool {
+	$if !windows {
+		return false
+	}
+	return has_drive_letter(path) && (path.len == 2 || !is_slash(path[2]))
 }

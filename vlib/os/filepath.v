@@ -229,10 +229,14 @@ pub fn to_slash(path string) string {
 // string when `path` has no parent: a filesystem root (`/`, `C:\`, `C:`,
 // `\\server\share`), the current directory reference `.`, or a single path
 // element without any separator in it.
-// Unlike `dir`, it never turns an absolute path into the relative `.` that
-// `dir` falls back to for a path without a separator (`dir('C:') == '.'`), so
-// it is safe for parent directory walks: those would otherwise escape the
-// drive on Windows and keep searching relative to the current directory.
+// Every value it returns is safe to probe directly. That is what separates it
+// from `dir`, which has two Windows answers that are resolved against the
+// current directory rather than against the path they came from:
+// `dir('C:')` is the relative `.`, and `dir(r'C:\outside')` is the bare volume
+// `C:`, which names the current directory *on drive C*, not its root.
+// `parent_dir` reports "no parent" for the first and the absolute root `C:\`
+// for the second, so a parent directory walk can neither escape the drive nor
+// probe a drive-relative path on the way up.
 pub fn parent_dir(path string) string {
 	if path == '' {
 		return empty_str
@@ -250,6 +254,13 @@ pub fn parent_dir(path string) string {
 		// `dir` returns `.` when `path` holds no separator at all; that is not a
 		// parent directory, it is "relative to wherever the caller happens to be".
 		return empty_str
+	}
+	if volume_len > 0 && parent.len == volume_len {
+		// The parent is the bare volume. Keep the separator that followed it in
+		// `path`, so the result is the absolute root (`C:\`) instead of the
+		// drive-relative `C:`. `path` is longer than `volume_len + 1` here, and
+		// `dir` stopped at the volume, so that byte is a separator.
+		return parent + path[volume_len..volume_len + 1]
 	}
 	return parent
 }
