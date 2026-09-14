@@ -18,11 +18,18 @@ vlib/v/checker/tests/redundant_parentheses_around_a_commented_group.vv:7:7: noti
     7 |     d := ((value) /* explanation */)
       |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~
     8 |     e := (/* leading */ (value))
-    9 |     println(b + c + d + e)
+    9 |     // An interpolation holds code, which may quote the same way the string
 vlib/v/checker/tests/redundant_parentheses_around_a_commented_group.vv:8:7: notice: redundant parentheses are used
     6 |     c := ((value + ')'.len))
     7 |     d := ((value) /* explanation */)
     8 |     e := (/* leading */ (value))
       |          ~~~~~~~~~~~~~~~~~~~~~~~
-    9 |     println(b + c + d + e)
-   10 | }
+    9 |     // An interpolation holds code, which may quote the same way the string
+   10 |     // around it does: the `)` in it is inside the literal all the same.
+vlib/v/checker/tests/redundant_parentheses_around_a_commented_group.vv:11:7: notice: redundant parentheses are used
+    9 |     // An interpolation holds code, which may quote the same way the string
+   10 |     // around it does: the `)` in it is inside the literal all the same.
+   11 |     f := ((value + '${')'}'.len))
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~
+   12 |     println(b + c + d + e + f)
+   13 | }

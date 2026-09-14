@@ -2749,10 +2749,14 @@ fn skip_non_code_at(source string, i int) int {
 	// has no escapes, so a trailing backslash does not swallow its quote.
 	mut opening := i
 	mut has_escapes := true
+	mut has_interpolation := true
 	if (source[i] == `r` || source[i] == `c`) && i + 1 < source.len
 		&& (source[i + 1] == `'` || source[i + 1] == `"`) {
 		opening = i + 1
 		has_escapes = source[i] == `c`
+		// A raw string has neither escapes nor interpolations, and a C string
+		// is scanned by scan_char_literal, which escapes but never interpolates.
+		has_interpolation = false
 	} else if source[i] == `j` && i + 2 < source.len && source[i + 1] == `s`
 		&& (source[i + 2] == `'` || source[i + 2] == `"`) {
 		opening = i + 2
@@ -2765,6 +2769,32 @@ fn skip_non_code_at(source string, i int) int {
 	for j < source.len && source[j] != quote {
 		if has_escapes && source[j] == `\\` {
 			j += 2
+			continue
+		}
+		if has_interpolation && source[j] == `$` && j + 1 < source.len && source[j + 1] == `{` {
+			// An interpolation holds code, which may hold a literal of its own,
+			// quoted the same way: `'${f('}')}'` ends at the second `}` and not
+			// at the quote before it.
+			mut braces := 0
+			mut k := j + 1
+			for k < source.len {
+				skipped := skip_non_code_at(source, k)
+				if skipped > k {
+					k = skipped
+					continue
+				}
+				if source[k] == `{` {
+					braces++
+				} else if source[k] == `}` {
+					braces--
+					if braces == 0 {
+						k++
+						break
+					}
+				}
+				k++
+			}
+			j = k
 			continue
 		}
 		j++

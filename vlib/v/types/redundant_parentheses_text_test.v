@@ -25,3 +25,16 @@ fn test_a_comment_around_the_group_is_not_part_of_it() {
 	assert !text_is_a_single_parenthesised_group('(a) /* c */ + (b)')
 	assert !text_is_a_single_parenthesised_group('/* only a comment */')
 }
+
+fn test_a_literal_inside_an_interpolation_does_not_end_the_string() {
+	// An interpolation holds code, which may quote the same way the string
+	// around it does, so the parenthesis in it is still not syntax.
+	assert text_is_a_single_parenthesised_group("('\${')'}')")
+	assert text_is_a_single_parenthesised_group("(('\${')'}'))")
+	assert !text_is_a_single_parenthesised_group("('\${')'}') + (b)")
+	// Braces of a nested literal do not close the interpolation either.
+	assert text_is_a_single_parenthesised_group("('\${f('}')}' + ')')")
+	// A raw string interpolates nothing, so its `\${` opens no code.
+	assert text_is_a_single_parenthesised_group("(r'\${' + ')')")
+	assert !text_is_a_single_parenthesised_group("(r'\${') + (b)")
+}
