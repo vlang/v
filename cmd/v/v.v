@@ -382,13 +382,17 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 // described as compiler failures.
 fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 	mut option_value_follows := false
-	for arg in args {
+	for i, arg in args {
 		if option_value_follows {
 			option_value_follows = false
 			continue
 		}
 		if arg == '-e' || arg.starts_with('-e=') || arg == '-' {
 			return false
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
 		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
 			option_value_follows = true
@@ -403,6 +407,28 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 		}
 	}
 	return true
+}
+
+// v1_fallback_profile_option_consumes_value mirrors the driver's compatibility
+// rule for V1's optional `-profile [file]` argument.
+fn v1_fallback_profile_option_consumes_value(args []string, idx int) bool {
+	next := args[idx + 1] or { return false }
+	if next == '-' {
+		return true
+	}
+	if next.starts_with('-') {
+		return false
+	}
+	if next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
+		|| next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next) {
+		return false
+	}
+	for later in args[idx + 2..] {
+		if !later.starts_with('-') {
+			return true
+		}
+	}
+	return false
 }
 
 // report_v1_fallback_failure explains whose errors the user is looking at. V

@@ -106,11 +106,17 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['run', 'main.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-prod', 'run', 'main.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['test', 'vlib/context'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-profile', 'run', 'main.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-profile', 'test', 'vlib/context'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-profile', 'trace.out', 'run', 'main.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['fmt', '-verify', 'main.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-'])
+
+	assert v1_fallback_exit_identifies_compiler_failure(['-profile', 'main.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-profile', 'trace.out', 'main.v'])
 }
 
 fn fake_v1_fallback_tree(tag string) string {
