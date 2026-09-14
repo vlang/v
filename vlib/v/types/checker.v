@@ -2596,7 +2596,7 @@ fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node f
 
 fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token.Pos) {
 	if !tc.warn_about_allocs || tc.cur_module in ['strings', 'math', 'math.bits', 'builtin',
-		'strconv', 'os'] {
+		'builtin.closure', 'strconv', 'os'] {
 		return
 	}
 	mut current := id

@@ -4420,7 +4420,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.assignment_mismatch, 'type `${actual_name}` does not implement interface `${target_iface.name}`; `${actual_name}` does not implement interface `${target_iface.name}`, cannot cast `${actual_name}` to interface `${target_iface.name}`', id, node.pos)
 	}
 	if tc.warn_about_allocs && ((clean_actual !is Pointer && clean_actual !is Interface)
-		|| tc.interface_pointer_alias_cast_needs_heap_copy(child_id, actual)) {
+		|| tc.interface_pointer_alias_cast_needs_heap_copy(child_id, actual)
+		|| tc.interface_pointer_target_cast_needs_heap_copy(target, actual, target_iface)) {
 		tc.warn_alloc('cast to interface', id, node.pos)
 	}
 }
@@ -5932,6 +5933,18 @@ fn (tc &TypeChecker) interface_pointer_alias_cast_needs_heap_copy(id flat.NodeId
 		return false
 	}
 	return tc.interface_pointer_source_root_is_local(tc.first_parsed_child(arg_id))
+}
+
+fn (tc &TypeChecker) interface_pointer_target_cast_needs_heap_copy(target Type, actual Type, target_iface Interface) bool {
+	if unalias_type(target) !is Pointer {
+		return false
+	}
+	clean_actual := unalias_type(actual)
+	if clean_actual !is Pointer {
+		return false
+	}
+	actual_iface := cast_target_interface(clean_actual) or { return true }
+	return tc.interface_metadata_name(actual_iface.name) != tc.interface_metadata_name(target_iface.name)
 }
 
 fn (tc &TypeChecker) first_parsed_child(id flat.NodeId) flat.NodeId {

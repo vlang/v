@@ -40,6 +40,10 @@ fn (p Person) speak() {}
 
 fn (p PersonPtr) speak() {}
 
+fn box_pointer(p &Person) &Speaker {
+	return &Speaker(p)
+}
+
 fn main() {
 	name := 'V'
 	array := [1, 2, 3]
@@ -51,6 +55,7 @@ fn main() {
 	alias_speaker := Expr(Person{})
 	person := Person{}
 	pointer_alias_speaker := Speaker(PersonPtr(&person))
+	pointer_speaker := box_pointer(&person)
 	freed := ['\${name}' + name] @[freed]
 	println(array)
 	println(interpolation)
@@ -60,6 +65,7 @@ fn main() {
 	speaker.speak()
 	alias_speaker.speak()
 	pointer_alias_speaker.speak()
+	pointer_speaker.speak()
 	println(freed)
 }
 ")!
@@ -77,7 +83,7 @@ fn main() {
 		expected_count := if description == 'string concatenation' {
 			3
 		} else if description == 'cast to interface' {
-			3
+			4
 		} else {
 			1
 		}
@@ -134,6 +140,10 @@ fn box_alias(p PersonPtr) Speaker {
 	return Speaker(p)
 }
 
+fn preserve_box(p &Speaker) &Speaker {
+	return &Speaker(p)
+}
+
 fn fixed_array() [3]int {
 	return [3]int[1, 2, 3]
 }
@@ -152,8 +162,15 @@ fn main() {
 	person := Person{}
 	speaker := box(&person)
 	speaker.speak()
+	speaker_pointer := preserve_box(&speaker)
+	speaker_pointer.speak()
 	converted := Speaker(speaker)
 	converted.speak()
+	value := 42
+	callback := fn [value] () int {
+		return value
+	}
+	println(callback())
 	println(fixed_array())
 	println(empty_fixed_array())
 	println(initialized_fixed_array())
