@@ -16881,6 +16881,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		first_file = initial_files[0]
 	}
 	project_root := project_root_for_files(initial_files)
+	shadow_diagnostic_root := os.real_path(project_root)
+	shadow_dependency_roots := shadow_dependency_roots_for(prefs)
+	shadow_explicit_roots := shadow_explicit_roots_for(prefs, shadow_dependency_roots)
 	mut parsed_module_identities := map[string]string{}
 	mut parsed_identity_dirs := map[string]string{}
 	mut identity_source_paths := map[string]string{}
@@ -17254,12 +17257,17 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				} else if !cache_state.force_source {
 					if cached := cache_state.manager.valid_entry_with_metadata_cache(cache_module, mod_files, mut cache_state.dependency_metadata) {
 						record_v3_cached_source_digests(mut cache_state, cached.source_digests)
-						if !modulecache.header_needs_source(cached) {
+						owned_sources_need_check := mod_files.any(types.shadow_roots_own_file(it,
+							shadow_diagnostic_root, shadow_explicit_roots, shadow_dependency_roots))
+						if !modulecache.header_needs_source(cached) && !owned_sources_need_check {
 							parse_files = [cached.header]
 							if mod_files.len > 0 {
 								cached_header_source_contexts[cached.header] = mod_files[0]
 							}
 						} else {
+							// Cached declaration headers omit local bindings. Project-owned
+							// sources still need their bodies parsed so diagnostics cannot
+							// depend on whether their module object is already warm.
 							cache_state.source_body_modules[cache_module] = true
 						}
 						cache_state.objects[cache_module] = cached.object

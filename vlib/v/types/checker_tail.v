@@ -6669,6 +6669,16 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 		// "everything" only when no selection was made at all.
 		return tc.diagnostic_files.len == 0
 	}
+	return shadow_roots_own_file(file, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
+		tc.shadow_dependency_roots)
+}
+
+// shadow_roots_own_file reports whether `file` belongs to an explicit project
+// root after nested installed-module roots have been excluded.
+pub fn shadow_roots_own_file(file string, diagnostic_root string, explicit_roots []string, dependency_roots []string) bool {
+	if file.len == 0 {
+		return false
+	}
 	// A path is matched both as written and resolved. A build tree assembled out
 	// of symlinks -- Vinix compiles its kernel through one -- holds its sources
 	// under the root only by their link paths, so resolving up front would place
@@ -6676,18 +6686,18 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 	// reached through a symlink.
 	abs_file := os.abs_path(file)
 	real_file := os.real_path(file)
-	if tc.shadow_root_owns_file(abs_file, real_file, tc.shadow_diagnostic_root) {
+	if shadow_root_owns_file(abs_file, real_file, diagnostic_root, dependency_roots) {
 		return true
 	}
-	for root in tc.shadow_explicit_roots {
-		if tc.shadow_root_owns_file(abs_file, real_file, root) {
+	for root in explicit_roots {
+		if shadow_root_owns_file(abs_file, real_file, root, dependency_roots) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) shadow_root_owns_file(abs_file string, real_file string, root string) bool {
+fn shadow_root_owns_file(abs_file string, real_file string, root string, dependency_roots []string) bool {
 	if !shadow_path_is_within(abs_file, real_file, root) {
 		return false
 	}
@@ -6695,7 +6705,7 @@ fn (tc &TypeChecker) shadow_root_owns_file(abs_file string, real_file string, ro
 	// an isolated build does contain dependencies. An installed root that is an
 	// ancestor of an owned root is different: the owned root wins, so developing
 	// `~/.vmodules/my_package` still diagnoses its submodules.
-	for dependency_root in tc.shadow_dependency_roots {
+	for dependency_root in dependency_roots {
 		root_is_inside_dependency := shadow_path_is_within(root, root, dependency_root)
 		if !root_is_inside_dependency
 			&& shadow_path_is_within(abs_file, real_file, dependency_root) {

@@ -145,6 +145,34 @@ fn test_static_comptime_for_decl_shadow_is_reported() {
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
 
+fn test_warm_owned_module_cache_reports_new_global_shadow() {
+	$if windows {
+		return
+	}
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'helpers', 'helpers.v'), 'module helpers\n\npub fn helper() int {\n\tcounter := 7\n\treturn counter\n}\n')
+	write_file(os.join_path(app_dir, 'main.v'), 'module main\n\nimport helpers\n\nfn main() {\n\tprintln(helpers.helper())\n}\n')
+	cache_dir := os.join_path(tmp_root, 'cache')
+	first_output := os.join_path(tmp_root, 'first')
+	first := os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(vexe)} -prod -enable-globals -o ${os.quoted_path(first_output)} ${os.quoted_path(app_dir)}')
+	assert first.exit_code == 0, first.output
+	assert os.walk_ext(cache_dir, '.vh').any(os.file_name(it).starts_with('helpers_'))
+	write_file(os.join_path(app_dir, 'main.v'), 'module main\n\nimport helpers\n\nfn main() {\n\tprintln(helpers.helper() + 1)\n}\n')
+	warm_output := os.join_path(tmp_root, 'warm')
+	warm := os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(vexe)} -prod -enable-globals -o ${os.quoted_path(warm_output)} ${os.quoted_path(app_dir)}')
+	assert warm.exit_code == 0, warm.output
+	warm_run := os.execute(os.quoted_path(warm_output))
+	assert warm_run.exit_code == 0, warm_run.output
+	assert warm_run.output.trim_space() == '8', warm_run.output
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nimport helpers\n\n__global (\n\tcounter int\n)\n\nfn main() {\n\tprintln(helpers.helper())\n}\n')
+	second_output := os.join_path(tmp_root, 'second')
+	second := os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(vexe)} -prod -enable-globals -o ${os.quoted_path(second_output)} ${os.quoted_path(app_dir)}')
+	assert second.exit_code != 0, second.output
+	assert second.output.contains(os.join_path('helpers', 'helpers.v')), second.output
+	assert second.output.contains('variable `counter` shadows a global variable'), second.output
+}
+
 fn test_dependency_shadow_is_not_reported() {
 	write_project(sibling_modules_dir, true)
 	res := compile_app(sibling_modules_dir)
