@@ -68,7 +68,8 @@ mut:
 	err() IError
 }
 
-// str returns the `str` method of the corresponding Context struct
+// str returns the built-in context's string representation. For a Context implementation
+// defined outside this module, it returns the concrete implementation type name.
 pub fn (ctx &Context) str() string {
 	// since `Context` is an interface we have to manually match every possible
 	// type that implements `Context` if we want to use a `Context` as a field in a struct
