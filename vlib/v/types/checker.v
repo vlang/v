@@ -16627,6 +16627,7 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	// body use them (`mut fo := ...(field.attrs); ... fo.install_default(...)`),
 	// and without a binding those uses report unknown identifiers.
 	if node.kind == .decl_assign && node.children_count >= 2 {
+		tc.check_decl_lhs_global_shadowing(node)
 		for i := 0; i + 1 < int(node.children_count); i += 2 {
 			lhs := tc.a.child_node(&node, i)
 			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {

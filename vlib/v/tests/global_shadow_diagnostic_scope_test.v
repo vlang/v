@@ -118,6 +118,33 @@ fn test_inactive_custom_flag_branch_in_generic_does_not_report_shadow() {
 	assert !res.output.contains('variable `counter` shadows a global variable'), res.output
 }
 
+fn test_selected_specialized_comptime_branch_reports_shadow() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), "@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n\tprintln(get[string]('ok'))\n}\n")
+	res := compile_project_with_path(app_dir, sibling_modules_dir, '')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+}
+
+fn test_unselected_specialized_comptime_branch_does_not_report_shadow() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), "@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[string]('ok'))\n}\n")
+	res := compile_project_with_path(app_dir, sibling_modules_dir, '')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('variable `counter` shadows a global variable'), res.output
+}
+
+fn test_static_comptime_for_decl_shadow_is_reported() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nstruct Item {\n\tname string\n}\n\n__global (\n\tcounter string\n)\n\nfn main() {\n\t$for field in Item.fields {\n\t\tcounter := field.name\n\t\tprintln(counter)\n\t}\n}\n')
+	res := compile_project_with_path(app_dir, sibling_modules_dir, '')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+}
+
 fn test_dependency_shadow_is_not_reported() {
 	write_project(sibling_modules_dir, true)
 	res := compile_app(sibling_modules_dir)

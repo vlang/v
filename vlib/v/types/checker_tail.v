@@ -6790,6 +6790,29 @@ fn (mut tc TypeChecker) check_generic_fn_body_global_shadowing(node flat.Node) {
 	}
 }
 
+// check_specialized_fn_global_shadowing inspects the concrete generic bodies
+// after monomorphization has selected specialization-dependent `$if` branches.
+pub fn (mut tc TypeChecker) check_specialized_fn_global_shadowing() {
+	mut fn_indexes := []int{cap: tc.a.specialized_fn_nodes.len}
+	for fn_idx, specialized in tc.a.specialized_fn_nodes {
+		if specialized {
+			fn_indexes << fn_idx
+		}
+	}
+	fn_indexes.sort()
+	old_file := tc.cur_file
+	old_module := tc.cur_module
+	for fn_idx in fn_indexes {
+		if fn_idx >= 0 && fn_idx < tc.a.nodes.len && tc.a.nodes[fn_idx].kind == .fn_decl {
+			tc.cur_file = tc.a.specialized_fn_files[fn_idx] or { old_file }
+			tc.cur_module = tc.a.specialized_fn_modules[fn_idx] or { old_module }
+			tc.check_generic_fn_body_global_shadowing(tc.a.nodes[fn_idx])
+		}
+	}
+	tc.cur_file = old_file
+	tc.cur_module = old_module
+}
+
 fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
 		return
