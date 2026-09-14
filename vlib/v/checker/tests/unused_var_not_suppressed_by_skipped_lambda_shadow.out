@@ -5,3 +5,10 @@ vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:7:2: 
       |     ^
     8 |     $if prealloc {
     9 |         consume_lambda(|x| x + 1)
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:31:2: warning: unused variable: `x`
+   29 |
+   30 | fn multiline_lambda_parameter_shadows_outer() {
+   31 |     x := 1
+      |     ^
+   32 |     $if prealloc {
+   33 |         callback := |x| identity

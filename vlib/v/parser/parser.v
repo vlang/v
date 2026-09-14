@@ -61,6 +61,7 @@ struct SkippedComptimeLambdaScope {
 	bracket_depth int
 	brace_depth   int
 	block_depth   int
+	body_pos      int
 }
 
 // Parser represents parser data used by parser.
@@ -5795,13 +5796,20 @@ fn skipped_token_can_start_map_type(prev_tok token.Token) bool {
 		|| prev_tok in [.lcbr, .semicolon, .comma, .colon, .lpar, .lsbr, .key_return]
 }
 
-fn skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, tok token.Token, paren_depth int, bracket_depth int, brace_depth int) bool {
+fn (mut p Parser) skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, tok token.Token, prev_tok token.Token, paren_depth int, bracket_depth int, brace_depth int) bool {
 	if scope.block_depth >= 0 {
 		return tok == .rcbr && brace_depth == scope.block_depth
 	}
-	return paren_depth == scope.paren_depth && bracket_depth == scope.bracket_depth
-		&& brace_depth == scope.brace_depth
-		&& tok in [.comma, .colon, .semicolon, .rpar, .rsbr, .rcbr]
+	if paren_depth != scope.paren_depth || bracket_depth != scope.bracket_depth
+		|| brace_depth != scope.brace_depth {
+		return false
+	}
+	if tok == .semicolon && prev_tok in [.name, .key_module, .key_shared]
+		&& p.current_token_is_newline_semicolon() && p.peek() == .lpar
+		&& p.line_indent_for_pos(p.peek_pos) > p.line_indent_for_pos(scope.body_pos) {
+		return false
+	}
+	return tok in [.comma, .colon, .semicolon, .rpar, .rsbr, .rcbr]
 }
 
 // skip_comptime_block skips the body of a `$if` branch or a `$match` arm this
@@ -5907,8 +5915,8 @@ fn (mut p Parser) skip_comptime_block() {
 			asm_is_goto = false
 		}
 		for lambda_scopes.len > 0
-			&& skipped_lambda_scope_ends(lambda_scopes.last(), p.tok, paren_depth,
-				bracket_depth, depth) {
+			&& p.skipped_lambda_scope_ends(lambda_scopes.last(), p.tok, prev_tok,
+				paren_depth, bracket_depth, depth) {
 			for name in lambda_scopes.last().names {
 				shadowed_names[name]--
 			}
@@ -5919,14 +5927,16 @@ fn (mut p Parser) skip_comptime_block() {
 		} else if in_lambda_params {
 			if p.tok == .pipe {
 				in_lambda_params = false
-				next_lcbr_is_lambda_body = p.peek() == .lcbr
-				block_depth := if p.peek() == .lcbr { depth + 1 } else { -1 }
+				body_tok := p.peek()
+				next_lcbr_is_lambda_body = body_tok == .lcbr
+				block_depth := if body_tok == .lcbr { depth + 1 } else { -1 }
 				lambda_scopes << SkippedComptimeLambdaScope{
 					names: lambda_params.clone()
 					paren_depth: paren_depth
 					bracket_depth: bracket_depth
 					brace_depth: depth
 					block_depth: block_depth
+					body_pos: p.peek_pos
 				}
 				for name in lambda_params {
 					shadowed_names[name]++

@@ -23,9 +23,24 @@ fn lambda_scope_restores_outer(x int) {
 	}
 }
 
+fn identity(value int) int {
+	return value
+}
+
+fn multiline_lambda_parameter_shadows_outer() {
+	x := 1
+	$if prealloc {
+		callback := |x| identity
+			(x)
+		_ = callback
+	}
+}
+
 fn main() {
 	consume_lambda(|x| x)
 	lambda_parameter_shadows_outer()
 	lambda_uses_outer(1)
 	lambda_scope_restores_outer(1)
+	_ = identity(1)
+	multiline_lambda_parameter_shadows_outer()
 }
