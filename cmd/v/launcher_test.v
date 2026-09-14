@@ -61,39 +61,134 @@ fn test_fallback_failure_notes_name_the_stage_v_stopped_in() {
 	assert stageless[1].contains('V stopped and kept its diagnostics quiet')
 }
 
-fn test_moved_modules_are_shimmed_into_the_fallback_vlib() {
-	root := os.join_path(os.vtmp_dir(), 'v1_fallback_shims_${os.getpid()}')
+fn fake_v1_fallback_tree(tag string) string {
+	root := os.join_path(os.vtmp_dir(), 'v1_fallback_${tag}_${os.getpid()}')
 	os.rmdir_all(root) or {}
+	previous := os.join_path(root, 'vlib', 'x', 'json2')
+	os.mkdir_all(os.join_path(previous, 'decoder2')) or { panic(err) }
+	os.write_file(os.join_path(previous, 'json2.v'), 'module json2\n') or { panic(err) }
+	os.write_file(os.join_path(previous, 'decoder2', 'decoder.v'), 'module decoder2\n') or {
+		panic(err)
+	}
+	return root
+}
+
+fn test_moved_modules_are_staged_into_a_writable_overlay() {
+	root := fake_v1_fallback_tree('overlay')
+	overlay_home := os.join_path(root, 'writable_home')
+	os.mkdir_all(overlay_home)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	previous := os.join_path(root, 'vlib', 'x', 'json2')
-	os.mkdir_all(os.join_path(previous, 'decoder2'))!
-	os.write_file(os.join_path(previous, 'json2.v'), 'module json2\n')!
-	os.write_file(os.join_path(previous, 'decoder2', 'decoder.v'), 'module decoder2\n')!
+	os.setenv('XDG_CACHE_HOME', overlay_home, true)
+	defer {
+		os.unsetenv('XDG_CACHE_HOME')
+	}
 
-	ensure_v1_fallback_module_shims(root)
-	shim := os.join_path(root, 'vlib', 'json2')
-	assert os.read_file(os.join_path(shim, 'json2.v'))! == 'module json2\n'
-	assert os.read_file(os.join_path(shim, 'decoder2', 'decoder.v'))! == 'module decoder2\n'
-	// The original location has to stay importable as `x.json2`.
-	assert os.is_dir(previous)
+	overlay := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
+	assert overlay.starts_with(overlay_home)
+	assert os.read_file(os.join_path(overlay, 'json2', 'json2.v'))! == 'module json2\n'
+	assert os.read_file(os.join_path(overlay, 'json2', 'decoder2', 'decoder.v'))! == 'module decoder2\n'
+	// The fallback tree itself must stay exactly as it was found.
+	assert os.ls(os.join_path(root, 'vlib'))! == ['x']
 	// Staging directories must not survive as importable modules.
-	assert os.ls(os.join_path(root, 'vlib'))!.filter(it.starts_with('.')).len == 0
+	assert os.ls(overlay)!.filter(it.starts_with('.')).len == 0
 
-	// An already shimmed tree is left untouched, so a local edit is never clobbered.
-	os.write_file(os.join_path(shim, 'json2.v'), 'module json2 // kept\n')!
-	ensure_v1_fallback_module_shims(root)
-	assert os.read_file(os.join_path(shim, 'json2.v'))! == 'module json2 // kept\n'
+	// A staged overlay is reused as is, rather than copied over every launch.
+	os.write_file(os.join_path(overlay, 'json2', 'json2.v'), 'module json2 // kept\n')!
+	reused := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
+	assert reused == overlay
+	assert os.read_file(os.join_path(overlay, 'json2', 'json2.v'))! == 'module json2 // kept\n'
 }
 
-fn test_shimming_skips_a_fallback_tree_without_the_previous_location() {
-	root := os.join_path(os.vtmp_dir(), 'v1_fallback_noshims_${os.getpid()}')
+fn test_a_read_only_fallback_tree_still_gets_its_moved_modules() {
+	root := fake_v1_fallback_tree('readonly')
+	overlay_home := os.join_path(os.vtmp_dir(), 'v1_fallback_readonly_home_${os.getpid()}')
+	os.rmdir_all(overlay_home) or {}
+	os.mkdir_all(overlay_home)!
+	vlib_dir := os.join_path(root, 'vlib')
+	os.chmod(vlib_dir, 0o500)!
+	defer {
+		os.chmod(vlib_dir, 0o700) or {}
+		os.rmdir_all(root) or {}
+		os.rmdir_all(overlay_home) or {}
+	}
+	os.setenv('XDG_CACHE_HOME', overlay_home, true)
+	defer {
+		os.unsetenv('XDG_CACHE_HOME')
+	}
+
+	overlay := v1_fallback_module_overlay(root) or { panic('expected an overlay') }
+	assert os.read_file(os.join_path(overlay, 'json2', 'json2.v'))! == 'module json2\n'
+	assert os.ls(vlib_dir)! == ['x']
+}
+
+fn test_a_fallback_tree_that_already_carries_the_module_needs_no_overlay() {
+	root := fake_v1_fallback_tree('current')
+	os.mkdir_all(os.join_path(root, 'vlib', 'json2'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	if _ := v1_fallback_module_overlay(root) {
+		assert false, 'a tree that carries `json2` needs no overlay'
+	}
+}
+
+fn test_staging_skips_a_fallback_tree_without_the_previous_location() {
+	root := os.join_path(os.vtmp_dir(), 'v1_fallback_nostage_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	defer {
 		os.rmdir_all(root) or {}
 	}
 	os.mkdir_all(os.join_path(root, 'vlib'))!
-	ensure_v1_fallback_module_shims(root)
-	assert os.ls(os.join_path(root, 'vlib'))! == []
+	if _ := v1_fallback_module_overlay(root) {
+		assert false, 'a tree without `x/json2` has nothing to stage'
+	}
+}
+
+fn test_a_host_with_nowhere_to_stage_reports_it_instead_of_going_quiet() {
+	if os.getuid() == 0 {
+		// root writes through the mode bits this case is built from.
+		return
+	}
+	root := fake_v1_fallback_tree('nowhere')
+	blocked := os.join_path(os.vtmp_dir(), 'v1_fallback_blocked_${os.getpid()}')
+	os.rmdir_all(blocked) or {}
+	os.mkdir_all(blocked)!
+	os.chmod(blocked, 0o500)!
+	defer {
+		os.chmod(blocked, 0o700) or {}
+		os.rmdir_all(blocked) or {}
+		os.rmdir_all(root) or {}
+	}
+
+	if _ := v1_fallback_module_overlay_in(root, [os.join_path(blocked, 'overlay')]) {
+		assert false, 'nothing is writable, so there is no overlay to return'
+	}
+	// A later candidate that does accept the copy is still used.
+	usable := os.join_path(root, 'usable_overlay')
+	assert v1_fallback_module_overlay_in(root, [os.join_path(blocked, 'overlay'), usable])? == usable
+	assert os.read_file(os.join_path(usable, 'json2', 'json2.v'))! == 'module json2\n'
+}
+
+fn test_the_overlay_is_looked_for_in_the_cache_before_the_temporary_directory() {
+	cache := os.join_path(os.vtmp_dir(), 'v1_fallback_xdg_${os.getpid()}')
+	os.setenv('XDG_CACHE_HOME', cache, true)
+	defer {
+		os.unsetenv('XDG_CACHE_HOME')
+	}
+	dirs := v1_fallback_overlay_dirs()
+	assert dirs.len >= 2
+	assert dirs[0] == os.join_path(cache, 'v', 'v1-fallback-modules', v_version)
+	assert dirs.last().starts_with(os.temp_dir())
+}
+
+fn test_the_overlay_is_searched_after_the_module_paths_the_user_has() {
+	os.setenv('VMODULES', ['/one', '/two'].join(os.path_delimiter), true)
+	defer {
+		os.unsetenv('VMODULES')
+	}
+	assert v1_fallback_vmodules_env('/overlay') == ['/one', '/two', '/overlay'].join(os.path_delimiter)
+	// An overlay that is already on the list must not be repeated.
+	assert v1_fallback_vmodules_env('/two') == ['/one', '/two'].join(os.path_delimiter)
 }

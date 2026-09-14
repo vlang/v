@@ -12,10 +12,10 @@ import v.pref
 
 const v_version = '0.5.2'
 const v1_fallback_binary = 'v1_fallback'
-// Modules that V3 ships at a new place inside vlib. The V 0.5.2 tree that backs
-// the fallback compiler still keeps them where they used to live, so a program
-// written for V3 fails there with `cannot import module ...` unless the fallback
-// vlib also carries them under their current name.
+// Modules that V3 ships at a new place inside vlib, mapped to where the V 0.5.2
+// tree behind the fallback compiler still keeps them. A program written for V3
+// fails there with `cannot import module ...` until the fallback is pointed at a
+// copy that carries them under their current name.
 const v1_fallback_module_shims = {
 	'json2': 'x/json2'
 }
@@ -348,6 +348,9 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	os.setenv('VEXE', fallback, true)
 	os.setenv('VCHILD', 'true', true)
+	if overlay := v1_fallback_module_overlay(os.dir(fallback)) {
+		os.setenv('VMODULES', v1_fallback_vmodules_env(overlay), true)
+	}
 	eprintln('${reason}; retrying with `${fallback}`.')
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
@@ -526,41 +529,132 @@ fn resolve_v1_fallback(fallback string) ?string {
 		fallback_root := os.read_file(root_file) or { '' }.trim_space()
 		cached_fallback := os.join_path(fallback_root, 'v' + $if windows { '.exe' } $else { '' })
 		if os.is_executable(cached_fallback) && v1_fallback_has_expected_version(cached_fallback) {
-			ensure_v1_fallback_module_shims(fallback_root)
 			return cached_fallback
 		}
 	}
 	return none
 }
 
-// ensure_v1_fallback_module_shims copies the modules of `v1_fallback_module_shims`
-// to the name V3 uses, inside the vlib of the compatibility compiler. Without it
-// a retried build of any program that imports `json2` stops on the fallback with
-// a module-not-found error that has nothing to do with why V3 gave up.
-fn ensure_v1_fallback_module_shims(fallback_root string) {
+// v1_fallback_module_overlay stages every module of `v1_fallback_module_shims`
+// that `fallback_root` only carries under its previous name, and returns the
+// directory to append to VMODULES. The fallback tree is only ever read from: it
+// can be shared between users or read only, as a system packaged V 0.5.2 is.
+// Without this a retried build of any program that imports `json2` stops on the
+// fallback with a module-not-found error that has nothing to do with why V3
+// gave up.
+fn v1_fallback_module_overlay(fallback_root string) ?string {
+	return v1_fallback_module_overlay_in(fallback_root, v1_fallback_overlay_dirs())
+}
+
+// v1_fallback_module_overlay_in stages the modules into the first of
+// `candidates` that accepts them.
+fn v1_fallback_module_overlay_in(fallback_root string, candidates []string) ?string {
 	vlib_dir := os.join_path(fallback_root, 'vlib')
+	mut sources := map[string]string{}
 	for name, previous_path in v1_fallback_module_shims {
-		shim := os.join_path(vlib_dir, name)
-		if os.exists(shim) {
+		if os.is_dir(os.join_path(vlib_dir, name)) {
+			// This tree is new enough to carry the module under its current name.
 			continue
 		}
 		mut source := vlib_dir
 		for segment in previous_path.split('/') {
 			source = os.join_path(source, segment)
 		}
-		if !os.is_dir(source) {
-			continue
+		if os.is_dir(source) {
+			sources[name] = source
 		}
-		// Stage the copy beside its destination, so that a concurrent `v` never
-		// sees a half written directory as an importable module.
-		staged := os.join_path(vlib_dir, '.${name}.shim.${os.getpid()}')
-		os.rmdir_all(staged) or {}
-		os.cp_all(source, staged, true) or {
-			os.rmdir_all(staged) or {}
-			continue
-		}
-		os.mv(staged, shim, overwrite: false) or { os.rmdir_all(staged) or {} }
 	}
+	if sources.len == 0 {
+		return none
+	}
+	mut failure := ''
+	for overlay in candidates {
+		mut staged_all := true
+		for name, source in sources {
+			stage_v1_fallback_module(overlay, name, source) or {
+				if failure == '' {
+					failure = '`${overlay}`: ${err.msg()}'
+				}
+				staged_all = false
+				break
+			}
+		}
+		if staged_all {
+			// VMODULES is read by a process with its own working directory, so
+			// only an absolute path means the same thing there.
+			return os.abs_path(overlay)
+		}
+	}
+	// Continuing without the overlay is still better than refusing to run the
+	// fallback at all, since only a program that imports one of these modules is
+	// affected. Say so, rather than letting it fail as a missing module.
+	reason := if failure == '' { 'there was nowhere to put them' } else { failure }
+	eprintln('note: the V ${v_version} fallback will not be able to import `${sources.keys().join('`, `')}`, because none of its copies could be staged (${reason}).')
+	return none
+}
+
+// stage_v1_fallback_module copies `source` to `<overlay>/<name>` unless it is
+// already there. The copy is staged beside its destination and renamed into
+// place, so that a concurrent `v` never sees a half written directory as an
+// importable module.
+fn stage_v1_fallback_module(overlay string, name string, source string) ! {
+	shim := os.join_path(overlay, name)
+	if os.is_dir(shim) {
+		return
+	}
+	os.mkdir_all(overlay)!
+	staged := os.join_path(overlay, '.${name}.staged.${os.getpid()}')
+	os.rmdir_all(staged) or {}
+	os.cp_all(source, staged, true) or {
+		os.rmdir_all(staged) or {}
+		return err
+	}
+	os.mv(staged, shim, overwrite: false) or {
+		os.rmdir_all(staged) or {}
+		if !os.is_dir(shim) {
+			return err
+		}
+		// A concurrent `v` staged the same module first, which is the same result.
+	}
+}
+
+// v1_fallback_overlay_dirs lists the overlay locations to try, most durable
+// first. `os.cache_dir()` and `os.vtmp_dir()` are deliberately not used: both
+// panic when they cannot create their folder, which is the read only HOME this
+// has to survive.
+fn v1_fallback_overlay_dirs() []string {
+	// `v/` under the cache root is where `install_v1_fallback.sh` puts the
+	// fallback itself, so its modules stay in the same namespace.
+	mut roots := []string{}
+	if xdg_cache := os.getenv_opt('XDG_CACHE_HOME') {
+		if xdg_cache != '' {
+			roots << os.join_path(xdg_cache, 'v')
+		}
+	}
+	home := os.home_dir()
+	if home != '' {
+		roots << os.join_path(home, '.cache', 'v')
+	}
+	roots << os.join_path(os.temp_dir(), 'v_${os.getuid()}')
+	mut dirs := []string{cap: roots.len}
+	for root in roots {
+		dir := os.join_path(root, 'v1-fallback-modules', v_version)
+		if dir !in dirs {
+			dirs << dir
+		}
+	}
+	return dirs
+}
+
+// v1_fallback_vmodules_env appends `overlay` to the module paths the fallback
+// searches. It goes last, so a module the user installed themselves still wins,
+// and vlib already wins over every vmodules path.
+fn v1_fallback_vmodules_env(overlay string) string {
+	mut paths := os.vmodules_paths()
+	if overlay !in paths {
+		paths << overlay
+	}
+	return paths.join(os.path_delimiter)
 }
 
 fn v1_fallback_has_expected_version(executable string) bool {
