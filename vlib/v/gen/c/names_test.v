@@ -671,8 +671,10 @@ fn c_string_literal_decode(escaped string) []u8 {
 	for i < escaped.len {
 		c := escaped[i]
 		if c == `"` {
-			// `" "`, the boundary between two adjacent literals.
-			assert escaped[i + 1] == ` `
+			// The boundary between two adjacent literals, which also ends the
+			// source line. A raw newline can only appear here: one inside the
+			// payload is escaped as `\012`.
+			assert escaped[i + 1] == `\n`
 			assert escaped[i + 2] == `"`
 			i += 3
 			continue
@@ -728,8 +730,9 @@ fn test_c_byte_string_escape_round_trips_every_byte_value() {
 }
 
 // test_c_byte_string_escape_splits_long_payloads_into_adjacent_literals covers the
-// size limit a single C string literal has. `$embed_file` payloads go through this
-// function, and MSVC rejects one long literal outright.
+// two limits a long `$embed_file` payload would otherwise run into: the maximum
+// length of one string literal, and the maximum length of one logical source line.
+// MSVC is strict about both, so neither splitting alone is enough.
 fn test_c_byte_string_escape_splits_long_payloads_into_adjacent_literals() {
 	mut raw := []u8{cap: 40000}
 	for i in 0 .. 40000 {
@@ -738,9 +741,15 @@ fn test_c_byte_string_escape_splits_long_payloads_into_adjacent_literals() {
 		raw << if i % 3 == 0 { u8(200 + i % 40) } else { u8(`a` + i % 26) }
 	}
 	escaped := c_byte_string_escape(raw.bytestr())
-	assert escaped.contains('" "')
-	for part in escaped.split('" "') {
-		assert part.len <= c_string_literal_chunk_len + 4
+	// Each continuation is both its own literal and its own source line.
+	assert escaped.contains('"\n"')
+	lines := escaped.split_into_lines()
+	assert lines.len > 1
+	for line in lines {
+		assert line.len <= c_string_literal_chunk_len + 4
+		// C requires an implementation to support only 4095 characters in one
+		// logical source line, and MSVC stops at 16384.
+		assert line.len < 4095
 	}
 	assert c_string_literal_decode(escaped) == raw
 }

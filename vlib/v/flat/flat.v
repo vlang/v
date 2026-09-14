@@ -277,6 +277,9 @@ pub fn node_payload_at(id u32) &NodePayload {
 pub const node_flag_skip_ownership_drops = u8(1)
 // node_flag_static_type_method marks a `fn Type.method()` declaration.
 pub const node_flag_static_type_method = u8(2)
+// node_flag_embed_payload marks the string literal holding the bytes that
+// `$embed_file` materialized (see Node.is_embed_payload()).
+pub const node_flag_embed_payload = u8(4)
 
 // node_flags packs the two rare node bools into Node.flags.
 @[inline]
@@ -327,6 +330,16 @@ pub fn (mut n Node) set_skip_ownership_drops(value bool) {
 @[inline]
 pub fn (n &Node) is_static_type_method() bool {
 	return (n.flags & node_flag_static_type_method) != 0
+}
+
+// is_embed_payload reports whether this string literal holds the bytes that
+// `$embed_file` materialized. Such a literal is written out by the embed
+// codegen alone, so it must be kept out of the interned literal table: an
+// entry there is never referenced, and it repeats the whole payload on a
+// single source line.
+@[inline]
+pub fn (n &Node) is_embed_payload() bool {
+	return (n.flags & node_flag_embed_payload) != 0
 }
 
 // set_is_static_type_method updates the static-type-method flag.

@@ -6337,7 +6337,13 @@ fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
 		return none
 	}
 	bytes := os.read_bytes(apath) or { return none }
-	data := p.add_val_id(5, bytes.bytestr().clone())
+	// Flagged, so that the literal table skips it: only the embed codegen below
+	// reads this node, and an interned copy would repeat the payload verbatim.
+	data := p.add_node(flat.Node{
+		kind: .string_literal
+		value: bytes.bytestr().clone()
+		flags: flat.node_flag_embed_payload
+	})
 	return p.add_node(flat.Node{
 		kind: .cast_expr
 		value: '&u8'

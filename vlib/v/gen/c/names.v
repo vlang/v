@@ -586,23 +586,30 @@ fn c_escape_into(mut out strings.Builder, s string) {
 }
 
 // c_string_literal_chunk_len bounds how much of an escaped byte string is written
-// before it is continued in the next adjacent literal. A single string literal has an
-// implementation defined maximum length (C requires only 4095 bytes of it, and MSVC
-// rejects long ones outright), while the concatenation of adjacent literals does not.
-const c_string_literal_chunk_len = 3800
+// before it is continued in the next adjacent literal, on the next source line.
+// Two separate implementation limits make that necessary, and only the pair of them
+// together is enough: a single string literal has a maximum length (C requires only
+// 4095 characters of one, and MSVC rejects long ones outright), and so does one
+// logical source line (again 4095 in C, 16384 in MSVC). Concatenating adjacent
+// literals answers the first; putting them on their own lines answers the second.
+// The bound is well under 4095 so that the text sharing the payload's first and last
+// line -- the rest of the enclosing initializer -- still fits with room to spare.
+const c_string_literal_chunk_len = 2048
 
 // c_byte_string_escape renders arbitrary bytes as the body of a C string literal.
 // Bytes that a C compiler reads back unchanged are kept as they are, and the rest become
 // three digit octal escapes, which are never continued by the character after them.
 // Keeping the common case one character wide matters for size: `$embed_file` payloads go
 // through here, so escaping every byte would make each embedded byte cost four.
+// A long result is continued in further literals on their own source lines; see
+// c_string_literal_chunk_len. The caller can therefore write it out in one piece.
 fn c_byte_string_escape(s string) string {
 	mut out := strings.new_builder(s.len + (s.len >> 2))
 	mut chunk := 0
 	for i in 0 .. s.len {
 		b := s[i]
 		if chunk >= c_string_literal_chunk_len {
-			out.write_string('" "')
+			out.write_string('"\n"')
 			chunk = 0
 		}
 		if b == `"` || b == `\\` || b == `?` {
