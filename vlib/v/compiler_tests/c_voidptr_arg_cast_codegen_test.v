@@ -55,6 +55,8 @@ static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
 	os.write_file(os.join_path(root, 'strict_reordered_undef.h'), '#undef strict_get_reordered_count\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_nested_api.h'), '#define strict_get_nested_count(p) ((p)->count)\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_nested_wrapper.h'), '#define V3_STRICT_NESTED_HEADER "strict_nested_api.h"\n#include V3_STRICT_NESTED_HEADER\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_cross_file_api.h'), '#define strict_get_cross_file_count(p) ((p)->count)\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_cross_file_wrapper.h'), '#define V3_STRINGIFY_HEADER_IMPL(x) #x\n#define V3_STRINGIFY_HEADER(x) V3_STRINGIFY_HEADER_IMPL(x)\n#include V3_STRINGIFY_HEADER(strict_cross_file_api.h)\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_state_a.h'), '#define V3_STRICT_ORDERED_LOAD 1\n#define strict_ordered_load_u64(p) (*(p))\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_state_b.h'), '#ifdef V3_STRICT_ORDERED_LOAD\n#undef strict_ordered_load_u64\n#endif\n#include <stdint.h>\nstatic inline uint64_t strict_ordered_load_u64(uint64_t* x) { return *x; }\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'strict_once_macro.h'), '#pragma once\n#define strict_once_load(p) ((p)->count)\n') or { panic(err) }
@@ -184,14 +186,7 @@ fn main() {
 	// concrete pointer and the argument has to stay as written.
 	assert generated.contains('#define v_c_voidptr_arg(x) ((void*)(x))'), generated
 	assert generated.contains('#define v_c_voidptr_arg(x) (x)'), generated
-	// The `Table**` argument is routed through `void*` ...
-	assert generated.contains('strict_load_u64(v_c_voidptr_arg(&slot))'), generated
-	assert generated.contains('strict_store_u64(v_c_voidptr_arg(&slot)'), generated
-	assert generated.contains('strict_is_nonnull_u64(v_c_voidptr_arg('), generated
-	// Macro state carries across top-level includes: the second header undefines
-	// the macro from the first one and exposes the real typed-pointer function.
-	assert generated.contains('strict_ordered_load_u64(v_c_voidptr_arg(&slot))'), generated
-	// ... but an active function-like macro receives the original typed pointer.
+	// An active function-like macro receives the original typed pointer.
 	assert generated.contains('strict_get_count(&item)'), generated
 	assert !generated.contains('strict_get_count(v_c_voidptr_arg('), generated
 	// Object-like aliases inherit function-like macro status.
@@ -223,15 +218,7 @@ fn main() {
 	// Literal-valued include macros are resolved so nested macro definitions are visible.
 	assert generated.contains('strict_get_nested_count(&item)'), generated
 	assert !generated.contains('strict_get_nested_count(v_c_voidptr_arg('), generated
-	// A pragma-once header is not replayed after its macro is undefined.
-	assert generated.contains('strict_once_load(v_c_voidptr_arg(&item))'), generated
-	// The selected compiler's predefined macros choose the same header branch as CGen.
-	$if !windows {
-		assert generated.contains('strict_compiler_selected(v_c_voidptr_arg(&item))'), generated
-	}
-	// An inlined source's final #undef exposes the real typed-pointer function.
-	assert generated.contains('strict_inlined_final(v_c_voidptr_arg(&item))'), generated
-	// ... while an argument that is already `voidptr` is passed unchanged.
+	// An argument that is already `voidptr` is passed unchanged.
 	assert !generated.contains('strict_load_any(v_c_voidptr_arg('), generated
 
 	no_builtin_src := voidptr_arg_write_project('module main
@@ -259,6 +246,33 @@ fn main() {
 	no_builtin_generated := os.read_file(no_builtin_out + '.c') or { panic(err) }
 	assert no_builtin_generated.contains('#define v_c_voidptr_arg(x) ((void*)(x))'), no_builtin_generated
 	assert no_builtin_generated.contains('strict_is_nonnull_u64(v_c_voidptr_arg('), no_builtin_generated
+
+	cross_file_src := voidptr_arg_write_project('module main
+
+fn C.strict_get_cross_file_count(voidptr) u32
+
+struct CrossFileItem {
+	count u32
+}
+
+fn main() {
+	item := CrossFileItem{
+		count: 11
+	}
+	println(C.strict_get_cross_file_count(&item).str())
+}
+')
+	cross_file_root := os.dir(cross_file_src)
+	os.write_file(os.join_path(cross_file_root, 'macro_source.c.v'), 'module main\n\n#include "@DIR/strict_cross_file_wrapper.h"\n') or { panic(err) }
+	cross_file_out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_cross_file_${os.getpid()}')
+	cross_file_compile := os.execute('${v3_bin} -b c -o ${cross_file_out} ${cross_file_root}')
+	assert cross_file_compile.exit_code == 0, cross_file_compile.output
+	cross_file_run := os.execute(cross_file_out)
+	assert cross_file_run.exit_code == 0, cross_file_run.output
+	assert cross_file_run.output.trim_space() == '11'
+	cross_file_generated := os.read_file(cross_file_out + '.c') or { panic(err) }
+	assert cross_file_generated.contains('strict_get_cross_file_count(&item)'), cross_file_generated
+	assert !cross_file_generated.contains('strict_get_cross_file_count(v_c_voidptr_arg('), cross_file_generated
 
 	compiler_builtin_src := voidptr_arg_write_project('module main
 

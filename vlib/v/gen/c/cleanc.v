@@ -429,6 +429,7 @@ mut:
 	c_compiler_predefined_macros   map[string]string
 	c_compiler_function_macros     map[string]bool
 	c_compiler_macro_env_complete  bool
+	compiler_quote_include_dirs    []string
 	compiler_default_include_dirs  []string
 	compiler_include_dirs_ready    bool
 	inlined_c_static_fns           map[string]bool
@@ -3338,6 +3339,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.direct_c_macro_conditionals.clear()
 	g.direct_c_include_macros.clear()
 	g.direct_c_dynamic_macros.clear()
+	g.compiler_quote_include_dirs.clear()
 	g.compiler_default_include_dirs.clear()
 	g.compiler_include_dirs_ready = false
 	g.inlined_c_static_fns.clear()
@@ -9456,42 +9458,58 @@ fn c_include_arg_is_source_file(include_arg string) bool {
 	return path.ends_with('.c') || path.ends_with('.m') || path.ends_with('.mm')
 }
 
-// c_compiler_include_dirs_from_output extracts the system include search list
-// printed by GCC/Clang (`-E -v`) or TCC (`-print-search-dirs`).
-fn c_compiler_include_dirs_from_output(output string) []string {
-	mut dirs := []string{}
-	mut in_gnu_search := false
+struct CCompilerIncludeSearchDirs {
+	quote []string
+	angle []string
+}
+
+// c_compiler_include_dirs_from_output extracts the quote-only and angle include
+// search lists printed by GCC/Clang (`-E -v`) or TCC (`-print-search-dirs`).
+fn c_compiler_include_dirs_from_output(output string) CCompilerIncludeSearchDirs {
+	mut quote_dirs := []string{}
+	mut angle_dirs := []string{}
+	mut gnu_search_kind := ''
 	mut in_tcc_search := false
 	for raw_line in output.split_into_lines() {
 		line := raw_line.trim_space()
 		if line.contains('search starts here:') {
-			in_gnu_search = true
+			gnu_search_kind = if line.contains('"..."') { 'quote' } else { 'angle' }
 			in_tcc_search = false
 			continue
 		}
 		if line == 'End of search list.' {
-			in_gnu_search = false
+			gnu_search_kind = ''
 			continue
 		}
 		if line == 'include:' {
 			in_tcc_search = true
-			in_gnu_search = false
+			gnu_search_kind = ''
 			continue
 		}
 		if in_tcc_search && line.ends_with(':') {
 			in_tcc_search = false
 			continue
 		}
-		if (!in_gnu_search && !in_tcc_search) || line.len == 0
+		if (gnu_search_kind.len == 0 && !in_tcc_search) || line.len == 0
 			|| line.starts_with('ignoring ') || line.ends_with('(framework directory)') {
 			continue
 		}
 		path := os.real_path(line)
-		if os.is_dir(path) && path !in dirs {
-			dirs << path
+		if !os.is_dir(path) {
+			continue
+		}
+		if gnu_search_kind == 'quote' {
+			if path !in quote_dirs {
+				quote_dirs << path
+			}
+		} else if path !in angle_dirs {
+			angle_dirs << path
 		}
 	}
-	return dirs
+	return CCompilerIncludeSearchDirs{
+		quote: quote_dirs
+		angle: angle_dirs
+	}
 }
 
 // c_compiler_include_probe_flags retains only options that can affect the
@@ -9536,40 +9554,48 @@ fn (g &FlatGen) c_compiler_include_probe_command() string {
 	return compiler
 }
 
-// compiler_default_c_include_dirs asks the selected compiler for the directories
-// it will search for angle-bracket headers. The result is cached because a C
-// translation unit can contain hundreds of nested includes.
-fn (mut g FlatGen) compiler_default_c_include_dirs() []string {
+// compiler_c_include_dirs asks the selected compiler for its quote-only and
+// angle-bracket search chains. The result is cached because a C translation unit
+// can contain hundreds of nested includes.
+fn (mut g FlatGen) compiler_c_include_dirs() CCompilerIncludeSearchDirs {
 	if g.compiler_include_dirs_ready {
-		return g.compiler_default_include_dirs
+		return CCompilerIncludeSearchDirs{
+			quote: g.compiler_quote_include_dirs
+			angle: g.compiler_default_include_dirs
+		}
 	}
 	g.compiler_include_dirs_ready = true
-	mut dirs := []string{}
+	mut angle_dirs := []string{}
 	for raw_dir in os.getenv('INCLUDE').split(os.path_delimiter) {
 		path := os.real_path(raw_dir.trim_space().trim('"'))
-		if os.is_dir(path) && path !in dirs {
-			dirs << path
+		if os.is_dir(path) && path !in angle_dirs {
+			angle_dirs << path
 		}
 	}
 	compiler := g.c_compiler_include_probe_command()
 	if compiler.len == 0 {
-		g.compiler_default_include_dirs = dirs
-		return g.compiler_default_include_dirs
+		g.compiler_default_include_dirs = angle_dirs
+		return CCompilerIncludeSearchDirs{
+			angle: g.compiler_default_include_dirs
+		}
 	}
 	if g.ccompiler in ['tinyc', 'tcc'] {
 		probe := cmdexec.run_with_timeout(compiler, ['-print-search-dirs'], 5000)
 		if probe.exit_code == 0 {
-			for path in c_compiler_include_dirs_from_output(probe.output) {
-				if path !in dirs {
-					dirs << path
+			parsed := c_compiler_include_dirs_from_output(probe.output)
+			for path in parsed.angle {
+				if path !in angle_dirs {
+					angle_dirs << path
 				}
 			}
 		}
 	} else {
 		probe_path := os.join_path(os.vtmp_dir(), 'v3_cgen_include_probe_${os.getpid()}_${time.sys_mono_now()}.c')
 		os.write_file(probe_path, '') or {
-			g.compiler_default_include_dirs = dirs
-			return g.compiler_default_include_dirs
+			g.compiler_default_include_dirs = angle_dirs
+			return CCompilerIncludeSearchDirs{
+				angle: g.compiler_default_include_dirs
+			}
 		}
 		defer {
 			os.rm(probe_path) or {}
@@ -9577,25 +9603,49 @@ fn (mut g FlatGen) compiler_default_c_include_dirs() []string {
 		mut args := c_compiler_include_probe_flags(g.c_flags)
 		args << ['-E', '-x', 'c', '-v', probe_path]
 		probe := cmdexec.run_with_timeout(compiler, args, 5000)
-		for path in c_compiler_include_dirs_from_output(probe.output) {
-			if path !in dirs {
-				dirs << path
+		parsed := c_compiler_include_dirs_from_output(probe.output)
+		g.compiler_quote_include_dirs = parsed.quote
+		for path in parsed.angle {
+			if path !in angle_dirs {
+				angle_dirs << path
 			}
 		}
 	}
-	g.compiler_default_include_dirs = dirs
-	return g.compiler_default_include_dirs
+	g.compiler_default_include_dirs = angle_dirs
+	return CCompilerIncludeSearchDirs{
+		quote: g.compiler_quote_include_dirs
+		angle: g.compiler_default_include_dirs
+	}
 }
 
 // c_include_scan_paths extends explicit include directories with the selected
 // compiler's defaults only when the ordinary lookup could not resolve a header.
 fn (mut g FlatGen) c_include_scan_paths(include_arg string, source_file string, include_dirs []string) []string {
-	paths := c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs)
+	clean := trimmed_space(include_arg)
+	is_quoted := clean.len >= 2 && clean[0] == `"` && clean[clean.len - 1] == `"`
+	// The including file's directory precedes every configured search directory.
+	// For angle includes, explicit -I/-isystem directories also precede defaults.
+	initial_dirs := if is_quoted { []string{} } else { include_dirs }
+	paths := c_include_file_paths(include_arg, g.compiler_vroot, source_file, initial_dirs)
 	if paths.any(os.is_file(it)) {
 		return paths
 	}
 	mut all_dirs := include_dirs.clone()
-	for dir in g.compiler_default_c_include_dirs() {
+	compiler_dirs := g.compiler_c_include_dirs()
+	if is_quoted {
+		all_dirs.clear()
+		for dir in compiler_dirs.quote {
+			if dir !in all_dirs {
+				all_dirs << dir
+			}
+		}
+		for dir in include_dirs {
+			if dir !in all_dirs {
+				all_dirs << dir
+			}
+		}
+	}
+	for dir in compiler_dirs.angle {
 		if dir !in all_dirs {
 			all_dirs << dir
 		}

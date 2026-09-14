@@ -509,11 +509,41 @@ fn test_compiler_include_search_output_is_parsed() {
 		os.rmdir_all(root) or {}
 	}
 
-	gnu_output := '#include <...> search starts here:\n ${first}\n ${second} (framework directory)\nEnd of search list.\n'
-	assert c_compiler_include_dirs_from_output(gnu_output) == [os.real_path(first)]
+	gnu_output := '#include "..." search starts here:\n ${first}\n ${second} (framework directory)\n#include <...> search starts here:\n ${second}\nEnd of search list.\n'
+	gnu_dirs := c_compiler_include_dirs_from_output(gnu_output)
+	assert gnu_dirs.quote == [os.real_path(first)]
+	assert gnu_dirs.angle == [os.real_path(second)]
 	tcc_output := 'install: /tmp/tcc\ninclude:\n  ${first}\n  ${second}\nlibraries:\n  /tmp/lib\n'
-	assert c_compiler_include_dirs_from_output(tcc_output) == [os.real_path(first),
-		os.real_path(second)]
+	tcc_dirs := c_compiler_include_dirs_from_output(tcc_output)
+	assert tcc_dirs.quote == []
+	assert tcc_dirs.angle == [os.real_path(first), os.real_path(second)]
+}
+
+fn test_quote_only_compiler_include_dirs_are_not_used_for_angle_headers() {
+	root := os.join_path(os.vtmp_dir(), 'v3_quote_only_include_dirs_${os.getpid()}')
+	quote_dir := os.join_path(root, 'quote')
+	angle_dir := os.join_path(root, 'angle')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(quote_dir)!
+	os.mkdir_all(angle_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	quote_header := os.join_path(quote_dir, 'api.h')
+	angle_header := os.join_path(angle_dir, 'api.h')
+	os.write_file(quote_header, '#define api(p) ((p)->value)\n')!
+	os.write_file(angle_header, 'int api(void *p);\n')!
+
+	mut g := FlatGen.new()
+	g.compiler_include_dirs_ready = true
+	g.compiler_quote_include_dirs = [quote_dir]
+	g.compiler_default_include_dirs = [angle_dir]
+	source := os.join_path(root, 'main.c.v')
+	angle_paths := g.c_include_scan_paths('<api.h>', source, []string{})
+	quoted_paths := g.c_include_scan_paths('"api.h"', source, []string{})
+
+	assert angle_paths.filter(os.is_file(it))[0] == angle_header
+	assert quoted_paths.filter(os.is_file(it))[0] == quote_header
 }
 
 fn test_compiler_default_include_paths_are_scanned() {
@@ -603,7 +633,7 @@ fn test_active_macro_scan_evaluates_compiler_macro_values() {
 	assert 'version_selected_api' in legacy.inlined_c_active_macros
 }
 
-fn test_unresolved_header_fallback_is_scoped_to_its_c_declarations() {
+fn test_unresolved_header_fallback_is_translation_unit_wide() {
 	mut g := FlatGen.new()
 	g.ccompiler = 'compiler-that-does-not-exist'
 	source := os.join_path(os.vtmp_dir(), 'unresolved_default_include.c.v')
@@ -616,7 +646,7 @@ fn test_unresolved_header_fallback_is_scoped_to_its_c_declarations() {
 	g.note_c_fn_decl_source('known_elsewhere', '/tmp/known_elsewhere.c.v')
 
 	assert g.c_symbol_may_be_from_unscanned_header('C.possibly_a_macro', 'possibly_a_macro')
-	assert !g.c_symbol_may_be_from_unscanned_header('C.known_elsewhere', 'known_elsewhere')
+	assert g.c_symbol_may_be_from_unscanned_header('C.known_elsewhere', 'known_elsewhere')
 	g.c_extern_forced_decls['definitely_a_function'] = true
 	g.note_c_fn_decl_source('definitely_a_function', source)
 	assert !g.c_symbol_may_be_from_unscanned_header('C.definitely_a_function', 'definitely_a_function')
