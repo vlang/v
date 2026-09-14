@@ -29,15 +29,17 @@ for dir != '' {
 
 It differs from `os.dir()` in three ways:
 
-- A filesystem root has no parent, so `/`, `C:\`, `C:` and `\\server\share`
-  all give `''` and end the loop above.
+- A filesystem root has no parent, so `/`, `C:\`, `C:`, `\\server\share` and
+  `\\?\UNC\server\share` all give `''` and end the loop above.
 - The parent of a top level entry is the absolute root, so `os.parent_dir(r'C:\dir')`
   is `C:\`, never the drive relative `C:`.
 - A single element that needs a current directory to resolve has no parent
   either, so `file.v` and the drive relative `C:file.v` both give `''`.
 
-A separator is any byte the platform accepts as one, so a Windows path may mix
-`/` and `\` and the last separator of either kind still decides the parent.
+Each step is guaranteed to make progress: trailing separators name the same
+directory, so they are ignored, and `os.parent_dir('/a/b/')` is `/a` rather than
+`/a/b`. A separator is any byte the platform accepts as one, so a Windows path
+may mix `/` and `\` and the last separator of either kind decides the parent.
 
 ### Running commands
 

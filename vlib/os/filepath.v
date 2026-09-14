@@ -227,11 +227,13 @@ pub fn to_slash(path string) string {
 
 // parent_dir returns the parent directory of the given `path`, or an empty
 // string when `path` has no parent. A path has no parent when it is a
-// filesystem root (`/`, `C:\`, `C:`, `\\server\share`), the current directory
-// reference `.`, or a single element that can only be resolved against a
-// current directory (`file.v`, and the drive relative `C:file.v`).
+// filesystem root (`/`, `C:\`, `C:`, `\\server\share`, `\\?\UNC\server\share`),
+// the current directory reference `.`, or a single element that can only be
+// resolved against a current directory (`file.v`, and the drive relative
+// `C:file.v`).
 // A separator is any byte the platform accepts as one, so a Windows path may
-// mix `/` and `\` freely.
+// mix `/` and `\` freely, and trailing separators are ignored: they name the
+// same directory, so `parent_dir('/a/b/')` is `/a`, exactly like `/a/b`.
 //
 // Every value parent_dir returns is safe to probe directly, and that is what
 // separates it from `dir`, which has two Windows answers that resolve against
@@ -245,33 +247,41 @@ pub fn parent_dir(path string) string {
 	if path == '' {
 		return empty_str
 	}
-	volume_len := win_volume_len(path)
-	if volume_len > 0 && path.len <= volume_len + 1 {
-		// `C:`, `C:\`, `\\server\share` and `\\server\share\` are roots.
-		return empty_str
+	root_len := win_root_len(path)
+	// Trailing separators name the same directory, so they cannot select the
+	// parent: without this, `/a/b/` would answer `/a/b` and a walk would probe
+	// that directory twice, losing one ancestor to its iteration bound. Never
+	// trim into a root though, which is nothing but a volume and a separator.
+	mut end := path.len
+	for end > root_len + 1 && is_slash(path[end - 1]) {
+		end--
 	}
 	// Scan for the last separator instead of delegating to `dir`, which commits
 	// to one separator kind for the whole path (`/` whenever the path holds any)
 	// and so answers `C:` for the mixed `C:/one\two` that Windows accepts,
 	// skipping the real parent `C:/one`.
 	mut pos := -1
-	for i := path.len - 1; i >= volume_len; i-- {
+	for i := end - 1; i >= root_len; i-- {
 		if is_slash(path[i]) {
 			pos = i
 			break
 		}
 	}
 	if pos < 0 {
-		// Nothing but a single element after the volume.
+		// Nothing but a single element after the root: `file.v`, the drive
+		// relative `C:file.v`, and the bare volume `C:` itself.
 		return empty_str
 	}
-	// When the parent is the volume itself, keep the separator: the result must
-	// be the absolute root (`/`, `C:\`), never the drive relative `C:`.
-	parent := if pos == volume_len { path[..pos + 1] } else { path[..pos] }
-	if parent == path {
+	if pos == end - 1 {
+		// Nothing but separators after the root: `path` is a root itself.
 		return empty_str
 	}
-	return parent
+	if pos == root_len {
+		// The parent is the root. Keep its separator, so the result is the
+		// absolute `/` or `C:\`, never the drive relative `C:`.
+		return path[..pos + 1]
+	}
+	return path[..pos]
 }
 
 // from_slash returns the result of replacing each slash (`/`) character is path with a separator character.
@@ -314,6 +324,39 @@ fn win_volume_len(path string) int {
 		}
 	}
 	return 0
+}
+
+// win_root_len returns the length of the leading part of `path` that has no
+// parent directory. That is the Windows volume, except for an extended length
+// UNC path (`\\?\UNC\server\share`): `win_volume_len` stops at the `\\?\UNC`
+// tag, which does not name a location, so the server and the share belong to
+// the root as well. Like `win_volume_len`, it is 0 outside Windows.
+fn win_root_len(path string) int {
+	volume_len := win_volume_len(path)
+	if volume_len == 0 || !is_extended_unc_tag(path, volume_len) {
+		return volume_len
+	}
+	// Consume `\server` and then `\share`. A path that ends before both are
+	// present does not name a location either, so all of it is the root.
+	mut i := volume_len
+	for _ in 0 .. 2 {
+		if i >= path.len || !is_slash(path[i]) {
+			return path.len
+		}
+		i++
+		for i < path.len && !is_slash(path[i]) {
+			i++
+		}
+	}
+	return i
+}
+
+// is_extended_unc_tag reports whether `win_volume_len` stopped at the `\\?\UNC`
+// tag that introduces the server and share of an extended length UNC path.
+fn is_extended_unc_tag(path string, volume_len int) bool {
+	return volume_len == 7 && starts_w_slash_slash(path) && path[2] == qmark
+		&& is_slash(path[3]) && (path[4] == `U` || path[4] == `u`)
+		&& (path[5] == `N` || path[5] == `n`) && (path[6] == `C` || path[6] == `c`)
 }
 
 fn is_slash(b u8) bool {

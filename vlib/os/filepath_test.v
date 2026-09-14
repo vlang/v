@@ -221,6 +221,32 @@ fn test_parent_dir() {
 		assert parent_dir(r'C:\one/two') == r'C:\one'
 		assert parent_dir(r'C:/one\two/three') == r'C:/one\two'
 		assert parent_dir(r'\\Host\share/files\file.v') == r'\\Host\share/files'
+		// A trailing separator names the same directory, so it cannot select the
+		// parent; trimming it must still stop at a root.
+		assert parent_dir(r'C:\a\b' + '\\') == r'C:\a'
+		assert parent_dir(r'C:\a\b\\') == r'C:\a'
+		assert parent_dir(r'C:\a' + '\\') == 'C:\\'
+		assert parent_dir('C:/a/') == 'C:/'
+		assert parent_dir('C:\\\\') == ''
+		assert parent_dir(r'\\Host\share\files' + '\\') == r'\\Host\share' + '\\'
+		assert parent_dir(r'\\Host\share\\') == ''
+		// `\\?\UNC\server\share` is a share root spelled with the extended length
+		// prefix. `win_volume_len` stops at the `\\?\UNC` tag, which names nothing,
+		// so the server and the share have to count as part of the root too.
+		assert parent_dir(r'\\?\UNC\server\share') == ''
+		assert parent_dir(r'\\?\UNC\server\share' + '\\') == ''
+		assert parent_dir(r'\\?\UNC\server\share\files') == r'\\?\UNC\server\share' + '\\'
+		assert parent_dir(r'\\?\UNC\server\share\files\file.v') == r'\\?\UNC\server\share\files'
+		assert parent_dir(r'\\?\unc\server\share\files') == r'\\?\unc\server\share' + '\\'
+		// Incomplete extended UNC paths do not name a location either.
+		assert parent_dir(r'\\?\UNC\server') == ''
+		assert parent_dir(r'\\?\UNC') == ''
+		// `UNCx` is an ordinary extended device name, not the UNC tag.
+		assert parent_dir(r'\\?\UNCx\a\b') == r'\\?\UNCx\a'
+		// The extended length drive form already worked; keep it that way.
+		assert parent_dir(r'\\?\C:\dir') == r'\\?\C:' + '\\'
+		assert parent_dir(r'\\?\C:\dir\file.v') == r'\\?\C:\dir'
+		assert parent_dir(r'\\?\C:' + '\\') == ''
 		assert parent_dir('\\') == ''
 		assert parent_dir('.') == ''
 		assert parent_dir('') == ''
@@ -239,6 +265,15 @@ fn test_parent_dir() {
 	// separator whenever the path holds no forward slash.
 	assert parent_dir(r'one\two') == ''
 	assert parent_dir(r'one/two\three') == 'one'
+	// A trailing separator names the same directory, so it cannot select the
+	// parent; trimming it must still stop at the root.
+	assert parent_dir('/a/b/') == '/a'
+	assert parent_dir('/a/b//') == '/a'
+	assert parent_dir('/path/') == '/'
+	assert parent_dir('///') == ''
+	assert parent_dir('./') == ''
+	assert parent_dir('a/') == ''
+	assert parent_dir('path/to/') == 'path'
 }
 
 // test_parent_dir_walk_terminates guards the parent walks in the compiler
@@ -250,9 +285,14 @@ fn test_parent_dir_walk_terminates() {
 		mut dir := start
 		mut steps := 0
 		for dir.len > 0 {
-			dir = parent_dir(dir)
-			assert dir != '.'
-			assert !is_drive_relative_path(dir)
+			parent := parent_dir(dir)
+			assert parent != '.'
+			assert !is_drive_relative_path(parent)
+			// Every step has to make progress. A parent that is merely `dir`
+			// without its trailing separator would probe the same directory
+			// twice and cost the bounded vroot walks one ancestor.
+			assert parent.len < dir.len
+			dir = parent
 			steps++
 			assert steps < 16
 		}
