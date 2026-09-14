@@ -24,12 +24,102 @@ fallback_output=${V1_FALLBACK_OUTPUT:-$2}
 system=$(uname -s 2>/dev/null || echo unknown)
 architecture=$(uname -m 2>/dev/null || echo unknown)
 
+path_owner() {
+	stat -c %u "$1" 2>/dev/null || stat -f %u "$1" 2>/dev/null
+}
+
+path_permissions() {
+	stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
+}
+
+validate_trusted_temp_root() {
+	root=$1
+	[ -d "$root" ] || {
+		echo "Temporary directory $root is not a directory." >&2
+		return 1
+	}
+	case "$system" in
+		MSYS*|MINGW*) return 0 ;;
+	esac
+	owner=$(path_owner "$root") || return 1
+	permissions=$(path_permissions "$root") || return 1
+	case "$owner" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	case "$permissions" in
+		''|*[!0-7]*) return 1 ;;
+	esac
+	if [ "$owner" != 0 ] && [ "$owner" != "$effective_uid" ]; then
+		echo "Temporary directory $root is not owned by the current user or root." >&2
+		return 1
+	fi
+	permissions_value=$((0$permissions))
+	if [ $((permissions_value & 0022)) -ne 0 ] \
+		&& [ $((permissions_value & 01000)) -eq 0 ]; then
+		echo "Temporary directory $root is writable by other users without the sticky bit." >&2
+		return 1
+	fi
+}
+
+validate_private_directory() {
+	directory=$1
+	[ -d "$directory" ] && [ ! -L "$directory" ] || {
+		echo "Refusing unsafe V1 fallback path $directory: expected a real directory." >&2
+		return 1
+	}
+	case "$system" in
+		MSYS*|MINGW*) return 0 ;;
+	esac
+	owner=$(path_owner "$directory") || return 1
+	permissions=$(path_permissions "$directory") || return 1
+	case "$owner" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	case "$permissions" in
+		''|*[!0-7]*) return 1 ;;
+	esac
+	if [ "$owner" != "$effective_uid" ] || [ $((0$permissions)) -ne $((0700)) ]; then
+		echo "Refusing unsafe V1 fallback path $directory: expected user-owned mode 0700." >&2
+		return 1
+	fi
+}
+
+private_temp_cache_parent() {
+	root=$1
+	case "$system" in
+		MSYS*|MINGW*)
+			candidate=$(mktemp -d "$root/v1-fallback-cache.XXXXXX") || return 1
+			;;
+		*)
+			candidate=$root/v1-fallback-cache-$effective_uid
+			(umask 077 && mkdir "$candidate") 2>/dev/null || true
+			;;
+	esac
+	validate_private_directory "$candidate" || return 1
+	printf '%s\n' "$candidate"
+}
+
+effective_uid=
+case "$system" in
+	MSYS*|MINGW*) ;;
+	*)
+		effective_uid=$(id -u 2>/dev/null) || exit 1
+		case "$effective_uid" in
+			''|*[!0-9]*) exit 1 ;;
+		esac
+		;;
+esac
+temp_root=${TMPDIR:-/tmp}
+temp_root=$(cd "$temp_root" 2>/dev/null && pwd -P) || exit 1
+validate_trusted_temp_root "$temp_root" || exit 1
+
 fallback_dir=$(dirname "$fallback_output")
 mkdir -p "$fallback_dir" || exit 1
 fallback_dir=$(cd "$fallback_dir" && pwd) || exit 1
 fallback_output=$fallback_dir/$(basename "$fallback_output")
 
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/v1-fallback.XXXXXX") || exit 1
+work_dir=$(mktemp -d "$temp_root/v1-fallback.XXXXXX") || exit 1
+validate_private_directory "$work_dir" || exit 1
 archive=$work_dir/release.zip
 candidate=$work_dir/v1_fallback
 candidate_root_file=$work_dir/v1_fallback.vroot
@@ -69,7 +159,7 @@ elif [ -n "${XDG_CACHE_HOME:-}" ]; then
 elif [ -n "${HOME:-}" ]; then
 	cache_parent=$HOME/.cache/v/v1-fallback
 else
-	cache_parent=$(mktemp -d "${TMPDIR:-/tmp}/v1-fallback-cache.XXXXXX") || exit 1
+	cache_parent=$(private_temp_cache_parent "$temp_root") || exit 1
 fi
 cache_root=$cache_parent/$release_version
 cached_candidate=$cache_root/$(basename "$member")
