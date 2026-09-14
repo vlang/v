@@ -100,4 +100,19 @@ fn type_newline_call_lambda_parameter_shadows_outer() {
 			(x)
 		_ = callback
 	}
+	keyword_selector_newline_call_lambda_parameter_shadows_outer()
+}
+
+struct KeywordSelectorHolder {
+	lock fn (int) int @[required]
+}
+
+fn keyword_selector_newline_call_lambda_parameter_shadows_outer() {
+	holder := KeywordSelectorHolder{ lock: identity }
+	x := 1
+	$if prealloc {
+		callback := |x| holder.lock
+			(x)
+		_ = callback
+	}
 }
