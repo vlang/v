@@ -8800,11 +8800,8 @@ fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
 	if clean.len == 0 {
 		return none
 	}
-	if target := tc.type_aliases[clean] {
-		return Type(Alias{
-			name: clean
-			base_type: tc.parse_type(target)
-		})
+	if _ := tc.type_aliases[clean] {
+		return tc.parse_canonical_type(clean)
 	}
 	if clean.contains('.') {
 		return none
@@ -8814,11 +8811,8 @@ fn (tc &TypeChecker) alias_return_type_from_text(fn_name string) ?Type {
 		return none
 	}
 	qname := '${mod}.${clean}'
-	target := tc.type_aliases[qname] or { return none }
-	return Type(Alias{
-		name: qname
-		base_type: tc.parse_type(target)
-	})
+	_ := tc.type_aliases[qname] or { return none }
+	return tc.parse_canonical_type(qname)
 }
 
 fn array_type_from_receiver(t Type) ?Array {

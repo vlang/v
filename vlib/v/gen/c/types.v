@@ -504,6 +504,12 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 		return typ
 	}
 	source := typ.name()
+	// This function receives a semantic Type, not raw source text. Preserve an
+	// exact registered name before repairing stale alias-qualified spellings;
+	// otherwise a current file import can retarget a canonical type from a call.
+	if exact := g.exact_known_import_type_text(source) {
+		return exact
+	}
 	// Only dotted names can reference an import alias. Primitive and local
 	// type spellings do not need a walk through synthesized child nodes.
 	file := if source.contains('.') { g.node_source_file(node) } else { '' }
@@ -578,6 +584,9 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 		return types.Type(types.Array{
 			elem_type: g.exact_known_import_type_text(clean[2..])?
 		})
+	}
+	if clean in g.tc.type_aliases {
+		return g.tc.parse_canonical_type(clean)
 	}
 	if clean in g.tc.structs {
 		return types.Type(types.Struct{
