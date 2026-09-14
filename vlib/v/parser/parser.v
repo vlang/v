@@ -6303,8 +6303,8 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 		p.embed_file_field('apath', p.add_val_id(5, apath)),
 		p.embed_file_field('len', p.add_val_id(1, len.str())),
 	]
-	if uncompressed := p.embed_file_uncompressed_data(apath) {
-		field_ids << p.embed_file_field('uncompressed', uncompressed)
+	if payload := p.embed_file_uncompressed_data(apath) {
+		field_ids << p.embed_file_field('uncompressed', p.embed_file_payload_cast(payload, '&u8'))
 	}
 	if compression_type !in ['none', 'zlib'] {
 		field_ids << p.a.add_node(flat.Node{
@@ -6323,18 +6323,38 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 	})
 }
 
+// embed_file_uncompressed_data materializes the embedded file's bytes into the AST, so
+// that the generated C carries them and `EmbedFileData.data()` needs no IO. A plain debug
+// build skips it and re-reads `apath` at runtime instead, to keep rebuilds cheap.
+// Portable `-os cross` output cannot do that: `apath` names a directory on the machine
+// that generated the snapshot, and the snapshot is compiled and run somewhere else. That
+// is how `vc/v.c` bootstraps V, so a portable snapshot always embeds the bytes.
 fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
-	if !p.prefs.is_prod || apath.len == 0 || !os.is_file(apath) {
+	if !p.prefs.is_prod && !p.prefs.output_cross_c {
+		return none
+	}
+	if apath.len == 0 || !os.is_file(apath) {
 		return none
 	}
 	bytes := os.read_bytes(apath) or { return none }
-	data := p.add_val_id(5, bytes.bytestr().clone())
+	// Flagged, so that the literal table skips it: only the embed codegen reads
+	// this node, and an interned copy would repeat the payload verbatim.
+	return p.add_node(flat.Node{
+		kind: .string_literal
+		value: bytes.bytestr().clone()
+		flags: flat.node_flag_embed_payload
+	})
+}
+
+// embed_file_payload_cast points the payload field at `payload`. The backend
+// decides how the bytes are actually spelled; it only ever produces a `&u8`.
+fn (mut p Parser) embed_file_payload_cast(payload flat.NodeId, typ string) flat.NodeId {
 	return p.add_node(flat.Node{
 		kind: .cast_expr
-		value: '&u8'
-		typ: '&u8'
+		value: typ
+		typ: typ
 		is_mut: true // marks this compiler-generated trusted embed buffer cast
-		children_start: p.add_child(data)
+		children_start: p.add_child(payload)
 		children_count: 1
 	})
 }

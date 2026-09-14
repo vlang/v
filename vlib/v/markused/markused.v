@@ -522,7 +522,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2',
 			'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_clone_string', 'map_clone_int_1',
 			'map_clone_int_2', 'map_free_string', '[]string.join', 'Array_string__join',
-			'embed_file.Decoder.decompress', 'exit', 'v_exit'] {
+			'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit'] {
 			queue << seed
 			used[seed] = true
 		}
