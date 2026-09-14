@@ -39,6 +39,7 @@ static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
 #endif
 '
 	os.write_file(os.join_path(root, 'strict_atomic.h'), header) or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_preinclude.h'), '#define strict_get_preincluded_count(p) ((p)->count)\n') or { panic(err) }
 	path := os.join_path(root, 'main.c.v')
 	os.write_file(path, source) or { panic(err) }
 	return path
@@ -48,8 +49,13 @@ fn test_c_voidptr_param_pointer_arg_goes_through_voidptr() {
 	v3_bin := voidptr_arg_build_v3()
 	src := voidptr_arg_write_project('module main
 
+#preinclude "@DIR/strict_preinclude.h"
 #include "@DIR/strict_atomic.h"
 #define strict_get_direct_count(p) ((p)->count)
+#if 0
+#define strict_load_u64(p) (*(p))
+#undef strict_get_direct_count
+#endif
 
 fn C.strict_load_u64(voidptr) u64
 fn C.strict_store_u64(voidptr, u64)
@@ -57,6 +63,7 @@ fn C.strict_load_any(voidptr) u64
 fn C.strict_is_nonnull_u64(voidptr) int
 fn C.strict_get_count(voidptr) u32
 fn C.strict_get_direct_count(voidptr) u32
+fn C.strict_get_preincluded_count(voidptr) u32
 
 struct Table {
 mut:
@@ -84,11 +91,13 @@ fn main() {
 	}
 	macro_count := C.strict_get_count(&item)
 	direct_macro_count := C.strict_get_direct_count(&item)
+	preincluded_macro_count := C.strict_get_preincluded_count(&item)
 	println(int(loaded.count).str())
 	println((same == u64(voidptr(table))).str())
 	println(nonnull.str())
 	println(macro_count.str())
 	println(direct_macro_count.str())
+	println(preincluded_macro_count.str())
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_out_${os.getpid()}')
@@ -97,7 +106,7 @@ fn main() {
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', 'true',
-		'1', '9', '9']
+		'1', '9', '9', '9']
 	generated := os.read_file(out + '.c') or { panic(err) }
 	// The macro is a no-op in C++, where `void*` does not convert back to a
 	// concrete pointer and the argument has to stay as written.
@@ -113,6 +122,9 @@ fn main() {
 	// A function-like macro declared directly in V source also keeps the typed pointer.
 	assert generated.contains('strict_get_direct_count(&item)'), generated
 	assert !generated.contains('strict_get_direct_count(v_c_voidptr_arg('), generated
+	// A function-like macro from a preincluded header also keeps the typed pointer.
+	assert generated.contains('strict_get_preincluded_count(&item)'), generated
+	assert !generated.contains('strict_get_preincluded_count(v_c_voidptr_arg('), generated
 	// ... while an argument that is already `voidptr` is passed unchanged.
 	assert !generated.contains('strict_load_any(v_c_voidptr_arg('), generated
 

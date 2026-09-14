@@ -414,6 +414,9 @@ mut:
 	mods_with_c_libs               map[string]bool
 	mods_with_c_includes           map[string]bool
 	inlined_c_active_macros        map[string]bool
+	direct_c_macro_conditionals    []CCacheConditional
+	direct_c_include_macros        map[string][]string
+	direct_c_dynamic_macros        map[string]bool
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
 	initial_c_flags                []string
@@ -1165,6 +1168,8 @@ pub fn FlatGen.new() FlatGen {
 		mods_with_c_libs: map[string]bool{}
 		mods_with_c_includes: map[string]bool{}
 		inlined_c_active_macros: map[string]bool{}
+		direct_c_include_macros: map[string][]string{}
+		direct_c_dynamic_macros: map[string]bool{}
 		inlined_c_static_fns: map[string]bool{}
 		cache_omitted_c_fns: map[string]bool{}
 		inlined_c_typedef_names: map[string]bool{}
@@ -3082,6 +3087,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.mods_with_c_libs.clear()
 	g.mods_with_c_includes.clear()
 	g.inlined_c_active_macros.clear()
+	g.direct_c_macro_conditionals.clear()
+	g.direct_c_include_macros.clear()
+	g.direct_c_dynamic_macros.clear()
 	g.inlined_c_static_fns.clear()
 	g.cache_omitted_c_fns.clear()
 	g.inlined_c_typedef_names.clear()
@@ -4223,6 +4231,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		g.collect_c_flags_from_directives()
 	}
 	g.c_flags << g.initial_c_flags
+	direct_include_macros, direct_dynamic_macros := c_flag_include_macro_definitions(g.c_flags,
+		map[string]string{})
+	g.direct_c_macro_conditionals.clear()
+	g.direct_c_include_macros = direct_include_macros
+	g.direct_c_dynamic_macros = direct_dynamic_macros
 	if profile {
 		g.timing_profile('  [ttime]   ci flags         ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
@@ -4270,6 +4283,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 		if kind_id == 77 {
 			cur_file = node.value
+			g.direct_c_macro_conditionals.clear()
 			g.note_compiler_source_file(node.value)
 			cur_module = 'main'
 			g.tc.cur_module = cur_module
@@ -5144,6 +5158,9 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		directive := g.c_include_directive_text(node_idx, cross_prefix_condition, include_arg, source_file)
 		if node.value == 'preinclude' {
 			g.note_c_include_directive(module_name, source_file)
+			if !c_include_arg_is_source_file(include_arg) {
+				g.collect_included_c_active_macros(include_arg, source_file, c_flag_include_dirs(g.c_flags))
+			}
 			if directive !in g.preinclude_directives {
 				g.preinclude_directives << directive
 			}
@@ -5253,8 +5270,13 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
 		'error', 'warning'] {
 		directive := c_preprocessor_directive_line(node.value, node.typ)
-		if node.value in ['define', 'undef'] {
-			g.record_c_active_macro_directive(directive, false)
+		mutation_is_active, mutation_is_ambiguous := c_active_macro_directive_state(directive,
+			mut g.direct_c_macro_conditionals, mut g.direct_c_include_macros,
+			mut g.direct_c_dynamic_macros)
+		if node.value in ['define', 'undef'] && mutation_is_active {
+			g.record_c_active_macro_directive(directive, mutation_is_ambiguous)
+			c_record_include_macro_definition(directive, mutation_is_ambiguous,
+				mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros, false)
 		}
 		g.add_native_source_context_directive(module_name, directive, before_import)
 		g.add_c_directive(module_name, directive, before_import)
@@ -7991,6 +8013,54 @@ fn (mut g FlatGen) record_c_active_macro_directive(directive string, ambiguous b
 	}
 }
 
+// c_active_macro_directive_state updates the surrounding C preprocessor state
+// and reports whether a non-conditional directive can be active. Unknown
+// conditions are ambiguous, so definitions are retained while destructive
+// mutations do not erase a macro that may still be active.
+fn c_active_macro_directive_state(directive string, mut conditionals []CCacheConditional, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) (bool, bool) {
+	directive_name := c_directive_name(directive)
+	if directive_name in ['if', 'ifdef', 'ifndef'] {
+		parent_inactive := conditionals.any(it.inactive)
+		parent_ambiguous := conditionals.any(it.ambiguous)
+		condition := c_cache_known_condition(directive, include_macros, dynamic_include_macros,
+			false)
+		conditionals << CCacheConditional{
+			parent_inactive: parent_inactive
+			condition:       condition
+			inactive:        parent_inactive || condition < 0
+			ambiguous:       parent_ambiguous || condition == 0
+		}
+		return false, false
+	}
+	if directive_name in ['else', 'elif'] && conditionals.len > 0 {
+		last := conditionals.len - 1
+		mut conditional := conditionals[last]
+		if directive_name == 'else' {
+			conditional.inactive = conditional.parent_inactive || conditional.condition > 0
+		} else if conditional.condition > 0 {
+			conditional.inactive = true
+		} else {
+			next_condition := c_cache_known_condition(directive, include_macros,
+				dynamic_include_macros, false)
+			conditional.condition = next_condition
+			conditional.ambiguous = conditional.ambiguous || next_condition == 0
+			conditional.inactive = conditional.parent_inactive || next_condition < 0
+		}
+		conditionals[last] = conditional
+		return false, false
+	}
+	if directive_name == 'endif' {
+		if conditionals.len > 0 {
+			conditionals.delete_last()
+		}
+		return false, false
+	}
+	if conditionals.any(it.inactive) {
+		return false, false
+	}
+	return true, conditionals.any(it.ambiguous)
+}
+
 // collect_included_c_active_macros records function-like macros supplied by an
 // ordinary readable header. Unlike native source includes, headers stay as
 // preprocessor directives, so their macro definitions have to be inspected
@@ -8025,44 +8095,12 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		directive_name := c_directive_name(clean)
-		if directive_name in ['if', 'ifdef', 'ifndef'] {
-			parent_inactive := conditionals.any(it.inactive)
-			parent_ambiguous := conditionals.any(it.ambiguous)
-			condition := c_cache_known_condition(clean, include_macros, dynamic_include_macros, false)
-			conditionals << CCacheConditional{
-				parent_inactive: parent_inactive
-				condition:       condition
-				inactive:        parent_inactive || condition < 0
-				ambiguous:       parent_ambiguous || condition == 0
-			}
+		directive_is_active, directive_is_ambiguous := c_active_macro_directive_state(clean,
+			mut conditionals, mut include_macros, mut dynamic_include_macros)
+		if !directive_is_active {
 			continue
 		}
-		if directive_name in ['else', 'elif'] && conditionals.len > 0 {
-			last := conditionals.len - 1
-			mut conditional := conditionals[last]
-			if directive_name == 'else' {
-				conditional.inactive = conditional.parent_inactive || conditional.condition > 0
-			} else if conditional.condition > 0 {
-				conditional.inactive = true
-			} else {
-				next_condition := c_cache_known_condition(clean, include_macros, dynamic_include_macros, false)
-				conditional.condition = next_condition
-				conditional.ambiguous = conditional.ambiguous || next_condition == 0
-				conditional.inactive = conditional.parent_inactive || next_condition < 0
-			}
-			conditionals[last] = conditional
-			continue
-		}
-		if directive_name == 'endif' {
-			if conditionals.len > 0 {
-				conditionals.delete_last()
-			}
-			continue
-		}
-		if conditionals.any(it.inactive) {
-			continue
-		}
-		mutation_is_ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
+		mutation_is_ambiguous := ambient_ambiguous || directive_is_ambiguous
 		if directive_name in ['define', 'undef'] {
 			g.record_c_active_macro_directive(clean, mutation_is_ambiguous)
 			c_record_include_macro_definition(clean, mutation_is_ambiguous, mut include_macros, mut dynamic_include_macros, false)

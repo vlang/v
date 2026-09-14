@@ -103,7 +103,7 @@ fn test_include_preserves_header_without_scanning_declarations() {
 	assert linked.should_emit_c_extern_decl_from_file('header_api', source, 'main')
 }
 
-fn test_preinclude_does_not_scan_macro_state() {
+fn test_preinclude_scans_macro_state_without_scanning_declarations() {
 	root := os.join_path(os.vtmp_dir(), 'v3_preinclude_macro_state_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
@@ -114,7 +114,7 @@ fn test_preinclude_does_not_scan_macro_state() {
 	api_header := os.join_path(root, 'api.h')
 	source := os.join_path(root, 'main.v')
 	os.write_file(config_header, '#define ENABLE_CHAINED_API 1\n')!
-	os.write_file(api_header, '#ifdef ENABLE_CHAINED_API\n#define chained_api(x) ((x) + 1)\n#endif\n')!
+	os.write_file(api_header, '#ifdef ENABLE_CHAINED_API\n#define chained_api(x) ((x) + 1)\n#endif\nint chained_decl(void);\n')!
 	os.write_file(source, 'fn main() {}\n')!
 
 	mut g := FlatGen.new()
@@ -129,8 +129,31 @@ fn test_preinclude_does_not_scan_macro_state() {
 		typ: '"${api_header}"'
 	}, source, false)
 
-	assert 'chained_api' !in g.inlined_c_active_macros
+	assert 'chained_api' in g.inlined_c_active_macros
+	assert 'chained_decl' !in g.inlined_c_declared_fns
+	assert !g.should_emit_c_extern_decl_from_file('chained_decl', source, 'main')
 	assert g.preinclude_directives == ['#include "${config_header}"', '#include "${api_header}"']
+}
+
+fn test_direct_macro_tracking_honors_conditionals() {
+	mut g := FlatGen.new()
+	source := os.join_path(os.vtmp_dir(), 'direct_macro_conditionals.c.v')
+	for directive in [
+		flat.Node{ kind: .directive, value: 'define', typ: 'kept_macro(p) ((p)->x)' },
+		flat.Node{ kind: .directive, value: 'if', typ: '0' },
+		flat.Node{ kind: .directive, value: 'undef', typ: 'kept_macro' },
+		flat.Node{ kind: .directive, value: 'define', typ: 'inactive_macro(p) ((p)->x)' },
+		flat.Node{ kind: .directive, value: 'endif' },
+		flat.Node{ kind: .directive, value: 'if', typ: '1' },
+		flat.Node{ kind: .directive, value: 'define', typ: 'active_macro(p) ((p)->x)' },
+		flat.Node{ kind: .directive, value: 'endif' },
+	] {
+		g.collect_c_directive('main', directive, source, false)
+	}
+
+	assert 'kept_macro' in g.inlined_c_active_macros
+	assert 'inactive_macro' !in g.inlined_c_active_macros
+	assert 'active_macro' in g.inlined_c_active_macros
 }
 
 fn collect_external_input_tree_status(root string, entry string, ambient_ambiguous bool) (bool, []string) {
