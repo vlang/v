@@ -2265,6 +2265,9 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 	if !type_name.contains('.')
 		&& (type_name in t.enum_types || '${t.cur_module}.${type_name}' in t.enum_types)
 		&& !t.bare_struct_name_is_local_to_current_module(type_name) {
+		if selected := t.selective_import_struct_lookup_name(type_name) {
+			return selected
+		}
 		return ''
 	}
 	// Resolve aliases before consulting the struct indexes. Large programs can
@@ -2348,6 +2351,20 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 		return checker_name
 	}
 	return ''
+}
+
+fn (t &Transformer) selective_import_struct_lookup_name(name string) ?string {
+	if isnil(t.tc) || name.len == 0 || name.contains('.') || t.cur_file.len == 0 {
+		return none
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+		return none
+	} {
+		if candidate in t.structs || candidate in t.tc.structs {
+			return candidate
+		}
+	}
+	return none
 }
 
 // transform_in_expr transforms transform in expr data for transform.
