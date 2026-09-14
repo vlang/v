@@ -15793,7 +15793,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				g.write('&')
 				g.gen_expr(arg_id)
 			} else if arg_idx < typed_param_count
-				&& g.c_voidptr_param_arg_needs_cast(param_types[arg_idx], arg_id) {
+				&& g.c_voidptr_param_arg_needs_cast(fn_name, callee_name, param_types[arg_idx], arg_id) {
 				// A pointer handed to a `voidptr` parameter goes through `void*`, so it
 				// converts to whatever pointer the real C prototype declares.
 				g.write('v_c_voidptr_arg(')
@@ -17618,6 +17618,12 @@ fn c_macro_safe_extern_decl(cfn string, declaration string) string {
 	return declaration.replace_once('${cfn}(', '(${cfn})(')
 }
 
+fn c_symbol_is_compiler_builtin(name string) bool {
+	cfn := name.all_after_last('.')
+	return cfn.starts_with('__atomic_') || cfn.starts_with('__builtin_')
+		|| cfn.starts_with('__sync_')
+}
+
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if cfn.contains('.') {
 		return false
@@ -17627,7 +17633,7 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	}
 	// Compiler builtins (`__atomic_fetch_add`, `__builtin_expect`, `__sync_*`)
 	// are provided by the C compiler itself; clang rejects a prototype for them.
-	if cfn.starts_with('__atomic_') || cfn.starts_with('__builtin_') || cfn.starts_with('__sync_') {
+	if c_symbol_is_compiler_builtin(cfn) {
 		return false
 	}
 	if cfn in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait']
@@ -18297,8 +18303,14 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 // is already `voidptr` need nothing, and a bare `C.` function name is left alone
 // for the same reason the fn-pointer path above leaves it alone: the C compiler
 // already has its real prototype, including qualifiers no `fn C.` can spell.
-fn (g &FlatGen) c_voidptr_param_arg_needs_cast(param_type types.Type, arg_id flat.NodeId) bool {
+fn (g &FlatGen) c_voidptr_param_arg_needs_cast(fn_name string, callee_name string, param_type types.Type, arg_id flat.NodeId) bool {
 	if !type_is_void_pointer(param_type) {
+		return false
+	}
+	// Compiler intrinsics infer their exact types from the call arguments. In
+	// particular, the overflow builtins require a pointer to a concrete integer
+	// type for their result slot, so routing that pointer through `void*` is invalid.
+	if c_symbol_is_compiler_builtin(fn_name) || c_symbol_is_compiler_builtin(callee_name) {
 		return false
 	}
 	if g.is_c_extern_fn_name_arg(arg_id) {

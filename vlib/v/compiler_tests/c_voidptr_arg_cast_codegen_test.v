@@ -123,4 +123,22 @@ fn main() {
 	no_builtin_generated := os.read_file(no_builtin_out + '.c') or { panic(err) }
 	assert no_builtin_generated.contains('#define v_c_voidptr_arg(x) ((void*)(x))'), no_builtin_generated
 	assert no_builtin_generated.contains('strict_is_nonnull_u64(v_c_voidptr_arg('), no_builtin_generated
+
+	compiler_builtin_src := voidptr_arg_write_project('module main
+
+fn C.__builtin_add_overflow(i32, i32, voidptr) bool
+
+fn main() {
+	mut sum := i32(0)
+	overflowed := C.__builtin_add_overflow(i32(1), i32(2), &sum)
+	println(overflowed.str())
+	println(sum.str())
+}
+')
+	compiler_builtin_out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_builtin_${os.getpid()}')
+	compiler_builtin_compile := os.execute('${v3_bin} -check-overflow -cc clang -b c -o ${compiler_builtin_out} ${compiler_builtin_src}')
+	assert compiler_builtin_compile.exit_code == 0, compiler_builtin_compile.output
+	compiler_builtin_generated := os.read_file(compiler_builtin_out + '.c') or { panic(err) }
+	assert compiler_builtin_generated.contains('__builtin_add_overflow((i32)(1), (i32)(2), &sum)'), compiler_builtin_generated
+	assert !compiler_builtin_generated.contains('__builtin_add_overflow((i32)(1), (i32)(2), v_c_voidptr_arg('), compiler_builtin_generated
 }
