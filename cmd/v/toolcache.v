@@ -88,8 +88,9 @@ fn tool_cache_dir() ?string {
 		if !os.is_dir(candidate) {
 			os.mkdir_all(candidate) or { continue }
 		}
-		if os.is_dir(candidate) && directory_is_writable(candidate) {
-			return candidate
+		if os.is_dir(candidate) && directory_is_writable(candidate)
+			&& tool_cache_root_can_stage(candidate) {
+			return os.real_path(candidate)
 		}
 	}
 	return none
@@ -619,17 +620,15 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 	}
 }
 
-// create_tool_cache_stage_dir makes an unpredictable, private directory for compiler output.
-// The child compiler never writes through the predictable entry pathname; only completed
-// files are moved into the entry through its pinned no-follow handle.
-fn create_tool_cache_stage_dir() !string {
-	parent := os.real_path(os.temp_dir())
+// create_tool_cache_stage_dir makes an unpredictable, private directory for compiler output
+// on the cache filesystem, so completed files can be installed with an atomic rename.
+fn create_tool_cache_stage_dir(parent string) !string {
 	if !os.is_dir(parent) {
-		return error('cannot find a temporary directory for the tool cache')
+		return error('cannot find a staging directory for the tool cache')
 	}
 	for _ in 0 .. 16 {
 		token := crypto_rand.bytes(16)!.hex()
-		path := os.join_path(parent, '.v-toolcache-${os.getuid()}-${token}')
+		path := os.join_path(parent, '.v-toolcache-stage-${os.getuid()}-${token}')
 		os.mkdir(path, mode: 0o700) or { continue }
 		return path
 	}
@@ -643,8 +642,11 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	defer {
 		cache_entry.close()
 	}
-	stage_dir := create_tool_cache_stage_dir()!
+	stage_parent := cache_entry.stage_parent(entry.dir)!
+	stage_dir := create_tool_cache_stage_dir(stage_parent)!
+	stage_entry := open_tool_cache_entry_dir(stage_dir)!
 	defer {
+		stage_entry.close()
 		os.rmdir_all(stage_dir) or {}
 	}
 	staged := os.join_path(stage_dir, os.file_name(entry.binary))
@@ -689,9 +691,10 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 			os.write_file(unbuildable_manifest, manifest) or {}
 			os.write_file(unbuildable_details, details) or {}
 			// Publish the details before the manifest that makes them reusable. A concurrent
-			// reader can then see either the previous complete failure or no reusable failure.
-			cache_entry.publish(unbuildable_details, os.file_name(entry.unbuildable))
-			cache_entry.publish(unbuildable_manifest, os.file_name(entry.unbuildable_manifest))
+			// reader must never see a new manifest vouch for details that were not installed.
+			if cache_entry.publish(unbuildable_details, os.file_name(entry.unbuildable)) {
+				cache_entry.publish(unbuildable_manifest, os.file_name(entry.unbuildable_manifest))
+			}
 		}
 		return error(details)
 	}

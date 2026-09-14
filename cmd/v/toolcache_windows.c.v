@@ -89,6 +89,16 @@ fn (entry ToolCacheEntryDir) remove(name string) {
 	os.rm(os.join_path(entry.path, name)) or {}
 }
 
+fn tool_cache_root_can_stage(_ string) bool {
+	return true
+}
+
+fn (entry ToolCacheEntryDir) stage_parent(_ string) !string {
+	// The entry handle was opened without FILE_SHARE_DELETE, so a staging child created
+	// underneath this path cannot be redirected by replacing the entry directory.
+	return entry.path
+}
+
 fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
 	for name in os.ls(entry.path) or { [] } {
 		if name.contains(tool_cache_replaced_marker) {

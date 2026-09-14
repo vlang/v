@@ -530,6 +530,27 @@ fn test_pinned_entry_publication_cannot_be_redirected() {
 	assert os.read_file(installed)! == 'the manifest'
 }
 
+fn test_staging_directory_is_on_the_cache_filesystem() {
+	directory := toolcache_test_dir('stage_filesystem')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(entry_dir)!
+	cache_entry := open_tool_cache_entry_dir(entry_dir)!
+	defer {
+		cache_entry.close()
+	}
+	stage_parent := cache_entry.stage_parent(entry_dir)!
+	stage_dir := create_tool_cache_stage_dir(stage_parent)!
+	defer {
+		os.rmdir_all(stage_dir) or {}
+	}
+
+	assert os.dir(stage_dir) == stage_parent
+	assert os.stat(stage_dir)!.dev == os.stat(entry_dir)!.dev
+}
+
 // A single-file tool can pull in a sibling asset with `$embed_file`, whose bytes end up
 // inside the compiled binary. `cmd/tools/vgret.v` does exactly that with its
 // `vgret.defaults.toml`. The asset is not a V source, so only the compiler can report it,
@@ -717,6 +738,21 @@ fn test_an_unwritable_cache_directory_is_skipped() {
 	chosen := tool_cache_dir() or { '' }
 	assert chosen != locked, 'the unwritable candidate must not be chosen'
 	assert chosen == '' || directory_is_writable(chosen), 'the chosen cache has to be writable'
+}
+
+fn test_a_non_sticky_shared_cache_cannot_hold_staged_outputs() {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('shared_stage_root')
+	defer {
+		os.chmod(directory, 0o700) or {}
+		os.rmdir_all(directory) or {}
+	}
+	os.chmod(directory, 0o777)!
+	assert !tool_cache_root_can_stage(directory)
+	os.chmod(directory, 0o1777)!
+	assert tool_cache_root_can_stage(directory), 'a sticky shared cache protects user-owned staging directories'
 }
 
 // `$pkgconfig(...)` and `#pkgconfig` select whole native branches, so the pkg-config

@@ -9,6 +9,8 @@ import os
 
 #include <dirent.h>
 
+#include <sys/stat.h>
+
 #include <unistd.h>
 
 fn C.open(const_path &char, flags i32, mode ...int) i32
@@ -22,6 +24,10 @@ fn C.fdopendir(fd i32) &C.DIR
 fn C.readdir(directory &C.DIR) &C.dirent
 
 fn C.closedir(directory &C.DIR) i32
+
+fn C.fstat(fd i32, information &C.stat) i32
+
+fn C.fchmod(fd i32, mode u32) i32
 
 fn C.renameat(old_directory i32, const_old_path &char, new_directory i32, const_new_path &char) i32
 
@@ -42,6 +48,12 @@ fn open_tool_cache_entry_dir(path string) !ToolCacheEntryDir {
 		}
 		return error('cannot safely open the tool cache entry `${path}`')
 	}
+	mut information := C.stat{}
+	if C.fstat(fd, &information) != 0 || u32(information.st_uid) != os.getuid()
+		|| C.fchmod(fd, 0o700) != 0 {
+		C.close(fd)
+		return error('the tool cache entry `${path}` is not owned by the current user')
+	}
 	return ToolCacheEntryDir{
 		fd: fd
 	}
@@ -57,6 +69,26 @@ fn (entry ToolCacheEntryDir) publish(source string, name string) bool {
 
 fn (entry ToolCacheEntryDir) remove(name string) {
 	C.unlinkat(entry.fd, &char(name.str), 0)
+}
+
+fn tool_cache_root_can_stage(path string) bool {
+	root := os.real_path(path)
+	information := os.stat(root) or { return false }
+	if information.uid !in [os.getuid(), u32(0)] {
+		return false
+	}
+	return information.mode & 0o022 == 0 || information.mode & 0o1000 != 0
+}
+
+// stage_parent returns a location on the entry's filesystem where another account cannot
+// rename a mode-0700 child. Sticky shared roots such as /tmp are safe; an ordinary writable
+// shared directory is not.
+fn (entry ToolCacheEntryDir) stage_parent(path string) !string {
+	parent := os.real_path(os.dir(path))
+	if !tool_cache_root_can_stage(parent) {
+		return error('the tool cache directory `${parent}` cannot safely hold staged files')
+	}
+	return parent
 }
 
 fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
