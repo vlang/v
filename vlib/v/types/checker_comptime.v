@@ -2044,7 +2044,9 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	// A method value stored in a container escapes the single-use guarantee of its per-site
 	// static receiver, so reject `[obj.method]` / `arr << obj.method` / `{'k': obj.method}`.
 	if node.kind == .array_literal {
-		tc.warn_alloc('array initialization', id, node.pos)
+		if unalias_type(tc.resolve_type(id)) is Array {
+			tc.warn_alloc('array initialization', id, node.pos)
+		}
 		if expected := tc.expected_context_for_expr(id) {
 			context_type := unalias_type(contextual_payload_type(expected) or { expected })
 			if elem_type := array_like_elem_type(context_type) {
@@ -4415,7 +4417,9 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_interface_implementation_error(.assignment_mismatch, actual, target_iface, id, node.pos)
 		tc.record_error_at(.assignment_mismatch, 'type `${actual_name}` does not implement interface `${target_iface.name}`; `${actual_name}` does not implement interface `${target_iface.name}`, cannot cast `${actual_name}` to interface `${target_iface.name}`', id, node.pos)
 	}
-	tc.warn_alloc('cast to interface', id, node.pos)
+	if unalias_type(actual) !is Pointer {
+		tc.warn_alloc('cast to interface', id, node.pos)
+	}
 }
 
 fn (tc &TypeChecker) option_cast_payload_compatible(actual Type, target Type) bool {

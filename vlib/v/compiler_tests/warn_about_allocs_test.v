@@ -86,22 +86,42 @@ fn main() {
 		assert as_errors.output.contains('error: allocation (${description})'), as_errors.output
 	}
 
-	overload_source := os.join_path(root, 'overload.v')
-	os.write_file(overload_source, "type Token = string
+	nonallocating_source := os.join_path(root, 'nonallocating.v')
+	os.write_file(nonallocating_source, "type Token = string
+
+interface Speaker {
+	speak()
+}
+
+struct Person {}
+
+fn (p Person) speak() {}
 
 fn (a Token) + (b Token) Token {
 	_ = b
 	return a
 }
 
+fn box(p &Person) Speaker {
+	return Speaker(p)
+}
+
+fn fixed_array() [3]int {
+	return [3]int[1, 2, 3]
+}
+
 fn main() {
 	println(Token('a') + Token('b'))
+	person := Person{}
+	speaker := box(&person)
+	speaker.speak()
+	println(fixed_array())
 }
 ")!
-	overload := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
-		os.join_path(root, 'overload.c'), overload_source])
-	assert overload.exit_code == 0, overload.output
-	assert !overload.output.contains('allocation (string concatenation)'), overload.output
+	nonallocating := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
+		os.join_path(root, 'nonallocating.c'), nonallocating_source])
+	assert nonallocating.exit_code == 0, nonallocating.output
+	assert !nonallocating.output.contains('allocation ('), nonallocating.output
 
 	core_root := os.join_path(root, 'core_module')
 	os.mkdir_all(os.join_path(core_root, 'math'))!
