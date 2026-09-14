@@ -207,6 +207,17 @@ fn test_static_comptime_for_select_receive_shadow_is_reported() {
 	assert !res.output.contains('unknown identifier'), res.output
 }
 
+fn test_static_comptime_for_c_style_loop_shadows_are_reported() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nstruct Item {\n\tname string\n}\n\n__global (\n\tcounter int\n\tnested string\n)\n\nfn main() {\n\t$for field in Item.fields {\n\t\tfor counter := 0; counter < field.name.len; counter++ {\n\t\t\tnested := field.name\n\t\t\tprintln(counter)\n\t\t\tprintln(nested)\n\t\t}\n\t}\n}\n')
+	res := compile_project_with_path(app_dir, sibling_modules_dir, '')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+	assert res.output.contains('variable `nested` shadows a global variable'), res.output
+	assert !res.output.contains('unknown identifier'), res.output
+}
+
 fn test_warm_owned_module_cache_reports_new_global_shadow() {
 	$if windows {
 		return

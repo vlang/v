@@ -16614,6 +16614,15 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		tc.comptime_static_depth--
 		return
 	}
+	if node.kind == .for_stmt {
+		tc.push_scope()
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind,
+				field_cases, value_cases)
+		}
+		tc.pop_scope()
+		return
+	}
 	if node.kind == .for_in_stmt {
 		header := node.value.int()
 		if header < 3 || node.children_count < 3 {
