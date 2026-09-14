@@ -6449,6 +6449,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
 	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
+	if g.gen_lowered_enum_autostr_pointer_call(id, node, fn_node) {
+		return
+	}
 	if fn_node.kind == .selector && node.children_count == 2 && target_name.starts_with('C.')
 		&& target_name in g.tc.type_aliases {
 		g.write('(${g.direct_call_name(target_name)})(')
@@ -12550,6 +12553,36 @@ fn (mut g FlatGen) gen_enum_str_call(fn_node &flat.Node, enum_type types.Enum) {
 	g.write(')')
 }
 
+// gen_lowered_enum_autostr_pointer_call emits the value expected by an enum's
+// synthesized `str` helper when the source receiver is backed by pointer storage.
+fn (mut g FlatGen) gen_lowered_enum_autostr_pointer_call(id flat.NodeId, node flat.Node, fn_node flat.Node) bool {
+	if fn_node.kind != .ident || !fn_node.value.ends_with('__autostr')
+		|| node.children_count != 2 {
+		return false
+	}
+	arg_id := g.a.child(&node, 1)
+	arg_type := cgen_unalias_type(g.usable_expr_type(arg_id))
+	pointer_type := if arg_type is types.Pointer {
+		arg_type
+	} else {
+		return false
+	}
+	enum_base_type := cgen_unalias_type(pointer_type.base_type)
+	enum_type := if enum_base_type is types.Enum {
+		enum_base_type
+	} else {
+		return false
+	}
+	if fn_node.value != '${g.enum_autostr_c_name(enum_type.name)}__autostr' {
+		return false
+	}
+	g.write(g.direct_call_name_for_call(id, fn_node.value))
+	g.write('(*(')
+	g.gen_expr(arg_id)
+	g.write('))')
+	return true
+}
+
 // enum_receiver_method_name supports enum receiver method name handling for FlatGen.
 fn (g &FlatGen) enum_receiver_method_name(enum_type types.Enum, method string) ?string {
 	name := enum_type.name
@@ -13565,7 +13598,7 @@ fn (mut g FlatGen) callback_fn_types_cast_compatible(actual types.FnType, expect
 		actual_ct := g.callback_c_type(actual_param)
 		expected_ct := g.callback_expected_param_c_type(expected, i, expected_c_abi)
 		if actual_ct == expected_ct
-			|| g.callback_can_cast_userdata_param(actual_param, expected_param)
+			|| g.callback_can_cast_userdata_pointer(actual_param, expected_param)
 			|| callback_can_cast_const_abi_param(actual_ct, expected_ct) {
 			continue
 		}
@@ -13589,7 +13622,8 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	mut needs_conversion := false
 	mut cast_return := false
 	if actual_ret_ct != expected_ret_ct {
-		if !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct) {
+		if !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct)
+			&& !g.callback_can_cast_userdata_pointer(actual.return_type, expected.return_type) {
 			return none
 		}
 		needs_wrapper = true
@@ -13609,7 +13643,7 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 			call_args << 'arg${i}'
 			continue
 		}
-		if g.callback_can_cast_userdata_param(actual_param, expected_param) {
+		if g.callback_can_cast_userdata_pointer(actual_param, expected_param) {
 			call_args << '(${actual_ct})arg${i}'
 			needs_wrapper = true
 			continue
@@ -13765,7 +13799,7 @@ fn callback_stable_key_hash(key string) string {
 	return '${hash}'
 }
 
-fn (g &FlatGen) callback_can_cast_userdata_param(actual types.Type, expected types.Type) bool {
+fn (g &FlatGen) callback_can_cast_userdata_pointer(actual types.Type, expected types.Type) bool {
 	return (callback_is_voidptr_type(expected) && callback_is_nonvoid_pointer_type(actual))
 		|| (callback_is_nonvoid_pointer_type(expected) && callback_is_voidptr_type(actual))
 }
