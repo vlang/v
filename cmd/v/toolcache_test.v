@@ -260,6 +260,15 @@ fn test_cache_artifacts_of_one_tool_are_not_mistaken_for_anothers() {
 	assert !is_cache_artifact_of('vbugged-${key}', 'vbug')
 }
 
+fn test_cache_entry_directories_are_namespaced_by_uid() {
+	key := 'a'.repeat(64)
+	first := tool_cache_entry_dir_for_uid('/cache', 'vbug', key, 1000)
+	second := tool_cache_entry_dir_for_uid('/cache', 'vbug', key, 1001)
+	assert first != second
+	assert os.file_name(first) == 'vbug-${key}.1000'
+	assert is_cache_artifact_of(os.file_name(first), 'vbug')
+}
+
 // A tool that failed to build must not be pinned to the compatibility compiler forever: a
 // broken intermediate state of any vlib module it imports has to be retried once it is fixed.
 fn test_a_recorded_build_failure_is_retried_once_its_inputs_change() {

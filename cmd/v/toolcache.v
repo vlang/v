@@ -264,11 +264,17 @@ fn pkgconfig_executable_stamp() string {
 	return '${path}${tool_cache_field_separator}${file_stamp(path)}'
 }
 
+// tool_cache_entry_dir_for_uid keeps private cache entries from different accounts distinct
+// when they intentionally share a sticky cache root.
+fn tool_cache_entry_dir_for_uid(directory string, tool_name string, key string, uid int) string {
+	return os.join_path(directory, '${tool_name}-${key}.${uid}')
+}
+
 // tool_cache_entry locates the cache slot for a tool, or none when no cache is usable.
 fn tool_cache_entry(vexe string, vroot string, tool_name string, tool_source string, build_args []string) ?ToolCacheEntry {
 	directory := tool_cache_dir()?
 	key := tool_cache_key(vexe, tool_name, tool_key_sources(tool_source), build_args)
-	entry_dir := os.join_path(directory, '${tool_name}-${key}')
+	entry_dir := tool_cache_entry_dir_for_uid(directory, tool_name, key, os.getuid())
 	binary := os.join_path(entry_dir, '${tool_name}${tool_exe_suffix()}')
 	return ToolCacheEntry{
 		name:                 tool_name

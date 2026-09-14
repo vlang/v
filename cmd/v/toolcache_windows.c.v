@@ -12,8 +12,7 @@ import os
 fn C.v_toolcache_move_file_ex_w(const_existing &u16, const_new &u16, flags u32) int
 
 fn C.v_toolcache_create_file_w(const_path &u16, desired_access u32, share_mode u32,
-	security_attributes voidptr, creation_disposition u32, flags_and_attributes u32,
-	template_file voidptr) voidptr
+	creation_disposition u32, flags_and_attributes u32) voidptr
 
 fn C.v_toolcache_get_file_information(handle voidptr, information voidptr) int
 
@@ -67,8 +66,8 @@ fn open_tool_cache_entry_dir(path string) !ToolCacheEntryDir {
 	defer {
 		unsafe { free(voidptr(w_path)) }
 	}
-	handle := C.v_toolcache_create_file_w(w_path, 0, toolcache_windows_file_share_read_write, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_flag_backup_semantics | toolcache_windows_file_flag_open_reparse_point, unsafe { nil })
-	if handle == voidptr(-1) || handle == unsafe { nil } {
+	handle := C.v_toolcache_create_file_w(w_path, 0, toolcache_windows_file_share_read_write, toolcache_windows_open_existing, toolcache_windows_file_flag_backup_semantics | toolcache_windows_file_flag_open_reparse_point)
+	if handle == voidptr(-1) {
 		return error('cannot safely open the tool cache entry `${path}`')
 	}
 	mut information := WindowsToolCacheFileInformation{}
@@ -110,13 +109,13 @@ fn ensure_tool_cache_lock_file(path string) ! {
 		unsafe { free(voidptr(w_path)) }
 	}
 	desired_access := u32(0x80000000) | u32(0x40000000)
-	created := C.v_toolcache_create_file_w(w_path, desired_access, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_create_new, toolcache_windows_file_attribute_normal, unsafe { nil })
-	if created != voidptr(-1) && created != unsafe { nil } {
+	created := C.v_toolcache_create_file_w(w_path, desired_access, toolcache_windows_file_share_all, toolcache_windows_create_new, toolcache_windows_file_attribute_normal)
+	if created != voidptr(-1) {
 		C.v_toolcache_close_handle(created)
 		return
 	}
-	handle := C.v_toolcache_create_file_w(w_path, desired_access, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_attribute_normal | toolcache_windows_file_flag_open_reparse_point, unsafe { nil })
-	if handle == voidptr(-1) || handle == unsafe { nil } {
+	handle := C.v_toolcache_create_file_w(w_path, desired_access, toolcache_windows_file_share_all, toolcache_windows_open_existing, toolcache_windows_file_attribute_normal | toolcache_windows_file_flag_open_reparse_point)
+	if handle == voidptr(-1) {
 		return error('cannot open the tool cache lock `${path}`')
 	}
 	defer {
@@ -190,8 +189,8 @@ fn windows_binary_file_identity(path string) ?string {
 	defer {
 		unsafe { free(voidptr(w_path)) }
 	}
-	handle := C.v_toolcache_create_file_w(w_path, 0, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_attribute_normal, unsafe { nil })
-	if handle == voidptr(-1) || handle == unsafe { nil } {
+	handle := C.v_toolcache_create_file_w(w_path, 0, toolcache_windows_file_share_all, toolcache_windows_open_existing, toolcache_windows_file_attribute_normal)
+	if handle == voidptr(-1) {
 		return none
 	}
 	defer {

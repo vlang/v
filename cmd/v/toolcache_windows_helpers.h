@@ -14,12 +14,10 @@ static int v_toolcache_move_file_ex_w(const unsigned short *existing,
 }
 
 static void *v_toolcache_create_file_w(const unsigned short *path,
-	unsigned int desired_access, unsigned int share_mode, void *security_attributes,
-	unsigned int creation_disposition, unsigned int flags_and_attributes,
-	void *template_file) {
+	unsigned int desired_access, unsigned int share_mode,
+	unsigned int creation_disposition, unsigned int flags_and_attributes) {
 	return CreateFileW((LPCWSTR)path, (DWORD)desired_access, (DWORD)share_mode,
-		(LPSECURITY_ATTRIBUTES)security_attributes, (DWORD)creation_disposition,
-		(DWORD)flags_and_attributes, (HANDLE)template_file);
+		NULL, (DWORD)creation_disposition, (DWORD)flags_and_attributes, NULL);
 }
 
 static int v_toolcache_get_file_information(void *handle, void *information) {
