@@ -8242,7 +8242,7 @@ fn (tc &TypeChecker) array_init_may_allocate(node flat.Node) bool {
 		if !tc.valid_node_id(value_id) {
 			return true
 		}
-		value := tc.index_literal_value(value_id) or { return true }
+		value := tc.const_int_expr(value_id, tc.cur_module, []string{}) or { return true }
 		if value != 0 {
 			return true
 		}

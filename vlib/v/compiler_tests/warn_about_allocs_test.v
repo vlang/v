@@ -89,6 +89,13 @@ fn main() {
 		values := [1, 2, 3]
 		println(values)
 	} @[freed]
+	freed_branch := if name.len > 0 {
+		unrelated := [4]
+		println(unrelated)
+		[5]
+	} else {
+		[6]
+	} @[freed]
 	println(array)
 	println(reserved)
 	println(interpolation)
@@ -101,6 +108,7 @@ fn main() {
 	pointer_speaker.speak()
 	interface_speaker.speak()
 	println(freed)
+	println(freed_branch)
 	callback()
 }
 ")!
@@ -120,7 +128,7 @@ fn main() {
 		} else if description == 'cast to interface' {
 			5
 		} else if description == 'array initialization' {
-			4
+			5
 		} else {
 			1
 		}
@@ -159,8 +167,12 @@ fn main() {
 	assert invalid_assignment_attribute.exit_code != 0, invalid_assignment_attribute.output
 	assert invalid_assignment_attribute.output.contains('assignment attribute `freed` does not accept an argument'), invalid_assignment_attribute.output
 
+	os.write_file(os.join_path(root, 'embedded.txt'), 'V')!
 	nonallocating_source := os.join_path(root, 'nonallocating.v')
 	os.write_file(nonallocating_source, "import os
+
+const zero_array_size = 0
+const embedded = \$embed_file('embedded.txt')
 
 type Token = string
 
@@ -217,6 +229,10 @@ fn zero_length_capacity_array() []int {
 	return []int{len: 0, cap: 0}
 }
 
+fn constant_zero_length_capacity_array() []int {
+	return []int{len: zero_array_size, cap: zero_array_size + 0}
+}
+
 fn receive_channel(ch chan int) {
 	select {
 		value := <-ch {
@@ -249,6 +265,8 @@ fn main() {
 	println(inferred_fixed_array())
 	println(empty_dynamic_array())
 	println(zero_length_capacity_array())
+	println(constant_zero_length_capacity_array())
+	println(embedded.len)
 }
 ")!
 	nonallocating := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',

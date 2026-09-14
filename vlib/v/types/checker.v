@@ -2596,23 +2596,29 @@ fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node f
 
 fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token.Pos) {
 	if !tc.warn_about_allocs || tc.cur_module in ['strings', 'math', 'math.bits', 'builtin',
-		'builtin.closure', 'strconv', 'os', 'sync'] {
+		'builtin.closure', 'strconv', 'os', 'sync', 'v.embed_file'] {
 		return
 	}
 	mut current := id
 	mut direct_child := flat.empty_node
+	mut value_path := true
 	for tc.valid_node_id(current) {
 		node := tc.a.node(current)
 		if node.kind in [.fn_literal, .lambda_expr] {
 			break
 		}
 		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign]
-			&& node.is_freed_assignment() && tc.assignment_child_is_value(node, direct_child) {
+			&& node.is_freed_assignment() && value_path
+			&& tc.assignment_child_is_value(node, direct_child) {
 			return
 		}
 		parent := tc.direct_parent_id(current)
 		if parent == current {
 			break
+		}
+		if tc.valid_node_id(parent)
+			&& !tc.child_is_value_producing_path(tc.a.node(parent), current) {
+			value_path = false
 		}
 		direct_child = current
 		current = parent
@@ -2630,6 +2636,26 @@ fn (tc &TypeChecker) assignment_child_is_value(node flat.Node, child_id flat.Nod
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) child_is_value_producing_path(parent flat.Node, child_id flat.NodeId) bool {
+	match parent.kind {
+		.block, .match_branch, .lock_expr {
+			return parent.children_count > 0
+				&& tc.a.child(parent, parent.children_count - 1) == child_id
+		}
+		.if_expr, .match_stmt {
+			for i in 1 .. parent.children_count {
+				if tc.a.child(parent, i) == child_id {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return true
+		}
+	}
 }
 
 fn (tc &TypeChecker) has_type_error(kind TypeErrorKind, msg string, node flat.NodeId) bool {
