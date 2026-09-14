@@ -27,7 +27,11 @@ fn compiles(name string, mod_source string, main_source string) (bool, string) {
 	src := os.join_path(dir, 'm.v')
 	os.write_file(src, main_source) or { panic(err) }
 	out := os.join_path(dir, 'm.exe')
-	res := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+	// `-new-compiler` keeps V from retrying a rejected program on the V 0.5.2
+	// fallback, which would otherwise answer for it: every compile error stages a
+	// retry, and the fallback's own diagnostics are what the assertions would end
+	// up reading.
+	res := os.execute('${os.quoted_path(vexe)} -new-compiler -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
 	return res.exit_code == 0, res.output
 }
 
@@ -35,6 +39,13 @@ const holder_module = "module holder
 
 // Hidden has no `pub`, so only `holder` may name it.
 struct Hidden {
+pub mut:
+	x int
+}
+
+// AnonStruct_Secret is named the way the compiler names the aggregates it
+// synthesizes, but it is an ordinary private declaration and stays one.
+struct AnonStruct_Secret {
 pub mut:
 	x int
 }
@@ -80,6 +91,25 @@ fn main() {
 		x: 1
 	}
 	println(h.x)
+}
+")
+	assert !ok, 'a private struct of another module was accepted'
+	assert output.contains('declared as private to module `holder`'), output
+}
+
+// The exemption belongs to declarations the compiler synthesized, not to a name
+// that looks like one. Nothing stops a module from declaring `AnonStruct_Secret`
+// itself, and such a declaration is as private as it was written.
+fn test_a_private_struct_named_like_a_synthesized_one_is_still_rejected() {
+	ok, output := compiles('named_like_anon', holder_module, "module main
+
+import holder
+
+fn main() {
+	s := holder.AnonStruct_Secret{
+		x: 1
+	}
+	println(s.x)
 }
 ")
 	assert !ok, 'a private struct of another module was accepted'

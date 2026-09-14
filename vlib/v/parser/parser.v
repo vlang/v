@@ -13956,6 +13956,14 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 		kind: .struct_decl
 		value: name
 		typ: if is_union { 'union' } else { '' }
+		// `.arrow` is how a declaration records `pub`. This one is synthesized for a
+		// `struct { ... }` written inside another declaration: it cannot be named from
+		// anywhere, so it imposes no visibility of its own and the field that exposes it
+		// is what decides who may see it. Leaving it private instead made the checker
+		// reject `defaults: struct { man: false }` on `cli.Command` from another module.
+		// Marking the declaration is what distinguishes these from a type the user
+		// happened to name `AnonStruct_...`, which stays as private as it was written.
+		op: .arrow
 		pos: if aggregate_start >= 0 {
 			p.span_to(aggregate_start)
 		} else {
