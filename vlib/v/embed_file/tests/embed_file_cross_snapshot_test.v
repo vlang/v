@@ -205,16 +205,40 @@ fn cross_compile_probe(payload string) ?(string, string) {
 	os.mkdir_all(dir) or { return none }
 	os.write_file(os.join_path(dir, 'payload.bin'), payload) or { return none }
 	src := os.join_path(dir, 'prog.v')
+	// The embedded file is read from several threads, all of them for the first
+	// time. A payload large enough to be split used to be materialized lazily on
+	// that first read, which made this a race over one shared constant.
 	os.write_file(src, "module main
 
-const payload = \$embed_file('payload.bin').to_bytes()
+const embedded = \$embed_file('payload.bin')
 
-fn main() {
+fn checksum() string {
+	payload := embedded.to_bytes()
 	mut sum := u32(0)
 	for b in payload {
 		sum = sum * 31 + u32(b)
 	}
-	println('\${payload.len} \${sum}')
+	return '\${payload.len} \${sum}'
+}
+
+fn reader(id int, mut seen []string) {
+	seen[id] = checksum()
+}
+
+fn main() {
+	mut seen := []string{len: 4, init: ''}
+	mut readers := []thread{}
+	for i in 0 .. 4 {
+		readers << spawn reader(i, mut seen)
+	}
+	readers.wait()
+	for got in seen {
+		if got != seen[0] {
+			println('threads disagreed: \${got} != \${seen[0]}')
+			exit(1)
+		}
+	}
+	println(seen[0])
 }
 ") or { return none }
 	out := os.join_path(dir, 'prog.c')

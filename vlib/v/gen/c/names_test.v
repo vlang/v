@@ -767,3 +767,26 @@ fn test_embed_payload_needs_blob_switches_at_the_string_literal_limit() {
 	// concatenation. Portable output cannot assume more than that.
 	assert c_string_literal_max_total == 4095
 }
+
+// test_embed_blob_split_keeps_every_object_within_the_c_limit covers the sizes a
+// split payload is written at. C only requires an implementation to accept 65535
+// bytes in one object, and the tables listing the pieces are objects too.
+fn test_embed_blob_split_keeps_every_object_within_the_c_limit() {
+	assert embed_blob_part_count(0) == 0
+	assert embed_blob_part_count(1) == 1
+	assert embed_blob_part_count(c_max_object_size) == 1
+	assert embed_blob_part_count(c_max_object_size + 1) == 2
+	// One entry is a pointer and an int, 16 bytes where that pair is widest.
+	assert embed_chunk_table_entries * 16 <= c_max_object_size
+	// A table spends its last entry on the terminator, or on the link onwards.
+	per_table := embed_chunk_table_entries - 1
+	assert embed_blob_table_count(1) == 1
+	assert embed_blob_table_count(per_table) == 1
+	assert embed_blob_table_count(per_table + 1) == 2
+	assert embed_blob_table_count(per_table * 2) == 2
+	assert embed_blob_table_count(per_table * 2 + 1) == 3
+	// Linking them is what leaves the representation with no size of its own that
+	// it cannot describe.
+	parts := embed_blob_part_count(4 * 1024 * 1024 * 1024 - 1)
+	assert embed_blob_table_count(parts) * per_table >= parts
+}

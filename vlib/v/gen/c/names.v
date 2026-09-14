@@ -614,11 +614,30 @@ fn embed_payload_needs_blob(payload_len int) bool {
 	return payload_len > c_string_literal_max_total
 }
 
+// embed_blob_part_count is how many byte objects a payload is split into.
+fn embed_blob_part_count(payload_len int) int {
+	return (payload_len + c_max_object_size - 1) / c_max_object_size
+}
+
+// embed_blob_table_count is how many chunk tables it takes to list that many
+// parts. Each table spends its last entry on the terminator, or on the link to
+// the table that continues it.
+fn embed_blob_table_count(parts int) int {
+	per_table := embed_chunk_table_entries - 1
+	return (parts + per_table - 1) / per_table
+}
+
 // c_max_object_size is how many bytes C99 5.2.4.1 requires a hosted
 // implementation to accept in a single object. A payload past this is emitted as
 // several objects and joined at runtime, for the same reason the literal cutoff
 // is C's figure rather than one compiler's.
 const c_max_object_size = 65535
+
+// embed_chunk_table_entries is how many entries one chunk table holds, the last
+// of which ends it or links to the next. A table is an object like any other, so
+// it is bounded the same way: 4095 entries of a pointer and an int come to 65520
+// bytes where that pair is widest, just inside c_max_object_size.
+const embed_chunk_table_entries = 4095
 
 // embed_blob_bytes_per_line keeps the array initializer of such a payload to
 // short source lines, for the same reason the literal form is split.

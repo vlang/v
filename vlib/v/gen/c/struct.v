@@ -278,10 +278,7 @@ fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_
 }
 
 fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struct_name string, field_name string) bool {
-	if struct_name != 'embed_file.EmbedFileData' {
-		return false
-	}
-	if field_name != 'uncompressed' && field_name != 'chunks' {
+	if field_name != 'uncompressed' || struct_name != 'embed_file.EmbedFileData' {
 		return false
 	}
 	mut data_id := value_id
@@ -293,19 +290,16 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 	if data.kind != .string_literal || !data.is_embed_payload() {
 		return false
 	}
-	// The parser names both fields from the same payload; exactly one of them
-	// carries it, depending on how the bytes had to be spelled.
-	chunked := data.value.len > c_max_object_size
-	if field_name == 'chunks' {
-		if !chunked {
-			g.write('NULL')
-			return true
-		}
-		g.write('(${g.cname('embed_file.EmbedFileChunk')}*)_v_embed_blob_${int(data_id)}')
-		return true
-	}
-	if chunked {
-		g.write('NULL')
+	if data.value.len > c_max_object_size {
+		// Split across several objects, so the bytes are put back together while
+		// this value is being built. Doing it here rather than on first read keeps
+		// the finished value immutable, which is what two threads reading the same
+		// embedded constant need.
+		g.write('${g.cname('embed_file.join_chunks')}((${g.cname('embed_file.EmbedFileChunk')}*)_v_embed_blob_')
+		g.sb.write_decimal(i64(data_id))
+		g.sb.write_string(', ')
+		g.sb.write_decimal(i64(data.value.len))
+		g.sb.write_u8(`)`)
 		return true
 	}
 	if embed_payload_needs_blob(data.value.len) {
@@ -323,7 +317,8 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 // of the declaration prefix, ahead of every function that can name one.
 //
 // A payload past what C requires an implementation to accept in one object is
-// split across several, listed in a table the runtime joins on first use.
+// split across several, listed in chunk tables. Those tables are objects too, so
+// they are bounded the same way and linked to one another when one is not enough.
 //
 // The objects are `static`: a parallel C build repeats this prefix in each unit,
 // and external linkage would then collide. It also means a payload that lands
@@ -346,50 +341,79 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			defined++
 			continue
 		}
-		mut parts := 0
-		for offset := 0; offset < node.value.len; offset += c_max_object_size {
-			mut part_len := node.value.len - offset
-			if part_len > c_max_object_size {
-				part_len = c_max_object_size
-			}
-			g.write('static const unsigned char _v_embed_blob_')
-			g.sb.write_decimal(i64(i))
-			g.sb.write_u8(`_`)
-			g.sb.write_decimal(i64(parts))
-			g.write_embed_blob_bytes(node.value, offset, part_len)
-			parts++
+		g.write_embed_blob_chunks(i, node.value)
+		defined++
+	}
+	if defined > 0 {
+		g.writeln('')
+	}
+}
+
+// write_embed_blob_chunks emits `payload` as byte objects of an acceptable size,
+// followed by the tables that list them. Table `n` is named with the suffix `_tn`,
+// except the first, which carries the bare name the initializer points at.
+fn (mut g FlatGen) write_embed_blob_chunks(node_idx int, payload string) {
+	parts := embed_blob_part_count(payload.len)
+	for part in 0 .. parts {
+		offset := part * c_max_object_size
+		mut part_len := payload.len - offset
+		if part_len > c_max_object_size {
+			part_len = c_max_object_size
 		}
-		// The table is an object in its own right, so it has the same ceiling: at
-		// 16 bytes an entry it holds 4095 of them, which covers a payload of about
-		// 256MB. Past that the table would be the oversized object, but V warns
-		// well before an embedded file gets near it.
-		chunk_ct := g.cname('embed_file.EmbedFileChunk')
-		g.write('static const ${chunk_ct} _v_embed_blob_')
-		g.sb.write_decimal(i64(i))
+		g.write('static const unsigned char _v_embed_blob_')
+		g.sb.write_decimal(i64(node_idx))
+		g.sb.write_u8(`_`)
+		g.sb.write_decimal(i64(part))
+		g.write_embed_blob_bytes(payload, offset, part_len)
+	}
+	chunk_ct := g.cname('embed_file.EmbedFileChunk')
+	tables := embed_blob_table_count(parts)
+	per_table := embed_chunk_table_entries - 1
+	// Later tables are declared before the one that links to them.
+	for table := tables - 1; table >= 0; table-- {
+		first := table * per_table
+		mut listed := parts - first
+		if listed > per_table {
+			listed = per_table
+		}
+		g.write('static const ${chunk_ct} ')
+		g.write_embed_blob_table_name(node_idx, table)
 		g.sb.write_string('[')
-		g.sb.write_decimal(i64(parts + 1))
+		g.sb.write_decimal(i64(listed + 1))
 		g.writeln('] = {')
-		for part in 0 .. parts {
+		for entry in 0 .. listed {
+			part := first + entry
 			offset := part * c_max_object_size
-			mut part_len := node.value.len - offset
+			mut part_len := payload.len - offset
 			if part_len > c_max_object_size {
 				part_len = c_max_object_size
 			}
 			g.write('{.data = (u8*)_v_embed_blob_')
-			g.sb.write_decimal(i64(i))
+			g.sb.write_decimal(i64(node_idx))
 			g.sb.write_u8(`_`)
 			g.sb.write_decimal(i64(part))
 			g.sb.write_string(', .len = ')
 			g.sb.write_decimal(i64(part_len))
 			g.writeln('},')
 		}
-		// The zero length entry ends the table.
-		g.writeln('{.data = NULL, .len = 0},')
+		if table + 1 < tables {
+			// A zero length entry that still carries a pointer continues the list.
+			g.write('{.data = (u8*)')
+			g.write_embed_blob_table_name(node_idx, table + 1)
+			g.writeln(', .len = 0},')
+		} else {
+			g.writeln('{.data = NULL, .len = 0},')
+		}
 		g.writeln('};')
-		defined++
 	}
-	if defined > 0 {
-		g.writeln('')
+}
+
+fn (mut g FlatGen) write_embed_blob_table_name(node_idx int, table int) {
+	g.sb.write_string('_v_embed_blob_')
+	g.sb.write_decimal(i64(node_idx))
+	if table > 0 {
+		g.sb.write_string('_t')
+		g.sb.write_decimal(i64(table))
 	}
 }
 

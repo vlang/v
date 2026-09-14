@@ -6304,12 +6304,7 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 		p.embed_file_field('len', p.add_val_id(1, len.str())),
 	]
 	if payload := p.embed_file_uncompressed_data(apath) {
-		// Both fields are set here, from the same payload node, because only the
-		// backend knows which of the two representations the bytes will take: one
-		// object if C is required to accept it, a table of chunks if not. Naming
-		// both leaves neither to a default that would then have to be overridden.
 		field_ids << p.embed_file_field('uncompressed', p.embed_file_payload_cast(payload, '&u8'))
-		field_ids << p.embed_file_field('chunks', p.embed_file_payload_cast(payload, '&embed_file.EmbedFileChunk'))
 	}
 	if compression_type !in ['none', 'zlib'] {
 		field_ids << p.a.add_node(flat.Node{
@@ -6351,8 +6346,8 @@ fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
 	})
 }
 
-// embed_file_payload_cast points one of the payload fields at `payload`. The two
-// fields have different types, so each gets its own cast over the same node.
+// embed_file_payload_cast points the payload field at `payload`. The backend
+// decides how the bytes are actually spelled; it only ever produces a `&u8`.
 fn (mut p Parser) embed_file_payload_cast(payload flat.NodeId, typ string) flat.NodeId {
 	return p.add_node(flat.Node{
 		kind: .cast_expr

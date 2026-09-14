@@ -2,11 +2,49 @@ module embed_file
 
 // EmbedFileChunk is one piece of an embedded file. C only guarantees that an
 // implementation accepts 65535 bytes in a single object, so a payload past that
-// is emitted as several of these, and joined the first time it is asked for.
+// is emitted as several of these, and join_chunks puts them back together.
+//
+// A table of them ends with a zero length entry. If that entry still carries a
+// pointer, it is not the end but a link to the next table, which is how a table
+// stays an acceptable size itself.
 pub struct EmbedFileChunk {
 pub:
 	data &u8 = unsafe { nil }
 	len  int
+}
+
+// join_chunks copies a payload that was embedded in pieces into one buffer, and
+// is called by generated code while the `EmbedFileData` is being built, not when
+// its bytes are first read. Materializing it there and not later is what keeps
+// `data()` free of the lazy mutation that two threads reading the same embedded
+// constant would race on.
+//
+// The buffer lives as long as the program, like the static bytes it replaces.
+@[markused]
+pub fn join_chunks(chunks &EmbedFileChunk, len int) &u8 {
+	unsafe {
+		buffer := &u8(malloc(isize(if len > 0 { len } else { 1 })))
+		mut offset := 0
+		mut chunk := chunks
+		for offset < len {
+			if chunk.len == 0 {
+				if chunk.data == nil {
+					break
+				}
+				// A link to the table that continues this one.
+				chunk = &EmbedFileChunk(chunk.data)
+				continue
+			}
+			mut n := chunk.len
+			if offset + n > len {
+				n = len - offset
+			}
+			vmemcpy(buffer + offset, chunk.data, isize(n))
+			offset += n
+			chunk++
+		}
+		return buffer
+	}
 }
 
 // EmbedFileData encapsulates functionality for the `$embed_file()` compile time call.
@@ -14,12 +52,9 @@ pub struct EmbedFileData {
 	apath            string
 	compression_type string
 mut:
-	compressed     &u8 = unsafe { nil }
-	compressed_len int
-	uncompressed   &u8 = unsafe { nil }
-	// chunks is set instead of uncompressed when the payload was too large to
-	// embed as one object; it points at a table terminated by a zero length entry.
-	chunks            &EmbedFileChunk = unsafe { nil }
+	compressed        &u8 = unsafe { nil }
+	compressed_len    int
+	uncompressed      &u8 = unsafe { nil }
 	free_compressed   bool
 	free_uncompressed bool
 pub:
@@ -68,10 +103,6 @@ pub fn (mut ed EmbedFileData) data() &u8 {
 	if ed.uncompressed != unsafe { nil } {
 		return ed.uncompressed
 	}
-	if ed.chunks != unsafe { nil } {
-		join_chunks(mut ed)
-		return ed.uncompressed
-	}
 	if ed.uncompressed == unsafe { nil } && ed.compressed != unsafe { nil } {
 		decoder := g_embed_file_decoders.decoders[ed.compression_type] or {
 			panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
@@ -89,28 +120,6 @@ pub fn (mut ed EmbedFileData) data() &u8 {
 		}
 	}
 	return ed.uncompressed
-}
-
-// join_chunks copies a payload that was embedded in pieces into one buffer, so
-// that data() can keep handing out a single pointer. It runs at most once per
-// embedded file, the first time its bytes are asked for.
-fn join_chunks(mut ed EmbedFileData) {
-	unsafe {
-		buffer := &u8(malloc(isize(if ed.len > 0 { ed.len } else { 1 })))
-		mut offset := 0
-		mut chunk := ed.chunks
-		for chunk.len > 0 && chunk.data != nil && offset < ed.len {
-			mut n := chunk.len
-			if offset + n > ed.len {
-				n = ed.len - offset
-			}
-			vmemcpy(buffer + offset, chunk.data, isize(n))
-			offset += n
-			chunk++
-		}
-		ed.uncompressed = buffer
-		ed.free_uncompressed = true
-	}
 }
 
 //////////////////////////////////////////////////////////////////////////////
