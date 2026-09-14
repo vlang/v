@@ -52,10 +52,14 @@ fn build_v3_review_transform_ownership() string {
 }
 
 fn run_bad(v3_bin string, name string, src string, expected string) {
+	run_bad_with_flags(v3_bin, name, '', src, expected)
+}
+
+fn run_bad_with_flags(v3_bin string, name string, flags string, src string, expected string) {
 	bad_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(bad_src, src) or { panic(err) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.execute('${v3_bin} -nocache ${bad_src} -b c -o ${bad_bin}')
+	result := os.execute('${v3_bin} -nocache ${flags} ${bad_src} -b c -o ${bad_bin}')
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
@@ -4456,6 +4460,13 @@ fn test_interface_array_repeat_evaluates_receiver_once() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'interface_repeat_side_effects', 'interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\n__global calls int\n\nfn make_item() Thing {\n\tcalls++\n\treturn Item{\n\t\tn: calls\n\t}\n}\n\nfn main() {\n\titems := [make_item()].repeat(3)\n\tprintln(int_str(calls))\n\tprintln(int_str(items[0].value() + items[1].value() + items[2].value()))\n}\n')
 	assert out == '1\n3'
+}
+
+fn test_array_repeat_safe_wrapper_compiles_in_prod() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'array_repeat_prod', '-prod', 'fn main() {\n\tprintln([1, 2, 3].repeat(2))\n}\n')
+	assert out == '[1, 2, 3, 1, 2, 3]'
+	run_bad_with_flags(v3_bin, 'array_repeat_to_depth_prod', '-prod', 'fn main() {\n\t_ := [1, 2, 3].repeat_to_depth(2, 0)\n}\n', 'must be called from an `unsafe` block')
 }
 
 fn test_negative_is_return_smartcasts_following_statements() {
