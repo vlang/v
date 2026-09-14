@@ -154,9 +154,9 @@ fn main() {
 }
 
 // A project's own dependency wins over a neighbour of the project that happens to
-// carry the same name. The walk reaches the project root before it reaches what is
-// beside the project, and at each level it looks in `modules/` as well, so a source
-// file buried in the project still gets the project's own copy.
+// carry the same name. The walk reaches the project root, where the project's own
+// copy sits, before it reaches what is beside the project, so a source file buried
+// in the project still gets the project's own copy.
 fn test_the_projects_own_modules_beat_a_neighbour_of_the_same_name() {
 	v3_bin := sibling_module_build_v3()
 	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_own_${os.getpid()}')
@@ -178,9 +178,9 @@ pub fn who() string {
 }
 ') or { panic(err) }
 
-	// The project, with its own copy under `modules/`, and its source a level down.
+	// The project, with its own copy in its lookup root, and its source a level down.
 	app_dir := os.join_path(root, 'app')
-	own_dir := os.join_path(app_dir, 'modules', 'shared')
+	own_dir := os.join_path(app_dir, 'shared')
 	src_dir := os.join_path(app_dir, 'src')
 	os.mkdir_all(own_dir) or { panic(err) }
 	os.mkdir_all(src_dir) or { panic(err) }

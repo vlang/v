@@ -93,6 +93,23 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	plain_target := os.join_path(plain_real, 'helper')
 	assert plain.output.contains(modules_layout_expected_move(plain_source, plain_target)), plain.output
 
+	// A source file buried in the project does not reach the directory either:
+	// the walk up from it looks for the module's path under each level, not for a
+	// `modules/` directory on the way, so the project reports the move as well.
+	nested_root := os.join_path(root, 'nested')
+	write_modules_layout_module(nested_root, os.join_path('modules', 'helper'), 'helper')
+	os.write_file(os.join_path(nested_root, 'v.mod'), "Module { name: 'nested_app' }\n") or {
+		panic(err)
+	}
+	write_modules_layout_main(os.join_path(nested_root, 'src'), 'helper')
+	nested := os.execute('${v3_bin} -nocache -o ${output} ${nested_root}/src/main.v')
+	assert nested.exit_code != 0, nested.output
+	assert nested.output.contains('cannot import module "helper" (not found)'), nested.output
+	assert nested.output.contains(hint), nested.output
+	nested_real := os.real_path(nested_root)
+	assert nested.output.contains(modules_layout_expected_move(os.join_path(nested_real,
+		'modules', 'helper'), os.join_path(nested_real, 'helper'))), nested.output
+
 	// A dotted import lives several directories deep, so moving just the leaf
 	// would need a destination parent that does not exist yet. Move the whole
 	// top-level module tree instead, which keeps every import path intact.
