@@ -248,3 +248,99 @@ fn main() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space().split('\n').map(it.trim_space()) == ["['a', 'b']", '[red]'], res.output
 }
+
+// `map` does not copy the receiver's elements, it makes new ones out of a callback,
+// so what that callback makes is what decides. Counting the cells of every row hands
+// back numbers, which carry nothing, however much the rows themselves carry.
+fn test_map_is_judged_by_what_its_callback_makes() {
+	v3_bin := fresh_builtin_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_map_result_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := fresh_builtin_compile(v3_bin, root, 'struct Row {
+mut:
+	cells []int
+}
+
+struct Table {
+	rows []Row
+}
+
+fn counted(t Table) []int {
+	return t.rows.map(it.cells.len)
+}
+
+fn main() {
+	t := Table{ rows: [Row{ cells: [1, 2, 3] }] }
+	mut counts := counted(t)
+	counts[0] = 9
+	println(t.rows[0].cells)
+	println(counts)
+}
+')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '[9]'], res.output
+}
+
+// The same callback handing the element straight back does carry what the element
+// carries, and that is still a window onto the rows it was called on.
+fn test_map_handing_the_element_back_still_shares() {
+	v3_bin := fresh_builtin_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_map_identity_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := fresh_builtin_compile(v3_bin, root, 'struct Row {
+mut:
+	cells []int
+}
+
+struct Table {
+	rows []Row
+}
+
+fn picked(t Table) []Row {
+	return t.rows.map(it)
+}
+
+fn main() {
+	t := Table{ rows: [Row{ cells: [1, 2, 3] }] }
+	mut rows := picked(t)
+	rows[0].cells[0] = 9
+	println(t.rows[0].cells)
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('aliases mutable data from an immutable value'), res.output
+}
+
+// `keys` hands back one side of a map, so only that side is in what comes out: the
+// arrays on the other side never appear in it.
+fn test_map_keys_is_judged_by_its_keys_alone() {
+	v3_bin := fresh_builtin_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_keys_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := fresh_builtin_compile(v3_bin, root, 'struct Holder {
+	m map[string][]int
+}
+
+fn names(h Holder) []string {
+	return h.m.keys()
+}
+
+fn main() {
+	mut mm := map[string][]int{}
+	mm["a"] = [1, 2, 3]
+	h := Holder{ m: mm }
+	mut k := names(h)
+	k[0] = "z"
+	println(h.m.keys())
+	println(k)
+}
+')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ["['a']", "['z']"], res.output
+}

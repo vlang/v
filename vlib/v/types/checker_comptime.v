@@ -13116,18 +13116,59 @@ fn fresh_collection_builtin(resolved_name string, decl_module string) bool {
 // what is handed back is independent of what it was called on only where the elements
 // carry nothing shareable.
 //
-// It is the receiver's elements that decide, because they are what the result is
-// built from. `map` builds its elements out of a callback instead and its own element
-// type is not known here, so it is checked too whenever it is.
-fn (tc &TypeChecker) builtin_result_shares_storage(id flat.NodeId, return_type Type) bool {
+// Which elements those are depends on the method. Most of them copy the receiver's
+// across as they are, so the receiver's element type decides. `map` fills its result
+// from a callback, so what the callback makes decides and the receiver's elements
+// need not appear in it at all. `keys` and `values` each hand back one side of a map,
+// and only that side is in what they return.
+fn (mut tc TypeChecker) builtin_result_shares_storage(builtin_name string, id flat.NodeId) bool {
 	receiver := tc.builtin_receiver_collection_type(id) or { return true }
-	if tc.collection_copy_shares_storage(receiver) {
-		return true
+	mut seen := map[string]bool{}
+	match builtin_name {
+		'array.map' {
+			elem := tc.array_map_result_elem_type(id) or { return true }
+			return tc.type_can_hold_shared_storage(elem, mut seen)
+		}
+		'map.keys' {
+			if receiver is Map {
+				return tc.type_can_hold_shared_storage(receiver.key_type, mut seen)
+			}
+			return true
+		}
+		'map.values' {
+			if receiver is Map {
+				return tc.type_can_hold_shared_storage(receiver.value_type, mut seen)
+			}
+			return true
+		}
+		else {
+			return tc.collection_copy_shares_storage(receiver)
+		}
 	}
-	if tc.collection_elements_are_known(return_type) {
-		return tc.collection_copy_shares_storage(return_type)
+}
+
+// What `map` puts in the array it builds. Its element type is not resolved where this
+// analysis runs, so the callback is read for it, under the same binding of `it` the
+// checker gives that callback when it checks it.
+fn (mut tc TypeChecker) array_map_result_elem_type(id flat.NodeId) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
 	}
-	return false
+	call := tc.a.node(id)
+	if call.children_count < 2 {
+		return none
+	}
+	arg_id := tc.call_arg_value(tc.a.child(call, 1))
+	if !tc.valid_node_id(arg_id) {
+		return none
+	}
+	tc.push_array_dsl_scope(*call, 'array.map')
+	elem := tc.resolve_type(arg_id)
+	tc.pop_scope()
+	if unalias_type(elem) is Unknown {
+		return none
+	}
+	return elem
 }
 
 fn (tc &TypeChecker) builtin_receiver_collection_type(id flat.NodeId) ?Type {
@@ -13226,26 +13267,31 @@ fn (tc &TypeChecker) type_can_hold_shared_storage(typ Type, mut seen map[string]
 	return false
 }
 
-fn (tc &TypeChecker) receiver_builtin_returns_fresh(id flat.NodeId) bool {
+fn (tc &TypeChecker) receiver_builtin_name(id flat.NodeId) ?string {
 	if !tc.valid_node_id(id) {
-		return false
+		return none
 	}
 	call := tc.a.node(id)
 	if call.children_count == 0 {
-		return false
+		return none
 	}
 	callee := tc.a.child_node(call, 0)
 	if callee.kind != .selector || callee.children_count == 0 {
-		return false
+		return none
 	}
 	receiver := unalias_type(tc.resolve_type(tc.a.child(callee, 0)))
+	mut qualified := ''
 	if receiver is Map {
-		return 'map.${callee.value}' in fresh_collection_builtins
+		qualified = 'map.${callee.value}'
+	} else if receiver is Array {
+		qualified = 'array.${callee.value}'
+	} else {
+		return none
 	}
-	if receiver is Array {
-		return 'array.${callee.value}' in fresh_collection_builtins
+	if qualified in fresh_collection_builtins {
+		return qualified
 	}
-	return false
+	return none
 }
 
 fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiting map[int]bool) []flat.NodeId {
@@ -13270,15 +13316,16 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	// to assume the worst of, and `map` and `filter` have no body here at all. They
 	// are settled by the declaration the call resolved to, so a method of one's own
 	// that happens to be called `map` is read like any other.
-	if fresh_collection_builtin(info.name, decl_module)
-		&& !tc.builtin_result_shares_storage(id, return_type) {
-		return []flat.NodeId{}
+	mut builtin_name := ''
+	if fresh_collection_builtin(info.name, decl_module) {
+		builtin_name = info.name
+	} else if info.name.len == 0 && info.has_receiver {
+		// Some of them resolve to no declaration at all. Nothing of one's own can be
+		// behind a name that resolved to nothing, so there it is what the receiver is
+		// that names the method, and a struct of one's own is never an array or a map.
+		builtin_name = tc.receiver_builtin_name(id) or { '' }
 	}
-	// Some of them resolve to no declaration at all. Nothing of one's own can be
-	// behind a name that resolved to nothing, so there it is what the receiver is
-	// that decides, and a struct of one's own is never an array or a map.
-	if info.name.len == 0 && info.has_receiver && tc.receiver_builtin_returns_fresh(id)
-		&& !tc.builtin_result_shares_storage(id, return_type) {
+	if builtin_name.len > 0 && !tc.builtin_result_shares_storage(builtin_name, id) {
 		return []flat.NodeId{}
 	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
