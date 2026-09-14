@@ -278,17 +278,35 @@ fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_
 }
 
 fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struct_name string, field_name string) bool {
-	if field_name != 'uncompressed' || struct_name != 'embed_file.EmbedFileData' {
+	if struct_name != 'embed_file.EmbedFileData' {
+		return false
+	}
+	if field_name != 'uncompressed' && field_name != 'chunks' {
 		return false
 	}
 	mut data_id := value_id
 	value := g.a.node(value_id)
-	if value.kind == .cast_expr && value.value == '&u8' && value.children_count > 0 {
+	if value.kind == .cast_expr && value.children_count > 0 {
 		data_id = g.a.child(value, 0)
 	}
 	data := g.a.node(data_id)
-	if data.kind != .string_literal {
+	if data.kind != .string_literal || !data.is_embed_payload() {
 		return false
+	}
+	// The parser names both fields from the same payload; exactly one of them
+	// carries it, depending on how the bytes had to be spelled.
+	chunked := data.value.len > c_max_object_size
+	if field_name == 'chunks' {
+		if !chunked {
+			g.write('NULL')
+			return true
+		}
+		g.write('(${g.cname('embed_file.EmbedFileChunk')}*)_v_embed_blob_${int(data_id)}')
+		return true
+	}
+	if chunked {
+		g.write('NULL')
+		return true
 	}
 	if embed_payload_needs_blob(data.value.len) {
 		// Too long to spell as a literal here; gen_embed_file_blobs defines the
@@ -304,6 +322,9 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 // payloads too long to write as string literals. They are emitted with the rest
 // of the declaration prefix, ahead of every function that can name one.
 //
+// A payload past what C requires an implementation to accept in one object is
+// split across several, listed in a table the runtime joins on first use.
+//
 // The objects are `static`: a parallel C build repeats this prefix in each unit,
 // and external linkage would then collide. It also means a payload that lands
 // here is repeated per unit, which is why only payloads that have no other way
@@ -318,30 +339,76 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 		if !embed_payload_needs_blob(node.value.len) {
 			continue
 		}
-		g.write('static const unsigned char _v_embed_blob_')
+		if node.value.len <= c_max_object_size {
+			g.write('static const unsigned char _v_embed_blob_')
+			g.sb.write_decimal(i64(i))
+			g.write_embed_blob_bytes(node.value, 0, node.value.len)
+			defined++
+			continue
+		}
+		mut parts := 0
+		for offset := 0; offset < node.value.len; offset += c_max_object_size {
+			mut part_len := node.value.len - offset
+			if part_len > c_max_object_size {
+				part_len = c_max_object_size
+			}
+			g.write('static const unsigned char _v_embed_blob_')
+			g.sb.write_decimal(i64(i))
+			g.sb.write_u8(`_`)
+			g.sb.write_decimal(i64(parts))
+			g.write_embed_blob_bytes(node.value, offset, part_len)
+			parts++
+		}
+		chunk_ct := g.cname('embed_file.EmbedFileChunk')
+		g.write('static const ${chunk_ct} _v_embed_blob_')
 		g.sb.write_decimal(i64(i))
 		g.sb.write_string('[')
-		g.sb.write_decimal(i64(node.value.len))
-		g.sb.write_string('] = {')
-		for j in 0 .. node.value.len {
-			if j % embed_blob_bytes_per_line == 0 {
-				g.sb.write_u8(`\n`)
+		g.sb.write_decimal(i64(parts + 1))
+		g.writeln('] = {')
+		for part in 0 .. parts {
+			offset := part * c_max_object_size
+			mut part_len := node.value.len - offset
+			if part_len > c_max_object_size {
+				part_len = c_max_object_size
 			}
-			b := node.value[j]
-			g.sb.write_string('0x')
-			g.sb.write_u8(c_hex_digits[b >> 4])
-			g.sb.write_u8(c_hex_digits[b & 0xf])
-			// The trailing comma before `}` is allowed, and lets every byte be
-			// written by the same step.
-			g.sb.write_u8(`,`)
+			g.write('{.data = (u8*)_v_embed_blob_')
+			g.sb.write_decimal(i64(i))
+			g.sb.write_u8(`_`)
+			g.sb.write_decimal(i64(part))
+			g.sb.write_string(', .len = ')
+			g.sb.write_decimal(i64(part_len))
+			g.writeln('},')
 		}
-		g.writeln('')
+		// The zero length entry ends the table.
+		g.writeln('{.data = NULL, .len = 0},')
 		g.writeln('};')
 		defined++
 	}
 	if defined > 0 {
 		g.writeln('')
 	}
+}
+
+// write_embed_blob_bytes finishes an array declaration whose name is already
+// written, with `count` bytes of `payload` starting at `offset`.
+fn (mut g FlatGen) write_embed_blob_bytes(payload string, offset int, count int) {
+	g.sb.write_string('[')
+	g.sb.write_decimal(i64(count))
+	g.sb.write_string('] = {')
+	for j in 0 .. count {
+		if j % embed_blob_bytes_per_line == 0 {
+			g.sb.write_u8(`\n`)
+		}
+		b := payload[offset + j]
+		g.sb.write_string('0x')
+		g.sb.write_u8(c_hex_digits[b >> 4])
+		g.sb.write_u8(c_hex_digits[b & 0xf])
+		// The trailing comma before `}` is allowed, and lets every byte be
+		// written by the same step.
+		g.sb.write_u8(`,`)
+	}
+	g.writeln('')
+	g.writeln('};')
 }
 
 fn default_init_unalias_type(typ types.Type) types.Type {

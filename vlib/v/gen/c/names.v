@@ -614,6 +614,12 @@ fn embed_payload_needs_blob(payload_len int) bool {
 	return payload_len > c_string_literal_max_total
 }
 
+// c_max_object_size is how many bytes C99 5.2.4.1 requires a hosted
+// implementation to accept in a single object. A payload past this is emitted as
+// several objects and joined at runtime, for the same reason the literal cutoff
+// is C's figure rather than one compiler's.
+const c_max_object_size = 65535
+
 // embed_blob_bytes_per_line keeps the array initializer of such a payload to
 // short source lines, for the same reason the literal form is split.
 const embed_blob_bytes_per_line = 20

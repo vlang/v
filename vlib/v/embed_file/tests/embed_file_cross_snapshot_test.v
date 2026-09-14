@@ -28,6 +28,11 @@ const c_min_logical_source_line = 4095
 // as an array object instead.
 const c_min_concatenated_string_literal = 4095
 
+// c_max_object_size is how many bytes a hosted C implementation has to accept in
+// a single object (C99 5.2.4.1). A payload past this cannot be embedded as one
+// array however it is spelled, so it has to be split and joined at runtime.
+const c_max_object_size = 65535
+
 // tricky_payload holds the bytes whose escaping a C compiler would otherwise
 // misread: a quote ends the literal, a backslash starts an escape, `??!` is a
 // trigraph, and neither a NUL nor a high byte survives verbatim.
@@ -152,6 +157,43 @@ fn escape_width(text string, i int) int {
 	return width
 }
 
+// largest_declared_array returns the biggest length that `text` declares an array
+// with, counting only those that have an initializer. For the byte arrays an
+// embedded payload is written as, that length is the size of the object. Arrays
+// of wider elements are undercounted, which only makes this lenient.
+fn largest_declared_array(text string) int {
+	mut largest := 0
+	mut i := 0
+	for i < text.len {
+		if text[i] != `[` {
+			i++
+			continue
+		}
+		mut end := i + 1
+		for end < text.len && text[end].is_digit() {
+			end++
+		}
+		if end == i + 1 || end >= text.len || text[end] != `]` {
+			i++
+			continue
+		}
+		mut after := end + 1
+		for after < text.len && text[after] == ` ` {
+			after++
+		}
+		if after >= text.len || text[after] != `=` {
+			i = end + 1
+			continue
+		}
+		length := text[i + 1..end].int()
+		if length > largest {
+			largest = length
+		}
+		i = end + 1
+	}
+	return largest
+}
+
 // cross_compile_probe generates portable C for a program embedding `payload`, and
 // returns its temporary directory and the generated C file.
 fn cross_compile_probe(payload string) ?(string, string) {
@@ -181,6 +223,22 @@ fn main() {
 		assert false, res.output
 	}
 	return dir, out
+}
+
+// probe_splits_over_large_payloads reports whether the compiler being probed is
+// one that knows how to split a payload. Unlike everything else asserted here,
+// that is not a property every backend ever had: the V1 compatibility compiler a
+// test run can fall back to emits one object of any size, and compiles its own
+// standard library, where the chunk table does not exist. Asking that library is
+// therefore the question, rather than which binary is in VEXE.
+fn probe_splits_over_large_payloads() bool {
+	vexe := os.getenv('VEXE')
+	if vexe == '' {
+		return false
+	}
+	runtime := os.join_path(os.dir(vexe), 'vlib', 'v', 'embed_file', 'embed_file.v')
+	text := os.read_file(runtime) or { return false }
+	return text.contains('EmbedFileChunk')
 }
 
 // cross_probe_text returns the portable C of a program embedding `payload`.
@@ -245,6 +303,28 @@ fn test_cross_output_never_builds_an_over_long_string_literal() {
 		text := cross_probe_text(payload) or { return }
 		longest := longest_concatenated_string_literal(text)
 		assert longest <= allowed, '${payload.len} embedded bytes were spelled as string literals joining into ${longest} bytes, past the ${allowed} a C implementation has to accept'
+	}
+}
+
+// test_cross_output_never_declares_an_over_large_object covers the limit that the
+// array representation runs into in turn: C only has to accept 65535 bytes in one
+// object, so a payload past that is split and joined when it is first asked for.
+fn test_cross_output_never_declares_an_over_large_object() {
+	if !probe_splits_over_large_payloads() {
+		return
+	}
+	small := cross_probe_text(tricky_payload) or { return }
+	mut allowed := largest_declared_array(small)
+	if allowed < c_max_object_size {
+		allowed = c_max_object_size
+	}
+	// Otherwise the case this test is about would not arise.
+	assert payload_of(large_payload_len).len > c_max_object_size
+	for size in probed_payload_lens {
+		payload := payload_of(size)
+		text := cross_probe_text(payload) or { return }
+		largest := largest_declared_array(text)
+		assert largest <= allowed, '${payload.len} embedded bytes were declared as an object of ${largest} bytes, past the ${allowed} a C implementation has to accept'
 	}
 }
 

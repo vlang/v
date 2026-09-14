@@ -6303,8 +6303,13 @@ fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
 		p.embed_file_field('apath', p.add_val_id(5, apath)),
 		p.embed_file_field('len', p.add_val_id(1, len.str())),
 	]
-	if uncompressed := p.embed_file_uncompressed_data(apath) {
-		field_ids << p.embed_file_field('uncompressed', uncompressed)
+	if payload := p.embed_file_uncompressed_data(apath) {
+		// Both fields are set here, from the same payload node, because only the
+		// backend knows which of the two representations the bytes will take: one
+		// object if C is required to accept it, a table of chunks if not. Naming
+		// both leaves neither to a default that would then have to be overridden.
+		field_ids << p.embed_file_field('uncompressed', p.embed_file_payload_cast(payload, '&u8'))
+		field_ids << p.embed_file_field('chunks', p.embed_file_payload_cast(payload, '&embed_file.EmbedFileChunk'))
 	}
 	if compression_type !in ['none', 'zlib'] {
 		field_ids << p.a.add_node(flat.Node{
@@ -6337,19 +6342,24 @@ fn (mut p Parser) embed_file_uncompressed_data(apath string) ?flat.NodeId {
 		return none
 	}
 	bytes := os.read_bytes(apath) or { return none }
-	// Flagged, so that the literal table skips it: only the embed codegen below
-	// reads this node, and an interned copy would repeat the payload verbatim.
-	data := p.add_node(flat.Node{
+	// Flagged, so that the literal table skips it: only the embed codegen reads
+	// this node, and an interned copy would repeat the payload verbatim.
+	return p.add_node(flat.Node{
 		kind: .string_literal
 		value: bytes.bytestr().clone()
 		flags: flat.node_flag_embed_payload
 	})
+}
+
+// embed_file_payload_cast points one of the payload fields at `payload`. The two
+// fields have different types, so each gets its own cast over the same node.
+fn (mut p Parser) embed_file_payload_cast(payload flat.NodeId, typ string) flat.NodeId {
 	return p.add_node(flat.Node{
 		kind: .cast_expr
-		value: '&u8'
-		typ: '&u8'
+		value: typ
+		typ: typ
 		is_mut: true // marks this compiler-generated trusted embed buffer cast
-		children_start: p.add_child(data)
+		children_start: p.add_child(payload)
 		children_count: 1
 	})
 }
