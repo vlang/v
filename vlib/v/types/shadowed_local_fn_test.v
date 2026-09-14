@@ -32,7 +32,12 @@ fn shadow_checker() (&flat.FlatAst, &TypeChecker) {
 }
 
 fn shadowed_key(mut tc TypeChecker, module_name string, name string) string {
+	return shadowed_key_in(mut tc, module_name, 'main.v', name)
+}
+
+fn shadowed_key_in(mut tc TypeChecker, module_name string, file string, name string) string {
 	tc.cur_module = module_name
+	tc.cur_file = file
 	return tc.shadowed_local_fn_key(name) or { '' }
 }
 
@@ -64,15 +69,18 @@ fn test_local_variable_does_not_shadow_a_function_of_another_module() {
 fn test_a_script_shadows_the_os_functions_it_calls_unqualified() {
 	mut a, mut tc := shadow_checker()
 	// Without a script in the compilation an `os` function stays out of reach.
-	assert shadowed_key(mut tc, 'main', 'uname') == ''
+	assert shadowed_key_in(mut tc, 'main', 'main.vsh', 'uname') == ''
 	a.has_vsh_source = true
-	assert shadowed_key(mut tc, 'main', 'uname') == 'os.uname'
-	assert shadowed_key(mut tc, 'foo', 'uname') == 'os.uname'
+	assert shadowed_key_in(mut tc, 'main', 'main.vsh', 'uname') == 'os.uname'
+	assert shadowed_key_in(mut tc, 'foo', 'main.vsh', 'uname') == 'os.uname'
+	// Unqualified `os` reaches only into the script, not into a plain `.v` file
+	// compiled beside it.
+	assert shadowed_key_in(mut tc, 'main', 'companion.v', 'uname') == ''
 	// Only a public `os` declaration is reachable that way, and a name that has
 	// no `os` function behind it is not shadowed by anything.
-	assert shadowed_key(mut tc, 'main', 'new_node') == ''
-	assert shadowed_key(mut tc, 'main', 'absent') == ''
+	assert shadowed_key_in(mut tc, 'main', 'main.vsh', 'new_node') == ''
+	assert shadowed_key_in(mut tc, 'main', 'main.vsh', 'absent') == ''
 	// The module tiers still answer first.
-	assert shadowed_key(mut tc, 'main', 'helper') == 'helper'
-	assert shadowed_key(mut tc, 'main', 'println') == 'println'
+	assert shadowed_key_in(mut tc, 'main', 'main.vsh', 'helper') == 'helper'
+	assert shadowed_key_in(mut tc, 'main', 'main.vsh', 'println') == 'println'
 }

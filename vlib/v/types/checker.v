@@ -4829,10 +4829,12 @@ fn (tc &TypeChecker) shadowed_local_fn_key(name string) ?string {
 		}
 	}
 	// A `.vsh` script calls the `os` functions unqualified, so a local of one of
-	// those names shadows it as well. This asks `declaration_visibility`, which
-	// is forked to the parallel checkers, rather than the script-mode resolver,
-	// whose semantic-name index is not and would read empty in a worker.
-	if tc.a.has_vsh_source {
+	// those names shadows it as well - in the script itself, which is what
+	// `vsh_script_file` asks, and not in a plain `.v` file that happens to be
+	// compiled beside one. This asks `declaration_visibility`, which is forked
+	// to the parallel checkers, rather than the script-mode resolver, whose
+	// semantic-name index is not and would read empty in a worker.
+	if tc.vsh_script_file() {
 		os_key := 'os.${name}'
 		if os_visibility := tc.declaration_visibility[os_key] {
 			if os_visibility.kind == .fn_decl && os_visibility.is_pub {
