@@ -60,6 +60,7 @@ local_git_repo() {
 	[ -z "$promisor_config" ] || return 1
 	is_shallow=$(git -C "$repository" rev-parse --is-shallow-repository 2>/dev/null) || return 1
 	[ "$is_shallow" = false ] || return 1
+	git -C "$repository" show-ref --verify --quiet refs/heads/master || return 1
 	git -C "$repository" cat-file -e "$revision^{commit}" 2>/dev/null || return 1
 	git -C "$repository" archive --format=tar "$revision" >/dev/null 2>&1 || return 1
 	common_dir=$(git -C "$repository" rev-parse --git-common-dir 2>/dev/null) || return 1

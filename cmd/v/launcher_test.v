@@ -56,6 +56,7 @@ fn test_v1_fallback_installer_uses_last_v1_snapshot() {
 	assert installer.contains('[ -z "$promisor_config" ] || return 1')
 	assert installer.contains('rev-parse --is-shallow-repository')
 	assert installer.contains('[ "$is_shallow" = false ] || return 1')
+	assert installer.contains('show-ref --verify --quiet refs/heads/master || return 1')
 	assert installer.contains('oldv_copy=\'copy /Y .\\v.exe "%V1_FALLBACK_TARGET%" >NUL\'')
 	assert !installer.contains('V1_FALLBACK_ROOT_TARGET')
 	assert !installer.contains('releases/download')
