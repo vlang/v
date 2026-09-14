@@ -18313,6 +18313,12 @@ fn (g &FlatGen) c_voidptr_param_arg_needs_cast(fn_name string, callee_name strin
 	if c_symbol_is_compiler_builtin(fn_name) || c_symbol_is_compiler_builtin(callee_name) {
 		return false
 	}
+	// Function-like macros can inspect the typed operand itself, for example with
+	// `((p)->field)`, so changing that operand to `void*` breaks their expansion.
+	if fn_name.all_after_last('.') in g.inlined_c_active_macros
+		|| callee_name.all_after_last('.') in g.inlined_c_active_macros {
+		return false
+	}
 	if g.is_c_extern_fn_name_arg(arg_id) {
 		return false
 	}

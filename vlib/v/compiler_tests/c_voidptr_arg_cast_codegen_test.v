@@ -38,6 +38,9 @@ static inline int strict_is_nonnull_u64(uint64_t* x) { return x != 0; }
 #endif
 '
 	os.write_file(os.join_path(root, 'strict_atomic.h'), header) or { panic(err) }
+	os.write_file(os.join_path(root, 'strict_macro.c'), '#define strict_get_count(p) ((p)->count)\n') or {
+		panic(err)
+	}
 	path := os.join_path(root, 'main.v')
 	os.write_file(path, source) or { panic(err) }
 	return path
@@ -48,11 +51,13 @@ fn test_c_voidptr_param_pointer_arg_goes_through_voidptr() {
 	src := voidptr_arg_write_project('module main
 
 #include "@DIR/strict_atomic.h"
+#include "@DIR/strict_macro.c"
 
 fn C.strict_load_u64(voidptr) u64
 fn C.strict_store_u64(voidptr, u64)
 fn C.strict_load_any(voidptr) u64
 fn C.strict_is_nonnull_u64(voidptr) int
+fn C.strict_get_count(voidptr) u32
 
 struct Table {
 mut:
@@ -74,9 +79,15 @@ fn main() {
 	same := C.strict_load_any(voidptr(&slot))
 	// Aliases to pointer types need the same conversion as direct pointers.
 	nonnull := C.strict_is_nonnull_u64(TableRef(table))
+	// A macro can depend on the concrete pointer type of its operand.
+	item := Table{
+		count: 9
+	}
+	macro_count := C.strict_get_count(&item)
 	println(int(loaded.count).str())
 	println((same == u64(voidptr(table))).str())
 	println(nonnull.str())
+	println(macro_count.str())
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_voidptr_arg_cast_out_${os.getpid()}')
@@ -85,7 +96,7 @@ fn main() {
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == ['7', 'true',
-		'1']
+		'1', '9']
 	generated := os.read_file(out + '.c') or { panic(err) }
 	// The macro is a no-op in C++, where `void*` does not convert back to a
 	// concrete pointer and the argument has to stay as written.
@@ -95,6 +106,9 @@ fn main() {
 	assert generated.contains('strict_load_u64(v_c_voidptr_arg(&slot))'), generated
 	assert generated.contains('strict_store_u64(v_c_voidptr_arg(&slot)'), generated
 	assert generated.contains('strict_is_nonnull_u64(v_c_voidptr_arg('), generated
+	// ... but an active function-like macro receives the original typed pointer.
+	assert generated.contains('strict_get_count(&item)'), generated
+	assert !generated.contains('strict_get_count(v_c_voidptr_arg('), generated
 	// ... while an argument that is already `voidptr` is passed unchanged.
 	assert !generated.contains('strict_load_any(v_c_voidptr_arg('), generated
 
