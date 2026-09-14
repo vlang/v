@@ -37,11 +37,15 @@ pub fn global_field_size() int {
 	return int(sizeof(global_sizeof_state.event))
 }
 
+// The local was named `global_sizeof_state` too, so this pinned down that
+// `sizeof` followed the local rather than the global of that name. Reusing the
+// name of a global is an error now; the two selectors still have to be told
+// apart, which is what the differing names leave in place.
 pub fn local_field_size() int {
-	global_sizeof_state := State{
+	local_sizeof_state := State{
 		event: 3
 	}
-	return int(sizeof(global_sizeof_state.event))
+	return int(sizeof(local_sizeof_state.event))
 }
 
 pub fn type_size() int {

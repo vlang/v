@@ -8319,10 +8319,14 @@ to race conditions. There are several approaches to deal with these:
 
 ### Shadowing a global
 
-A local variable with the same name as a global is not a separate variable: the name
-resolves to the global, so the local is declared and then never read, and every later
-use of that name means the global. This holds even when the global is declared in a
-module the file does not import, since a global's bare name is visible everywhere.
+A local variable may not reuse the name of a global. A global's bare name is visible
+everywhere, including in modules that never import the one declaring it, so the two
+names are not as far apart as they look.
+
+Where the global belongs to another module, the local does not merely shadow it, it
+loses: the declaration is ignored and every use of that name, including the ones that
+look like reads of the local, means the global. The code then does something other
+than it reads, with nothing to point at.
 
 V rejects it:
 
