@@ -1,0 +1,98 @@
+// `parse_known_comptime_match_value` skips the arms of a `$match` that this
+// build does not take, exactly as `parse_comptime_if` skips a branch, so an
+// identifier used only there is invisible to the AST. Spelling a name in such
+// an arm is still not referencing it: a field label and a member of something
+// else leave the parameter unused, the same answer the target that takes the
+// arm gives.
+struct Cfg {
+	x int
+	y int
+}
+
+fn configure(c Cfg) int {
+	return c.x
+}
+
+// Used only by the arm one target takes and the rest drop.
+fn only_in_an_arm(w int) {
+	$match @OS {
+		'windows' {
+			println(w)
+		}
+		$else {}
+	}
+}
+
+// Several patterns share one body, and it reads the parameter too.
+fn several_patterns(v int) {
+	$match @OS {
+		'windows', 'freebsd' {
+			println(v)
+		}
+		$else {}
+	}
+}
+
+// A `$if` nested in an arm, and an arm nested in a `$if`.
+fn nested_both_ways(u int) {
+	$match @OS {
+		'windows' {
+			$if amd64 {
+				println(u)
+			} $else {
+				println(u)
+			}
+		}
+		$else {}
+	}
+}
+
+fn field_label_arm(x int) {
+	$match @OS {
+		'windows' {
+			_ = configure(x: 1)
+		}
+		$else {}
+	}
+}
+
+fn member_arm(y int) {
+	$match @OS {
+		'windows' {
+			c := Cfg{}
+			_ = c.y
+		}
+		$else {}
+	}
+}
+
+fn never_mentioned(p int) {
+	$match @OS {
+		'windows' {
+			println('w')
+		}
+		$else {}
+	}
+}
+
+// What stands after a `$match` is code of the function again.
+fn after_a_match(t int) {
+	$match @OS {
+		'windows' {
+			println('w')
+		}
+		$else {}
+	}
+	println(t)
+}
+
+fn main() {
+	after_a_match(1)
+	never_mentioned(2)
+	member_arm(3)
+	field_label_arm(4)
+	nested_both_ways(5)
+	several_patterns(6)
+	only_in_an_arm(7)
+	println(configure(x: 8))
+}

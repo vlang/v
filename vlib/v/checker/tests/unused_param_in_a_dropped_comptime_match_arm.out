@@ -1,0 +1,21 @@
+vlib/v/checker/tests/unused_param_in_a_dropped_comptime_match_arm.vv:50:20: notice: unused parameter: `x`
+   48 | }
+   49 | 
+   50 | fn field_label_arm(x int) {
+      |                    ^
+   51 |     $match @OS {
+   52 |         'windows' {
+vlib/v/checker/tests/unused_param_in_a_dropped_comptime_match_arm.vv:59:15: notice: unused parameter: `y`
+   57 | }
+   58 | 
+   59 | fn member_arm(y int) {
+      |               ^
+   60 |     $match @OS {
+   61 |         'windows' {
+vlib/v/checker/tests/unused_param_in_a_dropped_comptime_match_arm.vv:69:20: notice: unused parameter: `p`
+   67 | }
+   68 | 
+   69 | fn never_mentioned(p int) {
+      |                    ^
+   70 |     $match @OS {
+   71 |         'windows' {

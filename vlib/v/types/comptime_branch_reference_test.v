@@ -540,3 +540,51 @@ fn test_a_newline_call_continues_only_where_the_parser_joins_it() {
 	assert !code_references_ident('cb := |x| a\n\t.b\n\t\t(x)', 'x', true)
 	assert code_references_ident('cb := |x| a\n\t.b\n(x)', 'x', true)
 }
+
+fn branch_bodies(source string) []string {
+	return declaration_comptime_branch_ranges(source, 0).map(source[it.start..it.end])
+}
+
+fn test_the_arms_of_a_comptime_match_are_branches() {
+	// `parse_known_comptime_match_value` skips an arm it does not take, so
+	// every arm body is a range of its own - and the `{` of the `$match` is
+	// not, because it only opens the arms.
+	assert branch_bodies('fn f() {\n\$match @OS {\n\t"a" { A }\n\t"b" { B }\n\t\$else { C }\n}\n}') == [
+		' A ',
+		' B ',
+		' C ',
+	]
+	// Several patterns still open one body.
+	assert branch_bodies('fn f() {\n\$match @OS {\n\t"a", "b" { A }\n\t\$else { C }\n}\n}') == [
+		' A ',
+		' C ',
+	]
+	// Braces inside an arm belong to it, not to the `$match`.
+	assert branch_bodies('fn f() {\n\$match @OS {\n\t"a" { m := {x: 1} }\n\t\$else {}\n}\n}') == [
+		' m := {x: 1} ',
+		'',
+	]
+	// Nested both ways.
+	assert branch_bodies('fn f() {\n\$match @OS {\n\t"a" { \$if x { A } }\n\t\$else {}\n}\n}') == [
+		' A ',
+		' \$if x { A } ',
+		'',
+	]
+	assert branch_bodies('fn f() {\n\$if x {\n\$match @OS {\n\t"a" { A }\n\t\$else {}\n}\n}\n}')[0] == ' A '
+	// A `$match` leaves what follows it alone.
+	assert branch_bodies('fn f() {\n\$match @OS {\n\t"a" { A }\n\t\$else {}\n}\nB\n}') == [
+		' A ',
+		'',
+	]
+}
+
+fn test_a_short_struct_argument_of_an_indexed_dynamic_callee() {
+	// Stripping the indexes can expose a call rather than a name.
+	assert !code_references_ident('_ = make_handlers()[0](x: 1)', 'x', true)
+	assert !code_references_ident('_ = make_handlers()[0][1](x: 1)', 'x', true)
+	assert !code_references_ident('_ = (handlers)[0](x: 1)', 'x', true)
+	assert !code_references_ident('_ = handlers[0][1](x: 1)', 'x', true)
+	// The indexes themselves are still read.
+	assert code_references_ident('_ = make_handlers()[x](y: 1)', 'x', true)
+	assert code_references_ident('_ = make_handlers()[0][x](y: 1)', 'x', true)
+}

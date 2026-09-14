@@ -40,3 +40,10 @@ vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:66:19: no
       |                   ^
    67 |     $if windows {
    68 |         fn (cfg Config) {
+vlib/v/checker/tests/unused_param_named_like_a_dropped_branch_field.vv:75:27: notice: unused parameter: `y`
+   73 | 
+   74 | // Stripping the indexes of a callee can leave a call rather than a name.
+   75 | fn indexed_dynamic_callee(y int) {
+      |                           ^
+   76 |     $if windows {
+   77 |         _ = handlers()[0][0](y: 1)

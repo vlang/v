@@ -71,7 +71,15 @@ fn literal_callee(y int) {
 	}
 }
 
+// Stripping the indexes of a callee can leave a call rather than a name.
+fn indexed_dynamic_callee(y int) {
+	$if windows {
+		_ = handlers()[0][0](y: 1)
+	}
+}
+
 fn main() {
+	indexed_dynamic_callee(12)
 	literal_callee(10)
 	fn (cfg Config) {
 		println(cfg.x)

@@ -2641,10 +2641,12 @@ fn (tc &TypeChecker) subtree_has_node_in_range(node flat.Node, start int, end in
 }
 
 // declaration_comptime_branch_ranges returns the source range of every `$if`
-// and `$else` body of the declaration starting at `start`, nested ones
-// included. Only those branches can hide an identifier from the AST, so the
-// rest of the declaration - where a field name or a comment could collide with
-// a searched name - is deliberately not covered. Nothing is returned for a
+// and `$else` body of the declaration starting at `start`, and of every arm of
+// a `$match`, nested ones included. `parse_known_comptime_match_value` skips
+// the arms it does not take exactly as `parse_comptime_if` skips a branch, so
+// an arm hides an identifier the same way. Only those bodies can, so the rest
+// of the declaration - where a field name or a comment could collide with a
+// searched name - is deliberately not covered. Nothing is returned for a
 // declaration without a body, such as `fn C.uname(name &C.utsname) i32`.
 fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranchRange {
 	mut ranges := []ComptimeBranchRange{}
@@ -2656,6 +2658,10 @@ fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranch
 	mut depth := 0
 	mut paren_depth := 0
 	mut branch_expected := false
+	// The depth the arms of each open `$match` stand at, so that a `{` there is
+	// told apart from the one that opened the `$match` itself.
+	mut arm_depths := []int{}
+	mut match_expected := false
 	mut i := start
 	for i < source.len {
 		skipped, _ := skip_non_code_at(source, i)
@@ -2669,8 +2675,11 @@ fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranch
 			for word_end < source.len && is_import_ident_byte(source[word_end]) {
 				word_end++
 			}
-			if source[i + 1..word_end] in ['if', 'else'] {
+			word := source[i + 1..word_end]
+			if word in ['if', 'else'] {
 				branch_expected = true
+			} else if word == 'match' {
+				match_expected = true
 			}
 		}
 		if c == `(` {
@@ -2678,14 +2687,26 @@ fn declaration_comptime_branch_ranges(source string, start int) []ComptimeBranch
 		} else if c == `)` {
 			paren_depth--
 		} else if c == `{` {
-			if branch_expected {
+			// The `{` of a `$match` opens its arms, not a body of its own; the
+			// bodies are the braces standing directly in it.
+			opens_arms := match_expected
+			opens_branch := !opens_arms && (branch_expected
+				|| (arm_depths.len > 0 && arm_depths.last() == depth))
+			if opens_arms {
+				arm_depths << depth + 1
+			}
+			if opens_branch {
 				open_starts << i + 1
 				open_depths << depth
-				branch_expected = false
 			}
+			branch_expected = false
+			match_expected = false
 			depth++
 		} else if c == `}` {
 			depth--
+			for arm_depths.len > 0 && arm_depths.last() > depth {
+				arm_depths.pop()
+			}
 			for open_depths.len > 0 && open_depths.last() == depth {
 				open_depths.pop()
 				branch_start := open_starts.pop()
@@ -3042,12 +3063,6 @@ fn name_precedes_delimiter(tokens []string, index int) bool {
 		return false
 	}
 	mut before := index - 1
-	if tokens[index] == '(' && tokens[before] in [')', '}'] {
-		// `make_handler()(x: 1)` and `(handler)(x: 1)` call what the group
-		// evaluates to, and `fn (_ Config) {}(x: 1)` the literal the `}`
-		// closes, so the argument names a field just the same.
-		return true
-	}
 	// `handlers[i][j](x: 1)` indexes twice before it calls, so every group of
 	// the callee has to be stepped over, not just the last one.
 	for before >= 0 && tokens[before] == ']' {
@@ -3064,6 +3079,14 @@ fn name_precedes_delimiter(tokens []string, index int) bool {
 			before--
 		}
 		before--
+	}
+	if tokens[index] == '(' && before >= 0 && tokens[before] in [')', '}'] {
+		// `make_handler()(x: 1)` and `(handler)(x: 1)` call what the group
+		// evaluates to, `fn (_ Config) {}(x: 1)` the literal the `}` closes,
+		// and `make_handlers()[0](x: 1)` what the index selects from one - the
+		// callee only shows itself once the indexes are off. All of them name a
+		// field with the argument just the same.
+		return true
 	}
 	if before > 0 && tokens[before - 1] == '.' {
 		// `cfg.type(x: 1)` calls a field whose name is spelled like a keyword.
