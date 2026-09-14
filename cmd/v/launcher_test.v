@@ -146,19 +146,33 @@ fn test_v1_fallback_cache_without_a_home_is_private() {
 	}
 	first := v1_fallback_cache_parent()!
 	second := v1_fallback_cache_parent()!
-	defer {
-		os.rmdir_all(first) or {}
-		os.rmdir_all(second) or {}
-	}
-	assert first != second
+	assert first == second
+	assert first == os.join_path(os.temp_dir(), 'v1-fallback-cache-${os.geteuid()}')
 	assert os.is_dir(first)
-	assert os.is_dir(second)
 	assert !os.is_link(first)
-	assert !os.is_link(second)
 	$if !windows {
 		attributes := os.lstat(first)!
 		assert attributes.uid == u32(os.geteuid())
 		assert attributes.mode & 0o077 == 0
+	}
+}
+
+fn test_v1_fallback_private_temp_cache_rejects_a_symlink() {
+	$if !windows {
+		base := os.join_path(os.vtmp_dir(), 'v1_fallback_unsafe_cache_${os.getpid()}')
+		target := os.join_path(base, 'target')
+		candidate := os.join_path(base, 'v1-fallback-cache-${os.geteuid()}')
+		os.rmdir_all(base) or {}
+		defer {
+			os.rmdir_all(base) or {}
+		}
+		os.mkdir_all(target)!
+		os.symlink(target, candidate)!
+		if unsafe_cache := v1_fallback_private_temp_cache_parent(base) {
+			assert false, 'accepted unsafe fallback cache `${unsafe_cache}`'
+		} else {
+			assert err.msg().contains('expected a real directory')
+		}
 	}
 }
 

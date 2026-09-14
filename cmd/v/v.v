@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module main
 
-import crypto.rand
 import os
 import strings
 import v.cmdexec
@@ -548,9 +547,12 @@ fn ensure_v1_fallback(reason string) !string {
 		}
 	}
 	fallback := os.join_path(vroot, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	if installed := resolve_v1_fallback(fallback) {
+		return installed
+	}
 	cache_parent := v1_fallback_cache_parent()!
 	cached_launcher := v1_fallback_cached_launcher(cache_parent)
-	if installed := resolve_installed_v1_fallback(fallback, cached_launcher) {
+	if installed := resolve_v1_fallback(cached_launcher) {
 		return installed
 	} else {
 		make_command := find_make() or {
@@ -590,18 +592,32 @@ fn v1_fallback_cache_parent() !string {
 	if home != '' {
 		return os.abs_path(os.join_path(home, '.cache', 'v', 'v1-fallback'))
 	}
-	for _ in 0 .. 10 {
-		token := rand.bytes(16)!.hex()
-		candidate := os.join_path(os.temp_dir(), 'v1-fallback-cache.${token}')
-		os.mkdir(candidate, mode: 0o700) or {
-			if os.exists(candidate) || os.is_link(candidate) {
-				continue
-			}
-			return error('could not create a private V1 fallback cache: ${err}')
+	return v1_fallback_private_temp_cache_parent(os.temp_dir())
+}
+
+fn v1_fallback_private_temp_cache_parent(temp_root string) !string {
+	$if !windows {
+		root_attributes := os.stat(temp_root) or {
+			return error('could not inspect the temporary directory `${temp_root}`: ${err}')
 		}
-		return candidate
+		if root_attributes.mode & 0o022 != 0 && root_attributes.mode & os.s_isvtx == 0 {
+			return error('temporary directory `${temp_root}` is writable by other users without the sticky bit')
+		}
 	}
-	return error('could not create a unique private V1 fallback cache')
+	candidate := os.join_path(temp_root, 'v1-fallback-cache-${os.geteuid()}')
+	os.mkdir(candidate, mode: 0o700) or {}
+	attributes := os.lstat(candidate) or {
+		return error('could not create a private V1 fallback cache at `${candidate}`: ${err}')
+	}
+	if os.is_link(candidate) || attributes.get_filetype() != .directory {
+		return error('refusing unsafe V1 fallback cache path `${candidate}`: expected a real directory')
+	}
+	$if !windows {
+		if attributes.uid != u32(os.geteuid()) || attributes.mode & 0o077 != 0 {
+			return error('refusing unsafe V1 fallback cache path `${candidate}`: expected user-owned mode 0700')
+		}
+	}
+	return candidate
 }
 
 fn v1_fallback_cached_launcher(cache_parent string) string {
