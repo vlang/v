@@ -32,7 +32,6 @@ const tool_cache_field_separator = '\x1f'
 // because Windows was still executing it; `prune_stale_tool_binaries` collects these later
 const tool_cache_replaced_marker = '.replaced.'
 const tool_cache_stage_prefix = '.v-toolcache-stage-'
-const tool_cache_lock_suffix = '.lock'
 
 // ToolCacheEntry describes where a single compiled `cmd/tools/` program is cached.
 struct ToolCacheEntry {
@@ -587,10 +586,33 @@ fn is_cache_artifact_of(name string, tool string) bool {
 	return suffix == '' || suffix.starts_with('.')
 }
 
+// tool_cache_lock_path names the persistent mutex shared by every cache key for one tool.
+fn tool_cache_lock_path(entry ToolCacheEntry) string {
+	return os.join_path(os.dir(entry.dir), '.${entry.name}.toolcache.lock')
+}
+
+// tool_cache_lock opens the persistent lock file without removing it between owners.
+fn tool_cache_lock(entry ToolCacheEntry) !filelock.FileLock {
+	path := tool_cache_lock_path(entry)
+	ensure_tool_cache_lock_file(path)!
+	return filelock.new_file(path, mode: .exclusive)
+}
+
 // prune_stale_tool_binaries drops the cache entries of previous builds of the same tool.
 // Unlinking an executable that another process is currently running is safe on POSIX: that
 // process keeps its own already opened image.
 fn prune_stale_tool_binaries(entry ToolCacheEntry) {
+	mut build_lock := tool_cache_lock(entry) or { return }
+	if !build_lock.try_acquire() {
+		return
+	}
+	defer {
+		build_lock.release()
+	}
+	prune_stale_tool_binaries_locked(entry)
+}
+
+fn prune_stale_tool_binaries_locked(entry ToolCacheEntry) {
 	// A binary that Windows would not let us overwrite while it was still being executed was
 	// renamed aside instead. Open the entry without following links and enumerate/remove its
 	// children through that pinned directory, rather than through its replaceable pathname.
@@ -601,11 +623,6 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 	keep := os.file_name(entry.dir)
 	entries := os.ls(directory) or { return }
 	for name in entries {
-		// A build or prune can own this sidecar. Removing it would split the OS lock into
-		// two unrelated files and allow both operations into the same entry.
-		if name.ends_with(tool_cache_lock_suffix) {
-			continue
-		}
 		if !is_cache_artifact_of(name, entry.name) {
 			continue
 		}
@@ -618,13 +635,6 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 }
 
 fn prune_stale_tool_artifact(path string) {
-	mut build_lock := filelock.new(path + tool_cache_lock_suffix)
-	if !build_lock.try_acquire() {
-		return
-	}
-	defer {
-		build_lock.release()
-	}
 	if os.is_link(path) {
 		// Never recurse through a cache-shaped symlink. Windows removes directory links
 		// with RemoveDirectory and file links with remove, so try both non-recursive forms.
@@ -663,7 +673,7 @@ fn create_tool_cache_stage_dir(parent string) !string {
 // build_tool_binary compiles the tool into its cache slot and records its source closure.
 // It returns the compiler output when the build failed.
 fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
-	mut build_lock := filelock.new(entry.dir + tool_cache_lock_suffix)
+	mut build_lock := tool_cache_lock(entry)!
 	if !build_lock.wait_acquire(5 * time.minute) {
 		return error('timed out waiting to build the cached `${entry.name}` tool')
 	}
@@ -759,7 +769,7 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	cache_entry.publish(staged_manifest, os.file_name(entry.manifest))
 	cache_entry.remove(os.file_name(entry.unbuildable))
 	cache_entry.remove(os.file_name(entry.unbuildable_manifest))
-	prune_stale_tool_binaries(entry)
+	prune_stale_tool_binaries_locked(entry)
 	return ''
 }
 

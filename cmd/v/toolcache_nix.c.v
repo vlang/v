@@ -73,6 +73,23 @@ fn (entry ToolCacheEntryDir) remove(name string) {
 	C.unlinkat(entry.fd, &char(name.str), 0)
 }
 
+// ensure_tool_cache_lock_file creates the persistent inode used to serialize every cache key
+// for one tool. It is intentionally never unlinked: releasing a lock while removing its
+// pathname can split waiters across two independently locked inodes.
+fn ensure_tool_cache_lock_file(path string) ! {
+	fd := C.open(&char(path.str), C.O_WRONLY | C.O_CREAT | C.O_EXCL | C.O_NOFOLLOW, 0o600)
+	if fd >= 0 {
+		C.close(fd)
+	}
+	information := os.lstat(path) or {
+		return error('cannot create the tool cache lock `${path}`')
+	}
+	if information.get_filetype() != .regular || information.uid != os.getuid() {
+		return error('the tool cache lock `${path}` is not a safe file')
+	}
+	os.chmod(path, 0o600)!
+}
+
 fn tool_cache_root_can_stage(path string) bool {
 	root := os.real_path(path)
 	information := os.stat(root) or { return false }

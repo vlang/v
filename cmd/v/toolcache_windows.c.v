@@ -36,6 +36,7 @@ struct WindowsToolCacheFileInformation {
 const movefile_replace_existing = u32(0x00000001)
 const toolcache_windows_file_share_all = u32(0x00000001 | 0x00000002 | 0x00000004)
 const toolcache_windows_file_share_read_write = u32(0x00000001 | 0x00000002)
+const toolcache_windows_create_new = u32(1)
 const toolcache_windows_open_existing = u32(3)
 const toolcache_windows_file_attribute_normal = u32(0x00000080)
 const toolcache_windows_file_attribute_directory = u32(0x00000010)
@@ -87,6 +88,37 @@ fn (entry ToolCacheEntryDir) publish(source string, name string) bool {
 
 fn (entry ToolCacheEntryDir) remove(name string) {
 	os.rm(os.join_path(entry.path, name)) or {}
+}
+
+// ensure_tool_cache_lock_file creates the persistent file used to serialize every cache key
+// for one tool. It is never deleted, so a new owner cannot lock a different file while a
+// previous waiter still holds the old file open.
+fn ensure_tool_cache_lock_file(path string) ! {
+	w_path := path.replace('/', '\\').to_wide()
+	// to_wide allocates outside V's managed heap, so release its buffer after the final
+	// CreateFileW call rather than retaining it with the persistent lock pathname.
+	defer {
+		unsafe { free(voidptr(w_path)) }
+	}
+	desired_access := u32(0x80000000) | u32(0x40000000)
+	created := C.CreateFileW(w_path, desired_access, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_create_new, toolcache_windows_file_attribute_normal, unsafe { nil })
+	if created != voidptr(-1) && created != unsafe { nil } {
+		C.CloseHandle(created)
+		return
+	}
+	handle := C.CreateFileW(w_path, desired_access, toolcache_windows_file_share_all, unsafe { nil }, toolcache_windows_open_existing, toolcache_windows_file_attribute_normal | toolcache_windows_file_flag_open_reparse_point, unsafe { nil })
+	if handle == voidptr(-1) || handle == unsafe { nil } {
+		return error('cannot open the tool cache lock `${path}`')
+	}
+	defer {
+		C.CloseHandle(handle)
+	}
+	mut information := WindowsToolCacheFileInformation{}
+	if !C.GetFileInformationByHandle(handle, voidptr(&information))
+		|| information.file_attributes & toolcache_windows_file_attribute_directory != 0
+		|| information.file_attributes & toolcache_windows_file_attribute_reparse_point != 0 {
+		return error('the tool cache lock `${path}` is not a safe file')
+	}
 }
 
 fn tool_cache_root_can_stage(_ string) bool {

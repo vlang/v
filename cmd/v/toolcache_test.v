@@ -4,7 +4,6 @@
 module main
 
 import os
-import os.filelock
 import time
 
 // `vtimeout` is used as the probe tool: it is small enough to compile quickly, and
@@ -407,31 +406,24 @@ fn test_pruning_collects_binaries_that_were_replaced_while_in_use() {
 	assert !os.exists(stale), 'a previous build must be collected'
 }
 
-fn test_pruning_preserves_an_entry_with_an_active_build_lock() {
-	directory := toolcache_test_dir('prune_active')
+fn test_tool_cache_lock_path_is_persistent_between_owners() {
+	directory := toolcache_test_dir('persistent_lock')
 	defer {
 		os.rmdir_all(directory) or {}
 	}
 	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
-	stale_dir := os.join_path(directory, 'vdemo-' + 'b'.repeat(64))
 	os.mkdir(entry_dir)!
-	os.mkdir(stale_dir)!
-	os.write_file(os.join_path(stale_dir, 'partial-build'), 'in progress')!
 	entry := ToolCacheEntry{
 		name: 'vdemo'
 		dir:  entry_dir
 	}
-	mut active_build := filelock.new(stale_dir + tool_cache_lock_suffix)
-	active_build.acquire()!
-	defer {
-		active_build.release()
-	}
-
-	prune_stale_tool_binaries(entry)
-	assert os.is_dir(stale_dir), 'an active build entry must not be pruned'
-	active_build.release()
-	prune_stale_tool_binaries(entry)
-	assert !os.exists(stale_dir), 'the entry should be pruned after its build lock is released'
+	mut first_owner := tool_cache_lock(entry)!
+	first_owner.acquire()!
+	first_owner.release()
+	assert os.is_file(tool_cache_lock_path(entry)), 'the shared mutex pathname must remain stable between owners'
+	mut next_owner := tool_cache_lock(entry)!
+	assert next_owner.try_acquire()
+	next_owner.release()
 }
 
 // Before cache entries became directories, each binary and its manifest lived directly in
@@ -753,13 +745,15 @@ fn test_a_tool_build_with_large_output_does_not_deadlock() {
 	}
 	source := os.join_path(directory, 'vdemo.v')
 	os.write_file(source, lines.join('\n'))!
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
 
 	entry := ToolCacheEntry{
 		name:     'vdemo'
 		source:   source
 		vroot:    directory
-		binary:   os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
-		manifest: os.join_path(directory, 'vdemo-' + 'a'.repeat(64)) + '.inputs'
+		dir:      entry_dir
+		binary:   os.join_path(entry_dir, 'vdemo' + tool_exe_suffix())
+		manifest: os.join_path(entry_dir, 'inputs')
 	}
 	// The build must fail, but it must *return*. Before draining concurrently this call
 	// never came back at all.
