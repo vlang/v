@@ -21,8 +21,16 @@ fn (a Counter) + (b Counter) Counter {
 	return a
 }
 
+// `module` is tokenized as a keyword, but it is legal as a parameter name.
+fn keyword_shaped_ident(module string) {
+	$if prealloc {
+		println(module)
+	}
+}
+
 fn main() {
 	println((Counter{1} + Counter{2}).n)
+	keyword_shaped_ident('v')
 	// A capture used only in the dropped closure branch is still used.
 	captured := 64
 	only_in_skipped_branch := fn [captured] () {

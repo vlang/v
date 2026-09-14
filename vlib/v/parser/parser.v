@@ -5779,8 +5779,8 @@ fn (mut p Parser) skip_block() {
 // so without this nothing tells the unused-declaration checks that a parameter
 // or a variable is used there, and they report it on every other target.
 // Reading them off the token stream is what keeps strings, comments,
-// interpolations and operators right: the scanner has already decided what is
-// a name and what is not.
+// interpolations and operators right: the scanner has already separated names
+// and identifier-capable keywords from other tokens.
 fn (mut p Parser) skip_comptime_block() {
 	if p.tok != .lcbr {
 		p.skip_block()
@@ -5799,7 +5799,7 @@ fn (mut p Parser) skip_comptime_block() {
 			depth++
 		} else if p.tok == .rcbr {
 			depth--
-		} else if p.tok == .name {
+		} else if p.tok_can_be_decl_name() {
 			p.a.comptime_skipped_names[prefix + p.lit] = true
 		}
 		p.next()
