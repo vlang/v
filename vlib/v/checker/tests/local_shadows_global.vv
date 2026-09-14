@@ -1,0 +1,30 @@
+@[has_globals]
+module main
+
+__global (
+	counter int
+	devices []int
+)
+
+fn uses_a_shadowing_local() int {
+	// Resolved to the global, so this local is declared and never read.
+	mut counter := 5
+	counter = 7
+	return counter
+}
+
+fn uses_a_shadowing_local_from_another_statement() int {
+	devices := 3
+	return devices
+}
+
+fn uses_its_own_name() int {
+	total := 1
+	return total
+}
+
+fn main() {
+	println(uses_a_shadowing_local())
+	println(uses_a_shadowing_local_from_another_statement())
+	println(uses_its_own_name())
+}
