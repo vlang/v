@@ -168,19 +168,39 @@ pub fn githash(path string) !string {
 	head_content := os.read_file(head_file) or { return error('failed to read `${head_file}`') }
 	hash := if head_content.starts_with('ref: ') {
 		reference := head_content[5..].trim_space()
+		mut reference_root := git_dir
 		mut revision_path := os.join_path(git_dir, reference)
 		if !os.exists(revision_path) {
 			common_dir_file := os.join_path(git_dir, 'commondir')
-			common_dir := os.read_file(common_dir_file) or {
-				return error('failed to find revision `${reference}`')
+			if os.is_file(common_dir_file) {
+				common_dir := os.read_file(common_dir_file) or {
+					return error('failed to read `${common_dir_file}`')
+				}
+				reference_root = os.real_path(os.join_path(git_dir, common_dir.trim_space()))
+				revision_path = os.join_path(reference_root, reference)
 			}
-			revision_path = os.real_path(os.join_path(git_dir, common_dir.trim_space(), reference))
 		}
-		if !os.exists(revision_path) {
-			return error('failed to find revision file `${revision_path}`')
-		}
-		os.read_file(revision_path) or {
-			return error('failed to read revision file `${revision_path}`')
+		if os.is_file(revision_path) {
+			os.read_file(revision_path) or {
+				return error('failed to read revision file `${revision_path}`')
+			}
+		} else {
+			packed_refs_file := os.join_path(reference_root, 'packed-refs')
+			packed_refs := os.read_file(packed_refs_file) or {
+				return error('failed to find revision file `${revision_path}`')
+			}
+			mut packed_hash := ''
+			for line in packed_refs.split_into_lines() {
+				fields := line.fields()
+				if fields.len == 2 && fields[1] == reference {
+					packed_hash = fields[0]
+					break
+				}
+			}
+			if packed_hash == '' {
+				return error('failed to find revision `${reference}` in `${packed_refs_file}`')
+			}
+			packed_hash
 		}
 	} else {
 		head_content

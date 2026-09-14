@@ -1,5 +1,7 @@
 module util
 
+import os
+
 fn test_escape_sequence_and_capital_helpers() {
 	assert is_escape_sequence(`n`)
 	assert is_escape_sequence(`\\`)
@@ -22,6 +24,19 @@ fn test_new_suggestion_bounds_candidate_storage() {
 fn test_githash_reads_repository_head() {
 	hash := githash(@VMODROOT)!
 	assert hash.len == 7
+}
+
+fn test_githash_reads_packed_repository_head() {
+	root := os.join_path(os.vtmp_dir(), 'util_githash_packed_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, '.git'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	reference := 'refs/heads/main'
+	os.write_file(os.join_path(root, '.git', 'HEAD'), 'ref: ${reference}\n')!
+	os.write_file(os.join_path(root, '.git', 'packed-refs'), '# pack-refs with: peeled fully-peeled sorted\n1234567890abcdef1234567890abcdef12345678 ${reference}\n')!
+	assert githash(root)! == '1234567'
 }
 
 fn test_parse_inline_asm_header_reads_arch_and_modifiers() {
