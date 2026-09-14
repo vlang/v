@@ -3346,13 +3346,20 @@ fn register_native_source_typedefs(mut tc types.TypeChecker, state &V3ModuleCach
 		}
 	}
 	for name, is_struct in typedefs {
+		if !is_struct {
+			// A function-pointer typedef is not an aggregate, and `struct F` does
+			// not name it. Registering it as a C struct made the backend declare
+			// `typedef struct F F;` and an empty `struct F` body of its own, next
+			// to the header's `typedef int (*F)(...)`, which C rejects as a typedef
+			// redefinition with a different type. The header that the program
+			// includes already declares the name, so V needs nothing here.
+			continue
+		}
 		c_name := 'C.${name}'
 		if c_name !in tc.structs {
 			tc.structs[c_name] = []types.StructField{}
 		}
-		if is_struct {
-			tc.c_typedef_structs[c_name] = true
-		}
+		tc.c_typedef_structs[c_name] = true
 	}
 }
 
