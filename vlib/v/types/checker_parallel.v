@@ -1931,6 +1931,21 @@ fn (tc &TypeChecker) operator_receiver_without_mut_pos(node flat.Node) token.Pos
 	return pos
 }
 
+// comptime_skipped_body_uses reports whether `name` is spelled inside a `$if`
+// branch or a `$match` arm of `node` that this build does not take. Such a body
+// is skipped at the token level and never parsed, so no node of it reaches the
+// walks above, and reporting the name as unused would be wrong for the build
+// that does take the branch. The parser records what it skipped over, which is
+// what keeps strings, comments and interpolations out of the answer: by then
+// the scanner has already decided what is a name.
+fn (tc &TypeChecker) comptime_skipped_body_uses(node flat.Node, name string) bool {
+	if name.len == 0 || tc.a.comptime_skipped_names.len == 0 {
+		return false
+	}
+	file := tc.a.source_files[node.pos.id] or { return false }
+	return '${file.name}:${node.pos.offset}|${name}' in tc.a.comptime_skipped_names
+}
+
 fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	if tc.node_is_from_translated_file(node) {
 		return
@@ -1993,6 +2008,14 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		}
 		if tc.expr_subtree_has_error_except(candidate.rhs_id, .if_branch_mismatch)
 			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
+			continue
+		}
+		declared_at := if tc.valid_node_id(candidate.lhs_id) {
+			tc.a.node(candidate.lhs_id).pos.offset
+		} else {
+			-1
+		}
+		if tc.comptime_skipped_body_uses(node, candidate.name) {
 			continue
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
@@ -2420,6 +2443,9 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 		if tc.fn_body_reflects_param_type(node, param.typ) {
 			continue
 		}
+		if tc.comptime_skipped_body_uses(node, param.value) {
+			continue
+		}
 		mut has_param_error := false
 		for diagnostic in tc.errors {
 			if diagnostic.node == param_id
@@ -2502,6 +2528,7 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 		}
 	}
 }
+
 
 fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
 	mut stack := []flat.NodeId{}

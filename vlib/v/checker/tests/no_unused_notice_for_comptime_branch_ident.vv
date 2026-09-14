@@ -1,0 +1,27 @@
+// `$if prealloc` is not taken by this build, so its body is never parsed. The
+// parameter and the variable it uses must still count as used.
+fn arena_leave(arena voidptr) {
+	$if prealloc {
+		if arena != unsafe { nil } {
+			unsafe { prealloc_scope_leave(arena) }
+		}
+	}
+}
+
+fn main() {
+	limit := 32
+	$if prealloc {
+		println(limit)
+	}
+	arena_leave(unsafe { nil })
+	nested_arena_leave(unsafe { nil })
+}
+
+// The dropped branch may sit inside a branch that is taken.
+fn nested_arena_leave(arena voidptr) {
+	$if true {
+		$if prealloc {
+			unsafe { prealloc_scope_leave(arena) }
+		}
+	}
+}

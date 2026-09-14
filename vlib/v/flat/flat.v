@@ -382,6 +382,10 @@ pub mut:
 	children        []NodeId
 	user_code_start int
 	disabled_fns    map[string]bool
+	// The names spelled inside a `$if`/`$match` body this build does not take,
+	// keyed by `<file>:<fn name offset>|<name>`. The body is never parsed, so
+	// nothing in the AST records that it uses them.
+	comptime_skipped_names map[string]bool
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
@@ -499,6 +503,7 @@ pub fn FlatAst.new() FlatAst {
 		nodes: []Node{cap: 256}
 		children: []NodeId{cap: 512}
 		disabled_fns: map[string]bool{}
+		comptime_skipped_names: map[string]bool{}
 		export_fn_names: map[string]string{}
 		noreturn_fns: map[string]bool{}
 		source_files: map[int]&token.File{}

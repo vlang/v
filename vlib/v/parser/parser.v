@@ -75,6 +75,7 @@ mut:
 	next_file_id          int = 1
 	cur_module            string
 	cur_fn                string
+	cur_fn_offset         int = -1
 	cur_veb_ctx_name      string // source-level name of the active veb request context
 	veb_tmpl_counter      int // monotonic id for unique `$veb.html`/`$tmpl` builder var names
 	has_veb_template      bool
@@ -1496,6 +1497,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	mut body_ids := []flat.NodeId{}
 	mut formatter_end := 0
 	prev_fn := p.cur_fn
+	prev_fn_offset := p.cur_fn_offset
 	prev_struct := p.cur_struct
 	prev_method_is_static := p.cur_method_is_static
 	prev_veb_ctx_name := p.cur_veb_ctx_name
@@ -1503,6 +1505,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	outer_defer_result_allowed := p.defer_result_allowed
 	outer_nested_block_depth := p.nested_block_depth
 	p.cur_fn = name
+	// The declaration's node records `name_pos` as its position, so keying the
+	// names of its skipped bodies on it lets the checker find them again.
+	p.cur_fn_offset = name_pos
 	// `@STRUCT` inside a method expands to the receiver's (dereferenced) type name.
 	p.cur_struct = if is_method {
 		method_receiver_type_name(receiver_type).all_after_last('.')
@@ -1551,6 +1556,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.end_comptime_value_scope()
 	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
+	p.cur_fn_offset = prev_fn_offset
 	p.cur_struct = prev_struct
 	p.cur_method_is_static = prev_method_is_static
 	p.cur_veb_ctx_name = prev_veb_ctx_name
@@ -3266,7 +3272,7 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		p.skip_comptime_else()
 		return result
 	} else {
-		p.skip_block()
+		p.skip_comptime_block()
 		return p.parse_comptime_else()
 	}
 }
@@ -3594,7 +3600,7 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 		p.skip_comptime_else()
 		return result
 	}
-	p.skip_block()
+	p.skip_comptime_block()
 	return p.parse_top_level_comptime_else()
 }
 
@@ -3771,7 +3777,7 @@ fn (mut p Parser) parse_known_comptime_match_value(value string, is_top_level bo
 			}
 			p.next()
 			if matched {
-				p.skip_block()
+				p.skip_comptime_block()
 			} else {
 				result = if is_top_level {
 					p.top_level_block_stmt()
@@ -3811,7 +3817,7 @@ fn (mut p Parser) parse_known_comptime_match_value(value string, is_top_level bo
 			}
 			matched = true
 		} else {
-			p.skip_block()
+			p.skip_comptime_block()
 		}
 	}
 	p.check(.rcbr)
@@ -4471,7 +4477,7 @@ fn (mut p Parser) skip_comptime_else() {
 			p.next()
 		}
 		if p.tok != .dollar || p.peek() != .key_if {
-			p.skip_block()
+			p.skip_comptime_block()
 			return
 		}
 		p.next() // skip $
@@ -4479,7 +4485,7 @@ fn (mut p Parser) skip_comptime_else() {
 		for p.tok != .lcbr && p.tok != .eof {
 			p.next()
 		}
-		p.skip_block()
+		p.skip_comptime_block()
 	}
 }
 
@@ -5760,6 +5766,38 @@ fn (mut p Parser) skip_block() {
 	}
 }
 
+// skip_comptime_block skips the body of a `$if` branch or a `$match` arm this
+// build does not take, recording the names it spells. The body is never parsed,
+// so without this nothing tells the unused-declaration checks that a parameter
+// or a variable is used there, and they report it on every other target.
+// Reading them off the token stream is what keeps strings, comments,
+// interpolations and operators right: the scanner has already decided what is
+// a name and what is not.
+fn (mut p Parser) skip_comptime_block() {
+	if p.tok != .lcbr {
+		p.skip_block()
+		return
+	}
+	if p.cur_fn_offset < 0 {
+		// A branch outside any function body cannot hide the use of a local.
+		p.skip_block()
+		return
+	}
+	prefix := '${p.cur_file}:${p.cur_fn_offset}|'
+	mut depth := 1
+	p.next()
+	for depth > 0 && p.tok != .eof {
+		if p.tok == .lcbr {
+			depth++
+		} else if p.tok == .rcbr {
+			depth--
+		} else if p.tok == .name {
+			p.a.comptime_skipped_names[prefix + p.lit] = true
+		}
+		p.next()
+	}
+}
+
 fn (mut p Parser) skip_brackets() {
 	if p.tok != .lsbr {
 		return
@@ -6411,7 +6449,7 @@ fn (mut p Parser) parse_comptime_if_expr_after_if(dollar_start int) flat.NodeId 
 		p.skip_comptime_else()
 		return result
 	}
-	p.skip_block()
+	p.skip_comptime_block()
 	return p.parse_comptime_else_expr()
 }
 
