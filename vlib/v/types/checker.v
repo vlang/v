@@ -5706,7 +5706,8 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 		if tc.diagnostic_files.len > 0 && tc.cur_file !in tc.diagnostic_files {
 			continue
 		}
-		if node.kind != .import_decl || !node.pos.is_valid() || node.typ == '_'
+		if node.kind != .import_decl || !node.pos.is_valid() || node.pos.end <= node.pos.offset
+			|| node.typ == '_'
 			|| tc.import_is_used(flat.NodeId(idx), node) {
 			continue
 		}
