@@ -378,6 +378,8 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 	backend := v1_fallback_selected_backend(args)
 	skip_running := '-skip-running' in args || '-check' in args || '-check-syntax' in args
 		|| os.getenv('VNORUN') == '1'
+	mut explicit_output := false
+	mut run_explicit_output_tests := os.getenv('VTEST_SHOW_ASSERTS').len > 0
 	mut option_value_follows := false
 	for i, arg in args {
 		if option_value_follows {
@@ -391,6 +393,15 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
 			continue
 		}
+		if arg in ['-stats', '-checker-fixture'] {
+			run_explicit_output_tests = true
+			continue
+		}
+		if arg in ['-o', '-output'] {
+			explicit_output = true
+			option_value_follows = true
+			continue
+		}
 		if arg == '-cf' || pref.option_may_consume_value(arg) {
 			option_value_follows = true
 			continue
@@ -399,8 +410,9 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 			return false
 		}
 		if !arg.starts_with('-') {
-			can_run := pref.is_test_file_for_backend(arg, backend) || arg.ends_with('_test.vv')
-				|| arg.ends_with('.vsh')
+			is_test := pref.is_test_file_for_backend(arg, backend) || arg.ends_with('_test.vv')
+			can_run := arg.ends_with('.vsh')
+				|| (is_test && (!explicit_output || run_explicit_output_tests))
 			return skip_running || !can_run
 		}
 	}

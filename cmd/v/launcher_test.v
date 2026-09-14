@@ -241,9 +241,12 @@ fn test_fallback_failure_notes_name_the_stage_v_stopped_in() {
 
 fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	previous_norun := os.getenv_opt('VNORUN')
+	previous_show_asserts := os.getenv_opt('VTEST_SHOW_ASSERTS')
 	os.unsetenv('VNORUN')
+	os.unsetenv('VTEST_SHOW_ASSERTS')
 	defer {
 		restore_environment('VNORUN', previous_norun)
+		restore_environment('VTEST_SHOW_ASSERTS', previous_show_asserts)
 	}
 	assert v1_fallback_exit_identifies_compiler_failure(['main.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-prod', '-o', 'app', 'main.v'])
@@ -274,6 +277,14 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', 'script.vsh'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-check', 'example_test.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-check-syntax', 'script.vsh'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-output', 'test-bin', 'example_test.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-stats', '-o', 'test-bin', 'example_test.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-checker-fixture', '-output', 'test-bin',
+		'example_test.v'])
+	os.setenv('VTEST_SHOW_ASSERTS', '1', true)
+	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v'])
+	os.unsetenv('VTEST_SHOW_ASSERTS')
 	os.setenv('VNORUN', '1', true)
 	assert v1_fallback_exit_identifies_compiler_failure(['example_test.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
