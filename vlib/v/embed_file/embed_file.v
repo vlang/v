@@ -13,6 +13,29 @@ pub:
 	len  int
 }
 
+// join_chunks_buffer reserves the memory a joined payload lives in.
+//
+// Under `-prealloc` it deliberately does not come from the preallocator. The
+// buffer is filled at the top of `_vinit`, before `prealloc_vinit()` has
+// installed the first arena, so allocating it there would create an arena that
+// the installation then orphans, throwing off both the statistics and the
+// cleanup. It is also the wrong home for it either way: the buffer lives for the
+// whole program, while the preallocator is reset.
+@[unsafe]
+fn join_chunks_buffer(size int) &u8 {
+	$if prealloc {
+		unsafe {
+			buffer := &u8(C.malloc(usize(size)))
+			if buffer == nil {
+				panic('EmbedFileData error: could not reserve ${size} bytes for a joined payload')
+			}
+			return buffer
+		}
+	} $else {
+		return unsafe { &u8(malloc(isize(size))) }
+	}
+}
+
 // join_chunks copies a payload that was embedded in pieces into one buffer, and
 // is called by generated code while the `EmbedFileData` is being built, not when
 // its bytes are first read. Materializing it there and not later is what keeps
@@ -23,7 +46,7 @@ pub:
 @[markused]
 pub fn join_chunks(chunks &EmbedFileChunk, len int) &u8 {
 	unsafe {
-		buffer := &u8(malloc(isize(if len > 0 { len } else { 1 })))
+		buffer := join_chunks_buffer(if len > 0 { len } else { 1 })
 		mut offset := 0
 		mut chunk := chunks
 		for offset < len {

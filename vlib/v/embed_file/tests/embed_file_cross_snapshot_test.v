@@ -197,11 +197,17 @@ fn largest_declared_array(text string) int {
 // cross_compile_probe generates portable C for a program embedding `payload`, and
 // returns its temporary directory and the generated C file.
 fn cross_compile_probe(payload string) ?(string, string) {
+	return cross_compile_probe_with(payload, '')
+}
+
+// cross_compile_probe_with does the same with extra flags on the V command line.
+fn cross_compile_probe_with(payload string, extra string) ?(string, string) {
 	vexe := os.getenv('VEXE')
 	if vexe == '' {
 		return none
 	}
-	dir := os.join_path(os.vtmp_dir(), 'embed_file_cross_${os.getpid()}_${payload.len}')
+	tag := if extra == '' { '' } else { '_${extra.replace('-', '')}' }
+	dir := os.join_path(os.vtmp_dir(), 'embed_file_cross_${os.getpid()}_${payload.len}${tag}')
 	os.mkdir_all(dir) or { return none }
 	os.write_file(os.join_path(dir, 'payload.bin'), payload) or { return none }
 	src := os.join_path(dir, 'prog.v')
@@ -211,6 +217,9 @@ fn cross_compile_probe(payload string) ?(string, string) {
 	os.write_file(src, "module main
 
 const embedded = \$embed_file('payload.bin')
+
+// The same file embedded a second time must not get a second copy of the bytes.
+const embedded_again = \$embed_file('payload.bin')
 
 fn checksum() string {
 	payload := embedded.to_bytes()
@@ -254,11 +263,15 @@ fn main() {
 			exit(1)
 		}
 	}
+	if voidptr(embedded.data()) != voidptr(embedded_again.data()) {
+		println('the same file was embedded twice over')
+		exit(1)
+	}
 	println(seen[0])
 }
 ") or { return none }
 	out := os.join_path(dir, 'prog.c')
-	res := os.execute('${os.quoted_path(vexe)} -os cross -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
+	res := os.execute('${os.quoted_path(vexe)} ${extra} -os cross -o ${os.quoted_path(out)} ${os.quoted_path(src)}')
 	if res.exit_code != 0 {
 		assert false, res.output
 	}
@@ -366,6 +379,37 @@ fn test_cross_output_never_declares_an_over_large_object() {
 		largest := largest_declared_array(text)
 		assert largest <= allowed, '${payload.len} embedded bytes were declared as an object of ${largest} bytes, past the ${allowed} a C implementation has to accept'
 	}
+}
+
+// test_cross_snapshot_runs_under_prealloc covers where the joined buffer is
+// reserved. Under `-prealloc` it must not come out of the preallocator, because
+// `_vinit` fills it before `prealloc_vinit()` has installed the first arena, and
+// that installation would then orphan whatever the join had already taken.
+fn test_cross_snapshot_runs_under_prealloc() {
+	$if windows {
+		return
+	}
+	if !probe_splits_over_large_payloads() {
+		// Nothing to order against: a compiler that embeds the payload as one
+		// object never reaches for the allocator during _vinit.
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	payload := payload_of(large_payload_len)
+	dir, out := cross_compile_probe_with(payload, '-prealloc') or { return }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	exe := os.join_path(dir, 'prog')
+	build := os.execute('${os.quoted_path(cc)} -std=gnu11 -w -o ${os.quoted_path(exe)} ${os.quoted_path(out)} -lm -lpthread')
+	assert build.exit_code == 0, build.output
+	os.rm(os.join_path(dir, 'payload.bin')) or {
+		assert false, err.msg()
+		return
+	}
+	res := os.execute(os.quoted_path(exe))
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == checksum(payload)
 }
 
 fn test_cross_snapshot_runs_without_the_embedded_file() {

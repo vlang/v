@@ -290,6 +290,10 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 	if data.kind != .string_literal || !data.is_embed_payload() {
 		return false
 	}
+	// The objects are named after the first node carrying these bytes, so the same
+	// file embedded twice, or an expression a generic specialization cloned, ends
+	// up pointing at one copy rather than at a private one each.
+	blob_id := g.embed_blob_symbol_index(data_id, data.value)
 	if data.value.len > c_max_object_size {
 		// Split across several objects, which `_vinit` joins once into the buffer
 		// named here. Reading a pointer rather than joining at every evaluation is
@@ -297,17 +301,41 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 		// copy per call, and doing it before any thread starts is what keeps two
 		// readers of the same embedded constant off a lazy initialization.
 		g.write('_v_embed_joined_')
-		g.sb.write_decimal(i64(data_id))
+		g.sb.write_decimal(i64(blob_id))
 		return true
 	}
 	if embed_payload_needs_blob(data.value.len) {
 		// Too long to spell as a literal here; gen_embed_file_blobs defines the
 		// object this points at, keyed by the same node.
-		g.write('(u8*)_v_embed_blob_${int(data_id)}')
+		g.write('(u8*)_v_embed_blob_${blob_id}')
 		return true
 	}
 	g.write('(u8*)"${c_byte_string_escape(data.value)}"')
 	return true
+}
+
+// embed_blob_symbol_index returns the node index whose name the objects holding
+// `payload` are built from: the first node carrying exactly these bytes. Identical
+// payloads therefore share one set of objects, the way the interned literal table
+// shared identical literals before this took over from it.
+fn (g &FlatGen) embed_blob_symbol_index(node_id flat.NodeId, payload string) int {
+	for i in 0 .. g.a.nodes.len {
+		node := unsafe { &g.a.nodes[i] }
+		if node.kind == .string_literal && node.is_embed_payload() && node.value == payload {
+			return i
+		}
+	}
+	return int(node_id)
+}
+
+// embed_blob_is_canonical reports whether the node at `i` is the one the objects
+// for its payload are named after, so that the definitions are emitted once.
+fn (g &FlatGen) embed_blob_is_canonical(i int) bool {
+	node := unsafe { &g.a.nodes[i] }
+	if node.kind != .string_literal || !node.is_embed_payload() {
+		return false
+	}
+	return g.embed_blob_symbol_index(flat.NodeId(i), node.value) == i
 }
 
 // gen_embed_file_blobs defines the file scope arrays that hold the `$embed_file`
@@ -325,10 +353,10 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 fn (mut g FlatGen) gen_embed_file_blobs() {
 	mut defined := 0
 	for i in 0 .. g.a.nodes.len {
-		node := unsafe { &g.a.nodes[i] }
-		if node.kind != .string_literal || !node.is_embed_payload() {
+		if !g.embed_blob_is_canonical(i) {
 			continue
 		}
+		node := unsafe { &g.a.nodes[i] }
 		if !embed_payload_needs_blob(node.value.len) {
 			continue
 		}
@@ -360,10 +388,10 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 // which generates `_vinit` from its own FlatGen, arrives at the same list.
 fn (mut g FlatGen) for_each_embed_blob_chunked(each fn (mut FlatGen, int, string)) {
 	for i in 0 .. g.a.nodes.len {
-		node := unsafe { &g.a.nodes[i] }
-		if node.kind != .string_literal || !node.is_embed_payload() {
+		if !g.embed_blob_is_canonical(i) {
 			continue
 		}
+		node := unsafe { &g.a.nodes[i] }
 		if node.value.len <= c_max_object_size {
 			continue
 		}
@@ -380,6 +408,8 @@ fn (g &FlatGen) has_chunked_embed_blobs() bool {
 			return true
 		}
 	}
+	// Duplicates change nothing here: if any payload needs joining, so does the
+	// node its objects are named after.
 	return false
 }
 
