@@ -6721,7 +6721,7 @@ fn shadow_path_is_within(abs_file string, real_file string, dir string) bool {
 	if dir.len == 0 {
 		return false
 	}
-	prefix := dir + os.path_separator
+	prefix := if dir.ends_with(os.path_separator) { dir } else { dir + os.path_separator }
 	return abs_file == dir || abs_file.starts_with(prefix) || real_file == dir
 		|| real_file.starts_with(prefix)
 }
