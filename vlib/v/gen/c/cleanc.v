@@ -496,8 +496,6 @@ mut:
 	// generated header the way the reference compiler did.
 	compile_defines               []string
 	subsystem                     pref.Subsystem
-	// target_libc_headers mirrors pref.Preferences.target_libc_headers: the target
-	// supplies the libc headers, so this generator must not restate them.
 	target_libc_headers           bool
 	windows_entry_point_generated bool
 	windows_gui_entry_point       bool

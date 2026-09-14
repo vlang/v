@@ -48,13 +48,6 @@ pub mut:
 	c99                   bool
 	force_bounds_checking bool
 	enable_globals        bool
-	// target_libc_headers marks a target that supplies the C library headers
-	// itself, so the generated C must include them rather than restate what they
-	// declare. A kernel, compiling `-nostdinc` against its own header tree, is the
-	// case. It cannot be inferred from the target OS, which also hosts ordinary
-	// programs that link the host's libc. Distinct from V1's `-freestanding`,
-	// which means no libc at all.
-	target_libc_headers bool
 	vroot                 string = detect_vroot()
 	vexe                  string = detect_vexe()
 	vhash                 string
@@ -78,6 +71,13 @@ pub mut:
 	// whose own root happens to carry that name.
 	module_resolution_root string
 	thread_stack_size      int = 8 * 1024 * 1024
+	// target_libc_headers marks a target that supplies the C library headers
+	// itself, so the generated C must include them rather than restate what they
+	// declare. A kernel, compiling `-nostdinc` against its own header tree, is the
+	// case. It cannot be inferred from the target OS, which also hosts ordinary
+	// programs that link the host's libc. Distinct from V1's `-freestanding`,
+	// which means no libc at all.
+	target_libc_headers bool
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm            bool

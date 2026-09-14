@@ -164,8 +164,7 @@ fn test_target_libc_opaque_packed_struct_restores_packing() {
 	g.a = &a
 	g.tc = &tc
 	g.set_target_libc_headers(true)
-	g.register_struct_decl_info_at(int(node_id), name, name, 'main', '/project/main.v',
-		a.nodes[int(node_id)])
+	g.register_struct_decl_info_at(int(node_id), name, name, 'main', '/project/main.v', a.nodes[int(node_id)])
 	g.decl_attrs[int(node_id)] = ['packed']
 	g.emit_struct(name)
 	c_code := g.sb.str()
