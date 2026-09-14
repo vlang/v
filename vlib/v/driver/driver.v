@@ -7494,6 +7494,15 @@ fn macos_v3_fallback_payload_is_valid(payload string) bool {
 		macos_v3_c_error_fallback]
 }
 
+// has_v3_authoritative_error reports whether the checker produced a diagnostic
+// that only V3 knows about. The compatibility compiler has no such check, so
+// retrying with it would turn a real error into a clean build and hide the
+// diagnostic entirely. V3 keeps the final say for these, and `-old-compiler`
+// is still there for anyone who needs the old behaviour.
+fn has_v3_authoritative_error(errors []types.TypeError) bool {
+	return errors.any(it.kind == .duplicate_decl && it.msg.ends_with('` shadows a global variable'))
+}
+
 fn macos_v3_fallback_suppresses_diagnostics(fallback_file string) bool {
 	if fallback_file == '' || os.getenv(macos_v3_no_fallback_env) == '1' {
 		return false
@@ -10708,6 +10717,9 @@ pub fn run(args []string) {
 					&& !has_generic_type_mismatch && !has_unknown_method_error {
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc, fixture_used_fns, false)
 				}
+			}
+			if has_v3_authoritative_error(pre_tc.errors) {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)

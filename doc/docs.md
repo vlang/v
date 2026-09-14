@@ -8324,10 +8324,10 @@ resolves to the global, so the local is declared and then never read, and every 
 use of that name means the global. This holds even when the global is declared in a
 module the file does not import, since a global's bare name is visible everywhere.
 
-V reports it:
+V rejects it:
 
 ```
-notice: variable `devices` shadows a global variable
+error: variable `devices` shadows a global variable
 ```
 
 The fix is to rename the local, giving it a name that says what it holds:
@@ -8345,10 +8345,9 @@ fn mount_dev(root &Node) bool {
 }
 ```
 
-It is a notice rather than an error, so existing code keeps building, but `v -N`,
-which treats all V notices as errors, will reject it. The notice covers each declared
-name on the left of a declaration, so both targets of `value, devices := make_pair()`
-are checked.
+The check covers each declared name on the left of a declaration, so both targets of
+`value, devices := make_pair()` are checked. A name that shadows nothing, and `_`, are
+left alone.
 
 ## Static Variables
 

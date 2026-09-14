@@ -1,25 +1,25 @@
-vlib/v/checker/tests/local_shadows_global.vv:11:6: notice: variable `counter` shadows a global variable
+vlib/v/checker/tests/local_shadows_global.vv:11:6: error: variable `counter` shadows a global variable
     9 | fn uses_a_shadowing_local() int {
    10 |     // Resolved to the global, so this local is declared and never read.
    11 |     mut counter := 5
       |         ~~~~~~~
    12 |     counter = 7
    13 |     return counter
-vlib/v/checker/tests/local_shadows_global.vv:17:2: notice: variable `devices` shadows a global variable
+vlib/v/checker/tests/local_shadows_global.vv:17:2: error: variable `devices` shadows a global variable
    15 | 
    16 | fn uses_a_shadowing_local_from_another_statement() int {
    17 |     devices := 3
       |     ~~~~~~~
    18 |     return devices
    19 | }
-vlib/v/checker/tests/local_shadows_global.vv:33:9: notice: variable `devices` shadows a global variable
+vlib/v/checker/tests/local_shadows_global.vv:33:9: error: variable `devices` shadows a global variable
    31 | // single-declaration checks, so its targets need checking too.
    32 | fn shadows_through_a_multi_return() int {
    33 |     value, devices := make_pair()
       |            ~~~~~~~
    34 |     return value + devices.len
    35 | }
-vlib/v/checker/tests/local_shadows_global.vv:38:2: notice: variable `counter` shadows a global variable
+vlib/v/checker/tests/local_shadows_global.vv:38:2: error: variable `counter` shadows a global variable
    36 | 
    37 | fn shadows_through_a_multi_value_list() int {
    38 |     counter, other := 1, 2

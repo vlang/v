@@ -6641,39 +6641,49 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 	return tc.cur_file in tc.diagnostic_files
 }
 
-// record_global_shadow_notice reports a local that shadows a global. The ordinary
-// diagnostic filter limits notices to the files named on the command line, which
+// shadow_check_skips_compiler_code reports whether `file` belongs to V's own
+// standard library. A global's bare name reaches into vlib as well, so a user
+// global named something ordinary like `page_size` would otherwise make
+// vlib/builtin fail to compile -- a file the user cannot edit, and one whose
+// local was written long before that global existed. The user_code_start bound
+// alone does not cover this: modules parsed on demand, such as
+// builtin.closure, land after it.
+fn (tc &TypeChecker) shadow_check_skips_compiler_code(file string) bool {
+	if file.len == 0 || tc.compiler_vroot.len == 0 {
+		return false
+	}
+	normalized := file.replace('\\', '/')
+	vroot := tc.compiler_vroot.replace('\\', '/').trim_right('/')
+	return normalized.starts_with('${vroot}/vlib/')
+}
+
+// record_global_shadow_error reports a local that shadows a global. The ordinary
+// diagnostic filter limits errors to the files named on the command line, which
 // for a project compiled as a directory is only its entry file -- so a shadow
 // inside one of the project's own modules, which is where this happens, would
-// never be reported. The user-code boundary is kept, so vlib stays silent; only
-// the per-file filter is skipped.
-fn (mut tc TypeChecker) record_global_shadow_notice(id flat.NodeId, name string) {
+// never be reported. Only that per-file filter is skipped: the user-code bound
+// stays, and vlib is excluded by path as well.
+//
+// The kind is `.duplicate_decl` rather than `.unknown_ident`: the name does
+// resolve, it just resolves to the global. `.unknown_ident` errors are read
+// elsewhere as "this name has no meaning, stop reporting on it", which would
+// suppress later real errors on the same node.
+fn (mut tc TypeChecker) record_global_shadow_error(id flat.NodeId, name string) {
 	if int(id) < tc.a.user_code_start || int(id) >= tc.a.nodes.len {
 		return
 	}
 	if !tc.a.nodes[int(id)].pos.is_valid() {
 		return
 	}
+	if tc.shadow_check_skips_compiler_code(tc.cur_file) {
+		return
+	}
 	msg := 'variable `${name}` shadows a global variable'
 	pos := tc.node_value_diagnostic_pos(id)
-	// `-N` makes every notice an error. Only the file filter is special here, so
-	// the promotion has to be applied the same way record_notice_at applies it,
-	// or this one notice would stay non-fatal under that flag.
-	if tc.notes_are_errors {
-		if tc.errors.any(it.kind == .unknown_ident && it.msg == msg && it.pos == pos) {
-			return
-		}
-		base := tc.make_type_error_at(.unknown_ident, msg, id, pos)
-		tc.errors << TypeError{
-			...base
-			severity: 'error:'
-		}
+	if tc.errors.any(it.kind == .duplicate_decl && it.msg == msg && it.pos == pos) {
 		return
 	}
-	if tc.notices.any(it.msg == msg && it.pos == pos) {
-		return
-	}
-	tc.notices << tc.make_type_error_at(.unknown_ident, msg, id, pos)
+	tc.errors << tc.make_type_error_at(.duplicate_decl, msg, id, pos)
 }
 
 // check_decl_lhs_global_shadowing reports every declared name in `node` that
@@ -6690,7 +6700,7 @@ fn (mut tc TypeChecker) check_decl_lhs_global_shadowing(node flat.Node) {
 			continue
 		}
 		if tc.global_names[lhs.value] {
-			tc.record_global_shadow_notice(lhs_id, lhs.value)
+			tc.record_global_shadow_error(lhs_id, lhs.value)
 		}
 	}
 }
