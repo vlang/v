@@ -8317,6 +8317,39 @@ to race conditions. There are several approaches to deal with these:
   correlated, which is acceptable considering the performance penalty that using
   synchronization primitives would represent.
 
+### Shadowing a global
+
+A local variable with the same name as a global is not a separate variable: the name
+resolves to the global, so the local is declared and then never read, and every later
+use of that name means the global. This holds even when the global is declared in a
+module the file does not import, since a global's bare name is visible everywhere.
+
+V reports it:
+
+```
+notice: variable `devices` shadows a global variable
+```
+
+The fix is to rename the local, giving it a name that says what it holds:
+
+```v ignore
+__global (
+	devices []&Device
+)
+
+fn mount_dev(root &Node) bool {
+	// Was `devices`, which silently meant the global above.
+	dev_dir := get_node(root, '/dev') or { return false }
+	dev_dir.parent = root
+	return true
+}
+```
+
+It is a notice rather than an error, so existing code keeps building, but `v -N`,
+which treats all V notices as errors, will reject it. The notice covers each declared
+name on the left of a declaration, so both targets of `value, devices := make_pair()`
+are checked.
+
 ## Static Variables
 
 V also supports *static variables*, which are like *global variables*, but
