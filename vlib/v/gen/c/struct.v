@@ -290,8 +290,58 @@ fn (mut g FlatGen) gen_embed_file_uncompressed_field(value_id flat.NodeId, struc
 	if data.kind != .string_literal {
 		return false
 	}
+	if embed_payload_needs_blob(data.value.len) {
+		// Too long to spell as a literal here; gen_embed_file_blobs defines the
+		// object this points at, keyed by the same node.
+		g.write('(u8*)_v_embed_blob_${int(data_id)}')
+		return true
+	}
 	g.write('(u8*)"${c_byte_string_escape(data.value)}"')
 	return true
+}
+
+// gen_embed_file_blobs defines the file scope arrays that hold the `$embed_file`
+// payloads too long to write as string literals. They are emitted with the rest
+// of the declaration prefix, ahead of every function that can name one.
+//
+// The objects are `static`: a parallel C build repeats this prefix in each unit,
+// and external linkage would then collide. It also means a payload that lands
+// here is repeated per unit, which is why only payloads that have no other way
+// of being spelled take this path.
+fn (mut g FlatGen) gen_embed_file_blobs() {
+	mut defined := 0
+	for i in 0 .. g.a.nodes.len {
+		node := unsafe { &g.a.nodes[i] }
+		if node.kind != .string_literal || !node.is_embed_payload() {
+			continue
+		}
+		if !embed_payload_needs_blob(node.value.len) {
+			continue
+		}
+		g.write('static const unsigned char _v_embed_blob_')
+		g.sb.write_decimal(i64(i))
+		g.sb.write_string('[')
+		g.sb.write_decimal(i64(node.value.len))
+		g.sb.write_string('] = {')
+		for j in 0 .. node.value.len {
+			if j % embed_blob_bytes_per_line == 0 {
+				g.sb.write_u8(`\n`)
+			}
+			b := node.value[j]
+			g.sb.write_string('0x')
+			g.sb.write_u8(c_hex_digits[b >> 4])
+			g.sb.write_u8(c_hex_digits[b & 0xf])
+			// The trailing comma before `}` is allowed, and lets every byte be
+			// written by the same step.
+			g.sb.write_u8(`,`)
+		}
+		g.writeln('')
+		g.writeln('};')
+		defined++
+	}
+	if defined > 0 {
+		g.writeln('')
+	}
 }
 
 fn default_init_unalias_type(typ types.Type) types.Type {

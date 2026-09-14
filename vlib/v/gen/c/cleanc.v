@@ -3406,6 +3406,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		json_encode_pointer_helpers := g.prepare_json_encode_pointer_helpers()
 		json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 		g.string_literals()
+		g.gen_embed_file_blobs()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
 			g.fixed_array_early_typedefs()
@@ -3521,6 +3522,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	json_encode_pointer_helpers := g.prepare_json_encode_pointer_helpers()
 	json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 	g.string_literals()
+	g.gen_embed_file_blobs()
 	if g.cache_split {
 		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, false)

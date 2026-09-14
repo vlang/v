@@ -753,3 +753,17 @@ fn test_c_byte_string_escape_splits_long_payloads_into_adjacent_literals() {
 	}
 	assert c_string_literal_decode(escaped) == raw
 }
+
+// test_embed_payload_needs_blob_switches_at_the_string_literal_limit pins where a
+// payload stops being written as a string literal. Adjacent literals join back
+// into one, so splitting cannot carry a payload past that maximum; only an array
+// object can.
+fn test_embed_payload_needs_blob_switches_at_the_string_literal_limit() {
+	assert !embed_payload_needs_blob(0)
+	assert !embed_payload_needs_blob(c_string_literal_chunk_len)
+	assert !embed_payload_needs_blob(c_string_literal_max_total)
+	assert embed_payload_needs_blob(c_string_literal_max_total + 1)
+	// Half of the 65535 bytes MSVC documents for a joined literal, so the choice
+	// does not turn on getting that figure exactly right for every compiler.
+	assert c_string_literal_max_total < 65535
+}

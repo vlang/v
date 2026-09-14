@@ -596,6 +596,26 @@ fn c_escape_into(mut out strings.Builder, s string) {
 // line -- the rest of the enclosing initializer -- still fits with room to spare.
 const c_string_literal_chunk_len = 2048
 
+// c_string_literal_max_total bounds how many bytes are spelled as a string
+// literal at all. Adjacent literals concatenate into a single literal, and the
+// *result* has a maximum length of its own (MSVC stops at 65535 bytes), which no
+// amount of splitting gets past. Past this, the bytes are written as an array
+// object instead, which has no such limit. The bound is half of the figure MSVC
+// documents, so that the choice does not turn on getting it exactly right for
+// every compiler.
+const c_string_literal_max_total = 32768
+
+// embed_payload_needs_blob reports whether an `$embed_file` payload is too long
+// to spell as a string literal; see c_string_literal_max_total.
+fn embed_payload_needs_blob(payload_len int) bool {
+	return payload_len > c_string_literal_max_total
+}
+
+// embed_blob_bytes_per_line keeps the array initializer of such a payload to
+// short source lines, for the same reason the literal form is split.
+const embed_blob_bytes_per_line = 20
+const c_hex_digits = '0123456789abcdef'
+
 // c_byte_string_escape renders arbitrary bytes as the body of a C string literal.
 // Bytes that a C compiler reads back unchanged are kept as they are, and the rest become
 // three digit octal escapes, which are never continued by the character after them.
