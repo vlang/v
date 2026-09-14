@@ -1,3 +1,10 @@
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_writes_and_labels.vv:49:3: notice: variable `top_level_helper` shadows a function declaration
+   47 | fn skipped_sibling_does_not_use_branch_local() {
+   48 |     $if !prealloc {
+   49 |         top_level_helper := 1
+      |         ~~~~~~~~~~~~~~~~
+   50 |     } $else {
+   51 |         top_level_helper()
 vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_writes_and_labels.vv:2:6: warning: unused variable: `x`
     1 | fn skipped_assignment_target() {
     2 |     mut x := 1
@@ -53,3 +60,17 @@ vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_writes_and_labels.vv:3
       |         ^
    35 |     x, y = 3, 4
    36 | }
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_writes_and_labels.vv:49:3: warning: unused variable: `top_level_helper`
+   47 | fn skipped_sibling_does_not_use_branch_local() {
+   48 |     $if !prealloc {
+   49 |         top_level_helper := 1
+      |         ~~~~~~~~~~~~~~~~
+   50 |     } $else {
+   51 |         top_level_helper()
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_writes_and_labels.vv:56:2: warning: unused variable: `x0`
+   54 |
+   55 | fn skipped_asm_template_tracks_only_v_operands() {
+   56 |     x0 := 1
+      |     ~~
+   57 |     input := 2
+   58 |     mut output := 0

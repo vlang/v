@@ -5807,9 +5807,11 @@ fn skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, tok token.Token, 
 // interpolations and operators right. Only tokens the expression parser can
 // turn into identifiers are recorded; selector members follow a dot, while
 // struct-field and named-argument labels precede a colon, so neither is a local
-// reference. A plain assignment target is an identifier occurrence, but not a
-// read. Goto operands are recorded only in the label namespace, while break and
-// continue label operands are not local references.
+// reference. Only names bound in the current lexical scope can refer to a local.
+// A plain assignment target is an identifier occurrence, but not a read. Goto
+// operands are recorded only in the label namespace, while break and continue
+// label operands are not local references. Assembly template symbols are not V
+// names; only expressions in its input/output sections are local uses.
 fn (mut p Parser) skip_comptime_block() {
 	if p.tok != .lcbr {
 		p.skip_block()
@@ -5831,6 +5833,11 @@ fn (mut p Parser) skip_comptime_block() {
 	mut shadowed_names := map[string]int{}
 	mut pending_comma_lhs_reads := []string{}
 	mut pending_comma_lhs_depth := -1
+	mut in_asm_header := false
+	mut asm_body_depth := -1
+	mut asm_base_paren_depth := 0
+	mut asm_section := 0
+	mut asm_is_goto := false
 	p.next()
 	for depth > 0 && p.tok != .eof {
 		if pending_comma_lhs_reads.len > 0
@@ -5840,6 +5847,41 @@ fn (mut p Parser) skip_comptime_block() {
 			}
 			pending_comma_lhs_reads.clear()
 		}
+		mut skip_asm_token := false
+		if asm_body_depth >= 0 {
+			skip_asm_token = true
+			if depth == asm_body_depth {
+				if asm_is_goto && asm_section == 4 && p.tok == .name {
+					p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
+				}
+				if asm_section in [1, 2] && paren_depth > asm_base_paren_depth {
+					skip_asm_token = false
+				}
+				if p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
+					&& p.s.src[p.tok_pos] == `;` {
+					asm_section++
+				}
+				if p.tok == .rcbr {
+					asm_body_depth = -1
+				}
+			}
+		} else if in_asm_header {
+			skip_asm_token = true
+			if p.tok == .key_goto {
+				asm_is_goto = true
+			} else if p.tok == .lcbr {
+				in_asm_header = false
+				asm_body_depth = depth + 1
+				asm_base_paren_depth = paren_depth
+				asm_section = 0
+			} else if p.tok in [.semicolon, .rcbr] {
+				in_asm_header = false
+			}
+		} else if p.tok == .key_asm {
+			skip_asm_token = true
+			in_asm_header = true
+			asm_is_goto = false
+		}
 		for lambda_scopes.len > 0
 			&& skipped_lambda_scope_ends(lambda_scopes.last(), p.tok, paren_depth,
 				bracket_depth, depth) {
@@ -5848,7 +5890,9 @@ fn (mut p Parser) skip_comptime_block() {
 			}
 			lambda_scopes.delete_last()
 		}
-		if in_lambda_params {
+		if skip_asm_token {
+			// Assembly-only symbols were handled by the section state above.
+		} else if in_lambda_params {
 			if p.tok == .pipe {
 				in_lambda_params = false
 				block_depth := if p.peek() == .lcbr { depth + 1 } else { -1 }
@@ -5873,7 +5917,7 @@ fn (mut p Parser) skip_comptime_block() {
 		} else if prev_tok != .dot && prev_tok !in [.key_goto, .key_break, .key_continue]
 			&& (p.tok in [.name, .key_module]
 			|| (p.tok == .key_shared && p.shared_token_is_identifier(false)))
-			&& p.peek() != .colon && shadowed_names[p.lit] == 0 {
+			&& p.peek() != .colon && shadowed_names[p.lit] == 0 && p.is_local_binding(p.lit) {
 			key := prefix + p.lit
 			p.a.comptime_skipped_names[key] = true
 			if paren_depth == 0 && bracket_depth == 0 && p.peek() == .comma {

@@ -42,10 +42,47 @@ fn label_used_only_in_skipped_goto() {
 	}
 }
 
+fn top_level_helper() {}
+
+fn skipped_sibling_does_not_use_branch_local() {
+	$if !prealloc {
+		top_level_helper := 1
+	} $else {
+		top_level_helper()
+	}
+}
+
+fn skipped_asm_template_tracks_only_v_operands() {
+	x0 := 1
+	input := 2
+	mut output := 0
+	$if prealloc {
+		asm arm64 {
+			mov x0, x1
+			; =r (output)
+			; r (input)
+		}
+	}
+}
+
+fn label_used_only_in_skipped_asm_goto() {
+	$if prealloc {
+		asm goto amd64 {
+			jne done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+
 fn main() {
 	skipped_assignment_target()
 	skipped_control_flow_labels()
 	skipped_multi_assignment_targets()
 	parsed_multi_assignment_targets()
 	label_used_only_in_skipped_goto()
+	top_level_helper()
+	skipped_sibling_does_not_use_branch_local()
+	skipped_asm_template_tracks_only_v_operands()
+	label_used_only_in_skipped_asm_goto()
 }
