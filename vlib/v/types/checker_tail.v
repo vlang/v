@@ -6676,15 +6676,21 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 	// reached through a symlink.
 	abs_file := os.abs_path(file)
 	real_file := os.real_path(file)
-	// Installed modules first. A module root may sit inside the project being
-	// compiled -- `$PWD/.vmodules` in an isolated or reproducible build does --
-	// and containment alone would then read every dependency as project code.
+	if !shadow_path_is_within(abs_file, real_file, tc.shadow_diagnostic_root) {
+		return false
+	}
+	// Subtract installed roots nested inside the project -- `$PWD/.vmodules` in
+	// an isolated build does contain dependencies. An installed root that is an
+	// ancestor of the explicit project root is different: the project wins, so
+	// developing `~/.vmodules/my_package` still diagnoses its owned submodules.
 	for dependency_root in tc.shadow_dependency_roots {
-		if shadow_path_is_within(abs_file, real_file, dependency_root) {
+		project_is_inside_dependency := shadow_path_is_within(tc.shadow_diagnostic_root, tc.shadow_diagnostic_root, dependency_root)
+		if !project_is_inside_dependency
+			&& shadow_path_is_within(abs_file, real_file, dependency_root) {
 			return false
 		}
 	}
-	return shadow_path_is_within(abs_file, real_file, tc.shadow_diagnostic_root)
+	return true
 }
 
 // shadow_path_is_within reports whether a file given by both its written and

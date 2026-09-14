@@ -20,6 +20,8 @@ const app_dir = os.join_path(tmp_root, 'app')
 
 const sibling_modules_dir = os.join_path(tmp_root, 'vmods')
 
+const installed_app_dir = os.join_path(sibling_modules_dir, 'my_package')
+
 const nested_modules_dir = os.join_path(app_dir, '.vmodules')
 
 const private_modules_dir = os.join_path(app_dir, 'private_modules')
@@ -29,25 +31,29 @@ fn write_file(path string, content string) {
 	os.write_file(path, content) or { panic(err) }
 }
 
-// write_project lays the app out with its dependency installed under
+// write_project_at lays the app out with its dependency installed under
 // `modules_dir`, and the module the project owns shadowing the global or not.
-fn write_project(modules_dir string, helper_shadows bool) {
+fn write_project_at(project_dir string, modules_dir string, helper_shadows bool) {
 	os.rmdir_all(tmp_root) or {}
-	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
-	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\nimport shadowdep\nimport helpers\n\n__global (\n\tcounter int\n)\n\nfn main() {\n\tprintln(shadowdep.compute() + helpers.helper())\n}\n')
+	write_file(os.join_path(project_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(project_dir, 'main.v'), '@[has_globals]\nmodule main\n\nimport shadowdep\nimport helpers\n\n__global (\n\tcounter int\n)\n\nfn main() {\n\tprintln(shadowdep.compute() + helpers.helper())\n}\n')
 	helper_local := if helper_shadows { 'counter' } else { 'total' }
 	// A module the project owns: not the entry file, so only the directory
 	// widening reaches it.
-	write_file(os.join_path(app_dir, 'helpers', 'helpers.v'), 'module helpers\n\npub fn helper() int {\n\t${helper_local} := 7\n\treturn ${helper_local}\n}\n')
+	write_file(os.join_path(project_dir, 'helpers', 'helpers.v'), 'module helpers\n\npub fn helper() int {\n\t${helper_local} := 7\n\treturn ${helper_local}\n}\n')
 	// The dependency, resolved through VMODULES.
 	write_file(os.join_path(modules_dir, 'shadowdep', 'shadowdep.v'), 'module shadowdep\n\npub fn compute() int {\n\tcounter := 41\n\treturn counter + 1\n}\n')
+}
+
+fn write_project(modules_dir string, helper_shadows bool) {
+	write_project_at(app_dir, modules_dir, helper_shadows)
 }
 
 fn testsuite_end() {
 	os.rmdir_all(tmp_root) or {}
 }
 
-fn compile_app_with_path(modules_dir string, module_path string) os.Result {
+fn compile_project_with_path(project_dir string, modules_dir string, module_path string) os.Result {
 	os.setenv('VMODULES', modules_dir, true)
 	out := os.join_path(tmp_root, 'app.c')
 	path_option := if module_path.len > 0 {
@@ -55,7 +61,11 @@ fn compile_app_with_path(modules_dir string, module_path string) os.Result {
 	} else {
 		''
 	}
-	return os.execute('${os.quoted_path(vexe)} -enable-globals${path_option} -o ${os.quoted_path(out)} ${os.quoted_path(app_dir)}')
+	return os.execute('${os.quoted_path(vexe)} -enable-globals${path_option} -o ${os.quoted_path(out)} ${os.quoted_path(project_dir)}')
+}
+
+fn compile_app_with_path(modules_dir string, module_path string) os.Result {
+	return compile_project_with_path(app_dir, modules_dir, module_path)
 }
 
 fn compile_app(modules_dir string) os.Result {
@@ -99,6 +109,17 @@ fn test_nested_module_root_still_reports_the_project() {
 	res := compile_app(nested_modules_dir)
 	assert res.exit_code != 0, res.output
 	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
+	assert !res.output.contains('shadowdep.v'), res.output
+}
+
+// An installed root that contains the explicit project root is an ancestor,
+// not a reason to exclude the project's own imported modules.
+fn test_project_inside_module_root_still_reports_the_project() {
+	write_project_at(installed_app_dir, sibling_modules_dir, true)
+	res := compile_project_with_path(installed_app_dir, sibling_modules_dir, '')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains(os.join_path('helpers', 'helpers.v')), res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 	assert !res.output.contains('shadowdep.v'), res.output
 }
 
