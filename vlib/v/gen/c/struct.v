@@ -6211,7 +6211,13 @@ fn (g &FlatGen) soa_companion_name(struct_name string) string {
 }
 
 fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
-	return soa_name in g.inlined_c_typedef_names || g.cache_native_c_symbols[soa_name]
+	if soa_name in g.inlined_c_typedef_names || g.cache_native_c_symbols[soa_name] {
+		return true
+	}
+	if info := g.struct_decl_infos['C.${soa_name}'] {
+		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+	}
+	return false
 }
 
 fn (g &FlatGen) soa_companion_collision(struct_name string, soa_name string, fields []SoaFieldInfo) ?string {

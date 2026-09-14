@@ -2687,6 +2687,46 @@ fn main() {
 	assert out == '3:1:3|run:1'
 }
 
+fn test_header_backed_soa_companion_uses_native_typedef() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'header_backed_soa_companion', {
+		'v.mod':           "Module { name: 'header_backed_soa_companion' }\n"
+		'soa.h':           '#ifndef HEADER_BACKED_SOA_H\n#define HEADER_BACKED_SOA_H\n#include <stdint.h>\ntypedef struct HeaderSoaItem_SOA {\n\tint len;\n\tint cap;\n\tint64_t* value;\n} HeaderSoaItem_SOA;\n#endif\n'
+		'soa_binding.c.v': 'module main
+
+#include "@VMODROOT/soa.h"
+
+@[typedef]
+struct C.HeaderSoaItem_SOA {
+	len   int
+	cap   int
+	value &int
+}
+
+fn C.HeaderSoaItem_SOA_new(int, int) C.HeaderSoaItem_SOA
+fn C.HeaderSoaItem_SOA_push(&C.HeaderSoaItem_SOA, HeaderSoaItem)
+fn C.HeaderSoaItem_SOA_get(C.HeaderSoaItem_SOA, int) HeaderSoaItem
+fn C.HeaderSoaItem_SOA_free(&C.HeaderSoaItem_SOA)
+'
+		'main.v':          'module main
+
+@[soa]
+struct HeaderSoaItem {
+	value int
+}
+
+fn main() {
+	mut soa := C.HeaderSoaItem_SOA_new(0, 2)
+	C.HeaderSoaItem_SOA_push(&soa, HeaderSoaItem{value: 7})
+	item := C.HeaderSoaItem_SOA_get(soa, 0)
+	println(soa.cap.str() + ":" + soa.len.str() + ":" + item.value.str())
+	C.HeaderSoaItem_SOA_free(&soa)
+}
+'
+	}, '')
+	assert out == '2:1:7'
+}
+
 fn test_param_and_attribute_guards_preserve_quoted_member_text() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'quoted_param_attribute_guards', "@[route]

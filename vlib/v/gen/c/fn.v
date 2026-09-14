@@ -17832,9 +17832,10 @@ fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name stri
 
 fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string, module_name string) bool {
 	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
-	// A user C.request declaration is unrelated and still needs an extern prototype.
-	if cfn == 'request' {
-		return !source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v')
+	// A user C.request declaration is unrelated and follows the normal header checks.
+	if cfn == 'request'
+		&& source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {
+		return false
 	}
 	if g.target.os == 'vinix' {
 		normalized_file := source_file.replace('\\', '/')
