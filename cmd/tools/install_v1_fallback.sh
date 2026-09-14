@@ -10,6 +10,7 @@ set -u
 
 release_version=0.5.2
 release_base_url=https://github.com/vlang/v/releases/download/$release_version
+compatibility_marker=.v1-fallback-complete
 
 if [ "$#" -ne 2 ]; then
 	echo "usage: $0 <bootstrap-v> <v1-fallback-output>" >&2
@@ -233,7 +234,9 @@ install_moved_module_compatibility() {
 	source=$1/vlib/x/json2
 	target=$1/vlib/json2
 	staged=$target.tmp.$$
+	marker=$target/$compatibility_marker
 	[ -f "$source/json2.v" ] || return 1
+	rm -f "$marker" || return 1
 	rm -rf "$staged" || return 1
 	cp -R "$source" "$staged" || {
 		rm -rf "$staged"
@@ -247,6 +250,7 @@ install_moved_module_compatibility() {
 		rm -rf "$staged"
 		return 1
 	}
+	printf '%s\n' "$release_version" > "$marker" || return 1
 }
 
 install_fallback_compatibility() {
@@ -259,6 +263,7 @@ fallback_compatibility_is_installed() {
 	[ -f "$root/vlib/crypto/subtle/aliasing.v" ] || return 1
 	[ -f "$root/vlib/crypto/subtle/comparison.v" ] || return 1
 	[ -f "$root/vlib/json2/json2.v" ] || return 1
+	[ "$(cat "$root/vlib/json2/$compatibility_marker" 2>/dev/null)" = "$release_version" ] || return 1
 }
 
 sha256_of() {
@@ -319,10 +324,10 @@ download_release() {
 build_with_oldv() {
 	echo "Building the V $release_version fallback with oldv..."
 	oldv_target=$candidate
-	oldv_copy='mkdir -p ./vlib/crypto/subtle && cp ./vlib/crypto/internal/subtle/aliasing.v ./vlib/crypto/internal/subtle/comparison.v ./vlib/crypto/subtle/ && rm -rf ./vlib/json2 && cp -R ./vlib/x/json2 ./vlib/json2 && cp ./v "$V1_FALLBACK_TARGET" && pwd > "$V1_FALLBACK_ROOT_TARGET"'
+	oldv_copy='mkdir -p ./vlib/crypto/subtle && cp ./vlib/crypto/internal/subtle/aliasing.v ./vlib/crypto/internal/subtle/comparison.v ./vlib/crypto/subtle/ && rm -rf ./vlib/json2 && cp -R ./vlib/x/json2 ./vlib/json2 && echo 0.5.2 > ./vlib/json2/.v1-fallback-complete && cp ./v "$V1_FALLBACK_TARGET" && pwd > "$V1_FALLBACK_ROOT_TARGET"'
 	case "$system" in
 		MSYS*|MINGW*)
-			oldv_copy='if not exist .\vlib\crypto\subtle mkdir .\vlib\crypto\subtle && copy /Y .\vlib\crypto\internal\subtle\aliasing.v .\vlib\crypto\subtle\ >NUL && copy /Y .\vlib\crypto\internal\subtle\comparison.v .\vlib\crypto\subtle\ >NUL && xcopy /E /I /Y .\vlib\x\json2 .\vlib\json2 >NUL && copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL && cd > "%V1_FALLBACK_ROOT_TARGET%"'
+			oldv_copy='if not exist .\vlib\crypto\subtle mkdir .\vlib\crypto\subtle && copy /Y .\vlib\crypto\internal\subtle\aliasing.v .\vlib\crypto\subtle\ >NUL && copy /Y .\vlib\crypto\internal\subtle\comparison.v .\vlib\crypto\subtle\ >NUL && xcopy /E /I /Y .\vlib\x\json2 .\vlib\json2 >NUL && echo 0.5.2> .\vlib\json2\.v1-fallback-complete && copy /Y .\v.exe "%V1_FALLBACK_TARGET%" >NUL && cd > "%V1_FALLBACK_ROOT_TARGET%"'
 			if command -v cygpath >/dev/null 2>&1; then
 				oldv_target=$(cygpath -w "$candidate")
 			fi

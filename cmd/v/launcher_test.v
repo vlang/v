@@ -64,6 +64,9 @@ fn test_v1_fallback_installer_exposes_compatibility_modules() {
 	assert moved.contains('vlib/x/json2')
 	assert moved.contains('vlib/json2')
 	assert source.contains('install_moved_module_compatibility "$1" || return 1')
+	assert source.contains('compatibility_marker=.v1-fallback-complete')
+	assert source.contains('rm -f "$marker" || return 1')
+	assert source.contains('> "$marker" || return 1')
 	assert source.contains(r'bootstrap_v=${V1_FALLBACK_BOOTSTRAP:-$1}')
 	assert source.contains(r'fallback_output=${V1_FALLBACK_OUTPUT:-$2}')
 	assert source.contains('install_fallback_compatibility "$cache_root" || return 1')
@@ -111,6 +114,8 @@ fn test_v1_fallback_resolution_requires_compatibility_modules() {
 	json2_dir := os.join_path(fallback_root, 'vlib', 'json2')
 	os.mkdir_all(json2_dir)!
 	os.write_file(os.join_path(json2_dir, 'json2.v'), 'module json2\n')!
+	assert resolve_v1_fallback(fallback) == none
+	os.write_file(os.join_path(json2_dir, v1_fallback_compatibility_marker), '${v_version}\n')!
 	assert resolve_v1_fallback(fallback) or { panic(err) } == cached_fallback
 	legacy := os.join_path(root, 'legacy_' + v1_fallback_binary + $if windows { '.exe' } $else { '' })
 	legacy_root := os.join_path(root, 'legacy_release')

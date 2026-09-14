@@ -15,6 +15,7 @@ const v1_fallback_binary = 'v1_fallback'
 // Modules that the fallback installer copies to their current public paths.
 // Cached fallback trees are not used until they carry every listed module.
 const v1_fallback_compatibility_modules = ['json2']
+const v1_fallback_compatibility_marker = '.v1-fallback-complete'
 const v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
@@ -700,7 +701,14 @@ fn v1_fallback_has_crypto_subtle(root string) bool {
 
 fn v1_fallback_has_moved_modules(root string) bool {
 	for name in v1_fallback_compatibility_modules {
-		if !os.is_file(os.join_path(root, 'vlib', name, '${name}.v')) {
+		module_dir := os.join_path(root, 'vlib', name)
+		if !os.is_file(os.join_path(module_dir, '${name}.v')) {
+			return false
+		}
+		marker := os.read_file(os.join_path(module_dir, v1_fallback_compatibility_marker)) or {
+			return false
+		}
+		if marker.trim_space() != v_version {
 			return false
 		}
 	}
