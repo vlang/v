@@ -30,6 +30,8 @@ interface Speaker {
 	speak()
 }
 
+type Expr = Speaker
+
 struct Person {}
 
 fn (p Person) speak() {}
@@ -42,6 +44,7 @@ fn main() {
 	alias_string_left := Name('a') + 'b'
 	alias_string_right := 'a' + Name('b')
 	speaker := Speaker(Person{})
+	alias_speaker := Expr(Person{})
 	freed := ['\${name}' + name] @[freed]
 	println(array)
 	println(interpolation)
@@ -49,6 +52,7 @@ fn main() {
 	println(alias_string_left)
 	println(alias_string_right)
 	speaker.speak()
+	alias_speaker.speak()
 	println(freed)
 }
 ")!
@@ -63,7 +67,13 @@ fn main() {
 	for description in ['array initialization', 'string interpolation', 'string concatenation',
 		'cast to interface'] {
 		message := 'allocation (${description})'
-		expected_count := if description == 'string concatenation' { 3 } else { 1 }
+		expected_count := if description == 'string concatenation' {
+			3
+		} else if description == 'cast to interface' {
+			2
+		} else {
+			1
+		}
 		assert warned.output.count(message) == expected_count, warned.output
 		assert warned.output.contains('warning: ${message}'), warned.output
 	}
@@ -75,6 +85,23 @@ fn main() {
 		'cast to interface'] {
 		assert as_errors.output.contains('error: allocation (${description})'), as_errors.output
 	}
+
+	overload_source := os.join_path(root, 'overload.v')
+	os.write_file(overload_source, "type Token = string
+
+fn (a Token) + (b Token) Token {
+	_ = b
+	return a
+}
+
+fn main() {
+	println(Token('a') + Token('b'))
+}
+")!
+	overload := cmdexec.run(v3_bin, ['-silent', '-nocache', '-W', '-warn-about-allocs', '-o',
+		os.join_path(root, 'overload.c'), overload_source])
+	assert overload.exit_code == 0, overload.output
+	assert !overload.output.contains('allocation (string concatenation)'), overload.output
 
 	core_root := os.join_path(root, 'core_module')
 	os.mkdir_all(os.join_path(core_root, 'math'))!

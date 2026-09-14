@@ -4415,9 +4415,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_interface_implementation_error(.assignment_mismatch, actual, target_iface, id, node.pos)
 		tc.record_error_at(.assignment_mismatch, 'type `${actual_name}` does not implement interface `${target_iface.name}`; `${actual_name}` does not implement interface `${target_iface.name}`, cannot cast `${actual_name}` to interface `${target_iface.name}`', id, node.pos)
 	}
-	if target is Interface {
-		tc.warn_alloc('cast to interface', id, node.pos)
-	}
+	tc.warn_alloc('cast to interface', id, node.pos)
 }
 
 fn (tc &TypeChecker) option_cast_payload_compatible(actual Type, target Type) bool {
@@ -6830,6 +6828,10 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	// of the aliased storage type. This is especially important for aliases of
 	// maps, arrays, pointers, and primitives: validating their unaliased type
 	// first would reject the expression before its operator method can be used.
+	if lhs_type is Alias && tc.type_has_infix_operator_method(lhs_type, node.op)
+		&& tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none {
+		return
+	}
 	if node.op == .plus && is_string_concat_pair(lhs_type, rhs_type) {
 		tc.warn_alloc('string concatenation', id, node.pos)
 	}
