@@ -669,6 +669,70 @@ fn test_local_list_and_update_skip_modules_vpm_did_not_install() {
 	assert os.is_file(os.join_path(vendored, 'v.mod'))
 }
 
+// A package an older V installed has no record: it went into the project's
+// `modules/` directory, and moving it up beside the v.mod says nothing about
+// where it came from. Adoption is what the user says by name, and what VPM
+// records; from then on the package is managed like any other install.
+fn test_adopting_a_legacy_local_install_makes_it_managed() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_adopt'))
+	project_dir := os.join_path(test_path, 'adopt_project')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'adopt_project'\n}\n") or {
+		panic(err)
+	}
+	// What an older `v install --local` left behind, after the move the compiler
+	// asks for: a checkout in the lookup root that nothing records.
+	legacy := os.join_path(project_dir, 'legacy_pkg')
+	create_local_git_module(legacy, 'legacy_pkg')
+
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	refused := cmd_fail(@LOCATION, '${vexe} remove --local legacy_pkg')
+	assert refused.output.contains('refusing to remove `legacy_pkg`'), refused.output
+	assert os.is_dir(legacy)
+
+	adopted := cmd_ok(@LOCATION, '${vexe} install --local --adopt legacy_pkg')
+	assert adopted.output.contains('Adopted `legacy_pkg`'), adopted.output
+	assert is_recorded_local_install(legacy)
+
+	listed := cmd_ok(@LOCATION, '${vexe} list --local')
+	assert listed.output.contains('legacy_pkg'), listed.output
+	cmd_ok(@LOCATION, '${vexe} remove --local legacy_pkg')
+	assert !os.exists(legacy)
+}
+
+// Adoption is for what VPM would have installed, which is always a checkout, and
+// it is meaningless outside a local root, where everything is VPM's already.
+fn test_adoption_refuses_what_vpm_could_not_have_installed() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_adopt_refusals'))
+	project_dir := os.join_path(test_path, 'adopt_refusals_project')
+	own_source := os.join_path(project_dir, 'own_mod')
+	os.mkdir_all(own_source) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'adopt_refusals'\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(own_source, 'own_mod.v'), 'module own_mod\n') or { panic(err) }
+
+	old_dir := os.getwd()
+	os.chdir(project_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	plain := cmd_fail(@LOCATION, '${vexe} install --local --adopt own_mod')
+	assert plain.output.contains('refusing to adopt `own_mod`'), plain.output
+	assert !is_recorded_local_install(own_source)
+
+	missing := cmd_fail(@LOCATION, '${vexe} install --local --adopt nothing_here')
+	assert missing.output.contains('failed to find `nothing_here`'), missing.output
+
+	global := os.execute('${vexe} install --adopt own_mod')
+	assert global.exit_code == 2, global.output
+	assert global.output.contains('`--adopt` is only meaningful together with `--local`'), global.output
+}
+
 // Records are absolute and `/`-separated whatever the host, so containment has to
 // be judged in that convention too: `os.path_separator` would be `\` on Windows,
 // where no record could ever be found under its own root again.

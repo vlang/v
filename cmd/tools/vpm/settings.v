@@ -9,6 +9,7 @@ struct VpmSettings {
 mut:
 	is_help               bool
 	is_once               bool
+	is_adopt              bool
 	is_verbose            bool
 	is_force              bool
 	is_local              bool
@@ -74,6 +75,7 @@ fn init_settings() VpmSettings {
 	return VpmSettings{
 		is_help:               '-h' in opts || '--help' in opts || 'help' in cmds
 		is_once:               '--once' in opts
+		is_adopt:              '--adopt' in opts
 		is_verbose:            '-v' in opts || '--verbose' in opts
 		is_force:              '-f' in opts || '--force' in opts
 		is_local:              is_local

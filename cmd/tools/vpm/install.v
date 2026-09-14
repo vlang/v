@@ -14,6 +14,10 @@ fn vpm_install(query []string) {
 	if settings.is_help {
 		help.print_and_exit('vpm')
 	}
+	if settings.is_adopt {
+		vpm_adopt(query)
+		return
+	}
 
 	mut selector := new_install_server_selector()
 	mut modules := parse_query(if query.len == 0 {

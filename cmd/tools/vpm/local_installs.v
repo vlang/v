@@ -183,5 +183,56 @@ fn vpm_owns_module_dir(module_path string) bool {
 }
 
 fn not_installed_by_vpm_details() string {
-	return "A local install shares the module lookup root with the project's own modules, so only what VPM installed there is VPM's to touch. Nothing records this directory as such an install: it may be a module the project keeps itself, even when it is a submodule or a clone. Handle it by hand, if that is really what you want."
+	return "A local install shares the module lookup root with the project's own modules, so only what VPM installed there is VPM's to touch. Nothing records this directory as such an install: it may be a module the project keeps itself, even when it is a submodule or a clone. If an older V installed it, adopt it with `v install --local --adopt <module>`; otherwise handle it by hand, if that is really what you want."
+}
+
+// Packages installed by an older V have no record. They went into the project's
+// `modules/` directory, which is not a lookup root anymore, and moving one up
+// beside the v.mod says nothing about where it came from -- on disk it is exactly
+// a checkout the project could have vendored itself. So adoption is something the
+// user says, by name: that is the consent nothing else can supply.
+fn vpm_adopt(query []string) {
+	if !settings.is_local {
+		vpm_error('`--adopt` is only meaningful together with `--local`.',
+			details: "The global modules directory needs no record: everything in it is VPM's."
+		)
+		exit(2)
+	}
+	if query.len == 0 {
+		vpm_error('specify at least one module to adopt.',
+			details: 'example: `v install --local --adopt mymod`'
+		)
+		exit(2)
+	}
+	mut errors := 0
+	for m in query {
+		rel_path := normalize_mod_path(m.replace('.', os.path_separator))
+		module_path := os.join_path(settings.vmodules_path, rel_path)
+		if !os.is_dir(module_path) {
+			vpm_error('failed to find `${m}` at `${fmt_mod_path(module_path)}`.')
+			errors++
+			continue
+		}
+		path := os.real_path(module_path)
+		if is_recorded_local_install(path) {
+			println('Module `${m}` in ${fmt_mod_path(path)} is already recorded as installed by VPM.')
+			continue
+		}
+		if vcs_used_in_dir(path) == none {
+			vpm_error('refusing to adopt `${m}`: `${fmt_mod_path(path)}` is not a checkout.',
+				details: 'VPM installs a package by cloning it, so what it installed is a `git` or `hg` checkout. This is plain source, which VPM has no business removing or updating.'
+			)
+			errors++
+			continue
+		}
+		record_local_install(path) or {
+			vpm_error('failed to adopt `${m}`.', details: err.msg())
+			errors++
+			continue
+		}
+		println('Adopted `${m}` in ${fmt_mod_path(path)}.')
+	}
+	if errors > 0 {
+		exit(1)
+	}
 }

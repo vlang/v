@@ -272,7 +272,9 @@ fn (vd &VDoc) emit_generate_err(err IError) {
 		mod_list := get_modules(cfg.input_path)
 		println('Available modules:\n==================')
 		for mod in mod_list {
-			println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
+			// No `modules/` to strip: it is an ordinary directory now, so a module
+			// under it really is `modules.<name>`, which is what `-m` has to be given.
+			println(mod.all_after('vlib/').replace('/', '.'))
 		}
 		err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
 	}

@@ -6298,7 +6298,11 @@ location can be overridden by setting the env variable `VMODULES`.
 
 `v install --local` installs into the project's own lookup root instead, i.e.
 the folder holding its `v.mod`, so the package lands beside the project's own
-modules and is imported by its name just like they are.
+modules and is imported by its name just like they are. That root is shared with
+the modules the project writes itself, so VPM keeps a record of what it installed
+there and only updates or removes those. A package an older V installed into the
+project's `modules/` directory has no such record; after moving it up beside the
+`v.mod`, `v install --local --adopt <module>` tells VPM it is one of its own.
 
 ### Package names and import paths
 
