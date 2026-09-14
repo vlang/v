@@ -6096,9 +6096,6 @@ fn target_libc_cached_prefix_needs_thread_refresh(cached_prefix string, current_
 	} else {
 		0
 	}
-	if body_level == 0 {
-		return false
-	}
 	prefix_level := if c_source_references_identifiers(cached_prefix, runtime_identifiers) {
 		2
 	} else if c_source_references_identifiers(cached_prefix, {
@@ -6108,7 +6105,7 @@ fn target_libc_cached_prefix_needs_thread_refresh(cached_prefix string, current_
 	} else {
 		0
 	}
-	return prefix_level < body_level
+	return prefix_level != body_level
 }
 
 fn merge_cached_generic_program_body(cached_source string, changed_source string) ?string {
@@ -12148,7 +12145,7 @@ pub fn run(args []string) {
 						if prefs.target_libc_headers
 							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix,
 								generated_source) {
-							trace_v3_cache_fallback('cached program prefix lacks required target thread support')
+							trace_v3_cache_fallback('cached program prefix has stale target thread support')
 							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 							restart_v3_after_cache_invalidation()
 						}
@@ -12176,7 +12173,7 @@ pub fn run(args []string) {
 						if prefs.target_libc_headers
 							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix,
 								generated_source) {
-							trace_v3_cache_fallback('cached program prefix lacks required target thread support')
+							trace_v3_cache_fallback('cached program prefix has stale target thread support')
 							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 							restart_v3_after_cache_invalidation()
 						}
