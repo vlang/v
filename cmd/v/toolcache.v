@@ -172,13 +172,23 @@ fn module_root_stamp(path string) string {
 }
 
 // binary_identity identifies one published executable, so that a manifest can name the exact
-// build it describes. The device and inode make it exact wherever they are real: every build
-// stages a fresh file and a rename carries its identity over, so two builds of the same key
-// never share one. Where they are not reported it degrades to the size and modification time,
-// which still separates two builds of different sources.
+// build it describes. Every build stages a fresh file and a rename carries its native identity
+// over, so two builds of the same key never share one. Windows needs its native volume and file
+// index because the CRT inode is not reliable there. Hashing the contents is the
+// collision-resistant fallback for filesystems that do not expose a usable identity.
 fn binary_identity(path string) string {
-	attributes := os.stat(path) or { return file_stamp_missing }
-	return '${attributes.dev}:${attributes.inode}:${attributes.size}:${attributes.mtime}'
+	$if windows {
+		if identity := windows_binary_file_identity(path) {
+			return 'windows:${identity}'
+		}
+	} $else {
+		attributes := os.stat(path) or { return file_stamp_missing }
+		if attributes.inode != 0 {
+			return 'stat:${attributes.dev}:${attributes.inode}:${attributes.size}:${attributes.mtime}:${attributes.ctime}'
+		}
+	}
+	contents := os.read_bytes(path) or { return file_stamp_missing }
+	return 'sha256:${sha256.sum256(contents).hex()}'
 }
 
 // last_modified returns the modification time of a path, or the largest possible time when
@@ -425,10 +435,27 @@ fn unresolved_import_modules(details string) []string {
 }
 
 // module_search_roots returns the directories an import is resolved against, in the order
-// `pref` searches them: the tree's own `vlib`, then every `~/.vmodules` entry (`$VMODULES`
-// may list several). A module that failed to resolve can reappear in any of them, so a
-// recorded failure has to watch all of them rather than `vlib` alone.
-fn module_search_roots(vroot string) []string {
+// `pref` searches them. An explicit `-path` replaces the defaults and supports the same
+// placeholders as the driver. Without one, the tree's own `vlib` and every `~/.vmodules`
+// entry are searched. A missing module can reappear in any of those roots.
+fn module_search_roots(vroot string, build_args []string) []string {
+	mut spec := ''
+	for index, argument in build_args {
+		if argument == '-path' && index + 1 < build_args.len {
+			spec = build_args[index + 1]
+		}
+	}
+	if spec != '' {
+		mut roots := []string{}
+		for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
+			match path {
+				'@vlib' { roots << os.join_path(vroot, 'vlib') }
+				'@vmodules' { roots << os.vmodules_paths() }
+				else { roots << path.replace('@vroot', vroot) }
+			}
+		}
+		return roots
+	}
 	mut roots := [os.join_path(vroot, 'vlib')]
 	for path in os.vmodules_paths() {
 		clean := path.trim_space()
@@ -449,31 +476,43 @@ fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, det
 	// cannot describe that way is an import it could not resolve at all, because the module
 	// has no files to stamp. Recording the module roots as well is what makes the tool be
 	// retried as soon as a missing module reappears.
-	mut roots := map[string]bool{}
-	roots[os.join_path(entry.vroot, 'vlib')] = true
-	roots[os.join_path(entry.vroot, 'vlib', 'v')] = true
+	search_roots := module_search_roots(entry.vroot, entry.build_args)
+	mut module_roots := map[string]bool{}
+	mut module_source_dirs := map[string]bool{}
+	for root in search_roots {
+		module_roots[root] = true
+	}
 	for module_name in unresolved_import_modules(details) {
-		// A root records its *direct* children only, so those two fixed entries see a module
-		// appear or vanish right under them and nothing deeper. `db.sqlite` could be removed
-		// and restored without either of them changing, which replayed the recorded failure
-		// forever. Stamp the module's own directory and every ancestor down to it, so the
-		// level that actually changes is always one of them. Every root the compiler would
-		// have searched counts: the module may reappear in any of them.
-		for search_root in module_search_roots(entry.vroot) {
+		// A module-root stamp records its *direct* child directories only, so `db.sqlite`
+		// could be removed and restored without `vlib` itself changing. Stamp each ancestor,
+		// then stamp the final module directory's V source names: an existing empty directory
+		// becomes usable when its first `.v` file appears. Every root the compiler would have
+		// searched counts because the module may reappear in any of them.
+		for search_root in search_roots {
 			mut path := search_root
-			for part in module_name.split('.') {
+			parts := module_name.split('.')
+			for index, part in parts {
 				if part.trim_space() == '' {
 					break
 				}
 				path = os.join_path(path, part)
-				roots[path] = true
+				if index == parts.len - 1 {
+					module_source_dirs[path] = true
+				} else {
+					module_roots[path] = true
+				}
 			}
 		}
 	}
-	mut sorted_roots := roots.keys()
+	mut sorted_roots := module_roots.keys()
 	sorted_roots.sort()
 	for root in sorted_roots {
 		manifest += 'm${tool_cache_field_separator}${root}${tool_cache_field_separator}${module_root_stamp(root)}\n'
+	}
+	mut sorted_source_dirs := module_source_dirs.keys()
+	sorted_source_dirs.sort()
+	for directory in sorted_source_dirs {
+		manifest += 'd${tool_cache_field_separator}${directory}${tool_cache_field_separator}${dir_stamp(directory)}\n'
 	}
 	os.write_file(entry.unbuildable_manifest, manifest) or { return }
 	os.write_file(entry.unbuildable, details) or {}
@@ -558,10 +597,22 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 		if !is_cache_artifact_of(name, entry.name) {
 			continue
 		}
-		if name.starts_with(keep) {
+		if name == keep {
 			continue
 		}
-		os.rmdir_all(os.join_path(directory, name)) or {}
+		path := os.join_path(directory, name)
+		if os.is_link(path) {
+			// Never recurse through a cache-shaped symlink. Windows removes directory links
+			// with RemoveDirectory and file links with remove, so try both non-recursive forms.
+			os.rm(path) or {}
+			os.rmdir(path) or {}
+		} else if !os.is_dir(path) {
+			// Legacy cache entries were flat executables and sidecars, so they need unlinking
+			// rather than directory removal.
+			os.rm(path) or {}
+		} else {
+			os.rmdir_all(path) or {}
+		}
 	}
 }
 
