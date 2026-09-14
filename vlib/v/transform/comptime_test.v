@@ -41,16 +41,22 @@ fn test_comptime_method_receiver_name_normalizes_main_qualification() {
 	assert comptime_method_receiver_matches('App', 'main.App', 'main.App', 'main', 'veb')
 }
 
-fn test_comptime_method_call_arity_allows_omitted_optional_params() {
+fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'call'
 	})
 	ctx := a.add_node(flat.Node{
-		kind:  .ident
-		value: 'ctx'
-		typ:   '&Context'
+		kind:   .ident
+		value:  'ctx'
+		typ:    '&Context'
+		is_mut: true
+	})
+	route_arg := a.add_node(flat.Node{
+		kind:  .string_literal
+		value: 'item'
+		typ:   'string'
 	})
 	children_start := a.children.len
 	a.children << callee
@@ -58,6 +64,21 @@ fn test_comptime_method_call_arity_allows_omitted_optional_params() {
 	call := flat.Node{
 		kind:           .call
 		children_start: i32(children_start)
+		children_count: 2
+	}
+	omitted_ctx_children_start := a.children.len
+	a.children << callee
+	call_without_ctx := flat.Node{
+		kind:           .call
+		children_start: i32(omitted_ctx_children_start)
+		children_count: 1
+	}
+	route_arg_children_start := a.children.len
+	a.children << callee
+	a.children << route_arg
+	call_with_route_arg := flat.Node{
+		kind:           .call
+		children_start: i32(route_arg_children_start)
 		children_count: 2
 	}
 	mut tc := types.TypeChecker.new(&a)
@@ -69,6 +90,8 @@ fn test_comptime_method_call_arity_allows_omitted_optional_params() {
 		receiver:    'App'
 		module_name: 'main'
 	}
+	assert t.comptime_method_call_arity_matches(call_without_ctx, base_method)
+	assert t.comptime_method_call_arity_matches(call, base_method)
 	assert t.comptime_method_call_arity_matches(call, MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: '?string' }]
@@ -81,9 +104,21 @@ fn test_comptime_method_call_arity_allows_omitted_optional_params() {
 		...base_method
 		params: [ParamMeta{ typ: '...bool' }]
 	})
+	assert !t.comptime_method_call_arity_matches(call_without_ctx, MethodMeta{
+		...base_method
+		params: [ParamMeta{ typ: 'string' }]
+	})
 	assert !t.comptime_method_call_arity_matches(call, MethodMeta{
 		...base_method
 		params: [ParamMeta{ typ: 'string' }]
+	})
+	assert t.comptime_method_call_arity_matches(call_with_route_arg, MethodMeta{
+		...base_method
+		params: [ParamMeta{ typ: 'string' }]
+	})
+	assert !t.comptime_method_call_arity_matches(call_without_ctx, MethodMeta{
+		...base_method
+		params: [ParamMeta{ typ: '!fn ()' }]
 	})
 	assert !t.comptime_method_call_arity_matches(call, MethodMeta{
 		...base_method
@@ -98,9 +133,10 @@ fn test_comptime_method_call_arity_collapses_params_struct_fields() {
 		value: 'call'
 	})
 	ctx := a.add_node(flat.Node{
-		kind:  .ident
-		value: 'ctx'
-		typ:   '&Context'
+		kind:   .ident
+		value:  'ctx'
+		typ:    '&Context'
+		is_mut: true
 	})
 	first_field := a.add_node(flat.Node{
 		kind:  .field_init

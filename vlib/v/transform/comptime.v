@@ -1263,17 +1263,21 @@ fn (t &Transformer) comptime_method_call_arity_matches(node flat.Node, method Me
 	collapsed_field_args := if field_init_args > 0 { 1 } else { 0 }
 	actual_count := int(node.children_count) - 1 - field_init_args + collapsed_field_args
 	hidden_ctx_count := if t.method_has_implicit_veb_ctx(method) { 1 } else { 0 }
-	expected_count := method.params.len + hidden_ctx_count
-	min_count := t.comptime_method_min_required_arg_count(method) + hidden_ctx_count
+	explicit_ctx_count := if hidden_ctx_count > 0 && node.children_count > 1
+		&& t.a.child_node(&node, 1).is_mut {
+		1
+	} else {
+		0
+	}
+	max_count := method.params.len + hidden_ctx_count
+	min_count := t.comptime_method_min_required_arg_count(method) + explicit_ctx_count
 	if actual_count < min_count {
 		return false
 	}
-	// A veb route handler may omit its `ctx` parameter, in which case it is not in
-	// the reflected parameter list but still exists in the signature. Reflected
-	// `app.$method(mut ctx)` calls pass that context explicitly, so one extra
-	// argument is the correct arity for such a method.
+	// An explicitly supplied hidden veb context is a `mut` first argument and
+	// consumes one call slot. Without it, the context is inherited by the handler.
 	return (method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...'))
-		|| actual_count <= expected_count
+		|| actual_count <= max_count
 }
 
 fn (t &Transformer) comptime_method_min_required_arg_count(method MethodMeta) int {

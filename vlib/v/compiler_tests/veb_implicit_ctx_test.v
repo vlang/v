@@ -16,7 +16,7 @@ fn build_v3() string {
 // called by another handler without passing ctx explicitly. The call must
 // type-check (not report a missing argument) and forward the enclosing `ctx`,
 // not a zero/default value.
-fn test_veb_implicit_ctx_forwarded_at_call_site() {
+fn test_veb_implicit_ctx_forwarded_at_direct_and_reflected_call_sites() {
 	v3_bin := build_v3()
 	src := '
 import veb
@@ -32,7 +32,12 @@ mut:
 
 pub fn (app &App) index() veb.Result {
 	app.show(5)
-	return app.helper()
+	$for method in App.methods {
+		if method.name == "helper" {
+			return app.$method()
+		}
+	}
+	return veb.Result{}
 }
 
 pub fn (app &App) helper() veb.Result {
@@ -55,7 +60,7 @@ fn main() {
 	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${c_out}')
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
-	// No-arg delegation forwards the enclosing ctx in the ctx slot.
+	// No-arg reflected delegation forwards the enclosing ctx in the ctx slot.
 	assert c_code.contains('App__helper(app, ctx)'), c_code
 	// Delegation that also passes a real argument keeps ctx at its slot,
 	// so the explicit argument still lines up with its parameter.
