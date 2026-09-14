@@ -294,6 +294,20 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 	return flags
 }
 
+// clone_node_flags rebuilds the flags of a node copied from `source`.
+//
+// `skip_ownership_drops` describes the scope a node sits in, so a copy is given
+// whatever its new position calls for. The rest describe the node itself and
+// have to survive being copied: a generic specialization that dropped
+// node_flag_embed_payload would turn the payload back into an ordinary literal,
+// which the backend would then intern and spell out in full.
+@[inline]
+pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
+	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
+	flags |= source.flags & node_flag_embed_payload
+	return flags
+}
+
 // Node represents node data used by flat.
 pub struct Node {
 pub mut:

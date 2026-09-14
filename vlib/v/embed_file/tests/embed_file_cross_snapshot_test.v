@@ -241,6 +241,15 @@ fn reader(id int, mut seen []string) {
 	seen[id] = checksum()
 }
 
+// An `\$embed_file` inside a generic body is cloned once per specialization. The
+// copy has to stay recognizable as an embedded payload, or the backend falls back
+// to spelling it out as an ordinary literal, which is what the limits above are
+// there to prevent.
+fn evaluated_in_a_generic[T](x T) int {
+	local := \$embed_file('payload.bin')
+	return local.len
+}
+
 // An `\$embed_file` written inside a function, rather than kept in a constant,
 // is evaluated again on every call. Its bytes are embedded once either way, so
 // every evaluation has to arrive at the same pointer; building a fresh buffer
@@ -272,6 +281,11 @@ fn main() {
 	}
 	if voidptr(embedded.data()) != voidptr(embedded_again.data()) {
 		println('the same file was embedded twice over')
+		exit(1)
+	}
+	if evaluated_in_a_generic(1) != embedded.len || evaluated_in_a_generic('s') != embedded.len
+		|| evaluated_in_a_generic(1.5) != embedded.len {
+		println('a specialization did not see the whole payload')
 		exit(1)
 	}
 	println(seen[0])
