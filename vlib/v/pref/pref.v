@@ -426,9 +426,14 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	// A `modules` directory is skipped on the way: it is no lookup root any more,
 	// so what it holds is `modules.<name>` even to the files inside it. Stopping
 	// there would keep the virtual layout alive between the modules left in it.
+	// Unless it carries a manifest, that is: a directory with a `v.mod` is a
+	// project root whatever it is called, and this walk is the only thing some
+	// callers have -- the FastC backend asks here directly, with no project-root
+	// probe of its own to fall back on.
 	mut current_dir := importer_dir
 	for {
-		if os.file_name(current_dir) != 'modules' {
+		if os.file_name(current_dir) != 'modules'
+			|| os.exists(os.join_path_single(current_dir, 'v.mod')) {
 			if try_path := module_path_from_search_root(mod, mod_path, current_dir) {
 				return try_path
 			}
