@@ -42,6 +42,23 @@ fn test_precompute_thread_type_usage_scans_interface_fields() {
 	assert g.needs_thread_type
 }
 
+fn test_precompute_thread_type_usage_scans_pthread_backed_fields() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.structs['sync.Mutex'] = [
+		types.StructField{
+			name: 'mutex'
+			typ:  types.Type(types.Struct{ name: 'C.pthread_mutex_t' })
+		},
+	]
+	mut g := FlatGen.new()
+	g.tc = &tc
+	g.set_target_libc_headers(true)
+	g.precompute_thread_type_usage()
+	assert g.needs_pthread_header
+	assert !g.needs_thread_type
+}
+
 fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 	$if !windows && !v3_no_parallel ? {
 		mut ast := flat.FlatAst.new()

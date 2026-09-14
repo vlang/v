@@ -17872,7 +17872,7 @@ const c_target_libc_additional_declared_fns = {
 }
 
 // c_target_libc_posix_declared_fns contains declarations owned by <dirent.h>,
-// <fcntl.h>, <signal.h>, <sys/stat.h>, and <unistd.h> in target-header mode.
+// <fcntl.h>, <signal.h>, <sys/stat.h>, <sys/time.h>, and <unistd.h> in target-header mode.
 const c_target_libc_posix_declared_fns = {
 	'_exit':        true
 	'access':       true
@@ -17899,6 +17899,7 @@ const c_target_libc_posix_declared_fns = {
 	'getpgrp':      true
 	'getpid':       true
 	'getppid':      true
+	'gettimeofday': true
 	'getuid':       true
 	'isatty':       true
 	'kill':         true

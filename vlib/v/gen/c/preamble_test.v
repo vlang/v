@@ -236,7 +236,7 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 	g.preamble()
 	c_code := g.sb.str()
 	for header in ['stdint.h', 'stddef.h', 'stdatomic.h', 'errno.h', 'fcntl.h', 'signal.h', 'stdio.h',
-		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h', 'sys/stat.h'] {
+		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
 		assert c_code.contains('#include <${header}>'), header
 	}
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
@@ -251,7 +251,7 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 	assert c_code.contains('void backtrace_symbols_fd(void* const* __array, int __size, int __fd);')
 	assert !c_code.contains('static __v_thread __v_thread_spawn(')
 	for name in ['open', 'read', 'close', 'pipe', 'signal', 'sysconf', 'setbuf', 'fseeko', 'memmem',
-		'mempcpy', 'chmod', 'lstat', 'mkdir', 'opendir'] {
+		'mempcpy', 'chmod', 'lstat', 'mkdir', 'opendir', 'gettimeofday'] {
 		assert !g.should_emit_c_extern_decl(name), name
 	}
 }
@@ -288,6 +288,17 @@ fn test_target_libc_preamble_includes_pthread_for_direct_calls_without_thread_ru
 	g.preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('#include <pthread.h>')
+	assert !c_code.contains('static __v_thread __v_thread_spawn(')
+}
+
+fn test_target_libc_preamble_includes_pthread_for_pthread_backed_types() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.needs_pthread_header = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <pthread.h>')
+	assert !c_code.contains('typedef struct { pthread_t handle; } __v_thread;')
 	assert !c_code.contains('static __v_thread __v_thread_spawn(')
 }
 

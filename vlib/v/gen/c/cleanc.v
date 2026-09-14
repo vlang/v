@@ -477,6 +477,7 @@ mut:
 	shared_alias_pointer_shorts   map[string]string // alias short name -> shared inner type; '' means ambiguous
 	shared_alias_index_ready      bool
 	needs_shared_runtime          bool
+	needs_pthread_header          bool
 	needs_thread_type             bool
 	needs_thread_runtime          bool
 	const_runtime_inits           []string
@@ -3149,6 +3150,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.shared_type_names.clear()
 	g.shared_alias_pointer_shorts.clear()
 	g.needs_shared_runtime = false
+	g.needs_pthread_header = false
 	g.needs_thread_type = false
 	g.needs_thread_runtime = false
 	g.cur_param_names = []string{}
@@ -9837,7 +9839,8 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
 		}
-		if !use_system_libc && c_is_ptrace_system_include_directive(directive) {
+		if !use_system_libc && !g.target_libc_headers
+			&& c_is_ptrace_system_include_directive(directive) {
 			continue
 		}
 		if directive.contains('<mach/mach.h>') {
@@ -17742,7 +17745,7 @@ fn (mut g FlatGen) target_libc_thread_runtime() {
 }
 
 fn (g &FlatGen) uses_pthread() bool {
-	if g.needs_thread_runtime {
+	if g.needs_pthread_header || g.needs_thread_runtime {
 		return true
 	}
 	for name in g.c_extern_refs.keys() {
@@ -17764,7 +17767,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// prototype further down. This is the set V's own runtime calls into.
 		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdbool.h', 'stdatomic.h',
 			'errno.h', 'fcntl.h', 'signal.h', 'stdio.h', 'stdlib.h', 'string.h', 'strings.h', 'math.h',
-			'time.h', 'unistd.h', 'sys/stat.h'] {
+			'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
 			if header == 'stdatomic.h' {
 				g.gnu_objc_compatible_stdatomic_header()
 			} else {

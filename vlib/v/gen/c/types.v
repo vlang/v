@@ -217,12 +217,43 @@ fn type_references_thread(typ types.Type) bool {
 	}
 }
 
+fn type_references_pthread(typ types.Type) bool {
+	return match typ {
+		types.Struct {
+			name := trimmed_space(typ.name)
+			name.starts_with('C.pthread_') || name.all_after_last('.').starts_with('pthread_')
+		}
+		types.Array { type_references_pthread(typ.elem_type) }
+		types.ArrayFixed { type_references_pthread(typ.elem_type) }
+		types.Channel { type_references_pthread(typ.elem_type) }
+		types.Map {
+			type_references_pthread(typ.key_type) || type_references_pthread(typ.value_type)
+		}
+		types.Pointer { type_references_pthread(typ.base_type) }
+		types.FnType {
+			type_references_pthread(typ.return_type) || typ.params.any(type_references_pthread(it))
+		}
+		types.OptionType { type_references_pthread(typ.base_type) }
+		types.ResultType { type_references_pthread(typ.base_type) }
+		types.Alias {
+			name := trimmed_space(typ.name)
+			name.starts_with('C.pthread_') || name.all_after_last('.').starts_with('pthread_')
+				|| type_references_pthread(typ.base_type)
+		}
+		types.MultiReturn { typ.types.any(type_references_pthread(it)) }
+		else { false }
+	}
+}
+
 fn (mut g FlatGen) note_thread_type_usage(typ types.Type) {
-	if !g.target_libc_headers || g.needs_thread_type {
+	if !g.target_libc_headers {
 		return
 	}
-	if type_references_thread(typ) {
+	if !g.needs_thread_type && type_references_thread(typ) {
 		g.needs_thread_type = true
+	}
+	if !g.needs_pthread_header && type_references_pthread(typ) {
+		g.needs_pthread_header = true
 	}
 }
 

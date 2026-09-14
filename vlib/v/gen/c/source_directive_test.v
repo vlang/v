@@ -475,6 +475,21 @@ fn test_target_libc_headers_preserve_explicit_pthread_include() {
 	assert headerless.ordered_c_directives(false) == ['#include <sys/mman.h>']
 }
 
+fn test_target_libc_headers_preserve_explicit_ptrace_include() {
+	mut target := FlatGen.new()
+	target.set_target_libc_headers(true)
+	target.c_extern_refs_ready = true
+	target.add_c_directive('os', '#include <sys/ptrace.h>', false)
+	target.emit_preserved_c_directives(false)
+	assert target.sb.str().contains('#include <sys/ptrace.h>')
+
+	mut headerless := FlatGen.new()
+	headerless.c_extern_refs_ready = true
+	headerless.add_c_directive('os', '#include <sys/ptrace.h>', false)
+	headerless.emit_preserved_c_directives(false)
+	assert !headerless.sb.str().contains('#include <sys/ptrace.h>')
+}
+
 fn test_builtin_abi_compat_macros_precede_late_c_source() {
 	mut g := FlatGen.new()
 	g.has_builtins = true
