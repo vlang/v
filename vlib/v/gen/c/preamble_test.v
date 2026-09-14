@@ -251,7 +251,7 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 	assert c_code.contains('void backtrace_symbols_fd(void* const* __array, int __size, int __fd);')
 	assert !c_code.contains('static __v_thread __v_thread_spawn(')
 	for name in ['open', 'read', 'close', 'pipe', 'signal', 'sysconf', 'setbuf', 'fseeko', 'memmem',
-		'mempcpy'] {
+		'mempcpy', 'chmod', 'lstat', 'mkdir'] {
 		assert !g.should_emit_c_extern_decl(name), name
 	}
 }

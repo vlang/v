@@ -17872,12 +17872,13 @@ const c_target_libc_additional_declared_fns = {
 }
 
 // c_target_libc_posix_declared_fns contains declarations owned by <fcntl.h>,
-// <signal.h>, and <unistd.h> in target-header mode.
+// <signal.h>, <sys/stat.h>, and <unistd.h> in target-header mode.
 const c_target_libc_posix_declared_fns = {
 	'_exit':        true
 	'access':       true
 	'alarm':        true
 	'chdir':        true
+	'chmod':        true
 	'chown':        true
 	'close':        true
 	'dup':          true
@@ -17902,6 +17903,8 @@ const c_target_libc_posix_declared_fns = {
 	'isatty':       true
 	'kill':         true
 	'link':         true
+	'lstat':        true
+	'mkdir':        true
 	'open':         true
 	'pipe':         true
 	'pread':        true
