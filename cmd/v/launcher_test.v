@@ -272,6 +272,8 @@ fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
 	assert v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.c.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', 'example_test.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', 'script.vsh'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-check', 'example_test.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-check-syntax', 'script.vsh'])
 	os.setenv('VNORUN', '1', true)
 	assert v1_fallback_exit_identifies_compiler_failure(['example_test.v'])
 	assert v1_fallback_exit_identifies_compiler_failure(['script.vsh'])

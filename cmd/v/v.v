@@ -376,7 +376,8 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 // described as compiler failures.
 fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 	backend := v1_fallback_selected_backend(args)
-	skip_running := '-skip-running' in args || os.getenv('VNORUN') == '1'
+	skip_running := '-skip-running' in args || '-check' in args || '-check-syntax' in args
+		|| os.getenv('VNORUN') == '1'
 	mut option_value_follows := false
 	for i, arg in args {
 		if option_value_follows {
