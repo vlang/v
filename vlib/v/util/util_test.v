@@ -39,6 +39,42 @@ fn test_githash_reads_packed_repository_head() {
 	assert githash(root)! == '1234567'
 }
 
+fn test_githash_resolves_chained_symbolic_refs() {
+	root := os.join_path(os.vtmp_dir(), 'util_githash_symbolic_chain_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	git_dir := os.join_path(root, '.git')
+	os.mkdir_all(os.join_path(git_dir, 'refs', 'heads'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	alias_reference := 'refs/heads/alias'
+	main_reference := 'refs/heads/main'
+	os.write_file(os.join_path(git_dir, 'HEAD'), 'ref: ${alias_reference}\n')!
+	os.write_file(os.join_path(git_dir, alias_reference), 'ref: ${main_reference}\n')!
+	os.write_file(os.join_path(git_dir, 'packed-refs'), '1234567890abcdef1234567890abcdef12345678 ${main_reference}\n')!
+	assert githash(root)! == '1234567'
+}
+
+fn test_githash_rejects_symbolic_ref_cycles() {
+	root := os.join_path(os.vtmp_dir(), 'util_githash_symbolic_cycle_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	git_dir := os.join_path(root, '.git')
+	os.mkdir_all(os.join_path(git_dir, 'refs', 'heads'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	alias_reference := 'refs/heads/alias'
+	main_reference := 'refs/heads/main'
+	os.write_file(os.join_path(git_dir, 'HEAD'), 'ref: ${alias_reference}\n')!
+	os.write_file(os.join_path(git_dir, alias_reference), 'ref: ${main_reference}\n')!
+	os.write_file(os.join_path(git_dir, main_reference), 'ref: ${alias_reference}\n')!
+	_ := githash(root) or {
+		assert err.msg().contains('cyclic Git symbolic reference')
+		return
+	}
+	assert false, 'cyclic symbolic references should fail'
+}
+
 fn test_githash_honors_absolute_worktree_common_dir() {
 	root := os.join_path(os.vtmp_dir(), 'util_githash_commondir_${os.getpid()}')
 	os.rmdir_all(root) or {}
