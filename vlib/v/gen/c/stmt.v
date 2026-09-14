@@ -8341,6 +8341,15 @@ fn (mut g FlatGen) precompute_local_global_suffix_names() {
 	g.local_global_suffix_names_ready = true
 }
 
+// The runtime's own `array` struct is typed into C under that name, and a local
+// taking the name for its own hides the type from the rest of the function it is in:
+// a slice of `a.values` inside a function whose parameter is called `array` is built
+// with an `(array[]){...}` literal, and the literal no longer names a type. `map` and
+// `string` cannot arise the same way -- the parser refuses them as identifiers.
+const v_runtime_typedef_names = {
+	'array': true
+}
+
 fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
@@ -8350,8 +8359,8 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		}
 	}
 	cname := g.cname(name)
-	result := cname in g.inlined_c_typedef_names || cname in g.tc.c_typedef_structs
-		|| 'C.${cname}' in g.tc.c_typedef_structs
+	result := cname in v_runtime_typedef_names || cname in g.inlined_c_typedef_names
+		|| cname in g.tc.c_typedef_structs || 'C.${cname}' in g.tc.c_typedef_structs
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
 		cache.put(name, if result { i8(1) } else { i8(-1) })
