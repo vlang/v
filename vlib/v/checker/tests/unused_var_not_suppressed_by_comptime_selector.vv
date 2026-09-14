@@ -2,7 +2,28 @@ struct Foo {
 	value int
 }
 
+fn consume(_config Foo) {}
+
+// A struct field label is not a reference to the parameter with the same name.
+fn struct_field_label(value int) {
+	$if prealloc {
+		_ := Foo{
+			value: 1
+		}
+	}
+}
+
+// A named argument label is likewise not a reference to the parameter.
+fn named_argument_label(value int) {
+	$if prealloc {
+		consume(value: 1)
+	}
+}
+
 fn main() {
+	consume(Foo{})
+	struct_field_label(1)
+	named_argument_label(1)
 	value := 1
 	$if prealloc {
 		println(Foo{}.value)

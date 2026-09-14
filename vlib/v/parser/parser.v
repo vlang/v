@@ -5780,8 +5780,9 @@ fn (mut p Parser) skip_block() {
 // or a variable is used there, and they report it on every other target.
 // Reading them off the token stream is what keeps strings, comments,
 // interpolations and operators right. Only tokens the expression parser can
-// turn into identifiers are recorded; selector members follow a dot and are
-// not local references.
+// turn into identifiers are recorded; selector members follow a dot, while
+// struct-field and named-argument labels precede a colon, so neither is a local
+// reference.
 fn (mut p Parser) skip_comptime_block() {
 	if p.tok != .lcbr {
 		p.skip_block()
@@ -5803,7 +5804,8 @@ fn (mut p Parser) skip_comptime_block() {
 			depth--
 		} else if prev_tok != .dot
 			&& (p.tok in [.name, .key_module]
-			|| (p.tok == .key_shared && p.shared_token_is_identifier(false))) {
+			|| (p.tok == .key_shared && p.shared_token_is_identifier(false)))
+			&& p.peek() != .colon {
 			p.a.comptime_skipped_names[prefix + p.lit] = true
 		}
 		prev_tok = p.tok
