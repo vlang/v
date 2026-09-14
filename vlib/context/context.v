@@ -102,5 +102,7 @@ pub fn (ctx &Context) str() string {
 }
 
 fn context_name(ctx Context) string {
-	return typeof(ctx)
+	// `type_name()` reports the name of the concrete type currently stored in the
+	// interface, which is what the `else` branch of `Context.str` wants to print.
+	return ctx.type_name()
 }

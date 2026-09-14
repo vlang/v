@@ -425,6 +425,13 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 		return resolved
 	}
 	if sum_name.contains('.') {
+		// A qualified name that already names a concrete type is that type. The
+		// short-name fallback below would otherwise hand `one.Any` the unrelated
+		// `two.Any` sum type and box the value into the wrong C struct.
+		if sum_name in g.tc.structs || sum_name in g.tc.interface_names
+			|| sum_name in g.tc.enum_names {
+			return sum_name
+		}
 		if resolved := g.sum_name_lookup[c_short_name_view(sum_name)] {
 			return resolved
 		}

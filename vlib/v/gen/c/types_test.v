@@ -612,6 +612,31 @@ fn test_optional_sum_typedef_ignores_struct_name_collisions() {
 	assert g.sb.str().contains('types__Type value; } Optional_types__Type;')
 }
 
+fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_sum() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.sum_types['sum_mod.Any'] = ['int', 'string']
+	tc.interface_names['iface_mod.Any'] = true
+	tc.structs['struct_mod.Any'] = []types.StructField{}
+	tc.enum_names['enum_mod.Any'] = true
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.precompute_sum_name_lookup()
+
+	assert g.resolve_sum_name('sum_mod.Any') == 'sum_mod.Any'
+	// The short name still reaches the only sum type that declares it.
+	assert g.resolve_sum_name('Any') == 'sum_mod.Any'
+	// Namesakes from other modules stay themselves, so they are not boxed into
+	// `sum_mod.Any` when a value is converted to them.
+	assert g.resolve_sum_name('iface_mod.Any') == 'iface_mod.Any'
+	assert g.resolve_sum_name('struct_mod.Any') == 'struct_mod.Any'
+	assert g.resolve_sum_name('enum_mod.Any') == 'enum_mod.Any'
+	// An unknown qualified name keeps the short-name fallback, which is what
+	// resolves aliased module paths such as `x.json2.Any`.
+	assert g.resolve_sum_name('unknown_mod.Any') == 'sum_mod.Any'
+}
+
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{

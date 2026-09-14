@@ -50,3 +50,50 @@ fn test_cached_fallback_root_is_preferred_when_installed() {
 	resolved := ensure_v1_fallback('test') or { panic(err) }
 	assert os.dir(resolved) == os.read_file(root_file)!.trim_space()
 }
+
+fn test_fallback_failure_notes_name_the_stage_v_stopped_in() {
+	notes := v1_fallback_failure_notes('compiler_error\nsemantic checking')
+	assert notes.len == 2
+	assert notes[0].contains('compatibility compiler failed too')
+	assert notes[1].contains('V stopped during semantic checking')
+	assert notes[1].contains('-new-compiler')
+	stageless := v1_fallback_failure_notes('inline_asm')
+	assert stageless[1].contains('V stopped and kept its diagnostics quiet')
+}
+
+fn test_moved_modules_are_shimmed_into_the_fallback_vlib() {
+	root := os.join_path(os.vtmp_dir(), 'v1_fallback_shims_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	previous := os.join_path(root, 'vlib', 'x', 'json2')
+	os.mkdir_all(os.join_path(previous, 'decoder2'))!
+	os.write_file(os.join_path(previous, 'json2.v'), 'module json2\n')!
+	os.write_file(os.join_path(previous, 'decoder2', 'decoder.v'), 'module decoder2\n')!
+
+	ensure_v1_fallback_module_shims(root)
+	shim := os.join_path(root, 'vlib', 'json2')
+	assert os.read_file(os.join_path(shim, 'json2.v'))! == 'module json2\n'
+	assert os.read_file(os.join_path(shim, 'decoder2', 'decoder.v'))! == 'module decoder2\n'
+	// The original location has to stay importable as `x.json2`.
+	assert os.is_dir(previous)
+	// Staging directories must not survive as importable modules.
+	assert os.ls(os.join_path(root, 'vlib'))!.filter(it.starts_with('.')).len == 0
+
+	// An already shimmed tree is left untouched, so a local edit is never clobbered.
+	os.write_file(os.join_path(shim, 'json2.v'), 'module json2 // kept\n')!
+	ensure_v1_fallback_module_shims(root)
+	assert os.read_file(os.join_path(shim, 'json2.v'))! == 'module json2 // kept\n'
+}
+
+fn test_shimming_skips_a_fallback_tree_without_the_previous_location() {
+	root := os.join_path(os.vtmp_dir(), 'v1_fallback_noshims_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'vlib'))!
+	ensure_v1_fallback_module_shims(root)
+	assert os.ls(os.join_path(root, 'vlib'))! == []
+}

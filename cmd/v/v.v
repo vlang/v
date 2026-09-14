@@ -12,6 +12,13 @@ import v.pref
 
 const v_version = '0.5.2'
 const v1_fallback_binary = 'v1_fallback'
+// Modules that V3 ships at a new place inside vlib. The V 0.5.2 tree that backs
+// the fallback compiler still keeps them where they used to live, so a program
+// written for V3 fails there with `cannot import module ...` unless the fallback
+// vlib also carries them under their current name.
+const v1_fallback_module_shims = {
+	'json2': 'x/json2'
+}
 const v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
@@ -357,9 +364,38 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	if code == 0 && report_state.fallback_file != '' {
 		submit_v3_fallback_report(fallback, report_state)
 	}
+	if code != 0 {
+		report_v1_fallback_failure(report_state)
+	}
 	os.rm(report_state.fallback_file) or {}
 	os.rmdir_all(report_state.c_error_dir) or {}
 	exit(code)
+}
+
+// report_v1_fallback_failure explains whose errors the user is looking at. V
+// keeps its own diagnostics quiet while a fallback is pending, so when the retry
+// fails too, everything on screen comes from the compatibility compiler, which is
+// confusing whenever the two disagree about the program.
+fn report_v1_fallback_failure(state RetryState) {
+	if state.fallback_file == '' {
+		return
+	}
+	payload := os.read_file(state.fallback_file) or { return }
+	for note in v1_fallback_failure_notes(payload) {
+		eprintln(note)
+	}
+}
+
+// v1_fallback_failure_notes turns a staged fallback payload into the notes shown
+// after a failed retry.
+fn v1_fallback_failure_notes(payload string) []string {
+	// The stage is only recorded when the payload carries a second line.
+	stage := if payload.contains('\n') { payload.all_after('\n').trim_space() } else { '' }
+	stopped_in := if stage == '' { '' } else { ' during ${stage}' }
+	return [
+		'note: the V ${v_version} compatibility compiler failed too, so the errors above are its own.',
+		'note: V stopped${stopped_in} and kept its diagnostics quiet for this retry; re-run with `-new-compiler` to see them.',
+	]
 }
 
 fn submit_v3_fallback_report(fallback string, state RetryState) {
@@ -490,10 +526,41 @@ fn resolve_v1_fallback(fallback string) ?string {
 		fallback_root := os.read_file(root_file) or { '' }.trim_space()
 		cached_fallback := os.join_path(fallback_root, 'v' + $if windows { '.exe' } $else { '' })
 		if os.is_executable(cached_fallback) && v1_fallback_has_expected_version(cached_fallback) {
+			ensure_v1_fallback_module_shims(fallback_root)
 			return cached_fallback
 		}
 	}
 	return none
+}
+
+// ensure_v1_fallback_module_shims copies the modules of `v1_fallback_module_shims`
+// to the name V3 uses, inside the vlib of the compatibility compiler. Without it
+// a retried build of any program that imports `json2` stops on the fallback with
+// a module-not-found error that has nothing to do with why V3 gave up.
+fn ensure_v1_fallback_module_shims(fallback_root string) {
+	vlib_dir := os.join_path(fallback_root, 'vlib')
+	for name, previous_path in v1_fallback_module_shims {
+		shim := os.join_path(vlib_dir, name)
+		if os.exists(shim) {
+			continue
+		}
+		mut source := vlib_dir
+		for segment in previous_path.split('/') {
+			source = os.join_path(source, segment)
+		}
+		if !os.is_dir(source) {
+			continue
+		}
+		// Stage the copy beside its destination, so that a concurrent `v` never
+		// sees a half written directory as an importable module.
+		staged := os.join_path(vlib_dir, '.${name}.shim.${os.getpid()}')
+		os.rmdir_all(staged) or {}
+		os.cp_all(source, staged, true) or {
+			os.rmdir_all(staged) or {}
+			continue
+		}
+		os.mv(staged, shim, overwrite: false) or { os.rmdir_all(staged) or {} }
+	}
 }
 
 fn v1_fallback_has_expected_version(executable string) bool {
