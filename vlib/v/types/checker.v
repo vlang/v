@@ -2658,7 +2658,7 @@ fn (tc &TypeChecker) child_is_value_producing_path(parent_id flat.NodeId, child_
 		.infix {
 			return tc.type_can_own_warned_allocation(tc.resolve_type(parent_id))
 		}
-		.in_expr {
+		.in_expr, .is_expr {
 			return false
 		}
 		else {

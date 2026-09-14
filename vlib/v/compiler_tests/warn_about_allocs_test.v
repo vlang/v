@@ -106,6 +106,8 @@ fn main() {
 	freed_comparison := ('b' + name) == 'bV' @[freed]
 	freed_membership := 1 in [1] @[freed]
 	freed_concat := ('c' + name) + 'V' @[freed]
+	freed_type_check := Speaker(Person{}) is Person @[freed]
+	freed_negated_type_check := Speaker(Person{}) !is Person @[freed]
 	println(array)
 	println(reserved)
 	println(interpolation)
@@ -125,6 +127,8 @@ fn main() {
 	println(freed_comparison)
 	println(freed_membership)
 	println(freed_concat)
+	println(freed_type_check)
+	println(freed_negated_type_check)
 	callback()
 }
 ")!
@@ -142,7 +146,7 @@ fn main() {
 		expected_count := if description == 'string concatenation' {
 			5
 		} else if description == 'cast to interface' {
-			5
+			7
 		} else if description == 'array initialization' {
 			8
 		} else {
