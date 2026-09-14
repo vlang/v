@@ -55,9 +55,11 @@ that path. `-old-compiler` launches the fallback explicitly, and ordinary user b
 tools retry through it after a compiler or C compilation failure.
 
 Before a retry, V exposes modules that moved after 0.5.2 through a writable module-path overlay;
-it does not modify the fallback installation. If the fallback fails too, V reports its diagnostics
-and notes where the default compiler stopped. Re-run the command with `-new-compiler` to see the
-suppressed default-compiler diagnostics without a fallback retry.
+it does not modify the fallback installation. If fallback compilation fails too, V reports its
+diagnostics and notes where the default compiler stopped. Re-run the command with `-new-compiler`
+to see the suppressed default-compiler diagnostics without a fallback retry. A program or test
+that compiles and then exits unsuccessfully keeps its own status and is not reported as a compiler
+failure.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.

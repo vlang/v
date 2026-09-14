@@ -98,6 +98,21 @@ fn test_fallback_failure_notes_name_the_stage_v_stopped_in() {
 	assert stageless[1].contains('V stopped and kept its diagnostics quiet')
 }
 
+fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
+	assert v1_fallback_exit_identifies_compiler_failure(['main.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-prod', '-o', 'app', 'main.v'])
+	assert v1_fallback_exit_identifies_compiler_failure(['build', 'main.v'])
+
+	assert !v1_fallback_exit_identifies_compiler_failure(['run', 'main.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-prod', 'run', 'main.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['test', 'vlib/context'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['fmt', '-verify', 'main.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-'])
+}
+
 fn fake_v1_fallback_tree(tag string) string {
 	root := os.join_path(os.vtmp_dir(), 'v1_fallback_${tag}_${os.getpid()}')
 	os.rmdir_all(root) or {}

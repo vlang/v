@@ -367,12 +367,42 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	if code == 0 && report_state.fallback_file != '' {
 		submit_v3_fallback_report(fallback, report_state)
 	}
-	if code != 0 {
+	if code != 0 && v1_fallback_exit_identifies_compiler_failure(args) {
 		report_v1_fallback_failure(report_state)
 	}
 	os.rm(report_state.fallback_file) or {}
 	os.rmdir_all(report_state.c_error_dir) or {}
 	exit(code)
+}
+
+// v1_fallback_exit_identifies_compiler_failure reports whether a nonzero exit
+// can only have come from the compatibility compiler. Commands that run a
+// program, tests, or an external tool can return their child's status after a
+// successful compilation, so their nonzero exits are ambiguous and must not be
+// described as compiler failures.
+fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
+	mut option_value_follows := false
+	for arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg == '-e' || arg.starts_with('-e=') || arg == '-' {
+			return false
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if arg in external_commands || arg in ['run', 'crun', 'test'] {
+			return false
+		}
+		if !arg.starts_with('-') {
+			return !arg.ends_with('_test.v') && !arg.ends_with('_test.vv')
+				&& !arg.ends_with('.vsh')
+		}
+	}
+	return true
 }
 
 // report_v1_fallback_failure explains whose errors the user is looking at. V
