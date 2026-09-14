@@ -180,6 +180,8 @@ fn test_v1_fallback_installer_builds_the_last_v1_snapshot() {
 	assert source.contains("OLDV_VFLAGS='-d v1_fallback'")
 	assert source.contains('cmd/tools/oldv.v \\\n\t\t--cache=false --workdir "\$oldv_workdir" --command "\$oldv_copy"')
 	assert source.contains('set -- "\$@" "\$fallback_revision"')
+	assert source.contains("config --get-regexp '^remote\\..*\\.promisor$'")
+	assert source.contains('[ -z "\$promisor_config" ] || return 1')
 	assert !source.contains('releases/download')
 	oldv_source := os.read_file(os.join_path(macos_v3_test_vroot, 'cmd', 'tools', 'oldv.v'))!
 	assert oldv_source.contains("if use_cache {\n\t\t\ttools << 'rsync'")
