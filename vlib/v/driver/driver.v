@@ -17721,12 +17721,14 @@ fn module_dir_belongs_to_other_project(candidate string, importer_vmod_root stri
 	return !vmod_manifest_declares_module(candidate, mod_name)
 }
 
+// The manifest that owns a directory is not necessarily in it. An import written
+// `foo.bar` is the directory `foo/bar`, and it is the project above that directory
+// which carries the manifest, naming `foo`. So the nearest manifest at or above the
+// candidate is the one to ask, and it owns the module when it names it, or names a
+// prefix of it.
 fn vmod_manifest_declares_module(dir string, mod_name string) bool {
-	vmod_path := os.join_path_single(dir, 'v.mod')
-	if !os.is_file(vmod_path) {
-		return false
-	}
-	manifest := vmod.from_file(vmod_path) or { return false }
+	root := util.nearest_vmod_root(dir) or { return false }
+	manifest := vmod.from_file(os.join_path_single(root, 'v.mod')) or { return false }
 	return manifest.name == mod_name || mod_name.starts_with(manifest.name + '.')
 }
 

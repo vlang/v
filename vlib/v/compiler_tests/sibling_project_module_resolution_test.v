@@ -105,3 +105,50 @@ fn main() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'from neighbourlib', res.output
 }
+
+// An import written `foo.bar` is the directory `foo/bar`, and the manifest naming the
+// project sits above it in `foo`. Asking only the leaf directory for a manifest finds
+// none, which would make a submodule of a neighbour look like a stranger.
+fn test_a_dotted_submodule_of_a_neighbour_is_found() {
+	v3_bin := sibling_module_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_sibling_module_dotted_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.rmdir_all(root) or {}
+	dependency_dir := os.join_path(root, 'neighbourlib')
+	submodule_dir := os.join_path(dependency_dir, 'inner')
+	os.mkdir_all(submodule_dir) or { panic(err) }
+	os.write_file(os.join_path(dependency_dir, 'v.mod'), "Module {\n\tname: 'neighbourlib'\n\tversion: '0.0.1'\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(submodule_dir, 'inner.v'), 'module inner
+
+pub fn deeper() string {
+	return "from the submodule"
+}
+') or { panic(err) }
+
+	importer_dir := os.join_path(root, 'app')
+	os.mkdir_all(importer_dir) or { panic(err) }
+	os.write_file(os.join_path(importer_dir, 'v.mod'), "Module {\n\tname: 'app'\n\tversion: '0.0.1'\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(importer_dir, 'main.v'), 'module main
+
+import neighbourlib.inner
+
+fn main() {
+	println(inner.deeper())
+}
+') or { panic(err) }
+
+	empty_modules := os.join_path(root, 'emptymodules')
+	os.mkdir_all(empty_modules) or { panic(err) }
+	exe := os.join_path(root, 'dotted_prog')
+	compile := os.execute('${v3_bin} -nocache -path "${empty_modules}|@vlib|@vmodules" ${importer_dir} -b c -o ${exe}')
+	assert compile.exit_code == 0, compile.output
+	res := os.execute(exe)
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'from the submodule', res.output
+}

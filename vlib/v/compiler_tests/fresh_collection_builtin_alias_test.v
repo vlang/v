@@ -110,3 +110,39 @@ fn main() {
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('aliases mutable data from an immutable value'), res.output
 }
+
+// The exemption is for the builtins themselves, not for the names they go by. A
+// method of one's own called `clone` is read like any other, so handing back the
+// receiver's own array through it is still a window onto an immutable value.
+fn test_a_method_of_ones_own_named_like_a_builtin_is_not_exempt() {
+	v3_bin := fresh_builtin_build_v3()
+	root := os.join_path(os.vtmp_dir(), 'v3_fresh_builtin_shadow_${os.getpid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	res := fresh_builtin_compile(v3_bin, root, 'struct Table {
+	widths []int
+}
+
+fn (t Table) clone() []int {
+	return t.widths
+}
+
+fn (t Table) map_values() []int {
+	return t.widths
+}
+
+fn borrowed(t Table) []int {
+	return t.clone()
+}
+
+fn main() {
+	t := Table{ widths: [1, 2, 3] }
+	mut a := borrowed(t)
+	a[0] = 9
+	println(t.widths)
+}
+')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('aliases mutable data from an immutable value'), res.output
+}

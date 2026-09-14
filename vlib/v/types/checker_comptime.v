@@ -13096,25 +13096,40 @@ fn (mut tc TypeChecker) call_immutable_alias_source(id flat.NodeId) ?flat.NodeId
 	return none
 }
 
-// Array builtins that answer with a new array rather than a window onto the one they
-// were called on. `a[..]` is a slice and shares storage, but none of these do.
-const allocating_array_builtins = ['clone', 'filter', 'map', 'repeat', 'reverse', 'sorted',
-	'sorted_with_compare']
+// The `builtin` methods that answer with a new collection rather than a window onto
+// the one they were called on. `a[..]` is a slice and shares its storage; none of
+// these do.
+const fresh_collection_builtins = ['array.clone', 'array.filter', 'array.map', 'array.repeat',
+	'array.reverse', 'array.sorted', 'array.sorted_with_compare', 'map.clone', 'map.keys',
+	'map.values']
 
-// The call's own type is what says which builtin this is, because the receiver has
-// not necessarily been resolved yet where this runs.
-fn (tc &TypeChecker) call_returns_fresh_collection(call flat.Node, return_type Type) bool {
+// Whether a call is one of those, decided by the declaration it resolved to rather
+// than by the name it was written with, so a method of one's own that happens to be
+// called `map` is read like any other.
+fn fresh_collection_builtin(resolved_name string, decl_module string) bool {
+	return decl_module == 'builtin' && resolved_name in fresh_collection_builtins
+}
+
+fn (tc &TypeChecker) receiver_builtin_returns_fresh(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	call := tc.a.node(id)
 	if call.children_count == 0 {
 		return false
 	}
-	callee := tc.a.child_node(&call, 0)
+	callee := tc.a.child_node(call, 0)
 	if callee.kind != .selector || callee.children_count == 0 {
 		return false
 	}
-	if callee.value == 'clone' {
-		return return_type is Array || return_type is Map
+	receiver := unalias_type(tc.resolve_type(tc.a.child(callee, 0)))
+	if receiver is Map {
+		return 'map.${callee.value}' in fresh_collection_builtins
 	}
-	return return_type is Array && callee.value in allocating_array_builtins
+	if receiver is Array {
+		return 'array.${callee.value}' in fresh_collection_builtins
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiting map[int]bool) []flat.NodeId {
@@ -13129,18 +13144,25 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	if return_type !is Array && return_type !is Map && return_type !is Pointer {
 		return []flat.NodeId{}
 	}
-	// A builtin that builds a new collection is not a window onto the one it was
-	// called on, so writing to what it hands back is not writing to the receiver.
-	// These are settled by name: their declarations live in `builtin`, which this
-	// analysis cannot always see, and an unreadable body is otherwise assumed to pass
-	// every argument through — which would make a fresh array look like its source.
-	if tc.call_returns_fresh_collection(*call, return_type) {
-		return []flat.NodeId{}
-	}
 	info := tc.resolve_call_info(id, *call) or {
 		return tc.conservative_call_alias_arguments(*call, false)
 	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
+	// A builtin that builds a new collection is not a window onto the one it was
+	// called on, so writing to what it hands back is not writing to the receiver.
+	// Reading its body does not say so: they work through pointers this analysis has
+	// to assume the worst of, and `map` and `filter` have no body here at all. They
+	// are settled by the declaration the call resolved to, so a method of one's own
+	// that happens to be called `map` is read like any other.
+	if fresh_collection_builtin(info.name, decl_module) {
+		return []flat.NodeId{}
+	}
+	// Some of them resolve to no declaration at all. Nothing of one's own can be
+	// behind a name that resolved to nothing, so there it is what the receiver is
+	// that decides, and a struct of one's own is never an array or a map.
+	if info.name.len == 0 && info.has_receiver && tc.receiver_builtin_returns_fresh(id) {
+		return []flat.NodeId{}
+	}
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
 		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
 	}
