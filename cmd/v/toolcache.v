@@ -6,6 +6,7 @@ module main
 import crypto.sha256
 import crypto.rand as crypto_rand
 import os
+import os.filelock
 import time
 
 // The external `cmd/tools/*` programs are compiled once and then cached, so that
@@ -30,6 +31,8 @@ const tool_cache_field_separator = '\x1f'
 // marks a cached binary that had to be renamed out of the way instead of being overwritten,
 // because Windows was still executing it; `prune_stale_tool_binaries` collects these later
 const tool_cache_replaced_marker = '.replaced.'
+const tool_cache_stage_prefix = '.v-toolcache-stage-'
+const tool_cache_lock_suffix = '.lock'
 
 // ToolCacheEntry describes where a single compiled `cmd/tools/` program is cached.
 struct ToolCacheEntry {
@@ -598,6 +601,11 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 	keep := os.file_name(entry.dir)
 	entries := os.ls(directory) or { return }
 	for name in entries {
+		// A build or prune can own this sidecar. Removing it would split the OS lock into
+		// two unrelated files and allow both operations into the same entry.
+		if name.ends_with(tool_cache_lock_suffix) {
+			continue
+		}
 		if !is_cache_artifact_of(name, entry.name) {
 			continue
 		}
@@ -605,24 +613,35 @@ fn prune_stale_tool_binaries(entry ToolCacheEntry) {
 			continue
 		}
 		path := os.join_path(directory, name)
-		if os.is_link(path) {
-			// Never recurse through a cache-shaped symlink. Windows removes directory links
-			// with RemoveDirectory and file links with remove, so try both non-recursive forms.
-			os.rm(path) or {}
-			os.rmdir(path) or {}
-		} else if !os.is_dir(path) {
-			// Legacy cache entries were flat executables and sidecars, so they need unlinking
-			// rather than directory removal.
-			os.rm(path) or {}
-		} else {
-			// Pin the directory before traversing it. An entry owned by another account in a
-			// sticky shared cache is deliberately left alone; a link substituted at any point
-			// is unlinked as a leaf by the platform implementation below.
-			stale_entry := open_tool_cache_entry_dir(path) or { continue }
-			stale_entry.remove_all_contents()
-			stale_entry.close()
-			os.rmdir(path) or {}
-		}
+		prune_stale_tool_artifact(path)
+	}
+}
+
+fn prune_stale_tool_artifact(path string) {
+	mut build_lock := filelock.new(path + tool_cache_lock_suffix)
+	if !build_lock.try_acquire() {
+		return
+	}
+	defer {
+		build_lock.release()
+	}
+	if os.is_link(path) {
+		// Never recurse through a cache-shaped symlink. Windows removes directory links
+		// with RemoveDirectory and file links with remove, so try both non-recursive forms.
+		os.rm(path) or {}
+		os.rmdir(path) or {}
+	} else if !os.is_dir(path) {
+		// Legacy cache entries were flat executables and sidecars, so they need unlinking
+		// rather than directory removal.
+		os.rm(path) or {}
+	} else {
+		// Pin the directory before traversing it. An entry owned by another account in a
+		// sticky shared cache is deliberately left alone; a link substituted at any point
+		// is unlinked as a leaf by the platform implementation below.
+		stale_entry := open_tool_cache_entry_dir(path) or { return }
+		stale_entry.remove_all_contents()
+		stale_entry.close()
+		os.rmdir(path) or {}
 	}
 }
 
@@ -634,7 +653,7 @@ fn create_tool_cache_stage_dir(parent string) !string {
 	}
 	for _ in 0 .. 16 {
 		token := crypto_rand.bytes(16)!.hex()
-		path := os.join_path(parent, '.v-toolcache-stage-${os.getuid()}-${token}')
+		path := os.join_path(parent, '${tool_cache_stage_prefix}${os.getuid()}-${token}')
 		os.mkdir(path, mode: 0o700) or { continue }
 		return path
 	}
@@ -644,10 +663,25 @@ fn create_tool_cache_stage_dir(parent string) !string {
 // build_tool_binary compiles the tool into its cache slot and records its source closure.
 // It returns the compiler output when the build failed.
 fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
+	mut build_lock := filelock.new(entry.dir + tool_cache_lock_suffix)
+	if !build_lock.wait_acquire(5 * time.minute) {
+		return error('timed out waiting to build the cached `${entry.name}` tool')
+	}
+	defer {
+		build_lock.release()
+	}
+	// Another process may have completed this exact build while this process waited.
+	if tool_cache_stale_reason(entry) == '' {
+		return ''
+	}
+	if details := unbuildable_tool_failure(entry) {
+		return error(details)
+	}
 	cache_entry := open_tool_cache_entry_dir(entry.dir)!
 	defer {
 		cache_entry.close()
 	}
+	cache_entry.prune_abandoned_stages()
 	stage_parent := cache_entry.stage_parent(entry.dir)!
 	stage_dir := create_tool_cache_stage_dir(stage_parent)!
 	stage_entry := open_tool_cache_entry_dir(stage_dir)!

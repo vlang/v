@@ -82,15 +82,14 @@ fn tool_cache_root_can_stage(path string) bool {
 	return information.mode & 0o022 == 0 || information.mode & 0o1000 != 0
 }
 
-// stage_parent returns a location on the entry's filesystem where another account cannot
-// rename a mode-0700 child. Sticky shared roots such as /tmp are safe; an ordinary writable
-// shared directory is not.
+// stage_parent uses the locked, mode-0700 entry itself, keeping compiler output on the cache
+// filesystem and inaccessible to other accounts.
 fn (entry ToolCacheEntryDir) stage_parent(path string) !string {
 	parent := os.real_path(os.dir(path))
 	if !tool_cache_root_can_stage(parent) {
 		return error('the tool cache directory `${parent}` cannot safely hold staged files')
 	}
-	return parent
+	return path
 }
 
 fn (entry ToolCacheEntryDir) child_names() []string {
@@ -123,19 +122,31 @@ fn (entry ToolCacheEntryDir) child_names() []string {
 	return names
 }
 
+fn (entry ToolCacheEntryDir) remove_child(name string) {
+	child_fd := C.openat(entry.fd, &char(name.str), C.O_RDONLY | C.O_DIRECTORY | C.O_NOFOLLOW, 0)
+	if child_fd < 0 {
+		entry.remove(name)
+		return
+	}
+	child := ToolCacheEntryDir{
+		fd: child_fd
+	}
+	child.remove_all_contents()
+	child.close()
+	C.unlinkat(entry.fd, &char(name.str), C.AT_REMOVEDIR)
+}
+
 fn (entry ToolCacheEntryDir) remove_all_contents() {
 	for name in entry.child_names() {
-		child_fd := C.openat(entry.fd, &char(name.str), C.O_RDONLY | C.O_DIRECTORY | C.O_NOFOLLOW, 0)
-		if child_fd < 0 {
-			entry.remove(name)
-			continue
+		entry.remove_child(name)
+	}
+}
+
+fn (entry ToolCacheEntryDir) prune_abandoned_stages() {
+	for name in entry.child_names() {
+		if name.starts_with(tool_cache_stage_prefix) {
+			entry.remove_child(name)
 		}
-		child := ToolCacheEntryDir{
-			fd: child_fd
-		}
-		child.remove_all_contents()
-		child.close()
-		C.unlinkat(entry.fd, &char(name.str), C.AT_REMOVEDIR)
 	}
 }
 

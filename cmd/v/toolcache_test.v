@@ -4,6 +4,7 @@
 module main
 
 import os
+import os.filelock
 import time
 
 // `vtimeout` is used as the probe tool: it is small enough to compile quickly, and
@@ -406,6 +407,33 @@ fn test_pruning_collects_binaries_that_were_replaced_while_in_use() {
 	assert !os.exists(stale), 'a previous build must be collected'
 }
 
+fn test_pruning_preserves_an_entry_with_an_active_build_lock() {
+	directory := toolcache_test_dir('prune_active')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	stale_dir := os.join_path(directory, 'vdemo-' + 'b'.repeat(64))
+	os.mkdir(entry_dir)!
+	os.mkdir(stale_dir)!
+	os.write_file(os.join_path(stale_dir, 'partial-build'), 'in progress')!
+	entry := ToolCacheEntry{
+		name: 'vdemo'
+		dir:  entry_dir
+	}
+	mut active_build := filelock.new(stale_dir + tool_cache_lock_suffix)
+	active_build.acquire()!
+	defer {
+		active_build.release()
+	}
+
+	prune_stale_tool_binaries(entry)
+	assert os.is_dir(stale_dir), 'an active build entry must not be pruned'
+	active_build.release()
+	prune_stale_tool_binaries(entry)
+	assert !os.exists(stale_dir), 'the entry should be pruned after its build lock is released'
+}
+
 // Before cache entries became directories, each binary and its manifest lived directly in
 // the cache root. Directory-only pruning silently left those legacy files behind forever.
 fn test_pruning_collects_legacy_flat_cache_files() {
@@ -579,6 +607,9 @@ fn test_staging_directory_is_on_the_cache_filesystem() {
 
 	assert os.dir(stage_dir) == stage_parent
 	assert os.stat(stage_dir)!.dev == os.stat(entry_dir)!.dev
+	os.write_file(os.join_path(stage_dir, 'partial-build'), 'abandoned')!
+	cache_entry.prune_abandoned_stages()
+	assert !os.exists(stage_dir), 'a stage left by an interrupted build must be reclaimed'
 }
 
 // A single-file tool can pull in a sibling asset with `$embed_file`, whose bytes end up
