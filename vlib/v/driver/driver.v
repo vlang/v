@@ -17670,7 +17670,64 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 			return global_path
 		}
 	}
+	ancestor_path := resolve_ancestor_module_path(prefs, mod_name, mod_path, importing_file)
+	if ancestor_path.len > 0 {
+		return ancestor_path
+	}
 	return prefs.get_module_path(mod_name, importing_file)
+}
+
+// A module that is neither in vlib nor in a module directory nor beside the importing
+// file can still be a project checked out next to the one being built. Walking up
+// from the importing file finds it, which is how two sibling checkouts build against
+// each other without either having to be installed first.
+//
+// Ancestors are searched last, after the module directories, so an installed module
+// is still what an import means when both exist.
+fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_path string, importing_file string) string {
+	if importing_file.len == 0 {
+		return ''
+	}
+	importer_vmod_root := nearest_vmod_root_for_file(importing_file)
+	mut current := os.real_path(os.dir(importing_file))
+	for {
+		candidate := os.join_path_single(current, mod_path)
+		if module_path_has_v_sources(candidate, prefs)
+			&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
+			return candidate
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ''
+}
+
+// Whether a directory that happens to carry the module's name belongs to something
+// else. It is the module being imported when it is part of the importer's own
+// project, or when its own manifest claims that name; anything else above the
+// importer is a stranger that merely shares a directory name.
+fn module_dir_belongs_to_other_project(candidate string, importer_vmod_root string, mod_name string) bool {
+	if importer_vmod_root.len == 0 {
+		return false
+	}
+	real_candidate := os.real_path(candidate).replace('\\', '/')
+	real_importer := os.real_path(importer_vmod_root).replace('\\', '/')
+	if real_candidate == real_importer || real_candidate.starts_with(real_importer + '/') {
+		return false
+	}
+	return !vmod_manifest_declares_module(candidate, mod_name)
+}
+
+fn vmod_manifest_declares_module(dir string, mod_name string) bool {
+	vmod_path := os.join_path_single(dir, 'v.mod')
+	if !os.is_file(vmod_path) {
+		return false
+	}
+	manifest := vmod.from_file(vmod_path) or { return false }
+	return manifest.name == mod_name || mod_name.starts_with(manifest.name + '.')
 }
 
 fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string, mod_path string, importing_file string, project_root string) string {
