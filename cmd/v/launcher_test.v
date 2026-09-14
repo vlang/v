@@ -66,6 +66,17 @@ fn test_gnumake_avoids_duplicate_windows_executable_suffix_for_fallback_bootstra
 	assert !makefile.contains("install_v1_fallback.sh '\$(VEXE)\$(EXE_EXT)'")
 }
 
+fn test_portable_make_uses_the_pinned_v1_fallback_installer() {
+	root := find_vroot(@FILE) or { panic(err) }
+	makefile := os.read_file(os.join_path(root, 'Makefile')) or { panic(err) }
+	assert makefile.contains('VEXE ?= ./v')
+	assert makefile.contains('V1_FALLBACK_EXE ?= ./v1_fallback')
+	v1_recipe := makefile.all_after('\nv1:\n').all_before('\ncheck:\n')
+	assert v1_recipe.contains("install_v1_fallback.sh '\$(VEXE)' '\$(V1_FALLBACK_EXE)'")
+	assert !v1_recipe.contains('vc/v.c')
+	assert !v1_recipe.contains('candidate=./v1_fallback')
+}
+
 fn test_cached_fallback_root_is_preferred_when_installed() {
 	root := find_vroot(@FILE) or { panic(err) }
 	fallback := os.join_path(root, v1_fallback_binary + $if windows { '.exe' } $else { '' })
