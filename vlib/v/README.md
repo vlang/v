@@ -49,8 +49,15 @@ in-process driver. The standard bootstrap does not build the sibling `v1_fallbac
 missing, V reports that it is running `make v1`. That target reuses or downloads the complete
 0.5.2 release under the user cache; if its release binary cannot be used, `oldv` clones the 0.5.2
 V sources and their matching `vc` snapshot and builds the fallback there. Run `make v1` explicitly
-to prepare it ahead of time. `-old-compiler` launches the fallback explicitly, and ordinary user
-builds and external tools retry through it after a compiler or C compilation failure.
+to prepare it ahead of time. The installer exposes `crypto.subtle` at its current public path in
+the fallback vlib, and fallback resolution reruns the installer when an older cached tree lacks
+that path. `-old-compiler` launches the fallback explicitly, and ordinary user builds and external
+tools retry through it after a compiler or C compilation failure.
+
+Before a retry, V exposes modules that moved after 0.5.2 through a writable module-path overlay;
+it does not modify the fallback installation. If the fallback fails too, V reports its diagnostics
+and notes where the default compiler stopped. Re-run the command with `-new-compiler` to see the
+suppressed default-compiler diagnostics without a fallback retry.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.

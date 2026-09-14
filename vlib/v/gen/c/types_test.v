@@ -530,6 +530,16 @@ fn test_optional_payload_keeps_concrete_c_type_with_interface_collision() {
 	assert g.concrete_optional_type_name(result_type) == 'Optional_Value'
 }
 
+fn test_c_alias_value_type_preserves_the_system_typedef() {
+	mut g := FlatGen.new()
+	c_alias := types.Type(types.Alias{
+		name:      'C.DWORD'
+		base_type: types.Type(types.u32_)
+	})
+	assert g.value_c_type(c_alias) == 'DWORD'
+	assert g.value_c_type(types.Type(types.Pointer{ base_type: c_alias })) == 'DWORD*'
+}
+
 fn test_optional_typedef_keeps_qualified_interface_with_struct_collision() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)

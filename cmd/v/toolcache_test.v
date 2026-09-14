@@ -252,6 +252,16 @@ fn test_cache_artifacts_of_one_tool_are_not_mistaken_for_anothers() {
 	assert !is_cache_artifact_of('vbugged-${key}', 'vbug')
 }
 
+fn test_staged_tool_binary_path_keeps_the_platform_executable_suffix() {
+	binary := 'vdemo-' + 'a'.repeat(64) + tool_exe_suffix()
+	staged := staged_tool_binary_path(binary, '42')
+	$if windows {
+		assert staged == '${binary}.staged.42.exe'
+	} $else {
+		assert staged == '${binary}.staged.42'
+	}
+}
+
 // A tool that failed to build must not be pinned to the compatibility compiler forever: a
 // broken intermediate state of any vlib module it imports has to be retried once it is fixed.
 fn test_a_recorded_build_failure_is_retried_once_its_inputs_change() {

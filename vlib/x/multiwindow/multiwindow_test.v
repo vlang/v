@@ -4224,9 +4224,21 @@ fn test_sokol_wayland_build_links_wayland_when_flag_is_active() {
 
 fn test_gg_import_only_windows_build_keeps_win32_callback_record_declaration() {
 	c_source := multiwindow_emit_windows_gg_import_c()
-	assert c_source.contains('struct x__multiwindow__Win32WindowRecord {')
-	assert_source_order(c_source, 'struct x__multiwindow__Win32WindowRecord {',
-		'VV_LOC void x__multiwindow__win32_window_close_requested(voidptr data, u64 sequence)')
+	// The two compilers spell these C names differently: V1 writes the whole module
+	// path and marks internal functions `VV_LOC`, while V3 uses the shortest module
+	// name that is still unique and no marker. What has to hold either way is that
+	// the record is declared before the callback that casts `data` to it, or the
+	// Windows build does not compile.
+	v1_struct := 'struct x__multiwindow__Win32WindowRecord {'
+	v1_callback := 'VV_LOC void x__multiwindow__win32_window_close_requested(voidptr data, u64 sequence)'
+	v3_struct := 'struct multiwindow__Win32WindowRecord {'
+	v3_callback := 'void multiwindow__win32_window_close_requested(void* data, u64 sequence)'
+	if c_source.contains(v1_struct) {
+		assert_source_order(c_source, v1_struct, v1_callback)
+		return
+	}
+	assert c_source.contains(v3_struct), 'the Win32 callback record declaration is missing'
+	assert_source_order(c_source, v3_struct, v3_callback)
 }
 
 fn test_wayland_runtime_create_destroy_when_display_is_available() {

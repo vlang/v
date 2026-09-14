@@ -4794,6 +4794,57 @@ fn (tc &TypeChecker) local_bare_fn_key(name string) ?string {
 	return none
 }
 
+// shadowed_local_fn_key returns the signature key of the function that a local
+// variable named `name` shadows, i.e. one that the current module can already
+// call unprefixed. Functions of other modules are always called through their
+// module prefix (`os.uname()`), so `uname := os.uname()` shadows nothing.
+fn (tc &TypeChecker) shadowed_local_fn_key(name string) ?string {
+	if name.len == 0 || name.index_u8(`.`) >= 0 {
+		return none
+	}
+	qualified := tc.qualify_fn_name(name)
+	mut key := ''
+	if qualified != name && qualified in tc.fn_ret_types {
+		key = qualified
+	} else if name in tc.fn_ret_types {
+		key = name
+	}
+	// The signature key doubles as the declaration_visibility key, which records
+	// the declaring module of every source declaration. Going through it also
+	// skips `fn C.uname()`, which is registered under the lowered alias `uname`
+	// as well, yet is only ever callable as `C.uname()`.
+	if visibility := tc.declaration_visibility[key] {
+		if visibility.kind == .fn_decl {
+			if visibility.module_name == tc.cur_module
+				|| (visibility.module_name in ['', 'main'] && tc.cur_module in ['', 'main']) {
+				return key
+			}
+			// A public `builtin` function stays callable unprefixed from every
+			// module, so a local of that name really does shadow it. Its private
+			// helpers (`new_node` in `builtin/sorted_map.v`) are not callable
+			// outside `builtin`.
+			if visibility.module_name == 'builtin' && visibility.is_pub {
+				return key
+			}
+		}
+	}
+	// A `.vsh` script calls the `os` functions unqualified, so a local of one of
+	// those names shadows it as well - in the script itself, which is what
+	// `vsh_script_file` asks, and not in a plain `.v` file that happens to be
+	// compiled beside one. This asks `declaration_visibility`, which is forked
+	// to the parallel checkers, rather than the script-mode resolver, whose
+	// semantic-name index is not and would read empty in a worker.
+	if tc.vsh_script_file() {
+		os_key := 'os.${name}'
+		if os_visibility := tc.declaration_visibility[os_key] {
+			if os_visibility.kind == .fn_decl && os_visibility.is_pub {
+				return os_key
+			}
+		}
+	}
+	return none
+}
+
 fn (tc &TypeChecker) local_bare_fn_signature_key(name string) ?string {
 	key := tc.local_bare_fn_key(name) or { return none }
 	if tc.fn_signature_known(key) {
@@ -5465,7 +5516,10 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		module_base := module_path.all_after_last('.')
 		explicit_alias := tc.import_has_explicit_alias(node)
 		if missing_path := tc.a.missing_imports[idx] {
-			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)', flat.NodeId(idx), node.pos, 'builder error:')
+			// The resolver knows whether a `modules/` directory would have
+			// satisfied this import, and leaves the migration hint for it here.
+			layout_hint := tc.a.missing_import_hints[idx]
+			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)${layout_hint}', flat.NodeId(idx), node.pos, 'builder error:')
 		}
 		tc.check_import_source_syntax(flat.NodeId(idx), node)
 		if tc.selective_import_has_missing_value_symbol(node, module_path)

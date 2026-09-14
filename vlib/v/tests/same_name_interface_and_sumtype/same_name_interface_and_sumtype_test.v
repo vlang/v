@@ -1,7 +1,7 @@
 module main
 
-import same_name_interface_and_sumtype.iface_mod
-import same_name_interface_and_sumtype.sum_mod
+import iface_mod
+import sum_mod
 
 fn test_an_interface_keeps_its_own_module_when_another_module_has_a_sum_type_of_the_same_name() {
 	holder := iface_mod.Holder{

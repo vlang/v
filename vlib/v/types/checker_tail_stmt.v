@@ -3370,7 +3370,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	if is_contextual_anonymous_struct_literal(init_type_text) && tc.expected_expr_id >= 0
 		&& tc.expr_is_value_tail_of(flat.NodeId(tc.expected_expr_id), id) {
 		expected := unalias_type(tc.expected_expr_type)
-		if expected is Struct && is_anonymous_struct_name(expected.name) {
+		// Only a type the parser itself made up may be adopted here. A user-declared
+		// `AnonStruct_Secret` is an ordinary private type, and adopting it would let a
+		// bare literal stand in for a name the caller is not allowed to write.
+		if expected is Struct && tc.is_synthesized_anon_struct(expected.name) {
 			init_type = expected
 			tc.remember_expr_type(id, expected)
 		}
@@ -3395,10 +3398,19 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if init_struct := struct_type_from_type(init_type) {
 		is_synthetic_embed_file := node.value == 'embed_file.EmbedFileData'
-		if _ := tc.private_declaration(init_struct.name) {
-			inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-			tc.record_error_at(.unknown_type, 'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
-			tc.record_error_at(.unknown_type, 'type `${init_struct.name}` is private', id, node.pos)
+		// A `struct { ... }` literal is parsed into a name the parser synthesized for it,
+		// which the checker then resolves to whichever anonymous type the context expects.
+		// The literal names nothing of its own, so there is no declaration whose privacy
+		// it could violate - `cli.Command.defaults` is initialized exactly this way from
+		// another module. Naming an anonymous declaration outright is a different thing
+		// and stays subject to the check, as does a type a user happened to call
+		// `AnonStruct_...`: neither is a name the parser made up for a literal.
+		if !tc.a.contextual_anon_struct_types[init_type_text] {
+			if _ := tc.private_declaration(init_struct.name) {
+				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+				tc.record_error_at(.unknown_type, 'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
+				tc.record_error_at(.unknown_type, 'type `${init_struct.name}` is private', id, node.pos)
+			}
 		}
 		if deprecation := tc.deprecated_symbols[init_struct.name] {
 			tc.record_deprecation(id, 'struct', deprecation, tc.struct_init_deprecation_pos(node))

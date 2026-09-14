@@ -195,7 +195,7 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 			variant_ct := g.tc.c_type(variant_type)
 			field_name := g.sum_field_name(variant_name)
 			is_ptr_variant := g.variant_references_sum(variant_name, clean_sum.name)
-			var_name := g.cname(expr_node.value)
+			var_name := g.local_cname(expr_node.value)
 			tmp := g.tmp_name()
 			if is_ptr_variant {
 				g.writeln('${variant_ct} ${tmp} = *${var_name}.${field_name};')
@@ -249,7 +249,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			}
 		}
 	}
-	var_name := g.cname(lhs.value)
+	var_name := g.local_decl_cname(lhs.value)
 	tmp := g.tmp_name()
 	defer_start := g.defers.len
 	if rhs.kind == .index {
@@ -351,7 +351,7 @@ fn (mut g FlatGen) gen_if_guard_value_bindings(lhs_ids []flat.NodeId, val_type t
 				continue
 			}
 			field_type := val_type.types[i]
-			lhs_name := g.cname(lhs.value)
+			lhs_name := g.local_decl_cname(lhs.value)
 			if fixed := array_fixed_type(field_type) {
 				c_elem, dims := g.fixed_array_decl_parts(fixed)
 				g.writeln('${c_elem} ${lhs_name}${dims};')
@@ -374,7 +374,7 @@ fn (mut g FlatGen) gen_if_guard_value_bindings(lhs_ids []flat.NodeId, val_type t
 	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 		return
 	}
-	lhs_name := g.cname(lhs.value)
+	lhs_name := g.local_decl_cname(lhs.value)
 	if fixed := array_fixed_type(val_type) {
 		c_elem, dims := g.fixed_array_decl_parts(fixed)
 		g.writeln('${c_elem} ${lhs_name}${dims};')
