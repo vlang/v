@@ -23,8 +23,26 @@ fn uses_its_own_name() int {
 	return total
 }
 
+fn make_pair() (int, []int) {
+	return 1, [2]
+}
+
+// A multi-return declaration is handled and returned on before the
+// single-declaration checks, so its targets need checking too.
+fn shadows_through_a_multi_return() int {
+	value, devices := make_pair()
+	return value + devices.len
+}
+
+fn shadows_through_a_multi_value_list() int {
+	counter, other := 1, 2
+	return counter + other
+}
+
 fn main() {
 	println(uses_a_shadowing_local())
 	println(uses_a_shadowing_local_from_another_statement())
 	println(uses_its_own_name())
+	println(shadows_through_a_multi_return())
+	println(shadows_through_a_multi_value_list())
 }

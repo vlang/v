@@ -6656,10 +6656,43 @@ fn (mut tc TypeChecker) record_global_shadow_notice(id flat.NodeId, name string)
 	}
 	msg := 'variable `${name}` shadows a global variable'
 	pos := tc.node_value_diagnostic_pos(id)
+	// `-N` makes every notice an error. Only the file filter is special here, so
+	// the promotion has to be applied the same way record_notice_at applies it,
+	// or this one notice would stay non-fatal under that flag.
+	if tc.notes_are_errors {
+		if tc.errors.any(it.kind == .unknown_ident && it.msg == msg && it.pos == pos) {
+			return
+		}
+		base := tc.make_type_error_at(.unknown_ident, msg, id, pos)
+		tc.errors << TypeError{
+			...base
+			severity: 'error:'
+		}
+		return
+	}
 	if tc.notices.any(it.msg == msg && it.pos == pos) {
 		return
 	}
 	tc.notices << tc.make_type_error_at(.unknown_ident, msg, id, pos)
+}
+
+// check_decl_lhs_global_shadowing reports every declared name in `node` that
+// shadows a global. A multi-return or multi-value declaration is handled and
+// returned on before the single-declaration checks run, so walking the left-hand
+// side here is what covers `value, devices := make_pair()`.
+fn (mut tc TypeChecker) check_decl_lhs_global_shadowing(node flat.Node) {
+	for lhs_id in tc.multi_assign_lhs_ids(node) {
+		if !tc.valid_node_id(lhs_id) {
+			continue
+		}
+		lhs := tc.a.nodes[int(lhs_id)]
+		if lhs.kind != .ident || lhs.value == '_' || lhs.value.len == 0 {
+			continue
+		}
+		if tc.global_names[lhs.value] {
+			tc.record_global_shadow_notice(lhs_id, lhs.value)
+		}
+	}
 }
 
 fn (tc &TypeChecker) current_fn_is_concrete_generic_receiver_specialization() bool {

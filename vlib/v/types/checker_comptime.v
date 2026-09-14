@@ -12450,6 +12450,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	tc.check_decl_lhs_global_shadowing(node)
 	if tc.valid_resolution_fast {
 		tc.check_valid_decl_assign(id, node)
 		return
@@ -12516,9 +12517,6 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		// global in a module this file does not import, so the local is declared and
 		// then never read. Report it rather than letting the two names silently mean
 		// different things.
-		if lhs_node.value != '_' && tc.global_names[lhs_node.value] {
-			tc.record_global_shadow_notice(lhs_id, lhs_node.value)
-		}
 		explicit_expected := if node.children_count == 2 && node.typ.len > 0 {
 			tc.parse_type(node.typ)
 		} else {

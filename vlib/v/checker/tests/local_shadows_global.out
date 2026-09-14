@@ -12,3 +12,17 @@ vlib/v/checker/tests/local_shadows_global.vv:17:2: notice: variable `devices` sh
       |     ~~~~~~~
    18 |     return devices
    19 | }
+vlib/v/checker/tests/local_shadows_global.vv:33:9: notice: variable `devices` shadows a global variable
+   31 | // single-declaration checks, so its targets need checking too.
+   32 | fn shadows_through_a_multi_return() int {
+   33 |     value, devices := make_pair()
+      |            ~~~~~~~
+   34 |     return value + devices.len
+   35 | }
+vlib/v/checker/tests/local_shadows_global.vv:38:2: notice: variable `counter` shadows a global variable
+   36 | 
+   37 | fn shadows_through_a_multi_value_list() int {
+   38 |     counter, other := 1, 2
+      |     ~~~~~~~
+   39 |     return counter + other
+   40 | }
