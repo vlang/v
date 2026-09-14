@@ -113,6 +113,8 @@ fn (entry ToolCacheEntryDir) child_names() []string {
 		if isnil(directory_entry) {
 			break
 		}
+		// readdir owns and may reuse the d_name buffer on its next call, so convert the C
+		// pointer and clone its bytes immediately while that borrowed buffer is still valid.
 		name := unsafe { tos_clone(&u8(&directory_entry.d_name[0])) }
 		if name != '.' && name != '..' {
 			names << name
