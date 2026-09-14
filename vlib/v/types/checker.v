@@ -16650,6 +16650,35 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		}
 		return
 	}
+	if node.kind == .select_stmt {
+		for i in 0 .. node.children_count {
+			branch := tc.a.child_node(&node, i)
+			if branch.kind != .select_branch {
+				continue
+			}
+			body_start := if branch.value == 'else' {
+				0
+			} else if branch.value in ['recv', 'recv_assign']
+				|| branch.value.starts_with('recv_compound:') {
+				2
+			} else {
+				1
+			}
+			tc.push_scope()
+			if branch.value == 'recv' && branch.children_count >= 2 {
+				tc.insert_loop_var(tc.a.child(branch, 0),
+					unknown_type('select receive variable in static comptime body'))
+			}
+			if body_start <= branch.children_count {
+				for j in body_start .. branch.children_count {
+					tc.check_comptime_static_body(tc.a.child(branch, j), var_name, loop_kind,
+						field_cases, value_cases)
+				}
+			}
+			tc.pop_scope()
+		}
+		return
+	}
 	if node.kind in [.assign, .selector_assign, .index_assign] {
 		tc.check_comptime_static_assignment(node, var_name, field_cases)
 		return
