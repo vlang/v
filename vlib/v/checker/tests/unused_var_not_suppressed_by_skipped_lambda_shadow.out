@@ -19,3 +19,17 @@ vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:40:2:
       |     ^
    41 |     $if prealloc {
    42 |         callback := |x| [1]
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:49:2: warning: unused variable: `x`
+   47 |
+   48 | fn enclosing_lambda_parameter_shadows_outer() {
+   49 |     x := 1
+      |     ^
+   50 |     consume_action(|x| {
+   51 |         $if prealloc {
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:59:2: warning: unused variable: `x`
+   57 |
+   58 | fn newline_infix_lambda_parameter_shadows_outer() {
+   59 |     x := 1
+      |     ^
+   60 |     $if prealloc {
+   61 |         consume_lambda(|x| x

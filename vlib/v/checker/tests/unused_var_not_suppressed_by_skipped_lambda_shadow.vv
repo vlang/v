@@ -45,6 +45,24 @@ fn newline_selector_lambda_parameter_shadows_outer() {
 	}
 }
 
+fn enclosing_lambda_parameter_shadows_outer() {
+	x := 1
+	consume_action(|x| {
+		$if prealloc {
+			println(x)
+		}
+		_ = x
+	})
+}
+
+fn newline_infix_lambda_parameter_shadows_outer() {
+	x := 1
+	$if prealloc {
+		consume_lambda(|x| x
+			+ x)
+	}
+}
+
 fn main() {
 	consume_lambda(|x| x)
 	lambda_parameter_shadows_outer()
@@ -53,4 +71,10 @@ fn main() {
 	_ = identity(1)
 	multiline_lambda_parameter_shadows_outer()
 	newline_selector_lambda_parameter_shadows_outer()
+	enclosing_lambda_parameter_shadows_outer()
+	newline_infix_lambda_parameter_shadows_outer()
+}
+
+fn consume_action(callback fn (int)) {
+	callback(1)
 }

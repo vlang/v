@@ -106,6 +106,7 @@ mut:
 	local_binding_counts              map[string]int
 	local_binding_undos               []string
 	local_binding_scopes              []int
+	active_lambda_param_counts        map[string]int
 	comptime_value_undos              []ComptimeValueUndo
 	comptime_value_scopes             []int
 	pending_flag                      bool
@@ -206,6 +207,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		comptime_local_values: map[string]string{}
 		imported_module_names: map[string]bool{}
 		local_binding_counts: map[string]int{}
+		active_lambda_param_counts: map[string]int{}
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases: map[string]bool{}
 		a: &flat.FlatAst{
@@ -339,6 +341,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.local_binding_counts.clear()
 	p.local_binding_undos.clear()
 	p.local_binding_scopes.clear()
+	p.active_lambda_param_counts.clear()
 	p.in_for_container = false
 	p.parsing_inferred_fixed_array_type = false
 	p.local_type_scopes = []string{}
@@ -5813,6 +5816,13 @@ fn (mut p Parser) skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, to
 			&& p.line_indent_for_pos(p.peek_pos) > p.line_indent_for_pos(scope.body_pos) {
 			return false
 		}
+		if (token_is_infix(next_tok) || next_tok == .key_as) && next_tok != .mul
+			&& next_tok != .amp && next_tok != .arrow {
+			if next_tok !in [.plus, .minus]
+				|| p.line_indent_for_pos(p.peek_pos) > p.line_indent_for_pos(scope.body_pos) {
+				return false
+			}
+		}
 	}
 	return tok in [.comma, .colon, .semicolon, .rpar, .rsbr, .rcbr]
 }
@@ -5850,7 +5860,7 @@ fn (mut p Parser) skip_comptime_block() {
 	mut in_lambda_params := false
 	mut lambda_params := []string{}
 	mut lambda_scopes := []SkippedComptimeLambdaScope{}
-	mut shadowed_names := map[string]int{}
+	mut shadowed_names := p.active_lambda_param_counts.clone()
 	mut pending_comma_lhs_reads := []string{}
 	mut pending_comma_lhs_depth := -1
 	mut in_asm_header := false
@@ -11279,7 +11289,20 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		}
 	}
 	p.check(.pipe)
+	for param_id in lambda_params {
+		name := p.a.nodes[int(param_id)].value
+		p.active_lambda_param_counts[name] = (p.active_lambda_param_counts[name] or { 0 }) + 1
+	}
 	lambda_body := p.lambda_body_expr()
+	for param_id in lambda_params {
+		name := p.a.nodes[int(param_id)].value
+		count := p.active_lambda_param_counts[name] or { 0 }
+		if count <= 1 {
+			p.active_lambda_param_counts.delete(name)
+		} else {
+			p.active_lambda_param_counts[name] = count - 1
+		}
+	}
 	mut ids := lambda_params.clone()
 	ids << lambda_body
 	lstart := p.add_children(ids)
