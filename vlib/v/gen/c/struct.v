@@ -6211,7 +6211,7 @@ fn (g &FlatGen) soa_companion_name(struct_name string) string {
 }
 
 fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
-	return 'C.${soa_name}' in g.tc.structs
+	return soa_name in g.inlined_c_typedef_names || g.cache_native_c_symbols[soa_name]
 }
 
 fn (g &FlatGen) soa_companion_collision(struct_name string, soa_name string, fields []SoaFieldInfo) ?string {
@@ -6276,7 +6276,13 @@ fn (g &FlatGen) soa_companion_c_decl_matches(c_name string, fields []SoaFieldInf
 }
 
 fn (g &FlatGen) soa_companion_c_decl_field_matches(field types.StructField, name string, c_type string) bool {
-	return g.cname(field.name) == name && g.tc.c_type(field.typ) == c_type
+	if g.cname(field.name) != name {
+		return false
+	}
+	field_c_type := g.tc.c_type(field.typ)
+	// C interop declarations spell an ABI `int` as V `int`, whose normal V3
+	// representation is i64. The generated SoA len/cap fields are C `int`s.
+	return field_c_type == c_type || (c_type == 'int' && field.typ.name() == 'int')
 }
 
 fn (mut g FlatGen) soa_field_c_type(struct_name string, f types.StructField) string {

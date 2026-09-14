@@ -2648,6 +2648,18 @@ struct SoaItem {
 	value int
 }
 
+@[typedef]
+struct C.SoaItem_SOA {
+	len   int
+	cap   int
+	value &int
+}
+
+fn C.SoaItem_SOA_new(int, int) C.SoaItem_SOA
+fn C.SoaItem_SOA_push(&C.SoaItem_SOA, SoaItem)
+fn C.SoaItem_SOA_get(C.SoaItem_SOA, int) SoaItem
+fn C.SoaItem_SOA_free(&C.SoaItem_SOA)
+
 struct Foo {}
 
 fn Foo.make(value Foo) {
@@ -2661,15 +2673,18 @@ fn (foo Foo) run(value int) {
 
 fn main() {
 	mut rows := []string{}
-	item := SoaItem{value: 3}
-	rows << item.value.str()
+	mut soa := C.SoaItem_SOA_new(0, 3)
+	C.SoaItem_SOA_push(&soa, SoaItem{value: 3})
+	item := C.SoaItem_SOA_get(soa, 0)
+	rows << soa.cap.str() + ':' + soa.len.str() + ':' + item.value.str()
+	C.SoaItem_SOA_free(&soa)
 	\$for method in Foo.methods {
 		rows << method.name + ':' + method.params.len.str()
 	}
 	println(rows.join('|'))
 }
 ")
-	assert out == '3|run:1'
+	assert out == '3:1:3|run:1'
 }
 
 fn test_param_and_attribute_guards_preserve_quoted_member_text() {

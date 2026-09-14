@@ -13614,12 +13614,6 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	actual_ret_ct := g.callback_c_type(actual.return_type)
 	expected_ret_ct := g.callback_expected_return_c_type(expected.return_type, expected_c_abi)
 	mut needs_wrapper := false
-	// A thunk is only warranted when some argument or the return value has to be
-	// *converted*. Pointer-to-pointer and const differences are ABI-identical, so
-	// wrapping them would cost an indirection and, worse, hand out the thunk's
-	// address instead of the function's: `t.func? == callback` then compares two
-	// unrelated symbols and is always false. Those fall through to a plain cast.
-	mut needs_conversion := false
 	mut cast_return := false
 	if actual_ret_ct != expected_ret_ct {
 		if !callback_can_cast_scalar_int_param(actual_ret_ct, expected_ret_ct)
@@ -13627,7 +13621,6 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 			return none
 		}
 		needs_wrapper = true
-		needs_conversion = true
 		cast_return = true
 	}
 	mut param_decls := []string{}
@@ -13657,7 +13650,6 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 			setup_lines << '${slot_ct} arg${i}_slot = (${slot_ct})arg${i};'
 			call_args << '&arg${i}_slot'
 			needs_wrapper = true
-			needs_conversion = true
 			continue
 		}
 		if callback_can_cast_scalar_int_param(actual_ct, expected_ct) {
@@ -13667,12 +13659,11 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 			// by C with `-1` reaches the V body as -1 (not 0xffffffff).
 			call_args << '(${actual_ct})arg${i}'
 			needs_wrapper = true
-			needs_conversion = true
 			continue
 		}
 		return none
 	}
-	if !needs_wrapper || !needs_conversion {
+	if !needs_wrapper {
 		return none
 	}
 	actual_c_name := g.callback_c_fn_name(actual_name)
@@ -17842,8 +17833,8 @@ fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name stri
 fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string, module_name string) bool {
 	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
 	// A user C.request declaration is unrelated and still needs an extern prototype.
-	if cfn == 'request' && source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {
-		return false
+	if cfn == 'request' {
+		return !source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v')
 	}
 	if g.target.os == 'vinix' {
 		normalized_file := source_file.replace('\\', '/')

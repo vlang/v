@@ -42,11 +42,11 @@ fn callback_write_project_file(root string, rel string, source string) string {
 	return path
 }
 
-fn callback_cast_type_names(generated string, function_name string) []string {
+fn callback_adapter_names(generated string, prefix string) []string {
 	mut names := []string{}
 	for line in generated.split_into_lines() {
-		if line.contains('(_fn_ptr_') && line.contains(')${function_name}') {
-			name := '_fn_ptr_' + line.all_after_last('(_fn_ptr_').all_before(')')
+		if line.starts_with('static void ${prefix}') {
+			name := line.all_after('static void ').all_before('(')
 			if name !in names {
 				names << name
 			}
@@ -216,20 +216,32 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '82'
 	generated := os.read_file(good_out + '.c') or { panic(err) }
-	assert generated.contains('.frame = (_fn_ptr_'), generated
-	assert generated.contains(')frame'), generated
-	assert generated.contains('.event = (_fn_ptr_'), generated
-	assert generated.contains(')on_event'), generated
-	assert generated.contains('.native_event = (_fn_ptr_'), generated
-	assert generated.contains(')erased_event'), generated
-	assert generated.contains('use_cb((_fn_ptr_'), generated
-	assert generated.contains('.alias_frame = (_fn_ptr_'), generated
-	assert generated.contains('.alias_event = (_fn_ptr_'), generated
-	assert generated.contains('.alias2_frame = (_fn_ptr_'), generated
-	assert generated.contains('.alias2_event = (_fn_ptr_'), generated
+	assert generated.contains('callback_adapter'), generated
+	assert generated.contains('frame_callback_adapter'), generated
+	assert generated.contains('on_event_callback_adapter'), generated
+	assert generated.contains('erased_event_callback_adapter'), generated
+	assert generated.contains('frame((main__App*)arg0);'), generated
+	assert generated.contains('on_event(arg0, (main__App*)arg1);'), generated
+	assert generated.contains('erased_event((void*)arg0, arg1);'), generated
+	assert generated.contains('use_cb(frame_callback_adapter_'), generated
+	assert generated.contains('.alias_frame = frame_callback_adapter_'), generated
+	assert generated.contains('.alias_event = on_event_callback_adapter_'), generated
+	assert generated.contains('.alias2_frame = frame_callback_adapter_'), generated
+	assert generated.contains('.alias2_event = on_event_callback_adapter_'), generated
 	assert generated.contains('.direct = direct'), generated
+	assert !generated.contains('.frame = frame,'), generated
+	assert !generated.contains('.event = on_event,'), generated
+	assert !generated.contains('.native_event = erased_event,'), generated
+	assert !generated.contains('.alias_frame = frame,'), generated
+	assert !generated.contains('.alias_event = on_event,'), generated
+	assert !generated.contains('.alias2_frame = frame,'), generated
+	assert !generated.contains('.alias2_event = on_event,'), generated
+	assert !generated.contains('.frame = (_fn_ptr'), generated
+	assert !generated.contains('.event = (_fn_ptr'), generated
+	assert !generated.contains('.native_event = (_fn_ptr'), generated
+	assert !generated.contains('use_cb((_fn_ptr'), generated
 	assert !generated.contains('use_cb(frame,'), generated
-	assert !generated.contains('callback_adapter'), generated
+	assert !generated.contains('direct_callback_adapter'), generated
 
 	autofree_out := os.join_path(os.temp_dir(), 'v3_callback_userdata_autofree_${os.getpid()}')
 	autofree_compile :=
@@ -239,11 +251,8 @@ fn main() {
 	assert autofree_run.exit_code == 0, autofree_run.output
 	assert autofree_run.output.trim_space() == '82'
 	autofree_c := os.read_file(autofree_out + '.c') or { panic(err) }
-	assert autofree_c.contains('.frame = (_fn_ptr_'), autofree_c
-	assert autofree_c.contains(')main__frame'), autofree_c
-	assert autofree_c.contains('.event = (_fn_ptr_'), autofree_c
-	assert autofree_c.contains(')main__on_event'), autofree_c
-	assert !autofree_c.contains('callback_adapter'), autofree_c
+	assert autofree_c.contains('main__frame((main__App*)arg0);'), autofree_c
+	assert autofree_c.contains('main__on_event(arg0, (main__App*)arg1);'), autofree_c
 
 	wrong_arity := callback_write_source('wrong_arity', 'module main
 struct Config {
@@ -374,10 +383,9 @@ fn main() {
 	assert homonym_run.exit_code == 0, homonym_run.output
 	assert homonym_run.output.trim_space() == '100'
 	homonym_c := os.read_file(homonym_out + '.c') or { panic(err) }
-	assert homonym_c.contains('.cb = (_fn_ptr_'), homonym_c
-	assert homonym_c.contains(')right__hit'), homonym_c
-	assert !homonym_c.contains(')left__hit'), homonym_c
-	assert !homonym_c.contains('callback_adapter'), homonym_c
+	assert homonym_c.contains('right__hit_callback_adapter'), homonym_c
+	assert homonym_c.contains('right__hit((right__App*)arg0);'), homonym_c
+	assert !homonym_c.contains('left__hit_callback_adapter'), homonym_c
 
 	c_fn_src := callback_write_source('c_fn_value', 'module main
 
@@ -415,7 +423,7 @@ fn main() {
 	assert !c_fn_c.contains('int abs(App*'), c_fn_c
 }
 
-fn test_callback_parallel_cast_types_are_stable() {
+fn test_callback_parallel_wrapper_names_are_stable() {
 	v3_bin := callback_build_v3_parallel()
 	mut src := strings.new_builder(128 * 1024)
 	src.write_string('module main
@@ -487,8 +495,7 @@ fn erased(e voidptr, data voidptr) {
 	assert parallel_run.exit_code == 0, parallel_run.output
 	assert parallel_run.output.trim_space() == '1100'
 	parallel_c := os.read_file(parallel_out + '.c') or { panic(err) }
-	names := callback_cast_type_names(parallel_c, 'erased')
+	names := callback_adapter_names(parallel_c, 'erased_callback_adapter_')
 	assert names.len == 2, parallel_c
 	assert names[0] != names[1]
-	assert !parallel_c.contains('callback_adapter'), parallel_c
 }
