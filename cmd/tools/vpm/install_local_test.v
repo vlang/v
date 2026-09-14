@@ -577,6 +577,81 @@ fn test_a_case_only_project_rename_keeps_its_local_installs() {
 	assert !os.exists(relocated)
 }
 
+// Copying a whole project copies the token in every install it holds, so a copy
+// answers exactly as the original does. Discovery has to settle that the same way
+// a command asking about one directory does: while the original is there, the
+// copy is a copy, and listing it must not quietly hand it the record.
+fn test_discovery_in_a_copied_project_does_not_take_the_record() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_copied_project'))
+	project_dir := os.join_path(test_path, 'copied_project_original')
+	os.mkdir_all(project_dir) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'v.mod'), "Module{\n\tname: 'copied_project'\n}\n") or {
+		panic(err)
+	}
+	installed := os.join_path(project_dir, 'copied_project_pkg')
+	create_local_git_module(installed, 'copied_project_pkg')
+	record_local_install(installed) or { panic(err) }
+
+	// The copy of the project, holding a copy of the checkout: same layout, same
+	// token, no claim on the record.
+	copy_dir := os.join_path(test_path, 'copied_project_copy')
+	os.rmdir_all(copy_dir) or {}
+	os.mkdir_all(copy_dir) or { panic(err) }
+	os.write_file(os.join_path(copy_dir, 'v.mod'), "Module{\n\tname: 'copied_project'\n}\n") or {
+		panic(err)
+	}
+	copied := os.join_path(copy_dir, 'copied_project_pkg')
+	create_local_git_module(copied, 'copied_project_pkg')
+	token := read_local_install_token(installed) or { panic('the install has no token') }
+	os.write_file(local_install_token_path(copied), token) or { panic(err) }
+	assert read_local_install_token(copied) or { '' } == token
+
+	assert local_installed_modules(copy_dir) == []
+	assert !is_recorded_local_install(copied)
+	// The original is untouched by having been looked at from the copy.
+	assert local_installed_modules(project_dir) == ['copied_project_pkg']
+	assert is_recorded_local_install(installed)
+
+	old_dir := os.getwd()
+	os.chdir(copy_dir) or { panic(err) }
+	defer {
+		os.chdir(old_dir) or {}
+	}
+	res := cmd_fail(@LOCATION, '${vexe} remove --local copied_project_pkg')
+	assert res.output.contains('refusing to remove `copied_project_pkg`'), res.output
+	assert os.is_dir(installed)
+}
+
+// A local install goes to the project whatever `VMODULES` says, so the record of
+// it cannot live under the module store: installing with a one-off `VMODULES` and
+// managing it without would otherwise lose the package.
+fn test_local_install_records_do_not_follow_vmodules() {
+	test_utils.set_test_env(os.join_path(test_path, 'vmodules_records_location'))
+	saved_records := os.getenv(local_installs_dir_env)
+	saved_cache := os.getenv('XDG_CACHE_HOME')
+	os.unsetenv(local_installs_dir_env)
+	os.setenv('XDG_CACHE_HOME', os.join_path(test_path, 'records_location_cache'), true)
+	defer {
+		os.setenv(local_installs_dir_env, saved_records, true)
+		if saved_cache == '' {
+			os.unsetenv('XDG_CACHE_HOME')
+		} else {
+			os.setenv('XDG_CACHE_HOME', saved_cache, true)
+		}
+	}
+	first_store := os.join_path(test_path, 'records_store_one')
+	second_store := os.join_path(test_path, 'records_store_two')
+
+	os.setenv('VMODULES', first_store, true)
+	with_first := local_install_records_dir()
+	os.setenv('VMODULES', second_store, true)
+	with_second := local_install_records_dir()
+
+	assert with_first == with_second
+	assert !with_first.starts_with(first_store)
+	assert !with_first.starts_with(second_store)
+}
+
 // A copy of an install is not the install: while the original is still there to
 // answer with the same token, the duplicate inherits nothing from it.
 fn test_a_copy_of_a_local_install_is_not_one() {

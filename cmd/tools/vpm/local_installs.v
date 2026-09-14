@@ -12,7 +12,7 @@ import os
 // update or remove.
 //
 // The record has two halves: a token inside the checkout VPM made, and the note
-// of that token in the global cache, never in the project. The note is named
+// of that token in the user's cache, never in the project. The note is named
 // after the token rather than after a path, so a project can be renamed or moved
 // and take its installs with it; the path the note holds is where the install was
 // last seen, which is what separates a checkout that moved from a copy of it made
@@ -21,8 +21,21 @@ import os
 
 const local_install_token_name = 'vpm_local_install'
 
+// The notes live in the user's cache, not under the module directory: a local
+// install goes to the project whatever `VMODULES` says, so a record kept beside
+// the global module store would be lost the moment that store moved, leaving the
+// install unmanageable for want of a note written under another name.
+// `VPM_LOCAL_INSTALLS` points them elsewhere, which is what the tests use to keep
+// a run of their own.
+const local_installs_dir_env = 'VPM_LOCAL_INSTALLS'
+
 fn local_install_records_dir() string {
-	return os.join_path(os.vmodules_dir(), '.cache', 'local_installs')
+	if custom := os.getenv_opt(local_installs_dir_env) {
+		if custom.trim_space() != '' {
+			return custom.trim_space()
+		}
+	}
+	return os.join_path(os.cache_dir(), 'v', 'local_installs')
 }
 
 fn local_install_record_path(token string) string {
@@ -182,6 +195,13 @@ fn recorded_install_under(note string, recorded string, root string) ?string {
 			continue
 		}
 		if install_dir_matches_note(candidate, note) {
+			// A checkout that answers with the token is not necessarily the one the
+			// note stands for: copy a project and every install in it answers the
+			// same. The original still being there is what settles it, exactly as
+			// it does when a command asks about one directory.
+			if install_dir_matches_note(recorded, note) && !same_filesystem_object(recorded, candidate) {
+				return none
+			}
 			// Seen at a new path: the note follows the install it stands for.
 			os.write_file(os.join_path(local_install_records_dir(), note), candidate) or {
 				return none
