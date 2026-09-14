@@ -15,6 +15,22 @@ fn build_warn_allocs_v3(root string) string {
 	return bin
 }
 
+fn run_warn_allocs_process(program string, args []string, environment map[string]string) os.Result {
+	mut process := os.new_process(program)
+	process.set_args(args)
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.run()
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	result := os.Result{
+		exit_code: process.code
+		output:    output
+	}
+	process.close()
+	return result
+}
+
 fn test_warn_about_allocs_reports_v1_allocation_sites() {
 	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -180,6 +196,56 @@ fn main() {
 		os.join_path(root, 'nonallocating.c'), nonallocating_source])
 	assert nonallocating.exit_code == 0, nonallocating.output
 	assert !nonallocating.output.contains('allocation ('), nonallocating.output
+
+	cache_project := os.join_path(root, 'cached_import')
+	cache_module := os.join_path(cache_project, 'allocmod')
+	os.mkdir_all(cache_module)!
+	os.write_file(os.join_path(cache_project, 'v.mod'), "Module {
+	name: 'warn_allocs_cache'
+	subdirs: ['allocmod']
+}
+")!
+	os.write_file(os.join_path(cache_module, 'allocmod.v'), 'module allocmod
+
+pub fn first() int {
+	values := [1, 2, 3]
+	return values[0]
+}
+')!
+	cache_main := os.join_path(cache_project, 'main.v')
+	os.write_file(cache_main, 'module main
+
+import allocmod
+
+fn main() {
+	println(allocmod.first())
+}
+')!
+	cache_output := os.join_path(cache_project, 'program')
+	mut cache_environment := os.environ()
+	cache_environment['V3CACHE'] = os.join_path(root, 'module_cache')
+	cache_environment['VTMP'] = os.join_path(root, 'cache_vtmp')
+	uncached_import := run_warn_allocs_process(v3_bin, ['-silent', '-nocache', '-warn-about-allocs',
+		'-o', cache_output, cache_project], cache_environment)
+	assert uncached_import.exit_code == 0, uncached_import.output
+	assert uncached_import.output.count('allocation (array initialization)') == 1, uncached_import.output
+	warm_cache := run_warn_allocs_process(v3_bin, ['-silent', '-warn-about-allocs', '-o',
+		cache_output, cache_project], cache_environment)
+	assert warm_cache.exit_code == 0, warm_cache.output
+	assert warm_cache.output.count('allocation (array initialization)') == 1, warm_cache.output
+	os.write_file(cache_main, 'module main
+
+import allocmod
+
+fn main() {
+	value := allocmod.first()
+	println(value)
+}
+')!
+	rebuilt_entry := run_warn_allocs_process(v3_bin, ['-silent', '-warn-about-allocs', '-o',
+		cache_output, cache_project], cache_environment)
+	assert rebuilt_entry.exit_code == 0, rebuilt_entry.output
+	assert rebuilt_entry.output.count('allocation (array initialization)') == 1, rebuilt_entry.output
 
 	core_root := os.join_path(root, 'core_module')
 	os.mkdir_all(os.join_path(core_root, 'math'))!

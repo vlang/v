@@ -8940,6 +8940,8 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-warn-about-allocs' {
 			warn_about_allocs = true
+			// Cached module headers omit function bodies, so inspect source for every import.
+			no_cache = true
 			i++
 		} else if args[i] == '-W' {
 			warns_are_errors = true
