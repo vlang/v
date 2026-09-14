@@ -136,6 +136,15 @@ fn test_selected_specialized_comptime_branch_reports_shadow() {
 	assert res.output.contains('variable `counter` shadows a global variable'), res.output
 }
 
+fn test_check_mode_selected_specialized_comptime_branch_reports_shadow() {
+	os.rmdir_all(tmp_root) or {}
+	write_file(os.join_path(app_dir, 'v.mod'), "Module {\n\tname: 'app'\n}\n")
+	write_file(os.join_path(app_dir, 'main.v'), '@[has_globals]\nmodule main\n\n__global (\n\tcounter int\n)\n\nfn get[T](x T) T {\n\t\$if T is int {\n\t\tcounter := 1\n\t\tprintln(counter)\n\t}\n\treturn x\n}\n\nfn main() {\n\tprintln(get[int](1))\n}\n')
+	res := os.execute('${os.quoted_path(vexe)} -check -enable-globals ${os.quoted_path(app_dir)}')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('variable `counter` shadows a global variable'), res.output
+}
+
 fn test_selected_specialized_shadow_clears_macos_fallback() {
 	$if !macos {
 		return

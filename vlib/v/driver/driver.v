@@ -10751,7 +10751,20 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if check_only {
+			if pre_tc.global_names.len > 0 {
+				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a,
+					&pre_tc)
+				if check_uses_generics {
+					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc,
+						check_used_fns, false)
+				}
+			}
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			if pre_tc.errors.len > 0 {
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture,
+					fatal_errors)
+				exit(1)
+			}
 			return
 		}
 		if cache_state.manager.enabled {
