@@ -6,6 +6,7 @@ import v.flat
 import v.parser
 import v.pref
 import v.token
+import v.types
 
 // SymbolKind categorizes the symbols it documents.
 pub enum SymbolKind {
@@ -147,6 +148,13 @@ pub mut:
 	frontmatter map[string]string
 }
 
+struct FlatScopeMatch {
+mut:
+	id        flat.NodeId = flat.empty_node
+	ancestors []flat.NodeId
+	depth     int = -1
+}
+
 // new_vdoc_preferences creates permissive parser preferences for vdoc.
 pub fn new_vdoc_preferences() &pref.Preferences {
 	mut prefs := pref.new_preferences()
@@ -252,6 +260,302 @@ fn (mut d Doc) parse_file(path string) ! {
 	if d.with_comments && d.head.comments.len == 0 {
 		d.head.comments = module_comments(a, source, first_declaration_line, mut assigned_comments)
 	}
+}
+
+fn is_flat_scope(kind flat.NodeKind) bool {
+	return kind in [.file, .fn_decl, .fn_literal, .lambda_expr, .block, .for_stmt, .for_in_stmt,
+		.match_branch, .select_branch]
+}
+
+fn flat_scope_contains(a &flat.FlatAst, id flat.NodeId, node &flat.Node, file_id int, pos int) bool {
+	if node.pos.id != file_id || node.pos.offset > pos {
+		return false
+	}
+	end := if node.kind == .file {
+		file := a.source_files[file_id] or { return false }
+		file.size
+	} else if node.kind == .fn_decl {
+		a.formatter_node_ends[int(id)] or { int(node.pos.end) }
+	} else {
+		int(node.pos.end)
+	}
+	return pos <= end
+}
+
+fn find_innermost_flat_scope(a &flat.FlatAst, id flat.NodeId, file_id int, pos int, depth int, mut ancestors []flat.NodeId, mut best FlatScopeMatch) {
+	node := a.node(id)
+	if is_flat_scope(node.kind) && flat_scope_contains(a, id, node, file_id, pos)
+		&& depth > best.depth {
+		best.id = id
+		best.ancestors = ancestors.clone()
+		best.depth = depth
+	}
+	ancestors << id
+	for child_id in a.children_of(node) {
+		find_innermost_flat_scope(a, child_id, file_id, pos, depth + 1, mut ancestors, mut best)
+	}
+	ancestors.delete_last()
+}
+
+fn innermost_flat_scope(a &flat.FlatAst, file_id flat.NodeId, pos int) FlatScopeMatch {
+	mut best := FlatScopeMatch{}
+	mut ancestors := []flat.NodeId{}
+	file_node := a.node(file_id)
+	mut source_id := file_node.pos.id
+	for child_id in a.children_of(file_node) {
+		child := a.node(child_id)
+		if child.pos.id > 0 {
+			source_id = child.pos.id
+			break
+		}
+	}
+	find_innermost_flat_scope(a, file_id, source_id, pos, 0, mut ancestors, mut best)
+	return best
+}
+
+fn enclosing_flat_fn_name(a &flat.FlatAst, scope FlatScopeMatch) string {
+	for id in scope.ancestors {
+		node := a.node(id)
+		if node.kind == .fn_decl {
+			return node.value
+		}
+	}
+	if int(scope.id) >= 0 {
+		node := a.node(scope.id)
+		if node.kind == .fn_decl {
+			return node.value
+		}
+	}
+	return ''
+}
+
+fn flat_file_module_name(a &flat.FlatAst, file_id flat.NodeId) string {
+	file_node := a.node(file_id)
+	for child_id in a.children_of(file_node) {
+		child := a.node(child_id)
+		if child.kind == .module_decl {
+			return child.value
+		}
+	}
+	return ''
+}
+
+fn flat_decl_lhs_count(node &flat.Node) int {
+	mut count_text := node.value
+	if count_text.contains(':') {
+		count_text = count_text.all_after_last(':')
+	}
+	if count_text.is_int() {
+		count := count_text.int()
+		if count > 0 && count <= int(node.children_count) {
+			return count
+		}
+	}
+	return if node.children_count <= 2 {
+		if node.children_count > 0 { 1 } else { 0 }
+	} else {
+		int(node.children_count) - 1
+	}
+}
+
+fn flat_decl_lhs_id(a &flat.FlatAst, node &flat.Node, index int) flat.NodeId {
+	lhs_count := flat_decl_lhs_count(node)
+	rhs_count := int(node.children_count) - lhs_count
+	child_index := if index < rhs_count { index * 2 } else { rhs_count + index }
+	return a.child(node, child_index)
+}
+
+fn flat_decl_rhs_id(a &flat.FlatAst, node &flat.Node, index int) flat.NodeId {
+	lhs_count := flat_decl_lhs_count(node)
+	rhs_count := int(node.children_count) - lhs_count
+	if rhs_count <= 0 {
+		return flat.empty_node
+	}
+	child_index := if rhs_count == 1 || index >= rhs_count { 1 } else { index * 2 + 1 }
+	return a.child(node, child_index)
+}
+
+fn scoped_type_name(a &flat.FlatAst, checker &types.TypeChecker, id flat.NodeId, fallback flat.NodeId, module_name string) string {
+	node := a.node(id)
+	mut name := if node.kind == .param && node.typ != '' {
+		node.typ
+	} else {
+		checker.resolve_type(id).name()
+	}
+	if name in ['', 'unknown'] && int(fallback) >= 0 {
+		name = checker.resolve_type(fallback).name()
+	}
+	if name in ['', 'unknown'] && node.typ != '' {
+		name = node.typ
+	}
+	name = name.all_after('&')
+	if module_name != '' {
+		name = name.replace('${module_name}.', '')
+	}
+	return name
+}
+
+fn add_scoped_variable(a &flat.FlatAst, checker &types.TypeChecker, id flat.NodeId, fallback flat.NodeId, path string, module_name string, mut contents map[string]DocNode) {
+	if int(id) < 0 {
+		return
+	}
+	node := a.node(id)
+	if node.kind !in [.ident, .param] || node.value in ['', '_'] || node.value in contents {
+		return
+	}
+	contents[node.value] = DocNode{
+		name:        node.value
+		pos:         doc_position(a, node.pos)
+		file_path:   path
+		kind:        .variable
+		return_type: scoped_type_name(a, checker, id, fallback, module_name)
+		from_scope:  true
+	}
+}
+
+fn add_scoped_decl(a &flat.FlatAst, checker &types.TypeChecker, node &flat.Node, path string, module_name string, mut contents map[string]DocNode) {
+	for i in 0 .. flat_decl_lhs_count(node) {
+		add_scoped_variable(a, checker, flat_decl_lhs_id(a, node, i), flat_decl_rhs_id(a, node, i), path, module_name, mut contents)
+	}
+}
+
+fn add_direct_scoped_decls(a &flat.FlatAst, checker &types.TypeChecker, node &flat.Node, start int, path string, module_name string, mut contents map[string]DocNode) {
+	for i in start .. int(node.children_count) {
+		child := a.node(a.child(node, i))
+		if child.kind == .decl_assign {
+			add_scoped_decl(a, checker, child, path, module_name, mut contents)
+		}
+	}
+}
+
+fn scoped_contents_from_flat(a &flat.FlatAst, checker &types.TypeChecker, scope FlatScopeMatch, path string, module_name string) map[string]DocNode {
+	mut contents := map[string]DocNode{}
+	if int(scope.id) < 0 {
+		return contents
+	}
+	node := a.node(scope.id)
+	match node.kind {
+		.file {
+			add_direct_scoped_decls(a, checker, node, 0, path, module_name, mut contents)
+		}
+		.fn_decl, .fn_literal {
+			mut body_started := false
+			for i in 0 .. int(node.children_count) {
+				child_id := a.child(node, i)
+				child := a.node(child_id)
+				if !body_started && child.kind in [.ident, .param] {
+					add_scoped_variable(a, checker, child_id, flat.empty_node, path, module_name, mut contents)
+					continue
+				}
+				body_started = true
+				if child.kind == .decl_assign {
+					add_scoped_decl(a, checker, child, path, module_name, mut contents)
+				}
+			}
+		}
+		.lambda_expr {
+			for i in 0 .. int(node.children_count) - 1 {
+				child_id := a.child(node, i)
+				add_scoped_variable(a, checker, child_id, flat.empty_node, path, module_name, mut contents)
+			}
+		}
+		.block {
+			add_direct_scoped_decls(a, checker, node, 0, path, module_name, mut contents)
+		}
+		.for_in_stmt {
+			header_count := node.value.int()
+			if header_count >= 3 {
+				add_scoped_variable(a, checker, a.child(node, 0), flat.empty_node, path, module_name, mut contents)
+				add_scoped_variable(a, checker, a.child(node, 1), flat.empty_node, path, module_name, mut contents)
+			}
+			add_direct_scoped_decls(a, checker, node, header_count, path, module_name, mut contents)
+		}
+		.for_stmt {
+			if node.children_count > 0 {
+				init := a.node(a.child(node, 0))
+				if init.kind == .decl_assign {
+					add_scoped_decl(a, checker, init, path, module_name, mut contents)
+				}
+			}
+			add_direct_scoped_decls(a, checker, node, 3, path, module_name, mut contents)
+		}
+		.match_branch {
+			condition_count := if node.value == 'else' { 0 } else { node.value.int() }
+			add_direct_scoped_decls(a, checker, node, condition_count, path, module_name, mut contents)
+		}
+		.select_branch {
+			condition_count := if node.value == 'else' { 0 } else { 1 }
+			if node.value == 'recv' && node.children_count > 1 {
+				add_scoped_variable(a, checker, a.child(node, 0), a.child(node, 1), path, module_name, mut contents)
+			}
+			add_direct_scoped_decls(a, checker, node, condition_count, path, module_name, mut contents)
+		}
+		else {}
+	}
+	if scope.ancestors.len == 0 {
+		return contents
+	}
+	parent := a.node(scope.ancestors.last())
+	if node.kind == .block && parent.kind == .if_expr && parent.children_count > 1
+		&& a.child(parent, 1) == scope.id {
+		condition := a.node(a.child(parent, 0))
+		if condition.kind == .decl_assign {
+			add_scoped_decl(a, checker, condition, path, module_name, mut contents)
+		}
+	} else if node.kind == .for_stmt && parent.kind == .block
+		&& parent.value == 'for_c_style_multi' && parent.children_count > 0 {
+		init := a.node(a.child(parent, 0))
+		if init.kind == .decl_assign {
+			add_scoped_decl(a, checker, init, path, module_name, mut contents)
+		}
+	}
+	return contents
+}
+
+fn (mut d Doc) populate_scoped_contents(paths []string) {
+	if !d.with_pos || d.filename == '' {
+		return
+	}
+	mut target_path := ''
+	for path in paths {
+		if path.contains(d.filename) {
+			target_path = path
+			break
+		}
+	}
+	if target_path == '' {
+		return
+	}
+	d.filename = target_path
+	mut parser_ := parser.Parser.new(new_vdoc_preferences())
+	a := parser_.parse_files(paths)
+	mut file_id := flat.empty_node
+	for raw_id in a.file_node_ids {
+		candidate_id := flat.NodeId(raw_id)
+		candidate := a.node(candidate_id)
+		if candidate.kind == .file && candidate.value == target_path && candidate.children_count > 0 {
+			file_id = candidate_id
+			break
+		}
+	}
+	if int(file_id) < 0 {
+		return
+	}
+	scope := innermost_flat_scope(a, file_id, d.pos)
+	if int(scope.id) < 0 {
+		return
+	}
+	mut checker := types.TypeChecker.new(a)
+	checker.enable_globals = true
+	checker.suppress_dump_output = true
+	checker.collect(a)
+	fn_name := enclosing_flat_fn_name(a, scope)
+	if fn_name != '' {
+		checker.check_semantics_selected({
+			fn_name: true
+		})
+	}
+	d.scoped_contents = scoped_contents_from_flat(a, &checker, scope, target_path, flat_file_module_name(a, file_id))
 }
 
 fn is_documentable(kind flat.NodeKind) bool {
@@ -595,9 +899,13 @@ pub fn (mut d Doc) generate() ! {
 		eprintln('vdoc: No valid V files were found. Skipping folder: ${d.base_path}.')
 		return
 	}
+	mut paths := []string{cap: files.len}
 	for filename in files {
-		d.parse_file(os.join_path(d.base_path, filename))!
+		path := os.join_path(d.base_path, filename)
+		paths << path
+		d.parse_file(path)!
 	}
+	d.populate_scoped_contents(paths)
 	if d.filter_symbol_names.len > 0 && d.contents.len > 0 {
 		for filter_name in d.filter_symbol_names {
 			if filter_name !in d.contents {
