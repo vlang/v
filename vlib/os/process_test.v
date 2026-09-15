@@ -250,9 +250,6 @@ fn test_new_process_passes_spaced_path_args_on_windows() {
 }
 
 fn test_new_process_uses_path_for_bare_command_names() {
-	$if windows {
-		return
-	}
 	eprintln(@FN)
 	original_path := os.getenv('PATH')
 	defer {
@@ -264,13 +261,23 @@ fn test_new_process_uses_path_for_bare_command_names() {
 	path_exe := os.join_path(path_dir, 'process_from_path.exe')
 	os.cp(test_os_process, path_exe)!
 	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
-	mut p := os.new_process('process_from_path.exe')
-	p.set_args(['-exitcode', '7'])
-	p.set_work_folder(os.real_path(os.temp_dir()))
-	p.wait()
-	assert p.status == .exited
-	assert p.code == 7
-	p.close()
+	// A bare name must be looked up in PATH, never resolved against the
+	// current directory; the work folder is deliberately one that does not
+	// contain the executable.
+	mut names := ['process_from_path.exe']
+	$if windows {
+		// Windows callers usually omit the extension, like `gcc` or `cl`.
+		names << 'process_from_path'
+	}
+	for name in names {
+		mut p := os.new_process(name)
+		p.set_args(['-exitcode', '7'])
+		p.set_work_folder(os.real_path(os.temp_dir()))
+		p.wait()
+		assert p.status == .exited, 'spawning `${name}` by bare name should succeed'
+		assert p.code == 7, 'spawning `${name}` by bare name gave exit code ${p.code}'
+		p.close()
+	}
 }
 
 fn test_run() {
