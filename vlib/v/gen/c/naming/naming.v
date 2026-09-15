@@ -375,6 +375,15 @@ pub fn is_plain_identifier(name string) bool {
 	return true
 }
 
+// local_rename returns the name a local is emitted under when it cannot keep its own.
+// A suffix would not be enough: a function may have both `array` and `array__local`
+// of its own, and a suffix would bring the two together under one name. Nothing a
+// source name sanitizes to begins with this prefix -- c_name pushes anything that
+// tries into its `source_` namespace -- so nothing can arrive here by accident.
+pub fn local_rename(cname string) string {
+	return '${internal_symbol_c_prefix}local_${cname}'
+}
+
 // is_reserved_word reports whether name needs a prefix to avoid a C reserved word.
 pub fn is_reserved_word(name string) bool {
 	return name in reserved_words

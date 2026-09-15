@@ -21,6 +21,12 @@ Do not store Contexts inside a struct type; instead, pass a Context explicitly
 to each function that needs it. The Context should be the first parameter,
 typically named ctx, just to make it more consistent.
 
+## String Representation
+
+`Context.str()` returns the normal representation for contexts provided by this module.
+For a user-defined `Context` implementation, it falls back to the concrete implementation
+type name. For example, a value containing `MyContext` is represented as `MyContext`.
+
 ## Cancellation with Causes
 
 When a context is canceled, you can optionally attach a **cause** — an error

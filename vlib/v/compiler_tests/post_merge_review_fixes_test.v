@@ -170,7 +170,7 @@ fn run_good_project_result(v3_bin string, name string, flags string, files map[s
 	run := os.execute(good_bin)
 	assert run.exit_code == 0, run.output
 	return GoodProjectRun{
-		run_output: run.output.trim_space()
+		run_output:     run.output.trim_space()
 		compile_output: compile.output
 	}
 }
@@ -3737,8 +3737,21 @@ fn test_formatted_interpolation_alias_uses_string_representation() {
 
 fn test_callback_pointer_return_is_compatible_with_voidptr_return() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'callback_pointer_return_to_voidptr', 'struct Item {\n\tvalue int\n}\n\nstruct Config {\n\tcallback fn () voidptr\n}\n\nfn make_item() &Item {\n\treturn &Item{value: 42}\n}\n\nfn main() {\n\tconfig := Config{callback: make_item}\n\titem := unsafe { &Item(config.callback()) }\n\tprintln(item.value)\n}\n')
+	source := 'struct Item {\n\tvalue int\n}\n\nstruct Config {\n\tcallback fn () voidptr\n}\n\nfn make_item() &Item {\n\treturn &Item{value: 42}\n}\n\nfn main() {\n\tconfig := Config{callback: make_item}\n\titem := unsafe { &Item(config.callback()) }\n\tprintln(item.value)\n}\n'
+	c_source := gen_c(v3_bin, 'callback_pointer_return_to_voidptr_c', source)
+	assert c_source.contains('.callback = make_item_callback_adapter_'), c_source
+	assert c_source.contains('return (void*)('), c_source
+	out := run_good(v3_bin, 'callback_pointer_return_to_voidptr', source)
 	assert out == '42'
+}
+
+fn test_enum_pointer_receiver_builtin_str_passes_enum_value() {
+	v3_bin := build_v3()
+	source := 'enum VCS {\n\tgit\n\thg\n}\n\nfn (vcs &VCS) text() string {\n\treturn vcs.str()\n}\n\nfn main() {\n\tvcs := VCS.hg\n\tprintln(vcs.text())\n}\n'
+	c_source := gen_c(v3_bin, 'enum_pointer_receiver_builtin_str_c', source)
+	assert c_source.contains('return VCS__autostr(*(vcs));'), c_source
+	out := run_good(v3_bin, 'enum_pointer_receiver_builtin_str', source)
+	assert out == 'hg'
 }
 
 fn test_stats_reports_failed_test_status_and_passed_total() {

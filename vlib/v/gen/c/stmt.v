@@ -934,7 +934,7 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
 
 fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 	for entry in entries {
-		cname := g.cname(entry.name)
+		cname := g.local_cname(entry.name)
 		typ := g.tc.parse_type(entry.type_name)
 		mut expr := cname
 		mut free_pointer_storage := false
@@ -7606,7 +7606,7 @@ fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 		} else {
 			'int'
 		}
-		lhs_name := g.cname(lhs.value)
+		lhs_name := g.local_decl_cname(lhs.value)
 		if j < multi_types.len {
 			if fixed := array_fixed_type(multi_types[j]) {
 				c_elem, dims := g.fixed_array_decl_parts(fixed)
@@ -8094,24 +8094,31 @@ fn (mut g FlatGen) gen_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.N
 	return true
 }
 
-fn (g &FlatGen) assign_lhs_c_abi_fn_ptr_type(lhs_id flat.NodeId) ?string {
-	if int(lhs_id) < 0 || int(lhs_id) >= g.a.nodes.len {
+fn (g &FlatGen) expr_c_abi_fn_ptr_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
 	}
-	lhs := g.a.nodes[int(lhs_id)]
-	if lhs.kind != .selector || lhs.children_count == 0 || lhs.value.len == 0 {
+	expr := g.a.nodes[int(id)]
+	if expr.kind in [.expr_stmt, .paren, .postfix] && expr.children_count > 0 {
+		return g.expr_c_abi_fn_ptr_type(g.a.child(&expr, 0))
+	}
+	if expr.kind != .selector || expr.children_count == 0 || expr.value.len == 0 {
 		return none
 	}
-	base_id := g.a.child(&lhs, 0)
+	base_id := g.a.child(&expr, 0)
 	base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
 	mut clean := base_type
 	if base_type is types.Alias {
 		clean = base_type.base_type
 	}
 	if clean is types.Struct {
-		return g.struct_field_c_abi_fn_ptr_type(clean.name, lhs.value)
+		return g.struct_field_c_abi_fn_ptr_type(clean.name, expr.value)
 	}
 	return none
+}
+
+fn (g &FlatGen) assign_lhs_c_abi_fn_ptr_type(lhs_id flat.NodeId) ?string {
+	return g.expr_c_abi_fn_ptr_type(lhs_id)
 }
 
 fn (g &FlatGen) assign_struct_operator_method(lhs_type types.Type, op flat.Op) ?string {
@@ -8284,20 +8291,31 @@ fn (g &FlatGen) discard_name(id flat.NodeId) string {
 	return '__discard_${pos.id}_${pos.offset}_${pos.end}'
 }
 
+// The name a current parameter is read under. The identifier path reads one that
+// needs the global suffix the way it was declared, and one that merely shadows a
+// type the way it reads every other local; anything reading a parameter directly has
+// to make the same distinction or it names something that is not there.
+fn (g &FlatGen) current_param_use_cname(name string) string {
+	if g.local_name_needs_global_suffix(name) {
+		return g.local_decl_cname(name)
+	}
+	return g.local_cname(name)
+}
+
 fn (g &FlatGen) local_cname(name string) string {
 	if g.local_shadows_global(name) || local_name_shadows_c_runtime(name)
 		|| g.local_name_shadows_c_typedef(name) {
-		return '${g.cname(name)}__local'
+		return naming.local_rename(g.cname(name))
 	}
 	return g.cname(name)
 }
 
 fn (g &FlatGen) local_decl_cname(name string) string {
 	if local_name_shadows_c_runtime(name) || g.local_name_shadows_c_typedef(name) {
-		return '${g.cname(name)}__local'
+		return naming.local_rename(g.cname(name))
 	}
 	if g.local_name_needs_global_suffix(name) {
-		return '${g.cname(name)}__local'
+		return naming.local_rename(g.cname(name))
 	}
 	return g.cname(name)
 }
@@ -8341,6 +8359,15 @@ fn (mut g FlatGen) precompute_local_global_suffix_names() {
 	g.local_global_suffix_names_ready = true
 }
 
+// The runtime's own `array` struct is typed into C under that name, and a local
+// taking the name for its own hides the type from the rest of the function it is in:
+// a slice of `a.values` inside a function whose parameter is called `array` is built
+// with an `(array[]){...}` literal, and the literal no longer names a type. `map` and
+// `string` cannot arise the same way -- the parser refuses them as identifiers.
+const v_runtime_typedef_names = {
+	'array': true
+}
+
 fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
@@ -8350,8 +8377,8 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		}
 	}
 	cname := g.cname(name)
-	result := cname in g.inlined_c_typedef_names || cname in g.tc.c_typedef_structs
-		|| 'C.${cname}' in g.tc.c_typedef_structs
+	result := cname in v_runtime_typedef_names || cname in g.inlined_c_typedef_names
+		|| cname in g.tc.c_typedef_structs || 'C.${cname}' in g.tc.c_typedef_structs
 	if !isnil(g.local_typedef_shadow_facts) {
 		mut cache := g.local_typedef_shadow_facts
 		cache.put(name, if result { i8(1) } else { i8(-1) })

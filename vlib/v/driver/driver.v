@@ -104,6 +104,11 @@ fn configure_selfhost_parallelism(building_v bool, prod_parallel_cc bool) {
 	}
 }
 
+fn self_build_current_hash(vroot string) string {
+	// Source archives intentionally have no current Git hash.
+	return util.githash(vroot) or { '' }
+}
+
 const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_serial_user_check_node_threshold = 1_000_000
 const scoped_serial_user_transform_node_threshold = 1_000_000
@@ -3346,13 +3351,20 @@ fn register_native_source_typedefs(mut tc types.TypeChecker, state &V3ModuleCach
 		}
 	}
 	for name, is_struct in typedefs {
+		if !is_struct {
+			// A function-pointer typedef is not an aggregate, and `struct F` does
+			// not name it. Registering it as a C struct made the backend declare
+			// `typedef struct F F;` and an empty `struct F` body of its own, next
+			// to the header's `typedef int (*F)(...)`, which C rejects as a typedef
+			// redefinition with a different type. The header that the program
+			// includes already declares the name, so V needs nothing here.
+			continue
+		}
 		c_name := 'C.${name}'
 		if c_name !in tc.structs {
 			tc.structs[c_name] = []types.StructField{}
 		}
-		if is_struct {
-			tc.c_typedef_structs[c_name] = true
-		}
+		tc.c_typedef_structs[c_name] = true
 	}
 }
 
@@ -3427,9 +3439,10 @@ fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target p
 			continue
 		}
 		name := rest[..end]
-		// Function-like macros are still definitely defined, but their expansion
-		// cannot be used as a literal include target.
-		macros[name] = rest[end..].trim_space()
+		// Preserve the whitespace after the name: a function-like macro starts
+		// immediately with `(`, while an object-like replacement starts after a
+		// separating space. CGen uses that distinction when classifying C calls.
+		macros[name] = rest[end..]
 	}
 	return macros, true
 }
@@ -3445,9 +3458,14 @@ fn cache_c_flags_without_forced_inputs(flags []string) []string {
 	mut out := []string{cap: flags.len}
 	mut i := 0
 	for i < flags.len {
-		if flags[i].trim_space() in ['-include', '-imacros'] {
+		clean := flags[i].trim_space()
+		if clean in ['-include', '-imacros'] {
 			// Skip the option together with its file operand.
 			i += 2
+			continue
+		}
+		if clean.starts_with('-include=') || clean.starts_with('-imacros=') {
+			i++
 			continue
 		}
 		out << flags[i]
@@ -6064,6 +6082,38 @@ fn merge_incremental_program_body(cached_source string, cached_prefix string, ch
 	return merged[..body_start] + new_section_text + merged[body_start..]
 }
 
+fn target_libc_cached_prefix_needs_thread_refresh(cached_prefix string, current_body string) bool {
+	if c_source_references_identifier_prefix(current_body, 'pthread_')
+		&& !cached_prefix.contains('#include <pthread.h>') {
+		return true
+	}
+	runtime_identifiers := {
+		'__v_thread_equal': true
+		'__v_thread_alloc': true
+		'__v_thread_spawn': true
+		'__v_thread_join':  true
+	}
+	body_level := if c_source_references_identifiers(current_body, runtime_identifiers) {
+		2
+	} else if c_source_references_identifiers(current_body, {
+		'__v_thread': true
+	}) {
+		1
+	} else {
+		0
+	}
+	prefix_level := if c_source_references_identifiers(cached_prefix, runtime_identifiers) {
+		2
+	} else if c_source_references_identifiers(cached_prefix, {
+		'__v_thread': true
+	}) {
+		1
+	} else {
+		0
+	}
+	return prefix_level != body_level
+}
+
 fn merge_cached_generic_program_body(cached_source string, changed_source string) ?string {
 	cached_sections := incremental_c_function_sections(cached_source) or { return none }
 	changed_sections := incremental_c_function_sections(changed_source) or { return none }
@@ -6537,6 +6587,8 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		disabled_fns: ast.disabled_fns
 		export_fn_names: ast.export_fn_names
 		noreturn_fns: ast.noreturn_fns
+		contextual_anon_struct_types: ast.contextual_anon_struct_types
+		synthesized_anon_struct_types: ast.synthesized_anon_struct_types
 		source_files: ast.source_files
 		template_call_sites: ast.template_call_sites.clone()
 		template_actions: clone_int_string_map(ast.template_actions)
@@ -8523,10 +8575,12 @@ pub fn run(args []string) {
 	mut is_repl := false
 	mut show_test_stats := v3_environment_show_test_stats()
 	mut warn_impure_v := false
+	mut warn_about_allocs := false
 	mut warns_are_errors := false
 	mut notes_are_errors := false
 	mut fatal_errors := false
 	mut check_overflow := false
+	mut target_libc_headers := false
 	mut force_bounds_checking := false
 	mut print_v_files := false
 	mut print_watched_files := false
@@ -8899,6 +8953,12 @@ pub fn run(args []string) {
 				user_defines << 'nofloat'
 			}
 			i++
+		} else if args[i] == '-target-libc-headers' {
+			// Deliberately not a `freestanding` define: that one selects vlib's
+			// bare-metal paths, which call bare_print/bare_panic out of a
+			// `-bare-builtin-dir`. This target has a libc, in its own headers.
+			target_libc_headers = true
+			i++
 		} else if args[i] == '-no-bounds-checking' {
 			if 'no_bounds_checking' !in user_defines {
 				user_defines << 'no_bounds_checking'
@@ -8929,6 +8989,11 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-Wimpure-v' {
 			warn_impure_v = true
+			// Cached module headers omit function bodies, so inspect source for every import.
+			no_cache = true
+			i++
+		} else if args[i] == '-warn-about-allocs' {
+			warn_about_allocs = true
 			// Cached module headers omit function bodies, so inspect source for every import.
 			no_cache = true
 			i++
@@ -9134,6 +9199,11 @@ pub fn run(args []string) {
 	if os.getenv(v3_embedded_env) != '1' {
 		maybe_delegate_v3_to_vvmrc(input_file, verbose)
 	}
+	// The JS compatibility path returns before the common backend validation below.
+	if target_libc_headers && backend == 'js' {
+		eprintln('option `-target-libc-headers` requires the C backend')
+		exit(1)
+	}
 	if backend == 'js' {
 		js_output := if output_file.len > 0 {
 			output_file
@@ -9231,6 +9301,18 @@ pub fn run(args []string) {
 	}
 	target := pref.target_from(target_os, target_arch) or {
 		eprintln(err.msg())
+		exit(1)
+	}
+	if target_libc_headers && output_cross_c {
+		eprintln('option `-target-libc-headers` does not support portable cross output')
+		exit(1)
+	}
+	if target_libc_headers && target.os == 'windows' {
+		eprintln('option `-target-libc-headers` does not support Windows targets')
+		exit(1)
+	}
+	if target_libc_headers && backend != 'c' {
+		eprintln('option `-target-libc-headers` requires the C backend')
 		exit(1)
 	}
 	if backend == 'fastc' && target.os == 'windows' && subsystem == .windows {
@@ -9510,11 +9592,13 @@ pub fn run(args []string) {
 	prefs.ccompiler = effective_c_compiler
 	prefs.no_parallel = current_no_parallel
 	prefs.c99 = c99
+	prefs.target_libc_headers = target_libc_headers
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.enable_globals = enable_globals_compat
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
+	prefs.module_resolution_root = v3_module_resolution_root(input_file)
 	prefs.exclude = expand_v3_exclude_patterns(exclude_patterns, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
 		if bundled_tcc_available {
@@ -9529,9 +9613,16 @@ pub fn run(args []string) {
 	if prefs.vcurrent_hash == '' {
 		prefs.vcurrent_hash = @VCURRENTHASH
 	}
+	if building_v {
+		// A self-build must describe the sources being compiled, not the compiler
+		// that happened to bootstrap them. Otherwise every `make`/`v up` keeps
+		// reporting the bootstrap snapshot's commit indefinitely.
+		prefs.vcurrent_hash = self_build_current_hash(prefs.vroot)
+	}
 	prefs.selfhost = is_selfhost || fastc_selfhost_build
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
+	prefs.warn_about_allocs = warn_about_allocs
 	prefs.is_debug = is_debug
 	prefs.is_livemain = is_livemain
 	prefs.is_liveshared = is_liveshared
@@ -9602,6 +9693,9 @@ pub fn run(args []string) {
 			}
 			if warn_impure_v {
 				unsupported_modes << '`-Wimpure-v`'
+			}
+			if warn_about_allocs {
+				unsupported_modes << '`-warn-about-allocs`'
 			}
 			if print_fn_names.len > 0 || print_v_files || print_watched_files
 				|| dump_c_flags.len > 0 || generate_c_project.len > 0 {
@@ -9839,6 +9933,7 @@ pub fn run(args []string) {
 		'subsystem=${prefs.subsystem}',
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
+		'target_libc_headers=${prefs.target_libc_headers}',
 		'thread_stack_size=${prefs.thread_stack_size}',
 		'module_search_paths=${prefs.module_search_paths.join(',')}',
 		'macos_v3_caller_environment=${pref.has_macos_v3_caller_environment()}',
@@ -9847,6 +9942,7 @@ pub fn run(args []string) {
 		'enable_globals=${enable_globals_compat}',
 		'check_overflow=${check_overflow}',
 		'force_bounds_checking=${prefs.force_bounds_checking}',
+		'warn_about_allocs=${prefs.warn_about_allocs}',
 		'warns_are_errors=${effective_warns_are_errors}',
 		'notes_are_errors=${notes_are_errors}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
@@ -10526,6 +10622,7 @@ pub fn run(args []string) {
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
 	pre_tc.no_main = 'no_main' in prefs.user_defines
+	pre_tc.warn_about_allocs = prefs.warn_about_allocs
 	pre_tc.warns_are_errors = effective_warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
@@ -11669,6 +11766,18 @@ pub fn run(args []string) {
 		} else {
 			used_fns
 		}
+		mut cgen_compiler_predefined_macros := map[string]string{}
+		mut cgen_compiler_macro_env_complete := false
+		if !cgen_cache_hit {
+			mut cgen_macro_flags := cgen.cache_directive_flags(a, prefs.vroot, prefs.target,
+				prefs.compile_values)
+			cgen_macro_flags << user_c_flags
+			native_inputs_language := cgen.cache_native_inputs_language(a, prefs.vroot,
+				cgen_macro_flags, prefs.c99, prefs.ccompiler, prefs.target)
+			cgen_compiler_predefined_macros, cgen_compiler_macro_env_complete =
+				cache_c_compiler_predefined_macros(cgen_macro_flags, c_compiler, prefs.target,
+					native_inputs_language)
+		}
 		if cgen_cache_hit && !cgen_prepared_hit {
 			os.cp(cgen_cache_entry.source, cache_plan_file) or {
 				eprintln('error restoring cached C plan ${cgen_cache_entry.source}: ${err.msg()}')
@@ -11695,6 +11804,8 @@ pub fn run(args []string) {
 			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
+			g.set_c_compiler_predefined_macros(cgen_compiler_predefined_macros,
+				cgen_compiler_macro_env_complete)
 			g.set_prod(prefs.is_prod)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
@@ -11707,6 +11818,7 @@ pub fn run(args []string) {
 			g.set_output_cross_c(prefs.output_cross_c)
 			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
+			g.set_target_libc_headers(prefs.target_libc_headers)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
@@ -11758,6 +11870,8 @@ pub fn run(args []string) {
 			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
+			g.set_c_compiler_predefined_macros(cgen_compiler_predefined_macros,
+				cgen_compiler_macro_env_complete)
 			g.set_prod(prefs.is_prod)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
@@ -11770,6 +11884,7 @@ pub fn run(args []string) {
 			g.set_output_cross_c(prefs.output_cross_c)
 			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
+			g.set_target_libc_headers(prefs.target_libc_headers)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
@@ -12094,6 +12209,13 @@ pub fn run(args []string) {
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
+						if prefs.target_libc_headers
+							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix,
+								generated_source) {
+							trace_v3_cache_fallback('cached program prefix has stale target thread support')
+							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+							restart_v3_after_cache_invalidation()
+						}
 						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file, incremental_prefix_path, incremental_tcc_declarations_path, cached_prefix, compile_signature, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
@@ -12114,6 +12236,13 @@ pub fn run(args []string) {
 							eprintln('error reading cached generic prefix ${generic_cache_entry.prefix}: ${err.msg()}')
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
+						}
+						if prefs.target_libc_headers
+							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix,
+								generated_source) {
+							trace_v3_cache_fallback('cached program prefix has stale target thread support')
+							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+							restart_v3_after_cache_invalidation()
 						}
 						cached_declarations := os.read_file(generic_cache_entry.declarations) or {
 							eprintln('error reading cached generic declarations ${generic_cache_entry.declarations}: ${err.msg()}')
@@ -14168,6 +14297,16 @@ fn c_source_references_identifiers(source string, identifiers map[string]bool) b
 	return false
 }
 
+fn c_source_references_identifier_prefix(source string, prefix string) bool {
+	if prefix.len == 0 {
+		return false
+	}
+	if _ := c_source_referenced_identifier_with_prefix(source, map[string]bool{}, prefix) {
+		return true
+	}
+	return false
+}
+
 fn c_source_file_scope_identifiers(source string) map[string]bool {
 	mut identifiers := map[string]bool{}
 	mut brace_depth := 0
@@ -14254,6 +14393,10 @@ fn c_source_file_scope_identifiers(source string) map[string]bool {
 }
 
 fn c_source_referenced_identifier(source string, identifiers map[string]bool) ?string {
+	return c_source_referenced_identifier_with_prefix(source, identifiers, '')
+}
+
+fn c_source_referenced_identifier_with_prefix(source string, identifiers map[string]bool, prefix string) ?string {
 	mut i := 0
 	for i < source.len {
 		if source[i] in [`"`, `'`] {
@@ -14296,7 +14439,7 @@ fn c_source_referenced_identifier(source string, identifiers map[string]bool) ?s
 			i++
 		}
 		identifier := source[start..i]
-		if identifiers[identifier] {
+		if identifiers[identifier] || (prefix.len > 0 && identifier.starts_with(prefix)) {
 			return identifier
 		}
 	}
@@ -14788,6 +14931,17 @@ fn project_root_for_files(files []string) string {
 		return os.dir(files[0])
 	}
 	return os.getwd()
+}
+
+fn v3_module_resolution_root(input string) string {
+	if input == '' || input == '-' {
+		return os.real_path(os.getwd())
+	}
+	input_dir := if os.is_dir(input) { os.real_path(input) } else { os.dir(os.real_path(input)) }
+	if vmod_root := util.nearest_vmod_root(input_dir) {
+		return os.real_path(v3_directory_source_root(vmod_root))
+	}
+	return input_dir
 }
 
 fn nearest_vmod_root_for_file(path string) string {
@@ -15759,7 +15913,10 @@ fn embedded_resource_paths(a &flat.FlatAst) []string {
 				continue
 			}
 			value := a.child_node(field, 0)
-			if value.kind == .string_literal && value.value != '' && os.is_file(value.value) {
+			// A path that does not exist right now is reported too. That is exactly the
+			// state that matters: the build embedded nothing, and only a record of where
+			// the file should have been lets a later invocation notice it was restored.
+			if value.kind == .string_literal && value.value != '' {
 				paths[value.value] = true
 			}
 		}
@@ -17132,8 +17289,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					continue
 				}
 			}
+			importing_file := cached_header_source_contexts[cur_file] or {
+				if cur_file.len > 0 { cur_file } else { first_file }
+			}
 			if unresolved_modules[mod_name] {
 				a.missing_imports[node_idx] = mod_name
+				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 			}
 			if module_identity := parsed_module_identities[mod_name] {
 				if module_identity.len > 0 {
@@ -17151,9 +17312,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				continue
 			}
 
-			importing_file := cached_header_source_contexts[cur_file] or {
-				if cur_file.len > 0 { cur_file } else { first_file }
-			}
 			mod_dir := if is_bundle_warmup_import {
 				prefs.get_vlib_module_path(mod_name)
 			} else {
@@ -17190,6 +17348,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			module_resolved := mod_dir_exists && mod_files.len > 0
 			if !module_resolved && !is_bundle_warmup_import {
 				a.missing_imports[node_idx] = mod_name
+				record_missing_import_hint(mut a, prefs, node_idx, mod_name, importing_file)
 				unresolved_modules[mod_name] = true
 			}
 			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
@@ -17778,12 +17937,18 @@ fn resolve_ancestor_module_path(prefs &pref.Preferences, mod_name string, mod_pa
 	importer_vmod_root := nearest_vmod_root_for_file(importing_file)
 	mut current := os.real_path(os.dir(importing_file))
 	for {
-		// Both places a level can hold the module, in the order the module path
-		// fallback tries them, so a project's own `modules/` is reached at the level
-		// it sits on -- before the walk has climbed past the project to a neighbour
-		// of it that happens to carry the same name.
-		for candidate in [os.join_path_single(current, mod_path),
-			os.join_path(current, 'modules', mod_path)] {
+		// The one place a level can hold the module: its path under that level. A
+		// level's `modules/` is not searched here either, so a project's own copy is
+		// the directory itself, reached before the walk climbs past the project to a
+		// neighbour of it that happens to carry the same name.
+		//
+		// The retired `modules/` namespace is no lookup root of its own, not even
+		// for the files inside it: what it holds is `modules.<name>`, and letting
+		// the walk stop there would keep the virtual layout alive between the
+		// modules left in it. A project that merely carries that name is a root
+		// like any other, and is searched.
+		if !pref.is_retired_modules_namespace(current, prefs.module_resolution_root) {
+			candidate := os.join_path_single(current, mod_path)
 			if module_path_has_v_sources(candidate, prefs)
 				&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
 				return candidate
@@ -17832,14 +17997,6 @@ fn resolve_local_or_project_module_path(prefs &pref.Preferences, mod_name string
 		if alias_path := resolve_local_module_alias_path(importer_dir, top_name, mod_name) {
 			return alias_path
 		}
-		local_modules_root := os.join_path_single(importer_dir, 'modules')
-		if alias_path := resolve_local_module_alias_path(local_modules_root, top_name, mod_name) {
-			return alias_path
-		}
-		local_modules_path := os.join_path_single(local_modules_root, mod_path)
-		if module_path_has_v_sources(local_modules_path, prefs) {
-			return local_modules_path
-		}
 	}
 	if project_root.len > 0 {
 		if alias_path := resolve_local_module_alias_path(project_root, top_name, mod_name) {
@@ -17875,11 +18032,9 @@ fn import_uses_explicit_module_alias(prefs &pref.Preferences, mod_name string, i
 	if importing_file.len > 0 {
 		importer_dir := os.dir(importing_file)
 		roots << importer_dir
-		roots << os.join_path_single(importer_dir, 'modules')
 	}
 	if project_root.len > 0 {
 		roots << project_root
-		roots << os.join_path_single(project_root, 'modules')
 	}
 	if prefs.module_search_paths.len > 0 {
 		roots << prefs.module_search_paths
@@ -17919,6 +18074,160 @@ fn resolve_global_module_path(prefs &pref.Preferences, mod_name string, mod_path
 		}
 	}
 	return ''
+}
+
+// record_missing_import_hint stores the migration hint for an import that a
+// `modules/` directory would have satisfied, so the checker can print it next to
+// the "not found" error. Nothing is stored when no such directory exists.
+fn record_missing_import_hint(mut a flat.FlatAst, prefs &pref.Preferences, node_idx int, mod_name string, importing_file string) {
+	hint := removed_modules_layout_hint(prefs, mod_name, importing_file)
+	if hint.len > 0 {
+		a.missing_import_hints[node_idx] = hint
+	}
+}
+
+// removed_modules_layout_hint explains an import that a `modules/` directory
+// would have satisfied. The virtual `modules/` lookup is gone, the same way the
+// virtual `src/` source root is: a module's import path is its path under the
+// nearest v.mod, so the directory has to sit there rather than one level down.
+// The directory has to hold a module this build could actually use, and it has
+// to be the importer's to move: the same ownership boundary the ancestor walk
+// applies, so the hint never points at the source of an unrelated project that
+// happens to sit above the importer.
+fn removed_modules_layout_hint(prefs &pref.Preferences, mod_name string, importing_file string) string {
+	if importing_file.len == 0 {
+		return ''
+	}
+	relative := mod_name.replace('.', os.path_separator)
+	top_name := mod_name.all_before('.')
+	importer_vmod_root := nearest_vmod_root_for_file(importing_file)
+	mut current := os.dir(os.real_path(importing_file))
+	for {
+		candidate := os.join_path(current, 'modules', relative)
+		if module_path_has_v_sources(candidate, prefs)
+			&& !module_dir_belongs_to_other_project(candidate, importer_vmod_root, mod_name) {
+			if source_link := modules_layout_source_link(current, candidate) {
+				return '\nthe virtual `modules/` directory is no longer searched for modules.\nThe migration is blocked because the legacy module source passes through ${os.quoted_path(source_link)}, which is a link. Move the module without modifying what that link points to.'
+			}
+			command := modules_layout_move_command(current, relative, top_name)
+			return '\nthe virtual `modules/` directory is no longer searched for modules.\nMove it up beside the v.mod it belongs to, which keeps the import path the same:\n\t${command}'
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ''
+}
+
+// The outermost link between the project root and the legacy source. A move
+// through any such ancestor operates inside the link target, so no runnable
+// migration command is safe to print.
+fn modules_layout_source_link(root string, source string) ?string {
+	mut linked_path := ''
+	mut current := source
+	for current != root && current.len > root.len {
+		if os.is_link(current) {
+			linked_path = current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if linked_path == '' {
+		return none
+	}
+	return linked_path
+}
+
+// modules_layout_move_command spells out a move that actually runs. A dotted
+// import lives several directories deep, so moving just the leaf would need a
+// destination parent that does not exist yet: move the whole top-level module
+// tree when its destination is free, and create the parents otherwise. A
+// destination that is already taken cannot be moved onto at all, since `mv`
+// would put the module *inside* it, so that one asks for a merge instead.
+fn modules_layout_move_command(root string, relative string, top_name string) string {
+	top_source := os.join_path(root, 'modules', top_name)
+	top_target := os.join_path(root, top_name)
+	source := os.join_path(root, 'modules', relative)
+	target := os.join_path(root, relative)
+	if blocker := modules_layout_blocker(root, target) {
+		// Once it is out of the way, what is left is the move that would have been
+		// printed anyway: the whole top-level tree when that is what was blocked,
+		// and the leaf into the parents it needs when the blocker sits deeper.
+		rest := if blocker == top_target {
+			modules_layout_move(top_source, top_target)
+		} else {
+			'${modules_layout_mkdir(os.dir(target))} && ${modules_layout_move(source, target)}'
+		}
+		return modules_layout_blocked(blocker, rest)
+	}
+	if !os.exists(top_target) {
+		return modules_layout_move(top_source, top_target)
+	}
+	if os.exists(target) {
+		return 'merge ${os.quoted_path(source)} into the existing ${os.quoted_path(target)}'
+	}
+	target_parent := os.dir(target)
+	if os.is_dir(target_parent) {
+		return modules_layout_move(source, target)
+	}
+	return '${modules_layout_mkdir(target_parent)} && ${modules_layout_move(source, target)}'
+}
+
+// Something that is not a directory of the project itself blocks the move, and
+// what to do with it is the author's to decide, so name it rather than paper over
+// it: `mv` onto a file is a rename, `mkdir -p` cannot descend into one, and a
+// link would take the module wherever it points instead of beside the v.mod.
+fn modules_layout_blocked(blocker string, command string) string {
+	kind := if os.is_link(blocker) { 'a link' } else { 'a file' }
+	return 'move ${os.quoted_path(blocker)} out of the way first -- ${kind} is where the module directory has to go -- and then: ${command}'
+}
+
+// The outermost thing on the way from the root down to the destination that is
+// not a real directory: the one closest to the root has to move before the rest,
+// and a link is one of them however directory-like it looks through it.
+fn modules_layout_blocker(root string, target string) ?string {
+	mut blocker := ''
+	mut current := target
+	for current != root && current.len > root.len {
+		if os.is_link(current) || (os.exists(current) && !os.is_dir(current)) {
+			blocker = current
+		}
+		parent := os.dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if blocker == '' {
+		return none
+	}
+	return blocker
+}
+
+// modules_layout_move and modules_layout_mkdir quote the paths they are given,
+// so a project directory with a space or a shell metacharacter in it still
+// produces a command that can be pasted as printed, and they name the tool the
+// host actually has: `mv` and `mkdir -p` are not available in Windows cmd.exe.
+fn modules_layout_move(source string, target string) string {
+	$if windows {
+		return 'move ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	} $else {
+		return 'mv ${os.quoted_path(source)} ${os.quoted_path(target)}'
+	}
+}
+
+fn modules_layout_mkdir(dir string) string {
+	$if windows {
+		// cmd.exe's `mkdir` creates the intermediate directories itself.
+		return 'mkdir ${os.quoted_path(dir)}'
+	} $else {
+		return 'mkdir -p ${os.quoted_path(dir)}'
+	}
 }
 
 fn module_path_has_v_sources(path string, prefs &pref.Preferences) bool {

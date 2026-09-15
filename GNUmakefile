@@ -260,7 +260,7 @@ endif
 		OLDV_LDFLAGS='$(BOOTSTRAP_LDFLAGS)' \
 		cmd/tools/install_v1_fallback.sh '$(VEXE)$(EXE_EXT)' '$(V1_FALLBACK_EXE)'
 ifdef NETBSD
-	paxctl +m $(V1_FALLBACK_EXE)
+	paxctl +m "$${V1_FALLBACK_OUTPUT:-$(V1_FALLBACK_EXE)}"
 endif
 	@echo "Built V1 compatibility compiler: $(V1_FALLBACK_EXE)"
 

@@ -12,6 +12,10 @@ import v.pref
 
 const v_version = '0.5.2'
 const v1_fallback_binary = 'v1_fallback'
+// Modules that the fallback installer copies to their current public paths.
+// Cached fallback trees are not used until they carry every listed module.
+const v1_fallback_compatibility_modules = ['json2']
+const v1_fallback_compatibility_marker = '.v1-fallback-complete'
 const v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
@@ -357,9 +361,182 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	if code == 0 && report_state.fallback_file != '' {
 		submit_v3_fallback_report(fallback, report_state)
 	}
+	if code != 0 && v1_fallback_exit_identifies_compiler_failure(args) {
+		report_v1_fallback_failure(report_state)
+	}
 	os.rm(report_state.fallback_file) or {}
 	os.rmdir_all(report_state.c_error_dir) or {}
 	exit(code)
+}
+
+// v1_fallback_exit_identifies_compiler_failure reports whether a nonzero exit
+// can only have come from the compatibility compiler. Commands that run a
+// program, tests, or an external tool can return their child's status after a
+// successful compilation, so their nonzero exits are ambiguous and must not be
+// described as compiler failures.
+fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
+	compiler_args := args[..v1_fallback_compiler_prefix_len(args)]
+	backend := v1_fallback_selected_backend(compiler_args)
+	mut skip_running := os.getenv('VNORUN') != ''
+	mut direct_test := false
+	mut option_value_follows := false
+	for i, arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg == '-e' || arg.starts_with('-e=') || arg == '-' {
+			return false
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
+		if arg in ['-skip-running', '-check', '-check-syntax', '-generate-c-project'] {
+			skip_running = true
+		}
+		if arg in ['-o', '-output'] {
+			output := args[i + 1] or { '' }
+			if output == '-' || (backend == 'c' && output.ends_with('.c')) {
+				skip_running = true
+			}
+			option_value_follows = true
+			continue
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if direct_test && !arg.starts_with('-') {
+			return true
+		}
+		if arg in external_commands || arg == 'test' {
+			return false
+		}
+		if arg in ['run', 'crun'] {
+			return skip_running
+		}
+		if !arg.starts_with('-') {
+			is_test := pref.is_test_file_for_backend(arg, backend) || arg.ends_with('_test.vv')
+			if is_test {
+				direct_test = true
+				continue
+			}
+			return skip_running || !arg.ends_with('.vsh')
+		}
+	}
+	if direct_test {
+		// The retry runs under V 0.5.2, which executes direct tests even when an
+		// explicit executable output is requested. Model the retry, not V3 here.
+		return skip_running
+	}
+	return true
+}
+
+fn v1_fallback_compiler_prefix_len(args []string) int {
+	mut option_value_follows := false
+	for i, arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+			continue
+		}
+		if arg == '-' || arg in external_commands || arg in ['test', 'run', 'crun']
+			|| arg.ends_with('.vsh') {
+			return i
+		}
+	}
+	return args.len
+}
+
+fn v1_fallback_selected_backend(args []string) string {
+	mut backend := 'c'
+	mut backend_value_follows := false
+	mut option_value_follows := false
+	for i, arg in args {
+		if backend_value_follows {
+			backend = arg
+			backend_value_follows = false
+			continue
+		}
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if arg in ['-b', '-backend', '-compile-backend', '--compile-backend'] {
+			backend_value_follows = true
+			continue
+		}
+		for option in ['-b=', '-backend=', '-compile-backend=', '--compile-backend='] {
+			if arg.starts_with(option) {
+				backend = arg.all_after(option)
+				break
+			}
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
+			option_value_follows = true
+		}
+	}
+	return if backend in ['js_browser', 'js_node'] { 'js' } else { backend }
+}
+
+// v1_fallback_profile_option_consumes_value mirrors the driver's compatibility
+// rule for V1's optional `-profile [file]` argument.
+fn v1_fallback_profile_option_consumes_value(args []string, idx int) bool {
+	next := args[idx + 1] or { return false }
+	if next == '-' {
+		return true
+	}
+	if next.starts_with('-') {
+		return false
+	}
+	if next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
+		|| next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next) {
+		return false
+	}
+	for later in args[idx + 2..] {
+		if !later.starts_with('-') {
+			return true
+		}
+	}
+	return false
+}
+
+// report_v1_fallback_failure explains whose errors the user is looking at. V
+// keeps its own diagnostics quiet while a fallback is pending, so when the retry
+// fails too, everything on screen comes from the compatibility compiler, which is
+// confusing whenever the two disagree about the program.
+fn report_v1_fallback_failure(state RetryState) {
+	if state.fallback_file == '' {
+		return
+	}
+	payload := os.read_file(state.fallback_file) or { return }
+	for note in v1_fallback_failure_notes(payload) {
+		eprintln(note)
+	}
+}
+
+// v1_fallback_failure_notes turns a staged fallback payload into the notes shown
+// after a failed retry.
+fn v1_fallback_failure_notes(payload string) []string {
+	// The stage is only recorded when the payload carries a second line.
+	stage := if payload.contains('\n') { payload.all_after('\n').trim_space() } else { '' }
+	stopped_in := if stage == '' { '' } else { ' during ${stage}' }
+	return [
+		'note: the V ${v_version} compatibility compiler failed too, so the errors above are its own.',
+		'note: V stopped${stopped_in} and kept its diagnostics quiet for this retry; re-run with `-new-compiler` to see them.',
+	]
 }
 
 fn submit_v3_fallback_report(fallback string, state RetryState) {
@@ -461,13 +638,20 @@ fn ensure_v1_fallback(reason string) !string {
 	fallback := os.join_path(vroot, v1_fallback_binary + $if windows { '.exe' } $else { '' })
 	if installed := resolve_v1_fallback(fallback) {
 		return installed
+	}
+	cache_parent := v1_fallback_cache_parent()!
+	cached_launcher := v1_fallback_cached_launcher(cache_parent)
+	if installed := resolve_v1_fallback(cached_launcher) {
+		return installed
 	} else {
 		make_command := find_make() or {
-			return error('${reason}, but `${fallback}` is missing and make was not found. Install make, then run `make v1` in `${vroot}`.')
+			return error('${reason}, but no usable V ${v_version} fallback was found and make is unavailable. Install make, then run `make v1` in `${vroot}`.')
 		}
-		eprintln('${reason}, but `${fallback}` is missing; running `make v1` now...')
+		eprintln('${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...')
 		mut process := os.new_process(make_command)
-		process.set_args(['VEXE=${os.real_path(os.executable())}', 'v1'])
+		process.set_args(['v1'])
+		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()),
+			cache_parent, cached_launcher))
 		process.set_work_folder(vroot)
 		process.wait()
 		code := process.code
@@ -476,9 +660,82 @@ fn ensure_v1_fallback(reason string) !string {
 			return error('`make v1` failed with exit code ${code}. Run it manually in `${vroot}` for more details.')
 		}
 	}
-	return resolve_v1_fallback(fallback) or {
-		return error('`make v1` completed without installing a usable V ${v_version} fallback at `${fallback}`.')
+	return resolve_installed_v1_fallback(fallback, cached_launcher) or {
+		return error('`make v1` completed without installing a usable V ${v_version} fallback at `${cached_launcher}`.')
 	}
+}
+
+fn v1_fallback_make_environment(bootstrap string, cache_parent string, output string) map[string]string {
+	mut environment := os.environ()
+	// Keep path data out of make variable syntax and shell command text. The
+	// installer reads these inherited values directly without re-evaluating them.
+	environment['VEXE'] = './v'
+	environment['V1_FALLBACK_BOOTSTRAP'] = bootstrap
+	environment['V1_FALLBACK_CACHE_DIR'] = cache_parent
+	environment['V1_FALLBACK_OUTPUT'] = output
+	return environment
+}
+
+fn v1_fallback_cache_parent() !string {
+	configured := os.getenv('V1_FALLBACK_CACHE_DIR')
+	if configured != '' {
+		return os.abs_path(configured)
+	}
+	xdg := os.getenv('XDG_CACHE_HOME')
+	if xdg != '' {
+		return os.abs_path(os.join_path(xdg, 'v', 'v1-fallback'))
+	}
+	home := os.getenv('HOME')
+	if home != '' {
+		return os.abs_path(os.join_path(home, '.cache', 'v', 'v1-fallback'))
+	}
+	return v1_fallback_private_temp_cache_parent(os.temp_dir())
+}
+
+fn v1_fallback_private_temp_cache_parent(temp_root string) !string {
+	$if windows {
+		return v1_fallback_private_windows_temp_cache_parent(temp_root)
+	} $else {
+		root_attributes := os.stat(temp_root) or {
+			return error('could not inspect the temporary directory `${temp_root}`: ${err}')
+		}
+		if !v1_fallback_temp_root_owner_is_trusted(root_attributes.uid, u32(os.geteuid())) {
+			return error('temporary directory `${temp_root}` is not owned by the current user or root')
+		}
+		if root_attributes.mode & 0o022 != 0 && root_attributes.mode & os.s_isvtx == 0 {
+			return error('temporary directory `${temp_root}` is writable by other users without the sticky bit')
+		}
+		candidate := os.join_path(temp_root, 'v1-fallback-cache-${os.geteuid()}')
+		os.mkdir(candidate, mode: 0o700) or {}
+		attributes := os.lstat(candidate) or {
+			return error('could not create a private V1 fallback cache at `${candidate}`: ${err}')
+		}
+		if os.is_link(candidate) || attributes.get_filetype() != .directory {
+			return error('refusing unsafe V1 fallback cache path `${candidate}`: expected a real directory')
+		}
+		if attributes.uid != u32(os.geteuid()) || attributes.get_mode().bitmask() != 0o700 {
+			return error('refusing unsafe V1 fallback cache path `${candidate}`: expected user-owned mode 0700')
+		}
+		return candidate
+	}
+}
+
+fn v1_fallback_temp_root_owner_is_trusted(owner u32, effective_user u32) bool {
+	return owner == 0 || owner == effective_user
+}
+
+fn v1_fallback_cached_launcher(cache_parent string) string {
+	return os.join_path(cache_parent, v_version, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+}
+
+fn resolve_installed_v1_fallback(fallback string, cached_launcher string) ?string {
+	if installed := resolve_v1_fallback(fallback) {
+		return installed
+	}
+	if cached_launcher != fallback {
+		return resolve_v1_fallback(cached_launcher)
+	}
+	return none
 }
 
 fn resolve_v1_fallback(fallback string) ?string {
@@ -489,11 +746,35 @@ fn resolve_v1_fallback(fallback string) ?string {
 	if os.is_file(root_file) {
 		fallback_root := os.read_file(root_file) or { '' }.trim_space()
 		cached_fallback := os.join_path(fallback_root, 'v' + $if windows { '.exe' } $else { '' })
-		if os.is_executable(cached_fallback) && v1_fallback_has_expected_version(cached_fallback) {
+		if os.is_executable(cached_fallback) && v1_fallback_has_expected_version(cached_fallback)
+			&& v1_fallback_has_crypto_subtle(fallback_root)
+			&& v1_fallback_has_moved_modules(fallback_root) {
 			return cached_fallback
 		}
 	}
 	return none
+}
+
+fn v1_fallback_has_crypto_subtle(root string) bool {
+	module_dir := os.join_path(root, 'vlib', 'crypto', 'subtle')
+	return os.is_file(os.join_path(module_dir, 'aliasing.v'))
+		&& os.is_file(os.join_path(module_dir, 'comparison.v'))
+}
+
+fn v1_fallback_has_moved_modules(root string) bool {
+	for name in v1_fallback_compatibility_modules {
+		module_dir := os.join_path(root, 'vlib', name)
+		if !os.is_file(os.join_path(module_dir, '${name}.v')) {
+			return false
+		}
+		marker := os.read_file(os.join_path(module_dir, v1_fallback_compatibility_marker)) or {
+			return false
+		}
+		if marker.trim_space() != v_version {
+			return false
+		}
+	}
+	return true
 }
 
 fn v1_fallback_has_expected_version(executable string) bool {

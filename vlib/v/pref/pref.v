@@ -55,6 +55,7 @@ pub mut:
 	selfhost              bool
 	building_v            bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod               bool
+	warn_about_allocs     bool
 	is_debug              bool
 	is_test               bool // at least one compatible user test file is being compiled
 	is_fmt                bool // preserve source-only syntax needed by the V formatter
@@ -66,7 +67,18 @@ pub mut:
 	no_builtin            bool
 	no_preludes           bool
 	module_search_paths   []string
-	thread_stack_size     int = 8 * 1024 * 1024
+	// module_resolution_root is the directory that owns the entry sources. It
+	// distinguishes a project's retired `modules/` lookup level from a project
+	// whose own root happens to carry that name.
+	module_resolution_root string
+	thread_stack_size      int = 8 * 1024 * 1024
+	// target_libc_headers marks a target that supplies the C library headers
+	// itself, so the generated C must include them rather than restate what they
+	// declare. A kernel, compiling `-nostdinc` against its own header tree, is the
+	// case. It cannot be inferred from the target OS, which also hosts ordinary
+	// programs that link the host's libc. Distinct from V1's `-freestanding`,
+	// which means no libc at all.
+	target_libc_headers bool
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm            bool
@@ -402,12 +414,7 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	if relative_path := module_path_from_search_root(mod, mod_path, importer_dir) {
 		return relative_path
 	}
-	// 2. local modules/ directory beside the importing file
-	local_modules_root := os.join_path_single(importer_dir, 'modules')
-	if local_modules_path := module_path_from_search_root(mod, mod_path, local_modules_root) {
-		return local_modules_path
-	}
-	// 3. explicitly ordered module search paths, when supplied with `-path`
+	// 2. explicitly ordered module search paths, when supplied with `-path`
 	if p.module_search_paths.len > 0 {
 		for search_root in p.module_search_paths {
 			if explicit_path := module_path_from_search_root(mod, mod_path, search_root) {
@@ -416,26 +423,27 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		}
 		return ''
 	}
-	// 4. vlib
+	// 3. vlib
 	vlib_root := os.join_path_single(p.vroot, 'vlib')
 	if vlib_path := module_path_from_search_root(mod, mod_path, vlib_root) {
 		return vlib_path
 	}
-	// 5. ~/.vmodules (or $VMODULES)
+	// 4. ~/.vmodules (or $VMODULES)
 	if vmodules_path := module_path_from_search_root(mod, mod_path, vmodules_dir()) {
 		return vmodules_path
 	}
-	// 6. walk up the parent directories of the importing file, like V1's
+	// 5. walk up the parent directories of the importing file, like V1's
 	// Builder.find_module_path. This finds sibling projects: e.g. importing
 	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
+	// The retired `modules/` namespace is passed by on the way: what it holds is
+	// `modules.<name>` even to the files inside it, and stopping there would keep
+	// the virtual layout alive between the modules left in it.
 	mut current_dir := importer_dir
 	for {
-		if try_path := module_path_from_search_root(mod, mod_path, current_dir) {
-			return try_path
-		}
-		modules_root := os.join_path_single(current_dir, 'modules')
-		if try_modules_path := module_path_from_search_root(mod, mod_path, modules_root) {
-			return try_modules_path
+		if !is_retired_modules_namespace(current_dir, p.module_resolution_root) {
+			if try_path := module_path_from_search_root(mod, mod_path, current_dir) {
+				return try_path
+			}
 		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
@@ -444,6 +452,81 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		current_dir = parent_dir
 	}
 	return ''
+}
+
+// is_retired_modules_namespace reports whether a directory is the `modules/` a
+// project used to keep its modules in -- the virtual lookup root this compiler no
+// longer searches. `module_resolution_root` is the root holding the active entry
+// sources. A `modules` ancestor of that root is a project which merely carries
+// the name; a sibling beneath the same project root is the retired namespace.
+pub fn is_retired_modules_namespace(dir string, module_resolution_root string) bool {
+	if !module_resolution_dir_matches_modules_namespace(dir) {
+		return false
+	}
+	if os.is_file(os.join_path_single(dir, 'v.mod')) {
+		return false
+	}
+	if module_resolution_root != '' {
+		resolved_dir := canonical_module_resolution_path(dir)
+		resolved_root := canonical_module_resolution_path(module_resolution_root)
+		if module_resolution_path_is_within(resolved_root, resolved_dir) {
+			return false
+		}
+		if module_resolution_path_is_within(resolved_root, canonical_module_resolution_path(os.dir(dir))) {
+			return true
+		}
+	}
+	return os.is_file(os.join_path_single(os.dir(dir), 'v.mod'))
+}
+
+fn module_resolution_dir_matches_modules_namespace(dir string) bool {
+	name := os.file_name(dir)
+	if name == 'modules' {
+		return true
+	}
+	if name.to_lower_ascii() != 'modules' {
+		return false
+	}
+	// A case variant is `modules` only when the filesystem resolves the literal
+	// spelling to this same directory. This keeps `Modules` distinct on a
+	// case-sensitive filesystem while covering Windows and case-insensitive macOS.
+	literal_path := os.join_path_single(os.dir(dir), 'modules')
+	if !os.is_dir(literal_path) {
+		return false
+	}
+	dir_stat := os.stat(dir) or { return false }
+	literal_stat := os.stat(literal_path) or { return false }
+	if dir_stat.inode != 0 && literal_stat.inode != 0 {
+		return dir_stat.dev == literal_stat.dev && dir_stat.inode == literal_stat.inode
+	}
+	$if windows {
+		return true
+	}
+	return canonical_module_resolution_path(dir) == canonical_module_resolution_path(literal_path)
+}
+
+fn canonical_module_resolution_path(path string) string {
+	mut resolved := os.real_path(path).replace('\\', '/')
+	if resolved != '/' && !(resolved.len == 3 && resolved[1] == `:` && resolved[2] == `/`) {
+		resolved = resolved.trim_right('/')
+	}
+	$if windows {
+		resolved = resolved.to_lower()
+	}
+	return resolved
+}
+
+fn module_resolution_path_is_within(path string, root string) bool {
+	if path == root {
+		return true
+	}
+	if root == '' {
+		return false
+	}
+	if root == '/' || (root.len == 3 && root[1] == `:` && root[2] == `/`) {
+		return path.starts_with(root)
+	}
+	return path.starts_with(root + '/')
 }
 
 fn module_path_from_search_root(mod string, mod_path string, search_root string) ?string {

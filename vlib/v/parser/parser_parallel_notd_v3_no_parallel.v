@@ -1208,6 +1208,38 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 			p.a.disabled_fns[canonical] = true
 		}
 	}
+	for key, skipped in w.a.comptime_skipped_names {
+		if skipped {
+			// The key holds the file name and a source offset, neither of which
+			// `remap_worker_file_ids` touches, so it carries over as it is.
+			_, canonical := p.a.intern_text(key)
+			p.a.comptime_skipped_names[canonical] = true
+		}
+	}
+	for key, skipped in w.a.comptime_skipped_read_names {
+		if skipped {
+			_, canonical := p.a.intern_text(key)
+			p.a.comptime_skipped_read_names[canonical] = true
+		}
+	}
+	for key, skipped in w.a.comptime_skipped_goto_labels {
+		if skipped {
+			_, canonical := p.a.intern_text(key)
+			p.a.comptime_skipped_goto_labels[canonical] = true
+		}
+	}
+	for name, is_contextual in w.a.contextual_anon_struct_types {
+		if is_contextual {
+			_, canonical := p.a.intern_text(name)
+			p.a.contextual_anon_struct_types[canonical] = true
+		}
+	}
+	for name, is_synthesized in w.a.synthesized_anon_struct_types {
+		if is_synthesized {
+			_, canonical := p.a.intern_text(name)
+			p.a.synthesized_anon_struct_types[canonical] = true
+		}
+	}
 	for name, is_noreturn in w.a.noreturn_fns {
 		if is_noreturn {
 			_, canonical := p.a.intern_text(name)

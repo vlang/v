@@ -855,6 +855,7 @@ pub mut:
 	checker_fixture_mode          bool
 	autofree_mode                 bool
 	no_main                       bool
+	warn_about_allocs             bool
 	warns_are_errors              bool
 	notes_are_errors              bool
 	is_prod                       bool
@@ -1286,6 +1287,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		checker_fixture_mode: tc.checker_fixture_mode
 		autofree_mode: tc.autofree_mode
 		no_main: tc.no_main
+		warn_about_allocs: tc.warn_about_allocs
 		warns_are_errors: tc.warns_are_errors
 		notes_are_errors: tc.notes_are_errors
 		is_prod: tc.is_prod
@@ -2595,6 +2597,122 @@ fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node f
 	tc.notices << TypeError{
 		...base
 		severity: 'warning:'
+	}
+}
+
+fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token.Pos) {
+	if !tc.warn_about_allocs || tc.cur_module in ['strings', 'math', 'math.bits', 'builtin',
+		'builtin.closure', 'strconv', 'os', 'sync', 'v.debug', 'v.embed_file'] {
+		return
+	}
+	mut current := id
+	mut direct_child := flat.empty_node
+	mut value_path := true
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind in [.fn_literal, .lambda_expr] {
+			break
+		}
+		if node.kind == .typeof_expr && !tc.typeof_operand_is_runtime(current, node) {
+			return
+		}
+		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign]
+			&& node.is_freed_assignment() && value_path
+			&& tc.assignment_child_is_value(node, direct_child) {
+			return
+		}
+		parent := tc.direct_parent_id(current)
+		if parent == current {
+			break
+		}
+		if tc.valid_node_id(parent) && !tc.child_is_value_producing_path(parent, current) {
+			value_path = false
+		}
+		direct_child = current
+		current = parent
+	}
+	tc.record_warning_at(.compile_error, 'allocation (${description})', id, pos)
+}
+
+fn (tc &TypeChecker) typeof_operand_is_runtime(id flat.NodeId, node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	parent_id := tc.direct_parent_id(id)
+	if tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .selector && parent.children_count > 0
+			&& tc.a.child(parent, 0) == id {
+			return false
+		}
+	}
+	mut operand_type := unalias_type(tc.resolve_type(tc.a.child(node, 0)))
+	if operand_type is Pointer {
+		operand_type = unalias_type(operand_type.base_type)
+	}
+	return operand_type is SumType
+}
+
+fn (tc &TypeChecker) assignment_child_is_value(node flat.Node, child_id flat.NodeId) bool {
+	if !tc.valid_node_id(child_id) {
+		return false
+	}
+	for i in 0 .. tc.multi_assign_rhs_count(node) {
+		if tc.multi_assign_rhs_id(node, i) == child_id {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) child_is_value_producing_path(parent_id flat.NodeId, child_id flat.NodeId) bool {
+	parent := tc.a.node(parent_id)
+	match parent.kind {
+		.block, .match_branch, .lock_expr {
+			return parent.children_count > 0
+				&& tc.a.child(parent, parent.children_count - 1) == child_id
+		}
+		.if_expr, .match_stmt {
+			for i in 1 .. parent.children_count {
+				if tc.a.child(parent, i) == child_id {
+					return true
+				}
+			}
+			return false
+		}
+		.call, .selector, .index {
+			return false
+		}
+		.infix {
+			return tc.type_can_own_warned_allocation(tc.resolve_type(parent_id))
+		}
+		.as_expr, .in_expr, .is_expr {
+			return false
+		}
+		else {
+			return true
+		}
+	}
+}
+
+fn (tc &TypeChecker) type_can_own_warned_allocation(typ Type) bool {
+	clean := unalias_type(typ)
+	return match clean {
+		String, Array, ArrayFixed, Channel, Map, Pointer, FnType, Struct, Interface, SumType {
+			true
+		}
+		OptionType {
+			tc.type_can_own_warned_allocation(clean.base_type)
+		}
+		ResultType {
+			tc.type_can_own_warned_allocation(clean.base_type)
+		}
+		MultiReturn {
+			clean.types.any(tc.type_can_own_warned_allocation(it))
+		}
+		else {
+			false
+		}
 	}
 }
 
@@ -4800,6 +4918,57 @@ fn (tc &TypeChecker) local_bare_fn_key(name string) ?string {
 	return none
 }
 
+// shadowed_local_fn_key returns the signature key of the function that a local
+// variable named `name` shadows, i.e. one that the current module can already
+// call unprefixed. Functions of other modules are always called through their
+// module prefix (`os.uname()`), so `uname := os.uname()` shadows nothing.
+fn (tc &TypeChecker) shadowed_local_fn_key(name string) ?string {
+	if name.len == 0 || name.index_u8(`.`) >= 0 {
+		return none
+	}
+	qualified := tc.qualify_fn_name(name)
+	mut key := ''
+	if qualified != name && qualified in tc.fn_ret_types {
+		key = qualified
+	} else if name in tc.fn_ret_types {
+		key = name
+	}
+	// The signature key doubles as the declaration_visibility key, which records
+	// the declaring module of every source declaration. Going through it also
+	// skips `fn C.uname()`, which is registered under the lowered alias `uname`
+	// as well, yet is only ever callable as `C.uname()`.
+	if visibility := tc.declaration_visibility[key] {
+		if visibility.kind == .fn_decl {
+			if visibility.module_name == tc.cur_module
+				|| (visibility.module_name in ['', 'main'] && tc.cur_module in ['', 'main']) {
+				return key
+			}
+			// A public `builtin` function stays callable unprefixed from every
+			// module, so a local of that name really does shadow it. Its private
+			// helpers (`new_node` in `builtin/sorted_map.v`) are not callable
+			// outside `builtin`.
+			if visibility.module_name == 'builtin' && visibility.is_pub {
+				return key
+			}
+		}
+	}
+	// A `.vsh` script calls the `os` functions unqualified, so a local of one of
+	// those names shadows it as well - in the script itself, which is what
+	// `vsh_script_file` asks, and not in a plain `.v` file that happens to be
+	// compiled beside one. This asks `declaration_visibility`, which is forked
+	// to the parallel checkers, rather than the script-mode resolver, whose
+	// semantic-name index is not and would read empty in a worker.
+	if tc.vsh_script_file() {
+		os_key := 'os.${name}'
+		if os_visibility := tc.declaration_visibility[os_key] {
+			if os_visibility.kind == .fn_decl && os_visibility.is_pub {
+				return os_key
+			}
+		}
+	}
+	return none
+}
+
 fn (tc &TypeChecker) local_bare_fn_signature_key(name string) ?string {
 	key := tc.local_bare_fn_key(name) or { return none }
 	if tc.fn_signature_known(key) {
@@ -5470,17 +5639,23 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		module_path := tc.import_module_path_text(node)
 		module_base := module_path.all_after_last('.')
 		explicit_alias := tc.import_has_explicit_alias(node)
+		has_source := node.pos.end > node.pos.offset
 		if missing_path := tc.a.missing_imports[idx] {
-			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)', flat.NodeId(idx), node.pos, 'builder error:')
+			// The resolver knows whether a `modules/` directory would have
+			// satisfied this import, and leaves the migration hint for it here.
+			layout_hint := tc.a.missing_import_hints[idx]
+			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)${layout_hint}', flat.NodeId(idx), node.pos, 'builder error:')
 		}
-		tc.check_import_source_syntax(flat.NodeId(idx), node)
+		if has_source {
+			tc.check_import_source_syntax(flat.NodeId(idx), node)
+		}
 		if tc.selective_import_has_missing_value_symbol(node, module_path)
 			|| tc.selective_import_has_const(node, module_path) {
 			tc.record_unused_import_warning(flat.NodeId(idx), node)
 		}
 		tc.check_selective_const_imports(node, module_path)
 		tc.check_selective_type_imports(node, module_path)
-		if declaration_seen_in_file {
+		if declaration_seen_in_file && has_source {
 			tc.record_error_at(.duplicate_decl, '`import x` can only be declared at the beginning of the file', flat.NodeId(idx), token.new_span(node.pos.id, node.pos.offset, node.pos.offset + 'import'.len))
 		}
 		if explicit_alias && node.typ == module_base {
@@ -5655,7 +5830,8 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 		if tc.diagnostic_files.len > 0 && tc.cur_file !in tc.diagnostic_files {
 			continue
 		}
-		if node.kind != .import_decl || !node.pos.is_valid() || node.typ == '_'
+		if node.kind != .import_decl || !node.pos.is_valid() || node.pos.end <= node.pos.offset
+			|| node.typ == '_'
 			|| tc.import_is_used(flat.NodeId(idx), node) {
 			continue
 		}

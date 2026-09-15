@@ -111,8 +111,11 @@ fn main() {
 	_ := wrap(mut reader)
 }
 ')
-	assert c_code.contains('ReaderBox__new(read_from)'), c_code
-	assert !c_code.contains('ReaderBox__new(&read_from)'), c_code
+	wrap_start := 'main__ReaderBox wrap(main__Reader* read_from) {'
+	assert c_code.contains(wrap_start), c_code
+	wrap_body := c_code.all_after(wrap_start).all_before('\n}')
+	assert wrap_body.contains('(read_from);'), wrap_body
+	assert !wrap_body.contains('(&read_from);'), wrap_body
 }
 
 fn test_mut_parameter_address_boxed_as_interface_uses_concrete_pointer() {
@@ -450,8 +453,8 @@ fn main() {
 	_ := cast_buffer(mut ptr)
 }
 ')
-	assert c_code.contains('u8* cast_buffer(u8** buf__local)'), c_code
-	assert c_code.contains('return (u8*)(*buf__local);'), c_code
+	assert c_code.contains('u8* cast_buffer(u8** __v3_internal_symbol_local_buf)'), c_code
+	assert c_code.contains('return (u8*)(*__v3_internal_symbol_local_buf);'), c_code
 	assert !c_code.contains('return (u8*)(*buf);'), c_code
 }
 
@@ -476,8 +479,8 @@ fn main() {
 	_ := copy_buffer(mut values)
 }
 ')
-	assert c_code.contains('i64 copy_buffer(Array* buf__local)'), c_code
-	assert c_code.contains('return copy(buf__local, '), c_code
+	assert c_code.contains('i64 copy_buffer(Array* __v3_internal_symbol_local_buf)'), c_code
+	assert c_code.contains('return copy(__v3_internal_symbol_local_buf, '), c_code
 	assert !c_code.contains('return copy(buf, '), c_code
 }
 
@@ -498,8 +501,8 @@ fn main() {
 	_ := buffer_size()
 }
 ')
-	assert c_code.contains('u8 buf__local[1024]'), c_code
-	assert c_code.contains('return (i64)(sizeof(buf__local));'), c_code
+	assert c_code.contains('u8 __v3_internal_symbol_local_buf[1024]'), c_code
+	assert c_code.contains('return (i64)(sizeof(__v3_internal_symbol_local_buf));'), c_code
 	assert !c_code.contains('return (int)(sizeof(buf));'), c_code
 }
 

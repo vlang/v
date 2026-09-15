@@ -1250,23 +1250,154 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 }
 
 fn (t &Transformer) comptime_method_call_arity_matches(node flat.Node, method MethodMeta) bool {
-	for i in 1 .. node.children_count {
-		if t.call_arg_is_spread(t.a.child(&node, i)) {
-			return true
-		}
-	}
-	actual_count := int(node.children_count) - 1
-	if method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...') {
-		return actual_count >= method.params.len - 1
-	}
-	if actual_count == method.params.len {
+	args, has_spread := t.logical_call_arg_ids(node)
+	if has_spread {
 		return true
 	}
-	// A veb route handler may omit its `ctx` parameter, in which case it is not in
-	// the reflected parameter list but still exists in the signature. Reflected
-	// `app.$method(mut ctx)` calls pass that context explicitly, so one extra
-	// argument is the correct arity for such a method.
-	return actual_count == method.params.len + 1 && t.method_has_implicit_veb_ctx(method)
+	actual_count := args.len
+	hidden_ctx_count := if t.method_has_implicit_veb_ctx(method) { 1 } else { 0 }
+	max_count := method.params.len + hidden_ctx_count
+	min_count := t.comptime_method_min_required_arg_count(method)
+	if actual_count < min_count {
+		return false
+	}
+	return (method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...'))
+		|| actual_count <= max_count
+}
+
+fn (mut t Transformer) comptime_method_call_matches(node flat.Node, method MethodMeta) bool {
+	if !t.comptime_method_call_arity_matches(node, method) {
+		return false
+	}
+	if !t.method_has_implicit_veb_ctx(method) {
+		return true
+	}
+	args, has_spread := t.logical_call_arg_ids(node)
+	if has_spread {
+		return true
+	}
+	// Match the checker's omission rule first: while the call does not exceed the
+	// declared route arity, its first argument belongs to the first route param.
+	ctx_omitted := args.len <= method.params.len
+	if t.comptime_method_call_args_match_with_ctx(node, args, method, !ctx_omitted) {
+		return true
+	}
+	// An explicit ctx can still be followed only by omittable route params. This
+	// is the second valid interpretation of an otherwise incompatible omitted-ctx
+	// binding, not a type-based override of the checker's arity decision.
+	return ctx_omitted && t.comptime_method_call_args_match_with_ctx(node, args, method, true)
+}
+
+fn (mut t Transformer) comptime_method_call_args_match_with_ctx(node flat.Node, args []flat.NodeId, method MethodMeta, explicit_ctx bool) bool {
+	mut route_start := 0
+	if explicit_ctx {
+		if args.len == 0 || !t.comptime_method_call_arg_matches_hidden_veb_ctx(args[0], method) {
+			return false
+		}
+		route_start = 1
+	}
+	route_count := args.len - route_start
+	min_count := t.comptime_method_min_required_arg_count(method)
+	is_variadic := method.params.len > 0
+		&& method.params[method.params.len - 1].typ.starts_with('...')
+	if route_count < min_count || (!is_variadic && route_count > method.params.len) {
+		return false
+	}
+	for route_idx in 0 .. route_count {
+		param_idx := if route_idx < method.params.len { route_idx } else { method.params.len - 1 }
+		if param_idx < 0 {
+			continue
+		}
+		param := method.params[param_idx]
+		decl_module := if param.module_name.len > 0 {
+			param.module_name
+		} else {
+			method.module_name
+		}
+		mut expected := param.typ
+		if is_variadic && param_idx == method.params.len - 1 && expected.starts_with('...') {
+			expected = expected[3..]
+		}
+		expected = t.qualify_generic_arg_for_decl_module(expected, decl_module)
+		arg_id := args[route_start + route_idx]
+		if t.a.node(arg_id).kind == .field_init {
+			if !t.comptime_method_field_group_matches(node, arg_id, expected) {
+				return false
+			}
+			continue
+		}
+		mut actual := t.specialized_expr_type_name(arg_id)
+		if actual == 'unknown' {
+			actual = t.a.node(arg_id).typ
+		}
+		if decl_module in ['', 'main'] {
+			expected = type_text_without_main_locks(expected)
+			actual = type_text_without_main_locks(actual)
+		}
+		if !t.resolved_receiver_arg_compatible(arg_id, actual, expected) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut t Transformer) comptime_method_field_group_matches(node flat.Node, first_field_id flat.NodeId, expected string) bool {
+	struct_type := t.params_struct_type_name(expected) or {
+		t.struct_arg_type_name(expected) or { return false }
+	}
+	mut field_start := -1
+	for i in 1 .. node.children_count {
+		if t.a.child(&node, i) == first_field_id {
+			field_start = i
+			break
+		}
+	}
+	if field_start < 0 {
+		return false
+	}
+	return t.specialized_struct_field_args_match(node, field_start, struct_type, false)
+}
+
+fn (t &Transformer) comptime_method_call_arg_matches_hidden_veb_ctx(arg_id flat.NodeId, method MethodMeta) bool {
+	receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
+	if receiver_name.len == 0 {
+		return false
+	}
+	params := t.implicit_veb_call_param_types('${receiver_name}.${method.name}') or {
+		return false
+	}
+	// Method ABI parameters start with the receiver, followed by the inserted ctx.
+	if params.len < 2 {
+		return false
+	}
+	return t.call_arg_matches_abi_type(arg_id, params[1], method.module_name)
+}
+
+fn (t &Transformer) comptime_method_min_required_arg_count(method MethodMeta) int {
+	if method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...') {
+		return method.params.len - 1
+	}
+	mut count := method.params.len
+	for count > 0 {
+		param := method.params[count - 1]
+		if param.typ.starts_with('?') {
+			count--
+			continue
+		}
+		if _ := t.params_struct_type_name(param.typ) {
+			count--
+			continue
+		}
+		qualified := t.qualify_generic_arg_for_decl_module(param.typ, param.module_name)
+		if qualified != param.typ {
+			if _ := t.params_struct_type_name(qualified) {
+				count--
+				continue
+			}
+		}
+		break
+	}
+	return count
 }
 
 // method_has_implicit_veb_ctx reports whether `method` is a veb route handler that
@@ -1308,7 +1439,7 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 		callee := t.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.value == '\$' && callee.children_count >= 2
 			&& t.comptime_method_name_expr_matches(t.a.child(callee, 1), var_name)
-			&& !t.comptime_method_call_arity_matches(node, method) {
+			&& !t.comptime_method_call_matches(node, method) {
 			// A `$method` call can appear in the runtime branch paired with a
 			// method-metadata condition. V1 leaves that branch in place but skips
 			// specializations whose argument list cannot call the current method.
@@ -3432,6 +3563,16 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 				out += '[${dim}]'
 			}
 			return out
+		}
+	}
+	if core.starts_with('(') && core.ends_with(')') {
+		parts := split_generic_args(core[1..core.len - 1])
+		if parts.len > 1 {
+			mut qualified_parts := []string{cap: parts.len}
+			for part in parts {
+				qualified_parts << t.comptime_field_type_id_key(part, decl_module)
+			}
+			return '(${qualified_parts.join(', ')})'
 		}
 	}
 	if core.starts_with('fn(') || core.starts_with('fn (') {

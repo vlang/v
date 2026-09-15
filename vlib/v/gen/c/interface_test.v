@@ -126,3 +126,55 @@ fn main() {
 	assert g.fn_param_is_shared('read', 0)
 	assert c_source.contains('selected_read'), c_source
 }
+
+fn test_incremental_cgen_replays_forced_include_macros() {
+	root := os.join_path(os.vtmp_dir(), 'v3_incremental_forced_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header_path := os.join_path(root, 'forced.h')
+	source_path := os.join_path(root, 'main.c.v')
+	os.write_file(header_path, '#define incremental_forced_api(p) ((p)->value)\n')!
+	os.write_file(source_path, 'module main
+
+fn C.incremental_forced_api(voidptr) int
+
+struct Item {
+	value int
+}
+
+fn selected(item &Item) int {
+	return C.incremental_forced_api(item)
+}
+
+fn main() {
+	item := &Item{}
+	println(selected(item))
+}
+')!
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(source_path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.diagnose_unknown_calls = true
+	tc.diagnostic_files[source_path] = true
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, &tc)
+	tc.annotate_types()
+	used_fns := markused.mark_used(a, tc)
+	mut g := FlatGen.new()
+	g.set_cache_split(true)
+	g.set_program_body_only(true)
+	g.set_incremental_fn_names({
+		'selected': true
+	})
+	g.set_initial_c_flags(['-include', header_path])
+	c_source := g.gen_with_used_options(a, used_fns, &tc, true)
+	assert 'incremental_forced_api' in g.inlined_c_active_macros
+	assert c_source.contains('incremental_forced_api(item)'), c_source
+	assert !c_source.contains('incremental_forced_api(v_c_voidptr_arg('), c_source
+}

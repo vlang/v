@@ -376,3 +376,18 @@ pub fn only_win() int {
 	// The output directory must not have been created.
 	assert !os.exists(out_dir)
 }
+
+// The "Available modules" list names modules, not directories: each one as it
+// sits under the input root, which is what a reader can act on. `modules/` is an
+// ordinary directory now, so a module under one keeps that in its name.
+fn test_module_display_name_is_relative_to_the_input_root() {
+	assert module_display_name('/tmp/app/modules/foo', '/tmp/app') == 'modules.foo'
+	assert module_display_name('/tmp/app/foo', '/tmp/app') == 'foo'
+	assert module_display_name('/tmp/app/foo/bar', '/tmp/app/') == 'foo.bar'
+	assert module_display_name('./vlib/os', '.') == 'vlib.os'
+	assert module_display_name('vlib/v/ast', 'vlib') == 'v.ast'
+	// An input that is the module itself, and anything the root does not hold,
+	// are named by the directory they are.
+	assert module_display_name('/tmp/app', '/tmp/app') == 'app'
+	assert module_display_name('/somewhere/else/foo', '/tmp/app') == 'foo'
+}

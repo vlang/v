@@ -280,8 +280,10 @@ pub const node_flag_static_type_method = u8(2)
 // node_flag_embed_payload marks the string literal holding the bytes that
 // `$embed_file` materialized (see Node.is_embed_payload()).
 pub const node_flag_embed_payload = u8(4)
+// node_flag_freed_assignment marks an assignment annotated with `@[freed]`.
+pub const node_flag_freed_assignment = u8(8)
 
-// node_flags packs the two rare node bools into Node.flags.
+// node_flags packs rare node bools into Node.flags.
 @[inline]
 pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 	mut flags := u8(0)
@@ -300,11 +302,12 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 // whatever its new position calls for. The rest describe the node itself and
 // have to survive being copied: a generic specialization that dropped
 // node_flag_embed_payload would turn the payload back into an ordinary literal,
-// which the backend would then intern and spell out in full.
+// which the backend would then intern and spell out in full. Assignment
+// attributes likewise remain attached when a statement is specialized.
 @[inline]
 pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
-	flags |= source.flags & node_flag_embed_payload
+	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment)
 	return flags
 }
 
@@ -354,6 +357,22 @@ pub fn (n &Node) is_static_type_method() bool {
 @[inline]
 pub fn (n &Node) is_embed_payload() bool {
 	return (n.flags & node_flag_embed_payload) != 0
+}
+
+// is_freed_assignment reports whether an assignment has the `@[freed]` attribute.
+@[inline]
+pub fn (n &Node) is_freed_assignment() bool {
+	return (n.flags & node_flag_freed_assignment) != 0
+}
+
+// set_freed_assignment updates the assignment's `@[freed]` marker.
+@[inline]
+pub fn (mut n Node) set_freed_assignment(value bool) {
+	if value {
+		n.flags |= node_flag_freed_assignment
+	} else {
+		n.flags &= ~node_flag_freed_assignment
+	}
 }
 
 // set_is_static_type_method updates the static-type-method flag.
@@ -409,6 +428,13 @@ pub mut:
 	children        []NodeId
 	user_code_start int
 	disabled_fns    map[string]bool
+	// The names spelled inside a `$if`/`$match` body this build does not take,
+	// keyed by `<file>:<fn name offset>|<name>`. The body is never parsed, so
+	// nothing in the AST records its identifier occurrences or reads.
+	comptime_skipped_names       map[string]bool
+	comptime_skipped_read_names  map[string]bool
+	// Goto label operands use the same key format, but are not local-name uses.
+	comptime_skipped_goto_labels map[string]bool
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
@@ -439,6 +465,9 @@ pub mut:
 	template_actions    map[int]string
 	// missing_imports retains source import paths for unresolved import nodes.
 	missing_imports map[int]string
+	// missing_import_hints holds the migration hint the resolver produced for an
+	// unresolved import node, when it can explain the failure. Usually empty.
+	missing_import_hints map[int]string
 	// file_node_ids records every .file node the parser creates, in creation
 	// order: (marker, trailing) pairs per source file. The trailing node's
 	// children are the file's top-level declarations, letting collect build
@@ -461,6 +490,20 @@ pub mut:
 	text_values []string
 	text_ids    map[string]TextId
 	worker_pool &workers.Pool = unsafe { nil }
+	// contextual_anon_struct_types names the anonymous aggregates the parser
+	// synthesized to type a `struct { ... }` literal rather than to declare a field.
+	// Such a name only ever stands in for a literal whose type the context supplies, so
+	// the checker lets it initialize another module's anonymous field. The declarations
+	// themselves keep the visibility they were written with, so neither their generated
+	// names nor a type a user happened to call `AnonStruct_...` become reachable across
+	// module boundaries.
+	contextual_anon_struct_types map[string]bool
+	// synthesized_anon_struct_types names every anonymous aggregate the parser made up,
+	// for a declaration as well as for a literal. A name matching `AnonStruct_` proves
+	// nothing on its own - a user may declare a type so named - so this is what tells
+	// the checker that an expected type really is one it may adopt a bare
+	// `struct { ... }` literal into.
+	synthesized_anon_struct_types map[string]bool
 	// specialized_fn_nodes identifies program-specific monomorphized function
 	// declarations appended after parsing. Module-cache cgen keeps them with main.
 	specialized_fn_nodes   map[int]bool
@@ -526,12 +569,18 @@ pub fn FlatAst.new() FlatAst {
 		nodes: []Node{cap: 256}
 		children: []NodeId{cap: 512}
 		disabled_fns: map[string]bool{}
+		comptime_skipped_names: map[string]bool{}
+		comptime_skipped_read_names: map[string]bool{}
+		comptime_skipped_goto_labels: map[string]bool{}
 		export_fn_names: map[string]string{}
 		noreturn_fns: map[string]bool{}
+		contextual_anon_struct_types: map[string]bool{}
+		synthesized_anon_struct_types: map[string]bool{}
 		source_files: map[int]&token.File{}
 		template_call_sites: map[int]token.Pos{}
 		template_actions: map[int]string{}
 		missing_imports: map[int]string{}
+		missing_import_hints: map[int]string{}
 		formatter_sources: map[int]string{}
 		formatter_file_sources: map[int]string{}
 		formatter_node_ends: map[int]int{}

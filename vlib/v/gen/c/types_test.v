@@ -6,6 +6,59 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_type_references_thread_through_containers() {
+	thread_type := types.Type(types.Struct{
+		name: 'thread'
+	})
+	thread_array := types.Type(types.Array{
+		elem_type: thread_type
+	})
+	assert type_references_thread(thread_type)
+	assert type_references_thread(thread_array)
+	assert type_references_thread(types.Type(types.Struct{
+		name: 'thread dep.Result'
+	}))
+	assert type_references_thread(types.Type(types.Pointer{
+		base_type: thread_array
+	}))
+	assert !type_references_thread(types.Type(types.Array{
+		elem_type: types.Type(types.int_)
+	}))
+}
+
+fn test_precompute_thread_type_usage_scans_interface_fields() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.interface_fields['ThreadHolder'] = [
+		types.StructField{
+			name: 'worker'
+			typ:  types.Type(types.Struct{ name: 'thread' })
+		},
+	]
+	mut g := FlatGen.new()
+	g.tc = &tc
+	g.set_target_libc_headers(true)
+	g.precompute_thread_type_usage()
+	assert g.needs_thread_type
+}
+
+fn test_precompute_thread_type_usage_scans_pthread_backed_fields() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.structs['sync.Mutex'] = [
+		types.StructField{
+			name: 'mutex'
+			typ:  types.Type(types.Struct{ name: 'C.pthread_mutex_t' })
+		},
+	]
+	mut g := FlatGen.new()
+	g.tc = &tc
+	g.set_target_libc_headers(true)
+	g.precompute_thread_type_usage()
+	assert g.needs_pthread_header
+	assert !g.needs_thread_type
+}
+
 fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 	$if !windows && !v3_no_parallel ? {
 		mut ast := flat.FlatAst.new()
@@ -530,6 +583,16 @@ fn test_optional_payload_keeps_concrete_c_type_with_interface_collision() {
 	assert g.concrete_optional_type_name(result_type) == 'Optional_Value'
 }
 
+fn test_c_alias_value_type_preserves_the_system_typedef() {
+	mut g := FlatGen.new()
+	c_alias := types.Type(types.Alias{
+		name:      'C.DWORD'
+		base_type: types.Type(types.u32_)
+	})
+	assert g.value_c_type(c_alias) == 'DWORD'
+	assert g.value_c_type(types.Type(types.Pointer{ base_type: c_alias })) == 'DWORD*'
+}
+
 fn test_optional_typedef_keeps_qualified_interface_with_struct_collision() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)
@@ -610,6 +673,71 @@ fn test_optional_sum_typedef_ignores_struct_name_collisions() {
 	assert g.is_known_sum_c_type('types__Type')
 	assert g.emit_optional_typedef('Optional_types__Type', 'types__Type')
 	assert g.sb.str().contains('types__Type value; } Optional_types__Type;')
+}
+
+fn test_sum_name_resolution_keeps_a_qualified_concrete_type_out_of_a_namesake_sum() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.sum_types['sum_mod.Any'] = ['int', 'string']
+	tc.interface_names['pkg.iface_mod.Any'] = true
+	tc.structs['struct_mod.Any'] = []types.StructField{}
+	tc.enum_names['enum_mod.Any'] = true
+	tc.type_aliases['alias_mod.Any'] = 'struct_mod.Any'
+	tc.cur_file = 'main.v'
+	tc.file_imports['main.v\niface_mod'] = 'pkg.iface_mod'
+	tc.file_imports['main.v\npkg'] = 'unrelated.module'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.precompute_sum_name_lookup()
+
+	assert g.resolve_sum_name('sum_mod.Any') == 'sum_mod.Any'
+	// The short name still reaches the only sum type that declares it.
+	assert g.resolve_sum_name('Any') == 'sum_mod.Any'
+	// Namesakes resolve to their concrete declarations, so they are not boxed
+	// into `sum_mod.Any` when a value is converted to them.
+	assert g.resolve_source_sum_name('iface_mod.Any', 'main.v') == 'pkg.iface_mod.Any'
+	// A canonical name is not expanded again when its first component also
+	// happens to be an import alias in the current file.
+	assert g.resolve_sum_name('pkg.iface_mod.Any') == 'pkg.iface_mod.Any'
+	assert g.resolve_sum_name('struct_mod.Any') == 'struct_mod.Any'
+	assert g.resolve_sum_name('enum_mod.Any') == 'enum_mod.Any'
+	assert g.resolve_sum_name('alias_mod.Any') == 'alias_mod.Any'
+	// An unknown qualified name keeps the short-name fallback, which is what
+	// resolves aliased module paths such as `x.json2.Any`.
+	assert g.resolve_sum_name('unknown_mod.Any') == 'sum_mod.Any'
+}
+
+fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_sum() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.sum_types['iface_mod.Any'] = ['int', 'string']
+	tc.interface_names['pkg.iface_mod.Any'] = true
+	tc.cur_file = 'main.v'
+	tc.file_imports['main.v\niface_mod'] = 'pkg.iface_mod'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.precompute_sum_name_lookup()
+
+	assert g.resolve_source_sum_name('iface_mod.Any', 'main.v') == 'pkg.iface_mod.Any'
+	// Resolved type metadata is canonical and must not be interpreted through the
+	// current source file's imports.
+	assert g.resolve_sum_name('iface_mod.Any') == 'iface_mod.Any'
+	assert g.resolve_source_sum_name('iface_mod.Any', 'dependency.v') == 'iface_mod.Any'
+	typ_field := ast.add_node(flat.Node{ kind: .field_init, value: 'typ' })
+	payload_field := ast.add_node(flat.Node{ kind: .field_init, value: '_string' })
+	children_start := ast.children.len
+	ast.children << typ_field
+	ast.children << payload_field
+	generated := flat.Node{
+		kind:           .struct_init
+		children_start: i32(children_start)
+		children_count: 2
+		value:          'iface_mod.Any'
+		typ:            'iface_mod.Any'
+	}
+	assert g.lowered_struct_init_sum_name(generated) == 'iface_mod.Any'
 }
 
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {

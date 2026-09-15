@@ -2152,24 +2152,57 @@ fn (t &Transformer) nil_operand_carries_statements(id flat.NodeId) bool {
 // never mentions the operand again, so without this `opt == unsafe { record(); nil }` would
 // silently drop the `record()` call.
 fn (mut t Transformer) lower_discarded_nil_operand_effects(id flat.NodeId) {
+	// Collect against an empty pending list. Lowering a statement drains whatever is
+	// pending, so anything the caller already hoisted -- notably the temp the option was
+	// pinned to -- would otherwise be swept into the block below and go out of scope
+	// before the comparison that reads it.
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	mut stmts := []flat.NodeId{}
+	t.collect_discarded_nil_operand_effects(id, mut stmts)
+	t.drain_pending(mut stmts)
+	t.pending_stmts = outer_pending
+	if stmts.len == 0 {
+		return
+	}
+	// The operand's own block scope is kept. Splicing the statements straight into the
+	// enclosing list would move a block-local declaration up one scope, so
+	// `opt == unsafe { local := 1; ... }` followed by an outer `local :=` would be two
+	// declarations of the same name in one C scope and would not compile.
+	t.pending_stmts << t.make_block(stmts)
+}
+
+// collect_discarded_nil_operand_effects gathers the statements a `nil` operand carries
+// besides the `nil` itself, keeping one block per source block so that each level's
+// declarations stay in their own scope.
+fn (mut t Transformer) collect_discarded_nil_operand_effects(id flat.NodeId, mut stmts []flat.NodeId) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		t.lower_discarded_nil_operand_effects(t.a.child(&node, 0))
+		t.collect_discarded_nil_operand_effects(t.a.child(&node, 0), mut stmts)
 		return
 	}
 	if node.kind != .block || node.children_count == 0 {
 		return
 	}
 	for index in 0 .. int(node.children_count) - 1 {
-		for stmt in t.transform_stmt(t.a.child(&node, index)) {
-			t.pending_stmts << stmt
+		lowered := t.transform_stmt(t.a.child(&node, index))
+		// whatever this statement hoisted comes first, then the statement itself
+		t.drain_pending(mut stmts)
+		for stmt in lowered {
+			stmts << stmt
 		}
 	}
-	// the last statement is what yields the nil, and may itself be a nested block
-	t.lower_discarded_nil_operand_effects(t.a.child(&node, int(node.children_count) - 1))
+	// The last statement is what yields the nil. It may itself be a nested block carrying
+	// statements of its own, which belong in a nested scope rather than this one.
+	mut nested := []flat.NodeId{}
+	t.collect_discarded_nil_operand_effects(t.a.child(&node, int(node.children_count) - 1), mut
+		nested)
+	if nested.len > 0 {
+		stmts << t.make_block(nested)
+	}
 }
 
 // transform_optional_wrapper_expr preserves the Optional_T wrapper when a prior
@@ -2259,7 +2292,7 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 	if type_name.len == 0 {
 		return ''
 	}
-	// Resolve aliases before consulting the struct indexes. Large programs can
+	// Resolve aliases before consulting the enum and struct indexes. Large programs can
 	// contain a struct whose short name collides with an imported alias (notably
 	// `Type` beside `ast.Type = u32`). Treating the alias as that struct expands a
 	// scalar equality into field selectors on the generated C integer.
@@ -2268,6 +2301,20 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 		if unalias != type_name {
 			return t.struct_lookup_name(unalias)
 		}
+	}
+	if type_name.contains('.') && type_name in t.enum_types {
+		return ''
+	}
+	if !type_name.contains('.')
+		&& (type_name in t.enum_types || '${t.cur_module}.${type_name}' in t.enum_types)
+		&& !t.bare_struct_name_is_local_to_current_module(type_name) {
+		if selected := t.selective_import_struct_lookup_name(type_name) {
+			return selected
+		}
+		if builtin := t.visible_builtin_struct_lookup_name(type_name) {
+			return builtin
+		}
+		return ''
 	}
 	// Primitives, arrays and maps are never struct names. Bail before the qualified-name
 	// concatenation below — this runs for every infix operand, so the saved allocation
@@ -2340,6 +2387,55 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 		return checker_name
 	}
 	return ''
+}
+
+fn (t &Transformer) selective_import_struct_lookup_name(name string) ?string {
+	if isnil(t.tc) || name.len == 0 || name.contains('.') || t.cur_file.len == 0 {
+		return none
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+		return none
+	} {
+		if candidate in t.structs || candidate in t.tc.structs {
+			return candidate
+		}
+	}
+	return none
+}
+
+// visible_builtin_struct_lookup_name resolves a globally visible builtin struct
+// only when the current module or file does not shadow it with another type.
+fn (t &Transformer) visible_builtin_struct_lookup_name(name string) ?string {
+	if isnil(t.tc) || name.len == 0 || name.contains('.') {
+		return none
+	}
+	if t.cur_file.len > 0
+		&& file_import_key(t.cur_file, name) in t.tc.file_selective_imports {
+		return none
+	}
+	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		local_name := '${t.cur_module}.${name}'
+		if local_name in t.structs || local_name in t.enum_types || local_name in t.sum_types
+			|| local_name in t.tc.structs || local_name in t.tc.enum_names
+			|| local_name in t.tc.sum_types || local_name in t.tc.type_aliases
+			|| local_name in t.tc.interface_names {
+			return none
+		}
+	} else if t.cur_module != 'builtin'
+		&& (name in t.tc.enum_names || name in t.tc.sum_types || name in t.tc.type_aliases
+			|| name in t.tc.interface_names) {
+		return none
+	}
+	checker_name := t.checker_struct_lookup_name(name)
+	if checker_name.len > 0 && t.tc.struct_modules[checker_name] == 'builtin' {
+		return checker_name
+	}
+	if info := t.structs[name] {
+		if info.module == 'builtin' {
+			return name
+		}
+	}
+	return none
 }
 
 // transform_in_expr transforms transform in expr data for transform.

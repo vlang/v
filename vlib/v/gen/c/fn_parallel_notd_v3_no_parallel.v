@@ -1261,6 +1261,9 @@ fn moved_segment(s string) string {
 // and, when needed, output into the helper's result arena.
 fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool) {
 	mut b := unsafe { batch }
+	if batch.callback_identity_used {
+		g.callback_identity_used = true
+	}
 	if batch.windows_entry_point_generated {
 		g.windows_entry_point_generated = true
 		g.windows_gui_entry_point = batch.windows_gui_entry_point
@@ -1294,6 +1297,15 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		if used {
 			g.c_extern_refs[name.clone()] = true
 		}
+	}
+	if batch.needs_thread_runtime {
+		g.needs_thread_runtime = true
+	}
+	if batch.needs_pthread_header {
+		g.needs_pthread_header = true
+	}
+	if batch.needs_thread_type {
+		g.needs_thread_type = true
 	}
 	for name, enabled in batch.libc_compat_fns {
 		if enabled {
@@ -1635,9 +1647,10 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		available_jobs := g.a.worker_pool.size() + 1
 		// Type declarations use one pool task. Once it finishes, that same worker
 		// can drain a queued body task instead of staying reserved for the whole
-		// function-generation phase.
+		// function-generation phase. Target-header preambles depend on thread use
+		// discovered by body workers, so emit those on the master after they merge.
 		parallel_type_decls := available_jobs > 2 && g.scope_parallel_workers
-			&& !g.program_body_only && g.incremental_fn_names.len == 0
+			&& !g.program_body_only && g.incremental_fn_names.len == 0 && !g.target_libc_headers
 		n_jobs := flat_cgen_job_count(available_jobs, n_items)
 		if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 			if g.scope_parallel_workers {
@@ -2669,6 +2682,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		mods_with_c_libs: g.mods_with_c_libs
 		mods_with_c_includes: g.mods_with_c_includes
 		inlined_c_active_macros: g.inlined_c_active_macros
+		has_unscanned_forced_c_include: g.has_unscanned_forced_c_include
+		files_with_unscanned_c_includes: g.files_with_unscanned_c_includes
+		c_fn_decl_source_files: g.c_fn_decl_source_files
 		inlined_c_static_fns: g.inlined_c_static_fns
 		libc_compat_fns: g.libc_compat_fns.clone()
 		tc: if result_only {
@@ -2713,6 +2729,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		shared_type_names: g.shared_type_names
 		shared_alias_pointer_shorts: g.shared_alias_pointer_shorts
 		shared_alias_index_ready: g.shared_alias_index_ready
+		needs_pthread_header: g.needs_pthread_header
+		needs_thread_type: g.needs_thread_type
+		needs_thread_runtime: g.needs_thread_runtime
 		const_runtime_inits: if result_only {
 			g.const_runtime_inits
 		} else {
@@ -2734,6 +2753,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		int_ct: g.int_ct
 		output_cross_c: g.output_cross_c
 		subsystem: g.subsystem
+		target_libc_headers: g.target_libc_headers
 		c_flags: g.c_flags
 		suppress_main: g.suppress_main
 		cur_param_names: if result_only {
@@ -2824,6 +2844,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		callback_wrapper_names: g.callback_wrapper_names.clone()
 		callback_wrapper_defs: g.callback_wrapper_defs.clone()
 		callback_wrapper_defs_seen: g.callback_wrapper_defs_seen.clone()
+		callback_identity_used: g.callback_identity_used
 		c_extern_refs: g.c_extern_refs.clone()
 		c_extern_refs_ready: g.c_extern_refs_ready
 		scope_parallel_workers: g.scope_parallel_workers
@@ -3073,6 +3094,9 @@ fn (mut g FlatGen) merge_parallel_worker_ordered(w &FlatGen, mut ordered []strin
 
 fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, mut ordered_wrapper_defs []ParallelChunkWrapperDefs) {
 	mut ww := unsafe { w }
+	if w.callback_identity_used {
+		g.callback_identity_used = true
+	}
 	if g.output_error.len == 0 && w.output_error.len > 0 {
 		g.output_error = w.output_error.clone()
 	}
@@ -3148,6 +3172,15 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		if used {
 			g.c_extern_refs[name.clone()] = true
 		}
+	}
+	if w.needs_thread_runtime {
+		g.needs_thread_runtime = true
+	}
+	if w.needs_pthread_header {
+		g.needs_pthread_header = true
+	}
+	if w.needs_thread_type {
+		g.needs_thread_type = true
 	}
 	for name, enabled in w.libc_compat_fns {
 		if enabled {

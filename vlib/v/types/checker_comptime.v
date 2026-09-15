@@ -1934,6 +1934,9 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	if node.kind == .array_init {
 		tc.check_missing_array_init_interface_type_args(id, node)
 		tc.check_array_init(id, node)
+		if unalias_type(tc.resolve_type(id)) is Array && tc.array_init_may_allocate(node) {
+			tc.warn_alloc('array initialization', id, node.pos)
+		}
 		$if ownership ? {
 			if !tc.ownership_aggregate_consumption_deferred(id) {
 				tc.ownership_consume_array_init_expr(node)
@@ -2025,6 +2028,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		if specialized_invalid_selector {
 			tc.record_enclosing_print_void(id)
 		}
+		tc.warn_alloc('string interpolation', id, node.pos)
 		return
 	}
 	if node.kind == .paren && node.value == '__v3_comptime_d' && node.children_count > 0 {
@@ -2043,6 +2047,9 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	// A method value stored in a container escapes the single-use guarantee of its per-site
 	// static receiver, so reject `[obj.method]` / `arr << obj.method` / `{'k': obj.method}`.
 	if node.kind == .array_literal {
+		if unalias_type(tc.resolve_type(id)) is Array && !tc.array_literal_is_inferred_fixed(id) {
+			tc.warn_alloc('array initialization', id, node.pos)
+		}
 		if expected := tc.expected_context_for_expr(id) {
 			context_type := unalias_type(contextual_payload_type(expected) or { expected })
 			if elem_type := array_like_elem_type(context_type) {
@@ -2688,13 +2695,163 @@ fn (tc &TypeChecker) call_targets_later_local_binding(call flat.Node) bool {
 	return false
 }
 
+// text_is_a_single_parenthesised_group reports whether `text` is one `(...)`
+// group, i.e. whether its opening parenthesis is closed by its last character.
+// `(a + b)` is, `(a) + (b)` is not.
+fn text_is_a_single_parenthesised_group(text string) bool {
+	// A comment is not part of the expression, at either end of it: the inner
+	// group of `((input) /* explanation */)` still spans the whole of it.
+	first, last := code_bounds_of(text)
+	if first < 0 || last <= first || text[first] != `(` || text[last] != `)` {
+		return false
+	}
+	mut depth := 0
+	mut i := first
+	for i <= last {
+		// A parenthesis of a comment or of a literal is not syntax:
+		// `((value /* ) */))` is still one group wrapped in another.
+		skipped := skip_non_code_at(text, i)
+		if skipped > i {
+			i = skipped
+			continue
+		}
+		c := text[i]
+		if c == `(` {
+			depth++
+		} else if c == `)` {
+			depth--
+			if depth == 0 {
+				return i == last
+			}
+		}
+		i++
+	}
+	return false
+}
+
+// skip_non_code_at returns the index just past the comment or string literal
+// starting at `i`, and `i` itself when `source[i]` starts neither. Its callers
+// only ask where code resumes, so what a literal holds - escapes, `${..}`
+// interpolations and all - is stepped over without being looked at.
+fn skip_non_code_at(source string, i int) int {
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+		return source.index_after('\n', i) or { source.len }
+	}
+	if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+		mut nesting := 1
+		mut j := i + 2
+		for j + 1 < source.len && nesting > 0 {
+			if source[j] == `/` && source[j + 1] == `*` && (j + 2 >= source.len
+				|| source[j + 2] != `/`) {
+				// `Scanner.comment` opens a nested comment only when the `/*` is
+				// not immediately followed by a `/`, which is what lets the
+				// `/*/` idiom close the comment it stands in.
+				nesting++
+				j += 2
+			} else if source[j] == `*` && source[j + 1] == `/` {
+				nesting--
+				j += 2
+			} else {
+				j++
+			}
+		}
+		return j
+	}
+	// `r'..'`, `c'..'` and `js'..'` prefix their quote directly. A raw string
+	// has no escapes, so a trailing backslash does not swallow its quote.
+	mut opening := i
+	mut has_escapes := true
+	mut has_interpolation := true
+	if (source[i] == `r` || source[i] == `c`) && i + 1 < source.len
+		&& (source[i + 1] == `'` || source[i + 1] == `"`) {
+		opening = i + 1
+		has_escapes = source[i] == `c`
+		// A raw string has neither escapes nor interpolations, and a C string
+		// is scanned by scan_char_literal, which escapes but never interpolates.
+		has_interpolation = false
+	} else if source[i] == `j` && i + 2 < source.len && source[i + 1] == `s`
+		&& (source[i + 2] == `'` || source[i + 2] == `"`) {
+		opening = i + 2
+	}
+	quote := source[opening]
+	if quote != `'` && quote != `"` && quote != `\`` {
+		return i
+	}
+	mut j := opening + 1
+	for j < source.len && source[j] != quote {
+		if has_escapes && source[j] == `\\` {
+			j += 2
+			continue
+		}
+		if has_interpolation && source[j] == `$` && j + 1 < source.len && source[j + 1] == `{` {
+			// An interpolation holds code, which may hold a literal of its own,
+			// quoted the same way: `'${f('}')}'` ends at the second `}` and not
+			// at the quote before it.
+			mut braces := 0
+			mut k := j + 1
+			for k < source.len {
+				skipped := skip_non_code_at(source, k)
+				if skipped > k {
+					k = skipped
+					continue
+				}
+				if source[k] == `{` {
+					braces++
+				} else if source[k] == `}` {
+					braces--
+					if braces == 0 {
+						k++
+						break
+					}
+				}
+				k++
+			}
+			j = k
+			continue
+		}
+		j++
+	}
+	return int_min(j + 1, source.len)
+}
+
+// code_bounds_of returns the first and the last index of `text` that hold code,
+// skipping the comments, the literals and the spaces around it. Both are -1 for
+// a text that holds none.
+fn code_bounds_of(text string) (int, int) {
+	mut first := -1
+	mut last := -1
+	mut i := 0
+	for i < text.len {
+		skipped := skip_non_code_at(text, i)
+		if skipped > i {
+			i = skipped
+			continue
+		}
+		if text[i] !in [` `, `\t`, `\n`, `\r`] {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+		i++
+	}
+	return first, last
+}
+
 fn (tc &TypeChecker) paren_expr_has_redundant_parentheses(id flat.NodeId) bool {
 	parent_id := tc.direct_parent_id(id)
 	if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .paren {
 		return false
 	}
+	// The parser folds `((x))` into a single paren node, so redundancy can only
+	// be seen in the source text — but the inner group has to span the whole
+	// expression. Merely starting with `((` also matches the meaningful
+	// parentheses of `m * ((n - 1) / m)`.
 	text := tc.source_text_for_node(id).trim_space()
-	return text.starts_with('((')
+	if !text_is_a_single_parenthesised_group(text) {
+		return false
+	}
+	return text_is_a_single_parenthesised_group(text[1..text.len - 1].trim_space())
 }
 
 fn (mut tc TypeChecker) check_map_duplicate_keys(node flat.Node) {
@@ -2928,6 +3085,11 @@ fn (mut tc TypeChecker) record_implicit_slice_clone_notice(id flat.NodeId) {
 	}
 	node := tc.a.node(id)
 	if node.kind != .index || node.value != 'range' || node.children_count < 1 {
+		return
+	}
+	// Only array slices are implicitly cloned. `s[..n]` on a string or on a
+	// map/struct index yields no hidden copy, so reporting one there is wrong.
+	if unalias_type(tc.resolve_type(id)) !is Array {
 		return
 	}
 	pos := tc.index_suffix_diagnostic_pos(id)
@@ -4257,6 +4419,11 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		actual_name := actual.name()
 		tc.record_interface_implementation_error(.assignment_mismatch, actual, target_iface, id, node.pos)
 		tc.record_error_at(.assignment_mismatch, 'type `${actual_name}` does not implement interface `${target_iface.name}`; `${actual_name}` does not implement interface `${target_iface.name}`, cannot cast `${actual_name}` to interface `${target_iface.name}`', id, node.pos)
+	}
+	if tc.warn_about_allocs && ((clean_actual !is Pointer && clean_actual !is Interface)
+		|| tc.interface_pointer_alias_cast_needs_heap_copy(child_id, actual)
+		|| tc.interface_pointer_target_cast_needs_heap_copy(target, actual, target_iface)) {
+		tc.warn_alloc('cast to interface', id, node.pos)
 	}
 }
 
@@ -5746,6 +5913,105 @@ fn cast_target_interface(target Type) ?Interface {
 	return none
 }
 
+fn (tc &TypeChecker) interface_pointer_alias_cast_needs_heap_copy(id flat.NodeId, actual Type) bool {
+	if unalias_type(actual) !is Pointer || !tc.valid_node_id(id) {
+		return false
+	}
+	cast := tc.a.node(id)
+	if cast.kind != .cast_expr || cast.children_count == 0 {
+		return false
+	}
+	alias_target := tc.alias_target_type_text(cast.value) or { return false }
+	if unalias_type(tc.parse_type(alias_target)) !is Pointer {
+		return false
+	}
+	arg_id := tc.first_parsed_child(id)
+	if !tc.valid_node_id(arg_id) {
+		return false
+	}
+	arg := tc.a.node(arg_id)
+	if arg.kind != .prefix || arg.op != .amp || arg.children_count == 0 {
+		return false
+	}
+	return tc.interface_pointer_source_root_is_local(tc.first_parsed_child(arg_id))
+}
+
+fn (tc &TypeChecker) interface_pointer_target_cast_needs_heap_copy(target Type, actual Type, target_iface Interface) bool {
+	if unalias_type(target) !is Pointer {
+		return false
+	}
+	clean_actual := unalias_type(actual)
+	if clean_actual is Interface {
+		return true
+	}
+	if clean_actual !is Pointer {
+		return false
+	}
+	actual_iface := cast_target_interface(clean_actual) or { return true }
+	return tc.interface_metadata_name(actual_iface.name) != tc.interface_metadata_name(target_iface.name)
+}
+
+fn (tc &TypeChecker) first_parsed_child(id flat.NodeId) flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return flat.empty_node
+	}
+	node := tc.a.node(id)
+	child_id := tc.a.child(node, 0)
+	if tc.valid_node_id(child_id) {
+		return child_id
+	}
+	// Semantic checking may detach a consumed child edge; the immutable parent index
+	// still records the original parsed relationship.
+	for index, parent_id in tc.direct_parent_ids {
+		if parent_id == id {
+			return flat.NodeId(index)
+		}
+	}
+	return flat.empty_node
+}
+
+fn (tc &TypeChecker) interface_pointer_source_root_is_local(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.ident {
+			return node.value.len > 0 && tc.cur_scope.lookup(node.value) != none
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := tc.first_parsed_child(id)
+			base_type := unalias_type(tc.resolve_type(base_id))
+			if base_type is Pointer || base_type is Array || base_type is Map {
+				return false
+			}
+			return tc.interface_pointer_source_root_is_local(base_id)
+		}
+		.index {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := tc.first_parsed_child(id)
+			if unalias_type(tc.resolve_type(base_id)) !is ArrayFixed {
+				return false
+			}
+			return tc.interface_pointer_source_root_is_local(base_id)
+		}
+		.paren {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.interface_pointer_source_root_is_local(tc.first_parsed_child(id))
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 	metadata := node.generic_params()
 	if metadata.len > 0 && metadata[0] == '__v3_comptime_match' {
@@ -6692,6 +6958,13 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	// of the aliased storage type. This is especially important for aliases of
 	// maps, arrays, pointers, and primitives: validating their unaliased type
 	// first would reject the expression before its operator method can be used.
+	if lhs_type is Alias && tc.type_has_infix_operator_method(lhs_type, node.op)
+		&& tc.infix_operator_return_type(node.op, lhs_type, rhs_type) != none {
+		return
+	}
+	if node.op == .plus && is_string_concat_pair(lhs_type, rhs_type) {
+		tc.warn_alloc('string concatenation', id, node.pos)
+	}
 	if _ := tc.infix_operator_return_type(node.op, lhs_type, rhs_type) {
 		return
 	}
@@ -7657,6 +7930,16 @@ fn type_is_string_like(typ Type) bool {
 	return false
 }
 
+fn is_string_concat_pair(left Type, right Type) bool {
+	left_base := unalias_type(left)
+	right_base := unalias_type(right)
+	left_is_string := left_base is String
+	right_is_string := right_base is String
+	left_is_concat := left_is_string || left_base is Char || left_base is Rune
+	right_is_concat := right_is_string || right_base is Char || right_base is Rune
+	return left_is_concat && right_is_concat && (left_is_string || right_is_string)
+}
+
 fn (tc &TypeChecker) select_branch_is_timeout(branch flat.Node) bool {
 	if branch.kind != .select_branch || branch.value == 'else' || branch.children_count == 0
 		|| branch.value in ['recv', 'recv_assign'] || branch.value.starts_with('recv_compound:') {
@@ -7967,6 +8250,38 @@ fn (mut tc TypeChecker) check_array_init(id flat.NodeId, node flat.Node) {
 			tc.check_node(child_id)
 		}
 	}
+}
+
+fn (tc &TypeChecker) array_init_may_allocate(node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		field_id := tc.a.child(&node, i)
+		field := tc.a.node(field_id)
+		if field.kind != .field_init || field.value !in ['len', 'cap'] {
+			continue
+		}
+		if field.children_count == 0 {
+			return true
+		}
+		value_id := tc.first_parsed_child(field_id)
+		if !tc.valid_node_id(value_id) {
+			return true
+		}
+		value := tc.const_int_expr(value_id, tc.cur_module, []string{}) or { return true }
+		if value != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) array_literal_is_inferred_fixed(id flat.NodeId) bool {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
+	return parent.kind == .postfix && parent.op == .not && parent.children_count > 0
+		&& tc.first_parsed_child(parent_id) == id
 }
 
 fn (mut tc TypeChecker) discard_unknown_type_errors_inside_node(node flat.Node) {
@@ -10555,7 +10870,8 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		capture_has_open_generic :=
 			saved_fn_context.generic_params.any(type_text_contains_symbol(capture_type_text, it))
 		if capture.kind == .ident && capture.value.len > 0 && !capture_has_open_generic
-			&& !tc.fn_literal_body_uses_ident(node, capture.value) {
+			&& !tc.fn_literal_body_uses_ident(node, capture.value)
+			&& !tc.comptime_skipped_body_uses(node, capture.value) {
 			tc.record_notice_at(.unknown_ident, 'unused parameter: `${capture.value}`', capture_id, tc.node_value_diagnostic_pos(capture_id))
 		}
 	}
@@ -12531,8 +12847,11 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				tc.record_warning_at(.duplicate_decl, 'duplicate of a const name `${tc.qualify_name(lhs_node.value)}`', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
 			}
 		}
-		mut shadows_fn := lhs_node.value in tc.fn_ret_types
-			|| tc.qualify_fn_name(lhs_node.value) in tc.fn_ret_types
+		// Test files (and the preludes loaded with them) routinely declare tiny
+		// fixture functions like `fn a() {}` and then shadow them freely in the
+		// test bodies, so the notice is pure noise there.
+		mut shadows_fn := !is_regular_v_test_file(tc.cur_file)
+			&& tc.shadowed_local_fn_key(lhs_node.value) != none
 		if shadows_fn && tc.imported_module_prefix(lhs_id, lhs_node.value) != none
 			&& !tc.source_module_declares_fn(lhs_node.value) {
 			shadows_fn = false

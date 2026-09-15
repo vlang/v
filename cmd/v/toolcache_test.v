@@ -17,11 +17,12 @@ fn toolcache_test_dir(name string) string {
 	return directory
 }
 
-// cached_binaries returns the cached executables of `tool`, without the bookkeeping files.
-fn cached_binaries(directory string, tool string) []string {
+// cached_entry_dirs returns the content addressed entry directories of `tool`. Each holds one
+// build: the executable, named exactly like the tool, plus that build's bookkeeping files.
+fn cached_entry_dirs(directory string, tool string) []string {
 	names := os.ls(directory) or { return [] }
-	mut found := names.filter(it.starts_with('${tool}-') && !it.contains('.inputs')
-		&& !it.contains('.unbuildable') && !it.contains('.staged') && !it.contains('.sources'))
+	mut found := names.filter(is_cache_artifact_of(it, tool)
+		&& os.is_dir(os.join_path(directory, it)))
 	found.sort()
 	return found
 }
@@ -46,21 +47,28 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 
 	first := os.execute(command)
 	assert first.exit_code == 0, first.output
-	binaries := cached_binaries(cache, probe_tool)
-	assert binaries.len == 1, 'expected a single cached `${probe_tool}`, got ${binaries}'
-	binary := os.join_path(cache, binaries[0])
+	entries := cached_entry_dirs(cache, probe_tool)
+	assert entries.len == 1, 'expected a single cached `${probe_tool}`, got ${entries}'
+	entry_dir := os.join_path(cache, entries[0])
+	binary := os.join_path(entry_dir, probe_tool + tool_exe_suffix())
+	// The hash lives in the directory name, never in the executable's: tools read
+	// `os.file_name(os.executable())` and use it as their own name and cache directory.
+	assert os.file_name(binary) == probe_tool + tool_exe_suffix()
+	assert os.is_executable(binary), 'expected an executable at `${binary}`'
 	before := os.stat(binary)!
 
 	// Every rebuild prunes the earlier entries of the same tool, so a decoy shaped like the
 	// entry of an older build, still being there afterwards, proves that the second
 	// invocation did not recompile anything.
 	decoy := os.join_path(cache, '${probe_tool}-' + 'a'.repeat(64))
-	os.write_file(decoy, 'decoy')!
+	os.mkdir_all(decoy)!
+	os.write_file(os.join_path(decoy, probe_tool), 'decoy')!
 
 	probe := ToolCacheEntry{
 		name:     probe_tool
+		dir:      entry_dir
 		binary:   binary
-		manifest: binary + '.inputs'
+		manifest: os.join_path(entry_dir, 'inputs')
 	}
 	reason := tool_cache_stale_reason(probe)
 	assert reason == '', 'the just built tool is already considered stale: ${reason}'
@@ -72,8 +80,8 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 	assert after.inode == before.inode, 'the cached binary was replaced'
 	assert after.mtime == before.mtime
 	assert after.size == before.size
-	remaining := cached_binaries(cache, probe_tool).filter(it != os.file_name(decoy))
-	assert remaining == binaries, 'a second entry appeared for the same tool: ${remaining}'
+	remaining := cached_entry_dirs(cache, probe_tool).filter(it != os.file_name(decoy))
+	assert remaining == entries, 'a second entry appeared for the same tool: ${remaining}'
 }
 
 fn test_the_cache_key_covers_the_tool_sources_the_compiler_and_the_flags() {
@@ -252,6 +260,24 @@ fn test_cache_artifacts_of_one_tool_are_not_mistaken_for_anothers() {
 	assert !is_cache_artifact_of('vbugged-${key}', 'vbug')
 }
 
+fn test_cache_entry_directories_are_namespaced_by_uid() {
+	key := 'a'.repeat(64)
+	first := tool_cache_entry_dir_for_uid('/cache', 'vbug', key, 1000)
+	second := tool_cache_entry_dir_for_uid('/cache', 'vbug', key, 1001)
+	assert first != second
+	assert os.file_name(first) == 'vbug-${key}.1000'
+	assert is_cache_artifact_of(os.file_name(first), 'vbug')
+}
+
+fn test_staged_tool_binary_path_keeps_the_platform_executable_suffix() {
+	binary := os.join_path('/cache', 'vdemo' + tool_exe_suffix())
+	staged := staged_tool_binary_path('/stage', binary)
+	assert staged == os.join_path('/stage', os.file_name(binary))
+	$if windows {
+		assert staged.ends_with('.exe')
+	}
+}
+
 // A tool that failed to build must not be pinned to the compatibility compiler forever: a
 // broken intermediate state of any vlib module it imports has to be retried once it is fixed.
 fn test_a_recorded_build_failure_is_retried_once_its_inputs_change() {
@@ -372,26 +398,230 @@ fn test_pruning_collects_binaries_that_were_replaced_while_in_use() {
 		os.rmdir_all(directory) or {}
 	}
 	key := 'a'.repeat(64)
-	binary := os.join_path(directory, 'vdemo-${key}')
+	entry_dir := os.join_path(directory, 'vdemo-${key}')
+	os.mkdir_all(entry_dir) or { panic(err) }
+	binary := os.join_path(entry_dir, 'vdemo')
 	entry := ToolCacheEntry{
 		name:     'vdemo'
 		vroot:    directory
+		dir:      entry_dir
 		binary:   binary
-		manifest: binary + '.inputs'
+		manifest: os.join_path(entry_dir, 'inputs')
 	}
 	os.write_file(binary, 'current') or { panic(err) }
-	os.write_file(binary + '.inputs', 'manifest') or { panic(err) }
+	os.write_file(entry.manifest, 'manifest') or { panic(err) }
 	displaced := '${binary}${tool_cache_replaced_marker}4242'
 	os.write_file(displaced, 'previous') or { panic(err) }
 	stale := os.join_path(directory, 'vdemo-' + 'b'.repeat(64))
-	os.write_file(stale, 'older build') or { panic(err) }
+	os.mkdir_all(stale) or { panic(err) }
+	os.write_file(os.join_path(stale, 'vdemo'), 'older build') or { panic(err) }
 
 	prune_stale_tool_binaries(entry)
 
 	assert os.exists(binary), 'the current binary must be kept'
-	assert os.exists(binary + '.inputs'), 'the current manifest must be kept'
+	assert os.exists(entry.manifest), 'the current manifest must be kept'
 	assert !os.exists(displaced), 'a binary replaced while in use must be collected'
 	assert !os.exists(stale), 'a previous build must be collected'
+}
+
+fn test_tool_cache_lock_path_is_persistent_between_owners() {
+	directory := toolcache_test_dir('persistent_lock')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(entry_dir)!
+	entry := ToolCacheEntry{
+		name: 'vdemo'
+		dir:  entry_dir
+	}
+	assert tool_cache_lock_path_for_uid(entry, 1000) != tool_cache_lock_path_for_uid(entry, 1001), 'accounts sharing a sticky cache root need separate mutex pathnames'
+	assert tool_cache_lock_path(entry) == tool_cache_lock_path_for_uid(entry, os.getuid())
+	mut first_owner := tool_cache_lock(entry)!
+	first_owner.acquire()!
+	first_owner.release()
+	assert os.is_file(tool_cache_lock_path(entry)), 'the shared mutex pathname must remain stable between owners'
+	mut next_owner := tool_cache_lock(entry)!
+	assert next_owner.try_acquire()
+	next_owner.release()
+}
+
+// Before cache entries became directories, each binary and its manifest lived directly in
+// the cache root. Directory-only pruning silently left those legacy files behind forever.
+fn test_pruning_collects_legacy_flat_cache_files() {
+	directory := toolcache_test_dir('prune_legacy')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	current_key := 'a'.repeat(64)
+	entry_dir := os.join_path(directory, 'vdemo-${current_key}')
+	os.mkdir_all(entry_dir)!
+	entry := ToolCacheEntry{
+		name: 'vdemo'
+		dir:  entry_dir
+	}
+	stale_key := 'b'.repeat(64)
+	legacy_binary := os.join_path(directory, 'vdemo-${stale_key}')
+	legacy_manifest := legacy_binary + '.inputs'
+	current_legacy_sidecar := os.join_path(directory, 'vdemo-${current_key}.inputs')
+	os.write_file(legacy_binary, 'old binary')!
+	os.write_file(legacy_manifest, 'old manifest')!
+	os.write_file(current_legacy_sidecar, 'old current-key manifest')!
+
+	prune_stale_tool_binaries(entry)
+
+	assert os.is_dir(entry_dir), 'the current entry directory must be kept'
+	assert !os.exists(legacy_binary), 'a legacy cached executable must be collected'
+	assert !os.exists(legacy_manifest), 'a legacy manifest must be collected'
+	assert !os.exists(current_legacy_sidecar), 'only the exact current directory may be kept'
+}
+
+// A cache-shaped symlink can point outside the cache. Recursive removal must never traverse
+// it, even when the cache directory is shared with an untrusted account.
+fn test_pruning_unlinks_stale_symlinks_without_touching_their_targets() {
+	directory := toolcache_test_dir('prune_symlink')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir_all(entry_dir)!
+	entry := ToolCacheEntry{
+		name: 'vdemo'
+		dir:  entry_dir
+	}
+	target := os.join_path(directory, 'outside')
+	os.mkdir_all(target)!
+	payload := os.join_path(target, 'must-survive')
+	os.write_file(payload, 'safe')!
+	stale_link := os.join_path(directory, 'vdemo-' + 'b'.repeat(64))
+	os.symlink(target, stale_link) or {
+		eprintln('> skipping symlink pruning test: ${err}')
+		return
+	}
+
+	prune_stale_tool_binaries(entry)
+
+	assert !os.is_link(stale_link), 'the stale cache symlink must be unlinked'
+	assert os.read_file(payload)! == 'safe', 'the symlink target must not be traversed'
+}
+
+// The current entry path is predictable from the tool inputs. A shared cache must reject a
+// link planted there instead of staging the executable and manifest through it.
+fn test_building_rejects_a_symlinked_current_entry() {
+	directory := toolcache_test_dir('current_symlink')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	target := os.join_path(directory, 'outside')
+	os.mkdir_all(target)!
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.symlink(target, entry_dir) or {
+		eprintln('> skipping current-entry symlink test: ${err}')
+		return
+	}
+	entry := ToolCacheEntry{
+		name:     'vdemo'
+		dir:      entry_dir
+		binary:   os.join_path(entry_dir, 'vdemo' + tool_exe_suffix())
+		manifest: os.join_path(entry_dir, 'inputs')
+	}
+
+	build_tool_binary('', entry) or {
+		assert err.msg().contains('symbolic link'), 'unexpected error: ${err}'
+		assert os.ls(target)! == [], 'nothing may be written through the cache-entry link'
+		return
+	}
+	assert false, 'a symlinked current cache entry must be rejected'
+}
+
+// The entry pathname can change after it has been checked when the cache root is shared.
+// POSIX publication has to stay bound to the opened directory, while Windows keeps the
+// pathname from being renamed until the entry handle is closed.
+fn test_pinned_entry_publication_cannot_be_redirected() {
+	directory := toolcache_test_dir('pinned_entry')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(entry_dir)!
+	cache_entry := open_tool_cache_entry_dir(entry_dir)!
+	defer {
+		cache_entry.close()
+	}
+
+	original_dir := entry_dir + '.original'
+	mut pathname_was_replaced := true
+	os.rename(entry_dir, original_dir) or { pathname_was_replaced = false }
+	outside := os.join_path(directory, 'outside')
+	os.mkdir(outside)!
+	if pathname_was_replaced {
+		os.symlink(outside, entry_dir)!
+	}
+	staged := os.join_path(directory, 'staged-inputs')
+	os.write_file(staged, 'the manifest')!
+
+	assert cache_entry.publish(staged, 'inputs')
+	assert os.ls(outside)! == [], 'publication must not follow a replacement symlink'
+	installed := if pathname_was_replaced {
+		os.join_path(original_dir, 'inputs')
+	} else {
+		os.join_path(entry_dir, 'inputs')
+	}
+	assert os.read_file(installed)! == 'the manifest'
+}
+
+fn test_pinned_stale_pruning_cannot_be_redirected() {
+	directory := toolcache_test_dir('pinned_prune')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	stale_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(stale_dir)!
+	os.write_file(os.join_path(stale_dir, 'cached-binary'), 'stale')!
+	stale_entry := open_tool_cache_entry_dir(stale_dir)!
+	defer {
+		stale_entry.close()
+	}
+
+	original_dir := stale_dir + '.original'
+	mut pathname_was_replaced := true
+	os.rename(stale_dir, original_dir) or { pathname_was_replaced = false }
+	outside := os.join_path(directory, 'outside')
+	os.mkdir(outside)!
+	must_survive := os.join_path(outside, 'must-survive')
+	os.write_file(must_survive, 'safe')!
+	if pathname_was_replaced {
+		os.symlink(outside, stale_dir)!
+	}
+
+	stale_entry.remove_all_contents()
+	assert os.read_file(must_survive)! == 'safe', 'recursive pruning must not follow a replacement symlink'
+	cleaned_dir := if pathname_was_replaced { original_dir } else { stale_dir }
+	assert os.ls(cleaned_dir)! == []
+}
+
+fn test_staging_directory_is_on_the_cache_filesystem() {
+	directory := toolcache_test_dir('stage_filesystem')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(entry_dir)!
+	cache_entry := open_tool_cache_entry_dir(entry_dir)!
+	defer {
+		cache_entry.close()
+	}
+	stage_parent := cache_entry.stage_parent(entry_dir)!
+	stage_dir := create_tool_cache_stage_dir(stage_parent)!
+	defer {
+		os.rmdir_all(stage_dir) or {}
+	}
+
+	assert os.dir(stage_dir) == stage_parent
+	assert os.stat(stage_dir)!.dev == os.stat(entry_dir)!.dev
+	os.write_file(os.join_path(stage_dir, 'partial-build'), 'abandoned')!
+	cache_entry.prune_abandoned_stages()
+	assert !os.exists(stage_dir), 'a stage left by an interrupted build must be reclaimed'
 }
 
 // A single-file tool can pull in a sibling asset with `$embed_file`, whose bytes end up
@@ -535,13 +765,15 @@ fn test_a_tool_build_with_large_output_does_not_deadlock() {
 	}
 	source := os.join_path(directory, 'vdemo.v')
 	os.write_file(source, lines.join('\n'))!
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
 
 	entry := ToolCacheEntry{
 		name:     'vdemo'
 		source:   source
 		vroot:    directory
-		binary:   os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
-		manifest: os.join_path(directory, 'vdemo-' + 'a'.repeat(64)) + '.inputs'
+		dir:      entry_dir
+		binary:   os.join_path(entry_dir, 'vdemo' + tool_exe_suffix())
+		manifest: os.join_path(entry_dir, 'inputs')
 	}
 	// The build must fail, but it must *return*. Before draining concurrently this call
 	// never came back at all.
@@ -583,6 +815,21 @@ fn test_an_unwritable_cache_directory_is_skipped() {
 	assert chosen == '' || directory_is_writable(chosen), 'the chosen cache has to be writable'
 }
 
+fn test_a_non_sticky_shared_cache_cannot_hold_staged_outputs() {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('shared_stage_root')
+	defer {
+		os.chmod(directory, 0o700) or {}
+		os.rmdir_all(directory) or {}
+	}
+	os.chmod(directory, 0o777)!
+	assert !tool_cache_root_can_stage(directory)
+	os.chmod(directory, 0o1777)!
+	assert tool_cache_root_can_stage(directory), 'a sticky shared cache protects user-owned staging directories'
+}
+
 // `$pkgconfig(...)` and `#pkgconfig` select whole native branches, so the pkg-config
 // environment decides what a tool is built against without touching a single source stamp.
 fn test_the_cache_key_covers_the_pkgconfig_environment() {
@@ -609,4 +856,561 @@ fn test_the_cache_key_covers_the_pkgconfig_environment() {
 	assert tool_cache_key(vexe, 'vdemo', [source], []) != baseline, 'PKG_CONFIG_PATH must be part of the key'
 	os.setenv('PKG_CONFIG_PATH', '', true)
 	assert tool_cache_key(vexe, 'vdemo', [source], []) == baseline, 'clearing it must restore the key'
+}
+
+// Tools read `os.file_name(os.executable())` and use it as their displayed name and as their
+// own cache directory -- `cmd/tools/vshader.v` keys `~/.cache/v/<name>` on it, so a hashed
+// executable name made every compiler change re-download `sokol-shdc`. The hash belongs in
+// the directory, never in the executable's name.
+fn test_a_cached_tool_keeps_its_own_executable_name() {
+	vexe := @VEXE
+	if !os.is_executable(vexe) {
+		eprintln('> skipping, no V executable at `${vexe}`')
+		return
+	}
+	cache := toolcache_test_dir('exe_name')
+	defer {
+		os.rmdir_all(cache) or {}
+	}
+	os.setenv(tool_cache_dir_env, cache, true)
+	defer {
+		os.unsetenv(tool_cache_dir_env)
+	}
+	run := os.execute('${os.quoted_path(vexe)} timeout 60 ${os.quoted_path(vexe)} version')
+	assert run.exit_code == 0, run.output
+
+	entries := cached_entry_dirs(cache, probe_tool)
+	assert entries.len == 1, 'expected a single cached `${probe_tool}`, got ${entries}'
+	// The directory carries the content address ...
+	assert entries[0].starts_with('${probe_tool}-')
+	assert entries[0].len > probe_tool.len + 1 + 60
+	// ... and the executable inside it carries only the tool's name.
+	binary := os.join_path(cache, entries[0], probe_tool + tool_exe_suffix())
+	assert os.is_executable(binary), 'expected an executable at `${binary}`'
+	assert os.file_name(binary) == probe_tool + tool_exe_suffix()
+	assert !os.file_name(binary).contains('-')
+}
+
+fn test_unresolved_import_modules_are_read_from_the_failure() {
+	assert unresolved_import_modules('x.v:2:1: builder error: cannot import module "db.sqlite" (not found)') == [
+		'db.sqlite',
+	]
+	// Several unresolved imports, reported in a stable order and without duplicates.
+	many := 'cannot import module "b.c" (not found)\ncannot import module "a" (not found)\ncannot import module "b.c" (not found)'
+	assert unresolved_import_modules(many) == ['a', 'b.c']
+	// A failure that is not about imports contributes nothing.
+	assert unresolved_import_modules('x.v:1:1: error: unknown type `Foo`') == []
+	assert unresolved_import_modules('') == []
+}
+
+// A module that could not be resolved contributed no source file to the manifest, so the only
+// record of it is where it would have lived. Stamping just `vlib` and `vlib/v` caught a module
+// removed directly under them and nothing deeper: `db.sqlite` could be removed and restored
+// with both of those unchanged, replaying the recorded failure forever.
+fn test_a_restored_nested_module_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('nested_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	// A vroot whose `vlib/db` exists but whose `vlib/db/sqlite` does not, which is exactly
+	// the state a removed nested module leaves behind.
+	os.mkdir_all(os.join_path(directory, 'vlib', 'v'))!
+	os.mkdir_all(os.join_path(directory, 'vlib', 'db'))!
+	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  binary
+		binary:               os.join_path(binary, 'vdemo')
+		manifest:             os.join_path(binary, 'inputs')
+		unbuildable:          os.join_path(binary, 'unbuildable')
+		unbuildable_manifest: os.join_path(binary, 'unbuildable.inputs')
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "db.sqlite" (not found)'
+
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains(os.join_path(directory, 'vlib', 'db', 'sqlite')), 'the missing module path must be stamped, got:\n${recorded}'
+	assert unresolved_import_modules(details) == ['db.sqlite']
+	// While the module is still absent the failure stands, or every invocation would pay
+	// for the same failing compilation again.
+	assert unbuildable_tool_failure(entry) != none, 'the failure must stand while the module is missing'
+	vlib_root := os.join_path(directory, 'vlib')
+	os.mkdir_all(os.join_path(vlib_root, 'unrelated'))!
+	assert unbuildable_tool_failure(entry) != none, 'an unrelated sibling module must not invalidate the failure'
+
+	// The premise of the bug: the two fixed roots record their *direct* children, so
+	// restoring a module one level deeper leaves both of them reading exactly as before.
+	// Without the module's own ancestors in the manifest nothing would ever notice.
+	v_root := os.join_path(directory, 'vlib', 'v')
+	vlib_before := module_root_stamp(vlib_root)
+	v_before := module_root_stamp(v_root)
+
+	os.mkdir_all(os.join_path(directory, 'vlib', 'db', 'sqlite'))!
+
+	assert module_root_stamp(vlib_root) == vlib_before, '`vlib` alone cannot see this change'
+	assert module_root_stamp(v_root) == v_before, '`vlib/v` alone cannot see this change'
+	assert unbuildable_tool_failure(entry) == none, 'restoring a nested module must retry the build'
+}
+
+// `vlib` is only the first place an import is resolved against; `$VMODULES` (`~/.vmodules`
+// by default) is the second. A module that failed to resolve can come back in either, so a
+// recorded failure has to watch both or it is replayed forever in the `~/.vmodules` case.
+fn test_a_restored_vmodules_module_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('vmodules_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	vmodules := os.join_path(directory, 'vmodules')
+	os.mkdir_all(os.join_path(vmodules, 'acme'))!
+	os.mkdir_all(os.join_path(directory, 'vlib', 'v'))!
+
+	previous := os.getenv('VMODULES')
+	os.setenv('VMODULES', vmodules, true)
+	defer {
+		os.setenv('VMODULES', previous, true)
+	}
+	assert vmodules in module_search_roots(directory, []), 'the vmodules root has to be searched'
+
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		binary:               os.join_path(entry_dir, 'vdemo')
+		manifest:             os.join_path(entry_dir, 'inputs')
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "acme.widget" (not found)'
+
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains(os.join_path(vmodules, 'acme', 'widget')), 'the vmodules path must be stamped, got:\n${recorded}'
+	assert unbuildable_tool_failure(entry) != none, 'the failure must stand while the module is missing'
+
+	// It reappears under `~/.vmodules`, not under `vlib`, so nothing rooted at the tree can
+	// see it: only the vmodules ancestors make the build be retried.
+	vlib_root := os.join_path(directory, 'vlib')
+	vlib_before := module_root_stamp(vlib_root)
+	os.mkdir_all(os.join_path(vmodules, 'acme', 'widget'))!
+	assert module_root_stamp(vlib_root) == vlib_before, '`vlib` cannot see a vmodules change'
+	assert unbuildable_tool_failure(entry) == none, 'restoring a vmodules module must retry the build'
+}
+
+// A missing module can already have a directory while containing no usable sources. Its
+// direct child directories do not change when the first source appears, so the final module
+// path needs a V-source-name stamp rather than another module-root stamp.
+fn test_adding_the_first_source_to_a_missing_module_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('empty_missing_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	module_dir := os.join_path(directory, 'vlib', 'db', 'sqlite')
+	os.mkdir_all(module_dir)!
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "db.sqlite" (not found)'
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	assert unbuildable_tool_failure(entry) != none, 'an empty module directory is still missing'
+	before := dir_stamp(module_dir)
+
+	os.write_file(os.join_path(module_dir, 'sqlite.v'), 'module sqlite\n')!
+
+	assert dir_stamp(module_dir) != before, 'the module source stamp must see the first `.v` file'
+	assert unbuildable_tool_failure(entry) == none, 'adding the first source must retry the build'
+}
+
+// A module directory can redirect its sources with `base_url` and recursively search named
+// `subdirs`. Adding a source anywhere in that configured tree must retry a cached failure.
+fn test_adding_a_source_under_a_vmod_subdir_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('vmod_subdir_missing_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	module_dir := os.join_path(directory, 'modules', 'acme', 'widget')
+	source_root := os.join_path(module_dir, 'src')
+	nested_dir := os.join_path(source_root, 'parts', 'deep')
+	os.mkdir_all(nested_dir)!
+	module_manifest := os.join_path(module_dir, 'v.mod')
+	os.write_file(module_manifest, "Module {\n\tname: 'widget'\n\tbase_url: 'src'\n\tsubdirs: ['parts']\n}\n")!
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', os.join_path(directory, 'modules')]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "acme.widget" (not found)'
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	real_module_manifest := os.real_path(module_manifest)
+	real_nested_dir := os.real_path(nested_dir)
+	assert recorded.contains('f${tool_cache_field_separator}${real_module_manifest}${tool_cache_field_separator}')
+	assert recorded.contains('d${tool_cache_field_separator}${real_nested_dir}${tool_cache_field_separator}${dir_stamp(real_nested_dir)}')
+	assert unbuildable_tool_failure(entry) != none, 'the failure must stand while the source tree is empty'
+	before := dir_stamp(nested_dir)
+
+	os.write_file(os.join_path(nested_dir, 'widget.v'), 'module widget\n')!
+
+	assert dir_stamp(nested_dir) != before, 'the recursive source stamp must see the first `.v` file'
+	assert unbuildable_tool_failure(entry) == none, 'adding a source under a declared subdir must retry the build'
+}
+
+// `-path` replaces the default vlib/vmodules search roots. A dependency restored below one
+// of those explicit roots must invalidate the failure recorded for that exact invocation.
+fn test_a_restored_module_under_an_explicit_path_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('explicit_missing_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	explicit_root := os.join_path(directory, 'private_modules')
+	os.mkdir_all(os.join_path(explicit_root, 'acme'))!
+	assert module_search_roots(directory, ['-path', explicit_root]) == [explicit_root]
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', explicit_root]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "acme.widget" (not found)'
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	module_dir := os.join_path(explicit_root, 'acme', 'widget')
+	assert recorded.contains(module_dir), 'the explicit module path must be stamped, got:\n${recorded}'
+	assert !recorded.contains(os.join_path(directory, 'vlib', 'acme', 'widget'))
+	assert unbuildable_tool_failure(entry) != none, 'the failure must stand while the module is missing'
+
+	os.mkdir_all(module_dir)!
+	os.write_file(os.join_path(module_dir, 'widget.v'), 'module widget\n')!
+
+	assert unbuildable_tool_failure(entry) == none, 'restoring an explicit-path module must retry the build'
+}
+
+fn test_a_restored_importer_local_module_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('local_missing_module')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	project_root := os.join_path(directory, 'project')
+	tool_dir := os.join_path(project_root, 'cmd', 'demo')
+	local_modules := os.join_path(tool_dir, 'modules')
+	os.mkdir_all(os.join_path(local_modules, 'acme'))!
+	source := os.join_path(tool_dir, 'main.v')
+	os.write_file(source, 'module main\n\nimport acme.widget\n')!
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		source:               source
+		vroot:                project_root
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', os.join_path(directory, 'explicit')]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := '${source}:3:1: builder error: cannot import module "acme.widget" (not found)'
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains(os.join_path(tool_dir, 'acme', 'widget'))
+	assert recorded.contains(os.join_path(local_modules, 'acme', 'widget'))
+	assert recorded.contains(os.join_path(project_root, 'acme', 'widget'))
+	reason := recorded_inputs_changed(entry.unbuildable_manifest)
+	assert reason == '', 'the just-recorded local-module failure is stale: ${reason}'
+	assert unbuildable_tool_failure(entry) != none
+
+	module_dir := os.join_path(local_modules, 'acme', 'widget')
+	os.mkdir_all(module_dir)!
+	os.write_file(os.join_path(module_dir, 'widget.v'), 'module widget\n')!
+	assert unbuildable_tool_failure(entry) == none, 'restoring an importer-local module must retry the build'
+}
+
+fn test_adding_an_alias_at_a_module_prefix_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('missing_alias')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	search_root := os.join_path(directory, 'modules')
+	alias_dir := os.join_path(search_root, 'foo')
+	os.mkdir_all(alias_dir)!
+	canonical := os.join_path(directory, 'canonical')
+	os.mkdir_all(os.join_path(canonical, 'bar'))!
+	os.write_file(os.join_path(canonical, 'bar', 'bar.v'), 'module bar\n')!
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', search_root]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "foo.bar" (not found)'
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	alias_file := os.join_path(alias_dir, 'alias.v')
+	recorded_alias_file := os.join_path(os.real_path(search_root), 'foo', 'alias.v')
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains('f${tool_cache_field_separator}${recorded_alias_file}${tool_cache_field_separator}${file_stamp_missing}')
+	assert unbuildable_tool_failure(entry) != none
+
+	os.write_file(alias_file, "@[alias: '${canonical}'] module foo\n")!
+	assert unbuildable_tool_failure(entry) == none, 'adding an alias at an ancestor prefix must retry the build'
+}
+
+fn test_restoring_an_existing_alias_target_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('missing_alias_target')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	search_root := os.join_path(directory, 'modules')
+	alias_dir := os.join_path(search_root, 'foo')
+	os.mkdir_all(alias_dir)!
+	project_manifest := os.join_path(directory, 'v.mod')
+	os.write_file(project_manifest, "Module { name: 'alias_target_test' }\n")!
+	os.write_file(os.join_path(alias_dir, 'alias.v'), "@[alias: '@VMODROOT/canonical'] module foo\n")!
+	target := os.join_path(os.real_path(directory), 'canonical', 'bar')
+
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		vroot:                directory
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', search_root]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := 'x.v:2:1: builder error: cannot import module "foo.bar" (not found)'
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	mut alias_manifests := map[string]bool{}
+	assert module_alias_targets(os.real_path(search_root), 'foo.bar', mut alias_manifests) == [
+		target,
+	]
+	assert os.real_path(project_manifest) in alias_manifests
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert recorded.contains('d${tool_cache_field_separator}${target}${tool_cache_field_separator}${dir_stamp(target)}')
+	assert unbuildable_tool_failure(entry) != none
+
+	os.mkdir_all(target)!
+	os.write_file(os.join_path(target, 'bar.v'), 'module bar\n')!
+	assert unbuildable_tool_failure(entry) == none, 'restoring an alias target must retry module resolution'
+}
+
+// Ancestor resolution rejects a sibling module whose nearest v.mod declares another name.
+// Editing that manifest can make an otherwise unchanged directory resolve successfully.
+fn test_changing_an_ancestor_module_manifest_invalidates_a_recorded_failure() {
+	directory := toolcache_test_dir('ancestor_module_manifest')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	project_root := os.join_path(directory, 'importer')
+	tool_dir := os.join_path(project_root, 'cmd', 'demo')
+	os.mkdir_all(tool_dir)!
+	os.write_file(os.join_path(project_root, 'v.mod'), "Module {\n\tname: 'importer'\n}\n")!
+	source := os.join_path(tool_dir, 'main.v')
+	os.write_file(source, 'module main\n\nimport foo.bar\n')!
+
+	sibling_root := os.join_path(directory, 'foo')
+	module_dir := os.join_path(sibling_root, 'bar')
+	os.mkdir_all(module_dir)!
+	os.write_file(os.join_path(module_dir, 'bar.v'), 'module bar\n')!
+	module_manifest_path := os.join_path(sibling_root, 'v.mod')
+	os.write_file(module_manifest_path, "Module {\n\tname: 'not_foo'\n}\n")!
+	module_manifest := os.join_path(os.real_path(sibling_root), 'v.mod')
+
+	entry_dir := os.join_path(directory, 'cache', 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		source:               source
+		vroot:                project_root
+		dir:                  entry_dir
+		unbuildable:          os.join_path(entry_dir, 'unbuildable')
+		unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		build_args:           ['-path', os.join_path(directory, 'explicit')]
+	}
+	os.mkdir_all(entry.dir)!
+	dumped := os.join_path(directory, 'sources.txt')
+	os.write_file(dumped, '')!
+	details := '${source}:3:1: builder error: cannot import module "foo.bar" (not found)'
+	time.sleep(1100 * time.millisecond)
+	record_unbuildable_tool(entry, dumped, time.now().unix(), details)
+	recorded := os.read_file(entry.unbuildable_manifest)!
+	assert vmod_manifest_inputs(module_dir) == [
+		os.join_path(os.real_path(module_dir), 'v.mod'),
+		module_manifest,
+	]
+	assert recorded.contains('f${tool_cache_field_separator}${module_manifest}${tool_cache_field_separator}${file_stamp(module_manifest)}')
+	reason := recorded_inputs_changed(entry.unbuildable_manifest)
+	assert reason == '', 'the just-recorded ancestor-module failure is stale: ${reason}'
+	assert unbuildable_tool_failure(entry) != none
+
+	os.write_file(module_manifest_path, "Module {\n\tname: 'foo'\n}\n")!
+	assert unbuildable_tool_failure(entry) == none, 'changing the owning manifest must retry ancestor module resolution'
+}
+
+// `VMODULES` decides which copy of a module an import resolves to, so it selects sources
+// without changing any path already recorded in a manifest.
+fn test_the_cache_key_covers_vmodules() {
+	directory := toolcache_test_dir('vmodules_key')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	vexe := os.join_path(directory, 'v')
+	os.write_file(vexe, 'a pretend V executable')!
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, 'module main\n')!
+
+	assert 'VMODULES' in ambient_build_variables
+	previous := os.getenv('VMODULES')
+	defer {
+		os.setenv('VMODULES', previous, true)
+	}
+	os.setenv('VMODULES', '', true)
+	baseline := tool_cache_key(vexe, 'vdemo', [source], [])
+	os.setenv('VMODULES', os.join_path(directory, 'elsewhere'), true)
+	assert tool_cache_key(vexe, 'vdemo', [source], []) != baseline, 'VMODULES must be part of the key'
+	os.setenv('VMODULES', '', true)
+	assert tool_cache_key(vexe, 'vdemo', [source], []) == baseline, 'clearing it must restore the key'
+}
+
+// `$embed_file` on an asset that is not there compiles: the binary simply carries no payload.
+// Recording where the asset should have been is the only thing that lets a later invocation
+// notice it was restored, so the path has to reach the manifest precisely while it is absent.
+fn test_a_missing_embedded_asset_is_recorded_and_invalidates_the_cache() {
+	vexe := @VEXE
+	if !os.is_executable(vexe) {
+		eprintln('> skipping, no V executable at `${vexe}`')
+		return
+	}
+	directory := toolcache_test_dir('missing_embed')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	os.write_file(os.join_path(directory, 'v.mod'), 'Module { name: "embdemo" }\n')!
+	asset := os.join_path(directory, 'config.toml')
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, "module main\n\nconst asset = \$embed_file('config.toml')\n\nfn main() {\n\tprintln(asset.len)\n}\n")!
+	assert !os.exists(asset), 'the asset must be absent for this build'
+
+	dumped := os.join_path(directory, 'sources.txt')
+	binary := os.join_path(directory, 'vdemo')
+	build :=
+		os.execute('${os.quoted_path(vexe)} -prod -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+	assert build.exit_code == 0, build.output
+
+	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
+	assert os.real_path(asset) in recorded || asset in recorded, 'the absent asset must be recorded, got ${recorded.filter(!it.contains('/vlib/'))}'
+
+	entry := ToolCacheEntry{
+		name:     'vdemo'
+		binary:   binary
+		manifest: binary + '.inputs'
+	}
+	time.sleep(1100 * time.millisecond)
+	os.write_file(entry.manifest, encode_tool_cache_manifest(recorded, time.now().unix()))!
+	// An input that was absent when recorded and still is must read as unchanged. `os.stat`
+	// cannot date it, so a freshness check that trusted `last_modified` here would call it
+	// changed on every lookup and rebuild the tool forever.
+	assert tool_cache_is_fresh(entry), 'a still absent asset must not force a rebuild'
+	assert tool_cache_is_fresh(entry), 'the answer has to be stable across lookups'
+
+	// Restoring it has to invalidate the binary that was built without a payload.
+	os.write_file(asset, 'key = "value"\n')!
+	assert !tool_cache_is_fresh(entry), 'restoring an embedded asset must force a rebuild'
+}
+
+fn test_a_missing_input_stamps_as_missing() {
+	directory := toolcache_test_dir('missing_stamp')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	absent := os.join_path(directory, 'not-there')
+	assert file_stamp(absent) == file_stamp_missing
+	os.write_file(absent, 'now it is')!
+	assert file_stamp(absent) != file_stamp_missing, 'appearing has to change the stamp'
+}
+
+// Publishing the executable and publishing the manifest are two separate steps, so two
+// processes rebuilding one key across a source edit can interleave: the newer build installs
+// its binary, the older one replaces it and publishes its old manifest, then the newer one
+// publishes its manifest. That leaves the older executable vouched for by a current, fresh
+// manifest, and every later invocation runs stale code. The manifest names the exact build it
+// describes so a reader can see the mismatch.
+fn test_a_binary_from_another_build_is_not_trusted_by_a_fresh_manifest() {
+	entry, _ := fresh_cache_fixture('interleaved')
+	defer {
+		os.rmdir_all(os.dir(entry.binary)) or {}
+	}
+	// The fixture's manifest has no binary line, so pair it the way a real build does.
+	paired := (os.read_file(entry.manifest) or { '' }) + 'b${tool_cache_field_separator}${entry.binary}${tool_cache_field_separator}${binary_identity(entry.binary)}\n'
+	os.write_file(entry.manifest, paired)!
+	assert tool_cache_is_fresh(entry), 'a binary and the manifest that describes it must pair'
+
+	// Another build of the same key replaces the executable. Its sources are identical, so
+	// nothing else in the manifest can notice; only the pairing can.
+	other := entry.binary + '.other'
+	os.write_file(other, 'a different build of the same key')!
+	os.chmod(other, 0o755)!
+	os.mv(other, entry.binary)!
+
+	assert !tool_cache_is_fresh(entry), 'an executable from another build must not be reused'
+	reason := tool_cache_stale_reason(entry)
+	assert reason.contains(entry.binary), 'the reason has to name the binary, got `${reason}`'
+}
+
+fn test_binary_identity_separates_two_builds() {
+	directory := toolcache_test_dir('identity')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	first := os.join_path(directory, 'first')
+	os.write_file(first, 'build one')!
+	identity := binary_identity(first)
+	assert identity != file_stamp_missing
+	// Re-reading the same file has to give the same answer, or every lookup would rebuild.
+	assert binary_identity(first) == identity
+
+	// A separately created file is a different build, even with identical contents.
+	second := os.join_path(directory, 'second')
+	os.write_file(second, 'build one')!
+	assert binary_identity(second) != identity, 'two builds must not share an identity'
+
+	assert binary_identity(os.join_path(directory, 'absent')) == file_stamp_missing
 }

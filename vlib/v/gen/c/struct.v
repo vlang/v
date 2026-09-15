@@ -1490,6 +1490,21 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 	return true
 }
 
+// lowered_struct_init_sum_name prefers a transform-made literal's canonical
+// type metadata before interpreting its value as source text.
+fn (g &FlatGen) lowered_struct_init_sum_name(node flat.Node) string {
+	if node.children_count == 2 && node.typ.len > 0 {
+		first := g.a.child_node(&node, 0)
+		if first.value == 'typ' {
+			canonical_name := g.resolve_sum_name(node.typ)
+			if canonical_name in g.tc.sum_types {
+				return canonical_name
+			}
+		}
+	}
+	return g.resolve_source_sum_name(node.value, g.node_source_file(&node))
+}
+
 // struct_init_is_lowered_sum_literal recognizes a transform-made sum literal
 // (exactly a `typ` index field plus one variant payload field) whose sum name
 // kept a foreign module's bare spelling: such a name parses as a plain struct,
@@ -1502,12 +1517,12 @@ fn (g &FlatGen) struct_init_is_lowered_sum_literal(node flat.Node) bool {
 	if first.value != 'typ' {
 		return false
 	}
-	resolved := g.resolve_sum_name(node.value)
+	resolved := g.lowered_struct_init_sum_name(node)
 	return resolved in g.tc.sum_types
 }
 
 fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
-	for candidate in [node.typ, g.expected_expr_type.name(), node.value] {
+	for candidate in [node.typ, g.expected_expr_type.name()] {
 		resolved := g.resolve_sum_name(candidate)
 		if resolved in g.tc.sum_types {
 			return resolved
@@ -1521,7 +1536,19 @@ fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
 			}
 		}
 	}
-	return g.resolve_sum_name(node.value)
+	resolved_source := g.resolve_source_sum_name(node.value, g.node_source_file(&node))
+	if resolved_source in g.tc.sum_types {
+		return resolved_source
+	}
+	if node.value.contains('[') {
+		ct := g.tc.c_type(g.tc.parse_type(node.value))
+		for sum_name, _ in g.tc.sum_types {
+			if g.tc.c_type(g.interface_concrete_type(sum_name)) == ct {
+				return sum_name
+			}
+		}
+	}
+	return resolved_source
 }
 
 fn (g &FlatGen) lowered_sum_field_variant(sum_name string, field &flat.Node) ?string {
@@ -6138,6 +6165,21 @@ fn (mut g FlatGen) emit_struct(name string) {
 		if pack.len > 0 {
 			g.writeln('#pragma pack(push, ${pack})')
 		}
+		// `struct C.X {}` says the struct is defined in C. V normally still emits a
+		// definition, with a dummy member because C has no empty struct -- fine when
+		// nothing else declares it. On a target that supplies its own headers those
+		// headers are included and do define it, so the synthesized one is a
+		// redefinition; a forward declaration is enough for the pointer use such an
+		// opaque type gets, and the header completes it.
+		if g.target_libc_headers && fields.len == 0 && name.starts_with('C.') {
+			g.writeln('${g.struct_decl_head(name)};')
+			if pack.len > 0 {
+				g.writeln('#pragma pack(pop)')
+			}
+			g.writeln('')
+			g.tc.cur_module = old_module
+			return
+		}
 		g.writeln('${g.struct_decl_head(name)} {')
 		if fields.len == 0 {
 			g.writeln('\tu8 _dummy;')
@@ -6211,7 +6253,17 @@ fn (g &FlatGen) soa_companion_name(struct_name string) string {
 }
 
 fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
-	return 'C.${soa_name}' in g.tc.structs
+	if soa_name in g.inlined_c_typedef_names || g.cache_native_c_symbols[soa_name] {
+		return true
+	}
+	c_decl_name := 'C.${soa_name}'
+	if c_decl_name in g.tc.structs && c_decl_name !in g.tc.c_typedef_structs {
+		return true
+	}
+	if info := g.struct_decl_infos[c_decl_name] {
+		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+	}
+	return false
 }
 
 fn (g &FlatGen) soa_companion_collision(struct_name string, soa_name string, fields []SoaFieldInfo) ?string {
@@ -6276,7 +6328,13 @@ fn (g &FlatGen) soa_companion_c_decl_matches(c_name string, fields []SoaFieldInf
 }
 
 fn (g &FlatGen) soa_companion_c_decl_field_matches(field types.StructField, name string, c_type string) bool {
-	return g.cname(field.name) == name && g.tc.c_type(field.typ) == c_type
+	if g.cname(field.name) != name {
+		return false
+	}
+	field_c_type := g.tc.c_type(field.typ)
+	// C interop declarations spell an ABI `int` as V `int`, whose normal V3
+	// representation is i64. The generated SoA len/cap fields are C `int`s.
+	return field_c_type == c_type || (c_type == 'int' && field.typ.name() == 'int')
 }
 
 fn (mut g FlatGen) soa_field_c_type(struct_name string, f types.StructField) string {
