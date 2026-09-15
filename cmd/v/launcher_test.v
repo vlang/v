@@ -45,22 +45,9 @@ fn test_launcher_finds_external_commands() {
 	assert option_value == ''
 }
 
-fn test_v1_fallback_runs_the_current_vls_updater() {
-	root := find_vroot(@FILE) or { panic(err) }
-	tool_source := os.join_path(root, 'cmd', 'tools', 'vls.v')
-	assert v1_fallback_args(['-silent', 'ls', '--update']) == [
-		'-silent',
-		'run',
-		tool_source,
-		'ls',
-		'--update',
-	]
-	assert v1_fallback_args(['-silent', 'fmt', '-verify', 'main.v']) == [
-		'-silent',
-		'fmt',
-		'-verify',
-		'main.v',
-	]
+fn test_vls_does_not_use_the_v1_fallback() {
+	assert !external_tool_uses_fallback('vls')
+	assert external_tool_uses_fallback('vfmt')
 }
 
 fn test_json_quote_escapes_report_content() {
@@ -353,7 +340,8 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.c.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js_node', 'example_test.js.v'])
-	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser', 'example_test.js.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser',
+		'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=wasm', 'example_test.wasm.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])

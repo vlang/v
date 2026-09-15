@@ -16,7 +16,6 @@ const v1_fallback_binary = 'v1_fallback'
 // Cached fallback trees are not used until they carry every listed module.
 const v1_fallback_compatibility_modules = ['json2']
 const v1_fallback_compatibility_marker = '.v1-fallback-complete'
-const vls_update_vexe_env = 'V_VLS_UPDATE_VEXE'
 const v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
@@ -249,6 +248,7 @@ fn run_external_tool(args []string, command_index int, command string) {
 // file (`v fmt -verify`, `v vet`) are unusable without this.
 fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string, args []string) {
 	retry_args := clean_compiler_selection_flags(args)
+	use_fallback := external_tool_uses_fallback(tool_name)
 	if !tool_cache_is_disabled() {
 		vexe := os.real_path(os.executable())
 		build_args := clean_compiler_selection_flags(prefix_args)
@@ -263,7 +263,7 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 			if recorded := unbuildable_tool_failure(entry) {
 				// Rebuilding a tool that is already known to not compile would cost seconds on
 				// every single invocation, so report the recorded failure straight away instead.
-				if fallback_is_disabled() {
+				if fallback_is_disabled() || !use_fallback {
 					eprintln(recorded.trim_space())
 					exit(1)
 				}
@@ -274,7 +274,7 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 			}
 			build_tool_binary(vexe, entry) or {
 				eprintln(err.msg().trim_space())
-				if fallback_is_disabled() {
+				if fallback_is_disabled() || !use_fallback {
 					exit(1)
 				}
 				launch_v1(retry_args, unbuildable_tool_reason(tool_name, entry), RetryState{})
@@ -286,7 +286,18 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 	driver_args << prefix_args
 	driver_args << ['run', tool_source]
 	driver_args << tool_args
-	run_with_fallback(clean_compiler_selection_flags(driver_args), retry_args)
+	clean_driver_args := clean_compiler_selection_flags(driver_args)
+	if use_fallback {
+		run_with_fallback(clean_driver_args, retry_args)
+	} else {
+		driver.run(clean_driver_args)
+	}
+}
+
+// external_tool_uses_fallback reports whether an external tool can use the V1 compatibility
+// compiler. The VLS updater and VLS itself are V3 programs and must be built with the current V.
+fn external_tool_uses_fallback(tool_name string) bool {
+	return tool_name != 'vls'
 }
 
 // unbuildable_tool_reason explains why a tool has to run on the compatibility compiler.
@@ -344,17 +355,13 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 		eprintln(err.msg())
 		exit(1)
 	}
-	retry_args := v1_fallback_args(args)
-	if retry_args != args {
-		os.setenv(vls_update_vexe_env, os.real_path(os.executable()), true)
-	}
 	os.setenv('VEXE', fallback, true)
 	os.setenv('VCHILD', 'true', true)
 	eprintln('${reason}; retrying with `${fallback}`.')
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
 	mut process := os.new_process(fallback)
-	process.set_args(retry_args)
+	process.set_args(args)
 	process.wait()
 	if process.status == .aborted || process.code < 0 {
 		eprintln('failed to launch the V 0.5.2 compatibility compiler `${fallback}`: ${process.err}')
@@ -367,31 +374,11 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 		submit_v3_fallback_report(fallback, report_state)
 	}
 	if code != 0 {
-		report_v1_fallback_exit(report_state, v1_fallback_exit_identifies_compiler_failure(retry_args))
+		report_v1_fallback_exit(report_state, v1_fallback_exit_identifies_compiler_failure(args))
 	}
 	os.rm(report_state.fallback_file) or {}
 	os.rmdir_all(report_state.c_error_dir) or {}
 	exit(code)
-}
-
-// v1_fallback_args keeps the VLS updater in sync with the current checkout. Otherwise the
-// release fallback dispatches `v ls` to its own obsolete cmd/tools/vls.v.
-fn v1_fallback_args(args []string) []string {
-	command_index, command := find_command(args)
-	if command != 'ls' {
-		return args.clone()
-	}
-	vroot := find_vroot(os.executable()) or {
-		find_vroot(@VEXEROOT) or { return args.clone() }
-	}
-	tool_source := os.join_path(vroot, 'cmd', 'tools', 'vls.v')
-	if !os.is_file(tool_source) {
-		return args.clone()
-	}
-	mut retry_args := args[..command_index].clone()
-	retry_args << ['run', tool_source]
-	retry_args << args[command_index..]
-	return retry_args
 }
 
 // v1_fallback_exit_identifies_compiler_failure reports whether a nonzero exit
@@ -680,7 +667,8 @@ fn ensure_v1_fallback(reason string) !string {
 		eprintln('${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...')
 		mut process := os.new_process(make_command)
 		process.set_args(['v1'])
-		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()), cache_parent, cached_launcher))
+		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()),
+			cache_parent, cached_launcher))
 		process.set_work_folder(vroot)
 		process.wait()
 		code := process.code
