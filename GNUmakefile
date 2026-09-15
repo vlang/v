@@ -174,6 +174,7 @@ BOOTSTRAP_VC_SOURCES := $(VC)/$(VCFILE)
 # still reference two libc symbols that OpenBSD does not provide. Supply the small
 # bootstrap-only compatibility implementations until vc is regenerated.
 ifdef OPENBSD
+BOOTSTRAP_VC_CC_CFLAGS += -DSYS_getrandom=0
 BOOTSTRAP_VC_SOURCES += $(VROOT)/cmd/tools/openbsd_vc_compat.c
 endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))

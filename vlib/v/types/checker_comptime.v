@@ -15647,6 +15647,13 @@ fn (tc &TypeChecker) visible_local_scope_owns_name(name string) bool {
 				return true
 			}
 		}
+		// A closure is a separate function scope. Its locals may shadow bindings
+		// from the enclosing function even though scope lookup can still reach
+		// those bindings to diagnose missing explicit captures.
+		if tc.fn_context.closure_scope != unsafe { nil }
+			&& voidptr(scope) == voidptr(tc.fn_context.closure_scope) {
+			return false
+		}
 		scope = scope.parent
 	}
 	return false

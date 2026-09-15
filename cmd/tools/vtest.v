@@ -50,7 +50,8 @@ fn main() {
 	mut ts := testing.new_test_session(session_vargs, true)
 	ts.exec_mode = .compile_and_run
 	ts.fail_fast = ctx.fail_fast
-	for targ in args_after {
+	for raw_targ in args_after {
+		targ := os.norm_path(raw_targ)
 		if os.is_dir(targ) {
 			// Fetch all tests from the directory
 			files, skip_files := ctx.should_test_dir(targ.trim_right(os.path_separator), backend)
