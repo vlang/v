@@ -420,6 +420,9 @@ mut:
 	c_maybe_function_macro_aliases map[string][]string
 	c_active_macro_push_stacks     map[string][]CActiveMacroSnapshot
 	c_active_macro_once_paths      map[string]bool
+	c_active_macro_header_guards   map[string]string
+	c_active_macro_header_guard_ends map[string]int
+	c_active_macro_header_directives map[string][]string
 	has_unscanned_forced_c_include bool
 	files_with_unscanned_c_includes map[string]bool
 	c_fn_decl_source_files          map[string][]string
@@ -1239,6 +1242,9 @@ pub fn FlatGen.new() FlatGen {
 		c_maybe_function_macro_aliases: map[string][]string{}
 		c_active_macro_push_stacks: map[string][]CActiveMacroSnapshot{}
 		c_active_macro_once_paths: map[string]bool{}
+		c_active_macro_header_guards: map[string]string{}
+		c_active_macro_header_guard_ends: map[string]int{}
+		c_active_macro_header_directives: map[string][]string{}
 		files_with_unscanned_c_includes: map[string]bool{}
 		c_fn_decl_source_files: map[string][]string{}
 		direct_c_include_macros: map[string][]string{}
@@ -3378,6 +3384,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_maybe_function_macro_aliases.clear()
 	g.c_active_macro_push_stacks.clear()
 	g.c_active_macro_once_paths.clear()
+	g.c_active_macro_header_guards.clear()
+	g.c_active_macro_header_guard_ends.clear()
+	g.c_active_macro_header_directives.clear()
 	g.has_unscanned_forced_c_include = false
 	g.files_with_unscanned_c_includes.clear()
 	g.c_fn_decl_source_files.clear()
@@ -5360,6 +5369,9 @@ fn (mut g FlatGen) replay_c_active_macro_state(top_level_nodes []i32) {
 	g.c_maybe_function_macro_aliases.clear()
 	g.c_active_macro_push_stacks.clear()
 	g.c_active_macro_once_paths.clear()
+	g.c_active_macro_header_guards.clear()
+	g.c_active_macro_header_guard_ends.clear()
+	g.c_active_macro_header_directives.clear()
 	g.has_unscanned_forced_c_include = false
 	g.files_with_unscanned_c_includes.clear()
 	g.initialize_c_active_macro_environment()
@@ -6112,6 +6124,35 @@ fn c_header_guard_name_from_lines(lines []string) string {
 		return ''
 	}
 	return ''
+}
+
+fn c_header_guard_end_directive(directives []string, guard string) ?int {
+	mut depth := 0
+	for i, directive in directives {
+		name := c_directive_name(directive)
+		if name == 'undef' {
+			fields := c_directive_arg(directive).fields()
+			if fields.len > 0 && fields[0] == guard {
+				return none
+			}
+		} else if name == 'pragma' {
+			operation, macro_name := c_active_macro_pragma_operation(directive)
+			if operation == 'pop' && macro_name == guard {
+				return none
+			}
+		}
+		if name in ['if', 'ifdef', 'ifndef'] {
+			depth++
+		} else if name in ['else', 'elif'] && depth == 1 {
+			return none
+		} else if name == 'endif' {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return none
 }
 
 fn c_line_has_continuation(line string) bool {
@@ -8795,8 +8836,15 @@ fn c_active_macro_directive_state(directive string, mut conditionals []CCacheCon
 	if directive_name in ['if', 'ifdef', 'ifndef'] {
 		parent_inactive := conditionals.any(it.inactive)
 		parent_ambiguous := conditionals.any(it.ambiguous)
-		condition := c_cache_known_condition(directive, include_macros, dynamic_include_macros,
-			compiler_macro_environment_complete)
+		// A C preprocessor does not expand or evaluate conditions nested inside an
+		// inactive branch. Apart from being unnecessary, doing so for every repeated
+		// guarded system header creates millions of temporary strings under -prealloc.
+		condition := if parent_inactive {
+			-1
+		} else {
+			c_cache_known_condition(directive, include_macros, dynamic_include_macros,
+				compiler_macro_environment_complete)
+		}
 		conditionals << CCacheConditional{
 			parent_inactive: parent_inactive
 			condition:       condition
@@ -8810,7 +8858,7 @@ fn c_active_macro_directive_state(directive string, mut conditionals []CCacheCon
 		mut conditional := conditionals[last]
 		if directive_name == 'else' {
 			conditional.inactive = conditional.parent_inactive || conditional.condition > 0
-		} else if conditional.condition > 0 {
+		} else if conditional.parent_inactive || conditional.condition > 0 {
 			conditional.inactive = true
 		} else {
 			next_condition := c_cache_known_condition(directive, include_macros,
@@ -8861,21 +8909,61 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 	if real_path in active_paths || real_path in g.c_active_macro_once_paths {
 		return
 	}
-	text := os.read_file(real_path) or { return }
-	defer {
-		unsafe { text.free() }
+	mut directives := g.c_active_macro_header_directives[real_path]
+	if real_path !in g.c_active_macro_header_directives {
+		text := os.read_file(real_path) or { return }
+		defer {
+			unsafe { text.free() }
+		}
+		lines := c_join_continued_lines(text)
+		mut in_block_comment := false
+		for line in lines {
+			clean, next_in_block_comment := c_preprocessor_directive_scan_line(line,
+				in_block_comment)
+			in_block_comment = next_in_block_comment
+			if clean.len > 0 {
+				directives << clean
+			}
+		}
+		guard := c_header_guard_name_from_lines(lines)
+		if guard.len > 0 {
+			if guard_end := c_header_guard_end_directive(directives, guard) {
+				g.c_active_macro_header_guards[real_path] = guard
+				g.c_active_macro_header_guard_ends[real_path] = guard_end
+			}
+		}
+		g.c_active_macro_header_directives[real_path] = directives
 	}
 	active_paths[real_path] = true
 	defer {
 		active_paths.delete(real_path)
 	}
 	mut conditionals := []CCacheConditional{}
-	mut in_block_comment := false
-	for line in c_join_continued_lines(text) {
-		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
-		in_block_comment = next_in_block_comment
+	mut first_directive := 0
+	guard := g.c_active_macro_header_guards[real_path]
+	guard_end := g.c_active_macro_header_guard_ends[real_path]
+	if guard.len > 0 {
+		// A traditional guard can leave compatibility directives after its closing
+		// `#endif`. Skip only the guarded prefix and continue replaying that tail.
+		// A false dynamic value means a conditional `#undef` made the guard ambiguous.
+		if guard in g.direct_c_include_macros || g.direct_c_dynamic_macros[guard] {
+			first_directive = guard_end + 1
+		}
+	}
+	for directive_idx in first_directive .. directives.len {
+		clean := directives[directive_idx]
 		directive_name := c_directive_name(clean)
 		directive_is_active, directive_is_ambiguous := c_active_macro_directive_state(clean, mut conditionals, mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros, g.c_compiler_macro_env_complete)
+		if guard.len > 0 && directive_idx == guard_end && !ambient_ambiguous {
+			// Whether the opening `#ifndef` was true or false, a conventional guard
+			// that does not undef itself is definitely defined after this `#endif`.
+			// Recording that invariant lets later includes skip the guarded prefix
+			// even when the compiler's initial macro environment is incomplete.
+			if guard !in g.direct_c_include_macros && !g.direct_c_dynamic_macros[guard] {
+				g.direct_c_dynamic_macros.delete(guard)
+				g.direct_c_include_macros[guard] = []string{}
+			}
+		}
 		if !directive_is_active {
 			continue
 		}
