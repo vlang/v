@@ -45,11 +45,6 @@ fn test_launcher_finds_external_commands() {
 	assert option_value == ''
 }
 
-fn test_vls_does_not_use_the_v1_fallback() {
-	assert !external_tool_uses_fallback('vls')
-	assert external_tool_uses_fallback('vfmt')
-}
-
 fn test_json_quote_escapes_report_content() {
 	assert json_quote('a\n"b"\\c\t') == '"a\\n\\"b\\"\\\\c\\t"'
 }
@@ -281,6 +276,36 @@ fn run_launcher_test_process(executable string, args []string, work_dir string,
 	return result
 }
 
+fn test_external_tools_do_not_use_the_v1_fallback() {
+	$if !windows {
+		false_executable := os.find_abs_path_of_executable('false') or { return }
+		dispatcher := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
+			os.join_path(os.dir(@VEXE), 'v')
+		} else {
+			@VEXE
+		}
+		if !os.is_executable(dispatcher) {
+			return
+		}
+		cache := os.join_path(os.vtmp_dir(), 'v3_external_tool_failure_${os.getpid()}')
+		os.rmdir_all(cache) or {}
+		os.mkdir_all(cache)!
+		defer {
+			os.rmdir_all(cache) or {}
+		}
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['VTOOLS_CACHE_DIR'] = cache
+		environment['VTOOLS_NO_CACHE'] = ''
+		environment['V_MACOS_V3_NO_FALLBACK'] = ''
+		result := run_launcher_test_process(dispatcher, ['-cc', false_executable, 'timeout', '1',
+			dispatcher, 'version'], os.dir(dispatcher), environment)
+		assert result.exit_code != 0, result.output
+		assert !result.output.contains('retrying with'), result.output
+	}
+}
+
 fn test_failed_run_retry_explains_how_to_show_v3_diagnostics() {
 	dispatcher := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
 		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
@@ -340,8 +365,7 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.c.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js_node', 'example_test.js.v'])
-	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser',
-		'example_test.js.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=wasm', 'example_test.wasm.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])
