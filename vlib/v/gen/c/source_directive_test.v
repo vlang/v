@@ -561,3 +561,21 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 	assert source in active_g.files_with_c_includes
 	assert !active_g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')
 }
+
+fn test_cross_os_target_include_is_guarded_for_the_c_compiler() {
+	host := pref.host_target()
+	target_os := if host.os == 'linux' { 'macos' } else { 'linux' }
+	target := pref.target_from(target_os, host.arch) or { panic(err) }
+	mut g := FlatGen.new()
+	g.set_target(target)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '${target_os} <target_only.h>'
+	}, '', false)
+	condition := pref.cross_target_c_condition(target_os) or { panic(err) }
+	directives := g.ordered_c_directives(false)
+	assert directives == [
+		'#if ${condition}\n#include <target_only.h>\n#endif',
+	], 'unexpected directives: ${directives}'
+}

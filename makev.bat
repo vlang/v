@@ -213,9 +213,9 @@ if !ERRORLEVEL! NEQ 0 (
 	goto :gcc_strap
 )
 
-set V_FALLBACK_CC_ARGS=-cc clang -cflags "--target=!clang_target!"
+set V_FALLBACK_CC_ARGS=-cc "!clang_exe!" -cflags "--target=!clang_target!"
 echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc clang -cflags "--target=!clang_target!" -o "%V_UPDATED%" cmd/v
+"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!clang_exe!" -cflags "--target=!clang_target!" -o "%V_UPDATED%" cmd/v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 call :move_updated_to_v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
@@ -267,7 +267,7 @@ echo  ^> Bootstrapping "%V_BOOTSTRAP%" before compiling "%V_EXE%" with MSVC
 set stage_vflags=
 call :build_bootstrap_with_clang
 if !ERRORLEVEL! EQU 0 (
-	set stage_vflags=-cc clang -cflags "--target=!clang_target!"
+	set stage_vflags=-cc "!clang_exe!" -cflags "--target=!clang_target!"
 ) else (
 	call :build_bootstrap_with_gcc
 	if !ERRORLEVEL! EQU 0 (
@@ -464,17 +464,18 @@ echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with "!tcc_exe!"
 exit /b !ERRORLEVEL!
 
 :build_bootstrap_with_clang
-"%where_exe%" /q clang
-if !ERRORLEVEL! NEQ 0 (
+call :resolve_executable clang
+if [!resolved_exe!] == [] (
 	echo  ^> Clang not found
 	exit /b 1
 )
+set "clang_exe=!resolved_exe!"
 if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set clang_target=i686-w64-mingw32 ) else ( set clang_target=x86_64-w64-mingw32 )
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with Clang
-clang --target=!clang_target! -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+"!clang_exe!" --target=!clang_target! -std=c99 -municode -g -w -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" -ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
 if !ERRORLEVEL! NEQ 0 (
 	echo In most cases, compile errors happen because the version of Clang installed is too old
-	clang --version
+	"!clang_exe!" --version
 	exit /b 1
 )
 exit /b 0

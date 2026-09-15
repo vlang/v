@@ -1899,8 +1899,7 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 			}
 			continue
 		}
-		if node.kind == .directive && node.value in ['include', 'insert', 'preinclude',
-			'postinclude'] && node.typ.len > 0 {
+		if node.kind == .directive && node.value in ['include', 'insert', 'preinclude', 'postinclude'] && node.typ.len > 0 {
 			// Do not assign a native input that the current preprocessor state has
 			// proved unreachable. Ambiguous branches still fail closed below.
 			if conditionals.any(it.inactive) {
@@ -2623,8 +2622,7 @@ fn c_cache_known_expression(raw_expression string, include_macros map[string][]s
 		return c_cache_macro_condition(macro_name, false, include_macros, dynamic_include_macros, compiler_macro_environment_complete)
 	}
 	mut seen := map[string]bool{}
-	if value := c_cache_integer_expression_value(expression, include_macros,
-		dynamic_include_macros, compiler_macro_environment_complete, mut seen, 0) {
+	if value := c_cache_integer_expression_value(expression, include_macros, dynamic_include_macros, compiler_macro_environment_complete, mut seen, 0) {
 		return if value == 0 { -1 } else { 1 }
 	}
 	return 0
@@ -2640,14 +2638,11 @@ fn c_cache_integer_expression_value(raw string, include_macros map[string][]stri
 	}
 	has_conditional, condition, if_true, if_false := c_header_condition_top_level_conditional(clean)
 	if has_conditional {
-		known_condition := c_cache_known_expression(condition, include_macros,
-			dynamic_include_macros, compiler_macro_environment_complete)
+		known_condition := c_cache_known_expression(condition, include_macros, dynamic_include_macros, compiler_macro_environment_complete)
 		if known_condition == 0 {
 			return none
 		}
-		return c_cache_integer_expression_value(if known_condition > 0 { if_true } else { if_false },
-			include_macros, dynamic_include_macros, compiler_macro_environment_complete, mut seen,
-			depth + 1)
+		return c_cache_integer_expression_value(if known_condition > 0 { if_true } else { if_false }, include_macros, dynamic_include_macros, compiler_macro_environment_complete, mut seen, depth + 1)
 	}
 	operator_groups := [
 		['|'],
@@ -2660,22 +2655,18 @@ fn c_cache_integer_expression_value(raw string, include_macros map[string][]stri
 		['*', '/', '%'],
 	]
 	for operators in operator_groups {
-		has_operator, left_text, operator, right_text := c_header_condition_top_level_binary(clean,
-			operators)
+		has_operator, left_text, operator, right_text := c_header_condition_top_level_binary(clean, operators)
 		if !has_operator {
 			continue
 		}
-		left := c_cache_integer_expression_value(left_text, include_macros, dynamic_include_macros,
-			compiler_macro_environment_complete, mut seen, depth + 1) or { return none }
-		right := c_cache_integer_expression_value(right_text, include_macros,
-			dynamic_include_macros, compiler_macro_environment_complete, mut seen, depth + 1) or {
+		left := c_cache_integer_expression_value(left_text, include_macros, dynamic_include_macros, compiler_macro_environment_complete, mut seen, depth + 1) or { return none }
+		right := c_cache_integer_expression_value(right_text, include_macros, dynamic_include_macros, compiler_macro_environment_complete, mut seen, depth + 1) or {
 			return none
 		}
 		return c_header_objective_c_checked_integer_binary(left, right, operator)
 	}
 	if clean.len > 1 && clean[0] in [`+`, `-`, `!`, `~`] {
-		value := c_cache_integer_expression_value(clean[1..], include_macros,
-			dynamic_include_macros, compiler_macro_environment_complete, mut seen, depth + 1) or {
+		value := c_cache_integer_expression_value(clean[1..], include_macros, dynamic_include_macros, compiler_macro_environment_complete, mut seen, depth + 1) or {
 			return none
 		}
 		if clean[0] == `+` {
@@ -2693,8 +2684,7 @@ fn c_cache_integer_expression_value(raw string, include_macros map[string][]stri
 		return -value
 	}
 	if macro_name := c_header_defined_macro_name(clean) {
-		macro_condition := c_cache_macro_condition(macro_name, false, include_macros,
-			dynamic_include_macros, compiler_macro_environment_complete)
+		macro_condition := c_cache_macro_condition(macro_name, false, include_macros, dynamic_include_macros, compiler_macro_environment_complete)
 		if macro_condition == 0 {
 			return none
 		}
@@ -2715,8 +2705,7 @@ fn c_cache_integer_expression_value(raw string, include_macros map[string][]stri
 		return none
 	}
 	seen[clean] = true
-	value := c_cache_integer_expression_value(values[0], include_macros, dynamic_include_macros,
-		compiler_macro_environment_complete, mut seen, depth + 1)
+	value := c_cache_integer_expression_value(values[0], include_macros, dynamic_include_macros, compiler_macro_environment_complete, mut seen, depth + 1)
 	seen.delete(clean)
 	return value
 }
@@ -2837,8 +2826,7 @@ fn c_flag_include_macro_definitions(flags []string, compiler_macros map[string]s
 	mut include_macros := map[string][]string{}
 	mut dynamic_include_macros := map[string]bool{}
 	for name, value in compiler_macros {
-		c_record_include_macro_value(name, value.trim_space(), mut include_macros,
-			mut dynamic_include_macros)
+		c_record_include_macro_value(name, value.trim_space(), mut include_macros, mut dynamic_include_macros)
 	}
 	for mutation in c_flag_macro_mutations(flags) {
 		equals := mutation.definition.index_u8(`=`)
@@ -2861,8 +2849,7 @@ fn c_flag_include_macro_definitions(flags []string, compiler_macros map[string]s
 				} else {
 					''
 				}
-				c_record_include_macro_value(name, value, mut include_macros,
-					mut dynamic_include_macros)
+				c_record_include_macro_value(name, value, mut include_macros, mut dynamic_include_macros)
 			}
 		}
 	}
@@ -5396,11 +5383,12 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 	if node.kind != .directive {
 		return false
 	}
-	// For portable output a target-prefixed `#include` is kept for every target and
-	// guarded, so the generating host no longer decides whether it is present.
+	// Portable output and cross-OS builds keep a target-prefixed `#include` guarded.
+	// The C compiler then decides whether it is active, so `-os linux` can still
+	// generate C on macOS without requiring Linux-only system headers there.
 	mut cross_prefix_condition := ''
 	mut directive_raw := node.typ
-	if g.output_cross_c {
+	if g.output_cross_c || g.target.os != pref.host_target().os {
 		if condition := c_directive_target_condition(node.typ) {
 			cross_prefix_condition = condition
 			directive_raw = c_directive_strip_target_prefix(node.typ)
@@ -16300,8 +16288,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				child_node := g.a.nodes[int(child_id)]
 				if child_node.kind == .call && child_node.children_count > 0 {
 					callee := g.a.child_node(&child_node, 0)
-					if callee.kind == .ident && callee.value in ['array_get', 'array__get',
-						'map__get', 'map__get_check', 'memdup', 'v3_aligned_memdup'] {
+					if callee.kind == .ident && callee.value in ['array_get', 'array__get', 'map__get',
+						'map__get_check', 'memdup', 'v3_aligned_memdup'] {
 						g.write('(${ct})')
 						g.gen_expr(child_id)
 						return

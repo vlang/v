@@ -945,7 +945,7 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 		callee := t.a.child_node(&first, 0)
 		if callee.kind == .selector && callee.children_count > 0
 			&& callee.value in ['first', 'last', 'pop', 'pop_left'] {
-			base_id := t.a.child(&callee, 0)
+			base_id := t.a.child(callee, 0)
 			base_type := t.normalize_type_alias(t.node_type(base_id)).trim_left('&')
 			if base_type.starts_with('[]') {
 				return base_type
@@ -1480,8 +1480,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 		rhs = t.make_ident(bulk_cleanup_name)
 		t.set_node_typ(int(rhs), bulk_cleanup_type)
 	}
-	converted_temp_name, converted_rhs := t.bind_converted_bulk_append_temp(converted_bulk_append,
-		push_many, rhs_type, bulk_cleanup_name, rhs, mut result)
+	converted_temp_name, converted_rhs := t.bind_converted_bulk_append_temp(converted_bulk_append, push_many, rhs_type, bulk_cleanup_name, rhs, mut result)
 	rhs = converted_rhs
 
 	lhs_addr := t.runtime_addr(lhs, lhs_type)
@@ -1759,8 +1758,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 		push_many = t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 	}
 
-	converted_temp_name, converted_rhs := t.bind_converted_bulk_append_temp(converted_bulk_append,
-		push_many, rhs_type, '', rhs, mut result)
+	converted_temp_name, converted_rhs := t.bind_converted_bulk_append_temp(converted_bulk_append, push_many, rhs_type, '', rhs, mut result)
 	rhs = converted_rhs
 	lhs_addr := if has_captured_addr {
 		captured_lhs_addr

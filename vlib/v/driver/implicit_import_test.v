@@ -67,6 +67,13 @@ fn test_c_executable_bin_file_uses_target_postfix() {
 	assert c_executable_bin_file_for_target('source', 'windows', false, false, true) == 'source'
 }
 
+fn test_c_compiler_output_name_uses_target_postfix() {
+	assert c_compiler_output_name_for_target('windows', false, false) == 'out.exe'
+	assert c_compiler_output_name_for_target('linux', false, false) == 'out'
+	assert c_compiler_output_name_for_target('windows', true, false) == 'out'
+	assert c_compiler_output_name_for_target('windows', false, true) == 'out'
+}
+
 fn scan_implicit_import_source(name string, source string) ImplicitImportScan {
 	path := os.join_path(os.temp_dir(), 'v3_implicit_import_${name}_${os.getpid()}.v')
 	os.write_file(path, source) or { panic(err) }
@@ -245,22 +252,22 @@ fn use() {
 fn test_synthetic_import_insertion_remaps_declaration_attribute_targets() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{
-		kind: .field_decl
+		kind:  .field_decl
 		value: 'value'
 	})
 	struct_id := ast.add_node(flat.Node{
-		kind: .struct_decl
+		kind:  .struct_decl
 		value: 'Packed'
 	})
 	ast.add_node(flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: '@attributes:${int(struct_id)}'
 	})
 	insert_synthetic_imports(mut ast, [
 		SyntheticInsertion{
-			pos: 0
+			pos:  0
 			node: flat.Node{
-				kind: .import_decl
+				kind:  .import_decl
 				value: 'builtin'
 			}
 		},

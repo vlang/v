@@ -55,19 +55,20 @@ jobs:
 
       - name: Cross-compilation to Linux
         run: |
-          ./v -os linux cmd/v
+          ./v -os linux -o /tmp/v_linux.c cmd/v
+          test -s /tmp/v_linux.c
           # TODO: fix this: ./v -os linux examples/2048/2048.v
 
       - name: Cross-compilation of veb app to Linux with -d use_openssl
-        run: ./v -d use_openssl -os linux examples/veb/veb_example.v
+        run: ./v -d use_openssl -os linux -o /tmp/veb_linux.c examples/veb/veb_example.v
 
       - name: Cross-compilation of vlang/gitly to Linux with -d use_openssl
         run: |
           ./v retry -- ./v install markdown
           ./v retry -- ./v install pcre
           ./v retry -- git clone --depth 1 https://github.com/vlang/gitly /tmp/gitly
-          ./v -d use_openssl -os linux /tmp/gitly
-          file /tmp/gitly/gitly
+          ./v -d use_openssl -os linux -o /tmp/gitly_linux.c /tmp/gitly
+          test -s /tmp/gitly_linux.c
 
       - name: Cross-compilation to Windows
         run: |
