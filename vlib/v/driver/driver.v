@@ -8560,6 +8560,7 @@ pub fn run(args []string) {
 	mut is_selfhost := false
 	mut no_builtin := false
 	mut no_preludes := false
+	mut no_closures := false
 	mut no_parallel := false
 	mut parallel_cc := false
 	mut no_prealloc := false
@@ -8937,6 +8938,9 @@ pub fn run(args []string) {
 		} else if args[i] == '-manualfree' {
 			ownership_mode = false
 			user_defines = user_defines.filter(it.all_before('=').trim_space() != 'autofree')
+			i++
+		} else if args[i] == '-no-closures' {
+			no_closures = true
 			i++
 		} else if args[i] == '-show-c-output' {
 			show_c_output = true
@@ -9927,6 +9931,7 @@ pub fn run(args []string) {
 		'target_arch=${prefs.normalized_target_arch()}',
 		'prod=${is_prod}',
 		'no_prod_options=${no_prod_options}',
+		'no_closures=${no_closures}',
 		'debug=${is_debug}',
 		'c_debug=${is_c_debug}',
 		'shared=${is_shared}',
@@ -10133,15 +10138,16 @@ pub fn run(args []string) {
 		use_parallel_c_compilation = false
 	}
 
+	skip_closure_runtime := minimal_literal_output || no_closures
 	if !no_builtin {
-		seed_implicit_imports(mut a, minimal_literal_output)
+		seed_implicit_imports(mut a, skip_closure_runtime)
 	}
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
 	// Resolve imports recursively
 	resolve_imports_started_us := b.current_step_time_us()
 	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
-	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, minimal_literal_output, mut cache_state, mut parse_timing)
+	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, skip_closure_runtime, mut cache_state, mut parse_timing)
 	resolve_imports_elapsed_us := b.current_step_time_us() - resolve_imports_started_us
 	resolve_imports_parse_us := parse_timing.header_us + parse_timing.source_us - resolve_imports_parse_started_us
 	resolve_imports_coordination_us := if resolve_imports_parse_us < resolve_imports_elapsed_us {
@@ -10622,6 +10628,7 @@ pub fn run(args []string) {
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
 	pre_tc.no_main = 'no_main' in prefs.user_defines
+	pre_tc.nofloat = 'nofloat' in prefs.user_defines
 	pre_tc.warn_about_allocs = prefs.warn_about_allocs
 	pre_tc.warns_are_errors = effective_warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
@@ -10830,6 +10837,12 @@ pub fn run(args []string) {
 		}
 		if pre_tc.errors.len > 0 {
 			exit(1)
+		}
+		if no_closures {
+			if closure_error := no_closures_error(a, &pre_tc) {
+				print_type_diagnostics(a, []types.TypeError{}, [closure_error], true, fatal_errors)
+				exit(1)
+			}
 		}
 		incremental_uses_generics = incremental_cache_hit
 			&& incremental_changed_functions_use_generics(a, pre_tc, incremental_changed_names)
@@ -15797,6 +15810,7 @@ fn skipped_backend_module_groups(prefs &pref.Preferences) [][]string {
 struct ImplicitFieldScanIndex {
 mut:
 	aliases     map[string]string
+	imports     map[string]bool
 	fields      map[string]map[string]string
 	enum_fields map[string]map[string]bool
 	fn_returns  map[string]string
@@ -15988,7 +16002,12 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		for i in scan.node_idx .. end_node {
 			node := a.nodes[i]
 			if node.kind == .call && node.children_count > 0 {
-				call_callees[int(a.child(&node, 0))] = true
+				callee_id := a.child(&node, 0)
+				call_callees[int(callee_id)] = true
+				callee := a.node(callee_id)
+				if callee.kind == .index && callee.children_count > 0 {
+					call_callees[int(a.child(callee, 0))] = true
+				}
 			} else if node.kind == .lambda_expr {
 				scan.needs_closure = true
 			} else if node.kind == .fn_literal {
@@ -16054,7 +16073,8 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 					}
 				}
 			} else if node.kind == .selector && node.children_count > 0 && i !in call_callees
-				&& i !in known_field_selectors && !implicit_selector_is_interop_symbol(a, node) {
+				&& i !in known_field_selectors && !implicit_selector_is_interop_symbol(a, node)
+				&& !implicit_selector_is_qualified_type(node) {
 				// A remaining selector used as a value may be a bound method. Full type
 				// information is unavailable during import discovery, so conservatively
 				// load the runtime; calls, C/JS symbols, and provable fields are excluded.
@@ -16063,6 +16083,69 @@ fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportS
 		}
 	}
 	scan.node_idx = end_node
+}
+
+fn no_closures_error(a &flat.FlatAst, tc &types.TypeChecker) ?types.TypeError {
+	mut call_callees := map[int]bool{}
+	for node in a.nodes {
+		if node.kind == .call && node.children_count > 0 {
+			callee_id := a.child(&node, 0)
+			call_callees[int(callee_id)] = true
+			callee := a.node(callee_id)
+			if callee.kind == .index && callee.children_count > 0 {
+				call_callees[int(a.child(callee, 0))] = true
+			}
+		}
+	}
+	for idx, node in a.nodes {
+		if idx < a.user_code_start {
+			continue
+		}
+		if node.kind == .selector && node.children_count > 0 && idx !in call_callees
+			&& tc.expr_is_method_value(flat.NodeId(idx)) {
+			member_pos := compiler_token.new_span(node.pos.id, node.pos.end - node.value.len,
+				node.pos.end)
+			return types.TypeError{
+				msg: 'a closure was generated for m.name: ${node.value}'
+				kind: .compile_error
+				node: flat.NodeId(idx)
+				node_kind: node.kind.str()
+				node_value: node.value
+				pos: member_pos
+				severity: 'cgen error:'
+			}
+		}
+		if node.kind == .lambda_expr {
+			return types.TypeError{
+				msg: 'a closure was generated for function'
+				kind: .compile_error
+				node: flat.NodeId(idx)
+				node_kind: node.kind.str()
+				pos: node.pos
+				severity: 'cgen error:'
+			}
+		}
+		if node.kind != .fn_literal {
+			continue
+		}
+		for child_idx in 0 .. node.children_count {
+			if a.child_node(&node, child_idx).kind == .ident {
+				return types.TypeError{
+					msg: 'a closure was generated for function'
+					kind: .compile_error
+					node: flat.NodeId(idx)
+					node_kind: node.kind.str()
+					pos: node.pos
+					severity: 'cgen error:'
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn implicit_selector_is_qualified_type(node flat.Node) bool {
+	return node.value.len > 0 && node.value[0] >= `A` && node.value[0] <= `Z`
 }
 
 fn implicit_selector_is_interop_symbol(a &flat.FlatAst, node flat.Node) bool {
@@ -16082,11 +16165,13 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 		}
 		mut bindings := map[string]string{}
 		mut ambiguous := map[string]bool{}
+		mut local_names := map[string]bool{}
 		mut body_roots := []flat.NodeId{cap: int(fn_node.children_count)}
 		for child_idx in 0 .. fn_node.children_count {
 			child_id := a.child(&fn_node, child_idx)
 			child := a.node(child_id)
 			if child.kind == .param {
+				local_names[child.value] = true
 				if child.value in bindings {
 					ambiguous[child.value] = true
 				} else if child.typ.len > 0 {
@@ -16112,6 +16197,9 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				declarations << id
 				for child_idx := 0; child_idx < node.children_count; child_idx += 2 {
 					lhs := a.child_node(node, child_idx)
+					if lhs.kind == .ident {
+						local_names[lhs.value] = true
+					}
 					if lhs.kind == .ident && lhs.value in bindings {
 						ambiguous[lhs.value] = true
 					}
@@ -16120,6 +16208,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 				for child_idx in 0 .. 2 {
 					local := a.child_node(node, child_idx)
 					if local.kind == .ident {
+						local_names[local.value] = true
 						ambiguous[local.value] = true
 					}
 				}
@@ -16178,6 +16267,13 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 						selectors[int(selector_id)] = true
 					}
 				}
+				if !local_names[base.value] {
+					if file := a.source_files[selector.pos.id] {
+						if index.imports['${file.name}\n${base.value}'] {
+							selectors[int(selector_id)] = true
+						}
+					}
+				}
 			}
 		}
 	}
@@ -16189,6 +16285,12 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 		node := a.nodes[idx]
 		node_ref := a.node(flat.NodeId(idx))
 		match node.kind {
+			.import_decl {
+				alias := if node.typ.len > 0 { node.typ } else { node.value.all_after_last('.') }
+				if file := a.source_files[node.pos.id] {
+					index.imports['${file.name}\n${alias}'] = true
+				}
+			}
 			.type_decl {
 				if node.value.len > 0 && node.typ.len > 0 {
 					index.aliases[node.value] = node.typ

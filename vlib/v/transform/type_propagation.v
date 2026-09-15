@@ -154,6 +154,14 @@ fn (t &Transformer) decl_type_should_override_fallback(authority string, fallbac
 	if rhs.kind == .infix && rhs.op == .right_shift_unsigned {
 		return true
 	}
+	// A mutable pointer parameter is represented by one extra C indirection. An
+	// explicit source dereference is lowered through that slot, and its transformed
+	// prefix is the reliable value type (`u64`), even if the original declaration
+	// annotation still carries the parameter's pointer type (`&u64`).
+	if t.decl_rhs_has_deref_tail(rhs) && authority != fallback
+		&& fallback.starts_with('&') && !authority.starts_with('&') {
+		return true
+	}
 	if map_value_starts_with_fixed_array(authority) && fallback.starts_with('map[') {
 		return true
 	}
@@ -219,6 +227,39 @@ fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {
 }
 
 fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
+	// An explicit cast is the declaration's type authority even when its operand is
+	// a function value. Looking through `u64(voidptr(C.linker_symbol))` first makes
+	// the inferred local a function pointer and later drops both casts.
+	if int(id) >= 0 {
+		node := t.a.nodes[int(id)]
+		if deref_type := t.decl_rhs_deref_type(id) {
+			return deref_type
+		}
+		if node.kind == .cast_expr && node.value.len > 0 {
+			target := t.normalize_type_alias(node.value)
+			if decl_type_is_usable(target) {
+				return target
+			}
+		}
+		// Primitive casts enter the first propagation pass as ordinary calls and
+		// are lowered to `cast_expr` later. Preserve the callee's explicit type
+		// before the checker's function-valued operand annotation can win.
+		if node.kind == .call && node.children_count == 2 {
+			callee := t.a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value in primitive_cast_type_names {
+				return callee.value
+			}
+		}
+		// Infix expressions cannot be function values in the language. Prefer their
+		// operand-derived result type over a stale checker annotation inherited from
+		// a linker-symbol cast in an earlier declaration.
+		if node.kind == .infix {
+			infix_type := t.resolve_expr_type(id)
+			if decl_type_is_usable(infix_type) {
+				return infix_type
+			}
+		}
+	}
 	if fn_type := t.fn_value_type_name(id) {
 		return fn_type
 	}
@@ -252,12 +293,6 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 		}
 		if node.kind == .as_expr && node.value.len > 0 {
 			return t.normalize_type_alias(node.value)
-		}
-		if node.kind == .cast_expr && node.value.len > 0 {
-			target := t.normalize_type_alias(node.value)
-			if t.is_sum_type_name(target) {
-				return target
-			}
 		}
 		if node.kind == .selector {
 			selector_type := t.resolve_selector_type(node)
@@ -293,6 +328,59 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 		}
 	}
 	return t.node_type(id)
+}
+
+fn (t &Transformer) decl_rhs_has_deref_tail(node flat.Node) bool {
+	if node.kind == .prefix {
+		return node.op == .mul
+	}
+	if node.kind in [.block, .expr_stmt, .paren] && node.children_count > 0 {
+		return t.decl_rhs_has_deref_tail(t.a.child_node(&node, node.children_count - 1))
+	}
+	return false
+}
+
+// decl_rhs_deref_type derives the value type of a dereference chain from the
+// transformer's active binding. Mutable pointer parameters carry an additional
+// ABI indirection (`mut p &T` is tracked as `&&T`), while stale checker
+// annotations on `*p` can still say `&T`.
+fn (t &Transformer) decl_rhs_deref_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	mut current := id
+	mut node := t.a.nodes[int(current)]
+	for node.kind in [.block, .expr_stmt, .paren] && node.children_count > 0 {
+		current = t.a.child(&node, node.children_count - 1)
+		node = t.a.nodes[int(current)]
+	}
+	mut derefs := 0
+	for node.kind == .prefix && node.op == .mul && node.children_count > 0 {
+		derefs++
+		current = t.a.child(&node, 0)
+		node = t.a.nodes[int(current)]
+	}
+	if derefs == 0 {
+		return none
+	}
+	mut typ := if node.kind == .ident {
+		t.var_type(node.value)
+	} else {
+		t.node_type(current)
+	}
+	if node.kind == .ident && t.pointer_value_rvalues[node.value] && typ.starts_with('&') {
+		typ = typ[1..]
+	}
+	for _ in 0 .. derefs {
+		if !typ.starts_with('&') {
+			return none
+		}
+		typ = typ[1..]
+	}
+	if decl_type_is_usable(typ) {
+		return typ
+	}
+	return none
 }
 
 fn (t &Transformer) spawn_expr_decl_type(node flat.Node) ?string {

@@ -16674,13 +16674,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			// the authority so a local can still shadow an import alias.
 			mut imported_selector_module := ''
 			if base.kind == .ident && base.value != 'C' {
-				mut is_lexical_local := false
-				if owner := g.tc.cur_scope.lookup_owner(base.value) {
-					is_lexical_local = !owner.belongs_to_scope(g.tc.file_scope)
-				}
+				is_lexical_local := g.selector_base_is_local_value(base.value)
 				if !is_lexical_local {
-					imported_selector_module = g.tc.file_imports['${g.tc.cur_file}\n${base.value}'] or {
-						''
+					// C generation no longer walks the checker's file scope. Each generator
+					// does retain the exact source file for its active function, however.
+					source_file := g.cur_fn_source_file
+					imported_selector_module = g.import_alias_module_for_file(base.value, source_file) or {
+						g.import_alias_module_for_file(base.value, g.tc.cur_file) or { '' }
 					}
 				}
 			}
@@ -16717,7 +16717,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					}
 				}
 			}
-			if enum_selector_qbase.len == 0 && !generated_variant_access && g.gen_method_value_closure(id, base_id, base_type0, node.value, borrow_receiver, clone_receiver_fn) {
+			if enum_selector_qbase.len == 0 && imported_selector_module.len == 0
+				&& !generated_variant_access
+				&& g.gen_method_value_closure(id, base_id, base_type0, node.value, borrow_receiver, clone_receiver_fn) {
 				return
 			}
 			// The expected type belongs to the selected field, not to its base. In
@@ -19007,6 +19009,26 @@ fn (g &FlatGen) uses_pthread() bool {
 	return false
 }
 
+fn (mut g FlatGen) target_libc_optional_header(header string) {
+	g.writeln('#if defined(__has_include)')
+	g.writeln('#if __has_include(<${header}>)')
+	g.writeln('#include <${header}>')
+	g.writeln('#endif')
+	g.writeln('#else')
+	g.writeln('#include <${header}>')
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) target_libc_optional_stdatomic_header() {
+	g.writeln('#if defined(__has_include)')
+	g.writeln('#if __has_include(<stdatomic.h>)')
+	g.gnu_objc_compatible_stdatomic_header()
+	g.writeln('#endif')
+	g.writeln('#else')
+	g.gnu_objc_compatible_stdatomic_header()
+	g.writeln('#endif')
+}
+
 fn (mut g FlatGen) headerless_libc_preamble() {
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	if g.target_libc_headers {
@@ -19016,14 +19038,13 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 		// where this says `unsigned long long` -- which is a typedef conflict rather
 		// than a compatible redeclaration, and the same applies to every libc
 		// prototype further down. This is the set V's own runtime calls into.
-		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdbool.h', 'stdatomic.h',
-			'errno.h', 'fcntl.h', 'signal.h', 'stdio.h', 'stdlib.h', 'string.h', 'strings.h', 'math.h',
-			'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
-			if header == 'stdatomic.h' {
-				g.gnu_objc_compatible_stdatomic_header()
-			} else {
-				g.writeln('#include <${header}>')
-			}
+		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdbool.h'] {
+			g.writeln('#include <${header}>')
+		}
+		g.target_libc_optional_stdatomic_header()
+		for header in ['errno.h', 'fcntl.h', 'signal.h', 'stdio.h', 'stdlib.h', 'string.h',
+			'strings.h', 'math.h', 'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
+			g.target_libc_optional_header(header)
 		}
 		if g.needs_thread_type || g.uses_pthread() {
 			g.writeln('#include <pthread.h>')

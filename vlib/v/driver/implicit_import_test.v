@@ -182,6 +182,66 @@ fn inspect(mut builder Builder, info Info) int {
 	assert !scan.needs_closure
 }
 
+fn test_qualified_type_selector_does_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('qualified_type', '
+import limine
+
+fn use() {
+	request := limine.LimineBaseRevision{}
+	_ = request
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_imported_constant_selector_does_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('imported_constant', '
+import stat
+
+fn use() {
+	mode := stat.ifdir
+	_ = mode
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_generic_method_call_does_not_require_closure_runtime() {
+	scan := scan_implicit_import_source('generic_method_call', '
+struct Device {}
+
+fn (device Device) read[T](offset u32) T {
+	_ = offset
+	return T{}
+}
+
+fn use(device Device) {
+	value := device.read[u8](1)
+	_ = value
+}
+')
+	assert !scan.needs_closure
+}
+
+fn test_local_shadow_of_import_can_require_closure_runtime() {
+	scan := scan_implicit_import_source('local_import_shadow', '
+import stat
+
+struct Item {}
+
+fn (item Item) ifdir() int {
+	return 1
+}
+
+fn use() {
+	stat := Item{}
+	callback := stat.ifdir
+	_ = callback
+}
+')
+	assert scan.needs_closure
+}
+
 fn test_synthetic_import_insertion_remaps_declaration_attribute_targets() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{

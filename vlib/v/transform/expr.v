@@ -4018,11 +4018,20 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	if t.is_ordering_snapshot_temp(id) {
 		return id
 	}
+	// A block expression (notably `unsafe { ... }`) drains pending statements into
+	// its own statement-expression. Do not let it capture snapshots belonging to
+	// earlier call operands; those declarations must remain in the surrounding
+	// scope where the eventual call can refer to them.
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
 	expr := if _ := t.generated_variant_access_type(id) {
 		id
 	} else {
 		t.transform_expr(id)
 	}
+	expr_pending := t.pending_stmts.clone()
+	t.pending_stmts = outer_pending
+	t.pending_stmts << expr_pending
 	if t.is_pure_constant_expr(expr) || t.is_ordering_snapshot_temp(expr) {
 		return expr
 	}

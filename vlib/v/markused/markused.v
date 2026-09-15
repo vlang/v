@@ -503,7 +503,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			queue << seed
 			used[seed] = true
 		}
-		for seed in ['new_array_from_c_array', 'new_array_from_c_array_noscan', 'array.set',
+		mut runtime_seeds := ['new_array_from_c_array', 'new_array_from_c_array_noscan', 'array.set',
 			'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
 			'array.slice', 'array.slice_ni', 'string.substr_ni', 'array.pop_left', 'array.clone',
 			'array.delete', 'array.ensure_cap', 'string.==', 'string.<', 'string.free',
@@ -515,14 +515,19 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			'map.clear', 'map.keys', 'map.values', 'map.reserve', 'map_map_eq', 'memdup',
 			'strings.Builder.write_ptr', 'strings.Builder.write_runes', 'strings.Builder.free',
 			'strconv.format_int', 'strconv.format_uint', 'strconv.Dec32.get_string_32',
-			'strconv.Dec64.get_string_64', 'bool.str', 'int.str', 'u64.str', 'f32.str', 'f64.str',
-			'rune.str', 'string.+', 'ptr_str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l',
+			'strconv.Dec64.get_string_64', 'bool.str', 'int.str', 'u64.str', 'rune.str',
+			'string.+', 'ptr_str',
 			'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
 			'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex',
 			'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2',
 			'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_clone_string', 'map_clone_int_1',
 			'map_clone_int_2', 'map_free_string', '[]string.join', 'Array_string__join',
-			'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit'] {
+			'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit']
+		if !tc.nofloat {
+			runtime_seeds << ['f32.str', 'f64.str', 'strconv__f32_to_str_l',
+				'strconv__f64_to_str_l']
+		}
+		for seed in runtime_seeds {
 			queue << seed
 			used[seed] = true
 		}
@@ -2469,7 +2474,8 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					needs_channel_helpers = true
 				}
 				if node.op in [.eq, .ne] {
-					if !needs_f32_eq_epsilon && markused_infix_needs_f32_eq_epsilon(a, tc, node) {
+					if !tc.nofloat && !needs_f32_eq_epsilon
+						&& markused_infix_needs_f32_eq_epsilon(a, tc, node) {
 						needs_f32_eq_epsilon = true
 					}
 					if !needs_ierror_equality_dispatch && node.children_count >= 2 {
@@ -2627,6 +2633,10 @@ fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker
 		if node.kind == .call && node.children_count > 0 {
 			callee_id := a.child(&node, 0)
 			call_callees[int(callee_id)] = true
+			callee_node := a.node(callee_id)
+			if callee_node.kind == .index && callee_node.children_count > 0 {
+				call_callees[int(a.child(callee_node, 0))] = true
+			}
 			mut unwrapped_id := callee_id
 			mut was_wrapped := false
 			for int(unwrapped_id) >= 0 && int(unwrapped_id) < a.nodes.len {

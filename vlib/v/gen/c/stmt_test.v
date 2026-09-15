@@ -44,6 +44,18 @@ fn test_inline_asm_character_tokens_use_assembly_quotes() {
 	assert lower_c_inline_asm_template('mov x0, `A`', 'arm64', aliases, false) == "mov x0, 'A'"
 }
 
+fn test_inline_asm_aarch64_alias_uses_arm64_operand_lowering() {
+	aliases := {
+		'data':         true
+		'raw_metadata': true
+		'address':      true
+	}
+	assert lower_c_inline_asm_template('ldp data, raw_metadata, [address]', 'aarch64',
+		aliases, true) == 'ldp %[data], %[raw_metadata], [%[address]]'
+	assert lower_c_inline_asm_template('add data, data, 1', 'aarch64', aliases, true) ==
+		'add %[data], %[data], #1'
+}
+
 fn test_inline_asm_x86_addresses_preserve_unscaled_indexes() {
 	aliases := map[string]bool{}
 	assert lower_c_inline_asm_template('mov rax, [rbx + rcx + 8]', 'amd64', aliases, false) == 'mov 8(%rbx, %rcx, 1), %rax'
@@ -599,6 +611,22 @@ fn test_inline_asm_x86_reverses_every_structured_operand() {
 	}
 	assert lower_c_inline_asm_template('imul dst, src, 7', 'amd64', aliases, true) == 'imul \$7, %[src], %[dst]'
 	assert lower_c_inline_asm_template('mov dst, src', 'amd64', aliases, true) == 'mov %[src], %[dst]'
+}
+
+fn test_inline_asm_x86_port_io_uses_32_bit_view_of_wide_operands() {
+	aliases := {
+		'port': true
+		'value': true
+	}
+	wide := {
+		'value': true
+	}
+	assert lower_c_inline_asm_template_with_wide_aliases('in value, port', 'amd64', aliases,
+		wide, true) == 'in %[port], %k[value]'
+	assert lower_c_inline_asm_template_with_wide_aliases('out port, value', 'amd64', aliases,
+		wide, true) == 'out %k[value], %[port]'
+	assert lower_c_inline_asm_template_with_wide_aliases('mov value, port', 'amd64', aliases,
+		wide, true) == 'mov %[port], %[value]'
 }
 
 fn test_inline_asm_intel_templates_keep_destination_first_order() {

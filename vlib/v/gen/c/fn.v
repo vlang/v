@@ -1210,7 +1210,7 @@ fn (g &FlatGen) main_export_needs_internal_name(module_name string, name string)
 // qualified_fn_name_in_module (the c_name cache absorbs the sanitize cost;
 // asked ~46k times per build on the call-emission path).
 fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) string {
-	if module_name == 'builtin' && name == 'free' {
+	if module_name in ['', 'main', 'builtin'] && name in ['free', 'main.free', 'builtin.free'] {
 		return 'v_free'
 	}
 	if name == 'panic'
@@ -1222,7 +1222,10 @@ fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) s
 		|| synthetic_name.starts_with('__v3_default_clone_') {
 		return g.cname(synthetic_name)
 	}
-	if g.tc.autofree_mode && module_name in ['', 'main'] {
+	// Vinix links directly to `main__kmain`, the long-standing C symbol for a
+	// function in the main module. Keep that freestanding ABI even though V3
+	// normally shortens main-module symbols.
+	if (g.tc.autofree_mode || g.target.os == 'vinix') && module_name in ['', 'main'] {
 		clean_name := name.trim_string_left('main.')
 		if clean_name.contains('.') {
 			receiver := clean_name.all_before_last('.')
@@ -1405,11 +1408,11 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		// the renamed symbol rather than the bare `main`.
 		return g.cname('main.main')
 	}
+	if name in ['free', 'main.free', 'builtin.free'] {
+		return 'v_free'
+	}
 	if shadow_name := g.main_runtime_shadow_fn_c_name(g.tc.cur_module, name) {
 		return shadow_name
-	}
-	if name == 'free' {
-		return 'v_free'
 	}
 	if name == 'new_map' {
 		if g.tc.cur_module == 'builtin' {
@@ -1429,7 +1432,7 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 	if name == 'char.vstring_with_len' {
 		return 'charptr__vstring_with_len'
 	}
-	if g.tc.autofree_mode && g.tc.cur_module in ['', 'main'] {
+	if (g.tc.autofree_mode || g.target.os == 'vinix') && g.tc.cur_module in ['', 'main'] {
 		legacy_name := name.trim_string_left('main.')
 		legacy_c_name := g.qualified_fn_name_in_module_c('main', legacy_name)
 		if 'main\x01${legacy_name}' in g.non_generic_fn_names_by_module
@@ -1791,6 +1794,18 @@ fn (g &FlatGen) import_alias_module_uncached(alias string) ?string {
 	return none
 }
 
+fn (g &FlatGen) import_alias_module_for_file(alias string, file string) ?string {
+	if alias.len == 0 || g.tc == unsafe { nil } {
+		return none
+	}
+	if file.len > 0 {
+		if mod := g.tc.file_imports['${file}\n${alias}'] {
+			return mod
+		}
+	}
+	return none
+}
+
 fn (g &FlatGen) selector_base_module(name string) ?string {
 	if name.len == 0 {
 		return none
@@ -1841,14 +1856,13 @@ fn (g &FlatGen) selector_base_is_local_value(name string) bool {
 	if name.len == 0 {
 		return false
 	}
-	if g.tc != unsafe { nil } && g.tc.cur_scope != unsafe { nil } {
-		if typ := g.tc.cur_scope.lookup(name) {
-			if typ !is types.Void {
-				return true
-			}
-		}
-	}
 	if _ := g.current_param_type(name) {
+		return true
+	}
+	if g.cur_scope_has_local_name(name) {
+		if _ := g.global_type_for_ident(name) {
+			return g.local_shadows_global(name)
+		}
 		return true
 	}
 	return false
@@ -3458,6 +3472,10 @@ fn (mut g FlatGen) gen_sum_storage_lvalue_arg(arg_id flat.NodeId) bool {
 // per-instance closure context and yields a wrapper function that invokes the method.
 // Returns false when the selector is an ordinary field access (handled normally).
 fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id flat.NodeId, base_type types.Type, method string, borrow_receiver bool, clone_receiver_fn string) bool {
+	if _ := fn_type_from(g.usable_expr_type(selector_id)) {
+	} else {
+		return false
+	}
 	clean := types.unwrap_all_pointers(base_type)
 	mut receiver_name := ''
 	mut is_interface_receiver := false
@@ -3491,8 +3509,20 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 		receiver_name = alias_method.all_before_last('.')
 	}
 	// A real field shadows any same-named method: that's a field access, not a value.
+	if _ := g.selector_declared_type(selector_id) {
+		return false
+	}
 	if _ := g.field_type(base_type, method) {
 		return false
+	}
+	// Builtin storage types are not structs in the type algebra, but their fields
+	// are registered on the corresponding builtin structs. They follow the same
+	// field-before-method rule (`s.str` is string storage, not the bound `str()`
+	// method).
+	if clean is types.String || clean is types.Array || clean is types.Map {
+		if _ := g.usable_struct_field_type(clean.name(), method) {
+			return false
+		}
 	}
 	method_key := if is_interface_receiver {
 		'${receiver_name}.${method}'
@@ -3745,7 +3775,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 		} else if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
 			g.direct_call_name_for_call(call_id, call_key)
 		} else {
-			g.cname(fn_node.value)
+			g.direct_call_name(fn_node.value)
 		}
 		if shadow_name := g.main_runtime_shadow_call_c_name(call_node, fn_node) {
 			cfn = shadow_name
@@ -8366,6 +8396,24 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 	if base.kind == .selector {
 		if typ := g.selector_declared_type(base_id) {
 			return typ
+		}
+	}
+	if base.kind == .index && base.value != 'range' && base.children_count > 0 {
+		container_type := cgen_unalias_type(g.receiver_base_type(g.a.child(&base, 0)))
+		is_fixed, _, fixed := fixed_array_index_info(container_type)
+		if is_fixed {
+			return fixed.elem_type
+		}
+		is_array, _, array_type := array_index_info(container_type)
+		if is_array {
+			return array_type.elem_type
+		}
+		clean_container := types.unwrap_pointer(container_type)
+		if clean_container is types.Map {
+			return clean_container.value_type
+		}
+		if clean_container is types.String {
+			return types.Type(types.u8_)
 		}
 	}
 	if base.kind == .ident {
@@ -15375,40 +15423,47 @@ fn (g &FlatGen) selector_module_call_name(id flat.NodeId, fn_node flat.Node, nod
 	if base.kind != .ident {
 		return none
 	}
-	if g.selector_base_is_value(base.value) {
+	if g.selector_base_is_local_value(base.value) {
 		resolved := g.tc.resolved_call_name(id) or { return none }
-		source_file := g.a.source_files[fn_node.pos.id] or { return none }
-		lexical_module := g.tc.file_imports[source_file.name + '\n' + base.value] or { return none }
+		source_name := if source_file := g.a.source_files[fn_node.pos.id] {
+			source_file.name
+		} else {
+			g.cur_fn_source_file
+		}
+		lexical_module := g.import_alias_module_for_file(base.value, source_name) or { return none }
 		lexical_call := '${lexical_module}.${fn_node.value}'
 		if resolved != lexical_call && resolved.replace('__', '.') != lexical_call {
 			return none
 		}
 	}
-	if source_file := g.a.source_files[fn_node.pos.id] {
-		if lexical_module := g.tc.file_imports[source_file.name + '\n' + base.value] {
-			// The selector's own source file is authoritative for compiler-cloned
-			// default expressions. Their copied base can acquire the type of a caller
-			// local with the same name as the import. A concrete resolved method name
-			// still wins for a genuine local shadow in the original source.
-			call_name := '${lexical_module}.${fn_node.value}'
-			resolved_call := g.tc.resolved_call_name(id) or { '' }
-			resolved_is_lexical_module_call := resolved_call == call_name
-				|| resolved_call.replace('__', '.') == call_name
-			if resolved_call.len == 0 || resolved_is_lexical_module_call {
-				arg_start := g.selector_module_call_arg_start(fn_node, node)
-				params := g.tc.fn_param_types[call_name] or {
-					if call_name in g.tc.fn_ret_types && node.children_count == arg_start {
-						return call_name
-					}
-					return none
-				}
-				if g.module_call_arg_count_matches(call_name, params, node.children_count - arg_start) {
+	source_name := if source_file := g.a.source_files[fn_node.pos.id] {
+		source_file.name
+	} else {
+		g.cur_fn_source_file
+	}
+	if lexical_module := g.import_alias_module_for_file(base.value, source_name) {
+		// The selector's own source file is authoritative for compiler-cloned
+		// default expressions. Their copied base can acquire the type of a caller
+		// local with the same name as the import. A concrete resolved method name
+		// still wins for a genuine local shadow in the original source.
+		call_name := '${lexical_module}.${fn_node.value}'
+		resolved_call := g.tc.resolved_call_name(id) or { '' }
+		resolved_is_lexical_module_call := resolved_call == call_name
+			|| resolved_call.replace('__', '.') == call_name
+		if resolved_call.len == 0 || resolved_is_lexical_module_call {
+			arg_start := g.selector_module_call_arg_start(fn_node, node)
+			params := g.tc.fn_param_types[call_name] or {
+				if call_name in g.tc.fn_ret_types && node.children_count == arg_start {
 					return call_name
 				}
+				return none
+			}
+			if g.module_call_arg_count_matches(call_name, params, node.children_count - arg_start) {
+				return call_name
 			}
 		}
 	}
-	if g.selector_base_is_value(base.value) {
+	if g.selector_base_is_local_value(base.value) {
 		return none
 	}
 	mod_name := g.selector_base_module(base.value) or {
@@ -15422,7 +15477,7 @@ fn (g &FlatGen) selector_module_call_name(id flat.NodeId, fn_node flat.Node, nod
 		return none
 	}
 	call_name := '${mod_name}.${fn_node.value}'
-	if g.selector_base_is_value(base.value) {
+	if g.selector_base_is_local_value(base.value) {
 		resolved := g.tc.resolved_call_name(id) or { return none }
 		if resolved != call_name && resolved.replace('__', '.') != call_name {
 			return none
@@ -16419,7 +16474,6 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 		|| g.mut_receiver_arg_wants_addr(emitted_name, receiver_id)
 	receiver_wants_shared := !g.shared_param_index_empty
 		&& g.fn_param_is_shared_for_call(0, fn_node.value, emitted_name, g.cname(fn_node.value), g.cname(emitted_name))
-	receiver := g.a.nodes[int(receiver_id)]
 	receiver_type := g.receiver_base_type(receiver_id)
 	receiver_declares_method := g.emitted_method_belongs_to_receiver(receiver_type, method_short, emitted_name)
 	receiver_is_shared_payload := g.shared_local_arg_c_expr(receiver_id) != none

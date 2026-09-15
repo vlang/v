@@ -467,6 +467,25 @@ fn test_structured_x86_asm_reverses_three_operand_instructions() {
 	assert c_source.contains('"imul \$7, %[lhs], %[result]\\n\\t"'), c_source
 }
 
+fn test_x86_port_io_uses_32_bit_register_for_platform_int() {
+	generate, c_source := generate_inline_asm_c('platform_int_port_io', 'fn read_port(port u16) int {
+	mut result := 0
+	asm amd64 {
+		in result, port
+		; =a (result)
+		; Nd (port)
+	}
+	return result
+}
+
+fn main() {
+	_ = read_port(0)
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"in %[port], %k[result]\\n\\t"'), c_source
+}
+
 fn test_intel_asm_rejects_memory_capable_constraints() {
 	generate, _ := generate_inline_asm_c('intel_constraint_program', 'fn main() {
 	value := 1
