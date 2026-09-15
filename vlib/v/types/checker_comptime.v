@@ -9009,7 +9009,8 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 		return
 	}
 	tail := tc.a.node(tail_id)
-	if tail.kind in [.return_stmt, .break_stmt, .continue_stmt] || tc.expr_never_returns(tail_id) {
+	if tail.kind in [.return_stmt, .break_stmt, .continue_stmt]
+		|| tc.stmt_definitely_returns(tail_id) || tc.expr_never_returns(tail_id) {
 		return
 	}
 	if tail.kind == .assert_stmt && tc.assert_stmt_never_returns(tail) {
