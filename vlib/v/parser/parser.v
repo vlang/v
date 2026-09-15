@@ -9105,20 +9105,25 @@ fn (p &Parser) supports_c_inline_asm_lowering() bool {
 
 fn (mut p Parser) expr(min_bp token.BindingPower) flat.NodeId {
 	lhs := p.prefix_expr()
-	return p.expr_with_lhs_context(lhs, min_bp, false, false)
+	return p.expr_with_lhs_context(lhs, min_bp, false, false, false)
+}
+
+fn (mut p Parser) array_element_expr() flat.NodeId {
+	lhs := p.prefix_expr()
+	return p.expr_with_lhs_context(lhs, .lowest, false, false, true)
 }
 
 fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) flat.NodeId {
-	return p.expr_with_lhs_context(first, min_bp, false, false)
+	return p.expr_with_lhs_context(first, min_bp, false, false, false)
 }
 
 fn (mut p Parser) stmt_expr() flat.NodeId {
 	is_stmt_ident := p.tok_can_be_decl_name()
 	lhs := p.prefix_expr()
-	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident, false)
+	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident, false, false)
 }
 
-fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool, stop_before_or bool) flat.NodeId {
+fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool, stop_before_or bool, stop_at_array_element bool) flat.NodeId {
 	mut lhs := first
 	for {
 		if p.in_struct_init_value > 0 && (p.tok == .name || p.tok.is_keyword())
@@ -9467,7 +9472,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		// In comma-less array literals, an attached prefix operator starts the next
 		// element when it is separated from the preceding expression: `[1 -2]`.
 		// Keep operators with whitespace on both sides infix: `[1 - 2]`.
-		if p.in_array_literal > 0 && p.tok in [.minus, .mul, .amp]
+		if stop_at_array_element && p.tok in [.minus, .mul, .amp]
 			&& p.tok_pos > p.prev_tok_end {
 			p.peek()
 			if p.tok_end == p.peek_pos {
@@ -10122,7 +10127,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	if tok_id == 3 {
 		p.next()
 		operand := p.prefix_expr()
-		inner := p.expr_with_lhs_context(operand, .highest, false, true)
+		inner := p.expr_with_lhs_context(operand, .highest, false, true, false)
 		return p.channel_receive_expr(inner, op_start)
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
@@ -10190,7 +10195,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.arrow {
 			p.next()
 			operand := p.prefix_expr()
-			inner := p.expr_with_lhs_context(operand, .highest, false, true)
+			inner := p.expr_with_lhs_context(operand, .highest, false, true, false)
 			return p.channel_receive_expr(inner, op_start)
 		}
 		.logical_or {
@@ -12080,7 +12085,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	// or fixed array type: [3]int
 	mut ids := []flat.NodeId{}
 	size_start := p.tok_pos
-	ids << p.expr(.lowest)
+	ids << p.array_element_expr()
 	// check if it's [N]Type (fixed array type)
 	if p.tok == .rsbr {
 		size_end := p.tok_pos
@@ -12202,7 +12207,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		if p.tok == .rsbr || p.tok == .eof || p.tok == .comma {
 			break
 		}
-		ids << p.expr(.lowest)
+		ids << p.array_element_expr()
 	}
 	// Keep recovery local to the literal. Diagnose a doubled comma before
 	// discarding the malformed tail.
@@ -12349,7 +12354,7 @@ fn (mut p Parser) fixed_array_value_literal(fixed_type string, start int) flat.N
 			p.next()
 			continue
 		}
-		vals << p.expr(.lowest)
+		vals << p.array_element_expr()
 		if p.tok == .comma {
 			p.next()
 		}
@@ -12436,7 +12441,7 @@ fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dim
 				has_ragged_rows = true
 			}
 		} else {
-			vals << p.expr(.lowest)
+			vals << p.array_element_expr()
 		}
 		if p.tok == .comma {
 			p.next()
