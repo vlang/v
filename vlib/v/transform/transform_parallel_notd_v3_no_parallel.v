@@ -40,13 +40,25 @@ const scoped_selfhost_transform_batches = 4
 const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_node_threshold = 1_000_000
-// A drain batch keeps every worker's scratch arena alive until it is merged, and
-// nested discoveries can grow one small batch into thousands of specs. Use the
-// memory-bounded scoped path for batches of this size even while the AST itself is
-// still small: for the veb + json2 + orm reproduction of vlang/v#28564 the bounded
-// path lowers the monomorphize peak from 19.4 GB to 7.4 GB at a slightly better
-// wall time. Smaller batches have bounded scratch and keep the regular path.
+// Every non-empty batch uses the memory-bounded scoped path; see
+// should_use_scoped_monomorphize for why the cutoff is 1 instead of a batch size.
 const scoped_monomorph_specs_threshold = 1
+
+// should_use_scoped_monomorphize reports whether a specialization batch must run on
+// the memory-bounded scoped path. The regular path keeps every worker's scratch arena
+// alive until the batch is merged, and nested discoveries can grow one drain batch
+// into thousands of specializations, so a small batch can still explode: for the veb +
+// json2 + orm reproduction of vlang/v#28564 the bounded path lowers the monomorphize
+// peak from 19.4 GB to 7.4 GB at a slightly better wall time. Raising
+// scoped_monomorph_specs_threshold re-admits that unbounded retention for the batches
+// below it, so the cutoff stays at one specialization.
+fn should_use_scoped_monomorphize(node_count int, spec_count int) bool {
+	if spec_count <= 0 {
+		return false
+	}
+	return node_count >= scoped_monomorph_node_threshold
+		|| spec_count >= scoped_monomorph_specs_threshold
+}
 
 $if !windows {
 	// RegionRelocateArgs is one worker region's in-place id-relocation job: the
@@ -1193,8 +1205,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			return false
 		}
 		if t.scope_parallel_workers && t.scoped_monomorphize
-			&& (t.a.nodes.len >= scoped_monomorph_node_threshold
-				|| specs.len >= scoped_monomorph_specs_threshold) {
+			&& should_use_scoped_monomorphize(t.a.nodes.len, specs.len) {
 			return t.run_scoped_monomorphize_specs(specs, mut emitted, mut generated)
 		}
 		if isnil(t.a.worker_pool) {
@@ -1619,13 +1630,10 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		for idx, spec in emitted_specs {
 			root := flat.NodeId(int(roots[idx]) + node_shift)
 			// Re-record the spec from the master: `record_monomorph_cache_spec`
-			// copies the strings into the arena that is current here (the parent),
-			// while the worker's copies die with `scope` below.
-			mut owned_args := []string{cap: spec.args.len}
-			for item in spec.args {
-				owned_args << item.clone()
-			}
-			t.record_monomorph_cache_spec(spec.key.clone(), spec.decl.key, spec.decl.module, owned_args)
+			// deep-copies the argument strings into the arena that is current here
+			// (the parent), while the worker's copies die with `scope`.
+			t.record_monomorph_cache_spec(spec.key.clone(), spec.decl.key, spec.decl.module,
+				spec.args)
 			if !t.generic_specialization_registered(spec.decl, spec.args) {
 				value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
 				t.register_specialized_fn_signature_value(spec.decl, value, spec.args)

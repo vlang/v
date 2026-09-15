@@ -700,6 +700,13 @@ fn test_contextless_generic_struct_spec_spelling_is_skipped() {
 		value: 'veb.Middleware[model.Context]'
 		typ: 'veb.Middleware[model.Context]'
 	})
+	mut params_node := flat.Node{
+		kind: .struct_init
+		value: 'veb.Middleware'
+		typ: 'veb.Middleware'
+	}
+	params_node.set_generic_params(['Scope'])
+	a.add_node(params_node)
 	mut tc := types.TypeChecker.new(&a)
 	tc.file_modules['/tmp/ctx/main.v'] = 'main'
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -716,10 +723,30 @@ fn test_contextless_generic_struct_spec_spelling_is_skipped() {
 	assert 'veb.Middleware[Ctx]' in specs
 	assert 'veb.Middleware[model.Context]' in specs
 	assert 'veb.Middleware[Context]' !in specs
+	assert 'veb.Middleware[Scope]' !in specs
 
 	assert type_text_has_unqualified_generic_arg('veb.Middleware[Context]')
 	assert type_text_has_unqualified_generic_arg('Map[string, Context]')
+	assert type_text_has_unqualified_generic_arg('Map[string, []Context]')
+	assert type_text_has_unqualified_generic_arg('Box[Array[Context]]')
 	assert !type_text_has_unqualified_generic_arg('veb.Middleware[model.Context]')
 	assert !type_text_has_unqualified_generic_arg('Map[string, []int]')
+	assert !type_text_has_unqualified_generic_arg('map[string]int')
 	assert !type_text_has_unqualified_generic_arg('Middleware')
+}
+
+// The scoped (memory-bounded) monomorphize path is selected for every non-empty
+// batch on purpose: one drain batch can discover thousands of nested
+// specializations, and the regular path keeps every worker's scratch arena alive
+// until the batch is merged (vlang/v#28564, 19.4 GB -> 7.4 GB on the veb + orm
+// reproduction). Pin the boundaries so that a future cutoff change stays visible.
+fn test_scoped_monomorphize_batch_selection_boundaries() {
+	$if !v3_no_parallel ? {
+		assert !should_use_scoped_monomorphize(0, 0)
+		// One specialization is enough: the bounded path is not gated on AST size.
+		assert should_use_scoped_monomorphize(0, 1)
+		assert should_use_scoped_monomorphize(scoped_monomorph_node_threshold - 1, 1)
+		assert should_use_scoped_monomorphize(scoped_monomorph_node_threshold, 1)
+		assert should_use_scoped_monomorphize(0, scoped_monomorph_specs_threshold)
+	}
 }

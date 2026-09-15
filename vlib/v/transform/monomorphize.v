@@ -2722,20 +2722,54 @@ fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStru
 
 // type_text_has_unqualified_generic_arg reports whether `typ` applies generic
 // arguments that are plain (unqualified) type names, which cannot be resolved
-// without knowing the file the text was written in.
+// without knowing the file the text was written in. Nested spellings are visited
+// recursively: `Map[string, []Context]` depends on the writing file just like
+// `Map[string, Context]` does.
 fn type_text_has_unqualified_generic_arg(typ string) bool {
-	open := typ.index_u8(`[`)
+	mut text := typ.trim_space()
+	for text.len > 0 {
+		if text[0] in [`&`, `?`, `!`] {
+			text = text[1..].trim_space()
+			continue
+		}
+		if text.starts_with('...') {
+			text = text[3..].trim_space()
+			continue
+		}
+		if text.starts_with('[]') {
+			text = text[2..].trim_space()
+			continue
+		}
+		break
+	}
+	if text.len == 0 {
+		return false
+	}
+	if text.starts_with('map[') {
+		end := generic_matching_bracket(text, 3)
+		if end <= 3 || end >= text.len {
+			return false
+		}
+		if type_text_has_unqualified_generic_arg(text[4..end]) {
+			return true
+		}
+		return type_text_has_unqualified_generic_arg(text[end + 1..])
+	}
+	open := text.index_u8(`[`)
 	if open < 0 {
 		return false
 	}
-	close := generic_matching_bracket(typ, open)
+	close := generic_matching_bracket(text, open)
 	if close <= open + 1 {
 		return false
 	}
-	for arg in split_generic_args(typ[open + 1..close]) {
+	for arg in split_generic_args(text[open + 1..close]) {
 		clean := arg.trim_space()
-		if clean.len == 0 || clean.contains('.') || clean.contains('[') {
+		if clean.len == 0 {
 			continue
+		}
+		if type_text_has_unqualified_generic_arg(clean) {
+			return true
 		}
 		mut payload := clean
 		for payload.len > 0 {
@@ -2749,7 +2783,8 @@ fn type_text_has_unqualified_generic_arg(typ string) bool {
 			}
 			break
 		}
-		if payload.len == 0 || types.is_builtin_type_name(payload) || is_decimal_text(payload) {
+		if payload.len == 0 || payload.contains('.') || types.is_builtin_type_name(payload)
+			|| is_decimal_text(payload) {
 			continue
 		}
 		if (payload[0] >= `a` && payload[0] <= `z`) || (payload[0] >= `A` && payload[0] <= `Z`) {
@@ -2796,7 +2831,14 @@ fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]Gener
 		// onto the wrong module. Fully qualified arguments stay usable, and the
 		// source node a spelling was cloned from is scanned with its own context.
 		if node_module.len == 0 && node_file.len == 0 {
-			if type_text_has_unqualified_generic_arg(node.typ)
+			mut spelling := node.typ
+			params := node.generic_params()
+			if params.len > 0 && !node.value.contains('[') {
+				// collect_generic_struct_specs_from_node joins these into a
+				// `Base[Arg]` spelling of its own, so check them here too.
+				spelling = '${node.value}[${params.join(', ')}]'
+			}
+			if type_text_has_unqualified_generic_arg(spelling)
 				|| type_text_has_unqualified_generic_arg(node.value) {
 				continue
 			}

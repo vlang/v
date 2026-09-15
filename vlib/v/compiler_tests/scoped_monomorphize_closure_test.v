@@ -11,7 +11,9 @@ fn scoped_monomorph_v3_bin() string {
 	if os.exists(bin) {
 		return bin
 	}
-	build := os.execute('${scoped_monomorph_vexe} -gc none -path "${scoped_monomorph_vlib_dir}|@vlib|@vmodules" -o ${bin} ${scoped_monomorph_v3_src}')
+	// `-prealloc` is what enables `scope_parallel_workers` and the scoped
+	// monomorphize path, matching how the distributed compiler is built.
+	build := os.execute('${scoped_monomorph_vexe} -gc none -prealloc -path "${scoped_monomorph_vlib_dir}|@vlib|@vmodules" -o ${bin} ${scoped_monomorph_v3_src}')
 	assert build.exit_code == 0, build.output
 	return bin
 }

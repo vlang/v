@@ -7,13 +7,21 @@ const selective_arg_vlib_dir = os.dir(selective_arg_v3_dir)
 const selective_arg_v3_src = os.join_path(selective_arg_v3_dir, 'v.v')
 
 fn selective_arg_v3_bin() string {
-	bin := os.join_path(os.temp_dir(), 'v3_selective_import_generic_arg_test')
+	bin := selective_arg_v3_bin_path()
 	if os.exists(bin) {
 		return bin
 	}
 	build := os.execute('${selective_arg_vexe} -gc none -path "${selective_arg_vlib_dir}|@vlib|@vmodules" -o ${bin} ${selective_arg_v3_src}')
 	assert build.exit_code == 0, build.output
 	return bin
+}
+
+fn selective_arg_v3_bin_path() string {
+	return os.join_path(os.temp_dir(), 'v3_selective_import_generic_arg_test')
+}
+
+fn testsuite_begin() {
+	os.rm(selective_arg_v3_bin_path()) or {}
 }
 
 // A generic call resolves its type arguments in the file that writes the call.
@@ -183,4 +191,56 @@ fn main() {
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '7'
+}
+
+// A selective import of a name wins over a same-named declaration in the writing
+// file's own module: the checker resolves the bare spelling through the file's
+// selective imports (`qualify_type_text_impl`), so the transform and cgen have to
+// keep that order as well. This program only compiles while every bare `Token` in
+// `main.v` means `iam.Token` - the local `main.Token` has a `name` field, the
+// imported one has `id` - so a local-first rewrite would break it again.
+fn test_bare_name_prefers_file_selective_import_over_local_declaration() {
+	v3_bin := selective_arg_v3_bin()
+	dir := os.join_path(os.temp_dir(), 'v3_local_vs_selective_import')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(os.join_path(dir, 'iam')) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'v.mod'), 'Module{\n\tname: "local_vs_import"\n}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, 'iam', 'token.v'), 'module iam
+
+pub struct Token {
+pub mut:
+	id int
+}
+') or { panic(err) }
+	os.write_file(os.join_path(dir, 'main.v'), "module main
+
+import iam { Token }
+
+struct Token {
+	name string
+}
+
+fn take_id[T](value T) {
+	println(value.id)
+}
+
+fn main() {
+	mut t := Token{}
+	t.id = 7
+	println(t.id)
+	take_id[iam.Token](t)
+}
+") or { panic(err) }
+	out := os.join_path(dir, 'app')
+	compile := os.execute('${v3_bin} -nocache -o ${out} ${dir}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '7\n7', run.output
 }
