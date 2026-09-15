@@ -1714,6 +1714,42 @@ fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name stri
 	return t.clone_method_subst_children_with_value(node, var_name, method, inner_vars, node.value)
 }
 
+// transform_comptime_method_embedded_arg projects an argument to the embedded
+// struct expected by a reflected method. Comptime method calls are checked before
+// generic specialization, so their argument can still be `T` then and become a
+// concrete embedding struct only while the call is cloned.
+fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId, param_type string) ?flat.NodeId {
+	if int(arg_id) < 0 || !param_type.starts_with('&') {
+		return none
+	}
+	expected_type := t.trim_pointer_type(param_type)
+	mut actual_type := t.raw_var_type_for_expr(arg_id) or { t.node_type(arg_id) }
+	if actual_type.len == 0 {
+		return none
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind == .ident && t.mut_param_values[arg.value] && !actual_type.starts_with('&') {
+		actual_type = '&${actual_type}'
+	}
+	actual_base := t.trim_pointer_type(actual_type)
+	_ := t.embedded_receiver_path(actual_base, expected_type) or { return none }
+	base := if actual_type.starts_with('&') && arg.kind == .ident {
+		t.transform_expr_preserving_pointer_value(arg_id)
+	} else {
+		t.transform_expr(arg_id)
+	}
+	embedded := t.embedded_receiver_base_for_type(base, actual_type, expected_type) or {
+		return none
+	}
+	if t.node_type(embedded).starts_with('&') {
+		t.set_node_typ(int(embedded), param_type)
+		return embedded
+	}
+	address := t.make_prefix(.amp, embedded)
+	t.set_node_typ(int(address), param_type)
+	return address
+}
+
 fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, var_name string, method MethodMeta, inner_vars []string, value string) flat.NodeId {
 	child_inner_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
@@ -1731,6 +1767,18 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 	start := t.a.children.len
 	for child in children {
 		t.a.children << child
+	}
+	if node.kind == .call && children.len > 1 && method.params.len > 0
+		&& !t.method_has_implicit_veb_ctx(method) {
+		callee := t.a.node(children[0])
+		if callee.kind == .selector && comptime_method_selector_marker in callee.generic_params() {
+			if embedded_ctx := t.transform_comptime_method_embedded_arg(children[1],
+				method.params[0].typ)
+			{
+				children[1] = embedded_ctx
+				t.a.children[start + 1] = embedded_ctx
+			}
+		}
 	}
 	mut typ := node.typ
 	if node.kind == .index && node.value == 'range' && children.len > 0 {
