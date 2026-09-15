@@ -5576,6 +5576,10 @@ fn normalized_c_include_arg_path(include_arg string) string {
 	return path.replace('\\', '/')
 }
 
+fn c_windows_header_requires_windows_h(directive string) bool {
+	return directive in ['#include <bcrypt.h>', '#include <synchapi.h>']
+}
+
 fn (mut g FlatGen) emit_preinclude_directives() bool {
 	// Configuration preincludes must run before windows.h so they can select the
 	// requested WinAPI surface. Only interpose windows.h before a leaf header that
@@ -5590,7 +5594,8 @@ fn (mut g FlatGen) emit_preinclude_directives() bool {
 			}
 			continue
 		}
-		if windows_target && !emitted_windows_header && directive == '#include <synchapi.h>' {
+		if windows_target && !emitted_windows_header
+			&& c_windows_header_requires_windows_h(directive) {
 			g.writeln('#include <windows.h>')
 			emitted_windows_header = true
 		}
@@ -10043,7 +10048,7 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 	mut emitted_includes := map[string]bool{}
 	mut has_mach_headers := false
 	mut emitted_windows_header := windows_header_emitted
-	mut deferred_synchapi_indices := []int{}
+	mut deferred_windows_header_indices := []int{}
 	directives := g.ordered_c_directives(false)
 	use_system_libc := g.c_directives_use_system_libc()
 	for i, directive in directives {
@@ -10070,8 +10075,8 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 				}
 				emitted_windows_header = true
 			}
-			if !emitted_windows_header && clean == '#include <synchapi.h>' {
-				deferred_synchapi_indices << i
+			if !emitted_windows_header && c_windows_header_requires_windows_h(clean) {
+				deferred_windows_header_indices << i
 				continue
 			}
 		}
@@ -10079,15 +10084,15 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 			emitted = true
 		}
 	}
-	if deferred_synchapi_indices.len > 0 {
+	if deferred_windows_header_indices.len > 0 {
 		if !emitted_windows_header {
-			// Preserve Winsock2 ahead of windows.h while keeping synchapi.h after
-			// the WinAPI base declarations that it requires.
+			// Preserve Winsock2 ahead of windows.h while keeping dependent WinAPI
+			// headers after the base declarations that they require.
 			g.writeln('#include <windows.h>')
 			emitted_windows_header = true
 			emitted = true
 		}
-		for i in deferred_synchapi_indices {
+		for i in deferred_windows_header_indices {
 			if g.emit_preserved_c_directive_at(directives, i, mut emitted_includes) {
 				emitted = true
 			}

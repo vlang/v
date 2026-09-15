@@ -78,6 +78,19 @@ fn test_cross_is_a_modifier_that_keeps_an_explicit_target() {
 	assert c_code.contains('_WIN32'), 'the explicit -os windows target was lost'
 }
 
+fn test_cross_windows_output_orders_windows_header_before_bcrypt() {
+	c_code := cross_generate_with('-cross -os windows -cc msvc', 'windows_bcrypt', 'module main\n\nimport crypto.rand\n\nfn main() {\n\tmut buffer := []u8{len: 1}\n\tcrypto.rand.read(mut buffer) or {}\n}\n')
+	windows_index := c_code.index('#include <windows.h>') or {
+		assert false, 'the Windows base header is missing'
+		return
+	}
+	bcrypt_index := c_code.index('#include <bcrypt.h>') or {
+		assert false, 'the BCrypt header is missing'
+		return
+	}
+	assert windows_index < bcrypt_index, c_code.all_before('typedef signed char i8;')
+}
+
 fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 	// The snapshot does not know its C compiler yet. V's WinAPI atomic header is
 	// emitted behind `_WIN32 && __TINYC__` and defines `atomic_fetch_add_byte` and
