@@ -604,6 +604,7 @@ mut:
 	callback_wrapper_names          map[string]string
 	callback_wrapper_defs           []string
 	callback_wrapper_defs_seen      map[string]bool
+	callback_identity_used          bool
 	parallel_used                   bool
 	c_name_cache                    &CNameCache = unsafe { nil }
 	emitted_fn_ptr_typedefs         map[string]bool
@@ -704,8 +705,32 @@ fn (g &FlatGen) timing_profile(message string) {
 	}
 }
 
+// canonical_annotation_leaf strips wrappers so qualified semantic names can be
+// recognized without changing how ordinary unqualified annotations are parsed.
+fn canonical_annotation_leaf(typ string) string {
+	mut leaf := typ
+	for leaf.len > 0 {
+		if leaf.starts_with('[]') {
+			leaf = leaf[2..]
+			continue
+		}
+		if leaf[0] == `&` || leaf[0] == `?` || leaf[0] == `!` {
+			leaf = leaf[1..]
+			continue
+		}
+		break
+	}
+	return leaf
+}
+
+// parse_node_type resolves a node's `typ`, which is a checker-produced
+// annotation. Parse qualified semantic names without resolving them through the
+// source file's import aliases again; raw source spelling remains in `node.value`.
 @[inline]
 fn (g &FlatGen) parse_node_type(node &flat.Node) types.Type {
+	if canonical_annotation_leaf(node.typ).contains('.') {
+		return g.tc.parse_canonical_type(node.typ)
+	}
 	return g.tc.parse_type_ref(node.typ, node.type_text_id())
 }
 
@@ -1250,6 +1275,7 @@ pub fn FlatGen.new() FlatGen {
 		callback_wrapper_names: map[string]string{}
 		callback_wrapper_defs: []string{}
 		callback_wrapper_defs_seen: map[string]bool{}
+		callback_identity_used: false
 		emitted_loop_break_labels: map[string]bool{}
 		goto_label_c_names: map[string]string{}
 		c_name_cache: &CNameCache{}
@@ -3188,6 +3214,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.callback_wrapper_names.clear()
 	g.callback_wrapper_defs = []string{}
 	g.callback_wrapper_defs_seen.clear()
+	g.callback_identity_used = false
 	g.parallel_used = false
 	g.c_name_cache = &CNameCache{}
 	g.emitted_fn_ptr_typedefs.clear()
@@ -11630,7 +11657,9 @@ fn (mut g FlatGen) gen_current_mut_param_address(id flat.NodeId) bool {
 	if param_type !is types.Pointer {
 		return false
 	}
-	g.write(g.cname(child.value))
+	// Taking the address of a mutable parameter is the parameter, which already
+	// holds one, so it is written under the name the parameter was declared with.
+	g.write(g.current_param_use_cname(child.value))
 	return true
 }
 
@@ -15016,6 +15045,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = lhs_type.name
 			} else if rhs_type is types.Enum {
 				g.expected_enum = rhs_type.name
+			}
+			if g.gen_callback_infix_equality(lhs_id, rhs_id, lhs_type, rhs_type, node.op) {
+				g.expected_enum = old_expected_enum
+				return
 			}
 			if lhs_type is types.Struct {
 				op_name := match node.op {

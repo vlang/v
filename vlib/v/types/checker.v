@@ -5515,17 +5515,23 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		module_path := tc.import_module_path_text(node)
 		module_base := module_path.all_after_last('.')
 		explicit_alias := tc.import_has_explicit_alias(node)
+		has_source := node.pos.end > node.pos.offset
 		if missing_path := tc.a.missing_imports[idx] {
-			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)', flat.NodeId(idx), node.pos, 'builder error:')
+			// The resolver knows whether a `modules/` directory would have
+			// satisfied this import, and leaves the migration hint for it here.
+			layout_hint := tc.a.missing_import_hints[idx]
+			tc.record_error_severity_at(.unknown_ident, 'cannot import module "${missing_path}" (not found)${layout_hint}', flat.NodeId(idx), node.pos, 'builder error:')
 		}
-		tc.check_import_source_syntax(flat.NodeId(idx), node)
+		if has_source {
+			tc.check_import_source_syntax(flat.NodeId(idx), node)
+		}
 		if tc.selective_import_has_missing_value_symbol(node, module_path)
 			|| tc.selective_import_has_const(node, module_path) {
 			tc.record_unused_import_warning(flat.NodeId(idx), node)
 		}
 		tc.check_selective_const_imports(node, module_path)
 		tc.check_selective_type_imports(node, module_path)
-		if declaration_seen_in_file {
+		if declaration_seen_in_file && has_source {
 			tc.record_error_at(.duplicate_decl, '`import x` can only be declared at the beginning of the file', flat.NodeId(idx), token.new_span(node.pos.id, node.pos.offset, node.pos.offset + 'import'.len))
 		}
 		if explicit_alias && node.typ == module_base {
@@ -5700,7 +5706,8 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 		if tc.diagnostic_files.len > 0 && tc.cur_file !in tc.diagnostic_files {
 			continue
 		}
-		if node.kind != .import_decl || !node.pos.is_valid() || node.typ == '_'
+		if node.kind != .import_decl || !node.pos.is_valid() || node.pos.end <= node.pos.offset
+			|| node.typ == '_'
 			|| tc.import_is_used(flat.NodeId(idx), node) {
 			continue
 		}

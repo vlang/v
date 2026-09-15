@@ -29,9 +29,43 @@ const requested_vlib_tests = [
 // repository root, and every entry must exist, so a rename cannot turn one into a silent
 // no-op. The runner names each skipped file, so a skip stays visible in the CI log.
 const temporarily_disabled_unit_tests = [
+	// The suite assumes V3 scans and inlines C headers, an implementation that was
+	// intentionally removed when C headers became authoritative for declarations.
+	'vlib/v/compiler_tests/c_inline_header_context_codegen_test.v',
 	// Its FastC expectations no longer match what the generator emits, and some of the
 	// mismatches are codegen regressions rather than stale expectations.
 	'vlib/v/gen/fastc/fastc_test.v',
+]
+
+// These cases specifically exercise the removed header scanning and headerless-C
+// implementation. Other tests in the same file remain enabled, and newly added
+// functions are included automatically.
+const temporarily_disabled_c_directive_order_test_functions = [
+	'test_c_directives_follow_import_dependency_order',
+	'test_importer_macro_is_emitted_before_dependency_include',
+	'test_dir_include_is_expanded_before_header_probe',
+	'test_quoted_include_uses_flag_include_dirs',
+	'test_quoted_include_uses_later_flag_include_dirs',
+	'test_multiline_static_inline_header_is_not_redeclared',
+	'test_inlined_headers_are_emitted_before_extern_prototypes',
+	'test_header_declared_prototypes_are_not_redeclared',
+	'test_inlined_headers_are_emitted_before_type_declarations',
+	'test_anonymous_typedef_struct_header_is_not_duplicated',
+	'test_tagged_typedef_struct_alias_header_is_not_duplicated',
+	'test_inlined_typedef_union_headers_are_not_duplicated',
+	'test_nested_local_header_includes_are_inlined_recursively',
+	'test_supported_system_include_is_preserved_and_enables_system_preamble',
+	'test_nested_system_include_is_preserved_in_its_platform_guard',
+	'test_system_header_aggregates_are_emitted_headerlessly',
+	'test_system_header_functions_are_emitted_headerlessly',
+	'test_mach_headers_are_emitted_headerlessly',
+	'test_inferred_mach_headers_are_target_guarded',
+	'test_timerfd_header_uses_headerless_decls',
+	'test_stdarg_in_inlined_header_provides_va_defs',
+	'test_inttypes_in_inlined_header_keeps_format_macros',
+	'test_poll_in_inlined_header_uses_preserved_system_struct',
+	'test_rwmutex_keeps_linux_rwlockattr_prototype',
+	'test_shared_runtime_keeps_rwmutex_init_prototypes',
 ]
 
 // These suites are preserved under the canonical compiler namespace, but have
@@ -240,11 +274,10 @@ fn run_v3_unit_tests(cfg Config) {
 			test_files.len
 		}
 		println('  Unit test batch ${start / unit_test_batch_size + 1}: ${start + 1}-${end}/${test_files.len}')
-		mut quoted_files := []string{cap: end - start}
 		for path in test_files[start..end] {
-			quoted_files << q(path)
+			run_only_arg := unit_test_run_only_arg(cfg, path)
+			run('${q(wrapper_vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${run_only_arg} ${q(path)}')
 		}
-		run('${q(wrapper_vexe)} -gc none -path ${q(cfg.vlib_dir)} -enable-globals -silent test ${quoted_files.join(' ')}')
 		if os.exists(unit_cache) {
 			os.rmdir_all(unit_cache) or {
 				fail('failed to reset V3 unit-test cache ${unit_cache}: ${err}')
@@ -272,6 +305,35 @@ fn run_v3_unit_tests(cfg Config) {
 	restore_env(unit_wrapper_shared_v3_env, old_wrapper_shared_v3)
 	restore_env(unit_wrapper_v3_src_env, old_wrapper_v3_src)
 	cleanup_files([shared_v3, wrapper_vexe])
+}
+
+fn unit_test_run_only_arg(cfg Config, path string) string {
+	relative_path := repo_relative_path(cfg, path)
+	if relative_path != 'vlib/v/compiler_tests/c_directive_order_codegen_test.v' {
+		return ''
+	}
+	source := os.read_file(path) or {
+		fail('failed to read selectively quarantined test ${relative_path}: ${err}')
+		return ''
+	}
+	mut test_functions := []string{}
+	for line in source.split_into_lines() {
+		clean := line.trim_space()
+		if clean.starts_with('fn test_') {
+			test_functions << clean.all_after('fn ').all_before('(')
+		}
+	}
+	for name in temporarily_disabled_c_directive_order_test_functions {
+		if name !in test_functions {
+			fail('temporarily disabled test function is missing: ${relative_path}:${name}')
+		}
+		println('  Skipping ${relative_path}:${name} (temporarily disabled)')
+	}
+	enabled := test_functions.filter(it !in temporarily_disabled_c_directive_order_test_functions)
+	if enabled.len == 0 {
+		fail('selective quarantine disabled every test in ${relative_path}')
+	}
+	return '-run-only ${q(enabled.join(','))}'
 }
 
 // enabled_unit_tests drops the temporarily_disabled_unit_tests entries from `paths` and

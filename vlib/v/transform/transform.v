@@ -20820,7 +20820,15 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	if node.children_count == 0 {
 		return id
 	}
-	target_type := t.normalize_type_alias(node.value)
+	// Source cast text still contains the import spelling (`alias.Type`), while
+	// the checker sidecar holds its canonical identity. Normalize that semantic
+	// name so a real qualified alias with the same spelling cannot win first.
+	checker_target := t.raw_checker_node_type(id)
+	target_type := t.normalize_type_alias(if checker_target.len > 0 {
+		checker_target
+	} else {
+		node.value
+	})
 	// Materialize a value-context `match`/`if` cast operand into a value temp before
 	// the type-specific dispatch below. Several cast paths return early into helpers
 	// that lower the operand with plain `transform_expr` — the optional-sum branch

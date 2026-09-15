@@ -1,5 +1,7 @@
 module util
 
+import os
+
 fn test_escape_sequence_and_capital_helpers() {
 	assert is_escape_sequence(`n`)
 	assert is_escape_sequence(`\\`)
@@ -22,6 +24,79 @@ fn test_new_suggestion_bounds_candidate_storage() {
 fn test_githash_reads_repository_head() {
 	hash := githash(@VMODROOT)!
 	assert hash.len == 7
+}
+
+fn test_githash_reads_packed_repository_head() {
+	root := os.join_path(os.vtmp_dir(), 'util_githash_packed_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, '.git'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	reference := 'refs/heads/main'
+	os.write_file(os.join_path(root, '.git', 'HEAD'), 'ref: ${reference}\n')!
+	os.write_file(os.join_path(root, '.git', 'packed-refs'), '# pack-refs with: peeled fully-peeled sorted\n1234567890abcdef1234567890abcdef12345678 ${reference}\n')!
+	assert githash(root)! == '1234567'
+}
+
+fn test_githash_resolves_chained_symbolic_refs() {
+	root := os.join_path(os.vtmp_dir(), 'util_githash_symbolic_chain_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	git_dir := os.join_path(root, '.git')
+	os.mkdir_all(os.join_path(git_dir, 'refs', 'heads'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	alias_reference := 'refs/heads/alias'
+	main_reference := 'refs/heads/main'
+	os.write_file(os.join_path(git_dir, 'HEAD'), 'ref: ${alias_reference}\n')!
+	os.write_file(os.join_path(git_dir, alias_reference), 'ref: ${main_reference}\n')!
+	os.write_file(os.join_path(git_dir, 'packed-refs'), '1234567890abcdef1234567890abcdef12345678 ${main_reference}\n')!
+	assert githash(root)! == '1234567'
+}
+
+fn test_githash_rejects_symbolic_ref_cycles() {
+	root := os.join_path(os.vtmp_dir(), 'util_githash_symbolic_cycle_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	git_dir := os.join_path(root, '.git')
+	os.mkdir_all(os.join_path(git_dir, 'refs', 'heads'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	alias_reference := 'refs/heads/alias'
+	main_reference := 'refs/heads/main'
+	os.write_file(os.join_path(git_dir, 'HEAD'), 'ref: ${alias_reference}\n')!
+	os.write_file(os.join_path(git_dir, alias_reference), 'ref: ${main_reference}\n')!
+	os.write_file(os.join_path(git_dir, main_reference), 'ref: ${alias_reference}\n')!
+	_ := githash(root) or {
+		assert err.msg().contains('cyclic Git symbolic reference')
+		return
+	}
+	assert false, 'cyclic symbolic references should fail'
+}
+
+fn test_githash_honors_absolute_worktree_common_dir() {
+	root := os.join_path(os.vtmp_dir(), 'util_githash_commondir_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	checkout := os.join_path(root, 'checkout')
+	common_dir := os.join_path(root, 'common.git')
+	git_dir := os.join_path(common_dir, 'worktrees', 'checkout')
+	reference := 'refs/heads/main'
+	os.mkdir_all(checkout)!
+	os.mkdir_all(git_dir)!
+	os.mkdir_all(os.join_path(common_dir, 'refs', 'heads'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(checkout, '.git'), 'gitdir: ${git_dir}\n')!
+	os.write_file(os.join_path(git_dir, 'HEAD'), 'ref: ${reference}\n')!
+	os.write_file(os.join_path(git_dir, 'commondir'), '${common_dir}\n')!
+	loose_reference := os.join_path(common_dir, reference)
+	os.write_file(loose_reference, 'abcdef1234567890abcdef1234567890abcdef12\n')!
+	assert githash(checkout)! == 'abcdef1'
+	os.rm(loose_reference)!
+	os.write_file(os.join_path(common_dir, 'packed-refs'), 'fedcba9876543210fedcba9876543210fedcba98 ${reference}\n')!
+	assert githash(checkout)! == 'fedcba9'
 }
 
 fn test_parse_inline_asm_header_reads_arch_and_modifiers() {

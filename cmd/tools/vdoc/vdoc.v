@@ -272,11 +272,25 @@ fn (vd &VDoc) emit_generate_err(err IError) {
 		mod_list := get_modules(cfg.input_path)
 		println('Available modules:\n==================')
 		for mod in mod_list {
-			println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
+			println(module_display_name(mod, cfg.input_path))
 		}
 		err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
 	}
 	eprintln(err_msg)
+}
+
+// `get_modules` hands back directories, not names. What a reader needs is where
+// each one sits under the input root, read as a module path: an absolute input
+// would otherwise print the whole filesystem path with dots for separators. There
+// is no `modules/` to strip out of it either -- that is an ordinary directory
+// now, so a module under one really is `modules.<name>`.
+fn module_display_name(mod string, input_path string) string {
+	normalized := mod.replace('\\', '/').trim_right('/')
+	root := input_path.replace('\\', '/').trim_right('/')
+	if root != '' && normalized.starts_with(root + '/') {
+		return normalized[root.len + 1..].replace('/', '.')
+	}
+	return os.file_name(normalized)
 }
 
 fn (mut vd VDoc) generate_docs_from_file() {

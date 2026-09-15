@@ -12,12 +12,16 @@ fn test_main() {
 		func: callback
 	}
 	assert t.func? == callback
+	assert callback == t.func?
+	assert !(t.func? != callback)
+	assert !(callback != t.func?)
 	call_fn := t.func?
 	assert call_fn(&t)?
 
 	mut a := Foo{}
 	a.func = callback
 	assert a.func? == callback
+	assert callback == a.func?
 	call_fn2 := a.func?
 	assert call_fn2(&a)?
 }

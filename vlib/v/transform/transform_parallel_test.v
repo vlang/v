@@ -5144,3 +5144,68 @@ fn test_parallel_escape_precheck_preserves_candidate_across_local_type_decl() {
 		assert t.fn_escape_scan_flags[6] == 1
 	}
 }
+
+fn test_struct_lookup_name_prefers_selected_struct_over_imported_enum_short_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['shapes.Lang'] = []types.StructField{}
+	tc.struct_modules['shapes.Lang'] = 'shapes'
+	tc.file_selective_imports[file_import_key('main.v', 'Lang')] = ['shapes.Lang']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	t.cur_file = 'main.v'
+	t.structs['shapes.Lang'] = StructInfo{
+		name:   'Lang'
+		module: 'shapes'
+	}
+	t.enum_types['Lang'] = ['en']
+	t.enum_types['other.Lang'] = ['en']
+
+	assert t.struct_lookup_name('Lang') == 'shapes.Lang'
+	t.cur_file = 'without_selective_import.v'
+	assert t.struct_lookup_name('Lang') == ''
+}
+
+fn test_struct_lookup_name_resolves_alias_before_imported_enum_short_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Lang'] = 'Record'
+	tc.type_aliases['Count'] = 'other.Count'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	t.structs['Record'] = StructInfo{
+		name: 'Record'
+	}
+	t.enum_types['Lang'] = ['en']
+	t.enum_types['other.Lang'] = ['en']
+	t.enum_types['Count'] = ['one']
+	t.enum_types['other.Count'] = ['one']
+
+	assert t.struct_lookup_name('Lang') == 'Record'
+	assert t.struct_lookup_name('Count') == ''
+}
+
+fn test_struct_lookup_name_preserves_builtin_struct_over_imported_enum_short_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['SliceIndex'] = []types.StructField{}
+	tc.struct_modules['SliceIndex'] = 'builtin'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'sample'
+	t.cur_file = 'sample.v'
+	t.structs['SliceIndex'] = StructInfo{
+		name:   'SliceIndex'
+		module: 'builtin'
+	}
+	t.enum_types['SliceIndex'] = ['value']
+	t.enum_types['other.SliceIndex'] = ['value']
+
+	assert t.struct_lookup_name('SliceIndex') == 'SliceIndex'
+	t.enum_types['sample.SliceIndex'] = ['local']
+	assert t.struct_lookup_name('SliceIndex') == ''
+	t.enum_types.delete('sample.SliceIndex')
+	tc.file_selective_imports[file_import_key('sample.v', 'SliceIndex')] = [
+		'other.SliceIndex',
+	]
+	assert t.struct_lookup_name('SliceIndex') == ''
+}

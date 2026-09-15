@@ -160,7 +160,7 @@ fn C.execvp(cmd_path &char, args &&char) i32
 
 fn C._execve(cmd_path &char, args voidptr, envs voidptr) i32
 
-fn C._execvp(cmd_path &char, args &&char) i32
+fn C._execvp(cmd_path &char, args voidptr) i32
 
 fn C.strcmp(s1 &char, s2 &char) i32
 

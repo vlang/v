@@ -162,6 +162,13 @@ fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	}
 }
 
+fn test_manual_stdlib_headers_identify_gcc_without_matching_clang_or_tcc() {
+	headers := manual_stdlib_c_headers()
+	assert headers.contains('#if defined(__GNUC__) && !defined(__TINYC__) && !defined(__cplusplus) && !defined(__clang__)')
+	assert headers.contains('#define __V_GCC__')
+	assert headers.index('#define __V_GCC__')? < headers.index('defined(__V_GCC__)')?
+}
+
 fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	mut g := FlatGen.new()
 	g.system_libc_preamble()
