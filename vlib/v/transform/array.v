@@ -650,11 +650,11 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 		start := t.a.children.len
 		t.a.children << value
 		field_ids << t.a.add_node(flat.Node{
-			kind: .field_init
+			kind:           .field_init
 			children_start: start
 			children_count: 1
-			value: field.name
-			typ: field_type
+			value:          field.name
+			typ:            field_type
 		})
 	}
 	if field_ids.len == 0 {
@@ -665,11 +665,11 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 		t.a.children << field_id
 	}
 	return t.a.add_node(flat.Node{
-		kind: .struct_init
+		kind:           .struct_init
 		children_start: start
 		children_count: flat.child_count(field_ids.len)
-		value: struct_type
-		typ: struct_type
+		value:          struct_type
+		typ:            struct_type
 	})
 }
 
@@ -935,6 +935,23 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 	if first.kind == .prefix && first.value == '...' {
 		return none
 	}
+	if first.kind == .index && first.children_count > 0 {
+		base_type := t.normalize_type_alias(t.node_type(t.a.child(&first, 0))).trim_left('&')
+		if base_type.starts_with('[]') {
+			return base_type
+		}
+	}
+	if first.kind == .call && first.children_count > 0 {
+		callee := t.a.child_node(&first, 0)
+		if callee.kind == .selector && callee.children_count > 0
+			&& callee.value in ['first', 'last', 'pop', 'pop_left'] {
+			base_id := t.a.child(&callee, 0)
+			base_type := t.normalize_type_alias(t.node_type(base_id)).trim_left('&')
+			if base_type.starts_with('[]') {
+				return base_type
+			}
+		}
+	}
 	mut alias_name := t.raw_alias_type_for_expr(first_id)
 	if alias_name.len == 0 {
 		alias_name = t.array_literal_alias_expr_name(first)
@@ -983,9 +1000,16 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 		return none
 	}
 	target_array_type := t.normalize_type_alias(target_type)
+	checker_array_type := t.normalize_type_alias(t.raw_checker_node_type(id))
 	array_type := if target_array_type.starts_with('[]')
 		&& t.is_sum_type_name(target_array_type[2..]) {
 		target_array_type
+	} else if target_array_type == '[]voidptr' && checker_array_type.starts_with('[]')
+		&& checker_array_type != '[]voidptr' {
+		// An unresolved generic collection accessor can supply []voidptr as the
+		// contextual target even though the checker has already inferred the
+		// literal's concrete element type.
+		checker_array_type
 	} else if checker_alias_type := t.array_literal_checker_alias_type(id) {
 		checker_alias_type
 	} else if alias_type := t.array_literal_alias_type(node) {
@@ -1270,13 +1294,13 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 	t.a.children << rhs_id
 	t.a.children << t.a.child(&node, 1)
 	rhs_or_id := t.a.add_node(flat.Node{
-		kind: .or_expr
-		op: node.op
+		kind:           .or_expr
+		op:             node.op
 		children_start: or_start
 		children_count: 2
-		pos: node.pos
-		value: node.value
-		typ: value_type
+		pos:            node.pos
+		value:          node.value
+		typ:            value_type
 	})
 	pending_start := t.pending_stmts.len
 	unwrapped_rhs := t.lower_or_expr_to_temp(rhs_or_id, t.a.nodes[int(rhs_or_id)])
@@ -1286,13 +1310,13 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 	t.a.children << t.a.child(&append, 0)
 	t.a.children << unwrapped_rhs
 	lowered_id := t.a.add_node(flat.Node{
-		kind: .infix
-		op: .left_shift
+		kind:           .infix
+		op:             .left_shift
 		children_start: append_start
 		children_count: 2
-		pos: append.pos
-		value: append.value
-		typ: append.typ
+		pos:            append.pos
+		value:          append.value
+		typ:            append.typ
 	})
 	if lowered := t.try_lower_map_index_append_stmt_with_prelude(lowered_id, rhs_pending) {
 		return lowered
@@ -1579,25 +1603,25 @@ fn (mut t Transformer) normalize_array_append_add_rhs(id flat.NodeId) flat.NodeI
 	t.a.children << append_rhs
 	t.a.children << t.a.child(&node, 1)
 	new_rhs := t.a.add_node(flat.Node{
-		kind: .infix
-		op: node.op
+		kind:           .infix
+		op:             node.op
 		children_start: new_rhs_start
 		children_count: 2
-		pos: node.pos
-		value: node.value
-		typ: node.typ
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
 	})
 	new_append_start := t.a.children.len
 	t.a.children << t.a.child(&append, 0)
 	t.a.children << new_rhs
 	return t.a.add_node(flat.Node{
-		kind: .infix
-		op: .left_shift
+		kind:           .infix
+		op:             .left_shift
 		children_start: new_append_start
 		children_count: 2
-		pos: append.pos
-		value: append.value
-		typ: append.typ
+		pos:            append.pos
+		value:          append.value
+		typ:            append.typ
 	})
 }
 
@@ -2720,7 +2744,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
-			kind: .defer_stmt
+			kind:           .defer_stmt
 			children_start: defer_start
 			children_count: 1
 		})
@@ -3029,7 +3053,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
-			kind: .defer_stmt
+			kind:           .defer_stmt
 			children_start: defer_start
 			children_count: 1
 		})
@@ -4039,8 +4063,8 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 	stmt := t.a.nodes[int(stmt_id)]
 	if stmt.kind in [.break_stmt, .continue_stmt] {
 		loop_exits << ArrayMapLoopPointerExit{
-			origins: locals.clone()
-			label: stmt.value
+			origins:     locals.clone()
+			label:       stmt.value
 			defer_count: active_defer_count
 			is_continue: stmt.kind == .continue_stmt
 		}
@@ -4048,10 +4072,10 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 	}
 	if stmt.kind == .goto_stmt {
 		loop_exits << ArrayMapLoopPointerExit{
-			origins: locals.clone()
-			label: stmt.value
+			origins:     locals.clone()
+			label:       stmt.value
 			defer_count: active_defer_count
-			is_goto: true
+			is_goto:     true
 		}
 		return false
 	}
@@ -4062,7 +4086,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 			}
 		}
 		return_exits << ArrayMapReturnPointerExit{
-			origins: locals.clone()
+			origins:     locals.clone()
 			defer_count: active_defer_count
 		}
 		return false
@@ -5624,9 +5648,9 @@ fn (t &Transformer) array_map_bound_method_info(node flat.Node, elem_name string
 	}
 	return BoundMethodArrayInfo{
 		receiver_type: receiver_type
-		fn_type: result_elem_type
-		method: node.value
-		return_type: return_type
+		fn_type:       result_elem_type
+		method:        node.value
+		return_type:   return_type
 	}
 }
 
@@ -5760,13 +5784,13 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 				t.a.children << child
 			}
 			return t.a.add_node(flat.Node{
-				kind: node.kind
-				op: node.op
+				kind:           node.kind
+				op:             node.op
 				children_start: start
 				children_count: flat.child_count(new_children.len)
-				pos: node.pos
-				value: node.value
-				typ: node.typ
+				pos:            node.pos
+				value:          node.value
+				typ:            node.typ
 			})
 		}
 	}
@@ -5782,14 +5806,14 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 		t.a.children << child
 	}
 	return t.a.add_node(flat.Node{
-		kind: node.kind
-		op: node.op
+		kind:           node.kind
+		op:             node.op
 		children_start: start
 		children_count: flat.child_count(new_children.len)
-		pos: node.pos
-		value: node.value
-		typ: node.typ
-		payload: flat.node_payload(node.generic_params().clone())
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+		payload:        flat.node_payload(node.generic_params().clone())
 	})
 }
 
@@ -5826,14 +5850,14 @@ fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replac
 		t.a.children << child
 	}
 	return t.a.add_node(flat.Node{
-		kind: node.kind
-		op: node.op
+		kind:           node.kind
+		op:             node.op
 		children_start: start
 		children_count: flat.child_count(new_children.len)
-		pos: node.pos
-		value: node.value
-		typ: node.typ
-		payload: flat.node_payload(node.generic_params().clone())
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+		payload:        flat.node_payload(node.generic_params().clone())
 	})
 }
 
@@ -5926,7 +5950,7 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
-			kind: .defer_stmt
+			kind:           .defer_stmt
 			children_start: defer_start
 			children_count: 1
 		})
@@ -5994,7 +6018,7 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
-			kind: .defer_stmt
+			kind:           .defer_stmt
 			children_start: defer_start
 			children_count: 1
 		})
@@ -6477,13 +6501,13 @@ fn (mut t Transformer) substitute_array_sort_vars_named(id flat.NodeId, a_name s
 		t.a.children << child
 	}
 	return t.a.add_node(flat.Node{
-		kind: node.kind
-		op: node.op
+		kind:           node.kind
+		op:             node.op
 		children_start: start
 		children_count: node.children_count
-		pos: node.pos
-		value: node.value
-		typ: node.typ
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
 	})
 }
 
@@ -6493,8 +6517,8 @@ fn (mut t Transformer) make_index_assign(lhs flat.NodeId, rhs flat.NodeId) flat.
 	t.a.children << lhs
 	t.a.children << rhs
 	return t.a.add_node(flat.Node{
-		kind: .index_assign
-		op: .assign
+		kind:           .index_assign
+		op:             .assign
 		children_start: start
 		children_count: 2
 	})

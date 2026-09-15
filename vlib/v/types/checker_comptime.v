@@ -541,8 +541,8 @@ fn (mut tc TypeChecker) comptime_static_enum_value_cases(base_type string) Compt
 	is_flag := enum_name in tc.flag_enums
 	for idx, name in names {
 		cases << ComptimeStaticValueCase{
-			name: name
-			value: if is_flag { 1 << idx } else { idx }
+			name:      name
+			value:     if is_flag { 1 << idx } else { idx }
 			has_value: true
 		}
 	}
@@ -653,24 +653,24 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeSt
 		raw_typ := if decl_meta.raw_typ.len > 0 { decl_meta.raw_typ } else { typ }
 		type_flags := comptime_static_field_type_flags(raw_typ)
 		cases << ComptimeStaticFieldCase{
-			name: comptime_static_reflected_field_name(field.name, raw_typ, decl_meta.is_embed)
-			typ: typ
+			name:          comptime_static_reflected_field_name(field.name, raw_typ, decl_meta.is_embed)
+			typ:           typ
 			unaliased_typ: unaliased_typ
-			is_option: field.typ is OptionType || tc.comptime_type_match_type(typ) is OptionType
-			is_embed: decl_meta.is_embed
-			is_array: core_type is Array || core_type is ArrayFixed
-			is_map: core_type is Map
-			is_chan: core_type is Channel
-			is_struct: tc.comptime_static_type_is_struct(core_type, typ, raw_typ)
-			is_enum: core_type is Enum && core_type.name() in tc.enum_names
-			is_alias: field.typ is Alias || typ in tc.type_aliases
+			is_option:     field.typ is OptionType || tc.comptime_type_match_type(typ) is OptionType
+			is_embed:      decl_meta.is_embed
+			is_array:      core_type is Array || core_type is ArrayFixed
+			is_map:        core_type is Map
+			is_chan:       core_type is Channel
+			is_struct:     tc.comptime_static_type_is_struct(core_type, typ, raw_typ)
+			is_enum:       core_type is Enum && core_type.name() in tc.enum_names
+			is_alias:      field.typ is Alias || typ in tc.type_aliases
 				|| tc.qualify_name(typ) in tc.type_aliases
-			is_shared: type_flags.is_shared
-			is_atomic: type_flags.is_atomic
-			is_mut: decl_meta.is_mut
-			is_pub: decl_meta.is_pub
+			is_shared:     type_flags.is_shared
+			is_atomic:     type_flags.is_atomic
+			is_mut:        decl_meta.is_mut
+			is_pub:        decl_meta.is_pub
 			has_decl_meta: field.name in decl_metas
-			indirections: type_flags.indirections
+			indirections:  type_flags.indirections
 		}
 	}
 	return ComptimeStaticFieldCases{
@@ -850,8 +850,8 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name st
 		}
 		field_values[field_name] = val
 		out << ComptimeStaticValueCase{
-			name: field_name
-			value: if is_flag { 1 << val } else { val }
+			name:      field_name
+			value:     if is_flag { 1 << val } else { val }
 			has_value: true
 		}
 		next_val = val + 1
@@ -1303,10 +1303,10 @@ fn (tc &TypeChecker) comptime_static_field_decl_metas_for_node(decl_name string,
 			is_pub = flags.contains('p')
 		}
 		out[f.value] = ComptimeStaticFieldDeclMeta{
-			is_mut: is_mut
-			is_pub: is_pub
+			is_mut:   is_mut
+			is_pub:   is_pub
 			is_embed: source_field_decl_is_embed(f, raw_typ)
-			raw_typ: raw_typ
+			raw_typ:  raw_typ
 		}
 	}
 	return out
@@ -2573,7 +2573,7 @@ fn (mut tc TypeChecker) check_map_literal_element_types(id flat.NodeId, node fla
 				if !tc.receiver_compatible(update_type.key_type, expected_key)
 					|| !tc.receiver_compatible(update_type.value_type, expected_value) {
 					expected_map := Type(Map{
-						key_type: expected_key
+						key_type:   expected_key
 						value_type: expected_value
 					})
 					actual_map := Type(update_type)
@@ -2946,6 +2946,15 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 						tc.register_synth_type(id, context_type)
 					}
 				}
+			}
+		}
+		if tc.type_contains_open_generic_placeholder(array_type) {
+			refined := Type(Array{
+				elem_type: tc.array_literal_elem_type(node)
+			})
+			if !tc.type_contains_open_generic_placeholder(refined) {
+				array_type = refined
+				tc.register_synth_type(id, refined)
 			}
 		}
 	}
@@ -3477,6 +3486,8 @@ fn (mut tc TypeChecker) check_string_interpolation_format(id flat.NodeId, node f
 		&& (unalias_type(actual) is Pointer || tc.mut_param_expr_base(expr_id, actual) != none
 			|| (tc.a.node(expr_id).kind == .ident
 				&& tc.current_fn_param_is_mut_receiver(tc.a.node(expr_id).value))) {
+		allowed = true
+	} else if actual.name() == 'voidptr' && spec in [`x`, `X`] {
 		allowed = true
 	} else if spec in [`s`, `S`] && unalias_type(actual) is Pointer {
 		allowed = true
@@ -4680,8 +4691,8 @@ fn (tc &TypeChecker) interface_diagnostic_type_name(typ Type, alias_module strin
 fn (tc &TypeChecker) interface_actual_field(concrete_name string, field_name string) ?StructField {
 	if field_name == 'len' && unalias_type(tc.parse_type(concrete_name)) is Map {
 		return StructField{
-			name: 'len'
-			typ: Type(int_)
+			name:   'len'
+			typ:    Type(int_)
 			is_mut: true
 		}
 	}
@@ -5327,9 +5338,9 @@ fn integer_type_range(typ Type) ?IntegerTypeRange {
 			return none
 		}
 		return IntegerTypeRange{
-			bits: if clean.size == 0 { platform_int_bits() } else { int(clean.size) }
+			bits:        if clean.size == 0 { platform_int_bits() } else { int(clean.size) }
 			is_unsigned: clean.props.has(.unsigned)
-			name: typ.name()
+			name:        typ.name()
 		}
 	}
 	if clean is ISize {
@@ -5340,9 +5351,9 @@ fn integer_type_range(typ Type) ?IntegerTypeRange {
 	}
 	if clean is USize {
 		return IntegerTypeRange{
-			bits: 64
+			bits:        64
 			is_unsigned: true
-			name: typ.name()
+			name:        typ.name()
 		}
 	}
 	if clean is Rune {
@@ -5747,7 +5758,7 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 		expected_container := if fixed_literal {
 			Type(ArrayFixed{
 				elem_type: expected_elem_type
-				len: literal.children_count
+				len:       literal.children_count
 			})
 		} else {
 			Type(Array{
@@ -9780,8 +9791,8 @@ fn sql_orm_field_type_info(raw_type string) SqlOrmFieldTypeInfo {
 		clean = trimmed_space(clean[2..])
 	}
 	return SqlOrmFieldTypeInfo{
-		base_name: clean
-		is_array: dimensions > 0
+		base_name:   clean
+		is_array:    dimensions > 0
 		is_multidim: dimensions > 1
 	}
 }
@@ -11210,7 +11221,7 @@ fn (mut tc TypeChecker) lambda_expected_fn_type(id flat.NodeId) FnType {
 				receiver_type := unwrap_pointer(tc.resolve_type(tc.a.child(callee, 0)))
 				if elem_type := array_like_elem_type(receiver_type) {
 					return FnType{
-						params: [elem_type]
+						params:      [elem_type]
 						return_type: unknown_type('inferred array map lambda return type')
 					}
 				}
@@ -15629,11 +15640,14 @@ fn (tc &TypeChecker) visible_local_scope_owns_name(name string) bool {
 	if name.len == 0 || tc.cur_scope == unsafe { nil } {
 		return false
 	}
-	scope := tc.cur_scope
-	for i := scope.names.len - 1; i >= 0; i-- {
-		if scope.names[i] == name {
-			return true
+	mut scope := unsafe { &Scope(tc.cur_scope) }
+	for scope != unsafe { nil } && voidptr(scope) != voidptr(tc.file_scope) {
+		for i := scope.names.len - 1; i >= 0; i-- {
+			if scope.names[i] == name {
+				return true
+			}
 		}
+		scope = scope.parent
 	}
 	return false
 }

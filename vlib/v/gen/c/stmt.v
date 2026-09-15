@@ -423,11 +423,11 @@ fn (mut g FlatGen) gen_lock_enter(scope_id int, node flat.Node) ?ActiveLock {
 		g.writeln('}')
 		return ActiveLock{
 			mutexes_var: mutexes_var
-			modes_var: modes_var
-			lock_count: lock_count
-			unlock_fn: ''
-			scope_id: scope_id
-			loop_depth: g.loop_depth
+			modes_var:   modes_var
+			lock_count:  lock_count
+			unlock_fn:   ''
+			scope_id:    scope_id
+			loop_depth:  g.loop_depth
 			defer_depth: g.defers.len
 		}
 	}
@@ -454,10 +454,10 @@ fn (mut g FlatGen) gen_lock_enter(scope_id int, node flat.Node) ?ActiveLock {
 	g.writeln('}')
 	return ActiveLock{
 		mutexes_var: mutexes_var
-		lock_count: lock_count
-		unlock_fn: unlock_fn
-		scope_id: scope_id
-		loop_depth: g.loop_depth
+		lock_count:  lock_count
+		unlock_fn:   unlock_fn
+		scope_id:    scope_id
+		loop_depth:  g.loop_depth
 		defer_depth: g.defers.len
 	}
 }
@@ -628,8 +628,8 @@ mut:
 
 fn new_fn_prelude_scan() FnPreludeScan {
 	return FnPreludeScan{
-		defer_ids: []flat.NodeId{}
-		lock_scopes: []int{}
+		defer_ids:              []flat.NodeId{}
+		lock_scopes:            []int{}
 		goto_label_lock_scopes: map[string][]int{}
 	}
 }
@@ -1997,11 +1997,11 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		first := g.a.nodes[int(first_id)]
 		if first.kind == .infix && first.op == .arrow && first.children_count >= 2 {
 			cases << FlatSelectCase{
-				branch_id: branch_id
+				branch_id:  branch_id
 				channel_id: g.a.child(&first, 0)
-				value_id: g.a.child(&first, 1)
+				value_id:   g.a.child(&first, 1)
 				body_start: 1
-				is_push: true
+				is_push:    true
 			}
 			continue
 		}
@@ -2010,21 +2010,21 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 			second := g.a.nodes[int(second_id)]
 			if second.kind == .prefix && second.op == .arrow && second.children_count > 0 {
 				cases << FlatSelectCase{
-					branch_id: branch_id
+					branch_id:  branch_id
 					channel_id: g.a.child(&second, 0)
-					value_id: second_id
-					lhs_id: first_id
+					value_id:   second_id
+					lhs_id:     first_id
 					body_start: 2
-					is_decl: branch.value == 'recv'
+					is_decl:    branch.value == 'recv'
 				}
 				continue
 			}
 		}
 		if first.kind == .prefix && first.op == .arrow && first.children_count > 0 {
 			cases << FlatSelectCase{
-				branch_id: branch_id
+				branch_id:  branch_id
 				channel_id: g.a.child(&first, 0)
-				value_id: first_id
+				value_id:   first_id
 				body_start: 1
 			}
 			continue
@@ -3385,16 +3385,20 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 		}
 	}
 	return CInlineAsmBlock{
-		arch: arch
-		is_goto: is_goto
-		is_volatile: is_volatile
-		is_raw: is_raw
-		is_intel: is_intel
-		templates: templates
-		output: if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
-		input: if sections.len > 2 { parse_c_inline_asm_ios(sections[2], false) } else { [] }
-		clobbered: clobbered
-		labels: labels
+		arch:          arch
+		is_goto:       is_goto
+		is_volatile:   is_volatile
+		is_raw:        is_raw
+		is_intel:      is_intel
+		templates:     templates
+		output:        if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
+		input:         if sections.len > 2 {
+			parse_c_inline_asm_ios(sections[2], false)
+		} else {
+			[]
+		}
+		clobbered:     clobbered
+		labels:        labels
 		section_count: sections.len
 	}
 }
@@ -3671,8 +3675,8 @@ fn parse_c_inline_asm_ios(source string, is_output bool) []CInlineAsmIO {
 		}
 		ios << CInlineAsmIO{
 			constraint: constraint
-			expr: expr
-			alias: alias
+			expr:       expr
+			alias:      alias
 		}
 	}
 	return ios
@@ -4064,8 +4068,8 @@ fn lower_c_inline_asm_atoms(source string, arch string, aliases map[string]bool,
 }
 
 fn is_c_inline_asm_x86_arch(arch string) bool {
-	return arch in ['amd64', 'x64', 'x86_64', 'i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32',
-		'ia32']
+	return arch in ['amd64', 'x64', 'x86_64', 'i386', 'i486', 'i586', 'i686', 'x86', 'x86_32',
+		'ia-32', 'ia32']
 }
 
 fn is_c_inline_asm_x86_register(name string) bool {
@@ -4311,7 +4315,7 @@ fn (g &FlatGen) debugger_scope_vars() []DebuggerScopeVar {
 			seen[name] = true
 			result << DebuggerScopeVar{
 				name: name
-				typ: scope.types[i]
+				typ:  scope.types[i]
 			}
 		}
 		scope = scope.parent
@@ -4341,6 +4345,10 @@ fn debugger_type_name(typ types.Type) string {
 	return name
 }
 
+fn debugger_string_literal(value string) string {
+	return '(string){"${c_escape(value)}", ${value.len}, 1}'
+}
+
 fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 	position := g.a.source_position(node.pos) or { return }
 	vars := g.debugger_scope_vars()
@@ -4351,12 +4359,16 @@ fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 	debugger_type := g.cname('debug.Debugger')
 	interact_fn := g.cname('debug.Debugger.interact')
 	debugger_global := g.cname('debug.g_debugger')
-	file_sid := g.intern_string(position.filename)
-	module_sid := g.intern_string(if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' })
-	fn_sid := g.intern_string(g.cur_fn_name.all_after_last('.'))
+	file_literal := debugger_string_literal(position.filename)
+	module_literal := debugger_string_literal(if g.tc.cur_module.len > 0 {
+		g.tc.cur_module
+	} else {
+		'main'
+	})
+	fn_literal := debugger_string_literal(g.cur_fn_name.all_after_last('.'))
 	is_method := g.cur_fn_name.contains('.')
 	receiver_name := if is_method { g.cur_fn_name.all_before_last('.') } else { '' }
-	receiver_sid := g.intern_string(receiver_name)
+	receiver_literal := debugger_string_literal(receiver_name)
 	g.writeln('{')
 	g.indent++
 	g.writeln('map ${scope_name} = new_map(sizeof(string), sizeof(${var_type}), map_hash_string, map_eq_string, map_clone_string, map_free_string);')
@@ -4364,18 +4376,18 @@ fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 		key_name := '${scope_name}_key_${g.tmp_count}'
 		value_name := '${scope_name}_value_${g.tmp_count}'
 		g.tmp_count++
-		key_sid := g.intern_string(v.name)
-		type_sid := g.intern_string(debugger_type_name(v.typ))
+		key_literal := debugger_string_literal(v.name)
+		type_literal := debugger_string_literal(debugger_type_name(v.typ))
 		expr := g.debugger_var_expr(v.name)
 		mut stack := []string{}
 		value_expr := g.interface_implicit_str_expr(v.typ, expr, false, mut stack) or {
 			g.interface_str_lit('<value>')
 		}
-		g.writeln('string ${key_name} = _str_${key_sid};')
-		g.writeln('${var_type} ${value_name} = (${var_type}){.typ = _str_${type_sid}, .value = ${value_expr}};')
+		g.writeln('string ${key_name} = ${key_literal};')
+		g.writeln('${var_type} ${value_name} = (${var_type}){.typ = ${type_literal}, .value = ${value_expr}};')
 		g.writeln('map__set(&${scope_name}, &${key_name}, &${value_name});')
 	}
-	g.writeln('${interact_fn}((${debugger_type}*)&${debugger_global}, (${info_type}){.is_anon = ${g.cur_fn_name.starts_with('__anon_fn_')}, .is_generic = ${g.cur_fn_name.contains('[')}, .is_method = ${is_method}, .receiver_typ_name = _str_${receiver_sid}, .line = ${position.line}, .file = _str_${file_sid}, .mod = _str_${module_sid}, .fn_name = _str_${fn_sid}, .scope = ${scope_name}});')
+	g.writeln('${interact_fn}((${debugger_type}*)&${debugger_global}, (${info_type}){.is_anon = ${g.cur_fn_name.starts_with('__anon_fn_')}, .is_generic = ${g.cur_fn_name.contains('[')}, .is_method = ${is_method}, .receiver_typ_name = ${receiver_literal}, .line = ${position.line}, .file = ${file_literal}, .mod = ${module_literal}, .fn_name = ${fn_literal}, .scope = ${scope_name}});')
 	g.indent--
 	g.writeln('}')
 }
@@ -4738,7 +4750,7 @@ fn (g &FlatGen) pointer_alias_stack_source(id flat.NodeId, expected_base types.T
 	}
 	if source := g.local_address_source_name(id, expected_base) {
 		return PointerAliasStackSource{
-			name: source
+			name:         source
 			is_mut_param: g.current_param_is_mut(source)
 		}
 	}
@@ -4757,7 +4769,7 @@ fn (g &FlatGen) pointer_alias_stack_source(id flat.NodeId, expected_base types.T
 		if g.type_names_match(rhs_ptr.base_type, expected_base)
 			|| g.tc.c_type(rhs_ptr.base_type) == g.tc.c_type(expected_base) {
 			return PointerAliasStackSource{
-				name: source
+				name:         source
 				is_mut_param: g.local_pointer_alias_source_is_mut_param(node.value)
 			}
 		}
@@ -5933,6 +5945,17 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 		if node.kind == .selector && node.children_count > 0 {
 			base_type0 := g.usable_expr_type(g.a.child(&node, 0))
 			base_type := types.unwrap_pointer(base_type0)
+			collection_base_type := cgen_unalias_type(base_type)
+			if collection_base_type is types.Array || collection_base_type is types.ArrayFixed {
+				if typ := g.usable_struct_field_type('array', node.value) {
+					return typ
+				}
+			}
+			if collection_base_type is types.Map {
+				if typ := g.usable_struct_field_type('map', node.value) {
+					return typ
+				}
+			}
 			if base_type is types.Struct {
 				if typ := g.usable_struct_field_type(base_type.name, node.value) {
 					return typ
@@ -6106,7 +6129,7 @@ fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
 			g.tc.fn_ret_types[candidate] or { types.Type(types.void_) }
 		}
 		return types.Type(types.FnType{
-			params: params.clone()
+			params:      params.clone()
 			return_type: ret
 		})
 	}
@@ -6114,7 +6137,7 @@ fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
 		params := g.tc.fn_param_types[candidate] or { continue }
 		ret := g.tc.fn_ret_types[candidate] or { types.Type(types.void_) }
 		return types.Type(types.FnType{
-			params: params.clone()
+			params:      params.clone()
 			return_type: ret
 		})
 	}

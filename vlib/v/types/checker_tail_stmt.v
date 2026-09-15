@@ -3626,6 +3626,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				tc.record_error_at(.assignment_mismatch, 'cannot assign negative value to unsigned integer type', value_id, value_node.pos)
 			}
 			if tc.unsafe_depth == 0 && !tc.translated_files[tc.cur_file]
+				&& !init_name.starts_with('C.')
 				&& unalias_type(expected) is Pointer && value_node.kind == .int_literal
 				&& value_node.value == '0' && expected.name() != 'voidptr' {
 				pos := if field.value.len > 0 {
@@ -14238,6 +14239,16 @@ fn (tc &TypeChecker) array_literal_child_elem_type(child_id flat.NodeId) Type {
 	}
 	if alias_type := tc.explicit_alias_constructor_type(child_id) {
 		return alias_type
+	}
+	// Generic calls are initially resolvable only to their declaration spelling
+	// (for example `Arc[T]`). Once the call has been checked, prefer its cached
+	// specialized return so an inferred array becomes `[]Arc[Resource]`.
+	if child.kind == .call {
+		if checked := tc.expr_type(child_id) {
+			if !tc.type_contains_open_generic_placeholder(checked) {
+				return checked
+			}
+		}
 	}
 	return tc.array_literal_child_fn_value_type(child_id) or {
 		actual := tc.resolve_type(child_id)

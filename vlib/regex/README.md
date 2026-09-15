@@ -436,11 +436,11 @@ fn convert_html_rgb_n(in_col string) u32 {
 	println('start: ${start}, end: ${end}')
 	mut res := u32(0)
 	if start >= 0 {
-		red_s, red_e := re.get_group_by_name('red')
+		red_s, red_e := re.get_group_bounds_by_name('red')
 		r := ('0x' + in_col[red_s..red_e]).int() << col_mul
-		green_s, green_e := re.get_group_by_name('green')
+		green_s, green_e := re.get_group_bounds_by_name('green')
 		g := ('0x' + in_col[green_s..green_e]).int() << col_mul
-		blue_s, blue_e := re.get_group_by_name('blue')
+		blue_s, blue_e := re.get_group_bounds_by_name('blue')
 		b := ('0x' + in_col[blue_s..blue_e]).int() << col_mul
 		println('r: ${r} g: ${g} b: ${b}')
 		res = u32(r) << 16 | u32(g) << 8 | u32(b)
@@ -468,8 +468,8 @@ These functions are helpers to query the captured groups
 // get_group_bounds_by_name get a group boundaries by its name
 pub fn (re RE) get_group_bounds_by_name(group_name string) (int, int)
 
-// get_group_by_name get a group string by its name
-pub fn (re RE) get_group_by_name(group_name string) string
+// get_group_by_name gets a group string by its name
+pub fn (re &RE) get_group_by_name(in_txt string, group_name string) string
 
 // get_group_by_id get a group boundaries by its id
 pub fn (re RE) get_group_bounds_by_id(group_id int) (int,int)

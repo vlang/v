@@ -965,23 +965,23 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			} else if child.children_count > 0 {
 				Type(ArrayFixed{
 					elem_type: tc.resolve_type(tc.a.child(&child, 0))
-					len: child.children_count
+					len:       child.children_count
 				})
 			} else {
 				Type(ArrayFixed{
 					elem_type: Type(int_)
-					len: child.children_count
+					len:       child.children_count
 				})
 			}
 		} else if child.children_count > 0 {
 			Type(ArrayFixed{
 				elem_type: tc.resolve_type(tc.a.child(&child, 0))
-				len: child.children_count
+				len:       child.children_count
 			})
 		} else {
 			Type(ArrayFixed{
 				elem_type: Type(int_)
-				len: child.children_count
+				len:       child.children_count
 			})
 		}
 		tc.register_synth_type(id, fixed_type)
@@ -2881,7 +2881,7 @@ fn (mut tc TypeChecker) record_invalid_ierror_return_error(id flat.NodeId, msg s
 	qname := tc.current_checked_fn_qname() or { return }
 	if tc.defer_ierror_gating {
 		tc.pending_ierror_errors << PendingIerrorError{
-			err: tc.make_type_error(.return_mismatch, msg, id)
+			err:      tc.make_type_error(.return_mismatch, msg, id)
 			fn_qname: qname
 		}
 		return
@@ -3261,7 +3261,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 						tc.record_error_at(.call_arg_mismatch, 'expected 1 argument, but got ${arg_count}', id, node.pos)
 						tc.register_synth_type(id, Type(OptionType{
 							base_type: Type(Enum{
-								name: enum_name
+								name:    enum_name
 								is_flag: enum_name in tc.flag_enums
 							})
 						}))
@@ -3274,7 +3274,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 						tc.record_error_at(.call_arg_mismatch, 'expected `string` argument, but got `${tc.diagnostic_expr_type_name(arg_id, actual)}`', id, node.pos)
 						tc.register_synth_type(id, Type(OptionType{
 							base_type: Type(Enum{
-								name: enum_name
+								name:    enum_name
 								is_flag: enum_name in tc.flag_enums
 							})
 						}))
@@ -3855,16 +3855,16 @@ fn (mut tc TypeChecker) check_c_alias_cast_call(id flat.NodeId, node flat.Node, 
 		return false
 	}
 	cast_node := flat.Node{
-		kind: .cast_expr
-		value: type_name
-		typ: node.typ
-		payload: node.payload
+		kind:           .cast_expr
+		value:          type_name
+		typ:            node.typ
+		payload:        node.payload
 		children_start: node.children_start + 1
 		children_count: node.children_count - 1
-		pos: node.pos
-		is_mut: node.is_mut
-		op: node.op
-		flags: flat.node_flags(node.skip_ownership_drops(), false)
+		pos:            node.pos
+		is_mut:         node.is_mut
+		op:             node.op
+		flags:          flat.node_flags(node.skip_ownership_drops(), false)
 	}
 	tc.check_cast_expr(id, cast_node)
 	return true
@@ -4584,10 +4584,10 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 		}
 	}
 	return GenericCompileErrorInstantiation{
-		decl_id: decl_id
+		decl_id:        decl_id
 		generic_params: generic_params
-		concrete_args: concrete_args
-		symbol_types: symbol_types
+		concrete_args:  concrete_args
+		symbol_types:   symbol_types
 	}
 }
 
@@ -4696,8 +4696,8 @@ fn (mut tc TypeChecker) collect_instantiated_compile_warnings(id flat.NodeId, in
 			if !warnings.any(it.node == id && it.message == message) {
 				warnings << InstantiatedCompileWarning{
 					message: message
-					node: id
-					pos: node.pos
+					node:    id
+					pos:     node.pos
 				}
 			}
 			return
@@ -4918,9 +4918,9 @@ fn (mut tc TypeChecker) check_instantiated_generic_ordering_ops(call flat.Node, 
 					continue
 				}
 				instantiations << GenericCompileErrorInstantiation{
-					decl_id: candidate_id
+					decl_id:        candidate_id
 					generic_params: generic_params
-					concrete_args: instantiation.concrete_args.clone()
+					concrete_args:  instantiation.concrete_args.clone()
 				}
 			}
 		}
@@ -5086,8 +5086,8 @@ fn (mut tc TypeChecker) index_local_decl_rhs_node(node &flat.Node) {
 		lhs := tc.a.child_node(node, i)
 		if lhs.kind == .ident && lhs.value.len > 0 {
 			tc.fn_context.local_decl_rhs_by_name[lhs.value] << LocalDeclRhs{
-				rhs: tc.a.child(node, i + 1)
-				file: lhs.pos.id
+				rhs:    tc.a.child(node, i + 1)
+				file:   lhs.pos.id
 				offset: lhs.pos.offset
 			}
 		}
@@ -7037,9 +7037,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		target_type := tc.parse_type(type_name)
 		if type_name.len > 0 && target_type !is Unknown && !type_contains_unknown(target_type) {
 			return CallInfo{
-				name: 'C.va_arg'
-				params: [Type(voidptr_), Type(voidptr_)]
-				return_type: target_type
+				name:         'C.va_arg'
+				params:       [Type(voidptr_), Type(voidptr_)]
+				return_type:  target_type
 				params_known: true
 			}
 		}
@@ -7123,9 +7123,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 	if fn_node.kind == .selector && '__v3_comptime_method_selector' in fn_node.generic_params()
 		&& fn_node.typ.len > 0 {
 		return CallInfo{
-			name: fn_node.value
-			params: []Type{}
-			return_type: tc.parse_type(fn_node.typ)
+			name:         fn_node.value
+			params:       []Type{}
+			return_type:  tc.parse_type(fn_node.typ)
 			has_receiver: true
 			params_known: false
 		}
@@ -7150,18 +7150,18 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		fn_type := tc.resolve_type(callee_id)
 		if fn_typ := fn_type_from_type(fn_type) {
 			return CallInfo{
-				name: ''
-				params: fn_typ.params.clone()
-				return_type: fn_typ.return_type
-				is_variadic: tc.expr_is_variadic_fn_value(callee_id)
+				name:         ''
+				params:       fn_typ.params.clone()
+				return_type:  fn_typ.return_type
+				is_variadic:  tc.expr_is_variadic_fn_value(callee_id)
 				params_known: true
 			}
 		}
 		if unresolved_generic_receiver_type(fn_type) {
 			return CallInfo{
-				name: ''
-				params: []Type{}
-				return_type: Type(Unknown{
+				name:         ''
+				params:       []Type{}
+				return_type:  Type(Unknown{
 					reason: 'generic callable'
 				})
 				params_known: false
@@ -7203,18 +7203,18 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				fn_typ
 			}
 			return CallInfo{
-				name: ''
-				params: selected.params.clone()
-				return_type: selected.return_type
-				is_variadic: tc.expr_is_variadic_fn_value(fn_id)
+				name:         ''
+				params:       selected.params.clone()
+				return_type:  selected.return_type
+				is_variadic:  tc.expr_is_variadic_fn_value(fn_id)
 				params_known: true
 			}
 		}
 		if fn_type is Unknown || unresolved_generic_receiver_type(fn_type) {
 			return CallInfo{
-				name: ''
-				params: []Type{}
-				return_type: Type(Unknown{
+				name:         ''
+				params:       []Type{}
+				return_type:  Type(Unknown{
 					reason: 'generic callable'
 				})
 				params_known: false
@@ -7225,9 +7225,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		fn_type := tc.resolve_type(tc.a.child(&node, 0))
 		if fn_typ := fn_type_from_type(fn_type) {
 			return CallInfo{
-				name: ''
-				params: fn_typ.params.clone()
-				return_type: fn_typ.return_type
+				name:         ''
+				params:       fn_typ.params.clone()
+				return_type:  fn_typ.return_type
 				params_known: true
 			}
 		}
@@ -7264,10 +7264,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		if fn_typ := tc.selector_fn_type(fn_node) {
 			return CallInfo{
-				name: ''
-				params: fn_typ.params.clone()
-				return_type: fn_typ.return_type
-				is_variadic: tc.expr_is_variadic_fn_value(callee_id)
+				name:         ''
+				params:       fn_typ.params.clone()
+				return_type:  fn_typ.return_type
+				is_variadic:  tc.expr_is_variadic_fn_value(callee_id)
 				params_known: true
 			}
 		}
@@ -7282,10 +7282,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			}
 			if fn_typ := fn_type_from_type(callee_type) {
 				return CallInfo{
-					name: ''
-					params: fn_typ.params.clone()
-					return_type: fn_typ.return_type
-					is_variadic: tc.expr_is_variadic_fn_value(callee_id)
+					name:         ''
+					params:       fn_typ.params.clone()
+					return_type:  fn_typ.return_type
+					is_variadic:  tc.expr_is_variadic_fn_value(callee_id)
 					params_known: true
 				}
 			}
@@ -7324,11 +7324,11 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				if fn_node.value == 'from_string' {
 					if enum_name := tc.resolve_enum_name(base_node.value) {
 						return CallInfo{
-							name: ''
-							params: tarr1(Type(string_))
-							return_type: Type(OptionType{
+							name:         ''
+							params:       tarr1(Type(string_))
+							return_type:  Type(OptionType{
 								base_type: Type(Enum{
-									name: enum_name
+									name:    enum_name
 									is_flag: enum_name in tc.flag_enums
 								})
 							})
@@ -7338,10 +7338,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				}
 				if fn_node.value == 'zero' && qbase in tc.flag_enums {
 					return CallInfo{
-						name: ''
-						params: []Type{}
-						return_type: Type(Enum{
-							name: qbase
+						name:         ''
+						params:       []Type{}
+						return_type:  Type(Enum{
+							name:    qbase
 							is_flag: true
 						})
 						params_known: true
@@ -7349,11 +7349,11 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				}
 				if fn_node.value == 'from' && base_node.value in tc.fn_context.generic_params {
 					return CallInfo{
-						name: ''
-						params: tarr1(Type(Unknown{
+						name:         ''
+						params:       tarr1(Type(Unknown{
 							reason: 'enum from input'
 						}))
-						return_type: tc.parse_type('!${base_node.value}')
+						return_type:  tc.parse_type('!${base_node.value}')
 						params_known: true
 					}
 				}
@@ -7390,11 +7390,11 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				if fn_node.value == 'from_string' {
 					if enum_name := tc.resolve_enum_name('${mod_name}.${base_node.value}') {
 						return CallInfo{
-							name: ''
-							params: tarr1(Type(string_))
-							return_type: Type(OptionType{
+							name:         ''
+							params:       tarr1(Type(string_))
+							return_type:  Type(OptionType{
 								base_type: Type(Enum{
-									name: enum_name
+									name:    enum_name
 									is_flag: enum_name in tc.flag_enums
 								})
 							})
@@ -7411,9 +7411,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		if fn_typ := tc.selector_const_fn_type(fn_node) {
 			return CallInfo{
-				name: ''
-				params: fn_typ.params.clone()
-				return_type: fn_typ.return_type
+				name:         ''
+				params:       fn_typ.params.clone()
+				return_type:  fn_typ.return_type
 				params_known: true
 			}
 		}
@@ -7427,36 +7427,36 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		if fn_typ := tc.selector_field_fn_type(fn_node, base_type) {
 			return CallInfo{
-				name: ''
-				params: fn_typ.params.clone()
-				return_type: fn_typ.return_type
+				name:         ''
+				params:       fn_typ.params.clone()
+				return_type:  fn_typ.return_type
 				params_known: true
 			}
 		}
 		clean := unwrap_all_pointers(base_type)
 		if fn_node.value in ['type_name', 'type_idx'] && tc.receiver_is_sum_type(clean) {
 			return CallInfo{
-				name: ''
-				params: tarr1(base_type)
-				return_type: if fn_node.value == 'type_name' { Type(string_) } else { Type(int_) }
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  if fn_node.value == 'type_name' { Type(string_) } else { Type(int_) }
 				has_receiver: true
 				params_known: true
 			}
 		}
 		if clean is Interface && fn_node.value in ['type_name', 'type_idx'] {
 			return CallInfo{
-				name: '${clean.name}.${fn_node.value}'
-				params: tarr1(base_type)
-				return_type: if fn_node.value == 'type_name' { Type(string_) } else { Type(int_) }
+				name:         '${clean.name}.${fn_node.value}'
+				params:       tarr1(base_type)
+				return_type:  if fn_node.value == 'type_name' { Type(string_) } else { Type(int_) }
 				has_receiver: true
 				params_known: true
 			}
 		}
 		if fn_node.value == 'clone' && unresolved_generic_receiver_type(clean) {
 			return CallInfo{
-				name: ''
-				params: tarr1(base_type)
-				return_type: base_type
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  base_type
 				has_receiver: true
 				params_known: true
 			}
@@ -7464,9 +7464,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		if fn_node.value == 'wait' {
 			if ret_type := tc.thread_wait_return_type(base_type) {
 				return CallInfo{
-					name: ''
-					params: tarr1(base_type)
-					return_type: ret_type
+					name:         ''
+					params:       tarr1(base_type)
+					return_type:  ret_type
 					has_receiver: true
 					params_known: true
 				}
@@ -7479,32 +7479,32 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			match fn_node.value {
 				'close' {
 					return CallInfo{
-						name: 'chan.close'
-						params: tarr2(base_type, tc.parse_type('IError'))
-						return_type: Type(void_)
+						name:         'chan.close'
+						params:       tarr2(base_type, tc.parse_type('IError'))
+						return_type:  Type(void_)
 						has_receiver: true
-						is_variadic: true
+						is_variadic:  true
 						params_known: true
 					}
 				}
 				'try_push' {
 					return CallInfo{
-						name: '${base_type.name()}.try_push'
-						params: tarr2(base_type, Type(Pointer{
+						name:         '${base_type.name()}.try_push'
+						params:       tarr2(base_type, Type(Pointer{
 							base_type: clean.elem_type
 						}))
-						return_type: tc.parse_type('ChanState')
+						return_type:  tc.parse_type('ChanState')
 						has_receiver: true
 						params_known: true
 					}
 				}
 				'try_pop' {
 					return CallInfo{
-						name: '${base_type.name()}.try_pop'
-						params: tarr2(base_type, Type(Pointer{
+						name:         '${base_type.name()}.try_pop'
+						params:       tarr2(base_type, Type(Pointer{
 							base_type: clean.elem_type
 						}))
-						return_type: tc.parse_type('ChanState')
+						return_type:  tc.parse_type('ChanState')
 						has_receiver: true
 						params_known: true
 					}
@@ -7514,9 +7514,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		if clean is String && fn_node.value == 'hex' && tc.is_builtin_hex_receiver(base_type) {
 			return CallInfo{
-				name: 'string.hex'
-				params: tarr1(base_type)
-				return_type: Type(string_)
+				name:         'string.hex'
+				params:       tarr1(base_type)
+				return_type:  Type(string_)
 				has_receiver: true
 				params_known: true
 			}
@@ -7588,21 +7588,21 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		if clean_array := array_type_from_receiver(clean) {
 			if fn_node.value == 'bytestr' && is_byte_type(clean_array.elem_type) {
 				return CallInfo{
-					name: 'array.bytestr'
-					params: tarr1(base_type)
-					return_type: Type(string_)
+					name:         'array.bytestr'
+					params:       tarr1(base_type)
+					return_type:  Type(string_)
 					has_receiver: true
 					params_known: true
 				}
 			}
 			if fn_node.value == 'to_fixed_size' && base_node.kind == .array_literal {
 				return CallInfo{
-					name: 'array.to_fixed_size'
-					params: tarr1(base_type)
-					return_type: Type(ArrayFixed{
+					name:         'array.to_fixed_size'
+					params:       tarr1(base_type)
+					return_type:  Type(ArrayFixed{
 						elem_type: clean_array.elem_type
-						len: int(base_node.children_count)
-						len_expr: '${base_node.children_count}'
+						len:       int(base_node.children_count)
+						len_expr:  '${base_node.children_count}'
 					})
 					has_receiver: true
 					params_known: true
@@ -7619,9 +7619,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			}
 			if fn_node.value == 'get' {
 				return CallInfo{
-					name: 'array.get'
-					params: tarr2(base_type, Type(int_))
-					return_type: if clean_array.elem_type is OptionType {
+					name:         'array.get'
+					params:       tarr2(base_type, Type(int_))
+					return_type:  if clean_array.elem_type is OptionType {
 						clean_array.elem_type
 					} else {
 						Type(OptionType{
@@ -7637,9 +7637,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					tc.record_error(.call_arg_mismatch, 'cannot ${fn_node.value} array elements: `${bad_type}` requires ownership destruction but has no `clone()` method', id)
 				}
 				return CallInfo{
-					name: 'array.${fn_node.value}'
-					params: tarr1(base_type)
-					return_type: clean_array
+					name:         'array.${fn_node.value}'
+					params:       tarr1(base_type)
+					return_type:  clean_array
 					has_receiver: true
 					params_known: true
 				}
@@ -7664,9 +7664,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						tc.record_error(.call_arg_mismatch, 'cannot clone map values: `${bad_type}` requires ownership destruction but has no `clone()` method', id)
 					}
 					return CallInfo{
-						name: ''
-						params: tarr1(base_type)
-						return_type: base_type
+						name:         ''
+						params:       tarr1(base_type)
+						return_type:  base_type
 						has_receiver: true
 						params_known: true
 					}
@@ -7680,9 +7680,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					tc.record_error(.call_arg_mismatch, 'cannot return independent map keys: `${bad_type}` requires ownership destruction but has no `clone()` method', id)
 				}
 				return CallInfo{
-					name: 'map.keys'
-					params: tarr1(base_type)
-					return_type: Type(Array{
+					name:         'map.keys'
+					params:       tarr1(base_type)
+					return_type:  Type(Array{
 						elem_type: clean_map.key_type
 					})
 					has_receiver: true
@@ -7694,9 +7694,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					tc.record_error(.call_arg_mismatch, 'cannot return independent map values: `${bad_type}` requires ownership destruction but has no `clone()` method', id)
 				}
 				return CallInfo{
-					name: 'map.values'
-					params: tarr1(base_type)
-					return_type: Type(Array{
+					name:         'map.values'
+					params:       tarr1(base_type)
+					return_type:  Type(Array{
 						elem_type: clean_map.value_type
 					})
 					has_receiver: true
@@ -7721,9 +7721,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						}
 					}
 					return CallInfo{
-						name: ''
-						params: tarr1(base_type)
-						return_type: clean_array.elem_type
+						name:         ''
+						params:       tarr1(base_type)
+						return_type:  clean_array.elem_type
 						has_receiver: true
 						params_known: true
 					}
@@ -7731,27 +7731,27 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				'contains' {
 					elem_type := tc.array_contains_elem_type(base_node, clean_array)
 					return CallInfo{
-						name: ''
-						params: tarr2(base_type, elem_type)
-						return_type: Type(bool_)
+						name:         ''
+						params:       tarr2(base_type, elem_type)
+						return_type:  Type(bool_)
 						has_receiver: true
 						params_known: true
 					}
 				}
 				'join' {
 					return CallInfo{
-						name: 'array.join'
-						params: tarr2(base_type, Type(String{}))
-						return_type: Type(String{})
+						name:         'array.join'
+						params:       tarr2(base_type, Type(String{}))
+						return_type:  Type(String{})
 						has_receiver: true
 						params_known: true
 					}
 				}
 				'index', 'last_index' {
 					return CallInfo{
-						name: ''
-						params: tarr2(base_type, clean_array.elem_type)
-						return_type: Type(int_)
+						name:         ''
+						params:       tarr2(base_type, clean_array.elem_type)
+						return_type:  Type(int_)
 						has_receiver: true
 						params_known: true
 					}
@@ -7759,9 +7759,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				'hex' {
 					if tc.is_builtin_hex_receiver(base_type) {
 						return CallInfo{
-							name: '[]u8.hex'
-							params: tarr1(base_type)
-							return_type: Type(string_)
+							name:         '[]u8.hex'
+							params:       tarr1(base_type)
+							return_type:  Type(string_)
 							has_receiver: true
 							params_known: true
 						}
@@ -7772,36 +7772,36 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						tc.record_error(.call_arg_mismatch, 'cannot repeat array elements: `${bad_type}` requires ownership destruction but has no `clone()` method', id)
 					}
 					return CallInfo{
-						name: 'array.repeat_to_depth'
-						params: tarr2(base_type, Type(int_))
-						return_type: base_type
+						name:         'array.repeat_to_depth'
+						params:       tarr2(base_type, Type(int_))
+						return_type:  base_type
 						has_receiver: true
 						params_known: true
 					}
 				}
 				'repeat_to_depth' {
 					return CallInfo{
-						name: 'array.repeat_to_depth'
-						params: tarr3(base_type, Type(int_), Type(int_))
-						return_type: base_type
+						name:         'array.repeat_to_depth'
+						params:       tarr3(base_type, Type(int_), Type(int_))
+						return_type:  base_type
 						has_receiver: true
 						params_known: true
 					}
 				}
 				'delete' {
 					return CallInfo{
-						name: ''
-						params: tarr2(mutating_receiver_param_type(base_type), Type(int_))
-						return_type: Type(void_)
+						name:         ''
+						params:       tarr2(mutating_receiver_param_type(base_type), Type(int_))
+						return_type:  Type(void_)
 						has_receiver: true
 						params_known: true
 					}
 				}
 				'delete_last', 'clear' {
 					return CallInfo{
-						name: ''
-						params: tarr1(mutating_receiver_param_type(base_type))
-						return_type: Type(void_)
+						name:         ''
+						params:       tarr1(mutating_receiver_param_type(base_type))
+						return_type:  Type(void_)
 						has_receiver: true
 						params_known: true
 					}
@@ -7813,9 +7813,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						tarr2(base_type, clean_array.elem_type)
 					}
 					return CallInfo{
-						name: 'array.${fn_node.value}'
-						params: params
-						return_type: Type(void_)
+						name:         'array.${fn_node.value}'
+						params:       params
+						return_type:  Type(void_)
 						has_receiver: true
 						params_known: true
 					}
@@ -7833,9 +7833,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						Type(clean_array)
 					}
 					return CallInfo{
-						name: 'array.filter'
-						params: tarr2(base_type, Type(bool_))
-						return_type: filter_ret
+						name:         'array.filter'
+						params:       tarr2(base_type, Type(bool_))
+						return_type:  filter_ret
 						has_receiver: true
 						params_known: true
 					}
@@ -7848,9 +7848,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						}
 					}
 					return CallInfo{
-						name: 'array.map'
-						params: tarr2(base_type, elem_type)
-						return_type: Type(Array{
+						name:         'array.map'
+						params:       tarr2(base_type, elem_type)
+						return_type:  Type(Array{
 							elem_type: elem_type
 						})
 						has_receiver: true
@@ -7859,29 +7859,29 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				}
 				'any', 'all' {
 					return CallInfo{
-						name: 'array.${fn_node.value}'
-						params: tarr2(base_type, Type(bool_))
-						return_type: Type(bool_)
+						name:         'array.${fn_node.value}'
+						params:       tarr2(base_type, Type(bool_))
+						return_type:  Type(bool_)
 						has_receiver: true
 						params_known: true
 					}
 				}
 				'count' {
 					return CallInfo{
-						name: 'array.count'
-						params: tarr2(base_type, Type(bool_))
-						return_type: Type(int_)
+						name:         'array.count'
+						params:       tarr2(base_type, Type(bool_))
+						return_type:  Type(int_)
 						has_receiver: true
 						params_known: true
 					}
 				}
 				'sort_with_compare' {
 					return CallInfo{
-						name: 'array.sort_with_compare'
-						params: [
+						name:         'array.sort_with_compare'
+						params:       [
 							mutating_receiver_param_type(base_type),
 							Type(FnType{
-								params: [
+								params:      [
 									Type(Pointer{
 										base_type: clean_array.elem_type
 									}),
@@ -7892,16 +7892,16 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 								return_type: Type(int_)
 							}),
 						]
-						return_type: Type(void_)
+						return_type:  Type(void_)
 						has_receiver: true
 						params_known: true
 					}
 				}
 				'sorted_with_compare' {
 					return CallInfo{
-						name: 'array.sorted_with_compare'
-						params: [base_type, Type(FnType{
-							params: [
+						name:         'array.sorted_with_compare'
+						params:       [base_type, Type(FnType{
+							params:      [
 								Type(Pointer{
 									base_type: clean_array.elem_type
 								}),
@@ -7911,7 +7911,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 							]
 							return_type: Type(int_)
 						})]
-						return_type: base_type
+						return_type:  base_type
 						has_receiver: true
 						params_known: true
 					}
@@ -7922,9 +7922,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						params << Type(bool_)
 					}
 					return CallInfo{
-						name: 'array.sort'
-						params: params
-						return_type: Type(void_)
+						name:         'array.sort'
+						params:       params
+						return_type:  Type(void_)
 						has_receiver: true
 						params_known: true
 					}
@@ -7935,9 +7935,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 						params << Type(bool_)
 					}
 					return CallInfo{
-						name: 'array.sorted'
-						params: params
-						return_type: base_type
+						name:         'array.sorted'
+						params:       params
+						return_type:  base_type
 						has_receiver: true
 						params_known: true
 					}
@@ -7948,9 +7948,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		if fixed_array := tc.fixed_array_type_from_receiver(clean) {
 			if fn_node.value == 'clone' {
 				return CallInfo{
-					name: 'array.clone'
-					params: tarr1(base_type)
-					return_type: Type(Array{
+					name:         'array.clone'
+					params:       tarr1(base_type)
+					return_type:  Type(Array{
 						elem_type: fixed_array.elem_type
 					})
 					has_receiver: true
@@ -7986,9 +7986,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		if type_name.len > 0 {
 			if fn_node.value == 'str' && (clean is Primitive || clean is Char || clean is Rune) {
 				return CallInfo{
-					name: ''
-					params: tarr1(base_type)
-					return_type: Type(string_)
+					name:         ''
+					params:       tarr1(base_type)
+					return_type:  Type(string_)
 					has_receiver: true
 					params_known: true
 				}
@@ -8014,9 +8014,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			}
 			if array_pointers_fallback {
 				return CallInfo{
-					name: 'array.pointers'
-					params: tarr1(base_type)
-					return_type: Type(Array{
+					name:         'array.pointers'
+					params:       tarr1(base_type)
+					return_type:  Type(Array{
 						elem_type: Type(voidptr_)
 					})
 					has_receiver: true
@@ -8047,9 +8047,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			if fn_node.value == 'use' && clean is Struct
 				&& tc.struct_has_middleware_receiver(type_name) {
 				return CallInfo{
-					name: '${type_name}.use'
-					params: []Type{}
-					return_type: Type(void_)
+					name:         '${type_name}.use'
+					params:       []Type{}
+					return_type:  Type(void_)
 					has_receiver: true
 					params_known: false
 				}
@@ -8067,45 +8067,45 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		if clean is Enum {
 			if clean.is_flag && fn_node.value in ['has', 'all'] {
 				return CallInfo{
-					name: ''
-					params: tarr2(base_type, base_type)
-					return_type: Type(bool_)
+					name:         ''
+					params:       tarr2(base_type, base_type)
+					return_type:  Type(bool_)
 					has_receiver: true
 					params_known: true
 				}
 			}
 			if clean.is_flag && fn_node.value in ['set', 'clear', 'toggle'] {
 				return CallInfo{
-					name: ''
-					params: tarr2(base_type, base_type)
-					return_type: Type(void_)
+					name:         ''
+					params:       tarr2(base_type, base_type)
+					return_type:  Type(void_)
 					has_receiver: true
 					params_known: true
 				}
 			}
 			if clean.is_flag && fn_node.value in ['set_all', 'clear_all'] {
 				return CallInfo{
-					name: ''
-					params: tarr1(base_type)
-					return_type: Type(void_)
+					name:         ''
+					params:       tarr1(base_type)
+					return_type:  Type(void_)
 					has_receiver: true
 					params_known: true
 				}
 			}
 			if clean.is_flag && fn_node.value == 'is_empty' {
 				return CallInfo{
-					name: ''
-					params: tarr1(base_type)
-					return_type: Type(bool_)
+					name:         ''
+					params:       tarr1(base_type)
+					return_type:  Type(bool_)
 					has_receiver: true
 					params_known: true
 				}
 			}
 			if fn_node.value == 'str' {
 				return CallInfo{
-					name: '${clean.name}.str'
-					params: tarr1(base_type)
-					return_type: Type(string_)
+					name:         '${clean.name}.str'
+					params:       tarr1(base_type)
+					return_type:  Type(string_)
 					has_receiver: true
 					params_known: true
 				}
@@ -8138,36 +8138,36 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 			// receiver type. A user-defined `clone()` method is matched earlier via
 			// `receiver_method_name_candidates`, so this only supplies the default.
 			return CallInfo{
-				name: ''
-				params: tarr1(base_type)
-				return_type: clean
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  clean
 				has_receiver: true
 				params_known: true
 			}
 		}
 		if fn_node.value == 'free' && type_has_runtime_value(clean) {
 			return CallInfo{
-				name: ''
-				params: tarr1(base_type)
-				return_type: Type(void_)
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  Type(void_)
 				has_receiver: true
 				params_known: true
 			}
 		}
 		if fn_node.value == 'str' {
 			return CallInfo{
-				name: ''
-				params: tarr1(base_type)
-				return_type: Type(string_)
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  Type(string_)
 				has_receiver: true
 				params_known: true
 			}
 		}
 		if fn_node.value == 'hex' && tc.is_builtin_hex_receiver(base_type) {
 			return CallInfo{
-				name: ''
-				params: tarr1(base_type)
-				return_type: Type(string_)
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  Type(string_)
 				has_receiver: true
 				params_known: true
 			}
@@ -8183,17 +8183,17 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				params = tarr1(Type(string_))
 			}
 			return CallInfo{
-				name: fn_node.value
-				params: params
-				return_type: tc.parse_type('IError')
+				name:         fn_node.value
+				params:       params
+				return_type:  tc.parse_type('IError')
 				params_known: true
 			}
 		}
 		if fn_node.value == 'malloc' {
 			return CallInfo{
-				name: 'malloc'
-				params: tarr1(Type(ISize{}))
-				return_type: Type(Pointer{
+				name:         'malloc'
+				params:       tarr1(Type(ISize{}))
+				return_type:  Type(Pointer{
 					base_type: Type(u8_)
 				})
 				params_known: true
@@ -8202,9 +8202,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		if typ := tc.cur_scope.lookup(fn_node.value) {
 			if fn_typ := fn_type_from_type(typ) {
 				return CallInfo{
-					name: ''
-					params: fn_typ.params
-					return_type: fn_typ.return_type
+					name:         ''
+					params:       fn_typ.params
+					return_type:  fn_typ.return_type
 					params_known: true
 				}
 			}
@@ -8223,9 +8223,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		if is_builtin_void_call_name(fn_node.value) {
 			return CallInfo{
-				name: fn_node.value
-				params: []Type{}
-				return_type: Type(void_)
+				name:         fn_node.value
+				params:       []Type{}
+				return_type:  Type(void_)
 				params_known: false
 			}
 		}
@@ -8319,15 +8319,15 @@ fn (tc &TypeChecker) expr_is_strings_new_builder_call(id flat.NodeId) bool {
 
 fn (tc &TypeChecker) enum_from_call_info(enum_name string) CallInfo {
 	return CallInfo{
-		name: ''
+		name:         ''
 		// Enum.from accepts one of two type families. The marker is validated
 		// after resolving the argument in check_call_arg_types.
-		params: tarr1(Type(Unknown{
+		params:       tarr1(Type(Unknown{
 			reason: 'enum from input'
 		}))
-		return_type: Type(ResultType{
+		return_type:  Type(ResultType{
 			base_type: Type(Enum{
-				name: enum_name
+				name:    enum_name
 				is_flag: enum_name in tc.flag_enums
 			})
 		})
@@ -8364,9 +8364,9 @@ fn (tc &TypeChecker) builtin_receiver_method_call_info(base_type Type, method st
 	if clean is String {
 		if method == 'hex' {
 			return CallInfo{
-				name: 'string.hex'
-				params: tarr1(base_type)
-				return_type: Type(string_)
+				name:         'string.hex'
+				params:       tarr1(base_type)
+				return_type:  Type(string_)
 				has_receiver: true
 				params_known: true
 			}
@@ -8376,9 +8376,9 @@ fn (tc &TypeChecker) builtin_receiver_method_call_info(base_type Type, method st
 	if clean is Array {
 		if method == 'hex' {
 			return CallInfo{
-				name: '[]u8.hex'
-				params: tarr1(base_type)
-				return_type: Type(string_)
+				name:         '[]u8.hex'
+				params:       tarr1(base_type)
+				return_type:  Type(string_)
 				has_receiver: true
 				params_known: true
 			}
@@ -8390,9 +8390,9 @@ fn (tc &TypeChecker) builtin_receiver_method_call_info(base_type Type, method st
 		return none
 	}
 	return CallInfo{
-		name: '${method_receiver}.${method}'
-		params: tarr1(base_type)
-		return_type: Type(string_)
+		name:         '${method_receiver}.${method}'
+		params:       tarr1(base_type)
+		return_type:  Type(string_)
 		has_receiver: true
 		params_known: true
 	}
@@ -8571,9 +8571,9 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 	call_name := tc.generic_call_base_name(base_node) or {
 		if type_name := tc.generic_call_base_type_name(base_node) {
 			return CallInfo{
-				name: ''
-				params: []Type{}
-				return_type: tc.parse_type('${type_name}[${type_args.join(', ')}]')
+				name:         ''
+				params:       []Type{}
+				return_type:  tc.parse_type('${type_name}[${type_args.join(', ')}]')
 				params_known: false
 			}
 		}
@@ -8581,9 +8581,9 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 	}
 	if is_veb_run_at_call_name(call_name) {
 		return CallInfo{
-			name: call_name
-			params: []Type{}
-			return_type: Type(ResultType{
+			name:         call_name
+			params:       []Type{}
+			return_type:  Type(ResultType{
 				base_type: Type(void_)
 			})
 			params_known: false
@@ -8600,16 +8600,16 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 			return tc.failed_explicit_generic_call_info(call_name)
 		}
 		return CallInfo{
-			name: call_name
-			params: tc.fn_param_types[call_name] or { []Type{} }
+			name:          call_name
+			params:        tc.fn_param_types[call_name] or { []Type{} }
 			shared_params: tc.fn_shared_params[call_name] or { []bool{} }
-			return_type: Type(ResultType{
+			return_type:   Type(ResultType{
 				base_type: tc.parse_type(type_args[0])
 			})
-			has_receiver: false
-			is_variadic: tc.fn_variadic[call_name] or { false }
+			has_receiver:  false
+			is_variadic:   tc.fn_variadic[call_name] or { false }
 			is_c_variadic: tc.c_variadic_fns[call_name] or { false }
-			params_known: call_name in tc.fn_param_types
+			params_known:  call_name in tc.fn_param_types
 		}
 	}
 	if tc.explicit_generic_arg_count_mismatch(call_name, type_args, id) {
@@ -8657,7 +8657,7 @@ fn (mut tc TypeChecker) specialize_explicit_generic_receiver_call(info CallInfo,
 	}
 	return CallInfo{
 		...info
-		params: params
+		params:      params
 		return_type: tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 	}
 }
@@ -8719,9 +8719,9 @@ fn (mut tc TypeChecker) explicit_generic_arg_count_mismatch(name string, type_ar
 
 fn (tc &TypeChecker) failed_explicit_generic_call_info(name string) CallInfo {
 	return CallInfo{
-		name: name
-		params: []Type{}
-		return_type: unknown_type('invalid explicit generic call `${name}`')
+		name:         name
+		params:       []Type{}
+		return_type:  unknown_type('invalid explicit generic call `${name}`')
 		params_known: false
 	}
 }
@@ -8799,14 +8799,14 @@ fn (tc &TypeChecker) explicit_generic_call_info(name string, has_receiver bool, 
 		tc.fn_ret_types[name] or { Type(void_) }
 	}
 	return CallInfo{
-		name: name
-		params: sub_params
-		shared_params: tc.fn_shared_params[name] or { []bool{} }
-		return_type: sub_ret
-		has_receiver: has_receiver
-		is_variadic: tc.fn_variadic[name] or { false }
-		is_c_variadic: tc.c_variadic_fns[name] or { false }
-		params_known: true
+		name:                 name
+		params:               sub_params
+		shared_params:        tc.fn_shared_params[name] or { []bool{} }
+		return_type:          sub_ret
+		has_receiver:         has_receiver
+		is_variadic:          tc.fn_variadic[name] or { false }
+		is_c_variadic:        tc.c_variadic_fns[name] or { false }
+		params_known:         true
 		has_implicit_veb_ctx: tc.fn_implicit_veb_ctx[name] or { false }
 	}
 }
@@ -8856,17 +8856,17 @@ fn (tc &TypeChecker) decode_call_info_from_type_arg(node flat.Node, name string,
 	info := tc.call_info(name, has_receiver)
 	params := if info.params.len > 0 { info.params[1..].clone() } else { []Type{} }
 	return CallInfo{
-		name: info.name
-		params: params
-		return_type: Type(ResultType{
+		name:                 info.name
+		params:               params
+		return_type:          Type(ResultType{
 			base_type: tc.parse_type(type_arg)
 		})
-		has_receiver: info.has_receiver
-		is_variadic: info.is_variadic
-		is_c_variadic: info.is_c_variadic
-		params_known: info.params_known
+		has_receiver:         info.has_receiver
+		is_variadic:          info.is_variadic
+		is_c_variadic:        info.is_c_variadic
+		params_known:         info.params_known
 		has_implicit_veb_ctx: info.has_implicit_veb_ctx
-		arg_offset: 1
+		arg_offset:           1
 	}
 }
 
@@ -9010,13 +9010,13 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 			is_variadic := tc.c_fn_module_variadic[module_key] or { false }
 			params := tc.c_fn_module_param_types[module_key] or { []Type{} }
 			return CallInfo{
-				name: name
-				params: params.clone()
-				return_type: return_type
-				has_receiver: has_receiver
-				is_variadic: is_variadic
+				name:          name
+				params:        params.clone()
+				return_type:   return_type
+				has_receiver:  has_receiver
+				is_variadic:   is_variadic
 				is_c_variadic: is_variadic
-				params_known: true
+				params_known:  true
 			}
 		}
 	}
@@ -9034,14 +9034,14 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 		tc.fn_ret_types[name] or { unknown_type('unknown return type for `${name}`') }
 	}
 	return CallInfo{
-		name: name
-		params: params
-		shared_params: tc.fn_shared_params[name] or { []bool{} }
-		return_type: return_type
-		has_receiver: has_receiver
-		is_variadic: tc.fn_variadic[name] or { false }
-		is_c_variadic: tc.c_variadic_fns[name] or { false }
-		params_known: params_known
+		name:                 name
+		params:               params
+		shared_params:        tc.fn_shared_params[name] or { []bool{} }
+		return_type:          return_type
+		has_receiver:         has_receiver
+		is_variadic:          tc.fn_variadic[name] or { false }
+		is_c_variadic:        tc.c_variadic_fns[name] or { false }
+		params_known:         params_known
 		has_implicit_veb_ctx: tc.fn_implicit_veb_ctx[name] or { false }
 	}
 }
@@ -9212,8 +9212,8 @@ fn (tc &TypeChecker) fixed_array_type_from_receiver(t Type) ?ArrayFixed {
 			}
 			return ArrayFixed{
 				elem_type: tc.parse_type(name[..bracket])
-				len: if is_decimal_int_literal(len_text) { len_text.int() } else { 0 }
-				len_expr: if is_decimal_int_literal(len_text) { '' } else { len_text }
+				len:       if is_decimal_int_literal(len_text) { len_text.int() } else { 0 }
+				len_expr:  if is_decimal_int_literal(len_text) { '' } else { len_text }
 			}
 		}
 	}
@@ -9226,18 +9226,18 @@ fn (tc &TypeChecker) fixed_array_thread_wait_call_info(base_type Type, arr Array
 		name := trimmed_space(elem.name)
 		if name == 'thread' {
 			return CallInfo{
-				name: ''
-				params: tarr1(base_type)
-				return_type: Type(void_)
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  Type(void_)
 				has_receiver: true
 				params_known: true
 			}
 		}
 		if name.starts_with('thread ') {
 			return CallInfo{
-				name: ''
-				params: tarr1(base_type)
-				return_type: tc.thread_array_wait_return_type(name[7..])
+				name:         ''
+				params:       tarr1(base_type)
+				return_type:  tc.thread_array_wait_return_type(name[7..])
 				has_receiver: true
 				params_known: true
 			}
@@ -9301,13 +9301,13 @@ fn (tc &TypeChecker) fixed_array_dynamic_receiver_call_info(base_type Type, arr 
 			params[0] = base_type
 		}
 		return CallInfo{
-			name: info.name
-			params: params
-			return_type: info.return_type
-			has_receiver: info.has_receiver
-			is_variadic: info.is_variadic
-			is_c_variadic: info.is_c_variadic
-			params_known: info.params_known
+			name:                 info.name
+			params:               params
+			return_type:          info.return_type
+			has_receiver:         info.has_receiver
+			is_variadic:          info.is_variadic
+			is_c_variadic:        info.is_c_variadic
+			params_known:         info.params_known
 			has_implicit_veb_ctx: info.has_implicit_veb_ctx
 		}
 	}
@@ -9318,9 +9318,9 @@ fn (tc &TypeChecker) fixed_array_pointers_call_info(base_type Type) ?CallInfo {
 	mname := 'array.pointers'
 	return_type := tc.fn_ret_types[mname] or { return none }
 	return CallInfo{
-		name: mname
-		params: tarr1(base_type)
-		return_type: return_type
+		name:         mname
+		params:       tarr1(base_type)
+		return_type:  return_type
 		has_receiver: true
 		params_known: true
 	}
@@ -9720,11 +9720,11 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl(idx int, module_name s
 fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string) {
 	if tc.defer_fn_ancillary {
 		tc.visible_mutation_registrations << VisibleMutationRegistration{
-			idx: idx
-			module_name: module_name
-			qname: qname
-			source_name: source_name
-			c_qname: c_qname
+			idx:           idx
+			module_name:   module_name
+			qname:         qname
+			source_name:   source_name
+			c_qname:       c_qname
 			c_source_name: c_source_name
 		}
 		return
@@ -9774,7 +9774,10 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 				cur_mod = node.value
 			}
 			.fn_decl {
-				if fallback_mod.len > 0 && cur_mod != fallback_mod && !(cur_mod in ['', 'main']
+				if fallback_mod.len > 0 && cur_mod != fallback_mod && !(cur_mod in [
+					'',
+					'main',
+				]
 					&& fallback_mod in ['', 'main']) {
 					continue
 				}
@@ -10152,9 +10155,9 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	}
 	if node.kind in [.break_stmt, .continue_stmt] {
 		loop_exits << StorageParamLoopExit{
-			aliases: storage_param_sources_clone(aliases)
-			writes: storage_param_sources_clone(writes)
-			label: node.value
+			aliases:     storage_param_sources_clone(aliases)
+			writes:      storage_param_sources_clone(writes)
+			label:       node.value
 			is_continue: node.kind == .continue_stmt
 		}
 		return
@@ -10162,8 +10165,8 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	if node.kind == .goto_stmt {
 		loop_exits << StorageParamLoopExit{
 			aliases: storage_param_sources_clone(aliases)
-			writes: storage_param_sources_clone(writes)
-			label: node.value
+			writes:  storage_param_sources_clone(writes)
+			label:   node.value
 			is_goto: true
 		}
 		return
@@ -11857,9 +11860,9 @@ fn (tc &TypeChecker) map_builtin_call_info(base_type Type, m Map, method string,
 	}
 
 	return CallInfo{
-		name: mname
-		params: params
-		return_type: return_type
+		name:         mname
+		params:       params
+		return_type:  return_type
 		has_receiver: true
 		params_known: true
 	}
@@ -11874,8 +11877,8 @@ fn checker_is_raw_collection_method_name(name string, prefix string) bool {
 }
 
 fn checker_builtin_array_method_mutates(method string) bool {
-	return method in ['clear', 'delete', 'delete_last', 'insert', 'move', 'pop', 'pop_left', 'prepend',
-		'reverse_in_place', 'sort', 'sort_with_compare']
+	return method in ['clear', 'delete', 'delete_last', 'insert', 'move', 'pop', 'pop_left',
+		'prepend', 'reverse_in_place', 'sort', 'sort_with_compare']
 }
 
 // is_print_style_fn_name reports whether is print style fn name applies in types.
@@ -12036,7 +12039,7 @@ fn (tc &TypeChecker) unlocked_shared_access(id flat.NodeId) ?SharedAccessDiagnos
 				&& tc.current_shared_lock_mode(node.value) == 0 {
 				return SharedAccessDiagnostic{
 					name: node.value
-					pos: tc.node_value_diagnostic_pos(id)
+					pos:  tc.node_value_diagnostic_pos(id)
 				}
 			}
 		}
@@ -12059,7 +12062,7 @@ fn (tc &TypeChecker) unlocked_shared_access(id flat.NodeId) ?SharedAccessDiagnos
 				&& tc.current_shared_lock_mode(tc.shared_lock_key(id)) == 0 {
 				return SharedAccessDiagnostic{
 					name: tc.source_text_for_node(id)
-					pos: tc.selector_field_diagnostic_pos(id, node.value)
+					pos:  tc.selector_field_diagnostic_pos(id, node.value)
 				}
 			}
 		}
@@ -12770,7 +12773,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.record_error_at(.call_arg_mismatch, 'cannot use non-shared `${recv_type.name()}` as receiver; cannot use shared method `${fn_node.value}` as `${tc.source_text_for_node(recv_id)}` is not a shared var', recv_id, tc.a.node(recv_id).pos)
 			}
 		}
-		if tc.unsafe_depth == 0 && tc.mut_receiver_methods[info.name]
+		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
+			&& tc.mut_receiver_methods[info.name]
 			&& tc.mut_receiver_call_requires_mutable_lvalue(info, recv_id)
 			&& !checker_is_raw_collection_method_name(info.name, 'array.')
 			&& !tc.mut_receiver_expr_is_mutable_lvalue(recv_id) && tc.should_diagnose(id) {
@@ -14301,7 +14305,7 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		tc.check_node(arg_id)
 		actual := tc.resolve_type(arg_id)
 		expected := Type(FnType{
-			params: [
+			params:      [
 				Type(Pointer{
 					base_type: array_type.elem_type
 				}),
@@ -14603,6 +14607,48 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 	arg_id := tc.call_arg_value(tc.a.child(&node, 1))
 	arg := tc.a.nodes[int(arg_id)]
 	method_pos := tc.method_call_name_pos(node, callee)
+	if arg.kind == .lambda_expr {
+		param_count := int(arg.children_count) - 1
+		if param_count != 2 {
+			tc.record_error_at(.call_arg_mismatch, '`.sort()` lambda should have 2 parameters, but got ${param_count}', arg_id,
+				arg.pos)
+			return
+		}
+		receiver_id := tc.a.child(&callee, 0)
+		receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
+		array_type := array_like_type_for_method(receiver_type, 'sort') or { return }
+		mut param_types := []Type{cap: 2}
+		tc.push_scope()
+		for i in 0 .. 2 {
+			param := tc.a.child_node(&arg, i)
+			param_type := if param.typ.len > 0 {
+				tc.parse_type(normalize_fn_type_param_text(param.typ))
+			} else {
+				array_type.elem_type
+			}
+			param_types << param_type
+			if !tc.type_compatible(param_type, array_type.elem_type) {
+				tc.record_error_at(.call_arg_mismatch, '`.sort()` lambda parameter `${param.value}` should be `${array_type.elem_type.name()}`',
+					tc.a.child(&arg, i), param.pos)
+			}
+			if param.value.len > 0 {
+				tc.cur_scope.insert(param.value, param_type)
+			}
+		}
+		body_id := tc.a.child(&arg, 2)
+		tc.check_node_with_expected_context(body_id, Type(bool_))
+		body_type := tc.resolve_expr(body_id, Type(bool_))
+		tc.pop_scope()
+		if !tc.expr_compatible(body_id, body_type, Type(bool_)) {
+			tc.record_error_at(.call_arg_mismatch, '`.sort()` lambda should return `bool`, not `${body_type.name()}`',
+				body_id, tc.a.node(body_id).pos)
+		}
+		tc.remember_expr_type(arg_id, Type(FnType{
+			params:      param_types
+			return_type: Type(bool_)
+		}))
+		return
+	}
 	if arg.kind != .infix {
 		tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use `<` or `>` comparison', id, method_pos)
 		tc.push_array_dsl_scope(node, 'array.sort')
@@ -15300,16 +15346,16 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 	}
 	return CallInfo{
-		name: info.name
-		params: sub_params
-		shared_params: info.shared_params.clone()
-		return_type: sub_ret
-		has_receiver: info.has_receiver
-		is_variadic: info.is_variadic
-		is_c_variadic: info.is_c_variadic
-		params_known: true
+		name:                 info.name
+		params:               sub_params
+		shared_params:        info.shared_params.clone()
+		return_type:          sub_ret
+		has_receiver:         info.has_receiver
+		is_variadic:          info.is_variadic
+		is_c_variadic:        info.is_c_variadic
+		params_known:         true
 		has_implicit_veb_ctx: info.has_implicit_veb_ctx
-		arg_offset: info.arg_offset
+		arg_offset:           info.arg_offset
 	}
 }
 
@@ -15407,8 +15453,8 @@ fn (mut tc TypeChecker) contextual_generic_lambda_type(id flat.NodeId, expected 
 		return none
 	}
 	return Type(FnType{
-		params: params
-		params_mut: params_mut
+		params:      params
+		params_mut:  params_mut
 		return_type: body_type
 	})
 }
@@ -15923,18 +15969,18 @@ fn (tc &TypeChecker) pointer_builtin_method_call_info(base_type Type, method str
 			params << Type(int_)
 		}
 		return CallInfo{
-			name: '${receiver}.${method}'
-			params: params
-			return_type: Type(string_)
+			name:         '${receiver}.${method}'
+			params:       params
+			return_type:  Type(string_)
 			has_receiver: true
 			params_known: true
 		}
 	}
 	if receiver in ['byteptr', 'voidptr'] && method == 'vbytes' {
 		return CallInfo{
-			name: '${receiver}.${method}'
-			params: [base_type, Type(int_)]
-			return_type: Type(Array{
+			name:         '${receiver}.${method}'
+			params:       [base_type, Type(int_)]
+			return_type:  Type(Array{
 				elem_type: Type(u8_)
 			})
 			has_receiver: true
@@ -15943,9 +15989,9 @@ fn (tc &TypeChecker) pointer_builtin_method_call_info(base_type Type, method str
 	}
 	if receiver == 'voidptr' && method == 'hex_full' {
 		return CallInfo{
-			name: 'voidptr.hex_full'
-			params: [base_type]
-			return_type: Type(string_)
+			name:         'voidptr.hex_full'
+			params:       [base_type]
+			return_type:  Type(string_)
 			has_receiver: true
 			params_known: true
 		}
@@ -16260,7 +16306,10 @@ fn (tc &TypeChecker) enclosing_array_dsl_ident_type(id flat.NodeId, name string)
 			// receiver of a nested DSL call still belongs to the enclosing DSL.
 			in_call_argument := parent.children_count > 1 && current != tc.a.child(parent, 0)
 			if dsl_name.len > 0 && in_call_argument {
-				is_sort_ident := is_array_sort_dsl_call_name(dsl_name) && name in ['a', 'b']
+				is_sort_ident := is_array_sort_dsl_call_name(dsl_name) && name in [
+					'a',
+					'b',
+				]
 				if (name == 'it' && !is_array_sort_dsl_call_name(dsl_name)) || is_sort_ident {
 					arr := tc.call_receiver_array_type(parent) or { return none }
 					return arr.elem_type
@@ -17006,8 +17055,8 @@ fn (tc &TypeChecker) method_value_type(receiver_name string, method string) ?Typ
 		}
 	}
 	return Type(FnType{
-		params: bound_params
-		params_mut: bound_params_mut
+		params:      bound_params
+		params_mut:  bound_params_mut
 		return_type: ret_type
 	})
 }
@@ -17073,7 +17122,7 @@ fn (tc &TypeChecker) builtin_method_value_type(base_type Type, method string) ?T
 	}
 	if method == 'str' && (clean is Primitive || clean is Char || clean is Rune) {
 		return Type(FnType{
-			params: []Type{}
+			params:      []Type{}
 			return_type: Type(string_)
 		})
 	}
@@ -17083,7 +17132,7 @@ fn (tc &TypeChecker) builtin_method_value_type(base_type Type, method string) ?T
 		bound_params = info.params[1..].clone()
 	}
 	return Type(FnType{
-		params: bound_params
+		params:      bound_params
 		return_type: info.return_type
 	})
 }
@@ -17822,8 +17871,8 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver Type, method string
 		return method in ['first', 'last', 'pop', 'pop_left', 'contains', 'join', 'index',
 			'last_index', 'repeat', 'repeat_to_depth', 'delete', 'delete_last', 'clear', 'insert',
 			'prepend', 'filter', 'map', 'any', 'all', 'count', 'sort_with_compare',
-			'sorted_with_compare', 'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals',
-			'bytestr', 'wait']
+			'sorted_with_compare', 'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place',
+			'equals', 'bytestr', 'wait']
 	}
 	if receiver is ArrayFixed {
 		array_type := Type(Array{
@@ -18517,19 +18566,19 @@ fn (tc &TypeChecker) constant_scalar_value(id flat.NodeId) ?ConstantScalar {
 	return match node.kind {
 		.int_literal {
 			ConstantScalar{
-				kind: 1
+				kind:   1
 				number: f64(v_int_literal_value(node.value)?)
 			}
 		}
 		.float_literal {
 			ConstantScalar{
-				kind: 1
+				kind:   1
 				number: node.value.f64()
 			}
 		}
 		.char_literal {
 			ConstantScalar{
-				kind: 2
+				kind:   2
 				number: f64(match_char_literal_value(node.value)?)
 			}
 		}
@@ -18541,7 +18590,7 @@ fn (tc &TypeChecker) constant_scalar_value(id flat.NodeId) ?ConstantScalar {
 		}
 		.bool_literal {
 			ConstantScalar{
-				kind: 4
+				kind:       4
 				bool_value: node.value == 'true'
 			}
 		}

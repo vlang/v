@@ -9023,7 +9023,8 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-retry-compilation' {
 			retry_compilation = false
 			i++
-		} else if args[i] in ['-show-timings', '-w', '-usecache', '-new-generic-solver', '-progress'] {
+		} else if args[i] in ['-show-timings', '-w', '-usecache', '-new-generic-solver', '-progress',
+			'-use-os-system-to-run'] {
 			// v3 already reports phase metrics, suppresses C warnings, leaves
 			// explicit-output tests unrun, caches modules by default, and uses
 			// its current generic solver without a legacy selection switch.

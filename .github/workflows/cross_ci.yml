@@ -22,6 +22,9 @@ concurrency:
   group: cross-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+env:
+  V_MACOS_V3_NO_FALLBACK: '1'
+
 jobs:
   cross-macos:
     runs-on: macos-latest
@@ -106,7 +109,7 @@ jobs:
       - name: v_win.c can be compiled and run with -os windows
         run: |
           ./v -cc msvc -os windows -o /tmp/v_win.c cmd/v
-          x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32 -lbcrypt -Wl,-stack=33554432
+          x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32 -lbcrypt -ldbghelp -Wl,-stack=33554432
           ls -lart v_from_vc.exe
           wine ./v_from_vc.exe version
 

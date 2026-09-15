@@ -68,6 +68,7 @@ const libc_collisions = {
 	'ceil':     true
 	'ceilf':    true
 	'close':    true
+	'clock':    true
 	'cos':      true
 	'drem':     true
 	'dup2':     true

@@ -13,6 +13,18 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 	]
 }
 
+fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
+	assert ownership_compiler_is_required(['-autofree', 'main.v'])
+	assert ownership_compiler_is_required(['-ownership', 'main.v'])
+	assert ownership_compiler_is_required(['--ownership', 'main.v'])
+	assert ownership_compiler_is_required(['-d', 'ownership', 'main.v'])
+	assert ownership_compiler_is_required(['-define', 'ownership=on', 'main.v'])
+	assert ownership_compiler_is_required(['-downership', 'main.v'])
+	assert !ownership_compiler_is_required(['main.v'])
+	assert !ownership_compiler_is_required(['-d', 'autofree', 'main.v'])
+	assert !ownership_compiler_is_required(['run', 'ownership'])
+}
+
 fn test_launcher_finds_the_source_root() {
 	root := find_vroot(@FILE) or { panic(err) }
 	assert os.is_file(os.join_path(root, 'GNUmakefile'))
@@ -43,6 +55,9 @@ fn test_launcher_finds_external_commands() {
 	option_value_index, option_value := find_command(['-o', 'fmt', 'main.v'])
 	assert option_value_index == -1
 	assert option_value == ''
+	test_index, test_command := find_command(['-silent', 'test', 'vlib/builtin', 'vlib/os'])
+	assert test_index == 1
+	assert test_command == 'test'
 }
 
 fn test_external_tool_source_prefers_an_executable_file() {

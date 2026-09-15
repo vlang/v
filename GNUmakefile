@@ -84,6 +84,7 @@ LDFLAGS += -lexecinfo
 endif
 
 ifeq ($(_SYS),OpenBSD)
+OPENBSD := 1
 TCCOS := openbsd
 LDFLAGS += -lexecinfo
 endif
@@ -168,6 +169,12 @@ endif
 # on a Unix-like host. Keep the temporary v1 on the full compatibility path so
 # it can create v2 before either the compiler driver or v1_fallback exists.
 BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
+# Portable vc snapshots generated before the OpenBSD entropy guard still contain
+# an unreachable SYS_getrandom call. Define the missing constant just long enough
+# to compile that v1; current sources use getentropy and regenerate a clean snapshot.
+ifdef OPENBSD
+BOOTSTRAP_VC_CC_CFLAGS += -DSYS_getrandom=0
+endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
 BOOTSTRAP_VC_CCOMPILER_VFLAG :=

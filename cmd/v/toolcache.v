@@ -4,7 +4,6 @@
 module main
 
 import crypto.sha256
-import crypto.rand as crypto_rand
 import os
 import os.filelock
 import time
@@ -991,19 +990,23 @@ fn prune_stale_tool_artifact(path string) {
 	}
 }
 
-// create_tool_cache_stage_dir makes an unpredictable, private directory for compiler output
-// on the cache filesystem, so completed files can be installed with an atomic rename.
+// create_tool_cache_stage_dir makes a unique, private directory for compiler output on the
+// cache filesystem, so completed files can be installed with an atomic rename.
 fn create_tool_cache_stage_dir(parent string) !string {
 	if !os.is_dir(parent) {
 		return error('cannot find a staging directory for the tool cache')
 	}
-	for _ in 0 .. 16 {
-		token := crypto_rand.bytes(16)!.hex()
+	for attempt in 0 .. 16 {
+		token := unique_cache_path_token(attempt)
 		path := os.join_path(parent, '${tool_cache_stage_prefix}${os.getuid()}-${token}')
 		os.mkdir(path, mode: 0o700) or { continue }
 		return path
 	}
 	return error('cannot create a private temporary directory for the tool cache')
+}
+
+fn unique_cache_path_token(attempt int) string {
+	return '${os.getpid()}-${time.now().unix_nano()}-${attempt}'
 }
 
 // build_tool_binary compiles the tool into its cache slot and records its source closure.

@@ -749,10 +749,24 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 	}
 	old_module := t.cur_module
 	// Imported defaults must retain their declaration module while resolving consts, globals,
-	// and function names. Leave them absent here; cgen's struct-default path emits them with the
-	// declaring module/file active. Defaults from the current module still need transform-time
-	// lowering for the non-C backends.
-	if info.module.len > 0 && info.module !in ['main', 'builtin'] && info.module != old_module {
+	// and function names. Cgen can emit ordinary defaults itself, but callable literals need
+	// transform-time lowering into named functions before cgen sees them.
+	imported_decl := info.module.len > 0 && info.module !in ['main', 'builtin']
+		&& info.module != old_module
+	mut has_missing_callable_default := false
+	if imported_decl {
+		for field in info.fields {
+			if field.name in provided || int(field.default_expr) < 0 {
+				continue
+			}
+			default_node := t.a.nodes[int(field.default_expr)]
+			if default_node.kind in [.fn_literal, .lambda_expr] {
+				has_missing_callable_default = true
+				break
+			}
+		}
+	}
+	if imported_decl && !has_missing_callable_default {
 		for stmt in prelude {
 			t.pending_stmts << stmt
 		}
@@ -781,6 +795,9 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
 		default_id := t.specialize_struct_default_expr(node.value, field.default_expr)
 		default_node := t.a.nodes[int(default_id)]
+		if imported_decl && default_node.kind !in [.fn_literal, .lambda_expr] {
+			continue
+		}
 		enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 		new_val := if default_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(default_id, default_node, enum_field_type)

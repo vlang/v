@@ -23,6 +23,9 @@ concurrency:
   group: paths-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+env:
+  V_MACOS_V3_NO_FALLBACK: '1'
+
 jobs:
   space-paths-linux:
     runs-on: ubuntu-24.04

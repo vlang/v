@@ -129,6 +129,7 @@ mut:
 	formatter_types map[string]FormatterTypeSource
 	array_breaks    []bool
 	array_depth     int
+	in_index        bool
 	// suppress_mut skips the `mut ` prefix on an assignment (used for C-style
 	// `for` loop init clauses, whose variable the parser always marks mutable).
 	suppress_mut bool
@@ -153,7 +154,7 @@ pub:
 // Gen.new returns a fresh formatter.
 pub fn Gen.new() &Gen {
 	return &Gen{
-		out: strings.new_builder(1000)
+		out:    strings.new_builder(1000)
 		indent: -1
 	}
 }
@@ -181,6 +182,7 @@ pub fn (mut g Gen) reset() {
 	g.formatter_types = map[string]FormatterTypeSource{}
 	g.array_breaks.clear()
 	g.array_depth = 0
+	g.in_index = false
 	g.suppress_trailing_comments = 0
 }
 
@@ -264,9 +266,9 @@ fn (mut g Gen) collect_formatter_types() {
 			continue
 		}
 		g.formatter_types[n.value] = FormatterTypeSource{
-			text: source.trim_space()
+			text:  source.trim_space()
 			start: n.pos.offset
-			end: n.pos.end
+			end:   n.pos.end
 		}
 	}
 }
@@ -508,6 +510,7 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 		}
 	}
 	mut injected_imports := false
+	mut label_continues := false
 	for i, id in decls {
 		if g.skip_decls[int(id)] {
 			continue
@@ -527,16 +530,45 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 			prev = .import_decl
 			previous = flat.empty_node
 		}
-		if wrote_any {
+		if wrote_any && !label_continues {
 			adjacent_consts := prev == .const_decl && kind == .const_decl && int(previous) >= 0
 				&& !g.source_has_blank_line_between(g.a.node(previous).pos.end, g.a.node(id).pos.offset)
-			if !injected_now && !(prev == .import_decl && kind == .import_decl) && !(prev == kind
-				&& kind in [.expr_stmt, .global_decl]) && !adjacent_consts {
+			both_statements := top_level_kind_is_statement(prev)
+				&& top_level_kind_is_statement(kind)
+			same_unseparated_group := prev == kind
+				&& kind in [.import_decl, .global_decl, .directive, .c_fn_decl]
+				&& int(previous) !in g.attrs && int(id) !in g.attrs
+			source_c_group := int(previous) >= 0
+				&& !g.source_has_blank_line_between(g.a.node(previous).pos.end, g.a.node(id).pos.offset)
+				&& ((prev == .directive && g.a.node(id).value.starts_with('C.'))
+					|| (prev == .global_decl && kind == .struct_decl
+						&& g.a.node(id).value.starts_with('C.'))
+					|| (prev == .type_decl && kind == .type_decl
+						&& g.a.node(previous).value.starts_with('C.')
+						&& g.a.node(id).value.starts_with('C.')))
+			mut preserved_group_break := false
+			if (both_statements || (same_unseparated_group && kind != .import_decl))
+				&& int(previous) >= 0 {
+				preserved_group_break = g.has_preserved_blank_line_between(previous, id)
+			}
+			if preserved_group_break
+				|| (!injected_now && !both_statements && !same_unseparated_group
+					&& !source_c_group && !adjacent_consts) {
 				g.writeln('')
 			}
 		}
 		g.indent++
-		g.stmt(id)
+		mut next_is_loop := false
+		if kind == .label_stmt && i + 1 < decls.len {
+			next_is_loop = g.is_loop_statement(decls[i + 1])
+		}
+		if next_is_loop {
+			label := g.a.node(id)
+			g.emit_comments_before(label.pos.offset)
+			g.write('${label.value}: ')
+		} else {
+			g.stmt(id)
+		}
 		g.indent--
 		if i == last_import && g.implied_imports.len > 0 {
 			g.emit_implied_imports()
@@ -545,6 +577,7 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 		prev = kind
 		previous = id
 		wrote_any = true
+		label_continues = next_is_loop
 	}
 	if !injected_imports && g.implied_imports.len > 0 {
 		if wrote_any {
@@ -552,6 +585,10 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 		}
 		g.emit_implied_imports()
 	}
+}
+
+fn top_level_kind_is_statement(kind flat.NodeKind) bool {
+	return int(kind) > int(flat.NodeKind.empty) && int(kind) < int(flat.NodeKind.fn_decl)
 }
 
 fn (mut g Gen) emit_implied_imports() {
@@ -564,9 +601,23 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 	mut imported := map[string]bool{}
 	mut declared := map[string]bool{}
 	for n in g.a.nodes {
-		if n.pos.id == g.file_id && n.kind == .import_decl {
+		if n.pos.id != g.file_id {
+			continue
+		}
+		if n.kind == .import_decl {
 			local_name := if n.typ.len > 0 { n.typ } else { n.value.all_after_last('.') }
 			imported[local_name] = true
+		} else if n.kind == .decl_assign && n.children_count > 0 {
+			// A formatter parse has no checker scope information. Record declarations at
+			// every nesting level so a later selector on a local variable is not mistaken
+			// for a missing module import.
+			lhs_count := int_max(1, n.value.int())
+			for i := 0; i < lhs_count && i * 2 < n.children_count; i++ {
+				lhs := g.a.child(&n, i * 2)
+				if g.a.node(lhs).kind == .ident {
+					declared[g.a.node(lhs).value] = true
+				}
+			}
 		}
 	}
 	for id in g.a.children_of(fnode) {
@@ -623,7 +674,7 @@ fn (mut g Gen) collect_top_level(ids []flat.NodeId, mut out []flat.NodeId) {
 		if n.kind == .empty {
 			continue
 		}
-		if n.kind == .block {
+		if n.kind == .block && n.value == '' {
 			g.collect_top_level(g.a.children_of(n), mut out)
 		} else {
 			out << id
@@ -656,17 +707,7 @@ fn (mut g Gen) stmt_list_ids(ids []flat.NodeId) {
 			continue
 		}
 		if int(previous) >= 0 {
-			_, previous_end := g.stmt_source_span(g.a.node(previous))
-			current_start, _ := g.stmt_source_span(g.a.node(id))
-			if g.source_has_blank_line_between(previous_end, current_start) {
-				if !g.on_newline {
-					g.writeln('')
-				}
-				if g.out.len < 2 || g.out.last_n(2) != '\n\n' {
-					g.out.writeln('')
-					g.on_newline = true
-				}
-			}
+			g.emit_blank_line_between(previous, id)
 		}
 		g.indent++
 		mut next_i := i
@@ -715,27 +756,33 @@ fn (g &Gen) source_has_blank_line_between(start int, end int) bool {
 }
 
 fn (mut g Gen) emit_blank_line_between(previous flat.NodeId, current flat.NodeId) {
-	if int(previous) < 0 {
+	if !g.has_preserved_blank_line_between(previous, current) {
 		return
+	}
+	g.write_blank_line()
+}
+
+fn (g &Gen) has_preserved_blank_line_between(previous flat.NodeId, current flat.NodeId) bool {
+	if int(previous) < 0 || int(current) < 0 {
+		return false
 	}
 	prev := g.a.node(previous)
 	cur := g.a.node(current)
 	if !prev.pos.is_valid() || !cur.pos.is_valid() {
-		return
+		return false
 	}
-	mut limit := cur.pos.offset
+	_, previous_end := g.stmt_source_span(prev)
+	current_start, _ := g.stmt_source_span(cur)
+	mut limit := current_start
 	if g.comment_i < g.comments.len {
 		// a comment in the gap keeps the blank lines that follow it, so only the
 		// part of the gap before that comment decides the separator here
 		comment_start := g.comments[g.comment_i].pos.offset
-		if comment_start >= prev.pos.end && comment_start < limit {
+		if comment_start >= previous_end && comment_start < limit {
 			limit = comment_start
 		}
 	}
-	if !g.source_has_blank_line_between(prev.pos.end, limit) {
-		return
-	}
-	g.write_blank_line()
+	return g.source_has_blank_line_between(previous_end, limit)
 }
 
 // emit_blank_line_after_comment writes a blank line when the source kept one
@@ -993,7 +1040,8 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		.postfix {
 			child := g.a.child(n, 0)
 			cn := g.a.node(child)
-			if n.op == .not && n.typ.len > 0 && cn.kind == .array_literal && cn.typ == n.typ {
+			if n.op == .not && cn.kind == .array_literal
+				&& ((n.typ.len > 0 && cn.typ == n.typ) || int(child) in g.a.formatter_sources) {
 				g.expr(child)
 			} else if n.op == .not {
 				g.expr(child)
@@ -1109,7 +1157,13 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		}
 		.range {
 			g.expr(g.a.child(n, 0))
-			g.write(if n.value == '...' { '...' } else { ' .. ' })
+			g.write(if n.value == '...' {
+				'...'
+			} else if g.in_index {
+				'..'
+			} else {
+				' .. '
+			})
 			if n.children_count > 1 {
 				g.expr(g.a.child(n, 1))
 			}
@@ -1178,10 +1232,14 @@ fn (mut g Gen) infix_expr(id flat.NodeId) {
 	lhs := g.a.child(n, 0)
 	rhs := g.a.child(n, 1)
 	g.expr(lhs)
-	if g.infix_continues_on_next_line(n, lhs, rhs) {
+	if g.infix_continues_on_next_line(lhs, rhs) {
 		g.indent++
-		g.writeln('')
-		g.write('${op_str(n.op)} ')
+		if n.op in [.logical_and, .logical_or] {
+			g.writeln('')
+			g.write('${op_str(n.op)} ')
+		} else {
+			g.writeln(' ${op_str(n.op)}')
+		}
 		g.expr(rhs)
 		g.indent--
 		return
@@ -1190,10 +1248,7 @@ fn (mut g Gen) infix_expr(id flat.NodeId) {
 	g.expr(rhs)
 }
 
-fn (g &Gen) infix_continues_on_next_line(n &flat.Node, lhs flat.NodeId, rhs flat.NodeId) bool {
-	if n.op !in [.logical_and, .logical_or] {
-		return false
-	}
+fn (g &Gen) infix_continues_on_next_line(lhs flat.NodeId, rhs flat.NodeId) bool {
 	lhs_end := g.rightmost_source_end(lhs)
 	rhs_start := g.leftmost_source_start(rhs)
 	if lhs_end < 0 || rhs_start < lhs_end || g.has_comment_between(lhs_end, rhs_start) {
@@ -1348,7 +1403,15 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 				indented = true
 			}
 		} else if line_break {
-			g.end_array_element(pending_comment_end, true)
+			previous := g.a.node(children[i - 1])
+			current := g.a.node(child)
+			if g.array_source_omits_comma_before_comment(previous.pos.end, current.pos.offset) {
+				if !g.on_newline {
+					g.writeln('')
+				}
+			} else {
+				g.end_array_element(pending_comment_end, true)
+			}
 			pending_comment_end = -1
 		} else {
 			width := g.array_expr_width(child)
@@ -1416,12 +1479,29 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 	}
 }
 
+fn (g &Gen) array_source_omits_comma_before_comment(start int, end int) bool {
+	if start < 0 || end <= start || end > g.source.len {
+		return false
+	}
+	mut limit := end
+	for comment in g.comments {
+		if comment.pos.offset >= start && comment.pos.offset < limit {
+			limit = comment.pos.offset
+			break
+		}
+	}
+	gap := g.source[start..limit]
+	return (gap.contains('\n') || gap.contains('\r')) && !gap.contains(',')
+}
+
 // end_array_element writes the comma that separates array elements, then the trailing comment
 // that was held back while the element itself was written, and finally ends the line when the
 // array is laid out one element per line.
 fn (mut g Gen) end_array_element(pending_comment_end int, break_line bool) bool {
 	if pending_comment_end >= 0 {
-		g.write(',')
+		if g.source_has_comma_before_trailing_comment(pending_comment_end) {
+			g.write(',')
+		}
 		g.emit_trailing_comments(pending_comment_end)
 		if !g.on_newline {
 			g.writeln('')
@@ -1434,10 +1514,23 @@ fn (mut g Gen) end_array_element(pending_comment_end int, break_line bool) bool 
 	return break_line
 }
 
+fn (g &Gen) source_has_comma_before_trailing_comment(end int) bool {
+	for comment in g.comments {
+		if comment.pos.offset < end {
+			continue
+		}
+		if comment.pos.offset > g.source.len
+			|| g.source_line(comment.pos.offset) != g.source_line(end) {
+			return false
+		}
+		return g.source[end..comment.pos.offset].contains(',')
+	}
+	return false
+}
+
 fn (g &Gen) array_expr_width(id flat.NodeId) int {
 	n := g.a.node(id)
-	if n.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .ident,
-		.enum_val] {
+	if n.kind == .string_literal {
 		return n.value.len
 	}
 	if source := g.source_span(n.pos.offset, n.pos.end) {
@@ -1445,6 +1538,10 @@ fn (g &Gen) array_expr_width(id flat.NodeId) int {
 		if !trimmed.contains('\n') {
 			return trimmed.len
 		}
+	}
+	if n.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.ident, .enum_val] {
+		return n.value.len
 	}
 	return 0
 }
@@ -1728,7 +1825,10 @@ fn (mut g Gen) index_expr(id flat.NodeId) {
 		return
 	}
 	g.write('${gate}[')
+	was_in_index := g.in_index
+	g.in_index = true
 	g.expr_list(children[1..], ', ')
+	g.in_index = was_in_index
 	g.write(']')
 }
 
@@ -1756,7 +1856,8 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 	first := g.a.node(fields[0])
 	if first.value.len > 0 {
 		if g.source_line(n.pos.offset) == g.source_line(n.pos.end) {
-			g.write('{ ')
+			compact_chan := n.value.starts_with('chan ')
+			g.write(if compact_chan { '{' } else { '{ ' })
 			for i, fid in fields {
 				f := g.a.node(fid)
 				g.write('${f.value}: ')
@@ -1765,7 +1866,7 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 					g.write(', ')
 				}
 			}
-			g.write(' }')
+			g.write(if compact_chan { '}' } else { ' }' })
 			return
 		}
 		// named fields, one per line
@@ -1917,7 +2018,9 @@ fn (mut g Gen) named_init_field(id flat.NodeId, value_width int, comment_width i
 		g.suppress_trailing_comments--
 		width := g.array_expr_width(value)
 		if width > 0 && comment_width >= width {
-			g.write(' '.repeat(comment_width - width + 1))
+			calculated := comment_width - width + 1
+			source_padding := g.source_spaces_before_trailing_comment(v.pos.end)
+			g.write(' '.repeat(int_max(calculated, source_padding)))
 		}
 	} else {
 		g.expr(value)
@@ -1927,6 +2030,24 @@ fn (mut g Gen) named_init_field(id flat.NodeId, value_width int, comment_width i
 		g.writeln('')
 	}
 	g.source_end = int_max(g.source_end, v.pos.end)
+}
+
+fn (g &Gen) source_spaces_before_trailing_comment(end int) int {
+	for comment in g.comments {
+		if comment.pos.offset < end {
+			continue
+		}
+		if comment.pos.offset > g.source.len
+			|| g.source_line(comment.pos.offset) != g.source_line(end) {
+			return 0
+		}
+		mut i := comment.pos.offset
+		for i > end && g.source[i - 1] in [` `, `\t`] {
+			i--
+		}
+		return comment.pos.offset - i
+	}
+	return 0
 }
 
 fn (mut g Gen) assoc(id flat.NodeId) {
@@ -2005,7 +2126,12 @@ fn (mut g Gen) map_init(id flat.NodeId) {
 	mut max_key_width := 0
 	mut i := 0
 	for i + 1 < children.len {
-		width := g.map_key_width(children[i])
+		key := g.a.node(children[i])
+		width := if key.kind == .prefix && key.value == '...' {
+			0
+		} else {
+			g.map_key_width(children[i])
+		}
 		if width > max_key_width {
 			max_key_width = width
 		}
@@ -2013,6 +2139,13 @@ fn (mut g Gen) map_init(id flat.NodeId) {
 	}
 	i = 0
 	for i + 1 < children.len {
+		key := g.a.node(children[i])
+		if key.kind == .prefix && key.value == '...' {
+			g.expr(children[i])
+			g.writeln('')
+			i += 2
+			continue
+		}
 		g.expr(children[i])
 		g.write(': ')
 		width := g.map_key_width(children[i])
@@ -2251,7 +2384,7 @@ fn (mut g Gen) comma_exprs(n &flat.Node) {
 		// it would end the statement with a stray `, `.
 		if g.is_empty(stmt_id)
 			|| (stmt.kind == .expr_stmt && stmt.children_count == 1
-			&& g.is_empty(g.a.child(stmt, 0))) {
+				&& g.is_empty(g.a.child(stmt, 0))) {
 			continue
 		}
 		if !first {
@@ -2643,6 +2776,15 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 	cond := if children.len > 1 { children[1] } else { flat.empty_node }
 	post := if children.len > 2 { children[2] } else { flat.empty_node }
 	body := if children.len > 3 { children[3..] } else { []flat.NodeId{} }
+	if body.len == 0 && g.is_empty(init) && g.is_empty(cond) && g.is_empty(post)
+		&& g.empty_braced_body_is_compact(n, n.pos.end)
+		&& !g.has_comment_between(n.pos.offset, n.pos.end) {
+		g.write('for {}')
+		if !g.in_init {
+			g.writeln('')
+		}
+		return
+	}
 	in_init := g.in_init
 	g.in_init = true
 	g.write('for')
@@ -3545,11 +3687,14 @@ fn (mut g Gen) struct_decl(id flat.NodeId) {
 	if impls.len > 0 {
 		g.write(' implements ${impls.replace('|', ', ')}')
 	}
-	g.struct_fields(g.a.children_of(n), n.pos.end)
+	fields := g.a.children_of(n)
+	compact := fields.len == 0 && g.empty_braced_body_is_compact(n, n.pos.end)
+		&& !g.has_comment_between(n.pos.offset, n.pos.end)
+	g.struct_fields(fields, n.pos.end, compact)
 }
 
-fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
-	if fields.len > 0 {
+fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
+	if fields.len > 0 || !compact {
 		g.writeln(' {')
 	} else {
 		g.write(' {')
@@ -3591,6 +3736,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 				'pub' { g.writeln('pub:') }
 				'pub mut' { g.writeln('pub mut:') }
 				'__global' { g.writeln('__global:') }
+				'module' { g.writeln('module:') }
 				else {}
 			}
 			g.indent++
@@ -3675,7 +3821,7 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 	mut fields := []flat.NodeId{}
 	for fid in g.a.children_of(n) {
 		f := g.a.node(fid)
-		if f.value.len == 0 && f.children_count == 0 {
+		if f.kind != .comptime_if && f.value.len == 0 && f.children_count == 0 {
 			continue
 		}
 		fields << fid
@@ -3695,6 +3841,14 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		g.emit_blank_line_between(previous, fid)
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
+		if f.kind == .comptime_if {
+			if source := g.a.formatter_sources[int(fid)] {
+				g.writeln(source.trim_space())
+			}
+			g.source_end = int_max(g.source_end, f.pos.end)
+			previous = fid
+			continue
+		}
 		pads_comment := int(fid) in comment_align
 		if pads_comment {
 			g.suppress_trailing_comments++
@@ -3712,8 +3866,8 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		if fattrs.len > 0 {
 			attr_text := '@[${fattrs.join('; ')}]'
 			if pad := attr_align[int(fid)] {
-				if pad > suffix_width {
-					g.write(' '.repeat(pad - suffix_width))
+				if pad >= suffix_width {
+					g.write(' '.repeat(pad - suffix_width + 1))
 				}
 			}
 			g.write(' ${attr_text}')
@@ -3724,6 +3878,11 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 			pad := comment_align[int(fid)] or { 0 }
 			if pad >= suffix_width {
 				g.write(' '.repeat(pad - suffix_width + 1))
+			}
+		} else if fattrs.len > 0 {
+			source_padding := g.source_spaces_before_trailing_comment(f.pos.end)
+			if source_padding > 0 {
+				g.write(' '.repeat(source_padding))
 			}
 		}
 		g.emit_trailing_comments(f.pos.end)
@@ -3762,7 +3921,7 @@ fn (g &Gen) enum_field_suffix_alignments(fields []flat.NodeId) (map[int]int, map
 	mut previous := flat.empty_node
 	for fid in fields {
 		f := g.a.node(fid)
-		if !f.pos.is_valid() {
+		if f.kind != .enum_field || !f.pos.is_valid() {
 			previous = flat.empty_node
 			continue
 		}
@@ -3806,6 +3965,12 @@ fn (g &Gen) enum_field_alignments(fields []flat.NodeId) map[int]int {
 	mut previous := flat.empty_node
 	for fid in fields {
 		f := g.a.node(fid)
+		if f.kind != .enum_field {
+			g.store_enum_field_alignments(mut alignments, group)
+			group.clear()
+			previous = flat.empty_node
+			continue
+		}
 		if int(previous) >= 0
 			&& g.source_has_blank_line_between(g.a.node(previous).pos.end, f.pos.offset) {
 			g.store_enum_field_alignments(mut alignments, group)
@@ -3822,12 +3987,12 @@ fn (g &Gen) store_enum_field_alignments(mut alignments map[int]int, fields []fla
 	mut width := 0
 	for fid in fields {
 		f := g.a.node(fid)
-		if f.children_count > 0 {
+		if f.kind == .enum_field && f.children_count > 0 {
 			width = int_max(width, f.value.len)
 		}
 	}
 	for fid in fields {
-		if g.a.node(fid).children_count > 0 {
+		if g.a.node(fid).kind == .enum_field && g.a.node(fid).children_count > 0 {
 			alignments[int(fid)] = width
 		}
 	}
@@ -4664,7 +4829,9 @@ fn (g &Gen) source_span(start int, end int) ?string {
 
 fn (mut g Gen) write_comment(text string) {
 	mut normalized := text
-	if text.starts_with('//') && text.len > 2 && text[2] !in [` `, `\t`, `/`, `!`, `#`, `*`] {
+	if text.starts_with('//') && text.len > 2
+		&& ((text[2] >= `a` && text[2] <= `z`) || (text[2] >= `A` && text[2] <= `Z`)
+			|| (text[2] >= `0` && text[2] <= `9`)) {
 		normalized = '// ${text[2..]}'
 	}
 	lines := normalized.split('\n')
@@ -5058,10 +5225,13 @@ fn escape_string(s string, quote u8) string {
 }
 
 // access_label maps a struct field flag code (from generic_params()[0]) to its
-// section keyword. Codes: `m`=mut, `p`=pub, `g`=global.
+// section keyword. Codes: `m`=mut, `p`=pub, `g`=global, `o`=module.
 fn access_label(flags string) string {
 	if flags.contains('g') {
 		return '__global'
+	}
+	if flags.contains('o') {
+		return 'module'
 	}
 	has_mut := flags.contains('m')
 	has_pub := flags.contains('p')

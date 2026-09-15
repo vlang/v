@@ -37,7 +37,8 @@ fn main() {
 	requested_vflags := os.getenv('VFLAGS')
 	mut requested_args := vflags.tokenize_to_args(requested_vflags)
 	requested_args << args_before
-	strict_v3 := '-new-compiler' in requested_args && '-old-compiler' !in requested_args
+	strict_v3 := ('-new-compiler' in requested_args && '-old-compiler' !in requested_args)
+		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
 	mut session_vargs := args_before.join(' ')
 	if strict_v3 {
 		// Apply strict V3 flags to each top-level test compilation without leaking
