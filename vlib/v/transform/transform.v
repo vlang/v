@@ -155,6 +155,7 @@ mut:
 	alias_method_candidates       map[string][]string
 	alias_method_candidates_ready bool
 	globals                       map[string]string
+	global_qualified_names        map[string][]string
 	sum_types                     map[string][]string
 	sum_variant_parents           map[string][]string
 	sum_variant_names             map[string]bool
@@ -2983,7 +2984,13 @@ fn (mut t Transformer) collect_types() {
 					}
 					t.globals[f.value] = typ
 					if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
-						t.globals['${cur_mod}.${f.value}'] = typ
+						qname := '${cur_mod}.${f.value}'
+						t.globals[qname] = typ
+						mut qualified := t.global_qualified_names[f.value]
+						if qname !in qualified {
+							qualified << qname
+							t.global_qualified_names[f.value] = qualified
+						}
 					}
 				}
 			}
@@ -4111,6 +4118,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		alias_method_candidates: t.alias_method_candidates
 		alias_method_candidates_ready: t.alias_method_candidates_ready
 		globals: t.globals
+		global_qualified_names: t.global_qualified_names
 		sum_types: t.sum_types
 		sum_variant_parents: t.sum_variant_parents
 		sum_variant_names: t.sum_variant_names
@@ -10545,6 +10553,20 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 			base_key := t.expr_key(base_id)
 			if t.has_smartcast(base_key) {
 				return t.transform_selector_expr(id, node)
+			}
+			mut base_type := t.node_type(base_id)
+			if base_type.len == 0 {
+				base_type = t.original_expr_type(base_id)
+			}
+			iface_name := t.resolve_interface_type_name(base_type)
+			if iface_name.len > 0 && node.value !in ['_typ', '_object'] {
+				if _ := t.interface_field_type_name(iface_name, node.value) {
+					// A selector used as the base of a larger lvalue still has to
+					// address the concrete implementation field. Leaving the cached
+					// interface copy here makes `box.field.member = value` update only
+					// that copy while reads continue to observe the boxed object.
+					return t.transform_selector_expr(id, node)
+				}
 			}
 			base := t.transform_lvalue(t.a.child(&node, 0))
 			mut new_children := []flat.NodeId{cap: int(node.children_count)}
@@ -20079,7 +20101,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			t.set_node_typ(int(result), value_type[1..])
 			return result
 		}
-		if child.kind != .cast_expr && child_type.len > 0 && !child_type.starts_with('&') {
+		// Keep an explicit dereference around a parenthesized pointer cast. The
+		// parenthesized node can carry the dereferenced result type (`char`) even
+		// though its child is a pointer (`charptr`), so treating it as a plain
+		// non-pointer drops the source `*` (for example `*(charptr(addr))`).
+		if child.kind !in [.cast_expr, .paren] && child_type.len > 0
+			&& !child_type.starts_with('&') {
 			return t.transform_expr(child_id)
 		}
 	}
@@ -21954,14 +21981,20 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				}
 			}
 			mut typ := t.var_type(node.value)
+			mut is_global := false
 			if typ.len == 0 {
 				if global_type := t.current_module_global_type(node.value) {
 					typ = global_type
+					is_global = true
+				} else if global_name := t.imported_global_name(node.value) {
+					typ = t.globals[global_name]
+					is_global = true
+					t.set_node_value(int(id), global_name)
 				}
 			}
 			is_file_import_selector_base := t.in_selector_base
 				&& file_import_key(t.cur_file, node.value) in t.tc.file_imports
-			if typ.len == 0 && !is_file_import_selector_base
+			if typ.len == 0 && !is_global && !is_file_import_selector_base
 				&& (!t.in_call_callee || !t.ident_is_direct_function_callee(node.value)) {
 				if key := t.const_type_key_in_context(node.value, t.cur_module, t.cur_file) {
 					t.tc.clear_resolved_fn_value(id)

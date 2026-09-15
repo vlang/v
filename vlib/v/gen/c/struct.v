@@ -242,6 +242,23 @@ fn (mut g FlatGen) gen_pointer_value_struct_field(value_id flat.NodeId, expected
 }
 
 fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_name string, field_name string, expected types.Type) {
+	if g.static_c_initializer {
+		if fixed := array_fixed_type(default_init_unalias_type(expected)) {
+			g.gen_c_static_fixed_array_initializer(value_id, fixed)
+			return
+		}
+		if g.gen_c_static_array_literal_initializer(value_id) {
+			return
+		}
+		value := g.a.node(value_id)
+		if value.kind in [.ident, .selector] {
+			constant := g.const_expr_to_string(value_id, []string{})
+			if trimmed_space(constant).len > 0 {
+				g.write(constant)
+				return
+			}
+		}
+	}
 	if g.gen_embed_file_uncompressed_field(value_id, struct_name, field_name) {
 		return
 	}
@@ -752,7 +769,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		g.write(g.scalar_zero_init(name))
 		return
 	}
-	if !g.is_interface_type_name(node.value)
+	if !g.static_c_initializer && !g.is_interface_type_name(node.value)
 		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		g.gen_struct_init_with_fixed_array_fields(node, name, init_module)
 		return

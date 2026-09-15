@@ -494,6 +494,10 @@ mut:
 	export_c_abi_decls            map[string]flat.NodeId
 	main_export_owners            map[string][]string
 	c_extern_global_names         map[string]string
+	export_global_names           map[string]string
+	global_linker_sections        map[string]string
+	global_cinit_names            map[string]bool
+	static_c_initializer          bool
 	shared_type_names             map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
 	shared_alias_pointer_shorts   map[string]string // alias short name -> shared inner type; '' means ambiguous
 	shared_alias_index_ready      bool
@@ -554,6 +558,7 @@ mut:
 	cur_concrete_optional_params map[string]bool
 	cur_mut_params               map[string]bool
 	cur_mut_pointer_params       map[string]bool
+	cur_explicit_mut_pointer_params map[string]bool
 	cur_mut_param_owners         map[string]types.ScopeBindingOwner
 	cur_fn_ret                   types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional       bool
@@ -1291,6 +1296,9 @@ pub fn FlatGen.new() FlatGen {
 		export_c_abi_decls: map[string]flat.NodeId{}
 		main_export_owners: map[string][]string{}
 		c_extern_global_names: map[string]string{}
+		export_global_names: map[string]string{}
+		global_linker_sections: map[string]string{}
+		global_cinit_names: map[string]bool{}
 		shared_type_names: map[string]SharedTypeInfo{}
 		shared_alias_pointer_shorts: map[string]string{}
 		default_value_stack: map[string]bool{}
@@ -1300,6 +1308,7 @@ pub fn FlatGen.new() FlatGen {
 		cur_concrete_optional_params: map[string]bool{}
 		cur_mut_params: map[string]bool{}
 		cur_mut_pointer_params: map[string]bool{}
+		cur_explicit_mut_pointer_params: map[string]bool{}
 		cur_mut_param_owners: map[string]types.ScopeBindingOwner{}
 		active_locks: []ActiveLock{}
 		conditional_branch_scopes: []&types.Scope{}
@@ -3442,6 +3451,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.export_c_abi_decls.clear()
 	g.main_export_owners.clear()
 	g.c_extern_global_names.clear()
+	g.export_global_names.clear()
+	g.global_linker_sections.clear()
+	g.global_cinit_names.clear()
+	g.static_c_initializer = false
 	g.shared_type_names.clear()
 	g.shared_alias_pointer_shorts.clear()
 	g.needs_shared_runtime = false
@@ -3455,6 +3468,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_concrete_optional_params.clear()
 	g.cur_mut_params.clear()
 	g.cur_mut_pointer_params.clear()
+	g.cur_explicit_mut_pointer_params.clear()
 	g.cur_mut_param_owners.clear()
 	g.active_locks = []ActiveLock{}
 	g.loop_depth = 0
@@ -12118,16 +12132,44 @@ fn (mut g FlatGen) index_c_decl_attributes(target_idx int, module_name string, a
 		}
 		return
 	}
-	if target.kind != .global_decl || !cgen_decl_has_attr(attrs, 'c_extern') {
+	if target.kind != .global_decl {
+		return
+	}
+	export_name := cgen_decl_attr_arg(attrs, 'export')
+	linker_section := cgen_decl_attr_arg(attrs, '_linker_section')
+	has_export := cgen_decl_has_attr(attrs, 'export')
+	has_c_extern := cgen_decl_has_attr(attrs, 'c_extern')
+	has_cinit := cgen_decl_has_attr(attrs, 'cinit')
+	has_linker_section := cgen_decl_has_attr(attrs, '_linker_section')
+	if !has_export && !has_c_extern && !has_cinit && !has_linker_section {
 		return
 	}
 	for i in 0 .. target.children_count {
 		field := g.a.child_node(&target, i)
 		raw_name := field.value.trim_string_left('C.')
 		qualified := qualify_name_in_module(module_name, raw_name)
-		g.c_extern_global_names[raw_name] = raw_name
-		g.c_extern_global_names[qualified] = raw_name
-		g.c_extern_global_names[g.cname(qualified)] = raw_name
+		keys := [raw_name, qualified, g.cname(qualified)]
+		if has_c_extern {
+			for key in keys {
+				g.c_extern_global_names[key] = raw_name
+			}
+		}
+		if has_export {
+			abi_name := export_name or { raw_name }
+			for key in keys {
+				g.export_global_names[key] = abi_name
+			}
+		}
+		if has_cinit {
+			for key in keys {
+				g.global_cinit_names[key] = true
+			}
+		}
+		if section := linker_section {
+			for key in keys {
+				g.global_linker_sections[key] = section
+			}
+		}
 	}
 }
 
@@ -12712,8 +12754,10 @@ fn (mut g FlatGen) gen_cast_from_mut_param_address(id flat.NodeId, ct string) bo
 	return true
 }
 
-// gen_cast_from_mut_pointer_param_value reads the semantic pointer value from
-// the extra ABI indirection used for an explicit `mut p &T` parameter.
+// gen_cast_from_mut_pointer_param_value emits pointer casts from mutable
+// parameters whose specialized C storage has two pointer levels. An explicit
+// `mut p &T` reads the semantic pointer value from `*p`; a generic `mut p T`
+// specialized with `T = &U` keeps V1's address-of-slot semantics and uses `p`.
 fn (mut g FlatGen) gen_cast_from_mut_pointer_param_value(id flat.NodeId, ct string) bool {
 	node := g.a.nodes[int(id)]
 	if node.kind != .ident || !g.current_param_is_mut(node.value) {
@@ -12727,7 +12771,10 @@ fn (mut g FlatGen) gen_cast_from_mut_pointer_param_value(id flat.NodeId, ct stri
 	if pointer_type.base_type !is types.Pointer {
 		return false
 	}
-	g.write('(${ct})(*')
+	g.write('(${ct})(')
+	if g.cur_explicit_mut_pointer_params[node.value] or { false } {
+		g.write('*')
+	}
 	g.gen_mut_pointer_slot_expr(id)
 	g.write(')')
 	return true
@@ -16064,18 +16111,21 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				false
 			}
-			current_global_name := qualify_name_in_module(g.tc.cur_module, node.value)
-			is_current_module_global := !is_current_param && current_global_name in g.global_types && !g.local_shadows_global(node.value)
-			const_name := if !is_local && !is_current_module_global {
+			global_name := if !is_local && !is_current_param && !g.local_shadows_global(node.value) {
+				g.global_name_for_ident(node.value) or { '' }
+			} else {
+				''
+			}
+			const_name := if !is_local && global_name.len == 0 {
 				g.const_ref_name(node.value)
 			} else {
 				''
 			}
 			if const_name.len > 0 {
 				g.write(g.const_ident_c_name(const_name))
-			} else if is_current_module_global {
-				g.write(g.global_c_name(current_global_name))
-				if raw := g.global_raw_type_texts[current_global_name] {
+			} else if global_name.len > 0 {
+				g.write(g.global_c_name(global_name))
+				if raw := g.global_raw_type_texts[global_name] {
 					if _ := shared_inner_type_text(raw) {
 						g.write('->val')
 					}
@@ -18976,6 +19026,10 @@ fn (mut g FlatGen) target_libc_thread_type() {
 // supplies its own libc headers is not Windows, so only this half is needed, and
 // it is written without the guard. It needs <pthread.h>, which that path includes.
 fn (mut g FlatGen) target_libc_thread_runtime() {
+	if g.target.os == 'vinix' {
+		g.target_libc_vinix_thread_runtime()
+		return
+	}
 	g.target_libc_thread_type()
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
@@ -18995,6 +19049,24 @@ fn (mut g FlatGen) target_libc_thread_runtime() {
 	g.writeln('\treturn result;')
 	g.writeln('}')
 	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
+}
+
+// Vinix implements pthread creation through its kernel scheduler. It accepts a
+// null attribute pointer, like the legacy backend emitted, while the generic
+// target-libc runtime constructs a hosted pthread_attr_t and relies on stdio and
+// abort for failures. Neither is part of the freestanding kernel ABI.
+fn (mut g FlatGen) target_libc_vinix_thread_runtime() {
+	g.target_libc_thread_type()
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
+	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) exit(1); return p; }')
+	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_thread result;')
+	g.writeln('\tint rc = pthread_create(&result.handle, NULL, (void*)start, arg);')
+	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); exit(1); }')
+	g.writeln('\treturn result;')
+	g.writeln('}')
+	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) exit(1); return result; }')
 }
 
 fn (g &FlatGen) uses_pthread() bool {
@@ -22463,6 +22535,15 @@ fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
 	return name == 'g_autostr_addr_state' && (g.global_modules[name] or { '' }) == 'builtin'
 }
 
+// Vinix is a freestanding kernel target and does not provide the ELF TLS ABI.
+// Its scheduler owns per-CPU/per-thread state explicitly, so emitting STT_TLS
+// globals would require a PT_TLS segment and thread-pointer setup that do not
+// exist during early boot.
+fn (g &FlatGen) global_is_thread_local(name string) bool {
+	return g.target.os != 'vinix' && (name.contains('__anon_fn_')
+		|| g.is_builtin_autostr_addr_state(name))
+}
+
 fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string, dims string) {
 	g.writeln('#if defined(__TINYC__) && defined(_WIN32)')
 	// TinyCC's bundled import library does not expose the Fls* symbols. Resolve
@@ -22556,17 +22637,147 @@ fn (g &FlatGen) global_volatile_qualifier(name string) string {
 	return if name in g.global_volatile_names { 'volatile ' } else { '' }
 }
 
+fn (g &FlatGen) global_linker_section_prefix(name string) string {
+	if g.ccompiler == 'msvc' {
+		return ''
+	}
+	section := g.global_linker_sections[name] or {
+		g.global_linker_sections[g.cname(name)] or { return '' }
+	}
+	return '__attribute__ ((section ("${c_escape(section)}"))) '
+}
+
+fn (mut g FlatGen) gen_c_static_fixed_array_initializer(id flat.NodeId, fixed types.ArrayFixed) {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		g.write('{0}')
+		return
+	}
+	if g.gen_c_static_array_literal_initializer(id) {
+		return
+	}
+	g.gen_expr_with_expected_type(id, types.Type(fixed))
+}
+
+fn (mut g FlatGen) gen_c_static_array_literal_initializer(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind in [.cast_expr, .paren, .postfix] && node.children_count > 0 {
+		return g.gen_c_static_array_literal_initializer(g.a.child(&node, 0))
+	}
+	if node.kind != .array_literal {
+		return false
+	}
+	g.write('{')
+	for i in 0 .. node.children_count {
+		if i > 0 {
+			g.write(', ')
+		}
+		child_id := g.a.child(&node, i)
+		if g.gen_c_static_array_literal_initializer(child_id) {
+			continue
+		}
+		constant := g.const_expr_to_string(child_id, []string{})
+		if trimmed_space(constant).len > 0 {
+			g.write(constant)
+		} else {
+			g.gen_expr(child_id)
+		}
+	}
+	if node.children_count == 0 {
+		g.write('0')
+	}
+	g.write('}')
+	return true
+}
+
+fn (mut g FlatGen) gen_c_static_initializer(id flat.NodeId, typ types.Type) {
+	old_static_c_initializer := g.static_c_initializer
+	g.static_c_initializer = true
+	if fixed := array_fixed_type(default_init_unalias_type(typ)) {
+		g.gen_c_static_fixed_array_initializer(id, fixed)
+	} else {
+		g.gen_expr_with_expected_type(id, typ)
+	}
+	g.static_c_initializer = old_static_c_initializer
+}
+
+// global_scalar_static_initializer returns a C file-scope initializer for the
+// scalar globals that the legacy backend initializes in their declarations.
+// Besides matching normal C semantics, this is required by freestanding
+// programs that intentionally use simple globals before `_vinit` can run.
+fn (mut g FlatGen) global_scalar_static_initializer(id flat.NodeId, typ types.Type) ?string {
+	mut value_id := id
+	for _ in 0 .. 3 {
+		if int(value_id) < 0 || int(value_id) >= g.a.nodes.len {
+			break
+		}
+		node := g.a.nodes[int(value_id)]
+		if ((node.kind == .block && node.value == 'unsafe') || node.kind == .expr_stmt)
+			&& node.children_count == 1 {
+			value_id = g.a.child(&node, 0)
+			continue
+		}
+		break
+	}
+	clean_type := default_init_unalias_type(typ)
+	if clean_type !is types.Primitive && clean_type !is types.Char
+		&& clean_type !is types.Rune && clean_type !is types.ISize
+		&& clean_type !is types.USize && clean_type !is types.Enum
+		&& clean_type !is types.Pointer {
+		return none
+	}
+	if clean_type is types.Pointer {
+		if int(value_id) < 0 || int(value_id) >= g.a.nodes.len
+			|| g.a.nodes[int(value_id)].kind != .nil_literal {
+			return none
+		}
+	}
+	if !g.is_const_expr(value_id) {
+		return none
+	}
+	expr := g.const_expr_to_string(value_id, []string{})
+	if trimmed_space(expr).len == 0 || g.const_expr_needs_runtime_storage(expr) {
+		return none
+	}
+	return expr
+}
+
+fn (mut g FlatGen) global_fixed_array_is_static(id flat.NodeId, typ types.Type) bool {
+	if _ := array_fixed_type(default_init_unalias_type(typ)) {
+		if !g.is_const_expr(id) {
+			return false
+		}
+		expr := g.const_expr_to_string(id, []string{})
+		return trimmed_space(expr).len > 0 && !g.const_expr_needs_runtime_storage(expr)
+	}
+	return false
+}
+
+fn (mut g FlatGen) global_initializer_is_static(id flat.NodeId, typ types.Type) bool {
+	if _ := g.global_scalar_static_initializer(id, typ) {
+		return true
+	}
+	return g.global_fixed_array_is_static(id, typ)
+}
+
 fn (mut g FlatGen) global_decls() {
 	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
 	for name, typ in g.global_types {
 		if mod := g.global_modules[name] {
 			g.tc.cur_module = mod
 		} else {
 			g.tc.cur_module = old_module
 		}
+		if file := g.global_files[name] {
+			g.tc.cur_file = file
+		} else {
+			g.tc.cur_file = old_file
+		}
 		decl_typ := g.global_storage_type(name, typ)
-		is_fn_capture := name.contains('__anon_fn_')
-		is_thread_local := is_fn_capture || g.is_builtin_autostr_addr_state(name)
+		is_thread_local := g.global_is_thread_local(name)
 		if raw := g.global_raw_type_texts[name] {
 			if inner := shared_inner_type_text(raw) {
 				qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
@@ -22576,15 +22787,25 @@ fn (mut g FlatGen) global_decls() {
 			}
 		}
 		vq := g.global_volatile_qualifier(name)
+		section_prefix := g.global_linker_section_prefix(name)
 		if decl_typ is types.ArrayFixed {
 			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
+			if val_id := g.global_inits[name] {
+				if name in g.global_cinit_names || g.global_fixed_array_is_static(val_id, decl_typ) {
+					g.write('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims} = ')
+					g.gen_c_static_initializer(val_id, decl_typ)
+					g.writeln(';')
+					continue
+				}
+			}
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
 			if is_thread_local {
-				g.emit_tinyc_windows_thread_local_slot(g.cname(name), c_elem, dims)
-				g.emit_tinyc_pthread_value_slot(g.cname(name), c_elem, dims)
-				g.emit_thread_local_decl_after_tinyc('${c_elem} ${g.cname(name)}${dims}${init};')
+				cname := g.global_c_name(name)
+				g.emit_tinyc_windows_thread_local_slot(cname, c_elem, dims)
+				g.emit_tinyc_pthread_value_slot(cname, c_elem, dims)
+				g.emit_thread_local_decl_after_tinyc('${c_elem} ${cname}${dims}${init};')
 			} else {
-				g.writeln('${vq}${c_elem} ${g.cname(name)}${dims}${init};')
+				g.writeln('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims}${init};')
 			}
 			continue
 		}
@@ -22606,9 +22827,23 @@ fn (mut g FlatGen) global_decls() {
 		}
 		if name.starts_with('C.') {
 			if name in g.global_inits {
-				g.writeln('${vq}${ct} ${g.global_c_name(name)};')
+				g.writeln('${section_prefix}${vq}${ct} ${g.global_c_name(name)};')
 			}
 			continue
+		}
+		if name in g.global_cinit_names {
+			if val_id := g.global_inits[name] {
+				g.write('${section_prefix}${vq}${ct} ${g.global_c_name(name)} = ')
+				g.gen_c_static_initializer(val_id, decl_typ)
+				g.writeln(';')
+				continue
+			}
+		}
+		if val_id := g.global_inits[name] {
+			if static_init := g.global_scalar_static_initializer(val_id, decl_typ) {
+				g.writeln('${section_prefix}${vq}${ct} ${g.global_c_name(name)} = ${static_init};')
+				continue
+			}
 		}
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
 		// Lifted capture slots and the recursive autostr address guard must be
@@ -22616,7 +22851,7 @@ fn (mut g FlatGen) global_decls() {
 		// one another. Native C compilers use TLS directly; TinyCC uses Win32 TLS
 		// on Windows and pthread keys elsewhere because it lacks `_Thread_local`.
 		if is_thread_local {
-			cname := g.cname(name)
+			cname := g.global_c_name(name)
 			if shared_ct := g.fn_capture_shared_global_c_type(name) {
 				g.emit_tinyc_windows_thread_local_slot(cname, shared_ct, '')
 				g.emit_tinyc_pthread_value_slot(cname, shared_ct, '')
@@ -22635,7 +22870,7 @@ fn (mut g FlatGen) global_decls() {
 		// cc gets real TLS; tcc implements no _Thread_local, so it gets a native
 		// Win32 slot or a pthread-key emulation behind an lvalue macro.
 		if g.prealloc && name == 'g_memory_block' {
-			cn := g.cname(name)
+			cn := g.global_c_name(name)
 			g.emit_tinyc_windows_thread_local_slot(cn, ct, '')
 			g.emit_tinyc_pthread_pointer_slot(cn, ct)
 			g.writeln('#else')
@@ -22643,9 +22878,10 @@ fn (mut g FlatGen) global_decls() {
 			g.writeln('#endif')
 			continue
 		}
-		g.writeln('${vq}${ct} ${g.cname(name)}${init};')
+		g.writeln('${section_prefix}${vq}${ct} ${g.global_c_name(name)}${init};')
 	}
 	g.tc.cur_module = old_module
+	g.tc.cur_file = old_file
 	if g.global_types.len > 0 {
 		g.writeln('')
 	}
@@ -22686,7 +22922,7 @@ fn (mut g FlatGen) queue_global_struct_default_init(name string, typ types.Type)
 	}
 	mut visited := map[string]bool{}
 	init_module := g.global_modules[name] or { g.tc.cur_module }
-	g.queue_global_struct_field_defaults(g.cname(name), struct_name, init_module, mut visited)
+	g.queue_global_struct_field_defaults(g.global_c_name(name), struct_name, init_module, mut visited)
 }
 
 fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name string, init_module string, mut visited map[string]bool) {
@@ -22754,6 +22990,12 @@ fn (mut g FlatGen) global_storage_type(name string, typ types.Type) types.Type {
 }
 
 fn (g &FlatGen) global_c_name(name string) string {
+	if export_name := g.export_global_names[name] {
+		return export_name
+	}
+	if export_name := g.export_global_names[g.cname(name)] {
+		return export_name
+	}
 	if extern_name := g.c_extern_global_names[name] {
 		return extern_name
 	}
@@ -22843,6 +23085,9 @@ fn (mut g FlatGen) emit_global_inits() {
 		g.tc.cur_file = old_file
 	}
 	for qname in g.global_init_order {
+		if qname in g.global_cinit_names {
+			continue
+		}
 		if mod := g.global_modules[qname] {
 			g.tc.cur_module = mod
 		} else {
@@ -22901,6 +23146,11 @@ fn (mut g FlatGen) emit_global_inits() {
 		}
 		if int(val_id) < 0 {
 			continue
+		}
+		if typ := g.global_types[qname] {
+			if g.global_initializer_is_static(val_id, typ) {
+				continue
+			}
 		}
 		// g_main_argc/g_main_argv are filled in by main's preamble (from argc/argv)
 		// *before* _vinit runs, and are zero by default in C anyway. Re-emitting their
@@ -23615,7 +23865,9 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		g.tc.cur_module = old_module
 		return
 	}
-	mut expr_str := if v_type !is types.ArrayFixed && ct == 'Array' {
+	mut expr_str := if fixed := array_fixed_type(default_init_unalias_type(v_type)) {
+		g.fixed_array_initializer_string(val_id, fixed)
+	} else if ct == 'Array' {
 		arr := array_like_type(default_init_unalias_type(v_type)) or {
 			types.Array{
 				elem_type: types.Type(types.void_)
@@ -24195,7 +24447,7 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 	}
 	node := g.a.nodes[int(id)]
 	return match node.kind {
-		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .enum_val, .sizeof_expr, .offsetof_expr {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .enum_val, .nil_literal, .sizeof_expr, .offsetof_expr {
 			true
 		}
 		.prefix {
@@ -24204,6 +24456,12 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 			} else {
 				g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 			}
+		}
+		.postfix {
+			// A trailing `!` marks fixed array literals; it does not require runtime
+			// evaluation when every element in the literal is constant.
+			node.op == .not && node.children_count == 1
+				&& g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 		}
 		.infix {
 			// Power lowers to a helper or pow() call, neither of which is a valid C
