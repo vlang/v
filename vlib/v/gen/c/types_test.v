@@ -191,6 +191,30 @@ fn main() {}
 	assert !c_source.contains('Unused__autostr'), c_source
 }
 
+// An `<Enum>__autostr` call must name the module that declares the enum even when
+// the writing file spells it through an import alias or a selective import:
+// `token.Kind` in a file that wrote `import toml.token` is `toml.token.Kind`
+// there, and a bare `Kind` resolves through that file's selective imports, not
+// through a same-named enum of another module.
+fn test_enum_autostr_c_name_resolves_import_alias_and_selective_import() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.enum_names['other.Kind'] = true
+	tc.enum_names['toml.token.Kind'] = true
+	tc.cur_file = '/tmp/main.v'
+	tc.cur_module = 'main'
+	tc.file_imports['/tmp/main.v\ntoken'] = 'toml.token'
+	tc.file_selective_imports['/tmp/main.v\nKind'] = ['toml.token.Kind']
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+
+	assert g.enum_autostr_c_name('token.Kind') == 'toml__token__Kind'
+	assert g.enum_autostr_c_name('Kind') == 'toml__token__Kind'
+	assert g.enum_autostr_c_name('toml.token.Kind') == 'toml__token__Kind'
+	assert g.enum_autostr_c_name('other.Kind') == 'other__Kind'
+}
+
 fn test_json_helper_scan_requires_legacy_json_module() {
 	mut ast := flat.FlatAst.new()
 	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },

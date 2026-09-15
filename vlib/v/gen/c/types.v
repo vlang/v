@@ -1711,6 +1711,29 @@ fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
 	if name.starts_with('main.') {
 		name = name['main.'.len..]
 	}
+	// A bare enum name belongs to the file that wrote it. With several same-named
+	// enums in the program the suffix fallback below cannot pick one and the
+	// helper call would keep a bare name that no C function defines.
+	if !name.contains('.') && g.tc.cur_file.len > 0 {
+		selective_key := '${g.tc.cur_file}\n${name}'
+		for candidate in g.tc.file_selective_imports[selective_key] or { []string{} } {
+			if candidate in g.tc.enum_names {
+				return g.cname(candidate)
+			}
+		}
+	}
+	// An import-alias prefix (`token.Kind` where the file imports `toml.token`)
+	// must be mapped to the declaring module before falling back to the short
+	// name, or the helper is emitted as `Kind__autostr` and never defined.
+	if name.contains('.') && g.tc.cur_file.len > 0 {
+		alias := name.all_before('.')
+		if module_name := g.tc.file_imports['${g.tc.cur_file}\n${alias}'] {
+			resolved := '${module_name}.${name.all_after('.')}'
+			if resolved in g.tc.enum_names {
+				return g.cname(resolved)
+			}
+		}
+	}
 	if name in g.tc.enum_names {
 		return g.cname(name)
 	}

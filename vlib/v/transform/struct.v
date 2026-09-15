@@ -857,6 +857,17 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 			return t.structs[bare]
 		}
 	}
+	// A bare spelling belongs to the file that wrote it: `import iam { Token }`
+	// must select `iam.Token` even when another imported module declares a
+	// same-named type, otherwise field defaults and aliases of the homonym leak
+	// into the literal.
+	if !name.contains('.') && !name.contains('[') && t.cur_file.len > 0 {
+		if resolved := t.selective_import_type_name_for_file(t.cur_file, name) {
+			if info := t.lookup_struct_info_direct(resolved) {
+				return info
+			}
+		}
+	}
 	if alias_target := t.alias_target_type_preserving_main_lock(name) {
 		if alias_target != name {
 			if info := t.lookup_struct_info(alias_target) {
