@@ -34,11 +34,11 @@ mut:
 	path_v        string // the full path to the v folder inside workdir.
 	path_vc       string // the full path to the vc folder inside workdir.
 	cmd_to_run    string // the command that you want to run *in* the oldv repo
-	cleanup       bool // should the tool run a cleanup first
-	use_cache     bool // use local cached copies for --vrepo and --vcrepo in
-	fresh_tcc     bool // do use `make fresh_tcc`
-	is_bisect     bool // bisect mode; usage: `cmd/tools/oldv -b -c './v run bug.v'`
-	show_vccommit bool // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
+	cleanup       bool   // should the tool run a cleanup first
+	use_cache     bool   // use local cached copies for --vrepo and --vcrepo in
+	fresh_tcc     bool   // do use `make fresh_tcc`
+	is_bisect     bool   // bisect mode; usage: `cmd/tools/oldv -b -c './v run bug.v'`
+	show_vccommit bool   // show the V and VC commits, corresponding to the V commit-ish, that can be used to build V
 	cc            string = 'cc' // the C compiler to use for bootstrapping.
 	cc_options    string // additional options to pass to the C compiler while bootstrapping.
 	cc_ldflags    string // additional linker options to use while bootstrapping.
@@ -46,17 +46,17 @@ mut:
 
 fn (mut c Context) compile_oldv_if_needed() {
 	c.vgcontext = vgit.VGitContext{
-		workdir: c.vgo.workdir
-		v_repo_url: c.vgo.v_repo_url
-		vc_repo_url: c.vgo.vc_repo_url
-		cc: c.cc
-		cc_options: c.cc_options
-		cc_ldflags: c.cc_ldflags
-		commit_v: c.commit_v
-		path_v: c.path_v
-		path_vc: c.path_vc
+		workdir:        c.vgo.workdir
+		v_repo_url:     c.vgo.v_repo_url
+		vc_repo_url:    c.vgo.vc_repo_url
+		cc:             c.cc
+		cc_options:     c.cc_options
+		cc_ldflags:     c.cc_ldflags
+		commit_v:       c.commit_v
+		path_v:         c.path_v
+		path_vc:        c.path_vc
 		make_fresh_tcc: c.fresh_tcc
-		show_vccommit: c.show_vccommit
+		show_vccommit:  c.show_vccommit
 	}
 	c.vgcontext.compile_oldv_if_needed()
 	c.commit_v_hash = c.vgcontext.commit_v__hash

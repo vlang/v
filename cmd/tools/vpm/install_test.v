@@ -200,8 +200,7 @@ fn test_install_from_hg_url() ! {
 
 	println('> writing .hg/hgrc to the new mercurial repo ...')
 	os.mkdir_all(os.join_path(test_module_path, '.hg'))!
-	os.write_file(os.join_path(test_module_path, '.hg/hgrc'),
-		'[ui]\nusername = v_ci <v_ci@example.net>\nverbose = False\n')!
+	os.write_file(os.join_path(test_module_path, '.hg/hgrc'), '[ui]\nusername = v_ci <v_ci@example.net>\nverbose = False\n')!
 	println('> writing .hg/hgrc done.')
 
 	mut p, mut port := test_utils.hg_serve(hg_path, test_module_path, 2000)

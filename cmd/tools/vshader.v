@@ -89,8 +89,7 @@ fn main() {
 		show_help:    fp.bool('help', `h`, false, 'Show this help text.')
 		force_update: fp.bool('force-update', `u`, false, 'Force update of the sokol-shdc tool.')
 		verbose:      fp.bool('verbose', `v`, false, 'Be verbose about the tools progress.')
-		slangs:       fp.string_multi('slang', `l`,
-			'Shader dialects to generate code for. Default is all.\n                            Available dialects: ${supported_slangs}')
+		slangs:       fp.string_multi('slang', `l`, 'Shader dialects to generate code for. Default is all.\n                            Available dialects: ${supported_slangs}')
 	}
 	if opt.show_help {
 		println(fp.usage())
@@ -194,7 +193,7 @@ fn compile_shader(opt CompileOptions, shader_file string) ! {
 
 	cmd :=
 		'${os.quoted_path(shdc_exe)} --input ${os.quoted_path(shader_file)} --output ${os.quoted_path(out_file)} --slang ' +
-		os.quoted_path(slangs.join(':'))
+			os.quoted_path(slangs.join(':'))
 	if opt.verbose {
 		eprintln('${tool_name} executing:\n${cmd}')
 	}

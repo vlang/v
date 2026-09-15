@@ -119,8 +119,7 @@ fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSele
 	is_initial_selection := selected_server_url(false, '') == ''
 	for url in selector.metadata_server_urls() {
 		modurl := url + '/api/packages/${name}'
-		verbose_println_more(@FILE_LINE, @FN,
-			'Retrieving metadata for `${name}` from `${modurl}` by making a GET request ...')
+		verbose_println_more(@FILE_LINE, @FN, 'Retrieving metadata for `${name}` from `${modurl}` by making a GET request ...')
 		r := vpm_http_get(modurl) or {
 			errors << 'Http server did not respond to our request for `${modurl}`.'
 			errors << 'Error details: ${err}'
@@ -216,8 +215,7 @@ fn get_ident_from_url(raw_url string) !(string, string) {
 		return error(final_error)
 	}
 	name = name.trim_string_right('.git')
-	verbose_println_more(@FILE_LINE, @FN,
-		'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
+	verbose_println_more(@FILE_LINE, @FN, 'raw_url: ${raw_url}; publisher: ${publisher}; name: ${name}')
 	return publisher, name
 }
 
@@ -452,8 +450,7 @@ fn get_path_of_existing_module(mod_name string) ?string {
 }
 
 fn direct_install_mod_path(publisher string, manifest_name string) string {
-	return normalize_mod_path(os.join_path(publisher.replace('.', os.path_separator), manifest_name.replace('.',
-		os.path_separator)))
+	return normalize_mod_path(os.join_path(publisher.replace('.', os.path_separator), manifest_name.replace('.', os.path_separator)))
 }
 
 fn get_path_of_existing_url_module(vmodules_path string, publisher string, name string) ?string {
@@ -621,11 +618,7 @@ fn fmt_mod_path(path string) string {
 	if !path.contains(home_dir) {
 		return path
 	}
-	return $if windows {
-		path.replace(home_dir, '%USERPROFILE%')
-	} $else {
-		path.replace(home_dir, '~')
-	}
+	return $if windows { path.replace(home_dir, '%USERPROFILE%') } $else { path.replace(home_dir, '~') }
 }
 
 fn at_version(version string) string {

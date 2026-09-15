@@ -163,13 +163,11 @@ fn main() {
 	// Collect tool options
 	mut opt := Options{
 		verbose:      fp.bool('verbose', `v`, false, "Be verbose about the tool's progress.")
-		compare_only: fp.bool('compare-only', `c`, false,
-			"Don't generate screenshots - only compare input directories")
+		compare_only: fp.bool('compare-only', `c`, false, "Don't generate screenshots - only compare input directories")
 		root_path:    fp.string('root-path', `r`, v_root, 'Root path of the comparison')
 	}
 
-	toml_conf := fp.string('toml-config', `t`, default_toml,
-		'Path or string with TOML configuration')
+	toml_conf := fp.string('toml-config', `t`, default_toml, 'Path or string with TOML configuration')
 	arg_paths := fp.finalize()!
 	if show_help {
 		println(fp.usage())

@@ -114,8 +114,7 @@ fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 		'cgen_rss_kb']
 	for c in rss_columns {
 		if c !in existing {
-			migrate_exec(mut db,
-				'ALTER TABLE benchmarks ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0')!
+			migrate_exec(mut db, 'ALTER TABLE benchmarks ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0')!
 		}
 	}
 	if 'git_ref' !in existing {
@@ -125,13 +124,10 @@ fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 	// enforcement (CREATE TABLE IF NOT EXISTS won't add it), so overlapping runs
 	// could insert duplicate commits and the ORM upsert's ON CONFLICT would have no
 	// index to target. Deduplicate (keep the newest row per hash) and add the index.
-	migrate_exec(mut db,
-		'DELETE FROM benchmarks WHERE id NOT IN (SELECT MAX(id) FROM benchmarks GROUP BY commit_hash)')!
-	migrate_exec(mut db,
-		'CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_commit_hash ON benchmarks(commit_hash)')!
+	migrate_exec(mut db, 'DELETE FROM benchmarks WHERE id NOT IN (SELECT MAX(id) FROM benchmarks GROUP BY commit_hash)')!
+	migrate_exec(mut db, 'CREATE UNIQUE INDEX IF NOT EXISTS idx_benchmarks_commit_hash ON benchmarks(commit_hash)')!
 	// single-row key/value store that holds this database's history identity
-	migrate_exec(mut db,
-		'CREATE TABLE IF NOT EXISTS fast_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')!
+	migrate_exec(mut db, 'CREATE TABLE IF NOT EXISTS fast_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')!
 	canonicalize_history(mut db)!
 }
 
@@ -336,8 +332,7 @@ fn claim_history(mut db sqlite.DB, ref string) !string {
 		return error('could not resolve a stable git history for this checkout (`${ref}`). Check out a named branch, or pass an explicit ref: `run -branch <ref>` / `import --ref <ref>`.')
 	}
 	safe := norm.replace("'", "''")
-	migrate_exec(mut db,
-		"INSERT OR IGNORE INTO fast_meta (key, value) VALUES ('history_ref', '${safe}')")!
+	migrate_exec(mut db, "INSERT OR IGNORE INTO fast_meta (key, value) VALUES ('history_ref', '${safe}')")!
 	rows := db.exec("SELECT value FROM fast_meta WHERE key = 'history_ref'")!
 	stored := if rows.len > 0 { rows[0].vals[0] } else { norm }
 	if stored != norm {

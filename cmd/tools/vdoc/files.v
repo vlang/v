@@ -36,8 +36,7 @@ fn get_paths(path string, ignore_rules IgnoreRules) []string {
 				if patterns.any(p == it
 					|| (it.contains('*') && p.ends_with(it.all_after('*')))
 					|| (is_dir && it.ends_with('/') && fp.ends_with(it.trim_right('/')))
-					|| (!it.ends_with('/') && it.contains('/') && fp.contains(it)))
-				{
+					|| (!it.ends_with('/') && it.contains('/') && fp.contains(it))) {
 					continue outer
 				}
 			}

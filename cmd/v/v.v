@@ -190,8 +190,8 @@ fn launch_ownership_compiler(args []string) {
 		driver.run(args)
 		exit(0)
 	}
-	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ['-d',
-		'ownership', '-gc', 'none']) or {
+	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ['-d', 'ownership',
+		'-gc', 'none']) or {
 		eprintln('cannot find a writable cache for the V3 ownership compiler')
 		exit(1)
 	}

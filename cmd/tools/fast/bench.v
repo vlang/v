@@ -94,8 +94,7 @@ fn cmd_bench(args []string) ! {
 		// claim (no count-then-delete race). A failed rollback is surfaced too, so a
 		// full/locked database is not silently left claimed.
 		if !already {
-			migrate_exec(mut db,
-				"DELETE FROM fast_meta WHERE key = 'history_ref' AND NOT EXISTS (SELECT 1 FROM benchmarks)") or {
+			migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref' AND NOT EXISTS (SELECT 1 FROM benchmarks)") or {
 				return error('${build_err}; also failed to release the empty history claim: ${err}')
 			}
 		}

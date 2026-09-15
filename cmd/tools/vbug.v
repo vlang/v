@@ -57,8 +57,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string, user_args 
 		elog('> unable to compile V in debug mode: ${result.output}\ncommand: ${vdbg_compilation_cmd}\n')
 	}
 
-	result = runv('Compile',
-		'${os.quoted_path(vexe)} ${verbose_flag} ${user_args} ${os.quoted_path(file_path)}')
+	result = runv('Compile', '${os.quoted_path(vexe)} ${verbose_flag} ${user_args} ${os.quoted_path(file_path)}')
 	defer {
 		os.rm(vdbg_path) or {
 			if is_verbose {
@@ -164,8 +163,7 @@ fn main() {
 		confirm_or_exit('Are you sure you want to continue?')
 	}
 
-	report := vbugreport.new_bug_report(file_path, generated_file, user_args, expected_result,
-		vversion(), vdoctor_output, file_content, build_output)
+	report := vbugreport.new_bug_report(file_path, generated_file, user_args, expected_result, vversion(), vdoctor_output, file_content, build_output)
 	delivery := vbugreport.prepare_bug_report_delivery(report, file_path)
 	if delivery.mode == .local_report {
 		os.write_file(delivery.local_report_path, delivery.local_report_body) or {

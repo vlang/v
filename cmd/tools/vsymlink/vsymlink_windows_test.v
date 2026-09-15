@@ -25,8 +25,7 @@ fn test_append_path_entry_handles_empty_and_trailing_delimiter() {
 fn test_registry_path_larger_than_old_limit_is_preserved() {
 	key_path := 'Software\\VlangVsymlinkTest_${os.getpid()}'
 	mut reg_key := os.hkey_current_user
-	create_result := C.RegCreateKeyExW(os.hkey_current_user, key_path.to_wide(), 0, 0,
-		C.REG_OPTION_VOLATILE, 1 | 2, 0, voidptr(&reg_key), 0)
+	create_result := C.RegCreateKeyExW(os.hkey_current_user, key_path.to_wide(), 0, 0, C.REG_OPTION_VOLATILE, 1 | 2, 0, voidptr(&reg_key), 0)
 	assert create_result == 0
 	if create_result != 0 {
 		return

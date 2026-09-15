@@ -105,8 +105,7 @@ fn test_update_and_remove_with_capitalized_ident() {
 	publisher_dir := os.join_path(vmodules_path, 'frothy7650')
 	installed_path := os.join_path(publisher_dir, 'chalk')
 	os.mkdir_all(installed_path) or { panic(err) }
-	os.write_file(os.join_path(installed_path, 'v.mod'),
-		"Module{\n\tname: 'Frothy7650.chalk'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
+	os.write_file(os.join_path(installed_path, 'v.mod'), "Module{\n\tname: 'Frothy7650.chalk'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
 	// Remove with the original (capitalized) ident must succeed and clean up the author dir.
 	res := cmd_ok(@LOCATION, '${vexe} remove Frothy7650.chalk')
 	assert !res.output.contains('failed to find'), res.output
@@ -160,8 +159,7 @@ fn test_install_path_containment_supports_filesystem_roots() {
 	for os.dir(filesystem_root) != filesystem_root {
 		filesystem_root = os.dir(filesystem_root)
 	}
-	assert install_path_is_in_vmodules(os.join_path(filesystem_root, 'vpm_test_module'),
-		filesystem_root)
+	assert install_path_is_in_vmodules(os.join_path(filesystem_root, 'vpm_test_module'), filesystem_root)
 	assert !install_path_is_in_vmodules(filesystem_root, filesystem_root)
 }
 
@@ -184,8 +182,7 @@ fn test_dotted_install_does_not_nest_inside_git_worktree() {
 	create_local_git_module(source_repo_path, 'foo')
 	worktree_path := os.join_path(vmodules_path, 'foo')
 	os.mkdir_all(vmodules_path) or { panic(err) }
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(source_repo_path)} worktree add -b vpm-test ${os.quoted_path(worktree_path)}')
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(source_repo_path)} worktree add -b vpm-test ${os.quoted_path(worktree_path)}')
 	assert os.is_file(os.join_path(worktree_path, '.git'))
 	nested_repo_path := os.join_path(test_path, 'worktree_ancestor_nested')
 	create_local_git_module(nested_repo_path, 'foo.bar')
@@ -323,8 +320,7 @@ fn test_installed_module_discovery_ignores_unrelated_vcs_directories() {
 	unrelated_path := os.join_path(vmodules_path, 'cache', 'unrelated')
 	os.mkdir_all(unrelated_path) or { panic(err) }
 	cmd_ok(@LOCATION, 'git init ${os.quoted_path(unrelated_path)}')
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(unrelated_path)} remote add origin https://github.com/other/repository')
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(unrelated_path)} remote add origin https://github.com/other/repository')
 	assert 'cache.unrelated' !in get_installed_modules_in(vmodules_path)
 }
 
@@ -333,8 +329,7 @@ fn test_installed_module_discovery_preserves_manifestless_registered_checkout() 
 	module_path := os.join_path(vmodules_path, 'spytheman', 'regex')
 	os.mkdir_all(module_path) or { panic(err) }
 	cmd_ok(@LOCATION, 'git init ${os.quoted_path(module_path)}')
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(module_path)} remote add origin https://github.com/spytheman/v-regex')
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(module_path)} remote add origin https://github.com/spytheman/v-regex')
 	assert 'spytheman.regex' in get_installed_modules_in(vmodules_path)
 }
 
@@ -356,8 +351,7 @@ fn test_publisher_prefix_does_not_look_like_name_normalization() {
 		}
 	}
 	assert !registered.normalized_name_warning_details('isaiahpatton.iui').contains('Consider renaming')
-	assert direct_install_mod_path('publisher', 'foo.bar') == os.join_path('publisher', 'foo',
-		'bar')
+	assert direct_install_mod_path('publisher', 'foo.bar') == os.join_path('publisher', 'foo', 'bar')
 	assert direct_install_mod_path('acme.inc', 'my-mod') == os.join_path('acme', 'inc', 'my_mod')
 }
 
@@ -1004,12 +998,10 @@ fn test_a_bare_relative_repository_under_the_local_root_is_still_a_repository() 
 
 fn create_local_git_module(repo_path string, module_name string) {
 	os.mkdir_all(repo_path) or { panic(err) }
-	os.write_file(os.join_path(repo_path, 'v.mod'),
-		"Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
+	os.write_file(os.join_path(repo_path, 'v.mod'), "Module{\n\tname: '${module_name}'\n\tversion: '0.0.1'\n}\n") or { panic(err) }
 	cmd_ok(@LOCATION, 'git init ${os.quoted_path(repo_path)}')
 	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} add v.mod')
-	cmd_ok(@LOCATION,
-		'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "initial commit"')
+	cmd_ok(@LOCATION, 'git -C ${os.quoted_path(repo_path)} -c user.email="ci@vlang.io" -c user.name="V CI" commit -m "initial commit"')
 }
 
 fn file_url(path string) string {

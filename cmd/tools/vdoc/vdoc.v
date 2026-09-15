@@ -200,7 +200,7 @@ fn (mut vd VDoc) work_processor(work chan ParallelDoc) {
 }
 
 fn (mut vd VDoc) render_parallel(out Output) {
-	mut work := chan ParallelDoc{ cap: vd.docs.len }
+	mut work := chan ParallelDoc{cap: vd.docs.len}
 	for i in 0 .. vd.docs.len {
 		work <- ParallelDoc{vd.docs[i], out}
 	}

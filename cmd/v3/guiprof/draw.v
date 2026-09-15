@@ -188,18 +188,18 @@ fn draw_timeline(mut app App) {
 	if app.selected_frame >= 0 && app.selected_frame < frames.len {
 		cursor_x := margin + f32(app.selected_frame) * tick_spacing
 		// Triangle cursor
-		draw_triangle_filled(ctx, cursor_x, timeline_y + 15, cursor_x - 8, timeline_y + 5,
-
-			cursor_x + 8, timeline_y + 5, timeline_cursor)
+		draw_triangle_filled(ctx, cursor_x, timeline_y + 15, cursor_x - 8, timeline_y + 5, cursor_x + 8, timeline_y + 5, timeline_cursor)
 
 		// Vertical line
-		ctx.draw_line(cursor_x, timeline_y + 15, cursor_x, timeline_y + timeline_h - 5,
-			timeline_cursor)
+		ctx.draw_line(cursor_x, timeline_y + 15, cursor_x, timeline_y + timeline_h - 5, timeline_cursor)
 
 		// Frame info
 		frame := frames[app.selected_frame]
 		info := 'Frame ${app.selected_frame}: +${profiler.format_bytes(frame.new_bytes)} / -${profiler.format_bytes(frame.freed_bytes)}'
-		ctx.draw_text(int(w / 2) - 100, int(timeline_y) + 55, info, color: timeline_cursor, size: 16)
+		ctx.draw_text(int(w / 2) - 100, int(timeline_y) + 55, info,
+			color: timeline_cursor
+			size:  16
+		)
 	}
 
 	// Separator line
@@ -297,8 +297,7 @@ fn draw_details(mut app App) {
 		}
 	} else {
 		// Instructions
-		ctx.draw_text(20, int(details_y) + 20,
-			'Click on a histogram bar to select a frame, or use keyboard arrows to navigate',
+		ctx.draw_text(20, int(details_y) + 20, 'Click on a histogram bar to select a frame, or use keyboard arrows to navigate',
 			color: text_color
 			size:  16
 		)
