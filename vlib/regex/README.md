@@ -579,7 +579,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string
 ```v ignore
 // replace return a string where the matches are replaced with the repl_str string,
 // this function supports groups in the replace string
-pub fn (mut re RE) replace(in_txt string, repl string) string
+pub fn (re &RE) replace(in_txt string, repl string) string
 ```
 
 replace string can include groups references:
@@ -587,7 +587,7 @@ replace string can include groups references:
 ```v ignore
 txt := 'Today it is a good day.'
 query := r'(a\w)[ ,.]'
-mut re := regex.regex_opt(query)?
+re := regex.regex_opt(query)?
 res := re.replace(txt, r'__[\0]__')
 ```
 
