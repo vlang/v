@@ -1731,6 +1731,12 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 	}
 	resolved := t.resolve_expr_type(id)
 	if resolved.len > 0 {
+		if node.kind == .array_literal && t.generic_arg_is_unresolved(resolved) {
+			elem_type := t.array_literal_elem_type(node)
+			if decl_type_is_usable(elem_type) && !t.generic_arg_is_unresolved(elem_type) {
+				return '[]${elem_type}'
+			}
+		}
 		// The checker override only applies to named struct types. Most expressions
 		// are builtin scalars or containers; avoid parsing both types and deriving
 		// their C names for those overwhelmingly common cases.

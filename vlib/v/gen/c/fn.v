@@ -9074,9 +9074,7 @@ fn (g &FlatGen) is_json_decode_target_name(target string) bool {
 
 fn (g &FlatGen) is_json_decode_call(id flat.NodeId, target string) bool {
 	if resolved := g.tc.resolved_call_name(id) {
-		if g.is_json_decode_target_name(resolved) {
-			return true
-		}
+		return g.is_json_decode_target_name(resolved)
 	}
 	return g.is_json_decode_target_name(target)
 }

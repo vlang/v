@@ -64,6 +64,32 @@ fn test_pool_config_params_struct_can_be_omitted() {
 	assert out == 'db|0\ndb|4'
 }
 
+fn test_params_struct_field_with_or_expression_preserves_collapsed_argument() {
+	v3_bin := build_v3()
+	source := '@[params]
+struct Config {
+	host   string
+	port   int
+	family int
+}
+
+fn choose_family(host string) !int {
+	return if host.contains(":") { 6 } else { 4 }
+}
+
+fn run(prefix string, config Config) string {
+	return "\${prefix}|\${config.host}|\${config.port}|\${config.family}"
+}
+
+fn main() {
+	host := "::1"
+	println(run("listen", host: host, port: 8787, family: choose_family(host) or { 0 }))
+}
+'
+	out := run_good(v3_bin, 'params_struct_or_field_input', source)
+	assert out == 'listen|::1|8787|6'
+}
+
 fn test_non_veb_reflected_calls_synthesize_omitted_trailing_args() {
 	v3_bin := build_v3()
 	source := '@[params]

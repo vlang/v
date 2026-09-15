@@ -782,7 +782,9 @@ fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
 // gen_if_expr_stmt emits if expr stmt output for c.
 fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	inferred_type := g.if_expr_type(&node)
-	ret_type := if node.typ.len > 0 {
+	ret_type := if g.expected_expr_type is types.MultiReturn {
+		types.Type(g.expected_expr_type)
+	} else if node.typ.len > 0 {
 		annotated_type := g.parse_node_type(&node)
 		if annotated_type is types.Primitive && inferred_type !is types.Primitive {
 			inferred_type
