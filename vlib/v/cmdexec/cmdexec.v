@@ -29,8 +29,150 @@ pub fn run_with_timeout(program string, args []string, timeout_ms i64) os.Result
 	return run_in_mode(program, args, '', false, timeout_ms)
 }
 
+// windows_implicit_suffixes are the extensions CreateProcessW appends to a
+// program path that carries none. os.is_executable only accepts a name that
+// already ends in one of them, so an extension-less `C:\\LLVM\\bin\\clang`
+// has to be probed with each of these before it counts as missing.
+// os.Process hands CreateProcessW the absolute filename as lpApplicationName,
+// and for that parameter Windows only infers `.exe` -- the PATHEXT list applies
+// to command-line lookup, not to an explicit application name. Probing `.com`,
+// `.bat` or `.cmd` here would accept a program the real launch cannot start.
+const windows_implicit_suffixes = ['.exe']
+
+// resolve_executable returns the program path to hand to os.Process, or none
+// when nothing can be started. It mirrors os.Process's own resolution:
+//   - Windows expands every filename with abs_path() before CreateProcessW, so
+//     even a bare name is looked up next to the caller's folder rather than
+//     through PATH.
+//   - Unix keeps an absolute path as is, resolves a path that carries a
+//     separator against the *caller's* folder when a work folder was set (the
+//     child execve()s that absolute path after it has changed folders), and
+//     otherwise searches PATH.
+//
+// It returns the resolved path rather than a yes/no, because on Windows the
+// candidate that exists may not be the name the caller passed: CreateProcessW
+// binds an absolute non-batch filename as lpApplicationName, so a program that
+// only exists as `${program}.exe` has to be launched under *that* name, or the
+// launch fails even though the file is right there.
+fn resolve_executable(program string, work_folder string) ?string {
+	if program == '' {
+		return none
+	}
+	$if windows {
+		// os.Process hands CreateProcessW an abs_path()ed but *unexpanded*
+		// filename as lpApplicationName; only the separate command-line buffer
+		// goes through ExpandEnvironmentStringsW. So `%COMSPEC%` has to be
+		// expanded here, both to probe the real path and to launch it.
+		return windows_resolve_executable(os.abs_path(expand_windows_env_vars(program)))
+	} $else {
+		if os.is_abs_path(program) {
+			return unix_launchable(program, program)
+		}
+		if program.contains(os.path_separator) {
+			probe := if work_folder.len > 0 { os.abs_path(program) } else { program }
+			return unix_launchable(probe, program)
+		}
+		os.find_abs_path_of_executable(program) or { return none }
+		return program
+	}
+}
+
+// expand_windows_env_vars replaces every `%NAME%` with its environment value,
+// the way ExpandEnvironmentStringsW does. An unset name, an empty name (`%%`)
+// and a trailing unmatched `%` are all left exactly as written, which is also
+// what the Windows API does.
+fn expand_windows_env_vars(text string) string {
+	if !text.contains('%') {
+		return text
+	}
+	parts := text.split('%')
+	mut out := strings.new_builder(text.len)
+	for i in 0 .. parts.len {
+		if i % 2 == 0 {
+			out.write_string(parts[i])
+			continue
+		}
+		if i == parts.len - 1 {
+			// No closing `%` for this one.
+			out.write_string('%')
+			out.write_string(parts[i])
+			continue
+		}
+		name := parts[i]
+		value := if name == '' { '' } else { os.getenv(name) }
+		if value != '' {
+			out.write_string(value)
+			continue
+		}
+		out.write_string('%')
+		out.write_string(name)
+		out.write_string('%')
+	}
+	return out.str()
+}
+
+// unix_launchable accepts `program` whenever something exists at `probe`. Only
+// a path that is not there at all counts as missing: a file that exists but is
+// not executable has to reach os.Process anyway, because the child's execve()
+// reports EACCES, and that is the actionable error. Refusing it here would
+// claim an existing compiler is missing instead.
+fn unix_launchable(probe string, program string) ?string {
+	if os.exists(probe) {
+		return program
+	}
+	// os.exists() is access(F_OK), which also fails when a parent directory is
+	// not searchable -- the file may well be there. Only call it missing when the
+	// parent is readable and the entry genuinely is not; otherwise let the launch
+	// run so execve() can report the real EACCES.
+	parent := os.dir(probe)
+	if parent != probe && !os.exists(parent) {
+		return program
+	}
+	return none
+}
+
+// windows_resolve_executable returns the candidate CreateProcessW would load,
+// appending the implicit extensions when the path carries none. Every branch
+// errs towards letting the launch proceed: this check only exists to turn an
+// unstartable command into a result instead of an abort, so a false "missing"
+// would break callers that work today, while a false "present" merely restores
+// the previous behaviour.
+fn windows_resolve_executable(candidate string) ?string {
+	// os.is_executable only checks existence plus a recognized extension, so a
+	// *directory* called `tool.exe` satisfies it. CreateProcessW cannot start a
+	// directory, so require a regular file.
+	if os.is_file(candidate) && os.is_executable(candidate) {
+		return candidate
+	}
+	if os.file_ext(candidate) != '' {
+		// os.is_executable only accepts the conventional extensions, but
+		// CreateProcessW runs any module it can load - including a PE binary
+		// deliberately named `clang.bin`. Existence is the honest test here.
+		return if os.is_file(candidate) { candidate } else { none }
+	}
+	for suffix in windows_implicit_suffixes {
+		probed := candidate + suffix
+		if os.is_executable(probed) {
+			return probed
+		}
+	}
+	// An extension-less file can still be a loadable module.
+	return if os.is_file(candidate) { candidate } else { none }
+}
+
 fn run_in_mode(program string, args []string, work_folder string, merge_output bool, timeout_ms i64) os.Result {
-	mut process := os.new_process(program)
+	// Decide here whether the command can start at all. On Windows a
+	// CreateProcess that cannot find the program makes os.Process abort the
+	// whole compiler, with a message that does not even name what was missing;
+	// a missing command has to be an ordinary failing result that the caller
+	// can report, or fall back from, on every host.
+	launch_program := resolve_executable(program, work_folder) or {
+		return os.Result{
+			exit_code: 127
+			output: 'failed to find executable: ${program}\n'
+		}
+	}
+	mut process := os.new_process(launch_program)
 	process.set_args(args)
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
@@ -125,7 +267,7 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	}
 	return os.Result{
 		exit_code: exit_code
-		output:    output_text
+		output: output_text
 	}
 }
 
