@@ -4345,10 +4345,11 @@ fn main() {
 
 fn test_array_literal_separator_handling() {
 	v3_bin := build_v3_review_transform()
-	// Comma-, newline-, and blank-line-separated element lists parse with the expected length.
-	out := run_good(v3_bin, 'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n}\n')
-	assert out == '3:2:3'
-	run_bad(v3_bin, 'array_literal_missing_separator', 'fn main() {\n\t_ := [1 2]\n}\n', 'unexpected token `2`, expecting `]`')
+	// Comma-, newline-, blank-line-, and whitespace-separated element lists parse correctly.
+	out := run_good(v3_bin, 'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tcommaless := [1 2 3 4]\n\toperators := [5-2 7 2*3 -4 -7*8 2*-4 9 - 4]\n\ta := 10\n\tb := 20\n\tpointers := [&a &b]\n\tdereferenced := [*pointers[0] *pointers[1]]\n\tands := [6&3 7 7 & 3]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n\tprintln(commaless)\n\tprintln(operators)\n\tprintln(pointers.len)\n\tprintln(dereferenced)\n\tprintln(ands)\n}\n')
+	assert out == '3:2:3\n[1, 2, 3, 4]\n[3, 7, 6, -4, -56, -8, 5]\n2\n[10, 20]\n[2, 7, 3]', out
+	nested_out := run_good(v3_bin, 'array_literal_nested_expressions', 'fn identity(value int) int {\n\treturn value\n}\n\nfn main() {\n\tvalues := [10, 20, 30]\n\tnested := [(3 -2) identity(5 -3) values[2 -1]]\n\tprintln(nested)\n}\n')
+	assert nested_out == '[1, 2, 20]', nested_out
 	run_bad(v3_bin, 'array_literal_doubled_comma', 'fn main() {\n\t_ := [1,,2]\n}\n', 'unexpected token `,`, expecting `]`')
 }
 
