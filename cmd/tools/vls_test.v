@@ -28,7 +28,8 @@ fn test_vls_source_update_recovers_missing_executable() ! {
 	os.write_file(fake_vexe, '#!/bin/sh\n' + 'if [ "\$1" = "retry" ]; then\n' + '  echo "Already up to date."\n' + '  exit 0\n' + 'fi\n' + 'printf "%s\\n" "\$@" > "\$VLS_TEST_COMPILE_LOG"\n' + 'output=\n' + 'while [ "\$#" -gt 0 ]; do\n' + '  if [ "\$1" = "-o" ]; then\n' + '    shift\n' + '    output="\$1"\n' + '  fi\n' + '  shift\n' + 'done\n' + 'printf "%s\\n" "#!/bin/sh" "echo vls version test" > "\$output"\n' + 'chmod +x "\$output"\n')!
 	os.chmod(fake_vexe, 0o755)!
 
-	result := os.execute('HOME=${os.quoted_path(home_dir)} VEXE=${os.quoted_path(fake_vexe)} VLS_TEST_COMPILE_LOG=${os.quoted_path(compile_log)} ${os.quoted_path(tool_path)} --update --source')
+	missing_vexe := os.join_path(test_root, 'missing v')
+	result := os.execute('HOME=${os.quoted_path(home_dir)} VEXE=${os.quoted_path(missing_vexe)} V_VLS_UPDATE_VEXE=${os.quoted_path(fake_vexe)} VLS_TEST_COMPILE_LOG=${os.quoted_path(compile_log)} ${os.quoted_path(tool_path)} --update --source')
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('Compiling VLS from source...'), result.output
 

@@ -48,7 +48,9 @@ mut:
 	args          []string
 }
 
-const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
+const vexe = os.real_path(os.getenv_opt('V_VLS_UPDATE_VEXE') or {
+	os.getenv_opt('VEXE') or { @VEXE }
+})
 
 const vls_folder = os.join_path(os.home_dir(), '.vls')
 
