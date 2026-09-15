@@ -81,6 +81,13 @@ fn test_inline_asm_x86_register_branch_targets_are_indirect() {
 	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', aliases, false) == 'call named_target'
 }
 
+fn test_inline_asm_directional_numeric_labels_use_gnu_order() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('jmp b1', 'amd64', aliases, false) == 'jmp 1b'
+	assert lower_c_inline_asm_template('jnz f42', 'amd64', aliases, false) == 'jnz 42f'
+	assert lower_c_inline_asm_intel_template('jmp b3', aliases, false) == 'jmp 3b'
+}
+
 fn test_inline_asm_block_comments_do_not_create_operand_sections() {
 	source := 'mov rax, "/* ; quoted */"
 /* outer ; /* nested ; */ still a comment ; */

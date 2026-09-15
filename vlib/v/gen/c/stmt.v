@@ -3799,6 +3799,9 @@ fn lower_c_inline_asm_intel_operand(source string, aliases map[string]bool, is_e
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
 		return "'${operand[1..operand.len - 1]}'"
 	}
+	if label := c_inline_asm_local_label_reference(operand) {
+		return label
+	}
 	if label := c_inline_asm_quoted_label(operand) {
 		return label
 	}
@@ -3902,6 +3905,9 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
 		return "'${operand[1..operand.len - 1]}'"
 	}
+	if label := c_inline_asm_local_label_reference(operand) {
+		return label
+	}
 	if label := c_inline_asm_quoted_label(operand) {
 		return label
 	}
@@ -3960,6 +3966,15 @@ fn c_inline_asm_quoted_label(source string) ?string {
 		return label
 	}
 	return none
+}
+
+// V spells a directional numeric assembly label with the direction first
+// (`b1`/`f2`), while GNU assembly puts it after the number (`1b`/`2f`).
+fn c_inline_asm_local_label_reference(source string) ?string {
+	if source.len < 2 || source[0] !in [`b`, `f`] || !source[1..].bytes().all(it.is_digit()) {
+		return none
+	}
+	return source[1..] + source[..1]
 }
 
 fn lower_c_inline_asm_address(source string, arch string, aliases map[string]bool, is_extended bool) string {
