@@ -853,8 +853,23 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	if name.starts_with('main.') && !name['main.'.len..].contains('.')
 		&& !name['main.'.len..].contains('[') {
 		bare := name['main.'.len..]
-		if bare in t.structs {
-			return t.structs[bare]
+		// The bare table is first-wins across modules, so it can hold an imported
+		// homonym: the explicit `main.` lock may only accept program-module entries.
+		if info := t.structs[bare] {
+			if info.module.len == 0 || info.module == 'main' {
+				return info
+			}
+		}
+	}
+	// A bare spelling belongs to the file that wrote it: `import iam { Token }`
+	// must select `iam.Token` even when another imported module declares a
+	// same-named type, otherwise field defaults and aliases of the homonym leak
+	// into the literal.
+	if !name.contains('.') && !name.contains('[') && t.cur_file.len > 0 {
+		if resolved := t.selective_import_type_name_for_file(t.cur_file, name) {
+			if info := t.lookup_struct_info_direct(resolved) {
+				return info
+			}
 		}
 	}
 	if alias_target := t.alias_target_type_preserving_main_lock(name) {

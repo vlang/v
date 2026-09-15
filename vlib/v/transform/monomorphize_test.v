@@ -674,3 +674,91 @@ fn test_free_generic_map_suffix_preserves_qualified_value_type() {
 	decoded := generic_type_arg_from_suffix_with_containers(suffix)
 	assert decoded == 'map[string]binary.St'
 }
+
+// A synthesized node that hangs under no declaration has no module or file
+// context, so a plain generic argument in its type text cannot be resolved when
+// the spelling is materialized: `Middleware[Context]` was collected as written
+// and the specialization rebased `Context` onto `main`, which does not declare
+// it. cgen then emitted `typedef bool (*...)(main__Context*)` and the C compiler
+// stopped with `unknown type name 'main__Context'` (RuoQi's veb middleware). A
+// spelling that carries its own module, or that is only a builtin, stays valid.
+fn test_contextless_generic_struct_spec_spelling_is_skipped() {
+	mut a := flat.FlatAst.new()
+	a.add_node(flat.Node{
+		kind: .file
+		value: '/tmp/ctx/main.v'
+	})
+	attached_id := a.add_node(flat.Node{
+		kind: .struct_init
+		value: 'veb.Middleware[Ctx]'
+		typ: 'veb.Middleware[Ctx]'
+	})
+	children_start := a.children.len
+	a.children << attached_id
+	fn_decl := flat.Node{
+		kind: .fn_decl
+		value: 'run'
+		children_start: children_start
+		children_count: 1
+	}
+	a.add_node(fn_decl)
+	a.add_node(flat.Node{
+		kind: .struct_init
+		value: 'veb.Middleware[Context]'
+		typ: 'veb.Middleware[Context]'
+	})
+	a.add_node(flat.Node{
+		kind: .struct_init
+		value: 'veb.Middleware[model.Context]'
+		typ: 'veb.Middleware[model.Context]'
+	})
+	mut params_node := flat.Node{
+		kind: .struct_init
+		value: 'veb.Middleware'
+		typ: 'veb.Middleware'
+	}
+	params_node.set_generic_params(['Scope'])
+	a.add_node(params_node)
+	mut tc := types.TypeChecker.new(&a)
+	tc.file_modules['/tmp/ctx/main.v'] = 'main'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	decls := {
+		'veb.Middleware': GenericStructDecl{
+			node:   fn_decl
+			module: 'veb'
+			key:    'veb.Middleware'
+		}
+	}
+	mut specs := map[string]string{}
+	t.collect_generic_struct_specs_range(decls, mut specs, 0, a.nodes.len)
+
+	assert 'veb.Middleware[Ctx]' in specs
+	assert 'veb.Middleware[model.Context]' in specs
+	assert 'veb.Middleware[Context]' !in specs
+	assert 'veb.Middleware[Scope]' !in specs
+
+	assert type_text_has_unqualified_generic_arg('veb.Middleware[Context]')
+	assert type_text_has_unqualified_generic_arg('Map[string, Context]')
+	assert type_text_has_unqualified_generic_arg('Map[string, []Context]')
+	assert type_text_has_unqualified_generic_arg('Box[Array[Context]]')
+	assert !type_text_has_unqualified_generic_arg('veb.Middleware[model.Context]')
+	assert !type_text_has_unqualified_generic_arg('Map[string, []int]')
+	assert !type_text_has_unqualified_generic_arg('map[string]int')
+	assert !type_text_has_unqualified_generic_arg('Middleware')
+}
+
+// The scoped (memory-bounded) monomorphize path is selected for every non-empty
+// batch on purpose: one drain batch can discover thousands of nested
+// specializations, and the regular path keeps every worker's scratch arena alive
+// until the batch is merged (vlang/v#28564, 19.4 GB -> 7.4 GB on the veb + orm
+// reproduction). Pin the boundaries so that a future cutoff change stays visible.
+fn test_scoped_monomorphize_batch_selection_boundaries() {
+	$if !v3_no_parallel ? {
+		assert !should_use_scoped_monomorphize(0, 0)
+		// One specialization is enough: the bounded path is not gated on AST size.
+		assert should_use_scoped_monomorphize(0, 1)
+		assert should_use_scoped_monomorphize(scoped_monomorph_node_threshold - 1, 1)
+		assert should_use_scoped_monomorphize(scoped_monomorph_node_threshold, 1)
+		assert should_use_scoped_monomorphize(0, scoped_monomorph_specs_threshold)
+	}
+}

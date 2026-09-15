@@ -1669,7 +1669,7 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
 				enum_cn := g.cname(name)
-				fn_cn := g.enum_autostr_c_name(name)
+				fn_cn := g.enum_decl_autostr_c_name(name)
 				if !g.enum_autostr_is_used(fn_cn) {
 					continue
 				}
@@ -1704,7 +1704,7 @@ fn (mut g FlatGen) enum_str_defs() {
 			.enum_decl {
 				name := g.enum_decl_type_name(node, cur_module)
 				enum_cn := g.cname(name)
-				fn_cn := g.enum_autostr_c_name(name)
+				fn_cn := g.enum_decl_autostr_c_name(name)
 				if !g.enum_autostr_is_used(fn_cn) {
 					continue
 				}
@@ -1804,9 +1804,54 @@ fn (g &FlatGen) enum_type_c_name(name string) string {
 }
 
 fn (g &FlatGen) enum_autostr_c_name(type_name string) string {
+	return g.enum_autostr_c_name_for(type_name, true)
+}
+
+// enum_decl_autostr_c_name names the `<Enum>__autostr` helper of a declared enum.
+// Declaration spellings are already module-resolved, and the declaration loops do
+// not switch `cur_file` per enum, so they must not be rewritten through the
+// file-scoped lookups that references use.
+fn (g &FlatGen) enum_decl_autostr_c_name(type_name string) string {
+	return g.enum_autostr_c_name_for(type_name, false)
+}
+
+fn (g &FlatGen) enum_autostr_c_name_for(type_name string, resolve_file_imports bool) string {
 	mut name := type_name
+	// `main.Kind` is the explicit lock spelling of a program-module type: keep it
+	// locked instead of letting a same-named selective import of whichever file is
+	// currently generated capture it.
+	main_locked := name.starts_with('main.')
 	if name.starts_with('main.') {
 		name = name['main.'.len..]
+	}
+	if main_locked && !name.contains('.') {
+		return g.cname(name)
+	}
+	file_lookup := resolve_file_imports && !main_locked && g.tc.cur_file.len > 0
+	// A bare enum name belongs to the file that wrote it. With several same-named
+	// enums in the program the suffix fallback below cannot pick one and the
+	// helper call would keep a bare name that no C function defines.
+	if file_lookup && !name.contains('.') {
+		selective_key := '${g.tc.cur_file}\n${name}'
+		for candidate in g.tc.file_selective_imports[selective_key] or { []string{} } {
+			if candidate in g.tc.enum_names {
+				return g.cname(candidate)
+			}
+		}
+	}
+	// An import-alias prefix (`token.Kind` where the file imports `toml.token`)
+	// must be mapped to the declaring module before falling back to the short
+	// name, or the helper is emitted as `Kind__autostr` and never defined. A name
+	// that already is a known enum is left alone: `json2.ValueKind` must not be
+	// re-read as `json2` being an alias of another module.
+	if file_lookup && name.contains('.') && name !in g.tc.enum_names {
+		alias := name.all_before('.')
+		if module_name := g.tc.file_imports['${g.tc.cur_file}\n${alias}'] {
+			resolved := '${module_name}.${name.all_after('.')}'
+			if resolved in g.tc.enum_names {
+				return g.cname(resolved)
+			}
+		}
 	}
 	if name in g.tc.enum_names {
 		return g.cname(name)

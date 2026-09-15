@@ -1004,6 +1004,14 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if node.typ.starts_with('map[') {
 				return node.typ
 			}
+			// A bare spelling must be resolved in the file that wrote the call:
+			// `import model { Context }` makes `Context` mean `model.Context` there
+			// even when another imported module declares a same-named type. A global
+			// short-name index would pick whichever type was indexed first, so the
+			// rewritten call and the emitted specialization would disagree.
+			if resolved := t.selective_import_type_name_for_file(t.node_file_or(int(id), t.cur_file), node.value) {
+				return resolved
+			}
 			return node.value
 		}
 		.selector {
@@ -5038,6 +5046,14 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 	if qualified.starts_with('main.') {
 		qualified = qualified[5..]
 	} else if !typ.contains('.') {
+		// A bare enum name belongs to the file that wrote it: with several
+		// same-named enums in the program the suffix fallback below cannot pick
+		// one, and the helper would be emitted without its module prefix.
+		if resolved := t.selective_import_type_name_for_file(t.cur_file, typ) {
+			if resolved in t.enum_types {
+				return resolved
+			}
+		}
 		q := '${t.cur_module}.${typ}'
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
 			&& q in t.enum_types {
@@ -5074,6 +5090,20 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 		}
 	}
 	short_name := short_name_view(qualified)
+	// An import-alias prefix (`token.Kind` where this file imports `toml.token`)
+	// must be resolved before the short-name fallback below: the bare `Kind` table
+	// entry can belong to a different module, and the emitted helper would then
+	// name an enum that this file never declared.
+	if qualified.contains('.') && !qualified.starts_with('main.') {
+		alias := qualified.all_before('.')
+		resolved_module := t.import_alias_module(alias)
+		if resolved_module.len > 0 && resolved_module != alias {
+			resolved := '${resolved_module}.${qualified.all_after('.')}'
+			if resolved in t.enum_types || (!isnil(t.tc) && resolved in t.tc.enum_names) {
+				return resolved
+			}
+		}
+	}
 	if qualified !in t.enum_types && short_name in t.enum_types {
 		return short_name
 	}
