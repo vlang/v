@@ -7,6 +7,8 @@ import os
 
 #include <fcntl.h>
 
+#include <stdio.h>
+
 #include <dirent.h>
 
 #include <sys/stat.h>
