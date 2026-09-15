@@ -246,6 +246,112 @@ fn test_pragma_once_header_is_not_replayed_after_undef() {
 	assert 'once_api' !in g.inlined_c_active_macros
 }
 
+fn test_include_guard_header_is_replayed_only_after_guard_undef() {
+	root := os.join_path(os.vtmp_dir(), 'v3_include_guard_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'guarded.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(header, '#ifndef GUARDED_H\n#define GUARDED_H\n#define guarded_api(p) ((p)->value)\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert g.c_active_macro_header_guards[os.real_path(header)] == 'GUARDED_H'
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'undef'
+		typ:   'guarded_api'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'guarded_api' !in g.inlined_c_active_macros
+
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'undef'
+		typ:   'GUARDED_H'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'guarded_api' in g.inlined_c_active_macros
+}
+
+fn test_nested_include_can_undef_outer_guard() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_include_outer_guard_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	inner_header := os.join_path(root, 'inner.h')
+	outer_header := os.join_path(root, 'outer.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(inner_header, '#undef OUTER_H\n')!
+	os.write_file(outer_header, '#ifndef OUTER_H\n#define OUTER_H\n#include "inner.h"\n#define nested_guard_api(p) ((p)->value)\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${outer_header}"'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'undef'
+		typ:   'nested_guard_api'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${outer_header}"'
+	}, source, false)
+	assert 'nested_guard_api' in g.inlined_c_active_macros
+}
+
+fn test_include_guard_with_alternative_branch_is_replayed() {
+	root := os.join_path(os.vtmp_dir(), 'v3_include_guard_alternative_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'alternative.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(header, '#ifndef ALTERNATIVE_H\n#define ALTERNATIVE_H\n#else\n#define alternative_api(p) ((p)->value)\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert os.real_path(header) !in g.c_active_macro_header_guards
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'undef'
+		typ:   'alternative_api'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'alternative_api' in g.inlined_c_active_macros
+}
+
 fn test_include_next_activates_unscanned_header_fallback() {
 	root := os.join_path(os.vtmp_dir(), 'v3_include_next_macro_state_${os.getpid()}')
 	os.rmdir_all(root) or {}
