@@ -1101,6 +1101,13 @@ fn (t &Transformer) index_callee_is_value_index(index_node flat.Node) bool {
 		return false
 	}
 	base := t.a.nodes[int(base_id)]
+	if base.kind == .selector && base.children_count > 0
+		&& t.call_selector_base_is_namespace(t.a.child(&base, 0), base.value, '') {
+		// A module/type-qualified generic callee is never a runtime index, even
+		// when the checker's cached selector type is itself indexable (for example
+		// the `string` parameter type cached for `json2.decode`).
+		return false
+	}
 	if t.type_name_is_indexable(base.typ)
 		|| t.type_name_is_indexable(t.raw_checker_node_type(base_id)) {
 		return true

@@ -9069,7 +9069,8 @@ fn (g &FlatGen) is_json_decode_target_name(target string) bool {
 	// are pure V and must compile through normal codegen, so they are not matched
 	// here (matching them would inject cJSON calls and hijack json2's own
 	// internal `encode`/`decode` functions).
-	return target == 'json.decode' || (target == 'decode' && g.tc.cur_module == 'json')
+	return target in ['json.decode', 'json__decode']
+		|| (target == 'decode' && g.tc.cur_module == 'json')
 }
 
 fn (g &FlatGen) is_json_decode_call(id flat.NodeId, target string) bool {
@@ -9112,6 +9113,7 @@ fn (mut g FlatGen) preintern_json_encode_strings() {
 	if !g.has_legacy_json_module() {
 		return
 	}
+	mut has_encode_call := false
 	for idx, node in g.a.nodes {
 		if node.kind != .call || node.children_count < 2 {
 			continue
@@ -9128,6 +9130,7 @@ fn (mut g FlatGen) preintern_json_encode_strings() {
 			&& !(g.tc.cur_module == 'json' && target in ['encode', 'encode_pretty']) {
 			continue
 		}
+		has_encode_call = true
 		arg_id := g.a.child(&node, 1)
 		mut typ := g.usable_expr_type(arg_id)
 		if typ is types.Void || typ is types.Unknown {
@@ -9135,6 +9138,39 @@ fn (mut g FlatGen) preintern_json_encode_strings() {
 			typ = g.tc.parse_type(arg.typ)
 		}
 		g.preintern_json_encode_value_strings(typ, []string{})
+	}
+	if !has_encode_call {
+		return
+	}
+	// Scoped parallel body workers start from the same frozen literal table. JSON
+	// encoding synthesizes field labels during body generation, and a call whose
+	// local argument retained a provisional checker type can hide some of those
+	// labels from the type-directed walk above. Seed the finite set of labels that
+	// any legacy JSON struct encoder can emit so every worker keeps stable IDs.
+	g.intern_string('{')
+	g.intern_string('}')
+	g.intern_string('null')
+	g.intern_string('true')
+	g.intern_string('false')
+	for struct_name, fields in g.tc.structs {
+		g.intern_string(struct_name.all_after_last('.'))
+		for field in fields {
+			attrs := g.json_struct_field_attrs(struct_name, field.name)
+			if json_attrs_skip_field(attrs) {
+				continue
+			}
+			label := json_struct_field_label(field.name, attrs)
+			g.intern_string(json_struct_field_label_prefix(label, ''))
+			g.intern_string(json_struct_field_label_prefix(label, ','))
+		}
+	}
+	g.intern_string(json_struct_field_label_prefix('_type', ''))
+	g.intern_string(json_struct_field_label_prefix('_type', ','))
+	for enum_name, _ in g.tc.enum_names {
+		names, labels := g.json_enum_labels(enum_name)
+		for name in names {
+			g.intern_string(labels[name] or { name })
+		}
 	}
 }
 
@@ -11723,28 +11759,31 @@ fn (g &FlatGen) call_default_return_type(id flat.NodeId) types.Type {
 }
 
 fn (g &FlatGen) json_decode_result_type_for_call(node flat.Node) ?types.Type {
+	if node.children_count == 0 {
+		return none
+	}
+	// The legacy magic declaration returns `!voidptr`; the explicit source type
+	// argument is authoritative even when that provisional annotation survives
+	// checking or a transform pass.
+	if ret_type := g.json_decode_result_type(g.a.child(&node, 0)) {
+		return ret_type
+	}
+	callee := g.a.child_node(&node, 0)
+	if callee.kind != .index && node.children_count >= 2 {
+		type_name := g.json_decode_type_arg_name(g.a.child(&node, 1))
+		if type_name.len > 0 {
+			return types.Type(types.ResultType{
+				base_type: g.tc.parse_type(type_name)
+			})
+		}
+	}
 	if node.typ.len > 0 {
 		ret_type := g.parse_node_type(&node)
 		if ret_type is types.ResultType {
 			return ret_type
 		}
 	}
-	if node.children_count == 0 {
-		return none
-	}
-	if ret_type := g.json_decode_result_type(g.a.child(&node, 0)) {
-		return ret_type
-	}
-	if node.children_count < 2 {
-		return none
-	}
-	type_name := g.json_decode_type_arg_name(g.a.child(&node, 1))
-	if type_name.len == 0 {
-		return none
-	}
-	return types.Type(types.ResultType{
-		base_type: g.tc.parse_type(type_name)
-	})
+	return none
 }
 
 fn (g &FlatGen) json_decode_result_type(callee_id flat.NodeId) ?types.Type {

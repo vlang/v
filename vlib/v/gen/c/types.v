@@ -845,6 +845,7 @@ fn optional_payload_is_bare_struct(t types.Type) bool {
 // optional_typedefs supports optional typedefs handling for FlatGen.
 fn (mut g FlatGen) optional_typedefs() {
 	g.collect_optional_typedefs()
+	g.collect_json_decode_optional_types()
 	// Declaration collection can have completed before the final selected-function
 	// list is available. Revisit that concrete list immediately before emission so
 	// every wrapper used by forward_decls() is already defined.
@@ -860,6 +861,38 @@ fn (mut g FlatGen) optional_typedefs() {
 	}
 	if wrote {
 		g.writeln('')
+	}
+}
+
+// json.decode(Type, text) is compiler magic whose declared signature is
+// `!voidptr`. Collect the concrete result wrapper from each source call before
+// optional typedef emission; otherwise a lowered `or` temp can reference an
+// undeclared `Optional_module__Type`.
+fn (mut g FlatGen) collect_json_decode_optional_types() {
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
+	for idx, node in g.a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		// Resolving a selector target depends on the imports of the call's own file.
+		// Set that context before asking call_target_name; leaving the previous file
+		// active makes otherwise identical json.decode calls in a multi-file module
+		// resolve inconsistently.
+		file := g.node_source_file(&node)
+		g.tc.cur_file = file
+		g.tc.cur_module = g.tc.file_modules[file] or { 'main' }
+		target := g.call_target_name(g.a.child(&node, 0))
+		if !g.is_json_decode_call(flat.NodeId(idx), target) {
+			continue
+		}
+		if ret_type := g.json_decode_result_type_for_call(node) {
+			g.collect_optional_typedef_type(ret_type)
+		}
 	}
 }
 

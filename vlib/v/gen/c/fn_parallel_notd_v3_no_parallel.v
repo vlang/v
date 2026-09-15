@@ -477,6 +477,7 @@ $if !windows {
 		} else {
 			w.fn_gen_items = <-a.items
 		}
+		w.collect_json_decode_optional_types()
 		w.tc.cur_module = old_module
 		w.tc.cur_file = old_file
 		w.optional_types_ready = true

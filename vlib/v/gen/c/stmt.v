@@ -5258,6 +5258,9 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 	if ret := g.module_c_fn_return_type(fn_node.value) {
 		return ret
 	}
+	if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
+		return ret
+	}
 	if ret := g.tc.fn_ret_types[fn_node.value] {
 		return ret
 	}
@@ -5266,9 +5269,6 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 		if ret := g.tc.fn_ret_types[cfn] {
 			return ret
 		}
-	}
-	if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
-		return ret
 	}
 	if typ := g.tc.cur_scope.lookup(fn_node.value) {
 		return fn_type_return_type(typ)
@@ -5312,6 +5312,9 @@ fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
 		if ret := g.module_c_fn_return_type(fn_node.value) {
 			return ret
 		}
+		if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
+			return ret
+		}
 		if ret := g.tc.fn_ret_types[fn_node.value] {
 			return ret
 		}
@@ -5320,9 +5323,6 @@ fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
 			if ret := g.tc.fn_ret_types[cfn] {
 				return ret
 			}
-		}
-		if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
-			return ret
 		}
 	}
 	// Indirect call through an fn-pointer value (local var, param, or struct field
@@ -6820,6 +6820,18 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				if should_infer_fn_value {
 					if fn_typ := g.fn_value_type_for_ident(rhs.value) {
 						v_type = fn_typ
+					}
+				}
+				// Optional lowering replaces `value := source or { ... }` with a
+				// concrete staging local followed by `value := staging`. If a stale
+				// `voidptr` annotation survived on the source declaration, the staging
+				// binding is the authoritative value type.
+				if v_type.name() == 'voidptr' {
+					if rhs_type := g.local_ident_type(rhs.value) {
+						if rhs_type.name() != 'voidptr' && rhs_type !is types.Unknown
+							&& rhs_type !is types.Void {
+							v_type = rhs_type
+						}
 					}
 				}
 			}

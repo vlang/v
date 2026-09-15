@@ -40,6 +40,20 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	assert master.generic_call_spec_cache[12].args == ['[]int']
 }
 
+fn test_scoped_monomorph_specialization_args_are_deep_cloned() {
+	scope := transform_worker_scope_begin(true)
+	scoped_args := ['cloud.Body'.clone(), '[]string'.clone()]
+	transform_worker_scope_leave(scope)
+
+	owned_args := clone_monomorph_specialization_args(scoped_args)
+	assert owned_args == ['cloud.Body', '[]string']
+	for arg in owned_args {
+		assert !transform_scope_owns(scope, arg.str)
+	}
+	transform_worker_scope_free(scope)
+	assert owned_args == ['cloud.Body', '[]string']
+}
+
 fn test_transform_fork_reads_and_merges_source_fn_values() {
 	mut a := flat.FlatAst.new()
 	for _ in 0 .. 8 {
