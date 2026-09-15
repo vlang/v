@@ -123,6 +123,83 @@ fn promote_cgen_string_string_lookup(values map[string]string, scope voidptr) ma
 	return promoted
 }
 
+fn promote_cgen_string_list(values []string, scope voidptr) []string {
+	mut needs_promotion := values.len > 0 && cgen_scope_owns(scope, values.data)
+	if !needs_promotion {
+		needs_promotion = values.any(it.len > 0 && cgen_scope_owns(scope, it.str))
+	}
+	if !needs_promotion {
+		return values
+	}
+	mut promoted := []string{cap: values.len}
+	for value in values {
+		promoted << if value.len > 0 && cgen_scope_owns(scope, value.str) {
+			value.clone()
+		} else {
+			value
+		}
+	}
+	return promoted
+}
+
+fn promote_cgen_string_list_lookup(values map[string][]string, scope voidptr) map[string][]string {
+	mut promoted := map[string][]string{}
+	promoted.reserve(u32(values.len))
+	for key, list in values {
+		owned_key := if key.len > 0 && cgen_scope_owns(scope, key.str) { key.clone() } else { key }
+		mut promoted_list := []string{cap: list.len}
+		for value in list {
+			promoted_list << if value.len > 0 && cgen_scope_owns(scope, value.str) {
+				value.clone()
+			} else {
+				value
+			}
+		}
+		promoted[owned_key] = promoted_list
+	}
+	return promoted
+}
+
+fn promote_cgen_active_macro_stacks(values map[string][]CActiveMacroSnapshot, scope voidptr) map[string][]CActiveMacroSnapshot {
+	mut promoted := map[string][]CActiveMacroSnapshot{}
+	promoted.reserve(u32(values.len))
+	for key, stack in values {
+		owned_key := if key.len > 0 && cgen_scope_owns(scope, key.str) { key.clone() } else { key }
+		mut promoted_stack := []CActiveMacroSnapshot{cap: stack.len}
+		for snapshot in stack {
+			mut include_values := []string{cap: snapshot.include_values.len}
+			for value in snapshot.include_values {
+				include_values << if value.len > 0 && cgen_scope_owns(scope, value.str) {
+					value.clone()
+				} else {
+					value
+				}
+			}
+			mut maybe_aliases := []string{cap: snapshot.maybe_function_aliases.len}
+			for value in snapshot.maybe_function_aliases {
+				maybe_aliases << if value.len > 0 && cgen_scope_owns(scope, value.str) {
+					value.clone()
+				} else {
+					value
+				}
+			}
+			promoted_stack << CActiveMacroSnapshot{
+				...snapshot
+				include_values: include_values
+				function_alias: if snapshot.function_alias.len > 0
+					&& cgen_scope_owns(scope, snapshot.function_alias.str) {
+					snapshot.function_alias.clone()
+				} else {
+					snapshot.function_alias
+				}
+				maybe_function_aliases: maybe_aliases
+			}
+		}
+		promoted[owned_key] = promoted_stack
+	}
+	return promoted
+}
+
 struct CgenScopedAppend {
 	scope       voidptr
 	original_sb strings.Builder
@@ -420,6 +497,7 @@ mut:
 	c_maybe_function_macro_aliases map[string][]string
 	c_active_macro_push_stacks     map[string][]CActiveMacroSnapshot
 	c_active_macro_once_paths      map[string]bool
+	c_active_macro_header_ifs       map[string]string
 	has_unscanned_forced_c_include bool
 	files_with_unscanned_c_includes map[string]bool
 	c_fn_decl_source_files          map[string][]string
@@ -1239,6 +1317,7 @@ pub fn FlatGen.new() FlatGen {
 		c_maybe_function_macro_aliases: map[string][]string{}
 		c_active_macro_push_stacks: map[string][]CActiveMacroSnapshot{}
 		c_active_macro_once_paths: map[string]bool{}
+		c_active_macro_header_ifs: map[string]string{}
 		files_with_unscanned_c_includes: map[string]bool{}
 		c_fn_decl_source_files: map[string][]string{}
 		direct_c_include_macros: map[string][]string{}
@@ -2616,6 +2695,53 @@ fn c_whole_file_guard_macro(text string) ?string {
 	return none
 }
 
+// CWholeFileConditionalScan recognizes a header whose preprocessor directives
+// are all enclosed by one outer conditional without an alternative branch.
+struct CWholeFileConditionalScan {
+mut:
+	opening string
+	depth   int
+	closed  bool
+	invalid bool
+}
+
+fn (mut state CWholeFileConditionalScan) scan(clean string) {
+	if state.invalid || clean.trim_space().len == 0 {
+		return
+	}
+	if state.closed {
+		state.invalid = true
+		return
+	}
+	directive_name := c_directive_name(clean)
+	if state.opening.len == 0 {
+		if directive_name !in ['if', 'ifdef', 'ifndef'] {
+			state.invalid = true
+			return
+		}
+		state.opening = clean
+		state.depth = 1
+		return
+	}
+	if directive_name in ['if', 'ifdef', 'ifndef'] {
+		state.depth++
+	} else if directive_name == 'endif' {
+		state.depth--
+		if state.depth == 0 {
+			state.closed = true
+		}
+	} else if directive_name in ['else', 'elif'] && state.depth == 1 {
+		state.invalid = true
+	}
+}
+
+fn (state &CWholeFileConditionalScan) condition() ?string {
+	if !state.invalid && state.opening.len > 0 && state.closed {
+		return state.opening
+	}
+	return none
+}
+
 fn c_whole_file_guard_name(directive string) string {
 	name := c_directive_name(directive)
 	if name == 'ifndef' {
@@ -3378,6 +3504,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_maybe_function_macro_aliases.clear()
 	g.c_active_macro_push_stacks.clear()
 	g.c_active_macro_once_paths.clear()
+	g.c_active_macro_header_ifs.clear()
 	g.has_unscanned_forced_c_include = false
 	g.files_with_unscanned_c_includes.clear()
 	g.c_fn_decl_source_files.clear()
@@ -5360,6 +5487,7 @@ fn (mut g FlatGen) replay_c_active_macro_state(top_level_nodes []i32) {
 	g.c_maybe_function_macro_aliases.clear()
 	g.c_active_macro_push_stacks.clear()
 	g.c_active_macro_once_paths.clear()
+	g.c_active_macro_header_ifs.clear()
 	g.has_unscanned_forced_c_include = false
 	g.files_with_unscanned_c_includes.clear()
 	g.initialize_c_active_macro_environment()
@@ -8838,14 +8966,45 @@ fn c_active_macro_directive_state(directive string, mut conditionals []CCacheCon
 // ordinary readable header. Unlike native source includes, headers stay as
 // preprocessor directives, so their macro definitions have to be inspected
 // separately before call arguments are generated.
+fn (mut g FlatGen) promote_c_active_macro_state(scope voidptr) {
+	g.direct_c_include_macros = promote_cgen_string_list_lookup(g.direct_c_include_macros,
+		scope)
+	g.direct_c_dynamic_macros = promote_cgen_string_bool_lookup(g.direct_c_dynamic_macros,
+		scope)
+	g.c_function_like_macros = promote_cgen_string_bool_lookup(g.c_function_like_macros, scope)
+	g.c_maybe_function_like_macros = promote_cgen_string_bool_lookup(g.c_maybe_function_like_macros,
+		scope)
+	g.c_function_macro_aliases = promote_cgen_string_string_lookup(g.c_function_macro_aliases,
+		scope)
+	g.c_maybe_function_macro_aliases = promote_cgen_string_list_lookup(g.c_maybe_function_macro_aliases,
+		scope)
+	g.c_active_macro_push_stacks = promote_cgen_active_macro_stacks(g.c_active_macro_push_stacks,
+		scope)
+	g.c_active_macro_once_paths = promote_cgen_string_bool_lookup(g.c_active_macro_once_paths,
+		scope)
+	g.c_active_macro_header_ifs = promote_cgen_string_string_lookup(g.c_active_macro_header_ifs,
+		scope)
+	g.files_with_unscanned_c_includes = promote_cgen_string_bool_lookup(g.files_with_unscanned_c_includes,
+		scope)
+	g.compiler_quote_include_dirs = promote_cgen_string_list(g.compiler_quote_include_dirs, scope)
+	g.compiler_default_include_dirs = promote_cgen_string_list(g.compiler_default_include_dirs,
+		scope)
+}
+
 fn (mut g FlatGen) collect_included_c_active_macros(include_arg string, source_file string, include_dirs []string, ambient_ambiguous bool) bool {
 	mut active_paths := map[string]bool{}
 	mut found := false
 	for path in g.c_include_scan_paths(include_arg, source_file, include_dirs) {
 		if os.is_file(path) {
 			found = true
+			scope := cgen_worker_scope_begin(true)
 			g.collect_included_c_active_macros_from_file(path, include_dirs, mut active_paths,
 				source_file, ambient_ambiguous)
+			cgen_worker_scope_leave(scope)
+			if scope != unsafe { nil } {
+				g.promote_c_active_macro_state(scope)
+			}
+			cgen_worker_scope_free(scope)
 			break
 		}
 	}
@@ -8861,6 +9020,12 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 	if real_path in active_paths || real_path in g.c_active_macro_once_paths {
 		return
 	}
+	if condition := g.c_active_macro_header_ifs[real_path] {
+		if c_cache_known_condition(condition, g.direct_c_include_macros,
+			g.direct_c_dynamic_macros, g.c_compiler_macro_env_complete) < 0 {
+			return
+		}
+	}
 	text := os.read_file(real_path) or { return }
 	defer {
 		unsafe { text.free() }
@@ -8869,11 +9034,13 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 	defer {
 		active_paths.delete(real_path)
 	}
+	mut whole_file_condition := CWholeFileConditionalScan{}
 	mut conditionals := []CCacheConditional{}
 	mut in_block_comment := false
 	for line in c_join_continued_lines(text) {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
+		whole_file_condition.scan(clean)
 		directive_name := c_directive_name(clean)
 		directive_is_active, directive_is_ambiguous := c_active_macro_directive_state(clean, mut conditionals, mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros, g.c_compiler_macro_env_complete)
 		if !directive_is_active {
@@ -8929,6 +9096,9 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 				g.note_unscanned_c_macro_include(source_file)
 			}
 		}
+	}
+	if condition := whole_file_condition.condition() {
+		g.c_active_macro_header_ifs[real_path] = condition
 	}
 }
 

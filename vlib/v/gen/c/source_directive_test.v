@@ -246,6 +246,50 @@ fn test_pragma_once_header_is_not_replayed_after_undef() {
 	assert 'once_api' !in g.inlined_c_active_macros
 }
 
+fn test_whole_file_condition_cache_handles_complex_guards() {
+	root := os.join_path(os.vtmp_dir(), 'v3_complex_header_guard_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'complex_guard.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(header, '#if !defined(COMPLEX_GUARD) || (defined(KEEP_OPEN) && KEEP_OPEN)\n#define COMPLEX_GUARD\n#define complex_guard_api(p) ((p)->value)\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.set_c_compiler_predefined_macros(map[string]string{}, true)
+	g.initialize_c_active_macro_environment()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert os.real_path(header) in g.c_active_macro_header_ifs
+	assert 'complex_guard_api' in g.inlined_c_active_macros
+
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'undef'
+		typ:   'complex_guard_api'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'complex_guard_api' !in g.inlined_c_active_macros
+
+	alternative := os.join_path(root, 'alternative.h')
+	os.write_file(alternative, '#ifndef ALTERNATIVE_GUARD\n#define ALTERNATIVE_GUARD\n#else\n#define alternative_api(p) ((p)->value)\n#endif\n')!
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${alternative}"'
+	}, source, false)
+	assert os.real_path(alternative) !in g.c_active_macro_header_ifs
+}
+
 fn test_include_next_activates_unscanned_header_fallback() {
 	root := os.join_path(os.vtmp_dir(), 'v3_include_next_macro_state_${os.getpid()}')
 	os.rmdir_all(root) or {}
