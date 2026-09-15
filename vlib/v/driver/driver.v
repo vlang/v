@@ -8284,7 +8284,8 @@ $if !skip_fastc ? {
 			cleanup_c_build_dir(build_dir)
 		}
 		source_file := os.join_path_single(build_dir, 'src.c')
-		staged_binary := os.join_path_single(build_dir, 'out')
+		staged_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), false, false)
+		staged_binary := os.join_path_single(build_dir, staged_output_name)
 		unit_prefix := os.join_path_single(build_dir, 'src')
 		mut rendering_units := fastc.FastcRenderingCUnits{}
 		mut feeding_units := fastc.FastcFeedingCUnits{}
@@ -8449,7 +8450,7 @@ $if !skip_fastc ? {
 		} else {
 			cc_args = compile_base_args.clone()
 			cc_args << user_compile_args
-			cc_args << ['-o', 'out', 'src.c']
+			cc_args << ['-o', staged_output_name, 'src.c']
 			cc_args << final_args
 			command = cmdexec.display(tcc_path, cc_args)
 			shim_dir = fastc.fastc_codesign_shim_dir()

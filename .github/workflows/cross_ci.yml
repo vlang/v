@@ -72,8 +72,11 @@ jobs:
 
       - name: Cross-compilation to Windows
         run: |
-          ./v -os windows cmd/v
-          ./v -os windows examples/2048/2048.v
+          mkdir -p /tmp/v-cross-windows
+          ./v -os windows -b c -o /tmp/v-cross-windows/v.c cmd/v
+          ./v -os windows -b c -o /tmp/v-cross-windows/2048.c examples/2048/2048.v
+          test -s /tmp/v-cross-windows/v.c
+          test -s /tmp/v-cross-windows/2048.c
 
   cross-linux:
     runs-on: ubuntu-24.04
