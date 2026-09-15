@@ -185,7 +185,8 @@ fn (entry ToolCacheEntryDir) prune_replaced_binaries() {
 // published binaries. The creation time also guards against a later reuse of the same index.
 fn windows_binary_file_identity(path string) ?string {
 	w_path := path.replace('/', '\\').to_wide()
-	// to_wide owns an unmanaged buffer that CreateFileW borrows until it returns.
+	// `to_wide` allocates an unmanaged buffer. `CreateFileW` borrows it until it returns,
+	// so keep the buffer alive through that call and free it afterward.
 	defer {
 		unsafe { free(voidptr(w_path)) }
 	}
