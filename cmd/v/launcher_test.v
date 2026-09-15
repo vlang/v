@@ -45,6 +45,22 @@ fn test_launcher_finds_external_commands() {
 	assert option_value == ''
 }
 
+fn test_external_tool_source_prefers_an_executable_file() {
+	root := os.join_path(os.vtmp_dir(), 'external_tool_source_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	base := os.join_path(root, 'vshare')
+	os.mkdir_all(base)!
+	os.write_file(base + '.v', 'module main\n')!
+	assert find_external_tool_source(base)? == base + '.v'
+	os.rm(base + '.v')!
+	assert find_external_tool_source(base)? == base
+	assert find_external_tool_source(os.join_path(root, 'missing')) == none
+}
+
 fn test_json_quote_escapes_report_content() {
 	assert json_quote('a\n"b"\\c\t') == '"a\\n\\"b\\"\\\\c\\t"'
 }

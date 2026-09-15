@@ -223,11 +223,7 @@ fn run_external_tool(args []string, command_index int, command string) {
 	}
 
 	base := os.join_path(vroot, 'cmd', 'tools', tool_name)
-	tool_source := if os.is_dir(base) {
-		base
-	} else if os.is_file(base + '.v') {
-		base + '.v'
-	} else {
+	tool_source := find_external_tool_source(base) or {
 		eprintln('cannot find the `${command}` tool source in `${vroot}`')
 		exit(1)
 	}
@@ -240,6 +236,16 @@ fn run_external_tool(args []string, command_index int, command string) {
 		tool_args << args[command_index..]
 	}
 	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args)
+}
+
+fn find_external_tool_source(base string) ?string {
+	if os.is_file(base + '.v') {
+		return base + '.v'
+	}
+	if os.is_dir(base) {
+		return base
+	}
+	return none
 }
 
 // launch_external_tool starts a `cmd/tools/` program, reusing the binary that was compiled

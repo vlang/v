@@ -1,6 +1,5 @@
 // Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-import v.token
 import term
 
 pub enum ErrorKind {
@@ -35,38 +34,32 @@ pub:
 	message   string @[required]
 	details   string // Details about how to resolve or fix the situation
 	file_path string // file where the error have origin
-	pos       token.Pos // position in the file
-	fix       FixKind @[required]
+	line      int    // one-based line in the file
+	fix       FixKind   @[required]
 	typ       ErrorType @[required]
 }
 
 fn (mut vt Vet) error(msg string, line int, fix FixKind) {
-	pos := token.Pos{
-		line_nr: line + 1
-	}
 	lock vt.errors {
 		vt.errors << VetError{
-			message: msg
+			message:   msg
 			file_path: vt.file
-			pos: pos
-			kind: .error
-			fix: fix
-			typ: .default
+			line:      line + 1
+			kind:      .error
+			fix:       fix
+			typ:       .default
 		}
 	}
 }
 
 fn (mut vt Vet) warn(msg string, line int, fix FixKind) {
-	pos := token.Pos{
-		line_nr: line + 1
-	}
 	mut w := VetError{
-		message: msg
+		message:   msg
 		file_path: vt.file
-		pos: pos
-		kind: .warning
-		fix: fix
-		typ: .default
+		line:      line + 1
+		kind:      .warning
+		fix:       fix
+		typ:       .default
 	}
 	if vt.opt.is_werror {
 		w.kind = .error
@@ -81,40 +74,34 @@ fn (mut vt Vet) warn(msg string, line int, fix FixKind) {
 }
 
 fn (mut vt Vet) notice(msg string, line int, fix FixKind) {
-	pos := token.Pos{
-		line_nr: line + 1
-	}
 	lock vt.notices {
 		vt.notices << VetError{
-			message: msg
+			message:   msg
 			file_path: vt.file
-			pos: pos
-			kind: .notice
-			fix: fix
-			typ: .default
+			line:      line + 1
+			kind:      .notice
+			fix:       fix
+			typ:       .default
 		}
 	}
 }
 
 fn (mut vt Vet) notice_with_file(file string, msg string, line int, fix FixKind) {
-	pos := token.Pos{
-		line_nr: line + 1
-	}
 	lock vt.notices {
 		vt.notices << VetError{
-			message: msg
+			message:   msg
 			file_path: file
-			pos: pos
-			kind: .notice
-			fix: fix
-			typ: .default
+			line:      line + 1
+			kind:      .notice
+			fix:       fix
+			typ:       .default
 		}
 	}
 }
 
 fn (vt &Vet) e2string(err VetError) string {
 	mut kind := '${err.kind}:'
-	mut location := '${err.file_path}:${err.pos.line_nr}:'
+	mut location := '${err.file_path}:${err.line}:'
 	if vt.opt.use_color {
 		kind = term.bold(match err.kind {
 			.warning { term.magenta(kind) }

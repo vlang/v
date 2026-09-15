@@ -1,6 +1,7 @@
 // vtest build: tinyc && !musl? && !sanitized_job?
 import os
 import document as doc
+import v.pref
 
 // fn test_generate_with_pos() {}
 // fn test_generate() {}
@@ -169,4 +170,26 @@ pub fn foo() {}
 	}
 	assert mod_doc.head.merge_comments_without_examples() == '`issue_23338` module overview.'
 	assert mod_doc.contents['foo']!.comments.len == 0
+}
+
+fn test_generate_uses_only_sources_for_the_selected_platform() {
+	mod_dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_files_${os.getpid()}')
+	os.rmdir_all(mod_dir) or {}
+	os.mkdir_all(mod_dir)!
+	defer {
+		os.rmdir_all(mod_dir) or {}
+	}
+	host_os := pref.host_os_name()
+	foreign_os := if host_os == 'windows' { 'linux' } else { 'windows' }
+	os.write_file(os.join_path(mod_dir, 'common.v'), 'module platform_files\n\npub fn common() {}\n')!
+	os.write_file(os.join_path(mod_dir, 'host_${host_os}.c.v'), 'module platform_files\n\npub fn host_specific() {}\n')!
+	os.write_file(os.join_path(mod_dir, 'foreign_${foreign_os}.c.v'), 'module platform_files\n\npub fn foreign_specific() {}\n')!
+	os.write_file(os.join_path(mod_dir, 'backend.js.v'), 'module platform_files\n\npub fn js_specific() {}\n')!
+	os.write_file(os.join_path(mod_dir, 'backend.native.v'), 'module platform_files\n\npub fn native_specific() {}\n')!
+	mod_doc := doc.generate(mod_dir, true, false, .auto)!
+	assert 'common' in mod_doc.contents
+	assert 'host_specific' in mod_doc.contents
+	assert 'foreign_specific' !in mod_doc.contents
+	assert 'js_specific' !in mod_doc.contents
+	assert 'native_specific' !in mod_doc.contents
 }
