@@ -111,6 +111,31 @@ fn test_c_source_references_identifiers_ignores_comments_strings_and_longer_name
 		identifiers)
 }
 
+fn test_target_libc_cached_prefix_refreshes_when_thread_support_changes() {
+	no_threads := '#include <stdint.h>\n'
+	type_only := '#include <pthread.h>\ntypedef struct { pthread_t handle; } __v_thread;\n'
+	runtime := '${type_only}static __v_thread __v_thread_spawn(void);\n'
+	pthread_header := '#include <pthread.h>\n'
+	assert target_libc_cached_prefix_needs_thread_refresh(no_threads,
+		'void main__main(void) { pthread_self(); }')
+	assert !target_libc_cached_prefix_needs_thread_refresh(pthread_header,
+		'void main__main(void) { pthread_self(); }')
+	assert target_libc_cached_prefix_needs_thread_refresh(no_threads,
+		'void main__main(void) { sizeof(__v_thread); }')
+	assert !target_libc_cached_prefix_needs_thread_refresh(type_only,
+		'void main__main(void) { sizeof(__v_thread); }')
+	assert target_libc_cached_prefix_needs_thread_refresh(type_only,
+		'void main__main(void) { __v_thread_spawn(); }')
+	assert !target_libc_cached_prefix_needs_thread_refresh(runtime,
+		'void main__main(void) { __v_thread_spawn(); }')
+	assert target_libc_cached_prefix_needs_thread_refresh(runtime,
+		'void main__main(void) { sizeof(__v_thread); }')
+	assert target_libc_cached_prefix_needs_thread_refresh(runtime, 'void main__main(void) {}')
+	assert target_libc_cached_prefix_needs_thread_refresh(type_only, 'void main__main(void) {}')
+	assert !target_libc_cached_prefix_needs_thread_refresh(no_threads,
+		'// __v_thread pthread_self\nconst char *name = "__v_thread_spawn pthread_create";\n')
+}
+
 fn test_cache_native_public_include_strips_conventional_implementation_macros() {
 	include := cache_native_public_include('/tmp/native.h', [
 		'#define FEATURE 1',

@@ -1298,6 +1298,15 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			g.c_extern_refs[name.clone()] = true
 		}
 	}
+	if batch.needs_thread_runtime {
+		g.needs_thread_runtime = true
+	}
+	if batch.needs_pthread_header {
+		g.needs_pthread_header = true
+	}
+	if batch.needs_thread_type {
+		g.needs_thread_type = true
+	}
 	for name, enabled in batch.libc_compat_fns {
 		if enabled {
 			g.libc_compat_fns[name.clone()] = true
@@ -1638,9 +1647,10 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		available_jobs := g.a.worker_pool.size() + 1
 		// Type declarations use one pool task. Once it finishes, that same worker
 		// can drain a queued body task instead of staying reserved for the whole
-		// function-generation phase.
+		// function-generation phase. Target-header preambles depend on thread use
+		// discovered by body workers, so emit those on the master after they merge.
 		parallel_type_decls := available_jobs > 2 && g.scope_parallel_workers
-			&& !g.program_body_only && g.incremental_fn_names.len == 0
+			&& !g.program_body_only && g.incremental_fn_names.len == 0 && !g.target_libc_headers
 		n_jobs := flat_cgen_job_count(available_jobs, n_items)
 		if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 			if g.scope_parallel_workers {
@@ -2719,6 +2729,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		shared_type_names: g.shared_type_names
 		shared_alias_pointer_shorts: g.shared_alias_pointer_shorts
 		shared_alias_index_ready: g.shared_alias_index_ready
+		needs_pthread_header: g.needs_pthread_header
+		needs_thread_type: g.needs_thread_type
+		needs_thread_runtime: g.needs_thread_runtime
 		const_runtime_inits: if result_only {
 			g.const_runtime_inits
 		} else {
@@ -2740,6 +2753,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		int_ct: g.int_ct
 		output_cross_c: g.output_cross_c
 		subsystem: g.subsystem
+		target_libc_headers: g.target_libc_headers
 		c_flags: g.c_flags
 		suppress_main: g.suppress_main
 		cur_param_names: if result_only {
@@ -3158,6 +3172,15 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		if used {
 			g.c_extern_refs[name.clone()] = true
 		}
+	}
+	if w.needs_thread_runtime {
+		g.needs_thread_runtime = true
+	}
+	if w.needs_pthread_header {
+		g.needs_pthread_header = true
+	}
+	if w.needs_thread_type {
+		g.needs_thread_type = true
 	}
 	for name, enabled in w.libc_compat_fns {
 		if enabled {

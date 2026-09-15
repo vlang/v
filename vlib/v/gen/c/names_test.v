@@ -151,6 +151,26 @@ fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
 	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
 }
 
+fn test_target_libc_opaque_packed_struct_restores_packing() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	name := 'C.TargetOpaque'
+	tc.structs[name] = []types.StructField{}
+	node_id := a.add_node(flat.Node{
+		kind:  .struct_decl
+		value: name
+	})
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.set_target_libc_headers(true)
+	g.register_struct_decl_info_at(int(node_id), name, name, 'main', '/project/main.v', a.nodes[int(node_id)])
+	g.decl_attrs[int(node_id)] = ['packed']
+	g.emit_struct(name)
+	c_code := g.sb.str()
+	assert c_code.contains('#pragma pack(push, 1)\nstruct TargetOpaque;\n#pragma pack(pop)')
+}
+
 fn test_collect_cache_native_c_symbols_only_records_type_declarations() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

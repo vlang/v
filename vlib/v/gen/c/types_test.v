@@ -6,6 +6,59 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_type_references_thread_through_containers() {
+	thread_type := types.Type(types.Struct{
+		name: 'thread'
+	})
+	thread_array := types.Type(types.Array{
+		elem_type: thread_type
+	})
+	assert type_references_thread(thread_type)
+	assert type_references_thread(thread_array)
+	assert type_references_thread(types.Type(types.Struct{
+		name: 'thread dep.Result'
+	}))
+	assert type_references_thread(types.Type(types.Pointer{
+		base_type: thread_array
+	}))
+	assert !type_references_thread(types.Type(types.Array{
+		elem_type: types.Type(types.int_)
+	}))
+}
+
+fn test_precompute_thread_type_usage_scans_interface_fields() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.interface_fields['ThreadHolder'] = [
+		types.StructField{
+			name: 'worker'
+			typ:  types.Type(types.Struct{ name: 'thread' })
+		},
+	]
+	mut g := FlatGen.new()
+	g.tc = &tc
+	g.set_target_libc_headers(true)
+	g.precompute_thread_type_usage()
+	assert g.needs_thread_type
+}
+
+fn test_precompute_thread_type_usage_scans_pthread_backed_fields() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.structs['sync.Mutex'] = [
+		types.StructField{
+			name: 'mutex'
+			typ:  types.Type(types.Struct{ name: 'C.pthread_mutex_t' })
+		},
+	]
+	mut g := FlatGen.new()
+	g.tc = &tc
+	g.set_target_libc_headers(true)
+	g.precompute_thread_type_usage()
+	assert g.needs_pthread_header
+	assert !g.needs_thread_type
+}
+
 fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 	$if !windows && !v3_no_parallel ? {
 		mut ast := flat.FlatAst.new()

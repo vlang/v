@@ -3705,6 +3705,7 @@ fn (mut g FlatGen) callback_wrapper_decls() {
 }
 
 fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
+	g.needs_thread_runtime = true
 	if node.children_count == 0 {
 		g.write('(__v_thread){0}')
 		return
@@ -4594,6 +4595,7 @@ fn (mut g FlatGen) gen_thread_wait_call(fn_node &flat.Node) bool {
 	} else {
 		return false
 	}
+	g.needs_thread_runtime = true
 	tmp := g.tmp_count
 	g.tmp_count++
 	res_name := '__twres${tmp}'
@@ -17484,7 +17486,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		}
 		cfn := c_winapi_wide_export_name(mapped_cfn)
 		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
-		if g.has_used_fn_filter() && !(g.spawn_wrapper_defs.len > 0
+		if g.has_used_fn_filter() && !(g.needs_thread_runtime
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
 			&& !g.used_fn_contains(raw_name) && !g.used_fn_contains(raw_cfn)
 			&& !g.used_fn_contains(cfn) && !referenced_c_externs[raw_name]
@@ -17650,7 +17652,7 @@ fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_with_filter(referenced map[stri
 		}
 		cfn := c_winapi_wide_export_name(mapped_cfn)
 		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
-		if filter_used && g.has_used_fn_filter() && !(g.spawn_wrapper_defs.len > 0
+		if filter_used && g.has_used_fn_filter() && !(g.needs_thread_runtime
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
 			&& !g.used_fn_contains(raw_name) && !g.used_fn_contains(raw_cfn)
 			&& !g.used_fn_contains(cfn) && !referenced[raw_name] && !referenced[raw_cfn]
@@ -17749,6 +17751,9 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if c_symbol_is_compiler_builtin(cfn) {
 		return false
 	}
+	if g.target_libc_headers && c_target_libc_header_declares(cfn) {
+		return false
+	}
 	if cfn in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait']
 		&& g.target.os in ['linux', 'android', 'termux'] && g.c_directives_use_system_libc() {
 		return false
@@ -17832,6 +17837,7 @@ const c_manual_stdlib_declared_fns = {
 	'freopen':          true
 	'freopen_s':        true
 	'fseek':            true
+	'fseeko':           true
 	'ftell':            true
 	'fwrite':           true
 	'getc':             true
@@ -17842,7 +17848,9 @@ const c_manual_stdlib_declared_fns = {
 	'memchr':           true
 	'memcmp':           true
 	'memcpy':           true
+	'memmem':           true
 	'memmove':          true
+	'mempcpy':          true
 	'memset':           true
 	'mkstemp':          true
 	'pclose':           true
@@ -17861,6 +17869,7 @@ const c_manual_stdlib_declared_fns = {
 	'rewind':           true
 	'scanf':            true
 	'setenv':           true
+	'setbuf':           true
 	'setvbuf':          true
 	'snprintf':         true
 	'sprintf':          true
@@ -17887,6 +17896,123 @@ const c_manual_stdlib_declared_fns = {
 	'vsnprintf':        true
 }
 
+// c_target_libc_header_declares reports whether one of the headers included by
+// -target-libc-headers owns the declaration. V declarations are only an
+// approximation of a C signature, so emitting them beside the real declaration
+// can conflict over qualifiers, typedefs, or platform-specific integer widths.
+fn c_target_libc_header_declares(cfn string) bool {
+	return cfn in c_manual_stdlib_declared_fns || cfn.starts_with('pthread_')
+		|| cfn in c_target_libc_additional_declared_fns
+		|| cfn in c_target_libc_posix_declared_fns
+}
+
+const c_target_libc_additional_declared_fns = {
+	'acos':                  true
+	'atomic_thread_fence':   true
+	'ceil':                  true
+	'ceilf':                 true
+	'clock':                 true
+	'clock_gettime':         true
+	'clock_gettime_nsec_np': true
+	'cos':                   true
+	'cosf':                  true
+	'exp':                   true
+	'exp2':                  true
+	'fabs':                  true
+	'floor':                 true
+	'floorf':                true
+	'fmod':                  true
+	'gmtime':                true
+	'gmtime_r':              true
+	'ldexp':                 true
+	'localtime':             true
+	'localtime_r':           true
+	'log':                   true
+	'log1p':                 true
+	'log10':                 true
+	'log2':                  true
+	'logb':                  true
+	'logf':                  true
+	'mktime':                true
+	'nanosleep':             true
+	'pow':                   true
+	'powf':                  true
+	'sin':                   true
+	'sinf':                  true
+	'sqrt':                  true
+	'sqrtf':                 true
+	'strftime':              true
+	'tan':                   true
+	'tanf':                  true
+	'time':                  true
+	'timegm':                true
+	'timespec_get':          true
+}
+
+// c_target_libc_posix_declared_fns contains declarations owned by <dirent.h>,
+// <fcntl.h>, <signal.h>, <sys/stat.h>, <sys/time.h>, and <unistd.h> in target-header mode.
+const c_target_libc_posix_declared_fns = {
+	'_exit':        true
+	'access':       true
+	'alarm':        true
+	'chdir':        true
+	'chmod':        true
+	'chown':        true
+	'close':        true
+	'dup':          true
+	'dup2':         true
+	'execlp':       true
+	'execve':       true
+	'execvp':       true
+	'fcntl':        true
+	'fork':         true
+	'ftruncate':    true
+	'getcwd':       true
+	'getegid':      true
+	'geteuid':      true
+	'getgid':       true
+	'gethostname':  true
+	'getlogin':     true
+	'getpgid':      true
+	'getpgrp':      true
+	'getpid':       true
+	'getppid':      true
+	'gettimeofday': true
+	'getuid':       true
+	'isatty':       true
+	'kill':         true
+	'link':         true
+	'lstat':        true
+	'mkdir':        true
+	'open':         true
+	'opendir':      true
+	'pipe':         true
+	'pread':        true
+	'raise':        true
+	'read':         true
+	'readdir':      true
+	'readlink':     true
+	'rmdir':        true
+	'setpgid':      true
+	'sigaction':    true
+	'sigaddset':    true
+	'sigemptyset':  true
+	'sigismember':  true
+	'signal':       true
+	'sigpending':   true
+	'sigprocmask':  true
+	'sigtimedwait': true
+	'sleep':        true
+	'symlink':      true
+	'syscall':      true
+	'sysconf':      true
+	'tcgetpgrp':    true
+	'tcsetpgrp':    true
+	'unlink':       true
+	'usleep':       true
+	'write':        true
+}
+
 fn (g &FlatGen) c_extern_decl_is_cached_object_fallback(cfn string) bool {
 	return g.cache_split && cfn in g.inlined_c_fns && cfn in g.cache_omitted_c_fns
 		&& cfn !in g.inlined_c_declared_fns && cfn !in g.inlined_c_active_macros
@@ -17904,6 +18030,14 @@ fn (g &FlatGen) c_extern_decl_is_cached_object_fallback(cfn string) bool {
 fn (g &FlatGen) c_extern_decl_has_no_header(source_file string, module_name string) bool {
 	if g.files_with_c_includes[source_file] {
 		return false
+	}
+	// On a freestanding target V does not drive the C build: the project compiles
+	// and links the generated C itself, so `#flag`/`#include` say nothing about
+	// which objects a `fn C.xxx` will be resolved from. A missing prototype is a
+	// hard error there, while one the project's own header also declares is
+	// harmless, so a file that includes no C header of its own gets the prototype.
+	if g.target_libc_headers {
+		return true
 	}
 	if g.files_linking_c_sources[source_file] {
 		return true

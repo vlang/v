@@ -495,6 +495,9 @@ mut:
 	shared_alias_pointer_shorts   map[string]string // alias short name -> shared inner type; '' means ambiguous
 	shared_alias_index_ready      bool
 	needs_shared_runtime          bool
+	needs_pthread_header          bool
+	needs_thread_type             bool
+	needs_thread_runtime          bool
 	const_runtime_inits           []string
 	const_runtime_init_modules    []string
 	runtime_inits                 []string
@@ -514,6 +517,7 @@ mut:
 	// generated header the way the reference compiler did.
 	compile_defines               []string
 	subsystem                     pref.Subsystem
+	target_libc_headers           bool
 	windows_entry_point_generated bool
 	windows_gui_entry_point       bool
 	// C spelling for V's platform-width `int`: `i64` on 64-bit targets, `i32` on
@@ -1503,6 +1507,11 @@ fn cross_cond_top_level_index(cond string, op string) ?int {
 // set_subsystem configures the Windows executable subsystem.
 pub fn (mut g FlatGen) set_subsystem(subsystem pref.Subsystem) {
 	g.subsystem = subsystem
+}
+
+// set_target_libc_headers marks a target that supplies the libc headers itself.
+pub fn (mut g FlatGen) set_target_libc_headers(target_libc_headers bool) {
+	g.target_libc_headers = target_libc_headers
 }
 
 // generated_windows_gui_entry_point reports the GUI decision when this generator emitted a
@@ -3427,6 +3436,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.shared_type_names.clear()
 	g.shared_alias_pointer_shorts.clear()
 	g.needs_shared_runtime = false
+	g.needs_pthread_header = false
+	g.needs_thread_type = false
+	g.needs_thread_runtime = false
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types.clear()
@@ -3513,6 +3525,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
 	g.collect_gen_info(effective_no_parallel)
+	if g.target_libc_headers {
+		g.precompute_thread_type_usage()
+	}
 	g.precompute_qualified_struct_c_types()
 	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
@@ -10620,7 +10635,7 @@ fn (mut g FlatGen) ordered_c_directives(late bool) []string {
 		g.visit_c_directive_module(mod, directives_by_module, mut visiting, mut visited, mut result)
 	}
 	ordered := dedupe_top_level_c_includes(result)
-	if g.c_directives_use_system_libc() {
+	if g.target_libc_headers || g.c_directives_use_system_libc() {
 		return ordered
 	}
 	mut headerless := []string{cap: ordered.len}
@@ -10962,7 +10977,8 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
 		}
-		if !use_system_libc && c_is_ptrace_system_include_directive(directive) {
+		if !use_system_libc && !g.target_libc_headers
+			&& c_is_ptrace_system_include_directive(directive) {
 			continue
 		}
 		if directive.contains('<mach/mach.h>') {
@@ -18041,6 +18057,7 @@ fn (mut g FlatGen) gen_thread_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_i
 	if node.op !in [.eq, .ne] || lhs_type is types.Pointer || rhs_type is types.Pointer || g.tc.c_type(lhs_type) != '__v_thread' || g.tc.c_type(rhs_type) != '__v_thread' {
 		return false
 	}
+	g.needs_thread_runtime = true
 	lhs_name := g.tmp_name()
 	rhs_name := g.tmp_name()
 	g.write('({ __v_thread ${lhs_name} = ')
@@ -18470,15 +18487,33 @@ fn (g &FlatGen) is_module_qualified_enum(base flat.Node) bool {
 
 fn (mut g FlatGen) preamble() {
 	use_system_libc := g.c_directives_use_system_libc()
-	g.writeln('typedef signed char i8;')
-	g.writeln('typedef short i16;')
-	g.writeln('typedef int i32;')
-	g.writeln('typedef long long i64;')
-	g.writeln('typedef unsigned char u8;')
-	g.writeln('typedef unsigned char byte;')
-	g.writeln('typedef unsigned short u16;')
-	g.writeln('typedef unsigned int u32;')
-	g.writeln('typedef unsigned long long u64;')
+	if g.target_libc_headers {
+		// The target's own headers spell the fixed-width types, and every `fn C.xxx`
+		// prototype generated below is checked against them. `unsigned long long`
+		// where the target's <stdint.h> says `unsigned long` is a different type, not
+		// a wider spelling of the same one, so a `u64` parameter conflicts with the
+		// header's `uint64_t` or `size_t`. Alias the target's types instead.
+		g.writeln('#include <stdint.h>')
+		g.writeln('typedef int8_t i8;')
+		g.writeln('typedef int16_t i16;')
+		g.writeln('typedef int32_t i32;')
+		g.writeln('typedef int64_t i64;')
+		g.writeln('typedef uint8_t u8;')
+		g.writeln('typedef uint8_t byte;')
+		g.writeln('typedef uint16_t u16;')
+		g.writeln('typedef uint32_t u32;')
+		g.writeln('typedef uint64_t u64;')
+	} else {
+		g.writeln('typedef signed char i8;')
+		g.writeln('typedef short i16;')
+		g.writeln('typedef int i32;')
+		g.writeln('typedef long long i64;')
+		g.writeln('typedef unsigned char u8;')
+		g.writeln('typedef unsigned char byte;')
+		g.writeln('typedef unsigned short u16;')
+		g.writeln('typedef unsigned int u32;')
+		g.writeln('typedef unsigned long long u64;')
+	}
 	g.writeln('static inline i64 __v_pow_i64(i64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return -1; if (base != 1 && base != -1) return 0; return (exponent & 1) != 0 ? base : 1; } i64 value = 1; i64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
 	g.writeln('static inline u64 __v_pow_u64(u64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return (u64)-1; return base == 1 ? 1 : 0; } u64 value = 1; u64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
 	g.writeln('#ifdef _MSC_VER')
@@ -18499,7 +18534,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('typedef __UINTPTR_TYPE__ uintptr_t;')
 	g.writeln('typedef __INTPTR_TYPE__ intptr_t;')
 	g.writeln('#endif')
-	if !use_system_libc {
+	if !use_system_libc && !g.target_libc_headers {
 		g.writeln('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && !defined(_BSD_TIME_T_DEFINED_) && !defined(_TIME_T_DECLARED)')
 		g.writeln('typedef long long time_t;')
 		g.writeln('#endif')
@@ -18586,6 +18621,14 @@ fn (mut g FlatGen) preamble() {
 }
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
+	// A freestanding target has no hosted libc to include, whatever the program's
+	// own `#include`s name. Those includes are the project's own headers -- a
+	// kernel compiling with `-nostdinc` against its own tree -- so treating any
+	// include as proof of a system libc put <sys/un.h> and the rest of the hosted
+	// set into a translation unit that has none of them.
+	if g.target_libc_headers {
+		return false
+	}
 	for directive in g.preinclude_directives {
 		for line in directive.split_into_lines() {
 			clean := trimmed_space(line)
@@ -18636,13 +18679,7 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#if defined(_WIN32) && defined(__TINYC__)')
 	g.writeln(g.c_local_header_directive(windows_atomic_header))
 	g.writeln('#else')
-	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
-	g.writeln('#define _Atomic volatile')
-	g.writeln('#endif')
-	g.writeln('#include <stdatomic.h>')
-	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
-	g.writeln('#undef _Atomic')
-	g.writeln('#endif')
+	g.gnu_objc_compatible_stdatomic_header()
 	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/syscall.h>')
@@ -18674,6 +18711,16 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.system_execinfo_declarations()
 	g.writeln('')
+}
+
+fn (mut g FlatGen) gnu_objc_compatible_stdatomic_header() {
+	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
+	g.writeln('#define _Atomic volatile')
+	g.writeln('#endif')
+	g.writeln('#include <stdatomic.h>')
+	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
+	g.writeln('#undef _Atomic')
+	g.writeln('#endif')
 }
 
 // system_execinfo_declarations owns the backtrace API the same way the V1 backend
@@ -18809,9 +18856,73 @@ fn (mut g FlatGen) headerless_darwin_pthread_alias(alias string, typ string, gua
 	g.writeln('#endif')
 }
 
+// target_libc_thread_type writes the target-owned representation of a V thread.
+fn (mut g FlatGen) target_libc_thread_type() {
+	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
+}
+
+// target_libc_thread_runtime writes the pthread-backed thread runtime. The hosted
+// and headerless preambles emit it inside a `#ifdef _WIN32` pair; a target that
+// supplies its own libc headers is not Windows, so only this half is needed, and
+// it is written without the guard. It needs <pthread.h>, which that path includes.
+fn (mut g FlatGen) target_libc_thread_runtime() {
+	g.target_libc_thread_type()
+	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return pthread_equal(a.handle, b.handle) != 0; }')
+	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) { fprintf(stderr, "V thread allocation failed\\n"); abort(); } return p; }')
+	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_thread result;')
+	g.writeln('\tpthread_attr_t attr;')
+	g.writeln('\tint rc = pthread_attr_init(&attr);')
+	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread attribute initialization failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_attr_setstacksize(&attr, __v_thread_stack_size);')
+	g.writeln('\tif (rc != 0) { pthread_attr_destroy(&attr); if (cleanup) cleanup(arg); fprintf(stderr, "V thread stack size setup failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_create(&result.handle, &attr, (void*)start, arg);')
+	g.writeln('\tint attr_rc = pthread_attr_destroy(&attr);')
+	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %d\\n", rc); abort(); }')
+	g.writeln('\tif (attr_rc != 0) { fprintf(stderr, "V thread attribute cleanup failed: %d\\n", attr_rc); abort(); }')
+	g.writeln('\treturn result;')
+	g.writeln('}')
+	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
+}
+
+fn (g &FlatGen) uses_pthread() bool {
+	if g.needs_pthread_header || g.needs_thread_runtime {
+		return true
+	}
+	for name in g.c_extern_refs.keys() {
+		if name.starts_with('pthread_') || name.starts_with('C.pthread_') {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut g FlatGen) headerless_libc_preamble() {
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
-	g.writeln(c_stdint_header_text())
+	if g.target_libc_headers {
+		// A freestanding target supplies these headers itself, so include them
+		// instead of restating what they declare. Its own <stdint.h> may spell the
+		// fixed-width types differently than the text below does -- `unsigned long`
+		// where this says `unsigned long long` -- which is a typedef conflict rather
+		// than a compatible redeclaration, and the same applies to every libc
+		// prototype further down. This is the set V's own runtime calls into.
+		for header in ['stdint.h', 'stddef.h', 'stdarg.h', 'inttypes.h', 'stdbool.h', 'stdatomic.h',
+			'errno.h', 'fcntl.h', 'signal.h', 'stdio.h', 'stdlib.h', 'string.h', 'strings.h', 'math.h',
+			'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
+			if header == 'stdatomic.h' {
+				g.gnu_objc_compatible_stdatomic_header()
+			} else {
+				g.writeln('#include <${header}>')
+			}
+		}
+		if g.needs_thread_type || g.uses_pthread() {
+			g.writeln('#include <pthread.h>')
+		}
+	} else {
+		g.writeln(c_stdint_header_text())
+	}
 	g.writeln('#ifndef NULL')
 	g.writeln('#define NULL ((void*)0)')
 	g.writeln('#endif')
@@ -18873,6 +18984,21 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#ifndef _IONBF')
 	g.writeln('#define _IONBF 2')
 	g.writeln('#endif')
+	if g.target_libc_headers {
+		// Everything below declares a hosted libc: FILE, the POSIX structs, and the
+		// prototypes that go with them. A kernel defines those itself, in its own
+		// headers, and a second declaration of `struct stat` or `strlen` conflicts
+		// with the real one instead of describing it. The macros above are all
+		// `#ifndef`-guarded, so they stay. The execinfo declarations are V's own,
+		// not the target's, so they still have to be written.
+		g.headerless_execinfo_declarations()
+		if g.needs_thread_runtime {
+			g.target_libc_thread_runtime()
+		} else if g.needs_thread_type {
+			g.target_libc_thread_type()
+		}
+		return
+	}
 	g.headerless_windows_sdk_types()
 	g.writeln('#if !defined(__FILE_defined) && !defined(_FILE_DEFINED) && !defined(_FILEDEFED) && !defined(__DEFINED_FILE) && !defined(_FILE_DECLARED) && !defined(__FILE_DECLARED)')
 	g.writeln('typedef struct FILE FILE;')

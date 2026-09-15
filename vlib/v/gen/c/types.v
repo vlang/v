@@ -131,6 +131,7 @@ fn (mut g FlatGen) current_fn_optional_type_name(t types.Type) string {
 }
 
 fn (mut g FlatGen) value_c_type(t types.Type) string {
+	g.note_thread_type_usage(t)
 	if c_type := c_alias_value_c_type(t) {
 		return c_type
 	}
@@ -187,6 +188,102 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
 	}
 	return ct
+}
+
+fn type_references_thread(typ types.Type) bool {
+	return match typ {
+		types.Struct {
+			name := trimmed_space(typ.name)
+			short_name := name.all_after_last('.')
+			name == 'thread' || name.starts_with('thread ') || name.starts_with('thread[')
+				|| short_name == 'thread' || short_name.starts_with('thread ')
+				|| short_name.starts_with('thread[')
+		}
+		types.Array { type_references_thread(typ.elem_type) }
+		types.ArrayFixed { type_references_thread(typ.elem_type) }
+		types.Channel { type_references_thread(typ.elem_type) }
+		types.Map {
+			type_references_thread(typ.key_type) || type_references_thread(typ.value_type)
+		}
+		types.Pointer { type_references_thread(typ.base_type) }
+		types.FnType {
+			type_references_thread(typ.return_type) || typ.params.any(type_references_thread(it))
+		}
+		types.OptionType { type_references_thread(typ.base_type) }
+		types.ResultType { type_references_thread(typ.base_type) }
+		types.Alias { type_references_thread(typ.base_type) }
+		types.MultiReturn { typ.types.any(type_references_thread(it)) }
+		else { false }
+	}
+}
+
+fn type_references_pthread(typ types.Type) bool {
+	return match typ {
+		types.Struct {
+			name := trimmed_space(typ.name)
+			name.starts_with('C.pthread_') || name.all_after_last('.').starts_with('pthread_')
+		}
+		types.Array { type_references_pthread(typ.elem_type) }
+		types.ArrayFixed { type_references_pthread(typ.elem_type) }
+		types.Channel { type_references_pthread(typ.elem_type) }
+		types.Map {
+			type_references_pthread(typ.key_type) || type_references_pthread(typ.value_type)
+		}
+		types.Pointer { type_references_pthread(typ.base_type) }
+		types.FnType {
+			type_references_pthread(typ.return_type) || typ.params.any(type_references_pthread(it))
+		}
+		types.OptionType { type_references_pthread(typ.base_type) }
+		types.ResultType { type_references_pthread(typ.base_type) }
+		types.Alias {
+			name := trimmed_space(typ.name)
+			name.starts_with('C.pthread_') || name.all_after_last('.').starts_with('pthread_')
+				|| type_references_pthread(typ.base_type)
+		}
+		types.MultiReturn { typ.types.any(type_references_pthread(it)) }
+		else { false }
+	}
+}
+
+fn (mut g FlatGen) note_thread_type_usage(typ types.Type) {
+	if !g.target_libc_headers {
+		return
+	}
+	if !g.needs_thread_type && type_references_thread(typ) {
+		g.needs_thread_type = true
+	}
+	if !g.needs_pthread_header && type_references_pthread(typ) {
+		g.needs_pthread_header = true
+	}
+}
+
+fn (mut g FlatGen) precompute_thread_type_usage() {
+	for _, fields in g.tc.structs {
+		for field in fields {
+			g.note_thread_type_usage(field.typ)
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			g.note_thread_type_usage(field.typ)
+		}
+	}
+	for _, typ in g.global_types {
+		g.note_thread_type_usage(typ)
+	}
+	for _, params in g.fn_decl_param_types {
+		for typ in params {
+			g.note_thread_type_usage(typ)
+		}
+	}
+	for _, typ in g.fn_decl_ret_types {
+		g.note_thread_type_usage(typ)
+	}
+	for _, variants in g.tc.sum_types {
+		for variant in variants {
+			g.note_thread_type_usage(g.tc.parse_type(variant))
+		}
+	}
 }
 
 fn c_alias_value_c_type(typ types.Type) ?string {

@@ -6082,6 +6082,38 @@ fn merge_incremental_program_body(cached_source string, cached_prefix string, ch
 	return merged[..body_start] + new_section_text + merged[body_start..]
 }
 
+fn target_libc_cached_prefix_needs_thread_refresh(cached_prefix string, current_body string) bool {
+	if c_source_references_identifier_prefix(current_body, 'pthread_')
+		&& !cached_prefix.contains('#include <pthread.h>') {
+		return true
+	}
+	runtime_identifiers := {
+		'__v_thread_equal': true
+		'__v_thread_alloc': true
+		'__v_thread_spawn': true
+		'__v_thread_join':  true
+	}
+	body_level := if c_source_references_identifiers(current_body, runtime_identifiers) {
+		2
+	} else if c_source_references_identifiers(current_body, {
+		'__v_thread': true
+	}) {
+		1
+	} else {
+		0
+	}
+	prefix_level := if c_source_references_identifiers(cached_prefix, runtime_identifiers) {
+		2
+	} else if c_source_references_identifiers(cached_prefix, {
+		'__v_thread': true
+	}) {
+		1
+	} else {
+		0
+	}
+	return prefix_level != body_level
+}
+
 fn merge_cached_generic_program_body(cached_source string, changed_source string) ?string {
 	cached_sections := incremental_c_function_sections(cached_source) or { return none }
 	changed_sections := incremental_c_function_sections(changed_source) or { return none }
@@ -8539,6 +8571,7 @@ pub fn run(args []string) {
 	mut notes_are_errors := false
 	mut fatal_errors := false
 	mut check_overflow := false
+	mut target_libc_headers := false
 	mut force_bounds_checking := false
 	mut print_v_files := false
 	mut print_watched_files := false
@@ -8911,6 +8944,12 @@ pub fn run(args []string) {
 				user_defines << 'nofloat'
 			}
 			i++
+		} else if args[i] == '-target-libc-headers' {
+			// Deliberately not a `freestanding` define: that one selects vlib's
+			// bare-metal paths, which call bare_print/bare_panic out of a
+			// `-bare-builtin-dir`. This target has a libc, in its own headers.
+			target_libc_headers = true
+			i++
 		} else if args[i] == '-no-bounds-checking' {
 			if 'no_bounds_checking' !in user_defines {
 				user_defines << 'no_bounds_checking'
@@ -9151,6 +9190,11 @@ pub fn run(args []string) {
 	if os.getenv(v3_embedded_env) != '1' {
 		maybe_delegate_v3_to_vvmrc(input_file, verbose)
 	}
+	// The JS compatibility path returns before the common backend validation below.
+	if target_libc_headers && backend == 'js' {
+		eprintln('option `-target-libc-headers` requires the C backend')
+		exit(1)
+	}
 	if backend == 'js' {
 		js_output := if output_file.len > 0 {
 			output_file
@@ -9248,6 +9292,18 @@ pub fn run(args []string) {
 	}
 	target := pref.target_from(target_os, target_arch) or {
 		eprintln(err.msg())
+		exit(1)
+	}
+	if target_libc_headers && output_cross_c {
+		eprintln('option `-target-libc-headers` does not support portable cross output')
+		exit(1)
+	}
+	if target_libc_headers && target.os == 'windows' {
+		eprintln('option `-target-libc-headers` does not support Windows targets')
+		exit(1)
+	}
+	if target_libc_headers && backend != 'c' {
+		eprintln('option `-target-libc-headers` requires the C backend')
 		exit(1)
 	}
 	if backend == 'fastc' && target.os == 'windows' && subsystem == .windows {
@@ -9527,6 +9583,7 @@ pub fn run(args []string) {
 	prefs.ccompiler = effective_c_compiler
 	prefs.no_parallel = current_no_parallel
 	prefs.c99 = c99
+	prefs.target_libc_headers = target_libc_headers
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.enable_globals = enable_globals_compat
 	prefs.user_defines = user_defines
@@ -9867,6 +9924,7 @@ pub fn run(args []string) {
 		'subsystem=${prefs.subsystem}',
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
+		'target_libc_headers=${prefs.target_libc_headers}',
 		'thread_stack_size=${prefs.thread_stack_size}',
 		'module_search_paths=${prefs.module_search_paths.join(',')}',
 		'macos_v3_caller_environment=${pref.has_macos_v3_caller_environment()}',
@@ -11727,6 +11785,7 @@ pub fn run(args []string) {
 			g.set_output_cross_c(prefs.output_cross_c)
 			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
+			g.set_target_libc_headers(prefs.target_libc_headers)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
@@ -11792,6 +11851,7 @@ pub fn run(args []string) {
 			g.set_output_cross_c(prefs.output_cross_c)
 			g.set_compile_defines(prefs.user_defines)
 			g.set_subsystem(prefs.subsystem)
+			g.set_target_libc_headers(prefs.target_libc_headers)
 			g.set_thread_stack_size(prefs.thread_stack_size)
 			g.set_show_test_stats(show_test_stats)
 			g.set_show_test_summary(is_test_command)
@@ -12116,6 +12176,13 @@ pub fn run(args []string) {
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
 						}
+						if prefs.target_libc_headers
+							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix,
+								generated_source) {
+							trace_v3_cache_fallback('cached program prefix has stale target thread support')
+							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+							restart_v3_after_cache_invalidation()
+						}
 						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file, incremental_prefix_path, incremental_tcc_declarations_path, cached_prefix, compile_signature, mut cache_state) or {
 							message := err.msg()
 							if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file, macos_v3_c_error_dir, c_compiler, message, [
@@ -12136,6 +12203,13 @@ pub fn run(args []string) {
 							eprintln('error reading cached generic prefix ${generic_cache_entry.prefix}: ${err.msg()}')
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
+						}
+						if prefs.target_libc_headers
+							&& target_libc_cached_prefix_needs_thread_refresh(cached_prefix,
+								generated_source) {
+							trace_v3_cache_fallback('cached program prefix has stale target thread support')
+							os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+							restart_v3_after_cache_invalidation()
 						}
 						cached_declarations := os.read_file(generic_cache_entry.declarations) or {
 							eprintln('error reading cached generic declarations ${generic_cache_entry.declarations}: ${err.msg()}')
@@ -14190,6 +14264,16 @@ fn c_source_references_identifiers(source string, identifiers map[string]bool) b
 	return false
 }
 
+fn c_source_references_identifier_prefix(source string, prefix string) bool {
+	if prefix.len == 0 {
+		return false
+	}
+	if _ := c_source_referenced_identifier_with_prefix(source, map[string]bool{}, prefix) {
+		return true
+	}
+	return false
+}
+
 fn c_source_file_scope_identifiers(source string) map[string]bool {
 	mut identifiers := map[string]bool{}
 	mut brace_depth := 0
@@ -14276,6 +14360,10 @@ fn c_source_file_scope_identifiers(source string) map[string]bool {
 }
 
 fn c_source_referenced_identifier(source string, identifiers map[string]bool) ?string {
+	return c_source_referenced_identifier_with_prefix(source, identifiers, '')
+}
+
+fn c_source_referenced_identifier_with_prefix(source string, identifiers map[string]bool, prefix string) ?string {
 	mut i := 0
 	for i < source.len {
 		if source[i] in [`"`, `'`] {
@@ -14318,7 +14406,7 @@ fn c_source_referenced_identifier(source string, identifiers map[string]bool) ?s
 			i++
 		}
 		identifier := source[start..i]
-		if identifiers[identifier] {
+		if identifiers[identifier] || (prefix.len > 0 && identifier.starts_with(prefix)) {
 			return identifier
 		}
 	}

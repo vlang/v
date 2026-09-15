@@ -161,6 +161,24 @@ see also `v help build`.
       that the `$if cross ?` guards in the standard library select their portable
       path instead of a platform syscall, and no backtrace support is baked in.
 
+   -target-libc-headers
+      The target supplies the C library headers itself, so V includes them
+      rather than restating what they declare. A kernel is the case: it
+      compiles the generated C with `-nostdinc -ffreestanding` against its own
+      header tree, and defines `struct stat`, `FILE` and the rest for itself.
+
+      V otherwise decides this from whether the program has any `#include` of
+      its own, which reads a project's own headers as proof that the host libc
+      is present, and then emits the full hosted set (`<sys/un.h>`,
+      `<pthread.h>`, `<sys/epoll.h>`) into a unit that has none of them. It
+      cannot be inferred from `-os` either, because the same OS also hosts
+      ordinary programs that link the host's libc.
+
+      This is not `-freestanding`, which means no libc at all and needs a
+      `-bare-builtin-dir`. Here there is a libc; it is the target's own. Windows
+      targets, non-C backends, and portable `-os cross`/`-cross` output are
+      not currently supported by this mode.
+
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
       By default, the target OS is the host system.
