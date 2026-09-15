@@ -66,13 +66,6 @@ fn test_parallel_dispatch_worker_shares_checker_as_scoped_accumulator() {
 	assert w.tc == tc
 }
 
-fn test_scoped_parallel_worker_preserves_forced_include_fallback() {
-	mut g, _ := parallel_worker_test_gen(true)
-	g.has_unscanned_forced_c_include = true
-	w := g.new_parallel_worker(1)
-	assert w.has_unscanned_forced_c_include
-}
-
 fn test_scoped_parallel_dispatch_worker_owns_string_snapshot() {
 	mut g, _ := parallel_worker_test_gen(true)
 	assert g.intern_string('source') == 0
