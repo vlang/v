@@ -361,8 +361,8 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	if code == 0 && report_state.fallback_file != '' {
 		submit_v3_fallback_report(fallback, report_state)
 	}
-	if code != 0 && v1_fallback_exit_identifies_compiler_failure(args) {
-		report_v1_fallback_failure(report_state)
+	if code != 0 {
+		report_v1_fallback_exit(report_state, v1_fallback_exit_identifies_compiler_failure(args))
 	}
 	os.rm(report_state.fallback_file) or {}
 	os.rmdir_all(report_state.c_error_dir) or {}
@@ -513,28 +513,33 @@ fn v1_fallback_profile_option_consumes_value(args []string, idx int) bool {
 	return false
 }
 
-// report_v1_fallback_failure explains whose errors the user is looking at. V
-// keeps its own diagnostics quiet while a fallback is pending, so when the retry
-// fails too, everything on screen comes from the compatibility compiler, which is
-// confusing whenever the two disagree about the program.
-fn report_v1_fallback_failure(state RetryState) {
+// report_v1_fallback_exit explains why V3's diagnostics are absent after an
+// unsuccessful compatibility retry. A run-like command may have compiled and
+// returned its program's status, so only identify compiler output when the
+// command cannot have run user code.
+fn report_v1_fallback_exit(state RetryState, compiler_failure bool) {
 	if state.fallback_file == '' {
 		return
 	}
 	payload := os.read_file(state.fallback_file) or { return }
-	for note in v1_fallback_failure_notes(payload) {
+	for note in v1_fallback_exit_notes(payload, compiler_failure) {
 		eprintln(note)
 	}
 }
 
-// v1_fallback_failure_notes turns a staged fallback payload into the notes shown
-// after a failed retry.
-fn v1_fallback_failure_notes(payload string) []string {
+// v1_fallback_exit_notes turns a staged fallback payload into the notes shown
+// after an unsuccessful retry.
+fn v1_fallback_exit_notes(payload string, compiler_failure bool) []string {
 	// The stage is only recorded when the payload carries a second line.
 	stage := if payload.contains('\n') { payload.all_after('\n').trim_space() } else { '' }
 	stopped_in := if stage == '' { '' } else { ' during ${stage}' }
+	fallback_note := if compiler_failure {
+		'note: the V ${v_version} compatibility compiler failed too, so the errors above are its own.'
+	} else {
+		'note: the V ${v_version} compatibility retry exited unsuccessfully, so any errors above are its own; the exit status may instead come from the program.'
+	}
 	return [
-		'note: the V ${v_version} compatibility compiler failed too, so the errors above are its own.',
+		fallback_note,
 		'note: V stopped${stopped_in} and kept its diagnostics quiet for this retry; re-run with `-new-compiler` to see them.',
 	]
 }
