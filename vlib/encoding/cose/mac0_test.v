@@ -1,0 +1,316 @@
+// Tests for COSE_Mac0. HMAC tags are deterministic, so every test can
+// match the reference vector bytes-exactly.
+module cose
+
+import encoding.base64
+import encoding.cbor
+import encoding.hex
+
+// HMAC-enc-01.json from cose-wg/Examples (Unlicense): HS256 mac0,
+// implicit "direct" recipient, empty unprotected, no external AAD.
+const hmac_hs256_key_b64u = 'hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYg'
+const hmac_enc01_message = 'D18443A10105A054546869732069732074686520636F6E74656E742E5820A1A848D3471F9D61EE49018D244C824772F223AD4F935293F1789FC3A08D8C58'
+
+const sample_text = 'This is the content.'
+
+fn test_mac0_hs256_matches_reference_vector() {
+	k := base64.url_decode(hmac_hs256_key_b64u)
+	key := Key.symmetric(k)
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	got := mac0(sample_text.bytes(), key, protected: hp)!
+	want := hex.decode(hmac_enc01_message)!
+	assert got == want
+}
+
+fn test_verify_mac0_accepts_reference_vector() {
+	k := base64.url_decode(hmac_hs256_key_b64u)
+	key := Key.symmetric(k)
+	msg := hex.decode(hmac_enc01_message)!
+	payload := verify_mac0(msg, key)!
+	assert payload == sample_text.bytes()
+}
+
+fn test_mac0_truncated_hs256_64_tag_size() {
+	key := Key.symmetric([u8(0x42)].repeat(16))
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_64
+	signed := mac0('hi'.bytes(), key, protected: hp)!
+	msg := Mac0Message.decode(signed)!
+	// HMAC 256/64 truncates to 8 bytes per RFC 9053 §3.1.
+	assert msg.tag.len == 8
+	got := verify_mac0(signed, key)!
+	assert got == 'hi'.bytes()
+}
+
+fn test_mac0_hs384_roundtrip() {
+	key := Key.symmetric([u8(0x33)].repeat(48))
+	mut hp := Headers{}
+	hp.algorithm = .hmac_384_384
+	signed := mac0('hello'.bytes(), key, protected: hp)!
+	msg := Mac0Message.decode(signed)!
+	assert msg.tag.len == 48
+	got := verify_mac0(signed, key)!
+	assert got == 'hello'.bytes()
+}
+
+fn test_mac0_hs512_roundtrip() {
+	key := Key.symmetric([u8(0x77)].repeat(64))
+	mut hp := Headers{}
+	hp.algorithm = .hmac_512_512
+	signed := mac0('hello'.bytes(), key, protected: hp)!
+	msg := Mac0Message.decode(signed)!
+	assert msg.tag.len == 64
+	got := verify_mac0(signed, key)!
+	assert got == 'hello'.bytes()
+}
+
+// HMAC-ENC-02: HS384 mac0 reference vector (cose-wg/Examples).
+fn test_mac0_hs384_matches_reference_vector() {
+	k := base64.url_decode('hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYgAESIzd4iZqiEiIyQlJico')
+	key := Key.symmetric(k)
+	mut hp := Headers{}
+	hp.algorithm = .hmac_384_384
+	got := mac0(sample_text.bytes(), key, protected: hp)!
+	want :=
+		hex.decode('D18443A10106A054546869732069732074686520636F6E74656E742E5830998D26C6459AAEECF44ED20CE00C8CCEDF0A1F3D22A92FC05DB08C5AEB1CB594CAAF5A5C5E2E9D01CCE7E77A93AA8C62')!
+	assert got == want
+}
+
+// HMAC-ENC-03: HS512 mac0 reference vector (cose-wg/Examples).
+fn test_mac0_hs512_matches_reference_vector() {
+	k :=
+		base64.url_decode('hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYgAESIzd4iZqiEiIyQlJicoqrvM3e7_paanqKmgsbKztA')
+	key := Key.symmetric(k)
+	mut hp := Headers{}
+	hp.algorithm = .hmac_512_512
+	got := mac0(sample_text.bytes(), key, protected: hp)!
+	want :=
+		hex.decode('D18443A10107A054546869732069732074686520636F6E74656E742E58404A555BF971F7C1891D9DDF304A1A132E2D6F817449474D813E6D04D65962BED8BBA70C17E1F5308FA39962959A4B9B8D7DA8E6D849B209DCD3E98CC0F11EDDF2')!
+	assert got == want
+}
+
+fn test_verify_mac0_rejects_wrong_key() {
+	wrong := Key.symmetric([u8(0x00)].repeat(32))
+	msg := hex.decode(hmac_enc01_message)!
+	if _ := verify_mac0(msg, wrong) {
+		assert false, 'wrong key must not verify'
+	} else {
+		assert err is VerificationFailed
+	}
+}
+
+fn test_verify_mac0_rejects_tampered_tag() {
+	k := base64.url_decode(hmac_hs256_key_b64u)
+	key := Key.symmetric(k)
+	mut msg := hex.decode(hmac_enc01_message)!
+	// Last byte is the tail of the tag bstr; flip a bit.
+	msg[msg.len - 1] ^= 0x01
+	if _ := verify_mac0(msg, key) {
+		assert false, 'tampered tag must not verify'
+	} else {
+		assert err is VerificationFailed
+	}
+}
+
+fn test_mac0_external_aad_is_authenticated() {
+	k := base64.url_decode(hmac_hs256_key_b64u)
+	key := Key.symmetric(k)
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	a := mac0(sample_text.bytes(), key, protected: hp)!
+	b := mac0(sample_text.bytes(), key, protected: hp, external_aad: 'context'.bytes())!
+	assert a != b
+}
+
+fn test_mac0_detached_payload() {
+	k := base64.url_decode(hmac_hs256_key_b64u)
+	key := Key.symmetric(k)
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	signed := mac0([]u8{}, key, protected: hp, detached_payload: 'remote'.bytes())!
+	msg := Mac0Message.decode(signed)!
+	assert msg.payload == none
+	got := verify_mac0(signed, key, detached_payload: 'remote'.bytes())!
+	assert got == 'remote'.bytes()
+}
+
+fn test_verify_mac0_rejects_detached_override_of_attached_payload() {
+	key := Key.symmetric([]u8{len: 32, init: 1})
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	maced := mac0('attached'.bytes(), key, protected: hp)!
+	if _ := verify_mac0(maced, key, detached_payload: 'other'.bytes()) {
+		assert false, 'detached input must not override an attached payload'
+	} else {
+		assert err.msg().contains('cannot be used when the message contains an attached payload')
+	}
+	msg := Mac0Message.decode(maced)!
+	if _ := msg.verify(key, 'other'.bytes(), []u8{}) {
+		assert false, 'low-level verification must not override an attached payload'
+	} else {
+		assert err.msg().contains('does not match the attached message payload')
+	}
+	mut uncomputed := Mac0Message{
+		protected: hp
+		payload:   'attached'.bytes()
+	}
+	if _ := uncomputed.compute(key, 'other'.bytes(), []u8{}) {
+		assert false, 'low-level MAC computation must not override an attached payload'
+	} else {
+		assert err.msg().contains('does not match the attached message payload')
+	}
+}
+
+fn test_mac0_rejects_undersized_hmac_keys() {
+	algorithms := [Algorithm.hmac_256_64, .hmac_256_256, .hmac_384_384, .hmac_512_512]
+	undersized := [15, 31, 47, 63]
+	for i, alg in algorithms {
+		mut hp := Headers{}
+		hp.algorithm = alg
+		if _ := mac0('payload'.bytes(), Key.symmetric([]u8{len: undersized[i]}), protected: hp) {
+			assert false, '${alg.name()} must reject an undersized key'
+		} else {
+			assert err.msg().contains('key of at least')
+		}
+	}
+}
+
+fn test_mac0_enforces_key_operations() {
+	mut hp := Headers{}
+	hp.algorithm = .hmac_256_256
+	mut create_key := Key.symmetric([]u8{len: 32, init: 1})
+	create_key.key_ops = [.mac_verify]
+	if _ := mac0('payload'.bytes(), create_key, protected: hp) {
+		assert false, 'key_ops without mac_create must reject MAC creation'
+	} else {
+		assert err.msg().contains('key_ops')
+	}
+
+	signed := mac0('payload'.bytes(), Key.symmetric([]u8{len: 32, init: 1}), protected: hp)!
+	mut verify_key := Key.symmetric([]u8{len: 32, init: 1})
+	verify_key.key_ops = [.mac_create]
+	if _ := verify_mac0(signed, verify_key) {
+		assert false, 'key_ops without mac_verify must reject MAC verification'
+	} else {
+		assert err.msg().contains('key_ops')
+	}
+}
+
+fn test_mac0_rejects_invalid_header_buckets_on_creation() {
+	key := Key.symmetric([]u8{len: 32, init: 1})
+	mut protected := Headers{}
+	protected.algorithm = .hmac_256_256
+	if _ := mac0('payload'.bytes(), key,
+		protected: protected
+		unprotected: Headers{
+			algorithm: .hmac_256_256
+		}
+	) {
+		assert false, 'MAC creation must reject duplicate header labels across buckets'
+	} else {
+		assert err is MalformedMessage
+	}
+}
+
+fn test_unknown_decoded_key_algorithm_remains_constrained() {
+	encoded := hex.decode('a30104031903e8205820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	if _ := compute_mac(.hmac_256_256, roundtripped, 'payload'.bytes()) {
+		assert false, 'an unsupported decoded algorithm must not become unconstrained'
+	} else {
+		assert err.msg().contains('unsupported algorithm 1000')
+	}
+}
+
+fn test_text_decoded_key_algorithm_remains_constrained() {
+	encoded := hex.decode('a301040363666f6f205820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	if _ := compute_mac(.hmac_256_256, roundtripped, 'payload'.bytes()) {
+		assert false, 'a text-valued decoded algorithm must not become unconstrained'
+	} else {
+		assert err.msg().contains('unsupported algorithm "foo"')
+	}
+}
+
+fn test_key_decode_preserves_future_and_text_operations() {
+	encoded := hex.decode('a3010404830a1903e866637573746f6d205820' + '11'.repeat(32))!
+	key := Key.decode(encoded)!
+	roundtripped := Key.decode(key.encode()!)!
+	roundtripped.check_operation(.mac_verify)!
+	if _ := roundtripped.check_operation(.mac_create) {
+		assert false, 'preserved unknown operations must not remove the key_ops restriction'
+	} else {
+		assert err.msg().contains('key_ops does not permit')
+	}
+	assert roundtripped.raw_key_ops.len == 2
+}
+
+fn test_key_decode_rejects_duplicate_operations() {
+	for encoded in [
+		hex.decode('a3010404820a0a205820' + '11'.repeat(32))!,
+		hex.decode('a30104048261616161205820' + '11'.repeat(32))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'key_ops entries must be unique'
+		} else {
+			assert err.msg().contains('duplicate key_ops entry')
+		}
+	}
+}
+
+fn test_key_decode_rejects_duplicate_labels() {
+	for encoded in [
+		hex.decode('a301040104205820' + '11'.repeat(32))!,
+		hex.decode('a40104617800617801205820' + '11'.repeat(32))!,
+		hex.decode('a401040305180307205820' + '11'.repeat(32))!,
+		hex.decode('a4010461780078017801205820' + '11'.repeat(32))!,
+	] {
+		if _ := Key.decode(encoded) {
+			assert false, 'duplicate COSE_Key labels must be rejected'
+		} else {
+			assert err.msg().contains('duplicate')
+		}
+	}
+}
+
+fn test_key_decode_rejects_non_label_map_keys() {
+	encoded := hex.decode('a30104205820' + '11'.repeat(32) + '410000')!
+	if _ := Key.decode(encoded) {
+		assert false, 'COSE_Key labels must be integers or text strings'
+	} else {
+		assert err.msg().contains('label is neither int nor tstr')
+	}
+}
+
+fn test_key_decode_rejects_symmetric_key_without_material() {
+	if _ := Key.decode(hex.decode('a10104')!) {
+		assert false, 'a symmetric COSE_Key must contain k'
+	} else {
+		assert err.msg().contains('missing k parameter')
+	}
+}
+
+fn test_key_decode_rejects_present_empty_key_ops() {
+	encoded := hex.decode('a301040480205820' + '11'.repeat(32))!
+	if _ := Key.decode(encoded) {
+		assert false, 'a present key_ops array must not be empty'
+	} else {
+		assert err.msg().contains('key_ops array must not be empty')
+	}
+}
+
+fn test_mac0_decodes_indefinite_length_outer_array() {
+	mut p := cbor.new_packer(cbor.EncodeOpts{})
+	p.pack_array_indef()!
+	p.pack_bytes([]u8{})
+	p.pack_value(Headers{}.to_value())!
+	p.pack_null()
+	p.pack_bytes([u8(1)])
+	p.pack_break()!
+	msg := Mac0Message.decode(p.bytes())!
+	assert msg.payload == none
+	assert msg.tag == [u8(1)]
+}
