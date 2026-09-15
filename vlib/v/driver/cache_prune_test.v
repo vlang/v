@@ -291,7 +291,8 @@ V3_LOCAL V3MacroStaticType v3_macro_static_make(void) {
 
 fn test_cache_c_flags_without_forced_inputs_drops_forced_files() {
 	filtered := cache_c_flags_without_forced_inputs(['-DFEATURE=1', '-include', '/tmp/forced.h',
-		'-I/tmp/inc', '-imacros', '/tmp/macros.h', '-DOTHER'])
+		'-I/tmp/inc', '-imacros', '/tmp/macros.h', '-include=/tmp/joined.h',
+		'-imacros=/tmp/joined_macros.h', '-DOTHER'])
 	assert filtered == ['-DFEATURE=1', '-I/tmp/inc', '-DOTHER']
 }
 

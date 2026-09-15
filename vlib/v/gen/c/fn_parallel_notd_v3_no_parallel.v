@@ -2672,6 +2672,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		mods_with_c_libs: g.mods_with_c_libs
 		mods_with_c_includes: g.mods_with_c_includes
 		inlined_c_active_macros: g.inlined_c_active_macros
+		has_unscanned_forced_c_include: g.has_unscanned_forced_c_include
+		files_with_unscanned_c_includes: g.files_with_unscanned_c_includes
+		c_fn_decl_source_files: g.c_fn_decl_source_files
 		inlined_c_static_fns: g.inlined_c_static_fns
 		libc_compat_fns: g.libc_compat_fns.clone()
 		tc: if result_only {

@@ -15905,6 +15905,13 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				&& g.voidptr_value_arg_needs_address(arg_id, arg_node, g.usable_expr_type(arg_id), param_types[arg_idx], true) {
 				g.write('&')
 				g.gen_expr(arg_id)
+			} else if arg_idx < typed_param_count
+				&& g.c_voidptr_param_arg_needs_cast(fn_name, callee_name, param_types[arg_idx], arg_id) {
+				// A pointer handed to a `voidptr` parameter goes through `void*`, so it
+				// converts to whatever pointer the real C prototype declares.
+				g.write('v_c_voidptr_arg(')
+				g.gen_expr(arg_id)
+				g.write(')')
 			} else if cabi := g.c_call_arg_cabi_cast(arg_idx, typed_param_count, param_types, arg_id, is_native_variadic_fn) {
 				// Lower the argument to the C ABI: platform `int` stays C `int` (value
 				// and callback-pointer args, plus `%d`-style value varargs), matching the
@@ -17724,6 +17731,12 @@ fn c_macro_safe_extern_decl(cfn string, declaration string) string {
 	return declaration.replace_once('${cfn}(', '(${cfn})(')
 }
 
+fn c_symbol_is_compiler_builtin(name string) bool {
+	cfn := name.all_after_last('.')
+	return cfn.starts_with('__atomic_') || cfn.starts_with('__builtin_')
+		|| cfn.starts_with('__sync_')
+}
+
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if cfn.contains('.') {
 		return false
@@ -17733,7 +17746,7 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	}
 	// Compiler builtins (`__atomic_fetch_add`, `__builtin_expect`, `__sync_*`)
 	// are provided by the C compiler itself; clang rejects a prototype for them.
-	if cfn.starts_with('__atomic_') || cfn.starts_with('__builtin_') || cfn.starts_with('__sync_') {
+	if c_symbol_is_compiler_builtin(cfn) {
 		return false
 	}
 	if cfn in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait']
@@ -18386,6 +18399,69 @@ fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, para
 		}
 	}
 	return none
+}
+
+// c_voidptr_param_arg_needs_cast reports whether the argument for a `voidptr`
+// parameter of a `C.` function has to be cast to `void*` at the call site.
+//
+// A `fn C.` declaration can only spell such a slot as `voidptr`, but the C
+// function behind it is free to declare it as a concrete pointer — the atomics in
+// thirdparty/stdatomic are `atomic_load_u64(uint64_t*)`, not `(void*)`. C
+// converts implicitly only to and from `void*`, never between two incompatible
+// pointer types, so handing a `NodePayloadTable**` straight to `uint64_t*` is an
+// error on every compiler that does not downgrade it to a warning (GCC 14+,
+// Clang 16+). Casting to the declared `void*` makes the argument convert to
+// whichever pointer the real prototype uses.
+//
+// Only a pointer argument is cast. A value, a null literal and an expression that
+// is already `voidptr` need nothing, and a bare `C.` function name is left alone
+// for the same reason the fn-pointer path above leaves it alone: the C compiler
+// already has its real prototype, including qualifiers no `fn C.` can spell.
+fn (g &FlatGen) c_voidptr_param_arg_needs_cast(fn_name string, callee_name string, param_type types.Type, arg_id flat.NodeId) bool {
+	if !type_is_void_pointer(param_type) {
+		return false
+	}
+	// Compiler intrinsics infer their exact types from the call arguments. In
+	// particular, the overflow builtins require a pointer to a concrete integer
+	// type for their result slot, so routing that pointer through `void*` is invalid.
+	if c_symbol_is_compiler_builtin(fn_name) || c_symbol_is_compiler_builtin(callee_name) {
+		return false
+	}
+	// Function-like macros can inspect the typed operand itself, for example with
+	// `((p)->field)`, so changing that operand to `void*` breaks their expansion.
+	if fn_name.all_after_last('.') in g.inlined_c_active_macros
+		|| callee_name.all_after_last('.') in g.inlined_c_active_macros {
+		return false
+	}
+	// A header that the selected compiler can find but CGen cannot inspect may
+	// provide a function-like macro. All C directives share one generated C
+	// translation unit, so an unresolved include from any V file can affect this call.
+	if g.c_symbol_may_be_from_unscanned_header(fn_name, callee_name) {
+		return false
+	}
+	if g.is_c_extern_fn_name_arg(arg_id) {
+		return false
+	}
+	arg_type := cgen_unalias_type(g.usable_expr_type(arg_id))
+	if arg_type !is types.Pointer {
+		return false
+	}
+	if type_is_void_pointer(arg_type) || type_is_fn_value(arg_type) {
+		return false
+	}
+	return true
+}
+
+fn (g &FlatGen) c_symbol_may_be_from_unscanned_header(fn_name string, callee_name string) bool {
+	if g.c_extern_forced_decls[fn_name] || g.c_extern_forced_decls[callee_name]
+		|| g.c_extern_forced_decls[fn_name.all_after_last('.')]
+		|| g.c_extern_forced_decls[callee_name.all_after_last('.')] {
+		return false
+	}
+	if g.has_unscanned_forced_c_include || g.files_with_unscanned_c_includes.len > 0 {
+		return true
+	}
+	return false
 }
 
 // is_assumed_int_c_const_arg reports whether the argument expression is a bare

@@ -3439,9 +3439,10 @@ fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target p
 			continue
 		}
 		name := rest[..end]
-		// Function-like macros are still definitely defined, but their expansion
-		// cannot be used as a literal include target.
-		macros[name] = rest[end..].trim_space()
+		// Preserve the whitespace after the name: a function-like macro starts
+		// immediately with `(`, while an object-like replacement starts after a
+		// separating space. CGen uses that distinction when classifying C calls.
+		macros[name] = rest[end..]
 	}
 	return macros, true
 }
@@ -3457,9 +3458,14 @@ fn cache_c_flags_without_forced_inputs(flags []string) []string {
 	mut out := []string{cap: flags.len}
 	mut i := 0
 	for i < flags.len {
-		if flags[i].trim_space() in ['-include', '-imacros'] {
+		clean := flags[i].trim_space()
+		if clean in ['-include', '-imacros'] {
 			// Skip the option together with its file operand.
 			i += 2
+			continue
+		}
+		if clean.starts_with('-include=') || clean.starts_with('-imacros=') {
+			i++
 			continue
 		}
 		out << flags[i]
@@ -11657,6 +11663,18 @@ pub fn run(args []string) {
 		} else {
 			used_fns
 		}
+		mut cgen_compiler_predefined_macros := map[string]string{}
+		mut cgen_compiler_macro_env_complete := false
+		if !cgen_cache_hit {
+			mut cgen_macro_flags := cgen.cache_directive_flags(a, prefs.vroot, prefs.target,
+				prefs.compile_values)
+			cgen_macro_flags << user_c_flags
+			native_inputs_language := cgen.cache_native_inputs_language(a, prefs.vroot,
+				cgen_macro_flags, prefs.c99, prefs.ccompiler, prefs.target)
+			cgen_compiler_predefined_macros, cgen_compiler_macro_env_complete =
+				cache_c_compiler_predefined_macros(cgen_macro_flags, c_compiler, prefs.target,
+					native_inputs_language)
+		}
 		if cgen_cache_hit && !cgen_prepared_hit {
 			os.cp(cgen_cache_entry.source, cache_plan_file) or {
 				eprintln('error restoring cached C plan ${cgen_cache_entry.source}: ${err.msg()}')
@@ -11683,6 +11701,8 @@ pub fn run(args []string) {
 			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
+			g.set_c_compiler_predefined_macros(cgen_compiler_predefined_macros,
+				cgen_compiler_macro_env_complete)
 			g.set_prod(prefs.is_prod)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
@@ -11746,6 +11766,8 @@ pub fn run(args []string) {
 			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
+			g.set_c_compiler_predefined_macros(cgen_compiler_predefined_macros,
+				cgen_compiler_macro_env_complete)
 			g.set_prod(prefs.is_prod)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
