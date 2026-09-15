@@ -87,7 +87,8 @@ fn test_watch_run_reloads_on_source_change() {
 }
 
 fn write_versioned_source(source_path string, version string) ! {
-	os.write_file(source_path, "import os\nfn main() {\n\tos.write_file(os.args[1], '${version}') or { panic(err) }\n}\n")!
+	os.write_file(source_path,
+		"import os\nfn main() {\n\tos.write_file(os.args[1], '${version}') or { panic(err) }\n}\n")!
 }
 
 fn wait_for_output(output_path string, mut process os.Process) string {

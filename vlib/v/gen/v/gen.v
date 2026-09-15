@@ -104,32 +104,33 @@ fn (mut fa FieldAlign) max_len(line_nr int) int {
 // Gen holds the formatter state for one output buffer.
 pub struct Gen {
 mut:
-	a               &flat.FlatAst = unsafe { nil }
-	out             strings.Builder
-	indent          int
-	on_newline      bool
-	in_init         bool
-	file_id         int
-	source          string
-	comments        []flat.Comment
-	comment_i       int
-	source_end      int = -1
-	migrate_json2   bool
-	json_qualifier  string
-	json_import_id  int = -1
-	skip_decls      map[int]bool
-	selective_json  bool
-	implied_imports []string
-	in_array_init   bool
-	is_debug        bool
-	is_new_int      bool
-	is_translated   bool
-	in_c_function   bool
-	backend         string = 'c'
-	formatter_types map[string]FormatterTypeSource
-	array_breaks    []bool
-	array_depth     int
-	in_index        bool
+	a                &flat.FlatAst = unsafe { nil }
+	out              strings.Builder
+	indent           int
+	on_newline       bool
+	in_init          bool
+	file_id          int
+	source           string
+	comments         []flat.Comment
+	comment_i        int
+	source_end       int = -1
+	migrate_json2    bool
+	json_qualifier   string
+	json_import_id   int = -1
+	skip_decls       map[int]bool
+	selective_json   bool
+	implied_imports  []string
+	in_array_init    bool
+	is_debug         bool
+	is_new_int       bool
+	is_translated    bool
+	in_c_function    bool
+	backend          string = 'c'
+	formatter_types  map[string]FormatterTypeSource
+	array_breaks     []bool
+	array_depth      int
+	in_index         bool
+	in_string_interp bool
 	// suppress_mut skips the `mut ` prefix on an assignment (used for C-style
 	// `for` loop init clauses, whose variable the parser always marks mutable).
 	suppress_mut bool
@@ -183,6 +184,7 @@ pub fn (mut g Gen) reset() {
 	g.array_breaks.clear()
 	g.array_depth = 0
 	g.in_index = false
+	g.in_string_interp = false
 	g.suppress_trailing_comments = 0
 }
 
@@ -532,14 +534,18 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 		}
 		if wrote_any && !label_continues {
 			adjacent_consts := prev == .const_decl && kind == .const_decl && int(previous) >= 0
-				&& !g.source_has_blank_line_between(g.a.node(previous).pos.end, g.a.node(id).pos.offset)
+				&& !g.source_has_blank_line_between(
+					g.a.node(previous).pos.end, g.a.node(id).pos.offset,
+				)
 			both_statements := top_level_kind_is_statement(prev)
 				&& top_level_kind_is_statement(kind)
 			same_unseparated_group := prev == kind
-				&& kind in [.import_decl, .global_decl, .directive, .c_fn_decl]
+				&& kind in [.import_decl, .global_decl, .directive, .c_fn_decl, .type_decl]
 				&& int(previous) !in g.attrs && int(id) !in g.attrs
 			source_c_group := int(previous) >= 0
-				&& !g.source_has_blank_line_between(g.a.node(previous).pos.end, g.a.node(id).pos.offset)
+				&& !g.source_has_blank_line_between(
+					g.a.node(previous).pos.end, g.a.node(id).pos.offset,
+				)
 				&& ((prev == .directive && g.a.node(id).value.starts_with('C.'))
 					|| (prev == .global_decl && kind == .struct_decl
 						&& g.a.node(id).value.starts_with('C.'))
@@ -1064,6 +1070,15 @@ fn (mut g Gen) expr(id flat.NodeId) {
 				g.expr(receiver)
 			} else {
 				g.expr(receiver)
+				receiver_end := g.rightmost_source_end(receiver)
+				mut continuation_indent := false
+				if receiver_end >= 0 && g.source_has_line_break_between(receiver_end, n.pos.end) {
+					if !g.on_newline {
+						g.writeln('')
+					}
+					g.indent++
+					continuation_indent = true
+				}
 				if source := g.a.formatter_sources[int(id)] {
 					// comptime method shorthand `recv.$method(args)`
 					g.write('.${source}')
@@ -1074,6 +1089,9 @@ fn (mut g Gen) expr(id flat.NodeId) {
 					g.write(')')
 				} else {
 					g.write('.${n.value}')
+				}
+				if continuation_indent {
+					g.indent--
 				}
 			}
 		}
@@ -1157,13 +1175,15 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		}
 		.range {
 			g.expr(g.a.child(n, 0))
-			g.write(if n.value == '...' {
-				'...'
-			} else if g.in_index {
-				'..'
-			} else {
-				' .. '
-			})
+			g.write(
+				if n.value == '...' {
+					'...'
+				} else if g.in_index {
+					'..'
+				} else {
+					' .. '
+				},
+			)
 			if n.children_count > 1 {
 				g.expr(g.a.child(n, 1))
 			}
@@ -1235,7 +1255,9 @@ fn (mut g Gen) infix_expr(id flat.NodeId) {
 	if g.infix_continues_on_next_line(lhs, rhs) {
 		g.indent++
 		if n.op in [.logical_and, .logical_or] {
-			g.writeln('')
+			if !g.on_newline {
+				g.writeln('')
+			}
 			g.write('${op_str(n.op)} ')
 		} else {
 			g.writeln(' ${op_str(n.op)}')
@@ -1389,7 +1411,7 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 		g.array_breaks << source_break
 			|| (first_width > 0 && g.output_line_len() + first_width > formatter_array_first_break)
 	}
-	line_break := source_break || g.array_breaks[g.array_depth - 1]
+	line_break := source_break || (children.len > 1 && g.array_breaks[g.array_depth - 1])
 	mut indented := false
 	// An element's trailing comment is held back until its separating comma has been written,
 	// so that the source's `0, // 0` does not come out as `0 // 0` with the comma stranded on
@@ -1416,8 +1438,8 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 		} else {
 			width := g.array_expr_width(child)
 			current_len := g.output_line_len()
-			if current_len > formatter_array_wrap_break
-				|| (width > 0 && current_len + 2 + width > formatter_max_line_len) {
+			if current_len >= formatter_array_wrap_break
+				|| (width > 0 && current_len + 2 + width >= formatter_max_line_len) {
 				g.end_array_element(pending_comment_end, true)
 				pending_comment_end = -1
 				if !indented {
@@ -1617,25 +1639,73 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		g.json_migration_call(kind, children[1..])
 		return
 	}
+	callee_continues := g.selector_starts_on_new_line(children[0])
 	g.expr(children[0])
-	g.write('(')
+	if callee_continues {
+		g.indent++
+	}
+	defer {
+		if callee_continues {
+			g.indent--
+		}
+	}
 	args := children[1..]
+	g.write('(')
+	if !g.migrate_json2 && g.is_legacy_json_decode(children[0]) && args.len > 0 {
+		first := g.a.node(args[0])
+		if first.kind == .array_init && first.children_count == 0 {
+			g.write(first.typ)
+			if args.len > 1 {
+				g.write(', ')
+				g.expr_list(args[1..], ', ')
+			}
+			g.write(')')
+			return
+		}
+	}
 	if g.call_args_expanded(id, args) {
 		g.expanded_call_args(id, args)
 		g.write(')')
 		return
 	}
+	if g.call_args_hanging(args) {
+		g.hanging_call_args(args)
+		g.write(')')
+		return
+	}
 	for i, aid in args {
-		a := g.a.node(aid)
-		if a.is_mut {
-			g.write('mut ')
-		}
-		g.expr(aid)
+		g.call_arg(aid)
 		if i < args.len - 1 {
 			g.write(', ')
 		}
 	}
 	g.write(')')
+}
+
+fn (mut g Gen) regular_call_args(args []flat.NodeId) {
+	mut continuation_indent := false
+	for i, aid in args {
+		if i > 0 {
+			g.write(', ')
+			width := g.node_source_width(aid)
+			tail_width := if i < args.len - 1 { 2 } else { 1 }
+			if !g.in_string_interp && width > 0
+				&& g.output_line_len() + width + tail_width > formatter_max_line_len {
+				if g.out.len > 0 && g.out.last_n(1) == ' ' {
+					g.out.go_back(1)
+				}
+				g.writeln('')
+				if !continuation_indent {
+					g.indent++
+					continuation_indent = true
+				}
+			}
+		}
+		g.call_arg(aid)
+	}
+	if continuation_indent {
+		g.indent--
+	}
 }
 
 fn (g &Gen) call_args_expanded(id flat.NodeId, args []flat.NodeId) bool {
@@ -1662,6 +1732,73 @@ fn (g &Gen) call_args_expanded(id flat.NodeId, args []flat.NodeId) bool {
 	// The opening parenthesis is already present in the output line and in source.
 	projected_width := g.output_line_len() + source.len - 1
 	return source.contains('\n') || projected_width > formatter_max_line_len
+}
+
+fn (g &Gen) call_args_hanging(args []flat.NodeId) bool {
+	if g.in_string_interp || args.len < 2 {
+		return false
+	}
+	for i := 1; i < args.len; i++ {
+		previous_end := g.rightmost_source_end(args[i - 1])
+		current_start := g.leftmost_source_start(args[i])
+		if previous_end >= 0 && current_start >= previous_end
+			&& g.source_has_line_break_between(previous_end, current_start) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) hanging_call_args(args []flat.NodeId) {
+	mut hanging_indent := false
+	mut mut_prefix_written := false
+	for i, aid in args {
+		a := g.a.node(aid)
+		if a.is_mut && !mut_prefix_written {
+			g.write('mut ')
+		}
+		mut_prefix_written = false
+		g.expr(aid)
+		if i >= args.len - 1 {
+			continue
+		}
+		current_end := g.rightmost_source_end(aid)
+		next_start := g.leftmost_source_start(args[i + 1])
+		if current_end >= 0 && next_start >= current_end
+			&& g.source_has_line_break_between(current_end, next_start) {
+			gap := g.source_span(current_end, next_start) or { '' }
+			next_is_mut := g.a.node(args[i + 1]).is_mut
+			mut_before_break := next_is_mut && gap.contains('\n')
+				&& gap.all_before_last('\n').contains('mut')
+			if mut_before_break {
+				g.writeln(', mut')
+				mut_prefix_written = true
+			} else {
+				g.writeln(',')
+			}
+			if g.source_has_blank_line_between(current_end, next_start) {
+				g.writeln('')
+			}
+			if !hanging_indent {
+				g.indent++
+				hanging_indent = true
+			}
+		} else {
+			g.write(', ')
+		}
+	}
+	if hanging_indent {
+		g.indent--
+	}
+}
+
+fn (g &Gen) selector_starts_on_new_line(id flat.NodeId) bool {
+	n := g.a.node(id)
+	if n.kind != .selector || n.children_count == 0 {
+		return false
+	}
+	receiver_end := g.rightmost_source_end(g.a.child(n, 0))
+	return receiver_end >= 0 && g.source_has_line_break_between(receiver_end, n.pos.end)
 }
 
 fn call_args_start_on_new_line(source string) bool {
@@ -1703,12 +1840,7 @@ fn (mut g Gen) expanded_call_args(id flat.NodeId, args []flat.NodeId) {
 		g.indent++
 		g.expanded_regular_call_args(args[..first_named])
 	} else {
-		for i, arg in args[..first_named] {
-			g.call_arg(arg)
-			if i < first_named - 1 {
-				g.write(', ')
-			}
-		}
+		g.regular_call_args(args[..first_named])
 		g.writeln(',')
 		g.indent++
 	}
@@ -1726,7 +1858,9 @@ fn (mut g Gen) expanded_regular_call_args(args []flat.NodeId) {
 			continue
 		}
 		if i == args.len - 1
-			|| g.source_line(g.a.node(args[i + 1]).pos.offset) > g.source_line(g.a.node(arg).pos.end) {
+			|| g.source_line(g.a.node(args[i + 1]).pos.offset) > g.source_line(
+				g.a.node(arg).pos.end,
+			) {
 			g.writeln('')
 		} else {
 			g.write(' ')
@@ -1777,6 +1911,15 @@ fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
 		return callee.value
 	}
 	return none
+}
+
+fn (g &Gen) is_legacy_json_decode(callee_id flat.NodeId) bool {
+	callee := g.a.node(callee_id)
+	if callee.kind == .selector && callee.children_count > 0 && callee.value == 'decode' {
+		receiver := g.a.child_node(callee, 0)
+		return receiver.kind == .ident && receiver.value == 'json'
+	}
+	return g.selective_json && callee.kind == .ident && callee.value == 'decode'
 }
 
 fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
@@ -2613,7 +2756,7 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 		// so keep such a literal exactly as written instead of re-escaping them
 		// to `\n`. The comments of any embedded expression are copied along with
 		// it, so they must not be emitted a second time later on.
-		if interp_text_spans_lines(source) {
+		if interp_text_spans_lines(source) || interp_has_literal_dollar(source) {
 			g.write(source)
 			g.skip_comments_before(n.pos.end)
 			return
@@ -2646,16 +2789,31 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 			g.write(escape_string(c.value, quote))
 		} else if c.kind == .directive && c.value == 'string_interp_format' {
 			g.write('\${')
+			was_in_string_interp := g.in_string_interp
+			g.in_string_interp = true
 			g.expr(g.a.child(c, 0))
+			g.in_string_interp = was_in_string_interp
 			g.write(':${c.typ}')
 			g.write('}')
 		} else {
 			g.write('\${')
+			was_in_string_interp := g.in_string_interp
+			g.in_string_interp = true
 			g.expr(cid)
+			g.in_string_interp = was_in_string_interp
 			g.write('}')
 		}
 	}
 	g.write(quote_str)
+}
+
+fn interp_has_literal_dollar(source string) bool {
+	for i := 0; i + 1 < source.len; i++ {
+		if source[i] == `$` && source[i + 1] >= `0` && source[i + 1] <= `9` {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) assign_stmt(id flat.NodeId) {
@@ -2804,7 +2962,9 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 		if !g.is_empty(post) {
 			g.for_post_clause(post)
 		}
-		g.write(' ')
+		if g.out.len == 0 || g.out.last_n(1) != ' ' {
+			g.write(' ')
+		}
 	} else if !g.is_empty(cond) {
 		g.write(' ')
 		g.expr(cond)
@@ -2943,9 +3103,14 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 	} else {
 		g.expr(cond)
 	}
-	g.in_init = in_init
-	g.write(' ')
 	then_blk := g.a.node(children[1])
+	g.in_init = in_init
+	cond_end := g.rightmost_source_end(cond)
+	if cond_end >= 0 && g.source_has_line_break_between(cond_end, then_blk.pos.offset) {
+		g.writeln('')
+	} else {
+		g.write(' ')
+	}
 	if is_compact {
 		g.compact_expr_block(children[1])
 	} else {
@@ -3087,9 +3252,23 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 			rest := if ncond <= bchildren.len { bchildren[ncond..] } else { []flat.NodeId{} }
 			for i, c in conds {
 				if i > 0 {
-					g.write(', ')
+					width := g.array_expr_width(c)
+					previous_end := g.rightmost_source_end(conds[i - 1])
+					current_start := g.leftmost_source_start(c)
+					source_break := previous_end >= 0 && current_start >= previous_end
+						&& g.source_has_line_break_between(previous_end, current_start)
+					if source_break
+						|| (width > 0 && g.output_line_len() + width + 2 > formatter_max_line_len) {
+						if g.out.len > 0 && g.out.last_n(1) == ' ' {
+							g.out.go_back(1)
+						}
+						g.writeln('')
+					}
 				}
 				g.match_cond(c)
+				if i < conds.len - 1 {
+					g.write(', ')
+				}
 			}
 			if g.match_branch_is_compact(b, rest) {
 				g.write(' ')
@@ -3170,6 +3349,9 @@ fn (g &Gen) compact_expr_ids(ids []flat.NodeId) ?[]flat.NodeId {
 	}
 	if stmt.kind != .block {
 		return none
+	}
+	if stmt.value.len > 0 {
+		return [ids[0]]
 	}
 	mut expressions := []flat.NodeId{}
 	for stmt_id in g.a.children_of(stmt) {
@@ -3323,6 +3505,19 @@ fn (mut g Gen) comptime_if_expr(id flat.NodeId) {
 fn (mut g Gen) comptime_if_expr_branch(id flat.NodeId) {
 	n := g.a.node(id)
 	if n.kind == .block {
+		if g.source_block_is_compact(n) && n.children_count <= 1 {
+			g.write('{')
+			if n.children_count == 1 {
+				g.write(' ')
+				in_init := g.in_init
+				g.in_init = true
+				g.stmt(g.a.child(n, 0))
+				g.in_init = in_init
+				g.write(' ')
+			}
+			g.write('}')
+			return
+		}
 		g.writeln('{')
 		g.stmt_list_ids(g.a.children_of(n))
 		g.indent++
@@ -3772,7 +3967,11 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int, compact bool) {
 				}
 				g.write(' = ')
 				g.expr(g.a.child(f, 0))
-				suffix_width = g.struct_field_default_width(fid) + 2
+				suffix_width = if gp.len > 1 {
+					g.struct_field_attr_default_width(fid) + 1
+				} else {
+					g.struct_field_default_width(fid) + 2
+				}
 			}
 		}
 		if gp.len > 1 {
@@ -4276,6 +4475,18 @@ fn (g &Gen) struct_field_default_width(fid flat.NodeId) int {
 	return g.array_expr_width(g.a.child(f, 0))
 }
 
+fn (g &Gen) struct_field_attr_default_width(fid flat.NodeId) int {
+	f := g.a.node(fid)
+	if f.children_count == 0 {
+		return 0
+	}
+	value := g.a.child_node(f, 0)
+	if value.kind == .block && value.value == 'unsafe' {
+		return 'unsafe{}'.len
+	}
+	return g.struct_field_default_width(fid)
+}
+
 // struct_field_suffix_alignments returns the columns for the three things that can follow a
 // field's type: its `= default`, its inline attributes and its trailing comment. The name and
 // type columns are handled by aggregate_field_alignments; these three line up what comes after.
@@ -4313,7 +4524,11 @@ fn (mut g Gen) struct_field_suffix_alignments(fields []flat.NodeId) (map[int]int
 		if f.children_count > 0 {
 			default_align.add_info(type_width, line, has_break)
 			default_width := g.struct_field_default_width(fid)
-			suffix = default_width + 2
+			suffix = if gp.len > 1 {
+				g.struct_field_attr_default_width(fid) + 1
+			} else {
+				default_width + 2
+			}
 			// A default that wraps over several lines has no single column to measure from.
 			suffix_known = default_width > 0
 		}

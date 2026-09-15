@@ -857,7 +857,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.benchmark_skip()
 		tls_bench.skip()
 		if !hide_skips {
-			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip, normalised_relative_file, 0,
+			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
+				normalised_relative_file, 0,
 				preparation: 1 * time.microsecond
 			), mtc)
 		}
@@ -939,7 +940,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		if compile_r.exit_code != 0 {
 			ts.benchmark_fail()
 			tls_bench.fail()
-			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail, '${normalised_relative_file}\n>> compilation failed:\n${compile_r.output}', cmd_duration,
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n>> compilation failed:\n${compile_r.output}',
+				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
 			ts.add_failed_cmd(reproduce_cmd)
@@ -1008,7 +1011,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark_fail()
 			tls_bench.fail()
 			cmd_duration = d_cmd.elapsed() - (fail_retry_delay_ms * details.retry)
-			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail, '${normalised_relative_file}\n${full_failure_output}', cmd_duration,
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n${full_failure_output}', cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
 			ts.add_failed_cmd(reproduce_cmd)
@@ -1020,7 +1024,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	ts.benchmark_ok()
 	tls_bench.ok()
 	if !hide_oks {
-		ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok, normalised_relative_file, cmd_duration,
+		ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok,
+			normalised_relative_file, cmd_duration,
 			preparation: compile_cmd_duration
 		), cmd_duration, mtc)
 	}

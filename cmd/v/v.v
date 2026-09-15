@@ -277,7 +277,8 @@ fn run_external_tool(args []string, command_index int, command string) {
 		'new', 'init' {
 			'vcreate'
 		}
-		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade' {
+		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
+		'upgrade' {
 			'vpm'
 		}
 		'vlib-docs' {
@@ -299,9 +300,21 @@ fn run_external_tool(args []string, command_index int, command string) {
 	}
 	mut tool_args := []string{}
 	if command_index >= 0 {
-		tool_args << args[command_index..]
+		tool_args = external_tool_runtime_args(command, prefix_args, args[command_index..])
 	}
 	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args)
+}
+
+fn external_tool_runtime_args(command string, prefix_args []string, command_args []string) []string {
+	mut tool_args := []string{}
+	// `v build-tools` consumes compiler options itself and applies them to every
+	// tool in its inventory. Keep prefix options visible to that tool after the
+	// launcher has used the same options to build the cached executable.
+	if command == 'build-tools' {
+		tool_args << prefix_args
+	}
+	tool_args << command_args
+	return tool_args
 }
 
 fn find_external_tool_source(base string) ?string {
@@ -321,7 +334,7 @@ fn find_external_tool_source(base string) ?string {
 fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string) {
 	if !tool_cache_is_disabled() {
 		vexe := os.real_path(os.executable())
-		build_args := clean_compiler_selection_flags(prefix_args)
+		build_args := external_tool_build_args(prefix_args)
 		if entry := tool_cache_entry(vexe, vroot, tool_name, tool_source, build_args) {
 			reason := tool_cache_stale_reason(entry)
 			if reason == '' {
@@ -351,6 +364,14 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 	driver_args << ['run', tool_source]
 	driver_args << tool_args
 	driver.run(clean_compiler_selection_flags(driver_args))
+}
+
+// external_tool_build_args keeps compiler options that affect a tool binary while dropping
+// modes that deliberately do not produce one. Those modes still apply to the requested tool
+// command, but passing `-check` to the private cache build makes the compiler exit successfully
+// without creating the executable that the launcher must run.
+fn external_tool_build_args(prefix_args []string) []string {
+	return clean_compiler_selection_flags(prefix_args).filter(it !in ['-check', '-c'])
 }
 
 fn print_help(args []string, command_index int) {
@@ -608,8 +629,8 @@ fn submit_v3_fallback_report(fallback string, state RetryState) {
 	payload := os.read_file(state.fallback_file) or { return }
 	kind := payload.all_before('\n').trim_space()
 	if kind == 'inline_asm'
-		|| os.getenv('V_C_ERROR_BUG_REPORT_DISABLED').trim_space().to_lower() in ['1', 'true', 'yes',
-			'on'] {
+		|| os.getenv('V_C_ERROR_BUG_REPORT_DISABLED').trim_space().to_lower() in ['1', 'true',
+			'yes', 'on'] {
 		return
 	}
 	custom_url := os.getenv('V_C_ERROR_BUG_REPORT_URL').trim_space().trim_right('/')

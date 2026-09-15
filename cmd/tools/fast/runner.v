@@ -180,7 +180,8 @@ fn cmd_run(args []string) ! {
 	// between here and the delete keeps its claim (no separate count-then-delete race). A
 	// failed DELETE (db full/locked/I/O) is surfaced, not logged as released.
 	if ok == 0 && !already {
-		migrate_exec(mut db, "DELETE FROM fast_meta WHERE key = 'history_ref' AND NOT EXISTS (SELECT 1 FROM benchmarks)")!
+		migrate_exec(mut db,
+			"DELETE FROM fast_meta WHERE key = 'history_ref' AND NOT EXISTS (SELECT 1 FROM benchmarks)")!
 		if !history_claimed(db) {
 			elog('no benchmarks stored; released the history claim on the empty database')
 		}

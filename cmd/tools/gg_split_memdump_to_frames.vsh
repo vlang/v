@@ -26,7 +26,7 @@ fn main() {
 	log.info('file size: ${original.len}')
 	log.info('Memory use after reading: ${gc_memory_use()}')
 	mut n := 0
-	for start := 0; start < original.len;  {
+	for start := 0; start < original.len; {
 		gc_collect()
 		idx :=
 			original.index_after_(separator, start + separator.len) // ensure that we advance each time

@@ -13,6 +13,27 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 	]
 }
 
+fn test_external_tool_build_args_drop_non_binary_modes() {
+	assert external_tool_build_args(['-silent', '-N', '-W', '-check']) == ['-silent', '-N', '-W']
+	assert external_tool_build_args(['-new-compiler', '-c', '-cc', 'clang']) == ['-cc', 'clang']
+}
+
+fn test_build_tools_receives_prefix_compiler_options() {
+	prefix := ['-silent', '-N', '-W', '-check']
+	assert external_tool_runtime_args('build-tools', prefix, ['build-tools']) == [
+		'-silent',
+		'-N',
+		'-W',
+		'-check',
+		'build-tools',
+	]
+	assert external_tool_runtime_args('fmt', prefix, ['fmt', '-verify', 'file.v']) == [
+		'fmt',
+		'-verify',
+		'file.v',
+	]
+}
+
 fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
 	assert ownership_compiler_is_required(['-autofree', 'main.v'])
 	assert ownership_compiler_is_required(['-ownership', 'main.v'])
@@ -423,17 +444,19 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['run', 'main.v', '-skip-running'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['run', 'main.v', '-generate-c-project',
 		'generated'])
-	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.c', 'run', 'main.v', '-b',
-		'js'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.c', 'run', 'main.v',
+		'-b', 'js'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.js', 'run', 'main.v',
 		'-b', 'c'])
 	// V 0.5.2 runs direct tests with explicit executable outputs.
 	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-output', 'test-bin', 'example_test.v'])
-	assert !v1_fallback_exit_identifies_compiler_failure(['-stats', '-o', 'test-bin', 'example_test.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-stats', '-o', 'test-bin',
+		'example_test.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-checker-fixture', '-output', 'test-bin',
 		'example_test.v'])
-	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v', '-stats'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v',
+		'-stats'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.v', '-output', 'test-bin',
 		'-checker-fixture'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v',

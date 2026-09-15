@@ -5464,7 +5464,14 @@ fn (p &Parser) comptime_cond_name_is_flag(cond string, name string, end int) boo
 		return true
 	}
 	match name {
-		'macos', 'darwin', 'mac', 'ios', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'termux', 'solaris', 'wasm32_emscripten', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64', 'i386', 'x86', 'arm64', 'aarch64', 'arm32', 'rv32', 'riscv32', 'rv64', 'riscv64', 's390x', 'ppc', 'ppc64', 'ppc64le', 'loongarch64', 'sparc64', 'wasm32', 'little_endian', 'big_endian', 'debug', 'test', 'native', 'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm', 'gcc', 'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding', 'nofloat', 'threads' {
+		'macos', 'darwin', 'mac', 'ios', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd',
+		'dragonfly', 'android', 'termux', 'solaris', 'wasm32_emscripten', 'posix', 'unix', 'bsd',
+		'x64', 'x32', 'amd64', 'i386', 'x86', 'arm64', 'aarch64', 'arm32', 'rv32', 'riscv32', 'rv64',
+		'riscv64', 's390x', 'ppc', 'ppc64', 'ppc64le', 'loongarch64', 'sparc64', 'wasm32',
+		'little_endian', 'big_endian', 'debug', 'test', 'native',
+		'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm', 'gcc',
+		'clang', 'mingw', 'msvc', 'cplusplus', 'gcboehm_opt', 'prealloc', 'autofree',
+		'no_bounds_checking', 'freestanding', 'nofloat', 'threads' {
 			return true
 		}
 		else {}
@@ -6880,7 +6887,17 @@ fn (mut p Parser) parse_comptime_expr_block() flat.NodeId {
 	if p.tok != .lcbr {
 		return flat.empty_node
 	}
+	block_start := p.span_start()
 	ids := p.parse_block_body()
+	if p.prefs.is_fmt {
+		start := p.add_children(ids)
+		return p.a.add_node(flat.Node{
+			kind:           .block
+			children_start: start
+			children_count: flat.child_count(ids.len)
+			pos:            p.span_to(block_start)
+		})
+	}
 	if ids.len == 0 {
 		return flat.empty_node
 	}
@@ -11261,6 +11278,9 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 	p.mark_formatter_local_selector(sel, lhs)
 	if p.tok == .lpar {
 		if field_name.starts_with('@') {
+			if p.prefs.is_fmt {
+				p.a.formatter_sources[int(sel)] = field_name
+			}
 			p.a.nodes[int(sel)].value = field_name[1..]
 		}
 		lhs_node := p.a.nodes[int(lhs)]
@@ -14910,9 +14930,9 @@ fn write_utf8_codepoint(buf &u8, j int, code u32) int {
 }
 
 fn is_builtin_type(name string) bool {
-	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'byte',
-		'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'usize', 'isize', 'array',
-		'map', 'mapnode', '_result', '_option', 'any']
+	return name in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
+		'byte', 'bool', 'string', 'rune', 'char', 'voidptr', 'charptr', 'byteptr', 'usize', 'isize',
+		'array', 'map', 'mapnode', '_result', '_option', 'any']
 }
 
 fn parser_name_can_start_pointer_type(name string) bool {

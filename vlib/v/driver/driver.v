@@ -466,10 +466,10 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'), support_flags.join('\x00'),
-		c99.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version, target.os,
-		target.arch, target.abi, target.endian, target.pointer_bits.str(), target.object_format,
-		use_platform_non_c_compiler.str()] {
+	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'),
+		support_flags.join('\x00'), c99.str(), pic_flag, target_args.join('\x00'), compiler_path,
+		compiler_version, target.os, target.arch, target.abi, target.endian,
+		target.pointer_bits.str(), target.object_format, use_platform_non_c_compiler.str()] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -1198,8 +1198,8 @@ fn publish_v3_cached_executable(source string, destination string) {
 fn c_flag_token_is_link_only(token string) bool {
 	clean := token.trim(' \t\r\n"\'')
 	if clean.starts_with('-l') || clean.starts_with('-L') || clean.starts_with('-Wl,')
-		|| clean in ['-ObjC', '-all_load', '-bundle', '-dynamiclib', '-shared', '-static', '-rdynamic',
-			'-pie', '-no-pie'] {
+		|| clean in ['-ObjC', '-all_load', '-bundle', '-dynamiclib', '-shared', '-static',
+			'-rdynamic', '-pie', '-no-pie'] {
 		return true
 	}
 	return clean.ends_with('.a') || clean.ends_with('.so') || clean.contains('.so.')
@@ -5839,7 +5839,8 @@ fn incremental_program_snapshot(a &flat.FlatAst, source_files []string) V3Increm
 				declaration.write_string('\t${attribute_signature}')
 				declaration_parts << declaration.str()
 			}
-			.struct_decl, .global_decl, .const_decl, .enum_decl, .type_decl, .interface_decl, .import_decl, .c_fn_decl {
+			.struct_decl, .global_decl, .const_decl, .enum_decl, .type_decl, .interface_decl,
+			.import_decl, .c_fn_decl {
 				attribute_signature := declaration_attributes[idx] or { '' }
 				part := '${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a, flat.NodeId(idx))}\t${attribute_signature}'
 				declaration_parts << part
@@ -7591,10 +7592,10 @@ fn v3_source_is_pure_v(path string) bool {
 	}
 	actual_language := if language == before_dot_v { language_with_underscore } else { language }
 	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'x64', 'x86', 'aarch64', 'arm64',
-		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32', 'riscv32',
-		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64', 'ppc64le',
-		'sparc64', 'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser', 'js_freestanding',
-		'wasm32', 'wasm']
+		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32',
+		'riscv32', 'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64',
+		'ppc64le', 'sparc64', 'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser',
+		'js_freestanding', 'wasm32', 'wasm']
 }
 
 fn v3_type_text_uses_interop_namespace(text string, namespace string) bool {
@@ -8142,8 +8143,8 @@ fn expand_v3_exclude_patterns(patterns []string, vroot string) []string {
 fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
-		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only', '-profile-fns', '-subsystem', '-exclude', '-dump-files']
+		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project',
+		'-test-runner', '-run-only', '-profile-fns', '-subsystem', '-exclude', '-dump-files']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -11741,7 +11742,8 @@ pub fn run(args []string) {
 		mut cc_dir := ''
 		mut cc_src := output_file
 		mut cc_out := ''
-		cc_output_name := c_compiler_output_name_for_target(target.os, is_shared, is_o)
+		cc_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), is_shared,
+			is_o)
 		if !c_only {
 			bin_dir := if os.dir(bin_file).len > 0 {
 				os.real_path(os.dir(bin_file))
@@ -15670,7 +15672,9 @@ fn test_file_has_executable_top_level_stmt(a &flat.FlatAst, node &flat.Node) boo
 
 fn test_file_is_executable_top_level_stmt(node &flat.Node) bool {
 	return match node.kind {
-		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt, .for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .defer_stmt {
+		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
+		.for_in_stmt,
+		.if_expr, .match_stmt, .assert_stmt, .defer_stmt {
 			true
 		}
 		else {

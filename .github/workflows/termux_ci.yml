@@ -74,8 +74,9 @@ jobs:
             export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
             v run examples/hello_world.v
             v run examples/primes.v
-            printf "%s\n" "import os" "dump(os.user_os())" > /tmp/v_termux_os.v
-            v run /tmp/v_termux_os.v
+            termux_probe="$(mktemp)"
+            printf "%s\n" "import os" "dump(os.user_os())" > "$termux_probe"
+            v run "$termux_probe"
           '
 
   termux-build-arm64-tcc:

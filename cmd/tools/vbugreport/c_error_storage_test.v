@@ -1,12 +1,13 @@
 module vbugreport
 
 fn test_new_stored_c_error_report_extracts_sql_fields() {
-	report := new_stored_c_error_report('/tmp/v/program.tmp.c', 'linux', 'clang', '0.5.1 abcdef0', 'amd64', 'autofree gc:boehm', '/tmp/v/program.tmp.c:12:7: error: unknown type name "Foo"', [
-		'void main__main(void) {',
-		'\tFoo x;',
-	], [
-		'foo := Foo{}',
-	], 'fn main() {\n\tfoo := Foo{}\n}')
+	report := new_stored_c_error_report('/tmp/v/program.tmp.c', 'linux', 'clang', '0.5.1 abcdef0',
+		'amd64', 'autofree gc:boehm', '/tmp/v/program.tmp.c:12:7: error: unknown type name "Foo"', [
+			'void main__main(void) {',
+			'\tFoo x;',
+		], [
+			'foo := Foo{}',
+		], 'fn main() {\n\tfoo := Foo{}\n}')
 	assert report.c_file_name == 'program.tmp.c'
 	assert report.target_os == 'linux'
 	assert report.ccompiler == 'clang'
@@ -20,7 +21,8 @@ fn test_new_stored_c_error_report_extracts_sql_fields() {
 }
 
 fn test_new_stored_c_error_report_handles_windows_c_file_path() {
-	report := new_stored_c_error_report('C:\\tmp\\program.tmp.c', 'windows', 'msvc', 'V 0.5.1', 'amd64', '', 'error: syntax error', []string{}, []string{}, '')
+	report := new_stored_c_error_report('C:\\tmp\\program.tmp.c', 'windows', 'msvc', 'V 0.5.1',
+		'amd64', '', 'error: syntax error', []string{}, []string{}, '')
 	assert report.c_file_name == 'program.tmp.c'
 }
 

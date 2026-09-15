@@ -316,7 +316,12 @@ fn format_json_ex(rows []sqlite.Row, _opts FormatOptions) string {
 }
 
 fn json_escape(s string) string {
-	return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+	return s
+		.replace('\\', '\\\\')
+		.replace('"', '\\"')
+		.replace('\n', '\\n')
+		.replace('\r', '\\r')
+		.replace('\t', '\\t')
 }
 
 // ---------- html ----------
@@ -352,7 +357,11 @@ fn format_html_ex(rows []sqlite.Row, opts FormatOptions) string {
 }
 
 fn html_escape(s string) string {
-	return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+	return s
+		.replace('&', '&amp;')
+		.replace('<', '&lt;')
+		.replace('>', '&gt;')
+		.replace('"', '&quot;')
 }
 
 // ---------- insert ----------
