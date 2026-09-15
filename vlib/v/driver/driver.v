@@ -15749,7 +15749,10 @@ fn embedded_resource_paths(a &flat.FlatAst) []string {
 				continue
 			}
 			value := a.child_node(field, 0)
-			if value.kind == .string_literal && value.value != '' && os.is_file(value.value) {
+			// A path that does not exist right now is reported too. That is exactly the
+			// state that matters: the build embedded nothing, and only a record of where
+			// the file should have been lets a later invocation notice it was restored.
+			if value.kind == .string_literal && value.value != '' {
 				paths[value.value] = true
 			}
 		}

@@ -2152,24 +2152,57 @@ fn (t &Transformer) nil_operand_carries_statements(id flat.NodeId) bool {
 // never mentions the operand again, so without this `opt == unsafe { record(); nil }` would
 // silently drop the `record()` call.
 fn (mut t Transformer) lower_discarded_nil_operand_effects(id flat.NodeId) {
+	// Collect against an empty pending list. Lowering a statement drains whatever is
+	// pending, so anything the caller already hoisted -- notably the temp the option was
+	// pinned to -- would otherwise be swept into the block below and go out of scope
+	// before the comparison that reads it.
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	mut stmts := []flat.NodeId{}
+	t.collect_discarded_nil_operand_effects(id, mut stmts)
+	t.drain_pending(mut stmts)
+	t.pending_stmts = outer_pending
+	if stmts.len == 0 {
+		return
+	}
+	// The operand's own block scope is kept. Splicing the statements straight into the
+	// enclosing list would move a block-local declaration up one scope, so
+	// `opt == unsafe { local := 1; ... }` followed by an outer `local :=` would be two
+	// declarations of the same name in one C scope and would not compile.
+	t.pending_stmts << t.make_block(stmts)
+}
+
+// collect_discarded_nil_operand_effects gathers the statements a `nil` operand carries
+// besides the `nil` itself, keeping one block per source block so that each level's
+// declarations stay in their own scope.
+fn (mut t Transformer) collect_discarded_nil_operand_effects(id flat.NodeId, mut stmts []flat.NodeId) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
-		t.lower_discarded_nil_operand_effects(t.a.child(&node, 0))
+		t.collect_discarded_nil_operand_effects(t.a.child(&node, 0), mut stmts)
 		return
 	}
 	if node.kind != .block || node.children_count == 0 {
 		return
 	}
 	for index in 0 .. int(node.children_count) - 1 {
-		for stmt in t.transform_stmt(t.a.child(&node, index)) {
-			t.pending_stmts << stmt
+		lowered := t.transform_stmt(t.a.child(&node, index))
+		// whatever this statement hoisted comes first, then the statement itself
+		t.drain_pending(mut stmts)
+		for stmt in lowered {
+			stmts << stmt
 		}
 	}
-	// the last statement is what yields the nil, and may itself be a nested block
-	t.lower_discarded_nil_operand_effects(t.a.child(&node, int(node.children_count) - 1))
+	// The last statement is what yields the nil. It may itself be a nested block carrying
+	// statements of its own, which belong in a nested scope rather than this one.
+	mut nested := []flat.NodeId{}
+	t.collect_discarded_nil_operand_effects(t.a.child(&node, int(node.children_count) - 1), mut
+		nested)
+	if nested.len > 0 {
+		stmts << t.make_block(nested)
+	}
 }
 
 // transform_optional_wrapper_expr preserves the Optional_T wrapper when a prior
