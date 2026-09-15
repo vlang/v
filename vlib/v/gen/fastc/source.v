@@ -16,6 +16,14 @@ fn fastc_vmod_root_for_file(source_file string) string {
 	return util.nearest_vmod_root(source_file) or { os.real_path(dir) }
 }
 
+fn fastc_preferences_for_entry_paths(paths []string, prefs &pref.Preferences) pref.Preferences {
+	mut scoped := *prefs
+	if scoped.module_resolution_root == '' && paths.len > 0 {
+		scoped.module_resolution_root = os.dir(os.real_path(paths[0]))
+	}
+	return scoped
+}
+
 fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) string {
 	mut result := raw
 	if result.contains('@VEXEROOT') && vroot.len > 0 {
@@ -77,7 +85,8 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 // resolve memo before returning.
 fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]FastcSourceFile, map[string]string) {
 	mut pending_memo_store := FastcPendingMemoStore{}
-	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, prefs, mut pending_memo_store)!
+	scoped_prefs := fastc_preferences_for_entry_paths(paths, prefs)
+	sources, module_aliases := fastc_resolve_source_files_deferring_memo(paths, &scoped_prefs, mut pending_memo_store)!
 	fastc_wait_memo_store(mut pending_memo_store)
 	return sources, module_aliases
 }

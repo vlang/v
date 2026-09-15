@@ -64,6 +64,39 @@ fn test_pool_config_params_struct_can_be_omitted() {
 	assert out == 'db|0\ndb|4'
 }
 
+fn test_non_veb_reflected_calls_synthesize_omitted_trailing_args() {
+	v3_bin := build_v3()
+	source := '@[params]
+struct Config {
+	count int
+}
+
+struct Value {}
+
+fn (Value) run(arg ?string) string {
+	return arg or { "none" }
+}
+
+fn (Value) configure(config Config) string {
+	return int_str(config.count)
+}
+
+fn invoke[T](value T) {
+	$for method in T.methods {
+		if method.name in ["run", "configure"] {
+			println(value.$method())
+		}
+	}
+}
+
+fn main() {
+	invoke(Value{})
+}
+'
+	out := run_good(v3_bin, 'non_veb_reflected_omitted_args', source)
+	assert out == 'none\n0'
+}
+
 fn test_params_fields_belong_to_params_struct() {
 	v3_bin := build_v3()
 	project_dir := os.join_path(os.temp_dir(), 'v3_params_field_owner_project')

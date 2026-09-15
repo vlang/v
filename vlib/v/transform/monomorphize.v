@@ -8719,12 +8719,6 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		}
 	}
 	if node.kind == .ident {
-		if fn_type := t.fn_value_type_name(id) {
-			// Function declarations carry an encoded node type such as
-			// `fn_int_string_bool`. Generic inference needs the semantic function
-			// type so a specialization emits the matching function-pointer typedef.
-			return fn_type
-		}
 		if node.value.starts_with('__') && generic_inference_arg_type_usable(node.typ)
 			&& !t.generic_arg_is_unresolved(t.normalize_type_alias(node.typ)) {
 			// Lowered expression temporaries carry their concrete type on the generated
@@ -8768,10 +8762,14 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		}
 		if !isnil(t.tc) {
 			if checked := t.tc.expr_type(id) {
+				if fn_name := fn_value_type_name_from_type(checked) {
+					return t.normalize_type_alias(fn_name)
+				}
 				checked_name := checked.name()
 				if generic_inference_arg_type_usable(checked_name)
 					&& !t.generic_arg_is_unresolved(t.normalize_type_alias(checked_name)) {
-					return t.generic_inference_argument_type(checked_name, t.node_module_or(int(id), t.cur_module))
+					return t.generic_inference_argument_type(checked_name, t.node_module_or(int(id),
+						t.cur_module))
 				}
 			}
 		}
@@ -8780,6 +8778,12 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		}
 		if decl_type := t.local_decl_type_before(node.value, id) {
 			return t.generic_inference_argument_type(decl_type, t.node_module_or(int(id), t.cur_module))
+		}
+		if fn_type := t.fn_value_type_name(id) {
+			// Function declarations carry an encoded node type such as
+			// `fn_int_string_bool`. Generic inference needs the semantic function
+			// type so a specialization emits the matching function-pointer typedef.
+			return fn_type
 		}
 	}
 	if generic_inference_arg_type_usable(node.typ) {
@@ -11541,6 +11545,17 @@ fn generic_app_parts(typ string) (string, []string, bool) {
 		return '', []string{}, false
 	}
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
+		return '', []string{}, false
+	}
+	mut paren_depth := 0
+	for i in 0 .. bracket {
+		match typ[i] {
+			`(` { paren_depth++ }
+			`)` { paren_depth-- }
+			else {}
+		}
+	}
+	if paren_depth != 0 {
 		return '', []string{}, false
 	}
 	bracket_end := generic_matching_bracket(typ, bracket)

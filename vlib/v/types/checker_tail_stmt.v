@@ -3370,7 +3370,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	if is_contextual_anonymous_struct_literal(init_type_text) && tc.expected_expr_id >= 0
 		&& tc.expr_is_value_tail_of(flat.NodeId(tc.expected_expr_id), id) {
 		expected := unalias_type(tc.expected_expr_type)
-		if expected is Struct && is_anonymous_struct_name(expected.name) {
+		// Only a type the parser itself made up may be adopted here. A user-declared
+		// `AnonStruct_Secret` is an ordinary private type, and adopting it would let a
+		// bare literal stand in for a name the caller is not allowed to write.
+		if expected is Struct && tc.is_synthesized_anon_struct(expected.name) {
 			init_type = expected
 			tc.remember_expr_type(id, expected)
 		}
@@ -3395,10 +3398,19 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	if init_struct := struct_type_from_type(init_type) {
 		is_synthetic_embed_file := node.value == 'embed_file.EmbedFileData'
-		if _ := tc.private_declaration(init_struct.name) {
-			inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-			tc.record_error_at(.unknown_type, 'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
-			tc.record_error_at(.unknown_type, 'type `${init_struct.name}` is private', id, node.pos)
+		// A `struct { ... }` literal is parsed into a name the parser synthesized for it,
+		// which the checker then resolves to whichever anonymous type the context expects.
+		// The literal names nothing of its own, so there is no declaration whose privacy
+		// it could violate - `cli.Command.defaults` is initialized exactly this way from
+		// another module. Naming an anonymous declaration outright is a different thing
+		// and stays subject to the check, as does a type a user happened to call
+		// `AnonStruct_...`: neither is a name the parser made up for a literal.
+		if !tc.a.contextual_anon_struct_types[init_type_text] {
+			if _ := tc.private_declaration(init_struct.name) {
+				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+				tc.record_error_at(.unknown_type, 'struct `${init_struct.name}` was declared as private to module `${init_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
+				tc.record_error_at(.unknown_type, 'type `${init_struct.name}` is private', id, node.pos)
+			}
 		}
 		if deprecation := tc.deprecated_symbols[init_struct.name] {
 			tc.record_deprecation(id, 'struct', deprecation, tc.struct_init_deprecation_pos(node))
@@ -12990,6 +13002,12 @@ fn (tc &TypeChecker) parse_alias_target_type(name string, target string) Type {
 	if context_independent_type_text(target) {
 		return tc.parse_type(target)
 	}
+	// Alias targets are canonicalized when declarations are collected. Prefer an
+	// exact qualified symbol before the referencing file's imports can retarget
+	// it to a same-named type from another module.
+	if tc.qualify_candidate_type_exists(clean) {
+		return tc.parse_canonical_type(clean)
+	}
 	if clean.starts_with('shared ') {
 		return Type(Pointer{
 			base_type: tc.parse_alias_target_type(name, trimmed_space(clean[7..]))
@@ -13003,6 +13021,57 @@ fn (tc &TypeChecker) parse_alias_target_type(name string, target string) Type {
 		return scoped.parse_type(target)
 	}
 	return tc.parse_type(target)
+}
+
+// parse_canonical_generic_type preserves the semantic base and recursively
+// canonicalizes arguments of a compiler-produced generic application.
+fn (tc &TypeChecker) parse_canonical_generic_type(typ string) ?Type {
+	base, args, is_generic := generic_type_application_parts(typ)
+	if !is_generic {
+		return none
+	}
+	bracket := typ.index_u8(`[`)
+	if bracket <= 0 || find_matching_bracket(typ, bracket) != typ.len - 1 {
+		return none
+	}
+	mut canonical_args := []string{cap: args.len}
+	for arg in args {
+		clean_arg := trimmed_space(arg)
+		parsed_arg := tc.parse_canonical_type(clean_arg)
+		canonical_args << if parsed_arg is Unknown { clean_arg } else { tc.type_name(parsed_arg) }
+	}
+	suffix := '[' + canonical_args.join(', ') + ']'
+	mut result := Type(Unknown{})
+	if base in tc.type_aliases {
+		params := tc.type_alias_generic_params[base] or {
+			tc.type_alias_generic_params[base.all_after_last('.')] or { []string{} }
+		}
+		target := tc.type_aliases[base]
+		result = Type(Alias{
+			name:      base + suffix
+			base_type: if params.len == canonical_args.len && params.len > 0 {
+				tc.parse_alias_target_type(base, subst_generic_text(target, canonical_args, params))
+			} else {
+				tc.parse_alias_target_type(base, target)
+			}
+		})
+	} else if base in tc.structs || base in tc.struct_generic_params {
+		result = Type(Struct{
+			name: base + suffix
+		})
+	} else if base in tc.interface_names {
+		result = Type(Interface{
+			name: base + suffix
+		})
+	} else if base in tc.sum_types || base in tc.sum_generic_params {
+		result = Type(SumType{
+			name: base + suffix
+		})
+	} else {
+		return none
+	}
+	_, canonical := tc.intern_type(result)
+	return canonical
 }
 
 // parse_canonical_type parses compiler-produced type text while preserving an
@@ -13053,6 +13122,9 @@ pub fn (tc &TypeChecker) parse_canonical_type(typ string) Type {
 			base_type: tc.parse_canonical_type(clean[1..])
 		}))
 		return result
+	}
+	if generic := tc.parse_canonical_generic_type(clean) {
+		return generic
 	}
 	if known := tc.type_from_known_symbol(clean) {
 		_, result := tc.intern_type(known)
@@ -17298,15 +17370,24 @@ pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
 	if name.len == 0 {
 		return false
 	}
-	if _ := tc.resolve_generic_struct_method(name, 'clone') {
-		return true
-	}
-	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
-		if method_name in tc.fn_ret_types {
+	if info := tc.resolve_generic_struct_method(name, 'clone') {
+		if tc.ownership_clone_method_matches_type(info, typ) {
 			return true
 		}
 	}
+	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
+		if method_name in tc.fn_ret_types {
+			if tc.ownership_clone_method_matches_type(tc.call_info(method_name, true), typ) {
+				return true
+			}
+		}
+	}
 	return false
+}
+
+fn (tc &TypeChecker) ownership_clone_method_matches_type(info CallInfo, typ Type) bool {
+	return info.params_known && tc.min_required_arg_count(info) == 1
+		&& semantic_types_equal(unalias_type(info.return_type), unalias_type(typ))
 }
 
 fn receiver_type_name_variant(t Type, fixed_array_prefix bool, shorten_modules bool) string {

@@ -131,6 +131,9 @@ fn (mut g FlatGen) current_fn_optional_type_name(t types.Type) string {
 }
 
 fn (mut g FlatGen) value_c_type(t types.Type) string {
+	if c_type := c_alias_value_c_type(t) {
+		return c_type
+	}
 	if shared_alias_ptr := g.shared_alias_pointer_type(t) {
 		return g.tc.c_type(shared_alias_ptr)
 	}
@@ -184,6 +187,18 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
 	}
 	return ct
+}
+
+fn c_alias_value_c_type(typ types.Type) ?string {
+	if typ is types.Alias && typ.name.starts_with('C.') {
+		return typ.name['C.'.len..]
+	}
+	if typ is types.Pointer {
+		if base := c_alias_value_c_type(typ.base_type) {
+			return '${base}*'
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) value_unalias_type(typ types.Type) types.Type {
@@ -489,6 +504,12 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 		return typ
 	}
 	source := typ.name()
+	// This function receives a semantic Type, not raw source text. Preserve an
+	// exact registered name before repairing stale alias-qualified spellings;
+	// otherwise a current file import can retarget a canonical type from a call.
+	if exact := g.exact_known_import_type_text(source) {
+		return exact
+	}
 	// Only dotted names can reference an import alias. Primitive and local
 	// type spellings do not need a walk through synthesized child nodes.
 	file := if source.contains('.') { g.node_source_file(node) } else { '' }
@@ -563,6 +584,9 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 		return types.Type(types.Array{
 			elem_type: g.exact_known_import_type_text(clean[2..])?
 		})
+	}
+	if clean in g.tc.type_aliases {
+		return g.tc.parse_canonical_type(clean)
 	}
 	if clean in g.tc.structs {
 		return types.Type(types.Struct{

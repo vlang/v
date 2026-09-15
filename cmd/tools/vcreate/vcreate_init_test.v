@@ -81,8 +81,8 @@ fn init_and_check() ! {
 		'*.db',
 		'*.js',
 		'',
-		'# Ignore installed modules through `v install --local`:',
-		'modules/',
+		'# Modules installed with `v install --local` land beside this file, one',
+		'# directory per module. Add them here if they should stay out of the repo.',
 		'',
 	].join_lines()
 

@@ -1,0 +1,9 @@
+// The outer parentheses of `((n - 1) / m)` are meaningful - the expression only
+// starts with a nested group, it is not wrapped in one - so no redundancy must
+// be reported here.
+fn main() {
+	n := 1000
+	m := 3
+	println(m * ((n - 1) / m) * ((n - 1) / m + 1) / 2)
+	println((m + n) * (m - n))
+}

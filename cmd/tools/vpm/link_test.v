@@ -62,6 +62,45 @@ fn test_link_and_unlink_current_project() {
 	assert unlink_res.output.contains('Unlinked `${module_name}`'), unlink_res.output
 }
 
+// `link` and `unlink` are about the V modules directory. Under `--local` that
+// directory is the project itself, where linking would point the project at
+// itself and unlinking would take a symlinked module the project keeps of its
+// own, so the flag is refused instead of quietly doing either.
+fn test_link_and_unlink_reject_the_local_flag() {
+	module_name := 'author.locallib'
+	project_path := os.join_path(test_path, 'local_flag_project')
+	write_vmod(project_path, module_name) or {
+		assert false, err.msg()
+		return
+	}
+	// A module of the project's own, symlinked at the path `--local` would have
+	// made `unlink` remove.
+	own_module := os.join_path(project_path, 'shared_source')
+	os.mkdir_all(own_module) or {
+		assert false, err.msg()
+		return
+	}
+	linked_own_module := os.join_path(project_path, 'author', 'locallib')
+	os.mkdir_all(os.dir(linked_own_module)) or {
+		assert false, err.msg()
+		return
+	}
+	os.symlink(own_module, linked_own_module) or {
+		eprintln('Skipping symlink test due to missing privileges: ${err}')
+		return
+	}
+
+	link_res := execute_in_dir(project_path, '${vexe} link --local')
+	assert link_res.exit_code == 2, link_res.output
+	assert link_res.output.contains('`link` does not accept `--local`'), link_res.output
+
+	unlink_res := execute_in_dir(project_path, '${vexe} unlink --local')
+	assert unlink_res.exit_code == 2, unlink_res.output
+	assert unlink_res.output.contains('`unlink` does not accept `--local`'), unlink_res.output
+	assert os.is_link(linked_own_module), "expected the project's own symlink to survive"
+	assert os.real_path(linked_own_module) == os.real_path(own_module)
+}
+
 fn test_link_without_vmod() {
 	path := os.join_path(test_path, 'no_manifest')
 	os.mkdir_all(path) or {

@@ -126,9 +126,9 @@ fn main() {
 	assert c_code.contains('i64 v_unix'), c_code
 	assert c_code.contains('i64 _v_true'), c_code
 	assert c_code.contains('i64 _v_false'), c_code
-	assert c_code.contains('i64 v_stdin'), c_code
-	assert c_code.contains('i64 v_stderr'), c_code
-	assert c_code.contains('i64 v_stdout'), c_code
+	assert c_code.contains('i64 __v3_internal_symbol_local_v_stdin'), c_code
+	assert c_code.contains('i64 __v3_internal_symbol_local_v_stderr'), c_code
+	assert c_code.contains('i64 __v3_internal_symbol_local_v_stdout'), c_code
 	assert c_code.contains('i64 v_access(i64 x)'), c_code
 	assert c_code.contains('i64 v_read(void)'), c_code
 	assert c_code.contains('i64 v_close(void)'), c_code

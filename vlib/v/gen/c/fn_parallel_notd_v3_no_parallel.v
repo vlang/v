@@ -1261,6 +1261,9 @@ fn moved_segment(s string) string {
 // and, when needed, output into the helper's result arena.
 fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool) {
 	mut b := unsafe { batch }
+	if batch.callback_identity_used {
+		g.callback_identity_used = true
+	}
 	if batch.windows_entry_point_generated {
 		g.windows_entry_point_generated = true
 		g.windows_gui_entry_point = batch.windows_gui_entry_point
@@ -2669,6 +2672,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		mods_with_c_libs: g.mods_with_c_libs
 		mods_with_c_includes: g.mods_with_c_includes
 		inlined_c_active_macros: g.inlined_c_active_macros
+		has_unscanned_forced_c_include: g.has_unscanned_forced_c_include
+		files_with_unscanned_c_includes: g.files_with_unscanned_c_includes
+		c_fn_decl_source_files: g.c_fn_decl_source_files
 		inlined_c_static_fns: g.inlined_c_static_fns
 		libc_compat_fns: g.libc_compat_fns.clone()
 		tc: if result_only {
@@ -2824,6 +2830,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		callback_wrapper_names: g.callback_wrapper_names.clone()
 		callback_wrapper_defs: g.callback_wrapper_defs.clone()
 		callback_wrapper_defs_seen: g.callback_wrapper_defs_seen.clone()
+		callback_identity_used: g.callback_identity_used
 		c_extern_refs: g.c_extern_refs.clone()
 		c_extern_refs_ready: g.c_extern_refs_ready
 		scope_parallel_workers: g.scope_parallel_workers
@@ -3073,6 +3080,9 @@ fn (mut g FlatGen) merge_parallel_worker_ordered(w &FlatGen, mut ordered []strin
 
 fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, mut ordered_wrapper_defs []ParallelChunkWrapperDefs) {
 	mut ww := unsafe { w }
+	if w.callback_identity_used {
+		g.callback_identity_used = true
+	}
 	if g.output_error.len == 0 && w.output_error.len > 0 {
 		g.output_error = w.output_error.clone()
 	}

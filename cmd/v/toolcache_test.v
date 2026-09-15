@@ -269,6 +269,15 @@ fn test_cache_entry_directories_are_namespaced_by_uid() {
 	assert is_cache_artifact_of(os.file_name(first), 'vbug')
 }
 
+fn test_staged_tool_binary_path_keeps_the_platform_executable_suffix() {
+	binary := os.join_path('/cache', 'vdemo' + tool_exe_suffix())
+	staged := staged_tool_binary_path('/stage', binary)
+	assert staged == os.join_path('/stage', os.file_name(binary))
+	$if windows {
+		assert staged.ends_with('.exe')
+	}
+}
+
 // A tool that failed to build must not be pinned to the compatibility compiler forever: a
 // broken intermediate state of any vlib module it imports has to be retried once it is fixed.
 fn test_a_recorded_build_failure_is_retried_once_its_inputs_change() {

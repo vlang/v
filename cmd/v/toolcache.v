@@ -66,6 +66,12 @@ fn tool_exe_suffix() string {
 	}
 }
 
+// staged_tool_binary_path returns the output path inside a private staging directory while
+// keeping the cached tool's exact executable name and platform suffix.
+fn staged_tool_binary_path(stage_dir string, binary string) string {
+	return os.join_path(stage_dir, os.file_name(binary))
+}
+
 // tool_cache_is_disabled reports whether the user asked for the tools to always be rebuilt.
 fn tool_cache_is_disabled() bool {
 	return os.getenv(tool_cache_disable_env).trim_space().to_lower() in ['1', 'true', 'yes', 'on']
@@ -1029,7 +1035,7 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 		stage_entry.close()
 		os.rmdir_all(stage_dir) or {}
 	}
-	staged := os.join_path(stage_dir, os.file_name(entry.binary))
+	staged := staged_tool_binary_path(stage_dir, entry.binary)
 	dumped := os.join_path(stage_dir, 'sources')
 	started := time.now().unix()
 	mut build_args := entry.build_args.clone()
@@ -1059,7 +1065,10 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	process.close()
 	if code != 0 || !os.is_file(staged) {
 		os.rm(staged) or {}
-		details := if output.trim_space() != '' { output } else { failure }
+		mut details := if output.trim_space() != '' { output } else { failure }
+		if details.trim_space() == '' && code == 0 {
+			details = 'compiler exited successfully but did not produce `${staged}`'
+		}
 		// Only a failure the tool's own V sources explain may be cached against them. A C
 		// toolchain that was missing, out of memory or momentarily broken says nothing about
 		// those sources, and the manifest does not describe it, so recording it would replay

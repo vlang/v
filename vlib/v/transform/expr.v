@@ -2292,7 +2292,7 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 	if type_name.len == 0 {
 		return ''
 	}
-	// Resolve aliases before consulting the struct indexes. Large programs can
+	// Resolve aliases before consulting the enum and struct indexes. Large programs can
 	// contain a struct whose short name collides with an imported alias (notably
 	// `Type` beside `ast.Type = u32`). Treating the alias as that struct expands a
 	// scalar equality into field selectors on the generated C integer.
@@ -2301,6 +2301,20 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 		if unalias != type_name {
 			return t.struct_lookup_name(unalias)
 		}
+	}
+	if type_name.contains('.') && type_name in t.enum_types {
+		return ''
+	}
+	if !type_name.contains('.')
+		&& (type_name in t.enum_types || '${t.cur_module}.${type_name}' in t.enum_types)
+		&& !t.bare_struct_name_is_local_to_current_module(type_name) {
+		if selected := t.selective_import_struct_lookup_name(type_name) {
+			return selected
+		}
+		if builtin := t.visible_builtin_struct_lookup_name(type_name) {
+			return builtin
+		}
+		return ''
 	}
 	// Primitives, arrays and maps are never struct names. Bail before the qualified-name
 	// concatenation below — this runs for every infix operand, so the saved allocation
@@ -2373,6 +2387,55 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 		return checker_name
 	}
 	return ''
+}
+
+fn (t &Transformer) selective_import_struct_lookup_name(name string) ?string {
+	if isnil(t.tc) || name.len == 0 || name.contains('.') || t.cur_file.len == 0 {
+		return none
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+		return none
+	} {
+		if candidate in t.structs || candidate in t.tc.structs {
+			return candidate
+		}
+	}
+	return none
+}
+
+// visible_builtin_struct_lookup_name resolves a globally visible builtin struct
+// only when the current module or file does not shadow it with another type.
+fn (t &Transformer) visible_builtin_struct_lookup_name(name string) ?string {
+	if isnil(t.tc) || name.len == 0 || name.contains('.') {
+		return none
+	}
+	if t.cur_file.len > 0
+		&& file_import_key(t.cur_file, name) in t.tc.file_selective_imports {
+		return none
+	}
+	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		local_name := '${t.cur_module}.${name}'
+		if local_name in t.structs || local_name in t.enum_types || local_name in t.sum_types
+			|| local_name in t.tc.structs || local_name in t.tc.enum_names
+			|| local_name in t.tc.sum_types || local_name in t.tc.type_aliases
+			|| local_name in t.tc.interface_names {
+			return none
+		}
+	} else if t.cur_module != 'builtin'
+		&& (name in t.tc.enum_names || name in t.tc.sum_types || name in t.tc.type_aliases
+			|| name in t.tc.interface_names) {
+		return none
+	}
+	checker_name := t.checker_struct_lookup_name(name)
+	if checker_name.len > 0 && t.tc.struct_modules[checker_name] == 'builtin' {
+		return checker_name
+	}
+	if info := t.structs[name] {
+		if info.module == 'builtin' {
+			return name
+		}
+	}
+	return none
 }
 
 // transform_in_expr transforms transform in expr data for transform.
