@@ -31,6 +31,41 @@ fn failed_cfn_report_error(ok bool, label string) {
 	exit(1)
 }
 
+// win_env_value_from_entries returns the value of the environment variable
+// `name` from a list of `key=value` entries. Windows environment variable
+// names are case insensitive, and the system spells the search path `Path`,
+// so the comparison must be too.
+fn win_env_value_from_entries(env []string, name string) ?string {
+	prefix := '${name}='.to_lower_ascii()
+	for entry in env {
+		if entry.len > prefix.len && entry[..prefix.len].to_lower_ascii() == prefix {
+			return entry[prefix.len..]
+		}
+	}
+	return none
+}
+
+// win_resolve_filename turns `p.filename` into the path handed to
+// `CreateProcessW`, mirroring `unix_resolve_filename`: an absolute path is used
+// as is, a relative path containing a directory separator is anchored to the
+// current directory (the child's work folder may differ), and a bare command
+// name (`gcc`, `cl`, `node`) is looked up first in the current directory, as
+// Windows itself does, and then in the `PATH` the child will start with -
+// trying the Windows executable suffixes, as `find_abs_path_of_executable`
+// does. `CreateProcessW` performs no such lookup when given an application
+// name, so without this every bare-name spawn failed with "The system cannot
+// find the file specified".
+fn (p &Process) win_resolve_filename() !string {
+	if is_abs_path(p.filename) {
+		return p.filename
+	}
+	if p.filename.contains('\\') || p.filename.contains('/') {
+		return abs_path(p.filename)
+	}
+	path := win_env_value_from_entries(p.env, 'PATH') or { '' }
+	return find_abs_path_of_executable_in_path_env(p.filename, getwd() + path_delimiter + path)
+}
+
 fn close_valid_handle(p voidptr) {
 	h := &&u32(p)
 	if *h != &u32(unsafe { nil }) {
@@ -64,8 +99,11 @@ fn (mut p Process) win_spawn_process() int {
 		}
 		unsafe { to_be_freed.free() }
 	}
-	p.filename =
-		abs_path(p.filename) // expand the path to an absolute one, in case we later change the working folder
+	// Expand the path to an absolute one, in case we later change the working
+	// folder. A bare command name that PATH does not contain is left as is, so
+	// that CreateProcessW can still run its own lookup (which also knows the
+	// PATHEXT suffixes) before the spawn is reported as failed.
+	p.filename = p.win_resolve_filename() or { p.filename }
 	mut wdata := &WProcess{
 		child_stdin_read:   unsafe { nil }
 		child_stdin_write:  unsafe { nil }
@@ -204,7 +242,7 @@ fn (mut p Process) win_spawn_process() int {
 	} else {
 		0
 	}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
-	failed_cfn_report_error(create_process_ok, 'CreateProcess')
+	failed_cfn_report_error(create_process_ok, 'CreateProcess for `${p.filename}`')
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)
