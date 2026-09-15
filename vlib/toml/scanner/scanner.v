@@ -431,6 +431,14 @@ fn (mut s Scanner) extract_string() !string {
 	s.col--
 	quote := u8(s.at())
 	start := s.pos
+
+	is_multiline := s.text[s.pos + 1] == quote && s.text[s.pos + 2] == quote
+	// Check for escaped multiline quote
+	if is_multiline {
+		mls := s.extract_multiline_string()!
+		return mls
+	}
+
 	// `has_newline` mirrors what `lit.contains('\n')` used to report, without
 	// re-scanning the whole literal on every byte: it is set by each append and,
 	// like `contains`, never goes back to false.
@@ -440,13 +448,6 @@ fn (mut s Scanner) extract_string() !string {
 		unsafe { lit.free() }
 	}
 	lit.write_u8(quote)
-
-	is_multiline := s.text[s.pos + 1] == quote && s.text[s.pos + 2] == quote
-	// Check for escaped multiline quote
-	if is_multiline {
-		mls := s.extract_multiline_string()!
-		return mls
-	}
 
 	for {
 		s.pos++
