@@ -7,8 +7,6 @@ import os
 
 #include <fcntl.h>
 
-#include <stdio.h>
-
 #include <dirent.h>
 
 #include <sys/stat.h>
@@ -33,6 +31,7 @@ fn C.fstat(fd i32, information &C.stat) i32
 
 fn C.fchmod(fd i32, mode u32) i32
 
+@[c_extern]
 fn C.renameat(old_directory i32, const_old_path &char, new_directory i32, const_new_path &char) i32
 
 fn C.unlinkat(directory i32, const_path &char, flags i32) i32
