@@ -2656,6 +2656,9 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		export_c_abi_decls: g.export_c_abi_decls
 		main_export_owners: g.main_export_owners
 		c_extern_global_names: g.c_extern_global_names
+		export_global_names: g.export_global_names
+		global_linker_sections: g.global_linker_sections
+		global_cinit_names: g.global_cinit_names
 		enum_backing_infos: g.enum_backing_infos
 		iface_impls: g.iface_impls
 		interface_dispatch_required: g.interface_dispatch_required
@@ -2783,6 +2786,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 			g.cur_mut_pointer_params
 		} else {
 			g.cur_mut_pointer_params.clone()
+		}
+		cur_explicit_mut_pointer_params: if result_only {
+			g.cur_explicit_mut_pointer_params
+		} else {
+			g.cur_explicit_mut_pointer_params.clone()
 		}
 		cur_mut_param_owners: if result_only {
 			g.cur_mut_param_owners

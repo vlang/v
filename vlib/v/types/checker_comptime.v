@@ -14527,7 +14527,7 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 	rhs := tc.a.nodes[int(rhs_id)]
 	if rhs.kind == .cast_expr && rhs.value.len > 0 {
 		typ := tc.parse_type(rhs.value)
-		if typ is Alias {
+		if typ !is Unknown {
 			return typ
 		}
 	}

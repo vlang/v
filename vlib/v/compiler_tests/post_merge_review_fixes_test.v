@@ -2282,6 +2282,18 @@ fn test_pointer_arithmetic_deref_keeps_pointer_type() {
 	assert out == '2'
 }
 
+fn test_parenthesized_pointer_cast_deref_is_not_dropped() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'parenthesized_pointer_cast_deref', 'fn load(s charptr, offset u64) u8 {\n\treturn u8(unsafe { *(charptr(u64(s) + offset)) })\n}\n\nfn main() {\n\ts := c\'VinixV3!\'\n\tmut result := \'\'\n\tfor i in u64(0) .. u64(8) {\n\t\tresult += rune(load(s, i)).str()\n\t}\n\tprintln(result)\n}\n')
+	assert out == 'VinixV3!'
+}
+
+fn test_generic_mut_pointer_cast_keeps_slot_address() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'generic_mut_pointer_cast_slot_address', 'fn address[T](mut value T) voidptr {\n\tif sizeof(T) == 8 {\n\t\treturn voidptr(value)\n\t}\n\treturn unsafe { nil }\n}\n\nfn main() {\n\tmut n := 7\n\tmut pointers := unsafe { [1]&int{} }\n\tpointers[0] = &n\n\tresult := address[&int](mut &pointers[0])\n\tprintln(result == voidptr(&pointers[0]))\n\tprintln(result == voidptr(pointers[0]))\n}\n')
+	assert out == 'true\nfalse'
+}
+
 fn test_builtin_addr_requires_unsafe_and_addresses_pointer_variables() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'builtin_addr_requires_unsafe', 'fn main() {
@@ -10588,4 +10600,146 @@ fn main() {
 	run := os.execute(warm_bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
+}
+
+fn test_global_beats_unrelated_same_named_const() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_global_const_collision', {
+		'v.mod':               "Module { name: 'imported_global_const_collision' }\n"
+		'memory/memory.v':     'module memory\n\n@[has_globals]\n__global page_size = u64(4096)\n\npub fn value() u64 {\n\treturn page_size\n}\n'
+		'unrelated/value.v':   'module unrelated\n\npub const page_size = u64(16384)\n'
+		'consumer/consumer.v': 'module consumer\n\npub fn pages(bytes u64) u64 {\n\treturn bytes / page_size\n}\n'
+		'main.v':              'module main\n\nimport consumer\nimport memory\nimport unrelated\n\nfn main() {\n\t_ = memory.value()\n\tprintln(consumer.pages(unrelated.page_size))\n}\n'
+	}, 'main.v')
+	assert out == '4'
+}
+
+fn test_nested_interface_field_assignment_updates_boxed_object() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'nested_interface_field_assign', 'struct Metadata {
+mut:
+	links u64
+}
+
+interface Resource {
+mut:
+	metadata Metadata
+}
+
+struct FileResource {
+mut:
+	metadata Metadata
+}
+
+struct Node {
+mut:
+	resource Resource
+}
+
+fn main() {
+	mut file := &FileResource{
+		metadata: Metadata{links: 1}
+	}
+	mut node := Node{
+		resource: file
+	}
+	node.resource.metadata.links = 2
+	println(file.metadata.links)
+}
+')
+	assert out == '2'
+}
+
+fn test_smartcast_between_interfaces_preserves_object_identity() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'smartcast_interface_identity', 'interface Resource {
+mut:
+	set(int)
+	get() int
+}
+
+interface Socket {
+mut:
+	set(int)
+	get() int
+	extra() int
+}
+
+struct UnixSocket {
+mut:
+	n int
+}
+
+fn (mut socket UnixSocket) set(n int) {
+	socket.n = n
+}
+
+fn (socket UnixSocket) get() int {
+	return socket.n
+}
+
+fn (socket UnixSocket) extra() int {
+	return 9
+}
+
+fn as_socket(mut resource Resource) &Socket {
+	if mut resource is UnixSocket {
+		return &Socket(resource)
+	}
+	panic("not a socket")
+}
+
+fn main() {
+	mut concrete := &UnixSocket{n: 1}
+	mut resource := Resource(concrete)
+	mut socket := as_socket(mut resource)
+	socket.set(2)
+	println(concrete.n)
+	println(resource.get())
+	println(socket.get())
+}
+')
+	assert out == '2\n2\n2'
+}
+
+fn test_unsafe_block_pointer_to_interface_preserves_object_identity() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'unsafe_block_pointer_interface_identity', 'interface Resource {
+mut:
+	set(int)
+	get() int
+}
+
+struct Concrete {
+mut:
+	value int
+}
+
+fn (mut concrete Concrete) set(value int) {
+	concrete.value = value
+}
+
+fn (concrete Concrete) get() int {
+	return concrete.value
+}
+
+struct Node {
+mut:
+	resource &Resource = unsafe { nil }
+}
+
+fn (mut concrete Concrete) install(mut node Node) {
+	node.resource = unsafe { concrete }
+}
+
+fn main() {
+	mut concrete := &Concrete{value: 1}
+	mut node := Node{}
+	concrete.install(mut node)
+	concrete.set(2)
+	println(concrete.value)
+	println(node.resource.get())
+}
+')
+	assert out == '2\n2'
 }

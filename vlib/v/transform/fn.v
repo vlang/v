@@ -3631,12 +3631,54 @@ fn (t &Transformer) current_module_global_type(name string) ?string {
 		return none
 	}
 	if name.contains('.') {
-		return t.globals[name]
+		if name in t.globals {
+			return t.globals[name]
+		}
+		return none
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		return t.globals['${t.cur_module}.${name}']
+		qname := '${t.cur_module}.${name}'
+		if qname in t.globals {
+			return t.globals[qname]
+		}
+		return none
 	}
-	return t.globals[name]
+	if name in t.globals {
+		return t.globals[name]
+	}
+	return none
+}
+
+// imported_global_name resolves a bare global through the imports of the active
+// source file, or through the program-wide global namespace when the name is
+// unique. Do this before the unique-const fallback: all compiled modules
+// contribute constants to that fallback, including unrelated transitive modules.
+fn (t &Transformer) imported_global_name(name string) ?string {
+	if name.len == 0 || name.contains('.') || isnil(t.tc) || t.cur_file.len == 0 {
+		return none
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+		[]string{}
+	} {
+		if candidate in t.globals {
+			return candidate
+		}
+	}
+	for candidate in t.global_qualified_names[name] or { []string{} } {
+		owner := candidate.all_before_last('.')
+		alias := owner.all_after_last('.')
+		resolved := t.tc.file_imports[file_import_key(t.cur_file, alias)] or {
+			t.tc.imports[alias] or { '' }
+		}
+		if resolved == owner {
+			return candidate
+		}
+	}
+	candidates := t.global_qualified_names[name] or { []string{} }
+	if candidates.len == 1 {
+		return candidates[0]
+	}
+	return none
 }
 
 fn (mut t Transformer) lift_lambda_expr_for_fn_param(_id flat.NodeId, node flat.Node, param_type string) ?flat.NodeId {

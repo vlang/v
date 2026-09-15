@@ -855,6 +855,7 @@ pub mut:
 	checker_fixture_mode          bool
 	autofree_mode                 bool
 	no_main                       bool
+	nofloat                       bool
 	warn_about_allocs             bool
 	warns_are_errors              bool
 	notes_are_errors              bool
@@ -1287,6 +1288,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		checker_fixture_mode: tc.checker_fixture_mode
 		autofree_mode: tc.autofree_mode
 		no_main: tc.no_main
+		nofloat: tc.nofloat
 		warn_about_allocs: tc.warn_about_allocs
 		warns_are_errors: tc.warns_are_errors
 		notes_are_errors: tc.notes_are_errors

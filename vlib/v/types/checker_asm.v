@@ -252,6 +252,7 @@ fn (mut tc TypeChecker) check_inline_asm_templates(id flat.NodeId, node flat.Nod
 				word.text
 			}
 			if aliases[word.text] || word.text in labels || register_word in registers
+				|| inline_asm_directional_numeric_label(register_word)
 				|| inline_asm_operand_is_keyword(register_word, arch, is_intel) {
 				continue
 			}
@@ -259,6 +260,10 @@ fn (mut tc TypeChecker) check_inline_asm_templates(id flat.NodeId, node flat.Nod
 			tc.record_error_at(.unknown_ident, 'unknown register `${word.text}`; did you mean `${suggestion}`?', id, token.new_span(node.pos.id, base + word.start, base + word.end))
 		}
 	}
+}
+
+fn inline_asm_directional_numeric_label(word string) bool {
+	return word.len > 1 && word[0] in [`b`, `f`] && word[1..].bytes().all(it.is_digit())
 }
 
 fn inline_asm_operand_is_keyword(word string, arch string, is_intel bool) bool {

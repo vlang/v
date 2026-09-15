@@ -155,6 +155,7 @@ mut:
 	alias_method_candidates       map[string][]string
 	alias_method_candidates_ready bool
 	globals                       map[string]string
+	global_qualified_names        map[string][]string
 	sum_types                     map[string][]string
 	sum_variant_parents           map[string][]string
 	sum_variant_names             map[string]bool
@@ -2983,7 +2984,13 @@ fn (mut t Transformer) collect_types() {
 					}
 					t.globals[f.value] = typ
 					if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
-						t.globals['${cur_mod}.${f.value}'] = typ
+						qname := '${cur_mod}.${f.value}'
+						t.globals[qname] = typ
+						mut qualified := t.global_qualified_names[f.value]
+						if qname !in qualified {
+							qualified << qname
+							t.global_qualified_names[f.value] = qualified
+						}
 					}
 				}
 			}
@@ -4111,6 +4118,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		alias_method_candidates: t.alias_method_candidates
 		alias_method_candidates_ready: t.alias_method_candidates_ready
 		globals: t.globals
+		global_qualified_names: t.global_qualified_names
 		sum_types: t.sum_types
 		sum_variant_parents: t.sum_variant_parents
 		sum_variant_names: t.sum_variant_names
@@ -10546,6 +10554,20 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 			if t.has_smartcast(base_key) {
 				return t.transform_selector_expr(id, node)
 			}
+			mut base_type := t.node_type(base_id)
+			if base_type.len == 0 {
+				base_type = t.original_expr_type(base_id)
+			}
+			iface_name := t.resolve_interface_type_name(base_type)
+			if iface_name.len > 0 && node.value !in ['_typ', '_object'] {
+				if _ := t.interface_field_type_name(iface_name, node.value) {
+					// A selector used as the base of a larger lvalue still has to
+					// address the concrete implementation field. Leaving the cached
+					// interface copy here makes `box.field.member = value` update only
+					// that copy while reads continue to observe the boxed object.
+					return t.transform_selector_expr(id, node)
+				}
+			}
 			base := t.transform_lvalue(t.a.child(&node, 0))
 			mut new_children := []flat.NodeId{cap: int(node.children_count)}
 			new_children << base
@@ -12771,24 +12793,37 @@ fn (mut t Transformer) build_interface_field_assign_chain(base_ptr flat.NodeId, 
 fn (mut t Transformer) lower_interface_field_selector(base flat.NodeId, base_type string, iface_name string, field string, field_type string) flat.NodeId {
 	impl_index := t.interface_impl_index_for_transform(iface_name)
 	op := if base_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
-	fallback := if t.interface_has_direct_field(iface_name, field) {
+	has_cached_field := t.interface_has_direct_field(iface_name, field)
+	fallback_value := if has_cached_field {
 		t.make_selector_op(base, field, field_type, op)
 	} else {
 		t.zero_value_for_type(field_type)
 	}
-	return t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index, field, field_type, fallback, 0)
+	if !has_cached_field {
+		return t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index,
+			field, field_type, fallback_value, false, 0)
+	}
+	fallback := t.make_prefix(.amp, fallback_value)
+	t.set_node_typ(int(fallback), '&${field_type}')
+	field_ptr := t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index,
+		field, field_type, fallback, true, 0)
+	value := t.make_prefix(.mul, field_ptr)
+	t.set_node_typ(int(value), field_type)
+	return value
 }
 
-fn (mut t Transformer) build_interface_field_selector_chain(base flat.NodeId, base_type string, iface_name string, impl_index &types.InterfaceImplIndex, field string, field_type string, fallback flat.NodeId, idx int) flat.NodeId {
+fn (mut t Transformer) build_interface_field_selector_chain(base flat.NodeId, base_type string, iface_name string, impl_index &types.InterfaceImplIndex, field string, field_type string, fallback flat.NodeId, addressable bool, idx int) flat.NodeId {
 	if idx >= impl_index.names.len {
 		return fallback
 	}
 	impl := impl_index.names[idx]
 	if t.has_used_fn_filter() && !t.interface_boxed_type_used(iface_name, impl) {
-		return t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index, field, field_type, fallback, idx + 1)
+		return t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index, field,
+			field_type, fallback, addressable, idx + 1)
 	}
 	type_id := impl_index.ids[impl] or {
-		return t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index, field, field_type, fallback, idx + 1)
+		return t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index, field,
+			field_type, fallback, addressable, idx + 1)
 	}
 	base_op := if base_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 	tag := t.make_selector_op(base, '_typ', 'int', base_op)
@@ -12798,10 +12833,19 @@ fn (mut t Transformer) build_interface_field_selector_chain(base flat.NodeId, ba
 	cond := t.make_infix(.logical_and, tag_matches, object_not_nil)
 	object_ptr := t.make_cast('&${impl}', object, '&${impl}')
 	value := t.struct_field_selector_for_type(object_ptr, impl, field, field_type, true) or {
-		return t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index, field, field_type, fallback, idx + 1)
+		return t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index, field,
+			field_type, fallback, addressable, idx + 1)
 	}
-	then_block := t.make_block([t.make_expr_stmt(value)])
-	else_expr := t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index, field, field_type, fallback, idx + 1)
+	branch_value := if addressable {
+		value_ptr := t.make_prefix(.amp, value)
+		t.set_node_typ(int(value_ptr), '&${field_type}')
+		value_ptr
+	} else {
+		value
+	}
+	then_block := t.make_block([t.make_expr_stmt(branch_value)])
+	else_expr := t.build_interface_field_selector_chain(base, base_type, iface_name, impl_index,
+		field, field_type, fallback, addressable, idx + 1)
 	else_block := t.make_block([t.make_expr_stmt(else_expr)])
 	start := t.a.children.len
 	t.a.children << cond
@@ -12811,7 +12855,7 @@ fn (mut t Transformer) build_interface_field_selector_chain(base flat.NodeId, ba
 		kind: .if_expr
 		children_start: start
 		children_count: 3
-		typ: field_type
+		typ: if addressable { '&${field_type}' } else { field_type }
 	})
 }
 
@@ -14112,6 +14156,20 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			mut typ := t.infer_decl_type(node)
 			rhs_id := t.a.child(&node, 1)
 			rhs := t.a.nodes[int(rhs_id)]
+			primitive_cast_type := if rhs.kind == .call && rhs.children_count == 2 {
+				callee := t.a.child_node(&rhs, 0)
+				if callee.kind == .ident && callee.value in primitive_cast_type_names {
+					callee.value
+				} else {
+					''
+				}
+			} else {
+				''
+			}
+			if primitive_cast_type.len > 0 {
+				typ = primitive_cast_type
+				t.set_node_typ(int(t.a.child(&node, 0)), primitive_cast_type)
+			}
 			if rhs.kind == .string_literal && rhs.children_count == 1
 				&& rhs.value in ['__v3_comptime_zero', '__v3_comptime_new'] {
 				if target := t.comptime_type_expr_type(t.a.child(&rhs, 0)) {
@@ -14132,7 +14190,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			}
 			if sum_constructor_type.len > 0 {
 				typ = sum_constructor_type
-			} else if rhs.kind == .call {
+			} else if rhs.kind == .call && primitive_cast_type.len == 0 {
 				if call_typ := t.checker_resolved_non_builtin_return_type(rhs_id, rhs) {
 					if decl_type_is_usable(call_typ) || !decl_type_is_usable(typ) {
 						typ = call_typ
@@ -14178,9 +14236,13 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 					typ = match_typ
 				}
 			} else if rhs.kind == .block {
-				block_typ := t.stmt_value_type(rhs_id)
-				if block_typ.len > 0 {
-					typ = block_typ
+				if deref_type := t.decl_rhs_deref_type(rhs_id) {
+					typ = deref_type
+				} else {
+					block_typ := t.stmt_value_type(rhs_id)
+					if block_typ.len > 0 {
+						typ = block_typ
+					}
 				}
 			} else if rhs.kind == .or_expr && rhs.children_count > 0 {
 				or_source_id := t.a.child(&rhs, 0)
@@ -20039,7 +20101,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			t.set_node_typ(int(result), value_type[1..])
 			return result
 		}
-		if child.kind != .cast_expr && child_type.len > 0 && !child_type.starts_with('&') {
+		// Keep an explicit dereference around a parenthesized pointer cast. The
+		// parenthesized node can carry the dereferenced result type (`char`) even
+		// though its child is a pointer (`charptr`), so treating it as a plain
+		// non-pointer drops the source `*` (for example `*(charptr(addr))`).
+		if child.kind !in [.cast_expr, .paren] && child_type.len > 0
+			&& !child_type.starts_with('&') {
 			return t.transform_expr(child_id)
 		}
 	}
@@ -20830,7 +20897,10 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	// the checker sidecar holds its canonical identity. Normalize that semantic
 	// name so a real qualified alias with the same spelling cannot win first.
 	checker_target := t.raw_checker_node_type(id)
-	target_type := t.normalize_type_alias(if checker_target.len > 0 {
+	target_type := t.normalize_type_alias(if node.value in primitive_cast_type_names
+		|| node.value in ['voidptr', 'byteptr', 'charptr'] {
+		node.value
+	} else if checker_target.len > 0 {
 		checker_target
 	} else {
 		node.value
@@ -21911,14 +21981,20 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				}
 			}
 			mut typ := t.var_type(node.value)
+			mut is_global := false
 			if typ.len == 0 {
 				if global_type := t.current_module_global_type(node.value) {
 					typ = global_type
+					is_global = true
+				} else if global_name := t.imported_global_name(node.value) {
+					typ = t.globals[global_name]
+					is_global = true
+					t.set_node_value(int(id), global_name)
 				}
 			}
 			is_file_import_selector_base := t.in_selector_base
 				&& file_import_key(t.cur_file, node.value) in t.tc.file_imports
-			if typ.len == 0 && !is_file_import_selector_base
+			if typ.len == 0 && !is_global && !is_file_import_selector_base
 				&& (!t.in_call_callee || !t.ident_is_direct_function_callee(node.value)) {
 				if key := t.const_type_key_in_context(node.value, t.cur_module, t.cur_file) {
 					t.tc.clear_resolved_fn_value(id)
@@ -23106,6 +23182,9 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 	if node.children_count == 2 {
 		rhs_id := t.a.child(node, 1)
 		rhs := t.a.node(rhs_id)
+		if deref_type := t.decl_rhs_deref_type(rhs_id) {
+			return deref_type
+		}
 		if rhs.kind == .fn_literal {
 			if fn_type := t.fn_value_type_name(rhs_id) {
 				return fn_type
@@ -23116,6 +23195,12 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 				if param.starts_with(comptime_method_selector_fn_type_prefix) {
 					return param.all_after(comptime_method_selector_fn_type_prefix)
 				}
+			}
+		}
+		if rhs.kind == .cast_expr && rhs.value.len > 0 {
+			target := t.normalize_type_alias(rhs.value)
+			if decl_type_is_usable(target) {
+				return target
 			}
 		}
 	}

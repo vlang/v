@@ -159,6 +159,18 @@ fn test_autostr_thread_local_matching_is_restricted_to_builtin_global() {
 	assert !g.is_builtin_autostr_addr_state('g_autostr_addr_state')
 }
 
+fn test_vinix_globals_do_not_require_elf_tls() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('vinix', 'arm64') or { panic(err) }
+	g.global_modules['g_autostr_addr_state'] = 'builtin'
+	assert !g.global_is_thread_local('g_autostr_addr_state')
+	assert !g.global_is_thread_local('__anon_fn_1_capture')
+
+	g.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	assert g.global_is_thread_local('g_autostr_addr_state')
+	assert g.global_is_thread_local('__anon_fn_1_capture')
+}
+
 fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	headers := manual_stdlib_c_headers()
 	for name in ['memcpy', 'memmove', 'memset'] {
@@ -243,6 +255,8 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
 		assert c_code.contains('#include <${header}>'), header
 	}
+	assert c_code.contains('#if __has_include(<stdatomic.h>)')
+	assert c_code.contains('#if __has_include(<sys/stat.h>)')
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
 	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
@@ -283,6 +297,19 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
 	assert c_code.contains('static void* __v_thread_join(')
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
+}
+
+fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('vinix', 'arm64') or { panic(err) }
+	g.set_target_libc_headers(true)
+	g.needs_thread_runtime = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('pthread_create(&result.handle, NULL, (void*)start, arg)')
+	assert !c_code.contains('pthread_attr_init(&attr)')
+	assert !c_code.contains('fprintf(stderr, "V thread')
+	assert !c_code.contains('abort();')
 }
 
 fn test_target_libc_preamble_includes_pthread_for_direct_calls_without_thread_runtime() {

@@ -3114,6 +3114,7 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 			aliases[io.alias] = true
 		}
 	}
+	wide_x86_aliases := g.c_inline_asm_wide_x86_aliases(block, node)
 	is_extended := block.section_count > 1 || block.is_goto
 	g.write('__asm__')
 	if block.is_goto {
@@ -3143,7 +3144,8 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 		mut lowered := if block.is_intel {
 			lower_c_inline_asm_intel_template(template, aliases, is_extended)
 		} else {
-			lower_c_inline_asm_template(template, block.arch, aliases, is_extended)
+			lower_c_inline_asm_template_with_wide_aliases(template, block.arch, aliases,
+				wide_x86_aliases, is_extended)
 		}
 		if block.is_goto {
 			lowered = g.lower_c_inline_asm_goto_branch_label(template, lowered, block.arch, aliases, block.labels)
@@ -3185,6 +3187,40 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 	}
 	g.indent--
 	g.writeln(');')
+}
+
+fn (g &FlatGen) c_inline_asm_wide_x86_aliases(block CInlineAsmBlock, node flat.Node) map[string]bool {
+	if !is_c_inline_asm_x86_arch(block.arch) {
+		return map[string]bool{}
+	}
+	mut aliases := map[string]bool{}
+	mut child_index := 0
+	for io in block.output {
+		if io.alias.len > 0 && child_index < int(node.children_count)
+			&& g.c_inline_asm_operand_is_wider_than_32(g.a.child(&node, child_index)) {
+			aliases[io.alias] = true
+		}
+		child_index++
+	}
+	for io in block.input {
+		if io.alias.len > 0 && child_index < int(node.children_count)
+			&& g.c_inline_asm_operand_is_wider_than_32(g.a.child(&node, child_index)) {
+			aliases[io.alias] = true
+		}
+		child_index++
+	}
+	return aliases
+}
+
+fn (g &FlatGen) c_inline_asm_operand_is_wider_than_32(id flat.NodeId) bool {
+	typ := cgen_unalias_type(g.usable_expr_type(id))
+	return match typ {
+		types.Primitive {
+			if typ.size == 0 { g.target.pointer_bits > 32 } else { typ.size > 32 }
+		}
+		types.ISize, types.USize, types.Pointer { g.target.pointer_bits > 32 }
+		else { false }
+	}
 }
 
 fn (mut g FlatGen) gen_c_inline_asm_ios(ios []CInlineAsmIO, node flat.Node, child_offset int) {
@@ -3643,6 +3679,11 @@ fn parse_c_inline_asm_ios(source string, is_output bool) []CInlineAsmIO {
 }
 
 fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bool, is_extended bool) string {
+	return lower_c_inline_asm_template_with_wide_aliases(source, arch, aliases, map[string]bool{},
+		is_extended)
+}
+
+fn lower_c_inline_asm_template_with_wide_aliases(source string, arch string, aliases map[string]bool, wide_aliases map[string]bool, is_extended bool) string {
 	line := source.trim_space()
 	if line.len == 0 || line.ends_with(':') {
 		return line
@@ -3676,12 +3717,23 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 	mut lowered := []string{cap: operands.len}
 	for operand in operands {
 		mut lowered_operand := lower_c_inline_asm_operand(operand, arch, aliases, is_extended, is_directive)
+		if is_c_inline_asm_x86_port_io_instruction(instruction) {
+			for alias, is_wide in wide_aliases {
+				if is_wide {
+					lowered_operand = lowered_operand.replace('%[${alias}]', '%k[${alias}]')
+				}
+			}
+		}
 		if is_c_inline_asm_indirect_x86_branch_operand(instruction, operand, arch, aliases) {
 			lowered_operand = '*' + lowered_operand
 		}
 		lowered << lowered_operand
 	}
 	return line[..instruction_start] + instruction + ' ' + lowered.join(', ')
+}
+
+fn is_c_inline_asm_x86_port_io_instruction(instruction string) bool {
+	return instruction in ['in', 'inb', 'inw', 'inl', 'out', 'outb', 'outw', 'outl']
 }
 
 // lower_c_inline_asm_intel_template keeps V's destination-first structured syntax as
@@ -3746,6 +3798,9 @@ fn lower_c_inline_asm_intel_operand(source string, aliases map[string]bool, is_e
 	operand := source.trim_space()
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
 		return "'${operand[1..operand.len - 1]}'"
+	}
+	if label := c_inline_asm_local_label_reference(operand) {
+		return label
 	}
 	if label := c_inline_asm_quoted_label(operand) {
 		return label
@@ -3850,6 +3905,9 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
 		return "'${operand[1..operand.len - 1]}'"
 	}
+	if label := c_inline_asm_local_label_reference(operand) {
+		return label
+	}
 	if label := c_inline_asm_quoted_label(operand) {
 		return label
 	}
@@ -3864,7 +3922,7 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 	if is_c_inline_asm_number(operand) {
 		return if is_directive {
 			operand
-		} else if arch == 'arm64' {
+		} else if arch in ['arm64', 'aarch64'] {
 			'#${operand}'
 		} else if is_c_inline_asm_x86_arch(arch) {
 			'\$${operand}'
@@ -3910,8 +3968,17 @@ fn c_inline_asm_quoted_label(source string) ?string {
 	return none
 }
 
+// V spells a directional numeric assembly label with the direction first
+// (`b1`/`f2`), while GNU assembly puts it after the number (`1b`/`2f`).
+fn c_inline_asm_local_label_reference(source string) ?string {
+	if source.len < 2 || source[0] !in [`b`, `f`] || !source[1..].bytes().all(it.is_digit()) {
+		return none
+	}
+	return source[1..] + source[..1]
+}
+
 fn lower_c_inline_asm_address(source string, arch string, aliases map[string]bool, is_extended bool) string {
-	if arch == 'arm64' {
+	if arch in ['arm64', 'aarch64'] {
 		return '[${lower_c_inline_asm_atoms(source.trim_space(), arch, aliases, is_extended)}]'
 	}
 	if !is_c_inline_asm_x86_arch(arch) {
