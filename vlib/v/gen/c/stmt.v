@@ -6822,18 +6822,6 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 						v_type = fn_typ
 					}
 				}
-				// Optional lowering replaces `value := source or { ... }` with a
-				// concrete staging local followed by `value := staging`. If a stale
-				// `voidptr` annotation survived on the source declaration, the staging
-				// binding is the authoritative value type.
-				if v_type.name() == 'voidptr' {
-					if rhs_type := g.local_ident_type(rhs.value) {
-						if rhs_type.name() != 'voidptr' && rhs_type !is types.Unknown
-							&& rhs_type !is types.Void {
-							v_type = rhs_type
-						}
-					}
-				}
 			}
 			if fixed := array_fixed_type(v_type) {
 				if g.fixed_array_decl_is_unusable(fixed) {
