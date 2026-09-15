@@ -8534,6 +8534,7 @@ pub fn run(args []string) {
 	mut is_repl := false
 	mut show_test_stats := v3_environment_show_test_stats()
 	mut warn_impure_v := false
+	mut warn_about_allocs := false
 	mut warns_are_errors := false
 	mut notes_are_errors := false
 	mut fatal_errors := false
@@ -8940,6 +8941,11 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-Wimpure-v' {
 			warn_impure_v = true
+			// Cached module headers omit function bodies, so inspect source for every import.
+			no_cache = true
+			i++
+		} else if args[i] == '-warn-about-allocs' {
+			warn_about_allocs = true
 			// Cached module headers omit function bodies, so inspect source for every import.
 			no_cache = true
 			i++
@@ -9550,6 +9556,7 @@ pub fn run(args []string) {
 	prefs.selfhost = is_selfhost || fastc_selfhost_build
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
+	prefs.warn_about_allocs = warn_about_allocs
 	prefs.is_debug = is_debug
 	prefs.is_livemain = is_livemain
 	prefs.is_liveshared = is_liveshared
@@ -9620,6 +9627,9 @@ pub fn run(args []string) {
 			}
 			if warn_impure_v {
 				unsupported_modes << '`-Wimpure-v`'
+			}
+			if warn_about_allocs {
+				unsupported_modes << '`-warn-about-allocs`'
 			}
 			if print_fn_names.len > 0 || print_v_files || print_watched_files
 				|| dump_c_flags.len > 0 || generate_c_project.len > 0 {
@@ -9865,6 +9875,7 @@ pub fn run(args []string) {
 		'enable_globals=${enable_globals_compat}',
 		'check_overflow=${check_overflow}',
 		'force_bounds_checking=${prefs.force_bounds_checking}',
+		'warn_about_allocs=${prefs.warn_about_allocs}',
 		'warns_are_errors=${effective_warns_are_errors}',
 		'notes_are_errors=${notes_are_errors}',
 		'test=${is_test_command || is_v3_test_file(input_file, backend, target)}',
@@ -10539,6 +10550,7 @@ pub fn run(args []string) {
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
 	pre_tc.no_main = 'no_main' in prefs.user_defines
+	pre_tc.warn_about_allocs = prefs.warn_about_allocs
 	pre_tc.warns_are_errors = effective_warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod

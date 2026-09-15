@@ -855,6 +855,7 @@ pub mut:
 	checker_fixture_mode          bool
 	autofree_mode                 bool
 	no_main                       bool
+	warn_about_allocs             bool
 	warns_are_errors              bool
 	notes_are_errors              bool
 	is_prod                       bool
@@ -1283,6 +1284,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		checker_fixture_mode: tc.checker_fixture_mode
 		autofree_mode: tc.autofree_mode
 		no_main: tc.no_main
+		warn_about_allocs: tc.warn_about_allocs
 		warns_are_errors: tc.warns_are_errors
 		notes_are_errors: tc.notes_are_errors
 		is_prod: tc.is_prod
@@ -2589,6 +2591,122 @@ fn (mut tc TypeChecker) record_warning_at(kind TypeErrorKind, msg string, node f
 	tc.notices << TypeError{
 		...base
 		severity: 'warning:'
+	}
+}
+
+fn (mut tc TypeChecker) warn_alloc(description string, id flat.NodeId, pos token.Pos) {
+	if !tc.warn_about_allocs || tc.cur_module in ['strings', 'math', 'math.bits', 'builtin',
+		'builtin.closure', 'strconv', 'os', 'sync', 'v.debug', 'v.embed_file'] {
+		return
+	}
+	mut current := id
+	mut direct_child := flat.empty_node
+	mut value_path := true
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind in [.fn_literal, .lambda_expr] {
+			break
+		}
+		if node.kind == .typeof_expr && !tc.typeof_operand_is_runtime(current, node) {
+			return
+		}
+		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign]
+			&& node.is_freed_assignment() && value_path
+			&& tc.assignment_child_is_value(node, direct_child) {
+			return
+		}
+		parent := tc.direct_parent_id(current)
+		if parent == current {
+			break
+		}
+		if tc.valid_node_id(parent) && !tc.child_is_value_producing_path(parent, current) {
+			value_path = false
+		}
+		direct_child = current
+		current = parent
+	}
+	tc.record_warning_at(.compile_error, 'allocation (${description})', id, pos)
+}
+
+fn (tc &TypeChecker) typeof_operand_is_runtime(id flat.NodeId, node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	parent_id := tc.direct_parent_id(id)
+	if tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .selector && parent.children_count > 0
+			&& tc.a.child(parent, 0) == id {
+			return false
+		}
+	}
+	mut operand_type := unalias_type(tc.resolve_type(tc.a.child(node, 0)))
+	if operand_type is Pointer {
+		operand_type = unalias_type(operand_type.base_type)
+	}
+	return operand_type is SumType
+}
+
+fn (tc &TypeChecker) assignment_child_is_value(node flat.Node, child_id flat.NodeId) bool {
+	if !tc.valid_node_id(child_id) {
+		return false
+	}
+	for i in 0 .. tc.multi_assign_rhs_count(node) {
+		if tc.multi_assign_rhs_id(node, i) == child_id {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) child_is_value_producing_path(parent_id flat.NodeId, child_id flat.NodeId) bool {
+	parent := tc.a.node(parent_id)
+	match parent.kind {
+		.block, .match_branch, .lock_expr {
+			return parent.children_count > 0
+				&& tc.a.child(parent, parent.children_count - 1) == child_id
+		}
+		.if_expr, .match_stmt {
+			for i in 1 .. parent.children_count {
+				if tc.a.child(parent, i) == child_id {
+					return true
+				}
+			}
+			return false
+		}
+		.call, .selector, .index {
+			return false
+		}
+		.infix {
+			return tc.type_can_own_warned_allocation(tc.resolve_type(parent_id))
+		}
+		.as_expr, .in_expr, .is_expr {
+			return false
+		}
+		else {
+			return true
+		}
+	}
+}
+
+fn (tc &TypeChecker) type_can_own_warned_allocation(typ Type) bool {
+	clean := unalias_type(typ)
+	return match clean {
+		String, Array, ArrayFixed, Channel, Map, Pointer, FnType, Struct, Interface, SumType {
+			true
+		}
+		OptionType {
+			tc.type_can_own_warned_allocation(clean.base_type)
+		}
+		ResultType {
+			tc.type_can_own_warned_allocation(clean.base_type)
+		}
+		MultiReturn {
+			clean.types.any(tc.type_can_own_warned_allocation(it))
+		}
+		else {
+			false
+		}
 	}
 }
 
