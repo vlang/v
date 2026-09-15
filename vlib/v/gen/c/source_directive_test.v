@@ -289,6 +289,38 @@ fn test_include_guard_header_is_replayed_only_after_guard_undef() {
 	assert 'guarded_api' in g.inlined_c_active_macros
 }
 
+fn test_nested_include_can_undef_outer_guard() {
+	root := os.join_path(os.vtmp_dir(), 'v3_nested_include_outer_guard_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	inner_header := os.join_path(root, 'inner.h')
+	outer_header := os.join_path(root, 'outer.h')
+	source := os.join_path(root, 'main.c.v')
+	os.write_file(inner_header, '#undef OUTER_H\n')!
+	os.write_file(outer_header, '#ifndef OUTER_H\n#define OUTER_H\n#include "inner.h"\n#define nested_guard_api(p) ((p)->value)\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${outer_header}"'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'undef'
+		typ:   'nested_guard_api'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${outer_header}"'
+	}, source, false)
+	assert 'nested_guard_api' in g.inlined_c_active_macros
+}
+
 fn test_include_guard_with_alternative_branch_is_replayed() {
 	root := os.join_path(os.vtmp_dir(), 'v3_include_guard_alternative_${os.getpid()}')
 	os.rmdir_all(root) or {}

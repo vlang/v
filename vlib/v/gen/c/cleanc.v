@@ -8888,12 +8888,13 @@ fn c_active_macro_directive_state(directive string, mut conditionals []CCacheCon
 // separately before call arguments are generated.
 fn (mut g FlatGen) collect_included_c_active_macros(include_arg string, source_file string, include_dirs []string, ambient_ambiguous bool) bool {
 	mut active_paths := map[string]bool{}
+	mut active_guard_mutations := map[string]int{}
 	mut found := false
 	for path in g.c_include_scan_paths(include_arg, source_file, include_dirs) {
 		if os.is_file(path) {
 			found = true
 			g.collect_included_c_active_macros_from_file(path, include_dirs, mut active_paths,
-				source_file, ambient_ambiguous)
+				source_file, ambient_ambiguous, mut active_guard_mutations)
 			break
 		}
 	}
@@ -8904,7 +8905,7 @@ fn (mut g FlatGen) collect_included_c_active_macros(include_arg string, source_f
 	return found
 }
 
-fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, include_dirs []string, mut active_paths map[string]bool, source_file string, ambient_ambiguous bool) {
+fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, include_dirs []string, mut active_paths map[string]bool, source_file string, ambient_ambiguous bool, mut active_guard_mutations map[string]int) {
 	real_path := os.real_path(path)
 	if real_path in active_paths || real_path in g.c_active_macro_once_paths {
 		return
@@ -8942,6 +8943,11 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 	mut first_directive := 0
 	guard := g.c_active_macro_header_guards[real_path]
 	guard_end := g.c_active_macro_header_guard_ends[real_path]
+	guard_was_tracked := guard in active_guard_mutations
+	guard_mutations_before := active_guard_mutations[guard]
+	if guard.len > 0 && !guard_was_tracked {
+		active_guard_mutations[guard] = 0
+	}
 	if guard.len > 0 {
 		// A traditional guard can leave compatibility directives after its closing
 		// `#endif`. Skip only the guarded prefix and continue replaying that tail.
@@ -8954,11 +8960,12 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 		clean := directives[directive_idx]
 		directive_name := c_directive_name(clean)
 		directive_is_active, directive_is_ambiguous := c_active_macro_directive_state(clean, mut conditionals, mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros, g.c_compiler_macro_env_complete)
-		if guard.len > 0 && directive_idx == guard_end && !ambient_ambiguous {
+		if guard.len > 0 && directive_idx == guard_end && !ambient_ambiguous
+			&& active_guard_mutations[guard] == guard_mutations_before + 1 {
 			// Whether the opening `#ifndef` was true or false, a conventional guard
-			// that does not undef itself is definitely defined after this `#endif`.
-			// Recording that invariant lets later includes skip the guarded prefix
-			// even when the compiler's initial macro environment is incomplete.
+			// whose only observed mutation is its own `#define` is definitely defined
+			// after this `#endif`. Nested includes may mutate the outer guard, so they
+			// conservatively prevent recording this invariant.
 			if guard !in g.direct_c_include_macros && !g.direct_c_dynamic_macros[guard] {
 				g.direct_c_dynamic_macros.delete(guard)
 				g.direct_c_include_macros[guard] = []string{}
@@ -8969,11 +8976,20 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 		}
 		mutation_is_ambiguous := ambient_ambiguous || directive_is_ambiguous
 		if directive_name in ['define', 'undef'] {
+			macro_arg := c_directive_arg(clean).fields()[0] or { '' }
+			macro_name := macro_arg.all_before('(')
+			if macro_name in active_guard_mutations {
+				active_guard_mutations[macro_name]++
+			}
 			g.record_c_active_macro_directive_deferred(clean, mutation_is_ambiguous)
 			c_record_include_macro_definition(clean, mutation_is_ambiguous, mut g.direct_c_include_macros, mut g.direct_c_dynamic_macros, g.c_compiler_macro_env_complete)
 			continue
 		}
 		if directive_name == 'pragma' {
+			operation, macro_name := c_active_macro_pragma_operation(clean)
+			if operation == 'pop' && macro_name in active_guard_mutations {
+				active_guard_mutations[macro_name]++
+			}
 			if c_directive_arg(clean).trim_space() == 'once' {
 				if !mutation_is_ambiguous {
 					g.c_active_macro_once_paths[real_path] = true
@@ -9009,7 +9025,8 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 				if os.is_file(nested_path) {
 					found = true
 					g.collect_included_c_active_macros_from_file(nested_path, include_dirs,
-						mut active_paths, source_file, mutation_is_ambiguous)
+						mut active_paths, source_file, mutation_is_ambiguous,
+						mut active_guard_mutations)
 					break
 				}
 			}
@@ -9017,6 +9034,9 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 				g.note_unscanned_c_macro_include(source_file)
 			}
 		}
+	}
+	if guard.len > 0 && !guard_was_tracked {
+		active_guard_mutations.delete(guard)
 	}
 }
 
