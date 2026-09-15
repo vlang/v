@@ -8882,6 +8882,42 @@ fn c_active_macro_directive_state(directive string, mut conditionals []CCacheCon
 	return true, conditionals.any(it.ambiguous)
 }
 
+struct CActiveMacroHeaderScan {
+mut:
+	directives []string
+	guard      string
+	guard_end  int = -1
+}
+
+fn scan_c_active_macro_header(path string) ?CActiveMacroHeaderScan {
+	text := os.read_file(path) or { return none }
+	defer {
+		unsafe { text.free() }
+	}
+	lines := c_join_continued_lines(text)
+	mut directives := []string{}
+	mut in_block_comment := false
+	for line in lines {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line,
+			in_block_comment)
+		in_block_comment = next_in_block_comment
+		if clean.len > 0 {
+			directives << clean
+		}
+	}
+	guard := c_header_guard_name_from_lines(lines)
+	guard_end := if guard.len > 0 {
+		c_header_guard_end_directive(directives, guard) or { -1 }
+	} else {
+		-1
+	}
+	return CActiveMacroHeaderScan{
+		directives: directives
+		guard:      guard
+		guard_end:  guard_end
+	}
+}
+
 // collect_included_c_active_macros records function-like macros supplied by an
 // ordinary readable header. Unlike native source includes, headers stay as
 // preprocessor directives, so their macro definitions have to be inspected
@@ -8912,26 +8948,24 @@ fn (mut g FlatGen) collect_included_c_active_macros_from_file(path string, inclu
 	}
 	mut directives := g.c_active_macro_header_directives[real_path]
 	if real_path !in g.c_active_macro_header_directives {
-		text := os.read_file(real_path) or { return }
-		defer {
-			unsafe { text.free() }
+		// Header preprocessing creates much more scratch data than the cached
+		// directives retain. Release that scratch immediately under -prealloc.
+		scope := cgen_worker_scope_begin(true)
+		mut scan := scan_c_active_macro_header(real_path) or {
+			cgen_worker_scope_leave(scope)
+			cgen_worker_scope_free(scope)
+			return
 		}
-		lines := c_join_continued_lines(text)
-		mut in_block_comment := false
-		for line in lines {
-			clean, next_in_block_comment := c_preprocessor_directive_scan_line(line,
-				in_block_comment)
-			in_block_comment = next_in_block_comment
-			if clean.len > 0 {
-				directives << clean
-			}
+		cgen_worker_scope_leave(scope)
+		if scope != unsafe { nil } {
+			scan.directives = clone_cgen_string_list(scan.directives)
+			scan.guard = scan.guard.clone()
 		}
-		guard := c_header_guard_name_from_lines(lines)
-		if guard.len > 0 {
-			if guard_end := c_header_guard_end_directive(directives, guard) {
-				g.c_active_macro_header_guards[real_path] = guard
-				g.c_active_macro_header_guard_ends[real_path] = guard_end
-			}
+		cgen_worker_scope_free(scope)
+		directives = scan.directives
+		if scan.guard_end >= 0 {
+			g.c_active_macro_header_guards[real_path] = scan.guard
+			g.c_active_macro_header_guard_ends[real_path] = scan.guard_end
 		}
 		g.c_active_macro_header_directives[real_path] = directives
 	}
