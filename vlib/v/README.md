@@ -57,11 +57,11 @@ explicitly, and ordinary user builds and external tools retry through it after a
 compilation failure.
 
 The installer supplements the cached fallback vlib with modules whose public paths moved after
-0.5.2. Fallback roots missing these compatibility modules are not used. If fallback compilation
-fails too, V reports its diagnostics and notes where the default compiler stopped. Re-run the
-command with `-new-compiler` to see the suppressed default-compiler diagnostics without a fallback
-retry. A program or test that compiles and then exits unsuccessfully keeps its own status and is
-not reported as a compiler failure.
+0.5.2. Fallback roots missing these compatibility modules are not used. If a fallback command exits
+unsuccessfully, V notes where the default compiler stopped and how to show its suppressed
+diagnostics. For a command that may have run user code, the note preserves the child's status
+without mislabeling it as a compiler failure. Re-run the command with `-new-compiler` to see the
+default-compiler diagnostics without a fallback retry.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.

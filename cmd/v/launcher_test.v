@@ -243,17 +243,79 @@ fn test_cached_fallback_root_is_preferred_when_installed() {
 	assert os.dir(resolved) == os.read_file(root_file)!.trim_space()
 }
 
-fn test_fallback_failure_notes_name_the_stage_v_stopped_in() {
-	notes := v1_fallback_failure_notes('compiler_error\nsemantic checking')
+fn test_fallback_exit_notes_name_the_stage_v_stopped_in() {
+	notes := v1_fallback_exit_notes('compiler_error\nsemantic checking', true)
 	assert notes.len == 2
 	assert notes[0].contains('compatibility compiler failed too')
 	assert notes[1].contains('V stopped during semantic checking')
 	assert notes[1].contains('-new-compiler')
-	stageless := v1_fallback_failure_notes('inline_asm')
+	stageless := v1_fallback_exit_notes('inline_asm', true)
 	assert stageless[1].contains('V stopped and kept its diagnostics quiet')
+	ambiguous := v1_fallback_exit_notes('compiler_error\nsemantic checking', false)
+	assert ambiguous[0].contains('compatibility retry exited unsuccessfully')
+	assert ambiguous[0].contains('any errors above are its own')
+	assert ambiguous[0].contains('exit status may instead come from the program')
+	assert !ambiguous[0].contains('compiler failed too')
+	assert ambiguous[1] == notes[1]
 }
 
-fn test_fallback_failure_notes_are_only_reported_for_compile_only_commands() {
+fn run_launcher_test_process(executable string, args []string, work_dir string,
+	environment map[string]string) os.Result {
+	mut process := os.new_process(executable)
+	process.set_args(args)
+	process.set_work_folder(work_dir)
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.run()
+	process.wait()
+	result := os.Result{
+		exit_code: process.code
+		output:    process.stdout_slurp() + process.stderr_slurp()
+	}
+	process.close()
+	return result
+}
+
+fn test_failed_run_retry_explains_how_to_show_v3_diagnostics() {
+	dispatcher := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
+		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
+	} else {
+		@VEXE
+	}
+	fallback := os.join_path(os.dir(dispatcher), v1_fallback_binary + $if windows { '.exe' } $else { '' })
+	if !os.is_executable(dispatcher) || !os.is_executable(fallback) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_failed_run_retry_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'import time\n\nfn main() {\n\ttimer := time.new_timer(time.nanosecond)\n\t_ = timer\n\tmissing_v3_failure()\n}\n')!
+	mut environment := os.environ()
+	environment['VFLAGS'] = ''
+	environment['VOSARGS'] = ''
+	environment['V_MACOS_V3_NO_FALLBACK'] = ''
+	retried := run_launcher_test_process(dispatcher, ['-nocache', '-no-parallel', 'run', source], os.dir(dispatcher), environment)
+	assert retried.exit_code == 1, retried.output
+	assert retried.output.contains('unknown function: time.new_timer'), retried.output
+	assert retried.output.contains('compatibility retry exited unsuccessfully'), retried.output
+	assert retried.output.contains('any errors above are its own'), retried.output
+	assert retried.output.contains('exit status may instead come from the program'), retried.output
+	assert retried.output.contains('V stopped during semantic checking'), retried.output
+	assert retried.output.contains('re-run with `-new-compiler`'), retried.output
+
+	strict := run_launcher_test_process(dispatcher, ['-new-compiler', '-nocache', '-no-parallel',
+		'run', source], os.dir(dispatcher), environment)
+	assert strict.exit_code == 1, strict.output
+	assert strict.output.contains('unknown function `missing_v3_failure`'), strict.output
+	assert !strict.output.contains('unknown function: time.new_timer'), strict.output
+	assert !strict.output.contains('compatibility retry'), strict.output
+}
+
+fn test_fallback_exit_classifies_compile_only_commands() {
 	previous_norun := os.getenv_opt('VNORUN')
 	os.unsetenv('VNORUN')
 	defer {

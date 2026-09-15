@@ -96,11 +96,11 @@ selects the same embedded driver.
 
 The installer supplements the cached fallback vlib with modules whose public
 paths moved after 0.5.2. Fallback roots missing these compatibility modules are
-not used. If the fallback compilation fails too, V reports its diagnostics and
-notes where the default compiler stopped. Re-run the command with
-`-new-compiler` to see the suppressed default-compiler diagnostics without a
-fallback retry. A program or test that compiles and then exits unsuccessfully
-keeps its own status and is not reported as a compiler failure.
+not used. If a fallback command exits unsuccessfully, V notes where the default
+compiler stopped and how to show its suppressed diagnostics. For a command
+that may have run user code, the note preserves the child's status without
+mislabeling it as a compiler failure. Re-run the command with `-new-compiler`
+to see the default-compiler diagnostics without a fallback retry.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
