@@ -120,7 +120,7 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 				write_location(cn, mut pw)
 			}
 			if cfg.is_color {
-				pw.writeln(color_highlight(cn.content, vd.docs[0].table))
+				pw.writeln(color_highlight(cn.content))
 			} else {
 				pw.writeln(cn.content)
 			}
@@ -138,7 +138,7 @@ fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.
 							fex = indent(ex)
 						}
 						if cfg.is_color {
-							fex = color_highlight(fex, vd.docs[0].table)
+							fex = color_highlight(fex)
 						}
 						pw.writeln(fex)
 					}
@@ -260,8 +260,8 @@ fn (vd &VDoc) get_readme(path string) Readme {
 	}
 	return Readme{
 		frontmatter: readme_frontmatter
-		content: readme_contents
-		path: readme_path
+		content:     readme_contents
+		path:        readme_path
 	}
 }
 
@@ -304,7 +304,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 	cfg := vd.cfg
 	mut out := Output{
 		path: cfg.output_path
-		typ: cfg.output_type
+		typ:  cfg.output_type
 	}
 	if out.path == '' {
 		if cfg.output_type == .unset {
@@ -349,20 +349,20 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			readme_name = page
 		}
 		comment := doc.DocComment{
-			is_readme: true
+			is_readme:   true
 			frontmatter: readme.frontmatter
-			text: readme.content
+			text:        readme.content
 		}
 		if out.typ == .ansi {
 			println(markdown.to_plain(readme.content))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
-				head: doc.DocNode{
-					is_readme: true
-					name: readme_name
-					file_path: readme.path
+				head:           doc.DocNode{
+					is_readme:   true
+					name:        readme_name
+					file_path:   readme.path
 					frontmatter: readme.frontmatter
-					comments: [comment]
+					comments:    [comment]
 				}
 				time_generated: time.now()
 			}
@@ -394,9 +394,9 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			readme := vd.get_readme(dirpath)
 			if readme.path != '' {
 				comment := doc.DocComment{
-					is_readme: true
+					is_readme:   true
 					frontmatter: readme.frontmatter
-					text: readme.content
+					text:        readme.content
 				}
 				dcs.head.comments = [comment]
 				dcs.head.file_path = readme.path

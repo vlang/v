@@ -1,8 +1,6 @@
 module document
 
 import os
-import v.ast
-import v.parser
 import v.pref
 import v.util
 import v.vmod
@@ -72,14 +70,13 @@ fn get_parent_mod(input_dir string) !string {
 	}
 	base_dir := os.dir(input_dir)
 	input_dir_name := os.file_name(base_dir)
-	prefs := new_vdoc_preferences()
 	fentries := os.ls(base_dir) or { []string{} }
 	files := fentries.filter(!os.is_dir(os.join_path(base_dir, it)))
 	if 'v.mod' in files {
 		// the top level is reached, no point in climbing up further
 		return ''
 	}
-	v_files := prefs.should_compile_filtered_files(base_dir, files)
+	v_files := files.filter((it.ends_with('.v') || it.ends_with('.vsh')) && !it.ends_with('_test.v'))
 	if v_files.len == 0 {
 		parent_mod := get_parent_mod(base_dir) or { return input_dir_name }
 		if parent_mod.len > 0 {
@@ -87,16 +84,26 @@ fn get_parent_mod(input_dir string) !string {
 		}
 		return error('No V files found.')
 	}
-	mut tbl := ast.new_table()
-	file_ast := parser.parse_file(v_files[0], mut tbl, .skip_comments, prefs)
-	if file_ast.mod.short_name == 'main' {
+	source := os.read_file(os.join_path(base_dir, v_files[0])) or { return error('No V files found.') }
+	short_name := module_name_from_source(source)
+	if short_name == 'main' {
 		return ''
 	}
 	parent_mod := get_parent_mod(base_dir) or { return input_dir_name }
 	if parent_mod.len > 0 {
-		return '${parent_mod}.${file_ast.mod.short_name}'
+		return '${parent_mod}.${short_name}'
 	}
-	return file_ast.mod.short_name
+	return short_name
+}
+
+fn module_name_from_source(source string) string {
+	for line in source.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('module ') {
+			return trimmed.all_after('module ').all_before(' ').trim_space()
+		}
+	}
+	return 'main'
 }
 
 // lookup_module_with_path looks up the path of a given module name.

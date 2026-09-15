@@ -223,11 +223,7 @@ fn run_external_tool(args []string, command_index int, command string) {
 	}
 
 	base := os.join_path(vroot, 'cmd', 'tools', tool_name)
-	tool_source := if os.is_dir(base) {
-		base
-	} else if os.is_file(base + '.v') {
-		base + '.v'
-	} else {
+	tool_source := find_external_tool_source(base) or {
 		eprintln('cannot find the `${command}` tool source in `${vroot}`')
 		exit(1)
 	}
@@ -239,15 +235,24 @@ fn run_external_tool(args []string, command_index int, command string) {
 	if command_index >= 0 {
 		tool_args << args[command_index..]
 	}
-	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args, args)
+	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args)
+}
+
+fn find_external_tool_source(base string) ?string {
+	if os.is_file(base + '.v') {
+		return base + '.v'
+	}
+	if os.is_dir(base) {
+		return base
+	}
+	return none
 }
 
 // launch_external_tool starts a `cmd/tools/` program, reusing the binary that was compiled
 // for a previous invocation whenever all of its sources are unchanged. Compiling a tool takes
 // seconds, while running one usually takes milliseconds, so tools that are invoked once per
 // file (`v fmt -verify`, `v vet`) are unusable without this.
-fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string, args []string) {
-	retry_args := clean_compiler_selection_flags(args)
+fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string) {
 	if !tool_cache_is_disabled() {
 		vexe := os.real_path(os.executable())
 		build_args := clean_compiler_selection_flags(prefix_args)
@@ -262,21 +267,15 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 			if recorded := unbuildable_tool_failure(entry) {
 				// Rebuilding a tool that is already known to not compile would cost seconds on
 				// every single invocation, so report the recorded failure straight away instead.
-				if fallback_is_disabled() {
-					eprintln(recorded.trim_space())
-					exit(1)
-				}
-				launch_v1(retry_args, unbuildable_tool_reason(tool_name, entry), RetryState{})
+				eprintln(recorded.trim_space())
+				exit(1)
 			}
 			if tool_cache_is_verbose() {
 				eprintln('> recompiling `${tool_name}`, because ${reason}')
 			}
 			build_tool_binary(vexe, entry) or {
 				eprintln(err.msg().trim_space())
-				if fallback_is_disabled() {
-					exit(1)
-				}
-				launch_v1(retry_args, unbuildable_tool_reason(tool_name, entry), RetryState{})
+				exit(1)
 			}
 			exec_cached_tool(entry.binary, tool_args)
 		}
@@ -285,12 +284,7 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 	driver_args << prefix_args
 	driver_args << ['run', tool_source]
 	driver_args << tool_args
-	run_with_fallback(clean_compiler_selection_flags(driver_args), retry_args)
-}
-
-// unbuildable_tool_reason explains why a tool has to run on the compatibility compiler.
-fn unbuildable_tool_reason(tool_name string, entry ToolCacheEntry) string {
-	return 'the V compiler cannot build `cmd/tools/${tool_name}` (recorded in `${entry.unbuildable}`)'
+	driver.run(clean_compiler_selection_flags(driver_args))
 }
 
 fn print_help(args []string, command_index int) {
@@ -655,8 +649,7 @@ fn ensure_v1_fallback(reason string) !string {
 		eprintln('${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...')
 		mut process := os.new_process(make_command)
 		process.set_args(['v1'])
-		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()),
-			cache_parent, cached_launcher))
+		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()), cache_parent, cached_launcher))
 		process.set_work_folder(vroot)
 		process.wait()
 		code := process.code
