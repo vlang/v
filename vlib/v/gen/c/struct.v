@@ -1490,6 +1490,21 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 	return true
 }
 
+// lowered_struct_init_sum_name prefers a transform-made literal's canonical
+// type metadata before interpreting its value as source text.
+fn (g &FlatGen) lowered_struct_init_sum_name(node flat.Node) string {
+	if node.children_count == 2 && node.typ.len > 0 {
+		first := g.a.child_node(&node, 0)
+		if first.value == 'typ' {
+			canonical_name := g.resolve_sum_name(node.typ)
+			if canonical_name in g.tc.sum_types {
+				return canonical_name
+			}
+		}
+	}
+	return g.resolve_source_sum_name(node.value, g.node_source_file(&node))
+}
+
 // struct_init_is_lowered_sum_literal recognizes a transform-made sum literal
 // (exactly a `typ` index field plus one variant payload field) whose sum name
 // kept a foreign module's bare spelling: such a name parses as a plain struct,
@@ -1502,12 +1517,12 @@ fn (g &FlatGen) struct_init_is_lowered_sum_literal(node flat.Node) bool {
 	if first.value != 'typ' {
 		return false
 	}
-	resolved := g.resolve_sum_name(node.value)
+	resolved := g.lowered_struct_init_sum_name(node)
 	return resolved in g.tc.sum_types
 }
 
 fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
-	for candidate in [node.typ, g.expected_expr_type.name(), node.value] {
+	for candidate in [node.typ, g.expected_expr_type.name()] {
 		resolved := g.resolve_sum_name(candidate)
 		if resolved in g.tc.sum_types {
 			return resolved
@@ -1521,7 +1536,19 @@ fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
 			}
 		}
 	}
-	return g.resolve_sum_name(node.value)
+	resolved_source := g.resolve_source_sum_name(node.value, g.node_source_file(&node))
+	if resolved_source in g.tc.sum_types {
+		return resolved_source
+	}
+	if node.value.contains('[') {
+		ct := g.tc.c_type(g.tc.parse_type(node.value))
+		for sum_name, _ in g.tc.sum_types {
+			if g.tc.c_type(g.interface_concrete_type(sum_name)) == ct {
+				return sum_name
+			}
+		}
+	}
+	return resolved_source
 }
 
 fn (g &FlatGen) lowered_sum_field_variant(sum_name string, field &flat.Node) ?string {
