@@ -101,7 +101,7 @@ pub fn (mut h Hash256) free() {
 // write writes out the content of message and updates internal Hash256 state.
 pub fn (mut h Hash256) write(msg []u8) !int {
 	if h.Digest.done {
-		panic('Digest: writing after done ')
+		return error('Digest: writing after done ')
 	}
 	return h.absorb(msg)
 }
