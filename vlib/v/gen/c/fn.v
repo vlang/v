@@ -11883,7 +11883,12 @@ fn (mut g FlatGen) gen_embedded_method_receiver(base_id flat.NodeId, base_type t
 	if needs_paren {
 		g.write(')')
 	}
-	mut access_is_ptr := base_type is types.Pointer
+	// A `mut` parameter is passed as a pointer in C even when its V type is a
+	// value, so ask the codegen about the ident's storage before choosing the
+	// first accessor. Without this, a promoted method reached through an embedded
+	// field of such a parameter emits `base.field` instead of `base->field`.
+	mut access_is_ptr := cgen_type_is_pointer_like(base_type)
+		|| g.receiver_ident_storage_is_pointer(base_id)
 	for field in path {
 		op := if access_is_ptr { '->' } else { '.' }
 		g.write('${op}${c_field_name(field.name)}')
