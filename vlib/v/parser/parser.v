@@ -9464,6 +9464,16 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				continue
 			}
 		}
+		// In comma-less array literals, an attached prefix operator starts the next
+		// element when it is separated from the preceding expression: `[1 -2]`.
+		// Keep operators with whitespace on both sides infix: `[1 - 2]`.
+		if p.in_array_literal > 0 && p.tok in [.minus, .mul, .amp]
+			&& p.tok_pos > p.prev_tok_end {
+			p.peek()
+			if p.tok_end == p.peek_pos {
+				break
+			}
+		}
 		if token_is_assignment(p.tok) {
 			break
 		}
@@ -12178,29 +12188,24 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			pos: p.span_to(bracket_start)
 		})
 	}
-	// multi-element array: `[a, b, c]` or newline-separated const tables.
-	// Each subsequent element must be preceded by a separator: a single comma,
-	// or a run of `;` that the scanner emits for newlines/blank lines. A missing
-	// separator (`[1 2]`) or a repeated comma (`[1,,2]`) ends the element list
-	// instead of merging operands; the stray tokens are then left to the
-	// (permissive) `p.check(.rsbr)` below, matching how this parser recovers
-	// from other malformed input.
-	for p.tok == .comma || p.tok == .semicolon || p.tok == .dot {
+	// Multi-element arrays accept commas, newlines, or whitespace between
+	// elements. This preserves V's comma-less literal syntax, e.g. `[1 2 3]`.
+	for p.tok != .rsbr && p.tok != .eof {
 		if p.tok == .comma {
 			p.next()
 		}
-		// newlines/blank lines after a separator are just whitespace
+		// Newlines/blank lines between elements are just whitespace.
 		for p.tok == .semicolon {
 			p.next()
 		}
-		// a second comma with no element in between is not a separator
+		// A second comma with no element in between is not a separator.
 		if p.tok == .rsbr || p.tok == .eof || p.tok == .comma {
 			break
 		}
 		ids << p.expr(.lowest)
 	}
-	// Keep recovery local to the literal. Diagnose a missing separator or doubled
-	// comma before discarding the malformed tail.
+	// Keep recovery local to the literal. Diagnose a doubled comma before
+	// discarding the malformed tail.
 	if p.tok != .rsbr {
 		unexpected := if p.lit.len > 0 { p.lit } else { p.tok.str() }
 		p.record_diagnostic('unexpected token `${unexpected}`, expecting `]`', p.tok_pos)
