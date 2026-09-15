@@ -10153,7 +10153,7 @@ fn (mut p Parser) keyword_token_is_ident_expr() bool {
 	return match p.tok {
 		.key_module, .key_type { true }
 		.key_shared { p.shared_token_is_identifier(false) }
-		.key_lock, .key_rlock, .key_select { p.peek() in [.lpar, .lsbr] }
+		.key_lock, .key_rlock, .key_match, .key_select { p.peek() in [.lpar, .lsbr] }
 		else { false }
 	}
 }
@@ -10196,24 +10196,6 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			kind:           .prefix
 			op:             .plus
 			children_start: p.add_child(operand)
-			children_count: 1
-			pos:            p.span_to(op_start)
-		})
-	}
-	if p.tok == .and {
-		p.next()
-		operand := p.expr(.power)
-		inner := p.a.add_node(flat.Node{
-			kind:           .prefix
-			op:             .amp
-			children_start: p.add_child(operand)
-			children_count: 1
-			pos:            p.span_to(op_start)
-		})
-		return p.a.add_node(flat.Node{
-			kind:           .prefix
-			op:             .amp
-			children_start: p.add_child(inner)
 			children_count: 1
 			pos:            p.span_to(op_start)
 		})
@@ -10849,23 +10831,32 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					return cast
 				}
 			}
-			if p.tok == .name && parser_name_can_start_pointer_type(p.lit) {
+			if p.tok == .name && parser_name_can_start_pointer_type(p.lit) && p.peek() == .lpar {
 				type_name := parser_pointer_type_name(depth, p.pointer_type_base_name(p.lit))
 				p.next()
-				if p.tok == .lpar {
-					p.next()
-					inner := p.expr(.lowest)
-					p.check(.rpar)
-					cstart := p.add_child(inner)
-					return p.add_node(flat.Node{
-						kind:           .cast_expr
-						value:          type_name
-						children_start: cstart
-						children_count: 1
-					})
-				}
+				p.next()
+				inner := p.expr(.lowest)
+				p.check(.rpar)
+				cstart := p.add_child(inner)
+				return p.add_node(flat.Node{
+					kind:           .cast_expr
+					value:          type_name
+					children_start: cstart
+					children_count: 1
+					pos:            p.span_to(op_start)
+				})
 			}
-			return p.add(.empty)
+			mut operand := p.expr(.power)
+			for _ in 0 .. depth {
+				operand = p.a.add_node(flat.Node{
+					kind:           .prefix
+					op:             .amp
+					children_start: p.add_child(operand)
+					children_count: 1
+					pos:            p.span_to(op_start)
+				})
+			}
+			return operand
 		}
 		.minus {
 			op_id := int(p.tok)
@@ -10940,6 +10931,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.if_stmt()
 		}
 		.key_match {
+			if p.keyword_token_is_ident_expr() {
+				return p.keyword_ident_expr()
+			}
 			return p.match_stmt()
 		}
 		.key_fn {

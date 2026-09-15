@@ -101,6 +101,7 @@ const libc_collisions = {
 	'rint':     true
 	'round':    true
 	'scalb':    true
+	'select':   true
 	'send':     true
 	'setenv':   true
 	'signal':   true
