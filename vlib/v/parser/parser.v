@@ -55,6 +55,25 @@ struct MalformedScannerDeclaration {
 	scope   token.Pos
 }
 
+struct SkippedComptimeLambdaScope {
+	names         []string
+	paren_depth   int
+	bracket_depth int
+	brace_depth   int
+	block_depth   int
+	body_pos      int
+}
+
+struct SkippedComptimeFnLiteralState {
+mut:
+	awaiting_params    bool
+	in_params          bool
+	base_paren_depth   int
+	base_bracket_depth int
+	base_brace_depth   int
+	param_paren_depth  int
+}
+
 // Parser represents parser data used by parser.
 pub struct Parser {
 	prefs &pref.Preferences
@@ -75,6 +94,7 @@ mut:
 	next_file_id          int = 1
 	cur_module            string
 	cur_fn                string
+	cur_fn_offset         int = -1
 	cur_veb_ctx_name      string // source-level name of the active veb request context
 	veb_tmpl_counter      int // monotonic id for unique `$veb.html`/`$tmpl` builder var names
 	has_veb_template      bool
@@ -96,6 +116,7 @@ mut:
 	local_binding_counts              map[string]int
 	local_binding_undos               []string
 	local_binding_scopes              []int
+	active_lambda_param_counts        map[string]int
 	comptime_value_undos              []ComptimeValueUndo
 	comptime_value_scopes             []int
 	pending_flag                      bool
@@ -196,6 +217,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		comptime_local_values: map[string]string{}
 		imported_module_names: map[string]bool{}
 		local_binding_counts: map[string]int{}
+		active_lambda_param_counts: map[string]int{}
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases: map[string]bool{}
 		a: &flat.FlatAst{
@@ -204,6 +226,9 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			nodes: []flat.Node{}
 			children: []flat.NodeId{}
 			disabled_fns: map[string]bool{}
+			comptime_skipped_names: map[string]bool{}
+			comptime_skipped_read_names: map[string]bool{}
+			comptime_skipped_goto_labels: map[string]bool{}
 			export_fn_names: map[string]string{}
 			contextual_anon_struct_types: map[string]bool{}
 			synthesized_anon_struct_types: map[string]bool{}
@@ -326,6 +351,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.local_binding_counts.clear()
 	p.local_binding_undos.clear()
 	p.local_binding_scopes.clear()
+	p.active_lambda_param_counts.clear()
 	p.in_for_container = false
 	p.parsing_inferred_fixed_array_type = false
 	p.local_type_scopes = []string{}
@@ -1321,12 +1347,16 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
 		prev_fn := p.cur_fn
+		prev_fn_offset := p.cur_fn_offset
 		prev_struct := p.cur_struct
 		prev_method_is_static := p.cur_method_is_static
 		outer_defer_depth := p.defer_depth
 		outer_defer_result_allowed := p.defer_result_allowed
 		outer_nested_block_depth := p.nested_block_depth
 		p.cur_fn = name
+		// The declaration records `name_pos` as its position, the same as
+		// `fn_decl_body` does, so a skipped body of it is keyed on it too.
+		p.cur_fn_offset = name_pos
 		p.cur_struct = method_receiver_type_name(receiver_type).all_after_last('.')
 		p.cur_method_is_static = false
 		p.defer_depth = 0
@@ -1372,6 +1402,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 		p.cur_fn = prev_fn
+		p.cur_fn_offset = prev_fn_offset
 		p.cur_struct = prev_struct
 		p.cur_method_is_static = prev_method_is_static
 		p.defer_depth = outer_defer_depth
@@ -1499,6 +1530,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	mut body_ids := []flat.NodeId{}
 	mut formatter_end := 0
 	prev_fn := p.cur_fn
+	prev_fn_offset := p.cur_fn_offset
 	prev_struct := p.cur_struct
 	prev_method_is_static := p.cur_method_is_static
 	prev_veb_ctx_name := p.cur_veb_ctx_name
@@ -1506,6 +1538,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	outer_defer_result_allowed := p.defer_result_allowed
 	outer_nested_block_depth := p.nested_block_depth
 	p.cur_fn = name
+	// The declaration's node records `name_pos` as its position, so keying the
+	// names of its skipped bodies on it lets the checker find them again.
+	p.cur_fn_offset = name_pos
 	// `@STRUCT` inside a method expands to the receiver's (dereferenced) type name.
 	p.cur_struct = if is_method {
 		method_receiver_type_name(receiver_type).all_after_last('.')
@@ -1554,6 +1589,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.end_comptime_value_scope()
 	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
+	p.cur_fn_offset = prev_fn_offset
 	p.cur_struct = prev_struct
 	p.cur_method_is_static = prev_method_is_static
 	p.cur_veb_ctx_name = prev_veb_ctx_name
@@ -3281,7 +3317,7 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		p.skip_comptime_else()
 		return result
 	} else {
-		p.skip_block()
+		p.skip_comptime_block()
 		return p.parse_comptime_else()
 	}
 }
@@ -3609,7 +3645,7 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 		p.skip_comptime_else()
 		return result
 	}
-	p.skip_block()
+	p.skip_comptime_block()
 	return p.parse_top_level_comptime_else()
 }
 
@@ -3786,7 +3822,7 @@ fn (mut p Parser) parse_known_comptime_match_value(value string, is_top_level bo
 			}
 			p.next()
 			if matched {
-				p.skip_block()
+				p.skip_comptime_block()
 			} else {
 				result = if is_top_level {
 					p.top_level_block_stmt()
@@ -3826,7 +3862,7 @@ fn (mut p Parser) parse_known_comptime_match_value(value string, is_top_level bo
 			}
 			matched = true
 		} else {
-			p.skip_block()
+			p.skip_comptime_block()
 		}
 	}
 	p.check(.rcbr)
@@ -4486,7 +4522,7 @@ fn (mut p Parser) skip_comptime_else() {
 			p.next()
 		}
 		if p.tok != .dollar || p.peek() != .key_if {
-			p.skip_block()
+			p.skip_comptime_block()
 			return
 		}
 		p.next() // skip $
@@ -4494,7 +4530,7 @@ fn (mut p Parser) skip_comptime_else() {
 		for p.tok != .lcbr && p.tok != .eof {
 			p.next()
 		}
-		p.skip_block()
+		p.skip_comptime_block()
 	}
 }
 
@@ -5775,6 +5811,264 @@ fn (mut p Parser) skip_block() {
 	}
 }
 
+fn skipped_pipe_starts_lambda(prev_tok token.Token) bool {
+	return prev_tok !in [.name, .key_module, .key_shared, .key_type, .number, .string, .char,
+		.key_true, .key_false, .key_nil, .key_none, .rpar, .rsbr, .rcbr, .not, .question, .inc,
+		.dec]
+}
+
+fn skipped_token_can_start_map_type(prev_tok token.Token) bool {
+	return prev_tok.is_assignment() || prev_tok.is_infix()
+		|| prev_tok in [.lcbr, .semicolon, .comma, .colon, .lpar, .lsbr, .key_return]
+}
+
+fn (mut p Parser) skipped_lambda_scope_ends(scope SkippedComptimeLambdaScope, tok token.Token, prev_tok token.Token, paren_depth int, bracket_depth int, brace_depth int) bool {
+	if scope.block_depth >= 0 {
+		return tok == .rcbr && brace_depth == scope.block_depth
+	}
+	if paren_depth != scope.paren_depth || bracket_depth != scope.bracket_depth
+		|| brace_depth != scope.brace_depth {
+		return false
+	}
+	if tok == .semicolon && p.current_token_is_newline_semicolon() {
+		next_tok := p.peek()
+		if next_tok == .dot {
+			return false
+		}
+		if next_tok == .lpar && (prev_tok == .name || prev_tok.is_keyword())
+			&& p.line_indent_for_pos(p.peek_pos) > p.line_indent_for_pos(scope.body_pos) {
+			return false
+		}
+		if (token_is_infix(next_tok) || next_tok == .key_as) && next_tok != .mul
+			&& next_tok != .amp && next_tok != .arrow {
+			if next_tok !in [.plus, .minus]
+				|| p.line_indent_for_pos(p.peek_pos) > p.line_indent_for_pos(scope.body_pos) {
+				return false
+			}
+		}
+	}
+	return tok in [.comma, .colon, .semicolon, .rpar, .rsbr, .rcbr]
+}
+
+// skip_comptime_block skips the body of a `$if` branch or a `$match` arm this
+// build does not take, recording the names it spells. The body is never parsed,
+// so without this nothing tells the unused-declaration checks that a parameter
+// or a variable is used there, and they report it on every other target.
+// Reading them off the token stream is what keeps strings, comments,
+// interpolations and operators right. Only tokens the expression parser can
+// turn into identifiers are recorded; selector members follow a dot, while
+// struct-field and named-argument labels precede a colon, so neither is a local
+// reference. Map keys and interpolation expressions can also precede a colon;
+// their enclosing brace identifies them as expressions. Only names bound in the
+// current lexical scope can refer to a local.
+// A plain assignment target is an identifier occurrence, but not a read. Goto
+// operands are recorded only in the label namespace, while break and continue
+// label operands are not local references. Assembly template symbols are not V
+// names; only expressions in its input/output sections are local uses. Function
+// literal parameter lists are declarations rather than reads of outer locals.
+fn (mut p Parser) skip_comptime_block() {
+	if p.tok != .lcbr {
+		p.skip_block()
+		return
+	}
+	if p.cur_fn_offset < 0 {
+		// A branch outside any function body cannot hide the use of a local.
+		p.skip_block()
+		return
+	}
+	prefix := '${p.cur_file}:${p.cur_fn_offset}|'
+	mut depth := 1
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut prev_tok := p.tok
+	mut in_lambda_params := false
+	mut lambda_params := []string{}
+	mut lambda_scopes := []SkippedComptimeLambdaScope{}
+	mut fn_literal := SkippedComptimeFnLiteralState{}
+	mut shadowed_names := p.active_lambda_param_counts.clone()
+	mut pending_comma_lhs_reads := []string{}
+	mut pending_comma_lhs_depth := -1
+	mut in_asm_header := false
+	mut asm_body_depth := -1
+	mut asm_base_paren_depth := 0
+	mut asm_section := 0
+	mut asm_is_goto := false
+	mut expression_colon_braces := [false]
+	mut next_lcbr_is_lambda_body := false
+	mut map_type_depth := -1
+	mut map_type_paren_depth := -1
+	mut map_type_bracket_depth := -1
+	p.next()
+	for depth > 0 && p.tok != .eof {
+		if map_type_depth >= 0 && depth == map_type_depth
+			&& paren_depth == map_type_paren_depth && bracket_depth == map_type_bracket_depth
+			&& p.tok in [.comma, .semicolon] {
+			map_type_depth = -1
+		}
+		if !in_lambda_params && map_type_depth < 0 && p.tok == .name && p.lit == 'map'
+			&& p.peek() == .lsbr
+			&& skipped_token_can_start_map_type(prev_tok) {
+			map_type_depth = depth
+			map_type_paren_depth = paren_depth
+			map_type_bracket_depth = bracket_depth
+		}
+		if pending_comma_lhs_reads.len > 0
+			&& (depth != pending_comma_lhs_depth || p.tok in [.semicolon, .rcbr]) {
+			for key in pending_comma_lhs_reads {
+				p.a.comptime_skipped_read_names[key] = true
+			}
+			pending_comma_lhs_reads.clear()
+		}
+		mut skip_asm_token := false
+		if asm_body_depth >= 0 {
+			skip_asm_token = true
+			if asm_section in [1, 2] && paren_depth > asm_base_paren_depth {
+				skip_asm_token = false
+			}
+			if depth == asm_body_depth {
+				if asm_is_goto && asm_section == 4 && p.tok == .name {
+					p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
+				}
+				if p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
+					&& p.s.src[p.tok_pos] == `;` {
+					asm_section++
+				}
+				if p.tok == .rcbr {
+					asm_body_depth = -1
+				}
+			}
+		} else if in_asm_header {
+			skip_asm_token = true
+			if p.tok == .key_goto {
+				asm_is_goto = true
+			} else if p.tok == .lcbr {
+				in_asm_header = false
+				asm_body_depth = depth + 1
+				asm_base_paren_depth = paren_depth
+				asm_section = 0
+			} else if p.tok in [.semicolon, .rcbr] {
+				in_asm_header = false
+			}
+		} else if p.tok == .key_asm {
+			skip_asm_token = true
+			in_asm_header = true
+			asm_is_goto = false
+		}
+		for lambda_scopes.len > 0
+			&& p.skipped_lambda_scope_ends(lambda_scopes.last(), p.tok, prev_tok,
+				paren_depth, bracket_depth, depth) {
+			for name in lambda_scopes.last().names {
+				shadowed_names[name]--
+			}
+			lambda_scopes.delete_last()
+		}
+		if skip_asm_token {
+			// Assembly-only symbols were handled by the section state above.
+		} else if fn_literal.in_params {
+			if p.tok == .rpar && paren_depth == fn_literal.param_paren_depth {
+				fn_literal = SkippedComptimeFnLiteralState{}
+			}
+		} else if fn_literal.awaiting_params
+			&& paren_depth == fn_literal.base_paren_depth
+			&& bracket_depth == fn_literal.base_bracket_depth && depth == fn_literal.base_brace_depth
+			&& p.tok == .lpar {
+			fn_literal.awaiting_params = false
+			fn_literal.in_params = true
+			fn_literal.param_paren_depth = paren_depth + 1
+		} else if fn_literal.awaiting_params
+			&& paren_depth == fn_literal.base_paren_depth
+			&& bracket_depth == fn_literal.base_bracket_depth && depth == fn_literal.base_brace_depth
+			&& p.tok in [.comma, .semicolon, .rcbr] {
+			fn_literal = SkippedComptimeFnLiteralState{}
+		} else if p.tok == .key_fn && p.peek() in [.lpar, .lsbr] {
+			fn_literal = SkippedComptimeFnLiteralState{
+				awaiting_params:    true
+				base_paren_depth:   paren_depth
+				base_bracket_depth: bracket_depth
+				base_brace_depth:   depth
+			}
+		} else if in_lambda_params {
+			if p.tok == .pipe {
+				in_lambda_params = false
+				body_tok := p.peek()
+				next_lcbr_is_lambda_body = body_tok == .lcbr
+				block_depth := if body_tok == .lcbr { depth + 1 } else { -1 }
+				lambda_scopes << SkippedComptimeLambdaScope{
+					names: lambda_params.clone()
+					paren_depth: paren_depth
+					bracket_depth: bracket_depth
+					brace_depth: depth
+					block_depth: block_depth
+					body_pos: p.peek_pos
+				}
+				for name in lambda_params {
+					shadowed_names[name]++
+				}
+			} else if p.tok != .key_mut && p.tok_can_be_decl_name() {
+				lambda_params << p.lit
+			}
+		} else if p.tok == .pipe && skipped_pipe_starts_lambda(prev_tok) {
+			in_lambda_params = true
+			lambda_params = []string{}
+		} else if p.tok == .logical_or && skipped_pipe_starts_lambda(prev_tok) {
+			next_lcbr_is_lambda_body = p.peek() == .lcbr
+		} else if prev_tok == .key_goto && p.tok == .name {
+			p.a.comptime_skipped_goto_labels[prefix + p.lit] = true
+		} else if prev_tok != .dot && prev_tok !in [.key_goto, .key_break, .key_continue]
+			&& (p.tok == .name || p.keyword_token_is_ident_expr())
+			&& (p.peek() != .colon || expression_colon_braces.last())
+			&& shadowed_names[p.lit] == 0 && p.is_local_binding(p.lit) {
+			key := prefix + p.lit
+			is_direct_lhs_name := prev_tok !in [.mul, .power]
+			p.a.comptime_skipped_names[key] = true
+			if is_direct_lhs_name && paren_depth == 0 && bracket_depth == 0
+				&& p.peek() == .comma {
+				if pending_comma_lhs_reads.len == 0 {
+					pending_comma_lhs_depth = depth
+				}
+				if depth == pending_comma_lhs_depth {
+					pending_comma_lhs_reads << key
+				} else {
+					p.a.comptime_skipped_read_names[key] = true
+				}
+			} else if !(is_direct_lhs_name && paren_depth == 0 && bracket_depth == 0
+				&& p.peek() == .assign) {
+				p.a.comptime_skipped_read_names[key] = true
+			}
+		} else if p.tok == .assign && paren_depth == 0 && bracket_depth == 0
+			&& depth == pending_comma_lhs_depth {
+			pending_comma_lhs_reads.clear()
+		}
+		match p.tok {
+			.lcbr {
+				is_map_literal := (map_type_depth == depth
+					&& map_type_paren_depth == paren_depth
+					&& map_type_bracket_depth == bracket_depth) || prev_tok.is_assignment()
+					|| (prev_tok.is_infix() && !next_lcbr_is_lambda_body)
+					|| prev_tok in [.comma, .colon, .lpar, .lsbr, .key_return]
+				expression_colon_braces << (prev_tok == .str_dollar || is_map_literal)
+				next_lcbr_is_lambda_body = false
+				map_type_depth = -1
+				depth++
+			}
+			.rcbr {
+				depth--
+				expression_colon_braces.delete_last()
+			}
+			.lpar { paren_depth++ }
+			.rpar { paren_depth-- }
+			.lsbr { bracket_depth++ }
+			.rsbr { bracket_depth-- }
+			else {}
+		}
+		prev_tok = p.tok
+		p.next()
+	}
+	for key in pending_comma_lhs_reads {
+		p.a.comptime_skipped_read_names[key] = true
+	}
+}
+
 fn (mut p Parser) skip_brackets() {
 	if p.tok != .lsbr {
 		return
@@ -6446,7 +6740,7 @@ fn (mut p Parser) parse_comptime_if_expr_after_if(dollar_start int) flat.NodeId 
 		p.skip_comptime_else()
 		return result
 	}
-	p.skip_block()
+	p.skip_comptime_block()
 	return p.parse_comptime_else_expr()
 }
 
@@ -9725,6 +10019,15 @@ fn (mut p Parser) keyword_ident_expr() flat.NodeId {
 	})
 }
 
+fn (mut p Parser) keyword_token_is_ident_expr() bool {
+	return match p.tok {
+		.key_module, .key_type { true }
+		.key_shared { p.shared_token_is_identifier(false) }
+		.key_lock, .key_rlock, .key_select { p.peek() in [.lpar, .lsbr] }
+		else { false }
+	}
+}
+
 fn sql_type_name(raw string) string {
 	mut out := strings.new_builder(raw.len)
 	for ch in raw {
@@ -9888,7 +10191,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return id
 		}
 		.key_shared {
-			if p.shared_token_is_identifier(false) {
+			if p.keyword_token_is_ident_expr() {
 				name_pos := p.tok_pos
 				name_end := p.tok_end
 				p.next()
@@ -10527,13 +10830,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			})
 		}
 		.key_lock, .key_rlock {
-			if p.peek() == .lpar || p.peek() == .lsbr {
+			if p.keyword_token_is_ident_expr() {
 				return p.keyword_ident_expr()
 			}
 			return p.lock_expr()
 		}
 		.key_select {
-			if p.peek() == .lpar || p.peek() == .lsbr {
+			if p.keyword_token_is_ident_expr() {
 				return p.keyword_ident_expr()
 			}
 			return p.select_expr()
@@ -11048,7 +11351,20 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		}
 	}
 	p.check(.pipe)
+	for param_id in lambda_params {
+		name := p.a.nodes[int(param_id)].value
+		p.active_lambda_param_counts[name] = (p.active_lambda_param_counts[name] or { 0 }) + 1
+	}
 	lambda_body := p.lambda_body_expr()
+	for param_id in lambda_params {
+		name := p.a.nodes[int(param_id)].value
+		count := p.active_lambda_param_counts[name] or { 0 }
+		if count <= 1 {
+			p.active_lambda_param_counts.delete(name)
+		} else {
+			p.active_lambda_param_counts[name] = count - 1
+		}
+	}
 	mut ids := lambda_params.clone()
 	ids << lambda_body
 	lstart := p.add_children(ids)
@@ -12234,12 +12550,18 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	}
 	has_body := p.tok == .lcbr
 	if has_body {
+		prev_fn_offset := p.cur_fn_offset
 		outer_defer_depth := p.defer_depth
 		outer_defer_result_allowed := p.defer_result_allowed
 		outer_nested_block_depth := p.nested_block_depth
+		outer_active_lambda_param_counts := p.active_lambda_param_counts.clone()
+		// Skipped compile-time bodies in this literal belong to its node, not to
+		// the enclosing named function or literal.
+		p.cur_fn_offset = fn_start
 		p.defer_depth = 0
 		p.defer_result_allowed = false
 		p.nested_block_depth = 0
+		p.active_lambda_param_counts.clear()
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.begin_comptime_value_scope()
@@ -12275,9 +12597,11 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		p.end_local_binding_scope()
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
+		p.cur_fn_offset = prev_fn_offset
 		p.defer_depth = outer_defer_depth
 		p.defer_result_allowed = outer_defer_result_allowed
 		p.nested_block_depth = outer_nested_block_depth
+		p.active_lambda_param_counts = outer_active_lambda_param_counts
 	}
 	mut all_ids := []flat.NodeId{cap: capture_ids.len + param_ids.len + body_ids.len}
 	for id in capture_ids {
