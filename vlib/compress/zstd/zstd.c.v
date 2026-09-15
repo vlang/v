@@ -6,6 +6,7 @@ import os
 import encoding.binary
 
 #flag -I @VMODROOT/thirdparty/zstd
+#flag linux -D_GNU_SOURCE
 #include "zstd.c"	// msvc can't compile multiple source files, so included
 
 const frame_header_size_max = 18

@@ -405,3 +405,47 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'interface called', run.output
 }
+
+// A reflected veb route can accept the framework Context while the dispatcher
+// carries a custom Context that embeds it. Pass the embedded field to the route,
+// rather than the incompatible address of the complete custom Context.
+fn test_veb_reflected_base_context_uses_embedded_field() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	marker int
+	veb.Context
+}
+
+pub struct App {}
+
+pub fn (mut app App) index(mut ctx veb.Context) veb.Result {
+	return ctx.text("hello")
+}
+
+fn dispatch[A, X](mut app A, mut ctx X) {
+	$for method in A.methods {
+		$if method.return_type is veb.Result {
+			app.$method(mut ctx)
+		}
+	}
+}
+
+fn main() {
+	mut app := App{}
+	mut ctx := Context{}
+	dispatch(mut app, mut ctx)
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_embedded_base_ctx.v')
+	os.write_file(src_file, src) or { panic(err) }
+	c_out := os.join_path(os.temp_dir(), 'v3_veb_embedded_base_ctx.c')
+	os.rm(c_out) or {}
+	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${c_out}')
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(c_out) or { '' }
+	assert c_code.contains('App__index(app, &ctx->veb__Context)'), c_code
+	assert !c_code.contains('App__index(app, ctx)'), c_code
+}
