@@ -1599,6 +1599,12 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 			break
 		}
 	}
+	// Open generic `$if` conditions can only be selected while cloning a concrete
+	// specialization. Inspect the merged clones here so parallel workers report
+	// through the main checker before their temporary scopes are released.
+	if !isnil(t.tc) {
+		t.tc.check_specialized_fn_global_shadowing()
+	}
 	// Calls that depend on a generic parameter have concrete result types only in
 	// the specialized clones. Give their inferred anonymous literals concrete
 	// declarations before cgen sees the cloned bodies.

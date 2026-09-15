@@ -638,6 +638,17 @@ fn dir_is_module(dir string) bool {
 	return false
 }
 
+// installed_module_roots returns the directories modules are installed into:
+// vlib and the user's vmodules directories. Explicit `-path` roots are not
+// included because they may contain modules owned by the current project.
+pub fn (p &Preferences) installed_module_roots() []string {
+	mut roots := []string{}
+	roots << os.join_path_single(p.vroot, 'vlib')
+	// $VMODULES takes a list, the same as it does when modules are resolved.
+	roots << vmodules_dir().split(os.path_delimiter).filter(it.len > 0)
+	return roots
+}
+
 // vmodules_dir returns the user's global modules directory ($VMODULES or ~/.vmodules).
 fn vmodules_dir() string {
 	env_dir := os.getenv('VMODULES')

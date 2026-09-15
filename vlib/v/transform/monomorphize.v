@@ -12062,7 +12062,7 @@ fn (t &Transformer) subst_type(typ string, args []string) string {
 }
 
 // subst_node_value is the param-aware counterpart of substitute_generic_node_value.
-fn (t &Transformer) subst_node_value(node flat.Node, args []string) string {
+fn (mut t Transformer) subst_node_value(node flat.Node, args []string) string {
 	match node.kind {
 		.ident {
 			if node.value.contains('[') {
@@ -12602,7 +12602,7 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {
 	return decl_module.len == 0 || decl_module == 'main'
 }
 
-fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) string {
+fn (mut t Transformer) subst_comptime_type_condition(cond string, args []string) string {
 	mut clean := cond.trim_space().replace('sizeof (', 'sizeof(').replace('typeof (', 'typeof(').replace('int (', 'int(')
 	clean = t.subst_comptime_runtime_type_metadata(clean, args)
 	for i, param in t.active_generic_params {
@@ -12615,19 +12615,46 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 		end := comptime_condition_matching_paren(clean, 0)
 		if end == clean.len - 1 {
 			inner := t.subst_comptime_type_condition(clean[1..clean.len - 1], args)
+			if inner in ['true', 'false'] {
+				return inner
+			}
 			return '(${inner})'
 		}
 	}
 	or_idx := comptime_condition_top_level_index(clean, '||')
 	if or_idx >= 0 {
 		left := t.subst_comptime_type_condition(clean[..or_idx], args)
+		if left == 'true' {
+			return 'true'
+		}
 		right := t.subst_comptime_type_condition(clean[or_idx + 2..], args)
+		if right == 'true' {
+			return 'true'
+		}
+		if left == 'false' {
+			return right
+		}
+		if right == 'false' {
+			return left
+		}
 		return '${left} || ${right}'
 	}
 	and_idx := comptime_condition_top_level_index(clean, '&&')
 	if and_idx >= 0 {
 		left := t.subst_comptime_type_condition(clean[..and_idx], args)
+		if left == 'false' {
+			return 'false'
+		}
 		right := t.subst_comptime_type_condition(clean[and_idx + 2..], args)
+		if right == 'false' {
+			return 'false'
+		}
+		if left == 'true' {
+			return right
+		}
+		if right == 'true' {
+			return left
+		}
 		return '${left} && ${right}'
 	}
 	for op in [' !is ', ' is '] {
@@ -12635,7 +12662,13 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 		if op_idx >= 0 {
 			left := clean[..op_idx].trim_space()
 			right := clean[op_idx + op.len..].trim_space()
-			return '${t.subst_comptime_type_operand(left, args)}${op}${t.subst_comptime_type_operand(right, args)}'
+			result := '${t.subst_comptime_type_operand(left, args)}${op}${t.subst_comptime_type_operand(right, args)}'
+			if t.cloning_comptime_for_depth == 0 {
+				if value := t.comptime_type_condition_value(result) {
+					return value.str()
+				}
+			}
+			return result
 		}
 	}
 	for op in [' !in', ' in'] {
@@ -12652,7 +12685,13 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 				for item in split_generic_args(list[1..list.len - 1]) {
 					items << t.subst_comptime_type_operand(item, args)
 				}
-				return '${left}${op}[${items.join(',')}]'
+				result := '${left}${op}[${items.join(',')}]'
+				if t.cloning_comptime_for_depth == 0 {
+					if value := t.comptime_type_condition_value(result) {
+						return value.str()
+					}
+				}
+				return result
 			}
 		}
 	}
@@ -12661,12 +12700,24 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 		if op_idx >= 0 {
 			left := t.subst_comptime_type_operand(clean[..op_idx], args)
 			right := t.subst_comptime_type_operand(clean[op_idx + op.len..], args)
-			return '${left}${op}${right}'
+			result := '${left}${op}${right}'
+			if t.cloning_comptime_for_depth == 0 {
+				if value := t.comptime_type_condition_value(result) {
+					return value.str()
+				}
+			}
+			return result
 		}
 	}
 	if clean.starts_with('!') {
 		inner_raw := clean[1..].trim_space()
 		inner := t.subst_comptime_type_condition(inner_raw, args)
+		if inner == 'true' {
+			return 'false'
+		}
+		if inner == 'false' {
+			return 'true'
+		}
 		if inner_raw.starts_with('(') {
 			return '!(${inner})'
 		}

@@ -6644,6 +6644,258 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 	return tc.cur_file in tc.diagnostic_files
 }
 
+// shadow_check_owns_file reports whether `file` is the project's own code, and
+// so is a file whose author can act on this error.
+//
+// A global's bare name reaches into every module that gets compiled, including
+// vlib and any third-party dependency, so ownership has to be decided by path.
+// user_code_start cannot do it: the driver sets it right after builtin is
+// parsed, before both the user's inputs and their imports, which leaves every
+// dependency on the same side of the mark as the project itself.
+//
+// diagnostic_files alone is too narrow in the other direction -- for a project
+// compiled as a directory it holds only the entry file, and a shadow inside one
+// of the project's own modules is exactly the case worth reporting. So the
+// project root and explicit private search roots extend it, the same way
+// set_unsupported_generic_files extends diagnostics over a directory build.
+fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
+	if file.len == 0 {
+		return false
+	}
+	if file in tc.diagnostic_files {
+		// Named on the command line, so the user is working on it whatever
+		// directory it happens to live in.
+		return true
+	}
+	if tc.shadow_diagnostic_root.len == 0 && tc.shadow_explicit_roots.len == 0 {
+		// No root to judge by: fall back to the explicit selection, and to
+		// "everything" only when no selection was made at all.
+		return tc.diagnostic_files.len == 0
+	}
+	return shadow_roots_own_file(file, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
+		tc.shadow_dependency_roots)
+}
+
+// shadow_roots_own_file reports whether `file` belongs to an explicit project
+// root after nested installed-module roots have been excluded.
+pub fn shadow_roots_own_file(file string, diagnostic_root string, explicit_roots []string, dependency_roots []string) bool {
+	if file.len == 0 {
+		return false
+	}
+	// A path is matched both as written and resolved. A build tree assembled out
+	// of symlinks -- Vinix compiles its kernel through one -- holds its sources
+	// under the root only by their link paths, so resolving up front would place
+	// the whole project outside itself; resolving is what catches a directory
+	// reached through a symlink.
+	abs_file := os.abs_path(file)
+	real_file := os.real_path(file)
+	if shadow_root_owns_file(abs_file, real_file, diagnostic_root, dependency_roots) {
+		return true
+	}
+	for root in explicit_roots {
+		if shadow_root_owns_file(abs_file, real_file, root, dependency_roots) {
+			return true
+		}
+	}
+	return false
+}
+
+fn shadow_root_owns_file(abs_file string, real_file string, root string, dependency_roots []string) bool {
+	if !shadow_path_is_within(abs_file, real_file, root) {
+		return false
+	}
+	// Subtract installed roots nested inside an owned root -- `$PWD/.vmodules` in
+	// an isolated build does contain dependencies. An installed root that is an
+	// ancestor of an owned root is different: the owned root wins, so developing
+	// `~/.vmodules/my_package` still diagnoses its submodules.
+	for dependency_root in dependency_roots {
+		root_is_inside_dependency := shadow_path_is_within(root, root, dependency_root)
+		if !root_is_inside_dependency
+			&& shadow_path_is_within(abs_file, real_file, dependency_root) {
+			return false
+		}
+	}
+	return true
+}
+
+// shadow_path_is_within reports whether a file given by both its written and
+// its resolved path lies in `dir`.
+fn shadow_path_is_within(abs_file string, real_file string, dir string) bool {
+	if dir.len == 0 {
+		return false
+	}
+	prefix := if dir.ends_with(os.path_separator) { dir } else { dir + os.path_separator }
+	return abs_file == dir || abs_file.starts_with(prefix) || real_file == dir
+		|| real_file.starts_with(prefix)
+}
+
+// record_global_shadow_error reports a local that shadows a global. The ordinary
+// diagnostic filter limits errors to the files named on the command line, which
+// for a project compiled as a directory is only its entry file -- so a shadow
+// inside one of the project's own modules, which is where this happens, would
+// never be reported. That per-file filter is widened to project-owned roots
+// rather than dropped, so vlib and third-party dependencies stay out (see
+// shadow_check_owns_file); the user-code bound stays too.
+//
+// The kind is `.duplicate_decl` rather than `.unknown_ident`: the name does
+// resolve, it just resolves to the global. `.unknown_ident` errors are read
+// elsewhere as "this name has no meaning, stop reporting on it", which would
+// suppress later real errors on the same node.
+fn (mut tc TypeChecker) record_global_shadow_error_at(id flat.NodeId, name string, pos token.Pos) {
+	if int(id) < tc.a.user_code_start || int(id) >= tc.a.nodes.len {
+		return
+	}
+	if !pos.is_valid() {
+		return
+	}
+	file := tc.a.source_files[pos.id] or { return }
+	if !tc.shadow_check_owns_file(file.name) {
+		return
+	}
+	msg := 'variable `${name}` shadows a global variable'
+	if tc.errors.any(it.kind == .duplicate_decl && it.msg == msg && it.pos == pos) {
+		return
+	}
+	tc.errors << tc.make_type_error_at(.duplicate_decl, msg, id, pos)
+}
+
+fn (mut tc TypeChecker) record_global_shadow_error(id flat.NodeId, name string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	tc.record_global_shadow_error_at(id, name, tc.node_value_diagnostic_pos(id))
+}
+
+// check_local_binding_global_shadowing reports a source-level local binding
+// whose name is already used by a global. Compiler-supplied bindings do not
+// have a source identifier and deliberately do not pass through this helper.
+fn (mut tc TypeChecker) check_local_binding_global_shadowing(id flat.NodeId) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	binding := tc.a.nodes[int(id)]
+	if binding.kind !in [.ident, .param] || binding.value.len == 0 || binding.value == '_' {
+		return
+	}
+	if tc.global_names[binding.value] {
+		tc.record_global_shadow_error(id, binding.value)
+	}
+}
+
+// check_decl_lhs_global_shadowing reports every declared name in `node` that
+// shadows a global. A multi-return or multi-value declaration is handled and
+// returned on before the single-declaration checks run, so walking the left-hand
+// side here is what covers `value, devices := make_pair()`.
+fn (mut tc TypeChecker) check_decl_lhs_global_shadowing(node flat.Node) {
+	for lhs_id in tc.multi_assign_lhs_ids(node) {
+		tc.check_local_binding_global_shadowing(lhs_id)
+	}
+}
+
+// check_generic_fn_body_global_shadowing inspects source bindings in an open
+// generic body without type-checking expressions that need concrete types.
+fn (mut tc TypeChecker) check_generic_fn_body_global_shadowing(node flat.Node) {
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if tc.a.node(child_id).kind != .param {
+			tc.check_generic_body_node_global_shadowing(child_id)
+		}
+	}
+}
+
+// check_specialized_fn_global_shadowing inspects the concrete generic bodies
+// after monomorphization has selected specialization-dependent `$if` branches.
+pub fn (mut tc TypeChecker) check_specialized_fn_global_shadowing() {
+	mut fn_indexes := []int{cap: tc.a.specialized_fn_nodes.len}
+	for fn_idx, specialized in tc.a.specialized_fn_nodes {
+		if specialized {
+			fn_indexes << fn_idx
+		}
+	}
+	fn_indexes.sort()
+	old_file := tc.cur_file
+	old_module := tc.cur_module
+	for fn_idx in fn_indexes {
+		if fn_idx >= 0 && fn_idx < tc.a.nodes.len && tc.a.nodes[fn_idx].kind == .fn_decl {
+			tc.cur_file = tc.a.specialized_fn_files[fn_idx] or { old_file }
+			tc.cur_module = tc.a.specialized_fn_modules[fn_idx] or { old_module }
+			tc.check_generic_fn_body_global_shadowing(tc.a.nodes[fn_idx])
+		}
+	}
+	tc.cur_file = old_file
+	tc.cur_module = old_module
+}
+
+fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.if_expr {
+			if node.children_count > 0 {
+				condition := tc.a.child_node(&node, 0)
+				if condition.kind == .decl_assign {
+					for lhs_id in tc.if_guard_lhs_ids(condition) {
+						tc.check_local_binding_global_shadowing(lhs_id)
+					}
+				}
+			}
+		}
+		.decl_assign {
+			tc.check_decl_lhs_global_shadowing(node)
+		}
+		.for_in_stmt {
+			if node.children_count >= 2 {
+				tc.check_local_binding_global_shadowing(tc.a.child(&node, 0))
+				tc.check_local_binding_global_shadowing(tc.a.child(&node, 1))
+			}
+		}
+		.select_branch {
+			if node.value == 'recv' && node.children_count > 0 {
+				tc.check_local_binding_global_shadowing(tc.a.child(&node, 0))
+			}
+		}
+		.comptime_for {
+			tc.check_comptime_for_global_shadowing(id, node)
+		}
+		.comptime_if {
+			take_then := tc.comptime_type_condition_value(node.value) or {
+				// Portable output keeps all target-dependent branches for the C
+				// preprocessor. A mixed type or metadata condition stays deferred
+				// until the concrete clone folds its specialization-dependent part.
+				if comptime_cond_has_target_flag(node.value)
+					&& !comptime_cond_has_type_test(node.value)
+					&& !comptime_cond_has_type_metadata(node.value) {
+					for i in 0 .. node.children_count {
+						tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+					}
+				}
+				return
+			}
+			branch_index := if take_then { 0 } else { 1 }
+			if branch_index < node.children_count {
+				tc.check_generic_body_node_global_shadowing(tc.a.child(&node, branch_index))
+			}
+			return
+		}
+		.param {
+			tc.check_local_binding_global_shadowing(id)
+		}
+		.lambda_expr {
+			if node.children_count > 1 {
+				for i in 0 .. node.children_count - 1 {
+					tc.check_local_binding_global_shadowing(tc.a.child(&node, i))
+				}
+			}
+		}
+		else {}
+	}
+	for i in 0 .. node.children_count {
+		tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+	}
+}
+
 fn (tc &TypeChecker) current_fn_is_concrete_generic_receiver_specialization() bool {
 	return tc.fn_context.concrete_generic_receiver_specialization
 		&& tc.fn_context.generic_params.len == 0

@@ -818,6 +818,9 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 	if node.children_count < 2 {
 		return []LocalBinding{}
 	}
+	for lhs_id in tc.if_guard_lhs_ids(node) {
+		tc.check_local_binding_global_shadowing(lhs_id)
+	}
 	rhs_id := tc.a.child(&node, 1)
 	error_start := tc.errors.len
 	tc.fn_context.undefined_variable_context_depth++

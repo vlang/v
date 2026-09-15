@@ -5510,9 +5510,13 @@ fn main() {
 	run_bad(v3_bin, 'isreftype_unknown_bracket_type_arg', 'fn main() {\n\t_ := isreftype[OtherMissing]()\n}\n', 'unknown type `OtherMissing`')
 }
 
-fn test_shadowed_global_local_rename_is_scoped_to_binding() {
+// A local that shadows a global used to be allowed here, and this scoped it to
+// its block: `3` inside, the global's `1` after. V rejects the declaration now,
+// so what is left to pin down is that the rejection reaches a nested block and
+// names the local, not the global's own uses on the lines around it.
+fn test_shadowed_global_local_is_rejected_inside_a_block() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'shadowed_global_local_rename_scoped', '__global foo int
+	run_bad(v3_bin, 'shadowed_global_local_rename_scoped', '__global foo int
 
 fn main() {
 	foo = 1
@@ -5522,8 +5526,7 @@ fn main() {
 	}
 	println(int_str(foo))
 }
-')
-	assert out == '3\n1'
+', 'variable `foo` shadows a global variable')
 }
 
 fn test_capturing_fn_literal_aliases_are_scoped_to_lambda() {
@@ -6002,8 +6005,11 @@ fn main() {
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	v3_bin := build_v3()
-	shadow_out := run_good(v3_bin, 'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n')
-	assert shadow_out == '3\n12'
+	// Was a success case asserting '3\n12', from when a local could shadow a
+	// global and be scoped to its block. The declaration is an error now; the
+	// compound assignment to the global after the block still has to parse for
+	// the error to be the only complaint.
+	run_bad(v3_bin, 'review_shadowed_global_nested_scope', '__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n', 'variable `score` shadows a global variable')
 	pointer_str_out := run_good(v3_bin, 'review_pointer_value_receiver_str', "struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n")
 	assert pointer_str_out == '&custom:7'
 	interface_smartcast_str_out := run_good(v3_bin, 'review_interface_smartcast_pointer_str', "interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n\tboxed := Named(Item{})\n\tprintln(describe(boxed))\n}\n")

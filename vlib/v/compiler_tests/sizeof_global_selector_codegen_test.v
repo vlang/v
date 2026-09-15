@@ -37,11 +37,15 @@ pub fn global_field_size() int {
 	return int(sizeof(global_sizeof_state.event))
 }
 
+// The local was named `global_sizeof_state` too, so this pinned down that
+// `sizeof` followed the local rather than the global of that name. Reusing the
+// name of a global is an error now; the two selectors still have to be told
+// apart, which is what the differing names leave in place.
 pub fn local_field_size() int {
-	global_sizeof_state := State{
+	local_sizeof_state := State{
 		event: 3
 	}
-	return int(sizeof(global_sizeof_state.event))
+	return int(sizeof(local_sizeof_state.event))
 }
 
 pub fn type_size() int {
@@ -93,10 +97,10 @@ fn test_sizeof_selector_qualifies_global_without_rewriting_locals_or_types() {
 	assert compact.contains('sizeof(moda__global_sizeof_state.event)'), c_code
 	assert compact.contains('intmoda__global_field_size(void){return(int)(sizeof(moda__global_sizeof_state.event));}'), c_code
 
-	assert compact.contains('sizeof(global_sizeof_state.event)'), c_code
-	assert compact.contains('moda__Stateglobal_sizeof_state=(moda__State){.event=3};return(int)(sizeof(global_sizeof_state.event));'), c_code
+	assert compact.contains('sizeof(local_sizeof_state.event)'), c_code
+	assert compact.contains('moda__Statelocal_sizeof_state=(moda__State){.event=3};return(int)(sizeof(local_sizeof_state.event));'), c_code
 
-	assert compact.count('sizeof(global_sizeof_state.event)') == 2, c_code
+	assert compact.count('sizeof(local_sizeof_state.event)') == 1, c_code
 	assert compact.contains('sizeof(main__State)'), c_code
 	assert compact.contains('sizeof(moda__State)'), c_code
 	assert !compact.contains('sizeof(moda.State)'), c_code

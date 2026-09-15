@@ -861,6 +861,9 @@ pub mut:
 	is_prod                       bool
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
+	shadow_diagnostic_root        string
+	shadow_explicit_roots         []string
+	shadow_dependency_roots       []string
 	multiple_module_import_lines  map[u64]bool
 	source_texts_by_file          map[string]string
 	ct_update_pos                 map[int]token.Pos
@@ -1290,6 +1293,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		is_prod: tc.is_prod
 		suppress_dump_output: tc.suppress_dump_output
 		diagnostic_files: tc.diagnostic_files
+		shadow_diagnostic_root: tc.shadow_diagnostic_root
+		shadow_explicit_roots: tc.shadow_explicit_roots
+		shadow_dependency_roots: tc.shadow_dependency_roots
 		multiple_module_import_lines: tc.multiple_module_import_lines
 		source_texts_by_file: tc.source_texts_by_file
 		ct_update_pos: tc.ct_update_pos
@@ -6926,10 +6932,11 @@ fn (mut tc TypeChecker) register_c_variadic_fn_with_lowered(name string, lowered
 	}
 }
 
-fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
+fn (mut tc TypeChecker) insert_fn_param_binding(id flat.NodeId, p flat.Node) {
 	if p.kind != .param || p.value.len == 0 {
 		return
 	}
+	tc.check_local_binding_global_shadowing(id)
 	parsed_type := tc.parse_scope_param_type(p.typ)
 	typ := mut_param_binding_type(parsed_type, p.is_mut, p.op == .amp)
 	owner := tc.cur_scope.insert_with_owner(p.value, typ)
@@ -7105,8 +7112,8 @@ fn (mut tc TypeChecker) annotate_fn_node(node flat.Node) {
 	tc.cur_scope = tc.file_scope
 	tc.push_scope()
 	for pi in 0 .. node.children_count {
-		p := tc.a.child_node(&node, pi)
-		tc.insert_fn_param_binding(p)
+		param_id := tc.a.child(&node, pi)
+		tc.insert_fn_param_binding(param_id, tc.a.node(param_id))
 	}
 	tc.insert_implicit_veb_ctx(node)
 	for i in 0 .. node.children_count {
@@ -7539,7 +7546,8 @@ fn (mut tc TypeChecker) annotate_fn_literal(node flat.Node) {
 	tc.fn_context.return_type = tc.parse_type(node.typ)
 	tc.push_scope()
 	for i in 0 .. node.children_count {
-		tc.insert_fn_param_binding(tc.a.child_node(&node, i))
+		child_id := tc.a.child(&node, i)
+		tc.insert_fn_param_binding(child_id, tc.a.node(child_id))
 	}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -8308,6 +8316,7 @@ fn (mut tc TypeChecker) insert_loop_var(id flat.NodeId, typ Type) ScopeBindingOw
 	if int(id) < 0 {
 		return ScopeBindingOwner{}
 	}
+	tc.check_local_binding_global_shadowing(id)
 	v := tc.a.nodes[int(id)]
 	if v.kind == .ident && v.value.len > 0 {
 		owner := tc.cur_scope.insert_with_owner(v.value, typ)
@@ -15819,6 +15828,14 @@ struct ComptimeDeferredDeclSource {
 	decl_name   string
 }
 
+fn (mut tc TypeChecker) check_comptime_for_global_shadowing(id flat.NodeId, node flat.Node) {
+	parts := node.value.split('|')
+	if parts.len != 2 || parts[0].len == 0 || !tc.global_names[parts[0]] {
+		return
+	}
+	tc.record_global_shadow_error_at(id, parts[0], tc.comptime_for_variable_pos(node, parts[0]))
+}
+
 fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.Node) {
 	parts := node.value.split('|')
 	if parts.len != 2 || parts[0].len == 0 || node.children_count == 0 {
@@ -16731,6 +16748,7 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	if node.kind == .comptime_for {
 		// Check nested reflection loops only after earlier declarations in the
 		// enclosing static body have entered the current scope.
+		tc.check_comptime_for_global_shadowing(id, node)
 		tc.check_comptime_for_members(id, node)
 		return
 	}
@@ -16760,6 +16778,9 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	}
 	if node.kind == .defer_stmt && loop_kind == 'fields'
 		&& tc.comptime_subtree_references_var(id, var_name) {
+		for i in 0 .. node.children_count {
+			tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+		}
 		tc.record_deferred_comptime_field_errors(id, var_name)
 		return
 	}
@@ -16772,11 +16793,91 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		tc.comptime_static_depth--
 		return
 	}
+	if node.kind == .for_stmt {
+		tc.push_scope()
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind,
+				field_cases, value_cases)
+		}
+		tc.pop_scope()
+		return
+	}
+	if node.kind == .for_in_stmt {
+		header := node.value.int()
+		if header < 3 || node.children_count < 3 {
+			return
+		}
+		tc.push_scope()
+		loop_var_type := unknown_type('runtime loop variable in static comptime body')
+		tc.insert_loop_var(tc.a.child(&node, 0), loop_var_type)
+		tc.insert_loop_var(tc.a.child(&node, 1), loop_var_type)
+		for i in header .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind,
+				field_cases, value_cases)
+		}
+		tc.pop_scope()
+		return
+	}
+	if node.kind == .match_stmt {
+		for i in 1 .. node.children_count {
+			branch_id := tc.a.child(&node, i)
+			branch := tc.a.node(branch_id)
+			if branch.kind != .match_branch {
+				continue
+			}
+			body_start := if branch.value == 'else' { 0 } else { branch.value.int() }
+			if body_start < 0 || body_start > branch.children_count {
+				continue
+			}
+			tc.push_scope()
+			for j in body_start .. branch.children_count {
+				tc.check_comptime_static_body(tc.a.child(branch, j), var_name, loop_kind,
+					field_cases, value_cases)
+			}
+			tc.pop_scope()
+		}
+		return
+	}
+	if node.kind == .select_stmt {
+		for i in 0 .. node.children_count {
+			branch := tc.a.child_node(&node, i)
+			if branch.kind != .select_branch {
+				continue
+			}
+			body_start := if branch.value == 'else' {
+				0
+			} else if branch.value in ['recv', 'recv_assign']
+				|| branch.value.starts_with('recv_compound:') {
+				2
+			} else {
+				1
+			}
+			tc.push_scope()
+			if branch.value == 'recv' && branch.children_count >= 2 {
+				tc.insert_loop_var(tc.a.child(branch, 0),
+					unknown_type('select receive variable in static comptime body'))
+			}
+			if body_start <= branch.children_count {
+				for j in body_start .. branch.children_count {
+					tc.check_comptime_static_body(tc.a.child(branch, j), var_name, loop_kind,
+						field_cases, value_cases)
+				}
+			}
+			tc.pop_scope()
+		}
+		return
+	}
 	if node.kind in [.assign, .selector_assign, .index_assign] {
+		for i in 0 .. node.children_count {
+			tc.check_generic_body_node_global_shadowing(tc.a.child(&node, i))
+		}
 		tc.check_comptime_static_assignment(node, var_name, field_cases)
 		return
 	}
 	if node.kind == .call {
+		if node.children_count > 0 {
+			tc.check_generic_body_node_global_shadowing(tc.a.child(&node, 0))
+		}
 		tc.check_comptime_static_call(id, node, var_name, loop_kind, field_cases, value_cases)
 		return
 	}
@@ -16785,12 +16886,16 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	// body use them (`mut fo := ...(field.attrs); ... fo.install_default(...)`),
 	// and without a binding those uses report unknown identifiers.
 	if node.kind == .decl_assign && node.children_count >= 2 {
+		tc.check_decl_lhs_global_shadowing(node)
 		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			rhs_id := tc.a.child(&node, i + 1)
+			// The initializer itself is not semantically checked when it depends on
+			// reflection metadata, but nested source bindings still need diagnostics.
+			tc.check_generic_body_node_global_shadowing(rhs_id)
 			lhs := tc.a.child_node(&node, i)
 			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 				continue
 			}
-			rhs_id := tc.a.child(&node, i + 1)
 			rhs_typ := tc.comptime_static_method_call_return_type(rhs_id, var_name, loop_kind, value_cases) or { tc.resolve_type(rhs_id) }
 			typ := if rhs_typ is Unknown {
 				tc.comptime_static_reflected_field_expr_type(rhs_id, var_name, field_cases) or {
@@ -16819,7 +16924,11 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			}
 			tc.cur_scope.insert(lhs.value, typ)
 		}
+		return
 	}
+	// Reflection-dependent nodes without dedicated semantic handling are still
+	// unrolled later, so inspect all source bindings they contain.
+	tc.check_generic_body_node_global_shadowing(id)
 }
 
 fn (mut tc TypeChecker) record_deferred_comptime_field_errors(id flat.NodeId, var_name string) bool {

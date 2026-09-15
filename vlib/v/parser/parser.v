@@ -4432,6 +4432,11 @@ fn (p &Parser) simplify_deferred_comptime_cond(cond string) string {
 	if !p.comptime_cond_needs_loop_var(c) && !comptime_cond_has_type_test(c)
 		&& !comptime_cond_has_type_metadata(c) && !comptime_cond_has_builtin_threads(c)
 		&& !p.comptime_cond_references_unresolved_local(c) {
+		// A target predicate beside a deferred type predicate must survive portable
+		// parsing so monomorphization can fold the type part for each specialization.
+		if p.prefs.output_cross_c && comptime_cond_has_target_flag(c) {
+			return p.cross_normalized_comptime_cond(c)
+		}
 		return if p.eval_comptime_cond(c) { 'true' } else { 'false' }
 	}
 	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')

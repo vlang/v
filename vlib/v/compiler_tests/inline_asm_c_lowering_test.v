@@ -30,12 +30,12 @@ fn global_x() u64 {
 }
 
 fn update_local() u64 {
-	mut x := u64(7)
+	mut n := u64(7)
 	asm arm64 {
-		add x, x, 1
-		; +r (x)
+		add n, n, 1
+		; +r (n)
 	}
-	return x
+	return n
 }
 
 struct AsmOperand {
@@ -115,12 +115,12 @@ fn global_x() u64 {
 }
 
 fn update_local() u64 {
-	mut x := u64(7)
+	mut n := u64(7)
 	asm amd64 {
-		add x, 1
-		; +r (x)
+		add n, 1
+		; +r (n)
 	}
-	return x
+	return n
 }
 
 struct AsmOperand {
@@ -225,7 +225,11 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	assert c_source.contains('__asm__ ('), c_source
 	assert c_source.contains('[b] "+r" (b)'), c_source
 	assert c_source.contains('[a] "r" (a)'), c_source
-	assert c_source.contains('[x] "+r" (__v3_internal_symbol_local_x)'), c_source
+	// Was `[x] "+r" (x__local)`: the operand held a local named after the global
+	// `x`, so cgen had to suffix it apart. Such a local is rejected now, so the
+	// operand is checked plain -- what it still pins down is that an asm operand
+	// binds the local it names.
+	assert c_source.contains('[n] "+r" (n)'), c_source
 	assert c_source.contains('"+r" (value.v_index)'), c_source
 	assert c_source.contains('array_get(values, 0)'), c_source
 	assert c_source.contains('"+r" (value.ptr->v_index)'), c_source

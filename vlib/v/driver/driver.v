@@ -7546,6 +7546,15 @@ fn macos_v3_fallback_payload_is_valid(payload string) bool {
 		macos_v3_c_error_fallback]
 }
 
+// has_v3_authoritative_error reports whether the checker produced a diagnostic
+// that only V3 knows about. The compatibility compiler has no such check, so
+// retrying with it would turn a real error into a clean build and hide the
+// diagnostic entirely. V3 keeps the final say for these, and `-old-compiler`
+// is still there for anyone who needs the old behaviour.
+fn has_v3_authoritative_error(errors []types.TypeError) bool {
+	return errors.any(it.kind == .duplicate_decl && it.msg.ends_with('` shadows a global variable'))
+}
+
 fn macos_v3_fallback_suppresses_diagnostics(fallback_file string) bool {
 	if fallback_file == '' || os.getenv(macos_v3_no_fallback_env) == '1' {
 		return false
@@ -10604,6 +10613,11 @@ pub fn run(args []string) {
 	mut checker_warning_count := 0
 	mut cached_checker_diagnostics := []V3CachedTypeDiagnostic{}
 	pre_tc.compiler_vroot = prefs.vroot
+	// Which files the shadowing check may blame. Use the same nearest-v.mod root
+	// as import resolution, so a nested entry directory still owns sibling modules.
+	pre_tc.shadow_diagnostic_root = os.real_path(project_root_for_files(user_files))
+	pre_tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
+	pre_tc.shadow_explicit_roots = shadow_explicit_roots_for(prefs, pre_tc.shadow_dependency_roots)
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
@@ -10806,6 +10820,9 @@ pub fn run(args []string) {
 					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc, fixture_used_fns, false)
 				}
 			}
+			if has_v3_authoritative_error(pre_tc.errors) {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
 			}
@@ -10831,7 +10848,20 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if check_only {
+			if pre_tc.global_names.len > 0 {
+				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a,
+					&pre_tc)
+				if check_uses_generics {
+					_, _ = transform.monomorphize_with_used_checked_config(mut a, &pre_tc,
+						check_used_fns, false)
+				}
+			}
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			if pre_tc.errors.len > 0 {
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture,
+					fatal_errors)
+				exit(1)
+			}
 			return
 		}
 		if cache_state.manager.enabled {
@@ -11550,6 +11580,9 @@ pub fn run(args []string) {
 			pre_tc.notices.clear()
 		}
 		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
+			if has_v3_authoritative_error(pre_tc.errors) {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			}
 			if cache_state.manager.enabled {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
@@ -15497,6 +15530,37 @@ fn unsupported_backend_node_error(a &flat.FlatAst, tc &types.TypeChecker, id fla
 	return none
 }
 
+// shadow_dependency_roots_for returns the installed-module directories, resolved
+// once here so the checker only has to compare prefixes. One of them can sit
+// inside the project root -- `$PWD/.vmodules` does -- so the shadowing check
+// has to subtract them from the root rather than rely on containment alone.
+fn shadow_dependency_roots_for(prefs &pref.Preferences) []string {
+	mut roots := []string{}
+	for root in prefs.installed_module_roots() {
+		if root.len == 0 {
+			continue
+		}
+		real_root := os.real_path(root)
+		if real_root.len > 0 && real_root !in roots {
+			roots << real_root
+		}
+	}
+	return roots
+}
+
+// shadow_explicit_roots_for returns explicit search roots that may contain
+// project-private modules. Installed roots named in `-path` remain dependencies.
+fn shadow_explicit_roots_for(prefs &pref.Preferences, dependency_roots []string) []string {
+	mut roots := []string{}
+	for root in prefs.module_search_paths {
+		real_root := os.real_path(root)
+		if real_root.len > 0 && real_root !in dependency_roots && real_root !in roots {
+			roots << real_root
+		}
+	}
+	return roots
+}
+
 fn diagnostic_root_for_input(input_file string, user_files []string) string {
 	if input_file.len > 0 && os.is_dir(input_file) {
 		return os.real_path(input_file)
@@ -16990,6 +17054,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		first_file = initial_files[0]
 	}
 	project_root := project_root_for_files(initial_files)
+	shadow_diagnostic_root := os.real_path(project_root)
+	shadow_dependency_roots := shadow_dependency_roots_for(prefs)
+	shadow_explicit_roots := shadow_explicit_roots_for(prefs, shadow_dependency_roots)
 	mut parsed_module_identities := map[string]string{}
 	mut parsed_identity_dirs := map[string]string{}
 	mut identity_source_paths := map[string]string{}
@@ -17365,12 +17432,17 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				} else if !cache_state.force_source {
 					if cached := cache_state.manager.valid_entry_with_metadata_cache(cache_module, mod_files, mut cache_state.dependency_metadata) {
 						record_v3_cached_source_digests(mut cache_state, cached.source_digests)
-						if !modulecache.header_needs_source(cached) {
+						owned_sources_need_check := mod_files.any(types.shadow_roots_own_file(it,
+							shadow_diagnostic_root, shadow_explicit_roots, shadow_dependency_roots))
+						if !modulecache.header_needs_source(cached) && !owned_sources_need_check {
 							parse_files = [cached.header]
 							if mod_files.len > 0 {
 								cached_header_source_contexts[cached.header] = mod_files[0]
 							}
 						} else {
+							// Cached declaration headers omit local bindings. Project-owned
+							// sources still need their bodies parsed so diagnostics cannot
+							// depend on whether their module object is already warm.
 							cache_state.source_body_modules[cache_module] = true
 						}
 						cache_state.objects[cache_module] = cached.object

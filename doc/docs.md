@@ -8350,6 +8350,49 @@ to race conditions. There are several approaches to deal with these:
   correlated, which is acceptable considering the performance penalty that using
   synchronization primitives would represent.
 
+### Shadowing a global
+
+A local variable may not reuse the name of a global. A global's bare name is visible
+everywhere, including in modules that never import the one declaring it, so the two
+names are not as far apart as they look.
+
+Where the global belongs to another module, the local does not merely shadow it, it
+loses: the declaration is ignored and every use of that name, including the ones that
+look like reads of the local, means the global. The code then does something other
+than it reads, with nothing to point at.
+
+V rejects it:
+
+```
+error: variable `devices` shadows a global variable
+```
+
+The fix is to rename the local, giving it a name that says what it holds:
+
+```v ignore
+__global (
+	devices []&Device
+)
+
+fn mount_dev(root &Node) bool {
+	// Was `devices`, which silently meant the global above.
+	dev_dir := get_node(root, '/dev') or { return false }
+	dev_dir.parent = root
+	return true
+}
+```
+
+The check covers every source-level local binding: declaration targets, function and
+lambda parameters, `for` variables, `if` guards, `select` receive declarations, and
+compile-time `\$for` variables. Each name is checked, so both targets of
+`value, devices := make_pair()` are covered. A name that shadows nothing, and `_`, are
+left alone.
+
+Only code the project owns is checked, which for a directory build means the whole
+project, not just the file named on the command line. An installed dependency is left
+alone: its author cannot see the globals your program declares, so a local of theirs
+that happens to collide will not stop your build.
+
 ## Static Variables
 
 V also supports *static variables*, which are like *global variables*, but
