@@ -8841,7 +8841,14 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		|| t.tc.declaration_has_attribute(flat.NodeId(fn_idx), 'manualfree')
 	param_count := t.fn_body_param_count(fn_node)
 	param_types := t.fn_body_param_types(fn_node, param_count)
-	t.cur_fn_ret_type = t.fn_body_return_type(fn_node)
+	// A generic clone uses `main.` to pin a caller-owned return type that collides
+	// with a type in the declaration module. Looking the type up again in that module
+	// would discard the lock and rebind it to the wrong declaration.
+	t.cur_fn_ret_type = if t.validating_generic_spec && fn_node.typ.contains('main.') {
+		fn_node.typ
+	} else {
+		t.fn_body_return_type(fn_node)
+	}
 	t.reset_var_types()
 	t.cur_fn_variadic_param = ''
 	t.smartcast_stack.clear()
