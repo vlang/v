@@ -6856,12 +6856,12 @@ fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, b
 		expr_needs_deferred_lowering := t.string_interp_expr_needs_deferred_lowering(expr_id)
 		may_hoist = may_hoist || expr_needs_deferred_lowering
 			|| t.string_interp_expr_may_hoist(expr_id)
-		needs_deferred_lowering = needs_deferred_lowering || expr_needs_deferred_lowering
 		if format == 'p' {
 			// Pointer formatting lowers directly to bounded ptr_str work, regardless of
 			// the pointee's aggregate auto-string expansion.
 			continue
 		}
+		needs_deferred_lowering = needs_deferred_lowering || expr_needs_deferred_lowering
 		part_expr := t.a.nodes[int(expr_id)]
 		// Literal segments of the interpolation are always plain strings.
 		if part_expr.kind in [.string_literal, .int_literal, .float_literal, .bool_literal,

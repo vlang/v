@@ -258,10 +258,8 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 	}
 	mut estimate := 0
 	mut pending := [root]
-	mut cursor := 0
-	for cursor < pending.len {
-		id := pending[cursor]
-		cursor++
+	for pending.len > 0 {
+		id := pending.pop()
 		if int(id) < 0 || int(id) >= t.a.nodes.len {
 			continue
 		}
@@ -730,10 +728,26 @@ fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node)
 	if node.children_count == 0 {
 		return false
 	}
-	if node.value == 'variant_types' && t.selector_base_is_comptime_type_value(t.a.child(&node, 0)) {
+	base_id := t.a.child(&node, 0)
+	if node.value == 'variant_types' && t.selector_base_is_comptime_type_value(base_id) {
 		return true
 	}
-	base_type := t.node_type(t.a.child(&node, 0))
+	base := t.a.nodes[int(base_id)]
+	mut base_type := base.typ
+	if !isnil(t.tc) {
+		if typ := t.tc.expr_type(base_id) {
+			base_type = typ.name()
+		}
+	}
+	if base_type.len == 0 && base.kind == .ident {
+		base_type = t.var_type(base.value)
+	}
+	if base_type.len == 0 {
+		// An untyped selector chain cannot expand from interface/sum metadata. Avoid
+		// recursively resolving every prefix of a large external reconstruction.
+		return false
+	}
+	base_type = t.normalize_type_alias(base_type)
 	iface_name := t.resolve_interface_type_name(base_type)
 	if iface_name.len > 0 && node.value !in ['_typ', '_object'] {
 		if _ := t.interface_field_type_name(iface_name, node.value) {

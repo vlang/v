@@ -4033,6 +4033,8 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	if t.is_ordering_snapshot_temp(id) {
 		return id
 	}
+	pointer_type := t.lvalue_type(id)
+	preserve_pointer_value := pointer_type.starts_with('&')
 	// A block expression (notably `unsafe { ... }`) drains pending statements into
 	// its own statement-expression. Do not let it capture snapshots belonging to
 	// earlier call operands; those declarations must remain in the surrounding
@@ -4041,6 +4043,8 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 	t.pending_stmts.clear()
 	expr := if _ := t.generated_variant_access_type(id) {
 		id
+	} else if preserve_pointer_value {
+		t.transform_expr_preserving_pointer_value(id)
 	} else {
 		t.transform_expr(id)
 	}
@@ -4051,7 +4055,7 @@ fn (mut t Transformer) snapshot_expr_for_reuse(id flat.NodeId) flat.NodeId {
 		return expr
 	}
 	tmp_name := t.new_temp('order_snapshot')
-	mut tmp_typ := t.node_type(expr)
+	mut tmp_typ := if preserve_pointer_value { pointer_type } else { t.node_type(expr) }
 	if tmp_typ.len == 0 {
 		tmp_typ = t.node_type(id)
 	}
