@@ -5,13 +5,12 @@ fn C.GC_is_init_called() int
 fn C.GC_set_find_leak(int)
 fn C.GC_set_pages_executable(int)
 fn C.GC_set_free_space_divisor(usize)
-fn C.GC_allow_register_threads()
 fn C.GC_enable_incremental()
 
-// gc_runtime_init mirrors the Boehm startup sequence emitted by the V1 C backend.
-// V3 selects the collector through compile-time defines, so keep the runtime setup
-// in builtin where both the regular and shared-library startup paths can use it.
-fn gc_runtime_init() {
+// v3_gcboehm_runtime_init mirrors the Boehm startup sequence emitted by the V1 C backend.
+// V3 selects the collector through compile-time defines, so perform the runtime setup
+// from builtin before the rest of the V3 module initializers run.
+fn v3_gcboehm_runtime_init() {
 	$if gcboehm_leak ? {
 		C.GC_set_find_leak(1)
 	}
