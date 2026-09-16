@@ -339,6 +339,34 @@ fn test_new_process_prefers_the_system_directory_over_path_on_windows() {
 	p.close()
 }
 
+fn test_new_process_runs_the_exact_spelling_of_a_suffixed_name_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', original_path, true)
+	}
+	// A name that already has an extension must be tried exactly, before any
+	// suffix is appended: `exact_tool.exe.exe` in the same directory must not
+	// shadow the requested `exact_tool.exe`. The shadow ignores its arguments
+	// and exits with 0; the requested program exits with the given 3.
+	path_dir := os.join_path(tfolder, 'path_bin_exact')
+	os.rmdir_all(path_dir) or {}
+	os.mkdir_all(path_dir)!
+	os.cp(test_os_process, os.join_path(path_dir, 'exact_tool.exe'))!
+	os.cp(delayed_output_exe_filename, os.join_path(path_dir, 'exact_tool.exe.exe'))!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	mut p := os.new_process('exact_tool.exe')
+	p.set_args(['-exitcode', '3'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 3, 'the exact `exact_tool.exe` (exit 3) must win over `exact_tool.exe.exe` (exit 0), got ${p.code}'
+	p.close()
+}
+
 fn test_run() {
 	eprintln(@FN)
 	mut p := os.new_process(test_os_process)
