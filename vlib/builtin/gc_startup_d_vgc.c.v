@@ -1,7 +1,6 @@
 module builtin
 
-// Keep VGC startup behind the same hook as Boehm so platform builtin_init can
-// initialize whichever collector the V3 driver selected.
-fn gc_runtime_init() {
+// Keep VGC startup behind a V3-only hook so existing V1 startup ordering is unchanged.
+fn v3_vgc_runtime_init() {
 	vgc_init()
 }
