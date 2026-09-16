@@ -38,6 +38,69 @@ fn test_v3_platform_c_compiler() {
 	assert v3_platform_c_compiler('macos') == 'cc'
 }
 
+fn test_v3_windows_cross_compiler_replaces_host_tcc() {
+	linux := pref.Target{
+		os:   'linux'
+		arch: 'amd64'
+	}
+	windows_amd64 := pref.Target{
+		os:   'windows'
+		arch: 'amd64'
+	}
+	windows_x86 := pref.Target{
+		os:   'windows'
+		arch: 'x86'
+	}
+	assert v3_windows_cross_c_compiler('tcc', linux, windows_amd64) == 'x86_64-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('tinyc', linux, windows_x86) == 'i686-w64-mingw32-gcc'
+	assert v3_windows_cross_c_compiler('clang', linux, windows_amd64) == 'clang'
+	assert v3_windows_cross_c_compiler('tcc', windows_amd64, windows_amd64) == 'tcc'
+}
+
+fn test_v3_msvc_alias_selects_cl_on_windows() {
+	assert v3_c_compiler_command_alias('msvc', 'windows') == 'cl'
+	assert v3_c_compiler_command_alias('MSVC', 'windows') == 'cl'
+	assert v3_c_compiler_command_alias('msvc', 'linux') == 'msvc'
+	assert v3_c_compiler_command_alias('clang', 'windows') == 'clang'
+}
+
+fn test_v3_no_std_omits_default_c_and_cpp_standards() {
+	assert c_standard_flag(false, false) == '-std=gnu11'
+	assert c_standard_flag(true, false) == '-std=c99'
+	assert c_standard_flag(false, true) == ''
+	assert cxx_standard_flag(false, false) == '-std=gnu++11'
+	assert cxx_standard_flag(true, false) == '-std=c++11'
+	assert cxx_standard_flag(false, true) == ''
+}
+
+fn test_v3_no_std_command_keeps_the_user_standard_only() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_no_std_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main')
+	os.write_file(source, 'fn main() {}\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-cc', 'c++',
+		'-no-std', '-cflags', '-std=c++11', '-dump-c-flags', '-', '-o', output, source])
+	assert build.exit_code == 0, build.output
+	assert '-std=c++11' in build.output.split_into_lines(), build.output
+	assert '-std=gnu11' !in build.output, build.output
+	assert '-std=gnu++11' !in build.output, build.output
+}
+
 fn test_macos_linux_compatibility_link_uses_portable_c_for_executables() {
 	host := pref.Target{
 		os:   'macos'
