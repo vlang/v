@@ -23,7 +23,7 @@ fn htonl64(payload_len u64) []u8 {
 	return ret
 }
 
-// create_masking_key returns a new masking key to use when masking messages
+// create_masking_key returns a new masking key to use when masking websocket messages
 fn create_masking_key() []u8 {
 	return rand.bytes(4) or { [u8(0), 0, 0, 0] }
 }
