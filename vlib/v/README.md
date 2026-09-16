@@ -92,6 +92,9 @@ suffixes, and third-party object-cache keys. Common aliases such as `darwin`, `x
 `aarch64` are normalized. Native linking currently supports the host target and macOS
 `amd64`/`arm64` cross-architecture builds through Clang's `-arch`; other cross targets can be
 emitted as C with `-o file.c` for compilation by an external target toolchain.
+For compatibility testing, `-os linux` on macOS with the host architecture and default C compiler
+also builds a macOS executable from portable host-target C; it is not a Linux binary. Pair it with
+`-os linux -o file.c` to validate Linux-selected sources.
 
 The command line rejects unknown options, missing option values, unsupported backends, and
 multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only

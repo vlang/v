@@ -466,10 +466,10 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'),
-		support_flags.join('\x00'), c99.str(), pic_flag, target_args.join('\x00'), compiler_path,
-		compiler_version, target.os, target.arch, target.abi, target.endian,
-		target.pointer_bits.str(), target.object_format, use_platform_non_c_compiler.str()] {
+	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'), support_flags.join('\x00'),
+		c99.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version, target.os,
+		target.arch, target.abi, target.endian, target.pointer_bits.str(), target.object_format,
+		use_platform_non_c_compiler.str()] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -1005,8 +1005,8 @@ fn compile_v3_program_object(kind string, source string, source_identity string,
 	compiler_path, compiler_version := c_object_compiler_identity(c_compiler, mut stats)
 	mut hash := u64(1469598103934665603)
 	program_identity := if source_identity.len > 0 { source_identity } else { source }
-	for identity in ['v3-cached-program-${kind}-v1', program_identity, compiler_path,
-		compiler_version, args.join('\x00'), target.os, target.arch, target.abi, target.endian,
+	for identity in ['v3-cached-program-${kind}-v1', program_identity, compiler_path, compiler_version,
+		args.join('\x00'), target.os, target.arch, target.abi, target.endian,
 		target.pointer_bits.str(), target.object_format] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
@@ -1198,8 +1198,8 @@ fn publish_v3_cached_executable(source string, destination string) {
 fn c_flag_token_is_link_only(token string) bool {
 	clean := token.trim(' \t\r\n"\'')
 	if clean.starts_with('-l') || clean.starts_with('-L') || clean.starts_with('-Wl,')
-		|| clean in ['-ObjC', '-all_load', '-bundle', '-dynamiclib', '-shared', '-static',
-			'-rdynamic', '-pie', '-no-pie'] {
+		|| clean in ['-ObjC', '-all_load', '-bundle', '-dynamiclib', '-shared', '-static', '-rdynamic',
+			'-pie', '-no-pie'] {
 		return true
 	}
 	return clean.ends_with('.a') || clean.ends_with('.so') || clean.contains('.so.')
@@ -1359,8 +1359,8 @@ fn c_object_manifest_path(cache_dir string, obj_path string, compiler string, co
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
 	for identity in ['v3-c-object-manifest-v1', os.real_path(obj_path), compiler_path,
-		compiler_version, target.os, target.arch, target.abi, target.endian,
-		target.pointer_bits.str(), target.object_format, compile_args.join('\x00')] {
+		compiler_version, target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
+		target.object_format, compile_args.join('\x00')] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -1575,6 +1575,13 @@ fn shared_pic_flag(is_shared bool, target_os string) string {
 		return '-fPIC'
 	}
 	return ''
+}
+
+fn v3_macos_linux_compatibility_link(host pref.Target, target_os string, target_arch string, backend string, output_file string, explicit_output bool, is_o bool, compiler_explicit bool) bool {
+	explicit_c_output := explicit_output && (output_file == '-' || output_file.ends_with('.c'))
+	return host.os == 'macos' && pref.normalized_os(target_os) == 'linux'
+		&& pref.normalized_arch(target_arch) == host.arch && backend == 'c' && !explicit_c_output
+		&& !is_o && !compiler_explicit
 }
 
 fn c_compiler_target_args(target pref.Target, compiler_explicit bool) ![]string {
@@ -2299,8 +2306,8 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 		} else {
 			small_compile_flags.clone()
 		}
-		compile_args << ['-x', if objective_c { 'objective-c' } else { 'c' }, '-c', '-o',
-			object_name, source_name]
+		compile_args << ['-x', if objective_c { 'objective-c' } else { 'c' }, '-c', '-o', object_name,
+			source_name]
 		if show_command {
 			println('  > ${cmdexec.display(c_compiler, compile_args)}')
 		}
@@ -2531,8 +2538,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	if options.is_tcc {
 		tcc_resources := v3_tcc_resource_flags(options.vroot)
 		tcc_includes = tcc_resources.include_arg
-		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg,
-			tcc_resources.library_arg]
+		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
 		before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
 		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
@@ -5976,8 +5982,7 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 					continue
 				}
 				name := incremental_qualified_fn_name(cur_module, node.value)
-				aliases := [node.value, name, restored_fn_c_name(node.value),
-					restored_fn_c_name(name)]
+				aliases := [node.value, name, restored_fn_c_name(node.value), restored_fn_c_name(name)]
 				if !aliases.any(current[it]) {
 					continue
 				}
@@ -6988,11 +6993,11 @@ fn v3_test_build_constraint(file string) V3TestBuildConstraint {
 }
 
 fn v3_test_build_fact_name(name string) bool {
-	return name in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-		'android', 'termux', 'solaris', 'haiku', 'qnx', 'serenity', 'vinix', 'wasm32_emscripten',
-		'tinyc', 'tcc', 'clang', 'gcc', 'mingw', 'msvc', 'cplusplus', 'amd64', 'arm64', 'arm32',
-		'x86', 'i386', 'rv32', 'riscv32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le', 's390x',
-		'loongarch64', 'sparc64', 'wasm32', 'prod']
+	return name in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android',
+		'termux', 'solaris', 'haiku', 'qnx', 'serenity', 'vinix', 'wasm32_emscripten', 'tinyc',
+		'tcc', 'clang', 'gcc', 'mingw', 'msvc', 'cplusplus', 'amd64', 'arm64', 'arm32', 'x86',
+		'i386', 'rv32', 'riscv32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le', 's390x', 'loongarch64',
+		'sparc64', 'wasm32', 'prod']
 }
 
 fn v3_test_build_facts(target pref.Target, ccompiler string, is_prod bool) []string {
@@ -7592,10 +7597,10 @@ fn v3_source_is_pure_v(path string) bool {
 	}
 	actual_language := if language == before_dot_v { language_with_underscore } else { language }
 	return actual_language !in ['c', 'js', 'amd64', 'x86_64', 'x64', 'x86', 'aarch64', 'arm64',
-		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32',
-		'riscv32', 'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64',
-		'ppc64le', 'sparc64', 'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser',
-		'js_freestanding', 'wasm32', 'wasm']
+		'aarch32', 'arm32', 'arm', 'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v', 'rv32', 'riscv32',
+		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32', 's390x', 'loongarch64', 'ppc64le', 'sparc64',
+		'ppc64', 'ppc', 'ppc32', 'powerpc', 'js_node', 'js_browser', 'js_freestanding', 'wasm32',
+		'wasm']
 }
 
 fn v3_type_text_uses_interop_namespace(text string, namespace string) bool {
@@ -8143,8 +8148,8 @@ fn expand_v3_exclude_patterns(patterns []string, vroot string) []string {
 fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
-		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project',
-		'-test-runner', '-run-only', '-profile-fns', '-subsystem', '-exclude', '-dump-files']
+		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
+		'-run-only', '-profile-fns', '-subsystem', '-exclude', '-dump-files']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -9298,10 +9303,19 @@ pub fn run(args []string) {
 	// one OS, architecture or C compiler, so that a single generated snapshot
 	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
 	// leave every target-dependent `$if` to the C preprocessor.
-	mut output_cross_c := cross_output
+	compatibility_host := pref.host_target()
+	macos_linux_compatibility_link := v3_macos_linux_compatibility_link(compatibility_host,
+		target_os, target_arch, backend, output_file, explicit_output, is_o, c_compiler_explicit)
+	mut output_cross_c := cross_output || macos_linux_compatibility_link
 	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
 		output_cross_c = true
 		target_os = os.user_os()
+	} else if macos_linux_compatibility_link {
+		// The paired `.c` build keeps the requested Linux target. The executable
+		// smoke build uses host source selection because the default Apple C
+		// toolchain has neither a Linux sysroot nor a Linux linker.
+		target_os = compatibility_host.os
+		target_arch = compatibility_host.arch
 	}
 	if output_cross_c {
 		// A portable snapshot cannot use the platform backtrace APIs, and the
@@ -15163,8 +15177,8 @@ fn type_diagnostic_enclosing_fn(a &flat.FlatAst, diagnostic types.TypeError) fla
 	mut nearest := flat.empty_node
 	mut nearest_offset := -1
 	for index, node in a.nodes {
-		if node.kind !in [.fn_decl, .struct_decl, .interface_decl, .type_decl, .enum_decl,
-			.const_decl, .global_decl, .c_fn_decl, .module_decl, .import_decl]
+		if node.kind !in [.fn_decl, .struct_decl, .interface_decl, .type_decl, .enum_decl, .const_decl,
+			.global_decl, .c_fn_decl, .module_decl, .import_decl]
 			|| !node.pos.is_valid() || !diagnostic_pos.is_valid()
 			|| node.pos.id != diagnostic_pos.id || node.pos.offset > diagnostic_pos.offset
 			|| node.pos.offset <= nearest_offset {
@@ -16493,8 +16507,7 @@ fn implicit_call_return_type(a &flat.FlatAst, call &flat.Node, bindings map[stri
 		}
 	}
 	if base_type.len > 0 {
-		for key in ['${base_type}.${callee.value}',
-			'${base_type.all_after_last('.')}.${callee.value}'] {
+		for key in ['${base_type}.${callee.value}', '${base_type.all_after_last('.')}.${callee.value}'] {
 			if typ := index.fn_returns[key] {
 				return implicit_normalize_type(typ, index.aliases)
 			}
