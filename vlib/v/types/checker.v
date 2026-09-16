@@ -4545,11 +4545,21 @@ fn c_struct_decl_signatures_compatible(a string, b string) bool {
 	if a_parts.len == 0 || b_parts.len == 0 || a_parts[0] != b_parts[0] {
 		return false
 	}
-	if a_parts[0] != 'union' {
-		return false
-	}
 	a_fields := a_parts[1..]
 	b_fields := b_parts[1..]
+	if c_struct_decl_fields_conflict(a_fields, b_fields) {
+		return false
+	}
+	if a_parts[0] == 'union' {
+		// C header bindings can expose different partial views of the same union.
+		// The views are compatible while every field they share has the same type.
+		return true
+	}
+	// Partial struct views are also common in C bindings. Keep equally complete
+	// declarations strict so reordered layouts are still diagnosed.
+	if a_fields.len == b_fields.len {
+		return false
+	}
 	return c_struct_decl_fields_subset(a_fields, b_fields)
 		|| c_struct_decl_fields_subset(b_fields, a_fields)
 }
@@ -4561,6 +4571,18 @@ fn c_struct_decl_fields_subset(small []string, big []string) bool {
 		}
 	}
 	return true
+}
+
+fn c_struct_decl_fields_conflict(a []string, b []string) bool {
+	for a_field in a {
+		a_name := a_field.all_before(':')
+		for b_field in b {
+			if b_field.all_before(':') == a_name && a_field != b_field {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn c_struct_decl_signature_field_count(sig string) int {

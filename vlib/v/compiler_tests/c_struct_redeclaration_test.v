@@ -63,6 +63,16 @@ fn test_c_struct_redeclaration_checks_field_signature() {
 	assert good.exit_code == 0, good.output
 	assert !good.output.contains('C compilation failed'), good.output
 
+	partial_views_good := run_v3_source(v3_bin, 'good_c_struct_partial_views',
+		'@[typedef]\nstruct C.HeaderEvent {\n\ttype int\n\tserial u64\n\tdisplay voidptr\n\twindow u64\n\tatom u64\n\tstate int\n}\n\nstruct C.HeaderEvent {\n\tstate int\n\tatom u64\n}\n\n@[typedef]\nunion C.HeaderUnion {\n\ttype int\n\tclient C.HeaderEvent\n\tpad [24]i64\n}\n\nunion C.HeaderUnion {\n\t@type int\n\tproperty C.HeaderEvent\n}\n\nfn main() {}\n')
+	assert partial_views_good.exit_code == 0, partial_views_good.output
+	assert !partial_views_good.output.contains('C compilation failed'), partial_views_good.output
+
+	partial_view_bad := run_v3_source(v3_bin, 'bad_c_struct_partial_view_type',
+		'struct C.HeaderEvent {\n\ttype int\n\tserial u64\n\tstate int\n}\n\nstruct C.HeaderEvent {\n\tstate u64\n}\n\nfn main() {}\n')
+	assert partial_view_bad.exit_code != 0, partial_view_bad.output
+	assert partial_view_bad.output.contains('cannot redeclare C struct `C.HeaderEvent`'), partial_view_bad.output
+
 	alias_good := run_v3_source(v3_bin, 'good_c_struct_alias_field_redeclaration',
 		'struct C.Foo {\n\tx byte\n}\n\nstruct C.Foo {\n\tx u8\n}\n\nfn main() {}\n')
 	assert alias_good.exit_code == 0, alias_good.output
