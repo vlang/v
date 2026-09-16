@@ -14,10 +14,7 @@ fn v3_gcboehm_runtime_init() {
 	$if gcboehm_leak ? {
 		C.GC_set_find_leak(1)
 	}
-	mut debugger_workaround := false
-	$if linux {
-		debugger_workaround = gc_prepare_for_debugger_init()
-	}
+	debugger_workaround := gc_prepare_for_debugger_init()
 	C.GC_set_pages_executable(0)
 	$if gcboehm_opt ? {
 		// Preserve an already-initialized host collector's process-wide tuning.
@@ -30,9 +27,7 @@ fn v3_gcboehm_runtime_init() {
 	// V arrays keep an interior pointer one pointer-width past the allocation
 	// header. Register that displacement so Boehm retains the allocation.
 	C.GC_register_displacement(sizeof(voidptr))
-	$if linux {
-		gc_restore_roots_after_debugger_init(debugger_workaround)
-	}
+	gc_restore_roots_after_debugger_init(debugger_workaround)
 	$if gcboehm_incr ? {
 		C.GC_enable_incremental()
 	}
