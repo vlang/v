@@ -137,10 +137,11 @@ fn (mut p Process) win_spawn_process() int {
 		unsafe { to_be_freed.free() }
 	}
 	// Expand the path to an absolute one, in case we later change the working
-	// folder. A bare command name that neither the current directory nor PATH
+	// folder. A bare command name that none of the searched directories or PATH
 	// contains is left as is, so that CreateProcessW can still run its own
 	// lookup (it appends `.exe` to an extension-less name and searches the
-	// system directories) before the spawn is reported as failed.
+	// same directories, using the parent's PATH) before the spawn is reported
+	// as failed.
 	p.filename = p.win_resolve_filename() or { p.filename }
 	mut wdata := &WProcess{
 		child_stdin_read:   unsafe { nil }
