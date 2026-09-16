@@ -15492,7 +15492,7 @@ fn (t &Transformer) stmt_tail_exits(id flat.NodeId) bool {
 			if node.children_count == 0 {
 				return false
 			}
-			return t.stmt_tail_exits(t.a.child(&node, 0))
+			return t.stmt_tail_exits(t.a.child(&node, node.children_count - 1))
 		}
 		.call {
 			return t.is_noreturn_call(id)
@@ -18091,11 +18091,15 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 					arg_id
 				} else if t.is_value_match_or_if_operand(arg_id) {
 					t.materialize_value_branch_operand(arg_id)
-				} else if i < last_branch && t.operand_needs_ordering_snapshot(arg_id) {
+				} else if i < last_branch && t.a.nodes[int(arg_id)].kind != .field_init
+					&& t.operand_needs_ordering_snapshot(arg_id) {
 					// A `mut` argument keeps its lvalue identity (only its dynamic base/index
 					// components are spilled) so it still mutates through. An ordinary argument is
 					// spilled by value, so its value is read in source order — a later branch
 					// prelude that mutates its container cannot change the observed value.
+					// Trailing `key: value` arguments are fields of one collapsed struct argument,
+					// not standalone call operands. Keep their wrappers intact: the struct lowering
+					// pass snapshots preceding field values before materializing a later branch.
 					if t.a.nodes[int(arg_id)].is_mut {
 						if stabilized := t.stabilize_original_lvalue_receiver(arg_id) {
 							stabilized
@@ -23852,7 +23856,17 @@ fn (t &Transformer) array_literal_elem_type(node flat.Node) string {
 	if alias_type := t.array_literal_alias_type(node) {
 		return alias_type[2..]
 	}
-	elem_type := t.array_literal_child_elem_type(t.a.child(&node, 0))
+	mut elem_type := ''
+	for i in 0 .. node.children_count {
+		candidate := t.array_literal_child_elem_type(t.a.child(&node, i))
+		if decl_type_is_usable(candidate) && candidate != 'void' {
+			elem_type = candidate
+			break
+		}
+	}
+	if elem_type.len == 0 {
+		return ''
+	}
 	if !is_numeric_type_name(elem_type) {
 		return elem_type
 	}

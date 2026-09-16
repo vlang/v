@@ -1495,6 +1495,14 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 // run_scoped_monomorphize_specs emits a bounded number of specializations in a
 // private AST/checker view, merges their persistent output, and releases all
 // per-specialization scratch before continuing with the next batch.
+fn clone_monomorph_specialization_args(args []string) []string {
+	mut owned_args := []string{cap: args.len}
+	for arg in args {
+		owned_args << arg.clone()
+	}
+	return owned_args
+}
+
 fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted map[string]bool, mut generated []string) bool {
 	if specs.len == 0 {
 		return false
@@ -1576,7 +1584,7 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		for name in w.generic_specialization_args_log {
 			spec_args := w.generic_specialization_args[name] or { continue }
 			if name !in t.generic_specialization_args {
-				t.generic_specialization_args[name.clone()] = spec_args.clone()
+				t.generic_specialization_args[name.clone()] = clone_monomorph_specialization_args(spec_args)
 			}
 		}
 		for pending in w.pending_generic_fn_specs {
