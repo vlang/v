@@ -2504,6 +2504,14 @@ fn (t &Transformer) add_static_assoc_type_candidate(mut candidates []string, nam
 	if name !in candidates {
 		candidates << name
 	}
+	if name.count('.') >= 2 {
+		module_path := name.all_before_last('.')
+		declared_module_name := module_path.all_after_last('.')
+		short_qualified := '${declared_module_name}.${name.all_after_last('.')}'
+		if short_qualified !in candidates {
+			candidates << short_qualified
+		}
+	}
 	if isnil(t.tc) {
 		return
 	}
@@ -7792,7 +7800,8 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		} else {
 			t.wrap_string_conversion(expr, typ)
 		}
-		return t.make_call_typed('v3_string_zpad', [converted, t.make_int_literal(base_format.width)], 'string')
+		return t.make_call_typed('v3_string_zpad', [converted,
+			t.make_int_literal(base_format.width)], 'string')
 	}
 	if width := left_zero_padded_decimal_width(format) {
 		converted := t.wrap_formatted_string_conversion(expr, typ, 'd')
@@ -8715,7 +8724,8 @@ fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat
 		t.transform_expr_for_type(map_expr, map_type)
 	}
 	return t.make_call_typed('v3_map_str', [lowered, t.make_int_literal(key_kind),
-		t.make_int_literal(value_kind), t.make_int_literal(t.map_str_fixed_len_for_type(value_type))], 'string')
+		t.make_int_literal(value_kind),
+		t.make_int_literal(t.map_str_fixed_len_for_type(value_type))], 'string')
 }
 
 fn (t &Transformer) map_str_types_need_typed_lowering(key_type string, value_type string) bool {
@@ -14987,7 +14997,8 @@ fn (mut t Transformer) make_spread_index_for_expected_param(base flat.NodeId, of
 	})
 	t.set_node_generic_params(int(id), [spread_index_expected_type_marker])
 	if elem_type == 'string'
-		&& typ in ['bool', 'i8', 'i16', 'i32', 'int', 'i64', 'f32', 'f64', 'u8', 'u16', 'u32', 'u64'] {
+		&& typ in ['bool', 'i8', 'i16', 'i32', 'int', 'i64', 'f32', 'f64', 'u8', 'u16', 'u32',
+			'u64'] {
 		fn_name := 'string__${typ}'
 		t.mark_fn_used_name('string.${typ}')
 		t.mark_fn_used_name(fn_name)

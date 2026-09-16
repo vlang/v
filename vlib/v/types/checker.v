@@ -10454,7 +10454,8 @@ fn (mut tc TypeChecker) collect_selected_file_top_level_called_fns(node flat.Nod
 		child_id := tc.a.child(&node, i)
 		child := tc.a.nodes[int(child_id)]
 		match child.kind {
-			.fn_decl, .struct_decl, .type_decl, .interface_decl, .enum_decl, .c_fn_decl, .import_decl, .module_decl, .directive {
+			.fn_decl, .struct_decl, .type_decl, .interface_decl, .enum_decl, .c_fn_decl,
+			.import_decl, .module_decl, .directive {
 				continue
 			}
 			else {
@@ -11059,7 +11060,8 @@ fn (tc &TypeChecker) is_c_top_level_stmt(id flat.NodeId) bool {
 	}
 	node := tc.a.nodes[int(id)]
 	return match node.kind {
-		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt, .for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .defer_stmt {
+		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
+		.for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .defer_stmt {
 			true
 		}
 		.block, .comptime_if {
@@ -11097,9 +11099,6 @@ fn is_c_backend_test_file(path string) bool {
 
 fn is_regular_v_test_file(path string) bool {
 	file := path_leaf_view(path)
-	if file.ends_with('_d_test.v') || file.ends_with('_d_test.vv') {
-		return false
-	}
 	return file.ends_with('_test.v') || file.ends_with('_test.vv')
 }
 

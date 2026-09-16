@@ -507,7 +507,8 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_ki
 		'indirections' {
 			tc.parse_type('u8')
 		}
-		'is_option', 'is_opt', 'is_embed', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_enum', 'is_alias', 'is_shared', 'is_atomic', 'is_mut', 'is_pub' {
+		'is_option', 'is_opt', 'is_embed', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_enum',
+		'is_alias', 'is_shared', 'is_atomic', 'is_mut', 'is_pub' {
 			tc.parse_type('bool')
 		}
 		else {
@@ -6280,8 +6281,8 @@ fn (tc &TypeChecker) comptime_initializer_is_static(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.node(id)
-	return node.kind in [.int_literal, .float_literal, .string_literal, .char_literal, .bool_literal,
-		.enum_val, .nil_literal, .none_expr]
+	return node.kind in [.int_literal, .float_literal, .string_literal, .char_literal,
+		.bool_literal, .enum_val, .nil_literal, .none_expr]
 }
 
 fn (tc &TypeChecker) comptime_condition_part_pos(node flat.Node, part string) token.Pos {
@@ -12542,6 +12543,12 @@ fn (mut tc TypeChecker) check_for_in_mutable_container(loop flat.Node, key_id fl
 	if tc.expr_root_is_mutable_lvalue(container_id) {
 		return
 	}
+	// V1 permits mutable iteration over an array constant, and the C backend has
+	// historically updated that array's runtime storage. Keep that compatibility
+	// while still rejecting immutable local bindings and fields below.
+	if tc.expr_root_constant_name(container_id) != none {
+		return
+	}
 	mut diagnostic_id := container_id
 	mut container := tc.a.node(diagnostic_id)
 	for container.kind in [.paren, .or_expr, .postfix] && container.children_count > 0 {
@@ -16917,7 +16924,8 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 					&& lhs_name !in ['voidptr', 'nil'] && rhs_is_integer)
 				|| lhs_is_primitive_alias
 		}
-		.amp_assign, .pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign {
+		.amp_assign, .pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign,
+		.right_shift_unsigned_assign {
 			unalias_type(lhs_type).is_integer() || lhs_is_flag_enum
 		}
 		else {
@@ -16953,7 +16961,8 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 		.mul_assign, .div_assign, .mod_assign {
 			infix_power_type_is_numeric(rhs_type) || rhs_is_primitive_alias
 		}
-		.amp_assign, .pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign {
+		.amp_assign, .pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign,
+		.right_shift_unsigned_assign {
 			rhs_is_integer || rhs_is_flag_enum
 		}
 		else {

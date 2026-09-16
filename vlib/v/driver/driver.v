@@ -10092,7 +10092,7 @@ pub fn run(args []string) {
 
 	// Test mode is a compile-time define as well as a harness mode. Install it
 	// after parsing builtin, but before collecting and parsing user inputs, so
-	// `$if test` and `_d_test.v` apply to both file and directory test commands.
+	// `$if test` applies to both file and directory test commands.
 	if 'test' !in prefs.user_defines
 		&& (is_test_command || is_v3_test_file(input_file, backend, target)) {
 		prefs.user_defines << 'test'
@@ -15588,9 +15588,6 @@ fn test_input_files(user_files []string, backend string, target pref.Target) []s
 
 fn is_test_file_for_any_backend(file string) bool {
 	name := os.file_name(file)
-	if name.contains('_d_test.') || name.contains('_notd_test.') {
-		return false
-	}
 	if name.ends_with('_test.v') {
 		return true
 	}

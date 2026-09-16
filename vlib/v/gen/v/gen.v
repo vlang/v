@@ -1439,7 +1439,7 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 			width := g.array_expr_width(child)
 			current_len := g.output_line_len()
 			if current_len >= formatter_array_wrap_break
-				|| (width > 0 && current_len + 2 + width >= formatter_max_line_len) {
+				|| (width > 0 && current_len + width > formatter_max_line_len) {
 				g.end_array_element(pending_comment_end, true)
 				pending_comment_end = -1
 				if !indented {
@@ -3329,8 +3329,8 @@ fn (g &Gen) compact_branch_stmt(body []flat.NodeId) ?flat.NodeId {
 		id = g.a.child(stmt, 0)
 		stmt = g.a.node(id)
 	}
-	if stmt.kind in [.return_stmt, .assign, .decl_assign, .selector_assign, .index_assign,
-		.break_stmt, .continue_stmt, .goto_stmt] {
+	if stmt.kind in [.return_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .break_stmt,
+		.continue_stmt, .goto_stmt] {
 		return id
 	}
 	return none

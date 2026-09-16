@@ -448,7 +448,9 @@ fn (tc &TypeChecker) compound_index_overload_value_params_match(setter CallInfo,
 
 fn assignment_op_reads_lhs(op flat.Op) bool {
 	return match op {
-		.plus_assign, .minus_assign, .mul_assign, .power_assign, .div_assign, .mod_assign, .amp_assign, .pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign {
+		.plus_assign, .minus_assign, .mul_assign, .power_assign, .div_assign, .mod_assign,
+		.amp_assign, .pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign,
+		.right_shift_unsigned_assign {
 			true
 		}
 		else {
@@ -2580,6 +2582,18 @@ fn (tc &TypeChecker) pointer_value_compatible(actual Type, expected Type) bool {
 	return pointer_value_type_names_match(actual.name(), expected.name())
 }
 
+fn c_pointer_to_voidptr_arg_compatible(actual Type, expected Type) bool {
+	clean_actual := fn_param_unalias_type(actual)
+	clean_expected := fn_param_unalias_type(expected)
+	if clean_actual !is Pointer {
+		return false
+	}
+	if clean_expected is Pointer {
+		return fn_param_is_voidptr_type(clean_expected.base_type)
+	}
+	return false
+}
+
 fn pointer_value_base_can_match(typ Type) bool {
 	clean := if typ is Alias { typ.base_type } else { typ }
 	return clean !is Void && clean !is Unknown && clean !is None
@@ -4471,6 +4485,12 @@ fn (mut tc TypeChecker) record_empty_array_generic_call_errors(node flat.Node, i
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg := tc.a.node(arg_id)
 		if arg.kind == .array_literal && arg.children_count == 0 && arg.typ.len == 0 {
+			param_idx := i - 1 - info.arg_offset + (if info.has_receiver { 1 } else { 0 })
+			if param_idx >= 0 && param_idx < info.params.len
+				&& !generic_semantic_type_has_placeholder(info.params[param_idx])
+				&& !type_contains_unknown(info.params[param_idx]) {
+				continue
+			}
 			tc.record_error_at(.call_arg_mismatch, 'cannot use empty array as generic argument', arg_id, arg.pos)
 			found = true
 		}
@@ -5737,6 +5757,9 @@ fn (tc &TypeChecker) explicit_generic_call_target_is_known(node flat.Node) bool 
 	if base.kind != .selector || base.value.len == 0 {
 		return false
 	}
+	if _ := tc.explicit_generic_static_selector_key(base) {
+		return true
+	}
 	if base.children_count > 0 {
 		receiver_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(base, 0)))
 		if receiver_type is Struct {
@@ -6104,7 +6127,8 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			current = parent_id
 			continue
 		}
-		if parent.kind in [.field_init, .struct_init, .assoc, .array_literal, .array_init, .map_init] {
+		if parent.kind in [.field_init, .struct_init, .assoc, .array_literal, .array_init,
+			.map_init] {
 			if !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
 				return false
 			}
@@ -9102,8 +9126,8 @@ fn (tc &TypeChecker) thread_wait_return_type(t Type) ?Type {
 // dynamic temp and re-dispatches). Methods outside this list stay rejected:
 // in-place mutators like `sort` would silently modify the temp copy, and
 // `first`/`last`/`pop` are not fixed-array methods in V.
-const fixed_array_lowered_methods = ['contains', 'index', 'last_index', 'any', 'all', 'count', 'map',
-	'filter', 'str', 'wait']
+const fixed_array_lowered_methods = ['contains', 'index', 'last_index', 'any', 'all', 'count',
+	'map', 'filter', 'str', 'wait']
 
 fn receiver_is_fixed_array(t Type) bool {
 	if t is ArrayFixed {
@@ -13426,8 +13450,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if fn_param_is_voidptr_type(expected) && !is_c_string_literal
 			&& !info.name.ends_with('Channel.push')
 			&& !json_runtime_voidptr_accepts_arg(target_name, param_idx, expected, actual)
-			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
-				.string_literal, .string_interp] {
+			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal,
+				.char_literal, .string_literal, .string_interp] {
 			if tc.is_zero_literal(arg_id) {
 				continue
 			}
@@ -13445,8 +13469,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if expected is Pointer && param_is_mut
 			&& !is_channel_builtin_method_call_name(info.name, 'try_push')
-			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
-				.string_literal, .string_interp] {
+			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal,
+				.char_literal, .string_literal, .string_interp] {
 			mut reference_name := call_argument_type_name(expected)
 			if !info.has_receiver {
 				if raw_params := tc.fn_param_type_texts[info.name] {
@@ -13518,6 +13542,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
 			&& !(arg_node.is_mut && expected is Pointer
 				&& tc.type_compatible(actual, expected.base_type)) && !pointer_value_arg
+			&& !(info.name.starts_with('C.')
+				&& c_pointer_to_voidptr_arg_compatible(pointer_check_actual, expected))
 		pointer_array_mismatch := actual_pointer_depth > 0 && expected_pointer_depth > 0
 			&& unalias_type(actual_pointer_base) is Array
 			&& unalias_type(expected_pointer_base) is Array
@@ -13571,7 +13597,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected)
-			&& !tc.pointer_value_compatible(actual, expected) {
+			&& !tc.pointer_value_compatible(actual, expected)
+			&& !(info.name.starts_with('C.')
+				&& c_pointer_to_voidptr_arg_compatible(actual, expected)) {
 			if (tc.call_arg_is_callee_receiver(node, arg_id)
 				|| tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected))
 				&& tc.method_receiver_compatible(actual, expected, info.name) {
@@ -17871,8 +17899,8 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver Type, method string
 		return method in ['first', 'last', 'pop', 'pop_left', 'contains', 'join', 'index',
 			'last_index', 'repeat', 'repeat_to_depth', 'delete', 'delete_last', 'clear', 'insert',
 			'prepend', 'filter', 'map', 'any', 'all', 'count', 'sort_with_compare',
-			'sorted_with_compare', 'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place',
-			'equals', 'bytestr', 'wait']
+			'sorted_with_compare', 'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals',
+			'bytestr', 'wait']
 	}
 	if receiver is ArrayFixed {
 		array_type := Type(Array{
