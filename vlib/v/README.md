@@ -97,8 +97,9 @@ also builds a macOS executable from portable host-target C; it is not a Linux bi
 `-os linux -o file.c` to validate Linux-selected sources.
 
 The command line rejects unknown options, missing option values, unsupported backends, and
-multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only
-currently supported collector mode. Directory builds read `subdirs` through the canonical
+multiple input paths. `-cc <executable>` selects the C compiler. V3 uses
+`-gc boehm_full_opt` by default and supports the V1 collector modes; compiler self-builds
+disable GC regardless of the requested mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic

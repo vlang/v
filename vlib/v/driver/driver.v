@@ -8587,7 +8587,7 @@ pub fn run(args []string) {
 	mut c_compiler_explicit := false
 	mut c_compiler_arg_index := -1
 	mut retry_compilation := true
-	mut gc_mode := 'none'
+	mut gc_mode := ''
 	mut enable_globals_compat := false
 	mut is_prod := false
 	mut no_prod_options := false
@@ -9272,10 +9272,6 @@ pub fn run(args []string) {
 		}
 		return
 	}
-	if gc_mode != 'none' {
-		eprintln('unsupported garbage collector `${gc_mode}`; v3 currently supports only `-gc none`')
-		exit(1)
-	}
 	for define in user_defines {
 		define_name := define.all_before('=').trim_space()
 		if define_name == 'vgc' || define_name.starts_with('gcboehm') {
@@ -9291,6 +9287,10 @@ pub fn run(args []string) {
 			eprintln('ownership support is not compiled into this v3 executable')
 			exit(1)
 		}
+	}
+	apply_v3_gc_mode(gc_mode, building_v, mut user_defines, mut compile_values) or {
+		eprintln(err.msg())
+		exit(1)
 	}
 	if ownership_mode && backend != 'fastc' && !ownership_checker_compiled() {
 		eprintln('ownership support is not compiled into this v3 executable')
