@@ -119,7 +119,7 @@ pub fn json_any(a toml.Any) json2.Any {
 			for key, val in a {
 				jmap[key] = json_any(val)
 			}
-			return json2.Any(jmap)
+			return jmap
 		}
 		[]toml.Any {
 			mut jarr := []json2.Any{}
@@ -128,7 +128,7 @@ pub fn json_any(a toml.Any) json2.Any {
 				jarr << json_any(val)
 			}
 
-			return json2.Any(jarr)
+			return jarr
 		}
 	}
 }
