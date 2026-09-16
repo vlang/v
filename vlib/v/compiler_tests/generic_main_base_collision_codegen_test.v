@@ -58,3 +58,17 @@ fn test_generic_arg_locks_colliding_main_generic_base() {
 	})
 	assert out == 'hi'
 }
+
+// A caller-owned non-generic struct can also collide with a concrete type in the module that
+// declares a generic receiver. Keep the caller's type locked through both the generic function
+// return and generic receiver method body. Otherwise `T{}` is rebound to `mid.Connection` while
+// still carrying `main.Connection`'s default-field initializer, and receiver signatures can split
+// between `QueryBuilder_Connection` and `QueryBuilder_mid__Connection` in generated C.
+fn test_generic_receiver_keeps_colliding_main_struct_type() {
+	v3_bin := gmb_build_v3()
+	out := gmb_run_project(v3_bin, 'generic_main_struct_collision', {
+		'mid/mid.v': 'module mid\n\npub struct Connection {}\n\npub struct QueryBuilder[T] {}\n\npub fn new_query[T]() &QueryBuilder[T] {\n\treturn &QueryBuilder[T]{}\n}\n\npub fn (qb_ &QueryBuilder[T]) map() T {\n\tmut qb := unsafe { qb_ }\n\t_ = qb\n\treturn T{}\n}\n'
+		'main.v':    'module main\n\nimport mid\n\nenum ResourceKind {\n\tconnection\n}\n\nstruct Connection {\n\tkind ResourceKind = .connection\n}\n\nfn main() {\n\tqb := mid.new_query[Connection]()\n\tgot := qb.map()\n\tprintln(got.kind)\n}\n'
+	})
+	assert out == 'connection'
+}
