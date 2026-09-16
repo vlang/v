@@ -1577,11 +1577,16 @@ fn shared_pic_flag(is_shared bool, target_os string) string {
 	return ''
 }
 
-fn v3_macos_linux_compatibility_link(host pref.Target, target_os string, target_arch string, backend string, output_file string, explicit_output bool, is_o bool, compiler_explicit bool) bool {
+fn v3_is_host_c_compiler(c_compiler string) bool {
+	return os.file_name(c_compiler).to_lower_ascii() in ['cc', 'clang', 'gcc', 'tcc', 'tinyc']
+}
+
+fn v3_macos_linux_compatibility_link(host pref.Target, target_os string, target_arch string, backend string, output_file string, explicit_output bool, is_o bool, c_compiler string, compiler_explicit bool) bool {
 	explicit_c_output := explicit_output && (output_file == '-' || output_file.ends_with('.c'))
+	host_compiler := !compiler_explicit || v3_is_host_c_compiler(c_compiler)
 	return host.os == 'macos' && pref.normalized_os(target_os) == 'linux'
 		&& pref.normalized_arch(target_arch) == host.arch && backend == 'c' && !explicit_c_output
-		&& !is_o && !compiler_explicit
+		&& !is_o && host_compiler
 }
 
 fn c_compiler_target_args(target pref.Target, compiler_explicit bool) ![]string {
@@ -9305,7 +9310,8 @@ pub fn run(args []string) {
 	// leave every target-dependent `$if` to the C preprocessor.
 	compatibility_host := pref.host_target()
 	macos_linux_compatibility_link := v3_macos_linux_compatibility_link(compatibility_host,
-		target_os, target_arch, backend, output_file, explicit_output, is_o, c_compiler_explicit)
+		target_os, target_arch, backend, output_file, explicit_output, is_o, c_compiler,
+		c_compiler_explicit)
 	mut output_cross_c := cross_output || macos_linux_compatibility_link
 	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
 		output_cross_c = true
