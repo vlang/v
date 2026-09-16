@@ -198,7 +198,7 @@ fn C.statvfs(const_path &char, buf &C.statvfs) i32
 
 fn C.rename(old_filename &char, new_filename &char) i32
 
-fn C.fgets(str &char, n i32, stream &C.FILE) i32
+fn C.fgets(str &char, n i32, stream &C.FILE) &char
 
 fn C.fgetpos(&C.FILE, voidptr) i32
 
@@ -263,7 +263,7 @@ fn C.strncasecmp(s &char, s2 &char, n i32) i32
 
 fn C.strcasecmp(s &char, s2 &char) i32
 
-fn C.strncmp(s &char, s2 &char, n i32) i32
+fn C.strncmp(s &char, s2 &char, n usize) i32
 
 @[trusted]
 fn C.strerror(i32) &char

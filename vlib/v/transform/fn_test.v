@@ -382,6 +382,30 @@ fn test_normalize_type_in_module_cache_tracks_current_file() {
 	assert t.normalize_type_in_module('dep.Type'.clone(), 'shared') == 'beta.Type'
 }
 
+fn test_module_qualified_generic_callee_is_not_treated_as_value_index() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.imports['json2'] = 'json2'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	module_id := t.a.add_val(.ident, 'json2')
+	t.set_node_typ(int(module_id), 'unknown')
+	callee_id := t.make_selector_op(module_id, 'decode', 'string', .dot)
+	type_id := t.a.add_val(.ident, 'Payload')
+	t.set_node_typ(int(type_id), 'void')
+	children_start := t.a.children.len
+	t.a.children << callee_id
+	t.a.children << type_id
+	index_node := flat.Node{
+		kind:           .index
+		children_start: children_start
+		children_count: 2
+	}
+
+	assert !t.index_callee_is_value_index(index_node)
+	assert t.generic_call_type_args_name(index_node) == 'Payload'
+}
+
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',

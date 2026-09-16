@@ -204,7 +204,7 @@ fn (mut p Process) win_spawn_process() int {
 	} else {
 		0
 	}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
-	failed_cfn_report_error(create_process_ok, 'CreateProcess')
+	failed_cfn_report_error(create_process_ok, 'CreateProcess `${p.filename}`')
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)

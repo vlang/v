@@ -78,6 +78,19 @@ fn test_cross_is_a_modifier_that_keeps_an_explicit_target() {
 	assert c_code.contains('_WIN32'), 'the explicit -os windows target was lost'
 }
 
+fn test_cross_windows_output_orders_windows_header_before_bcrypt() {
+	c_code := cross_generate_with('-cross -os windows -cc msvc', 'windows_bcrypt', 'module main\n\nimport crypto.rand\n\nfn main() {\n\tmut buffer := []u8{len: 1}\n\tcrypto.rand.read(mut buffer) or {}\n}\n')
+	windows_index := c_code.index('#include <windows.h>') or {
+		assert false, 'the Windows base header is missing'
+		return
+	}
+	bcrypt_index := c_code.index('#include <bcrypt.h>') or {
+		assert false, 'the BCrypt header is missing'
+		return
+	}
+	assert windows_index < bcrypt_index, c_code.all_before('typedef signed char i8;')
+}
+
 fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 	// The snapshot does not know its C compiler yet. V's WinAPI atomic header is
 	// emitted behind `_WIN32 && __TINYC__` and defines `atomic_fetch_add_byte` and
@@ -128,6 +141,33 @@ fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 			searched = searched[at + call.len..].clone()
 		}
 	}
+}
+
+fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavailable() {
+	// The portable snapshot is generated on Linux, so it bakes in rand_linux.c.v.
+	// It is then compiled on macOS or OpenBSD to bootstrap v1, where SYS_getrandom
+	// does not exist. Keep both implementations in the snapshot and let the target
+	// C preprocessor select getentropy on those hosts.
+	c_code := cross_generate_with('-cross -os linux', 'crypto_rand', 'module main\n\nimport crypto.rand\n\nfn main() {\n\tassert rand.bytes(1)!.len == 1\n}\n')
+	body := function_body(c_code, 'i64 internal__getrandom(i64 bytes_needed, void* buffer) {')
+	getentropy_at := body.index('getentropy(') or {
+		assert false, 'the Apple entropy implementation is missing from the snapshot: ${body}'
+		return
+	}
+	syscall_at := body.index('syscall(') or {
+		assert false, 'the Linux entropy implementation is missing from the snapshot: ${body}'
+		return
+	}
+	assert getentropy_at < syscall_at, 'the Apple entropy branch should precede the Linux fallback: ${body}'
+	before_getentropy := body[..getentropy_at]
+	guard_at := before_getentropy.last_index('#if ') or {
+		assert false, 'getentropy is not behind an Apple preprocessor guard: ${body}'
+		return
+	}
+	condition := before_getentropy[guard_at..].all_before('\n')
+	assert condition.contains('__APPLE__'), 'getentropy is guarded by `${condition}`, which does not select Apple'
+	assert condition.contains('__OpenBSD__'), 'getentropy is guarded by `${condition}`, which does not select OpenBSD'
+	assert body[getentropy_at..syscall_at].contains('#else'), 'the Linux syscall is not in the fallback branch: ${body}'
 }
 
 fn test_cross_output_keeps_a_working_clock_on_apple() {

@@ -242,6 +242,23 @@ fn (mut g FlatGen) gen_pointer_value_struct_field(value_id flat.NodeId, expected
 }
 
 fn (mut g FlatGen) gen_struct_field_expr_for_field(value_id flat.NodeId, struct_name string, field_name string, expected types.Type) {
+	if g.static_c_initializer {
+		if fixed := array_fixed_type(default_init_unalias_type(expected)) {
+			g.gen_c_static_fixed_array_initializer(value_id, fixed)
+			return
+		}
+		if g.gen_c_static_array_literal_initializer(value_id) {
+			return
+		}
+		value := g.a.node(value_id)
+		if value.kind in [.ident, .selector] {
+			constant := g.const_expr_to_string(value_id, []string{})
+			if trimmed_space(constant).len > 0 {
+				g.write(constant)
+				return
+			}
+		}
+	}
 	if g.gen_embed_file_uncompressed_field(value_id, struct_name, field_name) {
 		return
 	}
@@ -752,7 +769,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		g.write(g.scalar_zero_init(name))
 		return
 	}
-	if !g.is_interface_type_name(node.value)
+	if !g.static_c_initializer && !g.is_interface_type_name(node.value)
 		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		g.gen_struct_init_with_fixed_array_fields(node, name, init_module)
 		return
@@ -1490,6 +1507,21 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 	return true
 }
 
+// lowered_struct_init_sum_name prefers a transform-made literal's canonical
+// type metadata before interpreting its value as source text.
+fn (g &FlatGen) lowered_struct_init_sum_name(node flat.Node) string {
+	if node.children_count == 2 && node.typ.len > 0 {
+		first := g.a.child_node(&node, 0)
+		if first.value == 'typ' {
+			canonical_name := g.resolve_sum_name(node.typ)
+			if canonical_name in g.tc.sum_types {
+				return canonical_name
+			}
+		}
+	}
+	return g.resolve_source_sum_name(node.value, g.node_source_file(&node))
+}
+
 // struct_init_is_lowered_sum_literal recognizes a transform-made sum literal
 // (exactly a `typ` index field plus one variant payload field) whose sum name
 // kept a foreign module's bare spelling: such a name parses as a plain struct,
@@ -1502,12 +1534,12 @@ fn (g &FlatGen) struct_init_is_lowered_sum_literal(node flat.Node) bool {
 	if first.value != 'typ' {
 		return false
 	}
-	resolved := g.resolve_sum_name(node.value)
+	resolved := g.lowered_struct_init_sum_name(node)
 	return resolved in g.tc.sum_types
 }
 
 fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
-	for candidate in [node.typ, g.expected_expr_type.name(), node.value] {
+	for candidate in [node.typ, g.expected_expr_type.name()] {
 		resolved := g.resolve_sum_name(candidate)
 		if resolved in g.tc.sum_types {
 			return resolved
@@ -1521,7 +1553,19 @@ fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
 			}
 		}
 	}
-	return g.resolve_sum_name(node.value)
+	resolved_source := g.resolve_source_sum_name(node.value, g.node_source_file(&node))
+	if resolved_source in g.tc.sum_types {
+		return resolved_source
+	}
+	if node.value.contains('[') {
+		ct := g.tc.c_type(g.tc.parse_type(node.value))
+		for sum_name, _ in g.tc.sum_types {
+			if g.tc.c_type(g.interface_concrete_type(sum_name)) == ct {
+				return sum_name
+			}
+		}
+	}
+	return resolved_source
 }
 
 fn (g &FlatGen) lowered_sum_field_variant(sum_name string, field &flat.Node) ?string {
@@ -6137,6 +6181,21 @@ fn (mut g FlatGen) emit_struct(name string) {
 		pack := g.struct_decl_pack_for_name(name)
 		if pack.len > 0 {
 			g.writeln('#pragma pack(push, ${pack})')
+		}
+		// `struct C.X {}` says the struct is defined in C. V normally still emits a
+		// definition, with a dummy member because C has no empty struct -- fine when
+		// nothing else declares it. On a target that supplies its own headers those
+		// headers are included and do define it, so the synthesized one is a
+		// redefinition; a forward declaration is enough for the pointer use such an
+		// opaque type gets, and the header completes it.
+		if g.target_libc_headers && fields.len == 0 && name.starts_with('C.') {
+			g.writeln('${g.struct_decl_head(name)};')
+			if pack.len > 0 {
+				g.writeln('#pragma pack(pop)')
+			}
+			g.writeln('')
+			g.tc.cur_module = old_module
+			return
 		}
 		g.writeln('${g.struct_decl_head(name)} {')
 		if fields.len == 0 {

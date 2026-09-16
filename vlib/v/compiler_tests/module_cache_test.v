@@ -5304,11 +5304,11 @@ import guarded
 __global guarded_items shared []int
 
 fn local_summary() string {
-	shared guarded_items := &[41]
+	shared local_items := &[41]
 	mut summary := ""
-	lock guarded_items {
-		guarded_items << 42
-		alias := guarded_items
+	lock local_items {
+		local_items << 42
+		alias := local_items
 		summary = int_str(alias.len) + ":" + int_str(alias[0]) + ":" + int_str(alias[1])
 	}
 	return summary

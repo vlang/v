@@ -86,11 +86,21 @@ sibling is missing, it reports that it is running `make v1`. That target reuses
 or downloads the complete 0.5.2 release under the user cache. If no release
 binary can run, `oldv` clones the 0.5.2 V sources and matching `vc` snapshot and
 builds the fallback there. You can run `make v1` explicitly to prepare it ahead
-of time. `-old-compiler` launches the fallback explicitly, and ordinary user
-builds and external tools retry through it after a compiler or C compilation
-failure. Explicit `-new-compiler` builds remain strict default-compiler
-operations. `-new-compiler` remains accepted for command-line compatibility and
-otherwise selects the same embedded driver.
+of time. Automatic provisioning keeps its launcher metadata in the user cache,
+so an older read-only sibling installation can remain untouched. `-old-compiler`
+launches the fallback explicitly, and ordinary user builds and external tools
+retry through it after a compiler or C compilation failure. Explicit
+`-new-compiler` builds remain strict default-compiler operations.
+`-new-compiler` remains accepted for command-line compatibility and otherwise
+selects the same embedded driver.
+
+The installer supplements the cached fallback vlib with modules whose public
+paths moved after 0.5.2. Fallback roots missing these compatibility modules are
+not used. If a fallback command exits unsuccessfully, V notes where the default
+compiler stopped and how to show its suppressed diagnostics. For a command
+that may have run user code, the note preserves the child's status without
+mislabeling it as a compiler failure. Re-run the command with `-new-compiler`
+to see the default-compiler diagnostics without a fallback retry.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
@@ -8340,6 +8350,49 @@ to race conditions. There are several approaches to deal with these:
   correlated, which is acceptable considering the performance penalty that using
   synchronization primitives would represent.
 
+### Shadowing a global
+
+A local variable may not reuse the name of a global. A global's bare name is visible
+everywhere, including in modules that never import the one declaring it, so the two
+names are not as far apart as they look.
+
+Where the global belongs to another module, the local does not merely shadow it, it
+loses: the declaration is ignored and every use of that name, including the ones that
+look like reads of the local, means the global. The code then does something other
+than it reads, with nothing to point at.
+
+V rejects it:
+
+```
+error: variable `devices` shadows a global variable
+```
+
+The fix is to rename the local, giving it a name that says what it holds:
+
+```v ignore
+__global (
+	devices []&Device
+)
+
+fn mount_dev(root &Node) bool {
+	// Was `devices`, which silently meant the global above.
+	dev_dir := get_node(root, '/dev') or { return false }
+	dev_dir.parent = root
+	return true
+}
+```
+
+The check covers every source-level local binding: declaration targets, function and
+lambda parameters, `for` variables, `if` guards, `select` receive declarations, and
+compile-time `\$for` variables. Each name is checked, so both targets of
+`value, devices := make_pair()` are covered. A name that shadows nothing, and `_`, are
+left alone.
+
+Only code the project owns is checked, which for a directory build means the whole
+project, not just the file named on the command line. An installed dependency is left
+alone: its author cannot see the globals your program declares, so a local of theirs
+that happens to collide will not stop your build.
+
 ## Static Variables
 
 V also supports *static variables*, which are like *global variables*, but
@@ -9008,6 +9061,8 @@ struct SomeCStruct {
 members of sub-data-structures may be directly declared in the containing struct as below:
 
 ```v
+pub struct C.DataView {}
+
 pub struct C.SomeCStruct {
 	implTraits  u8
 	memPoolData u16
@@ -9052,7 +9107,9 @@ If you export your own `DllMain`, V will not generate the default one. Call
 the standard V runtime setup and teardown:
 
 ```v oksyntax
+pub type C.BOOL = int
 pub type C.DWORD = u32
+pub type C.HINSTANCE = voidptr
 pub type C.LPVOID = voidptr
 
 fn C._vinit_caller()

@@ -1750,19 +1750,22 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 			continue
 		}
 		p := tc.a.node(param_id)
-		tc.insert_fn_param_binding(p)
+		tc.insert_fn_param_binding(param_id, p)
 	}
 	tc.insert_implicit_veb_ctx(node)
 	if !fast_valid_build {
 		tc.check_veb_app_method_params(flat.NodeId(fn_idx), node)
 	}
-	// Open generic declarations are checked when they are instantiated.  Walking every
-	// template in a selected module diagnoses names that only exist after comptime
-	// expansion (and even dead generic helpers), unlike the reference compiler.
+	// Full semantics for open generic declarations are checked when they are instantiated.
+	// The source-level global-shadow rule does not depend on concrete types, so inspect
+	// those bindings now before deferring expression and control-flow checks.
 	generic_params := if is_specialized {
 		map[string]bool{}
 	} else {
 		tc.infer_decl_generic_params(node)
+	}
+	if generic_params.len > 0 {
+		tc.check_generic_fn_body_global_shadowing(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0
@@ -1931,6 +1934,42 @@ fn (tc &TypeChecker) operator_receiver_without_mut_pos(node flat.Node) token.Pos
 	return pos
 }
 
+// comptime_skipped_body_uses reports whether `name` is spelled inside a `$if`
+// branch or a `$match` arm of `node` that this build does not take. Such a body
+// is skipped at the token level and never parsed, so no node of it reaches the
+// walks above, and reporting the name as unused would be wrong for the build
+// that does take the branch. The parser records what it skipped over, which is
+// what keeps strings, comments and interpolations out of the answer: by then
+// the scanner has already decided what is a name.
+fn (tc &TypeChecker) comptime_skipped_body_uses(node flat.Node, name string) bool {
+	if name.len == 0 || tc.a.comptime_skipped_names.len == 0 {
+		return false
+	}
+	file := tc.a.source_files[node.pos.id] or { return false }
+	return '${file.name}:${node.pos.offset}|${name}' in tc.a.comptime_skipped_names
+}
+
+// comptime_skipped_body_reads reports whether `name` is read inside a skipped
+// compile-time branch. Unlike comptime_skipped_body_uses, write-only plain
+// assignment targets do not count.
+fn (tc &TypeChecker) comptime_skipped_body_reads(node flat.Node, name string) bool {
+	if name.len == 0 || tc.a.comptime_skipped_read_names.len == 0 {
+		return false
+	}
+	file := tc.a.source_files[node.pos.id] or { return false }
+	return '${file.name}:${node.pos.offset}|${name}' in tc.a.comptime_skipped_read_names
+}
+
+// comptime_skipped_body_uses_goto_label reports whether a skipped compile-time
+// branch jumps to `name`.
+fn (tc &TypeChecker) comptime_skipped_body_uses_goto_label(node flat.Node, name string) bool {
+	if name.len == 0 || tc.a.comptime_skipped_goto_labels.len == 0 {
+		return false
+	}
+	file := tc.a.source_files[node.pos.id] or { return false }
+	return '${file.name}:${node.pos.offset}|${name}' in tc.a.comptime_skipped_goto_labels
+}
+
 fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	if tc.node_is_from_translated_file(node) {
 		return
@@ -1993,6 +2032,9 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		}
 		if tc.expr_subtree_has_error_except(candidate.rhs_id, .if_branch_mismatch)
 			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
+			continue
+		}
+		if tc.comptime_skipped_body_reads(node, candidate.name) {
 			continue
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
@@ -2382,6 +2424,10 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 			&& shadow_depth[current.typ] == 0 {
 			used_names[current.typ] = true
 		}
+		mut write_only_lhs_ids := []flat.NodeId{}
+		if current.kind == .assign && current.op == .assign {
+			write_only_lhs_ids = tc.multi_assign_lhs_ids(current)
+		}
 		for i in 0 .. current.children_count {
 			if i % 2 == 0 && current.kind == .decl_assign {
 				lhs := tc.a.child_node(current, i)
@@ -2389,13 +2435,14 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 					continue
 				}
 			}
-			if i == 0 && current.kind == .assign && current.op == .assign {
-				lhs := tc.a.child_node(current, i)
+			child_id := tc.a.child(current, i)
+			if child_id in write_only_lhs_ids {
+				lhs := tc.a.node(child_id)
 				if lhs.kind == .ident {
 					continue
 				}
 			}
-			stack << tc.a.child(current, i)
+			stack << child_id
 		}
 	}
 	return used_names
@@ -2418,6 +2465,9 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 			continue
 		}
 		if tc.fn_body_reflects_param_type(node, param.typ) {
+			continue
+		}
+		if tc.comptime_skipped_body_uses(node, param.value) {
 			continue
 		}
 		mut has_param_error := false
@@ -2497,7 +2547,8 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 		if tc.label_starts_loop(label_id) {
 			continue
 		}
-		if !used[label.value] {
+		if !used[label.value]
+			&& !tc.comptime_skipped_body_uses_goto_label(node, label.value) {
 			tc.record_warning_at(.unknown_ident, 'label `${label.value}` defined and not used', label_id, tc.a.node(label_id).pos)
 		}
 	}

@@ -12,11 +12,12 @@ fn windows_preamble_test_gen() FlatGen {
 
 fn test_windows_translation_unit_preserves_configuration_preincludes() {
 	mut g := windows_preamble_test_gen()
-	g.preinclude_directives = ['#include "winapi_config.h"', '#include <synchapi.h>',
-		'#include <windows.h>']
+	g.preinclude_directives = ['#include "winapi_config.h"', '#include <bcrypt.h>',
+		'#include <synchapi.h>', '#include <windows.h>']
 	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
 	assert c_code.index('#include "winapi_config.h"')? < c_code.index('#include <windows.h>')?
+	assert c_code.index('#include <windows.h>')? < c_code.index('#include <bcrypt.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <synchapi.h>')?
 	assert c_code.count('#include <windows.h>') == 1
 }
@@ -46,9 +47,10 @@ fn test_windows_translation_unit_keeps_preserved_winsock_headers_before_windows_
 	assert c_code.count('#include <windows.h>') == 1
 }
 
-fn test_windows_translation_unit_interposes_windows_header_before_preserved_synchapi() {
+fn test_windows_translation_unit_interposes_windows_header_before_dependent_headers() {
 	mut g := windows_preamble_test_gen()
 	g.preinclude_directives = ['#include "winapi_config.h"']
+	g.add_c_directive('crypto.rand.internal', '#include <bcrypt.h>', false)
 	g.add_c_directive('sync', '#include <synchapi.h>', false)
 	g.add_c_directive('net', '#include <winsock2.h>', false)
 	g.add_c_directive('net', '#include <ws2tcpip.h>', false)
@@ -58,10 +60,12 @@ fn test_windows_translation_unit_interposes_windows_header_before_preserved_sync
 	winsock_index := c_code.index('#include <winsock2.h>')?
 	ws2tcpip_index := c_code.index('#include <ws2tcpip.h>')?
 	windows_index := c_code.index('#include <windows.h>')?
+	bcrypt_index := c_code.index('#include <bcrypt.h>')?
 	synchapi_index := c_code.index('#include <synchapi.h>')?
 	assert config_index < winsock_index
 	assert winsock_index < ws2tcpip_index
 	assert ws2tcpip_index < windows_index
+	assert windows_index < bcrypt_index
 	assert windows_index < synchapi_index
 	assert c_code.count('#include <windows.h>') == 1
 }
@@ -155,6 +159,18 @@ fn test_autostr_thread_local_matching_is_restricted_to_builtin_global() {
 	assert !g.is_builtin_autostr_addr_state('g_autostr_addr_state')
 }
 
+fn test_vinix_globals_do_not_require_elf_tls() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('vinix', 'arm64') or { panic(err) }
+	g.global_modules['g_autostr_addr_state'] = 'builtin'
+	assert !g.global_is_thread_local('g_autostr_addr_state')
+	assert !g.global_is_thread_local('__anon_fn_1_capture')
+
+	g.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	assert g.global_is_thread_local('g_autostr_addr_state')
+	assert g.global_is_thread_local('__anon_fn_1_capture')
+}
+
 fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	headers := manual_stdlib_c_headers()
 	for name in ['memcpy', 'memmove', 'memset'] {
@@ -227,6 +243,94 @@ fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));'), c_code
+}
+
+fn test_target_libc_preamble_uses_target_header_declarations() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.add_spawn_wrapper_def('static void closure_wrapper(void) {}')
+	g.preamble()
+	c_code := g.sb.str()
+	for header in ['stdint.h', 'stddef.h', 'stdatomic.h', 'errno.h', 'fcntl.h', 'signal.h', 'stdio.h',
+		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
+		assert c_code.contains('#include <${header}>'), header
+	}
+	assert c_code.contains('#if __has_include(<stdatomic.h>)')
+	assert c_code.contains('#if __has_include(<sys/stat.h>)')
+	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
+	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
+	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
+	assert !c_code.contains('#include <pthread.h>')
+	assert c_code.contains('typedef uint64_t u64;')
+	assert !c_code.contains('typedef long long time_t;')
+	assert !c_code.contains('typedef struct FILE FILE;')
+	assert c_code.contains('int backtrace(void** __array, int __size);')
+	assert c_code.contains('char** backtrace_symbols(void* const* __array, int __size);')
+	assert c_code.contains('void backtrace_symbols_fd(void* const* __array, int __size, int __fd);')
+	assert !c_code.contains('static __v_thread __v_thread_spawn(')
+	for name in ['open', 'read', 'close', 'pipe', 'signal', 'sysconf', 'setbuf', 'fseeko', 'memmem',
+		'mempcpy', 'chmod', 'lstat', 'mkdir', 'opendir', 'readdir', 'syscall', 'gettimeofday'] {
+		assert !g.should_emit_c_extern_decl(name), name
+	}
+}
+
+fn test_target_libc_preamble_emits_only_thread_type_for_type_only_usage() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.needs_thread_type = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <pthread.h>')
+	assert c_code.contains('typedef struct { pthread_t handle; } __v_thread;')
+	assert !c_code.contains('static __v_thread __v_thread_spawn(')
+	assert !c_code.contains('static void* __v_thread_join(')
+	assert !c_code.contains('pthread_equal(a.handle, b.handle)')
+}
+
+fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.needs_thread_runtime = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <pthread.h>')
+	assert c_code.contains('static __v_thread __v_thread_spawn(')
+	assert c_code.contains('static void* __v_thread_join(')
+	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
+}
+
+fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('vinix', 'arm64') or { panic(err) }
+	g.set_target_libc_headers(true)
+	g.needs_thread_runtime = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('pthread_create(&result.handle, NULL, (void*)start, arg)')
+	assert !c_code.contains('pthread_attr_init(&attr)')
+	assert !c_code.contains('fprintf(stderr, "V thread')
+	assert !c_code.contains('abort();')
+}
+
+fn test_target_libc_preamble_includes_pthread_for_direct_calls_without_thread_runtime() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.c_extern_refs['pthread_mutex_lock'] = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <pthread.h>')
+	assert !c_code.contains('static __v_thread __v_thread_spawn(')
+}
+
+fn test_target_libc_preamble_includes_pthread_for_pthread_backed_types() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	g.needs_pthread_header = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <pthread.h>')
+	assert !c_code.contains('typedef struct { pthread_t handle; } __v_thread;')
+	assert !c_code.contains('static __v_thread __v_thread_spawn(')
 }
 
 fn test_headerless_linux_stat_preamble_supports_s390x() {

@@ -3,7 +3,6 @@ import flag
 import term
 import time
 import v.parser
-import v.ast
 import v.pref
 
 const support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
@@ -23,15 +22,14 @@ mut:
 	is_linear  bool // print linear progress log, without trying to do term cursor up + \r msg. Easier to use in a CI job
 	show_src   bool // show the partial source, that cause the parser to panic/fault, when it happens.
 	timeout_ms int
-	myself     string // path to this executable, so the supervisor can launch worker processes
+	myself     string   // path to this executable, so the supervisor can launch worker processes
 	all_paths  []string // all files given to the supervisor process
-	path       string // the current path, given to a worker process
-	cut_index  int // the cut position in the source from context.path
-	max_index  int // the maximum index (equivalent to the file content length)
+	path       string   // the current path, given to a worker process
+	cut_index  int      // the cut position in the source from context.path
+	max_index  int      // the maximum index (equivalent to the file content length)
 	// parser context in the worker processes:
-	table      ast.Table
 	pref       &pref.Preferences = unsafe { nil }
-	period_ms  int // print periodic progress
+	period_ms  int  // print periodic progress
 	stop_print bool // stop printing the periodic progress
 }
 
@@ -42,18 +40,22 @@ fn main() {
 		context.log('> worker ${pid:5} starts parsing at cut_index: ${context.cut_index:5} | ${context.path}')
 		// A worker's process job is to try to parse a single given file in context.path.
 		// It can crash/panic freely.
-		context.table = ast.new_table()
-		context.pref = &pref.Preferences{
-			output_mode: .silent
-		}
+		context.pref = pref.new_preferences()
 		mut source := os.read_file(context.path)!
 		source = source[..context.cut_index]
+		extension := os.file_ext(context.path)
+		partial_path := os.join_path(os.vtmp_dir(), 'vtest-parser-${pid}${extension}')
+		os.write_file(partial_path, source)!
+		defer {
+			os.rm(partial_path) or {}
+		}
 
 		spawn fn (ms int) {
 			time.sleep(ms * time.millisecond)
 			exit(ecode_timeout)
 		}(context.timeout_ms)
-		_ := parser.parse_text(source, context.path, mut context.table, .skip_comments, context.pref)
+		mut p := parser.Parser.new(context.pref)
+		p.parse_file(partial_path)
 		context.log('> worker ${pid:5} finished parsing ${context.path}')
 		exit(0)
 	} else {

@@ -240,18 +240,17 @@ pub fn node_payload(generic_params []string) u32 {
 		node_payload_unlock()
 		panic('v3: too many node payloads (${idx})')
 	}
-	if isnil(table.chunks[chunk_idx]) {
-		table.chunks[chunk_idx] = node_payload_new_chunk()
-		if isnil(table.chunks[chunk_idx]) {
+	mut chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(chunk_idx))
+	if isnil(chunk) {
+		chunk = node_payload_new_chunk()
+		C.v_flat_payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		if isnil(chunk) {
 			node_payload_unlock()
 			panic('v3: could not allocate a node payload chunk')
 		}
 	}
-	unsafe {
-		mut chunk := &&NodePayload(table.chunks[chunk_idx])
-		chunk[idx & node_payload_chunk_mask] = payload
-	}
-	node_payload_count_publish(mut table, u32(idx + 1))
+	C.v_flat_payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
+	node_payload_count_publish(table, u32(idx + 1))
 	node_payload_unlock()
 	return u32(idx + 1)
 }
@@ -266,10 +265,8 @@ pub fn node_payload_at(id u32) &NodePayload {
 	if isnil(table) || idx >= int(node_payload_count_load(table)) {
 		return &NodePayload(unsafe { nil })
 	}
-	unsafe {
-		chunk := &&NodePayload(table.chunks[idx >> node_payload_chunk_bits])
-		return chunk[idx & node_payload_chunk_mask]
-	}
+	chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
+	return unsafe { &NodePayload(C.v_flat_payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
 }
 
 // node_flag_skip_ownership_drops marks a block/if/for/fn node whose scope must
@@ -280,8 +277,10 @@ pub const node_flag_static_type_method = u8(2)
 // node_flag_embed_payload marks the string literal holding the bytes that
 // `$embed_file` materialized (see Node.is_embed_payload()).
 pub const node_flag_embed_payload = u8(4)
+// node_flag_freed_assignment marks an assignment annotated with `@[freed]`.
+pub const node_flag_freed_assignment = u8(8)
 
-// node_flags packs the two rare node bools into Node.flags.
+// node_flags packs rare node bools into Node.flags.
 @[inline]
 pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 	mut flags := u8(0)
@@ -300,11 +299,12 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 // whatever its new position calls for. The rest describe the node itself and
 // have to survive being copied: a generic specialization that dropped
 // node_flag_embed_payload would turn the payload back into an ordinary literal,
-// which the backend would then intern and spell out in full.
+// which the backend would then intern and spell out in full. Assignment
+// attributes likewise remain attached when a statement is specialized.
 @[inline]
 pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
-	flags |= source.flags & node_flag_embed_payload
+	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment)
 	return flags
 }
 
@@ -354,6 +354,22 @@ pub fn (n &Node) is_static_type_method() bool {
 @[inline]
 pub fn (n &Node) is_embed_payload() bool {
 	return (n.flags & node_flag_embed_payload) != 0
+}
+
+// is_freed_assignment reports whether an assignment has the `@[freed]` attribute.
+@[inline]
+pub fn (n &Node) is_freed_assignment() bool {
+	return (n.flags & node_flag_freed_assignment) != 0
+}
+
+// set_freed_assignment updates the assignment's `@[freed]` marker.
+@[inline]
+pub fn (mut n Node) set_freed_assignment(value bool) {
+	if value {
+		n.flags |= node_flag_freed_assignment
+	} else {
+		n.flags &= ~node_flag_freed_assignment
+	}
 }
 
 // set_is_static_type_method updates the static-type-method flag.
@@ -409,6 +425,13 @@ pub mut:
 	children        []NodeId
 	user_code_start int
 	disabled_fns    map[string]bool
+	// The names spelled inside a `$if`/`$match` body this build does not take,
+	// keyed by `<file>:<fn name offset>|<name>`. The body is never parsed, so
+	// nothing in the AST records its identifier occurrences or reads.
+	comptime_skipped_names       map[string]bool
+	comptime_skipped_read_names  map[string]bool
+	// Goto label operands use the same key format, but are not local-name uses.
+	comptime_skipped_goto_labels map[string]bool
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
@@ -543,6 +566,9 @@ pub fn FlatAst.new() FlatAst {
 		nodes: []Node{cap: 256}
 		children: []NodeId{cap: 512}
 		disabled_fns: map[string]bool{}
+		comptime_skipped_names: map[string]bool{}
+		comptime_skipped_read_names: map[string]bool{}
+		comptime_skipped_goto_labels: map[string]bool{}
 		export_fn_names: map[string]string{}
 		noreturn_fns: map[string]bool{}
 		contextual_anon_struct_types: map[string]bool{}

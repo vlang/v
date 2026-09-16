@@ -71,8 +71,8 @@ fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[strin
 		}
 		for spec, context in batch_sum_specs {
 			sum_specs[spec.clone()] = GenericSpecContext{
-				base: context.base.clone()
-				file: context.file.clone()
+				base:   context.base.clone()
+				file:   context.file.clone()
 				module: context.module.clone()
 			}
 		}
@@ -237,10 +237,10 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			t.record_generic_specialization_args_for_names([spec_name, c_name(spec_name)], concrete_args)
 			fn_type := t.specialized_generic_fn_type_text(decl, concrete_args)
 			t.set_node(i, flat.Node{
-				kind: .ident
+				kind:  .ident
 				value: spec_name
-				typ: fn_type
-				pos: node.pos
+				typ:   fn_type
+				pos:   node.pos
 			})
 		}
 		generic_fn_value_scan_start = node_count
@@ -323,10 +323,10 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					t.record_generic_specialization_args_for_names([spec_name, c_name(spec_name)], concrete_args)
 					fn_type := t.specialized_generic_fn_type_text(decl, concrete_args)
 					t.set_node(i, flat.Node{
-						kind: .ident
+						kind:  .ident
 						value: spec_name
-						typ: fn_type
-						pos: node.pos
+						typ:   fn_type
+						pos:   node.pos
 					})
 					continue
 				}
@@ -359,7 +359,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					}
 					if i !in recorded_call_sites {
 						generic_call_sites << GenericCallSite{
-							id: flat.NodeId(i)
+							id:     flat.NodeId(i)
 							module: call_module
 						}
 						recorded_call_sites[i] = true
@@ -583,7 +583,7 @@ fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, arg
 	t.pending_generic_fn_specs << PendingGenericFnSpec{
 		decl: decl
 		args: concrete_args
-		key: key
+		key:  key
 	}
 }
 
@@ -593,8 +593,8 @@ fn (mut t Transformer) record_monomorph_cache_spec(key string, decl_key string, 
 	}
 	t.monomorph_cache_specs[key] = MonomorphCacheSpec{
 		decl_key: decl_key
-		module: module_name
-		args: args.clone()
+		module:   module_name
+		args:     args.clone()
 	}
 }
 
@@ -657,8 +657,8 @@ fn (t &Transformer) sorted_monomorph_cache_specs() []MonomorphCacheSpec {
 		}
 		specs << MonomorphCacheSpec{
 			decl_key: spec.decl_key.clone()
-			module: spec.module.clone()
-			args: args
+			module:   spec.module.clone()
+			args:     args
 		}
 	}
 	return specs
@@ -731,7 +731,7 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 		}
 		if i !in recorded_call_sites {
 			sites << GenericCallSite{
-				id: flat.NodeId(i)
+				id:     flat.NodeId(i)
 				module: call_module
 			}
 			recorded_call_sites[i] = true
@@ -832,7 +832,7 @@ fn (mut t Transformer) erase_consts_initialized_by_erased_templates(decls map[st
 						old := t.a.nodes[idx]
 						t.set_node(idx, flat.Node{
 							kind: .empty
-							pos: old.pos
+							pos:  old.pos
 						})
 						t.clear_typechecker_node_cache(idx)
 					}
@@ -908,11 +908,11 @@ fn (mut t Transformer) collect_generic_fn_decl_for_erasure_at(i int, mut decls m
 			}
 			key := t.generic_fn_decl_key(*node, cur_module)
 			decls[key] = GenericFnDecl{
-				id: flat.NodeId(i)
-				node: *node
-				file: cur_file
+				id:     flat.NodeId(i)
+				node:   *node
+				file:   cur_file
 				module: cur_module
-				key: key
+				key:    key
 			}
 			return cur_file, cur_module
 		}
@@ -2639,11 +2639,11 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 				module_name := t.node_module_or(i, cur_module)
 				key := generic_struct_decl_key(node.value, module_name)
 				decls[key] = GenericStructDecl{
-					id: flat.NodeId(i)
-					node: node
-					file: cur_file
+					id:     flat.NodeId(i)
+					node:   node
+					file:   cur_file
 					module: module_name
-					key: key
+					key:    key
 				}
 			}
 			else {}
@@ -2686,11 +2686,11 @@ fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 				}
 				key := generic_type_decl_key(node.value, module_name)
 				decls[key] = GenericSumDecl{
-					id: flat.NodeId(i)
-					node: node
-					file: cur_file
+					id:     flat.NodeId(i)
+					node:   node
+					file:   cur_file
 					module: module_name
-					key: key
+					key:    key
 				}
 			}
 			else {}
@@ -2728,7 +2728,8 @@ fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]Gener
 				.sql_expr {
 					true
 				}
-				.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
+				.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
+				.is_expr {
 					node.value.contains('[') || node.value.contains('_')
 						|| node.generic_params().len > 0
 				}
@@ -3066,8 +3067,8 @@ fn (mut t Transformer) collect_generic_sum_spec_from_type(typ string, module_nam
 	spec_base := t.generic_sum_spec_base_name(base, module_name, file_name, decls) or { return }
 	spec_name := t.generic_sum_spec_name_in_scope(spec_base, args, module_name, file_name)
 	specs[spec_name] = GenericSpecContext{
-		base: spec_base
-		file: file_name
+		base:   spec_base
+		file:   file_name
 		module: module_name
 	}
 }
@@ -3307,11 +3308,11 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 			t.normalize_type_alias(locked_field_type)
 		}
 		fields << types.StructField{
-			name: field.value
-			typ: t.tc.parse_resolution_type(normalized_field_type)
+			name:        field.value
+			typ:         t.tc.parse_resolution_type(normalized_field_type)
 			has_default: field.children_count > 0
-			is_embed: field.typ.len == 0 || field.value.len == 0 || field.value == field.typ
-			is_mut: field.is_mut
+			is_embed:    field.typ.len == 0 || field.value.len == 0 || field.value == field.typ
+			is_mut:      field.is_mut
 		}
 	}
 	t.tc.structs[spec_name] = fields
@@ -3364,11 +3365,11 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 				}
 				key := t.generic_fn_decl_key(node, fn_module)
 				decls[key] = GenericFnDecl{
-					id: flat.NodeId(i)
-					node: node
-					file: cur_file
+					id:     flat.NodeId(i)
+					node:   node
+					file:   cur_file
 					module: fn_module
-					key: key
+					key:    key
 				}
 			}
 			else {}
@@ -3436,7 +3437,8 @@ fn (mut t Transformer) ensure_node_module_map() {
 			.module_decl {
 				cur_module = node.value
 			}
-			.fn_decl, .const_decl, .global_decl, .struct_decl, .type_decl, .enum_decl, .interface_decl {
+			.fn_decl, .const_decl, .global_decl, .struct_decl, .type_decl, .enum_decl,
+			.interface_decl {
 				// Generated roots already carry their declaration context. Preserve it
 				// when incrementally scanning an append-only region that has no `.file`
 				// marker of its own.
@@ -3714,16 +3716,16 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	if !isnil(t.tc) && t.tc.declaration_has_attribute(decl.id, 'manualfree') {
 		cloned_fn := t.a.nodes[int(clone_id)]
 		t.set_node(int(clone_id), flat.Node{
-			kind: cloned_fn.kind
-			op: cloned_fn.op
-			pos: cloned_fn.pos
-			value: cloned_fn.value
-			typ: cloned_fn.typ
-			payload: cloned_fn.payload
+			kind:           cloned_fn.kind
+			op:             cloned_fn.op
+			pos:            cloned_fn.pos
+			value:          cloned_fn.value
+			typ:            cloned_fn.typ
+			payload:        cloned_fn.payload
 			children_start: cloned_fn.children_start
 			children_count: cloned_fn.children_count
-			is_mut: cloned_fn.is_mut
-			flags: flat.node_flags(true, cloned_fn.is_static_type_method())
+			is_mut:         cloned_fn.is_mut
+			flags:          flat.node_flags(true, cloned_fn.is_static_type_method())
 		})
 	}
 	t.a.specialized_fn_nodes[int(clone_id)] = true
@@ -4353,9 +4355,9 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	ret_name := t.specialized_signature_type_text(decl, t.generic_fn_return_type_text(decl), concrete_args, generic_params)
 	if record_signature_types {
 		t.monomorph_signature_types << MonomorphSignatureType{
-			typ: ret_name
+			typ:    ret_name
 			module: decl.module
-			file: decl.file
+			file:   decl.file
 		}
 	}
 	ret := if !isnil(t.tc) {
@@ -4376,9 +4378,9 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl, child.typ, concrete_args, generic_params))
 		if record_signature_types {
 			t.monomorph_signature_types << MonomorphSignatureType{
-				typ: param_type
+				typ:    param_type
 				module: decl.module
-				file: decl.file
+				file:   decl.file
 			}
 		}
 		if param_type.starts_with('...') {
@@ -4866,7 +4868,7 @@ fn (mut t Transformer) concrete_generic_call_return_type(id flat.NodeId, node fl
 	}
 	t.generic_call_spec_cache[int(id)] = GenericCallSpec{
 		decl_key: decl_key
-		args: args.clone()
+		args:     args.clone()
 	}
 	if !t.call_has_source_generic_args(node) && t.generic_args_contain_alias(args, t.cur_module) {
 		t.set_node_value(int(id), args.join(', '))
@@ -4986,7 +4988,7 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 	}
 	t.generic_call_spec_cache[int(id)] = GenericCallSpec{
 		decl_key: decl_key
-		args: args.clone()
+		args:     args.clone()
 	}
 	if !t.call_has_source_generic_args(node) && t.generic_args_contain_alias(args, t.cur_module) {
 		t.set_node_value(int(id), args.join(', '))
@@ -5127,13 +5129,17 @@ fn (t &Transformer) call_name_can_target_generic(node flat.Node) bool {
 		return false
 	}
 	mut callee := t.a.nodes[int(t.a.child(&node, 0))]
+	mut has_explicit_generic_args := false
 	if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
+		has_explicit_generic_args = true
 		callee = t.a.nodes[int(t.a.child(&callee, 0))]
 	}
 	if callee.kind !in [.ident, .selector] || callee.value.len == 0 {
 		return false
 	}
-	return t.generic_fn_call_names[callee.value] || callee.value.contains('_T_')
+	return has_explicit_generic_args || t.call_is_normalized_explicit_generic_call(node)
+		|| t.generic_fn_call_names[callee.value]
+		|| callee.value.contains('_T_')
 		|| t.generic_callee_is_specialization(callee.value)
 }
 
@@ -5398,13 +5404,13 @@ fn (mut t Transformer) rewrite_generic_plain_call(id flat.NodeId, node flat.Node
 		t.a.children << child
 	}
 	t.set_node(int(id), flat.Node{
-		kind: .call
-		op: node.op
+		kind:           .call
+		op:             node.op
 		children_start: start
 		children_count: flat.child_count(children.len)
-		pos: node.pos
-		value: preserved_args
-		typ: ret_typ
+		pos:            node.pos
+		value:          preserved_args
+		typ:            ret_typ
 	})
 	t.clear_resolved_call(id)
 }
@@ -5858,13 +5864,13 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 		t.a.children << child
 	}
 	t.set_node(int(id), flat.Node{
-		kind: .call
-		op: node.op
+		kind:           .call
+		op:             node.op
 		children_start: start
 		children_count: flat.child_count(children.len)
-		pos: node.pos
-		value: preserved_args
-		typ: ret_typ
+		pos:            node.pos
+		value:          preserved_args
+		typ:            ret_typ
 	})
 	t.clear_resolved_call(id)
 }
@@ -5913,7 +5919,7 @@ fn (mut t Transformer) erase_generic_fn_decls(decls map[string]GenericFnDecl) {
 			old := t.a.nodes[idx]
 			t.set_node(idx, flat.Node{
 				kind: .empty
-				pos: old.pos
+				pos:  old.pos
 			})
 			t.clear_typechecker_node_cache(idx)
 		}
@@ -5962,7 +5968,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 						&& !t.pending_generic_fn_spec_keys[key] {
 						t.generic_call_spec_cache[idx] = GenericCallSpec{
 							decl_key: decl_key
-							args: exact
+							args:     exact
 						}
 						return decl_key, exact
 					}
@@ -5989,7 +5995,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 					if t.generic_specialization_progress_key(decl, exact) !in t.generic_fn_spec_nodes {
 						t.generic_call_spec_cache[idx] = GenericCallSpec{
 							decl_key: decl_key
-							args: exact
+							args:     exact
 						}
 						return decl_key, exact
 					}
@@ -6141,7 +6147,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 				&& !t.generic_specialization_registered(decl, exact_args) {
 				t.generic_call_spec_cache[idx] = GenericCallSpec{
 					decl_key: decl_key
-					args: exact_args
+					args:     exact_args
 				}
 				return decl_key, exact_args
 			}
@@ -6158,7 +6164,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 						if scoped.len > 0 && !t.generic_args_have_placeholders(scoped) {
 							t.generic_call_spec_cache[idx] = GenericCallSpec{
 								decl_key: decl_key
-								args: scoped
+								args:     scoped
 							}
 							return decl_key, scoped
 						}
@@ -6176,7 +6182,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 						if t.generic_specialization_progress_key(decl, exact) !in t.generic_fn_spec_nodes {
 							t.generic_call_spec_cache[idx] = GenericCallSpec{
 								decl_key: decl_key
-								args: exact
+								args:     exact
 							}
 							return decl_key, exact
 						}
@@ -6187,7 +6193,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 						&& !t.generic_args_name_specialized_functions(resolved_raw) {
 						t.generic_call_spec_cache[idx] = GenericCallSpec{
 							decl_key: decl_key
-							args: resolved_raw
+							args:     resolved_raw
 						}
 						return decl_key, resolved_raw
 					}
@@ -6197,7 +6203,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 					&& !t.generic_args_name_specialized_functions(resolved_raw) {
 					t.generic_call_spec_cache[idx] = GenericCallSpec{
 						decl_key: decl_key
-						args: resolved_raw
+						args:     resolved_raw
 					}
 					return decl_key, resolved_raw
 				}
@@ -6209,7 +6215,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 				if t.generic_specialization_progress_key(decl, exact) !in t.generic_fn_spec_nodes {
 					t.generic_call_spec_cache[idx] = GenericCallSpec{
 						decl_key: decl_key
-						args: exact
+						args:     exact
 					}
 					return decl_key, exact
 				}
@@ -6223,7 +6229,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 	if spec := t.specialized_plain_generic_call_specialization(node, module_name, decls) {
 		t.generic_call_spec_cache[idx] = GenericCallSpec{
 			decl_key: spec.decl_key
-			args: spec.args
+			args:     spec.args
 		}
 		return spec.decl_key, spec.args
 	}
@@ -6233,7 +6239,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 	decl_key, args := t.generic_call_specialization(id, node, module_name, decls) or { return none }
 	t.generic_call_spec_cache[idx] = GenericCallSpec{
 		decl_key: decl_key
-		args: args
+		args:     args
 	}
 	return decl_key, args
 }
@@ -6449,7 +6455,7 @@ fn (mut t Transformer) specialized_plain_generic_call_specialization(node flat.N
 			if !t.generic_args_have_placeholders(scoped) {
 				return GenericCallSpec{
 					decl_key: decl_key
-					args: t.canonical_generic_specialization_args(scoped)
+					args:     t.canonical_generic_specialization_args(scoped)
 				}
 			}
 		}
@@ -6460,7 +6466,7 @@ fn (mut t Transformer) specialized_plain_generic_call_specialization(node flat.N
 	}
 	return GenericCallSpec{
 		decl_key: decl_key
-		args: args
+		args:     args
 	}
 }
 
@@ -9602,16 +9608,16 @@ fn (t &Transformer) cloned_json_decode_or_value_type(id flat.NodeId) ?string {
 
 fn (mut t Transformer) clone_specialized_comptime_new_marker(node flat.Node, target string) flat.NodeId {
 	type_expr := t.a.add_node(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: target
 	})
 	start := t.a.children.len
 	t.a.children << type_expr
 	marker := t.a.add_node(flat.Node{
-		kind: .string_literal
-		pos: node.pos
-		value: node.value
-		typ: node.typ
+		kind:           .string_literal
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
 		children_start: start
 		children_count: 1
 	})
@@ -9965,15 +9971,15 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			t.a.children << child
 		}
 		clone_id := t.a.add_node(flat.Node{
-			kind: node.kind
-			op: cloned_op
-			pos: node.pos
+			kind:           node.kind
+			op:             cloned_op
+			pos:            node.pos
 			children_start: start2
 			children_count: flat.child_count(children.len)
-			typ: cloned_typ
-			value: t.subst_node_value(node, args)
-			is_mut: node.is_mut
-			flags: flat.clone_node_flags(node, false)
+			typ:            cloned_typ
+			value:          t.subst_node_value(node, args)
+			is_mut:         node.is_mut
+			flags:          flat.clone_node_flags(node, false)
 		})
 		if node.kind == .ident && t.mut_param_values[node.value] {
 			t.mut_value_ident_nodes[int(clone_id)] = true
@@ -10031,20 +10037,20 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	}
 	if is_root && t.cur_module.len > 0 {
 		t.a.add_node(flat.Node{
-			kind: .module_decl
+			kind:  .module_decl
 			value: t.cur_module
 		})
 	}
 	clone_id := t.a.add_node(flat.Node{
-		kind: node.kind
-		op: cloned_op
-		pos: node.pos
+		kind:           node.kind
+		op:             cloned_op
+		pos:            node.pos
 		children_start: start
 		children_count: flat.child_count(children.len)
-		typ: final_typ
-		value: cloned_value
-		is_mut: node.is_mut
-		flags: flat.clone_node_flags(node, false)
+		typ:            final_typ
+		value:          cloned_value
+		is_mut:         node.is_mut
+		flags:          flat.clone_node_flags(node, false)
 	})
 	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		lhs := t.a.nodes[int(children[0])]
@@ -11121,7 +11127,8 @@ fn (t &Transformer) resolved_call_is_generic_fn(name string) bool {
 
 fn substitute_generic_node_value(node flat.Node, args []string) string {
 	match node.kind {
-		.call, .array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr, .type_decl, .field_decl, .param {
+		.call, .array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr, .sizeof_expr,
+		.typeof_expr, .is_expr, .type_decl, .field_decl, .param {
 			return substitute_generic_type_text(node.value, args)
 		}
 		else {
@@ -12062,7 +12069,7 @@ fn (t &Transformer) subst_type(typ string, args []string) string {
 }
 
 // subst_node_value is the param-aware counterpart of substitute_generic_node_value.
-fn (t &Transformer) subst_node_value(node flat.Node, args []string) string {
+fn (mut t Transformer) subst_node_value(node flat.Node, args []string) string {
 	match node.kind {
 		.ident {
 			if node.value.contains('[') {
@@ -12602,7 +12609,7 @@ fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {
 	return decl_module.len == 0 || decl_module == 'main'
 }
 
-fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) string {
+fn (mut t Transformer) subst_comptime_type_condition(cond string, args []string) string {
 	mut clean := cond.trim_space().replace('sizeof (', 'sizeof(').replace('typeof (', 'typeof(').replace('int (', 'int(')
 	clean = t.subst_comptime_runtime_type_metadata(clean, args)
 	for i, param in t.active_generic_params {
@@ -12615,19 +12622,46 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 		end := comptime_condition_matching_paren(clean, 0)
 		if end == clean.len - 1 {
 			inner := t.subst_comptime_type_condition(clean[1..clean.len - 1], args)
+			if inner in ['true', 'false'] {
+				return inner
+			}
 			return '(${inner})'
 		}
 	}
 	or_idx := comptime_condition_top_level_index(clean, '||')
 	if or_idx >= 0 {
 		left := t.subst_comptime_type_condition(clean[..or_idx], args)
+		if left == 'true' {
+			return 'true'
+		}
 		right := t.subst_comptime_type_condition(clean[or_idx + 2..], args)
+		if right == 'true' {
+			return 'true'
+		}
+		if left == 'false' {
+			return right
+		}
+		if right == 'false' {
+			return left
+		}
 		return '${left} || ${right}'
 	}
 	and_idx := comptime_condition_top_level_index(clean, '&&')
 	if and_idx >= 0 {
 		left := t.subst_comptime_type_condition(clean[..and_idx], args)
+		if left == 'false' {
+			return 'false'
+		}
 		right := t.subst_comptime_type_condition(clean[and_idx + 2..], args)
+		if right == 'false' {
+			return 'false'
+		}
+		if left == 'true' {
+			return right
+		}
+		if right == 'true' {
+			return left
+		}
 		return '${left} && ${right}'
 	}
 	for op in [' !is ', ' is '] {
@@ -12635,7 +12669,13 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 		if op_idx >= 0 {
 			left := clean[..op_idx].trim_space()
 			right := clean[op_idx + op.len..].trim_space()
-			return '${t.subst_comptime_type_operand(left, args)}${op}${t.subst_comptime_type_operand(right, args)}'
+			result := '${t.subst_comptime_type_operand(left, args)}${op}${t.subst_comptime_type_operand(right, args)}'
+			if t.cloning_comptime_for_depth == 0 {
+				if value := t.comptime_type_condition_value(result) {
+					return value.str()
+				}
+			}
+			return result
 		}
 	}
 	for op in [' !in', ' in'] {
@@ -12652,7 +12692,13 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 				for item in split_generic_args(list[1..list.len - 1]) {
 					items << t.subst_comptime_type_operand(item, args)
 				}
-				return '${left}${op}[${items.join(',')}]'
+				result := '${left}${op}[${items.join(',')}]'
+				if t.cloning_comptime_for_depth == 0 {
+					if value := t.comptime_type_condition_value(result) {
+						return value.str()
+					}
+				}
+				return result
 			}
 		}
 	}
@@ -12661,12 +12707,24 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 		if op_idx >= 0 {
 			left := t.subst_comptime_type_operand(clean[..op_idx], args)
 			right := t.subst_comptime_type_operand(clean[op_idx + op.len..], args)
-			return '${left}${op}${right}'
+			result := '${left}${op}${right}'
+			if t.cloning_comptime_for_depth == 0 {
+				if value := t.comptime_type_condition_value(result) {
+					return value.str()
+				}
+			}
+			return result
 		}
 	}
 	if clean.starts_with('!') {
 		inner_raw := clean[1..].trim_space()
 		inner := t.subst_comptime_type_condition(inner_raw, args)
+		if inner == 'true' {
+			return 'false'
+		}
+		if inner == 'false' {
+			return 'true'
+		}
 		if inner_raw.starts_with('(') {
 			return '!(${inner})'
 		}

@@ -2000,6 +2000,14 @@ fn main() {
 	assert_driver_cli_failure(v3_bin, ['-dvgc', source], 'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, [source, source], 'multiple input paths are not supported')
 	assert_driver_cli_failure(v3_bin, ['-compile-backend', 'bogus', source], 'unknown compile backend `bogus`')
+	assert_driver_cli_failure(v3_bin, ['-target-libc-headers', '-os', 'cross', '-o', c_output,
+		source], 'option `-target-libc-headers` does not support portable cross output')
+	assert_driver_cli_failure(v3_bin, ['-target-libc-headers', '-cross', '-o', c_output, source],
+		'option `-target-libc-headers` does not support portable cross output')
+	for backend in ['fastc', 'arm64', 'wasm', 'eval', 'js'] {
+		assert_driver_cli_failure(v3_bin, ['-b', backend, '-target-libc-headers', '-o', c_output,
+			source], 'option `-target-libc-headers` requires the C backend')
+	}
 
 	if false_exe := os.find_abs_path_of_executable('false') {
 		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, source, '-o',

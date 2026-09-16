@@ -82,6 +82,15 @@ fn test_vtest_executable_compiles() {
 	assert os.exists(mytest_exe), 'executable file: `${mytest_exe}` should exist'
 }
 
+fn test_vtest_accepts_windows_path_separators() {
+	$if windows {
+		windows_path := tpath_passing.replace('/', '\\')
+		res := os.execute('${os.quoted_path(mytest_exe)} test ${os.quoted_path(windows_path)}')
+		assert res.exit_code == 0, res.output
+		assert res.output.contains('2 passed, 2 total'), res.output
+	}
+}
+
 fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
 	$if !bsd && !linux {
 		// The embedded V3 compiler is currently available only on macOS, Linux, and BSD.

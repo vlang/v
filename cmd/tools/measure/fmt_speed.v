@@ -1,23 +1,27 @@
 import os
 import time
-import v.ast
-import v.fmt
+import v.gen.v as compiler_fmt
 import v.pref
 import v.parser
-import v.errors
 import v.scanner
+import v.token
 import term
 import file_lists
 
 const skip_tests = os.getenv('SKIP_TESTS').bool()
 const fuzzer_mode = os.getenv('VFUZZER').bool()
-const comments_mode = scanner.CommentsMode.from(os.getenv('SCANNER_MODE')) or {
-	scanner.CommentsMode.parse_comments
+
+fn scanner_mode() scanner.Mode {
+	return if os.getenv('SCANNER_MODE') in ['skip_comments', 'normal'] {
+		.normal
+	} else {
+		.scan_comments
+	}
 }
 
 fn main() {
 	if !fuzzer_mode {
-		dump(comments_mode)
+		dump(scanner_mode())
 	}
 	all_files := file_lists.expand_files(os.args#[1..])!
 	process_files(all_files)!
@@ -41,8 +45,6 @@ fn process_files(files []string) ! {
 	nthreads := 1 // TODO
 	mut pref_ := pref.new_preferences()
 	pref_.is_fmt = true
-	pref_.skip_warnings = true
-	pref_.output_mode = .silent
 	mut sw := time.new_stopwatch()
 	mut total_us := i64(0)
 	mut total_bytes := i64(0)
@@ -52,7 +54,6 @@ fn process_files(files []string) ! {
 	mut total_files := i64(0)
 	mut total_fmt_len := i64(0)
 	for f in files {
-		mut table := ast.new_table()
 		if f == '' {
 			continue
 		}
@@ -60,23 +61,26 @@ fn process_files(files []string) ! {
 			continue
 		}
 		total_files++
-		mut p := new_parser(f, comments_mode, table, pref_)
-		ast_file := p.parse()
+		source := os.read_file(f)!
+		token_count := count_tokens(f, source, pref_)
+		mut p := parser.Parser.new(pref_)
+		a := p.parse_file(f)
 		///
 		// do not measure the scanning, and parsing, but only the formatting:
 		sw.restart()
-		formatted_content := fmt.fmt(ast_file, mut table, pref_, false)
+		formatted_content := compiler_fmt.format(a)
 		f_us := sw.elapsed().microseconds()
 		// eprint(formatted_content) // this should be identical to the output of `v fmt file.v`
 		///
 		total_us += f_us
-		total_bytes += p.scanner.text.len
-		total_tokens += p.scanner.all_tokens.len
-		total_lines += ast_file.nr_lines
-		total_errors += p.errors.len
+		total_bytes += source.len
+		total_tokens += token_count
+		line_count := source.count('\n') + 1
+		total_lines += line_count
+		total_errors += p.diagnostics.len
 		total_fmt_len += formatted_content.len
 		if !fuzzer_mode {
-			println('${f_us:10}us ${p.scanner.all_tokens.len:10} ${p.scanner.text.len:10} ${ast_file.nr_lines:10} ${(f64(p.scanner.text.len) / p.scanner.all_tokens.len):13.3} ${p.errors.len:10}  ${formatted_content.len:8}   ${f}')
+			println('${f_us:10}us ${token_count:10} ${source.len:10} ${line_count:10} ${(f64(source.len) / token_count):13.3} ${p.diagnostics.len:10}  ${formatted_content.len:8}   ${f}')
 		}
 	}
 	hline()
@@ -87,18 +91,18 @@ fn process_files(files []string) ! {
 	println('${total_us:10}us ${total_tokens:10} ${total_bytes:10} ${total_lines:10} ${(f64(total_bytes) / total_tokens):13.3} ${total_errors:10}   ${total_fmt_len:7}   FMT speed: ${speed_mb_s}, ${speed_lines_s}, ${nthreads:3} thread(s), ${total_files:5} files.')
 }
 
-fn new_parser(path string, comments_mode scanner.CommentsMode, table &ast.Table, pref_ &pref.Preferences) &parser.Parser {
-	mut p := &parser.Parser{
-		scanner: scanner.new_scanner_file(path, -1, comments_mode, pref_) or { panic(err) }
-		table: table
-		pref: pref_
-		scope: &ast.Scope{
-			start_pos: 0
-			parent: table.global_scope
+fn count_tokens(path string, source string, prefs &pref.Preferences) int {
+	mut fileset := token.FileSet.new()
+	mut file := fileset.add_file(path, source.len)
+	file.index_lines(source)
+	mut s := scanner.new_scanner(prefs, scanner_mode())
+	s.init(file, source)
+	mut count := 0
+	for {
+		count++
+		if s.scan() == .eof {
+			break
 		}
-		errors: []errors.Error{}
-		warnings: []errors.Warning{}
 	}
-	p.set_path(path)
-	return p
+	return count
 }

@@ -1346,6 +1346,8 @@ fn test_nested_inferred_fixed_array_literal_parses() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'nested_inferred_fixed_array_literal', 'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
 	assert out == '10'
+	from_rows := run_good(v3_bin, 'nested_inferred_fixed_array_literal_rows', 'fn main() {\n\trow1 := [..]int[1, 2]\n\trow2 := [..]int[3, 4]\n\tvalues := [..][..]int[row1, row2]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
+	assert from_rows == '10'
 	run_bad(v3_bin, 'ragged_nested_inferred_fixed_array_literal', 'fn main() {\n\t_ := [..][..]int[[1], [2, 3]]\n}\n', 'inferred fixed-array literal rows must have the same size')
 }
 
@@ -4345,10 +4347,11 @@ fn main() {
 
 fn test_array_literal_separator_handling() {
 	v3_bin := build_v3_review_transform()
-	// Comma-, newline-, and blank-line-separated element lists parse with the expected length.
-	out := run_good(v3_bin, 'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n}\n')
-	assert out == '3:2:3'
-	run_bad(v3_bin, 'array_literal_missing_separator', 'fn main() {\n\t_ := [1 2]\n}\n', 'unexpected token `2`, expecting `]`')
+	// Comma-, newline-, blank-line-, and whitespace-separated element lists parse correctly.
+	out := run_good(v3_bin, 'array_literal_separators', 'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tcommaless := [1 2 3 4]\n\toperators := [5-2 7 2*3 -4 -7*8 2*-4 9 - 4]\n\ta := 10\n\tb := 20\n\tpointers := [&a &b]\n\tdereferenced := [*pointers[0] *pointers[1]]\n\tands := [6&3 7 7 & 3]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len))\n\tprintln(commaless)\n\tprintln(operators)\n\tprintln(pointers.len)\n\tprintln(dereferenced)\n\tprintln(ands)\n}\n')
+	assert out == '3:2:3\n[1, 2, 3, 4]\n[3, 7, 6, -4, -56, -8, 5]\n2\n[10, 20]\n[2, 7, 3]', out
+	nested_out := run_good(v3_bin, 'array_literal_nested_expressions', 'fn identity(value int) int {\n\treturn value\n}\n\nfn main() {\n\tvalues := [10, 20, 30]\n\tnested := [(3 -2) identity(5 -3) values[2 -1]]\n\tprintln(nested)\n}\n')
+	assert nested_out == '[1, 2, 20]', nested_out
 	run_bad(v3_bin, 'array_literal_doubled_comma', 'fn main() {\n\t_ := [1,,2]\n}\n', 'unexpected token `,`, expecting `]`')
 }
 
@@ -13499,4 +13502,66 @@ pub fn slice_indexes_equal(left SliceIndex, right SliceIndex) bool {
 '
 	}, 'main.v')
 	assert out == 'true'
+}
+
+fn test_params_struct_branch_fields_keep_call_argument_order() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'params_struct_branch_field_order', 'struct Config {
+	size  int
+	color int
+}
+
+fn draw(text string, config Config) {
+	println(text + ":" + int_str(config.size) + ":" + int_str(config.color))
+}
+
+fn main() {
+	enabled := true
+	draw(if enabled { "yes" } else { "no" },
+		size:  if enabled { 16 } else { 20 }
+		color: if enabled { 1 } else { 2 }
+	)
+}
+')
+	assert out == 'yes:16:1'
+}
+
+fn test_adjacent_bound_method_params_struct_fields_keep_function_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'params_struct_bound_method_values', 'type Callback = fn (voidptr)
+
+struct Config {
+	init_fn  Callback
+	frame_fn Callback
+}
+
+@[heap]
+struct App {
+mut:
+	trace string
+}
+
+fn (mut app App) init() {
+	app.trace += "init"
+}
+
+fn (mut app App) frame(_ voidptr) {
+	app.trace += ":frame"
+}
+
+fn run(config Config) {
+	config.init_fn(unsafe { nil })
+	config.frame_fn(unsafe { nil })
+}
+
+fn main() {
+	mut app := &App{}
+	run(
+		init_fn:  app.init
+		frame_fn: app.frame
+	)
+	println(app.trace)
+}
+')
+	assert out == 'init:frame'
 }

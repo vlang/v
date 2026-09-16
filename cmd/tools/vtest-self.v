@@ -4,10 +4,10 @@ import os
 import testing
 
 struct Config {
-	run_just_essential     bool = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
-	is_musl_ci             bool = os.getenv('V_CI_MUSL') != ''
-	is_ubuntu_musl_ci      bool = os.getenv('V_CI_UBUNTU_MUSL') != ''
-	is_sandboxed_packaging bool = os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
+	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
+	is_musl_ci             bool   = os.getenv('V_CI_MUSL') != ''
+	is_ubuntu_musl_ci      bool   = os.getenv('V_CI_UBUNTU_MUSL') != ''
+	is_sandboxed_packaging bool   = os.getenv('VTEST_SANDBOXED_PACKAGING') != ''
 	github_job             string = os.getenv('GITHUB_JOB')
 mut:
 	test_dirs         []string = ['cmd', 'vlib']

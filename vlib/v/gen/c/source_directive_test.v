@@ -49,9 +49,9 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	// cannot be the declaration they use and the prototype has to stay.
 	mut postinclude_g := FlatGen.new()
 	postinclude_g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'postinclude'
-		typ: '"${header}"'
+		typ:   '"${header}"'
 	}, source, false)
 	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
 	assert '#include "${header}"' in postinclude_g.postinclude_directives
@@ -60,9 +60,9 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	// A preincluded header comes first, so it owns what it declares.
 	mut preinclude_g := FlatGen.new()
 	preinclude_g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'preinclude'
-		typ: '"${header}"'
+		typ:   '"${header}"'
 	}, source, false)
 	assert 'postinclude_api' !in preinclude_g.inlined_c_declared_fns
 	assert !preinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source, 'main')
@@ -83,9 +83,9 @@ fn test_include_preserves_header_without_scanning_declarations() {
 
 	mut g := FlatGen.new()
 	g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'include'
-		typ: '"${header}"'
+		typ:   '"${header}"'
 	}, source, false)
 
 	assert g.c_directives.len == 1
@@ -119,14 +119,14 @@ fn test_preinclude_does_not_scan_macro_state() {
 
 	mut g := FlatGen.new()
 	g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'preinclude'
-		typ: '"${config_header}"'
+		typ:   '"${config_header}"'
 	}, source, false)
 	g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'preinclude'
-		typ: '"${api_header}"'
+		typ:   '"${api_header}"'
 	}, source, false)
 
 	assert 'chained_api' !in g.inlined_c_active_macros
@@ -444,6 +444,17 @@ fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	assert !system_libc.should_emit_c_extern_decl('sendfile')
 }
 
+fn test_target_libc_headers_own_their_c_extern_declarations() {
+	mut g := FlatGen.new()
+	g.set_target_libc_headers(true)
+	source := '/project/include_less.v'
+	for name in ['strlen', 'puts', 'fseeko', 'pthread_sigmask', 'clock_gettime', 'nanosleep', 'sqrtf',
+		'readdir', 'syscall'] {
+		assert !g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
+	}
+	assert g.should_emit_c_extern_decl_from_file('target_specific_api', source, 'main')
+}
+
 fn test_builtin_boehm_directives_use_system_libc() {
 	mut boehm := FlatGen.new()
 	boehm.add_c_directive('builtin', '#include <gc.h>', false)
@@ -452,6 +463,32 @@ fn test_builtin_boehm_directives_use_system_libc() {
 	mut closure := FlatGen.new()
 	closure.add_c_directive('closure', '#include <sys/mman.h>\n#include <pthread.h>', false)
 	assert !closure.c_directives_use_system_libc()
+}
+
+fn test_target_libc_headers_preserve_explicit_pthread_include() {
+	mut target := FlatGen.new()
+	target.set_target_libc_headers(true)
+	target.add_c_directive('binding', '#include <pthread.h>', false)
+	assert target.ordered_c_directives(false) == ['#include <pthread.h>']
+
+	mut headerless := FlatGen.new()
+	headerless.add_c_directive('closure', '#include <sys/mman.h>\n#include <pthread.h>', false)
+	assert headerless.ordered_c_directives(false) == ['#include <sys/mman.h>']
+}
+
+fn test_target_libc_headers_preserve_explicit_ptrace_include() {
+	mut target := FlatGen.new()
+	target.set_target_libc_headers(true)
+	target.c_extern_refs_ready = true
+	target.add_c_directive('os', '#include <sys/ptrace.h>', false)
+	target.emit_preserved_c_directives(false)
+	assert target.sb.str().contains('#include <sys/ptrace.h>')
+
+	mut headerless := FlatGen.new()
+	headerless.c_extern_refs_ready = true
+	headerless.add_c_directive('os', '#include <sys/ptrace.h>', false)
+	headerless.emit_preserved_c_directives(false)
+	assert !headerless.sb.str().contains('#include <sys/ptrace.h>')
 }
 
 fn test_builtin_abi_compat_macros_precede_late_c_source() {
@@ -503,9 +540,9 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 	g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
 	for kind in ['include', 'preinclude'] {
 		g.collect_c_directive('main', flat.Node{
-			kind: .directive
+			kind:  .directive
 			value: kind
-			typ: '${inactive_target} <ownership_probe.h>'
+			typ:   '${inactive_target} <ownership_probe.h>'
 		}, source, false)
 	}
 	assert source !in g.files_with_c_includes
@@ -517,10 +554,28 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 	active_g.set_target(pref.target_from(os.user_os(), 'amd64') or { panic(err) })
 	active_g.note_c_flag_directive('main', source, '@VMODROOT/helper.o')
 	active_g.collect_c_directive('main', flat.Node{
-		kind: .directive
+		kind:  .directive
 		value: 'include'
-		typ: '${os.user_os()} <ownership_probe.h>'
+		typ:   '${os.user_os()} <ownership_probe.h>'
 	}, source, false)
 	assert source in active_g.files_with_c_includes
 	assert !active_g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')
+}
+
+fn test_cross_os_target_include_is_guarded_for_the_c_compiler() {
+	host := pref.host_target()
+	target_os := if host.os == 'linux' { 'macos' } else { 'linux' }
+	target := pref.target_from(target_os, host.arch) or { panic(err) }
+	mut g := FlatGen.new()
+	g.set_target(target)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '${target_os} <target_only.h>'
+	}, '', false)
+	condition := pref.cross_target_c_condition(target_os) or { panic(err) }
+	directives := g.ordered_c_directives(false)
+	assert directives == [
+		'#if ${condition}\n#include <target_only.h>\n#endif',
+	], 'unexpected directives: ${directives}'
 }

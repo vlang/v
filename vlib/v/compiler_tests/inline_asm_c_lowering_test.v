@@ -30,12 +30,12 @@ fn global_x() u64 {
 }
 
 fn update_local() u64 {
-	mut x := u64(7)
+	mut n := u64(7)
 	asm arm64 {
-		add x, x, 1
-		; +r (x)
+		add n, n, 1
+		; +r (n)
 	}
-	return x
+	return n
 }
 
 struct AsmOperand {
@@ -115,12 +115,12 @@ fn global_x() u64 {
 }
 
 fn update_local() u64 {
-	mut x := u64(7)
+	mut n := u64(7)
 	asm amd64 {
-		add x, 1
-		; +r (x)
+		add n, 1
+		; +r (n)
 	}
-	return x
+	return n
 }
 
 struct AsmOperand {
@@ -225,7 +225,11 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	assert c_source.contains('__asm__ ('), c_source
 	assert c_source.contains('[b] "+r" (b)'), c_source
 	assert c_source.contains('[a] "r" (a)'), c_source
-	assert c_source.contains('[x] "+r" (__v3_internal_symbol_local_x)'), c_source
+	// Was `[x] "+r" (x__local)`: the operand held a local named after the global
+	// `x`, so cgen had to suffix it apart. Such a local is rejected now, so the
+	// operand is checked plain -- what it still pins down is that an asm operand
+	// binds the local it names.
+	assert c_source.contains('[n] "+r" (n)'), c_source
 	assert c_source.contains('"+r" (value.v_index)'), c_source
 	assert c_source.contains('array_get(values, 0)'), c_source
 	assert c_source.contains('"+r" (value.ptr->v_index)'), c_source
@@ -461,6 +465,41 @@ fn test_structured_x86_asm_reverses_three_operand_instructions() {
 ')
 	assert generate.exit_code == 0, generate.output
 	assert c_source.contains('"imul \$7, %[lhs], %[result]\\n\\t"'), c_source
+}
+
+fn test_directional_numeric_asm_labels_are_accepted_and_lowered() {
+	generate, c_source := generate_inline_asm_c('directional_numeric_label_program', 'fn main() {
+	asm amd64 {
+		1:
+		nop
+		jmp b1
+		jne f2
+		2:
+	}
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"jmp 1b\\n\\t"'), c_source
+	assert c_source.contains('"jne 2f\\n\\t"'), c_source
+}
+
+fn test_x86_port_io_uses_32_bit_register_for_platform_int() {
+	generate, c_source := generate_inline_asm_c('platform_int_port_io', 'fn read_port(port u16) int {
+	mut result := 0
+	asm amd64 {
+		in result, port
+		; =a (result)
+		; Nd (port)
+	}
+	return result
+}
+
+fn main() {
+	_ = read_port(0)
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"in %[port], %k[result]\\n\\t"'), c_source
 }
 
 fn test_intel_asm_rejects_memory_capable_constraints() {

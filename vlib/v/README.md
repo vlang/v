@@ -49,10 +49,19 @@ in-process driver. The standard bootstrap does not build the sibling `v1_fallbac
 missing, V reports that it is running `make v1`. That target reuses or downloads the complete
 0.5.2 release under the user cache; if its release binary cannot be used, `oldv` clones the 0.5.2
 V sources and their matching `vc` snapshot and builds the fallback there. Run `make v1` explicitly
-to prepare it ahead of time. The installer exposes `crypto.subtle` at its current public path in
-the fallback vlib, and fallback resolution reruns the installer when an older cached tree lacks
-that path. `-old-compiler` launches the fallback explicitly, and ordinary user builds and external
-tools retry through it after a compiler or C compilation failure.
+to prepare it ahead of time. Automatic provisioning keeps its launcher metadata in the user cache,
+so an older read-only sibling installation can remain untouched. The installer exposes
+`crypto.subtle` at its current public path in the fallback vlib, and fallback resolution reruns the
+installer when an older cached tree lacks that path. `-old-compiler` launches the fallback
+explicitly, and ordinary user builds and external tools retry through it after a compiler or C
+compilation failure.
+
+The installer supplements the cached fallback vlib with modules whose public paths moved after
+0.5.2. Fallback roots missing these compatibility modules are not used. If a fallback command exits
+unsuccessfully, V notes where the default compiler stopped and how to show its suppressed
+diagnostics. For a command that may have run user code, the note preserves the child's status
+without mislabeling it as a compiler failure. Re-run the command with `-new-compiler` to see the
+default-compiler diagnostics without a fallback retry.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
@@ -83,6 +92,9 @@ suffixes, and third-party object-cache keys. Common aliases such as `darwin`, `x
 `aarch64` are normalized. Native linking currently supports the host target and macOS
 `amd64`/`arm64` cross-architecture builds through Clang's `-arch`; other cross targets can be
 emitted as C with `-o file.c` for compilation by an external target toolchain.
+For compatibility testing, `-os linux` on macOS with the host architecture and default C compiler
+also builds a macOS executable from portable host-target C; it is not a Linux binary. Pair it with
+`-os linux -o file.c` to validate Linux-selected sources.
 
 The command line rejects unknown options, missing option values, unsupported backends, and
 multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only

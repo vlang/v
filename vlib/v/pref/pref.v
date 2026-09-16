@@ -55,6 +55,7 @@ pub mut:
 	selfhost              bool
 	building_v            bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod               bool
+	warn_about_allocs     bool
 	is_debug              bool
 	is_test               bool // at least one compatible user test file is being compiled
 	is_fmt                bool // preserve source-only syntax needed by the V formatter
@@ -71,6 +72,13 @@ pub mut:
 	// whose own root happens to carry that name.
 	module_resolution_root string
 	thread_stack_size      int = 8 * 1024 * 1024
+	// target_libc_headers marks a target that supplies the C library headers
+	// itself, so the generated C must include them rather than restate what they
+	// declare. A kernel, compiling `-nostdinc` against its own header tree, is the
+	// case. It cannot be inferred from the target OS, which also hosts ordinary
+	// programs that link the host's libc. Distinct from V1's `-freestanding`,
+	// which means no libc at all.
+	target_libc_headers bool
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
 	supports_inline_asm            bool
@@ -208,11 +216,11 @@ pub fn target_from(os_name string, arch_name string) !Target {
 	}
 
 	return Target{
-		os: target_os
-		arch: target_arch
-		abi: abi
-		endian: endian
-		pointer_bits: pointer_bits
+		os:            target_os
+		arch:          target_arch
+		abi:           abi
+		endian:        endian
+		pointer_bits:  pointer_bits
 		object_format: object_format
 	}
 }
@@ -223,8 +231,8 @@ pub fn new_preferences() &Preferences {
 	// Formatted by hand: the first C strftime call of a process initializes
 	// the timezone data, which costs about half a millisecond per compile.
 	return &Preferences{
-		build_date: '${build_time.year}-${two_digits(build_time.month)}-${two_digits(build_time.day)}'
-		build_time: '${two_digits(build_time.hour)}:${two_digits(build_time.minute)}:${two_digits(build_time.second)}'
+		build_date:      '${build_time.year}-${two_digits(build_time.month)}-${two_digits(build_time.day)}'
+		build_time:      '${two_digits(build_time.hour)}:${two_digits(build_time.minute)}:${two_digits(build_time.second)}'
 		build_timestamp: build_time.unix().str()
 	}
 }
@@ -234,9 +242,9 @@ pub fn option_may_consume_value(option string) bool {
 	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
 		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof',
 		'-profile', '-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude',
-		'-file-list', '-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
-		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
-		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-file-list', '-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files',
+		'-dump-defines', '-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags',
+		'-ldflags', '-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
 		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend',
 		'-compile-backend', '--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude',
 		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
@@ -630,6 +638,17 @@ fn dir_is_module(dir string) bool {
 	return false
 }
 
+// installed_module_roots returns the directories modules are installed into:
+// vlib and the user's vmodules directories. Explicit `-path` roots are not
+// included because they may contain modules owned by the current project.
+pub fn (p &Preferences) installed_module_roots() []string {
+	mut roots := []string{}
+	roots << os.join_path_single(p.vroot, 'vlib')
+	// $VMODULES takes a list, the same as it does when modules are resolved.
+	roots << vmodules_dir().split(os.path_delimiter).filter(it.len > 0)
+	return roots
+}
+
 // vmodules_dir returns the user's global modules directory ($VMODULES or ~/.vmodules).
 fn vmodules_dir() string {
 	env_dir := os.getenv('VMODULES')
@@ -797,8 +816,7 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 	mut has_os_specific := map[string]bool{}
 	for file in sorted_files {
 		if !file.ends_with('.v') || file.ends_with('.js.v')
-			|| (file_name_has_marker(file, '_test.') && !file_name_has_marker(file, '_d_test.')
-				&& !file_name_has_marker(file, '_notd_test.')) {
+			|| file_name_has_marker(file, '_test.') {
 			continue
 		}
 		if file_has_incompatible_os_only_suffix(file, target.os) {
@@ -883,7 +901,7 @@ pub fn get_test_v_files_from_dir_for_target(dir string, user_defines []string, b
 			}
 		} else if file.contains('_d_') {
 			feature := extract_test_define_feature(file, '_d_')
-			if feature.len == 0 || feature !in user_defines {
+			if feature.len > 0 && feature !in user_defines {
 				continue
 			}
 		}
@@ -901,9 +919,6 @@ fn extract_test_define_feature(file string, marker string) string {
 
 pub fn is_test_file_for_backend(path string, backend string) bool {
 	file := os.file_name(path)
-	if file.contains('_d_test.') || file.contains('_notd_test.') {
-		return false
-	}
 	if file.ends_with('_test.v') {
 		return true
 	}
@@ -1378,9 +1393,9 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'new_int' {
 		return p.target.pointer_bits == 64 || name in p.user_defines
 	}
-	// Test mode is added internally to `user_defines` so `_d_test.v` source
-	// selection works, but `$if test ?` only asks whether the user supplied
-	// `-d test`. Explicit `-d` values are recorded in `compile_values`.
+	// Test mode is added internally to `user_defines`, but `$if test ?` only asks
+	// whether the user supplied `-d test`. Explicit `-d` values are recorded in
+	// `compile_values`.
 	if name == 'test' && name !in p.compile_values {
 		return false
 	}

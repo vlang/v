@@ -423,11 +423,11 @@ fn (mut g FlatGen) gen_lock_enter(scope_id int, node flat.Node) ?ActiveLock {
 		g.writeln('}')
 		return ActiveLock{
 			mutexes_var: mutexes_var
-			modes_var: modes_var
-			lock_count: lock_count
-			unlock_fn: ''
-			scope_id: scope_id
-			loop_depth: g.loop_depth
+			modes_var:   modes_var
+			lock_count:  lock_count
+			unlock_fn:   ''
+			scope_id:    scope_id
+			loop_depth:  g.loop_depth
 			defer_depth: g.defers.len
 		}
 	}
@@ -454,10 +454,10 @@ fn (mut g FlatGen) gen_lock_enter(scope_id int, node flat.Node) ?ActiveLock {
 	g.writeln('}')
 	return ActiveLock{
 		mutexes_var: mutexes_var
-		lock_count: lock_count
-		unlock_fn: unlock_fn
-		scope_id: scope_id
-		loop_depth: g.loop_depth
+		lock_count:  lock_count
+		unlock_fn:   unlock_fn
+		scope_id:    scope_id
+		loop_depth:  g.loop_depth
 		defer_depth: g.defers.len
 	}
 }
@@ -628,8 +628,8 @@ mut:
 
 fn new_fn_prelude_scan() FnPreludeScan {
 	return FnPreludeScan{
-		defer_ids: []flat.NodeId{}
-		lock_scopes: []int{}
+		defer_ids:              []flat.NodeId{}
+		lock_scopes:            []int{}
 		goto_label_lock_scopes: map[string][]int{}
 	}
 }
@@ -1997,11 +1997,11 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		first := g.a.nodes[int(first_id)]
 		if first.kind == .infix && first.op == .arrow && first.children_count >= 2 {
 			cases << FlatSelectCase{
-				branch_id: branch_id
+				branch_id:  branch_id
 				channel_id: g.a.child(&first, 0)
-				value_id: g.a.child(&first, 1)
+				value_id:   g.a.child(&first, 1)
 				body_start: 1
-				is_push: true
+				is_push:    true
 			}
 			continue
 		}
@@ -2010,21 +2010,21 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 			second := g.a.nodes[int(second_id)]
 			if second.kind == .prefix && second.op == .arrow && second.children_count > 0 {
 				cases << FlatSelectCase{
-					branch_id: branch_id
+					branch_id:  branch_id
 					channel_id: g.a.child(&second, 0)
-					value_id: second_id
-					lhs_id: first_id
+					value_id:   second_id
+					lhs_id:     first_id
 					body_start: 2
-					is_decl: branch.value == 'recv'
+					is_decl:    branch.value == 'recv'
 				}
 				continue
 			}
 		}
 		if first.kind == .prefix && first.op == .arrow && first.children_count > 0 {
 			cases << FlatSelectCase{
-				branch_id: branch_id
+				branch_id:  branch_id
 				channel_id: g.a.child(&first, 0)
-				value_id: first_id
+				value_id:   first_id
 				body_start: 1
 			}
 			continue
@@ -3114,6 +3114,7 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 			aliases[io.alias] = true
 		}
 	}
+	wide_x86_aliases := g.c_inline_asm_wide_x86_aliases(block, node)
 	is_extended := block.section_count > 1 || block.is_goto
 	g.write('__asm__')
 	if block.is_goto {
@@ -3143,7 +3144,8 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 		mut lowered := if block.is_intel {
 			lower_c_inline_asm_intel_template(template, aliases, is_extended)
 		} else {
-			lower_c_inline_asm_template(template, block.arch, aliases, is_extended)
+			lower_c_inline_asm_template_with_wide_aliases(template, block.arch, aliases,
+				wide_x86_aliases, is_extended)
 		}
 		if block.is_goto {
 			lowered = g.lower_c_inline_asm_goto_branch_label(template, lowered, block.arch, aliases, block.labels)
@@ -3185,6 +3187,40 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 	}
 	g.indent--
 	g.writeln(');')
+}
+
+fn (g &FlatGen) c_inline_asm_wide_x86_aliases(block CInlineAsmBlock, node flat.Node) map[string]bool {
+	if !is_c_inline_asm_x86_arch(block.arch) {
+		return map[string]bool{}
+	}
+	mut aliases := map[string]bool{}
+	mut child_index := 0
+	for io in block.output {
+		if io.alias.len > 0 && child_index < int(node.children_count)
+			&& g.c_inline_asm_operand_is_wider_than_32(g.a.child(&node, child_index)) {
+			aliases[io.alias] = true
+		}
+		child_index++
+	}
+	for io in block.input {
+		if io.alias.len > 0 && child_index < int(node.children_count)
+			&& g.c_inline_asm_operand_is_wider_than_32(g.a.child(&node, child_index)) {
+			aliases[io.alias] = true
+		}
+		child_index++
+	}
+	return aliases
+}
+
+fn (g &FlatGen) c_inline_asm_operand_is_wider_than_32(id flat.NodeId) bool {
+	typ := cgen_unalias_type(g.usable_expr_type(id))
+	return match typ {
+		types.Primitive {
+			if typ.size == 0 { g.target.pointer_bits > 32 } else { typ.size > 32 }
+		}
+		types.ISize, types.USize, types.Pointer { g.target.pointer_bits > 32 }
+		else { false }
+	}
 }
 
 fn (mut g FlatGen) gen_c_inline_asm_ios(ios []CInlineAsmIO, node flat.Node, child_offset int) {
@@ -3349,16 +3385,20 @@ fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
 		}
 	}
 	return CInlineAsmBlock{
-		arch: arch
-		is_goto: is_goto
-		is_volatile: is_volatile
-		is_raw: is_raw
-		is_intel: is_intel
-		templates: templates
-		output: if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
-		input: if sections.len > 2 { parse_c_inline_asm_ios(sections[2], false) } else { [] }
-		clobbered: clobbered
-		labels: labels
+		arch:          arch
+		is_goto:       is_goto
+		is_volatile:   is_volatile
+		is_raw:        is_raw
+		is_intel:      is_intel
+		templates:     templates
+		output:        if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
+		input:         if sections.len > 2 {
+			parse_c_inline_asm_ios(sections[2], false)
+		} else {
+			[]
+		}
+		clobbered:     clobbered
+		labels:        labels
 		section_count: sections.len
 	}
 }
@@ -3635,14 +3675,19 @@ fn parse_c_inline_asm_ios(source string, is_output bool) []CInlineAsmIO {
 		}
 		ios << CInlineAsmIO{
 			constraint: constraint
-			expr: expr
-			alias: alias
+			expr:       expr
+			alias:      alias
 		}
 	}
 	return ios
 }
 
 fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bool, is_extended bool) string {
+	return lower_c_inline_asm_template_with_wide_aliases(source, arch, aliases, map[string]bool{},
+		is_extended)
+}
+
+fn lower_c_inline_asm_template_with_wide_aliases(source string, arch string, aliases map[string]bool, wide_aliases map[string]bool, is_extended bool) string {
 	line := source.trim_space()
 	if line.len == 0 || line.ends_with(':') {
 		return line
@@ -3676,12 +3721,23 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 	mut lowered := []string{cap: operands.len}
 	for operand in operands {
 		mut lowered_operand := lower_c_inline_asm_operand(operand, arch, aliases, is_extended, is_directive)
+		if is_c_inline_asm_x86_port_io_instruction(instruction) {
+			for alias, is_wide in wide_aliases {
+				if is_wide {
+					lowered_operand = lowered_operand.replace('%[${alias}]', '%k[${alias}]')
+				}
+			}
+		}
 		if is_c_inline_asm_indirect_x86_branch_operand(instruction, operand, arch, aliases) {
 			lowered_operand = '*' + lowered_operand
 		}
 		lowered << lowered_operand
 	}
 	return line[..instruction_start] + instruction + ' ' + lowered.join(', ')
+}
+
+fn is_c_inline_asm_x86_port_io_instruction(instruction string) bool {
+	return instruction in ['in', 'inb', 'inw', 'inl', 'out', 'outb', 'outw', 'outl']
 }
 
 // lower_c_inline_asm_intel_template keeps V's destination-first structured syntax as
@@ -3746,6 +3802,9 @@ fn lower_c_inline_asm_intel_operand(source string, aliases map[string]bool, is_e
 	operand := source.trim_space()
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
 		return "'${operand[1..operand.len - 1]}'"
+	}
+	if label := c_inline_asm_local_label_reference(operand) {
+		return label
 	}
 	if label := c_inline_asm_quoted_label(operand) {
 		return label
@@ -3850,6 +3909,9 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
 		return "'${operand[1..operand.len - 1]}'"
 	}
+	if label := c_inline_asm_local_label_reference(operand) {
+		return label
+	}
 	if label := c_inline_asm_quoted_label(operand) {
 		return label
 	}
@@ -3864,7 +3926,7 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 	if is_c_inline_asm_number(operand) {
 		return if is_directive {
 			operand
-		} else if arch == 'arm64' {
+		} else if arch in ['arm64', 'aarch64'] {
 			'#${operand}'
 		} else if is_c_inline_asm_x86_arch(arch) {
 			'\$${operand}'
@@ -3910,8 +3972,17 @@ fn c_inline_asm_quoted_label(source string) ?string {
 	return none
 }
 
+// V spells a directional numeric assembly label with the direction first
+// (`b1`/`f2`), while GNU assembly puts it after the number (`1b`/`2f`).
+fn c_inline_asm_local_label_reference(source string) ?string {
+	if source.len < 2 || source[0] !in [`b`, `f`] || !source[1..].bytes().all(it.is_digit()) {
+		return none
+	}
+	return source[1..] + source[..1]
+}
+
 fn lower_c_inline_asm_address(source string, arch string, aliases map[string]bool, is_extended bool) string {
-	if arch == 'arm64' {
+	if arch in ['arm64', 'aarch64'] {
 		return '[${lower_c_inline_asm_atoms(source.trim_space(), arch, aliases, is_extended)}]'
 	}
 	if !is_c_inline_asm_x86_arch(arch) {
@@ -3997,8 +4068,8 @@ fn lower_c_inline_asm_atoms(source string, arch string, aliases map[string]bool,
 }
 
 fn is_c_inline_asm_x86_arch(arch string) bool {
-	return arch in ['amd64', 'x64', 'x86_64', 'i386', 'i486', 'i586', 'i686', 'x86', 'x86_32', 'ia-32',
-		'ia32']
+	return arch in ['amd64', 'x64', 'x86_64', 'i386', 'i486', 'i586', 'i686', 'x86', 'x86_32',
+		'ia-32', 'ia32']
 }
 
 fn is_c_inline_asm_x86_register(name string) bool {
@@ -4244,7 +4315,7 @@ fn (g &FlatGen) debugger_scope_vars() []DebuggerScopeVar {
 			seen[name] = true
 			result << DebuggerScopeVar{
 				name: name
-				typ: scope.types[i]
+				typ:  scope.types[i]
 			}
 		}
 		scope = scope.parent
@@ -4274,6 +4345,10 @@ fn debugger_type_name(typ types.Type) string {
 	return name
 }
 
+fn debugger_string_literal(value string) string {
+	return '(string){"${c_escape(value)}", ${value.len}, 1}'
+}
+
 fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 	position := g.a.source_position(node.pos) or { return }
 	vars := g.debugger_scope_vars()
@@ -4284,12 +4359,16 @@ fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 	debugger_type := g.cname('debug.Debugger')
 	interact_fn := g.cname('debug.Debugger.interact')
 	debugger_global := g.cname('debug.g_debugger')
-	file_sid := g.intern_string(position.filename)
-	module_sid := g.intern_string(if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' })
-	fn_sid := g.intern_string(g.cur_fn_name.all_after_last('.'))
+	file_literal := debugger_string_literal(position.filename)
+	module_literal := debugger_string_literal(if g.tc.cur_module.len > 0 {
+		g.tc.cur_module
+	} else {
+		'main'
+	})
+	fn_literal := debugger_string_literal(g.cur_fn_name.all_after_last('.'))
 	is_method := g.cur_fn_name.contains('.')
 	receiver_name := if is_method { g.cur_fn_name.all_before_last('.') } else { '' }
-	receiver_sid := g.intern_string(receiver_name)
+	receiver_literal := debugger_string_literal(receiver_name)
 	g.writeln('{')
 	g.indent++
 	g.writeln('map ${scope_name} = new_map(sizeof(string), sizeof(${var_type}), map_hash_string, map_eq_string, map_clone_string, map_free_string);')
@@ -4297,18 +4376,18 @@ fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 		key_name := '${scope_name}_key_${g.tmp_count}'
 		value_name := '${scope_name}_value_${g.tmp_count}'
 		g.tmp_count++
-		key_sid := g.intern_string(v.name)
-		type_sid := g.intern_string(debugger_type_name(v.typ))
+		key_literal := debugger_string_literal(v.name)
+		type_literal := debugger_string_literal(debugger_type_name(v.typ))
 		expr := g.debugger_var_expr(v.name)
 		mut stack := []string{}
 		value_expr := g.interface_implicit_str_expr(v.typ, expr, false, mut stack) or {
 			g.interface_str_lit('<value>')
 		}
-		g.writeln('string ${key_name} = _str_${key_sid};')
-		g.writeln('${var_type} ${value_name} = (${var_type}){.typ = _str_${type_sid}, .value = ${value_expr}};')
+		g.writeln('string ${key_name} = ${key_literal};')
+		g.writeln('${var_type} ${value_name} = (${var_type}){.typ = ${type_literal}, .value = ${value_expr}};')
 		g.writeln('map__set(&${scope_name}, &${key_name}, &${value_name});')
 	}
-	g.writeln('${interact_fn}((${debugger_type}*)&${debugger_global}, (${info_type}){.is_anon = ${g.cur_fn_name.starts_with('__anon_fn_')}, .is_generic = ${g.cur_fn_name.contains('[')}, .is_method = ${is_method}, .receiver_typ_name = _str_${receiver_sid}, .line = ${position.line}, .file = _str_${file_sid}, .mod = _str_${module_sid}, .fn_name = _str_${fn_sid}, .scope = ${scope_name}});')
+	g.writeln('${interact_fn}((${debugger_type}*)&${debugger_global}, (${info_type}){.is_anon = ${g.cur_fn_name.starts_with('__anon_fn_')}, .is_generic = ${g.cur_fn_name.contains('[')}, .is_method = ${is_method}, .receiver_typ_name = ${receiver_literal}, .line = ${position.line}, .file = ${file_literal}, .mod = ${module_literal}, .fn_name = ${fn_literal}, .scope = ${scope_name}});')
 	g.indent--
 	g.writeln('}')
 }
@@ -4671,7 +4750,7 @@ fn (g &FlatGen) pointer_alias_stack_source(id flat.NodeId, expected_base types.T
 	}
 	if source := g.local_address_source_name(id, expected_base) {
 		return PointerAliasStackSource{
-			name: source
+			name:         source
 			is_mut_param: g.current_param_is_mut(source)
 		}
 	}
@@ -4690,7 +4769,7 @@ fn (g &FlatGen) pointer_alias_stack_source(id flat.NodeId, expected_base types.T
 		if g.type_names_match(rhs_ptr.base_type, expected_base)
 			|| g.tc.c_type(rhs_ptr.base_type) == g.tc.c_type(expected_base) {
 			return PointerAliasStackSource{
-				name: source
+				name:         source
 				is_mut_param: g.local_pointer_alias_source_is_mut_param(node.value)
 			}
 		}
@@ -5258,6 +5337,9 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 	if ret := g.module_c_fn_return_type(fn_node.value) {
 		return ret
 	}
+	if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
+		return ret
+	}
 	if ret := g.tc.fn_ret_types[fn_node.value] {
 		return ret
 	}
@@ -5266,9 +5348,6 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 		if ret := g.tc.fn_ret_types[cfn] {
 			return ret
 		}
-	}
-	if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
-		return ret
 	}
 	if typ := g.tc.cur_scope.lookup(fn_node.value) {
 		return fn_type_return_type(typ)
@@ -5312,6 +5391,9 @@ fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
 		if ret := g.module_c_fn_return_type(fn_node.value) {
 			return ret
 		}
+		if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
+			return ret
+		}
 		if ret := g.tc.fn_ret_types[fn_node.value] {
 			return ret
 		}
@@ -5320,9 +5402,6 @@ fn (g &FlatGen) declared_call_return_type(call_id flat.NodeId) types.Type {
 			if ret := g.tc.fn_ret_types[cfn] {
 				return ret
 			}
-		}
-		if ret := g.fn_decl_return_type_for_call_name(fn_node.value) {
-			return ret
 		}
 	}
 	// Indirect call through an fn-pointer value (local var, param, or struct field
@@ -5866,6 +5945,17 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 		if node.kind == .selector && node.children_count > 0 {
 			base_type0 := g.usable_expr_type(g.a.child(&node, 0))
 			base_type := types.unwrap_pointer(base_type0)
+			collection_base_type := cgen_unalias_type(base_type)
+			if collection_base_type is types.Array || collection_base_type is types.ArrayFixed {
+				if typ := g.usable_struct_field_type('array', node.value) {
+					return typ
+				}
+			}
+			if collection_base_type is types.Map {
+				if typ := g.usable_struct_field_type('map', node.value) {
+					return typ
+				}
+			}
 			if base_type is types.Struct {
 				if typ := g.usable_struct_field_type(base_type.name, node.value) {
 					return typ
@@ -6039,7 +6129,7 @@ fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
 			g.tc.fn_ret_types[candidate] or { types.Type(types.void_) }
 		}
 		return types.Type(types.FnType{
-			params: params.clone()
+			params:      params.clone()
 			return_type: ret
 		})
 	}
@@ -6047,7 +6137,7 @@ fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
 		params := g.tc.fn_param_types[candidate] or { continue }
 		ret := g.tc.fn_ret_types[candidate] or { types.Type(types.void_) }
 		return types.Type(types.FnType{
-			params: params.clone()
+			params:      params.clone()
 			return_type: ret
 		})
 	}

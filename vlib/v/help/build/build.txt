@@ -138,6 +138,11 @@ NB: the build flags are shared with the run command too:
     Note: gcc versions > 12.0 often have issues with inlining, that manifest with `-prod`.
     To work around them, you can use `-prod -cflags -fno-inline-small-functions` .
 
+  -warn-about-allocs
+    Warn about array initialization, string interpolation, string concatenation, and casts to
+    interfaces that allocate. Add `@[freed]` after an assignment to suppress allocation warnings
+    for allocations that the assignment frees explicitly.
+
   -no-prod-options
     Useful in combination with -prod and -cflags, for allowing more complete customisation,
     of what flags will be used for the C compiler, for example:

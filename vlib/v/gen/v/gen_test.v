@@ -106,6 +106,31 @@ fn test_formatter_preserves_blank_lines_between_statements() {
 	out := vfmt('statement_blank_lines', source)
 	assert out == source, out
 	assert vfmt('statement_blank_lines_twice', out) == out
+	assert vfmt_with_options('statement_blank_lines_all_files', source, FormatOptions{}) == source
+}
+
+fn test_formatter_preserves_top_level_statement_spacing() {
+	source := "name := 'Bob'\nage := 20\nif age > 10 {\n\tprintln(name)\n}\n\nprintln(age)\n"
+	assert vfmt_with_options('top_level_statement_spacing', source, FormatOptions{}) == source
+}
+
+fn test_formatter_groups_consecutive_c_declarations_and_directives() {
+	source := 'fn C.first()\nfn C.second()\n\n#flag -lm\n#flag -lpthread\n'
+	assert vfmt_with_options('c_declaration_directive_groups', source, FormatOptions{}) == source
+}
+
+fn test_formatter_preserves_multiline_empty_structs() {
+	source := 'struct Foo {\n}\n\nstruct C.Native {\n}\n'
+	assert vfmt_with_options('multiline_empty_structs', source, FormatOptions{}) == source
+}
+
+fn test_formatter_preserves_multiline_call_struct_arguments() {
+	short_struct := "run(mut app,\n\thost:       '0.0.0.0'\n\tport:       8080\n\tnr_workers: jobs()\n)\n"
+	assert vfmt_with_options('multiline_short_struct_call', short_struct,
+		FormatOptions{}) == short_struct
+	named_argument := "value := encode(Payload{'item'},\n\tescape_unicode: true\n)\n"
+	assert vfmt_with_options('multiline_named_argument_call', named_argument,
+		FormatOptions{}) == named_argument
 }
 
 fn test_formatter_preserves_gated_slices() {
@@ -1988,7 +2013,7 @@ fn test_formatter_aligns_struct_literal_values_per_group() {
 // Everything that can follow a struct field's type gets its own column: the `= default`, the
 // inline attributes and the trailing comment.
 fn test_formatter_aligns_struct_field_defaults_and_comments() {
-	source := 'struct ToolCacheEntry {\n\tname       string   // the tool source name\n\tsource     string   // the tool source path\n\tbuild_args []string // the compiler flags used\n\theaders    bool   = true\n\tnullvalue  string = \'NULL\'\n\tseparator  string = \',\'\n}\n'
+	source := "struct ToolCacheEntry {\n\tname       string   // the tool source name\n\tsource     string   // the tool source path\n\tbuild_args []string // the compiler flags used\n\theaders    bool   = true\n\tnullvalue  string = 'NULL'\n\tseparator  string = ','\n}\n"
 	out := vfmt('struct_field_suffix_alignment', source)
 	assert out == source, out
 	assert vfmt('struct_field_suffix_alignment_twice', out) == out
@@ -2005,7 +2030,7 @@ fn test_formatter_aligns_enum_and_interface_trailing_comments() {
 // A branch whose body is a single `return`/assignment/jump is as short as an expression body
 // and stays on the branch line, instead of being expanded over three lines.
 fn test_formatter_keeps_compact_match_branch_statements() {
-	source := "fn pick(a int) int {\n\tmut r := 0\n\tmatch a {\n\t\t1 { return 1 }\n\t\t2 { r = 2 }\n\t\t3 { r++ }\n\t\telse { return 0 }\n\t}\n\treturn r\n}\n"
+	source := 'fn pick(a int) int {\n\tmut r := 0\n\tmatch a {\n\t\t1 { return 1 }\n\t\t2 { r = 2 }\n\t\t3 { r++ }\n\t\telse { return 0 }\n\t}\n\treturn r\n}\n'
 	out := vfmt('compact_match_branch_statements', source)
 	assert out == source, out
 	assert vfmt('compact_match_branch_statements_twice', out) == out
