@@ -2224,6 +2224,10 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 	}
 	mut result := []flat.NodeId{}
 	result << t.make_decl_assign_typed('err', err_value, 'IError')
+	if t.stmt_tail_exits(body_id) {
+		t.restore_var_types(saved_var_types)
+		return t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', mode, err_expr)
+	}
 	if lowered := t.lower_or_multi_return_tail(body_id, target_name, target_type, field_types) {
 		for stmt in lowered {
 			result << stmt
@@ -2238,6 +2242,9 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 
 fn (t &Transformer) or_tail_can_supply_multi_return(id flat.NodeId, expected_count int) bool {
 	if int(id) < 0 || expected_count <= 0 {
+		return false
+	}
+	if t.stmt_tail_exits(id) {
 		return false
 	}
 	node := t.a.nodes[int(id)]
@@ -2294,6 +2301,9 @@ fn (t &Transformer) block_trailing_multi_return_values(node flat.Node, expected_
 		stmt := t.a.nodes[int(stmt_id)]
 		if stmt.kind != .expr_stmt || stmt.children_count == 0 {
 			break
+		}
+		if t.stmt_tail_exits(stmt_id) {
+			return none
 		}
 		for j := int(stmt.children_count) - 1; j >= 0; j-- {
 			values.prepend(t.a.child(&stmt, j))
@@ -2480,7 +2490,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		if is_last && child.kind == .expr_stmt && child.children_count > 0 {
 			inner_id := t.a.child(&child, 0)
 			inner := t.a.nodes[int(inner_id)]
-			if inner.kind == .call && t.is_noreturn_call(inner_id) {
+			if t.stmt_tail_exits(child_id) {
 				expanded := t.transform_stmt(child_id)
 				t.drain_pending(mut result)
 				for eid in expanded {
