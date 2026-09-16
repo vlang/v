@@ -20,8 +20,8 @@ const c_objective_c_ownership_qualifiers = ['__strong', '__weak', '__autoreleasi
 	'__unsafe_unretained', '__kindof']
 const c_objective_c_contextual_types = ['id', 'Class', 'SEL', 'Protocol', 'instancetype']
 const c_objective_c_compatibility_qualifiers = ['__bridge', '__bridge_retained', '__bridge_transfer',
-	'__strong', '__weak', '__autoreleasing', '__unsafe_unretained', '__kindof', 'id', 'Class', 'SEL',
-	'Protocol', 'instancetype']
+	'__strong', '__weak', '__autoreleasing', '__unsafe_unretained', '__kindof', 'id', 'Class',
+	'SEL', 'Protocol', 'instancetype']
 const c_common_c_attributes = ['alias', 'aligned', 'always_inline', 'cold', 'const', 'constructor',
 	'deprecated', 'destructor', 'format', 'hot', 'malloc', 'may_alias', 'noinline', 'nonnull',
 	'noreturn', 'packed', 'pure', 'returns_nonnull', 'section', 'sentinel', 'unused', 'used',
@@ -7342,11 +7342,10 @@ fn c_header_text_has_objective_c_tokens(text string, local_typedefs map[string]b
 					}
 				}
 			}
-			for keyword in ['interface', 'implementation', 'class', 'protocol', 'property',
-				'synthesize', 'dynamic', 'selector', 'encode', 'defs', 'compatibility_alias',
-				'autoreleasepool', 'synchronized', 'try', 'catch', 'finally', 'throw', 'optional',
-				'required', 'public', 'protected', 'private', 'package', 'import', 'available',
-				'end'] {
+			for keyword in ['interface', 'implementation', 'class', 'protocol', 'property', 'synthesize',
+				'dynamic', 'selector', 'encode', 'defs', 'compatibility_alias', 'autoreleasepool',
+				'synchronized', 'try', 'catch', 'finally', 'throw', 'optional', 'required', 'public',
+				'protected', 'private', 'package', 'import', 'available', 'end'] {
 				end := i + 1 + keyword.len
 				if end <= text.len && text[i + 1..end] == keyword && (end == text.len || !c_identifier_continue(text[end])) {
 					return true
@@ -10823,8 +10822,7 @@ fn c_flag_target_enabled(target string, platform pref.Target) bool {
 fn c_flag_target_os(target string) ?string {
 	normalized := pref.normalized_os(target)
 	if normalized in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix',
-		'wasm32_emscripten'] {
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
 		return normalized
 	}
 	return none
@@ -10832,8 +10830,8 @@ fn c_flag_target_os(target string) ?string {
 
 fn c_flag_target_arch(target string) ?string {
 	normalized := pref.normalized_arch(target)
-	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64',
-		'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
+	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'sparc64', 'wasm32'] {
 		return normalized
 	}
 	return none
@@ -18111,8 +18109,8 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 			g.writeln('#include <${header}>')
 		}
 		g.target_libc_optional_stdatomic_header()
-		for header in ['errno.h', 'fcntl.h', 'signal.h', 'stdio.h', 'stdlib.h', 'string.h',
-			'strings.h', 'math.h', 'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
+		for header in ['errno.h', 'fcntl.h', 'signal.h', 'stdio.h', 'stdlib.h', 'string.h', 'strings.h',
+			'math.h', 'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
 			g.target_libc_optional_header(header)
 		}
 		if g.needs_thread_type || g.uses_pthread() {
@@ -20618,8 +20616,55 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	if 'sync.Channel' in g.tc.structs {
 		g.writeln('static inline string v3_chan_str(chan ch, string elem) { if (ch == NULL) return string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("(nil)", 5)); string out = string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("{\\n    cap: ", 11)); out = string__plus(out, int__str(ch->cap)); out = string__plus(out, ch->closed != 0 ? v3_c_lit(", closed: true\\n}", 16) : v3_c_lit(", closed: false\\n}", 17)); return out; }')
 	}
-	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision > 0 && precision < 16) { double scale = pow(10.0, precision); double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
-	g.writeln('static inline string v3_f64_fixed(double x, int precision) { if (precision >= 16) { char base[128]; int b = snprintf(base, sizeof(base), "%.16g", x); if (b >= 0 && b < (int)sizeof(base)) { int dot = -1; int has_exp = 0; for (int i = 0; i < b; ++i) { if (base[i] == \'.\') dot = i; if (base[i] == \'e\' || base[i] == \'E\') has_exp = 1; } if (!has_exp) { int frac = dot >= 0 ? b - dot - 1 : 0; if (frac <= precision) { int n = b + (dot < 0 ? 1 : 0) + (precision - frac); u8* out = malloc_noscan(n + 1); memcpy(out, base, b); int pos = b; if (dot < 0) out[pos++] = \'.\'; while (frac++ < precision) out[pos++] = \'0\'; out[pos] = 0; return (string){.str = out, .len = n, .is_lit = 0}; } } } } double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
+	g.writeln('static inline string v3_f64_fixed(double x, int precision) {')
+	g.writeln('\tif (precision < 0) precision = 6;')
+	g.writeln('\tif (!isfinite(x)) return f64__str(x);')
+	g.writeln('\tint clamped_precision = precision > 35 ? 35 : precision;')
+	g.writeln('\tdouble rounder = 0.5 * pow(10.0, -clamped_precision);')
+	g.writeln('\tstring decimal = f64__str(fabs(x) + rounder);')
+	g.writeln('\tu8 digits[32];')
+	g.writeln('\tint digit_count = 0;')
+	g.writeln('\tint decimal_pos = -1;')
+	g.writeln('\tint exponent = 0;')
+	g.writeln('\tint exponent_sign = 1;')
+	g.writeln('\tfor (int i = 0; i < decimal.len; ++i) {')
+	g.writeln('\t\tu8 c = decimal.str[i];')
+	g.writeln("\t\tif (c >= '0' && c <= '9') {")
+	g.writeln('\t\t\tdigits[digit_count++] = c;')
+	g.writeln("\t\t} else if (c == '.') {")
+	g.writeln('\t\t\tdecimal_pos = digit_count;')
+	g.writeln("\t\t} else if (c == 'e' || c == 'E') {")
+	g.writeln('\t\t\t++i;')
+	g.writeln("\t\t\tif (i < decimal.len && decimal.str[i] == '-') {")
+	g.writeln('\t\t\t\texponent_sign = -1;')
+	g.writeln('\t\t\t\t++i;')
+	g.writeln("\t\t\t} else if (i < decimal.len && decimal.str[i] == '+') {")
+	g.writeln('\t\t\t\t++i;')
+	g.writeln('\t\t\t}')
+	g.writeln("\t\t\tfor (; i < decimal.len; ++i) exponent = exponent * 10 + decimal.str[i] - '0';")
+	g.writeln('\t\t\tbreak;')
+	g.writeln('\t\t}')
+	g.writeln('\t}')
+	g.writeln('\tif (decimal_pos < 0) decimal_pos = digit_count;')
+	g.writeln('\tdecimal_pos += exponent_sign * exponent;')
+	g.writeln('\tint whole_digits = decimal_pos > 0 ? decimal_pos : 1;')
+	g.writeln('\tint negative = x < 0.0;')
+	g.writeln('\tint out_len = negative + whole_digits + (precision > 0 ? precision + 1 : 0);')
+	g.writeln('\tu8* out = malloc_noscan((ptrdiff_t)out_len + 1);')
+	g.writeln('\tint pos = 0;')
+	g.writeln("\tif (negative) out[pos++] = '-';")
+	g.writeln("\tif (decimal_pos <= 0) out[pos++] = '0';")
+	g.writeln("\telse for (int i = 0; i < whole_digits; ++i) out[pos++] = i < digit_count ? digits[i] : '0';")
+	g.writeln('\tif (precision > 0) {')
+	g.writeln("\t\tout[pos++] = '.';")
+	g.writeln('\t\tfor (int i = 0; i < precision; ++i) {')
+	g.writeln('\t\t\tint digit = decimal_pos + i;')
+	g.writeln("\t\t\tout[pos++] = digit >= 0 && digit < digit_count ? digits[digit] : '0';")
+	g.writeln('\t\t}')
+	g.writeln('\t}')
+	g.writeln('\tout[pos] = 0;')
+	g.writeln('\treturn (string){.str = out, .len = out_len, .is_lit = 0};')
+	g.writeln('}')
 	g.writeln('static inline string v3_f64_exp(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*E", precision, x) : snprintf(tmp, sizeof(tmp), "%.*e", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*E", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*e", precision, x); return (string){.str = out, .len = n, .is_lit = 0}; }')
 	g.writeln('static inline string v3_f64_general(double x, int precision, int upper) { char tmp[128]; int n = upper ? snprintf(tmp, sizeof(tmp), "%.*G", precision, x) : snprintf(tmp, sizeof(tmp), "%.*g", precision, x); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); if (upper) snprintf((char*)out, (size_t)n + 1, "%.*G", precision, x); else snprintf((char*)out, (size_t)n + 1, "%.*g", precision, x); return (string){.str = out, .len = n, .is_lit = 0}; }')
 	g.writeln("static inline string v3_string_zpad(string s, int width) { if (s.len >= width) return s; int sign = s.len > 0 && s.str[0] == '-'; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); int pos = 0; if (sign) out[pos++] = '-'; memset(out + pos, '0', (size_t)pad); pos += pad; memcpy(out + pos, s.str + sign, (size_t)(s.len - sign)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
@@ -23445,7 +23490,8 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 	}
 	node := g.a.nodes[int(id)]
 	return match node.kind {
-		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .enum_val, .nil_literal, .sizeof_expr, .offsetof_expr {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .enum_val,
+		.nil_literal, .sizeof_expr, .offsetof_expr {
 			true
 		}
 		.prefix {
