@@ -3292,7 +3292,9 @@ fn (t &Transformer) file_module_name(file_node flat.Node) string {
 
 fn transform_is_top_level_stmt(node flat.Node) bool {
 	return match node.kind {
-		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt, .for_in_stmt, .if_expr, .comptime_if, .comptime_for, .match_stmt, .assert_stmt, .defer_stmt, .block, .label_stmt {
+		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
+		.for_in_stmt, .if_expr, .comptime_if, .comptime_for, .match_stmt, .assert_stmt,
+		.defer_stmt, .block, .label_stmt {
 			true
 		}
 		else {
@@ -8455,7 +8457,8 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 			}
 			return sources
 		}
-		.field_init, .paren, .cast_expr, .as_expr, .struct_init, .array_literal, .array_init, .map_init {
+		.field_init, .paren, .cast_expr, .as_expr, .struct_init, .array_literal, .array_init,
+		.map_init {
 			mut sources := []string{}
 			for i in 0 .. node.children_count {
 				for source_name in t.escape_aggregate_address_sources(t.a.child(&node, i), amp_sources, ptr_aliases) {
@@ -9734,7 +9737,8 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		.lambda_expr, .range, .select_branch {
 			return t.transform_children_expr(id, node)
 		}
-		.int_literal, .float_literal, .bool_literal, .char_literal, .nil_literal, .none_expr, .enum_val, .offsetof_expr {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .nil_literal, .none_expr,
+		.enum_val, .offsetof_expr {
 			// leaf/simple nodes - pass through unchanged
 			return id
 		}
@@ -18079,7 +18083,13 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 			mut new_args := []flat.NodeId{cap: int(node.children_count)}
 			for i in 1 .. node.children_count {
 				arg_id := t.a.child(&node, i)
-				na := if t.is_value_match_or_if_operand(arg_id) {
+				arg := t.a.nodes[int(arg_id)]
+				na := if arg.kind == .field_init {
+					// Trailing params-struct fields are still individual call children here.
+					// Leave their internal ordering to transform_struct_fields after
+					// transform_call_args groups them into the final struct argument.
+					arg_id
+				} else if t.is_value_match_or_if_operand(arg_id) {
 					t.materialize_value_branch_operand(arg_id)
 				} else if i < last_branch && t.operand_needs_ordering_snapshot(arg_id) {
 					// A `mut` argument keeps its lvalue identity (only its dynamic base/index
@@ -21558,8 +21568,8 @@ fn (t &Transformer) typeof_expr_is_int_literal(id flat.NodeId) bool {
 		return t.typeof_expr_is_int_literal(t.a.child(&node, 0))
 	}
 	if node.kind != .infix || node.children_count != 2
-		|| node.op !in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .left_shift,
-			.right_shift, .right_shift_unsigned, .power] {
+		|| node.op !in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .left_shift, .right_shift,
+			.right_shift_unsigned, .power] {
 		return false
 	}
 	return t.typeof_expr_is_int_literal(t.a.child(&node, 0))

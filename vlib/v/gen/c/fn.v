@@ -766,7 +766,8 @@ fn (g &FlatGen) cgen_is_top_level_stmt(id flat.NodeId) bool {
 	}
 	node := g.a.nodes[int(id)]
 	return match node.kind {
-		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt, .for_in_stmt, .if_expr, .assert_stmt, .defer_stmt, .label_stmt {
+		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
+		.for_in_stmt, .if_expr, .assert_stmt, .defer_stmt, .label_stmt {
 			true
 		}
 		.block, .comptime_if {
@@ -3350,7 +3351,8 @@ fn (g &FlatGen) expr_is_stable_for_reuse(id flat.NodeId) bool {
 	}
 	node := g.a.nodes[int(id)]
 	return match node.kind {
-		.ident, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .nil_literal, .none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+		.ident, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val, .sizeof_expr, .typeof_expr {
 			true
 		}
 		.selector, .paren, .cast_expr {
@@ -3472,16 +3474,12 @@ fn (mut g FlatGen) gen_sum_storage_lvalue_arg(arg_id flat.NodeId) bool {
 // per-instance closure context and yields a wrapper function that invokes the method.
 // Returns false when the selector is an ordinary field access (handled normally).
 fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id flat.NodeId, base_type types.Type, method string, borrow_receiver bool, clone_receiver_fn string) bool {
-	selector_has_fn_type := fn_type_from(g.usable_expr_type(selector_id)) != none
 	clean := types.unwrap_all_pointers(base_type)
 	// Transformed aggregate initializers can contain a fresh interface-method
-	// selector whose checker type is no longer attached to that exact node. Its
-	// receiver and interface signature still identify it unambiguously. Keep the
-	// stricter type guard for every other selector so ordinary fields cannot be
-	// mistaken for bound methods.
-	if !selector_has_fn_type && clean !is types.Interface {
-		return false
-	}
+	// selector whose checker type is no longer attached to that exact node. The
+	// same can happen to a concrete receiver selector after aggregate lowering.
+	// Field checks below take precedence, and the method lookup must still succeed,
+	// so the receiver and method declaration identify either case unambiguously.
 	mut receiver_name := ''
 	mut is_interface_receiver := false
 	if clean is types.Struct {
@@ -8213,8 +8211,8 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 	}
 	if node.kind == .ident {
 		if c_type := g.local_storage_c_type(node.value) {
-			return c_type in ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'isize', 'u8', 'u16', 'u32',
-				'u64', 'usize', 'f32', 'f64', 'rune']
+			return c_type in ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'isize', 'u8', 'u16',
+				'u32', 'u64', 'usize', 'f32', 'f64', 'rune']
 		}
 		if raw_type := g.local_storage_raw_type(node.value) {
 			clean := cgen_unalias_type(g.tc.parse_type(raw_type))
@@ -16522,8 +16520,7 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 		}
 	}
 	resolved_call := g.tc.resolved_call_name(id) or { '' }
-	callee_has_implicit_ctx := g.call_has_implicit_veb_ctx([resolved_call, fn_node.value,
-		emitted_name])
+	callee_has_implicit_ctx := g.call_has_implicit_veb_ctx([resolved_call, fn_node.value, emitted_name])
 	may_forward_ctx := callee_has_implicit_ctx && params.len > 1
 		&& node.children_count - 1 < params.len && g.is_implicit_veb_ctx_param(params[1])
 	current_ctx_name := if may_forward_ctx { g.cur_veb_ctx_name() or { '' } } else { '' }
@@ -18121,8 +18118,8 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 			if cfn.starts_with('__builtin_') {
 				return false
 			}
-			if cfn in ['text_start', 'text_end', 'rodata_start', 'rodata_end', 'data_start',
-				'data_end', 'interrupt_thunks'] {
+			if cfn in ['text_start', 'text_end', 'rodata_start', 'rodata_end', 'data_start', 'data_end',
+				'interrupt_thunks'] {
 				return false
 			}
 		}

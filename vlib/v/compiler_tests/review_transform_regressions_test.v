@@ -13503,3 +13503,65 @@ pub fn slice_indexes_equal(left SliceIndex, right SliceIndex) bool {
 	}, 'main.v')
 	assert out == 'true'
 }
+
+fn test_params_struct_branch_fields_keep_call_argument_order() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'params_struct_branch_field_order', 'struct Config {
+	size  int
+	color int
+}
+
+fn draw(text string, config Config) {
+	println(text + ":" + int_str(config.size) + ":" + int_str(config.color))
+}
+
+fn main() {
+	enabled := true
+	draw(if enabled { "yes" } else { "no" },
+		size:  if enabled { 16 } else { 20 }
+		color: if enabled { 1 } else { 2 }
+	)
+}
+')
+	assert out == 'yes:16:1'
+}
+
+fn test_adjacent_bound_method_params_struct_fields_keep_function_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'params_struct_bound_method_values', 'type Callback = fn (voidptr)
+
+struct Config {
+	init_fn  Callback
+	frame_fn Callback
+}
+
+@[heap]
+struct App {
+mut:
+	trace string
+}
+
+fn (mut app App) init() {
+	app.trace += "init"
+}
+
+fn (mut app App) frame(_ voidptr) {
+	app.trace += ":frame"
+}
+
+fn run(config Config) {
+	config.init_fn(unsafe { nil })
+	config.frame_fn(unsafe { nil })
+}
+
+fn main() {
+	mut app := &App{}
+	run(
+		init_fn:  app.init
+		frame_fn: app.frame
+	)
+	println(app.trace)
+}
+')
+	assert out == 'init:frame'
+}
