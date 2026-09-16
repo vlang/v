@@ -102,8 +102,7 @@ fn test_c_flag_default_define_macros_honor_configured_values() {
 	}) == [
 		'-DMESSAGE=configured value',
 	]
-	assert c_flag_args_with_values("-DPASTE=\$d('PASTE', 'fallback') ## source comment", '', '',
-		target, {
+	assert c_flag_args_with_values("-DPASTE=\$d('PASTE', 'fallback') ## source comment", '', '', target, {
 		'PASTE': 'a##b'
 	}) == [
 		'-DPASTE=a##b',
@@ -123,59 +122,41 @@ fn test_c_flag_default_define_macros_honor_configured_values() {
 fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	empty := map[string]bool{}
-	known_apple, active_apple := c_preprocessor_condition_state('__APPLE__', empty, empty, empty,
-		false, false, linux)
+	known_apple, active_apple := c_preprocessor_condition_state('__APPLE__', empty, empty, empty, false, false, linux)
 	assert known_apple
 	assert !active_apple
-	known_linux, active_linux := c_preprocessor_condition_state('linux', empty, empty, empty,
-		false, false, linux)
+	known_linux, active_linux := c_preprocessor_condition_state('linux', empty, empty, empty, false, false, linux)
 	assert known_linux
 	assert active_linux
-	known_negated_unix, active_negated_unix := c_preprocessor_condition_state('!unix', empty,
-		empty, empty, false, false, linux)
+	known_negated_unix, active_negated_unix := c_preprocessor_condition_state('!unix', empty, empty, empty, false, false, linux)
 	assert known_negated_unix
 	assert !active_negated_unix
-	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, false, linux,
-		false)
-	assert c_native_source_context_definitely_inactive(['#if !unix'], []string{}, false, linux,
-		false)
-	assert c_native_source_context_definitely_inactive(['#if linux', '#else'], []string{}, false,
-		linux, false)
-	known_c99_linux, active_c99_linux := c_preprocessor_condition_state('linux', empty, empty,
-		empty, false, true, linux)
+	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, false, linux, false)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], []string{}, false, linux, false)
+	assert c_native_source_context_definitely_inactive(['#if linux', '#else'], []string{}, false, linux, false)
+	known_c99_linux, active_c99_linux := c_preprocessor_condition_state('linux', empty, empty, empty, false, true, linux)
 	assert !known_c99_linux
 	assert active_c99_linux
-	known_c99_unix, active_c99_unix := c_preprocessor_condition_state('unix', empty, empty, empty,
-		false, true, linux)
+	known_c99_unix, active_c99_unix := c_preprocessor_condition_state('unix', empty, empty, empty, false, true, linux)
 	assert !known_c99_unix
 	assert active_c99_unix
-	known_c99_underscored, active_c99_underscored := c_preprocessor_condition_state('__linux__',
-		empty, empty, empty, false, true, linux)
+	known_c99_underscored, active_c99_underscored := c_preprocessor_condition_state('__linux__', empty, empty, empty, false, true, linux)
 	assert known_c99_underscored
 	assert active_c99_underscored
-	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, true, linux,
-		false)
-	assert !c_native_source_context_definitely_inactive(['#if !unix'], []string{}, true, linux,
-		false)
+	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, true, linux, false)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], []string{}, true, linux, false)
 	assert !c_native_source_context_definitely_inactive(['#if linux', '#else'], [
 		'-std=c99',
 	], false, linux, false)
-	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c11'], false, linux,
-		false)
-	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c99', '-std=gnu11'],
-		false, linux, false)
-	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11', '-std=c99'],
-		false, linux, false)
-	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11'], true, linux,
-		false)
-	assert !c_native_source_context_definitely_inactive(['#if SOURCE_FEATURE'], []string{}, false,
-		linux, true)
-	known_unset, active_unset := c_preprocessor_condition_state('SOME_UNSET_MACRO', empty, empty,
-		empty, false, false, linux)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c11'], false, linux, false)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c99', '-std=gnu11'], false, linux, false)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11', '-std=c99'], false, linux, false)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11'], true, linux, false)
+	assert !c_native_source_context_definitely_inactive(['#if SOURCE_FEATURE'], []string{}, false, linux, true)
+	known_unset, active_unset := c_preprocessor_condition_state('SOME_UNSET_MACRO', empty, empty, empty, false, false, linux)
 	assert known_unset
 	assert !active_unset
-	known_negated, active_negated := c_preprocessor_condition_state('!SOME_UNSET_MACRO', empty,
-		empty, empty, false, false, linux)
+	known_negated, active_negated := c_preprocessor_condition_state('!SOME_UNSET_MACRO', empty, empty, empty, false, false, linux)
 	assert known_negated
 	assert active_negated
 	known_defined, active_defined := c_preprocessor_condition_state('SOME_DEFINED_MACRO', {
@@ -193,20 +174,16 @@ fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	}, empty, empty, false, false, linux)
 	assert known_presence
 	assert active_presence
-	known_compound, active_compound := c_preprocessor_condition_state('SOME_UNSET_MACRO || 1',
-		empty, empty, empty, false, false, linux)
+	known_compound, active_compound := c_preprocessor_condition_state('SOME_UNSET_MACRO || 1', empty, empty, empty, false, false, linux)
 	assert !known_compound
 	assert active_compound
-	known_external, active_external := c_preprocessor_condition_state('HEADER_FEATURE', empty,
-		empty, empty, true, false, linux)
+	known_external, active_external := c_preprocessor_condition_state('HEADER_FEATURE', empty, empty, empty, true, false, linux)
 	assert !known_external
 	assert active_external
-	known_external_defined, active_external_defined := c_preprocessor_condition_state('defined(HEADER_FEATURE)',
-		empty, empty, empty, true, false, linux)
+	known_external_defined, active_external_defined := c_preprocessor_condition_state('defined(HEADER_FEATURE)', empty, empty, empty, true, false, linux)
 	assert !known_external_defined
 	assert active_external_defined
-	known_external_target, active_external_target := c_preprocessor_condition_state('__APPLE__',
-		empty, empty, empty, true, false, linux)
+	known_external_target, active_external_target := c_preprocessor_condition_state('__APPLE__', empty, empty, empty, true, false, linux)
 	assert known_external_target
 	assert !active_external_target
 }
@@ -256,8 +233,7 @@ fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
 	system_dir := os.real_path(os.join_path(source_dir, 'system'))
 	cfg_file := os.real_path(os.join_path(source_dir, 'cfg.h'))
 	defs_file := os.real_path(os.join_path(source_dir, 'defs.h'))
-	flags := c_flag_args('-I "include dir" -L lib -isystem system -include cfg.h -imacros defs.h -DVALUE=1',
-		'', source_file, pref.host_target())
+	flags := c_flag_args('-I "include dir" -L lib -isystem system -include cfg.h -imacros defs.h -DVALUE=1', '', source_file, pref.host_target())
 	assert flags == [
 		'-I',
 		include_dir,
@@ -282,10 +258,11 @@ fn test_c_flag_existing_path_macros() {
 		os.rmdir_all(dir) or {}
 	}
 	missing := os.join_path(dir, 'missing')
-	assert c_flag_args('-I\$when_first_existing(\'${missing}\', \'${dir}\')', '', '',
-		pref.host_target()) == ['-I${dir}']
-	assert c_flag_args('-I\$when_first_existing(\'${missing}\')', '', '', pref.host_target()).len == 0
-	assert c_flag_args('\$first_existing(\'${missing}\', \'${dir}\')', '', '', pref.host_target()) == [
+	assert c_flag_args("-I\$when_first_existing('${missing}', '${dir}')", '', '', pref.host_target()) == [
+		'-I${dir}',
+	]
+	assert c_flag_args("-I\$when_first_existing('${missing}')", '', '', pref.host_target()).len == 0
+	assert c_flag_args("\$first_existing('${missing}', '${dir}')", '', '', pref.host_target()) == [
 		dir,
 	]
 }
@@ -294,7 +271,7 @@ fn test_disabled_c_flag_does_not_expand_existing_path_macros() {
 	target := pref.target_from('macos', 'arm64') or { panic(err) }
 	missing := os.join_path(os.vtmp_dir(), 'v3_disabled_c_flag_missing_${os.getpid()}')
 	os.rmdir_all(missing) or {}
-	assert c_flag_args('linux \$first_existing(\'${missing}\')', '', '', target).len == 0
+	assert c_flag_args("linux \$first_existing('${missing}')", '', '', target).len == 0
 }
 
 fn test_split_forced_include_flags_are_cache_inputs() {
@@ -308,8 +285,7 @@ fn test_split_forced_include_flags_are_cache_inputs() {
 	defs := os.join_path(dir, 'defs.h')
 	os.write_file(cfg, '#define CFG_VALUE 1\n') or { panic(err) }
 	os.write_file(defs, '#define DEFS_VALUE 2\n') or { panic(err) }
-	flags := c_flag_args('-include "cfg header.h" -imacros defs.h', '',
-		os.join_path(dir, 'main.v'), pref.host_target())
+	flags := c_flag_args('-include "cfg header.h" -imacros defs.h', '', os.join_path(dir, 'main.v'), pref.host_target())
 	assert flags == ['-include', os.real_path(cfg), '-imacros', os.real_path(defs)]
 	mut expected := [os.real_path(cfg), os.real_path(defs)]
 	expected.sort()
@@ -474,8 +450,7 @@ fn test_cache_input_scan_tracks_nested_literal_include_macros() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, _, _, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	inputs, _, _, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, ['-I', dir], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !has_untracked
@@ -506,8 +481,7 @@ fn test_cache_input_scan_keeps_conditionally_undefined_absent_macro_known() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, _, _, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	inputs, _, _, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !has_untracked
@@ -659,8 +633,7 @@ fn test_cache_input_scan_rejects_dynamic_include_macros() {
 		os.rmdir_all(dir) or {}
 	}
 	header := os.join_path(dir, 'outer.h')
-	os.write_file(header,
-		'#define V3_NESTED_HEADER V3_SELECTED_HEADER\n#include V3_NESTED_HEADER\n') or {
+	os.write_file(header, '#define V3_NESTED_HEADER V3_SELECTED_HEADER\n#include V3_NESTED_HEADER\n') or {
 		panic(err)
 	}
 	source := os.join_path(dir, 'sample.v')
@@ -714,8 +687,7 @@ fn test_cache_input_scan_tracks_source_defined_include_macros() {
 	os.write_file(outer_header, '#include V3_EXTERNAL_HEADER\n') or { panic(err) }
 	os.write_file(nested_header, '#define NESTED_VALUE 1\n') or { panic(err) }
 	source := os.join_path(dir, 'sample.v')
-	os.write_file(source,
-		'module sample\n#define V3_EXTERNAL_HEADER "nested.h"\n#include "outer.h"\n') or {
+	os.write_file(source, 'module sample\n#define V3_EXTERNAL_HEADER "nested.h"\n#include "outer.h"\n') or {
 		panic(err)
 	}
 	mut prefs := pref.new_preferences()
@@ -741,8 +713,7 @@ fn test_cache_input_scan_uses_complete_compiler_macro_environment() {
 	outer_header := os.join_path(dir, 'outer.h')
 	default_header := os.join_path(dir, 'default.h')
 	override_header := os.join_path(dir, 'override.h')
-	os.write_file(outer_header,
-		'#if defined(V3_FORCE_DEFAULT) || !defined(V3_SELECTED_HEADER)\n#define V3_SELECTED_HEADER "default.h"\n#endif\n#include V3_SELECTED_HEADER\n')!
+	os.write_file(outer_header, '#if defined(V3_FORCE_DEFAULT) || !defined(V3_SELECTED_HEADER)\n#define V3_SELECTED_HEADER "default.h"\n#endif\n#include V3_SELECTED_HEADER\n')!
 	os.write_file(default_header, '#define V3_DEFAULT_VALUE 1\n')!
 	os.write_file(override_header, '#define V3_OVERRIDE_VALUE 1\n')!
 	source := os.join_path(dir, 'sample.v')
@@ -751,14 +722,12 @@ fn test_cache_input_scan_uses_complete_compiler_macro_environment() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	default_inputs, _, _, _, _, _, _, default_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	default_inputs, _, _, _, _, _, _, default_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !default_untracked
 	assert os.real_path(default_header) in default_inputs['sample']
-	override_inputs, _, _, _, _, _, _, override_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	override_inputs, _, _, _, _, _, _, override_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, {
 		'V3_SELECTED_HEADER': '"override.h"'
@@ -776,16 +745,14 @@ fn test_cache_input_scan_ignores_directives_in_trailing_block_comments() {
 		os.rmdir_all(dir) or {}
 	}
 	header := os.join_path(dir, 'api.h')
-	os.write_file(header,
-		'int declaration; /* documentation starts here\n#define V3_COMMENTED_IMPLEMENTATION\n*/\n#ifdef V3_COMMENTED_IMPLEMENTATION\nstatic int inactive_state;\n#endif\n')!
+	os.write_file(header, 'int declaration; /* documentation starts here\n#define V3_COMMENTED_IMPLEMENTATION\n*/\n#ifdef V3_COMMENTED_IMPLEMENTATION\nstatic int inactive_state;\n#endif\n')!
 	source := os.join_path(dir, 'sample.v')
 	os.write_file(source, 'module sample\n#include "api.h"\n')!
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, _, _, _, static_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	inputs, _, _, _, static_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !has_untracked
@@ -803,14 +770,12 @@ fn test_cache_input_scan_tracks_native_header_macro_context() {
 	header := os.join_path(dir, 'implementation.h')
 	os.write_file(header, '#ifdef V3_HEADER_IMPLEMENTATION\nstatic int v3_header_state;\n#endif\n')!
 	source := os.join_path(dir, 'sample.v')
-	os.write_file(source,
-		'module sample\n#define V3_HEADER_IMPLEMENTATION\n#include "implementation.h"\n')!
+	os.write_file(source, 'module sample\n#define V3_HEADER_IMPLEMENTATION\n#include "implementation.h"\n')!
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	_, native_roots, native_contexts, _, static_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	_, native_roots, native_contexts, _, static_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !has_untracked
@@ -842,8 +807,7 @@ fn test_cache_input_scan_tracks_preceding_header_macro_mutations() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !has_untracked
@@ -866,19 +830,16 @@ fn test_cache_input_scan_orders_pre_and_postincludes_like_cgen() {
 	implementation_header := os.join_path(dir, 'implementation.h')
 	os.write_file(pre_header, '#define V3_PRE_READY 1\n')!
 	os.write_file(post_header, '#define V3_POST_LATE 1\n')!
-	os.write_file(implementation_header,
-		'#ifndef V3_PRE_READY\n#error missing preinclude\n#endif\n#ifdef V3_POST_LATE\nstatic int v3_wrong_postinclude_order;\n#endif\nstatic int v3_placed_include_state;\n')!
+	os.write_file(implementation_header, '#ifndef V3_PRE_READY\n#error missing preinclude\n#endif\n#ifdef V3_POST_LATE\nstatic int v3_wrong_postinclude_order;\n#endif\nstatic int v3_placed_include_state;\n')!
 	source := os.join_path(dir, 'sample.v')
 	// Source order is deliberately opposite to generated placement: cgen emits
 	// the preinclude first and the postinclude after all generated bodies.
-	os.write_file(source,
-		'module sample\n#postinclude "post.h"\n#insert "implementation.h"\n#preinclude "pre.h"\n')!
+	os.write_file(source, 'module sample\n#postinclude "post.h"\n#insert "implementation.h"\n#preinclude "pre.h"\n')!
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	inputs, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !has_untracked
@@ -898,16 +859,14 @@ fn test_cache_input_scan_excludes_objective_cpp_sources_from_native_roots() {
 		os.rmdir_all(dir) or {}
 	}
 	objective_cpp_source := os.join_path(dir, 'implementation.mm')
-	os.write_file(objective_cpp_source,
-		'extern "C" int v3_objective_cpp_value(void) { return []() { return 1; }(); }\n')!
+	os.write_file(objective_cpp_source, 'extern "C" int v3_objective_cpp_value(void) { return []() { return 1; }(); }\n')!
 	source := os.join_path(dir, 'sample.v')
 	os.write_file(source, 'module sample\n#include "implementation.mm"\n')!
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, native_roots, _, unscoped_inputs, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	inputs, native_roots, _, unscoped_inputs, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !has_untracked
@@ -936,8 +895,7 @@ fn test_cache_input_scan_ignores_inactive_native_root_context_mutation() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !has_untracked
@@ -964,8 +922,7 @@ fn test_cache_input_scan_ignores_inactive_native_root() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert !has_untracked
@@ -993,8 +950,7 @@ fn test_cache_input_scan_rejects_repeated_native_root_with_different_context() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
 	assert has_untracked
@@ -1020,10 +976,8 @@ fn test_cache_native_input_language_detects_implicit_objective_c_sources() {
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.target_from('macos', 'arm64') or { panic(err) }
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
-	assert cache_native_input_path_needs_objective_c(objective_c_source, []string{}, false,
-		prefs.target)
-	assert cache_native_input_path_needs_objective_c(objective_c_header, []string{}, false,
-		prefs.target)
+	assert cache_native_input_path_needs_objective_c(objective_c_source, []string{}, false, prefs.target)
+	assert cache_native_input_path_needs_objective_c(objective_c_header, []string{}, false, prefs.target)
 	assert !cache_native_input_path_needs_objective_c(plain_header, []string{}, false, prefs.target)
 	for include, expected in {
 		'"implementation.m"': true
@@ -1112,8 +1066,7 @@ fn test_cache_native_inputs_language_uses_objective_c_for_darwin_headers() {
 
 	// Missing pre/postinclude headers prove the language choice does not read them.
 	placed_program := os.join_path(dir, 'placed.v')
-	os.write_file(placed_program,
-		'module placed\n#preinclude "missing_early.h"\n#postinclude <missing_late.h>\n')!
+	os.write_file(placed_program, 'module placed\n#preinclude "missing_early.h"\n#postinclude <missing_late.h>\n')!
 	mut p3 := parser.Parser.new(macos_prefs)
 	a3 := p3.parse_file(placed_program)
 	assert cache_native_inputs_language(a3, '', []string{}, false, 'clang', macos_prefs.target) == 'objective-c'
@@ -1129,7 +1082,7 @@ fn test_cache_input_scan_rejects_ambiguous_include_macro_literal() {
 	}
 	outer_header := os.join_path(dir, 'outer.h')
 	os.write_file(outer_header, '#define SELECTED_HEADER "default.h"
-#if FOO == 1
+#if CHOOSE(FOO)
 #undef SELECTED_HEADER
 #define SELECTED_HEADER OVERRIDE_HEADER
 #endif
@@ -1143,12 +1096,12 @@ fn test_cache_input_scan_rejects_ambiguous_include_macro_literal() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	// `FOO == 1` is not evaluable, so the SELECTED_HEADER mutation is ambiguous. The
-	// real preprocessor selects override.h; the scanner must not adopt the stale
-	// "default.h" literal and call the plan cacheable.
+	// Function-like macros are not evaluable, so the SELECTED_HEADER mutation is
+	// ambiguous. The real preprocessor selects override.h; the scanner must not adopt
+	// the stale "default.h" literal and call the plan cacheable.
 	_, _, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
-	}, ['-DFOO=1', '-DOVERRIDE_HEADER="override.h"'], prefs.target)
+	}, ['-DCHOOSE(x)=x', '-DFOO=1', '-DOVERRIDE_HEADER="override.h"'], prefs.target)
 	assert has_untracked
 }
 
@@ -1162,8 +1115,7 @@ fn test_cache_input_scan_bounds_repeated_header_trees() {
 	common_header := os.join_path(dir, 'common.h')
 	left_header := os.join_path(dir, 'left.h')
 	right_header := os.join_path(dir, 'right.h')
-	os.write_file(common_header,
-		'#ifndef V3_COMMON_H\n#define V3_COMMON_H\n#define V3_COMMON_VALUE 1\n#endif\n') or {
+	os.write_file(common_header, '#ifndef V3_COMMON_H\n#define V3_COMMON_H\n#define V3_COMMON_VALUE 1\n#endif\n') or {
 		panic(err)
 	}
 	os.write_file(left_header, '#include "common.h"\n') or { panic(err) }
@@ -1211,8 +1163,7 @@ fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, native_roots, _, unscoped_inputs, static_inputs, _, _, captured_digests, has_untracked := cache_external_input_snapshot_with_resolved_flags(a,
-		'', {
+	inputs, native_roots, _, unscoped_inputs, static_inputs, _, _, captured_digests, has_untracked := cache_external_input_snapshot_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, false)
 	assert !has_untracked
@@ -1220,21 +1171,17 @@ fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 		os.real_path(direct_header), os.real_path(nested_header)]
 	expected_inputs.sort()
 	assert inputs['sample'] == expected_inputs
-	assert native_roots['sample'] == [os.real_path(root_source),
-		os.real_path(direct_header)]
+	assert native_roots['sample'] == [os.real_path(root_source), os.real_path(direct_header)]
 	assert unscoped_inputs['sample'] == expected_inputs
-	assert static_inputs['sample'] == [os.real_path(nested_source),
-		os.real_path(nested_header)]
-	program_inputs, program_roots, _, program_unscoped, _, _, _, program_has_untracked := cache_external_input_files_with_resolved_flags(a,
-		'', {
+	assert static_inputs['sample'] == [os.real_path(nested_source), os.real_path(nested_header)]
+	program_inputs, program_roots, _, program_unscoped, _, _, _, program_has_untracked := cache_external_input_files_with_resolved_flags(a, '', {
 		'sample': true
 	}, [], prefs.target, {
 		os.real_path(source): true
 	}, map[string]string{}, false)
 	assert !program_has_untracked
 	assert program_inputs['main'] == expected_inputs
-	assert program_roots['main'] == [os.real_path(root_source),
-		os.real_path(direct_header)]
+	assert program_roots['main'] == [os.real_path(root_source), os.real_path(direct_header)]
 	assert program_unscoped['main'] == expected_inputs
 	assert 'sample' !in program_inputs
 	late_source := os.join_path(dir, 'late.c')
@@ -1277,8 +1224,7 @@ fn test_termux_comptime_branch_uses_canonical_target() {
 		os.rmdir_all(dir) or {}
 	}
 	source := os.join_path(dir, 'main.v')
-	os.write_file(source,
-		'module main\n\n\$if termux {\nfn termux_selected() {}\n} \$else {\nfn android_selected() {}\n}\n')!
+	os.write_file(source, 'module main\n\n\$if termux {\nfn termux_selected() {}\n} \$else {\nfn android_selected() {}\n}\n')!
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.target_from('termux', 'arm64') or { panic(err) }
 	mut p := parser.Parser.new(prefs)
@@ -1296,8 +1242,7 @@ fn test_emscripten_comptime_branch_uses_canonical_target() {
 		os.rmdir_all(dir) or {}
 	}
 	source := os.join_path(dir, 'main.v')
-	os.write_file(source,
-		'module main\n\n\$if wasm32_emscripten {\nfn wasm_selected() {}\n} \$else {\nfn host_selected() {}\n}\n')!
+	os.write_file(source, 'module main\n\n\$if wasm32_emscripten {\nfn wasm_selected() {}\n} \$else {\nfn host_selected() {}\n}\n')!
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.target_from('wasm32_emscripten', 'wasm32') or { panic(err) }
 	mut p := parser.Parser.new(prefs)

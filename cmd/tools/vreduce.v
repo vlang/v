@@ -20,9 +20,9 @@ fn main() {
 	fp.version(version)
 
 	error_msg := fp.string('error_msg', `m`, default_error_msg,
-		'the error message you want to reproduce, default: \'${default_error_msg}\'')
+		"the error message you want to reproduce, default: '${default_error_msg}'")
 	mut command := fp.string('command', `c`, default_command,
-		'the command used to try to reproduce the error, default: \'${default_command}\', will replace PATH with the path of the folder where it is run')
+		"the command used to try to reproduce the error, default: '${default_command}', will replace PATH with the path of the folder where it is run")
 	copy_project := fp.bool('cp', `p`, false,
 		'if used v reduce will copy the whole folder of the project')
 	timeout := fp.int('to', `t`, 0, 'sets a timeout for the command, default=0 : no timeout')

@@ -38,7 +38,12 @@ struct User {
 fn main() {
 	mut app := &App{
 		// Use your actual local PostgreSQL password here.
-		db: pg.connect(host: 'localhost', user: 'postgres', password: 'password', dbname: 'postgres')!
+		db: pg.connect(
+			host:     'localhost'
+			user:     'postgres'
+			password: 'password'
+			dbname:   'postgres'
+		)!
 	}
 	app.auth = auth.new(app.db)
 	veb.run[App, Context](mut app, port)

@@ -37,7 +37,8 @@ fn main() {
 	requested_vflags := os.getenv('VFLAGS')
 	mut requested_args := vflags.tokenize_to_args(requested_vflags)
 	requested_args << args_before
-	strict_v3 := '-new-compiler' in requested_args && '-old-compiler' !in requested_args
+	strict_v3 := ('-new-compiler' in requested_args && '-old-compiler' !in requested_args)
+		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
 	mut session_vargs := args_before.join(' ')
 	if strict_v3 {
 		// Apply strict V3 flags to each top-level test compilation without leaking
@@ -49,7 +50,8 @@ fn main() {
 	mut ts := testing.new_test_session(session_vargs, true)
 	ts.exec_mode = .compile_and_run
 	ts.fail_fast = ctx.fail_fast
-	for targ in args_after {
+	for raw_targ in args_after {
+		targ := os.norm_path(raw_targ)
 		if os.is_dir(targ) {
 			// Fetch all tests from the directory
 			files, skip_files := ctx.should_test_dir(targ.trim_right(os.path_separator), backend)
@@ -142,8 +144,8 @@ pub fn (ctx &Context) should_test_dir(path string, backend string) ([]string, []
 }
 
 enum ShouldTestStatus {
-	test // do test, print OK or FAIL, depending on if it passes
-	skip // print SKIP for the test
+	test   // do test, print OK or FAIL, depending on if it passes
+	skip   // print SKIP for the test
 	ignore // just ignore the file, so it will not be printed at all in the list of tests
 }
 

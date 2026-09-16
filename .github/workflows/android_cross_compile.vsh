@@ -25,9 +25,16 @@ fn main() {
 	android_include_path := os.join_path(include_path, 'android')
 
 	//'-I"${include_path}"'
-	cflags := ['-I"${android_include_path}"', '-Wno-unused-value', '-Wno-implicit-function-declaration',
-		'-Wno-int-conversion']
+	cflags := ['-I"${android_include_path}"', '-Wno-unused-value',
+		'-Wno-implicit-function-declaration', '-Wno-int-conversion']
 	for arch in ndk.supported_archs {
+		v_arch := match arch {
+			'arm64-v8a' { 'arm64' }
+			'armeabi-v7a' { 'arm32' }
+			'x86' { 'x86' }
+			'x86_64' { 'amd64' }
+			else { panic('unsupported Android architecture `${arch}`') }
+		}
 		for level in ['min', 'max'] {
 			compiler_api := match level {
 				'min' {
@@ -46,7 +53,7 @@ fn main() {
 			o_file := os.join_path(work_dir, arch + '-' + level + '.o')
 
 			// x.v -> x.c
-			v_compile_cmd := '${vexe} -o ${c_file} -os android -gc none ${v_example}'
+			v_compile_cmd := '${vexe} -o ${c_file} -os android -arch ${v_arch} -gc none ${v_example}'
 			vres := os.execute(v_compile_cmd)
 			if vres.exit_code != 0 {
 				panic('"${v_compile_cmd}" failed: ${vres.output}')

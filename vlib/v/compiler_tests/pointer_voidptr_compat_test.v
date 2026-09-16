@@ -233,6 +233,38 @@ fn main() {
 	assert run.output.trim_space() == '17'
 }
 
+fn test_c_pointer_to_voidptr_argument_accepts_allocated_buffer() {
+	v3_bin := pointer_voidptr_build_v3()
+	header := os.join_path(os.temp_dir(), 'v3_c_pointer_to_voidptr_${os.getpid()}.h')
+	source := os.join_path(os.temp_dir(), 'v3_c_pointer_to_voidptr_${os.getpid()}.v')
+	bin := os.join_path(os.temp_dir(), 'v3_c_pointer_to_voidptr_${os.getpid()}')
+	os.write_file(header, 'static int v3_read_byte(void *ptr) { return *((unsigned char *)ptr); }\n') or {
+		panic(err)
+	}
+	os.write_file(source, '#insert "${header}"
+
+fn C.v3_read_byte(&voidptr) int
+
+fn main() {
+	buffer := vcalloc(1)
+	unsafe {
+		buffer[0] = 19
+	}
+	println(int_str(C.v3_read_byte(buffer)))
+	unsafe {
+		free(buffer)
+	}
+}
+') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} ${source} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '19'
+}
+
 fn test_pointer_to_voidptr_return_keeps_pointer_value() {
 	v3_bin := pointer_voidptr_build_v3()
 	source := 'fn make_values() voidptr {

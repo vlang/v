@@ -1,16 +1,23 @@
 module main
 
 import os
+import json2
 import v.util
 import v.util.diff
 import v.pref
-import v.builder
-import v.builder.cbuilder
-import v.ast
 import term
 
-const base_os = pref.get_host_os()
-const os_list = [pref.OS.linux, .macos, .windows, .freebsd, .openbsd, .solaris, .termux]
+struct VDocModule {
+	contents []VDocNode
+}
+
+struct VDocNode {
+	content string
+	kind    string
+	is_pub  bool @[json: public]
+}
+
+const os_list = ['linux', 'macos', 'windows', 'freebsd', 'openbsd', 'solaris', 'termux']
 const skip_modules = [
 	'builtin.bare',
 	'builtin.linux_bare.old',
@@ -30,6 +37,7 @@ const is_verbose = os.getenv('VERBOSE') != ''
 fn main() {
 	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 	vroot := os.dir(vexe)
+	base_os := pref.host_os_name()
 	util.set_vroot_folder(vroot)
 	os.chdir(vroot)!
 	modules := if os.args.len > 1 { os.args[1..] } else { all_vlib_modules() }
@@ -80,27 +88,22 @@ fn all_vlib_modules() []string {
 	return modules
 }
 
-fn gen_api_for_module_in_os(mod_name string, os_ pref.OS) string {
+fn gen_api_for_module_in_os(mod_name string, os_name string) string {
 	if is_verbose {
-		eprintln('Checking module: ${mod_name:-30} for OS: ${os_:-10} ...')
+		eprintln('Checking module: ${mod_name:-30} for OS: ${os_name:-10} ...')
 	}
-	os_name := os_.str().to_lower()
-	mpath := os.join_path('vlib', mod_name.replace('.', '/'))
-	tmpname := '/tmp/${mod_name}_${os_name}.c'
-	prefs, _ := pref.parse_args([], ['-os', os_name, '-o', tmpname, '-shared', mpath])
-	mut b := builder.new_builder(prefs)
-	cbuilder.compile_c(mut b)
+	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
+	result := os.execute('${os.quoted_path(vexe)} doc -f json -o - -os ${os_name} ${os.quoted_path(mod_name)}')
+	if result.exit_code != 0 {
+		panic('failed to document `${mod_name}` for `${os_name}`:\n${result.output}')
+	}
+	doc := json2.decode[VDocModule](result.output) or {
+		panic('failed to decode documentation for `${mod_name}` on `${os_name}`: ${err}')
+	}
 	mut res := []string{}
-	for f in b.parsed_files {
-		for s in f.stmts {
-			if s is ast.FnDecl && s.is_pub {
-				fn_mod := s.modname()
-				if fn_mod == mod_name {
-					fn_signature := b.table.stringify_fn_decl(&s, mod_name, map[string]string{}, false)
-					fline := '${fn_mod}: ${fn_signature}'
-					res << fline
-				}
-			}
+	for node in doc.contents {
+		if node.is_pub && node.kind in ['function', 'method'] {
+			res << '${mod_name}: ${node.content}'
 		}
 	}
 	res.sort()

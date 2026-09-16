@@ -29,7 +29,7 @@ fn run_macos_v3_test_process(executable string, args []string, work_dir string, 
 	output := process.stdout_slurp() + process.stderr_slurp()
 	result := os.Result{
 		exit_code: process.code
-		output: output
+		output:    output
 	}
 	process.close()
 	return result
@@ -51,7 +51,7 @@ fn test_macos_v3_driver_source_selection_matches_cross_define() {
 	assert native_files == ['macos_v3_driver_notd_cross.v']
 
 	cross_prefs := &pref.Preferences{
-		compile_defines: ['cross']
+		compile_defines:     ['cross']
 		compile_defines_all: ['cross']
 	}
 	cross_files :=
@@ -61,7 +61,7 @@ fn test_macos_v3_driver_source_selection_matches_cross_define() {
 
 fn test_macos_v3_relevant_command_owns_every_direct_c_build() {
 	mut prefs := &pref.Preferences{
-		path: 'main.v'
+		path:    'main.v'
 		backend: .c
 	}
 	for command in ['main.v', 'build', 'run'] {
@@ -204,13 +204,20 @@ fn test_v1_fallback_installer_downloads_0_5_2_and_uses_local_or_oldv_fallback() 
 fn test_windows_makev_builds_the_v1_fallback_executable() {
 	source := os.read_file(os.join_path(macos_v3_test_vroot, 'makev.bat'))!
 	assert source.contains('set V1_FALLBACK=./v1_fallback.exe')
-	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !V_FALLBACK_CC_ARGS! -d v1_fallback -o "%V1_FALLBACK%" cmd/v')
+	assert source.contains('set V_STAGE_C=./v_stage.c')
+	assert source.contains('"%V_UPDATED%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !V_FALLBACK_CC_ARGS! -d v1_fallback -o "%V1_FALLBACK%" cmd/v')
 	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!tcc_exe!"')
-	assert source.contains('set V_FALLBACK_CC_ARGS=-cc clang -cflags "--target=!clang_target!"')
+	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!clang_exe!" -cflags "--target=!clang_target!"')
+	assert source.contains('set stage_vflags=-cc "!clang_exe!" -cflags "--target=!clang_target!"')
+	assert source.contains('call :resolve_executable clang')
 	assert source.contains('set V_FALLBACK_CC_ARGS=-cc "!gcc_exe!"')
 	assert source.contains('set V_FALLBACK_CC_ARGS=-cc msvc')
 	assert source.contains('"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!tcc_exe!" -o "%V_UPDATED%" cmd/v')
-	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -d v1_fallback -o "%V_STAGE%" cmd/v')
+	assert source.contains('call :build_stage_with_clang')
+	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -g -o "%V_STAGE_C%" cmd/v')
+	assert source.contains('"!clang_exe!" --target=!clang_target! -std=gnu11')
+	assert source.contains('"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -o "%V_STAGE%" cmd/v')
+	assert !source.contains('!stage_vflags! -d v1_fallback -o "%V_STAGE%"')
 	assert source.contains('if !ERRORLEVEL! EQU 0 set stage_vflags=-cc "!tcc_exe!"')
 	assert !source.contains('-cflags -Bthirdparty/tcc')
 	normalized := source.replace('\r\n', '\n')
@@ -292,7 +299,7 @@ fn test_macos_v3_forwarded_args_strip_only_compiler_selection() {
 	assert macos_v3_compat_c99_flag in forwarded
 
 	run_prefs := &pref.Preferences{
-		is_run: true
+		is_run:   true
 		run_args: ['-new-compiler']
 	}
 	run_forwarded := macos_v3_forwarded_args(run_prefs, [
@@ -321,8 +328,8 @@ fn test_macos_v3_forwarded_args_propagate_resolved_libc() {
 	assert '-glibc' !in glibc_args
 
 	run_args := macos_v3_forwarded_args(&pref.Preferences{
-		is_run: true
-		is_musl: true
+		is_run:   true
+		is_musl:  true
 		run_args: ['-musl', '-glibc']
 	}, ['-musl', 'run', 'main.v', '-musl', '-glibc'])
 	assert run_args.count(it == '-musl') == 1
@@ -410,15 +417,15 @@ fn test_macos_v3_ownership_delegation_never_selects_v1() {
 	}
 	assert is_ownership_relevant_command('main.v', direct_prefs)
 	run_prefs := &pref.Preferences{
-		path: 'main.v'
+		path:   'main.v'
 		is_run: true
 	}
 	assert is_ownership_relevant_command('run', run_prefs)
 	assert !is_ownership_relevant_command('test', run_prefs)
 	assert macos_v3_explicit_autofree_is_unsupported(&pref.Preferences{
 		new_compiler: true
-		autofree: true
-		path: 'main.v'
+		autofree:     true
+		path:         'main.v'
 	})
 }
 

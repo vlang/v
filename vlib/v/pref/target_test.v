@@ -223,6 +223,26 @@ fn test_source_selection_uses_target_os_and_arch() {
 	assert selected == ['common.v', 'cpu.i386.v', 'cpu.i686.v', 'sys_linux.v']
 }
 
+fn test_source_selection_excludes_tests_whose_stem_ends_in_d() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_test_source_pref_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	for name in ['common.v', 'read_test.v', 'readhdf5_test.v', 'three_d_test.v'] {
+		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
+	}
+
+	selected := get_v_files_from_dir_for_target(dir, ['test'], host_target()).map(os.base(it))
+	assert selected == ['common.v']
+	assert get_test_v_files_from_dir_for_target(dir, ['test'], 'c', host_target()).map(os.base(it)) == [
+		'read_test.v',
+		'readhdf5_test.v',
+		'three_d_test.v',
+	]
+}
+
 fn test_termux_source_selection_keeps_android_common_files_distinct() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_termux_target_pref_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -230,8 +250,8 @@ fn test_termux_source_selection_keeps_android_common_files_distinct() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	for name in ['platform_default.c.v', 'platform_android.c.v', 'platform_android_outside_termux.c.v',
-		'platform_termux.c.v'] {
+	for name in ['platform_default.c.v', 'platform_android.c.v',
+		'platform_android_outside_termux.c.v', 'platform_termux.c.v'] {
 		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
 	}
 

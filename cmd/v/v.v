@@ -66,6 +66,7 @@ const external_commands = [
 	'sqlite',
 	'symlink',
 	'scan',
+	'test',
 	'test-all',
 	'test-cleancode',
 	'test-fmt',
@@ -139,7 +140,72 @@ fn main() {
 		return
 	}
 	args = clean_compiler_selection_flags(args)
+	if ownership_compiler_is_required(args) && !ownership_checker_is_compiled() {
+		launch_ownership_compiler(args)
+	}
 	run_with_fallback(args, args)
+}
+
+fn ownership_checker_is_compiled() bool {
+	$if ownership ? {
+		return true
+	}
+	return false
+}
+
+fn ownership_compiler_is_required(args []string) bool {
+	mut define_follows := false
+	for arg in args {
+		if define_follows {
+			if arg.all_before('=').trim_space() == 'ownership' {
+				return true
+			}
+			define_follows = false
+			continue
+		}
+		if arg in ['-ownership', '--ownership', '-autofree', '-downership'] {
+			return true
+		}
+		define_follows = arg in ['-d', '-define']
+	}
+	return false
+}
+
+// launch_ownership_compiler builds and starts a V3 executable that contains the optional
+// ownership checker. The regular compiler stays small and preserves normal value semantics;
+// only explicit ownership/autofree compilations pay for the additional checker.
+@[noreturn]
+fn launch_ownership_compiler(args []string) {
+	vexe := os.real_path(os.executable())
+	vroot := find_vroot(vexe) or {
+		find_vroot(@VEXEROOT) or {
+			eprintln('the V source tree could not be found')
+			exit(1)
+		}
+	}
+	compiler_source := os.join_path(vroot, 'cmd', 'v')
+	// A regular V3 compiler is deliberately allowed to create the ownership-enabled
+	// executable. Do not recursively dispatch that bootstrap compilation to itself.
+	if args.any(os.exists(it) && os.real_path(it) == os.real_path(compiler_source)) {
+		driver.run(args)
+		exit(0)
+	}
+	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ['-d', 'ownership',
+		'-gc', 'none']) or {
+		eprintln('cannot find a writable cache for the V3 ownership compiler')
+		exit(1)
+	}
+	reason := tool_cache_stale_reason(entry)
+	if reason != '' {
+		if tool_cache_is_verbose() {
+			eprintln('> recompiling `v3_ownership`, because ${reason}')
+		}
+		build_tool_binary(vexe, entry) or {
+			eprintln('cannot build the V3 ownership compiler:\n${err.msg().trim_space()}')
+			exit(1)
+		}
+	}
+	exec_cached_tool(entry.binary, args)
 }
 
 // fallback_is_disabled reports whether retrying with the compatibility compiler was turned off.
@@ -211,7 +277,8 @@ fn run_external_tool(args []string, command_index int, command string) {
 		'new', 'init' {
 			'vcreate'
 		}
-		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade' {
+		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
+		'upgrade' {
 			'vpm'
 		}
 		'vlib-docs' {
@@ -233,9 +300,21 @@ fn run_external_tool(args []string, command_index int, command string) {
 	}
 	mut tool_args := []string{}
 	if command_index >= 0 {
-		tool_args << args[command_index..]
+		tool_args = external_tool_runtime_args(command, prefix_args, args[command_index..])
 	}
 	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args)
+}
+
+fn external_tool_runtime_args(command string, prefix_args []string, command_args []string) []string {
+	mut tool_args := []string{}
+	// `v build-tools` consumes compiler options itself and applies them to every
+	// tool in its inventory. Keep prefix options visible to that tool after the
+	// launcher has used the same options to build the cached executable.
+	if command == 'build-tools' {
+		tool_args << prefix_args
+	}
+	tool_args << command_args
+	return tool_args
 }
 
 fn find_external_tool_source(base string) ?string {
@@ -255,7 +334,7 @@ fn find_external_tool_source(base string) ?string {
 fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string) {
 	if !tool_cache_is_disabled() {
 		vexe := os.real_path(os.executable())
-		build_args := clean_compiler_selection_flags(prefix_args)
+		build_args := external_tool_build_args(prefix_args)
 		if entry := tool_cache_entry(vexe, vroot, tool_name, tool_source, build_args) {
 			reason := tool_cache_stale_reason(entry)
 			if reason == '' {
@@ -285,6 +364,14 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 	driver_args << ['run', tool_source]
 	driver_args << tool_args
 	driver.run(clean_compiler_selection_flags(driver_args))
+}
+
+// external_tool_build_args keeps compiler options that affect a tool binary while dropping
+// modes that deliberately do not produce one. Those modes still apply to the requested tool
+// command, but passing `-check` to the private cache build makes the compiler exit successfully
+// without creating the executable that the launcher must run.
+fn external_tool_build_args(prefix_args []string) []string {
+	return clean_compiler_selection_flags(prefix_args).filter(it !in ['-check', '-c'])
 }
 
 fn print_help(args []string, command_index int) {
@@ -542,8 +629,8 @@ fn submit_v3_fallback_report(fallback string, state RetryState) {
 	payload := os.read_file(state.fallback_file) or { return }
 	kind := payload.all_before('\n').trim_space()
 	if kind == 'inline_asm'
-		|| os.getenv('V_C_ERROR_BUG_REPORT_DISABLED').trim_space().to_lower() in ['1', 'true', 'yes',
-			'on'] {
+		|| os.getenv('V_C_ERROR_BUG_REPORT_DISABLED').trim_space().to_lower() in ['1', 'true',
+			'yes', 'on'] {
 		return
 	}
 	custom_url := os.getenv('V_C_ERROR_BUG_REPORT_URL').trim_space().trim_right('/')
