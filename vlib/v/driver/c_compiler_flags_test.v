@@ -43,16 +43,20 @@ fn test_macos_linux_compatibility_link_uses_portable_c_for_executables() {
 		os:   'macos'
 		arch: 'arm64'
 	}
-	assert v3_macos_linux_compatibility_link(host, 'linux', 'arm64', 'c', '', false, false,
+	assert v3_macos_linux_compatibility_link(host, 'linux', 'arm64', 'c', '', false, false, 'cc',
 		false)
 	assert v3_macos_linux_compatibility_link(host, 'linux', 'aarch64', 'c', 'v_linux', true,
-		false, false)
+		false, 'cc', false)
+	assert v3_macos_linux_compatibility_link(host, 'linux', 'arm64', 'c', '', false, false,
+		'clang', true)
+	assert v3_macos_linux_compatibility_link(host, 'linux', 'arm64', 'c', '', false, false,
+		'/usr/bin/clang', true)
 	assert !v3_macos_linux_compatibility_link(host, 'linux', 'arm64', 'c', 'v_linux.c', true,
-		false, false)
+		false, 'cc', false)
 	assert !v3_macos_linux_compatibility_link(host, 'linux', 'amd64', 'c', '', false, false,
-		false)
+		'cc', false)
 	assert !v3_macos_linux_compatibility_link(host, 'linux', 'arm64', 'c', '', false, false,
-		true)
+		'aarch64-linux-gnu-gcc', true)
 }
 
 fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
