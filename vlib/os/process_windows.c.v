@@ -50,11 +50,14 @@ fn win_env_value_from_entries(env []string, name string) ?string {
 // as is, a relative path containing a directory separator is anchored to the
 // current directory (the child's work folder may differ), and a bare command
 // name (`gcc`, `cl`, `node`) is looked up first in the current directory, as
-// Windows itself does, and then in the `PATH` the child will start with -
+// Windows itself does, and only then in the `PATH` the child will start with -
 // trying the Windows executable suffixes, as `find_abs_path_of_executable`
-// does. `CreateProcessW` performs no such lookup when given an application
-// name, so without this every bare-name spawn failed with "The system cannot
-// find the file specified".
+// does. The two lookups are separate on purpose: the helper tries every
+// suffix across all of its directories before moving to the next suffix, so a
+// single combined search would let a `tool.exe` on PATH shadow a `tool.cmd`
+// in the current directory. `CreateProcessW` performs no such lookup when
+// given an application name, so without this every bare-name spawn failed
+// with "The system cannot find the file specified".
 fn (p &Process) win_resolve_filename() !string {
 	if is_abs_path(p.filename) {
 		return p.filename
@@ -62,8 +65,11 @@ fn (p &Process) win_resolve_filename() !string {
 	if p.filename.contains('\\') || p.filename.contains('/') {
 		return abs_path(p.filename)
 	}
-	path := win_env_value_from_entries(p.env, 'PATH') or { '' }
-	return find_abs_path_of_executable_in_path_env(p.filename, getwd() + path_delimiter + path)
+	if in_cwd := find_abs_path_of_executable_in_path_env(p.filename, getwd()) {
+		return in_cwd
+	}
+	path := win_env_value_from_entries(p.env, 'PATH') or { return error_failed_to_find_executable() }
+	return find_abs_path_of_executable_in_path_env(p.filename, path)
 }
 
 fn close_valid_handle(p voidptr) {
@@ -100,9 +106,10 @@ fn (mut p Process) win_spawn_process() int {
 		unsafe { to_be_freed.free() }
 	}
 	// Expand the path to an absolute one, in case we later change the working
-	// folder. A bare command name that PATH does not contain is left as is, so
-	// that CreateProcessW can still run its own lookup (which also knows the
-	// PATHEXT suffixes) before the spawn is reported as failed.
+	// folder. A bare command name that neither the current directory nor PATH
+	// contains is left as is, so that CreateProcessW can still run its own
+	// lookup (it appends `.exe` to an extension-less name and searches the
+	// system directories) before the spawn is reported as failed.
 	p.filename = p.win_resolve_filename() or { p.filename }
 	mut wdata := &WProcess{
 		child_stdin_read:   unsafe { nil }

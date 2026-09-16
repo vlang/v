@@ -280,6 +280,38 @@ fn test_new_process_uses_path_for_bare_command_names() {
 	}
 }
 
+fn test_new_process_prefers_the_current_directory_over_path_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	original_wd := os.getwd()
+	defer {
+		os.setenv('PATH', original_path, true)
+		os.chdir(original_wd) or {}
+	}
+	// Windows resolves a bare name in the current directory before PATH, for
+	// every executable suffix: a `tool.cmd` in the cwd must win over a `tool.exe`
+	// found on PATH, even though `.exe` is tried before `.cmd`.
+	path_dir := os.join_path(tfolder, 'path_bin_exe')
+	cwd_dir := os.join_path(tfolder, 'cwd_bin_cmd')
+	os.rmdir_all(path_dir) or {}
+	os.rmdir_all(cwd_dir) or {}
+	os.mkdir_all(path_dir)!
+	os.mkdir_all(cwd_dir)!
+	os.cp(test_os_process, os.join_path(path_dir, 'preferred_tool.exe'))!
+	os.write_file(os.join_path(cwd_dir, 'preferred_tool.cmd'), '@exit /b 3\r\n')!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	os.chdir(cwd_dir)!
+	mut p := os.new_process('preferred_tool')
+	p.set_args(['-exitcode', '7'])
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 3, 'the cwd `preferred_tool.cmd` (exit 3) must win over PATH `preferred_tool.exe` (exit 7), got ${p.code}'
+	p.close()
+}
+
 fn test_run() {
 	eprintln(@FN)
 	mut p := os.new_process(test_os_process)
