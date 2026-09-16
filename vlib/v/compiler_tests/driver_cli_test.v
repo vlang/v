@@ -13,7 +13,12 @@ fn build_driver_cli_v3(root string) string {
 }
 
 fn build_driver_cli_v3_with_flags(root string, flags []string) string {
-	bin := os.join_path(root, 'v3_driver_cli')
+	// The compiler appends `.exe` to an extension-less `-o` target on Windows;
+	// return the name it actually produces, so the callers can spawn it.
+	mut bin := os.join_path(root, 'v3_driver_cli')
+	$if windows {
+		bin += '.exe'
+	}
 	mut args := ['-gc', 'none']
 	args << flags
 	args << ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', bin, driver_cli_v3_src]
@@ -487,6 +492,48 @@ fn main() {
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '73'
+}
+
+// windows_suffixing_c_compiler returns a C compiler on PATH that appends `.exe`
+// to an extension-less output name (MinGW gcc, llvm-mingw clang), or '' when
+// none is installed.
+fn windows_suffixing_c_compiler() string {
+	for name in ['gcc', 'clang'] {
+		if path := os.find_abs_path_of_executable(name) {
+			return path
+		}
+	}
+	return ''
+}
+
+fn test_driver_finalizes_binaries_from_suffixing_c_compilers_on_windows() {
+	$if !windows {
+		return
+	}
+	c_compiler := windows_suffixing_c_compiler()
+	if c_compiler == '' {
+		eprintln('skipping ${@FN}: neither gcc nor clang is on PATH')
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_out_suffix_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {\n\tprintln(41 + 1)\n}\n') or { panic(err) }
+	// The driver compiles to an extension-less `out` inside its build directory;
+	// gcc and clang write `out.exe` instead, which used to make the final move
+	// fail with "failed to finalize ...: Source path doesn't exist" (#28625).
+	output := os.join_path(root, 'suffixed_program.exe')
+	compile := cmdexec.run(v3_bin, ['-nocache', '-cc', c_compiler, '-o', output, source])
+	assert compile.exit_code == 0, compile.output
+	assert os.exists(output), compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
 }
 
 fn test_driver_ldflags_are_appended_to_the_link_command() {

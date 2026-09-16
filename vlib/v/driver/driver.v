@@ -2353,6 +2353,26 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	return cmdexec.run_in(c_compiler, link_args, build_dir)
 }
 
+// v3_produced_binary returns the file the C compiler actually wrote for the
+// extension-less `-o out` target `cc_out`. TinyCC writes `out` literally, but
+// MinGW gcc and llvm-mingw clang append the platform suffix, producing
+// `out.exe` (or `out.dll` for a shared library), so on Windows the requested
+// name is missing after a successful compilation. When that happens, the
+// suffixed sibling is the produced binary; otherwise `cc_out` is returned as
+// is, so a genuinely missing output still fails at the caller.
+fn v3_produced_binary(cc_out string) string {
+	if os.exists(cc_out) {
+		return cc_out
+	}
+	for suffix in ['.exe', '.dll'] {
+		candidate := cc_out + suffix
+		if os.exists(candidate) {
+			return candidate
+		}
+	}
+	return cc_out
+}
+
 fn v3_c_source_inputs(source string, objective_c bool) []string {
 	if objective_c {
 		return ['-x', 'objective-c', source, '-x', 'none']
@@ -12748,7 +12768,7 @@ Please install the corresponding development package/libraries and make sure the
 				exit(1)
 			}
 		}
-		os.mv(cc_out, bin_file) or {
+		os.mv(v3_produced_binary(cc_out), bin_file) or {
 			eprintln('failed to finalize ${bin_file}: ${err}')
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
