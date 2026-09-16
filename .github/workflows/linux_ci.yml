@@ -123,7 +123,7 @@ jobs:
       # Ordinary CI builds exercise the production V3->V1 compatibility path.
       # The explicit canary below overrides this to 1 to keep direct V3 coverage strict.
       V_MACOS_V3_NO_FALLBACK: 0
-      V_MULTIWINDOW_COMPILER: ./v1_fallback
+      V_MULTIWINDOW_COMPILER: ./v
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
@@ -745,9 +745,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      # These runtime-heavy C interop regressions stay on the stable compiler while
-      # the separate Linux canary keeps direct V3 coverage strict.
-      V_MULTIWINDOW_COMPILER: ./v1_fallback
+      # Keep the runtime-heavy C interop regressions on the default V3 compiler too.
+      V_MULTIWINDOW_COMPILER: ./v
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action

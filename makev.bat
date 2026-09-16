@@ -16,6 +16,7 @@ set V_BOOTSTRAP=./v_win_bootstrap.exe
 set V_OLD=./v_old.exe
 set V_UPDATED=./v_up.exe
 set V_STAGE=./v_stage.exe
+set V_STAGE_C=./v_stage.c
 set V1_FALLBACK=./v1_fallback.exe
 set V_C_FILE=./vc/v_win.c
 set V_FALLBACK_CC_ARGS=
@@ -214,9 +215,13 @@ if !ERRORLEVEL! NEQ 0 (
 )
 
 set V_FALLBACK_CC_ARGS=-cc "!clang_exe!" -cflags "--target=!clang_target!"
-echo  ^> Compiling "%V_EXE%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!clang_exe!" -cflags "--target=!clang_target!" -o "%V_UPDATED%" cmd/v
+call :build_stage_with_clang
 if !ERRORLEVEL! NEQ 0 goto :compile_error
+echo  ^> Compiling "%V_EXE%" with "%V_STAGE%"
+"%V_STAGE%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc -cc "!clang_exe!" -cflags "--target=!clang_target!" -o "%V_UPDATED%" cmd/v
+set stage_error=!ERRORLEVEL!
+if exist "%V_STAGE%" del "%V_STAGE%"
+if !stage_error! NEQ 0 goto :compile_error
 call :move_updated_to_v
 if !ERRORLEVEL! NEQ 0 goto :compile_error
 goto :success
@@ -265,9 +270,11 @@ set ObjFile=.v.c.obj
 
 echo  ^> Bootstrapping "%V_BOOTSTRAP%" before compiling "%V_EXE%" with MSVC
 set stage_vflags=
+set stage_with_clang=0
 call :build_bootstrap_with_clang
 if !ERRORLEVEL! EQU 0 (
 	set stage_vflags=-cc "!clang_exe!" -cflags "--target=!clang_target!"
+	set stage_with_clang=1
 ) else (
 	call :build_bootstrap_with_gcc
 	if !ERRORLEVEL! EQU 0 (
@@ -283,9 +290,12 @@ if not defined stage_vflags (
 	goto :compile_error
 )
 
-echo  ^> Compiling "%V_STAGE%" with "%V_BOOTSTRAP%"
-REM Keep this stage on V1: only the established compiler emits MSVC command lines.
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -d v1_fallback -o "%V_STAGE%" cmd/v
+if !stage_with_clang! EQU 1 (
+	call :build_stage_with_clang
+) else (
+	echo  ^> Compiling "%V_STAGE%" with "%V_BOOTSTRAP%"
+	"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !stage_vflags! -o "%V_STAGE%" cmd/v
+)
 if !ERRORLEVEL! NEQ 0 (
 	if exist %ObjFile% del %ObjFile%
 	if exist "%V_STAGE%" del "%V_STAGE%"
@@ -480,6 +490,17 @@ if !ERRORLEVEL! NEQ 0 (
 )
 exit /b 0
 
+:build_stage_with_clang
+echo  ^> Generating "%V_STAGE_C%" with "%V_BOOTSTRAP%"
+"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -g -o "%V_STAGE_C%" cmd/v
+set stage_error=!ERRORLEVEL!
+if !stage_error! NEQ 0 exit /b !stage_error!
+echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with Clang
+"!clang_exe!" --target=!clang_target! -std=gnu11 -municode -g -w -fwrapv -Wno-int-conversion -o "%V_STAGE%" "%V_STAGE_C%" -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,--stack=33554432
+set stage_error=!ERRORLEVEL!
+if exist "%V_STAGE_C%" del "%V_STAGE_C%"
+exit /b !stage_error!
+
 :build_bootstrap_with_gcc
 call :find_gcc_exe
 if !ERRORLEVEL! NEQ 0 (
@@ -536,8 +557,8 @@ endlocal
 exit /b 0
 
 :move_updated_to_v
-echo  ^> Compiling "%V1_FALLBACK%" with "%V_BOOTSTRAP%"
-"%V_BOOTSTRAP%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !V_FALLBACK_CC_ARGS! -d v1_fallback -o "%V1_FALLBACK%" cmd/v
+echo  ^> Compiling "%V1_FALLBACK%" with "%V_UPDATED%"
+"%V_UPDATED%" %V_BOOTSTRAP_VFLAGS% -keepc -g -showcc !V_FALLBACK_CC_ARGS! -d v1_fallback -o "%V1_FALLBACK%" cmd/v
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 @REM del "%V_EXE%" &:: breaks if `makev.bat` is run from `v up` b/c of held file handle on `%V_EXE%`
 if exist "%V_EXE%" move "%V_EXE%" "%V_OLD%" >nul
