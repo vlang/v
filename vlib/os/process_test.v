@@ -401,6 +401,37 @@ fn test_new_process_does_not_expand_a_suffixed_name_in_an_earlier_directory_on_w
 	p.close()
 }
 
+fn test_new_process_tries_the_suffixes_in_pathext_order_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', original_path, true)
+	}
+	// For a bare name the suffixes are tried in the default PATHEXT order,
+	// `.COM;.EXE;.BAT;.CMD`, so `tool.com` must win over `tool.exe` in the same
+	// directory, as it does in cmd.exe. The `.com` is a PE image, which Windows
+	// runs regardless of the extension. It exits with the given 3; the `.exe`
+	// ignores its arguments and exits with 0.
+	path_dir := os.join_path(tfolder, 'path_bin_pathext')
+	os.rmdir_all(path_dir) or {}
+	os.mkdir_all(path_dir)!
+	com_path := os.join_path(path_dir, 'pathext_tool.com')
+	os.cp(test_os_process, com_path)!
+	os.cp(delayed_output_exe_filename, os.join_path(path_dir, 'pathext_tool.exe'))!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	assert os.find_abs_path_of_executable('pathext_tool')! == com_path
+	mut p := os.new_process('pathext_tool')
+	p.set_args(['-exitcode', '3'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 3, 'the `pathext_tool.com` (exit 3) must win over `pathext_tool.exe` (exit 0), got ${p.code}'
+	p.close()
+}
+
 fn test_run() {
 	eprintln(@FN)
 	mut p := os.new_process(test_os_process)

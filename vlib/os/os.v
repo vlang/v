@@ -656,7 +656,7 @@ fn error_failed_to_find_executable() IError {
 // usual suffixes.
 fn executable_suffixes_for(exe_name string) []string {
 	ext := file_ext(exe_name).to_lower_ascii()
-	if ext != '' && (ext in executable_suffixes || ext == '.com') {
+	if ext != '' && ext in executable_suffixes {
 		return ['']
 	}
 	return executable_suffixes
