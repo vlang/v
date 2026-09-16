@@ -5,7 +5,7 @@ module builtin
 
 @[markused]
 fn builtin_init() {
-	$if gcboehm || vgc ? {
+	$if v3_backend && (gcboehm || vgc) ? {
 		gc_runtime_init()
 	}
 	$if prealloc && v3_backend ? {
