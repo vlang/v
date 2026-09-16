@@ -143,11 +143,11 @@ fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 	}
 }
 
-fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_on_apple() {
+fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavailable() {
 	// The portable snapshot is generated on Linux, so it bakes in rand_linux.c.v.
-	// It is then compiled on macOS to bootstrap v1, where SYS_getrandom does not
-	// exist. Keep both implementations in the snapshot and let the target C
-	// preprocessor select getentropy on Apple hosts.
+	// It is then compiled on macOS or OpenBSD to bootstrap v1, where SYS_getrandom
+	// does not exist. Keep both implementations in the snapshot and let the target
+	// C preprocessor select getentropy on those hosts.
 	c_code := cross_generate_with('-cross -os linux', 'crypto_rand', 'module main\n\nimport crypto.rand\n\nfn main() {\n\tassert rand.bytes(1)!.len == 1\n}\n')
 	body := function_body(c_code, 'i64 internal__getrandom(i64 bytes_needed, void* buffer) {')
 	getentropy_at := body.index('getentropy(') or {
@@ -166,6 +166,7 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_on_apple() {
 	}
 	condition := before_getentropy[guard_at..].all_before('\n')
 	assert condition.contains('__APPLE__'), 'getentropy is guarded by `${condition}`, which does not select Apple'
+	assert condition.contains('__OpenBSD__'), 'getentropy is guarded by `${condition}`, which does not select OpenBSD'
 	assert body[getentropy_at..syscall_at].contains('#else'), 'the Linux syscall is not in the fallback branch: ${body}'
 }
 

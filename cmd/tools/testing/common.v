@@ -306,9 +306,9 @@ pub mut:
 	show_stats    bool
 	show_asserts  bool
 	progress_mode bool
-	root_relative bool // used by CI runs, so that the output is stable everywhere
+	root_relative bool            // used by CI runs, so that the output is stable everywhere
 	nmessages     chan LogMessage // many publishers, single consumer/printer
-	nmessage_idx  int // currently printed message index
+	nmessage_idx  int             // currently printed message index
 	failed_cmds   shared []string
 	reporter      Reporter = Reporter(NormalReporter{})
 	hash          string // used as part of the name of the temporary directory created for tests, to ease cleanup
@@ -316,7 +316,7 @@ pub mut:
 	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
 
 	build_environment build_constraint.Environment // see the documentation in v.build_constraint
-	custom_defines    []string // for adding custom defines, known only to the individual runners
+	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 mut:
 	benchmark_mu &sync.Mutex = sync.new_mutex()
 }
@@ -395,22 +395,22 @@ mut:
 
 fn (mut ts TestSession) append_message(kind MessageKind, msg string, mtc MessageThreadContext) {
 	ts.nmessages <- LogMessage{
-		file: mtc.file
+		file:    mtc.file
 		flow_id: mtc.flow_id
 		message: msg
-		kind: kind
-		when: time.now()
+		kind:    kind
+		when:    time.now()
 	}
 }
 
 fn (mut ts TestSession) append_message_with_duration(kind MessageKind, msg string, d time.Duration, mtc MessageThreadContext) {
 	ts.nmessages <- LogMessage{
-		file: mtc.file
+		file:    mtc.file
 		flow_id: mtc.flow_id
 		message: msg
-		kind: kind
-		when: time.now()
-		took: d
+		kind:    kind
+		when:    time.now()
+		took:    d
 	}
 }
 
@@ -566,17 +566,17 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		os.setenv('VCOLORS', 'always', true)
 	}
 	mut ts := TestSession{
-		will_compile: will_compile
-		vexe: vexe
-		vroot: vroot
-		skip_files: skip_files
-		fail_fast: fail_fast
-		show_stats: '-stats' in vargs.split(' ')
-		show_asserts: '-show-asserts' in vargs.split(' ')
-		vargs: vargs
-		vtmp_dir: new_vtmp_dir
-		hash: hash
-		silent_mode: _vargs.contains('-silent')
+		will_compile:  will_compile
+		vexe:          vexe
+		vroot:         vroot
+		skip_files:    skip_files
+		fail_fast:     fail_fast
+		show_stats:    '-stats' in vargs.split(' ')
+		show_asserts:  '-show-asserts' in vargs.split(' ')
+		vargs:         vargs
+		vtmp_dir:      new_vtmp_dir
+		hash:          hash
+		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 	}
 	if keep_session {
@@ -690,10 +690,10 @@ pub fn (mut ts TestSession) test() {
 	ts.benchmark.njobs = njobs
 	mut pool_of_test_runners := pool.new_pool_processor(
 		callback: worker_trunner
-		maxjobs: njobs
+		maxjobs:  njobs
 	)
 	// ensure that the nmessages queue/channel, has enough capacity for handling many messages across threads, without blocking
-	ts.nmessages = chan LogMessage{ cap: 10000 }
+	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nmessage_idx = 0
 	printing_thread := spawn ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
@@ -772,7 +772,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 	file := abs_path
 	mtc := MessageThreadContext{
-		file: file
+		file:    file
 		flow_id: thread_id.str()
 	}
 
@@ -857,7 +857,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.benchmark_skip()
 		tls_bench.skip()
 		if !hide_skips {
-			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip, normalised_relative_file, 0,
+			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
+				normalised_relative_file, 0,
 				preparation: 1 * time.microsecond
 			), mtc)
 		}
@@ -939,7 +940,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		if compile_r.exit_code != 0 {
 			ts.benchmark_fail()
 			tls_bench.fail()
-			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail, '${normalised_relative_file}\n>> compilation failed:\n${compile_r.output}', cmd_duration,
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n>> compilation failed:\n${compile_r.output}',
+				cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
 			ts.add_failed_cmd(reproduce_cmd)
@@ -1008,7 +1011,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.benchmark_fail()
 			tls_bench.fail()
 			cmd_duration = d_cmd.elapsed() - (fail_retry_delay_ms * details.retry)
-			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail, '${normalised_relative_file}\n${full_failure_output}', cmd_duration,
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n${full_failure_output}', cmd_duration,
 				preparation: compile_cmd_duration
 			), cmd_duration, mtc)
 			ts.add_failed_cmd(reproduce_cmd)
@@ -1020,7 +1024,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	ts.benchmark_ok()
 	tls_bench.ok()
 	if !hide_oks {
-		ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok, normalised_relative_file, cmd_duration,
+		ts.append_message_with_duration(.ok, tls_bench.step_message_with_label_and_duration(benchmark.b_ok,
+			normalised_relative_file, cmd_duration,
 			preparation: compile_cmd_duration
 		), cmd_duration, mtc)
 	}
@@ -1166,9 +1171,9 @@ pub mut:
 	retry int
 	flaky bool // when flaky tests fail, the whole run is still considered successful, unless VTEST_FAIL_FLAKY is 1
 	//
-	hide_retries bool // when true, all retry tries are silent; used by `vlib/v/tests/retry_test.v`
+	hide_retries bool   // when true, all retry tries are silent; used by `vlib/v/tests/retry_test.v`
 	vbuild       string // could be `!(windows && tinyc)`
-	vbuild_line  int // for more precise error reporting, if the `vbuild` expression is incorrect
+	vbuild_line  int    // for more precise error reporting, if the `vbuild` expression is incorrect
 	vflags       string // custom compilation flags for the test (enables for example: `// vtest vflags: -w`, for tests that have known warnings, but should still pass with -W)
 }
 

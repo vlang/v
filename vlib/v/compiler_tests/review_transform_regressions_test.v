@@ -1346,6 +1346,8 @@ fn test_nested_inferred_fixed_array_literal_parses() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'nested_inferred_fixed_array_literal', 'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
 	assert out == '10'
+	from_rows := run_good(v3_bin, 'nested_inferred_fixed_array_literal_rows', 'fn main() {\n\trow1 := [..]int[1, 2]\n\trow2 := [..]int[3, 4]\n\tvalues := [..][..]int[row1, row2]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
+	assert from_rows == '10'
 	run_bad(v3_bin, 'ragged_nested_inferred_fixed_array_literal', 'fn main() {\n\t_ := [..][..]int[[1], [2, 3]]\n}\n', 'inferred fixed-array literal rows must have the same size')
 }
 

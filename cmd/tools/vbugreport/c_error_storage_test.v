@@ -3,11 +3,11 @@ module vbugreport
 fn test_new_stored_c_error_report_extracts_sql_fields() {
 	report := new_stored_c_error_report('/tmp/v/program.tmp.c', 'linux', 'clang', '0.5.1 abcdef0',
 		'amd64', 'autofree gc:boehm', '/tmp/v/program.tmp.c:12:7: error: unknown type name "Foo"', [
-		'void main__main(void) {',
-		'\tFoo x;',
-	], [
-		'foo := Foo{}',
-	], 'fn main() {\n\tfoo := Foo{}\n}')
+			'void main__main(void) {',
+			'\tFoo x;',
+		], [
+			'foo := Foo{}',
+		], 'fn main() {\n\tfoo := Foo{}\n}')
 	assert report.c_file_name == 'program.tmp.c'
 	assert report.target_os == 'linux'
 	assert report.ccompiler == 'clang'

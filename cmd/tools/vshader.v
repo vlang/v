@@ -194,7 +194,7 @@ fn compile_shader(opt CompileOptions, shader_file string) ! {
 
 	cmd :=
 		'${os.quoted_path(shdc_exe)} --input ${os.quoted_path(shader_file)} --output ${os.quoted_path(out_file)} --slang ' +
-		os.quoted_path(slangs.join(':'))
+			os.quoted_path(slangs.join(':'))
 	if opt.verbose {
 		eprintln('${tool_name} executing:\n${cmd}')
 	}

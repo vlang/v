@@ -258,10 +258,8 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 	}
 	mut estimate := 0
 	mut pending := [root]
-	mut cursor := 0
-	for cursor < pending.len {
-		id := pending[cursor]
-		cursor++
+	for pending.len > 0 {
+		id := pending.pop()
 		if int(id) < 0 || int(id) >= t.a.nodes.len {
 			continue
 		}
@@ -730,10 +728,26 @@ fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node)
 	if node.children_count == 0 {
 		return false
 	}
-	if node.value == 'variant_types' && t.selector_base_is_comptime_type_value(t.a.child(&node, 0)) {
+	base_id := t.a.child(&node, 0)
+	if node.value == 'variant_types' && t.selector_base_is_comptime_type_value(base_id) {
 		return true
 	}
-	base_type := t.node_type(t.a.child(&node, 0))
+	base := t.a.nodes[int(base_id)]
+	mut base_type := base.typ
+	if !isnil(t.tc) {
+		if typ := t.tc.expr_type(base_id) {
+			base_type = typ.name()
+		}
+	}
+	if base_type.len == 0 && base.kind == .ident {
+		base_type = t.var_type(base.value)
+	}
+	if base_type.len == 0 {
+		// An untyped selector chain cannot expand from interface/sum metadata. Avoid
+		// recursively resolving every prefix of a large external reconstruction.
+		return false
+	}
+	base_type = t.normalize_type_alias(base_type)
 	iface_name := t.resolve_interface_type_name(base_type)
 	if iface_name.len > 0 && node.value !in ['_typ', '_object'] {
 		if _ := t.interface_field_type_name(iface_name, node.value) {
@@ -1062,7 +1076,7 @@ fn (t &Transformer) zero_value_expansion_estimate(id flat.NodeId, type_name stri
 	}
 	return t.fixed_array_init_expansion_estimate(id, flat.Node{
 		kind: .array_init
-		typ: fixed_type
+		typ:  fixed_type
 	})
 }
 
@@ -1156,7 +1170,11 @@ fn (mut t Transformer) multi_return_match_zero_value_expansion_estimate(id flat.
 	if lhs_ids.len == 0 {
 		return 0
 	}
-	value_types := t.tc.multi_expr_tail_types_for_transform(id, lhs_ids.len) or { return 0 }
+	value_types := t.tc.multi_expr_tail_types_for_transform(id, lhs_ids.len) or {
+		multi_return_types_from_type(t.tc.parse_type(node.typ), lhs_ids.len) or {
+			t.multi_return_types_for_expr(id, lhs_ids.len) or { return 0 }
+		}
+	}
 	mut estimate := 0
 	for value_type in value_types {
 		estimate += t.zero_value_expansion_estimate(id, value_type.name())
@@ -1690,12 +1708,12 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 		}
 	}
 	return MapIndexInfo{
-		base_id: base_id
-		key_id: key_id
-		base_type: base_type
-		key_type: key_type
+		base_id:          base_id
+		key_id:           key_id
+		base_type:        base_type
+		key_type:         key_type
 		key_storage_type: t.map_key_storage_type(key_type)
-		value_type: value_type
+		value_type:       value_type
 	}
 }
 
@@ -1967,10 +1985,10 @@ fn (mut t Transformer) lower_owned_map_index_move(source_id flat.NodeId, map_exp
 	t.a.children << cond
 	t.a.children << body_block
 	t.pending_stmts << t.a.add_node(flat.Node{
-		kind: .if_expr
+		kind:           .if_expr
 		children_start: start
 		children_count: 2
-		flags: flat.node_flag_skip_ownership_drops
+		flags:          flat.node_flag_skip_ownership_drops
 	})
 	if !map_type.starts_with('&') && !t.expr_can_take_address(source_id) {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [map_expr], 'void'))
@@ -2505,12 +2523,12 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 		result << t.make_map_set_stmt(inner_map_expr, inner_map_type, inner_key_name, inner_value_name)
 	} else {
 		inner_info := MapIndexInfo{
-			base_id: outer_index_id
-			key_id: inner_key_id
-			base_type: inner_map_type
-			key_type: inner_key_type
+			base_id:          outer_index_id
+			key_id:           inner_key_id
+			base_type:        inner_map_type
+			key_type:         inner_key_type
 			key_storage_type: inner_key_storage_type
-			value_type: inner_value_type
+			value_type:       inner_value_type
 		}
 		op := map_compound_to_infix_op(node.op) or { return none }
 		t.lower_map_index_compound_with_info(inner_info, inner_map_expr, inner_key_name, op, rhs_id, mut result)
@@ -2542,11 +2560,11 @@ fn (mut t Transformer) try_lower_nested_map_index_postfix_stmt(id flat.NodeId) ?
 	t.a.children << lhs_id
 	t.a.children << t.make_int_literal(1)
 	return t.try_lower_nested_map_index_assign(flat.Node{
-		kind: .index_assign
-		op: if node.op == .dec { flat.Op.minus_assign } else { flat.Op.plus_assign }
+		kind:           .index_assign
+		op:             if node.op == .dec { flat.Op.minus_assign } else { flat.Op.plus_assign }
 		children_start: start
 		children_count: 2
-		pos: node.pos
+		pos:            node.pos
 	})
 }
 
@@ -2699,7 +2717,7 @@ fn (mut t Transformer) map_fixed_array_index_path(lhs_id flat.NodeId) ?MapFixedA
 		}
 	}
 	return MapFixedArrayIndexInfo{
-		map_info: info
+		map_info:  info
 		index_ids: index_ids
 		elem_type: cur_type
 	}

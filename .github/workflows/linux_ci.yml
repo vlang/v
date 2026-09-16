@@ -36,17 +36,15 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      # Ordinary CI builds exercise the production V3->V1 compatibility path.
-      # The explicit canary below overrides this to 1 to keep direct V3 coverage strict.
-      V_MACOS_V3_NO_FALLBACK: 0
+      # Keep every command on V3; the canary below also proves which compiler ran.
+      V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
-        # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
-        # compatibility fallback, while register_all.vsh intentionally uses V1.
+        # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
         run: make -j4 && ./v symlink
       - name: Assert V is the default compiler (fail if V1 is silently used)
         run: |
@@ -82,11 +80,9 @@ jobs:
       - name: Self tests
         run: v run ci/linux_ci.vsh self_tests_tcc
       - name: Build examples
-        # The examples corpus includes deliberate inline-assembly compatibility
-        # cases, so exercise the documented V3-to-V1 fallback in this lane. The
-        # canary and dedicated V3 suites above remain strict.
+        # Keep the full examples corpus on V3 too.
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
         run: v run ci/linux_ci.vsh build_examples_tcc
       - name: Run the submodule example, using a relative path
         run: v run ci/linux_ci.vsh run_submodule_example_tcc
@@ -120,18 +116,16 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      # Ordinary CI builds exercise the production V3->V1 compatibility path.
-      # The explicit canary below overrides this to 1 to keep direct V3 coverage strict.
-      V_MACOS_V3_NO_FALLBACK: 0
-      V_MULTIWINDOW_COMPILER: ./v1_fallback
+      # Keep every command on V3; the canary below also proves which compiler ran.
+      V_MACOS_V3_NO_FALLBACK: 1
+      V_MULTIWINDOW_COMPILER: ./v
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
-        # compatibility fallback, while register_all.vsh intentionally uses V1.
+        # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
         run: make -j4 && ./v symlink
       - name: Assert V is the default compiler (fail if V1 is silently used)
         run: |
@@ -474,11 +468,9 @@ jobs:
           EOF
           chmod +x "$RUNNER_TEMP/multiwindow_weston_command.sh"
       - name: Multiwindow portable and mock regressions
-        # These regressions intentionally cover compatibility paths that V3 does not
-        # support yet. Run them on the stable compiler while keeping the direct
-        # canary strict.
+        # These compatibility-path regressions must compile with V3 as well.
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
         run: |
           set -euo pipefail
 
@@ -520,7 +512,7 @@ jobs:
               /tmp/gg_multiwindow_default
       - name: Multiwindow X11 native regressions
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: x11
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: x11
@@ -570,7 +562,7 @@ jobs:
             /tmp/gg_multiwindow_x11
       - name: Multiwindow Wayland native regressions
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: wayland
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: wayland
@@ -636,11 +628,9 @@ jobs:
       - name: Self tests (-cstrict)
         run: v run ci/linux_ci.vsh self_tests_cstrict_gcc
       - name: Build examples
-        # The examples corpus includes deliberate inline-assembly compatibility
-        # cases, so exercise the documented V3-to-V1 fallback in this lane. The
-        # canary and dedicated V3 suites above remain strict.
+        # Keep the full examples corpus on V3 too.
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
         run: v run ci/linux_ci.vsh build_examples_gcc
       - name: Build tetris with -autofree
         run: v run ci/linux_ci.vsh build_tetris_autofree_gcc
@@ -665,17 +655,15 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      # Ordinary CI builds exercise the production V3->V1 compatibility path.
-      # The explicit canary below overrides this to 1 to keep direct V3 coverage strict.
-      V_MACOS_V3_NO_FALLBACK: 0
+      # Keep every command on V3; the canary below also proves which compiler ran.
+      V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
-        # compatibility fallback, while register_all.vsh intentionally uses V1.
+        # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
         run: make -j4 && ./v symlink
       - name: Assert V is the default compiler (fail if V1 is silently used)
         run: |
@@ -712,11 +700,9 @@ jobs:
       - name: Self tests (-cstrict)
         run: v run ci/linux_ci.vsh self_tests_cstrict_clang
       - name: Build examples
-        # The examples corpus includes deliberate inline-assembly compatibility
-        # cases, so exercise the documented V3-to-V1 fallback in this lane. The
-        # canary and dedicated V3 suites above remain strict.
+        # Keep the full examples corpus on V3 too.
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
         run: v run ci/linux_ci.vsh build_examples_clang
       - name: Build examples with -autofree
         run: v run ci/linux_ci.vsh build_examples_autofree_clang
@@ -745,9 +731,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      # These runtime-heavy C interop regressions stay on the stable compiler while
-      # the separate Linux canary keeps direct V3 coverage strict.
-      V_MULTIWINDOW_COMPILER: ./v1_fallback
+      # Keep the runtime-heavy C interop regressions on the default V3 compiler too.
+      V_MULTIWINDOW_COMPILER: ./v
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action

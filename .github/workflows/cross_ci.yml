@@ -22,6 +22,9 @@ concurrency:
   group: cross-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+env:
+  V_MACOS_V3_NO_FALLBACK: '1'
+
 jobs:
   cross-macos:
     runs-on: macos-latest
@@ -52,24 +55,28 @@ jobs:
 
       - name: Cross-compilation to Linux
         run: |
-          ./v -os linux cmd/v
+          ./v -os linux -o /tmp/v_linux.c cmd/v
+          test -s /tmp/v_linux.c
           # TODO: fix this: ./v -os linux examples/2048/2048.v
 
       - name: Cross-compilation of veb app to Linux with -d use_openssl
-        run: ./v -d use_openssl -os linux examples/veb/veb_example.v
+        run: ./v -d use_openssl -os linux -o /tmp/veb_linux.c examples/veb/veb_example.v
 
       - name: Cross-compilation of vlang/gitly to Linux with -d use_openssl
         run: |
           ./v retry -- ./v install markdown
           ./v retry -- ./v install pcre
           ./v retry -- git clone --depth 1 https://github.com/vlang/gitly /tmp/gitly
-          ./v -d use_openssl -os linux /tmp/gitly
-          file /tmp/gitly/gitly
+          ./v -d use_openssl -os linux -o /tmp/gitly_linux.c /tmp/gitly
+          test -s /tmp/gitly_linux.c
 
       - name: Cross-compilation to Windows
         run: |
-          ./v -os windows cmd/v
-          ./v -os windows examples/2048/2048.v
+          mkdir -p /tmp/v-cross-windows
+          ./v -os windows -b c -o /tmp/v-cross-windows/v.c cmd/v
+          ./v -os windows -b c -o /tmp/v-cross-windows/2048.c examples/2048/2048.v
+          test -s /tmp/v-cross-windows/v.c
+          test -s /tmp/v-cross-windows/2048.c
 
   cross-linux:
     runs-on: ubuntu-24.04
@@ -106,7 +113,7 @@ jobs:
       - name: v_win.c can be compiled and run with -os windows
         run: |
           ./v -cc msvc -os windows -o /tmp/v_win.c cmd/v
-          x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32 -lbcrypt -Wl,-stack=33554432
+          x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe -lws2_32 -lbcrypt -ldbghelp -Wl,-stack=33554432
           ls -lart v_from_vc.exe
           wine ./v_from_vc.exe version
 

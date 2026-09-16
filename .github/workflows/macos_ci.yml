@@ -42,9 +42,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      # Ordinary CI builds exercise the production V3->V1 compatibility path.
-      # The explicit canary below overrides this to 1 to keep direct V3 coverage strict.
-      V_MACOS_V3_NO_FALLBACK: 0
+      # Keep every command on V3; the canary below also proves which compiler ran.
+      V_MACOS_V3_NO_FALLBACK: 1
       # Temporarily disable x.multiwindow coverage while it is brought up on V3.
       V_MACOS_MULTIWINDOW_TESTS: '0'
     steps:
@@ -57,10 +56,9 @@ jobs:
           restore-keys: |
             brew-${{ matrix.os }}-
       - name: Build V
-        # `make` runs bootstrap helpers before the V3 canary; `.vsh` helpers intentionally
-        # use V1, and other helpers may need the compatibility fallback.
+        # Bootstrap helpers must also compile with V3 once the fresh compiler exists.
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
         run: make -j4 && ./v symlink
       - name: Assert V is the default compiler (fail if V1 is silently used)
         run: |
@@ -198,10 +196,9 @@ jobs:
             "$actual_source_sha256" "$source_test_count"
       - name: Multiwindow Metal regressions and runtime probes
         if: env.V_MACOS_MULTIWINDOW_TESTS == '1'
-        # Some multiwindow tests still exercise V3-incompatible constructs. The
-        # direct canary above remains strict; this lane also verifies fallback.
+        # Keep the multiwindow runtime probes on V3 too.
         env:
-          V_MACOS_V3_NO_FALLBACK: 0
+          V_MACOS_V3_NO_FALLBACK: 1
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: appkit
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: appkit

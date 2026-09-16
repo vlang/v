@@ -18,16 +18,16 @@ mut:
 	vc            string // the full path to the vc folder inside workdir. It is used during bootstrapping v from the C source.
 	commit_before string // the git commit for the 'before' state
 	commit_after  string // the git commit for the 'after' state
-	warmups       int // how many times to execute a command before gathering stats
+	warmups       int    // how many times to execute a command before gathering stats
 	hyperfineopts string // use for additional CLI options that will be given to the hyperfine command
 	vflags        string // other v options to pass to compared v commands
 }
 
 fn new_context() Context {
 	return Context{
-		cwd: os.getwd()
+		cwd:          os.getwd()
 		commit_after: 'master'
-		warmups: 4
+		warmups:      4
 	}
 }
 
@@ -80,12 +80,12 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 		cc = 'cc'
 	}
 	mut vgit_context := vgit.VGitContext{
-		cc: cc
-		commit_v: commit
-		path_v: cdir
-		path_vc: c.vc
-		workdir: c.vgo.workdir
-		v_repo_url: c.vgo.v_repo_url
+		cc:          cc
+		commit_v:    commit
+		path_v:      cdir
+		path_vc:     c.vc
+		workdir:     c.vgo.workdir
+		v_repo_url:  c.vgo.v_repo_url
 		vc_repo_url: c.vgo.vc_repo_url
 	}
 	vgit_context.compile_oldv_if_needed()

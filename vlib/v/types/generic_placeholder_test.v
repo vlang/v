@@ -33,7 +33,7 @@ fn test_empty_array_generic_diagnostic_prescreen() {
 	wrapped_start := a.begin_children()
 	a.add_child(empty)
 	wrapped := a.add_node(flat.Node{
-		kind: .field_init
+		kind:           .field_init
 		children_start: wrapped_start
 		children_count: 1
 	})
@@ -54,5 +54,13 @@ fn test_empty_array_generic_diagnostic_prescreen() {
 		}
 		// The same argument is not a generic-argument error for an ordinary function.
 		assert !tc.record_empty_array_generic_call_errors(call, CallInfo{ name: 'ordinary' })
+		if arg == empty {
+			assert !tc.record_empty_array_generic_call_errors(call, CallInfo{
+				name:   'consume'
+				params: [Type(Array{
+					elem_type: Type(int_)
+				})]
+			})
+		}
 	}
 }
