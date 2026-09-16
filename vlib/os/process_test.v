@@ -312,6 +312,33 @@ fn test_new_process_prefers_the_current_directory_over_path_on_windows() {
 	p.close()
 }
 
+fn test_new_process_prefers_the_system_directory_over_path_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	defer {
+		os.setenv('PATH', original_path, true)
+	}
+	// CreateProcessW searches the system directories before PATH, so a bare
+	// `where` must run `%SystemRoot%\System32\where.exe`, even when a same-named
+	// program sits in the first PATH entry. The impostor ignores its arguments
+	// and exits with 0; the real `where /q <missing name>` exits with 1.
+	path_dir := os.join_path(tfolder, 'path_bin_where_impostor')
+	os.rmdir_all(path_dir) or {}
+	os.mkdir_all(path_dir)!
+	os.cp(test_os_process, os.join_path(path_dir, 'where.exe'))!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	mut p := os.new_process('where')
+	p.set_args(['/q', 'definitely_missing_program_xyz'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 1, 'the system `where.exe` (exit 1) must win over the PATH impostor (exit 0), got ${p.code}'
+	p.close()
+}
+
 fn test_run() {
 	eprintln(@FN)
 	mut p := os.new_process(test_os_process)

@@ -9,6 +9,8 @@ fn C.TerminateProcess(process HANDLE, exit_code u32) bool
 fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize i32, lpBytesRead voidptr, lpTotalBytesAvail voidptr,
 	lpBytesLeftThisMessage voidptr) bool
 fn C.CreateFileW(lpFileName &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes voidptr, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
+fn C.GetSystemDirectoryW(lpBuffer &u16, uSize u32) u32
+fn C.GetWindowsDirectoryW(lpBuffer &u16, uSize u32) u32
 
 type FN_NTSuspendResume = fn (voidptr) u64
 
@@ -45,19 +47,46 @@ fn win_env_value_from_entries(env []string, name string) ?string {
 	return none
 }
 
+// win_bare_command_search_dirs returns the directories that `CreateProcessW`
+// itself searches for a bare module name before it consults `PATH`, in its
+// documented order: the directory the running application was loaded from,
+// the current directory, the 32-bit system directory, the 16-bit system
+// directory (`<windir>\System`; there is no function that returns it), and
+// the Windows directory. A directory that cannot be determined is skipped.
+fn win_bare_command_search_dirs() []string {
+	mut dirs := []string{cap: 5}
+	dirs << dir(executable())
+	dirs << getwd()
+	mut buf := [max_path_buffer_size]u16{}
+	sys_len := C.GetSystemDirectoryW(&buf[0], max_path_buffer_size)
+	if sys_len > 0 && sys_len < u32(max_path_buffer_size) {
+		dirs << unsafe { string_from_wide2(&buf[0], int(sys_len)) }
+	}
+	win_len := C.GetWindowsDirectoryW(&buf[0], max_path_buffer_size)
+	if win_len > 0 && win_len < u32(max_path_buffer_size) {
+		windir := unsafe { string_from_wide2(&buf[0], int(win_len)) }
+		dirs << join_path_single(windir, 'System')
+		dirs << windir
+	}
+	return dirs
+}
+
 // win_resolve_filename turns `p.filename` into the path handed to
 // `CreateProcessW`, mirroring `unix_resolve_filename`: an absolute path is used
 // as is, a relative path containing a directory separator is anchored to the
 // current directory (the child's work folder may differ), and a bare command
-// name (`gcc`, `cl`, `node`) is looked up first in the current directory, as
-// Windows itself does, and only then in the `PATH` the child will start with -
-// trying the Windows executable suffixes, as `find_abs_path_of_executable`
-// does. The two lookups are separate on purpose: the helper tries every
-// suffix across all of its directories before moving to the next suffix, so a
-// single combined search would let a `tool.exe` on PATH shadow a `tool.cmd`
-// in the current directory. `CreateProcessW` performs no such lookup when
-// given an application name, so without this every bare-name spawn failed
-// with "The system cannot find the file specified".
+// name (`gcc`, `cl`, `node`) is looked up in the same order `CreateProcessW`
+// uses for a bare module name - the application directory, the current
+// directory and the system directories (`win_bare_command_search_dirs`), and
+// only then the `PATH` the child will start with - trying the Windows
+// executable suffixes, as `find_abs_path_of_executable` does. Each directory
+// is searched on its own, on purpose: the helper tries every suffix across
+// all of its directories before moving to the next suffix, so a single
+// combined search would let a `tool.exe` on PATH shadow a `tool.cmd` in the
+// current directory, or a same-named `cmd.exe` on PATH shadow the one in the
+// system directory. `CreateProcessW` performs no lookup at all when given an
+// application name, so without this every bare-name spawn failed with "The
+// system cannot find the file specified".
 fn (p &Process) win_resolve_filename() !string {
 	if is_abs_path(p.filename) {
 		return p.filename
@@ -65,8 +94,10 @@ fn (p &Process) win_resolve_filename() !string {
 	if p.filename.contains('\\') || p.filename.contains('/') {
 		return abs_path(p.filename)
 	}
-	if in_cwd := find_abs_path_of_executable_in_path_env(p.filename, getwd()) {
-		return in_cwd
+	for d in win_bare_command_search_dirs() {
+		if found := find_abs_path_of_executable_in_path_env(p.filename, d) {
+			return found
+		}
 	}
 	path := win_env_value_from_entries(p.env, 'PATH') or { return error_failed_to_find_executable() }
 	return find_abs_path_of_executable_in_path_env(p.filename, path)
