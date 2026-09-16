@@ -334,7 +334,7 @@ fn retry_with_v1_at_exit() {
 @[noreturn]
 fn launch_v1(args []string, reason string, report_state RetryState) {
 	fallback := ensure_v1_fallback(reason) or {
-		eprintln(err.msg())
+		report_v3_fallback_unavailable(args, reason, report_state, err.msg())
 		exit(1)
 	}
 	os.setenv('VEXE', fallback, true)
