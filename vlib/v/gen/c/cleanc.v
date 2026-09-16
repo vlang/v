@@ -17642,13 +17642,14 @@ fn (g &FlatGen) is_module_qualified_enum(base flat.Node) bool {
 
 fn (mut g FlatGen) preamble() {
 	use_system_libc := g.c_directives_use_system_libc()
-	if g.target_libc_headers {
-		// The target's own headers spell the fixed-width types, and every `fn C.xxx`
+	if g.target_libc_headers || use_system_libc {
+		// The active system headers spell the fixed-width types, and every `fn C.xxx`
 		// prototype generated below is checked against them. `unsigned long long`
 		// where the target's <stdint.h> says `unsigned long` is a different type, not
 		// a wider spelling of the same one, so a `u64` parameter conflicts with the
 		// header's `uint64_t` or `size_t`. Alias the target's types instead.
 		g.writeln('#include <stdint.h>')
+		g.writeln('#include <stddef.h>')
 		g.writeln('typedef int8_t i8;')
 		g.writeln('typedef int16_t i16;')
 		g.writeln('typedef int32_t i32;')
@@ -17671,24 +17672,26 @@ fn (mut g FlatGen) preamble() {
 	}
 	g.writeln('static inline i64 __v_pow_i64(i64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return -1; if (base != 1 && base != -1) return 0; return (exponent & 1) != 0 ? base : 1; } i64 value = 1; i64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
 	g.writeln('static inline u64 __v_pow_u64(u64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return (u64)-1; return base == 1 ? 1 : 0; } u64 value = 1; u64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
-	g.writeln('#ifdef _MSC_VER')
-	g.writeln('#ifdef _WIN64')
-	g.writeln('typedef unsigned __int64 size_t;')
-	g.writeln('typedef __int64 ptrdiff_t;')
-	g.writeln('typedef unsigned __int64 uintptr_t;')
-	g.writeln('typedef __int64 intptr_t;')
-	g.writeln('#else')
-	g.writeln('typedef unsigned int size_t;')
-	g.writeln('typedef int ptrdiff_t;')
-	g.writeln('typedef unsigned int uintptr_t;')
-	g.writeln('typedef int intptr_t;')
-	g.writeln('#endif')
-	g.writeln('#else')
-	g.writeln('typedef __SIZE_TYPE__ size_t;')
-	g.writeln('typedef __PTRDIFF_TYPE__ ptrdiff_t;')
-	g.writeln('typedef __UINTPTR_TYPE__ uintptr_t;')
-	g.writeln('typedef __INTPTR_TYPE__ intptr_t;')
-	g.writeln('#endif')
+	if !g.target_libc_headers && !use_system_libc {
+		g.writeln('#ifdef _MSC_VER')
+		g.writeln('#ifdef _WIN64')
+		g.writeln('typedef unsigned __int64 size_t;')
+		g.writeln('typedef __int64 ptrdiff_t;')
+		g.writeln('typedef unsigned __int64 uintptr_t;')
+		g.writeln('typedef __int64 intptr_t;')
+		g.writeln('#else')
+		g.writeln('typedef unsigned int size_t;')
+		g.writeln('typedef int ptrdiff_t;')
+		g.writeln('typedef unsigned int uintptr_t;')
+		g.writeln('typedef int intptr_t;')
+		g.writeln('#endif')
+		g.writeln('#else')
+		g.writeln('typedef __SIZE_TYPE__ size_t;')
+		g.writeln('typedef __PTRDIFF_TYPE__ ptrdiff_t;')
+		g.writeln('typedef __UINTPTR_TYPE__ uintptr_t;')
+		g.writeln('typedef __INTPTR_TYPE__ intptr_t;')
+		g.writeln('#endif')
+	}
 	if !use_system_libc && !g.target_libc_headers {
 		g.writeln('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && !defined(_BSD_TIME_T_DEFINED_) && !defined(_TIME_T_DECLARED)')
 		g.writeln('typedef long long time_t;')
