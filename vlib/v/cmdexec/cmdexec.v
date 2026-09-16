@@ -29,8 +29,21 @@ pub fn run_with_timeout(program string, args []string, timeout_ms i64) os.Result
 	return run_in_mode(program, args, '', false, timeout_ms)
 }
 
+fn resolve_program(program string) ?string {
+	if os.is_executable(program) {
+		return program
+	}
+	return os.find_abs_path_of_executable(program) or { return none }
+}
+
 fn run_in_mode(program string, args []string, work_folder string, merge_output bool, timeout_ms i64) os.Result {
-	mut process := os.new_process(program)
+	executable := resolve_program(program) or {
+		return os.Result{
+			exit_code: 1
+			output:    'os: failed to find executable `${program}`\n'
+		}
+	}
+	mut process := os.new_process(executable)
 	process.set_args(args)
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
