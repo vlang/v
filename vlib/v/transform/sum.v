@@ -532,12 +532,14 @@ fn (t &Transformer) sum_variant_type_accepts_value_type(variant_type string, val
 	if clean_variant_type.starts_with('[]') && clean_value_type.starts_with('[]') {
 		clean_variant_type = clean_variant_type[2..]
 		clean_value_type = clean_value_type[2..]
-		if t.variant_names_match(clean_variant_type, clean_value_type) {
-			return true
-		}
+		// Keep module-qualified recursive sum element types distinct. `[]a.Any`
+		// and `[]b.Any` are not interchangeable merely because both elements have
+		// the short name `Any`; only accept them when the target sum really accepts
+		// the source element type.
 		if t.is_sum_type_name(clean_variant_type) {
 			return t.sum_target_accepts_variant_type(clean_variant_type, clean_value_type)
 		}
+		return t.variant_names_match(clean_variant_type, clean_value_type)
 	}
 	return false
 }
@@ -1734,11 +1736,18 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		return wrapper_value
 	}
 	short_variant := t.variant_short_name(clean_variant)
+	container_variant := clean_variant.starts_with('[]') || clean_variant.starts_with('map[')
+		|| t.is_fixed_array_type(clean_variant)
 	mut matches := false
 	mut matched_variant := clean_variant
 	for v in t.sum_types[resolved_sum] {
 		short_v := t.variant_short_name(v)
-		if t.variant_names_match(v, clean_variant) || short_v == short_variant {
+		v_is_container := v.starts_with('[]') || v.starts_with('map[') || t.is_fixed_array_type(v)
+		// Container element/value types are storage-significant. Do not make
+		// `[]json2.Any` match `[]toml.Any` (or analogous maps/fixed arrays) just
+		// because their nested types share the same short name.
+		if t.variant_names_match(v, clean_variant)
+			|| (!v_is_container && !container_variant && short_v == short_variant) {
 			matches = true
 			matched_variant = v
 			break
