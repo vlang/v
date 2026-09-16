@@ -84,7 +84,7 @@ fn test_v3_no_std_command_keeps_the_user_standard_only() {
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'main.v')
-	output := os.join_path(root, 'main')
+	output := os.join_path(root, 'main.c')
 	os.write_file(source, 'fn main() {}\n')!
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')
@@ -99,6 +99,31 @@ fn test_v3_no_std_command_keeps_the_user_standard_only() {
 	assert '-std=c++11' in build.output.split_into_lines(), build.output
 	assert '-std=gnu11' !in build.output, build.output
 	assert '-std=gnu++11' !in build.output, build.output
+}
+
+fn test_v3_tcc_linux_output_declares_backtrace() {
+	root := os.join_path(os.vtmp_dir(), 'v3_tcc_backtrace_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, 'fn main() {}\n')!
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		}
+	}
+	build := cmdexec.run(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-cc', 'tcc',
+		'-os', 'linux', '-arch', 'amd64', '-o', output, source])
+	assert build.exit_code == 0, build.output
+	c_source := os.read_file(output)!
+	assert c_source.contains('tcc_backtrace(char* fmt);')
+	assert c_source.contains('tcc_backtrace("Backtrace");')
 }
 
 fn test_macos_linux_compatibility_link_uses_portable_c_for_executables() {
