@@ -205,15 +205,13 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 	t1 := x1.mask_bits(m2n)
 	t2 := x2.mask_bits(m2n)
 
-	t := (
-		if t2.abs_cmp(t1) >= 0 {
-			(t2 - t1).mask_bits(m2n)
-		} else {
-			// (x2 - x1) % m2 = 1 + ((~((x2 % m2) - (x1 % m2))) % m2)
-			(t1 - t2).abs().bitwise_not().mask_bits(m2n) + one_int
-		} * m1i
-	)
-	.mask_bits(m2n)
+	delta := if t2.abs_cmp(t1) >= 0 {
+		(t2 - t1).mask_bits(m2n)
+	} else {
+		// (x2 - x1) % m2 = 1 + ((~((x2 % m2) - (x1 % m2))) % m2)
+		(t1 - t2).abs().bitwise_not().mask_bits(m2n) + one_int
+	}
+	t := (delta * m1i).mask_bits(m2n)
 
 	return x1 + m1 * t
 }
