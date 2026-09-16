@@ -87,7 +87,7 @@ fn (x &Xof128) clone() &Xof128 {
 // write writes out the content of message and updates internal Xof128 state.
 pub fn (mut x Xof128) write(msg []u8) !int {
 	if x.Digest.done {
-		panic('Digest: writing after done ')
+		return error('Digest: writing after done ')
 	}
 	return x.Digest.absorb(msg)
 }
@@ -227,7 +227,7 @@ pub fn (x &CXof128) block_size() int {
 // write writes out the content of message and updates internal CXof128 state.
 pub fn (mut x CXof128) write(msg []u8) !int {
 	if x.Digest.done {
-		panic('CXof128: writing after done ')
+		return error('CXof128: writing after done ')
 	}
 	return x.Digest.absorb(msg)
 }
