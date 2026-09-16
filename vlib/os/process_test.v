@@ -367,6 +367,40 @@ fn test_new_process_runs_the_exact_spelling_of_a_suffixed_name_on_windows() {
 	p.close()
 }
 
+fn test_new_process_does_not_expand_a_suffixed_name_in_an_earlier_directory_on_windows() {
+	$if !windows {
+		return
+	}
+	eprintln(@FN)
+	original_path := os.getenv('PATH')
+	original_wd := os.getwd()
+	defer {
+		os.setenv('PATH', original_path, true)
+		os.chdir(original_wd) or {}
+	}
+	// A name that already has an executable extension is never expanded, in any
+	// directory: `exact_tool.exe.exe` in the current directory (searched first)
+	// must not shadow `exact_tool.exe` found later on PATH. The shadow ignores
+	// its arguments and exits with 0; the requested program exits with the given 3.
+	cwd_dir := os.join_path(tfolder, 'cwd_bin_exact_shadow')
+	path_dir := os.join_path(tfolder, 'path_bin_exact_later')
+	os.rmdir_all(cwd_dir) or {}
+	os.rmdir_all(path_dir) or {}
+	os.mkdir_all(cwd_dir)!
+	os.mkdir_all(path_dir)!
+	os.cp(delayed_output_exe_filename, os.join_path(cwd_dir, 'exact_tool.exe.exe'))!
+	os.cp(test_os_process, os.join_path(path_dir, 'exact_tool.exe'))!
+	os.setenv('PATH', '${path_dir}${os.path_delimiter}${original_path}', true)
+	os.chdir(cwd_dir)!
+	mut p := os.new_process('exact_tool.exe')
+	p.set_args(['-exitcode', '3'])
+	p.set_redirect_stdio()
+	p.wait()
+	assert p.status == .exited
+	assert p.code == 3, 'the PATH `exact_tool.exe` (exit 3) must win over the cwd `exact_tool.exe.exe` (exit 0), got ${p.code}'
+	p.close()
+}
+
 fn test_run() {
 	eprintln(@FN)
 	mut p := os.new_process(test_os_process)

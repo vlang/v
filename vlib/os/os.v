@@ -648,14 +648,19 @@ fn error_failed_to_find_executable() IError {
 }
 
 // executable_suffixes_for returns the suffixes to try for `exe_name`, in order.
-// A name that already carries an extension (`cmd.exe`, `tool.bat`) is tried
-// exactly first, so that a `cmd.exe.exe` in a directory searched earlier (or
-// the same one) cannot shadow the spelling that was asked for - `CreateProcessW`
-// never appends an extension to such a name. The other suffixes are still
-// tried after that, for names like `python3.12`, whose "extension" is not one.
+// A name that already carries an executable extension (`cmd.exe`, `tool.bat`,
+// `prog.com`) is tried exactly and nothing else, so that a `cmd.exe.exe` in a
+// directory searched earlier cannot shadow the spelling that was asked for -
+// `CreateProcessW` never appends an extension to such a name. A name with some
+// other extension (`python3.12`) is tried exactly first and then with the
+// suffixes appended, since its "extension" is not one.
 fn executable_suffixes_for(exe_name string) []string {
-	if file_ext(exe_name) == '' {
+	ext := file_ext(exe_name)
+	if ext == '' {
 		return executable_suffixes
+	}
+	if ext.to_lower_ascii() in executable_suffixes || ext.to_lower_ascii() == '.com' {
+		return ['']
 	}
 	mut suffixes := ['']
 	for suffix in executable_suffixes {
