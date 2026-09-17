@@ -4398,11 +4398,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 		arg_node := tc.a.node(arg_id)
 		mut actual := tc.short_struct_call_arg_type(raw_arg) or {
 			if arg_node.kind == .call {
-				if call_info := tc.resolve_call_info(arg_id, arg_node) {
-					call_info.return_type
-				} else {
-					tc.direct_call_return_type(arg_node) or { tc.resolve_type(arg_id) }
-				}
+				tc.resolve_generic_call_arg_type(arg_id)
 			} else {
 				tc.resolve_type(arg_id)
 			}
