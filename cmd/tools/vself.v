@@ -87,6 +87,14 @@ fn main() {
 		// the bounded-memory implementation too.
 		args << '-prealloc'
 	}
+	// A replacement compiler has to be built entirely from the checked-out sources.
+	// Reusing a whole-program cache entry here can carry stale checker/codegen state
+	// from the compiler that is being replaced into a binary that reports the new hash.
+	effective_args = effective_self_build_args(args)
+	if '-nocache' !in effective_args && '--no-cache' !in effective_args {
+		args << '-nocache'
+		effective_args = effective_self_build_args(args)
+	}
 	obinary := self_build_output(args)
 	if fastc_self_build && repeat_count > 1 && obinary == '' {
 		unsupported := unsupported_fastc_repeat_args(args)
@@ -134,7 +142,6 @@ fn main() {
 				bootstrap_self_build(vroot, clone_args(args), final_binary) or {
 					eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
 					exit(1)
-				}
 			}
 		}
 		if obinary == '' {
@@ -225,7 +232,7 @@ fn unsupported_fastc_repeat_args(args []string) []string {
 			i += 2
 			continue
 		}
-		if arg in ['-silent', '-keepc'] {
+		if arg in ['-silent', '-keepc', '-nocache'] {
 			i++
 			continue
 		}
