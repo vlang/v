@@ -2831,8 +2831,7 @@ fn test_cached_native_inactive_definition_uses_include_site_macros() {
 ')
 	library_object := os.join_path(library_dir, 'library.o')
 	library := os.join_path(library_dir, 'libconditionalapi.a')
-	cc_result := os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(os.join_path(library_dir,
-		'library.c'))}')
+	cc_result := os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(os.join_path(library_dir, 'library.c'))}')
 	assert cc_result.exit_code == 0, cc_result.output
 	ar_result := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
 	assert ar_result.exit_code == 0, ar_result.output
@@ -2892,8 +2891,7 @@ fn test_cached_objects_honor_strict_c_warnings() {
 ')
 	library_object := os.join_path(library_dir, 'strict_helper.o')
 	library := os.join_path(library_dir, 'libstrictcache.a')
-	cc_result := os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(os.join_path(library_dir,
-		'strict_helper.c'))}')
+	cc_result := os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(os.join_path(library_dir, 'strict_helper.c'))}')
 	assert cc_result.exit_code == 0, cc_result.output
 	ar_result := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
 	assert ar_result.exit_code == 0, ar_result.output
@@ -3472,8 +3470,7 @@ fn test_cached_objects_precede_static_libraries_on_link_command() {
 ')
 	library_object := os.join_path(library_dir, 'cache_order.o')
 	library := os.join_path(library_dir, 'libcacheorder.a')
-	cc_result := os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(os.join_path(library_dir,
-		'cache_order.c'))}')
+	cc_result := os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(os.join_path(library_dir, 'cache_order.c'))}')
 	assert cc_result.exit_code == 0, cc_result.output
 	ar_result := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
 	assert ar_result.exit_code == 0, ar_result.output
@@ -6947,8 +6944,7 @@ fn test_cgen_cache_invalidates_for_resolved_dynamic_flag_change() {
 	}
 	write_module_cache_file(root, 'old.c', 'int v3_dynamic_flag_value(void) { return 1; }\n')
 	old_object := os.join_path(root, 'old.o')
-	old_cc := os.execute('cc -c -o ${os.quoted_path(old_object)} ${os.quoted_path(os.join_path(root,
-		'old.c'))}')
+	old_cc := os.execute('cc -c -o ${os.quoted_path(old_object)} ${os.quoted_path(os.join_path(root, 'old.c'))}')
 	assert old_cc.exit_code == 0, old_cc.output
 	main_file := os.join_path(root, 'main.v')
 	write_module_cache_file(root, 'main.v', "module main
@@ -6968,8 +6964,7 @@ fn main() {
 
 	write_module_cache_file(root, 'new.c', 'int v3_dynamic_flag_value(void) { return 2; }\n')
 	new_object := os.join_path(root, 'new.o')
-	new_cc := os.execute('cc -c -o ${os.quoted_path(new_object)} ${os.quoted_path(os.join_path(root,
-		'new.c'))}')
+	new_cc := os.execute('cc -c -o ${os.quoted_path(new_object)} ${os.quoted_path(os.join_path(root, 'new.c'))}')
 	assert new_cc.exit_code == 0, new_cc.output
 	second_output := os.join_path(root, 'second')
 	second :=
@@ -7993,8 +7988,7 @@ fn test_standalone_build_preserves_split_weak_library_flag() {
 }
 ')
 	library := os.join_path(root, 'liboptional.dylib')
-	build_library := os.execute('cc -dynamiclib -o ${os.quoted_path(library)} ${os.quoted_path(os.join_path(root,
-		'optional.c'))}')
+	build_library := os.execute('cc -dynamiclib -o ${os.quoted_path(library)} ${os.quoted_path(os.join_path(root, 'optional.c'))}')
 	assert build_library.exit_code == 0, build_library.output
 	write_module_cache_file(root, 'optional/optional.v', 'module optional
 

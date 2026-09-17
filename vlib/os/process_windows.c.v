@@ -277,10 +277,10 @@ fn (mut p Process) win_spawn_process() int {
 
 	create_process_ok := C.CreateProcessW(application_name_ptr, voidptr(&wdata.command_line[0]), 0,
 		0, C.TRUE, creation_flags, if env_block.len > 0 {
-		env_block.data
-	} else {
-		0
-	}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
+			env_block.data
+		} else {
+			0
+		}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
 	failed_cfn_report_error(create_process_ok, 'CreateProcess `${p.filename}`')
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdin_read)

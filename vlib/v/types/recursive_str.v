@@ -1619,8 +1619,8 @@ fn (mut tc TypeChecker) recursive_str_apply_builtin_array_mutator(call_id flat.N
 		}
 	}
 	method := callee.value
-	if method !in ['clear', 'delete', 'delete_many', 'delete_last', 'drop', 'insert', 'pop',
-		'pop_left', 'prepend', 'reverse_in_place', 'sort', 'sort_with_compare', 'trim'] {
+	if method !in ['clear', 'delete', 'delete_many', 'delete_last', 'drop', 'insert', 'pop', 'pop_left',
+		'prepend', 'reverse_in_place', 'sort', 'sort_with_compare', 'trim'] {
 		return none
 	}
 	mut binding := receiver
@@ -2774,7 +2774,9 @@ fn (tc &TypeChecker) recursive_str_replace_aggregate_binding_slot(path []Recursi
 	}
 	slot := path[depth]
 	element_index := match slot.kind {
-		.index { tc.recursive_str_tracked_element_index(binding, slot.index_id) or { return false } }
+		.index {
+			tc.recursive_str_tracked_element_index(binding, slot.index_id) or { return false }
+		}
 		.field { recursive_str_named_element_index(binding, slot.key) or { return false } }
 	}
 	binding.elements = binding.elements.clone()

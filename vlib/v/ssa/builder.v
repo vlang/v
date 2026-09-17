@@ -11,37 +11,37 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_unlink', '_rename', '_remove', '_stat', '_lstat', '_fstat', '_chmod', '_chdir', '_realpath',
 	'_symlink', '_link', '_getpid', '_getuid', '_geteuid', '_fork', '_execve', '_execvp', '_waitpid',
 	'_kill', '_system', '_posix_spawn', '_signal', '_atexit', '_fgets', '_fputs', '_fread', '_fseek',
-	'_ftell', '_rewind', '_fileno', '_popen', '_pclose', '_dup', '_dup2', '_pipe', '_isatty',
-	'_freopen', '_dprintf', '_getc', '_strdup', '_strcmp', '_strncmp', '_strchr', '_strrchr',
-	'_strerror', '_strncasecmp', '_strcasecmp', '_atoi', '_atof', '_qsort', '_time', '_localtime_r',
-	'_gmtime_r', '_mktime', '_gettimeofday', '_clock', '_clock_gettime_nsec_np',
-	'_mach_absolute_time', '_mach_timebase_info', '_nanosleep', '_sleep', '_usleep', '_strftime',
-	'_task_info', '_mach_task_self', '_mach_task_self_', '_proc_pid_rusage', '_rand', '_srand',
-	'_isdigit', '_isspace', '_tolower', '_toupper', '_setenv', '_unsetenv', '_sysconf', '_uname',
-	'_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock', '_pthread_mutex_trylock',
-	'_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self', '_pthread_create',
-	'_pthread_join', '_pthread_attr_init', '_pthread_attr_setstacksize', '_pthread_attr_destroy',
-	'_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared', '_pthread_rwlockattr_destroy',
-	'_pthread_rwlock_init', '_pthread_rwlock_rdlock', '_pthread_rwlock_wrlock',
-	'_pthread_rwlock_tryrdlock', '_pthread_rwlock_trywrlock', '_pthread_rwlock_unlock',
-	'_pthread_rwlock_destroy', '_pthread_condattr_init', '_pthread_condattr_setpshared',
-	'_pthread_condattr_destroy', '_pthread_cond_init', '_pthread_cond_signal', '_pthread_cond_wait',
-	'_pthread_cond_timedwait', '_pthread_cond_destroy', '_arc4random_buf', '_proc_pidpath',
-	'_backtrace', '_backtrace_symbols', '_backtrace_symbols_fd', '_dispatch_semaphore_create',
-	'_dispatch_semaphore_signal', '_dispatch_semaphore_wait', '_dispatch_time', '_dispatch_release',
-	'_setvbuf', '_setbuf', '_memchr', '_getlogin_r', '_getppid', '_getgid', '_getegid', '_ftruncate',
-	'_mkstemp', '_statvfs', '_chown', '_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask',
-	'_select', '_kqueue', '_abs', '_tcgetattr', '_tcsetattr', '_ioctl', '_getchar', '_getline',
-	'_fdopen', '_feof', '_ferror', '_setpgid', '_ptrace', '_wait', '_timegm', '_clock_gettime',
-	'_aligned_alloc', '_utime', '_getlogin', '_environ', '___error', '___stdinp',
-	'__dyld_get_image_name', '__dyld_get_image_header', '_cos', '_sin', '_tan', '_acos', '_asin',
-	'_atan', '_atan2', '_cosh', '_sinh', '_tanh', '_acosh', '_asinh', '_atanh', '_exp', '_exp2',
-	'_log', '_log2', '_log10', '_pow', '_sqrt', '_cbrt', '_ceil', '_floor', '_round', '_trunc',
-	'_fmod', '_remainder', '_fabs', '_copysign', '_fmax', '_fmin', '_hypot', '_ldexp', '_frexp',
-	'_modf', '_scalbn', '_ilogb', '_logb', '_erf', '_erfc', '_lgamma', '_tgamma', '_j0', '_j1',
-	'_jn', '_y0', '_y1', '_yn', '_getrusage', '_mprotect', '_sys_icache_invalidate', '_objc_msgSend',
-	'_objc_getClass', '_sel_registerName', '_objc_alloc_init', '_objc_autoreleasePoolPush',
-	'_objc_autoreleasePoolPop', '_MTLCreateSystemDefaultDevice', '_dlopen', '_dlsym']
+	'_ftell', '_rewind', '_fileno', '_popen', '_pclose', '_dup', '_dup2', '_pipe', '_isatty', '_freopen',
+	'_dprintf', '_getc', '_strdup', '_strcmp', '_strncmp', '_strchr', '_strrchr', '_strerror',
+	'_strncasecmp', '_strcasecmp', '_atoi', '_atof', '_qsort', '_time', '_localtime_r', '_gmtime_r',
+	'_mktime', '_gettimeofday', '_clock', '_clock_gettime_nsec_np', '_mach_absolute_time',
+	'_mach_timebase_info', '_nanosleep', '_sleep', '_usleep', '_strftime', '_task_info',
+	'_mach_task_self', '_mach_task_self_', '_proc_pid_rusage', '_rand', '_srand', '_isdigit', '_isspace',
+	'_tolower', '_toupper', '_setenv', '_unsetenv', '_sysconf', '_uname', '_gethostname',
+	'_pthread_mutex_init', '_pthread_mutex_lock', '_pthread_mutex_trylock', '_pthread_mutex_unlock',
+	'_pthread_mutex_destroy', '_pthread_self', '_pthread_create', '_pthread_join', '_pthread_attr_init',
+	'_pthread_attr_setstacksize', '_pthread_attr_destroy', '_pthread_rwlockattr_init',
+	'_pthread_rwlockattr_setpshared', '_pthread_rwlockattr_destroy', '_pthread_rwlock_init',
+	'_pthread_rwlock_rdlock', '_pthread_rwlock_wrlock', '_pthread_rwlock_tryrdlock',
+	'_pthread_rwlock_trywrlock', '_pthread_rwlock_unlock', '_pthread_rwlock_destroy',
+	'_pthread_condattr_init', '_pthread_condattr_setpshared', '_pthread_condattr_destroy',
+	'_pthread_cond_init', '_pthread_cond_signal', '_pthread_cond_wait', '_pthread_cond_timedwait',
+	'_pthread_cond_destroy', '_arc4random_buf', '_proc_pidpath', '_backtrace', '_backtrace_symbols',
+	'_backtrace_symbols_fd', '_dispatch_semaphore_create', '_dispatch_semaphore_signal',
+	'_dispatch_semaphore_wait', '_dispatch_time', '_dispatch_release', '_setvbuf', '_setbuf', '_memchr',
+	'_getlogin_r', '_getppid', '_getgid', '_getegid', '_ftruncate', '_mkstemp', '_statvfs', '_chown',
+	'_sigaction', '_sigemptyset', '_sigaddset', '_sigprocmask', '_select', '_kqueue', '_abs',
+	'_tcgetattr', '_tcsetattr', '_ioctl', '_getchar', '_getline', '_fdopen', '_feof', '_ferror',
+	'_setpgid', '_ptrace', '_wait', '_timegm', '_clock_gettime', '_aligned_alloc', '_utime', '_getlogin',
+	'_environ', '___error', '___stdinp', '__dyld_get_image_name', '__dyld_get_image_header', '_cos',
+	'_sin', '_tan', '_acos', '_asin', '_atan', '_atan2', '_cosh', '_sinh', '_tanh', '_acosh', '_asinh',
+	'_atanh', '_exp', '_exp2', '_log', '_log2', '_log10', '_pow', '_sqrt', '_cbrt', '_ceil', '_floor',
+	'_round', '_trunc', '_fmod', '_remainder', '_fabs', '_copysign', '_fmax', '_fmin', '_hypot',
+	'_ldexp', '_frexp', '_modf', '_scalbn', '_ilogb', '_logb', '_erf', '_erfc', '_lgamma', '_tgamma',
+	'_j0', '_j1', '_jn', '_y0', '_y1', '_yn', '_getrusage', '_mprotect', '_sys_icache_invalidate',
+	'_objc_msgSend', '_objc_getClass', '_sel_registerName', '_objc_alloc_init',
+	'_objc_autoreleasePoolPush', '_objc_autoreleasePoolPop', '_MTLCreateSystemDefaultDevice', '_dlopen',
+	'_dlsym']
 
 const bench_runtime_stub_names = ['current_rss_kb', 'macos_rss_kb', 'linux_rss_kb',
 	'bench.current_rss_kb', 'bench.macos_rss_kb', 'bench.linux_rss_kb', 'v.bench.current_rss_kb',
@@ -465,10 +465,9 @@ fn native_c_struct_abi(struct_name string) ?NativeCStructAbi {
 	if struct_name == 'C.rusage' {
 		// getrusage fills two 16-byte timeval values followed by fourteen longs.
 		return NativeCStructAbi{
-			field_names: ['ru_utime_sec', 'ru_utime_usec', 'ru_stime_sec', 'ru_stime_usec',
-				'ru_maxrss', 'ru_ixrss', 'ru_idrss', 'ru_isrss', 'ru_minflt', 'ru_majflt', 'ru_nswap',
-				'ru_inblock', 'ru_oublock', 'ru_msgsnd', 'ru_msgrcv', 'ru_nsignals', 'ru_nvcsw',
-				'ru_nivcsw']
+			field_names: ['ru_utime_sec', 'ru_utime_usec', 'ru_stime_sec', 'ru_stime_usec', 'ru_maxrss',
+				'ru_ixrss', 'ru_idrss', 'ru_isrss', 'ru_minflt', 'ru_majflt', 'ru_nswap', 'ru_inblock',
+				'ru_oublock', 'ru_msgsnd', 'ru_msgrcv', 'ru_nsignals', 'ru_nvcsw', 'ru_nivcsw']
 			field_types: ['i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64',
 				'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64', 'i64']
 		}
@@ -1506,19 +1505,18 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'strings.Builder.free', 'strings.Builder.last_n', 'Builder.write_string', 'Builder.writeln',
 		'Builder.str', 'Builder.write_ptr', 'Builder.write_u8', 'Builder.write_runes', 'Builder.free',
 		'Builder.last_n', 'new_map', 'map__set', 'map__get', 'map__exists', 'map__get_check',
-		'map__get_key_check', 'map__get_or_set', 'map__delete', 'map__clear', 'map__clone',
-		'map__move', 'map__free', 'map__reserve', 'map__keys', 'map__values', 'v3_map_find',
-		'v3_map_set_sized', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital', 'bytestr',
-		'[]u8.bytestr', '[]u8.hex', '[]rune.string', 'Array_u8__bytestr', 'Array_u8__hex',
-		'Array_rune__string', 'array.repeat_to_depth', 'string.all_before_last',
-		'string__all_before_last', 'all_before_last', 'string.all_after_last',
-		'string__all_after_last', 'all_after_last', '_ht_alloc', '_ht_free', 'f32_to_str_l',
-		'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot', 'print', 'println',
-		'eprint', 'eprintln', 'arguments', 'at_exit', 'tos2', 'tos3', 'tos_clone',
+		'map__get_key_check', 'map__get_or_set', 'map__delete', 'map__clear', 'map__clone', 'map__move',
+		'map__free', 'map__reserve', 'map__keys', 'map__values', 'v3_map_find', 'v3_map_set_sized',
+		'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital', 'bytestr', '[]u8.bytestr',
+		'[]u8.hex', '[]rune.string', 'Array_u8__bytestr', 'Array_u8__hex', 'Array_rune__string',
+		'array.repeat_to_depth', 'string.all_before_last', 'string__all_before_last', 'all_before_last',
+		'string.all_after_last', 'string__all_after_last', 'all_after_last', '_ht_alloc', '_ht_free',
+		'f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot', 'print',
+		'println', 'eprint', 'eprintln', 'arguments', 'at_exit', 'tos2', 'tos3', 'tos_clone',
 		'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32',
 		'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast',
-		'normalize_path_in_builder', 'check_fwrite', 'check_fread', 'os.check_fwrite',
-		'os.check_fread', 'array_eq_raw', 'array_eq_string', 'array_eq_array', 'fxx_to_str_l_parse',
+		'normalize_path_in_builder', 'check_fwrite', 'check_fread', 'os.check_fwrite', 'os.check_fread',
+		'array_eq_raw', 'array_eq_string', 'array_eq_array', 'fxx_to_str_l_parse',
 		'fxx_to_str_l_parse_with_dot', 'u8.vstring', 'u8.vstring_with_len', 'char.vstring',
 		'char.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len', 'charptr.vstring',
 		'charptr.vstring_with_len', 'u8.vstring_literal', 'u8.vstring_literal_with_len',
@@ -6079,7 +6077,8 @@ fn (b &Builder) fn_is_used(name string) bool {
 		return true
 	}
 	runtime_name := name.replace('__', '.').all_after_last('.')
-	if runtime_name in ['error_file_not_opened', 'error_size_of_type_0', 'fileno', 'posix_wait4_to_exit_status', 'vpopen', 'vpclose']
+	if runtime_name in ['error_file_not_opened', 'error_size_of_type_0', 'fileno',
+		'posix_wait4_to_exit_status', 'vpopen', 'vpclose']
 		|| runtime_name.starts_with('posix_wait_status_') {
 		return true
 	}
@@ -6111,8 +6110,8 @@ fn (b &Builder) fn_is_used(name string) bool {
 		return true
 	}
 	if name in ['new_map', 'memdup', 'int_str', 'bool_str', 'print', 'println', 'eprint', 'eprintln',
-		'exit', 'arguments', 'tos', 'tos2', 'tos3', 'tos_clone', 'cstring_to_vstring',
-		'malloc_noscan', 'isnil', 'error', 'error_with_code', 'join_path_single'] {
+		'exit', 'arguments', 'tos', 'tos2', 'tos3', 'tos_clone', 'cstring_to_vstring', 'malloc_noscan',
+		'isnil', 'error', 'error_with_code', 'join_path_single'] {
 		return true
 	}
 	return false
@@ -6133,7 +6132,8 @@ fn (b &Builder) ownership_drop_intrinsic_name(name string) bool {
 		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_') {
 		return true
 	}
-	if name in ['drop_owned_v3_interface', 'builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
+	if name in ['drop_owned_v3_interface', 'builtin.drop_owned_v3_interface',
+		'builtin__drop_owned_v3_interface']
 		|| name.starts_with('drop_owned_v3_interface_T_')
 		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
 		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
@@ -6492,7 +6492,8 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 		}
 		.fn_decl, .c_fn_decl, .struct_decl, .field_decl, .global_decl, .const_decl, .const_field,
 		.enum_decl, .enum_field, .type_decl, .interface_decl, .interface_field, .import_decl,
-		.module_decl, .directive, .param {}
+		.module_decl, .directive, .param {
+		}
 		.empty {}
 		else {
 			eprintln('build_stmt: unsupported node kind: ${node.kind}')
@@ -9649,8 +9650,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	}
 	if resolved_name !in b.fn_ids && resolved_name.contains('.') {
 		method_name := resolved_name.all_after_last('.')
-		if method_name in ['vstring', 'vstring_with_len', 'vstring_literal',
-			'vstring_literal_with_len'] {
+		if method_name in ['vstring', 'vstring_with_len', 'vstring_literal', 'vstring_literal_with_len'] {
 			u8_name := 'u8.${method_name}'
 			if u8_name in b.fn_ids {
 				resolved_name = u8_name
@@ -10807,8 +10807,8 @@ fn (b &Builder) builder_method_name_for_base(base flat.Node, method string) ?str
 }
 
 fn is_builder_method(method string) bool {
-	return method in ['write_string', 'writeln', 'str', 'free', 'write_u8', 'write_ptr',
-		'write_runes', 'last_n', 'push_many']
+	return method in ['write_string', 'writeln', 'str', 'free', 'write_u8', 'write_ptr', 'write_runes',
+		'last_n', 'push_many']
 }
 
 fn (b &Builder) resolved_call_name(id flat.NodeId) ?string {

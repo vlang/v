@@ -5309,8 +5309,7 @@ fn (tc &TypeChecker) unknown_method_receiver_display(receiver_name string) strin
 fn (tc &TypeChecker) method_name_suggestions(receiver_name string) []string {
 	base, _, is_generic := generic_type_application_parts(receiver_name)
 	mut prefixes := []string{}
-	for candidate in [receiver_name, receiver_name.all_after_last('.'), base,
-		base.all_after_last('.')] {
+	for candidate in [receiver_name, receiver_name.all_after_last('.'), base, base.all_after_last('.')] {
 		if candidate.len > 0 && candidate !in prefixes {
 			prefixes << candidate
 		}
@@ -6127,8 +6126,7 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			current = parent_id
 			continue
 		}
-		if parent.kind in [.field_init, .struct_init, .assoc, .array_literal, .array_init,
-			.map_init] {
+		if parent.kind in [.field_init, .struct_init, .assoc, .array_literal, .array_init, .map_init] {
 			if !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
 				return false
 			}
@@ -11901,8 +11899,8 @@ fn checker_is_raw_collection_method_name(name string, prefix string) bool {
 }
 
 fn checker_builtin_array_method_mutates(method string) bool {
-	return method in ['clear', 'delete', 'delete_last', 'insert', 'move', 'pop', 'pop_left',
-		'prepend', 'reverse_in_place', 'sort', 'sort_with_compare']
+	return method in ['clear', 'delete', 'delete_last', 'insert', 'move', 'pop', 'pop_left', 'prepend',
+		'reverse_in_place', 'sort', 'sort_with_compare']
 }
 
 // is_print_style_fn_name reports whether is print style fn name applies in types.
@@ -13450,8 +13448,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if fn_param_is_voidptr_type(expected) && !is_c_string_literal
 			&& !info.name.ends_with('Channel.push')
 			&& !json_runtime_voidptr_accepts_arg(target_name, param_idx, expected, actual)
-			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal,
-				.char_literal, .string_literal, .string_interp] {
+			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
+				.string_literal, .string_interp] {
 			if tc.is_zero_literal(arg_id) {
 				continue
 			}
@@ -13469,8 +13467,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if expected is Pointer && param_is_mut
 			&& !is_channel_builtin_method_call_name(info.name, 'try_push')
-			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal,
-				.char_literal, .string_literal, .string_interp] {
+			&& tc.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
+				.string_literal, .string_interp] {
 			mut reference_name := call_argument_type_name(expected)
 			if !info.has_receiver {
 				if raw_params := tc.fn_param_type_texts[info.name] {
@@ -16816,8 +16814,8 @@ fn (tc &TypeChecker) expr_can_be_implicit_ref_arg(expr_id flat.NodeId) bool {
 	// V materializes non-addressable value expressions into stable temporaries
 	// when they are passed to non-mut reference parameters.
 	return node.kind in [.struct_init, .call, .or_expr, .cast_expr, .as_expr, .if_expr, .match_stmt,
-		.index, .selector, .int_literal, .float_literal, .bool_literal, .char_literal,
-		.string_literal, .string_interp]
+		.index, .selector, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.string_interp]
 }
 
 fn type_pointer_depth_and_base(typ Type) (int, Type) {
@@ -17896,11 +17894,10 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver Type, method string
 		}
 		// Keep this in sync with the synthetic array receiver methods handled in
 		// resolve_call_info/resolve_type, including `[]thread T.wait()`.
-		return method in ['first', 'last', 'pop', 'pop_left', 'contains', 'join', 'index',
-			'last_index', 'repeat', 'repeat_to_depth', 'delete', 'delete_last', 'clear', 'insert',
-			'prepend', 'filter', 'map', 'any', 'all', 'count', 'sort_with_compare',
-			'sorted_with_compare', 'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals',
-			'bytestr', 'wait']
+		return method in ['first', 'last', 'pop', 'pop_left', 'contains', 'join', 'index', 'last_index',
+			'repeat', 'repeat_to_depth', 'delete', 'delete_last', 'clear', 'insert', 'prepend',
+			'filter', 'map', 'any', 'all', 'count', 'sort_with_compare', 'sorted_with_compare',
+			'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals', 'bytestr', 'wait']
 	}
 	if receiver is ArrayFixed {
 		array_type := Type(Array{

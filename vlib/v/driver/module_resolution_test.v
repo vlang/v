@@ -77,7 +77,7 @@ fn test_manifest_subdir_probe_filters_sources_for_target() {
 	os.write_file(os.join_path(valid, 'sample.v'), 'module sample\n')!
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	prefs := pref.Preferences{
-		target: linux
+		target:              linux
 		module_search_paths: [first_search_root, second_search_root]
 	}
 

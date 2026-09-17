@@ -1,7 +1,3 @@
-{
-	{
-		v := 't'
-		s := '${v}.tmp'
-		println(s)
-	}
-}
+v := 't'
+s := '${v}.tmp'
+println(s)

@@ -7,6 +7,7 @@ module sync
 
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
+
 fn C.pthread_mutex_lock(voidptr) i32
 fn C.pthread_mutex_trylock(voidptr) i32
 fn C.pthread_mutex_unlock(voidptr) i32
@@ -102,7 +103,8 @@ fn (mut m Mutex) lazy_init() {
 		C.atomic_store_u32(&m.inited, 2)
 		return
 	}
-	for C.atomic_load_u32(&m.inited) != 2 {}
+	for C.atomic_load_u32(&m.inited) != 2 {
+	}
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.
@@ -164,7 +166,8 @@ pub fn (mut m Mutex) destroy() {
 	if C.atomic_load_u32(&m.inited) == 0 {
 		return
 	}
-	for C.atomic_load_u32(&m.inited) != 2 {}
+	for C.atomic_load_u32(&m.inited) != 2 {
+	}
 	should_be_zero(C.pthread_mutex_destroy(&m.mutex))
 	C.atomic_store_u32(&m.inited, 0)
 }

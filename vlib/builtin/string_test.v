@@ -958,7 +958,7 @@ fn test_hash() {
 	s3 := 'Content-Type'
 	assert s3.hash() == 949037134
 	s4 := 'bad_key'
-	assert s4.hash() == $if new_int ? && x64 {
+	assert s4.hash() == $if new_int ?&& x64 {
 		3948330789
 	} $else {
 		-346636507
@@ -1354,7 +1354,7 @@ fn test_raw_with_quotes() {
 
 fn test_escape() {
 	a := 10
-	assert "\"${a}" == '"10'
+	assert '"${a}' == '"10'
 }
 
 fn test_atoi() {

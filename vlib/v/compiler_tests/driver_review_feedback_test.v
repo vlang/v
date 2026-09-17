@@ -224,8 +224,8 @@ fn main() {
 	println(unchecked_at([1], 1))
 }
 ')!
-	bounds_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache',
-		'-force-bounds-checking', '-o', bounds_output, bounds_source], driver_review_environment())
+	bounds_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-force-bounds-checking',
+		'-o', bounds_output, bounds_source], driver_review_environment())
 	assert bounds_compile.exit_code == 0, bounds_compile.output
 	bounds_run := cmdexec.run(bounds_output, [])
 	assert bounds_run.exit_code != 0, bounds_run.output
@@ -240,8 +240,8 @@ fn main() {
 		overflow_source := os.join_path(root, 'overflow_${operation}.v')
 		overflow_output := os.join_path(root, 'overflow_${operation}')
 		os.write_file(overflow_source, source)!
-		overflow_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache',
-			'-check-overflow', '-o', overflow_output, overflow_source], driver_review_environment())
+		overflow_compile := run_driver_review_process(v3_bin, ['-silent', '-nocache', '-check-overflow',
+			'-o', overflow_output, overflow_source], driver_review_environment())
 		assert overflow_compile.exit_code == 0, overflow_compile.output
 		overflow_run := cmdexec.run(overflow_output, [])
 		assert overflow_run.exit_code != 0, '${operation}: ${overflow_run.output}'
@@ -363,8 +363,7 @@ fn test_driver_cache_separates_check_and_semantic_modes() {
 	check_source := os.join_path(root, 'check_only.v')
 	check_output := os.join_path(root, 'check_only')
 	os.write_file(check_source, "fn main() {\n\tprintln('cached')\n}\n")!
-	warm_check_cache := run_driver_review_process(v3_bin, ['-silent', '-o', check_output,
-		check_source], environment)
+	warm_check_cache := run_driver_review_process(v3_bin, ['-silent', '-o', check_output, check_source], environment)
 	assert warm_check_cache.exit_code == 0, warm_check_cache.output
 	os.write_file(check_output, 'check-only-sentinel')!
 	check_only := run_driver_review_process(v3_bin, ['-silent', '-check', '-o', check_output,
@@ -376,8 +375,8 @@ fn test_driver_cache_separates_check_and_semantic_modes() {
 	globals_output := os.join_path(root, 'globals')
 	os.write_file(globals_source,
 		'module main\n\n__global cached_global int\n\nfn main() {\n\tcached_global = 42\n\tprintln(cached_global)\n}\n')!
-	uncached_strict_globals := run_driver_review_process(v3_bin, ['-silent', '-no-parallel',
-		'-nocache', '-o', globals_output, globals_source], environment)
+	uncached_strict_globals := run_driver_review_process(v3_bin, ['-silent', '-no-parallel', '-nocache',
+		'-o', globals_output, globals_source], environment)
 	assert uncached_strict_globals.exit_code != 0, uncached_strict_globals.output
 	warm_globals_cache := run_driver_review_process(v3_bin, ['-silent', '-no-parallel',
 		'-enable-globals', '-o', globals_output, globals_source], environment)

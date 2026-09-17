@@ -135,11 +135,11 @@ fn ack_ranges_cover(ranges []AckRange, pn u64) bool {
 pub fn (mut ld QuicLossDetectionTimer) on_packet_sent(space QuicPacketNumberSpace, packet_number u64, sent_bytes u64, is_ack_eliciting bool, in_flight bool, now u64) {
 	mut st := ld.space_state(space)
 	st.sent_packets[packet_number] = SentPacketInfo{
-		packet_number: packet_number
-		time_sent: now
-		sent_bytes: sent_bytes
+		packet_number:    packet_number
+		time_sent:        now
+		sent_bytes:       sent_bytes
 		is_ack_eliciting: is_ack_eliciting
-		in_flight: in_flight
+		in_flight:        in_flight
 	}
 	if is_ack_eliciting {
 		st.time_of_last_ack_eliciting_packet = now
@@ -246,8 +246,8 @@ pub fn (mut ld QuicLossDetectionTimer) on_ack_received(space QuicPacketNumberSpa
 	}
 
 	return AckProcessingResult{
-		newly_acked: newly_acked
-		lost: lost
+		newly_acked:           newly_acked
+		lost:                  lost
 		persistent_congestion: persistent_congestion
 	}
 }

@@ -428,14 +428,14 @@ pub mut:
 	// The names spelled inside a `$if`/`$match` body this build does not take,
 	// keyed by `<file>:<fn name offset>|<name>`. The body is never parsed, so
 	// nothing in the AST records its identifier occurrences or reads.
-	comptime_skipped_names       map[string]bool
-	comptime_skipped_read_names  map[string]bool
+	comptime_skipped_names      map[string]bool
+	comptime_skipped_read_names map[string]bool
 	// Goto label operands use the same key format, but are not local-name uses.
 	comptime_skipped_goto_labels map[string]bool
-	export_fn_names map[string]string
-	noreturn_fns    map[string]bool
-	source_files    map[int]&token.File
-	comments        []Comment
+	export_fn_names              map[string]string
+	noreturn_fns                 map[string]bool
+	source_files                 map[int]&token.File
+	comments                     []Comment
 	// formatter_sources retains exact source spans or prefixes for constructs whose
 	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources      map[int]string
@@ -563,33 +563,33 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
-		nodes: []Node{cap: 256}
-		children: []NodeId{cap: 512}
-		disabled_fns: map[string]bool{}
-		comptime_skipped_names: map[string]bool{}
-		comptime_skipped_read_names: map[string]bool{}
-		comptime_skipped_goto_labels: map[string]bool{}
-		export_fn_names: map[string]string{}
-		noreturn_fns: map[string]bool{}
-		contextual_anon_struct_types: map[string]bool{}
+		nodes:                         []Node{cap: 256}
+		children:                      []NodeId{cap: 512}
+		disabled_fns:                  map[string]bool{}
+		comptime_skipped_names:        map[string]bool{}
+		comptime_skipped_read_names:   map[string]bool{}
+		comptime_skipped_goto_labels:  map[string]bool{}
+		export_fn_names:               map[string]string{}
+		noreturn_fns:                  map[string]bool{}
+		contextual_anon_struct_types:  map[string]bool{}
 		synthesized_anon_struct_types: map[string]bool{}
-		source_files: map[int]&token.File{}
-		template_call_sites: map[int]token.Pos{}
-		template_actions: map[int]string{}
-		missing_imports: map[int]string{}
-		missing_import_hints: map[int]string{}
-		formatter_sources: map[int]string{}
-		formatter_file_sources: map[int]string{}
-		formatter_node_ends: map[int]int{}
-		formatter_expanded_calls: map[int]bool{}
-		formatter_assignment_ops: map[int]string{}
-		formatter_param_list_end: map[int]int{}
-		formatter_for_in_mut: map[int]u8{}
-		formatter_local_sels: map[int]bool{}
-		text_ids: map[string]TextId{}
-		specialized_fn_nodes: map[int]bool{}
-		specialized_fn_modules: map[int]string{}
-		specialized_fn_files: map[int]string{}
+		source_files:                  map[int]&token.File{}
+		template_call_sites:           map[int]token.Pos{}
+		template_actions:              map[int]string{}
+		missing_imports:               map[int]string{}
+		missing_import_hints:          map[int]string{}
+		formatter_sources:             map[int]string{}
+		formatter_file_sources:        map[int]string{}
+		formatter_node_ends:           map[int]int{}
+		formatter_expanded_calls:      map[int]bool{}
+		formatter_assignment_ops:      map[int]string{}
+		formatter_param_list_end:      map[int]int{}
+		formatter_for_in_mut:          map[int]u8{}
+		formatter_local_sels:          map[int]bool{}
+		text_ids:                      map[string]TextId{}
+		specialized_fn_nodes:          map[int]bool{}
+		specialized_fn_modules:        map[int]string{}
+		specialized_fn_files:          map[int]string{}
 	}
 }
 
@@ -926,7 +926,7 @@ pub fn node_kind_from_id(id int) NodeKind {
 pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind: kind
+		kind:  kind
 		value: value
 	}
 	return id
@@ -936,7 +936,7 @@ pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind: node_kind_from_id(kind_id)
+		kind:  node_kind_from_id(kind_id)
 		value: value
 	}
 	return id
@@ -948,32 +948,32 @@ pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 // a fresh node instead of mutating in place.
 pub fn (n Node) with_shifted_children(shift i32) Node {
 	return Node{
-		value: n.value
-		typ: n.typ
-		payload: n.payload
-		pos: n.pos
+		value:          n.value
+		typ:            n.typ
+		payload:        n.payload
+		pos:            n.pos
 		children_start: n.children_start + shift
 		children_count: n.children_count
-		kind: n.kind
-		op: n.op
-		is_mut: n.is_mut
-		flags: n.flags
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+		flags:          n.flags
 	}
 }
 
 // with_pos returns a copy of the node with source position `pos`.
 pub fn (n Node) with_pos(pos token.Pos) Node {
 	return Node{
-		value: n.value
-		typ: n.typ
-		payload: n.payload
-		pos: pos.with_type_text_id(n.type_text_id())
+		value:          n.value
+		typ:            n.typ
+		payload:        n.payload
+		pos:            pos.with_type_text_id(n.type_text_id())
 		children_start: n.children_start
 		children_count: n.children_count
-		kind: n.kind
-		op: n.op
-		is_mut: n.is_mut
-		flags: n.flags
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+		flags:          n.flags
 	}
 }
 
@@ -984,16 +984,16 @@ pub fn (n Node) clone_owned() Node {
 		params << param.clone()
 	}
 	return Node{
-		value: n.value.clone()
-		typ: n.typ.clone()
-		payload: node_payload(params)
-		pos: n.pos
+		value:          n.value.clone()
+		typ:            n.typ.clone()
+		payload:        node_payload(params)
+		pos:            n.pos
 		children_start: n.children_start
 		children_count: n.children_count
-		kind: n.kind
-		op: n.op
-		is_mut: n.is_mut
-		flags: n.flags
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+		flags:          n.flags
 	}
 }
 

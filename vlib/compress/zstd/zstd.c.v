@@ -66,7 +66,7 @@ pub enum CParameter {
 	// to default. Setting this will however eventually dynamically impact the compression
 	// parameters which have not been manually set. The manually set
 	// ones will 'stick'.
-	compression_level = 100
+	compression_level             = 100
 	// Advanced compression parameters :
 	// It's possible to pin down compression parameters to some specific values.
 	// In which case, these values are no longer dynamically selected by the compressor
@@ -79,14 +79,14 @@ pub enum CParameter {
 	// Special: value 0 means "use default windowLog".
 	// Note: Using a windowLog greater than ZSTD_WINDOWLOG_LIMIT_DEFAULT
 	// requires explicitly allowing such size at streaming decompression stage.
-	window_log = 101
+	window_log                    = 101
 	// Size of the initial probe table, as a power of 2.
 	// Resulting memory usage is (1 << (hashLog+2)).
 	// Must be clamped between ZSTD_HASHLOG_MIN and ZSTD_HASHLOG_MAX.
 	// Larger tables improve compression ratio of strategies <= dFast,
 	// and improve speed of strategies > dFast.
 	// Special: value 0 means "use default hashLog".
-	hash_log = 102
+	hash_log                      = 102
 	// Size of the multi-probe search table, as a power of 2.
 	// Resulting memory usage is (1 << (chainLog+2)).
 	// Must be clamped between ZSTD_CHAINLOG_MIN and ZSTD_CHAINLOG_MAX.
@@ -95,12 +95,12 @@ pub enum CParameter {
 	// It's still useful when using "dfast" strategy,
 	// in which case it defines a secondary probe table.
 	// Special: value 0 means "use default chainLog".
-	chain_log = 103
+	chain_log                     = 103
 	// Number of search attempts, as a power of 2.
 	// More attempts result in better and slower compression.
 	// This parameter is useless for "fast" and "dFast" strategies.
 	// Special: value 0 means "use default searchLog".
-	search_log = 104
+	search_log                    = 104
 	// Minimum size of searched matches.
 	// Note that Zstandard can still find matches of smaller size,
 	// it just tweaks its search algorithm to look for this size and larger.
@@ -109,7 +109,7 @@ pub enum CParameter {
 	// Note that currently, for all strategies < btopt, effective minimum is 4.
 	// , for all strategies > fast, effective maximum is 6.
 	// Special: value 0 means "use default minMatchLength".
-	min_match = 105
+	min_match                     = 105
 	// Impact of this field depends on strategy.
 	// For strategies btopt, btultra & btultra2:
 	// Length of Match considered "good enough" to stop search.
@@ -118,12 +118,12 @@ pub enum CParameter {
 	// Distance between match sampling.
 	// Larger values make compression faster, and weaker.
 	// Special: value 0 means "use default targetLength".
-	target_length = 106
+	target_length                 = 106
 	// See ZSTD_strategy enum definition.
 	// The higher the value of selected strategy, the more complex it is,
 	// resulting in stronger and slower compression.
 	// Special: value 0 means "use default strategy".
-	strategy = 107
+	strategy                      = 107
 	// v1.5.6+
 	// Attempts to fit compressed block size into approximately targetCBlockSize.
 	// Bound by ZSTD_TARGETCBLOCKSIZE_MIN and ZSTD_TARGETCBLOCKSIZE_MAX.
@@ -135,7 +135,7 @@ pub enum CParameter {
 	// It was present as an experimental parameter in earlier versions,
 	// but it's not recommended using it with earlier library versions
 	// due to massive performance regressions.
-	target_c_block_size = 130
+	target_c_block_size           = 130
 	// LDM mode parameters
 	// Enable long distance matching.
 	// This parameter is designed to improve compression ratio
@@ -152,34 +152,34 @@ pub enum CParameter {
 	// Must be clamped between ZSTD_HASHLOG_MIN and ZSTD_HASHLOG_MAX
 	// default: windowlog - 7.
 	// Special: value 0 means "automatically determine hashlog".
-	ldm_hash_log = 161
+	ldm_hash_log                  = 161
 	// Minimum match size for long distance matcher.
 	// Larger/too small values usually decrease compression ratio.
 	// Must be clamped between ZSTD_LDM_MINMATCH_MIN and ZSTD_LDM_MINMATCH_MAX.
 	// Special: value 0 means "use default value" (default: 64).
-	ldm_min_match = 162
+	ldm_min_match                 = 162
 	// log size of each bucket in the ldm hash table for collision resolution.
 	// Larger values improve collision resolution but decrease compression speed.
 	// The maximum value is ZSTD_LDM_BUCKETSIZELOG_MAX.
 	// Special: value 0 means "use default value" (default: 3).
-	ldm_bucket_size_log = 163
+	ldm_bucket_size_log           = 163
 	// Frequency of inserting/looking up entries into the LDM hash table.
 	// Must be clamped between 0 and (ZSTD_WINDOWLOG_MAX - ZSTD_HASHLOG_MIN).
 	// Default is MAX(0, (windowLog - ldmHashLog)), optimizing hash table usage.
 	// Larger values improve compression speed.
 	// Deviating far from default value will likely result in a compression ratio decrease.
 	// Special: value 0 means "automatically determine hashRateLog".
-	ldm_hash_rate_log = 164
+	ldm_hash_rate_log             = 164
 	// frame parameters
 	// Content size will be written into frame header _whenever known_ (default:1)
 	// Content size must be known at the beginning of compression.
 	// This is automatically the case when using ZSTD_compress2(),
 	// For streaming scenarios, content size must be provided with ZSTD_CCtx_setPledgedSrcSize()
-	content_size_flag = 200
+	content_size_flag             = 200
 	// A 32-bits checksum of content is written at end of frame (default:0)
-	checksum_flag = 201
+	checksum_flag                 = 201
 	// When applicable, dictionary's ID is written into frame header (default:1)
-	dict_id_flag = 202
+	dict_id_flag                  = 202
 	// multi-threading parameters
 	// These parameters are only active if multi-threading is enabled (compiled with build macro ZSTD_MULTITHREAD).
 	// Otherwise, trying to set any other value than default (0) will be a no-op and return an error.
@@ -195,13 +195,13 @@ pub enum CParameter {
 	// More workers improve speed, but also increase memory usage.
 	// Default value is `0`, aka "single-threaded mode" : no worker is spawned,
 	// compression is performed inside Caller's thread, and all invocations are blocking
-	nb_workers = 400
+	nb_workers                    = 400
 	// Size of a compression job. This value is enforced only when nbWorkers >= 1.
 	// Each compression job is completed in parallel, so this value can indirectly impact the nb of active threads.
 	// 0 means default, which is dynamically determined based on compression parameters.
 	// Job size must be a minimum of overlap size, or ZSTDMT_JOBSIZE_MIN (= 512 KB), whichever is largest.
 	// The minimum size is automatically and transparently enforced.
-	job_size = 401
+	job_size                      = 401
 	// Control the overlap size, as a fraction of window size.
 	// The overlap size is an amount of data reloaded from previous job at the beginning of a new job.
 	// It helps preserve compression ratio, while each job is compressed in parallel.
@@ -214,7 +214,7 @@ pub enum CParameter {
 	// Each intermediate rank increases/decreases load size by a factor 2 :
 	// 9: full window;  8: w/2;  7: w/4;  6: w/8;  5:w/16;  4: w/32;  3:w/64;  2:w/128;  1:no overlap;  0:default
 	// default value varies between 6 and 9, depending on strategy
-	overlap_log = 402
+	overlap_log                   = 402
 	// note : additional experimental parameters are also available
 	// within the experimental section of the API.
 	// At the time of this writing, they include :
@@ -239,26 +239,26 @@ pub enum CParameter {
 	// note : never ever use experimentalParam? names directly;
 	//        also, the enums values themselves are unstable and can still change.
 	//
-	experimental_param1 = 500
-	experimental_param2 = 10
-	experimental_param3 = 1000
-	experimental_param4 = 1001
-	experimental_param5 = 1002
+	experimental_param1           = 500
+	experimental_param2           = 10
+	experimental_param3           = 1000
+	experimental_param4           = 1001
+	experimental_param5           = 1002
 	// experimental_param6  = 1003 is now ZSTD_c_targetCBlockSize
-	experimental_param7  = 1004
-	experimental_param8  = 1005
-	experimental_param9  = 1006
-	experimental_param10 = 1007
-	experimental_param11 = 1008
-	experimental_param12 = 1009
-	experimental_param13 = 1010
-	experimental_param14 = 1011
-	experimental_param15 = 1012
-	experimental_param16 = 1013
-	experimental_param17 = 1014
-	experimental_param18 = 1015
-	experimental_param19 = 1016
-	experimental_param20 = 1017
+	experimental_param7           = 1004
+	experimental_param8           = 1005
+	experimental_param9           = 1006
+	experimental_param10          = 1007
+	experimental_param11          = 1008
+	experimental_param12          = 1009
+	experimental_param13          = 1010
+	experimental_param14          = 1011
+	experimental_param15          = 1012
+	experimental_param16          = 1013
+	experimental_param17          = 1014
+	experimental_param18          = 1015
+	experimental_param19          = 1016
+	experimental_param20          = 1017
 }
 
 pub struct Bounds {
@@ -288,7 +288,7 @@ pub enum DParameter {
 	// This parameter is only useful in streaming mode, since no internal buffer is allocated in single-pass mode.
 	// By default, a decompression context accepts window sizes <= (1 << ZSTD_WINDOWLOG_LIMIT_DEFAULT).
 	// Special: value 0 means "use default maximum windowLog".
-	window_log_max = 100
+	window_log_max      = 100
 	// note : additional experimental parameters are also available
 	// within the experimental section of the API.
 	// At the time of this writing, they include :
@@ -336,13 +336,13 @@ pub enum EndDirective {
 	// it creates (at least) one new block, that can be decoded immediately on reception;
 	// frame will continue: any future data can still reference previously compressed data, improving compression.
 	// note : multithreaded compression will block to flush as much output as possible.
-	flush = 1
+	flush    = 1
 	// flush any remaining data _and_ close current frame.
 	// note that frame is only closed after compressed data is fully flushed (return value == 0).
 	// After that point, any additional data starts a new frame.
 	// note : each frame is independent (does not reference any content from previous frame).
 	// note : multithreaded compression will block to flush as much output as possible.
-	end = 2
+	end      = 2
 }
 
 fn C.ZSTD_compressStream2(voidptr, &OutBuffer, &InBuffer, EndDirective) usize
@@ -468,7 +468,7 @@ pub fn new_cctx(params CompressParams) !&CCtx {
 	}
 	mut cctx := &CCtx{ctx}
 	cctx.set(.compression_level, params.compression_level)!
-	$if !(tinyc && windows) {
+	$if !( tinyc && windows ) {
 		// TODO: tinyc on windows doesn't support multiple thread
 		cctx.set(.nb_workers, params.nb_threads)!
 	}

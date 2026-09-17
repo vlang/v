@@ -334,8 +334,8 @@ fn fastc_measure_generation(real_input string, prefs &pref.Preferences) !FastcBe
 	generation := fastc.generate_files_with_source_paths([real_input], prefs)!
 	return FastcBenchSample{
 		gen_us: sw.elapsed().microseconds()
-		files: generation.source_paths.len
-		lines: fastc_bench_source_line_count(generation.source_paths)
+		files:  generation.source_paths.len
+		lines:  fastc_bench_source_line_count(generation.source_paths)
 	}
 }
 
@@ -350,8 +350,8 @@ fn fastc_parse_bench_child_output(output string) ?FastcBenchSample {
 		}
 		return FastcBenchSample{
 			gen_us: parts[1].i64()
-			files: parts[2].int()
-			lines: parts[3].int()
+			files:  parts[2].int()
+			lines:  parts[3].int()
 		}
 	}
 	return none
@@ -393,11 +393,11 @@ pub fn run(args []string) {
 	prefs.selfhost = prefs.building_v
 	$if arm64 ? {
 		prefs.target = pref.Target{
-			os: 'macos'
-			arch: 'arm64'
-			abi: 'darwin'
-			endian: 'little'
-			pointer_bits: 64
+			os:            'macos'
+			arch:          'arm64'
+			abi:           'darwin'
+			endian:        'little'
+			pointer_bits:  64
 			object_format: 'macho'
 		}
 		prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'v3_no_parallel', 'arm64', 'skip_wasm',

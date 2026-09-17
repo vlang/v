@@ -23,7 +23,8 @@ pub fn (mut g FlatGen) set_coverage(dir string, build_options string) {
 
 fn (mut g FlatGen) write_coverage_point(node flat.Node) {
 	if g.coverage_dir.len == 0 || g.cur_fn_name.len == 0
-		|| node.kind !in [.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .return_stmt, .break_stmt, .continue_stmt, .defer_stmt, .assert_stmt, .goto_stmt] {
+		|| node.kind !in [.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign,
+			.return_stmt, .break_stmt, .continue_stmt, .defer_stmt, .assert_stmt, .goto_stmt] {
 		return
 	}
 	position := g.a.source_position(node.pos) or { return }

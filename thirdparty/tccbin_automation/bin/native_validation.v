@@ -366,8 +366,8 @@ pub fn native_validation_record_json(record NativeValidationRecordModel) !JsonVa
 
 fn native_validation_record_from_json(value JsonValue) !NativeValidationRecordModel {
 	require_exact_keys(value, ['schema_version', 'operation_id', 'transition', 'resulting_generation',
-		'verdict', 'manifest_source', 'manifest_hash', 'native_lane_matrix', 'matrix_digest',
-		'evidence', 'capsule_digest', 'native_gate', 'v_smoke_gate', 'validation_digest'])!
+		'verdict', 'manifest_source', 'manifest_hash', 'native_lane_matrix', 'matrix_digest', 'evidence',
+		'capsule_digest', 'native_gate', 'v_smoke_gate', 'validation_digest'])!
 	mut evidence := []NativeValidationEvidenceModel{}
 	for item in require_array_member(value, 'evidence')! {
 		require_exact_keys(item, ['sha256', 'size'])!
@@ -445,8 +445,8 @@ $if test {
 	// validate_native_validation_record_authority_for_test exposes the complete durable replay only
 	// to the test module without widening the production helper surface.
 	pub fn validate_native_validation_record_authority_for_test(automation_root string,
-	record NativeValidationRecordModel, resolved_inputs JsonValue, input_fingerprint string,
-	artifact_fingerprint string, manifest_hash string) ! {
+		record NativeValidationRecordModel, resolved_inputs JsonValue, input_fingerprint string,
+		artifact_fingerprint string, manifest_hash string) ! {
 		validate_native_validation_record_authority(automation_root, record, resolved_inputs,
 			input_fingerprint, artifact_fingerprint, manifest_hash)!
 	}
@@ -637,7 +637,8 @@ fn validate_native_validation_matrix_replay(manifest JsonValue, matrix JsonValue
 	for role in roles {
 		require_exact_keys(role, ['role_id', 'identity_strategy', 'resolved_identity',
 			'resolution_digest', 'evidence_sha256'])!
-		if require_string_member(role, 'identity_strategy')! !in ['github-hosted', 'cpa-host', 'cpa-guest', 'github-hosted-msys2']
+		if require_string_member(role, 'identity_strategy')! !in ['github-hosted', 'cpa-host',
+			'cpa-guest', 'github-hosted-msys2']
 			|| !is_lower_hex_64(require_string_member(role, 'evidence_sha256')!)
 			|| require_string_member(role, 'resolution_digest')! != toolchain_role_resolution_digest(validator, role)! {
 			return error('last native validation validator role is not self-authenticating')
@@ -737,10 +738,10 @@ fn persisted_gate_run_json(gate PersistedGateRunModel) !JsonValue {
 	return object_value_from_pairs(['check_name', 'repository', 'integration_id', 'workflow_id',
 		'workflow_path', 'event', 'run_id', 'run_attempt', 'check_suite_id',
 		'check_suite_integration_id', 'job_id', 'subject_hash', 'check_run_id', 'external_id',
-		'run_name', 'run_url', 'job_url', 'details_url', 'ref', 'workflow_head_sha', 'sha',
-		'check_sha', 'actor', 'actor_integration_id', 'triggering_actor',
-		'triggering_actor_integration_id', 'created_at', 'completed_at', 'run_conclusion',
-		'check_conclusion', 'output_digest', 'evidence_digest'], [
+		'run_name', 'run_url', 'job_url', 'details_url', 'ref', 'workflow_head_sha', 'sha', 'check_sha',
+		'actor', 'actor_integration_id', 'triggering_actor', 'triggering_actor_integration_id',
+		'created_at', 'completed_at', 'run_conclusion', 'check_conclusion', 'output_digest',
+		'evidence_digest'], [
 		JsonValue{ kind: .string_value, string_value: gate.check_name },
 		JsonValue{ kind: .string_value, string_value: gate.repository },
 		JsonValue{ kind: .integer, int_value: gate.integration_id },
@@ -780,10 +781,10 @@ fn persisted_gate_run_from_json(gate JsonValue) !PersistedGateRunModel {
 	require_exact_keys(gate, ['check_name', 'repository', 'integration_id', 'workflow_id',
 		'workflow_path', 'event', 'run_id', 'run_attempt', 'check_suite_id',
 		'check_suite_integration_id', 'job_id', 'subject_hash', 'check_run_id', 'external_id',
-		'run_name', 'run_url', 'job_url', 'details_url', 'ref', 'workflow_head_sha', 'sha',
-		'check_sha', 'actor', 'actor_integration_id', 'triggering_actor',
-		'triggering_actor_integration_id', 'created_at', 'completed_at', 'run_conclusion',
-		'check_conclusion', 'output_digest', 'evidence_digest'])!
+		'run_name', 'run_url', 'job_url', 'details_url', 'ref', 'workflow_head_sha', 'sha', 'check_sha',
+		'actor', 'actor_integration_id', 'triggering_actor', 'triggering_actor_integration_id',
+		'created_at', 'completed_at', 'run_conclusion', 'check_conclusion', 'output_digest',
+		'evidence_digest'])!
 	return PersistedGateRunModel{
 		check_name:                      require_string_member(gate, 'check_name')!
 		repository:                      require_string_member(gate, 'repository')!

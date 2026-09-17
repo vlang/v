@@ -887,9 +887,7 @@ fn live_mutated_target_evidence(body string, field string, operation_id string,
 		generation_written := (value.object_value('generation_written') or {
 			panic('generation written missing')
 		}).int_value
-		mutated = mutated.replace_once('"generation_read":${generation_read}', '"generation_read":${
-			generation_read + 1}').replace_once('"generation_written":${generation_written}', '"generation_written":${
-			generation_written + 1}')
+		mutated = mutated.replace_once('"generation_read":${generation_read}', '"generation_read":${generation_read + 1}').replace_once('"generation_written":${generation_written}', '"generation_written":${generation_written + 1}')
 	} else if field == 'transition' {
 		old_value := (value.object_value('transition') or { panic('transition missing') }).string_value
 		mutated = mutated.replace_once('"transition":"${old_value}"',
@@ -922,16 +920,16 @@ fn live_mutated_target_evidence(body string, field string, operation_id string,
 	mutated_value := bin.parse_strict_json(mutated) or { panic(err) }
 	new_path := bin.evidence_path(authoritative_timestamp[..4].int(),
 		authoritative_timestamp[5..7].int(), (mutated_value.object_value('run_id') or {
-		panic('run missing')
-	}).int_value,
+			panic('run missing')
+		}).int_value,
 		int((mutated_value.object_value('run_attempt') or { panic('attempt missing') }).int_value), (mutated_value.object_value('subject_id') or {
-		panic('subject missing')
-	}).string_value, operation_id, (mutated_value.object_value('generation_written') or {
-		panic('generation missing')
-	}).int_value,
+			panic('subject missing')
+		}).string_value, operation_id, (mutated_value.object_value('generation_written') or {
+			panic('generation missing')
+		}).int_value,
 		(mutated_value.object_value('transition') or { panic('transition missing') }).string_value, (mutated_value.object_value('subject_fingerprint') or {
-		panic('fingerprint missing')
-	}).string_value) or { panic(err) }
+			panic('fingerprint missing')
+		}).string_value) or { panic(err) }
 	if field == 'path_month' {
 		foreign_month := if authoritative_timestamp[5..7] == '08' { '07' } else { '08' }
 		return new_path.replace_once('evidence/${authoritative_timestamp[..4]}/${authoritative_timestamp[5..7]}/',
@@ -1076,16 +1074,16 @@ fn prepare_live_multi_source_atomic_state(suffix string,
 	freebsd_source_ordinal := 2
 	linux_provisional := live_recovery_h2_source_waiting_variant_with_parent_and_consumers_for('publish_post',
 		false, false, 'abababababababababababababababababababab', if shared_source {
-		shared_consumers
-	} else {
-		[linux_consumer]
-	}, linux_source_ordinal, 'tinycc', 1)
+			shared_consumers
+		} else {
+			[linux_consumer]
+		}, linux_source_ordinal, 'tinycc', 1)
 	freebsd_provisional_base := live_recovery_h2_source_waiting_variant_with_parent_and_consumers_for('remediation',
 		false, false, 'abababababababababababababababababababab', if shared_source {
-		shared_consumers
-	} else {
-		[freebsd_consumer]
-	}, freebsd_source_ordinal, freebsd_source_kind, 1)
+			shared_consumers
+		} else {
+			[freebsd_consumer]
+		}, freebsd_source_ordinal, freebsd_source_kind, 1)
 	freebsd_provisional := live_retarget_recovery_target(freebsd_provisional_base, 'freebsd-amd64')
 	linux_provisional_root := bin.parse_strict_json(linux_provisional) or { panic(err) }
 	freebsd_provisional_root := bin.parse_strict_json(freebsd_provisional) or { panic(err) }
@@ -1123,13 +1121,21 @@ fn prepare_live_multi_source_atomic_state(suffix string,
 	parent := os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
 
 	mut linux_target := live_recovery_h2_source_waiting_variant_with_parent_and_consumers_for('publish_post',
-		false, false, parent, if shared_source { shared_consumers } else { [
-			linux_consumer,
-		] }, linux_source_ordinal, 'tinycc', 1)
+		false, false, parent, if shared_source {
+			shared_consumers
+		} else {
+			[
+				linux_consumer,
+			]
+		}, linux_source_ordinal, 'tinycc', 1)
 	freebsd_target_base := live_recovery_h2_source_waiting_variant_with_parent_and_consumers_for('remediation',
-		false, false, parent, if shared_source { shared_consumers } else { [
-			freebsd_consumer,
-		] }, freebsd_source_ordinal, freebsd_source_kind, 1)
+		false, false, parent, if shared_source {
+			shared_consumers
+		} else {
+			[
+				freebsd_consumer,
+			]
+		}, freebsd_source_ordinal, freebsd_source_kind, 1)
 	mut freebsd_target := live_retarget_recovery_target(freebsd_target_base, 'freebsd-amd64')
 	source_count := if shared_source { 1 } else { 2 }
 	freebsd_business_ordinal := 2 + source_count
@@ -1368,7 +1374,7 @@ fn prepare_live_source_atomic_state(suffix string,
 		}).string_value
 		_, preliminary_mutated_body := live_mutated_target_evidence(preliminary_body,
 			mutation_field, preliminary_operation_id, live_target_evidence_timestamp(preliminary_proof,
-			preliminary_handoff, mutation_role))
+				preliminary_handoff, mutation_role))
 		preliminary_mutated_evidence := bin.parse_strict_json(preliminary_mutated_body) or {
 			panic(err)
 		}
@@ -1420,7 +1426,7 @@ fn prepare_live_source_atomic_state(suffix string,
 			}).string_value
 			mutated_path, mutated_body := live_mutated_target_evidence(body, mutation_field,
 				operation_id, live_target_evidence_timestamp(target_proof,
-				target_handoffs.array_value[1], roles[index]))
+					target_handoffs.array_value[1], roles[index]))
 			target_evidences << [mutated_path, mutated_body]
 		} else {
 			target_evidences << [path, body]
@@ -2221,8 +2227,7 @@ fn test_live_source_atomic_rejects_missing_surplus_symlink_and_oversized_proof_b
 		live_state_trust(), os.real_path(symlink_file_bundle), live_handoff_id) or { panic(err) }
 	assert symlink_file_inspection.status == 'corrupt_blocked'
 	oversized := live_state_proof_set(repository.root, repository.head, [repository.target])
-	os.write_file(os.join_path(oversized, 'historical', '${repository.target}.json'), 'x'.repeat(
-		16 * 1024 + 1)) or { panic(err) }
+	os.write_file(os.join_path(oversized, 'historical', '${repository.target}.json'), 'x'.repeat(16 * 1024 + 1)) or { panic(err) }
 	oversized_inspection := bin.inspect_live_receiver_state(automation_root(), repository.root,
 		live_state_trust(), oversized, live_handoff_id) or { panic(err) }
 	assert oversized_inspection.status == 'history_recovery_required'
@@ -2523,15 +2528,15 @@ fn test_live_state_reader_distinguishes_absent_current_and_stale_consumer() {
 	assert stale.status == 'dark_no_op'
 	wrong_event := bin.resolve_live_receiver_request(automation_root(), root, live_state_trust(),
 		proof, bin.ReceiverRequestFacts{
-		...request
-		repository: 'GGRei/v'
-	}) or { panic(err) }
+			...request
+			repository: 'GGRei/v'
+		}) or { panic(err) }
 	assert wrong_event.status == 'dark_no_op'
 	pre_ack := bin.resolve_live_receiver_request(automation_root(), root, live_state_trust(),
 		proof, bin.ReceiverRequestFacts{
-		...request
-		current_run_id: 1
-	}) or { panic(err) }
+			...request
+			current_run_id: 1
+		}) or { panic(err) }
 	assert pre_ack.status == 'dark_no_op'
 	mut authority_rejected := false
 	bin.resolve_live_receiver_request(automation_root(), root, live_state_trust(), proof, bin.ReceiverRequestFacts{

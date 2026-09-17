@@ -61,8 +61,8 @@ fn (mut g Parser) set_scoped_local(name string, local FastcLocal) {
 	if g.local_scope_depth > 0 {
 		if previous := g.locals[name] {
 			g.local_scope_changes << FastcLocalScopeChange{
-				name: name
-				previous: previous
+				name:         name
+				previous:     previous
 				had_previous: true
 			}
 		} else {
@@ -460,7 +460,7 @@ fn (mut g Parser) parse_defer() ! {
 		}
 		g.write_line('${flag} = true;')
 		g.function_defer_blocks << FastcFunctionDeferBlock{
-			flag: flag
+			flag:  flag
 			lines: block
 		}
 		return
@@ -577,7 +577,7 @@ fn (mut g Parser) parse_loop_block_body() !FastcLoopBlockResult {
 	g.loop_defer_block_starts.delete_last()
 	g.loop_labels.delete_last()
 	return FastcLoopBlockResult{
-		terminates: terminates
+		terminates:          terminates
 		has_reachable_break: has_reachable_break
 	}
 }
@@ -701,8 +701,8 @@ fn (mut g Parser) parse_match_statement() !bool {
 					value = '${subject_type.trim_right('*')}__${g.lit}'
 					g.next()
 				} else {
-					value = g.read_expression([token.Token.comma, token.Token.lcbr,
-						token.Token.dotdot, token.Token.ellipsis])!
+					value = g.read_expression([token.Token.comma, token.Token.lcbr, token.Token.dotdot,
+						token.Token.ellipsis])!
 					if value == '' {
 						return g.unsupported('empty match branch value')
 					}
@@ -788,11 +788,11 @@ fn (mut g Parser) parse_match_statement() !bool {
 			smartcast_saved = g.locals[subject_local] or { FastcLocal{} }
 			origin_source := g.local_c_name(subject_local)
 			g.locals[subject_local] = FastcLocal{
-				is_mut: smartcast_saved.is_mut
-				is_reference: smartcast_is_reference
-				typ: shadow_type
-				c_name: shadow_name
-				smartcast_origin_type: smartcast_saved.typ
+				is_mut:                  smartcast_saved.is_mut
+				is_reference:            smartcast_is_reference
+				typ:                     shadow_type
+				c_name:                  shadow_name
+				smartcast_origin_type:   smartcast_saved.typ
 				smartcast_origin_source: origin_source
 			}
 		}
@@ -824,14 +824,14 @@ fn (mut g Parser) parse_match_statement() !bool {
 			}
 			had_member_smartcast = projection_path in g.member_smartcasts
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
-				typ: member_smartcast_type + '*'
-				source: if smartcast_is_reference {
+				typ:           member_smartcast_type + '*'
+				source:        if smartcast_is_reference {
 					'((${member_smartcast_type} *)${subject_name}${boxed_access}_object)'
 				} else {
 					member_smartcast_name
 				}
-				variants: if struct_multi_variant { variant_types.clone() } else { [] }
-				tag_source: '${subject_name}${boxed_access}_typ'
+				variants:      if struct_multi_variant { variant_types.clone() } else { [] }
+				tag_source:    '${subject_name}${boxed_access}_typ'
 				object_source: '${subject_name}${boxed_access}_object'
 			}
 			member_smartcast_active = true
@@ -1374,9 +1374,9 @@ fn (mut g Parser) parse_simple_statement() ! {
 			if g.selfhost && resolved_expected_type == 'int' && !fastc_is_numeric_expression_type(actual_type) && name in g.locals {
 				resolved_expected_type = actual_type
 				g.set_scoped_local(name, FastcLocal{
-					is_mut: statement_local.is_mut
+					is_mut:       statement_local.is_mut
 					is_reference: statement_local.is_reference
-					typ: actual_type
+					typ:          actual_type
 				})
 			}
 			expected_layout_type := g.underlying_alias_type(resolved_expected_type)
@@ -1635,7 +1635,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				g.write_line('${value_type} ${fastc_c_identifier(name)} = ${temporaries[i]};')
 				g.set_scoped_local(name, FastcLocal{
 					is_mut: mutability[i]
-					typ: value_type
+					typ:    value_type
 				})
 			}
 		} else {
@@ -1670,7 +1670,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
 			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
-				typ: component_type
+				typ:    component_type
 			})
 		} else {
 			c_name := assignment_targets[i].source
@@ -1884,7 +1884,7 @@ fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool,
 			g.write_line('${component_type} ${fastc_c_identifier(name)} = (${component_type}){0};')
 			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
-				typ: component_type
+				typ:    component_type
 			})
 		}
 	}
@@ -1943,7 +1943,7 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 				} else {
 					fastc_c_identifier(name)
 				}
-				typ: if local.is_reference { local.typ.trim_right('*') } else { local.typ }
+				typ:    if local.is_reference { local.typ.trim_right('*') } else { local.typ }
 			}
 		} else {
 			global_key := fastc_global_key(g.module_name, name)
@@ -1952,7 +1952,7 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 			}
 			target = FastcRenderedExpression{
 				source: global_name
-				typ: g.global_types[global_key]
+				typ:    g.global_types[global_key]
 			}
 		}
 		targets << target
@@ -2034,7 +2034,7 @@ fn (g &Parser) validate_parallel_expression_assignment_target(source string, tok
 	g.validate_expression_mutation_lvalue(mutation_tokens)!
 	return FastcRenderedExpression{
 		source: source
-		typ: typ
+		typ:    typ
 	}
 }
 
@@ -2462,12 +2462,12 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	}
 	function_alias := g.functions[local_type] or { FastcFunctionSignature{} }
 	g.set_scoped_local(name, FastcLocal{
-		is_mut: is_mut
-		typ: local_type
-		option_value_type: option_value_type
-		fn_return_type: function_alias.return_type
+		is_mut:               is_mut
+		typ:                  local_type
+		option_value_type:    option_value_type
+		fn_return_type:       function_alias.return_type
 		fn_option_value_type: function_alias.option_type
-		bool_implications: bool_implications
+		bool_implications:    bool_implications
 	})
 }
 
@@ -3366,7 +3366,7 @@ fn (mut g Parser) parse_orm_sql_select_declaration(name string, is_mut bool) ! {
 	g.write_line('}')
 	g.set_scoped_local(name, FastcLocal{
 		is_mut: is_mut
-		typ: result_type
+		typ:    result_type
 	})
 }
 

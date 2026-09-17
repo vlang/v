@@ -121,33 +121,33 @@ fn test_formatter_recovers_c_string_prefix_from_quote_only_spans() {
 		g.source = literal
 		// The scanner excludes `c` from a parsed C string's span.
 		quote_only := flat.Node{
-			kind: .char_literal
+			kind:  .char_literal
 			value: 'c:A'
-			pos: token.new_span(1, 1, literal.len)
+			pos:   token.new_span(1, 1, literal.len)
 		}
 		assert g.string_literal_text(&quote_only) == expected
 		// Also accept nodes whose span already includes the prefix.
 		with_prefix := flat.Node{
-			kind: .char_literal
+			kind:  .char_literal
 			value: 'c:A'
-			pos: token.new_span(1, 0, literal.len)
+			pos:   token.new_span(1, 0, literal.len)
 		}
 		assert g.string_literal_text(&with_prefix) == expected
 	}
 	// Do not borrow a different preceding byte for a synthesized node.
 	g.source = r'x"\x41"'
 	no_prefix := flat.Node{
-		kind: .char_literal
+		kind:  .char_literal
 		value: 'c:A'
-		pos: token.new_span(1, 1, g.source.len)
+		pos:   token.new_span(1, 1, g.source.len)
 	}
 	assert g.string_literal_text(&no_prefix) == "c'A'"
 	// Empty and out-of-bounds spans must still use the safe fallback.
 	for start in [0, g.source.len, g.source.len + 1] {
 		missing := flat.Node{
-			kind: .char_literal
+			kind:  .char_literal
 			value: 'c:A'
-			pos: token.new_span(1, start, start)
+			pos:   token.new_span(1, start, start)
 		}
 		assert g.string_literal_text(&missing) == "c'A'"
 	}
@@ -191,18 +191,18 @@ fn test_formatter_keeps_safe_escaping_without_literal_source() {
 	g := Gen.new()
 	// Without a source span, the fallback must not turn NUL + `41` into `\041`.
 	nul := flat.Node{
-		kind: .string_literal
+		kind:  .string_literal
 		value: 'x\x0041y'
 	}
 	assert g.string_literal_text(&nul) == r"'x\x0041y'"
 	// An ordinary string starting with `c:` is not a C-string node.
 	ordinary := flat.Node{
-		kind: .string_literal
+		kind:  .string_literal
 		value: 'c:plain'
 	}
 	assert g.string_literal_text(&ordinary) == "'c:plain'"
 	c_string := flat.Node{
-		kind: .char_literal
+		kind:  .char_literal
 		value: r'c:\0'
 	}
 	assert g.string_literal_text(&c_string) == r"c'\0'"

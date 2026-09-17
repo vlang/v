@@ -110,8 +110,7 @@ fn (mut u Unpacker) read_be_u32() !u32 {
 	if u.pos + 4 > u.data.len {
 		return eof_needing(u.pos, 4, u.data.len - u.pos)
 	}
-	v := u32(u.data[u.pos]) << 24 | u32(u.data[u.pos + 1]) << 16 | u32(u.data[u.pos + 2]) << 8 | u32(u.data[
-		u.pos + 3])
+	v := u32(u.data[u.pos]) << 24 | u32(u.data[u.pos + 1]) << 16 | u32(u.data[u.pos + 2]) << 8 | u32(u.data[u.pos + 3])
 	u.pos += 4
 	return v
 }
@@ -121,9 +120,7 @@ fn (mut u Unpacker) read_be_u64() !u64 {
 	if u.pos + 8 > u.data.len {
 		return eof_needing(u.pos, 8, u.data.len - u.pos)
 	}
-	v := u64(u.data[u.pos]) << 56 | u64(u.data[u.pos + 1]) << 48 | u64(u.data[u.pos + 2]) << 40 | u64(u.data[
-		u.pos + 3]) << 32 | u64(u.data[u.pos + 4]) << 24 | u64(u.data[u.pos + 5]) << 16 | u64(u.data[
-		u.pos + 6]) << 8 | u64(u.data[u.pos + 7])
+	v := u64(u.data[u.pos]) << 56 | u64(u.data[u.pos + 1]) << 48 | u64(u.data[u.pos + 2]) << 40 | u64(u.data[u.pos + 3]) << 32 | u64(u.data[u.pos + 4]) << 24 | u64(u.data[u.pos + 5]) << 16 | u64(u.data[u.pos + 6]) << 8 | u64(u.data[u.pos + 7])
 	u.pos += 8
 	return v
 }

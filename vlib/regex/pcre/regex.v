@@ -205,12 +205,10 @@ fn read_rune_at(str &u8, len int, index int) (rune, int) {
 			return rune(((b0 & 0x1F) << 6) | (u32(str[index + 1]) & 0x3F)), 2
 		}
 		if (b0 & 0xF0) == 0xE0 && index + 2 < len {
-			return rune(((b0 & 0x0F) << 12) | ((u32(str[index + 1]) & 0x3F) << 6) | (u32(str[
-				index + 2]) & 0x3F)), 3
+			return rune(((b0 & 0x0F) << 12) | ((u32(str[index + 1]) & 0x3F) << 6) | (u32(str[index + 2]) & 0x3F)), 3
 		}
 		if (b0 & 0xF8) == 0xF0 && index + 3 < len {
-			return rune(((b0 & 0x07) << 18) | ((u32(str[index + 1]) & 0x3F) << 12) | ((u32(str[
-				index + 2]) & 0x3F) << 6) | (u32(str[index + 3]) & 0x3F)), 4
+			return rune(((b0 & 0x07) << 18) | ((u32(str[index + 1]) & 0x3F) << 12) | ((u32(str[index + 2]) & 0x3F) << 6) | (u32(str[index + 3]) & 0x3F)), 4
 		}
 	}
 	return 0, 0

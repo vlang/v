@@ -242,7 +242,8 @@ fn (t &Transformer) array_repeat_literal_can_duplicate(node flat.Node) bool {
 fn (t &Transformer) array_repeat_expr_can_duplicate(id flat.NodeId) bool {
 	node := t.a.nodes[int(id)]
 	match node.kind {
-		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .ident, .enum_val, .nil_literal, .none_expr {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .ident,
+		.enum_val, .nil_literal, .none_expr {
 			return true
 		}
 		.paren, .prefix, .postfix, .cast_expr, .as_expr, .field_init, .array_literal, .struct_init {

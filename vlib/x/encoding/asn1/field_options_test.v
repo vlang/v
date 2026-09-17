@@ -116,8 +116,8 @@ struct InnerMarker {
 }
 
 fn test_for_inner_tag_marker() ! {
-	data := [InnerMarker{'', '', error('not inner tag marker')},
-		InnerMarker{'inner:0', '0', none}, InnerMarker{'inner:12', '12', none},
+	data := [InnerMarker{'', '', error('not inner tag marker')}, InnerMarker{'inner:0', '0', none},
+		InnerMarker{'inner:12', '12', none},
 		InnerMarker{'inner:private,true,14', 'private,true,14', none},
 		InnerMarker{'inner:universal,true,14', 'universal,true,14', none},
 		InnerMarker{'inner:invalid,true,14', '', error('Your first ext inner is not extended cls')}]

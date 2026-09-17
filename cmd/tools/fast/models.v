@@ -109,9 +109,8 @@ fn migrate_schema(mut db sqlite.DB) ! {
 
 fn apply_migration(mut db sqlite.DB, existing map[string]bool) ! {
 	rss_columns := ['self_rss_min_kb', 'self_rss_q1_kb', 'self_rss_med_kb', 'self_rss_q3_kb',
-		'self_rss_max_kb', 'hello_rss_min_kb', 'hello_rss_q1_kb', 'hello_rss_med_kb',
-		'hello_rss_q3_kb', 'hello_rss_max_kb', 'scan_rss_kb', 'parse_rss_kb', 'check_rss_kb',
-		'cgen_rss_kb']
+		'self_rss_max_kb', 'hello_rss_min_kb', 'hello_rss_q1_kb', 'hello_rss_med_kb', 'hello_rss_q3_kb',
+		'hello_rss_max_kb', 'scan_rss_kb', 'parse_rss_kb', 'check_rss_kb', 'cgen_rss_kb']
 	for c in rss_columns {
 		if c !in existing {
 			migrate_exec(mut db,

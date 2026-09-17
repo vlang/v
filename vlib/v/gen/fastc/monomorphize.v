@@ -68,7 +68,7 @@ fn fastc_collect_generic_method_source_chunk(sources []FastcSourceFile, prefs &p
 	}
 	return FastcGenericScanPartial{
 		sources: result
-		flags: flags
+		flags:   flags
 	}
 }
 
@@ -88,16 +88,16 @@ fn fastc_collect_generic_methods_in_file(source_file FastcSourceFile, prefs &pre
 			fastc_function_key(module_name, generic.name)
 		}
 		result[key] = FastcGenericMethodSource{
-			name: generic.name
-			type_param: generic.type_param
-			receiver_type: receiver_type
-			module_name: module_name
-			path: source_file.path
-			imports: source_file.header.imports
-			return_type_source: generic.return_type_source
-			first_param_is_type_param: generic.first_param_is_type_param
+			name:                       generic.name
+			type_param:                 generic.type_param
+			receiver_type:              receiver_type
+			module_name:                module_name
+			path:                       source_file.path
+			imports:                    source_file.header.imports
+			return_type_source:         generic.return_type_source
+			first_param_is_type_param:  generic.first_param_is_type_param
 			type_param_parameter_index: generic.type_param_parameter_index
-			source: source_file.source[generic.fn_start..generic.def_end]
+			source:                     source_file.source[generic.fn_start..generic.def_end]
 		}
 	}
 }
@@ -207,20 +207,20 @@ fn (mut g Parser) queue_mono_method(receiver_type string, method string, concret
 		}
 		g.type_memo.clear()
 		g.mono_functions[key] = FastcFunctionSignature{
-			parameter_types: parameter_types
-			parameter_mutability: base.parameter_mutability.clone()
-			return_type: return_type
-			return_types: return_types
-			option_type: option_type
-			is_variadic: base.is_variadic
+			parameter_types:          parameter_types
+			parameter_mutability:     base.parameter_mutability.clone()
+			return_type:              return_type
+			return_types:             return_types
+			option_type:              option_type
+			is_variadic:              base.is_variadic
 			last_parameter_is_params: base.last_parameter_is_params
-			module_name: source.module_name
-			path: source.path
-			is_public: true
+			module_name:              source.module_name
+			path:                     source.path
+			is_public:                true
 		}
 		g.pending_mono << FastcMonoRequest{
 			source_key: source_key
-			concrete: concrete
+			concrete:   concrete
 		}
 	}
 	return mono
@@ -385,21 +385,21 @@ fn (mut g Parser) queue_mono_function(function_key string, concrete string) ?str
 		}
 		g.type_memo.clear()
 		g.mono_functions[mono_key] = FastcFunctionSignature{
-			parameter_types: parameter_types
-			parameter_mutability: base.parameter_mutability.clone()
-			return_type: return_type
-			return_types: return_types
-			option_type: option_type
-			is_variadic: base.is_variadic
+			parameter_types:          parameter_types
+			parameter_mutability:     base.parameter_mutability.clone()
+			return_type:              return_type
+			return_types:             return_types
+			option_type:              option_type
+			is_variadic:              base.is_variadic
 			last_parameter_is_params: base.last_parameter_is_params
-			is_public: base.is_public
-			is_disabled: base.is_disabled
-			module_name: source.module_name
-			path: source.path
+			is_public:                base.is_public
+			is_disabled:              base.is_disabled
+			module_name:              source.module_name
+			path:                     source.path
 		}
 		g.pending_mono << FastcMonoRequest{
 			source_key: function_key
-			concrete: concrete
+			concrete:   concrete
 		}
 	}
 	return mono
@@ -539,7 +539,7 @@ fn (g &Parser) erase_mono_generic_type_arguments(source string, src FastcGeneric
 		}
 		edits << FastcSourceEdit{
 			start: bracket_start
-			end: scan.offset
+			end:   scan.offset
 		}
 		tok = scan.scan()
 	}
@@ -708,9 +708,9 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 		definition_source := definition_file.source
 		edits << FastcSourceEdit{
 			source_index: generic.source_index
-			start: generic.fn_start
-			end: generic.def_end
-			replacement: ''
+			start:        generic.fn_start
+			end:          generic.def_end
+			replacement:  ''
 		}
 		mut nested_calls := []FastcGenericCall{}
 		for call in calls {
@@ -743,9 +743,9 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 		}
 		edits << FastcSourceEdit{
 			source_index: call.source_index
-			start: call.start
-			end: call.end
-			replacement: fastc_monomorphized_name(call.name, call.concrete)
+			start:        call.start
+			end:          call.end
+			replacement:  fastc_monomorphized_name(call.name, call.concrete)
 		}
 	}
 	mut result := []FastcSourceFile{cap: sources.len}
@@ -764,7 +764,7 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 			new_source = new_source + appends[i]
 		}
 		result << FastcSourceFile{
-			path: source_file.path
+			path:   source_file.path
 			source: new_source
 			header: source_file.header
 		}
@@ -853,15 +853,15 @@ fn fastc_render_generic_instance_with_call_rewrites(source string, generic Fastc
 	base := generic.fn_start
 	mut edits := []FastcSourceEdit{}
 	edits << FastcSourceEdit{
-		start: generic.bracket_start - base
-		end: generic.bracket_end - base
+		start:       generic.bracket_start - base
+		end:         generic.bracket_end - base
 		replacement: ''
 	}
 	for call in nested_calls {
 		if call.source_index == generic.source_index && call.start >= generic.fn_start && call.end <= generic.def_end {
 			edits << FastcSourceEdit{
-				start: call.start - base
-				end: call.end - base
+				start:       call.start - base
+				end:         call.end - base
 				replacement: fastc_monomorphized_name(call.name, call.concrete)
 			}
 		}
@@ -877,8 +877,8 @@ fn fastc_render_generic_instance_with_call_rewrites(source string, generic Fastc
 	for tok != .eof {
 		if !renamed && tok in [.name, .key_shared] && s.lit == generic.name {
 			edits << FastcSourceEdit{
-				start: s.pos
-				end: s.offset
+				start:       s.pos
+				end:         s.offset
 				replacement: fastc_monomorphized_name(generic.name, concrete)
 			}
 			renamed = true
@@ -887,8 +887,8 @@ fn fastc_render_generic_instance_with_call_rewrites(source string, generic Fastc
 			// is removed by the edit above (overlapping edits would corrupt it).
 			if replacement := substitutions[s.lit] {
 				edits << FastcSourceEdit{
-					start: s.pos
-					end: s.offset
+					start:       s.pos
+					end:         s.offset
 					replacement: replacement
 				}
 			}
@@ -1020,17 +1020,17 @@ fn fastc_scan_generic_fns(source string, path string, prefs &pref.Preferences, s
 		def_end := s.offset
 		type_param_parameter_index := fastc_params_type_param_index(source[params_open..params_close], type_param, prefs)
 		result << FastcGenericFn{
-			name: name
-			type_param: type_param
-			source_index: source_index
-			fn_start: fn_start
-			def_end: def_end
-			bracket_start: bracket_start
-			bracket_end: bracket_end
-			first_param_is_type_param: type_param_parameter_index == 0
+			name:                       name
+			type_param:                 type_param
+			source_index:               source_index
+			fn_start:                   fn_start
+			def_end:                    def_end
+			bracket_start:              bracket_start
+			bracket_end:                bracket_end
+			first_param_is_type_param:  type_param_parameter_index == 0
 			type_param_parameter_index: type_param_parameter_index
-			receiver_type: receiver_type
-			return_type_source: return_type_source
+			receiver_type:              receiver_type
+			return_type_source:         return_type_source
 		}
 		previous = .rcbr
 		previous_pos = def_end
@@ -1239,11 +1239,11 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 					}
 					fastc_record_concrete(name, concrete, mut pairs, mut seen_pair, mut has_concrete)
 					calls << FastcGenericCall{
-						name: name
+						name:         name
 						source_index: source_index
-						start: name_pos
-						end: after
-						concrete: concrete
+						start:        name_pos
+						end:          after
+						concrete:     concrete
 					}
 					previous = .rsbr
 					previous_lit = ''
@@ -1291,11 +1291,11 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 			}
 			fastc_record_concrete(name, concrete, mut pairs, mut seen_pair, mut has_concrete)
 			calls << FastcGenericCall{
-				name: name
+				name:         name
 				source_index: source_index
-				start: name_pos
-				end: name_end
-				concrete: concrete
+				start:        name_pos
+				end:          name_end
+				concrete:     concrete
 			}
 			continue
 		}
@@ -1441,7 +1441,7 @@ fn fastc_record_concrete(name string, concrete string, mut pairs []FastcConcrete
 	if pair_key !in seen_pair {
 		seen_pair[pair_key] = true
 		pairs << FastcConcretePair{
-			name: name
+			name:     name
 			concrete: concrete
 		}
 	}
@@ -1531,9 +1531,9 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 		definition_source := definition_file.source
 		edits << FastcSourceEdit{
 			source_index: generic.source_index
-			start: generic.fn_start
-			end: generic.def_end
-			replacement: ''
+			start:        generic.fn_start
+			end:          generic.def_end
+			replacement:  ''
 		}
 		mut copies := ''
 		for pair in pairs {
@@ -1554,9 +1554,9 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 		method_source := method_file.source
 		edits << FastcSourceEdit{
 			source_index: method.source_index
-			start: method.fn_start
-			end: method.def_end
-			replacement: ''
+			start:        method.fn_start
+			end:          method.def_end
+			replacement:  ''
 		}
 		mut method_copies := ''
 		for pair in pairs {
@@ -1573,9 +1573,9 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 		}
 		edits << FastcSourceEdit{
 			source_index: ref.source_index
-			start: ref.start
-			end: ref.end
-			replacement: fastc_monomorphized_name(ref.name, ref.concrete)
+			start:        ref.start
+			end:          ref.end
+			replacement:  fastc_monomorphized_name(ref.name, ref.concrete)
 		}
 	}
 	mut result := []FastcSourceFile{cap: sources.len}
@@ -1594,7 +1594,7 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 			new_source = new_source + appends[i]
 		}
 		result << FastcSourceFile{
-			path: source_file.path
+			path:   source_file.path
 			source: new_source
 			header: source_file.header
 		}
@@ -1670,13 +1670,13 @@ fn fastc_scan_generic_structs(source string, path string, prefs &pref.Preference
 		def_end := s.offset
 		if !fastc_body_has_nested_generic(source[body_open..def_end], prefs) {
 			result << FastcGenericFn{
-				name: name
-				type_param: type_param
-				source_index: source_index
-				fn_start: struct_start
-				def_end: def_end
+				name:          name
+				type_param:    type_param
+				source_index:  source_index
+				fn_start:      struct_start
+				def_end:       def_end
 				bracket_start: bracket_start
-				bracket_end: bracket_end
+				bracket_end:   bracket_end
 			}
 		}
 		previous = .rcbr
@@ -1794,11 +1794,11 @@ fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.P
 		}
 		fastc_record_concrete(name, concrete, mut pairs, mut seen_pair, mut has_concrete)
 		refs << FastcGenericCall{
-			name: name
+			name:         name
 			source_index: source_index
-			start: name_pos
-			end: after
-			concrete: concrete
+			start:        name_pos
+			end:          after
+			concrete:     concrete
 		}
 		previous = .rsbr
 		tok = s.scan()
@@ -1933,13 +1933,13 @@ fn fastc_scan_generic_methods(source string, path string, prefs &pref.Preference
 			method_problematic[struct_name] = true
 		} else {
 			methods << FastcGenericMethod{
-				struct_name: struct_name
-				type_param: type_param
-				source_index: source_index
-				fn_start: fn_start
-				def_end: def_end
+				struct_name:        struct_name
+				type_param:         type_param
+				source_index:       source_index
+				fn_start:           fn_start
+				def_end:            def_end
 				receiver_ref_start: receiver_ref_start
-				receiver_ref_end: receiver_ref_end
+				receiver_ref_end:   receiver_ref_end
 			}
 			receiver_skip['${source_index}#${receiver_ref_start}'] = true
 		}
@@ -1959,8 +1959,8 @@ fn fastc_render_generic_method(source string, method FastcGenericMethod, concret
 	receiver_high := method.receiver_ref_end - base
 	mut edits := []FastcSourceEdit{}
 	edits << FastcSourceEdit{
-		start: receiver_low
-		end: receiver_high
+		start:       receiver_low
+		end:         receiver_high
 		replacement: fastc_monomorphized_name(method.struct_name, concrete)
 	}
 	file := token.File.unindexed('method', definition.len)
@@ -1972,8 +1972,8 @@ fn fastc_render_generic_method(source string, method FastcGenericMethod, concret
 		if tok == .name && !(s.pos >= receiver_low && s.pos < receiver_high) {
 			if replacement := substitutions[s.lit] {
 				edits << FastcSourceEdit{
-					start: s.pos
-					end: s.offset
+					start:       s.pos
+					end:         s.offset
 					replacement: replacement
 				}
 			}

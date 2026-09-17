@@ -1054,7 +1054,7 @@ fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name st
 	}
 	info := t.structs[lookup_type] or { return none }
 	return StructFieldLookup{
-		info: info
+		info:       info
 		owner_type: owner_type
 	}
 }
@@ -1534,7 +1534,8 @@ fn is_plain_builtin_alias_type(typ string) bool {
 		return false
 	}
 	return match typ {
-		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr' {
+		'bool', 'string', 'void', 'int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32',
+		'f64', 'rune', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr' {
 			true
 		}
 		else {
@@ -1931,7 +1932,8 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 			name = t.tc.resolve_type(id).name()
 		}
 		if name.len > 0 && name != 'void' && (name != 'int'
-			|| node.kind in [.ident, .int_literal, .infix, .prefix, .paren, .selector, .index, .call]) {
+			|| node.kind in [.ident, .int_literal, .infix, .prefix, .paren, .selector, .index,
+				.call]) {
 			return t.normalize_type_alias(name)
 		}
 	}

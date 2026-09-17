@@ -271,8 +271,9 @@ fn w1_encode_len(p Params) int {
 	return match p.gamma2 {
 		32 { 4 * n / 8 }
 		88 { 6 * n / 8 }
-		else { panic('mldsa: unsupported gamma2') } // unreachable
+		else { panic('mldsa: unsupported gamma2') }
 	}
+	// unreachable
 }
 
 // algo. 28: w1Encode (s. 7.2)
@@ -332,8 +333,9 @@ fn bit_pack(r RingElement, p Params) []u8 {
 	match p.gamma1 {
 		17 { return bit_pack_18(r) }
 		19 { return bit_pack_20(r) }
-		else { panic('mldsa: unsupported gamma1') } // unreachable
+		else { panic('mldsa: unsupported gamma1') }
 	}
+	// unreachable
 }
 
 @[direct_array_access]
@@ -385,8 +387,9 @@ fn bit_unpack(v []u8, p Params) RingElement {
 	match p.gamma1 {
 		17 { return bit_unpack_18(v) }
 		19 { return bit_unpack_20(v) }
-		else { panic('mldsa: unsupported gamma1') } // unreachable
+		else { panic('mldsa: unsupported gamma1') }
 	}
+	// unreachable
 }
 
 @[direct_array_access]

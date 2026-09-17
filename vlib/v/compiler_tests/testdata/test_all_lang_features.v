@@ -134,7 +134,7 @@ fn Foo97.new(x int, y int) Foo97 {
 fn Foo97.with_name(name string, val int) Foo97 {
 	return Foo97{
 		name: name
-		val: val
+		val:  val
 	}
 }
 
@@ -247,7 +247,7 @@ fn optional_arg_point104(p ?Point) int {
 fn make_review_animal() Animal {
 	return Cat{
 		name: 'Milo'
-		age: 4
+		age:  4
 	}
 }
 
@@ -1017,7 +1017,7 @@ struct CallInfo115 {
 fn maybe_call_info115(ok bool) ?CallInfo115 {
 	if ok {
 		return CallInfo115{
-			name: 'resolved'
+			name:  'resolved'
 			score: 7
 		}
 	}
@@ -1036,7 +1036,7 @@ fn make_scores115() map[string]int {
 // Defaults116 represents defaults116 data used by v3 tests.
 struct Defaults116 {
 	name  string = 'v' + '3'
-	count int = 42
+	count int    = 42
 }
 
 // MetaType117 aliases meta type117 values used by v3 tests.
@@ -1457,14 +1457,14 @@ fn optional_context_score117() int {
 	holder117 := OptionalContextHolder117{
 		items: [
 			OptionalContext117{
-				expr: 'node'
+				expr:    'node'
 				variant: 'Ident'
-				sum: 'Expr'
+				sum:     'Expr'
 			},
 			OptionalContext117{
-				expr: 'other'
+				expr:    'other'
 				variant: 'Other'
-				sum: 'Expr'
+				sum:     'Expr'
 			},
 		]
 	}
@@ -1930,15 +1930,15 @@ fn sort_with_compare119() int {
 	mut items119 := [
 		SortItem119{
 			rank: 3
-			id: 1
+			id:   1
 		},
 		SortItem119{
 			rank: 1
-			id: 2
+			id:   2
 		},
 		SortItem119{
 			rank: 2
-			id: 3
+			id:   3
 		},
 	]
 	items119.sort_with_compare(fn (a &SortItem119, b &SortItem119) int {
@@ -2399,7 +2399,7 @@ fn selector_fn_call_base119() int {
 fn channel_runtime119() int {
 	mutex119 := sync.new_mutex()
 	_ = mutex119
-	ch119 := chan bool{ cap: 1 }
+	ch119 := chan bool{cap: 1}
 	ch119 <- true
 	got119 := <-ch119
 	ch119.close()
@@ -3017,7 +3017,7 @@ fn main() {
 
 	// 14.4 Heap Rectangle
 	hr := &Rectangle{
-		width: 100
+		width:  100
 		height: 200
 		origin: Point{
 			x: 10
@@ -3030,7 +3030,7 @@ fn main() {
 	// 14.5 Heap Node
 	hn := &Node{
 		value: 42
-		left: 1
+		left:  1
 		right: 2
 	}
 	print_int(hn.value) // 42
@@ -3155,12 +3155,12 @@ fn main() {
 	// 18.5 Heap node tree structure
 	node1 := &Node{
 		value: 100
-		left: 0
+		left:  0
 		right: 0
 	}
 	node2 := &Node{
 		value: 200
-		left: 0
+		left:  0
 		right: 0
 	}
 	print_int(node1.value + node2.value) // 300
@@ -3170,7 +3170,7 @@ fn main() {
 
 	// 19.1 Basic nested access
 	rect := Rectangle{
-		width: 100
+		width:  100
 		height: 200
 		origin: Point{
 			x: 10
@@ -3182,7 +3182,7 @@ fn main() {
 
 	// 19.2 Nested struct field via intermediate
 	rect2 := Rectangle{
-		width: 50
+		width:  50
 		height: 60
 		origin: Point{
 			x: 5
@@ -3193,7 +3193,7 @@ fn main() {
 
 	// 19.3 Mutable nested struct modification
 	mut rect3 := Rectangle{
-		width: 10
+		width:  10
 		height: 20
 		origin: Point{
 			x: 1
@@ -3207,7 +3207,7 @@ fn main() {
 
 	// 19.4 Multiple rectangles
 	rect4a := Rectangle{
-		width: 10
+		width:  10
 		height: 20
 		origin: Point{
 			x: 0
@@ -3215,7 +3215,7 @@ fn main() {
 		}
 	}
 	rect4b := Rectangle{
-		width: 30
+		width:  30
 		height: 40
 		origin: Point{
 			x: 0
@@ -3227,7 +3227,7 @@ fn main() {
 
 	// 19.5 Rectangle area
 	rect5 := Rectangle{
-		width: 12
+		width:  12
 		height: 10
 		origin: Point{
 			x: 0
@@ -3557,7 +3557,7 @@ fn main() {
 
 	// 31.1 Modify nested struct width/height
 	mut rm1 := Rectangle{
-		width: 10
+		width:  10
 		height: 20
 		origin: Point{
 			x: 1
@@ -3571,7 +3571,7 @@ fn main() {
 
 	// 31.2 Scale rectangle via function
 	mut rm2 := Rectangle{
-		width: 10
+		width:  10
 		height: 20
 		origin: Point{
 			x: 0
@@ -3584,7 +3584,7 @@ fn main() {
 
 	// 31.3 Multiple rectangle modifications
 	mut rm3 := Rectangle{
-		width: 5
+		width:  5
 		height: 5
 		origin: Point{
 			x: 0
@@ -3598,7 +3598,7 @@ fn main() {
 
 	// 31.4 Rectangle area after modification
 	mut rm4 := Rectangle{
-		width: 3
+		width:  3
 		height: 4
 		origin: Point{
 			x: 0
@@ -4370,7 +4370,7 @@ fn main() {
 	}
 	print_int(hm58.a * hm58.d - hm58.b * hm58.c) // 4
 	hr58 := &Rectangle{
-		width: 8
+		width:  8
 		height: 5
 		origin: Point{
 			x: 0
@@ -4498,7 +4498,7 @@ fn main() {
 
 	// 61.4 Rectangle methods
 	mr1 := Rectangle{
-		width: 10
+		width:  10
 		height: 5
 		origin: Point{
 			x: 0
@@ -4511,7 +4511,7 @@ fn main() {
 	// 61.5 Node method
 	mn1 := Node{
 		value: 100
-		left: 10
+		left:  10
 		right: 20
 	}
 	print_int(mn1.total()) // 130
@@ -5259,7 +5259,7 @@ fn main() {
 	print_int(sf9.x) // 15
 	print_int(sf9.y) // 30
 	mut rect_mod := Rectangle{
-		width: 10
+		width:  10
 		height: 20
 		origin: Point{
 			x: 0
@@ -5756,10 +5756,10 @@ fn main() {
 	// 101. Sum type smartcasting (ident and selector)
 	cat101 := Cat{
 		name: 'Whiskers'
-		age: 5
+		age:  5
 	}
 	dog101 := Dog{
-		name: 'Rex'
+		name:   'Rex'
 		tricks: 3
 	}
 	a101 := Animal(cat101)
@@ -5899,11 +5899,11 @@ fn main() {
 	mut holder104 := Holder{
 		pet: Animal(Cat{
 			name: 'Kit'
-			age: 6
+			age:  6
 		})
 	}
 	holder104.pet = Animal(Dog{
-		name: 'Bolt'
+		name:   'Bolt'
 		tricks: 8
 	})
 	print_str(describe_holder(holder104)) // Bolt
@@ -5926,10 +5926,10 @@ fn main() {
 	// 105.1 Multi-smartcast in && chains: both sides smartcast
 	a105 := Animal(Cat{
 		name: 'Luna'
-		age: 3
+		age:  3
 	})
 	b105 := Animal(Dog{
-		name: 'Max'
+		name:   'Max'
 		tricks: 7
 	})
 	if a105 is Cat && b105 is Dog {
@@ -5945,11 +5945,11 @@ fn main() {
 	// 105.2 Multi-smartcast: same type on both sides
 	c105 := Animal(Cat{
 		name: 'Mimi'
-		age: 2
+		age:  2
 	})
 	d105 := Animal(Cat{
 		name: 'Neko'
-		age: 9
+		age:  9
 	})
 	if c105 is Cat && d105 is Cat {
 		print_int(c105.age + d105.age) // 11
@@ -5958,11 +5958,11 @@ fn main() {
 	// 105.3 Multi-smartcast: first matches, second doesn't
 	e105 := Animal(Cat{
 		name: 'Cleo'
-		age: 4
+		age:  4
 	})
 	f105 := Animal(Cat{
 		name: 'Felix'
-		age: 6
+		age:  6
 	})
 	mut took_else105 := false
 	if e105 is Cat && f105 is Dog {
@@ -5994,10 +5994,10 @@ fn main() {
 	// 105.6 Multi-smartcast with field access in expression
 	g105 := Animal(Cat{
 		name: 'Socks'
-		age: 8
+		age:  8
 	})
 	h105 := Animal(Dog{
-		name: 'Buddy'
+		name:   'Buddy'
 		tricks: 5
 	})
 	mut desc105 := ''
@@ -6510,7 +6510,7 @@ fn main() {
 	// 117.1 Recursive sumtype values survive string-keyed map storage and lookup.
 	mut registry117 := Registry117{
 		prefix: 'types'
-		items: map[string]MetaType117{}
+		items:  map[string]MetaType117{}
 	}
 	registry117.items['types.Type'] = MetaType117(MetaMap117{
 		key: MetaType117(MetaNamed117{
@@ -6542,7 +6542,7 @@ fn main() {
 		params: [MetaType117(MetaNamed117{
 			name: 'ArrayDataHeader'
 		})]
-		ret: MetaType117(MetaNamed117{
+		ret:    MetaType117(MetaNamed117{
 			name: 'base_data'
 		})
 	}))) // fn(ArrayDataHeader) base_data
@@ -6625,7 +6625,7 @@ fn main() {
 	// 117.12 Pointer-receiver methods on array index expressions receive element addresses.
 	mut instrs117 := []Instr117{}
 	instrs117 << Instr117{
-		op: 7
+		op:       7
 		operands: [11]
 	}
 	print_int(instrs117[0].operand_total117(5)) // 23
@@ -6672,10 +6672,10 @@ fn main() {
 	// 117.20 Compound assignment mutates fields through dynamic-array indexes.
 	mut sym_store117 := SymbolStore117{
 		symbols: [Symbol117{
-			sect: 2
+			sect:  2
 			value: 5
 		}, Symbol117{
-			sect: 3
+			sect:  3
 			value: 11
 		}]
 	}
@@ -6688,7 +6688,7 @@ fn main() {
 	field_types117 := [
 		ForField117{
 			name: 'elem'
-			typ: MetaType117(MetaArray117{
+			typ:  MetaType117(MetaArray117{
 				elem: MetaType117(MetaNamed117{
 					name: 'Type'
 				})

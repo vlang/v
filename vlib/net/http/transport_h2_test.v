@@ -599,7 +599,11 @@ fn test_h2_pool_does_not_evict_its_own_new_connection() {
 		assert false, 'h2 server: ${err}'
 		return
 	}
-	h2_req := prepare(url: 'https://127.0.0.1:${h2_port}/fresh', validate: false, enable_http2: true) or {
+	h2_req := prepare(
+		url:          'https://127.0.0.1:${h2_port}/fresh'
+		validate:     false
+		enable_http2: true
+	) or {
 		assert false, 'prepare h2: ${err}'
 		return
 	}
@@ -650,7 +654,11 @@ fn test_h2_pool_evicts_h1_idle_to_make_room_for_h2() {
 		assert false, 'h2 server: ${err}'
 		return
 	}
-	h2_req := prepare(url: 'https://127.0.0.1:${h2_port}/fresh', validate: false, enable_http2: true) or {
+	h2_req := prepare(
+		url:          'https://127.0.0.1:${h2_port}/fresh'
+		validate:     false
+		enable_http2: true
+	) or {
 		assert false, 'prepare h2: ${err}'
 		return
 	}

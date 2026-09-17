@@ -369,9 +369,8 @@ pub fn (a Any) reflect[T]() T {
 				reflected.$(field.name) = value.date()
 			} $else $if field.typ is Time {
 				reflected.$(field.name) = value.time()
-			}
-			// Arrays of primitive types
-			$else $if field.typ is []string {
+			} $else $if field.typ is []string {
+				// Arrays of primitive types
 				any_array := value.array()
 				reflected.$(field.name) = any_array.as_strings()
 			} $else $if field.typ is []bool {
@@ -439,9 +438,8 @@ pub fn (a Any) reflect[T]() T {
 					arr << any_value.time()
 				}
 				reflected.$(field.name) = arr
-			}
-			// String key maps of primitive types
-			$else $if field.typ is map[string]string {
+			} $else $if field.typ is map[string]string {
+				// String key maps of primitive types
 				any_map := value.as_map()
 				reflected.$(field.name) = any_map.as_strings()
 			} $else $if field.typ is map[string]bool {

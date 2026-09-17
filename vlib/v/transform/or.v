@@ -845,8 +845,7 @@ fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node f
 		else_block = t.make_if(cond, then_block, else_block)
 	}
 	if info.accept_empty {
-		cond := t.make_call_typed('string__eq', [t.make_ident(str_name),
-			t.make_string_literal('')], 'bool')
+		cond := t.make_call_typed('string__eq', [t.make_ident(str_name), t.make_string_literal('')], 'bool')
 		else_block = t.make_if(cond, t.make_block([]flat.NodeId{}), else_block)
 	}
 	t.pending_stmts = outer_pending
@@ -888,8 +887,7 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 		else_block = t.make_if(cond, then_block, else_block)
 	}
 	if info.accept_empty {
-		cond := t.make_call_typed('string__eq', [t.make_ident(str_name),
-			t.make_string_literal('')], 'bool')
+		cond := t.make_call_typed('string__eq', [t.make_ident(str_name), t.make_string_literal('')], 'bool')
 		assign_ok := t.make_assign(t.make_ident(ok_name), t.make_bool_literal(true))
 		else_block = t.make_if(cond, t.make_block([assign_ok]), else_block)
 	}
@@ -1499,7 +1497,8 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	if clean in ['void', ''] {
 		return t.make_int_literal(0)
 	}
-	if clean in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16', 'u32', 'u64', 'rune', 'char']
+	if clean in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16', 'u32',
+		'u64', 'rune', 'char']
 		|| clean in t.enum_types {
 		return t.make_int_literal(0)
 	}

@@ -235,14 +235,14 @@ fn (mut tc TypeChecker) check_inline_asm_templates(id flat.NodeId, node flat.Nod
 		}
 		instruction_line := InlineAsmRange{
 			start: instruction_start
-			end: line.end
+			end:   line.end
 		}
 		// Only operands can name a register; the mnemonic itself never does.
 		mut operand_start := inline_asm_skip_mnemonic(block, instruction_line)
 		if block[instruction_start..operand_start].trim_space().to_lower_ascii() in inline_asm_instruction_prefixes {
 			operand_start = inline_asm_skip_mnemonic(block, InlineAsmRange{
 				start: operand_start
-				end: line.end
+				end:   line.end
 			})
 		}
 		for word in inline_asm_words(block, InlineAsmRange{ start: operand_start, end: line.end }) {
@@ -328,7 +328,7 @@ fn inline_asm_section_ranges(block string, start int, end int) []InlineAsmRange 
 		if c == `;` {
 			ranges << InlineAsmRange{
 				start: section_start
-				end: i
+				end:   i
 			}
 			section_start = i + 1
 		}
@@ -336,7 +336,7 @@ fn inline_asm_section_ranges(block string, start int, end int) []InlineAsmRange 
 	}
 	ranges << InlineAsmRange{
 		start: section_start
-		end: end
+		end:   end
 	}
 	return ranges
 }
@@ -355,7 +355,7 @@ fn inline_asm_lines(block string, section InlineAsmRange) []InlineAsmRange {
 		if c == `\n` {
 			lines << InlineAsmRange{
 				start: line_start
-				end: i
+				end:   i
 			}
 			line_start = i + 1
 		}
@@ -363,7 +363,7 @@ fn inline_asm_lines(block string, section InlineAsmRange) []InlineAsmRange {
 	}
 	lines << InlineAsmRange{
 		start: line_start
-		end: section.end
+		end:   section.end
 	}
 	return lines
 }
@@ -450,9 +450,9 @@ fn inline_asm_words(block string, section InlineAsmRange) []InlineAsmWord {
 			i++
 		}
 		words << InlineAsmWord{
-			text: block[start..i]
+			text:  block[start..i]
 			start: start
-			end: i
+			end:   i
 		}
 	}
 	return words
@@ -511,9 +511,9 @@ fn inline_asm_ios(block string, section InlineAsmRange) []InlineAsmIOSpan {
 		}
 		ios << InlineAsmIOSpan{
 			constraint: constraint
-			alias: alias
-			start: start
-			end: end
+			alias:      alias
+			start:      start
+			end:        end
 		}
 	}
 	return ios

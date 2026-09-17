@@ -390,6 +390,7 @@ fn assert_no_bool(signal chan bool, message string) {
 		_ := <-signal {
 			assert false, message
 		}
-		50 * time.millisecond {}
+		50 * time.millisecond {
+		}
 	}
 }

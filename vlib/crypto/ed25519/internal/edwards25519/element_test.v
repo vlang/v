@@ -113,8 +113,7 @@ fn carry_gen(a [5]u64) bool {
 fn test_carry_propagate_generic() {
 	// closures not supported on windows
 	for i := 0; i <= 10; i++ {
-		els := [rand.u64(), rand.u64(), rand.u64(), rand.u64(),
-			rand.u64()]!
+		els := [rand.u64(), rand.u64(), rand.u64(), rand.u64(), rand.u64()]!
 		p := carry_gen(els)
 		assert p == true
 	}

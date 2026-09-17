@@ -22,8 +22,8 @@ fn (g &Parser) or_block_has_statements() bool {
 	if g.tok == .name && g.lit == 'panic' {
 		return true
 	}
-	if g.tok in [.dollar, .key_return, .key_if, .key_for, .key_match, .key_mut, .key_defer,
-		.key_break, .key_continue] {
+	if g.tok in [.dollar, .key_return, .key_if, .key_for, .key_match, .key_mut, .key_defer, .key_break,
+		.key_continue] {
 		return true
 	}
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)
@@ -177,7 +177,7 @@ fn (mut g Parser) prescan_register_is_conjunct(toks []token.Token, lits []string
 				variant_c := fastc_c_declared_type_name(variant_key)
 				access := if boxed.ends_with('*') { '->' } else { '.' }
 				g.member_smartcasts[subject] = FastcMemberSmartcast{
-					typ: variant_c + '*'
+					typ:    variant_c + '*'
 					source: '((${variant_c} *)${g.local_c_name(subject)}${access}_object)'
 				}
 				registered << subject
@@ -239,9 +239,9 @@ fn (g &Parser) bool_conjunct_implication(conjunct []FastcExpressionToken) ?Fastc
 	variant_c := fastc_c_declared_type_name(variant_key)
 	access := if boxed.ends_with('*') { '->' } else { '.' }
 	return FastcBoolImplication{
-		subject: subject
+		subject:   subject
 		smartcast: FastcMemberSmartcast{
-			typ: variant_c + '*'
+			typ:    variant_c + '*'
 			source: '((${variant_c} *)${g.local_c_name(subject)}${access}_object)'
 		}
 	}
@@ -614,9 +614,9 @@ fn (mut g Parser) parse_if() !bool {
 			name := fastc_c_identifier(guard_name)
 			g.write_line('${return_type} (*${name})(${parameters}) = (${return_type} (*)(${parameters}))(${guard_function_source});')
 			g.locals[guard_name] = FastcLocal{
-				is_mut: guard_is_mut
-				typ: 'voidptr'
-				fn_return_type: return_type
+				is_mut:               guard_is_mut
+				typ:                  'voidptr'
+				fn_return_type:       return_type
 				fn_option_value_type: guard_function.fn_option_value_type
 			}
 		} else if guard_erased_generic {
@@ -628,15 +628,15 @@ fn (mut g Parser) parse_if() !bool {
 			}
 			g.locals[guard_name] = FastcLocal{
 				is_mut: guard_is_mut
-				typ: guard_type
+				typ:    guard_type
 			}
 		} else {
 			function_alias := g.functions[guard_type] or { FastcFunctionSignature{} }
 			g.write_line('${guard_type} ${fastc_c_identifier(guard_name)} = *((${guard_type} *)${guard_option}.data);')
 			g.locals[guard_name] = FastcLocal{
-				is_mut: guard_is_mut
-				typ: guard_type
-				fn_return_type: function_alias.return_type
+				is_mut:               guard_is_mut
+				typ:                  guard_type
+				fn_return_type:       function_alias.return_type
 				fn_option_value_type: function_alias.option_type
 			}
 		}
@@ -658,11 +658,11 @@ fn (mut g Parser) parse_if() !bool {
 		}
 		g.write_line('${branch_type} ${branch_cast} = ${branch_value};')
 		g.locals[smartcast_name] = FastcLocal{
-			is_mut: previous_smartcast.is_mut
-			is_reference: smartcast_is_reference
-			typ: branch_type
-			c_name: branch_cast
-			smartcast_origin_type: smartcast_boxed_type
+			is_mut:                  previous_smartcast.is_mut
+			is_reference:            smartcast_is_reference
+			typ:                     branch_type
+			c_name:                  branch_cast
+			smartcast_origin_type:   smartcast_boxed_type
 			smartcast_origin_source: smartcast_tmp
 		}
 	}
@@ -699,11 +699,11 @@ fn (mut g Parser) parse_if() !bool {
 			g.write_line('${plan_type} ${plan_shadow} = ${plan_value};')
 			previous_plan_local := g.locals[plan.path] or { FastcLocal{} }
 			g.locals[plan.path] = FastcLocal{
-				is_mut: previous_plan_local.is_mut
-				is_reference: plan_is_reference
-				typ: plan_type
-				c_name: plan_shadow
-				smartcast_origin_type: plan.boxed_type
+				is_mut:                  previous_plan_local.is_mut
+				is_reference:            plan_is_reference
+				typ:                     plan_type
+				c_name:                  plan_shadow
+				smartcast_origin_type:   plan.boxed_type
 				smartcast_origin_source: plan.boxed_tmp
 			}
 			continue
@@ -716,7 +716,7 @@ fn (mut g Parser) parse_if() !bool {
 		}
 		g.write_line('${plan.type_c} *${plan.member_tmp} = (${plan.type_c} *)${plan.boxed_tmp}${plan_access}_object;')
 		g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-			typ: plan.type_c + '*'
+			typ:    plan.type_c + '*'
 			source: plan.member_tmp
 		}
 	}
@@ -734,7 +734,7 @@ fn (mut g Parser) parse_if() !bool {
 					FastcMemberSmartcast{}
 				}
 				g.member_smartcasts[opt_name] = FastcMemberSmartcast{
-					typ: base
+					typ:    base
 					source: '(*((${base} *)${fastc_c_identifier(opt_name)}.data))'
 				}
 			}
@@ -782,10 +782,10 @@ fn (mut g Parser) parse_if() !bool {
 			branch_cast := g.temporary_name('if_cast')
 			g.write_line('${smartcast_type} ${branch_cast} = *((${smartcast_type} *)${g.local_c_name(smartcast_name)}${access}_object);')
 			g.set_scoped_local(smartcast_name, FastcLocal{
-				is_mut: previous_smartcast.is_mut
-				typ: smartcast_type
-				c_name: branch_cast
-				smartcast_origin_type: smartcast_boxed_type
+				is_mut:                  previous_smartcast.is_mut
+				typ:                     smartcast_type
+				c_name:                  branch_cast
+				smartcast_origin_type:   smartcast_boxed_type
 				smartcast_origin_source: g.local_c_name(smartcast_name)
 			})
 		}
@@ -1182,11 +1182,11 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 						// `->`, not `.`.
 						access := if left_type.ends_with('*') { '->' } else { '.' }
 						plans << FastcMemberSmartcastPlan{
-							path: path
-							type_c: normalized_target
+							path:       path
+							type_c:     normalized_target
 							boxed_type: left_type
-							source: left_source
-							boxed_tmp: boxed_tmp
+							source:     left_source
+							boxed_tmp:  boxed_tmp
 							member_tmp: member_tmp
 						}
 						// Assign the boxed temporary inside this conjunct. Hoisting the member read
@@ -1200,7 +1200,7 @@ fn (mut g Parser) detect_member_smartcasts(cond_tokens []FastcExpressionToken, r
 							previous[path] = g.member_smartcasts[path] or { FastcMemberSmartcast{} }
 						}
 						g.member_smartcasts[path] = FastcMemberSmartcast{
-							typ: normalized_target + '*'
+							typ:    normalized_target + '*'
 							source: '((${normalized_target} *)${boxed_tmp}${access}_object)'
 						}
 						continue
@@ -1581,7 +1581,7 @@ fn (mut g Parser) read_if_expression() !string {
 				previous_plan_local := g.locals[plan.path] or { FastcLocal{} }
 				g.locals[plan.path] = FastcLocal{
 					is_mut: previous_plan_local.is_mut
-					typ: plan.type_c
+					typ:    plan.type_c
 					c_name: plan.member_tmp
 				}
 				continue
@@ -1593,7 +1593,7 @@ fn (mut g Parser) read_if_expression() !string {
 				}
 			}
 			g.member_smartcasts[plan.path] = FastcMemberSmartcast{
-				typ: plan.type_c + '*'
+				typ:    plan.type_c + '*'
 				source: plan.member_tmp
 			}
 		}

@@ -74,8 +74,8 @@ fn chart_points(list []Benchmark) []ChartPoint {
 			hello:     b.hello_ms
 			self_rss:  [b.self_rss_min_kb, b.self_rss_q1_kb, b.self_rss_med_kb, b.self_rss_q3_kb,
 				b.self_rss_max_kb]
-			hello_rss: [b.hello_rss_min_kb, b.hello_rss_q1_kb, b.hello_rss_med_kb,
-				b.hello_rss_q3_kb, b.hello_rss_max_kb]
+			hello_rss: [b.hello_rss_min_kb, b.hello_rss_q1_kb, b.hello_rss_med_kb, b.hello_rss_q3_kb,
+				b.hello_rss_max_kb]
 		}
 	}
 	return points

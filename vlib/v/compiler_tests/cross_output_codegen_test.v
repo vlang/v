@@ -125,8 +125,7 @@ fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 	// snapshot either fails to compile there, or panics with `Bad file descriptor`
 	// on the first semaphore it waits on.
 	c_code := cross_generate_with('-cross -os linux', 'semaphore', 'module main\n\nimport sync\n\nfn main() {\n\tmut sem := sync.new_semaphore()\n\tsem.post()\n\tsem.wait()\n\tprintln(sem.try_wait())\n\tprintln(sem.timed_wait(1))\n\tsem.destroy()\n}\n')
-	for call in ['sem_init(', 'sem_post(', 'sem_wait(', 'sem_trywait(', 'sem_timedwait(',
-		'sem_destroy('] {
+	for call in ['sem_init(', 'sem_post(', 'sem_wait(', 'sem_trywait(', 'sem_timedwait(', 'sem_destroy('] {
 		assert c_code.contains(call), '`${call}` is missing from the snapshot'
 		mut searched := c_code
 		for {

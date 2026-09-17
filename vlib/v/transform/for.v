@@ -971,7 +971,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	if key.kind != .ident || key.value.len == 0 {
 		return [id]
 	}
-	container_node := if int(container_id) >= 0 { t.a.nodes[int(container_id)] } else { flat.Node{} }
+	container_node := if int(container_id) >= 0 {
+		t.a.nodes[int(container_id)]
+	} else {
+		flat.Node{}
+	}
 	checker_container_type := t.raw_checker_node_type(container_id)
 	raw_container_type := if container_node.kind == .ident
 		&& t.var_type(container_node.value).trim_space().starts_with('?') {

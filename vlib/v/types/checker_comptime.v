@@ -6281,8 +6281,8 @@ fn (tc &TypeChecker) comptime_initializer_is_static(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.node(id)
-	return node.kind in [.int_literal, .float_literal, .string_literal, .char_literal,
-		.bool_literal, .enum_val, .nil_literal, .none_expr]
+	return node.kind in [.int_literal, .float_literal, .string_literal, .char_literal, .bool_literal,
+		.enum_val, .nil_literal, .none_expr]
 }
 
 fn (tc &TypeChecker) comptime_condition_part_pos(node flat.Node, part string) token.Pos {

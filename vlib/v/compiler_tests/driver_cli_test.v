@@ -281,8 +281,7 @@ fn main() {
 	selective_binary := os.join_path(root, 'profile_selective')
 	selective_profile := os.join_path(root, 'profile_selective.txt')
 	selective_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns', 'main__selected',
-		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary,
-		selective_source])
+		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary, selective_source])
 	assert selective_compile.exit_code == 0, selective_compile.output
 	selective_run := cmdexec.run(selective_binary, [])
 	assert selective_run.exit_code == 0, selective_run.output
@@ -371,8 +370,8 @@ fn test_v3_build_rejects_garbage_collectors() {
 	for mode in ['boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt', 'boehm_leak',
 		'vgc'] {
 		output := os.join_path(root, 'v3_${mode}')
-		result := cmdexec.run(@VEXE, ['-gc', mode, '-path',
-			'${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', output, driver_cli_v3_src])
+		result := cmdexec.run(@VEXE, ['-gc', mode, '-path', '${driver_cli_vlib_dir}|@vlib|@vmodules',
+			'-o', output, driver_cli_v3_src])
 		assert result.exit_code != 0
 		// The driver refuses the flag up front; a compiler built from source refuses it
 		// again with `$compile_error`. Either way the reason names the collector.
@@ -591,8 +590,8 @@ fn main() {
 	warm_run := cmdexec.run(v3_bin, ['-silent', 'run', source])
 	assert warm_run.exit_code == 0, warm_run.output
 	assert warm_run.output.trim_space() == '73'
-	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library', 'run',
-		source])
+	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library',
+		'run', source])
 	assert cached_missing.exit_code != 0, cached_missing.output
 
 	assert_driver_cli_failure(v3_bin, ['-ldflags'], 'option `-ldflags` requires a value')
@@ -618,7 +617,7 @@ fn collect_driver_process_result(mut process os.Process) os.Result {
 	process.close()
 	return os.Result{
 		exit_code: exit_code
-		output: output
+		output:    output
 	}
 }
 
@@ -840,8 +839,8 @@ fn main() {
 	assert project_run.output == '42\n', project_run.output
 
 	backslash_project_dir := os.join_path(root, r'project\backslash')
-	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project',
-		backslash_project_dir, source])
+	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project', backslash_project_dir,
+		source])
 	assert backslash_generate.exit_code == 0, backslash_generate.output
 	backslash_build := cmdexec.run('sh', [
 		os.join_path(backslash_project_dir, 'build.sh'),
@@ -967,8 +966,8 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	assert !os.read_file(stripped_c_path)!.contains('unused_value(')
 
 	no_skip_c_path := os.join_path(root, 'no_skip.c')
-	no_skip_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b', 'c',
-		'-o', no_skip_c_path, source], environment)
+	no_skip_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b',
+		'c', '-o', no_skip_c_path, source], environment)
 	assert no_skip_c.exit_code == 0, no_skip_c.output
 	assert os.read_file(no_skip_c_path)!.contains('unused_value(')
 }
@@ -1922,8 +1921,8 @@ fn main() {
 	os.write_file(os.join_path(explicit_dir, 'main.v'), 'module main\n\nfn main() { host_os_selected() }\n') or { panic(err) }
 	os.write_file(os.join_path(explicit_dir, 'target_${host.os}.v'), 'module main\n\nfn host_os_selected() {}\n') or { panic(err) }
 	explicit_output := os.join_path(root, 'explicit_target.wasm')
-	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch, '-o',
-		explicit_output, explicit_dir])
+	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch,
+		'-o', explicit_output, explicit_dir])
 	assert explicit_compile.exit_code == 0, explicit_compile.output
 	assert_driver_wasm_output(explicit_output)
 }

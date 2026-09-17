@@ -668,9 +668,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		params << '${fastc_output_c_type(receiver_parameter_type)} ${fastc_c_identifier(receiver_name)}'
 		g.type_memo.clear()
 		g.locals[receiver_name] = FastcLocal{
-			is_mut: receiver_is_mut
+			is_mut:       receiver_is_mut
 			is_reference: receiver_is_reference
-			typ: receiver_parameter_type
+			typ:          receiver_parameter_type
 		}
 	}
 	if g.tok != .name && !(g.tok.is_overloadable() || g.tok.is_keyword()) {
@@ -1219,18 +1219,18 @@ fn (mut g Parser) parse_parameters() ![]string {
 				params << '${fastc_output_c_type(fn_return_type)} (*${c_name})()'
 				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
-					is_mut: is_mut
-					typ: type_name
-					fn_return_type: fn_return_type
+					is_mut:               is_mut
+					typ:                  type_name
+					fn_return_type:       fn_return_type
 					fn_option_value_type: fn_option_value_type
 				}
 			} else {
 				params << '${fastc_output_c_type(type_name)} ${c_name}'
 				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
-					is_mut: is_mut
-					is_reference: is_reference
-					typ: type_name
+					is_mut:            is_mut
+					is_reference:      is_reference
+					typ:               type_name
 					option_value_type: option_value_type
 				}
 			}

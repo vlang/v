@@ -379,8 +379,7 @@ fn test_named_groups() {
 	r_nested := pcre.compile(nested_pat) or { panic(err) }
 	m_nested := r_nested.find(nested_txt) or { panic('Match not found') }
 
-	println('Nested: entry="${r_nested.group_by_name(m_nested, 'entry')}", val="${r_nested.group_by_name(m_nested,
-		'val')}"')
+	println('Nested: entry="${r_nested.group_by_name(m_nested, 'entry')}", val="${r_nested.group_by_name(m_nested, 'val')}"')
 	assert r_nested.group_by_name(m_nested, 'entry') == 'key: 99'
 	assert r_nested.group_by_name(m_nested, 'val') == '99'
 

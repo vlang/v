@@ -77,8 +77,8 @@ fn main() {
 }
 ')
 	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '9', '9', '9',
-		'9'], res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '9', '9',
+		'9', '9'], res.output
 }
 
 // The real thing is still caught: a function that hands back the field itself gives
@@ -392,5 +392,6 @@ fn main() {
 }
 ')
 	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '9', '9', '9'], res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '9', '9',
+		'9'], res.output
 }

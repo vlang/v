@@ -19,7 +19,9 @@ fn test_parallel_amap_with_empty_arrays() {
 	}) == []
 	assert parallel.amap([]u8{}, fn (x u8) int {
 		return 0
-	}, workers: 1000) == []
+	},
+		workers: 1000
+	) == []
 	assert true
 }
 

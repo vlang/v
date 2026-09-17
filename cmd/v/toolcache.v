@@ -229,8 +229,8 @@ fn last_modified(path string) i64 {
 // and the bundled amalgamation that way, and neither choice changes a single source stamp.
 // `VMODULES` moves the second module search root, which decides which copy of a module an
 // import resolves to, so it selects sources without changing any recorded path.
-const ambient_build_variables = ['CFLAGS', 'LDFLAGS', 'VCOVDIR', 'PKG_CONFIG_PATH',
-	'PKG_CONFIG_LIBDIR', 'PKG_CONFIG_SYSROOT_DIR', 'VMODULES']
+const ambient_build_variables = ['CFLAGS', 'LDFLAGS', 'VCOVDIR', 'PKG_CONFIG_PATH', 'PKG_CONFIG_LIBDIR',
+	'PKG_CONFIG_SYSROOT_DIR', 'VMODULES']
 
 // tool_cache_key derives the content address of a cached tool binary. Everything that can
 // change the produced executable without being visible in the recorded source manifest has

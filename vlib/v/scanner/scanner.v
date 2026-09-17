@@ -275,7 +275,8 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .string
 		}
 		tok := token.Token.from_string_tinyv(s.lit)
-		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true, .name]
+		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
+			.name]
 			|| (follows_dot && tok.is_keyword()) {
 			s.insert_semi = true
 		}
@@ -738,7 +739,8 @@ fn (mut s Scanner) check_string_escape(backslash_offset int) {
 
 fn is_known_string_escape(c u8) bool {
 	return (c >= `0` && c <= `9`) || c == `\n`
-		|| c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`, `}`, `'`, `"`, `U`]
+		|| c in [`x`, `u`, `e`, `n`, `r`, `t`, `v`, `a`, `f`, `b`, `\\`, `\``, `$`, `@`, `?`, `{`,
+			`}`, `'`, `"`, `U`]
 }
 
 fn string_escape_hex_value(c u8) u32 {

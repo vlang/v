@@ -89,7 +89,7 @@ fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 		serial.fn_gen_items = items
 		mut worker := serial.new_parallel_worker(0)
 		serial.collect_declaration_signature_types()
-		args := OptionalSelectionArgs{ worker: voidptr(worker), items: chan []FlatFnGenItem{ cap: 1 } }
+		args := OptionalSelectionArgs{ worker: voidptr(worker), items: chan []FlatFnGenItem{cap: 1} }
 		thread := spawn optional_support_selection_thread(voidptr(&args))
 		args.items <- items.clone()
 		thread.wait()
@@ -273,10 +273,10 @@ fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	mut ast := &flat.FlatAst{}
 	ast.nodes = [flat.Node{
 		kind: .call
-		typ: '?([]'
+		typ:  '?([]'
 	}, flat.Node{
 		kind: .call
-		typ: '?string'
+		typ:  '?string'
 	}]
 	mut tc := types.TypeChecker.new(ast)
 	mut g := FlatGen.new()
@@ -294,7 +294,7 @@ fn test_json_pointer_sum_variants_use_direct_owned_payloads() {
 	tc.structs['main.Node'] = [
 		types.StructField{
 			name: 'name'
-			typ: types.Type(types.String{})
+			typ:  types.Type(types.String{})
 		},
 	]
 	mut encode_gen := FlatGen.new()
@@ -446,7 +446,7 @@ fn test_exact_import_type_lookup_uses_qualified_declaration_keys() {
 	for module_name in ['dep.nested', 'main', 'builtin'] {
 		key := qualify_name_in_module(module_name, 'Item')
 		g.register_struct_decl_info('Item', key, module_name, '', flat.Node{
-			kind: .struct_decl
+			kind:  .struct_decl
 			value: 'Item'
 		})
 		resolved := g.exact_known_import_type_text('${module_name}.Item') or { panic('missing declaration') }
@@ -743,9 +743,9 @@ fn test_sum_name_resolution_prefers_a_live_import_alias_over_an_exact_namesake_s
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{
-		kind: .fn_decl
+		kind:  .fn_decl
 		value: 'load'
-		typ: '!Image'
+		typ:   '!Image'
 	})
 	mut tc := types.TypeChecker.new(&ast)
 	tc.cur_module = 'json2'
@@ -760,9 +760,9 @@ fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	fn_id := ast.add_node(flat.Node{
-		kind: .fn_decl
+		kind:  .fn_decl
 		value: 'decode_T_Data'
-		typ: '!Data'
+		typ:   '!Data'
 	})
 	ast.specialized_fn_nodes[int(fn_id)] = true
 	mut tc := types.TypeChecker.new(&ast)
@@ -777,9 +777,9 @@ fn test_declaration_signature_scan_collects_specialized_fn_nodes() {
 fn test_specialized_signature_scan_uses_declaration_module() {
 	mut ast := flat.FlatAst.new()
 	fn_id := ast.add_node(flat.Node{
-		kind: .fn_decl
+		kind:  .fn_decl
 		value: 'QueryBuilder_Entity_update'
-		typ: '!&QueryBuilder[Entity]'
+		typ:   '!&QueryBuilder[Entity]'
 	})
 	ast.specialized_fn_nodes[int(fn_id)] = true
 	ast.specialized_fn_modules[int(fn_id)] = 'orm'

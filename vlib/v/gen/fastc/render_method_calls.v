@@ -26,7 +26,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	if signature.is_disabled {
 		return FastcRenderedExpression{
 			source: fastc_disabled_call_expression(signature.return_type)
-			typ: signature.return_type
+			typ:    signature.return_type
 		}
 	}
 	call_args := fastc_call_arguments(tokens, open_index, close) or { return none }
@@ -55,7 +55,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		rendered_arguments << named_initializer
 		return FastcRenderedExpression{
 			source: '${g.c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
-			typ: signature.return_type
+			typ:    signature.return_type
 		}
 	}
 	if signature.is_variadic && !function_key.starts_with('C.') {
@@ -74,7 +74,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			c_arguments << '((${variadic_type})builtin__new_array_from_c_array(1, 1, sizeof(${element_type}), (${element_type}[]){${named_initializer}}))'
 			return FastcRenderedExpression{
 				source: '${g.c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
-				typ: signature.return_type
+				typ:    signature.return_type
 			}
 		}
 		// `f(x, ...arr)` spreads an existing array into the variadic parameter: the array itself
@@ -89,7 +89,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			c_arguments << spread
 			return FastcRenderedExpression{
 				source: '${g.c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
-				typ: signature.return_type
+				typ:    signature.return_type
 			}
 		}
 		mut rendered_arguments := []string{}
@@ -118,7 +118,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		rendered_arguments << packed
 		return FastcRenderedExpression{
 			source: '${g.c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
-			typ: signature.return_type
+			typ:    signature.return_type
 		}
 	}
 	if call_args.len < signature.parameter_types.len && (!signature.last_parameter_is_params || call_args.len + 1 != signature.parameter_types.len) {
@@ -149,7 +149,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	}
 	return FastcRenderedExpression{
 		source: '${call_name}(${rendered_arguments.join(',')})'
-		typ: signature.return_type
+		typ:    signature.return_type
 	}
 }
 
@@ -259,7 +259,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			if receiver_start == 0 && call_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: call_source
-					typ: 'bool'
+					typ:    'bool'
 				}
 			}
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -305,7 +305,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ: 'int'
+						typ:    'int'
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -340,7 +340,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && wait_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: wait_all
-						typ: result_type
+						typ:    result_type
 					}
 				}
 				mut wait_needle := '${receiver.source}.wait()'
@@ -369,7 +369,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			if receiver_start == 0 && wait_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: wait_call
-					typ: if value_type == '' { 'void' } else { value_type }
+					typ:    if value_type == '' { 'void' } else { value_type }
 				}
 			}
 			// A wait nested in a larger expression replaces its raw call form,
@@ -414,7 +414,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ: 'string'
+						typ:    'string'
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -444,7 +444,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ: 'string'
+						typ:    'string'
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -475,7 +475,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ: 'string'
+						typ:    'string'
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -500,7 +500,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ: 'void'
+						typ:    'void'
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -531,7 +531,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
 						source: call_source
-						typ: 'string'
+						typ:    'string'
 					}
 				}
 				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -572,7 +572,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					if receiver_start == 0 && call_end == tokens.len - 1 {
 						return FastcRenderedExpression{
 							source: call_source
-							typ: return_type
+							typ:    return_type
 						}
 					}
 					raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -611,7 +611,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			if receiver_start == 0 && call_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: disabled_call
-					typ: signature.return_type
+					typ:    signature.return_type
 				}
 			}
 			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
@@ -627,7 +627,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		receiver := if unnarrowed_receiver != '' {
 			FastcRenderedExpression{
 				source: unnarrowed_receiver
-				typ: receiver_type
+				typ:    receiver_type
 			}
 		} else {
 			g.render_method_receiver_expression(receiver_tokens) or { continue }
@@ -783,7 +783,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			if !is_pointer_result_method && !has_arguments && direct_arguments.len == 0 && fastc_contains(rendered, needle) {
 				return FastcRenderedExpression{
 					source: fastc_replace(rendered, needle, replacement)
-					typ: result_type
+					typ:    result_type
 				}
 			}
 			argument_suffix := if direct_arguments.len > 0 {
@@ -798,7 +798,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			return FastcRenderedExpression{
 				source: direct_call
-				typ: result_type
+				typ:    result_type
 			}
 		}
 		if direct_arguments.len > 0 {
@@ -843,6 +843,6 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 	}
 	return FastcRenderedExpression{
 		source: rendered
-		typ: g.infer_expression_type(tokens) or { '' }
+		typ:    g.infer_expression_type(tokens) or { '' }
 	}
 }

@@ -8,7 +8,7 @@ mut:
 
 fn test_main() {
 	x := PaddedSlot[int]{}
-	$if new_int ? && x64 {
+	$if new_int ?&& x64 {
 		assert '${x}' == 'PaddedSlot[int]{
     data: 0
     pad: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]

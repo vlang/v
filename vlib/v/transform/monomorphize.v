@@ -4433,8 +4433,7 @@ fn (t &Transformer) generic_fn_return_type_text(decl GenericFnDecl) string {
 		return decl.node.typ
 	}
 	qualified_value := transform_qualified_fn_name(decl.module, decl.node.value)
-	for name in [decl.key, decl.node.value, qualified_value, c_name(decl.key),
-		c_name(qualified_value)] {
+	for name in [decl.key, decl.node.value, qualified_value, c_name(decl.key), c_name(qualified_value)] {
 		if text := t.tc.fn_ret_type_texts[name] {
 			if text.len > 0 {
 				return text
@@ -5630,8 +5629,8 @@ fn (t &Transformer) generic_call_array_literal_can_retype_inline(node flat.Node,
 	}
 	for i in 0 .. node.children_count {
 		child := t.a.child_node(&node, i)
-		if child.kind !in [.int_literal, .float_literal, .bool_literal, .char_literal,
-			.string_literal, .cast_expr, .as_expr] {
+		if child.kind !in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+			.cast_expr, .as_expr] {
 			return false
 		}
 	}

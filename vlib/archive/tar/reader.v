@@ -120,11 +120,11 @@ pub fn (r Read) str() string {
 
 // Reader is used to read by Untar to parse the blocks.
 pub interface Reader {
-mut:
 	// dir_block is called when untar reads a block of type directory.
 	// Call `Read.get_path()` to get the full name of the directory.
 	// `size` field is zero for directories.
 	// The implementor can set Read's field `stop_early` to suspend the reader.
+mut:
 	dir_block(mut read Read, size u64)
 
 	// file_block is called when untar reads a block of type filename.

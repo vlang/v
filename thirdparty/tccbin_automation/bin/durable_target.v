@@ -7,9 +7,9 @@ const durable_target_max_bytes = 2 * 1024 * 1024
 
 const durable_target_members = ['schema_version', 'generation', 'target_id', 'target_state',
 	'publication_state', 'bootstrap_required', 'canonical_observed_sha', 'input_fingerprint',
-	'artifact_fingerprint', 'manifest_hash', 'provenance_status', 'affected_targets',
-	'resolved_inputs', 'last_source_refetch', 'last_known_good', 'provisional_published',
-	'active_intent', 'post_validation_operation_id', 'native_gate_subject', 'active_subject_hash',
+	'artifact_fingerprint', 'manifest_hash', 'provenance_status', 'affected_targets', 'resolved_inputs',
+	'last_source_refetch', 'last_known_good', 'provisional_published', 'active_intent',
+	'post_validation_operation_id', 'native_gate_subject', 'active_subject_hash',
 	'native_gate_execution', 'v_smoke_execution', 'recovery_handoffs', 'active_recovery_handoff_id',
 	'active_remediation_id', 'active_remediation_binding', 'remediation_check_sources',
 	'last_head_observation', 'last_native_validation', 'applied_operations', 'incidents',
@@ -431,12 +431,12 @@ fn durable_validate_native_gate_ints(value JsonValue) ! {
 		'$/native_gate_execution/selected_run_attempt')!
 	durable_int_member(value, 'infra_retry_count', '$/native_gate_execution/infra_retry_count')!
 	for index, epoch in require_array_member(value, 'gate_epochs')! {
-		path := '$/native_gate_execution/gate_epochs/${index}'
+		path := '\$/native_gate_execution/gate_epochs/${index}'
 		durable_int_member(epoch, 'epoch', '${path}/epoch')!
 		durable_nullable_int_member(epoch, 'selected_run_attempt', '${path}/selected_run_attempt')!
 	}
 	for index, run in require_array_member(value, 'gate_runs')! {
-		path := '$/native_gate_execution/gate_runs/${index}'
+		path := '\$/native_gate_execution/gate_runs/${index}'
 		durable_int_member(run, 'gate_epoch', '${path}/gate_epoch')!
 		durable_int_member(run, 'run_attempt', '${path}/run_attempt')!
 	}
@@ -456,7 +456,7 @@ fn validate_durable_target_int_ranges(root JsonValue) ! {
 		if gate_runs.kind == .array {
 			for index, run in gate_runs.array_value {
 				durable_prevalidate_persisted_gate_run_ints(run,
-					'$/active_intent/gate_runs/${index}')!
+					'\$/active_intent/gate_runs/${index}')!
 			}
 		}
 	}
@@ -480,7 +480,7 @@ fn durable_prevalidate_native_gate_ints(value JsonValue) ! {
 	epochs := value.object_value('gate_epochs') or { dt_null() }
 	if epochs.kind == .array {
 		for index, epoch in epochs.array_value {
-			path := '$/native_gate_execution/gate_epochs/${index}'
+			path := '\$/native_gate_execution/gate_epochs/${index}'
 			durable_prevalidate_int_member(epoch, 'epoch', '${path}/epoch')!
 			durable_prevalidate_int_member(epoch, 'selected_run_attempt',
 				'${path}/selected_run_attempt')!
@@ -489,7 +489,7 @@ fn durable_prevalidate_native_gate_ints(value JsonValue) ! {
 	runs := value.object_value('gate_runs') or { dt_null() }
 	if runs.kind == .array {
 		for index, run in runs.array_value {
-			path := '$/native_gate_execution/gate_runs/${index}'
+			path := '\$/native_gate_execution/gate_runs/${index}'
 			durable_prevalidate_int_member(run, 'gate_epoch', '${path}/gate_epoch')!
 			durable_prevalidate_int_member(run, 'run_attempt', '${path}/run_attempt')!
 		}
@@ -1054,12 +1054,12 @@ fn durable_native_gate_json(gate NativeGateModel) !JsonValue {
 		])!
 	}
 	return object_value_from_pairs(['subject', 'subject_hash', 'subject_sha', 'subject_generation',
-		'repository', 'workflow_id', 'workflow_path', 'original_actor',
-		'original_actor_integration_id', 'rerun_triggering_actor', 'rerun_triggering_integration_id',
-		'expected_ledger_generation', 'active_gate_epoch', 'gate_epochs', 'gate_runs',
-		'ack_operation_ids', 'completion_operation_ids', 'epoch_close_operation_ids',
-		'selected_run_id', 'selected_run_attempt', 'selected_check_suite_id', 'selected_conclusion',
-		'infra_retry_count', 'source_recovery_operation_id'], [
+		'repository', 'workflow_id', 'workflow_path', 'original_actor', 'original_actor_integration_id',
+		'rerun_triggering_actor', 'rerun_triggering_integration_id', 'expected_ledger_generation',
+		'active_gate_epoch', 'gate_epochs', 'gate_runs', 'ack_operation_ids', 'completion_operation_ids',
+		'epoch_close_operation_ids', 'selected_run_id', 'selected_run_attempt',
+		'selected_check_suite_id', 'selected_conclusion', 'infra_retry_count',
+		'source_recovery_operation_id'], [
 		durable_ordered_native_subject_json(gate.subject)!,
 		dt_string(gate.subject_hash),
 		dt_string(gate.subject_sha),
@@ -1094,8 +1094,7 @@ fn durable_source_refetch_json(refetch SourceRefetchModel) !JsonValue {
 	return object_value_from_pairs(['target_id', 'expected_generation', 'expected_canonical_head',
 		'source_state_id', 'source_state_generation', 'resolution_operation_id', 'source_id',
 		'source_repository', 'requested_ref', 'previous_sha', 'resolved_sha', 'resolved_tree',
-		'status', 'failure_kind', 'evidence_digest', 'input_fingerprint', 'checked_at',
-		'operation_id'], [
+		'status', 'failure_kind', 'evidence_digest', 'input_fingerprint', 'checked_at', 'operation_id'], [
 		dt_string(refetch.target_id),
 		dt_integer(refetch.expected_generation),
 		dt_string(refetch.expected_canonical_head),

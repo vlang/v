@@ -44,9 +44,9 @@ fn snapshot_ast_buffer(data voidptr, len u64, capacity u64) ?AstBufferSnapshot {
 		return none
 	}
 	return AstBufferSnapshot{
-		data: unsafe { voidptr(address + offset) }
+		data:    unsafe { voidptr(address + offset) }
 		address: address
-		bytes: bytes
+		bytes:   bytes
 	}
 }
 

@@ -301,7 +301,7 @@ pub fn (mut e QpackEncoder) encode_field_section(stream_id u64, lines []QpackFie
 
 	if referenced.len > 0 {
 		e.unacked << QpackUnackedSection{
-			stream_id: stream_id
+			stream_id:  stream_id
 			referenced: referenced
 		}
 	}
@@ -312,6 +312,6 @@ pub fn (mut e QpackEncoder) encode_field_section(stream_id u64, lines []QpackFie
 	field_section << stream_buf
 	return QpackEncodedFieldSection{
 		encoder_instructions: instructions
-		field_section: field_section
+		field_section:        field_section
 	}
 }

@@ -2284,7 +2284,7 @@ fn test_pointer_arithmetic_deref_keeps_pointer_type() {
 
 fn test_parenthesized_pointer_cast_deref_is_not_dropped() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'parenthesized_pointer_cast_deref', 'fn load(s charptr, offset u64) u8 {\n\treturn u8(unsafe { *(charptr(u64(s) + offset)) })\n}\n\nfn main() {\n\ts := c\'VinixV3!\'\n\tmut result := \'\'\n\tfor i in u64(0) .. u64(8) {\n\t\tresult += rune(load(s, i)).str()\n\t}\n\tprintln(result)\n}\n')
+	out := run_good(v3_bin, 'parenthesized_pointer_cast_deref', "fn load(s charptr, offset u64) u8 {\n\treturn u8(unsafe { *(charptr(u64(s) + offset)) })\n}\n\nfn main() {\n\ts := c'VinixV3!'\n\tmut result := ''\n\tfor i in u64(0) .. u64(8) {\n\t\tresult += rune(load(s, i)).str()\n\t}\n\tprintln(result)\n}\n")
 	assert out == 'VinixV3!'
 }
 

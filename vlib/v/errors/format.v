@@ -148,8 +148,7 @@ fn diagnostic_utf8_codepoint(text string, index int, sequence_len int) u32 {
 			((first & 0x0f) << 12) | ((u32(text[index + 1]) & 0x3f) << 6) | (u32(text[index + 2]) & 0x3f)
 		}
 		4 {
-			((first & 0x07) << 18) | ((u32(text[index + 1]) & 0x3f) << 12) | ((u32(text[index + 2]) & 0x3f) << 6) | (u32(text[
-				index + 3]) & 0x3f)
+			((first & 0x07) << 18) | ((u32(text[index + 1]) & 0x3f) << 12) | ((u32(text[index + 2]) & 0x3f) << 6) | (u32(text[index + 3]) & 0x3f)
 		}
 		else {
 			0

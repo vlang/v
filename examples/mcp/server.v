@@ -26,20 +26,20 @@ const welcome_text = 'Welcome to the V MCP showcase server.'
 
 fn main() {
 	mut server := mcp.new_server(
-		name:           'v.mcp.showcase'
-		version:        '1.0.0'
-		title:          'V MCP Showcase'
-		description:    'Reference server for vlib/mcp covering every capability of the 2025-11-25 spec.'
-		website_url:    'https://vlang.io'
-		icons:          [
+		name:            'v.mcp.showcase'
+		version:         '1.0.0'
+		title:           'V MCP Showcase'
+		description:     'Reference server for vlib/mcp covering every capability of the 2025-11-25 spec.'
+		website_url:     'https://vlang.io'
+		icons:           [
 			mcp.Icon{
 				src:       'https://vlang.io/img/v-logo.png'
 				mime_type: 'image/png'
 				sizes:     ['256x256']
 			},
 		]
-		instructions:   'Demo server exercising every MCP capability shipped by vlib/mcp.'
-		enable_logging: true
+		instructions:    'Demo server exercising every MCP capability shipped by vlib/mcp.'
+		enable_logging:  true
 		// `*` only for the demo; tighten this for real deployments.
 		allowed_origins: ['*']
 	)

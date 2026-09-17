@@ -431,8 +431,7 @@ fn fe_k(key []u8) [36]u8 {
 @[direct_array_access; inline]
 fn unpack_into_state(mut s chacha20.State, x [64]u8) {
 	for i := 0; i < 16; i++ {
-		s[i] = u32(x[i * 4]) | (u32(x[i * 4 + 1]) << u32(8)) | (u32(x[i * 4 + 2]) << u32(16)) | (u32(x[
-			i * 4 + 3]) << u32(24))
+		s[i] = u32(x[i * 4]) | (u32(x[i * 4 + 1]) << u32(8)) | (u32(x[i * 4 + 2]) << u32(16)) | (u32(x[i * 4 + 3]) << u32(24))
 	}
 }
 

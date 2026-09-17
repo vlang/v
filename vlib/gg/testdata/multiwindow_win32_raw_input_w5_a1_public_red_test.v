@@ -559,7 +559,7 @@ $if windows && gg_multiwindow ? {
 					cleanup_lock_events := w5_a1_mouse_lock_events(cleanup_events.events)
 					if cleanup_lock_events.len > 0
 						&& (cleanup_lock_events.last().service.window != window
-						|| cleanup_lock_events.last().service.state.mouse_locked != .off) {
+							|| cleanup_lock_events.last().service.state.mouse_locked != .off) {
 						cleanup_failed = true
 					}
 					if cleanup_lock_events.any(it.service.window != window

@@ -1,6 +1,6 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
@@ -129,7 +129,7 @@ $if darwin {
 		touch_changed             [8]int
 	}
 
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		@[typedef]
 		struct C.sg_mtl_image_info {
 		mut:
@@ -1106,7 +1106,7 @@ fn (mut backend AppKitBackend) service_set_titlebar_appearance(id WindowId, appe
 	return error(err_backend_unsupported)
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn appkit_service_image_texture(image_id u32) voidptr {
 		$if darwin {
 			$if darwin_sokol_glcore33 ? {
@@ -2177,7 +2177,7 @@ fn (mut backend AppKitBackend) poll_queued_events() ![]QueuedEvent {
 				}
 				if native_event.window_width > 0 && native_event.window_height > 0
 					&& ((native_event.event_kind == 1 && native_event.lifecycle_kind == 3)
-					|| (native_event.event_kind == 2 && native_event.input_kind == 12)) {
+						|| (native_event.event_kind == 2 && native_event.input_kind == 12)) {
 					if backend.windows[i].width != native_event.window_width
 						|| backend.windows[i].height != native_event.window_height
 						|| backend.windows[i].framebuffer_width != native_event.framebuffer_width
@@ -2439,7 +2439,7 @@ fn (mut backend AppKitBackend) stop() ! {
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn (mut backend AppKitBackend) begin_render_batch(boundary_seed NativeOperationSeed) ! {
 		$if darwin {
 			if backend.batch_autorelease_pool != unsafe { nil }
@@ -2991,7 +2991,7 @@ fn (mut backend AppKitBackend) release_anchor_drawable_lifetime(error_text strin
 	}
 	if backend.native_operations == unsafe { nil }
 		|| (backend.active_anchor_drawable != unsafe { nil }
-		&& backend.anchor_state == unsafe { nil }) {
+			&& backend.anchor_state == unsafe { nil }) {
 		return false
 	}
 	parent_identity := if backend.anchor_state == unsafe { nil } {

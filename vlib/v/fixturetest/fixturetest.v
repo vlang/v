@@ -8,8 +8,7 @@ const max_parallel_fixtures = 1
 const diagnostic_fixture_suffixes = ['/vlib/v/checker/tests', '/vlib/v/parser/tests',
 	'/vlib/v/scanner/tests']
 // Keep these exclusions aligned with v/compiler_errors_test.v.
-const diagnostic_fixture_skip_paths = ['non_existing.vv',
-	'vlib/v/checker/tests/var_duplicate_const.vv']
+const diagnostic_fixture_skip_paths = ['non_existing.vv', 'vlib/v/checker/tests/var_duplicate_const.vv']
 const diagnostic_fixture_specialized_paths = [
 	'vlib/v/checker/tests/index_expr_implicit_int_downcast_err.vv',
 	'vlib/v/checker/tests/js_number_requires_explicit_cast.vv',

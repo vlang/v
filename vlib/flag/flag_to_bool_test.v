@@ -6,8 +6,8 @@ struct BoolConfig {
 	mix      bool
 	nix      bool
 	parallel bool = true @[long: 'no-parallel']
-	cache    bool @[long: nocache]
-	no_stay  bool @[long: 'stay']
+	cache    bool  @[long: nocache]
+	no_stay  bool  @[long: 'stay']
 }
 
 fn test_bool_flags() {

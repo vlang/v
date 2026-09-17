@@ -10,7 +10,7 @@ fn fastc_scan_comptime_unary(mut scan scanner.Scanner, first token.Token, path s
 		result := fastc_scan_comptime_unary(mut scan, scan.scan(), path, prefs)!
 		return FastcComptimeCondition{
 			value: !result.value
-			tok: result.tok
+			tok:   result.tok
 		}
 	}
 	if first == .lpar {
@@ -20,19 +20,19 @@ fn fastc_scan_comptime_unary(mut scan scanner.Scanner, first token.Token, path s
 		}
 		return FastcComptimeCondition{
 			value: result.value
-			tok: scan.scan()
+			tok:   scan.scan()
 		}
 	}
 	if first == .key_true {
 		return FastcComptimeCondition{
 			value: true
-			tok: scan.scan()
+			tok:   scan.scan()
 		}
 	}
 	if first == .key_false {
 		return FastcComptimeCondition{
 			value: false
-			tok: scan.scan()
+			tok:   scan.scan()
 		}
 	}
 	if first == .dollar {
@@ -52,7 +52,7 @@ fn fastc_scan_comptime_unary(mut scan scanner.Scanner, first token.Token, path s
 		}
 		return FastcComptimeCondition{
 			value: pref.comptime_pkgconfig_value(library)
-			tok: scan.scan()
+			tok:   scan.scan()
 		}
 	}
 	if first != .name {
@@ -71,7 +71,7 @@ fn fastc_scan_comptime_unary(mut scan scanner.Scanner, first token.Token, path s
 	}
 	return FastcComptimeCondition{
 		value: value
-		tok: tok
+		tok:   tok
 	}
 }
 
@@ -86,7 +86,7 @@ fn fastc_scan_comptime_and(mut scan scanner.Scanner, first token.Token, path str
 	}
 	return FastcComptimeCondition{
 		value: value
-		tok: tok
+		tok:   tok
 	}
 }
 
@@ -101,7 +101,7 @@ fn fastc_scan_comptime_or(mut scan scanner.Scanner, first token.Token, path stri
 	}
 	return FastcComptimeCondition{
 		value: value
-		tok: tok
+		tok:   tok
 	}
 }
 
@@ -123,7 +123,7 @@ fn fastc_scan_comptime_block(mut scan scanner.Scanner, first token.Token, path s
 			if depth == 0 {
 				return FastcComptimeBlock{
 					source: scan.src[start..scan.pos]
-					tok: scan.scan()
+					tok:    scan.scan()
 				}
 			}
 		}
@@ -158,14 +158,14 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 		if tok != .dollar {
 			return FastcComptimeBlock{
 				source: selected
-				tok: tok
+				tok:    tok
 			}
 		}
 		mut lookahead := scan
 		if lookahead.scan() != .key_else {
 			return FastcComptimeBlock{
 				source: selected
-				tok: tok
+				tok:    tok
 			}
 		}
 		_ = scan.scan()
@@ -180,7 +180,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 		}
 		return FastcComptimeBlock{
 			source: selected
-			tok: fastc_scan_skip_semicolons(mut scan, else_block.tok)
+			tok:    fastc_scan_skip_semicolons(mut scan, else_block.tok)
 		}
 	}
 	return FastcComptimeBlock{}
@@ -494,8 +494,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 					part = s.scan()
 				}
 				edits << FastcSourceEdit{
-					start: loop_start
-					end: loop_end
+					start:       loop_start
+					end:         loop_end
 					replacement: if field.is_skip { 'is_skip = true' } else { '' }
 				}
 				previous = .rcbr
@@ -517,8 +517,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 							close := s.scan()
 							if close == .rpar {
 								edits << FastcSourceEdit{
-									start: dollar_pos
-									end: s.offset
+									start:       dollar_pos
+									end:         s.offset
 									replacement: field_name
 								}
 								previous = .rpar
@@ -540,8 +540,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 				member := s.scan()
 				if member == .name && s.lit == 'name' {
 					edits << FastcSourceEdit{
-						start: var_pos
-						end: s.offset
+						start:       var_pos
+						end:         s.offset
 						replacement: "'${field_name}'"
 					}
 					previous = .name
@@ -551,8 +551,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 				if member == .name && s.lit == 'is_embed' {
 					is_embed := field.name.starts_with('__embedded_')
 					edits << FastcSourceEdit{
-						start: var_pos
-						end: s.offset
+						start:       var_pos
+						end:         s.offset
 						replacement: if is_embed { 'true' } else { 'false' }
 					}
 					previous = if is_embed { token.Token.key_true } else { token.Token.key_false }
@@ -571,8 +571,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 						if contains_tok == .name && contains_name == 'contains' && open_tok == .lpar && attr_tok == .string && close_tok == .rpar {
 							matches := field.is_skip && attr_name == 'skip'
 							edits << FastcSourceEdit{
-								start: var_pos
-								end: s.offset
+								start:       var_pos
+								end:         s.offset
 								replacement: if matches { 'true' } else { 'false' }
 							}
 							previous = if matches {
@@ -585,8 +585,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 						}
 					}
 					edits << FastcSourceEdit{
-						start: var_pos
-						end: s.offset
+						start:       var_pos
+						end:         s.offset
 						replacement: if field.is_skip { "['skip']" } else { "['']" }
 					}
 					previous = member
@@ -606,8 +606,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 								field.typ.trim_right('*') == type_c
 							}
 							edits << FastcSourceEdit{
-								start: var_pos
-								end: type_end
+								start:       var_pos
+								end:         type_end
 								replacement: if matches { 'true' } else { 'false' }
 							}
 							previous = if matches {
@@ -660,8 +660,8 @@ fn (g &Parser) substitute_comptime_enum_value(body string, loop_var string, enum
 				member := s.scan()
 				if member == .name && s.lit == 'name' {
 					edits << FastcSourceEdit{
-						start: var_pos
-						end: s.offset
+						start:       var_pos
+						end:         s.offset
 						replacement: "'${value_name}'"
 					}
 					tok = s.scan()
@@ -669,8 +669,8 @@ fn (g &Parser) substitute_comptime_enum_value(body string, loop_var string, enum
 				}
 				if member == .name && s.lit == 'value' {
 					edits << FastcSourceEdit{
-						start: var_pos
-						end: s.offset
+						start:       var_pos
+						end:         s.offset
 						replacement: '${enum_c_type}__${value_name}'
 					}
 					tok = s.scan()

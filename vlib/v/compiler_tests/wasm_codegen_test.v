@@ -690,8 +690,7 @@ fn test_wasm_imported_module_init() {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir,
-		'main.v'))}')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir, 'main.v'))}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	run_wasi_expect(out_wasm, ['moda init', 'main', '42'])
@@ -718,8 +717,7 @@ fn test_wasm_init_only_imported_module() {
 	os.write_file(os.join_path(dir, 'moda', 'moda.v'),
 		"module moda\n\nfn init() {\n\tprintln('moda init')\n}\n") or { panic(err) }
 	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir,
-		'main.v'))}')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir, 'main.v'))}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	run_wasi_expect(out_wasm, ['moda init', 'main'])
@@ -743,8 +741,7 @@ fn test_wasm_init_dependency_order() {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir,
-		'main.v'))}')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir, 'main.v'))}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	run_wasi_expect(out_wasm, ['b init', 'a init', 'main', '5'])
@@ -765,8 +762,7 @@ fn test_wasm_imported_module_const() {
 		panic(err)
 	}
 	out_wasm := os.join_path(dir, 'main.wasm')
-	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir,
-		'main.v'))}')
+	res := os.execute('${os.quoted_path(v3_bin)} -b wasm -o ${os.quoted_path(out_wasm)} ${os.quoted_path(os.join_path(dir, 'main.v'))}')
 	assert res.exit_code == 0, res.output
 	assert_valid_wasm(out_wasm)
 	assert !res.output.contains('unsupported'), res.output

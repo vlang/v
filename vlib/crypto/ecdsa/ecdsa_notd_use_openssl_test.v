@@ -23,9 +23,9 @@ fn test_sign_with_custom_hash_is_not_implemented() ! {
 	pv := PrivateKey.new()!
 	defer { pv.free() }
 	opt := SignerOpts{
-		hash_config: .with_custom_hash
+		hash_config:       .with_custom_hash
 		allow_custom_hash: true
-		custom_hash: sha512.new()
+		custom_hash:       sha512.new()
 	}
 	pv.sign('a message'.bytes(), opt) or {
 		assert err.msg().contains('-d use_openssl')

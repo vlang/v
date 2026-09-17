@@ -4137,7 +4137,8 @@ fn (t &Transformer) is_stable_expr_for_reuse(id flat.NodeId) bool {
 	}
 	node := t.a.nodes[int(id)]
 	return match node.kind {
-		.ident, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .nil_literal, .none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+		.ident, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val, .sizeof_expr, .typeof_expr {
 			true
 		}
 		.selector {
@@ -4185,7 +4186,8 @@ fn (t &Transformer) is_pure_constant_expr(id flat.NodeId) bool {
 	}
 	node := t.a.nodes[int(id)]
 	return match node.kind {
-		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .nil_literal, .none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .nil_literal,
+		.none_expr, .enum_val, .sizeof_expr, .typeof_expr {
 			true
 		}
 		.cast_expr, .paren {
