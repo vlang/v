@@ -94,7 +94,7 @@ fn test_checker_type_promotion_survives_batch_arena_release() {
 		tc := TypeChecker.new(&a)
 		scope := unsafe { prealloc_scope_begin() }
 		borrowed := Type(FnType{
-			params: [Type(Struct{ name: 'ScopedItem'.clone() })]
+			params:      [Type(Struct{ name: 'ScopedItem'.clone() })]
 			return_type: Type(Array{ elem_type: Type(string_) })
 		})
 		unsafe { prealloc_scope_leave(scope) }
@@ -301,7 +301,7 @@ fn test_scoped_checker_merge_deep_clones_diagnostic_details() {
 		scope := unsafe { prealloc_scope_begin() }
 		mut worker := tc.fork_for_parallel_check()
 		worker.notices << TypeError{
-			msg: 'scoped notice'.clone()
+			msg:     'scoped notice'.clone()
 			details: ['scoped detail'.clone()]
 		}
 		unsafe { prealloc_scope_leave(scope) }
@@ -320,14 +320,14 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	first_children := a.begin_children()
 	a.add_child(child)
 	first_parent := a.add_node(flat.Node{
-		kind: .paren
+		kind:           .paren
 		children_start: first_children
 		children_count: 1
 	})
 	second_children := a.begin_children()
 	a.add_child(child)
 	a.add_node(flat.Node{
-		kind: .expr_stmt
+		kind:           .expr_stmt
 		children_start: second_children
 		children_count: 1
 	})
@@ -344,7 +344,7 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	appended_children := a.begin_children()
 	a.add_child(appended_child)
 	appended_parent := a.add_node(flat.Node{
-		kind: .paren
+		kind:           .paren
 		children_start: appended_children
 		children_count: 1
 	})
@@ -369,14 +369,14 @@ fn test_rewritten_parent_index_falls_back_from_a_stale_shared_edge() {
 	first_children := a.begin_children()
 	a.add_child(shared_child)
 	first_parent := a.add_node(flat.Node{
-		kind: .paren
+		kind:           .paren
 		children_start: first_children
 		children_count: 1
 	})
 	second_children := a.begin_children()
 	a.add_child(shared_child)
 	second_parent := a.add_node(flat.Node{
-		kind: .expr_stmt
+		kind:           .expr_stmt
 		children_start: second_children
 		children_count: 1
 	})
@@ -436,7 +436,7 @@ fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 	generic_children := a.begin_children()
 	a.add_child(generic_child)
 	mut generic_fn := flat.Node{
-		kind: .fn_decl
+		kind:           .fn_decl
 		children_start: generic_children
 		children_count: 1
 	}
@@ -447,7 +447,7 @@ fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 	unrelated_children := a.begin_children()
 	a.add_child(unrelated_child)
 	unrelated_fn_id := a.add_node(flat.Node{
-		kind: .fn_decl
+		kind:           .fn_decl
 		children_start: unrelated_children
 		children_count: 1
 	})

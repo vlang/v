@@ -1,4 +1,5 @@
 const const_file = $embed_file('v.png')
+
 // vtest build: !self_werror?
 
 const src = $embed_file('embed_file_test.v').to_string()
@@ -46,7 +47,7 @@ fn test_embed_file_as_if_expr_branch_result() {
 
 fn test_parenthesized_embed_file_as_if_expr_branch_result() {
 	embedded := if const_file.len == 603 {
-		($embed_file('v.png'))
+		$embed_file('v.png')
 	} else {
 		$embed_file('embed_file_test.v')
 	}

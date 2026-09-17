@@ -105,8 +105,9 @@ fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) {
 	for i in 1 .. mipmaps {
 		w := width >> i
 		h := height >> i
-		if w < 1 || h < 1 { break
-		 }
+		if w < 1 || h < 1 {
+			break
+		}
 		size += w * h * 4 // 4 = img.nr_channels
 		levels++
 	}
@@ -154,8 +155,8 @@ fn sokol_mipmap(mut simg_desc gfx.ImageDesc, max_mipmaps int) {
 pub fn (mut img Image) init_sokol_image() &Image {
 	// println('\n init sokol image ${img.path} ok=${img.simg_ok}')
 	mut img_desc := gfx.ImageDesc{
-		width:  img.width
-		height: img.height
+		width:         img.width
+		height:        img.height
 		// wrap_u: .clamp_to_edge // XTODO SAMPLER
 		// wrap_v: .clamp_to_edge
 		label:         &char(img.path.str)

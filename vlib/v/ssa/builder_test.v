@@ -17,11 +17,10 @@ fn test_bench_runtime_stubs_include_macos_rss_helper() {
 // test_runtime_helpers_remain_used_when_module_qualified validates this v3 regression case.
 fn test_runtime_helpers_remain_used_when_module_qualified() {
 	b := Builder{}
-	for name in ['os.vpopen', 'os.vpclose', 'os__vpopen', 'os__vpclose', 'os.fileno',
-		'os.Process.close', 'os__Process__close', 'os.fd_close', 'os__fd_close',
-		'os.error_file_not_opened', 'os.error_size_of_type_0', 'os.posix_wait4_to_exit_status',
-		'os.posix_wait_status_exited', 'os.posix_wait_status_exit_code',
-		'os.posix_wait_status_signaled', 'os.posix_wait_status_signal'] {
+	for name in ['os.vpopen', 'os.vpclose', 'os__vpopen', 'os__vpclose', 'os.fileno', 'os.Process.close',
+		'os__Process__close', 'os.fd_close', 'os__fd_close', 'os.error_file_not_opened',
+		'os.error_size_of_type_0', 'os.posix_wait4_to_exit_status', 'os.posix_wait_status_exited',
+		'os.posix_wait_status_exit_code', 'os.posix_wait_status_signaled', 'os.posix_wait_status_signal'] {
 		assert b.fn_is_used(name)
 	}
 }
@@ -207,8 +206,8 @@ fn test_type_size_reuses_module_layout_cache() {
 	i32_type := m.type_store.get_int(32)
 	array_type := m.type_store.get_array(i32_type, 5)
 	struct_type := m.type_store.register(Type{
-		kind: .struct_t
-		fields: [i32_type, array_type]
+		kind:        .struct_t
+		fields:      [i32_type, array_type]
 		field_names: ['number', 'items']
 	})
 	assert m.type_size(array_type) == 20
@@ -247,21 +246,21 @@ fn test_packed_and_aligned_struct_layout() {
 	u8_type := m.type_store.get_uint(8)
 	u64_type := m.type_store.get_uint(64)
 	packed_type := m.type_store.register(Type{
-		kind: .struct_t
-		fields: [u8_type, u64_type]
+		kind:      .struct_t
+		fields:    [u8_type, u64_type]
 		is_packed: true
 	})
 	aligned_type := m.type_store.register(Type{
-		kind: .struct_t
-		fields: [u8_type, u64_type]
+		kind:      .struct_t
+		fields:    [u8_type, u64_type]
 		alignment: 32
 	})
 	small_type := m.type_store.register(Type{
-		kind: .struct_t
+		kind:   .struct_t
 		fields: [u8_type, u8_type]
 	})
 	outer_type := m.type_store.register(Type{
-		kind: .struct_t
+		kind:   .struct_t
 		fields: [u8_type, small_type, u8_type]
 	})
 	assert m.struct_field_offset(packed_type, 1) == 1
@@ -278,14 +277,14 @@ fn test_packed_and_aligned_struct_layout() {
 
 fn test_used_function_alias_lookups_are_precomputed() {
 	mut b := Builder{
-		used_fns: {
+		used_fns:           {
 			'alpha.beta.gamma':      true
 			'delta__Thing__run':     true
 			'leaf':                  true
 			'outer.inner.operation': true
 		}
 		used_fn_normalized: map[string]bool{}
-		used_fn_suffixes: map[string]bool{}
+		used_fn_suffixes:   map[string]bool{}
 	}
 	b.prepare_used_fn_lookups()
 	for name in ['gamma', 'beta.gamma', 'Thing.run', 'run', 'pkg.leaf', 'scope.outer.inner.operation'] {

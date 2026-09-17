@@ -137,8 +137,7 @@ fn main() {
 }
 ')
 	bin_file := os.join_path(root, 'app')
-	compile := os.execute('${v3_bin} -nocache -path "${root}|@vlib|@vmodules" -b c -o ${bin_file} ${os.join_path(root,
-		'main.v')}')
+	compile := os.execute('${v3_bin} -nocache -path "${root}|@vlib|@vmodules" -b c -o ${bin_file} ${os.join_path(root, 'main.v')}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin_file)
 	assert run.exit_code == 0, run.output
@@ -155,8 +154,7 @@ fn test_late_generic_reachability_runs_to_fixpoint() {
 		source += 'struct Reach${i}[T] {\n\tmarker T\n\tvalue int\n}\n\n'
 		source += 'fn (_ Reach${i}[T]) + (_ Reach${i}[T]) Reach${i}[T] {\n\treturn Reach${i}[T]{\n\t\tvalue: helper_${i}()\n\t}\n}\n\n'
 		if i < 40 {
-			source += 'fn helper_${i}() int {\n\tif never() {\n\t\t_ = Reach${i + 1}[string]{} + Reach${
-				i + 1}[string]{}\n\t}\n\tvalue := Reach${i + 1}[int]{} + Reach${i + 1}[int]{}\n\treturn value.value + 1\n}\n\n'
+			source += 'fn helper_${i}() int {\n\tif never() {\n\t\t_ = Reach${i + 1}[string]{} + Reach${i + 1}[string]{}\n\t}\n\tvalue := Reach${i + 1}[int]{} + Reach${i + 1}[int]{}\n\treturn value.value + 1\n}\n\n'
 		} else {
 			source += 'fn helper_${i}() int {\n\treturn 1\n}\n\n'
 		}

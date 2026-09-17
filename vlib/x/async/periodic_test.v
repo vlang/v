@@ -150,7 +150,8 @@ fn test_every_does_not_overlap_iterations() {
 	worker := spawn fn [parent_ctx, active, entered, release, overlap, result] () {
 		xasync.every(parent_ctx, 5 * time.millisecond, fn [active, entered, release, overlap] (mut ctx context.Context) ! {
 			select {
-				_ := <-active {}
+				_ := <-active {
+				}
 				else {
 					overlap <- true
 					return error('periodic overlap')
@@ -159,7 +160,8 @@ fn test_every_does_not_overlap_iterations() {
 			entered <- true
 			done := ctx.done()
 			select {
-				_ := <-release {}
+				_ := <-release {
+				}
 				_ := <-done {
 					active <- true
 					return ctx.err()
@@ -178,13 +180,15 @@ fn test_every_does_not_overlap_iterations() {
 		_ := <-entered {
 			assert false, 'periodic iterations overlapped while first job was still running'
 		}
-		50 * time.millisecond {}
+		50 * time.millisecond {
+		}
 	}
 	select {
 		did_overlap := <-overlap {
 			assert !did_overlap
 		}
-		else {}
+		else {
+		}
 	}
 
 	release <- true
@@ -357,7 +361,8 @@ fn test_periodic_handle_does_not_overlap_iterations() {
 	overlap := chan bool{cap: 1}
 	mut handle := xasync.start_every(context.background(), 5 * time.millisecond, fn [active, entered, release, overlap] (mut ctx context.Context) ! {
 		select {
-			_ := <-active {}
+			_ := <-active {
+			}
 			else {
 				overlap <- true
 				return error('periodic handle overlap')
@@ -376,7 +381,8 @@ fn test_periodic_handle_does_not_overlap_iterations() {
 		did_overlap := <-overlap {
 			assert !did_overlap
 		}
-		else {}
+		else {
+		}
 	}
 
 	release <- true
@@ -417,6 +423,7 @@ fn assert_no_periodic_signal(signal chan bool, message string) {
 		_ := <-signal {
 			assert false, message
 		}
-		50 * time.millisecond {}
+		50 * time.millisecond {
+		}
 	}
 }

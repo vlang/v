@@ -4,15 +4,15 @@ import v.flat
 
 fn add_array_accessor_spread_for_test(mut a flat.FlatAst, typ string) flat.NodeId {
 	value := a.add_node(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'values'
-		typ: typ
+		typ:   typ
 	})
 	children_start := a.begin_children()
 	a.add_child(value)
 	return a.add_node(flat.Node{
-		kind: .prefix
-		value: '...'
+		kind:           .prefix
+		value:          '...'
 		children_start: children_start
 		children_count: 1
 	})

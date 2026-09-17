@@ -116,9 +116,8 @@ pub fn default() string {
 		unsafe { fonts.free() }
 	}
 	$if android {
-		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml',
-			'/etc/system_fonts.xml', '/etc/fonts.xml', '/data/fonts/fonts.xml',
-			'/etc/fallback_fonts.xml']
+		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml', '/etc/system_fonts.xml',
+			'/etc/fonts.xml', '/data/fonts/fonts.xml', '/etc/fallback_fonts.xml']
 		font_locations := ['/system/fonts', '/data/fonts']
 		for xml_file in xml_files {
 			if os.is_file(xml_file) && os.is_readable(xml_file) {

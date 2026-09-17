@@ -243,7 +243,8 @@ fn main() {
 }
 ')
 	assert res.exit_code == 0, res.output
-	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '1', '2', '6'], res.output
+	assert res.output.trim_space().split('\n').map(it.trim_space()) == ['[1, 2, 3]', '1', '2',
+		'6'], res.output
 }
 
 // A shared local is passed as its wrapper storage, including when it is forwarded

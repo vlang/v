@@ -483,21 +483,21 @@ mut:
 
 fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) FastcDeclarationPartial {
 	mut partial := FastcDeclarationPartial{
-		declared_types: map[string]bool{}
-		declared_kinds: map[string]FastcDeclaredTypeKind{}
-		enum_flags: map[string]bool{}
-		params_structs: map[string]bool{}
-		type_source_paths: map[string]bool{}
-		type_sources: map[string]string{}
-		declaration_paths: map[string]string{}
+		declared_types:      map[string]bool{}
+		declared_kinds:      map[string]FastcDeclaredTypeKind{}
+		enum_flags:          map[string]bool{}
+		params_structs:      map[string]bool{}
+		type_source_paths:   map[string]bool{}
+		type_sources:        map[string]string{}
+		declaration_paths:   map[string]string{}
 		declaration_modules: map[string]string{}
-		constants: map[string]string{}
-		public_constants: map[string]bool{}
-		constant_paths: map[string]string{}
-		constant_sources: map[string]string{}
-		globals: map[string]string{}
-		public_globals: map[string]bool{}
-		global_paths: map[string]string{}
+		constants:           map[string]string{}
+		public_constants:    map[string]bool{}
+		constant_paths:      map[string]string{}
+		constant_sources:    map[string]string{}
+		globals:             map[string]string{}
+		public_globals:      map[string]bool{}
+		global_paths:        map[string]string{}
 	}
 	for idx in start .. end {
 		source_file := sources[idx]
@@ -612,50 +612,50 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		mut initializers := strings.new_builder(256)
 		file := token.File.unindexed(source_file.path, global_source.len)
 		mut gen := Parser{
-			prefs: unsafe { prefs }
-			unqualified_key_memo: map[string]string{}
-			c_function_name_memo: map[string]string{}
-			nonlocal_name_type_memo: map[string]string{}
-			resolved_name_memo: map[string]string{}
-			declared_type_key_memo: map[string]FastcMemoEntry{}
-			path: source_file.path
-			module_name: source_file.header.module_name
-			imports: source_file.header.imports
-			declared_types: declared_types
-			declared_type_c_names: declared_type_c_names
-			declared_type_key_by_name: declared_type_key_by_name
-			fastc_prefixed_c_names: fastc_prefixed_c_names
+			prefs:                        unsafe { prefs }
+			unqualified_key_memo:         map[string]string{}
+			c_function_name_memo:         map[string]string{}
+			nonlocal_name_type_memo:      map[string]string{}
+			resolved_name_memo:           map[string]string{}
+			declared_type_key_memo:       map[string]FastcMemoEntry{}
+			path:                         source_file.path
+			module_name:                  source_file.header.module_name
+			imports:                      source_file.header.imports
+			declared_types:               declared_types
+			declared_type_c_names:        declared_type_c_names
+			declared_type_key_by_name:    declared_type_key_by_name
+			fastc_prefixed_c_names:       fastc_prefixed_c_names
 			declaration_initializer_mode: true
-			has_c_functions: helper_has_c_functions
-			comparison_memo: map[i64]FastcRenderedExpression{}
-			type_memo: map[i64]string{}
-			method_key_memo: map[string]map[string]string{}
-			field_memo: map[string]map[string]FastcStructField{}
-			spawn_typedefs: map[string]string{}
-			spawn_helpers: map[string]string{}
-			thread_value_types: map[string]string{}
-			declared_kinds: declared_kinds
-			enum_flags: enum_flags
-			enum_field_types: enum_field_types
-			alias_base_types: alias_base_types
-			struct_fields: struct_fields
-			struct_field_info: struct_field_info
-			constants: constants
-			constant_values: constant_values
-			public_constants: public_constants
-			globals: globals
-			public_globals: public_globals
-			selfhost: prefs.building_v
-			header_free: header_free
-			s: scanner.new_scanner(prefs, .normal)
-			out: strings.new_builder(0)
-			protos: strings.new_builder(0)
-			functions: functions
-			function_c_names: function_c_names
-			constant_types: constant_types
-			global_types: global_types
-			composite_types: map[string]bool{}
-			fixed_array_types: map[string]string{}
+			has_c_functions:              helper_has_c_functions
+			comparison_memo:              map[i64]FastcRenderedExpression{}
+			type_memo:                    map[i64]string{}
+			method_key_memo:              map[string]map[string]string{}
+			field_memo:                   map[string]map[string]FastcStructField{}
+			spawn_typedefs:               map[string]string{}
+			spawn_helpers:                map[string]string{}
+			thread_value_types:           map[string]string{}
+			declared_kinds:               declared_kinds
+			enum_flags:                   enum_flags
+			enum_field_types:             enum_field_types
+			alias_base_types:             alias_base_types
+			struct_fields:                struct_fields
+			struct_field_info:            struct_field_info
+			constants:                    constants
+			constant_values:              constant_values
+			public_constants:             public_constants
+			globals:                      globals
+			public_globals:               public_globals
+			selfhost:                     prefs.building_v
+			header_free:                  header_free
+			s:                            scanner.new_scanner(prefs, .normal)
+			out:                          strings.new_builder(0)
+			protos:                       strings.new_builder(0)
+			functions:                    functions
+			function_c_names:             function_c_names
+			constant_types:               constant_types
+			global_types:                 global_types
+			composite_types:              map[string]bool{}
+			fixed_array_types:            map[string]string{}
 		}
 		gen.s.init(file, global_source)
 		gen.next()
@@ -676,10 +676,10 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		out.writeln('')
 	}
 	return FastcGlobalDeclarations{
-		declarations: out.str()
+		declarations:        out.str()
 		module_initializers: module_initializers
-		composite_types: composite_types
-		fixed_array_types: fixed_array_types
+		composite_types:     composite_types
+		fixed_array_types:   fixed_array_types
 	}
 }
 
@@ -883,13 +883,13 @@ fn fastc_run_field_defaults(source_imports map[string]map[string]string, prefs &
 	mut rendered := struct_field_info.clone()
 	fastc_render_struct_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, enum_field_names, alias_base_types, struct_fields, mut rendered, functions, function_c_names, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types) or {
 		return FastcFieldDefaultsResult{
-			failed: true
+			failed:        true
 			error_message: err.msg()
 		}
 	}
 	return FastcFieldDefaultsResult{
 		struct_field_info: rendered
-		lookup: fastc_build_struct_field_lookup(rendered)
+		lookup:            fastc_build_struct_field_lookup(rendered)
 	}
 }
 
@@ -938,52 +938,52 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 			default_path := '${field.path}:${field.name}:default'
 			file := token.File.unindexed(default_path, field.default_source.len)
 			mut gen := Parser{
-				prefs: unsafe { prefs }
-				unqualified_key_memo: map[string]string{}
-				c_function_name_memo: map[string]string{}
-				nonlocal_name_type_memo: map[string]string{}
-				resolved_name_memo: map[string]string{}
-				declared_type_key_memo: map[string]FastcMemoEntry{}
-				path: default_path
-				module_name: field.module_name
-				imports: source_imports[field.path] or {
+				prefs:                        unsafe { prefs }
+				unqualified_key_memo:         map[string]string{}
+				c_function_name_memo:         map[string]string{}
+				nonlocal_name_type_memo:      map[string]string{}
+				resolved_name_memo:           map[string]string{}
+				declared_type_key_memo:       map[string]FastcMemoEntry{}
+				path:                         default_path
+				module_name:                  field.module_name
+				imports:                      source_imports[field.path] or {
 					map[string]string{}
 				}
-				declared_types: declared_types
-				declared_type_c_names: declared_type_c_names
-				declared_type_key_by_name: declared_type_key_by_name
-				fastc_prefixed_c_names: fastc_prefixed_c_names
+				declared_types:               declared_types
+				declared_type_c_names:        declared_type_c_names
+				declared_type_key_by_name:    declared_type_key_by_name
+				fastc_prefixed_c_names:       fastc_prefixed_c_names
 				declaration_initializer_mode: true
-				has_c_functions: helper_has_c_functions
-				comparison_memo: map[i64]FastcRenderedExpression{}
-				type_memo: map[i64]string{}
-				method_key_memo: map[string]map[string]string{}
-				field_memo: map[string]map[string]FastcStructField{}
-				spawn_typedefs: map[string]string{}
-				spawn_helpers: map[string]string{}
-				thread_value_types: map[string]string{}
-				declared_kinds: declared_kinds
-				enum_flags: enum_flags
-				enum_field_types: enum_field_types
-				enum_field_names: enum_field_names
-				alias_base_types: alias_base_types
-				struct_fields: struct_fields
-				struct_field_info: struct_field_info
-				sum_types: sum_types
-				constants: constants
-				public_constants: public_constants
-				globals: globals
-				public_globals: public_globals
-				selfhost: prefs.building_v
-				s: scanner.new_scanner(prefs, .normal)
-				out: strings.new_builder(0)
-				protos: strings.new_builder(0)
-				functions: functions
-				function_c_names: function_c_names
-				constant_types: constant_types
-				global_types: global_types
-				fixed_array_types: map[string]string{}
-				composite_types: map[string]bool{}
+				has_c_functions:              helper_has_c_functions
+				comparison_memo:              map[i64]FastcRenderedExpression{}
+				type_memo:                    map[i64]string{}
+				method_key_memo:              map[string]map[string]string{}
+				field_memo:                   map[string]map[string]FastcStructField{}
+				spawn_typedefs:               map[string]string{}
+				spawn_helpers:                map[string]string{}
+				thread_value_types:           map[string]string{}
+				declared_kinds:               declared_kinds
+				enum_flags:                   enum_flags
+				enum_field_types:             enum_field_types
+				enum_field_names:             enum_field_names
+				alias_base_types:             alias_base_types
+				struct_fields:                struct_fields
+				struct_field_info:            struct_field_info
+				sum_types:                    sum_types
+				constants:                    constants
+				public_constants:             public_constants
+				globals:                      globals
+				public_globals:               public_globals
+				selfhost:                     prefs.building_v
+				s:                            scanner.new_scanner(prefs, .normal)
+				out:                          strings.new_builder(0)
+				protos:                       strings.new_builder(0)
+				functions:                    functions
+				function_c_names:             function_c_names
+				constant_types:               constant_types
+				global_types:                 global_types
+				fixed_array_types:            map[string]string{}
+				composite_types:              map[string]bool{}
 			}
 			gen.s.init(file, field.default_source)
 			gen.next()
@@ -1075,72 +1075,72 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 	file := token.File.unindexed(source_file.path, constant_source.len)
 	prefs := ctx.prefs
 	mut gen := Parser{
-		prefs: unsafe { prefs }
-		unqualified_key_memo: map[string]string{}
-		c_function_name_memo: map[string]string{}
-		nonlocal_name_type_memo: map[string]string{}
-		resolved_name_memo: map[string]string{}
-		declared_type_key_memo: map[string]FastcMemoEntry{}
-		path: source_file.path
-		module_name: source_file.header.module_name
-		imports: source_file.header.imports
-		declared_types: ctx.declared_types
-		declared_type_c_names: ctx.declared_type_c_names
-		declared_type_key_by_name: ctx.declared_type_key_by_name
-		fastc_prefixed_c_names: ctx.fastc_prefixed_c_names
+		prefs:                        unsafe { prefs }
+		unqualified_key_memo:         map[string]string{}
+		c_function_name_memo:         map[string]string{}
+		nonlocal_name_type_memo:      map[string]string{}
+		resolved_name_memo:           map[string]string{}
+		declared_type_key_memo:       map[string]FastcMemoEntry{}
+		path:                         source_file.path
+		module_name:                  source_file.header.module_name
+		imports:                      source_file.header.imports
+		declared_types:               ctx.declared_types
+		declared_type_c_names:        ctx.declared_type_c_names
+		declared_type_key_by_name:    ctx.declared_type_key_by_name
+		fastc_prefixed_c_names:       ctx.fastc_prefixed_c_names
 		declaration_initializer_mode: true
-		has_c_functions: ctx.has_c_functions
-		comparison_memo: map[i64]FastcRenderedExpression{}
-		type_memo: map[i64]string{}
-		method_key_memo: map[string]map[string]string{}
-		field_memo: map[string]map[string]FastcStructField{}
-		spawn_typedefs: map[string]string{}
-		spawn_helpers: map[string]string{}
-		thread_value_types: map[string]string{}
-		declared_kinds: ctx.declared_kinds
-		enum_flags: ctx.enum_flags
-		enum_field_types: ctx.enum_field_types
-		alias_base_types: ctx.alias_base_types
-		struct_fields: ctx.struct_fields
-		struct_field_info: ctx.struct_field_info
-		sum_types: ctx.sum_types
-		sum_type_variants: ctx.sum_type_variants
-		constants: ctx.constants
-		public_constants: ctx.public_constants
-		globals: ctx.globals
-		public_globals: ctx.public_globals
-		selfhost: prefs.building_v
-		s: scanner.new_scanner(prefs, .normal)
-		out: strings.new_builder(256)
-		protos: strings.new_builder(0)
-		functions: ctx.functions
-		function_c_names: ctx.function_c_names
-		constant_types: constant_types
-		composite_types: map[string]bool{}
-		fixed_array_types: map[string]string{}
+		has_c_functions:              ctx.has_c_functions
+		comparison_memo:              map[i64]FastcRenderedExpression{}
+		type_memo:                    map[i64]string{}
+		method_key_memo:              map[string]map[string]string{}
+		field_memo:                   map[string]map[string]FastcStructField{}
+		spawn_typedefs:               map[string]string{}
+		spawn_helpers:                map[string]string{}
+		thread_value_types:           map[string]string{}
+		declared_kinds:               ctx.declared_kinds
+		enum_flags:                   ctx.enum_flags
+		enum_field_types:             ctx.enum_field_types
+		alias_base_types:             ctx.alias_base_types
+		struct_fields:                ctx.struct_fields
+		struct_field_info:            ctx.struct_field_info
+		sum_types:                    ctx.sum_types
+		sum_type_variants:            ctx.sum_type_variants
+		constants:                    ctx.constants
+		public_constants:             ctx.public_constants
+		globals:                      ctx.globals
+		public_globals:               ctx.public_globals
+		selfhost:                     prefs.building_v
+		s:                            scanner.new_scanner(prefs, .normal)
+		out:                          strings.new_builder(256)
+		protos:                       strings.new_builder(0)
+		functions:                    ctx.functions
+		function_c_names:             ctx.function_c_names
+		constant_types:               constant_types
+		composite_types:              map[string]bool{}
+		fixed_array_types:            map[string]string{}
 	}
 	gen.s.init(file, constant_source)
 	gen.next()
 	mut values := []FastcConstantValue{}
 	gen.parse_selected_constant_declarations(mut values, false) or {
 		return FastcConstantFileResult{
-			failed: true
+			failed:        true
 			error_message: err.msg()
 		}
 	}
 	if gen.s.diagnostics.len > 0 {
 		diagnostic := gen.s.diagnostics[0]
 		return FastcConstantFileResult{
-			failed: true
+			failed:        true
 			error_message: 'fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}'
 		}
 	}
 	return FastcConstantFileResult{
 		used_field_defaults: gen.used_field_defaults
-		values: values
-		constant_types: gen.constant_types.move()
-		composite_types: gen.composite_types
-		fixed_array_types: gen.fixed_array_types
+		values:              values
+		constant_types:      gen.constant_types.move()
+		composite_types:     gen.composite_types
+		fixed_array_types:   gen.fixed_array_types
 	}
 }
 
@@ -1179,7 +1179,7 @@ fn fastc_constant_candidates(ordered_sources []FastcSourceFile, constant_sources
 			// sees them in source order, as it would within one file.
 			for i := 0; i + 1 < spans.len; i += 2 {
 				candidates << FastcSourceFile{
-					path: source_file.path
+					path:   source_file.path
 					source: constant_source[spans[i]..spans[i + 1]]
 					header: source_file.header
 				}
@@ -1187,7 +1187,7 @@ fn fastc_constant_candidates(ordered_sources []FastcSourceFile, constant_sources
 			continue
 		}
 		candidates << FastcSourceFile{
-			path: source_file.path
+			path:   source_file.path
 			source: constant_source
 			header: source_file.header
 		}
@@ -1241,26 +1241,26 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := map[string]string{}
 	ctx := FastcConstantGenContext{
-		prefs: unsafe { prefs }
-		declared_types: declared_types
-		declared_type_c_names: declared_type_c_names
+		prefs:                     unsafe { prefs }
+		declared_types:            declared_types
+		declared_type_c_names:     declared_type_c_names
 		declared_type_key_by_name: fastc_declared_type_key_by_name(declared_types)
-		fastc_prefixed_c_names: fastc_prefixed_c_names
-		has_c_functions: fastc_functions_declare_c(functions)
-		declared_kinds: declared_kinds
-		enum_flags: enum_flags
-		enum_field_types: enum_field_types
-		alias_base_types: alias_base_types
-		struct_fields: struct_fields
-		struct_field_info: struct_field_info
-		sum_types: sum_types
-		sum_type_variants: sum_type_variants
-		functions: functions
-		function_c_names: function_c_names
-		constants: constants
-		public_constants: public_constants
-		globals: globals
-		public_globals: public_globals
+		fastc_prefixed_c_names:    fastc_prefixed_c_names
+		has_c_functions:           fastc_functions_declare_c(functions)
+		declared_kinds:            declared_kinds
+		enum_flags:                enum_flags
+		enum_field_types:          enum_field_types
+		alias_base_types:          alias_base_types
+		struct_fields:             struct_fields
+		struct_field_info:         struct_field_info
+		sum_types:                 sum_types
+		sum_type_variants:         sum_type_variants
+		functions:                 functions
+		function_c_names:          function_c_names
+		constants:                 constants
+		public_constants:          public_constants
+		globals:                   globals
+		public_globals:            public_globals
 	}
 	sw := time.new_stopwatch()
 	parallel_results := if initial_parallel_results.len > 0 {
@@ -1273,26 +1273,26 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 	// the files that consulted them, and by the phases after this one.
 	defaults := fastc_wait_field_defaults(mut pending_defaults)!
 	merge_ctx := FastcConstantGenContext{
-		prefs: unsafe { prefs }
-		declared_types: declared_types
-		declared_type_c_names: declared_type_c_names
+		prefs:                     unsafe { prefs }
+		declared_types:            declared_types
+		declared_type_c_names:     declared_type_c_names
 		declared_type_key_by_name: ctx.declared_type_key_by_name
-		fastc_prefixed_c_names: fastc_prefixed_c_names
-		has_c_functions: ctx.has_c_functions
-		declared_kinds: declared_kinds
-		enum_flags: enum_flags
-		enum_field_types: enum_field_types
-		alias_base_types: alias_base_types
-		struct_fields: struct_fields
-		struct_field_info: defaults.struct_field_info
-		sum_types: sum_types
-		sum_type_variants: sum_type_variants
-		functions: functions
-		function_c_names: function_c_names
-		constants: constants
-		public_constants: public_constants
-		globals: globals
-		public_globals: public_globals
+		fastc_prefixed_c_names:    fastc_prefixed_c_names
+		has_c_functions:           ctx.has_c_functions
+		declared_kinds:            declared_kinds
+		enum_flags:                enum_flags
+		enum_field_types:          enum_field_types
+		alias_base_types:          alias_base_types
+		struct_fields:             struct_fields
+		struct_field_info:         defaults.struct_field_info
+		sum_types:                 sum_types
+		sum_type_variants:         sum_type_variants
+		functions:                 functions
+		function_c_names:          function_c_names
+		constants:                 constants
+		public_constants:          public_constants
+		globals:                   globals
+		public_globals:            public_globals
 	}
 	mut serial_count := 0
 	for index, candidate in candidates {
@@ -1389,13 +1389,13 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 		declarations.writeln('')
 	}
 	return FastcConstantDeclarations{
-		macros: macros.str()
-		declarations: declarations.str()
+		macros:              macros.str()
+		declarations:        declarations.str()
 		module_initializers: module_initializers
 		compile_time_values: compile_time_values
-		composite_types: composite_types
-		fixed_array_types: fixed_array_types
-		struct_field_info: defaults.struct_field_info
+		composite_types:     composite_types
+		fixed_array_types:   fixed_array_types
+		struct_field_info:   defaults.struct_field_info
 		struct_field_lookup: defaults.lookup
 	}
 }
@@ -1542,13 +1542,13 @@ fn (mut g Parser) parse_one_constant(mut values []FastcConstantValue, stops []to
 		return g.unsupported('unverifiable constant `${name}` type')
 	}
 	values << FastcConstantValue{
-		key: key
-		c_name: c_name
-		module_name: g.module_name
-		value: value
-		typ: typ
+		key:          key
+		c_name:       c_name
+		module_name:  g.module_name
+		value:        value
+		typ:          typ
 		dependencies: g.constant_expression_dependencies(g.last_expression)
-		is_runtime: is_runtime
+		is_runtime:   is_runtime
 	}
 	g.constant_types[key] = typ
 }
@@ -1638,9 +1638,9 @@ mut:
 // fastc_run_type_declarations runs the type phase into fresh tables.
 fn fastc_run_type_declarations(sources []FastcSourceFile, type_sources map[string]string, prefs &pref.Preferences, type_source_paths map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool) FastcTypeDeclarationResult {
 	mut result := FastcTypeDeclarationResult{
-		struct_fields: map[string]map[string]string{}
+		struct_fields:     map[string]map[string]string{}
 		struct_field_info: map[string][]FastcStructField{}
-		composite_types: map[string]bool{}
+		composite_types:   map[string]bool{}
 	}
 	result.output = fastc_generate_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut result.struct_fields, mut result.struct_field_info, mut result.composite_types) or {
 		result.failed = true
@@ -1688,7 +1688,7 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 		}
 		type_source := type_sources[source_file.path] or { continue }
 		type_source_file := FastcSourceFile{
-			path: source_file.path
+			path:   source_file.path
 			source: type_source
 			header: source_file.header
 		}
@@ -1731,16 +1731,16 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 	enum_helper_names, enum_helper_texts := fastc_generate_enum_string_helpers(enum_infos)
 	timer.mark('type_declarations.enum_helpers')
 	return FastcTypeDeclarations{
-		declarations_head: declarations_head
-		declarations: out.str()
-		enum_helper_names: enum_helper_names
-		enum_helper_texts: enum_helper_texts
-		alias_base_types: alias_base_types
+		declarations_head:     declarations_head
+		declarations:          out.str()
+		enum_helper_names:     enum_helper_names
+		enum_helper_texts:     enum_helper_texts
+		alias_base_types:      alias_base_types
 		fn_alias_return_types: fn_alias_return_types
-		enum_field_types: enum_field_types
-		enum_field_names: enum_field_names
-		sum_types: sum_types
-		sum_type_variants: sum_type_variants
+		enum_field_types:      enum_field_types
+		enum_field_names:      enum_field_names
+		sum_types:             sum_types
+		sum_type_variants:     sum_type_variants
 	}
 }
 
@@ -1931,7 +1931,7 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), source_file.path, prefs)!
 				if selected.source != '' {
 					selected_source := FastcSourceFile{
-						path: source_file.path
+						path:   source_file.path
 						source: selected.source
 						header: source_file.header
 					}
@@ -2078,11 +2078,11 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		tok = scan.scan()
 	}
 	return FastcDeclarationAttribute{
-		tok: tok
-		is_enabled: is_enabled
-		is_flag: is_flag
-		is_params: is_params
-		is_typedef: is_typedef
+		tok:         tok
+		is_enabled:  is_enabled
+		is_flag:     is_flag
+		is_params:   is_params
+		is_typedef:  is_typedef
 		is_c_extern: is_c_extern
 	}
 }
@@ -2223,12 +2223,12 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 			}
 			fields_by_name['__embedded_${embedded_id}'] = fastc_c_declared_type_name(embedded_key)
 			field_info << FastcStructField{
-				name: '__embedded_${embedded_id}'
-				typ: fastc_c_declared_type_name(embedded_key)
-				is_public: true
+				name:        '__embedded_${embedded_id}'
+				typ:         fastc_c_declared_type_name(embedded_key)
+				is_public:   true
 				module_name: source_file.header.module_name
-				path: source_file.path
-				imports: source_file.header.imports.clone()
+				path:        source_file.path
+				imports:     source_file.header.imports.clone()
 			}
 			embedded_id++
 			fields++
@@ -2312,24 +2312,24 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 			}
 			fields_by_name[field_name] = emitted_field_type
 			field_info << FastcStructField{
-				name: field_name
-				typ: emitted_field_type
-				is_public: fields_are_public
-				is_mutable: fields_are_mutable
-				is_required: is_required
-				is_skip: is_skip
-				is_function: is_function_field
-				is_optional_function: is_optional_function
-				is_shared_pointer: is_shared_pointer
-				module_name: source_file.header.module_name
-				path: source_file.path
-				imports: source_file.header.imports.clone()
-				default_source: default_source
-				chan_element_type: field_chan_element
-				option_value_type: field_option_value
-				fn_parameter_types: function_type.parameter_types.clone()
-				fn_return_type: function_type.return_type
-				fn_option_value_type: function_type.option_value_type
+				name:                  field_name
+				typ:                   emitted_field_type
+				is_public:             fields_are_public
+				is_mutable:            fields_are_mutable
+				is_required:           is_required
+				is_skip:               is_skip
+				is_function:           is_function_field
+				is_optional_function:  is_optional_function
+				is_shared_pointer:     is_shared_pointer
+				module_name:           source_file.header.module_name
+				path:                  source_file.path
+				imports:               source_file.header.imports.clone()
+				default_source:        default_source
+				chan_element_type:     field_chan_element
+				option_value_type:     field_option_value
+				fn_parameter_types:    function_type.parameter_types.clone()
+				fn_return_type:        function_type.return_type
+				fn_option_value_type:  function_type.option_value_type
 				generic_argument_type: field_generic_argument
 			}
 			fields++
@@ -2348,12 +2348,12 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		out.writeln('\tvoid *data;')
 		fields_by_name['data'] = 'voidptr'
 		field_info << FastcStructField{
-			name: 'data'
-			typ: 'voidptr'
-			is_public: true
+			name:        'data'
+			typ:         'voidptr'
+			is_public:   true
 			module_name: source_file.header.module_name
-			path: source_file.path
-			imports: source_file.header.imports.clone()
+			path:        source_file.path
+			imports:     source_file.header.imports.clone()
 		}
 	}
 	if !is_c_struct {
@@ -2482,8 +2482,8 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 		// Accept any integer backing type (`as u32`, `as u8`, ...). The C typedef is
 		// still `int` (or `u64` for flag enums); values are emitted with an explicit
 		// cast, so a narrower/wider spelling does not change the generated C.
-		is_backing_int := tok == .name && scan.lit in ['i8', 'i16', 'i32', 'i64', 'int', 'u8', 'u16',
-			'u32', 'u64', 'isize', 'usize']
+		is_backing_int := tok == .name && scan.lit in ['i8', 'i16', 'i32', 'i64', 'int', 'u8',
+			'u16', 'u32', 'u64', 'isize', 'usize']
 		if !is_backing_int || (is_flag && scan.lit != 'u64') {
 			return error('fastc parser does not support enum `${name}` backing type in ${source_file.path}')
 		}
@@ -2555,9 +2555,9 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 		return error('fastc parser does not support unfinished enum `${name}` in ${source_file.path}')
 	}
 	enum_infos << FastcEnumInfo{
-		c_name: c_name
-		name: name
-		fields: field_names.clone()
+		c_name:  c_name
+		name:    name
+		fields:  field_names.clone()
 		is_flag: is_flag
 	}
 	return scan.scan()

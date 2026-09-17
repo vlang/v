@@ -2522,7 +2522,8 @@ fn (g &FlatGen) is_aggregate_zero_init_type(typ types.Type, c_type string) bool 
 		types.Alias {
 			g.is_aggregate_zero_init_type(typ.base_type, c_type)
 		}
-		types.Array, types.ArrayFixed, types.Channel, types.Map, types.String, types.Struct, types.Interface, types.SumType, types.OptionType, types.ResultType, types.MultiReturn {
+		types.Array, types.ArrayFixed, types.Channel, types.Map, types.String, types.Struct, types.Interface,
+		types.SumType, types.OptionType, types.ResultType, types.MultiReturn {
 			true
 		}
 		else {

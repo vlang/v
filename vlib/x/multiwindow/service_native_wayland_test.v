@@ -72,9 +72,9 @@ fn test_wayland_cursor_support_is_runtime_and_shape_specific() {
 		backend.pointer = voidptr(usize(0x11))
 		backend.cursor_shape_manager = voidptr(usize(0x12))
 		backend.cursor_shape_device = voidptr(usize(0x13))
-		for shape in [CursorShape.default, .pointer, .move, .n_resize, .s_resize, .e_resize,
-			.w_resize, .ne_resize, .nw_resize, .se_resize, .sw_resize, .ew_resize, .ns_resize,
-			.nesw_resize, .nwse_resize, .grab, .grabbing, .text, .crosshair, .not_allowed] {
+		for shape in [CursorShape.default, .pointer, .move, .n_resize, .s_resize, .e_resize, .w_resize,
+			.ne_resize, .nw_resize, .se_resize, .sw_resize, .ew_resize, .ns_resize, .nesw_resize,
+			.nwse_resize, .grab, .grabbing, .text, .crosshair, .not_allowed] {
 			assert backend.cursor_support(shape) == .available
 		}
 		assert backend.cursor_support(.resize_all) == .unsupported
@@ -862,7 +862,7 @@ fn test_wayland_hide_releases_only_egl_surface_and_invalidates_old_generation_on
 		assert record.render_target_generation == 10
 		assert record.pending_egl_resize
 
-		$if gg_multiwindow ? || x_multiwindow_render ? {
+		$if gg_multiwindow ?|| x_multiwindow_render ? {
 			stale := RenderFrame{
 				window_id: window
 				metrics:   RenderMetricsSnapshot{
@@ -2092,8 +2092,7 @@ fn test_wayland_clipboard_queued_eof_wins_over_expired_deadline_exactly_once() {
 fn test_wayland_clipboard_chunk_quota_keeps_progress_active_past_deadline() {
 	$if linux && sokol_wayland ? {
 		path := os.join_path(os.temp_dir(), 'v_wayland_clipboard_quota_${os.getpid()}')
-		payload := 'q'.repeat(
-			wayland_clipboard_io_chunk_size * wayland_clipboard_max_io_chunks_per_poll + 1)
+		payload := 'q'.repeat(wayland_clipboard_io_chunk_size * wayland_clipboard_max_io_chunks_per_poll + 1)
 		os.write_file(path, payload)!
 		defer {
 			os.rm(path) or {}

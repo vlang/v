@@ -106,7 +106,7 @@ fn test_new_server() {
 	}
 
 	server := new_server(ServerConfig{
-		port: 8080
+		port:    8080
 		handler: handler
 	}) or {
 		assert false, 'Failed to create server: ${err}'
@@ -117,9 +117,9 @@ fn test_new_server() {
 	assert server.max_request_body_size == default_max_request_body_size
 
 	if _ := new_server(ServerConfig{
-		port: 8080
+		port:                  8080
 		max_request_body_size: -1
-		handler: handler
+		handler:               handler
 	}) {
 		assert false, 'negative max_request_body_size should be rejected'
 	}
@@ -134,8 +134,8 @@ fn test_server_ipv4_ipv6_binding() {
 	}
 
 	server_ipv4 := new_server(ServerConfig{
-		family: .ip
-		port: 8081
+		family:  .ip
+		port:    8081
 		handler: handler
 	}) or {
 		assert false, 'Failed to create IPv4 server: ${err}'
@@ -144,8 +144,8 @@ fn test_server_ipv4_ipv6_binding() {
 
 	// Test IPv6 binding
 	server_ipv6 := new_server(ServerConfig{
-		family: .ip6
-		port: 8082
+		family:  .ip6
+		port:    8082
 		handler: handler
 	}) or {
 		assert false, 'Failed to create IPv6 server: ${err}'
@@ -161,11 +161,11 @@ fn test_server_ipv4_ipv6_binding() {
 fn test_response_takeover_mode_reusable_keeps_connection() {
 	$if linux || bsd || windows {
 		mut server := new_server(ServerConfig{
-			family: .ip
-			port: reusable_takeover_port
-			timeout_in_seconds: 2
+			family:                  .ip
+			port:                    reusable_takeover_port
+			timeout_in_seconds:      2
 			max_request_buffer_size: 8192
-			handler: reusable_takeover_handler
+			handler:                 reusable_takeover_handler
 		}) or {
 			assert false, 'Failed to create server: ${err}'
 			return

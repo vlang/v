@@ -151,7 +151,7 @@ fn fastc_prepare_libtcc_link(program string, tcc_lib string, base_args []string,
 	state := C.tcc_new()
 	if isnil(state) {
 		return FastcPreparedLink{
-			program: program
+			program:   program
 			base_args: base_args.clone()
 		}
 	}
@@ -163,14 +163,14 @@ fn fastc_prepare_libtcc_link(program string, tcc_lib string, base_args []string,
 		|| C.tcc_set_output_type(state, fastc_tcc_output_exe) != 0 {
 		C.tcc_delete(state)
 		return FastcPreparedLink{
-			program: program
+			program:   program
 			base_args: base_args.clone()
 		}
 	}
 	return FastcPreparedLink{
-		state: state
+		state:       state
 		diagnostics: diagnostics
-		program: program
+		program:     program
 	}
 }
 
@@ -182,7 +182,7 @@ fn fastc_libtcc_add_library(state &C.TCCState, name string, diagnostics &FastcLi
 	if C.tcc_add_library(state, name.str) != 0 {
 		return os.Result{
 			exit_code: 1
-			output: fastc_libtcc_diagnostics(diagnostics, 'could not add library `${name}` to the TinyCC link')
+			output:    fastc_libtcc_diagnostics(diagnostics, 'could not add library `${name}` to the TinyCC link')
 		}
 	}
 	return none
@@ -218,7 +218,7 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 		fastc_libtcc_add_input(mut link, input_path) or {
 			return os.Result{
 				exit_code: 1
-				output: err.msg()
+				output:    err.msg()
 			}
 		}
 	}
@@ -230,13 +230,13 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 			if i + 1 >= final_args.len {
 				return os.Result{
 					exit_code: 1
-					output: 'missing library name after `-l`'
+					output:    'missing library name after `-l`'
 				}
 			}
 			if fastc_libtcc_apply_options(state, pending_options) != 0 {
 				return os.Result{
 					exit_code: 1
-					output: fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
+					output:    fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
 				}
 			}
 			pending_options.clear()
@@ -251,7 +251,7 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 			if fastc_libtcc_apply_options(state, pending_options) != 0 {
 				return os.Result{
 					exit_code: 1
-					output: fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
+					output:    fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
 				}
 			}
 			pending_options.clear()
@@ -265,14 +265,14 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 			if fastc_libtcc_apply_options(state, pending_options) != 0 {
 				return os.Result{
 					exit_code: 1
-					output: fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
+					output:    fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
 				}
 			}
 			pending_options.clear()
 			if C.tcc_add_file(state, arg.str) != 0 {
 				return os.Result{
 					exit_code: 1
-					output: fastc_libtcc_diagnostics(diagnostics, 'could not add `${arg}` to the TinyCC link')
+					output:    fastc_libtcc_diagnostics(diagnostics, 'could not add `${arg}` to the TinyCC link')
 				}
 			}
 		} else {
@@ -283,7 +283,7 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 	if fastc_libtcc_apply_options(state, pending_options) != 0 {
 		return os.Result{
 			exit_code: 1
-			output: fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
+			output:    fastc_libtcc_diagnostics(diagnostics, 'TinyCC rejected the link options')
 		}
 	}
 	C.v_fastc_tcc_set_skip_codesign(1)
@@ -292,12 +292,12 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 	if output_result != 0 {
 		return os.Result{
 			exit_code: 1
-			output: fastc_libtcc_diagnostics(diagnostics, 'TinyCC could not write `${output}`')
+			output:    fastc_libtcc_diagnostics(diagnostics, 'TinyCC could not write `${output}`')
 		}
 	}
 	return os.Result{
 		exit_code: 0
-		output: diagnostics.messages.join('\n')
+		output:    diagnostics.messages.join('\n')
 	}
 }
 

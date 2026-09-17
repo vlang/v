@@ -127,9 +127,9 @@ pub:
 pub fn prealloc_stats_snapshot() PreallocStats {
 	$if prealloc_stats ? {
 		return PreallocStats{
-			enabled: true
+			enabled:          true
 			allocation_count: u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocation_count))
-			allocated_bytes: u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocated_bytes))
+			allocated_bytes:  u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocated_bytes))
 		}
 	} $else {
 		return PreallocStats{}
@@ -139,12 +139,12 @@ pub fn prealloc_stats_snapshot() PreallocStats {
 @[heap]
 struct VMemoryBlock {
 mut:
-	current        &u8 = 0 // 8
-	stop           &u8 = 0 // 8
-	start          &u8 = 0 // 8
-	previous       &VMemoryBlock = 0 // 8
-	next           &VMemoryBlock = 0 // 8
-	scope          &VPreallocScope = 0
+	current        &u8                  = 0 // 8
+	stop           &u8                  = 0 // 8
+	start          &u8                  = 0 // 8
+	previous       &VMemoryBlock        = 0 // 8
+	next           &VMemoryBlock        = 0 // 8
+	scope          &VPreallocScope      = 0
 	recycle_cache  &VPreallocBlockCache = 0
 	min_block_size isize
 	is_scope       bool
@@ -201,7 +201,7 @@ fn prealloc_scope_add_block(scope &VPreallocScope, block &VMemoryBlock) {
 		}
 		scope.ranges[insert] = VPreallocRange{
 			start: start
-			stop: stop
+			stop:  stop
 		}
 		scope.ranges_len++
 		if start < scope.min_address {

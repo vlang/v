@@ -49,7 +49,7 @@ fn (mut h H3Conn) apply_control_frame(frame H3Frame, mut result H3PollResult) ! 
 				return error_with_code('h3: GOAWAY id ${frame.id} is not a valid client-initiated bidirectional stream id', int(H3ErrorCode.id_error))
 			}
 			result.events << H3Event{
-				kind: .goaway
+				kind:      .goaway
 				goaway_id: frame.id
 			}
 		}

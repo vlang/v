@@ -1,6 +1,6 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
@@ -21,7 +21,7 @@ pub:
 	sample_count int
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	enum BackendTargetStatus {
 		prepared
 		acquired
@@ -1191,7 +1191,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			|| attempt.target.app_instance != app_instance
 			|| attempt.target.batch_epoch != state.batch_epoch
 			|| (!attempt.outcome.is_recoverable_target()
-			&& attempt.outcome.disposition != .native_window_lost)
+				&& attempt.outcome.disposition != .native_window_lost)
 			|| attempt.message == ''
 			|| attempt.message != native_render_error(attempt.outcome).msg() {
 			return false

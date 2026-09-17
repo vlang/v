@@ -22,11 +22,13 @@ pub type DtmMultiTypeMap = f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32
 @[deprecated: 'use x.templating.dtm2 for new code']
 @[deprecated_after: '2999-01-01']
 pub const cache_delay_expiration_at_min = 300
+
 // cache_delay_expiration_at_max maximal is the maximal setting for cache expiration delay, fixed at 1 year (measured in seconds).
 
 @[deprecated: 'use x.templating.dtm2 for new code']
 @[deprecated_after: '2999-01-01']
 pub const cache_delay_expiration_at_max = 31536000
+
 // cache_delay_expiration_by_default is the default setting for cache expiration delay, fixed at 1 day (measured in seconds).
 
 @[deprecated: 'use x.templating.dtm2 for new code']
@@ -539,21 +541,21 @@ fn (mut tm DynamicTemplateManager) create_template_cache_and_display(tcs CacheRe
 		tm.id_counter++
 		old_cache_id := tm.id_to_handlered
 		cache_request := TemplateCache{
-			id:   cache_id
-			name: tmpl_name.clone()
+			id:                     cache_id
+			name:                   tmpl_name.clone()
 			// 'path' field contains the full path, name and file extension of targeted HTML template.
-			path:             file_path.clone()
-			content_checksum: current_content_checksum.clone()
+			path:                   file_path.clone()
+			content_checksum:       current_content_checksum.clone()
 			// Last modified timestamp of HTML template
-			last_template_mod: last_template_mod
+			last_template_mod:      last_template_mod
 			// Unix current local timestamp of cache generation request converted to UTC
-			generate_at: unique_time
+			generate_at:            unique_time
 			// Defines the cache expiration delay in seconds. This value is added to 'generate_at' to calculate the expiration time of the cache.
 			cache_delay_expiration: cache_delay_expiration
 			html_data:              html.clone()
 			// The requested routing to define creation or updating cache.
-			cache_request: tcs
-			old_id:        old_cache_id
+			cache_request:          tcs
+			old_id:                 old_cache_id
 		}
 		mut process_request := cache_request
 		tm.process_cache_request(mut process_request)
@@ -861,8 +863,10 @@ fn (tm &DynamicTemplateManager) snapshot_template_caches() []TemplateCache {
 fn (mut tm DynamicTemplateManager) signal_cache_ready() {
 	$if test {
 		select {
-			tm.is_ready <- true {}
-			else {}
+			tm.is_ready <- true {
+			}
+			else {
+			}
 		}
 	}
 }

@@ -79,8 +79,7 @@ pub fn protected_app_identities() []AppIdentityContract {
 			repository_scope:    'vlang/tccbin'
 			allowed_permissions: ['contents:write']
 			forbidden_roles:     ['workflows', 'issues', 'ledger', 'force', 'delete']
-			protected_jobs:      ['candidate-ref-create', 'gate-trigger-ref-create',
-				'canonical-promote']
+			protected_jobs:      ['candidate-ref-create', 'gate-trigger-ref-create', 'canonical-promote']
 		},
 	]
 }
@@ -89,7 +88,11 @@ pub fn protected_app_identities() []AppIdentityContract {
 pub fn validate_security_contract() ! {
 	identities := protected_app_identities()
 	validate_app_identity_matrix(identities)!
-	if state_cas_backoff_seconds != [0, 1, 3] || publisher_create_backoff_seconds != [0, 5, 15]
+	if state_cas_backoff_seconds != [0, 1, 3] || publisher_create_backoff_seconds != [
+		0,
+		5,
+		15,
+	]
 		|| original_run_search_seconds != [0, 15, 45, 90] || native_gate_max_attempts != 2
 		|| handoff_max_dispatch_generations != 2 {
 		return error('bounded retry policy changed from the frozen contract')
@@ -131,9 +134,9 @@ pub fn validate_app_identity_matrix(identities []AppIdentityContract) ! {
 }
 
 fn identity_contract_signature(identity AppIdentityContract) string {
-	return [identity.name, identity.id_variable, identity.private_key_secret, identity.repository_scope,
-		identity.allowed_permissions.join(','), identity.forbidden_roles.join(','),
-		identity.protected_jobs.join(',')].join('|')
+	return [identity.name, identity.id_variable, identity.private_key_secret,
+		identity.repository_scope, identity.allowed_permissions.join(','),
+		identity.forbidden_roles.join(','), identity.protected_jobs.join(',')].join('|')
 }
 
 // target_unlock_variable maps each closed managed target to its repository variable.

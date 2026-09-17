@@ -196,9 +196,9 @@ fn main() {
 	println(values)
 }
 ')!
-	invalid_assignment_attribute := cmdexec.run(v3_bin, ['-silent', '-nocache',
-		'-no-retry-compilation', '-warn-about-allocs', '-o',
-		os.join_path(root, 'invalid_assignment_attribute.c'), invalid_assignment_attribute_source])
+	invalid_assignment_attribute := cmdexec.run(v3_bin, ['-silent', '-nocache', '-no-retry-compilation',
+		'-warn-about-allocs', '-o', os.join_path(root, 'invalid_assignment_attribute.c'),
+		invalid_assignment_attribute_source])
 	assert invalid_assignment_attribute.exit_code != 0, invalid_assignment_attribute.output
 	assert invalid_assignment_attribute.output.contains('assignment attribute `freed` does not accept an argument'), invalid_assignment_attribute.output
 
@@ -343,8 +343,8 @@ fn main() {
 		'-o', cache_output, cache_project], cache_environment)
 	assert uncached_import.exit_code == 0, uncached_import.output
 	assert uncached_import.output.count('allocation (array initialization)') == 1, uncached_import.output
-	warm_cache := run_warn_allocs_process(v3_bin, ['-silent', '-warn-about-allocs', '-o',
-		cache_output, cache_project], cache_environment)
+	warm_cache := run_warn_allocs_process(v3_bin, ['-silent', '-warn-about-allocs', '-o', cache_output,
+		cache_project], cache_environment)
 	assert warm_cache.exit_code == 0, warm_cache.output
 	assert warm_cache.output.count('allocation (array initialization)') == 1, warm_cache.output
 	os.write_file(cache_main, 'module main

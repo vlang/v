@@ -228,7 +228,7 @@ pub struct ImportedZero {
 
 fn test_exported_module_global_uses_explicit_c_name() {
 	c_code := gen_c_for_sources('exported_module_global', {
-		'main.v':             'module main
+		'main.v':              'module main
 
 import counters
 
@@ -236,16 +236,16 @@ fn main() {
 	counters.set()
 }
 '
-		'counters/counters.v': '@[has_globals]
+		'counters/counters.v': "@[has_globals]
 module counters
 
-@[export: \'bare_counter\']
+@[export: 'bare_counter']
 __global counter = i64(0)
 
 pub fn set() {
 	counter = 1
 }
-'
+"
 	})
 	assert c_code.contains('\ni64 bare_counter = ((i64)(0));\n'), c_code
 	assert c_code.contains('\tbare_counter = 1;'), c_code
@@ -299,15 +299,15 @@ fn main() {
 }
 
 fn test_cinit_global_keeps_linker_section_and_static_initializer() {
-	c_code := gen_c_for_source('cinit_linker_section_global', 'struct Request {
+	c_code := gen_c_for_source('cinit_linker_section_global', "struct Request {
 	id       [4]u64 = [u64(0x11), 0x22, 0x33, 0x44]!
 	revision u64
 	response voidptr
 }
 
-@[_linker_section: \'.requests\']
+@[_linker_section: '.requests']
 @[cinit]
-@[export: \'boot_request\']
+@[export: 'boot_request']
 __global (
 	volatile request = Request{
 		revision: 2
@@ -315,9 +315,8 @@ __global (
 )
 
 fn main() {}
-')
-	assert c_code.contains('__attribute__ ((section (".requests"))) volatile main__Request boot_request = (main__Request){.revision = 2, .id = {((u64)(0x11)), 0x22, 0x33, 0x44}};'),
-		c_code
+")
+	assert c_code.contains('__attribute__ ((section (".requests"))) volatile main__Request boot_request = (main__Request){.revision = 2, .id = {((u64)(0x11)), 0x22, 0x33, 0x44}};'), c_code
 	assert !c_code.contains('boot_request = ({'), c_code
 	assert !c_code.contains('memmove(boot_request'), c_code
 }

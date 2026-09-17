@@ -77,7 +77,7 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 		}
 		results.items[i] = &InterfaceImplIndex{
 			names: impls
-			ids: stable_interface_type_ids(impls)
+			ids:   stable_interface_type_ids(impls)
 		}
 	}
 	if a.scoped {
@@ -113,18 +113,18 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 		mut tasks := []workers.Task{cap: n_jobs}
 		for job in 0 .. n_jobs {
 			args << InterfaceImplChunkArgs{
-				checker: voidptr(checkers[job])
+				checker:     voidptr(checkers[job])
 				iface_names: unsafe { voidptr(&iface_names) }
-				results: voidptr(results)
-				start: iface_names.len * job / n_jobs
-				end: iface_names.len * (job + 1) / n_jobs
+				results:     voidptr(results)
+				start:       iface_names.len * job / n_jobs
+				end:         iface_names.len * (job + 1) / n_jobs
 				// Job 0 runs on the master checker, whose overlay is folded back
 				// into the shared cache below; only forks may use scratch arenas.
-				scoped: job > 0
+				scoped:      job > 0
 			}
 			tasks << workers.Task{
-				run: interface_impl_index_chunk_thread
-				arg: unsafe { voidptr(&args[job]) }
+				run:        interface_impl_index_chunk_thread
+				arg:        unsafe { voidptr(&args[job]) }
 				force_sync: job == 0
 			}
 		}
@@ -141,7 +141,7 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 				}
 				tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
 					names: names
-					ids: stable_interface_type_ids(names)
+					ids:   stable_interface_type_ids(names)
 				}
 			}
 		}
@@ -250,8 +250,8 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 	mut tasks := []workers.Task{cap: args.len}
 	for i in 0 .. args.len {
 		tasks << workers.Task{
-			run: collect_index_prep_thread
-			arg: unsafe { voidptr(&args[i]) }
+			run:        collect_index_prep_thread
+			arg:        unsafe { voidptr(&args[i]) }
 			force_sync: i == args.len - 1
 		}
 	}
@@ -281,23 +281,23 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 	}
 	mut args := [
 		CollectDeclarationIndexArgs{
-			tc: voidptr(tc)
-			a: a
+			tc:   voidptr(tc)
+			a:    a
 			kind: 0
 		},
 		CollectDeclarationIndexArgs{
-			tc: voidptr(tc)
-			a: a
+			tc:   voidptr(tc)
+			a:    a
 			kind: 1
 		},
 		CollectDeclarationIndexArgs{
-			tc: voidptr(tc)
-			a: a
+			tc:   voidptr(tc)
+			a:    a
 			kind: 2
 		},
 		CollectDeclarationIndexArgs{
-			tc: voidptr(tc)
-			a: a
+			tc:   voidptr(tc)
+			a:    a
 			kind: 3
 		},
 	]
@@ -315,8 +315,8 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 			arg: unsafe { voidptr(&args[2]) }
 		},
 		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[3]) }
+			run:        collect_declaration_index_thread
+			arg:        unsafe { voidptr(&args[3]) }
 			force_sync: true
 		},
 	])
@@ -392,14 +392,14 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 	ptypes = tc.fn_param_types_with_implicit_veb_ctx(node, ptypes)
 	shared_params = tc.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
 	return Pass2FnPrep{
-		prepared: true
-		ret_type: ret_type
-		ptypes: ptypes
-		param_texts: param_texts
-		shared_params: shared_params
-		is_variadic: is_variadic
-		is_c_variadic: is_c_variadic
-		has_mut_receiver: has_mut_receiver
+		prepared:            true
+		ret_type:            ret_type
+		ptypes:              ptypes
+		param_texts:         param_texts
+		shared_params:       shared_params
+		is_variadic:         is_variadic
+		is_c_variadic:       is_c_variadic
+		has_mut_receiver:    has_mut_receiver
 		has_forwardable_ctx: has_forwardable_ctx
 	}
 }
@@ -478,19 +478,19 @@ fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
 		mut args := []Pass2PrepArgs{cap: n_jobs}
 		for ji in 0 .. n_jobs {
 			args << Pass2PrepArgs{
-				tc: voidptr(tc)
-				start: n * ji / n_jobs
-				end: n * (ji + 1) / n_jobs
-				file: ctx_files[ji]
+				tc:          voidptr(tc)
+				start:       n * ji / n_jobs
+				end:         n * (ji + 1) / n_jobs
+				file:        ctx_files[ji]
 				module_name: ctx_modules[ji]
-				preps: unsafe { voidptr(&preps) }
+				preps:       unsafe { voidptr(&preps) }
 			}
 		}
 		mut tasks := []workers.Task{cap: n_jobs}
 		for ji in 0 .. n_jobs {
 			tasks << workers.Task{
-				run: pass2_fn_prep_thread
-				arg: unsafe { voidptr(&args[ji]) }
+				run:        pass2_fn_prep_thread
+				arg:        unsafe { voidptr(&args[ji]) }
 				force_sync: ji == 0
 			}
 		}
@@ -520,14 +520,14 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 			mut tasks := []workers.Task{cap: 9}
 			for group in 0 .. 9 {
 				args << Pass2AncillaryArgs{
-					tc: voidptr(tc)
+					tc:    voidptr(tc)
 					group: group
 				}
 			}
 			for group in 0 .. 9 {
 				tasks << workers.Task{
-					run: pass2_ancillary_thread
-					arg: unsafe { voidptr(&args[group]) }
+					run:        pass2_ancillary_thread
+					arg:        unsafe { voidptr(&args[group]) }
 					force_sync: group == 0
 				}
 			}
@@ -880,12 +880,12 @@ pub fn (mut tc TypeChecker) check_semantics_reachable(selected map[string]bool) 
 					tc.check_decl_type_strings(node_id, node)
 					cost := i - prev_tl
 					items << CheckWorkItem{
-						fn_idx: i
+						fn_idx:   i
 						range_lo: prev_tl + 1
-						file: tc.cur_file
-						module: tc.cur_module
-						cost: cost
-						rank: i64(cost) * 1_000_000_000 - i64(i)
+						file:     tc.cur_file
+						module:   tc.cur_module
+						cost:     cost
+						rank:     i64(cost) * 1_000_000_000 - i64(i)
 					}
 				}
 			}
@@ -965,18 +965,18 @@ fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]in
 		mut tasks := []workers.Task{cap: n_jobs}
 		for job in 0 .. n_jobs {
 			args << UnusedAliveScanArgs{
-				tc: voidptr(tc)
-				fn_keys: fn_keys
+				tc:         voidptr(tc)
+				fn_keys:    fn_keys
 				const_keys: const_keys
-				start: n_nodes * job / n_jobs
-				end: n_nodes * (job + 1) / n_jobs
-				alive: []bool{len: alive.len}
+				start:      n_nodes * job / n_jobs
+				end:        n_nodes * (job + 1) / n_jobs
+				alive:      []bool{len: alive.len}
 			}
 		}
 		for job in 0 .. n_jobs {
 			tasks << workers.Task{
-				run: unused_alive_scan_thread
-				arg: unsafe { voidptr(&args[job]) }
+				run:        unused_alive_scan_thread
+				arg:        unsafe { voidptr(&args[job]) }
 				force_sync: job == 0
 			}
 		}
@@ -1083,12 +1083,12 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 					span
 				}
 				items << CheckWorkItem{
-					fn_idx: i
+					fn_idx:   i
 					range_lo: prev_tl + 1
-					file: tc.cur_file
-					module: tc.cur_module
-					cost: cost
-					rank: i64(cost) * 1_000_000_000 - i64(i)
+					file:     tc.cur_file
+					module:   tc.cur_module
+					cost:     cost
+					rank:     i64(cost) * 1_000_000_000 - i64(i)
 				}
 			}
 			else {}
@@ -1277,11 +1277,11 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		}
 		chunk_count := chunks.len
 		mut dynamic_chunks := [][]CheckWorkItem{}
-		mut chunk_queue := chan int{ cap: 1 }
+		mut chunk_queue := chan int{cap: 1}
 		if dynamic_dispatch {
 			dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
 			dynamic_chunks = split_check_items(items, dynamic_target)
-			chunk_queue = chan int{ cap: dynamic_chunks.len }
+			chunk_queue = chan int{cap: dynamic_chunks.len}
 			for ci in 0 .. dynamic_chunks.len {
 				chunk_queue <- ci
 			}
@@ -1310,12 +1310,12 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 				worker = checker_workers[ci - 1]
 			}
 			args << CheckChunkArgs{
-				worker: worker
-				items_ptr: unsafe { voidptr(&chunks[ci]) }
+				worker:        worker
+				items_ptr:     unsafe { voidptr(&chunks[ci]) }
 				dynamic_items: dynamic_items_ptr
-				chunk_queue: chunk_queue
+				chunk_queue:   chunk_queue
 				scope_enabled: tc.scope_parallel_check_workers
-				index: ci
+				index:         ci
 			}
 		}
 		// The master checks its own chunk under the same range discipline as the
@@ -1332,14 +1332,14 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		for ci in 0 .. chunk_count {
 			helper_idx := ci - 1
 			tasks << workers.Task{
-				run: check_chunk_thread
-				arg: unsafe { voidptr(&args[ci]) }
+				run:        check_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
 				force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
 			}
 		}
 		tasks << workers.Task{
-			run: check_top_level_decl_signatures_thread
-			arg: voidptr(tc)
+			run:        check_top_level_decl_signatures_thread
+			arg:        voidptr(tc)
 			force_sync: true
 		}
 		check_worker_scope_leave(setup_scope)
@@ -1364,16 +1364,16 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			mg_t0 := time.sys_mono_now()
 			for ci in 0 .. chunk_count {
 				clone_args << CheckCloneChunkArgs{
-					tc: voidptr(tc)
+					tc:        voidptr(tc)
 					items_ptr: unsafe { voidptr(&chunks[ci]) }
-					miss: []int{cap: 1024}
+					miss:      []int{cap: 1024}
 				}
 			}
 			mut ctasks := []workers.Task{cap: chunk_count}
 			for ci in 0 .. chunk_count {
 				ctasks << workers.Task{
-					run: check_clone_chunk_thread
-					arg: unsafe { voidptr(&clone_args[ci]) }
+					run:        check_clone_chunk_thread
+					arg:        unsafe { voidptr(&clone_args[ci]) }
 					force_sync: ci == 0
 				}
 			}
@@ -2011,7 +2011,7 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 					flat.empty_node
 				}
 				candidates << UnusedFnVarCandidate{
-					name: lhs.value
+					name:   lhs.value
 					lhs_id: lhs_id
 					rhs_id: rhs_id
 				}
@@ -2716,7 +2716,7 @@ fn (mut tc TypeChecker) install_type_cache_overlay() {
 	}
 	tc.prewarm_shared_type_cache()
 	tc.type_cache = &TypeCache{
-		base: tc.type_cache
+		base:          tc.type_cache
 		parse_enabled: tc.type_cache.parse_enabled
 	}
 	if !isnil(tc.resolution_type_views) {
@@ -2789,10 +2789,10 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	// worker (and each disposable scoped batch) owns mutable result/miss maps while
 	// sharing the declaration index that collect completed before checking starts.
 	w.visible_mutation_cache = &VisibleMutationCache{
-		decls: tc.visible_mutation_cache.decls
-		decl_misses: map[string]bool{}
-		results: map[u64]bool{}
-		rebind_results: map[u64]bool{}
+		decls:            tc.visible_mutation_cache.decls
+		decl_misses:      map[string]bool{}
+		results:          map[u64]bool{}
+		rebind_results:   map[u64]bool{}
 		decl_index_ready: tc.visible_mutation_cache.decl_index_ready
 	}
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
@@ -2826,55 +2826,55 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.type_cache = &TypeCache{
 		// The master's frozen pre-region cache (the overlay's base) is shared
 		// read-only across all forks; each fork writes to its own maps.
-		base: if tc.type_cache != unsafe { nil } {
+		base:                        if tc.type_cache != unsafe { nil } {
 			tc.type_cache.base
 		} else {
 			&TypeCache(unsafe { nil })
 		}
-		parse_enabled: if tc.type_cache != unsafe { nil } {
+		parse_enabled:               if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
 		} else {
 			false
 		}
-		parse_entries: map[u64]ParseTypeCacheEntry{}
-		c_entries: map[TypeId]string{}
-		struct_field_entries: map[string]Type{}
-		struct_field_misses: map[string]bool{}
+		parse_entries:               map[u64]ParseTypeCacheEntry{}
+		c_entries:                   map[TypeId]string{}
+		struct_field_entries:        map[string]Type{}
+		struct_field_misses:         map[string]bool{}
 		sum_variant_pattern_entries: map[string]string{}
-		lexical_smartcast_entries: map[int]Type{}
-		lexical_smartcast_misses: map[int]bool{}
-		short_type_name_index: if isnil(precomputed)
+		lexical_smartcast_entries:   map[int]Type{}
+		lexical_smartcast_misses:    map[int]bool{}
+		short_type_name_index:       if isnil(precomputed)
 			|| !precomputed.short_type_name_index_built {
 			map[string]string{}
 		} else {
 			precomputed.short_type_name_index
 		}
 		short_type_name_index_built: !isnil(precomputed) && precomputed.short_type_name_index_built
-		local_fn_decl_index: if isnil(precomputed)
+		local_fn_decl_index:         if isnil(precomputed)
 			|| precomputed.local_fn_decl_indexed_len == 0 {
 			map[string]bool{}
 		} else {
 			precomputed.local_fn_decl_index
 		}
-		local_fn_decl_indexed_len: if isnil(precomputed) {
+		local_fn_decl_indexed_len:   if isnil(precomputed) {
 			0
 		} else {
 			precomputed.local_fn_decl_indexed_len
 		}
-		local_fn_decl_last_module: if isnil(precomputed) {
+		local_fn_decl_last_module:   if isnil(precomputed) {
 			''
 		} else {
 			precomputed.local_fn_decl_last_module
 		}
-		ierror_compat_entries: map[string]int{}
-		source_error_embed_entries: if isnil(precomputed)
+		ierror_compat_entries:       map[string]int{}
+		source_error_embed_entries:  if isnil(precomputed)
 			|| !precomputed.source_error_embed_indexed {
 			map[string]int{}
 		} else {
 			precomputed.source_error_embed_entries
 		}
-		source_error_embed_indexed: !isnil(precomputed) && precomputed.source_error_embed_indexed
-		source_error_embed_shared: !isnil(precomputed) && precomputed.source_error_embed_indexed
+		source_error_embed_indexed:  !isnil(precomputed) && precomputed.source_error_embed_indexed
+		source_error_embed_shared:   !isnil(precomputed) && precomputed.source_error_embed_indexed
 	}
 	if tc.scope_parallel_check_workers {
 		// Shared interner growth from a helper arena would leave compilation-wide
@@ -3051,31 +3051,31 @@ fn clone_parallel_type_error(err TypeError) TypeError {
 		details << detail.clone()
 	}
 	return TypeError{
-		msg: err.msg.clone()
-		kind: err.kind
-		node: err.node
-		file: err.file.clone()
-		node_kind: err.node_kind.clone()
+		msg:        err.msg.clone()
+		kind:       err.kind
+		node:       err.node
+		file:       err.file.clone()
+		node_kind:  err.node_kind.clone()
 		node_value: err.node_value.clone()
-		node_pos: err.node_pos.clone()
-		pos: err.pos
-		details: details
-		severity: err.severity.clone()
+		node_pos:   err.node_pos.clone()
+		pos:        err.pos
+		details:    details
+		severity:   err.severity.clone()
 	}
 }
 
 fn clone_parallel_call_info(info CallInfo) CallInfo {
 	return CallInfo{
-		name: info.name.clone()
-		params: clone_owned_types(info.params)
-		shared_params: info.shared_params.clone()
-		return_type: clone_owned_type(info.return_type)
-		has_receiver: info.has_receiver
-		is_variadic: info.is_variadic
-		is_c_variadic: info.is_c_variadic
-		params_known: info.params_known
+		name:                 info.name.clone()
+		params:               clone_owned_types(info.params)
+		shared_params:        info.shared_params.clone()
+		return_type:          clone_owned_type(info.return_type)
+		has_receiver:         info.has_receiver
+		is_variadic:          info.is_variadic
+		is_c_variadic:        info.is_c_variadic
+		params_known:         info.params_known
 		has_implicit_veb_ctx: info.has_implicit_veb_ctx
-		arg_offset: info.arg_offset
+		arg_offset:           info.arg_offset
 	}
 }
 
@@ -3106,7 +3106,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 	for pending in w.pending_ierror_errors {
 		tc.pending_ierror_errors << if scoped {
 			PendingIerrorError{
-				err: clone_parallel_type_error(pending.err)
+				err:      clone_parallel_type_error(pending.err)
 				fn_qname: pending.fn_qname.clone()
 			}
 		} else {

@@ -300,8 +300,7 @@ pub struct Box[T] {
 pub fn make() Box[int] {
 	return Box[int]{value: 1}
 }
-',
-		'module right
+', 'module right
 
 pub struct Box {
 	value int

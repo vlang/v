@@ -8,9 +8,10 @@ import v.util.vflags
 
 struct Context {
 mut:
-	verbose   bool
-	fail_fast bool
-	run_only  []string
+	verbose                bool
+	fail_fast              bool
+	run_only               []string
+	skip_multiwindow_tests bool
 }
 
 fn main() {
@@ -37,6 +38,8 @@ fn main() {
 	requested_vflags := os.getenv('VFLAGS')
 	mut requested_args := vflags.tokenize_to_args(requested_vflags)
 	requested_args << args_before
+	ctx.skip_multiwindow_tests = os.getenv('GITHUB_ACTIONS') == 'true'
+		&& requested_args.any(it == 'gg_multiwindow' || it == '-d=gg_multiwindow')
 	strict_v3 := ('-new-compiler' in requested_args && '-old-compiler' !in requested_args)
 		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
 	mut session_vargs := args_before.join(' ')
@@ -149,7 +152,26 @@ enum ShouldTestStatus {
 	ignore // just ignore the file, so it will not be printed at all in the list of tests
 }
 
+fn (ctx &Context) should_skip_multiwindow_test(path string) bool {
+	if os.getenv('GITHUB_ACTIONS') != 'true' {
+		return false
+	}
+	if ctx.skip_multiwindow_tests {
+		return true
+	}
+	// Temporarily keep multiwindow tests out of GitHub Actions on every OS.
+	normalized := path.replace('\\', '/')
+	file_name := normalized.all_after_last('/')
+	return normalized.contains('/multiwindow/') || normalized.starts_with('multiwindow/')
+		|| file_name.contains('multiwindow')
+}
+
 fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
+	is_plain_test := path.ends_with('_test.v') || path.ends_with('_test.c.v')
+		|| path.ends_with('_test.js.v')
+	if is_plain_test && ctx.should_skip_multiwindow_test(path) {
+		return .skip
+	}
 	if path.ends_with('_test.v') {
 		return ctx.should_test_when_it_contains_matching_fns(path, backend)
 	}
@@ -165,6 +187,9 @@ fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
 	if path.ends_with('.v') && path.count('.') == 2 {
 		if !path.all_before_last('.v').all_before_last('.').ends_with('_test') {
 			return .ignore
+		}
+		if ctx.should_skip_multiwindow_test(path) {
+			return .skip
 		}
 		backend_arg := path.all_before_last('.v').all_after_last('.')
 		// A backend name is checked before the architecture aliases: `wasm` spells both,

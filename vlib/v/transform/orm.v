@@ -3387,7 +3387,9 @@ fn sql_clean_tokens(tokens []string) []string {
 
 fn sql_token_can_precede_selector(token string) bool {
 	return sql_token_is_plain_ident(token)
-		&& token !in ['create', 'drop', 'delete', 'table', 'insert', 'upsert', 'into', 'select', 'from', 'where', 'update', 'set', 'order', 'by', 'limit', 'offset', 'dynamic', 'distinct', 'and', 'or', 'in', 'is', 'none', 'nil', 'true', 'false']
+		&& token !in ['create', 'drop', 'delete', 'table', 'insert', 'upsert', 'into', 'select',
+			'from', 'where', 'update', 'set', 'order', 'by', 'limit', 'offset', 'dynamic', 'distinct',
+			'and', 'or', 'in', 'is', 'none', 'nil', 'true', 'false']
 }
 
 fn sql_token_index(tokens []string, needle string) int {

@@ -52,7 +52,8 @@ fn test_all_number_prefixed_identifiers_are_reported() {
 	mut scanner := new_scanner(preferences, .normal)
 	scanner.init(file, source)
 
-	for scanner.scan() != .eof {}
+	for scanner.scan() != .eof {
+	}
 	assert scanner.diagnostics.len == 3
 	assert scanner.diagnostics[0].message == 'identifier name `3a` cannot start with a number'
 	assert scanner.diagnostics[1].message == 'identifier name `4b` cannot start with a number'
@@ -116,7 +117,8 @@ fn test_invalid_unicode_scalar_escapes_are_reported() {
 		mut scanner := new_scanner(preferences, .normal)
 		scanner.init(file, source)
 
-		for scanner.scan() != .eof {}
+		for scanner.scan() != .eof {
+		}
 		assert scanner.diagnostics.len == 1
 		assert scanner.diagnostics[0].message == expected_message
 		assert scanner.diagnostics[0].offset == source.len - 1

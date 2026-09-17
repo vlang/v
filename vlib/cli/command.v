@@ -71,58 +71,58 @@ type Defaults = CommandFlag | bool
 pub fn (cmd &Command) str() string {
 	mut res := []string{}
 	res << 'Command{'
-	res << '	name: "${cmd.name}"'
-	res << '	alias: "${cmd.alias}"'
-	res << '	usage: "${cmd.usage}"'
-	res << '	version: "${cmd.version}"'
-	res << '	description: "${cmd.description}"'
-	res << '	man_description: "${cmd.man_description}"'
-	res << '	group: "${cmd.group}"'
-	res << '	examples: ${cmd.examples}'
-	res << '	learn_more: "${cmd.learn_more}"'
-	res << '	disable_flags: ${cmd.disable_flags}'
-	res << '	sort_flags: ${cmd.sort_flags}'
-	res << '	sort_commands: ${cmd.sort_commands}'
-	res << '	cb execute: ${cmd.execute}'
-	res << '	cb pre_execute: ${cmd.pre_execute}'
-	res << '	cb post_execute: ${cmd.post_execute}'
+	res << '\tname: "${cmd.name}"'
+	res << '\talias: "${cmd.alias}"'
+	res << '\tusage: "${cmd.usage}"'
+	res << '\tversion: "${cmd.version}"'
+	res << '\tdescription: "${cmd.description}"'
+	res << '\tman_description: "${cmd.man_description}"'
+	res << '\tgroup: "${cmd.group}"'
+	res << '\texamples: ${cmd.examples}'
+	res << '\tlearn_more: "${cmd.learn_more}"'
+	res << '\tdisable_flags: ${cmd.disable_flags}'
+	res << '\tsort_flags: ${cmd.sort_flags}'
+	res << '\tsort_commands: ${cmd.sort_commands}'
+	res << '\tcb execute: ${cmd.execute}'
+	res << '\tcb pre_execute: ${cmd.pre_execute}'
+	res << '\tcb post_execute: ${cmd.post_execute}'
 	if unsafe { cmd.parent == 0 } {
 		res << '	parent: &Command(0)'
 	} else {
-		res << '	parent: &Command{${cmd.parent.name} ...}'
+		res << '\tparent: &Command{${cmd.parent.name} ...}'
 	}
-	res << '	commands: ${cmd.commands}'
-	res << '	flags: ${cmd.flags}'
-	res << '	required_args: ${cmd.required_args}'
-	res << '	args: ${cmd.args}'
-	res << '	posix_mode: ${cmd.posix_mode}'
+	res << '\tcommands: ${cmd.commands}'
+	res << '\tflags: ${cmd.flags}'
+	res << '\trequired_args: ${cmd.required_args}'
+	res << '\targs: ${cmd.args}'
+	res << '\tposix_mode: ${cmd.posix_mode}'
 	match cmd.defaults.help {
 		bool {
-			res << '	defaults.help: ${cmd.defaults.help}'
+			res << '\tdefaults.help: ${cmd.defaults.help}'
 		}
 		CommandFlag {
-			res << '	defaults.help.command: ${cmd.defaults.help.command}'
-			res << '	defaults.help.flag: ${cmd.defaults.help.flag}'
+			res << '\tdefaults.help.command: ${cmd.defaults.help.command}'
+			res << '\tdefaults.help.flag: ${cmd.defaults.help.flag}'
 		}
 	}
 
 	match cmd.defaults.man {
 		bool {
-			res << '	defaults.man: ${cmd.defaults.man}'
+			res << '\tdefaults.man: ${cmd.defaults.man}'
 		}
 		CommandFlag {
-			res << '	defaults.man.command: ${cmd.defaults.man.command}'
-			res << '	defaults.man.flag: ${cmd.defaults.man.flag}'
+			res << '\tdefaults.man.command: ${cmd.defaults.man.command}'
+			res << '\tdefaults.man.flag: ${cmd.defaults.man.flag}'
 		}
 	}
 
 	match cmd.defaults.version {
 		bool {
-			res << '	defaults.version: ${cmd.defaults.version}'
+			res << '\tdefaults.version: ${cmd.defaults.version}'
 		}
 		CommandFlag {
-			res << '	defaults.version.command: ${cmd.defaults.version.command}'
-			res << '	defaults.version.flag: ${cmd.defaults.version.flag}'
+			res << '\tdefaults.version.command: ${cmd.defaults.version.command}'
+			res << '\tdefaults.version.flag: ${cmd.defaults.version.flag}'
 		}
 	}
 

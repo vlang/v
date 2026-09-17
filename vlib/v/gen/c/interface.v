@@ -10,7 +10,7 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	variants := g.tc.sum_types[name]
 	g.writeln('struct ${g.cname(name)} {')
 	g.writeln('\tint typ;')
-	g.writeln('\tbool _pointer_variant_is_owned;')
+	g.writeln('\tu32 _pointer_variant_is_owned;')
 	g.writeln('\tunion {')
 	for v in variants {
 		variant_type := select_receive_unalias_type(g.tc.parse_canonical_type(v))
@@ -651,7 +651,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 		concrete_base, _, concrete_is_generic := parse_shared_generic_app_parts(concrete)
 		is_materializable_generic := concrete_is_generic
 			&& (concrete_base in g.tc.structs || concrete_base in g.tc.type_aliases || g.tc.qualify_name(concrete_base) in g.tc.structs
-			|| g.tc.qualify_name(concrete_base) in g.tc.type_aliases)
+				|| g.tc.qualify_name(concrete_base) in g.tc.type_aliases)
 		if !is_container && !is_materializable_generic && concrete !in g.tc.structs
 			&& concrete !in g.tc.type_aliases {
 			qualified := g.tc.qualify_name(concrete)
@@ -1519,7 +1519,11 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 }
 
 fn (mut g FlatGen) gen_interface_pointer_value_expr(id flat.NodeId, expected types.Type) bool {
-	ptr_type := if expected is types.Pointer { expected } else { return false }
+	ptr_type := if expected is types.Pointer {
+		expected
+	} else {
+		return false
+	}
 	mut iface_type := cgen_unalias_type(ptr_type.base_type)
 	if iface_type is types.Alias {
 		iface_type = cgen_unalias_type(iface_type.base_type)
@@ -2164,7 +2168,11 @@ fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected t
 	}
 	expected_iface := expected_iface_type as types.Interface
 	actual_clean := cgen_unalias_type(actual_base)
-	actual_value := if actual_clean is types.Pointer { actual_clean.base_type } else { actual_clean }
+	actual_value := if actual_clean is types.Pointer {
+		actual_clean.base_type
+	} else {
+		actual_clean
+	}
 	if cgen_unalias_type(actual_value) is types.Interface {
 		return false
 	}
@@ -2214,7 +2222,11 @@ fn (g &FlatGen) interface_dispatch_wrapped_return_can_adapt(expected types.Type,
 	}
 	expected_iface := expected_iface_type as types.Interface
 	actual_clean := cgen_unalias_type(actual_base)
-	actual_value := if actual_clean is types.Pointer { actual_clean.base_type } else { actual_clean }
+	actual_value := if actual_clean is types.Pointer {
+		actual_clean.base_type
+	} else {
+		actual_clean
+	}
 	if cgen_unalias_type(actual_value) is types.Interface {
 		return false
 	}
@@ -2301,7 +2313,7 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 			}
 			if obj_type is types.Unknown || obj_type is types.Void
 				|| (obj_type is types.Pointer && (obj_type.base_type is types.Unknown
-				|| obj_type.base_type is types.Void)) {
+					|| obj_type.base_type is types.Void)) {
 				obj_type = g.interface_source_type(g.a.child(field, 0))
 			}
 			concrete := types.unwrap_pointer(obj_type)
@@ -2685,9 +2697,7 @@ fn (mut g FlatGen) interface_array_str_expr(arr types.Array, expr string, mut st
 		g.interface_str_lit('<array value>')
 	}
 	item_str = 'v3_indent_multiline(${item_str})'
-	return '({ Array ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('[')}; for (int ${idx} = 0; ${idx} < ${tmp}.len; ++${idx}) { if (${idx} > 0) ${out} = ${g.interface_str_plus(out,
-		g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, item_str)}; } ${g.interface_str_plus(out,
-		g.interface_str_lit(']'))}; })'
+	return '({ Array ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('[')}; for (int ${idx} = 0; ${idx} < ${tmp}.len; ++${idx}) { if (${idx} > 0) ${out} = ${g.interface_str_plus(out, g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, item_str)}; } ${g.interface_str_plus(out, g.interface_str_lit(']'))}; })'
 }
 
 fn (mut g FlatGen) interface_fixed_array_str_expr(arr types.ArrayFixed, expr string, mut stack []string) ?string {
@@ -2700,9 +2710,7 @@ fn (mut g FlatGen) interface_fixed_array_str_expr(arr types.ArrayFixed, expr str
 		g.interface_str_lit('<array value>')
 	}
 	item_str = 'v3_indent_multiline(${item_str})'
-	return '({ ${elem_ct}* ${tmp} = (${elem_ct}*)(${expr}); string ${out} = ${g.interface_str_lit('[')}; for (int ${idx} = 0; ${idx} < ${arr.len}; ++${idx}) { if (${idx} > 0) ${out} = ${g.interface_str_plus(out,
-		g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, item_str)}; } ${g.interface_str_plus(out,
-		g.interface_str_lit(']'))}; })'
+	return '({ ${elem_ct}* ${tmp} = (${elem_ct}*)(${expr}); string ${out} = ${g.interface_str_lit('[')}; for (int ${idx} = 0; ${idx} < ${arr.len}; ++${idx}) { if (${idx} > 0) ${out} = ${g.interface_str_plus(out, g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, item_str)}; } ${g.interface_str_plus(out, g.interface_str_lit(']'))}; })'
 }
 
 fn (mut g FlatGen) interface_map_str_expr(map_type types.Map, expr string, mut stack []string) ?string {
@@ -2721,10 +2729,7 @@ fn (mut g FlatGen) interface_map_str_expr(map_type types.Map, expr string, mut s
 	}
 	key_str = 'v3_indent_multiline(${key_str})'
 	value_str = 'v3_indent_multiline(${value_str})'
-	return '({ map ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('{')}; bool first = true; for (int ${idx} = 0; ${idx} < ${tmp}.data->key_values.len; ++${idx}) { if (${tmp}.data->key_values.deletes != 0 && ${tmp}.data->key_values.all_deleted != 0 && ${tmp}.data->key_values.all_deleted[${idx}] != 0) continue; if (!first) ${out} = ${g.interface_str_plus(out,
-		g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, key_str)}; ${out} = ${g.interface_str_plus(out,
-		g.interface_str_lit(': '))}; ${out} = ${g.interface_str_plus(out, value_str)}; first = false; } ${g.interface_str_plus(out,
-		g.interface_str_lit('}'))}; })'
+	return '({ map ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('{')}; bool first = true; for (int ${idx} = 0; ${idx} < ${tmp}.data->key_values.len; ++${idx}) { if (${tmp}.data->key_values.deletes != 0 && ${tmp}.data->key_values.all_deleted != 0 && ${tmp}.data->key_values.all_deleted[${idx}] != 0) continue; if (!first) ${out} = ${g.interface_str_plus(out, g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, key_str)}; ${out} = ${g.interface_str_plus(out, g.interface_str_lit(': '))}; ${out} = ${g.interface_str_plus(out, value_str)}; first = false; } ${g.interface_str_plus(out, g.interface_str_lit('}'))}; })'
 }
 
 fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mut stack []string) ?string {

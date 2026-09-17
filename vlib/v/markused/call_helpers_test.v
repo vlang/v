@@ -70,12 +70,12 @@ fn test_omitted_parameter_defaults_skip_receiver_and_named_arguments() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_ret_types['default_level'] = types.Type(types.int_)
 	c := CallCollector{
-		a: &a
-		tc: &tc
-		fn_decls: {
+		a:               &a
+		tc:              &tc
+		fn_decls:        {
 			'consume': FnDeclInfo{ node_id: decl }
 		}
-		struct_decls: {
+		struct_decls:    {
 			'Config': StructDeclInfo{ node_id: config }
 		}
 		import_contexts: [map[string]string{}]

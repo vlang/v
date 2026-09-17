@@ -451,12 +451,10 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 	// V 0.5.2 runs direct tests with explicit executable outputs.
 	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-output', 'test-bin', 'example_test.v'])
-	assert !v1_fallback_exit_identifies_compiler_failure(['-stats', '-o', 'test-bin',
-		'example_test.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-stats', '-o', 'test-bin', 'example_test.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-checker-fixture', '-output', 'test-bin',
 		'example_test.v'])
-	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v',
-		'-stats'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v', '-stats'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.v', '-output', 'test-bin',
 		'-checker-fixture'])
 	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'test-bin', 'example_test.v',

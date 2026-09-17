@@ -169,7 +169,10 @@ $if test {
 		if ticket.app_identity == 0 || ticket.app_identity != app.instance_id
 			|| !authority.owner_thread_is_current() || ticket.renderer_attempt_token == 0
 			|| ticket.renderer_attempt_token != authority.renderer_attempt_token
-			|| ticket.backend_kind != app.backend.kind || ticket.backend_kind !in [.x11, .wayland]
+			|| ticket.backend_kind != app.backend.kind || ticket.backend_kind !in [
+			.x11,
+			.wayland,
+		]
 			|| authority.app_identity != ticket.app_identity || authority.proof == unsafe { nil }
 			|| ticket.primary_context.authority_scope != .renderer_attempt
 			|| ticket.primary_context.authority_token != ticket.renderer_attempt_token

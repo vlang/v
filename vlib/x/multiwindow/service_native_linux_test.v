@@ -334,7 +334,7 @@ fn x11_run_stale_xid_child_for_test(mode string) ! {
 				already_polled = true
 			}
 			'render' {
-				$if gg_multiwindow ? || x_multiwindow_render ? {
+				$if gg_multiwindow ?|| x_multiwindow_render ? {
 					updates := app.backend.x11.collect_render_updates()!
 					window_updates := updates.filter(it.window == window)
 					assert window_updates.len == 1
@@ -375,11 +375,10 @@ fn test_x11_checked_queries_survive_retained_destroyed_window() {
 			return
 		}
 		mut modes := ['show', 'hide', 'focus', 'raise', 'position', 'mouse_lock',
-			'mouse_lock_after_grab', 'clipboard_owner', 'restore', 'state', 'probe', 'size',
-			'readback', 'property', 'xdnd_source', 'requestor', 'requestor_bad_atom',
-			'requestor_incr', 'requestor_supersede', 'requestor_reuse_after_eof',
-			'requestor_destroy_before_chunk']
-		$if gg_multiwindow ? || x_multiwindow_render ? {
+			'mouse_lock_after_grab', 'clipboard_owner', 'restore', 'state', 'probe', 'size', 'readback',
+			'property', 'xdnd_source', 'requestor', 'requestor_bad_atom', 'requestor_incr',
+			'requestor_supersede', 'requestor_reuse_after_eof', 'requestor_destroy_before_chunk']
+		$if gg_multiwindow ?|| x_multiwindow_render ? {
 			modes << 'render'
 		}
 		for mode in modes {
@@ -912,7 +911,7 @@ fn test_x11_native_service_controls_borrow_monitors_and_readback() {
 			unmap_events := app.drain_queued_events()!
 			if !app.backend.x11.service_mouse_locked_for_test(child)!
 				&& unmap_events.any(it.kind == .service && it.service.kind == .state
-				&& it.service.window == child && it.service.state.mouse_locked == .off) {
+					&& it.service.window == child && it.service.state.mouse_locked == .off) {
 				unmap_released_lock = true
 				break
 			}
@@ -939,7 +938,7 @@ fn test_x11_native_service_controls_borrow_monitors_and_readback() {
 			focus_events := app.drain_queued_events()!
 			if !app.backend.x11.service_mouse_locked_for_test(child)!
 				&& focus_events.any(it.kind == .service && it.service.kind == .state
-				&& it.service.window == child && it.service.state.mouse_locked == .off) {
+					&& it.service.window == child && it.service.state.mouse_locked == .off) {
 				focus_released_lock = true
 				break
 			}
@@ -1708,8 +1707,7 @@ fn test_x11_clipboard_incr_dynamic_reservation_preserves_hard_and_aggregate_caps
 		clipboard_reads: [X11ClipboardRead{}]
 	}
 	mut hard_cap_error := ''
-	_ = hard_cap_backend.clipboard_incremental_reservation_after_chunk(
-		X11NativeULong(x11_clipboard_max_bytes) + 1) or {
+	_ = hard_cap_backend.clipboard_incremental_reservation_after_chunk(X11NativeULong(x11_clipboard_max_bytes) + 1) or {
 		hard_cap_error = err.msg()
 		0
 	}

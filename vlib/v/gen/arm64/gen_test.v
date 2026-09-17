@@ -113,8 +113,8 @@ fn test_c_homogeneous_float_aggregate_uses_simd_argument_registers() {
 	mut m := ssa.Module.new()
 	f64_type := m.type_store.get_float(64)
 	pair_type := m.type_store.register(ssa.Type{
-		kind: .struct_t
-		fields: [f64_type, f64_type]
+		kind:        .struct_t
+		fields:      [f64_type, f64_type]
 		is_c_struct: true
 	})
 	external_id := m.new_function('consume_pair', ssa.TypeID(0))
@@ -143,8 +143,8 @@ fn test_c_homogeneous_float_aggregate_overflow_uses_the_stack() {
 	mut m := ssa.Module.new()
 	f64_type := m.type_store.get_float(64)
 	pair_type := m.type_store.register(ssa.Type{
-		kind: .struct_t
-		fields: [f64_type, f64_type]
+		kind:        .struct_t
+		fields:      [f64_type, f64_type]
 		is_c_struct: true
 	})
 	external_id := m.new_function('consume_pair', ssa.TypeID(0))
@@ -180,16 +180,16 @@ fn test_overaligned_c_float_aggregate_with_padding_is_not_hfa() {
 	mut m := ssa.Module.new()
 	f64_type := m.type_store.get_float(64)
 	padded_pair_type := m.type_store.register(ssa.Type{
-		kind: .struct_t
-		fields: [f64_type, f64_type]
+		kind:        .struct_t
+		fields:      [f64_type, f64_type]
 		is_c_struct: true
-		alignment: 32
+		alignment:   32
 	})
 	aligned_quad_type := m.type_store.register(ssa.Type{
-		kind: .struct_t
-		fields: [f64_type, f64_type, f64_type, f64_type]
+		kind:        .struct_t
+		fields:      [f64_type, f64_type, f64_type, f64_type]
 		is_c_struct: true
-		alignment: 32
+		alignment:   32
 	})
 	g := Gen.new(m)
 	assert m.type_size(padded_pair_type) == 32
@@ -204,8 +204,8 @@ fn test_c_homogeneous_float_aggregate_return_uses_simd_registers() {
 	mut m := ssa.Module.new()
 	f64_type := m.type_store.get_float(64)
 	triple_type := m.type_store.register(ssa.Type{
-		kind: .struct_t
-		fields: [f64_type, f64_type, f64_type]
+		kind:        .struct_t
+		fields:      [f64_type, f64_type, f64_type]
 		is_c_struct: true
 	})
 	external_id := m.new_function('make_triple', triple_type)
@@ -235,8 +235,8 @@ fn test_c_f32_homogeneous_float_aggregate_return_uses_simd_registers() {
 	mut m := ssa.Module.new()
 	f32_type := m.type_store.get_float(32)
 	pair_type := m.type_store.register(ssa.Type{
-		kind: .struct_t
-		fields: [f32_type, f32_type]
+		kind:        .struct_t
+		fields:      [f32_type, f32_type]
 		is_c_struct: true
 	})
 	external_id := m.new_function('make_pair', pair_type)
@@ -266,7 +266,7 @@ fn test_literal_c_variadic_string_stores_both_words() {
 	i32_type := m.type_store.get_int(32)
 	ptr_type := m.type_store.get_ptr(m.type_store.get_int(8))
 	string_type := m.type_store.register(ssa.Type{
-		kind: .struct_t
+		kind:   .struct_t
 		fields: [ptr_type, i32_type, i32_type]
 	})
 	external_id := m.new_function('consume', ssa.TypeID(0))

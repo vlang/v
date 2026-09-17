@@ -170,9 +170,9 @@ fn (mut g Parser) read_match_expression() !string {
 		if smartcast_active {
 			smartcast_saved = g.locals[subject_local] or { FastcLocal{} }
 			g.locals[subject_local] = FastcLocal{
-				is_mut: smartcast_saved.is_mut
+				is_mut:       smartcast_saved.is_mut
 				is_reference: smartcast_is_reference
-				typ: if smartcast_is_reference {
+				typ:          if smartcast_is_reference {
 					smartcast_type + '*'
 				} else {
 					smartcast_type
@@ -195,10 +195,10 @@ fn (mut g Parser) read_match_expression() !string {
 				FastcMemberSmartcast{}
 			}
 			g.member_smartcasts[projection_path] = FastcMemberSmartcast{
-				typ: smartcast_type + '*'
-				source: '((${smartcast_type} *)${temporary}${boxed_access}_object)'
-				variants: if multi_struct_smartcast { branch_variants.clone() } else { [] }
-				tag_source: '${temporary}${boxed_access}_typ'
+				typ:           smartcast_type + '*'
+				source:        '((${smartcast_type} *)${temporary}${boxed_access}_object)'
+				variants:      if multi_struct_smartcast { branch_variants.clone() } else { [] }
+				tag_source:    '${temporary}${boxed_access}_typ'
 				object_source: '${temporary}${boxed_access}_object'
 			}
 		}
@@ -456,8 +456,7 @@ fn (mut g Parser) read_block_expression_value() !string {
 	if g.tok == .name {
 		prefix := g.lit
 		g.next()
-		final_value := g.read_expression_with_prefix(prefix, [token.Token.semicolon,
-			token.Token.rcbr])!
+		final_value := g.read_expression_with_prefix(prefix, [token.Token.semicolon, token.Token.rcbr])!
 		value = if value.trim_space() in ['', ';'] {
 			final_value
 		} else {

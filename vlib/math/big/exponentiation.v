@@ -10,7 +10,7 @@ struct MontgomeryContext {
 	n     Integer // |modulus|
 	ni    Integer // (R^-1 * R - 1) / n, used by the multiplication-based reduction
 	rr    Integer // R^2 mod n, for conversions into montgomery form
-	n0inv u64 // -n[0]^-1 mod 2^digit_bits, the reduction multiplier
+	n0inv u64     // -n[0]^-1 mod 2^digit_bits, the reduction multiplier
 }
 
 // Switch to the multiplication-based reduction when Integer multiplication starts using
@@ -36,9 +36,9 @@ fn (m Integer) montgomery() MontgomeryContext {
 	}
 
 	return MontgomeryContext{
-		n: n
-		ni: ni
-		rr: one_int.left_shift(r_bits * 2) % n
+		n:     n
+		ni:    ni
+		rr:    one_int.left_shift(r_bits * 2) % n
 		// n * n0inv == -1 (mod base), which is what makes the low digit of
 		// t + m * n vanish during reduction.
 		n0inv: (-mod_inv_digit(n.digits[0])) & max_digit

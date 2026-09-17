@@ -1,14 +1,14 @@
 module main
 
-$if @MOD == 'main' {
+$if 'main' == 'main' {
 	const c1 = 'main'
 } $else {
 	const c1 = 'other'
 }
 
-$if @OS == 'linux' {
+$if 'macos' == 'linux' {
 	const os = 'linux'
-} $else $if @OS == 'windows' {
+} $else $if 'macos' == 'windows' {
 	const os = 'windows'
 } $else {
 	const os = 'other'
@@ -26,7 +26,7 @@ fn test_comptime_if_at_expr() {
 	}
 
 	dump(@FN)
-	$if @FN == 'test_comptime_if_at_expr' {
+	$if 'test_comptime_if_at_expr' == 'test_comptime_if_at_expr' {
 		assert true
 	} $else {
 		assert false

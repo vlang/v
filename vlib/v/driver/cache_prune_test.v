@@ -240,8 +240,8 @@ int v3_unconditional_helper(void) { return 7; }
 	// still emit v3_unconditional_helper and duplicate the owner symbol.
 	assert cache_native_public_include_replays_external_definition(real_header, []string{},
 		map[string]bool{}, {
-		real_header: true
-	}, []string{}, 'cc', pref.host_target())
+			real_header: true
+		}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_native_public_include_keeps_static_definition_private() {
@@ -260,8 +260,8 @@ static int v3_private_helper(void) { return 7; }
 	// cannot collide; splitting stays safe.
 	assert !cache_native_public_include_replays_external_definition(real_header, []string{},
 		map[string]bool{}, {
-		real_header: true
-	}, []string{}, 'cc', pref.host_target())
+			real_header: true
+		}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_native_public_include_falls_back_when_isolated_preprocessing_fails() {
@@ -310,8 +310,8 @@ V3_LOCAL V3MacroStaticType v3_macro_static_make(void) {
 	// the helper recognizes the internal linkage and keeps splitting enabled.
 	assert !cache_native_public_include_replays_external_definition(real_header, []string{},
 		map[string]bool{}, {
-		real_header: true
-	}, []string{}, 'cc', pref.host_target())
+			real_header: true
+		}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_c_flags_without_forced_inputs_drops_forced_files() {

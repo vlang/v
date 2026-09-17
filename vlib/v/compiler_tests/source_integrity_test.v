@@ -15,7 +15,8 @@ fn scan_source_diagnostics(source string) []scanner.Diagnostic {
 	file.index_lines(source)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
-	for s.scan() != .eof {}
+	for s.scan() != .eof {
+	}
 	return s.diagnostics
 }
 

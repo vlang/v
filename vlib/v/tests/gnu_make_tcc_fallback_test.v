@@ -562,9 +562,7 @@ fn assert_fixture_bundle_is_vroot_cwd_sensitive(fixture TccHistoryFixture) {
 	source_path := os.join_path(fixture.tmp_dir, 'wrong-cwd-probe.c')
 	executable_path := os.join_path(fixture.tmp_dir, 'wrong-cwd-probe')
 	os.write_file(source_path, 'int main(void) { return 0; }\n') or { panic(err) }
-	result := os.execute('cd ${os.quoted_path(fixture.tcc_dir)} && ./tcc.exe -I${os.quoted_path(os.join_path(vroot,
-		'thirdparty', 'libgc', 'include'))} -DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_BUILTIN_ATOMIC=1 -o ${os.quoted_path(executable_path)} ${os.quoted_path(source_path)} ${os.quoted_path(os.join_path(fixture.tcc_dir,
-		'lib', 'libgc.a'))} -ldl -lpthread 2>&1')
+	result := os.execute('cd ${os.quoted_path(fixture.tcc_dir)} && ./tcc.exe -I${os.quoted_path(os.join_path(vroot, 'thirdparty', 'libgc', 'include'))} -DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_BUILTIN_ATOMIC=1 -o ${os.quoted_path(executable_path)} ${os.quoted_path(source_path)} ${os.quoted_path(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))} -ldl -lpthread 2>&1')
 	assert result.exit_code != 0, result.output
 	assert result.output.contains('thirdparty/tcc/lib/tcc/include/stddef.h is unavailable'), result.output
 
@@ -773,7 +771,7 @@ fn test_linux_tcc_does_not_evaluate_git_command_during_make_parsing() {
 	make_sentinel := os.join_path(root, 'make-sentinel')
 	git_specs := [
 		'git; touch ${shell_sentinel} #',
-		'git $(shell touch ${make_sentinel})',
+		'git \$(shell touch ${make_sentinel})',
 	]
 	for git_spec in git_specs {
 		result :=
@@ -828,7 +826,7 @@ fn test_linux_missing_or_unsafe_git_preserves_existing_vc() {
 	git_specs := [
 		'v-missing-git-${rand.ulid()}',
 		'git; touch ${sentinel} #',
-		'git $(touch ${sentinel})',
+		'git \$(touch ${sentinel})',
 	]
 	for git_spec in git_specs {
 		result :=
@@ -898,7 +896,7 @@ fn test_linux_tcc_rejects_unsafe_git_command_data() {
 	unsafe_git_specs := [
 		'git; touch ${sentinel}',
 		'git && touch ${sentinel}',
-		'git $(touch ${sentinel})',
+		'git \$(touch ${sentinel})',
 		'git `touch ${sentinel}`',
 		'git > ${sentinel}',
 		'git *',
@@ -906,8 +904,7 @@ fn test_linux_tcc_rejects_unsafe_git_command_data() {
 		'git\\ wrapper',
 		'git\n-c protocol.file.allow=always',
 	]
-	selector_args := '${os.quoted_path(selector_path)} fresh ${os.quoted_path(os.join_path(root,
-		'thirdparty', 'tcc'))} unused amd64 ${os.quoted_path(root)}'
+	selector_args := '${os.quoted_path(selector_path)} fresh ${os.quoted_path(os.join_path(root, 'thirdparty', 'tcc'))} unused amd64 ${os.quoted_path(root)}'
 	for git_spec in unsafe_git_specs {
 		result := os.execute('GIT=${os.quoted_path(git_spec)} bash ${selector_args} 2>&1')
 		assert result.exit_code == 2, '${git_spec}:\n${result.output}'

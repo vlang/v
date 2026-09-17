@@ -368,8 +368,8 @@ fn test_macro_identifiers_referencing_static_helpers() {
 fn test_source_signature_cache_content_requires_stable_metadata() {
 	expected_digest := 'a'.repeat(sha256.size * 2)
 	details := SourceSignatureDetails{
-		signature: 'content-signature'
-		validation: ['env=NAME\tvalue']
+		signature:      'content-signature'
+		validation:     ['env=NAME\tvalue']
 		source_digests: [expected_digest]
 	}
 	if _ := source_signature_cache_content('before', 'after', details) {
@@ -474,9 +474,9 @@ fn test_cached_source_signature_tracks_vml_inputs() {
 	assert literal_candidates.len == 0
 	assert literal_unresolved
 	manager := Manager{
-		dir: os.join_path(root, 'module-cache')
+		dir:     os.join_path(root, 'module-cache')
 		enabled: true
-		salt: 'dynamic-vml-test'
+		salt:    'dynamic-vml-test'
 	}
 	manager.write_header('dynamic_vml', [source], '// generated header')!
 	if _ := manager.valid_header('dynamic_vml', [source]) {
@@ -664,16 +664,16 @@ fn test_vmodhash_changes_cached_source_signature_without_source_edits() {
 
 fn global_qualifier_test_field(mut a flat.FlatAst, name string, type_text string, value string, qualifiers []string) flat.NodeId {
 	literal := a.add_node(flat.Node{
-		kind: .int_literal
+		kind:  .int_literal
 		value: value
 	})
 	start := a.children.len
 	a.children << literal
 	return a.add_node(flat.Node{
-		kind: .field_decl
-		value: name
-		typ: type_text
-		payload: flat.node_payload(qualifiers)
+		kind:           .field_decl
+		value:          name
+		typ:            type_text
+		payload:        flat.node_payload(qualifiers)
 		children_start: i32(start)
 		children_count: flat.child_count(1)
 	})
@@ -694,7 +694,7 @@ fn test_cached_global_text_round_trips_qualifiers() {
 	start := a.children.len
 	a.children << fields
 	node_id := a.add_node(flat.Node{
-		kind: .global_decl
+		kind:           .global_decl
 		children_start: i32(start)
 		children_count: flat.child_count(fields.len)
 	})

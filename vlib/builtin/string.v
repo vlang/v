@@ -372,6 +372,7 @@ pub fn (s string) replace_once(rep string, with string) string {
 }
 
 const replace_stack_buffer_size = 10
+
 // replace replaces all occurrences of `rep` with the string passed in `with`.
 @[direct_array_access; manualfree]
 pub fn (s string) replace(rep string, with string) string {

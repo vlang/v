@@ -200,7 +200,7 @@ mut:
 	sym_to_got map[string]int
 
 	// Multi-dylib support: dylib paths and per-symbol ordinal mapping
-	dylibs       []string // ['/usr/lib/libSystem.B.dylib', '/usr/lib/libobjc.A.dylib', ...]
+	dylibs       []string       // ['/usr/lib/libSystem.B.dylib', '/usr/lib/libobjc.A.dylib', ...]
 	sym_to_dylib map[string]int // symbol name → index into dylibs[] (ordinal = idx + 1)
 
 	// Code start offset (after header + load commands)
@@ -211,12 +211,12 @@ mut:
 pub fn Linker.new(macho &MachOObject) &Linker {
 	return unsafe {
 		&Linker{
-			macho: macho
-			frameworks: []string{}
-			buf: []u8{}
-			extern_syms: []string{}
-			sym_to_got: map[string]int{}
-			dylibs: []string{}
+			macho:        macho
+			frameworks:   []string{}
+			buf:          []u8{}
+			extern_syms:  []string{}
+			sym_to_got:   map[string]int{}
+			dylibs:       []string{}
 			sym_to_dylib: map[string]int{}
 		}
 	}

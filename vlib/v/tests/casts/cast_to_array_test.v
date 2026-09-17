@@ -21,7 +21,7 @@ fn test_cast_to_fixed_array() {
 }
 
 fn test_cast_to_array() {
-	mut x := Str{len: 3}
+	mut x := Str{ len: 3 }
 	x[0] = 10
 	x[1] = 20
 	x[2] = 30

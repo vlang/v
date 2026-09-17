@@ -206,7 +206,7 @@ fn test_v3_parallel_cc_falls_back_for_coverage_and_profile_state() {
 				counter_files := os.walk_ext(state_path, '.csv')
 				assert counter_files.len > 0, 'missing coverage counters in ${state_path}: ${os.walk_ext(root, '')}'
 				counter_data := os.read_file(counter_files[0])!
-				assert counter_data.split_into_lines().any(it.len > 0 && it[0].is_digit())
+				assert counter_data.split_into_lines().any(it.len > 0 && it[0].is_hex_digit())
 			} else {
 				assert os.is_file(state_path)
 				assert os.file_size(state_path) > 0

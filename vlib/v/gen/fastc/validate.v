@@ -733,8 +733,8 @@ fn (g &Parser) interface_implementation_field(actual_type string, actual_key str
 	}
 	field := g.struct_field_metadata(actual_type, field_name) or { return none }
 	return FastcInterfaceField{
-		name: field.name
-		typ: field.typ
+		name:       field.name
+		typ:        field.typ
 		is_mutable: field.is_mutable
 	}
 }
@@ -923,9 +923,9 @@ fn (g &Parser) struct_field_metadata_impl(receiver_type string, field_name strin
 	direct_type := g.struct_direct_member_type(receiver_type, field_name)
 	if direct_type != '' {
 		return FastcStructField{
-			name: field_name
-			typ: direct_type
-			is_public: true
+			name:       field_name
+			typ:        direct_type
+			is_public:  true
 			is_mutable: true
 		}
 	}
@@ -1176,7 +1176,7 @@ fn (g &Parser) validate_fixed_array_struct_field_length(c_type string, field Fas
 		for item in items {
 			nested_field := FastcStructField{
 				name: field.name
-				typ: element_type
+				typ:  element_type
 			}
 			g.validate_fixed_array_struct_field_length(c_type, nested_field, item)!
 		}

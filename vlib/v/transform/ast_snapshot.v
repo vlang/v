@@ -37,7 +37,7 @@ fn (t &Transformer) snapshot_ast_base(base_nodes int, base_children int) ?(&flat
 		children.flags = .nofree
 	}
 	return t.ast_base_clone_with_storage(nodes, children), TransformCloneStorage{
-		nodes: node_snapshot
+		nodes:    node_snapshot
 		children: child_snapshot
 	}
 }

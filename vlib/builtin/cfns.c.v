@@ -96,6 +96,7 @@ fn C.sscanf(str &char, const_format &char, opt ...voidptr) i32
 fn C.scanf(const_format &char, opt ...voidptr) i32
 
 fn C.puts(msg &char) i32
+
 @[trusted]
 fn C.abs(f64) f64
 
@@ -132,13 +133,16 @@ fn C.strstr(const_haystack &char, const_needle &char) &char
 // process execution, os.process:
 @[trusted]
 fn C.GetCurrentProcessId() u32
+
 @[trusted]
 fn C._getpid() i32
+
 @[trusted]
 fn C.getpid() i32
 
 @[trusted]
 fn C.GetCurrentThreadId() u32
+
 @[trusted]
 fn C.gettid() u32
 

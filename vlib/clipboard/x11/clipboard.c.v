@@ -12,6 +12,7 @@ $if freebsd {
 	#flag -I/usr/X11R6/include
 	#flag -L/usr/X11R6/lib
 }
+
 #flag -lX11
 
 // Include X11 headers BEFORE any type definitions to avoid incomplete type errors
@@ -42,7 +43,7 @@ pub mut:
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]
@@ -61,7 +62,7 @@ pub mut:
 	selection Atom
 	target    Atom
 	property  Atom
-	time      int
+	time      Time
 }
 
 @[typedef]
@@ -141,8 +142,8 @@ pub mut:
 	xselection        C.XSelectionEvent
 }
 
-const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING',
-	'text/plain', 'text/html']
+const atom_names = ['TARGETS', 'CLIPBOARD', 'PRIMARY', 'SECONDARY', 'TEXT', 'UTF8_STRING', 'text/plain',
+	'text/html']
 const atom_types = [AtomType.targets, .clipboard, .primary, .secondary, .text, .utf8_string,
 	.text_plain, .text_html]
 

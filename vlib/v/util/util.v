@@ -254,11 +254,11 @@ pub mut:
 // new_suggestion creates a diagnostic suggestion from wanted and possibilities.
 pub fn new_suggestion(wanted string, possibilities []string, params SuggestionParams) Suggestion {
 	mut suggestion := Suggestion{
-		known: []Possibility{cap: int(max_suggestions_limit)}
-		wanted: wanted
-		swanted: short_module_name(wanted)
+		known:                []Possibility{cap: int(max_suggestions_limit)}
+		wanted:               wanted
+		swanted:              short_module_name(wanted)
 		similarity_threshold: params.similarity_threshold
-		similarity_fn: params.similarity_fn
+		similarity_fn:        params.similarity_fn
 	}
 	suggestion.add_many(possibilities)
 	suggestion.sort()
@@ -277,8 +277,8 @@ fn (mut s Suggestion) add(value string) {
 	}
 	similarity := f32(int(s.similarity_fn(s.swanted, short_value) * 1000)) / 1000
 	s.known << Possibility{
-		value: value
-		svalue: short_value
+		value:      value
+		svalue:     short_value
 		similarity: similarity
 	}
 }

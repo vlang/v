@@ -479,11 +479,11 @@ fn (mut t Transformer) make_interface_conversion_init(iface string, fields []fla
 		t.a.children << field
 	}
 	return t.a.add_node(flat.Node{
-		kind: .struct_init
+		kind:           .struct_init
 		children_start: start
 		children_count: flat.child_count(fields.len)
-		value: iface
-		typ: iface
+		value:          iface
+		typ:            iface
 	})
 }
 
@@ -541,7 +541,7 @@ fn (mut t Transformer) interface_conversion_impl_mappings(source_iface string, t
 			t.interface_impl_type_id(target_iface, impl) or { continue }
 		}
 		result << InterfaceImplMapping{
-			impl: impl
+			impl:      impl
 			source_id: source_id
 			target_id: target_id
 		}
@@ -621,13 +621,13 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	t.a.children << literal
 	ptr_type := if target_type.len > 0 { target_type } else { '&${iface_name}' }
 	return t.a.add_node(flat.Node{
-		kind: .prefix
-		op: .amp
+		kind:           .prefix
+		op:             .amp
 		children_start: start
 		children_count: 1
-		pos: node.pos
-		value: node.value
-		typ: ptr_type
+		pos:            node.pos
+		value:          node.value
+		typ:            ptr_type
 	})
 }
 
@@ -688,10 +688,10 @@ fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, val
 	t.a.children << then_block
 	t.a.children << else_block
 	return t.a.add_node(flat.Node{
-		kind: .if_expr
+		kind:           .if_expr
 		children_start: start
 		children_count: 3
-		typ: field_type
+		typ:            field_type
 	})
 }
 
@@ -845,11 +845,11 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		t.a.children << field_id
 	}
 	return t.a.add_node(flat.Node{
-		kind: .struct_init
+		kind:           .struct_init
 		children_start: start
 		children_count: flat.child_count(field_ids.len)
-		value: iface_name
-		typ: iface_name
+		value:          iface_name
+		typ:            iface_name
 	})
 }
 
@@ -958,13 +958,13 @@ fn (mut t Transformer) transform_interface_cast(id flat.NodeId, node flat.Node) 
 		t.a.children << nc
 	}
 	return t.a.add_node(flat.Node{
-		kind: node.kind
-		op: node.op
+		kind:           node.kind
+		op:             node.op
 		children_start: start
 		children_count: node.children_count
-		pos: node.pos
-		value: node.value
-		typ: node.typ
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
 	})
 }
 

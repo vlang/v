@@ -142,8 +142,7 @@ fn test_sum_type_array_with_single_struct_variant() {
 
 	assert json.decode[[]Elem1]('[0, {"a":"b"}, 2]')! == [Elem1(0), Elem1(Empty1{
 		a: 'b'
-	}),
-		Elem1(2)]
+	}), Elem1(2)]
 }
 
 fn test_sum_type_mixed() {

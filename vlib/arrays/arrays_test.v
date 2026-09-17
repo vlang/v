@@ -177,8 +177,7 @@ fn test_chunk_while() {
 fn test_window() {
 	x := [1, 2, 3, 4, 5, 6]
 
-	assert window[int](x, size: 3) == [[1, 2, 3], [2, 3, 4], [3, 4, 5],
-		[4, 5, 6]]
+	assert window[int](x, size: 3) == [[1, 2, 3], [2, 3, 4], [3, 4, 5], [4, 5, 6]]
 	assert window[int](x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
 	assert window[int]([]int{}, size: 2) == [][]int{}
 	assert window([1, 2, 3], size: 2, step: 0) == [][]int{}
@@ -371,19 +370,15 @@ struct Abc {
 }
 
 fn test_rotate_right_struct() {
-	mut x := [Abc{1, 0, 1}, Abc{2, 0, 1}, Abc{3, 0, 1}, Abc{4, 0, 1},
-		Abc{5, 0, 1}, Abc{6, 0, 1}]
+	mut x := [Abc{1, 0, 1}, Abc{2, 0, 1}, Abc{3, 0, 1}, Abc{4, 0, 1}, Abc{5, 0, 1}, Abc{6, 0, 1}]
 	rotate_right(mut x, 2)
-	assert x == [Abc{5, 0, 1}, Abc{6, 0, 1}, Abc{1, 0, 1}, Abc{2, 0, 1},
-		Abc{3, 0, 1}, Abc{4, 0, 1}]
+	assert x == [Abc{5, 0, 1}, Abc{6, 0, 1}, Abc{1, 0, 1}, Abc{2, 0, 1}, Abc{3, 0, 1}, Abc{4, 0, 1}]
 }
 
 fn test_rotate_left_struct() {
-	mut x := [Abc{1, 0, 1}, Abc{2, 0, 1}, Abc{3, 0, 1}, Abc{4, 0, 1},
-		Abc{5, 0, 1}, Abc{6, 0, 1}]
+	mut x := [Abc{1, 0, 1}, Abc{2, 0, 1}, Abc{3, 0, 1}, Abc{4, 0, 1}, Abc{5, 0, 1}, Abc{6, 0, 1}]
 	rotate_left(mut x, 2)
-	assert x == [Abc{3, 0, 1}, Abc{4, 0, 1}, Abc{5, 0, 1}, Abc{6, 0, 1},
-		Abc{1, 0, 1}, Abc{2, 0, 1}]
+	assert x == [Abc{3, 0, 1}, Abc{4, 0, 1}, Abc{5, 0, 1}, Abc{6, 0, 1}, Abc{1, 0, 1}, Abc{2, 0, 1}]
 }
 
 fn test_rotate_right_string() {
@@ -507,8 +502,7 @@ struct FindTest {
 	age  int
 }
 
-const test_structs = [FindTest{'one', 1}, FindTest{'two', 2},
-	FindTest{'three', 3}, FindTest{'one', 4}]
+const test_structs = [FindTest{'one', 1}, FindTest{'two', 2}, FindTest{'three', 3}, FindTest{'one', 4}]
 
 fn test_find_first() {
 	// element in array

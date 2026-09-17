@@ -15,9 +15,9 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	scope := helper.merge_scratch_scope
 	helper.used_fns['main.generated'.clone()] = true
 	helper.sum_eq_types['main.Sum'.clone()] = SumEqRequest{
-		sum_name: 'main.Sum'.clone()
-		module: 'main'.clone()
-		file: 'main.v'.clone()
+		sum_name:      'main.Sum'.clone()
+		module:        'main'.clone()
+		file:          'main.v'.clone()
 		helper_module: 'main'.clone()
 	}
 	text := helper.promote_scoped_result_text('main.resolved'.clone())
@@ -25,7 +25,7 @@ fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	helper.tc.fork_overlay.resolved_call_names[10] = text
 	helper.generic_call_spec_cache[12] = GenericCallSpec{
 		decl_key: 'main.generic'.clone()
-		args: ['[]int'.clone()]
+		args:     ['[]int'.clone()]
 	}
 	transform_worker_scope_leave(scope)
 	master.merge_worker_used_fns(helper)

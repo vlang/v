@@ -1633,7 +1633,8 @@ fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) b
 		return false
 	}
 	match typ {
-		types.String, types.Array, types.Map, types.Interface, types.OptionType, types.ResultType, types.SumType {
+		types.String, types.Array, types.Map, types.Interface, types.OptionType, types.ResultType,
+		types.SumType {
 			return true
 		}
 		types.Alias {

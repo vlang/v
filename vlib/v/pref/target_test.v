@@ -250,8 +250,8 @@ fn test_termux_source_selection_keeps_android_common_files_distinct() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	for name in ['platform_default.c.v', 'platform_android.c.v',
-		'platform_android_outside_termux.c.v', 'platform_termux.c.v'] {
+	for name in ['platform_default.c.v', 'platform_android.c.v', 'platform_android_outside_termux.c.v',
+		'platform_termux.c.v'] {
 		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
 	}
 

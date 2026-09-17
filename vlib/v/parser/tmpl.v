@@ -18,9 +18,9 @@ import v.token
 
 enum TmplState {
 	simple // no special interpretation of tags
-	html // default, only when the template extension is .html
-	css // <style>
-	js // <script>
+	html   // default, only when the template extension is .html
+	css    // <style>
+	js     // <script>
 }
 
 fn (mut state TmplState) update(line string) {
@@ -562,8 +562,8 @@ fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
 	}
 	if remainder.ends_with('{') {
 		return TmplControlLine{
-			header: remainder[..remainder.len - 1].trim_space()
-			prefix: line[..pos]
+			header:            remainder[..remainder.len - 1].trim_space()
+			prefix:            line[..pos]
 			opens_brace_block: true
 		}
 	}
@@ -586,11 +586,11 @@ fn parse_tmpl_control_line(line string, directive string) TmplControlLine {
 		}
 	}
 	return TmplControlLine{
-		header: remainder[..open_pos].trim_space()
-		inline_body: remainder[open_pos + 1..close_pos].trim_space()
-		prefix: line[..pos]
-		has_inline_body: open_pos + 1 < close_pos
-		opens_brace_block: true
+		header:              remainder[..open_pos].trim_space()
+		inline_body:         remainder[open_pos + 1..close_pos].trim_space()
+		prefix:              line[..pos]
+		has_inline_body:     open_pos + 1 < close_pos
+		opens_brace_block:   true
 		closes_inline_block: true
 	}
 }
@@ -607,8 +607,8 @@ fn parse_tmpl_else_line(line string) TmplControlLine {
 	if remainder.ends_with('{') {
 		suffix := remainder[..remainder.len - 1].trim_space()
 		return TmplControlLine{
-			header: if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
-			prefix: line[..pos]
+			header:            if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
+			prefix:            line[..pos]
 			opens_brace_block: true
 		}
 	}
@@ -632,11 +632,11 @@ fn parse_tmpl_else_line(line string) TmplControlLine {
 	}
 	suffix := remainder[..open_pos].trim_space()
 	return TmplControlLine{
-		header: if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
-		inline_body: remainder[open_pos + 1..close_pos].trim_space()
-		prefix: line[..pos]
-		has_inline_body: open_pos + 1 < close_pos
-		opens_brace_block: true
+		header:              if suffix.len == 0 { 'else' } else { 'else ${suffix}' }
+		inline_body:         remainder[open_pos + 1..close_pos].trim_space()
+		prefix:              line[..pos]
+		has_inline_body:     open_pos + 1 < close_pos
+		opens_brace_block:   true
 		closes_inline_block: true
 	}
 }
@@ -646,60 +646,60 @@ fn template_control_source_map(line string) ?TemplateControlSourceMap {
 		control := parse_tmpl_control_line(line, '@if')
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
-			generated: 'if ${control.header} {'
-			inline_plain: if control.has_inline_body {
+			generated:        'if ${control.header} {'
+			inline_plain:     if control.has_inline_body {
 				tmpl_line_content(inline_source, false)
 			} else {
 				''
 			}
-			inline_escaped: if control.has_inline_body {
+			inline_escaped:   if control.has_inline_body {
 				tmpl_line_content(inline_source, true)
 			} else {
 				''
 			}
-			column_delta: pos + 1
+			column_delta:     pos + 1
 			directive_offset: pos
-			has_inline_body: control.has_inline_body
+			has_inline_body:  control.has_inline_body
 		}
 	}
 	if pos := tmpl_directive_pos(line, '@for', []) {
 		control := parse_tmpl_control_line(line, '@for')
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
-			generated: 'for ${control.header} {'
-			inline_plain: if control.has_inline_body {
+			generated:        'for ${control.header} {'
+			inline_plain:     if control.has_inline_body {
 				tmpl_line_content(inline_source, false)
 			} else {
 				''
 			}
-			inline_escaped: if control.has_inline_body {
+			inline_escaped:   if control.has_inline_body {
 				tmpl_line_content(inline_source, true)
 			} else {
 				''
 			}
-			column_delta: pos + 1
+			column_delta:     pos + 1
 			directive_offset: pos
-			has_inline_body: control.has_inline_body
+			has_inline_body:  control.has_inline_body
 		}
 	}
 	if pos := tmpl_directive_pos(line, '@else', []) {
 		control := parse_tmpl_else_line(line)
 		inline_source := control.prefix + control.inline_body
 		return TemplateControlSourceMap{
-			generated: '} ${control.header} {'
-			inline_plain: if control.has_inline_body {
+			generated:        '} ${control.header} {'
+			inline_plain:     if control.has_inline_body {
 				tmpl_line_content(inline_source, false)
 			} else {
 				''
 			}
-			inline_escaped: if control.has_inline_body {
+			inline_escaped:   if control.has_inline_body {
 				tmpl_line_content(inline_source, true)
 			} else {
 				''
 			}
-			column_delta: pos - 1
+			column_delta:     pos - 1
 			directive_offset: pos
-			has_inline_body: control.has_inline_body
+			has_inline_body:  control.has_inline_body
 		}
 	}
 	return none
@@ -1153,10 +1153,10 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	path := p.resolve_veb_template_path(is_html, arg)
 	p.has_veb_template = true
 	return p.add_node(flat.Node{
-		kind: .veb_template
+		kind:  .veb_template
 		value: path
-		typ: if is_html { 'html' } else { 'tmpl' }
-		pos: p.span_to(call_start)
+		typ:   if is_html { 'html' } else { 'tmpl' }
+		pos:   p.span_to(call_start)
 	})
 }
 
@@ -1358,9 +1358,9 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		p.a.template_call_sites[template_id] = token.new_pos(call_pos.id, call_pos.offset)
 		p.a.template_actions[template_id] = action
 		registered_sources[path] = RegisteredTemplateSource{
-			file: template_file
+			file:  template_file
 			lines: source.split_into_lines()
-			id: template_id
+			id:    template_id
 		}
 	}
 
@@ -1438,9 +1438,9 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 		mapped := template_mapped_pos(registered.file, registered.lines, source_line.line, generated_lines[line_index], generated_position.column, diagnostic.pos.end - diagnostic.pos.offset, registered.id, control_map[line_index], control_column_delta[line_index], interpolation_skip_offset[line_index])
 		p.diagnostics[index] = Diagnostic{
 			...diagnostic
-			file: source_line.path
-			pos: mapped
-			line: source_line.line
+			file:   source_line.path
+			pos:    mapped
+			line:   source_line.line
 			column: generated_position.column
 		}
 	}
@@ -1463,10 +1463,10 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 				continue
 			}
 			p.append_diagnostic(Diagnostic{
-				file: source_line.path
-				pos: pos
-				line: source_line.line
-				column: 30
+				file:    source_line.path
+				pos:     pos
+				line:    source_line.line
+				column:  30
 				message: message
 			})
 		}

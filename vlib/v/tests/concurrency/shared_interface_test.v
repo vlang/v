@@ -70,7 +70,8 @@ fn test_shared_interface_lock_blocks_the_original_shared_value() {
 			_ := <-done {
 				assert false, 'shared interface value was modified before the field lock was released'
 			}
-			20 * time.millisecond {}
+			20 * time.millisecond {
+			}
 		}
 		assert s.fooer.foo() == 'Hello World 6!'
 	}

@@ -156,7 +156,7 @@ pub fn (mut c Client) send(config Mail) ! {
 	}
 	mail := Mail{
 		...config
-		from: from
+		from:     from
 		boundary: rand.uuid_v4()
 	}
 	c.send_body(mail) or {
@@ -671,10 +671,10 @@ fn format_rfc2047_phrase(s string) ?string {
 		if !word.quoted && is_rfc2047_encoded_word(word.raw) {
 			has_encoded_word = true
 			formatted << Rfc2047PhraseWord{
-				value: word.raw
-				semantic: word.raw
+				value:     word.raw
+				semantic:  word.raw
 				separated: word.separated
-				encoded: true
+				encoded:   true
 			}
 			continue
 		}
@@ -685,16 +685,16 @@ fn format_rfc2047_phrase(s string) ?string {
 			}
 			formatted << if unquoted.is_ascii() {
 				Rfc2047PhraseWord{
-					value: word.raw
-					semantic: unquoted
+					value:     word.raw
+					semantic:  unquoted
 					separated: word.separated
 				}
 			} else {
 				Rfc2047PhraseWord{
-					value: encode_rfc2047(unquoted)
-					semantic: unquoted
+					value:     encode_rfc2047(unquoted)
+					semantic:  unquoted
 					separated: word.separated
-					encoded: true
+					encoded:   true
 					generated: true
 				}
 			}
@@ -702,10 +702,10 @@ fn format_rfc2047_phrase(s string) ?string {
 		}
 		if !word.raw.is_ascii() {
 			formatted << Rfc2047PhraseWord{
-				value: encode_rfc2047(word.raw)
-				semantic: word.raw
+				value:     encode_rfc2047(word.raw)
+				semantic:  word.raw
 				separated: word.separated
-				encoded: true
+				encoded:   true
 				generated: true
 			}
 			continue
@@ -714,8 +714,8 @@ fn format_rfc2047_phrase(s string) ?string {
 			return none
 		}
 		formatted << Rfc2047PhraseWord{
-			value: word.raw
-			semantic: word.raw
+			value:     word.raw
+			semantic:  word.raw
 			separated: word.separated
 		}
 	}
@@ -787,9 +787,9 @@ fn split_rfc5322_phrase_words(s string) ?[]Rfc5322PhraseWord {
 			}
 		}
 		words << Rfc5322PhraseWord{
-			raw: s[start..i]
+			raw:       s[start..i]
 			separated: words.len > 0 && separated
-			quoted: quoted
+			quoted:    quoted
 		}
 	}
 	return words
@@ -843,8 +843,8 @@ fn is_rfc2047_encoded_word(word string) bool {
 }
 
 fn is_rfc5322_atext(ch u8) bool {
-	return ch.is_alnum() || ch in [`!`, `#`, `$`, `%`, `&`, `'`, `*`, `+`, `-`, `/`, `=`, `?`, `^`,
-		`_`, `\``, `{`, `|`, `}`, `~`]
+	return ch.is_alnum() || ch in [`!`, `#`, `$`, `%`, `&`, `'`, `*`, `+`, `-`, `/`, `=`, `?`,
+		`^`, `_`, `\``, `{`, `|`, `}`, `~`]
 }
 
 // encode_rfc2047 encodes s as one or more RFC 2047 encoded-words
@@ -889,14 +889,14 @@ fn (cfg &Mail) mime_parts() ([]MimePart, []Attachment) {
 		if cfg.text.body != '' {
 			parts << MimePart{
 				body_type: .text
-				body: cfg.text.body
+				body:      cfg.text.body
 			}
 		}
 		attachments << cfg.text.attachments
 		if cfg.html.body != '' {
 			parts << MimePart{
 				body_type: .html
-				body: cfg.html.body
+				body:      cfg.html.body
 			}
 		}
 		attachments << cfg.html.attachments
@@ -904,7 +904,7 @@ fn (cfg &Mail) mime_parts() ([]MimePart, []Attachment) {
 	}
 	return [MimePart{
 		body_type: cfg.body_type
-		body: cfg.body
+		body:      cfg.body
 	}], cfg.attachments
 }
 

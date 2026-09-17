@@ -70,7 +70,7 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 		process.run()
 		compiles << FastcUnitCompile{
 			process: process
-			object: object
+			object:  object
 		}
 	}
 	mut failure := ''

@@ -2,7 +2,7 @@ import toml
 
 struct TestStruct {
 	foo int
-	bar bool   @[skip]
+	bar bool @[skip]
 	baz string = 'def' @[toml: barbaz]
 }
 

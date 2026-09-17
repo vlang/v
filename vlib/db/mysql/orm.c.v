@@ -50,7 +50,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 				data_pointers << &u8(unsafe { nil })
 			}
 			else {
-				return error('\'${unsafe { FieldType(field.type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
+				return error("'${unsafe { FieldType(field.type) }}' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new")
 			}
 		}
 	}
@@ -405,11 +405,13 @@ fn data_pointers_to_primitives(is_null []C.v_mysql_bool, data_pointers []&u8, ty
 					primitive = *(unsafe { &i16(data) })
 				}
 				orm.type_idx['int'] {
-					$if new_int ? && x64 {
+					$if new_int ?&& x64 {
 						primitive = match field_types[i] {
 							.type_long { orm.Primitive(int(*(unsafe { &i32(data) }))) }
 							.type_longlong { orm.Primitive(int(*(unsafe { &i64(data) }))) }
-							else { return error('Unsupported MySQL field type ${field_types[i]} for V int') }
+							else {
+								return error('Unsupported MySQL field type ${field_types[i]} for V int')
+							}
 						}
 					} $else {
 						primitive = *(unsafe { &int(data) })
@@ -533,7 +535,7 @@ fn mysql_type_from_v(typ int) !string {
 			'SMALLINT'
 		}
 		orm.type_idx['int'] {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'BIGINT'
 			} $else {
 				'INT'

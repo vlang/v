@@ -3,6 +3,7 @@ module main
 import gpu.agx.power
 
 fn C.consume_order(u32, &char, u64, int) int
+fn C.consume_name(&char)
 
 struct Segment {
 	flags u32
@@ -28,7 +29,7 @@ fn ordering(name string, input u32) int {
 }
 
 fn fixed_receiver() bool {
-	segments := [Segment{flags: 1}, Segment{flags: 0}]!
+	segments := [Segment{ flags: 1 }, Segment{ flags: 0 }]!
 	return segments[0].is_writable() || segments[1].is_writable()
 }
 
@@ -37,6 +38,12 @@ fn release(pointer voidptr) {
 }
 
 fn main() {
+	names := {
+		'kernel': 1
+	}
+	for name, _ in names {
+		C.consume_name(name.str)
+	}
 	mut value := u64(1)
 	mut pointer := &value
 	_ = read_slot(mut pointer)
