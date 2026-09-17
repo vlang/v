@@ -49,9 +49,15 @@ fn write_parallel_failure_source() string {
 fn generate_parallel_failure_c(v3_bin string, source string, stage string) string {
 	out := os.join_path(os.temp_dir(),
 		'v3_parallel_failure_${stage}_${os.getpid()}_${rand.ulid()}.c')
-	env := if stage.len > 0 { 'V3_TEST_PTHREAD_CREATE_FAIL=${stage}:all ' } else { '' }
+	// Environment is inherited by the child; a `VAR=value` prefix is not portable.
+	if stage.len > 0 {
+		os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', '${stage}:all', true)
+	} else {
+		os.unsetenv('V3_TEST_PTHREAD_CREATE_FAIL')
+	}
+	os.setenv('VJOBS', '4', true)
 	result :=
-		os.execute('${env}VJOBS=4 ${os.quoted_path(v3_bin)} -silent ${os.quoted_path(source)} -o ${os.quoted_path(out)}')
+		os.execute('${os.quoted_path(v3_bin)} -silent ${os.quoted_path(source)} -o ${os.quoted_path(out)}')
 	assert result.exit_code == 0, '${stage}: ${result.output}'
 	return os.read_file(out) or { panic(err) }
 }
@@ -59,13 +65,11 @@ fn generate_parallel_failure_c(v3_bin string, source string, stage string) strin
 // test_parallel_worker_launch_failures_fall_back_synchronously verifies that
 // every compiler phase produces the same output when all helper launches fail.
 fn test_parallel_worker_launch_failures_fall_back_synchronously() {
-	$if !windows {
-		v3_bin := build_parallel_failure_v3()
-		source := write_parallel_failure_source()
-		baseline := generate_parallel_failure_c(v3_bin, source, '')
-		for stage in ['checker', 'transform', 'markused', 'cgen'] {
-			got := generate_parallel_failure_c(v3_bin, source, stage)
-			assert got == baseline, '${stage} fallback changed generated C'
-		}
+	v3_bin := build_parallel_failure_v3()
+	source := write_parallel_failure_source()
+	baseline := generate_parallel_failure_c(v3_bin, source, '')
+	for stage in ['checker', 'transform', 'markused', 'cgen'] {
+		got := generate_parallel_failure_c(v3_bin, source, stage)
+		assert got == baseline, '${stage} fallback changed generated C'
 	}
 }
