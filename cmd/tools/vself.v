@@ -387,10 +387,10 @@ fn has_profile_cflag(args []string) bool {
 				if next_arg.contains('-fprofile') {
 					return true
 				}
-			skip_next = true
+				skip_next = true
+			}
+			continue
 		}
-		continue
-	}
 		if (arg.starts_with('-cflags=') || arg.starts_with('-cf=')) && arg.contains('-fprofile') {
 			return true
 		}
