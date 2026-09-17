@@ -38,22 +38,21 @@ Written for AI coding agents; useful for humans too.
 Get operational from the repo root in three steps:
 
 1. Build once (only if `./v` is missing): `make`
-2. Build a working compiler:
-   * Debug-friendly (recommended): `./v -g -keepc -o ./vnew cmd/v`
-3. Use `./vnew` for everything:
-   * Run a file: `./vnew run examples/hello_world.v`
-   * Run tests: `./vnew -silent test vlib/v/`
-   * Format: `./vnew fmt -w path/to/file.v`
+2. Rebuild the working compiler in place: `./v self`
+3. Use `./v` for everything:
+   * Run a file: `./v run examples/hello_world.v`
+   * Run tests: `./v -silent test vlib/v/`
+   * Format: `./v fmt -w path/to/file.v`
 
 Then read Top Rules and Agent Rules before making changes.
 
 ## Top Rules
-* Use `./v` only to build `./vnew`; use `./vnew` for everything else.
-* Put all V flags immediately after `./vnew` and before the
-  subcommand/file, e.g. `./vnew -g run file.v`
-  (not `./vnew run file.v -g`); flags after the subcommand are passed
+* Use `./v` for building, running, and testing.
+* Put all V flags immediately after `./v` and before the
+  subcommand/file, e.g. `./v -g run file.v`
+  (not `./v run file.v -g`); flags after the subcommand are passed
   to that subcommand.
-* Rebuild `./vnew` after compiler or core module changes
+* Rebuild `./v` after compiler or core module changes
   (see Build & Rebuild).
 * Run the smallest relevant tests; see Testing for triggers and
   minimums.
@@ -135,16 +134,15 @@ subdir.
   summary.
 
 ### New files and deeper guidance
-* New file checklist: format with `./vnew fmt -w`, add doc comments for
-  any public functions, run `./vnew check-md` for markdown files, and
+* New file checklist: format with `./v fmt -w`, add doc comments for
+  any public functions, run `./v check-md` for markdown files, and
   keep Markdown lines <= 100 chars. Add or update tests when introducing
   a new public API.
 * For deeper edge cases, consult `CONTRIBUTING.md` and `TESTS.md`.
 
-## Safety (Do Not Brick the Repo)
-* Do not overwrite the working `./v` binary.
-  * Never run `./v self` without `-o`.
-  * Build with `./v -o ./vnew cmd/v`, then use `./vnew` for all checks.
+## Safety (Keep the Compiler Current)
+* Rebuild the working `./v` binary in place with `./v self` after compiler
+  changes. Overwriting `./v` is the intended workflow.
 * Keep generated C when debugging backend issues: add `-keepc`.
 * Avoid hidden/bidirectional Unicode characters in source/markdown
   files.
@@ -156,13 +154,11 @@ subdir.
   Do not stash unless explicitly instructed or the compiler is bricked.
 
 ## Divergences From Repo Docs
-The repo docs use `v` in examples. In this environment:
-* Use `./v -g -keepc -o ./vnew cmd/v` instead of `v self`.
-* Use `./vnew` for all builds, runs, and tests.
+The repo docs use `v` in examples. In this environment, use `./v` for all
+builds, runs, tests, and in-place self-rebuilds.
 * `TESTS.md` suggests `v test-all` before PRs; ask before running
-  `./vnew test-all`.
-These overrides exist to keep agent workflows reproducible and to avoid
-breaking the bootstrap compiler.
+  `./v test-all`.
+These overrides keep commands anchored to this checkout.
 
 ## Quick Decisions
 * For rebuild and test choices, follow Build & Rebuild and Testing.
@@ -172,7 +168,7 @@ breaking the bootstrap compiler.
 ### Compact decision table (rebuild/tests)
 Use this table to pick the minimum rebuild/tests quickly. See Build &
 Rebuild and Testing for full details and edge cases.
-Commands omit `./vnew` for brevity; assume the `./vnew` prefix.
+Commands omit `./v` for brevity; assume the `./v` prefix.
 This table is the minimum set; check Testing for additional triggers.
 REPL and backend changes have additional triggers in Testing.
 Note: `cmd/v/` is compiler scope; treat changes there as compiler
@@ -194,12 +190,12 @@ If you read only one section for tests, **read Testing**.
 | C codegen (`vlib/v/gen/c/`) | Yes | `test vlib/v/gen/c/` |
 
 ## Common Workflow
-0. Before work: `git status`; ensure `./vnew` exists; rebuild if needed.
-   If `./vnew` is missing, see Quick Start or Build & Rebuild.
+0. Before work: `git status`; ensure `./v` exists; rebuild if needed.
+   If `./v` is missing, see Quick Start or Build & Rebuild.
 1. Edit the relevant files.
-2. If compiler sources or core modules changed, rebuild `./vnew` with
-   `./v -g -keepc -o ./vnew cmd/v` (see Build & Rebuild).
-3. Format touched `.v`/`.vsh` files and run `./vnew check-md` on
+2. If compiler sources or core modules changed, rebuild `./v` with `./v self`
+   (see Build & Rebuild).
+3. Format touched `.v`/`.vsh` files and run `./v check-md` on
    touched markdown.
 4. Run the smallest relevant tests for the change scope (see Testing).
 
@@ -230,7 +226,7 @@ See Build & Rebuild for rebuild triggers and flags.
   docs.
 * Acceptable reasons for not running tests: docs-only change, no
   relevant tests, or environment constraints. Be specific.
-* Docs-only changes: run `./vnew check-md file.md`; no other tests
+* Docs-only changes: run `./v check-md file.md`; no other tests
   required unless a test explicitly reads those docs.
   No rebuild is needed unless compiler or core modules changed.
 * For docs-only, explicitly mention `check-md` in the summary.
@@ -253,20 +249,18 @@ See Build & Rebuild for rebuild triggers and flags.
 ## Build & Rebuild
 * Initial build (only if `./v` is missing): `make`
   (Windows: `makev.bat`).
-* Build `./vnew` (debug-friendly, recommended for agent workflows):
-  `./v -g -keepc -o ./vnew cmd/v`
-* Never run `./v self` directly; only build `./vnew` with the commands
-  above.
-* If `./v` is missing, run `make` first, then build `./vnew`.
-* If `./vnew` is missing but `./v` exists, run `./v -o ./vnew cmd/v`.
+* Rebuild `./v` in place: `./v self`
+  * This intentionally overwrites the active compiler with one built from the
+    current checkout.
+* If `./v` is missing, run `make` first, then build `./v`.
 * This section is the source of truth for rebuild triggers.
   If a rule appears elsewhere, defer to this section.
 * Rebuild triggers:
   * Compiler sources in `vlib/v/` or `cmd/v/`.
   * Core modules: `builtin`, `strings`, `os`, `strconv`, `time`.
-* If `./v` exists but compiler sources changed, still rebuild `./vnew`
+* If `./v` exists but compiler sources changed, still rebuild `./v`
   before tests.
-* If unsure whether compiler/core changes happened, rebuild `./vnew`.
+* If unsure whether compiler/core changes happened, rebuild `./v`.
 * Common flags:
   * `-g` debug info (V line numbers).
   * `-cg` debug info (C line numbers); often combined with `-keepc`.
@@ -468,27 +462,27 @@ Example: `$if field.typ is $int { ... }`
 ### Comptime changes and testing
 Comptime logic lives primarily in `vlib/v/types/checker_comptime.v` and
 `vlib/v/transform/comptime.v`. Changes here require a rebuild of
-`./vnew` and should be tested with `./vnew -silent test vlib/v/tests/` plus
+`./v` and should be tested with `./v -silent test vlib/v/tests/` plus
 any comptime-specific tests. See the decision table and Testing.
 
 ## Run Programs
-* Compile and run: `./vnew run file.v`.
-* Just compile: `./vnew file.v` (creates executable).
-* With debug info: `./vnew -g run file.v`.
-* Debug run (C line numbers): `./vnew -keepc -cg run file.v`.
-* Example: `./vnew run examples/hello_world.v`.
+* Compile and run: `./v run file.v`.
+* Just compile: `./v file.v` (creates executable).
+* With debug info: `./v -g run file.v`.
+* Debug run (C line numbers): `./v -keepc -cg run file.v`.
+* Example: `./v run examples/hello_world.v`.
 
 ## Testing
 Run:
-* File (shows test output): `./vnew path/to/file_test.v`.
-* File (test runner report only): `./vnew test path/to/file_test.v`.
-* Dir: `./vnew -silent test path/to/dir/`.
-* Dir with statistics/metrics: `./vnew -stats test path/to/dir/`.
-* Compiler: `./vnew -silent vlib/v/compiler_errors_test.v`.
+* File (shows test output): `./v path/to/file_test.v`.
+* File (test runner report only): `./v test path/to/file_test.v`.
+* Dir: `./v -silent test path/to/dir/`.
+* Dir with statistics/metrics: `./v -stats test path/to/dir/`.
+* Compiler: `./v -silent vlib/v/compiler_errors_test.v`.
 * Fix outputs (only when intended):
-  `VAUTOFIX=1 ./vnew -silent vlib/v/compiler_errors_test.v`.
-* All: `./vnew test-all`.
-  Ask before running `./vnew test-all` unless explicitly requested.
+  `VAUTOFIX=1 ./v -silent vlib/v/compiler_errors_test.v`.
+* All: `./v test-all`.
+  Ask before running `./v test-all` unless explicitly requested.
 
 When:
 * Rule of thumb: for localized changes, run the smallest relevant
@@ -500,14 +494,14 @@ When:
 * Run all tests that apply. Start with the smallest targeted tests;
   add slow tests as needed. Order does not matter.
 * Compiler changes (`vlib/v/` or `cmd/v/`):
-  Run `./vnew -silent vlib/v/compiler_errors_test.v`,
-  `./vnew -silent test vlib/v/`.
+  Run `./v -silent vlib/v/compiler_errors_test.v`,
+  `./v -silent test vlib/v/`.
 * Parser-only changes (`vlib/v/parser/`):
-  Run `./vnew -silent test vlib/v/parser/`.
+  Run `./v -silent test vlib/v/parser/`.
 * Checker-only changes (`vlib/v/types`):
-  Run `./vnew -silent test vlib/v/types/`.
+  Run `./v -silent test vlib/v/types/`.
 * vlib changes: Run nearest `*_test.v` or
-  `./vnew -silent test vlib/path/`.
+  `./v -silent test vlib/path/`.
 * Tool changes (`cmd/tools/`): Run tool-specific tests. If none exist,
   run the smallest relevant `*_test.v` that exercises the tool.
   Note: `cmd/v/` is compiler scope, not tools.
@@ -515,19 +509,19 @@ When:
   `vlib/v/gen/v/gen_test.v`.
   `cmd/tools/vdoc` -> `cmd/tools/vdoc/vdoc_test.v`.
 * Diagnostic/output changes:
-  Run `./vnew -silent vlib/v/slow_tests/inout/compiler_test.v`.
-* C codegen changes: Run `./vnew -silent test vlib/v/gen/c/`.
+  Run `./v -silent vlib/v/slow_tests/inout/compiler_test.v`.
+* C codegen changes: Run `./v -silent test vlib/v/gen/c/`.
   Consider a stricter validation pass:
-  `./vnew -cstrict -cc clang -silent test vlib/v/`.
-* REPL changes: Run `./vnew -silent vlib/v/slow_tests/repl/repl_test.v`.
-* Broad refactors: Run `./vnew -silent test-all`.
+  `./v -cstrict -cc clang -silent test vlib/v/`.
+* REPL changes: Run `./v -silent vlib/v/slow_tests/repl/repl_test.v`.
+* Broad refactors: Run `./v -silent test-all`.
 * Backend-specific changes: run the smallest relevant tests for the
   affected backend. JS/native/WASM backends are incomplete, so avoid
   broad `-b <backend> test vlib/` runs. Prefer targeted `*_test.v`
   files or small test dirs with `-b js|native|wasm`.
 
 If time-constrained, prioritize
-`./vnew -silent vlib/v/compiler_errors_test.v` and the smallest targeted tests.
+`./v -silent vlib/v/compiler_errors_test.v` and the smallest targeted tests.
 Run `vlib/v/slow_tests/inout/compiler_test.v` and the tests under
 `vlib/v/gen/c/` when output or codegen changes are likely.
 See `TESTS.md` for more guidance on test selection and output
@@ -537,16 +531,16 @@ See `CONTRIBUTING.md` for broader workflow guidance.
 Concrete triggers:
 * `vlib/v/slow_tests/inout/compiler_test.v` when error text or output
   formatting changes, or changes in checker/parser error reporting.
-* `./vnew -silent test vlib/v/gen/c/` for changes under `vlib/v/gen/c/`
+* `./v -silent test vlib/v/gen/c/` for changes under `vlib/v/gen/c/`
   or C codegen output paths.
 
 Types:
 * Standard: `*_test.v` files with `test_` functions.
 * Output: `.vv` source + `.out` expected output in
   `vlib/v/slow_tests/inout/`.
-  Example: `./vnew -silent vlib/v/slow_tests/inout/compiler_test.v`.
+  Example: `./v -silent vlib/v/slow_tests/inout/compiler_test.v`.
 * `vlib/v/tests/**` may use `.run.out` expectations; run with
-  `./vnew -silent test vlib/v/tests`.
+  `./v -silent test vlib/v/tests`.
 
 Docs-only guidance: see Reporting.
 If time-boxed, run at least the smallest relevant test and note
@@ -557,7 +551,7 @@ skipped coverage in the summary.
   Use only when a behavior change is intended.
 * `VTEST_ONLY=glob_pattern` - Run only tests matching pattern.
 * `VTEST_HIDE_OK=1` - Hide successful tests, show only failures.
-* `./vnew -silent test path/to/dir/` - Show only failed tests (if any), and a summary report.
+* `./v -silent test path/to/dir/` - Show only failed tests (if any), and a summary report.
 * `-cc tcc` can speed test builds when TCC is available.
 * Output expectations: update `.out` files only when behavior changes
   are intended; note the rationale in the summary.
@@ -567,7 +561,7 @@ skipped coverage in the summary.
   * `-showcc` prints the C compile command.
   * `-show-c-output` prints the C compiler output.
 * Build a temporary compiler for debug flags:
-  * `./vnew -o ./w -d trace_checker cmd/v`
+  * `./v -o ./w -d trace_checker cmd/v`
   * Then run: `./w file.v`
 * Keep and inspect generated C:
   * `-keepc -cg` is the common combo.
@@ -660,20 +654,20 @@ formatting and message types live in `vlib/v/errors/`.
 
 ## Tools
 * Note: if a rule overlaps with Testing, follow Testing.
-* Format: `./vnew fmt -w <file>` for touched `.v` and `.vsh` files.
+* Format: `./v fmt -w <file>` for touched `.v` and `.vsh` files.
   Format only touched files unless explicitly asked to reformat broader
   scope.
 * Treat new files as touched for formatting and markdown checks.
-* Check *all* files are formatted: `./vnew -silent test-fmt`.
+* Check *all* files are formatted: `./v -silent test-fmt`.
   Run only when asked or when validating the full tree.
-* Check markdown: `./vnew check-md file.md` for touched `.md` files
+* Check markdown: `./v check-md file.md` for touched `.md` files
   (required before commits).
-* Code style checker: `./vnew vet vlib/v`
+* Code style checker: `./v vet vlib/v`
   Run only when asked or when making broad checker changes (more than
   3 files in `vlib/v/types/`).
-* Module docs: `./vnew doc -readme -all -l module_name`.
+* Module docs: `./v doc -readme -all -l module_name`.
 * Search: `rg pattern` (or `git grep`); list files: `rg --files`.
-* Auto-format hook: `./vnew git-fmt-hook install`.
+* Auto-format hook: `./v git-fmt-hook install`.
 
 ## Commits and PRs
 * See `CONTRIBUTING.md` for full commit message conventions and PR
@@ -687,7 +681,7 @@ formatting and message types live in `vlib/v/errors/`.
 
 ## Environment Variables
 * VFLAGS: Pass flags to all V invocations
-  (e.g., `VFLAGS='-g' ./vnew test-all`).
+  (e.g., `VFLAGS='-g' ./v test-all`).
 * VEXE: Path to V compiler executable (useful in CI/scripts).
 * TMPDIR: Controls where `.tmp.c` files are written (V uses
   `TMPDIR/v/`).
@@ -697,16 +691,16 @@ formatting and message types live in `vlib/v/errors/`.
 
 ## Gotchas
 * Core modules (`builtin`, `strings`, `os`, `strconv`, `time`) can
-  affect the compiler because it is a V program. Rebuild `./vnew` when
+  affect the compiler because it is a V program. Rebuild `./v` when
   they change.
 * Module names must match their directory name; mismatches cause silent
   import failures. See Modules and Imports.
 * Some V programs and tools hardcode `os.execute('v ...')` in their
-  source. The `./vnew` workflow does not protect against these; if you
+  source. The `./v` workflow does not protect against these; if you
   encounter unexpected behavior from such calls, check whether the
-  code is invoking the system `v` instead of `./vnew` and adjust
+  code is invoking the system `v` instead of `./v` and adjust
   accordingly.
-* Stale `./vnew` can cause confusing failures; rebuild if behavior
+* Stale `./v` can cause confusing failures; rebuild if behavior
   seems off.
 * Output tests require exact matches; whitespace changes break tests.
 * Formatting reminders: follow Code Style for `fmt` and `check-md`.
