@@ -281,7 +281,8 @@ fn main() {
 	selective_binary := os.join_path(root, 'profile_selective')
 	selective_profile := os.join_path(root, 'profile_selective.txt')
 	selective_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns', 'main__selected',
-		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary, selective_source])
+		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary,
+		selective_source])
 	assert selective_compile.exit_code == 0, selective_compile.output
 	selective_run := cmdexec.run(selective_binary, [])
 	assert selective_run.exit_code == 0, selective_run.output
@@ -360,23 +361,52 @@ fn main() {
 	assert channel_run.output == '71\n'
 }
 
-fn test_v3_build_rejects_garbage_collectors() {
-	root := os.join_path(os.vtmp_dir(), 'v3_driver_gc_build_${os.getpid()}')
+fn test_v3_garbage_collector_modes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_gc_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	for mode in ['boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt', 'boehm_leak',
-		'vgc'] {
-		output := os.join_path(root, 'v3_${mode}')
-		result := cmdexec.run(@VEXE, ['-gc', mode, '-path', '${driver_cli_vlib_dir}|@vlib|@vmodules',
-			'-o', output, driver_cli_v3_src])
-		assert result.exit_code != 0
-		// The driver refuses the flag up front; a compiler built from source refuses it
-		// again with `$compile_error`. Either way the reason names the collector.
-		assert result.output.contains('garbage collector'), result.output
-		assert !os.is_file(output)
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'gc_mode.v')
+	os.write_file(source, 'fn main() {
+	$if gcboehm ? { println("v3_gc_marker_gcboehm_28636") }
+	$if gcboehm_full ? { println("v3_gc_marker_gcboehm_full_28636") }
+	$if gcboehm_incr ? { println("v3_gc_marker_gcboehm_incr_28636") }
+	$if gcboehm_opt ? { println("v3_gc_marker_gcboehm_opt_28636") }
+	$if gcboehm_leak ? { println("v3_gc_marker_gcboehm_leak_28636") }
+	$if vgc ? { println("v3_gc_marker_vgc_28636") }
+}
+')!
+	cases := {
+		'default':        ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
+		'boehm':          ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
+		'boehm_full':     ['gcboehm', 'gcboehm_full']
+		'boehm_incr':     ['gcboehm', 'gcboehm_incr']
+		'boehm_full_opt': ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
+		'boehm_incr_opt': ['gcboehm', 'gcboehm_incr', 'gcboehm_opt']
+		'boehm_leak':     ['gcboehm', 'gcboehm_leak']
+		'none':           []string{}
+		'vgc':            ['vgc']
+	}
+	markers := ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt', 'gcboehm_leak',
+		'vgc']
+	for mode, expected in cases {
+		output := os.join_path(root, 'gc_${mode}.c')
+		mut args := ['-silent']
+		if mode != 'default' {
+			args << ['-gc', mode]
+		}
+		args << ['-o', output, source]
+		result := cmdexec.run(v3_bin, args)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+		generated := os.read_file(output)!
+		for marker in markers {
+			selected := marker in expected
+			assert generated.contains('v3_gc_marker_${marker}_28636') == selected,
+				'${mode}: marker ${marker}, expected ${selected}'
+		}
 	}
 }
 
@@ -590,8 +620,8 @@ fn main() {
 	warm_run := cmdexec.run(v3_bin, ['-silent', 'run', source])
 	assert warm_run.exit_code == 0, warm_run.output
 	assert warm_run.output.trim_space() == '73'
-	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library',
-		'run', source])
+	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library', 'run',
+		source])
 	assert cached_missing.exit_code != 0, cached_missing.output
 
 	assert_driver_cli_failure(v3_bin, ['-ldflags'], 'option `-ldflags` requires a value')
@@ -617,7 +647,7 @@ fn collect_driver_process_result(mut process os.Process) os.Result {
 	process.close()
 	return os.Result{
 		exit_code: exit_code
-		output:    output
+		output: output
 	}
 }
 
@@ -839,8 +869,8 @@ fn main() {
 	assert project_run.output == '42\n', project_run.output
 
 	backslash_project_dir := os.join_path(root, r'project\backslash')
-	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project', backslash_project_dir,
-		source])
+	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project',
+		backslash_project_dir, source])
 	assert backslash_generate.exit_code == 0, backslash_generate.output
 	backslash_build := cmdexec.run('sh', [
 		os.join_path(backslash_project_dir, 'build.sh'),
@@ -966,8 +996,8 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	assert !os.read_file(stripped_c_path)!.contains('unused_value(')
 
 	no_skip_c_path := os.join_path(root, 'no_skip.c')
-	no_skip_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b',
-		'c', '-o', no_skip_c_path, source], environment)
+	no_skip_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b', 'c',
+		'-o', no_skip_c_path, source], environment)
 	assert no_skip_c.exit_code == 0, no_skip_c.output
 	assert os.read_file(no_skip_c_path)!.contains('unused_value(')
 }
@@ -1921,8 +1951,8 @@ fn main() {
 	os.write_file(os.join_path(explicit_dir, 'main.v'), 'module main\n\nfn main() { host_os_selected() }\n') or { panic(err) }
 	os.write_file(os.join_path(explicit_dir, 'target_${host.os}.v'), 'module main\n\nfn host_os_selected() {}\n') or { panic(err) }
 	explicit_output := os.join_path(root, 'explicit_target.wasm')
-	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch,
-		'-o', explicit_output, explicit_dir])
+	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch, '-o',
+		explicit_output, explicit_dir])
 	assert explicit_compile.exit_code == 0, explicit_compile.output
 	assert_driver_wasm_output(explicit_output)
 }
@@ -2041,7 +2071,7 @@ fn main() {
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
-	assert_driver_cli_failure(v3_bin, ['-gc', 'boehm', source], 'currently supports only `-gc none`')
+	assert_driver_cli_failure(v3_bin, ['-gc', 'bogus', source], 'unknown garbage collection mode `-gc bogus`')
 	assert_driver_cli_failure(v3_bin, ['-d', 'gcboehm', source], 'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, ['-dvgc', source], 'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, [source, source], 'multiple input paths are not supported')

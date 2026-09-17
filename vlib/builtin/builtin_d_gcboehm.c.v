@@ -184,6 +184,7 @@ $if gcboehm_leak ? {
 
 #include <gc.h>
 #include "@VEXEROOT/vlib/builtin/gc_debugger_linux.h"
+#define v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))
 
 // #include <gc/gc_mark.h>
 
@@ -293,7 +294,7 @@ fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
 pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
-fn C.GC_set_warn_proc(cb FnGC_WarnCB)
+fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
 
 fn C.GC_register_displacement(offset usize)
 
@@ -304,7 +305,7 @@ pub fn gc_get_warn_proc() FnGC_WarnCB {
 
 // gc_set_warn_proc sets the callback fn, that will be used for printing GC warnings.
 pub fn gc_set_warn_proc(cb FnGC_WarnCB) {
-	C.GC_set_warn_proc(cb)
+	C.v_gc_set_warn_proc(cb)
 }
 
 // used by builtin_init:
