@@ -52,6 +52,29 @@ fn test_v3_parallel_c_job_count() {
 	assert v3_parallel_c_job_count(16, true, true, true) == bsd_selfhost_parallel_cc_job_limit
 }
 
+fn test_v3_parallel_c_job_count_env_override_only_raises_the_cap() {
+	old := os.getenv_opt('V3_PARALLEL_CC_JOBS')
+	defer {
+		if value := old {
+			os.setenv('V3_PARALLEL_CC_JOBS', value, true)
+		} else {
+			os.unsetenv('V3_PARALLEL_CC_JOBS')
+		}
+	}
+	os.setenv('V3_PARALLEL_CC_JOBS', '8', true)
+	assert v3_parallel_c_job_count(24, false, false, false) == 8
+	// Still bounded by the jobs actually available.
+	assert v3_parallel_c_job_count(3, false, false, false) == 3
+	// A value below the default cap does not lower it.
+	os.setenv('V3_PARALLEL_CC_JOBS', '1', true)
+	assert v3_parallel_c_job_count(24, false, false, false) == v3_parallel_cc_max_jobs
+	// Non-numeric / empty values fall back to the default.
+	os.setenv('V3_PARALLEL_CC_JOBS', 'lots', true)
+	assert v3_parallel_c_job_count(24, false, false, false) == v3_parallel_cc_max_jobs
+	os.unsetenv('V3_PARALLEL_CC_JOBS')
+	assert v3_parallel_c_job_count(24, false, false, false) == v3_parallel_cc_max_jobs
+}
+
 fn test_v3_parallel_c_unit_count() {
 	assert v3_parallel_c_unit_count(2, false, false) == 2 * v3_parallel_cc_units_per_job
 	assert v3_parallel_c_unit_count(2, true, false) == 2 * v3_parallel_cc_units_per_job
