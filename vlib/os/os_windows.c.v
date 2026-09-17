@@ -30,7 +30,10 @@ fn C.AddVectoredExceptionHandler(u32, voidptr) voidptr
 
 fn C._getpid() i32
 
-const executable_suffixes = ['.exe', '.bat', '.cmd', '']
+// executable_suffixes are the extensions tried for a command name without one,
+// in the order of the default `PATHEXT` (`.COM;.EXE;.BAT;.CMD`), which is what
+// cmd.exe uses when two programs differ only by extension.
+const executable_suffixes = ['.com', '.exe', '.bat', '.cmd', '']
 
 // these consts are declared for parity with the nix version, their values are not used, except for -cross
 const s_ifmt = 0xF000 // type of file
