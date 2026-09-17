@@ -2,6 +2,12 @@ module modulecache
 
 import os
 
+fn test_file_metadata_signature_is_scoped_to_compiler_build() {
+	signature := file_metadata_signature(@FILE)
+	assert signature.len > 0
+	assert signature.starts_with('${@VCURRENTHASH}:')
+}
+
 fn test_file_metadata_helper_uses_generated_u64_abi() {
 	header_path := os.join_path(@VEXEROOT, 'vlib', 'v', 'modulecache', 'file_metadata.c')
 	header := os.read_file(header_path) or { panic(err) }
