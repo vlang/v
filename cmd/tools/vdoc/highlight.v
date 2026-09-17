@@ -7,8 +7,8 @@ import v.scanner
 import v.token
 
 const highlight_builtin_types = ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'isize',
-	'byte', 'u8', 'u16', 'u32', 'u64', 'usize', 'u128', 'rune', 'f32', 'f64', 'byteptr', 'voidptr',
-	'any']
+	'byte', 'u8', 'u16', 'u32', 'u64', 'uint', 'usize', 'u128', 'rune', 'f32', 'f64', 'byteptr',
+	'voidptr', 'any']
 
 struct ScannedToken {
 	kind  token.Token
