@@ -142,7 +142,6 @@ fn main() {
 				bootstrap_self_build(vroot, clone_args(args), final_binary) or {
 					eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
 					exit(1)
-				}
 			}
 		}
 		if obinary == '' {
@@ -233,7 +232,7 @@ fn unsupported_fastc_repeat_args(args []string) []string {
 			i += 2
 			continue
 		}
-		if arg in ['-silent', '-keepc'] {
+		if arg in ['-silent', '-keepc', '-nocache'] {
 			i++
 			continue
 		}
@@ -388,10 +387,10 @@ fn has_profile_cflag(args []string) bool {
 				if next_arg.contains('-fprofile') {
 					return true
 				}
-				skip_next = true
-			}
-			continue
+			skip_next = true
 		}
+		continue
+	}
 		if (arg.starts_with('-cflags=') || arg.starts_with('-cf=')) && arg.contains('-fprofile') {
 			return true
 		}
