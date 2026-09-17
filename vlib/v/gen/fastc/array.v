@@ -139,7 +139,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	} else {
 		w.locals.delete(it_name)
 	}
-	if method in ['map'] && closure_type == '' {
+	if method == 'map' && closure_type == '' {
 		return none
 	}
 	src := w.temporary_name('collection')
