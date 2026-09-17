@@ -1,0 +1,31 @@
+name: Windows bootstrap contracts
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'makev.bat'
+      - 'cmd/tools/makev_test.py'
+      - '.github/workflows/makev_ci.yml'
+  pull_request:
+    paths:
+      - 'makev.bat'
+      - 'cmd/tools/makev_test.py'
+      - '.github/workflows/makev_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap-contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test bootstrap configuration and batch error handling
+        run: python cmd/tools/makev_test.py
