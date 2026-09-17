@@ -3474,6 +3474,15 @@ fn (mut g FlatGen) gen_sum_storage_lvalue_arg(arg_id flat.NodeId) bool {
 // per-instance closure context and yields a wrapper function that invokes the method.
 // Returns false when the selector is an ordinary field access (handled normally).
 fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id flat.NodeId, base_type types.Type, method string, borrow_receiver bool, clone_receiver_fn string) bool {
+	// Vinix emits without the closure runtime. Its lowered tree retains the
+	// selector's exact type, so do not infer a method value from a same-named
+	// builtin field such as a map key's `name.str`.
+	if g.target.os == 'vinix' {
+		if _ := fn_type_from(g.usable_expr_type(selector_id)) {
+		} else {
+			return false
+		}
+	}
 	clean := types.unwrap_all_pointers(base_type)
 	// Transformed aggregate initializers can contain a fresh interface-method
 	// selector whose checker type is no longer attached to that exact node. The

@@ -42,6 +42,7 @@ fn test_v3_preserves_vinix_kernel_codegen_edges() {
 	code := os.read_file(out) or { panic(err) }
 	assert code.contains('u32 __order_snapshot_0 = value;'), code
 	assert code.contains('char* __order_snapshot_1 = (char*)(name.str);'), code
+	assert code.contains('consume_name(name.str);'), code
 	assert code.contains('return consume_order(__order_snapshot_0, __order_snapshot_1, __order_snapshot_2,'),
 		code
 	assert code.contains('u64 old = (*(*entry));'), code
