@@ -2050,10 +2050,18 @@ mut:
 }
 
 fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool, prod_parallel_cc bool) int {
-	max_jobs := if building_v && is_bsd_host && prod_parallel_cc {
+	mut max_jobs := if building_v && is_bsd_host && prod_parallel_cc {
 		bsd_selfhost_parallel_cc_job_limit
 	} else {
 		v3_parallel_cc_max_jobs
+	}
+	// The default cap keeps the concurrent optimizing C compiles (and their
+	// memory) modest for CI-sized hosts. A developer machine with the cores and
+	// RAM to spare can raise it for one build; the available job count still
+	// bounds it.
+	requested := os.getenv('V3_PARALLEL_CC_JOBS').int()
+	if requested > max_jobs {
+		max_jobs = requested
 	}
 	return int_max(1, int_min(max_jobs, available_jobs))
 }
@@ -10208,7 +10216,7 @@ pub fn run(args []string) {
 	minimal_literal_output := !is_prof
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !effective_tcc
-		&& !is_o && target.os != 'windows' && coverage_dir.len == 0 && profile_file.len == 0
+		&& !is_o && coverage_dir.len == 0 && profile_file.len == 0
 		&& v3_parallel_cc_monolithic_define !in user_defines
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
 	// The module cache splits imported implementations into separate objects, so its main source
