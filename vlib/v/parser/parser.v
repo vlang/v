@@ -8508,6 +8508,12 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
+	if token_is_assignment(p.tok) {
+		p.record_diagnostic_span('unexpected assignment operator `${p.tok.str()}`', p.tok_pos, p.tok_end)
+		for p.tok != .semicolon && p.tok != .rcbr && p.tok != .eof {
+			p.next()
+		}
+	}
 	if p.tok == .attribute && p.prev_tok_end > 0
 		&& p.line_nr_for_pos(p.prev_tok_end - 1) == p.line_nr_for_pos(p.tok_pos) {
 		attr_start := clamp_source_offset(p.tok_pos, p.s.src.len)
