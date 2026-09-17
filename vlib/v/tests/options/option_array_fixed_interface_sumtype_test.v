@@ -31,7 +31,7 @@ fn test_fixed_array_of_option_interface_and_sumtype() {
 		events: [
 			?Event(EventA{
 				a: 1
-			}),
+			})
 			none,
 		]!
 	}

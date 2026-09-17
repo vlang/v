@@ -483,17 +483,17 @@ fn parse_config() Config {
 		fail('FAIL: V compiler not found: ${vexe}')
 	}
 	return Config{
-		vexe: vexe
-		script_dir: script_dir
-		repo_root: repo_root
-		vlib_dir: os.join_path(repo_root, 'vlib')
-		tests_dir: tests_dir
-		v3_src: os.join_path(script_dir, 'v.v')
-		c99: c99
-		c99_flag: if c99 { '-c99' } else { '' }
+		vexe:         vexe
+		script_dir:   script_dir
+		repo_root:    repo_root
+		vlib_dir:     os.join_path(repo_root, 'vlib')
+		tests_dir:    tests_dir
+		v3_src:       os.join_path(script_dir, 'v.v')
+		c99:          c99
+		c99_flag:     if c99 { '-c99' } else { '' }
 		host_backend: native_backend_arch()
-		host_os: os.user_os()
-		temp_prefix: '${temp_prefix}_${os.getpid()}'
+		host_os:      os.user_os()
+		temp_prefix:  '${temp_prefix}_${os.getpid()}'
 	}
 }
 
@@ -632,22 +632,22 @@ fn example_args(path string, args []string) ExampleCase {
 
 fn example_stdin(path string, stdin string) ExampleCase {
 	return ExampleCase{
-		path: path
+		path:  path
 		stdin: stdin
 	}
 }
 
 fn example_flags(path string, flags []string) ExampleCase {
 	return ExampleCase{
-		path: path
+		path:          path
 		compile_flags: flags
 	}
 }
 
 fn example_gui(path string, timeout_seconds int) ExampleCase {
 	return ExampleCase{
-		path: path
-		mode: .gui_smoke
+		path:            path
+		mode:            .gui_smoke
 		timeout_seconds: timeout_seconds
 	}
 }
@@ -795,7 +795,7 @@ fn run_process_with_timeout(command string, args []string, seconds int) ProcessR
 			process.close()
 			return ProcessRunResult{
 				exit_code: 124
-				output: output
+				output:    output
 				timed_out: true
 			}
 		}
@@ -808,7 +808,7 @@ fn run_process_with_timeout(command string, args []string, seconds int) ProcessR
 	process.close()
 	return ProcessRunResult{
 		exit_code: exit_code
-		output: output
+		output:    output
 	}
 }
 
