@@ -10,7 +10,7 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	variants := g.tc.sum_types[name]
 	g.writeln('struct ${g.cname(name)} {')
 	g.writeln('\tint typ;')
-	g.writeln('\tbool _pointer_variant_is_owned;')
+	g.writeln('\tu32 _pointer_variant_is_owned;')
 	g.writeln('\tunion {')
 	for v in variants {
 		variant_type := select_receive_unalias_type(g.tc.parse_canonical_type(v))
