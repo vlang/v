@@ -46,9 +46,9 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else {
-		$if $pkgconfig('bdw-gc-threaded') {
+		$if $pkgconfig ( 'bdw-gc-threaded' ) {
 			#pkgconfig bdw-gc-threaded
-		} $else $if $pkgconfig('bdw-gc') {
+		} $else $if $pkgconfig ( 'bdw-gc' ) {
 			#pkgconfig bdw-gc
 		} $else {
 			$if openbsd || freebsd {
@@ -66,7 +66,7 @@ $if dynamic_boehm ? {
 	$if macos || linux {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -I @VEXEROOT/thirdparty/libgc/include
-		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32 || rv64) {
+		$if ( prod && !tinyc && !debug ) || !( amd64 || arm64 || i386 || arm32 || rv64 ) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
@@ -169,7 +169,7 @@ $if dynamic_boehm ? {
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
-	} $else $if $pkgconfig('bdw-gc') {
+	} $else $if $pkgconfig ( 'bdw-gc' ) {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#pkgconfig bdw-gc
 	} $else {
