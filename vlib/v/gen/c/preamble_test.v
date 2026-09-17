@@ -263,6 +263,8 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 	assert !c_code.contains('#include <pthread.h>')
 	assert c_code.contains('typedef uint64_t u64;')
 	assert !c_code.contains('typedef long long time_t;')
+	assert !c_code.contains('typedef __SIZE_TYPE__ size_t;')
+	assert !c_code.contains('typedef __UINTPTR_TYPE__ uintptr_t;')
 	assert !c_code.contains('typedef struct FILE FILE;')
 	assert c_code.contains('int backtrace(void** __array, int __size);')
 	assert c_code.contains('char** backtrace_symbols(void* const* __array, int __size);')
@@ -272,6 +274,18 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 		'mempcpy', 'chmod', 'lstat', 'mkdir', 'opendir', 'readdir', 'syscall', 'gettimeofday'] {
 		assert !g.should_emit_c_extern_decl(name), name
 	}
+}
+
+fn test_system_libc_preamble_uses_system_pointer_types() {
+	mut g := FlatGen.new()
+	g.add_c_directive('main', '#include <stdint.h>', false)
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <stdint.h>')
+	assert c_code.contains('#include <stddef.h>')
+	assert c_code.contains('typedef uint64_t u64;')
+	assert !c_code.contains('typedef __SIZE_TYPE__ size_t;')
+	assert !c_code.contains('typedef __UINTPTR_TYPE__ uintptr_t;')
 }
 
 fn test_target_libc_preamble_emits_only_thread_type_for_type_only_usage() {

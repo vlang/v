@@ -6957,7 +6957,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.const_decl()
 		}
 		.key_match {
-			if p.peek() == .lpar {
+			if p.peek() == .lpar && !p.parenthesized_match_header_starts_block() {
 				return p.assign_or_expr_stmt()
 			}
 			return p.match_stmt()
@@ -7995,6 +7995,9 @@ fn (mut p Parser) match_stmt() flat.NodeId {
 	match_start := p.span_start()
 	p.next() // skip 'match'
 	match_expr := p.control_header_expr(.lowest)
+	if p.tok == .semicolon && p.peek() == .lcbr {
+		p.next()
+	}
 	p.check(.lcbr)
 
 	mut ids := []flat.NodeId{cap: 8}
@@ -8027,6 +8030,30 @@ fn (mut p Parser) match_stmt() flat.NodeId {
 		})
 	}
 	return match_id
+}
+
+fn (mut p Parser) parenthesized_match_header_starts_block() bool {
+	if p.peek() != .lpar {
+		return false
+	}
+	mut lookahead := p.s
+	mut depth := 1
+	for depth > 0 {
+		tok := lookahead.scan()
+		if tok == .eof {
+			return false
+		}
+		if tok == .lpar {
+			depth++
+		} else if tok == .rpar {
+			depth--
+		}
+	}
+	mut next := lookahead.scan()
+	if next == .semicolon {
+		next = lookahead.scan()
+	}
+	return next == .lcbr
 }
 
 fn (mut p Parser) control_header_expr(min_bp token.BindingPower) flat.NodeId {
@@ -10948,7 +10975,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.if_stmt()
 		}
 		.key_match {
-			if p.keyword_token_is_ident_expr() {
+			if p.keyword_token_is_ident_expr() && !p.parenthesized_match_header_starts_block() {
 				return p.keyword_ident_expr()
 			}
 			return p.match_stmt()
@@ -13131,8 +13158,8 @@ fn (mut p Parser) isreftype_prefix_arg_starts_type() bool {
 	if pk == .lsbr {
 		return p.peek_lbr_starts_array_type_after_prefix()
 	}
-	return pk in [.amp, .and, .question, .not, .key_fn, .ellipsis, .key_mut, .key_shared,
-		.key_atomic, .key_struct, .key_union]
+	return pk in [.amp, .and, .question, .not, .key_fn, .ellipsis, .key_mut, .key_shared, .key_atomic,
+		.key_struct, .key_union]
 }
 
 fn (mut p Parser) peek_lbr_starts_array_type_after_prefix() bool {
