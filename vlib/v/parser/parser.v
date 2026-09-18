@@ -27,6 +27,8 @@
 	clean_type := method_receiver_type_name(receiver_type)
 	name := '${clean_type}.${op_name}'
 
+	// Match the bodyless-header marker used by ordinary functions and methods.
+	is_v_header_decl := p.cur_file.ends_with('.vh') && p.tok != .lcbr
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
 		prev_fn := p.cur_fn
@@ -104,6 +106,7 @@
 	id := p.add_node(flat.Node{
 		kind:           .fn_decl
 		op:             if is_pub { .arrow } else { .none }
+		is_mut:         is_v_header_decl
 		value:          name
 		typ:            ret_type
 		pos:            token.new_pos(p.cur_file_id, name_pos)
