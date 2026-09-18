@@ -47,6 +47,32 @@ println(getenv('V3_VSH_SCRIPT_MODE_VALUE'))
 	assert result.output.split_into_lines() == ['[1, 2, 3]', 'true', 'true', '1', 'from-env'], result.output
 }
 
+fn test_vsh_script_can_import_local_module_without_explicit_main() {
+	root := os.join_path(os.vtmp_dir(), 'v3_vsh_import_module_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_vsh_mode_v3(root)
+	module_dir := os.join_path(root, 'helper')
+	os.mkdir_all(module_dir) or { panic(err) }
+	os.write_file(os.join_path(module_dir, 'helper.v'), "module helper
+
+pub fn message() string {
+	return 'from helper'
+}
+") or { panic(err) }
+	script := os.join_path(root, 'import_module.vsh')
+	os.write_file(script, "import helper
+
+println(helper.message())
+") or { panic(err) }
+	result := os.execute('${v3_bin} -silent ${script}')
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == 'from helper', result.output
+}
+
 // Script mode is a last resort: a declaration in the script itself keeps its
 // meaning even when `os` exports the same name.
 fn test_vsh_script_declaration_shadows_os_symbol() {
