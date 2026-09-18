@@ -159,7 +159,6 @@ fn test_inline_assembly() {
 	exec('v test vlib/v/slow_tests/assembly')
 }
 
-
 const ci_tasks = [
 	'test_symlink',
 	'v_doctor',
@@ -231,7 +230,6 @@ const all_tasks = {
 	'test_readline':                      Task{test_readline, 'Test readline'}
 	'test_inline_assembly':               Task{test_inline_assembly, 'Test inline assembly'}
 }
-
 
 if os.args.len > 1 && os.args[1] == 'ci' {
 	run_ci_tasks()
