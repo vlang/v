@@ -277,14 +277,12 @@ fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
 }
 
 fn fastc_pkgconfig_flags(raw string) ![]string {
-	packages := cmdexec.split_args(raw) or {
+	args := pref.pkgconfig_flags_args(raw) or {
 		return error('fastc parser cannot split `#pkgconfig ${raw}`')
 	}
-	if packages.len == 0 {
+	if args.len == 0 {
 		return error('fastc parser requires a package name after `#pkgconfig`')
 	}
-	mut args := ['--cflags', '--libs']
-	args << packages
 	result := cmdexec.run('pkg-config', args)
 	if result.exit_code != 0 {
 		return error('fastc parser cannot resolve `#pkgconfig ${raw}`: ${result.output.trim_space()}')
