@@ -4,12 +4,10 @@
 }
 
 fn c_pkgconfig_flags(raw string) []string {
-	packages := cmdexec.split_args(trimmed_space(raw)) or { return []string{} }
-	if packages.len == 0 {
+	args := pref.pkgconfig_flags_args(trimmed_space(raw)) or { return []string{} }
+	if args.len == 0 {
 		return []string{}
 	}
-	mut args := ['--cflags', '--libs']
-	args << packages
 	result := cmdexec.run('pkg-config', args)
 	if result.exit_code != 0 {
 		return []string{}
