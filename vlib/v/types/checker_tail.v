@@ -13,7 +13,7 @@ import v.util
 fn last_index_between(source string, needle string, lo int, end int) int {
 	stop := int_min(end, source.len)
 	low := int_max(lo, 0)
-	if needle.len == 0 || stop - low < needle.len {
+	if needle == '' || stop - low < needle.len {
 		return -1
 	}
 	for i := stop - needle.len; i >= low; i-- {
@@ -252,7 +252,7 @@ fn (tc &TypeChecker) node_source_starts_with(id flat.NodeId, prefix string) bool
 // The span is not trimmed; a needle match in leading/trailing whitespace is
 // impossible for identifier-like needles.
 fn (tc &TypeChecker) node_source_contains(id flat.NodeId, needle string) bool {
-	if needle.len == 0 || !tc.valid_node_id(id) {
+	if needle == '' || !tc.valid_node_id(id) {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
@@ -276,21 +276,21 @@ fn (tc &TypeChecker) node_source_contains(id flat.NodeId, needle string) bool {
 }
 
 fn (mut tc TypeChecker) check_import_symbol_conflict(id flat.NodeId, name string) {
-	if name.len == 0 || name == '_' || !tc.has_active_import(name) {
+	if name == '' || name == '_' || !tc.has_active_import(name) {
 		return
 	}
 	tc.check_import_symbol_conflict_at(id, name, tc.node_value_diagnostic_pos(id))
 }
 
 fn (mut tc TypeChecker) check_import_symbol_conflict_at(id flat.NodeId, name string, pos token.Pos) {
-	if name.len == 0 || name == '_' || !tc.has_active_import(name) {
+	if name == '' || name == '_' || !tc.has_active_import(name) {
 		return
 	}
 	tc.record_error_at(.duplicate_decl, 'duplicate of an import symbol `${name}`', id, pos)
 }
 
 fn (mut tc TypeChecker) check_module_name_conflict(id flat.NodeId, name string) {
-	if name.len == 0 || name == '_' {
+	if name == '' || name == '_' {
 		return
 	}
 	if name == tc.cur_module && !tc.current_file_uses_nested_vlib_module_path() {
@@ -340,7 +340,7 @@ fn (tc &TypeChecker) imported_module_prefix(id flat.NodeId, name string) ?string
 
 fn (mut tc TypeChecker) check_imported_module_prefix(id flat.NodeId, name string, keyword string) {
 	prefix := tc.imported_module_prefix(id, name) or { return }
-	pos := if keyword.len > 0 {
+	pos := if keyword != '' {
 		tc.fn_declaration_diagnostic_pos(tc.a.node(id))
 	} else {
 		tc.node_value_diagnostic_pos(id)
@@ -1200,7 +1200,7 @@ fn (mut tc TypeChecker) check_lvalue_mutability(id flat.NodeId) {
 }
 
 fn (tc &TypeChecker) enum_initializer_calls_helper(fn_name string, module_name string) bool {
-	if fn_name.len == 0 || fn_name.contains('.') {
+	if fn_name == '' || fn_name.contains('.') {
 		return false
 	}
 	target_module := if module_name in ['', 'main'] { '' } else { module_name }
@@ -3906,7 +3906,7 @@ fn (mut tc TypeChecker) record_void_receiver_method_call(id flat.NodeId, node fl
 }
 
 fn os_raw_io_unsupported_type_message(path string, type_name string) string {
-	if path.len == 0 {
+	if path == '' {
 		return 'contains non-plain-data values of type `${type_name}`'
 	}
 	return 'contains field `${path}` of type `${type_name}`'
@@ -3958,7 +3958,7 @@ fn (tc &TypeChecker) os_raw_io_unsupported_type(typ Type, path string, mut check
 			}
 			checked[clean.name] = true
 			for field in tc.struct_fields_for_init(clean.name) {
-				field_path := if path.len == 0 {
+				field_path := if path == '' {
 					field.name
 				} else {
 					'${path}.${field.name}'
@@ -5131,7 +5131,7 @@ fn (tc &TypeChecker) local_decl_is_in_nested_function(id flat.NodeId, owner_fn f
 
 fn (tc &TypeChecker) local_decl_rhs_before(name string, use_id flat.NodeId) ?flat.NodeId {
 	fn_id := flat.NodeId(tc.fn_context.node_id)
-	if name.len == 0 || !tc.valid_node_id(fn_id) || !tc.valid_node_id(use_id) {
+	if name == '' || !tc.valid_node_id(fn_id) || !tc.valid_node_id(use_id) {
 		return none
 	}
 	use_pos := tc.a.node(use_id).pos
@@ -6677,7 +6677,7 @@ fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 // project root and explicit private search roots extend it, the same way
 // set_unsupported_generic_files extends diagnostics over a directory build.
 fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
-	if file.len == 0 {
+	if file == '' {
 		return false
 	}
 	if file in tc.diagnostic_files {
@@ -6697,7 +6697,7 @@ fn (tc &TypeChecker) shadow_check_owns_file(file string) bool {
 // shadow_roots_own_file reports whether `file` belongs to an explicit project
 // root after nested installed-module roots have been excluded.
 pub fn shadow_roots_own_file(file string, diagnostic_root string, explicit_roots []string, dependency_roots []string) bool {
-	if file.len == 0 {
+	if file == '' {
 		return false
 	}
 	// A path is matched both as written and resolved. A build tree assembled out
@@ -6739,7 +6739,7 @@ fn shadow_root_owns_file(abs_file string, real_file string, root string, depende
 // shadow_path_is_within reports whether a file given by both its written and
 // its resolved path lies in `dir`.
 fn shadow_path_is_within(abs_file string, real_file string, dir string) bool {
-	if dir.len == 0 {
+	if dir == '' {
 		return false
 	}
 	prefix := if dir.ends_with(os.path_separator) { dir } else { dir + os.path_separator }
@@ -8252,7 +8252,7 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 }
 
 fn (tc &TypeChecker) binding_is_strings_builder(name string) bool {
-	if name.len == 0 || tc.fn_context.node_id < 0 || tc.fn_context.node_id >= tc.a.nodes.len {
+	if name == '' || tc.fn_context.node_id < 0 || tc.fn_context.node_id >= tc.a.nodes.len {
 		return false
 	}
 	return strings_builder_binding_key(tc.fn_context.node_id, name) in tc.strings_builder_bindings
@@ -9121,7 +9121,7 @@ fn (tc &TypeChecker) thread_wait_return_type(t Type) ?Type {
 // in-place mutators like `sort` would silently modify the temp copy, and
 // `first`/`last`/`pop` are not fixed-array methods in V.
 const fixed_array_lowered_methods = ['contains', 'index', 'last_index', 'any', 'all', 'count',
-	'map', 'filter', 'str', 'wait']
+	'map', 'filter', 'str', 'wait']!
 
 fn receiver_is_fixed_array(t Type) bool {
 	if t is ArrayFixed {
@@ -9545,7 +9545,7 @@ fn (tc &TypeChecker) expr_root_constant_name(id flat.NodeId) ?string {
 }
 
 fn (tc &TypeChecker) ident_is_mutable_lvalue(name string) bool {
-	if name.len == 0 {
+	if name == '' {
 		return false
 	}
 	if tc.current_binding_is_shared(name) && tc.current_shared_lock_mode(name) == `w` {
@@ -9577,7 +9577,7 @@ fn (tc &TypeChecker) ident_is_mutable_lvalue(name string) bool {
 }
 
 fn (tc &TypeChecker) ident_is_explicitly_mutable_lvalue(name string) bool {
-	if name.len == 0 {
+	if name == '' {
 		return false
 	}
 	if tc.current_binding_is_shared(name) && tc.current_shared_lock_mode(name) == `w` {
@@ -9613,7 +9613,7 @@ fn (tc &TypeChecker) binding_owner_is_global(owner ScopeBindingOwner) bool {
 }
 
 fn (tc &TypeChecker) ident_is_global_binding(name string) bool {
-	if name.len == 0 || tc.cur_scope == unsafe { nil } || tc.file_scope == unsafe { nil } {
+	if name == '' || tc.cur_scope == unsafe { nil } || tc.file_scope == unsafe { nil } {
 		return false
 	}
 	if owner := tc.cur_scope.lookup_owner(name) {
@@ -9720,7 +9720,7 @@ fn visible_mutation_fn_lookup_name(name string) string {
 }
 
 fn (tc &TypeChecker) cache_visible_mutation_fn_decl(key string, decl VisibleMutationFnDecl) {
-	if isnil(tc.visible_mutation_cache) || key.len == 0 {
+	if isnil(tc.visible_mutation_cache) || key == '' {
 		return
 	}
 	mut cache := tc.visible_mutation_cache
@@ -9792,7 +9792,7 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 				cur_mod = node.value
 			}
 			.fn_decl {
-				if fallback_mod.len > 0 && cur_mod != fallback_mod && !(cur_mod in [
+				if fallback_mod != '' && cur_mod != fallback_mod && !(cur_mod in [
 					'',
 					'main',
 				]
@@ -9959,7 +9959,7 @@ fn storage_param_loop_iteration_child_indices(node flat.Node) []int {
 }
 
 fn (tc &TypeChecker) storage_lvalue_path_from_param(id flat.NodeId, name string, aliases map[string][]int, target_param_idx int) ?string {
-	if !tc.valid_node_id(id) || name.len == 0 {
+	if !tc.valid_node_id(id) || name == '' {
 		return none
 	}
 	node := tc.a.nodes[int(id)]
@@ -10912,7 +10912,7 @@ fn (tc &TypeChecker) callback_binding_arg_is_ident(id flat.NodeId, name string) 
 }
 
 fn (tc &TypeChecker) callback_binding_call_sources(id flat.NodeId, name string) []flat.NodeId {
-	if !tc.valid_node_id(id) || name.len == 0 {
+	if !tc.valid_node_id(id) || name == '' {
 		return []
 	}
 	call := tc.a.node(id)
@@ -11043,7 +11043,7 @@ fn (tc &TypeChecker) visible_binding_can_be_bypassed_by_goto(binding_pos token.P
 }
 
 fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnDecl, name string, use_id flat.NodeId) []flat.NodeId {
-	if name.len == 0 || !tc.valid_node_id(use_id) || decl.idx < 0 || decl.idx >= tc.a.nodes.len {
+	if name == '' || !tc.valid_node_id(use_id) || decl.idx < 0 || decl.idx >= tc.a.nodes.len {
 		return []
 	}
 	use_pos := tc.a.node(use_id).pos
@@ -11508,7 +11508,7 @@ fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type strin
 		}
 		file := tc.a.source_files[node.pos.id] or { continue }
 		cur_mod := tc.file_modules[file.name] or { '' }
-		if decl_mod.len > 0 && cur_mod != decl_mod {
+		if decl_mod != '' && cur_mod != decl_mod {
 			continue
 		}
 		qname := if cur_mod in ['', 'main', 'builtin'] {
@@ -12132,7 +12132,7 @@ fn (tc &TypeChecker) selector_has_shared_elements(node flat.Node) bool {
 
 // struct_field_is_shared reports whether a resolved struct field uses shared storage.
 pub fn (tc &TypeChecker) struct_field_is_shared(struct_name string, field_name string) bool {
-	if struct_name.len == 0 || field_name.len == 0 || tc.struct_shared_fields.len == 0 {
+	if struct_name == '' || field_name == '' || tc.struct_shared_fields.len == 0 {
 		return false
 	}
 	mut candidates := []string{cap: 4}
@@ -12158,7 +12158,7 @@ pub fn (tc &TypeChecker) struct_field_is_shared(struct_name string, field_name s
 }
 
 fn (tc &TypeChecker) struct_field_has_shared_elements(struct_name string, field_name string) bool {
-	if struct_name.len == 0 || field_name.len == 0 {
+	if struct_name == '' || field_name == '' {
 		return false
 	}
 	mut candidates := []string{cap: 4}
@@ -12302,7 +12302,7 @@ fn (tc &TypeChecker) sum_type_has_mut_receiver_method(recv_type Type, method str
 // the sum type, so the callee can change its own runtime tag). A `mut Variant`
 // binding cannot change its own tag, so `can_retag` is false there.
 fn (mut tc TypeChecker) invalidate_smartcasts_for_mut_lvalue(lvalue_key string, can_retag bool) {
-	if lvalue_key.len == 0 {
+	if lvalue_key == '' {
 		return
 	}
 	mut writes := []string{}
@@ -14063,7 +14063,7 @@ fn (tc &TypeChecker) call_count_mismatch_details(node flat.Node, info CallInfo) 
 }
 
 fn (tc &TypeChecker) source_call_param_type_names(call_name string) ?[]string {
-	if call_name.len == 0 {
+	if call_name == '' {
 		return none
 	}
 	for i in tc.top_level_idx {
@@ -14088,7 +14088,7 @@ fn (tc &TypeChecker) source_call_param_type_names(call_name string) ?[]string {
 }
 
 fn (tc &TypeChecker) source_call_param_name(call_name string, param_idx int) ?string {
-	if call_name.len == 0 || param_idx < 0 {
+	if call_name == '' || param_idx < 0 {
 		return none
 	}
 	if is_channel_builtin_method_call_name(call_name, 'try_pop') && param_idx == 1 {
@@ -15882,7 +15882,7 @@ fn (mut tc TypeChecker) array_map_return_elem_type(node flat.Node) Type {
 }
 
 fn (tc &TypeChecker) expr_uses_ident(id flat.NodeId, name string) bool {
-	if int(id) < 0 || int(id) >= tc.a.nodes.len || name.len == 0 {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len || name == '' {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
@@ -15933,7 +15933,7 @@ fn (tc &TypeChecker) array_map_result_borrows_element(node flat.Node) bool {
 }
 
 fn (tc &TypeChecker) array_map_expr_references_ident(id flat.NodeId, name string) bool {
-	if !tc.valid_node_id(id) || name.len == 0 {
+	if !tc.valid_node_id(id) || name == '' {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
@@ -16658,7 +16658,7 @@ fn (tc &TypeChecker) is_concrete_generic_instance(name string) bool {
 // and the base must be a known generic struct, so a non-generic same-named struct is
 // left to ordinary checking.
 fn (tc &TypeChecker) bare_generic_literal_adopts(lit_value string, expected Type) bool {
-	if lit_value.len == 0 || lit_value.contains('[') {
+	if lit_value == '' || lit_value.contains('[') {
 		return false
 	}
 	e_base, _, e_ok := generic_type_application_parts(unwrap_pointer(expected).name())
@@ -17326,7 +17326,7 @@ fn (tc &TypeChecker) spawn_child_call_return_type(node flat.Node) ?Type {
 
 // module_const_receiver_method_name supports module_const_receiver_method_name handling in types.
 fn (tc &TypeChecker) module_const_receiver_method_name(base_node flat.Node, method string) ?string {
-	if base_node.kind != .selector || base_node.children_count == 0 || method.len == 0 {
+	if base_node.kind != .selector || base_node.children_count == 0 || method == '' {
 		return none
 	}
 	inner := tc.a.child_node(&base_node, 0)
@@ -17357,7 +17357,7 @@ fn (tc &TypeChecker) module_const_receiver_method_name(base_node flat.Node, meth
 
 // valid_string_data supports valid string data handling for types.
 fn valid_string_data(s string) bool {
-	if s.len == 0 {
+	if s == '' {
 		return true
 	}
 	ptr := unsafe { u64(voidptr(s.str)) }

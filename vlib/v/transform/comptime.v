@@ -234,7 +234,7 @@ fn (t &Transformer) comptime_resolve_selective_import_reflection_source(raw stri
 }
 
 fn (t &Transformer) comptime_local_reflection_source(name string) ?string {
-	if name.len == 0 || t.cur_module.len == 0 || t.cur_module in ['main', 'builtin'] {
+	if name == '' || t.cur_module.len == 0 || t.cur_module in ['main', 'builtin'] {
 		return none
 	}
 	qualified := '${t.cur_module}.${name}'
@@ -441,7 +441,7 @@ fn (t &Transformer) comptime_reflection_source(source string, loop_id flat.NodeI
 		for candidate in t.a.nodes {
 			if candidate.kind == .fn_decl && candidate.value.contains('.')
 				&& candidate.value.all_after_last('.') == rhs.value {
-				if found.len > 0 {
+				if found != '' {
 					return clean
 				}
 				found = candidate.value
@@ -836,8 +836,8 @@ fn comptime_params_match_signature(params []ParamMeta, return_type string, wante
 			return false
 		}
 	}
-	actual_ret := if return_type.len > 0 { return_type } else { 'void' }
-	expected_ret := if wanted_ret.len > 0 { wanted_ret } else { 'void' }
+	actual_ret := if return_type != '' { return_type } else { 'void' }
+	expected_ret := if wanted_ret != '' { wanted_ret } else { 'void' }
 	return actual_ret == expected_ret
 }
 
@@ -1055,7 +1055,7 @@ fn comptime_method_receiver_name(raw string, module_name string) string {
 	if name.starts_with('main.') {
 		return name['main.'.len..]
 	}
-	if name.len == 0 || name.contains('.') || module_name.len == 0
+	if name.len == 0 || name.contains('.') || module_name == ''
 		|| module_name in ['main', 'builtin'] {
 		return name
 	}
@@ -1075,7 +1075,7 @@ fn comptime_source_line_offsets(path string) []int {
 }
 
 fn comptime_source_location(path string, encoded_offset int, line_offsets []int) string {
-	if path.len == 0 || encoded_offset <= 0 || line_offsets.len == 0 {
+	if path == '' || encoded_offset <= 0 || line_offsets.len == 0 {
 		return ''
 	}
 	offset := encoded_offset - 1
@@ -2027,7 +2027,7 @@ fn (t &Transformer) comptime_resolve_sum_type_name(base_type string) string {
 // collect_types keeps legacy short-name entries for imported sums, so locate a bare sum's
 // declaration in the current module before consulting that ambiguous cache.
 fn (t &Transformer) comptime_local_sum_variants(name string) ?[]string {
-	if name.len == 0 || name.contains('.') {
+	if name == '' || name.contains('.') {
 		return none
 	}
 	mut module_name := ''
@@ -2277,7 +2277,7 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 				return ev
 			}
 			if !isnil(t.tc) {
-				lookup_module := if enum_module.len > 0 { enum_module } else { t.cur_module }
+				lookup_module := if enum_module != '' { enum_module } else { t.cur_module }
 				return i64(t.tc.const_int_value_in_module(node.value, lookup_module, []string{})?)
 			}
 			return none
@@ -2369,14 +2369,14 @@ fn (t &Transformer) enum_decl_selector_base_text(id flat.NodeId) string {
 }
 
 fn enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) bool {
-	if prefix.len == 0 || enum_name.len == 0 {
+	if prefix == '' || enum_name == '' {
 		return false
 	}
 	short := enum_name.all_after_last('.')
 	if prefix == enum_name || prefix == short {
 		return true
 	}
-	if enum_module.len > 0 && prefix == '${enum_module}.${short}' {
+	if enum_module != '' && prefix == '${enum_module}.${short}' {
 		return true
 	}
 	return false
@@ -2599,7 +2599,7 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 }
 
 fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.Node, fm FieldMeta) ?string {
-	if !fm.is_option || !fm.comptime_typ.starts_with('?') || name.len == 0 || !call.pos.is_valid() {
+	if !fm.is_option || !fm.comptime_typ.starts_with('?') || name == '' || !call.pos.is_valid() {
 		return none
 	}
 	mut source_name := name
@@ -2663,7 +2663,7 @@ fn (t &Transformer) comptime_option_guard_unwraps(candidate flat.Node, source_na
 }
 
 fn (mut t Transformer) comptime_reflected_for_in_local_type(name string, fm FieldMeta) ?string {
-	if name.len == 0 {
+	if name == '' {
 		return none
 	}
 	iter_type := t.comptime_normalize_type_alias_chain(fm.comptime_typ)
@@ -2850,9 +2850,9 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		}
 	}
 	if node.kind == .comptime_if && (comptime_cond_references_ident(node.value, var_name)
-		|| (smartcast_name.len > 0 && comptime_cond_references_ident(node.value, smartcast_name))) {
+		|| (smartcast_name != '' && comptime_cond_references_ident(node.value, smartcast_name))) {
 		mut cond := t.subst_variant_cond(node.value, var_name, item)
-		if smartcast_name.len > 0 {
+		if smartcast_name != '' {
 			cond = comptime_cond_replace_bare_ident(cond, smartcast_name, item.typ)
 		}
 		if !comptime_cond_has_loop_member_ref(cond, var_name) {
@@ -2898,13 +2898,13 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 			return t.make_sum_literal(target_sum, item.typ, children[0])
 		}
 	}
-	retargeted_call_type := if node.kind == .call && smartcast_name.len > 0 {
+	retargeted_call_type := if node.kind == .call && smartcast_name != '' {
 		t.retarget_cloned_generic_call(node, mut children, t.active_specialization_args)
 	} else {
 		''
 	}
 	mut typ := if retargeted_call_type.len > 0 { retargeted_call_type } else { node.typ }
-	if node.kind == .ident && smartcast_name.len > 0 && node.value == smartcast_name {
+	if node.kind == .ident && smartcast_name != '' && node.value == smartcast_name {
 		typ = item.typ
 	} else if node.kind == .ident && t.mut_param_values[node.value] {
 		storage_type := t.var_type(node.value)
@@ -2921,7 +2921,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	}
 	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		rhs := t.a.nodes[int(children[1])]
-		rhs_typ := if rhs.kind == .ident && smartcast_name.len > 0 && rhs.value == smartcast_name
+		rhs_typ := if rhs.kind == .ident && smartcast_name != '' && rhs.value == smartcast_name
 			&& rhs.typ.len > 0 {
 			rhs.typ
 		} else {
@@ -2954,7 +2954,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
-	if node.kind == .ident && smartcast_name.len > 0 && node.value == smartcast_name {
+	if node.kind == .ident && smartcast_name != '' && node.value == smartcast_name {
 		// Keep the loop variant refinement separate from the function-scope type.
 		// Later generic-call inference runs after the smartcast stack has unwound.
 		t.record_refined_node_type(int(clone_id), item.typ)
@@ -3348,21 +3348,21 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 		decl_name = decl_name[..idx]
 	}
 	mut short_name := decl_name
-	if decl_module.len > 0 {
+	if decl_module != '' {
 		if decl_name.starts_with('${decl_module}.') {
 			short_name = decl_name[decl_module.len + 1..]
 		} else if decl_name.starts_with('${c_name(decl_module)}__') {
 			short_name = decl_name[c_name(decl_module).len + 2..]
 		}
 	}
-	if decl_module.len > 0 {
+	if decl_module != '' {
 		if cached := t.struct_field_decl_metas_cache['${decl_module}.${short_name}'] {
 			return cached
 		}
 	}
 	lookup_name := if decl_module in ['main', 'builtin'] { short_name } else { decl_name }
 	if cached := t.struct_field_decl_metas_cache[lookup_name] {
-		if decl_module.len == 0 || decl_module in ['main', 'builtin'] {
+		if decl_module == '' || decl_module in ['main', 'builtin'] {
 			return cached
 		}
 	}
@@ -3383,7 +3383,7 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 		if node.kind != .struct_decl || node.generic_params().len == 0 {
 			continue
 		}
-		if decl_module.len > 0 && cur_mod != decl_module {
+		if decl_module != '' && cur_mod != decl_module {
 			continue
 		}
 		qualified := if cur_mod.len > 0 {
@@ -3395,7 +3395,7 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 			if prefix.len == 0 || !lookup_name.starts_with('${prefix}_') {
 				continue
 			}
-			if decl_module.len == 0 {
+			if decl_module == '' {
 				if cached := t.struct_field_decl_metas_cache[node.value] {
 					return cached
 				}
@@ -3427,7 +3427,7 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		indir++
 		core = core[1..]
 	}
-	unaliased := if resolved_typ.len > 0 {
+	unaliased := if resolved_typ != '' {
 		resolved_typ.trim_space()
 	} else {
 		t.comptime_normalize_type_alias_chain(ftyp)
@@ -3582,7 +3582,7 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 		refs += '&'
 		core = core[1..].trim_space()
 	}
-	if refs.len > 0 {
+	if refs != '' {
 		return refs + t.comptime_field_type_id_key(core, decl_module)
 	}
 	if core.starts_with('[]') {
@@ -3719,7 +3719,7 @@ fn (t &Transformer) field_type_is_alias(core string, decl_module string) bool {
 	if core in t.tc.type_aliases {
 		return true
 	}
-	if !core.contains('.') && decl_module.len > 0 && decl_module != 'main'
+	if !core.contains('.') && decl_module != '' && decl_module != 'main'
 		&& decl_module != 'builtin' {
 		return '${decl_module}.${core}' in t.tc.type_aliases
 	}
@@ -4139,7 +4139,7 @@ fn comptime_reflected_selector_left(left string, var_name string) bool {
 }
 
 fn comptime_plain_ident(value string) bool {
-	if value.len == 0 || !(value[0].is_letter() || value[0] == `_`) {
+	if value == '' || !(value[0].is_letter() || value[0] == `_`) {
 		return false
 	}
 	for c in value {
@@ -4433,7 +4433,7 @@ fn (t &Transformer) subst_unquoted_field_cond(cond string, var_name string, fm F
 }
 
 fn comptime_cond_replace_unquoted(cond string, needle string, replacement string) string {
-	if needle.len == 0 || !cond.contains(needle) {
+	if needle == '' || !cond.contains(needle) {
 		return cond
 	}
 	mut out := ''
@@ -4464,7 +4464,7 @@ fn comptime_cond_replace_unquoted(cond string, needle string, replacement string
 }
 
 fn comptime_cond_replace_bare_ident(cond string, ident string, replacement string) string {
-	if ident.len == 0 {
+	if ident == '' {
 		return cond
 	}
 	mut out := ''
@@ -4494,7 +4494,7 @@ fn comptime_cond_replace_bare_ident(cond string, ident string, replacement strin
 }
 
 fn comptime_cond_references_ident(cond string, ident string) bool {
-	if ident.len == 0 {
+	if ident == '' {
 		return false
 	}
 	mut offset := 0
@@ -4712,7 +4712,7 @@ fn comptime_list_contains(list_text string, needle string) bool {
 }
 
 fn comptime_is_int(s string) bool {
-	if s.len == 0 {
+	if s == '' {
 		return false
 	}
 	start := if s[0] == `-` || s[0] == `+` { 1 } else { 0 }

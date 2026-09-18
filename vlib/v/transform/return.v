@@ -186,7 +186,7 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 		|| (node.kind == .ident && node.value == 'err' && t.implicit_err_binding_active()) {
 		return true
 	}
-	if payload_type.len == 0 || payload_type == 'unknown' || payload_type.contains('unknown') {
+	if payload_type == '' || payload_type == 'unknown' || payload_type.contains('unknown') {
 		return true
 	}
 	return !t.resolved_receiver_arg_compatible(id, actual_type, payload_type)
@@ -223,7 +223,7 @@ fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
 }
 
 fn (t &Transformer) return_ierror_type_candidate(typ string) ?string {
-	if typ.len == 0 || typ == 'unknown' || typ.contains('unknown') {
+	if typ == '' || typ == 'unknown' || typ.contains('unknown') {
 		return none
 	}
 	if t.is_ierror_type(typ) {

@@ -194,7 +194,7 @@ fn map_value_starts_with_fixed_array(typ string) bool {
 }
 
 fn decl_type_is_usable(typ string) bool {
-	if typ.len == 0 || typ in ['unknown', 'array', 'map', 'struct'] || typ.contains('unknown') {
+	if typ == '' || typ in ['unknown', 'array', 'map', 'struct'] || typ.contains('unknown') {
 		return false
 	}
 	if types.type_text_contains_typeof(typ) {
@@ -818,7 +818,7 @@ fn (t &Transformer) lookup_sum_variant_field_type_seen(sum_type string, field_na
 		if ftyp.len == 0 {
 			continue
 		}
-		if found.len > 0 && found != ftyp {
+		if found != '' && found != ftyp {
 			return none
 		}
 		found = ftyp
@@ -859,7 +859,7 @@ fn (t &Transformer) enum_type_name_from_expr(id flat.NodeId) ?string {
 }
 
 fn (t &Transformer) enum_type_name_from_selector_name(name string) ?string {
-	if name.len == 0 {
+	if name == '' {
 		return none
 	}
 	if name in t.enum_types {
@@ -887,7 +887,7 @@ fn (t &Transformer) qualified_enum_type_selector_name(base_id flat.NodeId, field
 }
 
 fn (t &Transformer) qualified_enum_type_selector_name_from_selector_name(base string, field_name string) ?string {
-	if base.len == 0 || field_name.len == 0 {
+	if base == '' || field_name == '' {
 		return none
 	}
 	name := '${base}.${field_name}'
@@ -906,7 +906,7 @@ fn (t &Transformer) qualified_enum_type_selector_name_from_selector_name(base st
 
 // lookup_struct_field_type resolves lookup struct field type information for transform.
 fn (t &Transformer) lookup_struct_field_type(type_name string, field_name string) ?string {
-	if type_name.len == 0 || field_name.len == 0 {
+	if type_name == '' || field_name == '' {
 		return none
 	}
 	key := t.struct_field_type_cache_key(type_name, field_name)
@@ -1020,7 +1020,7 @@ fn (t &Transformer) checker_struct_field_type_name(type_name string, field_name 
 
 // lookup_struct_info_for_field resolves lookup struct info for field information for transform.
 fn (t &Transformer) lookup_struct_info_for_field(type_name string, field_name string) ?StructFieldLookup {
-	if type_name.len == 0 || field_name.len == 0 {
+	if type_name == '' || field_name == '' {
 		return none
 	}
 	mut lookup_type := if type_name.starts_with('&') { type_name[1..] } else { type_name }
@@ -1088,7 +1088,7 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 }
 
 fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, owner_type string, allow_owner_substitution bool) string {
-	if typ.len == 0 {
+	if typ == '' {
 		return typ
 	}
 	if typ.starts_with('mut ') {
@@ -1216,7 +1216,7 @@ fn (t &Transformer) type_authority_has(name string) bool {
 // normalize_type_alias transforms normalize type alias data for transform.
 @[inline]
 fn (t &Transformer) normalize_type_alias(typ string) string {
-	if typ.len == 0 || isnil(t.tc) {
+	if typ == '' || isnil(t.tc) {
 		return typ
 	}
 	if isnil(t.alias_cache) {
@@ -1446,7 +1446,7 @@ fn (t &Transformer) expand_generic_type_alias(typ string) ?string {
 
 fn strip_field_module_prefix_from_type(typ string, module_name string) string {
 	clean := typ.trim_space()
-	if clean.len == 0 || module_name.len == 0 {
+	if clean.len == 0 || module_name == '' {
 		return clean
 	}
 	if clean.starts_with('&') {
@@ -1652,7 +1652,7 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 		}
 		return '${t.normalize_type_in_module(base, mod)}[${normalized_args.join(', ')}]'
 	}
-	if clean.contains('.') || mod.len == 0 || mod == 'main' || mod == 'builtin' {
+	if clean.contains('.') || mod == '' || mod == 'main' || mod == 'builtin' {
 		return t.normalize_type_alias(clean)
 	}
 	if !isnil(t.tc) && mod == t.cur_module && t.cur_file.len > 0 {
@@ -1663,7 +1663,7 @@ fn (t &Transformer) normalize_type_in_module_uncached(typ string, mod string) st
 			if !t.type_authority_has(candidate) {
 				continue
 			}
-			if imported.len > 0 && imported != candidate {
+			if imported != '' && imported != candidate {
 				imported = ''
 				break
 			}
@@ -1962,7 +1962,7 @@ fn type_text_may_name_struct(typ string) bool {
 }
 
 fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed string) ?string {
-	if isnil(t.tc) || int(id) < 0 || guessed.len == 0 {
+	if isnil(t.tc) || int(id) < 0 || guessed == '' {
 		return none
 	}
 	node := t.a.nodes[int(id)]

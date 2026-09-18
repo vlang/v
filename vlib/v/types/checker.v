@@ -60,24 +60,24 @@ const comptime_field_members = [
 	'str',
 	'typ',
 	'unaliased_typ',
-]
+]!
 
 const comptime_enum_value_members = [
 	'name',
 	'value',
 	'attrs',
-]
+]!
 
 const comptime_variant_members = [
 	'typ',
-]
+]!
 
 const comptime_attribute_members = [
 	'name',
 	'arg',
 	'has_arg',
 	'kind',
-]
+]!
 
 const export_c_reserved_words = {
 	'auto':     true
@@ -1005,7 +1005,7 @@ pub fn (tc &TypeChecker) scoped_parallel_workers_enabled() bool {
 	return tc.scope_parallel_check_workers
 }
 
-// new creates a TypeChecker value for types.
+// TypeChecker.new creates a TypeChecker value for types.
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
 	type_interner := new_type_interner()
@@ -2939,14 +2939,14 @@ fn (mut tc TypeChecker) check_insert_directive(id flat.NodeId, node flat.Node, f
 		saved_file := tc.cur_file
 		saved_module := tc.cur_module
 		tc.cur_file = file
-		tc.cur_module = if module_name.len > 0 { module_name } else { 'main' }
+		tc.cur_module = if module_name != '' { module_name } else { 'main' }
 		flag := node.typ.trim_space()
 		tc.record_error_at(.compile_error, 'bad #flag `${flag}`: shell command substitution with backticks is not supported; use #pkgconfig or explicit flags instead', id, node.pos)
 		tc.cur_file = saved_file
 		tc.cur_module = saved_module
 		return
 	}
-	if node.value != 'insert' || node.typ.len < 2 || file.len == 0 {
+	if node.value != 'insert' || node.typ.len < 2 || file == '' {
 		return
 	}
 	raw_target := node.typ.trim_space()
@@ -2966,7 +2966,7 @@ fn (mut tc TypeChecker) check_insert_directive(id flat.NodeId, node flat.Node, f
 	saved_file := tc.cur_file
 	saved_module := tc.cur_module
 	tc.cur_file = file
-	tc.cur_module = if module_name.len > 0 { module_name } else { 'main' }
+	tc.cur_module = if module_name != '' { module_name } else { 'main' }
 	tc.record_error_at(.compile_error, 'The file ${raw_target}, needed for insertion by module `${tc.cur_module}`, does not exist.', id, node.pos)
 	tc.cur_file = saved_file
 	tc.cur_module = saved_module
@@ -2990,7 +2990,7 @@ fn (tc &TypeChecker) resolve_insert_path(target string, file string) string {
 }
 
 fn checker_vmod_root_for_file(file string) string {
-	mut dir := if file.len > 0 { os.dir(file) } else { os.getwd() }
+	mut dir := if file != '' { os.dir(file) } else { os.getwd() }
 	if dir.len == 0 {
 		dir = os.getwd()
 	}
@@ -3024,7 +3024,7 @@ fn (mut tc TypeChecker) collect_index_child(a &flat.FlatAst, i int, idx_file str
 	match node.kind {
 		.directive {
 			tc.check_insert_directive(flat.NodeId(i), node, idx_file, idx_module)
-			if idx_file.len > 0 && node.value.starts_with('@attributes:') {
+			if idx_file != '' && node.value.starts_with('@attributes:') {
 				decl_idx := node.value['@attributes:'.len..].int()
 				if decl_idx >= 0 && decl_idx < a.nodes.len && a.nodes[decl_idx].kind == .module_decl {
 					tc.collect_module_attributes(node, idx_file)
@@ -3332,7 +3332,7 @@ fn recursive_alias_container(name string, type_text string) string {
 }
 
 fn type_text_contains_symbol(type_text string, name string) bool {
-	if name.len == 0 || type_text.len < name.len {
+	if name == '' || type_text.len < name.len {
 		return false
 	}
 	mut start := 0
@@ -3358,7 +3358,7 @@ fn is_type_symbol_byte(ch u8) bool {
 }
 
 fn is_plain_type_symbol(type_text string) bool {
-	if type_text.len == 0 {
+	if type_text == '' {
 		return false
 	}
 	for ch in type_text {
@@ -4537,7 +4537,7 @@ fn (tc &TypeChecker) c_struct_decl_signature(a &flat.FlatAst, node flat.Node) st
 }
 
 fn c_struct_decl_signatures_compatible(a string, b string) bool {
-	if a.len == 0 || b.len == 0 || a == b {
+	if a == '' || b == '' || a == b {
 		return true
 	}
 	a_parts := a.split('|')
@@ -4586,7 +4586,7 @@ fn c_struct_decl_fields_conflict(a []string, b []string) bool {
 }
 
 fn c_struct_decl_signature_field_count(sig string) int {
-	if sig.len == 0 {
+	if sig == '' {
 		return 0
 	}
 	parts := sig.split('|')
@@ -4942,7 +4942,7 @@ pub fn (tc &TypeChecker) qualify_fn_name(name string) string {
 }
 
 fn (tc &TypeChecker) local_bare_fn_key(name string) ?string {
-	if name.len == 0 || name.index_u8(`.`) >= 0 {
+	if name == '' || name.index_u8(`.`) >= 0 {
 		return none
 	}
 	qfn := tc.qualify_fn_name(name)
@@ -4963,7 +4963,7 @@ fn (tc &TypeChecker) local_bare_fn_key(name string) ?string {
 // call unprefixed. Functions of other modules are always called through their
 // module prefix (`os.uname()`), so `uname := os.uname()` shadows nothing.
 fn (tc &TypeChecker) shadowed_local_fn_key(name string) ?string {
-	if name.len == 0 || name.index_u8(`.`) >= 0 {
+	if name == '' || name.index_u8(`.`) >= 0 {
 		return none
 	}
 	qualified := tc.qualify_fn_name(name)
@@ -5018,7 +5018,7 @@ fn (tc &TypeChecker) local_bare_fn_signature_key(name string) ?string {
 }
 
 fn (tc &TypeChecker) local_fn_decl_exists(name string) bool {
-	if name.len == 0 || name.index_u8(`.`) >= 0 {
+	if name == '' || name.index_u8(`.`) >= 0 {
 		return false
 	}
 	if isnil(tc.type_cache) {
@@ -5150,6 +5150,7 @@ pub fn (tc &TypeChecker) ownership_time_spent_us() i64 {
 	return tc.ownership_time_ns / 1000
 }
 
+// qualify_name resolves a name to its module-qualified form in the current checker context.
 pub fn (tc &TypeChecker) qualify_name(name string) string {
 	if !isnil(tc.qualify_name_cache) {
 		mut cache := tc.qualify_name_cache
@@ -5250,7 +5251,7 @@ fn (tc &TypeChecker) qualify_name_uncached(name string) string {
 	// while another file is current -- and `io.Type` for `types.Type` is not just
 	// wrong, it survives into cgen as an undeclared C symbol. Leave such a name
 	// bare so the consumer's own module context can qualify it correctly.
-	if tc.resolution_type_mode && name.len > 0 && name[0] >= `A` && name[0] <= `Z`
+	if tc.resolution_type_mode && name != '' && name[0] >= `A` && name[0] <= `Z`
 		&& !tc.qualify_candidate_type_exists(qualified) {
 		return name
 	}
@@ -5277,7 +5278,7 @@ fn (tc &TypeChecker) qualify_decl_name(name string) string {
 // this - it is order-dependent during collect.
 fn (tc &TypeChecker) qualify_resolution_type_name(name string) string {
 	qualified := tc.qualify_name(name)
-	if qualified != name && name.len > 0 && name[0] >= `A` && name[0] <= `Z`
+	if qualified != name && name != '' && name[0] >= `A` && name[0] <= `Z`
 		&& !tc.qualify_candidate_type_exists(qualified) && tc.qualify_candidate_type_exists(name) {
 		return name
 	}
@@ -5763,7 +5764,7 @@ fn (tc &TypeChecker) selective_import_has_missing_value_symbol(node flat.Node, m
 }
 
 fn (tc &TypeChecker) private_declaration(name string) ?DeclarationVisibility {
-	if name.len == 0 || is_regular_v_test_file(tc.cur_file) {
+	if name == '' || is_regular_v_test_file(tc.cur_file) {
 		return none
 	}
 	mut candidates := []string{}
@@ -6070,7 +6071,7 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 }
 
 fn type_text_contains_qualified_import(text string, alias string) bool {
-	if text.len <= alias.len || alias.len == 0 {
+	if text.len <= alias.len || alias == '' {
 		return false
 	}
 	mut start := 0
@@ -6401,7 +6402,7 @@ fn (tc &TypeChecker) resolve_selective_import_symbol(name string) ?string {
 				if !tc.fn_signature_known(candidate) && candidate !in tc.fn_ret_types && candidate !in tc.fn_param_types {
 					continue
 				}
-				if resolved.len > 0 && resolved != candidate {
+				if resolved != '' && resolved != candidate {
 					return none
 				}
 				resolved = candidate
@@ -6434,7 +6435,7 @@ pub fn (tc &TypeChecker) resolve_any_selective_import_fn(name string) ?string {
 			if !tc.fn_signature_known(candidate) && candidate !in tc.fn_ret_types && candidate !in tc.fn_param_types {
 				continue
 			}
-			if resolved.len > 0 && resolved != candidate {
+			if resolved != '' && resolved != candidate {
 				return none
 			}
 			resolved = candidate
@@ -6472,7 +6473,7 @@ fn (tc &TypeChecker) vsh_os_fn_symbol(name string) ?string {
 // a generic call outside any file context, and a compilation only has script-mode
 // symbols at all when it contains a `.vsh` script.
 fn (tc &TypeChecker) vsh_os_fn_key(name string) ?string {
-	if !tc.a.has_vsh_source || name.len == 0 || name.contains('.') {
+	if !tc.a.has_vsh_source || name == '' || name.contains('.') {
 		return none
 	}
 	// Only a real V declaration shadows the script's `os` symbol. A bare name is
@@ -6491,7 +6492,7 @@ fn (tc &TypeChecker) vsh_os_fn_key(name string) ?string {
 // vsh_os_const_key resolves an unqualified constant name inside a `.vsh` script
 // to its `os` declaration, under the same last-resort rule as `os` functions.
 fn (tc &TypeChecker) vsh_os_const_key(name string) ?string {
-	if !tc.vsh_script_file() || name.len == 0 || name.contains('.') {
+	if !tc.vsh_script_file() || name == '' || name.contains('.') {
 		return none
 	}
 	key := 'os.${name}'
@@ -6536,7 +6537,7 @@ fn (tc &TypeChecker) unqualified_type_symbol_is_builtin(name string) bool {
 }
 
 fn (tc &TypeChecker) unqualified_type_symbol_has_scoped_shadow(name string) bool {
-	if name.len == 0 {
+	if name == '' {
 		return false
 	}
 	if tc.cur_module.len > 0 && tc.cur_module != 'main' && tc.cur_module != 'builtin' {
@@ -6665,7 +6666,7 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 // declares -- a type, or a function or method key. Used to choose between a
 // spelling and its alias expansion.
 fn (tc &TypeChecker) import_type_text_resolves(text string) bool {
-	if text.len == 0 {
+	if text == '' {
 		return false
 	}
 	if tc.qualify_candidate_type_exists(text) {
@@ -6889,7 +6890,7 @@ fn (mut tc TypeChecker) register_fn_ret_type_text(name string, text string) {
 }
 
 fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
-	if name.len == 0 {
+	if name == '' {
 		return
 	}
 	// Plain functions and C-lowered aliases cannot form receiver.method keys.
@@ -6932,7 +6933,7 @@ fn (tc &TypeChecker) clear_generic_receiver_pattern_cache() {
 }
 
 fn (mut tc TypeChecker) set_receiver_method_suffix_index(key string, name string) {
-	if key.len == 0 {
+	if key == '' {
 		return
 	}
 	if existing := tc.receiver_method_suffix_index[key] {
@@ -6945,7 +6946,7 @@ fn (mut tc TypeChecker) set_receiver_method_suffix_index(key string, name string
 }
 
 fn (mut tc TypeChecker) register_c_variadic_fn(name string) {
-	if name.len == 0 {
+	if name == '' {
 		return
 	}
 	lowered_name := tc.cached_c_name(name)
@@ -6953,7 +6954,7 @@ fn (mut tc TypeChecker) register_c_variadic_fn(name string) {
 }
 
 fn (mut tc TypeChecker) register_c_variadic_fn_with_lowered(name string, lowered_name string) {
-	if name.len == 0 {
+	if name == '' {
 		return
 	}
 	if tc.defer_fn_ancillary {
@@ -7181,6 +7182,7 @@ mut:
 	alive bool
 }
 
+// diagnose_unused_private_declarations reports private declarations that are not reachable from used code.
 pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[string]bool) {
 	if tc.errors.len > 0 || !tc.has_main_module_fn_main() {
 		return
@@ -7394,7 +7396,7 @@ fn (tc &TypeChecker) should_annotate_fn(node flat.Node, used_fns map[string]bool
 }
 
 fn checker_qualified_fn_name(mod string, name string) string {
-	if mod.len == 0 || mod == 'main' || mod == 'builtin' {
+	if mod == '' || mod == 'main' || mod == 'builtin' {
 		return name
 	}
 	return '${mod}.${name}'
@@ -7996,7 +7998,7 @@ fn (mut tc TypeChecker) annotate_collapsed_field_expected_expr(arg_id flat.NodeI
 }
 
 fn (tc &TypeChecker) collapsed_field_expected_type(field_name string, target Type) ?Type {
-	if field_name.len == 0 {
+	if field_name == '' {
 		return none
 	}
 	param_struct := collapsed_field_struct_type(target) or { return none }
@@ -8004,7 +8006,7 @@ fn (tc &TypeChecker) collapsed_field_expected_type(field_name string, target Typ
 }
 
 fn (tc &TypeChecker) collapsed_field_owner(field_name string, target Type) ?string {
-	if field_name.len == 0 {
+	if field_name == '' {
 		return none
 	}
 	param_struct := collapsed_field_struct_type(target) or { return none }
@@ -8169,6 +8171,7 @@ fn (tc &TypeChecker) for_in_iterable_yields_ref(container_id flat.NodeId) bool {
 	return false
 }
 
+// iterator_for_in_elem_type returns the element type yielded by an iterator-style `for in` value.
 pub fn (tc &TypeChecker) iterator_for_in_elem_type(typ Type) ?Type {
 	info := tc.iterator_for_in_next_call_info(typ) or { return none }
 	return iterator_for_in_elem_type_from_next_return(info.return_type)
@@ -8200,6 +8203,7 @@ fn (tc &TypeChecker) iterator_unbounded_next_generic(typ Type) ?string {
 	return none
 }
 
+// iterator_for_in_next_call_info returns call metadata for a compatible iterator `next` method.
 pub fn (tc &TypeChecker) iterator_for_in_next_call_info(typ Type) ?CallInfo {
 	clean := unwrap_pointer(typ)
 	name := clean.name()
@@ -8276,6 +8280,7 @@ fn (tc &TypeChecker) specialize_generic_interface_method(type_name string, info 
 	}
 }
 
+// index_overload_call_info returns call metadata for the `[]` or `[]=` overload of `typ`.
 pub fn (tc &TypeChecker) index_overload_call_info(typ Type, setter bool) ?CallInfo {
 	method := if setter { '[]=' } else { '[]' }
 	clean := unwrap_pointer(typ)
@@ -8621,7 +8626,7 @@ pub fn (tc &TypeChecker) fn_param_types_for_name(name string) []Type {
 	if params := tc.fn_param_types[name] {
 		return params
 	}
-	if name.len == 0 {
+	if name == '' {
 		return []Type{}
 	}
 	if indexed := tc.receiver_method_suffix_index[name] {
@@ -8778,7 +8783,7 @@ pub fn (tc &TypeChecker) fork_fn_value_replays_source(idx int) bool {
 // anything else replaces the entry. `name` must already be owned by an arena
 // that outlives this checker.
 pub fn (mut tc TypeChecker) apply_forked_fn_value(idx int, name string) {
-	if name.len == 0 {
+	if name == '' {
 		tc.clear_resolved_fn_value(flat.NodeId(idx))
 		return
 	}
@@ -10746,7 +10751,7 @@ fn (tc &TypeChecker) selected_file_call_base_name(fn_node flat.Node) ?string {
 }
 
 fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, method string) ?string {
-	if method.len == 0 {
+	if method == '' {
 		return none
 	}
 	base_type := tc.resolve_type(base_id)
@@ -11129,7 +11134,7 @@ fn export_qualified_fn_name(module_name string, name string) string {
 	if name.contains('.') {
 		return name
 	}
-	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin' {
+	if module_name == '' || module_name == 'main' || module_name == 'builtin' {
 		return name
 	}
 	return '${module_name}.${name}'
@@ -11139,7 +11144,7 @@ fn export_natural_c_symbol(module_name string, name string) string {
 	if module_name == 'builtin' && name == 'free' {
 		return 'v_free'
 	}
-	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+	if module_name != '' && module_name != 'main' && module_name != 'builtin' {
 		return naming.c_name('${module_name}.${name}')
 	}
 	if name == 'free' {
@@ -11155,7 +11160,7 @@ fn export_natural_c_symbol(module_name string, name string) string {
 }
 
 fn is_valid_export_c_name(name string) bool {
-	if name.len == 0 {
+	if name == '' {
 		return false
 	}
 	if name in export_c_reserved_words {
@@ -12589,7 +12594,7 @@ fn (tc &TypeChecker) active_generic_param(name string) bool {
 }
 
 fn (tc &TypeChecker) node_has_enclosing_generic_param(node_id flat.NodeId, name string) bool {
-	if name.len == 0 || int(node_id) < 0 || int(node_id) >= tc.a.nodes.len {
+	if name == '' || int(node_id) < 0 || int(node_id) >= tc.a.nodes.len {
 		return false
 	}
 	node := tc.a.nodes[int(node_id)]
@@ -13263,7 +13268,7 @@ fn (tc &TypeChecker) type_diagnostic_pos(node_id flat.NodeId, name string) token
 	if type_text.len > 0 {
 		candidates << type_text
 	}
-	if name.len > 0 && name !in candidates {
+	if name != '' && name !in candidates {
 		candidates << name
 	}
 	anchor := int_max(0, int_min(node.pos.offset, source.len))
@@ -13276,7 +13281,7 @@ fn (tc &TypeChecker) type_diagnostic_pos(node_id flat.NodeId, name string) token
 }
 
 fn closest_text_span(source string, text string, anchor int, file_id int) ?token.Pos {
-	if text.len == 0 || source.len < text.len {
+	if text == '' || source.len < text.len {
 		return none
 	}
 	mut search_from := 0
@@ -13299,7 +13304,7 @@ fn closest_text_span(source string, text string, anchor int, file_id int) ?token
 }
 
 fn closest_identifier_span(source string, name string, anchor int, file_id int) ?token.Pos {
-	if name.len == 0 || source.len < name.len {
+	if name == '' || source.len < name.len {
 		return none
 	}
 	// The anchor normally sits on (or immediately before) the identifier, so
@@ -13581,7 +13586,7 @@ fn (tc &TypeChecker) type_text_has_generic_struct_placeholder_application(typ st
 }
 
 fn generic_type_application_parts(typ string) (string, []string, bool) {
-	if typ.len == 0 || typ[0] == `[` {
+	if typ == '' || typ[0] == `[` {
 		return '', []string{}, false
 	}
 	bracket := typ.index_u8(`[`)
@@ -13635,7 +13640,7 @@ fn is_fixed_array_len_text(inner string) bool {
 
 // is_decimal_int_literal reports whether is decimal int literal applies in types.
 fn is_decimal_int_literal(s string) bool {
-	if s.len == 0 {
+	if s == '' {
 		return false
 	}
 	for i in 0 .. s.len {
@@ -13651,7 +13656,7 @@ fn is_decimal_int_literal(s string) bool {
 // none when `s` is not a whole integer literal (a const name, an expression, etc.), so
 // const-length folding accepts `0xF & 6` / `[0b1100 >> 1]int`, not just decimal text.
 fn v_int_literal_value(s string) ?int {
-	if s.len == 0 {
+	if s == '' {
 		return none
 	}
 	t := s.replace('_', '')
@@ -13809,7 +13814,7 @@ fn (tc &TypeChecker) type_name_known_in_current_module(typ string) bool {
 
 // should_check_named_type reports whether should check named type applies in types.
 fn should_check_named_type(typ string) bool {
-	if typ.len == 0 {
+	if typ == '' {
 		return false
 	}
 	for i in 0 .. typ.len {
@@ -14375,7 +14380,7 @@ fn enum_backing_max_text(bounds EnumBackingValueBounds) string {
 }
 
 fn enum_backing_literal_overflows(literal string, bounds EnumBackingValueBounds) bool {
-	if literal.len == 0 {
+	if literal == '' {
 		return false
 	}
 	is_negative := literal[0] == `-`
@@ -14422,7 +14427,7 @@ fn enum_backing_literal_overflows(literal string, bounds EnumBackingValueBounds)
 }
 
 fn enum_backing_literal_becomes_max(literal string, bounds EnumBackingValueBounds) bool {
-	if literal.len == 0 || literal[0] == `-` {
+	if literal == '' || literal[0] == `-` {
 		return false
 	}
 	mut magnitude := literal
@@ -14668,6 +14673,7 @@ pub fn (tc &TypeChecker) struct_module_for_type(name string) string {
 	return ''
 }
 
+// type_has_declaration_attribute reports whether the declaration of `typ` has an attribute named `name`.
 pub fn (tc &TypeChecker) type_has_declaration_attribute(typ Type, name string) bool {
 	clean := unalias_type(unwrap_pointer(typ))
 	type_name := strip_generic_args_name(clean.name())
@@ -14789,7 +14795,7 @@ fn (tc &TypeChecker) type_declaration_exists_before(node_id flat.NodeId, name st
 }
 
 fn qualify_decl_name_in_module(name string, module_name string) string {
-	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin'
+	if module_name == '' || module_name == 'main' || module_name == 'builtin'
 		|| name.starts_with('${module_name}.') {
 		return name
 	}
@@ -16139,7 +16145,7 @@ fn (mut tc TypeChecker) check_comptime_for_source_type(id flat.NodeId, node flat
 		&& source_type !is SumType {
 		message = '${source_type.name().all_after_last('.')} is not Sum type to use with .variants'
 	}
-	if message.len == 0 {
+	if message == '' {
 		return false
 	}
 	for diagnostic in tc.errors {
@@ -16573,7 +16579,7 @@ fn (tc &TypeChecker) comptime_static_attribute_cases(source string) ComptimeStat
 }
 
 fn comptime_static_method_type_text(param_types []string, return_type string) string {
-	ret := if return_type.len > 0 && return_type != 'void' { ' ${return_type}' } else { '' }
+	ret := if return_type != '' && return_type != 'void' { ' ${return_type}' } else { '' }
 	return 'fn(${param_types.join(', ')})${ret}'
 }
 
@@ -16590,7 +16596,7 @@ fn comptime_static_source_line_offsets(path string) []int {
 }
 
 fn comptime_static_source_location(path string, encoded_offset int, line_offsets []int) string {
-	if path.len == 0 || encoded_offset <= 0 || line_offsets.len == 0 {
+	if path == '' || encoded_offset <= 0 || line_offsets.len == 0 {
 		return ''
 	}
 	offset := encoded_offset - 1
@@ -17088,7 +17094,7 @@ fn (mut tc TypeChecker) check_comptime_field_selector(id flat.NodeId, node flat.
 	field_expr := tc.a.node(field_expr_id)
 	if field_expr.kind != .selector {
 		actual_name := if field_expr.kind == .ident && field_expr.value == loop_var
-			&& loop_var.len > 0 {
+			&& loop_var != '' {
 			'FieldData'
 		} else {
 			tc.check_node(field_expr_id)
@@ -17098,7 +17104,7 @@ fn (mut tc TypeChecker) check_comptime_field_selector(id flat.NodeId, node flat.
 			tc.record_error_at(.unknown_field, 'expected `string` instead of `${actual_name}` (e.g. `field.name`)', field_expr_id, field_expr.pos)
 		}
 		tc.record_error_at(.unknown_field, 'expected selector expression e.g. `\$(field.name)`', field_expr_id, field_expr.pos)
-		if loop_var.len == 0 {
+		if loop_var == '' {
 			tc.record_invalid_comptime_selector_source_assignment(id, node)
 		}
 		tc.register_synth_type(id, Type(void_))
@@ -17111,10 +17117,10 @@ fn (mut tc TypeChecker) check_comptime_field_selector(id flat.NodeId, node flat.
 	field_var_id := tc.a.child(field_expr, 0)
 	field_var := tc.a.node(field_var_id)
 	field_var_name := tc.source_text_for_node(field_var_id)
-	if loop_var.len == 0 || field_var.kind != .ident || field_var.value != loop_var {
+	if loop_var == '' || field_var.kind != .ident || field_var.value != loop_var {
 		tc.check_node(field_expr_id)
 		mut field_expr_type := tc.resolve_type(field_expr_id)
-		if loop_var.len == 0 && field_var.kind == .ident
+		if loop_var == '' && field_var.kind == .ident
 			&& tc.cur_scope.lookup(field_var.value) == none {
 			tc.record_error_at(.unknown_field, '`${field_var.value}` does not return a value', field_expr_id, tc.node_value_diagnostic_pos(field_expr_id))
 			field_expr_type = Type(void_)
@@ -17122,7 +17128,7 @@ fn (mut tc TypeChecker) check_comptime_field_selector(id flat.NodeId, node flat.
 		if field_expr_type !is String {
 			tc.record_error_at(.unknown_field, 'expected `string` instead of `${field_expr_type.name()}` (e.g. `field.name`)', field_expr_id, tc.node_value_diagnostic_pos(field_expr_id))
 		}
-		if loop_var.len == 0 {
+		if loop_var == '' {
 			tc.record_error_at(.unknown_field, 'compile time field access can only be used when iterating over `T.fields`', field_var_id, field_var.pos)
 		}
 		tc.record_error_at(.unknown_ident, 'unknown `\$for` variable `${field_var_name}`', field_var_id, field_var.pos)
@@ -17478,7 +17484,7 @@ fn comptime_static_attribute_kind_value(kind int) string {
 }
 
 fn comptime_static_replace_unquoted(cond string, needle string, replacement string) string {
-	if needle.len == 0 || !cond.contains(needle) {
+	if needle == '' || !cond.contains(needle) {
 		return cond
 	}
 	mut out := ''

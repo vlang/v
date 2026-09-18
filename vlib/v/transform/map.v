@@ -1578,7 +1578,7 @@ fn (t &Transformer) map_key_backing_type(key_type string) ?string {
 				}
 			}
 		}
-		if alias_target.len > 0 {
+		if alias_target != '' {
 			base := t.normalize_type_alias(alias_target).trim_space()
 			if base in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
 				'u32', 'u64', 'rune', 'char', 'string'] {
@@ -2336,7 +2336,7 @@ fn (mut t Transformer) append_owned_map_set_key_cleanup(key_name string, cleanup
 	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', [
 		t.make_ident(key_name),
 	], 'void'))
-	if existing_name.len == 0 {
+	if existing_name == '' {
 		result << drop_stmt
 		return
 	}

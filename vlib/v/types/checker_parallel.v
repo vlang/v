@@ -1948,7 +1948,7 @@ fn (tc &TypeChecker) operator_receiver_without_mut_pos(node flat.Node) token.Pos
 // what keeps strings, comments and interpolations out of the answer: by then
 // the scanner has already decided what is a name.
 fn (tc &TypeChecker) comptime_skipped_body_uses(node flat.Node, name string) bool {
-	if name.len == 0 || tc.a.comptime_skipped_names.len == 0 {
+	if name == '' || tc.a.comptime_skipped_names.len == 0 {
 		return false
 	}
 	file := tc.a.source_files[node.pos.id] or { return false }
@@ -1959,7 +1959,7 @@ fn (tc &TypeChecker) comptime_skipped_body_uses(node flat.Node, name string) boo
 // compile-time branch. Unlike comptime_skipped_body_uses, write-only plain
 // assignment targets do not count.
 fn (tc &TypeChecker) comptime_skipped_body_reads(node flat.Node, name string) bool {
-	if name.len == 0 || tc.a.comptime_skipped_read_names.len == 0 {
+	if name == '' || tc.a.comptime_skipped_read_names.len == 0 {
 		return false
 	}
 	file := tc.a.source_files[node.pos.id] or { return false }
@@ -1969,7 +1969,7 @@ fn (tc &TypeChecker) comptime_skipped_body_reads(node flat.Node, name string) bo
 // comptime_skipped_body_uses_goto_label reports whether a skipped compile-time
 // branch jumps to `name`.
 fn (tc &TypeChecker) comptime_skipped_body_uses_goto_label(node flat.Node, name string) bool {
-	if name.len == 0 || tc.a.comptime_skipped_goto_labels.len == 0 {
+	if name == '' || tc.a.comptime_skipped_goto_labels.len == 0 {
 		return false
 	}
 	file := tc.a.source_files[node.pos.id] or { return false }
@@ -2498,7 +2498,7 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 }
 
 fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type string) bool {
-	if param_type.len == 0 || param_type !in node.generic_params() {
+	if param_type == '' || param_type !in node.generic_params() {
 		return false
 	}
 	mut stack := []flat.NodeId{}
@@ -2585,7 +2585,7 @@ fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
 }
 
 fn sql_text_contains_ident(text string, name string) bool {
-	if name.len == 0 {
+	if name == '' {
 		return false
 	}
 	for token in text.split(' ') {
