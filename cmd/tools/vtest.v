@@ -8,10 +8,9 @@ import v.util.vflags
 
 struct Context {
 mut:
-	verbose                bool
-	fail_fast              bool
-	run_only               []string
-	skip_multiwindow_tests bool
+	verbose   bool
+	fail_fast bool
+	run_only  []string
 }
 
 fn main() {
@@ -38,8 +37,6 @@ fn main() {
 	requested_vflags := os.getenv('VFLAGS')
 	mut requested_args := vflags.tokenize_to_args(requested_vflags)
 	requested_args << args_before
-	ctx.skip_multiwindow_tests = os.getenv('GITHUB_ACTIONS') == 'true'
-		&& requested_args.any(it == 'gg_multiwindow' || it == '-d=gg_multiwindow')
 	strict_v3 := ('-new-compiler' in requested_args && '-old-compiler' !in requested_args)
 		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
 	mut session_vargs := args_before.join(' ')
@@ -110,6 +107,7 @@ fn show_usage() {
 	println('')
 }
 
+// should_test_dir recursively discovers test files and returns their paths and skipped paths.
 pub fn (ctx &Context) should_test_dir(path string, backend string) ([]string, []string) { // return is (files, skip_files)
 	mut files := os.ls(path) or { return []string{}, []string{} }
 	mut local_path_separator := os.path_separator
@@ -128,7 +126,7 @@ pub fn (ctx &Context) should_test_dir(path string, backend string) ([]string, []
 			res_files << ret_files
 			skip_files << ret_skip_files
 		} else if os.exists(p) {
-			match ctx.should_test(p, backend) {
+			match ctx.should_test_discovered(p, backend) {
 				.test {
 					res_files << p
 				}
@@ -152,14 +150,22 @@ enum ShouldTestStatus {
 	ignore // just ignore the file, so it will not be printed at all in the list of tests
 }
 
-fn (ctx &Context) should_skip_multiwindow_test(path string) bool {
+// Explicit file selection must reach the compiler even when directory discovery
+// temporarily excludes a test family on CI. The compiler still checks its build
+// constraints; -run-only still filters its functions.
+fn (ctx &Context) should_test_discovered(path string, backend string) ShouldTestStatus {
+	status := ctx.should_test(path, backend)
+	if status == .test && should_skip_multiwindow_discovery(path) {
+		return .skip
+	}
+	return status
+}
+
+fn should_skip_multiwindow_discovery(path string) bool {
 	if os.getenv('GITHUB_ACTIONS') != 'true' {
 		return false
 	}
-	if ctx.skip_multiwindow_tests {
-		return true
-	}
-	// Temporarily keep multiwindow tests out of GitHub Actions on every OS.
+	// Temporarily keep multiwindow tests out of recursive CI discovery on every OS.
 	normalized := path.replace('\\', '/')
 	file_name := normalized.all_after_last('/')
 	return normalized.contains('/multiwindow/') || normalized.starts_with('multiwindow/')
@@ -167,11 +173,6 @@ fn (ctx &Context) should_skip_multiwindow_test(path string) bool {
 }
 
 fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
-	is_plain_test := path.ends_with('_test.v') || path.ends_with('_test.c.v')
-		|| path.ends_with('_test.js.v')
-	if is_plain_test && ctx.should_skip_multiwindow_test(path) {
-		return .skip
-	}
 	if path.ends_with('_test.v') {
 		return ctx.should_test_when_it_contains_matching_fns(path, backend)
 	}
@@ -184,14 +185,12 @@ fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
 		}
 		return .skip
 	}
-	if path.ends_with('.v') && path.count('.') == 2 {
-		if !path.all_before_last('.v').all_before_last('.').ends_with('_test') {
+	file_name := os.file_name(path)
+	if file_name.ends_with('.v') && file_name.count('.') == 2 {
+		if !file_name.all_before_last('.v').all_before_last('.').ends_with('_test') {
 			return .ignore
 		}
-		if ctx.should_skip_multiwindow_test(path) {
-			return .skip
-		}
-		backend_arg := path.all_before_last('.v').all_after_last('.')
+		backend_arg := file_name.all_before_last('.v').all_after_last('.')
 		// A backend name is checked before the architecture aliases: `wasm` spells both,
 		// and `foo_test.wasm.v` is a WASM backend test. Reading it as an architecture
 		// skipped it on every native host instead of running it under `-b wasm`.

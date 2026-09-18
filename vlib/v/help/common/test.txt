@@ -26,6 +26,15 @@ suffix, and to name your test functions with test_ prefix. Each function,
 that starts with 'fn test_', and that is in a '_test.v' file will be called
 automatically by the test framework.
 
+Architecture and backend suffixes are matched on the filename, independently
+of dots in its parent directories. For example, `./build.debug/math_test.amd64.v`
+is selected on an amd64 host; incompatible architecture/backend tests are skipped.
+
+On GitHub Actions, recursive directory discovery currently skips multiwindow
+tests. Dedicated jobs can select those tests explicitly by filename, including
+with `-run-only`. Explicit selection still respects platform/backend build
+constraints. Passing `-d gg_multiwindow` does not skip unrelated tests.
+
 NB 3: You can use `assert condition` inside each 'test_' function. If the
 asserted condition fails, then v will record that, and produce a more detailed
 error message, about where the failure was.
