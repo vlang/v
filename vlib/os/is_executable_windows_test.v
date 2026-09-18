@@ -16,6 +16,9 @@ fn test_is_executable_decides_by_extension_on_windows() {
 		return
 	}
 	eprintln(@FN)
+	// The mixed-case `EXE`/`Cmd` entries are intentional: Windows file names are
+	// case insensitive, and this asserts `is_executable` matches the extension
+	// case insensitively too, so they must not be normalised to lower case here.
 	for ext in ['exe', 'com', 'bat', 'cmd', 'EXE', 'Cmd'] {
 		fpath := os.join_path(tfolder, 'tool.${ext}')
 		os.write_file(fpath, 'x')!
