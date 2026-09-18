@@ -13438,15 +13438,18 @@ fn (mut g FlatGen) sizeof_selector_target(base string, fields []string) string {
 	mut cur := g.sizeof_selector_base_type(base)
 	for field in fields {
 		mut arrow := false
+		mut field_name := c_field_name(field)
 		if typ := cur {
-			// An alias can stand for the pointer: `type Ref = &Node` records a
-			// types.Alias whose C storage is still a pointer, so erase the alias before
-			// asking. The field lookup below needs the same erasure to find the struct.
+			// An alias may stand for the pointer, so resolve it before
+			// choosing the member-access operator.
 			if cgen_unalias_type(typ) is types.Pointer {
 				arrow = true
 			}
+			if field.starts_with('@') {
+				field_name = g.field_c_name(typ, field)
+			}
 		}
-		expr += if arrow { '->${g.field_c_name(cur or { types.Type(types.void_) }, field)}' } else { '.${g.field_c_name(cur or { types.Type(types.void_) }, field)}' }
+		expr += if arrow { '->${field_name}' } else { '.${field_name}' }
 		cur = g.sizeof_selector_field_type(cur, field)
 	}
 	return expr
