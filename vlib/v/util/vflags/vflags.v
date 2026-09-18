@@ -29,10 +29,13 @@ pub fn join_env_vflags_and_os_args() []string {
 // It supports quoted arguments, where "several little words" for example,
 // will become a *single argument* in the output.
 // The quotes can be single or double ones.
+// Adjacent quoted and unquoted parts form one argument. Only unquoted whitespace
+// separates arguments; an entirely empty quoted argument is retained.
 pub fn tokenize_to_args(s string) []string {
 	mut tokens := []string{}
 	mut ctoken := strings.new_builder(20)
 	mut in_quotes := false
+	mut has_quoted_part := false
 	mut quote_char := ` `
 	for i in 0 .. s.len {
 		c := s[i]
@@ -46,12 +49,15 @@ pub fn tokenize_to_args(s string) []string {
 				ctoken.write_u8(c)
 			} else {
 				in_quotes = false
-				tokens << ctoken.str()
+				// A closing quote ends a part, not the argument: "build dir"/app
+				// is one path. Remember empty quoted parts until a separator or EOF.
+				has_quoted_part = true
 			}
 		} else if c.is_space() && !in_quotes {
 			// space outside quotes means end of a token
-			if ctoken.len > 0 {
+			if ctoken.len > 0 || has_quoted_part {
 				tokens << ctoken.str()
+				has_quoted_part = false
 			}
 		} else {
 			// s[i] is a UTF-8 byte, not a decoded Unicode code point.
@@ -59,7 +65,7 @@ pub fn tokenize_to_args(s string) []string {
 		}
 	}
 	// add the potential remaining token too
-	if ctoken.len > 0 {
+	if ctoken.len > 0 || has_quoted_part {
 		tokens << ctoken.str()
 	}
 	return tokens
