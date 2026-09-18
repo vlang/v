@@ -7164,17 +7164,7 @@ Full list of builtin options:
 |                                |                  |                               | `wasm32_emscripten`, `wasm32_wasi`            |
 |                                |                  |                               | `native`, `autofree`                          |
 
-`glibc` is decided by V, not passed with `-d`: it detects the C library of the
-machine it runs on, and keeps that answer only while it also links the program.
-For output another toolchain builds (`-o out.c`, `-o -`, `-o out.o`,
-`-generate-c-project`, `-os cross`) a detected glibc is dropped, which keeps the
-generated code off glibc-only functions such as `backtrace()`. Building for musl
-still requires `-musl`, which is also what enables `$if musl ? {`: V never infers
-it, and without it the build asserts the target is *not* musl, down to the
-`#flag`s that select a garbage collector. Use `-glibc` or `-musl` to pin the
-target C library. See `v help build-c` for the details.
-
-#### `$embed_file`
+`glibc` and `musl` describe the C library the generated program is linked against.\nOn a native Linux build that V compiles and links itself, V infers the host libc.\nThat host inference is deliberately not carried into C-only or object output, generated C\nprojects, portable `-os cross` output, or a foreign target, because another toolchain may\nlink those artifacts. Pass `-glibc` or `-musl` when that target libc is known; `-cc\nmusl-gcc` also implies `-musl`. The latter enables optional checks such as `$if musl ? {`.\n\n#### `$embed_file`
 
 ```v ignore
 import os

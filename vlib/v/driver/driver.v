@@ -7559,6 +7559,38 @@ fn record_user_define(mut defines []string, mut values map[string]string, define
 	values[name] = value
 }
 
+fn v3_has_libc_define(defines []string) bool {
+	return defines.any(it.all_before('=').trim_space() in ['glibc', 'musl'])
+}
+
+fn v3_set_libc_define(mut defines []string, mut values map[string]string, mode string) {
+	defines = defines.filter(it.all_before('=').trim_space() !in ['glibc', 'musl'])
+	values.delete('glibc')
+	values.delete('musl')
+	if mode in ['glibc', 'musl'] {
+		record_user_define(mut defines, mut values, mode)
+	}
+}
+
+fn v3_c_compiler_implies_musl(c_compiler string) bool {
+	return os.base(c_compiler).ends_with('musl-gcc')
+}
+
+fn v3_should_infer_host_libc(c_only bool, is_o bool, generate_c_project string, output_cross_c bool, target pref.Target, host pref.Target) bool {
+	return !c_only && !is_o && generate_c_project.len == 0 && !output_cross_c
+		&& target.os == host.os && target.arch == host.arch
+}
+
+fn v3_detect_host_libc() string {
+	$if linux {
+		// Match the established compiler's host probe: musl identifies itself in
+		// `ldd --version`; other supported Linux hosts are treated as glibc.
+		output := cmdexec.run('ldd', ['--version']).output.to_lower()
+		return if output.contains('musl') { 'musl' } else { 'glibc' }
+	}
+	return ''
+}
+
 fn stage_macos_v3_compiler_error_fallback(fallback_file string, stage string) bool {
 	if fallback_file == '' {
 		return false
@@ -8641,6 +8673,7 @@ pub fn run(args []string) {
 	mut compile_backends := []string{}
 	mut user_defines := []string{}
 	mut compile_values := map[string]string{}
+	mut libc_mode := ''
 	mut user_c_flags := []string{}
 	mut user_ld_flags := []string{}
 	mut should_run := false
@@ -8841,6 +8874,12 @@ pub fn run(args []string) {
 		} else if args[i] == '-gc' && i + 1 < args.len {
 			gc_mode = args[i + 1]
 			i += 2
+		} else if args[i] == '-musl' {
+			libc_mode = 'musl'
+			i++
+		} else if args[i] == '-glibc' {
+			libc_mode = 'glibc'
+			i++
 		} else if args[i] == '-cc' && i + 1 < args.len {
 			requested_compiler := args[i + 1]
 			c_compiler = requested_compiler
@@ -9624,6 +9663,19 @@ pub fn run(args []string) {
 	// TCC cannot be used, regenerate below before invoking the `cc` fallback.
 	use_implicit_tcc_semantics := backend == 'c' && !c_compiler_explicit && implicit_tcc != ''
 	effective_c_compiler := v3_effective_c_compiler_for_codegen(backend, c_compiler, use_implicit_tcc_semantics, target)
+	if v3_c_compiler_implies_musl(c_compiler) {
+		libc_mode = 'musl'
+	}
+	if libc_mode != '' {
+		v3_set_libc_define(mut user_defines, mut compile_values, libc_mode)
+	} else if !v3_has_libc_define(user_defines)
+		&& v3_should_infer_host_libc(c_only, is_o, generate_c_project, output_cross_c, target,
+			host_target) {
+		host_libc := v3_detect_host_libc()
+		if host_libc != '' {
+			v3_set_libc_define(mut user_defines, mut compile_values, host_libc)
+		}
+	}
 	incompatible_direct_test := v3_direct_test_input_is_incompatible(is_test_command, input_file, backend, target, effective_c_compiler, is_prod, user_defines)
 	if incompatible_direct_test {
 		// Directory test discovery already excludes incompatible backend/platform files.
