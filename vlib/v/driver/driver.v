@@ -4,11 +4,15 @@ fn default_bin_file_for_input(input_file string) string {
 		return os.join_path_single(real_input, os.file_name(real_input))
 	}
 	resolved_input := if os.exists(input_file) { os.real_path(input_file) } else { input_file }
+	filename := os.file_name(resolved_input).trim_space()
 	if !resolved_input.ends_with('.v') && !resolved_input.ends_with('.vv')
 		&& !resolved_input.ends_with('.vsh') {
-		return resolved_input
+		// Extensionless and other script inputs have no V suffix to remove.
+		// Never publish the executable over their source, including symlink targets.
+		base := safe_default_bin_file_name(filename)
+		input_dir := os.dir(resolved_input)
+		return if input_dir in ['', '.'] { base } else { os.join_path_single(input_dir, base) }
 	}
-	filename := os.file_name(resolved_input).trim_space()
 	mut base := filename.all_before_last('.')
 	if os.file_ext(base) in ['.c', '.js', '.wasm'] {
 		base = base.all_before_last('.')
