@@ -515,6 +515,13 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 	branch_type := t.if_expr_branch_result_type(node)
 	if t.if_expr_branch_overrides_sum_target(branch_type, result_type) {
 		actual_result_type = branch_type
+	} else if actual_result_type == 'int' && branch_type != '' && branch_type != 'int'
+		&& branch_type != 'unknown' && branch_type != 'void' {
+		// In declaration contexts the target type defaults to int before the
+		// branch values are inspected. A default int target does not reflect a
+		// non-int merged branch type (e.g. an if-expression whose branches are
+		// generic f64 calls like math.min), so use the branch type itself.
+		actual_result_type = branch_type
 	}
 	tmp_name := t.new_temp('if_val')
 	outer_pending := t.pending_stmts.clone()
@@ -790,6 +797,18 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 						return narrowed_base_type
 					}
 				}
+			}
+			// `node_type` alone leaves a call's return type unresolved until the
+			// checker/monomorphizer has seen it, which yields the default `int` for
+			// a call to a generic function. Resolve the call's return type instead
+			// so branch types (e.g. an if-expression whose branch is `math.min[T]`)
+			// keep the called function's real type.
+			mut call_ret := t.get_call_return_type(id, node)
+			if call_ret.len == 0 || call_ret in ['unknown', 'void'] {
+				call_ret = t.generic_call_declared_return_type(id, node) or { '' }
+			}
+			if call_ret.len > 0 && call_ret !in ['unknown', 'void'] {
+				return call_ret
 			}
 			return t.node_type(id)
 		}
