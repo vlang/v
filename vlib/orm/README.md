@@ -613,6 +613,56 @@ struct User {
 	only_names := qb.select('name')!.query()!
 ```
 
+Function Call queries load relationships only when explicitly requested with `include`.
+This applies to array and singular relationships, including optional relationships.
+This changes the previous implicit-loading behavior of `orm.new_query[T]`; callers that
+need related records must now request them. The SQL-like API retains implicit loading.
+
+`include` starts a direct relationship path; `then_include` extends the last path:
+
+```v ignore
+parents := orm.new_query[Parent](db)
+rows := parents
+	.include('children')!
+	.then_include('grandkids')!
+	.then_include('toys')!
+	.query()!
+```
+
+Start another `include` for independent paths or siblings. Shared paths are loaded once:
+
+```v ignore
+rows := parents
+	.include('children')!
+	.then_include('grandkids')!
+	.include('children')!
+	.then_include('grandkids2')!
+	.include('profile')!
+	.query()!
+```
+
+Each argument is a direct relationship field name, not a dotted path or query alias.
+Existing `@[sql]` field names are accepted; an exact V field name takes precedence.
+Each complete path is validated before it is saved, even when the database is empty.
+Invalid paths return an error without replacing the previous valid path.
+
+`query()` and `reset()` clear include paths and the last-path cursor, including after a
+query error. Call `include()` again before using `then_include()` on a reused builder.
+
+Inclusion only populates related fields; it does not filter or multiply root rows.
+`where()` and `or_where()` filter the root entity. Relationship-qualified filters such as
+`where('children.name = ?', 'Bob')` are not supported. Inclusion does not add relation
+predicates to `update`, `delete`, or `insert`.
+
+Partial selections fetch omitted relationship lookup keys internally without populating
+unselected scalar fields in the result. With `distinct()`, select those keys explicitly:
+adding hidden keys could otherwise change the number of distinct results.
+
+Loading still uses the ORM's existing per-record queries, not batched eager loading.
+For N parents with a valid key and one included collection, this typically means 1+N
+SELECTs. Nested paths add queries for their loaded records. Unrequested relationships
+do not issue queries; batching is a separate optimization.
+
 8. Update records​​ (note: `update()` must be placed last):
 
 ```v ignore
