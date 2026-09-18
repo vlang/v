@@ -57,6 +57,23 @@ import os
 fn test_compiler_flags_do_not_leak() { assert os.getenv("VFLAGS") == "" }
 -- strict_v3/backend_test.js.v --
 fn test_js_backend_only() { assert true }
+-- prefix_flags/passing/bug_test.v --
+__global g_counter = 0
+fn test_global() {
+	g_counter++
+	assert g_counter == 1
+	\$if vtest_prefix_flag ? {
+		assert true
+	} \$else {
+		assert false, "missing -d vtest_prefix_flag"
+	}
+}
+-- prefix_flags/failing/bug_test.v --
+__global g_counter = 0
+fn test_global() {
+	g_counter++
+	assert g_counter == 2
+}
 ').unpack_to(tpath)!
 	assert os.exists(os.join_path(tpath, 'passing/1_test.v'))
 	assert os.exists(os.join_path(tpath, 'passing/2_test.v'))
@@ -195,4 +212,26 @@ fn test_with_stats_and_partial_failure() {
 	assert res.output.contains('assert 5 == 7'), res.output
 	assert res.output.contains(' 1 failed, 1 passed, 2 total'), res.output
 	assert res.output.contains('To reproduce just failure'), res.output
+}
+
+fn test_launcher_forwards_compiler_options_to_test_files() {
+	passing_dir := os.join_path(tpath, 'prefix_flags', 'passing')
+	// Exercise the compiler launcher, not the already-built vtest executable.
+	for target in [os.join_path(passing_dir, 'bug_test.v'), passing_dir] {
+		res := os.execute('${os.quoted_path(vexe)} -enable-globals -d vtest_prefix_flag test -run-only test_global ${os.quoted_path(target)}')
+		assert res.exit_code == 0, res.output
+		assert res.output.contains('1 passed, 1 total'), res.output
+	}
+}
+
+fn test_launcher_keeps_compiler_options_in_failure_reproduction() {
+	path := os.join_path(tpath, 'prefix_flags', 'failing', 'bug_test.v')
+	res := os.execute('${os.quoted_path(vexe)} -enable-globals -d vtest_prefix_flag test -run-only test_global ${os.quoted_path(path)}')
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('assert g_counter == 2'), res.output
+	assert !res.output.contains('use `v -enable-globals'), res.output
+	hints := res.output.split_into_lines().filter(it.contains('To reproduce just failure'))
+	assert hints.len == 1, res.output
+	assert hints[0].contains('-enable-globals'), hints[0]
+	assert hints[0].contains('-d vtest_prefix_flag'), hints[0]
 }

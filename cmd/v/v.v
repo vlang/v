@@ -310,8 +310,9 @@ fn external_tool_runtime_args(command string, prefix_args []string, command_args
 	// `v build-tools` consumes compiler options itself and applies them to every
 	// tool in its inventory. `v self` likewise treats prefix compiler options as
 	// options for the replacement compiler, not just for the launcher helper.
+	// `v test` needs them for each test compilation and its failure reproduction command.
 	// Keep those options visible after the launcher has built the cached executable.
-	if command in ['build-tools', 'self'] {
+	if command in ['build-tools', 'self', 'test'] {
 		tool_args << prefix_args
 	}
 	tool_args << command_args
