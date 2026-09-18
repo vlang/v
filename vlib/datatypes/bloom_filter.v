@@ -63,11 +63,9 @@ pub fn new_bloom_filter[T](hash_func fn (T) u32, table_size int, num_functions i
 	}
 }
 
-// add adds the element to the bloom filter.
+// adds the element to bloom filter.
 pub fn (mut b BloomFilter[T]) add(element T) {
-	// Work around direct callback calls using `.` for mutable generic receivers in C.
-	hash_func := b.hash_func
-	hash := hash_func(element)
+	hash := b.hash_func(element)
 
 	for i in 0 .. b.num_functions {
 		subhash := hash ^ salts[i]
