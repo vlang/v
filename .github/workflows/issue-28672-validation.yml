@@ -1,0 +1,156 @@
+name: Issue 28672 validation
+
+on:
+  push:
+    branches: [work/28672-string-literal-field]
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.publish.outputs.result }}
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        id: publish
+        with:
+          result-encoding: string
+          script: |
+            const repo = context.repo;
+            const base = 'aa1fa2b9dd0c557407849e000934f3b9503394c1';
+            const path = 'vlib/v/types/checker_tail_stmt.v';
+            const { data } = await github.rest.repos.getContent({...repo, path, ref: base});
+            if (data.sha !== '5d55149c5b03f2fb845f225dc8751f0fdcedee5a' || data.encoding !== 'base64') {
+              throw new Error('Unexpected checker baseline');
+            }
+            const source = Buffer.from(data.content, 'base64').toString('utf8');
+            const start = source.indexOf('fn (tc &TypeChecker) selector_type(');
+            const end = source.indexOf('\n}', start) + 2;
+            if (start < 0 || end <= start) throw new Error('Missing selector_type function');
+            let body = source.slice(start, end);
+            function replaceOnce(text, before, after) {
+              if (text.split(before).length !== 2) throw new Error(`Expected exactly one match: ${before}`);
+              return text.replace(before, after);
+            }
+            const literalMethod = [
+              '\tif base_node.kind == .string_literal {',
+              "\t\tmethod_name := 'string.${node.value}'",
+              '\t\tif method_name in tc.fn_param_types || method_name in tc.fn_ret_types {',
+              "\t\t\treturn tc.method_value_type('string', node.value)",
+              '\t\t}',
+              '\t}',
+              ''
+            ].join('\n');
+            const fallback = '\tif typ := tc.builtin_method_value_type(base_type, node.value) {';
+            body = replaceOnce(body, literalMethod, '');
+            body = replaceOnce(body, fallback, literalMethod + fallback);
+            body = replaceOnce(body,
+              '\t\t// of the same name for selector access.',
+              '\t\t// of the same name for selector access, including on string literals.');
+            const fields = body.indexOf('for f in tc.structs[sname]');
+            const methods = body.indexOf(literalMethod);
+            if (fields < 0 || methods <= fields || body.indexOf(fallback) <= methods) {
+              throw new Error('Incorrect field/method lookup order');
+            }
+            const content = source.slice(0, start) + body + source.slice(end);
+            const { data: blob } = await github.rest.git.createBlob({...repo, content, encoding: 'utf-8'});
+            const tree = [
+              {path, mode: '100644', type: 'blob', sha: blob.sha},
+              {path: 'vlib/v/types/string_literal_field_test.v', mode: '100644', type: 'blob', sha: 'ee71aff278e6e3ac5d530ae04b06620364bb2217'},
+              {path: 'vlib/v/tests/string_literal_str_field_test.v', mode: '100644', type: 'blob', sha: '3db0a41abdf0db42685a8000784b012ddbc6c519'}
+            ];
+            const { data: newTree } = await github.rest.git.createTree({...repo, base_tree: '463ca431c32e4aa7d6696aa8299d60737f36f69d', tree});
+            const { data: commit } = await github.rest.git.createCommit({...repo,
+              message: 'checker: prefer string literal fields over method values\n\nFixes #28672.',
+              tree: newTree.sha, parents: [base]});
+            await github.rest.git.createRef({...repo, ref: 'refs/heads/fix/28672-string-literal-str-field', sha: commit.sha});
+            core.info(`Prepared ${commit.sha}`);
+            return commit.sha;
+
+  validate:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VJOBS: '2'
+      VTEST_JOBS: '2'
+      VCOLORS: never
+      V_C_ERROR_BUG_REPORT_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Build the baseline compiler
+        run: |
+          set -euo pipefail
+          git show HEAD^:vlib/v/types/checker_tail_stmt.v > vlib/v/types/checker_tail_stmt.v
+          make -j2 2>&1 | tee /tmp/28672-bootstrap.log
+          ./v version
+      - name: Reproduce the reported failure without fallback
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v-issue-28672
+          cat > /tmp/v-issue-28672/bug.v <<'EOF'
+          fn empty_cstr() &char {
+              return ''.str
+          }
+          fn main() {
+              println(empty_cstr() != unsafe { nil })
+          }
+          EOF
+          set +e
+          ./v -new-compiler run /tmp/v-issue-28672/bug.v > /tmp/28672-before-reproducer.log 2>&1
+          result=$?
+          set -e
+          cat /tmp/28672-before-reproducer.log
+          test "$result" -ne 0
+          grep -F 'cannot return' /tmp/28672-before-reproducer.log
+          grep -F 'fn () string' /tmp/28672-before-reproducer.log
+      - name: Confirm the new unit regression fails on the baseline
+        run: |
+          set -euo pipefail
+          set +e
+          ./v -new-compiler -silent test vlib/v/types/string_literal_field_test.v > /tmp/28672-before-unit.log 2>&1
+          result=$?
+          set -e
+          cat /tmp/28672-before-unit.log
+          test "$result" -ne 0
+          grep -F 'typ is Pointer' /tmp/28672-before-unit.log
+      - name: Restore the fix and rebuild
+        run: |
+          set -euo pipefail
+          git restore --source=HEAD -- vlib/v/types/checker_tail_stmt.v
+          ./v -new-compiler self 2>&1 | tee /tmp/28672-rebuild.log
+          git diff --check
+      - name: Verify formatting
+        run: |
+          set -euo pipefail
+          ./v fmt -verify vlib/v/types/checker_tail_stmt.v vlib/v/types/string_literal_field_test.v vlib/v/tests/string_literal_str_field_test.v 2>&1 | tee /tmp/28672-format.log
+      - name: Run focused regressions without fallback
+        run: |
+          set -euo pipefail
+          ./v -new-compiler -silent test vlib/v/types/string_literal_field_test.v vlib/v/tests/string_literal_str_field_test.v 2>&1 | tee /tmp/28672-after-tests.log
+          ./v -new-compiler run /tmp/v-issue-28672/bug.v 2>&1 | tee /tmp/28672-after-reproducer.log
+          grep -Fx true /tmp/28672-after-reproducer.log
+      - name: Run the type-checker unit tests
+        run: |
+          set -euo pipefail
+          timeout 360 ./v -new-compiler -silent test vlib/v/types/ 2>&1 | tee /tmp/28672-types.log
+      - name: Run compiler diagnostic fixtures
+        run: |
+          set -euo pipefail
+          timeout 360 ./v -new-compiler -silent vlib/v/compiler_errors_test.v 2>&1 | tee /tmp/28672-diagnostics.log
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-28672-validation
+          path: /tmp/28672-*.log
+          retention-days: 7
