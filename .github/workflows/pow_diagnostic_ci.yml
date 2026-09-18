@@ -1,0 +1,64 @@
+name: Pure V power diagnostics
+
+on:
+  push:
+    branches: [fix/pure-v-pow-exponent-bounds]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      V_MACOS_V3_NO_FALLBACK: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build V
+        run: make -j4
+      - name: Capture Linux compiler for local validation
+        if: runner.os == 'Linux'
+        run: tar --exclude=.git -czf "$RUNNER_TEMP/v-runtime.tgz" v v.mod cmd vlib thirdparty
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: pow-linux-runtime
+          path: ${{ runner.temp }}/v-runtime.tgz
+          retention-days: 1
+      - name: Probe pure V math and preserve generated C
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/pow_probe.v" <<'EOF'
+          import math
+          fn main() {
+              println('lower=${int(u32(u32(-1) << 12))}; limit=${f64(u64(1) << 63)}')
+              for y in [1.25, 1.75, 4.25, 4.9790119248836735] {
+                  yi, yf := math.modf(math.abs(y))
+                  x1, xe := math.frexp(10.0)
+                  println('y=${y:.17g}; yi=${yi:.17g}; yf=${yf:.17g}; x1=${x1:.17g}; xe=${xe}; log=${math.log(10):.17g}; exp=${math.exp(yf * math.log(10)):.17g}; pow=${math.pow(10, y):.17g}')
+              }
+          }
+          EOF
+          ./v -cc clang -gc none -exclude '@vlib/math/*.c.v' -o "$RUNNER_TEMP/pow_probe.c" "$RUNNER_TEMP/pow_probe.v"
+          ./v -cc clang -gc none -exclude '@vlib/math/*.c.v' run "$RUNNER_TEMP/pow_probe.v"
+      - name: Run focused and reported tests
+        shell: bash
+        run: |
+          failed=0
+          for test in vlib/math/pow_fractional_test.v vlib/math/math_test.v vlib/math/complex/complex_test.v; do
+            ./v -cc clang -exclude '@vlib/math/*.c.v' "$test" || failed=1
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pow-diagnostics-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/pow_probe.v
+            ${{ runner.temp }}/pow_probe.c
+          retention-days: 1
