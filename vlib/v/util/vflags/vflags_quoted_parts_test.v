@@ -4,14 +4,13 @@ import os
 
 fn test_tokenize_to_args_keeps_partially_quoted_paths_together() {
 	for quote in ['"', "'"] {
-		assert tokenize_to_args('-cc ${quote}compiler dir${quote}/gcc') == ['-cc',
-			'compiler dir/gcc']
+		assert tokenize_to_args('-cc ${quote}compiler dir${quote}/gcc') == ['-cc', 'compiler dir/gcc']
 		assert tokenize_to_args('-o build/${quote}nested dir${quote}/app') == ['-o',
 			'build/nested dir/app']
 		assert tokenize_to_args('-I${quote}include dir${quote}/headers') == ['-Iinclude dir/headers']
 		assert tokenize_to_args('-Dname=${quote}hello world${quote}!') == ['-Dname=hello world!']
-		assert tokenize_to_args('-o ${quote}build dir${quote}/app -showcc') == ['-o',
-			'build dir/app', '-showcc']
+		assert tokenize_to_args('-o ${quote}build dir${quote}/app -showcc') == ['-o', 'build dir/app',
+			'-showcc']
 	}
 	assert tokenize_to_args(r'-cc "C:\Program Files"\LLVM\bin\clang.exe') == ['-cc',
 		r'C:\Program Files\LLVM\bin\clang.exe']
@@ -78,8 +77,8 @@ fn test_environment_flags_keep_quoted_parts_and_argument_precedence() {
 	}
 	os.unsetenv('VOSARGS')
 	os.setenv('VFLAGS', '-cc "compiler dir"/gcc -cflags "-I"/opt/"include dir" -ldflags ""', true)
-	mut expected := [os.args[0], '-cc', 'compiler dir/gcc', '-cflags', '-I/opt/include dir',
-		'-ldflags', '']
+	mut expected := [os.args[0], '-cc', 'compiler dir/gcc', '-cflags', '-I/opt/include dir', '-ldflags',
+		'']
 	expected << os.args#[1..]
 	assert join_env_vflags_and_os_args() == expected
 
