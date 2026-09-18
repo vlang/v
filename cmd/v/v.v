@@ -308,9 +308,10 @@ fn run_external_tool(args []string, command_index int, command string) {
 fn external_tool_runtime_args(command string, prefix_args []string, command_args []string) []string {
 	mut tool_args := []string{}
 	// `v build-tools` consumes compiler options itself and applies them to every
-	// tool in its inventory. Keep prefix options visible to that tool after the
-	// launcher has used the same options to build the cached executable.
-	if command == 'build-tools' {
+	// tool in its inventory. `v self` likewise treats prefix compiler options as
+	// options for the replacement compiler, not just for the launcher helper.
+	// Keep those options visible after the launcher has built the cached executable.
+	if command in ['build-tools', 'self'] {
 		tool_args << prefix_args
 	}
 	tool_args << command_args
@@ -332,9 +333,10 @@ fn find_external_tool_source(base string) ?string {
 // seconds, while running one usually takes milliseconds, so tools that are invoked once per
 // file (`v fmt -verify`, `v vet`) are unusable without this.
 fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string) {
+	compile_args := external_tool_compile_args(tool_name, prefix_args)
 	if !tool_cache_is_disabled() {
 		vexe := os.real_path(os.executable())
-		build_args := external_tool_build_args(prefix_args)
+		build_args := external_tool_build_args(tool_name, prefix_args)
 		if entry := tool_cache_entry(vexe, vroot, tool_name, tool_source, build_args) {
 			reason := tool_cache_stale_reason(entry)
 			if reason == '' {
@@ -360,18 +362,53 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 		}
 	}
 	mut driver_args := []string{}
-	driver_args << prefix_args
+	driver_args << compile_args
 	driver_args << ['run', tool_source]
 	driver_args << tool_args
-	driver.run(clean_compiler_selection_flags(driver_args))
+	driver.run(driver_args)
+}
+
+// external_tool_compile_args applies launcher-only build policy to a `cmd/tools/` helper.
+// Diagnostic tools used to be built this way by `util.launch_tool`: keep them GC-free so
+// they can start even when libgc cannot allocate executable pages or cannot be loaded.
+fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
+	mut compile_args := clean_compiler_selection_flags(prefix_args)
+	if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
+		compile_args = external_tool_args_without_gc(compile_args)
+		if '-g' !in compile_args {
+			compile_args << '-g'
+		}
+		compile_args << ['-gc', 'none']
+	}
+	return compile_args
+}
+
+fn external_tool_args_without_gc(args []string) []string {
+	mut result := []string{cap: args.len}
+	mut skip_gc_value := false
+	for arg in args {
+		if skip_gc_value {
+			skip_gc_value = false
+			continue
+		}
+		if arg == '-gc' {
+			skip_gc_value = true
+			continue
+		}
+		if arg.starts_with('-gc=') {
+			continue
+		}
+		result << arg
+	}
+	return result
 }
 
 // external_tool_build_args keeps compiler options that affect a tool binary while dropping
 // modes that deliberately do not produce one. Those modes still apply to the requested tool
 // command, but passing `-check` to the private cache build makes the compiler exit successfully
 // without creating the executable that the launcher must run.
-fn external_tool_build_args(prefix_args []string) []string {
-	return clean_compiler_selection_flags(prefix_args).filter(it !in ['-check', '-c'])
+fn external_tool_build_args(tool_name string, prefix_args []string) []string {
+	return external_tool_compile_args(tool_name, prefix_args).filter(it !in ['-check', '-c'])
 }
 
 fn print_help(args []string, command_index int) {
