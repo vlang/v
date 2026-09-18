@@ -42,6 +42,26 @@ fn test_c_directive_targets_use_requested_platform() {
 	assert c_include_arg_for_target('windows <windows.h>', '', '', target) == ''
 }
 
+fn test_c_directive_environment_macros_are_expanded() {
+	name := 'V3_C_DIRECTIVE_ENV_TEST'
+	old_value := os.getenv(name)
+	was_set := name in os.environ()
+	defer {
+		if was_set {
+			os.setenv(name, old_value, true)
+		} else {
+			os.unsetenv(name)
+		}
+	}
+	os.setenv(name, 'v3-sdk', true)
+
+	assert c_flag_args("-I\$env('${name}')/include -L\$env('${name}')/lib", '', '', pref.host_target()) == [
+		'-Iv3-sdk/include',
+		'-Lv3-sdk/lib',
+	]
+	assert c_include_arg('"\$env(\'${name}\')/include/header.h"', '', '') == '"v3-sdk/include/header.h"'
+}
+
 fn test_c_flag_default_define_macros_stay_single_arguments() {
 	target := pref.host_target()
 	assert c_flag_args("-DNUMBER=\$d('N', 1234 ) ##", '', '', target) == [
