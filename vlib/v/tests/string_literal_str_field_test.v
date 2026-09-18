@@ -39,7 +39,7 @@ fn test_string_literal_str_field_points_to_the_literal_bytes() {
 	assert unsafe { buffer[4] } == `o`
 	assert unsafe { buffer[5] } == 0
 	assert first_string_buffer_byte(c'hello') == `h`
-	assert first_string_buffer_byte(cr'raw') == `r`
+	assert first_string_buffer_byte(r'raw') == `r`
 }
 
 fn test_string_literal_fields_match_variable_and_parenthesized_fields() {
