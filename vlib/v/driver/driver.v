@@ -15796,6 +15796,22 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 	for uf in user_files {
 		tc.diagnostic_files[uf] = true
 	}
+	// Exact-output fixtures deliberately diagnose only their selected input.
+	if tc.checker_fixture_mode {
+		return
+	}
+	// Imported project modules need the same checks as the entry files.
+	// Resolve ownership once here, rather than for every checked expression.
+	for i, node in tc.a.nodes {
+		if i < tc.a.user_code_start || node.kind != .file || node.value.len == 0
+			|| node.value in tc.diagnostic_files {
+			continue
+		}
+		if types.shadow_roots_own_file(node.value, tc.shadow_diagnostic_root,
+			tc.shadow_explicit_roots, tc.shadow_dependency_roots) {
+			tc.diagnostic_files[node.value] = true
+		}
+	}
 }
 
 fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, include_imports bool, diagnostic_root string) {
