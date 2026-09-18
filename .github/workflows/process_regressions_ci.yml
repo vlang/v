@@ -4,13 +4,15 @@ on:
   pull_request:
     paths:
       - 'vlib/v/cmdexec/**'
-      - 'cmd/v/v3_fallback_diagnostics*'
+      - 'cmd/v/**'
+      - 'vlib/v/driver/**'
       - '.github/workflows/process_regressions_ci.yml'
   push:
     branches: [master]
     paths:
       - 'vlib/v/cmdexec/**'
-      - 'cmd/v/v3_fallback_diagnostics*'
+      - 'cmd/v/**'
+      - 'vlib/v/driver/**'
       - '.github/workflows/process_regressions_ci.yml'
   workflow_dispatch:
 
