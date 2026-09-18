@@ -88,10 +88,10 @@ fn (mut t Transformer) make_return_values(vals []flat.NodeId, ret_typ string) fl
 		t.a.children << val
 	}
 	return t.a.add_node(flat.Node{
-		kind: .return_stmt
+		kind:           .return_stmt
 		children_start: start
 		children_count: flat.child_count(vals.len)
-		typ: ret_typ
+		typ:            ret_typ
 	})
 }
 
@@ -1190,7 +1190,7 @@ fn (mut t Transformer) build_return_match_chain(match_expr_id flat.NodeId, orig_
 		t.a.children << id
 	}
 	if_id := t.a.add_node(flat.Node{
-		kind: .if_expr
+		kind:           .if_expr
 		children_start: if_start
 		children_count: flat.child_count(if_ids.len)
 	})
@@ -1218,9 +1218,9 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	is_start := t.a.children.len
 	t.a.children << match_expr_id
 	is_id := t.a.add_node(flat.Node{
-		kind: .is_expr
-		value: variant_name
-		typ: 'match_exact'
+		kind:           .is_expr
+		value:          variant_name
+		typ:            'match_exact'
 		children_start: is_start
 		children_count: 1
 	})
@@ -1229,7 +1229,7 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	mut sc_pushed := 0
 	sc := t.match_type_smartcast_context(match_expr_id, cond_val_id) or {
 		SmartcastContext{
-			variant_name: variant_name
+			variant_name:  variant_name
 			sum_type_name: ''
 		}
 	}
@@ -1254,7 +1254,7 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	t.a.children << body_block
 	t.a.children << else_part
 	return t.a.add_node(flat.Node{
-		kind: .if_expr
+		kind:           .if_expr
 		children_start: start
 		children_count: 3
 	})

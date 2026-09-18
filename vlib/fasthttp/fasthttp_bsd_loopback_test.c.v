@@ -12,11 +12,11 @@ const loopback_request_addr = '127.0.0.1:${loopback_request_port}'
 
 fn test_handler_can_make_loopback_request_to_same_server() {
 	mut server := new_server(ServerConfig{
-		family: .ip
-		port: loopback_request_port
-		timeout_in_seconds: 2
+		family:                  .ip
+		port:                    loopback_request_port
+		timeout_in_seconds:      2
 		max_request_buffer_size: 8192
-		handler: loopback_request_handler
+		handler:                 loopback_request_handler
 	}) or {
 		assert false, 'Failed to create server: ${err}'
 		return
@@ -32,10 +32,10 @@ fn test_handler_can_make_loopback_request_to_same_server() {
 	}
 
 	resp := http.fetch(
-		method: .get
-		url: 'http://${loopback_request_addr}/outer'
-		read_timeout: 2 * time.second
-		write_timeout: 2 * time.second
+		method:                   .get
+		url:                      'http://${loopback_request_addr}/outer'
+		read_timeout:             2 * time.second
+		write_timeout:            2 * time.second
 		disable_connection_reuse: true
 	) or {
 		assert false, 'loopback request failed: ${err}'
@@ -86,10 +86,10 @@ fn loopback_request_handler(req HttpRequest) !HttpResponse {
 	}
 	if path == '/outer' {
 		inner := http.fetch(
-			method: .get
-			url: 'http://${loopback_request_addr}/inner'
-			read_timeout: time.second
-			write_timeout: time.second
+			method:                   .get
+			url:                      'http://${loopback_request_addr}/inner'
+			read_timeout:             time.second
+			write_timeout:            time.second
 			disable_connection_reuse: true
 		)!
 		body := 'outer:${inner.body}'
@@ -100,12 +100,12 @@ fn loopback_request_handler(req HttpRequest) !HttpResponse {
 	if path == '/one' || path == '/two' {
 		body := path[1..]
 		return HttpResponse{
-			content: 'HTTP/1.1 200 OK\r\nContent-Length: ${body.len}\r\n\r\n${body}'.bytes()
+			content:      'HTTP/1.1 200 OK\r\nContent-Length: ${body.len}\r\n\r\n${body}'.bytes()
 			should_close: path == '/two'
 		}
 	}
 	return HttpResponse{
-		content: 'HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+		content:      'HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 		should_close: true
 	}
 }

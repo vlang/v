@@ -12,11 +12,12 @@ fn windows_preamble_test_gen() FlatGen {
 
 fn test_windows_translation_unit_preserves_configuration_preincludes() {
 	mut g := windows_preamble_test_gen()
-	g.preinclude_directives = ['#include "winapi_config.h"', '#include <synchapi.h>',
-		'#include <windows.h>']
+	g.preinclude_directives = ['#include "winapi_config.h"', '#include <bcrypt.h>',
+		'#include <synchapi.h>', '#include <windows.h>']
 	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
 	assert c_code.index('#include "winapi_config.h"')? < c_code.index('#include <windows.h>')?
+	assert c_code.index('#include <windows.h>')? < c_code.index('#include <bcrypt.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <synchapi.h>')?
 	assert c_code.count('#include <windows.h>') == 1
 }
@@ -46,9 +47,10 @@ fn test_windows_translation_unit_keeps_preserved_winsock_headers_before_windows_
 	assert c_code.count('#include <windows.h>') == 1
 }
 
-fn test_windows_translation_unit_interposes_windows_header_before_preserved_synchapi() {
+fn test_windows_translation_unit_interposes_windows_header_before_dependent_headers() {
 	mut g := windows_preamble_test_gen()
 	g.preinclude_directives = ['#include "winapi_config.h"']
+	g.add_c_directive('crypto.rand.internal', '#include <bcrypt.h>', false)
 	g.add_c_directive('sync', '#include <synchapi.h>', false)
 	g.add_c_directive('net', '#include <winsock2.h>', false)
 	g.add_c_directive('net', '#include <ws2tcpip.h>', false)
@@ -58,10 +60,12 @@ fn test_windows_translation_unit_interposes_windows_header_before_preserved_sync
 	winsock_index := c_code.index('#include <winsock2.h>')?
 	ws2tcpip_index := c_code.index('#include <ws2tcpip.h>')?
 	windows_index := c_code.index('#include <windows.h>')?
+	bcrypt_index := c_code.index('#include <bcrypt.h>')?
 	synchapi_index := c_code.index('#include <synchapi.h>')?
 	assert config_index < winsock_index
 	assert winsock_index < ws2tcpip_index
 	assert ws2tcpip_index < windows_index
+	assert windows_index < bcrypt_index
 	assert windows_index < synchapi_index
 	assert c_code.count('#include <windows.h>') == 1
 }
@@ -97,10 +101,15 @@ fn test_tinyc_windows_thread_local_slot_uses_win32_tls() {
 	// second index would strand the storage threads already hold in the first.
 	assert !windows_code.contains('__attribute__((constructor))')
 	assert windows_code.contains('state_slot(void) { state_key_init();')
-	assert windows_code.contains('if (__atomic_add_fetch(&state_key_ready, 0, 5)) { return; }')
+	// The ready check runs on every slot access; on x86 it must be a plain
+	// load, not a locked read-modify-write shared by every thread.
+	assert windows_code.contains('#if defined(__x86_64__) || defined(__i386__)\n#define state_key_is_ready() (*(volatile unsigned int*)&state_key_ready)\n#else\n#define state_key_is_ready() __atomic_add_fetch(&state_key_ready, 0, 5)\n#endif')
+	assert windows_code.contains('if (state_key_is_ready()) { return; }')
+	assert !windows_code.contains('__atomic_add_fetch(&state_key_ready, 0, 5)) { return; }')
 	assert windows_code.contains('if (__atomic_add_fetch(&state_key_claim, 1, 5) == 1) {')
 	assert windows_code.contains('__atomic_add_fetch(&state_key_ready, 1, 5);')
-	assert windows_code.contains('while (!__atomic_add_fetch(&state_key_ready, 0, 5)) { Sleep(0); }')
+	assert windows_code.contains('while (!state_key_is_ready()) { Sleep(0); }')
+	assert windows_code.contains('}\n#undef state_key_is_ready\n')
 	// The key and the resolved Fls* pointers are only read after the publish.
 	claim_index := windows_code.index('__atomic_add_fetch(&state_key_claim, 1, 5)')?
 	publish_index := windows_code.index('__atomic_add_fetch(&state_key_ready, 1, 5)')?
@@ -153,6 +162,18 @@ fn test_autostr_thread_local_matching_is_restricted_to_builtin_global() {
 	assert !g.is_builtin_autostr_addr_state('foo.g_autostr_addr_state')
 	g.global_modules['g_autostr_addr_state'] = 'main'
 	assert !g.is_builtin_autostr_addr_state('g_autostr_addr_state')
+}
+
+fn test_vinix_globals_do_not_require_elf_tls() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('vinix', 'arm64') or { panic(err) }
+	g.global_modules['g_autostr_addr_state'] = 'builtin'
+	assert !g.global_is_thread_local('g_autostr_addr_state')
+	assert !g.global_is_thread_local('__anon_fn_1_capture')
+
+	g.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	assert g.global_is_thread_local('g_autostr_addr_state')
+	assert g.global_is_thread_local('__anon_fn_1_capture')
 }
 
 fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
@@ -239,12 +260,16 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 		'stdlib.h', 'string.h', 'math.h', 'time.h', 'unistd.h', 'sys/stat.h', 'sys/time.h'] {
 		assert c_code.contains('#include <${header}>'), header
 	}
+	assert c_code.contains('#if __has_include(<stdatomic.h>)')
+	assert c_code.contains('#if __has_include(<sys/stat.h>)')
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
 	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
 	assert !c_code.contains('#include <pthread.h>')
 	assert c_code.contains('typedef uint64_t u64;')
 	assert !c_code.contains('typedef long long time_t;')
+	assert !c_code.contains('typedef __SIZE_TYPE__ size_t;')
+	assert !c_code.contains('typedef __UINTPTR_TYPE__ uintptr_t;')
 	assert !c_code.contains('typedef struct FILE FILE;')
 	assert c_code.contains('int backtrace(void** __array, int __size);')
 	assert c_code.contains('char** backtrace_symbols(void* const* __array, int __size);')
@@ -254,6 +279,18 @@ fn test_target_libc_preamble_uses_target_header_declarations() {
 		'mempcpy', 'chmod', 'lstat', 'mkdir', 'opendir', 'readdir', 'syscall', 'gettimeofday'] {
 		assert !g.should_emit_c_extern_decl(name), name
 	}
+}
+
+fn test_system_libc_preamble_uses_system_pointer_types() {
+	mut g := FlatGen.new()
+	g.add_c_directive('main', '#include <stdint.h>', false)
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#include <stdint.h>')
+	assert c_code.contains('#include <stddef.h>')
+	assert c_code.contains('typedef uint64_t u64;')
+	assert !c_code.contains('typedef __SIZE_TYPE__ size_t;')
+	assert !c_code.contains('typedef __UINTPTR_TYPE__ uintptr_t;')
 }
 
 fn test_target_libc_preamble_emits_only_thread_type_for_type_only_usage() {
@@ -279,6 +316,19 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
 	assert c_code.contains('static void* __v_thread_join(')
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
+}
+
+fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('vinix', 'arm64') or { panic(err) }
+	g.set_target_libc_headers(true)
+	g.needs_thread_runtime = true
+	g.preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('pthread_create(&result.handle, NULL, (void*)start, arg)')
+	assert !c_code.contains('pthread_attr_init(&attr)')
+	assert !c_code.contains('fprintf(stderr, "V thread')
+	assert !c_code.contains('abort();')
 }
 
 fn test_target_libc_preamble_includes_pthread_for_direct_calls_without_thread_runtime() {

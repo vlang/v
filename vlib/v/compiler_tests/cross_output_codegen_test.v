@@ -78,6 +78,19 @@ fn test_cross_is_a_modifier_that_keeps_an_explicit_target() {
 	assert c_code.contains('_WIN32'), 'the explicit -os windows target was lost'
 }
 
+fn test_cross_windows_output_orders_windows_header_before_bcrypt() {
+	c_code := cross_generate_with('-cross -os windows -cc msvc', 'windows_bcrypt', 'module main\n\nimport crypto.rand\n\nfn main() {\n\tmut buffer := []u8{len: 1}\n\tcrypto.rand.read(mut buffer) or {}\n}\n')
+	windows_index := c_code.index('#include <windows.h>') or {
+		assert false, 'the Windows base header is missing'
+		return
+	}
+	bcrypt_index := c_code.index('#include <bcrypt.h>') or {
+		assert false, 'the BCrypt header is missing'
+		return
+	}
+	assert windows_index < bcrypt_index, c_code.all_before('typedef signed char i8;')
+}
+
 fn test_cross_output_leaves_the_atomic_helpers_to_the_windows_tcc_header() {
 	// The snapshot does not know its C compiler yet. V's WinAPI atomic header is
 	// emitted behind `_WIN32 && __TINYC__` and defines `atomic_fetch_add_byte` and
@@ -112,8 +125,7 @@ fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 	// snapshot either fails to compile there, or panics with `Bad file descriptor`
 	// on the first semaphore it waits on.
 	c_code := cross_generate_with('-cross -os linux', 'semaphore', 'module main\n\nimport sync\n\nfn main() {\n\tmut sem := sync.new_semaphore()\n\tsem.post()\n\tsem.wait()\n\tprintln(sem.try_wait())\n\tprintln(sem.timed_wait(1))\n\tsem.destroy()\n}\n')
-	for call in ['sem_init(', 'sem_post(', 'sem_wait(', 'sem_trywait(', 'sem_timedwait(',
-		'sem_destroy('] {
+	for call in ['sem_init(', 'sem_post(', 'sem_wait(', 'sem_trywait(', 'sem_timedwait(', 'sem_destroy('] {
 		assert c_code.contains(call), '`${call}` is missing from the snapshot'
 		mut searched := c_code
 		for {
@@ -130,11 +142,11 @@ fn test_cross_output_keeps_the_posix_semaphore_off_apple() {
 	}
 }
 
-fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_on_apple() {
+fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavailable() {
 	// The portable snapshot is generated on Linux, so it bakes in rand_linux.c.v.
-	// It is then compiled on macOS to bootstrap v1, where SYS_getrandom does not
-	// exist. Keep both implementations in the snapshot and let the target C
-	// preprocessor select getentropy on Apple hosts.
+	// It is then compiled on macOS or OpenBSD to bootstrap v1, where SYS_getrandom
+	// does not exist. Keep both implementations in the snapshot and let the target
+	// C preprocessor select getentropy on those hosts.
 	c_code := cross_generate_with('-cross -os linux', 'crypto_rand', 'module main\n\nimport crypto.rand\n\nfn main() {\n\tassert rand.bytes(1)!.len == 1\n}\n')
 	body := function_body(c_code, 'i64 internal__getrandom(i64 bytes_needed, void* buffer) {')
 	getentropy_at := body.index('getentropy(') or {
@@ -153,6 +165,7 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_on_apple() {
 	}
 	condition := before_getentropy[guard_at..].all_before('\n')
 	assert condition.contains('__APPLE__'), 'getentropy is guarded by `${condition}`, which does not select Apple'
+	assert condition.contains('__OpenBSD__'), 'getentropy is guarded by `${condition}`, which does not select OpenBSD'
 	assert body[getentropy_at..syscall_at].contains('#else'), 'the Linux syscall is not in the fallback branch: ${body}'
 }
 

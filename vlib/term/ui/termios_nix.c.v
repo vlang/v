@@ -76,7 +76,7 @@ fn (mut ctx Context) termios_setup() ! {
 	}
 
 	if ctx.cfg.window_title != '' {
-		print('\x1b]0;${ctx.cfg.window_title}\x07')
+		print('\x1b]0;${ctx.cfg.window_title}\a')
 		flush_stdout()
 	}
 

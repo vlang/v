@@ -19,20 +19,20 @@ fn build_namespace_call(mut t Transformer, base_name string, base_type string, m
 	t.a.children << then_val
 	t.a.children << else_val
 	arg := t.a.add_node(flat.Node{
-		kind: .if_expr
+		kind:           .if_expr
 		children_start: branch_start
 		children_count: 3
-		typ: 'int'
+		typ:            'int'
 	})
 
 	call_start := t.a.children.len
 	t.a.children << callee
 	t.a.children << arg
 	call := t.a.add_node(flat.Node{
-		kind: .call
+		kind:           .call
 		children_start: call_start
 		children_count: 2
-		value: '${base_name}.${method}'
+		value:          '${base_name}.${method}'
 	})
 	return call, t.a.nodes[int(call)]
 }

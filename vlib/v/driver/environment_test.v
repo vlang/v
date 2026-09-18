@@ -278,8 +278,8 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 	staged_paths := os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file))!
 	staged_digests :=
 		os.read_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file))!
-	assert staged_paths == [os.real_path(cached_source), real_path,
-		os.real_path(shared_builtin_path), os.real_path(shared_vlib_path)].join('\x00')
+	assert staged_paths == [os.real_path(cached_source), real_path, os.real_path(shared_builtin_path),
+		os.real_path(shared_vlib_path)].join('\x00')
 	assert staged_digests == [sha256.hexhash(cached_source_text), sha256.hexhash(parsed_source),
 		sha256.hexhash(shared_builtin_source), sha256.hexhash(shared_vlib_source)].join('\x00')
 }
@@ -302,17 +302,17 @@ fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
 	header_digest := sha256.hexhash(header_source)
 	source_digest := sha256.hexhash(native_source)
 	state := V3ModuleCacheState{
-		module_external_inputs: {
+		module_external_inputs:   {
 			'main': [header_path, source_path]
 		}
-		module_native_roots: {
+		module_native_roots:      {
 			'main': [source_path]
 		}
-		external_input_digests: {
+		external_input_digests:   {
 			header_path: header_digest
 			source_path: source_digest
 		}
-		external_inputs_ready: true
+		external_inputs_ready:    true
 		external_inputs_complete: true
 	}
 	// A watcher can replace a root after traversal. The fallback manifest must retain
@@ -344,11 +344,11 @@ fn test_should_overlap_v3_native_inputs() {
 fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
 	hash_source := os.real_path(os.join_path(os.vtmp_dir(), 'v3_fallback_hash.v'))
 	mut state := V3ModuleCacheState{
-		module_sources: {
+		module_sources:            {
 			'hash': [hash_source]
 		}
 		fallback_required_modules: map[string]bool{}
-		fallback_warmup_modules: {
+		fallback_warmup_modules:   {
 			'hash': true
 		}
 	}

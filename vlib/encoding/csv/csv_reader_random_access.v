@@ -91,7 +91,7 @@ pub:
 	mem_buf_size   int    = 1024 * 64 // default buffer size 64KByte
 	separator      u8     = `,`
 	comment        u8     = `#` // every line that start with the quote char is ignored
-	default_cell   string = '*' // return this string if out of the csv boundaries
+	default_cell   string = '*'   // return this string if out of the csv boundaries
 	empty_cell     string // return this string if empty cell
 	end_line_len   int = endline_cr_len // size of the endline rune
 	quote          u8  = `"`            // double quote is the standard quote char
@@ -286,22 +286,22 @@ pub fn (mut cr RandomAccessReader) map_csv() ! {
 					p1++
 					i1++
 				}
-				else if // manage comment line
-				 !quote_flag && *p1 == cr.comment && cr.csv_map[cr.csv_map.len - 1].len <= 1 {
+				// manage comment line
+				else if !quote_flag && *p1 == cr.comment && cr.csv_map[cr.csv_map.len - 1].len <= 1 {
 					drop_row = true
 					p1++
 					i1++
 					// println("drop_row: ${cr.csv_map.len - 1}")
 				}
-				else if // capture separator
-				 !quote_flag && capture_flag && *p1 == cr.separator && !drop_row {
+				// capture separator
+				else if !quote_flag && capture_flag && *p1 == cr.separator && !drop_row {
 					cr.csv_map[cr.csv_map.len - 1] << (i + i1)
 
 					p1 += cr.separator_len
 					i1 += cr.separator_len
 				}
-				else if // capture end line
-				 *p1 == cr.end_line {
+				// capture end line
+				else if *p1 == cr.end_line {
 					if quote_flag {
 						error_col := cr.csv_map[cr.csv_map.len - 1].last() - cr.csv_map[cr.csv_map.len - 1].first()
 						return error('ERROR: quote not closed at row ${count} after column ${error_col}!')

@@ -4,12 +4,14 @@ module fontstash
 
 @[use_once]
 #define FONTSTASH_IMPLEMENTATION
+
 $if gcboehm ? {
 	#define FONTSTASH_MALLOC GC_MALLOC
 	#define FONTSTASH_REALLOC GC_REALLOC
 	#define FONTSTASH_FREE GC_FREE
 	#define FONTSTASH_MALLOC_ATOMIC GC_MALLOC_ATOMIC
 }
+
 #include "fontstash.h"
 #flag darwin -I/usr/local/Cellar/freetype/2.10.2/include/freetype2
 

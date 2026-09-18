@@ -246,8 +246,7 @@ fn (mut encoder Encoder) encode_string(val string) {
 							0
 						} - 0x10000
 
-						hex_string := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${
-							0xDC00 + (unicode_point_low & 0x3FF):04x}'
+						hex_string := '\\u${0xD800 + ((unicode_point_low >> 10) & 0x3FF):04X}\\u${0xDC00 + (unicode_point_low & 0x3FF):04x}'
 
 						buffer_end += 4
 						buffer_start = buffer_end

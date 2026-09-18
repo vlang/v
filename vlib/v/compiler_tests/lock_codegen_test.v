@@ -456,6 +456,38 @@ fn main() {
 	assert !c_code.contains('struct __shared__Optional {\n\tsync__RwMutex mtx;\n\tOptional_string val;'), c_code
 }
 
+fn test_shared_map_field_index_access_reads_payload() {
+	c_code := lock_codegen_gen_c('shared_map_field_index_access', 'struct Store {
+mut:
+	values shared map[string]int
+}
+
+fn set_value(mut s Store) {
+	lock s.values {
+		s.values[\'x\'] = 7
+	}
+}
+
+fn get_value(mut s Store) int {
+	rlock s.values {
+		return s.values[\'x\'] or { 0 }
+	}
+	return 0
+}
+
+fn main() {
+	mut s := Store{}
+	set_value(mut s)
+	_ = get_value(mut s)
+}
+')
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('map__get_or_set(&s->values->val,'), c_code
+	assert compact.contains('map__get_check(&s->values->val,'), c_code
+	assert !compact.contains('map__get_or_set(&s->values,'), c_code
+	assert !compact.contains('map__get_check(&s->values,'), c_code
+}
+
 fn test_shared_map_field_stringification_reads_payload() {
 	c_code := lock_codegen_gen_c_sources('shared_map_field_stringification', {
 		'main.v':         'module main

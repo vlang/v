@@ -93,7 +93,7 @@ fn clone_comptime_const_prepass_decls(values []ComptimeConstPrepassDecl) []Compt
 	mut cloned := []ComptimeConstPrepassDecl{cap: values.len}
 	for value in values {
 		cloned << ComptimeConstPrepassDecl{
-			key: value.key.clone()
+			key:   value.key.clone()
 			value: value.value.clone()
 		}
 	}
@@ -198,24 +198,24 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 		mut args := []ParseChunkArgs{cap: n_chunks}
 		args << ParseChunkArgs{
-			worker: voidptr(p)
-			paths_ptr: unsafe { voidptr(&paths) }
-			starts_ptr: unsafe { voidptr(&starts) }
+			worker:        voidptr(p)
+			paths_ptr:     unsafe { voidptr(&paths) }
+			starts_ptr:    unsafe { voidptr(&starts) }
 			prepass_chunk: voidptr(prepass_chunks[0])
-			start: bounds[0]
-			end: bounds[1]
-			chunk_bytes: int(master_chunk_bytes)
+			start:         bounds[0]
+			end:           bounds[1]
+			chunk_bytes:   int(master_chunk_bytes)
 			scope_enabled: false
 		}
 		for ci in 0 .. thread_count {
 			args << ParseChunkArgs{
-				worker: voidptr(parser_workers[ci])
-				paths_ptr: unsafe { voidptr(&paths) }
-				starts_ptr: unsafe { voidptr(&starts) }
+				worker:        voidptr(parser_workers[ci])
+				paths_ptr:     unsafe { voidptr(&paths) }
+				starts_ptr:    unsafe { voidptr(&starts) }
 				prepass_chunk: voidptr(prepass_chunks[ci + 1])
-				start: bounds[ci + 1]
-				end: bounds[ci + 2]
-				chunk_bytes: worker_chunk_bytes[ci]
+				start:         bounds[ci + 1]
+				end:           bounds[ci + 2]
+				chunk_bytes:   worker_chunk_bytes[ci]
 				scope_enabled: true
 			}
 		}
@@ -228,8 +228,8 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		for ci in 0 .. n_chunks {
 			helper_idx := ci - 1
 			prepass_tasks << workers.Task{
-				run: precollect_const_chunk_thread
-				arg: unsafe { voidptr(&args[ci]) }
+				run:        precollect_const_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
 				force_sync: ci == 0 || fail == 'parser:all' || fail == 'parser:${helper_idx}'
 			}
 		}
@@ -272,14 +272,14 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		for ci in order {
 			helper_idx := ci - 1
 			tasks << workers.Task{
-				run: parse_chunk_thread
-				arg: unsafe { voidptr(&args[ci]) }
+				run:        parse_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
 				force_sync: fail == 'parser:all' || fail == 'parser:${helper_idx}'
 			}
 		}
 		tasks << workers.Task{
-			run: parse_chunk_thread
-			arg: unsafe { voidptr(&args[0]) }
+			run:        parse_chunk_thread
+			arg:        unsafe { voidptr(&args[0]) }
 			force_sync: true
 		}
 		ppsw2 := time.new_stopwatch()
@@ -867,7 +867,7 @@ fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_n
 		}
 		if value := parallel_comptime_const_value(value_tokens) {
 			decls << ComptimeConstPrepassDecl{
-				key: comptime_const_value_key(module_name, name)
+				key:   comptime_const_value_key(module_name, name)
 				value: value
 			}
 		}
@@ -1030,7 +1030,7 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		for file_id, file in w.a.source_files {
 			ma.pending_files << PendingSourceFile{
 				file_id: file_id
-				file: clone_parser_source_file(file)
+				file:    clone_parser_source_file(file)
 			}
 		}
 	}
@@ -1089,19 +1089,19 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 	mut margs := []ParseMergeCopyArgs{cap: thread_count}
 	for ci in 0 .. thread_count {
 		margs << ParseMergeCopyArgs{
-			master: voidptr(p)
-			worker: voidptr(parser_workers[ci])
-			node_offset: node_offsets[ci]
+			master:       voidptr(p)
+			worker:       voidptr(parser_workers[ci])
+			node_offset:  node_offsets[ci]
 			child_offset: child_offsets[ci]
-			has_scope: args[ci + 1].scope != unsafe { nil }
-			miss_nodes: []int{cap: 4096}
+			has_scope:    args[ci + 1].scope != unsafe { nil }
+			miss_nodes:   []int{cap: 4096}
 		}
 	}
 	mut tasks := []workers.Task{cap: thread_count}
 	for ci in 0 .. thread_count {
 		tasks << workers.Task{
-			run: parse_merge_copy_thread
-			arg: unsafe { voidptr(&margs[ci]) }
+			run:        parse_merge_copy_thread
+			arg:        unsafe { voidptr(&margs[ci]) }
 			force_sync: ci == 0
 		}
 	}
@@ -1248,11 +1248,11 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 	}
 	for diagnostic in w.diagnostics {
 		p.append_diagnostic(Diagnostic{
-			file: diagnostic.file.clone()
-			pos: diagnostic.pos
-			line: diagnostic.line
-			column: diagnostic.column
-			message: diagnostic.message.clone()
+			file:     diagnostic.file.clone()
+			pos:      diagnostic.pos
+			line:     diagnostic.line
+			column:   diagnostic.column
+			message:  diagnostic.message.clone()
 			severity: diagnostic.severity.clone()
 		})
 	}

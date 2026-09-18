@@ -206,7 +206,8 @@ fn test_server_tls_close_waits_for_active_request() {
 	}()
 	mut start_failure := ''
 	select {
-		_ := <-started {}
+		_ := <-started {
+		}
 		msg := <-done {
 			start_failure = 'client finished before handler started: ${msg}'
 		}
@@ -318,11 +319,11 @@ fn test_server_tls_close_under_handshake_flood() {
 		// stay stuck long enough to keep the worker busy and form the wedge,
 		// rather than time out in milliseconds. The accept loop still polls at the
 		// 100ms tls_accept_poll_timeout cap regardless.
-		accept_timeout:       8 * time.second
-		worker_num:           1
-		pool_channel_slots:   1
-		handler:              EchoHandler{}
-		show_startup_message: false
+		accept_timeout:         8 * time.second
+		worker_num:             1
+		pool_channel_slots:     1
+		handler:                EchoHandler{}
+		show_startup_message:   false
 	}
 	t := spawn srv.listen_and_serve()
 	srv.wait_till_running() or {
@@ -666,12 +667,12 @@ fn test_server_tls_parallel_handshakes() {
 	for i in 0 .. live {
 		spawn fn [results, port, i] () {
 			resp := http.fetch(
-				url:          'https://127.0.0.1:${port}/live${i}'
-				enable_http2: false
-				validate:     false
+				url:                      'https://127.0.0.1:${port}/live${i}'
+				enable_http2:             false
+				validate:                 false
 				// One attempt, no retries: a regressed handshake should surface as a
 				// single timed-out request, not retry-amplify the teardown.
-				max_retries: 1
+				max_retries:              1
 				// Force a fresh TLS connection per live client. Without this, if one
 				// client finishes and returns its keep-alive connection to the shared
 				// pool before the other checks one out, the second reuses it and the

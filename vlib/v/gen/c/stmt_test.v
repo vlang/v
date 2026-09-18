@@ -7,8 +7,8 @@ fn stmt_test_node(mut a flat.FlatAst, kind flat.NodeKind, value string, children
 	start := a.children.len
 	a.children << children
 	return a.add_node(flat.Node{
-		kind: kind
-		value: value
+		kind:           kind
+		value:          value
 		children_start: i32(start)
 		children_count: flat.child_count(children.len)
 	})
@@ -18,8 +18,8 @@ fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.Node
 	start := a.children.len
 	a.children << child
 	return a.add_node(flat.Node{
-		kind: .prefix
-		op: op
+		kind:           .prefix
+		op:             op
 		children_start: i32(start)
 		children_count: 1
 	})
@@ -42,6 +42,18 @@ fn test_inline_asm_character_tokens_use_assembly_quotes() {
 	assert lower_c_inline_asm_template('mov rax, `A`', 'amd64', aliases, false) == "mov 'A', %rax"
 	assert lower_c_inline_asm_template('mov rax, `,`', 'amd64', aliases, false) == "mov ',', %rax"
 	assert lower_c_inline_asm_template('mov x0, `A`', 'arm64', aliases, false) == "mov x0, 'A'"
+}
+
+fn test_inline_asm_aarch64_alias_uses_arm64_operand_lowering() {
+	aliases := {
+		'data':         true
+		'raw_metadata': true
+		'address':      true
+	}
+	assert lower_c_inline_asm_template('ldp data, raw_metadata, [address]', 'aarch64',
+		aliases, true) == 'ldp %[data], %[raw_metadata], [%[address]]'
+	assert lower_c_inline_asm_template('add data, data, 1', 'aarch64', aliases, true) ==
+		'add %[data], %[data], #1'
 }
 
 fn test_inline_asm_x86_addresses_preserve_unscaled_indexes() {
@@ -67,6 +79,13 @@ fn test_inline_asm_x86_register_branch_targets_are_indirect() {
 	assert lower_c_inline_asm_template('jmp callback', 'amd64', aliases, true) == 'jmp *%[callback]'
 	assert lower_c_inline_asm_template('jmp eax', 'i386', aliases, false) == 'jmp *%eax'
 	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', aliases, false) == 'call named_target'
+}
+
+fn test_inline_asm_directional_numeric_labels_use_gnu_order() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('jmp b1', 'amd64', aliases, false) == 'jmp 1b'
+	assert lower_c_inline_asm_template('jnz f42', 'amd64', aliases, false) == 'jnz 42f'
+	assert lower_c_inline_asm_intel_template('jmp b3', aliases, false) == 'jmp 3b'
 }
 
 fn test_inline_asm_block_comments_do_not_create_operand_sections() {
@@ -103,9 +122,9 @@ fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	children_start := a.children.len
 	a.children << value_id
 	deref_id := a.add_node(flat.Node{
-		kind: .prefix
-		op: .mul
-		typ: '&int'
+		kind:           .prefix
+		op:             .mul
+		typ:            '&int'
 		children_start: i32(children_start)
 		children_count: 1
 	})
@@ -126,16 +145,16 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 
 	large := types.ArrayFixed{
 		elem_type: types.Type(types.u8_)
-		len: 65536
+		len:       65536
 	}
 	assert g.empty_fixed_array_initializer_string(large) == '{0}'
 
 	nested := types.ArrayFixed{
 		elem_type: types.Type(types.ArrayFixed{
 			elem_type: types.Type(types.i32_)
-			len: 32
+			len:       32
 		})
-		len: 32
+		len:       32
 	}
 	assert g.empty_fixed_array_initializer_string(nested) == '{0}'
 
@@ -143,7 +162,7 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 		elem_type: types.Type(types.Array{
 			elem_type: types.Type(types.int_)
 		})
-		len: 2
+		len:       2
 	}
 	dynamic_init := g.empty_fixed_array_initializer_string(dynamic_arrays)
 	assert dynamic_init.count('array_new(') == 2
@@ -152,7 +171,7 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 fn test_fixed_array_optional_abi_conversions_use_memcpy() {
 	fixed := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.int_)
-		len: 2
+		len:       2
 	})
 	mut forward_gen := FlatGen.new()
 	forward := forward_gen.optional_forward_return_abi_wrap_expr('Optional_source', 'Optional_destination', fixed, 'source()')
@@ -216,7 +235,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	g.tc = &tc
 	fixed_type := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.u8_)
-		len: 2
+		len:       2
 	})
 	byte_pointer := types.Type(types.Pointer{
 		base_type: types.Type(types.u8_)
@@ -238,7 +257,7 @@ fn test_fixed_array_address_to_byte_pointer_decl_uses_data_pointer() {
 	assert assign_gen.sb.str() == 'p = ((u8*)(buf));\n'
 	int_fixed_type := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.i32_)
-		len: 2
+		len:       2
 	})
 	tc.cur_scope.insert('int_buf', int_fixed_type)
 	int_buf_id := stmt_test_node(mut a, .ident, 'int_buf', [])
@@ -276,8 +295,8 @@ fn test_mut_parameter_power_assign_uses_scalar_result_type() {
 	a.children << arg_id
 	a.children << exponent_id
 	g.gen_assign(flat.Node{
-		kind: .assign
-		op: .power_assign
+		kind:           .assign
+		op:             .power_assign
 		children_start: i32(children_start)
 		children_count: 2
 	})
@@ -381,7 +400,7 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	arg_id := stmt_test_node(mut a, .ident, 'arg', [])
 	amp_arg := stmt_test_prefix(mut a, .amp, arg_id)
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'p'
 	}, amp_arg)
 	assert g.local_pointer_alias_source('p') or { '' } == 'x'
@@ -395,7 +414,7 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
 	amp_x := stmt_test_prefix(mut a, .amp, x_id)
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'maybe'
 	}, amp_x)
 	assert g.local_pointer_alias_source('maybe') or { '' } == ''
@@ -407,7 +426,7 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	tc.push_scope()
 	g.enter_conditional_branch(true)
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'p'
 	}, amp_x)
 	assert g.local_pointer_alias_source('p') or { '' } == 'arg'
@@ -436,7 +455,7 @@ fn test_local_pointer_alias_branch_assignment_without_outer_marker_stays_conditi
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
 	amp_x := stmt_test_prefix(mut a, .amp, x_id)
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'p'
 	}, amp_x)
 	assert g.local_pointer_alias_source('p') or { '' } == ''
@@ -463,7 +482,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
 	amp_x := stmt_test_prefix(mut a, .amp, x_id)
 	g.track_local_pointer_alias_source(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'p'
 	}, p_owner, amp_x, ptr_type)
 	assert g.local_pointer_alias_source('p') or { '' } == 'x'
@@ -472,7 +491,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	q_owner := tc.cur_scope.insert_with_owner('q', ptr_type)
 	p_id := stmt_test_node(mut a, .ident, 'p', [])
 	g.track_local_pointer_alias_source(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'q'
 	}, q_owner, p_id, ptr_type)
 	assert g.local_pointer_alias_source('q') or { '' } == 'x'
@@ -481,7 +500,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	assigned_owner := tc.cur_scope.insert_with_owner('assigned', ptr_type)
 	g.declare_local_pointer_alias_source(assigned_owner, '')
 	g.track_local_pointer_alias_assign(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'assigned'
 	}, p_id)
 	assert g.local_pointer_alias_source('assigned') or { '' } == 'x'
@@ -491,7 +510,7 @@ fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	mut_id := stmt_test_node(mut a, .ident, 'mut_alias', [])
 	mut_copy_owner := tc.cur_scope.insert_with_owner('mut_copy', ptr_type)
 	g.track_local_pointer_alias_source(flat.Node{
-		kind: .ident
+		kind:  .ident
 		value: 'mut_copy'
 	}, mut_copy_owner, mut_id, ptr_type)
 	assert g.local_pointer_alias_source('mut_copy') or { '' } == 'x'
@@ -506,7 +525,7 @@ fn test_heap_local_memdup_expr_uses_aligned_memdup_for_aligned_structs() {
 	g.tc = &tc
 	g.register_struct_decl_info('Aligned', 'Aligned', 'main', '', flat.Node{
 		value: 'Aligned'
-		typ: 'aligned=64'
+		typ:   'aligned=64'
 	})
 	aligned_type := types.Type(types.Struct{
 		name: 'Aligned'
@@ -563,7 +582,7 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 	})
 	tc.structs['S'] = [types.StructField{
 		name: 'x'
-		typ: int_type
+		typ:  int_type
 	}]
 	tc.push_scope()
 	tc.cur_scope.insert_with_owner('s', struct_type)
@@ -599,6 +618,22 @@ fn test_inline_asm_x86_reverses_every_structured_operand() {
 	}
 	assert lower_c_inline_asm_template('imul dst, src, 7', 'amd64', aliases, true) == 'imul \$7, %[src], %[dst]'
 	assert lower_c_inline_asm_template('mov dst, src', 'amd64', aliases, true) == 'mov %[src], %[dst]'
+}
+
+fn test_inline_asm_x86_port_io_uses_32_bit_view_of_wide_operands() {
+	aliases := {
+		'port':  true
+		'value': true
+	}
+	wide := {
+		'value': true
+	}
+	assert lower_c_inline_asm_template_with_wide_aliases('in value, port', 'amd64', aliases,
+		wide, true) == 'in %[port], %k[value]'
+	assert lower_c_inline_asm_template_with_wide_aliases('out port, value', 'amd64', aliases,
+		wide, true) == 'out %k[value], %[port]'
+	assert lower_c_inline_asm_template_with_wide_aliases('mov value, port', 'amd64', aliases,
+		wide, true) == 'mov %[port], %[value]'
 }
 
 fn test_inline_asm_intel_templates_keep_destination_first_order() {

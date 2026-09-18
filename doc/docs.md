@@ -8933,9 +8933,14 @@ and `-cflags` settings, rather than including them in the build command each tim
 Add `#pkgconfig` directives to tell the compiler which modules should be used for compiling
 and linking using the pkg-config files provided by the respective dependencies.
 
-As long as backticks can't be used in `#flag` and spawning processes is not desirable for security
-and portability reasons, V uses its own pkgconfig library that is compatible with the standard
-freedesktop one.
+Resolving the directive runs the `pkg-config` command, so that command has to be installed and has
+to succeed. When it fails — it is not installed, the package is unknown, a dependency does not
+resolve — the default C generator contributes no flag at all for that directive, and reports
+nothing. If the flags it would have supplied are needed and come from nowhere else, the build then
+fails further along, on a header the compiler cannot find or on a symbol the linker cannot resolve.
+
+A `#pkgconfig` directive is therefore best guarded, so that the program still names its flags when
+resolution fails. This is what the standard library modules that bind an external library do.
 
 If no flags are passed it will add `--cflags` and `--libs` to pkgconfig (not to V).
 In other words, both lines below do the same:
@@ -8945,8 +8950,8 @@ In other words, both lines below do the same:
 #pkgconfig --cflags --libs r_core
 ```
 
-The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
-extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
+The `.pc` files are looked up in pkg-config's own default paths, the user can add extra paths by
+using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
 
 To check the existence of a pkg-config use `$pkgconfig('pkg')` as a compile time "if" condition to
 check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
@@ -8959,6 +8964,30 @@ $if $pkgconfig('mysqlclient') {
 	#pkgconfig mariadb
 }
 ```
+
+The condition runs the same command, so it reports every package as absent when `pkg-config` is
+missing. That is what makes it a usable guard: when the command cannot run, or the probe for a
+package fails, the `$else` branch is taken and can supply fallback flags.
+
+`vlib/db/sqlite/sqlite.c.v` guards its directive that way, naming the flags itself when `sqlite3`
+does not resolve (abridged here, it has a `windows` branch too):
+
+```v ignore
+$if $pkgconfig('sqlite3') {
+	#pkgconfig sqlite3
+	#include "sqlite3.h"
+} $else $if darwin {
+	// macOS ships libsqlite3, so do not require a separately downloaded amalgamation.
+	#flag darwin -lsqlite3
+} $else {
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#include "sqlite3.h"
+	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
+}
+```
+
+When a directive names several packages, probe them all. A guard on one of them still enters the
+directive when another is the one missing, and loses the flags there.
 
 ### Including C code
 
@@ -9061,6 +9090,8 @@ struct SomeCStruct {
 members of sub-data-structures may be directly declared in the containing struct as below:
 
 ```v
+pub struct C.DataView {}
+
 pub struct C.SomeCStruct {
 	implTraits  u8
 	memPoolData u16
@@ -9105,7 +9136,9 @@ If you export your own `DllMain`, V will not generate the default one. Call
 the standard V runtime setup and teardown:
 
 ```v oksyntax
+pub type C.BOOL = int
 pub type C.DWORD = u32
+pub type C.HINSTANCE = voidptr
 pub type C.LPVOID = voidptr
 
 fn C._vinit_caller()
@@ -9271,6 +9304,43 @@ asm amd64 raw {
 }
 assert value == 42
 ```
+
+Raw templates are the right level for hand-written kernels that need GNU assembler features such
+as local labels or explicit operand modifiers. A label made with `%=` gets a unique numeric suffix
+for each inline-assembly statement, so prefer names such as `.Lloop%=` for loops in reusable
+functions. Numeric local labels such as `1:` with `1b` (backward) and `1f` (forward) references are
+also useful for short branches. Do not use an ordinary global-looking label in a raw block unless
+it is deliberately exported: two instantiations of a function can otherwise define the same
+assembler symbol.
+
+For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
+the pointer inside the template, and decrement the count until it reaches zero:
+
+```v ignore
+mut ptr := data.data
+mut len := u64(data.len)
+asm amd64 raw {
+    "testq %[len], %[len]\n\t"
+    "jz .Ldone%=\n\t"
+    ".Lloop%=:\n\t"
+    "... load and process one block ...\n\t"
+    "addq $16, %[ptr]\n\t"
+    "subq $1, %[len]\n\t"
+    "jnz .Lloop%=\n\t"
+    ".Ldone%=:"
+    ; [ptr] "+r" (ptr)
+      [len] "+r" (len)
+    ;
+    ; memory
+    ; cc
+}
+```
+
+Use `memory` when the assembly reads or writes memory not described by an operand, and use `cc`
+when it changes or observes condition flags. Raw templates leave the compiler-specific details of
+`r`, `m`, and explicit memory addressing to the selected C compiler. Use `r` for pointers when the
+template performs address arithmetic; use `m` when the template needs the compiler to format a
+memory operand. Keep the pointer and length constraints read-write when the template modifies them.
 
 `asm goto` emits GNU `asm goto` and is available only with the C backend. Its fifth semicolon
 section lists the V labels that the assembly may branch to. Use the label name in a structured

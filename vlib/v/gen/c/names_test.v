@@ -32,8 +32,8 @@ fn test_c_name_pre_sanitized_classifier() {
 
 fn test_cached_cname_fast_paths_match_canonical_naming() {
 	mut g := FlatGen.new()
-	for name in ['run', 'int', 'send', 'malloc', 'int_str', 'exit', '_str_42', '_str_value',
-		'main.run', 'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=', 'pkg.Box[int].value',
+	for name in ['run', 'int', 'send', 'malloc', 'int_str', 'exit', '_str_42', '_str_value', 'main.run',
+		'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=', 'pkg.Box[int].value',
 		'int@static@tag', '__v3_internal_symbol_source'] {
 		assert g.cname(name) == c_name(name)
 	}
@@ -51,7 +51,9 @@ fn test_c_name_libc_collision_abs() {
 	assert c_name('send') == 'v_send'
 	assert c_name('C.abs') == 'abs'
 	assert c_name('printf') == 'v_printf'
+	assert c_name('select') == 'v_select'
 	assert c_name('C.printf') == 'printf'
+	assert c_name('C.select') == 'select'
 	assert c_name('C.send') == 'send'
 	assert c_name('index') == 'v_index'
 	assert c_name('log') == 'v_log'
@@ -222,7 +224,7 @@ fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 	g.a = &a
 	g.tc = &tc
 	alias_to_voidptr := types.Type(types.Alias{
-		name: 'Data'
+		name:      'Data'
 		base_type: types.Type(types.Pointer{
 			base_type: types.Type(types.void_)
 		})
@@ -239,8 +241,8 @@ fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
 	tc.cur_module = 'veb'
 	tc.structs['main.Context'] = [
 		types.StructField{
-			name: 'veb.Context'
-			typ: types.Type(types.Struct{
+			name:     'veb.Context'
+			typ:      types.Type(types.Struct{
 				name: 'veb.Context'
 			})
 			is_embed: true
@@ -267,7 +269,7 @@ fn test_array_receiver_method_is_not_reselected_as_generic() {
 	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
 		GenericMethodCandidate{
 			name: 'jsonrpc.[]Request.encode_batch'
-			ret: types.Type(types.string_)
+			ret:  types.Type(types.string_)
 		},
 	]
 
@@ -329,10 +331,10 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 	assert typeof_display_type_name('Box[int][3]') == '[3]Box[int]'
 	fixed_maps := types.Type(types.ArrayFixed{
 		elem_type: types.Type(types.Map{
-			key_type: types.Type(types.String{})
+			key_type:   types.Type(types.String{})
 			value_type: types.Type(types.int_)
 		})
-		len: 3
+		len:       3
 	})
 	assert typeof_display_resolved_type_name(fixed_maps) == '[3]map[string]int'
 }
@@ -372,11 +374,11 @@ fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
 	g.tc = &tc
 	g.used_fns = &used
 	assert g.should_emit_fn_node_in_module_known(flat.Node{
-		kind: .fn_decl
+		kind:  .fn_decl
 		value: 'FlatGen.sum_type_index'
 	}, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
 	assert !g.should_emit_fn_node_in_module_known(flat.Node{
-		kind: .fn_decl
+		kind:  .fn_decl
 		value: 'Transformer.sum_type_index'
 	}, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
 }

@@ -266,8 +266,7 @@ pub fn (mut s Scanner) scan() !token.Token {
 			}
 		}
 	}
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'unknown character code at ${s.pos} (${s.line_nr},${s.col}) near ...${s.excerpt(s.pos,
-		5)}...')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'unknown character code at ${s.pos} (${s.line_nr},${s.col}) near ...${s.excerpt(s.pos, 5)}...')
 	return s.new_token(.unknown, '', 0)
 }
 
@@ -515,8 +514,7 @@ fn (mut s Scanner) extract_multiline_string() !string {
 	lit.write_u8(quote)
 	lit.write_u8(quote)
 
-	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'multi-line `${quote.ascii_str()}${s.text[
-		s.pos + 1].ascii_str()}${s.text[s.pos + 2].ascii_str()}` string started at pos ${start} (${s.line_nr},${s.col}) (quote type: ${quote.ascii_str()} / ${quote})')
+	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'multi-line `${quote.ascii_str()}${s.text[s.pos + 1].ascii_str()}${s.text[s.pos + 2].ascii_str()}` string started at pos ${start} (${s.line_nr},${s.col}) (quote type: ${quote.ascii_str()} / ${quote})')
 
 	s.pos += 2
 	s.col += 2

@@ -13,7 +13,7 @@ fn test_parse_resolve_memo_round_trip() {
 	assert memo.dirs == ['/vlib/builtin', '/vlib/plain']
 	assert memo.dir_stamps.len == 2
 	assert memo.dir_stamps[0] == FastcFileStamp{
-		size: 100
+		size:  100
 		mtime: 200
 		ctime: 300
 		inode: 400
@@ -28,7 +28,7 @@ fn test_parse_resolve_memo_round_trip() {
 	assert memo.entry_files[0] == ['/abs/other.v']
 	assert memo.files == ['/vlib/builtin/a.v']
 	assert memo.stamps[0] == FastcFileStamp{
-		size: 5
+		size:  5
 		mtime: 6
 		ctime: 7
 		inode: 8
@@ -51,13 +51,13 @@ fn test_parse_resolve_memo_rejects_short_listings() {
 
 fn test_resolve_memo_unchanged_sources_use_preloaded_stamps() {
 	stamp := FastcFileStamp{
-		size: 12
+		size:  12
 		mtime: 20
 		ctime: 21
 		inode: 22
 	}
 	memo := FastcResolveMemo{
-		files: ['/tmp/a.v']
+		files:  ['/tmp/a.v']
 		stamps: [stamp]
 	}
 	sources := [FastcSourceFile{
@@ -65,16 +65,16 @@ fn test_resolve_memo_unchanged_sources_use_preloaded_stamps() {
 	}]
 	preloaded := {
 		'/tmp/a.v': FastcLoadedSource{
-			path: '/tmp/a.v'
+			path:  '/tmp/a.v'
 			stamp: stamp
 		}
 	}
 	assert fastc_resolve_memo_sources_unchanged(memo, sources, preloaded)
 	mut changed := preloaded.clone()
 	changed['/tmp/a.v'] = FastcLoadedSource{
-		path: '/tmp/a.v'
+		path:  '/tmp/a.v'
 		stamp: FastcFileStamp{
-			size: 13
+			size:  13
 			mtime: 20
 			ctime: 21
 			inode: 22
@@ -666,8 +666,8 @@ fn test_fastc_emits_explicit_c_extern_prototype() {
 	functions := {
 		'C.external_api': FastcFunctionSignature{
 			parameter_types: ['int', 'voidptr']
-			return_type: 'int'
-			is_c_extern: true
+			return_type:     'int'
+			is_c_extern:     true
 		}
 	}
 	assert fastc_c_extern_prototypes(functions) == '#ifndef external_api\nextern int external_api(int, voidptr);\n#endif\n'
@@ -756,17 +756,17 @@ fn test_fastc_rendered_units_match_temporary_files() {
 	}
 	pieces := ['ignored definition', 'ignored prototypes', 'solo\n', 'body_a\n', 'body_b\n']
 	units := FastcUnitLayout{
-		head_end: 2
-		solo_end: 3
-		prototype_start: 1
-		prototype_end: 2
-		unit_starts: [3, 4, 5]
-		extern_indexes: [0]
-		extern_texts: ['extern shared;\n']
-		define_texts: ['int shared;\n']
-		prototype_texts: ['void first(void);\n', 'void second(void);\n']
-		unit_ref_starts: [0, 1, 2]
-		unit_ref_ids: [0, 1]
+		head_end:           2
+		solo_end:           3
+		prototype_start:    1
+		prototype_end:      2
+		unit_starts:        [3, 4, 5]
+		extern_indexes:     [0]
+		extern_texts:       ['extern shared;\n']
+		define_texts:       ['int shared;\n']
+		prototype_texts:    ['void first(void);\n', 'void second(void);\n']
+		unit_ref_starts:    [0, 1, 2]
+		unit_ref_ids:       [0, 1]
 		solo_prototype_ids: [1]
 	}
 	prefix := os.join_path_single(root, 'unit')
@@ -825,8 +825,8 @@ fn test_fastc_link_cache_restores_an_independent_executable() {
 fn test_fastc_generation_link_cache_key_covers_generated_inputs() {
 	tcc := os.join_path(@VMODROOT, 'thirdparty', 'tcc', 'tcc.exe')
 	units := FastcUnitLayout{
-		head_end: 1
-		solo_end: 1
+		head_end:    1
+		solo_end:    1
 		unit_starts: [1, 2]
 	}
 	key := fastc_generation_link_cache_key(tcc, ['-c'], ['-lm'], ['head', 'body'], units, 2, true)
@@ -848,8 +848,8 @@ fn test_fastc_generation_link_cache_key_uses_tbd_contents() {
 	os.write_file(second, 'same stub') or { panic(err) }
 	tcc := os.join_path(@VMODROOT, 'thirdparty', 'tcc', 'tcc.exe')
 	units := FastcUnitLayout{
-		head_end: 1
-		solo_end: 1
+		head_end:    1
+		solo_end:    1
 		unit_starts: [1, 2]
 	}
 	first_key := fastc_generation_link_cache_key(tcc, [], [first], ['head', 'body'], units, 2, true)
@@ -876,12 +876,12 @@ fn test_parallel_constant_seed_preserves_constant_field_defaults() {
 	prefs.building_v = true
 	sources := [
 		FastcSourceFile{
-			path: 'constant_default.v'
+			path:   'constant_default.v'
 			source: 'module fastc\nconst default_retries = 3\nstruct Config {\n\tretries int = default_retries\n}\nfn main() { _ = Config{} }\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
 		FastcSourceFile{
-			path: 'other_constant.v'
+			path:   'other_constant.v'
 			source: 'module fastc\nconst other_constant = 4\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
@@ -895,24 +895,24 @@ fn test_fastc_fragmented_generation_matches_serial_output() {
 	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
 	sources := [
 		FastcSourceFile{
-			path: 'large.v'
+			path:   'large.v'
 			source: 'module fastc\nfn fastc_fragment_first() {\n${large_comment}\n}\nfn fastc_fragment_second() {\n\tprintln(@LINE)\n\tprintln(@COLUMN)\n\tprintln(@FILE_LINE)\n\tprintln(@LOCATION)\n}\n'
 			header: FastcSourceHeader{
 				module_name: 'v.gen.fastc'
 			}
 		},
 		FastcSourceFile{
-			path: 'small_1.v'
+			path:   'small_1.v'
 			source: 'module fastc\nfn fastc_fragment_small_1() {}\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
 		FastcSourceFile{
-			path: 'small_2.v'
+			path:   'small_2.v'
 			source: 'module fastc\nfn fastc_fragment_small_2() {}\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
 		FastcSourceFile{
-			path: 'small_3.v'
+			path:   'small_3.v'
 			source: 'module fastc\nfn fastc_fragment_small_3() {}\n'
 			header: FastcSourceHeader{ module_name: 'v.gen.fastc' }
 		},
@@ -943,7 +943,7 @@ fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	fragments := fastc_source_generation_fragments(FastcSourceFile{
-		path: 'large_comptime_chain.v'
+		path:   'large_comptime_chain.v'
 		source: source
 		header: FastcSourceHeader{
 			module_name: 'v.gen.fastc'
@@ -960,7 +960,7 @@ fn test_fastc_generation_fragments_keep_top_level_initializer_together() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	fragments := fastc_source_generation_fragments(FastcSourceFile{
-		path: 'large_top_level_initializer.v'
+		path:   'large_top_level_initializer.v'
 		source: source
 		header: FastcSourceHeader{
 			module_name: 'v.gen.fastc'
@@ -1043,28 +1043,28 @@ fn test_fastc_generic_source_collection_matches_serial_scan() {
 	mut prefs := pref.new_preferences()
 	sources := [
 		FastcSourceFile{
-			path: 'first.v'
+			path:   'first.v'
 			source: 'module sample\nfn pick[T](value T) T { return value }\n'
 			header: FastcSourceHeader{
 				module_name: 'sample'
 			}
 		},
 		FastcSourceFile{
-			path: 'second.v'
+			path:   'second.v'
 			source: 'module sample\nfn keep[T](value T) T { return value }\n'
 			header: FastcSourceHeader{
 				module_name: 'sample'
 			}
 		},
 		FastcSourceFile{
-			path: 'plain.v'
+			path:   'plain.v'
 			source: 'module sample\nfn plain() {}\n'
 			header: FastcSourceHeader{
 				module_name: 'sample'
 			}
 		},
 		FastcSourceFile{
-			path: 'last.v'
+			path:   'last.v'
 			source: 'module sample\nfn pick[T](other T) T { return other }\n'
 			header: FastcSourceHeader{
 				module_name: 'sample'
@@ -1803,14 +1803,14 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'compare/compare.v'
+			path:   'compare/compare.v'
 			source: compare_source
 			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
 				panic(err)
 			}
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'main.v', prefs) or {
 				panic(err)
@@ -1850,14 +1850,14 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'compare/compare.v'
+			path:   'compare/compare.v'
 			source: compare_source
 			header: fastc_scan_source_header(compare_source, 'compare/compare.v', prefs) or {
 				panic(err)
 			}
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or {
 				panic(err)
@@ -2317,12 +2317,12 @@ pub fn (d Duration) microseconds() i64 { return i64(d) / 1000 }
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'clock.v'
+			path:   'clock.v'
 			source: clock_source
 			header: fastc_scan_source_header(clock_source, 'clock.v', prefs) or { panic(err) }
 		},
@@ -2345,12 +2345,12 @@ pub struct Conn {}
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'transport.v'
+			path:   'transport.v'
 			source: transport_source
 			header: fastc_scan_source_header(transport_source, 'transport.v', prefs) or {
 				panic(err)
@@ -3282,12 +3282,12 @@ pub fn make() Settings {
 		mut message := ''
 		if _, _, _ := generate_source_files([
 			FastcSourceFile{
-				path: main_file
+				path:   main_file
 				source: source
 				header: fastc_scan_source_header(source, main_file, prefs) or { panic(err) }
 			},
 			FastcSourceFile{
-				path: module_file
+				path:   module_file
 				source: module_source
 				header: fastc_scan_source_header(module_source, module_file, prefs) or {
 					panic(err)
@@ -3304,12 +3304,12 @@ pub fn make() Settings {
 	valid_source := 'module main\nimport records\nfn main() { value := records.Settings{visible: 2}; println(value.visible) }\n'
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: main_file
+			path:   main_file
 			source: valid_source
 			header: fastc_scan_source_header(valid_source, main_file, prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: module_file
+			path:   module_file
 			source: module_source
 			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
 		},
@@ -3349,12 +3349,12 @@ fn main() {
 	mut message := ''
 	if _, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: main_file
+			path:   main_file
 			source: invalid_source
 			header: fastc_scan_source_header(invalid_source, main_file, prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: module_file
+			path:   module_file
 			source: module_source
 			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
 		},
@@ -3376,12 +3376,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: main_file
+			path:   main_file
 			source: valid_source
 			header: fastc_scan_source_header(valid_source, main_file, prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: module_file
+			path:   module_file
 			source: module_source
 			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
 		},
@@ -4721,14 +4721,14 @@ fn main() {
 	mut field_message := ''
 	if _, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'immutable_flag_field.v'
+			path:   'immutable_flag_field.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'immutable_flag_field.v', prefs) or {
 				panic(err)
 			}
 		},
 		FastcSourceFile{
-			path: 'settings.v'
+			path:   'settings.v'
 			source: module_source
 			header: fastc_scan_source_header(module_source, 'settings.v', prefs) or { panic(err) }
 		},
@@ -5524,10 +5524,10 @@ fn fastc_test_expression_token(tok token.Token, lit string) FastcExpressionToken
 fn test_literal_membership_materializes_candidates_before_comparison() {
 	prefs := pref.new_preferences()
 	g := Parser{
-		prefs: prefs
+		prefs:    prefs
 		selfhost: true
-		s: scanner.new_scanner(prefs, .normal)
-		locals: {
+		s:        scanner.new_scanner(prefs, .normal)
+		locals:   {
 			'subject': FastcLocal{
 				typ: 'int'
 			}
@@ -6555,12 +6555,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'sizes/sizes.v'
+			path:   'sizes/sizes.v'
 			source: sizes_source
 			header: fastc_scan_source_header(sizes_source, 'sizes/sizes.v', prefs) or { panic(err) }
 		},
@@ -7338,8 +7338,8 @@ fn main() {
 fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() {
 	prefs := pref.new_preferences()
 	g := Parser{
-		prefs: prefs
-		s: scanner.new_scanner(prefs, .normal)
+		prefs:         prefs
+		s:             scanner.new_scanner(prefs, .normal)
 		struct_fields: {
 			'array': {
 				'len': 'int'
@@ -8928,12 +8928,12 @@ pub fn run[A, B](mut app A, config Config) ! {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'library.v'
+			path:   'library.v'
 			source: library_source
 			header: fastc_scan_source_header(library_source, 'library.v', prefs) or { panic(err) }
 		},
@@ -9714,7 +9714,7 @@ fn handler() string {
 	mut references := map[string]map[string]bool{}
 	mut top_level_references := map[string]bool{}
 	fastc_collect_file_references(FastcSourceFile{
-		path: main_path
+		path:   main_path
 		source: source
 	}, prefs, {
 		'template_only': true
@@ -10926,12 +10926,12 @@ pub type Conn = Base
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'transport/transport.v'
+			path:   'transport/transport.v'
 			source: transport_source
 			header: fastc_scan_source_header(transport_source, 'transport/transport.v', prefs) or {
 				panic(err)
@@ -11083,12 +11083,12 @@ pub fn (d Dog) sound() int {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'animals/animals.v'
+			path:   'animals/animals.v'
 			source: animals_source
 			header: fastc_scan_source_header(animals_source, 'animals/animals.v', prefs) or {
 				panic(err)
@@ -12241,18 +12241,18 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 	mut file := file_set.add_file('failed_generic_scope.v', source.len)
 	file.index_lines_without_digest(source)
 	mut g := Parser{
-		prefs: prefs
-		selfhost: true
+		prefs:                  prefs
+		selfhost:               true
 		in_generic_placeholder: true
-		locals: {
+		locals:                 {
 			'result': FastcLocal{
 				is_mut: true
-				typ: 'voidptr'
+				typ:    'voidptr'
 			}
 		}
-		s: scanner.new_scanner(prefs, .normal)
-		out: strings.new_builder(64)
-		statement_reachable: true
+		s:                      scanner.new_scanner(prefs, .normal)
+		out:                    strings.new_builder(64)
+		statement_reachable:    true
 	}
 	for _ in 0 .. 3 {
 		out_checkpoint := g.out.len
@@ -13353,17 +13353,17 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'first/first.v'
+			path:   'first/first.v'
 			source: first_source
 			header: fastc_scan_source_header(first_source, 'first/first.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
@@ -13422,12 +13422,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
@@ -13470,12 +13470,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
@@ -13507,12 +13507,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},
@@ -13593,12 +13593,12 @@ fn main() {
 '
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: 'util/util.v'
+			path:   'util/util.v'
 			source: util_source
 			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
 		},
 		FastcSourceFile{
-			path: 'main.v'
+			path:   'main.v'
 			source: main_source
 			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
 		},

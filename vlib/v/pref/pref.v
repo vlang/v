@@ -183,8 +183,7 @@ pub fn target_from(os_name string, arch_name string) !Target {
 	target_os := normalized_os(os_name.trim_space().to_lower())
 	target_arch := normalized_arch(arch_name.trim_space().to_lower())
 	if target_os !in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix',
-		'wasm32_emscripten'] {
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
 		return error('unsupported target OS `${os_name}`')
 	}
 	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64',
@@ -216,11 +215,11 @@ pub fn target_from(os_name string, arch_name string) !Target {
 	}
 
 	return Target{
-		os: target_os
-		arch: target_arch
-		abi: abi
-		endian: endian
-		pointer_bits: pointer_bits
+		os:            target_os
+		arch:          target_arch
+		abi:           abi
+		endian:        endian
+		pointer_bits:  pointer_bits
 		object_format: object_format
 	}
 }
@@ -231,8 +230,8 @@ pub fn new_preferences() &Preferences {
 	// Formatted by hand: the first C strftime call of a process initializes
 	// the timezone data, which costs about half a millisecond per compile.
 	return &Preferences{
-		build_date: '${build_time.year}-${two_digits(build_time.month)}-${two_digits(build_time.day)}'
-		build_time: '${two_digits(build_time.hour)}:${two_digits(build_time.minute)}:${two_digits(build_time.second)}'
+		build_date:      '${build_time.year}-${two_digits(build_time.month)}-${two_digits(build_time.day)}'
+		build_time:      '${two_digits(build_time.hour)}:${two_digits(build_time.minute)}:${two_digits(build_time.second)}'
 		build_timestamp: build_time.unix().str()
 	}
 }
@@ -240,14 +239,14 @@ pub fn new_preferences() &Preferences {
 // option_may_consume_value reports whether an option can consume the following argument.
 pub fn option_may_consume_value(option string) bool {
 	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
-		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof',
-		'-profile', '-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude',
-		'-file-list', '-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
+		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof', '-profile',
+		'-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude', '-file-list',
+		'-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
 		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
 		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
-		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend',
-		'-compile-backend', '--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude',
-		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
+		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend', '-compile-backend',
+		'--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix',
+		'-cmain', '-line-info']
 }
 
 fn two_digits(value int) string {
@@ -816,8 +815,7 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 	mut has_os_specific := map[string]bool{}
 	for file in sorted_files {
 		if !file.ends_with('.v') || file.ends_with('.js.v')
-			|| (file_name_has_marker(file, '_test.') && !file_name_has_marker(file, '_d_test.')
-				&& !file_name_has_marker(file, '_notd_test.')) {
+			|| file_name_has_marker(file, '_test.') {
 			continue
 		}
 		if file_has_incompatible_os_only_suffix(file, target.os) {
@@ -902,7 +900,7 @@ pub fn get_test_v_files_from_dir_for_target(dir string, user_defines []string, b
 			}
 		} else if file.contains('_d_') {
 			feature := extract_test_define_feature(file, '_d_')
-			if feature.len == 0 || feature !in user_defines {
+			if feature.len > 0 && feature !in user_defines {
 				continue
 			}
 		}
@@ -920,9 +918,6 @@ fn extract_test_define_feature(file string, marker string) string {
 
 pub fn is_test_file_for_backend(path string, backend string) bool {
 	file := os.file_name(path)
-	if file.contains('_d_test.') || file.contains('_notd_test.') {
-		return false
-	}
 	if file.ends_with('_test.v') {
 		return true
 	}
@@ -1397,9 +1392,9 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'new_int' {
 		return p.target.pointer_bits == 64 || name in p.user_defines
 	}
-	// Test mode is added internally to `user_defines` so `_d_test.v` source
-	// selection works, but `$if test ?` only asks whether the user supplied
-	// `-d test`. Explicit `-d` values are recorded in `compile_values`.
+	// Test mode is added internally to `user_defines`, but `$if test ?` only asks
+	// whether the user supplied `-d test`. Explicit `-d` values are recorded in
+	// `compile_values`.
 	if name == 'test' && name !in p.compile_values {
 		return false
 	}

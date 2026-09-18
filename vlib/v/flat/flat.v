@@ -240,18 +240,17 @@ pub fn node_payload(generic_params []string) u32 {
 		node_payload_unlock()
 		panic('v3: too many node payloads (${idx})')
 	}
-	if isnil(table.chunks[chunk_idx]) {
-		table.chunks[chunk_idx] = node_payload_new_chunk()
-		if isnil(table.chunks[chunk_idx]) {
+	mut chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(chunk_idx))
+	if isnil(chunk) {
+		chunk = node_payload_new_chunk()
+		C.v_flat_payload_ptr_set(voidptr(table), usize(chunk_idx), chunk)
+		if isnil(chunk) {
 			node_payload_unlock()
 			panic('v3: could not allocate a node payload chunk')
 		}
 	}
-	unsafe {
-		mut chunk := &&NodePayload(table.chunks[chunk_idx])
-		chunk[idx & node_payload_chunk_mask] = payload
-	}
-	node_payload_count_publish(mut table, u32(idx + 1))
+	C.v_flat_payload_ptr_set(chunk, usize(idx & node_payload_chunk_mask), voidptr(payload))
+	node_payload_count_publish(table, u32(idx + 1))
 	node_payload_unlock()
 	return u32(idx + 1)
 }
@@ -266,10 +265,8 @@ pub fn node_payload_at(id u32) &NodePayload {
 	if isnil(table) || idx >= int(node_payload_count_load(table)) {
 		return &NodePayload(unsafe { nil })
 	}
-	unsafe {
-		chunk := &&NodePayload(table.chunks[idx >> node_payload_chunk_bits])
-		return chunk[idx & node_payload_chunk_mask]
-	}
+	chunk := C.v_flat_payload_ptr_get(voidptr(table), usize(idx >> node_payload_chunk_bits))
+	return unsafe { &NodePayload(C.v_flat_payload_ptr_get(chunk, usize(idx & node_payload_chunk_mask))) }
 }
 
 // node_flag_skip_ownership_drops marks a block/if/for/fn node whose scope must
@@ -431,14 +428,14 @@ pub mut:
 	// The names spelled inside a `$if`/`$match` body this build does not take,
 	// keyed by `<file>:<fn name offset>|<name>`. The body is never parsed, so
 	// nothing in the AST records its identifier occurrences or reads.
-	comptime_skipped_names       map[string]bool
-	comptime_skipped_read_names  map[string]bool
+	comptime_skipped_names      map[string]bool
+	comptime_skipped_read_names map[string]bool
 	// Goto label operands use the same key format, but are not local-name uses.
 	comptime_skipped_goto_labels map[string]bool
-	export_fn_names map[string]string
-	noreturn_fns    map[string]bool
-	source_files    map[int]&token.File
-	comments        []Comment
+	export_fn_names              map[string]string
+	noreturn_fns                 map[string]bool
+	source_files                 map[int]&token.File
+	comments                     []Comment
 	// formatter_sources retains exact source spans or prefixes for constructs whose
 	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources      map[int]string
@@ -566,33 +563,33 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
-		nodes: []Node{cap: 256}
-		children: []NodeId{cap: 512}
-		disabled_fns: map[string]bool{}
-		comptime_skipped_names: map[string]bool{}
-		comptime_skipped_read_names: map[string]bool{}
-		comptime_skipped_goto_labels: map[string]bool{}
-		export_fn_names: map[string]string{}
-		noreturn_fns: map[string]bool{}
-		contextual_anon_struct_types: map[string]bool{}
+		nodes:                         []Node{cap: 256}
+		children:                      []NodeId{cap: 512}
+		disabled_fns:                  map[string]bool{}
+		comptime_skipped_names:        map[string]bool{}
+		comptime_skipped_read_names:   map[string]bool{}
+		comptime_skipped_goto_labels:  map[string]bool{}
+		export_fn_names:               map[string]string{}
+		noreturn_fns:                  map[string]bool{}
+		contextual_anon_struct_types:  map[string]bool{}
 		synthesized_anon_struct_types: map[string]bool{}
-		source_files: map[int]&token.File{}
-		template_call_sites: map[int]token.Pos{}
-		template_actions: map[int]string{}
-		missing_imports: map[int]string{}
-		missing_import_hints: map[int]string{}
-		formatter_sources: map[int]string{}
-		formatter_file_sources: map[int]string{}
-		formatter_node_ends: map[int]int{}
-		formatter_expanded_calls: map[int]bool{}
-		formatter_assignment_ops: map[int]string{}
-		formatter_param_list_end: map[int]int{}
-		formatter_for_in_mut: map[int]u8{}
-		formatter_local_sels: map[int]bool{}
-		text_ids: map[string]TextId{}
-		specialized_fn_nodes: map[int]bool{}
-		specialized_fn_modules: map[int]string{}
-		specialized_fn_files: map[int]string{}
+		source_files:                  map[int]&token.File{}
+		template_call_sites:           map[int]token.Pos{}
+		template_actions:              map[int]string{}
+		missing_imports:               map[int]string{}
+		missing_import_hints:          map[int]string{}
+		formatter_sources:             map[int]string{}
+		formatter_file_sources:        map[int]string{}
+		formatter_node_ends:           map[int]int{}
+		formatter_expanded_calls:      map[int]bool{}
+		formatter_assignment_ops:      map[int]string{}
+		formatter_param_list_end:      map[int]int{}
+		formatter_for_in_mut:          map[int]u8{}
+		formatter_local_sels:          map[int]bool{}
+		text_ids:                      map[string]TextId{}
+		specialized_fn_nodes:          map[int]bool{}
+		specialized_fn_modules:        map[int]string{}
+		specialized_fn_files:          map[int]string{}
 	}
 }
 
@@ -929,7 +926,7 @@ pub fn node_kind_from_id(id int) NodeKind {
 pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind: kind
+		kind:  kind
 		value: value
 	}
 	return id
@@ -939,7 +936,7 @@ pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind: node_kind_from_id(kind_id)
+		kind:  node_kind_from_id(kind_id)
 		value: value
 	}
 	return id
@@ -951,32 +948,32 @@ pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 // a fresh node instead of mutating in place.
 pub fn (n Node) with_shifted_children(shift i32) Node {
 	return Node{
-		value: n.value
-		typ: n.typ
-		payload: n.payload
-		pos: n.pos
+		value:          n.value
+		typ:            n.typ
+		payload:        n.payload
+		pos:            n.pos
 		children_start: n.children_start + shift
 		children_count: n.children_count
-		kind: n.kind
-		op: n.op
-		is_mut: n.is_mut
-		flags: n.flags
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+		flags:          n.flags
 	}
 }
 
 // with_pos returns a copy of the node with source position `pos`.
 pub fn (n Node) with_pos(pos token.Pos) Node {
 	return Node{
-		value: n.value
-		typ: n.typ
-		payload: n.payload
-		pos: pos.with_type_text_id(n.type_text_id())
+		value:          n.value
+		typ:            n.typ
+		payload:        n.payload
+		pos:            pos.with_type_text_id(n.type_text_id())
 		children_start: n.children_start
 		children_count: n.children_count
-		kind: n.kind
-		op: n.op
-		is_mut: n.is_mut
-		flags: n.flags
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+		flags:          n.flags
 	}
 }
 
@@ -987,16 +984,16 @@ pub fn (n Node) clone_owned() Node {
 		params << param.clone()
 	}
 	return Node{
-		value: n.value.clone()
-		typ: n.typ.clone()
-		payload: node_payload(params)
-		pos: n.pos
+		value:          n.value.clone()
+		typ:            n.typ.clone()
+		payload:        node_payload(params)
+		pos:            n.pos
 		children_start: n.children_start
 		children_count: n.children_count
-		kind: n.kind
-		op: n.op
-		is_mut: n.is_mut
-		flags: n.flags
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+		flags:          n.flags
 	}
 }
 

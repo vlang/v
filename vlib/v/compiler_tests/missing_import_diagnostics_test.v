@@ -83,8 +83,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	plain_root := os.join_path(root, 'plain project')
 	write_modules_layout_module(plain_root, os.join_path('modules', 'helper'), 'helper')
 	write_modules_layout_main(plain_root, 'helper')
-	plain := os.execute('${v3_bin} -nocache -o ${output} ${os.quoted_path(os.join_path(plain_root,
-		'main.v'))}')
+	plain := os.execute('${v3_bin} -nocache -o ${output} ${os.quoted_path(os.join_path(plain_root, 'main.v'))}')
 	assert plain.exit_code != 0, plain.output
 	assert plain.output.contains('cannot import module "helper" (not found)'), plain.output
 	assert plain.output.contains(hint), plain.output
@@ -138,8 +137,7 @@ fn test_removed_modules_directory_reports_the_move_it_needs() {
 	taken_source := os.join_path(taken_real, 'modules', 'gpu', 'agx', 'fw')
 	taken_target := os.join_path(taken_real, 'gpu', 'agx', 'fw')
 	taken_parent := os.join_path(taken_real, 'gpu', 'agx')
-	assert taken.output.contains('${modules_layout_expected_mkdir(taken_parent)} && ${modules_layout_expected_move(taken_source,
-		taken_target)}'), taken.output
+	assert taken.output.contains('${modules_layout_expected_mkdir(taken_parent)} && ${modules_layout_expected_move(taken_source, taken_target)}'), taken.output
 
 	// When the destination itself already exists, `mv` would move the module
 	// *into* it and nest it one level deeper, so the hint has to ask for a merge

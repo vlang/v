@@ -13,10 +13,7 @@ struct Point {
 const base_points = [Point{1, 2}, Point{3, 4}]
 
 fn test_array_init_with_spread() {
-	complete := [...base_array,
-		3,
-		4,
-	]
+	complete := [...base_array, 3, 4]
 	assert base_array == [1, 2]
 	assert complete == [1, 2, 3, 4]
 	assert complete.len == 4

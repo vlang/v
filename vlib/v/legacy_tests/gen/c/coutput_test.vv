@@ -858,11 +858,6 @@ fn test_boehm_gc_header_precedes_imported_module_spawn_wrappers() {
 	cmd := '${os.quoted_path(vexe)} -os linux -gc boehm -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
-	if generated_c_uses_v3_codegen(compilation.output) {
-		// V3 currently accepts Boehm modes as no-GC compatibility aliases.
-		assert !compilation.output.contains('#include <gc/gc.h>')
-		return
-	}
 	gc_include_pos := compilation.output.index('#include <gc/gc.h>') or { -1 }
 	pthread_create_pos := compilation.output.index('pthread_create(&thread_') or { -1 }
 	assert gc_include_pos >= 0

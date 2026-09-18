@@ -19,7 +19,7 @@ pub fn mul_64(x u64, y u64) (u64, u64) {
 	$if msvc {
 		lo = C._umul128(x, y, &hi)
 		return hi, lo
-	} $else $if amd64 {
+	} $else $if amd64 && !android {
 		asm amd64 {
 			mulq rdx
 			; =a (lo)
@@ -46,7 +46,7 @@ pub fn mul_add_64(x u64, y u64, z u64) (u64, u64) {
 		carry := C._addcarry_u64(0, lo, z, &lo)
 		hi += carry
 		return hi, lo
-	} $else $if amd64 {
+	} $else $if amd64 && !android {
 		asm amd64 {
 			mulq rdx
 			addq rax, z
@@ -83,7 +83,7 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	$if msvc {
 		quo = C._udiv128(hi, lo, y, &rem)
 		return quo, rem
-	} $else $if amd64 {
+	} $else $if amd64 && !android {
 		asm amd64 {
 			div y
 			; =a (quo)

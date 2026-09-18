@@ -390,3 +390,32 @@ fn after_vml() {}
 	assert !res.output.contains('unrecognized command'), res.output
 	assert res.output.contains('Checked .md files: 1 | Ex.: 1 |'), res.output
 }
+
+fn test_check_md_vml_fence_with_info_string_metadata_is_not_a_v_example() {
+	md_dir := os.join_path(os.vtmp_dir(), 'vcheck_vml_fence_meta_${os.getpid()}')
+	os.rmdir_all(md_dir) or {}
+	os.mkdir_all(md_dir)!
+	defer {
+		os.rmdir_all(md_dir) or {}
+	}
+	md_path := os.join_path(md_dir, 'vml_meta.md')
+	// Only the first word of a fence info string is the language (CommonMark); trailing
+	// metadata such as `title=example` must not turn a ```vml block back into a V example.
+	write_text_file(md_path, '# VML fence with metadata
+
+```vml title=example
+Screen {
+    Button { text: "Save" on_tap: app.save() }
+}
+```
+
+```v ignore
+fn after_vml() {}
+```
+')!
+	res :=
+		os.execute('${os.quoted_path(vexe)} check-md -hide-warnings -silent ${os.quoted_path(md_path)}')
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('unrecognized command'), res.output
+	assert res.output.contains('Checked .md files: 1 | Ex.: 1 |'), res.output
+}

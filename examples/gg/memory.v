@@ -46,7 +46,10 @@ fn (mut g Game) draw_cell(i int) {
 		lsize := 96
 		g.ctx.draw_rect_empty(rect_x + 6, rect_y + 6, csize - 10, csize - 10, gg.light_gray)
 		g.ctx.draw_text(rect_x + csize / 2 - lsize / 3, rect_y + csize / 2 - lsize / 2,
-			g.cells[i].letter, color: gg.yellow, size: lsize)
+			g.cells[i].letter,
+			color: gg.yellow
+			size:  lsize
+		)
 	} else {
 		g.ctx.draw_rect_filled(rect_x + 6, rect_y + 6, csize - 10, csize - 10, cover)
 	}

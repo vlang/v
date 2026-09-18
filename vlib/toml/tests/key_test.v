@@ -38,8 +38,8 @@ fn test_keys() {
 fn test_parse_dotted_key() {
 	assert toml.parse_dotted_key('')! == []
 	assert toml.parse_dotted_key('abc')! == ['abc']
-	assert toml.parse_dotted_key('tube.test."test.test".h."i.j."."k"')! == ['tube', 'test',
-		'test.test', 'h', 'i.j.', 'k']
+	assert toml.parse_dotted_key('tube.test."test.test".h."i.j."."k"')! == ['tube', 'test', 'test.test',
+		'h', 'i.j.', 'k']
 	if x := toml.parse_dotted_key("'some unclosed string") {
 		assert false
 	} else {

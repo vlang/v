@@ -218,18 +218,20 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		}
 		return t.transform_expr(id)
 	}
-	if target_is_ptr && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
-		child := t.a.nodes[int(t.a.child(&node, 0))]
-		if child.kind == .cast_expr && t.resolve_interface_type_name(child.value) == iface_name {
-			return t.transform_expr(id)
-		}
-	}
 	if target_is_ptr && t.expr_is_nil_like(id) {
 		expr := t.transform_expr(id)
 		if int(expr) >= 0 {
 			t.set_node_typ(int(expr), target_type)
 		}
 		return expr
+	}
+	if node.kind == .block {
+		// Preserve the target interface type through value-yielding blocks such as
+		// `unsafe { receiver }`. Boxing the block itself loses the receiver's pointer
+		// storage and copies the concrete value instead of sharing its identity.
+		if lowered := t.transform_block_expr_for_type(id, node, target_type) {
+			return lowered
+		}
 	}
 	// IError has bespoke handling (built via `error()`, fields accessed directly);
 	// do not route it through the generic interface boxing.
@@ -257,6 +259,14 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return t.transform_expr(id)
 	}
 	mut source_type := t.node_type(id)
+	mut source_is_smartcast_interface := false
+	if t.expr_has_smartcast(id) {
+		raw_source_type := t.raw_expr_type_without_smartcast(id)
+		if t.resolve_interface_type_name(raw_source_type).len > 0 {
+			source_type = raw_source_type
+			source_is_smartcast_interface = true
+		}
+	}
 	if t.expr_has_option_unwrap_smartcast(id) {
 		if smartcast := t.find_smartcast(t.expr_key(id)) {
 			unwrapped_type := t.smartcast_target_type(smartcast)
@@ -377,7 +387,11 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return t.heap_copy_interface_expr(expr, iface_name, target_type)
 	}
 	if source_iface.len > 0 {
-		expr := t.transform_expr(id)
+		expr := if source_is_smartcast_interface {
+			t.make_plain_expr_for_smartcast(id)
+		} else {
+			t.transform_expr(id)
+		}
 		if converted := t.convert_interface_expr_to_interface(expr, source_type, iface_name) {
 			if target_is_ptr {
 				return t.heap_copy_interface_expr(converted, iface_name, target_type)
@@ -465,11 +479,11 @@ fn (mut t Transformer) make_interface_conversion_init(iface string, fields []fla
 		t.a.children << field
 	}
 	return t.a.add_node(flat.Node{
-		kind: .struct_init
+		kind:           .struct_init
 		children_start: start
 		children_count: flat.child_count(fields.len)
-		value: iface
-		typ: iface
+		value:          iface
+		typ:            iface
 	})
 }
 
@@ -527,7 +541,7 @@ fn (mut t Transformer) interface_conversion_impl_mappings(source_iface string, t
 			t.interface_impl_type_id(target_iface, impl) or { continue }
 		}
 		result << InterfaceImplMapping{
-			impl: impl
+			impl:      impl
 			source_id: source_id
 			target_id: target_id
 		}
@@ -607,13 +621,13 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	t.a.children << literal
 	ptr_type := if target_type.len > 0 { target_type } else { '&${iface_name}' }
 	return t.a.add_node(flat.Node{
-		kind: .prefix
-		op: .amp
+		kind:           .prefix
+		op:             .amp
 		children_start: start
 		children_count: 1
-		pos: node.pos
-		value: node.value
-		typ: ptr_type
+		pos:            node.pos
+		value:          node.value
+		typ:            ptr_type
 	})
 }
 
@@ -674,10 +688,10 @@ fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, val
 	t.a.children << then_block
 	t.a.children << else_block
 	return t.a.add_node(flat.Node{
-		kind: .if_expr
+		kind:           .if_expr
 		children_start: start
 		children_count: 3
-		typ: field_type
+		typ:            field_type
 	})
 }
 
@@ -831,11 +845,11 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		t.a.children << field_id
 	}
 	return t.a.add_node(flat.Node{
-		kind: .struct_init
+		kind:           .struct_init
 		children_start: start
 		children_count: flat.child_count(field_ids.len)
-		value: iface_name
-		typ: iface_name
+		value:          iface_name
+		typ:            iface_name
 	})
 }
 
@@ -944,13 +958,13 @@ fn (mut t Transformer) transform_interface_cast(id flat.NodeId, node flat.Node) 
 		t.a.children << nc
 	}
 	return t.a.add_node(flat.Node{
-		kind: node.kind
-		op: node.op
+		kind:           node.kind
+		op:             node.op
 		children_start: start
 		children_count: node.children_count
-		pos: node.pos
-		value: node.value
-		typ: node.typ
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
 	})
 }
 

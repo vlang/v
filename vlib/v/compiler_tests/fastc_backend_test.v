@@ -311,8 +311,8 @@ fn main() {
 }
 ')
 	unsupported_cross_c := os.join_path(root, 'unsupported_float_print.c')
-	unsupported_cross_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-os',
-		cross_target_os, '-o', unsupported_cross_c, unsupported_float_source])
+	unsupported_cross_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-os', cross_target_os,
+		'-o', unsupported_cross_c, unsupported_float_source])
 	assert unsupported_cross_compile.exit_code != 0
 	assert unsupported_cross_compile.output.contains('printing value of type `float literal`'), unsupported_cross_compile.output
 
@@ -327,8 +327,7 @@ fn main() {
 	run_c_source := os.read_file(run_c) or { panic(err) }
 	assert run_c_source.contains('V_FASTC_PRINT_SELECT')
 
-	run_stdout_result := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', '-', 'run',
-		valid_source])
+	run_stdout_result := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', '-', 'run', valid_source])
 	assert run_stdout_result.exit_code == 0, run_stdout_result.output
 	assert run_stdout_result.output.contains('V_FASTC_PRINT_SELECT')
 	assert !run_stdout_result.output.ends_with('42\n15\n')
@@ -543,8 +542,8 @@ fn main() {
 }
 ")
 	preamble_name_binary := os.join_path(root, 'preamble_name')
-	preamble_name_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
-		preamble_name_binary, preamble_name_source])
+	preamble_name_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', preamble_name_binary,
+		preamble_name_source])
 	assert preamble_name_compile.exit_code != 0
 	assert preamble_name_compile.output.contains('fastc parser does not support unresolved name `puts`'), preamble_name_compile.output
 

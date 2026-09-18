@@ -40,8 +40,7 @@ fn test_interface_method_fn_parameter_uses_c_typedef() {
 		os.rmdir_all(root) or {}
 	}
 	output := os.join_path(root, 'interface_fn_parameter')
-	compile := os.execute('${os.quoted_path(v3_bin)} -nocache -b c -o ${os.quoted_path(output)} ${os.quoted_path(os.join_path(root,
-		'main.v'))}')
+	compile := os.execute('${os.quoted_path(v3_bin)} -nocache -b c -o ${os.quoted_path(output)} ${os.quoted_path(os.join_path(root, 'main.v'))}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(os.quoted_path(output))

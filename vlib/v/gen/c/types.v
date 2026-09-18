@@ -33,7 +33,7 @@ fn enum_storage_c_type_is_unsigned(storage_ct string) bool {
 
 fn (mut g FlatGen) register_enum_backing_info(enum_name string, backing string) {
 	info := EnumBackingInfo{
-		c_name: g.cname(enum_name)
+		c_name:         g.cname(enum_name)
 		storage_c_type: g.enum_backing_storage_c_type(backing)
 	}
 	g.enum_backing_infos[enum_name] = info
@@ -623,7 +623,8 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ types.Type, node &flat.
 // directly instead of allocating type text merely to normalize it unchanged.
 fn type_has_import_alias_text(typ types.Type) bool {
 	return match typ {
-		types.Struct, types.Interface, types.Enum, types.SumType, types.Alias, types.FnType, types.MultiReturn, types.Channel {
+		types.Struct, types.Interface, types.Enum, types.SumType, types.Alias, types.FnType, types.MultiReturn,
+		types.Channel {
 			true
 		}
 		types.Pointer, types.OptionType, types.ResultType {
@@ -716,7 +717,7 @@ fn (g &FlatGen) exact_known_import_type_text(typ string) ?types.Type {
 	}
 	if clean in g.tc.enum_names {
 		return types.Type(types.Enum{
-			name: clean
+			name:    clean
 			is_flag: clean in g.tc.flag_enums
 		})
 	}

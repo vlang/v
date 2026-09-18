@@ -13,6 +13,7 @@ $if !android {
 
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
+
 fn C.pthread_mutex_lock(voidptr) i32
 fn C.pthread_mutex_trylock(voidptr) i32
 fn C.pthread_mutex_unlock(voidptr) i32
@@ -377,7 +378,9 @@ fn (mut sem Semaphore) cond_init(n u32) {
 	should_be_zero(C.pthread_mutex_init(&sem.mtx, C.NULL))
 	attr := CondAttr{}
 	should_be_zero(C.pthread_condattr_init(&attr.attr))
-	C.pthread_condattr_setpshared(&attr.attr, C.PTHREAD_PROCESS_PRIVATE)
+	$if !openbsd {
+		C.pthread_condattr_setpshared(&attr.attr, C.PTHREAD_PROCESS_PRIVATE)
+	}
 	C.pthread_cond_init(&sem.cond, &attr.attr)
 	C.pthread_condattr_destroy(&attr.attr)
 }

@@ -74,13 +74,11 @@ pub fn (mut c StreamConn) write_ptr(b &u8, len int) !int {
 		eprintln('>>> StreamConn.write_ptr | c: ${ptr_str(c)} | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} | len: ${len}')
 	}
 	$if trace_unix ? {
-		eprintln(
-			'>>> StreamConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
+		eprintln('>>> StreamConn.write_ptr | c.sock.handle: ${c.sock.handle} | b: ${ptr_str(b)} len: ${len} |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	$if trace_unix_data_write ? {
-		eprintln(
-			'>>> StreamConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
+		eprintln('>>> StreamConn.write_ptr | data.len: ${len:6} | hex: ${unsafe { b.vbytes(len) }.hex()} | data: ' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
@@ -134,8 +132,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 	}
 	if res > 0 {
 		$if trace_unix_data_read ? {
-			eprintln(
-				'<<< StreamConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
+			eprintln('<<< StreamConn.read_ptr  | 1 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
@@ -153,8 +150,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 		}
 		$if trace_unix_data_read ? {
 			if res > 0 {
-				eprintln(
-					'<<< StreamConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
+				eprintln('<<< StreamConn.read_ptr  | 2 data.len: ${res:6} | hex: ${unsafe { buf_ptr.vbytes(res) }.hex()} | data: ' +
 					unsafe { buf_ptr.vstring_with_len(res) })
 			}
 		}
@@ -365,7 +361,7 @@ pub fn (mut l StreamListener) unlink() ! {
 pub fn (mut l StreamListener) unlink_on_signal(signum os.Signal) ! {
 	os.signal_opt(.int, fn [mut l] (sign os.Signal) {
 		$if trace_unix ? {
-			eprintln('	StreamListener.unlink_on_signal received signal ${sign}; unlinking unix socket ${l.sock.socket_path}')
+			eprintln('\tStreamListener.unlink_on_signal received signal ${sign}; unlinking unix socket ${l.sock.socket_path}')
 		}
 		l.unlink() or {}
 		exit(1)

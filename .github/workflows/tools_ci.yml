@@ -25,6 +25,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  shell-contracts:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check BSD tool job failure propagation
+        run: python3 cmd/tools/tools_ci_test.py
+
   tools-linux:
     runs-on: ubuntu-22.04
     timeout-minutes: 40
@@ -176,7 +186,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Start FreeBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@v1.6.0
         with:
           operating_system: freebsd
           version: '15.1'
@@ -189,6 +199,8 @@ jobs:
       - name: Tests tools on FreeBSD with ${{ matrix.cc }}
         shell: cpa.sh {0}
         run: |
+          # A custom VM shell does not imply GitHub's usual fail-fast options.
+          set -eu
           sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
           if [ "$VFLAGS" = "-cc gcc" ]; then
             sudo pkg install -y gcc
@@ -202,7 +214,10 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           printf "VFLAGS = %s\n" "$VFLAGS"
-          gmake && ./v -showcc -o v cmd/v && sudo ./v symlink
+          # Non-final commands in an && list are exempt from set -e.
+          gmake
+          ./v -showcc -o v cmd/v
+          sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"
           ./v doctor
@@ -239,7 +254,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Start OpenBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@v1.6.0
         with:
           operating_system: openbsd
           version: '7.8'
@@ -251,6 +266,8 @@ jobs:
       - name: Tests tools on OpenBSD with ${{ matrix.cc }}
         shell: cpa.sh {0}
         run: |
+          # A custom VM shell does not imply GitHub's usual fail-fast options.
+          set -eu
           sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
           # Mandatory: hostname not set in VM => some tests fail
           sudo hostname -s openbsd-ci
@@ -263,7 +280,10 @@ jobs:
           printf "VFLAGS = %s\n" "$VFLAGS"
           # V3 self-hosting can exceed OpenBSD's default per-process data limit.
           ulimit -d 4194304
-          gmake && ./v -showcc -o v cmd/v && sudo ./v symlink
+          # Non-final commands in an && list are exempt from set -e.
+          gmake
+          ./v -showcc -o v cmd/v
+          sudo ./v symlink
           echo "::endgroup::"
           echo "::group::v doctor"
           ./v doctor

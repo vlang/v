@@ -70,8 +70,7 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -ownership -d ownership -nocache -no-parallel -o ${output} ${os.join_path(project,
-		'main.v')}')
+	compile := os.execute('${v3_bin} -ownership -d ownership -nocache -no-parallel -o ${output} ${os.join_path(project, 'main.v')}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(output)
 	assert run.exit_code == 0, run.output

@@ -252,7 +252,7 @@ fn (mut app App) commit_render_batch_plan_locked(plan RenderBatchPlan) {
 }
 
 fn callback_matches_suppressed_attempt(callback_error IError, outcome RenderBatchOutcome) bool {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if callback_error is RecoverableRenderAttemptError {
 			return callback_error.target == outcome.suppressed_callback_target
 				&& callback_error.message != ''

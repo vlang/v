@@ -377,18 +377,18 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			}
 			fixed_parameter_count := parameter_types.len - if receiver_type == '' { 0 } else { 1 }
 			signature := FastcFunctionSignature{
-				parameter_types: parameter_types
-				parameter_mutability: parameter_mutability
-				return_type: return_type
-				return_types: return_types
-				option_type: option_type
-				is_variadic: is_variadic
+				parameter_types:          parameter_types
+				parameter_mutability:     parameter_mutability
+				return_type:              return_type
+				return_types:             return_types
+				option_type:              option_type
+				is_variadic:              is_variadic
 				last_parameter_is_params: fixed_parameter_count > 0 && fastc_parameter_is_params_struct(parameter_types.last(), params_structs)
-				is_public: is_public || is_c_function
-				is_disabled: !next_declaration_is_enabled
-				is_c_extern: is_c_function && next_declaration_is_c_extern
-				module_name: header.module_name
-				path: path
+				is_public:                is_public || is_c_function
+				is_disabled:              !next_declaration_is_enabled
+				is_c_extern:              is_c_function && next_declaration_is_c_extern
+				module_name:              header.module_name
+				path:                     path
 			}
 			if previous := functions[function_key] {
 				if !is_c_function {
@@ -499,14 +499,14 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 		}
 	}
 	return FastcFunctionSignature{
-		parameter_types: parameter_types
+		parameter_types:      parameter_types
 		parameter_mutability: parameter_mutability
-		return_type: return_type
-		return_types: return_types
-		option_type: option_type
-		is_public: true
-		module_name: header.module_name
-		path: path
+		return_type:          return_type
+		return_types:         return_types
+		option_type:          option_type
+		is_public:            true
+		module_name:          header.module_name
+		path:                 path
 	}
 }
 
@@ -762,8 +762,8 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 						return error('fastc parser does not support duplicate interface field `${field_name}` in ${path}')
 					}
 					interface_fields[field_key] = FastcInterfaceField{
-						name: field_name
-						typ: field_type
+						name:       field_name
+						typ:        field_type
 						is_mutable: members_are_mutable
 					}
 					interface_field_paths[field_key] = path
@@ -834,14 +834,14 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 			}
 			interface_method_key := '${interface_key}.${method_name}'
 			functions[interface_method_key] = FastcFunctionSignature{
-				parameter_types: parameter_types
+				parameter_types:      parameter_types
 				parameter_mutability: parameter_mutability
-				return_type: return_type
-				return_types: return_types
-				option_type: option_type
-				is_public: true
-				module_name: header.module_name
-				path: path
+				return_type:          return_type
+				return_types:         return_types
+				option_type:          option_type
+				is_public:            true
+				module_name:          header.module_name
+				path:                 path
 			}
 			interface_methods[interface_method_key] = true
 		}
@@ -866,12 +866,12 @@ mut:
 
 fn fastc_collect_signature_chunk(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, start int, end int) FastcSignaturePartial {
 	mut partial := FastcSignaturePartial{
-		functions: map[string]FastcFunctionSignature{}
-		interface_methods: map[string]bool{}
-		interface_fields: map[string]FastcInterfaceField{}
+		functions:             map[string]FastcFunctionSignature{}
+		interface_methods:     map[string]bool{}
+		interface_fields:      map[string]FastcInterfaceField{}
 		interface_field_paths: map[string]string{}
-		embed_embedders: []string{}
-		embed_embeddeds: []string{}
+		embed_embedders:       []string{}
+		embed_embeddeds:       []string{}
 	}
 	for idx in start .. end {
 		source_file := sources[idx]
@@ -1072,8 +1072,8 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 		return_type, _ = fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
 	}
 	return FastcFunctionTypeInfo{
-		parameter_types: parameter_types
-		return_type: return_type
+		parameter_types:   parameter_types
+		return_type:       return_type
 		option_value_type: option_value_type
 	}
 }

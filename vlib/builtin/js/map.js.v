@@ -44,6 +44,7 @@ fn (mut m map) internal_get(key JS.Any) JS.Any {
 #map.prototype.get = function (key) { return map_internal_get(this,key); }
 #map.prototype.set = function(key,val) { map_internal_set(this,key,val); }
 #map.prototype.has = function (key) { if (typeof key != "string" && key != null && typeof key.$toJS === 'function') { key = key.$toJS() } return key in this.map; }
+
 // Removes the mapping of a particular key from the map.
 @[unsafe]
 pub fn (mut m map) delete(key JS.Any) {

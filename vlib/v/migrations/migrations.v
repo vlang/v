@@ -750,14 +750,12 @@ fn postgresql_migration_lock_key(schema string, table string) i64 {
 }
 
 fn postgresql_history_schema_query(table string) string {
-	return 'WITH persistent_search_path AS (SELECT n.oid AS namespace_oid, schemas.schema_name, schemas.search_order FROM pg_catalog.unnest(pg_catalog.current_schemas(false)) WITH ORDINALITY AS schemas(schema_name, search_order) JOIN pg_catalog.pg_namespace AS n ON n.nspname = schemas.schema_name WHERE n.oid <> pg_catalog.pg_my_temp_schema()) SELECT COALESCE((SELECT path.schema_name FROM persistent_search_path AS path JOIN pg_catalog.pg_class AS c ON c.relnamespace = path.namespace_oid WHERE c.relname = ${string_literal_sql(.pg,
-		table)} ORDER BY path.search_order LIMIT 1), (SELECT path.schema_name FROM persistent_search_path AS path ORDER BY path.search_order LIMIT 1));'
+	return 'WITH persistent_search_path AS (SELECT n.oid AS namespace_oid, schemas.schema_name, schemas.search_order FROM pg_catalog.unnest(pg_catalog.current_schemas(false)) WITH ORDINALITY AS schemas(schema_name, search_order) JOIN pg_catalog.pg_namespace AS n ON n.nspname = schemas.schema_name WHERE n.oid <> pg_catalog.pg_my_temp_schema()) SELECT COALESCE((SELECT path.schema_name FROM persistent_search_path AS path JOIN pg_catalog.pg_class AS c ON c.relnamespace = path.namespace_oid WHERE c.relname = ${string_literal_sql(.pg, table)} ORDER BY path.search_order LIMIT 1), (SELECT path.schema_name FROM persistent_search_path AS path ORDER BY path.search_order LIMIT 1));'
 }
 
 fn qualified_history_table_sql(dialect Dialect, namespace string, table string) string {
 	table_name := if table.contains('.') { table.all_after('.') } else { table }
-	return '${quote_identifier_component(dialect, namespace)}.${quote_identifier_component(dialect,
-		table_name)}'
+	return '${quote_identifier_component(dialect, namespace)}.${quote_identifier_component(dialect, table_name)}'
 }
 
 fn mysql_migration_lock_name(database string, table string, lower_case_table_names int) string {

@@ -72,20 +72,20 @@ fn main() {
 		exit(1)
 	}
 	mut foptions := FormatOptions{
-		is_c: '-c' in args
-		is_l: '-l' in args
-		is_w: '-w' in args
-		is_diff: '-diff' in args
-		is_verbose: '-verbose' in args || '--verbose' in args
-		is_worker: '-worker' in args
-		is_debug: '-debug' in args
-		is_noerror: '-noerror' in args
-		is_verify: '-verify' in args
-		is_backup: '-backup' in args
-		in_process: '-inprocess' in args
-		is_new_int: '-new_int' in args
+		is_c:             '-c' in args
+		is_l:             '-l' in args
+		is_w:             '-w' in args
+		is_diff:          '-diff' in args
+		is_verbose:       '-verbose' in args || '--verbose' in args
+		is_worker:        '-worker' in args
+		is_debug:         '-debug' in args
+		is_noerror:       '-noerror' in args
+		is_verify:        '-verify' in args
+		is_backup:        '-backup' in args
+		in_process:       '-inprocess' in args
+		is_new_int:       '-new_int' in args
 		no_migrate_json2: '-no-migrate-json2' in args
-		backend: backend
+		backend:          backend
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
@@ -228,9 +228,9 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string, report_dia
 		return error('the file contains parser errors')
 	}
 	return compiler_fmt.format_with_options(a,
-		is_debug: foptions.is_debug
+		is_debug:   foptions.is_debug
 		is_new_int: foptions.is_new_int
-		backend: foptions.backend
+		backend:    foptions.backend
 	)
 }
 

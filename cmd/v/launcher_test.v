@@ -13,6 +13,53 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 	]
 }
 
+fn test_external_tool_build_args_drop_non_binary_modes() {
+	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == ['-silent',
+		'-N', '-W']
+	assert external_tool_build_args('vfmt', ['-new-compiler', '-c', '-cc', 'clang']) == ['-cc',
+		'clang']
+}
+
+fn test_diagnostic_external_tool_build_args_disable_gc() {
+	for tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
+		assert external_tool_compile_args(tool_name, ['-prod']) == ['-prod', '-g', '-gc', 'none']
+		assert external_tool_compile_args(tool_name, ['-gc', 'boehm', '-prod']) == ['-prod',
+			'-g', '-gc', 'none']
+		assert external_tool_compile_args(tool_name, ['-gc=boehm', '-prod']) == ['-prod', '-g',
+			'-gc', 'none']
+	}
+	assert external_tool_compile_args('vfmt', ['-prod']) == ['-prod']
+}
+
+fn test_tools_that_consume_prefix_compiler_options_receive_them() {
+	prefix := ['-silent', '-N', '-W', '-check']
+	assert external_tool_runtime_args('build-tools', prefix, ['build-tools']) == [
+		'-silent',
+		'-N',
+		'-W',
+		'-check',
+		'build-tools',
+	]
+	assert external_tool_runtime_args('self', ['-prod'], ['self']) == ['-prod', 'self']
+	assert external_tool_runtime_args('fmt', prefix, ['fmt', '-verify', 'file.v']) == [
+		'fmt',
+		'-verify',
+		'file.v',
+	]
+}
+
+fn test_ownership_compiler_is_selected_only_for_explicit_modes() {
+	assert ownership_compiler_is_required(['-autofree', 'main.v'])
+	assert ownership_compiler_is_required(['-ownership', 'main.v'])
+	assert ownership_compiler_is_required(['--ownership', 'main.v'])
+	assert ownership_compiler_is_required(['-d', 'ownership', 'main.v'])
+	assert ownership_compiler_is_required(['-define', 'ownership=on', 'main.v'])
+	assert ownership_compiler_is_required(['-downership', 'main.v'])
+	assert !ownership_compiler_is_required(['main.v'])
+	assert !ownership_compiler_is_required(['-d', 'autofree', 'main.v'])
+	assert !ownership_compiler_is_required(['run', 'ownership'])
+}
+
 fn test_launcher_finds_the_source_root() {
 	root := find_vroot(@FILE) or { panic(err) }
 	assert os.is_file(os.join_path(root, 'GNUmakefile'))
@@ -43,6 +90,25 @@ fn test_launcher_finds_external_commands() {
 	option_value_index, option_value := find_command(['-o', 'fmt', 'main.v'])
 	assert option_value_index == -1
 	assert option_value == ''
+	test_index, test_command := find_command(['-silent', 'test', 'vlib/builtin', 'vlib/os'])
+	assert test_index == 1
+	assert test_command == 'test'
+}
+
+fn test_external_tool_source_prefers_an_executable_file() {
+	root := os.join_path(os.vtmp_dir(), 'external_tool_source_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	base := os.join_path(root, 'vshare')
+	os.mkdir_all(base)!
+	os.write_file(base + '.v', 'module main\n')!
+	assert find_external_tool_source(base)? == base + '.v'
+	os.rm(base + '.v')!
+	assert find_external_tool_source(base)? == base
+	assert find_external_tool_source(os.join_path(root, 'missing')) == none
 }
 
 fn test_json_quote_escapes_report_content() {
@@ -276,6 +342,36 @@ fn run_launcher_test_process(executable string, args []string, work_dir string,
 	return result
 }
 
+fn test_external_tools_do_not_use_the_v1_fallback() {
+	$if !windows {
+		false_executable := os.find_abs_path_of_executable('false') or { return }
+		dispatcher := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
+			os.join_path(os.dir(@VEXE), 'v')
+		} else {
+			@VEXE
+		}
+		if !os.is_executable(dispatcher) {
+			return
+		}
+		cache := os.join_path(os.vtmp_dir(), 'v3_external_tool_failure_${os.getpid()}')
+		os.rmdir_all(cache) or {}
+		os.mkdir_all(cache)!
+		defer {
+			os.rmdir_all(cache) or {}
+		}
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['VTOOLS_CACHE_DIR'] = cache
+		environment['VTOOLS_NO_CACHE'] = ''
+		environment['V_MACOS_V3_NO_FALLBACK'] = ''
+		result := run_launcher_test_process(dispatcher, ['-cc', false_executable, 'timeout', '1',
+			dispatcher, 'version'], os.dir(dispatcher), environment)
+		assert result.exit_code != 0, result.output
+		assert !result.output.contains('retrying with'), result.output
+	}
+}
+
 fn test_failed_run_retry_explains_how_to_show_v3_diagnostics() {
 	dispatcher := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
 		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
@@ -335,8 +431,7 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['example_test.c.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-b', 'js_node', 'example_test.js.v'])
-	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser',
-		'example_test.js.v'])
+	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=js_browser', 'example_test.js.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-backend=wasm', 'example_test.wasm.v'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['script.vsh'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-e', 'exit(1)'])
@@ -363,8 +458,8 @@ fn test_fallback_exit_classifies_compile_only_commands() {
 	assert !v1_fallback_exit_identifies_compiler_failure(['run', 'main.v', '-skip-running'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['run', 'main.v', '-generate-c-project',
 		'generated'])
-	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.c', 'run', 'main.v', '-b',
-		'js'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.c', 'run', 'main.v',
+		'-b', 'js'])
 	assert !v1_fallback_exit_identifies_compiler_failure(['-o', 'generated.js', 'run', 'main.v',
 		'-b', 'c'])
 	// V 0.5.2 runs direct tests with explicit executable outputs.

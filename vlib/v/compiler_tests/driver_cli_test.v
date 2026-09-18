@@ -13,7 +13,12 @@ fn build_driver_cli_v3(root string) string {
 }
 
 fn build_driver_cli_v3_with_flags(root string, flags []string) string {
-	bin := os.join_path(root, 'v3_driver_cli')
+	// The compiler appends `.exe` to an extension-less `-o` target on Windows;
+	// return the name it actually produces, so the callers can spawn it.
+	mut bin := os.join_path(root, 'v3_driver_cli')
+	$if windows {
+		bin += '.exe'
+	}
 	mut args := ['-gc', 'none']
 	args << flags
 	args << ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', bin, driver_cli_v3_src]
@@ -356,23 +361,72 @@ fn main() {
 	assert channel_run.output == '71\n'
 }
 
-fn test_v3_build_rejects_garbage_collectors() {
-	root := os.join_path(os.vtmp_dir(), 'v3_driver_gc_build_${os.getpid()}')
+fn test_v3_garbage_collector_modes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_gc_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	for mode in ['boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt', 'boehm_leak',
-		'vgc'] {
-		output := os.join_path(root, 'v3_${mode}')
-		result := cmdexec.run(@VEXE, ['-gc', mode, '-path',
-			'${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', output, driver_cli_v3_src])
-		assert result.exit_code != 0
-		// The driver refuses the flag up front; a compiler built from source refuses it
-		// again with `$compile_error`. Either way the reason names the collector.
-		assert result.output.contains('garbage collector'), result.output
-		assert !os.is_file(output)
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'gc_mode.v')
+	os.write_file(source, 'fn main() {
+	$if gcboehm ? { println("v3_gc_marker_gcboehm_28636") }
+	$if gcboehm_full ? { println("v3_gc_marker_gcboehm_full_28636") }
+	$if gcboehm_incr ? { println("v3_gc_marker_gcboehm_incr_28636") }
+	$if gcboehm_opt ? { println("v3_gc_marker_gcboehm_opt_28636") }
+	$if gcboehm_leak ? { println("v3_gc_marker_gcboehm_leak_28636") }
+	$if vgc ? { println("v3_gc_marker_vgc_28636") }
+}
+')!
+	cases := {
+		'default':        ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
+		'boehm':          ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
+		'boehm_full':     ['gcboehm', 'gcboehm_full']
+		'boehm_incr':     ['gcboehm', 'gcboehm_incr']
+		'boehm_full_opt': ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
+		'boehm_incr_opt': ['gcboehm', 'gcboehm_incr', 'gcboehm_opt']
+		'boehm_leak':     ['gcboehm', 'gcboehm_leak']
+		'none':           []string{}
+		'vgc':            ['vgc']
+	}
+	markers := ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt', 'gcboehm_leak',
+		'vgc']
+	for mode, expected in cases {
+		output := os.join_path(root, 'gc_${mode}.c')
+		mut args := ['-silent']
+		if mode != 'default' {
+			args << ['-gc', mode]
+		}
+		args << ['-o', output, source]
+		result := cmdexec.run(v3_bin, args)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+		generated := os.read_file(output)!
+		for marker in markers {
+			selected := marker in expected
+			assert generated.contains('v3_gc_marker_${marker}_28636') == selected,
+				'${mode}: marker ${marker}, expected ${selected}'
+		}
+	}
+
+	// Cross-target builds must not emit collector-dependent code. The target
+	// runtime/toolchain may not have Boehm headers or libraries available.
+	host := pref.host_target()
+	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }
+	for mode in ['default', 'boehm'] {
+		output := os.join_path(root, 'gc_cross_${mode}.c')
+		mut args := ['-silent', '-os', cross_os]
+		if mode != 'default' {
+			args << ['-gc', mode]
+		}
+		args << ['-o', output, source]
+		result := cmdexec.run(v3_bin, args)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+		generated := os.read_file(output)!
+		for marker in markers {
+			assert !generated.contains('v3_gc_marker_${marker}_28636'),
+				'cross ${mode}: marker ${marker} must be disabled'
+		}
 	}
 }
 
@@ -487,6 +541,48 @@ fn main() {
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '73'
+}
+
+// windows_suffixing_c_compiler returns a C compiler on PATH that appends `.exe`
+// to an extension-less output name (MinGW gcc, llvm-mingw clang), or '' when
+// none is installed.
+fn windows_suffixing_c_compiler() string {
+	for name in ['gcc', 'clang'] {
+		if path := os.find_abs_path_of_executable(name) {
+			return path
+		}
+	}
+	return ''
+}
+
+fn test_driver_finalizes_binaries_from_suffixing_c_compilers_on_windows() {
+	$if !windows {
+		return
+	}
+	c_compiler := windows_suffixing_c_compiler()
+	if c_compiler == '' {
+		eprintln('skipping ${@FN}: neither gcc nor clang is on PATH')
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_out_suffix_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'fn main() {\n\tprintln(41 + 1)\n}\n') or { panic(err) }
+	// The driver compiles to an extension-less `out` inside its build directory;
+	// gcc and clang write `out.exe` instead, which used to make the final move
+	// fail with "failed to finalize ...: Source path doesn't exist" (#28625).
+	output := os.join_path(root, 'suffixed_program.exe')
+	compile := cmdexec.run(v3_bin, ['-nocache', '-cc', c_compiler, '-o', output, source])
+	assert compile.exit_code == 0, compile.output
+	assert os.exists(output), compile.output
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
 }
 
 fn test_driver_ldflags_are_appended_to_the_link_command() {
@@ -1995,7 +2091,7 @@ fn main() {
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
-	assert_driver_cli_failure(v3_bin, ['-gc', 'boehm', source], 'currently supports only `-gc none`')
+	assert_driver_cli_failure(v3_bin, ['-gc', 'bogus', source], 'unknown garbage collection mode `-gc bogus`')
 	assert_driver_cli_failure(v3_bin, ['-d', 'gcboehm', source], 'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, ['-dvgc', source], 'v3 programs must not use a garbage collector')
 	assert_driver_cli_failure(v3_bin, [source, source], 'multiple input paths are not supported')

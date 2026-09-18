@@ -2,7 +2,7 @@ module multiwindow
 
 import os
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import gg.testdata.multiwindow_probe_gate
 	import gg.testdata.multiwindow_sokol_trace
 	import sokol.gfx
@@ -11,7 +11,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 
 #flag -DSOKOL_TRACE_HOOKS
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	#flag darwin -DV_MULTIWINDOW_NATIVE_PROOF_TEST
 
 	$if darwin {
@@ -42,7 +42,7 @@ fn test_renderer_fault_forced_runtime_gate_has_render_sources() {
 	if os.getenv('VGG_MULTIWINDOW_RUNTIME_PROBES') != '1' {
 		return
 	}
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert true
 	} $else {
 		assert false, 'forced renderer fault operations require gg_multiwindow or x_multiwindow_render'
@@ -50,7 +50,7 @@ fn test_renderer_fault_forced_runtime_gate_has_render_sources() {
 }
 
 fn test_renderer_anchor_create_fault_drives_start_renderer_retry_and_cleanup() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !renderer_fault_runtime_requested_for_test() {
 			return
 		}
@@ -61,7 +61,7 @@ fn test_renderer_anchor_create_fault_drives_start_renderer_retry_and_cleanup() {
 }
 
 fn test_renderer_environment_fault_drives_start_renderer_retry_and_cleanup() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !renderer_fault_runtime_requested_for_test() {
 			return
 		}
@@ -72,7 +72,7 @@ fn test_renderer_environment_fault_drives_start_renderer_retry_and_cleanup() {
 }
 
 fn test_renderer_setup_fault_drives_start_renderer_retry_and_cleanup() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if !renderer_fault_runtime_requested_for_test() {
 			return
 		}
@@ -83,7 +83,7 @@ fn test_renderer_setup_fault_drives_start_renderer_retry_and_cleanup() {
 }
 
 fn test_renderer_batch_begin_fault_is_recoverable_before_scheduler_commit() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if renderer_fault_runtime_requested_for_test() {
 			renderer_fault_exercise_batch_begin_for_test()!
 		}
@@ -91,7 +91,7 @@ fn test_renderer_batch_begin_fault_is_recoverable_before_scheduler_commit() {
 }
 
 fn test_renderer_target_acquire_fault_is_recoverable_before_claim_commit() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if renderer_fault_runtime_requested_for_test() {
 			renderer_fault_exercise_target_acquire_for_test()!
 		}
@@ -99,7 +99,7 @@ fn test_renderer_target_acquire_fault_is_recoverable_before_claim_commit() {
 }
 
 fn test_renderer_pass_begin_fault_preserves_prepared_target_for_retry() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if renderer_fault_runtime_requested_for_test() {
 			renderer_fault_exercise_pass_begin_for_test()!
 		}
@@ -107,7 +107,7 @@ fn test_renderer_pass_begin_fault_preserves_prepared_target_for_retry() {
 }
 
 fn test_renderer_anchor_begin_fault_terminalizes_before_anchor_sokol_call() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if renderer_fault_runtime_requested_for_test() {
 			renderer_fault_exercise_anchor_begin_for_test()!
 		}
@@ -115,7 +115,7 @@ fn test_renderer_anchor_begin_fault_terminalizes_before_anchor_sokol_call() {
 }
 
 fn test_renderer_precommit_fault_terminalizes_after_anchor_pass_before_commit() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if renderer_fault_runtime_requested_for_test() {
 			renderer_fault_exercise_precommit_for_test()!
 		}
@@ -123,7 +123,7 @@ fn test_renderer_precommit_fault_terminalizes_after_anchor_pass_before_commit() 
 }
 
 fn test_renderer_submission_finalize_fault_terminalizes_after_one_native_submission() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if renderer_fault_runtime_requested_for_test() {
 			renderer_fault_exercise_submission_finalize_for_test()!
 		}
@@ -131,14 +131,14 @@ fn test_renderer_submission_finalize_fault_terminalizes_after_one_native_submiss
 }
 
 fn test_renderer_submission_finalize_shutdown_replay_is_exact() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		if renderer_fault_runtime_requested_for_test() {
 			renderer_fault_exercise_submission_finalize_shutdown_replay_for_test()!
 		}
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	@[heap]
 	struct RendererFaultBatchRetryState {
 	mut:
@@ -419,7 +419,9 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			'wayland' { .wayland }
 			'appkit' { .appkit }
 			'win32' { .win32 }
-			else { error('VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32') }
+			else {
+				error('VGG_MULTIWINDOW_RUNTIME_BACKEND must select x11, wayland, appkit, or win32')
+			}
 		}
 	}
 
@@ -1096,7 +1098,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 	fn renderer_fault_replay_mark_dirty_for_test(mut replay RendererFaultHarvestReplayState) ! {
 		if replay.window_runtime.dirty_epoch > replay.window_runtime.consumed_dirty_epoch
 			&& (!replay.window_runtime.in_frame
-			|| replay.window_runtime.dirty_epoch != replay.window_runtime.claimed_dirty_epoch) {
+				|| replay.window_runtime.dirty_epoch != replay.window_runtime.claimed_dirty_epoch) {
 			return
 		}
 		epoch, next_epoch := plan_nonwrapping_counter(replay.runtime_next_epoch)!
@@ -4261,7 +4263,8 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 						before_stop.win32_anchor_depth_texture, before_stop.win32_anchor_render_view,
 						before_stop.win32_anchor_color_texture]
 					anchor_tickets := [before_stop.win32_anchor_depth_view_ticket,
-						before_stop.win32_anchor_depth_ticket, before_stop.win32_anchor_render_view_ticket,
+						before_stop.win32_anchor_depth_ticket,
+						before_stop.win32_anchor_render_view_ticket,
 						before_stop.win32_anchor_color_ticket]
 					anchor_seed := NativeOperationSeed{
 						call_site: .anchor_create
@@ -4276,7 +4279,8 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 						before_stop.backend_renderer_context_identity,
 						before_stop.backend_renderer_device_identity]
 					renderer_tickets := [before_stop.backend_factory_ticket,
-						before_stop.backend_renderer_context_ticket, before_stop.backend_renderer_device_ticket]
+						before_stop.backend_renderer_context_ticket,
+						before_stop.backend_renderer_device_ticket]
 					renderer_seed := NativeOperationSeed{
 						call_site: .renderer_start
 						scope:     .renderer
@@ -4391,7 +4395,10 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		health_latch := proof.trace[start + 4]
 		wayland_release_mode_evidence := domain == .wayland && operation == .surface_destroy
 			&& actual_capture.actual.valid_mask == native_valid_observed_flags
-			&& actual_capture.actual.observed_flags in [u64(wayland_anchor_release_protocol_destroy), u64(wayland_anchor_release_local_proxy_destroy)]
+			&& actual_capture.actual.observed_flags in [
+				u64(wayland_anchor_release_protocol_destroy),
+				u64(wayland_anchor_release_local_proxy_destroy),
+			]
 		void_release_without_evidence := operation == .surface_destroy
 			&& domain in [.wayland, .metal] && !wayland_release_mode_evidence
 		assert real_call.actual == NativePrimitiveEvidence{}
@@ -4421,7 +4428,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		expected_validation := if operation == .object_release
 			|| (domain == .wayland && operation == .surface_destroy)
 			|| (domain == .metal
-			&& operation in [.present, .clear_state, .render_batch_end, .surface_destroy]) {
+				&& operation in [.present, .clear_state, .render_batch_end, .surface_destroy]) {
 			NativeLocalValidation.void_completion
 		} else {
 			NativeLocalValidation.none

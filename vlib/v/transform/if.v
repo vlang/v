@@ -515,6 +515,13 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 	branch_type := t.if_expr_branch_result_type(node)
 	if t.if_expr_branch_overrides_sum_target(branch_type, result_type) {
 		actual_result_type = branch_type
+	} else if actual_result_type == 'int' && branch_type != '' && branch_type != 'int'
+		&& branch_type != 'unknown' && branch_type != 'void' {
+		// In declaration contexts the target type defaults to int before the
+		// branch values are inspected. A default int target does not reflect a
+		// non-int merged branch type (e.g. an if-expression whose branches are
+		// generic f64 calls like math.min), so use the branch type itself.
+		actual_result_type = branch_type
 	}
 	tmp_name := t.new_temp('if_val')
 	outer_pending := t.pending_stmts.clone()
@@ -713,8 +720,8 @@ fn (t &Transformer) smartcast_contexts_from_is_exprs(infos []IsExprInfo) []Smart
 	mut result := []SmartcastContext{cap: infos.len}
 	for info in infos {
 		result << SmartcastContext{
-			expr_name: info.expr_name
-			variant_name: info.variant_name
+			expr_name:     info.expr_name
+			variant_name:  info.variant_name
 			sum_type_name: info.sum_type_name
 		}
 	}
@@ -790,6 +797,18 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 						return narrowed_base_type
 					}
 				}
+			}
+			// `node_type` alone leaves a call's return type unresolved until the
+			// checker/monomorphizer has seen it, which yields the default `int` for
+			// a call to a generic function. Resolve the call's return type instead
+			// so branch types (e.g. an if-expression whose branch is `math.min[T]`)
+			// keep the called function's real type.
+			mut call_ret := t.get_call_return_type(id, node)
+			if call_ret.len == 0 || call_ret in ['unknown', 'void'] {
+				call_ret = t.generic_call_declared_return_type(id, node) or { '' }
+			}
+			if call_ret.len > 0 && call_ret !in ['unknown', 'void'] {
+				return call_ret
 			}
 			return t.node_type(id)
 		}
@@ -1479,13 +1498,13 @@ fn (mut t Transformer) transform_if_guard_condition(node flat.Node) flat.NodeId 
 		t.a.children << child
 	}
 	return t.a.add_node(flat.Node{
-		kind: .decl_assign
-		op: node.op
+		kind:           .decl_assign
+		op:             node.op
 		children_start: start
 		children_count: flat.child_count(new_children.len)
-		pos: node.pos
-		value: node.value
-		typ: node.typ
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
 	})
 }
 
@@ -1588,11 +1607,11 @@ fn (mut t Transformer) transform_plain_if_branches(id flat.NodeId, node flat.Nod
 		if_start := t.a.children.len
 		t.a.children << new_children
 		t.a.add_node(flat.Node{
-			kind: .if_expr
+			kind:           .if_expr
 			children_start: if_start
 			children_count: flat.child_count(child_count)
-			typ: node.typ
-			pos: node.pos
+			typ:            node.typ
+			pos:            node.pos
 		})
 	}
 	for pending in cond_pending {
@@ -1678,11 +1697,11 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 		if_start := t.a.children.len
 		t.a.children << new_children
 		t.a.add_node(flat.Node{
-			kind: .if_expr
+			kind:           .if_expr
 			children_start: if_start
 			children_count: flat.child_count(child_count)
-			typ: node.typ
-			pos: node.pos
+			typ:            node.typ
+			pos:            node.pos
 		})
 	}
 	for pending in cond_pending {
@@ -1853,15 +1872,15 @@ fn (t &Transformer) collect_is_exprs(cond_id flat.NodeId, mut result []IsExprInf
 			stn := t.sum_type_for_is_expr(expr_type, cond.value)
 			if stn.len > 0 {
 				result << IsExprInfo{
-					expr_name: ek
-					variant_name: cond.value
+					expr_name:     ek
+					variant_name:  cond.value
 					sum_type_name: stn
 				}
 			} else {
 				if t.is_interface_type_name(expr_type) {
 					result << IsExprInfo{
-						expr_name: ek
-						variant_name: cond.value
+						expr_name:     ek
+						variant_name:  cond.value
 						sum_type_name: expr_type
 					}
 				}
@@ -1921,8 +1940,8 @@ fn (t &Transformer) option_none_cmp_info(cond flat.Node) ?IsExprInfo {
 		return none
 	}
 	return IsExprInfo{
-		expr_name: ek
-		variant_name: base
+		expr_name:     ek
+		variant_name:  base
 		sum_type_name: option_unwrap_marker
 	}
 }
@@ -1950,8 +1969,8 @@ fn (t &Transformer) extract_else_branch_smartcasts(cond_id flat.NodeId) []IsExpr
 				if stn.len > 0 {
 					return [
 						IsExprInfo{
-							expr_name: ek
-							variant_name: inner.value
+							expr_name:     ek
+							variant_name:  inner.value
 							sum_type_name: stn
 						},
 					]
@@ -1994,8 +2013,8 @@ fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 		if ek.len > 0 && cond.value.len > 0 {
 			expr_type := t.original_expr_type(expr_id)
 			return IsExprInfo{
-				expr_name: ek
-				variant_name: cond.value
+				expr_name:     ek
+				variant_name:  cond.value
 				sum_type_name: t.sum_type_for_is_expr(expr_type, cond.value)
 			}
 		}

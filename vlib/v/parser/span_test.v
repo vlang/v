@@ -25,6 +25,20 @@ fn span_text(src string, node flat.Node) string {
 	return src[node.pos.offset..node.pos.end]
 }
 
+fn test_parenthesized_match_statement_accepts_newline_before_block() {
+	path := os.join_path(os.temp_dir(), 'v3_parenthesized_match_${os.getpid()}.v')
+	os.write_file(path, 'fn main() {\n\tmatch (2)\n\t{\n\t\t2 {}\n\t\telse {}\n\t}\n}\n') or {
+		panic(err)
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert a.nodes.count(it.kind == .match_stmt) == 1
+}
+
 fn test_statement_map_literals_accept_compound_keys() {
 	ast, _ := parse_span_source('statement_map_compound_keys', "fn make_key() string {
 	return 'key'

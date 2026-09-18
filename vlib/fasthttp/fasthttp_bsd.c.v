@@ -229,14 +229,14 @@ pub mut:
 	poll_fd                 int = -1 // kqueue fd
 	user_data               voidptr
 	request_handler         fn (HttpRequest) !HttpResponse = unsafe { nil }
-	append_handler          AppendHandler = unsafe { nil }
-	make_state              fn () voidptr = unsafe { nil }
-	running                 &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	shutting_down           &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	stopped                 &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
-	active_requests         &stdatomic.AtomicVal[int] = stdatomic.new_atomic(0)
+	append_handler          AppendHandler                  = unsafe { nil }
+	make_state              fn () voidptr                  = unsafe { nil }
+	running                 &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	shutting_down           &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	stopped                 &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(true)
+	active_requests         &stdatomic.AtomicVal[int]      = stdatomic.new_atomic(0)
 mut:
-	poll_fds []int = []int{len: bsd_thread_pool_size, cap: bsd_thread_pool_size, init: -1}
+	poll_fds []int    = []int{len: bsd_thread_pool_size, cap: bsd_thread_pool_size, init: -1}
 	threads  []thread = []thread{len: bsd_thread_pool_size, cap: bsd_thread_pool_size}
 }
 
@@ -257,20 +257,20 @@ pub fn new_server(config ServerConfig) !&Server {
 		return error('set only one of `handler` or `append_handler`, not both')
 	}
 	mut server := &Server{
-		family: config.family
-		host: config.host
-		port: config.port
+		family:                  config.family
+		host:                    config.host
+		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
-		max_request_body_size: config.max_request_body_size
-		timeout_in_seconds: config.timeout_in_seconds
-		user_data: config.user_data
-		request_handler: config.handler
-		append_handler: config.append_handler
-		make_state: config.make_state
-		running: stdatomic.new_atomic(false)
-		shutting_down: stdatomic.new_atomic(false)
-		stopped: stdatomic.new_atomic(true)
-		active_requests: stdatomic.new_atomic(0)
+		max_request_body_size:   config.max_request_body_size
+		timeout_in_seconds:      config.timeout_in_seconds
+		user_data:               config.user_data
+		request_handler:         config.handler
+		append_handler:          config.append_handler
+		make_state:              config.make_state
+		running:                 stdatomic.new_atomic(false)
+		shutting_down:           stdatomic.new_atomic(false)
+		stopped:                 stdatomic.new_atomic(true)
+		active_requests:         stdatomic.new_atomic(0)
 	}
 	unsafe {
 		server.poll_fds.flags.set(.noslices | .noshrink | .nogrow)
@@ -462,11 +462,11 @@ fn process_request(server &Server, kq int, c_ptr voidptr, frame_total int, mut c
 		mut ctl := ResponseControl{}
 		step := server.append_handler(decoded, mut out, c.worker_state, mut ctl)
 		HttpResponse{
-			content: out
+			content:       out
 			content_owned: true
 			takeover_mode: ctl.takeover_mode
-			should_close: ctl.should_close || step != .done
-			file_path: ctl.file_path
+			should_close:  ctl.should_close || step != .done
+			file_path:     ctl.file_path
 		}
 	} else {
 		server.request_handler(decoded) or {
@@ -731,11 +731,11 @@ fn accept_clients(kq int, listen_fd int, worker_state voidptr, retired &RetiredC
 			C.setsockopt(client_fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &nosigpipe_opt, sizeof(int))
 		}
 		mut c := &Conn{
-			fd: client_fd
-			user_data: unsafe { nil }
-			file_fd: -1
+			fd:           client_fd
+			user_data:    unsafe { nil }
+			file_fd:      -1
 			worker_state: worker_state
-			retired: retired
+			retired:      retired
 		}
 		if add_event(kq, u64(client_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c) < 0 {
 			C.close(client_fd)
@@ -824,7 +824,7 @@ fn process_events(server &Server, kq int, listen_fd int) {
 			return
 		}
 		timeout := C.timespec{
-			tv_sec: 0
+			tv_sec:  0
 			tv_nsec: kqueue_wait_timeout_ms * 1_000_000
 		}
 		nev := C.kevent(kq, unsafe { nil }, 0, &events[0], kqueue_max_events, &timeout)

@@ -4,7 +4,6 @@ module main
 
 import os
 import arrays
-import v.ast
 import document as doc
 import markdown
 
@@ -112,12 +111,11 @@ fn test_get_module_list() {
 }
 
 fn test_html_highlight_escapes_html_tokens() {
-	table := ast.new_table()
 	code := 'fn main() {
 	// <h1>owned</h1>
 	assert 1 < 2
 }'
-	highlighted := html_highlight(code, table)
+	highlighted := html_highlight(code)
 	assert highlighted.contains('// &lt;h1&gt;owned&lt;/h1&gt;')
 	assert !highlighted.contains('<h1>owned</h1>')
 	assert highlighted.contains('<span class="token operator">&lt;</span>')
@@ -275,7 +273,6 @@ fn test_markdown_renderer_resolves_relative_links() ! {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
 	mut renderer := markdown.HtmlRenderer{
 		transformer: &MdHtmlCodeHighlighter{
-			table: ast.new_table()
 			relative_link_base: base
 		}
 	}
@@ -285,9 +282,7 @@ fn test_markdown_renderer_resolves_relative_links() ! {
 
 fn test_prepare_markdown_for_html_preserves_blockquote_linebreaks() ! {
 	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			table: ast.new_table()
-		}
+		transformer: &MdHtmlCodeHighlighter{}
 	}
 	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut renderer)!
 	assert out.contains('<blockquote>')
@@ -302,9 +297,7 @@ fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
 fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 	input := '1. The basic atomic elements of this regex engine are the tokens.\n   In a query string a simple character is a token.\n\n- The basic element **is the token not the sequence of symbols**,\n  and the most simple token, is a single character.\n\n- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not\n  `abc` OR `ebc`.'
 	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			table: ast.new_table()
-		}
+		transformer: &MdHtmlCodeHighlighter{}
 	}
 	out := markdown.render(prepare_markdown_for_html(input), mut renderer)!
 	assert !out.contains('tokens.In')

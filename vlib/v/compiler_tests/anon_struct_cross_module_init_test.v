@@ -86,7 +86,7 @@ fn naming_generated_types_is_rejected(mod_source string, reader_source string) (
 	return names.len, accepted
 }
 
-const holder_module = "module holder
+const holder_module = 'module holder
 
 // Hidden has no `pub`, so only `holder` may name it.
 struct Hidden {
@@ -109,10 +109,10 @@ pub mut:
 		on bool
 	}
 }
-"
+'
 
 fn test_anonymous_struct_field_of_a_public_struct_is_initializable() {
-	ok, output := compiles('public', holder_module, "module main
+	ok, output := compiles('public', holder_module, 'module main
 
 import holder
 
@@ -125,7 +125,7 @@ fn main() {
 	}
 	println(v.cfg.on)
 }
-")
+')
 	assert ok, output
 	assert !output.contains('declared as private'), output
 }
@@ -133,7 +133,7 @@ fn main() {
 // The exemption is for anonymous structs only: a named struct without `pub` stays
 // private to the module that declares it.
 fn test_a_named_private_struct_is_still_rejected() {
-	ok, output := compiles('private', holder_module, "module main
+	ok, output := compiles('private', holder_module, 'module main
 
 import holder
 
@@ -143,7 +143,7 @@ fn main() {
 	}
 	println(h.x)
 }
-")
+')
 	assert !ok, 'a private struct of another module was accepted'
 	assert output.contains('declared as private to module `holder`'), output
 }
@@ -152,7 +152,7 @@ fn main() {
 // that looks like one. Nothing stops a module from declaring `AnonStruct_Secret`
 // itself, and such a declaration is as private as it was written.
 fn test_a_private_struct_named_like_a_synthesized_one_is_still_rejected() {
-	ok, output := compiles('named_like_anon', holder_module, "module main
+	ok, output := compiles('named_like_anon', holder_module, 'module main
 
 import holder
 
@@ -162,7 +162,7 @@ fn main() {
 	}
 	println(s.x)
 }
-")
+')
 	assert !ok, 'a private struct of another module was accepted'
 	assert output.contains('declared as private to module `holder`'), output
 }
@@ -172,7 +172,7 @@ fn main() {
 // outright - the generated names are deterministic, valid identifiers - and so reach
 // an anonymous type that only a private field exposes.
 fn test_naming_a_generated_anonymous_type_outright_is_rejected() {
-	private_anon_holder := "module holder
+	private_anon_holder := 'module holder
 
 // The anonymous type of `secret` is reachable only through a private field.
 struct Hidden {
@@ -194,8 +194,8 @@ pub mut:
 pub fn make() Visible {
 	return Visible{}
 }
-"
-	reader := "module main
+'
+	reader := 'module main
 
 import holder
 
@@ -203,7 +203,7 @@ fn main() {
 	v := holder.make()
 	println(v.cfg.on)
 }
-"
+'
 	found, accepted := naming_generated_types_is_rejected(private_anon_holder, reader)
 	// Otherwise the case this test is about would not arise.
 	assert found > 0, 'no generated anonymous type names were found in the output'
@@ -217,7 +217,7 @@ fn main() {
 // have named - and the privacy check was then skipped because the literal's own
 // generated name is a contextual one.
 fn test_a_literal_cannot_stand_in_for_a_private_type_named_like_a_synthesized_one() {
-	ok, output := compiles('adopt_private', "module holder
+	ok, output := compiles('adopt_private', 'module holder
 
 // Named the way the compiler names what it synthesizes, but an ordinary private type.
 struct AnonStruct_Secret {
@@ -228,7 +228,7 @@ pub mut:
 pub fn consume(s AnonStruct_Secret) int {
 	return s.x
 }
-", "module main
+', 'module main
 
 import holder
 
@@ -237,22 +237,22 @@ fn main() {
 		x: 42
 	}))
 }
-")
-	assert !ok, 'a literal stood in for another module\'s private type'
+')
+	assert !ok, "a literal stood in for another module's private type"
 	assert output.contains('holder.AnonStruct_Secret'), output
 }
 
 // The genuine case still has to work: a parameter whose type really is an anonymous
 // struct the parser synthesized takes a literal from another module.
 fn test_a_literal_still_fills_a_genuinely_anonymous_parameter() {
-	ok, output := compiles('adopt_anon', "module holder
+	ok, output := compiles('adopt_anon', 'module holder
 
 pub fn consume(s struct {
 	x int
 }) int {
 	return s.x
 }
-", "module main
+', 'module main
 
 import holder
 
@@ -261,6 +261,6 @@ fn main() {
 		x: 42
 	}))
 }
-")
+')
 	assert ok, output
 }

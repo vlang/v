@@ -18,7 +18,8 @@ fn main() {
 			_ := <-done {
 				return ctx.err()
 			}
-			else {}
+			else {
+			}
 		}
 		return render_health_response()!
 	})!

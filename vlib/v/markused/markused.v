@@ -113,24 +113,24 @@ pub fn reachable_const_exprs(a &flat.FlatAst, tc &types.TypeChecker, root_ids []
 	for name, expr_id in tc.const_exprs {
 		file := tc.const_files[name] or { '' }
 		const_decls[name] = ConstDeclInfo{
-			expr_id: expr_id
-			module: tc.const_modules[name] or { '' }
+			expr_id:        expr_id
+			module:         tc.const_modules[name] or { '' }
 			import_context: import_context_by_file[file] or { 0 }
 		}
 		add_candidate_suffix(mut const_suffixes, name)
 	}
 	collector := CallCollector{
-		a: a
-		tc: tc
-		fn_decls: map[string]FnDeclInfo{}
-		fn_suffixes: map[string]bool{}
-		struct_decls: map[string]StructDeclInfo{}
-		const_decls: const_decls
-		const_suffixes: const_suffixes
-		import_contexts: import_contexts
+		a:                       a
+		tc:                      tc
+		fn_decls:                map[string]FnDeclInfo{}
+		fn_suffixes:             map[string]bool{}
+		struct_decls:            map[string]StructDeclInfo{}
+		const_decls:             const_decls
+		const_suffixes:          const_suffixes
+		import_contexts:         import_contexts
 		selective_alias_targets: map[string][]string{}
-		iface_param_gate: map[string]bool{}
-		generic_type_bases: map[string]bool{}
+		iface_param_gate:        map[string]bool{}
+		generic_type_bases:      map[string]bool{}
 	}
 	mut pending := []string{cap: 16}
 	for i, root_id in root_ids {
@@ -179,7 +179,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// after checking, and overlap it with the declaration scan + precollect.
 	// Its enqueue requests are replayed in scan order at the seeds step below.
 	mut rt_scan := &RtHelpersScanArgs{
-		a: a
+		a:  a
 		tc: tc.fork_for_parallel_transform(a)
 	}
 	markused_parallel_allowed := !isnil(a.worker_pool) || tc.scoped_parallel_workers_enabled()
@@ -292,8 +292,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			if node.kind == .struct_decl {
 				full_name := qualify_fn(decl_module, node.value)
 				info := StructDeclInfo{
-					node_id: flat.NodeId(node_idx)
-					module: decl_module
+					node_id:        flat.NodeId(node_idx)
+					module:         decl_module
 					import_context: decl_import_context
 				}
 				struct_decls[full_name] = info
@@ -310,8 +310,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						continue
 					}
 					info := ConstDeclInfo{
-						expr_id: a.child(field, 0)
-						module: decl_module
+						expr_id:        a.child(field, 0)
+						module:         decl_module
 						import_context: decl_import_context
 					}
 					const_decls[field.value] = info
@@ -348,8 +348,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					}
 				}
 				info := FnDeclInfo{
-					node_id: flat.NodeId(node_idx)
-					module: fn_decl_module
+					node_id:        flat.NodeId(node_idx)
+					module:         fn_decl_module
 					import_context: fn_decl_import_context
 				}
 				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, node.value, info)
@@ -470,8 +470,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		// Linux backtraces add strings.Builder to the otherwise minimal runtime.
 		// Its C bodies and map diagnostics contain calls lowered after markused.
 		if 'strings.Builder.str' in fn_decls || 'Builder.str' in fn_decls {
-			for seed in ['strconv.format_uint', 'u8.ascii_str', 'byteptr.vstring_with_len',
-				'array.push', 'array__push', 'array.free', 'array__free', 'int.str'] {
+			for seed in ['strconv.format_uint', 'u8.ascii_str', 'byteptr.vstring_with_len', 'array.push',
+				'array__push', 'array.free', 'array__free', 'int.str'] {
 				enqueue(seed, mut used, mut queue)
 			}
 		}
@@ -503,26 +503,29 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			queue << seed
 			used[seed] = true
 		}
-		for seed in ['new_array_from_c_array', 'new_array_from_c_array_noscan', 'array.set',
+		mut runtime_seeds := ['new_array_from_c_array', 'new_array_from_c_array_noscan', 'array.set',
 			'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
 			'array.slice', 'array.slice_ni', 'string.substr_ni', 'array.pop_left', 'array.clone',
 			'array.delete', 'array.ensure_cap', 'string.==', 'string.<', 'string.free',
 			'string.all_before', 'string.all_before_last', 'string.all_after', 'string.all_after_last',
 			'string.substr', 'string__substr', 'u8.vstring', 'u8.vstring_with_len', 'u8.vbytes',
-			'charptr.vstring', 'charptr.vstring_with_len', 'byteptr.vstring',
-			'byteptr.vstring_with_len', 'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set',
-			'map.exists', 'map.get', 'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone',
-			'map.clear', 'map.keys', 'map.values', 'map.reserve', 'map_map_eq', 'memdup',
-			'strings.Builder.write_ptr', 'strings.Builder.write_runes', 'strings.Builder.free',
-			'strconv.format_int', 'strconv.format_uint', 'strconv.Dec32.get_string_32',
-			'strconv.Dec64.get_string_64', 'bool.str', 'int.str', 'u64.str', 'f32.str', 'f64.str',
-			'rune.str', 'string.+', 'ptr_str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l',
-			'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
-			'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex',
-			'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2',
-			'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_clone_string', 'map_clone_int_1',
-			'map_clone_int_2', 'map_free_string', '[]string.join', 'Array_string__join',
-			'embed_file.Decoder.decompress', 'embed_file.join_chunks', 'exit', 'v_exit'] {
+			'charptr.vstring', 'charptr.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len',
+			'byteptr.vbytes', 'voidptr.vbytes', '[]rune.string', 'map.set', 'map.exists', 'map.get',
+			'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys',
+			'map.values', 'map.reserve', 'map_map_eq', 'memdup', 'strings.Builder.write_ptr',
+			'strings.Builder.write_runes', 'strings.Builder.free', 'strconv.format_int',
+			'strconv.format_uint', 'strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64',
+			'bool.str', 'int.str', 'u64.str', 'rune.str', 'string.+', 'ptr_str', 'os.join_path_single',
+			'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
+			'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
+			'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_eq_string', 'map_eq_int_1',
+			'map_eq_int_2', 'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_free_string',
+			'[]string.join', 'Array_string__join', 'embed_file.Decoder.decompress',
+			'embed_file.join_chunks', 'exit', 'v_exit']
+		if !tc.nofloat {
+			runtime_seeds << ['f32.str', 'f64.str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l']
+		}
+		for seed in runtime_seeds {
 			queue << seed
 			used[seed] = true
 		}
@@ -594,26 +597,26 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut not_in_cg := 0
 	mut total_callees := 0
 	collector := CallCollector{
-		a: a
-		tc: tc
-		fn_decls: fn_decls
-		fn_suffixes: fn_name_suffixes
-		struct_decls: struct_decls
-		const_decls: const_decls
-		const_suffixes: const_name_suffixes
-		import_contexts: import_contexts
-		selective_alias_targets: if detect_reachable_generics {
+		a:                                a
+		tc:                               tc
+		fn_decls:                         fn_decls
+		fn_suffixes:                      fn_name_suffixes
+		struct_decls:                     struct_decls
+		const_decls:                      const_decls
+		const_suffixes:                   const_name_suffixes
+		import_contexts:                  import_contexts
+		selective_alias_targets:          if detect_reachable_generics {
 			markused_selective_alias_targets(tc)
 		} else {
 			map[string][]string{}
 		}
-		iface_param_gate: if detect_reachable_generics {
+		iface_param_gate:                 if detect_reachable_generics {
 			markused_interface_param_gate(tc)
 		} else {
 			map[string]bool{}
 		}
-		generic_type_bases: generic_type_bases
-		detect_generics: detect_reachable_generics
+		generic_type_bases:               generic_type_bases
+		detect_generics:                  detect_reachable_generics
 		body_checker_edges_authoritative: use_prepared && !detect_reachable_generics
 	}
 	// Precollect every body's call/initializer-ref lists up front (across
@@ -1302,12 +1305,11 @@ fn valid_symbol_name(name string) bool {
 }
 
 fn markused_generated_c_helper_name(name string) bool {
-	return name in ['string__plus', 'v3_c_lit', 'v3_json_encode_string', 'array__get',
-		'sum_type_index', 'sum_type_index_resolved', 'FlatGen.sum_type_index',
-		'FlatGen.sum_type_index_resolved', 'c.FlatGen.sum_type_index',
-		'c.FlatGen.sum_type_index_resolved', 'v.gen.c.FlatGen.sum_type_index',
-		'v.gen.c.FlatGen.sum_type_index_resolved', 'c__FlatGen__sum_type_index',
-		'c__FlatGen__sum_type_index_resolved']
+	return name in ['string__plus', 'v3_c_lit', 'v3_json_encode_string', 'array__get', 'sum_type_index',
+		'sum_type_index_resolved', 'FlatGen.sum_type_index', 'FlatGen.sum_type_index_resolved',
+		'c.FlatGen.sum_type_index', 'c.FlatGen.sum_type_index_resolved',
+		'v.gen.c.FlatGen.sum_type_index', 'v.gen.c.FlatGen.sum_type_index_resolved',
+		'c__FlatGen__sum_type_index', 'c__FlatGen__sum_type_index_resolved']
 }
 
 fn markused_generated_c_helper_aliases(name string) []string {
@@ -1672,7 +1674,8 @@ fn markused_top_level_file_imports(a &flat.FlatAst, file_node flat.Node) map[str
 
 fn markused_is_top_level_stmt(node flat.Node) bool {
 	return match node.kind {
-		.expr_stmt, .assign, .decl_assign, .global_decl, .selector_assign, .index_assign, .for_stmt, .for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .defer_stmt, .block {
+		.expr_stmt, .assign, .decl_assign, .global_decl, .selector_assign, .index_assign,
+		.for_stmt, .for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .defer_stmt, .block {
 			true
 		}
 		else {
@@ -1800,16 +1803,16 @@ pub fn (mut prepared PreparedMarkusedDecls) release() {
 
 fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) &PreparedMarkusedDecls {
 	mut result := &PreparedMarkusedDecls{
-		fn_decls: map[string]FnDeclInfo{}
-		fn_decl_lists: map[string][]FnDeclInfo{}
-		struct_decls: map[string]StructDeclInfo{}
-		const_decls: map[string]ConstDeclInfo{}
-		fn_name_suffixes: map[string]bool{}
-		const_name_suffixes: map[string]bool{}
-		suffix_map: map[string][]string{}
-		import_contexts: []map[string]string{cap: 256}
-		body_ids: []int{cap: 8192}
-		body_modules: []string{cap: 8192}
+		fn_decls:             map[string]FnDeclInfo{}
+		fn_decl_lists:        map[string][]FnDeclInfo{}
+		struct_decls:         map[string]StructDeclInfo{}
+		const_decls:          map[string]ConstDeclInfo{}
+		fn_name_suffixes:     map[string]bool{}
+		const_name_suffixes:  map[string]bool{}
+		suffix_map:           map[string][]string{}
+		import_contexts:      []map[string]string{cap: 256}
+		body_ids:             []int{cap: 8192}
+		body_modules:         []string{cap: 8192}
 		body_import_contexts: []int{cap: 8192}
 	}
 	result.import_contexts << map[string]string{}
@@ -1854,8 +1857,8 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		if node.kind == .struct_decl {
 			full_name := qualify_fn(decl_module, node.value)
 			info := StructDeclInfo{
-				node_id: flat.NodeId(node_idx)
-				module: decl_module
+				node_id:        flat.NodeId(node_idx)
+				module:         decl_module
 				import_context: decl_import_context
 			}
 			result.struct_decls[full_name] = info
@@ -1872,8 +1875,8 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 					continue
 				}
 				info := ConstDeclInfo{
-					expr_id: a.child(field, 0)
-					module: decl_module
+					expr_id:        a.child(field, 0)
+					module:         decl_module
 					import_context: decl_import_context
 				}
 				result.const_decls[field.value] = info
@@ -1899,8 +1902,8 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		has_dot := node.value.index_u8(`.`) >= 0
 		can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 		info := FnDeclInfo{
-			node_id: flat.NodeId(node_idx)
-			module: fn_decl_module
+			node_id:        flat.NodeId(node_idx)
+			module:         fn_decl_module
 			import_context: fn_decl_import_context
 		}
 		add_fn_decl_info(mut result.fn_decls, mut result.fn_decl_lists, node.value, info)
@@ -1970,7 +1973,7 @@ fn markused_syntax_needs_closure_runtime(a &flat.FlatAst) bool {
 
 // CallCollector represents call collector data used by markused.
 struct CallCollector {
-	a               &flat.FlatAst = unsafe { nil }
+	a               &flat.FlatAst      = unsafe { nil }
 	tc              &types.TypeChecker = unsafe { nil }
 	fn_decls        map[string]FnDeclInfo
 	fn_suffixes     map[string]bool
@@ -2469,7 +2472,8 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					needs_channel_helpers = true
 				}
 				if node.op in [.eq, .ne] {
-					if !needs_f32_eq_epsilon && markused_infix_needs_f32_eq_epsilon(a, tc, node) {
+					if !tc.nofloat && !needs_f32_eq_epsilon
+						&& markused_infix_needs_f32_eq_epsilon(a, tc, node) {
 						needs_f32_eq_epsilon = true
 					}
 					if !needs_ierror_equality_dispatch && node.children_count >= 2 {
@@ -2586,16 +2590,15 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	if needs_channel_helpers {
 		for helper in ['sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop',
 			'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed',
-			'sync.Channel.try_push_priv', 'sync.Channel.closed_error', 'new_channel_st',
-			'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed',
-			'Channel.try_push_priv', 'Channel.closed_error'] {
+			'sync.Channel.try_push_priv', 'sync.Channel.closed_error', 'new_channel_st', 'Channel.push',
+			'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed', 'Channel.try_push_priv',
+			'Channel.closed_error'] {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
 	if needs_channel_select_helpers {
 		for helper in ['sync.channel_select', 'sync.channel_select_lang', 'channel_select',
-			'channel_select_lang', 'rand.init', 'array.free', 'array__free', 'time.sleep',
-			'time__sleep'] {
+			'channel_select_lang', 'rand.init', 'array.free', 'array__free', 'time.sleep', 'time__sleep'] {
 			enqueue(helper, mut used, mut queue)
 		}
 	}
@@ -2627,6 +2630,10 @@ fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker
 		if node.kind == .call && node.children_count > 0 {
 			callee_id := a.child(&node, 0)
 			call_callees[int(callee_id)] = true
+			callee_node := a.node(callee_id)
+			if callee_node.kind == .index && callee_node.children_count > 0 {
+				call_callees[int(a.child(callee_node, 0))] = true
+			}
 			mut unwrapped_id := callee_id
 			mut was_wrapped := false
 			for int(unwrapped_id) >= 0 && int(unwrapped_id) < a.nodes.len {
@@ -4428,8 +4435,8 @@ fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports m
 		map[int]bool{}
 	}
 	mut result := BodyCalls{
-		calls: []string{cap: 32}
-		refs: []string{cap: 8}
+		calls:         []string{cap: 32}
+		refs:          []string{cap: 8}
 		uses_generics: c.detect_generics && (c.generic_fn_name_is_known(node.value, cur_module)
 			|| c.type_text_uses_generics(node.value, cur_module, imports)
 			|| c.node_uses_generics(node, cur_module, imports))
@@ -4452,18 +4459,18 @@ fn (c &CallCollector) collect_bodies_range(body_ids []int, body_modules []string
 // TypeChecker. The lookup maps are shared read-only.
 fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 	return CallCollector{
-		a: c.a
-		tc: wtc
-		fn_decls: c.fn_decls
-		fn_suffixes: c.fn_suffixes
-		struct_decls: c.struct_decls
-		const_decls: c.const_decls
-		const_suffixes: c.const_suffixes
-		import_contexts: c.import_contexts
-		selective_alias_targets: c.selective_alias_targets
-		iface_param_gate: c.iface_param_gate
-		generic_type_bases: c.generic_type_bases
-		detect_generics: c.detect_generics
+		a:                                c.a
+		tc:                               wtc
+		fn_decls:                         c.fn_decls
+		fn_suffixes:                      c.fn_suffixes
+		struct_decls:                     c.struct_decls
+		const_decls:                      c.const_decls
+		const_suffixes:                   c.const_suffixes
+		import_contexts:                  c.import_contexts
+		selective_alias_targets:          c.selective_alias_targets
+		iface_param_gate:                 c.iface_param_gate
+		generic_type_bases:               c.generic_type_bases
+		detect_generics:                  c.detect_generics
 		body_checker_edges_authoritative: c.body_checker_edges_authoritative
 	}
 }

@@ -1249,10 +1249,10 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 				if fs2 > 0 {
 					app.gg.draw_text(xpos + app.ui.tile_size / 10, ypos - app.ui.tile_size / 8,
 						'${tidx}', gg.TextCfg{
-						...fmt
-						size:  fs2
-						align: gg.HorizontalAlign.left
-					})
+							...fmt
+							size:  fs2
+							align: gg.HorizontalAlign.left
+						})
 				}
 			}
 			.shifts {
@@ -1265,8 +1265,9 @@ fn (app &App) draw_one_tile(x int, y int, tidx int) {
 				}
 			}
 			.none {} // Don't draw any text here, colors only
-			.end {} // Should never get here
+			.end {}
 		}
+		// Should never get here
 
 		// oidx_fmt := gg.TextCfg{...fmt,size: 14}
 		// app.gg.draw_text(xoffset + 50, yoffset + 15, 'y:${oidx >> 16}|x:${oidx & 0xFFFF}|m:${app.mtickers[y][x]:5.3f}',	oidx_fmt)

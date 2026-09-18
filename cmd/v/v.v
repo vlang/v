@@ -66,6 +66,7 @@ const external_commands = [
 	'sqlite',
 	'symlink',
 	'scan',
+	'test',
 	'test-all',
 	'test-cleancode',
 	'test-fmt',
@@ -139,7 +140,72 @@ fn main() {
 		return
 	}
 	args = clean_compiler_selection_flags(args)
+	if ownership_compiler_is_required(args) && !ownership_checker_is_compiled() {
+		launch_ownership_compiler(args)
+	}
 	run_with_fallback(args, args)
+}
+
+fn ownership_checker_is_compiled() bool {
+	$if ownership ? {
+		return true
+	}
+	return false
+}
+
+fn ownership_compiler_is_required(args []string) bool {
+	mut define_follows := false
+	for arg in args {
+		if define_follows {
+			if arg.all_before('=').trim_space() == 'ownership' {
+				return true
+			}
+			define_follows = false
+			continue
+		}
+		if arg in ['-ownership', '--ownership', '-autofree', '-downership'] {
+			return true
+		}
+		define_follows = arg in ['-d', '-define']
+	}
+	return false
+}
+
+// launch_ownership_compiler builds and starts a V3 executable that contains the optional
+// ownership checker. The regular compiler stays small and preserves normal value semantics;
+// only explicit ownership/autofree compilations pay for the additional checker.
+@[noreturn]
+fn launch_ownership_compiler(args []string) {
+	vexe := os.real_path(os.executable())
+	vroot := find_vroot(vexe) or {
+		find_vroot(@VEXEROOT) or {
+			eprintln('the V source tree could not be found')
+			exit(1)
+		}
+	}
+	compiler_source := os.join_path(vroot, 'cmd', 'v')
+	// A regular V3 compiler is deliberately allowed to create the ownership-enabled
+	// executable. Do not recursively dispatch that bootstrap compilation to itself.
+	if args.any(os.exists(it) && os.real_path(it) == os.real_path(compiler_source)) {
+		driver.run(args)
+		exit(0)
+	}
+	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ['-d', 'ownership',
+		'-gc', 'none']) or {
+		eprintln('cannot find a writable cache for the V3 ownership compiler')
+		exit(1)
+	}
+	reason := tool_cache_stale_reason(entry)
+	if reason != '' {
+		if tool_cache_is_verbose() {
+			eprintln('> recompiling `v3_ownership`, because ${reason}')
+		}
+		build_tool_binary(vexe, entry) or {
+			eprintln('cannot build the V3 ownership compiler:\n${err.msg().trim_space()}')
+			exit(1)
+		}
+	}
+	exec_cached_tool(entry.binary, args)
 }
 
 // fallback_is_disabled reports whether retrying with the compatibility compiler was turned off.
@@ -211,7 +277,8 @@ fn run_external_tool(args []string, command_index int, command string) {
 		'new', 'init' {
 			'vcreate'
 		}
-		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade' {
+		'install', 'link', 'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update',
+		'upgrade' {
 			'vpm'
 		}
 		'vlib-docs' {
@@ -223,11 +290,7 @@ fn run_external_tool(args []string, command_index int, command string) {
 	}
 
 	base := os.join_path(vroot, 'cmd', 'tools', tool_name)
-	tool_source := if os.is_dir(base) {
-		base
-	} else if os.is_file(base + '.v') {
-		base + '.v'
-	} else {
+	tool_source := find_external_tool_source(base) or {
 		eprintln('cannot find the `${command}` tool source in `${vroot}`')
 		exit(1)
 	}
@@ -237,20 +300,44 @@ fn run_external_tool(args []string, command_index int, command string) {
 	}
 	mut tool_args := []string{}
 	if command_index >= 0 {
-		tool_args << args[command_index..]
+		tool_args = external_tool_runtime_args(command, prefix_args, args[command_index..])
 	}
-	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args, args)
+	launch_external_tool(vroot, tool_name, tool_source, prefix_args, tool_args)
+}
+
+fn external_tool_runtime_args(command string, prefix_args []string, command_args []string) []string {
+	mut tool_args := []string{}
+	// `v build-tools` consumes compiler options itself and applies them to every
+	// tool in its inventory. `v self` likewise treats prefix compiler options as
+	// options for the replacement compiler, not just for the launcher helper.
+	// `v test` needs them for each test compilation and its failure reproduction command.
+	// Keep those options visible after the launcher has built the cached executable.
+	if command in ['build-tools', 'self', 'test'] {
+		tool_args << prefix_args
+	}
+	tool_args << command_args
+	return tool_args
+}
+
+fn find_external_tool_source(base string) ?string {
+	if os.is_file(base + '.v') {
+		return base + '.v'
+	}
+	if os.is_dir(base) {
+		return base
+	}
+	return none
 }
 
 // launch_external_tool starts a `cmd/tools/` program, reusing the binary that was compiled
 // for a previous invocation whenever all of its sources are unchanged. Compiling a tool takes
 // seconds, while running one usually takes milliseconds, so tools that are invoked once per
 // file (`v fmt -verify`, `v vet`) are unusable without this.
-fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string, args []string) {
-	retry_args := clean_compiler_selection_flags(args)
+fn launch_external_tool(vroot string, tool_name string, tool_source string, prefix_args []string, tool_args []string) {
+	compile_args := external_tool_compile_args(tool_name, prefix_args)
 	if !tool_cache_is_disabled() {
 		vexe := os.real_path(os.executable())
-		build_args := clean_compiler_selection_flags(prefix_args)
+		build_args := external_tool_build_args(tool_name, prefix_args)
 		if entry := tool_cache_entry(vexe, vroot, tool_name, tool_source, build_args) {
 			reason := tool_cache_stale_reason(entry)
 			if reason == '' {
@@ -262,35 +349,67 @@ fn launch_external_tool(vroot string, tool_name string, tool_source string, pref
 			if recorded := unbuildable_tool_failure(entry) {
 				// Rebuilding a tool that is already known to not compile would cost seconds on
 				// every single invocation, so report the recorded failure straight away instead.
-				if fallback_is_disabled() {
-					eprintln(recorded.trim_space())
-					exit(1)
-				}
-				launch_v1(retry_args, unbuildable_tool_reason(tool_name, entry), RetryState{})
+				eprintln(recorded.trim_space())
+				exit(1)
 			}
 			if tool_cache_is_verbose() {
 				eprintln('> recompiling `${tool_name}`, because ${reason}')
 			}
 			build_tool_binary(vexe, entry) or {
 				eprintln(err.msg().trim_space())
-				if fallback_is_disabled() {
-					exit(1)
-				}
-				launch_v1(retry_args, unbuildable_tool_reason(tool_name, entry), RetryState{})
+				exit(1)
 			}
 			exec_cached_tool(entry.binary, tool_args)
 		}
 	}
 	mut driver_args := []string{}
-	driver_args << prefix_args
+	driver_args << compile_args
 	driver_args << ['run', tool_source]
 	driver_args << tool_args
-	run_with_fallback(clean_compiler_selection_flags(driver_args), retry_args)
+	driver.run(driver_args)
 }
 
-// unbuildable_tool_reason explains why a tool has to run on the compatibility compiler.
-fn unbuildable_tool_reason(tool_name string, entry ToolCacheEntry) string {
-	return 'the V compiler cannot build `cmd/tools/${tool_name}` (recorded in `${entry.unbuildable}`)'
+// external_tool_compile_args applies launcher-only build policy to a `cmd/tools/` helper.
+// Diagnostic tools used to be built this way by `util.launch_tool`: keep them GC-free so
+// they can start even when libgc cannot allocate executable pages or cannot be loaded.
+fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
+	mut compile_args := clean_compiler_selection_flags(prefix_args)
+	if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
+		compile_args = external_tool_args_without_gc(compile_args)
+		if '-g' !in compile_args {
+			compile_args << '-g'
+		}
+		compile_args << ['-gc', 'none']
+	}
+	return compile_args
+}
+
+fn external_tool_args_without_gc(args []string) []string {
+	mut result := []string{cap: args.len}
+	mut skip_gc_value := false
+	for arg in args {
+		if skip_gc_value {
+			skip_gc_value = false
+			continue
+		}
+		if arg == '-gc' {
+			skip_gc_value = true
+			continue
+		}
+		if arg.starts_with('-gc=') {
+			continue
+		}
+		result << arg
+	}
+	return result
+}
+
+// external_tool_build_args keeps compiler options that affect a tool binary while dropping
+// modes that deliberately do not produce one. Those modes still apply to the requested tool
+// command, but passing `-check` to the private cache build makes the compiler exit successfully
+// without creating the executable that the launcher must run.
+fn external_tool_build_args(tool_name string, prefix_args []string) []string {
+	return external_tool_compile_args(tool_name, prefix_args).filter(it !in ['-check', '-c'])
 }
 
 fn print_help(args []string, command_index int) {
@@ -339,8 +458,12 @@ fn retry_with_v1_at_exit() {
 
 @[noreturn]
 fn launch_v1(args []string, reason string, report_state RetryState) {
+	diagnostics := v3_fallback_diagnostics(os.real_path(os.executable()), args, report_state)
+	if diagnostics != '' {
+		eprint(diagnostics)
+	}
 	fallback := ensure_v1_fallback(reason) or {
-		eprintln(err.msg())
+		report_v3_fallback_unavailable(args, reason, report_state, err.msg(), diagnostics != '')
 		exit(1)
 	}
 	os.setenv('VEXE', fallback, true)
@@ -361,7 +484,8 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	if code == 0 && report_state.fallback_file != '' {
 		submit_v3_fallback_report(fallback, report_state)
 	}
-	if code != 0 {
+	// These notes describe diagnostics that were suppressed, not errors printed above.
+	if code != 0 && diagnostics == '' {
 		report_v1_fallback_exit(report_state, v1_fallback_exit_identifies_compiler_failure(args))
 	}
 	os.rm(report_state.fallback_file) or {}
@@ -548,8 +672,8 @@ fn submit_v3_fallback_report(fallback string, state RetryState) {
 	payload := os.read_file(state.fallback_file) or { return }
 	kind := payload.all_before('\n').trim_space()
 	if kind == 'inline_asm'
-		|| os.getenv('V_C_ERROR_BUG_REPORT_DISABLED').trim_space().to_lower() in ['1', 'true', 'yes',
-			'on'] {
+		|| os.getenv('V_C_ERROR_BUG_REPORT_DISABLED').trim_space().to_lower() in ['1', 'true',
+			'yes', 'on'] {
 		return
 	}
 	custom_url := os.getenv('V_C_ERROR_BUG_REPORT_URL').trim_space().trim_right('/')
@@ -655,8 +779,7 @@ fn ensure_v1_fallback(reason string) !string {
 		eprintln('${reason}, but no usable V ${v_version} fallback was found; running `make v1` now...')
 		mut process := os.new_process(make_command)
 		process.set_args(['v1'])
-		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()),
-			cache_parent, cached_launcher))
+		process.set_environment(v1_fallback_make_environment(os.real_path(os.executable()), cache_parent, cached_launcher))
 		process.set_work_folder(vroot)
 		process.wait()
 		code := process.code

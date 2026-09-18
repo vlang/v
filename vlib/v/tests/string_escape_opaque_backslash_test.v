@@ -179,7 +179,7 @@ fn test_method_attr_arg_with_decoded_backslash_via_comptime_methods() {
 // ast.Attr consumer covered above, in a file the original fix never touched.
 enum JsonAttrHazardEnum {
 	red
-	blue @[json: 'A\x5cnB']
+	blue  @[json: 'A\x5cnB']
 }
 
 struct JsonAttrHazardWrap {
@@ -219,7 +219,7 @@ struct OrmTableHazardItem {
 
 @[table: 'orm_column_hazard_items']
 struct OrmColumnHazardItem {
-	id    int @[primary; sql: serial]
+	id    int    @[primary; sql: serial]
 	value string @[sql: 'A\x5cnB']
 }
 

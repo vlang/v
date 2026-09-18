@@ -1,10 +1,51 @@
 // vtest build: tinyc && !musl? && !sanitized_job?
 import os
 import document as doc
+import v.pref
 
-// fn test_generate_with_pos() {}
 // fn test_generate() {}
 // fn test_generate_from_ast() {}
+fn test_generate_with_pos_collects_variables_from_innermost_scope() {
+	mod_dir := os.join_path(os.vtmp_dir(), 'vdoc_generate_with_pos_${os.getpid()}')
+	os.rmdir_all(mod_dir) or {}
+	os.mkdir_all(mod_dir)!
+	defer {
+		os.rmdir_all(mod_dir) or {}
+	}
+	source := 'module scope_test
+
+fn inspect(argument string) {
+	outer := 1
+	if true {
+		nested := "inside"
+		_ = nested // nested cursor
+	}
+	_ = outer // function cursor
+}
+'
+	file_path := os.join_path(mod_dir, 'scope_sample.v')
+	os.write_file(file_path, source)!
+	real_file_path := os.real_path(file_path)
+
+	nested_pos := source.index('nested cursor') or { panic('missing nested cursor') }
+	nested_doc := doc.generate_with_pos(mod_dir, 'scope_sample.v', nested_pos)!
+	assert nested_doc.filename == real_file_path
+	assert nested_doc.pos == nested_pos
+	assert nested_doc.scoped_contents.keys() == ['nested']
+	assert nested_doc.scoped_contents['nested']!.kind == .variable
+	assert nested_doc.scoped_contents['nested']!.from_scope
+	assert nested_doc.scoped_contents['nested']!.return_type == 'string'
+	assert nested_doc.scoped_contents['nested']!.file_path == real_file_path
+
+	function_pos := source.index('function cursor') or { panic('missing function cursor') }
+	function_doc := doc.generate_with_pos(mod_dir, 'scope_sample.v', function_pos)!
+	mut names := function_doc.scoped_contents.keys()
+	names.sort()
+	assert names == ['argument', 'outer']
+	assert function_doc.scoped_contents['argument']!.return_type == 'string'
+	assert function_doc.scoped_contents['outer']!.return_type == 'int'
+}
+
 fn test_generate_from_mod() {
 	nested_mod_name := 'net.http.chunked'
 	nested_mod_doc := doc.generate_from_mod(nested_mod_name, false, true) or {
@@ -169,4 +210,26 @@ pub fn foo() {}
 	}
 	assert mod_doc.head.merge_comments_without_examples() == '`issue_23338` module overview.'
 	assert mod_doc.contents['foo']!.comments.len == 0
+}
+
+fn test_generate_uses_only_sources_for_the_selected_platform() {
+	mod_dir := os.join_path(os.vtmp_dir(), 'vdoc_platform_files_${os.getpid()}')
+	os.rmdir_all(mod_dir) or {}
+	os.mkdir_all(mod_dir)!
+	defer {
+		os.rmdir_all(mod_dir) or {}
+	}
+	host_os := pref.host_os_name()
+	foreign_os := if host_os == 'windows' { 'linux' } else { 'windows' }
+	os.write_file(os.join_path(mod_dir, 'common.v'), 'module platform_files\n\npub fn common() {}\n')!
+	os.write_file(os.join_path(mod_dir, 'host_${host_os}.c.v'), 'module platform_files\n\npub fn host_specific() {}\n')!
+	os.write_file(os.join_path(mod_dir, 'foreign_${foreign_os}.c.v'), 'module platform_files\n\npub fn foreign_specific() {}\n')!
+	os.write_file(os.join_path(mod_dir, 'backend.js.v'), 'module platform_files\n\npub fn js_specific() {}\n')!
+	os.write_file(os.join_path(mod_dir, 'backend.native.v'), 'module platform_files\n\npub fn native_specific() {}\n')!
+	mod_doc := doc.generate(mod_dir, true, false, .auto)!
+	assert 'common' in mod_doc.contents
+	assert 'host_specific' in mod_doc.contents
+	assert 'foreign_specific' !in mod_doc.contents
+	assert 'js_specific' !in mod_doc.contents
+	assert 'native_specific' !in mod_doc.contents
 }

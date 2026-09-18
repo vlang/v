@@ -55,7 +55,8 @@ fn test_multiline_strings() {
 	assert value.string() == 'one\ntwo\nthree\nfour\n'
 
 	toml_file :=
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) + '.toml'
+		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+			'.toml'
 	toml_doc = toml.parse_file(toml_file) or { panic(err) }
 	value = toml_doc.value('lit_one')
 	assert value.string() == "'one quote'"
@@ -78,7 +79,8 @@ fn test_unicode_escapes() {
 
 fn test_literal_strings() {
 	toml_file :=
-		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) + '.toml'
+		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
+			'.toml'
 	toml_doc := toml.parse_file(toml_file) or { panic(err) }
 
 	assert toml_doc.value('lit1').string() == r'\' // '\'

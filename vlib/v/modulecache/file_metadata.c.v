@@ -5,6 +5,8 @@ module modulecache
 fn C.v3_modulecache_file_metadata(&char, &u64, &u64, &u64, &u64, &u64, &u64, &u64) int
 
 // file_metadata_signature returns a precise identity for an unchanged cache input.
+// Include the running compiler build so a memoized source signature cannot survive
+// a compiler update and make a new checker replay stale cached diagnostics.
 // An empty result makes callers fall back to hashing the file contents.
 pub fn file_metadata_signature(path string) string {
 	mut device := u64(0)
@@ -19,5 +21,5 @@ pub fn file_metadata_signature(path string) string {
 	if result == 0 {
 		return ''
 	}
-	return '${device}:${inode}:${size}:${mtime_seconds}:${mtime_nanoseconds}:${ctime_seconds}:${ctime_nanoseconds}'
+	return '${@VCURRENTHASH}:${device}:${inode}:${size}:${mtime_seconds}:${mtime_nanoseconds}:${ctime_seconds}:${ctime_nanoseconds}'
 }

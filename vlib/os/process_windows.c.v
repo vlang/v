@@ -9,6 +9,8 @@ fn C.TerminateProcess(process HANDLE, exit_code u32) bool
 fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize i32, lpBytesRead voidptr, lpTotalBytesAvail voidptr,
 	lpBytesLeftThisMessage voidptr) bool
 fn C.CreateFileW(lpFileName &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes voidptr, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
+fn C.GetSystemDirectoryW(lpBuffer &u16, uSize u32) u32
+fn C.GetWindowsDirectoryW(lpBuffer &u16, uSize u32) u32
 
 type FN_NTSuspendResume = fn (voidptr) u64
 
@@ -29,6 +31,76 @@ fn failed_cfn_report_error(ok bool, label string) {
 	error_msg := get_error_msg(error_num)
 	eprintln('failed ${label}: ${error_msg}')
 	exit(1)
+}
+
+// win_env_value_from_entries returns the value of the environment variable
+// `name` from a list of `key=value` entries. Windows environment variable
+// names are case insensitive, and the system spells the search path `Path`,
+// so the comparison must be too.
+fn win_env_value_from_entries(env []string, name string) ?string {
+	prefix := '${name}='.to_lower_ascii()
+	for entry in env {
+		if entry.len > prefix.len && entry[..prefix.len].to_lower_ascii() == prefix {
+			return entry[prefix.len..]
+		}
+	}
+	return none
+}
+
+// win_bare_command_search_dirs returns the directories that `CreateProcessW`
+// itself searches for a bare module name before it consults `PATH`, in its
+// documented order: the directory the running application was loaded from,
+// the current directory, the 32-bit system directory, the 16-bit system
+// directory (`<windir>\System`; there is no function that returns it), and
+// the Windows directory. A directory that cannot be determined is skipped.
+fn win_bare_command_search_dirs() []string {
+	mut dirs := []string{cap: 5}
+	dirs << dir(executable())
+	dirs << getwd()
+	mut buf := [max_path_buffer_size]u16{}
+	sys_len := C.GetSystemDirectoryW(&buf[0], max_path_buffer_size)
+	if sys_len > 0 && sys_len < u32(max_path_buffer_size) {
+		dirs << unsafe { string_from_wide2(&buf[0], int(sys_len)) }
+	}
+	win_len := C.GetWindowsDirectoryW(&buf[0], max_path_buffer_size)
+	if win_len > 0 && win_len < u32(max_path_buffer_size) {
+		windir := unsafe { string_from_wide2(&buf[0], int(win_len)) }
+		dirs << join_path_single(windir, 'System')
+		dirs << windir
+	}
+	return dirs
+}
+
+// win_resolve_filename turns `p.filename` into the path handed to
+// `CreateProcessW`, mirroring `unix_resolve_filename`: an absolute path is used
+// as is, a relative path containing a directory separator is anchored to the
+// current directory (the child's work folder may differ), and a bare command
+// name (`gcc`, `cl`, `node`) is looked up in the same order `CreateProcessW`
+// uses for a bare module name - the application directory, the current
+// directory and the system directories (`win_bare_command_search_dirs`), and
+// only then the `PATH` the child will start with - trying the Windows
+// executable suffixes, as `find_abs_path_of_executable` does. Each directory
+// is searched on its own, on purpose: the helper tries every suffix across
+// all of its directories before moving to the next suffix, so a single
+// combined search would let a `tool.exe` on PATH shadow a `tool.cmd` in the
+// current directory, or a same-named `cmd.exe` on PATH shadow the one in the
+// system directory. `CreateProcessW` performs no lookup at all when given an
+// application name, so without this every bare-name spawn failed with "The
+// system cannot find the file specified".
+fn (p &Process) win_resolve_filename() !string {
+	if is_abs_path(p.filename) {
+		return p.filename
+	}
+	if p.filename.contains('\\') || p.filename.contains('/') {
+		return abs_path(p.filename)
+	}
+	for d in win_bare_command_search_dirs() {
+		if found := find_abs_path_of_executable_in_path_env(p.filename, d) {
+			return found
+		}
+	}
+	path := win_env_value_from_entries(p.env, 'PATH') or { return error_failed_to_find_executable() }
+	return find_abs_path_of_executable_in_path_env(p.filename, path)
 }
 
 fn close_valid_handle(p voidptr) {
@@ -64,8 +136,13 @@ fn (mut p Process) win_spawn_process() int {
 		}
 		unsafe { to_be_freed.free() }
 	}
-	p.filename =
-		abs_path(p.filename) // expand the path to an absolute one, in case we later change the working folder
+	// Expand the path to an absolute one, in case we later change the working
+	// folder. A bare command name that none of the searched directories or PATH
+	// contains is left as is, so that CreateProcessW can still run its own
+	// lookup (it appends `.exe` to an extension-less name and searches the
+	// same directories, using the parent's PATH) before the spawn is reported
+	// as failed.
+	p.filename = p.win_resolve_filename() or { p.filename }
 	mut wdata := &WProcess{
 		child_stdin_read:   unsafe { nil }
 		child_stdin_write:  unsafe { nil }
@@ -200,11 +277,11 @@ fn (mut p Process) win_spawn_process() int {
 
 	create_process_ok := C.CreateProcessW(application_name_ptr, voidptr(&wdata.command_line[0]), 0,
 		0, C.TRUE, creation_flags, if env_block.len > 0 {
-		env_block.data
-	} else {
-		0
-	}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
-	failed_cfn_report_error(create_process_ok, 'CreateProcess')
+			env_block.data
+		} else {
+			0
+		}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
+	failed_cfn_report_error(create_process_ok, 'CreateProcess `${p.filename}`')
 	if p.use_stdio_ctl {
 		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)

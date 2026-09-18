@@ -71,6 +71,7 @@ pub const string_ = String{}
 pub const char_ = Char{}
 pub const rune_ = Rune{}
 pub const isize_ = ISize{}
+pub const uint_ = USize{}
 pub const usize_ = USize{}
 pub const void_ = Void{}
 pub const nil_ = Nil{}
@@ -93,7 +94,7 @@ pub fn is_builtin_type_name(name string) bool {
 	return match name.len {
 		2 { name in ['i8', 'u8'] }
 		3 { name in ['int', 'i16', 'i32', 'i64', 'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'nil'] }
-		4 { name in ['bool', 'byte', 'char', 'rune', 'void', 'none'] }
+		4 { name in ['bool', 'byte', 'char', 'rune', 'uint', 'void', 'none'] }
 		5 { name in ['isize', 'usize', 'array'] }
 		6 { name == 'string' }
 		7 { name in ['voidptr', 'charptr', 'byteptr'] }
@@ -185,7 +186,7 @@ pub fn builtin_type_value(name string) Type {
 	if name == 'isize' {
 		return Type(ISize{})
 	}
-	if name == 'usize' {
+	if name == 'uint' || name == 'usize' {
 		return Type(USize{})
 	}
 	if name == 'void' {

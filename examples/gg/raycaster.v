@@ -36,7 +36,7 @@ fn main() {
 		player_y: 320
 		// each number represents an 8x8 square
 		// 1 is a wall cube, 0 is empty space
-		map: [
+		map:      [
 			// vfmt off
 			1, 1, 1, 1, 1, 1, 1, 1,
 			1, 0, 0, 0, 0, 0, 0, 1,
@@ -216,9 +216,9 @@ fn draw_rays_and_walls(app App) {
 		app.ctx.draw_line_with_config(step * line_thickeness + offset_3d_view, wall_offset,
 
 			step * line_thickeness + offset_3d_view, wall_offset + wall_height, gg.PenConfig{
-			color:     color
-			thickness: line_thickeness
-		})
+				color:     color
+				thickness: line_thickeness
+			})
 		// step to next ray angle
 		ray_angle = clamp_ray_angle(ray_angle + degree_radian / 2)
 	}

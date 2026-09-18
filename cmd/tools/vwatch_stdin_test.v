@@ -122,8 +122,7 @@ fn test_background_restore_does_not_reclaim_terminal() {
 			stty_exe := required_openbsd_tool('stty')
 			process.set_args(openbsd_script_args(stty_exe, command, ''))
 		} $else $if macos || freebsd {
-			process.set_args(['-q', '/dev/null', shell_exe, '-m', shell_path, helper_path,
-				marker_path])
+			process.set_args(['-q', '/dev/null', shell_exe, '-m', shell_path, helper_path, marker_path])
 		} $else {
 			process.set_args(['-q', '-c', command, '/dev/null'])
 		}

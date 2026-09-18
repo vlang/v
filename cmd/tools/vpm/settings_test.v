@@ -4,8 +4,8 @@ import os
 import rand
 
 fn test_get_server_urls_from_args_supports_all_flags() {
-	args := ['install', '-server-url', 'https://one.example/', '--server-url',
-		' https://two.example ', '--server-urls', 'https://one.example']
+	args := ['install', '-server-url', 'https://one.example/', '--server-url', ' https://two.example ',
+		'--server-urls', 'https://one.example']
 	server_urls := get_server_urls_from_args(args)
 	assert server_urls == ['https://one.example', 'https://two.example']
 }
@@ -18,8 +18,10 @@ fn test_get_mirror_urls_from_args_supports_short_and_long_flags() {
 }
 
 fn test_build_install_server_urls_prioritizes_default_servers() {
-	server_urls := build_install_server_urls(['https://official1.example',
-		'https://official2.example'], ['https://mirror1.example', 'https://official2.example'])
+	server_urls := build_install_server_urls(['https://official1.example', 'https://official2.example'], [
+		'https://mirror1.example',
+		'https://official2.example',
+	])
 	assert server_urls == ['https://official1.example', 'https://official2.example',
 		'https://mirror1.example']
 }

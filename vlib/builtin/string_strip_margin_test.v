@@ -28,8 +28,7 @@ fn test_strip_margins_white_space_after_delim() {
 }
 
 fn test_strip_margins_alternate_delim() {
-	alternate_delimiter := ['This has a different delim,', 'but that is ok',
-		'because everything works'].join('\n')
+	alternate_delimiter := ['This has a different delim,', 'but that is ok', 'because everything works'].join('\n')
 	alternate_delimiter_stripped := 'This has a different delim,
 	                                #but that is ok
                                     #because everything works'.strip_margin_custom(`#`)
@@ -37,8 +36,8 @@ fn test_strip_margins_alternate_delim() {
 }
 
 fn test_strip_margins_multiple_delims_after_first() {
-	delim_after_first_instance := ['The delimiter used',
-		'only matters the |||| First time it is seen', 'not any | other | times'].join('\n')
+	delim_after_first_instance := ['The delimiter used', 'only matters the |||| First time it is seen',
+		'not any | other | times'].join('\n')
 	delim_after_first_instance_stripped := 'The delimiter used
 	                                       |only matters the |||| First time it is seen
 	                                       |not any | other | times'.strip_margin()

@@ -8,8 +8,7 @@ const max_parallel_fixtures = 1
 const diagnostic_fixture_suffixes = ['/vlib/v/checker/tests', '/vlib/v/parser/tests',
 	'/vlib/v/scanner/tests']
 // Keep these exclusions aligned with v/compiler_errors_test.v.
-const diagnostic_fixture_skip_paths = ['non_existing.vv',
-	'vlib/v/checker/tests/var_duplicate_const.vv']
+const diagnostic_fixture_skip_paths = ['non_existing.vv', 'vlib/v/checker/tests/var_duplicate_const.vv']
 const diagnostic_fixture_specialized_paths = [
 	'vlib/v/checker/tests/index_expr_implicit_int_downcast_err.vv',
 	'vlib/v/checker/tests/js_number_requires_explicit_cast.vv',
@@ -58,9 +57,6 @@ pub fn is_diagnostic_fixture_dir(path string) bool {
 }
 
 fn is_standard_test_file(file string) bool {
-	if file.contains('_d_test.') || file.contains('_notd_test.') {
-		return false
-	}
 	if file.ends_with('_test.v') {
 		return true
 	}
@@ -292,12 +288,12 @@ fn run_fixture(vexe string, repo_root string, path string, index int, compiler_o
 	os.rm(output_base + '.c') or {}
 	os.write_file(fixture_output_path(index), result.output) or {
 		return FixtureResult{
-			index: index
+			index:     index
 			exit_code: -1
 		}
 	}
 	return FixtureResult{
-		index: index
+		index:     index
 		exit_code: result.exit_code
 	}
 }

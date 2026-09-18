@@ -12,6 +12,7 @@ pub const no_timeout = i64(0)
 const timeout_drain_ms = i64(200)
 
 // run executes program with an exact argument vector and captures its output.
+// Both output pipes are drained until EOF, including writers inherited by descendants.
 pub fn run(program string, args []string) os.Result {
 	return run_in(program, args, '')
 }
@@ -24,13 +25,29 @@ pub fn run_in(program string, args []string, work_folder string) os.Result {
 // run_with_timeout is run, bounded: after timeout_ms milliseconds the child is
 // killed and a non zero result is returned. Use it for short probes that must
 // never be able to block a build, so that a child which can never make progress
-// is reported instead of hanging the compiler forever.
+// is reported instead of hanging the compiler forever. The deadline also covers
+// output pipes inherited by descendants after the direct child has exited.
 pub fn run_with_timeout(program string, args []string, timeout_ms i64) os.Result {
 	return run_in_mode(program, args, '', false, timeout_ms)
 }
 
+fn resolve_program(program string) ?string {
+	if os.is_executable(program) {
+		// Pin the file checked above before Process can interpret a bare name
+		// as a fresh PATH lookup or start the child in a different directory.
+		return os.abs_path(program)
+	}
+	return os.find_abs_path_of_executable(program) or { return none }
+}
+
 fn run_in_mode(program string, args []string, work_folder string, merge_output bool, timeout_ms i64) os.Result {
-	mut process := os.new_process(program)
+	executable := resolve_program(program) or {
+		return os.Result{
+			exit_code: 1
+			output:    'os: failed to find executable `${program}`\n'
+		}
+	}
+	mut process := os.new_process(executable)
 	process.set_args(args)
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
@@ -53,12 +70,31 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	process.run()
 	mut output := strings.new_builder(1024)
 	mut timed_out := false
+	mut stdout_done := false
+	mut stderr_done := merge_output
 	sw := time.new_stopwatch()
-	for process.is_alive() {
-		stdout := process.stdout_read()
-		stderr := if merge_output { '' } else { process.stderr_read() }
+	for {
+		mut stdout := ''
+		mut stderr := ''
+		if !stdout_done {
+			text, done := read_process_pipe(mut process, .stdout)
+			stdout = text
+			stdout_done = done
+		}
+		if !stderr_done {
+			text, done := read_process_pipe(mut process, .stderr)
+			stderr = text
+			stderr_done = done
+		}
 		output.write_string(stdout)
 		output.write_string(stderr)
+		// A leader can exit while a descendant still owns both pipes. Keep
+		// draining both: slurping stdout first can deadlock on a full stderr
+		// pipe, even for an unbounded run. For bounded runs, deferring the reap
+		// also reserves the leader PID until a possible process-group kill.
+		if stdout_done && stderr_done && !process.is_alive() {
+			break
+		}
 		// The deadline is checked on every iteration, not only when nothing was
 		// read: a child that keeps writing must hit the bound just the same.
 		if timeout_ms > 0 && sw.elapsed().milliseconds() >= timeout_ms {
@@ -85,9 +121,8 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	process.wait()
 	if timed_out {
 		eprintln('V: `${display(program, args)}` did not finish within ${timeout_ms}ms, the child process was killed')
-		// Never block on EOF after the deadline: the slurps on the normal path
-		// wait until every writer of the pipe is gone, and a descendant that
-		// escaped the group kill still owns one. Collect what is already
+		// Never wait for EOF after the deadline: a descendant that escaped
+		// the group kill may still own a writer. Collect what is already
 		// buffered instead.
 		drain := time.new_stopwatch()
 		for drain.elapsed().milliseconds() < timeout_drain_ms {
@@ -98,11 +133,6 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 			}
 			output.write_string(stdout)
 			output.write_string(stderr)
-		}
-	} else {
-		output.write_string(process.stdout_slurp())
-		if !merge_output {
-			output.write_string(process.stderr_slurp())
 		}
 	}
 	if process.err.len > 0 {

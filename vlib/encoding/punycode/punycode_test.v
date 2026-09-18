@@ -11,97 +11,97 @@ struct Vector {
 // stray editor normalisation cannot silently change a test.
 const rfc_vectors = [
 	Vector{
-		name: '(A) Arabic (Egyptian)'
+		name:    '(A) Arabic (Egyptian)'
 		decoded: 'ليهمابتكلموشعربي؟'
 		encoded: 'egbpdaj6bu4bxfgehfvwxn'
 	},
 	Vector{
-		name: '(B) Chinese (simplified)'
+		name:    '(B) Chinese (simplified)'
 		decoded: '他们为什么不说中文'
 		encoded: 'ihqwcrb4cv8a8dqg056pqjye'
 	},
 	Vector{
-		name: '(C) Chinese (traditional)'
+		name:    '(C) Chinese (traditional)'
 		decoded: '他們爲什麽不說中文'
 		encoded: 'ihqwctvzc91f659drss3x8bo0yb'
 	},
 	Vector{
-		name: '(D) Czech'
+		name:    '(D) Czech'
 		decoded: 'Pročprostěnemluvíčesky'
 		encoded: 'Proprostnemluvesky-uyb24dma41a'
 	},
 	Vector{
-		name: '(E) Hebrew'
+		name:    '(E) Hebrew'
 		decoded: 'למההםפשוטלאמדבריםעברית'
 		encoded: '4dbcagdahymbxekheh6e0a7fei0b'
 	},
 	Vector{
-		name: '(F) Hindi (Devanagari)'
+		name:    '(F) Hindi (Devanagari)'
 		decoded: 'यहलोगहिन्दीक्योंनहींबोलसकतेहैं'
 		encoded: 'i1baa7eci9glrd9b2ae1bj0hfcgg6iyaf8o0a1dig0cd'
 	},
 	Vector{
-		name: '(G) Japanese (kanji and hiragana)'
+		name:    '(G) Japanese (kanji and hiragana)'
 		decoded: 'なぜみんな日本語を話してくれないのか'
 		encoded: 'n8jok5ay5dzabd5bym9f0cm5685rrjetr6pdxa'
 	},
 	Vector{
-		name: '(H) Korean (Hangul syllables)'
+		name:    '(H) Korean (Hangul syllables)'
 		decoded: '세계의모든사람들이한국어를이해한다면얼마나좋을까'
 		encoded: '989aomsvi5e83db1d2a355cv1e0vak1dwrv93d5xbh15a0dt30a5jpsd879ccm6fea98c'
 	},
 	Vector{
-		name: '(I) Russian (Cyrillic)'
+		name:    '(I) Russian (Cyrillic)'
 		decoded: 'почемужеонинеговорятпорусски'
 		encoded: 'b1abfaaepdrnnbgefbaDotcwatmq2g4l'
 	},
 	Vector{
-		name: '(J) Spanish'
+		name:    '(J) Spanish'
 		decoded: 'PorquénopuedensimplementehablarenEspañol'
 		encoded: 'PorqunopuedensimplementehablarenEspaol-fmd56a'
 	},
 	Vector{
-		name: '(K) Vietnamese'
+		name:    '(K) Vietnamese'
 		decoded: 'TạisaohọkhôngthểchỉnóitiếngViệt'
 		encoded: 'TisaohkhngthchnitingVit-kjcr8268qyxafd2f1b9g'
 	},
 	Vector{
-		name: '(L) 3nen B gumi kinpachi sensei'
+		name:    '(L) 3nen B gumi kinpachi sensei'
 		decoded: '3年B組金八先生'
 		encoded: '3B-ww4c5e180e575a65lsy2b'
 	},
 	Vector{
-		name: '(M) amuro namie with SUPER MONKEYS'
+		name:    '(M) amuro namie with SUPER MONKEYS'
 		decoded: '安室奈美恵-with-SUPER-MONKEYS'
 		encoded: '-with-SUPER-MONKEYS-pc58ag80a8qai00g7n9n'
 	},
 	Vector{
-		name: '(N) Hello-Another-Way'
+		name:    '(N) Hello-Another-Way'
 		decoded: 'Hello-Another-Way-それぞれの場所'
 		encoded: 'Hello-Another-Way--fc4qua05auwb3674vfr0b'
 	},
 	Vector{
-		name: '(O) hitotsu yane no shita 2'
+		name:    '(O) hitotsu yane no shita 2'
 		decoded: 'ひとつ屋根の下2'
 		encoded: '2-u9tlzr9756bt3uc0v'
 	},
 	Vector{
-		name: '(P) Maji de Koi suru 5 byou mae'
+		name:    '(P) Maji de Koi suru 5 byou mae'
 		decoded: 'MajiでKoiする5秒前'
 		encoded: 'MajiKoi5-783gue6qz075azm5e'
 	},
 	Vector{
-		name: '(Q) pafii de runba'
+		name:    '(Q) pafii de runba'
 		decoded: 'パフィーdeルンバ'
 		encoded: 'de-jg4avhby1noc0d'
 	},
 	Vector{
-		name: '(R) sono supiido de'
+		name:    '(R) sono supiido de'
 		decoded: 'そのスピードで'
 		encoded: 'd9juau41awczczp'
 	},
 	Vector{
-		name: '(S) pure ASCII that breaks host name rules'
+		name:    '(S) pure ASCII that breaks host name rules'
 		decoded: '-> \$1.00 <-'
 		encoded: '-> \$1.00 <--'
 	},

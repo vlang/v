@@ -274,8 +274,8 @@ fn test_parse_resolution_main_alias_uses_alias_declaration_scope() {
 
 fn test_embedded_field_type_trusts_collected_embed_metadata() {
 	field := StructField{
-		name: 'Middleware[Context]'
-		typ: Type(Struct{
+		name:     'Middleware[Context]'
+		typ:      Type(Struct{
 			name: 'veb.Middleware[veb.Context]'
 		})
 		is_embed: true
@@ -289,15 +289,15 @@ fn test_receiver_embeds_through_alias() {
 	mut tc := TypeChecker.new(&a)
 	tc.structs['Context'] = [
 		StructField{
-			name: 'Context'
-			typ: Type(Struct{
+			name:     'Context'
+			typ:      Type(Struct{
 				name: 'veb.Context'
 			})
 			is_embed: true
 		},
 	]
 	actual := Type(Alias{
-		name: 'AliasContext'
+		name:      'AliasContext'
 		base_type: Type(Struct{
 			name: 'Context'
 		})
@@ -421,13 +421,13 @@ fn test_semantic_type_interner_uses_structural_identity() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	first_id, first := tc.intern_type(Type(Map{
-		key_type: Type(string_)
+		key_type:   Type(string_)
 		value_type: Type(Array{
 			elem_type: Type(int_)
 		})
 	}))
 	second_id, second := tc.intern_type(Type(Map{
-		key_type: Type(string_)
+		key_type:   Type(string_)
 		value_type: Type(Array{
 			elem_type: Type(int_)
 		})
@@ -436,11 +436,11 @@ fn test_semantic_type_interner_uses_structural_identity() {
 	assert semantic_types_equal(first, second)
 
 	int_alias, _ := tc.intern_type(Type(Alias{
-		name: 'sample.Number'
+		name:      'sample.Number'
 		base_type: Type(int_)
 	}))
 	string_alias, _ := tc.intern_type(Type(Alias{
-		name: 'sample.Number'
+		name:      'sample.Number'
 		base_type: Type(string_)
 	}))
 	assert int_alias != string_alias
@@ -450,17 +450,17 @@ fn test_fn_param_mutability_participates_in_type_identity() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	immutable := Type(FnType{
-		params: [Type(int_)]
-		params_mut: [false]
+		params:      [Type(int_)]
+		params_mut:  [false]
 		return_type: Type(void_)
 	})
 	mutable := Type(FnType{
-		params: [Type(int_)]
-		params_mut: [true]
+		params:      [Type(int_)]
+		params_mut:  [true]
 		return_type: Type(void_)
 	})
 	legacy_immutable := Type(FnType{
-		params: [Type(int_)]
+		params:      [Type(int_)]
 		return_type: Type(void_)
 	})
 
@@ -502,7 +502,7 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)
 	typ := Type(Map{
-		key_type: Type(string_)
+		key_type:   Type(string_)
 		value_type: Type(Array{
 			elem_type: Type(int_)
 		})

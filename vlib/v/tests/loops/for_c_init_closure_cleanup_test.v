@@ -3,7 +3,8 @@ fn test_for_c_init_closure_survives_body_tail_cleanup() {
 	mut i := 0
 	mut values := []int{}
 	for h := fn [base] (x int) int {
-		return base + x}; i < 3; i++ {
+		return base + x
+	}; i < 3; i++ {
 		values << h(i)
 	}
 	assert values == [40, 41, 42]
@@ -14,7 +15,8 @@ fn test_for_c_init_closure_survives_continue_cleanup() {
 	mut i := 0
 	mut values := []int{}
 	for h := fn [base] (x int) int {
-		return base + x}; i < 3; i++ {
+		return base + x
+	}; i < 3; i++ {
 		if i == 0 {
 			continue
 		}
@@ -27,7 +29,8 @@ fn test_multi_for_c_init_closure_survives_body_tail_cleanup() {
 	base := 60
 	mut values := []int{}
 	for h, i := fn [base] (x int) int {
-		return base + x}, 0; i < 3; i++ {
+		return base + x
+	}, 0; i < 3; i++ {
 		values << h(i)
 	}
 	assert values == [60, 61, 62]
@@ -38,11 +41,13 @@ fn test_nested_for_c_init_closure_continue_outer() {
 	mut i := 0
 	mut values := []int{}
 	continue_outer: for outer_h := fn [outer_base] (x int) int {
-		return outer_base + x}; i < 2; i++ {
+		return outer_base + x
+	}; i < 2; i++ {
 		inner_base := 80
 		mut j := 0
 		for inner_h := fn [inner_base] (x int) int {
-			return inner_base + x}; j < 1; j++ {
+			return inner_base + x
+		}; j < 1; j++ {
 			values << outer_h(i)
 			values << inner_h(j)
 			continue continue_outer
@@ -56,11 +61,13 @@ fn test_nested_for_c_init_closure_break_outer() {
 	mut i := 0
 	mut values := []int{}
 	break_outer: for outer_h := fn [outer_base] (x int) int {
-		return outer_base + x}; i < 2; i++ {
+		return outer_base + x
+	}; i < 2; i++ {
 		inner_base := 100
 		mut j := 0
 		for inner_h := fn [inner_base] (x int) int {
-			return inner_base + x}; j < 1; j++ {
+			return inner_base + x
+		}; j < 1; j++ {
 			values << outer_h(i)
 			values << inner_h(j)
 			break break_outer

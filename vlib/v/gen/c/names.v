@@ -306,26 +306,26 @@ struct ScratchLookupCaches {
 // everything the batch memoized is then dropped together with that arena.
 fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
 	saved := ScratchLookupCaches{
-		interface_receiver_cache: g.interface_receiver_cache
-		normalize_call_cache: g.normalize_call_cache
-		flattened_generic_name_cache: g.flattened_generic_name_cache
+		interface_receiver_cache:        g.interface_receiver_cache
+		normalize_call_cache:            g.normalize_call_cache
+		flattened_generic_name_cache:    g.flattened_generic_name_cache
 		generic_struct_context_ct_cache: g.generic_struct_context_ct_cache
-		struct_cname_cache: g.struct_cname_cache
-		unique_struct_ct_cache: g.unique_struct_ct_cache
-		alias_method_cache: g.alias_method_cache
-		import_alias_cache: g.import_alias_cache
-		enum_selector_cache: g.enum_selector_cache
-		enum_method_cache: g.enum_method_cache
-		qualified_enum_method_cache: g.qualified_enum_method_cache
-		import_type_cache: g.import_type_cache
-		mut_recv_facts: g.mut_recv_facts
-		local_typedef_shadow_facts: g.local_typedef_shadow_facts
-		local_global_shadow_facts: g.local_global_shadow_facts
-		generic_app_cache: g.generic_app_cache
-		struct_decl_pref_cache: g.struct_decl_pref_cache
-		sum_variant_actual_cache: g.sum_variant_actual_cache
-		array_method_cache: g.array_method_cache
-		param_types_cache: g.param_types_cache
+		struct_cname_cache:              g.struct_cname_cache
+		unique_struct_ct_cache:          g.unique_struct_ct_cache
+		alias_method_cache:              g.alias_method_cache
+		import_alias_cache:              g.import_alias_cache
+		enum_selector_cache:             g.enum_selector_cache
+		enum_method_cache:               g.enum_method_cache
+		qualified_enum_method_cache:     g.qualified_enum_method_cache
+		import_type_cache:               g.import_type_cache
+		mut_recv_facts:                  g.mut_recv_facts
+		local_typedef_shadow_facts:      g.local_typedef_shadow_facts
+		local_global_shadow_facts:       g.local_global_shadow_facts
+		generic_app_cache:               g.generic_app_cache
+		struct_decl_pref_cache:          g.struct_decl_pref_cache
+		sum_variant_actual_cache:        g.sum_variant_actual_cache
+		array_method_cache:              g.array_method_cache
+		param_types_cache:               g.param_types_cache
 	}
 	// A cache the generator has disabled stays disabled, so this only changes
 	// where entries are written, never whether they are memoized at all.

@@ -226,6 +226,101 @@ pub struct ImportedZero {
 	assert !c_code.contains('moda__ImportedZero imported_slots[2] = {0};')
 }
 
+fn test_exported_module_global_uses_explicit_c_name() {
+	c_code := gen_c_for_sources('exported_module_global', {
+		'main.v':              'module main
+
+import counters
+
+fn main() {
+	counters.set()
+}
+'
+		'counters/counters.v': "@[has_globals]
+module counters
+
+@[export: 'bare_counter']
+__global counter = i64(0)
+
+pub fn set() {
+	counter = 1
+}
+"
+	})
+	assert c_code.contains('\ni64 bare_counter = ((i64)(0));\n'), c_code
+	assert c_code.contains('\tbare_counter = 1;'), c_code
+	assert !c_code.contains('counters__counter'), c_code
+}
+
+fn test_scalar_global_constant_initializer_is_emitted_at_file_scope() {
+	c_code := gen_c_for_source('scalar_global_static_initializer', '__global page_size = u64(0x1000)
+
+fn main() {
+	assert page_size == 4096
+}
+')
+	assert c_code.contains('\nu64 page_size = ((u64)(0x1000));\n'), c_code
+	assert !c_code.contains('\tpage_size = (u64)(0x1000);'), c_code
+}
+
+fn test_nil_pointer_global_initializer_is_emitted_at_file_scope() {
+	c_code := gen_c_for_source('nil_pointer_global_static_initializer', '__global early_state = unsafe { nil }
+
+fn use_before_vinit() {
+	early_state = voidptr(usize(0x1000))
+}
+
+fn main() {}
+')
+	assert c_code.contains('\nvoid* early_state = NULL;\n'), c_code
+	assert !c_code.contains('\tearly_state = NULL;'), c_code
+}
+
+fn test_fixed_array_global_constant_initializer_is_emitted_at_file_scope() {
+	c_code := gen_c_for_source('fixed_array_global_static_initializer', '__global table = [u32(1), 2, 3, 4]!
+
+fn main() {
+	assert table[3] == 4
+}
+')
+	assert c_code.contains('\nu32 table[4] = {((u32)(1)), 2, 3, 4};\n'), c_code
+	assert !c_code.contains('memmove(table,'), c_code
+}
+
+fn test_fixed_array_const_initializer_is_emitted_at_file_scope() {
+	c_code := gen_c_for_source('fixed_array_const_static_initializer', 'const table = [u32(1), 2, 3, 4]!
+
+fn main() {
+	assert table[3] == 4
+}
+')
+	assert c_code.contains('\nconst u32 main__table[4] = {((u32)(1)), 2, 3, 4};\n'), c_code
+	assert !c_code.contains('memmove(main__table,'), c_code
+}
+
+fn test_cinit_global_keeps_linker_section_and_static_initializer() {
+	c_code := gen_c_for_source('cinit_linker_section_global', "struct Request {
+	id       [4]u64 = [u64(0x11), 0x22, 0x33, 0x44]!
+	revision u64
+	response voidptr
+}
+
+@[_linker_section: '.requests']
+@[cinit]
+@[export: 'boot_request']
+__global (
+	volatile request = Request{
+		revision: 2
+	}
+)
+
+fn main() {}
+")
+	assert c_code.contains('__attribute__ ((section (".requests"))) volatile main__Request boot_request = (main__Request){.revision = 2, .id = {((u64)(0x11)), 0x22, 0x33, 0x44}};'), c_code
+	assert !c_code.contains('boot_request = ({'), c_code
+	assert !c_code.contains('memmove(boot_request'), c_code
+}
+
 // test_aggregate_decl_with_scalar_zero_uses_brace_initializer validates this v3 regression case.
 fn test_aggregate_decl_with_scalar_zero_uses_brace_initializer() {
 	c_code := gen_c_for_source_with_scalar_zero_decl('aggregate_decl_scalar_zero', 'struct Box {

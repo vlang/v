@@ -5591,8 +5591,7 @@ fn (e &Eval) qualify_nested_type_name(module_name string, type_name string) stri
 	}
 	if name.starts_with('map[') {
 		key_type, value_type := split_map_type(name)
-		return 'map[${e.qualify_nested_type_name(module_name, key_type)}]${e.qualify_nested_type_name(module_name,
-			value_type)}'
+		return 'map[${e.qualify_nested_type_name(module_name, key_type)}]${e.qualify_nested_type_name(module_name, value_type)}'
 	}
 	if name.starts_with('?') || name.starts_with('!') {
 		return '${name[..1]}${e.qualify_nested_type_name(module_name, name[1..])}'
@@ -5789,7 +5788,7 @@ fn (e &Eval) unwrap_sum_cast_value(value Value, type_name string) Value {
 	if value is SumValue {
 		if !e.type_name_matches(value.type_name, type_name)
 			&& (e.type_name_matches(value.variant_name, type_name)
-			|| e.value_matches_type_name(value.payload, type_name)) {
+				|| e.value_matches_type_name(value.payload, type_name)) {
 			return value.payload
 		}
 	}
@@ -5939,8 +5938,8 @@ fn (e &Eval) type_value_module_name(value TypeValue) string {
 
 fn is_builtin_type_name(name string) bool {
 	return name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
-		'u64', 'usize', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr',
-		'byteptr', 'array']
+		'u64', 'usize', 'f32', 'f64', 'rune', 'char', 'string', 'void', 'voidptr', 'charptr', 'byteptr',
+		'array']
 }
 
 fn (e &Eval) qualify_type_name(module_name string, type_name string) string {

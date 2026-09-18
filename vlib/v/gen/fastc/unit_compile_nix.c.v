@@ -41,9 +41,9 @@ pub fn fastc_compile_c_units(tcc string, base_args []string, unit_paths []string
 			break
 		}
 		compiles << FastcUnitCompile{
-			pid: pid
+			pid:     pid
 			read_fd: read_fd
-			object: object
+			object:  object
 		}
 	}
 	if bench_phases {
@@ -168,15 +168,15 @@ pub fn fastc_prestart_c_units(tcc string, base_args []string, build_dir string, 
 	}
 	os.mkdir_all(build_dir) or { return FastcPrestartedCUnits{} }
 	mut units := FastcPrestartedCUnits{
-		build_dir: build_dir
-		base_args: base_args.clone()
+		build_dir:  build_dir
+		base_args:  base_args.clone()
 		unit_count: unit_count
-		paths: []string{len: unit_count}
-		objects: []string{len: unit_count}
-		pids: []int{len: unit_count}
-		read_fds: []int{len: unit_count, init: -1}
-		write_fds: []int{len: unit_count, init: -1}
-		active: true
+		paths:      []string{len: unit_count}
+		objects:    []string{len: unit_count}
+		pids:       []int{len: unit_count}
+		read_fds:   []int{len: unit_count, init: -1}
+		write_fds:  []int{len: unit_count, init: -1}
+		active:     true
 	}
 	for i in 0 .. unit_count {
 		path := os.join_path_single(build_dir, 'src.unit${i}.c')
@@ -238,7 +238,7 @@ pub fn fastc_begin_feed_prestarted_c_units(mut prestarted FastcPrestartedCUnits,
 		prestarted.write_fds[i] = -1
 	}
 	return FastcFeedingCUnits{
-		paths: rendering.paths
+		paths:   rendering.paths
 		writers: writers
 	}
 }
@@ -257,7 +257,7 @@ pub fn fastc_begin_render_prestarted_c_units(mut prestarted FastcPrestartedCUnit
 		prestarted.write_fds[g] = -1
 	}
 	return FastcFeedingCUnits{
-		paths: plan.paths
+		paths:   plan.paths
 		writers: writers
 	}
 }
@@ -328,9 +328,9 @@ pub fn fastc_compile_rendering_c_units(tcc string, base_args []string, mut rende
 			break
 		}
 		compiles[i] = FastcUnitCompile{
-			pid: pid
+			pid:     pid
 			read_fd: read_fd
-			object: object
+			object:  object
 		}
 		handed[i] = true
 		writers[i] = spawn fastc_render_unit_stdin(write_fd, rendering.workers[i])
@@ -394,9 +394,9 @@ pub fn fastc_compile_c_unit_texts(tcc string, base_args []string, unit_paths []s
 			break
 		}
 		compiles << FastcUnitCompile{
-			pid: pid
+			pid:     pid
 			read_fd: read_fd
-			object: object
+			object:  object
 		}
 		writers << spawn fastc_write_unit_stdin(write_fd, sources[i])
 	}
@@ -434,14 +434,14 @@ pub fn fastc_run_command(program string, args []string) os.Result {
 	if !fastc_start_capture(argv, &pid, &read_fd) {
 		return os.Result{
 			exit_code: -1
-			output: 'could not start ${program}'
+			output:    'could not start ${program}'
 		}
 	}
 	output := os.fd_slurp(read_fd).join('')
 	os.fd_close(read_fd)
 	return os.Result{
 		exit_code: fastc_wait_exit_code(pid)
-		output: output
+		output:    output
 	}
 }
 
