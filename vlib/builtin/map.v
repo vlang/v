@@ -92,14 +92,14 @@ mut:
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	cap := 8
 	return DenseArray{
-		key_bytes: key_bytes
+		key_bytes:   key_bytes
 		value_bytes: value_bytes
-		cap: cap
-		len: 0
-		deletes: 0
+		cap:         cap
+		len:         0
+		deletes:     0
 		all_deleted: unsafe { nil }
-		keys: unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
-		values: unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
+		keys:        unsafe { malloc(__at_least_one(u64(cap) * u64(key_bytes))) }
+		values:      unsafe { malloc(__at_least_one(u64(cap) * u64(value_bytes))) }
 	}
 }
 
@@ -323,26 +323,47 @@ fn map_free_string(pkey voidptr) {
 fn map_free_nop(_ voidptr) {
 }
 
+fn new_map_with_dense_array(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn,
+	clone_fn MapCloneFn, free_fn MapFreeFn, key_values DenseArray, metas &u32) map {
+	has_string_keys := key_bytes > int(sizeof(voidptr))
+	return map{
+		key_bytes:       key_bytes
+		value_bytes:     value_bytes
+		even_index:      init_even_index
+		cached_hashbits: max_cached_hashbits
+		shift:           init_log_capicity
+		key_values:      key_values
+		metas:           unsafe { metas }
+		extra_metas:     extra_metas_inc
+		len:             0
+		has_string_keys: has_string_keys
+		hash_fn:         hash_fn
+		key_eq_fn:       key_eq_fn
+		clone_fn:        clone_fn
+		free_fn:         free_fn
+	}
+}
+
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > int(sizeof(voidptr))
 	// Keep this as a local before returning it. Alpine's x86_64 TCC can leave fields
 	// uninitialized when this large nested struct is returned as a compound literal.
 	result := map{
-		key_bytes: key_bytes
-		value_bytes: value_bytes
-		even_index: init_even_index
+		key_bytes:       key_bytes
+		value_bytes:     value_bytes
+		even_index:      init_even_index
 		cached_hashbits: max_cached_hashbits
-		shift: init_log_capicity
-		key_values: DenseArray{ key_bytes: key_bytes, value_bytes: value_bytes }
-		metas: unsafe { nil }
-		extra_metas: extra_metas_inc
-		len: 0
+		shift:           init_log_capicity
+		key_values:      DenseArray{ key_bytes: key_bytes, value_bytes: value_bytes }
+		metas:           unsafe { nil }
+		extra_metas:     extra_metas_inc
+		len:             0
 		has_string_keys: has_string_keys
-		hash_fn: hash_fn
-		key_eq_fn: key_eq_fn
-		clone_fn: clone_fn
-		free_fn: free_fn
+		hash_fn:         hash_fn
+		key_eq_fn:       key_eq_fn
+		clone_fn:        clone_fn
+		free_fn:         free_fn
 	}
 	return result
 }
@@ -377,13 +398,13 @@ fn new_map_update_init(update &map, n int, key_bytes int, value_bytes int, keys 
 	return out
 }
 
-// move moves the map to a new location in memory.
-// It does this by copying to a new location, then setting the
-// old location to all `0` with `vmemset`
+// move moves the map to a new location in memory and resets the old location
+// to an empty map with the same key/value operations.
 pub fn (mut m map) move() map {
 	r := *m
 	unsafe {
-		vmemset(m, 0, int(sizeof(map)))
+		*m = new_map(r.key_bytes, r.value_bytes, r.hash_fn, r.key_eq_fn, r.clone_fn,
+			r.free_fn)
 	}
 	return r
 }
@@ -896,14 +917,14 @@ pub fn (m &map) values() array {
 @[unsafe]
 fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
-		key_bytes: d.key_bytes
+		key_bytes:   d.key_bytes
 		value_bytes: d.value_bytes
-		cap: d.cap
-		len: d.len
-		deletes: d.deletes
+		cap:         d.cap
+		len:         d.len
+		deletes:     d.deletes
 		all_deleted: unsafe { nil }
-		values: unsafe { nil }
-		keys: unsafe { nil }
+		values:      unsafe { nil }
+		keys:        unsafe { nil }
 	}
 	unsafe {
 		if d.deletes != 0 {
@@ -923,20 +944,20 @@ pub fn (m &map) clone() map {
 	}
 	metasize := int(sizeof(u32) * (m.even_index + 2 + m.extra_metas))
 	res := map{
-		key_bytes: m.key_bytes
-		value_bytes: m.value_bytes
-		even_index: m.even_index
+		key_bytes:       m.key_bytes
+		value_bytes:     m.value_bytes
+		even_index:      m.even_index
 		cached_hashbits: m.cached_hashbits
-		shift: m.shift
-		key_values: unsafe { m.key_values.clone() }
-		metas: unsafe { &u32(malloc_noscan(metasize)) }
-		extra_metas: m.extra_metas
-		len: m.len
+		shift:           m.shift
+		key_values:      unsafe { m.key_values.clone() }
+		metas:           unsafe { &u32(malloc_noscan(metasize)) }
+		extra_metas:     m.extra_metas
+		len:             m.len
 		has_string_keys: m.has_string_keys
-		hash_fn: m.hash_fn
-		key_eq_fn: m.key_eq_fn
-		clone_fn: m.clone_fn
-		free_fn: m.free_fn
+		hash_fn:         m.hash_fn
+		key_eq_fn:       m.key_eq_fn
+		clone_fn:        m.clone_fn
+		free_fn:         m.free_fn
 	}
 	unsafe { vmemcpy(res.metas, m.metas, metasize) }
 	if !m.has_string_keys {

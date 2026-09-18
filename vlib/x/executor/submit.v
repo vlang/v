@@ -86,7 +86,8 @@ fn (mut e Executor) enqueue_job_with_context(parent context.Context, job Executo
 			}
 			watch_done = false
 		}
-		else {}
+		else {
+		}
 	}
 	for {
 		e.mutex.lock()

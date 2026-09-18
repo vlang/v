@@ -56,10 +56,10 @@ fn test_send_includes_to_cc_and_bcc_in_envelope() ! {
 	mut client := new_client(Config{ server: '127.0.0.1', port: int(port) })!
 	// To: with empty entries and a display name; Cc and Bcc as extra classes.
 	client.send(Mail{
-		from: 'sender@example.com'
-		to: ' ;;User <a@ex.com> ;   ; b@ex.com; '
-		cc: ' ;; "Doe; John" <john@ex.com>; cc@ex.com ; ; '
-		bcc: ' ;; Bcc Two <bcc@ex.com> ; ; '
+		from:    'sender@example.com'
+		to:      ' ;;User <a@ex.com> ;   ; b@ex.com; '
+		cc:      ' ;; "Doe; John" <john@ex.com>; cc@ex.com ; ; '
+		bcc:     ' ;; Bcc Two <bcc@ex.com> ; ; '
 		subject: 'test'
 	})!
 	client.conn.close() or {}

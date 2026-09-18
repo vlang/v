@@ -3,7 +3,7 @@ const sbuffer_size = 10
 fn test_hardcoded_static_arr() {
 	myints := [10]int{}
 	size := sizeof(myints)
-	assert size == $if new_int ? && x64 {
+	assert size == $if new_int ?&& x64 {
 		80
 	} $else {
 		40
@@ -13,7 +13,7 @@ fn test_hardcoded_static_arr() {
 fn test_const_based_static_arr() {
 	myints := [sbuffer_size]int{}
 	size := sizeof(myints)
-	assert size == $if new_int ? && x64 {
+	assert size == $if new_int ?&& x64 {
 		80
 	} $else {
 		40

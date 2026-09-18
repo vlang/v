@@ -29,8 +29,8 @@ fn (e &Encoder) encode_struct[T](val T) {
 			if field.name in ['c', 'd'] {
 				assert true
 			}
-			println('>> ${value ?.str()}')
-			println(val.$(field.name) ?.str())
+			println('>> ${value?.str()}')
+			println(val.$(field.name)?.str())
 			count += 1
 		}
 	}

@@ -41,9 +41,7 @@ fn main() {
 	if res {
 		exit(1)
 	}
-	if testing.v_build_failing_skipped(params + '-live', os.join_path_single('examples',
-		'hot_reload'), skip_prefixes, fn (mut session testing.TestSession) {})
-	{
+	if testing.v_build_failing_skipped(params + '-live', os.join_path_single('examples', 'hot_reload'), skip_prefixes, fn (mut session testing.TestSession) {}) {
 		exit(1)
 	}
 }

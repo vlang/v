@@ -113,7 +113,7 @@ fn test_h2_server_basic_request() {
 	mut handler_iface := Handler(handler)
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	// Drive a client-side request through the same pipe.
@@ -137,7 +137,7 @@ fn test_h2_server_post_with_body() {
 	mut handler_iface := Handler(handler)
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	mut conn := new_h2_conn(client_end)
@@ -173,7 +173,7 @@ fn test_h2_server_non_200_status() {
 	mut handler_iface := Handler(handler)
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	mut conn := new_h2_conn(client_end)
@@ -229,7 +229,7 @@ fn test_h2_server_respects_send_window() {
 	})
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	// Raw client: preface + SETTINGS(initial_window_size = 10) + a GET, then a
@@ -311,7 +311,7 @@ fn spawn_h2_echo_server() &PipeEnd {
 	mut handler_iface := Handler(ServerEchoHandler{})
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 	return client_end
 }
@@ -676,7 +676,7 @@ fn test_h2_server_sends_trailers_after_body() {
 	})
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	mut conn := new_h2_conn(client_end)
@@ -702,7 +702,7 @@ fn test_h2_server_sends_trailers_as_separate_headers_block() {
 	})
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	mut enc := H2HpackEncoder{}
@@ -785,7 +785,7 @@ fn test_h2_server_trailers_only_response_is_single_frame() {
 	mut handler_iface := Handler(TrailersOnlyHandler{})
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	mut enc := H2HpackEncoder{}
@@ -861,7 +861,7 @@ fn test_h2_server_drops_connection_specific_outbound_trailer_fields() {
 	mut handler_iface := Handler(FilteredTrailerHandler{})
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	mut conn := new_h2_conn(client_end)
@@ -919,7 +919,7 @@ fn test_h2_server_skips_trailers_after_stream_reset_during_body() {
 	})
 	spawn fn [mut server_end, mut handler_iface] () {
 		mut transport := H2Transport(server_end)
-		serve_h2_conn(mut transport, mut handler_iface) or {}
+		serve_h2_conn(mut transport, mut handler_iface, '127.0.0.1:0') or {}
 	}()
 
 	mut enc := H2HpackEncoder{}

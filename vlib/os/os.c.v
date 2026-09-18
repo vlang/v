@@ -508,19 +508,30 @@ pub fn is_executable(path string) bool {
 		// 02 Write-only
 		// 04 Read-only
 		// 06 Read and write
-		p := real_path(path)
-		if !exists(p) {
-			return false
+		// Windows decides by extension, so check that first: a name that already
+		// carries an executable extension needs a single existence check, without
+		// opening the file to resolve links (`real_path`), which costs several
+		// times more and runs for every hit in `find_abs_path_of_executable`.
+		// A name without one may still be a link to an executable, so resolve it.
+		if win_has_executable_extension(path) {
+			return exists(path)
 		}
-		ext := p.to_lower().all_after_last('.')
-		// Note: Extensions like 'ps1', 'vbs', 'js', 'msi', 'scr', 'pif' require specific interpreters and are not directly executable
-		return ext in ['exe', 'com', 'bat', 'cmd']
+		p := real_path(path)
+		return exists(p) && win_has_executable_extension(p)
 	}
 	$if solaris {
 		attr := stat(path) or { return false }
 		return (int(attr.mode) & (s_ixusr | s_ixgrp | s_ixoth)) != 0
 	}
 	return C.access(&char(path.str), x_ok) != -1
+}
+
+// win_has_executable_extension reports whether `path` ends in one of the
+// extensions Windows runs directly.
+// Note: Extensions like 'ps1', 'vbs', 'js', 'msi', 'scr', 'pif' require specific interpreters and are not directly executable
+fn win_has_executable_extension(path string) bool {
+	ext := path.to_lower().all_after_last('.')
+	return ext in ['exe', 'com', 'bat', 'cmd']
 }
 
 // is_writable returns `true` if `path` is writable.

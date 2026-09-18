@@ -1,6 +1,6 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
@@ -1041,14 +1041,14 @@ fn (mut backend X11Backend) refresh_ewmh_support() {
 			backend.root, backend.net_active_window) != 0
 		backend.ewmh_maximize =
 			C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state) != 0
-			&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_maximized_horz) != 0
-			&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_maximized_vert) != 0
+				&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_maximized_horz) != 0
+				&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_maximized_vert) != 0
 		backend.ewmh_fullscreen =
 			C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state) != 0
-			&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_fullscreen) != 0
+				&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_fullscreen) != 0
 		backend.ewmh_modal =
 			C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state) != 0
-			&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_modal) != 0
+				&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_modal) != 0
 	}
 }
 
@@ -1262,7 +1262,7 @@ fn (mut backend X11Backend) queued_configure_observation_events(index int, width
 		position := state.position
 		position_changed := backend.windows[index].observed_position_known != position.known
 			|| (position.known && (backend.windows[index].observed_position_x != position.x
-			|| backend.windows[index].observed_position_y != position.y))
+				|| backend.windows[index].observed_position_y != position.y))
 		if position_changed {
 			backend.windows[index].observed_position_known = position.known
 			backend.windows[index].observed_position_x = position.x
@@ -2103,14 +2103,14 @@ $if test {
 				backend.net_active_window) != 0
 			maximize :=
 				C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state) != 0
-				&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_maximized_horz) != 0
-				&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_maximized_vert) != 0
+					&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_maximized_horz) != 0
+					&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_maximized_vert) != 0
 			fullscreen :=
 				C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state) != 0
-				&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_fullscreen) != 0
+					&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_fullscreen) != 0
 			modal :=
 				C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state) != 0
-				&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_modal) != 0
+					&& C.v_multiwindow_x11_root_supports_atom(backend.display, backend.root, backend.net_wm_state_modal) != 0
 			return backend.ewmh_active_window == active && backend.ewmh_maximize == maximize
 				&& backend.ewmh_fullscreen == fullscreen && backend.ewmh_modal == modal
 		}
@@ -2783,7 +2783,7 @@ fn (mut backend X11Backend) poll_queued_events() ![]QueuedEvent {
 					mut mouse_lock_released := false
 					if backend.windows[index].mouse_locked && width > 0 && height > 0
 						&& (backend.windows[index].mouse_lock_center_x != width / 2
-						|| backend.windows[index].mouse_lock_center_y != height / 2)
+							|| backend.windows[index].mouse_lock_center_y != height / 2)
 						&& !backend.recenter_locked_pointer(index, true) {
 						backend.release_mouse_lock(index)
 						mouse_lock_released = true
@@ -3360,8 +3360,7 @@ $if linux && x_multiwindow_x11 ? {
 		mut item_count := X11NativeULong(0)
 		mut bytes_after := X11NativeULong(0)
 		mut data := &u8(unsafe { nil })
-		status := C.XGetWindowProperty(backend.display, requestor, property, X11NativeLong(0), X11NativeLong((
-			x11_clipboard_max_bytes + 3) / 4), 1, X11NativeAtom(0), &actual_type, &actual_format,
+		status := C.XGetWindowProperty(backend.display, requestor, property, X11NativeLong(0), X11NativeLong((x11_clipboard_max_bytes + 3) / 4), 1, X11NativeAtom(0), &actual_type, &actual_format,
 			&item_count, &bytes_after, &&u8(&data))
 		if status != x11_success {
 			if data != unsafe { nil } {
@@ -3429,8 +3428,7 @@ $if linux && x_multiwindow_x11 ? {
 		mut item_count := X11NativeULong(0)
 		mut bytes_after := X11NativeULong(0)
 		mut data := &u8(unsafe { nil })
-		status := C.XGetWindowProperty(backend.display, window, property, X11NativeLong(0), X11NativeLong((
-			x11_clipboard_chunk_bytes + 3) / 4), 1, X11NativeAtom(0), &actual_type, &actual_format,
+		status := C.XGetWindowProperty(backend.display, window, property, X11NativeLong(0), X11NativeLong((x11_clipboard_chunk_bytes + 3) / 4), 1, X11NativeAtom(0), &actual_type, &actual_format,
 			&item_count, &bytes_after, &&u8(&data))
 		valid := status == x11_success && actual_type == backend.clipboard_utf8
 			&& actual_format == 8 && bytes_after == X11NativeULong(0)
@@ -4602,7 +4600,7 @@ fn (mut backend X11Backend) accept_native_render_window_loss(id WindowId) {
 	backend.windows[index].native_destroyed = true
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn (mut backend X11Backend) render_environment(id WindowId) !gfx.Environment {
 		$if linux && x_multiwindow_x11 ? {
 			index := backend.window_record_index(id) or { return error(err_window_not_found) }

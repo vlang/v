@@ -14,7 +14,7 @@ see also `v help build`.
       `clang`, `gcc`, `tcc` (also accepted as `tinyc`), `mingw-w64` and `msvc`.
 
    -old-compiler
-      On macOS and Linux the experimental V3 compiler (vlib/v3) is the default;
+      On macOS, Linux, and BSD the experimental V3 compiler (vlib/v) is the default;
       `-old-compiler` bypasses it and compiles with the established compiler in
       vlib/v. V already falls back to this compiler automatically when V3 cannot
       build an eligible program, and (unless V_C_ERROR_BUG_REPORT_DISABLED=1 is
@@ -78,6 +78,7 @@ see also `v help build`.
       When set to `console` V will generate a `wmain` main function.
       When set to `windows` V will generate a `wWinMain` main function,
       even when you are not compiling `gg` apps.
+      The FastC backend does not support `-subsystem windows` yet.
 
    -icon <path>
    --icon=<path>
@@ -151,7 +152,32 @@ see also `v help build`.
          implementation can be found in `vlib/builtin/linux_bare`.
 
    -cross
-      With `-cross`, V will attempt to output cross-platform C code.
+      Produce portable C, like `-os cross` (see the `-os` entry below), but as a
+      modifier that combines with an explicit target, so that
+      `v -cross -os windows -cc msvc -o v_win.c cmd/v` generates the Windows
+      bootstrap snapshot.
+
+      It additionally turns on the `cross` and `no_backtrace` custom defines, so
+      that the `$if cross ?` guards in the standard library select their portable
+      path instead of a platform syscall, and no backtrace support is baked in.
+
+   -target-libc-headers
+      The target supplies the C library headers itself, so V includes them
+      rather than restating what they declare. A kernel is the case: it
+      compiles the generated C with `-nostdinc -ffreestanding` against its own
+      header tree, and defines `struct stat`, `FILE` and the rest for itself.
+
+      V otherwise decides this from whether the program has any `#include` of
+      its own, which reads a project's own headers as proof that the host libc
+      is present, and then emits the full hosted set (`<sys/un.h>`,
+      `<pthread.h>`, `<sys/epoll.h>`) into a unit that has none of them. It
+      cannot be inferred from `-os` either, because the same OS also hosts
+      ordinary programs that link the host's libc.
+
+      This is not `-freestanding`, which means no libc at all and needs a
+      `-bare-builtin-dir`. Here there is a libc; it is the target's own. Windows
+      targets, non-C backends, and portable `-os cross`/`-cross` output are
+      not currently supported by this mode.
 
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
@@ -171,6 +197,48 @@ see also `v help build`.
             `plan9`,
             `wasm32`, `wasm32-wasi`, `wasm32-emscripten`
 
+      The pseudo target `-os cross` is not a platform. It asks for portable C,
+      i.e. C that is not tied to one OS, architecture or C compiler, so that a
+      single generated `.c` file can be compiled on any of them. This is how
+      the bootstrap snapshot `vc/v.c` is produced. It only makes sense together
+      with `-o file.c`, since there is no single machine to build for.
+
+      In this mode V does not resolve a target-dependent `$if` while generating.
+      It keeps every branch and emits the condition as a C preprocessor guard,
+      so that the compiler that eventually builds the C file chooses:
+
+            $if linux { a() } $else { b() }
+
+      becomes
+
+            #if (defined(__linux__) && !defined(__ANDROID__))
+            a();
+            #else
+            b();
+            #endif
+
+      Conditions that do not depend on the target (`$if prealloc`, `-d` values,
+      `$if debug`) are still resolved while generating, exactly as usual.
+
+      What is not portable, and is decided while generating instead:
+
+        * A `$if` used as an *expression*. Its branches may have different types
+          - `closure_thunk` in `vlib/builtin/closure` is a differently sized
+          fixed array per architecture - which no guard around an expression can
+          express.
+        * A `$if` at file scope holding declarations. A function, type, constant
+          or global cannot be wrapped in `#if`, so only the host's branch is
+          emitted. Directives (`#include`, `#flag`) at file scope are kept from
+          every branch and guarded; that is what makes the headers portable.
+        * Platform files (see below) are still selected by the host V runs on.
+          A module split into `x_linux.c.v` and `x_darwin.c.v` therefore
+          contributes only the generating host's variant, so generate the
+          portable C on the platform whose variants are the portable ones.
+        * The pointer width. V's `int`, the type layouts and the literal ranges
+          are baked for the generating target, so the output carries a check
+          that fails the build with a clear `#error` when it is compiled for a
+          different width. It stays portable across targets of the same width.
+
       Note that V has the concept of platform files, i.e. files ending
       with `_platform.c.v`, and usually only the matching files are used in
       a compilation, and also it supports a `_default.c.v` file, that will
@@ -185,10 +253,10 @@ see also `v help build`.
       If you compile with `-os freebsd`, then x_default.c.v will be used.
       If you compile with `-os linux`, then x_linux.c.v will be used.
       If you compile with `-os windows`, then x_windows.c.v will be used.
-      If you compile with `-cross`, then all, *except x_default.c.v*
-      will be used, wrapped in conditional compilation guards, so that
-      the generated C source code will be larger, but will compile on all
-      explicitly supported platforms without source changes.
+      If you compile with `-os cross`, the file for the host V runs on is
+      used, the same as without it: `-os cross` guards the target-dependent
+      `$if` conditions *inside* the selected files, it does not combine the
+      platform files themselves.
 
    -m32, -m64
       Whether 32-bit or 64-bit machine code will be generated.
@@ -306,7 +374,7 @@ see also `v help build`.
       C code, without opening the generated .c file in a text editor,
       i.e. it enables this workflow:
 
-      1) change vlib/v/gen/cgen.v
+      1) change vlib/v/gen/c/cgen.v
       2) ./v -o v2 cmd/v && ./v2 -printfn main__main bug.v
       3) inspect the produced C, and goto 1) till the bug is fixed.
 

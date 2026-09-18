@@ -10,7 +10,7 @@ fn f[T]() u32 {
 fn test_generic_fn_variable() {
 	r1 := f[int]()
 	println(r1)
-	assert r1 == $if new_int ? && x64 {
+	assert r1 == $if new_int ?&& x64 {
 		8
 	} $else {
 		4

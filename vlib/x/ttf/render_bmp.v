@@ -61,14 +61,12 @@ pub fn (mut bmp BitMap) clear() {
 
 // trf_txt returns the transform matrix applied to the text.
 pub fn (bmp &BitMap) trf_txt(p &Point) (int, int) {
-	return int(p.x * bmp.tr_matrix[0] + p.y * bmp.tr_matrix[3] + bmp.tr_matrix[6]), int(
-		p.x * bmp.tr_matrix[1] + p.y * bmp.tr_matrix[4] + bmp.tr_matrix[7])
+	return int(p.x * bmp.tr_matrix[0] + p.y * bmp.tr_matrix[3] + bmp.tr_matrix[6]), int(p.x * bmp.tr_matrix[1] + p.y * bmp.tr_matrix[4] + bmp.tr_matrix[7])
 }
 
 // trf_ch returns the transform matrix applied to the char.
 pub fn (bmp &BitMap) trf_ch(p &Point) (int, int) {
-	return int(p.x * bmp.ch_matrix[0] + p.y * bmp.ch_matrix[3] + bmp.ch_matrix[6]), int(
-		p.x * bmp.ch_matrix[1] + p.y * bmp.ch_matrix[4] + bmp.ch_matrix[7])
+	return int(p.x * bmp.ch_matrix[0] + p.y * bmp.ch_matrix[3] + bmp.ch_matrix[6]), int(p.x * bmp.ch_matrix[1] + p.y * bmp.ch_matrix[4] + bmp.ch_matrix[7])
 }
 
 // set_pos sets the draw position in the buffer.

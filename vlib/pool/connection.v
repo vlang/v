@@ -9,8 +9,8 @@ const eviction_ch_cap = 1000
 
 // ConnectionPoolable defines the interface for connection objects
 pub interface ConnectionPoolable {
-mut:
 	// validate checks if the connection is still usable
+mut:
 	validate() !bool
 	// close terminates the physical connection
 	close() !

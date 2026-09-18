@@ -66,7 +66,7 @@ fn C.exit(code i32)
 
 fn C.qsort(base voidptr, items usize, item_size usize, cb C.qsort_callback_func)
 
-fn C.strlen(s &char) i32
+fn C.strlen(s &char) usize
 
 @[trusted]
 fn C.isdigit(c i32) bool
@@ -96,6 +96,7 @@ fn C.sscanf(str &char, const_format &char, opt ...voidptr) i32
 fn C.scanf(const_format &char, opt ...voidptr) i32
 
 fn C.puts(msg &char) i32
+
 @[trusted]
 fn C.abs(f64) f64
 
@@ -132,13 +133,16 @@ fn C.strstr(const_haystack &char, const_needle &char) &char
 // process execution, os.process:
 @[trusted]
 fn C.GetCurrentProcessId() u32
+
 @[trusted]
 fn C._getpid() i32
+
 @[trusted]
 fn C.getpid() i32
 
 @[trusted]
 fn C.GetCurrentThreadId() u32
+
 @[trusted]
 fn C.gettid() u32
 
@@ -160,7 +164,7 @@ fn C.execvp(cmd_path &char, args &&char) i32
 
 fn C._execve(cmd_path &char, args voidptr, envs voidptr) i32
 
-fn C._execvp(cmd_path &char, args &&char) i32
+fn C._execvp(cmd_path &char, args voidptr) i32
 
 fn C.strcmp(s1 &char, s2 &char) i32
 
@@ -198,7 +202,7 @@ fn C.statvfs(const_path &char, buf &C.statvfs) i32
 
 fn C.rename(old_filename &char, new_filename &char) i32
 
-fn C.fgets(str &char, n i32, stream &C.FILE) i32
+fn C.fgets(str &char, n i32, stream &C.FILE) &char
 
 fn C.fgetpos(&C.FILE, voidptr) i32
 
@@ -263,7 +267,7 @@ fn C.strncasecmp(s &char, s2 &char, n i32) i32
 
 fn C.strcasecmp(s &char, s2 &char) i32
 
-fn C.strncmp(s &char, s2 &char, n i32) i32
+fn C.strncmp(s &char, s2 &char, n usize) i32
 
 @[trusted]
 fn C.strerror(i32) &char

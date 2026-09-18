@@ -28,17 +28,23 @@ pub mut:
 	dynamic_daylight_time_is_disabled u8
 }
 
-fn C.GetTimeZoneInformation(&TimeZoneInformation) u32
+fn C.GetTimeZoneInformation(voidptr) u32
 
-fn C.GetDynamicTimeZoneInformation(&DynamicTimeZoneInformation) u32
+fn C.GetDynamicTimeZoneInformation(voidptr) u32
 
-fn C.GetTimeZoneInformationForYear(u16, &DynamicTimeZoneInformation, &TimeZoneInformation) C.BOOL
+fn C.GetTimeZoneInformationForYear(u16, voidptr, voidptr) C.BOOL
 
 fn local_location() !&Location {
-	tz := os.getenv('TZ')
-	if tz != '' && tz != 'Local' && !tz.starts_with(':') {
-		if rule := parse_posix_zone_rule(tz) {
-			return location_from_posix_rule('Local', rule)
+	if tz := os.getenv_opt('TZ') {
+		// Match the POSIX implementation: an explicitly empty TZ selects UTC,
+		// while an unset TZ continues to use the operating-system local zone.
+		if tz == '' {
+			return load_location('UTC')
+		}
+		if tz != 'Local' && !tz.starts_with(':') {
+			if rule := parse_posix_zone_rule(tz) {
+				return location_from_posix_rule('Local', rule)
+			}
 		}
 	}
 	mut info := TimeZoneInformation{}
@@ -181,8 +187,7 @@ fn windows_system_time_rule(st SystemTime) PosixRule {
 		month:   int(st.month)
 		week:    int(st.day)
 		weekday: int(st.day_of_week)
-		seconds: int(st.hour) * seconds_per_hour + int(st.minute) * seconds_per_minute +
-			int(st.second)
+		seconds: int(st.hour) * seconds_per_hour + int(st.minute) * seconds_per_minute + int(st.second)
 	}
 }
 

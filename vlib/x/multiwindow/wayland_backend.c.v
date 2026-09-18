@@ -1,6 +1,6 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
@@ -2990,7 +2990,7 @@ fn (mut backend WaylandBackend) finish_window_show_handshake(index int, mut tran
 	backend.flush_window_show_ack(flush_attempt)!
 	if record.show_configure_width > 0 && record.show_configure_height > 0
 		&& (record.width != record.show_configure_width
-		|| record.height != record.show_configure_height) {
+			|| record.height != record.show_configure_height) {
 		record.width = record.show_configure_width
 		record.height = record.show_configure_height
 		if record.wl_egl_window != unsafe { nil } {
@@ -3278,7 +3278,7 @@ fn (record &WaylandWindowRecord) has_server_side_decoration() bool {
 fn (record &WaylandWindowRecord) has_client_side_decoration() bool {
 	return record.toplevel_decoration == unsafe { nil }
 		|| (record.toplevel_decoration_configured
-		&& record.toplevel_decoration_mode == wayland_xdg_toplevel_decoration_mode_client_side)
+			&& record.toplevel_decoration_mode == wayland_xdg_toplevel_decoration_mode_client_side)
 }
 
 fn (mut backend WaylandBackend) start(require_renderer bool) ! {
@@ -4193,7 +4193,7 @@ fn (mut backend WaylandBackend) release_egl_lifetime() {
 
 fn (mut backend WaylandBackend) accept_native_render_window_loss(id WindowId) {
 	index := backend.window_record_index(id) or { return }
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		record := backend.windows[index]
 		backend.invalidate_window_egl_target(index, record.egl_surface,
 			record.render_target_generation, true)
@@ -5606,7 +5606,7 @@ fn (mut backend WaylandBackend) dispatch_pending_nonblocking() NativeRenderResul
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn (mut backend WaylandBackend) render_environment(id WindowId) !gfx.Environment {
 		$if linux && sokol_wayland ? {
 			index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -7822,7 +7822,7 @@ fn (mut backend WaylandBackend) release_window_render_target_for_hide(index int)
 						return error(err_render_native_renderer_unavailable)
 					}
 				} else {
-					$if gg_multiwindow ? || x_multiwindow_render ? {
+					$if gg_multiwindow ?|| x_multiwindow_render ? {
 						anchor := backend.make_renderer_anchor_current(.anchor_prepare)
 						if !backend.anchor_binding_proven(anchor) {
 							return native_render_error(anchor)
@@ -7832,7 +7832,7 @@ fn (mut backend WaylandBackend) release_window_render_target_for_hide(index int)
 					}
 				}
 			} $else {
-				$if gg_multiwindow ? || x_multiwindow_render ? {
+				$if gg_multiwindow ?|| x_multiwindow_render ? {
 					anchor := backend.make_renderer_anchor_current(.anchor_prepare)
 					if !backend.anchor_binding_proven(anchor) {
 						return native_render_error(anchor)

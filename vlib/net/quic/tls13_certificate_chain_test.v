@@ -35,9 +35,9 @@ fn test_verify_server_certificate_chain_end_to_end() {
 	der := chain_test_pem_to_der(chain_test_cert_pem)
 	parsed := ParsedCertificate{
 		certificate_request_context: []u8{}
-		certificate_list: [
+		certificate_list:            [
 			CertificateEntry{
-				cert_data: der
+				cert_data:  der
 				extensions: []TlsExtension{}
 			},
 		]
@@ -53,9 +53,9 @@ fn test_verify_server_certificate_chain_end_to_end() {
 fn test_verify_server_certificate_chain_rejects_malformed_der() {
 	parsed := ParsedCertificate{
 		certificate_request_context: []u8{}
-		certificate_list: [
+		certificate_list:            [
 			CertificateEntry{
-				cert_data: [u8(0xff), 0xff, 0xff, 0xff]
+				cert_data:  [u8(0xff), 0xff, 0xff, 0xff]
 				extensions: []TlsExtension{}
 			},
 		]

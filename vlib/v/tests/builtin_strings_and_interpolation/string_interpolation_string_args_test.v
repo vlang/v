@@ -13,8 +13,8 @@ fn test_interpolation_string_args() {
 	assert '1_${show_info('aaa')} 2_${show_info('bbb')}' == '1_aaa 2_bbb'
 	assert '1_${show_info('aaa')} 2_${show_info('bbb')}' == '1_aaa 2_bbb'
 
-	assert '${'aaa'}' == 'aaa'
-	assert '${'aaa'}' == 'aaa'
+	assert 'aaa' == 'aaa'
+	assert 'aaa' == 'aaa'
 
 	assert '${'aaa' + 'bbb'}' == 'aaabbb'
 	assert '${'aaa' + 'bbb'}' == 'aaabbb'

@@ -81,7 +81,6 @@ fn (mut runner SimpleTestRunner) assert_pass(i &VAssertMetaInfo) {
 
 fn (mut runner SimpleTestRunner) assert_fail(i &VAssertMetaInfo) {
 	runner.total_assert_fails++
-	eprintln('> failed assert ${runner.fn_assert_passes + 1} in ${runner.fname}, assert was in ${normalise_fname(i.fn_name)}, line: ${
-		i.line_nr + 1}')
+	eprintln('> failed assert ${runner.fn_assert_passes + 1} in ${runner.fname}, assert was in ${normalise_fname(i.fn_name)}, line: ${i.line_nr + 1}')
 	unsafe { i.free() }
 }

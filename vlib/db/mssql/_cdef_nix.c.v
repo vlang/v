@@ -1,6 +1,6 @@
 module mssql
 
-$if $pkgconfig('odbc') {
+$if $pkgconfig ( 'odbc' ) {
 	#pkgconfig --cflags --libs odbc
 } $else {
 	#flag -lodbc

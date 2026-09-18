@@ -2,6 +2,7 @@ module main
 
 import stats_import
 import benchmark
+
 // /////////////////////////////////////////////////////////////////////
 // / This file will get compiled as a part of the same module,
 // / in which a given _test.v file is, when v is given -stats argument

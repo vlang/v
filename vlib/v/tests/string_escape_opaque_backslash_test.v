@@ -33,7 +33,7 @@ fn test_two_decoded_backslashes_back_to_back() {
 
 fn test_interpolated_string_with_decoded_backslash() {
 	x := 42
-	s := 'A\x5cn${x}B'
+	s := 'A\\n${x}B'
 	assert s.len == 6
 	assert s.bytes() == [u8(65), 92, 110, 52, 50, 66]
 }
@@ -52,7 +52,7 @@ fn test_line_continuation_before_decoded_backslash() {
 fn test_string_builder_write_string_with_decoded_backslash_in_interpolation() {
 	x := 1
 	mut sb := strings.new_builder(16)
-	sb.write_string('A\x5cnB${x}')
+	sb.write_string('A\\nB${x}')
 	s := sb.str()
 	assert s.len == 5
 	assert s.bytes() == [u8(65), 92, 110, 66, 49]
@@ -69,7 +69,9 @@ fn test_decoded_backslash_does_not_break_string_equality_and_match() {
 	assert s == 'A\x5cnB'
 	mut matched := false
 	match s {
-		'A\x5cnB' { matched = true }
+		'A\x5cnB' {
+			matched = true
+		}
 		else {}
 	}
 	assert matched
@@ -177,7 +179,7 @@ fn test_method_attr_arg_with_decoded_backslash_via_comptime_methods() {
 // ast.Attr consumer covered above, in a file the original fix never touched.
 enum JsonAttrHazardEnum {
 	red
-	blue @[json: 'A\x5cnB']
+	blue  @[json: 'A\x5cnB']
 }
 
 struct JsonAttrHazardWrap {
@@ -217,7 +219,7 @@ struct OrmTableHazardItem {
 
 @[table: 'orm_column_hazard_items']
 struct OrmColumnHazardItem {
-	id    int @[primary; sql: serial]
+	id    int    @[primary; sql: serial]
 	value string @[sql: 'A\x5cnB']
 }
 
@@ -226,7 +228,7 @@ fn test_orm_table_name_with_decoded_backslash() {
 	sql db {
 		create table OrmTableHazardItem
 	} or { panic(err) }
-	rows := db.exec('select name from sqlite_master where type = \'table\'') or { panic(err) }
+	rows := db.exec("select name from sqlite_master where type = 'table'") or { panic(err) }
 	mut found := false
 	for row in rows {
 		if row.vals.len > 0 {

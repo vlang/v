@@ -37,7 +37,7 @@ pub fn (manifest Manifest) source_root(vmod_root string) string {
 // ModFileCacher.get(folder) works in such a way, that given this tree:
 // examples/hanoi.v
 // vlib/v.mod
-// vlib/v/tests/project_with_c_code/mod1/v.mod
+// vlib/v/tests/project_with_c_code/v.mod
 // vlib/v/tests/project_with_c_code/mod1/wrapper.c.v
 // -----------------
 // ModFileCacher.get('examples')
@@ -46,8 +46,8 @@ pub fn (manifest Manifest) source_root(vmod_root string) string {
 // => ModFileAndFolder{'vlib/v.mod', 'vlib'}
 // ModFileCacher.get('vlib/v')
 // => ModFileAndFolder{'vlib/v.mod', 'vlib'}
-// ModFileCacher.get('vlib/v/test/project_with_c_code/mod1')
-// => ModFileAndFolder{'vlib/v/test/project_with_c_code/mod1/v.mod', 'vlib/v/test/project_with_c_code/mod1'}
+// ModFileCacher.get('vlib/v/tests/project_with_c_code/mod1')
+// => ModFileAndFolder{'vlib/v/tests/project_with_c_code/v.mod', 'vlib/v/tests/project_with_c_code'}
 pub struct ModFileAndFolder {
 pub:
 	// vmod_file contains the full path of the found 'v.mod' file, or ''
@@ -78,13 +78,13 @@ pub fn new_mod_file_cacher() &ModFileCacher {
 @[if debug_mod_file_cacher ?]
 pub fn (mcache &ModFileCacher) debug() {
 	eprintln('ModFileCacher hits: ${mcache.hits}, misses: ${mcache.misses} | get_files_hits: ${mcache.get_files_hits} | get_files_misses: ${mcache.get_files_misses}')
-	eprintln('	 ModFileCacher.cache.len: ${mcache.cache.len}')
+	eprintln('\t ModFileCacher.cache.len: ${mcache.cache.len}')
 	for k, v in mcache.cache {
-		eprintln('	 K: ${k:-42s} | v.mod: ${v.vmod_file:-42s} | folder: `${v.vmod_folder}`')
+		eprintln('\t K: ${k:-42s} | v.mod: ${v.vmod_file:-42s} | folder: `${v.vmod_folder}`')
 	}
 	eprintln('	 ModFileCacher.folder_files:')
 	for k, v in mcache.folder_files {
-		eprintln('	 K: ${k:-42s} | folder_files: ${v}')
+		eprintln('\t K: ${k:-42s} | folder_files: ${v}')
 	}
 }
 

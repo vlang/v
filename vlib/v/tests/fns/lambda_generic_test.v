@@ -1,4 +1,5 @@
 import arrays
+import x
 
 fn ddd[T](call fn (arg1 T, arg2 T) string, arg1 T, arg2 T) string {
 	return call(arg1, arg2)

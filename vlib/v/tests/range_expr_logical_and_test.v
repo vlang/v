@@ -1,7 +1,7 @@
 module main
 
 fn bang(a int, b int) int {
-	if a in 0..9 && b in 0..9 {
+	if a in 0 .. 9 && b in 0 .. 9 {
 		return a + b
 	} else {
 		return 0

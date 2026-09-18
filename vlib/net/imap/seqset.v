@@ -212,7 +212,7 @@ fn (mut s SeqSet) insert(lo u64, hi u64) {
 
 	merged := SeqRange{
 		start: from_bound(new_lo)
-		stop: from_bound(new_hi)
+		stop:  from_bound(new_hi)
 	}
 	if after > first {
 		s.ranges.delete_many(first, after - first)

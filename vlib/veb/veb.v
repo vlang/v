@@ -790,10 +790,10 @@ fn serve_if_static[X](app StaticHandler, mut user_context X, url urllib.URL, hos
 	// Configure static file compression settings
 	user_context.set_static_compression_config(static_handler.enable_static_gzip,
 		static_handler.enable_static_zstd, static_handler.enable_static_compression, if static_handler.static_compression_max_size >= 0 {
-		static_handler.static_compression_max_size
-	} else {
-		1048576 // Default: 1MB
-	}, static_handler.static_compression_mime_types)
+			static_handler.static_compression_max_size
+		} else {
+			1048576 // Default: 1MB
+		}, static_handler.static_compression_mime_types)
 
 	user_context.send_file(mime_type, static_file)
 	return true

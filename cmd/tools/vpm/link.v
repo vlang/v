@@ -14,6 +14,7 @@ fn vpm_link(query []string) {
 	if settings.is_help {
 		help.print_and_exit('link')
 	}
+	ensure_no_local_flag_for_project_command('link')
 	ensure_no_query_for_project_command('link', query)
 	ensure_vmodules_dir_exist()
 
@@ -55,6 +56,7 @@ fn vpm_unlink(query []string) {
 	if settings.is_help {
 		help.print_and_exit('unlink')
 	}
+	ensure_no_local_flag_for_project_command('unlink')
 	ensure_no_query_for_project_command('unlink', query)
 
 	project := get_project_for_linking() or {
@@ -75,6 +77,23 @@ fn vpm_unlink(query []string) {
 	}
 	cleanup_empty_module_parent_dirs(project.link_path)
 	println('Unlinked `${project.name}` from `${fmt_mod_path(project.link_path)}`.')
+}
+
+// `link` and `unlink` are about the V modules directory: they make the current
+// project importable from anywhere under the name its manifest carries. `--local`
+// points the module store at the project itself, where that means linking the
+// project into itself -- `<project>/foo -> <project>` for a project named `foo` --
+// and unlinking would take whatever symlinked module the project keeps at that
+// path. Neither is anything the flag could have meant, so it is refused rather
+// than quietly ignored.
+fn ensure_no_local_flag_for_project_command(command string) {
+	if !settings.is_local {
+		return
+	}
+	vpm_error('`${command}` does not accept `--local`.',
+		details: 'It is about the V modules directory, where the current project becomes importable from anywhere. A project does not need to be linked into itself.'
+	)
+	exit(2)
 }
 
 fn ensure_no_query_for_project_command(command string, query []string) {

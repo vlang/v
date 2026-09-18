@@ -9,7 +9,7 @@ import v.util.vflags
 const args_ = arguments()
 const is_debug = args_.contains('-debug')
 const full_v_cli_source = 'cmd/v'
-const standalone_v3_source = 'vlib/v3/v3.v'
+const standalone_v3_source = 'vlib/v/v.v'
 
 // support a renamed `v` executable too:
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
@@ -29,6 +29,7 @@ fn main() {
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
+	host_os := self_build_host_os()
 	command_index := os.getenv('VSELF_COMMAND_INDEX').int()
 	os.unsetenv('VSELF_COMMAND_INDEX')
 	repeat_count, mut args := extract_repeat_count(args_[1..], command_index)
@@ -44,17 +45,20 @@ fn main() {
 	}
 	if !fastc_self_build && !has_self_build_configuration_arg(effective_args) {
 		// compiling by default, i.e. `v self`:
-		uos := os.user_os()
-		uname := os.uname()
-		if uos == 'macos' {
+		unam := os.uname()
+		if host_os == 'macos' {
 			// Apple Silicon's bundled TCC is much faster for compiler rebuilds. The
 			// generated compiler uses pthread-backed allocator state because native
 			// TinyCC TLS is not reliable on macOS.
-			default_cc := if uname.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
+			default_cc := if unam.machine in ['arm64', 'aarch64'] { 'tcc' } else { 'cc' }
 			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
-		} else if uos == 'linux' && uname.machine in ['arm64', 'aarch64'] {
+		} else if host_os == 'linux' && unam.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
 			// prefer the system compiler for self-builds there.
+			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
+		} else if host_os in ['freebsd', 'openbsd', 'netbsd', 'dragonfly'] {
+			// Keep the ordinary BSD self-build on the platform's system toolchain.
+			// Explicit TinyCC builds use the preallocation-compatible pthread slot.
 			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
 		}
 	}
@@ -62,27 +66,34 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && os.user_os() in ['linux', 'macos'] && '-prod' in effective_args
-		&& '-parallel-cc' !in effective_args {
+	if !fastc_self_build && '-prod' in effective_args && '-parallel-cc' !in effective_args {
 		// A V3-only cmd/v is large enough that a monolithic C compiler + LTO dominates
 		// the self-build. Parallel C compilation also keeps the generated unit out
 		// of the full-LTO path when the self-build is already running under V3.
 		args << '-parallel-cc'
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && os.user_os() in ['linux', 'macos'] && '-prod' in effective_args
-		&& '-no-memory-limit' !in effective_args && '--no-memory-limit' !in effective_args {
+	if !fastc_self_build && '-prod' in effective_args && '-no-memory-limit' !in effective_args
+		&& '--no-memory-limit' !in effective_args {
 		// Production C generation for the embedded V3 compiler can legitimately
 		// exceed V3's default 10 GB process limit before the native compiler starts.
 		args << '-no-memory-limit'
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && os.user_os() in ['linux', 'macos']
-		&& self_build_supports_prealloc(effective_args) && !has_prealloc_arg(effective_args) {
+	if !fastc_self_build && self_build_supports_prealloc(effective_args, host_os)
+		&& !has_prealloc_arg(effective_args) {
 		// The embedded V3 compiler uses disposable preallocation scopes. Pass the
 		// flag explicitly so the first `v up` built by an older compiler gets
 		// the bounded-memory implementation too.
 		args << '-prealloc'
+	}
+	// A replacement compiler has to be built entirely from the checked-out sources.
+	// Reusing a whole-program cache entry here can carry stale checker/codegen state
+	// from the compiler that is being replaced into a binary that reports the new hash.
+	effective_args = effective_self_build_args(args)
+	if '-nocache' !in effective_args && '--no-cache' !in effective_args {
+		args << '-nocache'
+		effective_args = effective_self_build_args(args)
 	}
 	obinary := self_build_output(args)
 	if fastc_self_build && repeat_count > 1 && obinary == '' {
@@ -215,13 +226,14 @@ fn unsupported_fastc_repeat_args(args []string) []string {
 				'-gc' { value == 'none' }
 				else { false }
 			}
+
 			if !supported {
 				unsupported << '${arg} ${value}'
 			}
 			i += 2
 			continue
 		}
-		if arg in ['-silent', '-keepc'] {
+		if arg in ['-silent', '-keepc', '-nocache'] {
 			i++
 			continue
 		}
@@ -316,8 +328,8 @@ fn has_prealloc_arg(args []string) bool {
 	return args.any(it in ['-prealloc', '-no-prealloc'])
 }
 
-fn self_build_supports_prealloc(args []string) bool {
-	mut target_os := os.user_os()
+fn self_build_supports_prealloc(args []string, host_os string) bool {
+	mut target_os := host_os
 	mut ccompiler := ''
 	mut gc := 'none'
 	mut i := 0
@@ -349,15 +361,18 @@ fn self_build_supports_prealloc(args []string) bool {
 		}
 		i++
 	}
-	return target_os in ['linux', 'macos'] && gc == 'none'
-		&& self_ccompiler_supports_prealloc(ccompiler, target_os)
+	return gc == 'none' && self_ccompiler_supports_prealloc(ccompiler, target_os)
 }
 
 fn self_ccompiler_supports_prealloc(ccompiler string, target_os string) bool {
 	cc := os.file_name(ccompiler.trim_space()).to_lower_ascii()
+	// Windows defaults to bundled TCC when no compiler is explicit.
+	if target_os == 'windows' && cc == '' {
+		return false
+	}
 	is_tinyc := cc.contains('tcc') || cc.contains('tinyc') || cc.contains('tinygcc')
 		|| cc.contains('tiny_gcc') || cc.contains('tiny-gcc')
-	return !is_tinyc || target_os == 'macos'
+	return !is_tinyc || target_os in ['macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly']
 }
 
 fn has_profile_cflag(args []string) bool {
@@ -471,6 +486,19 @@ fn clone_args(args []string) []string {
 		cloned << arg.clone()
 	}
 	return cloned
+}
+
+fn self_build_host_os() string {
+	$if vself_test_windows_transition ? {
+		return 'windows'
+	}
+	$if vself_test_bsd_transition ? {
+		return 'freebsd'
+	}
+	$if vself_test_other_transition ? {
+		return 'haiku'
+	}
+	return os.user_os()
 }
 
 fn compose_v_cmd(vexe string, args []string, source string) string {

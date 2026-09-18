@@ -15,6 +15,13 @@ import time
 // (see its doc comment for why), so this is the ONLY bound on how long an
 // idle reader can hold io_mu and make a writer wait — kept short for exactly
 // that reason, not because a longer internal retry would be incorrect.
+// This bound only holds if the backend's read really does return on timeout:
+// mbedTLS gets it from mbedtls_ssl_conf_read_timeout on its recv callback, and
+// OpenSSL from its socket being non-blocking (SSLConn.connect switches it), so
+// SSL_read yields WANT_READ instead of blocking in read(). Before that switch a
+// reader parked in a blocking SSL_read held io_mu until the peer sent anything
+// at all, stalling every writer — including the request that had already
+// received its full response — for the server's idle timeout (vlang/v#28506).
 //
 // Both mbedTLS and OpenSSL's write_ptr (vlib/net/mbedtls/ssl_connection.c.v,
 // vlib/net/openssl/ssl_connection.c.v) reuse this SAME configured duration for

@@ -23,7 +23,7 @@ module openssl
 #flag windows -IC:/Program Files/OpenSSL/include
 #flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
 
-$if $pkgconfig('openssl') {
+$if $pkgconfig ( 'openssl' ) {
 	#pkgconfig --cflags --libs openssl
 } $else {
 	#flag windows -l libssl -l libcrypto

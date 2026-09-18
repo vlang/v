@@ -279,6 +279,9 @@ fn builtin_init() {
 	$if v2_native_windows_pe_minimal ? {
 		return
 	} $else {
+		$if gcboehm || vgc ? {
+			gc_runtime_init()
+		}
 		$if gcboehm ? {
 			$if !gc_warn_on_stderr ? {
 				gc_set_warn_proc(internal_gc_warn_proc_none)

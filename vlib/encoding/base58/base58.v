@@ -85,7 +85,8 @@ pub fn encode_walpha_bytes(input []u8, alphabet Alphabet) []u8 {
 	}
 
 	// determine additional "zero-gap" in the buffer, aside from zcount
-	for i = zcount; i < sz && out[i] == 0; i++ {}
+	for i = zcount; i < sz && out[i] == 0; i++ {
+	}
 
 	// now encode the values with actual alphabet in-place
 	val := unsafe { out[i - zcount..] }

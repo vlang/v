@@ -319,8 +319,8 @@ pub fn parse_receiver_state_ledger(source string) !ReceiverStateLedger {
 	mut target_ids := []string{}
 	for value in require_array_member(root, 'targets')! {
 		require_exact_keys(value, ['target_id', 'generation', 'canonical_head', 'input_fingerprint',
-			'artifact_fingerprint', 'manifest_hash', 'active_consumer_id',
-			'active_recovery_handoff_id', 'active_subject_hash'])!
+			'artifact_fingerprint', 'manifest_hash', 'active_consumer_id', 'active_recovery_handoff_id',
+			'active_subject_hash'])!
 		target := ReceiverTargetSnapshot{
 			target_id:                  require_string_member(value, 'target_id')!
 			generation:                 require_integer_member(value, 'generation')!
@@ -340,7 +340,7 @@ pub fn parse_receiver_state_ledger(source string) !ReceiverStateLedger {
 			|| !is_lower_hex_64(target.manifest_hash)
 			|| (target.active_consumer_id != '' && !is_lower_hex_64(target.active_consumer_id))
 			|| (target.active_recovery_handoff_id != ''
-			&& !is_lower_hex_64(target.active_recovery_handoff_id))
+				&& !is_lower_hex_64(target.active_recovery_handoff_id))
 			|| !is_lower_hex_64(target.active_subject_hash) {
 			return error('receiver target snapshot is invalid or duplicated')
 		}
@@ -353,8 +353,8 @@ pub fn parse_receiver_state_ledger(source string) !ReceiverStateLedger {
 		require_exact_keys(value, ['id', 'record_type', 'target_id', 'consumer_type',
 			'resume_capability', 'intent_or_operation_id', 'expected_ledger_generation',
 			'expected_canonical_head', 'subject_ref_head', 'subject_hash', 'subject',
-			'receiver_repository', 'workflow_id', 'workflow_path', 'workflow_ref', 'event',
-			'run_name', 'state', 'selected_run_id', 'selected_run_attempt', 'receiver_master_sha'])!
+			'receiver_repository', 'workflow_id', 'workflow_path', 'workflow_ref', 'event', 'run_name',
+			'state', 'selected_run_id', 'selected_run_attempt', 'receiver_master_sha'])!
 		entry := ReceiverLedgerEntry{
 			id:                         require_string_member(value, 'id')!
 			record_type:                require_string_member(value, 'record_type')!
@@ -411,8 +411,8 @@ pub fn parse_receiver_state_ledger(source string) !ReceiverStateLedger {
 
 fn parse_receiver_subject(value JsonValue) !RecoverySubjectModel {
 	require_exact_keys(value, ['consumer_id', 'consumer_kind', 'intent_or_operation_id', 'target_id',
-		'subject_generation', 'initial_run_mode', 'remediation_trigger', 'sha', 'tree',
-		'original_ref', 'input_fingerprint', 'artifact_fingerprint', 'manifest_hash', 'digests'])!
+		'subject_generation', 'initial_run_mode', 'remediation_trigger', 'sha', 'tree', 'original_ref',
+		'input_fingerprint', 'artifact_fingerprint', 'manifest_hash', 'digests'])!
 	mut digests := []DigestModel{}
 	for digest in require_array_member(value, 'digests')! {
 		require_exact_keys(digest, ['path', 'sha256'])!
@@ -476,7 +476,7 @@ fn validate_receiver_entry(entry ReceiverLedgerEntry) ! {
 		|| entry.receiver_repository != 'vlang/v' || entry.workflow_id <= 0
 		|| entry.workflow_ref != 'master' || entry.event != 'workflow_dispatch'
 		|| (entry.subject.original_ref == 'thirdparty-${entry.target_id}'
-		&& entry.expected_canonical_head != entry.subject.sha)
+			&& entry.expected_canonical_head != entry.subject.sha)
 		|| entry.run_name != expected_run_name {
 		return error('receiver ledger entry identity or trusted workflow binding is invalid')
 	}

@@ -5,6 +5,12 @@ module builtin
 
 @[markused]
 fn builtin_init() {
+	$if v3_backend && (gcboehm || vgc) ? {
+		gc_runtime_init()
+	}
+	$if prealloc && v3_backend ? {
+		unsafe { prealloc_vinit() }
+	}
 	$if gcboehm ? {
 		$if !gc_warn_on_stderr ? {
 			gc_set_warn_proc(internal_gc_warn_proc_none)

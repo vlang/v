@@ -6,9 +6,9 @@ TMPDIR ?= /tmp
 VROOT  ?= .
 VC     ?= ./vc
 VEXE   ?= ./v
-V1_FALLBACK_EXE := $(dir $(VEXE))v1_fallback
-# Portable VC snapshots do not embed V3. Keep their v1 executable on the full
-# compatibility compiler path even when the generated C is built on macOS/Linux.
+V1_FALLBACK_EXE = $(dir $(VEXE))v1_fallback$(EXE_EXT)
+# Portable VC snapshots do not embed the default compiler. Keep their v1 executable on the full
+# compatibility compiler path even when the generated C is built on a V3 host.
 VC_BOOTSTRAP_DEFINE := -DCUSTOM_DEFINE_v1_fallback
 VCREPO ?= https://github.com/vlang/vc
 TCCREPO ?= https://github.com/vlang/tccbin
@@ -51,7 +51,6 @@ endif
 
 ifeq ($(_SYS),Linux)
 LINUX := 1
-V1_FALLBACK_BUILD := 1
 TCCOS := linux
 ifneq ($(shell ldd --version 2>&1 | grep -i musl),)
 TCCOS := linuxmusl
@@ -60,7 +59,6 @@ endif
 
 ifeq ($(_SYS),Darwin)
 MAC := 1
-V1_FALLBACK_BUILD := 1
 TCCOS := macos
 ifeq ($(shell expr $(shell uname -r | cut -d. -f1) \<= 16), 1)
 LEGACY := 1
@@ -86,6 +84,7 @@ LDFLAGS += -lexecinfo
 endif
 
 ifeq ($(_SYS),OpenBSD)
+OPENBSD := 1
 TCCOS := openbsd
 LDFLAGS += -lexecinfo
 endif
@@ -93,7 +92,6 @@ endif
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
-undefine V1_FALLBACK_BUILD
 TCCOS := android
 ifneq ($(wildcard $(PREFIX)/lib/libexecinfo.*),)
 LDFLAGS += -lexecinfo
@@ -138,7 +136,7 @@ GITFASTCLONE := $(GIT) clone --filter=blob:none --quiet
 
 TCCBUILDSCRIPT = $(VROOT)/thirdparty/build_scripts/thirdparty-$(TCCOS)-$(TCCARCH)_tcc.sh
 
-.PHONY: all clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
+.PHONY: all v1 clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
 
 ifdef prod
 VFLAGS+=-prod
@@ -167,10 +165,18 @@ ifneq ($(BOOTSTRAP_VC_UNSAFE_OPTFLAGS),)
 endif
 endif
 endif
-# A vc snapshot may use the lean V3 dispatcher when its generated C is built
+# A vc snapshot may use the lean compiler dispatcher when its generated C is built
 # on a Unix-like host. Keep the temporary v1 on the full compatibility path so
-# it can create v2 before either the embedded V3 driver or v1_fallback exists.
+# it can create v2 before either the compiler driver or v1_fallback exists.
 BOOTSTRAP_VC_CC_CFLAGS += -DCUSTOM_DEFINE_v1_fallback
+BOOTSTRAP_VC_SOURCES := $(VC)/$(VCFILE)
+# Portable vc snapshots generated before the OpenBSD entropy and semaphore guards
+# still reference two libc symbols that OpenBSD does not provide. Supply the small
+# bootstrap-only compatibility implementations until vc is regenerated.
+ifdef OPENBSD
+BOOTSTRAP_VC_CC_CFLAGS += -DSYS_getrandom=0
+BOOTSTRAP_VC_SOURCES += $(VROOT)/cmd/tools/openbsd_vc_compat.c
+endif
 BOOTSTRAP_TCC_REQUESTED := $(or $(findstring -cc tcc,$(strip $(VFLAGS))),$(findstring -cc=tcc,$(strip $(VFLAGS))))
 BOOTSTRAP_CCOMPILER_VFLAG :=
 BOOTSTRAP_VC_CCOMPILER_VFLAG :=
@@ -179,11 +185,11 @@ BOOTSTRAP_GC_VFLAG :=
 ifeq ($(filter -gc -gc=%,$(VFLAGS)),)
 	BOOTSTRAP_GC_VFLAG := -gc none
 endif
-ifeq ($(LINUX),1)
+ifneq ($(filter $(_SYS),Linux FreeBSD NetBSD OpenBSD DragonFly),)
 ifneq ($(filter $(TCCARCH),arm64 aarch64),)
 ifeq ($(filter -cc,$(VFLAGS)),)
 ifeq ($(findstring -cc=,$(VFLAGS)),)
-	# Bundled TCC can hang or miscompile V while bootstrapping on Linux ARM64,
+	# Bundled TCC can hang, fail, or miscompile V while bootstrapping on ARM64,
 	# so keep both `v1 -> v2` and `v2 -> v` on the same system compiler
 	# unless the user overrode it explicitly.
 	BOOTSTRAP_CCOMPILER_VFLAG := -cc "$(CC)"
@@ -191,6 +197,8 @@ ifeq ($(findstring -cc=,$(VFLAGS)),)
 endif
 endif
 endif
+endif
+ifeq ($(LINUX),1)
 ifneq ($(BOOTSTRAP_TCC_REQUESTED),)
 ifneq ($(CC),tcc)
 	# The external vc bootstrap snapshot may still emit Windows-only stdio
@@ -215,7 +223,7 @@ BOOTSTRAP_VFLAGS := $(BOOTSTRAP_CCOMPILER_VFLAG) $(if $(strip $(BOOTSTRAP_CFLAGS
 
 all: latest_vc latest_tcc latest_legacy
 ifdef WIN32
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 || cmd/tools/cc_compilation_failed_windows.sh
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -municode -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) $(LDFLAGS) -lws2_32 -lbcrypt || cmd/tools/cc_compilation_failed_windows.sh
 	./v1$(EXE_EXT) -no-parallel -o v2$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
 	./v2$(EXE_EXT) -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 	$(RM) v1$(EXE_EXT)
@@ -227,7 +235,7 @@ ifdef LEGACY
 	rm -rf $(TMPLEGACY)
 	$(eval override LDFLAGS+=-L$(realpath $(LEGACYLIBS))/lib -lMacportsLegacySupport)
 endif
-	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) $(VC)/$(VCFILE) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
+	$(CC) $(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS) $(VC_BOOTSTRAP_DEFINE) -std=c99 -w -o v1$(EXE_EXT) $(BOOTSTRAP_VC_SOURCES) -lm -lpthread $(BOOTSTRAP_LDFLAGS) || cmd/tools/cc_compilation_failed_non_windows.sh
 ifdef NETBSD
 	paxctl +m v1$(EXE_EXT)
 endif
@@ -235,19 +243,35 @@ endif
 ifdef NETBSD
 	paxctl +m v2$(EXE_EXT)
 endif
-ifdef V1_FALLBACK_BUILD
-	./v1$(EXE_EXT) -no-parallel -d v1_fallback -o $(V1_FALLBACK_EXE) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VC_VFLAGS) cmd/v
-endif
 	./v2$(EXE_EXT) -nocache -o $(VEXE)$(EXE_EXT) $(BOOTSTRAP_GC_VFLAG) $(VFLAGS) $(BOOTSTRAP_VFLAGS) cmd/v
 ifdef NETBSD
 	paxctl +m $(VEXE)$(EXE_EXT)
 endif
 	rm -rf v1$(EXE_EXT) v2$(EXE_EXT)
 endif
-	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) run cmd/tools/detect_tcc.v
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	@$(VEXE)$(EXE_EXT) -version
-	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) run .github/problem-matchers/register_all.vsh
+	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run .github/problem-matchers/register_all.vsh
+
+v1:
+ifdef LEGACY
+	@set -e; \
+	if [ ! -f "$(LEGACYLIBS)/lib/libMacportsLegacySupport.a" ]; then \
+		'$(MAKE)' latest_legacy; \
+		'$(MAKE)' -C "$(TMPLEGACY)" CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)'; \
+		'$(MAKE)' -C "$(TMPLEGACY)" PREFIX="$(abspath $(LEGACYLIBS))" CPPFLAGS='$(CPPFLAGS)' CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' install; \
+		rm -rf "$(TMPLEGACY)"; \
+	fi
+endif
+	@set -e; \
+	CC='$(CC)' OLDV_CCOPTIONS='$(CPPFLAGS) $(BOOTSTRAP_VC_CC_CFLAGS)' \
+		OLDV_LDFLAGS='$(BOOTSTRAP_LDFLAGS)' \
+		cmd/tools/install_v1_fallback.sh '$(VEXE)$(EXE_EXT)' '$(V1_FALLBACK_EXE)'
+ifdef NETBSD
+	paxctl +m "$${V1_FALLBACK_OUTPUT:-$(V1_FALLBACK_EXE)}"
+endif
+	@echo "Built V1 compatibility compiler: $(V1_FALLBACK_EXE)"
 
 clean:
 	rm -rf $(TMPTCC)

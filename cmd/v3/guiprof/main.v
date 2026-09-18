@@ -5,7 +5,7 @@ module main
 
 import gg
 import os
-import v3.profiler
+import v.profiler
 
 fn main() {
 	// Initialize profiler system

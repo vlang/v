@@ -11,7 +11,7 @@ fn test_local_infile_connect_options() {
 	}
 
 	flags := db.apply_local_infile(Config{
-		flag: .client_found_rows
+		flag:         .client_found_rows
 		local_infile: true
 	})
 	assert flags.has(.client_found_rows)

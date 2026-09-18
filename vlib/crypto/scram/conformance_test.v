@@ -73,14 +73,14 @@ fn test_server_reproduces_the_reference_messages() {
 			}
 		}
 		mut server := new_server(
-			mechanism:       v.mechanism
-			channel_binding: binding
-			nonce:           server_nonce_of(v)
+			mechanism:        v.mechanism
+			channel_binding:  binding
+			nonce:            server_nonce_of(v)
 			// The vectors' UTF-8 user names are already in their SASLprep form.
 			prepare_username: fn (username string) !string {
 				return username
 			}
-			lookup:          fn [creds] (username string) !Credentials {
+			lookup:           fn [creds] (username string) !Credentials {
 				return creds
 			}
 		)!
