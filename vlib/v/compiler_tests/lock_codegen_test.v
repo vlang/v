@@ -472,8 +472,9 @@ fn main() {
 	dup_end := dup_rest.index('\n}') or { -1 }
 	assert dup_end >= 0, dup_rest
 	dup_fn := dup_rest[..dup_end]
-	assert dup_fn.contains('v_malloc((isize)sz)'), dup_fn
-	assert !dup_fn.contains('malloc((size_t)sz)'), dup_fn
+	assert dup_fn.contains('#if defined(_VPREALLOC)'), dup_fn
+	assert dup_fn.contains('malloc((size_t)sz)'), dup_fn
+	assert dup_fn.contains('malloc_uncollectable((isize)sz)'), dup_fn
 }
 
 fn test_shared_map_field_index_access_reads_payload() {
