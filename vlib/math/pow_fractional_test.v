@@ -18,11 +18,20 @@ fn test_pow_fractional_binary_powers() {
 		FractionalPowCase{0.0625, 1.75, 0.0078125},
 		FractionalPowCase{0.0625, -1.75, 128.0},
 		FractionalPowCase{16.0, 4.25, 131072.0},
+		FractionalPowCase{16.0, -4.25, 0.00000762939453125},
+		FractionalPowCase{0.0625, 4.25, 0.00000762939453125},
 		FractionalPowCase{0.0625, -4.25, 131072.0},
 	]
 	for tc in cases {
 		got := pow(tc.x, tc.y)
-		assert abs(got - tc.want) <= 1e-14 * abs(tc.want),
-			'pow(${tc.x}, ${tc.y}): got ${got}, want ${tc.want}; lower bound ${int(u32(u32(-1) << 12))}, integer limit ${f64(u64(1) << 63)}'
+		assert close(got, tc.want), 'pow(${tc.x}, ${tc.y}): got ${got}, want ${tc.want}'
 	}
+}
+
+fn test_pow_fractional_overflow_and_underflow() {
+	// Exercise both exponent bounds, including reciprocals of the final result.
+	assert is_inf(pow(16.0, 4096.25), 1)
+	assert pow(16.0, -4096.25) == 0.0
+	assert pow(0.0625, 4096.25) == 0.0
+	assert is_inf(pow(0.0625, -4096.25), 1)
 }
