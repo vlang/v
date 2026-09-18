@@ -2,6 +2,30 @@ module main
 
 import os
 
+// v3_fallback_diagnostics includes failures from the V compiler itself, not just
+// the C compiler. Prefer the original staged C output; otherwise replay only
+// compilation, before the compatibility compiler can run the user's program.
+fn v3_fallback_diagnostics(vexe string, args []string, state RetryState) string {
+	if state.fallback_file == '' {
+		return ''
+	}
+	payload := os.read_file(state.fallback_file) or { return '' }
+	kind := payload.all_before('\n').trim_space()
+	if kind !in ['compiler_error', 'c_compilation_error', 'inline_asm'] {
+		return ''
+	}
+	c_diagnostics := v3_c_error_diagnostics(state)
+	if c_diagnostics != '' {
+		return c_diagnostics
+	}
+	output := v3_diagnostics_output(vexe, args)
+	if output == '' {
+		return 'note: diagnostic replay for ${kind} produced no output; re-run with `-new-compiler` to investigate.\n'
+	}
+	newline := if output.ends_with('\n') { '' } else { '\n' }
+	return 'Compiler output from the default V compiler:\n${output}${newline}'
+}
+
 // v3_c_error_diagnostics preserves the original C compiler output for an automatic
 // retry. Read the staged output instead of compiling again, and leave it available
 // for the existing bug report and cleanup paths.

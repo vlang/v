@@ -458,12 +458,12 @@ fn retry_with_v1_at_exit() {
 
 @[noreturn]
 fn launch_v1(args []string, reason string, report_state RetryState) {
-	c_diagnostics := v3_c_error_diagnostics(report_state)
-	if c_diagnostics != '' {
-		eprint(c_diagnostics)
+	diagnostics := v3_fallback_diagnostics(os.real_path(os.executable()), args, report_state)
+	if diagnostics != '' {
+		eprint(diagnostics)
 	}
 	fallback := ensure_v1_fallback(reason) or {
-		report_v3_fallback_unavailable(args, reason, report_state, err.msg(), c_diagnostics != '')
+		report_v3_fallback_unavailable(args, reason, report_state, err.msg(), diagnostics != '')
 		exit(1)
 	}
 	os.setenv('VEXE', fallback, true)
@@ -484,8 +484,8 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	if code == 0 && report_state.fallback_file != '' {
 		submit_v3_fallback_report(fallback, report_state)
 	}
-	// These notes describe diagnostics that were suppressed, not C errors printed above.
-	if code != 0 && c_diagnostics == '' {
+	// These notes describe diagnostics that were suppressed, not errors printed above.
+	if code != 0 && diagnostics == '' {
 		report_v1_fallback_exit(report_state, v1_fallback_exit_identifies_compiler_failure(args))
 	}
 	os.rm(report_state.fallback_file) or {}
