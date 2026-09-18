@@ -159,6 +159,53 @@ fn test_inline_assembly() {
 	exec('v test vlib/v/slow_tests/assembly')
 }
 
+
+const ci_tasks = [
+	'test_symlink',
+	'v_doctor',
+	'build_v_with_prealloc',
+	'test_cross_compilation',
+	'test_inline_assembly',
+	'build_with_cstrict',
+	'all_code_is_formatted',
+	'run_sanitizers',
+	'build_using_v',
+	'verify_v_test_works',
+	'install_iconv',
+	'test_pure_v_math_module',
+	'self_tests',
+	'build_examples',
+	'build_hello_world_autofree',
+	'build_tetris_autofree',
+	'build_blog_autofree',
+	'build_examples_prod',
+	'build_examples_v_compiled_with_tcc',
+	'v_self_compilation_parallel_cc',
+	'test_password_input',
+	'test_readline',
+]
+
+// run_ci_tasks mirrors the active ci/macos_ci.vsh steps in
+// .github/workflows/macos_ci.yml. The generic `all` mode intentionally remains
+// exhaustive, including tasks that are currently disabled in the workflow.
+fn run_ci_tasks() {
+	// Match the GitHub Actions job environment that changes test behavior.
+	os.setenv('CI', 'true', true)
+	os.setenv('GITHUB_ACTIONS', 'true', true)
+	os.setenv('GITHUB_JOB', 'clang-macos', true)
+	os.setenv('RUNNER_OS', 'macOS', true)
+	os.setenv('VFLAGS', '-cc clang', true)
+	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
+	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
+	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)
+	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
+	os.setenv('V_MACOS_MULTIWINDOW_TESTS', '0', true)
+
+	for task_name in ci_tasks {
+		exec('v run ci/macos_ci.vsh ${task_name}')
+	}
+}
+
 const all_tasks = {
 	'test_symlink':                       Task{test_symlink, 'Test symlink'}
 	'test_cross_compilation':             Task{test_cross_compilation, 'Test cross compilation to Linux'}
@@ -183,6 +230,12 @@ const all_tasks = {
 	'test_password_input':                Task{test_password_input, 'Test password input'}
 	'test_readline':                      Task{test_readline, 'Test readline'}
 	'test_inline_assembly':               Task{test_inline_assembly, 'Test inline assembly'}
+}
+
+
+if os.args.len > 1 && os.args[1] == 'ci' {
+	run_ci_tasks()
+	exit(0)
 }
 
 common.run(all_tasks)
