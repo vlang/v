@@ -1,0 +1,77 @@
+name: Issue 28662 reproduction
+
+on:
+  push:
+    branches: [work/28662-veb-context]
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VJOBS: '2'
+      VTEST_JOBS: '2'
+      VCOLORS: never
+      V_C_ERROR_BUG_REPORT_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 39f7c967ecd087b0d041ea474df7375437571c09
+          persist-credentials: false
+      - name: Build baseline
+        run: |
+          set -euo pipefail
+          make -j2
+          ./v version
+      - name: Compile the original and reduced reproducers
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/issue-28662
+          printf 'Module { name: "issue28662" }\n' > /tmp/issue-28662/v.mod
+          cat > /tmp/issue-28662/original.v <<'EOF'
+          module main
+          import veb
+          import rand
+          pub struct Context {
+              veb.Context
+          }
+          pub struct App {}
+          pub struct SomeData {
+              id string
+          }
+          fn (mut ctx Context) handle_ok[T](payload T) veb.Result {
+              ctx.res.set_status(.ok)
+              return ctx.json(payload)
+          }
+          @['/some_data'; get]
+          pub fn (mut app App) some_data(mut ctx Context) veb.Result {
+              return ctx.handle_ok(SomeData{ id: rand.hex(16) })
+          }
+          fn main() {
+              mut app := App{}
+              veb.run[App, Context](mut app, 8080)
+          }
+          EOF
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/issue-28662/original.v').read_text()
+          p = p.replace('veb.run[App, Context](mut app, 8080)', 'mut ctx := Context{}\n    app.some_data(mut ctx)')
+          Path('/tmp/issue-28662/direct.v').write_text(p)
+          PY
+          for source in original direct; do
+            echo "===== ${source}: check ====="
+            set +e
+            timeout 180 ./v -new-compiler -check /tmp/issue-28662/${source}.v
+            result=$?
+            set -e
+            echo "CHECK_EXIT=${result}"
+            echo "===== ${source}: compile ====="
+            set +e
+            timeout 240 ./v -new-compiler -keepc -o /tmp/issue-28662/${source} /tmp/issue-28662/${source}.v
+            result=$?
+            set -e
+            echo "COMPILE_EXIT=${result}"
+          done
