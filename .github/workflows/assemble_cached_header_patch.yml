@@ -1,0 +1,117 @@
+name: Assemble cached header patch (one-time)
+
+on:
+  push:
+    branches: ['automation/assemble-cached-header-20260918']
+
+permissions:
+  contents: read
+
+jobs:
+  assemble:
+    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/automation/assemble-cached-header-20260918'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 85825dbb7c57288153f1befaa3ff6c402dba8e33
+          persist-credentials: false
+      - name: Apply exact prepared patch and store verified Git blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          
+          const base = '85825dbb7c57288153f1befaa3ff6c402dba8e33';
+          const patchSha = '63be0574bd1a8711986b37c1e07ee00edf30b684';
+          const helperBranch = 'automation/assemble-cached-header-20260918';
+          const expected = {
+            '.github/workflows/compiler_ci.yml': '8dc88bdd7929541e11facabe5563ec2b6898ca5d',
+            'vlib/v/parser/parser.v': 'aadb8870835d0b311f7148c838ee42552eee213a',
+            'vlib/v/types/checker_parallel.v': '84bcbfaa2c5dd1ec90c301e0f34c39b816cc6cc8',
+          };
+          const newTest = 'vlib/v/types/cached_header_semantics_test.v';
+          const files = [...Object.keys(expected), newTest].sort();
+          function git(...args) {
+            return execFileSync('git', args, { maxBuffer: 8 * 1024 * 1024 });
+          }
+          function oid(bytes) {
+            return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+          }
+          function requireTrue(ok, message) {
+            if (!ok) throw new Error(message);
+          }
+          async function api(endpoint, method = 'GET', body) {
+            const response = await fetch(`https://api.github.com/repos/vlang/v/${endpoint}`, {
+              method,
+              headers: {
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                Accept: 'application/vnd.github+json',
+                'Content-Type': 'application/json',
+                'X-GitHub-Api-Version': '2022-11-28',
+              },
+              body: body === undefined ? undefined : JSON.stringify(body),
+              signal: AbortSignal.timeout(60000),
+            });
+            if (!response.ok) throw new Error(`${method} ${endpoint}: HTTP ${response.status}`);
+            return response.status === 204 ? null : response.json();
+          }
+          
+          requireTrue(process.env.GITHUB_REPOSITORY === 'vlang/v', 'unexpected repository');
+          requireTrue(process.env.GITHUB_REF === `refs/heads/${helperBranch}`, 'unexpected helper ref');
+          requireTrue(git('rev-parse', 'HEAD').toString().trim() === base, 'unexpected base');
+          requireTrue(git('status', '--porcelain').length === 0, 'checkout is not clean');
+          for (const [file, sha] of Object.entries(expected)) {
+            requireTrue(oid(fs.readFileSync(file)) === sha, `baseline mismatch: ${file}`);
+          }
+          requireTrue(!fs.existsSync(newTest), 'test already exists');
+          const blob = await api(`git/blobs/${patchSha}`);
+          requireTrue(blob.encoding === 'base64', 'unexpected patch encoding');
+          const patch = Buffer.from(blob.content, 'base64');
+          requireTrue(oid(patch) === patchSha, 'patch hash mismatch');
+          const patchFile = path.join(process.env.RUNNER_TEMP, 'cached-header.patch');
+          fs.writeFileSync(patchFile, patch);
+          git('apply', '--check', '--whitespace=error-all', patchFile);
+          git('apply', '--index', '--whitespace=error-all', patchFile);
+          const changed = git('diff', '--cached', '--name-only', '-z').toString().split('\0').filter(Boolean).sort();
+          requireTrue(JSON.stringify(changed) === JSON.stringify(files), 'unexpected changed paths');
+          requireTrue(oid(fs.readFileSync(newTest)) === '59d13d946d8fe80794524a26a1fabe93bef48da4', 'new test hash mismatch');
+          git('diff', '--cached', '--check');
+          const tree = git('write-tree').toString().trim();
+          git('apply', '--reverse', '--index', patchFile);
+          git('diff', '--cached', '--exit-code');
+          requireTrue(git('status', '--porcelain').length === 0, 'reverse did not restore base');
+          git('apply', '--index', '--whitespace=error-all', patchFile);
+          requireTrue(git('write-tree').toString().trim() === tree, 'round-trip tree mismatch');
+          console.log('FULL_CHECKOUT_PATCH_ROUNDTRIP=PASS');
+          console.log(git('diff', '--cached', '--stat').toString());
+          const manifest = {};
+          for (const file of files) {
+            const bytes = git('show', `:${file}`);
+            const stored = await api('git/blobs', 'POST', { content: bytes.toString('base64'), encoding: 'base64' });
+            requireTrue(stored.sha === oid(bytes), `uploaded hash mismatch: ${file}`);
+            manifest[file] = stored.sha;
+          }
+          console.log(`CACHED_HEADER_BLOBS=${JSON.stringify(manifest)}`);
+          console.log(`CACHED_HEADER_TREE=${tree}`);
+          console.log('V compilation and test execution are not performed by this assembly job.');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            `Full-checkout patch application, reversal, and blob verification passed.\n\nBase: ${base}\n\n` +
+            '```json\n' + JSON.stringify(manifest, null, 2) + '\n```\n');
+          // This one-time helper is never included in the PR. Delete only our own ref,
+          // and leave it alone if anybody has moved it since this run started.
+          const current = await api(`git/ref/heads/${helperBranch}`);
+          if (current.object.sha === process.env.GITHUB_SHA) {
+            await api(`git/refs/heads/${helperBranch}`, 'DELETE');
+            console.log('Removed one-time assembly branch.');
+          } else {
+            console.log('Assembly branch moved; left it unchanged.');
+          }
+          NODE
