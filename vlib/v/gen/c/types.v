@@ -644,13 +644,14 @@ fn type_has_import_alias_text(typ types.Type) bool {
 }
 
 fn (mut g FlatGen) sizeof_target_in_file(value string, file string) string {
-	canonical := g.canonical_import_alias_type_text_in_file(value, file)
-	if canonical != value {
+	target := g.generic_default_type_text(value)
+	canonical := g.canonical_import_alias_type_text_in_file(target, file)
+	if canonical != target {
 		if exact := g.exact_known_import_type_text(canonical) {
 			return g.value_sizeof_target(exact)
 		}
 	}
-	return g.sizeof_target(value)
+	return g.sizeof_target(target)
 }
 
 fn (mut g FlatGen) import_alias_sizeof_target_in_file(value string, file string) ?string {
@@ -2330,7 +2331,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 			if node.children_count == 0 {
 				return none
 			}
-			target_type := g.tc.parse_type(node.value)
+			target_type := g.tc.parse_type(g.generic_default_type_text(node.value))
 			mut ct := g.cast_c_type(target_type)
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
