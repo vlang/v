@@ -63,6 +63,9 @@ jobs:
           ./v retry -- git clone https://github.com/Larpon/gg-regression-images gg-regression-images
           chmod +x ./imgur.sh
 
+      - name: Check Wayland pipe descriptor ABI
+        run: env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE timeout --signal=TERM --kill-after=5s 120s ./v -new-compiler -no-retry-compilation -d gg_multiwindow -d sokol_wayland vlib/gg/wayland_pipe_abi_test.c.v
+
       - name: Legacy gg import multiwindow isolation
         run: env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
 

@@ -799,7 +799,8 @@ $if sokol_wayland ? {
 		if g_sapp_state.wl.data_offer == unsafe { nil } {
 			return
 		}
-		mut fds := [2]int{}
+		// pipe() writes two C ints, not two platform-width V ints.
+		mut fds := [2]i32{}
 		if C.pipe(&fds[0]) == -1 {
 			C.wl_data_offer_destroy(g_sapp_state.wl.data_offer)
 			g_sapp_state.wl.data_offer = unsafe { nil }
