@@ -205,7 +205,9 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return none
 	}
 	node := t.a.nodes[int(id)]
-	if target_is_ptr && node.kind == .cast_expr
+	// Only pointer casts already have the expected representation. A value cast
+	// such as Iface(ptr) still needs the pointer-target conversion below.
+	if target_is_ptr && node.kind == .cast_expr && node.value.starts_with('&')
 		&& t.resolve_interface_type_name(node.value) == iface_name {
 		if node.children_count == 1 {
 			child := t.a.nodes[int(t.a.child(&node, 0))]
@@ -259,6 +261,15 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return t.transform_expr(id)
 	}
 	mut source_type := t.node_type(id)
+	if node.kind == .ident && t.pointer_value_rvalues[node.value] {
+		storage_type := t.var_type(node.value)
+		if storage_type.starts_with('&&') {
+			// A mutable []&Iface element (or mut p &Iface parameter) has &&Iface
+			// storage, but transform_expr reads it as &Iface. Do not restore the
+			// storage type on that dereference and make cgen box it again.
+			source_type = storage_type[1..]
+		}
+	}
 	mut source_is_smartcast_interface := false
 	if t.expr_has_smartcast(id) {
 		raw_source_type := t.raw_expr_type_without_smartcast(id)
