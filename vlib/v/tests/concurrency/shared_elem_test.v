@@ -139,6 +139,22 @@ fn test_shared_map_in_struct() {
 	assert x.i == 23
 }
 
+struct DirectSharedMapHolder {
+mut:
+	values shared map[string]int
+}
+
+fn test_direct_shared_map_field_access() {
+	mut holder := DirectSharedMapHolder{}
+	lock holder.values {
+		holder.values['answer'] = 42
+	}
+	answer := rlock holder.values {
+		holder.values['answer']
+	}
+	assert answer == 42
+}
+
 fn test_array_of_shared() {
 	mut a := []shared Xyz{cap: 3}
 	a0 := Xyz{
