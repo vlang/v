@@ -141,7 +141,7 @@ fn main() {
 			if !try_compile(cmd) {
 				bootstrap_self_build(vroot, clone_args(args), final_binary) or {
 					eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
-					exit(1)
+					exit(1) }
 			}
 		}
 		if obinary == '' {
