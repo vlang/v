@@ -2,20 +2,41 @@ module main
 
 import os
 
+// v3_c_error_diagnostics preserves the original C compiler output for an automatic
+// retry. Read the staged output instead of compiling again, and leave it available
+// for the existing bug report and cleanup paths.
+fn v3_c_error_diagnostics(state RetryState) string {
+	if state.fallback_file == '' || state.c_error_dir == '' {
+		return ''
+	}
+	payload := os.read_file(state.fallback_file) or { return '' }
+	if payload.all_before('\n').trim_space() != 'c_compilation_error' {
+		return ''
+	}
+	output := os.read_file(os.join_path(state.c_error_dir, 'output')) or { return '' }
+	if output == '' {
+		return ''
+	}
+	newline := if output.ends_with('\n') { '' } else { '\n' }
+	return 'C compiler output from the default V compiler:\n${output}${newline}'
+}
+
 // report_v3_fallback_unavailable shows the diagnostic that triggered an automatic
-// V1 retry when that retry cannot be started. Explicit `-old-compiler` requests
-// keep their existing error-only behavior.
-fn report_v3_fallback_unavailable(args []string, reason string, report_state RetryState, fallback_error string) {
+// V1 retry when that retry cannot be started, unless it was already printed.
+// Explicit `-old-compiler` requests keep their existing error-only behavior.
+fn report_v3_fallback_unavailable(args []string, reason string, report_state RetryState, fallback_error string, diagnostics_shown bool) {
 	if report_state.fallback_file == '' {
 		eprintln(fallback_error)
 		return
 	}
 	eprintln(reason)
-	diagnostics := v3_diagnostics_output(os.real_path(os.executable()), args)
-	if diagnostics != '' {
-		eprint(diagnostics)
-		if !diagnostics.ends_with('\n') {
-			eprintln('')
+	if !diagnostics_shown {
+		diagnostics := v3_diagnostics_output(os.real_path(os.executable()), args)
+		if diagnostics != '' {
+			eprint(diagnostics)
+			if !diagnostics.ends_with('\n') {
+				eprintln('')
+			}
 		}
 	}
 	eprintln(v1_fallback_failure_message(fallback_error, reason))

@@ -38,3 +38,58 @@ fn test_v3_diagnostics_output_replays_the_error_without_running_user_code() {
 	_ := v3_diagnostics_output(dispatcher, ['-nocache', '-no-parallel', 'run', good_source, marker])
 	assert !os.exists(marker)
 }
+
+fn test_v3_c_error_diagnostics_preserves_the_original_output() {
+	root := os.join_path(os.vtmp_dir(), 'v3_c_error_diagnostics_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	state := RetryState{
+		fallback_file: os.join_path(root, 'fallback')
+		c_error_dir:   os.join_path(root, 'c_error')
+	}
+	os.mkdir_all(state.c_error_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(state.fallback_file, 'c_compilation_error')!
+	output_file := os.join_path(state.c_error_dir, 'output')
+	outputs := [
+		'test.c:7: error: unknown type\n\tbad_type value;\n\t^\n',
+		'test.c:7: error: unknown type',
+		'test.c:7: error: unknown type\r\n',
+		'line: C compiler error\n'.repeat(4096) + 'last diagnostic\n',
+	]
+	for output in outputs {
+		os.write_file(output_file, output)!
+		newline := if output.ends_with('\n') { '' } else { '\n' }
+		assert v3_c_error_diagnostics(state) ==
+			'C compiler output from the default V compiler:\n${output}${newline}'
+		// Displaying diagnostics must not consume the staged bug-report data.
+		assert os.read_file(output_file)! == output
+	}
+}
+
+fn test_v3_c_error_diagnostics_ignores_missing_or_unrelated_state() {
+	assert v3_c_error_diagnostics(RetryState{}) == ''
+	root := os.join_path(os.vtmp_dir(), 'v3_c_error_diagnostics_missing_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	state := RetryState{
+		fallback_file: os.join_path(root, 'fallback')
+		c_error_dir:   os.join_path(root, 'c_error')
+	}
+	os.mkdir_all(state.c_error_dir)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	assert v3_c_error_diagnostics(state) == ''
+	os.write_file(state.fallback_file, 'c_compilation_error')!
+	assert v3_c_error_diagnostics(state) == ''
+	output_file := os.join_path(state.c_error_dir, 'output')
+	os.write_file(output_file, '')!
+	assert v3_c_error_diagnostics(state) == ''
+	os.write_file(output_file, 'stale C compiler output\n')!
+	for payload in ['compiler_error\nsemantic checking', 'inline_asm', 'c_compilation_error_partial',
+		''] {
+		os.write_file(state.fallback_file, payload)!
+		assert v3_c_error_diagnostics(state) == ''
+	}
+}
