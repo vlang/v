@@ -1,12 +1,20 @@
 	fn wl_data_device_motion(data voidptr, device &C.wl_data_device, time u32, x i32, y i32) {
 	}
 
+	// pipe() writes two C ints, not two platform-width V ints.
+	fn wl_create_drop_pipe() ![2]i32 {
+		mut fds := [2]i32{init: -1}
+		if C.pipe(&fds[0]) == -1 {
+			return error('sokol_app: failed to create Wayland drop pipe')
+		}
+		return fds
+	}
+
 	fn wl_data_device_drop(data voidptr, device &C.wl_data_device) {
 		if g_sapp_state.wl.data_offer == unsafe { nil } {
 			return
 		}
-		mut fds := [2]int{}
-		if C.pipe(&fds[0]) == -1 {
+		fds := wl_create_drop_pipe() or {
 			C.wl_data_offer_destroy(g_sapp_state.wl.data_offer)
 			g_sapp_state.wl.data_offer = unsafe { nil }
 			return
