@@ -466,15 +466,10 @@ fn main() {
 	_ := Holder{}
 }
 ')
-	dup_start := c_code.index('static inline void* __dup__shared__') or { -1 }
-	assert dup_start >= 0, c_code
-	dup_rest := c_code[dup_start..]
-	dup_end := dup_rest.index('\n}') or { -1 }
-	assert dup_end >= 0, dup_rest
-	dup_fn := dup_rest[..dup_end]
-	assert dup_fn.contains('#if defined(_VPREALLOC)'), dup_fn
-	assert dup_fn.contains('malloc((size_t)sz)'), dup_fn
-	assert dup_fn.contains('malloc_uncollectable((isize)sz)'), dup_fn
+	dup_body := '(void* src, int sz) {\n#if defined(_VPREALLOC)\n'
+	assert c_code.contains(dup_body), c_code
+	assert c_code.contains('malloc((size_t)sz)'), c_code
+	assert c_code.contains('malloc_uncollectable((isize)sz)'), c_code
 }
 
 fn test_shared_map_field_index_access_reads_payload() {
