@@ -9288,7 +9288,8 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
-	apply_v3_gc_mode(gc_mode, building_v, mut user_defines, mut compile_values) or {
+	disable_gc := v3_gc_is_disabled(building_v, cross_output, target_os, target_arch)
+	apply_v3_gc_mode(gc_mode, disable_gc, mut user_defines, mut compile_values) or {
 		eprintln(err.msg())
 		exit(1)
 	}
