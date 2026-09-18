@@ -55,9 +55,17 @@ fn test_map_codegen_callbacks_unwrap_alias_keys() {
 			assert map_codegen_callback_test_names(g, nested) == expected, '${bits}: ${key.name()}'
 		}
 		assert map_codegen_callback_test_names(g, types.Type(types.string_)) == [
-			'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string']
+			'map_hash_string',
+			'map_eq_string',
+			'map_clone_string',
+			'map_free_string',
+		]
 		size := (bits / 8).str()
 		assert map_codegen_callback_test_names(g, types.Type(types.int_)) == [
-			'map_hash_int_${size}', 'map_eq_int_${size}', 'map_clone_int_${size}', 'map_free_nop']
+			'map_hash_int_${size}',
+			'map_eq_int_${size}',
+			'map_clone_int_${size}',
+			'map_free_nop',
+		]
 	}
 }

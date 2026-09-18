@@ -14,8 +14,8 @@ pub fn pkgconfig_flags_args(raw string) ![]string {
 		if arg == '--' {
 			break
 		}
-		if arg in ['--cflags', '--cflags-only-I', '--cflags-only-other', '--libs',
-			'--libs-only-L', '--libs-only-l', '--libs-only-other'] {
+		if arg in ['--cflags', '--cflags-only-I', '--cflags-only-other', '--libs', '--libs-only-L',
+			'--libs-only-l', '--libs-only-other'] {
 			return query
 		}
 	}
