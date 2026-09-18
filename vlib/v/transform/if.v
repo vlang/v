@@ -261,7 +261,7 @@ fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_n
 	saved_var_types := t.var_types.clone()
 	t.set_implicit_err_var_type()
 	mut children := []flat.NodeId{}
-	err_value := if err_source.len > 0 {
+	err_value := if err_source != '' {
 		t.make_selector(t.make_ident(err_source), 'err', 'IError')
 	} else {
 		t.make_struct_init('IError')
@@ -507,7 +507,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 // try_expand_if_expr_value_for_type
 // supports helper handling in transform.
 fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node flat.Node, result_type string) ?flat.NodeId {
-	if node.kind != .if_expr || node.children_count < 3 || result_type.len == 0
+	if node.kind != .if_expr || node.children_count < 3 || result_type == ''
 		|| result_type == 'void' {
 		return none
 	}
@@ -544,7 +544,7 @@ fn (mut t Transformer) try_expand_if_expr_value_for_type(id flat.NodeId, node fl
 
 // if_expr_branch_overrides_sum_target supports if_expr_branch_overrides_sum_target handling.
 fn (t &Transformer) if_expr_branch_overrides_sum_target(branch_type string, target_type string) bool {
-	if branch_type.len == 0 || target_type.len == 0 {
+	if branch_type == '' || target_type == '' {
 		return false
 	}
 	if branch_type.starts_with('[]') {
@@ -656,7 +656,7 @@ fn (t &Transformer) if_branch_is_c_macro_value(id flat.NodeId) bool {
 
 // if_expr_branch_type_overrides supports if expr branch type overrides handling for Transformer.
 fn (t &Transformer) if_expr_branch_type_overrides(branch_typ string, stale_typ string) bool {
-	if branch_typ.len == 0 || stale_typ.len == 0 || branch_typ == stale_typ {
+	if branch_typ == '' || stale_typ == '' || branch_typ == stale_typ {
 		return false
 	}
 	if stale_typ in ['array', 'map', 'unknown'] {
@@ -928,10 +928,10 @@ fn (t &Transformer) find_smartcast_in_context(expr_name string, contexts []Smart
 
 // merge_if_expr_types supports merge if expr types handling for Transformer.
 fn (t &Transformer) merge_if_expr_types(current string, next string) string {
-	if current.len == 0 || current == 'unknown' {
+	if current == '' || current == 'unknown' {
 		return next
 	}
-	if next.len == 0 || next == 'unknown' || current == next {
+	if next == '' || next == 'unknown' || current == next {
 		return current
 	}
 	if current == 'array' && next.starts_with('[]') {
@@ -2081,7 +2081,7 @@ fn (t &Transformer) find_sum_type_for_variant(variant string) string {
 					if sum_name.contains('.') {
 						return sum_name
 					}
-					if best.len == 0 {
+					if best == '' {
 						best = sum_name
 					}
 				}

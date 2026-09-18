@@ -101,7 +101,7 @@ fn (t &Transformer) interface_pointer_source_root_is_local(id flat.NodeId) bool 
 }
 
 fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_type string) bool {
-	if int(id) < 0 || target_type.len == 0 || isnil(t.tc) {
+	if int(id) < 0 || target_type == '' || isnil(t.tc) {
 		return false
 	}
 	iface_name := t.resolve_interface_type_name(target_type)
@@ -116,7 +116,7 @@ fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_
 
 // resolve_interface_type_name resolves resolve interface type name information for transform.
 fn (t &Transformer) resolve_interface_type_name(name string) string {
-	if name.len == 0 || isnil(t.tc) {
+	if name == '' || isnil(t.tc) {
 		return ''
 	}
 	if isnil(t.interface_type_cache) {
@@ -196,7 +196,7 @@ fn interface_type_with_pointer_depth(source_type string, interface_name string) 
 // heap copy; it is only safe when the source is guaranteed to outlive the box
 // (mut/reference call arguments, global initializers).
 fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target_type string, share_source bool) ?flat.NodeId {
-	if int(id) < 0 || target_type.len == 0 || isnil(t.tc) {
+	if int(id) < 0 || target_type == '' || isnil(t.tc) {
 		return none
 	}
 	target_is_ptr := target_type.starts_with('&')
@@ -313,7 +313,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			source_type = '&${t.trim_pointer_type(child_type)}'
 		}
 	}
-	if source_type.len == 0 || t.generic_arg_is_unresolved(source_type) {
+	if source_type == '' || t.generic_arg_is_unresolved(source_type) {
 		checker_type := t.checker_node_type(id)
 		if checker_type.len > 0 && !t.generic_arg_is_unresolved(checker_type) {
 			source_type = checker_type
@@ -413,7 +413,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 
 fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.NodeId, source_type string, target_iface string) ?flat.NodeId {
 	source_iface := t.resolve_interface_type_name(source_type)
-	if source_iface.len == 0 || target_iface.len == 0 || isnil(t.tc) {
+	if source_iface.len == 0 || target_iface == '' || isnil(t.tc) {
 		return none
 	}
 	if source_iface == target_iface {
@@ -526,7 +526,7 @@ struct InterfaceImplMapping {
 
 fn (mut t Transformer) interface_conversion_impl_mappings(source_iface string, target_iface string) []InterfaceImplMapping {
 	mut result := []InterfaceImplMapping{}
-	if source_iface.len == 0 || target_iface.len == 0 || isnil(t.tc) {
+	if source_iface == '' || target_iface == '' || isnil(t.tc) {
 		return result
 	}
 	source_index := t.interface_impl_index_for_transform(source_iface)
@@ -619,7 +619,7 @@ fn (mut t Transformer) transform_global_amp_interface_cast(node flat.Node, targe
 	}
 	start := t.a.children.len
 	t.a.children << literal
-	ptr_type := if target_type.len > 0 { target_type } else { '&${iface_name}' }
+	ptr_type := if target_type != '' { target_type } else { '&${iface_name}' }
 	return t.a.add_node(flat.Node{
 		kind:           .prefix
 		op:             .amp
@@ -891,7 +891,7 @@ fn (t &Transformer) interface_pointer_alias_source_needs_heap_copy(id flat.NodeI
 }
 
 fn (t &Transformer) ident_is_global_pointer_to_interface(name string, iface_name string) bool {
-	if name.len == 0 || iface_name.len == 0 || isnil(t.tc) || t.var_type(name).len > 0 {
+	if name == '' || iface_name == '' || isnil(t.tc) || t.var_type(name).len > 0 {
 		return false
 	}
 	if t.cur_module.len > 0 {
@@ -998,7 +998,7 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 				&& !receiver_args.any(t.generic_arg_is_unresolved(it)) {
 				interface_name = '${receiver_base}[${receiver_args.join(', ')}]'
 			}
-			if interface_name.len > 0 {
+			if interface_name != '' {
 				interface_receiver_type = interface_type_with_pointer_depth(receiver_source_type, interface_name)
 			}
 			if _ := t.raw_const_type_name_for_expr(base_id) {
@@ -1020,7 +1020,7 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 	if specialized_ret_type.len > 0 {
 		t.set_node_typ(int(transformed_id), specialized_ret_type)
 	}
-	if interface_name.len == 0 {
+	if interface_name == '' {
 		return transformed_id
 	}
 	transformed := t.a.nodes[int(transformed_id)]

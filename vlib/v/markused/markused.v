@@ -2615,6 +2615,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 		enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue)
 	}
 	if needs_shared_runtime {
+		enqueue('malloc_uncollectable', mut used, mut queue)
 		for helper in ['sync.cpanic', 'sync.cpanic_errno', 'sync.should_be_zero', 'sync.RwMutex.init',
 			'sync.RwMutex.lazy_init', 'sync.RwMutex.lock', 'sync.RwMutex.unlock', 'sync.RwMutex.rlock',
 			'sync.RwMutex.runlock', 'cpanic', 'cpanic_errno', 'should_be_zero', 'RwMutex.init',

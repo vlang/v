@@ -7164,6 +7164,13 @@ Full list of builtin options:
 |                                |                  |                               | `wasm32_emscripten`, `wasm32_wasi`            |
 |                                |                  |                               | `native`, `autofree`                          |
 
+`glibc` and `musl` describe the C library the generated program is linked against.
+On a native Linux build that V compiles and links itself, V infers the host libc.
+That host inference is deliberately not carried into C-only or object output, generated C
+projects, portable `-os cross` output, or a foreign target, because another toolchain may
+link those artifacts. Pass `-glibc` or `-musl` when that target libc is known; `-cc
+musl-gcc` also implies `-musl`. The latter enables optional checks such as `$if musl ? {`.
+
 #### `$embed_file`
 
 ```v ignore

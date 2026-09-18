@@ -95,3 +95,32 @@ fn test_literal_strings() {
 	assert toml_doc.value('ml_lit2').string() == '\\\n\\'
 	assert toml_doc.value('ml_lit3').string() == '\\\ntricky\\\n'
 }
+
+fn test_single_line_strings_reject_raw_newlines() {
+	// A basic string may not span lines, and an unfinished one must be reported
+	// rather than swallowing the rest of the document.
+	for invalid in ['a = "one\ntwo"', 'a = "unfinished'] {
+		if _ := toml.parse_text(invalid) {
+			assert false, '`${invalid}` should not parse'
+		}
+	}
+	// A backslash followed by a real newline brings the newline into the literal
+	// through the escape handler instead of as a plain byte; the scanner has to
+	// notice it just the same.
+	if _ := toml.parse_text('a = ["x\\\ny"]\n') {
+		assert false, 'a newline reaching the literal through an escape should not parse'
+	} else {
+		assert err.msg().contains('unfinished single-line string literal')
+	}
+}
+
+fn test_long_strings_keep_their_content() {
+	// Long values are the reason the scanner and the decoder accumulate into a
+	// `strings.Builder`; check that nothing is truncated, doubled or reordered.
+	payload := 'aA9+/'.repeat(20_000)
+	mut toml_doc := toml.parse_text('long = "${payload}"\nescaped = "${payload}\\t${payload}"') or {
+		panic(err)
+	}
+	assert toml_doc.value('long').string() == payload
+	assert toml_doc.value('escaped').string() == payload + '\t' + payload
+}

@@ -144,6 +144,28 @@ mut:
 	values shared map[string]int
 }
 
+@[noinline]
+fn new_direct_shared_map_holder() DirectSharedMapHolder {
+	return DirectSharedMapHolder{}
+}
+
+fn test_direct_shared_map_field_survives_gc_before_first_access() {
+	mut holder := new_direct_shared_map_holder()
+	gc_collect()
+	mut churn := []string{cap: 4096}
+	for i in 0 .. 4096 {
+		churn << '/tmp/v_shared_map_gc_reuse_padding_padding_padding_padding_padding_padding_${i}'
+	}
+	lock holder.values {
+		holder.values['answer'] = 42
+	}
+	answer := rlock holder.values {
+		holder.values['answer']
+	}
+	assert answer == 42
+	assert churn.len == 4096
+}
+
 fn test_direct_shared_map_field_access() {
 	mut holder := DirectSharedMapHolder{}
 	lock holder.values {
