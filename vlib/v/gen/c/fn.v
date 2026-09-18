@@ -12626,11 +12626,10 @@ fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
 // interpolation exactly — including `[flag]` enums' `Enum{.a | .b}` form, which the
 // old inline single-value ternary chain could not render.
 fn (mut g FlatGen) gen_enum_str_call(fn_node &flat.Node, enum_type types.Enum) {
-	mut name := enum_type.name
-	if name.starts_with('main.') {
-		name = name[5..]
-	}
-	g.write('${g.enum_autostr_c_name(name)}__autostr(')
+	// Keep an explicit `main.` prefix: `enum_autostr_c_name` uses it as the
+	// program-module lock, so stripping it here would let the current file's
+	// selective imports capture a main-module enum.
+	g.write('${g.enum_autostr_c_name(enum_type.name)}__autostr(')
 	g.gen_expr(g.a.child(fn_node, 0))
 	g.write(')')
 }

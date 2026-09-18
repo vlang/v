@@ -3164,11 +3164,26 @@ fn (mut t Transformer) generic_struct_args_in_scope(args []string, module_name s
 	for arg in args {
 		parsed := t.tc.parse_resolution_type(arg)
 		result := if parsed is types.Unknown {
-			t.normalize_sum_variant_type(arg, module_name, [])
+			if resolved := t.selective_import_type_name_for_file(file_name, arg) {
+				resolved
+			} else {
+				t.normalize_sum_variant_type(arg, module_name, [])
+			}
 		} else if parsed is types.Alias && parsed.base_type is types.ArrayFixed {
 			types.Type(parsed.base_type).name()
 		} else {
-			parsed.name()
+			// A bare spelling that resolves inside the declaring module still has to
+			// honor the writing file's selective imports: `import model { Context }`
+			// makes `Context` mean `model.Context`, not a same-named type from an
+			// imported module or the declaring module itself.
+			name := parsed.name()
+			if !name.contains('.') {
+				if resolved := t.selective_import_type_name_for_file(file_name, name) {
+					scoped << resolved
+					continue
+				}
+			}
+			name
 		}
 		scoped << result
 	}
@@ -3188,11 +3203,27 @@ fn (mut t Transformer) generic_sum_args_in_scope(args []string, module_name stri
 	mut scoped := []string{cap: args.len}
 	for arg in args {
 		parsed := t.tc.parse_resolution_type(arg)
-		scoped << if parsed is types.Unknown {
-			t.normalize_sum_variant_type(arg, module_name, [])
+		result := if parsed is types.Unknown {
+			if resolved := t.selective_import_type_name_for_file(file_name, arg) {
+				resolved
+			} else {
+				t.normalize_sum_variant_type(arg, module_name, [])
+			}
 		} else {
-			parsed.name()
+			// A bare spelling that resolves inside the declaring module still has to
+			// honor the writing file's selective imports: `import iam { Token }`
+			// makes `Token` mean `iam.Token`, not a same-named type from another
+			// imported module or the declaring module itself.
+			name := parsed.name()
+			if !name.contains('.') {
+				if resolved := t.selective_import_type_name_for_file(file_name, name) {
+					scoped << resolved
+					continue
+				}
+			}
+			name
 		}
+		scoped << result
 	}
 	t.tc.cur_module = old_module
 	t.tc.cur_file = old_file
