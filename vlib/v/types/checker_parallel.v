@@ -1764,26 +1764,32 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	} else {
 		tc.infer_decl_generic_params(node)
 	}
-	if generic_params.len > 0 {
+	// The parser marks bodyless .vh declarations with is_mut: their bodies
+	// live in cached objects. Keep signature checks, but do not inspect a
+	// nonexistent body for fallthrough, unused parameters, or noreturn behavior.
+	has_body := !node.is_mut
+	if has_body && generic_params.len > 0 {
 		tc.check_generic_fn_body_global_shadowing(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0
-	if should_check_generic_body && !signature_has_bare_generic_type {
+	if has_body && should_check_generic_body && !signature_has_bare_generic_type {
 		tc.check_fn_body(node)
 		if !fast_valid_build {
 			tc.check_recursive_str_calls(flat.NodeId(fn_idx), node)
 		}
-	} else if generic_params.len > 0 && node.value.contains('.') && !fast_valid_build
+	} else if has_body && generic_params.len > 0 && node.value.contains('.') && !fast_valid_build
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.check_deferred_generic_receiver_comparisons(node)
 	}
 	if !fast_valid_build {
-		qname := checker_qualified_fn_name(module_name, node.value)
-		tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, qname)
-		tc.check_unreachable_after_noreturn_call(node)
+		if has_body {
+			qname := checker_qualified_fn_name(module_name, node.value)
+			tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, qname)
+			tc.check_unreachable_after_noreturn_call(node)
+		}
 		if !is_specialized {
-			if tc.should_diagnose(flat.NodeId(fn_idx)) {
+			if has_body && tc.should_diagnose(flat.NodeId(fn_idx)) {
 				tc.record_unused_fn_vars(node)
 				tc.record_unused_fn_params(node)
 				tc.record_unused_fn_labels(node)
@@ -1797,7 +1803,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		// ordinary generic fallthrough.
 		has_deferred_generic_return := generic_params.len > 0
 			&& tc.fn_has_deferred_generic_return(node, generic_params)
-		if tc.fn_context.return_type !is Unknown
+		if has_body && tc.fn_context.return_type !is Unknown
 			&& !type_allows_implicit_return(tc.fn_context.return_type)
 			&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
 			&& !has_deferred_generic_return && tc.should_diagnose(flat.NodeId(fn_idx)) {
