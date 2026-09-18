@@ -6163,15 +6163,9 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 			return typ
 		}
 	}
-	if base_node.kind == .string_literal {
-		method_name := 'string.${node.value}'
-		if method_name in tc.fn_param_types || method_name in tc.fn_ret_types {
-			return tc.method_value_type('string', node.value)
-		}
-	}
 	if clean is Array || clean is Map || clean is String {
 		// A declared field (e.g. `string.str &u8`) shadows the builtin method
-		// of the same name for selector access.
+		// of the same name for selector access, including on string literals.
 		sname := if clean is Array {
 			'array'
 		} else if clean is Map {
@@ -6183,6 +6177,12 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 			if f.name == node.value {
 				return f.typ
 			}
+		}
+	}
+	if base_node.kind == .string_literal {
+		method_name := 'string.${node.value}'
+		if method_name in tc.fn_param_types || method_name in tc.fn_ret_types {
+			return tc.method_value_type('string', node.value)
 		}
 	}
 	if typ := tc.builtin_method_value_type(base_type, node.value) {
