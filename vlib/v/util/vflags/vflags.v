@@ -43,7 +43,7 @@ pub fn tokenize_to_args(s string) []string {
 			if i > 0 && s[i - 1] == `\\` {
 				// support escaping a quote with a \
 				ctoken.go_back(1)
-				ctoken.write_rune(c)
+				ctoken.write_u8(c)
 			} else {
 				in_quotes = false
 				tokens << ctoken.str()
@@ -54,8 +54,8 @@ pub fn tokenize_to_args(s string) []string {
 				tokens << ctoken.str()
 			}
 		} else {
-			// part of a token
-			ctoken.write_rune(c)
+			// s[i] is a UTF-8 byte, not a decoded Unicode code point.
+			ctoken.write_u8(c)
 		}
 	}
 	// add the potential remaining token too

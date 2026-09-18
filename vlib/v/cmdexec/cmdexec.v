@@ -12,6 +12,7 @@ pub const no_timeout = i64(0)
 const timeout_drain_ms = i64(200)
 
 // run executes program with an exact argument vector and captures its output.
+// Both output pipes are drained until EOF, including writers inherited by descendants.
 pub fn run(program string, args []string) os.Result {
 	return run_in(program, args, '')
 }
@@ -72,30 +73,26 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	mut stdout_done := false
 	mut stderr_done := merge_output
 	sw := time.new_stopwatch()
-	for timeout_ms > 0 || process.is_alive() {
+	for {
 		mut stdout := ''
 		mut stderr := ''
-		if timeout_ms > 0 {
-			if !stdout_done {
-				text, done := read_process_pipe(mut process, .stdout)
-				stdout = text
-				stdout_done = done
-			}
-			if !stderr_done {
-				text, done := read_process_pipe(mut process, .stderr)
-				stderr = text
-				stderr_done = done
-			}
-		} else {
-			stdout = process.stdout_read()
-			stderr = if merge_output { '' } else { process.stderr_read() }
+		if !stdout_done {
+			text, done := read_process_pipe(mut process, .stdout)
+			stdout = text
+			stdout_done = done
+		}
+		if !stderr_done {
+			text, done := read_process_pipe(mut process, .stderr)
+			stderr = text
+			stderr_done = done
 		}
 		output.write_string(stdout)
 		output.write_string(stderr)
-		// Do not reap a bounded child's leader while descendants still own the
-		// pipes. Keeping its PID reserved also keeps a later group kill from
-		// targeting a reused PID after an early-exiting wrapper.
-		if timeout_ms > 0 && stdout_done && stderr_done && !process.is_alive() {
+		// A leader can exit while a descendant still owns both pipes. Keep
+		// draining both: slurping stdout first can deadlock on a full stderr
+		// pipe, even for an unbounded run. For bounded runs, deferring the reap
+		// also reserves the leader PID until a possible process-group kill.
+		if stdout_done && stderr_done && !process.is_alive() {
 			break
 		}
 		// The deadline is checked on every iteration, not only when nothing was
@@ -124,9 +121,8 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	process.wait()
 	if timed_out {
 		eprintln('V: `${display(program, args)}` did not finish within ${timeout_ms}ms, the child process was killed')
-		// Never block on EOF after the deadline: the slurps on the normal path
-		// wait until every writer of the pipe is gone, and a descendant that
-		// escaped the group kill still owns one. Collect what is already
+		// Never wait for EOF after the deadline: a descendant that escaped
+		// the group kill may still own a writer. Collect what is already
 		// buffered instead.
 		drain := time.new_stopwatch()
 		for drain.elapsed().milliseconds() < timeout_drain_ms {
@@ -137,11 +133,6 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 			}
 			output.write_string(stdout)
 			output.write_string(stderr)
-		}
-	} else if timeout_ms <= 0 {
-		output.write_string(process.stdout_slurp())
-		if !merge_output {
-			output.write_string(process.stderr_slurp())
 		}
 	}
 	if process.err.len > 0 {

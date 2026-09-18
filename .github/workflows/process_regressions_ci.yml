@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'vlib/v/cmdexec/**'
+      - 'vlib/v/util/vflags/**'
       - 'cmd/v/**'
       - 'vlib/v/driver/**'
       - '.github/workflows/process_regressions_ci.yml'
@@ -11,6 +12,7 @@ on:
     branches: [master]
     paths:
       - 'vlib/v/cmdexec/**'
+      - 'vlib/v/util/vflags/**'
       - 'cmd/v/**'
       - 'vlib/v/driver/**'
       - '.github/workflows/process_regressions_ci.yml'
@@ -54,3 +56,12 @@ jobs:
       - name: Check deadlines and inherited output pipes
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_timeout_test.v
+      - name: Check unbounded commands with inherited output pipes
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_unbounded_test.v
+      - name: Check existing compiler flag tokenization
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_test.v
+      - name: Check UTF-8 compiler flag tokenization
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_utf8_test.v
