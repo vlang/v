@@ -5360,18 +5360,19 @@ fn (mut g FlatGen) map_key_temp_c_type(key_type types.Type) string {
 
 // map_callback_names supports map callback names handling for FlatGen.
 fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string, string) {
-	if key_type is types.String {
+	// Aliases have the same key representation and callbacks as their base type.
+	clean_key := cgen_unalias_type(key_type)
+	if clean_key is types.String {
 		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
-	clean_key := cgen_unalias_type(key_type)
 	if clean_key is types.ArrayFixed {
 		base := '${g.tc.c_type(clean_key)}_map_key'
 		return '${base}_hash', '${base}_eq', '${base}_clone', '${base}_free'
 	}
-	c_key := if key_type is types.Enum {
-		g.enum_storage_c_type(key_type)
+	c_key := if clean_key is types.Enum {
+		g.enum_storage_c_type(clean_key)
 	} else {
-		g.tc.c_type(key_type)
+		g.tc.c_type(clean_key)
 	}
 	size_suffix := map_integer_callback_size_suffix(clean_key, c_key, g.target.pointer_bits)
 

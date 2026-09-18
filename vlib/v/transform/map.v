@@ -1627,11 +1627,15 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
 	mut size_suffix := '4'
-	if key_type in ['u8', 'i8', 'bool', 'char'] {
+	if key_type in ['u8', 'i8', 'byte', 'bool', 'char'] {
 		size_suffix = '1'
 	} else if key_type in ['u16', 'i16'] {
 		size_suffix = '2'
-	} else if key_type in ['i64', 'u64', 'isize', 'usize', 'f64', 'voidptr']
+	} else if key_type in ['int', 'isize', 'usize', 'uint', 'voidptr', 'charptr', 'byteptr']
+		|| key_type.starts_with('&') {
+		// Match the target's key storage, not the host or a fixed 32-bit int.
+		size_suffix = if types.platform_int_bits() == 32 { '4' } else { '8' }
+	} else if key_type in ['i64', 'u64', 'f64']
 		|| key_type.contains('Arc[') || key_type.contains('Arc_') {
 		size_suffix = '8'
 	}
@@ -1640,14 +1644,15 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 }
 
 fn (t &Transformer) map_callback_names_for_type(key_type string) (string, string, string, string) {
+	normalized_key := t.normalize_type_alias(key_type)
 	if !isnil(t.tc) {
-		clean := t.tc.parse_type(t.normalize_type_alias(key_type))
+		clean := t.tc.parse_type(normalized_key)
 		if clean is types.ArrayFixed {
 			base := '${t.tc.c_type(clean)}_map_key'
 			return '${base}_hash', '${base}_eq', '${base}_clone', '${base}_free'
 		}
 	}
-	return map_callback_names(key_type)
+	return map_callback_names(normalized_key)
 }
 
 // map_index_info supports map index info handling for Transformer.
