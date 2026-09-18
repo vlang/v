@@ -17,110 +17,27 @@ jobs:
         with:
           result-encoding: string
           script: |
-            const repo = context.repo;
-            const base = 'aaf35b29a164f3595c15938861314796e2c1abd8';
-            const baseTree = 'c83e3c8b034b8ff737afa3790ae45c89ecc7b5ee';
-            function replace(text, before, after, count = 1) {
-              const actual = text.split(before).length - 1;
-              if (actual !== count) throw new Error(`Expected ${count} matches, found ${actual}: ${before}`);
-              return text.split(before).join(after);
-            }
-            function editFunction(text, name, edits) {
-              const pattern = new RegExp('^(?:pub )?fn [^\\n]*\\b' + name + '\\(', 'm');
-              const match = pattern.exec(text);
-              if (!match) throw new Error(`Missing function ${name}`);
-              const start = match.index;
-              const end = text.indexOf('\n}', start) + 2;
-              if (end < start) throw new Error(`Missing end of ${name}`);
-              let body = text.slice(start, end);
-              for (const edit of edits) body = replace(body, ...edit);
-              return text.slice(0, start) + body + text.slice(end);
-            }
-            async function read(path, expected) {
-              const { data } = await github.rest.repos.getContent({...repo, path, ref: base});
-              if (data.sha !== expected || data.encoding !== 'base64') throw new Error(`Unexpected base for ${path}`);
-              return Buffer.from(data.content, 'base64').toString('utf8');
-            }
-            const root = 'vlib/v/gen/c/';
-            let structs = await read(root + 'struct.v', '5bd507c94c666cb93b6a849e2172d836e05976bf');
-            const helper = [
-              '// field_c_name preserves the external spelling of escaped C aggregate members.',
-              '// V fields still use the normal identifier mangling, even through aliases.',
-              'fn (g &FlatGen) field_c_name(owner types.Type, field string) string {',
-              '\tif field.starts_with(\'@\') {',
-              '\t\tbase := cgen_unalias_unwrap_all_pointers(owner)',
-              '\t\tif base is types.Struct && base.name.starts_with(\'C.\') {',
-              '\t\t\treturn field[1..]',
-              '\t\t}',
-              '\t}',
-              '\treturn g.cname(field)',
-              '}',
-              '',
-              '// init_field_c_name resolves the owner of an initializer designator only',
-              '// when its source spelling contains an escape.',
-              'fn (g &FlatGen) init_field_c_name(owner string, field string) string {',
-              '\tif field.starts_with(\'@\') {',
-              '\t\treturn g.field_c_name(g.tc.parse_type(owner), field)',
-              '\t}',
-              '\treturn c_field_name(field)',
-              '}',
-              '',
-              ''
-            ].join('\n');
-            structs = replace(structs, '// struct_init_fields_key returns the key', helper + '// struct_init_fields_key returns the key');
-            for (const name of ['gen_struct_init', 'gen_heap_struct_init']) {
-              structs = editFunction(structs, name, [
-                ['c_field_name(field.value)', 'g.init_field_c_name(lookup_name, field.value)']
-              ]);
-            }
-            structs = editFunction(structs, 'gen_struct_init_with_fixed_array_fields', [
-              ['c_field_name(sf.name)', 'g.init_field_c_name(lookup_name, sf.name)'],
-              ['c_field_name(field.value)', 'g.init_field_c_name(lookup_name, field.value)'],
-              ['c_field_name(fixed_fields[i])', 'g.init_field_c_name(lookup_name, fixed_fields[i])'],
-              ['c_field_name(d.name)', 'g.init_field_c_name(lookup_name, d.name)'],
-              ['c_field_name(field.name)', 'g.init_field_c_name(lookup_name, field.name)']
-            ]);
-            structs = replace(structs, 'g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, c_field_name(f.name), has_field)', 'g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, g.init_field_c_name(defaults_key, f.name), has_field)', 3);
-            let clean = await read(root + 'cleanc.v', '5ce1aebd44bf8b0799df4be9190edba21205735a');
-            const startMarker = '\t\t.selector {\n\t\t\tbase_id := g.a.child(node, 0)\n\t\t\tbase := g.a.nodes[int(base_id)]\n\t\t\tif base.kind == .typeof_expr {';
-            const endMarker = '\n\t\t.index {\n\t\t\tif g.gen_explicit_generic_callee_index';
-            const start = clean.indexOf(startMarker);
-            const end = clean.indexOf(endMarker, start);
-            if (start < 0 || end < start) throw new Error('Missing selector emission block');
-            let selector = clean.slice(start, end);
-            selector = replace(selector, 'g.cname(node.value)', 'g.field_c_name(base_type0, node.value)', 7);
-            selector = replace(selector, 'g.write(\'${final_op}${g.field_c_name(base_type0, node.value)}\')', 'g.write(\'${final_op}${g.field_c_name(embedded_owner, node.value)}\')');
-            clean = clean.slice(0, start) + selector + clean.slice(end);
-            clean = editFunction(clean, 'gen_pointer_pointer_struct_selector', [
-              ['g.write(\'))->${g.cname(field)}\')', 'g.write(\'))->${g.field_c_name(inner_base, field)}\')'],
-              ['g.write(\'.${g.cname(field)}\')', 'g.write(\'.${g.field_c_name(embedded_path.last().typ, field)}\')']
-            ]);
-            clean = editFunction(clean, 'gen_sum_unique_variant_field_selector', [
-              ['c_field_name(field)', 'g.init_field_c_name(info.variant, field)']
-            ]);
-            clean = replace(clean, "expr += if arrow { '->${c_field_name(field)}' } else { '.${c_field_name(field)}' }", "expr += if arrow { '->${g.field_c_name(cur, field)}' } else { '.${g.field_c_name(cur, field)}' }");
-            clean = replace(clean, "g.write('offsetof(${ct}, ${g.cname(node.typ)})')", "g.write('offsetof(${ct}, ${g.init_field_c_name(node.value, node.typ)})')");
-            let statements = await read(root + 'stmt.v', '90a8d5a2a986fb897bac8d71f3fa8633d28b2f0c');
-            statements = editFunction(statements, 'gen_expr_lvalue', [
-              ['base_type := g.usable_expr_type(base_id)\n\t\t\tmut is_ptr', 'base_type := g.usable_expr_type(base_id)\n\t\t\tmut field_owner := base_type\n\t\t\tmut is_ptr'],
-              ['g.write(\'${op}${g.cname(embedded.name)}\')', 'g.write(\'${op}${g.cname(embedded.name)}\')\n\t\t\t\t\tfield_owner = embedded.typ'],
-              ['g.cname(node.value)', 'g.field_c_name(field_owner, node.value)']
-            ]);
-            statements = replace(statements, 'g.write(g.cname(node.value))\n\treturn true\n}\n\nfn (g &FlatGen) usable_expr_type', 'g.write(g.field_c_name(generated_base_type, node.value))\n\treturn true\n}\n\nfn (g &FlatGen) usable_expr_type');
-            const entries = [
-              {path: root + 'escaped_c_fields_test.v', mode: '100644', type: 'blob', sha: 'de75131508f9e84e832214791d2c6d19cfcbf595'},
-              {path: 'vlib/v/tests/testdata/c_escaped_fields.h', mode: '100644', type: 'blob', sha: '179a2ebf5f7b82de3b02a4730fe53a58497a7242'},
-              {path: 'vlib/v/tests/c_escaped_fields_test.c.v', mode: '100644', type: 'blob', sha: '019ed74d5ef74292167f0968fce391df0b940a70'}
-            ];
-            for (const [path, content] of [[root + 'struct.v', structs], [root + 'cleanc.v', clean], [root + 'stmt.v', statements]]) {
-              const { data } = await github.rest.git.createBlob({...repo, content, encoding: 'utf-8'});
-              entries.push({path, mode: '100644', type: 'blob', sha: data.sha});
-            }
-            const { data: tree } = await github.rest.git.createTree({...repo, base_tree: baseTree, tree: entries});
-            const { data: commit } = await github.rest.git.createCommit({...repo, message: 'cgen: preserve escaped C struct and union field names\n\nFixes #28673.', tree: tree.sha, parents: [base]});
-            await github.rest.git.createRef({...repo, ref: 'refs/heads/fix/28673-c-field-names', sha: commit.sha});
-            core.info(`Prepared ${commit.sha}`);
-            return commit.sha;
+            // Reuse this task's immutable preparation script, with two reviewed corrections.
+            const {data} = await github.rest.repos.getContent({
+              ...context.repo,
+              path: '.github/workflows/issue-28673-work.yml',
+              ref: 'b53d60f02e85ff290a5c954fb7f91fca774d70ce'
+            });
+            if (data.sha !== 'ee68aae1659914abd24af3076ff1ded74be08c65') throw new Error('Unexpected preparation source');
+            const workflow = Buffer.from(data.content, 'base64').toString('utf8');
+            const marker = '          script: |\n';
+            const start = workflow.indexOf(marker) + marker.length;
+            const end = workflow.indexOf('\n  validate:', start);
+            if (start < marker.length || end < start) throw new Error('Missing preparation script');
+            let script = workflow.slice(start, end).split('\n').map(line => line.slice(12)).join('\n');
+            const target = "'gen_struct_init_with_fixed_array_fields',";
+            if (script.split(target).length !== 2) throw new Error('Unexpected fixed-array target count');
+            script = script.replace(target, "'gen_struct_init_with_fixed_array_fields_impl',");
+            const optional = 'g.field_c_name(cur, field)';
+            if (script.split(optional).length !== 3) throw new Error('Unexpected sizeof target count');
+            script = script.split(optional).join('g.field_c_name(cur or { types.Type(types.void_) }, field)');
+            const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
+            return await new AsyncFunction('github', 'context', 'core', script)(github, context, core);
   validate:
     needs: prepare
     runs-on: ubuntu-24.04
