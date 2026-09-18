@@ -3002,6 +3002,7 @@ fn (t &Transformer) sql_resolved_table_name(table string) string {
 	} else {
 		table
 	}
+	table_name = t.comptime_resolve_selective_import_type(table_name)
 	if imported := t.resolve_imported_type_name(table_name) {
 		table_name = imported
 	}

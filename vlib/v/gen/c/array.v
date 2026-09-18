@@ -1091,15 +1091,15 @@ fn (g &FlatGen) array_elem_type_matches(expected types.Type, actual types.Type) 
 // gen_map_ref_arg emits map ref arg output for c.
 fn (mut g FlatGen) gen_map_ref_arg(base_id flat.NodeId, base_type types.Type) {
 	if base_type is types.Pointer {
-		g.gen_expr(base_id)
+		g.gen_map_value_expr(base_id)
 	} else if !g.expr_is_addressable(base_id) || g.map_index_value_is_rvalue(base_id) {
 		ct := g.tc.c_type(base_type)
 		g.write('&((${ct}[]){')
-		g.gen_expr(base_id)
+		g.gen_map_value_expr(base_id)
 		g.write('})[0]')
 	} else {
 		g.write('&')
-		g.gen_expr(base_id)
+		g.gen_map_value_expr(base_id)
 	}
 }
 
@@ -1656,7 +1656,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				if !is_ptr {
 					g.write('&')
 				}
-				g.gen_expr(base_id)
+				g.gen_map_value_expr(base_id)
 				g.writeln(';')
 				key_id := g.a.child(&lhs, 1)
 				mut key_ref := '&${key_tmp}'
@@ -1683,7 +1683,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			} else {
 				g.write('map__set(&')
 			}
-			g.gen_expr(base_id)
+			g.gen_map_value_expr(base_id)
 			g.write(', &(${c_key}[]){')
 			g.gen_expr_with_expected_type(g.a.child(&lhs, 1), clean_base.key_type)
 			g.write('}, &(${c_val}[]){')

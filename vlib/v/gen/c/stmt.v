@@ -36,6 +36,30 @@ struct CInlineAsmBlock {
 	section_count int
 }
 
+// gen_map_value_expr emits a map value while preserving the payload boundary of
+// shared struct fields. Shared fields are pointers to lock wrappers in C; map
+// runtime helpers need the wrapper's `.val`, while lock lowering still needs
+// the wrapper itself.
+fn (mut g FlatGen) gen_map_value_expr(id flat.NodeId) {
+	if int(id) >= 0 && int(id) < g.a.nodes.len {
+		node := g.a.nodes[int(id)]
+		if node.kind == .paren && node.children_count > 0 {
+			g.write('(')
+			g.gen_map_value_expr(g.a.child(&node, 0))
+			g.write(')')
+			return
+		}
+		if node.kind == .selector && node.children_count > 0 {
+			base_id := g.a.child(&node, 0)
+			base_type := g.usable_expr_type(base_id)
+			if g.gen_shared_field_value_selector(base_id, base_type, node.value, node.op) {
+				return
+			}
+		}
+	}
+	g.gen_expr(id)
+}
+
 fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_type types.Map, base_is_pointer bool) {
 	c_key := g.map_key_temp_c_type(map_type.key_type)
 	c_val := g.tc.c_type(map_type.value_type)
@@ -47,7 +71,7 @@ fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_
 		if !base_is_pointer {
 			g.write('&')
 		}
-		g.gen_expr(base_id)
+		g.gen_map_value_expr(base_id)
 		g.write('; void* ${key_tmp} = &(${c_key}[]){')
 		g.gen_expr(g.a.child(&node, 1))
 		g.write('}; void* ${value_tmp} = map__get_check(${map_tmp}, ${key_tmp}); if (!${value_tmp}) { ${value_tmp} = map__get_or_set(${map_tmp}, ${key_tmp}, ')
@@ -59,7 +83,7 @@ fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_
 	if !base_is_pointer {
 		g.write('&')
 	}
-	g.gen_expr(base_id)
+	g.gen_map_value_expr(base_id)
 	g.write(', &(${c_key}[]){')
 	g.gen_expr(g.a.child(&node, 1))
 	g.write('}, ')
@@ -8648,7 +8672,7 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 	owner := g.tc.cur_scope.insert_with_owner(lhs.value, m.value_type)
 	g.track_local_pointer_storage_decl(lhs, owner, m.value_type, c_val)
 	g.write('void* ${tmp} = map__get_check(&')
-	g.gen_expr(g.a.child(&expr_node, 0))
+	g.gen_map_value_expr(g.a.child(&expr_node, 0))
 	g.write(', &(${c_key}[]){')
 	g.gen_expr(g.a.child(&expr_node, 1))
 	g.writeln('});')
@@ -9186,7 +9210,7 @@ fn (mut g FlatGen) gen_or_map_index(expr_node flat.Node, m types.Map, or_body fl
 	c_key := g.map_key_temp_c_type(m.key_type)
 	val := g.tmp_name()
 	g.write('({void* ${tmp} = map__get_check(&')
-	g.gen_expr(g.a.child(&expr_node, 0))
+	g.gen_map_value_expr(g.a.child(&expr_node, 0))
 	g.write(', &(${c_key}[]){')
 	g.gen_expr(g.a.child(&expr_node, 1))
 	g.write('}); ${c_val} ${val}; if (${tmp}) { ${val} = *(${c_val}*)${tmp}; } else { ')
