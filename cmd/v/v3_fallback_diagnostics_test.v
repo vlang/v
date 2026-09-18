@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.cmdexec
 
 fn test_v1_fallback_failure_message_separates_the_v3_reason() {
 	reason := 'V compilation failed (compiler_error)'
@@ -37,4 +38,54 @@ fn test_v3_diagnostics_output_replays_the_error_without_running_user_code() {
 	os.write_file(good_source, 'import os\n\nfn main() {\n\tos.write_file(os.args[1], "ran") or {}\n}\n')!
 	_ := v3_diagnostics_output(dispatcher, ['-nocache', '-no-parallel', 'run', good_source, marker])
 	assert !os.exists(marker)
+}
+
+const diagnostics_probe_env = 'VTEST_V3_DIAGNOSTICS_PIPE_PROBE'
+const diagnostics_probe_bytes = 2 * 1024 * 1024
+
+// Reuse this test executable as both the noisy child and its collecting parent.
+// The outer test bounds the entire process group, so the old wait-before-read
+// implementation fails without leaving a blocked compiler behind.
+fn testsuite_begin() {
+	mode := os.getenv(diagnostics_probe_env)
+	if mode == 'emit' {
+		if os.getenv('VFLAGS') != '' || os.getenv('VNORUN') != '1'
+			|| os.getenv(v3_no_fallback_env) != '1' || os.getenv(v3_retry_env) != '1'
+			|| os.getenv(v3_fallback_file_env) != '' || os.getenv(v3_c_error_dir_env) != '' {
+			eprintln('diagnostic replay did not isolate its environment')
+			exit(1)
+		}
+		print('o'.repeat(diagnostics_probe_bytes))
+		flush_stdout()
+		eprint('e'.repeat(diagnostics_probe_bytes))
+		flush_stderr()
+		exit(23)
+	}
+	if mode == 'collect' {
+		os.setenv(diagnostics_probe_env, 'emit', true)
+		os.setenv('VFLAGS', 'must not be forwarded', true)
+		os.setenv(v3_fallback_file_env, 'must be removed', true)
+		os.setenv(v3_c_error_dir_env, 'must be removed', true)
+		output := v3_diagnostics_output(os.executable(), [])
+		expected := 'o'.repeat(diagnostics_probe_bytes) + 'e'.repeat(diagnostics_probe_bytes)
+		if output != expected {
+			eprintln('incomplete diagnostic replay: expected ${expected.len} bytes, got ${output.len}')
+			exit(1)
+		}
+		exit(0)
+	}
+}
+
+fn test_v3_diagnostics_output_drains_large_stdout_and_stderr_before_waiting() {
+	previous := os.getenv_opt(diagnostics_probe_env)
+	os.setenv(diagnostics_probe_env, 'collect', true)
+	defer {
+		if value := previous {
+			os.setenv(diagnostics_probe_env, value, true)
+		} else {
+			os.unsetenv(diagnostics_probe_env)
+		}
+	}
+	result := cmdexec.run_with_timeout(os.executable(), [], 15_000)
+	assert result.exit_code == 0, result.output
 }

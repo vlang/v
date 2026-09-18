@@ -31,7 +31,9 @@ pub fn run_with_timeout(program string, args []string, timeout_ms i64) os.Result
 
 fn resolve_program(program string) ?string {
 	if os.is_executable(program) {
-		return program
+		// Pin the file checked above before Process can interpret a bare name
+		// as a fresh PATH lookup or start the child in a different directory.
+		return os.abs_path(program)
 	}
 	return os.find_abs_path_of_executable(program) or { return none }
 }

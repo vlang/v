@@ -1,0 +1,47 @@
+name: Compiler process regressions
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/cmdexec/**'
+      - 'cmd/v/v3_fallback_diagnostics*'
+      - '.github/workflows/process_regressions_ci.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'vlib/v/cmdexec/**'
+      - 'cmd/v/v3_fallback_diagnostics*'
+      - '.github/workflows/process_regressions_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  process-regressions:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      VFLAGS: -cc gcc
+      VJOBS: '2'
+      V_C_ERROR_BUG_REPORT_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build V with the system C compiler
+        id: build
+        run: make
+      - name: Check executable resolution
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v
+      - name: Check diagnostic replay
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler cmd/v/v3_fallback_diagnostics_test.v
+      - name: Preserve this revision for local investigation
+        if: always()
+        run: tar --exclude='./.git' --exclude='*/.git' -czf "$RUNNER_TEMP/v-process-regressions.tar.gz" .
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: v-process-regressions
+          path: ${{ runner.temp }}/v-process-regressions.tar.gz
+          retention-days: 1

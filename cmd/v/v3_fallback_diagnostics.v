@@ -46,8 +46,11 @@ fn v3_diagnostics_output(vexe string, args []string) string {
 	process.set_args(args)
 	process.set_environment(environment)
 	process.set_redirect_stdio_merged()
-	process.wait()
+	// Drain the merged pipe before waiting: a verbose compiler can otherwise
+	// fill the pipe and block forever while the parent waits for it to exit.
+	process.run()
 	output := process.stdout_slurp()
+	process.wait()
 	process.close()
 	return output
 }
