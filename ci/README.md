@@ -14,6 +14,12 @@ and the failed task is retried before proceeding with the remaining tasks.
 An interrupted run also retains the task it was running. A fully completed job removes
 its checkpoint, so the following invocation starts from the beginning.
 
+The aggregate `ci` command sets `VTEST_FAIL_FAST=1` and `VJOBS=1`, overriding inherited
+values. Test and example-build sessions stop at the first reported failure, with no
+other files already running in parallel. `test-cleancode` also stops after a failed
+vetting session instead of starting formatting checks. The failed task's checkpoint
+is retained. Existing per-test retry and known-flaky-test policies are unchanged.
+
 Progress is stored in `/tmp/v-macos-ci-<uid>-<checkout-hash>.progress`; the command
 prints the exact path. The hash uses the canonical checkout directory, not a commit
 or source timestamp, so edits, commits and compiler rebuilds do not discard progress.
@@ -49,5 +55,7 @@ sh ci/macos_ci_resume_test.sh
 Set `VEXE` to an absolute compiler path to use a different V executable. The test
 compiles the real runner, then replaces its task subprocesses through `V_CI_VEXE`
 with a small shell fixture. It tests failures, retries, successful cleanup, reset,
-invalid checkpoints, checkout isolation and checkpoint write failures without
-running the macOS workloads or installing packages.
+invalid checkpoints, checkout isolation, checkpoint write failures and fail-fast
+environment propagation. It also compiles the real `test-cleancode` tool and runs it
+against a tiny checkout with mocked vet/fmt commands, checking both fail-fast and
+normal session sequencing. No macOS workloads or package installations are run.
