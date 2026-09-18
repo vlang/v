@@ -1004,6 +1004,17 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if node.typ.starts_with('map[') {
 				return node.typ
 			}
+			// A generic parameter is lexical: inside `fn outer[T]`, `T` in
+			// `inner[T](value)` names the parameter even when the writing file also
+			// imports a type spelled `T` (`import pkg { T }`), matching the checker,
+			// where the parameter wins over the file's selective imports
+			// (`qualify_type_text_impl` checks the generic parameters first).
+			// Resolving it through them would specialize the callee for `pkg.T` and
+			// lose the substitution of the caller's type argument.
+			if node.value in t.active_generic_params
+				|| t.node_has_enclosing_generic_param(id, node.value) {
+				return node.value
+			}
 			// A bare spelling must be resolved in the file that wrote the call:
 			// `import model { Context }` makes `Context` mean `model.Context` there
 			// even when another imported module declares a same-named type. A global
@@ -1080,6 +1091,50 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			return ''
 		}
 	}
+}
+
+// node_enclosing_generic_params returns the generic parameter names of the
+// declaration that lexically encloses `id`. Synthesized nodes have no source
+// parent entry; a live specialization records its parameters in
+// `active_generic_params` instead.
+fn (t &Transformer) node_enclosing_generic_params(id flat.NodeId) []string {
+	if int(id) < 0 || int(id) >= t.source_parent_ids.len {
+		return []string{}
+	}
+	mut cursor := int(id)
+	for _ in 0 .. t.a.nodes.len {
+		parent_id := t.source_parent_id(cursor)
+		if parent_id < 0 || parent_id == cursor || parent_id >= t.a.nodes.len {
+			return []string{}
+		}
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.fn_decl, .struct_decl, .type_decl, .interface_decl, .c_fn_decl] {
+			return parent.generic_params()
+		}
+		cursor = parent_id
+	}
+	return []string{}
+}
+
+// node_has_enclosing_generic_param reports whether `name` is a generic parameter
+// of a declaration that lexically encloses `id`. Such a parameter keeps its
+// meaning even when the writing file selectively imports a type with the same
+// spelling, so resolution has to see it before it consults those imports.
+fn (t &Transformer) node_has_enclosing_generic_param(id flat.NodeId, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	return name in t.node_enclosing_generic_params(id)
+}
+
+// type_arg_text_has_enclosing_generic_param reports whether `text` names a
+// generic parameter of the declaration that lexically encloses `id`. An
+// argument that does is not concrete: the enclosing specialization substitutes
+// it while it is cloned, so it must not be resolved through the writing file's
+// imports here.
+fn (t &Transformer) type_arg_text_has_enclosing_generic_param(id flat.NodeId, text string) bool {
+	params := t.node_enclosing_generic_params(id)
+	return params.len > 0 && generic_text_contains_param(text, params)
 }
 
 fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
