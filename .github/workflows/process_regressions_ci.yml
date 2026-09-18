@@ -36,12 +36,3 @@ jobs:
       - name: Check diagnostic replay
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./v -new-compiler cmd/v/v3_fallback_diagnostics_test.v
-      - name: Preserve this revision for local investigation
-        if: always()
-        run: tar --exclude='./.git' --exclude='*/.git' -czf "$RUNNER_TEMP/v-process-regressions.tar.gz" .
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: v-process-regressions
-          path: ${{ runner.temp }}/v-process-regressions.tar.gz
-          retention-days: 1
