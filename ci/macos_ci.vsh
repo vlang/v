@@ -1,4 +1,5 @@
 import common { Task, exec }
+import crypto.sha256
 import os
 
 fn test_symlink() {
@@ -184,10 +185,48 @@ const ci_tasks = [
 	'test_readline',
 ]
 
+// Keep progress across edits/rebuilds, but isolate users and checkout directories.
+fn ci_progress_path() string {
+	checkout := sha256.hexhash(os.real_path(os.getwd()))
+	return '/tmp/v-macos-ci-${os.getuid()}-${checkout}.progress'
+}
+
+fn ci_progress_contents(task_name string) string {
+	// Record the whole ordered task list so changed plans restart safely.
+	return 'macos-ci-v1\n${task_name}\n${ci_tasks.join('\n')}\n'
+}
+
+fn ci_resume_index(path string) !int {
+	if !os.exists(path) {
+		return 0
+	}
+	saved := os.read_file(path)!
+	for i, task_name in ci_tasks {
+		if saved == ci_progress_contents(task_name) {
+			return i
+		}
+	}
+	eprintln('Ignoring invalid or outdated CI progress; restarting from the first task.')
+	return 0
+}
+
+fn save_ci_progress(path string, task_name string) ! {
+	// Write privately, then rename on the same filesystem. An interrupted write
+	// leaves the previous checkpoint intact, never a partially written cursor.
+	tmp_dir := '${path}.${os.getpid()}.tmp'
+	os.mkdir(tmp_dir, 0o700)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	tmp_path := os.join_path(tmp_dir, 'progress')
+	os.write_file(tmp_path, ci_progress_contents(task_name))!
+	os.rename(tmp_path, path)!
+}
+
 // run_ci_tasks mirrors the active ci/macos_ci.vsh steps in
 // .github/workflows/macos_ci.yml. The generic `all` mode intentionally remains
 // exhaustive, including tasks that are currently disabled in the workflow.
-fn run_ci_tasks() {
+fn run_ci_tasks(reset bool) ! {
 	// Match the GitHub Actions job environment that changes test behavior.
 	os.setenv('CI', 'true', true)
 	os.setenv('GITHUB_ACTIONS', 'true', true)
@@ -200,9 +239,22 @@ fn run_ci_tasks() {
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	os.setenv('V_MACOS_MULTIWINDOW_TESTS', '0', true)
 
-	for task_name in ci_tasks {
+	progress_path := ci_progress_path()
+	start := if reset { 0 } else { ci_resume_index(progress_path)! }
+	eprintln('CI progress: ${progress_path}')
+	eprintln('Use `v run ci/macos_ci.vsh ci --reset` to restart from the first task.')
+	if start > 0 {
+		eprintln('Resuming at ${ci_tasks[start]}; skipping ${start} completed CI tasks.')
+	}
+	for i in start .. ci_tasks.len {
+		task_name := ci_tasks[i]
+		// Save BEFORE execution: a failure or interruption must retry this task.
+		save_ci_progress(progress_path, task_name)!
+		eprintln('CI task ${i + 1}/${ci_tasks.len}: ${task_name}')
 		exec('v run ci/macos_ci.vsh ${task_name}')
 	}
+	os.rm(progress_path)!
+	eprintln('CI tasks complete; progress cleared.')
 }
 
 const all_tasks = {
@@ -232,7 +284,14 @@ const all_tasks = {
 }
 
 if os.args.len > 1 && os.args[1] == 'ci' {
-	run_ci_tasks()
+	if os.args.len > 3 || (os.args.len == 3 && os.args[2] != '--reset') {
+		eprintln('Usage: v run ci/macos_ci.vsh ci [--reset]')
+		exit(1)
+	}
+	run_ci_tasks(os.args.len == 3) or {
+		eprintln('Could not update CI progress: ${err.msg()}')
+		exit(1)
+	}
 	exit(0)
 }
 
