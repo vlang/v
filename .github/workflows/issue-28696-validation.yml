@@ -4,12 +4,16 @@ on:
   push:
     branches: [fix/28696-validation]
 
+concurrency:
+  group: issue-28696-validation
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
 jobs:
   validate:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     env:
       VJOBS: '2'
@@ -18,15 +22,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: fix/28696-submodule-diagnostics
+          ref: 451ce34d6676b59b3246698d2195b8ff3309442d
           fetch-depth: 1
-      - name: Bootstrap baseline compiler
+      - name: Bootstrap the baseline compiler
         id: bootstrap
-        continue-on-error: true
         run: |
           set -o pipefail
           make -j2 2>&1 | tee /tmp/28696-bootstrap.log
       - name: Record baseline regression failures
+        id: baseline
         if: steps.bootstrap.outcome == 'success'
         run: |
           set +e
@@ -35,68 +39,40 @@ jobs:
           cat /tmp/28696-before.log
           echo "Baseline exit code: $result"
           test "$result" -ne 0
-      - name: Apply scoped diagnostic selection fix
-        id: patch
-        if: always()
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('vlib/v/driver/driver.v')
-          old = 'fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {\n\tfor uf in user_files {\n\t\ttc.diagnostic_files[uf] = true\n\t}\n}'
-          new = '''fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
-          \tfor uf in user_files {
-          \t\ttc.diagnostic_files[uf] = true
-          \t}
-          \t// Exact-output fixtures deliberately diagnose only their selected input.
-          \tif tc.checker_fixture_mode {
-          \t\treturn
-          \t}
-          \t// Imported project modules need the same checks as the entry files.
-          \t// Resolve ownership once here, rather than for every checked expression.
-          \tfor i, node in tc.a.nodes {
-          \t\tif i < tc.a.user_code_start || node.kind != .file || node.value.len == 0
-          \t\t\t|| node.value in tc.diagnostic_files {
-          \t\t\tcontinue
-          \t\t}
-          \t\tif types.shadow_roots_own_file(node.value, tc.shadow_diagnostic_root,
-          \t\t\ttc.shadow_explicit_roots, tc.shadow_dependency_roots) {
-          \t\t\ttc.diagnostic_files[node.value] = true
-          \t\t}
-          \t}
-          }'''
-          source = path.read_text()
-          assert source.count(old) == 1, 'Expected exactly one unmodified diagnostic selection helper'
-          path.write_text(source.replace(old, new))
-          PY
-          git diff --check
-          git diff --stat
-      - name: Rebuild compiler
+      - name: Check out the published fix and rebuild
         id: rebuild
-        if: always() && steps.patch.outcome == 'success' && steps.bootstrap.outcome == 'success'
-        continue-on-error: true
+        if: always() && steps.bootstrap.outcome == 'success'
         run: |
           set -o pipefail
+          git fetch origin fix/28696-submodule-diagnostics
+          git checkout --detach FETCH_HEAD
+          git rev-parse HEAD | tee /tmp/28696-tested-commit.log
           ./v self 2>&1 | tee /tmp/28696-rebuild.log
-      - name: Format regression tests and publish source fix
-        if: always() && steps.patch.outcome == 'success'
+      - name: Format regression tests
+        if: always() && steps.rebuild.outcome == 'success'
         run: |
-          if test -x ./v; then
-            ./v fmt -w vlib/v/driver/submodule_diagnostics_test.v
-          fi
+          ./v fmt -w vlib/v/driver/submodule_diagnostics_test.v
           git diff --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add vlib/v/driver/driver.v vlib/v/driver/submodule_diagnostics_test.v
-          git commit -m 'driver: type check project-owned submodules'
-          git push origin HEAD:refs/heads/fix/28696-submodule-diagnostics
+          git diff -- vlib/v/driver/submodule_diagnostics_test.v | tee /tmp/28696-format.log
+          cp vlib/v/driver/submodule_diagnostics_test.v /tmp/28696-formatted-test.v
+      - name: Upload formatted regression source
+        if: always() && steps.rebuild.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-28696-formatted-test
+          path: /tmp/28696-formatted-test.v
+          retention-days: 7
       - name: Run focused regression tests
+        id: focused
         if: always() && steps.rebuild.outcome == 'success'
         run: |
           set -o pipefail
           ./v -silent test vlib/v/driver/submodule_diagnostics_test.v 2>&1 | tee /tmp/28696-after.log
       - name: Compile the reported multi-file reproducer
+        id: reproducer
         if: always() && steps.rebuild.outcome == 'success'
         run: |
+          set -o pipefail
           python3 - <<'PY' 2>&1 | tee /tmp/28696-reproducer.log
           from pathlib import Path
           import subprocess
@@ -122,18 +98,30 @@ jobs:
                   print(f'Valid source attempt {attempt + 1}\nExit: {result.returncode}\n{result.stdout}', flush=True)
                   assert result.returncode == 0
           PY
-      - name: Run driver and type-checker unit tests
+      - name: Run driver unit tests
         if: always() && steps.rebuild.outcome == 'success'
         continue-on-error: true
         run: |
           set -o pipefail
-          timeout 360 ./v -silent test vlib/v/driver/ vlib/v/types/ 2>&1 | tee /tmp/28696-unit-tests.log
+          timeout 300 ./v -silent test vlib/v/driver/ 2>&1 | tee /tmp/28696-driver-tests.log
+      - name: Run type-checker unit tests
+        if: always() && steps.rebuild.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          timeout 300 ./v -silent test vlib/v/types/ 2>&1 | tee /tmp/28696-types-tests.log
       - name: Run compiler diagnostic fixtures
         if: always() && steps.rebuild.outcome == 'success'
         continue-on-error: true
         run: |
           set -o pipefail
-          timeout 360 ./v -silent vlib/v/compiler_errors_test.v 2>&1 | tee /tmp/28696-compiler-errors.log
+          timeout 300 ./v -silent vlib/v/compiler_errors_test.v 2>&1 | tee /tmp/28696-compiler-errors.log
+      - name: Run compiler input-output fixtures
+        if: always() && steps.rebuild.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          timeout 300 ./v vlib/v/slow_tests/inout/compiler_test.v 2>&1 | tee /tmp/28696-inout.log
       - name: Upload validation logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -141,3 +129,6 @@ jobs:
           name: issue-28696-validation
           path: /tmp/28696-*.log
           retention-days: 7
+      - name: Remove the temporary validation branch
+        if: success() && steps.focused.outcome == 'success' && steps.reproducer.outcome == 'success'
+        run: git push origin --delete fix/28696-validation
