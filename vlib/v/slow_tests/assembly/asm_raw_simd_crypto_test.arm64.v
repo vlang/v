@@ -218,12 +218,33 @@ fn arm64_polynomial_to_ghash_block(value [2]u64) []u8 {
 	return result
 }
 
+$if macos {
+	#include <sys/sysctl.h>
+}
+
+fn C.sysctlbyname(name &char, oldp voidptr, oldlenp &usize, newp voidptr, newlen usize) int
+
+fn C.IsProcessorFeaturePresent(feature u32) int
+
+// can_run_pmull_test reports whether the host CPU exposes the optional AArch64
+// PMULL crypto extension. `pmull` is an illegal instruction where it is absent,
+// so hosts without a known detection path are skipped rather than assumed capable.
 fn can_run_pmull_test() bool {
 	$if linux {
 		cpuinfo := os.read_file('/proc/cpuinfo') or { return false }
 		return cpuinfo.contains('pmull')
+	} $else $if macos {
+		mut value := u32(0)
+		mut size := usize(sizeof(value))
+		if C.sysctlbyname(c'hw.optional.arm.FEAT_PMULL', &value, &size, unsafe { nil }, 0) != 0 {
+			return false
+		}
+		return value != 0
+	} $else $if windows {
+		// PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE
+		return C.IsProcessorFeaturePresent(30) != 0
 	} $else {
-		return true
+		return false
 	}
 }
 
