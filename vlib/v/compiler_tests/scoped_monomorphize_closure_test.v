@@ -96,7 +96,10 @@ fn main() {
 }
 ") or { panic(err) }
 	out := os.join_path(dir, 'app${scoped_monomorph_bin_suffix}')
-	compile := os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(out)} ${os.quoted_path(dir)}')
+	// `-new-compiler` disables the V 0.5.2 fallback retry: without it a V3
+	// regression can fall back, exit 0 and still produce a binary, so the
+	// assertions below would pass without covering the fix.
+	compile := os.execute('${os.quoted_path(v3_bin)} -new-compiler -nocache -o ${os.quoted_path(out)} ${os.quoted_path(dir)}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	assert os.is_file(out), 'the compile produced no binary'
