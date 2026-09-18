@@ -101,10 +101,15 @@ fn test_tinyc_windows_thread_local_slot_uses_win32_tls() {
 	// second index would strand the storage threads already hold in the first.
 	assert !windows_code.contains('__attribute__((constructor))')
 	assert windows_code.contains('state_slot(void) { state_key_init();')
-	assert windows_code.contains('if (__atomic_add_fetch(&state_key_ready, 0, 5)) { return; }')
+	// The ready check runs on every slot access; on x86 it must be a plain
+	// load, not a locked read-modify-write shared by every thread.
+	assert windows_code.contains('#if defined(__x86_64__) || defined(__i386__)\n#define state_key_is_ready() (*(volatile unsigned int*)&state_key_ready)\n#else\n#define state_key_is_ready() __atomic_add_fetch(&state_key_ready, 0, 5)\n#endif')
+	assert windows_code.contains('if (state_key_is_ready()) { return; }')
+	assert !windows_code.contains('__atomic_add_fetch(&state_key_ready, 0, 5)) { return; }')
 	assert windows_code.contains('if (__atomic_add_fetch(&state_key_claim, 1, 5) == 1) {')
 	assert windows_code.contains('__atomic_add_fetch(&state_key_ready, 1, 5);')
-	assert windows_code.contains('while (!__atomic_add_fetch(&state_key_ready, 0, 5)) { Sleep(0); }')
+	assert windows_code.contains('while (!state_key_is_ready()) { Sleep(0); }')
+	assert windows_code.contains('}\n#undef state_key_is_ready\n')
 	// The key and the resolved Fls* pointers are only read after the publish.
 	claim_index := windows_code.index('__atomic_add_fetch(&state_key_claim, 1, 5)')?
 	publish_index := windows_code.index('__atomic_add_fetch(&state_key_ready, 1, 5)')?
