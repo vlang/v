@@ -76,9 +76,10 @@ fn v1_fallback_failure_message(message string, reason string) string {
 	return message
 }
 
-// v3_diagnostics_output reruns only the failed compilation path. VNORUN keeps
-// run-like commands from executing user code if the second compile happens to
-// succeed, while clearing VFLAGS avoids applying already-merged flags twice.
+// v3_diagnostics_output replays a failed compilation for its diagnostics.
+// Use the driver's explicit compile-only flag for run commands and scripts;
+// VNORUN alone is not read by the V3 driver. Keep VNORUN for compatibility, and
+// clear VFLAGS to avoid applying the caller's already-merged flags twice.
 fn v3_diagnostics_output(vexe string, args []string) string {
 	mut environment := os.environ()
 	environment.delete(v3_fallback_file_env)
@@ -87,8 +88,13 @@ fn v3_diagnostics_output(vexe string, args []string) string {
 	environment[v3_retry_env] = '1'
 	environment['VFLAGS'] = ''
 	environment['VNORUN'] = '1'
+	// Prepend rather than append: arguments after a run/script input belong to
+	// the user program. A runtime argument named -skip-running must not prevent
+	// us from adding the compiler option, either. Do not mutate the caller's args.
+	mut replay_args := ['-skip-running']
+	replay_args << args
 	mut process := os.new_process(vexe)
-	process.set_args(args)
+	process.set_args(replay_args)
 	process.set_environment(environment)
 	process.set_redirect_stdio_merged()
 	// Drain the merged pipe before waiting: a verbose compiler can otherwise

@@ -66,15 +66,18 @@ fn test_v3_c_error_diagnostics_ignores_missing_or_unrelated_state() {
 	}
 }
 
-fn test_v3_diagnostics_output_replays_the_error_without_running_user_code() {
+fn diagnostics_test_dispatcher() string {
 	dispatcher := if os.base(@VEXE) in ['v1_fallback', 'v1_fallback.exe'] {
 		os.join_path(os.dir(@VEXE), 'v' + $if windows { '.exe' } $else { '' })
 	} else {
 		@VEXE
 	}
-	if !os.is_executable(dispatcher) {
-		return
-	}
+	assert os.is_executable(dispatcher), dispatcher
+	return dispatcher
+}
+
+fn test_v3_diagnostics_output_replays_the_error_without_running_user_code() {
+	dispatcher := diagnostics_test_dispatcher()
 	root := os.join_path(os.vtmp_dir(), 'v3_fallback_diagnostics_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
@@ -95,6 +98,72 @@ fn test_v3_diagnostics_output_replays_the_error_without_running_user_code() {
 	assert !os.exists(marker)
 }
 
+fn test_v3_diagnostics_output_compiles_programs_and_scripts_without_running_them() {
+	dispatcher := diagnostics_test_dispatcher()
+	root := os.join_path(os.vtmp_dir(), 'v3 replay compiled ${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	extension := $if windows { '.exe' } $else { '' }
+	body := 'os.write_file(@FILE + ".ran", "ran") or { panic(err) }'
+	for suffix in ['v', 'vsh'] {
+		source := os.join_path(root, 'good.${suffix}')
+		content := if suffix == 'vsh' {
+			'import os\n${body}\n'
+		} else {
+			'import os\nfn main() {\n${body}\n}\n'
+		}
+		os.write_file(source, content)!
+		marker := source + '.ran'
+		for explicit_run in [false, true] {
+			binary := os.join_path(root, 'compiled_${suffix}_${explicit_run}${extension}')
+			mut args := ['-nocache', '-no-parallel', '-gc', 'none', '-cc', @CCOMPILER,
+				'-o', binary]
+			if explicit_run {
+				args << 'run'
+			}
+			args << source
+			if explicit_run || suffix == 'vsh' {
+				// These are program arguments, not compiler options. In particular,
+				// finding -skip-running here must not suppress the replay's prefix.
+				args << ['argument with spaces', '', '-skip-running']
+			}
+			original_args := args.clone()
+			diagnostics := v3_diagnostics_output(dispatcher, args)
+			assert args == original_args
+			assert !os.exists(marker), diagnostics
+			assert os.is_executable(binary), diagnostics
+			// Prove that replay actually produced a working executable: an early
+			// compiler failure must not satisfy the no-side-effects assertion.
+			manual := cmdexec.run_with_timeout(binary, [], 5_000)
+			assert manual.exit_code == 0, manual.output
+			assert os.read_file(marker)! == 'ran'
+			os.rm(marker)!
+		}
+	}
+}
+
+fn test_v3_diagnostics_output_still_runs_the_native_compiler() {
+	dispatcher := diagnostics_test_dispatcher()
+	root := os.join_path(os.vtmp_dir(), 'v3 replay native ${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'native_error.h').replace('\\', '/')
+	os.write_file(header, '#error V3_DIAGNOSTIC_NATIVE_ERROR\n')!
+	source := os.join_path(root, 'bad_native.v')
+	os.write_file(source, '#include "${header}"\nfn main() {}\n')!
+	diagnostics := v3_diagnostics_output(dispatcher, ['-nocache', '-no-parallel', '-gc',
+		'none', '-cc', @CCOMPILER, '-no-retry-compilation', 'run', source])
+	// -check would prevent execution too, but would lose this C diagnostic.
+	assert diagnostics.contains('V3_DIAGNOSTIC_NATIVE_ERROR'), diagnostics
+	assert !diagnostics.contains('retrying with'), diagnostics
+}
+
 const diagnostics_probe_env = 'VTEST_V3_DIAGNOSTICS_PIPE_PROBE'
 const diagnostics_probe_bytes = 2 * 1024 * 1024
 
@@ -104,6 +173,10 @@ const diagnostics_probe_bytes = 2 * 1024 * 1024
 fn testsuite_begin() {
 	mode := os.getenv(diagnostics_probe_env)
 	if mode == 'emit' {
+		if os.args[1..] != ['-skip-running', 'run', 'source with spaces.v', '', '-skip-running'] {
+			eprintln('diagnostic replay lost its compile-only prefix or changed the original arguments')
+			exit(1)
+		}
 		if os.getenv('VFLAGS') != '' || os.getenv('VNORUN') != '1'
 			|| os.getenv(v3_no_fallback_env) != '1' || os.getenv(v3_retry_env) != '1'
 			|| os.getenv(v3_fallback_file_env) != '' || os.getenv(v3_c_error_dir_env) != '' {
@@ -121,7 +194,8 @@ fn testsuite_begin() {
 		os.setenv('VFLAGS', 'must not be forwarded', true)
 		os.setenv(v3_fallback_file_env, 'must be removed', true)
 		os.setenv(v3_c_error_dir_env, 'must be removed', true)
-		output := v3_diagnostics_output(os.executable(), [])
+		output := v3_diagnostics_output(os.executable(), ['run', 'source with spaces.v', '',
+			'-skip-running'])
 		expected := 'o'.repeat(diagnostics_probe_bytes) + 'e'.repeat(diagnostics_probe_bytes)
 		if output != expected {
 			eprintln('incomplete diagnostic replay: expected ${expected.len} bytes, got ${output.len}')
