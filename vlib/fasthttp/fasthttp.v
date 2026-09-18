@@ -268,7 +268,7 @@ pub:
 pub struct ShutdownParams {
 pub:
 	timeout         time.Duration = time.infinite
-	retry_period_ms int = 10
+	retry_period_ms int           = 10
 }
 
 // WaitTillRunningParams allows parametrizing the calls to `ServerHandle.wait_till_running()`.

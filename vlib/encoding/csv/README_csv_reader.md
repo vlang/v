@@ -216,7 +216,7 @@ fn main() {
 	csvr.build_header_dict(csv.GetHeaderConf{})!
 	println('Header: ${csvr.header_list}')
 
-	// simple cell read usign the header map
+	// simple cell read using the header map
 	println(csvr.get_cell(x: csvr.header_map['b'], y: 1)!)
 
 	// get typed value instead of a string

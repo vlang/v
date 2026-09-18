@@ -4,7 +4,7 @@ import term
 
 // Level defines the possible log levels, used by Log.set_level()
 pub enum Level {
-	disabled = 0   // lowest level, disables everything else
+	disabled = 0 // lowest level, disables everything else
 	fatal // disables error, warn, info and debug
 	error // disables warn, info and debug
 	warn  // disables info and debug

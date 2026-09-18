@@ -14,7 +14,7 @@ module ecdsa
 // EXACT, COMPLETE, byte-for-byte mirror of net.mbedtls's own list in
 // mbedtls.c.v -- not a trimmed subset, even though most of the ssl_*.o/
 // debug.o files are never called by this file's own code. This isn't just
-// about link-time dedup (vlib/v/ast/cflags.v's add_unique_cflags/has_cflag
+// about link-time dedup (the compiler deduplicates identical
 // dedupe identical `(os, name, value)` #flag strings so the linker only
 // ever sees one copy of a given .o). It's also about which MODULE a given
 // #flag string's attribution lands on: when both this file and

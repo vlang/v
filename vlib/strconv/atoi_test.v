@@ -54,7 +54,7 @@ fn test_atoi_common() {
 		assert strconv.atoi(v.str_value)! == v.int_value
 	}
 
-	ko := [// Parsing of these strings should fail on all types.
+	ko := [ // Parsing of these strings should fail on all types.
 		'-3__1', // Two consecutives underscore.
 		'-3_1A', // Non radix 10 char.
 		'A42', // Non radix 10 char.

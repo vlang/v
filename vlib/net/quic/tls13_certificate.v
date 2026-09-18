@@ -96,7 +96,7 @@ pub fn parse_certificate(body []u8) !ParsedCertificate {
 		}
 
 		entries << CertificateEntry{
-			cert_data: cert_data
+			cert_data:  cert_data
 			extensions: extensions
 		}
 	}
@@ -107,7 +107,7 @@ pub fn parse_certificate(body []u8) !ParsedCertificate {
 
 	return ParsedCertificate{
 		certificate_request_context: certificate_request_context
-		certificate_list: entries
+		certificate_list:            entries
 	}
 }
 

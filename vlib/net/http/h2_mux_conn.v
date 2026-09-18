@@ -1578,8 +1578,8 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) ! {
 				c.fmu.unlock()
 				c.wmu.unlock()
 			}
-			else {} // unknown settings are ignored (RFC 7540 6.5.2)
-		}
+			else {}
+		} // unknown settings are ignored (RFC 7540 6.5.2)
 	}
 }
 

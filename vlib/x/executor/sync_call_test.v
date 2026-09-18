@@ -229,7 +229,8 @@ fn test_run_sync_from_owner_after_stop_returns_closed_without_running_nested_job
 		_ := <-nested_ran {
 			assert false, 'nested run_sync job ran after stop'
 		}
-		else {}
+		else {
+		}
 	}
 	ex.wait()!
 }
@@ -260,7 +261,8 @@ fn test_run_sync_from_owner_after_prior_job_error_is_refused_without_nested_exec
 		_ := <-nested_ran {
 			assert false, 'nested run_sync job ran after first error'
 		}
-		else {}
+		else {
+		}
 	}
 	ex.wait() or {
 		assert err.msg() == 'first job failed'

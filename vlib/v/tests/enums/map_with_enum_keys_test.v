@@ -7,14 +7,17 @@ enum Enum8 as u8 {
 	a = 1
 	b
 }
+
 enum Enum16 as u16 {
 	a = 1
 	b
 }
+
 enum Enum32 as u32 {
 	a = 1
 	b
 }
+
 enum Enum64 as u64 {
 	a = 1
 	b

@@ -278,6 +278,15 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) !orm.Primitive {
 			return orm.Null{}
 		}
 	} else if typ == orm.enum_ {
+		// V's ORM stores enums as integers, but a table that was created outside of V
+		// can keep them as their textual label. Pass such a label on unchanged, so that
+		// the ORM can match it against the names of the enum values.
+		if stmt.get_column_type(idx) == sqlite_text {
+			if v := stmt.get_text(idx) {
+				return v.clone()
+			}
+			return orm.Null{}
+		}
 		return stmt.get_i64(idx) or { return orm.Null{} }
 	} else if typ == orm.time_ {
 		if v := stmt.get_int(idx) {

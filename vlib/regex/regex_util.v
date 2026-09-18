@@ -520,14 +520,24 @@ fn (re &RE) parsed_replace_string(in_txt string, repl string) string {
 
 // replace return a string where the matches are replaced with the repl_str string,
 // this function supports groups in the replace string
-pub fn (mut re RE) replace(in_txt string, repl_str string) string {
+pub fn (re &RE) replace(in_txt string, repl_str string) string {
+	// Matching updates counters, captures, and backtracking state. Keep those changes local so
+	// replace can also be used with shared or constant compiled regular expressions.
+	mut worker := *re
+	worker.prog = re.prog.clone()
+	worker.groups = re.groups.clone()
+	worker.state_list = re.state_list.clone()
+	worker.group_csave = re.group_csave.clone()
+	worker.group_stack = re.group_stack.clone()
+	worker.group_data = re.group_data.clone()
+
 	mut i := 0
 	mut res := strings.new_builder(in_txt.len)
 	mut last_end := 0
 
 	for i < in_txt.len {
 		// println("Find Start. ${i} [${in_txt[i..]}]")
-		s, e := re.find_from(in_txt, i)
+		s, e := worker.find_from(in_txt, i)
 		// println("Find End.")
 		if s >= 0 && e > s {
 			// println("find match in: ${s},${e} [${in_txt[s..e]}]")
@@ -542,7 +552,7 @@ pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 			}
 			*/
 			// repl := repl_fn(re, in_txt, s, e)
-			repl := re.parsed_replace_string(in_txt, repl_str)
+			repl := worker.parsed_replace_string(in_txt, repl_str)
 			// println("repl res: ${repl}")
 			res.write_string(repl)
 			// res.write_string("[[${in_txt[s..e]}]]")

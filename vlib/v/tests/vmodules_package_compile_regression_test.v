@@ -34,13 +34,15 @@ fn issue_20147_write_project() {
 	basepath := issue_20147_module_root()
 	vmod_contents := ['Module {', "\tname: 'msgpack'", '}'].join_lines() + '\n'
 	config_contents :=
-		['module config', '', 'pub struct Config {}', '', 'pub fn default_config() Config {', '\treturn Config{}', '}'].join_lines() +
-		'\n'
+		['module config', '', 'pub struct Config {}', '', 'pub fn default_config() Config {',
+			'\treturn Config{}', '}'].join_lines() +
+			'\n'
 	decoder_contents := ['module decoder', '', 'pub struct Decoder {}'].join_lines() + '\n'
 	to_contents := ['module msgpack.to', '', 'pub fn new_decoder(src []u8) {}'].join_lines() + '\n'
 	msgpack_contents :=
-		['module msgpack', '', "pub const description = 'an empty module, used as a placeholder, for other modules'"].join_lines() +
-		'\n'
+		['module msgpack', '',
+			"pub const description = 'an empty module, used as a placeholder, for other modules'"].join_lines() +
+			'\n'
 	test_contents := ['fn test_a() {', '\tassert true', '}'].join_lines()
 	import_config_test_contents := ['import msgpack.config', '', test_contents].join_lines() + '\n'
 	import_decoder_test_contents := ['import decoder', '', test_contents].join_lines() + '\n'
@@ -96,12 +98,14 @@ fn issue_27391_write_project() ! {
 		['module luuid', '', "pub fn hello() string { return 'luuid-ok' }"].join_lines() + '\n'
 	firebird_vmod := ['Module {', "\tname: 'firebird'", '}'].join_lines() + '\n'
 	firebird_contents :=
-		['module firebird', '', 'import einar_hjortdal.luuid', '', 'pub fn run() string { return luuid.hello() }'].join_lines() +
-		'\n'
+		['module firebird', '', 'import einar_hjortdal.luuid', '',
+			'pub fn run() string { return luuid.hello() }'].join_lines() +
+			'\n'
 	app_vmod := ['Module {', "\tname: 'app'", '}'].join_lines() + '\n'
 	app_contents :=
-		['module main', '', 'import einar_hjortdal.luuid', 'import einar_hjortdal.firebird', '', 'fn main() {', '\tprintln(luuid.hello())', '\tprintln(firebird.run())', '}'].join_lines() +
-		'\n'
+		['module main', '', 'import einar_hjortdal.luuid', 'import einar_hjortdal.firebird', '',
+			'fn main() {', '\tprintln(luuid.hello())', '\tprintln(firebird.run())', '}'].join_lines() +
+			'\n'
 	os.rmdir_all(workspace) or {}
 	os.mkdir_all(vmodules_ns)!
 	os.mkdir_all(real_luuid)!

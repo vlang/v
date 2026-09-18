@@ -3,6 +3,7 @@ module trace_calls
 
 @[markused]
 __global g_stack_base = &u8(unsafe { nil })
+
 __global g_start_time = u64(0)
 
 @[markused]

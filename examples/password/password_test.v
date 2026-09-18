@@ -18,12 +18,10 @@ fn test_password_input() {
 	assert incorrect.exit_code == 0, incorrect.output
 
 	expected_out := 'Enter your password : '
-	mut res := os.execute('${os.quoted_path(os.join_path(expect_tests_path,
-		'output_from_expect_arg.expect'))} ${os.quoted_path(@VEXE)} ${os.quoted_path(expected_out)}')
+	mut res := os.execute('${os.quoted_path(os.join_path(expect_tests_path, 'output_from_expect_arg.expect'))} ${os.quoted_path(@VEXE)} ${os.quoted_path(expected_out)}')
 	assert res.exit_code == 0, res.output
 
 	not_exptectd_out := 'Enter your passwords : '
-	res = os.execute('${os.quoted_path(os.join_path(expect_tests_path,
-		'output_from_expect_arg.expect'))} ${os.quoted_path(@VEXE)} ${os.quoted_path(not_exptectd_out)}')
+	res = os.execute('${os.quoted_path(os.join_path(expect_tests_path, 'output_from_expect_arg.expect'))} ${os.quoted_path(@VEXE)} ${os.quoted_path(not_exptectd_out)}')
 	assert res.exit_code == 1, res.output
 }

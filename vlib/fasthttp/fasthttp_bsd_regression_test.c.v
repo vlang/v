@@ -11,10 +11,10 @@ fn bsd_reregistration_test_handler(_ HttpRequest) !HttpResponse {
 
 fn test_keep_alive_completion_rearms_kqueue_read_after_consumed_edge() ! {
 	server := new_server(ServerConfig{
-		family: .ip
-		port: 0
+		family:                  .ip
+		port:                    0
 		max_request_buffer_size: 8192
-		handler: bsd_reregistration_test_handler
+		handler:                 bsd_reregistration_test_handler
 	})!
 	kq := C.kqueue()
 	assert kq >= 0
@@ -31,9 +31,9 @@ fn test_keep_alive_completion_rearms_kqueue_read_after_consumed_edge() ! {
 	}
 	set_nonblocking(server_fd)
 	mut conn := &Conn{
-		fd: server_fd
+		fd:             server_fd
 		request_active: true
-		file_fd: -1
+		file_fd:        -1
 	}
 	assert add_event(kq, u64(server_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), conn) == 0
 	assert C.write(client_fd, c'GET ', 4) == 4

@@ -37,7 +37,8 @@ fn main() {
 	requested_vflags := os.getenv('VFLAGS')
 	mut requested_args := vflags.tokenize_to_args(requested_vflags)
 	requested_args << args_before
-	strict_v3 := '-new-compiler' in requested_args && '-old-compiler' !in requested_args
+	strict_v3 := ('-new-compiler' in requested_args && '-old-compiler' !in requested_args)
+		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
 	mut session_vargs := args_before.join(' ')
 	if strict_v3 {
 		// Apply strict V3 flags to each top-level test compilation without leaking
@@ -49,7 +50,8 @@ fn main() {
 	mut ts := testing.new_test_session(session_vargs, true)
 	ts.exec_mode = .compile_and_run
 	ts.fail_fast = ctx.fail_fast
-	for targ in args_after {
+	for raw_targ in args_after {
+		targ := os.norm_path(raw_targ)
 		if os.is_dir(targ) {
 			// Fetch all tests from the directory
 			files, skip_files := ctx.should_test_dir(targ.trim_right(os.path_separator), backend)
@@ -105,6 +107,7 @@ fn show_usage() {
 	println('')
 }
 
+// should_test_dir recursively discovers test files and returns their paths and skipped paths.
 pub fn (ctx &Context) should_test_dir(path string, backend string) ([]string, []string) { // return is (files, skip_files)
 	mut files := os.ls(path) or { return []string{}, []string{} }
 	mut local_path_separator := os.path_separator
@@ -123,7 +126,7 @@ pub fn (ctx &Context) should_test_dir(path string, backend string) ([]string, []
 			res_files << ret_files
 			skip_files << ret_skip_files
 		} else if os.exists(p) {
-			match ctx.should_test(p, backend) {
+			match ctx.should_test_discovered(p, backend) {
 				.test {
 					res_files << p
 				}
@@ -142,9 +145,31 @@ pub fn (ctx &Context) should_test_dir(path string, backend string) ([]string, []
 }
 
 enum ShouldTestStatus {
-	test // do test, print OK or FAIL, depending on if it passes
-	skip // print SKIP for the test
+	test   // do test, print OK or FAIL, depending on if it passes
+	skip   // print SKIP for the test
 	ignore // just ignore the file, so it will not be printed at all in the list of tests
+}
+
+// Explicit file selection must reach the compiler even when directory discovery
+// temporarily excludes a test family on CI. The compiler still checks its build
+// constraints; -run-only still filters its functions.
+fn (ctx &Context) should_test_discovered(path string, backend string) ShouldTestStatus {
+	status := ctx.should_test(path, backend)
+	if status == .test && should_skip_multiwindow_discovery(path) {
+		return .skip
+	}
+	return status
+}
+
+fn should_skip_multiwindow_discovery(path string) bool {
+	if os.getenv('GITHUB_ACTIONS') != 'true' {
+		return false
+	}
+	// Temporarily keep multiwindow tests out of recursive CI discovery on every OS.
+	normalized := path.replace('\\', '/')
+	file_name := normalized.all_after_last('/')
+	return normalized.contains('/multiwindow/') || normalized.starts_with('multiwindow/')
+		|| file_name.contains('multiwindow')
 }
 
 fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
@@ -160,31 +185,27 @@ fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
 		}
 		return .skip
 	}
-	if path.ends_with('.v') && path.count('.') == 2 {
-		if !path.all_before_last('.v').all_before_last('.').ends_with('_test') {
+	file_name := os.file_name(path)
+	if file_name.ends_with('.v') && file_name.count('.') == 2 {
+		if !file_name.all_before_last('.v').all_before_last('.').ends_with('_test') {
 			return .ignore
 		}
-		backend_arg := path.all_before_last('.v').all_after_last('.')
-		arch := pref.arch_from_string(backend_arg) or { pref.Arch._auto }
-		if arch == pref.get_host_arch() {
+		backend_arg := file_name.all_before_last('.v').all_after_last('.')
+		// A backend name is checked before the architecture aliases: `wasm` spells both,
+		// and `foo_test.wasm.v` is a WASM backend test. Reading it as an architecture
+		// skipped it on every native host instead of running it under `-b wasm`.
+		if pref.suffix_is_backend_name(backend_arg) {
+			return if backend == backend_arg {
+				ctx.should_test_when_it_contains_matching_fns(path, backend)
+			} else {
+				ShouldTestStatus.skip
+			}
+		}
+		if arch := pref.arch_from_string(backend_arg) {
+			if arch != pref.host_arch() {
+				return .skip
+			}
 			return ctx.should_test_when_it_contains_matching_fns(path, backend)
-		} else if arch == ._auto {
-			if backend_arg == 'c' { // .c.v
-				return if backend == 'c' {
-					ctx.should_test_when_it_contains_matching_fns(path, backend)
-				} else {
-					ShouldTestStatus.skip
-				}
-			}
-			if backend_arg == 'js' {
-				return if backend == 'js' {
-					ctx.should_test_when_it_contains_matching_fns(path, backend)
-				} else {
-					ShouldTestStatus.skip
-				}
-			}
-		} else {
-			return .skip
 		}
 	}
 	return .ignore

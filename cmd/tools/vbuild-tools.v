@@ -56,6 +56,10 @@ fn main() {
 	if session.has_failures() {
 		exit(1)
 	}
+	// Check-only invocations do not produce a temporary directory of executables to install.
+	if os.args[1..].any(it in ['-check', '-c']) {
+		return
+	}
 
 	mut executables := os.ls(session.vtmp_dir)!
 	executables.sort()

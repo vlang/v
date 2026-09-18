@@ -53,9 +53,9 @@ fn test_durable_target_evidence_is_exact20_canonical_and_deterministic() {
 	root := bin.parse_strict_json(first.source) or { panic(err) }
 	assert root.object_keys.len == 20
 	mut expected_keys := ['schema_version', 'operation_id', 'operation_ordinal', 'cas_attempt',
-		'run_id', 'run_attempt', 'intent_id', 'transition', 'workflow', 'workflow_ref',
-		'workflow_sha', 'subject_id', 'subject_fingerprint', 'target_id', 'input_fingerprint',
-		'artifact_fingerprint', 'generation_read', 'generation_written', 'result', 'digests']
+		'run_id', 'run_attempt', 'intent_id', 'transition', 'workflow', 'workflow_ref', 'workflow_sha',
+		'subject_id', 'subject_fingerprint', 'target_id', 'input_fingerprint', 'artifact_fingerprint',
+		'generation_read', 'generation_written', 'result', 'digests']
 	expected_keys.sort()
 	assert root.object_keys == expected_keys
 	assert bin.canonical_json(root) == first.source

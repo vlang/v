@@ -219,11 +219,14 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 		return
 	}
 	w.idle_conns.unmark_idle(conn.handle)
+	// Read from the accepted socket rather than mbedtls' own conn.ip, which it
+	// only fills in for IPv4 peers and which carries no port.
+	remote_addr := if paddr := conn.peer_addr() { paddr.str() } else { '0.0.0.0' }
 	// If the TLS handshake negotiated HTTP/2 via ALPN, switch to the HTTP/2
 	// driver; otherwise fall through to the existing HTTP/1.1 path unchanged.
 	if conn.negotiated_alpn() == 'h2' {
 		is_h2 = true
-		serve_h2_conn_with_idle_tracker(mut conn, mut w.handler, w.idle_conns, conn.handle) or {
+		serve_h2_conn_with_idle_tracker(mut conn, mut w.handler, w.idle_conns, conn.handle, remote_addr) or {
 			$if debug {
 				eprintln('h2 server error: ${err}')
 			}
@@ -252,11 +255,7 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 		}
 		w.idle_conns.unmark_idle(conn.handle)
 		request_count++
-		// `conn.ip` is the peer's IPv4 address as populated by mbedtls'
-		// accept(); blank for IPv6, which is acceptable for keep-alive logic.
-		if conn.ip != '' {
-			req.header.add_custom('Remote-Addr', conn.ip) or {}
-		}
+		req.set_remote_addr(remote_addr)
 
 		mut resp := w.handler.handle(req)
 		normalize_server_response(mut resp, req)

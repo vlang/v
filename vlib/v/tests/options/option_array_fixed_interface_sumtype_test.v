@@ -28,9 +28,12 @@ fn test_fixed_array_of_option_interface_and_sumtype() {
 	assert holder.speakers[1] == none
 
 	event_holder := EventHolder{
-		events: [?Event(EventA{
-			a: 1
-		}), none]!
+		events: [
+			?Event(EventA{
+				a: 1
+			})
+			none,
+		]!
 	}
 	assert event_holder.events[0] != none
 	assert event_holder.events[1] == none

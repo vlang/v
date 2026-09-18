@@ -23,7 +23,7 @@ fn main() {
 // where TCC failed to link sync.stdatomic programs on Linux/amd64 systems with newer GCC
 // versions (e.g. GCC 15/16 on Arch Linux).
 fn test_tcc_can_link_sync_stdatomic_programs_on_linux() {
-	$if !(linux && (amd64 || arm64)) {
+	$if !( linux && ( amd64 || arm64 ) ) {
 		return
 	}
 	workdir := os.join_path(os.vtmp_dir(), 'v_stdatomic_tcc_libatomic_${rand.ulid()}')

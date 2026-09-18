@@ -56,21 +56,21 @@ fn (db MockDB) delete(table orm.Table, where orm.QueryData) ! {
 }
 
 const typ_to_typename = {
-	typeof[i8]().idx:     'i8'
-	typeof[i16]().idx:    'i16'
-	typeof[int]().idx:    'int'
-	typeof[i64]().idx:    'i64'
-	typeof[u8]().idx:     'u8'
-	typeof[u16]().idx:    'u16'
-	typeof[u32]().idx:    'u32'
-	typeof[u64]().idx:    'u64'
-	typeof[f32]().idx:    'f32'
-	typeof[f64]().idx:    'f64'
-	typeof[string]().idx: 'string'
-	typeof[bool]().idx:   'bool'
-	orm.serial:           'serial'
-	orm.time_:            'time'
-	orm.enum_:            'enum'
+	typeof[i8]().idx:       'i8'
+	typeof[i16]().idx:       'i16'
+	typeof[int]().idx:       'int'
+	typeof[i64]().idx:       'i64'
+	typeof[u8]().idx:       'u8'
+	typeof[u16]().idx:       'u16'
+	typeof[u32]().idx:       'u32'
+	typeof[u64]().idx:       'u64'
+	typeof[f32]().idx:       'f32'
+	typeof[f64]().idx:       'f64'
+	typeof[string]().idx:       'string'
+	typeof[bool]().idx:       'bool'
+	orm.serial: 'serial'
+	orm.time_:  'time'
+	orm.enum_:  'enum'
 }
 
 fn mock_type_from_v(typ int) !string {

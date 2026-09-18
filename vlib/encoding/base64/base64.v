@@ -21,8 +21,10 @@ pub fn url_decode(data string) []u8 {
 		// Pad with trailing '='s
 		2 { result += '==' } // 2 pad chars
 		3 { result += '=' } // 1 pad char
-		else {} // no padding
+		else {}
 	}
+
+	// no padding
 
 	return decode(result)
 }
@@ -34,8 +36,10 @@ pub fn url_decode_str(data string) string {
 		// Pad with trailing '='s
 		2 { result += '==' } // 2 pad chars
 		3 { result += '=' } // 1 pad char
-		else {} // no padding
+		else {}
 	}
+
+	// no padding
 
 	return decode_str(result)
 }

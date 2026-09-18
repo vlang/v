@@ -7,7 +7,7 @@ fn sumtype_variant_name(type_name string) string {
 }
 
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
-	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
+	$if initialized_sumtype is $sumtype || ( T is $alias && T.unaliased_typ is $sumtype ) {
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				mut val := $zero(v.typ)

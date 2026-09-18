@@ -160,6 +160,7 @@ fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
 	return false
 }
 
+@[c_extern]
 fn C.tcc_backtrace(fmt &char) i32
 
 fn print_backtrace_skipping_top_frames_tcc(skipframes int) bool {

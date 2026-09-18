@@ -234,6 +234,10 @@ mut:
 	closing                  bool
 	idle_conns               &TlsIdleConnTracker = unsafe { nil }
 	idle_handle              int
+	// remote_addr is the `ip:port` of this connection's peer, copied into every
+	// Request built from it (see Request.remote_addr). HTTP/2 multiplexes all
+	// streams over the one connection, so it is a per-connection value.
+	remote_addr string
 }
 
 // mark_locally_reset records that id has been RST_STREAM'd by the server so any
@@ -306,15 +310,16 @@ fn (c &H2ServerConn) classify_stream(stream_id u32) H2StreamState {
 // serve_h2_conn drives a single HTTP/2 server-side connection until the
 // transport closes or a protocol error forces a GOAWAY. `handler` is invoked
 // once per fully-received request stream.
-fn serve_h2_conn(mut transport H2Transport, mut handler Handler) ! {
-	serve_h2_conn_with_idle_tracker(mut transport, mut handler, unsafe { nil }, 0)!
+fn serve_h2_conn(mut transport H2Transport, mut handler Handler, remote_addr string) ! {
+	serve_h2_conn_with_idle_tracker(mut transport, mut handler, unsafe { nil }, 0, remote_addr)!
 }
 
-fn serve_h2_conn_with_idle_tracker(mut transport H2Transport, mut handler Handler, idle_conns &TlsIdleConnTracker, idle_handle int) ! {
+fn serve_h2_conn_with_idle_tracker(mut transport H2Transport, mut handler Handler, idle_conns &TlsIdleConnTracker, idle_handle int, remote_addr string) ! {
 	mut c := &H2ServerConn{
 		transport:   transport
 		idle_conns:  idle_conns
 		idle_handle: idle_handle
+		remote_addr: remote_addr
 	}
 	c.serve(mut handler) or {
 		// Best-effort GOAWAY before bailing. Skip if one was already sent by
@@ -948,6 +953,9 @@ fn (mut c H2ServerConn) build_request(s &H2ServerStream) !Request {
 	req.url = path
 	req.data = s.body.bytestr()
 	req.host = authority
+	// After the client's own fields are in, so a `remote-addr` field it sent
+	// is dropped rather than left shadowing the real address.
+	req.set_remote_addr(c.remote_addr)
 	return req
 }
 

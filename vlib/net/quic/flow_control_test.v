@@ -93,14 +93,14 @@ fn test_receive_window_mark_advertised_never_regresses() {
 // (e.g. "returns SOME value") would never catch.
 fn test_initial_stream_limits_hand_derived_client_perspective() {
 	peer_params := QuicTransportParameters{
-		initial_max_stream_data_bidi_local: 1000 // server's own: how much CLIENT may send on SERVER-opened bidi streams
+		initial_max_stream_data_bidi_local:  1000 // server's own: how much CLIENT may send on SERVER-opened bidi streams
 		initial_max_stream_data_bidi_remote: 2000 // server's own: how much CLIENT may send on CLIENT-opened bidi streams
-		initial_max_stream_data_uni: 3000 // server's own: how much CLIENT may send on CLIENT-opened uni streams
+		initial_max_stream_data_uni:         3000 // server's own: how much CLIENT may send on CLIENT-opened uni streams
 	}
 	own_params := QuicTransportParameters{
-		initial_max_stream_data_bidi_local: 4000 // client's own: how much SERVER may send on CLIENT-opened bidi streams
+		initial_max_stream_data_bidi_local:  4000 // client's own: how much SERVER may send on CLIENT-opened bidi streams
 		initial_max_stream_data_bidi_remote: 5000 // client's own: how much SERVER may send on SERVER-opened bidi streams
-		initial_max_stream_data_uni: 6000 // client's own: how much SERVER may send on SERVER-opened uni streams
+		initial_max_stream_data_uni:         6000 // client's own: how much SERVER may send on SERVER-opened uni streams
 	}
 
 	client_bidi := StreamId{

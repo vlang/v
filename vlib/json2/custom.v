@@ -16,31 +16,31 @@ pub interface Encodable {
 
 // implements decoding json strings, e.g. "hello, \u2164!"
 pub interface StringDecoder {
-mut:
 	// called with raw string (minus apostrophes) e.g. 'hello, \u2164!'
+mut:
 	from_json_string(raw_string string) !
 }
 
 // implements decoding json numbers, e.g. -1.234e23
 pub interface NumberDecoder {
-mut:
 	// called with raw string of number e.g. '-1.234e23'
+mut:
 	from_json_number(raw_number string) !
 }
 
 // implements decoding json true/false
 pub interface BooleanDecoder {
-mut:
 	// called with converted bool
 	// already checked so no error needed
+mut:
 	from_json_boolean(boolean_value bool)
 }
 
 // implements decoding json null
 pub interface NullDecoder {
-mut:
 	// only has one value
 	// already checked so no error needed
+mut:
 	from_json_null()
 }
 

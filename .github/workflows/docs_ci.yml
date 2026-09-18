@@ -9,13 +9,11 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.yml'
       - '!**/docs_ci.yml'
       - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.yml'
       - '!**/docs_ci.yml'
       - 'cmd/tools/vrepl.v'
@@ -86,5 +84,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build V
         run: make
+      - name: Install markdown dependency
+        run: ./v retry -- ./v install markdown
       - name: Check examples in the doc comments for all vlib modules
         run: VJOBS=1 ./v doc -check-examples -f none vlib/

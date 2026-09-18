@@ -25,8 +25,8 @@ mut:
 // the `jsonrpc.Handler` to handle Requests/Responses and `interceptors`
 pub fn new_server(cfg ServerConfig) Server {
 	return Server{
-		stream: cfg.stream
-		handler: cfg.handler
+		stream:       cfg.stream
+		handler:      cfg.handler
 		interceptors: cfg.interceptors
 	}
 }
@@ -101,7 +101,7 @@ pub fn (mut s Server) respond() ! {
 fn (s &Server) writer() &ResponseWriter {
 	return &ResponseWriter{
 		writer: s.stream
-		sb: strings.new_builder(4096)
+		sb:     strings.new_builder(4096)
 		server: s
 	}
 }
@@ -186,7 +186,7 @@ fn (mut rw ResponseWriter) close() {
 // call when need to send data in response
 pub fn (mut rw ResponseWriter) write[T](payload T) {
 	final_resp := Response{
-		id: rw.req_id
+		id:     rw.req_id
 		result: json.encode(payload)
 	}
 
@@ -222,7 +222,7 @@ pub fn (mut rw ResponseWriter) write_error(err IError) {
 	}
 
 	final_resp := Response{
-		id: rw.req_id
+		id:    rw.req_id
 		error: res_err as ResponseError
 	}
 

@@ -40,6 +40,7 @@ const win_width = 800
 const win_height = 800
 const bg_color = gg.black
 const pi_2 = 3.14159265359 / 2.0
+
 // const uv = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
 
 const text_drop_files = 'Drop here some images/folder/zip to navigate in the pics'
@@ -89,7 +90,7 @@ mut:
 	show_help_flag bool
 	// zip container
 	zip       &szip.Zip = unsafe { nil } // pointer to the szip structure
-	zip_index int       = -1             // index of the zip container item
+	zip_index int       = -1           // index of the zip container item
 	// memory buffer
 	mem_buf      voidptr // buffer used to load items from files/containers
 	mem_buf_size int     // size of the buffer
@@ -114,9 +115,9 @@ mut:
 fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
-		width:       w
-		height:      h
-		num_mipmaps: 0
+		width:         w
+		height:        h
+		num_mipmaps:   0
 		// usage: .dynamic
 		label:         &u8(unsafe { nil })
 		d3d11_texture: 0
@@ -793,7 +794,7 @@ fn main() {
 
 	// App init
 	mut app := &App{
-		gg: unsafe { nil }
+		gg:        unsafe { nil }
 		// zip fields
 		zip:       unsafe { nil }
 		item_list: unsafe { nil }

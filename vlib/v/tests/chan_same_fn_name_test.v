@@ -10,7 +10,8 @@ fn a() chan string {
 fn b(ch_in chan string) string {
 	f := fn (a chan string, b chan string) {
 		val := <-a
-		{}
+		{
+		}
 		b <- val
 	}
 	ch_out := chan string{}

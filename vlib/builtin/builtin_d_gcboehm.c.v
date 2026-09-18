@@ -46,9 +46,9 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else {
-		$if $pkgconfig('bdw-gc-threaded') {
+		$if $pkgconfig ( 'bdw-gc-threaded' ) {
 			#pkgconfig bdw-gc-threaded
-		} $else $if $pkgconfig('bdw-gc') {
+		} $else $if $pkgconfig ( 'bdw-gc' ) {
 			#pkgconfig bdw-gc
 		} $else {
 			$if openbsd || freebsd {
@@ -66,7 +66,7 @@ $if dynamic_boehm ? {
 	$if macos || linux {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -I @VEXEROOT/thirdparty/libgc/include
-		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32 || rv64) {
+		$if ( prod && !tinyc && !debug ) || !( amd64 || arm64 || i386 || arm32 || rv64 ) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
@@ -169,7 +169,7 @@ $if dynamic_boehm ? {
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
-	} $else $if $pkgconfig('bdw-gc') {
+	} $else $if $pkgconfig ( 'bdw-gc' ) {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#pkgconfig bdw-gc
 	} $else {
@@ -184,6 +184,7 @@ $if gcboehm_leak ? {
 
 #include <gc.h>
 #include "@VEXEROOT/vlib/builtin/gc_debugger_linux.h"
+#define v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))
 
 // #include <gc/gc_mark.h>
 
@@ -293,7 +294,7 @@ fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
 pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
-fn C.GC_set_warn_proc(cb FnGC_WarnCB)
+fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
 
 fn C.GC_register_displacement(offset usize)
 
@@ -304,7 +305,7 @@ pub fn gc_get_warn_proc() FnGC_WarnCB {
 
 // gc_set_warn_proc sets the callback fn, that will be used for printing GC warnings.
 pub fn gc_set_warn_proc(cb FnGC_WarnCB) {
-	C.GC_set_warn_proc(cb)
+	C.v_gc_set_warn_proc(cb)
 }
 
 // used by builtin_init:

@@ -44,7 +44,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	}
 	return {
 		VCS.git: VCSInfo{
-			dir: '.git'
+			dir:  '.git'
 			args: struct {
 				install:  git_install_cmd
 				version:  '--single-branch -b'
@@ -54,7 +54,7 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 			}
 		}
 		VCS.hg:  VCSInfo{
-			dir: '.hg'
+			dir:  '.hg'
 			args: struct {
 				install:  'clone'
 				version:  '--rev'

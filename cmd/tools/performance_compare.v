@@ -114,16 +114,13 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	vcommit := scripting.run('git rev-parse --short  --verify HEAD')
 	println('V version is: ${vversion} , local source commit: ${vcommit}')
 	if vgit_context.vvlocation == 'cmd/v' {
-		if os.exists('vlib/v/ast/ast.v') {
-			println('Source lines of the compiler: ' +
-				scripting.run('find cmd/v/ vlib/v/ -name "*.v" | grep -v /tests/ | xargs wc | tail -n -1'))
+		if os.exists('vlib/v') {
+			println('Source lines of the compiler: ' + scripting.run('find cmd/v/ vlib/v/ -name "*.v" ! -path "*/tests/*" ! -path "*_tests/*" ! -name "*_test.v" ! -name "*_test.*.v" | xargs wc | tail -n -1'))
 		} else {
-			println('Source lines of the compiler: ' +
-				scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
+			println('Source lines of the compiler: ' + scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
 		}
 	} else if vgit_context.vvlocation == 'v.v' {
-		println('Source lines of the compiler: ' +
-			scripting.run('wc v.v vlib/compiler/*.v | tail -n -1'))
+		println('Source lines of the compiler: ' + scripting.run('wc v.v vlib/compiler/*.v | tail -n -1'))
 	} else {
 		println('Source lines of the compiler: ' + scripting.run('wc compiler/*.v | tail -n -1'))
 	}
@@ -156,7 +153,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		println(cmd)
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments << ' \'cd ${c.b:-34s} ; ./${cmd} \' '.replace_each([
+		hyperfine_commands_arguments << " 'cd ${c.b:-34s} ; ./${cmd} ' ".replace_each([
 			'@COMPILER@',
 			source_location_b,
 			'@DEBUG@',
@@ -164,7 +161,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		])
 	}
 	for cmd in commands {
-		hyperfine_commands_arguments << ' \'cd ${c.a:-34s} ; ./${cmd} \' '.replace_each([
+		hyperfine_commands_arguments << " 'cd ${c.a:-34s} ; ./${cmd} ' ".replace_each([
 			'@COMPILER@',
 			source_location_a,
 			'@DEBUG@',
@@ -174,9 +171,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	// /////////////////////////////////////////////////////////////////////////////
 	cmd_stats_file :=
 		os.real_path([c.vgo.workdir, 'v_performance_stats_${label}.json'].join(os.path_separator))
-	comparison_cmd := 'hyperfine ${c.hyperfineopts} ' + '--export-json ${cmd_stats_file} ' +
-		'--time-unit millisecond ' + '--style full --warmup ${c.warmups} ' +
-		hyperfine_commands_arguments.join(' ')
+	comparison_cmd := 'hyperfine ${c.hyperfineopts} ' + '--export-json ${cmd_stats_file} ' + '--time-unit millisecond ' + '--style full --warmup ${c.warmups} ' + hyperfine_commands_arguments.join(' ')
 	// /////////////////////////////////////////////////////////////////////////////
 	if c.vgo.verbose {
 		println(comparison_cmd)
@@ -200,8 +195,7 @@ fn main() {
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')
 	fp.skip_executable()
 	fp.limit_free_args(1, 2)!
-	context.vflags = fp.string('vflags', 0, '',
-		'Additional options to pass to the v commands, for example "-cc tcc"')
+	context.vflags = fp.string('vflags', 0, '', 'Additional options to pass to the v commands, for example "-cc tcc"')
 	context.hyperfineopts = fp.string('hyperfine_options', 0, '', 'Additional options passed to hyperfine.
 ${flag.space}For example on linux, you may want to pass:
 ${flag.space}--hyperfine_options "--prepare \'sync; echo 3 | sudo tee /proc/sys/vm/drop_caches\'"

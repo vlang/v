@@ -1,6 +1,6 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if windows && sokol_d3d11 ? {
 		#flag windows -ld3d11
 		#flag windows -ldxgi

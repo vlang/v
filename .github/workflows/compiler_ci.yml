@@ -1,0 +1,32 @@
+name: Compiler CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - 'vlib/v/**'
+  pull_request:
+    paths:
+      - 'vlib/v/**'
+
+concurrency:
+  group: compiler-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiler:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build V
+        run: make -j4
+      - name: Install Objective-C compiler
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y gobjc
+      - name: Test compiler
+        run: ./v run vlib/v/test_all.vsh

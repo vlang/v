@@ -8,7 +8,7 @@ module imap
 // whole session apart from the socket.
 fn client_over(s string) &Client {
 	return &Client{
-		dec: decoder_over(s)
+		dec:     decoder_over(s)
 		is_open: true
 	}
 }

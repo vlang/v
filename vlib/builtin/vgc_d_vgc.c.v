@@ -215,6 +215,7 @@ mut:
 
 @[cinit]
 __global vgc_heap = VGC_Heap{}
+
 // Fast bounds check for pointer validation. Also @[cinit]: otherwise `_vinit()` resets
 // these to 0 after the first arena has already been mapped during const init.
 

@@ -25,16 +25,14 @@ fn TestStruct.static_method() string {
 	return @STRUCT
 }
 
-struct Abc {
-}
+struct Abc {}
 
 fn (a Another) method() string {
 	println(@STRUCT)
 	return @STRUCT
 }
 
-struct Another {
-}
+struct Another {}
 
 fn (a Abc) method() string {
 	println(@STRUCT)
@@ -48,8 +46,7 @@ fn test_at_struct_ordering() {
 	assert b.method() == 'Another'
 }
 
-struct TestFn {
-}
+struct TestFn {}
 
 fn (mut t TestFn) tst_1() {
 	assert @FN == 'tst_1'
@@ -165,8 +162,7 @@ fn abc() {
 	assert @LOCATION.ends_with(', main.abc')
 }
 
-struct MyStruct {
-}
+struct MyStruct {}
 
 fn MyStruct.new() MyStruct {
 	assert @LOCATION.ends_with('main.MyStruct.new (static)')

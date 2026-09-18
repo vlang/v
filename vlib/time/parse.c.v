@@ -262,8 +262,7 @@ pub fn parse_rfc3339(s string) !Time {
 	}
 	if s[date_format_buffer.len + time_format_buffer.len + 1] !in [u8(`Z`), `z`, `+`, `-`, `.`] {
 		// RFC 3339 needs a timezone
-		return error('timezone error: expected "Z" or "z" or "+" or "-" in position ${
-			date_format_buffer.len + time_format_buffer.len + 1}, not "${[
+		return error('timezone error: expected "Z" or "z" or "+" or "-" in position ${date_format_buffer.len + time_format_buffer.len + 1}, not "${[
 			s[date_format_buffer.len + time_format_buffer.len + 1],
 		].bytestr()}"')
 	} else {

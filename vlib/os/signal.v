@@ -7,15 +7,15 @@ module os
 // consult man pages / signal.h .
 
 pub enum Signal {
-	hup    = 1  // hangup
-	int    = 2  // interrupt from keyboard
-	quit   = 3  // quit from keyboard
-	ill    = 4  // illegal instruction
-	trap   = 5  // trace trap
-	abrt   = 6  // abort
-	bus    = 7  // bus error
-	fpe    = 8  // floating point exception
-	kill   = 9  // kill signal
+	hup    = 1 // hangup
+	int    = 2 // interrupt from keyboard
+	quit   = 3 // quit from keyboard
+	ill    = 4 // illegal instruction
+	trap   = 5 // trace trap
+	abrt   = 6 // abort
+	bus    = 7 // bus error
+	fpe    = 8 // floating point exception
+	kill   = 9 // kill signal
 	usr1   = 10 // user-defined signal 1
 	segv   = 11 // segmentation violation
 	usr2   = 12 // user-defined signal 2

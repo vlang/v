@@ -536,7 +536,7 @@ const props = [
 	//'ý'
 	p_ll | p_pr
 	//'þ'
-	p_ll | p_pr
+	p_ll | p_pr,
 	// 'ÿ'
 ]!
 

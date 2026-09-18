@@ -269,12 +269,12 @@ pub fn PublicKey.from_bytes(bytes []u8, kind Kind) !PublicKey {
 //	  or to have relatively fast signature generation (`f`).
 pub enum Kind {
 	// SHA2-based family
-	sha2_128s = C.NID_SLH_DSA_SHA2_128s
-	sha2_128f = C.NID_SLH_DSA_SHA2_128f
-	sha2_192s = C.NID_SLH_DSA_SHA2_192s
-	sha2_192f = C.NID_SLH_DSA_SHA2_192f
-	sha2_256s = C.NID_SLH_DSA_SHA2_256s
-	sha2_256f = C.NID_SLH_DSA_SHA2_256f
+	sha2_128s  = C.NID_SLH_DSA_SHA2_128s
+	sha2_128f  = C.NID_SLH_DSA_SHA2_128f
+	sha2_192s  = C.NID_SLH_DSA_SHA2_192s
+	sha2_192f  = C.NID_SLH_DSA_SHA2_192f
+	sha2_256s  = C.NID_SLH_DSA_SHA2_256s
+	sha2_256f  = C.NID_SLH_DSA_SHA2_256f
 	// SHAKE-based family
 	shake_128s = C.NID_SLH_DSA_SHAKE_128s
 	shake_128f = C.NID_SLH_DSA_SHAKE_128f

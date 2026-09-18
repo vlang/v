@@ -52,13 +52,16 @@ fn test_pure_v_math_module() {
 }
 
 fn self_tests() {
-	// The broad compatibility suite still covers V1. The strict V3 canary and
-	// dedicated V3 suites in macos_ci.yml cover the default compiler separately.
+	// Do not select the V1 compatibility compiler here. It is a separate V 0.5.2
+	// installation, so `test-self vlib` would resolve `vlib` under *its* VROOT and
+	// test the release's own standard library instead of this repository's.
+	// Individual files still fall back to it when the default compiler cannot
+	// build them.
 	if common.is_github_job {
-		exec('VJOBS=1 v -old-compiler -no-memory-limit -silent test-self vlib')
+		exec('VJOBS=1 v -no-memory-limit -silent test-self vlib')
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec('VJOBS=${vjobs} v -old-compiler -no-memory-limit -progress test-self vlib')
+		exec('VJOBS=${vjobs} v -no-memory-limit -progress test-self vlib')
 	}
 }
 
@@ -79,19 +82,31 @@ fn build_examples_v_compiled_with_tcc() {
 	}
 }
 
+// ownership_vexe builds, once per job, a V3 compiler with the ownership checker
+// compiled in. `-autofree` needs it: a standard V3 build rejects the flag.
+fn ownership_vexe() string {
+	vexe := './vownership'
+	if !os.exists(vexe) {
+		exec('v -d ownership -o vownership cmd/v')
+	}
+	return vexe
+}
+
 fn build_hello_world_autofree() {
-	exec('v -autofree -o hello_world examples/hello_world.v')
+	exec('${ownership_vexe()} -autofree -o hello_world examples/hello_world.v')
 	exec('./hello_world')
 }
 
 fn build_tetris_autofree() {
-	// Autofree remains a V1 compatibility job. V3 ownership is tested separately,
-	// while fastc intentionally performs no ownership analysis.
-	exec('v -old-compiler -autofree -o tetris examples/tetris/tetris.v')
+	exec('${ownership_vexe()} -autofree -o tetris examples/tetris/tetris.v')
 }
 
 fn build_blog_autofree() {
-	exec('v -old-compiler -autofree -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
+	// `-autofree` still needs the V1 compatibility compiler, and the frozen V 0.5.2
+	// release behind it ships a vlib without `json2`, which the blog imports. Build
+	// the tutorial with the default compiler until V3 ownership can run it;
+	// build_tetris_autofree keeps the autofree path covered.
+	exec('v -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
 }
 
 fn build_examples_prod() {
@@ -141,9 +156,53 @@ fn test_readline() {
 }
 
 fn test_inline_assembly() {
-	// V3 does not lower inline assembly yet. Select V1 explicitly so this task
-	// remains transparent and never exercises the compatibility retry path.
-	exec('v -old-compiler test vlib/v/slow_tests/assembly')
+	exec('v test vlib/v/slow_tests/assembly')
+}
+
+const ci_tasks = [
+	'test_symlink',
+	'v_doctor',
+	'build_v_with_prealloc',
+	'test_cross_compilation',
+	'test_inline_assembly',
+	'build_with_cstrict',
+	'all_code_is_formatted',
+	'run_sanitizers',
+	'build_using_v',
+	'verify_v_test_works',
+	'install_iconv',
+	'test_pure_v_math_module',
+	'self_tests',
+	'build_examples',
+	'build_hello_world_autofree',
+	'build_tetris_autofree',
+	'build_blog_autofree',
+	'build_examples_prod',
+	'build_examples_v_compiled_with_tcc',
+	'v_self_compilation_parallel_cc',
+	'test_password_input',
+	'test_readline',
+]
+
+// run_ci_tasks mirrors the active ci/macos_ci.vsh steps in
+// .github/workflows/macos_ci.yml. The generic `all` mode intentionally remains
+// exhaustive, including tasks that are currently disabled in the workflow.
+fn run_ci_tasks() {
+	// Match the GitHub Actions job environment that changes test behavior.
+	os.setenv('CI', 'true', true)
+	os.setenv('GITHUB_ACTIONS', 'true', true)
+	os.setenv('GITHUB_JOB', 'clang-macos', true)
+	os.setenv('RUNNER_OS', 'macOS', true)
+	os.setenv('VFLAGS', '-cc clang', true)
+	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
+	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
+	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)
+	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
+	os.setenv('V_MACOS_MULTIWINDOW_TESTS', '0', true)
+
+	for task_name in ci_tasks {
+		exec('v run ci/macos_ci.vsh ${task_name}')
+	}
 }
 
 const all_tasks = {
@@ -170,6 +229,11 @@ const all_tasks = {
 	'test_password_input':                Task{test_password_input, 'Test password input'}
 	'test_readline':                      Task{test_readline, 'Test readline'}
 	'test_inline_assembly':               Task{test_inline_assembly, 'Test inline assembly'}
+}
+
+if os.args.len > 1 && os.args[1] == 'ci' {
+	run_ci_tasks()
+	exit(0)
 }
 
 common.run(all_tasks)
