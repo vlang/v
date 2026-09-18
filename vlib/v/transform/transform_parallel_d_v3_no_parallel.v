@@ -38,14 +38,17 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 	return t.scan_late_call_names_range(cands, used, candidate_names, 0, cands.len)
 }
 
+// promote_scoped_texts_parallel reports that scoped text promotion stays serial in no-parallel builds.
 pub fn promote_scoped_texts_parallel(mut _ flat.FlatAst, _ voidptr) bool {
 	return false
 }
 
+// promote_scoped_checker_node_caches_parallel reports that checker cache promotion stays serial in no-parallel builds.
 pub fn promote_scoped_checker_node_caches_parallel(mut _ types.TypeChecker, _ &flat.FlatAst, _ voidptr, _ int) bool {
 	return false
 }
 
+// scan_scoped_text_flags_parallel reports that scoped text flag scanning stays serial in no-parallel builds.
 pub fn scan_scoped_text_flags_parallel(_ &flat.FlatAst, _ voidptr, mut _ []u8) bool {
 	return false
 }

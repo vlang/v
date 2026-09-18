@@ -309,7 +309,7 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 			}
 		}
 		if method.return_type.len > 0 && method.return_type != 'void' {
-			if return_type.len == 0 {
+			if return_type == '' {
 				return_type = method.return_type
 			} else if return_type != method.return_type {
 				return_type = ''
@@ -317,7 +317,7 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 			}
 		}
 	}
-	if return_type.len > 0 {
+	if return_type != '' {
 		tc.remember_expr_type(id, tc.parse_type(return_type))
 	}
 }
@@ -612,7 +612,7 @@ fn comptime_text_references_member(cond string, var_name string) bool {
 }
 
 fn comptime_text_references_var(cond string, var_name string) bool {
-	if var_name.len == 0 {
+	if var_name == '' {
 		return false
 	}
 	mut offset := 0
@@ -817,7 +817,7 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []C
 }
 
 fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name string, cur_mod string, node flat.Node) ?[]ComptimeStaticValueCase {
-	qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+	qualified := if cur_mod != '' && cur_mod != 'main' && cur_mod != 'builtin' {
 		'${cur_mod}.${node.value}'
 	} else {
 		node.value
@@ -1179,14 +1179,14 @@ fn (tc &TypeChecker) comptime_static_enum_selector_base_text(id flat.NodeId) str
 }
 
 fn comptime_static_enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) bool {
-	if prefix.len == 0 || enum_name.len == 0 {
+	if prefix == '' || enum_name == '' {
 		return false
 	}
 	short := enum_name.all_after_last('.')
 	if prefix == enum_name || prefix == short {
 		return true
 	}
-	if enum_module.len > 0 && prefix == '${enum_module}.${short}' {
+	if enum_module != '' && prefix == '${enum_module}.${short}' {
 		return true
 	}
 	return false
@@ -1281,7 +1281,7 @@ fn (tc &TypeChecker) comptime_static_field_decl_metas(base_type string) map[stri
 }
 
 fn (tc &TypeChecker) comptime_static_field_decl_metas_for_node(decl_name string, cur_mod string, node flat.Node) ?map[string]ComptimeStaticFieldDeclMeta {
-	qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+	qualified := if cur_mod != '' && cur_mod != 'main' && cur_mod != 'builtin' {
 		'${cur_mod}.${node.value}'
 	} else {
 		node.value
@@ -1403,7 +1403,7 @@ fn (mut tc TypeChecker) comptime_static_subst_field_cond(cond string, var_name s
 }
 
 fn comptime_static_replace_bare_ident(cond string, ident string, replacement string) string {
-	if ident.len == 0 {
+	if ident == '' {
 		return cond
 	}
 	mut out := ''
@@ -1531,7 +1531,7 @@ fn comptime_static_list_contains(list_text string, needle string) bool {
 }
 
 fn comptime_static_is_int(s string) bool {
-	if s.len == 0 {
+	if s == '' {
 		return false
 	}
 	start := if s[0] == `-` || s[0] == `+` { 1 } else { 0 }
@@ -4663,7 +4663,7 @@ fn (tc &TypeChecker) interface_diagnostic_type_name(typ Type, alias_module strin
 		if fn_type_from_type(typ) != none {
 			return tc.interface_diagnostic_type_name(typ.base_type, alias_module)
 		}
-		if alias_module.len > 0 && !typ.name.contains('.') {
+		if alias_module != '' && !typ.name.contains('.') {
 			return '${alias_module}.${typ.name}'
 		}
 		return typ.name
@@ -4778,7 +4778,7 @@ fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind
 					break
 				}
 			}
-			if message.len == 0 {
+			if message == '' {
 				expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
 				actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 				if !tc.method_return_signature_compatible(actual_ret, expected_ret) {
@@ -4786,7 +4786,7 @@ fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind
 				}
 			}
 		}
-		if message.len > 0 {
+		if message != '' {
 			expected_owner := tc.interface_diagnostic_owner('${expected_name}.${method}', expected_name)
 			actual_owner := tc.interface_diagnostic_owner(actual_key, actual_name)
 			tc.record_error_with_details_at(kind, message, id, pos, [
@@ -4942,7 +4942,7 @@ fn (tc &TypeChecker) cast_operand_is_zero(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) cast_expression_diagnostic_pos(node flat.Node, target_name string) token.Pos {
-	if !node.pos.is_valid() || target_name.len == 0 {
+	if !node.pos.is_valid() || target_name == '' {
 		return node.pos
 	}
 	file := tc.a.source_files[node.pos.id] or { return node.pos }
@@ -4972,7 +4972,7 @@ fn (tc &TypeChecker) cast_expression_diagnostic_pos(node flat.Node, target_name 
 }
 
 fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name string) bool {
-	if name.len == 0 || !tc.valid_node_id(id) {
+	if name == '' || !tc.valid_node_id(id) {
 		return false
 	}
 	node_idx := int(id)
@@ -5383,7 +5383,7 @@ fn (mut tc TypeChecker) warn_if_integer_literal_outside_known_type_range(id flat
 }
 
 fn integer_literal_outside_range(literal string, type_range IntegerTypeRange) bool {
-	if literal.len == 0 || type_range.bits <= 0 {
+	if literal == '' || type_range.bits <= 0 {
 		return false
 	}
 	is_negative := literal[0] == `-`
@@ -6290,7 +6290,7 @@ fn (tc &TypeChecker) comptime_condition_part_pos(node flat.Node, part string) to
 	source := tc.source_texts_by_file[file.name] or { return node.pos }
 	start := int_max(0, int_min(node.pos.offset, source.len))
 	end := int_max(start, int_min(node.pos.end, source.len))
-	if part.len > 0 {
+	if part != '' {
 		if relative := source[start..end].index(part) {
 			part_start := start + relative
 			return token.new_span(node.pos.id, part_start, part_start + part.len)
@@ -6799,7 +6799,7 @@ fn comptime_condition_strip_outer_parens(cond string) string {
 }
 
 fn comptime_condition_top_level_index(s string, needle string) int {
-	if needle.len == 0 || s.len < needle.len {
+	if needle == '' || s.len < needle.len {
 		return -1
 	}
 	mut paren_depth := 0
@@ -8434,7 +8434,7 @@ fn (mut tc TypeChecker) check_array_elements_initialized(id flat.NodeId, node fl
 	if category.len == 0 && node.typ.contains('shared ') {
 		category = 'references'
 	}
-	if category.len == 0 {
+	if category == '' {
 		return
 	}
 	pos := if is_fixed {
@@ -10274,7 +10274,7 @@ fn (tc &TypeChecker) sql_like_token_type(value string, table_type Type) Type {
 	if value == 'true' || value == 'false' {
 		return Type(bool_)
 	}
-	if value.len > 0 && value[0].is_digit() {
+	if value != '' && value[0].is_digit() {
 		return Type(int_)
 	}
 	if typ := tc.cur_scope.lookup(value) {
@@ -10288,7 +10288,7 @@ fn (tc &TypeChecker) sql_table_has_field(table_type Type, name string) bool {
 }
 
 fn sql_like_identifier(value string) bool {
-	if value.len == 0 || value[0].is_digit() {
+	if value == '' || value[0].is_digit() {
 		return false
 	}
 	for ch in value.bytes() {
@@ -11980,7 +11980,7 @@ fn (tc &TypeChecker) locked_shared_base_owner_alias_keys_for_base(id flat.NodeId
 }
 
 fn locked_shared_base_keys_may_alias(left string, right string) bool {
-	if left.len == 0 || right.len == 0 {
+	if left == '' || right == '' {
 		return false
 	}
 	unknown_owner_prefix := '@owner:${pointer_binding_unknown_value_prefix}'
@@ -13471,7 +13471,7 @@ fn (mut tc TypeChecker) call_immutable_alias_source(id flat.NodeId) ?flat.NodeId
 // its storage, so it is not one of them; neither is `reverse`, which hands the
 // receiver straight back when there are fewer than two elements to turn around.
 const fresh_collection_builtins = ['array.clone', 'array.filter', 'array.map', 'array.repeat',
-	'array.sorted', 'array.sorted_with_compare', 'map.clone', 'map.keys', 'map.values']
+	'array.sorted', 'array.sorted_with_compare', 'map.clone', 'map.keys', 'map.values']!
 
 // Whether a call is one of those, decided by the declaration it resolved to rather
 // than by the name it was written with, so a method of one's own that happens to be
@@ -14134,7 +14134,7 @@ fn (mut tc TypeChecker) unmark_current_method_value_local_owner(name string) {
 }
 
 fn (tc &TypeChecker) current_binding_is_method_value_local(name string) bool {
-	if name.len == 0 || name !in tc.fn_context.method_value_locals {
+	if name == '' || name !in tc.fn_context.method_value_locals {
 		return false
 	}
 	if tc.cur_scope == unsafe { nil } {
@@ -14158,7 +14158,7 @@ fn (tc &TypeChecker) current_binding_is_method_value_local(name string) bool {
 }
 
 fn (tc &TypeChecker) current_method_value_local_has_stack_mut_receiver(name string) bool {
-	if name.len == 0 {
+	if name == '' {
 		return false
 	}
 	owners := tc.fn_context.method_value_local_owners[name] or { return false }
@@ -14246,7 +14246,7 @@ fn (mut tc TypeChecker) unmark_current_variadic_fn_value_local_owner(name string
 }
 
 fn (tc &TypeChecker) current_binding_is_variadic_fn_value_local(name string) bool {
-	if name.len == 0 || name !in tc.fn_context.fn_value_variadic_locals {
+	if name == '' || name !in tc.fn_context.fn_value_variadic_locals {
 		return false
 	}
 	if tc.cur_scope == unsafe { nil } {
@@ -14306,7 +14306,7 @@ fn (mut tc TypeChecker) unmark_current_capturing_fn_literal_local_owner(name str
 }
 
 fn (tc &TypeChecker) current_binding_is_capturing_fn_literal_local(name string) bool {
-	if name.len == 0 || name !in tc.fn_context.capturing_fn_literal_locals {
+	if name == '' || name !in tc.fn_context.capturing_fn_literal_locals {
 		return false
 	}
 	if tc.cur_scope == unsafe { nil } {
@@ -14323,7 +14323,7 @@ fn (tc &TypeChecker) current_binding_is_capturing_fn_literal_local(name string) 
 
 fn (mut tc TypeChecker) mark_shared_binding_owner(name string, owner ScopeBindingOwner) {
 	owner_key := owner.storage_key()
-	if name.len == 0 || owner_key.len == 0 {
+	if name == '' || owner_key.len == 0 {
 		return
 	}
 	mut owners := tc.fn_context.shared_owners[name] or { []ScopeBindingOwner{} }
@@ -14338,7 +14338,7 @@ fn (mut tc TypeChecker) mark_shared_binding_owner(name string, owner ScopeBindin
 
 fn (mut tc TypeChecker) mark_shared_array_binding_owner(name string, owner ScopeBindingOwner) {
 	owner_key := owner.storage_key()
-	if name.len == 0 || owner_key.len == 0 {
+	if name == '' || owner_key.len == 0 {
 		return
 	}
 	mut owners := tc.fn_context.shared_array_owners[name] or { []ScopeBindingOwner{} }
@@ -14352,7 +14352,7 @@ fn (mut tc TypeChecker) mark_shared_array_binding_owner(name string, owner Scope
 }
 
 fn (tc &TypeChecker) current_binding_is_shared(name string) bool {
-	if name.len == 0 || tc.cur_scope == unsafe { nil } {
+	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false
 	}
 	if owner := tc.cur_scope.lookup_owner(name) {
@@ -14378,7 +14378,7 @@ fn (tc &TypeChecker) current_binding_is_shared(name string) bool {
 }
 
 fn (tc &TypeChecker) current_binding_is_shared_array(name string) bool {
-	if name.len == 0 || tc.cur_scope == unsafe { nil } {
+	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false
 	}
 	if owners := tc.fn_context.shared_array_owners[name] {
@@ -14662,7 +14662,7 @@ fn (tc &TypeChecker) selector_base_bound_as_value(node flat.Node) bool {
 }
 
 fn (tc &TypeChecker) name_bound_as_value(name string) bool {
-	if name.len == 0 {
+	if name == '' {
 		return false
 	}
 	if typ := tc.cur_scope.lookup(name) {
@@ -15644,7 +15644,7 @@ fn (tc &TypeChecker) visible_mut_param_binding_owns_name(name string) bool {
 }
 
 fn (tc &TypeChecker) visible_local_scope_owns_name(name string) bool {
-	if name.len == 0 || tc.cur_scope == unsafe { nil } {
+	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false
 	}
 	mut scope := unsafe { &Scope(tc.cur_scope) }
@@ -16274,7 +16274,7 @@ fn (mut tc TypeChecker) record_pointer_binding_alias(owner ScopeBindingOwner, rh
 }
 
 fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.NodeId, typ Type, rhs_alias_state map[string][]string) ?[]string {
-	if unalias_type(typ) !is Pointer || left_key.len == 0 {
+	if unalias_type(typ) !is Pointer || left_key == '' {
 		return none
 	}
 	clean_rhs_id := tc.unwrap_paren_expr_id(rhs_id)

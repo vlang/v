@@ -27,13 +27,13 @@ struct InlineAsmIOSpan {
 
 // x86 instruction prefixes are written as a separate word, so the mnemonic that can be
 // mistaken for an operand is the one after them.
-const inline_asm_instruction_prefixes = ['lock', 'rep', 'repe', 'repz', 'repne', 'repnz']
+const inline_asm_instruction_prefixes = ['lock', 'rep', 'repe', 'repz', 'repne', 'repnz']!
 
 // Intel memory operands can use these words to select an address, distance or
 // explicit operand size. They are syntax, not possible misspellings of registers.
 const inline_asm_intel_operand_keywords = ['ptr', 'byte', 'word', 'dword', 'qword', 'tbyte', 'oword',
 	'xmmword', 'ymmword', 'zmmword', 'short', 'near', 'far', 'offset', 'rel', 'abs', 'rn', 'rd',
-	'ru', 'rz', 'sae']
+	'ru', 'rz', 'sae']!
 
 // Arm64 uses identifiers for shift and extension operators, condition codes,
 // barrier domains, and vector/predicate qualifiers inside otherwise structured operands.
@@ -41,7 +41,7 @@ const inline_asm_arm64_operand_keywords = ['lsl', 'lsr', 'asr', 'ror', 'msl', 'u
 	'uxtx', 'sxtb', 'sxth', 'sxtw', 'sxtx', 'eq', 'ne', 'cs', 'hs', 'cc', 'lo', 'mi', 'pl', 'vs',
 	'vc', 'hi', 'ls', 'ge', 'lt', 'gt', 'le', 'al', 'nv', 'sy', 'st', 'ld', 'osh', 'oshst', 'oshld',
 	'nsh', 'nshst', 'nshld', 'ish', 'ishst', 'ishld', 'mul', 'vl', 'b', 'h', 's', 'd', 'q', 'z',
-	'm', 'sm', 'c', 'j', 'jc', 'fpmr', 'pow2', 'mul3', 'mul4', 'all']
+	'm', 'sm', 'c', 'j', 'jc', 'fpmr', 'pow2', 'mul3', 'mul4', 'all']!
 
 // check_inline_asm_block reports the assembly diagnostics that only need the block's
 // preserved source: unsupported operand constraints in structured `intel` blocks, and
@@ -626,7 +626,7 @@ fn inline_asm_is_ident_char(c u8) bool {
 }
 
 fn inline_asm_is_ident(source string) bool {
-	if source.len == 0 || !inline_asm_is_ident_start(source[0]) {
+	if source == '' || !inline_asm_is_ident_start(source[0]) {
 		return false
 	}
 	return source[1..].bytes().all(inline_asm_is_ident_char(it))

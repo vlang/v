@@ -1813,7 +1813,7 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 
 fn (tc &TypeChecker) match_branch_tail_diagnostic_type(subject_key string, subject_type Type, branch flat.Node, tail_id flat.NodeId) Type {
 	n_conds := if branch.value == 'else' { 0 } else { branch.value.int() }
-	if subject_key.len > 0 && n_conds == 1 && branch.children_count > 0 {
+	if subject_key != '' && n_conds == 1 && branch.children_count > 0 {
 		cond := tc.a.child_node(&branch, 0)
 		if pattern := tc.match_type_pattern(cond) {
 			smartcast_name := if subject_type is SumType {
@@ -2154,7 +2154,7 @@ fn (tc &TypeChecker) match_condition_int_value(id flat.NodeId) ?int {
 }
 
 fn match_char_literal_value(value string) ?int {
-	if value.len == 0 {
+	if value == '' {
 		return none
 	}
 	if value[0] != `\\` {
@@ -2335,7 +2335,7 @@ fn (tc &TypeChecker) multi_interface_match_common_interface(subject Interface, b
 			continue
 		}
 		score := tc.interface_abstract_method_names(name).len + tc.interface_field_list(name).len
-		if score > best_score || (score == best_score && (best.len == 0 || name < best)) {
+		if score > best_score || (score == best_score && (best == '' || name < best)) {
 			best = name
 			best_score = score
 		}
@@ -2973,7 +2973,7 @@ fn (mut tc TypeChecker) branches_compatible_with(id flat.NodeId, expected Type) 
 }
 
 fn (mut tc TypeChecker) apply_match_branch_context_smartcasts(subject_key string, subject_type Type, branch flat.Node) {
-	if subject_key.len == 0 || !valid_string_data(subject_key) || branch.kind != .match_branch {
+	if subject_key == '' || !valid_string_data(subject_key) || branch.kind != .match_branch {
 		return
 	}
 	n_conds := if branch.value == 'else' { 0 } else { branch.value.int() }
@@ -4131,8 +4131,8 @@ fn (tc &TypeChecker) struct_field_diagnostic_fn_type_uncached(struct_name string
 		if field.kind != .field_decl {
 			continue
 		}
-		if (field_name.len > 0 && field.value == field_name)
-			|| (field_name.len == 0 && ordinal == field_index) {
+		if (field_name != '' && field.value == field_name)
+			|| (field_name == '' && ordinal == field_index) {
 			source_type := tc.source_fn_field_type_text(field) or { field.typ }
 			raw := if is_generic && concrete_args.len == struct_params.len {
 				subst_fn_diagnostic_type_text(source_type, concrete_args, struct_params)
@@ -4325,7 +4325,7 @@ fn subst_generic_diagnostic_fn_text(raw string, args []string, params []string) 
 }
 
 fn (tc &TypeChecker) source_type_alias_rhs(file_name string, alias_name string) ?string {
-	if file_name.len == 0 || alias_name.len == 0 {
+	if file_name == '' || alias_name == '' {
 		return none
 	}
 	source := tc.source_texts_by_file[file_name] or { os.read_file(file_name) or { return none } }
@@ -4520,7 +4520,7 @@ fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_text string, expect
 	expected_params, _ := fn_diagnostic_type_parts(expected_text)
 	actual_params, _ := fn_diagnostic_type_parts(actual_text)
 	mut expected_named := []FnDiagnosticParam{}
-	if expected_alias.len > 0 {
+	if expected_alias != '' {
 		if raw := tc.source_fn_alias_type_text(expected_alias) {
 			expected_named, _ = fn_diagnostic_type_parts(raw)
 		}
@@ -4543,7 +4543,7 @@ fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_text string, expect
 		} else {
 			'is NOT a pointer'
 		}
-		if expected_alias.len > 0 && i < expected_named.len && i < actual_named.len
+		if expected_alias != '' && i < expected_named.len && i < actual_named.len
 			&& expected_named[i].name.len > 0 && actual_named[i].name.len > 0 {
 			mut alias_name := tc.qualify_name(expected_alias)
 			if !alias_name.contains('.') {
@@ -7347,7 +7347,7 @@ fn (tc &TypeChecker) ident_is_call_callee_or_generic_base(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) future_local_decl_id(name string, use_id flat.NodeId) ?flat.NodeId {
-	if name.len == 0 || !tc.valid_node_id(use_id) {
+	if name == '' || !tc.valid_node_id(use_id) {
 		return none
 	}
 	fn_id := flat.NodeId(tc.fn_context.node_id)
@@ -8000,7 +8000,7 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 }
 
 fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident string, method string) ?string {
-	if method.len == 0 {
+	if method == '' {
 		return none
 	}
 	mut direct_candidates := []string{}
@@ -8026,7 +8026,7 @@ fn (tc &TypeChecker) fn_key_is_static_associated(key string) bool {
 }
 
 fn (tc &TypeChecker) static_assoc_type_candidates(type_ident string) []string {
-	if type_ident.len == 0 {
+	if type_ident == '' {
 		return []string{}
 	}
 	mut candidates := []string{}
@@ -8933,7 +8933,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 	}
 	mut candidates := []string{}
 	candidates << name
-	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
+	if module_name != '' && module_name != 'main' && module_name != 'builtin'
 		&& !name.contains('.') {
 		candidates << '${module_name}.${name}'
 	}
@@ -9354,7 +9354,7 @@ pub fn (tc &TypeChecker) interface_implements_interface(actual_name string, expe
 }
 
 pub fn (tc &TypeChecker) interface_metadata_name(name string) string {
-	if name.len == 0 {
+	if name == '' {
 		return name
 	}
 	base, _, is_generic := generic_type_application_parts(name)
@@ -9376,7 +9376,7 @@ pub fn (tc &TypeChecker) interface_metadata_name(name string) string {
 		if candidate.all_after_last('.') != short {
 			continue
 		}
-		if match_name.len > 0 && match_name != candidate {
+		if match_name != '' && match_name != candidate {
 			return lookup
 		}
 		match_name = candidate
@@ -10185,7 +10185,7 @@ fn (tc &TypeChecker) concrete_method_signature_key_seen(concrete_name string, me
 
 fn (tc &TypeChecker) concrete_generic_method_signature_candidates(concrete_name string, method string) []string {
 	base, args, ok := generic_type_application_parts(concrete_name)
-	if !ok || args.len == 0 || method.len == 0 {
+	if !ok || args.len == 0 || method == '' {
 		return []string{}
 	}
 	short_args := generic_type_args_short_for_signature(args)
@@ -10612,7 +10612,7 @@ fn (tc &TypeChecker) unqualified_type_name_shadows_builtin(name string) bool {
 }
 
 fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope(name string, file string, mod_name string) bool {
-	local_name := if mod_name.len > 0 && mod_name !in ['', 'main', 'builtin'] {
+	local_name := if mod_name != '' && mod_name !in ['', 'main', 'builtin'] {
 		'${mod_name}.${name}'
 	} else {
 		name
@@ -10644,7 +10644,7 @@ fn (tc &TypeChecker) unqualified_type_name_shadows_builtin_in_scope(name string,
 }
 
 fn (tc &TypeChecker) source_declares_type_in_scope(name string, file string, mod_name string) bool {
-	if file.len == 0 || isnil(tc.a) {
+	if file == '' || isnil(tc.a) {
 		return false
 	}
 	return scope_type_key(file, mod_name, name) in tc.declared_type_scope_keys
@@ -11011,11 +11011,11 @@ fn (tc &TypeChecker) struct_init_field_lookup_name(literal_name string, parsed_n
 		}
 		bracket := clean.index_u8(`[`)
 		if bracket > 0 {
-			base := if parsed_name.len > 0 { parsed_name } else { trimmed_space(clean[..bracket]) }
+			base := if parsed_name != '' { parsed_name } else { trimmed_space(clean[..bracket]) }
 			return base + clean[bracket..]
 		}
 	}
-	if parsed_name.len > 0 {
+	if parsed_name != '' {
 		return parsed_name
 	}
 	return clean
@@ -11134,12 +11134,12 @@ fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?T
 @[direct_array_access; inline]
 fn struct_field_cache_slot(struct_name string, field_name string) int {
 	mut hash := u32(struct_name.len)
-	if struct_name.len > 0 {
+	if struct_name != '' {
 		hash = hash * 16777619 ^ u32(struct_name[struct_name.len / 2])
 		hash = hash * 16777619 ^ u32(struct_name[struct_name.len - 1])
 	}
 	hash = hash * 16777619 ^ u32(field_name.len)
-	if field_name.len > 0 {
+	if field_name != '' {
 		hash = hash * 16777619 ^ u32(field_name[0])
 		hash = hash * 16777619 ^ u32(field_name[field_name.len - 1])
 	}
@@ -11557,7 +11557,7 @@ fn (tc &TypeChecker) receiver_embeds_inner(actual_name string, expected_name str
 // clones even when there is nothing to trim.
 @[inline]
 fn trimmed_space(s string) string {
-	if s.len == 0 {
+	if s == '' {
 		return s
 	}
 	c0 := s[0]
@@ -11961,7 +11961,7 @@ fn (tc &TypeChecker) generic_type_base_matches(a string, b string) bool {
 }
 
 fn (tc &TypeChecker) resolve_generic_match_base(base string) string {
-	if base.len == 0 {
+	if base == '' {
 		return base
 	}
 	if base.contains('.') {
@@ -12063,7 +12063,7 @@ fn (tc &TypeChecker) generic_match_arg_is_open_param(arg string) bool {
 }
 
 fn (tc &TypeChecker) resolve_generic_match_arg(arg string) string {
-	if arg.len == 0 {
+	if arg == '' {
 		return arg
 	}
 	if !arg.contains('.') {
@@ -12518,7 +12518,7 @@ fn (tc &TypeChecker) condition_may_smartcast_key(id flat.NodeId, key string) boo
 // conditions even when a closer branch already determined the type.
 fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key string, match_only bool) ?Type {
 	idx := int(id)
-	if idx < 0 || idx >= tc.direct_parent_ids.len || key.len == 0 || !valid_string_data(key) {
+	if idx < 0 || idx >= tc.direct_parent_ids.len || key == '' || !valid_string_data(key) {
 		return none
 	}
 	mut current := id
@@ -12645,7 +12645,7 @@ fn (tc &TypeChecker) branch_writes_key_before(branch_id flat.NodeId, target flat
 // (`holder.value`) reads, so its runtime tag no longer holds — mirroring how
 // invalidate_smartcasts_for_write_key drops descendant smartcasts.
 fn write_key_invalidates_key(write_key string, key string) bool {
-	if write_key.len == 0 {
+	if write_key == '' {
 		return false
 	}
 	if write_key == key {
@@ -12661,7 +12661,7 @@ fn write_key_invalidates_key(write_key string, key string) bool {
 // narrowed `p.value` then resolve to the same canonical key. Returns `key`
 // unchanged when the base cannot be resolved to a storage key.
 fn (tc &TypeChecker) canonical_storage_alias_key(key string) string {
-	if key.len == 0 {
+	if key == '' {
 		return key
 	}
 	mut base_len := key.len
@@ -12851,7 +12851,7 @@ fn (tc &TypeChecker) smartcast_target_type_for_is_expr(expr_id flat.NodeId, patt
 }
 
 fn (mut tc TypeChecker) invalidate_smartcasts_for_write_key(key string) {
-	if key.len == 0 {
+	if key == '' {
 		return
 	}
 	tc.smartcasts.delete(key)
@@ -13618,7 +13618,7 @@ fn (tc &TypeChecker) parse_generic_alias_application(name string, args []string,
 
 // parse_type_uncached reads parse type uncached input for types.
 fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
-	if typ.len == 0 {
+	if typ == '' {
 		return Type(void_)
 	}
 	if resolved := tc.type_from_typeof_type_text(typ) {
@@ -14410,7 +14410,7 @@ pub fn (tc &TypeChecker) canonical_qualified_type_name(name string) ?string {
 
 // unique_qualified_type_name supports unique qualified type name handling for TypeChecker.
 fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
-	if short_name.len == 0 {
+	if short_name == '' {
 		return none
 	}
 	// A full scan of the five type-name maps (with an all_after_last allocation
@@ -14547,7 +14547,7 @@ fn (tc &TypeChecker) unique_qualified_type_name_scan(short_name string) ?string 
 	mut found := ''
 	for name, _ in tc.type_aliases {
 		if name.all_after_last('.') == short_name {
-			if found.len > 0 && found != name {
+			if found != '' && found != name {
 				return none
 			}
 			found = name
@@ -14698,7 +14698,7 @@ pub fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text(typ string) ?string {
 }
 
 fn (tc &TypeChecker) c_abi_fn_ptr_type_for_type_text_inner(typ string, mut seen map[string]bool) ?string {
-	if typ.len == 0 || seen[typ] {
+	if typ == '' || seen[typ] {
 		return none
 	}
 	seen[typ] = true
@@ -17513,7 +17513,7 @@ fn receiver_type_module_names(t Type) []string {
 }
 
 fn push_receiver_method_candidate(mut names []string, name string) {
-	if name.len > 0 && name !in names {
+	if name != '' && name !in names {
 		names << name
 	}
 }
@@ -17525,7 +17525,7 @@ fn (tc &TypeChecker) unique_receiver_method_suffix_match(candidates []string) ?s
 		if name == receiver_method_suffix_ambiguous {
 			return none
 		}
-		if found.len > 0 && found != name {
+		if found != '' && found != name {
 			return none
 		}
 		found = name
@@ -17537,7 +17537,7 @@ fn (tc &TypeChecker) unique_receiver_method_suffix_match(candidates []string) ?s
 }
 
 fn module_can_prefix_collection_receiver(module_name string) bool {
-	return module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
+	return module_name != '' && module_name != 'main' && module_name != 'builtin'
 }
 
 fn exact_array_receiver_method_candidates(t Array, method string, module_name string) []string {
@@ -18034,7 +18034,7 @@ fn top_level_space_index(s string) int {
 
 // fn_type_param_head_is_name supports fn type param head is name handling for types.
 fn fn_type_param_head_is_name(head string, tail string) bool {
-	if head.len == 0 || tail.len == 0 {
+	if head == '' || tail == '' {
 		return false
 	}
 	if head.starts_with('fn') || head.starts_with('&') || head.starts_with('[') {
