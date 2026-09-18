@@ -259,7 +259,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			c_val_type := g.tc.c_type(base_type.value_type)
 			c_key_type := g.map_key_temp_c_type(base_type.key_type)
 			g.write('void* ${tmp} = map__get_check(&')
-			g.gen_expr(base_id)
+			g.gen_map_value_expr(base_id)
 			g.write(', &(${c_key_type}[]){')
 			g.gen_expr(g.a.child(rhs, 1))
 			g.writeln('});')

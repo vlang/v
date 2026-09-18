@@ -601,8 +601,8 @@ fn (mut t Transformer) record_monomorph_cache_spec(key string, decl_key string, 
 	}
 	t.monomorph_cache_specs[key.clone()] = MonomorphCacheSpec{
 		decl_key: decl_key.clone()
-		module: module_name.clone()
-		args: owned_args
+		module:   module_name.clone()
+		args:     owned_args
 	}
 }
 
@@ -2719,6 +2719,122 @@ fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStru
 	t.collect_generic_struct_specs_range(decls, mut specs, 0, t.a.nodes.len)
 }
 
+// type_text_has_unqualified_generic_arg reports whether `typ` applies generic
+// arguments that are plain (unqualified) type names, which cannot be resolved
+// without knowing the file the text was written in. Nested spellings are visited
+// recursively and container spellings are normalized the same way
+// `collect_generic_struct_spec_from_type` normalizes them, so
+// `Map[string, []Context]` and `Box[[2]Context]` depend on the writing file while
+// `Box[map[string]int]` is fully resolvable and must not be skipped.
+fn type_text_has_unqualified_generic_arg(typ string) bool {
+	text := strip_type_modifier_prefixes(typ)
+	if text.len == 0 {
+		return false
+	}
+	if text.starts_with('map[') {
+		end := generic_matching_bracket(text, 3)
+		if end <= 3 || end >= text.len {
+			return false
+		}
+		return type_text_has_unqualified_generic_arg(text[4..end])
+			|| type_text_has_unqualified_generic_arg(text[end + 1..])
+	}
+	if text.starts_with('[') {
+		// `[N]T` / `[N][M]T` fixed arrays: the element type decides (the collector
+		// strips the prefix the same way).
+		end := generic_matching_bracket(text, 0)
+		if end <= 0 || end + 1 >= text.len {
+			return false
+		}
+		return type_text_has_unqualified_generic_arg(text[end + 1..])
+	}
+	open := text.index_u8(`[`)
+	if open < 0 {
+		return false
+	}
+	close := generic_matching_bracket(text, open)
+	if close <= open + 1 {
+		return false
+	}
+	for arg in split_generic_args(text[open + 1..close]) {
+		clean := arg.trim_space()
+		if clean.len == 0 {
+			continue
+		}
+		if type_text_has_unqualified_generic_arg(clean) {
+			return true
+		}
+		// Only a plain name can be an unqualified type here: anything still
+		// spelled as a container (`map[...]`, fixed arrays, qualified names) was
+		// already decided by the recursive call above.
+		payload := strip_type_modifier_prefixes(clean)
+		if !is_plain_type_name_text(payload) || types.is_builtin_type_name(payload) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// strip_type_modifier_prefixes removes the same pointer/container prefixes the
+// generic spec collector strips before it inspects a type spelling.
+fn strip_type_modifier_prefixes(typ string) string {
+	mut text := typ.trim_space()
+	for text.len > 0 {
+		if text[0] in [`&`, `?`, `!`] {
+			text = text[1..].trim_space()
+			continue
+		}
+		if text.starts_with('...') {
+			text = text[3..].trim_space()
+			continue
+		}
+		if text.starts_with('mut ') {
+			text = text[4..].trim_space()
+			continue
+		}
+		if text.starts_with('chan ') {
+			text = text[5..].trim_space()
+			continue
+		}
+		if text.starts_with('[]') {
+			text = text[2..].trim_space()
+			continue
+		}
+		if text.starts_with('[') {
+			// Fixed-array prefix (`[2]Context`); the collector strips it too.
+			end := generic_matching_bracket(text, 0)
+			if end > 0 && end + 1 < text.len {
+				text = text[end + 1..].trim_space()
+				continue
+			}
+			break
+		}
+		break
+	}
+	return text
+}
+
+// is_plain_type_name_text reports whether `text` is a single unqualified type
+// name (letters, digits and underscores only).
+fn is_plain_type_name_text(text string) bool {
+	if text.len == 0 {
+		return false
+	}
+	first := text[0]
+	if !((first >= `a` && first <= `z`) || (first >= `A` && first <= `Z`) || first == `_`) {
+		return false
+	}
+	for i in 0 .. text.len {
+		c := text[i]
+		if !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
+			|| c == `_`) {
+			return false
+		}
+	}
+	return true
+}
+
 fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]GenericStructDecl, mut specs map[string]string, start int, end int) {
 	t.ensure_node_module_map()
 	safe_start := if start < 0 { 0 } else { start }
@@ -2751,6 +2867,24 @@ fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]Gener
 		}
 		node_module := t.node_module_or(node_idx, '')
 		node_file := t.node_file_or(node_idx, '')
+		// A synthesized node without recorded context cannot resolve bare type
+		// arguments: collecting its spelling would leave e.g. `Middleware[Context]`
+		// with no file scope, and materialization would later rebase the argument
+		// onto the wrong module. Fully qualified arguments stay usable, and the
+		// source node a spelling was cloned from is scanned with its own context.
+		if node_module.len == 0 && node_file.len == 0 {
+			mut spelling := node.typ
+			params := node.generic_params()
+			if params.len > 0 && !node.value.contains('[') {
+				// collect_generic_struct_specs_from_node joins these into a
+				// `Base[Arg]` spelling of its own, so check them here too.
+				spelling = '${node.value}[${params.join(', ')}]'
+			}
+			if type_text_has_unqualified_generic_arg(spelling)
+				|| type_text_has_unqualified_generic_arg(node.value) {
+				continue
+			}
+		}
 		if node_module != type_context_module || node_file != type_context_file {
 			type_context_module = node_module
 			type_context_file = node_file
