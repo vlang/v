@@ -3595,7 +3595,7 @@ fn (mut g FlatGen) shared_dup_fns() {
 	}
 	for name in names {
 		g.writeln('static inline void* __dup${name}(void* src, int sz) {')
-		g.writeln('\t${name}* dest = (${name}*)malloc((size_t)sz);')
+		g.writeln('\t${name}* dest = (${name}*)v_malloc((isize)sz);')
 		g.writeln('\tmemcpy(dest, src, (size_t)sz);')
 		g.writeln('\tsync__RwMutex__init(&dest->mtx);')
 		g.writeln('\treturn dest;')
