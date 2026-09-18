@@ -5523,7 +5523,11 @@ fn (mut t Transformer) lower_interface_auto_str_with_nil(expr flat.NodeId, iface
 			}
 		}
 		if concrete_types.len == 0 {
-			if !t.interface_boxed_type_marked(iface_name, impl_name) {
+			// A comptime-generated method body can be lowered in a worker with no
+			// boxed-type snapshot. In that case retain every known implementation:
+			// dropping them all makes a live interface stringify as "unknown".
+			if !t.interface_boxed_type_marked(iface_name, impl_name)
+				&& (t.interface_boxed_types.len > 0 || t.interface_boxed_types_late.len > 0) {
 				continue
 			}
 			concrete_types << impl_name

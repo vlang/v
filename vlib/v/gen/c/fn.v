@@ -8758,10 +8758,22 @@ fn (g &FlatGen) receiver_storage_type(base_id flat.NodeId) ?types.Type {
 }
 
 fn (g &FlatGen) receiver_ident_storage_is_pointer(base_id flat.NodeId) bool {
-	if int(base_id) < 0 || int(base_id) >= g.a.nodes.len {
+	mut id := base_id
+	mut depth := 0
+	// `(ctrl)` emits the same C value as `ctrl`, so a parenthesized receiver has
+	// to answer the storage question for the ident it wraps.
+	for depth < 32 && int(id) >= 0 && int(id) < g.a.nodes.len {
+		node := g.a.nodes[int(id)]
+		if node.kind != .paren || node.children_count != 1 {
+			break
+		}
+		id = g.a.child(&node, 0)
+		depth++
+	}
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
-	node := g.a.nodes[int(base_id)]
+	node := g.a.nodes[int(id)]
 	if node.kind != .ident {
 		return false
 	}
@@ -11951,7 +11963,12 @@ fn (mut g FlatGen) gen_embedded_method_receiver(base_id flat.NodeId, base_type t
 	if needs_paren {
 		g.write(')')
 	}
-	mut access_is_ptr := base_type is types.Pointer
+	// A `mut` parameter is passed as a pointer in C even when its V type is a
+	// value, so ask the codegen about the ident's storage before choosing the
+	// first accessor. Without this, a promoted method reached through an embedded
+	// field of such a parameter emits `base.field` instead of `base->field`.
+	mut access_is_ptr := cgen_type_is_pointer_like(base_type)
+		|| g.receiver_ident_storage_is_pointer(base_id)
 	for field in path {
 		op := if access_is_ptr { '->' } else { '.' }
 		g.write('${op}${c_field_name(field.name)}')

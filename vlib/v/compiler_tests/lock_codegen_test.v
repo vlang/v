@@ -456,6 +456,22 @@ fn main() {
 	assert !c_code.contains('struct __shared__Optional {\n\tsync__RwMutex mtx;\n\tOptional_string val;'), c_code
 }
 
+fn test_shared_wrapper_uses_gc_aware_allocator() {
+	c_code := lock_codegen_gen_c('shared_wrapper_gc_allocator', 'struct Holder {
+mut:
+	values shared map[string]int
+}
+
+fn main() {
+	_ := Holder{}
+}
+')
+	dup_body := '(void* src, int sz) {\n#if defined(_VPREALLOC)\n'
+	assert c_code.contains(dup_body), c_code
+	assert c_code.contains('malloc((size_t)sz)'), c_code
+	assert c_code.contains('malloc_uncollectable((isize)sz)'), c_code
+}
+
 fn test_shared_map_field_index_access_reads_payload() {
 	c_code := lock_codegen_gen_c('shared_map_field_index_access', 'struct Store {
 mut:

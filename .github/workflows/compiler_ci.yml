@@ -23,6 +23,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build V
         run: make -j4
+      - name: Check cached header declaration semantics
+        run: ./v -new-compiler vlib/v/types/cached_header_semantics_test.v
       - name: Install Objective-C compiler
         run: |
           .github/workflows/disable_azure_mirror.sh

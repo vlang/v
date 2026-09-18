@@ -13,6 +13,20 @@ see also `v help build`.
       Officially supported/tested C compilers include:
       `clang`, `gcc`, `tcc` (also accepted as `tinyc`), `mingw-w64` and `msvc`.
 
+   -glibc
+   -musl
+      Pin the C library that the generated program is expected to link against.
+      These flags select `$if glibc {` and `$if musl ? {` respectively.
+
+      On a native Linux build that V compiles and links itself, V infers the
+      host libc when neither flag is present. Host inference is not reused for
+      C-only output (`-o out.c` or `-o -`), object output (`-o out.o`/`-is_o`),
+      `-generate-c-project`, portable `-os cross` output, or a foreign target,
+      because another toolchain may perform the final link. Pass `-glibc` or
+      `-musl` explicitly for those builds when the target libc is known.
+      Selecting a compiler whose executable name ends in `musl-gcc` implies
+      `-musl`.
+
    -old-compiler
       On macOS, Linux, and BSD the experimental V3 compiler (vlib/v) is the default;
       `-old-compiler` bypasses it and compiles with the established compiler in
