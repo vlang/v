@@ -1,5 +1,7 @@
 module driver
 
+import v.pref
+
 fn test_v3_gc_mode_defines() {
 	cases := {
 		'':               ['gcboehm', 'gcboehm_full', 'gcboehm_opt']
@@ -18,12 +20,24 @@ fn test_v3_gc_mode_defines() {
 	}
 }
 
-fn test_v3_gc_mode_is_disabled_when_building_v() {
+fn test_v3_gc_mode_is_disabled_when_requested() {
 	for mode in ['', 'boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt',
 		'boehm_leak', 'none', 'vgc'] {
 		actual := v3_gc_mode_defines(mode, true) or { panic(err) }
 		assert actual == []
 	}
+}
+
+fn test_v3_gc_is_disabled_for_cross_compilation() {
+	host := pref.host_target()
+	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }
+	cross_arch := if host.arch == 'amd64' { 'arm64' } else { 'amd64' }
+	assert !v3_gc_is_disabled(false, false, host.os, host.arch)
+	assert v3_gc_is_disabled(true, false, host.os, host.arch)
+	assert v3_gc_is_disabled(false, true, host.os, host.arch)
+	assert v3_gc_is_disabled(false, false, cross_os, host.arch)
+	assert v3_gc_is_disabled(false, false, host.os, cross_arch)
+	assert v3_gc_is_disabled(false, false, 'cross', host.arch)
 }
 
 fn test_v3_gc_mode_keeps_dynamic_boehm_define() {
