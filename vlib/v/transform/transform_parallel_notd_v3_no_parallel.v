@@ -1412,7 +1412,10 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 				for name in w.generic_specialization_args_log {
 					spec_args := w.generic_specialization_args[name] or { continue }
 					if name !in t.generic_specialization_args {
-						t.generic_specialization_args[name.clone()] = spec_args.clone()
+						// Deep-copy the elements: the worker's copy of this array is
+						// backed by its scratch arena, which is released after the
+						// merge (a later pass re-seeds from these recorded args).
+						t.generic_specialization_args[name.clone()] = clone_monomorph_specialization_args(spec_args)
 					}
 				}
 				// Every emitted worker specialization is registered by the master below.
@@ -1545,6 +1548,12 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		mut wtc := t.tc.fork_for_parallel_transform(wast)
 		wtc.ensure_private_transform_signatures()
 		mut w := t.fork_worker(wast, wtc)
+		// Lifted function literals and other synthesized symbols are named from
+		// this counter. Batches run one after another, so let every batch continue
+		// the master's sequence: with a per-batch counter the same `__anon_fn_N`
+		// name would be reused for different closures, and the module-keyed
+		// signature table would then give one of them the other's signature.
+		w.global_temp_counter = t.global_temp_counter
 		w.fn_ret_types = t.fn_ret_types.clone()
 		w.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
 		w.signature_maps_shared = false
@@ -1567,8 +1576,26 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			roots << root
 			emitted_specs << spec
 		}
+		// The emitted specs can carry worker-owned argument strings. Copy key and
+		// arguments while the worker scope is still alive, but with that scope
+		// suspended so the copies land in the arena the merge loops below use:
+		// reading the worker strings after `transform_worker_scope_leave()` would
+		// be a use-after-free (vlang/v#28489).
+		mut owned_emitted_specs := []PendingGenericFnSpec{cap: emitted_specs.len}
+		worker_scope_state := transform_stage_scope_suspend(scope)
+		for spec in emitted_specs {
+			owned_emitted_specs << PendingGenericFnSpec{
+				decl: spec.decl
+				args: clone_monomorph_specialization_args(spec.args)
+				key:  spec.key.clone()
+			}
+		}
+		transform_stage_scope_resume(scope, worker_scope_state)
 		w.worker_scope = scope
 		transform_worker_scope_leave(scope)
+		// The batch consumed part of the synthesized-name sequence; keep numbering
+		// the next batch (and the following materialization passes) after it.
+		t.global_temp_counter = w.global_temp_counter
 
 		node_shift := t.a.nodes.len - base_nodes
 		// The parent pre-registered every specialization in this batch above.
@@ -1594,8 +1621,13 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			}
 			t.request_generic_fn_specialization(pending.decl, owned_args)
 		}
-		for idx, spec in emitted_specs {
+		for idx, spec in owned_emitted_specs {
 			root := flat.NodeId(int(roots[idx]) + node_shift)
+			// Re-record the spec from the master: `record_monomorph_cache_spec`
+			// deep-copies the argument strings into the arena that is current here
+			// (the parent), while the worker's copies die with `scope`.
+			t.record_monomorph_cache_spec(spec.key.clone(), spec.decl.key, spec.decl.module,
+				spec.args)
 			if !t.generic_specialization_registered(spec.decl, spec.args) {
 				value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
 				t.register_specialized_fn_signature_value(spec.decl, value, spec.args)
