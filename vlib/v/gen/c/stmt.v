@@ -101,18 +101,20 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 		if g.is_map_entry_lvalue(base_id) {
 			gen_expr_lvalue(mut g, base_id)
 			base_type := g.usable_expr_type(base_id)
+			mut field_owner := base_type
 			mut is_ptr := base_type is types.Pointer
 				|| cgen_unalias_type(base_type) is types.Pointer
 			if embedded_path := g.embedded_field_path_for_promoted_selector(base_type, node.value) {
 				for embedded in embedded_path {
 					op := if is_ptr { '->' } else { '.' }
 					g.write('${op}${g.cname(embedded.name)}')
+					field_owner = embedded.typ
 					is_ptr = embedded.typ is types.Pointer
 						|| cgen_unalias_type(embedded.typ) is types.Pointer
 				}
 			}
 			op := if is_ptr { '->' } else { '.' }
-			g.write('${op}${g.cname(node.value)}')
+			g.write('${op}${g.field_c_name(field_owner, node.value)}')
 			return
 		}
 	}
@@ -5835,7 +5837,7 @@ fn (mut g FlatGen) gen_generated_variant_access_selector(node flat.Node, base_id
 	} else {
 		'.'
 	})
-	g.write(g.cname(node.value))
+	g.write(g.field_c_name(generated_base_type, node.value))
 	return true
 }
 

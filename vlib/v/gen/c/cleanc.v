@@ -13087,7 +13087,7 @@ fn (mut g FlatGen) gen_sum_unique_variant_field_selector(base_id flat.NodeId, ba
 	} else {
 		g.write('.')
 	}
-	g.write('${sum_field}->${c_field_name(field)}')
+	g.write('${sum_field}->${g.init_field_c_name(info.variant, field)}')
 	return true
 }
 
@@ -13117,7 +13117,7 @@ fn (mut g FlatGen) gen_pointer_pointer_struct_selector(base_id flat.NodeId, base
 		} else {
 			g.gen_expr(base_id)
 		}
-		g.write('))->${g.cname(field)}')
+		g.write('))->${g.field_c_name(inner_base, field)}')
 		return true
 	}
 	if embedded_path := g.embedded_field_path_for_promoted_selector(inner_base, field) {
@@ -13131,7 +13131,7 @@ fn (mut g FlatGen) gen_pointer_pointer_struct_selector(base_id flat.NodeId, base
 		for embedded in embedded_path {
 			g.write('->${g.cname(embedded.name)}')
 		}
-		g.write('.${g.cname(field)}')
+		g.write('.${g.field_c_name(embedded_path.last().typ, field)}')
 		return true
 	}
 	return false
@@ -13446,7 +13446,7 @@ fn (mut g FlatGen) sizeof_selector_target(base string, fields []string) string {
 				arrow = true
 			}
 		}
-		expr += if arrow { '->${c_field_name(field)}' } else { '.${c_field_name(field)}' }
+		expr += if arrow { '->${g.field_c_name(cur or { types.Type(types.void_) }, field)}' } else { '.${g.field_c_name(cur or { types.Type(types.void_) }, field)}' }
 		cur = g.sizeof_selector_field_type(cur, field)
 	}
 	return expr
@@ -15850,7 +15850,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				cast_arg_id := g.a.child(&base, 1)
 				g.write('((${g.cname(cast_name)}*)')
 				g.gen_expr(cast_arg_id)
-				g.write(')->${g.cname(node.value)}')
+				g.write(')->${g.field_c_name(base_type0, node.value)}')
 			} else if base.kind == .cast_expr && base.children_count > 0 && (base.value.starts_with('C.') || base.value.starts_with('&C.') || (base.value.contains('__') && !base.value.starts_with('&'))) {
 				cast_child_id := g.a.child(&base, 0)
 				cast_type := g.tc.parse_type(base.value)
@@ -15858,7 +15858,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					ct := g.cast_c_type(cast_type)
 					g.write('((${ct})')
 					g.gen_expr(cast_child_id)
-					g.write(')->${g.cname(node.value)}')
+					g.write(')->${g.field_c_name(base_type0, node.value)}')
 				} else {
 					cast_name := if base.value.starts_with('C.') {
 						base.value[2..]
@@ -15867,7 +15867,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					}
 					g.write('((${g.cname(cast_name)}*)')
 					g.gen_expr(cast_child_id)
-					g.write(')->${g.cname(node.value)}')
+					g.write(')->${g.field_c_name(base_type0, node.value)}')
 				}
 			} else if base.kind == .cast_expr && base.children_count > 0 {
 				needs_paren := base.kind !in [.ident, .selector]
@@ -15883,7 +15883,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write('.')
 				}
-				g.write(g.cname(node.value))
+				g.write(g.field_c_name(base_type0, node.value))
 			} else if node.value == 'len' && base.kind == .ident {
 				base_type := g.tc.resolve_type(base_id)
 				if fixed := array_fixed_type(types.unwrap_pointer(base_type)) {
@@ -15955,7 +15955,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write('.')
 				}
-				g.write(g.cname(node.value))
+				g.write(g.field_c_name(base_type0, node.value))
 			} else if embedded := g.direct_embedded_field_for_selector(base_type0, node.value) {
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {
@@ -15989,7 +15989,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					embedded_owner = types.unwrap_pointer(embedded.typ)
 				}
 				final_op := if is_ptr { '->' } else { '.' }
-				g.write('${final_op}${g.cname(node.value)}')
+				g.write('${final_op}${g.field_c_name(embedded_owner, node.value)}')
 				if embedded_owner is types.Struct {
 					if _ := g.shared_field_info(embedded_owner.name, node.value) {
 						g.write('->val')
@@ -16052,7 +16052,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write('.')
 				}
-				g.write(g.cname(node.value))
+				g.write(g.field_c_name(base_type0, node.value))
 			}
 		}
 		.index {
@@ -16555,7 +16555,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.offsetof_expr {
 			ct := g.type_name_c_type(node.value)
-			g.write('offsetof(${ct}, ${g.cname(node.typ)})')
+			g.write('offsetof(${ct}, ${g.init_field_c_name(node.value, node.typ)})')
 		}
 		.assoc {
 			g.gen_assoc_expr(node)
