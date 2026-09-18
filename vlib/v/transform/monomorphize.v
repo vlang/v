@@ -588,13 +588,21 @@ fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, arg
 }
 
 fn (mut t Transformer) record_monomorph_cache_spec(key string, decl_key string, module_name string, args []string) {
-	if key.len == 0 || decl_key.len == 0 || key in t.monomorph_cache_specs {
+	if key.len == 0 || decl_key.len == 0 {
 		return
 	}
-	t.monomorph_cache_specs[key] = MonomorphCacheSpec{
-		decl_key: decl_key
-		module:   module_name
-		args:     args.clone()
+	// The strings must not reference a worker arena: a scoped batch releases its
+	// arenas right after the merge, and a later pass re-seeds its specializations
+	// from this cache. Re-record instead of skipping an existing key so the last
+	// (parent-arena) copy wins over one a worker recorded for the same spec.
+	mut owned_args := []string{cap: args.len}
+	for arg in args {
+		owned_args << arg.clone()
+	}
+	t.monomorph_cache_specs[key.clone()] = MonomorphCacheSpec{
+		decl_key: decl_key.clone()
+		module: module_name.clone()
+		args: owned_args
 	}
 }
 

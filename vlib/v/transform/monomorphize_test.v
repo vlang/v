@@ -674,3 +674,24 @@ fn test_free_generic_map_suffix_preserves_qualified_value_type() {
 	decoded := generic_type_arg_from_suffix_with_containers(suffix)
 	assert decoded == 'map[string]binary.St'
 }
+
+// The monomorph cache outlives the worker arena that produced an entry: a scoped
+// batch records a spec, releases its arena and a later pass re-seeds from this
+// table (vlang/v#28489). Recording has to own key, module, declaration key and
+// every argument, and a re-recorded key must keep the last copy instead of being
+// skipped.
+fn test_record_monomorph_cache_spec_replaces_existing_entry() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	t.record_monomorph_cache_spec('main.f_T_int', 'main.f', 'main', ['int'])
+	t.record_monomorph_cache_spec('main.f_T_int', 'main.f', 'main', ['iam.Token'])
+	spec := t.monomorph_cache_specs['main.f_T_int'] or {
+		assert false, 'the re-recorded spec disappeared'
+		return
+	}
+	assert spec.args == ['iam.Token']
+	assert spec.decl_key == 'main.f'
+	assert spec.module == 'main'
+}
