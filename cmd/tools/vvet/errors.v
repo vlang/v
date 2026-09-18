@@ -40,15 +40,13 @@ pub:
 }
 
 fn (mut vt Vet) error(msg string, line int, fix FixKind) {
-	lock vt.errors {
-		vt.errors << VetError{
-			message:   msg
-			file_path: vt.file
-			line:      line + 1
-			kind:      .error
-			fix:       fix
-			typ:       .default
-		}
+	vt.errors << VetError{
+		message:   msg
+		file_path: vt.file
+		line:      line + 1
+		kind:      .error
+		fix:       fix
+		typ:       .default
 	}
 }
 
@@ -63,39 +61,31 @@ fn (mut vt Vet) warn(msg string, line int, fix FixKind) {
 	}
 	if vt.opt.is_werror {
 		w.kind = .error
-		lock vt.errors {
-			vt.errors << w
-		}
+		vt.errors << w
 	} else {
-		lock vt.warns {
-			vt.warns << w
-		}
+		vt.warns << w
 	}
 }
 
 fn (mut vt Vet) notice(msg string, line int, fix FixKind) {
-	lock vt.notices {
-		vt.notices << VetError{
-			message:   msg
-			file_path: vt.file
-			line:      line + 1
-			kind:      .notice
-			fix:       fix
-			typ:       .default
-		}
+	vt.notices << VetError{
+		message:   msg
+		file_path: vt.file
+		line:      line + 1
+		kind:      .notice
+		fix:       fix
+		typ:       .default
 	}
 }
 
 fn (mut vt Vet) notice_with_file(file string, msg string, line int, fix FixKind) {
-	lock vt.notices {
-		vt.notices << VetError{
-			message:   msg
-			file_path: file
-			line:      line + 1
-			kind:      .notice
-			fix:       fix
-			typ:       .default
-		}
+	vt.notices << VetError{
+		message:   msg
+		file_path: file
+		line:      line + 1
+		kind:      .notice
+		fix:       fix
+		typ:       .default
 	}
 }
 

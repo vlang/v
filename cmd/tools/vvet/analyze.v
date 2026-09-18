@@ -22,12 +22,12 @@ const long_fns_cutoff = os.getenv_opt('VET_LONG_FNS_CUTOFF') or { '300' }.int()
 
 struct VetAnalyze {
 mut:
-	repeated_expr_cutoff     shared map[string]int
-	repeated_expr            shared map[string]map[string]map[string][]int
-	potential_non_inlined    shared map[string]map[string]int
-	call_counter             shared map[string]int
-	unqualified_call_counter shared map[string]int
-	declared_fns             shared map[string]bool
+	repeated_expr_cutoff     map[string]int
+	repeated_expr            map[string]map[string]map[string][]int
+	potential_non_inlined    map[string]map[string]int
+	call_counter             map[string]int
+	unqualified_call_counter map[string]int
+	declared_fns             map[string]bool
 	cur_fn                   string
 }
 
@@ -48,21 +48,17 @@ fn (mut va VetAnalyze) save_expr(cutoff int, expr string, file string, line int)
 	if expr == '' {
 		return
 	}
-	lock va.repeated_expr {
-		if va.cur_fn !in va.repeated_expr {
-			va.repeated_expr[va.cur_fn] = map[string]map[string][]int{}
-		}
-		if expr !in va.repeated_expr[va.cur_fn] {
-			va.repeated_expr[va.cur_fn][expr] = map[string][]int{}
-		}
-		if file !in va.repeated_expr[va.cur_fn][expr] {
-			va.repeated_expr[va.cur_fn][expr][file] = []int{}
-		}
-		va.repeated_expr[va.cur_fn][expr][file] << line
+	if va.cur_fn !in va.repeated_expr {
+		va.repeated_expr[va.cur_fn] = map[string]map[string][]int{}
 	}
-	lock va.repeated_expr_cutoff {
-		va.repeated_expr_cutoff[expr] = cutoff
+	if expr !in va.repeated_expr[va.cur_fn] {
+		va.repeated_expr[va.cur_fn][expr] = map[string][]int{}
 	}
+	if file !in va.repeated_expr[va.cur_fn][expr] {
+		va.repeated_expr[va.cur_fn][expr][file] = []int{}
+	}
+	va.repeated_expr[va.cur_fn][expr][file] << line
+	va.repeated_expr_cutoff[expr] = cutoff
 }
 
 fn (mut va VetAnalyze) expression(vet &Vet, node &flat.Node) {
@@ -100,18 +96,12 @@ fn (mut va VetAnalyze) count_call(vet &Vet, call &flat.Node) {
 	callee := vet.a.child_node(call, 0)
 	if callee.kind == .ident {
 		qualified := '${vet.mod}.${callee.value}'
-		lock va.call_counter {
-			va.call_counter[qualified]++
-		}
-		lock va.unqualified_call_counter {
-			va.unqualified_call_counter[qualified]++
-		}
+		va.call_counter[qualified]++
+		va.unqualified_call_counter[qualified]++
 		return
 	}
 	if callee.kind == .selector {
-		lock va.call_counter {
-			va.call_counter[callee.value]++
-		}
+		va.call_counter[callee.value]++
 	}
 }
 
@@ -139,9 +129,7 @@ fn (mut va VetAnalyze) long_or_empty_fn(mut vet Vet, id flat.NodeId) {
 fn (mut va VetAnalyze) potential_non_inlined(mut vet Vet, id flat.NodeId) {
 	node := vet.a.node(id)
 	fn_key := va.cur_fn
-	lock va.declared_fns {
-		va.declared_fns[fn_key] = true
-	}
+	va.declared_fns[fn_key] = true
 	start_line := vet.node_line(node)
 	end_offset := vet.a.formatter_node_ends[int(id)] or { int(node.pos.end) }
 	file := vet.a.source_files[node.pos.id] or { return }
@@ -149,12 +137,10 @@ fn (mut va VetAnalyze) potential_non_inlined(mut vet Vet, id flat.NodeId) {
 	if nr_lines >= short_fns_cutoff || vet.has_attribute_before(node, 'inline') {
 		return
 	}
-	lock va.potential_non_inlined {
-		if fn_key !in va.potential_non_inlined {
-			va.potential_non_inlined[fn_key] = map[string]int{}
-		}
-		va.potential_non_inlined[fn_key][vet.file] = start_line
+	if fn_key !in va.potential_non_inlined {
+		va.potential_non_inlined[fn_key] = map[string]int{}
 	}
+	va.potential_non_inlined[fn_key][vet.file] = start_line
 }
 
 fn (vet &Vet) has_attribute_before(node &flat.Node, name string) bool {
@@ -174,18 +160,16 @@ fn (vet &Vet) has_attribute_before(node &flat.Node, name string) bool {
 }
 
 fn (mut va VetAnalyze) vet_repeated_code(mut vet Vet) {
-	rlock va.repeated_expr {
-		for fn_name, ref_expr in va.repeated_expr {
-			scope_name := if fn_name == '' { 'global scope' } else { 'function scope (${fn_name})' }
-			for expr, info in ref_expr {
-				occurrences := arrays.sum(info.values().map(it.len)) or { 0 }
-				if occurrences < va.repeated_expr_cutoff[expr] {
-					continue
-				}
-				for file, lines in info {
-					for i, line in lines {
-						vet.notice_with_file(file, '${expr} occurs ${i + 1}/${occurrences} times in ${scope_name}.', line - 1, .repeated_code)
-					}
+	for fn_name, ref_expr in va.repeated_expr {
+		scope_name := if fn_name == '' { 'global scope' } else { 'function scope (${fn_name})' }
+		for expr, info in ref_expr {
+			occurrences := arrays.sum(info.values().map(it.len)) or { 0 }
+			if occurrences < va.repeated_expr_cutoff[expr] {
+				continue
+			}
+			for file, lines in info {
+				for i, line in lines {
+					vet.notice_with_file(file, '${expr} occurs ${i + 1}/${occurrences} times in ${scope_name}.', line - 1, .repeated_code)
 				}
 			}
 		}
@@ -193,14 +177,8 @@ fn (mut va VetAnalyze) vet_repeated_code(mut vet Vet) {
 }
 
 fn (mut va VetAnalyze) vet_inlining_fn(mut vet Vet) {
-	mut declared_fns := map[string]bool{}
-	rlock va.declared_fns {
-		declared_fns = va.declared_fns.clone()
-	}
-	mut unqualified_calls := map[string]int{}
-	rlock va.unqualified_call_counter {
-		unqualified_calls = va.unqualified_call_counter.clone()
-	}
+	declared_fns := va.declared_fns.clone()
+	unqualified_calls := va.unqualified_call_counter.clone()
 	mut builtin_calls := map[string]int{}
 	for caller_fn_name, count in unqualified_calls {
 		caller_mod := caller_fn_name.all_before_last('.')

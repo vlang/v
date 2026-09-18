@@ -12,13 +12,15 @@ import v.token
 import term
 import arrays
 
+// Files are visited sequentially. Keep diagnostics and analysis state directly
+// reachable from this GC-managed object while later files are parsed.
 @[heap]
 struct Vet {
 mut:
 	opt            Options
-	errors         shared []VetError
-	warns          shared []VetError
-	notices        shared []VetError
+	errors         []VetError
+	warns          []VetError
+	notices        []VetError
 	file           string
 	mod            string
 	filtered_lines FilteredLines
@@ -110,10 +112,8 @@ fn main() {
 		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		rlock vt.errors {
-			filtered_out := arrays.distinct(vt.errors.map(it.file_path))
-			eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
-		}
+		filtered_out := arrays.distinct(vt.errors.map(it.file_path))
+		eprintln('Note: You can run `v fmt -w ${filtered_out.join(' ')}` to fix these errors automatically')
 	}
 	if vt.errors.len > 0 {
 		exit(1)
