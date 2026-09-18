@@ -281,8 +281,7 @@ fn main() {
 	selective_binary := os.join_path(root, 'profile_selective')
 	selective_profile := os.join_path(root, 'profile_selective.txt')
 	selective_compile := cmdexec.run(v3_bin, ['-silent', '-profile-fns', 'main__selected',
-		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary,
-		selective_source])
+		'-profile-no-inline', '-profile', selective_profile, '-o', selective_binary, selective_source])
 	assert selective_compile.exit_code == 0, selective_compile.output
 	selective_run := cmdexec.run(selective_binary, [])
 	assert selective_run.exit_code == 0, selective_run.output
@@ -390,8 +389,7 @@ fn test_v3_garbage_collector_modes() {
 		'none':           []string{}
 		'vgc':            ['vgc']
 	}
-	markers := ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt', 'gcboehm_leak',
-		'vgc']
+	markers := ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt', 'gcboehm_leak', 'vgc']
 	for mode, expected in cases {
 		output := os.join_path(root, 'gc_${mode}.c')
 		mut args := ['-silent']
@@ -404,8 +402,7 @@ fn test_v3_garbage_collector_modes() {
 		generated := os.read_file(output)!
 		for marker in markers {
 			selected := marker in expected
-			assert generated.contains('v3_gc_marker_${marker}_28636') == selected,
-				'${mode}: marker ${marker}, expected ${selected}'
+			assert generated.contains('v3_gc_marker_${marker}_28636') == selected, '${mode}: marker ${marker}, expected ${selected}'
 		}
 	}
 
@@ -424,8 +421,7 @@ fn test_v3_garbage_collector_modes() {
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 		generated := os.read_file(output)!
 		for marker in markers {
-			assert !generated.contains('v3_gc_marker_${marker}_28636'),
-				'cross ${mode}: marker ${marker} must be disabled'
+			assert !generated.contains('v3_gc_marker_${marker}_28636'), 'cross ${mode}: marker ${marker} must be disabled'
 		}
 	}
 }
@@ -640,8 +636,8 @@ fn main() {
 	warm_run := cmdexec.run(v3_bin, ['-silent', 'run', source])
 	assert warm_run.exit_code == 0, warm_run.output
 	assert warm_run.output.trim_space() == '73'
-	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library', 'run',
-		source])
+	cached_missing := cmdexec.run(v3_bin, ['-silent', '-ldflags', '-lv3_missing_link_library',
+		'run', source])
 	assert cached_missing.exit_code != 0, cached_missing.output
 
 	assert_driver_cli_failure(v3_bin, ['-ldflags'], 'option `-ldflags` requires a value')
@@ -667,7 +663,7 @@ fn collect_driver_process_result(mut process os.Process) os.Result {
 	process.close()
 	return os.Result{
 		exit_code: exit_code
-		output: output
+		output:    output
 	}
 }
 
@@ -889,8 +885,8 @@ fn main() {
 	assert project_run.output == '42\n', project_run.output
 
 	backslash_project_dir := os.join_path(root, r'project\backslash')
-	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project',
-		backslash_project_dir, source])
+	backslash_generate := cmdexec.run(v3_bin, ['-silent', '-generate-c-project', backslash_project_dir,
+		source])
 	assert backslash_generate.exit_code == 0, backslash_generate.output
 	backslash_build := cmdexec.run('sh', [
 		os.join_path(backslash_project_dir, 'build.sh'),
@@ -1016,8 +1012,8 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	assert !os.read_file(stripped_c_path)!.contains('unused_value(')
 
 	no_skip_c_path := os.join_path(root, 'no_skip.c')
-	no_skip_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b', 'c',
-		'-o', no_skip_c_path, source], environment)
+	no_skip_c := run_driver_with_environment(v3_bin, ['-no-parallel', '-no-skip-unused', '-b',
+		'c', '-o', no_skip_c_path, source], environment)
 	assert no_skip_c.exit_code == 0, no_skip_c.output
 	assert os.read_file(no_skip_c_path)!.contains('unused_value(')
 }
@@ -1971,8 +1967,8 @@ fn main() {
 	os.write_file(os.join_path(explicit_dir, 'main.v'), 'module main\n\nfn main() { host_os_selected() }\n') or { panic(err) }
 	os.write_file(os.join_path(explicit_dir, 'target_${host.os}.v'), 'module main\n\nfn host_os_selected() {}\n') or { panic(err) }
 	explicit_output := os.join_path(root, 'explicit_target.wasm')
-	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch, '-o',
-		explicit_output, explicit_dir])
+	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch,
+		'-o', explicit_output, explicit_dir])
 	assert explicit_compile.exit_code == 0, explicit_compile.output
 	assert_driver_wasm_output(explicit_output)
 }

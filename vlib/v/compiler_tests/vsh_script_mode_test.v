@@ -64,10 +64,10 @@ pub fn message() string {
 }
 ") or { panic(err) }
 	script := os.join_path(root, 'import_module.vsh')
-	os.write_file(script, "import helper
+	os.write_file(script, 'import helper
 
 println(helper.message())
-") or { panic(err) }
+') or { panic(err) }
 	result := os.execute('${v3_bin} -silent ${script}')
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'from helper', result.output

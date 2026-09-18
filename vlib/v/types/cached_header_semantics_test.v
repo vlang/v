@@ -88,8 +88,8 @@ fn stop(unused int)
 	for parallel in [false, true] {
 		for scoped in [false, true] {
 			result := check_cached_header_source(source, 'vh', parallel, scoped)!
-			assert result.prototypes == ['answer', 'text', 'pair', 'nothing', 'Box.lookup',
-				'Box.+', 'append', 'generic', 'stop']
+			assert result.prototypes == ['answer', 'text', 'pair', 'nothing', 'Box.lookup', 'Box.+',
+				'append', 'generic', 'stop']
 			assert result.definitions.len == min_parallel_check_items + 8
 			assert result.errors.len == 0, result.errors.str()
 			assert result.notices.len == 0, result.notices.str()
@@ -110,15 +110,11 @@ pub fn uses_mut(mut values []int) int { values << 1 }
 				result := check_cached_header_source(source, extension, parallel, scoped)!
 				assert result.prototypes.len == 0
 				assert result.definitions.len == min_parallel_check_items + 12
-				assert result.errors.any(it.msg == 'missing return at end of function `falls_through`'),
-					result.errors.str()
+				assert result.errors.any(it.msg == 'missing return at end of function `falls_through`'), result.errors.str()
 				// A mutable parameter does not make its function a bodyless prototype.
-				assert result.errors.any(it.msg == 'missing return at end of function `uses_mut`'),
-					result.errors.str()
-				assert result.notices.any(it.msg == 'unused parameter: `unused`'),
-					result.notices.str()
-				assert result.errors.any(it.msg == 'missing return at end of function `+`'),
-					result.errors.str()
+				assert result.errors.any(it.msg == 'missing return at end of function `uses_mut`'), result.errors.str()
+				assert result.notices.any(it.msg == 'unused parameter: `unused`'), result.notices.str()
+				assert result.errors.any(it.msg == 'missing return at end of function `+`'), result.errors.str()
 				assert result.errors.len == 3, result.errors.str()
 			}
 		}
@@ -131,12 +127,9 @@ fn test_cached_header_prototype_parameters_are_still_validated() {
 			result := check_cached_header_source('pub fn duplicate(value int, value int) int\n',
 				'vh', parallel, scoped)!
 			assert result.prototypes == ['duplicate']
-			assert result.errors.any(it.msg == 'redefinition of parameter `value`'),
-				result.errors.str()
-			assert !result.errors.any(it.msg.contains('missing return at end of function')),
-				result.errors.str()
-			assert !result.notices.any(it.msg.starts_with('unused parameter:')),
-				result.notices.str()
+			assert result.errors.any(it.msg == 'redefinition of parameter `value`'), result.errors.str()
+			assert !result.errors.any(it.msg.contains('missing return at end of function')), result.errors.str()
+			assert !result.notices.any(it.msg.starts_with('unused parameter:')), result.notices.str()
 		}
 	}
 }
@@ -155,10 +148,8 @@ fn test_cached_header_prototypes_still_supply_callable_signatures() {
 				} else {
 					assert result.errors.any(it.kind == .call_arg_mismatch), result.errors.str()
 				}
-				assert !result.errors.any(it.msg.contains('missing return at end of function')),
-					result.errors.str()
-				assert !result.notices.any(it.msg.starts_with('unused parameter:')),
-					result.notices.str()
+				assert !result.errors.any(it.msg.contains('missing return at end of function')), result.errors.str()
+				assert !result.notices.any(it.msg.starts_with('unused parameter:')), result.notices.str()
 			}
 		}
 	}

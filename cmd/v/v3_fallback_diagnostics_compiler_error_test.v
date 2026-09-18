@@ -74,14 +74,14 @@ fn test_compiler_error_is_printed_before_successful_or_unsuccessful_fallback() {
 			os.write_file(os.join_path(module_dir, '${name}.v'), '')!
 			os.write_file(os.join_path(module_dir, v1_fallback_compatibility_marker), v_version)!
 		}
-		stub := '#!/bin/sh\nif [ "\$1" = version ]; then echo "V ${v_version} probe"; exit 0; fi\n'
-			+ 'test -z "\$VNORUN" || exit 91\n'
-			+ 'test "\$VFLAGS" = "already merged" || exit 92\n'
-			+ 'test -z "\$V_MACOS_V3_FALLBACK_FILE" || exit 93\n'
-			+ 'test -z "\$V_MACOS_V3_C_ERROR_DIR" || exit 94\n'
-			+ 'test "\$1" = run && test "\$3" = ci || exit 95\n'
-			+ 'printf "ran\\n" >> "\$${compiler_error_probe_env}/ran"\n'
-			+ 'echo "compatibility program ran" >&2\nexit ${status}\n'
+		stub := '#!/bin/sh\nif [ "\$1" = version ]; then echo "V ${v_version} probe"; exit 0; fi\n' +
+			'test -z "\$VNORUN" || exit 91\n' +
+			'test "\$VFLAGS" = "already merged" || exit 92\n' +
+			'test -z "\$V_MACOS_V3_FALLBACK_FILE" || exit 93\n' +
+			'test -z "\$V_MACOS_V3_C_ERROR_DIR" || exit 94\n' +
+			'test "\$1" = run && test "\$3" = ci || exit 95\n' +
+			'printf "ran\\n" >> "\$${compiler_error_probe_env}/ran"\n' +
+			'echo "compatibility program ran" >&2\nexit ${status}\n'
 		for path in [os.join_path(compat, 'v'), os.join_path(root, v1_fallback_binary)] {
 			os.write_file(path, stub)!
 			os.chmod(path, 0o700)!
@@ -145,8 +145,7 @@ fn test_fallback_diagnostics_replays_vsh_errors_without_running_the_script() {
 	good_source := os.join_path(root, 'good.vsh')
 	os.write_file(good_source, 'import os\n\nos.write_file(os.args[1], "ran") or {}\n')!
 	os.write_file(state.fallback_file, 'compiler_error\nsemantic checking')!
-	_ := v3_fallback_diagnostics(dispatcher, ['-nocache', '-no-parallel', 'run', good_source,
-		marker], state)
+	_ := v3_fallback_diagnostics(dispatcher, ['-nocache', '-no-parallel', 'run', good_source, marker], state)
 	assert !os.exists(marker)
 }
 

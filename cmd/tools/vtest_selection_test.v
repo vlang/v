@@ -29,16 +29,16 @@ fn testsuite_begin() {
 	os.setenv('VTEST_MAX_COMPILATION_RETRIES', '0', true)
 	os.setenv('V_C_ERROR_BUG_REPORT_DISABLED', '1', true)
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	build := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none',
-		'-o', selection_tool, os.join_path(@VMODROOT, 'cmd', 'tools', 'vtest.v')], 180_000)
+	build := cmdexec.run_with_timeout(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-o',
+		selection_tool, os.join_path(@VMODROOT, 'cmd', 'tools', 'vtest.v')], 180_000)
 	assert build.exit_code == 0, build.output
 	assert os.is_file(selection_tool)
 
 	passing := "import os\nfn test_selected() { os.write_file(@FILE + '.executed', 'passed')!; assert true }\n"
 	failing := "fn test_selected() { println('${selection_failure_marker}'); assert false, 'explicit test must run' }\n"
 	for path in ['explicit/multiwindow_pass_test.v', 'explicit/multiwindow/pass_test.v',
-		'explicit/multiwindow_pass_test.c.v', 'ordinary/pass_test.v',
-		'discovery/pass_test.v', 'non_ci/multiwindow/pass_test.v'] {
+		'explicit/multiwindow_pass_test.c.v', 'ordinary/pass_test.v', 'discovery/pass_test.v',
+		'non_ci/multiwindow/pass_test.v'] {
 		write_selection_fixture(path, passing)
 	}
 	for path in ['explicit/multiwindow_fail_test.v', 'explicit/multiwindow/fail_test.v',
@@ -105,8 +105,7 @@ fn test_explicit_multiwindow_failures_are_not_reported_as_skips() {
 			args << path
 			result := run_selection(args)
 			assert_selection_summary(result, 1, '1 failed, 1 total')
-			assert result.output.split_into_lines().any(it.trim_space() == selection_failure_marker),
-				result.output
+			assert result.output.split_into_lines().any(it.trim_space() == selection_failure_marker), result.output
 		}
 	}
 }
@@ -134,8 +133,7 @@ fn test_multiwindow_define_does_not_skip_unrelated_tests() {
 fn test_recursive_ci_discovery_keeps_the_multiwindow_quarantine() {
 	result := run_selection(['test', 'discovery'])
 	assert_selection_summary(result, 0, '1 passed, 2 skipped, 3 total')
-	assert !result.output.split_into_lines().any(it.trim_space() == selection_failure_marker),
-		result.output
+	assert !result.output.split_into_lines().any(it.trim_space() == selection_failure_marker), result.output
 }
 
 fn test_explicit_and_discovered_paths_keep_independent_selection() {
@@ -183,6 +181,5 @@ fn test_explicit_incompatible_architecture_and_backend_still_skip() {
 fn test_explicit_multiwindow_build_constraints_still_apply() {
 	result := run_selection(['test', 'constraints/multiwindow_test.v'])
 	assert_selection_summary(result, 0, '1 skipped, 1 total')
-	assert !result.output.split_into_lines().any(it.trim_space() == selection_failure_marker),
-		result.output
+	assert !result.output.split_into_lines().any(it.trim_space() == selection_failure_marker), result.output
 }

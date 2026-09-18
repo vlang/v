@@ -38,7 +38,7 @@ fn main() {
 		// found no free worker and timed out. Pin a generous, host-independent
 		// worker count so the gate does not depend on the runner's core count
 		// (vlang/v#28517).
-		worker_num: 16
+		worker_num:             16
 	}
 	println('h2spec target listening on 127.0.0.1:${port} (h2 over TLS)')
 	srv.listen_and_serve()
