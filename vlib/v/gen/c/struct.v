@@ -27,6 +27,27 @@ fn c_field_name(name string) string {
 	return c_name(name)
 }
 
+// field_c_name preserves the external spelling of escaped C aggregate members.
+// V fields still use the normal identifier mangling, even through aliases.
+fn (g &FlatGen) field_c_name(owner types.Type, field string) string {
+	if field.starts_with('@') {
+		base := cgen_unalias_unwrap_all_pointers(owner)
+		if base is types.Struct && base.name.starts_with('C.') {
+			return field[1..]
+		}
+	}
+	return g.cname(field)
+}
+
+// init_field_c_name resolves the owner of an initializer designator only
+// when its source spelling contains an escape.
+fn (g &FlatGen) init_field_c_name(owner string, field string) string {
+	if field.starts_with('@') {
+		return g.field_c_name(g.tc.parse_type(owner), field)
+	}
+	return c_field_name(field)
+}
+
 // struct_init_fields_key returns the key under which the initialized struct's checked fields
 // (and their concrete types) live. For a bare generic literal that adopts a concrete instance
 // (`Box{..}` where `Box[int]` is expected) that is the instance key `Box[int]`; the bare `Box`
@@ -863,7 +884,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 			designator := if promoted.designator.len > 0 {
 				promoted.designator
 			} else {
-				c_field_name(field.value)
+				g.init_field_c_name(lookup_name, field.value)
 			}
 			g.write('.${designator} = ')
 			value_node := g.a.node(value_id)
@@ -949,7 +970,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 			if f.name in set_fields {
 				continue
 			}
-			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, c_field_name(f.name), has_field)
+			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, g.init_field_c_name(defaults_key, f.name), has_field)
 		}
 	}
 	if !has_field {
@@ -1261,7 +1282,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 				if has_field {
 					g.write(', ')
 				}
-				g.write('.${c_field_name(sf.name)} = ')
+				g.write('.${g.init_field_c_name(lookup_name, sf.name)} = ')
 				g.gen_struct_field_expr_for_field(value_id, lookup_name, sf.name, sf.typ)
 				set_fields[sf.name] = true
 				has_field = true
@@ -1288,7 +1309,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 			if has_field {
 				g.write(', ')
 			}
-			g.write('.${c_field_name(field.value)} = ')
+			g.write('.${g.init_field_c_name(lookup_name, field.value)} = ')
 			value_node := g.a.node(value_id)
 			if name.starts_with('Optional') && field.value == 'value' && value_node.kind == .prefix
 				&& value_node.op == .amp {
@@ -1326,7 +1347,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 			if f.name in set_fields {
 				continue
 			}
-			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, c_field_name(f.name), has_field)
+			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, g.init_field_c_name(defaults_key, f.name), has_field)
 		}
 	}
 	if !has_field {
@@ -1334,7 +1355,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 	}
 	g.write('};')
 	for i in 0 .. fixed_fields.len {
-		cfield := c_field_name(fixed_fields[i])
+		cfield := g.init_field_c_name(lookup_name, fixed_fields[i])
 		g.write(' memcpy(${tmp}.${cfield}, ')
 		g.gen_fixed_array_copy_source(fixed_values[i], fixed_field_types[i])
 		g.write(', sizeof(${tmp}.${cfield}));')
@@ -1348,7 +1369,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		g.tc.cur_module = d.module_name
 		g.tc.cur_file = d.file
 		g.struct_default_module = d.module_name
-		cfield := c_field_name(d.name)
+		cfield := g.init_field_c_name(lookup_name, d.name)
 		g.write(' memcpy(${tmp}.${cfield}, ')
 		g.gen_fixed_array_copy_source(d.value, d.typ)
 		g.write(', sizeof(${tmp}.${cfield}));')
@@ -1363,7 +1384,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 			}
 			if fixed := array_fixed_type(field.typ) {
 				if g.field_needs_default_init(fixed.elem_type) {
-					cfield := c_field_name(field.name)
+					cfield := g.init_field_c_name(lookup_name, field.name)
 					for idx in 0 .. fixed.len {
 						g.write(' ${tmp}.${cfield}[${idx}] = ')
 						g.gen_default_value_for_type(fixed.elem_type)
@@ -1846,7 +1867,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		designator := if promoted.designator.len > 0 {
 			promoted.designator
 		} else {
-			c_field_name(field.value)
+			g.init_field_c_name(lookup_name, field.value)
 		}
 		g.write('.${designator} = ')
 		value_node := g.a.node(value_id)
@@ -1923,7 +1944,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 			if f.name in set_fields {
 				continue
 			}
-			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, c_field_name(f.name), has_field)
+			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ, g.init_field_c_name(defaults_key, f.name), has_field)
 		}
 	}
 	if !has_field {
