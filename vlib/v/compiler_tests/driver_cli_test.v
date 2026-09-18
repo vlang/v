@@ -408,6 +408,26 @@ fn test_v3_garbage_collector_modes() {
 				'${mode}: marker ${marker}, expected ${selected}'
 		}
 	}
+
+	// Cross-target builds must not emit collector-dependent code. The target
+	// runtime/toolchain may not have Boehm headers or libraries available.
+	host := pref.host_target()
+	cross_os := if host.os == 'linux' { 'macos' } else { 'linux' }
+	for mode in ['default', 'boehm'] {
+		output := os.join_path(root, 'gc_cross_${mode}.c')
+		mut args := ['-silent', '-os', cross_os]
+		if mode != 'default' {
+			args << ['-gc', mode]
+		}
+		args << ['-o', output, source]
+		result := cmdexec.run(v3_bin, args)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+		generated := os.read_file(output)!
+		for marker in markers {
+			assert !generated.contains('v3_gc_marker_${marker}_28636'),
+				'cross ${mode}: marker ${marker} must be disabled'
+		}
+	}
 }
 
 fn test_standard_v3_excludes_ownership_checker() {
