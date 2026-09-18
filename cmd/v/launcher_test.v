@@ -14,11 +14,24 @@ fn test_compiler_selection_flags_are_not_forwarded() {
 }
 
 fn test_external_tool_build_args_drop_non_binary_modes() {
-	assert external_tool_build_args(['-silent', '-N', '-W', '-check']) == ['-silent', '-N', '-W']
-	assert external_tool_build_args(['-new-compiler', '-c', '-cc', 'clang']) == ['-cc', 'clang']
+	assert external_tool_build_args('vfmt', ['-silent', '-N', '-W', '-check']) == ['-silent',
+		'-N', '-W']
+	assert external_tool_build_args('vfmt', ['-new-compiler', '-c', '-cc', 'clang']) == ['-cc',
+		'clang']
 }
 
-fn test_build_tools_receives_prefix_compiler_options() {
+fn test_diagnostic_external_tool_build_args_disable_gc() {
+	for tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
+		assert external_tool_compile_args(tool_name, ['-prod']) == ['-prod', '-g', '-gc', 'none']
+		assert external_tool_compile_args(tool_name, ['-gc', 'boehm', '-prod']) == ['-prod',
+			'-g', '-gc', 'none']
+		assert external_tool_compile_args(tool_name, ['-gc=boehm', '-prod']) == ['-prod', '-g',
+			'-gc', 'none']
+	}
+	assert external_tool_compile_args('vfmt', ['-prod']) == ['-prod']
+}
+
+fn test_tools_that_consume_prefix_compiler_options_receive_them() {
 	prefix := ['-silent', '-N', '-W', '-check']
 	assert external_tool_runtime_args('build-tools', prefix, ['build-tools']) == [
 		'-silent',
@@ -27,6 +40,7 @@ fn test_build_tools_receives_prefix_compiler_options() {
 		'-check',
 		'build-tools',
 	]
+	assert external_tool_runtime_args('self', ['-prod'], ['self']) == ['-prod', 'self']
 	assert external_tool_runtime_args('fmt', prefix, ['fmt', '-verify', 'file.v']) == [
 		'fmt',
 		'-verify',
