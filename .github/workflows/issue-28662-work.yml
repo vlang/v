@@ -9,11 +9,11 @@ permissions:
 
 jobs:
   reproduce:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    runs-on: ubuntu-slim
+    timeout-minutes: 14
     env:
-      VJOBS: '2'
-      VTEST_JOBS: '2'
+      VJOBS: '1'
+      VTEST_JOBS: '1'
       VCOLORS: never
       V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
@@ -21,10 +21,14 @@ jobs:
         with:
           ref: 39f7c967ecd087b0d041ea474df7375437571c09
           persist-credentials: false
+      - name: Install bootstrap tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential curl git libssl-dev
       - name: Build baseline
         run: |
           set -euo pipefail
-          make -j2
+          make -j1
           ./v version
       - name: Compile the original and reduced reproducers
         run: |
@@ -55,22 +59,17 @@ jobs:
               veb.run[App, Context](mut app, 8080)
           }
           EOF
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('/tmp/issue-28662/original.v').read_text()
-          p = p.replace('veb.run[App, Context](mut app, 8080)', 'mut ctx := Context{}\n    app.some_data(mut ctx)')
-          Path('/tmp/issue-28662/direct.v').write_text(p)
-          PY
+          sed 's/veb.run\[App, Context\](mut app, 8080)/mut ctx := Context{}; app.some_data(mut ctx)/' /tmp/issue-28662/original.v > /tmp/issue-28662/direct.v
           for source in original direct; do
             echo "===== ${source}: check ====="
             set +e
-            timeout 180 ./v -new-compiler -check /tmp/issue-28662/${source}.v
+            timeout 120 ./v -new-compiler -check /tmp/issue-28662/${source}.v
             result=$?
             set -e
             echo "CHECK_EXIT=${result}"
             echo "===== ${source}: compile ====="
             set +e
-            timeout 240 ./v -new-compiler -keepc -o /tmp/issue-28662/${source} /tmp/issue-28662/${source}.v
+            timeout 180 ./v -new-compiler -keepc -o /tmp/issue-28662/${source} /tmp/issue-28662/${source}.v
             result=$?
             set -e
             echo "COMPILE_EXIT=${result}"
