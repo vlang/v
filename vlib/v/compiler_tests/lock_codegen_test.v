@@ -464,13 +464,13 @@ mut:
 
 fn set_value(mut s Store) {
 	lock s.values {
-		s.values['x'] = 7
+		s.values[\'x\'] = 7
 	}
 }
 
 fn get_value(mut s Store) int {
 	rlock s.values {
-		return s.values['x'] or { 0 }
+		return s.values[\'x\'] or { 0 }
 	}
 	return 0
 }
