@@ -19,7 +19,20 @@ permissions:
 
 jobs:
   process-regressions:
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            build: make
+            v: ./v
+          - os: macos-14
+            build: make
+            v: ./v
+          - os: windows-2025
+            build: .\makev.bat -gcc
+            v: ./v.exe
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
       VFLAGS: -cc gcc
@@ -29,10 +42,13 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build V with the system C compiler
         id: build
-        run: make
+        run: ${{ matrix.build }}
       - name: Check executable resolution
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ./v -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v
+        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v
       - name: Check diagnostic replay
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ./v -new-compiler cmd/v/v3_fallback_diagnostics_test.v
+        run: ${{ matrix.v }} -new-compiler cmd/v/v3_fallback_diagnostics_test.v
+      - name: Check deadlines and inherited output pipes
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_timeout_test.v

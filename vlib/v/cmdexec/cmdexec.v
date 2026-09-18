@@ -24,7 +24,8 @@ pub fn run_in(program string, args []string, work_folder string) os.Result {
 // run_with_timeout is run, bounded: after timeout_ms milliseconds the child is
 // killed and a non zero result is returned. Use it for short probes that must
 // never be able to block a build, so that a child which can never make progress
-// is reported instead of hanging the compiler forever.
+// is reported instead of hanging the compiler forever. The deadline also covers
+// output pipes inherited by descendants after the direct child has exited.
 pub fn run_with_timeout(program string, args []string, timeout_ms i64) os.Result {
 	return run_in_mode(program, args, '', false, timeout_ms)
 }
@@ -68,12 +69,35 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	process.run()
 	mut output := strings.new_builder(1024)
 	mut timed_out := false
+	mut stdout_done := false
+	mut stderr_done := merge_output
 	sw := time.new_stopwatch()
-	for process.is_alive() {
-		stdout := process.stdout_read()
-		stderr := if merge_output { '' } else { process.stderr_read() }
+	for timeout_ms > 0 || process.is_alive() {
+		mut stdout := ''
+		mut stderr := ''
+		if timeout_ms > 0 {
+			if !stdout_done {
+				text, done := read_process_pipe(mut process, .stdout)
+				stdout = text
+				stdout_done = done
+			}
+			if !stderr_done {
+				text, done := read_process_pipe(mut process, .stderr)
+				stderr = text
+				stderr_done = done
+			}
+		} else {
+			stdout = process.stdout_read()
+			stderr = if merge_output { '' } else { process.stderr_read() }
+		}
 		output.write_string(stdout)
 		output.write_string(stderr)
+		// Do not reap a bounded child's leader while descendants still own the
+		// pipes. Keeping its PID reserved also keeps a later group kill from
+		// targeting a reused PID after an early-exiting wrapper.
+		if timeout_ms > 0 && stdout_done && stderr_done && !process.is_alive() {
+			break
+		}
 		// The deadline is checked on every iteration, not only when nothing was
 		// read: a child that keeps writing must hit the bound just the same.
 		if timeout_ms > 0 && sw.elapsed().milliseconds() >= timeout_ms {
@@ -114,7 +138,7 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 			output.write_string(stdout)
 			output.write_string(stderr)
 		}
-	} else {
+	} else if timeout_ms <= 0 {
 		output.write_string(process.stdout_slurp())
 		if !merge_output {
 			output.write_string(process.stderr_slurp())
