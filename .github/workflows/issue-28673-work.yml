@@ -1,91 +1,58 @@
-name: Issue 28673 work
+name: Issue 28673 final review
 on:
   push:
     branches: [work/28673-c-field-names]
 permissions:
   contents: read
 jobs:
-  prepare:
+  refine:
     runs-on: ubuntu-slim
     permissions:
       contents: write
-    outputs:
-      sha: ${{ steps.patch.outputs.result }}
     steps:
-      - id: patch
-        uses: actions/github-script@v8
+      - uses: actions/github-script@v8
         with:
-          result-encoding: string
           script: |
-            // Reuse this task's immutable preparation script, with two reviewed corrections.
-            const {data} = await github.rest.repos.getContent({
-              ...context.repo,
-              path: '.github/workflows/issue-28673-work.yml',
-              ref: 'b53d60f02e85ff290a5c954fb7f91fca774d70ce'
+            const repo = context.repo;
+            const branch = 'fix/28673-c-field-names';
+            const expected = '4f788d06db5bdcd08aef7503dda25c3c1b593edb';
+            const {data: ref} = await github.rest.git.getRef({...repo, ref: `heads/${branch}`});
+            if (ref.object.sha !== expected) throw new Error('The fix branch changed; refusing to overwrite it');
+            const path = 'vlib/v/gen/c/cleanc.v';
+            const {data: file} = await github.rest.repos.getContent({...repo, path, ref: expected});
+            if (file.sha !== 'c3ecc79e97ae45d99d4a0a5871756897dcc16cd2') throw new Error('Unexpected source blob');
+            const source = Buffer.from(file.content, 'base64').toString('utf8');
+            const signature = 'fn (mut g FlatGen) sizeof_selector_target(base string, fields []string) string {';
+            const start = source.indexOf(signature);
+            const end = source.indexOf('\n}', start) + 2;
+            if (start < 0 || end <= start) throw new Error('Cannot locate sizeof selector helper');
+            const replacement = [
+              signature,
+              '\tmut expr := c_name(base)',
+              '\tmut cur := g.sizeof_selector_base_type(base)',
+              '\tfor field in fields {',
+              '\t\tmut arrow := false',
+              '\t\tmut field_name := c_field_name(field)',
+              '\t\tif typ := cur {',
+              '\t\t\t// An alias may stand for the pointer, so resolve it before',
+              '\t\t\t// choosing the member-access operator.',
+              '\t\t\tif cgen_unalias_type(typ) is types.Pointer {',
+              '\t\t\t\tarrow = true',
+              '\t\t\t}',
+              '\t\t\tif field.starts_with(\'@\') {',
+              '\t\t\t\tfield_name = g.field_c_name(typ, field)',
+              '\t\t\t}',
+              '\t\t}',
+              '\t\texpr += if arrow { \'->${field_name}\' } else { \'.${field_name}\' }',
+              '\t\tcur = g.sizeof_selector_field_type(cur, field)',
+              '\t}',
+              '\treturn expr',
+              '}'
+            ].join('\n');
+            const content = source.slice(0, start) + replacement + source.slice(end);
+            const {data: result} = await github.rest.repos.createOrUpdateFileContents({
+              ...repo, path, branch, sha: file.sha,
+              message: 'cgen: retain non-escaped sizeof member naming',
+              content: Buffer.from(content).toString('base64')
             });
-            if (data.sha !== 'ee68aae1659914abd24af3076ff1ded74be08c65') throw new Error('Unexpected preparation source');
-            const workflow = Buffer.from(data.content, 'base64').toString('utf8');
-            const marker = '          script: |\n';
-            const start = workflow.indexOf(marker) + marker.length;
-            const end = workflow.indexOf('\n  validate:', start);
-            if (start < marker.length || end < start) throw new Error('Missing preparation script');
-            let script = workflow.slice(start, end).split('\n').map(line => line.slice(12)).join('\n');
-            const target = "'gen_struct_init_with_fixed_array_fields',";
-            if (script.split(target).length !== 2) throw new Error('Unexpected fixed-array target count');
-            script = script.replace(target, "'gen_struct_init_with_fixed_array_fields_impl',");
-            const optional = 'g.field_c_name(cur, field)';
-            if (script.split(optional).length !== 3) throw new Error('Unexpected sizeof target count');
-            script = script.split(optional).join('g.field_c_name(cur or { types.Type(types.void_) }, field)');
-            const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
-            return await new AsyncFunction('github', 'context', 'core', script)(github, context, core);
-  validate:
-    needs: prepare
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      VJOBS: '2'
-      VTEST_JOBS: '2'
-      V_C_ERROR_BUG_REPORT_DISABLED: '1'
-      NO_COLOR: '1'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          fetch-depth: 2
-          persist-credentials: false
-      - name: Build baseline compiler
-        run: |
-          for file in vlib/v/gen/c/struct.v vlib/v/gen/c/cleanc.v vlib/v/gen/c/stmt.v; do
-            git show HEAD^:"$file" > "$file"
-          done
-          make -j2 2>&1 | tee /tmp/28673-baseline-build.log
-      - name: Confirm the regression fails on baseline
-        run: |
-          set +e
-          ./v -new-compiler vlib/v/tests/c_escaped_fields_test.c.v > /tmp/28673-before.log 2>&1
-          code=$?
-          cat /tmp/28673-before.log
-          test "$code" -ne 0 && grep -q '_v_type' /tmp/28673-before.log
-      - name: Restore patch and rebuild
-        run: |
-          git restore vlib/v/gen/c/struct.v vlib/v/gen/c/cleanc.v vlib/v/gen/c/stmt.v
-          ./v self 2>&1 | tee /tmp/28673-rebuild.log
-          git diff --check
-      - name: Run escaped-field regression and naming tests
-        run: |
-          ./v -new-compiler vlib/v/tests/c_escaped_fields_test.c.v 2>&1 | tee /tmp/28673-after.log
-          ./v -new-compiler -no-parallel vlib/v/tests/c_escaped_fields_test.c.v
-          ./v -new-compiler -silent test vlib/v/gen/c/escaped_c_fields_test.v
-      - name: Verify formatting
-        run: ./v fmt -verify vlib/v/gen/c/escaped_c_fields_test.v vlib/v/tests/c_escaped_fields_test.c.v
-      - name: Run C generator tests
-        run: timeout 480 ./v -new-compiler -silent test vlib/v/gen/c/ 2>&1 | tee /tmp/28673-cgen.log
-      - name: Run diagnostic fixtures
-        run: timeout 480 ./v -silent vlib/v/compiler_errors_test.v 2>&1 | tee /tmp/28673-diagnostics.log
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: issue-28673-validation
-          path: /tmp/28673-*.log
-          retention-days: 7
+            core.info(`Refined fix: ${result.commit.sha}`);
