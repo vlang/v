@@ -1150,9 +1150,9 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	}
 	t.timing_profile('  [ttime] late names         ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${used_log_end - used_log_start + late_scan_names.len})')
 	impl_sw.restart()
-	t.transform_late_used_fn_bodies(&t.used_fns_log, used_log_start, used_log_end, base_node_count)
+	t.transform_late_used_fn_bodies(t.used_fns_log, used_log_start, used_log_end, base_node_count)
 	if late_scan_names.len > 0 {
-		t.transform_late_used_fn_bodies(&late_scan_names, 0, late_scan_names.len, base_node_count)
+		t.transform_late_used_fn_bodies(late_scan_names, 0, late_scan_names.len, base_node_count)
 	}
 	t.timing_profile('  [ttime] late bodies        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	impl_sw.restart()
@@ -1385,7 +1385,7 @@ fn (mut t Transformer) run_sum_eq_synthesis_rounds(node_limit int) {
 		if new_names.len == 0 {
 			return
 		}
-		t.transform_late_used_fn_bodies(&new_names, 0, new_names.len, node_limit)
+		t.transform_late_used_fn_bodies(new_names, 0, new_names.len, node_limit)
 	}
 }
 
@@ -1395,7 +1395,7 @@ fn (mut t Transformer) run_default_clone_synthesis_rounds(node_limit int) {
 		if new_names.len == 0 {
 			return
 		}
-		t.transform_late_used_fn_bodies(&new_names, 0, new_names.len, node_limit)
+		t.transform_late_used_fn_bodies(new_names, 0, new_names.len, node_limit)
 	}
 }
 
@@ -1403,7 +1403,7 @@ fn (mut t Transformer) run_auto_str_synthesis_rounds(node_limit int) {
 	for _ in 0 .. 16 {
 		new_names := t.synthesize_auto_str_helpers()
 		if new_names.len > 0 {
-			t.transform_late_used_fn_bodies(&new_names, 0, new_names.len, node_limit)
+			t.transform_late_used_fn_bodies(new_names, 0, new_names.len, node_limit)
 		}
 		if !t.has_pending_auto_str_helpers() {
 			return
@@ -1584,14 +1584,14 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.monomorph_profile('mono wrapper calls: ${time.ticks() - debug_started} ms')
 		used_after_pass := t.used_fn_count()
 		late_log_end := t.used_fns_log.len
-		t.transform_late_used_fn_bodies(&t.used_fns_log, late_log_start, late_log_end, base_node_count)
+		t.transform_late_used_fn_bodies(t.used_fns_log, late_log_start, late_log_end, base_node_count)
 		late_log_start = t.used_fns_log.len
 		t.monomorph_profile('mono wrapper late: ${time.ticks() - debug_started} ms')
 		remaining_match_log_start := t.used_fns_log.len
 		t.lower_remaining_matches_in_used_fns()
 		t.monomorph_profile('mono wrapper matches: ${time.ticks() - debug_started} ms')
 		remaining_match_log_end := t.used_fns_log.len
-		t.transform_late_used_fn_bodies(&t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
+		t.transform_late_used_fn_bodies(t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
 		late_log_start = t.used_fns_log.len
 		t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
 		// Late-body transformation requests concrete generic work immediately. If
@@ -2007,7 +2007,7 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_types() {
 	if boxed_types.len == 0 {
 		return
 	}
-	types.extend_stable_type_indexes_ref(mut t.runtime_type_indexes, &runtime_type_names)
+	types.extend_stable_type_indexes_ref(mut t.runtime_type_indexes, runtime_type_names)
 	mut refreshed := t.interface_impl_indexes.clone()
 	mut iface_names := boxed_types.keys()
 	iface_names.sort()
@@ -5115,7 +5115,7 @@ fn (t &Transformer) late_name_may_expand_interface(name string) bool {
 		|| t.type_alias_suffixes[base].len > 0 || base == 'IError' || base == 'builtin.IError'
 }
 
-fn (mut t Transformer) transform_late_used_fn_bodies(names &[]string, names_start int, names_end int, node_limit int) {
+fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start int, names_end int, node_limit int) {
 	if names_end <= names_start || node_limit <= 0 {
 		return
 	}
@@ -19615,6 +19615,17 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	mut selector_generic_params := node.generic_params().clone()
 	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
 		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
+		if method_value_name.len > 0 {
+			// C generation emits the bound-method wrapper later. Keep its target
+			// live when reflection makes the enclosing body reachable late.
+			t.mark_fn_used_name(method_value_name)
+			// Interface callbacks also need their concrete dispatch targets when
+			// this selector is discovered while transforming a late-used body.
+			iface_name := t.resolve_interface_type_name(method_value_name.all_before_last('.'))
+			if iface_name.len > 0 {
+				t.mark_interface_method_implementers_used(iface_name, node.value)
+			}
+		}
 		method_params := t.call_param_types(method_value_name)
 		if method_params.len > 0 && method_params[0] !is types.Pointer {
 			receiver_type_name := t.node_type(new_base)
@@ -20923,8 +20934,14 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	// the checker sidecar holds its canonical identity. Normalize that semantic
 	// name so a real qualified alias with the same spelling cannot win first.
 	checker_target := t.raw_checker_node_type(id)
+	// Expected-type propagation can replace an explicit alias cast's checker type
+	// with the surrounding sum type. Keep the named variant as the cast target;
+	// the caller that requested the sum will wrap the converted alias value.
+	checker_target_is_sum_context := checker_target.len > 0 && checker_target != node.value
+		&& t.is_sum_type_name(checker_target)
+		&& t.sum_target_accepts_variant_type(checker_target, node.value)
 	target_type := t.normalize_type_alias(if node.value in primitive_cast_type_names
-		|| node.value in ['voidptr', 'byteptr', 'charptr'] {
+		|| node.value in ['voidptr', 'byteptr', 'charptr'] || checker_target_is_sum_context {
 		node.value
 	} else if checker_target.len > 0 {
 		checker_target

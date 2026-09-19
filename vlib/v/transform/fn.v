@@ -3471,7 +3471,7 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 			}
 		}
 		if !has_smartcast
-			&& t.resolve_sum_name(t.trim_pointer_type(arg_type)) == resolved_target_sum {
+			&& t.resolve_sum_name(t.normalize_type_alias(t.trim_pointer_type(arg_type))) == resolved_target_sum {
 			return t.transform_expr(arg_id)
 		}
 		if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count > 0 {
@@ -3488,7 +3488,7 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 				}
 			}
 			inner_type := t.node_type(inner_id)
-			if t.resolve_sum_name(t.trim_pointer_type(inner_type)) == resolved_target_sum {
+			if t.resolve_sum_name(t.normalize_type_alias(t.trim_pointer_type(inner_type))) == resolved_target_sum {
 				return t.transform_expr(arg_id)
 			}
 		}
@@ -5120,6 +5120,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	}
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ['builtin.'.len..]
+	}
+	if map_typ := generic_map_type_arg_from_suffix(clean_typ) {
+		return t.wrap_string_conversion(expr, if is_ref { '&${map_typ}' } else { map_typ })
 	}
 	if source_typ := t.source_type_name_from_c_name(clean_typ) {
 		return t.wrap_string_conversion(expr, source_typ)
@@ -12692,6 +12695,11 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			base_type = specialized
 		}
 	}
+	if method == 'str' {
+		if value_type := t.pointer_value_expr_type(base_id) {
+			base_type = value_type
+		}
+	}
 	base_is_pointer := base_type.starts_with('&')
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
@@ -12768,10 +12776,8 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 			return t.enum_autostr_call(value, base_type)
 		}
-		if !recovered_or_value_type {
-			if exact_call := t.lower_checker_selected_receiver_method(id, node, base_id, 'str') {
-				return exact_call
-			}
+		if exact_call := t.lower_checker_selected_receiver_method(id, node, base_id, 'str') {
+			return exact_call
 		}
 		// Some calls cloned during comptime/generic lowering no longer have the
 		// checker's original call-id annotation. Resolve their concrete receiver
@@ -12840,7 +12846,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		}
 		mut stringify_type := t.raw_alias_type_for_expr(base_id)
 		if stringify_type.len == 0 {
-			stringify_type = t.raw_var_type_for_expr(base_id) or { base_type }
+			stringify_type = t.pointer_value_expr_type(base_id) or {
+				t.raw_var_type_for_expr(base_id) or { base_type }
+			}
 		}
 		return t.wrap_string_conversion(t.transform_expr(base_id), stringify_type)
 	}

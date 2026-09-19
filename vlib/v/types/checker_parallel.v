@@ -764,6 +764,7 @@ fn check_worker_scope_free(scope voidptr) {
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	error_count := tc.errors.len
+	tc.check_postfix_value_uses_preflight()
 	tc.check_for_in_const_conflicts_preflight()
 	if tc.checker_fixture_mode && tc.errors.len > 0 {
 		return false
@@ -803,6 +804,8 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.selected_file_called_fns = map[string]bool{}
 	tc.selected_file_worklist = []string{}
 	tc.check_export_attrs()
+	tc.check_c_js_generic_declarations()
+	tc.check_interface_reserved_parameter_names()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
 	final_file := tc.cur_file
@@ -810,6 +813,9 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_scoped_batches(items, scoped_check_serial_batches)
 	tc.cur_file = final_file
 	tc.cur_module = final_module
+	if !tc.valid_diagnostic_fast {
+		tc.check_unused_import_diagnostics()
+	}
 	if tc.defer_ierror_gating {
 		if tc.pending_ierror_errors.len > 0 {
 			tc.collect_selected_file_called_fns()
@@ -1013,6 +1019,8 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.selected_file_worklist = []string{}
 		mut cksw := time.new_stopwatch()
 		tc.check_export_attrs()
+		tc.check_c_js_generic_declarations()
+		tc.check_interface_reserved_parameter_names()
 		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cksw.restart()
 		// The work list only drives the dispatch below; keep it and its
@@ -1030,6 +1038,9 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.fn_check_costs = []i32{}
 		tc.cur_file = final_file
 		tc.cur_module = final_module
+		if !tc.valid_diagnostic_fast {
+			tc.check_unused_import_diagnostics()
+		}
 		if tc.defer_ierror_gating {
 			if tc.pending_ierror_errors.len > 0 {
 				tc.collect_selected_file_called_fns()
@@ -1149,6 +1160,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 			.struct_decl {
 				node_id := flat.NodeId(i)
 				if do_signatures {
+					tc.check_type_declaration_conflict(node_id, node)
 					if comma_attr_text_has(node.typ, 'typedef') && !node.value.starts_with('C.') {
 						tc.record_error_at(.assignment_mismatch, '`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id, 'struct'))
 					}
@@ -1163,21 +1175,15 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					continue
 				}
 				node_id := flat.NodeId(i)
-				is_c_alias := node.kind == .type_decl && node.value.starts_with('C.')
-					&& node.children_count == 0 && split_sum_variant_texts(node.typ).len <= 1
-				if node.kind == .type_decl && !is_c_alias
-					&& tc.type_declaration_exists_before(node_id, node.value) {
-					kind := if node.children_count > 0 || split_sum_variant_texts(node.typ).len > 1 {
-						'sum type'
-					} else {
-						'alias'
-					}
-					tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${node.value}`, another type with this name exists', node_id, tc.declaration_keyword_name_pos(node_id, 'type'))
-				}
+				tc.check_type_declaration_conflict(node_id, node)
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.enum_decl {
+				if do_signatures {
+					tc.check_type_declaration_conflict(flat.NodeId(i), node)
+				}
 				if do_values {
+					tc.check_enum_backing_type(flat.NodeId(i), node)
 					tc.check_enum_field_values(flat.NodeId(i), node)
 				}
 			}
@@ -1199,6 +1205,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					continue
 				}
 				tc.check_fn_declaration_name(flat.NodeId(i), node)
+				tc.check_method_field_name_collision(flat.NodeId(i), node)
 				tc.check_main_fn_signature(flat.NodeId(i), node)
 				tc.check_init_fn_signature(flat.NodeId(i), node)
 				tc.check_str_method_signature(flat.NodeId(i), node)
@@ -1437,6 +1444,11 @@ fn (mut tc TypeChecker) sort_parallel_check_errors() {
 }
 
 fn compare_type_notices(a &TypeError, b &TypeError) int {
+	a_is_postfix_value_warning := a.msg.ends_with('operator can only be used as a statement')
+	b_is_postfix_value_warning := b.msg.ends_with('operator can only be used as a statement')
+	if a_is_postfix_value_warning != b_is_postfix_value_warning {
+		return if a_is_postfix_value_warning { -1 } else { 1 }
+	}
 	a_is_unsafe_call := a.msg.contains('must be called from an `unsafe` block')
 	b_is_unsafe_call := b.msg.contains('must be called from an `unsafe` block')
 	if a_is_unsafe_call != b_is_unsafe_call {
@@ -1456,6 +1468,313 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_init_visibility := a.msg == 'fn `init` must not be public'
+	b_is_init_visibility := b.msg == 'fn `init` must not be public'
+	a_is_init_return := a.msg == 'fn `init` cannot have a return type'
+	b_is_init_return := b.msg == 'fn `init` cannot have a return type'
+	if a.node == b.node && a_is_init_visibility && b_is_init_return {
+		return -1
+	}
+	if a.node == b.node && b_is_init_visibility && a_is_init_return {
+		return 1
+	}
+	a_is_enum_value := a.msg.starts_with('enum value ')
+		|| a.msg == 'the default value for an enum has to be an integer'
+		|| (a.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
+			&& a.msg.starts_with('`'))
+	b_is_enum_value := b.msg.starts_with('enum value ')
+		|| b.msg == 'the default value for an enum has to be an integer'
+		|| (b.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
+			&& b.msg.starts_with('`'))
+	if a.file == b.file && a_is_enum_value && b_is_enum_value && a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	a_is_field_method_collision := a.msg.starts_with('type `')
+		&& a.msg.contains(' has both field and method named `')
+	b_is_field_method_collision := b.msg.starts_with('type `')
+		&& b.msg.contains(' has both field and method named `')
+	if a.file == b.file && a_is_field_method_collision && b_is_field_method_collision
+		&& a.node_kind != b.node_kind {
+		if a.node_kind == 'interface_field' {
+			return -1
+		}
+		if b.node_kind == 'interface_field' {
+			return 1
+		}
+	}
+	a_match_range_order := match true {
+		a.msg.starts_with('the low and high parts of a range expression') { 1 }
+		a.msg.starts_with('the range type and the match condition type') { 2 }
+		a.msg.starts_with('match branch range expressions need the ') { 3 }
+		a.msg.starts_with('the start value `') && a.msg.contains(' should be lower than ') { 3 }
+		else { 0 }
+	}
+	b_match_range_order := match true {
+		b.msg.starts_with('the low and high parts of a range expression') { 1 }
+		b.msg.starts_with('the range type and the match condition type') { 2 }
+		b.msg.starts_with('match branch range expressions need the ') { 3 }
+		b.msg.starts_with('the start value `') && b.msg.contains(' should be lower than ') { 3 }
+		else { 0 }
+	}
+	if a.node == b.node && a_match_range_order > 0 && b_match_range_order > 0
+		&& a_match_range_order != b_match_range_order {
+		return a_match_range_order - b_match_range_order
+	}
+	a_is_invalid_comptime_field_access := a.msg.starts_with('compile time field access can only be used')
+	b_is_invalid_comptime_field_access := b.msg.starts_with('compile time field access can only be used')
+	a_is_unknown_comptime_for_var := a.msg.starts_with('unknown `$for` variable `')
+	b_is_unknown_comptime_for_var := b.msg.starts_with('unknown `$for` variable `')
+	if a.node == b.node && a_is_invalid_comptime_field_access && b_is_unknown_comptime_for_var {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_comptime_field_access && a_is_unknown_comptime_for_var {
+		return 1
+	}
+	a_is_nonliteral_comptime_method := a.msg == 'todo: not a string literal'
+	b_is_nonliteral_comptime_method := b.msg == 'todo: not a string literal'
+	a_is_empty_comptime_method := a.msg == 'could not find method ``'
+	b_is_empty_comptime_method := b.msg == 'could not find method ``'
+	if a.node == b.node && a_is_nonliteral_comptime_method && b_is_empty_comptime_method {
+		return -1
+	}
+	if a.node == b.node && b_is_nonliteral_comptime_method && a_is_empty_comptime_method {
+		return 1
+	}
+	a_is_c_js_generic_struct := a.msg.ends_with('structs cannot be declared as generic')
+	b_is_c_js_generic_struct := b.msg.ends_with('structs cannot be declared as generic')
+	a_is_c_js_generic_fn := a.msg.ends_with('functions cannot be declared as generic')
+	b_is_c_js_generic_fn := b.msg.ends_with('functions cannot be declared as generic')
+	if a.file == b.file && a_is_c_js_generic_struct && b_is_c_js_generic_fn {
+		return -1
+	}
+	if a.file == b.file && b_is_c_js_generic_struct && a_is_c_js_generic_fn {
+		return 1
+	}
+	if a.node == b.node && is_inline_asm_instruction_error(a.msg)
+		&& is_inline_asm_instruction_error(b.msg) && a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	a_is_ierror_msg_method := a.msg.contains("doesn't implement method `msg` of interface `IError`")
+	b_is_ierror_msg_method := b.msg.contains("doesn't implement method `msg` of interface `IError`")
+	a_is_ierror_code_method := a.msg.contains("doesn't implement method `code` of interface `IError`")
+	b_is_ierror_code_method := b.msg.contains("doesn't implement method `code` of interface `IError`")
+	if a.node == b.node && a_is_ierror_msg_method && b_is_ierror_code_method {
+		return -1
+	}
+	if a.node == b.node && b_is_ierror_msg_method && a_is_ierror_code_method {
+		return 1
+	}
+	a_is_missing_interface_method := a.msg.contains("doesn't implement method `")
+	b_is_missing_interface_method := b.msg.contains("doesn't implement method `")
+	a_is_interface_cast_summary := a.msg.contains(' does not implement interface `')
+		&& a.msg.contains(', cannot cast `')
+	b_is_interface_cast_summary := b.msg.contains(' does not implement interface `')
+		&& b.msg.contains(', cannot cast `')
+	if a.node == b.node && a_is_missing_interface_method && b_is_interface_cast_summary {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_interface_method && a_is_interface_cast_summary {
+		return 1
+	}
+	a_is_cast_to_struct := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to struct')
+	b_is_cast_to_struct := b.msg.starts_with('cannot cast `') && b.msg.ends_with(' to struct')
+	a_is_sum_type_cast := a.msg.contains(' sum type value to `')
+	b_is_sum_type_cast := b.msg.contains(' sum type value to `')
+	if a.node == b.node && a_is_cast_to_struct && b_is_sum_type_cast {
+		return -1
+	}
+	if a.node == b.node && b_is_cast_to_struct && a_is_sum_type_cast {
+		return 1
+	}
+	a_is_sumtype_string_cast := a.msg.starts_with('cannot cast sumtype `')
+	b_is_sumtype_string_cast := b.msg.starts_with('cannot cast sumtype `')
+	if a.node == b.node && a_is_sumtype_string_cast && b_is_sum_type_cast {
+		return -1
+	}
+	if a.node == b.node && b_is_sumtype_string_cast && a_is_sum_type_cast {
+		return 1
+	}
+	a_is_cast_into_sumtype := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to `SumType`')
+	b_is_cast_into_sumtype := b.msg.starts_with('cannot cast `') && b.msg.ends_with(' to `SumType`')
+	a_is_cast_from_sumtype := a.msg.starts_with('cannot cast `SumType` to `')
+	b_is_cast_from_sumtype := b.msg.starts_with('cannot cast `SumType` to `')
+	if a.file == b.file && a_is_cast_into_sumtype && b_is_cast_from_sumtype {
+		return -1
+	}
+	if a.file == b.file && b_is_cast_into_sumtype && a_is_cast_from_sumtype {
+		return 1
+	}
+	a_is_empty_or_block := a.msg == 'expression requires a non empty `or {}` block'
+	b_is_empty_or_block := b.msg == 'expression requires a non empty `or {}` block'
+	a_is_void_branch_tail := a.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
+	b_is_void_branch_tail := b.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
+	if a.file == b.file && a_is_empty_or_block && b_is_void_branch_tail {
+		return -1
+	}
+	if a.file == b.file && b_is_empty_or_block && a_is_void_branch_tail {
+		return 1
+	}
+	a_is_infix_mismatch := a.msg.starts_with('mismatched types `')
+	b_is_infix_mismatch := b.msg.starts_with('mismatched types `')
+	a_is_infix_rhs := a.msg.starts_with('infix expr: cannot use `')
+	b_is_infix_rhs := b.msg.starts_with('infix expr: cannot use `')
+	if a.node == b.node && a_is_infix_mismatch && b_is_infix_rhs {
+		return -1
+	}
+	if a.node == b.node && b_is_infix_mismatch && a_is_infix_rhs {
+		return 1
+	}
+	a_is_invalid_operator := a.msg.starts_with('invalid operator `')
+	b_is_invalid_operator := b.msg.starts_with('invalid operator `')
+	a_is_pointer_infix := a.msg.starts_with('infix `')
+		&& a.msg.ends_with(' is not defined for pointer values')
+	b_is_pointer_infix := b.msg.starts_with('infix `')
+		&& b.msg.ends_with(' is not defined for pointer values')
+	if a.node == b.node && a_is_invalid_operator && b_is_pointer_infix {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_operator && a_is_pointer_infix {
+		return 1
+	}
+	a_array_init_order := if a.msg.ends_with(' as initializer') {
+		1
+	} else if a.msg.ends_with(' as length') {
+		2
+	} else if a.msg.ends_with(' as capacity') {
+		3
+	} else {
+		0
+	}
+	b_array_init_order := if b.msg.ends_with(' as initializer') {
+		1
+	} else if b.msg.ends_with(' as length') {
+		2
+	} else if b.msg.ends_with(' as capacity') {
+		3
+	} else {
+		0
+	}
+	if a.node == b.node && a_array_init_order > 0 && b_array_init_order > 0
+		&& a_array_init_order != b_array_init_order {
+		return a_array_init_order - b_array_init_order
+	}
+	a_is_array_compare_callback_param := a.msg.contains(' callback function parameter `')
+	b_is_array_compare_callback_param := b.msg.contains(' callback function parameter `')
+	if a.file == b.file && a_is_array_compare_callback_param != b_is_array_compare_callback_param {
+		return if a_is_array_compare_callback_param { -1 } else { 1 }
+	}
+	a_is_invalid_sort_arg := a.msg.starts_with('`.sort()` can only use `a` or `b`')
+	b_is_invalid_sort_arg := b.msg.starts_with('`.sort()` can only use `a` or `b`')
+	a_is_sort_undefined_ident := a.msg.starts_with('undefined ident:')
+	b_is_sort_undefined_ident := b.msg.starts_with('undefined ident:')
+	if a.file == b.file && a_is_invalid_sort_arg && b_is_sort_undefined_ident {
+		return -1
+	}
+	if a.file == b.file && b_is_invalid_sort_arg && a_is_sort_undefined_ident {
+		return 1
+	}
+	a_is_sort_call_receiver := a.msg.starts_with('the `sort()` method can be called only on mutable receivers')
+	b_is_sort_call_receiver := b.msg.starts_with('the `sort()` method can be called only on mutable receivers')
+	a_is_mut_expression := a.msg == 'cannot pass expression as `mut`'
+	b_is_mut_expression := b.msg == 'cannot pass expression as `mut`'
+	if a.file == b.file && a_is_sort_call_receiver && b_is_mut_expression {
+		return -1
+	}
+	if a.file == b.file && b_is_sort_call_receiver && a_is_mut_expression {
+		return 1
+	}
+	a_is_array_append_expr := a.msg == 'array append cannot be used in an expression'
+	b_is_array_append_expr := b.msg == 'array append cannot be used in an expression'
+	a_is_array_literal_mutation := a.msg == 'array literal can not be modified'
+	b_is_array_literal_mutation := b.msg == 'array literal can not be modified'
+	if a.file == b.file && a_is_array_append_expr && b_is_array_literal_mutation {
+		return -1
+	}
+	if a.file == b.file && b_is_array_append_expr && a_is_array_literal_mutation {
+		return 1
+	}
+	a_is_mutable_const_reference := a.msg.starts_with('cannot have mutable reference to const `')
+	b_is_mutable_const_reference := b.msg.starts_with('cannot have mutable reference to const `')
+	a_is_immutable_reference := a.msg.contains(' is immutable, cannot have a mutable reference to it')
+	b_is_immutable_reference := b.msg.contains(' is immutable, cannot have a mutable reference to it')
+	if a.node == b.node && a_is_mutable_const_reference && b_is_immutable_reference {
+		return -1
+	}
+	if a.node == b.node && b_is_mutable_const_reference && a_is_immutable_reference {
+		return 1
+	}
+	a_is_anon_param_semantic := a.msg == 'use `_` to name an unused parameter'
+		|| a.msg.contains('must be explicitly listed as inherited variable to be used inside a closure')
+		|| a.msg.ends_with(' used as value')
+	b_is_anon_param_semantic := b.msg == 'use `_` to name an unused parameter'
+		|| b.msg.contains('must be explicitly listed as inherited variable to be used inside a closure')
+		|| b.msg.ends_with(' used as value')
+	a_is_anon_param_followup := a.msg.starts_with('unknown type `')
+		|| (a.msg.starts_with('cannot use `') && a.msg.contains(' in argument '))
+	b_is_anon_param_followup := b.msg.starts_with('unknown type `')
+		|| (b.msg.starts_with('cannot use `') && b.msg.contains(' in argument '))
+	if a.file == b.file && a_is_anon_param_semantic && b_is_anon_param_followup {
+		return -1
+	}
+	if a.file == b.file && b_is_anon_param_semantic && a_is_anon_param_followup {
+		return 1
+	}
+	a_is_compound_operand := (a.msg.starts_with('operator ')
+		&& a.msg.contains(' not defined on right operand')) || a.msg.starts_with('invalid right operand:')
+	b_is_compound_operand := (b.msg.starts_with('operator ')
+		&& b.msg.contains(' not defined on right operand')) || b.msg.starts_with('invalid right operand:')
+	a_is_assignment_type_mismatch := a.msg.starts_with('cannot assign to `')
+	b_is_assignment_type_mismatch := b.msg.starts_with('cannot assign to `')
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && a_is_compound_operand
+		&& b_is_assignment_type_mismatch {
+		return -1
+	}
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && b_is_compound_operand
+		&& a_is_assignment_type_mismatch {
+		return 1
+	}
+	a_is_deref_unsafe := a.msg.starts_with('modifying variables via dereferencing')
+	b_is_deref_unsafe := b.msg.starts_with('modifying variables via dereferencing')
+	a_is_deref_assignment := a.msg.starts_with('cannot assign to `*')
+	b_is_deref_assignment := b.msg.starts_with('cannot assign to `*')
+	if a.file == b.file && a_is_deref_unsafe && b_is_deref_assignment {
+		return -1
+	}
+	if a.file == b.file && b_is_deref_unsafe && a_is_deref_assignment {
+		return 1
+	}
+	a_is_missing_anon_generic := a.msg.starts_with('Add the generic type `')
+	b_is_missing_anon_generic := b.msg.starts_with('Add the generic type `')
+	a_is_invalid_comptime_for_type := a.msg.starts_with('\$for expects a type name or variable name')
+	b_is_invalid_comptime_for_type := b.msg.starts_with('\$for expects a type name or variable name')
+	if a.file == b.file && a_is_missing_anon_generic && b_is_invalid_comptime_for_type {
+		return -1
+	}
+	if a.file == b.file && b_is_missing_anon_generic && a_is_invalid_comptime_for_type {
+		return 1
+	}
+	a_is_generic_arg_count := a.msg.starts_with('expected ')
+		&& a.msg.contains(' generic parameter')
+	b_is_generic_arg_count := b.msg.starts_with('expected ')
+		&& b.msg.contains(' generic parameter')
+	a_is_value_arg_count := a.msg.starts_with('expected ') && a.msg.contains(' argument')
+	b_is_value_arg_count := b.msg.starts_with('expected ') && b.msg.contains(' argument')
+	if a.node == b.node && a_is_generic_arg_count && b_is_value_arg_count {
+		return -1
+	}
+	if a.node == b.node && b_is_generic_arg_count && a_is_value_arg_count {
+		return 1
+	}
+	a_is_no_arg_method := a.msg.ends_with('does not have any arguments')
+	b_is_no_arg_method := b.msg.ends_with('does not have any arguments')
+	a_is_immutable_receiver := a.msg.contains('is immutable, declare it with `mut`')
+	b_is_immutable_receiver := b.msg.contains('is immutable, declare it with `mut`')
+	if a.file == b.file && a_is_no_arg_method && b_is_immutable_receiver {
+		return -1
+	}
+	if a.file == b.file && b_is_no_arg_method && a_is_immutable_receiver {
+		return 1
+	}
 	a_is_c_string_buffer_conversion := a.msg.starts_with('to convert a C string buffer pointer')
 	b_is_c_string_buffer_conversion := b.msg.starts_with('to convert a C string buffer pointer')
 	a_is_pointer_string_cast := a.msg.starts_with('cannot cast pointer type ')
@@ -1503,6 +1822,43 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a_is_bare_generic_fntype_decl != b_is_bare_generic_fntype_decl {
 		return if a_is_bare_generic_fntype_decl { 1 } else { -1 }
 	}
+	a_is_print_void := a.msg.contains('can not print void expressions')
+	b_is_print_void := b.msg.contains('can not print void expressions')
+	a_is_undefined_ident := a.msg.starts_with('undefined ident:')
+	b_is_undefined_ident := b.msg.starts_with('undefined ident:')
+	if a_is_print_void && b_is_undefined_ident {
+		return -1
+	}
+	if b_is_print_void && a_is_undefined_ident {
+		return 1
+	}
+	a_is_unknown_asm_register := a.msg.starts_with('unknown register `')
+		|| a.msg.starts_with('unknown clobbered register `')
+	b_is_unknown_asm_register := b.msg.starts_with('unknown register `')
+		|| b.msg.starts_with('unknown clobbered register `')
+	if a.node == b.node && a_is_unknown_asm_register && b_is_unknown_asm_register
+		&& a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	if a.node == b.node {
+		if a_case := duplicate_match_case_int(a.msg) {
+			if b_case := duplicate_match_case_int(b.msg) {
+				if a_case != b_case {
+					return a_case - b_case
+				}
+			}
+		}
+		a_is_nonconstant_array_bound := a.msg.starts_with('non-constant array bound `')
+		b_is_nonconstant_array_bound := b.msg.starts_with('non-constant array bound `')
+		a_is_invalid_fixed_size := a.msg.starts_with('fixed size cannot be zero or negative')
+		b_is_invalid_fixed_size := b.msg.starts_with('fixed size cannot be zero or negative')
+		if a_is_nonconstant_array_bound && b_is_invalid_fixed_size {
+			return -1
+		}
+		if b_is_nonconstant_array_bound && a_is_invalid_fixed_size {
+			return 1
+		}
+	}
 	if a.node != b.node {
 		return int(a.node) - int(b.node)
 	}
@@ -1518,8 +1874,41 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	return 0
 }
 
+fn duplicate_match_case_int(message string) ?int {
+	prefix := 'match case `'
+	if !message.starts_with(prefix) {
+		return none
+	}
+	end := message.index_after('`', prefix.len) or { return none }
+	value := message[prefix.len..end]
+	if value.len == 0 {
+		return none
+	}
+	mut start := 0
+	if value[0] == `-` {
+		if value.len == 1 {
+			return none
+		}
+		start = 1
+	}
+	for i in start .. value.len {
+		if !value[i].is_digit() {
+			return none
+		}
+	}
+	return value.int()
+}
+
 fn type_errors_equal(a TypeError, b TypeError) bool {
+	if a.node == b.node && a.kind == b.kind && a.msg == b.msg
+		&& is_inline_asm_instruction_error(a.msg) {
+		return a.pos == b.pos
+	}
 	return a.node == b.node && a.kind == b.kind && a.msg == b.msg
+}
+
+fn is_inline_asm_instruction_error(message string) bool {
+	return message.contains('structured `intel`') || message.contains('`raw intel` block')
 }
 
 fn check_job_count(n_runtime_jobs int, n_items int) int {
@@ -1774,6 +2163,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	has_body := !node.is_mut
 	if has_body && generic_params.len > 0 {
 		tc.check_generic_fn_body_global_shadowing(node)
+		tc.check_generic_fn_literal_capture_types(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0
@@ -1828,9 +2218,25 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if node.children_count > 0 {
 		receiver_id := tc.a.child(&node, 0)
 		receiver := tc.a.node(receiver_id)
-		if receiver.kind == .param && receiver.op == .dot
-			&& unalias_type(tc.parse_type(receiver.typ)) is MultiReturn {
-			tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ))
+		if receiver.kind == .param && receiver.op == .dot {
+			receiver_type := unwrap_pointer(tc.parse_type(receiver.typ))
+			if unalias_type(receiver_type) is MultiReturn {
+				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ))
+			}
+			is_non_local_builtin := match receiver_type {
+				Primitive, String, Char, Rune, ISize, USize, Array, ArrayFixed, Channel, Map,
+				FnType {
+					true
+				}
+				else {
+					false
+				}
+			}
+			is_builtin_array_override := receiver_type is Array && node.value.ends_with('.map')
+			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override {
+				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
+				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
+			}
 		}
 	}
 	raw_return_type := node.typ.trim_space()
@@ -1864,6 +2270,11 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			if receiver_type is OptionType || receiver.typ.contains('?')
 				|| receiver_name.starts_with('?') {
 				tc.record_error_at(.call_arg_mismatch, 'option types cannot have methods', id, tc.fn_option_receiver_diagnostic_pos(node, receiver.value))
+			}
+			method := node.value.all_after_last('.')
+			if receiver_type is Enum && receiver_type.is_flag
+				&& method in ['has', 'all', 'set', 'clear', 'toggle', 'set_all', 'clear_all'] {
+				tc.record_error_at(.duplicate_decl, 'duplicate method `${method}`, `${method}` is an enum type built-in method', id, token.new_span(node.pos.id, node.pos.offset, node.pos.offset + method.len))
 			}
 		}
 	}
@@ -2411,6 +2822,13 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 			used_names[current.value] = true
 		}
 		if current.kind in [.sql_expr, .comptime_if, .array_init] {
+			if current.kind == .comptime_if {
+				metadata := current.generic_params()
+				if metadata.len > 1 && metadata[0] == '__v3_comptime_match'
+					&& candidate_names[metadata[1]] && shadow_depth[metadata[1]] == 0 {
+					used_names[metadata[1]] = true
+				}
+			}
 			for name, _ in candidate_names {
 				if shadow_depth[name] > 0 || used_names[name] {
 					continue
