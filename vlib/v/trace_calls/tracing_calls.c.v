@@ -2,9 +2,11 @@
 module trace_calls
 
 @[markused]
-__global g_stack_base = &u8(unsafe { nil })
+__global g_stack_base &u8
 
-__global g_start_time = u64(0)
+// These are set before _vinit; runtime initializers would reset the trace.
+@[markused]
+__global g_start_time u64
 
 @[markused]
 pub fn on_call(fname string) {

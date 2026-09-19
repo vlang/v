@@ -617,7 +617,7 @@ fn (g &FlatGen) has_no_main_module() bool {
 }
 
 fn (mut g FlatGen) gen_executable_cleanup_registration() {
-	if g.module_cleanup_fns.len > 0 {
+	if g.module_cleanup_fns.len > 0 || g.is_trace_calls {
 		g.writeln('atexit(_vcleanup);')
 	}
 }
@@ -659,6 +659,7 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 		g.writeln('\tg_main_argc = 0;')
 		g.writeln('\tg_main_argv = NULL;')
 	}
+	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
 		g.writeln('\t_vinit();')
@@ -4808,6 +4809,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		}
 		g.gen_compiler_vexe_env_setup()
 		g.gen_coverage_registration()
+		g.gen_trace_startup()
 		g.gen_profile_startup_enable()
 		if g.runtime_init_is_needed() {
 			g.writeln('\t_vinit();')
@@ -4842,6 +4844,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.writeln('_vno_main_init_caller();')
 	}
 	g.gen_function_defer_prelude()
+	g.gen_trace_fn_begin(node, module_name)
 	g.gen_profile_fn_begin(generated_fn_name, module_name, node.value, g.tc.declaration_has_attribute(node_id, 'inline'))
 
 	for i in 0 .. node.children_count {
@@ -5224,6 +5227,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	}
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
+	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	needs_no_main_runtime_init_caller := g.needs_no_main_runtime_init_caller()
 	if needs_no_main_runtime_init_caller {
@@ -5241,6 +5245,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	}
 	g.indent++
 	g.gen_function_defer_prelude()
+	g.gen_trace_call('main main.main/0', 'main', 'main.main')
 	g.gen_profile_fn_begin('main', 'main', 'main', false)
 	for stmt in stmts {
 		g.tc.cur_file = stmt.file
@@ -5324,6 +5329,7 @@ fn (mut g FlatGen) gen_test_main() {
 	}
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
+	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
 		g.writeln('\t_vinit();')
