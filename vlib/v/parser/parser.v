@@ -3569,6 +3569,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 	mut attrs := []string{}
 	mut kinds := []int{}
 	mut sources := []string{}
+	mut deprecated_after_spans := []token.Pos{}
 	mut groups := 0
 	for p.tok == .attribute || p.tok == .lsbr {
 		if single_group && groups > 0 {
@@ -3579,6 +3580,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 			p.record_diagnostic_span('multiple attributes should be in the same @[], with ; separators', int_max(0, p.tok_pos - 1), p.tok_pos + 1)
 		}
 		groups++
+		group_attrs_start := attrs.len
 		p.next() // consume `@[` / `[`
 		mut invalid_group := false
 		if p.tok == .rsbr {
@@ -3685,9 +3687,21 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 		if !invalid_group || p.tok == .rsbr {
 			p.check(.rsbr)
 		}
+		if !p.prefs.is_fmt
+			&& attrs[group_attrs_start..].any(it.all_before(':').trim_space() == 'deprecated_after') {
+			deprecated_after_spans << token.new_span(p.cur_file_id, group_start, p.prev_tok_end)
+		}
 		if p.prefs.is_fmt {
 			pos := p.span_to(group_start)
 			sources << p.s.src[pos.offset..pos.end].clone()
+		}
+	}
+	has_deprecated := p.pending_decl_attrs.any(it.all_before(':').trim_space() == 'deprecated')
+		|| attrs.any(it.all_before(':').trim_space() == 'deprecated')
+	if deprecated_after_spans.len > 0 && !has_deprecated {
+		for pos in deprecated_after_spans {
+			p.record_warning_span('@[deprecated_after] is only valid, in the presence of a `@[deprecated]` attribute',
+				pos.offset, pos.end)
 		}
 	}
 	return ParsedFieldAttrs{
