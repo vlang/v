@@ -177,6 +177,7 @@ fn test_builtin_gettid_preseeds_parallel_compat_helper() {
 
 fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
 	mut g, _ := parallel_worker_test_gen(true)
+	g.compile_defines = ['gcboehm']
 	g.const_runtime_inits = ['\tmoda__runtime_const = moda__make_const();']
 	g.const_runtime_init_modules = ['moda']
 	g.runtime_inits = ['\tmoda__runtime_global = moda__make_global();']
@@ -187,10 +188,12 @@ fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
 	mut tail := g.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
 	tail.gen_vinit()
 	output := tail.sb.str()
+	gc_pos := output.index('gc_runtime_init();') or { -1 }
 	const_pos := output.index('moda__runtime_const = moda__make_const();') or { -1 }
 	global_pos := output.index('moda__runtime_global = moda__make_global();') or { -1 }
 	init_pos := output.index('moda__init();') or { -1 }
-	assert const_pos >= 0
+	assert gc_pos >= 0
+	assert const_pos > gc_pos
 	assert global_pos > const_pos
 	assert init_pos > global_pos
 }

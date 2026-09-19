@@ -4059,6 +4059,9 @@ fn (mut g FlatGen) gen_vinit() {
 	// holding `_vinit` may define them.
 	g.gen_embed_blob_joined()
 	g.writeln('void _vinit() {')
+	if 'gcboehm' in g.compile_defines || 'vgc' in g.compile_defines {
+		g.writeln('\tgc_runtime_init();')
+	}
 	// A split `$embed_file` payload is put back together before anything else can
 	// look at it, which is both what makes it a one-time cost and what keeps it
 	// off a lazy path that concurrent readers would race on.
