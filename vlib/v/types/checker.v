@@ -9466,6 +9466,9 @@ fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
 			&& tc.node_is_in_selected_input_file(flat.NodeId(it))) {
 			continue
 		}
+		if tc.fn_group_is_source_override(indexes) {
+			continue
+		}
 		stored_name := tc.a.nodes[indexes[0]].value
 		if stored_name.all_after_last('.') == 'init'
 			|| tc.fn_group_name_conflicts_with_import(indexes, stored_name.all_after_last('.'))
@@ -9495,6 +9498,48 @@ fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
 			}
 		}
 	}
+}
+
+fn (tc &TypeChecker) fn_group_is_source_override(indexes []int) bool {
+	mut family := ''
+	mut has_specialized_file := false
+	mut seen_files := map[string]bool{}
+	for index in indexes {
+		node := tc.a.nodes[index]
+		file := tc.a.source_files[node.pos.id] or { return false }
+		if seen_files[file.name] {
+			return false
+		}
+		seen_files[file.name] = true
+		stem, specialized := source_override_stem(file.name)
+		if family == '' {
+			family = stem
+		} else if stem != family {
+			return false
+		}
+		has_specialized_file = has_specialized_file || specialized
+	}
+	return has_specialized_file
+}
+
+fn source_override_stem(file string) (string, bool) {
+	if !file.ends_with('.v') {
+		return file, false
+	}
+	stem := file[..file.len - 2]
+	dot := stem.last_index_u8(`.`)
+	if dot < 0 {
+		return stem, false
+	}
+	suffix := stem[dot + 1..]
+	if suffix in ['c', 'js', 'native', 'wasm', 'amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86',
+		'i386', 'i486', 'i586', 'i686', 'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'aarch32', 'arm',
+		'armv7', 'armv7l', 'rv32', 'risc-v32', 'riscv32', 'rv64', 'risc-v64', 'risc-v', 'riscv',
+		'riscv64', 'ppc', 'ppc32', 'powerpc', 'ppc64', 'ppc64le', 's390x', 'loongarch64', 'sparc64',
+		'wasm32'] {
+		return stem[..dot], true
+	}
+	return stem, false
 }
 
 fn (tc &TypeChecker) fn_group_contains_builtin_declaration(indexes []int) bool {

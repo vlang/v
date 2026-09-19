@@ -55,10 +55,14 @@ fn check_duplicate_fn_source(source string, mode DuplicateFnCheckMode, padding i
 	match mode {
 		.selected {
 			// Duplicates must be rejected even when their bodies are not selected.
-			tc.check_semantics_selected({ 'entry': true })
+			tc.check_semantics_selected({
+				'entry': true
+			})
 		}
 		.reachable {
-			tc.check_semantics_reachable({ 'entry': true })
+			tc.check_semantics_reachable({
+				'entry': true
+			})
 		}
 		else {
 			want_parallel := mode in [.parallel, .scoped_parallel]
@@ -114,4 +118,27 @@ fn test_duplicate_fn_check_keeps_distinct_receivers_and_c_declarations_valid() {
 		errors := check_duplicate_fn_source(source, mode, min_parallel_check_items + 8)!
 		assert errors.len == 0, '${mode}: ${errors}'
 	}
+}
+
+fn test_duplicate_fn_check_accepts_backend_and_arch_source_overrides() {
+	root := os.join_path(os.vtmp_dir(), 'v3 source overrides ${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	files := [
+		os.join_path(root, 'sample.v'),
+		os.join_path(root, 'sample.arm64.v'),
+		os.join_path(root, 'sample.c.v'),
+	]
+	for i, file in files {
+		os.write_file(file, 'module overrides\nfn selected() int { return ${i} }\n')!
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files(files)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
 }
