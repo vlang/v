@@ -16229,7 +16229,14 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 						rhs_type
 					}
 					rhs_name := tc.diagnostic_expr_type_name(rhs_id, diagnostic_rhs_type)
-					expected_name := expected_type.name().replace_once('fn(', 'fn (')
+					diagnostic_expected_type := if lhs_node.kind == .ident
+						&& lhs_type is Pointer
+						&& lhs_node.value in tc.fn_context.mut_param_base_types {
+						Type(lhs_type)
+					} else {
+						expected_type
+					}
+					expected_name := diagnostic_expected_type.name().replace_once('fn(', 'fn (')
 					diagnostic_id := if tc.should_diagnose(rhs_id) {
 						rhs_id
 					} else if tc.should_diagnose(lhs_id) {
