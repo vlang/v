@@ -3500,6 +3500,7 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 		kind:           .import_decl
 		value:          name
 		typ:            alias
+		payload:        flat.node_payload([name])
 		children_start: p.add_children(selective_ids)
 		children_count: flat.child_count(selective_ids.len)
 		pos:            import_pos

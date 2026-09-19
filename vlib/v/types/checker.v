@@ -6243,6 +6243,12 @@ fn (tc &TypeChecker) import_module_path_pos(node flat.Node) token.Pos {
 }
 
 fn (tc &TypeChecker) import_module_path_text(node flat.Node) string {
+	if node.kind == .import_decl {
+		metadata := node.generic_params()
+		if metadata.len > 0 && metadata[0].len > 0 {
+			return metadata[0]
+		}
+	}
 	pos := tc.import_module_path_pos(node)
 	file := tc.a.source_files[pos.id] or { return node.value }
 	source := tc.source_texts_by_file[file.name] or { return node.value }
