@@ -2556,6 +2556,10 @@ fn (mut p Parser) global_decl() flat.NodeId {
 		if p.tok == .name || p.tok.is_keyword() {
 			field_start := p.span_start()
 			gname := p.expect_name_or_keyword()
+			if is_builtin_type(gname) {
+				p.record_diagnostic_span('invalid use of reserved type `${gname}` as a global name',
+					field_start, field_start + gname.len)
+			}
 			// handle qualified names: C.errno
 			mut full_name := gname
 			for p.tok == .dot {
