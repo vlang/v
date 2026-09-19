@@ -1220,6 +1220,32 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 
 		// operator overload: fn (r Type) + (other Type) RetType { }
 		if p.tok != .name && p.tok != .eof {
+			if p.tok in [.plus_assign, .minus_assign, .div_assign, .mul_assign, .power_assign,
+				.mod_assign] {
+				name_pos = p.tok_pos
+				assignment_op := p.tok.str()
+				base_op := match p.tok {
+					.plus_assign { '+' }
+					.minus_assign { '-' }
+					.div_assign { '/' }
+					.mul_assign { '*' }
+					.power_assign { '**' }
+					.mod_assign { '%' }
+					else { '' }
+				}
+				clean_type := method_receiver_type_name(receiver_type)
+				has_base_overload := p.a.nodes.any(it.kind == .fn_decl
+					&& it.value == '${clean_type}.${base_op}')
+				message := if has_base_overload {
+					'cannot overload `${assignment_op}`, operator is implicitly overloaded because the `${base_op}` operator is overloaded'
+				} else {
+					'cannot overload `${assignment_op}`, overload `${base_op}` and `${assignment_op}` will be automatically generated'
+				}
+				p.record_diagnostic_span(message, p.tok_pos, p.tok_end)
+				p.next()
+				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut,
+					assignment_op, name_pos)
+			}
 			if p.tok == .lsbr && p.peek() == .rsbr {
 				name_pos = p.tok_pos
 				p.next()
