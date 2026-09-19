@@ -706,6 +706,17 @@ fn (mut p Parser) record_diagnostic(message string, offset int) {
 fn (mut p Parser) record_diagnostic_span(message string, start int, end int) {
 	clamped_start := clamp_source_offset(start, p.s.src.len)
 	clamped_end := clamp_source_offset(end, p.s.src.len)
+	if message.starts_with('unexpected name `') {
+		mut line_start := clamped_start
+		for line_start > 0 && p.s.src[line_start - 1] != `\n` {
+			line_start--
+		}
+		line_end := p.s.src.index_after('\n', clamped_start) or { p.s.src.len }
+		if p.s.diagnostics.any(it.message.starts_with('invalid character `')
+			&& it.offset >= line_start && it.offset <= line_end) {
+			return
+		}
+	}
 	mut line := 1
 	mut column := clamped_start + 1
 	if p.s.src.len > 0 && p.s.current_file().name == p.cur_file {
