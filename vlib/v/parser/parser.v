@@ -10726,16 +10726,24 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				p.next() // skip [
 				key_type := p.parse_type_name()
 				p.check(.rsbr)
+				if !p.can_start_type_name() {
+					p.record_diagnostic('map value type is missing: use `map[KeyType]ValueType`',
+						p.tok_pos)
+				}
 				val_type := p.parse_type_name()
 				map_type := 'map[${key_type}]${val_type}'
 				if p.tok == .lcbr {
-					return p.map_init_after_type(map_type, name_pos)
+					return p.empty_map_init_after_type(map_type, name_pos)
 				}
 				return p.a.add_node(flat.Node{
 					kind:  .map_init
 					value: map_type
 					pos:   p.span_to(name_pos)
 				})
+			}
+			if name == 'map' && p.tok == .lcbr && !p.internal_collection_types_allowed() {
+				p.record_diagnostic_span("deprecated map syntax, use syntax like `{'age': 20}`",
+					name_pos, name_end)
 			}
 			local_type_name := p.resolve_local_type_name(name)
 			// struct init: Name{...}; vlib/builtin also uses concrete lowercase
@@ -11360,36 +11368,6 @@ fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.Nod
 		children_start: p.add_child(inner)
 		children_count: 1
 		pos:            p.span_to(op_start)
-	})
-}
-
-fn (mut p Parser) map_init_after_type(map_type string, start int) flat.NodeId {
-	p.next() // skip {
-	mut ids := []flat.NodeId{}
-	for p.tok != .rcbr && p.tok != .eof {
-		if p.tok == .semicolon {
-			p.next()
-			continue
-		}
-		key := p.expr(.lowest)
-		p.check(.colon)
-		p.in_map_value++
-		value := p.expr(.lowest)
-		p.in_map_value--
-		ids << key
-		ids << value
-		if p.tok == .comma || p.tok == .semicolon {
-			p.next()
-		}
-	}
-	p.check(.rcbr)
-	children_start := p.add_children(ids)
-	return p.add_node(flat.Node{
-		kind:           .map_init
-		value:          map_type
-		children_start: children_start
-		children_count: flat.child_count(ids.len)
-		pos:            p.span_to(start)
 	})
 }
 
@@ -14306,6 +14284,9 @@ fn (mut p Parser) parse_type_name() string {
 				p.next()
 				key := p.parse_type_name()
 				p.check(.rsbr)
+				if !p.can_start_type_name() {
+					p.record_diagnostic('expecting type declaration', p.tok_pos)
+				}
 				val := p.parse_type_name()
 				return 'map[${key}]${val}'
 			}
