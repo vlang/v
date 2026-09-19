@@ -753,12 +753,7 @@ fn (mut tc TypeChecker) check_bool_condition(cond_id flat.NodeId) {
 	}
 	if !tc.condition_type_is_bool_like(cond_type) && tc.should_diagnose(cond_id) {
 		cond_name := tc.diagnostic_expr_type_name(cond_id, cond_type)
-		message := if unalias_type(cond_type) is Pointer {
-			'non-bool type `${cond_name}` used as if condition'
-		} else {
-			'if condition must be `bool`, not `${cond_type.name()}`'
-		}
-		tc.record_error(.condition_mismatch, message, cond_id)
+		tc.record_error(.condition_mismatch, 'non-bool type `${cond_name}` used as if condition', cond_id)
 	}
 }
 
@@ -15040,6 +15035,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		return Type(void_)
 	}
 	if node.kind == .call && tc.errors.any(it.node == id && it.msg.starts_with('unknown enum `')) {
+		return Type(void_)
+	}
+	if node.kind == .infix
+		&& tc.errors.any(it.node == id && it.msg.starts_with('expected type is not an enum (')) {
 		return Type(void_)
 	}
 	if node.kind == .directive && node.value == '\$res' {
