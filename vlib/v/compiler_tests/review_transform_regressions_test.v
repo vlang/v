@@ -12160,6 +12160,69 @@ fn main() {
 	assert out == '7\n99'
 }
 
+fn test_params_struct_default_prefers_declaring_module_const_over_homonymous_global() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'params_default_const_global_collision', {
+		'v.mod':               "Module { name: 'params_default_const_global_collision' }\n"
+		'api/api.v':           'module api
+
+pub interface Logger {
+	value() int
+}
+
+pub struct Impl {
+pub:
+	n int
+}
+
+pub fn (logger &Impl) value() int {
+	return logger.n
+}
+'
+		'other/other.v':       'module other
+
+import api
+
+__global default_logger &api.Logger
+
+fn init() {
+	default_logger = &api.Impl{n: 99}
+}
+
+pub fn current() int {
+	return default_logger.value()
+}
+'
+		'consumer/consumer.v': 'module consumer
+
+import api
+
+pub const default_logger = &api.Impl{n: 7}
+
+@[params]
+pub struct Opt {
+pub:
+	logger &api.Logger = default_logger
+}
+
+pub fn current(opt Opt) int {
+	return opt.logger.value()
+}
+'
+		'main.v':              'module main
+
+import consumer
+import other
+
+fn main() {
+	println(other.current())
+	println(consumer.current())
+}
+'
+	}, 'main.v')
+	assert out == '99\n7'
+}
+
 fn test_array_accessors_are_addressable_append_targets() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'array_accessor_append_target', 'fn main() {

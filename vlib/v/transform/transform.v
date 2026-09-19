@@ -19615,6 +19615,17 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	mut selector_generic_params := node.generic_params().clone()
 	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
 		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
+		if method_value_name.len > 0 {
+			// C generation emits the bound-method wrapper later. Keep its target
+			// live when reflection makes the enclosing body reachable late.
+			t.mark_fn_used_name(method_value_name)
+			// Interface callbacks also need their concrete dispatch targets when
+			// this selector is discovered while transforming a late-used body.
+			iface_name := t.resolve_interface_type_name(method_value_name.all_before_last('.'))
+			if iface_name.len > 0 {
+				t.mark_interface_method_implementers_used(iface_name, node.value)
+			}
+		}
 		method_params := t.call_param_types(method_value_name)
 		if method_params.len > 0 && method_params[0] !is types.Pointer {
 			receiver_type_name := t.node_type(new_base)
@@ -20923,8 +20934,14 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	// the checker sidecar holds its canonical identity. Normalize that semantic
 	// name so a real qualified alias with the same spelling cannot win first.
 	checker_target := t.raw_checker_node_type(id)
+	// Expected-type propagation can replace an explicit alias cast's checker type
+	// with the surrounding sum type. Keep the named variant as the cast target;
+	// the caller that requested the sum will wrap the converted alias value.
+	checker_target_is_sum_context := checker_target.len > 0 && checker_target != node.value
+		&& t.is_sum_type_name(checker_target)
+		&& t.sum_target_accepts_variant_type(checker_target, node.value)
 	target_type := t.normalize_type_alias(if node.value in primitive_cast_type_names
-		|| node.value in ['voidptr', 'byteptr', 'charptr'] {
+		|| node.value in ['voidptr', 'byteptr', 'charptr'] || checker_target_is_sum_context {
 		node.value
 	} else if checker_target.len > 0 {
 		checker_target

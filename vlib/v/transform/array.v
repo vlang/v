@@ -957,7 +957,9 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 	if first.kind == .index && first.children_count > 0 {
 		base_type := t.normalize_type_alias(t.node_type(t.a.child(&first, 0))).trim_left('&')
 		if base_type.starts_with('[]') {
-			return base_type
+			is_slice := first.value == 'range'
+				|| (first.children_count > 1 && t.a.child_node(&first, 1).kind == .range)
+			return if is_slice { '[]${base_type}' } else { base_type }
 		}
 	}
 	if first.kind == .call && first.children_count > 0 {

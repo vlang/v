@@ -8615,7 +8615,7 @@ pub fn run(args []string) {
 		run(tool_args)
 		return
 	}
-	macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
+	mut macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
 	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
 	// A delegated V3 process owns the fallback marker until it has successfully
 	// produced its output. Specialized failures overwrite it below. Successful
@@ -9228,6 +9228,12 @@ pub fn run(args []string) {
 		// same stable diagnostic path as the V3 fixture runner.
 		is_checker_fixture = true
 		no_cache = true
+	}
+	if is_checker_fixture {
+		// Fixture output is compared byte-for-byte. Let this V3 invocation print
+		// its diagnostic directly instead of replaying it with a launcher heading.
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		macos_v3_fallback_file = ''
 	}
 	mut current_no_parallel := no_parallel
 	if is_prof {

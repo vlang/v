@@ -5932,6 +5932,12 @@ fn (mut g FlatGen) struct_decls() {
 		remaining.delete('array')
 		remaining_cnames.delete('array')
 	}
+	if g.has_builtins && 'map' in remaining {
+		g.emit_struct('map')
+		emitted['map'] = true
+		remaining.delete('map')
+		remaining_cnames.delete('map')
+	}
 	for _ in 0 .. 30 {
 		if remaining.len == 0 && iface_remaining.len == 0 && sum_remaining.len == 0 {
 			break
@@ -6139,7 +6145,8 @@ fn (mut g FlatGen) flattened_map_type_alias_decls() {
 
 fn (g &FlatGen) collect_flattened_map_type_alias(typ string, mut names map[string]bool) {
 	clean := trimmed_space(typ).trim_left('&')
-	if clean.starts_with('map_') && !clean.starts_with('map__') && clean !in g.tc.structs && clean !in g.tc.type_aliases {
+	if (clean.starts_with('Map_') || (clean.starts_with('map_') && !clean.starts_with('map__')))
+		&& clean !in g.tc.structs && clean !in g.tc.type_aliases {
 		names[g.cname(clean)] = true
 	}
 }
