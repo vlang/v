@@ -1302,6 +1302,13 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	}
 
 	// function name
+	if !is_method && p.tok.is_overloadable() {
+		name_pos = p.tok_pos
+		name = p.tok.str()
+		p.record_diagnostic_span('cannot use operator overloading with normal functions', p.tok_pos,
+			p.tok_end)
+		p.next()
+	}
 	if p.tok_can_be_decl_name() {
 		name_pos = p.tok_pos
 		name = p.expect_name_or_keyword()
