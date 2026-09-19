@@ -6878,11 +6878,25 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		|| tc.expr_contains_multi_pattern_subject_member(rhs_id) {
 		return
 	}
-	if rhs_node.kind == .enum_val && lhs_node.kind != .enum_val && unalias_type(lhs_type) !is Enum
-		&& lhs_type !is Unknown && lhs_type !is Void {
-		tc.record_error_at(.assignment_mismatch, 'expected type is not an enum (`${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}`)', id, rhs_node.pos)
-		tc.register_synth_type(id, Type(void_))
-		return
+	mut rhs_enum_expected := lhs_type
+	if node.op == .left_shift {
+		if lhs_array := array_type_from_receiver(lhs_type) {
+			rhs_enum_expected = lhs_array.elem_type
+		}
+	} else if node.op == .arrow {
+		lhs_clean := unalias_and_unwrap_pointer_type(lhs_type)
+		if lhs_clean is Channel {
+			rhs_enum_expected = lhs_clean.elem_type
+		}
+	}
+	if rhs_node.kind == .enum_val && lhs_node.kind != .enum_val {
+		if unalias_type(rhs_enum_expected) is Enum {
+			rhs_type = tc.resolve_expr(rhs_id, rhs_enum_expected)
+		} else if rhs_enum_expected !is Unknown && rhs_enum_expected !is Void {
+			tc.record_error_at(.assignment_mismatch, 'expected type is not an enum (`${tc.diagnostic_expr_type_name(lhs_id, rhs_enum_expected)}`)', id, rhs_node.pos)
+			tc.register_synth_type(id, Type(void_))
+			return
+		}
 	}
 	if lhs_node.kind == .enum_val && rhs_node.kind != .enum_val && unalias_type(rhs_type) !is Enum
 		&& rhs_type !is Unknown && rhs_type !is Void {
@@ -6890,9 +6904,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, Type(void_))
 		return
 	}
-	if rhs_node.kind == .enum_val && unalias_type(lhs_type) is Enum {
-		rhs_type = tc.resolve_expr(rhs_id, lhs_type)
-	} else if lhs_node.kind == .enum_val && unalias_type(rhs_type) is Enum {
+	if lhs_node.kind == .enum_val && unalias_type(rhs_type) is Enum {
 		lhs_type = tc.resolve_expr(lhs_id, rhs_type)
 	}
 	if node.op in [.eq, .ne] {
