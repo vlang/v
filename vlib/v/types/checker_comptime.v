@@ -5813,12 +5813,6 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
-	if type_is_string_like(container_type) {
-		if !type_is_string_like(value_type) && value_type.name() !in ['u8', 'byte'] {
-			tc.record_error_at(.condition_mismatch, 'left operand to `${op}` must be a string or byte, not `${tc.diagnostic_expr_type_name(value_id, value_type_raw)}`', id, node.pos)
-		}
-		return
-	}
 	if container_type is Array || container_type is ArrayFixed {
 		if container.kind == .array_literal {
 			tc.check_in_array_duplicate_items(container)
@@ -5838,13 +5832,6 @@ fn (mut tc TypeChecker) check_in_expr(id flat.NodeId, node flat.Node) {
 	if container_type is Map {
 		if !tc.expr_compatible(value_id, value_type, container_type.key_type) {
 			tc.record_error_at(.condition_mismatch, 'left operand to `${op}` does not match the map key type: expected `${container_type.key_type.name()}`, not `${tc.diagnostic_expr_type_name(value_id, value_type_raw)}`', id, node.pos)
-		}
-		return
-	}
-	if container_type is String {
-		value_name := value_type.name()
-		if value_type !is String && value_name !in ['u8', 'byte'] {
-			tc.record_error_at(.condition_mismatch, 'left operand to `${op}` does not match the string element type: expected `string` or `u8`, not `${tc.diagnostic_expr_type_name(value_id, value_type_raw)}`', id, node.pos)
 		}
 		return
 	}
