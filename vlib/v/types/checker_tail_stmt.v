@@ -8684,7 +8684,7 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	if expected is Interface {
 		return tc.type_implements_interface(actual, expected)
 	}
-	if expected is Enum && actual is Primitive && actual.props.has(.integer) {
+	if expected is Enum && expected.is_flag && actual is Primitive && actual.props.has(.integer) {
 		return true
 	}
 	if actual is Interface {
