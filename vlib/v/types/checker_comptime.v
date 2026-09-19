@@ -16173,10 +16173,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		if node.op != .assign {
 			tc.record_compound_assignment_operand_errors(node.op, lhs_id, rhs_id, expected_type, rhs_type)
 		}
-		// An invalid lvalue already has a precise diagnostic (for example, an
-		// undeclared identifier). Do not follow it with a misleading `void`
-		// assignment mismatch.
-		if lhs_type is Void && tc.expr_subtree_has_error(lhs_id) {
+		// An undefined lvalue already has a precise diagnostic. Do not follow it
+		// with a misleading `void` assignment mismatch.
+		if lhs_type is Void && tc.expr_subtree_has_undefined_variable_error(lhs_id) {
 			i += 2
 			continue
 		}
