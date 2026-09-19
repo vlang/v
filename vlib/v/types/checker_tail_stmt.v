@@ -64,7 +64,9 @@ fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
 	mut current := id
 	for _ in 0 .. 64 {
 		idx := int(current)
-		if idx >= 0 && idx < tc.value_used_nodes.len && tc.value_used_nodes[idx] {
+		current_kind := tc.a.node(current).kind
+		if current_kind !in [.block, .match_branch] && idx >= 0
+			&& idx < tc.value_used_nodes.len && tc.value_used_nodes[idx] {
 			return true
 		}
 		parent_id := tc.direct_parent_id(current)
