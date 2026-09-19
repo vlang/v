@@ -81,40 +81,41 @@ mut:
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                     scanner.Scanner
-	tok                   token.Token
-	lit                   string
-	tok_pos               int
-	tok_end               int
-	prev_tok_end          int
-	peek_tok              token.Token = .eof
-	peek_lit              string
-	peek_pos              int
-	peek_end              int
-	has_peek              bool
-	cur_file              string
-	cur_file_id           int
-	next_file_id          int = 1
-	cur_module            string
-	cur_fn                string
-	cur_fn_offset         int = -1
-	cur_fn_generic_params []string
-	cur_veb_ctx_name      string // source-level name of the active veb request context
-	veb_tmpl_counter      int    // monotonic id for unique `$veb.html`/`$tmpl` builder var names
-	has_veb_template      bool
-	may_have_local_types  bool
-	cur_struct            string   // receiver type name of the current method, for `@STRUCT`
-	cur_method_is_static  bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
-	defer_depth           int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
-	defer_result_allowed  bool     // true when the active defer is guaranteed to run during function return
-	unsafe_depth          int      // >0 while parsing an `unsafe` block body
-	nested_block_depth    int      // lexical block depth below the current function body's outer scope
-	comptime_for_vars     []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
-	comptime_method_var   string   // innermost active `$for method in Type.methods` loop variable
-	comptime_const_values map[string]string
-	comptime_local_values map[string]string
-	imported_module_names map[string]bool // import aliases in the current file; not captured by inlined template closures
-	check_imports         bool            // enabled by the compiler driver, but not by syntax-only parser clients
+	s                            scanner.Scanner
+	tok                          token.Token
+	lit                          string
+	tok_pos                      int
+	tok_end                      int
+	prev_tok_end                 int
+	peek_tok                     token.Token = .eof
+	peek_lit                     string
+	peek_pos                     int
+	peek_end                     int
+	has_peek                     bool
+	cur_file                     string
+	cur_file_id                  int
+	next_file_id                 int = 1
+	cur_module                   string
+	cur_fn                       string
+	cur_fn_offset                int = -1
+	cur_fn_generic_params        []string
+	cur_veb_ctx_name             string // source-level name of the active veb request context
+	veb_tmpl_counter             int    // monotonic id for unique `$veb.html`/`$tmpl` builder var names
+	has_veb_template             bool
+	pending_template_diagnostics []TemplateDiagnostic
+	may_have_local_types         bool
+	cur_struct                   string   // receiver type name of the current method, for `@STRUCT`
+	cur_method_is_static         bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
+	defer_depth                  int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
+	defer_result_allowed         bool     // true when the active defer is guaranteed to run during function return
+	unsafe_depth                 int      // >0 while parsing an `unsafe` block body
+	nested_block_depth           int      // lexical block depth below the current function body's outer scope
+	comptime_for_vars            []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	comptime_method_var          string   // innermost active `$for method in Type.methods` loop variable
+	comptime_const_values        map[string]string
+	comptime_local_values        map[string]string
+	imported_module_names        map[string]bool // import aliases in the current file; not captured by inlined template closures
+	check_imports                bool            // enabled by the compiler driver, but not by syntax-only parser clients
 	// local_binding_* track the variable/parameter names currently in scope, so an inlined
 	// template closure captures a bare callee only when it is an actual local binding (a
 	// function-valued parameter/local) rather than a module/top-level function. Scoped like
