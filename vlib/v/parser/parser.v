@@ -2201,7 +2201,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	mut sect_is_global := false
 	mut sect_is_module := false
 	mut pending_attrs := []string{}
+	mut pending_attrs_start := -1
 	mut has_c_embed := false
+	mut embedding_allowed := true
+	mut embedded_types := map[string]bool{}
+	mut embedded_names := map[string]string{}
 	for p.tok != .rcbr && p.tok != .eof {
 		// access modifiers
 		if p.tok == .key_pub {
@@ -2226,6 +2230,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				sect_is_mut = section_mut
 				sect_is_global = false
 				sect_is_module = false
+				embedding_allowed = false
 				continue
 			}
 		}
@@ -2237,6 +2242,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				sect_is_mut = true
 				sect_is_global = false
 				sect_is_module = false
+				embedding_allowed = false
 				continue
 			}
 			p.record_diagnostic_span('missing `:` after `mut` in struct', p.tok_pos, p.tok_end)
@@ -2245,6 +2251,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			sect_is_mut = true
 			sect_is_global = false
 			sect_is_module = false
+			embedding_allowed = false
 			continue
 		}
 		if p.tok == .key_global {
@@ -2255,6 +2262,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				sect_is_mut = true
 				sect_is_global = true
 				sect_is_module = false
+				embedding_allowed = false
 				continue
 			}
 		}
@@ -2265,6 +2273,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			sect_is_mut = false
 			sect_is_global = false
 			sect_is_module = true
+			embedding_allowed = false
 			continue
 		}
 		if p.tok == .semicolon {
@@ -2281,6 +2290,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		}
 		// leading attributes apply to the next field
 		if p.tok == .attribute {
+			if pending_attrs_start < 0 {
+				pending_attrs_start = p.tok_pos
+			}
 			pending_attrs << p.parse_field_attrs()
 			continue
 		}
@@ -2331,8 +2343,40 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   field_type
 					pos:   p.span_to(field_start)
 				})
+				p.validate_struct_embed(field_type, field_start, p.prev_tok_end, embedding_allowed,
+					pending_attrs_start, mut embedded_types, mut embedded_names)
 				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, pending_attrs, true)
 				pending_attrs = []string{}
+				pending_attrs_start = -1
+				ids << fid
+				if p.tok == .semicolon {
+					p.next()
+				}
+				continue
+			}
+			if p.tok == .lsbr && p.tok_pos > p.prev_tok_end && field_name.len > 0
+				&& field_name[0] >= `A` && field_name[0] <= `Z` {
+				attr_start := p.tok_pos
+				mut embed_attrs := pending_attrs.clone()
+				embed_attrs << p.parse_field_attrs()
+				embedded_type := p.resolve_local_type_name(field_name)
+				fid := p.add_node(flat.Node{
+					kind:  .field_decl
+					value: embedded_type
+					typ:   embedded_type
+					pos:   p.span_to(field_start)
+				})
+				p.validate_struct_embed(embedded_type, field_start, p.prev_tok_end,
+					embedding_allowed, if pending_attrs_start >= 0 {
+						pending_attrs_start
+					} else {
+						attr_start
+					},
+					mut embedded_types, mut embedded_names)
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module,
+					embed_attrs, true)
+				pending_attrs = []string{}
+				pending_attrs_start = -1
 				ids << fid
 				if p.tok == .semicolon {
 					p.next()
@@ -2360,8 +2404,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   embedded_type
 						pos:   p.span_to(field_start)
 					})
+					p.validate_struct_embed(embedded_type, field_start, p.prev_tok_end,
+						embedding_allowed, pending_attrs_start, mut embedded_types, mut embedded_names)
 					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, pending_attrs, true)
 					pending_attrs = []string{}
+					pending_attrs_start = -1
 					ids << fid
 					if p.tok == .semicolon {
 						p.next()
@@ -2389,8 +2436,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   embedded_type
 					pos:   p.span_to(field_start)
 				})
+				p.validate_struct_embed(embedded_type, field_start, p.prev_tok_end, embedding_allowed,
+					pending_attrs_start, mut embedded_types, mut embedded_names)
 				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, pending_attrs, true)
 				pending_attrs = []string{}
+				pending_attrs_start = -1
 				ids << fid
 				if p.tok == .semicolon {
 					p.next()
@@ -2408,6 +2458,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				field_type := p.parse_struct_field_type()
 				mut group_attrs := pending_attrs.clone()
 				pending_attrs = []string{}
+				pending_attrs_start = -1
 				if p.tok == .attribute || p.tok == .lsbr {
 					group_attrs << p.parse_field_attrs()
 				}
@@ -2424,6 +2475,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				if p.tok == .semicolon {
 					p.next()
 				}
+				embedding_allowed = false
 				continue
 			}
 			// For embedded structs followed by access modifier or another field,
@@ -2431,6 +2483,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			field_type := p.parse_struct_field_type()
 			mut fattrs := pending_attrs.clone()
 			pending_attrs = []string{}
+			pending_attrs_start = -1
 			if p.tok == .attribute || p.tok == .lsbr {
 				fattrs << p.parse_field_attrs()
 			}
@@ -2463,6 +2516,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			if p.tok == .semicolon {
 				p.next()
 			}
+			embedding_allowed = false
 		} else {
 			p.next()
 		}
@@ -3553,6 +3607,25 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_
 	gp << flags
 	gp << stored_attrs
 	p.a.nodes[int(id)].payload = flat.node_payload(gp)
+}
+
+fn (mut p Parser) validate_struct_embed(field_type string, start int, end int, placement_ok bool, attr_start int, mut embedded_types map[string]bool, mut embedded_names map[string]string) {
+	short_name := field_type.all_after_last('.')
+	if attr_start >= 0 {
+		p.record_diagnostic_span('cannot use attributes on embedded structs', attr_start,
+			attr_start + 1)
+	} else if !placement_ok {
+		p.record_diagnostic_span('struct embedding must be declared at the beginning of the struct body',
+			start, end)
+	} else if field_type in embedded_types {
+		p.record_diagnostic_span('cannot embed `${field_type}` more than once', start, end)
+	} else if previous_type := embedded_names[short_name] {
+		if previous_type != field_type {
+			p.record_diagnostic_span('duplicate field `${short_name}`', start, end)
+		}
+	}
+	embedded_types[field_type] = true
+	embedded_names[short_name] = field_type
 }
 
 // attr_unquote strips a single pair of surrounding quotes from an attribute key (unlike
