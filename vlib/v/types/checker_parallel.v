@@ -1462,6 +1462,38 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_infix_mismatch := a.msg.starts_with('mismatched types `')
+	b_is_infix_mismatch := b.msg.starts_with('mismatched types `')
+	a_is_infix_rhs := a.msg.starts_with('infix expr: cannot use `')
+	b_is_infix_rhs := b.msg.starts_with('infix expr: cannot use `')
+	if a.node == b.node && a_is_infix_mismatch && b_is_infix_rhs {
+		return -1
+	}
+	if a.node == b.node && b_is_infix_mismatch && a_is_infix_rhs {
+		return 1
+	}
+	a_is_generic_arg_count := a.msg.starts_with('expected ')
+		&& a.msg.contains(' generic parameter')
+	b_is_generic_arg_count := b.msg.starts_with('expected ')
+		&& b.msg.contains(' generic parameter')
+	a_is_value_arg_count := a.msg.starts_with('expected ') && a.msg.contains(' argument')
+	b_is_value_arg_count := b.msg.starts_with('expected ') && b.msg.contains(' argument')
+	if a.node == b.node && a_is_generic_arg_count && b_is_value_arg_count {
+		return -1
+	}
+	if a.node == b.node && b_is_generic_arg_count && a_is_value_arg_count {
+		return 1
+	}
+	a_is_no_arg_method := a.msg.ends_with('does not have any arguments')
+	b_is_no_arg_method := b.msg.ends_with('does not have any arguments')
+	a_is_immutable_receiver := a.msg.contains('is immutable, declare it with `mut`')
+	b_is_immutable_receiver := b.msg.contains('is immutable, declare it with `mut`')
+	if a.file == b.file && a_is_no_arg_method && b_is_immutable_receiver {
+		return -1
+	}
+	if a.file == b.file && b_is_no_arg_method && a_is_immutable_receiver {
+		return 1
+	}
 	a_is_c_string_buffer_conversion := a.msg.starts_with('to convert a C string buffer pointer')
 	b_is_c_string_buffer_conversion := b.msg.starts_with('to convert a C string buffer pointer')
 	a_is_pointer_string_cast := a.msg.starts_with('cannot cast pointer type ')
