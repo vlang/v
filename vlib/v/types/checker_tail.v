@@ -12881,7 +12881,10 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		recv_type := tc.smartcast_type(recv_id) or {
 			tc.cached_expr_type(recv_id) or { tc.resolve_type(recv_id) }
 		}
-		if tc.mut_receiver_methods[info.name] {
+		builtin_map_mutating_receiver := unalias_and_unwrap_pointer_type(recv_type) is Map
+			&& fn_node.value in ['clear', 'delete', 'move', 'reserve']
+		mutating_receiver := tc.mut_receiver_methods[info.name] || builtin_map_mutating_receiver
+		if mutating_receiver {
 			tc.check_locked_shared_mut_receiver_mutation(recv_id)
 		}
 		receiver_is_shared_param := call_param_is_shared(info, 0)
@@ -12890,7 +12893,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !receiver_is_shared_param {
 			if access := tc.unlocked_shared_access(recv_id) {
-				if tc.mut_receiver_methods[info.name] {
+				if mutating_receiver {
 					if tc.lock_depth > 0 {
 						tc.record_error_at(.call_arg_mismatch, '${access.name} must be added to the `lock` list above', recv_id, access.pos)
 					}
@@ -12914,8 +12917,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 		}
 		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
-			&& tc.mut_receiver_methods[info.name]
-			&& tc.mut_receiver_call_requires_mutable_lvalue(info, recv_id)
+			&& mutating_receiver
+			&& (builtin_map_mutating_receiver
+				|| tc.mut_receiver_call_requires_mutable_lvalue(info, recv_id))
 			&& !checker_is_raw_collection_method_name(info.name, 'array.')
 			&& !tc.mut_receiver_expr_is_mutable_lvalue(recv_id) && tc.should_diagnose(id) {
 			if const_name := tc.expr_root_constant_name(recv_id) {
@@ -12923,11 +12927,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			} else {
 				receiver := tc.a.node(recv_id)
 				if receiver.kind == .ident {
-					message := if checker_builtin_array_method_mutates(fn_node.value) {
-						'`${receiver.value}` is immutable, declare it with `mut` to make it mutable'
-					} else {
-						'method `${fn_node.value}` requires a mutable receiver; `${receiver.value}` is immutable, declare it with `mut` to make it mutable'
-					}
+					message := '`${receiver.value}` is immutable, declare it with `mut` to make it mutable'
 					tc.record_error_at(.call_arg_mismatch, message, recv_id, tc.node_value_diagnostic_pos(recv_id))
 				} else {
 					tc.record_error_at(.call_arg_mismatch, 'method `${fn_node.value}` requires a mutable receiver; cannot pass expression as `mut`', recv_id, tc.mutable_receiver_expression_pos(recv_id))
@@ -13586,17 +13586,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				continue
 			}
 		}
-		count_builtin_map_receiver := checker_is_raw_collection_method_name(info.name, 'map.')
-		argument_number := param_idx + 1 - (if info.has_receiver && !count_builtin_map_receiver {
+		argument_number := param_idx + 1 - (if info.has_receiver {
 			1
 		} else {
 			0
 		})
-		target_name := if count_builtin_map_receiver {
-			tc.call_display_name(node)
-		} else {
-			tc.call_argument_target_name(node, info)
-		}
+		target_name := tc.call_argument_target_name(node, info)
 		if expected_display := tc.bare_generic_fntype_call_param_display(info.name, param_idx) {
 			if unalias_type(actual) is FnType {
 				actual_display := call_argument_type_name(actual)

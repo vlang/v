@@ -1823,6 +1823,20 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.file == b.file && b_is_no_arg_method && a_is_immutable_receiver {
 		return 1
 	}
+	a_is_immutable_field := a.msg.starts_with('field `') && a.msg.contains(' is immutable')
+	b_is_immutable_field := b.msg.starts_with('field `') && b.msg.contains(' is immutable')
+	a_is_immutable_binding := a.msg.starts_with('`')
+		&& a.msg.contains('` is immutable, declare it with `mut`')
+	b_is_immutable_binding := b.msg.starts_with('`')
+		&& b.msg.contains('` is immutable, declare it with `mut`')
+	nearby_positions := a.pos.id == b.pos.id && a.pos.offset - b.pos.offset < 64
+		&& b.pos.offset - a.pos.offset < 64
+	if nearby_positions && a_is_immutable_field && b_is_immutable_binding {
+		return -1
+	}
+	if nearby_positions && b_is_immutable_field && a_is_immutable_binding {
+		return 1
+	}
 	a_is_c_string_buffer_conversion := a.msg.starts_with('to convert a C string buffer pointer')
 	b_is_c_string_buffer_conversion := b.msg.starts_with('to convert a C string buffer pointer')
 	a_is_pointer_string_cast := a.msg.starts_with('cannot cast pointer type ')
