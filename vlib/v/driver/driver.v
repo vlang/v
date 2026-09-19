@@ -8001,6 +8001,12 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
 	}
+	// The reduced builtin set contains only no-GC implementations. Selecting it
+	// with an active collector drops its declarations while retaining GC calls
+	// in allocation and builtin initialization.
+	if 'gcboehm' in prefs.user_defines || 'vgc' in prefs.user_defines {
+		return false
+	}
 	// Parse the one user file before builtin. This conservative syntax-only pass
 	// lets literal output programs avoid parsing and checking builtin declarations
 	// that markused will discard, without applying a text heuristic to V syntax.
