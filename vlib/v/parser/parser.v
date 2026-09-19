@@ -867,8 +867,7 @@ fn (mut p Parser) check(expected token.Token) {
 	// while a closing delimiter is still owed. Reporting it stops `v fmt` from accepting a
 	// truncated file and printing the balanced - i.e. invented - version of it.
 	if p.tok == .eof && expected in [token.Token.rcbr, .rpar, .rsbr] {
-		if p.diagnostics.any(it.file == p.cur_file && it.severity != 'warning:'
-			&& it.pos.offset in [p.tok_pos, p.s.src.len]) {
+		if p.diagnostics.any(it.file == p.cur_file && it.severity != 'warning:') {
 			return
 		}
 		pos := if expected == .rcbr { p.s.src.len } else { p.tok_pos }
@@ -9327,6 +9326,9 @@ fn (mut p Parser) for_post_block_from_exprs(exprs []flat.NodeId, ends []int) fla
 
 fn (mut p Parser) defer_stmt() flat.NodeId {
 	defer_start := p.span_start()
+	if p.defer_depth > 0 {
+		p.record_diagnostic_span('`defer` blocks cannot be nested', p.tok_pos, p.tok_end)
+	}
 	p.next() // skip 'defer'
 	mut mode := ''
 	if p.tok == .lpar {
