@@ -768,6 +768,10 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 				}
 			}
 		}
+		// A selector on a known struct may be a bound method. Do not infer its
+		// type from a same-named field on an unrelated struct; let the checker
+		// supply the method's function type instead.
+		return ''
 	}
 	if ftyp := t.lookup_unique_field_type(field_name) {
 		return ftyp
