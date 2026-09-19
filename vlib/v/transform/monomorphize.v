@@ -10718,11 +10718,6 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 			inference_param_type := generic_inference_param_type(child)
 			arg_node := t.a.nodes[int(arg_id)]
 			mut raw_arg_type := t.generic_call_arg_type_for_inference(arg_id)
-			if (child.is_mut || child.typ.starts_with('mut ')) && arg_node.kind == .prefix
-				&& arg_node.op == .amp && raw_arg_type.starts_with('&') {
-				// Remove the address added by the nested `mut` call itself first.
-				raw_arg_type = raw_arg_type[1..]
-			}
 			value_arg_id := if arg_node.kind == .prefix && arg_node.op == .amp
 				&& arg_node.children_count > 0 {
 				t.a.child(&arg_node, 0)
@@ -10730,16 +10725,13 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 				arg_id
 			}
 			value_arg := t.a.nodes[int(value_arg_id)]
-			if value_arg.kind == .ident && t.mut_value_ident_nodes[int(value_arg_id)]
-				&& raw_arg_type.starts_with('&') && !inference_param_type.starts_with('&')
-				&& !inference_param_type.starts_with('mut ') {
-				// A mutable outer parameter is stored through a pointer. Passing its
-				// language-level value to another generic mut parameter must infer the
-				// payload, not add that storage pointer to the nested specialization.
-				raw_arg_type = raw_arg_type[1..]
-			}
-			if (child.is_mut || child.typ.starts_with('mut ')) && arg_node.kind != .prefix
-				&& value_arg.kind != .ident && raw_arg_type.starts_with('&') {
+			is_forwarded_mut_value := value_arg.kind == .ident
+				&& t.mut_value_ident_nodes[int(value_arg_id)]
+			if (child.is_mut || child.typ.starts_with('mut ')) && raw_arg_type.starts_with('&')
+				&& !is_forwarded_mut_value {
+				// An ordinary pointer local passed to `mut T` has V's source-level
+				// auto-dereferenced value semantics. A forwarded `mut T` parameter is
+				// already represented by its semantic type and must keep a genuine `&T`.
 				raw_arg_type = raw_arg_type[1..]
 			}
 			if !is_generic_fn_placeholder_name(inference_param_type) {
@@ -11021,18 +11013,14 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			}
 			is_recv_param := is_receiver && param_idx == 0
 			inference_param_type := generic_inference_param_type(child)
-			if clone_arg.kind == .ident && t.mut_value_ident_nodes[int(clone_arg_id)]
-				&& arg_type.starts_with('&') && !inference_param_type.starts_with('&')
-				&& !inference_param_type.starts_with('mut ') {
-				// A mutable outer parameter is stored through a pointer, but passing
-				// its value to an ordinary generic parameter must infer the payload.
-				arg_type = arg_type[1..]
-			}
+			is_forwarded_mut_value := clone_arg.kind == .ident
+				&& t.mut_value_ident_nodes[int(clone_arg_id)]
 			if is_recv_param && arg_type.starts_with('&') && !child.typ.starts_with('&')
 				&& !child.typ.starts_with('mut ') {
 				arg_type = arg_type[1..]
 			}
-			if (child.is_mut || child.typ.starts_with('mut ')) && arg_type.starts_with('&') {
+			if (child.is_mut || child.typ.starts_with('mut ')) && arg_type.starts_with('&')
+				&& !is_forwarded_mut_value {
 				arg_type = arg_type[1..]
 			}
 			if !is_generic_fn_placeholder_name(inference_param_type) {
