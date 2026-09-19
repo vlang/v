@@ -1536,6 +1536,18 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_like_operand := a.msg.starts_with('the left operand of the `like` operator')
+		|| a.msg.starts_with('the right operand of the `like` operator')
+	b_is_like_operand := b.msg.starts_with('the left operand of the `like` operator')
+		|| b.msg.starts_with('the right operand of the `like` operator')
+	a_is_orm_like_field := a.msg.starts_with('ORM: left side of the `like` expression')
+	b_is_orm_like_field := b.msg.starts_with('ORM: left side of the `like` expression')
+	if a.file == b.file && a_is_like_operand && b_is_orm_like_field {
+		return -1
+	}
+	if a.file == b.file && b_is_like_operand && a_is_orm_like_field {
+		return 1
+	}
 	a_is_nested_lock := a.msg == 'nested `lock`/`rlock` not allowed'
 	b_is_nested_lock := b.msg == 'nested `lock`/`rlock` not allowed'
 	a_is_already_locked := a.msg.ends_with(' is already locked')
