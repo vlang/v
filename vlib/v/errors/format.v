@@ -2,16 +2,21 @@ module errors
 
 import os
 import strings
+import v.ansi
 import v.flat
 import v.token
 
 const source_context_before = 2
 const source_context_after = 2
 
-// formatted_error renders a compiler diagnostic with v1-compatible source context.
+fn formatted_message(kind string, message string) string {
+	return '${ansi.bold(ansi.color(kind, kind))} ${message}'
+}
+
+// formatted_error renders a compiler diagnostic with v1-compatible colors and source context.
 pub fn formatted_error(kind string, message string, a &flat.FlatAst, node flat.NodeId, pos token.Pos) string {
 	if pos.is_valid() {
-		file := a.source_files[pos.id] or { return '${kind} ${message}' }
+		file := a.source_files[pos.id] or { return formatted_message(kind, message) }
 		action_message := if action := a.template_actions[pos.id] {
 			'${message} (veb action: ${action})'
 		} else {
@@ -21,10 +26,10 @@ pub fn formatted_error(kind string, message string, a &flat.FlatAst, node flat.N
 		return append_template_call_stack(result, kind, a, pos)
 	}
 	if int(node) < 0 || int(node) >= a.nodes.len {
-		return '${kind} ${message}'
+		return formatted_message(kind, message)
 	}
 	n := a.nodes[int(node)]
-	file := a.source_files[n.pos.id] or { return '${kind} ${message}' }
+	file := a.source_files[n.pos.id] or { return formatted_message(kind, message) }
 	action_message := if action := a.template_actions[n.pos.id] {
 		'${message} (veb action: ${action})'
 	} else {
@@ -39,9 +44,9 @@ pub fn formatted_parser_error(message string, a &flat.FlatAst, pos token.Pos) st
 	return formatted_parser_diagnostic('error:', message, a, pos)
 }
 
-// formatted_parser_diagnostic renders a parser diagnostic with template call-site context.
+// formatted_parser_diagnostic renders a colored parser diagnostic with template call-site context.
 pub fn formatted_parser_diagnostic(kind string, message string, a &flat.FlatAst, pos token.Pos) string {
-	file := a.source_files[pos.id] or { return '${kind} ${message}' }
+	file := a.source_files[pos.id] or { return formatted_message(kind, message) }
 	result := formatted_source_error(kind, message, file, pos)
 	return append_template_call_stack(result, kind, a, pos)
 }
@@ -71,7 +76,7 @@ fn append_template_call_stack(result string, kind string, a &flat.FlatAst, pos t
 	return output
 }
 
-// formatted_source_error renders a diagnostic for a source file and byte span.
+// formatted_source_error renders a diagnostic with v1-compatible colors for a source byte span.
 pub fn formatted_source_error(kind string, message string, file &token.File, pos token.Pos) string {
 	position := file.position(pos)
 	path := relative_error_path(file.name)
@@ -81,7 +86,8 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 	} else {
 		position.column
 	}
-	result.writeln('${path}:${position.line}:${reported_column}: ${kind} ${message}')
+	location := '${path}:${position.line}:${reported_column}:'
+	result.writeln('${ansi.bold(location)} ${formatted_message(kind, message)}')
 	source := os.read_file(file.name) or { return result.str().trim_right('\n') }
 	lines := source.split_into_lines()
 	if lines.len == 0 {
@@ -91,26 +97,35 @@ pub fn formatted_source_error(kind string, message string, file &token.File, pos
 	last_line := int_min(lines.len, position.line + source_context_after)
 	for line_number := first_line; line_number <= last_line; line_number++ {
 		line := lines[line_number - 1]
+		mut start_byte := 0
+		mut end_byte := 0
+		mut highlighted_line := line
+		if line_number == position.line {
+			line_start := file.line_start(position.line)
+			start_byte = int_max(0, int_min(pos.offset - line_start, line.len))
+			span_end := int_max(pos.offset + 1, pos.end)
+			end_byte = int_min(line.len, int_max(start_byte + 1, int_min(span_end - line_start,
+				line.len)))
+			highlighted_line = line[..start_byte] + ansi.color(kind, line[start_byte..end_byte]) +
+				line[end_byte..]
+		}
 		if line.len == 0 && line_number == last_line {
 			result.writeln('${line_number:5d} |')
 		} else {
-			result.writeln('${line_number:5d} | ${line.replace('\t', '    ')}')
+			result.writeln('${line_number:5d} | ${highlighted_line.replace('\t', '    ')}')
 		}
 		if line_number == position.line {
-			line_start := file.line_start(position.line)
-			start_byte := int_max(0, int_min(pos.offset - line_start, line.len))
-			span_end := int_max(pos.offset + 1, pos.end)
-			end_byte := int_min(line.len, int_max(start_byte + 1, int_min(span_end - line_start,
-				line.len)))
+			// Measure the original source, not the ANSI-wrapped text.
 			mut pointer := strings.new_builder(line.len + 8)
 			prefix := line[..start_byte].replace('\t', '    ')
 			pointer.write_string(' '.repeat(diagnostic_display_width(prefix)))
 			underline_len := int_max(1, diagnostic_display_width(line[start_byte..end_byte]))
-			pointer.write_string(if underline_len > 1 {
+			underline := if underline_len > 1 {
 				'~'.repeat(underline_len)
 			} else {
 				'^'
-			})
+			}
+			pointer.write_string(ansi.bold(ansi.color(kind, underline)))
 			result.writeln('      | ${pointer.str().replace('\t', '    ')}')
 		}
 	}

@@ -452,6 +452,18 @@ fn retry_with_v1_at_exit() {
 	if reason !in ['compiler_error', 'c_compilation_error', 'inline_asm'] {
 		return
 	}
+	if reason != 'c_compilation_error' {
+		// V errors are final. The driver may have deferred their diagnostics while
+		// a failure marker was armed, so replay V3 with fallback disabled instead
+		// of launching V1. Returning preserves the original compiler exit status.
+		diagnostics := v3_fallback_diagnostics(os.real_path(os.executable()), state.args, *state)
+		if diagnostics != '' {
+			eprint(diagnostics)
+		}
+		os.rm(state.fallback_file) or {}
+		os.rmdir_all(state.c_error_dir) or {}
+		return
+	}
 	os.setenv(v3_retry_env, '1', true)
 	launch_v1(state.args, 'V compilation failed (${reason})', *state)
 }

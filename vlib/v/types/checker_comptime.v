@@ -13442,7 +13442,7 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 				aliases = aliases || tc.fn_context.immutable_reference_aliases[root.value]
 			}
 		}
-		if aliases {
+		if aliases && !tc.mutable_alias_has_fresh_map_storage(base_id) {
 			tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(base_id)}` aliases mutable data from an immutable value, clone it first (or use `unsafe`)', base_id, if base.kind in [
 				.ident,
 				.selector,

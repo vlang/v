@@ -7252,7 +7252,15 @@ fn v3_test_matches_build_constraint(file string, target pref.Target, ccompiler s
 }
 
 fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string, backend string, target pref.Target, ccompiler string, is_prod bool, user_defines []string) bool {
-	if !is_test_command || !os.is_file(input_file) {
+	if !os.is_file(input_file) {
+		return false
+	}
+	// V3 has no JavaScript backend. Skip JS tests even for `v file_test.js.v`
+	// and `v run file_test.js.v`, before parsing them as native source.
+	if input_file.ends_with('_test.js.v') {
+		return true
+	}
+	if !is_test_command {
 		return false
 	}
 	if is_test_file_for_any_backend(input_file)
@@ -7999,6 +8007,12 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 	if prefs.backend != 'c' || prefs.target.os != 'macos' || is_test_command || is_checker_fixture
 		|| !(input_file.ends_with('.v') || input_file.ends_with('.vv')) || !os.is_file(input_file)
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
+		return false
+	}
+	// The reduced builtin set contains only no-GC implementations. Selecting it
+	// with an active collector drops its declarations while retaining GC calls
+	// in allocation and builtin initialization.
+	if 'gcboehm' in prefs.user_defines || 'vgc' in prefs.user_defines {
 		return false
 	}
 	// Parse the one user file before builtin. This conservative syntax-only pass
@@ -9292,6 +9306,14 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	if backend == 'js' {
+		// This early compatibility path bypasses the common test filter below.
+		if input_file.ends_with('_test.js.v') && os.is_file(input_file) {
+			if !silent {
+				println('SKIP ${input_file}')
+			}
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			return
+		}
 		js_output := if output_file.len > 0 {
 			output_file
 		} else {

@@ -75,6 +75,10 @@ fn tsession(vargs string, tool_cmd string, tool_args string, flist []string, sli
 	test_session.skip_files << slist
 	test_session.test()
 	eprintln(test_session.benchmark.total_message(title_message))
+	// Do not start the next session (fmt after vet) when fail-fast is requested.
+	if testing.fail_fast && test_session.has_failures() {
+		exit(1)
+	}
 	return test_session
 }
 

@@ -24,7 +24,25 @@ fn (mut t Transformer) make_array_new_call(elem_type string, len_expr flat.NodeI
 	} else {
 		elem_type
 	}
+	if !isnil(t.tc)
+		&& array_element_can_use_noscan(t.tc.parse_type(t.normalize_type_alias(storage_size_type))) {
+		// Use the runtime allocator, not just the flag: scalar rows must really
+		// live in atomic storage. Non-optimized GC modes provide a scanned fallback.
+		t.mark_fn_used('__new_array_noscan')
+		return t.make_call_typed('__new_array_noscan', [len_expr, cap_expr,
+			t.make_sizeof_type(storage_size_type)], '[]${elem_type}')
+	}
 	return t.make_call_typed('array_new', [t.make_sizeof_type(storage_size_type), len_expr, cap_expr], '[]${elem_type}')
+}
+
+// Only known scalar element types can bypass GC scanning. In particular, an
+// outer array stores row headers containing pointers, even when its rows are numeric.
+fn array_element_can_use_noscan(elem_type types.Type) bool {
+	if elem_type is types.Alias {
+		return array_element_can_use_noscan(elem_type.base_type)
+	}
+	return elem_type is types.Primitive || elem_type is types.Char || elem_type is types.Rune
+		|| elem_type is types.ISize || elem_type is types.USize || elem_type is types.Enum
 }
 
 fn shared_array_inner_type_text(raw string) ?string {
