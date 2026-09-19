@@ -12790,6 +12790,14 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 			|| p.tok == .lpar || p.tok == .key_fn {
 			ret_type = p.parse_type_name()
 			p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
+		} else {
+			description := if p.tok == .string {
+				'string `${p.lit.trim('"')}`'
+			} else {
+				'`${p.tok.str()}`'
+			}
+			p.record_diagnostic_span('expected return type, not ${description} for anonymous function',
+				p.tok_pos, p.tok_end)
 		}
 	}
 	// body

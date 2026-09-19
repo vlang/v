@@ -10712,7 +10712,7 @@ fn (mut tc TypeChecker) check_asm_stmt(id flat.NodeId, node flat.Node) {
 
 // check_fn_literal validates check fn literal state for types.
 fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
-	if node.value == 'missing_body' {
+	if node.value == 'missing_body' && !tc.is_top_level_discarded_fn_signature(id) {
 		tc.record_error(.return_mismatch, 'anonymous function must declare a body', id)
 		return
 	}
@@ -10902,6 +10902,30 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		tc.ownership_end_fn()
 	}
 	tc.fn_context = saved_fn_context
+}
+
+fn (tc &TypeChecker) is_top_level_discarded_fn_signature(id flat.NodeId) bool {
+	mut current := id
+	mut is_discard_assignment := false
+	for int(current) >= 0 && int(current) < tc.direct_parent_ids.len {
+		parent_id := tc.direct_parent_ids[int(current)]
+		if parent_id == flat.empty_node || int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind in [.assign, .decl_assign] && parent.children_count >= 2 {
+			lhs := tc.a.child_node(&parent, 0)
+			is_discard_assignment = lhs.kind == .ident && lhs.value == '_'
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return false
+		}
+		if parent.kind == .file {
+			return is_discard_assignment
+		}
+		current = parent_id
+	}
+	return false
 }
 
 fn (tc &TypeChecker) fn_literal_body_uses_ident(node flat.Node, name string) bool {

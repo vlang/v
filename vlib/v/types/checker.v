@@ -14957,7 +14957,13 @@ fn (mut tc TypeChecker) check_const_global_initializers(node flat.Node) {
 	for i in 0 .. node.children_count {
 		field_id := tc.a.child(&node, i)
 		field := tc.a.node(field_id)
-		if field.kind != .field_decl || 'const' !in field.generic_params() {
+		if field.kind != .field_decl {
+			continue
+		}
+		if 'const' !in field.generic_params() {
+			if field.children_count > 0 {
+				tc.check_node(tc.a.child(field, 0))
+			}
 			continue
 		}
 		if field.children_count == 0 {
