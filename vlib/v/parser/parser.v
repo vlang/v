@@ -3312,6 +3312,10 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 		}
 		groups++
 		p.next() // consume `@[` / `[`
+		mut invalid_group := false
+		if p.tok == .rsbr {
+			p.record_diagnostic_span('attributes cannot be empty', group_start, p.tok_end)
+		}
 		if p.tok == .key_if {
 			p.next()
 			cond := p.parse_attribute_comptime_cond()
@@ -3344,6 +3348,14 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 			// The formatter re-emits field attributes from these strings, so it must keep
 			// the quotes of a whole-string attribute (`@['C\x5cnD']`) - unquoted, the
 			// escape is no longer valid syntax. Reflection keeps the legacy unquoted form.
+			piece_start := p.tok_pos
+			piece_end := p.tok_end
+			piece_name := attr_unquote(p.lit).all_before(':').trim_space()
+			if piece_name.len > 0
+				&& (attrs.any(it.all_before(':').trim_space() == piece_name)
+					|| p.pending_decl_attrs.any(it.all_before(':').trim_space() == piece_name)) {
+				p.record_diagnostic_span('duplicate attribute `${piece_name}`', piece_start, piece_end)
+			}
 			mut piece := if p.prefs.is_fmt { p.lit } else { attr_unquote(p.lit) }
 			p.next()
 			if p.tok == .lpar {
@@ -3383,6 +3395,15 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 			mut kind := piece_kind
 			if p.tok == .colon {
 				p.next()
+				if p.tok in [.rsbr, .colon, .lsbr, .rcbr] {
+					p.record_diagnostic_span('unexpected token `${p.tok.str()}`, an argument is expected after `:`',
+						p.tok_pos, p.tok_end)
+					invalid_group = true
+					for p.tok !in [.rsbr, .rcbr, .semicolon, .eof] {
+						p.next()
+					}
+					continue
+				}
 				kind = parsed_attribute_kind(p.tok)
 				piece += ': ' + p.lit.trim_space()
 				p.next()
@@ -3393,7 +3414,9 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 				kinds << kind
 			}
 		}
-		p.check(.rsbr)
+		if !invalid_group || p.tok == .rsbr {
+			p.check(.rsbr)
+		}
 		if p.prefs.is_fmt {
 			pos := p.span_to(group_start)
 			sources << p.s.src[pos.offset..pos.end].clone()
