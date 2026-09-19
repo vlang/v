@@ -10366,7 +10366,10 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 		root_name := g.tmp_name()
 		out_name := g.tmp_name()
 		opt_ct := g.optional_type_name(ret_type)
-		valid := g.json_decode_value_valid_expr(root_name, base)
+		has_decode_err_name := g.tmp_name()
+		decode_err_name := g.tmp_name()
+		valid := g.json_decode_value_valid_expr_with_error(root_name, base, has_decode_err_name,
+			decode_err_name)
 		failed_lit := json_decode_c_string_literal('failed to decode JSON string')
 		context_lit := json_decode_c_string_literal(': ')
 		mismatch_message := if sum_name := g.json_decode_nested_sum_name(base, 0) {
@@ -10381,12 +10384,13 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 		if g.json_decode_value_needs_exact_integer(base, 0) {
 			g.write('v3_json_preserve_number_tokens(${json_name}.str, ${json_name}.len, ${root_name}); ')
 		}
-		g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} == NULL) { string ${out_name}_msg = ${failed_lit}; if (${json_name}.len > 0) ${out_name}_msg = string__plus(string__plus(${out_name}_msg, ${context_lit}), ${json_name}); ')
+		g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; bool ${has_decode_err_name} = false; IError ${decode_err_name} = (IError){0}; if (${root_name} == NULL) { string ${out_name}_msg = ${failed_lit}; if (${json_name}.len > 0) ${out_name}_msg = string__plus(string__plus(${out_name}_msg, ${context_lit}), ${json_name}); ')
 		g.gen_json_decode_error_assignment(out_name, '${out_name}_msg')
 		g.write(' } else { if (${valid}) { ${out_name}.ok = true; ')
 		g.gen_json_decode_value_assign('${out_name}.value', root_name, base, 0)
-		g.write(' } else { string ${out_name}_msg = string__plus(${mismatch_lit}, json__json_print(${root_name})); ')
+		g.write(' } else { if (${has_decode_err_name}) { ${out_name}.err = ${decode_err_name}; } else { string ${out_name}_msg = string__plus(${mismatch_lit}, json__json_print(${root_name})); ')
 		g.gen_json_decode_error_assignment(out_name, '${out_name}_msg')
+		g.write(' }')
 		g.write(' } cJSON_Delete(${root_name}); } ${out_name}; })')
 		return true
 	}
@@ -10460,7 +10464,8 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 			continue
 		}
 		if !json_attrs_have_name(attrs, 'raw') {
-			field_valid := g.json_decode_field_valid_expr(item_name, field.typ, json_attrs_have_name(attrs, 'required'))
+			field_valid := g.json_decode_field_valid_expr_with_error(item_name, field.typ,
+				json_attrs_have_name(attrs, 'required'), has_decode_err_name, decode_err_name)
 			mismatch_message := if container_message := json_decode_container_mismatch_message(field.typ) {
 				container_message
 			} else if sum_name := g.json_decode_nested_sum_name(field.typ, 0) {
@@ -10582,6 +10587,28 @@ fn (mut g FlatGen) json_decode_value_valid_expr(item string, typ types.Type) str
 	return g.json_decode_value_valid_expr_at_depth(item, typ, 0)
 }
 
+fn (mut g FlatGen) json_decode_value_valid_expr_with_error(item string, typ types.Type, flag string, value string) string {
+	old_flag := g.json_decode_err_flag
+	old_value := g.json_decode_err_value
+	g.json_decode_err_flag = flag
+	g.json_decode_err_value = value
+	result := g.json_decode_value_valid_expr(item, typ)
+	g.json_decode_err_flag = old_flag
+	g.json_decode_err_value = old_value
+	return result
+}
+
+fn (mut g FlatGen) json_decode_field_valid_expr_with_error(item string, typ types.Type, is_required bool, flag string, value string) string {
+	old_flag := g.json_decode_err_flag
+	old_value := g.json_decode_err_value
+	g.json_decode_err_flag = flag
+	g.json_decode_err_value = value
+	result := g.json_decode_field_valid_expr(item, typ, is_required)
+	g.json_decode_err_flag = old_flag
+	g.json_decode_err_value = old_value
+	return result
+}
+
 fn (mut g FlatGen) json_decode_value_valid_expr_at_depth(item string, typ types.Type, depth int) string {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if clean is types.OptionType {
@@ -10589,7 +10616,12 @@ fn (mut g FlatGen) json_decode_value_valid_expr_at_depth(item string, typ types.
 		return '(${item} == NULL || cJSON_IsNull(${item}) || ${inner})'
 	}
 	if json_is_time_type(clean) {
-		return '(${item} == NULL || cJSON_IsNull(${item}) || cJSON_IsString(${item}) || cJSON_IsNumber(${item}))'
+		decoded_name := g.tmp_name()
+		if g.json_decode_err_flag.len > 0 {
+			valid_name := g.tmp_name()
+			return '({ Optional_time__Time ${decoded_name} = json__decode_time(${item}); bool ${valid_name} = ${decoded_name}.ok; if (!${valid_name}) { ${g.json_decode_err_flag} = true; ${g.json_decode_err_value} = ${decoded_name}.err; } ${valid_name}; })'
+		}
+		return '({ Optional_time__Time ${decoded_name} = json__decode_time(${item}); ${decoded_name}.ok; })'
 	}
 	// Mirror the json module: string fields accept strings and stringify objects/arrays,
 	// bool fields require booleans, and numeric fields also accept non-empty strings.
@@ -10867,9 +10899,7 @@ fn (g &FlatGen) json_decode_value_supported_inner(typ types.Type, depth int, see
 	}
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if json_is_time_type(clean) {
-		// Direct struct fields have a fallible assignment path. Nested values need
-		// equivalent helpers before they can preserve json__decode_time errors.
-		return false
+		return true
 	}
 	if clean is types.String {
 		return true

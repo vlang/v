@@ -345,6 +345,8 @@ mut:
 	str_lits                       []string
 	str_lit_ids                    map[string]int
 	str_lits_shared                bool
+	json_decode_err_flag           string
+	json_decode_err_value          string
 	global_types                   map[string]types.Type
 	// Globals declared `volatile`. A kernel writes these where the hardware or
 	// the bootloader can see them, so the qualifier has to survive into the C.
