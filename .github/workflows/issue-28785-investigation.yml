@@ -8,7 +8,7 @@ permissions:
 jobs:
   apply-review-fix:
     if: github.repository == 'vlang/v' && github.ref == 'refs/heads/fix/28785-reflected-method-callbacks'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
