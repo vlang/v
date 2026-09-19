@@ -11113,7 +11113,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			option_start := p.span_start()
 			p.next()
 			inner_type := p.parse_type_name()
-			type_name := if inner_type.len > 0 { '?${inner_type}' } else { '?' }
+			if inner_type.len == 0 {
+				p.record_diagnostic_span('unexpected token `?`', option_start, option_start + 1)
+				return p.add(flat.NodeKind.empty)
+			}
+			type_name := '?${inner_type}'
 			if p.tok == .lpar {
 				p.next()
 				inner := p.expr(.lowest)
@@ -11276,6 +11280,10 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.parse_comptime_expr()
 		}
 		else {
+			if p.tok.is_keyword() {
+				p.record_diagnostic_span('invalid expression: unexpected keyword `${p.tok.str()}`',
+					p.tok_pos, p.tok_end)
+			}
 			p.next()
 			return p.add(flat.NodeKind.empty)
 		}
