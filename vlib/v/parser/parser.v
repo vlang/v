@@ -14176,6 +14176,7 @@ fn (mut p Parser) typeof_expr() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:  .typeof_expr
 			value: type_name
+			pos:   p.span_to(start)
 		})
 	}
 	p.check(.lpar)
@@ -14190,6 +14191,7 @@ fn (mut p Parser) typeof_expr() flat.NodeId {
 		kind:           .typeof_expr
 		children_start: tstart
 		children_count: 1
+		pos:            p.span_to(start)
 	})
 }
 
@@ -14922,6 +14924,11 @@ fn (mut p Parser) parse_type_name() string {
 	if p.tok == .key_typeof {
 		start := p.tok_pos
 		_ = p.typeof_expr()
+		if p.tok == .dot && p.peek() == .name && p.peek_lit in ['element_type', 'key_type',
+			'payload_type', 'pointee_type', 'return_type', 'value_type'] {
+			p.next()
+			p.next()
+		}
 		if p.tok_pos > start && p.tok_pos <= p.s.src.len {
 			return p.s.src[start..p.tok_pos].trim_space()
 		}

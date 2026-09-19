@@ -366,6 +366,9 @@ fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, seman
 	if expr_id != semantic_id || !has_embed_file_value {
 		return pos
 	}
+	if semantic.kind == .array_init && pos.end > pos.offset {
+		return token.new_span(pos.id, pos.offset, pos.end - 1)
+	}
 	expr_source := tc.source_text_for_node(expr_id)
 	if expr_source.starts_with('.') && pos.offset < pos.end {
 		return token.new_span(pos.id, pos.offset + 1, pos.end)
