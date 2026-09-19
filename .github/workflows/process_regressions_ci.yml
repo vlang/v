@@ -68,3 +68,6 @@ jobs:
       - name: Check adjacent quoted compiler flag fragments
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_quoted_parts_test.v
+      - name: Check implicit output preserves source files
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/driver/implicit_output_test.v

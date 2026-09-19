@@ -118,7 +118,7 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name string, variant
 
 // resolve_sum_name resolves resolve sum name information for transform.
 fn (t &Transformer) resolve_sum_name(sum_name string) string {
-	if sum_name.len == 0 {
+	if sum_name == '' {
 		return sum_name
 	}
 	if isnil(t.sum_cache) {
@@ -194,7 +194,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		mut suffix_ambiguous := false
 		for key, _ in t.sum_types {
 			if key.ends_with(suffix) {
-				if suffix_match.len > 0 && suffix_match != key {
+				if suffix_match != '' && suffix_match != key {
 					suffix_ambiguous = true
 					break
 				}
@@ -230,7 +230,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		mut found := ''
 		for key, _ in t.sum_types {
 			if key.contains('.') && short_name_view(key) == sum_name {
-				if found.len > 0 && found != key {
+				if found != '' && found != key {
 					found = ''
 					break
 				}
@@ -261,7 +261,7 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 			mut found := ''
 			for key, _ in t.tc.sum_types {
 				if key.contains('.') && short_name_view(key) == sum_name {
-					if found.len > 0 && found != key {
+					if found != '' && found != key {
 						found = ''
 						break
 					}
@@ -324,7 +324,7 @@ fn (t &Transformer) find_sum_type_with_short_name(short_name string) string {
 	mut found := ''
 	for key, _ in t.sum_types {
 		if key.contains('.') && key.all_after_last('.') == short_name {
-			if found.len > 0 && found != key {
+			if found != '' && found != key {
 				return ''
 			}
 			found = key
@@ -477,7 +477,7 @@ fn push_sum_subject_type_candidate(mut candidates []string, mut seen map[string]
 
 // is_sum_type_name reports whether is sum type name applies in transform.
 fn (t &Transformer) is_sum_type_name(name string) bool {
-	if name.len == 0 {
+	if name == '' {
 		return false
 	}
 	resolved := t.resolve_sum_name(name)
@@ -485,7 +485,7 @@ fn (t &Transformer) is_sum_type_name(name string) bool {
 }
 
 fn (t &Transformer) sum_target_accepts_variant_type(target_type string, variant_type string) bool {
-	if target_type.len == 0 || variant_type.len == 0 {
+	if target_type == '' || variant_type == '' {
 		return false
 	}
 	resolved_raw_target := t.resolve_sum_name(t.trim_pointer_type(target_type))
@@ -546,7 +546,7 @@ fn (t &Transformer) sum_variant_type_accepts_value_type(variant_type string, val
 
 // is_interface_type_name reports whether is interface type name applies in transform.
 fn (t &Transformer) is_interface_type_name(name string) bool {
-	if name.len == 0 || isnil(t.tc) {
+	if name == '' || isnil(t.tc) {
 		return false
 	}
 	return t.resolve_interface_type_name(name).len > 0
@@ -877,12 +877,12 @@ fn (mut t Transformer) smartcasted_sum_is_expr_check(expr_id flat.NodeId, patter
 }
 
 fn (mut t Transformer) validate_specialized_is_expr(subject_type string, resolved_sum string, pattern string) bool {
-	if !t.validating_generic_spec || subject_type.len == 0
+	if !t.validating_generic_spec || subject_type == ''
 		|| t.type_text_has_generic_placeholder(subject_type, t.cur_module) {
 		return true
 	}
 	if resolved_sum in t.sum_types {
-		if pattern.len == 0 || t.type_text_has_generic_placeholder(pattern, t.cur_module) {
+		if pattern == '' || t.type_text_has_generic_placeholder(pattern, t.cur_module) {
 			return true
 		}
 		if _ := t.resolve_sum_variant_pattern_for_subject(subject_type, pattern) {
@@ -892,7 +892,7 @@ fn (mut t Transformer) validate_specialized_is_expr(subject_type string, resolve
 		return false
 	}
 	if t.is_interface_type_name(subject_type) {
-		if pattern.len == 0 || t.type_text_has_generic_placeholder(pattern, t.cur_module) {
+		if pattern == '' || t.type_text_has_generic_placeholder(pattern, t.cur_module) {
 			return true
 		}
 		if t.is_builtin_ierror_interface_name(subject_type) && pattern == 'none' {
@@ -936,7 +936,7 @@ fn (t &Transformer) specialized_is_pattern_known(pattern string) bool {
 }
 
 fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name string) ?int {
-	if iface_name.len == 0 || concrete_name.len == 0 || isnil(t.tc) {
+	if iface_name == '' || concrete_name == '' || isnil(t.tc) {
 		return none
 	}
 	iface := t.resolve_interface_type_name(iface_name)
@@ -1101,7 +1101,7 @@ fn (t &Transformer) interface_alias_equivalent_names(name string) []string {
 }
 
 fn (t &Transformer) push_interface_alias_equivalent_name(mut names []string, mut seen map[string]bool, name string) {
-	if name.len == 0 || seen[name] {
+	if name == '' || seen[name] {
 		return
 	}
 	seen[name] = true
@@ -1593,7 +1593,7 @@ fn (t &Transformer) fixed_array_sum_literal_elem_matches(literal_elem string, va
 }
 
 fn (t &Transformer) fixed_array_sum_literal_elem_unknown(literal_elem string) bool {
-	return literal_elem.len == 0 || literal_elem in ['unknown', 'void', 'array']
+	return literal_elem == '' || literal_elem in ['unknown', 'void', 'array']
 }
 
 // wrap_sum_value transforms wrap sum value data for transform.
@@ -1768,7 +1768,7 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 			if t.enum_type_name_for_expected(v, t.cur_module).len == 0 {
 				continue
 			}
-			if enum_variant.len > 0 {
+			if enum_variant != '' {
 				enum_variant = ''
 				break
 			}
@@ -1857,7 +1857,7 @@ fn (t &Transformer) sum_literal_type_name(target_sum string, resolved_sum string
 }
 
 fn (mut t Transformer) single_value_wrapper_sum_value(expr_id flat.NodeId, wrapper_type string, target_sum string) ?flat.NodeId {
-	if wrapper_type.len == 0 || isnil(t.tc) {
+	if wrapper_type == '' || isnil(t.tc) {
 		return none
 	}
 	lookup := t.lookup_struct_info_for_field(wrapper_type, 'value') or { return none }
@@ -1875,7 +1875,7 @@ fn (mut t Transformer) single_value_wrapper_sum_value(expr_id flat.NodeId, wrapp
 }
 
 fn (mut t Transformer) single_value_wrapper_expr_value(wrapper flat.NodeId, wrapper_type string, target_sum string) ?flat.NodeId {
-	if wrapper_type.len == 0 || isnil(t.tc) {
+	if wrapper_type == '' || isnil(t.tc) {
 		return none
 	}
 	lookup := t.lookup_struct_info_for_field(wrapper_type, 'value') or { return none }

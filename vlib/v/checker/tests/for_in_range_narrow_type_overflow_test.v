@@ -40,9 +40,15 @@ fn test_dynamic_bounds_range_is_unaffected() {
 }
 
 fn test_explicit_wider_high_type_is_not_flagged() {
+	// Check that the bound is accepted, without relying on the loop variable
+	// being widened. Stop before incrementing past the largest u8 value.
 	mut count := 0
-	for _ in u8(0) .. u16(256) {
+	for b in u8(0) .. u16(256) {
+		assert int(b) == count
 		count++
+		if count == 256 {
+			break
+		}
 	}
 	assert count == 256
 }
@@ -56,11 +62,27 @@ fn test_typed_low_with_concrete_int_high_keeps_low_type() {
 	assert count == 3
 }
 
-fn test_dynamic_bounds_that_silently_wrap_at_runtime_are_unaffected() {
-	n := max_int
+fn test_dynamic_high_outside_low_type_is_not_flagged() {
+	// Keep the high bound dynamic and outside u8, but do not overflow int
+	// while computing it, or let the narrow loop variable wrap around.
+	n := int(max_u8)
+	mut count := 0
+	for b in u8(0) .. n + 1 {
+		assert int(b) == count
+		count++
+		if count == 256 {
+			break
+		}
+	}
+	assert count == 256
+}
+
+fn test_dynamic_empty_range_is_unaffected() {
+	n := -1
 	mut count := 0
 	for _ in u8(0) .. n + 1 {
 		count++
+		break
 	}
 	assert count == 0
 }

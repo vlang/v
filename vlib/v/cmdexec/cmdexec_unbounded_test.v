@@ -123,8 +123,8 @@ fn test_unbounded_runs_drain_both_pipes_after_the_leader_exits() {
 		for code in [0, 7] {
 			// Only the outer collector is bounded. The command under test must
 			// use the public unbounded entry point, not the already-fixed timeout.
-			result := run_with_timeout(os.executable(), [unbounded_pipe_probe, 'collect',
-				entry, code.str(), work_folder], 20_000)
+			result := run_with_timeout(os.executable(), [unbounded_pipe_probe, 'collect', entry,
+				code.str(), work_folder], 20_000)
 			assert result.exit_code == 0, '${entry}, leader exit ${code}: ${result.output}'
 			assert result.output.trim_space() == 'unbounded-pipe-probe-ok', result.output
 		}

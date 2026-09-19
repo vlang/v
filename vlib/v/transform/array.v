@@ -24,7 +24,25 @@ fn (mut t Transformer) make_array_new_call(elem_type string, len_expr flat.NodeI
 	} else {
 		elem_type
 	}
+	if !isnil(t.tc)
+		&& array_element_can_use_noscan(t.tc.parse_type(t.normalize_type_alias(storage_size_type))) {
+		// Use the runtime allocator, not just the flag: scalar rows must really
+		// live in atomic storage. Non-optimized GC modes provide a scanned fallback.
+		t.mark_fn_used('__new_array_noscan')
+		return t.make_call_typed('__new_array_noscan', [len_expr, cap_expr,
+			t.make_sizeof_type(storage_size_type)], '[]${elem_type}')
+	}
 	return t.make_call_typed('array_new', [t.make_sizeof_type(storage_size_type), len_expr, cap_expr], '[]${elem_type}')
+}
+
+// Only known scalar element types can bypass GC scanning. In particular, an
+// outer array stores row headers containing pointers, even when its rows are numeric.
+fn array_element_can_use_noscan(elem_type types.Type) bool {
+	if elem_type is types.Alias {
+		return array_element_can_use_noscan(elem_type.base_type)
+	}
+	return elem_type is types.Primitive || elem_type is types.Char || elem_type is types.Rune
+		|| elem_type is types.ISize || elem_type is types.USize || elem_type is types.Enum
 }
 
 fn shared_array_inner_type_text(raw string) ?string {
@@ -916,7 +934,7 @@ fn (t &Transformer) array_literal_qualified_alias_name(name string) string {
 		if alias.all_after_last('.') != clean {
 			continue
 		}
-		if found.len > 0 && found != alias {
+		if found != '' && found != alias {
 			return clean
 		}
 		found = alias
@@ -939,7 +957,9 @@ fn (t &Transformer) array_literal_alias_type(node flat.Node) ?string {
 	if first.kind == .index && first.children_count > 0 {
 		base_type := t.normalize_type_alias(t.node_type(t.a.child(&first, 0))).trim_left('&')
 		if base_type.starts_with('[]') {
-			return base_type
+			is_slice := first.value == 'range'
+				|| (first.children_count > 1 && t.a.child_node(&first, 1).kind == .range)
+			return if is_slice { '[]${base_type}' } else { base_type }
 		}
 	}
 	if first.kind == .call && first.children_count > 0 {
@@ -1244,7 +1264,7 @@ fn (mut t Transformer) transform_empty_array_init_for_type(node flat.Node, targe
 }
 
 fn (mut t Transformer) transform_array_value_for_dynamic_target(value_id flat.NodeId, target_type string) ?flat.NodeId {
-	if int(value_id) < 0 || target_type.len == 0 || isnil(t.tc) {
+	if int(value_id) < 0 || target_type == '' || isnil(t.tc) {
 		return none
 	}
 	expected_name := t.normalize_type_alias(target_type).trim_space()
@@ -1529,10 +1549,10 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 // `borrowed_push_many_clone` path cannot cover it: that flag is derived from the original
 // RHS, which for a differently typed source array is not a borrow at all.
 fn (mut t Transformer) bind_converted_bulk_append_temp(converted bool, push_many bool, rhs_type string, existing_name string, rhs flat.NodeId, mut result []flat.NodeId) (string, flat.NodeId) {
-	if !converted || !push_many || rhs_type.len == 0 || t.is_fixed_array_type(rhs_type) {
+	if !converted || !push_many || rhs_type == '' || t.is_fixed_array_type(rhs_type) {
 		return '', rhs
 	}
-	if existing_name.len > 0 {
+	if existing_name != '' {
 		// already bound for the closure cleanups, and freeing it twice would be a bug
 		return existing_name, rhs
 	}
@@ -3120,7 +3140,7 @@ fn (t &Transformer) array_map_is_dsl_bound_method(node flat.Node) bool {
 // element binding. Such values remain borrowed from the consumed source unless their
 // expression explicitly creates a fresh owner.
 fn (t &Transformer) array_map_expr_references_ident(id flat.NodeId, name string) bool {
-	if int(id) < 0 || name.len == 0 {
+	if int(id) < 0 || name == '' {
 		return false
 	}
 	node := t.a.nodes[int(id)]
@@ -3136,7 +3156,7 @@ fn (t &Transformer) array_map_expr_references_ident(id flat.NodeId, name string)
 }
 
 fn (t &Transformer) array_map_expr_takes_address_of_ident(id flat.NodeId, name string) bool {
-	if int(id) < 0 || name.len == 0 {
+	if int(id) < 0 || name == '' {
 		return false
 	}
 	node := t.a.nodes[int(id)]
@@ -3153,7 +3173,7 @@ fn (t &Transformer) array_map_expr_takes_address_of_ident(id flat.NodeId, name s
 }
 
 fn (mut t Transformer) array_map_call_implicitly_borrows_ident(id flat.NodeId, node flat.Node, name string) bool {
-	if node.kind != .call || node.children_count == 0 || name.len == 0 || isnil(t.tc) {
+	if node.kind != .call || node.children_count == 0 || name == '' || isnil(t.tc) {
 		return false
 	}
 	call_name := t.call_name_for_node(id, node)
@@ -3175,7 +3195,7 @@ fn (mut t Transformer) array_map_call_implicitly_borrows_ident(id flat.NodeId, n
 }
 
 fn (mut t Transformer) array_map_expr_implicit_reference_can_escape(id flat.NodeId, name string) bool {
-	if int(id) < 0 || int(id) >= t.a.nodes.len || name.len == 0 || isnil(t.tc) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || name == '' || isnil(t.tc) {
 		return false
 	}
 	node := t.a.nodes[int(id)]
@@ -3218,7 +3238,7 @@ fn (t &Transformer) array_map_lvalue_is_rooted_at_ident(id flat.NodeId, name str
 }
 
 fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.NodeId, name string) bool {
-	if int(id) < 0 || int(id) >= t.a.nodes.len || name.len == 0 {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || name == '' {
 		return false
 	}
 	node := t.a.nodes[int(id)]
@@ -3716,7 +3736,7 @@ fn array_map_join_local_pointer_origin_states(mut target map[string]bool, source
 }
 
 fn array_map_call_result_relative_source_suffix(target_suffix string, source_target_suffix string) ?string {
-	if source_target_suffix.len == 0 {
+	if source_target_suffix == '' {
 		return target_suffix
 	}
 	if target_suffix == source_target_suffix || (target_suffix.len == source_target_suffix.len && array_map_local_path_is_possible_projection(target_suffix, source_target_suffix)) {
@@ -5463,7 +5483,7 @@ fn (mut t Transformer) array_map_selector_result_retains_element_address(base_id
 }
 
 fn (t &Transformer) array_map_result_can_retain_element_address(type_name string) bool {
-	if type_name.len == 0 {
+	if type_name == '' {
 		return false
 	}
 	if isnil(t.tc) {
@@ -5597,7 +5617,7 @@ fn (t &Transformer) resolve_fn_value_selector(node flat.Node) ?string {
 }
 
 fn (t &Transformer) resolve_static_fn_value_for_type(type_name string, method string) ?string {
-	if type_name.len == 0 || method.len == 0 || isnil(t.tc) {
+	if type_name == '' || method == '' || isnil(t.tc) {
 		return none
 	}
 	mut candidates := []string{}
@@ -5616,7 +5636,7 @@ fn (t &Transformer) resolve_static_fn_value_for_type(type_name string, method st
 }
 
 fn (t &Transformer) add_static_fn_value_type_candidate(mut candidates []string, name string) {
-	if name.len == 0 || isnil(t.tc) {
+	if name == '' || isnil(t.tc) {
 		return
 	}
 	if name !in candidates {
@@ -5752,7 +5772,7 @@ fn (t &Transformer) selector_expr_node(id flat.NodeId) ?flat.Node {
 
 // substitute_ident supports substitute ident handling for Transformer.
 fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement string) flat.NodeId {
-	if int(id) < 0 || name.len == 0 || replacement.len == 0 || name == replacement {
+	if int(id) < 0 || name == '' || replacement == '' || name == replacement {
 		return id
 	}
 	node := t.a.nodes[int(id)]
@@ -5817,7 +5837,7 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 }
 
 fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replacement flat.NodeId) flat.NodeId {
-	if int(id) < 0 || name.len == 0 || int(replacement) < 0 {
+	if int(id) < 0 || name == '' || int(replacement) < 0 {
 		return id
 	}
 	node := t.a.nodes[int(id)]

@@ -711,7 +711,7 @@ fn (mut t Transformer) sql_string_array(values []string) flat.NodeId {
 }
 
 fn (t &Transformer) sql_initialized_fields(value_name string) []string {
-	if value_name.len == 0 {
+	if value_name == '' {
 		return []string{}
 	}
 	if value_name.contains('.') {
@@ -1027,7 +1027,7 @@ fn (mut t Transformer) sql_dynamic_if_value_expr(tokens []string, typ string) fl
 	then_block := t.make_block([t.make_expr_stmt(then_expr)])
 	else_block := t.make_block([t.make_expr_stmt(else_expr)])
 	node := t.make_if(cond, then_block, else_block)
-	if typ.len > 0 {
+	if typ != '' {
 		t.set_node_typ(int(node), typ)
 	}
 	return node
@@ -1489,14 +1489,14 @@ fn (mut t Transformer) sql_expr_from_token_for_type(token string, typ string) fl
 		fn_name := token[..token.len - 2]
 		return t.sql_value_call_expr(fn_name, []string{}, typ)
 	}
-	if token.starts_with('.') && typ.len > 0 {
+	if token.starts_with('.') && typ != '' {
 		return t.a.add_node(flat.Node{
 			kind:  .enum_val
 			value: '${typ}${token}'
 			typ:   typ
 		})
 	}
-	if typ.len > 0 && t.sql_transform_type_is_enum(typ) && token.contains('.')
+	if typ != '' && t.sql_transform_type_is_enum(typ) && token.contains('.')
 		&& t.sql_token_root_is_enum_type(token.all_before('.')) {
 		return t.a.add_node(flat.Node{
 			kind:  .enum_val
@@ -1517,7 +1517,7 @@ fn (mut t Transformer) sql_value_call_expr(callee_name string, args []string, ty
 		return t.transform_expr(t.make_cast(callee_name, arg_ids[0], callee_name))
 	}
 	callee := t.sql_value_call_callee(callee_name)
-	call := t.make_call_expr_typed(callee, arg_ids, if typ.len > 0 { typ } else { '' })
+	call := t.make_call_expr_typed(callee, arg_ids, if typ != '' { typ } else { '' })
 	// Preserve the source call shape so ordinary lowering can distinguish module
 	// functions, receiver methods, and static associated functions.
 	return t.transform_expr(call)
@@ -1682,7 +1682,7 @@ fn (mut t Transformer) sql_infix_expr_from_token_for_type(token string, typ stri
 	expr := t.make_infix(op, lhs, rhs)
 	result_type := if op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		'bool'
-	} else if typ.len > 0 {
+	} else if typ != '' {
 		typ
 	} else {
 		t.node_type(lhs)
@@ -2321,17 +2321,17 @@ fn sql_reject_mutating_tail(kind string, where SqlTransformWhere, order_field st
 	if where.error.len > 0 {
 		return where
 	}
-	if order_field.len > 0 {
+	if order_field != '' {
 		return SqlTransformWhere{
 			error: 'SQL ${kind} does not support ORDER BY'
 		}
 	}
-	if limit.len > 0 {
+	if limit != '' {
 		return SqlTransformWhere{
 			error: 'SQL ${kind} does not support LIMIT'
 		}
 	}
-	if offset.len > 0 {
+	if offset != '' {
 		return SqlTransformWhere{
 			error: 'SQL ${kind} does not support OFFSET'
 		}
@@ -2512,7 +2512,7 @@ fn (t &Transformer) sql_select_tail(table SqlTransformTableInfo, tokens []string
 			continue
 		}
 		if tokens[i] == 'order' {
-			if order_field.len > 0 || i + 2 >= tokens.len || tokens[i + 1] != 'by'
+			if order_field != '' || i + 2 >= tokens.len || tokens[i + 1] != 'by'
 				|| !sql_token_is_plain_ident(tokens[i + 2]) {
 				return none
 			}
@@ -2526,7 +2526,7 @@ fn (t &Transformer) sql_select_tail(table SqlTransformTableInfo, tokens []string
 		}
 		if tokens[i] == 'limit' {
 			value, next := sql_tail_value_token(tokens, i + 1) or { return none }
-			if limit.len > 0 {
+			if limit != '' {
 				return none
 			}
 			limit = value
@@ -2535,7 +2535,7 @@ fn (t &Transformer) sql_select_tail(table SqlTransformTableInfo, tokens []string
 		}
 		if tokens[i] == 'offset' {
 			value, next := sql_tail_value_token(tokens, i + 1) or { return none }
-			if offset.len > 0 {
+			if offset != '' {
 				return none
 			}
 			offset = value
@@ -3068,7 +3068,7 @@ fn (t &Transformer) sql_table_info(table string) ?SqlTransformTableInfo {
 		mut found_fields := []types.StructField{}
 		for candidate, fields in t.tc.structs {
 			if candidate.ends_with('.${base}') && fields.len > 0 {
-				if found_name.len > 0 {
+				if found_name != '' {
 					found_name = ''
 					found_fields = []types.StructField{}
 					break
@@ -3077,7 +3077,7 @@ fn (t &Transformer) sql_table_info(table string) ?SqlTransformTableInfo {
 				found_fields = fields.clone()
 			}
 		}
-		if found_name.len > 0 {
+		if found_name != '' {
 			return SqlTransformTableInfo{
 				name:   found_name
 				fields: found_fields
@@ -3223,8 +3223,8 @@ fn (t &Transformer) sql_decl_attribute_metas(node_id int, node flat.Node) []Attr
 }
 
 fn sql_module_name_matches(decl_module string, requested_module string) bool {
-	decl := if decl_module.len == 0 { 'main' } else { decl_module }
-	requested := if requested_module.len == 0 { 'main' } else { requested_module }
+	decl := if decl_module == '' { 'main' } else { decl_module }
+	requested := if requested_module == '' { 'main' } else { requested_module }
 	return decl == requested
 }
 
@@ -3410,7 +3410,7 @@ fn sql_token_is_value(token string) bool {
 }
 
 fn sql_token_is_int_literal(token string) bool {
-	if token.len == 0 {
+	if token == '' {
 		return false
 	}
 	start := if token.len > 1 && token[0] in [`-`, `+`] { 1 } else { 0 }
@@ -3421,7 +3421,7 @@ fn sql_token_is_int_literal(token string) bool {
 }
 
 fn sql_token_is_float_literal(token string) bool {
-	if token.len == 0 || !token.contains('.') {
+	if token == '' || !token.contains('.') {
 		return false
 	}
 	mut dot_count := 0
@@ -3458,7 +3458,7 @@ fn sql_unquote_string_token(token string) string {
 }
 
 fn sql_token_is_plain_ident(token string) bool {
-	if token.len == 0 {
+	if token == '' {
 		return false
 	}
 	for ch in token.bytes() {

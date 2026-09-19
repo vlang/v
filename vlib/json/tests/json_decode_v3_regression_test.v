@@ -44,6 +44,12 @@ struct DecodeV3Event {
 	at time.Time
 }
 
+type DecodeV3TimedValue = string | time.Time
+
+struct DecodeV3Timeline {
+	events []DecodeV3TimedValue
+}
+
 struct DecodeV3ThrowawayFirst {
 	value int = decode_v3_sum_default_value()
 }
@@ -142,6 +148,21 @@ fn test_json_decode_v3_propagates_invalid_time_errors() {
 
 	valid := json.decode(DecodeV3Event, '{"at":"2001-01-01"}')!
 	assert valid.at.str() == '2001-01-01 00:00:00'
+}
+
+fn test_json_decode_v3_propagates_nested_time_errors() {
+	decoded := json.decode(DecodeV3Timeline,
+		'{"events":["label",{"_type":"Time","value":946684800}]}')!
+	assert decoded.events[0] == DecodeV3TimedValue('label')
+	assert (decoded.events[1] as time.Time).unix() == 946684800
+
+	mut message := ''
+	_ := json.decode(DecodeV3Timeline,
+		'{"events":[{"_type":"Time","value":"not-a-time"}]}') or {
+		message = err.msg()
+		DecodeV3Timeline{}
+	}
+	assert message.contains('Expected iso8601/rfc3339/unix time')
 }
 
 fn test_json_decode_v3_root_time_roundtrip() {

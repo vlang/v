@@ -11,6 +11,9 @@ import v.token
 import v.util
 
 const max_parse_diagnostics = 100
+const max_assignment_expr_depth = 100
+
+const inline_sum_type_deprecation = 'inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead'
 
 // https://www.felixcloutier.com/x86/lock
 const inline_asm_allowed_lock_instructions = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg',
@@ -78,37 +81,41 @@ mut:
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                     scanner.Scanner
-	tok                   token.Token
-	lit                   string
-	tok_pos               int
-	tok_end               int
-	prev_tok_end          int
-	peek_tok              token.Token = .eof
-	peek_lit              string
-	peek_pos              int
-	peek_end              int
-	has_peek              bool
-	cur_file              string
-	cur_file_id           int
-	next_file_id          int = 1
-	cur_module            string
-	cur_fn                string
-	cur_fn_offset         int = -1
-	cur_veb_ctx_name      string // source-level name of the active veb request context
-	veb_tmpl_counter      int    // monotonic id for unique `$veb.html`/`$tmpl` builder var names
-	has_veb_template      bool
-	may_have_local_types  bool
-	cur_struct            string   // receiver type name of the current method, for `@STRUCT`
-	cur_method_is_static  bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
-	defer_depth           int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
-	defer_result_allowed  bool     // true when the active defer is guaranteed to run during function return
-	nested_block_depth    int      // lexical block depth below the current function body's outer scope
-	comptime_for_vars     []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
-	comptime_method_var   string   // innermost active `$for method in Type.methods` loop variable
-	comptime_const_values map[string]string
-	comptime_local_values map[string]string
-	imported_module_names map[string]bool // import aliases in the current file; not captured by inlined template closures
+	s                            scanner.Scanner
+	tok                          token.Token
+	lit                          string
+	tok_pos                      int
+	tok_end                      int
+	prev_tok_end                 int
+	peek_tok                     token.Token = .eof
+	peek_lit                     string
+	peek_pos                     int
+	peek_end                     int
+	has_peek                     bool
+	cur_file                     string
+	cur_file_id                  int
+	next_file_id                 int = 1
+	cur_module                   string
+	cur_fn                       string
+	cur_fn_offset                int = -1
+	cur_fn_generic_params        []string
+	cur_veb_ctx_name             string // source-level name of the active veb request context
+	veb_tmpl_counter             int    // monotonic id for unique `$veb.html`/`$tmpl` builder var names
+	has_veb_template             bool
+	pending_template_diagnostics []TemplateDiagnostic
+	may_have_local_types         bool
+	cur_struct                   string   // receiver type name of the current method, for `@STRUCT`
+	cur_method_is_static         bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
+	defer_depth                  int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
+	defer_result_allowed         bool     // true when the active defer is guaranteed to run during function return
+	unsafe_depth                 int      // >0 while parsing an `unsafe` block body
+	nested_block_depth           int      // lexical block depth below the current function body's outer scope
+	comptime_for_vars            []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	comptime_method_var          string   // innermost active `$for method in Type.methods` loop variable
+	comptime_const_values        map[string]string
+	comptime_local_values        map[string]string
+	imported_module_names        map[string]bool // import aliases in the current file; not captured by inlined template closures
+	check_imports                bool            // enabled by the compiler driver, but not by syntax-only parser clients
 	// local_binding_* track the variable/parameter names currently in scope, so an inlined
 	// template closure captures a bare callee only when it is an actual local binding (a
 	// function-valued parameter/local) rather than a module/top-level function. Scoped like
@@ -136,6 +143,7 @@ mut:
 	pending_decl_attr_sources         []string
 	in_for_container                  bool
 	in_select_branch_condition        int
+	in_match_branch_condition         int
 	in_array_literal                  int
 	inside_array_init_type_expr       bool
 	in_map_value                      int
@@ -161,6 +169,13 @@ pub mut:
 	diagnostics                []Diagnostic
 }
 
+struct ScriptModeState {
+mut:
+	start       int = -1
+	end         int = -1
+	has_main_fn bool
+}
+
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
 // without retaining successively doubled backing arrays during transform.
 pub fn (mut p Parser) reserve_selfhost_ast() {
@@ -174,6 +189,12 @@ pub fn (mut p Parser) reserve_selfhost_ast() {
 		p.a.nodes << old_nodes
 	}
 	p.a.children.ensure_cap(4_194_304)
+}
+
+// enable_import_diagnostics enables parser diagnostics that require a complete
+// source file rather than syntax-only parsing.
+pub fn (mut p Parser) enable_import_diagnostics() {
+	p.check_imports = true
 }
 
 // ExportRecord captures one accepted `@[export: name]` registration in file
@@ -404,6 +425,8 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.next()
 
 	mut ids := []flat.NodeId{}
+	mut script_mode := ScriptModeState{}
+	mut malformed_const_line_end := -1
 	for p.tok != .eof && !p.diagnostic_limit_reached {
 		if p.tok == .semicolon {
 			p.next()
@@ -420,23 +443,44 @@ pub fn (mut p Parser) parse_into(path string) {
 				p.record_diagnostic_span('`module` and `${p.lit}` must be at same line', p.tok_pos, p.tok_end)
 			}
 			p.cur_module = p.lit
+			module_name_end := p.tok_end
 			mod_id := p.add_node(flat.Node{
 				kind:  .module_decl
 				value: p.lit
 			})
 			ids << mod_id
 			p.next()
+			if p.tok == .dot {
+				p.record_diagnostic_span('`module ${p.cur_module}`, unexpected `.` after module name',
+					p.tok_pos, p.tok_end)
+			}
+			if p.tok == .name && module_name_end <= p.tok_pos
+				&& !p.s.src[module_name_end..p.tok_pos].contains('\n') {
+				p.record_diagnostic_span('`module ${p.cur_module}`, you can only declare one module, unexpected `${p.lit}`',
+					p.tok_pos, p.tok_end)
+			}
 			if p.tok == .semicolon || p.lit == '' {
 				p.next()
 			}
 			continue
 		}
+		stmt_start := p.tok_pos
+		stmt_end := p.tok_end
+		if p.tok == .name && p.lit == 'cosnt' && p.peek() == .name {
+			malformed_const_line_end = p.s.src.index_after('\n', stmt_start) or { p.s.src.len }
+		}
+		is_malformed_const := stmt_start < malformed_const_line_end
 		id := p.top_level_stmt()
 		if expansion := p.expand_veb_template_stmt(id) {
 			ids << expansion
 			continue
 		}
 		if int(id) >= 0 {
+			if p.cur_module !in ['', 'main'] {
+				ids << id
+				continue
+			}
+			p.track_script_mode(id, stmt_start, stmt_end, is_malformed_const, mut script_mode)
 			ids << id
 		}
 	}
@@ -461,6 +505,67 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.collect_formatter_comments(file, stable_src)
 	}
 	p.collect_scanner_diagnostics()
+}
+
+fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback_end int, ignore_statement bool, mut state ScriptModeState) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.node(id)
+	if node.kind == .block {
+		for i in 0 .. node.children_count {
+			child_id := p.a.child(&node, i)
+			child := p.a.node(child_id)
+			child_start := if child.pos.is_valid() { int(child.pos.offset) } else { fallback_start }
+			child_end := if child.pos.is_valid() { int(child.pos.end) } else { fallback_end }
+			p.track_script_mode(child_id, child_start, child_end, false, mut state)
+		}
+		return
+	}
+	is_definition := node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .enum_decl, .interface_decl,
+		.type_decl, .const_decl, .global_decl]
+	is_script_statement := node.kind !in [.empty, .import_decl, .module_decl, .directive, .comptime_if,
+		.asm_stmt]
+		&& !is_definition && !ignore_statement
+	if is_definition {
+		if state.start >= 0 {
+			p.record_notice_span('script mode started here', state.start, state.end)
+			def_start, def_end := p.script_definition_diagnostic_span(node, fallback_start,
+				fallback_end)
+			p.record_diagnostic_span('all definitions must occur before code in script mode',
+				def_start, def_end)
+		}
+		if node.kind == .fn_decl && node.value == 'main' {
+			state.has_main_fn = true
+		}
+	} else if is_script_statement {
+		if state.has_main_fn {
+			p.record_diagnostic_span('function `main` is already defined, put your script statements inside it',
+				fallback_start, fallback_end)
+		} else if state.start < 0 {
+			state.start = fallback_start
+			state.end = fallback_end
+		}
+	}
+}
+
+fn (p &Parser) script_definition_diagnostic_span(node flat.Node, fallback_start int, fallback_end int) (int, int) {
+	if node.kind == .fn_decl {
+		start := clamp_source_offset(node.pos.offset, p.s.src.len)
+		name := node.value.all_after_last('.')
+		return start, int_min(p.s.src.len, start + name.len)
+	}
+	if node.kind == .struct_decl {
+		search_start := clamp_source_offset(node.pos.offset, p.s.src.len)
+		search_end := clamp_source_offset(node.pos.end, p.s.src.len)
+		if search_end >= search_start {
+			if relative := p.s.src[search_start..search_end].index(node.value.all_after_last('.')) {
+				start := search_start + relative
+				return start, start + node.value.all_after_last('.').len
+			}
+		}
+	}
+	return fallback_start, fallback_end
 }
 
 // vsh_implicit_os_import gives a `.vsh` script the implicit `import os` of V's
@@ -628,6 +733,17 @@ fn (mut p Parser) record_diagnostic(message string, offset int) {
 fn (mut p Parser) record_diagnostic_span(message string, start int, end int) {
 	clamped_start := clamp_source_offset(start, p.s.src.len)
 	clamped_end := clamp_source_offset(end, p.s.src.len)
+	if message.starts_with('unexpected name `') {
+		mut line_start := clamped_start
+		for line_start > 0 && p.s.src[line_start - 1] != `\n` {
+			line_start--
+		}
+		line_end := p.s.src.index_after('\n', clamped_start) or { p.s.src.len }
+		if p.s.diagnostics.any(it.message.starts_with('invalid character `')
+			&& it.offset >= line_start && it.offset <= line_end) {
+			return
+		}
+	}
 	mut line := 1
 	mut column := clamped_start + 1
 	if p.s.src.len > 0 && p.s.current_file().name == p.cur_file {
@@ -656,6 +772,24 @@ fn (mut p Parser) record_warning_span(message string, start int, end int) {
 		line:     line
 		column:   column
 		severity: 'warning:'
+		message:  message
+	})
+}
+
+fn (mut p Parser) record_notice_span(message string, start int, end int) {
+	clamped_start := clamp_source_offset(start, p.s.src.len)
+	clamped_end := clamp_source_offset(end, p.s.src.len)
+	mut line := 1
+	mut column := clamped_start + 1
+	if p.s.src.len > 0 && p.s.current_file().name == p.cur_file {
+		line, column = p.s.current_file().find_line_and_column(clamped_start)
+	}
+	p.append_diagnostic(Diagnostic{
+		file:     p.cur_file
+		pos:      token.new_span(p.cur_file_id, clamped_start, clamped_end)
+		line:     line
+		column:   column
+		severity: 'notice:'
 		message:  message
 	})
 }
@@ -854,7 +988,11 @@ fn (mut p Parser) check(expected token.Token) {
 	// while a closing delimiter is still owed. Reporting it stops `v fmt` from accepting a
 	// truncated file and printing the balanced - i.e. invented - version of it.
 	if p.tok == .eof && expected in [token.Token.rcbr, .rpar, .rsbr] {
-		p.record_diagnostic('unexpected eof, expecting `${expected}`', p.tok_pos)
+		if p.diagnostics.any(it.file == p.cur_file && it.severity != 'warning:') {
+			return
+		}
+		pos := if expected == .rcbr { p.s.src.len } else { p.tok_pos }
+		p.record_diagnostic('unexpected eof, expecting `${expected}`', pos)
 	}
 }
 
@@ -1019,6 +1157,9 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 			return p.parse_decl_after_attrs()
 		}
 		.dollar {
+			if p.peek() == .name && p.peek_lit == 'dbg' {
+				return p.debugger_stmt()
+			}
 			return p.parse_top_level_comptime_if()
 		}
 		.hash {
@@ -1203,6 +1344,11 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			// signature and dispatch indexes still receive parameter 0.
 			receiver_type = receiver_name
 			receiver_name = '_'
+		} else if p.tok == .name && p.lit == 'chan' && p.peek() == .rpar {
+			// The builtin channel methods use the generic `chan` receiver. A bare
+			// channel is invalid everywhere else because it has no element type.
+			receiver_type = p.lit
+			p.next()
 		} else {
 			receiver_type = p.parse_type_name()
 		}
@@ -1216,10 +1362,39 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		if is_shared {
 			receiver_type = 'shared ' + receiver_type
 		}
+		if p.tok == .pipe {
+			p.record_diagnostic_span('unexpected token `|`, expecting `)`', p.tok_pos, p.tok_end)
+		}
 		p.check(.rpar)
 
 		// operator overload: fn (r Type) + (other Type) RetType { }
 		if p.tok != .name && p.tok != .eof {
+			if p.tok in [.plus_assign, .minus_assign, .div_assign, .mul_assign, .power_assign,
+				.mod_assign] {
+				name_pos = p.tok_pos
+				assignment_op := p.tok.str()
+				base_op := match p.tok {
+					.plus_assign { '+' }
+					.minus_assign { '-' }
+					.div_assign { '/' }
+					.mul_assign { '*' }
+					.power_assign { '**' }
+					.mod_assign { '%' }
+					else { '' }
+				}
+				clean_type := method_receiver_type_name(receiver_type)
+				has_base_overload := p.a.nodes.any(it.kind == .fn_decl
+					&& it.value == '${clean_type}.${base_op}')
+				message := if has_base_overload {
+					'cannot overload `${assignment_op}`, operator is implicitly overloaded because the `${base_op}` operator is overloaded'
+				} else {
+					'cannot overload `${assignment_op}`, overload `${base_op}` and `${assignment_op}` will be automatically generated'
+				}
+				p.record_diagnostic_span(message, p.tok_pos, p.tok_end)
+				p.next()
+				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut,
+					assignment_op, name_pos)
+			}
 			if p.tok == .lsbr && p.peek() == .rsbr {
 				name_pos = p.tok_pos
 				p.next()
@@ -1234,6 +1409,11 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			if p.tok.is_overloadable() {
 				name_pos = p.tok_pos
 				op_name := overload_token_name(p.tok)
+				clean_type := method_receiver_type_name(receiver_type)
+				if p.a.nodes.any(it.kind == .fn_decl && it.value == '${clean_type}.${op_name}') {
+					p.record_diagnostic_span('cannot duplicate operator overload `${op_name}`',
+						p.tok_pos, p.tok_end)
+				}
 				p.next()
 				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut, op_name, name_pos)
 			}
@@ -1251,14 +1431,31 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	}
 
 	// function name
+	if !is_method && p.tok.is_overloadable() {
+		name_pos = p.tok_pos
+		name = p.tok.str()
+		p.record_diagnostic_span('cannot use operator overloading with normal functions', p.tok_pos,
+			p.tok_end)
+		p.next()
+	}
 	if p.tok_can_be_decl_name() {
 		name_pos = p.tok_pos
 		name = p.expect_name_or_keyword()
 		if p.tok == .dot {
+			qualified_start := name_pos
 			p.next()
 			if name == 'C' || name == 'JS' {
 				// C.func or JS.func
 				interop_prefix := name
+				if (p.cur_file.ends_with('.c.v') || p.cur_file.ends_with('.c.vv'))
+					&& interop_prefix == 'JS' {
+					p.record_diagnostic_span('JS code is not allowed in .c.v files, please move it to a .js.v file',
+						qualified_start, qualified_start + interop_prefix.len)
+				} else if (p.cur_file.ends_with('.js.v') || p.cur_file.ends_with('.js.vv'))
+					&& interop_prefix == 'C' {
+					p.record_diagnostic_span('C code is not allowed in .js.v files, please move it to a .c.v file',
+						qualified_start, qualified_start + interop_prefix.len)
+				}
 				name_pos = p.tok_pos
 				name = p.expect_name_or_keyword()
 				for p.tok == .dot {
@@ -1275,7 +1472,8 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			name_pos = p.tok_pos
 			second := p.expect_name_or_keyword()
 			if is_method {
-				// This shouldn't happen for methods
+				p.record_diagnostic_span('cannot declare a static function as a receiver method',
+					qualified_start, p.prev_tok_end)
 				name = name + '.' + second
 			} else {
 				// Static method: Type.name
@@ -1293,6 +1491,11 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			flat.encode_static_type_method_name(clean_type, name)
 		} else {
 			'${clean_type}.${name}'
+		}
+		if p.a.nodes.any(it.pos.id == p.cur_file_id && it.kind == .fn_decl && it.value == name) {
+			method_name := name.all_after_last('.')
+			p.record_diagnostic_span('duplicate method `${method_name}`', name_pos,
+				name_pos + method_name.len)
 		}
 	}
 
@@ -1334,6 +1537,8 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	ret_type_start := p.tok_pos
 	if p.tok != .lcbr && p.tok != .semicolon && p.tok != .eof {
 		ret_type = p.parse_type_name()
+		ret_type = p.validate_fn_return_type(ret_type, ret_type_start)
+		p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
 		if p.tok == .question {
 			ret_type += '?'
 			p.next()
@@ -1448,8 +1653,24 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.disable_fn_body = false
 	// generic params — skip
 	mut generic_params := []string{}
+	if p.tok == .lt {
+		p.record_diagnostic_span('unexpected token `<`, expecting `(`', p.tok_pos, p.tok_end)
+		for p.tok !in [.gt, .eof] {
+			p.next()
+		}
+		if p.tok == .gt {
+			p.next()
+		}
+	}
 	if p.tok == .lsbr {
 		generic_params = p.parse_generic_param_names()
+	}
+	if p.pending_export.len > 0 {
+		if is_c_decl {
+			p.record_export_attr_diagnostic('interop function cannot be exported', name_pos)
+		} else if generic_params.len > 0 {
+			p.record_export_attr_diagnostic('generic functions cannot be exported', name_pos)
+		}
 	}
 
 	// params
@@ -1477,12 +1698,26 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	}
 	param_list_end := p.tok_pos
 	p.check(.rpar)
+	is_legacy_generic_return := p.tok == .lsbr && generic_params.any(p.s.src[p.tok_pos..].starts_with('[${it}]'))
+	if p.tok == .lsbr && !p.current_lbr_starts_array_type() && !is_legacy_generic_return {
+		p.record_diagnostic_span('unexpected token `[` after function signature, expecting `{`',
+			p.tok_pos, p.tok_end)
+	}
 
 	// return type
 	mut ret_type := 'void'
 	ret_type_start := p.tok_pos
 	if p.can_start_type_name() {
 		ret_type = p.parse_type_name()
+		ret_type = p.validate_fn_return_type(ret_type, ret_type_start)
+		for generic_name in generic_params {
+			if ret_type == '[${generic_name}]' {
+				p.record_diagnostic_span('invalid generic return, use `${generic_name}` instead',
+					ret_type_start, p.prev_tok_end)
+				break
+			}
+		}
+		p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
 		if p.tok == .question {
 			ret_type += '?'
 			p.next()
@@ -1493,6 +1728,19 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	}
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
+	}
+	if p.tok == .lcbr
+		&& param_ids.any(p.a.node(it).kind == .param && p.a.node(it).typ.len == 0
+			&& p.a.node(it).value.len > 0) {
+		p.record_diagnostic_span('functions with type only params can not have bodies', p.tok_pos,
+			p.tok_end)
+	}
+	if p.tok == .lsbr {
+		p.record_diagnostic_span('unexpected token `[` after function signature, expecting `{`',
+			p.tok_pos, p.tok_end)
+	}
+	if is_c_decl && p.tok == .lcbr {
+		p.record_diagnostic_span('interop functions cannot have a body', p.tok_pos, p.tok_end)
 	}
 	// no body — extern/C declaration
 	if p.tok != .lcbr {
@@ -1536,6 +1784,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	mut formatter_end := 0
 	prev_fn := p.cur_fn
 	prev_fn_offset := p.cur_fn_offset
+	prev_fn_generic_params := p.cur_fn_generic_params
 	prev_struct := p.cur_struct
 	prev_method_is_static := p.cur_method_is_static
 	prev_veb_ctx_name := p.cur_veb_ctx_name
@@ -1543,6 +1792,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	outer_defer_result_allowed := p.defer_result_allowed
 	outer_nested_block_depth := p.nested_block_depth
 	p.cur_fn = name
+	p.cur_fn_generic_params = generic_params
 	// The declaration's node records `name_pos` as its position, so keying the
 	// names of its skipped bodies on it lets the checker find them again.
 	p.cur_fn_offset = name_pos
@@ -1595,6 +1845,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
 	p.cur_fn_offset = prev_fn_offset
+	p.cur_fn_generic_params = prev_fn_generic_params
 	p.cur_struct = prev_struct
 	p.cur_method_is_static = prev_method_is_static
 	p.cur_veb_ctx_name = prev_veb_ctx_name
@@ -1628,6 +1879,31 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.register_pending_export(name)
 	p.register_pending_noreturn(name)
 	return id
+}
+
+fn (mut p Parser) record_export_attr_diagnostic(message string, before int) {
+	prefix := p.s.src[..clamp_source_offset(before, p.s.src.len)]
+	start := prefix.last_index('@[export') or { before }
+	end := p.s.src.index_after(']', start) or { start + 1 }
+	p.record_diagnostic_span(message, start, end + 1)
+}
+
+fn (mut p Parser) validate_fn_return_type(first string, start int) string {
+	if first.trim_left('?!').starts_with('mut ') {
+		mut_start := p.s.src.index_after('mut', start) or { start }
+		p.record_diagnostic_span('cannot use `mut` on fn return type', mut_start, mut_start + 3)
+	}
+	if p.tok != .comma {
+		return first
+	}
+	mut types := [first]
+	for p.tok == .comma {
+		p.next()
+		types << p.parse_type_name()
+	}
+	p.record_diagnostic_span('multiple return types in function declaration must use parentheses, e.g. (int, string)',
+		start, p.prev_tok_end)
+	return '(' + types.join(', ') + ')'
 }
 
 fn veb_context_binding_name(a &flat.FlatAst, param_ids []flat.NodeId, ret_type string) string {
@@ -1754,6 +2030,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	// variadic ...Type (no param name)
 	if p.tok == .ellipsis {
 		typ := p.parse_type_name()
+		if is_mut || is_shared || is_atomic {
+			p.record_variadic_modifier_diagnostic(typ, p.prev_tok_end)
+		}
 		id := p.add_node(flat.Node{
 			kind:   .param
 			value:  ''
@@ -1793,6 +2072,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 		return ids
 	}
+	if p.tok == .name && p.lit == 'sql' {
+		p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos, p.tok_end)
+	}
 	name_positions << p.current_pos()
 	names << p.expect_name_or_keyword()
 	for p.tok == .comma {
@@ -1801,11 +2083,41 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			p.next()
 		}
 		if p.tok_can_be_decl_name() {
+			if p.tok == .name && p.lit == 'sql' {
+				p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos,
+					p.tok_end)
+			}
 			name_positions << p.current_pos()
 			names << p.expect_name_or_keyword()
 		}
 	}
+	if p.tok == .key_mut {
+		if !p.prefs.is_fmt {
+			p.record_warning_span('use `mut f Foo` instead of `f mut Foo`', p.tok_pos, p.tok_end)
+		}
+		is_mut = true
+		p.next()
+	}
+	type_start := p.span_start()
 	mut typ := p.parse_type_name()
+	if typ.len > 0 {
+		for i, name in names {
+			if name.len > 0 && name[0] >= `A` && name[0] <= `Z` {
+				p.record_diagnostic_span('parameter name must not begin with upper case letter (`${name[0].ascii_str()}`)',
+					name_positions[i].offset, name_positions[i].end)
+			}
+		}
+	}
+	if typ.starts_with('...') {
+		if is_mut || is_shared || is_atomic {
+			p.record_variadic_modifier_diagnostic(typ, p.prev_tok_end)
+		}
+		if p.tok == .comma && names.len > 0 {
+			p.record_diagnostic_span('cannot use ...(variadic) with non-final parameter ${names[0]}',
+				name_positions[0].offset, name_positions[0].end)
+		}
+	}
+	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
 	param_group_end := p.prev_tok_end
 	explicit_mut_ref := is_mut && typ.starts_with('&')
 	if is_mut && !typ.starts_with('&') {
@@ -1832,6 +2144,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	if p.tok == .comma {
 		p.next()
+	} else if p.tok == .name {
+		p.record_diagnostic_span('unexpected name `${p.lit}`, expecting `,`', p.tok_pos,
+			p.tok_end)
 	}
 	return ids
 }
@@ -1883,7 +2198,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	p.pending_has_aligned = false
 	p.pending_aligned = ''
 	p.next() // skip 'struct' or 'union'
+	name_start := p.tok_pos
 	mut name := p.expect(.name)
+	name_end := name_start + name.len
 	if (name == 'C' || name == 'JS') && p.tok == .dot {
 		for p.tok == .dot {
 			p.next()
@@ -1916,6 +2233,10 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	}
 	// no body (C struct forward decl)
 	if p.tok != .lcbr {
+		if !name.starts_with('C.') && !name.starts_with('JS.') {
+			kind := if is_union { 'union' } else { 'struct' }
+			p.record_diagnostic_span('`${kind}` lacks body', name_start, name_end)
+		}
 		if p.tok == .semicolon {
 			p.next()
 		}
@@ -1937,6 +2258,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	mut sect_is_global := false
 	mut sect_is_module := false
 	mut pending_attrs := []string{}
+	mut pending_attrs_start := -1
+	mut has_c_embed := false
+	mut embedding_allowed := true
+	mut embedded_types := map[string]bool{}
+	mut embedded_names := map[string]string{}
 	for p.tok != .rcbr && p.tok != .eof {
 		// access modifiers
 		if p.tok == .key_pub {
@@ -1961,6 +2287,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				sect_is_mut = section_mut
 				sect_is_global = false
 				sect_is_module = false
+				embedding_allowed = false
 				continue
 			}
 		}
@@ -1972,8 +2299,17 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				sect_is_mut = true
 				sect_is_global = false
 				sect_is_module = false
+				embedding_allowed = false
 				continue
 			}
+			p.record_diagnostic_span('missing `:` after `mut` in struct', p.tok_pos, p.tok_end)
+			p.next()
+			sect_is_pub = false
+			sect_is_mut = true
+			sect_is_global = false
+			sect_is_module = false
+			embedding_allowed = false
+			continue
 		}
 		if p.tok == .key_global {
 			if p.peek() == .colon {
@@ -1983,6 +2319,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				sect_is_mut = true
 				sect_is_global = true
 				sect_is_module = false
+				embedding_allowed = false
 				continue
 			}
 		}
@@ -1993,6 +2330,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			sect_is_mut = false
 			sect_is_global = false
 			sect_is_module = true
+			embedding_allowed = false
 			continue
 		}
 		if p.tok == .semicolon {
@@ -2009,6 +2347,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		}
 		// leading attributes apply to the next field
 		if p.tok == .attribute {
+			if pending_attrs_start < 0 {
+				pending_attrs_start = p.tok_pos
+			}
 			pending_attrs << p.parse_field_attrs()
 			continue
 		}
@@ -2043,8 +2384,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			field_start := p.span_start()
 			field_name := p.expect_name_or_keyword()
 			if p.tok == .dot {
+				if name.starts_with('C.') {
+					has_c_embed = true
+				}
 				p.next()
 				second := p.expect_name_or_keyword()
+				if second.len > 0 && second[0] >= `a` && second[0] <= `z` {
+					p.record_diagnostic_span('invalid field name', field_start, field_start + field_name.len)
+				}
 				full_type := '${field_name}.${second}'
 				field_type := full_type + p.parse_type_generic_suffix()
 				fid := p.add_node(flat.Node{
@@ -2053,8 +2400,40 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   field_type
 					pos:   p.span_to(field_start)
 				})
+				p.validate_struct_embed(field_type, field_start, p.prev_tok_end, embedding_allowed,
+					pending_attrs_start, mut embedded_types, mut embedded_names)
 				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, pending_attrs, true)
 				pending_attrs = []string{}
+				pending_attrs_start = -1
+				ids << fid
+				if p.tok == .semicolon {
+					p.next()
+				}
+				continue
+			}
+			if p.tok == .lsbr && p.tok_pos > p.prev_tok_end && field_name.len > 0
+				&& field_name[0] >= `A` && field_name[0] <= `Z` {
+				attr_start := p.tok_pos
+				mut embed_attrs := pending_attrs.clone()
+				embed_attrs << p.parse_field_attrs()
+				embedded_type := p.resolve_local_type_name(field_name)
+				fid := p.add_node(flat.Node{
+					kind:  .field_decl
+					value: embedded_type
+					typ:   embedded_type
+					pos:   p.span_to(field_start)
+				})
+				p.validate_struct_embed(embedded_type, field_start, p.prev_tok_end,
+					embedding_allowed, if pending_attrs_start >= 0 {
+						pending_attrs_start
+					} else {
+						attr_start
+					},
+					mut embedded_types, mut embedded_names)
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module,
+					embed_attrs, true)
+				pending_attrs = []string{}
+				pending_attrs_start = -1
 				ids << fid
 				if p.tok == .semicolon {
 					p.next()
@@ -2072,6 +2451,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				saved_has_peek := p.has_peek
 				suffix := p.parse_type_generic_suffix()
 				if suffix.len > 0 && (p.tok == .semicolon || p.tok == .rcbr) {
+					if name.starts_with('C.') {
+						has_c_embed = true
+					}
 					embedded_type := p.resolve_local_type_name(field_name + suffix)
 					fid := p.a.add_node(flat.Node{
 						kind:  .field_decl
@@ -2079,8 +2461,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   embedded_type
 						pos:   p.span_to(field_start)
 					})
+					p.validate_struct_embed(embedded_type, field_start, p.prev_tok_end,
+						embedding_allowed, pending_attrs_start, mut embedded_types, mut embedded_names)
 					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, pending_attrs, true)
 					pending_attrs = []string{}
+					pending_attrs_start = -1
 					ids << fid
 					if p.tok == .semicolon {
 						p.next()
@@ -2098,6 +2483,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			}
 			// embedded struct (type on its own line, followed by semicolon)
 			if p.tok == .semicolon || p.tok == .rcbr {
+				if name.starts_with('C.') {
+					has_c_embed = true
+				}
 				embedded_type := p.resolve_local_type_name(field_name)
 				fid := p.add_node(flat.Node{
 					kind:  .field_decl
@@ -2105,8 +2493,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   embedded_type
 					pos:   p.span_to(field_start)
 				})
+				p.validate_struct_embed(embedded_type, field_start, p.prev_tok_end, embedding_allowed,
+					pending_attrs_start, mut embedded_types, mut embedded_names)
 				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, sect_is_module, pending_attrs, true)
 				pending_attrs = []string{}
+				pending_attrs_start = -1
 				ids << fid
 				if p.tok == .semicolon {
 					p.next()
@@ -2121,9 +2512,10 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					p.next()
 					names << p.expect_name_or_keyword()
 				}
-				field_type := p.parse_type_name()
+				field_type := p.parse_struct_field_type()
 				mut group_attrs := pending_attrs.clone()
 				pending_attrs = []string{}
+				pending_attrs_start = -1
 				if p.tok == .attribute || p.tok == .lsbr {
 					group_attrs << p.parse_field_attrs()
 				}
@@ -2140,6 +2532,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				if p.tok == .semicolon {
 					p.next()
 				}
+				embedding_allowed = false
 				continue
 			}
 			// For embedded structs followed by access modifier or another field,
@@ -2147,12 +2540,18 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			field_type := p.parse_struct_field_type()
 			mut fattrs := pending_attrs.clone()
 			pending_attrs = []string{}
+			pending_attrs_start = -1
+			mut has_attrs_before_default := false
 			if p.tok == .attribute || p.tok == .lsbr {
 				fattrs << p.parse_field_attrs()
+				has_attrs_before_default = true
 			}
 			mut default_id := flat.empty_node
 			// default value
 			if p.tok == .assign {
+				if has_attrs_before_default {
+					p.record_diagnostic_span('expecting type declaration', p.tok_pos, p.tok_end)
+				}
 				p.next()
 				default_id = p.expr(.lowest)
 			}
@@ -2179,9 +2578,13 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			if p.tok == .semicolon {
 				p.next()
 			}
+			embedding_allowed = false
 		} else {
 			p.next()
 		}
+	}
+	if has_c_embed {
+		p.record_diagnostic('expecting type declaration', p.tok_pos)
 	}
 	p.check(.rcbr)
 	p.pending_params = false
@@ -2287,6 +2690,10 @@ fn (mut p Parser) global_decl() flat.NodeId {
 		if p.tok == .name || p.tok.is_keyword() {
 			field_start := p.span_start()
 			gname := p.expect_name_or_keyword()
+			if is_builtin_type(gname) {
+				p.record_diagnostic_span('invalid use of reserved type `${gname}` as a global name',
+					field_start, field_start + gname.len)
+			}
 			// handle qualified names: C.errno
 			mut full_name := gname
 			for p.tok == .dot {
@@ -2386,6 +2793,8 @@ fn (mut p Parser) const_decl() flat.NodeId {
 			if is_grouped {
 				// The wording and the acute quotes match the existing fixtures.
 				p.record_diagnostic('unexpected eof, expecting ´)´', p.s.src.len)
+			} else if ids.len == 0 {
+				p.record_diagnostic('unexpected eof, expecting name', p.s.src.len)
 			}
 			break
 		}
@@ -2412,9 +2821,30 @@ fn (mut p Parser) const_decl() flat.NodeId {
 				p.next()
 				full_name = 'C.' + p.expect_name_or_keyword()
 			}
+			if p.tok == .comma {
+				p.record_diagnostic_span('const declaration do not support multiple assign yet',
+					p.tok_pos, p.tok_end)
+				for p.tok !in [.semicolon, .eof] {
+					p.next()
+				}
+				ids << p.add_node(flat.Node{
+					kind:  .const_field
+					value: full_name
+					pos:   p.span_to(field_start)
+				})
+				if p.tok == .semicolon {
+					p.next()
+				}
+				continue
+			}
 			if p.tok == .assign || (p.prefs.is_fmt && p.tok == .decl_assign) {
 				p.next()
-				val_id := p.expr(.lowest)
+				val_id := if p.tok == .eof {
+					p.record_diagnostic('unexpected eof, expecting an expression', p.s.src.len)
+					p.add(flat.NodeKind.empty)
+				} else {
+					p.expr(.lowest)
+				}
 				if value := p.comptime_node_value(val_id) {
 					p.comptime_const_values[comptime_const_value_key(p.cur_module, full_name)] = value
 				}
@@ -2641,6 +3071,7 @@ fn (mut p Parser) enabled_enum_comptime_fields() []flat.NodeId {
 }
 
 fn (mut p Parser) type_decl() flat.NodeId {
+	decl_start := p.span_start()
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	p.next() // skip 'type'
@@ -2653,19 +3084,59 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			p.next()
 		}
 	}
+	name_pos := p.current_pos()
 	name := language_prefix + p.expect_name()
 	// generic params
 	mut generic_params := []string{}
+	mut generic_params_end := decl_start
 	if p.tok == .lsbr {
 		generic_params = p.parse_generic_param_names()
+		generic_params_end = p.prev_tok_end
 	}
-	p.expect(.assign)
+	if p.tok == .assign {
+		p.next()
+	} else {
+		unexpected := if p.tok == .name { 'name `${p.lit}`' } else { 'token `${p.tok.str()}`' }
+		p.record_diagnostic_span('unexpected ${unexpected}, expecting `=`', p.tok_pos, p.tok_end)
+	}
 	type_start := p.span_start()
 	first_type := p.parse_type_name()
+	is_sum_type := p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe))
+	if generic_params.len > 0 && !first_type.starts_with('fn(') && !is_sum_type {
+		p.record_diagnostic_span('generic type aliases are not yet implemented', decl_start,
+			generic_params_end)
+	}
+	if first_type.starts_with('fn(') {
+		close := first_type.index(')') or { -1 }
+		if close > 3 {
+			params := first_type[3..close]
+			ret := first_type[close + 1..].trim_space().trim_left('?!&')
+			if type_text_contains_word(params, name) {
+				pos := p.s.src.index_after(name, type_start) or { type_start }
+				p.record_diagnostic_span('`${name}` cannot be a parameter as it references the fntype',
+					pos, pos + name.len)
+			} else if type_text_contains_word(ret, name) {
+				pos := p.s.src.index_after(name, type_start) or { type_start }
+				p.record_diagnostic_span('`${name}` cannot be a return type as it references the fntype',
+					pos, pos + name.len)
+			} else if generic_params.len == 0 && fn_type_uses_implicit_generic(first_type) {
+				p.record_diagnostic_span('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
+					name_pos.offset, name_pos.end)
+			}
+		}
+	}
 	// check for sum type: type T = A | B | C
 	// skip auto-semicolon before pipe
-	if p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe)) {
+	if is_sum_type {
+		if language_prefix.len == 0 && name.len == 1 && name[0] >= `A` && name[0] <= `Z` {
+			p.record_diagnostic_span('single letter capital names are reserved for generic template types',
+				name_pos.offset, name_pos.end)
+		}
 		mut variants := []flat.NodeId{}
+		if first_type == 'none' {
+			p.record_diagnostic_span('named sum type cannot have none as its variant', type_start,
+				p.prev_tok_end)
+		}
 		variants << p.add_node(flat.Node{
 			kind:  .ident
 			value: first_type
@@ -2678,6 +3149,10 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			p.next() // skip |
 			variant_start := p.span_start()
 			variant_type := p.parse_type_name()
+			if variant_type == 'none' {
+				p.record_diagnostic_span('named sum type cannot have none as its variant', variant_start,
+					p.prev_tok_end)
+			}
 			variants << p.add_node(flat.Node{
 				kind:  .ident
 				value: variant_type
@@ -2698,6 +3173,10 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			pos:            p.span_to(type_start)
 		})
 	}
+	if language_prefix.len == 0 && first_type == name {
+		p.record_diagnostic_span('a type alias can not refer to itself: ${name}', decl_start,
+			p.prev_tok_end)
+	}
 	if p.tok == .semicolon {
 		p.next()
 	}
@@ -2712,15 +3191,58 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	})
 }
 
+fn type_text_contains_word(text string, word string) bool {
+	if word.len == 0 || text.len < word.len {
+		return false
+	}
+	for i := 0; i + word.len <= text.len; i++ {
+		if text[i..i + word.len] != word {
+			continue
+		}
+		left_ok := i == 0 || !is_name_char(text[i - 1])
+		right_ok := i + word.len == text.len || !is_name_char(text[i + word.len])
+		if left_ok && right_ok {
+			return true
+		}
+	}
+	return false
+}
+
+fn fn_type_uses_implicit_generic(signature string) bool {
+	for i, c in signature {
+		if c < `A` || c > `Z` {
+			continue
+		}
+		left_ok := i == 0 || (!is_name_char(signature[i - 1]) && signature[i - 1] != `.`)
+		right_ok := i + 1 == signature.len
+			|| (!is_name_char(signature[i + 1]) && signature[i + 1] != `.`)
+		if left_ok && right_ok {
+			return true
+		}
+	}
+	return false
+}
+
+fn is_name_char(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
+		|| c == `_`
+}
+
 fn (mut p Parser) interface_decl() flat.NodeId {
 	interface_start := p.span_start()
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	p.next() // skip 'interface'
+	name_start := p.tok_pos
 	mut name := p.expect(.name)
 	for p.tok == .dot {
 		p.next()
 		name += '.' + p.expect(.name)
+	}
+	short_name := name.all_after_last('.')
+	if short_name.len == 1 && short_name[0] >= `A` && short_name[0] <= `Z` {
+		p.record_diagnostic_span('single letter capital names are reserved for generic template types.',
+			name_start, name_start + 1)
 	}
 	// generic params
 	mut generic_params := []string{}
@@ -2732,6 +3254,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	}
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	mut method_names := map[string]bool{}
 	mut fields_are_mut := false
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .key_mut {
@@ -2753,6 +3276,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			field_name += '.' + p.expect_name_or_keyword()
 		}
 		mut method_generic_params := []string{}
+		method_generic_start := p.tok_pos
 		if p.tok == .lsbr && p.peek() in [.name, .xor] {
 			if p.peek() == .xor {
 				// Compiler parsing erases interface method lifetimes; formatter parsing keeps
@@ -2767,10 +3291,19 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				method_generic_params = p.parse_generic_param_names()
 			}
 		}
+		if generic_params.len == 0 && method_generic_params.len > 0 {
+			p.record_diagnostic_span('non-generic interface `${name}` cannot define a generic method',
+				method_generic_start, method_generic_start + 1)
+		}
 		if p.tok != .lpar && method_generic_params.len > 0 {
 			field_name += '[${method_generic_params.join(', ')}]'
 		}
 		if p.tok == .lpar {
+			if method_names[field_name] {
+				p.record_diagnostic_span('duplicate method `${field_name}`', method_start,
+					method_start + field_name.len)
+			}
+			method_names[field_name] = true
 			// method: name(params) ret_type
 			p.next() // skip (
 			mut params := []flat.NodeId{}
@@ -2866,7 +3399,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			})
 		} else {
 			// field: name type
-			ftype := p.parse_type_name()
+			ftype := p.parse_struct_field_type()
 			ids << p.add_node(flat.Node{
 				kind:   .interface_field
 				is_mut: fields_are_mut
@@ -2985,6 +3518,9 @@ fn (mut p Parser) directive() flat.NodeId {
 	if space_idx > 0 {
 		name = full[..space_idx]
 		value = full[space_idx + 1..].trim_space()
+	}
+	if name == 'flag' && value.len == 0 {
+		p.record_diagnostic_span('no argument(s) provided for #flag', directive_start, directive_end)
 	}
 	if p.tok == .semicolon {
 		p.next()
@@ -3144,6 +3680,31 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_
 	p.a.nodes[int(id)].payload = flat.node_payload(gp)
 }
 
+fn (mut p Parser) validate_struct_embed(field_type string, start int, end int, placement_ok bool, attr_start int, mut embedded_types map[string]bool, mut embedded_names map[string]string) {
+	short_name := field_type.all_after_last('.')
+	line, _ := p.s.current_file().find_line_and_column(clamp_source_offset(start, p.s.src.len))
+	has_prior_line_diagnostic := p.diagnostics.any(it.file == p.cur_file && it.line == line)
+	// A malformed field can leave type fragments for recovery. Do not report those
+	// fragments as additional embedded fields on the same line.
+	if !has_prior_line_diagnostic {
+		if attr_start >= 0 {
+			p.record_diagnostic_span('cannot use attributes on embedded structs', attr_start,
+				attr_start + 1)
+		} else if !placement_ok {
+			p.record_diagnostic_span('struct embedding must be declared at the beginning of the struct body',
+				start, end)
+		} else if field_type in embedded_types {
+			p.record_diagnostic_span('cannot embed `${field_type}` more than once', start, end)
+		} else if previous_type := embedded_names[short_name] {
+			if previous_type != field_type {
+				p.record_diagnostic_span('duplicate field `${short_name}`', start, end)
+			}
+		}
+	}
+	embedded_types[field_type] = true
+	embedded_names[short_name] = field_type
+}
+
 // attr_unquote strips a single pair of surrounding quotes from an attribute key (unlike
 // strip_quotes, it does not treat a leading `r` as a raw-string prefix).
 fn attr_unquote(s string) string {
@@ -3186,6 +3747,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 	mut attrs := []string{}
 	mut kinds := []int{}
 	mut sources := []string{}
+	mut deprecated_after_spans := []token.Pos{}
 	mut groups := 0
 	for p.tok == .attribute || p.tok == .lsbr {
 		if single_group && groups > 0 {
@@ -3196,7 +3758,12 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 			p.record_diagnostic_span('multiple attributes should be in the same @[], with ; separators', int_max(0, p.tok_pos - 1), p.tok_pos + 1)
 		}
 		groups++
+		group_attrs_start := attrs.len
 		p.next() // consume `@[` / `[`
+		mut invalid_group := false
+		if p.tok == .rsbr {
+			p.record_diagnostic_span('attributes cannot be empty', group_start, p.tok_end)
+		}
 		if p.tok == .key_if {
 			p.next()
 			cond := p.parse_attribute_comptime_cond()
@@ -3229,6 +3796,14 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 			// The formatter re-emits field attributes from these strings, so it must keep
 			// the quotes of a whole-string attribute (`@['C\x5cnD']`) - unquoted, the
 			// escape is no longer valid syntax. Reflection keeps the legacy unquoted form.
+			piece_start := p.tok_pos
+			piece_end := p.tok_end
+			piece_name := attr_unquote(p.lit).all_before(':').trim_space()
+			if piece_name.len > 0
+				&& (attrs.any(it.all_before(':').trim_space() == piece_name)
+					|| p.pending_decl_attrs.any(it.all_before(':').trim_space() == piece_name)) {
+				p.record_diagnostic_span('duplicate attribute `${piece_name}`', piece_start, piece_end)
+			}
 			mut piece := if p.prefs.is_fmt { p.lit } else { attr_unquote(p.lit) }
 			p.next()
 			if p.tok == .lpar {
@@ -3268,6 +3843,15 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 			mut kind := piece_kind
 			if p.tok == .colon {
 				p.next()
+				if p.tok in [.rsbr, .colon, .lsbr, .rcbr] {
+					p.record_diagnostic_span('unexpected token `${p.tok.str()}`, an argument is expected after `:`',
+						p.tok_pos, p.tok_end)
+					invalid_group = true
+					for p.tok !in [.rsbr, .rcbr, .semicolon, .eof] {
+						p.next()
+					}
+					continue
+				}
 				kind = parsed_attribute_kind(p.tok)
 				piece += ': ' + p.lit.trim_space()
 				p.next()
@@ -3278,10 +3862,24 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 				kinds << kind
 			}
 		}
-		p.check(.rsbr)
+		if !invalid_group || p.tok == .rsbr {
+			p.check(.rsbr)
+		}
+		if !p.prefs.is_fmt
+			&& attrs[group_attrs_start..].any(it.all_before(':').trim_space() == 'deprecated_after') {
+			deprecated_after_spans << token.new_span(p.cur_file_id, group_start, p.prev_tok_end)
+		}
 		if p.prefs.is_fmt {
 			pos := p.span_to(group_start)
 			sources << p.s.src[pos.offset..pos.end].clone()
+		}
+	}
+	has_deprecated := p.pending_decl_attrs.any(it.all_before(':').trim_space() == 'deprecated')
+		|| attrs.any(it.all_before(':').trim_space() == 'deprecated')
+	if deprecated_after_spans.len > 0 && !has_deprecated {
+		for pos in deprecated_after_spans {
+			p.record_warning_span('@[deprecated_after] is only valid, in the presence of a `@[deprecated]` attribute',
+				pos.offset, pos.end)
 		}
 	}
 	return ParsedFieldAttrs{
@@ -3641,13 +4239,31 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 	} else if p.tok == .name && p.lit == 'in' {
 		p.next()
 	}
+	mut invalid_expr := false
+	if p.tok == .dollar {
+		dollar_pos := p.tok_pos
+		p.next()
+		p.record_diagnostic_span('invalid expr, use `${p.lit}` instead', dollar_pos,
+			dollar_pos + 1)
+		invalid_expr = true
+	}
+	mut kind_start := p.tok_pos
 	mut segs := [p.expect_name()]
 	for p.tok == .dot {
 		p.next()
+		kind_start = p.tok_pos
 		segs << p.expect_name()
 	}
 	kind := if segs.len > 1 { segs.last() } else { 'fields' }
 	base := if segs.len > 1 { segs[..segs.len - 1].join('.') } else { segs.last() }
+	if segs.len > 1 && kind !in ['methods', 'fields', 'values', 'variants', 'attributes', 'params'] {
+		p.record_diagnostic_span('unknown kind `${kind}`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`',
+			kind_start, kind_start + kind.len)
+	}
+	if invalid_expr {
+		p.skip_block()
+		return flat.empty_node
+	}
 	p.comptime_for_vars << val_var
 	previous_method_var := p.comptime_method_var
 	if kind == 'methods' {
@@ -3674,6 +4290,10 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	dollar_start := p.span_start() // start offset of the leading `$`
 	p.next() // skip $
 	if p.tok != .key_if {
+		if p.tok == .eof {
+			p.record_diagnostic_span('unexpected eof', dollar_start, dollar_start + 1)
+			return flat.empty_node
+		}
 		if p.tok == .key_fn {
 			p.record_diagnostic_span('unexpected token `\$`', dollar_start, dollar_start + 1)
 			p.skip_top_level_stmt()
@@ -3778,20 +4398,17 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 		p.next()
 	}
 	p.check(.lcbr)
-	if subject_is_literal {
+	if subject_is_literal && !explicit_mut {
 		return p.parse_known_comptime_match_value(subject, is_top_level, is_expr)
 	}
 	subject_is_unresolved_local := p.is_local_binding(subject)
 		&& subject !in p.comptime_local_values
-	if value := p.comptime_local_values[subject] {
-		return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
-	}
-	if !subject_is_unresolved_local {
+	if !explicit_mut && !subject_is_unresolved_local && !p.is_local_binding(subject) {
 		if value := p.comptime_value(subject) {
 			return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
 		}
 	}
-	if subject.starts_with('@') {
+	if !explicit_mut && subject.starts_with('@') {
 		return p.parse_known_comptime_match_value(p.resolve_comptime_at_values(subject), is_top_level, is_expr)
 	}
 	mut branch_patterns := [][]string{}
@@ -3859,7 +4476,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 	match_metadata.insert(5, match_kind)
 	mut conds := []string{cap: branch_patterns.len}
 	condition_subject := if match_kind == 'value' {
-		p.comptime_value(subject) or { subject }
+		if explicit_mut { subject } else { p.comptime_value(subject) or { subject } }
 	} else {
 		subject
 	}
@@ -3950,15 +4567,26 @@ fn (mut p Parser) parse_known_comptime_match_value(value string, is_top_level bo
 		}
 		mut pattern_matches := false
 		for {
+			pattern_start := p.tok_pos
 			pattern := p.parse_comptime_match_pattern()
+			pattern_end := p.prev_tok_end
 			mut pattern_value := pattern
 			if known_value := p.comptime_value(pattern) {
 				pattern_value = known_value
 			} else if pattern.starts_with('@') {
 				pattern_value = p.resolve_comptime_at_values(pattern)
 			}
-			if comptime_cond_value(pattern_value) == comptime_cond_value(value) {
+			matches := comptime_cond_value(pattern_value) == comptime_cond_value(value)
+			if matches {
 				pattern_matches = true
+			}
+			if !p.prefs.is_fmt {
+				p.record_notice_span(if matches {
+					'match is always true'
+				} else {
+					'match is always false'
+				},
+					pattern_start, pattern_end)
 			}
 			if p.tok != .comma {
 				break
@@ -6237,7 +6865,21 @@ fn (mut p Parser) parse_generic_param_names() []string {
 				}
 				expect_name = false
 			} else if expect_name && p.tok == .name {
-				names << p.lit
+				name := p.lit
+				if name in names {
+					p.record_diagnostic_span('duplicated generic parameter `${name}`', p.tok_pos,
+						p.tok_end)
+				} else if names.len >= 9 {
+					p.record_diagnostic_span('cannot have more than 9 generic parameters', p.tok_pos,
+						p.tok_end)
+				} else if name.len != 1 {
+					p.record_diagnostic_span('generic parameter name needs to be exactly one char',
+						p.tok_pos, p.tok_end)
+				} else if name[0] >= `a` && name[0] <= `z` {
+					p.record_diagnostic_span('generic parameter needs to be uppercase', p.tok_pos,
+						p.tok_end)
+				}
+				names << name
 				expect_name = false
 			} else {
 				expect_name = false
@@ -7004,7 +7646,12 @@ fn (mut p Parser) stmt() flat.NodeId {
 			}.with_pos(p.span_to(kw_pos)))
 		}
 		.key_mut {
+			mut_start := p.tok_pos
+			mut_end := p.tok_end
 			p.next()
+			if p.tok == .name && p.lit == '_' {
+				p.record_diagnostic_span('cannot use `mut` on `_`', mut_start, mut_end)
+			}
 			if p.tok == .key_static {
 				stmt_id := p.static_decl_stmt()
 				p.mark_node_mut(stmt_id)
@@ -7031,13 +7678,23 @@ fn (mut p Parser) stmt() flat.NodeId {
 			if p.shared_token_is_identifier(false) {
 				return p.assign_or_expr_stmt()
 			}
+			shared_start := p.tok_pos
+			shared_end := p.tok_end
 			p.next()
+			if p.tok == .name && p.lit == '_' {
+				p.record_diagnostic_span('cannot use `shared` on `_`', shared_start, shared_end)
+			}
 			stmt_id := p.assign_or_expr_stmt()
 			p.mark_node_shared(stmt_id)
 			return stmt_id
 		}
 		.key_atomic {
+			atomic_start := p.tok_pos
+			atomic_end := p.tok_end
 			p.next()
+			if p.tok == .name && p.lit == '_' {
+				p.record_diagnostic_span('cannot use `atomic` on `_`', atomic_start, atomic_end)
+			}
 			stmt_id := p.assign_or_expr_stmt()
 			p.mark_node_atomic(stmt_id)
 			return stmt_id
@@ -7359,6 +8016,9 @@ fn (mut p Parser) static_decl_stmt() flat.NodeId {
 
 fn (mut p Parser) return_stmt() flat.NodeId {
 	return_pos := p.tok_pos
+	if p.defer_depth > 0 {
+		p.record_diagnostic_span('`return` not allowed inside `defer` block', p.tok_pos, p.tok_end)
+	}
 	p.next() // skip 'return'
 	mut ids := []flat.NodeId{}
 	// vfmt wraps long return expressions after the keyword. The following token
@@ -7401,6 +8061,12 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	p.next() // skip 'if'
 	if p.tok == .key_match {
 		p.record_diagnostic_span('cannot use `match` with `if` statements', p.tok_pos, p.tok_end)
+	} else if p.tok == .key_if {
+		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
+			p.tok_pos, p.tok_end)
+		p.next()
+	} else if p.tok == .name && p.lit in p.cur_fn_generic_params && p.peek() == .key_is {
+		p.record_diagnostic_span('use `$if` instead of `if`', if_start, if_start + 2)
 	}
 	cond := p.control_header_expr(.lowest)
 
@@ -7410,8 +8076,10 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	if p.tok == .comma || p.tok == .decl_assign {
 		// Simple if-guard; treat as regular condition for flat AST
 		if p.tok == .decl_assign {
+			assign_end := p.tok_end
 			p.next()
 			rhs := p.control_header_expr(.lowest)
+			p.validate_if_guard_rhs(rhs, assign_end)
 			guard_lhs_ids << guard_cond
 			istart := p.add_children2(guard_cond, rhs)
 			guard_cond = p.add_node(flat.Node{
@@ -7429,8 +8097,10 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 				lhs_ids << p.expr(.lowest)
 			}
 			if p.tok == .decl_assign {
+				assign_end := p.tok_end
 				p.next()
 				rhs := p.expr(.lowest)
+				p.validate_if_guard_rhs(rhs, assign_end)
 				mut all_ids := []flat.NodeId{cap: lhs_ids.len + 1}
 				all_ids << lhs_ids[0]
 				all_ids << rhs
@@ -7455,6 +8125,12 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	// skip auto-semicolon before {
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
+	}
+	for lid in guard_lhs_ids {
+		lhs := p.a.node(lid)
+		if lhs.kind == .ident && p.is_local_binding(lhs.value) {
+			p.record_diagnostic_span('redefinition of `${lhs.value}`', lhs.pos.offset, lhs.pos.end)
+		}
 	}
 	// The if-guard binding(s) are in scope only inside the guarded block; register them so
 	// a conditionally inlined template that calls one (e.g. `@{render(row)}` after
@@ -7488,6 +8164,30 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(if_start)
 	})
+}
+
+fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
+	if int(rhs_id) < 0 || int(rhs_id) >= p.a.nodes.len {
+		return
+	}
+	rhs := p.a.nodes[int(rhs_id)]
+	if rhs.kind !in [.call, .index, .prefix, .selector, .ident] {
+		mut start := assign_end
+		mut end := rhs.pos.end
+		source := p.s.src
+		start = int_max(0, int_min(start, source.len))
+		end = int_max(start, int_min(end, source.len))
+		for start < end && source[start] in [`:`, `=`, ` `, `\t`] {
+			start++
+		}
+		for end > start && source[end - 1] in [` `, `\t`, `{`] {
+			end--
+		}
+		line_start := if index := source[..start].last_index('\n') { index + 1 } else { 0 }
+		start = int_min(end, start + source[line_start..start].count('\t') * 3)
+		p.record_diagnostic_span('if guard condition expression is illegal, it should return an Option',
+			start, end)
+	}
 }
 
 fn (mut p Parser) for_stmt() flat.NodeId {
@@ -7718,7 +8418,7 @@ fn (mut p Parser) for_comma_header(first_expr flat.NodeId, first_is_mut bool) fl
 		if lhs_ids.len != 2 {
 			return flat.empty_node
 		}
-		for_id := p.for_in_parts(first_expr, val_id, first_is_mut || second_is_mut)
+		for_id := p.for_in_parts(first_expr, val_id, first_is_mut, second_is_mut)
 		p.record_formatter_for_in_mutability(for_id, first_is_mut, second_is_mut)
 		if !p.for_in_var_is_ident(first_expr) || !p.for_in_var_is_ident(val_id) {
 			return p.invalid_for_in_header(for_id)
@@ -7926,7 +8626,7 @@ fn (mut p Parser) for_in(first_expr flat.NodeId, first_is_mut bool) flat.NodeId 
 		val_id = p.add_val(.ident, p.expect_name())
 	}
 
-	for_id := p.for_in_parts(key_id, val_id, first_is_mut || second_is_mut)
+	for_id := p.for_in_parts(key_id, val_id, first_is_mut, second_is_mut)
 	p.record_formatter_for_in_mutability(for_id, first_is_mut, second_is_mut)
 	return for_id
 }
@@ -7947,7 +8647,7 @@ fn (mut p Parser) record_formatter_for_in_mutability(id flat.NodeId, first_is_mu
 	}
 }
 
-fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, value_is_mut bool) flat.NodeId {
+fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_mut bool, second_is_mut bool) flat.NodeId {
 	p.check(.key_in)
 	was_in_for_container := p.in_for_container
 	p.in_for_container = true
@@ -7963,6 +8663,28 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, value_is_
 		p.record_diagnostic_span('for loop only supports exclusive (`..`) ranges, not inclusive (`...`)', p.tok_pos, p.tok_end)
 		p.next()
 		range_end = p.expr(.lowest)
+	}
+
+	is_range := int(range_end) >= 0 || p.a.node(container).kind == .range
+	if is_range {
+		if first_is_mut {
+			p.record_for_mut_diagnostic(key_id, 'variable in range `for` cannot be mut')
+		} else if second_is_mut {
+			p.record_for_mut_diagnostic(val_id, 'variable in range `for` cannot be mut')
+		} else if int(val_id) >= 0 {
+			key := p.a.node(key_id)
+			p.record_diagnostic_span('cannot declare index variable with range `for`', key.pos.offset,
+				key.pos.end)
+		}
+	} else if int(val_id) >= 0 && first_is_mut {
+		p.record_for_mut_diagnostic(key_id, 'index of array or key of map cannot be mutated')
+	}
+	if int(val_id) < 0 {
+		key := p.a.node(key_id)
+		if key.kind == .ident && key.value != '_' && p.is_local_binding(key.value) {
+			p.record_diagnostic_span('redefinition of value iteration variable `${key.value}`, use `for (${key.value} in array) {` if you want to check for a condition instead',
+				key.pos.offset, key.pos.end)
+		}
 	}
 
 	// The key/value loop variables are locals scoped to the loop body.
@@ -7990,13 +8712,35 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, value_is_
 		// value field stores the count of header elements (key, val, container, [range_end])
 		// so gen knows where body starts
 		value:          if int(range_end) >= 0 { '4' } else { '3' }
-		op:             if value_is_mut { .amp } else { .none }
+		op:             if first_is_mut || second_is_mut { .amp } else { .none }
 	})
+}
+
+fn (mut p Parser) record_for_mut_diagnostic(id flat.NodeId, message string) {
+	variable := p.a.node(id)
+	mut word_end := variable.pos.offset
+	mut i := word_end - 1
+	for i >= 0 && p.s.src[i] in [` `, `\t`, `\n`, `\r`] {
+		i--
+	}
+	word_end = i + 1
+	for i >= 0 && p.s.src[i] >= `a` && p.s.src[i] <= `z` {
+		i--
+	}
+	word_start := i + 1
+	if word_start < word_end && p.s.src[word_start..word_end] == 'mut' {
+		p.record_diagnostic_span(message, word_start, word_end)
+		return
+	}
+	p.record_diagnostic_span(message, variable.pos.offset, variable.pos.end)
 }
 
 fn (mut p Parser) match_stmt() flat.NodeId {
 	match_start := p.span_start()
 	p.next() // skip 'match'
+	if p.tok == .name && p.lit == 'sql' {
+		p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos, p.tok_end)
+	}
 	match_expr := p.control_header_expr(.lowest)
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
@@ -8138,7 +8882,19 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		p.next()
 		return p.add_val(.ident, name)
 	}
+	p.in_match_branch_condition++
 	cond := p.expr(.lowest)
+	p.in_match_branch_condition--
+	cond_node := p.a.node(cond)
+	if cond_node.kind == .range && cond_node.children_count == 2 {
+		low := p.a.child_node(cond_node, 0)
+		high := p.a.child_node(cond_node, 1)
+		op_start := clamp_source_offset(low.pos.end, p.s.src.len)
+		op_end := int_min(clamp_source_offset(high.pos.offset, p.s.src.len), op_start + 2)
+		p.record_diagnostic_span('match only supports inclusive (`...`) ranges, not exclusive (`..`) ',
+			op_start, op_end)
+		return cond
+	}
 	if p.tok == .ellipsis {
 		p.next()
 		rhs := p.expr(.lowest)
@@ -8288,7 +9044,12 @@ fn (mut p Parser) block_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) unsafe_block_stmt(unsafe_start int) flat.NodeId {
+	if p.unsafe_depth > 0 {
+		p.record_diagnostic_span('already inside `unsafe` block', unsafe_start, unsafe_start + 6)
+	}
+	p.unsafe_depth++
 	id := p.block_stmt()
+	p.unsafe_depth--
 	if int(id) >= 0 && int(id) < p.a.nodes.len {
 		mut node := p.a.nodes[int(id)].with_pos(token.new_span(p.cur_file_id, unsafe_start, int_max(unsafe_start, p.a.nodes[int(id)].pos.end - 1)))
 		node.value = 'unsafe'
@@ -8376,6 +9137,10 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			lhs_ids << lhs_id
 		}
 		if p.tok == .decl_assign || token_is_assignment(p.tok) {
+			if p.tok !in [.decl_assign, .assign] {
+				p.record_diagnostic_span('unexpected ${p.tok}, expecting := or = or comma', p.tok_pos,
+					p.tok_end)
+			}
 			formatter_op := p.formatter_assignment_op()
 			op_id := int(p.tok)
 			p.next()
@@ -8441,6 +9206,8 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 	}
 
 	if p.tok == .decl_assign {
+		assign_start := p.tok_pos
+		assign_end := p.tok_end
 		p.next()
 		// The compiler only treats `x := { ... }` as an ORM dynamic-where literal when a `sql`
 		// block in the same file uses `x`. The formatter has no such luxury: the shape check
@@ -8451,6 +9218,10 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			p.sql_query_data_literal_expr()
 		} else {
 			p.expr(.lowest)
+		}
+		if p.expression_depth_exceeds(rhs, max_assignment_expr_depth) {
+			p.record_diagnostic_span('expr level > ${max_assignment_expr_depth}', assign_start,
+				assign_end)
 		}
 		mut rhs_ids := [rhs]
 		for p.tok == .comma {
@@ -8512,7 +9283,8 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 
 fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
 	if token_is_assignment(p.tok) {
-		p.record_diagnostic_span('unexpected assignment operator `${p.tok.str()}`', p.tok_pos, p.tok_end)
+		p.record_diagnostic_span('invalid expression: unexpected token `${p.tok.str()}`', p.tok_pos,
+			p.tok_end)
 		for p.tok != .semicolon && p.tok != .rcbr && p.tok != .eof {
 			p.next()
 		}
@@ -8540,6 +9312,27 @@ fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
 		p.next()
 	}
 	return id
+}
+
+fn (p &Parser) expression_depth_exceeds(root flat.NodeId, max_depth int) bool {
+	mut ids := [root]
+	mut depths := [1]
+	for ids.len > 0 {
+		id := ids.pop()
+		depth := depths.pop()
+		if depth > max_depth {
+			return true
+		}
+		if int(id) < 0 || int(id) >= p.a.nodes.len {
+			continue
+		}
+		node := p.a.nodes[int(id)]
+		for i in 0 .. node.children_count {
+			ids << p.a.child(&node, i)
+			depths << depth + 1
+		}
+	}
+	return false
 }
 
 fn (p &Parser) lhs_is_dynamic_sql_expr_alias(lhs flat.NodeId) bool {
@@ -8954,6 +9747,9 @@ fn (mut p Parser) for_post_block_from_exprs(exprs []flat.NodeId, ends []int) fla
 
 fn (mut p Parser) defer_stmt() flat.NodeId {
 	defer_start := p.span_start()
+	if p.defer_depth > 0 {
+		p.record_diagnostic_span('`defer` blocks cannot be nested', p.tok_pos, p.tok_end)
+	}
 	p.next() // skip 'defer'
 	mut mode := ''
 	if p.tok == .lpar {
@@ -9106,6 +9902,10 @@ fn (p &Parser) inline_asm_source_gap_has_newline(start int, end int) bool {
 
 fn (mut p Parser) validate_inline_asm_lock_instruction() {
 	p.peek()
+	if p.peek_tok == .eof {
+		p.record_diagnostic('The lock prefix cannot be used on this instruction', p.s.src.len)
+		return
+	}
 	has_suffix := p.peek_lit.len > 0
 		&& p.peek_lit[p.peek_lit.len - 1] in [`b`, `w`, `l`, `q`]
 	if p.inline_asm_source_gap_has_newline(p.tok_end, p.peek_pos)
@@ -9357,13 +10157,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				}
 			}
 			if lhs_node.kind == .selector && lhs_node.value.len > 0 {
-				base := p.a.child_node(&lhs_node, 0)
-				is_c_struct := base.kind == .ident && base.value == 'C'
+				full_name := p.type_expr_name(lhs)
+				is_c_struct := full_name.starts_with('C.')
 					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
-				is_v_struct := base.kind == .ident && base.value != 'C' && lhs_node.value[0] >= `A`
-					&& lhs_node.value[0] <= `Z`
+				is_v_struct := !full_name.starts_with('C.') && type_name_can_init(full_name)
 				if is_c_struct || is_v_struct {
-					full_name := '${base.value}.${lhs_node.value}'
 					lhs = p.struct_init(full_name)
 					continue
 				}
@@ -9437,6 +10235,10 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// postfix `!` error propagation: expr!
 		if p.tok == .not {
+			if p.defer_depth > 0 {
+				p.record_diagnostic_span('error propagation not allowed inside `defer` blocks',
+					p.tok_pos, p.tok_end)
+			}
 			p.next()
 			ostart := p.add_children2(lhs, p.add(flat.NodeKind.empty))
 			lhs = p.add_node_from(flat.Node{
@@ -9449,6 +10251,21 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// postfix `?` optional propagation: expr?
 		if p.tok == .question {
+			lhs_node := p.a.node(lhs)
+			if lhs_node.kind == .ident && p.peek() == .lpar {
+				p.record_diagnostic_span('unexpected name `${lhs_node.value}`', lhs_node.pos.offset,
+					lhs_node.pos.end)
+				p.next()
+				p.next()
+				return lhs
+			} else if lhs_node.kind == .index {
+				p.record_diagnostic_span('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
+					p.tok_pos, p.tok_end)
+			}
+			if p.defer_depth > 0 {
+				p.record_diagnostic_span('error propagation not allowed inside `defer` blocks',
+					p.tok_pos, p.tok_end)
+			}
 			p.next()
 			ostart := p.add_children2(lhs, p.add(flat.NodeKind.empty))
 			lhs = p.add_node_from(flat.Node{
@@ -9645,6 +10462,17 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		if token_is_assignment(p.tok) {
 			break
 		}
+		// A missing binary literal followed immediately by `**` is one malformed
+		// token sequence, not an exponentiation with a missing right operand. The
+		// scanner already reports the useful radix diagnostic; consume the stars so
+		// expression recovery leaves the enclosing call and block balanced.
+		if p.tok == .power && p.tok_pos == p.prev_tok_end {
+			left := p.a.node(lhs)
+			if left.kind == .int_literal && left.value.to_lower_ascii() == '0b' {
+				p.next()
+				break
+			}
+		}
 		// At the start of an identifier statement, `<<` is array append syntax.
 		// Its right side is the whole remaining expression, matching V's parser:
 		// `values << value & mask` appends `value & mask`, rather than shifting
@@ -9783,7 +10611,10 @@ fn (mut p Parser) newline_dot_starts_map_entry() bool {
 }
 
 fn (mut p Parser) sql_expr(sql_pos int) flat.NodeId {
-	db_expr := if p.tok != .lcbr && p.tok != .eof {
+	db_expr := if p.tok == .name && p.lit == '_' && p.peek() == .lcbr {
+		p.next()
+		flat.empty_node
+	} else if p.tok != .lcbr && p.tok != .eof {
 		p.expr(.lowest)
 	} else {
 		flat.empty_node
@@ -10241,7 +11072,31 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	// their own location and prefix operators can span from here to the operand.
 	start_pos := p.current_pos()
 	op_start := p.span_start()
+	if p.tok in [.key_atomic, .key_mut, .key_shared, .key_static, .key_volatile]
+		&& !(p.tok == .key_shared && p.shared_token_is_identifier(false))
+		&& p.peek() !in [.name, .key_type] {
+		modifier := p.tok.str()
+		p.record_diagnostic_span('the `${modifier}` keyword is invalid here', p.tok_pos,
+			p.tok_end)
+		p.next()
+		return p.prefix_expr()
+	}
 	tok_id := int(p.tok)
+	if p.tok == .dec {
+		operator_end := p.tok_end
+		p.next()
+		if p.tok in [.eof, .rcbr, .semicolon] {
+			p.record_diagnostic_span('token `--` must be on the same line as the previous token',
+				op_start, operator_end)
+			return p.add(flat.NodeKind.empty)
+		}
+		operand := p.expr(.power)
+		expr_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+		operand_text := p.s.src[operator_end..expr_end].trim_space().replace('"', "'")
+		p.record_diagnostic_span('prefix `--${operand_text}` is unsupported, use suffix form `${operand_text}--`',
+			op_start, expr_end)
+		return operand
+	}
 	if p.tok == .plus {
 		p.next()
 		operand := p.expr(.power)
@@ -10294,6 +11149,24 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		return p.channel_receive_expr(inner, op_start)
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
+		if p.tok == .minus {
+			mut previous := p.tok_pos - 1
+			mut preceding_minuses := 0
+			for previous >= 0 {
+				for previous >= 0 && p.s.src[previous] in [` `, `\t`] {
+					previous--
+				}
+				if previous < 0 || p.s.src[previous] != `-` {
+					break
+				}
+				preceding_minuses++
+				previous--
+			}
+			if preceding_minuses == 1 {
+				p.record_diagnostic_span('invalid expression: unexpected token `-`', p.tok_pos,
+					p.tok_end)
+			}
+		}
 		p.next()
 		mut operand := p.expr(.power)
 		// A trailing `or {}` binds to the operand, not to the prefix operator:
@@ -10512,6 +11385,12 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					p.prefs.vcurrent_hash
 				})
 			}
+			if name == 'chan' && p.tok == .lcbr {
+				id := p.struct_init('chan')
+				p.record_diagnostic_span('`chan` has no type specified. Use `chan Type{}` instead of `chan{}`',
+					name_pos, p.prev_tok_end)
+				return id
+			}
 			if name == 'chan' && p.can_start_type_name() {
 				if p.tok == .not {
 					p.record_diagnostic_span('cannot use chan with Result type', p.tok_pos, p.tok_pos + 1)
@@ -10528,16 +11407,26 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				p.next() // skip [
 				key_type := p.parse_type_name()
 				p.check(.rsbr)
+				p.diagnose_map_second_key(key_type)
+				if !p.can_start_type_name() {
+					p.record_diagnostic('map value type is missing: use `map[KeyType]ValueType`',
+						p.tok_pos)
+				}
 				val_type := p.parse_type_name()
 				map_type := 'map[${key_type}]${val_type}'
 				if p.tok == .lcbr {
-					return p.map_init_after_type(map_type, name_pos)
+					return p.empty_map_init_after_type(map_type, name_pos)
 				}
 				return p.a.add_node(flat.Node{
 					kind:  .map_init
 					value: map_type
 					pos:   p.span_to(name_pos)
 				})
+			}
+			if name == 'map' && p.tok == .lcbr && !p.internal_collection_types_allowed() {
+				p.record_diagnostic_span("deprecated map syntax, use syntax like `{'age': 20}`",
+					name_pos, name_end)
+				return p.map_literal()
 			}
 			local_type_name := p.resolve_local_type_name(name)
 			// struct init: Name{...}; vlib/builtin also uses concrete lowercase
@@ -10586,42 +11475,12 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			})
 		}
 		.lcbr {
-			map_start := p.span_start()
-			p.next()
-			mut ids := []flat.NodeId{}
-			for p.tok != .rcbr && p.tok != .eof {
-				if p.tok == .semicolon || p.tok == .comma {
-					p.next()
-					continue
-				}
-				k := p.expr(.lowest)
-				key := p.a.node(k)
-				if key.kind == .prefix && key.value == '...' {
-					ids << k
-					ids << p.a.add_node(flat.Node{ kind: .empty })
-					if p.tok == .comma || p.tok == .semicolon {
-						p.next()
-					}
-					continue
-				}
-				p.check(.colon)
-				p.in_map_value++
-				v := p.expr(.lowest)
-				p.in_map_value--
-				ids << k
-				ids << v
-				if p.tok == .comma || p.tok == .semicolon {
-					p.next()
-				}
+			if p.in_match_branch_condition > 0 {
+				p.record_diagnostic_span('invalid expression: unexpected token `{`', p.tok_pos,
+					p.tok_end)
+				return p.add(flat.NodeKind.empty)
 			}
-			p.check(.rcbr)
-			start := p.add_children(ids)
-			return p.add_node(flat.Node{
-				kind:           .map_init
-				children_start: start
-				children_count: flat.child_count(ids.len)
-				pos:            p.span_to(map_start)
-			})
+			return p.map_literal()
 		}
 		.amp {
 			amp_start := p.span_start() // start offset of the leading `&`
@@ -10959,7 +11818,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			option_start := p.span_start()
 			p.next()
 			inner_type := p.parse_type_name()
-			type_name := if inner_type.len > 0 { '?${inner_type}' } else { '?' }
+			if inner_type.len == 0 {
+				p.record_diagnostic_span('unexpected token `?`', option_start, option_start + 1)
+				return p.add(flat.NodeKind.empty)
+			}
+			type_name := '?${inner_type}'
 			if p.tok == .lpar {
 				p.next()
 				inner := p.expr(.lowest)
@@ -11121,11 +11984,59 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.dollar {
 			return p.parse_comptime_expr()
 		}
+		.rcbr {
+			p.record_diagnostic_span('invalid expression: unexpected token `}`', p.tok_pos,
+				p.tok_end)
+			return p.add(flat.NodeKind.empty)
+		}
 		else {
+			if p.tok.is_keyword() {
+				p.record_diagnostic_span('invalid expression: unexpected keyword `${p.tok.str()}`',
+					p.tok_pos, p.tok_end)
+			}
 			p.next()
 			return p.add(flat.NodeKind.empty)
 		}
 	}
+}
+
+fn (mut p Parser) map_literal() flat.NodeId {
+	map_start := p.span_start()
+	p.next()
+	mut ids := []flat.NodeId{}
+	for p.tok != .rcbr && p.tok != .eof {
+		if p.tok == .semicolon || p.tok == .comma {
+			p.next()
+			continue
+		}
+		k := p.expr(.lowest)
+		key := p.a.node(k)
+		if key.kind == .prefix && key.value == '...' {
+			ids << k
+			ids << p.a.add_node(flat.Node{ kind: .empty })
+			if p.tok == .comma || p.tok == .semicolon {
+				p.next()
+			}
+			continue
+		}
+		p.check(.colon)
+		p.in_map_value++
+		v := p.expr(.lowest)
+		p.in_map_value--
+		ids << k
+		ids << v
+		if p.tok == .comma || p.tok == .semicolon {
+			p.next()
+		}
+	}
+	p.check(.rcbr)
+	start := p.add_children(ids)
+	return p.add_node(flat.Node{
+		kind:           .map_init
+		children_start: start
+		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(map_start)
+	})
 }
 
 fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.NodeId {
@@ -11154,36 +12065,6 @@ fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.Nod
 		children_start: p.add_child(inner)
 		children_count: 1
 		pos:            p.span_to(op_start)
-	})
-}
-
-fn (mut p Parser) map_init_after_type(map_type string, start int) flat.NodeId {
-	p.next() // skip {
-	mut ids := []flat.NodeId{}
-	for p.tok != .rcbr && p.tok != .eof {
-		if p.tok == .semicolon {
-			p.next()
-			continue
-		}
-		key := p.expr(.lowest)
-		p.check(.colon)
-		p.in_map_value++
-		value := p.expr(.lowest)
-		p.in_map_value--
-		ids << key
-		ids << value
-		if p.tok == .comma || p.tok == .semicolon {
-			p.next()
-		}
-	}
-	p.check(.rcbr)
-	children_start := p.add_children(ids)
-	return p.add_node(flat.Node{
-		kind:           .map_init
-		value:          map_type
-		children_start: children_start
-		children_count: flat.child_count(ids.len)
-		pos:            p.span_to(start)
 	})
 }
 
@@ -11255,6 +12136,11 @@ fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int, start int) ?fl
 
 fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 	p.next() // skip '.'
+	if p.tok != .name && !p.tok.is_keyword() && p.tok != .dollar {
+		p.record_diagnostic_span('unexpected token `${p.tok}`, expecting name', p.tok_pos,
+			p.tok_end)
+		return lhs
+	}
 	if p.tok == .dollar {
 		// Compile-time field selector `receiver.$(field.name)`: the field name is resolved when
 		// the enclosing `$for` loop is unrolled. `receiver.$method()` binds its identifier to the
@@ -11357,6 +12243,9 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 	mut ids := []flat.NodeId{}
 	ids << fn_expr
 	mut trailing_comma := false
+	mut last_comma_pos := -1
+	mut missing_comma_start := -1
+	mut missing_comma_end := -1
 	for p.tok != .rpar && p.tok != .eof {
 		if p.current_token_is_newline_semicolon() {
 			p.next()
@@ -11458,10 +12347,35 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		if p.tok == .comma {
 			trailing_comma = true
+			last_comma_pos = p.tok_pos
 			p.next()
+		} else if missing_comma_start < 0 && p.tok != .rpar && p.tok != .eof
+			&& !p.current_token_is_newline_semicolon() {
+			missing_comma_start = p.prev_tok_end
+			missing_comma_end = p.tok_end
 		}
 		if p.s.offset == prev_offset && p.tok == prev_tok {
 			p.next()
+		}
+	}
+	if p.tok == .eof {
+		mut message := 'unexpected eof, expecting `)`'
+		mut start := int_max(0, p.prev_tok_end - 1)
+		mut end := p.prev_tok_end
+		if expected := p.declared_call_param_count(fn_expr) {
+			if ids.len - 1 < expected {
+				message = 'unexpected eof, expecting `,`'
+			}
+		}
+		if missing_comma_start >= 0 {
+			start = missing_comma_start
+			end = missing_comma_end
+		} else if last_comma_pos >= 0 {
+			start = last_comma_pos
+			end = p.prev_tok_end
+		}
+		if !p.diagnostics.any(it.file == p.cur_file && it.severity != 'warning:') {
+			p.record_diagnostic_span(message, start, end)
 		}
 	}
 	p.check(.rpar)
@@ -11493,6 +12407,27 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 	}
 	return id
+}
+
+fn (p &Parser) declared_call_param_count(fn_expr flat.NodeId) ?int {
+	fn_node := p.a.node(fn_expr)
+	if fn_node.kind != .ident || fn_node.value.len == 0 {
+		return none
+	}
+	for candidate in p.a.nodes {
+		if candidate.kind != .fn_decl || candidate.value != fn_node.value {
+			continue
+		}
+		mut count := 0
+		for i in 0 .. candidate.children_count {
+			param := p.a.child_node(candidate, i)
+			if param.kind == .param && param.op != .dot {
+				count++
+			}
+		}
+		return count
+	}
+	return none
 }
 
 // annotate_short_struct_call_arg records the aggregate type of a trailing
@@ -11645,6 +12580,24 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 		}, lhs)
 	}
 	first := p.index_part_expr()
+	lhs_node := p.a.node(lhs)
+	first_node := p.a.node(first)
+	if p.tok == .comma && lhs_node.kind == .ident && type_name_can_init(lhs_node.value)
+		&& first_node.kind == .ident
+		&& !generic_struct_init_suffix_arg_can_be_type(first_node.value) {
+		p.record_diagnostic('unexpected token `,`, expecting `]`', p.tok_pos)
+		for p.tok != .rsbr && p.tok != .eof {
+			p.next()
+		}
+		p.check(.rsbr)
+		istart := p.add_children2(lhs, first)
+		return p.add_node_from(flat.Node{
+			kind:           .index
+			op:             gated_op
+			children_start: istart
+			children_count: 2
+		}, lhs)
+	}
 	if p.tok == .rsbr {
 		p.next()
 		if p.a.nodes[int(first)].kind == .range {
@@ -11777,8 +12730,9 @@ fn (mut p Parser) index_range_expr(lhs flat.NodeId, range_id flat.NodeId, gated_
 }
 
 fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
+	node := p.a.node(id)
+	p.discard_generic_type_array_init_warnings(node.pos)
 	if p.prefs.is_fmt {
-		node := p.a.node(id)
 		if node.pos.is_valid() && node.pos.end <= p.s.src.len {
 			source := p.s.src[node.pos.offset..node.pos.end].trim_space()
 			if source.len > 0 {
@@ -11800,6 +12754,16 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 		kind:  .ident
 		value: resolved
 	})
+}
+
+fn (mut p Parser) discard_generic_type_array_init_warnings(pos token.Pos) {
+	if !pos.is_valid() {
+		return
+	}
+	p.diagnostics = p.diagnostics.filter(!(it.severity == 'warning:' && it.pos.id == pos.id
+		&& it.pos.offset >= pos.offset && it.pos.end <= pos.end
+		&& (it.message.starts_with('use `x := []Type{}`')
+			|| it.message.starts_with('use e.g. `x := [1]Type{}`'))))
 }
 
 fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
@@ -12067,6 +13031,10 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 			p.next()
 			continue
 		}
+		if p.tok == .ellipsis {
+			p.record_diagnostic_span('unexpected token `...`, expecting name', p.tok_pos,
+				p.tok_end)
+		}
 		// named field: name: expr
 		if (p.tok == .name || p.tok.is_keyword()) && p.peek() == .colon {
 			fname := p.expect_name_or_keyword()
@@ -12084,6 +13052,12 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 		} else {
 			// positional value (unnamed)
 			val := p.expr(.lowest)
+			if p.tok == .colon {
+				p.record_diagnostic_span('invalid expression: unexpected token `:`', p.tok_pos,
+					p.tok_end)
+				p.next()
+				_ = p.expr(.lowest)
+			}
 			vstart := p.add_child(val)
 			ids << p.add_node(flat.Node{
 				kind:           .field_init
@@ -12228,6 +13202,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			p.check(.rsbr)
 			dimensions++
 		}
+		if p.tok == .not {
+			p.record_diagnostic_span('fixed arrays do not support storing Result values',
+				p.tok_pos, p.tok_end)
+		}
 		elem_type := p.parse_fixed_array_literal_type_name()
 		lit, _ := p.inferred_fixed_array_literal_values(elem_type, dimensions, bracket_start)
 		return lit
@@ -12243,6 +13221,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		}
 		was_inside_array_init_type_expr := p.inside_array_init_type_expr
 		p.inside_array_init_type_expr = true
+		if p.tok == .not {
+			p.record_diagnostic_span('arrays do not support storing Result values', p.tok_pos,
+				p.tok_end)
+		}
 		elem_type := p.parse_type_name()
 		p.inside_array_init_type_expr = was_inside_array_init_type_expr
 		if p.tok == .lpar {
@@ -12261,6 +13243,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		// array init: []Type{len: n, cap: c, init: v}
 		if elem_type.len > 0 && p.tok == .lcbr {
 			return p.array_init_after_element_type(elem_type, bracket_start)
+		}
+		if !p.prefs.is_fmt {
+			p.record_warning_span('use `x := []Type{}` instead of `x := []Type`', bracket_start,
+				p.prev_tok_end)
 		}
 		return p.add_node(flat.Node{
 			kind:  .array_init
@@ -12286,6 +13272,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			// `[segs + 1]f32`) — an infix node has no `.value`, which would otherwise
 			// collapse the type to a dynamic `[]f32`.
 			size_str := p.fixed_array_size_text(ids[0], size_start, size_end)
+			if p.tok == .not {
+				p.record_diagnostic_span('fixed arrays do not support storing Result values',
+					p.tok_pos, p.tok_end)
+			}
 			elem_type := p.parse_fixed_array_literal_type_name()
 			fixed_type := '[${size_str}]${elem_type}'
 			if p.tok == .lpar {
@@ -12315,7 +13305,12 @@ fn (mut p Parser) array_literal() flat.NodeId {
 					}
 					if p.tok == .name && p.peek() == .colon {
 						fname_start := p.span_start()
+						fname_end := p.tok_end
 						fname := p.expect_name()
+						if fname in ['len', 'cap'] {
+							p.record_diagnostic_span('`len` and `cap` are invalid attributes for fixed array dimension',
+								fname_start, fname_end)
+						}
 						p.check(.colon)
 						val := p.expr(.lowest)
 						vstart := p.add_child(val)
@@ -12343,6 +13338,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 					children_count: flat.child_count(init_ids.len)
 					pos:            p.span_to(bracket_start)
 				})
+			}
+			if !p.prefs.is_fmt {
+				p.record_warning_span('use e.g. `x := [1]Type{}` instead of `x := [1]Type`',
+					bracket_start, p.prev_tok_end)
 			}
 			return p.add_node(flat.Node{
 				kind:  .array_init
@@ -12489,14 +13488,20 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 		return '[${size_str}]' + p.parse_fixed_array_literal_type_name()
 	}
 	if p.tok == .name {
+		name_start := p.tok_pos
+		name_end := p.tok_end
 		mut name := p.lit
 		p.next()
-		if name == 'map' && p.tok == .lsbr {
-			p.next()
-			key := p.parse_type_name()
-			p.check(.rsbr)
-			val := p.parse_fixed_array_literal_type_name()
-			return 'map[${key}]${val}'
+		if name == 'map' {
+			if p.tok == .lsbr {
+				p.next()
+				key := p.parse_type_name()
+				p.check(.rsbr)
+				val := p.parse_fixed_array_literal_type_name()
+				return 'map[${key}]${val}'
+			}
+			p.record_diagnostic_span('cannot use the map type without key and value definition',
+				name_start, name_end)
 		}
 		if name == 'chan' {
 			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question
@@ -12569,6 +13574,9 @@ fn (mut p Parser) fixed_array_value_literal(fixed_type string, start int) flat.N
 fn (mut p Parser) array_init_after_element_type(elem_type string, start int) flat.NodeId {
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	mut has_len := false
+	mut init_start := -1
+	mut init_end := -1
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -12576,7 +13584,14 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 		}
 		if p.tok == .name && p.peek() == .colon {
 			fname_start := p.span_start()
+			fname_end := p.tok_end
 			fname := p.expect_name()
+			if fname == 'len' {
+				has_len = true
+			} else if fname == 'init' {
+				init_start = fname_start
+				init_end = fname_end
+			}
 			p.check(.colon)
 			val := p.expr(.lowest)
 			ids << p.a.add_node(flat.Node{
@@ -12594,6 +13609,10 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 		}
 	}
 	p.check(.rcbr)
+	if init_start >= 0 && !has_len {
+		p.record_diagnostic_span('cannot use `init` attribute unless `len` attribute is also provided',
+			init_start, init_end)
+	}
 	return p.a.add_node(flat.Node{
 		kind:           .array_init
 		value:          elem_type
@@ -12688,7 +13707,13 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 				capture_modifier = p.lit
 				p.next()
 			}
-			capture_id := p.add_val(.ident, p.expect_name())
+			capture_pos := p.current_pos()
+			capture_name := p.expect_name()
+			capture_id := p.a.add_node(flat.Node{
+				kind:  .ident
+				value: capture_name
+				pos:   capture_pos
+			})
 			if is_mut_capture {
 				p.a.set_node_is_mut(capture_id, true)
 			}
@@ -12722,6 +13747,13 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	} else if capture_ids.len > 0 && p.tok == .lsbr {
 		generic_params = p.parse_generic_param_names()
 	}
+	for capture_id in capture_ids {
+		capture := p.a.node(capture_id)
+		if capture.value.len > 0 && !p.is_local_binding(capture.value) {
+			p.record_diagnostic_span('undefined ident: `${capture.value}`', capture.pos.offset,
+				capture.pos.end)
+		}
+	}
 	// params
 	p.check(.lpar)
 	mut param_ids := []flat.NodeId{}
@@ -12746,13 +13778,34 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		}
 	}
 	param_list_end := p.tok_pos
+	mut capture_names := map[string]bool{}
+	for capture_id in capture_ids {
+		capture_names[p.a.node(capture_id).value] = true
+	}
+	for param_id in param_ids {
+		param := p.a.node(param_id)
+		if param.kind == .param && capture_names[param.value] {
+			p.record_diagnostic_span('the parameter name `${param.value}` conflicts with the captured value name',
+				param.pos.offset, param.pos.offset + param.value.len)
+		}
+	}
 	p.check(.rpar)
 	// return type
 	mut ret_type := 'void'
+	ret_type_start := p.tok_pos
 	if p.tok != .lcbr && p.tok != .semicolon && p.tok != .eof {
 		if p.tok == .name || p.tok == .amp || p.tok == .question || p.tok == .not || p.tok == .lsbr
 			|| p.tok == .lpar || p.tok == .key_fn {
 			ret_type = p.parse_type_name()
+			p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
+		} else {
+			description := if p.tok == .string {
+				'string `${p.lit.trim('"')}`'
+			} else {
+				'`${p.tok.str()}`'
+			}
+			p.record_diagnostic_span('expected return type, not ${description} for anonymous function',
+				p.tok_pos, p.tok_end)
 		}
 	}
 	// body
@@ -12844,6 +13897,11 @@ fn (mut p Parser) lock_expr() flat.NodeId {
 	lock_start := p.span_start()
 	is_rlock := p.tok == .key_rlock
 	p.next() // skip 'lock' or 'rlock'
+	if p.tok == .decl_assign || token_is_assignment(p.tok) {
+		p.record_diagnostic_span('unexpected token `${p.tok}`, expecting one or more shared variable names',
+			p.tok_pos, p.tok_end)
+		p.next()
+	}
 	mut obj_ids := []flat.NodeId{}
 	mut modes := []u8{}
 	// lock objects
@@ -12895,12 +13953,61 @@ fn (mut p Parser) select_expr() flat.NodeId {
 	p.next() // skip 'select'
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	mut has_else := false
+	mut has_timeout := false
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
 			continue
 		}
-		ids << p.select_branch()
+		branch_key_start := p.tok_pos
+		branch_key_end := p.tok_end
+		mut has_deprecated_timeout_prefix := false
+		if p.tok == .gt {
+			has_deprecated_timeout_prefix = true
+			p.record_notice_span('`>` is deprecated and will soon be forbidden - just state the timeout in nanoseconds',
+				p.tok_pos, p.tok_end)
+			p.next()
+		}
+		branch_id := p.select_branch()
+		branch := p.a.node(branch_id)
+		if branch.value == 'else' {
+			if has_timeout {
+				p.record_diagnostic_span('timeout `> t` and `else` are mutually exclusive `select` keys',
+					branch_key_start, branch_key_end)
+			} else if has_else {
+				p.record_diagnostic_span('at most one `else` branch allowed in `select` block',
+					branch_key_start, branch_key_end)
+			}
+			has_else = true
+		} else if branch.value in ['recv', 'recv_assign']
+			|| branch.value.starts_with('recv_compound:') {
+			if branch.children_count >= 2 {
+				rhs := p.a.child_node(branch, 1)
+				if rhs.kind != .prefix {
+					p.record_diagnostic_span('select key: receive expression expected',
+						int(rhs.pos.offset), int(rhs.pos.end))
+				} else if rhs.op != .arrow {
+					p.record_diagnostic_span('select key: `<-` operator expected', int(rhs.pos.offset),
+						int(rhs.pos.offset) + 1)
+				}
+			}
+		} else if p.select_branch_is_timeout(branch) {
+			condition := p.a.child_node(branch, 0)
+			if has_deprecated_timeout_prefix && condition.kind == .infix
+				&& condition.op == .arrow {
+				p.record_diagnostic_span('send expression cannot be used as timeout',
+					int(condition.pos.offset), int(condition.pos.end))
+			} else if has_else {
+				p.record_diagnostic_span('`else` and timeout value are mutually exclusive `select` keys',
+					int(condition.pos.offset), int(condition.pos.end))
+			} else if has_timeout {
+				p.record_diagnostic_span('at most one timeout branch allowed in `select` block',
+					int(condition.pos.offset), int(condition.pos.end))
+			}
+			has_timeout = true
+		}
+		ids << branch_id
 	}
 	p.check(.rcbr)
 	start := p.add_children(ids)
@@ -12910,6 +14017,15 @@ fn (mut p Parser) select_expr() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(select_start)
 	})
+}
+
+fn (p &Parser) select_branch_is_timeout(branch &flat.Node) bool {
+	if branch.kind != .select_branch || branch.value == 'else' || branch.children_count == 0
+		|| branch.value in ['recv', 'recv_assign'] || branch.value.starts_with('recv_compound:') {
+		return false
+	}
+	first := p.a.child_node(branch, 0)
+	return !(first.kind == .infix && first.op == .arrow)
 }
 
 // select_branch resolves select branch information for parser.
@@ -13001,6 +14117,16 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	p.check(.lpar)
+	if !p.can_start_type_name() {
+		inner := p.expr(.lowest)
+		p.check(.rpar)
+		return p.a.add_node(flat.Node{
+			kind:           .sizeof_expr
+			children_start: p.add_child(inner)
+			children_count: 1
+			pos:            p.span_to(sizeof_start)
+		})
+	}
 	if p.prefs.is_fmt && !p.can_start_type_name() {
 		mut depth := 1
 		for depth > 0 && p.tok != .eof {
@@ -13208,6 +14334,7 @@ fn (mut p Parser) typeof_expr() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:  .typeof_expr
 			value: type_name
+			pos:   p.span_to(start)
 		})
 	}
 	p.check(.lpar)
@@ -13222,6 +14349,7 @@ fn (mut p Parser) typeof_expr() flat.NodeId {
 		kind:           .typeof_expr
 		children_start: tstart
 		children_count: 1
+		pos:            p.span_to(start)
 	})
 }
 
@@ -13730,6 +14858,9 @@ fn (mut p Parser) parse_fn_type_param() string {
 	if first.len == 0 {
 		return first
 	}
+	if is_mut && first.starts_with('...') {
+		p.record_variadic_modifier_diagnostic(first, p.prev_tok_end)
+	}
 	if p.tok != .comma && p.tok != .rpar && p.tok != .eof && p.can_start_type_name() {
 		second := p.parse_type_name_progress()
 		if second.len > 0 {
@@ -13737,6 +14868,13 @@ fn (mut p Parser) parse_fn_type_param() string {
 		}
 	}
 	return fn_type_param_with_mut(first, is_mut)
+}
+
+fn (mut p Parser) record_variadic_modifier_diagnostic(typ string, end int) {
+	element_type := typ.trim_string_left('...')
+	start := int_max(0, end - element_type.len)
+	p.record_diagnostic_span('variadic arguments cannot be `mut`, `shared` or `atomic`', start,
+		end)
 }
 
 fn (mut p Parser) consume_lifetime_type_param() string {
@@ -13793,6 +14931,22 @@ fn (mut p Parser) parse_type_generic_suffix() string {
 				params << param
 			}
 		}
+		if p.tok == .lcbr {
+			mut depth := 1
+			p.next()
+			for depth > 0 && p.tok != .eof {
+				if p.tok == .lcbr {
+					depth++
+				} else if p.tok == .rcbr {
+					depth--
+					if depth == 0 {
+						p.record_diagnostic_span('unexpected token `}`, expecting `)`', p.tok_pos,
+							p.tok_end)
+					}
+				}
+				p.next()
+			}
+		}
 		if p.tok == .comma {
 			p.next()
 			continue
@@ -13812,7 +14966,34 @@ fn (mut p Parser) parse_struct_field_type() string {
 	defer {
 		p.parsing_struct_field_type = was_parsing
 	}
-	return p.parse_type_name()
+	start := p.span_start()
+	if p.tok == .key_mut {
+		p.record_diagnostic_span('cannot use `mut` on struct field type', p.tok_pos, p.tok_end)
+		p.next()
+	}
+	typ := p.parse_type_name()
+	p.record_inline_sum_type_deprecation(start, p.prev_tok_end)
+	return typ
+}
+
+fn (mut p Parser) record_inline_sum_type_deprecation(start int, end int) {
+	if p.tok != .pipe || p.diagnostics.any(it.message == inline_sum_type_deprecation) {
+		return
+	}
+	p.record_diagnostic_span(inline_sum_type_deprecation, start, end)
+}
+
+fn (mut p Parser) record_inline_sum_return_type_diagnostic(typ string, start int) {
+	if p.tok != .pipe {
+		return
+	}
+	if typ.starts_with('(') {
+		p.record_diagnostic_span('invalid expression: unexpected token `|`', p.tok_pos,
+			p.tok_end)
+		return
+	}
+	type_start := if typ.starts_with('?') || typ.starts_with('!') { start + 1 } else { start }
+	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
 }
 
 fn (p &Parser) type_suffix_is_followed_by_array_literal() bool {
@@ -13883,6 +15064,10 @@ fn (mut p Parser) parse_type_name() string {
 	// pointer &T
 	if p.tok == .amp {
 		p.next()
+		if p.tok == .lsbr && p.peek() == .rsbr {
+			p.record_diagnostic_span('V arrays are already references behind the scenes,\nthere is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).\nIf you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
+				p.tok_pos, p.tok_end)
+		}
 		return '&' + p.parse_type_name()
 	}
 	if p.tok == .and {
@@ -13897,6 +15082,11 @@ fn (mut p Parser) parse_type_name() string {
 	if p.tok == .key_typeof {
 		start := p.tok_pos
 		_ = p.typeof_expr()
+		if p.tok == .dot && p.peek() == .name && p.peek_lit in ['element_type', 'key_type',
+			'payload_type', 'pointee_type', 'return_type', 'value_type'] {
+			p.next()
+			p.next()
+		}
 		if p.tok_pos > start && p.tok_pos <= p.s.src.len {
 			return p.s.src[start..p.tok_pos].trim_space()
 		}
@@ -13991,15 +15181,30 @@ fn (mut p Parser) parse_type_name() string {
 	// name
 	mut name := ''
 	if p.tok == .name {
+		name_start := p.tok_pos
+		name_end := p.tok_end
 		name = p.lit
 		p.next()
 		// map[K]V
-		if name == 'map' && p.tok == .lsbr {
-			p.next()
-			key := p.parse_type_name()
-			p.check(.rsbr)
-			val := p.parse_type_name()
-			return 'map[${key}]${val}'
+		if name == 'map' {
+			if p.tok == .lsbr {
+				p.next()
+				key := p.parse_type_name()
+				p.check(.rsbr)
+				if !p.can_start_type_name() {
+					p.record_diagnostic('expecting type declaration', p.tok_pos)
+				}
+				val := p.parse_type_name()
+				return 'map[${key}]${val}'
+			}
+			if !p.internal_collection_types_allowed() {
+				p.record_diagnostic_span('cannot use the map type without key and value definition',
+					name_start, name_end)
+			}
+		}
+		if name == 'array' && !p.internal_collection_types_allowed() {
+			p.record_diagnostic_span('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+				name_start, name_end)
 		}
 		// chan T
 		if name == 'chan' {
@@ -14008,6 +15213,8 @@ fn (mut p Parser) parse_type_name() string {
 				elem := p.parse_type_name()
 				return 'chan ${elem}'
 			}
+			p.record_diagnostic_span('`chan` has no type specified. Use `chan Type` instead of `chan`',
+				name_start, name_end)
 			return 'chan'
 		}
 		// thread T
@@ -14019,14 +15226,17 @@ fn (mut p Parser) parse_type_name() string {
 			}
 			return 'thread'
 		}
-		// qualified: mod.Type
-		if p.tok == .dot {
+		// qualified: mod.Type or invalid full module paths such as mod.submod.Type.
+		// Preserve every segment so the checker can point at the complete module qualifier.
+		for p.tok == .dot {
 			p.next()
 			if p.tok == .name {
 				if p.lit != 'typ' {
 					name += '.' + p.lit
 				}
 				p.next()
+			} else {
+				break
 			}
 		}
 		// generic: Type[T, U]
@@ -14034,6 +15244,34 @@ fn (mut p Parser) parse_type_name() string {
 		name = p.resolve_local_type_name(name)
 	}
 	return name
+}
+
+fn (p &Parser) internal_collection_types_allowed() bool {
+	return p.cur_module in ['builtin', 'os', 'strconv', 'sync']
+}
+
+fn (mut p Parser) diagnose_map_second_key(key string) {
+	if p.tok != .lsbr {
+		return
+	}
+	second_open := p.tok_pos
+	second_close := p.s.src.index_after(']', second_open) or { -1 }
+	mut after_second := second_close + 1
+	for after_second > 0 && after_second < p.s.src.len
+		&& p.s.src[after_second] in [` `, `\t`] {
+		after_second++
+	}
+	if second_close <= second_open + 1 || after_second >= p.s.src.len
+		|| p.s.src[after_second] != `{` {
+		return
+	}
+	mut key_start := second_open + 1
+	for key_start < second_close && p.s.src[key_start] in [` `, `\t`] {
+		key_start++
+	}
+	second_key := p.s.src[key_start..second_close].trim_space()
+	p.record_diagnostic_span('maps can only have a single key. To declare a map use `map[${key}]${second_key}{}` instead',
+		key_start, key_start + second_key.len)
 }
 
 fn anonymous_struct_name_shape_key(fields []string) string {

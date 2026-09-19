@@ -163,7 +163,7 @@ fn (t &Transformer) expr_is_char_const(id flat.NodeId) bool {
 			name = '${base.value}.${node.value}'
 		}
 	}
-	if name.len == 0 || isnil(t.tc) {
+	if name == '' || isnil(t.tc) {
 		return false
 	}
 	key := t.const_type_key_in_context(name, t.cur_module, t.cur_file) or { return false }
@@ -1386,7 +1386,7 @@ fn (t &Transformer) raw_alias_type_for_expr(id flat.NodeId) string {
 }
 
 fn (t &Transformer) is_type_alias_name(name string) bool {
-	if isnil(t.tc) || name.len == 0 {
+	if isnil(t.tc) || name == '' {
 		return false
 	}
 	if !isnil(t.type_alias_name_cache) {
@@ -1675,7 +1675,7 @@ fn (t &Transformer) struct_operator_fn_name_with_usage(struct_type string, op_na
 
 fn (t &Transformer) operator_receiver_candidates(struct_type string) []string {
 	mut candidates := []string{cap: 2}
-	if struct_type.len == 0 {
+	if struct_type == '' {
 		return candidates
 	}
 	candidates << struct_type
@@ -1744,7 +1744,7 @@ fn (t &Transformer) generic_struct_operator_fn_name(struct_type string, op_name 
 }
 
 fn (t &Transformer) generic_struct_params_for_base(base string) ?[]string {
-	if isnil(t.tc) || base.len == 0 {
+	if isnil(t.tc) || base == '' {
 		return none
 	}
 	if params := t.tc.struct_generic_params[base] {
@@ -1850,7 +1850,7 @@ fn (t &Transformer) infix_struct_operator_result_type(node flat.Node, lhs_type_i
 // substituted (`-> Vec4[f32]`), qualified with the struct's module so the outer
 // expression resolves to the monomorphized operator.
 fn (t &Transformer) generic_struct_operator_return_type(struct_type string, op flat.Op) ?string {
-	if struct_type.len == 0 || isnil(t.tc) {
+	if struct_type == '' || isnil(t.tc) {
 		return none
 	}
 	op_name := struct_operator_symbol(op) or { return none }
@@ -1858,7 +1858,7 @@ fn (t &Transformer) generic_struct_operator_return_type(struct_type string, op f
 }
 
 fn (t &Transformer) generic_struct_operator_return_type_by_name(struct_type string, op_name string) ?string {
-	if struct_type.len == 0 || isnil(t.tc) {
+	if struct_type == '' || isnil(t.tc) {
 		return none
 	}
 	full_base, args, ok := generic_app_parts(struct_type)
@@ -2304,7 +2304,7 @@ fn (mut t Transformer) stable_optional_wrapper_expr_for_reuse(id flat.NodeId, ty
 
 // struct_lookup_name supports struct lookup name handling for Transformer.
 fn (t &Transformer) struct_lookup_name(type_name string) string {
-	if type_name.len == 0 {
+	if type_name == '' {
 		return ''
 	}
 	// Resolve aliases before consulting the enum and struct indexes. Large programs can
@@ -2405,7 +2405,7 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 }
 
 fn (t &Transformer) selective_import_struct_lookup_name(name string) ?string {
-	if isnil(t.tc) || name.len == 0 || name.contains('.') || t.cur_file.len == 0 {
+	if isnil(t.tc) || name == '' || name.contains('.') || t.cur_file.len == 0 {
 		return none
 	}
 	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
@@ -2441,7 +2441,7 @@ fn (t &Transformer) selective_import_type_name_for_file(file string, name string
 // visible_builtin_struct_lookup_name resolves a globally visible builtin struct
 // only when the current module or file does not shadow it with another type.
 fn (t &Transformer) visible_builtin_struct_lookup_name(name string) ?string {
-	if isnil(t.tc) || name.len == 0 || name.contains('.') {
+	if isnil(t.tc) || name == '' || name.contains('.') {
 		return none
 	}
 	if t.cur_file.len > 0
@@ -3247,7 +3247,7 @@ fn (t &Transformer) sum_eq_type_and_variants(sum_type string) ?(string, []string
 }
 
 fn (t &Transformer) sum_eq_variants(sum_name string) ?[]string {
-	if sum_name.len == 0 {
+	if sum_name == '' {
 		return none
 	}
 	if variants := t.sum_types[sum_name] {
@@ -4326,7 +4326,7 @@ fn (mut t Transformer) transform_enum_shorthand(id flat.NodeId, node flat.Node, 
 
 // enum_type_name_for_expected supports enum type name for expected handling for Transformer.
 fn (t &Transformer) enum_type_name_for_expected(expected_enum string, owner_mod string) string {
-	if expected_enum.len == 0 {
+	if expected_enum == '' {
 		return ''
 	}
 	mut clean := expected_enum
@@ -4362,7 +4362,7 @@ fn (t &Transformer) enum_type_name_for_expected(expected_enum string, owner_mod 
 		if short_name_view(enum_name) != clean {
 			continue
 		}
-		if found.len > 0 && found != enum_name {
+		if found != '' && found != enum_name {
 			if !isnil(t.enum_expected_cache) {
 				mut cache := t.enum_expected_cache
 				cache.misses[cache_key] = true
@@ -4400,7 +4400,7 @@ pub fn (mut t Transformer) make_call_typed(fn_name string, args []flat.NodeId, t
 }
 
 fn (mut t Transformer) mark_fn_used(fn_name string) {
-	if fn_name.len == 0 || !t.has_any_used_fns() {
+	if fn_name == '' || !t.has_any_used_fns() {
 		return
 	}
 	t.mark_used_fn_key(fn_name)
@@ -4558,6 +4558,7 @@ pub fn (mut t Transformer) make_int_literal(value int) flat.NodeId {
 	return t.a.add_val(.int_literal, '${value}')
 }
 
+// make_int_literal_typed creates an integer literal node with the given type text.
 pub fn (mut t Transformer) make_int_literal_typed(value string, typ string) flat.NodeId {
 	return t.a.add_node(flat.Node{
 		kind:  .int_literal
@@ -4571,6 +4572,7 @@ pub fn (mut t Transformer) make_float_literal(value string) flat.NodeId {
 	return t.a.add_val(.float_literal, value)
 }
 
+// make_float_literal_typed creates a floating-point literal node with the given type text.
 pub fn (mut t Transformer) make_float_literal_typed(value string, typ string) flat.NodeId {
 	return t.a.add_node(flat.Node{
 		kind:  .float_literal
@@ -4747,7 +4749,7 @@ fn (t &Transformer) resolved_fixed_array_canonical_type(s string) string {
 
 // is_decimal_text reports whether is decimal text applies in transform.
 fn is_decimal_text(s string) bool {
-	if s.len == 0 {
+	if s == '' {
 		return false
 	}
 	for ch in s {

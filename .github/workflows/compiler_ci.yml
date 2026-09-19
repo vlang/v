@@ -22,9 +22,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Build V
+        id: build
         run: make -j4
       - name: Check cached header declaration semantics
         run: ./v -new-compiler vlib/v/types/cached_header_semantics_test.v
+      - name: Check transformed map key callbacks
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler vlib/v/transform/map_key_callbacks_test.v
+      - name: Check generated map key callbacks
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler vlib/v/gen/c/map_test.v
+      - name: Check map key runtime behavior
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler vlib/v/tests/maps/map_key_callback_width_test.v
+      - name: Check pkg-config flag query selection
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler vlib/v/pref/pkgconfig_test.v
       - name: Install Objective-C compiler
         run: |
           .github/workflows/disable_azure_mirror.sh

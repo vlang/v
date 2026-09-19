@@ -299,6 +299,44 @@ fn test_json_helper_scan_requires_legacy_json_module() {
 	assert 'null' in g.str_lits
 }
 
+fn test_json_pointer_helper_scan_accepts_unresolved_encode_call() {
+	mut ast := flat.FlatAst.new()
+	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
+		flat.Node{ kind: .ident, value: 'json.encode' },
+		flat.Node{ kind: .ident, value: 'user', typ: '&main.User' }]
+	ast.children = [flat.NodeId(1), flat.NodeId(2)]
+	mut tc := types.TypeChecker.new(&ast)
+	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_), types.Type(types.Pointer{
+		base_type: types.Type(types.Struct{ name: 'main.User' })
+	})]
+	tc.expr_type_set = [false, false, true]
+	tc.structs['main.User'] = []types.StructField{}
+	tc.file_modules['json_primitives.c.v'] = 'json'
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	helpers := g.prepare_json_encode_pointer_helpers()
+	assert helpers.len == 1
+	assert helpers[0].pointer_ct == 'main__User*'
+}
+
+fn test_json_sum_variant_discriminator_strings_are_preinterned() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.cur_module = 'main'
+	tc.sum_types['main.Animal'] = ['main.Cat', 'main.Dog']
+	tc.structs['main.Cat'] = []types.StructField{}
+	tc.structs['main.Dog'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	g.preintern_json_encode_value_strings(types.Type(types.SumType{
+		name: 'main.Animal'
+	}), []string{})
+	assert 'Cat' in g.str_lits
+	assert 'Dog' in g.str_lits
+}
+
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	mut ast := &flat.FlatAst{}
 	ast.nodes = [flat.Node{
@@ -394,6 +432,20 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	})
 	assert g.concrete_optional_type_name(result_type) == 'Optional_json2__StructKeyDecodeResult_TestEchoArgs'
 	assert g.needed_optional_types['Optional_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
+}
+
+fn test_concrete_optional_enum_uses_common_int_abi() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	option_enum := types.Type(types.OptionType{
+		base_type: types.Type(types.Enum{ name: 'State' })
+	})
+	assert g.optional_type_name(option_enum) == 'Optional'
+	assert g.concrete_optional_type_name(option_enum) == 'Optional'
+	assert 'Optional_int' !in g.needed_optional_types
 }
 
 fn test_value_type_qualifies_concrete_generic_struct() {

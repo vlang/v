@@ -1964,7 +1964,7 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 }
 
 fn (mut t Transformer) promote_scoped_result_text(value string) string {
-	if value.len == 0 {
+	if value == '' {
 		return ''
 	}
 	// Shallow string copies share `.str`, so one batch promotes the same

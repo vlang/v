@@ -319,6 +319,7 @@ pub mut:
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 mut:
 	benchmark_mu &sync.Mutex = sync.new_mutex()
+	resume_dir   string
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -578,6 +579,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		hash:          hash
 		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
+		resume_dir:    test_resume_dir()
 	}
 	if keep_session {
 		ts.rm_binaries = false
@@ -853,7 +855,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 	ts.benchmark_step()
 	tls_bench.step()
-	if produces_file_output && !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
+	// Keep JS tests disabled for every session caller, including v test-self.
+	// Formatting and vetting still process these sources without compiling them.
+	if produces_file_output && !ts.build_tools
+		&& (!should_be_built || abs_path in ts.skip_files || abs_path.ends_with('_test.js.v')) {
 		ts.benchmark_skip()
 		tls_bench.skip()
 		if !hide_skips {
@@ -864,6 +869,23 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		return pool.no_result
 	}
+	resume := ts.test_resume(file) or {
+		tls_bench.fail()
+		ts.fail_test_resume(err, reproduce_cmd, mtc)
+		return pool.no_result
+	}
+	if resume.passed {
+		ts.benchmark_skip()
+		tls_bench.skip()
+		if !hide_skips {
+			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
+				'${normalised_relative_file} (already passed)', 0,
+				preparation: 1 * time.microsecond
+			), mtc)
+		}
+		return pool.no_result
+	}
+	mut test_succeeded := true
 	mut compile_cmd_duration := time.Duration(0)
 	mut cmd_duration := time.Duration(0)
 	if ts.show_stats {
@@ -906,6 +928,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				time.sleep(fail_retry_delay_ms)
 			}
 			if details.flaky && !fail_flaky {
+				test_succeeded = false
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\ncmd: ${cmd}', mtc)
 				unsafe {
 					goto test_passed_system
@@ -999,6 +1022,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			full_failure_output := failure_output.str().trim_space()
 			if details.flaky && !fail_flaky {
+				test_succeeded = false
 				ts.append_message(.info, '>>> flaky failures so far:', mtc)
 				for line in full_failure_output.split_into_lines() {
 					ts.append_message(.info, '>>>>>> ${line}', mtc)
@@ -1021,6 +1045,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	test_passed_system:
 	test_passed_execute:
+	if test_succeeded {
+		resume.save() or {
+			tls_bench.fail()
+			ts.fail_test_resume(err, reproduce_cmd, mtc)
+			return pool.no_result
+		}
+	}
 	ts.benchmark_ok()
 	tls_bench.ok()
 	if !hide_oks {

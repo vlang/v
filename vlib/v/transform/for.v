@@ -269,7 +269,7 @@ fn (t &Transformer) existing_for_continue_label(body_ids []flat.NodeId) string {
 }
 
 fn (mut t Transformer) rewrite_continue_to_for_post_label(id flat.NodeId, continue_label string) flat.NodeId {
-	if continue_label.len == 0 || int(id) < 0 || int(id) >= t.a.nodes.len {
+	if continue_label == '' || int(id) < 0 || int(id) >= t.a.nodes.len {
 		return id
 	}
 	node := t.a.nodes[int(id)]
@@ -769,7 +769,7 @@ fn (t &Transformer) for_in_map_storage_key(id flat.NodeId) string {
 // owner before the user loop body runs. The ownership checker records that cloned binding
 // for the iteration-tail drop.
 fn (mut t Transformer) make_for_in_binding_clone(name string, typ string) []flat.NodeId {
-	if name.len == 0 || name == '_' || !t.ownership_for_in_type_needs_clone(typ) {
+	if name == '' || name == '_' || !t.ownership_for_in_type_needs_clone(typ) {
 		return []flat.NodeId{}
 	}
 	pending_start := t.pending_stmts.len
@@ -781,7 +781,7 @@ fn (mut t Transformer) make_for_in_binding_clone(name string, typ string) []flat
 }
 
 fn (t &Transformer) ownership_for_in_type_needs_clone(typ string) bool {
-	if isnil(t.tc) || typ.len == 0 {
+	if isnil(t.tc) || typ == '' {
 		return false
 	}
 	parsed := t.tc.parse_type(typ)
@@ -1243,7 +1243,10 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		}
 		iter_node := t.a.nodes[int(iter_id)]
 		if iter_node.kind == .ident && iter_node.value.len > 0 {
-			raw_local_type := t.raw_var_type(iter_node.value)
+			mut raw_local_type := t.raw_var_type(iter_node.value)
+			if t.pointer_value_rvalues[iter_node.value] && raw_local_type.starts_with('&') {
+				raw_local_type = raw_local_type[1..]
+			}
 			if raw_local_type.len > 0 && t.iterator_for_in_info(raw_local_type) != none {
 				return raw_local_type
 			}

@@ -5383,18 +5383,19 @@ fn (mut g FlatGen) map_key_temp_c_type(key_type types.Type) string {
 
 // map_callback_names supports map callback names handling for FlatGen.
 fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string, string) {
-	if key_type is types.String {
+	// Aliases have the same key representation and callbacks as their base type.
+	clean_key := cgen_unalias_type(key_type)
+	if clean_key is types.String {
 		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
-	clean_key := cgen_unalias_type(key_type)
 	if clean_key is types.ArrayFixed {
 		base := '${g.tc.c_type(clean_key)}_map_key'
 		return '${base}_hash', '${base}_eq', '${base}_clone', '${base}_free'
 	}
-	c_key := if key_type is types.Enum {
-		g.enum_storage_c_type(key_type)
+	c_key := if clean_key is types.Enum {
+		g.enum_storage_c_type(clean_key)
 	} else {
-		g.tc.c_type(key_type)
+		g.tc.c_type(clean_key)
 	}
 	size_suffix := map_integer_callback_size_suffix(clean_key, c_key, g.target.pointer_bits)
 
@@ -5954,6 +5955,12 @@ fn (mut g FlatGen) struct_decls() {
 		remaining.delete('array')
 		remaining_cnames.delete('array')
 	}
+	if g.has_builtins && 'map' in remaining {
+		g.emit_struct('map')
+		emitted['map'] = true
+		remaining.delete('map')
+		remaining_cnames.delete('map')
+	}
 	for _ in 0 .. 30 {
 		if remaining.len == 0 && iface_remaining.len == 0 && sum_remaining.len == 0 {
 			break
@@ -6161,7 +6168,8 @@ fn (mut g FlatGen) flattened_map_type_alias_decls() {
 
 fn (g &FlatGen) collect_flattened_map_type_alias(typ string, mut names map[string]bool) {
 	clean := trimmed_space(typ).trim_left('&')
-	if clean.starts_with('map_') && !clean.starts_with('map__') && clean !in g.tc.structs && clean !in g.tc.type_aliases {
+	if (clean.starts_with('Map_') || (clean.starts_with('map_') && !clean.starts_with('map__')))
+		&& clean !in g.tc.structs && clean !in g.tc.type_aliases {
 		names[g.cname(clean)] = true
 	}
 }

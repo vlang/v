@@ -1882,11 +1882,15 @@ fn default_bin_file_for_input(input_file string) string {
 		return os.join_path_single(real_input, os.file_name(real_input))
 	}
 	resolved_input := if os.exists(input_file) { os.real_path(input_file) } else { input_file }
+	filename := os.file_name(resolved_input).trim_space()
 	if !resolved_input.ends_with('.v') && !resolved_input.ends_with('.vv')
 		&& !resolved_input.ends_with('.vsh') {
-		return resolved_input
+		// Extensionless and other script inputs have no V suffix to remove.
+		// Never publish the executable over their source, including symlink targets.
+		base := safe_default_bin_file_name(filename)
+		input_dir := os.dir(resolved_input)
+		return if input_dir in ['', '.'] { base } else { os.join_path_single(input_dir, base) }
 	}
-	filename := os.file_name(resolved_input).trim_space()
 	mut base := filename.all_before_last('.')
 	if os.file_ext(base) in ['.c', '.js', '.wasm'] {
 		base = base.all_before_last('.')
@@ -7248,7 +7252,15 @@ fn v3_test_matches_build_constraint(file string, target pref.Target, ccompiler s
 }
 
 fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string, backend string, target pref.Target, ccompiler string, is_prod bool, user_defines []string) bool {
-	if !is_test_command || !os.is_file(input_file) {
+	if !os.is_file(input_file) {
+		return false
+	}
+	// V3 has no JavaScript backend. Skip JS tests even for `v file_test.js.v`
+	// and `v run file_test.js.v`, before parsing them as native source.
+	if input_file.ends_with('_test.js.v') {
+		return true
+	}
+	if !is_test_command {
 		return false
 	}
 	if is_test_file_for_any_backend(input_file)
@@ -7997,6 +8009,12 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
 	}
+	// The reduced builtin set contains only no-GC implementations. Selecting it
+	// with an active collector drops its declarations while retaining GC calls
+	// in allocation and builtin initialization.
+	if 'gcboehm' in prefs.user_defines || 'vgc' in prefs.user_defines {
+		return false
+	}
 	// Parse the one user file before builtin. This conservative syntax-only pass
 	// lets literal output programs avoid parsing and checking builtin declarations
 	// that markused will discard, without applying a text heuristic to V syntax.
@@ -8597,7 +8615,7 @@ pub fn run(args []string) {
 		run(tool_args)
 		return
 	}
-	macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
+	mut macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
 	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
 	// A delegated V3 process owns the fallback marker until it has successfully
 	// produced its output. Specialized failures overwrite it below. Successful
@@ -8621,6 +8639,7 @@ pub fn run(args []string) {
 	mut retry_compilation := true
 	mut gc_mode := ''
 	mut enable_globals_compat := false
+	mut disable_explicit_mutability := false
 	mut is_prod := false
 	mut no_prod_options := false
 	mut is_shared := false
@@ -8867,6 +8886,10 @@ pub fn run(args []string) {
 			// Avoid module/TinyCC cache paths that use a different link plan.
 			no_cache = true
 			i += if i + 1 < args.len { 2 } else { 1 }
+		} else if args[i] in ['-disable-explicit-mutability', '--disable-explicit-mutability'] {
+			disable_explicit_mutability = true
+			no_cache = true
+			i++
 		} else if args[i].starts_with('-d') && args[i].len > 2 {
 			define := args[i][2..]
 			record_user_define(mut user_defines, mut compile_values, define)
@@ -9191,6 +9214,12 @@ pub fn run(args []string) {
 		is_checker_fixture = true
 		no_cache = true
 	}
+	if is_checker_fixture {
+		// Fixture output is compared byte-for-byte. Let this V3 invocation print
+		// its diagnostic directly instead of replaying it with a launcher heading.
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		macos_v3_fallback_file = ''
+	}
 	mut current_no_parallel := no_parallel
 	if is_prof {
 		// Profile counters are assigned in function emission order and accumulated
@@ -9288,6 +9317,14 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	if backend == 'js' {
+		// This early compatibility path bypasses the common test filter below.
+		if input_file.ends_with('_test.js.v') && os.is_file(input_file) {
+			if !silent {
+				println('SKIP ${input_file}')
+			}
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			return
+		}
 		js_output := if output_file.len > 0 {
 			output_file
 		} else {
@@ -9705,6 +9742,18 @@ pub fn run(args []string) {
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
+	if is_checker_fixture {
+		fixture_modules := os.join_path(os.dir(os.real_path(input_file)), 'modules')
+		if os.is_dir(fixture_modules) {
+			mut fixture_search_paths := [fixture_modules]
+			fixture_search_paths << prefs.module_search_paths
+			if prefs.module_search_paths.len == 0 {
+				fixture_search_paths << os.join_path_single(prefs.vroot, 'vlib')
+				fixture_search_paths << os.vmodules_paths()
+			}
+			prefs.module_search_paths = fixture_search_paths
+		}
+	}
 	prefs.module_resolution_root = v3_module_resolution_root(input_file)
 	prefs.exclude = expand_v3_exclude_patterns(exclude_patterns, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
@@ -10080,6 +10129,7 @@ pub fn run(args []string) {
 	mut cache_no_parallel_cgen := current_no_parallel
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
+	p.enable_import_diagnostics()
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
 	}
@@ -10728,6 +10778,7 @@ pub fn run(args []string) {
 	pre_tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
 	pre_tc.shadow_explicit_roots = shadow_explicit_roots_for(prefs, pre_tc.shadow_dependency_roots)
 	pre_tc.enable_globals = enable_globals_compat
+	pre_tc.disable_explicit_mutability = disable_explicit_mutability
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
 	pre_tc.no_main = 'no_main' in prefs.user_defines
@@ -10796,7 +10847,8 @@ pub fn run(args []string) {
 		}
 		if has_conflicting_c_declaration_errors(pre_tc.errors) {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 			}
 			exit(1)
 		}
@@ -10813,7 +10865,8 @@ pub fn run(args []string) {
 		}
 		if pre_tc.check_interface_embedding_limits() {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 			}
 			exit(1)
 		}
@@ -10934,7 +10987,8 @@ pub fn run(args []string) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 			}
 			pre_tc.notices.clear()
 		}
@@ -10943,7 +10997,8 @@ pub fn run(args []string) {
 		}
 		if no_closures {
 			if closure_error := no_closures_error(a, &pre_tc) {
-				print_type_diagnostics(a, []types.TypeError{}, [closure_error], true, fatal_errors)
+				print_type_diagnostics(a, []types.TypeError{}, [closure_error], true, fatal_errors,
+					check_only)
 				exit(1)
 			}
 		}
@@ -10972,7 +11027,8 @@ pub fn run(args []string) {
 			}
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 				exit(1)
 			}
 			return
@@ -11133,7 +11189,8 @@ pub fn run(args []string) {
 			if cache_state.manager.enabled {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
-			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors)
+			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
+				check_only)
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -11583,7 +11640,8 @@ pub fn run(args []string) {
 		b.step('annotate types (cached)')
 		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
 			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
-			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors)
+			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
+				check_only)
 			for notice in cached_notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -11600,7 +11658,8 @@ pub fn run(args []string) {
 		if macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
-		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+			check_only)
 		exit(1)
 	}
 
@@ -11701,7 +11760,8 @@ pub fn run(args []string) {
 			}
 			if pre_tc.errors.len == 0
 				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 			}
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
@@ -15114,7 +15174,28 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
-fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool) {
+fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool) {
+	if !check_only {
+		mut first_unused := -1
+		for i, err in type_errors {
+			if err.msg != 'expression evaluated but not used'
+				&& !err.msg.ends_with('` evaluated but not used') {
+				continue
+			}
+			if first_unused < 0 || err.pos.id < type_errors[first_unused].pos.id
+				|| (err.pos.id == type_errors[first_unused].pos.id
+					&& err.pos.offset < type_errors[first_unused].pos.offset) {
+				first_unused = i
+			}
+		}
+		if first_unused >= 0 {
+			err := type_errors[first_unused]
+			severity := if err.severity.len > 0 { err.severity } else { 'error:' }
+			eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
+			print_type_diagnostic_details(err.details)
+			return
+		}
+	}
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
 	for notice in ordered_notices {
@@ -15358,6 +15439,11 @@ fn print_type_diagnostic_details(details []string) {
 }
 
 fn compare_print_notices(a &types.TypeError, b &types.TypeError) int {
+	a_is_postfix_value_warning := a.msg.ends_with('operator can only be used as a statement')
+	b_is_postfix_value_warning := b.msg.ends_with('operator can only be used as a statement')
+	if a_is_postfix_value_warning != b_is_postfix_value_warning {
+		return if a_is_postfix_value_warning { -1 } else { 1 }
+	}
 	a_is_unused_import := a.msg.contains(' is imported but never used.')
 	b_is_unused_import := b.msg.contains(' is imported but never used.')
 	if a_is_unused_import != b_is_unused_import {

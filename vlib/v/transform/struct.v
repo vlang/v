@@ -980,7 +980,7 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 }
 
 fn (t &Transformer) bare_struct_name_is_local_to_current_module(name string) bool {
-	if name.len == 0 || name.contains('.') {
+	if name == '' || name.contains('.') {
 		return false
 	}
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
@@ -998,7 +998,7 @@ fn (t &Transformer) bare_struct_name_is_local_to_current_module(name string) boo
 }
 
 fn (t &Transformer) checker_struct_lookup_name(name string) string {
-	if isnil(t.tc) || name.len == 0 {
+	if isnil(t.tc) || name == '' {
 		return ''
 	}
 	if name in t.tc.structs {
@@ -1033,7 +1033,7 @@ fn (t &Transformer) checker_struct_lookup_name(name string) string {
 // module-qualified struct key that shares it (`Vec2` -> `vec.Vec2`), or none when
 // absent or ambiguous. Scans the small generic-struct table.
 fn (t &Transformer) unique_qualified_struct_for_short(name string) ?string {
-	if isnil(t.tc) || name.len == 0 || name.contains('.') {
+	if isnil(t.tc) || name == '' || name.contains('.') {
 		return none
 	}
 	if t.struct_short_name_index_ready {
@@ -1050,7 +1050,7 @@ fn (t &Transformer) unique_qualified_struct_for_short(name string) ?string {
 		if !sname.contains('.') || sname.contains('[') || sname.all_after_last('.') != name {
 			continue
 		}
-		if found.len > 0 && found != sname {
+		if found != '' && found != sname {
 			return none
 		}
 		found = sname
@@ -1218,7 +1218,7 @@ fn (t &Transformer) is_embedded_field(field FieldInfo) bool {
 }
 
 fn field_decl_is_embedded(name string, typ string) bool {
-	if name.len == 0 || typ.len == 0 {
+	if name == '' || typ == '' {
 		return false
 	}
 	short_typ := if typ.contains('.') { typ.all_after_last('.') } else { typ }
@@ -1342,7 +1342,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 
 fn (mut t Transformer) assoc_mapped_base_init(base flat.NodeId, base_type string, assoc_type string, mut prelude []flat.NodeId) ?flat.NodeId {
 	source_type := t.trim_pointer_type(base_type)
-	if source_type.len == 0 || assoc_type.len == 0
+	if source_type.len == 0 || assoc_type == ''
 		|| t.normalize_type_alias(source_type) == t.normalize_type_alias(assoc_type) {
 		return none
 	}
@@ -1435,7 +1435,7 @@ fn (t &Transformer) struct_field_sum_type(field_type string, owner_module string
 	if t.is_sum_type_name(field_type) {
 		return field_type
 	}
-	if field_type.len == 0 || field_type.contains('.') || owner_module.len == 0 {
+	if field_type == '' || field_type.contains('.') || owner_module == '' {
 		return ''
 	}
 	qname := '${owner_module}.${field_type}'
@@ -1455,7 +1455,7 @@ fn (t &Transformer) sum_type_for_union_text(field_type string, owner_module stri
 		variants << t.normalize_sum_variant_type(raw, owner_module, [])
 	}
 	for sum_name, sum_variants in t.sum_types {
-		if owner_module.len > 0 && sum_name.contains('.')
+		if owner_module != '' && sum_name.contains('.')
 			&& sum_name.all_before_last('.') != owner_module {
 			continue
 		}
