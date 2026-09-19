@@ -3,27 +3,62 @@ on:
   push:
     branches: ['fix/28785-reflected-method-callbacks']
 permissions:
-  contents: read
+  contents: write
 jobs:
-  inspect:
+  fix-and-test:
     if: github.repository == 'vlang/v' && github.ref == 'refs/heads/fix/28785-reflected-method-callbacks'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          persist-credentials: false
-      - name: Inspect method-value reachability
+          ref: ${{ github.sha }}
+      - name: Apply the exact source change on this branch only
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
         run: |
+          set -eu
+          branch=fix/28785-reflected-method-callbacks
+          git fetch origin "$branch"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$EXPECTED_HEAD" ]; then
+            echo 'Branch changed; refusing a stale update.'
+            exit 1
+          fi
+          test "$(git rev-parse HEAD:vlib/v/transform/transform.v)" = 1b78d3a1609fdcb71ca3c3d035ef6dbd81273d0d
           python3 - <<'PY'
           from pathlib import Path
-          for directory in ('vlib/v/transform', 'vlib/v/gen/c'):
-              for path in sorted(Path(directory).glob('*.v')):
-                  if path.name.endswith('_test.v'):
-                      continue
-                  lines = path.read_text().splitlines()
-                  targets = [i for i, line in enumerate(lines) if '_mvwrap_' in line or 'method_value_wrappers[' in line]
-                  for i in targets:
-                      print(f'\n=== {path}:{i + 1} ===')
-                      print('\n'.join(f'{n + 1}: {lines[n]}' for n in range(max(0, i - 35), min(len(lines), i + 65))))
+          p = Path('vlib/v/transform/transform.v')
+          text = p.read_text()
+          old = '\t\tmethod_value_name := t.resolve_receiver_method_name(new_base, node.value)\n\t\tmethod_params := t.call_param_types(method_value_name)'
+          new = '\t\tmethod_value_name := t.resolve_receiver_method_name(new_base, node.value)\n\t\tif method_value_name.len > 0 {\n\t\t\t// C generation emits the bound-method wrapper later. Keep its target\n\t\t\t// live when reflection makes the enclosing body reachable late.\n\t\t\tt.mark_fn_used_name(method_value_name)\n\t\t}\n\t\tmethod_params := t.call_param_types(method_value_name)'
+          assert text.count(old) == 1, 'Expected exactly one method-value selector'
+          p.write_text(text.replace(old, new, 1))
           PY
+          git diff --check
+          git diff -- vlib/v/transform/transform.v
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- vlib/v/transform/transform.v
+          git commit -m 'transform: retain bound callback targets in late-reachable methods'
+          git push origin HEAD:"$branch"
+      - name: Build baseline compiler and run the new regression
+        run: |
+          set -eu
+          git show 9bfa1dc3f3455d5733d5c226662b6aaba8544f2c:vlib/v/transform/transform.v > vlib/v/transform/transform.v
+          make
+          set +e
+          ./v -cc gcc test vlib/v/tests/comptime/comptime_reflected_method_callback_test.v
+          status=$?
+          set -e
+          echo "BASELINE_REGRESSION_EXIT=$status"
+          git restore -- vlib/v/transform/transform.v
+      - name: Rebuild and test the fix
+        run: |
+          set -eu
+          ./v self
+          ./v fmt -verify vlib/v/transform/transform.v vlib/v/tests/comptime/comptime_reflected_method_callback_test.v
+          ./v -cc gcc test vlib/v/tests/comptime/comptime_reflected_method_callback_test.v
+          ./v -prod -cc gcc test vlib/v/tests/comptime/comptime_reflected_method_callback_test.v
+          ./v -silent test vlib/v/tests/comptime/
+          ./v -silent test vlib/v/transform/
+          ./v -silent vlib/v/compiler_errors_test.v
