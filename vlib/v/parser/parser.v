@@ -420,6 +420,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	mut ids := []flat.NodeId{}
 	mut script_start := -1
 	mut script_start_end := -1
+	mut malformed_const_line_end := -1
 	mut has_main_fn := false
 	for p.tok != .eof && !p.diagnostic_limit_reached {
 		if p.tok == .semicolon {
@@ -460,6 +461,10 @@ pub fn (mut p Parser) parse_into(path string) {
 		}
 		stmt_start := p.tok_pos
 		stmt_end := p.tok_end
+		if p.tok == .name && p.lit == 'cosnt' && p.peek() == .name {
+			malformed_const_line_end = p.s.src.index_after('\n', stmt_start) or { p.s.src.len }
+		}
+		is_malformed_const := stmt_start < malformed_const_line_end
 		id := p.top_level_stmt()
 		if expansion := p.expand_veb_template_stmt(id) {
 			ids << expansion
@@ -471,7 +476,7 @@ pub fn (mut p Parser) parse_into(path string) {
 				.interface_decl, .type_decl, .const_decl, .global_decl]
 			is_script_statement := node.kind !in [.empty, .import_decl, .module_decl, .directive,
 				.comptime_if, .asm_stmt]
-				&& !is_definition
+				&& !is_definition && !is_malformed_const
 			if p.cur_module.len > 0 {
 				ids << id
 				continue
