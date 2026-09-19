@@ -13923,7 +13923,7 @@ fn (mut p Parser) select_expr() flat.NodeId {
 						int(rhs.pos.offset), int(rhs.pos.end))
 				} else if rhs.op != .arrow {
 					p.record_diagnostic_span('select key: `<-` operator expected', int(rhs.pos.offset),
-						int(rhs.pos.end))
+						int(rhs.pos.offset) + 1)
 				}
 			}
 		} else if p.select_branch_is_timeout(branch) {
