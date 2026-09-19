@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.ansi
 
 // v3_fallback_diagnostics includes failures from the V compiler itself, not just
 // the C compiler. Prefer the original staged C output; otherwise replay only
@@ -88,6 +89,10 @@ fn v3_diagnostics_output(vexe string, args []string) string {
 	environment[v3_retry_env] = '1'
 	environment['VFLAGS'] = ''
 	environment['VNORUN'] = '1'
+	// The replay writes to a pipe, but its diagnostics are displayed on our stderr.
+	// Preserve the terminal decision; explicit -color/-nocolor options still win
+	// when the child parses args. Only change the child's environment.
+	environment['VCOLORS'] = if ansi.stderr_supports_escape_sequences() { 'always' } else { 'never' }
 	// Prepend rather than append: arguments after a run/script input belong to
 	// the user program. A runtime argument named -skip-running must not prevent
 	// us from adding the compiler option, either. Do not mutate the caller's args.
