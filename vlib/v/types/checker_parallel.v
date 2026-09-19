@@ -1880,6 +1880,11 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				|| receiver_name.starts_with('?') {
 				tc.record_error_at(.call_arg_mismatch, 'option types cannot have methods', id, tc.fn_option_receiver_diagnostic_pos(node, receiver.value))
 			}
+			method := node.value.all_after_last('.')
+			if receiver_type is Enum && receiver_type.is_flag
+				&& method in ['has', 'all', 'set', 'clear', 'toggle', 'set_all', 'clear_all'] {
+				tc.record_error_at(.duplicate_decl, 'duplicate method `${method}`, `${method}` is an enum type built-in method', id, token.new_span(node.pos.id, node.pos.offset, node.pos.offset + method.len))
+			}
 		}
 	}
 	if raw_return_type.starts_with('!') {
