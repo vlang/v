@@ -1529,6 +1529,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.file == b.file && b_is_array_append_expr && a_is_array_literal_mutation {
 		return 1
 	}
+	a_is_mutable_const_reference := a.msg.starts_with('cannot have mutable reference to const `')
+	b_is_mutable_const_reference := b.msg.starts_with('cannot have mutable reference to const `')
+	a_is_immutable_reference := a.msg.contains(' is immutable, cannot have a mutable reference to it')
+	b_is_immutable_reference := b.msg.contains(' is immutable, cannot have a mutable reference to it')
+	if a.node == b.node && a_is_mutable_const_reference && b_is_immutable_reference {
+		return -1
+	}
+	if a.node == b.node && b_is_mutable_const_reference && a_is_immutable_reference {
+		return 1
+	}
 	a_is_generic_arg_count := a.msg.starts_with('expected ')
 		&& a.msg.contains(' generic parameter')
 	b_is_generic_arg_count := b.msg.starts_with('expected ')
