@@ -13777,18 +13777,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.record_error_at(.call_arg_mismatch, 'cannot use `?${actual.base_type.name()}` as `${expected.name()}`, it must be unwrapped first in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				continue
 			}
-			is_println_target := target_name == 'println' || target_name.ends_with('.println')
-			actual_display := if is_println_target {
-				tc.diagnostic_expr_type_name(arg_id, actual)
-			} else {
-				call_argument_type_name(actual)
-			}
+			actual_display := tc.diagnostic_expr_type_name(arg_id, actual)
 			expected_display := call_argument_type_name(expected)
-			message := if is_println_target {
-				'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
-			} else {
-				'cannot use `${actual_display}` as argument ${argument_number} to `${target_name}`; expected `${expected_display}`'
-			}
+			message := 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
 			if unalias_type(expected) is FnType && unalias_type(actual) is FnType {
 				expected_alias := if expected is Alias { expected.name } else { '' }
 				details := tc.fn_assignment_mismatch_details(expected_display, expected_alias, actual_display, arg_id)
