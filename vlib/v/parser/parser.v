@@ -1307,6 +1307,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		name_pos = p.tok_pos
 		name = p.expect_name_or_keyword()
 		if p.tok == .dot {
+			qualified_start := name_pos
 			p.next()
 			if name == 'C' || name == 'JS' {
 				// C.func or JS.func
@@ -1327,7 +1328,8 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			name_pos = p.tok_pos
 			second := p.expect_name_or_keyword()
 			if is_method {
-				// This shouldn't happen for methods
+				p.record_diagnostic_span('cannot declare a static function as a receiver method',
+					qualified_start, p.prev_tok_end)
 				name = name + '.' + second
 			} else {
 				// Static method: Type.name
@@ -1514,6 +1516,13 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	if p.tok == .lsbr {
 		generic_params = p.parse_generic_param_names()
 	}
+	if p.pending_export.len > 0 {
+		if is_c_decl {
+			p.record_export_attr_diagnostic('interop function cannot be exported', name_pos)
+		} else if generic_params.len > 0 {
+			p.record_export_attr_diagnostic('generic functions cannot be exported', name_pos)
+		}
+	}
 
 	// params
 	p.check(.lpar)
@@ -1579,6 +1588,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	if p.tok == .lsbr {
 		p.record_diagnostic_span('unexpected token `[` after function signature, expecting `{`',
 			p.tok_pos, p.tok_end)
+	}
+	if is_c_decl && p.tok == .lcbr {
+		p.record_diagnostic_span('interop functions cannot have a body', p.tok_pos, p.tok_end)
 	}
 	// no body — extern/C declaration
 	if p.tok != .lcbr {
@@ -1714,6 +1726,13 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.register_pending_export(name)
 	p.register_pending_noreturn(name)
 	return id
+}
+
+fn (mut p Parser) record_export_attr_diagnostic(message string, before int) {
+	prefix := p.s.src[..clamp_source_offset(before, p.s.src.len)]
+	start := prefix.last_index('@[export') or { before }
+	end := p.s.src.index_after(']', start) or { start + 1 }
+	p.record_diagnostic_span(message, start, end + 1)
 }
 
 fn (mut p Parser) validate_fn_return_type(first string, start int) string {
