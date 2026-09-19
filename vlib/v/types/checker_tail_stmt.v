@@ -1379,7 +1379,11 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 						if concrete_type !is Interface
 							&& !tc.named_type_implements_interface(concrete, subject_type.name)
 							&& tc.should_diagnose(cond_id) {
-							tc.record_error_at(.condition_mismatch, '`${pattern}` is not compatible with interface `${subject_type.name}`', cond_id, tc.match_condition_diagnostic_pos(cond_id))
+							pos := tc.match_condition_diagnostic_pos(cond_id)
+							if !tc.record_interface_implementation_error(.condition_mismatch,
+								concrete_type, subject_type, cond_id, pos) {
+								tc.record_error_at(.condition_mismatch, '`${pattern}` is not compatible with interface `${subject_type.name}`', cond_id, pos)
+							}
 						}
 					} else if tc.should_diagnose(cond_id) {
 						tc.record_error(.condition_mismatch, 'unknown type `${pattern}`', cond_id)
