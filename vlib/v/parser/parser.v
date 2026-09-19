@@ -11,6 +11,7 @@ import v.token
 import v.util
 
 const max_parse_diagnostics = 100
+const max_assignment_expr_depth = 100
 
 const inline_sum_type_deprecation = 'inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead'
 
@@ -9149,6 +9150,8 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 	}
 
 	if p.tok == .decl_assign {
+		assign_start := p.tok_pos
+		assign_end := p.tok_end
 		p.next()
 		// The compiler only treats `x := { ... }` as an ORM dynamic-where literal when a `sql`
 		// block in the same file uses `x`. The formatter has no such luxury: the shape check
@@ -9159,6 +9162,10 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			p.sql_query_data_literal_expr()
 		} else {
 			p.expr(.lowest)
+		}
+		if p.expression_depth_exceeds(rhs, max_assignment_expr_depth) {
+			p.record_diagnostic_span('expr level > ${max_assignment_expr_depth}', assign_start,
+				assign_end)
 		}
 		mut rhs_ids := [rhs]
 		for p.tok == .comma {
@@ -9248,6 +9255,27 @@ fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
 		p.next()
 	}
 	return id
+}
+
+fn (p &Parser) expression_depth_exceeds(root flat.NodeId, max_depth int) bool {
+	mut ids := [root]
+	mut depths := [1]
+	for ids.len > 0 {
+		id := ids.pop()
+		depth := depths.pop()
+		if depth > max_depth {
+			return true
+		}
+		if int(id) < 0 || int(id) >= p.a.nodes.len {
+			continue
+		}
+		node := p.a.nodes[int(id)]
+		for i in 0 .. node.children_count {
+			ids << p.a.child(&node, i)
+			depths << depth + 1
+		}
+	}
+	return false
 }
 
 fn (p &Parser) lhs_is_dynamic_sql_expr_alias(lhs flat.NodeId) bool {
