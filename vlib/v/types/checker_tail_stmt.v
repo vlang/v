@@ -3494,12 +3494,14 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			tc.struct_generic_params[qualified_base] or { []string{} }
 		}
 		if params.len > 0 && generic_args.len != params.len {
-			message := if tc.fn_context.generic_params.len > 0 {
+			in_generic_fn := tc.fn_context.generic_params.len > 0
+				|| tc.current_fn_is_specialized_generic()
+			message := if in_generic_fn {
 				'generic struct init expects ${params.len} generic parameter, but got ${generic_args.len}'
 			} else {
 				'the number of generic types of struct `${generic_base.all_after_last('.')}` is inconsistent with the concrete types'
 			}
-			pos := if tc.fn_context.generic_params.len > 0 {
+			pos := if in_generic_fn {
 				tc.struct_init_head_pos(node)
 			} else {
 				tc.explicit_generic_args_diagnostic_pos(id)
@@ -6099,6 +6101,54 @@ fn (tc &TypeChecker) current_fn_has_invalid_defer_mode() bool {
 		}
 	}
 	return false
+}
+
+fn (mut tc TypeChecker) check_generic_fn_struct_init_type_args(node flat.Node) {
+	mut stack := []flat.NodeId{}
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if tc.a.node(child_id).kind != .param {
+			stack << child_id
+		}
+	}
+	for stack.len > 0 {
+		id := stack.pop()
+		child := tc.a.node(id)
+		if child.kind in [.fn_decl, .fn_literal] {
+			continue
+		}
+		if child.kind == .struct_init {
+			tc.check_generic_struct_init_type_args(id, child)
+		}
+		for i in 0 .. child.children_count {
+			stack << tc.a.child(child, i)
+		}
+	}
+}
+
+fn (mut tc TypeChecker) check_generic_struct_init_type_args(id flat.NodeId, node flat.Node) {
+	base, args, has_args := generic_type_application_parts(node.value)
+	if !has_args {
+		return
+	}
+	qualified := tc.qualify_name(base)
+	params := tc.struct_generic_params[base] or {
+		tc.struct_generic_params[qualified] or { return }
+	}
+	if params.len == 0 {
+		return
+	}
+	if args.len != params.len {
+		tc.record_error_at(.unsupported_generic, 'generic struct init expects ${params.len} generic parameter, but got ${args.len}', id, tc.struct_init_head_pos(node))
+		return
+	}
+	for arg in args {
+		if is_bare_generic_param(arg) && arg !in tc.fn_context.generic_params {
+			current := '(${tc.fn_context.generic_params.join(',')})'
+			tc.record_error_at(.unsupported_generic, 'generic struct init type parameter `${arg}` must be within the parameters `${current}` of the current generic function', id, tc.struct_init_head_pos(node))
+			return
+		}
+	}
 }
 
 fn (tc &TypeChecker) current_fn_is_specialized_generic() bool {
