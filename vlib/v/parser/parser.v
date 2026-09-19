@@ -14117,12 +14117,22 @@ fn (mut p Parser) parse_type_name() string {
 		name = p.lit
 		p.next()
 		// map[K]V
-		if name == 'map' && p.tok == .lsbr {
-			p.next()
-			key := p.parse_type_name()
-			p.check(.rsbr)
-			val := p.parse_type_name()
-			return 'map[${key}]${val}'
+		if name == 'map' {
+			if p.tok == .lsbr {
+				p.next()
+				key := p.parse_type_name()
+				p.check(.rsbr)
+				val := p.parse_type_name()
+				return 'map[${key}]${val}'
+			}
+			if !p.internal_collection_types_allowed() {
+				p.record_diagnostic_span('cannot use the map type without key and value definition',
+					name_start, name_end)
+			}
+		}
+		if name == 'array' && !p.internal_collection_types_allowed() {
+			p.record_diagnostic_span('`array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc',
+				name_start, name_end)
 		}
 		// chan T
 		if name == 'chan' {
@@ -14159,6 +14169,10 @@ fn (mut p Parser) parse_type_name() string {
 		name = p.resolve_local_type_name(name)
 	}
 	return name
+}
+
+fn (p &Parser) internal_collection_types_allowed() bool {
+	return p.cur_module in ['builtin', 'os', 'strconv', 'sync']
 }
 
 fn anonymous_struct_name_shape_key(fields []string) string {
