@@ -12968,6 +12968,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 		}
 		multi_arg_type := tc.cached_expr_type(check_arg_id) or { tc.resolve_type(check_arg_id) }
+		if tc.errors.any(it.node == check_arg_id && it.kind == .unknown_type
+			&& it.msg.starts_with('unknown module `')) {
+			if has_dsl_scope {
+				tc.pop_scope()
+			}
+			continue
+		}
 		if !info.is_variadic && !is_print_style_fn_name(info.name) && multi_arg_type is MultiReturn
 			&& tc.a.node(check_arg_id).kind != .call {
 			expected_count := info.params.len - (if info.has_receiver { 1 } else { 0 })

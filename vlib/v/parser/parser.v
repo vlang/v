@@ -9990,13 +9990,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				}
 			}
 			if lhs_node.kind == .selector && lhs_node.value.len > 0 {
-				base := p.a.child_node(&lhs_node, 0)
-				is_c_struct := base.kind == .ident && base.value == 'C'
+				full_name := p.type_expr_name(lhs)
+				is_c_struct := full_name.starts_with('C.')
 					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
-				is_v_struct := base.kind == .ident && base.value != 'C' && lhs_node.value[0] >= `A`
-					&& lhs_node.value[0] <= `Z`
+				is_v_struct := !full_name.starts_with('C.') && type_name_can_init(full_name)
 				if is_c_struct || is_v_struct {
-					full_name := '${base.value}.${lhs_node.value}'
 					lhs = p.struct_init(full_name)
 					continue
 				}

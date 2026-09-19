@@ -13135,9 +13135,9 @@ fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeI
 }
 
 fn (mut tc TypeChecker) record_invalid_type_module_qualifier(name string, node_id flat.NodeId) bool {
-	module_name := tc.unknown_type_module_qualifier(name) or { return false }
+	module_name := tc.unknown_type_module_qualifier(name, node_id) or { return false }
 	mut msg := 'unknown module `${module_name}`'
-	if suggested_alias := tc.import_alias_for_module_path(module_name) {
+	if suggested_alias := tc.import_alias_for_module_path(module_name, node_id) {
 		msg += '; did you mean `${suggested_alias}`?'
 	}
 	tc.record_error_at(.unknown_type, msg, node_id,
@@ -13145,23 +13145,45 @@ fn (mut tc TypeChecker) record_invalid_type_module_qualifier(name string, node_i
 	return true
 }
 
-fn (tc &TypeChecker) unknown_type_module_qualifier(name string) ?string {
+fn (tc &TypeChecker) unknown_type_module_qualifier(name string, node_id flat.NodeId) ?string {
 	if !name.contains('.') || name.starts_with('C.') || name.starts_with('JS.') {
 		return none
 	}
 	module_name := name.all_before_last('.')
-	if module_name == tc.cur_module || tc.current_file_import_path_for_alias(module_name) != none {
+	if module_name == tc.cur_module || tc.current_file_import_path_for_alias(module_name) != none
+		|| tc.source_file_import_path_for_alias(module_name, node_id) != none {
 		return none
 	}
 	return module_name
 }
 
-fn (tc &TypeChecker) import_alias_for_module_path(module_path string) ?string {
-	prefix := '${tc.cur_file}\x00'
+fn (tc &TypeChecker) source_file_import_path_for_alias(alias string, node_id flat.NodeId) ?string {
+	if int(node_id) < 0 || int(node_id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(node_id)]
+	file := tc.a.source_files[node.pos.id] or { return none }
+	return tc.file_import_alias_paths['${file.name}\x00${alias}'] or { return none }
+}
+
+fn (tc &TypeChecker) import_alias_for_module_path(module_path string, node_id flat.NodeId) ?string {
+	if int(node_id) < 0 || int(node_id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(node_id)]
+	file := tc.a.source_files[node.pos.id] or { return none }
+	prefix := '${file.name}\x00'
 	for key, path in tc.file_import_alias_paths {
 		if path == module_path && key.starts_with(prefix) {
 			return key[prefix.len..]
 		}
+	}
+	suffix := module_path.all_after_last('.')
+	if tc.file_import_suffix_paths['${file.name}\x00${suffix}'] or { '' } == module_path {
+		return suffix
+	}
+	if tc.source_file_import_path_for_alias(suffix, node_id) != none {
+		return suffix
 	}
 	return none
 }
@@ -13173,7 +13195,14 @@ fn (tc &TypeChecker) qualified_module_diagnostic_pos(node_id flat.NodeId, module
 	node := tc.a.nodes[int(node_id)]
 	file := tc.a.source_files[node.pos.id] or { return node.pos }
 	source := tc.source_texts_by_file[file.name] or { return node.pos }
-	return closest_text_span(source, module_name, node.pos.offset, node.pos.id) or { node.pos }
+	first_segment := module_name.all_before('.')
+	highlight := if first_segment != module_name
+		&& '${file.name}\x00${first_segment}' in tc.file_import_alias_paths {
+		module_name[first_segment.len + 1..]
+	} else {
+		module_name
+	}
+	return closest_text_span(source, highlight, node.pos.offset, node.pos.id) or { node.pos }
 }
 
 fn (tc &TypeChecker) unknown_type_already_reported_on_line(name string, pos token.Pos) bool {

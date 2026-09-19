@@ -3272,19 +3272,12 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	} else {
 		raw_source_type_text
 	}
-	if source_type_text.contains('.') && !source_type_text.starts_with('C.') {
-		module_alias := source_type_text.all_before('.')
-		if module_alias.len > 0 && module_alias[0] >= `a` && module_alias[0] <= `z`
-			&& module_alias.bytes().all(it.is_letter() || it.is_digit() || it == `_`)
-			&& module_alias != tc.cur_module
-			&& tc.current_file_import_path_for_alias(module_alias) == none {
-			tc.record_error_at(.unknown_type, 'unknown module `${module_alias}`', id, tc.type_diagnostic_pos(id, module_alias))
-			for i in 0 .. node.children_count {
-				tc.check_node(tc.a.child(&node, i))
-			}
-			tc.register_synth_type(id, Type(void_))
-			return
+	if tc.record_invalid_type_module_qualifier(source_type_text, id) {
+		for i in 0 .. node.children_count {
+			tc.check_node(tc.a.child(&node, i))
 		}
+		tc.register_synth_type(id, Type(void_))
+		return
 	}
 	parsed_init_type := tc.parse_type(init_type_text)
 	clean_parsed_init_type := unalias_type(parsed_init_type)
