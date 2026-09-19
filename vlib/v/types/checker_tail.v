@@ -1561,7 +1561,7 @@ fn (mut tc TypeChecker) resolve_index_lvalue_type(lhs_id flat.NodeId, op flat.Op
 	}
 	if getter := tc.index_operator_call_info(base_type, '[]') {
 		if tc.should_diagnose(lhs_id) {
-			tc.record_error_at(.assignment_mismatch, 'index assignment requires a `[]=` overload on `${base_type.name()}`', lhs_id, tc.index_brackets_pos(lhs))
+			tc.record_error_at(.assignment_mismatch, 'index assignment requires a `[]=` overload on type `${base_type.name()}`', lhs_id, tc.index_brackets_pos(lhs))
 		}
 		if getter.params.len >= 2 {
 			tc.check_index_overload_arg(lhs_id, lhs, getter, '[]')
