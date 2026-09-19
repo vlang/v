@@ -7362,7 +7362,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		message := if tc.fn_context.undefined_variable_context_depth > 0 && !is_match_subject {
 			'undefined variable: `${node.value}`'
 		} else {
-			'undefined ident: `${node.value}` (unknown identifier `${node.value}`)'
+			'undefined ident: `${node.value}`'
 		}
 		tc.record_error(.unknown_ident, message, id)
 		tc.register_synth_type(id, Type(void_))

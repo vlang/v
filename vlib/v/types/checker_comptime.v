@@ -15995,6 +15995,10 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			rhs_type = source_rhs_type
 		}
 		if rhs_type is Void {
+			if tc.expr_subtree_has_undefined_ident_error(rhs_id) {
+				i += 2
+				continue
+			}
 			if tc.expr_calls_invalid_option_void_fn(rhs_id) {
 				i += 2
 				continue
