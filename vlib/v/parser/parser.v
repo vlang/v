@@ -11288,6 +11288,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				p.next() // skip [
 				key_type := p.parse_type_name()
 				p.check(.rsbr)
+				p.diagnose_map_second_key(key_type)
 				if !p.can_start_type_name() {
 					p.record_diagnostic('map value type is missing: use `map[KeyType]ValueType`',
 						p.tok_pos)
@@ -15013,6 +15014,30 @@ fn (mut p Parser) parse_type_name() string {
 
 fn (p &Parser) internal_collection_types_allowed() bool {
 	return p.cur_module in ['builtin', 'os', 'strconv', 'sync']
+}
+
+fn (mut p Parser) diagnose_map_second_key(key string) {
+	if p.tok != .lsbr {
+		return
+	}
+	second_open := p.tok_pos
+	second_close := p.s.src.index_after(']', second_open) or { -1 }
+	mut after_second := second_close + 1
+	for after_second > 0 && after_second < p.s.src.len
+		&& p.s.src[after_second] in [` `, `\t`] {
+		after_second++
+	}
+	if second_close <= second_open + 1 || after_second >= p.s.src.len
+		|| p.s.src[after_second] != `{` {
+		return
+	}
+	mut key_start := second_open + 1
+	for key_start < second_close && p.s.src[key_start] in [` `, `\t`] {
+		key_start++
+	}
+	second_key := p.s.src[key_start..second_close].trim_space()
+	p.record_diagnostic_span('maps can only have a single key. To declare a map use `map[${key}]${second_key}{}` instead',
+		key_start, key_start + second_key.len)
 }
 
 fn anonymous_struct_name_shape_key(fields []string) string {
