@@ -1549,7 +1549,8 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	}
 	param_list_end := p.tok_pos
 	p.check(.rpar)
-	if p.tok == .lsbr && !p.current_lbr_starts_array_type() {
+	is_legacy_generic_return := p.tok == .lsbr && generic_params.any(p.s.src[p.tok_pos..].starts_with('[${it}]'))
+	if p.tok == .lsbr && !p.current_lbr_starts_array_type() && !is_legacy_generic_return {
 		p.record_diagnostic_span('unexpected token `[` after function signature, expecting `{`',
 			p.tok_pos, p.tok_end)
 	}
