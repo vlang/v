@@ -1472,6 +1472,26 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_missing_generic_decl := a.msg in [
+		'generic function declaration must specify generic type names',
+		'generic method declaration must specify generic type names',
+	]
+	b_is_missing_generic_decl := b.msg in [
+		'generic function declaration must specify generic type names',
+		'generic method declaration must specify generic type names',
+	]
+	a_is_unmentioned_fn_generic := a.msg.starts_with('generic type name `')
+		&& a.msg.contains(' is not mentioned in fn `')
+	b_is_unmentioned_fn_generic := b.msg.starts_with('generic type name `')
+		&& b.msg.contains(' is not mentioned in fn `')
+	if a.pos.id == b.pos.id && a.pos.offset <= b.pos.offset && a.pos.end >= b.pos.end
+		&& a_is_missing_generic_decl && b_is_unmentioned_fn_generic {
+		return -1
+	}
+	if a.pos.id == b.pos.id && b.pos.offset <= a.pos.offset && b.pos.end >= a.pos.end
+		&& b_is_missing_generic_decl && a_is_unmentioned_fn_generic {
+		return 1
+	}
 	a_is_for_in_same_variable := a.msg.starts_with('in a `for x in ')
 		&& a.msg.contains(' can not be the same as the low variable')
 	b_is_for_in_same_variable := b.msg.starts_with('in a `for x in ')
