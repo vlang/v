@@ -1723,8 +1723,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		&& a.msg.contains(' not defined on right operand')) || a.msg.starts_with('invalid right operand:')
 	b_is_compound_operand := (b.msg.starts_with('operator ')
 		&& b.msg.contains(' not defined on right operand')) || b.msg.starts_with('invalid right operand:')
+	a_is_assignment_infix_mismatch := a.msg.starts_with('mismatched types `')
+	b_is_assignment_infix_mismatch := b.msg.starts_with('mismatched types `')
 	a_is_assignment_type_mismatch := a.msg.starts_with('cannot assign to `')
 	b_is_assignment_type_mismatch := b.msg.starts_with('cannot assign to `')
+	if a.node == b.node && a_is_assignment_infix_mismatch && b_is_assignment_type_mismatch {
+		return -1
+	}
+	if a.node == b.node && b_is_assignment_infix_mismatch && a_is_assignment_type_mismatch {
+		return 1
+	}
 	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && a_is_compound_operand
 		&& b_is_assignment_type_mismatch {
 		return -1

@@ -16309,8 +16309,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		defer_open_generic_mismatch := tc.fn_context.generic_params.len > 0
 			&& (type_contains_unknown(rhs_type) || type_contains_unknown(source_rhs_type))
 			&& !invalid_comptime_selector_lhs
-		if node.op == .assign && clean_rhs_type is ArrayFixed
-			&& (clean_expected_type is Pointer || expected_type.name() == 'voidptr') {
+		fixed_array_pointer_mismatch := node.op == .assign && clean_rhs_type is ArrayFixed
+			&& (clean_expected_type is Pointer || expected_type.name() == 'voidptr')
+		if fixed_array_pointer_mismatch {
 			tc.record_error_at(.assignment_mismatch, 'mismatched types `${expected_type.name()}` and `${rhs_type.name()}`', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 		}
 		if deref_pointer_mismatch {
@@ -16352,7 +16353,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 						expected_type
 					}
 					expected_name := diagnostic_expected_type.name().replace_once('fn(', 'fn (')
-					diagnostic_id := if tc.should_diagnose(rhs_id) {
+					diagnostic_id := if fixed_array_pointer_mismatch {
+						id
+					} else if tc.should_diagnose(rhs_id) {
 						rhs_id
 					} else if tc.should_diagnose(lhs_id) {
 						lhs_id
