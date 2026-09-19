@@ -17651,6 +17651,20 @@ fn (tc &TypeChecker) multi_return_types_compatible(a []Type, b []Type) bool {
 	return true
 }
 
+fn multi_return_wrapper_shapes_match(a []Type, b []Type) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i, typ in a {
+		other := b[i]
+		if (unalias_type(typ) is OptionType) != (unalias_type(other) is OptionType)
+			|| (unalias_type(typ) is ResultType) != (unalias_type(other) is ResultType) {
+			return false
+		}
+	}
+	return true
+}
+
 fn (tc &TypeChecker) if_branch_types_compatible_with_expected(a Type, a_tail flat.NodeId, b Type, b_tail flat.NodeId, expected Type) bool {
 	if expected is Void || expected is Unknown {
 		return false
@@ -18297,6 +18311,26 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	value_count := tc.enclosing_multi_assign_value_count(id)
 	if value_count > 1 {
 		if _ := tc.multi_expr_tail_types(id, value_count) {
+			if groups := tc.multi_expr_tail_type_groups(id, value_count) {
+				if groups.len > 1 {
+					first := groups[0]
+					for group in groups[1..] {
+						if !multi_return_wrapper_shapes_match(first, group) {
+							if tc.should_diagnose(id) {
+								pos := token.new_span(node.pos.id, node.pos.offset, node.pos.offset + 2)
+								first_name := Type(MultiReturn{
+									types: first
+								}).name()
+								group_name := Type(MultiReturn{
+									types: group
+								}).name()
+								tc.record_error_at(.if_branch_mismatch, 'mismatched types `${first_name}` and `${group_name}`', id, pos)
+							}
+							return
+						}
+					}
+				}
+			}
 			return
 		}
 	}
