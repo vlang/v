@@ -1484,6 +1484,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.node == b.node && b_is_sumtype_string_cast && a_is_sum_type_cast {
 		return 1
 	}
+	a_is_cast_into_sumtype := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to `SumType`')
+	b_is_cast_into_sumtype := b.msg.starts_with('cannot cast `') && b.msg.ends_with(' to `SumType`')
+	a_is_cast_from_sumtype := a.msg.starts_with('cannot cast `SumType` to `')
+	b_is_cast_from_sumtype := b.msg.starts_with('cannot cast `SumType` to `')
+	if a.file == b.file && a_is_cast_into_sumtype && b_is_cast_from_sumtype {
+		return -1
+	}
+	if a.file == b.file && b_is_cast_into_sumtype && a_is_cast_from_sumtype {
+		return 1
+	}
 	a_is_empty_or_block := a.msg == 'expression requires a non empty `or {}` block'
 	b_is_empty_or_block := b.msg == 'expression requires a non empty `or {}` block'
 	a_is_void_branch_tail := a.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
