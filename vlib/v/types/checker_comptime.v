@@ -4426,8 +4426,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if clean_actual is Interface
-		&& tc.interface_metadata_name(clean_actual.name) != tc.interface_metadata_name(target_iface.name)
-		&& !tc.interface_implements_interface(clean_actual.name, target_iface.name) {
+		&& tc.interface_metadata_name(clean_actual.name) != tc.interface_metadata_name(target_iface.name) {
 		tc.record_error_at(.assignment_mismatch, 'cannot implement interface `${target_iface.name}` with a different interface `${clean_actual.name}`', id, node.pos)
 		return
 	}
