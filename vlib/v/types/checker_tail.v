@@ -14739,8 +14739,10 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 			tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`', id, method_pos)
 		}
 	} else if !tc.sort_operand_has_valid_shape(lhs_id) || !tc.sort_operand_has_valid_shape(rhs_id) {
-		tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`', id, method_pos)
-		tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use ident, index, selector or call as argument,\ne.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`', id, method_pos)
+		tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`',
+			arg_id, method_pos)
+		tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use ident, index, selector or call as argument,\ne.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`',
+			arg_id, method_pos)
 	}
 	tc.push_array_dsl_scope(node, 'array.sort')
 	tc.check_node(arg_id)
