@@ -1205,6 +1205,11 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			// signature and dispatch indexes still receive parameter 0.
 			receiver_type = receiver_name
 			receiver_name = '_'
+		} else if p.tok == .name && p.lit == 'chan' && p.peek() == .rpar {
+			// The builtin channel methods use the generic `chan` receiver. A bare
+			// channel is invalid everywhere else because it has no element type.
+			receiver_type = p.lit
+			p.next()
 		} else {
 			receiver_type = p.parse_type_name()
 		}
@@ -10547,6 +10552,12 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					p.prefs.vcurrent_hash
 				})
 			}
+			if name == 'chan' && p.tok == .lcbr {
+				id := p.struct_init('chan')
+				p.record_diagnostic_span('`chan` has no type specified. Use `chan Type{}` instead of `chan{}`',
+					name_pos, p.prev_tok_end)
+				return id
+			}
 			if name == 'chan' && p.can_start_type_name() {
 				if p.tok == .not {
 					p.record_diagnostic_span('cannot use chan with Result type', p.tok_pos, p.tok_pos + 1)
@@ -14059,6 +14070,8 @@ fn (mut p Parser) parse_type_name() string {
 	// name
 	mut name := ''
 	if p.tok == .name {
+		name_start := p.tok_pos
+		name_end := p.tok_end
 		name = p.lit
 		p.next()
 		// map[K]V
@@ -14076,6 +14089,8 @@ fn (mut p Parser) parse_type_name() string {
 				elem := p.parse_type_name()
 				return 'chan ${elem}'
 			}
+			p.record_diagnostic_span('`chan` has no type specified. Use `chan Type` instead of `chan`',
+				name_start, name_end)
 			return 'chan'
 		}
 		// thread T
