@@ -2003,6 +2003,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 		return ids
 	}
+	if p.tok == .name && p.lit == 'sql' {
+		p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos, p.tok_end)
+	}
 	name_positions << p.current_pos()
 	names << p.expect_name_or_keyword()
 	for p.tok == .comma {
@@ -2011,6 +2014,10 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			p.next()
 		}
 		if p.tok_can_be_decl_name() {
+			if p.tok == .name && p.lit == 'sql' {
+				p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos,
+					p.tok_end)
+			}
 			name_positions << p.current_pos()
 			names << p.expect_name_or_keyword()
 		}
