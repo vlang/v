@@ -10281,6 +10281,15 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	// their own location and prefix operators can span from here to the operand.
 	start_pos := p.current_pos()
 	op_start := p.span_start()
+	if p.tok in [.key_atomic, .key_mut, .key_shared, .key_static, .key_volatile]
+		&& !(p.tok == .key_shared && p.shared_token_is_identifier(false))
+		&& p.peek() !in [.name, .key_type] {
+		modifier := p.tok.str()
+		p.record_diagnostic_span('the `${modifier}` keyword is invalid here', p.tok_pos,
+			p.tok_end)
+		p.next()
+		return p.prefix_expr()
+	}
 	tok_id := int(p.tok)
 	if p.tok == .plus {
 		p.next()
