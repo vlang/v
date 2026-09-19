@@ -1436,7 +1436,11 @@ fn (mut tc TypeChecker) sort_parallel_check_errors() {
 	mut deduped := []TypeError{cap: tc.errors.len}
 	for err in tc.errors {
 		if deduped.len > 0 && type_errors_equal(deduped[deduped.len - 1], err) {
-			continue
+			preserve_fixture_duplicate := tc.checker_fixture_mode
+				&& err.msg.contains('` is a generic fn, you should pass its concrete types, e.g. ')
+			if !preserve_fixture_duplicate {
+				continue
+			}
 		}
 		deduped << err
 	}
