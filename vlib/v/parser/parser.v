@@ -4368,20 +4368,22 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 		p.next()
 	}
 	p.check(.lcbr)
-	if subject_is_literal {
+	if subject_is_literal && !explicit_mut {
 		return p.parse_known_comptime_match_value(subject, is_top_level, is_expr)
 	}
 	subject_is_unresolved_local := p.is_local_binding(subject)
 		&& subject !in p.comptime_local_values
-	if value := p.comptime_local_values[subject] {
-		return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
+	if !explicit_mut {
+		if value := p.comptime_local_values[subject] {
+			return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
+		}
 	}
-	if !subject_is_unresolved_local {
+	if !explicit_mut && !subject_is_unresolved_local {
 		if value := p.comptime_value(subject) {
 			return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
 		}
 	}
-	if subject.starts_with('@') {
+	if !explicit_mut && subject.starts_with('@') {
 		return p.parse_known_comptime_match_value(p.resolve_comptime_at_values(subject), is_top_level, is_expr)
 	}
 	mut branch_patterns := [][]string{}
@@ -4449,7 +4451,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 	match_metadata.insert(5, match_kind)
 	mut conds := []string{cap: branch_patterns.len}
 	condition_subject := if match_kind == 'value' {
-		p.comptime_value(subject) or { subject }
+		if explicit_mut { subject } else { p.comptime_value(subject) or { subject } }
 	} else {
 		subject
 	}
