@@ -3699,7 +3699,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	}
 	if arg_id := tc.builtin_addr_call_arg(node) {
 		if tc.unsafe_depth == 0 {
-			tc.record_error(.call_arg_mismatch, '`__addr` can only be used in unsafe blocks', id)
+			tc.record_error(.call_arg_mismatch, '`__addr` must be called from an unsafe block', id)
 		}
 		arg_type := tc.resolve_type(arg_id)
 		tc.remember_expr_type(id, Type(Pointer{
