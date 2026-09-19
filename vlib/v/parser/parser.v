@@ -7962,6 +7962,9 @@ fn (mut p Parser) static_decl_stmt() flat.NodeId {
 
 fn (mut p Parser) return_stmt() flat.NodeId {
 	return_pos := p.tok_pos
+	if p.defer_depth > 0 {
+		p.record_diagnostic_span('`return` not allowed inside `defer` block', p.tok_pos, p.tok_end)
+	}
 	p.next() // skip 'return'
 	mut ids := []flat.NodeId{}
 	// vfmt wraps long return expressions after the keyword. The following token
@@ -10147,6 +10150,10 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// postfix `!` error propagation: expr!
 		if p.tok == .not {
+			if p.defer_depth > 0 {
+				p.record_diagnostic_span('error propagation not allowed inside `defer` blocks',
+					p.tok_pos, p.tok_end)
+			}
 			p.next()
 			ostart := p.add_children2(lhs, p.add(flat.NodeKind.empty))
 			lhs = p.add_node_from(flat.Node{
@@ -10165,6 +10172,10 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 					lhs_node.pos.end)
 			} else if lhs_node.kind == .index {
 				p.record_diagnostic_span('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
+					p.tok_pos, p.tok_end)
+			}
+			if p.defer_depth > 0 {
+				p.record_diagnostic_span('error propagation not allowed inside `defer` blocks',
 					p.tok_pos, p.tok_end)
 			}
 			p.next()
