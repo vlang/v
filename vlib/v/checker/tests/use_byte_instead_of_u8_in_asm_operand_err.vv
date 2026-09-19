@@ -1,0 +1,11 @@
+fn main() {
+	x := u8(1)
+	mut result := 0
+	asm amd64 {
+		.byte 0x90
+		mov result, y
+		; =r (result)
+		; r (byte(x)) as y
+	}
+	println(result)
+}
