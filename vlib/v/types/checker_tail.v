@@ -13100,7 +13100,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if info.is_variadic && param_idx == info.params.len - 1 && expected_raw is Array {
 			elem_type := array_elem_type(expected_raw)
 			if spread_id := tc.spread_arg_value(arg_id) {
-				actual := tc.resolve_type(spread_id)
+				spread_node := tc.a.node(spread_id)
+				mut actual := tc.resolve_type(spread_id)
+				if spread_node.kind == .array_literal && spread_node.children_count > 0 {
+					actual = Type(Array{
+						elem_type: tc.array_literal_elem_type(spread_node)
+					})
+				}
 				spread_pos := tc.a.node(spread_id).pos
 				argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
 				if unalias_type(unwrap_pointer(actual)) is ArrayFixed {
@@ -13134,11 +13140,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 						'...${elem_type.name()}'
 					}
 					target_name := tc.call_argument_target_name(node, info)
-					message := if unalias_type(elem_type) is Interface {
-						'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
-					} else {
-						'cannot use `${actual.name()}` as argument ${argument_number} to `${target_name}`; cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
-					}
+					message := 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
 					tc.record_error_at(.call_arg_mismatch, message, arg_id, token.new_span(spread_pos.id, int_max(0,
 						spread_pos.offset - 3), spread_pos.end))
 				}
@@ -15259,6 +15261,15 @@ fn (tc &TypeChecker) variadic_spread_arg_compatible(actual Type, expected_array 
 	if clean_expected_elem is Interface {
 		clean_actual_elem := unalias_type(actual_elem)
 		if clean_actual_elem !is Interface {
+			return false
+		}
+		if clean_actual_elem.name != clean_expected_elem.name {
+			return false
+		}
+	}
+	if clean_expected_elem is SumType {
+		clean_actual_elem := unalias_type(actual_elem)
+		if clean_actual_elem !is SumType {
 			return false
 		}
 		if clean_actual_elem.name != clean_expected_elem.name {
