@@ -12515,7 +12515,12 @@ fn (mut p Parser) array_literal() flat.NodeId {
 					}
 					if p.tok == .name && p.peek() == .colon {
 						fname_start := p.span_start()
+						fname_end := p.tok_end
 						fname := p.expect_name()
+						if fname in ['len', 'cap'] {
+							p.record_diagnostic_span('`len` and `cap` are invalid attributes for fixed array dimension',
+								fname_start, fname_end)
+						}
 						p.check(.colon)
 						val := p.expr(.lowest)
 						vstart := p.add_child(val)
