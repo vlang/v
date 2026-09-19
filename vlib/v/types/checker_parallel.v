@@ -1539,6 +1539,22 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.node == b.node && b_is_mutable_const_reference && a_is_immutable_reference {
 		return 1
 	}
+	a_is_anon_param_semantic := a.msg == 'use `_` to name an unused parameter'
+		|| a.msg.contains('must be explicitly listed as inherited variable to be used inside a closure')
+		|| a.msg.ends_with(' used as value')
+	b_is_anon_param_semantic := b.msg == 'use `_` to name an unused parameter'
+		|| b.msg.contains('must be explicitly listed as inherited variable to be used inside a closure')
+		|| b.msg.ends_with(' used as value')
+	a_is_anon_param_followup := a.msg.starts_with('unknown type `')
+		|| (a.msg.starts_with('cannot use `') && a.msg.contains(' in argument '))
+	b_is_anon_param_followup := b.msg.starts_with('unknown type `')
+		|| (b.msg.starts_with('cannot use `') && b.msg.contains(' in argument '))
+	if a.file == b.file && a_is_anon_param_semantic && b_is_anon_param_followup {
+		return -1
+	}
+	if a.file == b.file && b_is_anon_param_semantic && a_is_anon_param_followup {
+		return 1
+	}
 	a_is_generic_arg_count := a.msg.starts_with('expected ')
 		&& a.msg.contains(' generic parameter')
 	b_is_generic_arg_count := b.msg.starts_with('expected ')
