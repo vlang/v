@@ -2800,11 +2800,7 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 						&& node.value.len == 1 && node.value[0].is_capital()) {
 						tc.record_error_at(.unknown_type, 'is: type `${diagnostic_pattern}` does not exist', id, diagnostic_pos)
 					}
-					tc.record_error_at(.condition_mismatch, if tc.comptime_static_depth > 0 {
-						'`${expr_type.name}` has no variant `${diagnostic_pattern}`'
-					} else {
-						'`${diagnostic_pattern}` is not a variant of sum type `${expr_type.name}`'
-					}, id, diagnostic_pos)
+					tc.record_error_at(.condition_mismatch, '`${expr_type.name}` has no variant `${diagnostic_pattern}`', id, diagnostic_pos)
 				}
 			}
 		}
