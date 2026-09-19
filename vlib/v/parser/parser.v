@@ -7732,6 +7732,10 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	p.next() // skip 'if'
 	if p.tok == .key_match {
 		p.record_diagnostic_span('cannot use `match` with `if` statements', p.tok_pos, p.tok_end)
+	} else if p.tok == .key_if {
+		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
+			p.tok_pos, p.tok_end)
+		p.next()
 	}
 	cond := p.control_header_expr(.lowest)
 
