@@ -2218,6 +2218,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	if has_body && generic_params.len > 0 {
 		tc.check_generic_fn_body_global_shadowing(node)
 		tc.check_generic_fn_literal_capture_types(node)
+		tc.check_generic_fn_chained_bare_struct_method_inference(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0

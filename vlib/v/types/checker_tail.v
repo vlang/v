@@ -4365,7 +4365,7 @@ fn (mut tc TypeChecker) record_chained_bare_generic_struct_method_inference_erro
 			missing = param
 			break
 		}
-		if tc.type_text_has_unbound_generic_placeholder(arg, tc.fn_context.generic_params) {
+		if tc.type_text_has_generic_placeholder(arg) {
 			missing = param
 			break
 		}
@@ -4375,6 +4375,79 @@ fn (mut tc TypeChecker) record_chained_bare_generic_struct_method_inference_erro
 	}
 	name_pos := tc.method_call_name_pos(node, callee)
 	tc.record_error_at(.unsupported_generic, 'could not infer generic type `${missing}` in call to `${callee.value}`', id, token.new_span(name_pos.id, name_pos.offset, node.pos.end))
+}
+
+fn (mut tc TypeChecker) check_generic_fn_chained_bare_struct_method_inference(node flat.Node) {
+	mut stack := []flat.NodeId{}
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if tc.a.node(child_id).kind != .param {
+			stack << child_id
+		}
+	}
+	for stack.len > 0 {
+		id := stack.pop()
+		child := tc.a.node(id)
+		if child.kind in [.fn_decl, .fn_literal] {
+			continue
+		}
+		if child.kind == .call && tc.chained_bare_struct_call_uses_open_param(child) {
+			tc.record_chained_bare_generic_struct_method_inference_error(id, child, CallInfo{
+				has_receiver: true
+			})
+		}
+		for i in 0 .. child.children_count {
+			stack << tc.a.child(child, i)
+		}
+	}
+}
+
+fn (tc &TypeChecker) chained_bare_struct_call_uses_open_param(call flat.Node) bool {
+	if call.children_count == 0 {
+		return false
+	}
+	mut callee := tc.a.child_node(&call, 0)
+	if callee.kind == .index && callee.children_count > 0 {
+		callee = tc.a.child_node(callee, 0)
+	}
+	if callee.kind != .selector || callee.children_count == 0 {
+		return false
+	}
+	receiver := tc.a.child_node(callee, 0)
+	if receiver.kind != .struct_init || generic_type_application(receiver.value) {
+		return false
+	}
+	base := trimmed_space(receiver.value)
+	mut known_method := false
+	for method_key in tc.generic_receiver_method_index[callee.value] or { return false } {
+		method_base, _, is_generic := generic_type_application_parts(method_key.all_before_last('.'))
+		if is_generic && tc.generic_type_base_matches(method_base, base) {
+			known_method = true
+			break
+		}
+	}
+	if !known_method {
+		return false
+	}
+	mut stack := []flat.NodeId{}
+	for i in 0 .. receiver.children_count {
+		stack << tc.a.child(receiver, i)
+	}
+	for stack.len > 0 {
+		id := stack.pop()
+		child := tc.a.node(id)
+		if child.kind == .ident {
+			if type_text := tc.current_fn_param_type_text(child.value) {
+				if tc.fn_context.generic_params.any(type_text_contains_symbol(type_text, it)) {
+					return true
+				}
+			}
+		}
+		for i in 0 .. child.children_count {
+			stack << tc.a.child(child, i)
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, node flat.Node, info CallInfo) {
