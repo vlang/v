@@ -17282,6 +17282,7 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 		rhs_is_bool := clean_rhs is Primitive && clean_rhs.props.has(.boolean)
 		if !lhs_is_bool {
 			tc.record_error(.assignment_mismatch, 'operator ${op_text} not defined on left operand type `${lhs_type.name()}`', lhs_id)
+			return
 		}
 		if !rhs_is_bool {
 			tc.record_error(.assignment_mismatch, 'operator ${op_text} not defined on right operand type `${rhs_type.name()}`', rhs_id)
