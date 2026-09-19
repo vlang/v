@@ -798,7 +798,10 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 // independently when scope_parallel_check_workers is enabled.
 fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.resolution_type_mode = false
+	tc.checked_const_names = map[string]bool{}
+	tc.check_import_diagnostics()
 	tc.check_duplicate_fn_declarations()
+	tc.check_deprecated_byte_types()
 	tc.install_type_cache_overlay()
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.selected_file_called_fns = map[string]bool{}
@@ -818,6 +821,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	if !tc.valid_diagnostic_fast {
 		tc.check_unused_import_diagnostics()
 	}
+	tc.check_selective_builtin_import_diagnostics()
 	if tc.defer_ierror_gating {
 		if tc.pending_ierror_errors.len > 0 {
 			tc.collect_selected_file_called_fns()
@@ -827,6 +831,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 		}
 		tc.defer_ierror_gating = false
 	}
+	tc.discard_cascading_fn_redefinition_diagnostics()
 	tc.sort_parallel_check_errors()
 	tc.restore_type_cache_base()
 	tc.direct_parent_index_trusted = false
@@ -1008,7 +1013,10 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		return false
 	} $else {
 		tc.resolution_type_mode = false
+		tc.checked_const_names = map[string]bool{}
+		tc.check_import_diagnostics()
 		tc.check_duplicate_fn_declarations()
+		tc.check_deprecated_byte_types()
 		// Freeze the warm post-collect type cache as the shared read-only base
 		// for every worker thread and the master itself via a private overlay.
 		tc.install_type_cache_overlay()
@@ -1045,6 +1053,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		if !tc.valid_diagnostic_fast {
 			tc.check_unused_import_diagnostics()
 		}
+		tc.check_selective_builtin_import_diagnostics()
 		if tc.defer_ierror_gating {
 			if tc.pending_ierror_errors.len > 0 {
 				tc.collect_selected_file_called_fns()
@@ -1054,6 +1063,8 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 			}
 			tc.defer_ierror_gating = false
 		}
+		tc.discard_cascading_fn_redefinition_diagnostics()
+		tc.sort_parallel_check_errors()
 		tc.restore_type_cache_base()
 		// Match the serial checker: only generated post-check type text may use the
 		// cross-module generic-argument fallback.
@@ -1078,6 +1089,7 @@ fn (mut tc TypeChecker) filter_pending_ierror_errors() bool {
 fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 	tc.cur_module = ''
 	tc.cur_file = ''
+	blocking_import_files := tc.blocking_import_error_files()
 	mut items := []CheckWorkItem{}
 	// Fn subtrees are contiguous: the fn_decl at index i owns exactly the node
 	// range (previous top-level node, i], so the span doubles as the cost
@@ -1095,6 +1107,10 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
+				if blocking_import_files[tc.cur_file] {
+					prev_tl = i
+					continue
+				}
 				span := i - prev_tl
 				cost := if i < tc.fn_check_costs.len && tc.fn_check_costs[i] > 0 {
 					tc.fn_check_costs[i]
@@ -1149,8 +1165,15 @@ fn (mut tc TypeChecker) check_top_level_declaration_signatures() {
 fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do_signatures bool) {
 	tc.cur_module = ''
 	tc.cur_file = ''
+	blocking_import_files := tc.blocking_import_error_files()
+	mut skip_file_semantics := false
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
+		if node.kind == .file {
+			skip_file_semantics = blocking_import_files[node.value]
+		} else if skip_file_semantics && node.kind != .module_decl {
+			continue
+		}
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
@@ -1160,6 +1183,14 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 			}
 			.module_decl {
 				tc.enter_module(node.value)
+				if do_signatures {
+					node_id := flat.NodeId(i)
+					tc.check_invalid_test_file_name(node_id, node)
+					if tc.should_check_source_name(node_id)
+						&& !snake_case_name_is_valid(node.value) {
+						tc.check_snake_case_name(node_id, node.value, 'module name', tc.declaration_keyword_name_pos(node_id, 'module'))
+					}
+				}
 			}
 			.struct_decl {
 				node_id := flat.NodeId(i)
@@ -1168,7 +1199,11 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					if comma_attr_text_has(node.typ, 'typedef') && !node.value.starts_with('C.') {
 						tc.record_error_at(.assignment_mismatch, '`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id, 'struct'))
 					}
+					if tc.should_check_source_name(node_id) && !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'struct name', tc.declaration_keyword_name_pos(node_id, 'struct'))
+					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
+					tc.check_struct_implements(flat.NodeId(i), node)
 				}
 				if do_values {
 					tc.check_struct_field_defaults(node_id, node)
@@ -1180,11 +1215,34 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 				}
 				node_id := flat.NodeId(i)
 				tc.check_type_declaration_conflict(node_id, node)
+				if node.kind == .interface_decl {
+					if tc.should_check_source_name(node_id)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'interface name', tc.source_line_declaration_pos(node_id))
+					}
+					tc.check_interface_member_names(node)
+				} else {
+					type_kind := if node.children_count > 0 {
+						'sum type'
+					} else if node.typ.starts_with('fn') {
+						'fn type'
+					} else {
+						'type alias'
+					}
+					if tc.should_check_source_name(node_id)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, type_kind, tc.declaration_keyword_name_pos(node_id, 'type'))
+					}
+				}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.enum_decl {
 				if do_signatures {
-					tc.check_type_declaration_conflict(flat.NodeId(i), node)
+					node_id := flat.NodeId(i)
+					tc.check_type_declaration_conflict(node_id, node)
+					if tc.should_check_source_name(node_id) && !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'enum name', tc.declaration_keyword_name_pos(node_id, 'enum'))
+					}
 				}
 				if do_values {
 					tc.check_enum_backing_type(flat.NodeId(i), node)
@@ -1518,6 +1576,40 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.node == b.node && b_is_init_visibility && a_is_init_return {
 		return 1
 	}
+	a_is_leading_underscore_name := a.msg.contains(' cannot start with `_`')
+	b_is_leading_underscore_name := b.msg.contains(' cannot start with `_`')
+	a_is_uppercase_name := a.msg.contains(' cannot contain uppercase letters')
+	b_is_uppercase_name := b.msg.contains(' cannot contain uppercase letters')
+	if a.node == b.node && a_is_leading_underscore_name && b_is_uppercase_name {
+		return -1
+	}
+	if a.node == b.node && b_is_leading_underscore_name && a_is_uppercase_name {
+		return 1
+	}
+	a_is_same_name_import := a.msg.starts_with('cannot import `')
+		&& a.msg.ends_with('` into a module with the same name') && !a.msg.contains(' as `')
+	b_is_same_name_import := b.msg.starts_with('cannot import `')
+		&& b.msg.ends_with('` into a module with the same name') && !b.msg.contains(' as `')
+	a_is_aliased_same_name_import := a.msg.starts_with('cannot import `')
+		&& a.msg.contains(' as `') && a.msg.ends_with('` into a module with the same name')
+	b_is_aliased_same_name_import := b.msg.starts_with('cannot import `')
+		&& b.msg.contains(' as `') && b.msg.ends_with('` into a module with the same name')
+	if a.node == b.node && a_is_same_name_import && b_is_aliased_same_name_import {
+		return -1
+	}
+	if a.node == b.node && b_is_same_name_import && a_is_aliased_same_name_import {
+		return 1
+	}
+	a_is_builtin_import_override := a.msg == 'cannot import or override builtin type'
+	b_is_builtin_import_override := b.msg == 'cannot import or override builtin type'
+	a_is_unknown_imported_type := a.msg.starts_with('unknown type `')
+	b_is_unknown_imported_type := b.msg.starts_with('unknown type `')
+	if a.file == b.file && a_is_unknown_imported_type && b_is_builtin_import_override {
+		return -1
+	}
+	if a.file == b.file && b_is_unknown_imported_type && a_is_builtin_import_override {
+		return 1
+	}
 	a_is_enum_value := a.msg.starts_with('enum value ')
 		|| a.msg == 'the default value for an enum has to be an integer'
 		|| (a.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
@@ -1606,6 +1698,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	}
 	a_is_missing_interface_method := a.msg.contains("doesn't implement method `")
 	b_is_missing_interface_method := b.msg.contains("doesn't implement method `")
+	if a.node == b.node && a_is_missing_interface_method && b_is_missing_interface_method {
+		a_interface := a.msg.all_after_last(' of interface `').all_before('`')
+		b_interface := b.msg.all_after_last(' of interface `').all_before('`')
+		if a_interface < b_interface {
+			return -1
+		}
+		if a_interface > b_interface {
+			return 1
+		}
+	}
 	a_is_interface_cast_summary := a.msg.contains(' does not implement interface `')
 		&& a.msg.contains(', cannot cast `')
 	b_is_interface_cast_summary := b.msg.contains(' does not implement interface `')
