@@ -3168,10 +3168,16 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	p.next() // skip 'interface'
+	name_start := p.tok_pos
 	mut name := p.expect(.name)
 	for p.tok == .dot {
 		p.next()
 		name += '.' + p.expect(.name)
+	}
+	short_name := name.all_after_last('.')
+	if short_name.len == 1 && short_name[0] >= `A` && short_name[0] <= `Z` {
+		p.record_diagnostic_span('single letter capital names are reserved for generic template types.',
+			name_start, name_start + 1)
 	}
 	// generic params
 	mut generic_params := []string{}
