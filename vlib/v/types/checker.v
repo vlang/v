@@ -14888,8 +14888,15 @@ fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, nod
 	message := 'cannot register ${kind} `${name}`, another type with this name exists'
 	if node.kind == .struct_decl && has_previous {
 		previous_node := tc.a.node(previous_id)
-		previous_pos := token.new_span(previous_node.pos.id, previous_node.pos.offset,
-			previous_node.pos.offset + 1)
+		mut previous_is_builtin := false
+		if previous_file := tc.a.source_files[previous_node.pos.id] {
+			previous_is_builtin = previous_file.name.replace('\\', '/').contains('vlib/builtin/')
+		}
+		previous_pos := if previous_is_builtin {
+			tc.type_declaration_name_pos(previous_id)
+		} else {
+			token.new_span(previous_node.pos.id, previous_node.pos.offset, previous_node.pos.offset + 1)
+		}
 		detail := compiler_errors.formatted_error('details:', 'another declaration was found here',
 			tc.a, previous_id, previous_pos)
 		tc.record_error_with_details_at(.duplicate_decl, message, node_id, pos, [detail])
