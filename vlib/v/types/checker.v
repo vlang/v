@@ -3260,7 +3260,7 @@ fn (mut tc TypeChecker) check_alias_declaration_cycles() {
 			tc.recursive_alias_names[name] = true
 			tc.recursive_alias_names[qname] = true
 			invalid_aliases << qname
-			tc.errors << tc.make_type_error_at(.unknown_type, 'alias `${name}` forms a recursive cycle; recursive declarations of aliases are not allowed - the alias `${name}` is used in the ${container}', flat.NodeId(index), node.pos)
+			tc.errors << tc.make_type_error_at(.unknown_type, 'recursive declarations of aliases are not allowed - the alias `${name}` is used in the ${container}', flat.NodeId(index), node.pos)
 			continue
 		}
 		target := trimmed_space(node.typ)
@@ -3270,7 +3270,7 @@ fn (mut tc TypeChecker) check_alias_declaration_cycles() {
 		tc.recursive_alias_names[name] = true
 		tc.recursive_alias_names[qname] = true
 		invalid_aliases << qname
-		tc.errors << tc.make_type_error_at(.unknown_type, 'alias `${name}` forms a recursive cycle; alias `${name}` forms a cycle through `${target}`', flat.NodeId(index), node.pos)
+		tc.errors << tc.make_type_error_at(.unknown_type, 'alias `${name}` forms a cycle through `${target}`', flat.NodeId(index), node.pos)
 	}
 	// Pass 2 and later type lowering assume that aliases form an acyclic graph.
 	// Keep reporting the source declaration above, but replace invalid targets
