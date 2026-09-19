@@ -1,0 +1,29 @@
+name: Issue 28785 investigation
+on:
+  push:
+    branches: ['fix/28785-reflected-method-callbacks']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/fix/28785-reflected-method-callbacks'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Inspect method-value reachability
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for directory in ('vlib/v/transform', 'vlib/v/gen/c'):
+              for path in sorted(Path(directory).glob('*.v')):
+                  if path.name.endswith('_test.v'):
+                      continue
+                  lines = path.read_text().splitlines()
+                  targets = [i for i, line in enumerate(lines) if '_mvwrap_' in line or 'method_value_wrappers[' in line]
+                  for i in targets:
+                      print(f'\n=== {path}:{i + 1} ===')
+                      print('\n'.join(f'{n + 1}: {lines[n]}' for n in range(max(0, i - 35), min(len(lines), i + 65))))
+          PY
