@@ -11995,6 +11995,9 @@ fn (tc &TypeChecker) method_call_info_signature_compatible_for_interface(actual 
 }
 
 fn (tc &TypeChecker) method_return_signature_compatible(actual Type, expected Type) bool {
+	if !tc.fn_type_callconv_compatible(actual, expected) {
+		return false
+	}
 	if tc.raw_type_equality {
 		actual_w0, actual_w1, _ := type_value_words(&actual)
 		expected_w0, expected_w1, _ := type_value_words(&expected)
@@ -12023,6 +12026,19 @@ fn (tc &TypeChecker) method_return_signature_compatible(actual Type, expected Ty
 	}
 	if actual_unaliased is ResultType && expected_unaliased is ResultType {
 		return tc.method_wrapped_return_signature_compatible(actual_unaliased.base_type, expected_unaliased.base_type)
+	}
+	if actual_fn := fn_type_from_type(actual) {
+		expected_fn := fn_type_from_type(expected) or { return false }
+		if type_pointer_depth(actual) != type_pointer_depth(expected)
+			|| actual_fn.params.len != expected_fn.params.len {
+			return false
+		}
+		for i, param in actual_fn.params {
+			if !tc.method_param_signature_compatible(param, expected_fn.params[i]) {
+				return false
+			}
+		}
+		return tc.method_return_signature_compatible(actual_fn.return_type, expected_fn.return_type)
 	}
 	return tc.method_interface_return_signature_compatible(actual_unaliased, expected_unaliased)
 }
@@ -12056,6 +12072,9 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 	if type_pointer_depth(actual) != type_pointer_depth(expected) {
 		return false
 	}
+	if !tc.fn_type_callconv_compatible(actual, expected) {
+		return false
+	}
 	if actual_iface := tc.method_param_interface_name(actual) {
 		expected_iface := tc.method_param_interface_name(expected) or { return false }
 		return actual_iface == expected_iface
@@ -12065,6 +12084,66 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 		return false
 	}
 	return tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)
+}
+
+fn (tc &TypeChecker) fn_type_callconv_compatible(actual Type, expected Type) bool {
+	if actual is OptionType && expected is OptionType {
+		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
+	}
+	if actual is ResultType && expected is ResultType {
+		return tc.fn_type_callconv_compatible(actual.base_type, expected.base_type)
+	}
+	if actual is Alias && fn_type_from_type(actual) == none {
+		return tc.fn_type_callconv_compatible(actual.base_type, expected)
+	}
+	if expected is Alias && fn_type_from_type(expected) == none {
+		return tc.fn_type_callconv_compatible(actual, expected.base_type)
+	}
+	actual_fn := fn_type_from_type(actual) or { return true }
+	expected_fn := fn_type_from_type(expected) or { return true }
+	if tc.fn_type_callconv(actual) != tc.fn_type_callconv(expected)
+		|| actual_fn.params.len != expected_fn.params.len {
+		return false
+	}
+	for i, param in actual_fn.params {
+		if !tc.fn_type_callconv_compatible(param, expected_fn.params[i]) {
+			return false
+		}
+	}
+	return tc.fn_type_callconv_compatible(actual_fn.return_type, expected_fn.return_type)
+}
+
+fn (tc &TypeChecker) fn_type_callconv(typ Type) string {
+	if typ is Alias {
+		if fn_type_from_type(typ) != none {
+			if value := tc.type_alias_attribute_value(typ.name, 'callconv') {
+				return value
+			}
+			return 'cdecl'
+		}
+		return tc.fn_type_callconv(typ.base_type)
+	}
+	if typ is Pointer {
+		return tc.fn_type_callconv(typ.base_type)
+	}
+	return 'cdecl'
+}
+
+fn (tc &TypeChecker) type_alias_attribute_value(name string, attribute string) ?string {
+	key := if name.contains('.') { name } else { name.all_after_last('.') }
+	indices := tc.type_declaration_ids[key] or {
+		tc.type_declaration_ids[name.all_after_last('.')] or { return none }
+	}
+	for index in indices {
+		node := tc.a.nodes[index]
+		if node.kind != .type_decl || node.value.all_after_last('.') != name.all_after_last('.') {
+			continue
+		}
+		if value := tc.declaration_attribute_value(flat.NodeId(index), attribute) {
+			return value
+		}
+	}
+	return none
 }
 
 fn (tc &TypeChecker) method_param_interface_name(typ Type) ?string {

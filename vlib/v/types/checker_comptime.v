@@ -4654,14 +4654,19 @@ fn (tc &TypeChecker) interface_diagnostic_method_signature(signature_key string,
 		rendered << receiver_param
 	}
 	for i in 1 .. params.len {
-		param_name := if i < param_names.len && param_names[i].len > 0 {
+		param_name := if i < param_names.len {
 			param_names[i]
 		} else if i == 1 {
 			's'
 		} else {
 			'p${i}'
 		}
-		rendered << '${param_name} ${tc.interface_diagnostic_type_name(params[i], alias_module)}'
+		param_type := tc.interface_diagnostic_type_name(params[i], alias_module)
+		rendered << if param_name.len > 0 {
+			'${param_name} ${param_type}'
+		} else {
+			' ${param_type}'
+		}
 	}
 	ret := tc.fn_ret_types[signature_key] or { Type(void_) }
 	ret_suffix := if ret is Void {
@@ -4702,6 +4707,9 @@ fn (tc &TypeChecker) interface_diagnostic_type_name(typ Type, alias_module strin
 	}
 	if typ is ResultType {
 		return '!${tc.interface_diagnostic_type_name(typ.base_type, alias_module)}'
+	}
+	if typ is Pointer {
+		return '&${tc.interface_diagnostic_type_name(typ.base_type, alias_module)}'
 	}
 	return typ.name()
 }
@@ -4808,7 +4816,7 @@ fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind
 		} else {
 			for i in 1 .. expected_params.len {
 				if !tc.method_param_signature_compatible(actual_params[i], expected_params[i]) {
-					message = '`${actual_display}` incorrectly implements method `${method}` of interface `${expected_display}`: expected `${expected_params[i].name()}`, not `${actual_params[i].name()}` for parameter ${i}'
+					message = '`${actual_display}` incorrectly implements method `${method}` of interface `${expected_display}`: expected `${tc.interface_diagnostic_type_name(expected_params[i], '')}`, not `${tc.interface_diagnostic_type_name(actual_params[i], '')}` for parameter ${i}'
 					break
 				}
 			}

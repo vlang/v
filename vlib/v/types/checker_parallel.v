@@ -1722,10 +1722,14 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		&& a.msg.contains(', cannot cast `')
 	b_is_interface_cast_summary := b.msg.contains(' does not implement interface `')
 		&& b.msg.contains(', cannot cast `')
-	if a.node == b.node && a_is_missing_interface_method && b_is_interface_cast_summary {
+	a_is_interface_method_mismatch := a.msg.contains(' incorrectly implements method `')
+	b_is_interface_method_mismatch := b.msg.contains(' incorrectly implements method `')
+	if a.node == b.node && (a_is_missing_interface_method || a_is_interface_method_mismatch)
+		&& b_is_interface_cast_summary {
 		return -1
 	}
-	if a.node == b.node && b_is_missing_interface_method && a_is_interface_cast_summary {
+	if a.node == b.node && (b_is_missing_interface_method || b_is_interface_method_mismatch)
+		&& a_is_interface_cast_summary {
 		return 1
 	}
 	a_is_cast_to_struct := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to struct')
