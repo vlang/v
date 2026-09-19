@@ -3768,6 +3768,10 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	dollar_start := p.span_start() // start offset of the leading `$`
 	p.next() // skip $
 	if p.tok != .key_if {
+		if p.tok == .eof {
+			p.record_diagnostic_span('unexpected eof', dollar_start, dollar_start + 1)
+			return flat.empty_node
+		}
 		if p.tok == .key_fn {
 			p.record_diagnostic_span('unexpected token `\$`', dollar_start, dollar_start + 1)
 			p.skip_top_level_stmt()
