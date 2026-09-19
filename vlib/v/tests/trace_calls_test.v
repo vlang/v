@@ -160,3 +160,20 @@ fn test_trace_calls_rejects_unsupported_backends() {
 		assert result.output.contains('option `-trace-calls` is only supported by the C backend')
 	}
 }
+
+fn test_trace_calls_preserves_implicit_embed_imports() {
+	dir := os.join_path(os.temp_dir(), 'v_trace_embed_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := os.join_path(dir, 'embed.v')
+	os.write_file(os.join_path(dir, 'message.txt'), 'embedded output')!
+	os.write_file(source, 'fn main() { println(\$embed_file("message.txt").to_string()) }')!
+	for flags in ['', '-no-parallel'] {
+		result := os.execute('${os.quoted_path(vexe)} -new-compiler ${flags} -trace-calls -trace-fns main.main run ${os.quoted_path(source)}')
+		assert result.exit_code == 0, result.output
+		assert result.output.contains('main main.main/0')
+		assert result.output.contains('embedded output')
+	}
+}

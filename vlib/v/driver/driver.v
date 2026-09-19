@@ -10271,7 +10271,10 @@ pub fn run(args []string) {
 		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'profiled_program.v')
 	}
 	if is_trace_calls {
-		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'trace_calls.v')
+		// Parse the runtime import before user files. Implicit imports such as
+		// $embed_file's runtime belong to the last user file, not this prelude.
+		trace_prelude := os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'trace_calls.v')
+		parse_files_dispatch_profiled(mut p, [trace_prelude], false, mut parse_timing)
 	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
