@@ -2785,6 +2785,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			p.next()
 		}
 	}
+	name_pos := p.current_pos()
 	name := language_prefix + p.expect_name()
 	// generic params
 	mut generic_params := []string{}
@@ -2795,13 +2796,26 @@ fn (mut p Parser) type_decl() flat.NodeId {
 				p.prev_tok_end)
 		}
 	}
-	p.expect(.assign)
+	if p.tok == .assign {
+		p.next()
+	} else {
+		unexpected := if p.tok == .name { 'name `${p.lit}`' } else { 'token `${p.tok.str()}`' }
+		p.record_diagnostic_span('unexpected ${unexpected}, expecting `=`', p.tok_pos, p.tok_end)
+	}
 	type_start := p.span_start()
 	first_type := p.parse_type_name()
 	// check for sum type: type T = A | B | C
 	// skip auto-semicolon before pipe
 	if p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe)) {
+		if language_prefix.len == 0 && name.len == 1 && name[0] >= `A` && name[0] <= `Z` {
+			p.record_diagnostic_span('single letter capital names are reserved for generic template types',
+				name_pos.offset, name_pos.end)
+		}
 		mut variants := []flat.NodeId{}
+		if first_type == 'none' {
+			p.record_diagnostic_span('named sum type cannot have none as its variant', type_start,
+				p.prev_tok_end)
+		}
 		variants << p.add_node(flat.Node{
 			kind:  .ident
 			value: first_type
@@ -2814,6 +2828,10 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			p.next() // skip |
 			variant_start := p.span_start()
 			variant_type := p.parse_type_name()
+			if variant_type == 'none' {
+				p.record_diagnostic_span('named sum type cannot have none as its variant', variant_start,
+					p.prev_tok_end)
+			}
 			variants << p.add_node(flat.Node{
 				kind:  .ident
 				value: variant_type
@@ -2833,6 +2851,10 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			children_count: flat.child_count(variants.len)
 			pos:            p.span_to(type_start)
 		})
+	}
+	if language_prefix.len == 0 && first_type == name {
+		p.record_diagnostic_span('a type alias can not refer to itself: ${name}', decl_start,
+			p.prev_tok_end)
 	}
 	if p.tok == .semicolon {
 		p.next()
