@@ -1,9 +1,0 @@
-struct AStruct {
-	a u64
-	b u64
-}
-
-fn main() {
-	a := false
-	_ = &AStruct(&a)
-}

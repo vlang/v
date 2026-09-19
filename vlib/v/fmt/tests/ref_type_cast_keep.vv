@@ -1,9 +1,0 @@
-module main
-
-fn cleanup(user_data voidptr) {
-	abc := App(user_data)
-	xyz := &App(user_data)
-	//
-	mut app := App(user_data)
-	mut ref := &App(user_data)
-}

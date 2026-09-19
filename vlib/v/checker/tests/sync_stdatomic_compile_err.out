@@ -1,5 +1,0 @@
-vlib/v/checker/tests/sync_stdatomic_compile_err.vv:3:6: error: atomic: only support number, bool, and voidptr types
-    1 | import sync.stdatomic {new_atomic}
-    2 | 
-    3 | _ := new_atomic(`1`)
-      |      ~~~~~~~~~~~~~~~

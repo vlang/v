@@ -1,7 +1,0 @@
-vlib/v/checker/tests/blank_ident_select_branch_send_err.vv:13:4: error: cannot send on `_`, use `_ := <- quit` instead
-   11 |                 x, y = y, x + y
-   12 |             }
-   13 |             _ = <-quit {
-      |             ^
-   14 |                 println('quit')
-   15 |                 return

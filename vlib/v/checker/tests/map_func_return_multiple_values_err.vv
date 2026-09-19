@@ -1,8 +1,0 @@
-fn fun(n int) (int, string) {
-	return n, n.str()
-}
-
-fn main() {
-	a := [1, 2, 3].map(fun)
-	println(a)
-}

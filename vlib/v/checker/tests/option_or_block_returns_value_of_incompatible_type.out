@@ -1,7 +1,0 @@
-vlib/v/checker/tests/option_or_block_returns_value_of_incompatible_type.vv:13:3: error: the default expression type in the `or` block should be `string`, instead you gave a value of type `int literal`
-   11 |         // must be of the same type of the return
-   12 |         // type of the `test_option` function
-   13 |         123
-      |         ~~~
-   14 |         // 'I break things'
-   15 |     }

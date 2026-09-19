@@ -1,5 +1,0 @@
-fn main() {
-	dump(123)
-	a := &[2]u8{}
-	dump(a)
-}

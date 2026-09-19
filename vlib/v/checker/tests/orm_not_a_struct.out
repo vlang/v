@@ -1,7 +1,0 @@
-vlib/v/checker/tests/orm_not_a_struct.vv:10:15: error: ORM: the table symbol `Person` has to be a struct
-    8 |     db := sqlite.connect(':memory:')!
-    9 |     _ := sql db {
-   10 |         select from Person
-      |                     ~~~~~~
-   11 |     }!
-   12 | }

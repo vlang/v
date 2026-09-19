@@ -1,3 +1,0 @@
-// vtest vflags: -gc boehm -shared
-@[export: 'noop']
-pub fn noop() {}

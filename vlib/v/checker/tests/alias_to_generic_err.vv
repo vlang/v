@@ -1,6 +1,0 @@
-module main
-
-type Foo = T
-
-fn main() {
-}

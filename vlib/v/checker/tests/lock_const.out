@@ -1,7 +1,0 @@
-vlib/v/checker/tests/lock_const.vv:5:8: error: `a` must be declared as `shared` variable to be locked
-    3 | fn main() {
-    4 |     mut c := 0
-    5 |     rlock a {
-      |           ^
-    6 |         c = a
-    7 |     }

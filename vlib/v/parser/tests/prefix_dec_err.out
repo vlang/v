@@ -1,5 +1,0 @@
-vlib/v/parser/tests/prefix_dec_err.vv:3:1: error: prefix `--v` is unsupported, use suffix form `v--`
-    1 | mut v := 4
-    2 | _ = v
-    3 | --v
-      | ~~~

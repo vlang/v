@@ -1,5 +1,0 @@
-vlib/v/checker/tests/globals/redefine_main.vv:1:10: error: the `main` function is the program entry point, cannot redefine it
-    1 | __global main = fn () int {
-      |          ~~~~
-    2 |     return 22
-    3 | }

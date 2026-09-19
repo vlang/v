@@ -1,7 +1,0 @@
-vlib/v/checker/tests/struct_field_mismatch_ref_err.vv:6:23: error: field is not reference but default value is reference
-    4 | struct SafeCounter {
-    5 | mut:
-    6 |     mt sync.Mutex = sync.new_mutex()
-      |                          ~~~~~~~~~~~
-    7 | pub mut:
-    8 |     value map[string]int

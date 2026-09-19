@@ -1,7 +1,0 @@
-fn main() {
-	val := 15
-	mut start := 0
-
-	start = if val < 20 { start += 1 } else { start }
-	dump(start)
-}

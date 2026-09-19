@@ -1,5 +1,0 @@
-vlib/v/checker/tests/assign_ref_call_expr_with_ref_return_err.vv:8:6: error: cannot take the address of foo()
-    6 | }
-    7 | 
-    8 | _ := &foo()
-      |      ^

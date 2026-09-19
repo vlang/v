@@ -1,7 +1,0 @@
-vlib/v/checker/tests/array_delete_arg_mismatch_err.vv:18:23: error: cannot use `IGameObject` as `int` in argument 1 to `.delete()`
-   16 | fn (mut game Game) gc() {
-   17 |     for obj in game.objects {
-   18 |         game.objects.delete(obj)
-      |                             ~~~
-   19 |     }
-   20 |     game.objects.clear()

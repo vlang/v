@@ -1,7 +1,0 @@
-vlib/v/checker/tests/orm_multiple_pkeys.vv:5:2: error: ORM: a struct can only have one primary key
-    3 | struct Person {
-    4 |     id   int    @[primary]
-    5 |     name string @[primary]
-      |     ~~~~~~~~~~~
-    6 | }
-    7 |

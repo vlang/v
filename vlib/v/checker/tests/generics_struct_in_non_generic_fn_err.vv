@@ -1,6 +1,0 @@
-struct Example[T] {
-}
-
-fn main() {
-	_ := []Example[T]{}
-}

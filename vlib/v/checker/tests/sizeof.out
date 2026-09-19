@@ -1,4 +1,0 @@
-vlib/v/checker/tests/sizeof.vv:1:13: error: unknown type `BadType`
-    1 | x := sizeof(BadType)
-      |             ~~~~~~~
-    2 | println(x)

@@ -1,9 +1,0 @@
-fn main() {
-	if 1 in [1] {
-		println('hello world')
-	}
-	bar := 'bar'
-	if 'foo' !in [bar] {
-		println('hello world')
-	}
-}

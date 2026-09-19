@@ -1,7 +1,0 @@
-vlib/v/checker/tests/globals/global_receiver_var_name_err.vv:17:9: error: cannot use global variable name `game` as receiver
-   15 | }
-   16 | 
-   17 | fn (mut game Game) init() {
-      |         ~~~~~~~~~
-   18 |     game.world = GameObject{}
-   19 | }

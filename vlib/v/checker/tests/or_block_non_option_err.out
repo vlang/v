@@ -1,5 +1,0 @@
-vlib/v/checker/tests/or_block_non_option_err.vv:3:5: error: cannot use `or {}` block on non-option variable
-    1 | name := 100
-    2 | 
-    3 | _ = name or { 100 }
-      |     ~~~~

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/sumtype_mismatch_of_aggregate_err.vv:7:11: error: cannot use `(i8 | i16 | int | i64)` as type `SimpleInt` in return argument
-    5 |     match s {
-    6 |         i8, i16, int, i64 {
-    7 |             return s
-      |                    ^
-    8 |         }
-    9 |     }

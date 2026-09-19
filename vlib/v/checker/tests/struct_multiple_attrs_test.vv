@@ -1,9 +1,0 @@
-module main
-
-struct Test {
-	a int @[a]@[b]
-}
-
-fn test_main() {
-	assert true
-}

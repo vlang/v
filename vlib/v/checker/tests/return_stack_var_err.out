@@ -1,7 +1,0 @@
-vlib/v/checker/tests/return_stack_var_err.vv:26:12: error: `s` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider declaring `s` mutable.
-   24 |     for s in students {
-   25 |         if s.name == 'Amy' {
-   26 |             return &s
-      |                     ^
-   27 |         }
-   28 |     }

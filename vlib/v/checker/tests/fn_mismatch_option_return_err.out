@@ -1,7 +1,0 @@
-vlib/v/checker/tests/fn_mismatch_option_return_err.vv:4:15: error: cannot use `?time.Duration` as type `time.Duration` in return argument
-    2 | 
-    3 | fn foo() time.Duration {
-    4 |     return ?time.Duration(0)
-      |                  ~~~~~~~~~~~
-    5 | }
-    6 |

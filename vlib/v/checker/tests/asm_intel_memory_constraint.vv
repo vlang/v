@@ -1,7 +1,0 @@
-fn main() {
-	value := 1
-	asm amd64 intel {
-		mov eax, value
-		; ; m (value)
-	}
-}

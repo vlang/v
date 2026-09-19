@@ -1,8 +1,0 @@
-vlib/v/checker/tests/orm_left_side_expr_in_infix_expr_has_no_struct_field_error.vv:18:26: error: ORM: left side of the `==` expression must be one of the `User`'s fields.
-1 possibility: `id`.
-   16 | 
-   17 |     users := sql db {
-   18 |         select from User where first == second
-      |                                ~~~~~
-   19 |     }!
-   20 |

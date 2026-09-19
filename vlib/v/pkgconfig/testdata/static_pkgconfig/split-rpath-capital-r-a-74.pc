@@ -1,4 +1,0 @@
-Name: split-rpath-capital-r-a-74
-Description: First split GNU capital R operand
-Version: 1.0.0
-Libs: -Wl,-R -Wl,/tmp

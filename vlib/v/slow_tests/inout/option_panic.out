@@ -1,5 +1,0 @@
-================ V panic ================
-   module: main
- function: main()
-  message: option not set ()
-     file: vlib/v/slow_tests/inout/option_panic.vv:7

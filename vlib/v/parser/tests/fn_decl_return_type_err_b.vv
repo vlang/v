@@ -1,9 +1,0 @@
-struct Foo{}
-
-fn maker() (mut Foo) {
-	inner := &Foo{}
-	return *inner
-}
-
-fn main() {
-}

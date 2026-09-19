@@ -1,9 +1,0 @@
-Installation management tools:
-
-  v up         Update the V installation to its latest version.
-  v self       Rebuild the V executable. Try for example: `v -prod self`.
-  v version    Print the version of the V executable.
-  v symlink    Add a global symlink to the V executable.
-  
-You can also `v download -RD URL` to download, and then run arbitrary
-self contained `.v` or `.vsh` scripts/programs.

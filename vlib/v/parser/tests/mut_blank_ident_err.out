@@ -1,3 +1,0 @@
-vlib/v/parser/tests/mut_blank_ident_err.vv:1:1: error: cannot use `mut` on `_`
-    1 | mut _ = 3
-      | ~~~

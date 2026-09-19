@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generic_interface_missing_type_names_err.vv:21:16: error: generic interface `Output` must specify type parameter, e.g. Output[int]
-   19 | 
-   20 | fn main() {
-   21 |     mut outs := []Output{}
-      |                   ~~~~~~
-   22 |     outs << Coil{
-   23 |         name: 'outhole'

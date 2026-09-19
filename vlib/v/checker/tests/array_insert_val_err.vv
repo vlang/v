@@ -1,8 +1,0 @@
-fn main() {
-	mut arr := [][2]int{}
-	arr.insert(0, [1, 2])
-	arr.insert(0, [1, 2]!)
-	arr.prepend([1, 2])
-	arr.prepend([1, 2]!)
-	println(arr)
-}

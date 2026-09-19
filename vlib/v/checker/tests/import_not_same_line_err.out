@@ -1,6 +1,0 @@
-vlib/v/checker/tests/import_not_same_line_err.vv:2:2: error: `import` statements must be a single line
-    1 | import
-    2 |  time
-      |  ~~~~
-    3 | fn main() {
-    4 |     println(time.now())

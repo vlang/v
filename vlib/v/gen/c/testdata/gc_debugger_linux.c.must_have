@@ -1,2 +1,0 @@
-bool __v_gc_debugger_workaround = builtin__gc_prepare_for_debugger_init();
-builtin__gc_restore_roots_after_debugger_init(__v_gc_debugger_workaround);

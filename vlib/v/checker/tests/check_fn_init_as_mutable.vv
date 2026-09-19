@@ -1,7 +1,0 @@
-struct MyStruct {}
-
-fn process(mut ms MyStruct) {}
-
-fn main() {
-	process(mut MyStruct{})
-}

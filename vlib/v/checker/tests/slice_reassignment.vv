@@ -1,5 +1,0 @@
-fn main() {
-	mut arr := [1, 2, 3, 4, 5]
-	arr[..2] = [0, 0]
-	println(arr)
-}

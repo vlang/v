@@ -1,5 +1,0 @@
-type Dict = []string | string
-
-fn main() {
-	_ := Dict{}
-}

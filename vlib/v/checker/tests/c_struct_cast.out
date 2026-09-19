@@ -1,6 +1,0 @@
-vlib/v/checker/tests/c_struct_cast.vv:18:7: error: cannot cast type `Vector3` to `int`
-   16 |     }
-   17 |     dump(v)
-   18 |     dump(int(v))
-      |          ~~~~~~
-   19 | }

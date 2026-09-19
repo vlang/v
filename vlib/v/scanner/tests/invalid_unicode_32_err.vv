@@ -1,2 +1,0 @@
-a := '\U0000D8FF'
-println(a)

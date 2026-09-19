@@ -1,6 +1,0 @@
-cmd/tools/vvet/tests/indent_with_space.vv:2: error: Looks like you are using spaces for indentation.
-cmd/tools/vvet/tests/indent_with_space.vv:10: error: Looks like you are using spaces for indentation.
-cmd/tools/vvet/tests/indent_with_space.vv:17: error: Looks like you are using spaces for indentation.
-cmd/tools/vvet/tests/indent_with_space.vv:20: error: Looks like you are using spaces for indentation.
-cmd/tools/vvet/tests/indent_with_space.vv:22: error: Looks like you are using spaces for indentation.
-Note: You can run `v fmt -w cmd/tools/vvet/tests/indent_with_space.vv` to fix these errors automatically

@@ -1,8 +1,0 @@
-fn test_main() {
-	c := voidptr(10)
-	println(test(c))
-}
-
-fn test(a []i32) i32 {
-	return a[0]
-}

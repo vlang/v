@@ -1,6 +1,0 @@
-// Some header comment
-
-// read_response is a carefully constructed comment.
-// read_response_body. <-- this would earlier trigger a false
-// positive.
-pub fn read_response() ?(string, string) {}

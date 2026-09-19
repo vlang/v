@@ -1,4 +1,0 @@
-vlib/v/checker/tests/inc_num_literal.vv:1:1: error: cannot increment `100` because it is non lvalue expression
-    1 | 100++
-      | ~~~
-Details: try rewrite this as `100 + 1`

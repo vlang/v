@@ -1,5 +1,0 @@
-vlib/v/scanner/tests/unknown_escape_sequence_in_ident_char_2_err.vv:2:9: error: `j` unknown escape sequence
-    1 | fn main() {
-    2 |     _ = `\j`
-      |            ^
-    3 | }

@@ -1,3 +1,0 @@
-vlib/v/parser/tests/builtin_sum_type_type_name_err.vv:1:6: error: cannot register sum type `map`, another type with this name exists
-    1 | type map = int | u64
-      |      ~~~

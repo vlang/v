@@ -1,6 +1,0 @@
-vlib/v/checker/tests/arraydecompose_arg2_err.vv:7:11: error: cannot use `f64` as `int` in argument 1 to `test_arr`
-    5 | fn main() {
-    6 |     var := []f64{}
-    7 |     test_arr(...var)
-      |              ~~~~~~
-    8 | }

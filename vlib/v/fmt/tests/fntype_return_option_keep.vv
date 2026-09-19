@@ -1,3 +1,0 @@
-type Foo = fn (a int) ?
-
-type Foo2 = fn (num int) ?int

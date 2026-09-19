@@ -1,7 +1,0 @@
-"text") exit(-1)
-===output===
-error: expression evaluated but not used
-    5 | import math
-    6 | 
-    7 | "text") exit(-1)
-      | ~~~~~~

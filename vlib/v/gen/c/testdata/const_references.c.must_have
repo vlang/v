@@ -1,3 +1,0 @@
-VV_LOC int main__a_const_accepting_fn(int* x, const int* const_x);
-VV_LOC int main__a_const_accepting_fn(int* x, const int* const_x) {
-main__a_const_accepting_fn(&a, &b)

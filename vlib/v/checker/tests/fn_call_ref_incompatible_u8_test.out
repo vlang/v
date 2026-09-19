@@ -1,6 +1,0 @@
-vlib/v/checker/tests/fn_call_ref_incompatible_u8_test.vv:9:28: error: cannot use `&[]int` as `&u8` in argument 1 to `accept_only_u8_references`
-    7 | fn test_main() {
-    8 |     a := [1, 2, 3]
-    9 |     accept_only_u8_references(&a)
-      |                               ~~
-   10 | }

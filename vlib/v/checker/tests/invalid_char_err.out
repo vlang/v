@@ -1,3 +1,0 @@
-vlib/v/checker/tests/invalid_char_err.vv:1:1: error: invalid character `🐈`
-    1 | 🐈println('')
-      | ^

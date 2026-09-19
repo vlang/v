@@ -1,3 +1,0 @@
-#!/usr/bin/env -S v
-os.join_path('a','b','c')
-

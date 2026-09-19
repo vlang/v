@@ -1,4 +1,0 @@
-Name: split-rpath-long-b-74
-Description: Second split GNU long rpath operand
-Version: 1.0.0
-Libs: -Wl,--rpath -Wl,/var/tmp

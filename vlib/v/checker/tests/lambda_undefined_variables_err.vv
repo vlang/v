@@ -1,9 +1,0 @@
-fn f(g fn (int) string) {
-}
-
-fn main() {
-	f(|x| s1)
-
-	s2 := 'abc'
-	f(|x| s2)
-}

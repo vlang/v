@@ -1,5 +1,0 @@
-vlib/v/parser/tests/comptime_veb_without_import_veb_err.vv:2:2: error: `$veb` cannot be used without importing veb
-    1 | fn main() {
-    2 |     $veb.html('index.html')
-      |     ~~~~
-    3 | }

@@ -1,5 +1,0 @@
-type FooMap = map[string]int
-
-fn main() {
-	_ := &FooMap(map[string]int{})
-}

@@ -1,3 +1,0 @@
-string main__MyStruct_str(main__MyStruct it) { return indent_main__MyStruct_str(it, 0);}
-string main__Function_str() { return _S("fn (int)");}
-string _t1 = main__Function_str();

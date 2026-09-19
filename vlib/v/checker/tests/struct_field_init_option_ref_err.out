@@ -1,7 +1,0 @@
-vlib/v/checker/tests/struct_field_init_option_ref_err.vv:12:3: error: cannot assign to field `field`: expected a pointer `?&Foo`, but got `?Foo`
-   10 |     foo := ?Foo{}
-   11 |     _ := Bar{
-   12 |         field: foo
-      |         ~~~~~~~~~~
-   13 |     }
-   14 | }

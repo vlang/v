@@ -1,5 +1,0 @@
-fn main() {
-	mut arr_int := [int(23), 45, 7, 8]
-	ele := &arr_int[1]
-	println(ele)
-}

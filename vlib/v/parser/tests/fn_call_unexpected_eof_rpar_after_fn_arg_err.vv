@@ -1,4 +1,0 @@
-import os
-
-println(os.file_last_mod_unix('x.v')
-

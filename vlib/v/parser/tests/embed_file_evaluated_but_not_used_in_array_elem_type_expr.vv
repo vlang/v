@@ -1,3 +1,0 @@
-fn main() {
-	[]typeof([$embed_file(@FILE)]).element_type{}
-}

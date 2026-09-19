@@ -1,5 +1,0 @@
-vlib/v/checker/tests/invalid_comptime_test.vv:1:1: error: unexpected token `$`
-    1 | $fn func(a int) int {
-      | ^
-    2 |     return a + a
-    3 | }

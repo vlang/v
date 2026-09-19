@@ -1,8 +1,0 @@
-fn main() {
-	a := '1'
-	unsafe {
-		b := &a
-		println(b + *b)
-		println(b + b)
-	}
-}

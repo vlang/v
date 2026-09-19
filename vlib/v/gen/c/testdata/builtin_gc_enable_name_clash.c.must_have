@@ -1,3 +1,0 @@
-void builtin__gc_enable(void);
-gc_enable(true);
-builtin__gc_enable();

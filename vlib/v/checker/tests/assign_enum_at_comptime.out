@@ -1,7 +1,0 @@
-vlib/v/checker/tests/assign_enum_at_comptime.vv:13:21: error: enums can only be assigned `int` values
-   11 | 
-   12 |     $for field in TestStruct.fields {
-   13 |         t.$(field.name) = '1'
-      |                           ~~~
-   14 |     }
-   15 | }

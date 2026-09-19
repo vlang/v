@@ -1,5 +1,0 @@
-fn test() {
-	defer {
-		println($res())
-	}
-}

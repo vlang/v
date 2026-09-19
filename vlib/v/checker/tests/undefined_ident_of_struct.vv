@@ -1,9 +1,0 @@
-module main
-
-fn get() {
-	f.a = 'test'
-}
-
-fn main() {
-	println('hello')
-}

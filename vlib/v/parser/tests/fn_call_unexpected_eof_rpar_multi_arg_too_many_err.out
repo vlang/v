@@ -1,6 +1,0 @@
-vlib/v/parser/tests/fn_call_unexpected_eof_rpar_multi_arg_too_many_err.vv:5:22: error: unexpected eof, expecting `)`
-    3 | fn foo(i i64, s string) {}
-    4 | 
-    5 | foo(time.now(), 'foo',
-      |                      ^
-    6 |

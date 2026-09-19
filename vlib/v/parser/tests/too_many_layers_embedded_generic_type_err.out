@@ -1,6 +1,0 @@
-vlib/v/parser/tests/too_many_layers_embedded_generic_type_err.vv:2:2: error: unexpected token `,`, expecting `]`
-    1 | Hello, Wprld[
-    2 | o, Wprld[
-      |  ^
-    3 | o, Wprld[
-    4 | o, Wprld[

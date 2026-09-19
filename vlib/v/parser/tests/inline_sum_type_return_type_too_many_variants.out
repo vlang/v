@@ -1,7 +1,0 @@
-vlib/v/parser/tests/inline_sum_type_return_type_too_many_variants.vv:4:6: error: inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead
-    2 |
-    3 | struct Foo {
-    4 |     bar int|string|token.Pos|bool|u32
-      |         ~~~
-    5 | }
-    6 |

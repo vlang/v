@@ -1,8 +1,0 @@
-struct Tuple {
-	data (int, int)
-}
-
-fn main() {
-	x := Tuple{}
-	println(x)
-}

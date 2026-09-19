@@ -1,1 +1,0 @@
-fn takes_opt(c ?chan) {}

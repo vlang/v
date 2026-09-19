@@ -1,3 +1,0 @@
-vlib/v/parser/tests/fn_decl_params_missing_comma_single_line_err.vv:1:28: error: unexpected name `name`, expecting `,`
-    1 | fn greet(salutation string name string) {}
-      |                            ~~~~

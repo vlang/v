@@ -1,4 +1,0 @@
-module tzdata
-
-fn init() {
-}

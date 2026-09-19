@@ -1,5 +1,0 @@
-vlib/v/checker/tests/import_multiple_modules_err.vv:1:13: error: cannot import multiple modules at a time
-    1 | import time math
-      |             ~~~~
-    2 | fn main() {
-    3 |     println(time.now().unix())

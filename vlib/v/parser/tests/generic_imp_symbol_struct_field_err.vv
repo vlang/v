@@ -1,5 +1,0 @@
-import math.vec { vec3 }
-
-struct Veca {
-	field vec3[f64]
-}

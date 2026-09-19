@@ -1,6 +1,0 @@
-vlib/v/checker/tests/option_fn_return_error.vv:2:2: error: Option and Result types have been split, use `!Foo` to return errors
-    1 | fn func() ?int {
-    2 |     return error('Some error')
-      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~
-    3 | }
-    4 |

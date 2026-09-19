@@ -1,7 +1,0 @@
-fn hello(msg string) ? {
-	return println(msg)
-}
-
-fn main() {
-	hello('test')?
-}

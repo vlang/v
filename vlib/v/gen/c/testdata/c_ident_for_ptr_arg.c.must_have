@@ -1,1 +1,0 @@
-int (*real_open) (charptr _d1, int _d2, int _d3) = ((main__RealOpen)((dl__sym(RTLD_NEXT, _S("open")))));

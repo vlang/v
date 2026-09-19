@@ -1,3 +1,0 @@
-module rec
-
-fn fib(n int) int

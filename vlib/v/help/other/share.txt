@@ -1,4 +1,0 @@
-Send your code to the V Playground
-
-Usage:
-  v share FILE

@@ -1,9 +1,0 @@
-import v.embed_file
-
-fn main() {
-	$for field in embed_file.EmbedFileData.fields {
-		$if field.name == 'path' {
-			'' == $embed_file(@FILE).$(field.name)
-		}
-	}
-}

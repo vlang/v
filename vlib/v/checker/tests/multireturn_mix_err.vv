@@ -1,7 +1,0 @@
-fn goo() (string, int) {
-	return '', 100
-}
-
-fn foo() (string, int, bool) {
-	return goo(), true
-}

@@ -1,3 +1,0 @@
-fn main() {
-	'' == dump($embed_file(@FILE).path)
-}

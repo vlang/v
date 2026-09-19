@@ -1,8 +1,0 @@
-mut values := [1, 2, 3]
-values
-println(values.pop())
-values
-===output===
-[1, 2, 3]
-3
-[1, 2]

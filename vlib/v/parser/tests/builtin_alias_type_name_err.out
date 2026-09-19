@@ -1,3 +1,0 @@
-vlib/v/parser/tests/builtin_alias_type_name_err.vv:1:6: error: cannot register alias `string`, another type with this name exists
-    1 | type string = int
-      |      ~~~~~~

@@ -1,5 +1,0 @@
-fn main() {
-	new_data := [0, 1]
-	pointer_to_slice := &new_data[1..2]
-	println(pointer_to_slice)
-}

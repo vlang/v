@@ -1,7 +1,0 @@
-vlib/v/checker/tests/selector_struct_init_amp_err.vv:6:11: error: should not create object instance on the heap to simply access a member
-    4 | 
-    5 | fn test_main() {
-    6 |     field := &Object{}.a
-      |              ~~~~~~~~~~~
-    7 |     assert field == 123
-    8 | }

@@ -1,3 +1,0 @@
-vlib/v/parser/tests/fn_type_decl_same_return_type.vv:1:27: error: `FnType` cannot be a return type as it references the fntype
-    1 | type FnType = fn (string) FnType
-      |                           ~~~~~~

@@ -1,5 +1,0 @@
-vlib/v/checker/tests/division_by_zero_float_err.vv:2:16: error: division by zero
-    1 | fn main() {
-    2 |     println(1.0 / 0.0)
-      |                   ~~~
-    3 | }

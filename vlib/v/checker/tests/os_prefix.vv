@@ -1,7 +1,0 @@
-import os
-
-fn main() {
-	cmd := 'ls'
-	result := execute(cmd)
-	println(result)
-}

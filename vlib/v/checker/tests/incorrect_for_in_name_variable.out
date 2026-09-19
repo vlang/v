@@ -1,7 +1,0 @@
-vlib/v/checker/tests/incorrect_for_in_name_variable.vv:3:6: error: variable name `_aa` cannot start with `_`
-    1 | fn main() {
-    2 |     a := [1, 2, 3]
-    3 |     for _aa in a {
-      |         ~~~
-    4 |         println(_aa)
-    5 |     }

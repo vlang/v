@@ -1,6 +1,0 @@
-vlib/v/checker/tests/no_interface_instantiation_a.vv:4:6: error: cannot instantiate interface `Speaker`
-    2 | 
-    3 | fn main() {
-    4 |     _ = Speaker{}
-      |         ~~~~~~~~~
-    5 | }

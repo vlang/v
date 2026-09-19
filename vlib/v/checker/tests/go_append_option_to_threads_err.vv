@@ -1,7 +1,0 @@
-fn foo() ! {}
-
-fn main() {
-	mut ths := []thread{}
-	ths << spawn foo()
-	ths.wait()
-}

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/negative_assign_to_unsigned.vv:3:6: error: cannot assign negative value to unsigned integer type
-    1 | fn main() {
-    2 |     mut u := u32(10)
-    3 |     u = -10
-      |         ~~~
-    4 |     eprintln(u)
-    5 | }

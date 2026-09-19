@@ -1,6 +1,0 @@
-vlib/v/checker/tests/fn_call_arg_fn_mismatch_err.vv:14:8: error: cannot use `fn () string` as `fn () Response` in argument 1 to `event`
-   12 | 
-   13 | fn main() {
-   14 |     event(foo)
-      |           ~~~
-   15 | }

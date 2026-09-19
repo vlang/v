@@ -1,8 +1,0 @@
-struct Test {
-}
-
-fn main() {
-	$for f in Test.params {
-		println(f)
-	}
-}

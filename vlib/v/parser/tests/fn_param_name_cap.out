@@ -1,7 +1,0 @@
-vlib/v/parser/tests/fn_param_name_cap.vv:5:9: error: parameter name must not begin with upper case letter (`T`)
-    3 | fn f(Type)
-    4 |
-    5 | fn g[T](T v) {
-      |         ^
-    6 | }
-    7 |

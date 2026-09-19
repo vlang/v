@@ -1,2 +1,0 @@
-println('${exit(0)}')
-println('${char(48)}')

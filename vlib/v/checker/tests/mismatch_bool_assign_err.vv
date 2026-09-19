@@ -1,7 +1,0 @@
-mut b := 12
-b ||= 34
-println(b)
-
-mut c := 'str'
-c &&= 's'
-println(c)

@@ -1,7 +1,0 @@
-struct Foo{}
-
-fn (_ Foo) hello() {}
-
-$for i in Foo.values {
-	println(i)
-}

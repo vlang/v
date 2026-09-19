@@ -1,7 +1,0 @@
-fn my_fn() {
-	a := 1
-	f := fn [a] () {
-		print('hello')
-	}
-	f()
-}

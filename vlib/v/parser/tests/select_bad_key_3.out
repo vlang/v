@@ -1,7 +1,0 @@
-vlib/v/parser/tests/select_bad_key_3.vv:6:3: error: invalid type `void` for timeout - expected integer number of nanoseconds aka `time.Duration`
-    4 |             println(b)
-    5 |         }
-    6 |         println(7) {
-      |         ~~~~~~~~~~
-    7 |             println("shouldn't get here")
-    8 |         }

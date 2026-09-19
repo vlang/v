@@ -1,3 +1,0 @@
-const foo = 'abc'
-
-__global foo = 123

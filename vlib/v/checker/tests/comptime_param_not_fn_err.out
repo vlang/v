@@ -1,7 +1,0 @@
-vlib/v/checker/tests/comptime_param_not_fn_err.vv:5:12: error: iterating over `.params` is supported only for functions, and `Test` is not a function
-    3 | 
-    4 | fn main() {
-    5 |     $for f in Test.params {
-      |               ~~~~
-    6 |         println(f)
-    7 |     }

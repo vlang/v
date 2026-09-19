@@ -1,5 +1,0 @@
-fn main() {
-	test := 'hello'
-	hello := 'world'
-	println('%.*s${hello}${test}')
-}

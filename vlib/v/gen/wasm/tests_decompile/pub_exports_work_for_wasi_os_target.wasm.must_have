@@ -1,1 +1,0 @@
-export function main_exported_function(a:int, b:int):int {

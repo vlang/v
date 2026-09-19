@@ -1,5 +1,0 @@
-vlib/v/checker/tests/option_and_result_err.vv:1:11: error: the type must be Option or Result
-    1 | fn foo() !?i32 {
-      |           ^
-    2 |     return 6
-    3 | }

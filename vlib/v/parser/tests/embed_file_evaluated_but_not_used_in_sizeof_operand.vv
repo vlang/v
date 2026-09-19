@@ -1,3 +1,0 @@
-fn main() {
-	sizeof($embed_file(@FILE)) == 0
-}

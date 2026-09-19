@@ -1,5 +1,0 @@
-string _arg_expr_json_encode_pretty
-string_free(&_arg_expr_json_encode_pretty_
-string _arg_expr_json_encode_
-string d = (_arg_expr_json_encode_
-string_free(&d); // autofreed var main false

@@ -1,4 +1,0 @@
-fn main() {
-	defer {} // ok
-	defer(fn) {} // fail
-}

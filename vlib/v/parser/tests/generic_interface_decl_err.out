@@ -1,7 +1,0 @@
-vlib/v/parser/tests/generic_interface_decl_err.vv:4:6: error: non-generic interface `Abc` cannot define a generic method
-    2 |
-    3 | interface Abc {
-    4 |     test[T]()
-      |         ^
-    5 | }
-    6 |

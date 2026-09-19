@@ -1,3 +1,0 @@
-fn test_tmpl_catch_recursion() {
-	recurse := $tmpl('tmpl/recursive_fail.html')
-}

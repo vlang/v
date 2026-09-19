@@ -1,9 +1,0 @@
-struct Foo {
-	map1 map[string]!string
-}
-
-fn main() {
-	_ := map[string]!string{}
-
-	dump(map[string]!string{})
-}

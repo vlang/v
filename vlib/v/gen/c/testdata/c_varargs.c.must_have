@@ -1,2 +1,0 @@
-VV_LOC void main__t2(voidptr fmt, ... );
-VV_LOC void main__t2(voidptr fmt, ... ) {

@@ -1,6 +1,0 @@
-// for issue 20390
-fn index_got_none_from_or_block() {
-	m := map[string]int{}
-	_ = m['key'] or { none }
-	_ = m['key'] or { ?int(none) }
-}

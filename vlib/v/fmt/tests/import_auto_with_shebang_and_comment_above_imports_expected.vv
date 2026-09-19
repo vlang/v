@@ -1,7 +1,0 @@
-#!/usr/bin/env -S v
-
-// Comment
-import json2
-import os
-
-os.join_path('', '')

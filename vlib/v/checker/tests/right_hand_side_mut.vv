@@ -1,6 +1,0 @@
-fn main() {
-	mut flubbel := 123
-	mut wubbel := 234
-	_, _ := flubbel, mut wubbel
-	print(wubbel)
-}

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generic_eq_wrong_type.err.vv:9:13: error: infix expr: cannot use `string` (right expression) as `rune`
-    7 |         if ztest == `\n` {
-    8 |             println('${z}: \\n')
-    9 |         } else if ztest == '\r' {
-      |                   ~~~~~~~~~~~~~
-   10 |             println('${z}: \\r')
-   11 |         } else {

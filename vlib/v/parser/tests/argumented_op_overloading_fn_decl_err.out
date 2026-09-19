@@ -1,7 +1,0 @@
-vlib/v/parser/tests/argumented_op_overloading_fn_decl_err.vv:10:14: error: cannot overload `+=`, overload `+` and `+=` will be automatically generated
-    8 | }
-    9 |
-   10 | fn (p Point) += (q Point) Point {
-      |              ~~
-   11 |     return Point{p.x + q.x, p.y + q.y}
-   12 | }

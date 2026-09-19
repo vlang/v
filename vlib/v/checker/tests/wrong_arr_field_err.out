@@ -1,4 +1,0 @@
-vlib/v/checker/tests/wrong_arr_field_err.vv:1:34: error: wrong field `init1`, expecting `len`, `cap`, or `init`
-    1 | arr := []int{len: 100, cap: 200, init1: index * 3}
-      |                                  ~~~~~
-    2 | println(arr)

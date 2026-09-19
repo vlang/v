@@ -1,3 +1,0 @@
-export function main_run():int {
-call_indirect(
-funcref

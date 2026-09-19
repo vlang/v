@@ -1,2 +1,0 @@
-// vtest vflags: -cross -printfn _v_malloc
-println('hello')

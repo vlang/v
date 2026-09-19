@@ -1,7 +1,0 @@
-struct Foo {}
-
-fn main() {
-	ch := chan Foo{}
-	foo := Foo{}
-	ch <- &foo
-}

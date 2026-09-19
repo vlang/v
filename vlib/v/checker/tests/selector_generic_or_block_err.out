@@ -1,7 +1,0 @@
-vlib/v/checker/tests/selector_generic_or_block_err.vv:7:24: error: wrong return type `string` in the `or {}` block, expected `int`
-    5 | 
-    6 | fn (f Foo[T]) str() string {
-    7 |     value := f.value or { 'this should be a checker error' }
-      |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    8 |     return '${value}'
-    9 | }

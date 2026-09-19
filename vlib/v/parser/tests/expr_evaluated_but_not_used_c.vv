@@ -1,5 +1,0 @@
-fn main() {
-	a := 10
-	`b`
-	println(a)
-}

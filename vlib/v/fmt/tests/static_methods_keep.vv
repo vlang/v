@@ -1,7 +1,0 @@
-module module_fmt
-
-import mod
-
-fn main() {
-	mod.Foo.new()
-}

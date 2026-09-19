@@ -1,6 +1,0 @@
-vlib/v/checker/tests/multireturn_mix_err.vv:6:9: error: cannot use multi-return with other return types
-    4 | 
-    5 | fn foo() (string, int, bool) {
-    6 |     return goo(), true
-      |            ~~~~~
-    7 | }

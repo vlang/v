@@ -1,6 +1,0 @@
-fn test() (string, string) {
-	defer {
-		println($res())
-	}
-	return 'test', 'test2'
-}

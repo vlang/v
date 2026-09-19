@@ -1,2 +1,0 @@
-import io { Reader }
-interface Reader {}

@@ -1,4 +1,0 @@
-vlib/v/parser/tests/atomic_blank_ident_err.vv:1:1: error: cannot use `atomic` on `_`
-    1 | atomic _ = 3
-      | ~~~~~~
-    2 |

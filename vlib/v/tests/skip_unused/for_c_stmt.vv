@@ -1,9 +1,0 @@
-const abc = 12
-
-fn main() {
-	println('ok')
-	for x := abc; x < 15; x++ {
-		println(x)
-	}
-	println('ok')
-}

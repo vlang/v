@@ -1,8 +1,0 @@
-import time
-fn show() {
-	println('hello, world')
-}
-import os
-fn main() {
-	println(time.now())
-}

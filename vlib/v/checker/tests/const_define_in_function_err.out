@@ -1,6 +1,0 @@
-vlib/v/checker/tests/const_define_in_function_err.vv:2:2: error: const can only be defined at the top level (outside of functions)
-    1 | fn main() {
-    2 |     const a = 1
-      |     ~~~~~
-    3 |     println(a)
-    4 | }

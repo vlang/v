@@ -1,7 +1,0 @@
-start
---- 1
-> inside else branch of if emscripten
---- 2
-> inside else branch of if wasm32_emscripten
---- 3
-done

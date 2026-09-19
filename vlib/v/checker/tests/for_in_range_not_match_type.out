@@ -1,6 +1,0 @@
-vlib/v/checker/tests/for_in_range_not_match_type.vv:2:11: error: range types do not match
-    1 | fn main() {
-    2 |     for i in 10 .. 10.5 {
-      |              ~~
-    3 |         println(i)
-    4 |     }

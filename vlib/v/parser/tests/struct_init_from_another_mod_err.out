@@ -1,6 +1,0 @@
-vlib/v/parser/tests/struct_init_from_another_mod_err.vv:6:27: error: unknown module `rand.config`; did you mean `config`?
-    4 | fn main() {
-    5 |     mut a := [0, 1, 2]
-    6 |     rand.shuffle(mut a, rand.config.ShuffleConfigStruct{})!
-      |                              ~~~~~~
-    7 | }

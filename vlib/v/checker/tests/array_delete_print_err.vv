@@ -1,5 +1,0 @@
-fn main() {
-	mut a := []string{}
-	println(a.delete(0))
-	println('${a.delete(0)}')
-}

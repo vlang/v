@@ -1,9 +1,0 @@
-fn abc(a []int) {
-	a.sort()
-}
-
-fn main() {
-	a := [2, 30, 10, 20, 1]
-	a.sort(a > b)
-	eprintln(' a: ${a}')
-}

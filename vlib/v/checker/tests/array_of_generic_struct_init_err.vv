@@ -1,7 +1,0 @@
-struct Item[T] {
-	val T
-}
-
-fn main() {
-	mut arr := []Item{}
-}

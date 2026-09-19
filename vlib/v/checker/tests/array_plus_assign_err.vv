@@ -1,2 +1,0 @@
-mut buffer := []u8{cap: 1024}
-buffer += 'ipconfig && sudo apt install -y some_amazing_package name + command output'.bytes()

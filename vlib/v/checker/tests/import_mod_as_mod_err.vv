@@ -1,5 +1,0 @@
-import math as math
-
-fn main() {
-    println(math.e)
-}

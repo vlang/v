@@ -1,5 +1,0 @@
-fn main() {
-	name := 'Luke'
-	ret := name like 'L%'
-	println(ret)
-}

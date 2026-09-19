@@ -1,2 +1,0 @@
-[vlib/v/slow_tests/inout/comptime_selector_of_interface.vv:12] p.count: 42
-[vlib/v/slow_tests/inout/comptime_selector_of_interface.vv:14] p.$(f.name): 42

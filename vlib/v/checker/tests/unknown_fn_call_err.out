@@ -1,6 +1,0 @@
-vlib/v/checker/tests/unknown_fn_call_err.vv:4:20: error: unknown function: sin
-    2 | 
-    3 | fn main() {
-    4 |     C.printf(c'%f\n', sin(2))
-      |                       ~~~~~~
-    5 | }

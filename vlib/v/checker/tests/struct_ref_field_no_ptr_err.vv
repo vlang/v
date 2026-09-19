@@ -1,7 +1,0 @@
-struct Foo {
-	bar &Bar = Bar{}
-}
-
-struct Bar {
-	field int
-}

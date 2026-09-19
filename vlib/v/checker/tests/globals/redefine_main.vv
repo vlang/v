@@ -1,3 +1,0 @@
-__global main = fn () int {
-	return 22
-}

@@ -1,9 +1,0 @@
-fn g[T](x T) {
-	for _ in 0 .. 10 {
-		_ := any{}
-	}
-}
-
-fn main() {
-	g[int](1)
-}

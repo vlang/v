@@ -1,3 +1,0 @@
-fn main() {
-	a := if true { none } else { none }
-}

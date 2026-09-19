@@ -1,7 +1,0 @@
-vlib/v/checker/tests/globals/global_var_redeclare.vv:4:2: notice: the global variable named `foobar` already exists
-    2 | 
-    3 | fn main() {
-    4 |     foobar := 2
-      |     ~~~~~~
-    5 |     println(foobar)
-    6 | }

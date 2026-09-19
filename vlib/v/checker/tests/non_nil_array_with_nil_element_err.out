@@ -1,8 +1,0 @@
-vlib/v/checker/tests/non_nil_array_with_nil_element_err.vv:1:23: error: invalid array element: expected `string`, not `voidptr`
-    1 | const spnames = ['f', unsafe { nil }]!
-      |                       ~~~~~~
-    2 | const spnames1 = [unsafe { nil }, 'f']!
-vlib/v/checker/tests/non_nil_array_with_nil_element_err.vv:2:35: error: invalid array element: expected `voidptr`, not `string`
-    1 | const spnames = ['f', unsafe { nil }]!
-    2 | const spnames1 = [unsafe { nil }, 'f']!
-      |                                   ~~~

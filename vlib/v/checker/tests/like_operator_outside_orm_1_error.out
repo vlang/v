@@ -1,6 +1,0 @@
-vlib/v/checker/tests/like_operator_outside_orm_1_error.vv:3:15: error: unexpected name `like`, expecting `)`
-    1 | fn main() {
-    2 |     name := 'Luke'
-    3 |     println(name like 'L%')
-      |                  ~~~~
-    4 | }

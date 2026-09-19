@@ -1,7 +1,0 @@
-vlib/v/checker/tests/option_ptr_without_unwrapp_err.vv:6:12: error: cannot use `?&Node` as `Node`, it must be unwrapped first in argument 1 to `set_trace`
-    4 | 
-    5 | fn set_trace(n Node) {
-    6 |     set_trace(n.parent)
-      |               ~~~~~~~~
-    7 | }
-    8 |

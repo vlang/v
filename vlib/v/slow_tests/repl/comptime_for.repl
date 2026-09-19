@@ -1,5 +1,0 @@
-struct Person { name string age int }
-$for field in Person.fields { println(field.name) }
-===output===
-name
-age

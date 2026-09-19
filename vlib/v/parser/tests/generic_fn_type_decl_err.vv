@@ -1,4 +1,0 @@
-type Fn = fn (I) !(O, R)
-
-fn main() {
-}

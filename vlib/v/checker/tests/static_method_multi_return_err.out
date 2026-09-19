@@ -1,7 +1,0 @@
-vlib/v/checker/tests/static_method_multi_return_err.vv:10:6: error: assignment mismatch: 1 variable but `SomeStruct.static_method()` returns 2 values
-    8 | 
-    9 | fn main() {
-   10 |     val := SomeStruct.static_method()
-      |         ~~
-   11 |     println(val)
-   12 | }

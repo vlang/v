@@ -1,7 +1,0 @@
-fn buggy_function() {
-	panic('panicking...')
-}
-
-fn main() {
-	buggy_function()
-}

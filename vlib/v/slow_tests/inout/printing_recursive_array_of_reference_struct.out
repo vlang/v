@@ -1,5 +1,0 @@
-&Person{
-    name: 'John'
-    relatives: [<circular>]
-}
-Success

@@ -1,5 +1,0 @@
-@[has_globals]
-module main
-
-@[markused]
-__global ga []?StructS

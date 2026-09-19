@@ -1,8 +1,0 @@
-fn foo() !string {
-	return 'foo'
-}
-
-fn main() {
-	assert foo()! == 'foo'
-	assert foo()? == 'foo'
-}

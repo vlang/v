@@ -1,8 +1,0 @@
-struct Foo {
-	f ?fn (int)
-}
-
-fn main() {
-	foo := Foo{}
-	foo.f(1)
-}

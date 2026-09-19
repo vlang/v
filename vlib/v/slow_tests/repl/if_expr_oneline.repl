@@ -1,3 +1,0 @@
-a := 22; if a > 10 { println('good') } else { println('bad') }
-===output===
-good

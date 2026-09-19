@@ -1,4 +1,0 @@
-vlib/v/parser/tests/register_imported_alias.vv:2:6: error: cannot register alias `Duration`, this type was already imported
-    1 | import time { Duration }
-    2 | type Duration = bool
-      |      ~~~~~~~~

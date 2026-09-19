@@ -1,3 +1,0 @@
-// vtest vflags: -no-skip-unused
-
-import flag as _

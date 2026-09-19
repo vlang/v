@@ -1,4 +1,0 @@
-module main
-
-const color01 = 'red'
-const color02 = 'blue'

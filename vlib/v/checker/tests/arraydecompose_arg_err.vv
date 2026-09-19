@@ -1,8 +1,0 @@
-fn test_arr(i int, f f64, s string) string {
-	return '${i} : ${f}'
-}
-
-fn test_main() {
-	var := [0.0]
-	test_arr(1, ...var, 'a')
-}

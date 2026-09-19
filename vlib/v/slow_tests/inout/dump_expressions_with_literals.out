@@ -1,7 +1,0 @@
-[vlib/v/slow_tests/inout/dump_expressions_with_literals.vv:5] 2 + 2: 4
-[vlib/v/slow_tests/inout/dump_expressions_with_literals.vv:6] 2 * 3 + 50 / 5: 16
-[vlib/v/slow_tests/inout/dump_expressions_with_literals.vv:7] 3.14 + 0.1: 3.24
-[vlib/v/slow_tests/inout/dump_expressions_with_literals.vv:8] 'abc' + 'a': abca
-[vlib/v/slow_tests/inout/dump_expressions_with_literals.vv:9] 'a' + 'b' + 'c': abc
-[vlib/v/slow_tests/inout/dump_expressions_with_literals.vv:10] true || (false && true): true
-[vlib/v/slow_tests/inout/dump_expressions_with_literals.vv:11] 2 == 4: false

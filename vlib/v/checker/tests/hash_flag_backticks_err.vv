@@ -1,3 +1,0 @@
-#flag darwin `sdl2-config --cflags --libs` -lSDL2
-
-fn main() {}

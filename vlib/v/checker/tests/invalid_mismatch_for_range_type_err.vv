@@ -1,2 +1,0 @@
-for _ in map[string]string{} .. `9` {
-}

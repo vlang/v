@@ -1,5 +1,0 @@
-vlib/v/parser/tests/fn_arg_variadic_mut_err.vv:1:26: error: variadic arguments cannot be `mut`, `shared` or `atomic`
-    1 | fn load(mut filepaths ...string) {
-      |                          ~~~~~~
-    2 |     println(filepaths[0])
-    3 | }

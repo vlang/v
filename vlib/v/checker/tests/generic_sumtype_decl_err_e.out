@@ -1,6 +1,0 @@
-vlib/v/checker/tests/generic_sumtype_decl_err_e.vv:12:7: error: generic sumtype `Parser` must specify type parameter, e.g. Parser[int]
-   10 | 
-   11 | fn main() {
-   12 |     _ := Parser(f)
-      |          ~~~~~~~~~
-   13 | }

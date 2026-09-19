@@ -1,7 +1,0 @@
-vlib/v/checker/tests/sumtype_as_mismatched_type.vv:5:9: error: cannot cast `Type` to `&int`
-    3 | fn main() {
-    4 |     mut t := Type(123)
-    5 |     v := t as &int
-      |            ~~
-    6 |     t = 456
-    7 |     println(v)

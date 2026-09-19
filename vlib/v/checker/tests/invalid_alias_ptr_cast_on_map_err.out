@@ -1,6 +1,0 @@
-vlib/v/checker/tests/invalid_alias_ptr_cast_on_map_err.vv:4:7: error: cannot cast to alias pointer `&FooMap` because `map[string]int` is a value
-    2 | 
-    3 | fn main() {
-    4 |     _ := &FooMap(map[string]int{})
-      |          ~~~~~~~~~~~~~~~~~~~~~~~~~
-    5 | }

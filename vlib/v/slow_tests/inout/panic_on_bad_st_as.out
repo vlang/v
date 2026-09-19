@@ -1,5 +1,0 @@
-Foo
-================ V panic ================
-   module: builtin
- function: __as_cast()
-  message: as cast: cannot cast `main.Struct` to `main.Interface`

@@ -1,5 +1,0 @@
-vlib/v/checker/tests/main_return_err.vv:1:1: error: function `main` cannot return values
-    1 | fn main() f64 {
-      | ~~~~~~~~~~~~~
-    2 |     return 1.23
-    3 | }

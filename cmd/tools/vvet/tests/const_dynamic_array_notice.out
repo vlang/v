@@ -1,1 +1,0 @@
-cmd/tools/vvet/tests/const_dynamic_array_notice.vv:1: notice: Use a fixed array instead of a dynamic one

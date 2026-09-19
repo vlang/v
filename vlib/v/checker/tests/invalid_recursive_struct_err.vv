@@ -1,4 +1,0 @@
-struct Node {
-mut:
-	next ?Node
-}

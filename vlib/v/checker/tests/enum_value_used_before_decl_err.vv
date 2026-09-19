@@ -1,5 +1,0 @@
-enum TestEnum {
-	chan = int(TestEnum.a)
-	a    = 0
-	b    = 1
-}

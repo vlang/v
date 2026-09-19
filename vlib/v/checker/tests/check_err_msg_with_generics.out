@@ -1,6 +1,0 @@
-vlib/v/checker/tests/check_err_msg_with_generics.vv:15:10: error: cannot cast struct `datatypes.BSTree[Result[[]Token, Err[string]]]` to `int`
-   13 | fn test_err_msg() {
-   14 |     typ := datatypes.BSTree[Result[[]Token, Err[string]]]{}
-   15 |     println(int(typ))
-      |             ~~~~~~~~
-   16 | }

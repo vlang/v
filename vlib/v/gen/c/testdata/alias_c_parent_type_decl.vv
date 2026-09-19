@@ -1,4 +1,0 @@
-pub struct C.atype {}
-
-@[markused]
-type BType = &C.atype

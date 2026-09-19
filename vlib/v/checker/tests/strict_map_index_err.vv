@@ -1,9 +1,0 @@
-@[strict_map_index]
-module main
-
-fn main() {
-	m := {
-		'abc': 'xyz'
-	}
-	_ = m['missing']
-}

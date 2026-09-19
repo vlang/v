@@ -1,5 +1,0 @@
-vlib/v/checker/tests/recursive_interface_err.vv:2:6: error: recursive interface fields are not allowed because they cannot be initialised
-    1 | interface Foo {
-    2 |     foo Foo
-      |         ~~~
-    3 | }

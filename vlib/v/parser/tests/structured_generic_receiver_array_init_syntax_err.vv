@@ -1,6 +1,0 @@
-struct ReceiverPatternExpect[T] {}
-fn (e ReceiverPatternExpect[[]T{}]) item(value T) T {
-	return value
-}
-
-fn main() {}

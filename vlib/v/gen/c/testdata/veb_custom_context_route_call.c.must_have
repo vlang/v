@@ -1,2 +1,0 @@
-return main__App_new(app, ctx);
-veb__Context_html(&ctx->Context, _tmpl_res_

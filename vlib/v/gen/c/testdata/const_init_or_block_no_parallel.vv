@@ -1,9 +1,0 @@
-// vtest vflags: -no-skip-unused -no-parallel
-fn t1() ?bool {
-	return true
-}
-
-type FooBar = bool
-
-const bar = FooBar(t1() or { panic(err) })
-const barz = FooBar(t1() or { panic(err) })

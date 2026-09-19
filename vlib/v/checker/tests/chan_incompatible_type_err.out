@@ -1,6 +1,0 @@
-vlib/v/checker/tests/chan_incompatible_type_err.vv:6:8: error: cannot push `&Foo` on `chan Foo`
-    4 |     ch := chan Foo{}
-    5 |     foo := Foo{}
-    6 |     ch <- &foo
-      |           ^
-    7 | }

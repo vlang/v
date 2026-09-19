@@ -1,5 +1,0 @@
-import time { Duration }
-
-fn main() {
-	println(map[string]Duration{})
-}

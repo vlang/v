@@ -1,3 +1,0 @@
-fn (a int) get_number() int { 
-	return 1
-}

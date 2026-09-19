@@ -1,7 +1,0 @@
-vlib/v/checker/tests/voidptr_arg_err.vv:3:15: error: cannot use `voidptr` as `[]i32` in argument 1 to `test`
-    1 | fn test_main() {
-    2 |     c := voidptr(10)
-    3 |     println(test(c))
-      |                  ^
-    4 | }
-    5 |

@@ -1,6 +1,0 @@
-fn test(int) {
-}
-
-fn main() {
-	test(0)
-}

@@ -1,9 +1,0 @@
-struct App {
-	cb fn(x int) = unsafe { nil } // the function signature doesn't make a difference
-}
-
-fn main() {
-	_ = App{
-		cb: fn(x int)  // Note the missing `{}` (the function body) here
-	}
-}

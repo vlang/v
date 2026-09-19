@@ -1,1 +1,0 @@
-fn takes_map(chans map[string]chan) {}

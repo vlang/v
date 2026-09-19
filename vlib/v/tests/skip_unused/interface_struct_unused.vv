@@ -1,7 +1,0 @@
-@[markused]
-struct Foo {}
-
-@[markused]
-interface Bar {
-	a Foo
-}

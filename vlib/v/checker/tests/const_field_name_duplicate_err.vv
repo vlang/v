@@ -1,6 +1,0 @@
-const aaa = 1
-cosnt aaa = 2
-
-fn main() {
-	println(aaa)
-}

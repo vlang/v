@@ -1,4 +1,0 @@
-fn myprintf(s string, x voidptr) {
-}
-
-myprintf('%02.02f\n', 1.1)

@@ -1,5 +1,0 @@
-vlib/v/checker/tests/map_def_err.vv:2:7: error: cannot use the map type without key and value definition
-    1 | struct Foo {
-    2 |   bar map
-      |       ~~~
-    3 | }

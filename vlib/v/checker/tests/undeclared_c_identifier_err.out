@@ -1,6 +1,0 @@
-vlib/v/checker/tests/undeclared_c_identifier_err.vv:4:12: error: undefined C identifier: `C.errono`
-    2 | 
-    3 | fn main() {
-    4 |     println(C.errono)
-      |               ~~~~~~
-    5 | }

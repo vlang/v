@@ -1,5 +1,0 @@
-fn main() {
-	ch := chan u64{cap: 10}
-	obj := 'test'
-	ch <- obj
-}

@@ -1,6 +1,0 @@
-enum Color {
-	red
-	green = 0
-	blue  = 1
-	alpha = 1
-}

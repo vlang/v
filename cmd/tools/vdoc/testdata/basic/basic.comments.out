@@ -1,9 +1,0 @@
-module testdata.basic
-
-const source_root = 'temp' // some const
-const another = int(5)
-const windowpos_undefined_mask = C.SDL_WINDOWPOS_UNDEFINED_MASK //   0x1FFF0000u
-    Used to indicate that you don't care what the window position is.
-const windowpos_undefined = C.SDL_WINDOWPOS_UNDEFINED
-fn funky()
-    funky - comment for function below

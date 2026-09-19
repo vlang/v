@@ -1,5 +1,0 @@
-import time
-
-fn main() {
-	println(time.now().unix())
-}

@@ -1,5 +1,0 @@
-module main
-
-struct State {}
-
-type Func = fn (shared state State) string

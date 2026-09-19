@@ -1,7 +1,0 @@
-import strings
-
-const strings = ['hello', 'world']
-
-fn main() {
-	println(strings)
-}

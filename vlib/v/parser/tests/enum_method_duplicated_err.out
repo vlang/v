@@ -1,7 +1,0 @@
-vlib/v/parser/tests/enum_method_duplicated_err.vv:13:14: error: duplicate method `has`, `has` is an enum type built-in method
-   11 | }
-   12 | 
-   13 | fn (f Flags) has(f2 Flags) bool {
-      |              ~~~
-   14 |     return f & f2 > 0
-   15 | }

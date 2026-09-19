@@ -1,6 +1,0 @@
-vlib/v/checker/tests/fn_call_mut_arg_mismatch_err.vv:15:10: error: cannot use `Expr1` as `&&Expr1` in argument 1 to `foo`
-   13 |         name: '123'
-   14 |     }
-   15 |     foo(mut expr)
-      |             ~~~~
-   16 | }

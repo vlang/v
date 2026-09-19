@@ -1,7 +1,0 @@
-vlib/v/parser/tests/nested_unsafe_expr.vv:4:8: error: already inside `unsafe` block
-    2 |     a := 0
-    3 |     unsafe {
-    4 |         a += unsafe{2}
-      |              ~~~~~~
-    5 |     }
-    6 |     println(a)

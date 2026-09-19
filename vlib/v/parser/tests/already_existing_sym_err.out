@@ -1,5 +1,0 @@
-vlib/v/parser/tests/already_existing_sym_err.vv:16:6: error: cannot register fn `vnkxcb.Nk_plugin_alloc`, another type with this name exists
-   14 | }
-   15 | 
-   16 | type Nk_plugin_alloc = fn (Nk_handle, voidptr, Nk_size) voidptr
-      |      ~~~~~~~~~~~~~~~

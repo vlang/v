@@ -1,7 +1,0 @@
-vlib/v/parser/tests/not_using_if_comptime_in_comptime_err.vv:10:2: error: use `$if` instead of `if`
-    8 | 
-    9 | fn check[T]() bool {
-   10 |     if T is Checkable {
-      |     ~~
-   11 |         return true
-   12 |     } else {

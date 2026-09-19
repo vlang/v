@@ -1,7 +1,0 @@
-vlib/v/checker/tests/flag_enum_exhaustive_else_branch.vv:11:1: error: match must be exhaustive (add `else {}` at the end)
-    9 | dump(perm)
-   10 | 
-   11 | match perm {
-      | ~~~~~~~~~~~~
-   12 |     .read { println('r') }
-   13 |     .write { println('w') }

@@ -1,9 +1,0 @@
-#!/usr/bin/env expect
-source "common.tcl"
-
-expect "Break on *main* test_mut in ${test_file}:10\r\n"
-expect "${test_file}:10 vdbg> "
-send "p b\n"
-expect "b = foo (&main.Test)"
-send "q\n"
-expect eof

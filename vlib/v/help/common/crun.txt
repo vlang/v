@@ -1,6 +1,0 @@
-Equivalent to running `v run`, which builds and runs a compiled executable.
-The difference is that `v crun` keeps the executable and recompiles only
-when project files are changed.
-
-Usage:
-  v [build flags] crun <file.v|directory|-> [arguments...]

@@ -1,9 +1,0 @@
-@[translated]
-module aa
-
-fn C.abc(a i32, b i32)
-
-fn abc(x i32, y i32) {
-	s := i32(123)
-	dump(s)
-}

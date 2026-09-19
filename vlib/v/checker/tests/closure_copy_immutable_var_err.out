@@ -1,7 +1,0 @@
-vlib/v/checker/tests/closure_copy_immutable_var_err.vv:5:3: error: the closure copy of `name` is immutable, declare it with `mut` to make it mutable
-    3 | 
-    4 |     fn [name] () {
-    5 |         name = 'Ivan'
-      |         ~~~~
-    6 |         println(name)
-    7 |     }()

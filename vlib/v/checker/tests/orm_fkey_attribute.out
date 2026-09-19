@@ -1,7 +1,0 @@
-vlib/v/checker/tests/orm_fkey_attribute.vv:11:12: error: ORM: the `fkey` attribute must have an argument
-    9 |     id   int @[primary; sql: serial]
-   10 |     name string
-   11 |     user User @[fkey]
-      |               ~~~~~~~
-   12 | }
-   13 |

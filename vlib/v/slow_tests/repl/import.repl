@@ -1,4 +1,0 @@
-import time
-time.now().unix() > 160000
-===output===
-true

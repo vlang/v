@@ -1,5 +1,0 @@
-runes := [`a`, `b`, `c`, `a`]
-dump(runes.all(`a`))
-dump(runes.any(`a`))
-dump(runes.count(`a`))
-dump(runes.filter(`a`))

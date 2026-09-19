@@ -1,7 +1,0 @@
-vlib/v/scanner/tests/empty_character_literal_err.vv:2:7: error: invalid empty character literal ``
-    1 | fn main() {
-    2 |     a := ``
-      |          ^
-    3 |     println(a)
-    4 | }
-Details: use quotes for strings, backticks for characters

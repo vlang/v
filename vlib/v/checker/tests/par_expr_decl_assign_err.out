@@ -1,5 +1,0 @@
-vlib/v/checker/tests/par_expr_decl_assign_err.vv:2:2: error: parentheses are not supported on the left side of `:=`
-    1 | fn main() {
-    2 |     (x) := 5
-      |     ~~~
-    3 | }

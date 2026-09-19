@@ -1,6 +1,0 @@
-module main
-
-fn main() {
-    broken := '${foo()' + '${bar})'
-    _ = '\t${broken}'
-}

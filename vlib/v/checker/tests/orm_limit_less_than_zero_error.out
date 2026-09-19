@@ -1,7 +1,0 @@
-vlib/v/checker/tests/orm_limit_less_than_zero_error.vv:16:26: error: ORM: `limit` must be greater than or equal to zero
-   14 | 
-   15 |     users := sql db {
-   16 |         select from User limit user_limit
-      |                                ~~~~~~~~~~
-   17 |     }!
-   18 |

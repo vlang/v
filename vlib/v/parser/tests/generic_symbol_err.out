@@ -1,5 +1,0 @@
-vlib/v/parser/tests/generic_symbol_err.vv:1:13: error: unexpected token `<`, expecting `(`
-    1 | pub fn what1<A>(params ...A) {
-      |             ^
-    2 |    println(params)
-    3 | }

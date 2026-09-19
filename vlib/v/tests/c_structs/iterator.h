@@ -1,3 +1,0 @@
-struct MyCStruct {
-        int x;
-};

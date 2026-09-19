@@ -1,7 +1,0 @@
-fn varargs(a ...int) {
-	println(a)
-}
-
-fn main() {
-	varargs(...123)
-}

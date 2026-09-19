@@ -1,8 +1,0 @@
-@[heap]
-struct Foo {}
-
-fn foo() &Foo {
-	return &Foo{}
-}
-
-_ := &foo()

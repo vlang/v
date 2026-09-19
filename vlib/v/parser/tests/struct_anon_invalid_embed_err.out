@@ -1,6 +1,0 @@
-vlib/v/parser/tests/struct_anon_invalid_embed_err.vv:3:6: error: cannot embed non-struct `Int`
-    1 | type Int = int
-    2 | type MyIndex = struct {
-    3 |     Int Int
-      |         ~~~
-    4 | }

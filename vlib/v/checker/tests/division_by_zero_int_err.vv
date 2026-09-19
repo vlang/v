@@ -1,6 +1,0 @@
-fn main() {
-	println(1 / 0)
-	println(1 / 0x0)
-	println(1 / 0b0)
-	println(1 / 0o0)
-}

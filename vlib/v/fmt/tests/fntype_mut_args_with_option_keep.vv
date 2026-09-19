@@ -1,1 +1,0 @@
-pub type SocketMessageFn = fn (mut c Client, msg &Message) ?

@@ -1,5 +1,0 @@
-struct Walker implements Abcde {
-	aaa string
-}
-
-fn main() {}

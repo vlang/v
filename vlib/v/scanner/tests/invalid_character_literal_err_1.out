@@ -1,4 +1,0 @@
-vlib/v/scanner/tests/invalid_character_literal_err_1.vv:1:6: error: invalid character literal `\n\t` => `\n\t` ([`\n`, `\t`]) (more than one character)
-    1 | a := `\n\t`
-      |      ^
-Details: use quotes for strings, backticks for characters

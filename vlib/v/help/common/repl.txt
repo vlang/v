@@ -1,4 +1,0 @@
-This command runs the V REPL.
-
-Usage:
-  v repl

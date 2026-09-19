@@ -1,5 +1,0 @@
-fn interpolate_wrong() string {
-	a := 5
-	x := '${a:xy}'
-	return x
-}

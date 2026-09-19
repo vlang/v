@@ -1,8 +1,0 @@
-module main
-
-fn main() {
-	get_number := fn () ?i16 {
-		return 1
-	}
-	println('${get_number() or { '1' }}')
-}

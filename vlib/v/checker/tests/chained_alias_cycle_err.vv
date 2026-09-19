@@ -1,5 +1,0 @@
-type Alpha = Beta
-type Beta = Alpha
-
-fn main() {
-}

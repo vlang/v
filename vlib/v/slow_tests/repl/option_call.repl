@@ -1,3 +1,0 @@
-import os
-os.cp('', '') or {return} 
-===output===

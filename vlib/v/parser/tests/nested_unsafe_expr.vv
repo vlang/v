@@ -1,7 +1,0 @@
-fn main() {
-	a := 0
-	unsafe {
-		a += unsafe{2}
-	}
-	println(a)
-}

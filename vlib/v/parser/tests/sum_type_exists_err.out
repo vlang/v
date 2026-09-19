@@ -1,3 +1,0 @@
-vlib/v/parser/tests/sum_type_exists_err.vv:1:1: error: cannot register sum type `Option`, another type with this name exists
-    1 | type Option = string | int
-      | ~~~~~~~~~~~

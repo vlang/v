@@ -1,8 +1,0 @@
-fn main() {
-	mut name := 'John'
-
-	fn [name] () {
-		name = 'Ivan'
-		println(name)
-	}()
-}

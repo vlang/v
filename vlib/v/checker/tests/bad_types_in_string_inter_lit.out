@@ -1,8 +1,0 @@
-vlib/v/checker/tests/bad_types_in_string_inter_lit.vv:1:12: error: expression does not return a value
-    1 | println('${exit(0)}')
-      |            ~~~~~~~
-    2 | println('${char(48)}')
-vlib/v/checker/tests/bad_types_in_string_inter_lit.vv:2:12: error: expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead
-    1 | println('${exit(0)}')
-    2 | println('${char(48)}')
-      |            ~~~~~~~~

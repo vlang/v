@@ -1,8 +1,0 @@
-type Type = int
-
-fn f(Type)
-
-fn g[T](T v) {
-}
-
-g(5)

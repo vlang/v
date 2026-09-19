@@ -1,5 +1,0 @@
-fn foo[T]() {}
-
-fn main() {
-	foo[T]()
-}

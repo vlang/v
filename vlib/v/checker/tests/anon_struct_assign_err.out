@@ -1,7 +1,0 @@
-vlib/v/checker/tests/anon_struct_assign_err.vv:9:12: error: cannot assign anonymous `struct` to a typed `struct`
-    7 | }
-    8 | println(y)
-    9 | y = struct {
-      |            ^
-   10 |     name: 'Def'
-   11 | }

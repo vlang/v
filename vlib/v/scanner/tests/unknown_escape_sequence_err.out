@@ -1,5 +1,0 @@
-vlib/v/scanner/tests/unknown_escape_sequence_err.vv:2:14: error: `_` unknown escape sequence
-    1 | fn main() {
-    2 |     println('¯\_(ツ)_/¯')
-      |                ^
-    3 | }

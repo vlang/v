@@ -1,6 +1,0 @@
-vlib/v/checker/tests/assign_expr_undefined_err_a.vv:2:7: error: undefined variable: `a`
-    1 | fn main() {
-    2 |     a := a
-      |          ^
-    3 |     println(a)
-    4 | }

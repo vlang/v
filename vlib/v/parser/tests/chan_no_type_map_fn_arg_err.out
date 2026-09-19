@@ -1,3 +1,0 @@
-vlib/v/parser/tests/chan_no_type_map_fn_arg_err.vv:1:31: error: `chan` has no type specified. Use `chan Type` instead of `chan`
-    1 | fn takes_map(chans map[string]chan) {}
-      |                               ~~~~

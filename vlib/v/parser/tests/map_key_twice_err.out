@@ -1,4 +1,0 @@
-vlib/v/parser/tests/map_key_twice_err.vv:1:14: error: maps can only have a single key. To declare a map use `map[u8]u8{}` instead
-    1 | _ := map[u8][u8]{}
-      |              ~~
-    2 |

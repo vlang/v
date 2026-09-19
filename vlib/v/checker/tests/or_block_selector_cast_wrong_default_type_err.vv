@@ -1,8 +1,0 @@
-struct SelectorCastHolder {
-	x ?f64
-}
-
-fn main() {
-	h := SelectorCastHolder{}
-	_ := int(h.x or { 'bad' })
-}

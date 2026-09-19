@@ -1,7 +1,0 @@
-fn main() {
-	a := []int{}
-	a.count(1)
-	a.count(1, 2)
-	a.count('')
-	a.count()
-}

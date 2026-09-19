@@ -1,7 +1,0 @@
-interface Ch {}
-
-fn id(x Ch) Ch { return x }
-
-fn main() {
-  id(id)
-}

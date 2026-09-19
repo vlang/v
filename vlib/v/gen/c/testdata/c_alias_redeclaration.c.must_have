@@ -1,2 +1,0 @@
-#define C__RedeclareLong RedeclareLong
-VV_LOC C__RedeclareLong main__use_redeclare_long(C__RedeclareLong x);

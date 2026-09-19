@@ -1,4 +1,0 @@
-struct Empty{} ee := Empty{}
-println('OK')
-===output===
-OK

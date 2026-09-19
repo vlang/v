@@ -1,4 +1,0 @@
-vlib/v/parser/tests/register_imported_enum.vv:2:6: error: cannot register enum `Method`, this type was already imported
-    1 | import net.http { Method }
-    2 | enum Method { foo bar }
-      |      ~~~~~~

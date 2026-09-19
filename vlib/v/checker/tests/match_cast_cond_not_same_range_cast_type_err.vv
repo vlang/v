@@ -1,8 +1,0 @@
-const a = u16(1)
-const b = u16(5)
-
-c := u8(3)
-match c {
-	a...b { println('1...5') }
-	else { println('not 1...5') }
-}

@@ -1,4 +1,0 @@
-fn main() {
-	x := '0xfe9a'
-	assert x.u8_array() == [u8(0xfe), 0x9a]
-}

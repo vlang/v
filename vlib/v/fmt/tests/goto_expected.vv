@@ -1,4 +1,0 @@
-fn test_goto() {
-	goto label
-	label:
-}

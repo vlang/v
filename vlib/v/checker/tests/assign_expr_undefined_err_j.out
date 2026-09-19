@@ -1,6 +1,0 @@
-vlib/v/checker/tests/assign_expr_undefined_err_j.vv:2:12: error: undefined variable: `a`
-    1 | fn main() {
-    2 |     mut a := [a]
-      |               ^
-    3 |     println(a)
-    4 | }

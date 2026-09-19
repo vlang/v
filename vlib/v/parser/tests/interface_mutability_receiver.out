@@ -1,9 +1,0 @@
-vlib/v/parser/tests/interface_mutability_receiver.vv:23:18: error: `Doggo` incorrectly implements method `set_name` of interface `Animal`: expected `Animal` which is immutable, not `mut &Doggo`
-   21 |     dog := Doggo{'Doggo'}
-   22 |     println(dog.name)
-   23 |     set_animal_name(dog, 'Pupper')
-      |                     ~~~
-   24 |     println(dog.name)
-   25 | }
-Details: main.Animal has `fn set_name(x main.Animal, name string)`
-         main.Doggo has `fn set_name(mut d main.Doggo, name string)`

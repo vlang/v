@@ -1,7 +1,0 @@
-a_variable := "yessir"
-a_variable
-printme := "ohno"
-printme
-===output===
-yessir
-ohno

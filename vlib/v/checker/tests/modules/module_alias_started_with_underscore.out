@@ -1,7 +1,0 @@
-vlib/v/checker/tests/modules/module_alias_started_with_underscore/main.v:3:1: error: module alias `_abc` cannot start with `_`
-    1 | module main
-    2 | 
-    3 | import underscore as _abc
-      | ~~~~~~~~~~~~~~~~~~~~~~~~~
-    4 | 
-    5 | fn main() {

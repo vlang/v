@@ -1,5 +1,0 @@
-fn main() {
-	a := [1, 2, 3]
-	mut b := a.clone(), a.clone()
-	println(b)
-}

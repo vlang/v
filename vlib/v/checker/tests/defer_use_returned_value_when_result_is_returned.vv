@@ -1,6 +1,0 @@
-fn test() !string {
-	defer {
-		println($res())
-	}
-	return 'test'
-}

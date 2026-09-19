@@ -1,8 +1,0 @@
-fn test_abc() {
-	assert 'abc' == 'xyz'
-}
-
-fn test_index_expr() {
-	example_string := 'This is an example string'
-	assert example_string[1..4] == 'abcdef'
-}

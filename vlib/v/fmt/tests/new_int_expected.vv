@@ -1,5 +1,0 @@
-module main
-
-fn C.abc(a int, b int, c charptr) int
-
-fn abc(a int, b int, c charptr) int

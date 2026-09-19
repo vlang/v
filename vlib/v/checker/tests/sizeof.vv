@@ -1,2 +1,0 @@
-x := sizeof(BadType)
-println(x)

@@ -1,8 +1,0 @@
-type Aa = string | int
-
-fn f() !string {
-	return ''
-}
-
-y := Aa(f() or { 2 })
-println(y)

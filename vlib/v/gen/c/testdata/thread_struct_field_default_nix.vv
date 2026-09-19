@@ -1,7 +1,0 @@
-struct ThreadHolder {
-	worker thread
-}
-
-fn main() {
-	_ := ThreadHolder{}
-}

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/immutable_deref.vv:6:7: error: cannot have mutable reference to const `ctx_ptr`
-    4 | 
-    5 | fn main() {
-    6 |     x := &ctx_ptr
-      |          ^
-    7 |     unsafe {
-    8 |         *x = &Context{}

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/enum_field_value_duplicate_b.vv:4:2: error: enum value `0` already exists
-    2 |     red // 0
-    3 |     green = -1
-    4 |     blue // -1 + 1 = 0
-      |     ~~~~
-    5 | }
-Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed

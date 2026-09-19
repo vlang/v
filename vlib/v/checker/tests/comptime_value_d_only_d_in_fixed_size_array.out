@@ -1,5 +1,0 @@
-vlib/v/checker/tests/comptime_value_d_only_d_in_fixed_size_array.vv:2:7: error: only $d() is supported as fixed array size quantifier at compile time
-    1 | struct St {
-    2 |     fsa [$env('size')]int
-      |          ~~~~~~~~~~~~
-    3 | }

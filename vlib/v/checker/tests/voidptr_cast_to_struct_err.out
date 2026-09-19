@@ -1,7 +1,0 @@
-vlib/v/checker/tests/voidptr_cast_to_struct_err.vv:4:7: error: cannot cast `voidptr` to struct
-    2 | 
-    3 | fn main() {
-    4 |     a := Foo(unsafe { nil })
-      |          ~~~~~~~~~~~~~~~~~~~
-    5 |     println(a)
-    6 | }

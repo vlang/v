@@ -1,7 +1,0 @@
-fn main() {
-	mut a := ?int(12)
-	match a {
-		12 { println(a) }
-		else { println('else') }
-	}
-}

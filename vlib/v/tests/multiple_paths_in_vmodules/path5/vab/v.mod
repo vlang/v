@@ -1,3 +1,0 @@
-Module {
-	name: 'vab'
-}

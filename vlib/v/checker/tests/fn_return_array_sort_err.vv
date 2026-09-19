@@ -1,7 +1,0 @@
-fn ret_array() []int {
-	return [1, 3, 2]
-}
-
-fn main() {
-	ret_array().sort()
-}

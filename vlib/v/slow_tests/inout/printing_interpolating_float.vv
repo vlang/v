@@ -1,7 +1,0 @@
-fn main() {
-	n := 0.1
-	println('${n:36.2f}')
-	println('${n:37.2f}')
-	println('${n:38.2f}')
-	println('${n:70.3f}')
-}

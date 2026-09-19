@@ -1,9 +1,0 @@
-struct Aaa {
-pub mut:
-	i []int
-}
-
-fn main() {
-	a := Aaa{}
-	a.i[0] += 3
-}

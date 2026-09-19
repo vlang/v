@@ -1,4 +1,0 @@
-List all installed packages.
-
-Usage:
-  v list

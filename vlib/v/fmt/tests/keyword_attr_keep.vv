@@ -1,9 +1,0 @@
-struct Type {
-	a int
-}
-
-pub struct Token {
-	foo Type @[json: type]
-	bar Type @[fn; json: if]
-	baz Type @[for; json: while; spawn]
-}

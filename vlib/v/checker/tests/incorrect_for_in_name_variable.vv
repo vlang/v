@@ -1,6 +1,0 @@
-fn main() {
-	a := [1, 2, 3]
-	for _aa in a {
-		println(_aa)
-	}
-}

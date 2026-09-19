@@ -1,7 +1,0 @@
-vlib/v/checker/tests/missing_concrete_type_err.vv:4:6: error: missing concrete type on generic type
-    2 | 
-    3 | fn main() {
-    4 |     bar[Foo]()
-      |         ~~~
-    5 | }
-    6 |

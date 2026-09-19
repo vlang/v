@@ -1,1 +1,0 @@
-println(_S("this should be in the c code"));

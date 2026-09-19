@@ -1,3 +1,0 @@
-fn main() {
-	(chan int{cap: $embed_file(@FILE).len})
-}

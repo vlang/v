@@ -1,1 +1,0 @@
-type map = int | u64

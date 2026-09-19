@@ -1,8 +1,0 @@
-[vlib/v/checker/tests/comptime_dump_fields_var_test.vv:13] val.$(field.name): c
-[vlib/v/checker/tests/comptime_dump_fields_var_test.vv:13] val.$(field.name): Option('d')
-[vlib/v/checker/tests/comptime_dump_fields_var_test.vv:13] val.$(field.name): 1
-[vlib/v/checker/tests/comptime_dump_fields_var_test.vv:13] val.$(field.name): Option(0)
-[vlib/v/checker/tests/comptime_dump_fields_var_test.vv:13] val.$(field.name): struct {
-    i: Option(100)
-}
-ok

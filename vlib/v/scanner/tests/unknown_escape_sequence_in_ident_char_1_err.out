@@ -1,7 +1,0 @@
-vlib/v/scanner/tests/unknown_escape_sequence_in_ident_char_1_err.vv:2:6: error: invalid character literal, use `\n` instead
-    1 | fn main() {
-    2 |     _ = `\
-      |         ^
-    3 | `
-    4 | }
-Details: use quotes for strings, backticks for characters

@@ -1,3 +1,0 @@
-module main
-$dbg;
-fn main() {}

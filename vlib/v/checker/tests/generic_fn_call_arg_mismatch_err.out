@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generic_fn_call_arg_mismatch_err.vv:7:17: error: cannot use `int` as `string` in argument 1 to `strings.Builder.write_string`
-    5 |     var := T{}
-    6 |     ptr := &var
-    7 |     b.write_string(*ptr)
-      |                    ~~~~
-    8 | }
-    9 |

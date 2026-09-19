@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generics_non_generic_fn_called_like_a_generic_one.vv:4:15: error: a non generic function called like a generic one
-    2 | 
-    3 | fn main() {
-    4 |     x := math.sin[f64](1.0)
-      |                  ~~~~~
-    5 |     println(x)
-    6 | }

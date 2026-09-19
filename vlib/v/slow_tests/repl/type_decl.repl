@@ -1,6 +1,0 @@
-a := 1
-pub		type	Int = int
-b := Int(a)
-b
-===output===
-1

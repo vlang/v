@@ -1,5 +1,0 @@
-fn main() {
-	ch := i64(3)
-	obj := <-ch
-	println(obj)
-}

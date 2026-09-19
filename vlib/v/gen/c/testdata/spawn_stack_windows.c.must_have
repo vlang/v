@@ -1,2 +1,0 @@
-CreateThread(0, 65536, (LPTHREAD_START_ROUTINE)main__my_print2_thread_wrapper
-CreateThread(0, 131072, (LPTHREAD_START_ROUTINE)main__my_print3_thread_wrapper

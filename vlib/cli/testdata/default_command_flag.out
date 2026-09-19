@@ -1,7 +1,0 @@
-Usage:  [flags] [commands]
-
-Flags:
-  -version            Print version information
-
-Commands:
-  help                Print help information

@@ -1,6 +1,0 @@
-&Class{
-    class: 'abc'
-    register: '123'
-    namespace: '456'
-    normal: 'xyz'
-}

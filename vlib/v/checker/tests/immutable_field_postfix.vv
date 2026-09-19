@@ -1,9 +1,0 @@
-struct Aaa {
-	i int
-}
-
-fn main() {
-	mut a := Aaa{}
-	a.i++
-	a.i--
-}

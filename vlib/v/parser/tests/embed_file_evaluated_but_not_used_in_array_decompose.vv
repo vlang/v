@@ -1,7 +1,0 @@
-fn collect(xs ...string) string {
-	return xs.join('')
-}
-
-fn main() {
-	collect(...[$embed_file(@FILE).path]).len
-}

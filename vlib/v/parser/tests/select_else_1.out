@@ -1,7 +1,0 @@
-vlib/v/parser/tests/select_else_1.vv:12:3: error: `else` and timeout value are mutually exclusive `select` keys
-   10 |             println("shouldn't get here")
-   11 |         }
-   12 |         30 * time.millisecond {
-      |         ~~~~~~~~~~~~~~~~~~~~~
-   13 |             println('bad')
-   14 |         }

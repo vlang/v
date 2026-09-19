@@ -1,9 +1,0 @@
-struct Foo {}
-
-fn foo(s string) &Foo {
-	return &Foo{}
-}
-
-fn main() {
-	*foo('s') = 1
-}

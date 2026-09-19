@@ -1,3 +1,0 @@
-import sync.stdatomic {new_atomic}
-
-_ := new_atomic(`1`)

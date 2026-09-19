@@ -1,3 +1,0 @@
-vlib/v/checker/tests/comptime_value_d_values_can_only_be_pure_literals.vv:1:16: error: $d() values can only be pure literals
-    1 | const my_f32 = $d('my_f32', f32(42.0))
-      |                ~~~~~~~~~~~~~~~~~~~~~~~

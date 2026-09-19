@@ -1,6 +1,0 @@
-vlib/v/checker/tests/for_in_range_string_type.vv:2:11: error: range type can only be an integer type
-    1 | fn main() {
-    2 |     for i in 'a' .. 'b' {
-      |              ~~~~~~~~~~
-    3 |         println(i)
-    4 |     }

@@ -1,6 +1,0 @@
-for x in 0 .. 10 {
-	if x > 4 {
-		$dbg;
-	}
-	println(x)
-}

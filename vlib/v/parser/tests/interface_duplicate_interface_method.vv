@@ -1,5 +1,0 @@
-// duplicate interface methods in declaration
-interface Abc {
-	fun()
-	fun()
-}

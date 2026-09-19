@@ -1,6 +1,0 @@
-import math
-
-fn main() {
-	x := math.sin[f64](1.0)
-	println(x)
-}

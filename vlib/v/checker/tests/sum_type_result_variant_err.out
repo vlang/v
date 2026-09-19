@@ -1,5 +1,0 @@
-vlib/v/checker/tests/sum_type_result_variant_err.vv:1:18: error: sum type cannot hold a Result type
-    1 | type ResultInt = !i32 | !i64
-      |                  ~~~~
-    2 | 
-    3 | fn main() {

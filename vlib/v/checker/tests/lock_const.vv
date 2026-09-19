@@ -1,9 +1,0 @@
-const a = 5
-
-fn main() {
-	mut c := 0
-	rlock a {
-		c = a
-	}
-	println(c)
-}

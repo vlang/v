@@ -1,7 +1,0 @@
-vlib/v/checker/tests/orm_invalid_recursive_structs_err_2.vv:6:2: error: ORM: invalid recursive struct `Child`
-    4 | struct Parent {
-    5 |     id       int     @[primary; sql: serial]
-    6 |     children []Child @[fkey: 'parent_id']
-      |     ~~~~~~~~~~~~~~~~
-    7 | }
-    8 |

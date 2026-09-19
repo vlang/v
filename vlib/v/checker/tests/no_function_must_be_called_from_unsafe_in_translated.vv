@@ -1,8 +1,0 @@
-@[translated]
-module main
-
-fn main() {
-	mut p := C.malloc(4)
-	s := 'hope'
-	C.memcpy(p, s.str, 4)
-}

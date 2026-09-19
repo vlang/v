@@ -1,5 +1,0 @@
-fn main() {
-	x := 5
-	f := if x == 5 { |x| x - 5 } else { |x| x }
-	println(f(x))
-}

@@ -1,6 +1,0 @@
-import encoding.binary
-
-fn main() {
-	x := binary.big_endian_u16_fixed([u8(1), 0]!)
-	println(x)
-}

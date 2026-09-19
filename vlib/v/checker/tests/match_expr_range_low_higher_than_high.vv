@@ -1,7 +1,0 @@
-fn main() {
-	value := 10
-	match value {
-		20...10 {}
-		else {}
-	}
-}

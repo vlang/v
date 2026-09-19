@@ -1,5 +1,0 @@
-fn main() {
-	if mut true {
-		println(true)
-	}
-}

@@ -1,9 +1,0 @@
-name := 'hello'
-interface Foo { get_name() string }
-struct Bar { name string }
-fn (bar Bar) get_name() string { return bar.name }
-fn get_name(foo Foo) string { return foo.get_name() }
-bar := Bar{name}
-get_name(bar)
-===output===
-hello

@@ -1,3 +1,0 @@
-cmd/tools/vvet/tests/array_init_one_val.vv:2: error: Use `1 == 1` instead of `1 in [1]`
-cmd/tools/vvet/tests/array_init_one_val.vv:6: error: Use `'foo' != bar` instead of `'foo' !in [bar]`
-Note: You can run `v fmt -w cmd/tools/vvet/tests/array_init_one_val.vv` to fix these errors automatically

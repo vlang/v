@@ -1,3 +1,0 @@
-fn abc() (string, int) | string {
-	return ''
-}

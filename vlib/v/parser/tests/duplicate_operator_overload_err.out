@@ -1,5 +1,0 @@
-vlib/v/parser/tests/duplicate_operator_overload_err.vv:3:12: error: cannot duplicate operator overload `*`
-    1 | struct Foo{}
-    2 | fn (f Foo) * (f2 Foo) Foo{}
-    3 | fn (f Foo) * (f2 Foo) Foo{}
-      |            ^

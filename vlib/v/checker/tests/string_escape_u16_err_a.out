@@ -1,5 +1,0 @@
-vlib/v/checker/tests/string_escape_u16_err_a.vv:2:15: error: `\u` incomplete 16 bit unicode character value
-    1 | fn main() {
-    2 |     println('\u')
-      |               ^
-    3 | }

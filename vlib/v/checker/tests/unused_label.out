@@ -1,5 +1,0 @@
-vlib/v/checker/tests/unused_label.vv:2:2: warning: label `mylabel` defined and not used
-    1 | fn main() {
-    2 |     mylabel:
-      |     ~~~~~~~~
-    3 | }

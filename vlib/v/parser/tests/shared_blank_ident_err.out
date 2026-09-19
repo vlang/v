@@ -1,3 +1,0 @@
-vlib/v/parser/tests/shared_blank_ident_err.vv:1:1: error: cannot use `shared` on `_`
-    1 | shared _ = 3
-      | ~~~~~~

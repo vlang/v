@@ -1,2 +1,0 @@
-void main__print(voidptr fmt, ... );
-main__print("\n");

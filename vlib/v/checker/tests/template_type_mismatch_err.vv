@@ -1,7 +1,0 @@
-fn main() {
-	println(return_item())
-}
-
-fn return_item() int {
-	return $tmpl('./templates/template.md')
-}

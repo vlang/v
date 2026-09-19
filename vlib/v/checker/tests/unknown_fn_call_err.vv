@@ -1,5 +1,0 @@
-module main
-
-fn main() {
-	C.printf(c'%f\n', sin(2))
-}

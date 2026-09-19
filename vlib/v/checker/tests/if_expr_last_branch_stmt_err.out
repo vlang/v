@@ -1,7 +1,0 @@
-vlib/v/checker/tests/if_expr_last_branch_stmt_err.vv:5:30: error: `if` expression requires an expression as the last statement of every branch
-    3 |     mut start := 0
-    4 | 
-    5 |     start = if val < 20 { start += 1 } else { start }
-      |                                 ~~
-    6 |     dump(start)
-    7 | }

@@ -1,2 +1,0 @@
-string area;
-area = ((string*)areas.data)[_t1];

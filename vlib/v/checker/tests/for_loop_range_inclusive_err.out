@@ -1,5 +1,0 @@
-vlib/v/checker/tests/for_loop_range_inclusive_err.vv:1:11: error: for loop only supports exclusive (`..`) ranges, not inclusive (`...`)
-    1 | for a in 1...10 {
-      |           ~~~
-    2 |     println(a)
-    3 | }

@@ -1,9 +1,0 @@
-struct Context {}
-
-const a = 0
-
-b := 0
-
-_ = &Context(0)
-_ = &Context(a)
-_ = &Context(b)

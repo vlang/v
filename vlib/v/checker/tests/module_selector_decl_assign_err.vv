@@ -1,6 +1,0 @@
-import os
-
-fn main() {
-	os.args := []string{}
-	println(os.args)
-}

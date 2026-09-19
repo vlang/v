@@ -1,6 +1,0 @@
-struct Foo {}
-
-fn main() {
-	a := Foo(unsafe { nil })
-	println(a)
-}

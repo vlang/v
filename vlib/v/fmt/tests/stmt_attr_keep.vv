@@ -1,7 +1,0 @@
-fn foo() {
-	x := [1, 2, 3] @[freed]
-	unsafe {
-		x.free()
-	}
-	println('x is freed')
-}

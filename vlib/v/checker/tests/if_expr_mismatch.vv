@@ -1,4 +1,0 @@
-fn main() {
-	s := if true { '12' } else { 12 }
-	println(s)
-}

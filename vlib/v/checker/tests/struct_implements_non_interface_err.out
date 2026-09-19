@@ -1,5 +1,0 @@
-vlib/v/checker/tests/struct_implements_non_interface_err.vv:1:26: error: `Abcde` is not an interface type
-    1 | struct Walker implements Abcde {
-      |                          ~~~~~
-    2 |     aaa string
-    3 | }

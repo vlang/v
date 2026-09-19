@@ -1,7 +1,0 @@
-vlib/v/checker/tests/slice_reassignment.vv:3:5: error: cannot reassign using range expression on the left side of an assignment
-    1 | fn main() {
-    2 |     mut arr := [1, 2, 3, 4, 5]
-    3 |     arr[..2] = [0, 0]
-      |        ~~~~~
-    4 |     println(arr)
-    5 | }

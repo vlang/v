@@ -1,5 +1,0 @@
-vlib/v/checker/tests/oct_lit_without_digit_err.vv:2:14: error: number part of this octal is not provided
-    1 | fn main() {
-    2 |     println(0o)
-      |              ^
-    3 | }

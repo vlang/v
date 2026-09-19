@@ -1,3 +1,0 @@
-@[foo::]
-fn my_fn_with_invalid_attr() {
-}

@@ -1,2 +1,0 @@
-Array_fixed_main__Foo_3 g_test_foo = {
-.foo = 0,.bar = {.a = 0,.b = 0,}

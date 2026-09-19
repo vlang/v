@@ -1,7 +1,0 @@
-vlib/v/checker/tests/expr_evaluated_but_not_used.vv:7:3: warning: expression evaluated but not used
-    5 |         println(3)
-    6 |         println(4)
-    7 |         5
-      |         ^
-    8 |     }
-    9 |     println('works')

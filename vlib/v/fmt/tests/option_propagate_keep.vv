@@ -1,3 +1,0 @@
-fn opt_propagate() ?int {
-	eventual_wrong_int()?
-}

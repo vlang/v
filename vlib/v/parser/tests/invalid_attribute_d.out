@@ -1,5 +1,0 @@
-vlib/v/parser/tests/invalid_attribute_d.vv:1:10: error: unexpected token `}`, an argument is expected after `:`
-    1 | @[foobar:}
-      |          ^
-    2 | fn my_fn_with_invalid_attr() {
-    3 | }

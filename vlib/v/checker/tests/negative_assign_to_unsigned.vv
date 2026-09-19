@@ -1,5 +1,0 @@
-fn main() {
-	mut u := u32(10)
-	u = -10
-	eprintln(u)
-}

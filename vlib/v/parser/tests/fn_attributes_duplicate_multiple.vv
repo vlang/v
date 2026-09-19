@@ -1,7 +1,0 @@
-@[inline]
-@[inline]
-fn foo() {}
-
-fn main() {
-    foo()
-}

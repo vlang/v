@@ -1,7 +1,0 @@
-vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_fn_literal_params.vv:6:2: warning: unused variable: `x`
-    4 | 
-    5 | fn function_literal_parameter_shadows_outer() {
-    6 |     x := 1
-      |     ^
-    7 |     $if prealloc {
-    8 |         callback := fn (x int) {}

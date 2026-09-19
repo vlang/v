@@ -1,7 +1,0 @@
-const some_runes = [`a`, `b`, `c`]
-const some_other_runes = [`c`, `b`, `a`]
-
-fn main() {
-	runes := if true { &some_runes } else { some_other_runes }
-	println(runes)
-}

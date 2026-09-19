@@ -1,6 +1,0 @@
-mut a := [1, 2]
-pub const b = 3
-a << b
-a
-===output===
-[1, 2, 3]

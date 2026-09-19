@@ -1,3 +1,0 @@
-mut array := [][]int{}
-array.insert(0, [])
-println(array)

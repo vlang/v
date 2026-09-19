@@ -1,6 +1,0 @@
-vlib/v/checker/tests/fn_call_mismatch_alias_type_err.vv:15:10: error: cannot use `Int` as `u8` in argument 1 to `take_u8`
-   13 |         value: 10000
-   14 |     }
-   15 |     take_u8(foo.value)
-      |             ~~~~~~~~~
-   16 | }

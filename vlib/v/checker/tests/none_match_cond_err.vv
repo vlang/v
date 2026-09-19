@@ -1,4 +1,0 @@
-match none {
-	none {}
-	else {}
-}

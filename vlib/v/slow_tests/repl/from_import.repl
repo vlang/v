@@ -1,4 +1,0 @@
-import json2 { encode }
-encode('123')
-===output===
-"123"

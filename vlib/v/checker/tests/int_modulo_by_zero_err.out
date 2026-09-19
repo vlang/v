@@ -1,5 +1,0 @@
-vlib/v/checker/tests/int_modulo_by_zero_err.vv:2:14: error: modulo by zero
-    1 | fn main() {
-    2 |     println(3 % 0)
-      |                 ^
-    3 | }

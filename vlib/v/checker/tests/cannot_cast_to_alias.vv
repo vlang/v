@@ -1,7 +1,0 @@
-module main
-
-type MyType = string
-
-fn main() {
-	_ := MyType(5)
-}

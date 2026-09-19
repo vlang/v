@@ -1,9 +1,0 @@
-fn main() {
-	_ := f()
-	go f()
-
-	f := fn () string {
-		return 'hello'
-	}
-	_ := f() // avoid warnings
-}

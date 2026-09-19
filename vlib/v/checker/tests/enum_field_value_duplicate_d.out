@@ -1,8 +1,0 @@
-vlib/v/checker/tests/enum_field_value_duplicate_d.vv:6:6: error: enum value `1` already exists
-    4 |     a = one
-    5 |     b
-    6 |     c = one
-      |         ~~~
-    7 | }
-    8 |
-Details: use `@[_allow_multiple_values]` attribute to allow multiple enum values. Use only when it is needed

@@ -1,4 +1,0 @@
-fn main() {
-	assert true, 'abc
-     xyz'
-}

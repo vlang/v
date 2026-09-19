@@ -1,4 +1,0 @@
-vlib/v/checker/tests/const_array_unknown_type_err.vv:1:11: error: unknown type `BB`.
-Did you mean `AA`?
-    1 | type AA = [20]BB
-      |           ~~~~~~

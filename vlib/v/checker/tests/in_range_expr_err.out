@@ -1,3 +1,0 @@
-vlib/v/checker/tests/in_range_expr_err.vv:1:13: error: `bool` is an invalid type for range expression
-    1 | assert true in 0..1
-      |             ~~

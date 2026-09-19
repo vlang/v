@@ -1,7 +1,0 @@
-fn main() {
-	Mystery.hey()
-}
-
-fn Mystery.hey() {
-	println('hey')
-}

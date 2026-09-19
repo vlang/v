@@ -1,8 +1,0 @@
-vlib/v/checker/tests/array_init_with_len_cap_err.vv:1:16: error: array len can not be negative
-    1 | _ = []int{len: -1}
-      |                ~~
-    2 | _ = []int{cap: -1}
-vlib/v/checker/tests/array_init_with_len_cap_err.vv:2:16: error: array cap can not be negative
-    1 | _ = []int{len: -1}
-    2 | _ = []int{cap: -1}
-      |                ~~

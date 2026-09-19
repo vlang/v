@@ -1,7 +1,0 @@
-vlib/v/parser/tests/struct_embed_wrong_pos_in_pub_err.vv:6:5: error: struct embedding must be declared at the beginning of the struct body
-    4 | pub struct ThreadSafeLog {
-    5 | pub:
-    6 |     Log
-      |     ~~~
-    7 | pub mut:
-    8 |     mu Xyz

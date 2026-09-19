@@ -1,7 +1,0 @@
-vlib/v/checker/tests/ban_const_ref_mutation.vv:11:14: error: cannot have mutable reference to const `foobar_const`
-    9 |     println('foobar_const.foo: ${foobar_const.foo}') // foobar_const.foo: 123
-   10 |     mut foobars := []&Foobar{}
-   11 |     foobars << &foobar_const
-      |                 ~~~~~~~~~~~~
-   12 |     foobars[0].foo = 456
-   13 |     println('foobar_const.foo: ${foobar_const.foo}') // foobar_const.foo: 456

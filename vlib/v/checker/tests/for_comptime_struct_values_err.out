@@ -1,7 +1,0 @@
-vlib/v/checker/tests/for_comptime_struct_values_err.vv:5:11: error: iterating over .values is supported only for enums, and Foo is not an enum
-    3 | fn (_ Foo) hello() {}
-    4 | 
-    5 | $for i in Foo.values {
-      |           ~~~
-    6 |     println(i)
-    7 | }

@@ -1,9 +1,0 @@
-import time
-
-fn foo[T](val T) string {
-	return val.format_rfc3339_nano()
-}
-
-fn main() {
-	println(foo(time.Time{}))
-}

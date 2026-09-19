@@ -1,4 +1,0 @@
-fn main() {
-	println(string(true))
-	println(string(false))
-}

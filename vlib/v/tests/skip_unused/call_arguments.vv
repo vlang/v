@@ -1,4 +1,0 @@
-fn main() {
-	args := arguments()
-	assert args.len > 0
-}

@@ -1,4 +1,0 @@
-typedef void (*gdi__Function_ptr)();
-typedef void (*gdi__Function_ptr2)();
-typedef gdi__Function_ptr* (*gdi__Get_proc_address)(i8*);
-typedef void (*gdi__Set_proc_address)(gdi__Function_ptr2*);

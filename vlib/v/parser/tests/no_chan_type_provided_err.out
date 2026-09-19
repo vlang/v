@@ -1,3 +1,0 @@
-vlib/v/parser/tests/no_chan_type_provided_err.vv:1:5: error: `chan` has no type specified. Use `chan Type{}` instead of `chan{}`
-    1 | _ = chan{}
-      |     ~~~~~~

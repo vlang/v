@@ -1,7 +1,0 @@
-fn main() {
-	a := [1, 2, 3, 4]
-	println(a)
-
-	a.delete(1)
-	println(a)
-}

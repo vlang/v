@@ -1,3 +1,0 @@
-vlib/v/checker/tests/import_symbol_unclosed.vv:1:28: error: import syntax error, no closing `}`
-    1 | import crypto.sha256 { sum ]
-      |                            ^

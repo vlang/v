@@ -1,7 +1,0 @@
-vlib/v/parser/tests/array_decl_type_struct_field_err.vv:6:20: error: `array` is an internal type, it cannot be used directly. Use `[]int`, `[]Foo` etc
-    4 |     max_size          string
-    5 |     filter_until_hour int   = 240 // 10 days
-    6 |     prune_list        array = ['all']
-      |                       ~~~~~
-    7 |     time_interval     int   = 300 // 5 min
-    8 | }

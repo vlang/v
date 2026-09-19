@@ -1,6 +1,0 @@
-// vtest vflags: -enable-globals
-
-const foo = 'bar'
-
-@[export]
-__global global_exported = foo + 'qux'

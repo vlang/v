@@ -1,8 +1,0 @@
-fn t() ? {
-	a := ?string(none)
-	println(a?)
-}
-
-fn main() {
-	t()?
-}

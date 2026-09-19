@@ -1,7 +1,0 @@
-vlib/v/checker/tests/diff_type_map_value_err.vv:12:11: error: invalid map value: expected `?MyStruct`, not `MyStruct`
-   10 |     return {
-   11 |         'key1': ?MyStruct(none)
-   12 |         'key2': MyStruct{
-      |                 ~~~~~~~~~
-   13 |             field: 10
-   14 |         }

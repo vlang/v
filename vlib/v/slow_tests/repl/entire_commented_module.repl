@@ -1,7 +1,0 @@
-import v.slow_tests.acommentedmodule
-===output===
-error: bad module definition: .entire_commented_module.repl.vrepl_temp.v imports module "v.slow_tests.acommentedmodule" but vlib/v/slow_tests/acommentedmodule/commentedfile.v is defined as module `main`
-    1 | import v.slow_tests.acommentedmodule
-      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    2 | import os
-    3 |

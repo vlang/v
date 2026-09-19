@@ -1,1 +1,0 @@
-Array_fixed_main__Foo_3 g_test_foo = {(main__Foo){.foo = 0,.bar = (main___VAnonStruct1){.a = 0,.b = 0,},}, (main__Foo){.foo = 0,.bar = (main___VAnonStruct1){.a = 0,.b = 0,},}, (main__Foo){.foo = 0,.bar = (main___VAnonStruct1){.a = 0,.b = 0,},}}; // global4

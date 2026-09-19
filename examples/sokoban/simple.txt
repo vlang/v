@@ -1,9 +1,0 @@
-@Use the arrows or WASD keys, to move your player.@Use R to restart the level and N to go to the next level.@To win, move your player to the box and push it to the highlighted storage spot.
-##############
-#            #
-#            #
-#   $        #
-#      .     #
-# @          #
-#            #
-##############

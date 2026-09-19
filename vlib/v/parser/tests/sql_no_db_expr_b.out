@@ -1,6 +1,0 @@
-vlib/v/parser/tests/sql_no_db_expr_b.vv:3:12: error: invalid expression: unexpected token `:=`
-    1 | fn x() {
-    2 |     // SqlExpr
-    3 |     x := sql_ :=
-      |               ~~
-    4 | }

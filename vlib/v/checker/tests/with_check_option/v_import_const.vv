@@ -1,5 +1,0 @@
-import abc.def { const, global }
-import xyz.qwe
-
-fn abc() {
-}

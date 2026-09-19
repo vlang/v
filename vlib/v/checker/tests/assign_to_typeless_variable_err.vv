@@ -1,4 +1,0 @@
-fn main() {
-	val := {}
-	val = 1
-}

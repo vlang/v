@@ -1,7 +1,0 @@
-vlib/v/checker/tests/alias_to_generic_err.vv:3:12: error: unknown aliased type `T`
-    1 | module main
-    2 | 
-    3 | type Foo = T
-      |            ^
-    4 | 
-    5 | fn main() {

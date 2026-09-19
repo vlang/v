@@ -1,8 +1,0 @@
-import regex
-
-fn main() {
-	_ := regex.regex_opt(r'a|b') or { panic(err) }
-	_ := regex.regex_opt(r'(foo)|(bar)') or { panic(err) }
-	_ := regex.regex_opt(r'[a|b]') or { panic(err) }
-	_ := regex.regex_opt(r'foo\\|bar') or { panic(err) }
-}

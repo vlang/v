@@ -1,6 +1,0 @@
-fn main() {
-	_ := rune('0')
-	_ := rune('012345')
-	_ := rune('v')
-	_ := rune('abcd')
-}

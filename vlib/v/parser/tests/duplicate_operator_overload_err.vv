@@ -1,3 +1,0 @@
-struct Foo{}
-fn (f Foo) * (f2 Foo) Foo{}
-fn (f Foo) * (f2 Foo) Foo{}

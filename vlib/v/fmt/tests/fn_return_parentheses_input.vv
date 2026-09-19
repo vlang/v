@@ -1,8 +1,0 @@
-fn is_ascii_upper_alpha(char int) bool {
-	return (char >= 65 && char <= 90)
-}
-
-fn main() {
-	ret := is_ascii_upper_alpha(`a`)
-	println(ret)
-}

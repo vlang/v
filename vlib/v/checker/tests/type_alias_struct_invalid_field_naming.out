@@ -1,6 +1,0 @@
-vlib/v/checker/tests/type_alias_struct_invalid_field_naming.vv:2:2: error: field name `field_One` cannot contain uppercase letters, use snake_case instead
-    1 | type Struct = struct {
-    2 |     field_One int
-      |     ~~~~~~~~~~~~~
-    3 |     field_two int
-    4 | }

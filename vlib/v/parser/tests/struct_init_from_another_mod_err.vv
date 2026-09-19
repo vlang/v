@@ -1,7 +1,0 @@
-import rand
-import rand.config
-
-fn main() {
-	mut a := [0, 1, 2]
-	rand.shuffle(mut a, rand.config.ShuffleConfigStruct{})!
-}

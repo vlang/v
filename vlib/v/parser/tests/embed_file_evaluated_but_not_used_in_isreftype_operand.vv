@@ -1,3 +1,0 @@
-fn main() {
-	isreftype($embed_file(@FILE)) == false
-}

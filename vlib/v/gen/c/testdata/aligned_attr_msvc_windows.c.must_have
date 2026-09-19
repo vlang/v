@@ -1,3 +1,0 @@
-struct __declspec(align (8)) main__Test {
-struct __declspec(align (16)) main__Test2 {
-union __declspec(align (8)) main__Test3 {

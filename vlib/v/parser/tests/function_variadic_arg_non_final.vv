@@ -1,7 +1,0 @@
-fn f(para1 ...int, para2 f32) int {
-	return 22
-}
-
-fn main() {
-	a := f(11, 1.1)
-}

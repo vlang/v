@@ -1,4 +1,0 @@
-fn test() string {
-	println($res())
-	return 'test'
-}

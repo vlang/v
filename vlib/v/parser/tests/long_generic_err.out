@@ -1,3 +1,0 @@
-vlib/v/parser/tests/long_generic_err.vv:1:17: error: generic parameter name needs to be exactly one char
-    1 | fn long_generic[Abc]() {}
-      |                 ~~~

@@ -1,7 +1,0 @@
-vlib/v/parser/tests/nested_unsafe_stmt.vv:4:3: error: already inside `unsafe` block
-    2 |     a := 0
-    3 |     unsafe {
-    4 |         unsafe {
-      |         ~~~~~~
-    5 |             a++
-    6 |         }

@@ -1,7 +1,0 @@
-vlib/v/checker/tests/mut_parms_struct_param_err.vv:8:17: error: declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed
-    6 | }
-    7 | 
-    8 | fn foo(mut opts Params) bool {
-      |                 ~~~~~~
-    9 |     return opts.a
-   10 | }

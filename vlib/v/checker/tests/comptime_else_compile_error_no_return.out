@@ -1,6 +1,0 @@
-vlib/v/checker/tests/comptime_else_compile_error_no_return.vv:11:2: error: not an int
-    9 | fn main() {
-   10 |     onlyint(7)
-   11 |     onlyint([]int{})
-      |     ~~~~~~~~~~~~~~~~
-   12 | }

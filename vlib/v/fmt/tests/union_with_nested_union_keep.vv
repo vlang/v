@@ -1,8 +1,0 @@
-union MyNested1 {
-	a            i32
-	b            i32
-	nested_union union {
-		c f32
-		d char
-	}
-}

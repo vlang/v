@@ -1,7 +1,0 @@
-@[typedef]
-struct Point {}
-
-fn main() {
-	p := Point{}
-	println(p)
-}

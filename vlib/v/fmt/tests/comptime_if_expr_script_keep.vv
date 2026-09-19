@@ -1,8 +1,0 @@
-const enable_debug = $if debug { true } $else { false }
-
-mut pre_built_str := ''
-$if prebuilt ? {
-	the_date := if $env('DATE') != '' { $env('DATE') } else { '##DATE##' }
-	pre_built_str = '[pre-built binary release (${the_date})]\n'
-}
-dump(pre_built_str)

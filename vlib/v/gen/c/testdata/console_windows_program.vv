@@ -1,6 +1,0 @@
-// vtest vflags: -os windows
-
-@[console]
-fn main() {
-	println('hello world')
-}

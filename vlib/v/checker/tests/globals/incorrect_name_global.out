@@ -1,5 +1,0 @@
-vlib/v/checker/tests/globals/incorrect_name_global.vv:2:2: error: global name `A` cannot contain uppercase letters, use snake_case instead
-    1 | __global (
-    2 |     A = int(1)
-      |     ^
-    3 | )

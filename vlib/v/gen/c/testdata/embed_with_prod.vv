@@ -1,8 +1,0 @@
-// vtest vflags: -prod -no-skip-unused
-fn main() {
-	mut my_source := $embed_file('embed.vv')
-	assert my_source.len > 0
-	s := my_source.to_string()
-	assert s.len > 0
-	print(s)
-}

@@ -1,6 +1,0 @@
-arr := [1,2,3]
-value := 2
-
-for _, value in arr {
-	println(value)
-}

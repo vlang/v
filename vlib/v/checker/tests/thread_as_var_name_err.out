@@ -1,6 +1,0 @@
-vlib/v/checker/tests/thread_as_var_name_err.vv:1:1: warning: unused variable: `thread`
-    1 | thread := 4
-      | ~~~~~~
-vlib/v/checker/tests/thread_as_var_name_err.vv:1:1: error: invalid use of reserved type `thread` as a variable name
-    1 | thread := 4
-      | ~~~~~~

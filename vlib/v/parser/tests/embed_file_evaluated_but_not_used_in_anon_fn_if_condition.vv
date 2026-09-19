@@ -1,8 +1,0 @@
-fn main() {
-	'' == fn () string {
-		if $embed_file(@FILE).path == '' {
-			return 'a'
-		}
-		return 'b'
-	}()
-}

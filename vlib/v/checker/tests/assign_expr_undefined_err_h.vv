@@ -1,8 +1,0 @@
-fn f(i int) int {
-	return i
-}
-
-fn main() {
-	n := f(n)
-	println(n)
-}

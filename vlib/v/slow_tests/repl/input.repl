@@ -1,9 +1,0 @@
-mut s := os.input('aaa:')
-hello
-s
-s = os.input('bbb:')
-world
-s
-===output===
-hello
-world

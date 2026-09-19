@@ -1,9 +1,0 @@
-fn main() {
-	array := [[1, 5], [4, 2]]
-	println(array)
-	i := 0
-	unsafe { array.sort(a[0] > b[0]) }
-	println(array)
-	unsafe { array.sort(a[i] < b[i]) }
-	println(array)
-}

@@ -1,5 +1,0 @@
-const a = 1
-
-fn main() {
-	a += 1
-}

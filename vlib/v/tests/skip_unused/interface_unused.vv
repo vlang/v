@@ -1,5 +1,0 @@
-struct Foo {}
-
-interface Bar {
-	a Foo
-}

@@ -1,6 +1,0 @@
-vlib/v/checker/tests/generics_too_many_parameters.vv:6:5: error: expected 1 generic parameter, got 5
-    4 | 
-    5 | fn main() {
-    6 |     foo[bool, int, bool, bool, int](1)
-      |        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    7 | }

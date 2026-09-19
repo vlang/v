@@ -1,5 +1,0 @@
-import crypto { Coin }
-
-fn main() {
-	println(Coin{})
-}

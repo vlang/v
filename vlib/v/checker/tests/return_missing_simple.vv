@@ -1,8 +1,0 @@
-fn main() {}
-
-fn foo() string {
-	if true {
-		return ''
-	} else {
-	}
-}

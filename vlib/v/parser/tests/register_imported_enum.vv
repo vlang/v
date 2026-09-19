@@ -1,2 +1,0 @@
-import net.http { Method }
-enum Method { foo bar }

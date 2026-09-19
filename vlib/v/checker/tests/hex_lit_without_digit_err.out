@@ -1,5 +1,0 @@
-vlib/v/checker/tests/hex_lit_without_digit_err.vv:2:14: error: number part of this hexadecimal is not provided
-    1 | fn main() {
-    2 |     println(0x)
-      |              ^
-    3 | }

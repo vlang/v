@@ -1,5 +1,0 @@
-fn main() {
-	_ = if true {
-		1
-	}
-}

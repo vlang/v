@@ -1,2 +1,0 @@
-import os { File }
-struct File {}

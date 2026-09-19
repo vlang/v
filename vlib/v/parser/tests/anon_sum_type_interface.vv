@@ -1,3 +1,0 @@
-interface Foo {
-	bar string|int
-}

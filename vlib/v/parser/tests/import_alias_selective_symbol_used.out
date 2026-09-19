@@ -1,5 +1,0 @@
-vlib/v/parser/tests/import_alias_selective_symbol_used.vv:3:1: warning: unused variable: `os`
-    1 | import os as vos { Result }
-    2 | 
-    3 | os := Result{}
-      | ~~

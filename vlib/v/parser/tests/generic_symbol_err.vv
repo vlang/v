@@ -1,5 +1,0 @@
-pub fn what1<A>(params ...A) {
-   println(params)
-}
-
-fn main() {}

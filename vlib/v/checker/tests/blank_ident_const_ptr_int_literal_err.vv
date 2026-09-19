@@ -1,5 +1,0 @@
-const a = 3
-
-fn main() {
-	_ := &a
-}

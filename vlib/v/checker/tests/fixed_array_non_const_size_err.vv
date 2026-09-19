@@ -1,7 +1,0 @@
-fn main() {
-	size := 2
-
-	array := [size]int{}
-
-	println(array)
-}

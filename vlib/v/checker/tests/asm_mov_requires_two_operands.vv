@@ -1,5 +1,0 @@
-fn main() {
-	asm amd64 {
-		mov
-	}
-}

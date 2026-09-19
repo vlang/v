@@ -1,8 +1,0 @@
-import v.embed_file
-
-fn main() {
-	'' == fn () string {
-		x := $embed_file(@FILE).path
-		return x
-	}()
-}

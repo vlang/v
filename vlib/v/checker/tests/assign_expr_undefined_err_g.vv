@@ -1,3 +1,0 @@
-fn main() {
-	mut file := file.open_file('bees.pdf', 'rw', 0o666)
-}

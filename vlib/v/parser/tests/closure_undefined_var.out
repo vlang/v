@@ -1,6 +1,0 @@
-vlib/v/parser/tests/closure_undefined_var.vv:2:11: error: undefined ident: `dont_exist`
-    1 | fn my_fn() {
-    2 |     f := fn [dont_exist] () {
-      |              ~~~~~~~~~~
-    3 |         print(dont_exist)
-    4 |     }

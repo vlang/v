@@ -1,2 +1,0 @@
-// Empty lines don't cause an issue but as soon as there's a comment with a CRLF ending, it fails
-This should cause an error!

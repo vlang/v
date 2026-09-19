@@ -1,4 +1,0 @@
-vlib/v/parser/tests/export_interop_func_err.vv:1:1: error: interop function cannot be exported
-    1 | @[export: 'test']
-      | ~~~~~~~~~~~~~~~~~
-    2 | fn C.printf(s string)

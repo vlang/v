@@ -1,3 +1,0 @@
-fn main() {
-	println('0x11223344ee'.u8_array())
-}

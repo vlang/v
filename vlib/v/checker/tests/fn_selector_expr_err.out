@@ -1,3 +1,0 @@
-vlib/v/checker/tests/fn_selector_expr_err.vv:1:26: error: `println('Hello, World!')` does not return a value
-    1 | println('Hello, World!').whatever
-      |                          ~~~~~~~~
