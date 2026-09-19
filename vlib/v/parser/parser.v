@@ -12081,7 +12081,9 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			start = last_comma_pos
 			end = p.prev_tok_end
 		}
-		p.record_diagnostic_span(message, start, end)
+		if !p.diagnostics.any(it.file == p.cur_file && it.severity != 'warning:') {
+			p.record_diagnostic_span(message, start, end)
+		}
 	}
 	p.check(.rpar)
 	args_end := p.prev_tok_end
