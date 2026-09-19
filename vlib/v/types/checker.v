@@ -14025,6 +14025,39 @@ fn (tc &TypeChecker) recursive_struct_declaration_pos(node flat.Node) token.Pos 
 	return token.new_span(node.pos.id, start, start + needle.len)
 }
 
+fn (tc &TypeChecker) recursive_struct_lookup_name(name string) string {
+	if name in tc.structs {
+		return name
+	}
+	qualified := tc.qualify_name(name)
+	return if qualified in tc.structs { qualified } else { name }
+}
+
+fn (tc &TypeChecker) struct_value_path_reaches(current_name string, target_name string, owner_decl int, mut seen map[string]bool) bool {
+	current := tc.recursive_struct_lookup_name(current_name)
+	target := tc.recursive_struct_lookup_name(target_name)
+	if current == target {
+		return true
+	}
+	if seen[current] {
+		return false
+	}
+	seen[current] = true
+	if decl_id := tc.source_struct_decl_id_for_name(current) {
+		if int(decl_id) > owner_decl {
+			return false
+		}
+	}
+	for field in tc.structs[current] or { []StructField{} } {
+		field_type := unalias_type(field.typ)
+		if field_type is Struct
+			&& tc.struct_value_path_reaches(field_type.name, target, owner_decl, mut seen) {
+			return true
+		}
+	}
+	return false
+}
+
 // check_struct_field_defaults validates check struct field defaults state for types.
 fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node flat.Node) {
 	saved_generic_params := tc.fn_context.generic_params.clone()
@@ -14032,6 +14065,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 		tc.fn_context.generic_params = node.generic_params().clone()
 	}
 	mut seen_field_names := map[string]bool{}
+	mut recursive_struct_reported := false
 	for i in 0 .. node.children_count {
 		field_id := tc.a.child(&node, i)
 		field := tc.a.child_node(&node, i)
@@ -14064,9 +14098,18 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 			}
 		}
 		is_embed := source_field_decl_is_embed(field, field_type_text)
-		if is_embed && field_type is Struct
-			&& tc.qualify_name(field_type.name) == tc.qualify_name(node.value) {
-			tc.record_error_at(.unknown_type, 'invalid recursive struct `${node.value}`', node_id, tc.recursive_struct_declaration_pos(node))
+		if !recursive_struct_reported && field_type is Struct {
+			mut seen := map[string]bool{}
+			if tc.struct_value_path_reaches(field_type.name, node.value, int(node_id), mut seen) {
+				pos := if is_embed {
+					tc.recursive_struct_declaration_pos(node)
+				} else {
+					tc.type_declaration_name_pos(node_id)
+				}
+				tc.record_error_at(.unknown_type, 'invalid recursive struct `${node.value}`', node_id,
+					pos)
+				recursive_struct_reported = true
+			}
 		}
 		if field_type_text == 'map' {
 			tc.record_error_at(.unknown_type, 'cannot use the map type without key and value definition', field_id, tc.struct_field_type_pos(*field))
