@@ -4766,8 +4766,19 @@ fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind
 		actual_params := tc.fn_param_types[actual_key] or { []Type{} }
 		mut message := ''
 		expected_receiver_mut, expected_receiver_shared := tc.method_receiver_flags(expected_key)
-		_, actual_receiver_shared := tc.method_receiver_flags(actual_key)
-		if expected_receiver_mut && actual_receiver_shared && !expected_receiver_shared {
+		actual_receiver_mut, actual_receiver_shared := tc.method_receiver_flags(actual_key)
+		if !expected_receiver_mut && actual_receiver_mut {
+			actual_receiver := if actual_receiver_shared {
+				'mut shared ${actual_display}'
+			} else {
+				'mut ${if actual_display.starts_with('&') {
+					actual_display
+				} else {
+					'&${actual_display}'
+				}}'
+			}
+			message = '`${actual_display}` incorrectly implements method `${method}` of interface `${expected_display}`: expected `${expected_display}` which is immutable, not `${actual_receiver}`'
+		} else if expected_receiver_mut && actual_receiver_shared && !expected_receiver_shared {
 			message = '`${actual_display}` incorrectly implements method `${method}` of interface `${expected_display}`: expected `mut ${expected_display}`, not `mut shared ${actual_display}` for parameter 0'
 		} else if expected_params.len != actual_params.len {
 			message = '`${actual_display}` incorrectly implements method `${method}` of interface `${expected_display}`: expected ${expected_params.len} parameter(s), not ${actual_params.len}'

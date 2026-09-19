@@ -11669,8 +11669,9 @@ fn (tc &TypeChecker) method_signature_compatible(actual_key string, expected_key
 		return false
 	}
 	expected_receiver_mut, expected_receiver_shared := tc.method_receiver_flags(expected_key)
-	_, actual_receiver_shared := tc.method_receiver_flags(actual_key)
-	if expected_receiver_mut && actual_receiver_shared && !expected_receiver_shared {
+	actual_receiver_mut, actual_receiver_shared := tc.method_receiver_flags(actual_key)
+	if (!expected_receiver_mut && actual_receiver_mut)
+		|| (expected_receiver_mut && actual_receiver_shared && !expected_receiver_shared) {
 		return false
 	}
 	for i in 1 .. actual_params.len {
@@ -11717,8 +11718,9 @@ fn (tc &TypeChecker) method_signature_compatible_for_interface(actual_key string
 		return false
 	}
 	expected_receiver_mut, expected_receiver_shared := tc.method_receiver_flags(expected_key)
-	_, actual_receiver_shared := tc.method_receiver_flags(actual_key)
-	if expected_receiver_mut && actual_receiver_shared && !expected_receiver_shared {
+	actual_receiver_mut, actual_receiver_shared := tc.method_receiver_flags(actual_key)
+	if (!expected_receiver_mut && actual_receiver_mut)
+		|| (expected_receiver_mut && actual_receiver_shared && !expected_receiver_shared) {
 		return false
 	}
 	for i in 1 .. actual_params.len {

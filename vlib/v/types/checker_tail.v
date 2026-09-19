@@ -13460,6 +13460,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.record_error_at(.call_arg_mismatch, 'function does not implement interface `${clean_expected_for_interface.name}`; cannot implement interface `${clean_expected_for_interface.name}` using function', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
+		if expected_interface := cast_target_interface(clean_expected_for_interface) {
+			interface_actual := if actual is Pointer { actual.base_type } else { actual }
+			if tc.record_interface_implementation_error(.call_arg_mismatch, interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id)) {
+				continue
+			}
+		}
 		count_builtin_map_receiver := checker_is_raw_collection_method_name(info.name, 'map.')
 		argument_number := param_idx + 1 - (if info.has_receiver && !count_builtin_map_receiver {
 			1
@@ -13723,16 +13729,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if actual is OptionType && expected !is OptionType {
 				tc.record_error_at(.call_arg_mismatch, 'cannot use `?${actual.base_type.name()}` as `${expected.name()}`, it must be unwrapped first in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				continue
-			}
-			clean_expected := unalias_type(expected)
-			if expected_interface := cast_target_interface(clean_expected) {
-				interface_actual := if actual is Pointer { actual.base_type } else { actual }
-				if tc.record_interface_implementation_error(.call_arg_mismatch, interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id)) {
-					actual_display := tc.diagnostic_expr_type_name(arg_id, actual)
-					expected_display := call_argument_type_name(expected)
-					tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as argument ${argument_number} to `${target_name}`; expected `${expected_display}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
-					continue
-				}
 			}
 			is_println_target := target_name == 'println' || target_name.ends_with('.println')
 			actual_display := if is_println_target {
