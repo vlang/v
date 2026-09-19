@@ -7373,7 +7373,8 @@ pub fn (mut tc TypeChecker) check_main_module_requirement(is_shared bool) {
 			has_main = true
 		}
 	}
-	if has_main || has_postinclude || int(first_module_id) < 0 {
+	if has_main || has_postinclude || int(first_module_id) < 0
+		|| tc.translated_files[first_module_file] {
 		return
 	}
 	tc.enter_file(first_module_file)
