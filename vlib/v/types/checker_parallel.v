@@ -3112,6 +3112,9 @@ fn sql_text_contains_ident(text string, name string) bool {
 }
 
 fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[string]bool) bool {
+	if tc.type_contains_open_generic_placeholder(tc.fn_context.return_type) {
+		return true
+	}
 	mut last_stmt := flat.empty_node
 	for i := int(node.children_count) - 1; i >= 0; i-- {
 		child_id := tc.a.child(&node, i)
