@@ -2096,9 +2096,9 @@ fn (mut tc TypeChecker) check_match_range_types(subject_id flat.NodeId, subject_
 	clean_subject := unalias_type(subject_type)
 	rune_range_matches_byte := range_type is Rune && clean_subject.name() in ['u8', 'char']
 	integer_literal_range_matches_integer_subject := low_is_literal && high_is_literal
-		&& range_type.is_integer() && clean_subject.is_integer()
+		&& range_type.is_integer() && range_type !is Rune && clean_subject.is_integer()
 	integer_literal_range_matches_enum_subject := low_is_literal && high_is_literal
-		&& range_type.is_integer() && clean_subject is Enum
+		&& range_type.is_integer() && range_type !is Rune && clean_subject is Enum
 	if clean_subject !is Unknown && range_type !is Unknown
 		&& clean_subject.name() != range_type.name() && !rune_range_matches_byte
 		&& !integer_literal_range_matches_integer_subject

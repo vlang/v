@@ -1464,6 +1464,24 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_match_range_order := match true {
+		a.msg.starts_with('the low and high parts of a range expression') { 1 }
+		a.msg.starts_with('the range type and the match condition type') { 2 }
+		a.msg.starts_with('match branch range expressions need the ') { 3 }
+		a.msg.starts_with('the start value `') && a.msg.contains(' should be lower than ') { 3 }
+		else { 0 }
+	}
+	b_match_range_order := match true {
+		b.msg.starts_with('the low and high parts of a range expression') { 1 }
+		b.msg.starts_with('the range type and the match condition type') { 2 }
+		b.msg.starts_with('match branch range expressions need the ') { 3 }
+		b.msg.starts_with('the start value `') && b.msg.contains(' should be lower than ') { 3 }
+		else { 0 }
+	}
+	if a.node == b.node && a_match_range_order > 0 && b_match_range_order > 0
+		&& a_match_range_order != b_match_range_order {
+		return a_match_range_order - b_match_range_order
+	}
 	a_is_invalid_comptime_field_access := a.msg.starts_with('compile time field access can only be used')
 	b_is_invalid_comptime_field_access := b.msg.starts_with('compile time field access can only be used')
 	a_is_unknown_comptime_for_var := a.msg.starts_with('unknown `$for` variable `')
