@@ -260,6 +260,25 @@ fn test_scoped_cgen_batch_preserves_worker_interned_literals() {
 	assert g.str_lits == ['source', 'generated_a', 'generated_b']
 }
 
+fn test_scoped_cgen_batch_remaps_colliding_worker_literals() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+
+	mut batch := g.new_parallel_worker(0)
+	assert batch.intern_string('shared') == 1
+	assert batch.intern_string('generated') == 2
+	batch.sb.write_string('use(_str_1, _str_2);')
+	batch.add_spawn_wrapper_def('spawn(_str_2);')
+
+	assert g.intern_string('shared') == 1
+	assert g.intern_string('master') == 2
+	g.absorb_scoped_cgen_batch(batch, false)
+
+	assert g.str_lits == ['source', 'shared', 'master', 'generated']
+	assert g.fn_segs == ['use(_str_1, _str_3);']
+	assert g.spawn_wrapper_defs == ['spawn(_str_3);']
+}
+
 fn test_scoped_cgen_worker_merge_publishes_generated_literals() {
 	mut g, _ := parallel_worker_test_gen(true)
 	assert g.intern_string('source') == 0

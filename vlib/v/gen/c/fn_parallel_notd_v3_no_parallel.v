@@ -1261,6 +1261,12 @@ fn moved_segment(s string) string {
 // and, when needed, output into the helper's result arena.
 fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool) {
 	mut b := unsafe { batch }
+	string_id_remap := g.publish_worker_string_literals(batch)
+	user_c_symbols := if string_id_remap.len > 0 {
+		g.cache_user_c_string_symbols()
+	} else {
+		map[string]bool{}
+	}
 	if batch.callback_identity_used {
 		g.callback_identity_used = true
 	}
@@ -1271,13 +1277,19 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 	if !output_streamed && b.sb.len > 0 {
 		// Append the builder's copy directly: appending an addressable local
 		// would clone the whole chunk output a second time into this arena.
-		g.fn_segs << b.sb.str()
+		batch_output := b.sb.str()
+		if batch.cache_stable_symbols {
+			g.fn_segs << b.rewrite_cache_string_symbols(batch_output)
+			unsafe { batch_output.free() }
+		} else if string_id_remap.len > 0 {
+			g.fn_segs << remap_scoped_worker_string_symbols(batch_output, string_id_remap,
+				user_c_symbols)
+			unsafe { batch_output.free() }
+		} else {
+			g.fn_segs << batch_output
+		}
 	}
 	unsafe { b.sb.free() }
-	// Preserve worker-only literals at the IDs already written into batch output.
-	for literal in batch.str_lits[g.str_lits.len..] {
-		g.intern_string(literal.clone())
-	}
 	for opt_name, val_type in batch.needed_optional_types {
 		if opt_name !in g.needed_optional_types {
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
@@ -1321,6 +1333,9 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		if batch.cache_stable_symbols {
 			stable_def := b.rewrite_cache_string_symbols(def)
 			g.add_spawn_wrapper_def(stable_def)
+		} else if string_id_remap.len > 0 {
+			g.add_spawn_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap,
+				user_c_symbols))
 		} else {
 			g.add_spawn_wrapper_def(def.clone())
 		}
@@ -1334,17 +1349,38 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		if batch.cache_stable_symbols {
 			stable_def := b.rewrite_cache_string_symbols(def)
 			g.add_callback_wrapper_def(stable_def)
+		} else if string_id_remap.len > 0 {
+			g.add_callback_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap,
+				user_c_symbols))
 		} else {
 			g.add_callback_wrapper_def(def.clone())
 		}
 	}
 	for wrappers in batch.parallel_chunk_wrapper_defs {
+		spawn_defs := if string_id_remap.len > 0 {
+			remap_scoped_worker_string_list(wrappers.spawn, string_id_remap, user_c_symbols)
+		} else {
+			clone_cgen_string_list(wrappers.spawn)
+		}
+		callback_defs := if string_id_remap.len > 0 {
+			remap_scoped_worker_string_list(wrappers.callback, string_id_remap, user_c_symbols)
+		} else {
+			clone_cgen_string_list(wrappers.callback)
+		}
 		g.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{
 			chunk_idx: wrappers.chunk_idx
-			spawn:     clone_cgen_string_list(wrappers.spawn)
-			callback:  clone_cgen_string_list(wrappers.callback)
+			spawn:     spawn_defs
+			callback:  callback_defs
 		}
 	}
+}
+
+fn remap_scoped_worker_string_list(source []string, remap map[int]int, user_c_symbols map[string]bool) []string {
+	mut result := []string{cap: source.len}
+	for item in source {
+		result << remap_scoped_worker_string_symbols(item, remap, user_c_symbols)
+	}
+	return result
 }
 
 // gen_fn_items_scoped_batches bounds helper scratch without adding worker-pool
