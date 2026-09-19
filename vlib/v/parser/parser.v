@@ -14328,6 +14328,10 @@ fn (mut p Parser) parse_struct_field_type() string {
 		p.parsing_struct_field_type = was_parsing
 	}
 	start := p.span_start()
+	if p.tok == .key_mut {
+		p.record_diagnostic_span('cannot use `mut` on struct field type', p.tok_pos, p.tok_end)
+		p.next()
+	}
 	typ := p.parse_type_name()
 	p.record_inline_sum_type_deprecation(start, p.prev_tok_end)
 	return typ
