@@ -1403,6 +1403,15 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			if name == 'C' || name == 'JS' {
 				// C.func or JS.func
 				interop_prefix := name
+				if (p.cur_file.ends_with('.c.v') || p.cur_file.ends_with('.c.vv'))
+					&& interop_prefix == 'JS' {
+					p.record_diagnostic_span('JS code is not allowed in .c.v files, please move it to a .js.v file',
+						qualified_start, qualified_start + interop_prefix.len)
+				} else if (p.cur_file.ends_with('.js.v') || p.cur_file.ends_with('.js.vv'))
+					&& interop_prefix == 'C' {
+					p.record_diagnostic_span('C code is not allowed in .js.v files, please move it to a .c.v file',
+						qualified_start, qualified_start + interop_prefix.len)
+				}
 				name_pos = p.tok_pos
 				name = p.expect_name_or_keyword()
 				for p.tok == .dot {
