@@ -3377,7 +3377,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					&& generic_base.value !in tc.type_alias_generic_params
 					&& tc.qualify_name(generic_base.value) !in tc.type_alias_generic_params {
 					display := tc.source_text_for_node(callee_id).trim_space()
-					tc.record_error_at(.unknown_fn, 'unknown function `${display}`', id, tc.method_call_name_pos(node, callee))
+					tc.record_error_at(.unknown_fn, 'unknown function: ${display}', id, tc.method_call_name_pos(node, callee))
 					tc.register_synth_type(id, unknown_type('unknown function `${display}`'))
 					return
 				}
@@ -3687,7 +3687,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		&& !tc.explicit_generic_call_target_is_known(node)
 		&& !tc.call_generic_args_have_placeholders(node) {
 		if tc.should_diagnose(id) {
-			tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
+			tc.record_error(.unknown_fn, 'unknown function: ${tc.call_display_name(node)}', id)
 		}
 		for i in 1 .. node.children_count {
 			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
@@ -3778,7 +3778,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	}
 	if tc.is_unsupported_hex_call(node) {
 		if tc.should_diagnose(id) {
-			tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
+			tc.record_error(.unknown_fn, 'unknown function: ${tc.call_display_name(node)}', id)
 		}
 		return
 	}
@@ -3802,7 +3802,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			} else if display.len == 0 {
 				'unknown function:'
 			} else {
-				'unknown function `${display}`'
+				'unknown function: ${display}'
 			}
 			tc.record_error(.unknown_fn, message, id)
 			tc.register_synth_type(id, Type(MultiReturn{
@@ -5134,7 +5134,7 @@ fn (mut tc TypeChecker) record_unknown_import_function_call(id flat.NodeId, node
 			candidates << '${alias}.${name[prefix.len..]}'
 		}
 	}
-	message := util.new_suggestion(display, candidates).say('unknown function `${display}` ')
+	message := util.new_suggestion(display, candidates).say('unknown function: ${display} ')
 	tc.record_error_at(.unknown_fn, message, id, tc.method_call_name_pos(node, callee))
 	tc.register_synth_type(id, Type(MultiReturn{
 		types: []Type{}
