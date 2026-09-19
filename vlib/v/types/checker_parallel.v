@@ -1786,9 +1786,13 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	b_is_option_infix_unwrap := b.msg.ends_with('unwrap the option first')
 	a_is_multi_return_operand := a.msg.starts_with('invalid number of operand for `')
 	b_is_multi_return_operand := b.msg.starts_with('invalid number of operand for `')
+	a_is_none_operand := a.msg.starts_with('invalid operator `') && a.msg.ends_with(' to `none` and `none`')
+	b_is_none_operand := b.msg.starts_with('invalid operator `') && b.msg.ends_with(' to `none` and `none`')
+	a_is_primary_infix_operand := a_is_multi_return_operand || a_is_none_operand
+	b_is_primary_infix_operand := b_is_multi_return_operand || b_is_none_operand
 	if a.pos.id == b.pos.id && a.pos.offset < b.pos.end && b.pos.offset < a.pos.end
-		&& a_is_multi_return_operand != b_is_multi_return_operand {
-		return if a_is_multi_return_operand { -1 } else { 1 }
+		&& a_is_primary_infix_operand != b_is_primary_infix_operand {
+		return if a_is_primary_infix_operand { -1 } else { 1 }
 	}
 	if a.node == b.node && a_is_infix_mismatch && b_is_infix_rhs {
 		return -1
