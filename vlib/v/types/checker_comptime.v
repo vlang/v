@@ -7710,9 +7710,28 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 	if !lhs_clean.is_integer() || !rhs_clean.is_integer() || lhs_unsigned == rhs_unsigned {
 		return false
 	}
-	// V permits comparisons across signed/unsigned integer widths. Only a
-	// statically negative operand is invalid, which is handled above.
-	return false
+	lhs_bits := comparison_integer_bits(lhs_clean)
+	rhs_bits := comparison_integer_bits(rhs_clean)
+	if lhs_bits == 0 || rhs_bits == 0 {
+		return false
+	}
+	unsigned_bits := if lhs_unsigned { lhs_bits } else { rhs_bits }
+	signed_bits := if lhs_unsigned { rhs_bits } else { lhs_bits }
+	if unsigned_bits < signed_bits {
+		return false
+	}
+	mut pos := tc.a.node(rhs_id).pos
+	parent_id := tc.direct_parent_id(rhs_id)
+	if tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .infix {
+			operator := infix_operator_name(op) or { '' }
+			pos = tc.infix_operator_pos(parent, operator)
+		}
+	}
+	tc.record_error_at(.condition_mismatch, '`${lhs_type.name()}` cannot be compared with `${rhs_type.name()}`',
+		rhs_id, pos)
+	return true
 }
 
 fn comparison_integer_bits(typ Type) int {
