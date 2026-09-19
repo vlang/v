@@ -1586,6 +1586,18 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.node == b.node && b_is_infix_mismatch && a_is_infix_rhs {
 		return 1
 	}
+	a_is_invalid_operator := a.msg.starts_with('invalid operator `')
+	b_is_invalid_operator := b.msg.starts_with('invalid operator `')
+	a_is_pointer_infix := a.msg.starts_with('infix `')
+		&& a.msg.ends_with(' is not defined for pointer values')
+	b_is_pointer_infix := b.msg.starts_with('infix `')
+		&& b.msg.ends_with(' is not defined for pointer values')
+	if a.node == b.node && a_is_invalid_operator && b_is_pointer_infix {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_operator && a_is_pointer_infix {
+		return 1
+	}
 	a_array_init_order := if a.msg.ends_with(' as initializer') {
 		1
 	} else if a.msg.ends_with(' as length') {
