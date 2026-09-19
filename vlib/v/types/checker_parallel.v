@@ -1476,6 +1476,14 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.node == b.node && b_is_cast_to_struct && a_is_sum_type_cast {
 		return 1
 	}
+	a_is_sumtype_string_cast := a.msg.starts_with('cannot cast sumtype `')
+	b_is_sumtype_string_cast := b.msg.starts_with('cannot cast sumtype `')
+	if a.node == b.node && a_is_sumtype_string_cast && b_is_sum_type_cast {
+		return -1
+	}
+	if a.node == b.node && b_is_sumtype_string_cast && a_is_sum_type_cast {
+		return 1
+	}
 	a_is_empty_or_block := a.msg == 'expression requires a non empty `or {}` block'
 	b_is_empty_or_block := b.msg == 'expression requires a non empty `or {}` block'
 	a_is_void_branch_tail := a.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
