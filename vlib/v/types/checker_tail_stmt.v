@@ -9053,6 +9053,13 @@ fn call_arg_numeric_type(typ Type) bool {
 	return call_arg_integer_type(clean) || clean.is_float()
 }
 
+fn implicit_integer_to_float_compatible(actual Type, expected Type) bool {
+	clean_actual := fn_param_unalias_type(actual)
+	clean_expected := fn_param_unalias_type(expected)
+	return clean_actual.is_integer() && clean_actual.name() !in ['i64', 'u64']
+		&& clean_expected.is_float()
+}
+
 fn call_arg_implicit_signed_widening(actual Type, expected Type) bool {
 	actual_name := fn_param_unalias_type(actual).name()
 	expected_name := fn_param_unalias_type(expected).name()

@@ -2008,7 +2008,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		&& infix_power_type_is_numeric(expected)
 		&& unalias_type(actual).is_integer() != unalias_type(expected).is_integer()
 		&& tc.integer_literal_source(child_id) == none && tc.a.node(child_id).kind != .float_literal
-		&& !(unalias_type(actual).is_integer() && unalias_type(expected).is_float())
+		&& !implicit_integer_to_float_compatible(actual, expected)
 	clean_expected_for_reference := unalias_type(expected)
 	expected_accepts_pointer_value := clean_expected_for_reference is Interface
 		|| (clean_expected_for_reference is OptionType
@@ -2454,7 +2454,7 @@ fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type,
 	if tc.expr_compatible(expr_id, actual, expected) {
 		return true
 	}
-	if unalias_type(actual).is_integer() && unalias_type(expected).is_float() {
+	if implicit_integer_to_float_compatible(actual, expected) {
 		return true
 	}
 	if return_numeric_alias_compatible(actual, expected) {
@@ -2617,7 +2617,8 @@ fn return_numeric_alias_compatible(actual Type, expected Type) bool {
 		clean_actual := if actual is Alias { actual.base_type } else { actual }
 		clean_expected := expected.base_type
 		if clean_expected.is_float() {
-			return clean_actual.is_integer() || clean_actual.is_float()
+			return implicit_integer_to_float_compatible(clean_actual, clean_expected)
+				|| clean_actual.is_float()
 		}
 		if clean_expected.is_integer() {
 			return clean_actual.is_integer()
@@ -13659,10 +13660,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			.float_literal,
 			.char_literal,
 		] && !(expected is Alias && actual.name() == expected.base_type.name()) && !(actual is Alias
-			&& actual.base_type.name() == expected.name()) && !(unalias_type(actual).is_integer()
-			&& unalias_type(expected).is_float()) && (tc.mut_param_expr_base(arg_id, actual) or {
-			actual
-		}).name() != expected.name() {
+			&& actual.base_type.name() == expected.name())
+			&& !implicit_integer_to_float_compatible(actual, expected)
+			&& (tc.mut_param_expr_base(arg_id, actual) or {
+				actual
+			}).name() != expected.name() {
 			if info.name.all_after_last('.') == 'int_str' && unalias_type(actual).is_integer()
 				&& unalias_type(expected).is_integer() {
 				continue
