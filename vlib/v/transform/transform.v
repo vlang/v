@@ -1150,9 +1150,9 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	}
 	t.timing_profile('  [ttime] late names         ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${used_log_end - used_log_start + late_scan_names.len})')
 	impl_sw.restart()
-	t.transform_late_used_fn_bodies(&t.used_fns_log, used_log_start, used_log_end, base_node_count)
+	t.transform_late_used_fn_bodies(t.used_fns_log, used_log_start, used_log_end, base_node_count)
 	if late_scan_names.len > 0 {
-		t.transform_late_used_fn_bodies(&late_scan_names, 0, late_scan_names.len, base_node_count)
+		t.transform_late_used_fn_bodies(late_scan_names, 0, late_scan_names.len, base_node_count)
 	}
 	t.timing_profile('  [ttime] late bodies        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	impl_sw.restart()
@@ -1385,7 +1385,7 @@ fn (mut t Transformer) run_sum_eq_synthesis_rounds(node_limit int) {
 		if new_names.len == 0 {
 			return
 		}
-		t.transform_late_used_fn_bodies(&new_names, 0, new_names.len, node_limit)
+		t.transform_late_used_fn_bodies(new_names, 0, new_names.len, node_limit)
 	}
 }
 
@@ -1395,7 +1395,7 @@ fn (mut t Transformer) run_default_clone_synthesis_rounds(node_limit int) {
 		if new_names.len == 0 {
 			return
 		}
-		t.transform_late_used_fn_bodies(&new_names, 0, new_names.len, node_limit)
+		t.transform_late_used_fn_bodies(new_names, 0, new_names.len, node_limit)
 	}
 }
 
@@ -1403,7 +1403,7 @@ fn (mut t Transformer) run_auto_str_synthesis_rounds(node_limit int) {
 	for _ in 0 .. 16 {
 		new_names := t.synthesize_auto_str_helpers()
 		if new_names.len > 0 {
-			t.transform_late_used_fn_bodies(&new_names, 0, new_names.len, node_limit)
+			t.transform_late_used_fn_bodies(new_names, 0, new_names.len, node_limit)
 		}
 		if !t.has_pending_auto_str_helpers() {
 			return
@@ -1584,14 +1584,14 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.monomorph_profile('mono wrapper calls: ${time.ticks() - debug_started} ms')
 		used_after_pass := t.used_fn_count()
 		late_log_end := t.used_fns_log.len
-		t.transform_late_used_fn_bodies(&t.used_fns_log, late_log_start, late_log_end, base_node_count)
+		t.transform_late_used_fn_bodies(t.used_fns_log, late_log_start, late_log_end, base_node_count)
 		late_log_start = t.used_fns_log.len
 		t.monomorph_profile('mono wrapper late: ${time.ticks() - debug_started} ms')
 		remaining_match_log_start := t.used_fns_log.len
 		t.lower_remaining_matches_in_used_fns()
 		t.monomorph_profile('mono wrapper matches: ${time.ticks() - debug_started} ms')
 		remaining_match_log_end := t.used_fns_log.len
-		t.transform_late_used_fn_bodies(&t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
+		t.transform_late_used_fn_bodies(t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
 		late_log_start = t.used_fns_log.len
 		t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
 		// Late-body transformation requests concrete generic work immediately. If
@@ -2007,7 +2007,7 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_types() {
 	if boxed_types.len == 0 {
 		return
 	}
-	types.extend_stable_type_indexes_ref(mut t.runtime_type_indexes, &runtime_type_names)
+	types.extend_stable_type_indexes_ref(mut t.runtime_type_indexes, runtime_type_names)
 	mut refreshed := t.interface_impl_indexes.clone()
 	mut iface_names := boxed_types.keys()
 	iface_names.sort()
@@ -5115,7 +5115,7 @@ fn (t &Transformer) late_name_may_expand_interface(name string) bool {
 		|| t.type_alias_suffixes[base].len > 0 || base == 'IError' || base == 'builtin.IError'
 }
 
-fn (mut t Transformer) transform_late_used_fn_bodies(names &[]string, names_start int, names_end int, node_limit int) {
+fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start int, names_end int, node_limit int) {
 	if names_end <= names_start || node_limit <= 0 {
 		return
 	}

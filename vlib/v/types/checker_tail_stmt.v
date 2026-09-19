@@ -10039,11 +10039,11 @@ pub fn stable_type_indexes(type_names []string) map[string]int {
 // extend_stable_type_indexes assigns deterministic, collision-free runtime indexes
 // to new names without changing indexes that have already been used during lowering.
 pub fn extend_stable_type_indexes(mut indexes map[string]int, type_names []string) {
-	extend_stable_type_indexes_ref(mut indexes, &type_names)
+	extend_stable_type_indexes_ref(mut indexes, type_names)
 }
 
 // extend_stable_type_indexes_ref is the pointer-ABI form used by native compiler stages.
-pub fn extend_stable_type_indexes_ref(mut indexes map[string]int, type_names &[]string) {
+pub fn extend_stable_type_indexes_ref(mut indexes map[string]int, type_names []string) {
 	mut used := map[int]bool{}
 	for _, type_idx in indexes {
 		used[type_idx] = true
