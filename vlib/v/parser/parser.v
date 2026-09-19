@@ -1566,6 +1566,12 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
 	}
+	if p.tok == .lcbr
+		&& param_ids.any(p.a.node(it).kind == .param && p.a.node(it).typ.len == 0
+			&& p.a.node(it).value.len > 0) {
+		p.record_diagnostic_span('functions with type only params can not have bodies', p.tok_pos,
+			p.tok_end)
+	}
 	// no body — extern/C declaration
 	if p.tok != .lcbr {
 		for p.tok == .semicolon {
@@ -2804,6 +2810,25 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	}
 	type_start := p.span_start()
 	first_type := p.parse_type_name()
+	if first_type.starts_with('fn(') {
+		close := first_type.index(')') or { -1 }
+		if close > 3 {
+			params := first_type[3..close]
+			ret := first_type[close + 1..].trim_space().trim_left('?!&')
+			if type_text_contains_word(params, name) {
+				pos := p.s.src.index_after(name, type_start) or { type_start }
+				p.record_diagnostic_span('`${name}` cannot be a parameter as it references the fntype',
+					pos, pos + name.len)
+			} else if type_text_contains_word(ret, name) {
+				pos := p.s.src.index_after(name, type_start) or { type_start }
+				p.record_diagnostic_span('`${name}` cannot be a return type as it references the fntype',
+					pos, pos + name.len)
+			} else if generic_params.len == 0 && fn_type_uses_implicit_generic(first_type) {
+				p.record_diagnostic_span('`${name}` type is generic fntype, must specify the generic type names, e.g. ${name}[T]',
+					name_pos.offset, name_pos.end)
+			}
+		}
+	}
 	// check for sum type: type T = A | B | C
 	// skip auto-semicolon before pipe
 	if p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe)) {
@@ -2868,6 +2893,43 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		payload: flat.node_payload(generic_params)
 		pos:     p.span_to(type_start)
 	})
+}
+
+fn type_text_contains_word(text string, word string) bool {
+	if word.len == 0 || text.len < word.len {
+		return false
+	}
+	for i := 0; i + word.len <= text.len; i++ {
+		if text[i..i + word.len] != word {
+			continue
+		}
+		left_ok := i == 0 || !is_name_char(text[i - 1])
+		right_ok := i + word.len == text.len || !is_name_char(text[i + word.len])
+		if left_ok && right_ok {
+			return true
+		}
+	}
+	return false
+}
+
+fn fn_type_uses_implicit_generic(signature string) bool {
+	for i, c in signature {
+		if c < `A` || c > `Z` {
+			continue
+		}
+		left_ok := i == 0 || (!is_name_char(signature[i - 1]) && signature[i - 1] != `.`)
+		right_ok := i + 1 == signature.len
+			|| (!is_name_char(signature[i + 1]) && signature[i + 1] != `.`)
+		if left_ok && right_ok {
+			return true
+		}
+	}
+	return false
+}
+
+fn is_name_char(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
+		|| c == `_`
 }
 
 fn (mut p Parser) interface_decl() flat.NodeId {
