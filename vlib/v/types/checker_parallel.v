@@ -1536,6 +1536,40 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_nested_lock := a.msg == 'nested `lock`/`rlock` not allowed'
+	b_is_nested_lock := b.msg == 'nested `lock`/`rlock` not allowed'
+	a_is_already_locked := a.msg.ends_with(' is already locked')
+		|| a.msg.ends_with(' is already read-locked')
+	b_is_already_locked := b.msg.ends_with(' is already locked')
+		|| b.msg.ends_with(' is already read-locked')
+	a_is_lock_diagnostic := a_is_nested_lock || a_is_already_locked
+		|| a.msg.contains(' has an `rlock` but needs a `lock`')
+		|| (a.msg.contains(' is `shared`') && a.msg.contains('lock'))
+	b_is_lock_diagnostic := b_is_nested_lock || b_is_already_locked
+		|| b.msg.contains(' has an `rlock` but needs a `lock`')
+		|| (b.msg.contains(' is `shared`') && b.msg.contains('lock'))
+	if a.file == b.file && a_is_lock_diagnostic && b_is_lock_diagnostic
+		&& a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	a_is_rlock_write := a.msg.contains(' has an `rlock` but needs a `lock`')
+	b_is_rlock_write := b.msg.contains(' has an `rlock` but needs a `lock`')
+	a_is_explicit_lock := a.msg.contains(' is `shared` and needs explicit lock')
+	b_is_explicit_lock := b.msg.contains(' is `shared` and needs explicit lock')
+	if a.file == b.file && a.pos.offset == b.pos.offset && a_is_rlock_write
+		&& b_is_explicit_lock {
+		return -1
+	}
+	if a.file == b.file && a.pos.offset == b.pos.offset && b_is_rlock_write
+		&& a_is_explicit_lock {
+		return 1
+	}
+	if a.file == b.file && a_is_nested_lock && b_is_already_locked {
+		return -1
+	}
+	if a.file == b.file && b_is_nested_lock && a_is_already_locked {
+		return 1
+	}
 	a_is_reserved_parameter := a.msg.starts_with('invalid use of reserved type `')
 		&& a.msg.ends_with(' as a parameter name')
 	b_is_reserved_parameter := b.msg.starts_with('invalid use of reserved type `')

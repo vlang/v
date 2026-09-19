@@ -11991,7 +11991,6 @@ fn (mut tc TypeChecker) check_lock_expr(id flat.NodeId, node flat.Node) {
 					'`${lock_name}` is already locked'
 				}
 				tc.record_error_at(.assignment_mismatch, message, object_id, object.pos)
-				continue
 			}
 			mut modes := existing_modes.clone()
 			modes << mode
@@ -14759,6 +14758,20 @@ fn (tc &TypeChecker) current_binding_is_shared_array(name string) bool {
 	if name == '' || tc.cur_scope == unsafe { nil } {
 		return false
 	}
+	if tc.current_binding_has_shared_elements(name) {
+		return true
+	}
+	if !tc.current_binding_is_shared(name) {
+		return false
+	}
+	typ := tc.cur_scope.lookup(name) or { return false }
+	return unalias_and_unwrap_pointer_type(typ) is Array
+}
+
+fn (tc &TypeChecker) current_binding_has_shared_elements(name string) bool {
+	if name == '' || tc.cur_scope == unsafe { nil } {
+		return false
+	}
 	if owners := tc.fn_context.shared_array_owners[name] {
 		for owner in owners {
 			if tc.cur_scope.nearest_binding_owned_by(name, owner) {
@@ -14766,11 +14779,7 @@ fn (tc &TypeChecker) current_binding_is_shared_array(name string) bool {
 			}
 		}
 	}
-	if !tc.current_binding_is_shared(name) {
-		return false
-	}
-	typ := tc.cur_scope.lookup(name) or { return false }
-	return unalias_and_unwrap_pointer_type(typ) is Array
+	return false
 }
 
 fn (tc &TypeChecker) current_binding_is_shared_map(name string) bool {
@@ -14803,7 +14812,7 @@ fn (tc &TypeChecker) shared_array_element_index(id flat.NodeId) ?flat.NodeId {
 	if node.kind == .index && node.children_count > 0 {
 		base_id := tc.a.child(node, 0)
 		base := tc.a.node(base_id)
-		if base.kind == .ident && tc.current_binding_is_shared_array(base.value) {
+		if base.kind == .ident && tc.current_binding_has_shared_elements(base.value) {
 			return id
 		}
 		return tc.shared_array_element_index(base_id)
