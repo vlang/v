@@ -3709,6 +3709,14 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 	} else if p.tok == .name && p.lit == 'in' {
 		p.next()
 	}
+	mut invalid_expr := false
+	if p.tok == .dollar {
+		dollar_pos := p.tok_pos
+		p.next()
+		p.record_diagnostic_span('invalid expr, use `${p.lit}` instead', dollar_pos,
+			dollar_pos + 1)
+		invalid_expr = true
+	}
 	mut segs := [p.expect_name()]
 	for p.tok == .dot {
 		p.next()
@@ -3716,6 +3724,10 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 	}
 	kind := if segs.len > 1 { segs.last() } else { 'fields' }
 	base := if segs.len > 1 { segs[..segs.len - 1].join('.') } else { segs.last() }
+	if invalid_expr {
+		p.skip_block()
+		return flat.empty_node
+	}
 	p.comptime_for_vars << val_var
 	previous_method_var := p.comptime_method_var
 	if kind == 'methods' {
