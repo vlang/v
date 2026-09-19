@@ -12386,6 +12386,24 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 		}, lhs)
 	}
 	first := p.index_part_expr()
+	lhs_node := p.a.node(lhs)
+	first_node := p.a.node(first)
+	if p.tok == .comma && lhs_node.kind == .ident && type_name_can_init(lhs_node.value)
+		&& first_node.kind == .ident
+		&& !generic_struct_init_suffix_arg_can_be_type(first_node.value) {
+		p.record_diagnostic('unexpected token `,`, expecting `]`', p.tok_pos)
+		for p.tok != .rsbr && p.tok != .eof {
+			p.next()
+		}
+		p.check(.rsbr)
+		istart := p.add_children2(lhs, first)
+		return p.add_node_from(flat.Node{
+			kind:           .index
+			op:             gated_op
+			children_start: istart
+			children_count: 2
+		}, lhs)
+	}
 	if p.tok == .rsbr {
 		p.next()
 		if p.a.nodes[int(first)].kind == .range {
