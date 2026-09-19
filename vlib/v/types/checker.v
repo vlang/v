@@ -9388,7 +9388,8 @@ fn (mut tc TypeChecker) check_c_js_generic_declarations() {
 				|| (!is_function && node.kind != .struct_decl) {
 				continue
 			}
-			if node.generic_params().len == 0 && !node.value.contains('[') {
+			if node.generic_params().len == 0
+				&& !tc.declaration_source_line_has_generic(flat.NodeId(index)) {
 				continue
 			}
 			namespace := tc.c_js_declaration_namespace(flat.NodeId(index), node) or { continue }
@@ -9401,6 +9402,16 @@ fn (mut tc TypeChecker) check_c_js_generic_declarations() {
 			tc.record_error_at(.unsupported_generic, '${namespace} ${type_kind} cannot be declared as generic', flat.NodeId(index), pos)
 		}
 	}
+}
+
+fn (tc &TypeChecker) declaration_source_line_has_generic(id flat.NodeId) bool {
+	pos := tc.source_line_declaration_pos(id)
+	file := tc.a.source_files[pos.id] or { return false }
+	source := tc.source_texts_by_file[file.name] or { return false }
+	if pos.offset < 0 || pos.end > source.len || pos.offset >= pos.end {
+		return false
+	}
+	return source[pos.offset..pos.end].contains('[')
 }
 
 fn (tc &TypeChecker) c_js_declaration_namespace(id flat.NodeId, node &flat.Node) ?string {

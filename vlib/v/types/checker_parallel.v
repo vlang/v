@@ -804,6 +804,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.selected_file_called_fns = map[string]bool{}
 	tc.selected_file_worklist = []string{}
 	tc.check_export_attrs()
+	tc.check_c_js_generic_declarations()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
 	final_file := tc.cur_file
@@ -1017,6 +1018,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.selected_file_worklist = []string{}
 		mut cksw := time.new_stopwatch()
 		tc.check_export_attrs()
+		tc.check_c_js_generic_declarations()
 		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cksw.restart()
 		// The work list only drives the dispatch below; keep it and its
@@ -1462,6 +1464,16 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_c_js_generic_struct := a.msg.ends_with('structs cannot be declared as generic')
+	b_is_c_js_generic_struct := b.msg.ends_with('structs cannot be declared as generic')
+	a_is_c_js_generic_fn := a.msg.ends_with('functions cannot be declared as generic')
+	b_is_c_js_generic_fn := b.msg.ends_with('functions cannot be declared as generic')
+	if a.file == b.file && a_is_c_js_generic_struct && b_is_c_js_generic_fn {
+		return -1
+	}
+	if a.file == b.file && b_is_c_js_generic_struct && a_is_c_js_generic_fn {
+		return 1
+	}
 	if a.node == b.node && is_inline_asm_instruction_error(a.msg)
 		&& is_inline_asm_instruction_error(b.msg) && a.pos.offset != b.pos.offset {
 		return a.pos.offset - b.pos.offset
