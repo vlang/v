@@ -214,7 +214,7 @@ fn save_ci_progress(path string, task_name string) ! {
 	// Write privately, then rename on the same filesystem. An interrupted write
 	// leaves the previous checkpoint intact, never a partially written cursor.
 	tmp_dir := '${path}.${os.getpid()}.tmp'
-	os.mkdir(tmp_dir, 0o700)!
+	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {
 		os.rmdir_all(tmp_dir) or {}
 	}
