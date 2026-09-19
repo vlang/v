@@ -11701,6 +11701,11 @@ fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int, start int) ?fl
 
 fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 	p.next() // skip '.'
+	if p.tok != .name && !p.tok.is_keyword() && p.tok != .dollar {
+		p.record_diagnostic_span('unexpected token `${p.tok}`, expecting name', p.tok_pos,
+			p.tok_end)
+		return lhs
+	}
 	if p.tok == .dollar {
 		// Compile-time field selector `receiver.$(field.name)`: the field name is resolved when
 		// the enclosing `$for` loop is unrolled. `receiver.$method()` binds its identifier to the
