@@ -9116,7 +9116,8 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 		}
 	}
 	if fallback.kind == .block && fallback.children_count == 0 {
-		if expected is Void {
+		if expected is Void && tc.expr_is_standalone_statement(or_id)
+			&& !tc.or_expr_is_branch_tail(or_id) {
 			return
 		}
 		parent_id := tc.direct_parent_id(or_id)
@@ -9253,6 +9254,20 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	pos := tc.or_fallback_value_pos(tail_id, tail)
 	tc.record_error_at(.assignment_mismatch, message, tail_id, pos)
+}
+
+fn (tc &TypeChecker) or_expr_is_branch_tail(id flat.NodeId) bool {
+	mut parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	if tc.a.node(parent_id).kind == .expr_stmt {
+		parent_id = tc.direct_parent_id(parent_id)
+	}
+	if !tc.valid_node_id(parent_id) || tc.a.node(parent_id).kind !in [.block, .match_branch] {
+		return false
+	}
+	return tc.branch_tail_expr_id(parent_id) == id
 }
 
 fn (tc &TypeChecker) empty_nested_or_block_pos(fallback flat.Node) ?token.Pos {

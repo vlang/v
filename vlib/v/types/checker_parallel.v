@@ -1476,6 +1476,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.node == b.node && b_is_cast_to_struct && a_is_sum_type_cast {
 		return 1
 	}
+	a_is_empty_or_block := a.msg == 'expression requires a non empty `or {}` block'
+	b_is_empty_or_block := b.msg == 'expression requires a non empty `or {}` block'
+	a_is_void_branch_tail := a.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
+	b_is_void_branch_tail := b.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
+	if a.file == b.file && a_is_empty_or_block && b_is_void_branch_tail {
+		return -1
+	}
+	if a.file == b.file && b_is_empty_or_block && a_is_void_branch_tail {
+		return 1
+	}
 	a_is_infix_mismatch := a.msg.starts_with('mismatched types `')
 	b_is_infix_mismatch := b.msg.starts_with('mismatched types `')
 	a_is_infix_rhs := a.msg.starts_with('infix expr: cannot use `')
