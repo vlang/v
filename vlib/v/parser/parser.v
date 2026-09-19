@@ -9014,6 +9014,10 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			lhs_ids << lhs_id
 		}
 		if p.tok == .decl_assign || token_is_assignment(p.tok) {
+			if p.tok !in [.decl_assign, .assign] {
+				p.record_diagnostic_span('unexpected ${p.tok}, expecting := or = or comma', p.tok_pos,
+					p.tok_end)
+			}
 			formatter_op := p.formatter_assignment_op()
 			op_id := int(p.tok)
 			p.next()
