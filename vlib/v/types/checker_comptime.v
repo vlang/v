@@ -15774,7 +15774,7 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 	if lhs.kind == .ident && lhs.value.len > 0 {
 		if lhs.value != '_' && (tc.visible_local_scope_owns_name(lhs.value)
 			|| tc.visible_mut_param_binding_owns_name(lhs.value)) {
-			tc.record_error(.assignment_mismatch, 'redefinition of `${lhs.value}`; redefinition of ${lhs.value}', lhs_id)
+			tc.record_error(.assignment_mismatch, 'redefinition of `${lhs.value}`', lhs_id)
 			return ScopeBindingOwner{}
 		}
 		owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
