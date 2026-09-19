@@ -8515,6 +8515,16 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		return p.add_val(.ident, name)
 	}
 	cond := p.expr(.lowest)
+	cond_node := p.a.node(cond)
+	if cond_node.kind == .range && cond_node.children_count == 2 {
+		low := p.a.child_node(cond_node, 0)
+		high := p.a.child_node(cond_node, 1)
+		op_start := clamp_source_offset(low.pos.end, p.s.src.len)
+		op_end := int_min(clamp_source_offset(high.pos.offset, p.s.src.len), op_start + 2)
+		p.record_diagnostic_span('match only supports inclusive (`...`) ranges, not exclusive (`..`) ',
+			op_start, op_end)
+		return cond
+	}
 	if p.tok == .ellipsis {
 		p.next()
 		rhs := p.expr(.lowest)
