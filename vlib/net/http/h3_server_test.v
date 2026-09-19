@@ -191,6 +191,29 @@ fn test_h3_server_strips_content_length_from_204_and_205_headers_and_trailers() 
 	assert trailer_fields.any(it.name == 'x-trailer' && it.value == 'kept')
 }
 
+fn test_h3_server_drops_te_from_response_headers_and_trailers() {
+	// RFC 9114 §4.2 permits TE only in request fields (and only as "trailers");
+	// a response carrying it in either section is malformed. TE is deliberately
+	// absent from h2_conn_specific_headers (request-side validation handles it
+	// there), so the response filters must drop it explicitly, whatever its
+	// value or spelling.
+	for te_value in ['trailers', 'gzip', ''] {
+		mut header := new_header()
+		header.add(.te, te_value)
+		header.add_custom('x-response', 'kept')!
+		fields := h3_outbound_response_fields(200, .get, 0, header)
+		assert !fields.any(it.name == 'te'), 'te: "${te_value}" must be dropped from headers'
+		assert fields.any(it.name == 'x-response' && it.value == 'kept')
+
+		mut trailers := new_header()
+		trailers.add_custom('TE', te_value)!
+		trailers.add_custom('x-trailer', 'kept')!
+		trailer_fields := h3_outbound_trailer_fields(trailers)
+		assert !trailer_fields.any(it.name == 'te'), 'te: "${te_value}" must be dropped from trailers'
+		assert trailer_fields.any(it.name == 'x-trailer' && it.value == 'kept')
+	}
+}
+
 fn test_h3_server_filters_forbidden_response_header_values() {
 	mut header := new_header()
 	header.add_custom('x-good', 'kept')!

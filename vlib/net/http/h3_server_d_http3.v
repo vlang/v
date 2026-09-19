@@ -1065,8 +1065,21 @@ fn (mut s H3Server) send_response(mut h3c quic.H3Conn, stream_id u64, method Met
 	}
 }
 
+// h3_response_field_is_forbidden reports whether a handler-authored field must
+// be dropped from a response's header or trailer section (`lkey` is already
+// lowercase): the connection-specific fields RFC 9114 §4.2 forbids in any
+// HTTP/3 message, plus TE, which §4.2 permits only in request fields (and only
+// as "trailers"). A response carrying any of them is malformed. Checked here
+// rather than via h2_conn_specific_headers alone because that list deliberately
+// omits TE -- on the request side h2_request_field_error handles it, but nothing
+// else does on the response side.
+fn h3_response_field_is_forbidden(lkey string) bool {
+	return lkey == 'te' || lkey in h2_conn_specific_headers
+}
+
 // h3_outbound_response_fields makes an authored Content-Length agree with the
-// DATA bytes this response will emit, while preserving valid HEAD/304 metadata.
+// DATA bytes this response will emit, while preserving valid HEAD/304 metadata,
+// and drops every field a response must not carry (h3_response_field_is_forbidden).
 fn h3_outbound_response_fields(status int, method Method, emitted_body_len int, header Header) []quic.QpackFieldLine {
 	mut fields := [
 		quic.QpackFieldLine{
@@ -1077,7 +1090,7 @@ fn h3_outbound_response_fields(status int, method Method, emitted_body_len int, 
 	mut wrote_content_length := false
 	for key in header.keys() {
 		lkey := key.to_lower()
-		if lkey in h2_conn_specific_headers {
+		if h3_response_field_is_forbidden(lkey) {
 			continue
 		}
 		if lkey == 'content-length' {
@@ -1166,12 +1179,12 @@ fn (mut s H3Server) send_error_response(mut h3c quic.H3Conn, stream_id u64, stat
 // equivalent to construct just to call it. Both apply the same RFC 9113
 // §8.2.2/RFC 9114 §4.2 hop-by-hop filter, pseudo-header guard, and forbidden-
 // octet check; this path also excludes Content-Length because framing fields
-// cannot be trailers.
+// cannot be trailers, and TE because it is request-only (§4.2).
 fn h3_outbound_trailer_fields(trailers Header) []quic.QpackFieldLine {
 	mut fields := []quic.QpackFieldLine{}
 	for key in trailers.keys() {
 		lkey := key.to_lower()
-		if lkey.starts_with(':') || lkey in h2_conn_specific_headers || lkey == 'content-length' {
+		if lkey.starts_with(':') || h3_response_field_is_forbidden(lkey) || lkey == 'content-length' {
 			continue
 		}
 		for val in trailers.custom_values(key) {
