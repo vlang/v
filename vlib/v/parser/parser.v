@@ -1285,6 +1285,11 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 			if p.tok.is_overloadable() {
 				name_pos = p.tok_pos
 				op_name := overload_token_name(p.tok)
+				clean_type := method_receiver_type_name(receiver_type)
+				if p.a.nodes.any(it.kind == .fn_decl && it.value == '${clean_type}.${op_name}') {
+					p.record_diagnostic_span('cannot duplicate operator overload `${op_name}`',
+						p.tok_pos, p.tok_end)
+				}
 				p.next()
 				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut, op_name, name_pos)
 			}
