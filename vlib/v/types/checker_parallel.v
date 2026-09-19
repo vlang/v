@@ -1519,6 +1519,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.file == b.file && b_is_sort_call_receiver && a_is_mut_expression {
 		return 1
 	}
+	a_is_array_append_expr := a.msg == 'array append cannot be used in an expression'
+	b_is_array_append_expr := b.msg == 'array append cannot be used in an expression'
+	a_is_array_literal_mutation := a.msg == 'array literal can not be modified'
+	b_is_array_literal_mutation := b.msg == 'array literal can not be modified'
+	if a.file == b.file && a_is_array_append_expr && b_is_array_literal_mutation {
+		return -1
+	}
+	if a.file == b.file && b_is_array_append_expr && a_is_array_literal_mutation {
+		return 1
+	}
 	a_is_generic_arg_count := a.msg.starts_with('expected ')
 		&& a.msg.contains(' generic parameter')
 	b_is_generic_arg_count := b.msg.starts_with('expected ')
