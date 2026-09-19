@@ -428,6 +428,10 @@ pub fn (mut p Parser) parse_into(path string) {
 			})
 			ids << mod_id
 			p.next()
+			if p.tok == .dot {
+				p.record_diagnostic_span('`module ${p.cur_module}`, unexpected `.` after module name',
+					p.tok_pos, p.tok_end)
+			}
 			if p.tok == .semicolon || p.lit == '' {
 				p.next()
 			}
