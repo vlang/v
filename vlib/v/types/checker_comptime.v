@@ -8998,6 +8998,12 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	expected := tc.or_expr_payload_type(source_id) or { return }
 	fallback := tc.a.node(fallback_id)
+	if expected !is Void && expected !is MultiReturn {
+		if pos := tc.empty_nested_or_block_pos(fallback) {
+			tc.record_error_at(.assignment_mismatch, 'last statement in the `or {}` block should be an expression of type `${expected.name()}` or exit parent scope', fallback_id, pos)
+			return
+		}
+	}
 	if fallback.kind == .block && fallback.children_count == 0 {
 		if expected is Void {
 			return
@@ -9136,6 +9142,40 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 	}
 	pos := tc.or_fallback_value_pos(tail_id, tail)
 	tc.record_error_at(.assignment_mismatch, message, tail_id, pos)
+}
+
+fn (tc &TypeChecker) empty_nested_or_block_pos(fallback flat.Node) ?token.Pos {
+	if fallback.kind != .block {
+		return none
+	}
+	file := tc.a.source_files[fallback.pos.id] or { return none }
+	source := tc.source_texts_by_file[file.name] or { return none }
+	start := int_max(0, fallback.pos.offset + 1)
+	end := int_min(source.len, fallback.pos.end - 1)
+	if start >= end {
+		return none
+	}
+	mut nested_start := -1
+	mut saw_close := false
+	for i in start .. end {
+		ch := source[i]
+		if ch in [` `, `\t`, `\n`, `\r`] {
+			continue
+		}
+		if nested_start < 0 && ch == `{` {
+			nested_start = i
+			continue
+		}
+		if nested_start >= 0 && !saw_close && ch == `}` {
+			saw_close = true
+			continue
+		}
+		return none
+	}
+	if nested_start >= 0 && saw_close {
+		return token.new_span(fallback.pos.id, nested_start, nested_start + 1)
+	}
+	return none
 }
 
 fn (tc &TypeChecker) or_fallback_tail_is_shared_decl(fallback_id flat.NodeId, tail_id flat.NodeId) bool {
