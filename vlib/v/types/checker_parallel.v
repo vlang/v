@@ -1183,6 +1183,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					tc.check_type_declaration_conflict(flat.NodeId(i), node)
 				}
 				if do_values {
+					tc.check_enum_backing_type(flat.NodeId(i), node)
 					tc.check_enum_field_values(flat.NodeId(i), node)
 				}
 			}
@@ -1467,6 +1468,17 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_enum_value := a.msg.starts_with('enum value ')
+		|| a.msg == 'the default value for an enum has to be an integer'
+		|| (a.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
+			&& a.msg.starts_with('`'))
+	b_is_enum_value := b.msg.starts_with('enum value ')
+		|| b.msg == 'the default value for an enum has to be an integer'
+		|| (b.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
+			&& b.msg.starts_with('`'))
+	if a.file == b.file && a_is_enum_value && b_is_enum_value && a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
 	a_is_field_method_collision := a.msg.starts_with('type `')
 		&& a.msg.contains(' has both field and method named `')
 	b_is_field_method_collision := b.msg.starts_with('type `')
