@@ -856,6 +856,10 @@ fn (mut p Parser) check(expected token.Token) {
 	// while a closing delimiter is still owed. Reporting it stops `v fmt` from accepting a
 	// truncated file and printing the balanced - i.e. invented - version of it.
 	if p.tok == .eof && expected in [token.Token.rcbr, .rpar, .rsbr] {
+		if p.diagnostics.any(it.file == p.cur_file && it.severity != 'warning:'
+			&& it.pos.offset in [p.tok_pos, p.s.src.len]) {
+			return
+		}
 		p.record_diagnostic('unexpected eof, expecting `${expected}`', p.tok_pos)
 	}
 }
@@ -9164,6 +9168,10 @@ fn (p &Parser) inline_asm_source_gap_has_newline(start int, end int) bool {
 
 fn (mut p Parser) validate_inline_asm_lock_instruction() {
 	p.peek()
+	if p.peek_tok == .eof {
+		p.record_diagnostic('The lock prefix cannot be used on this instruction', p.s.src.len)
+		return
+	}
 	has_suffix := p.peek_lit.len > 0
 		&& p.peek_lit[p.peek_lit.len - 1] in [`b`, `w`, `l`, `q`]
 	if p.inline_asm_source_gap_has_newline(p.tok_end, p.peek_pos)
