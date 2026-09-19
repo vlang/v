@@ -811,6 +811,9 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_scoped_batches(items, scoped_check_serial_batches)
 	tc.cur_file = final_file
 	tc.cur_module = final_module
+	if !tc.valid_diagnostic_fast {
+		tc.check_unused_import_diagnostics()
+	}
 	if tc.defer_ierror_gating {
 		if tc.pending_ierror_errors.len > 0 {
 			tc.collect_selected_file_called_fns()
@@ -1031,6 +1034,9 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.fn_check_costs = []i32{}
 		tc.cur_file = final_file
 		tc.cur_module = final_module
+		if !tc.valid_diagnostic_fast {
+			tc.check_unused_import_diagnostics()
+		}
 		if tc.defer_ierror_gating {
 			if tc.pending_ierror_errors.len > 0 {
 				tc.collect_selected_file_called_fns()

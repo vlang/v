@@ -6030,6 +6030,16 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 		if idx == int(import_id) || node.kind == .import_decl || node.pos.id != import_node.pos.id {
 			continue
 		}
+		mut is_selective_import_child := false
+		for child_index in 0 .. import_node.children_count {
+			if int(tc.a.child(&import_node, child_index)) == idx {
+				is_selective_import_child = true
+				break
+			}
+		}
+		if is_selective_import_child {
+			continue
+		}
 		if node.kind == .selector && node.children_count > 0 {
 			base := tc.a.child_node(&node, 0)
 			if base.kind == .ident && base.value == import_node.typ {
