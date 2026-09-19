@@ -11558,13 +11558,24 @@ fn (mut tc TypeChecker) check_block(id flat.NodeId, node flat.Node) {
 		tc.ownership_mark_scope_node(id)
 	}
 	if node.value == 'comma_exprs' {
-		if tc.is_statement_node(id) {
-			for i in 0 .. node.children_count {
-				tc.check_stmt_node(tc.a.child(&node, i))
+		is_statement := tc.is_statement_node(id)
+		for i in 0 .. node.children_count {
+			stmt_id := tc.a.child(&node, i)
+			if is_statement {
+				tc.check_stmt_node(stmt_id)
+			} else {
+				tc.check_node(stmt_id)
 			}
-		} else {
-			for i in 0 .. node.children_count {
-				tc.check_node(tc.a.child(&node, i))
+			stmt := tc.a.node(stmt_id)
+			value_id := if stmt.kind == .expr_stmt && stmt.children_count == 1 {
+				tc.a.child(stmt, 0)
+			} else {
+				stmt_id
+			}
+			if unalias_type(tc.resolve_type(value_id)) is Void {
+				value := tc.a.node(value_id)
+				tc.record_error_at(.return_mismatch, 'type `void` cannot be used in multi-return', value_id, value.pos)
+				break
 			}
 		}
 	} else {

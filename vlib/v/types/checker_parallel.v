@@ -1838,10 +1838,20 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	b_is_empty_or_block := b.msg == 'expression requires a non empty `or {}` block'
 	a_is_void_branch_tail := a.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
 	b_is_void_branch_tail := b.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
+	a_is_void_multi_return := a.msg == 'type `void` cannot be used in multi-return'
+	b_is_void_multi_return := b.msg == 'type `void` cannot be used in multi-return'
 	if a.file == b.file && a_is_empty_or_block && b_is_void_branch_tail {
 		return -1
 	}
 	if a.file == b.file && b_is_empty_or_block && a_is_void_branch_tail {
+		return 1
+	}
+	if a.file == b.file && a.pos.offset == b.pos.offset && a_is_void_multi_return
+		&& b_is_void_branch_tail {
+		return -1
+	}
+	if a.file == b.file && a.pos.offset == b.pos.offset && b_is_void_multi_return
+		&& a_is_void_branch_tail {
 		return 1
 	}
 	a_is_infix_mismatch := a.msg.starts_with('mismatched types `')
