@@ -11236,6 +11236,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if name == 'map' && p.tok == .lcbr && !p.internal_collection_types_allowed() {
 				p.record_diagnostic_span("deprecated map syntax, use syntax like `{'age': 20}`",
 					name_pos, name_end)
+				return p.map_literal()
 			}
 			local_type_name := p.resolve_local_type_name(name)
 			// struct init: Name{...}; vlib/builtin also uses concrete lowercase
@@ -11284,42 +11285,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			})
 		}
 		.lcbr {
-			map_start := p.span_start()
-			p.next()
-			mut ids := []flat.NodeId{}
-			for p.tok != .rcbr && p.tok != .eof {
-				if p.tok == .semicolon || p.tok == .comma {
-					p.next()
-					continue
-				}
-				k := p.expr(.lowest)
-				key := p.a.node(k)
-				if key.kind == .prefix && key.value == '...' {
-					ids << k
-					ids << p.a.add_node(flat.Node{ kind: .empty })
-					if p.tok == .comma || p.tok == .semicolon {
-						p.next()
-					}
-					continue
-				}
-				p.check(.colon)
-				p.in_map_value++
-				v := p.expr(.lowest)
-				p.in_map_value--
-				ids << k
-				ids << v
-				if p.tok == .comma || p.tok == .semicolon {
-					p.next()
-				}
-			}
-			p.check(.rcbr)
-			start := p.add_children(ids)
-			return p.add_node(flat.Node{
-				kind:           .map_init
-				children_start: start
-				children_count: flat.child_count(ids.len)
-				pos:            p.span_to(map_start)
-			})
+			return p.map_literal()
 		}
 		.amp {
 			amp_start := p.span_start() // start offset of the leading `&`
@@ -11832,6 +11798,45 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.add(flat.NodeKind.empty)
 		}
 	}
+}
+
+fn (mut p Parser) map_literal() flat.NodeId {
+	map_start := p.span_start()
+	p.next()
+	mut ids := []flat.NodeId{}
+	for p.tok != .rcbr && p.tok != .eof {
+		if p.tok == .semicolon || p.tok == .comma {
+			p.next()
+			continue
+		}
+		k := p.expr(.lowest)
+		key := p.a.node(k)
+		if key.kind == .prefix && key.value == '...' {
+			ids << k
+			ids << p.a.add_node(flat.Node{ kind: .empty })
+			if p.tok == .comma || p.tok == .semicolon {
+				p.next()
+			}
+			continue
+		}
+		p.check(.colon)
+		p.in_map_value++
+		v := p.expr(.lowest)
+		p.in_map_value--
+		ids << k
+		ids << v
+		if p.tok == .comma || p.tok == .semicolon {
+			p.next()
+		}
+	}
+	p.check(.rcbr)
+	start := p.add_children(ids)
+	return p.add_node(flat.Node{
+		kind:           .map_init
+		children_start: start
+		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(map_start)
+	})
 }
 
 fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.NodeId {
