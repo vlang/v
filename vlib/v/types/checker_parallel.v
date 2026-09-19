@@ -805,6 +805,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.selected_file_worklist = []string{}
 	tc.check_export_attrs()
 	tc.check_c_js_generic_declarations()
+	tc.check_interface_reserved_parameter_names()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
 	final_file := tc.cur_file
@@ -1019,6 +1020,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		mut cksw := time.new_stopwatch()
 		tc.check_export_attrs()
 		tc.check_c_js_generic_declarations()
+		tc.check_interface_reserved_parameter_names()
 		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cksw.restart()
 		// The work list only drives the dispatch below; keep it and its
@@ -1202,6 +1204,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					continue
 				}
 				tc.check_fn_declaration_name(flat.NodeId(i), node)
+				tc.check_method_field_name_collision(flat.NodeId(i), node)
 				tc.check_main_fn_signature(flat.NodeId(i), node)
 				tc.check_init_fn_signature(flat.NodeId(i), node)
 				tc.check_str_method_signature(flat.NodeId(i), node)
@@ -1464,6 +1467,19 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_field_method_collision := a.msg.starts_with('type `')
+		&& a.msg.contains(' has both field and method named `')
+	b_is_field_method_collision := b.msg.starts_with('type `')
+		&& b.msg.contains(' has both field and method named `')
+	if a.file == b.file && a_is_field_method_collision && b_is_field_method_collision
+		&& a.node_kind != b.node_kind {
+		if a.node_kind == 'interface_field' {
+			return -1
+		}
+		if b.node_kind == 'interface_field' {
+			return 1
+		}
+	}
 	a_match_range_order := match true {
 		a.msg.starts_with('the low and high parts of a range expression') { 1 }
 		a.msg.starts_with('the range type and the match condition type') { 2 }
