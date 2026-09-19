@@ -1468,6 +1468,18 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_for_in_same_variable := a.msg.starts_with('in a `for x in ')
+		&& a.msg.contains(' can not be the same as the low variable')
+	b_is_for_in_same_variable := b.msg.starts_with('in a `for x in ')
+		&& b.msg.contains(' can not be the same as the low variable')
+	a_is_for_in_cannot_index := a.msg.starts_with('for in: cannot index `')
+	b_is_for_in_cannot_index := b.msg.starts_with('for in: cannot index `')
+	if a.node == b.node && a_is_for_in_same_variable && b_is_for_in_cannot_index {
+		return -1
+	}
+	if a.node == b.node && b_is_for_in_same_variable && a_is_for_in_cannot_index {
+		return 1
+	}
 	a_is_init_visibility := a.msg == 'fn `init` must not be public'
 	b_is_init_visibility := b.msg == 'fn `init` must not be public'
 	a_is_init_return := a.msg == 'fn `init` cannot have a return type'
