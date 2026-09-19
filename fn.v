@@ -13,7 +13,7 @@
 	info := t.lookup_struct_info(clean) or { return source }
 	mut owning_fields := []FieldInfo{}
 	for field in info.fields {
-		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
+		field_type := t.compiler_default_clone_field_type(clean, field)
 		if t.compiler_default_clone_type_needs_work(field_type) {
 			owning_fields << field
 		}
@@ -28,7 +28,7 @@
 	tmp_name := t.new_temp('derived_clone')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, clean)
 	for field in owning_fields {
-		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		field_type := t.compiler_default_clone_field_type(clean, field)
 		source_field := t.make_selector(t.make_ident(tmp_name), field.name, field_type)
 		mut cloned_field := t.make_compiler_default_clone_value(source_field, field_type, true)
 		if source_fields_are_owned {
@@ -411,9 +411,19 @@ fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId,
 	return result
 }
 
+fn (t &Transformer) compiler_default_clone_field_type(owner string, field FieldInfo) string {
+	return t.lookup_struct_field_type(owner, field.name) or {
+		if field.typ.len > 0 { field.typ } else { field.raw_typ }
+	}
+}
+
 fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
+	return t.compiler_default_clone_type_needs_work_seen(typ, []string{})
+}
+
+fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ string, seen []string) bool {
 	clean := t.normalize_type_alias(typ).trim_space()
-	if clean.len == 0 || clean.starts_with('&') {
+	if clean.len == 0 || clean.starts_with('&') || clean in seen {
 		return false
 	}
 	if clean.starts_with('!') {
@@ -423,7 +433,7 @@ fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
 		return true
 	}
 	if t.is_fixed_array_type(clean) {
-		return t.compiler_default_clone_type_needs_work(fixed_array_elem_type(clean))
+		return t.compiler_default_clone_type_needs_work_seen(fixed_array_elem_type(clean), seen)
 	}
 	if clean == 'string' || clean.starts_with('[]') || clean.starts_with('map[') {
 		return true
@@ -439,6 +449,19 @@ fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
 		clone_name := '${clean}.clone'
 		if clone_name in t.fn_ret_types || (!isnil(t.tc) && clone_name in t.tc.fn_ret_types) {
 			return true
+		}
+	}
+	// Ordinary structs can own collection storage even when ownership checking is
+	// disabled. Inspect their fields so an array append does not silently copy a
+	// pointer-backed map header instead of cloning the stored value.
+	if info := t.lookup_struct_info(clean) {
+		mut next_seen := seen.clone()
+		next_seen << clean
+		for field in info.fields {
+			field_type := t.compiler_default_clone_field_type(clean, field)
+			if t.compiler_default_clone_type_needs_work_seen(field_type, next_seen) {
+				return true
+			}
 		}
 	}
 	return false
