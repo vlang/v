@@ -13589,7 +13589,13 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 				capture_modifier = p.lit
 				p.next()
 			}
-			capture_id := p.add_val(.ident, p.expect_name())
+			capture_pos := p.current_pos()
+			capture_name := p.expect_name()
+			capture_id := p.a.add_node(flat.Node{
+				kind:  .ident
+				value: capture_name
+				pos:   capture_pos
+			})
 			if is_mut_capture {
 				p.a.set_node_is_mut(capture_id, true)
 			}
@@ -13623,6 +13629,13 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	} else if capture_ids.len > 0 && p.tok == .lsbr {
 		generic_params = p.parse_generic_param_names()
 	}
+	for capture_id in capture_ids {
+		capture := p.a.node(capture_id)
+		if capture.value.len > 0 && !p.is_local_binding(capture.value) {
+			p.record_diagnostic_span('undefined ident: `${capture.value}`', capture.pos.offset,
+				capture.pos.end)
+		}
+	}
 	// params
 	p.check(.lpar)
 	mut param_ids := []flat.NodeId{}
@@ -13647,6 +13660,17 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		}
 	}
 	param_list_end := p.tok_pos
+	mut capture_names := map[string]bool{}
+	for capture_id in capture_ids {
+		capture_names[p.a.node(capture_id).value] = true
+	}
+	for param_id in param_ids {
+		param := p.a.node(param_id)
+		if param.kind == .param && capture_names[param.value] {
+			p.record_diagnostic_span('the parameter name `${param.value}` conflicts with the captured value name',
+				param.pos.offset, param.pos.offset + param.value.len)
+		}
+	}
 	p.check(.rpar)
 	// return type
 	mut ret_type := 'void'
