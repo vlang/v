@@ -3397,10 +3397,11 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 						key := '${type_name}.${callee.value}'
 						if tc.fn_signature_known(key) && !tc.fn_key_is_static_associated(key)
 							&& tc.static_assoc_type_known(type_name) {
-							tc.record_error(.unknown_fn, 'unknown function `${base.value}.${callee.value}`', id)
+							tc.record_error(.unknown_fn, 'unknown function: ${base.value}.${callee.value}', id)
 							tc.register_synth_type(id, Type(MultiReturn{
 								types: []Type{}
 							}))
+							tc.record_enclosing_print_void(id)
 							return
 						}
 					}
