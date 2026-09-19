@@ -254,7 +254,7 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	mut semantic_id := expr_id
 	mut semantic := tc.a.node(expr_id)
 	for semantic.kind == .paren && semantic.children_count == 1 {
-		inner_id := tc.a.child(&semantic, 0)
+		inner_id := tc.a.child(semantic, 0)
 		inner := tc.a.node(inner_id)
 		if inner.kind == .empty {
 			break
