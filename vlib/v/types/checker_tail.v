@@ -17185,6 +17185,9 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 		return none
 	}
 	base_node := tc.a.nodes[int(base_id)]
+	if base_node.kind in [.string_literal, .string_interp] {
+		return Type(string_)
+	}
 	if base_node.typ.len > 0 && base_node.typ != 'unknown' {
 		return tc.parse_type(base_node.typ)
 	}
