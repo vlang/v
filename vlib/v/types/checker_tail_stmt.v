@@ -317,7 +317,9 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 		return
 	}
 	if semantic.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
-		if tc.unused_literal_has_trailing_token(*stmt, *semantic) {
+		if tc.unused_literal_has_trailing_token(*stmt, *semantic)
+			&& !(tc.unused_literal_is_nonfinal_function_block_tail(id)
+				&& tc.unused_literal_starts_source_line(*semantic)) {
 			tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id, semantic.pos)
 		} else {
 			tc.record_warning_at(.unknown_ident, 'expression evaluated but not used', expr_id, semantic.pos)
@@ -438,6 +440,41 @@ fn (tc &TypeChecker) unused_literal_has_trailing_token(stmt flat.Node, expr flat
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) unused_literal_starts_source_line(expr flat.Node) bool {
+	file := tc.a.source_files[expr.pos.id] or { return false }
+	source := tc.source_texts_by_file[file.name] or { return false }
+	end := int_max(0, int_min(expr.pos.offset, source.len))
+	mut start := end
+	for start > 0 && source[start - 1] != `\n` {
+		start--
+	}
+	for c in source[start..end] {
+		if c !in [` `, `\t`, `\r`] {
+			return false
+		}
+	}
+	return true
+}
+
+fn (tc &TypeChecker) unused_literal_is_nonfinal_function_block_tail(stmt_id flat.NodeId) bool {
+	block_id := tc.direct_parent_id(stmt_id)
+	if !tc.valid_node_id(block_id) {
+		return false
+	}
+	block := tc.a.node(block_id)
+	if block.kind != .block || block.children_count == 0
+		|| tc.a.child(block, block.children_count - 1) != stmt_id {
+		return false
+	}
+	parent_id := tc.direct_parent_id(block_id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
+	return parent.kind == .fn_decl && parent.children_count > 0
+		&& tc.a.child(parent, parent.children_count - 1) != block_id
 }
 
 fn (tc &TypeChecker) expr_is_inside_string_interpolation(id flat.NodeId) bool {
