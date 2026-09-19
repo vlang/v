@@ -2135,7 +2135,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	p.pending_has_aligned = false
 	p.pending_aligned = ''
 	p.next() // skip 'struct' or 'union'
+	name_start := p.tok_pos
 	mut name := p.expect(.name)
+	name_end := name_start + name.len
 	if (name == 'C' || name == 'JS') && p.tok == .dot {
 		for p.tok == .dot {
 			p.next()
@@ -2168,6 +2170,10 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	}
 	// no body (C struct forward decl)
 	if p.tok != .lcbr {
+		if !name.starts_with('C.') && !name.starts_with('JS.') {
+			kind := if is_union { 'union' } else { 'struct' }
+			p.record_diagnostic_span('`${kind}` lacks body', name_start, name_end)
+		}
 		if p.tok == .semicolon {
 			p.next()
 		}
