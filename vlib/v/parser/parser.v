@@ -2461,6 +2461,8 @@ fn (mut p Parser) const_decl() flat.NodeId {
 			if is_grouped {
 				// The wording and the acute quotes match the existing fixtures.
 				p.record_diagnostic('unexpected eof, expecting ´)´', p.s.src.len)
+			} else if ids.len == 0 {
+				p.record_diagnostic('unexpected eof, expecting name', p.s.src.len)
 			}
 			break
 		}
@@ -2489,7 +2491,12 @@ fn (mut p Parser) const_decl() flat.NodeId {
 			}
 			if p.tok == .assign || (p.prefs.is_fmt && p.tok == .decl_assign) {
 				p.next()
-				val_id := p.expr(.lowest)
+				val_id := if p.tok == .eof {
+					p.record_diagnostic('unexpected eof, expecting an expression', p.s.src.len)
+					p.add(flat.NodeKind.empty)
+				} else {
+					p.expr(.lowest)
+				}
 				if value := p.comptime_node_value(val_id) {
 					p.comptime_const_values[comptime_const_value_key(p.cur_module, full_name)] = value
 				}
