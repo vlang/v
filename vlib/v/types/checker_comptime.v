@@ -8887,7 +8887,7 @@ fn (mut tc TypeChecker) check_option_propagation(id flat.NodeId, source_id flat.
 	}
 	if clean_source_type is ResultType {
 		source_text := tc.source_text_for_node(source_id)
-		tc.record_warning_at(.return_mismatch, 'propagating a Result like an Option is deprecated, use `${source_text}!` instead of `${source_text}?`', id, tc.propagation_operator_pos(source_id, id, '?'))
+		tc.record_error_at(.return_mismatch, 'propagating a Result like an Option is deprecated, use `${source_text}!` instead of `${source_text}?`', id, tc.propagation_operator_pos(source_id, id, '?'))
 		return
 	}
 	main_allows_propagation := tc.current_fn_is_main() || tc.current_fn_is_test()
