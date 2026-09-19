@@ -9861,6 +9861,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// postfix `?` optional propagation: expr?
 		if p.tok == .question {
+			lhs_node := p.a.node(lhs)
+			if lhs_node.kind == .ident && p.peek() == .lpar {
+				p.record_diagnostic_span('unexpected name `${lhs_node.value}`', lhs_node.pos.offset,
+					lhs_node.pos.end)
+			}
 			p.next()
 			ostart := p.add_children2(lhs, p.add(flat.NodeKind.empty))
 			lhs = p.add_node_from(flat.Node{
