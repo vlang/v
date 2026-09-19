@@ -1466,6 +1466,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		&& is_inline_asm_instruction_error(b.msg) && a.pos.offset != b.pos.offset {
 		return a.pos.offset - b.pos.offset
 	}
+	a_is_cast_to_struct := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to struct')
+	b_is_cast_to_struct := b.msg.starts_with('cannot cast `') && b.msg.ends_with(' to struct')
+	a_is_sum_type_cast := a.msg.contains(' sum type value to `')
+	b_is_sum_type_cast := b.msg.contains(' sum type value to `')
+	if a.node == b.node && a_is_cast_to_struct && b_is_sum_type_cast {
+		return -1
+	}
+	if a.node == b.node && b_is_cast_to_struct && a_is_sum_type_cast {
+		return 1
+	}
 	a_is_infix_mismatch := a.msg.starts_with('mismatched types `')
 	b_is_infix_mismatch := b.msg.starts_with('mismatched types `')
 	a_is_infix_rhs := a.msg.starts_with('infix expr: cannot use `')
