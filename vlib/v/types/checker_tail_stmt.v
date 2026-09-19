@@ -7178,7 +7178,16 @@ fn (tc &TypeChecker) type_contains_pointer(typ Type, mut visited map[string]bool
 			return false
 		}
 		visited[clean.name] = true
+		decl_mod := tc.struct_module_for_type(clean.name)
+		same_main_module := decl_mod in ['', 'main'] && tc.cur_module in ['', 'main']
 		for field in tc.struct_fields_for_init(clean.name) {
+			if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module {
+				is_public := tc.visible_mutation_struct_field_is_public(clean.name, field.name,
+					decl_mod) or { true }
+				if !is_public {
+					continue
+				}
+			}
 			if tc.type_contains_pointer(field.typ, mut visited) {
 				return true
 			}
