@@ -16473,9 +16473,12 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	mut receiver_id := g.a.child(&node, 1)
 	emitted_name := g.direct_call_name_for_call_node(id, node, fn_node.value)
 	method_short := fn_node.value.all_after_last('.')
-	mut params := g.param_types_for(emitted_name, emitted_name)
+	// Look up the resolved V method name first. Operator overloads use their
+	// operator token in V, but C-name sanitization can collide with an ordinary
+	// method (for example `%` and `mod`).
+	mut params := g.param_types_for(fn_node.value, method_short)
 	if params.len == 0 {
-		params = g.param_types_for(fn_node.value, fn_node.value.all_after_last('.'))
+		params = g.param_types_for(emitted_name, emitted_name)
 	}
 	if params.len == 0 {
 		return false
