@@ -1494,6 +1494,31 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		&& a_array_init_order != b_array_init_order {
 		return a_array_init_order - b_array_init_order
 	}
+	a_is_array_compare_callback_param := a.msg.contains(' callback function parameter `')
+	b_is_array_compare_callback_param := b.msg.contains(' callback function parameter `')
+	if a.file == b.file && a_is_array_compare_callback_param != b_is_array_compare_callback_param {
+		return if a_is_array_compare_callback_param { -1 } else { 1 }
+	}
+	a_is_invalid_sort_arg := a.msg.starts_with('`.sort()` can only use `a` or `b`')
+	b_is_invalid_sort_arg := b.msg.starts_with('`.sort()` can only use `a` or `b`')
+	a_is_sort_undefined_ident := a.msg.starts_with('undefined ident:')
+	b_is_sort_undefined_ident := b.msg.starts_with('undefined ident:')
+	if a.file == b.file && a_is_invalid_sort_arg && b_is_sort_undefined_ident {
+		return -1
+	}
+	if a.file == b.file && b_is_invalid_sort_arg && a_is_sort_undefined_ident {
+		return 1
+	}
+	a_is_sort_call_receiver := a.msg.starts_with('the `sort()` method can be called only on mutable receivers')
+	b_is_sort_call_receiver := b.msg.starts_with('the `sort()` method can be called only on mutable receivers')
+	a_is_mut_expression := a.msg == 'cannot pass expression as `mut`'
+	b_is_mut_expression := b.msg == 'cannot pass expression as `mut`'
+	if a.file == b.file && a_is_sort_call_receiver && b_is_mut_expression {
+		return -1
+	}
+	if a.file == b.file && b_is_sort_call_receiver && a_is_mut_expression {
+		return 1
+	}
 	a_is_generic_arg_count := a.msg.starts_with('expected ')
 		&& a.msg.contains(' generic parameter')
 	b_is_generic_arg_count := b.msg.starts_with('expected ')
