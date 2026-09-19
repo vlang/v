@@ -105,6 +105,7 @@ mut:
 	cur_method_is_static  bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
 	defer_depth           int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
 	defer_result_allowed  bool     // true when the active defer is guaranteed to run during function return
+	unsafe_depth          int      // >0 while parsing an `unsafe` block body
 	nested_block_depth    int      // lexical block depth below the current function body's outer scope
 	comptime_for_vars     []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
 	comptime_method_var   string   // innermost active `$for method in Type.methods` loop variable
@@ -8824,7 +8825,12 @@ fn (mut p Parser) block_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) unsafe_block_stmt(unsafe_start int) flat.NodeId {
+	if p.unsafe_depth > 0 {
+		p.record_diagnostic_span('already inside `unsafe` block', unsafe_start, unsafe_start + 6)
+	}
+	p.unsafe_depth++
 	id := p.block_stmt()
+	p.unsafe_depth--
 	if int(id) >= 0 && int(id) < p.a.nodes.len {
 		mut node := p.a.nodes[int(id)].with_pos(token.new_span(p.cur_file_id, unsafe_start, int_max(unsafe_start, p.a.nodes[int(id)].pos.end - 1)))
 		node.value = 'unsafe'
