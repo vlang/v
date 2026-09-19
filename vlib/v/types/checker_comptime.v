@@ -303,7 +303,16 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				&& tc.a.node(arg_id).is_mut && arg_index < method.param_types.len
 				&& method.param_types[arg_index].starts_with('&') {
 				expected_name := '&${method.param_types[arg_index]}'
-				actual_name := actual.name()
+				arg := tc.a.node(arg_id)
+				actual_name := if arg.kind == .ident
+					&& arg.value in tc.fn_context.mut_param_base_types
+					&& !tc.current_fn_param_is_explicit_mut_pointer(arg.value) {
+					'&${tc.fn_context.mut_param_base_types[arg.value].name()}'
+				} else if arg.kind == .ident {
+					(tc.cur_scope.lookup(arg.value) or { actual }).name()
+				} else {
+					actual.name()
+				}
 				tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_name}` as `${expected_name}` in argument ${arg_index + 1} to `${receiver_name}.${method.name}`', arg_id, tc.a.node(arg_id).pos)
 				return
 			}
