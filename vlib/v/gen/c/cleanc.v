@@ -5537,7 +5537,6 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 const c_builtin_abi_helper_header_paths = [
 	'/vlib/builtin/prealloc_atomics.h',
 	'/vlib/os/filelock/filelock_helpers.h',
-	'/vlib/sync/stdatomic/stdatomic_include_after_compat.h',
 	'/vlib/sync/stdatomic/tcc_compat_aliases.h',
 	'/vlib/sync/stdatomic/tcc_compat_cleanup.h',
 	'/vlib/sync/stdatomic/tcc_compat_freebsd_amd64_fence.h',
