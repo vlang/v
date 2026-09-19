@@ -8042,6 +8042,12 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
 	}
+	for lid in guard_lhs_ids {
+		lhs := p.a.node(lid)
+		if lhs.kind == .ident && p.is_local_binding(lhs.value) {
+			p.record_diagnostic_span('redefinition of `${lhs.value}`', lhs.pos.offset, lhs.pos.end)
+		}
+	}
 	// The if-guard binding(s) are in scope only inside the guarded block; register them so
 	// a conditionally inlined template that calls one (e.g. `@{render(row)}` after
 	// `if render := maybe_render()`) captures it in the nested template IIFE.
