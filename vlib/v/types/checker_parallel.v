@@ -1199,7 +1199,8 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					if comma_attr_text_has(node.typ, 'typedef') && !node.value.starts_with('C.') {
 						tc.record_error_at(.assignment_mismatch, '`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id, 'struct'))
 					}
-					if tc.should_check_source_name(node_id) && !pascal_case_name_is_valid(node.value) {
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
 						tc.check_pascal_case_name(node_id, node.value, 'struct name', tc.declaration_keyword_name_pos(node_id, 'struct'))
 					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
@@ -1216,7 +1217,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 				node_id := flat.NodeId(i)
 				tc.check_type_declaration_conflict(node_id, node)
 				if node.kind == .interface_decl {
-					if tc.should_check_source_name(node_id)
+					if tc.should_check_type_declaration_name(node_id, node)
 						&& !pascal_case_name_is_valid(node.value) {
 						tc.check_pascal_case_name(node_id, node.value, 'interface name', tc.source_line_declaration_pos(node_id))
 					}
@@ -1229,7 +1230,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					} else {
 						'type alias'
 					}
-					if tc.should_check_source_name(node_id)
+					if tc.should_check_type_declaration_name(node_id, node)
 						&& !pascal_case_name_is_valid(node.value) {
 						tc.check_pascal_case_name(node_id, node.value, type_kind, tc.declaration_keyword_name_pos(node_id, 'type'))
 					}
@@ -1240,7 +1241,8 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 				if do_signatures {
 					node_id := flat.NodeId(i)
 					tc.check_type_declaration_conflict(node_id, node)
-					if tc.should_check_source_name(node_id) && !pascal_case_name_is_valid(node.value) {
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
 						tc.check_pascal_case_name(node_id, node.value, 'enum name', tc.declaration_keyword_name_pos(node_id, 'enum'))
 					}
 				}
