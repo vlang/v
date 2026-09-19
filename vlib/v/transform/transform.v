@@ -19615,6 +19615,11 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	mut selector_generic_params := node.generic_params().clone()
 	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
 		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
+		if method_value_name.len > 0 {
+			// C generation emits the bound-method wrapper later. Keep its target
+			// live when reflection makes the enclosing body reachable late.
+			t.mark_fn_used_name(method_value_name)
+		}
 		method_params := t.call_param_types(method_value_name)
 		if method_params.len > 0 && method_params[0] !is types.Pointer {
 			receiver_type_name := t.node_type(new_base)
