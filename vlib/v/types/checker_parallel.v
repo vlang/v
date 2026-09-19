@@ -1828,9 +1828,24 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if node.children_count > 0 {
 		receiver_id := tc.a.child(&node, 0)
 		receiver := tc.a.node(receiver_id)
-		if receiver.kind == .param && receiver.op == .dot
-			&& unalias_type(tc.parse_type(receiver.typ)) is MultiReturn {
-			tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ))
+		if receiver.kind == .param && receiver.op == .dot {
+			receiver_type := unwrap_pointer(tc.parse_type(receiver.typ))
+			if unalias_type(receiver_type) is MultiReturn {
+				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ))
+			}
+			is_non_local_builtin := match receiver_type {
+				Primitive, String, Char, Rune, ISize, USize, Array, ArrayFixed, Channel, Map,
+				FnType {
+					true
+				}
+				else {
+					false
+				}
+			}
+			if tc.cur_module != 'builtin' && is_non_local_builtin {
+				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
+				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
+			}
 		}
 	}
 	raw_return_type := node.typ.trim_space()

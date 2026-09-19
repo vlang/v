@@ -10007,6 +10007,37 @@ fn (tc &TypeChecker) fn_receiver_source_text_pos(node flat.Node) (string, token.
 	return source[open..close], token.new_span(node.pos.id, open, close)
 }
 
+fn (tc &TypeChecker) fn_receiver_declared_type_pos(node flat.Node, receiver flat.Node) (string, token.Pos) {
+	text, pos := tc.fn_receiver_source_text_pos(node)
+	if text.len < 2 {
+		return receiver.typ.trim_left('&'), pos
+	}
+	mut start := 1
+	for start < text.len - 1 && text[start] in [` `, `\t`] {
+		start++
+	}
+	for modifier in ['mut', 'shared'] {
+		if text[start..].starts_with(modifier + ' ') {
+			start += modifier.len
+			for start < text.len - 1 && text[start] in [` `, `\t`] {
+				start++
+			}
+			break
+		}
+	}
+	if receiver.value != '_' && text[start..].starts_with(receiver.value) {
+		start += receiver.value.len
+		for start < text.len - 1 && text[start] in [` `, `\t`] {
+			start++
+		}
+	}
+	mut end := text.len - 1
+	for end > start && text[end - 1] in [` `, `\t`] {
+		end--
+	}
+	return text[start..end], token.new_span(pos.id, pos.offset + start, pos.offset + end)
+}
+
 fn (mut tc TypeChecker) check_sumtype_builtin_method_override(id flat.NodeId, node flat.Node) {
 	if !tc.should_check_source_name(id) || tc.cur_module == 'builtin' || !node.value.contains('.') {
 		return
