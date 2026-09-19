@@ -432,6 +432,7 @@ pub fn (mut p Parser) parse_into(path string) {
 				p.record_diagnostic_span('`module` and `${p.lit}` must be at same line', p.tok_pos, p.tok_end)
 			}
 			p.cur_module = p.lit
+			module_name_end := p.tok_end
 			mod_id := p.add_node(flat.Node{
 				kind:  .module_decl
 				value: p.lit
@@ -440,6 +441,11 @@ pub fn (mut p Parser) parse_into(path string) {
 			p.next()
 			if p.tok == .dot {
 				p.record_diagnostic_span('`module ${p.cur_module}`, unexpected `.` after module name',
+					p.tok_pos, p.tok_end)
+			}
+			if p.tok == .name && module_name_end <= p.tok_pos
+				&& !p.s.src[module_name_end..p.tok_pos].contains('\n') {
+				p.record_diagnostic_span('`module ${p.cur_module}`, you can only declare one module, unexpected `${p.lit}`',
 					p.tok_pos, p.tok_end)
 			}
 			if p.tok == .semicolon || p.lit == '' {
