@@ -1851,6 +1851,13 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			names << p.expect_name_or_keyword()
 		}
 	}
+	if p.tok == .key_mut {
+		if !p.prefs.is_fmt {
+			p.record_warning_span('use `mut f Foo` instead of `f mut Foo`', p.tok_pos, p.tok_end)
+		}
+		is_mut = true
+		p.next()
+	}
 	type_start := p.span_start()
 	mut typ := p.parse_type_name()
 	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
