@@ -3047,12 +3047,10 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	name := language_prefix + p.expect_name()
 	// generic params
 	mut generic_params := []string{}
+	mut generic_params_end := decl_start
 	if p.tok == .lsbr {
 		generic_params = p.parse_generic_param_names()
-		if generic_params.len > 0 {
-			p.record_diagnostic_span('generic type aliases are not yet implemented', decl_start,
-				p.prev_tok_end)
-		}
+		generic_params_end = p.prev_tok_end
 	}
 	if p.tok == .assign {
 		p.next()
@@ -3062,6 +3060,10 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	}
 	type_start := p.span_start()
 	first_type := p.parse_type_name()
+	if generic_params.len > 0 && !first_type.starts_with('fn(') {
+		p.record_diagnostic_span('generic type aliases are not yet implemented', decl_start,
+			generic_params_end)
+	}
 	if first_type.starts_with('fn(') {
 		close := first_type.index(')') or { -1 }
 		if close > 3 {
