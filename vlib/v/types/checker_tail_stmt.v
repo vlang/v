@@ -18018,6 +18018,9 @@ struct InfixOperatorSignature {
 
 fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperatorSignature {
 	op_name := infix_operator_name(op) or { return none }
+	if lhs is Pointer && unalias_type(lhs.base_type) !is Struct {
+		return none
+	}
 	mut receiver_types := [unwrap_pointer(lhs)]
 	if receiver_types[0] is Alias {
 		alias_type := receiver_types[0] as Alias
