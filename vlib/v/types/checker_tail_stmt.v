@@ -1051,7 +1051,7 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 	}
 	if payload is Void && !is_optional_result {
 		if tc.should_diagnose(id) {
-			tc.record_error_at(.condition_mismatch, 'if guard expression must be optional or result; expression should either return an Option or a Result', rhs_id, rhs_node.pos)
+			tc.record_error_at(.condition_mismatch, 'expression should either return an Option or a Result', rhs_id, rhs_node.pos)
 		}
 		payload = rhs_type
 	}
