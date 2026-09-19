@@ -5368,7 +5368,7 @@ fn (mut tc TypeChecker) record_unknown_method_call(id flat.NodeId, node flat.Nod
 	message := if tc.generic_receiver_method_rejects_voidptr(receiver_name, callee.value) {
 		'method `${receiver_name}.${callee.value}` cannot bind `voidptr` to a generic receiver pattern; cast the receiver to a concrete V type first'
 	} else {
-		base := 'unknown function `${display}.${callee.value}`; unknown method or field: `${display}.${callee.value}`'
+		base := 'unknown method or field: `${display}.${callee.value}`'
 		util.new_suggestion(callee.value, tc.method_name_suggestions(receiver_name)).say(base)
 	}
 	tc.record_error_at(.unknown_fn, message, id, tc.method_call_name_pos(node, callee))
