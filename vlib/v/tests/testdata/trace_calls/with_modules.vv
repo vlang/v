@@ -11,7 +11,8 @@ fn f2() {
 }
 
 fn f3() {
-	_ := os.join_path('1', '2', '3')
+	// A spread keeps this a real call instead of lowering it to join_path_single.
+	_ := os.join_path('1', ...['2', '3'])
 }
 
 fn main() {
