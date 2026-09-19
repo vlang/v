@@ -6333,7 +6333,7 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 			continue
 		}
 		mut candidates := []string{}
-		path_name := '${node.value}.${child.value}'
+		path_name := '${tc.import_module_path_text(node)}.${child.value}'
 		if path_name !in candidates {
 			candidates << path_name
 		}
@@ -13120,6 +13120,19 @@ fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeI
 	if should_diagnose && tc.record_invalid_type_module_qualifier(name, node_id) {
 		return
 	}
+	if should_diagnose && !name.contains('.') {
+		if candidates := tc.selective_import_candidates(name) {
+			if candidates.len > 0 && candidates.all(!tc.type_symbol_known(it)) {
+				qualified_candidate := candidates[0]
+				pos := tc.type_name_diagnostic_pos(node_id, name)
+				if !tc.unknown_type_already_reported_on_line(qualified_candidate, pos) {
+					tc.record_error_at(.unknown_type, 'unknown type `${qualified_candidate}`', node_id,
+						pos)
+				}
+				return
+			}
+		}
+	}
 	pos := tc.type_diagnostic_pos(node_id, name)
 	if tc.unknown_type_already_reported_on_line(name, pos) {
 		return
@@ -13132,6 +13145,16 @@ fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeI
 	if report_import_scope_error {
 		tc.record_error_unfiltered(.unknown_type, msg, node_id)
 	}
+}
+
+fn (tc &TypeChecker) type_name_diagnostic_pos(node_id flat.NodeId, name string) token.Pos {
+	if int(node_id) < 0 || int(node_id) >= tc.a.nodes.len {
+		return token.Pos{}
+	}
+	node := tc.a.nodes[int(node_id)]
+	file := tc.a.source_files[node.pos.id] or { return node.pos }
+	source := tc.source_texts_by_file[file.name] or { return node.pos }
+	return closest_text_span(source, name, node.pos.offset, node.pos.id) or { node.pos }
 }
 
 fn (mut tc TypeChecker) record_invalid_type_module_qualifier(name string, node_id flat.NodeId) bool {
