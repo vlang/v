@@ -1509,6 +1509,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a_is_bare_generic_fntype_decl != b_is_bare_generic_fntype_decl {
 		return if a_is_bare_generic_fntype_decl { 1 } else { -1 }
 	}
+	a_is_print_void := a.msg.contains('can not print void expressions')
+	b_is_print_void := b.msg.contains('can not print void expressions')
+	a_is_undefined_ident := a.msg.starts_with('undefined ident:')
+	b_is_undefined_ident := b.msg.starts_with('undefined ident:')
+	if a_is_print_void && b_is_undefined_ident {
+		return -1
+	}
+	if b_is_print_void && a_is_undefined_ident {
+		return 1
+	}
 	if a.node == b.node {
 		a_is_nonconstant_array_bound := a.msg.starts_with('non-constant array bound `')
 		b_is_nonconstant_array_bound := b.msg.starts_with('non-constant array bound `')
