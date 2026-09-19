@@ -13589,7 +13589,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		] && call_argument_type_name(expected) in ['int', 'i32']) && !call_arg_implicit_signed_widening(actual, expected) && tc.integer_literal_source(arg_id) == none && tc.a.node(arg_id).kind !in [
 			.float_literal,
 			.char_literal,
-		] && !(expected is Alias && tc.type_compatible(actual, expected.base_type)) && !(actual is Alias && tc.type_compatible(actual.base_type, expected)) && !(unalias_type(actual).is_integer() && unalias_type(expected).is_integer()) && !(unalias_type(actual).is_integer() && unalias_type(expected).is_float()) && (tc.mut_param_expr_base(arg_id, actual) or {
+		] && !(expected is Alias && actual.name() == expected.base_type.name()) && !(actual is Alias
+			&& actual.base_type.name() == expected.name()) && !(unalias_type(actual).is_integer()
+			&& unalias_type(expected).is_float()) && (tc.mut_param_expr_base(arg_id, actual) or {
 			actual
 		}).name() != expected.name() {
 			if info.name.all_after_last('.') == 'int_str' && unalias_type(actual).is_integer()
