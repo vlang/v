@@ -14569,7 +14569,7 @@ fn (mut tc TypeChecker) check_backed_enum_field_value_ranges(node flat.Node, bac
 				} else {
 					expr_type := tc.resolve_type(expr_id)
 					if expr_type !is Unknown && !expr_type.is_integer() {
-						tc.record_error_at(.assignment_mismatch, 'enum field `${field.value}` value must be integer, not `${expr_type.name()}`', expr_id, tc.a.nodes[int(expr_id)].pos)
+						tc.record_error_at(.assignment_mismatch, 'the default value for an enum has to be an integer', expr_id, tc.a.nodes[int(expr_id)].pos)
 					}
 				}
 			}
@@ -14824,17 +14824,19 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 				value_known = false
 			} else if !value_type.is_integer() {
 				if node.generic_params().len == 0 {
-					tc.record_error_at(.assignment_mismatch, 'enum field `${field.value}` value must be integer, not `${value_type.name()}`', value_id, value_pos)
+					tc.record_error_at(.assignment_mismatch, 'the default value for an enum has to be an integer', value_id, value_pos)
 				}
 				value_known = false
 			}
 			mut resolving := map[string]bool{}
-			value = tc.comptime_static_enum_field_value(value_id, tc.cur_module, node.value, mut field_values, field_exprs, mut resolving) or {
-				if tc.node_contains_runtime_call(value_id) {
-					tc.record_error_at(.assignment_mismatch, 'enum field `${field.value}` value must be integer', value_id, value_pos)
-				}
+			if tc.node_contains_runtime_call(value_id) {
+				tc.record_error_at(.assignment_mismatch, 'the default value for an enum has to be an integer', value_id, value_pos)
 				value_known = false
-				value
+			} else {
+				value = tc.comptime_static_enum_field_value(value_id, tc.cur_module, node.value, mut field_values, field_exprs, mut resolving) or {
+					value_known = false
+					value
+				}
 			}
 		}
 		if value_known && !value_overflows_backing && seen_values[value] && !allow_multiple {
