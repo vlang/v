@@ -13651,7 +13651,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if call_arg_numeric_type(expected) && call_arg_numeric_type(actual) && call_argument_type_name(actual) != call_argument_type_name(expected) && !(call_argument_type_name(actual) in [
 			'int',
 			'i32',
-		] && call_argument_type_name(expected) in ['int', 'i32']) && !call_arg_implicit_signed_widening(actual, expected) && tc.integer_literal_source(arg_id) == none && tc.a.node(arg_id).kind !in [
+		] && call_argument_type_name(expected) in ['int', 'i32']) && !call_arg_implicit_signed_widening(actual, expected) && !call_arg_byte_rune_compatible(actual, expected) && tc.integer_literal_source(arg_id) == none && tc.a.node(arg_id).kind !in [
 			.float_literal,
 			.char_literal,
 		] && !(expected is Alias && actual.name() == expected.base_type.name()) && !(actual is Alias

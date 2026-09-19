@@ -9067,6 +9067,13 @@ fn call_arg_implicit_signed_widening(actual Type, expected Type) bool {
 		|| (actual_name == 'f32' && expected_name == 'f64')
 }
 
+fn call_arg_byte_rune_compatible(actual Type, expected Type) bool {
+	actual_name := fn_param_unalias_type(actual).name()
+	expected_name := fn_param_unalias_type(expected).name()
+	return (actual_name == 'u8' && expected_name == 'rune')
+		|| (actual_name == 'rune' && expected_name == 'u8')
+}
+
 fn escaped_identifier_name(name string) string {
 	return if name.starts_with('@') { name[1..] } else { name }
 }
