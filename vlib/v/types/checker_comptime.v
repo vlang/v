@@ -8106,6 +8106,16 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		mut body_start := 0
 		is_assignment_case := branch.value in ['recv', 'recv_assign']
 			|| branch.value.starts_with('recv_compound:')
+		if tc.select_branch_is_timeout(branch) {
+			timeout_id := tc.a.child(&branch, 0)
+			tc.check_node(timeout_id)
+			timeout_type := tc.resolve_type(timeout_id)
+			if timeout_type !is Unknown && !unalias_type(timeout_type).is_integer() {
+				tc.record_error(.condition_mismatch, 'invalid type `${timeout_type.name()}` for timeout - expected integer number of nanoseconds aka `time.Duration`',
+					timeout_id)
+			}
+			body_start = 1
+		}
 		mut has_receive_rhs := false
 		if is_assignment_case && branch.children_count >= 2 {
 			second := tc.a.child_node(&branch, 1)

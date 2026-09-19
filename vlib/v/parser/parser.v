@@ -13887,12 +13887,61 @@ fn (mut p Parser) select_expr() flat.NodeId {
 	p.next() // skip 'select'
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	mut has_else := false
+	mut has_timeout := false
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
 			continue
 		}
-		ids << p.select_branch()
+		branch_key_start := p.tok_pos
+		branch_key_end := p.tok_end
+		mut has_deprecated_timeout_prefix := false
+		if p.tok == .gt {
+			has_deprecated_timeout_prefix = true
+			p.record_notice_span('`>` is deprecated and will soon be forbidden - just state the timeout in nanoseconds',
+				p.tok_pos, p.tok_end)
+			p.next()
+		}
+		branch_id := p.select_branch()
+		branch := p.a.node(branch_id)
+		if branch.value == 'else' {
+			if has_timeout {
+				p.record_diagnostic_span('timeout `> t` and `else` are mutually exclusive `select` keys',
+					branch_key_start, branch_key_end)
+			} else if has_else {
+				p.record_diagnostic_span('at most one `else` branch allowed in `select` block',
+					branch_key_start, branch_key_end)
+			}
+			has_else = true
+		} else if branch.value in ['recv', 'recv_assign']
+			|| branch.value.starts_with('recv_compound:') {
+			if branch.children_count >= 2 {
+				rhs := p.a.child_node(branch, 1)
+				if rhs.kind != .prefix {
+					p.record_diagnostic_span('select key: receive expression expected',
+						int(rhs.pos.offset), int(rhs.pos.end))
+				} else if rhs.op != .arrow {
+					p.record_diagnostic_span('select key: `<-` operator expected', int(rhs.pos.offset),
+						int(rhs.pos.end))
+				}
+			}
+		} else if p.select_branch_is_timeout(branch) {
+			condition := p.a.child_node(branch, 0)
+			if has_deprecated_timeout_prefix && condition.kind == .infix
+				&& condition.op == .arrow {
+				p.record_diagnostic_span('send expression cannot be used as timeout',
+					int(condition.pos.offset), int(condition.pos.end))
+			} else if has_else {
+				p.record_diagnostic_span('`else` and timeout value are mutually exclusive `select` keys',
+					int(condition.pos.offset), int(condition.pos.end))
+			} else if has_timeout {
+				p.record_diagnostic_span('at most one timeout branch allowed in `select` block',
+					int(condition.pos.offset), int(condition.pos.end))
+			}
+			has_timeout = true
+		}
+		ids << branch_id
 	}
 	p.check(.rcbr)
 	start := p.add_children(ids)
@@ -13902,6 +13951,15 @@ fn (mut p Parser) select_expr() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(select_start)
 	})
+}
+
+fn (p &Parser) select_branch_is_timeout(branch &flat.Node) bool {
+	if branch.kind != .select_branch || branch.value == 'else' || branch.children_count == 0
+		|| branch.value in ['recv', 'recv_assign'] || branch.value.starts_with('recv_compound:') {
+		return false
+	}
+	first := p.a.child_node(branch, 0)
+	return !(first.kind == .infix && first.op == .arrow)
 }
 
 // select_branch resolves select branch information for parser.
