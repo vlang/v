@@ -8681,21 +8681,15 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	}
 	tc.fn_context.unsafe_reference_alias_owners = intersect_unsafe_reference_alias_states(unsafe_alias_paths, unsafe_alias_success)
 	tc.fn_context.pointer_binding_value_keys = merge_pointer_binding_value_states(pointer_alias_paths, pointer_alias_success)
-	inner := tc.a.node(inner_id)
-	if inner.kind == .selector {
-		if source := tc.selector_declared_value_type(*inner) {
-			if source is OptionType {
-				tail_id := tc.branch_tail_expr_id(fallback_id)
-				if tc.valid_node_id(tail_id) {
-					tail := tc.a.node(tail_id)
-					if tail.kind in [.assign, .selector_assign, .index_assign]
-						&& tail.children_count >= 2 {
-						value_id := tc.a.child(tail, 0)
-						rhs_id := tc.a.child(tail, tail.children_count - 1)
-						tc.record_error_at(.assignment_mismatch, 'last statement in the `or {}` block should be an expression of type `${source.base_type.name()}` or exit parent scope', value_id, tc.assignment_operator_pos(*tail, value_id, rhs_id))
-						return
-					}
-				}
+	if require_fallback_value {
+		tail_id := tc.branch_tail_expr_id(fallback_id)
+		if tc.valid_node_id(tail_id) {
+			tail := tc.a.node(tail_id)
+			if tail.kind in [.assign, .selector_assign, .index_assign] && tail.children_count >= 2 {
+				value_id := tc.a.child(tail, 0)
+				rhs_id := tc.a.child(tail, tail.children_count - 1)
+				tc.record_error_at(.assignment_mismatch, 'last statement in the `or {}` block should be an expression of type `${payload.name()}` or exit parent scope', value_id, tc.assignment_operator_pos(*tail, value_id, rhs_id))
+				return
 			}
 		}
 	}
