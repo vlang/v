@@ -1791,6 +1791,13 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		return a.pos.offset - b.pos.offset
 	}
 	if a.node == b.node {
+		if a_case := duplicate_match_case_int(a.msg) {
+			if b_case := duplicate_match_case_int(b.msg) {
+				if a_case != b_case {
+					return a_case - b_case
+				}
+			}
+		}
 		a_is_nonconstant_array_bound := a.msg.starts_with('non-constant array bound `')
 		b_is_nonconstant_array_bound := b.msg.starts_with('non-constant array bound `')
 		a_is_invalid_fixed_size := a.msg.starts_with('fixed size cannot be zero or negative')
@@ -1815,6 +1822,31 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		return 1
 	}
 	return 0
+}
+
+fn duplicate_match_case_int(message string) ?int {
+	prefix := 'match case `'
+	if !message.starts_with(prefix) {
+		return none
+	}
+	end := message.index_after('`', prefix.len) or { return none }
+	value := message[prefix.len..end]
+	if value.len == 0 {
+		return none
+	}
+	mut start := 0
+	if value[0] == `-` {
+		if value.len == 1 {
+			return none
+		}
+		start = 1
+	}
+	for i in start .. value.len {
+		if !value[i].is_digit() {
+			return none
+		}
+	}
+	return value.int()
 }
 
 fn type_errors_equal(a TypeError, b TypeError) bool {
