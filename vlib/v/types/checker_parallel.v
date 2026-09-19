@@ -1464,6 +1464,16 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_invalid_comptime_field_access := a.msg.starts_with('compile time field access can only be used')
+	b_is_invalid_comptime_field_access := b.msg.starts_with('compile time field access can only be used')
+	a_is_unknown_comptime_for_var := a.msg.starts_with('unknown `$for` variable `')
+	b_is_unknown_comptime_for_var := b.msg.starts_with('unknown `$for` variable `')
+	if a.node == b.node && a_is_invalid_comptime_field_access && b_is_unknown_comptime_for_var {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_comptime_field_access && a_is_unknown_comptime_for_var {
+		return 1
+	}
 	a_is_nonliteral_comptime_method := a.msg == 'todo: not a string literal'
 	b_is_nonliteral_comptime_method := b.msg == 'todo: not a string literal'
 	a_is_empty_comptime_method := a.msg == 'could not find method ``'
