@@ -1776,6 +1776,12 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	b_is_infix_rhs := b.msg.starts_with('infix expr: cannot use `')
 	a_is_option_infix_unwrap := a.msg.ends_with('unwrap the option first')
 	b_is_option_infix_unwrap := b.msg.ends_with('unwrap the option first')
+	a_is_multi_return_operand := a.msg.starts_with('invalid number of operand for `')
+	b_is_multi_return_operand := b.msg.starts_with('invalid number of operand for `')
+	if a.pos.id == b.pos.id && a.pos.offset < b.pos.end && b.pos.offset < a.pos.end
+		&& a_is_multi_return_operand != b_is_multi_return_operand {
+		return if a_is_multi_return_operand { -1 } else { 1 }
+	}
 	if a.node == b.node && a_is_infix_mismatch && b_is_infix_rhs {
 		return -1
 	}
