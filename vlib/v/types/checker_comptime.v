@@ -4745,6 +4745,12 @@ fn (tc &TypeChecker) interface_actual_field_inner(concrete_name string, field_na
 }
 
 fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind, actual Type, expected Interface, id flat.NodeId, pos token.Pos) bool {
+	clean_actual := unalias_type(unwrap_pointer(actual))
+	if clean_actual is Interface
+		&& (tc.interface_metadata_name(clean_actual.name) == tc.interface_metadata_name(expected.name)
+			|| tc.interface_implements_interface(clean_actual.name, expected.name)) {
+		return false
+	}
 	actual_name := method_type_name(unwrap_pointer(actual))
 	actual_display := if unalias_type(actual) is Pointer {
 		'&${actual_name.all_after_last('.')}'
