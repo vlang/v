@@ -12,3 +12,11 @@ pub fn get_build_facts_and_defines() ([]string, []string) {
 	defines := os.getenv('VBUILD_DEFINES').split_any(',')
 	return facts, defines
 }
+
+// set_build_flags_and_defines records the build facts and the compile time
+// defines in the `VBUILD_FACTS` and `VBUILD_DEFINES` environment variables, for
+// the test runners and compilers that this process starts.
+pub fn set_build_flags_and_defines(facts []string, defines []string) {
+	os.setenv('VBUILD_FACTS', facts.join(','), true)
+	os.setenv('VBUILD_DEFINES', defines.join(','), true)
+}
