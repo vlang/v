@@ -11704,6 +11704,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						pos:            p.span_to(amp_start)
 					})
 				}
+				if p.tok in [.comma, .rpar] {
+					return p.add_node(flat.Node{
+						kind:  .ident
+						value: type_name
+						typ:   type_name
+						pos:   p.span_to(amp_start)
+					})
+				}
 			}
 			if p.tok in [.eof, .rpar, .rsbr, .rcbr, .comma, .semicolon] {
 				p.record_diagnostic_span('expected expression after `&`', amp_start, p.span_start())

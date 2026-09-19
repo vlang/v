@@ -4125,10 +4125,15 @@ fn (mut tc TypeChecker) check_json_magic_call(id flat.NodeId, node flat.Node) bo
 		tc.register_synth_type(id, Type(void_))
 		return true
 	}
+	if should_check_named_type(type_name) && !tc.type_name_known(type_name) {
+		tc.record_error_at(.unknown_type, 'json.decode: unknown type `${type_name}`', id, call_pos)
+		tc.register_synth_type(id, unknown_type('unknown json.decode target'))
+		return true
+	}
 	target_type := tc.parse_type(type_name)
 	if target_type is Pointer {
 		pointer_pos := tc.type_diagnostic_pos(type_arg_id, '&')
-		tc.record_error_at(.unknown_type, 'json.decode: cannot decode into a pointer type', type_arg_id, token.new_span(pointer_pos.id, pointer_pos.offset + 1, pointer_pos.end + 1))
+		tc.record_error_at(.unknown_type, 'json.decode: cannot decode into a pointer type', type_arg_id, token.new_span(pointer_pos.id, pointer_pos.offset + 1, pointer_pos.offset + 2))
 		tc.register_synth_type(id, Type(ResultType{
 			base_type: target_type
 		}))
