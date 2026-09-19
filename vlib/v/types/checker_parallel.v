@@ -806,6 +806,8 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.check_export_attrs()
 	tc.check_c_js_generic_declarations()
 	tc.check_interface_reserved_parameter_names()
+	tc.check_goto_labels()
+	tc.check_labelled_loop_controls()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
 	final_file := tc.cur_file
@@ -1021,6 +1023,8 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.check_export_attrs()
 		tc.check_c_js_generic_declarations()
 		tc.check_interface_reserved_parameter_names()
+		tc.check_goto_labels()
+		tc.check_labelled_loop_controls()
 		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cksw.restart()
 		// The work list only drives the dispatch below; keep it and its
