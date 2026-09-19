@@ -793,6 +793,18 @@ fn (mut tc TypeChecker) check_for_condition(cond_id flat.NodeId, _node flat.Node
 		return
 	}
 	condition := tc.a.node(cond_id)
+	if _node.value == 'c_style' && condition.kind == .postfix
+		&& condition.op in [.inc, .dec] && condition.children_count > 0 {
+		child_id := tc.a.child(&condition, 0)
+		tc.check_node(child_id)
+		op := if condition.op == .inc { '++' } else { '--' }
+		source := tc.source_text_for_node(cond_id)
+		operand_end := int_max(condition.pos.offset + 1, condition.pos.end - op.len)
+		operand_pos := token.new_span(condition.pos.id, condition.pos.offset, operand_end)
+		tc.record_error_at(.condition_mismatch, 'cannot use ${source} as value', cond_id,
+			operand_pos)
+		return
+	}
 	if condition.kind == .match_stmt {
 		tc.check_stmt_node(cond_id)
 		file := tc.a.source_files[condition.pos.id] or { &token.File{} }
@@ -813,6 +825,50 @@ fn (mut tc TypeChecker) check_for_condition(cond_id flat.NodeId, _node flat.Node
 	}
 	if tc.should_diagnose(cond_id) {
 		tc.record_error(.condition_mismatch, 'if condition must be `bool`, not `${cond_type.name()}`', cond_id)
+	}
+}
+
+fn (tc &TypeChecker) postfix_is_c_style_for_condition(id flat.NodeId) bool {
+	mut current := id
+	for _ in 0 .. 64 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .paren {
+			current = parent_id
+			continue
+		}
+		return parent.kind == .for_stmt && parent.value == 'c_style'
+			&& parent.children_count > 1 && tc.a.child(parent, 1) == current
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	defer {
+		tc.cur_file = saved_file
+		tc.cur_module = saved_module
+	}
+	for index in tc.preflight_nodes(.postfix) {
+		id := flat.NodeId(index)
+		node := tc.a.nodes[index]
+		if node.op !in [.inc, .dec] || tc.expr_is_standalone_statement(id)
+			|| tc.postfix_is_c_style_for_condition(id) {
+			continue
+		}
+		file := tc.a.source_files[node.pos.id] or { continue }
+		if tc.diagnostic_files.len > 0 && file.name !in tc.diagnostic_files {
+			continue
+		}
+		tc.cur_file = file.name
+		tc.cur_module = tc.file_modules[file.name] or { 'main' }
+		op := if node.op == .inc { '++' } else { '--' }
+		tc.record_warning_at(.assignment_mismatch, '`${op}` operator can only be used as a statement',
+			id, tc.prefix_operator_pos(id, op))
 	}
 }
 

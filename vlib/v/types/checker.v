@@ -1814,7 +1814,7 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 		if node.kind in [.decl_assign, .directive] {
 			chunk.metadata_node_ids << parent_idx
 		}
-		if node.kind in [.for_in_stmt, .comptime_for] {
+		if node.kind in [.postfix, .for_in_stmt, .comptime_for] {
 			chunk.preflight_node_ids << parent_idx
 		}
 		// Node count alone severely underestimates index-heavy and control-flow

@@ -764,6 +764,7 @@ fn check_worker_scope_free(scope voidptr) {
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	error_count := tc.errors.len
+	tc.check_postfix_value_uses_preflight()
 	tc.check_for_in_const_conflicts_preflight()
 	if tc.checker_fixture_mode && tc.errors.len > 0 {
 		return false
@@ -1431,6 +1432,11 @@ fn (mut tc TypeChecker) sort_parallel_check_errors() {
 }
 
 fn compare_type_notices(a &TypeError, b &TypeError) int {
+	a_is_postfix_value_warning := a.msg.ends_with('operator can only be used as a statement')
+	b_is_postfix_value_warning := b.msg.ends_with('operator can only be used as a statement')
+	if a_is_postfix_value_warning != b_is_postfix_value_warning {
+		return if a_is_postfix_value_warning { -1 } else { 1 }
+	}
 	a_is_unsafe_call := a.msg.contains('must be called from an `unsafe` block')
 	b_is_unsafe_call := b.msg.contains('must be called from an `unsafe` block')
 	if a_is_unsafe_call != b_is_unsafe_call {

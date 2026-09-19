@@ -15390,6 +15390,11 @@ fn print_type_diagnostic_details(details []string) {
 }
 
 fn compare_print_notices(a &types.TypeError, b &types.TypeError) int {
+	a_is_postfix_value_warning := a.msg.ends_with('operator can only be used as a statement')
+	b_is_postfix_value_warning := b.msg.ends_with('operator can only be used as a statement')
+	if a_is_postfix_value_warning != b_is_postfix_value_warning {
+		return if a_is_postfix_value_warning { -1 } else { 1 }
+	}
 	a_is_unused_import := a.msg.contains(' is imported but never used.')
 	b_is_unused_import := b.msg.contains(' is imported but never used.')
 	if a_is_unused_import != b_is_unused_import {
