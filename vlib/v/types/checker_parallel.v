@@ -1468,6 +1468,16 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_init_visibility := a.msg == 'fn `init` must not be public'
+	b_is_init_visibility := b.msg == 'fn `init` must not be public'
+	a_is_init_return := a.msg == 'fn `init` cannot have a return type'
+	b_is_init_return := b.msg == 'fn `init` cannot have a return type'
+	if a.node == b.node && a_is_init_visibility && b_is_init_return {
+		return -1
+	}
+	if a.node == b.node && b_is_init_visibility && a_is_init_return {
+		return 1
+	}
 	a_is_enum_value := a.msg.starts_with('enum value ')
 		|| a.msg == 'the default value for an enum has to be an integer'
 		|| (a.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
