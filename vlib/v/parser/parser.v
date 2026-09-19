@@ -4373,12 +4373,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 	}
 	subject_is_unresolved_local := p.is_local_binding(subject)
 		&& subject !in p.comptime_local_values
-	if !explicit_mut {
-		if value := p.comptime_local_values[subject] {
-			return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
-		}
-	}
-	if !explicit_mut && !subject_is_unresolved_local {
+	if !explicit_mut && !subject_is_unresolved_local && !p.is_local_binding(subject) {
 		if value := p.comptime_value(subject) {
 			return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
 		}

@@ -2722,6 +2722,13 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 			used_names[current.value] = true
 		}
 		if current.kind in [.sql_expr, .comptime_if, .array_init] {
+			if current.kind == .comptime_if {
+				metadata := current.generic_params()
+				if metadata.len > 1 && metadata[0] == '__v3_comptime_match'
+					&& candidate_names[metadata[1]] && shadow_depth[metadata[1]] == 0 {
+					used_names[metadata[1]] = true
+				}
+			}
 			for name, _ in candidate_names {
 				if shadow_depth[name] > 0 || used_names[name] {
 					continue
