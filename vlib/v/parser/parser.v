@@ -477,7 +477,7 @@ pub fn (mut p Parser) parse_into(path string) {
 			is_script_statement := node.kind !in [.empty, .import_decl, .module_decl, .directive,
 				.comptime_if, .asm_stmt]
 				&& !is_definition && !is_malformed_const
-			if p.cur_module.len > 0 {
+			if p.cur_module !in ['', 'main'] {
 				ids << id
 				continue
 			}
@@ -1135,6 +1135,9 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 			return p.parse_decl_after_attrs()
 		}
 		.dollar {
+			if p.peek() == .name && p.peek_lit == 'dbg' {
+				return p.debugger_stmt()
+			}
 			return p.parse_top_level_comptime_if()
 		}
 		.hash {
