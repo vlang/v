@@ -322,6 +322,7 @@ mut:
 	show_test_file_results         bool
 	test_run_only                  []string
 	assert_expr_overrides          map[int]string
+	callback_target_overrides      map[int]string
 	print_fn_names                 []string
 	profile_file                   string
 	profile_no_inline              bool
@@ -345,6 +346,8 @@ mut:
 	str_lits                       []string
 	str_lit_ids                    map[string]int
 	str_lits_shared                bool
+	json_decode_err_flag           string
+	json_decode_err_value          string
 	global_types                   map[string]types.Type
 	// Globals declared `volatile`. A kernel writes these where the hardware or
 	// the bootloader can see them, so the qualifier has to survive into the C.
@@ -1304,6 +1307,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_defers:                          []flat.NodeId{}
 		fn_defer_counts:                    map[int]string{}
 		assert_expr_overrides:              map[int]string{}
+		callback_target_overrides:          map[int]string{}
 		defer_capture_names:                []string{}
 		defer_capture_types:                map[string]types.Type{}
 		const_runtime_inits:                []string{}
@@ -4055,6 +4059,9 @@ fn (mut g FlatGen) gen_vinit() {
 	// holding `_vinit` may define them.
 	g.gen_embed_blob_joined()
 	g.writeln('void _vinit() {')
+	if 'gcboehm' in g.compile_defines || 'vgc' in g.compile_defines {
+		g.writeln('\tgc_runtime_init();')
+	}
 	// A split `$embed_file` payload is put back together before anything else can
 	// look at it, which is both what makes it a one-time cost and what keeps it
 	// off a lazy path that concurrent readers would race on.
@@ -5530,7 +5537,6 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 const c_builtin_abi_helper_header_paths = [
 	'/vlib/builtin/prealloc_atomics.h',
 	'/vlib/os/filelock/filelock_helpers.h',
-	'/vlib/sync/stdatomic/stdatomic_include_after_compat.h',
 	'/vlib/sync/stdatomic/tcc_compat_aliases.h',
 	'/vlib/sync/stdatomic/tcc_compat_cleanup.h',
 	'/vlib/sync/stdatomic/tcc_compat_freebsd_amd64_fence.h',
@@ -13604,6 +13610,24 @@ fn (g &FlatGen) const_primary_name(name string) string {
 	return name
 }
 
+fn (g &FlatGen) current_module_const_ref_name(name string) ?string {
+	if name.len == 0 || name.contains('.') {
+		return none
+	}
+	key := g.const_storage_name(g.tc.cur_module, name)
+	if key !in g.const_vals {
+		return none
+	}
+	if key == name {
+		mod := g.const_modules[key] or { '' }
+		if mod != g.tc.cur_module && mod != 'builtin'
+			&& !(g.tc.cur_module in ['', 'main', 'builtin'] && mod in ['', 'main', 'builtin']) {
+			return none
+		}
+	}
+	return g.const_primary_name(key)
+}
+
 // is_const_alias_name reports whether is const alias name applies in c.
 fn (g &FlatGen) is_const_alias_name(name string) bool {
 	return g.const_primary_name(name) != name
@@ -14957,6 +14981,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			return
 		}
 	}
+	if g.callback_target_overrides.len > 0 {
+		if replacement := g.callback_target_overrides[int(id)] {
+			g.write(replacement)
+			return
+		}
+	}
 	node := unsafe { &g.a.nodes[int(id)] }
 	match node.kind {
 		.int_literal {
@@ -15092,12 +15122,21 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				false
 			}
-			global_name := if !is_local && !is_current_param && !g.local_shadows_global(node.value) {
+			current_const_name := if !is_local && !is_current_param
+				&& !g.local_shadows_global(node.value) {
+				g.current_module_const_ref_name(node.value) or { '' }
+			} else {
+				''
+			}
+			global_name := if !is_local && !is_current_param && current_const_name.len == 0
+				&& !g.local_shadows_global(node.value) {
 				g.global_name_for_ident(node.value) or { '' }
 			} else {
 				''
 			}
-			const_name := if !is_local && global_name.len == 0 {
+			const_name := if current_const_name.len > 0 {
+				current_const_name
+			} else if !is_local && global_name.len == 0 {
 				g.const_ref_name(node.value)
 			} else {
 				''

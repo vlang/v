@@ -12495,10 +12495,29 @@ fn (mut tc TypeChecker) check_c_callback_abi_args(id flat.NodeId, node flat.Node
 			// A resolvable named function is adapted by a generated thunk.
 			continue
 		}
+		if tc.direct_fn_literal_expr(arg_id) {
+			// A direct literal is lowered to an owned closure whose generated target
+			// can be replaced with the same ABI adapter without losing its captures.
+			continue
+		}
 		if tc.should_diagnose(id) {
 			tc.record_error(.call_arg_mismatch, 'cannot pass a forwarded function value with an `int` parameter/return to the C callback of `${info.name}`: a C callback receives a 32-bit `int` but the V function expects 64-bit, and a function-pointer cast cannot adapt that; pass a named function directly, or declare the callback with `i32`', arg_id)
 		}
 	}
+}
+
+fn (tc &TypeChecker) direct_fn_literal_expr(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return true
+	}
+	if node.kind in [.cast_expr, .paren, .expr_stmt] && node.children_count > 0 {
+		return tc.direct_fn_literal_expr(tc.a.child(node, 0))
+	}
+	return false
 }
 
 fn fn_type_has_platform_int(t FnType) bool {
@@ -17185,6 +17204,9 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 		return none
 	}
 	base_node := tc.a.nodes[int(base_id)]
+	if base_node.kind in [.string_literal, .string_interp] {
+		return Type(string_)
+	}
 	if base_node.typ.len > 0 && base_node.typ != 'unknown' {
 		return tc.parse_type(base_node.typ)
 	}
@@ -18130,6 +18152,9 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			then_tail := tc.branch_tail_expr_id(then_id)
 			else_tail := tc.branch_tail_expr_id(else_id)
 			if tc.if_branch_none_has_option_context(then_type, then_tail, else_type, else_tail) {
+				if _ := inferred_contextual_if_type(then_type, else_type) {
+					return
+				}
 				if expected := tc.expected_context_for_expr(id) {
 					if expected is OptionType || is_ierror_type(expected) {
 						return

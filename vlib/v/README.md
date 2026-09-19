@@ -9,6 +9,11 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
+all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
+and explicit `-b js` invocations. The limited JavaScript compatibility generator remains
+available for non-test programs. JavaScript test sources are retained for future backend support.
+
 The `v fmt` command uses `v.parser` and `v.gen.v`. Formatter-mode parsing retains comments,
 compile-time branches, inline assembly, SQL bodies, and literal prefixes so they round-trip
 without a legacy formatter path.

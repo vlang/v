@@ -25,7 +25,7 @@ fn all_code_is_formatted() {
 }
 
 fn run_sanitizers() {
-	exec('v -o v2 cmd/v -cflags -fsanitize=undefined')
+	common.exec_with_progress('v -o v2 cmd/v -cflags -fsanitize=undefined', ['v2'])
 	exec('UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v')
 }
 
@@ -198,7 +198,7 @@ fn ci_progress_contents(task_name string) string {
 
 fn ci_resume_index(path string) !int {
 	if !os.exists(path) {
-		return 0
+		return -1
 	}
 	saved := os.read_file(path)!
 	for i, task_name in ci_tasks {
@@ -207,14 +207,14 @@ fn ci_resume_index(path string) !int {
 		}
 	}
 	eprintln('Ignoring invalid or outdated CI progress; restarting from the first task.')
-	return 0
+	return -1
 }
 
 fn save_ci_progress(path string, task_name string) ! {
 	// Write privately, then rename on the same filesystem. An interrupted write
 	// leaves the previous checkpoint intact, never a partially written cursor.
 	tmp_dir := '${path}.${os.getpid()}.tmp'
-	os.mkdir(tmp_dir, 0o700)!
+	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {
 		os.rmdir_all(tmp_dir) or {}
 	}
@@ -233,6 +233,9 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('GITHUB_JOB', 'clang-macos', true)
 	os.setenv('RUNNER_OS', 'macOS', true)
 	os.setenv('VFLAGS', '-cc clang', true)
+	// Stop within test/build sessions too, without other files already running.
+	os.setenv('VTEST_FAIL_FAST', '1', true)
+	os.setenv('VJOBS', '1', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)
@@ -240,7 +243,17 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('V_MACOS_MULTIWINDOW_TESTS', '0', true)
 
 	progress_path := ci_progress_path()
-	start := if reset { 0 } else { ci_resume_index(progress_path)! }
+	progress_dir := '${progress_path}.d'
+	saved_index := if reset { -1 } else { ci_resume_index(progress_path)! }
+	// No valid cursor means none of its finer-grained records may be reused.
+	if saved_index < 0 && os.exists(progress_dir) {
+		os.rmdir_all(progress_dir)!
+	}
+	if !os.exists(progress_dir) {
+		os.mkdir(progress_dir, mode: 0o700)!
+	}
+	start := if saved_index < 0 { 0 } else { saved_index }
+	os.unsetenv('VTEST_RESUME_OWNER')
 	eprintln('CI progress: ${progress_path}')
 	eprintln('Use `v run ci/macos_ci.vsh ci --reset` to restart from the first task.')
 	if start > 0 {
@@ -250,9 +263,11 @@ fn run_ci_tasks(reset bool) ! {
 		task_name := ci_tasks[i]
 		// Save BEFORE execution: a failure or interruption must retry this task.
 		save_ci_progress(progress_path, task_name)!
+		os.setenv('V_MACOS_CI_TASK_PROGRESS', os.join_path(progress_dir, task_name), true)
 		eprintln('CI task ${i + 1}/${ci_tasks.len}: ${task_name}')
 		exec('v run ci/macos_ci.vsh ${task_name}')
 	}
+	os.rmdir_all(progress_dir)!
 	os.rm(progress_path)!
 	eprintln('CI tasks complete; progress cleared.')
 }

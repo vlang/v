@@ -7252,7 +7252,15 @@ fn v3_test_matches_build_constraint(file string, target pref.Target, ccompiler s
 }
 
 fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string, backend string, target pref.Target, ccompiler string, is_prod bool, user_defines []string) bool {
-	if !is_test_command || !os.is_file(input_file) {
+	if !os.is_file(input_file) {
+		return false
+	}
+	// V3 has no JavaScript backend. Skip JS tests even for `v file_test.js.v`
+	// and `v run file_test.js.v`, before parsing them as native source.
+	if input_file.ends_with('_test.js.v') {
+		return true
+	}
+	if !is_test_command {
 		return false
 	}
 	if is_test_file_for_any_backend(input_file)
@@ -8001,6 +8009,12 @@ fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Pref
 		|| is_v3_test_file(input_file, prefs.backend, prefs.target) {
 		return false
 	}
+	// The reduced builtin set contains only no-GC implementations. Selecting it
+	// with an active collector drops its declarations while retaining GC calls
+	// in allocation and builtin initialization.
+	if 'gcboehm' in prefs.user_defines || 'vgc' in prefs.user_defines {
+		return false
+	}
 	// Parse the one user file before builtin. This conservative syntax-only pass
 	// lets literal output programs avoid parsing and checking builtin declarations
 	// that markused will discard, without applying a text heuristic to V syntax.
@@ -8601,7 +8615,7 @@ pub fn run(args []string) {
 		run(tool_args)
 		return
 	}
-	macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
+	mut macos_v3_fallback_file := os.getenv(macos_v3_fallback_file_env)
 	macos_v3_c_error_dir := os.getenv(macos_v3_c_error_dir_env)
 	// A delegated V3 process owns the fallback marker until it has successfully
 	// produced its output. Specialized failures overwrite it below. Successful
@@ -9195,6 +9209,12 @@ pub fn run(args []string) {
 		is_checker_fixture = true
 		no_cache = true
 	}
+	if is_checker_fixture {
+		// Fixture output is compared byte-for-byte. Let this V3 invocation print
+		// its diagnostic directly instead of replaying it with a launcher heading.
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		macos_v3_fallback_file = ''
+	}
 	mut current_no_parallel := no_parallel
 	if is_prof {
 		// Profile counters are assigned in function emission order and accumulated
@@ -9292,6 +9312,14 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	if backend == 'js' {
+		// This early compatibility path bypasses the common test filter below.
+		if input_file.ends_with('_test.js.v') && os.is_file(input_file) {
+			if !silent {
+				println('SKIP ${input_file}')
+			}
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			return
+		}
 		js_output := if output_file.len > 0 {
 			output_file
 		} else {

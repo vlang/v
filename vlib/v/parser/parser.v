@@ -12,6 +12,8 @@ import v.util
 
 const max_parse_diagnostics = 100
 
+const inline_sum_type_deprecation = 'inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead'
+
 // https://www.felixcloutier.com/x86/lock
 const inline_asm_allowed_lock_instructions = ['add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg',
 	'cmpxchg8b', 'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xor', 'xadd', 'xchg']
@@ -1216,10 +1218,39 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		if is_shared {
 			receiver_type = 'shared ' + receiver_type
 		}
+		if p.tok == .pipe {
+			p.record_diagnostic_span('unexpected token `|`, expecting `)`', p.tok_pos, p.tok_end)
+		}
 		p.check(.rpar)
 
 		// operator overload: fn (r Type) + (other Type) RetType { }
 		if p.tok != .name && p.tok != .eof {
+			if p.tok in [.plus_assign, .minus_assign, .div_assign, .mul_assign, .power_assign,
+				.mod_assign] {
+				name_pos = p.tok_pos
+				assignment_op := p.tok.str()
+				base_op := match p.tok {
+					.plus_assign { '+' }
+					.minus_assign { '-' }
+					.div_assign { '/' }
+					.mul_assign { '*' }
+					.power_assign { '**' }
+					.mod_assign { '%' }
+					else { '' }
+				}
+				clean_type := method_receiver_type_name(receiver_type)
+				has_base_overload := p.a.nodes.any(it.kind == .fn_decl
+					&& it.value == '${clean_type}.${base_op}')
+				message := if has_base_overload {
+					'cannot overload `${assignment_op}`, operator is implicitly overloaded because the `${base_op}` operator is overloaded'
+				} else {
+					'cannot overload `${assignment_op}`, overload `${base_op}` and `${assignment_op}` will be automatically generated'
+				}
+				p.record_diagnostic_span(message, p.tok_pos, p.tok_end)
+				p.next()
+				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut,
+					assignment_op, name_pos)
+			}
 			if p.tok == .lsbr && p.peek() == .rsbr {
 				name_pos = p.tok_pos
 				p.next()
@@ -1334,6 +1365,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	ret_type_start := p.tok_pos
 	if p.tok != .lcbr && p.tok != .semicolon && p.tok != .eof {
 		ret_type = p.parse_type_name()
+		p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
 		if p.tok == .question {
 			ret_type += '?'
 			p.next()
@@ -1483,6 +1515,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	ret_type_start := p.tok_pos
 	if p.can_start_type_name() {
 		ret_type = p.parse_type_name()
+		p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
 		if p.tok == .question {
 			ret_type += '?'
 			p.next()
@@ -1805,7 +1838,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			names << p.expect_name_or_keyword()
 		}
 	}
+	type_start := p.span_start()
 	mut typ := p.parse_type_name()
+	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
 	param_group_end := p.prev_tok_end
 	explicit_mut_ref := is_mut && typ.starts_with('&')
 	if is_mut && !typ.starts_with('&') {
@@ -2121,7 +2156,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					p.next()
 					names << p.expect_name_or_keyword()
 				}
-				field_type := p.parse_type_name()
+				field_type := p.parse_struct_field_type()
 				mut group_attrs := pending_attrs.clone()
 				pending_attrs = []string{}
 				if p.tok == .attribute || p.tok == .lsbr {
@@ -2866,7 +2901,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			})
 		} else {
 			// field: name type
-			ftype := p.parse_type_name()
+			ftype := p.parse_struct_field_type()
 			ids << p.add_node(flat.Node{
 				kind:   .interface_field
 				is_mut: fields_are_mut
@@ -12749,10 +12784,12 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	p.check(.rpar)
 	// return type
 	mut ret_type := 'void'
+	ret_type_start := p.tok_pos
 	if p.tok != .lcbr && p.tok != .semicolon && p.tok != .eof {
 		if p.tok == .name || p.tok == .amp || p.tok == .question || p.tok == .not || p.tok == .lsbr
 			|| p.tok == .lpar || p.tok == .key_fn {
 			ret_type = p.parse_type_name()
+			p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
 		}
 	}
 	// body
@@ -13812,7 +13849,30 @@ fn (mut p Parser) parse_struct_field_type() string {
 	defer {
 		p.parsing_struct_field_type = was_parsing
 	}
-	return p.parse_type_name()
+	start := p.span_start()
+	typ := p.parse_type_name()
+	p.record_inline_sum_type_deprecation(start, p.prev_tok_end)
+	return typ
+}
+
+fn (mut p Parser) record_inline_sum_type_deprecation(start int, end int) {
+	if p.tok != .pipe || p.diagnostics.any(it.message == inline_sum_type_deprecation) {
+		return
+	}
+	p.record_diagnostic_span(inline_sum_type_deprecation, start, end)
+}
+
+fn (mut p Parser) record_inline_sum_return_type_diagnostic(typ string, start int) {
+	if p.tok != .pipe {
+		return
+	}
+	if typ.starts_with('(') {
+		p.record_diagnostic_span('invalid expression: unexpected token `|`', p.tok_pos,
+			p.tok_end)
+		return
+	}
+	type_start := if typ.starts_with('?') || typ.starts_with('!') { start + 1 } else { start }
+	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
 }
 
 fn (p &Parser) type_suffix_is_followed_by_array_literal() bool {

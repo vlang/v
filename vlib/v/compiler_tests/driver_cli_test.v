@@ -400,6 +400,10 @@ fn test_v3_garbage_collector_modes() {
 		result := cmdexec.run(v3_bin, args)
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 		generated := os.read_file(output)!
+		if mode == 'default' {
+			assert generated.contains('GC_set_pages_executable(0);')
+			assert generated.contains('void _vinit() {\n\tgc_runtime_init();')
+		}
 		for marker in markers {
 			selected := marker in expected
 			assert generated.contains('v3_gc_marker_${marker}_28636') == selected, '${mode}: marker ${marker}, expected ${selected}'

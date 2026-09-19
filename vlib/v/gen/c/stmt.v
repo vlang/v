@@ -2828,6 +2828,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								&& !g.type_can_wrap_as_ierror_payload(expr_value_type, base)
 								&& !g.types_numeric_compatible(expr_value_type, base)
 								&& !g.array_abi_types_match(expr_value_type, base)
+								&& !g.map_abi_types_match(expr_value_type, base)
 								&& !g.or_value_temp_matches_array_return(ret_node, base)
 								&& !g.call_constructs_type(ret_id, base)
 								&& !g.clone_call_matches_base(ret_node, base)
@@ -5189,6 +5190,7 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			&& !g.type_can_wrap_as_ierror_payload(expr_value_type, base)
 			&& !g.types_numeric_compatible(expr_value_type, base)
 			&& !g.array_abi_types_match(expr_value_type, base)
+			&& !g.map_abi_types_match(expr_value_type, base)
 			&& !g.or_value_temp_matches_array_return(ret_node, base)
 			&& !g.call_constructs_type(ret_id, base) && !g.clone_call_matches_base(ret_node, base)
 			&& expr_value_type !is types.Primitive && expr_value_type !is types.Unknown {
@@ -6250,6 +6252,25 @@ fn (g &FlatGen) array_abi_types_match(a types.Type, b types.Type) bool {
 fn generated_array_type_name(name string) bool {
 	clean := name.all_after_last('.')
 	return clean.starts_with('Array_') && !clean.starts_with('Array_fixed_')
+}
+
+fn (g &FlatGen) map_abi_types_match(a types.Type, b types.Type) bool {
+	a0 := if a is types.Alias { a.base_type } else { a }
+	b0 := if b is types.Alias { b.base_type } else { b }
+	if a0 is types.Map && b0 is types.Map {
+		return true
+	}
+	if a0 is types.Map {
+		return generated_map_type_name(b0.name())
+	}
+	if b0 is types.Map {
+		return generated_map_type_name(a0.name())
+	}
+	return false
+}
+
+fn generated_map_type_name(name string) bool {
+	return name.all_after_last('.').starts_with('Map_')
 }
 
 fn (g &FlatGen) or_value_temp_matches_array_return(node flat.Node, expected types.Type) bool {
