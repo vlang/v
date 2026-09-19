@@ -7833,23 +7833,46 @@ fn (tc &TypeChecker) expr_is_standalone_statement(id flat.NodeId) bool {
 	// program once per append. Keep the scan below as a fallback for shared or
 	// transform-created nodes after the index is no longer authoritative.
 	if tc.direct_parent_index_trusted {
-		idx := int(id)
-		if idx >= 0 && idx < tc.direct_parent_ids.len {
+		mut current := id
+		for {
+			idx := int(current)
+			if idx < 0 || idx >= tc.direct_parent_ids.len {
+				break
+			}
 			parent_id := tc.direct_parent_ids[idx]
 			if tc.valid_node_id(parent_id) {
 				parent := tc.a.node(parent_id)
+				if parent.kind == .paren && parent.children_count == 1
+					&& tc.a.child(parent, 0) == current {
+					current = parent_id
+					continue
+				}
 				return parent.kind == .expr_stmt && parent.children_count == 1
-					&& tc.a.child(parent, 0) == id
+					&& tc.a.child(parent, 0) == current
 			}
+			break
 		}
 		// Transform-created nodes are outside the parsed direct-parent index.
 		// Fall through to the shared/generated-node scan for those ids.
 	}
-	for candidate in tc.a.nodes {
-		if candidate.kind == .expr_stmt && candidate.children_count == 1
-			&& tc.a.child(&candidate, 0) == id {
+	mut current := id
+	for _ in 0 .. 32 {
+		mut parent_id := flat.empty_node
+		for i, candidate in tc.a.nodes {
+			if candidate.kind in [.paren, .expr_stmt] && candidate.children_count == 1
+				&& tc.a.child(&candidate, 0) == current {
+				parent_id = flat.NodeId(i)
+				break
+			}
+		}
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .expr_stmt {
 			return true
 		}
+		current = parent_id
 	}
 	return false
 }

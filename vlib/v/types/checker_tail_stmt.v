@@ -65,7 +65,8 @@ fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
 	for _ in 0 .. 64 {
 		idx := int(current)
 		current_kind := tc.a.node(current).kind
-		if current_kind !in [.block, .match_branch] && idx >= 0
+		if current_kind !in [.paren, .block, .match_branch, .if_expr, .match_stmt, .or_expr]
+			&& idx >= 0
 			&& idx < tc.value_used_nodes.len && tc.value_used_nodes[idx] {
 			return true
 		}
@@ -77,12 +78,12 @@ fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
 		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr, .comptime_for] {
 			return false
 		}
-		if parent.kind == .expr_stmt {
+		if parent.kind in [.paren, .expr_stmt] {
 			current = parent_id
 			continue
 		}
 		if parent.kind in [.block, .match_branch] {
-			if tc.branch_tail_expr_id(parent_id) != id {
+			if !tc.expr_is_value_tail_of(parent_id, id) {
 				return false
 			}
 			current = parent_id
@@ -91,6 +92,13 @@ fn (tc &TypeChecker) expression_node_used_as_value(id flat.NodeId) bool {
 		if parent.kind in [.if_expr, .match_stmt, .comptime_if] {
 			if parent.children_count == 0 || tc.a.child(parent, 0) == current {
 				return false
+			}
+			current = parent_id
+			continue
+		}
+		if parent.kind == .or_expr {
+			if parent.children_count == 0 || tc.a.child(parent, 0) == current {
+				return true
 			}
 			current = parent_id
 			continue
@@ -241,8 +249,12 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	if stmt.kind != .expr_stmt || stmt.children_count != 1 {
 		return
 	}
-	expr_id := tc.a.child(stmt, 0)
-	expr := tc.a.node(expr_id)
+	mut expr_id := tc.a.child(stmt, 0)
+	mut expr := tc.a.node(expr_id)
+	for expr.kind == .paren && expr.children_count == 1 {
+		expr_id = tc.a.child(&expr, 0)
+		expr = tc.a.node(expr_id)
+	}
 	if tc.errors.any(it.node == expr_id) {
 		return
 	}
