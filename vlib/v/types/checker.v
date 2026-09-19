@@ -17423,7 +17423,7 @@ fn (mut tc TypeChecker) check_comptime_static_assignment(node flat.Node, var_nam
 				rhs.pos
 			}
 			actual_name := tc.diagnostic_expr_type_name(rhs_id, actual)
-			tc.record_error_at(.assignment_mismatch, 'cannot assign `${actual_name}` to `${expected.name()}`; cannot assign to `${tc.source_text_for_node(lhs_id)}`: expected `${expected.name()}`, not `${actual_name}`', rhs_id, diagnostic_pos)
+			tc.record_error_at(.assignment_mismatch, 'cannot assign to `${tc.source_text_for_node(lhs_id)}`: expected `${expected.name()}`, not `${actual_name}`', rhs_id, diagnostic_pos)
 			return
 		}
 	}
