@@ -1552,13 +1552,13 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.scope_parallel_workers = true
 	}
 	t.prepare()
-	// Interface conversions are explicit struct-init nodes after transform. Scan
-	// only that lowered form here; the semantic source scan already ran in the
-	// preceding transform and would be far more expensive on the enlarged AST.
-	t.interface_boxed_types_done = true
-	t.interface_boxed_types_frozen = false
-	t.collect_lowered_interface_boxed_types_range(0, t.a.nodes.len)
-	t.interface_boxed_types_frozen = true
+	// This fresh transformer does not retain the preceding source-box index.
+	// Methods first reached by comptime dispatch can still contain source-level
+	// conversions, such as `return Foo{}` from an `IFoo` getter. Collect those
+	// as well as lowered literals before specializing or lowering late bodies:
+	// both auto-str and interface method reachability need that source snapshot,
+	// regardless of which caller or getter is transformed first.
+	t.collect_interface_boxed_types()
 	t.refresh_interface_impl_indexes_for_boxed_types()
 	t.seed_cached_monomorph_specs(cached_specs)
 	t.monomorph_profile('mono wrapper prepare: ${time.ticks() - debug_started} ms')
