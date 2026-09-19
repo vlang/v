@@ -1870,6 +1870,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	b_is_print_void := b.msg.contains('can not print void expressions')
 	a_is_undefined_ident := a.msg.starts_with('undefined ident:')
 	b_is_undefined_ident := b.msg.starts_with('undefined ident:')
+	a_is_boolean_operand := (a.msg.starts_with('left operand for `')
+		|| a.msg.starts_with('right operand for `')) && a.msg.ends_with(' is not a boolean')
+	b_is_boolean_operand := (b.msg.starts_with('left operand for `')
+		|| b.msg.starts_with('right operand for `')) && b.msg.ends_with(' is not a boolean')
+	if a.file == b.file && a_is_undefined_ident && b_is_boolean_operand {
+		return -1
+	}
+	if a.file == b.file && b_is_undefined_ident && a_is_boolean_operand {
+		return 1
+	}
 	if a_is_print_void && b_is_undefined_ident {
 		return -1
 	}
