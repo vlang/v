@@ -3733,7 +3733,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		// The safe array.repeat wrapper resolves to its unsafe helper for reachability.
 		calls_safe_array_repeat := info.name == 'array.repeat_to_depth' && callee.kind == .selector
 			&& callee.value == 'repeat'
-		if tc.unsafe_depth == 0 && !tc.current_fn_declared_unsafe()
+		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
+			&& !tc.current_fn_declared_unsafe()
 			&& !tc.node_is_in_translated_file(id)
 			&& (info.name in tc.unsafe_fns || tc.is_builtin_unsafe_c_call(node, info.name))
 			&& info.name !in ['map.delete', 'builtin.map.delete'] && !calls_safe_array_repeat {
