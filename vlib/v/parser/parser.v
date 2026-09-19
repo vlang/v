@@ -3340,6 +3340,9 @@ fn (mut p Parser) directive() flat.NodeId {
 		name = full[..space_idx]
 		value = full[space_idx + 1..].trim_space()
 	}
+	if name == 'flag' && value.len == 0 {
+		p.record_diagnostic_span('no argument(s) provided for #flag', directive_start, directive_end)
+	}
 	if p.tok == .semicolon {
 		p.next()
 	}
