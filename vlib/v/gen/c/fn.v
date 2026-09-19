@@ -9263,6 +9263,7 @@ fn (mut g FlatGen) preintern_json_encode_value_strings(typ types.Type, seen []st
 		for variant in g.tc.sum_types[sum_name] or { []string{} } {
 			variant_type := g.json_sum_variant_type(variant)
 			g.preintern_json_encode_value_strings(variant_type, next_seen)
+			g.preintern_json_sum_variant_discriminator_strings(variant_type)
 		}
 		return
 	}
@@ -9317,6 +9318,34 @@ fn (mut g FlatGen) preintern_json_encode_value_strings(typ types.Type, seen []st
 		g.preintern_json_encode_value_strings(field.typ, next_seen)
 		emitted_fields++
 	}
+}
+
+fn (mut g FlatGen) preintern_json_sum_variant_discriminator_strings(typ types.Type) {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	if clean is types.OptionType {
+		g.preintern_json_sum_variant_discriminator_strings(clean.base_type)
+		return
+	}
+	if clean is types.Pointer {
+		g.preintern_json_sum_variant_discriminator_strings(clean.base_type)
+		return
+	}
+	if clean is types.Array {
+		g.preintern_json_sum_variant_discriminator_strings(clean.elem_type)
+		return
+	}
+	if clean is types.ArrayFixed {
+		g.preintern_json_sum_variant_discriminator_strings(clean.elem_type)
+		return
+	}
+	if clean !is types.Struct {
+		return
+	}
+	struct_type := clean as types.Struct
+	g.intern_string(json_struct_field_label_prefix('_type', ''))
+	g.intern_string(json_struct_field_label_prefix('_type', ','))
+	g.intern_string(struct_type.name.all_after_last('.'))
+	g.intern_string('}')
 }
 
 struct JsonEncodeFieldExpr {

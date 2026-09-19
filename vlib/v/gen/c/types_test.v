@@ -269,6 +269,23 @@ fn test_json_helper_scan_requires_legacy_json_module() {
 	assert 'null' in g.str_lits
 }
 
+fn test_json_sum_variant_discriminator_strings_are_preinterned() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	tc.cur_module = 'main'
+	tc.sum_types['main.Animal'] = ['main.Cat', 'main.Dog']
+	tc.structs['main.Cat'] = []types.StructField{}
+	tc.structs['main.Dog'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	g.preintern_json_encode_value_strings(types.Type(types.SumType{
+		name: 'main.Animal'
+	}), []string{})
+	assert 'Cat' in g.str_lits
+	assert 'Dog' in g.str_lits
+}
+
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	mut ast := &flat.FlatAst{}
 	ast.nodes = [flat.Node{
