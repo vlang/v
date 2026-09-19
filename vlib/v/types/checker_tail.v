@@ -3501,7 +3501,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			} else {
 				'compile-time error'
 			}
-			message := 'compile-time error: ${raw_message}'
+			message := raw_message
 			if !tc.has_type_error(.compile_error, message, id) {
 				tc.record_error_unfiltered(.compile_error, message, id)
 			}
