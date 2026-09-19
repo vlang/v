@@ -5121,6 +5121,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ['builtin.'.len..]
 	}
+	if map_typ := generic_map_type_arg_from_suffix(clean_typ) {
+		return t.wrap_string_conversion(expr, if is_ref { '&${map_typ}' } else { map_typ })
+	}
 	if source_typ := t.source_type_name_from_c_name(clean_typ) {
 		return t.wrap_string_conversion(expr, source_typ)
 	}
