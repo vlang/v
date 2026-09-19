@@ -1977,6 +1977,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	mut sect_is_global := false
 	mut sect_is_module := false
 	mut pending_attrs := []string{}
+	mut has_c_embed := false
 	for p.tok != .rcbr && p.tok != .eof {
 		// access modifiers
 		if p.tok == .key_pub {
@@ -2083,6 +2084,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			field_start := p.span_start()
 			field_name := p.expect_name_or_keyword()
 			if p.tok == .dot {
+				if name.starts_with('C.') {
+					has_c_embed = true
+				}
 				p.next()
 				second := p.expect_name_or_keyword()
 				full_type := '${field_name}.${second}'
@@ -2112,6 +2116,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				saved_has_peek := p.has_peek
 				suffix := p.parse_type_generic_suffix()
 				if suffix.len > 0 && (p.tok == .semicolon || p.tok == .rcbr) {
+					if name.starts_with('C.') {
+						has_c_embed = true
+					}
 					embedded_type := p.resolve_local_type_name(field_name + suffix)
 					fid := p.a.add_node(flat.Node{
 						kind:  .field_decl
@@ -2138,6 +2145,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			}
 			// embedded struct (type on its own line, followed by semicolon)
 			if p.tok == .semicolon || p.tok == .rcbr {
+				if name.starts_with('C.') {
+					has_c_embed = true
+				}
 				embedded_type := p.resolve_local_type_name(field_name)
 				fid := p.add_node(flat.Node{
 					kind:  .field_decl
@@ -2222,6 +2232,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		} else {
 			p.next()
 		}
+	}
+	if has_c_embed {
+		p.record_diagnostic('expecting type declaration', p.tok_pos)
 	}
 	p.check(.rcbr)
 	p.pending_params = false
