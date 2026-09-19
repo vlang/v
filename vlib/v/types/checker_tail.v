@@ -1333,8 +1333,8 @@ fn (tc &TypeChecker) selector_field_diagnostic_pos(id flat.NodeId, field string)
 	file := tc.a.source_files[node.pos.id] or { return tc.node_value_diagnostic_pos(id) }
 	source := tc.source_texts_by_file[file.name] or { return tc.node_value_diagnostic_pos(id) }
 	start := int_max(0, int_min(base.pos.offset, source.len))
-	line_end := source.index_after('\n', start) or { source.len }
-	if relative := source[start..line_end].last_index('.${field}') {
+	end := int_max(start, int_min(node.pos.end, source.len))
+	if relative := source[start..end].last_index('.${field}') {
 		field_start := start + relative + 1
 		return token.new_span(node.pos.id, field_start, field_start + field.len)
 	}

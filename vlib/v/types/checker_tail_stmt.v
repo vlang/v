@@ -243,7 +243,7 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	}
 	expr_id := tc.a.child(stmt, 0)
 	expr := tc.a.node(expr_id)
-	if tc.expr_subtree_has_error(expr_id) {
+	if tc.errors.any(it.node == expr_id) {
 		return
 	}
 	if tc.expression_node_used_as_value(expr_id) {
@@ -309,7 +309,11 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 		tc.record_error_at(.unknown_ident, '`${expr.value}` evaluated but not used', expr_id, expr.pos)
 		return
 	}
-	mut pos := expr.pos
+	mut pos := if expr.kind == .selector {
+		tc.selector_field_diagnostic_pos(expr_id, expr.value)
+	} else {
+		expr.pos
+	}
 	if expr.kind == .infix && expr.children_count > 0 {
 		lhs_id := tc.a.child(expr, 0)
 		lhs := tc.a.node(lhs_id)

@@ -10829,7 +10829,8 @@ pub fn run(args []string) {
 		}
 		if has_conflicting_c_declaration_errors(pre_tc.errors) {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 			}
 			exit(1)
 		}
@@ -10846,7 +10847,8 @@ pub fn run(args []string) {
 		}
 		if pre_tc.check_interface_embedding_limits() {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 			}
 			exit(1)
 		}
@@ -10967,7 +10969,8 @@ pub fn run(args []string) {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 			}
 			pre_tc.notices.clear()
 		}
@@ -10976,7 +10979,8 @@ pub fn run(args []string) {
 		}
 		if no_closures {
 			if closure_error := no_closures_error(a, &pre_tc) {
-				print_type_diagnostics(a, []types.TypeError{}, [closure_error], true, fatal_errors)
+				print_type_diagnostics(a, []types.TypeError{}, [closure_error], true, fatal_errors,
+					check_only)
 				exit(1)
 			}
 		}
@@ -11005,7 +11009,8 @@ pub fn run(args []string) {
 			}
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 				exit(1)
 			}
 			return
@@ -11166,7 +11171,8 @@ pub fn run(args []string) {
 			if cache_state.manager.enabled {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
-			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors)
+			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
+				check_only)
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -11616,7 +11622,8 @@ pub fn run(args []string) {
 		b.step('annotate types (cached)')
 		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
 			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
-			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors)
+			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
+				check_only)
 			for notice in cached_notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -11633,7 +11640,8 @@ pub fn run(args []string) {
 		if macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
-		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+			check_only)
 		exit(1)
 	}
 
@@ -11734,7 +11742,8 @@ pub fn run(args []string) {
 			}
 			if pre_tc.errors.len == 0
 				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
-				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors)
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
+					check_only)
 			}
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
@@ -15147,7 +15156,28 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
-fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool) {
+fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool) {
+	if !check_only {
+		mut first_unused := -1
+		for i, err in type_errors {
+			if err.msg != 'expression evaluated but not used'
+				&& !err.msg.ends_with('` evaluated but not used') {
+				continue
+			}
+			if first_unused < 0 || err.pos.id < type_errors[first_unused].pos.id
+				|| (err.pos.id == type_errors[first_unused].pos.id
+					&& err.pos.offset < type_errors[first_unused].pos.offset) {
+				first_unused = i
+			}
+		}
+		if first_unused >= 0 {
+			err := type_errors[first_unused]
+			severity := if err.severity.len > 0 { err.severity } else { 'error:' }
+			eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
+			print_type_diagnostic_details(err.details)
+			return
+		}
+	}
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
 	for notice in ordered_notices {
