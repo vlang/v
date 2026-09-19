@@ -9737,6 +9737,18 @@ pub fn run(args []string) {
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
+	if is_checker_fixture {
+		fixture_modules := os.join_path(os.dir(os.real_path(input_file)), 'modules')
+		if os.is_dir(fixture_modules) {
+			mut fixture_search_paths := [fixture_modules]
+			fixture_search_paths << prefs.module_search_paths
+			if prefs.module_search_paths.len == 0 {
+				fixture_search_paths << os.join_path_single(prefs.vroot, 'vlib')
+				fixture_search_paths << os.vmodules_paths()
+			}
+			prefs.module_search_paths = fixture_search_paths
+		}
+	}
 	prefs.module_resolution_root = v3_module_resolution_root(input_file)
 	prefs.exclude = expand_v3_exclude_patterns(exclude_patterns, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
