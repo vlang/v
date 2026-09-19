@@ -13967,6 +13967,22 @@ fn (mut p Parser) parse_type_generic_suffix() string {
 				params << param
 			}
 		}
+		if p.tok == .lcbr {
+			mut depth := 1
+			p.next()
+			for depth > 0 && p.tok != .eof {
+				if p.tok == .lcbr {
+					depth++
+				} else if p.tok == .rcbr {
+					depth--
+					if depth == 0 {
+						p.record_diagnostic_span('unexpected token `}`, expecting `)`', p.tok_pos,
+							p.tok_end)
+					}
+				}
+				p.next()
+			}
+		}
 		if p.tok == .comma {
 			p.next()
 			continue
