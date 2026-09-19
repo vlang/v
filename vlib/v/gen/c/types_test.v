@@ -404,6 +404,20 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	assert g.needed_optional_types['Optional_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
 }
 
+fn test_concrete_optional_enum_uses_common_int_abi() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	option_enum := types.Type(types.OptionType{
+		base_type: types.Type(types.Enum{ name: 'State' })
+	})
+	assert g.optional_type_name(option_enum) == 'Optional'
+	assert g.concrete_optional_type_name(option_enum) == 'Optional'
+	assert 'Optional_int' !in g.needed_optional_types
+}
+
 fn test_value_type_qualifies_concrete_generic_struct() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)

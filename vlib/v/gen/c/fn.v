@@ -19765,6 +19765,11 @@ fn (mut g FlatGen) concrete_optional_type_name(t types.Type) string {
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
 	}
+	// The common Optional wrapper already stores a C int. Plain enums use that
+	// same ABI in concrete generic functions, just as they do in struct fields.
+	if inner_ct == 'int' {
+		return 'Optional'
+	}
 	safe_name := inner_ct.replace('*', 'ptr').replace(' ', '_')
 	opt_name := 'Optional_${safe_name}'
 	g.needed_optional_types[opt_name] = inner_ct
