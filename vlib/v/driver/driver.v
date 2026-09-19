@@ -8639,6 +8639,7 @@ pub fn run(args []string) {
 	mut retry_compilation := true
 	mut gc_mode := ''
 	mut enable_globals_compat := false
+	mut disable_explicit_mutability := false
 	mut is_prod := false
 	mut no_prod_options := false
 	mut is_shared := false
@@ -8885,6 +8886,10 @@ pub fn run(args []string) {
 			// Avoid module/TinyCC cache paths that use a different link plan.
 			no_cache = true
 			i += if i + 1 < args.len { 2 } else { 1 }
+		} else if args[i] in ['-disable-explicit-mutability', '--disable-explicit-mutability'] {
+			disable_explicit_mutability = true
+			no_cache = true
+			i++
 		} else if args[i].starts_with('-d') && args[i].len > 2 {
 			define := args[i][2..]
 			record_user_define(mut user_defines, mut compile_values, define)
@@ -10773,6 +10778,7 @@ pub fn run(args []string) {
 	pre_tc.shadow_dependency_roots = shadow_dependency_roots_for(prefs)
 	pre_tc.shadow_explicit_roots = shadow_explicit_roots_for(prefs, pre_tc.shadow_dependency_roots)
 	pre_tc.enable_globals = enable_globals_compat
+	pre_tc.disable_explicit_mutability = disable_explicit_mutability
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
 	pre_tc.no_main = 'no_main' in prefs.user_defines

@@ -694,6 +694,7 @@ pub mut:
 	fn_ret_text_registrations        []FnTextRegistration
 	visible_mutation_registrations   []VisibleMutationRegistration
 	enable_globals                   bool
+	disable_explicit_mutability      bool
 	fn_ret_types                     map[string]Type
 	fn_param_types                   map[string][]Type
 	v_fn_semantic_names              map[string]bool
@@ -1180,6 +1181,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		valid_diagnostic_fast:                 tc.valid_diagnostic_fast
 		valid_resolution_fast:                 tc.valid_resolution_fast
 		enable_globals:                        tc.enable_globals
+		disable_explicit_mutability:           tc.disable_explicit_mutability
 		fn_ret_types:                          tc.fn_ret_types
 		fn_param_types:                        tc.fn_param_types
 		c_fn_module_ret_types:                 tc.c_fn_module_ret_types

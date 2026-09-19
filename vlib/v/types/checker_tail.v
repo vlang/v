@@ -9579,6 +9579,11 @@ fn (tc &TypeChecker) ident_is_mutable_lvalue(name string) bool {
 	if tc.cur_scope == unsafe { nil } {
 		return false
 	}
+	if tc.disable_explicit_mutability {
+		if owner := tc.cur_scope.lookup_owner(name) {
+			return !owner.belongs_to_scope(tc.file_scope)
+		}
+	}
 	if owner := tc.fn_context.mut_local_owners[name] {
 		if tc.cur_scope.nearest_binding_owned_by(name, owner) {
 			return true
@@ -13335,7 +13340,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				}
 			}
 		}
-		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg {
+		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg
+			&& !tc.disable_explicit_mutability {
 			param_label := if param_name := tc.source_call_param_name(info.name, param_idx) {
 				'`${param_name}`'
 			} else {
