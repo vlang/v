@@ -12316,6 +12316,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			p.check(.rsbr)
 			dimensions++
 		}
+		if p.tok == .not {
+			p.record_diagnostic_span('fixed arrays do not support storing Result values',
+				p.tok_pos, p.tok_end)
+		}
 		elem_type := p.parse_fixed_array_literal_type_name()
 		lit, _ := p.inferred_fixed_array_literal_values(elem_type, dimensions, bracket_start)
 		return lit
@@ -12331,6 +12335,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		}
 		was_inside_array_init_type_expr := p.inside_array_init_type_expr
 		p.inside_array_init_type_expr = true
+		if p.tok == .not {
+			p.record_diagnostic_span('arrays do not support storing Result values', p.tok_pos,
+				p.tok_end)
+		}
 		elem_type := p.parse_type_name()
 		p.inside_array_init_type_expr = was_inside_array_init_type_expr
 		if p.tok == .lpar {
@@ -12349,6 +12357,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		// array init: []Type{len: n, cap: c, init: v}
 		if elem_type.len > 0 && p.tok == .lcbr {
 			return p.array_init_after_element_type(elem_type, bracket_start)
+		}
+		if !p.prefs.is_fmt {
+			p.record_warning_span('use `x := []Type{}` instead of `x := []Type`', bracket_start,
+				p.prev_tok_end)
 		}
 		return p.add_node(flat.Node{
 			kind:  .array_init
@@ -12374,6 +12386,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			// `[segs + 1]f32`) — an infix node has no `.value`, which would otherwise
 			// collapse the type to a dynamic `[]f32`.
 			size_str := p.fixed_array_size_text(ids[0], size_start, size_end)
+			if p.tok == .not {
+				p.record_diagnostic_span('fixed arrays do not support storing Result values',
+					p.tok_pos, p.tok_end)
+			}
 			elem_type := p.parse_fixed_array_literal_type_name()
 			fixed_type := '[${size_str}]${elem_type}'
 			if p.tok == .lpar {
@@ -12431,6 +12447,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 					children_count: flat.child_count(init_ids.len)
 					pos:            p.span_to(bracket_start)
 				})
+			}
+			if !p.prefs.is_fmt {
+				p.record_warning_span('use e.g. `x := [1]Type{}` instead of `x := [1]Type`',
+					bracket_start, p.prev_tok_end)
 			}
 			return p.add_node(flat.Node{
 				kind:  .array_init
@@ -12577,14 +12597,20 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 		return '[${size_str}]' + p.parse_fixed_array_literal_type_name()
 	}
 	if p.tok == .name {
+		name_start := p.tok_pos
+		name_end := p.tok_end
 		mut name := p.lit
 		p.next()
-		if name == 'map' && p.tok == .lsbr {
-			p.next()
-			key := p.parse_type_name()
-			p.check(.rsbr)
-			val := p.parse_fixed_array_literal_type_name()
-			return 'map[${key}]${val}'
+		if name == 'map' {
+			if p.tok == .lsbr {
+				p.next()
+				key := p.parse_type_name()
+				p.check(.rsbr)
+				val := p.parse_fixed_array_literal_type_name()
+				return 'map[${key}]${val}'
+			}
+			p.record_diagnostic_span('cannot use the map type without key and value definition',
+				name_start, name_end)
 		}
 		if name == 'chan' {
 			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question
@@ -12657,6 +12683,9 @@ fn (mut p Parser) fixed_array_value_literal(fixed_type string, start int) flat.N
 fn (mut p Parser) array_init_after_element_type(elem_type string, start int) flat.NodeId {
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	mut has_len := false
+	mut init_start := -1
+	mut init_end := -1
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -12664,7 +12693,14 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 		}
 		if p.tok == .name && p.peek() == .colon {
 			fname_start := p.span_start()
+			fname_end := p.tok_end
 			fname := p.expect_name()
+			if fname == 'len' {
+				has_len = true
+			} else if fname == 'init' {
+				init_start = fname_start
+				init_end = fname_end
+			}
 			p.check(.colon)
 			val := p.expr(.lowest)
 			ids << p.a.add_node(flat.Node{
@@ -12682,6 +12718,10 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 		}
 	}
 	p.check(.rcbr)
+	if init_start >= 0 && !has_len {
+		p.record_diagnostic_span('cannot use `init` attribute unless `len` attribute is also provided',
+			init_start, init_end)
+	}
 	return p.a.add_node(flat.Node{
 		kind:           .array_init
 		value:          elem_type
