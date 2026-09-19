@@ -97,6 +97,7 @@ mut:
 	cur_module            string
 	cur_fn                string
 	cur_fn_offset         int = -1
+	cur_fn_generic_params []string
 	cur_veb_ctx_name      string // source-level name of the active veb request context
 	veb_tmpl_counter      int    // monotonic id for unique `$veb.html`/`$tmpl` builder var names
 	has_veb_template      bool
@@ -1740,6 +1741,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	mut formatter_end := 0
 	prev_fn := p.cur_fn
 	prev_fn_offset := p.cur_fn_offset
+	prev_fn_generic_params := p.cur_fn_generic_params
 	prev_struct := p.cur_struct
 	prev_method_is_static := p.cur_method_is_static
 	prev_veb_ctx_name := p.cur_veb_ctx_name
@@ -1747,6 +1749,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	outer_defer_result_allowed := p.defer_result_allowed
 	outer_nested_block_depth := p.nested_block_depth
 	p.cur_fn = name
+	p.cur_fn_generic_params = generic_params
 	// The declaration's node records `name_pos` as its position, so keying the
 	// names of its skipped bodies on it lets the checker find them again.
 	p.cur_fn_offset = name_pos
@@ -1799,6 +1802,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
 	p.cur_fn_offset = prev_fn_offset
+	p.cur_fn_generic_params = prev_fn_generic_params
 	p.cur_struct = prev_struct
 	p.cur_method_is_static = prev_method_is_static
 	p.cur_veb_ctx_name = prev_veb_ctx_name
@@ -7993,6 +7997,8 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		p.record_diagnostic_span('the condition of an `if` should be a boolean expression, not another `if` statement; did you write `if` twice by mistake?',
 			p.tok_pos, p.tok_end)
 		p.next()
+	} else if p.tok == .name && p.lit in p.cur_fn_generic_params && p.peek() == .key_is {
+		p.record_diagnostic_span('use `$if` instead of `if`', if_start, if_start + 2)
 	}
 	cond := p.control_header_expr(.lowest)
 
