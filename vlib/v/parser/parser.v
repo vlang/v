@@ -1540,6 +1540,10 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	}
 	param_list_end := p.tok_pos
 	p.check(.rpar)
+	if p.tok == .lsbr && !p.current_lbr_starts_array_type() {
+		p.record_diagnostic_span('unexpected token `[` after function signature, expecting `{`',
+			p.tok_pos, p.tok_end)
+	}
 
 	// return type
 	mut ret_type := 'void'
@@ -1571,6 +1575,10 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			&& p.a.node(it).value.len > 0) {
 		p.record_diagnostic_span('functions with type only params can not have bodies', p.tok_pos,
 			p.tok_end)
+	}
+	if p.tok == .lsbr {
+		p.record_diagnostic_span('unexpected token `[` after function signature, expecting `{`',
+			p.tok_pos, p.tok_end)
 	}
 	// no body — extern/C declaration
 	if p.tok != .lcbr {
@@ -1913,6 +1921,14 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	type_start := p.span_start()
 	mut typ := p.parse_type_name()
+	if typ.len > 0 {
+		for i, name in names {
+			if name.len > 0 && name[0] >= `A` && name[0] <= `Z` {
+				p.record_diagnostic_span('parameter name must not begin with upper case letter (`${name[0].ascii_str()}`)',
+					name_positions[i].offset, name_positions[i].end)
+			}
+		}
+	}
 	if typ.starts_with('...') {
 		if is_mut || is_shared || is_atomic {
 			p.record_variadic_modifier_diagnostic(typ, p.prev_tok_end)
@@ -1949,6 +1965,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	if p.tok == .comma {
 		p.next()
+	} else if p.tok == .name {
+		p.record_diagnostic_span('unexpected name `${p.lit}`, expecting `,`', p.tok_pos,
+			p.tok_end)
 	}
 	return ids
 }
