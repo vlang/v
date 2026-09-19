@@ -11588,7 +11588,7 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 				module_prefix := imported_name.all_before_last('.') + '.'
 				module_candidates := candidates.filter(it.starts_with(module_prefix))
 				if module_candidates.len > 0 {
-					candidates = module_candidates
+					candidates = module_candidates.clone()
 				}
 			}
 			message := util.new_suggestion(imported_name, candidates).say(base)
@@ -13338,7 +13338,7 @@ fn (tc &TypeChecker) unknown_type_message(name string, node_id flat.NodeId) stri
 	}
 	contextual_candidates := tc.contextual_generic_sum_type_candidates(node_id)
 	mut candidates := if contextual_candidates.len > 0 {
-		contextual_candidates
+		contextual_candidates.clone()
 	} else {
 		tc.known_type_name_candidates()
 	}
@@ -13346,7 +13346,7 @@ fn (tc &TypeChecker) unknown_type_message(name string, node_id flat.NodeId) stri
 		module_prefix := display_name.all_before_last('.') + '.'
 		module_candidates := candidates.filter(it.starts_with(module_prefix))
 		if module_candidates.len > 0 {
-			candidates = module_candidates
+			candidates = module_candidates.clone()
 		}
 	}
 	message := util.new_suggestion(display_name, candidates).say(base)
