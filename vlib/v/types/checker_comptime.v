@@ -11173,6 +11173,49 @@ fn (mut tc TypeChecker) check_invalid_fn_literal_generic_calls(node flat.Node, g
 	}
 }
 
+fn (mut tc TypeChecker) check_generic_fn_literal_capture_types(node flat.Node) {
+	mut stack := []flat.NodeId{}
+	for i in 0 .. node.children_count {
+		stack << tc.a.child(&node, i)
+	}
+	for stack.len > 0 {
+		id := stack.pop()
+		child := tc.a.node(id)
+		if child.kind == .fn_literal {
+			literal_generic_params := child.generic_params()
+			mut missing_capture_generic := false
+			for i in 0 .. child.children_count {
+				capture_id := tc.a.child(child, i)
+				capture := tc.a.node(capture_id)
+				if capture.kind != .ident || capture.value.len == 0 {
+					continue
+				}
+				capture_type := tc.cur_scope.lookup(capture.value) or { continue }
+				capture_type_text := tc.current_fn_param_type_text(capture.value) or {
+					capture_type.name()
+				}
+				for generic_name in tc.fn_context.generic_params {
+					if generic_name !in literal_generic_params
+						&& type_text_contains_symbol(capture_type_text, generic_name) {
+						if !missing_capture_generic {
+							current_list := literal_generic_params.join(', ')
+							tc.record_error_at(.unsupported_generic, 'Add the generic type `${generic_name}` to the anon fn generic list type, that is currently `[${current_list}]`', capture_id, tc.node_value_diagnostic_pos(capture_id))
+						}
+						missing_capture_generic = true
+					}
+				}
+			}
+			if missing_capture_generic {
+				tc.check_invalid_fn_literal_generic_calls(child, literal_generic_params)
+			}
+			continue
+		}
+		for i in 0 .. child.children_count {
+			stack << tc.a.child(child, i)
+		}
+	}
+}
+
 fn (mut tc TypeChecker) record_invalid_comptime_for_type(decl VisibleMutationFnDecl, generic_name string) bool {
 	if decl.idx < 0 || decl.idx >= tc.a.nodes.len {
 		return false

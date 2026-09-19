@@ -1579,6 +1579,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.file == b.file && b_is_deref_unsafe && a_is_deref_assignment {
 		return 1
 	}
+	a_is_missing_anon_generic := a.msg.starts_with('Add the generic type `')
+	b_is_missing_anon_generic := b.msg.starts_with('Add the generic type `')
+	a_is_invalid_comptime_for_type := a.msg.starts_with('\$for expects a type name or variable name')
+	b_is_invalid_comptime_for_type := b.msg.starts_with('\$for expects a type name or variable name')
+	if a.file == b.file && a_is_missing_anon_generic && b_is_invalid_comptime_for_type {
+		return -1
+	}
+	if a.file == b.file && b_is_missing_anon_generic && a_is_invalid_comptime_for_type {
+		return 1
+	}
 	a_is_generic_arg_count := a.msg.starts_with('expected ')
 		&& a.msg.contains(' generic parameter')
 	b_is_generic_arg_count := b.msg.starts_with('expected ')
@@ -1941,6 +1951,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	has_body := !node.is_mut
 	if has_body && generic_params.len > 0 {
 		tc.check_generic_fn_body_global_shadowing(node)
+		tc.check_generic_fn_literal_capture_types(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0
