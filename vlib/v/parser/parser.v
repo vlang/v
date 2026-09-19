@@ -14834,6 +14834,10 @@ fn (mut p Parser) parse_type_name() string {
 	// pointer &T
 	if p.tok == .amp {
 		p.next()
+		if p.tok == .lsbr && p.peek() == .rsbr {
+			p.record_diagnostic_span('V arrays are already references behind the scenes,\nthere is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).\nIf you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.',
+				p.tok_pos, p.tok_end)
+		}
 		return '&' + p.parse_type_name()
 	}
 	if p.tok == .and {
