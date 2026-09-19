@@ -3071,7 +3071,8 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	}
 	type_start := p.span_start()
 	first_type := p.parse_type_name()
-	if generic_params.len > 0 && !first_type.starts_with('fn(') {
+	is_sum_type := p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe))
+	if generic_params.len > 0 && !first_type.starts_with('fn(') && !is_sum_type {
 		p.record_diagnostic_span('generic type aliases are not yet implemented', decl_start,
 			generic_params_end)
 	}
@@ -3096,7 +3097,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	}
 	// check for sum type: type T = A | B | C
 	// skip auto-semicolon before pipe
-	if p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe)) {
+	if is_sum_type {
 		if language_prefix.len == 0 && name.len == 1 && name[0] >= `A` && name[0] <= `Z` {
 			p.record_diagnostic_span('single letter capital names are reserved for generic template types',
 				name_pos.offset, name_pos.end)
