@@ -8164,21 +8164,33 @@ fn (mut tc TypeChecker) check_array_init(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.unknown_type, 'generic struct `${generic_name}` must specify type parameter, e.g. ${generic_name}[int]', id, tc.type_diagnostic_pos(id, generic_name))
 		}
 	}
-	if bound := fixed_array_bound_text(node.typ) {
-		bound_pos := tc.fixed_array_bound_pos(node, bound)
-		if message := tc.fixed_array_bound_type_diagnostic(bound) {
-			tc.record_error_at(.assignment_mismatch, message, id, bound_pos)
-			if message.ends_with('has to be casted to integer to be used as size')
-				&& bound.contains('.') {
+	mut invalid_nested_bound := false
+	if nested_bound := nested_fixed_array_bound_text(node.typ) {
+		if tc.fixed_array_bound_type_diagnostic(nested_bound) == none
+			&& tc.const_int_value(nested_bound, []string{}) == none
+			&& !fixed_array_bound_is_sizeof(nested_bound) {
+			tc.record_error_at(.assignment_mismatch, 'fixed array size cannot use non-constant value',
+				id, tc.nested_fixed_array_bound_pos(node, nested_bound))
+			invalid_nested_bound = true
+		}
+	}
+	if !invalid_nested_bound {
+		if bound := fixed_array_bound_text(node.typ) {
+			bound_pos := tc.fixed_array_bound_pos(node, bound)
+			if message := tc.fixed_array_bound_type_diagnostic(bound) {
+				tc.record_error_at(.assignment_mismatch, message, id, bound_pos)
+				if message.ends_with('has to be casted to integer to be used as size')
+					&& bound.contains('.') {
+					tc.record_error_at(.assignment_mismatch, 'fixed size cannot be zero or negative (fixed_size: 0)', id, bound_pos)
+				}
+			} else if fixed_size := tc.const_int_value(bound, []string{}) {
+				if fixed_size <= 0 {
+					tc.record_error_at(.assignment_mismatch, 'fixed size cannot be zero or negative (fixed_size: ${fixed_size})', id, bound_pos)
+				}
+			} else if !fixed_array_bound_is_sizeof(bound) {
+				tc.record_error_at(.assignment_mismatch, 'non-constant array bound `${bound}`', id, bound_pos)
 				tc.record_error_at(.assignment_mismatch, 'fixed size cannot be zero or negative (fixed_size: 0)', id, bound_pos)
 			}
-		} else if fixed_size := tc.const_int_value(bound, []string{}) {
-			if fixed_size <= 0 {
-				tc.record_error_at(.assignment_mismatch, 'fixed size cannot be zero or negative (fixed_size: ${fixed_size})', id, bound_pos)
-			}
-		} else if !fixed_array_bound_is_sizeof(bound) {
-			tc.record_error_at(.assignment_mismatch, 'non-constant array bound `${bound}`', id, bound_pos)
-			tc.record_error_at(.assignment_mismatch, 'fixed size cannot be zero or negative (fixed_size: 0)', id, bound_pos)
 		}
 	}
 	if type_text_contains_any(node.typ) {
@@ -8388,6 +8400,37 @@ fn fixed_array_bound_text(typ string) ?string {
 		return none
 	}
 	return bound
+}
+
+fn nested_fixed_array_bound_text(typ string) ?string {
+	clean := trimmed_space(typ)
+	if clean.len < 3 || clean[0] != `[` {
+		return none
+	}
+	close := find_matching_bracket(clean, 0)
+	if close < 0 || close + 1 >= clean.len {
+		return none
+	}
+	return fixed_array_bound_text(clean[close + 1..])
+}
+
+fn (tc &TypeChecker) nested_fixed_array_bound_pos(node flat.Node, bound string) token.Pos {
+	file := tc.a.source_files[node.pos.id] or { return node.pos }
+	source := tc.source_texts_by_file[file.name] or { return node.pos }
+	start := int_max(0, node.pos.offset)
+	end := int_min(node.pos.end, source.len)
+	if start >= end {
+		return node.pos
+	}
+	text := source[start..end]
+	outer_close := find_matching_bracket(text, 0)
+	if outer_close < 0 || outer_close + 1 >= text.len || text[outer_close + 1] != `[` {
+		return node.pos
+	}
+	highlight := bound.all_after_last('.')
+	highlight_relative := bound.last_index(highlight) or { 0 }
+	bound_start := start + outer_close + 2 + highlight_relative
+	return token.new_span(node.pos.id, bound_start, bound_start + highlight.len)
 }
 
 fn (tc &TypeChecker) fixed_array_bound_pos(node flat.Node, bound string) token.Pos {
