@@ -7326,8 +7326,7 @@ pub fn (mut tc TypeChecker) check_main_module_requirement(is_shared bool) {
 	if tc.valid_diagnostic_fast {
 		return
 	}
-	if is_shared || tc.a.has_vsh_source || tc.has_c_test_harness_main()
-		|| (tc.checker_fixture_mode && tc.errors.len > 0) {
+	if is_shared || tc.a.has_vsh_source || tc.has_c_test_harness_main() {
 		return
 	}
 	// A source file without an explicit `module` declaration belongs to `main`.
