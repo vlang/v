@@ -4061,7 +4061,19 @@ fn (tc &TypeChecker) fn_types_match_ignoring_module_qualification(expected FnTyp
 			return false
 		}
 	}
-	return tc.fn_return_compatible(actual.return_type, expected.return_type)
+	return tc.fn_signature_return_compatible(actual.return_type, expected.return_type)
+}
+
+fn (tc &TypeChecker) fn_signature_return_compatible(actual Type, expected Type) bool {
+	if actual is ResultType && expected is ResultType
+		&& actual.base_type.name() != expected.base_type.name() {
+		return false
+	}
+	if actual is OptionType && expected is OptionType
+		&& actual.base_type.name() != expected.base_type.name() {
+		return false
+	}
+	return tc.fn_return_compatible(actual, expected)
 }
 
 fn (tc &TypeChecker) fn_callback_adapter_compatible(actual Type, expected Type) bool {
