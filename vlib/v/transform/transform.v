@@ -20923,8 +20923,14 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	// the checker sidecar holds its canonical identity. Normalize that semantic
 	// name so a real qualified alias with the same spelling cannot win first.
 	checker_target := t.raw_checker_node_type(id)
+	// Expected-type propagation can replace an explicit alias cast's checker type
+	// with the surrounding sum type. Keep the named variant as the cast target;
+	// the caller that requested the sum will wrap the converted alias value.
+	checker_target_is_sum_context := checker_target.len > 0 && checker_target != node.value
+		&& t.is_sum_type_name(checker_target)
+		&& t.sum_target_accepts_variant_type(checker_target, node.value)
 	target_type := t.normalize_type_alias(if node.value in primitive_cast_type_names
-		|| node.value in ['voidptr', 'byteptr', 'charptr'] {
+		|| node.value in ['voidptr', 'byteptr', 'charptr'] || checker_target_is_sum_context {
 		node.value
 	} else if checker_target.len > 0 {
 		checker_target
