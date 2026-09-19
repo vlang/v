@@ -3297,8 +3297,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				}
 			}
 			if !(receiver.kind == .ident && receiver.value == 'C') {
-				receiver_name :=
-					resolve_type_name_for_method(unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id)))
+				receiver_name := resolve_type_name_for_method(unwrap_pointer(tc.resolve_type(receiver_id)))
 				method_name := '${receiver_name}.${callee.value}'
 				if method_name in tc.source_no_body_fns && !tc.v_source_fn_has_body(method_name) {
 					name_pos := tc.method_call_name_pos(node, callee)
