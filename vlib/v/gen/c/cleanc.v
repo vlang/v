@@ -13608,6 +13608,24 @@ fn (g &FlatGen) const_primary_name(name string) string {
 	return name
 }
 
+fn (g &FlatGen) current_module_const_ref_name(name string) ?string {
+	if name.len == 0 || name.contains('.') {
+		return none
+	}
+	key := g.const_storage_name(g.tc.cur_module, name)
+	if key !in g.const_vals {
+		return none
+	}
+	if key == name {
+		mod := g.const_modules[key] or { '' }
+		if mod != g.tc.cur_module && mod != 'builtin'
+			&& !(g.tc.cur_module in ['', 'main', 'builtin'] && mod in ['', 'main', 'builtin']) {
+			return none
+		}
+	}
+	return g.const_primary_name(key)
+}
+
 // is_const_alias_name reports whether is const alias name applies in c.
 fn (g &FlatGen) is_const_alias_name(name string) bool {
 	return g.const_primary_name(name) != name
@@ -15102,12 +15120,21 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				false
 			}
-			global_name := if !is_local && !is_current_param && !g.local_shadows_global(node.value) {
+			current_const_name := if !is_local && !is_current_param
+				&& !g.local_shadows_global(node.value) {
+				g.current_module_const_ref_name(node.value) or { '' }
+			} else {
+				''
+			}
+			global_name := if !is_local && !is_current_param && current_const_name.len == 0
+				&& !g.local_shadows_global(node.value) {
 				g.global_name_for_ident(node.value) or { '' }
 			} else {
 				''
 			}
-			const_name := if !is_local && global_name.len == 0 {
+			const_name := if current_const_name.len > 0 {
+				current_const_name
+			} else if !is_local && global_name.len == 0 {
 				g.const_ref_name(node.value)
 			} else {
 				''
