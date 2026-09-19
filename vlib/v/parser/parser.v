@@ -14885,14 +14885,17 @@ fn (mut p Parser) parse_type_name() string {
 			}
 			return 'thread'
 		}
-		// qualified: mod.Type
-		if p.tok == .dot {
+		// qualified: mod.Type or invalid full module paths such as mod.submod.Type.
+		// Preserve every segment so the checker can point at the complete module qualifier.
+		for p.tok == .dot {
 			p.next()
 			if p.tok == .name {
 				if p.lit != 'typ' {
 					name += '.' + p.lit
 				}
 				p.next()
+			} else {
+				break
 			}
 		}
 		// generic: Type[T, U]

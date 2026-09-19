@@ -12926,6 +12926,9 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, n
 			return
 		}
 	}
+	if should_check_named_type(clean) && tc.record_invalid_type_module_qualifier(clean, node_id) {
+		return
+	}
 	if should_check_named_type(clean) && !tc.type_name_known(clean) {
 		if is_bare_generic_param(clean) && tc.unmentioned_generic_type_was_reported(clean, node_id) {
 			return
@@ -13114,6 +13117,9 @@ fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeI
 	if !should_diagnose && !report_import_scope_error {
 		return
 	}
+	if should_diagnose && tc.record_invalid_type_module_qualifier(name, node_id) {
+		return
+	}
 	pos := tc.type_diagnostic_pos(node_id, name)
 	if tc.unknown_type_already_reported_on_line(name, pos) {
 		return
@@ -13126,6 +13132,48 @@ fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeI
 	if report_import_scope_error {
 		tc.record_error_unfiltered(.unknown_type, msg, node_id)
 	}
+}
+
+fn (mut tc TypeChecker) record_invalid_type_module_qualifier(name string, node_id flat.NodeId) bool {
+	module_name := tc.unknown_type_module_qualifier(name) or { return false }
+	mut msg := 'unknown module `${module_name}`'
+	if suggested_alias := tc.import_alias_for_module_path(module_name) {
+		msg += '; did you mean `${suggested_alias}`?'
+	}
+	tc.record_error_at(.unknown_type, msg, node_id,
+		tc.qualified_module_diagnostic_pos(node_id, module_name))
+	return true
+}
+
+fn (tc &TypeChecker) unknown_type_module_qualifier(name string) ?string {
+	if !name.contains('.') || name.starts_with('C.') || name.starts_with('JS.') {
+		return none
+	}
+	module_name := name.all_before_last('.')
+	if module_name == tc.cur_module || tc.current_file_import_path_for_alias(module_name) != none {
+		return none
+	}
+	return module_name
+}
+
+fn (tc &TypeChecker) import_alias_for_module_path(module_path string) ?string {
+	prefix := '${tc.cur_file}\x00'
+	for key, path in tc.file_import_alias_paths {
+		if path == module_path && key.starts_with(prefix) {
+			return key[prefix.len..]
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) qualified_module_diagnostic_pos(node_id flat.NodeId, module_name string) token.Pos {
+	if int(node_id) < 0 || int(node_id) >= tc.a.nodes.len {
+		return token.Pos{}
+	}
+	node := tc.a.nodes[int(node_id)]
+	file := tc.a.source_files[node.pos.id] or { return node.pos }
+	source := tc.source_texts_by_file[file.name] or { return node.pos }
+	return closest_text_span(source, module_name, node.pos.offset, node.pos.id) or { node.pos }
 }
 
 fn (tc &TypeChecker) unknown_type_already_reported_on_line(name string, pos token.Pos) bool {
