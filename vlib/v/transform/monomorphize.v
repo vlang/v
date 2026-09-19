@@ -8790,6 +8790,12 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		return ''
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .string_literal
+		&& !(node.children_count == 1 && node.value in ['__v3_comptime_zero', '__v3_comptime_new']) {
+		// Raw and JavaScript string literals keep their quote mode in `typ` as
+		// parser metadata. Generic inference still sees their semantic V type.
+		return 'string'
+	}
 	if node.kind == .field_init && node.typ.all_after_last('.').starts_with('AnonStruct_') {
 		return t.normalize_type_in_module(node.typ, t.node_module_or(int(id), t.cur_module))
 	}
