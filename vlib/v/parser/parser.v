@@ -871,7 +871,8 @@ fn (mut p Parser) check(expected token.Token) {
 			&& it.pos.offset in [p.tok_pos, p.s.src.len]) {
 			return
 		}
-		p.record_diagnostic('unexpected eof, expecting `${expected}`', p.tok_pos)
+		pos := if expected == .rcbr { p.s.src.len } else { p.tok_pos }
+		p.record_diagnostic('unexpected eof, expecting `${expected}`', pos)
 	}
 }
 
