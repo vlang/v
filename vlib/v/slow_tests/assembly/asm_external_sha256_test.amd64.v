@@ -41,3 +41,49 @@ fn test_external_sha256_block() {
 		assert state == expected
 	}
 }
+
+// On Win64, `rdi` is callee-saved (it is an argument register only on System V), so
+// the fixture must return it untouched even though it uses it internally.
+fn win64_rdi_after_sha256_block(state &u32, block &u8) u64 {
+	mut rdi_after := u64(0)
+	// The raw call only links on Win64 (Mach-O prefixes C symbols with `_`), and the
+	// argument registers below are the Win64 ones.
+	$if windows && amd64 {
+		mut state_reg := voidptr(state)
+		mut block_reg := voidptr(block)
+		asm amd64 raw {
+			"movq %%rsp, %%rbx\n\t"
+			"subq $32, %%rsp\n\t"
+			"andq $-16, %%rsp\n\t"
+			"movabsq $0x5a5a5a5a5a5a5a5a, %%rdi\n\t"
+			"call v_sha256_block\n\t"
+			"movq %%rbx, %%rsp\n\t"
+			"movq %%rdi, %[out]"
+			; [out] "=r" (rdi_after)
+			  [state_reg] "+c" (state_reg)
+			  [block_reg] "+d" (block_reg)
+			;
+			; rax
+			  rbx
+			  rdi
+			  rsi
+			  r8
+			  r9
+			  r10
+			  r11
+			  memory
+			  cc
+		}
+	}
+	return rdi_after
+}
+
+fn test_external_sha256_block_preserves_rdi_on_win64() {
+	$if windows && amd64 {
+		mut state := [8]u32{}
+		mut block := [64]u8{}
+		unsafe {
+			assert win64_rdi_after_sha256_block(&state[0], &block[0]) == u64(0x5a5a5a5a5a5a5a5a)
+		}
+	}
+}

@@ -17,6 +17,10 @@ v_sha256_block:
 	pushq %r13
 	pushq %r14
 	pushq %r15
+#ifdef _WIN64
+	// %rdi is callee-saved on Win64; the schedule index and state pointer live in it below.
+	pushq %rdi
+#endif
 	subq $272, %rsp
 	movq STATE_PTR, 256(%rsp)
 
@@ -219,6 +223,9 @@ v_sha256_block:
 	movl %r11d, 28(%rdi)
 
 	addq $272, %rsp
+#ifdef _WIN64
+	popq %rdi
+#endif
 	popq %r15
 	popq %r14
 	popq %r13
