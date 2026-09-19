@@ -169,6 +169,13 @@ pub mut:
 	diagnostics                []Diagnostic
 }
 
+struct ScriptModeState {
+mut:
+	start       int = -1
+	end         int = -1
+	has_main_fn bool
+}
+
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
 // without retaining successively doubled backing arrays during transform.
 pub fn (mut p Parser) reserve_selfhost_ast() {
@@ -418,10 +425,8 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.next()
 
 	mut ids := []flat.NodeId{}
-	mut script_start := -1
-	mut script_start_end := -1
+	mut script_mode := ScriptModeState{}
 	mut malformed_const_line_end := -1
-	mut has_main_fn := false
 	for p.tok != .eof && !p.diagnostic_limit_reached {
 		if p.tok == .semicolon {
 			p.next()
@@ -471,36 +476,11 @@ pub fn (mut p Parser) parse_into(path string) {
 			continue
 		}
 		if int(id) >= 0 {
-			node := p.a.node(id)
-			is_definition := node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .enum_decl,
-				.interface_decl, .type_decl, .const_decl, .global_decl]
-			is_script_statement := node.kind !in [.empty, .import_decl, .module_decl, .directive,
-				.comptime_if, .asm_stmt]
-				&& !is_definition && !is_malformed_const
 			if p.cur_module !in ['', 'main'] {
 				ids << id
 				continue
 			}
-			if is_definition {
-				if script_start >= 0 {
-					p.record_notice_span('script mode started here', script_start, script_start_end)
-					def_start, def_end := p.script_definition_diagnostic_span(node, stmt_start,
-						stmt_end)
-					p.record_diagnostic_span('all definitions must occur before code in script mode',
-						def_start, def_end)
-				}
-				if node.kind == .fn_decl && node.value == 'main' {
-					has_main_fn = true
-				}
-			} else if is_script_statement {
-				if has_main_fn {
-					p.record_diagnostic_span('function `main` is already defined, put your script statements inside it',
-						stmt_start, stmt_end)
-				} else if script_start < 0 {
-					script_start = stmt_start
-					script_start_end = stmt_end
-				}
-			}
+			p.track_script_mode(id, stmt_start, stmt_end, is_malformed_const, mut script_mode)
 			ids << id
 		}
 	}
@@ -525,6 +505,48 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.collect_formatter_comments(file, stable_src)
 	}
 	p.collect_scanner_diagnostics()
+}
+
+fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback_end int, ignore_statement bool, mut state ScriptModeState) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.node(id)
+	if node.kind == .block {
+		for i in 0 .. node.children_count {
+			child_id := p.a.child(&node, i)
+			child := p.a.node(child_id)
+			child_start := if child.pos.is_valid() { int(child.pos.offset) } else { fallback_start }
+			child_end := if child.pos.is_valid() { int(child.pos.end) } else { fallback_end }
+			p.track_script_mode(child_id, child_start, child_end, false, mut state)
+		}
+		return
+	}
+	is_definition := node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .enum_decl, .interface_decl,
+		.type_decl, .const_decl, .global_decl]
+	is_script_statement := node.kind !in [.empty, .import_decl, .module_decl, .directive, .comptime_if,
+		.asm_stmt]
+		&& !is_definition && !ignore_statement
+	if is_definition {
+		if state.start >= 0 {
+			p.record_notice_span('script mode started here', state.start, state.end)
+			def_start, def_end := p.script_definition_diagnostic_span(node, fallback_start,
+				fallback_end)
+			p.record_diagnostic_span('all definitions must occur before code in script mode',
+				def_start, def_end)
+		}
+		if node.kind == .fn_decl && node.value == 'main' {
+			state.has_main_fn = true
+		}
+	} else if is_script_statement {
+		if state.has_main_fn {
+			p.record_diagnostic_span('function `main` is already defined, put your script statements inside it',
+				fallback_start, fallback_end)
+		} else if state.start < 0 {
+			state.start = fallback_start
+			state.end = fallback_end
+		}
+	}
 }
 
 fn (p &Parser) script_definition_diagnostic_span(node flat.Node, fallback_start int, fallback_end int) (int, int) {
