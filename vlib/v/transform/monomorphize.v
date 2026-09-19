@@ -5905,7 +5905,8 @@ fn (t &Transformer) call_is_selector_form(node flat.Node) bool {
 	if callee.kind == .index && callee.children_count > 0 {
 		callee = t.a.nodes[int(t.a.child(&callee, 0))]
 	}
-	return callee.kind == .selector
+	return callee.kind == .selector && callee.children_count > 0
+		&& int(t.a.child(&callee, 0)) >= 0
 }
 
 fn (mut t Transformer) rewrite_generic_method_call(id flat.NodeId, node flat.Node, decl GenericFnDecl, args []string) {
@@ -8811,6 +8812,20 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 				return inner
 			}
 			return '&${inner}'
+		}
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base_id := t.a.child(&node, 0)
+		base_type := t.generic_call_arg_type_for_inference(base_id)
+		if base_type.len > 0 {
+			lookup_type := t.trim_pointer_type(t.normalize_type_alias(base_type))
+			if field_type := t.lookup_struct_field_type(lookup_type, node.value) {
+				if generic_inference_arg_type_usable(field_type)
+					&& !t.generic_arg_is_unresolved(field_type) {
+					return t.generic_inference_argument_type(field_type, t.node_module_or(int(id),
+						t.cur_module))
+				}
+			}
 		}
 	}
 	if node.kind == .call {
