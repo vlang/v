@@ -310,7 +310,7 @@ fn (tc &TypeChecker) current_file_uses_nested_vlib_module_path() bool {
 		return false
 	}
 	dir := relative.all_before_last('/')
-	return dir.contains('/')
+	return dir.contains('/') && tc.cur_module == dir.all_after_last('/')
 }
 
 fn (tc &TypeChecker) imported_module_prefix(id flat.NodeId, name string) ?string {
