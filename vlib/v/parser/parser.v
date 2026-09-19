@@ -3482,6 +3482,13 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 		}
 		p.check(.rcbr)
 	}
+	if p.tok !in [.semicolon, .eof, .key_import] {
+		p.record_diagnostic_span('cannot import multiple modules at a time', p.tok_pos,
+			p.tok_end)
+		for p.tok !in [.semicolon, .eof] {
+			p.next()
+		}
+	}
 	if p.tok == .semicolon {
 		p.next()
 	}
