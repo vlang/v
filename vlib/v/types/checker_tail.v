@@ -1805,12 +1805,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		}
 		if raw_child_type is OptionType && expected !is OptionType && !is_ierror_type(expected) {
 			tc.check_node(child_id)
-			expected_payload_name := if expected is ResultType {
-				expected.base_type.name()
-			} else {
-				expected.name()
-			}
-			tc.record_error_at(.return_mismatch, 'cannot return `?${raw_child_type.base_type.name()}` as `${expected_payload_name}`; cannot use `?${raw_child_type.base_type.name()}` as type `${expected.name()}` in return argument', child_id, tc.option_marker_payload_pos(child))
+			tc.record_error_at(.return_mismatch, 'cannot use `?${raw_child_type.base_type.name()}` as type `${expected.name()}` in return argument', child_id, tc.option_marker_payload_pos(child))
 			return
 		}
 	}
@@ -1827,7 +1822,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			if tc.should_diagnose(id) {
 				actual := tc.resolve_type(child_id)
 				actual_name := tc.diagnostic_expr_type_name(child_id, actual)
-				tc.record_error_at(.return_mismatch, 'cannot return `${bad_type}` as `${expected_name}`; cannot use `${actual_name}` as type `${expected_name}` in return argument', child_id, tc.a.node(child_id).pos)
+				tc.record_error_at(.return_mismatch, 'cannot use `${actual_name}` as type `${expected_name}` in return argument', child_id, tc.a.node(child_id).pos)
 			} else {
 				tc.record_invalid_ierror_return_error(id, 'cannot return `${bad_type}` as `${expected_name}`')
 			}
@@ -2081,18 +2076,14 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			return
 		}
 		child_node := tc.a.node(child_id)
-		mut actual_name := if child_node.kind == .float_literal {
-			'f64'
-		} else {
-			tc.diagnostic_expr_type_name(child_id, diagnostic_actual)
-		}
+		mut actual_name := tc.diagnostic_expr_type_name(child_id, diagnostic_actual)
 		if child_node.kind == .struct_init {
 			if inferred := tc.infer_generic_struct_init_type(child_node) {
 				actual_name = inferred.name()
 			}
 		}
 		expected_name := call_argument_type_name(expected)
-		tc.record_error_at(.return_mismatch, 'cannot return `${actual_name}` as `${expected_name}`; cannot use `${actual_name}` as type `${expected_name}` in return argument', child_id, tc.a.node(child_id).pos)
+		tc.record_error_at(.return_mismatch, 'cannot use `${actual_name}` as type `${expected_name}` in return argument', child_id, tc.a.node(child_id).pos)
 		return
 	}
 	$if ownership ? {
