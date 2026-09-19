@@ -1700,6 +1700,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.node == b.node && b_is_duplicate_match_else && a_is_nonfinal_match_else {
 		return 1
 	}
+	a_is_empty_struct_init := a.msg.starts_with('`{}` can not be used for initialising empty structs')
+	b_is_empty_struct_init := b.msg.starts_with('`{}` can not be used for initialising empty structs')
+	a_is_empty_map_value := a.msg.starts_with('`map{  }` (no value) used as value')
+	b_is_empty_map_value := b.msg.starts_with('`map{  }` (no value) used as value')
+	if a.node == b.node && a_is_empty_struct_init && b_is_empty_map_value {
+		return -1
+	}
+	if a.node == b.node && b_is_empty_struct_init && a_is_empty_map_value {
+		return 1
+	}
 	a_match_range_order := match true {
 		a.msg.starts_with('the low and high parts of a range expression') { 1 }
 		a.msg.starts_with('the range type and the match condition type') { 2 }
