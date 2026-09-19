@@ -1,4 +1,4 @@
-type Expr = fn () int | fn (int) int
+type Expr = fn() int | fn(int) int
 
 fn id(n int) int {
 	return n
@@ -22,7 +22,7 @@ fn test_sumtype_with_fntype() {
 	}
 
 	match f {
-		fn (int) int {
+		fn(int) int {
 			ret := f(321)
 			println(ret)
 			assert ret == 321

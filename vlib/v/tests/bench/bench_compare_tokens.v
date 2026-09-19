@@ -35,34 +35,58 @@ fn from_string(name string) token.Kind {
 			match name[0] {
 				`a` {
 					match name[1] {
-						`s` { return .key_as }
-						else { return .unknown }
+						`s` {
+							return .key_as
+						}
+						else {
+							return .unknown
+						}
 					}
 				}
 				`f` {
 					match name[1] {
-						`n` { return .key_fn }
-						else { return .unknown }
+						`n` {
+							return .key_fn
+						}
+						else {
+							return .unknown
+						}
 					}
 				}
 				`g` {
 					match name[1] {
-						`o` { return .key_go }
-						else { return .unknown }
+						`o` {
+							return .key_go
+						}
+						else {
+							return .unknown
+						}
 					}
 				}
 				`i` {
 					match name[1] {
-						`f` { return .key_if }
-						`n` { return .key_in }
-						`s` { return .key_is }
-						else { return .unknown }
+						`f` {
+							return .key_if
+						}
+						`n` {
+							return .key_in
+						}
+						`s` {
+							return .key_is
+						}
+						else {
+							return .unknown
+						}
 					}
 				}
 				`o` {
 					match name[1] {
-						`r` { return .key_orelse }
-						else { return .unknown }
+						`r` {
+							return .key_orelse
+						}
+						else {
+							return .unknown
+						}
 					}
 				}
 				else {

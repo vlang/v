@@ -358,7 +358,7 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []i32, mut formats 
 			formats << 1
 		}
 		int {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				types << u32(Oid.t_int8)
 				num := conv.hton64(u64(data))
 				vals << &char(&num)
@@ -476,7 +476,7 @@ fn pg_type_from_v(typ int) !string {
 			'BOOLEAN'
 		}
 		orm.type_idx['int'] {
-			$if new_int ? && x64 {
+			$if new_int ?&& x64 {
 				'BIGINT'
 			} $else {
 				'INT'
@@ -736,7 +736,14 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 				return orm.Primitive(pg_parse_timestamp(str)!)
 			}
 			orm.enum_ {
-				return orm.Primitive(str.i64())
+				// V's ORM stores enums in a `BIGINT` column, but a native PostgreSQL
+				// enum type (`CREATE TYPE ... AS ENUM`) returns the label of the value
+				// instead. Pass such a label on unchanged, so that the ORM can match it
+				// against the names of the enum values.
+				if number := strconv.atoi64(str.trim_space()) {
+					return orm.Primitive(number)
+				}
+				return orm.Primitive(str)
 			}
 			else {}
 		}

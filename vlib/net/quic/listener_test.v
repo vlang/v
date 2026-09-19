@@ -58,26 +58,26 @@ fn listener_test_pem_to_der(pem string) []u8 {
 
 fn listener_test_transport_parameters() QuicTransportParameters {
 	return QuicTransportParameters{
-		max_idle_timeout: 30000
-		initial_max_data: 1 << 20
-		initial_max_stream_data_bidi_local: 1 << 16
+		max_idle_timeout:                    30000
+		initial_max_data:                    1 << 20
+		initial_max_stream_data_bidi_local:  1 << 16
 		initial_max_stream_data_bidi_remote: 1 << 16
-		initial_max_streams_bidi: 4
-		initial_max_streams_uni: 4
+		initial_max_streams_bidi:            4
+		initial_max_streams_uni:             4
 	}
 }
 
 fn listener_test_params(signing_key ecdsa.PrivateKey) QuicListenerParams {
 	return QuicListenerParams{
 		transport_parameters: listener_test_transport_parameters()
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
 			CertificateEntry{
 				cert_data: listener_test_pem_to_der(listener_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
-		retry_token_key: [u8(1), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+		signing_key:          signing_key
+		retry_token_key:      [u8(1), 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 	}
 }
 
@@ -85,12 +85,12 @@ fn listener_test_build_small_long_packet(typ LongPacketType, dcid []u8, scid []u
 	pn_length := 2
 	payload := [u8(frame_type_ping), 0, 0, 0]
 	header_fields := QuicLongHeader{
-		typ: typ
+		typ:     typ
 		version: quic_v1
-		dcid: dcid
-		scid: scid
-		token: []u8{}
-		length: u64(pn_length + payload.len + aead_tag_len)
+		dcid:    dcid
+		scid:    scid
+		token:   []u8{}
+		length:  u64(pn_length + payload.len + aead_tag_len)
 	}
 	mut header := encode_long_header(header_fields, 0, u8(pn_length - 1))!
 	header << [u8(pn >> 8), u8(pn)]
@@ -137,9 +137,9 @@ fn test_listener_always_retry_then_accepts_full_handshake() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -234,9 +234,9 @@ fn test_listener_retry_token_validates_at_realistic_nanosecond_scale() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -280,9 +280,9 @@ fn test_listener_direct_accept_without_retry() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -316,9 +316,9 @@ fn test_listener_discards_invalid_token_without_retrying() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -386,9 +386,9 @@ fn test_listener_retires_closed_connection() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -458,9 +458,9 @@ fn test_listener_deduplicates_retransmitted_new_attempt() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -505,9 +505,9 @@ fn test_listener_discards_undersized_initial_for_known_connection_only() {
 		always_retry: false
 	}
 	mut client, client_dg := dial(DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}, 0)!
 	mut client_hs := client.client_handshake()
@@ -559,9 +559,9 @@ fn test_listener_discards_packets_from_a_different_peer() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -649,7 +649,7 @@ fn test_listener_direct_accept_enforces_anti_amplification_limit() {
 	padded_cert << []u8{len: 8000, init: 0x00}
 	params := QuicListenerParams{
 		...listener_test_params(signing_key)
-		always_retry: false
+		always_retry:      false
 		certificate_chain: [
 			CertificateEntry{
 				cert_data: padded_cert
@@ -658,9 +658,9 @@ fn test_listener_direct_accept_enforces_anti_amplification_limit() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -711,9 +711,9 @@ fn test_pto_probe_respects_anti_amplification_limit() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -775,9 +775,9 @@ fn test_pto_probe_fires_with_positive_budget() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: listener_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: listener_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!

@@ -8,7 +8,8 @@ pub:
 
 pub fn strlen(s &u8) int {
 	mut i := 0
-	for ; s[i] != 0; i++ {}
+	for ; s[i] != 0; i++ {
+	}
 	return i
 }
 

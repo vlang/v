@@ -1,0 +1,73 @@
+name: Compiler process regressions
+
+on:
+  pull_request:
+    paths:
+      - 'vlib/v/cmdexec/**'
+      - 'vlib/v/util/vflags/**'
+      - 'cmd/v/**'
+      - 'vlib/v/driver/**'
+      - '.github/workflows/process_regressions_ci.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'vlib/v/cmdexec/**'
+      - 'vlib/v/util/vflags/**'
+      - 'cmd/v/**'
+      - 'vlib/v/driver/**'
+      - '.github/workflows/process_regressions_ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  process-regressions:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            build: make
+            v: ./v
+          - os: macos-14
+            build: make
+            v: ./v
+          - os: windows-2025
+            build: .\makev.bat -gcc
+            v: ./v.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      VFLAGS: -cc gcc
+      VJOBS: '2'
+      V_C_ERROR_BUG_REPORT_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build V with the system C compiler
+        id: build
+        run: ${{ matrix.build }}
+      - name: Check executable resolution
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v
+      - name: Check diagnostic replay
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler cmd/v/v3_fallback_diagnostics_test.v
+      - name: Check deadlines and inherited output pipes
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_timeout_test.v
+      - name: Check unbounded commands with inherited output pipes
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_unbounded_test.v
+      - name: Check existing compiler flag tokenization
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_test.v
+      - name: Check UTF-8 compiler flag tokenization
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_utf8_test.v
+      - name: Check adjacent quoted compiler flag fragments
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/util/vflags/vflags_quoted_parts_test.v
+      - name: Check implicit output preserves source files
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler vlib/v/driver/implicit_output_test.v

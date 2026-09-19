@@ -72,12 +72,12 @@ fn accept_test_pem_to_der(pem string) []u8 {
 
 fn accept_test_transport_parameters() QuicTransportParameters {
 	return QuicTransportParameters{
-		max_idle_timeout: 30000
-		initial_max_data: 1 << 20
-		initial_max_stream_data_bidi_local: 1 << 16
+		max_idle_timeout:                    30000
+		initial_max_data:                    1 << 20
+		initial_max_stream_data_bidi_local:  1 << 16
 		initial_max_stream_data_bidi_remote: 1 << 16
-		initial_max_streams_bidi: 4
-		initial_max_streams_uni: 4
+		initial_max_streams_bidi:            4
+		initial_max_streams_uni:             4
 	}
 }
 
@@ -100,9 +100,9 @@ fn test_dial_and_accept_full_handshake_and_stream_exchange() {
 	}
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: accept_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        accept_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: accept_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -113,13 +113,13 @@ fn test_dial_and_accept_full_handshake_and_stream_exchange() {
 
 	accept_params := AcceptParams{
 		transport_parameters: accept_test_transport_parameters()
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
 			CertificateEntry{
 				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
+		signing_key:          signing_key
 	}
 	mut server, mut server_result := accept(client_dg.bytes, accept_params, 0)!
 	defer {
@@ -226,9 +226,9 @@ fn test_server_retransmits_lost_handshake_crypto_on_pto() {
 		signing_key.free()
 	}
 	mut client, client_dg := dial(DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: accept_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        accept_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: accept_test_transport_parameters()
 	}, 0) or { panic('dial failed: ${err}') }
 	defer {
@@ -236,13 +236,13 @@ fn test_server_retransmits_lost_handshake_crypto_on_pto() {
 	}
 	mut server, server_result := accept(client_dg.bytes, AcceptParams{
 		transport_parameters: accept_test_transport_parameters()
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
 			CertificateEntry{
 				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
+		signing_key:          signing_key
 	}, 0) or { panic('accept failed: ${err}') }
 	defer {
 		server.free()
@@ -336,9 +336,9 @@ fn test_server_retransmits_lost_initial_crypto_on_pto() {
 		signing_key.free()
 	}
 	mut client, client_dg := dial(DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: accept_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        accept_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: accept_test_transport_parameters()
 	}, 0)!
 	defer {
@@ -346,13 +346,13 @@ fn test_server_retransmits_lost_initial_crypto_on_pto() {
 	}
 	mut server, server_result := accept(client_dg.bytes, AcceptParams{
 		transport_parameters: accept_test_transport_parameters()
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
 			CertificateEntry{
 				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
+		signing_key:          signing_key
 	}, 0)!
 	defer {
 		server.free()
@@ -400,9 +400,9 @@ fn test_server_retransmits_lost_initial_crypto_on_pto() {
 // every other rejection reason accept() might have.
 fn test_accept_rejects_undersized_initial_datagram() {
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: accept_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        accept_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: accept_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -418,13 +418,13 @@ fn test_accept_rejects_undersized_initial_datagram() {
 	}
 	accept_params := AcceptParams{
 		transport_parameters: accept_test_transport_parameters()
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
 			CertificateEntry{
 				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
+		signing_key:          signing_key
 	}
 	truncated := client_dg.bytes[..min_initial_datagram_size - 1].clone()
 	accept(truncated, accept_params, 0) or {
@@ -436,9 +436,9 @@ fn test_accept_rejects_undersized_initial_datagram() {
 
 fn test_accept_after_retry_starts_address_validated() {
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: accept_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        accept_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: accept_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
@@ -451,16 +451,16 @@ fn test_accept_after_retry_starts_address_validated() {
 		signing_key.free()
 	}
 	mut server, _ := accept(client_dg.bytes, AcceptParams{
-		transport_parameters: accept_test_transport_parameters()
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		transport_parameters:       accept_test_transport_parameters()
+		alpn_protocols:             ['h3']
+		certificate_chain:          [
 			CertificateEntry{
 				cert_data: accept_test_pem_to_der(accept_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
+		signing_key:                signing_key
 		retry_source_connection_id: [u8(1), 2, 3, 4]
-		original_dcid_override: client.original_dcid.clone()
+		original_dcid_override:     client.original_dcid.clone()
 	}, 0)!
 	defer {
 		if mut sh := server.server_handshake {

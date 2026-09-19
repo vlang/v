@@ -206,7 +206,8 @@ fn test_server_tls_close_waits_for_active_request() {
 	}()
 	mut start_failure := ''
 	select {
-		_ := <-started {}
+		_ := <-started {
+		}
 		msg := <-done {
 			start_failure = 'client finished before handler started: ${msg}'
 		}
@@ -318,11 +319,11 @@ fn test_server_tls_close_under_handshake_flood() {
 		// stay stuck long enough to keep the worker busy and form the wedge,
 		// rather than time out in milliseconds. The accept loop still polls at the
 		// 100ms tls_accept_poll_timeout cap regardless.
-		accept_timeout:       8 * time.second
-		worker_num:           1
-		pool_channel_slots:   1
-		handler:              EchoHandler{}
-		show_startup_message: false
+		accept_timeout:         8 * time.second
+		worker_num:             1
+		pool_channel_slots:     1
+		handler:                EchoHandler{}
+		show_startup_message:   false
 	}
 	t := spawn srv.listen_and_serve()
 	srv.wait_till_running() or {
@@ -666,12 +667,12 @@ fn test_server_tls_parallel_handshakes() {
 	for i in 0 .. live {
 		spawn fn [results, port, i] () {
 			resp := http.fetch(
-				url:          'https://127.0.0.1:${port}/live${i}'
-				enable_http2: false
-				validate:     false
+				url:                      'https://127.0.0.1:${port}/live${i}'
+				enable_http2:             false
+				validate:                 false
 				// One attempt, no retries: a regressed handshake should surface as a
 				// single timed-out request, not retry-amplify the teardown.
-				max_retries: 1
+				max_retries:              1
 				// Force a fresh TLS connection per live client. Without this, if one
 				// client finishes and returns its keep-alive connection to the shared
 				// pool before the other checks one out, the second reuses it and the
@@ -781,4 +782,71 @@ fn test_server_tls_h2_negotiation() {
 	}
 	assert resp_h1.version() == .v1_1
 	assert resp_h1.status_code == 200
+}
+
+struct TlsRemoteAddrHandler {}
+
+fn (mut h TlsRemoteAddrHandler) handle(req http.Request) http.Response {
+	return http.Response{
+		status_code: 200
+		body:        '${req.remote_addr}|${req.remote_ip()}|${req.header.get_custom('Remote-Addr') or { '<none>' }}'
+	}
+}
+
+// test_server_tls_sets_remote_addr covers the TLS listener's own copy of the
+// remote-address plumbing. It reads the peer back from the accepted socket
+// rather than from mbedtls' SSLConn.ip, which is only filled in for IPv4
+// peers and carries no port, so unlike that field it also works over IPv6.
+fn test_server_tls_sets_remote_addr() {
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         time.second
+		handler:                TlsRemoteAddrHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	defer {
+		srv.close()
+		t.wait()
+	}
+	time.sleep(50 * time.millisecond)
+
+	mut spoofed := http.new_header()
+	spoofed.add_custom('remote-addr', '6.6.6.6') or {
+		assert false, 'add_custom: ${err}'
+		return
+	}
+	resp := http.fetch(
+		url:                      'https://127.0.0.1:${port}/whoami'
+		validate:                 false
+		header:                   spoofed
+		disable_connection_reuse: true
+	) or {
+		assert false, 'fetch failed: ${err}'
+		return
+	}
+	assert resp.status_code == 200
+	parts := resp.body.split('|')
+	assert parts.len == 3
+	assert parts[0].starts_with('127.0.0.1:'), 'tls remote_addr: ${parts[0]}'
+	assert parts[0].all_after('127.0.0.1:').int() > 0
+	assert parts[1] == '127.0.0.1'
+	assert parts[2] == '127.0.0.1'
 }

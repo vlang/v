@@ -1,1252 +1,746 @@
-// Copyright (c) 2019-2024 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
 module c
 
-import v.ast
-import v.token
-import v.util
+import v.flat
+import v.types
 
-struct ForCOverflowGuard {
-	cname      string
-	limit_expr string
+fn (mut g FlatGen) take_pending_loop_label() string {
+	label := g.pending_loop_label
+	g.pending_loop_label = ''
+	return label
 }
 
-fn for_in_val_type(base_type ast.Type, is_mut bool, is_ref bool) ast.Type {
-	if base_type == 0 {
-		return base_type
-	}
-	if is_mut || is_ref {
-		if base_type.has_flag(.option) {
-			return base_type.set_flag(.option_mut_param_t)
-		}
-		if !base_type.is_any_kind_of_pointer() {
-			return base_type.ref()
-		}
-	}
-	return base_type
-}
-
-fn (mut g Gen) write_for_in_array_value_decl(node ast.ForInStmt, styp string, val_sym_ ast.TypeSymbol) {
-	mut val_sym := val_sym_
-	if mut val_sym.info is ast.FnType {
-		g.writeln('${g.fn_ptr_decl_str(val_sym.info, c_name(node.val_var))};')
-		return
-	}
-	if !node.val_type.has_flag(.option) && val_sym.kind == .array_fixed && !node.val_is_mut {
-		g.writeln('${styp} ${c_name(node.val_var)};')
-		return
-	}
-	needs_memcpy := !node.val_type.is_ptr() && !node.val_type.has_flag(.option)
-		&& g.table.final_sym(node.val_type).kind == .array_fixed
-	if needs_memcpy {
-		g.writeln('${styp} ${c_name(node.val_var)} = {0};')
-	} else {
-		g.writeln('${styp} ${c_name(node.val_var)};')
-	}
-}
-
-fn (mut g Gen) write_for_in_array_value_assign(node ast.ForInStmt, styp string, val_sym_ ast.TypeSymbol, cond_var string, op_field string, idx string, cond_is_option bool, opt_expr string) {
-	mut val_sym := val_sym_
-	if mut val_sym.info is ast.FnType {
-		g.writeln('\t${c_name(node.val_var)} = ((voidptr*)${cond_var}${op_field}data)[${idx}];')
-		return
-	}
-	if !node.val_type.has_flag(.option) && val_sym.kind == .array_fixed && !node.val_is_mut {
-		right := '((${styp}*)${cond_var}${op_field}data)[${idx}]'
-		g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${right}, sizeof(${styp}));')
-		return
-	}
-	needs_memcpy := !node.val_type.is_ptr() && !node.val_type.has_flag(.option)
-		&& g.table.final_sym(node.val_type).kind == .array_fixed
-	right := if cond_is_option {
-		'((${styp}*)${opt_expr}${op_field}data)[${idx}]'
-	} else if node.val_is_mut || node.val_is_ref {
-		if g.table.value_type(node.cond_type).is_ptr() {
-			'((${styp}*)${cond_var}${op_field}data)[${idx}]'
-		} else {
-			'((${styp})${cond_var}${op_field}data) + ${idx}'
-		}
-	} else if val_sym.kind == .array_fixed {
-		'((${styp}*)${cond_var}${op_field}data)[${idx}]'
-	} else {
-		'((${styp}*)${cond_var}${op_field}data)[${idx}]'
-	}
-	if !needs_memcpy {
-		g.writeln('\t${c_name(node.val_var)} = ${right};')
-	} else {
-		g.writeln('\tmemcpy(${c_name(node.val_var)}, ${right}, sizeof(${styp}));')
-	}
-}
-
-// A labeled continue jumps back to this gate instead of forward over later
-// declarations in the loop body, which avoids gcc -Wjump-misses-init.
-fn (mut g Gen) write_labeled_continue_gate(label string, prefix string) {
+fn (mut g FlatGen) push_loop_label_depth(label string, defer_start int) LoopLabelState {
 	if label.len == 0 {
+		return LoopLabelState{}
+	}
+	mut state := LoopLabelState{
+		label: label
+	}
+	if prev_depth := g.loop_label_depths[label] {
+		state.had_prev = true
+		state.prev_depth = prev_depth
+	}
+	if prev_defer_start := g.loop_label_defer_starts[label] {
+		state.had_prev_defer_start = true
+		state.prev_defer_start = prev_defer_start
+	}
+	g.loop_label_depths[label] = g.loop_depth + 1
+	g.loop_label_defer_starts[label] = defer_start
+	return state
+}
+
+fn (mut g FlatGen) pop_loop_label_depth(state LoopLabelState) {
+	if state.label.len == 0 {
 		return
 	}
-	continue_flag := g.user_goto_label_control_name(label, 'continue_flag')
-	continue_entry_label := g.user_goto_label_control_name(label, 'continue_entry')
-	continue_label := g.user_goto_label_control_name(label, 'continue')
-	g.writeln('${prefix}bool ${continue_flag} = false;')
-	g.writeln('${prefix}${continue_entry_label}: {}')
-	g.writeln('${prefix}if (${continue_flag}) goto ${continue_label};')
-}
-
-fn for_c_ident_name(expr ast.Expr) string {
-	return match expr {
-		ast.Ident {
-			expr.name
-		}
-		ast.ParExpr {
-			for_c_ident_name(expr.expr)
-		}
-		else {
-			''
-		}
+	if state.had_prev {
+		g.loop_label_depths[state.label] = state.prev_depth
+	} else {
+		g.loop_label_depths.delete(state.label)
+	}
+	if state.had_prev_defer_start {
+		g.loop_label_defer_starts[state.label] = state.prev_defer_start
+	} else {
+		g.loop_label_defer_starts.delete(state.label)
 	}
 }
 
-fn (mut g Gen) for_c_unsigned_overflow_guard(node ast.ForCStmt) ?ForCOverflowGuard {
-	if node.is_multi || !node.has_cond || !node.has_inc {
-		return none
+fn (mut g FlatGen) user_goto_c_label(label string) string {
+	if label.starts_with('__for_post_') {
+		return g.cname(label)
 	}
-	if node.cond !is ast.InfixExpr {
-		return none
-	}
-	if node.inc !is ast.ExprStmt {
-		return none
-	}
-	cond := node.cond as ast.InfixExpr
-	inc := node.inc as ast.ExprStmt
-	if inc.expr !is ast.PostfixExpr {
-		return none
-	}
-	postfix := inc.expr as ast.PostfixExpr
-	postfix_var_name := for_c_ident_name(postfix.expr)
-	if postfix_var_name == '' {
-		return none
-	}
-	unaliased_typ := g.table.unaliased_type(g.unwrap_generic(postfix.typ))
-	if !unaliased_typ.is_unsigned() {
-		return none
-	}
-	cond_matches := match postfix.op {
-		.inc {
-			(cond.op == .le && for_c_ident_name(cond.left) == postfix_var_name)
-				|| (cond.op == .ge && for_c_ident_name(cond.right) == postfix_var_name)
-		}
-		.dec {
-			(cond.op == .ge && for_c_ident_name(cond.left) == postfix_var_name)
-				|| (cond.op == .le && for_c_ident_name(cond.right) == postfix_var_name)
-		}
-		else {
-			false
-		}
-	}
-
-	if !cond_matches {
-		return none
-	}
-	limit_expr := match postfix.op {
-		.inc { '(${g.styp(unaliased_typ)})-1' }
-		.dec { '(${g.styp(unaliased_typ)})0' }
-		else { return none }
-	}
-
-	return ForCOverflowGuard{
-		cname:      c_name(postfix_var_name)
-		limit_expr: limit_expr
-	}
-}
-
-fn (mut g Gen) write_for_c_inc_expr(node ast.ForCStmt) {
-	mut processed := false
-	if node.inc is ast.ExprStmt && node.inc.expr is ast.ConcatExpr {
-		for inc_expr_idx, inc_expr in node.inc.expr.vals {
-			g.expr(inc_expr)
-			if inc_expr_idx < node.inc.expr.vals.len - 1 {
-				g.write(', ')
-			}
-		}
-		processed = true
-	}
-	if !processed {
-		g.stmt(node.inc)
-	}
-}
-
-fn (g &Gen) for_c_init_local_closure_vars(node ast.ForCStmt) []ast.Var {
-	if !node.has_init || node.init !is ast.AssignStmt {
-		return []
-	}
-	init := node.init as ast.AssignStmt
-	if init.op != .decl_assign {
-		return []
-	}
-	mut vars := []ast.Var{}
-	for left in init.left {
-		if left is ast.Ident {
-			mut obj := if left.obj is ast.Var {
-				left.obj
-			} else {
-				ast.Var{}
-			}
-			if node.scope != unsafe { nil } {
-				if scope_var := node.scope.find_var(left.name) {
-					if scope_var.pos.pos == left.pos.pos {
-						obj = *scope_var
-					}
-				}
-			}
-			if g.local_closure_var_has_tracked_context(obj) {
-				vars << obj
+	for suffix in ['_continue', '_break'] {
+		if label.ends_with(suffix) {
+			base := label[..label.len - suffix.len]
+			if base_label := g.goto_label_c_names[base] {
+				return '${base_label}_${suffix}'
 			}
 		}
 	}
-	return vars
+	if c_label := g.goto_label_c_names[label] {
+		return c_label
+	}
+	c_label := '__v_user_goto_${g.goto_label_count}'
+	g.goto_label_count++
+	g.goto_label_c_names[label] = c_label
+	return c_label
 }
 
-fn (mut g Gen) local_var_needs_scope_autofree(var ast.Var) bool {
-	if !g.needs_scope_cleanup() || g.is_builtin_mod || var.name == '_' || var.is_arg || var.is_tmp
-		|| var.is_inherited || var.typ == 0 {
+fn (mut g FlatGen) labelled_continue_skip_drops_var(label string) string {
+	return '${g.user_goto_c_label(label)}__continue_flag'
+}
+
+fn (mut g FlatGen) loop_control_c_label(label string, is_continue bool) string {
+	suffix := if is_continue { '__continue' } else { '__break' }
+	return g.user_goto_c_label(label) + suffix
+}
+
+fn (mut g FlatGen) gen_labelled_continue_skip_drops_var(label string) {
+	if label.len > 0 {
+		g.writeln('bool ${g.labelled_continue_skip_drops_var(label)} = false;')
+	}
+}
+
+fn (mut g FlatGen) gen_loop_iteration_ownership_drops_for_label(label string) {
+	if label.len == 0 {
+		g.gen_loop_iteration_ownership_drops()
+		return
+	}
+	skip_drops := g.labelled_continue_skip_drops_var(label)
+	g.writeln('if (!${skip_drops}) {')
+	g.indent++
+	g.gen_loop_iteration_ownership_drops()
+	g.indent--
+	g.writeln('}')
+	g.writeln('${skip_drops} = false;')
+}
+
+fn (g &FlatGen) is_loop_continue_label(id flat.NodeId, label string) bool {
+	if label.len == 0 || int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
-	base_typ := var.typ.set_nr_muls(0).clear_option_and_result()
-	if g.type_has_unresolved_generic_parts(base_typ) {
-		return false
-	}
-	sym := g.table.sym(base_typ)
-	if sym.kind in [.array, .map, .string] || sym.has_method('free') || var.is_auto_heap {
+	node := g.a.nodes[int(id)]
+	return node.kind == .label_stmt && node.value == '${label}_continue'
+}
+
+fn (mut g FlatGen) gen_loop_body_node(id flat.NodeId, label string) bool {
+	if g.is_loop_continue_label(id, label) {
+		g.gen_loop_continue_label(label)
 		return true
 	}
-	return var.typ.is_ptr() && sym.name.after('.').len > 0 && sym.name.after('.')[0].is_capital()
-		&& g.pref.experimental
+	g.gen_node(id)
+	return false
 }
 
-fn (mut g Gen) for_c_init_autofree_vars(node ast.ForCStmt) []ast.Var {
-	if !node.has_init || node.init !is ast.AssignStmt {
-		return []
-	}
-	init := node.init as ast.AssignStmt
-	if init.op != .decl_assign {
-		return []
-	}
-	mut vars := []ast.Var{}
-	for left in init.left {
-		if left is ast.Ident {
-			mut obj := if left.obj is ast.Var {
-				left.obj
-			} else {
-				ast.Var{}
-			}
-			if node.scope != unsafe { nil } {
-				if scope_var := node.scope.find_var(left.name) {
-					if scope_var.pos.pos == left.pos.pos {
-						obj = *scope_var
-					}
-				}
-			}
-			if g.local_var_needs_scope_autofree(obj) {
-				vars << obj
-			}
+fn (mut g FlatGen) gen_loop_continue_label(label string) {
+	if label.len > 0 {
+		if g.tc.autofree_mode {
+			g.writeln('${g.loop_control_c_label(label, true)}: {}')
+		} else {
+			g.writeln('${g.loop_control_c_label(label, true)}: ;')
 		}
 	}
-	return vars
 }
 
-fn (mut g Gen) push_for_c_init_autofree_keep_vars(vars []ast.Var) int {
-	start := g.for_c_init_autofree_keep_vars.len
-	for var in vars {
-		g.for_c_init_autofree_keep_vars << var.name
-		g.for_c_init_autofree_cleanup_vars << var
-	}
-	return start
-}
+// gen_for emits for output for c.
+@[direct_array_access]
+fn (mut g FlatGen) gen_for(node flat.Node) {
+	g.push_scope()
+	defer_start := g.defers.len
+	label_state := g.push_loop_label_depth(g.take_pending_loop_label(), defer_start)
+	g.loop_defer_starts << defer_start
+	init_node := g.a.child_node(&node, 0)
+	cond_id := g.a.child(&node, 1)
+	cond_node := g.a.nodes[int(cond_id)]
+	post_node := g.a.child_node(&node, 2)
+	wrap_init := init_node.kind != .empty
 
-fn (mut g Gen) pop_for_c_init_autofree_keep_vars(start int) {
-	if g.for_c_init_autofree_keep_vars.len > start {
-		g.for_c_init_autofree_keep_vars = g.for_c_init_autofree_keep_vars[..start].clone()
-	}
-	if g.for_c_init_autofree_cleanup_vars.len > start {
-		g.for_c_init_autofree_cleanup_vars = g.for_c_init_autofree_cleanup_vars[..start].clone()
-	}
-}
-
-fn (mut g Gen) cleanup_for_c_init_autofree_vars(vars []ast.Var) {
-	for var in vars {
-		g.autofree_variable(var)
-	}
-	for g.autofree_scope_stmts.len > 0 {
-		g.write(g.autofree_scope_stmts.pop())
-	}
-}
-
-fn (mut g Gen) cleanup_for_c_init_autofree_vars_on_return(returned_names map[string]bool, selector_owner_names map[string]bool) {
-	for var in g.for_c_init_autofree_cleanup_vars {
-		if var.name in returned_names {
-			continue
-		}
-		if var.name in selector_owner_names {
-			continue
-		}
-		g.autofree_variable(var)
-	}
-	for g.autofree_scope_stmts.len > 0 {
-		g.write(g.autofree_scope_stmts.pop())
-	}
-}
-
-fn (mut g Gen) write_loop_scope_cleanup_after_defer(scope &ast.Scope, pos token.Pos, stmts []ast.Stmt,
-	ends_with_branch bool) {
-	if ends_with_branch || scope == unsafe { nil } {
-		return
-	}
-	if g.needs_scope_cleanup() && !g.is_builtin_mod {
-		g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false, -1)
-	}
-	if g.fn_decl != unsafe { nil } {
-		g.cleanup_local_closure_vars2(scope, scope.start_pos, scope.end_pos, pos.line_nr, false,
-			-1, stmts)
-	}
-}
-
-fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
-	g.loop_depth++
-	init_closure_vars := g.for_c_init_local_closure_vars(node)
-	init_autofree_vars := g.for_c_init_autofree_vars(node)
-	has_init_outer_cleanup := init_closure_vars.len > 0 || init_autofree_vars.len > 0
-	if node.is_multi {
-		g.is_vlines_enabled = false
-		g.inside_for_c_stmt = true
-		if node.label.len > 0 {
-			g.writeln('${g.user_goto_label_name(node.label)}:')
-		}
+	if wrap_init {
 		g.writeln('{')
 		g.indent++
-		if node.has_init {
-			g.stmt(node.init)
-			if node.init is ast.ExprStmt {
-				g.write('; ')
+		if init_node.kind == .block && init_node.value == 'for_init_expanded' {
+			for i in 0 .. init_node.children_count {
+				g.gen_node(g.a.child(init_node, i))
 			}
-		}
-		g.writeln('bool _is_first = true;')
-		g.writeln('while (true) {')
-		g.writeln('\tif (_is_first) {')
-		g.writeln('\t\t_is_first = false;')
-		g.writeln('\t} else {')
-		if node.has_inc {
-			g.indent++
-			g.stmt(node.inc)
-			g.writeln(';')
-			g.indent--
-		}
-		g.writeln('}')
-		if node.has_cond {
-			g.write('if (!(')
-			g.expr(node.cond)
-			g.writeln(')) break;')
-		}
-		g.is_vlines_enabled = true
-		g.inside_for_c_stmt = false
-		g.write_labeled_continue_gate(node.label, '')
-		if node.label.len > 0 {
-			g.writeln('{')
-		}
-		autofree_keep_start := g.push_for_c_init_autofree_keep_vars(init_autofree_vars)
-		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
-			node.pos.pos)
-		skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
-		ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
-		g.pop_skip_scope_cleanup(skip_cleanup_start)
-		if node.label.len > 0 {
-			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
-			g.writeln('}')
-			g.writeln('${g.user_goto_label_control_name(node.label, 'continue')}: {}')
 		} else {
-			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
+			g.gen_node(g.a.child(&node, 0))
 		}
-		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
-		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
-		g.writeln('}')
-		if has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
-		}
-		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
-		g.cleanup_for_c_init_autofree_vars(init_autofree_vars)
-		g.indent--
-		g.writeln('}')
-		if !has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
-		}
+	}
+
+	if init_node.kind == .empty && cond_node.kind == .empty && post_node.kind == .empty {
+		g.writeln('for (;;) {')
+	} else if init_node.kind == .empty && post_node.kind == .empty {
+		g.write('while (')
+		g.gen_expr(cond_id)
+		g.writeln(') {')
 	} else {
-		overflow_guard := g.for_c_unsigned_overflow_guard(node) or { ForCOverflowGuard{} }
-		has_overflow_guard := overflow_guard.cname.len > 0
-		overflow_guard_flag := if has_overflow_guard { g.new_tmp_var() } else { '' }
-		g.is_vlines_enabled = false
-		g.inside_for_c_stmt = true
-		needs_init_closure_scope := init_closure_vars.len > 0
-		needs_init_autofree_scope := init_autofree_vars.len > 0
-		has_outer_block := has_overflow_guard || needs_init_closure_scope
-			|| needs_init_autofree_scope
-		if has_outer_block {
-			g.writeln('{')
-			g.indent++
-		}
-		if needs_init_closure_scope || needs_init_autofree_scope {
-			g.stmt(node.init)
-		}
-		if has_overflow_guard {
-			g.writeln('bool ${overflow_guard_flag} = false;')
-		}
-		if node.label.len > 0 {
-			g.writeln('${g.user_goto_label_name(node.label)}:')
-		}
-		g.set_current_pos_as_last_stmt_pos()
-		g.skip_stmt_pos = true
-		g.write('for (')
-		if !node.has_init || needs_init_closure_scope || needs_init_autofree_scope {
-			g.write('; ')
-		} else {
-			g.stmt(node.init)
-			if node.init is ast.ExprStmt {
-				g.write('; ')
-			}
-			// Remove excess return and add space
-			if g.out.last_n(1) == '\n' {
-				g.go_back(1)
-				g.empty_line = false
-				g.write(' ')
-			}
-		}
-		if node.has_cond {
-			if has_overflow_guard {
-				g.write('!${overflow_guard_flag} && (')
-			}
-			g.expr(node.cond)
-			if has_overflow_guard {
-				g.write(')')
-			}
+		g.write('for (; ')
+		if cond_node.kind != .empty {
+			g.gen_expr(cond_id)
 		}
 		g.write('; ')
-		if node.has_inc {
-			if has_overflow_guard {
-				g.write('(${overflow_guard.cname} == ${overflow_guard.limit_expr} ? (${overflow_guard_flag} = true, 0) : (')
-				g.write_for_c_inc_expr(node)
-				g.write('))')
-			} else {
-				g.write_for_c_inc_expr(node)
-			}
+		if post_node.kind != .empty {
+			g.gen_node_inline(g.a.child(&node, 2))
 		}
 		g.writeln(') {')
-		g.skip_stmt_pos = false
-		g.is_vlines_enabled = true
-		g.inside_for_c_stmt = false
-		g.write_labeled_continue_gate(node.label, '')
-		if node.label.len > 0 {
-			g.writeln('{')
-		}
-		autofree_keep_start := g.push_for_c_init_autofree_keep_vars(init_autofree_vars)
-		preserve_start := g.push_local_closure_cleanup_preserve_vars(init_closure_vars,
-			node.pos.pos)
-		skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
-		ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
-		g.pop_skip_scope_cleanup(skip_cleanup_start)
-		if node.label.len > 0 {
-			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
-			g.writeln('}')
-			g.writeln('${g.user_goto_label_control_name(node.label, 'continue')}: {}')
-		} else {
-			g.write_defer_stmts(node.scope, false, node.pos)
-			g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts,
-				ends_with_branch)
-		}
-		g.pop_local_closure_cleanup_preserve_vars(preserve_start)
-		g.pop_for_c_init_autofree_keep_vars(autofree_keep_start)
-		g.writeln('}')
-		if has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
-		}
-		g.cleanup_for_c_init_local_closure_vars(node, init_closure_vars)
-		g.cleanup_for_c_init_autofree_vars(init_autofree_vars)
-		if has_outer_block {
-			g.indent--
-			g.writeln('}')
-		}
-		if !has_init_outer_cleanup && node.label.len > 0 {
-			g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
-		}
+	}
+	g.indent++
+	g.gen_labelled_continue_skip_drops_var(label_state.label)
+	g.loop_depth++
+	mut emitted_continue_label := false
+	for i in 3 .. node.children_count {
+		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
+			|| emitted_continue_label
 	}
 	g.loop_depth--
-}
-
-fn (mut g Gen) for_stmt(node ast.ForStmt) {
-	g.loop_depth++
-	g.is_vlines_enabled = false
-	if node.label.len > 0 {
-		g.writeln('${g.user_goto_label_name(node.label)}:')
+	g.gen_defers_from(defer_start)
+	if !emitted_continue_label {
+		g.gen_loop_continue_label(label_state.label)
 	}
-	g.writeln('for (;;) {')
-	if !node.is_inf {
-		g.indent++
-		g.set_current_pos_as_last_stmt_pos()
-		g.write('if (!(')
-		g.expr(node.cond)
-		g.writeln(')) break;')
-		g.indent--
+	if !node.skip_ownership_drops() {
+		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	}
-	g.is_vlines_enabled = true
-	g.write_labeled_continue_gate(node.label, '\t')
-	if node.label.len > 0 {
-		g.writeln('\t{')
-	}
-	skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
-	ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
-	g.pop_skip_scope_cleanup(skip_cleanup_start)
-	if node.label.len > 0 {
-		g.write_defer_stmts(node.scope, false, node.pos)
-		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
-		g.writeln('\t}')
-		g.writeln('\t${g.user_goto_label_control_name(node.label, 'continue')}: {}')
-	} else {
-		g.write_defer_stmts(node.scope, false, node.pos)
-		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
-	}
+	g.trim_defers(defer_start)
+	g.indent--
 	g.writeln('}')
-	if node.label.len > 0 {
-		g.writeln('${g.user_goto_label_control_name(node.label, 'break')}: {}')
-	}
-	g.loop_depth--
-}
-
-fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
-	mut node := node_
-	mut is_comptime := false
-	mut param_key_type := ast.Type(0)
-	mut param_val_type := ast.Type(0)
-	mut scope_cond_type := ast.Type(0)
-	mut resolved_cond_expr := node.cond
-	if node.cond is ast.Ident {
-		mut cond_ident := node.cond as ast.Ident
-		if node.scope != unsafe { nil } {
-			cond_ident.scope = node.scope
-		} else if g.file.scope != unsafe { nil } {
-			cond_ident.scope = g.file.scope.innermost(node.pos.pos)
+	if wrap_init {
+		if g.tc.autofree_mode && label_state.label.len > 0 {
+			g.writeln('${g.loop_control_c_label(label_state.label, false)}: {}')
+			g.emitted_loop_break_labels[label_state.label] = true
 		}
-		if cond_ident.scope != unsafe { nil } {
-			if scope_var := cond_ident.scope.find_var(cond_ident.name) {
-				cond_ident.obj = *scope_var
-			}
-		}
-		resolved_cond_expr = cond_ident
-		param_cond_type := g.resolve_current_fn_generic_param_type(cond_ident.name)
-		scope_cond_type = g.resolved_scope_var_type(cond_ident)
-		// Don't let an aggregate/sumtype scope type override a more specific
-		// cond_type (e.g., a concrete array type from the aggregate handler).
-		if scope_cond_type != 0 && node.cond_type != 0 && node.cond_type != scope_cond_type {
-			scope_sym := g.table.final_sym(scope_cond_type)
-			if scope_sym.kind == .aggregate || scope_sym.kind == .sum_type {
-				scope_cond_type = 0
-			}
-		}
-		if scope_cond_type != 0 {
-			node.cond_type = scope_cond_type
-		} else if param_cond_type != 0 {
-			node.cond_type = param_cond_type
-		}
-		param_key_type = g.resolve_current_fn_generic_param_key_type(cond_ident.name)
-		param_val_type = g.resolve_current_fn_generic_param_value_type(cond_ident.name)
-	}
-	resolved_cond_type := g.resolved_expr_type(resolved_cond_expr, node.cond_type)
-	if resolved_cond_type != 0 {
-		// Don't let an aggregate/sumtype resolved type override a more specific
-		// cond_type (e.g., a concrete array type from the aggregate handler).
-		resolved_sym := g.table.final_sym(resolved_cond_type)
-		if !(resolved_sym.kind in [.aggregate, .sum_type] && node.cond_type != 0
-			&& node.cond_type != resolved_cond_type
-			&& g.table.final_sym(node.cond_type).kind !in [.aggregate, .sum_type]) {
-			node.cond_type = resolved_cond_type
-		}
-	}
-	if scope_cond_type != 0 {
-		node.cond_type = scope_cond_type
-	}
-	node.cond_type = g.recheck_concrete_type(node.cond_type)
-	if scope_cond_type != 0 {
-		node.cond_type = scope_cond_type
-	}
-	if node.cond_type != 0 {
-		resolved_cond_sym := g.table.final_sym(g.unwrap_generic(node.cond_type))
-		if resolved_cond_sym.kind in [.array, .array_fixed, .map, .string, .aggregate, .alias] {
-			node.kind = resolved_cond_sym.kind
-		}
-		if node.kind in [.array, .array_fixed, .map, .string] {
-			unwrapped_cond_type := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
-			if node.key_var.len > 0 {
-				node.key_type = if param_key_type != 0 {
-					param_key_type
-				} else {
-					match resolved_cond_sym.kind {
-						.map { resolved_cond_sym.map_info().key_type }
-						else { ast.int_type }
-					}
-				}
-				node.scope.update_var_type(node.key_var, node.key_type)
-			}
-			base_val_type := if scope_cond_type != 0 {
-				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(scope_cond_type)))
-			} else if param_val_type != 0 {
-				param_val_type
-			} else {
-				g.recheck_concrete_type(g.table.value_type(unwrapped_cond_type))
-			}
-			node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
-			node.scope.update_var_type(node.val_var, node.val_type)
-		}
-	}
-
-	if (node.cond is ast.Ident && node.cond.ct_expr) || node.cond is ast.ComptimeSelector {
-		mut unwrapped_typ := g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
-		ctyp := g.type_resolver.get_type(node.cond)
-		if ctyp != ast.void_type {
-			unwrapped_typ = g.unwrap_generic(g.recheck_concrete_type(ctyp))
-			is_comptime = true
-		}
-
-		mut unwrapped_sym := g.table.sym(unwrapped_typ)
-
-		node.cond_type = unwrapped_typ
-		base_val_type := g.recheck_concrete_type(g.table.value_type(unwrapped_typ))
-		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
-		node.scope.update_var_type(node.val_var, node.val_type)
-		node.kind = unwrapped_sym.kind
-
-		if is_comptime {
-			g.type_resolver.update_ct_type(node.val_var, node.val_type)
-			node.scope.update_ct_var_kind(node.val_var, .value_var)
-
-			defer(fn) {
-				g.type_resolver.type_map.delete(node.val_var)
-			}
-		}
-
-		if node.key_var.len > 0 {
-			key_type := if param_key_type != 0 {
-				param_key_type
-			} else {
-				match unwrapped_sym.kind {
-					.map { unwrapped_sym.map_info().key_type }
-					else { ast.int_type }
-				}
-			}
-			node.key_type = key_type
-			node.scope.update_var_type(node.key_var, key_type)
-
-			if is_comptime {
-				g.type_resolver.update_ct_type(node.key_var, node.key_type)
-				node.scope.update_ct_var_kind(node.key_var, .key_var)
-
-				defer(fn) {
-					g.type_resolver.type_map.delete(node.key_var)
-				}
-			}
-		}
-	}
-
-	if node.kind == .any && !is_comptime {
-		mut unwrapped_typ := if scope_cond_type != 0 {
-			g.unwrap_generic(scope_cond_type)
-		} else {
-			g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
-		}
-		mut unwrapped_sym := g.table.sym(unwrapped_typ)
-		node.kind = unwrapped_sym.kind
-		node.cond_type = unwrapped_typ
-		if node.key_var.len > 0 {
-			key_type := if param_key_type != 0 {
-				param_key_type
-			} else {
-				match unwrapped_sym.kind {
-					.map { unwrapped_sym.map_info().key_type }
-					else { ast.int_type }
-				}
-			}
-			node.key_type = key_type
-			node.scope.update_var_type(node.key_var, key_type)
-		}
-		base_val_type := g.recheck_concrete_type(g.table.value_type(unwrapped_typ))
-		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
-		node.scope.update_var_type(node.val_var, node.val_type)
-	} else if node.kind == .alias {
-		mut unwrapped_typ := if scope_cond_type != 0 {
-			g.unwrap_generic(scope_cond_type)
-		} else {
-			g.unwrap_generic(g.recheck_concrete_type(node.cond_type))
-		}
-		mut unwrapped_sym := g.table.final_sym(unwrapped_typ)
-		node.kind = unwrapped_sym.kind
-		node.cond_type = unwrapped_typ
-		if node.key_var.len > 0 {
-			key_type := if param_key_type != 0 {
-				param_key_type
-			} else {
-				match unwrapped_sym.kind {
-					.map { unwrapped_sym.map_info().key_type }
-					else { ast.int_type }
-				}
-			}
-			node.key_type = key_type
-			node.scope.update_var_type(node.key_var, key_type)
-		}
-		base_val_type :=
-			g.recheck_concrete_type(g.table.value_type(g.table.unaliased_type(unwrapped_typ)))
-		node.val_type = for_in_val_type(base_val_type, node.val_is_mut, node.val_is_ref)
-		node.scope.update_var_type(node.val_var, node.val_type)
-	}
-	g.loop_depth++
-	mut array_debug_value_scope_opened := false
-	if node.label.len > 0 {
-		g.writeln('\t${g.user_goto_label_name(node.label)}: {}')
-	}
-	if node.is_range {
-		// `for x in 1..10 {`
-		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
-		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
-				'${i}=builtin__overflow__add_i64(${i},1)'
-			} $else {
-				'${i}=builtin__overflow__add_i32(${i},1)'
-			}
-		} else {
-			'++${i}'
-		}
-		val_typ := ast.mktyp(node.val_type)
-		g.write('for (${g.styp(val_typ)} ${i} = ')
-		g.expr(node.cond)
-		g.write('; ${i} < ')
-		g.expr(node.high)
-		g.writeln('; ${plus_plus_i}) {')
-	} else if node.kind == .array {
-		// `for num in nums {`
-		// g.writeln('// FOR IN array')
-		if node.cond_type != 0 {
-			// Use scope_cond_type only if it's a concrete container type.
-			// Skip if it's an aggregate/sumtype (e.g., from a match arm
-			// smartcast) as value_type would return void for those.
-			use_scope_cond := scope_cond_type != 0
-				&& g.table.final_sym(scope_cond_type).kind !in [.aggregate, .sum_type]
-			resolved_val_type := if use_scope_cond {
-				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(scope_cond_type)))
-			} else if param_val_type != 0 {
-				param_val_type
-			} else {
-				g.recheck_concrete_type(g.table.value_type(g.unwrap_generic(g.recheck_concrete_type(node.cond_type))))
-			}
-			if resolved_val_type != 0 {
-				node.val_type = for_in_val_type(resolved_val_type, node.val_is_mut, node.val_is_ref)
-				node.scope.update_var_type(node.val_var, node.val_type)
-			}
-		}
-		$if trace_ci_fixes ? {
-			if g.cur_fn != unsafe { nil } && g.cur_fn.name in ['arrays.flatten', 'arrays.group_by'] {
-				trace_scope_cond_type := if node.cond is ast.Ident {
-					g.resolved_scope_var_type(node.cond as ast.Ident)
-				} else {
-					ast.no_type
-				}
-				eprintln('cgen for ${g.cur_fn.name} val=${node.val_var} val_type=${g.table.type_to_str(node.val_type)} cond_type=${g.table.type_to_str(node.cond_type)} scope_cond=${if trace_scope_cond_type != 0 {
-					g.table.type_to_str(trace_scope_cond_type)
-				} else {
-					'<none>'
-				}} cur=${g.cur_concrete_types.map(g.table.type_to_str(it))}')
-			}
-		}
-		mut styp := g.styp(node.val_type)
-		mut val_sym := g.table.sym(node.val_type)
-		op_field := if node.cond_type.has_flag(.shared_f) {
-			'->val.'
-		} else if node.cond_type.is_ptr() || resolved_cond_expr.is_auto_deref_var() {
-			'->'
-		} else {
-			g.dot_or_ptr(node.cond_type)
-		}
-
-		mut cond_var := ''
-		// Check if the cond has an or-block that unwraps the option
-		cond_has_or_block := (node.cond is ast.SelectorExpr && node.cond.or_block.kind != .absent)
-			|| (node.cond is ast.CallExpr && node.cond.or_block.kind != .absent)
-			|| (node.cond is ast.IndexExpr && node.cond.or_expr.kind != .absent)
-		if cond_has_or_block {
-			node.cond_type = node.cond_type.clear_flag(.option)
-		}
-		cond_is_option := node.cond_type.has_flag(.option)
-		if (node.cond is ast.Ident && !cond_is_option)
-			|| (node.cond is ast.SelectorExpr && node.cond.or_block.kind == .absent) {
-			cond_var = g.expr_string(node.cond)
-		} else {
-			cond_var = g.new_tmp_var()
-			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
-			old_inside_opt_or_res := g.inside_opt_or_res
-			if cond_is_option {
-				g.inside_opt_or_res = true
-			}
-			g.expr(node.cond)
-			g.inside_opt_or_res = old_inside_opt_or_res
-			g.writeln(';')
-		}
-		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
-				'${i}=builtin__overflow__add_i64(${i},1)'
-			} $else {
-				'${i}=builtin__overflow__add_i32(${i},1)'
-			}
-		} else {
-			'++${i}'
-		}
-		g.empty_line = true
-		opt_expr := '(*(${g.styp(node.cond_type.clear_flag(.option))}*)${cond_var}${op_field}data)'
-		cond_expr := if cond_is_option {
-			'${opt_expr}${op_field}len'
-		} else {
-			'${cond_var}${op_field}len'
-		}
-		if g.pref.is_debug && node.val_var != '_' {
-			// Keep the user-visible loop variable alive for the full loop scope so
-			// debuggers observe the current iteration value instead of the previous
-			// one.
-			g.writeln('{')
-			g.indent++
-			array_debug_value_scope_opened = true
-			g.write_for_in_array_value_decl(node, styp, val_sym)
-		}
-		g.writeln('for (${ast.int_type_name} ${i} = 0; ${i} < ${cond_expr}; ${plus_plus_i}) {')
-		if node.val_var != '_' {
-			if array_debug_value_scope_opened {
-				g.write_for_in_array_value_assign(node, styp, val_sym, cond_var, op_field, i,
-					cond_is_option, opt_expr)
-			} else if mut val_sym.info is ast.FnType {
-				g.write('\t')
-				tcc_bug := c_name(node.val_var)
-				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
-				g.writeln(' = ((voidptr*)${cond_var}${op_field}data)[${i}];')
-			} else if !node.val_type.has_flag(.option) && val_sym.kind == .array_fixed
-				&& !node.val_is_mut {
-				right := '((${styp}*)${cond_var}${op_field}data)[${i}]'
-				g.writeln('\t${styp} ${c_name(node.val_var)};')
-				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${right}, sizeof(${styp}));')
-			} else {
-				needs_memcpy := !node.val_type.is_ptr() && !node.val_type.has_flag(.option)
-					&& g.table.final_sym(node.val_type).kind == .array_fixed
-				right := if cond_is_option {
-					'((${styp}*)${opt_expr}${op_field}data)[${i}]'
-				} else if node.val_is_mut || node.val_is_ref {
-					if g.table.value_type(node.cond_type).is_ptr() {
-						'((${styp}*)${cond_var}${op_field}data)[${i}]'
-					} else {
-						'((${styp})${cond_var}${op_field}data) + ${i}'
-					}
-				} else if val_sym.kind == .array_fixed {
-					'((${styp}*)${cond_var}${op_field}data)[${i}]'
-				} else {
-					'((${styp}*)${cond_var}${op_field}data)[${i}]'
-				}
-				if !needs_memcpy {
-					g.writeln('\t${styp} ${c_name(node.val_var)} = ${right};')
-				} else {
-					g.writeln('\t${styp} ${c_name(node.val_var)} = {0};')
-					g.writeln('\tmemcpy(${c_name(node.val_var)}, ${right}, sizeof(${styp}));')
-				}
-			}
-		}
-	} else if node.kind == .array_fixed {
-		mut cond_var := ''
-		cond_type_is_ptr := node.cond_type.is_ptr()
-		cond_is_literal := node.cond is ast.ArrayInit
-		if cond_is_literal {
-			cond_var = g.new_tmp_var()
-			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
-			g.expr(node.cond)
-			g.writeln(';')
-		} else if cond_type_is_ptr {
-			cond_var = g.new_tmp_var()
-			cond_var_type := g.styp(node.cond_type).trim('*')
-			if !node.cond.is_lvalue() {
-				g.write('${cond_var_type} *${cond_var} = ((${cond_var_type})')
-			} else {
-				g.write('${cond_var_type} *${cond_var} = (')
-			}
-			g.expr(node.cond)
-			g.writeln(');')
-		} else {
-			cond_var = g.expr_string(node.cond)
-		}
-		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		plus_plus_idx := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
-				'${idx}=builtin__overflow__add_i64(${idx},1)'
-			} $else {
-				'${idx}=builtin__overflow__add_i32(${idx},1)'
-			}
-		} else {
-			'++${idx}'
-		}
-		cond_sym := g.table.final_sym(node.cond_type)
-		info := cond_sym.info as ast.ArrayFixed
-		elem_sym := g.table.sym(info.elem_type)
-		elem_is_direct_fn := if elem_sym.info is ast.FnType {
-			elem_sym.info.has_decl
-		} else {
-			false
-		}
-		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ${plus_plus_idx}) {')
-		if node.val_var != '_' {
-			val_sym := g.table.sym(node.val_type)
-			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
-				&& !node.val_type.has_flag(.option)
-			if val_sym.info is ast.FnType {
-				g.write('\t')
-				tcc_bug := c_name(node.val_var)
-				if elem_is_direct_fn {
-					g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
-				} else {
-					g.write_fntype_decl(tcc_bug, val_sym.info, node.val_type.nr_muls())
-				}
-			} else if is_fixed_array {
-				styp := g.styp(node.val_type)
-				g.writeln('\t${styp} ${c_name(node.val_var)};')
-				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${cond_var}[${idx}], sizeof(${styp}));')
-			} else {
-				styp := if node.val_type.has_flag(.option_mut_param_t) {
-					'${g.styp(node.val_type.clear_flag(.option_mut_param_t))}*'
-				} else {
-					g.styp(node.val_type)
-				}
-				g.write('\t${styp} ${c_name(node.val_var)}')
-			}
-			if !is_fixed_array {
-				val_was_promoted_to_ref := node.val_type.nr_muls() > info.elem_type.nr_muls()
-					|| node.val_type.has_flag(.option_mut_param_t)
-				addr := if (node.val_is_mut || node.val_is_ref) && val_was_promoted_to_ref
-					&& !elem_is_direct_fn {
-					'&'
-				} else {
-					''
-				}
-				if cond_type_is_ptr {
-					g.writeln(' = ${addr}(*${cond_var})[${idx}];')
-				} else if cond_is_literal {
-					g.writeln(' = ${addr}${cond_var}[${idx}];')
-				} else {
-					g.write(' = ${addr}')
-					g.expr(node.cond)
-					if info.is_fn_ret {
-						// g.expr(node.cond) already appends `.ret_arr` when the cond
-						// is itself a fixed-array-returning call or a fixed-ret temp
-						// (see fn.v / cgen.v). Only add it here for other exprs (e.g. a
-						// plain variable holding a fn-ret fixed array) to avoid a
-						// doubled `.ret_arr` (which is not a struct member).
-						mut cond_expr := node.cond
-						if cond_expr is ast.ParExpr {
-							cond_expr = cond_expr.expr
-						}
-						cond_emits_ret_arr := (cond_expr is ast.CallExpr
-							&& !cond_expr.return_type.has_option_or_result()
-							&& g.table.final_sym(cond_expr.return_type).kind == .array_fixed)
-							|| (cond_expr is ast.CTempVar && cond_expr.is_fixed_ret)
-						if !cond_emits_ret_arr {
-							g.write('.ret_arr')
-						}
-					}
-					g.writeln('[${idx}];')
-				}
-			}
-		}
-	} else if node.kind == .map {
-		// `for key, val in map {
-		// g.writeln('// FOR IN map')
-		mut cond_var := ''
-		if node.cond is ast.Ident {
-			cond_var = g.expr_string(node.cond)
-		} else {
-			cond_var = g.new_tmp_var()
-			g.write2(g.styp(node.cond_type), ' ${cond_var} = ')
-			g.expr(node.cond)
-			g.writeln(';')
-		}
-		dot_or_ptr := if node.cond_type.has_flag(.shared_f) {
-			'->val.'
-		} else if node.cond_type.is_ptr() || resolved_cond_expr.is_auto_deref_var() {
-			'->'
-		} else {
-			g.dot_or_ptr(node.cond_type)
-		}
-		idx := g.new_tmp_var()
-		plus_plus_idx := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
-				'${idx}=builtin__overflow__add_i64(${idx},1)'
-			} $else {
-				'${idx}=builtin__overflow__add_i32(${idx},1)'
-			}
-		} else {
-			'++${idx}'
-		}
-		map_len := g.new_tmp_var()
-		g.empty_line = true
-		g.writeln('${ast.int_type_name} ${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
-		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${map_len}; ${plus_plus_idx} ) {')
-		// TODO: don't have this check when the map has no deleted elements
-		g.indent++
-		diff := g.new_tmp_var()
-		g.writeln('${ast.int_type_name} ${diff} = ${cond_var}${dot_or_ptr}key_values.len - ${map_len};')
-		g.writeln('${map_len} = ${cond_var}${dot_or_ptr}key_values.len;')
-		// TODO: optimize this
-		g.writeln('if (${diff} < 0) {')
-		g.writeln('\t${idx} = -1;')
-		g.writeln('\tcontinue;')
-		g.writeln('}')
-		g.writeln('if (!builtin__DenseArray_has_index(&${cond_var}${dot_or_ptr}key_values, ${idx})) {continue;}')
-		if node.cond is ast.Ident {
-			cond_ident := node.cond as ast.Ident
-			resolved_key_type := g.resolve_current_fn_generic_param_key_type(cond_ident.name)
-			if resolved_key_type != 0 {
-				node.key_type = resolved_key_type
-				if node.key_var.len > 0 {
-					node.scope.update_var_type(node.key_var, node.key_type)
-				}
-			}
-			resolved_val_type := g.resolve_current_fn_generic_param_value_type(cond_ident.name)
-			if resolved_val_type != 0 {
-				node.val_type = for_in_val_type(resolved_val_type, node.val_is_mut, node.val_is_ref)
-				if node.val_var.len > 0 {
-					node.scope.update_var_type(node.val_var, node.val_type)
-				}
-			}
-		}
-		if node.key_var != '_' {
-			key_styp := g.styp(node.key_type)
-			key := c_name(node.key_var)
-			if g.table.final_sym(node.key_type).kind == .array_fixed {
-				g.writeln('${key_styp} ${key};')
-				g.writeln('memcpy(${key}, builtin__DenseArray_key(&${cond_var}${dot_or_ptr}key_values, ${idx}), sizeof(${key_styp}));')
-			} else {
-				g.writeln('${key_styp} ${key} = *(${key_styp}*)builtin__DenseArray_key(&${cond_var}${dot_or_ptr}key_values, ${idx});')
-			}
-			// TODO: analyze whether node.key_type has a .clone() method and call .clone() for all types:
-			if node.key_type == ast.string_type {
-				g.writeln('${key} = builtin__string_clone(${key});')
-			}
-		}
-		if node.val_var != '_' {
-			val_sym := g.table.sym(node.val_type)
-			if val_sym.info is ast.FnType {
-				tcc_bug := c_name(node.val_var)
-				g.write_fn_ptr_decl(&val_sym.info, tcc_bug)
-				g.write(' = (*(voidptr*)')
-				g.writeln('builtin__DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}));')
-			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
-				val_styp := g.styp(node.val_type)
-				g.writeln('${val_styp} ${c_name(node.val_var)};')
-				g.writeln('memcpy(*(${val_styp}*)${c_name(node.val_var)}, (byte*)builtin__DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}), sizeof(${val_styp}));')
-			} else {
-				val_styp := g.styp(node.val_type)
-				if node.val_is_mut || node.val_is_ref {
-					if g.table.value_type(node.cond_type).is_ptr() {
-						g.write('${val_styp} ${c_name(node.val_var)} = (*(${val_styp}*)')
-					} else {
-						g.write('${val_styp} ${c_name(node.val_var)} = ((${val_styp})')
-					}
-				} else {
-					g.write('${val_styp} ${c_name(node.val_var)} = (*(${val_styp}*)')
-				}
-				g.writeln('builtin__DenseArray_value(&${cond_var}${dot_or_ptr}key_values, ${idx}));')
-			}
+		if !node.skip_ownership_drops() {
+			g.gen_scope_ownership_drops()
 		}
 		g.indent--
-	} else if node.kind == .string {
-		cond := if node.cond in [ast.StringLiteral, ast.StringInterLiteral] {
-			ast.Expr(g.new_ctemp_var_then_gen(node.cond, ast.string_type))
-		} else {
-			node.cond
-		}
-		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
-		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
-				'${i}=builtin__overflow__add_i64(${i},1)'
-			} $else {
-				'${i}=builtin__overflow__add_i32(${i},1)'
-			}
-		} else {
-			'++${i}'
-		}
-		g.write('for (${ast.int_type_name} ${i} = 0; ${i} < ')
-		g.expr(cond)
-		g.writeln('${field_accessor}len; ${plus_plus_i}) {')
-		if node.val_var != '_' {
-			g.write('\tu8 ${c_name(node.val_var)} = ')
-			g.expr(cond)
-			g.writeln('${field_accessor}str[${i}];')
-		}
-	} else if node.kind in [.struct, .interface] {
-		// In generic functions, `node.cond_type` may have been overwritten by the checker
-		// for the last concrete specialization. Re-resolve from the function parameter's
-		// declared type which still has the generic flag.
-		mut unwrapped_cond_type := g.unwrap_generic(node.cond_type)
-		if g.cur_concrete_types.len > 0 && g.cur_fn != unsafe { nil } && node.cond is ast.Ident {
-			for param in g.cur_fn.params {
-				if param.name == (node.cond as ast.Ident).name {
-					resolved := g.unwrap_generic(param.typ)
-					if resolved != unwrapped_cond_type {
-						unwrapped_cond_type = resolved
-					}
-					break
-				}
-			}
-		}
-		cond_type_sym := g.table.sym(unwrapped_cond_type)
-		mut next_fn := ast.Fn{}
-		// use alias `next` method if exists else use parent type `next` method
-		if cond_type_sym.kind == .alias {
-			next_fn = cond_type_sym.find_method_with_generic_parent('next') or {
-				g.table.final_sym(unwrapped_cond_type).find_method_with_generic_parent('next') or {
-					verror('`next` method not found')
-					return
-				}
-			}
-		} else {
-			next_fn = cond_type_sym.find_method_with_generic_parent('next') or {
-				verror('`next` method not found')
+		g.writeln('}')
+	}
+	g.pop_scope()
+	g.loop_defer_starts.delete_last()
+	g.pop_loop_label_depth(label_state)
+}
+
+// gen_for_in emits for in output for c.
+fn (mut g FlatGen) gen_for_in(node flat.Node) {
+	defer_start := g.defers.len
+	label_state := g.push_loop_label_depth(g.take_pending_loop_label(), defer_start)
+	g.loop_defer_starts << defer_start
+	defer {
+		g.loop_defer_starts.delete_last()
+		g.pop_loop_label_depth(label_state)
+	}
+	g.push_scope()
+	header_count := node.value.int()
+	val_id := g.a.child(&node, 1)
+	var_node := if int(val_id) >= 0 {
+		g.a.child_node(&node, 1)
+	} else {
+		g.a.child_node(&node, 0)
+	}
+	has_index := int(val_id) >= 0
+	idx_binding_name := if has_index { g.a.child_node(&node, 0).value } else { '' }
+	elem_binding_name := var_node.value
+	var_name := g.c_loop_local_name(var_node.value)
+	var_owner := g.tc.cur_scope.insert_with_owner(var_node.value, types.Type(types.int_))
+	g.track_shadowed_global_local(var_node.value, var_owner)
+	g.declare_local_pointer_storage(var_owner, false)
+	body_start := header_count
+
+	if header_count == 4 {
+		low_id := g.a.child(&node, 2)
+		high_id := g.a.child(&node, 3)
+		g.gen_range_for_in(node, g.a.child(&node, 0), low_id, high_id, body_start, label_state.label)
+		return
+	} else if header_count == 3 {
+		container := g.a.child_node(&node, 2)
+		if container.kind == .range {
+			if container.children_count >= 2 {
+				g.gen_range_for_in(node, g.a.child(&node, 0), g.a.child(container, 0), g.a.child(container, 1), body_start, label_state.label)
 				return
 			}
-		}
-		ret_typ := g.unwrap_generic(next_fn.return_type)
-		t_expr := g.new_tmp_var()
-		g.write('${g.styp(unwrapped_cond_type)} ${t_expr} = ')
-		g.expr(node.cond)
-		g.writeln(';')
-		i := node.key_var
-		plus_plus_i := if g.do_int_overflow_checks {
-			$if new_int ? && x64 {
-				'${i}=builtin__overflow__add_i64(${i},1)'
-			} $else {
-				'${i}=builtin__overflow__add_i32(${i},1)'
-			}
 		} else {
-			'++${i}'
-		}
-		if i in ['', '_'] {
-			g.writeln('while (1) {')
-		} else {
-			g.writeln('for (size_t ${i} = 0;; ${plus_plus_i}) {')
-		}
-		t_var := g.new_tmp_var()
-		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)
-		receiver_styp := g.cc_type(receiver_typ, false)
-		mut fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
-		receiver_sym := g.table.sym(receiver_typ)
-		if receiver_sym.is_builtin() {
-			fn_name = 'builtin__${fn_name}'
-		} else if receiver_sym.info is ast.Interface {
-			left_cc_type := g.cc_type(g.table.unaliased_type(unwrapped_cond_type), false)
-			left_type_name := util.no_dots(left_cc_type)
-			fn_name = '${c_name(left_type_name)}_name_table[${t_expr}._typ]._method_next'
-		} else {
-			fn_name = g.specialized_method_name_from_receiver(next_fn, unwrapped_cond_type, fn_name)
-		}
-		g.write('\t${g.styp(ret_typ)} ${t_var} = ${fn_name}(')
-		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
-			g.write('&')
-		}
-		if node.kind == .interface {
-			g.writeln('${t_expr}._object);')
-		} else {
-			g.writeln('${t_expr});')
-		}
-		g.writeln('\tif (${t_var}.state != 0) break;')
-		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
-		val_styp := g.styp(ret_typ.clear_option_and_result())
-		ret_sym := g.table.final_sym(ret_typ)
-		if node.val_is_mut {
-			if ret_typ.is_any_kind_of_pointer() {
-				g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
-			} else {
-				g.writeln('\t${val_styp}* ${val} = (${val_styp}*)${t_var}.data;')
-			}
-		} else {
-			ret_is_fixed_array := ret_sym.is_array_fixed()
-			if ret_is_fixed_array {
-				g.writeln('\t${val_styp} ${val} = {0};')
-				g.write('\tmemcpy(${val}, ${t_var}.data, sizeof(${val_styp}));')
-			} else {
-				if ret_sym.info is ast.FnType {
-					g.write_fntype_decl(val, ret_sym.info, 0)
-					g.writeln(' = **(${val_styp}**)&${t_var}.data;')
+			container_id := g.a.child(&node, 2)
+			container_type := g.for_in_container_type(node, container_id)
+			mut idx_var := ''
+			if has_index {
+				if idx_binding_name == '_' {
+					idx_var = '__for_idx_${g.tmp_count}'
+					g.tmp_count++
 				} else {
-					g.writeln('\t${val_styp} ${val} = *(${val_styp}*)${t_var}.data;')
+					idx_var = g.c_loop_local_name(idx_binding_name)
+				}
+			} else {
+				idx_var = '__iter_${var_name}'
+			}
+			elem_var := if has_index {
+				g.c_loop_local_name(g.a.child_node(&node, 1).value)
+			} else {
+				var_name
+			}
+			mut clean_container_type := types.unwrap_pointer(container_type)
+			for clean_container_type is types.Alias {
+				clean_container_type =
+					types.unwrap_pointer((clean_container_type as types.Alias).base_type)
+			}
+			mut map_snapshot_var := ''
+			mut map_writeback_target := ''
+			mut map_writeback_key := ''
+			mut map_writeback_value := ''
+			mut map_writeback_stmt := ''
+			mut map_copyback_dirty_var := ''
+			mut map_copyback_guard := MapLoopCopybackGuard{}
+			if clean_container_type is types.Map {
+				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
+				c_val := g.value_c_type(clean_container_type.value_type)
+				map_value_by_ref := node.op == .amp
+				container_str := g.expr_to_string(g.a.child(&node, 2))
+				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
+				container_storage_is_pointer := storage_container_type is types.Pointer
+				original_map_ref := if container_storage_is_pointer {
+					container_str
+				} else {
+					'&${container_str}'
+				}
+				iter_var := '__mi_${g.tmp_count}'
+				g.tmp_count++
+				key_var := if has_index { idx_var } else { '__mk_${g.tmp_count}' }
+				val_var_ := if has_index { elem_var } else { var_name }
+				use_snapshot := g.for_in_body_contains_delete_call(node, body_start, g.a.child(&node, 2))
+				mut key_ref := '&${key_var}'
+				key_values := if use_snapshot {
+					map_snapshot_var = '__for_map_${g.tmp_count}'
+					g.tmp_count++
+					if container_storage_is_pointer {
+						g.writeln('map ${map_snapshot_var} = map__clone(${container_str});')
+					} else {
+						map_src := '__for_map_src_${g.tmp_count}'
+						g.tmp_count++
+						g.writeln('map ${map_src} = ${container_str};')
+						g.writeln('map ${map_snapshot_var} = map__clone(&${map_src});')
+					}
+					'${map_snapshot_var}.data->key_values'
+				} else {
+					access := if container_storage_is_pointer { '->' } else { '.' }
+					'(${container_str})${access}data->key_values'
+				}
+				g.writeln('for (int ${iter_var} = 0; ${iter_var} < ${key_values}.len; ${iter_var}++) {')
+				g.indent++
+				g.gen_labelled_continue_skip_drops_var(label_state.label)
+				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[${iter_var}]) continue;')
+				key_slot := '${key_values}.keys + ${iter_var} * ${key_values}.key_bytes'
+				if key_fixed := array_fixed_type(clean_container_type.key_type) {
+					c_elem, dims := g.fixed_array_decl_parts(key_fixed)
+					g.writeln('${c_elem} ${key_var}${dims};')
+					g.writeln('memmove(${key_var}, ${key_slot}, sizeof(${key_var}));')
+					key_ref = key_var
+				} else {
+					g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_slot});')
+					if has_index && idx_binding_name != '_'
+						&& clean_container_type.key_type is types.String {
+						g.writeln('${key_var} = string__clone(${key_var});')
+					}
+				}
+				snapshot_val_slot := '${key_values}.values + ${iter_var} * ${key_values}.value_bytes'
+				mut val_slot := snapshot_val_slot
+				mut val_is_fixed_copy := false
+				if use_snapshot && map_value_by_ref {
+					val_slot_var := '__for_map_val_${g.tmp_count}'
+					g.tmp_count++
+					g.writeln('void* ${val_slot_var} = map__get_check(${original_map_ref}, &${key_var});')
+					g.writeln('if (${val_slot_var} == 0) ${val_slot_var} = (void*)(${snapshot_val_slot});')
+					val_slot = val_slot_var
+				}
+				if val_fixed := array_fixed_type(clean_container_type.value_type) {
+					c_elem, dims := g.fixed_array_decl_parts(val_fixed)
+					g.writeln('${c_elem} ${val_var_}${dims};')
+					g.writeln('memmove(${val_var_}, ${val_slot}, sizeof(${val_var_}));')
+					val_is_fixed_copy = true
+				} else if map_value_by_ref {
+					g.writeln('${c_val}* ${val_var_} = (${c_val}*)(${val_slot});')
+				} else {
+					g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${val_slot});')
+				}
+				if has_index {
+					key_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name, clean_container_type.key_type)
+					g.track_shadowed_global_local(idx_binding_name, key_owner)
+					g.declare_local_pointer_storage(key_owner, clean_container_type.key_type is types.Pointer
+						|| c_type_is_pointer_storage(c_key))
+				}
+				val_scope_type := if map_value_by_ref && !val_is_fixed_copy {
+					types.Type(types.Pointer{
+						base_type: clean_container_type.value_type
+					})
+				} else {
+					clean_container_type.value_type
+				}
+				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, val_scope_type)
+				g.track_shadowed_global_local(elem_binding_name, val_owner)
+				g.declare_local_pointer_storage(val_owner, val_scope_type is types.Pointer
+					|| (!val_is_fixed_copy && clean_container_type.value_type is types.Pointer)
+					|| c_type_is_pointer_storage(c_val))
+				if node.op == .amp && val_is_fixed_copy {
+					map_writeback_target = if container_storage_is_pointer {
+						container_str
+					} else {
+						'&${container_str}'
+					}
+					map_writeback_key = key_var
+					map_writeback_value = val_var_
+					map_writeback_stmt = 'map__set(${map_writeback_target}, &${map_writeback_key}, &${map_writeback_value});'
+					if use_snapshot {
+						map_copyback_dirty_var = '__for_map_dirty_${g.tmp_count}'
+						g.tmp_count++
+						copyback_slot := '__for_map_copyback_${g.tmp_count}'
+						g.tmp_count++
+						map_writeback_stmt = 'if (!${map_copyback_dirty_var}) { void* ${copyback_slot} = map__get_check(${map_writeback_target}, &${map_writeback_key}); if (${copyback_slot} != 0) { map__set(${map_writeback_target}, &${map_writeback_key}, &${map_writeback_value}); } }'
+						map_copyback_guard = MapLoopCopybackGuard{
+							map_ref:   original_map_ref
+							key_ref:   key_ref
+							dirty_var: map_copyback_dirty_var
+						}
+					}
+				}
+			} else if container_type is types.Array {
+				c_elem := g.value_c_type(container_type.elem_type)
+				container_node := g.a.nodes[int(container_id)]
+				mut container_str := g.expr_to_string(container_id)
+				if container_node.kind == .ident {
+					if raw := g.local_storage_raw_type(container_node.value) {
+						clean_raw := raw.trim_space()
+						if clean_raw.starts_with('?')
+							&& clean_raw[1..].trim_space().starts_with('[]') {
+							container_str = '(${container_str}).value'
+						}
+					}
+				}
+				if container_str.starts_with('*') && container_str.contains('->val') {
+					container_str = container_str[1..]
+				}
+				// A call-valued container (e.g. `threads.wait()`, `xs.map(..)`) is not
+				// idempotent and is referenced multiple times below; bind it to a temp so
+				// it runs exactly once.
+				if container_node.kind == .call {
+					arr_tmp := '__for_arr_${g.tmp_count}'
+					g.tmp_count++
+					g.writeln('Array ${arr_tmp} = ${container_str};')
+					container_str = arr_tmp
+				}
+				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
+				g.indent++
+				if node.op == .amp {
+					g.writeln('${c_elem}* ${elem_var} = (${c_elem}*)array_get(${container_str}, ${idx_var});')
+				} else {
+					g.writeln('${c_elem} ${elem_var} = *(${c_elem}*)array_get(${container_str}, ${idx_var});')
+				}
+				elem_scope_type := if node.op == .amp {
+					types.Type(types.Pointer{
+						base_type: container_type.elem_type
+					})
+				} else {
+					container_type.elem_type
+				}
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
+				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				g.declare_local_pointer_storage(elem_owner, elem_scope_type is types.Pointer
+					|| c_type_is_pointer_storage(c_elem))
+				g.declare_ierror_pointer_alias(elem_var, g.for_in_array_literal_element_needs_ierror_copy(container_node))
+			} else if container_type is types.String {
+				container_str := g.expr_to_string(g.a.child(&node, 2))
+				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
+				g.indent++
+				g.writeln('u8 ${elem_var} = ((u8*)${container_str}.str)[${idx_var}];')
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, types.Type(types.u8_))
+				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				g.declare_local_pointer_storage(elem_owner, false)
+			} else if container_type is types.ArrayFixed {
+				af := container_type
+				c_elem := g.value_c_type(af.elem_type)
+				arr_len := g.fixed_array_len_value(af)
+				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${arr_len}; ${idx_var}++) {')
+				g.indent++
+				if node.op == .amp {
+					g.write('${c_elem}* ${elem_var} = &')
+				} else {
+					g.write('${c_elem} ${elem_var} = ')
+				}
+				g.gen_expr(g.a.child(&node, 2))
+				g.writeln('[${idx_var}];')
+				elem_scope_type := if node.op == .amp {
+					types.Type(types.Pointer{
+						base_type: af.elem_type
+					})
+				} else {
+					af.elem_type
+				}
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
+				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				g.declare_local_pointer_storage(elem_owner, elem_scope_type is types.Pointer
+					|| c_type_is_pointer_storage(c_elem))
+			} else {
+				g.writeln('for (int ${idx_var} = 0; ${idx_var} < 0; ${idx_var}++) {')
+				g.indent++
+				g.writeln('int ${elem_var} = 0;')
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, types.Type(types.int_))
+				g.track_shadowed_global_local(elem_binding_name, elem_owner)
+				g.declare_local_pointer_storage(elem_owner, false)
+			}
+			if has_index && container_type !is types.Map {
+				idx_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name, types.Type(types.int_))
+				g.track_shadowed_global_local(idx_binding_name, idx_owner)
+				g.declare_local_pointer_storage(idx_owner, false)
+			}
+			if clean_container_type !is types.Map {
+				g.gen_labelled_continue_skip_drops_var(label_state.label)
+			}
+			g.loop_depth++
+			if map_copyback_guard.dirty_var.len > 0 {
+				g.writeln('bool ${map_copyback_guard.dirty_var} = false;')
+				g.map_loop_copyback_guards << map_copyback_guard
+			}
+			if map_writeback_stmt.len > 0 {
+				g.loop_control_copybacks << LoopControlCopyback{
+					loop_depth: g.loop_depth
+					stmt:       map_writeback_stmt
 				}
 			}
+			mut emitted_continue_label := false
+			for i in body_start .. node.children_count {
+				emitted_continue_label =
+					g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
+						|| emitted_continue_label
+			}
+			if map_copyback_guard.dirty_var.len > 0 {
+				g.map_loop_copyback_guards.delete_last()
+			}
+			if map_writeback_stmt.len > 0 {
+				g.writeln(map_writeback_stmt)
+				g.loop_control_copybacks.delete_last()
+			}
+			g.gen_defers_from(defer_start)
+			if !emitted_continue_label {
+				g.gen_loop_continue_label(label_state.label)
+			}
+			if !node.skip_ownership_drops() {
+				g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+			}
+			g.trim_defers(defer_start)
+			g.loop_depth--
+			g.indent--
+			g.writeln('}')
+			if map_snapshot_var.len > 0 {
+				g.writeln('map__free(&${map_snapshot_var});')
+			}
+			g.pop_scope()
+			return
 		}
-	} else if node.kind == .aggregate {
-		for_type := (g.table.sym(node.cond_type).info as ast.Aggregate).types[g.aggregate_type_idx]
-		val_type := g.table.value_type(for_type)
-		node.scope.update_var_type(node.val_var, val_type)
-
-		g.for_in_stmt(ast.ForInStmt{
-			cond:       node.cond
-			cond_type:  for_type
-			kind:       g.table.sym(for_type).kind
-			stmts:      node.stmts
-			val_type:   val_type
-			val_var:    node.val_var
-			val_is_mut: node.val_is_mut
-			val_is_ref: node.val_is_ref
-		})
-
-		g.loop_depth--
+	} else {
+		g.pop_scope()
 		return
-	} else {
-		typ_str := g.table.type_to_str(node.cond_type)
-		g.error('for in: unhandled symbol `${node.cond}` of type `${typ_str}`', node.pos)
 	}
-	g.write_labeled_continue_gate(node.label, '\t')
-	if node.label.len > 0 {
-		g.writeln('\t{')
+	g.indent++
+	g.gen_labelled_continue_skip_drops_var(label_state.label)
+	g.loop_depth++
+	mut emitted_continue_label := false
+	for i in body_start .. node.children_count {
+		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
+			|| emitted_continue_label
 	}
-	skip_cleanup_start := g.push_skip_scope_cleanup(node.scope)
-	ends_with_branch := g.stmts_with_tmp_var(node.stmts, '')
-	g.pop_skip_scope_cleanup(skip_cleanup_start)
-
-	if node.kind == .map {
-		// diff := g.new_tmp_var()
-		// g.writeln('${ast.int_type_name} ${diff} = ${cond_var}${arw_or_pt}key_values.len - ${map_len};')
-		// g.writeln('if (${diff} < 0) {')
-		// g.writeln('\t${idx} = -1;')
-		// g.writeln('\t${map_len} = ${cond_var}${arw_or_pt}key_values.len;')
-		// g.writeln('}')
+	g.gen_defers_from(defer_start)
+	if !emitted_continue_label {
+		g.gen_loop_continue_label(label_state.label)
 	}
-	if node.label.len > 0 {
-		g.write_defer_stmts(node.scope, false, node.pos)
-		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
-		g.writeln('\t}')
-		g.writeln('\t${g.user_goto_label_control_name(node.label, 'continue')}: {}')
-	} else {
-		g.write_defer_stmts(node.scope, false, node.pos)
-		g.write_loop_scope_cleanup_after_defer(node.scope, node.pos, node.stmts, ends_with_branch)
+	if !node.skip_ownership_drops() {
+		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	}
-	g.writeln('}')
-	if array_debug_value_scope_opened {
-		g.indent--
-		g.writeln('}')
-	}
-	if node.label.len > 0 {
-		g.writeln('\t${g.user_goto_label_control_name(node.label, 'break')}: {}')
-	}
+	g.trim_defers(defer_start)
 	g.loop_depth--
+	g.indent--
+	g.writeln('}')
+	g.pop_scope()
+}
+
+fn (g &FlatGen) for_in_container_type(node flat.Node, container_id flat.NodeId) types.Type {
+	if node.typ.starts_with('map[') {
+		typ := g.parse_node_type(&node)
+		if typ is types.Map {
+			return typ
+		}
+	}
+	return g.usable_expr_type(container_id)
+}
+
+fn (g &FlatGen) for_in_array_literal_element_needs_ierror_copy(container flat.Node) bool {
+	if container.kind != .array_literal {
+		return false
+	}
+	for i in 0 .. container.children_count {
+		if g.ierror_pointer_payload_expr_needs_heap_copy(g.a.nodes[int(g.a.child(&container, i))]) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id flat.NodeId, high_id flat.NodeId, body_start int, label string) {
+	key := g.a.node(key_id)
+	if key.kind != .ident || key.value.len == 0 {
+		g.pop_scope()
+		return
+	}
+	key_name := if key.value == '_' {
+		g.discard_name(key_id)
+	} else {
+		g.c_loop_local_name(key.value)
+	}
+	low_type := g.usable_expr_type(low_id)
+	range_type := if low_type is types.Primitive || low_type is types.ISize
+		|| low_type is types.USize {
+		low_type
+	} else {
+		types.Type(types.int_)
+	}
+	ct := g.value_c_type(range_type)
+	low_name := '__range_low_${g.tmp_count}'
+	g.tmp_count++
+	g.write('${ct} ${low_name} = ')
+	g.gen_expr(low_id)
+	g.writeln(';')
+	high_name := '__range_high_${g.tmp_count}'
+	g.tmp_count++
+	g.write('${ct} ${high_name} = ')
+	g.gen_expr(high_id)
+	g.writeln(';')
+	g.tc.cur_scope.insert(key.value, range_type)
+	g.writeln('for (${ct} ${key_name} = ${low_name}; ${key_name} < ${high_name}; ${key_name}++) {')
+	g.indent++
+	g.gen_labelled_continue_skip_drops_var(label)
+	g.loop_depth++
+	mut emitted_continue_label := false
+	for i in body_start .. node.children_count {
+		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label)
+			|| emitted_continue_label
+	}
+	defer_start := if g.loop_defer_starts.len > 0 {
+		g.loop_defer_starts.last()
+	} else {
+		g.defers.len
+	}
+	g.gen_defers_from(defer_start)
+	if !emitted_continue_label {
+		g.gen_loop_continue_label(label)
+	}
+	if !node.skip_ownership_drops() {
+		g.gen_loop_iteration_ownership_drops_for_label(label)
+	}
+	g.trim_defers(defer_start)
+	g.loop_depth--
+	g.indent--
+	g.writeln('}')
+	g.pop_scope()
+}
+
+fn (g &FlatGen) for_in_body_contains_delete_call(node flat.Node, body_start int, container_id flat.NodeId) bool {
+	container_key := g.for_in_map_storage_key(container_id)
+	if container_key.len == 0 {
+		return false
+	}
+	for i in body_start .. node.children_count {
+		if g.node_contains_delete_call(g.a.child(&node, i), container_key) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &FlatGen) node_contains_delete_call(id flat.NodeId, container_key string) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
+	if node.kind == .call && node.children_count > 0 {
+		fn_node := g.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.value == 'delete' && fn_node.children_count > 0 {
+			receiver_id := g.a.child(fn_node, 0)
+			if g.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
+		}
+		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete']
+			&& node.children_count > 1 {
+			receiver_id := g.a.child(&node, 1)
+			if g.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if g.node_contains_delete_call(g.a.child(&node, i), container_key) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_map_loop_copyback_dirty_checks(map_ptr_expr string, key_ptr_expr string) {
+	for guard in g.map_loop_copyback_guards {
+		g.writeln('if (!${guard.dirty_var} && (${map_ptr_expr}) == (${guard.map_ref}) && (${guard.map_ref})->data->key_eq_fn(${key_ptr_expr}, ${guard.key_ref})) ${guard.dirty_var} = true;')
+	}
+}
+
+fn (g &FlatGen) for_in_map_storage_key(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return ''
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count > 0 {
+		return g.for_in_map_storage_key(g.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count > 0 {
+		return g.for_in_map_storage_key(g.a.child(&node, 0))
+	}
+	return g.expr_key(id)
+}
+
+fn (g &FlatGen) c_loop_local_name(name string) string {
+	if name.contains('.') {
+		return g.local_decl_cname(name.all_after_last('.'))
+	}
+	if name.contains('__') {
+		prefix := name.all_before_last('__')
+		suffix := name.all_after_last('__')
+		if suffix == 'index' {
+			return g.local_decl_cname(suffix)
+		}
+		if g.has_import_alias(prefix) {
+			return g.local_decl_cname(suffix)
+		}
+		for _, mod_name in g.modules {
+			short_mod := if mod_name.contains('.') {
+				mod_name.all_after_last('.')
+			} else {
+				mod_name
+			}
+			if prefix == short_mod {
+				return g.local_decl_cname(suffix)
+			}
+		}
+	}
+	return g.local_decl_cname(name)
+}
+
+// gen_node_inline emits node inline output for c.
+fn (mut g FlatGen) gen_node_inline(id flat.NodeId) {
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.expr_stmt {
+			g.gen_expr(g.a.child(&node, 0))
+		}
+		.decl_assign {
+			lhs_id := g.a.child(&node, 0)
+			rhs_id := g.a.child(&node, 1)
+			lhs := g.a.nodes[int(lhs_id)]
+			v_type := g.tc.resolve_type(rhs_id)
+			typ := g.tc.c_type(v_type)
+			g.write('${typ} ')
+			if lhs.kind == .ident {
+				g.write(g.c_loop_local_name(lhs.value))
+			} else {
+				g.gen_expr(lhs_id)
+			}
+			g.write(' = ')
+			g.gen_expr(rhs_id)
+			if lhs.kind == .ident {
+				owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
+				g.track_local_pointer_storage_decl(lhs, owner, v_type, typ)
+			}
+		}
+		.assign {
+			g.gen_expr(g.a.child(&node, 0))
+			g.write(' ${g.op_str(node.op)} ')
+			g.gen_expr(g.a.child(&node, 1))
+		}
+		else {}
+	}
 }

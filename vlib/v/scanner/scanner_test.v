@@ -1,391 +1,172 @@
-// vtest build: !sanitized_job?
 module scanner
 
-import v.token
 import v.pref
+import v.token
 
-fn scan_kinds(text string) []token.Kind {
-	mut scanner := new_plain_scanner(text, .skip_comments, &pref.Preferences{})
-	mut token_kinds := []token.Kind{}
-	for {
-		tok := scanner.text_scan()
-		if tok.kind == .eof {
-			break
-		}
-		token_kinds << tok.kind
+fn test_power_tokens() {
+	source := 'a ** b **= c'
+	mut files := token.FileSet.new()
+	mut file := files.add_file('power.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+	assert scanner.scan() == .name
+	assert scanner.scan() == .power
+	assert scanner.scan() == .name
+	assert scanner.scan() == .power_assign
+	assert scanner.scan() == .name
+	assert scanner.scan() == .semicolon
+	assert scanner.scan() == .eof
+}
+
+fn test_immediate_invalid_radix_digits() {
+	cases := {
+		'0b2': 'this binary number has unsuitable digit `2`'
+		'0o8': 'this octal number has unsuitable digit `8`'
+		'0xG': 'this hexadecimal number has unsuitable digit `G`'
 	}
-	return token_kinds
-}
+	for source, expected_message in cases {
+		mut files := token.FileSet.new()
+		mut file := files.add_file('invalid_radix.v', source.len)
+		file.index_lines(source)
+		preferences := &pref.Preferences{}
+		mut scanner := new_scanner(preferences, .normal)
+		scanner.init(file, source)
 
-fn scan_tokens(text string) []token.Token {
-	mut scanner := new_plain_scanner(text, .parse_comments, &pref.Preferences{})
-	mut tokens := []token.Token{}
-	for {
-		tok := scanner.text_scan()
-		if tok.kind == .eof {
-			break
-		}
-		tokens << tok
+		assert scanner.scan() == .number
+		assert scanner.lit == source
+		assert scanner.offset == source.len
+		assert scanner.diagnostics.len == 1
+		assert scanner.diagnostics[0].offset == 2
+		assert scanner.diagnostics[0].message == expected_message
 	}
-	return tokens
 }
 
-fn test_scan() {
-	token_kinds := scan_kinds('println(2 + 3)')
-	assert token_kinds.len == 6
-	assert token_kinds[0] == .name
-	assert token_kinds[1] == .lpar
-	assert token_kinds[2] == .number
-	assert token_kinds[3] == .plus
-	assert token_kinds[4] == .number
-	assert token_kinds[5] == .rpar
+fn test_all_number_prefixed_identifiers_are_reported() {
+	source := '3a := 1\n4b := 2\nprintln(3a)'
+	mut files := token.FileSet.new()
+	mut file := files.add_file('number_prefixed_identifiers.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+
+	for scanner.scan() != .eof {
+	}
+	assert scanner.diagnostics.len == 3
+	assert scanner.diagnostics[0].message == 'identifier name `3a` cannot start with a number'
+	assert scanner.diagnostics[1].message == 'identifier name `4b` cannot start with a number'
+	assert scanner.diagnostics[2].message == 'identifier name `3a` cannot start with a number'
+	assert scanner.diagnostics[0].offset == 0
+	assert scanner.diagnostics[0].end == 2
+	assert scanner.diagnostics[1].offset == 8
+	assert scanner.diagnostics[1].end == 10
+	assert scanner.diagnostics[2].offset == 24
+	assert scanner.diagnostics[2].end == 26
 }
 
-fn test_number_constant_input_format() {
-	mut c := 0xa0
-	assert c == 0xa0
-	c = 0b1001
-	assert c == 9
-	c = 1000000
-	assert c == 1000000
-}
+fn test_malformed_exponent_suffixes_are_unsuitable_digits() {
+	cases := {
+		'2Ea':    'this number has unsuitable digit `a`'
+		'2e+foo': 'this number has unsuitable digit `f`'
+	}
+	for source, expected_message in cases {
+		mut files := token.FileSet.new()
+		mut file := files.add_file('malformed_exponent.v', source.len)
+		file.index_lines(source)
+		preferences := &pref.Preferences{}
+		mut scanner := new_scanner(preferences, .normal)
+		scanner.init(file, source)
 
-fn test_float_conversion_and_reading() {
-	d := 23000000e-3
-	assert int(d) == 23000
-	mut e := 1.2E3 * -1e-1
-	assert e == -120.0
-	e = 1.2E3 * 1e-1
-	x := 55.0
-	assert e == 120.0
-	assert 1.23e+10 == 1.23e10
-	assert 1.23e+10 == 1.23e0010
-	assert (-1.23e+10) == (1.23e0010 * -1.0)
-	assert x == 55.0
-}
-
-fn test_float_without_fraction() {
-	mut result := scan_kinds('x := 10.0')
-	assert result.len == 3
-	assert result[0] == .name
-	assert result[1] == .decl_assign
-	assert result[2] == .number
-	result = scan_kinds('return 3.0, 4.0')
-	assert result.len == 4
-	assert result[0] == .key_return
-	assert result[1] == .number
-	assert result[2] == .comma
-	assert result[3] == .number
-	result = scan_kinds('fun(5.0)')
-	assert result.len == 4
-	assert result[0] == .name
-	assert result[1] == .lpar
-	assert result[2] == .number
-	assert result[3] == .rpar
-}
-
-fn test_reference_bools() {
-	result := scan_kinds('true && false')
-	assert result.len == 3
-	assert result[0] == .key_true
-	assert result[1] == .and
-	assert result[2] == .key_false
-}
-
-fn test_reference_var() {
-	result := scan_kinds('&foo')
-	assert result.len == 2
-	assert result[0] == .amp
-	assert result[1] == .name
-}
-
-fn test_array_of_references() {
-	result := scan_kinds('[]&foo')
-	assert result.len == 4
-	assert result[0] == .lsbr
-	assert result[1] == .rsbr
-	assert result[2] == .amp
-	assert result[3] == .name
-}
-
-fn test_ref_array_of_references() {
-	result := scan_kinds('&[]&foo')
-	assert result.len == 5
-	assert result[0] == .amp
-	assert result[1] == .lsbr
-	assert result[2] == .rsbr
-	assert result[3] == .amp
-	assert result[4] == .name
-}
-
-fn test_ref_ref_foo() {
-	result := scan_kinds('&&foo')
-	assert result.len == 3
-	assert result[0] == .amp
-	assert result[1] == .amp
-	assert result[2] == .name
-}
-
-fn test_array_of_ref_ref_foo() {
-	result := scan_kinds('[]&&foo')
-	assert result.len == 5
-	assert result[0] == .lsbr
-	assert result[1] == .rsbr
-	assert result[2] == .amp
-	assert result[3] == .amp
-	assert result[4] == .name
-}
-
-fn test_ref_ref_array_ref_ref_foo() {
-	result := scan_kinds('&&[]&&foo')
-	assert result.len == 7
-	assert result[0] == .amp
-	assert result[1] == .amp
-	assert result[2] == .lsbr
-	assert result[3] == .rsbr
-	assert result[4] == .amp
-	assert result[5] == .amp
-	assert result[6] == .name
-}
-
-fn test_escape_rune() {
-	assert `\x61` == `a`
-	assert `\u0061` == `a`
-	assert `\U00000061` == `a`
-
-	assert `\141` == `a`
-	assert `\xe2\x98\x85` == `★`
-	assert `\342\230\205` == `★`
-
-	// the following lines test the scanner module
-	// even before it is compiled into the v executable
-
-	// SINGLE CHAR ESCAPES
-	// SINGLE CHAR APOSTROPHE
-	mut result := scan_tokens(r"`'`")
-	assert result[0].kind == .chartoken
-	assert result[0].lit == r"\'"
-
-	// SINGLE CHAR BACKTICK
-	result = scan_tokens(r'`\``')
-	assert result[0].kind == .chartoken
-	assert result[0].lit == r'\`'
-
-	// SINGLE CHAR SLASH
-	result = scan_tokens(r'`\\`')
-	assert result[0].kind == .chartoken
-	assert result[0].lit == r'\\'
-
-	// SINGLE CHAR 16-bit UNICODE ESCAPE
-	result = scan_tokens(r'`\u2605`')
-	assert result[0].kind == .chartoken
-	assert result[0].lit == r'★'
-
-	// SINGLE CHAR 32-bit UNICODE ESCAPE
-	result = scan_tokens(r'`\U00002605`')
-	assert result[0].kind == .chartoken
-	assert result[0].lit == r'★'
-
-	// SINGLE CHAR ESCAPED ASCII
-	result = scan_tokens(r'`\x61`')
-	assert result[0].kind == .chartoken
-	assert result[0].lit == r'a'
-
-	// SINGLE CHAR INCORRECT ESCAPE
-	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
-
-	// SINGLE CHAR MULTI-BYTE UTF-8 (hex)
-	result = scan_tokens(r'`\xe2\x98\x85`')
-	assert result[0].lit == r'★'
-
-	// SINGLE CHAR MULTI-BYTE UTF-8 (octal)
-	result = scan_tokens(r'`\342\230\205`')
-	assert result[0].lit == r'★'
-}
-
-fn test_escape_string() {
-	// these lines work if the v compiler is working
-	assert '\x61' == 'a'
-	assert '\x62' == 'b'
-	assert '\u0061' == 'a'
-	assert '\U00000061' == 'a'
-	assert '\141' == 'a'
-	assert '\xe2\x98\x85' == '★'
-	assert '\342\230\205' == '★'
-
-	// the following lines test the scanner module
-	// even before it is compiled into the v executable
-
-	// STRING ESCAPES =================
-	// STRING APOSTROPHE
-	mut result := scan_tokens(r"'\''")
-	assert result[0].kind == .string
-	assert result[0].lit == r"\'"
-
-	// STRING BACKTICK
-	result = scan_tokens(r"'\`'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'\`'
-
-	// STRING SLASH
-	result = scan_tokens(r"'\\'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'\\'
-
-	// STRING 16-bit UNICODE ESCAPE
-	result = scan_tokens(r"'\u2605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'★'
-	result = scan_tokens(r"'H\u2605H'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'H★H'
-
-	// STRING 32-bit UNICODE ESCAPE
-	result = scan_tokens(r"'\U00002605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'★'
-	result = scan_tokens(r"'H\U00002605H'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'H★H'
-
-	// STRING ESCAPED ASCII
-	result = scan_tokens(r"'\x61'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'a'
-
-	// STRING ESCAPED EXTENDED ASCII
-	// (should not be converted to unicode)
-	result = scan_tokens(r"'\xe29885'")
-	assert result[0].kind == .string
-	assert result[0].lit.bytes() == [u8(0xe2), `9`, `8`, `8`, `5`]
-
-	// MIX STRING ESCAPES with UTF-16 escapes
-	result = scan_tokens(r"'\x61\u2605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'a★'
-	result = scan_tokens(r"'\u2605\x61'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'★a'
-
-	// MIX STRING ESCAPES with UTF-16 escapes with offset
-	result = scan_tokens(r"'x  \x61\u2605\x61'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'x  a★a'
-	result = scan_tokens(r"'x  \u2605\x61\u2605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'x  ★a★'
-
-	// MIX STRING ESCAPES with UTF-32 escapes
-	result = scan_tokens(r"'\x61\U00002605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'a★'
-	result = scan_tokens(r"'\U00002605\x61'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'★a'
-
-	// MIX STRING ESCAPES with UTF-32 escapes with offset
-	result = scan_tokens(r"'x  \x61\U00002605\x61'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'x  a★a'
-	result = scan_tokens(r"'x  \U00002605\x61\U00002605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'x  ★a★'
-
-	// MIX STRING ESCAPES with UTF-16 and UTF-32 escapes
-	result = scan_tokens(r"'\u2605\x61\U00002605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'★a★'
-	result = scan_tokens(r"'\U00002605\x61\u2605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'★a★'
-
-	// MIX STRING ESCAPES with UTF-16 and UTF-32 escapes with offset
-	result = scan_tokens(r"'x  \x61\U00002605\x61\u2605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'x  a★a★'
-	result = scan_tokens(r"'x  \x61\u2605\x61\U00002605'")
-	assert result[0].kind == .string
-	assert result[0].lit == r'x  a★a★'
-
-	// SHOULD RESULT IN ERRORS
-	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
-	// result = scan_tokens(r"'\x'") // should always result in an error
-	// result = scan_tokens(r'`hello`') // should always result in an error
-}
-
-fn assert_str_interpolation_works(mlen int, text string) {
-	mut max_len := 0
-	mut scanner := new_plain_scanner(text, .skip_comments, &pref.Preferences{})
-	for {
-		tok := scanner.text_scan()
-		if scanner.str_helper_tokens.len > max_len {
-			max_len = scanner.str_helper_tokens.len
-		}
-		if tok.kind == .eof {
-			break
+		assert scanner.scan() == .number
+		assert scanner.lit == source
+		assert scanner.offset == source.len
+		assert scanner.diagnostics.len == 1
+		assert scanner.diagnostics[0].message == expected_message
+		assert scanner.diagnostics[0].offset == if source == '2Ea' {
+			2
+		} else {
+			3
 		}
 	}
-	assert max_len == mlen
-	assert scanner.errors.len == 0
-	assert scanner.str_helper_tokens.len == 0
+
+	mut files := token.FileSet.new()
+	mut file := files.add_file('missing_exponent.v', 2)
+	file.index_lines('2E')
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, '2E')
+	assert scanner.scan() == .number
+	assert scanner.diagnostics.len == 1
+	assert scanner.diagnostics[0].message == 'exponent has no digits'
+	assert scanner.diagnostics[0].offset == 1
 }
 
-fn test_string_interpolation_with_nested_string_does_not_grow_str_helper_tokens_too_much() {
-	sinterpolation := " s := 'x \${if true { '{' } else { '}' }} y' "
-	assert_str_interpolation_works(3, sinterpolation)
-	assert_str_interpolation_works(3, sinterpolation + sinterpolation + sinterpolation)
-	assert_str_interpolation_works(3, '{'.repeat(100) + sinterpolation + '}'.repeat(100))
-	assert_str_interpolation_works(0, '{'.repeat(100) + '}'.repeat(100))
-}
-
-fn test_dollar_sign_is_literal_without_braces() {
-	mut result := scan_tokens("'a$b'")
-	assert result.len == 1
-	assert result[0].kind == .string
-	assert result[0].lit == 'a$b'
-
-	result = scan_tokens('"a$b"')
-	assert result.len == 1
-	assert result[0].kind == .string
-	assert result[0].lit == 'a$b'
-}
-
-fn test_comment_string() {
-	mut result := scan_tokens('// single line comment will get an \\x01 prepended')
-	assert result[0].kind == .comment
-	assert result[0].lit[0] == u8(1) // \x01
-	// result = scan_tokens('/// doc comment will keep third / at beginning')
-	// result = scan_tokens('/* block comment will be stripped of whitespace */')
-	// result = scan_tokens('a := 0 // line end comment also gets \\x01 prepended')
-}
-
-// Strings without proper 00B at the end keep scanner from failing, hence scanner
-// will read beyond end of string into unknown memory unless there are proper bound checks
-fn test_truncated_escape_at_eof_does_not_read_past_end() {
-	prefs := &pref.Preferences{
-		output_mode: .silent
+fn test_invalid_unicode_scalar_escapes_are_reported() {
+	cases := {
+		r"'\uD8FF'":     r'invalid unicode point `\uD8FF`'
+		r"'\U0000D8FF'": r'invalid unicode point `\U0000D8FF`'
+		r"'\U00110000'": r'invalid unicode point `\U00110000`'
 	}
-	// buf_x = ['"', '\\', 'x', 'a', 'b', '"']; 3-byte view ends after 'x'.
-	// Buggy scanner reads [3]='a', [4]='b' — valid hex — and reports NO \x error.
-	buf_x := r'"\xab"'.bytes()
-	text_x := unsafe { tos(buf_x.data, 3) }
-	mut s := new_plain_scanner(text_x, .skip_comments, prefs)
-	_ = s.text_scan()
-	assert s.errors.any(it.message.contains('used without two following hex digits')), r'scanner must report \x error for "\xab" truncated after "\x"'
+	for source, expected_message in cases {
+		mut files := token.FileSet.new()
+		mut file := files.add_file('invalid_unicode.v', source.len)
+		file.index_lines(source)
+		preferences := &pref.Preferences{}
+		mut scanner := new_scanner(preferences, .normal)
+		scanner.init(file, source)
 
-	// buf_u = ['"', '\\', 'u', '1', '2', '3', '4', '"']; 3-byte view ends after 'u'.
-	// Buggy scanner reads [3]...[6] — all valid hex — and reports NO \u error.
-	buf_u := r'"\u1234"'.bytes()
-	text_u := unsafe { tos(buf_u.data, 3) }
-	mut s2 := new_plain_scanner(text_u, .skip_comments, prefs)
-	_ = s2.text_scan()
-	assert s2.errors.any(it.message.contains('incomplete 16 bit unicode')), r'scanner must report \u error for "\u1234" truncated after "\u"'
+		for scanner.scan() != .eof {
+		}
+		assert scanner.diagnostics.len == 1
+		assert scanner.diagnostics[0].message == expected_message
+		assert scanner.diagnostics[0].offset == source.len - 1
+	}
+}
 
-	// buf_uu = ['"', '\\', 'U', '1'...'8', '"']; 3-byte view ends after 'U'.
-	// Buggy scanner reads [3]...[10] — all valid hex — and reports NO \U error.
-	buf_uu := r'"\U12345678"'.bytes()
-	text_uu := unsafe { tos(buf_uu.data, 3) }
-	mut s3 := new_plain_scanner(text_uu, .skip_comments, prefs)
-	_ = s3.text_scan()
-	assert s3.errors.any(it.message.contains('incomplete 32 bit unicode')), r'scanner must report \U error for "\U12345678" truncated after "\U"'
+fn test_unknown_string_escape_is_reported() {
+	source := r"'\_'"
+	mut files := token.FileSet.new()
+	mut file := files.add_file('unknown_escape.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+
+	assert scanner.scan() == .string
+	assert scanner.diagnostics.len == 1
+	assert scanner.diagnostics[0].message == '`_` unknown escape sequence'
+	assert scanner.diagnostics[0].offset == 2
+}
+
+fn test_js_prefixed_string_is_one_token() {
+	source := "js'hello V'"
+	mut files := token.FileSet.new()
+	mut file := files.add_file('js_string.js.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+
+	assert scanner.scan() == .string
+	assert scanner.lit == source
+	assert scanner.scan() == .semicolon
+	assert scanner.scan() == .eof
+	assert scanner.diagnostics.len == 0
+}
+
+fn test_keyword_enum_selector_inserts_semicolon() {
+	source := 'assert value == .fn\nassert value == .struct'
+	mut files := token.FileSet.new()
+	mut file := files.add_file('keyword_enum_selector.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+
+	for expected in [token.Token.key_assert, .name, .eq, .dot, .key_fn, .semicolon, .key_assert,
+		.name, .eq, .dot, .key_struct, .semicolon, .eof] {
+		assert scanner.scan() == expected
+	}
 }

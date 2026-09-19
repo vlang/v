@@ -21,13 +21,13 @@ const server_handshake_test_root_cert_der_base64 = 'MIIBJjCBzgIJAN+uQ78XPk1wMAoG
 // actually testing.
 fn server_handshake_test_client_params() ClientHandshakeParams {
 	return ClientHandshakeParams{
-		random: []u8{len: 32, init: 0x11}
-		server_name: 'example.com'
+		random:               []u8{len: 32, init: 0x11}
+		server_name:          'example.com'
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: []u8{len: 8, init: 0xaa}
 		}
-		ca_bundle_pem: ''
-		alpn_protocols: ['h3']
+		ca_bundle_pem:        ''
+		alpn_protocols:       ['h3']
 	}
 }
 
@@ -38,12 +38,12 @@ fn server_handshake_test_client_params() ClientHandshakeParams {
 fn server_handshake_test_server_params() !ServerHandshakeParams {
 	_, signing_key := ecdsa.generate_key()!
 	return ServerHandshakeParams{
-		transport_parameters: QuicTransportParameters{
-			initial_source_connection_id: []u8{len: 8, init: 0xbb}
+		transport_parameters:     QuicTransportParameters{
+			initial_source_connection_id:       []u8{len: 8, init: 0xbb}
 			original_destination_connection_id: []u8{len: 8, init: 0xaa}
 		}
 		supported_alpn_protocols: ['h3']
-		certificate_chain: [
+		certificate_chain:        [
 			CertificateEntry{
 				cert_data: base64.decode(server_handshake_test_leaf_cert_der_base64)
 			},
@@ -51,8 +51,8 @@ fn server_handshake_test_server_params() !ServerHandshakeParams {
 				cert_data: base64.decode(server_handshake_test_root_cert_der_base64)
 			},
 		]
-		signing_key: signing_key
-		server_hello_random: []u8{len: 32, init: 0x22}
+		signing_key:              signing_key
+		server_hello_random:      []u8{len: 32, init: 0x22}
 	}
 }
 
@@ -195,11 +195,11 @@ fn test_certificate_signature_selection_handles_an_omitted_root() {
 fn test_certificate_signature_selection_rejects_nonstandard_pss_parameters() {
 	base := mbedtls.CertificateSignatureInfo{
 		signature_public_key_type: mbedtls_pk_rsassa_pss
-		signature_digest_type: mbedtls_md_sha256
+		signature_digest_type:     mbedtls_md_sha256
 		signature_pss_mgf1_digest: mbedtls_md_sha256
-		signature_pss_salt_len: 32
-		issuer_public_key_type: mbedtls_pk_rsa
-		issuer_known: true
+		signature_pss_salt_len:    32
+		issuer_public_key_type:    mbedtls_pk_rsa
+		issuer_known:              true
 	}
 	assert certificate_signature_scheme(base)! == sig_scheme_rsa_pss_rsae_sha256
 	certificate_signature_scheme(mbedtls.CertificateSignatureInfo{
@@ -238,7 +238,7 @@ fn test_server_handshake_rejects_malformed_server_name_extension() {
 		initial_source_connection_id: []u8{len: 8}
 	}, malformed_server_name)!
 	msg := HandshakeMessage{
-		typ: .client_hello
+		typ:  .client_hello
 		body: body
 	}
 	framed := encode_handshake_message(.client_hello, body)!
@@ -394,7 +394,7 @@ fn test_server_handshake_rejects_unoffered_cipher_suite() {
 	bad_body[37] = 0x13
 	bad_body[38] = 0x02 // TLS_AES_256_GCM_SHA384, never offered/supported here
 	bad_msg := HandshakeMessage{
-		typ: .client_hello
+		typ:  .client_hello
 		body: bad_body
 	}
 	bad_framed := encode_handshake_message(.client_hello, bad_body)!
@@ -413,7 +413,7 @@ fn test_server_handshake_rejects_key_share_absent_from_supported_groups() {
 		initial_source_connection_id: []u8{len: 8}
 	}, supported_groups, key_share)!
 	msg := HandshakeMessage{
-		typ: .client_hello
+		typ:  .client_hello
 		body: body
 	}
 	framed := encode_handshake_message(.client_hello, body)!
@@ -443,7 +443,7 @@ fn test_server_handshake_rejects_duplicate_key_share_groups() {
 		initial_source_connection_id: []u8{len: 8}
 	}, encode_supported_groups_extension()!, key_share)!
 	msg := HandshakeMessage{
-		typ: .client_hello
+		typ:  .client_hello
 		body: body
 	}
 	framed := encode_handshake_message(.client_hello, body)!
@@ -458,13 +458,13 @@ fn test_server_handshake_rejects_duplicate_key_share_groups() {
 
 fn test_server_handshake_rejects_alpn_mismatch() {
 	client_hello := build_client_hello(
-		random: []u8{len: 32}
-		server_name: 'example.com'
-		ecdhe_public_key: []u8{len: 65, init: 0x04}
+		random:               []u8{len: 32}
+		server_name:          'example.com'
+		ecdhe_public_key:     []u8{len: 65, init: 0x04}
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: []u8{len: 8}
 		}
-		alpn_protocols: ['h2'] // this server (below) only supports 'h3'
+		alpn_protocols:       ['h2'] // this server (below) only supports 'h3'
 	)!
 	msg, _ := parse_handshake_message(client_hello)!
 	server_params := server_handshake_test_server_params()!
@@ -478,10 +478,10 @@ fn test_server_handshake_rejects_alpn_mismatch() {
 fn test_server_handshake_rejects_server_only_transport_parameter_from_client() {
 	body := build_test_client_hello_body(QuicTransportParameters{
 		initial_source_connection_id: []u8{len: 8}
-		stateless_reset_token: []u8{len: 16, init: 0x01} // client MUST NOT send this
+		stateless_reset_token:        []u8{len: 16, init: 0x01} // client MUST NOT send this
 	})!
 	msg := HandshakeMessage{
-		typ: .client_hello
+		typ:  .client_hello
 		body: body
 	}
 	framed := encode_handshake_message(.client_hello, body)!
@@ -516,7 +516,7 @@ fn test_server_handshake_propagates_nonempty_session_id_error_code() {
 	body << u8(0)
 	body << u8(0)
 	msg := HandshakeMessage{
-		typ: .client_hello
+		typ:  .client_hello
 		body: body
 	}
 	framed := encode_handshake_message(.client_hello, body)!

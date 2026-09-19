@@ -138,8 +138,8 @@ pub fn (mut d QpackDecoder) apply_encoder_instruction(buf []u8) !QpackApplyInstr
 		decoder_instructions = encode_qpack_insert_count_increment(1)
 	}
 	return QpackApplyInstructionResult{
-		applied: true
-		consumed: consumed
+		applied:              true
+		consumed:             consumed
 		decoder_instructions: decoder_instructions
 	}
 }
@@ -199,7 +199,7 @@ pub fn (mut d QpackDecoder) decode_field_section(stream_id u64, buf []u8) !Qpack
 		decoder_instructions = encode_qpack_section_ack(stream_id)
 	}
 	return QpackDecodeFieldSectionResult{
-		lines: lines
+		lines:                lines
 		decoder_instructions: decoder_instructions
 	}
 }

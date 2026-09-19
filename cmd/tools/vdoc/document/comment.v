@@ -1,14 +1,12 @@
 module document
 
-import v.token
-
 const example_pattern = '\x01 Example: '
 
 pub struct DocComment {
 pub mut:
 	text        string // Raw text content of the comment, excluding the comment token chars ('//, /*, */')
 	is_multi    bool   // Is a block / multi-line comment
-	pos         token.Pos
+	pos         Position
 	is_readme   bool
 	frontmatter map[string]string
 }

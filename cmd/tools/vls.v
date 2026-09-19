@@ -233,21 +233,30 @@ fn calculate_checksum(file_path string) !string {
 	return sha256.hexhash(data)
 }
 
+fn source_exec_file_name() string {
+	$if windows {
+		return 'vls.exe'
+	}
+	return 'vls'
+}
+
 fn (upd VlsUpdater) compile_from_source() ! {
 	git := os.find_abs_path_of_executable('git') or { return error('Git not found.') }
+	exec_path := os.join_path(vls_src_folder, 'bin', source_exec_file_name())
 
 	if !os.exists(vls_src_folder) {
 		upd.log('Cloning VLS repo...')
 		clone_result :=
-			os.execute('${os.quoted_path(vexe)} retry -- ${git} clone --filter=blob:none https://github.com/vlang/vls ${vls_src_folder}')
+			os.execute('${os.quoted_path(vexe)} retry -- ${os.quoted_path(git)} clone --filter=blob:none https://github.com/vlang/vls ${os.quoted_path(vls_src_folder)}')
 		if clone_result.exit_code != 0 {
 			return error('Failed to build VLS from source. Reason: ${clone_result.output}')
 		}
 	} else {
 		upd.log('Updating VLS repo...')
 		pull_result :=
-			os.execute('${os.quoted_path(vexe)} retry -- ${git} -C ${vls_src_folder} pull')
-		if !upd.is_force && pull_result.output.trim_space() == 'Already up to date.' {
+			os.execute('${os.quoted_path(vexe)} retry -- ${os.quoted_path(git)} -C ${os.quoted_path(vls_src_folder)} pull')
+		if !upd.is_force && pull_result.output.trim_space() == 'Already up to date.'
+			&& os.is_executable(exec_path) {
 			upd.log('VLS was already updated to its latest version.')
 			return
 		}
@@ -267,13 +276,12 @@ fn (upd VlsUpdater) compile_from_source() ! {
 		return error('Cannot compile VLS from source: no appropriate C compiler found.')
 	}
 
-	compile_result := os.execute('${os.quoted_path(vexe)} run ${os.join_path(vls_src_folder,
-		'build.vsh')} ${possible_compilers[selected_compiler_idx]}')
+	os.mkdir_all(os.dir(exec_path))!
+	compile_result := os.execute('${os.quoted_path(vexe)} -cc ${possible_compilers[selected_compiler_idx]} -o ${os.quoted_path(exec_path)} ${os.quoted_path(vls_src_folder)}')
 	if compile_result.exit_code != 0 {
 		return error('Cannot compile VLS from source: ${compile_result.output}')
 	}
 
-	exec_path := os.join_path(vls_src_folder, 'bin', 'vls')
 	upd.update_manifest(exec_path, true, time.now()) or {
 		upd.log('Unable to update config but the executable was updated successfully.')
 	}
@@ -308,8 +316,7 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 		upd.output = .silent
 	}
 
-	is_install := fp.bool('install', ` `, false,
-		'Installs the language server. You may also use this flag to re-download or force update your existing installation.')
+	is_install := fp.bool('install', ` `, false, 'Installs the language server. You may also use this flag to re-download or force update your existing installation.')
 	is_update := fp.bool('update', ` `, false, 'Updates the installed language server.')
 	upd.is_check = fp.bool('check', ` `, false, 'Checks if the language server is installed.')
 	upd.is_force = fp.bool('force', ` `, false, 'Force install or update the language server.')
@@ -340,8 +347,7 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
 		}
 	}
 
-	upd.is_help = fp.bool('help', `h`, false,
-		"Show this updater's help text. To show the help text for the language server, pass the `--ls` flag before it.")
+	upd.is_help = fp.bool('help', `h`, false, "Show this updater's help text. To show the help text for the language server, pass the `--ls` flag before it.")
 
 	if !upd.is_help && !upd.pass_to_ls {
 		// automatically set the cli launcher to language server mode
@@ -450,10 +456,10 @@ fn (upd VlsUpdater) run(fp flag.FlagParser) ! {
 		match upd.update_source {
 			.github_releases {
 				upd.download_prebuilt() or {
-					if err.code() == 100 {
-						upd.compile_from_source()!
+					if err.code() != 100 {
+						return err
 					}
-					return err
+					upd.compile_from_source()!
 				}
 			}
 			.git_repo {

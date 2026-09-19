@@ -400,13 +400,13 @@ fn (mut l QuicListener) merge_conn_result(mut result QuicListenerPollResult, c &
 			// `l.peers[key] = peer.clone()` already follows this rule for
 			// the SAME parameter; this call site and send_retry's own
 			// (below) were the two that had been missed.
-			peer: peer.clone()
+			peer:  peer.clone()
 		}
 	}
 	for ev in r.events {
 		result.events << QuicListenerEvent{
-			conn: c
-			peer: peer.clone()
+			conn:  c
+			peer:  peer.clone()
 			event: ev
 		}
 	}
@@ -569,12 +569,12 @@ fn (mut l QuicListener) send_retry(header QuicLongHeader, peer []u8, now u64, mu
 	// its own doc comment for why: RetryPacketParams.issued_at_ms is
 	// genuinely millisecond-scale, unlike this function's own `now`.
 	retry_bytes := encode_retry_packet(RetryPacketParams{
-		client_scid: header.scid
-		server_scid: server_scid
+		client_scid:   header.scid
+		server_scid:   server_scid
 		original_dcid: header.dcid
-		token_key: l.params.retry_token_key
-		client_addr: peer
-		issued_at_ms: now / 1_000_000
+		token_key:     l.params.retry_token_key
+		client_addr:   peer
+		issued_at_ms:  now / 1_000_000
 	}) or {
 		// Two distinct ways this can fail, neither worth propagating as
 		// an error for the WHOLE poll() call (some other, unrelated
@@ -593,7 +593,7 @@ fn (mut l QuicListener) send_retry(header QuicLongHeader, peer []u8, now u64, mu
 	}
 	result.outgoing << QuicListenerDatagram{
 		bytes: retry_bytes
-		peer: peer.clone()
+		peer:  peer.clone()
 	}
 }
 
@@ -618,12 +618,12 @@ fn (mut l QuicListener) do_accept(header QuicLongHeader, datagram []u8, peer []u
 		retry_scid_param = header.dcid.clone()
 	}
 	accept_params := AcceptParams{
-		transport_parameters: l.params.transport_parameters
-		alpn_protocols: l.params.alpn_protocols
-		certificate_chain: l.params.certificate_chain
-		signing_key: l.params.signing_key
+		transport_parameters:       l.params.transport_parameters
+		alpn_protocols:             l.params.alpn_protocols
+		certificate_chain:          l.params.certificate_chain
+		signing_key:                l.params.signing_key
 		retry_source_connection_id: retry_scid_param
-		original_dcid_override: original_dcid_for_tp
+		original_dcid_override:     original_dcid_for_tp
 	}
 	mut c, r := accept(datagram, accept_params, now) or {
 		// A malformed or otherwise-invalid connection attempt -- RFC 9000

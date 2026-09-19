@@ -11,6 +11,7 @@ $if openbsd {
 	fn eprint_libbacktrace(frames_to_skip int) {
 	}
 } $else $if !tinyc {
+
 	// full libbacktrace implementation for gcc/clang (TCC can't compile libbacktrace's C code)
 	#flag -I@VEXEROOT/thirdparty/libbacktrace
 	#flag @VEXEROOT/thirdparty/libbacktrace/backtrace.o
@@ -21,13 +22,13 @@ $if openbsd {
 		// filename &char
 	}
 
-	type BacktraceErrorCallback = fn (data voidptr, msg &char, errnum int)
+	type BacktraceErrorCallback = fn (data voidptr, const_msg &char, errnum i32)
 
-	type BacktraceFullCallback = fn (data voidptr, pc voidptr, filename &char, lineno int, func &char) int
+	type BacktraceFullCallback = fn (data voidptr, pc usize, const_filename &char, lineno i32, const_func &char) i32
 
 	fn C.backtrace_create_state(filename &char, threaded i32, error_callback BacktraceErrorCallback, data voidptr) &C.backtrace_state
 	fn C.backtrace_full(state &C.backtrace_state, skip i32, cb BacktraceFullCallback, err_cb BacktraceErrorCallback,
-	data voidptr) i32
+		data voidptr) i32
 
 	__global bt_state = init_bt_state()
 
@@ -46,7 +47,7 @@ $if openbsd {
 		stdin bool = true
 	}
 
-	fn bt_print_callback(data_ptr voidptr, pc voidptr, filename_ptr &char, line int, fn_name_ptr &char) int {
+	fn bt_print_callback(data_ptr voidptr, pc usize, filename_ptr &char, line i32, fn_name_ptr &char) i32 {
 		data := unsafe { &BacktraceOptions(data_ptr) }
 		filename := if filename_ptr == unsafe { nil } {
 			'???'
@@ -69,7 +70,7 @@ $if openbsd {
 		return 0
 	}
 
-	fn bt_error_callback(data voidptr, msg_ptr &char, errnum int) {
+	fn bt_error_callback(data voidptr, msg_ptr &char, errnum i32) {
 		// if data != unsafe { nil } && data.state != unsafe { nil } && data.state.filename != unsafe { nil } {
 		// 	filename := unsafe{ data.state.filename.vstring() }
 		// 	eprint('${filename}: ')
@@ -85,7 +86,7 @@ $if openbsd {
 	}
 
 	// for backtrace_create_state only
-	fn bt_error_handler(data voidptr, msg &char, errnum int) {
+	fn bt_error_handler(data voidptr, msg &char, errnum i32) {
 		eprint('libbacktrace: ')
 		eprint(unsafe { msg.vstring() })
 		if errnum > 0 {
@@ -115,6 +116,7 @@ $if openbsd {
 		C.backtrace_full(bt_state, frames_to_skip, bt_print_callback, bt_error_callback, data)
 	}
 } $else {
+
 	// no-op stubs for TCC (TCC can't compile libbacktrace's C code, and
 	// it has its own built-in backtrace via tcc_backtrace instead)
 	fn print_libbacktrace(frames_to_skip int) {

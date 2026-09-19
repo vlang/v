@@ -174,3 +174,91 @@ fn test_server_h2c_does_not_break_http1() {
 	assert text.starts_with('HTTP/1.1 200')
 	assert text.contains('h2c: GET /plain')
 }
+
+struct H2cRemoteAddrHandler {}
+
+fn (mut h H2cRemoteAddrHandler) handle(req Request) Response {
+	return Response{
+		status_code: 200
+		body:        '${req.remote_addr}|${req.remote_ip()}|${req.header.get_custom('Remote-Addr') or { '<none>' }}'
+	}
+}
+
+// test_server_h2c_sets_remote_addr confirms Request.remote_addr is filled in on
+// the HTTP/2 path too, not just HTTP/1.1, and that a `remote-addr` field the
+// client puts in its HPACK block cannot shadow the real peer address.
+fn test_server_h2c_sets_remote_addr() {
+	mut server := &Server{
+		accept_timeout:       h2c_atimeout
+		handler:              H2cRemoteAddrHandler{}
+		addr:                 ''
+		show_startup_message: false
+		enable_http2:         true
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		assert false, 'server did not start: ${err}'
+		return
+	}
+	defer {
+		server.close()
+		t.wait()
+	}
+
+	mut conn := net.dial_tcp(server.addr)!
+	defer {
+		conn.close() or {}
+	}
+	conn.set_read_timeout(5 * time.second)
+	conn.set_write_timeout(5 * time.second)
+
+	mut enc := H2HpackEncoder{}
+	block := enc.encode([
+		H2HeaderField{':method', 'GET'},
+		H2HeaderField{':scheme', 'http'},
+		H2HeaderField{':authority', server.addr},
+		H2HeaderField{':path', '/whoami'},
+		H2HeaderField{'remote-addr', '6.6.6.6'},
+	])
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	conn.write(out)!
+
+	mut fr := ServerH2cFrameReader{
+		conn: conn
+	}
+	mut body := []u8{}
+	mut got_end := false
+	for !got_end {
+		f := fr.next() or {
+			assert false, 'frame read failed: ${err}'
+			return
+		}
+		match f {
+			H2HeadersFrame {
+				if f.end_stream {
+					got_end = true
+				}
+			}
+			H2DataFrame {
+				body << f.data
+				if f.end_stream {
+					got_end = true
+				}
+			}
+			else {}
+		}
+	}
+	parts := body.bytestr().split('|')
+	assert parts.len == 3
+	assert parts[0].starts_with('127.0.0.1:'), 'h2c remote_addr: ${parts[0]}'
+	assert parts[1] == '127.0.0.1'
+	assert parts[2] == '127.0.0.1'
+}

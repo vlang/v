@@ -18,13 +18,13 @@ fn test_test_ident() {
 		result += '6'
 	}
 
-	$if $d('test', false) {
+	$if $d ( 'test', false ) {
 		result += '7'
 	} $else {
 		result += '8'
 	}
 
-	$if $d('test', true) {
+	$if $d ( 'test', true ) {
 		result += '9'
 	} $else {
 		result += '0'

@@ -6,7 +6,6 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - 'cmd/tools/**'
@@ -86,11 +85,12 @@ jobs:
 
       - name: Start FreeBSD VM for tcc
         id: vm-freebsd-tcc
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@v1.6.0
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
 
@@ -127,11 +127,12 @@ jobs:
 
       - name: Start FreeBSD VM for clang
         id: vm-freebsd-clang
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@v1.6.0
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
 
@@ -168,11 +169,12 @@ jobs:
 
       - name: Start FreeBSD VM for gcc
         id: vm-freebsd-gcc
-        uses: cross-platform-actions/action@v1.5.0
+        uses: cross-platform-actions/action@v1.6.0
         with:
           operating_system: freebsd
           version: '15.1'
-          memory: 4G
+          memory: 8G
+          cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
 

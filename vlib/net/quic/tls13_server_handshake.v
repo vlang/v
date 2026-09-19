@@ -324,7 +324,7 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	mut transcript := framed_client_hello.clone()
 
 	server_hello := build_server_hello(
-		random: params.server_hello_random
+		random:           params.server_hello_random
 		ecdhe_public_key: ecdhe_public_bytes
 	) or {
 		ecdhe_private.free()
@@ -342,8 +342,8 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	}
 
 	encrypted_extensions := build_encrypted_extensions(
-		transport_parameters: params.transport_parameters
-		selected_alpn: negotiated_alpn
+		transport_parameters:    params.transport_parameters
+		selected_alpn:           negotiated_alpn
 		acknowledge_server_name: acknowledge_server_name
 	) or {
 		ecdhe_private.free()
@@ -384,10 +384,10 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	}
 
 	mut h := &Tls13ServerHandshake{
-		state: .wait_finished
-		transcript: transcript
-		ecdhe_private: ecdhe_private
-		handshake_secrets: handshake_secrets
+		state:                     .wait_finished
+		transcript:                transcript
+		ecdhe_private:             ecdhe_private
+		handshake_secrets:         handshake_secrets
 		peer_transport_parameters: peer_params
 	}
 
@@ -398,11 +398,11 @@ pub fn Tls13ServerHandshake.respond_to_client_hello(msg HandshakeMessage, framed
 	handshake_messages << server_finished
 
 	return h, ServerHandshakeFlight{
-		server_hello: server_hello
-		handshake_messages: handshake_messages
-		handshake_secrets: handshake_secrets
+		server_hello:        server_hello
+		handshake_messages:  handshake_messages
+		handshake_secrets:   handshake_secrets
 		application_secrets: application_secrets
-		negotiated_alpn: negotiated_alpn
+		negotiated_alpn:     negotiated_alpn
 	}
 }
 

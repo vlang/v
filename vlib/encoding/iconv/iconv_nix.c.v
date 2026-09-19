@@ -44,7 +44,7 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 
 	mut cd := C.iconv_open(charptr(dst_encoding.str), charptr(src_encoding.str))
 	if isize(cd) == -1 {
-		return error('platform can\'t convert from ${src_encoding} to ${dst_encoding}')
+		return error("platform can't convert from ${src_encoding} to ${dst_encoding}")
 	}
 	defer { C.iconv_close(cd) }
 

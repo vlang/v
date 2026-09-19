@@ -90,7 +90,7 @@ fn benchmark_closure_creation(iterations int) []TestResult {
 	}
 	large_time := time.ticks() - start
 	ops_per_sec = f64(large_iter) * 1000.0 / f64(large_time)
-	results << TestResult{'Large Closure Creation', large_iter, large_time, ops_per_sec, ''} //, "Equivalent iterations: ${iterations/10}"}
+	results << TestResult{'Large Closure Creation', large_iter, large_time, ops_per_sec, ''} // , "Equivalent iterations: ${iterations/10}"}
 	return results
 }
 

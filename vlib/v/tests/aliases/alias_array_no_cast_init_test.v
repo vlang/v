@@ -1,7 +1,7 @@
 pub type Labels = [][]int
 
 pub fn new_labels(width int, height int) Labels {
-	mut labels := Labels{len: height, init: []int{len: width}}
+	mut labels := Labels{ len: height, init: []int{len: width} }
 	return labels
 }
 

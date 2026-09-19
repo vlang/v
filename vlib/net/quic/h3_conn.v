@@ -169,7 +169,7 @@ fn classify_peer_uni_stream_header(buf []u8) ?(UniStreamKind, int) {
 	raw_type, type_len := decode_varint(buf) or { return none }
 	if q_kind := classify_qpack_stream_type(raw_type) {
 		return UniStreamKind{
-			group: .qpack
+			group:  .qpack
 			q_kind: q_kind
 		}, type_len
 	}
@@ -177,12 +177,12 @@ fn classify_peer_uni_stream_header(buf []u8) ?(UniStreamKind, int) {
 	if h3_kind == .push {
 		_, id_len := decode_varint(buf[type_len..]) or { return none }
 		return UniStreamKind{
-			group: .h3
+			group:   .h3
 			h3_kind: .push
 		}, type_len + id_len
 	}
 	return UniStreamKind{
-		group: .h3
+		group:   .h3
 		h3_kind: h3_kind
 	}, type_len
 }
@@ -262,16 +262,16 @@ mut:
 // poll()/process_timeouts() observes handshake_confirmed.
 pub fn new_h3_conn(mut qc QuicConn, params H3ConnParams) &H3Conn {
 	return &H3Conn{
-		qc: qc
-		own_settings: params.settings
-		own_qpack_max_table_capacity: params.own_qpack_max_table_capacity
-		own_qpack_blocked_streams: qpack_blocked_streams_from_settings(params.settings)
+		qc:                             qc
+		own_settings:                   params.settings
+		own_qpack_max_table_capacity:   params.own_qpack_max_table_capacity
+		own_qpack_blocked_streams:      qpack_blocked_streams_from_settings(params.settings)
 		max_inbound_data_frame_payload: params.max_inbound_data_frame_payload
-		peer_control_decoder: new_h3_frame_decoder()
-		qpack_decoder: new_qpack_decoder(params.own_qpack_max_table_capacity)
-		qpack_encoder: new_qpack_encoder()
-		request_streams: map[u64]&H3RequestStreamState{}
-		request_decoders: map[u64]&H3FrameDecoder{}
+		peer_control_decoder:           new_h3_frame_decoder()
+		qpack_decoder:                  new_qpack_decoder(params.own_qpack_max_table_capacity)
+		qpack_encoder:                  new_qpack_encoder()
+		request_streams:                map[u64]&H3RequestStreamState{}
+		request_decoders:               map[u64]&H3FrameDecoder{}
 	}
 }
 
@@ -358,7 +358,7 @@ pub fn (mut h H3Conn) drive_events(events []QuicEvent) !H3PollResult {
 // drive is poll()/process_timeouts()' shared body.
 fn (mut h H3Conn) drive(qc_result PollResult) !H3PollResult {
 	mut result := H3PollResult{
-		outgoing: qc_result.outgoing
+		outgoing:     qc_result.outgoing
 		next_timeout: qc_result.next_timeout
 	}
 	h.handle_quic_events(qc_result.events, mut result)!
@@ -381,9 +381,9 @@ fn (mut h H3Conn) handle_quic_events(events []QuicEvent, mut result H3PollResult
 			.connection_closed {
 				h.closed = true
 				result.events << H3Event{
-					kind: .connection_error
+					kind:       .connection_error
 					error_code: ev.error_code
-					reason: ev.reason
+					reason:     ev.reason
 				}
 			}
 			.peer_stream_opened {
@@ -725,13 +725,13 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 					}
 				}
 				result.events << H3Event{
-					kind: if h.is_server_role() {
+					kind:      if h.is_server_role() {
 						H3EventKind.request_data
 					} else {
 						H3EventKind.response_data
 					}
 					stream_id: stream_id
-					data: decoded.frame.data
+					data:      decoded.frame.data
 				}
 			}
 			HeadersFrame {
@@ -826,8 +826,8 @@ fn (mut h H3Conn) queue_blocked_section(stream_id u64, buf []u8, is_trailers boo
 		return error_with_code('qpack: blocked field sections exceed the ${max_h3_blocked_field_section_bytes}-byte retention limit', int(QpackErrorCode.decompression_failed))
 	}
 	h.blocked_sections << BlockedFieldSection{
-		stream_id: stream_id
-		buf: buf
+		stream_id:   stream_id
+		buf:         buf
 		is_trailers: is_trailers
 	}
 }
@@ -873,13 +873,13 @@ fn (mut h H3Conn) deliver_decoded_headers(stream_id u64, decoded QpackDecodeFiel
 		state.note_final_response_headers()
 	}
 	result.events << H3Event{
-		kind: if is_trailers {
+		kind:      if is_trailers {
 			if is_server { H3EventKind.request_trailers } else { H3EventKind.response_trailers }
 		} else {
 			if is_server { H3EventKind.request_headers } else { H3EventKind.response_headers }
 		}
 		stream_id: stream_id
-		headers: decoded.lines
+		headers:   decoded.lines
 	}
 }
 
@@ -988,7 +988,7 @@ fn (mut h H3Conn) finalize_request_stream_if_done(stream_id u64, mut result H3Po
 			}
 			state.note_fin()
 			result.events << H3Event{
-				kind: if h.is_server_role() {
+				kind:      if h.is_server_role() {
 					H3EventKind.request_ended
 				} else {
 					H3EventKind.response_ended
@@ -1025,10 +1025,10 @@ fn (mut h H3Conn) fail_request_stream(stream_id u64, error_code u64, reason stri
 	}
 	h.blocked_sections = kept
 	result.events << H3Event{
-		kind: .request_error
-		stream_id: stream_id
+		kind:       .request_error
+		stream_id:  stream_id
 		error_code: error_code
-		reason: reason
+		reason:     reason
 	}
 	// request_streams/request_decoders would otherwise grow with the total
 	// number of requests ever opened on a long-lived pooled connection, not

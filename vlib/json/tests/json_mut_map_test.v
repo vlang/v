@@ -7,7 +7,7 @@ fn q_and_a(mut db_json map[string][]string) {
 }
 
 fn test_main() {
-	mut db_json := json.decode(map[string][]string, '{}')!
+	mut db_json := json.decode(map[string][]string{}, '{}')!
 	assert db_json == {}
 	q_and_a(mut db_json)
 }

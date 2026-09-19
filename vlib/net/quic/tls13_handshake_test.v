@@ -257,13 +257,13 @@ fn drive_to_wait_encrypted_extensions(client_random []u8) !(&Tls13ClientHandshak
 	server_der := handshake_test_pem_to_der(handshake_test_cert_pem)
 
 	mut h, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random: client_random
-		server_name: 'example.com'
+		random:               client_random
+		server_name:          'example.com'
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
-		ca_bundle_pem: handshake_test_cert_pem
-		alpn_protocols: ['h3']
+		ca_bundle_pem:        handshake_test_cert_pem
+		alpn_protocols:       ['h3']
 	})!
 
 	client_key_exchange := extract_client_hello_key_exchange(client_hello)!
@@ -282,9 +282,9 @@ fn drive_to_wait_encrypted_extensions(client_random []u8) !(&Tls13ClientHandshak
 	server_handshake_secrets := derive_handshake_secrets(early_secret, server_shared_secret, ch_sh_hash)!
 
 	return h, FakeServerHandshake{
-		priv_key: server_priv
+		priv_key:          server_priv
 		handshake_secrets: server_handshake_secrets
-		certificate_der: server_der
+		certificate_der:   server_der
 	}
 }
 
@@ -292,7 +292,7 @@ fn drive_to_certificate(client_random []u8, server_initial_scid []u8) !(&Tls13Cl
 	mut h, server := drive_to_wait_encrypted_extensions(client_random)!
 
 	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
-		initial_source_connection_id: server_initial_scid
+		initial_source_connection_id:       server_initial_scid
 		original_destination_connection_id: client_original_dcid.clone()
 	})!
 	ee_msg, _ := parse_handshake_message(ee_framed)!
@@ -333,7 +333,7 @@ fn test_process_encrypted_extensions_rejects_unoffered_alpn_selection() {
 	// offered (['h3']) -- distinguishing "malformed ALPN" from "valid but
 	// unoffered selection".
 	ee_framed := build_fake_encrypted_extensions_with_alpn(QuicTransportParameters{
-		initial_source_connection_id: server_initial_scid
+		initial_source_connection_id:       server_initial_scid
 		original_destination_connection_id: client_original_dcid.clone()
 	}, 'h2')!
 	ee_msg, _ := parse_handshake_message(ee_framed)!
@@ -358,7 +358,7 @@ fn test_process_encrypted_extensions_rejects_missing_alpn() {
 	// 9001 §8.1 makes ALPN mandatory for QUIC, so a missing extension must
 	// be rejected the same as an explicit mismatch, not silently ignored.
 	encoded_tp := encode_transport_parameters(QuicTransportParameters{
-		initial_source_connection_id: server_initial_scid
+		initial_source_connection_id:       server_initial_scid
 		original_destination_connection_id: client_original_dcid.clone()
 	})!
 	tp_ext := encode_extension(ext_quic_transport_parameters, encoded_tp)!
@@ -429,9 +429,9 @@ fn test_process_encrypted_extensions_rejects_stateless_reset_token_with_zero_len
 	}
 	zero_length_scid := []u8{}
 	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
-		initial_source_connection_id: zero_length_scid
+		initial_source_connection_id:       zero_length_scid
 		original_destination_connection_id: client_original_dcid.clone()
-		stateless_reset_token: []u8{len: 16, init: 0xAB}
+		stateless_reset_token:              []u8{len: 16, init: 0xAB}
 	})!
 	ee_msg, _ := parse_handshake_message(ee_framed)!
 	h.process_encrypted_extensions(ee_msg, ee_framed, zero_length_scid, client_original_dcid, none) or {
@@ -451,10 +451,10 @@ fn test_process_encrypted_extensions_rejects_preferred_address_with_zero_length_
 	}
 	zero_length_scid := []u8{}
 	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
-		initial_source_connection_id: zero_length_scid
+		initial_source_connection_id:       zero_length_scid
 		original_destination_connection_id: client_original_dcid.clone()
-		preferred_address: PreferredAddress{
-			connection_id: [u8(1), 2, 3, 4]
+		preferred_address:                  PreferredAddress{
+			connection_id:         [u8(1), 2, 3, 4]
 			stateless_reset_token: []u8{len: 16, init: 0xCD}
 		}
 	})!
@@ -481,7 +481,7 @@ fn test_process_encrypted_extensions_rejects_original_dcid_mismatch() {
 	// off-path attacker's injected/altered Retry).
 	wrong_original_dcid := [u8(0xff), 0xff, 0xff, 0xff]
 	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
-		initial_source_connection_id: server_initial_scid
+		initial_source_connection_id:       server_initial_scid
 		original_destination_connection_id: wrong_original_dcid
 	})!
 	ee_msg, _ := parse_handshake_message(ee_framed)!
@@ -507,9 +507,9 @@ fn test_process_encrypted_extensions_rejects_unexpected_retry_source_connection_
 	// provided when no Retry packet was received, the client MUST treat
 	// this as a connection error".
 	ee_framed := build_fake_encrypted_extensions(QuicTransportParameters{
-		initial_source_connection_id: server_initial_scid
+		initial_source_connection_id:       server_initial_scid
 		original_destination_connection_id: client_original_dcid.clone()
-		retry_source_connection_id: [u8(9), 9, 9, 9]
+		retry_source_connection_id:         [u8(9), 9, 9, 9]
 	})!
 	ee_msg, _ := parse_handshake_message(ee_framed)!
 	h.process_encrypted_extensions(ee_msg, ee_framed, server_initial_scid, client_original_dcid, none) or {
@@ -653,13 +653,13 @@ fn test_process_certificate_verify_rejects_unoffered_algorithm() {
 // a second HelloRetryRequest is fatal, not just unusual.
 fn test_second_hello_retry_request_rejected() {
 	mut h, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random: []u8{len: 32, init: 0x33}
-		server_name: 'example.com'
+		random:               []u8{len: 32, init: 0x33}
+		server_name:          'example.com'
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
-		ca_bundle_pem: handshake_test_cert_pem
-		alpn_protocols: ['h3']
+		ca_bundle_pem:        handshake_test_cert_pem
+		alpn_protocols:       ['h3']
 	})!
 	defer {
 		h.free()
@@ -832,13 +832,13 @@ fn test_process_certificate_or_request_preserves_illegal_extension_code() {
 
 fn test_process_server_hello_rejects_unoffered_cipher_suite() {
 	mut h, client_hello := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random: []u8{len: 32, init: 0x55}
-		server_name: 'example.com'
+		random:               []u8{len: 32, init: 0x55}
+		server_name:          'example.com'
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
-		ca_bundle_pem: handshake_test_cert_pem
-		alpn_protocols: ['h3']
+		ca_bundle_pem:        handshake_test_cert_pem
+		alpn_protocols:       ['h3']
 	})!
 	defer {
 		h.free()
@@ -926,13 +926,13 @@ fn test_process_finished_rejects_bad_verify_data() {
 // process abort, not a clean test failure.
 fn test_free_is_idempotent() {
 	mut h, _ := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random: []u8{len: 32, init: 0x11}
-		server_name: 'example.com'
+		random:               []u8{len: 32, init: 0x11}
+		server_name:          'example.com'
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
-		ca_bundle_pem: ''
-		alpn_protocols: ['h3']
+		ca_bundle_pem:        ''
+		alpn_protocols:       ['h3']
 	})!
 	h.free()
 	h.free() // must not double-free
@@ -953,21 +953,21 @@ fn test_free_is_idempotent() {
 // bug class.
 fn test_application_secrets_and_handshake_secrets_return_independent_copies() {
 	mut h, _ := Tls13ClientHandshake.start(ClientHandshakeParams{
-		random: []u8{len: 32, init: 0x11}
-		server_name: 'example.com'
+		random:               []u8{len: 32, init: 0x11}
+		server_name:          'example.com'
 		transport_parameters: QuicTransportParameters{
 			initial_source_connection_id: [u8(1), 2, 3, 4]
 		}
-		ca_bundle_pem: ''
-		alpn_protocols: ['h3']
+		ca_bundle_pem:        ''
+		alpn_protocols:       ['h3']
 	})!
 	defer {
 		h.free()
 	}
 	h.handshake_secrets = HandshakeSecrets{
 		handshake_secret: [u8(1), 2, 3]
-		client_secret: [u8(4), 5, 6]
-		server_secret: [u8(7), 8, 9]
+		client_secret:    [u8(4), 5, 6]
+		server_secret:    [u8(7), 8, 9]
 	}
 	h.application_secrets = ApplicationSecrets{
 		master_secret: [u8(10), 11, 12]

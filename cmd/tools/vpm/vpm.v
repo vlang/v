@@ -155,21 +155,32 @@ fn vpm_remove(query []string) {
 		vpm_error('specify at least one module name for removal.')
 		exit(2)
 	}
+	mut errors := 0
 	for m in query {
 		final_module_path := get_path_of_existing_module(m) or { continue }
-		println('Removing module "${m}" from ${fmt_mod_path(final_module_path)} ...')
-		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
-		rmdir_all(final_module_path) or { vpm_error(err.msg(), verbose: true) }
-		// Delete author directory if it is empty.
-		author := normalize_mod_path(m.split('.')[0])
-		author_dir := os.real_path(os.join_path(settings.vmodules_path, author))
-		if !os.exists(author_dir) {
+		if !vpm_owns_module_dir(final_module_path) {
+			vpm_error('refusing to remove `${m}`: `${fmt_mod_path(final_module_path)}` was not installed by VPM.',
+				details: not_installed_by_vpm_details()
+			)
+			errors++
 			continue
 		}
-		if os.is_dir_empty(author_dir) {
-			verbose_println('Removing author folder ${author_dir}')
-			rmdir_all(author_dir) or { vpm_error(err.msg(), verbose: true) }
+		println('Removing module "${m}" from ${fmt_mod_path(final_module_path)} ...')
+		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
+		// Whatever is left behind by a failed removal stays VPM's, so the command
+		// can be retried. Losing the record here would make the leftovers look like
+		// the project's own, and nothing could finish the removal.
+		remove_installed_dir(final_module_path) or {
+			vpm_error('failed to remove `${m}` from `${fmt_mod_path(final_module_path)}`.',
+				details: err.msg()
+			)
+			errors++
+			continue
 		}
+		cleanup_empty_module_parent_dirs(final_module_path)
+	}
+	if errors > 0 {
+		exit(1)
 	}
 }
 

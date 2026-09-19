@@ -115,11 +115,11 @@ fn test_settings_frame_roundtrip_and_preserves_order() {
 	settings := [
 		H3Setting{
 			identifier: 0x06
-			value: 16384
+			value:      16384
 		},
 		H3Setting{
 			identifier: 0x21 // grease -- must round-trip, not be dropped
-			value: 0
+			value:      0
 		},
 	]
 	encoded := encode_settings_frame(settings)!
@@ -376,7 +376,7 @@ fn test_h3_frame_decoder_settings_split_across_pushes_mid_payload() {
 	full := encode_settings_frame([
 		H3Setting{
 			identifier: 0x06
-			value: 42
+			value:      42
 		},
 	])!
 	mut d := new_h3_frame_decoder()

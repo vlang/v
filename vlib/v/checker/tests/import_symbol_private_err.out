@@ -24,14 +24,14 @@ vlib/v/checker/tests/import_symbol_private_err.vv:4:13: error: module `io` type 
       |             ~~~~~~~~~~~~~~~~
     5 | 
     6 | fn main() {
-vlib/v/checker/tests/import_symbol_private_err.vv:7:18: error: constant `v.scanner.single_quote` is private
+vlib/v/checker/tests/import_symbol_private_err.vv:7:18: error: constant `old.scanner.single_quote` is private
     5 | 
     6 | fn main() {
     7 |     println(scanner.single_quote)
       |                     ~~~~~~~~~~~~
     8 |     println(parser.State.html)
     9 |     vpc_now()
-vlib/v/checker/tests/import_symbol_private_err.vv:8:17: error: enum `v.parser.State` is private
+vlib/v/checker/tests/import_symbol_private_err.vv:8:17: error: enum `old.parser.State` is private
     6 | fn main() {
     7 |     println(scanner.single_quote)
     8 |     println(parser.State.html)

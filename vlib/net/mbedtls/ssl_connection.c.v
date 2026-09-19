@@ -736,6 +736,27 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	if s.opened {
 		return error('net.mbedtls SSLConn.connect, ssl connection was already open')
 	}
+	mut connected := false
+	defer {
+		if !connected {
+			if unsafe { s.certs != nil } {
+				C.mbedtls_x509_crt_free(&s.certs.cacert)
+				C.mbedtls_x509_crt_free(&s.certs.client_cert)
+				C.mbedtls_pk_free(&s.certs.client_key)
+				s.certs = unsafe { nil }
+			}
+			C.mbedtls_ssl_free(&s.ssl)
+			C.mbedtls_ssl_config_free(&s.conf)
+			free_rng(mut s.ctr_drbg, mut s.entropy)
+			if s.alpn_list != unsafe { nil } {
+				unsafe {
+					C.free(s.alpn_list)
+					s.alpn_list = nil
+				}
+			}
+			s.handle = 0
+		}
+	}
 	s.handle = tcp_conn.sock.handle
 	s.set_read_timeout(tcp_conn.read_timeout())
 	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
@@ -760,6 +781,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 			ret)
 	}
 	s.opened = true
+	connected = true
 }
 
 // dial opens an ssl connection on hostname:port
@@ -974,8 +996,6 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
 	}
 	set := C.fd_set{}
-	C.FD_ZERO(&set)
-	C.FD_SET(handle, &set)
 
 	is_infinite := timeout <= 0 || timeout == net.infinite_timeout
 	deadline := ssl_timeout_deadline(timeout)
@@ -990,16 +1010,24 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		}
 		timeval_timeout := if is_infinite { &C.timeval(unsafe { nil }) } else { &tt }
 
+		// (Re)arm the set on every iteration: select() leaves its contents
+		// unspecified after a failure, so a retry after EINTR must not reuse it.
+		C.FD_ZERO(&set)
+		C.FD_SET(handle, &set)
+		// Inspect the raw result here instead of wrapping the call in
+		// net.socket_error()!, which would turn EINTR (a spurious wakeup, e.g.
+		// from the GC signalling another thread) into a hard error before the
+		// retry below could ever run.
 		mut res := -1
 		match test {
 			.read {
-				res = net.socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+				res = C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout)
 			}
 			.write {
-				res = net.socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+				res = C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout)
 			}
 			.except {
-				res = net.socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+				res = C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout)
 			}
 		}
 
@@ -1011,8 +1039,8 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 				}
 				continue
 			}
-			cerr := C.errno
-			return error_with_code('net.mbedtls select, failed, res: ${res}', cerr)
+			net.socket_error(res)!
+			return error_with_code('net.mbedtls select, failed, res: ${res}', C.errno)
 		} else if res == 0 {
 			return net.err_timed_out
 		}

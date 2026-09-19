@@ -30,7 +30,7 @@ fn test_main() {
 
 	mut next := v1.next
 	for {
-		if mut next != none {
+		if next != none {
 			eprintln(next.name)
 			assert next.name == 'v2'
 			next = next.next

@@ -15,13 +15,13 @@ mut:
 fn main() {
 	mut app := &App{}
 	app.gg = gg.new_context(
-		bg_color:     gg.rgb(174, 198, 255)
-		width:        600
-		height:       400
-		window_title: 'Drag and drop'
-		frame_fn:     frame
-		user_data:    app
-		event_fn:     my_event_manager
+		bg_color:                     gg.rgb(174, 198, 255)
+		width:                        600
+		height:                       400
+		window_title:                 'Drag and drop'
+		frame_fn:                     frame
+		user_data:                    app
+		event_fn:                     my_event_manager
 		// drag & drop
 		enable_dragndrop:             true
 		max_dropped_files:            max_files

@@ -1,7 +1,18 @@
+// vtest vflags: -enable-globals
+
 @[_linker_section: foo]
 fn test() {
 }
 
+@[_linker_section: 'A\x5cnB']
+fn test_opaque_section() {
+}
+
+@[_linker_section: 'C\x5cnD']
+__global opaque_section_global = 1
+
 fn main() {
 	test()
+	test_opaque_section()
+	println(opaque_section_global)
 }

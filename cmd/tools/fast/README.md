@@ -172,7 +172,7 @@ Wall-clock timings take `max_samples` measurements after a couple of warmups and
 discard the slowest ones to cut noise (see the constants in `fast.v`).
 Phase RSS is available for commits measured from 2026-07-30 onward; older rows
 remain timing-only. Starting on that date, self-compile measurements compile
-`vlib/v3/v3.v`; older measurements compile `cmd/v`.
+`vlib/v/v.v`; older measurements compile `cmd/v`.
 
 ## Database
 

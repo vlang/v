@@ -299,7 +299,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 	return arr
 }
 
-fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array {
+fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map, free_seed bool) array {
 	panic_on_negative_len(mylen)
 	panic_on_negative_cap(cap)
 	cap_ := if cap < mylen { mylen } else { cap }
@@ -321,6 +321,9 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 				eptr += arr.element_size
 			}
 		}
+	}
+	if free_seed {
+		unsafe { val.free() }
 	}
 	return arr
 }
@@ -402,6 +405,9 @@ pub fn (mut a array) ensure_cap(required int) {
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 		if a.flags.has(.noslices) && !a.flags.has(.is_slice) && !a.buffer_has_slices() {
 			unsafe {
+				$if prealloc {
+					prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size))
+				}
 				if a.flags.has(.managed) {
 					free(&u8(a.data) - u64(array_data_header_size()))
 				} else {
@@ -956,8 +962,7 @@ fn (a array) slice(start int, _end int) array {
 	end := if _end == max_i64 || _end == max_i32 { a.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end {
-			panic(
-				'array.slice: invalid slice index (start>end):' + impl_i64_to_string(i64(start)) +
+			panic('array.slice: invalid slice index (start>end):' + impl_i64_to_string(i64(start)) +
 				', ' + impl_i64_to_string(end))
 		}
 		if end > a.len {
@@ -1268,6 +1273,9 @@ pub fn (a array) reverse() array {
 @[unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
+		if !a.flags.has(.is_slice) && !a.flags.has(.nofree) {
+			unsafe { prealloc_discard_pages(a.data, usize(a.cap) * usize(a.element_size)) }
+		}
 		return
 	}
 	// A slice is a borrowed view into another array's buffer; its `.data` points

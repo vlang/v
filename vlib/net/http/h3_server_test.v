@@ -63,13 +63,13 @@ fn h3_server_test_pem_to_der(pem string) []u8 {
 
 fn h3_server_test_transport_parameters() quic.QuicTransportParameters {
 	return quic.QuicTransportParameters{
-		max_idle_timeout: 30000
-		initial_max_data: 1 << 20
-		initial_max_stream_data_bidi_local: 1 << 16
+		max_idle_timeout:                    30000
+		initial_max_data:                    1 << 20
+		initial_max_stream_data_bidi_local:  1 << 16
 		initial_max_stream_data_bidi_remote: 1 << 16
-		initial_max_stream_data_uni: 1 << 16
-		initial_max_streams_bidi: 4
-		initial_max_streams_uni: 4
+		initial_max_stream_data_uni:         1 << 16
+		initial_max_streams_bidi:            4
+		initial_max_streams_uni:             4
 	}
 }
 
@@ -80,7 +80,7 @@ fn test_h3_server_params_have_usable_default_transport_limits() {
 	}
 	params := H3ServerParams{
 		signing_key: signing_key
-		handler: H3ServerTestEchoHandler{}
+		handler:     H3ServerTestEchoHandler{}
 	}
 	transport := params.transport_parameters
 	assert transport.initial_max_data or { 0 } > 0
@@ -133,7 +133,7 @@ fn test_h3_server_caps_and_releases_aggregate_inflight_headers_per_connection() 
 
 	assert h3_server_decoded_header_list_size([
 		quic.QpackFieldLine{
-			name: 'x-test'
+			name:  'x-test'
 			value: 'value'
 		},
 	]) == 'x-test'.len + 'value'.len + 32
@@ -142,21 +142,21 @@ fn test_h3_server_caps_and_releases_aggregate_inflight_headers_per_connection() 
 fn test_h3_server_validates_request_trailers() {
 	h3_validate_request_trailers([
 		quic.QpackFieldLine{
-			name: 'x-checksum'
+			name:  'x-checksum'
 			value: 'ok'
 		},
 	])!
 	for invalid in [
 		quic.QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/late'
 		},
 		quic.QpackFieldLine{
-			name: 'connection'
+			name:  'connection'
 			value: 'close'
 		},
 		quic.QpackFieldLine{
-			name: 'bad name'
+			name:  'bad name'
 			value: 'value'
 		},
 	] {
@@ -270,7 +270,7 @@ struct H3ServerTestEchoHandler {}
 fn (mut h H3ServerTestEchoHandler) handle(req Request) Response {
 	return Response{
 		status_code: 200
-		body: 'pong:${req.data}'
+		body:        'pong:${req.data}'
 	}
 }
 
@@ -286,13 +286,13 @@ fn (mut h H3ServerTestConcurrentHandler) handle(req Request) Response {
 	}
 	return Response{
 		status_code: 200
-		body: req.url
+		body:        req.url
 	}
 }
 
 fn test_h3_server_handler_work_does_not_block_dispatch_or_completion_queue() {
-	slow_started := chan bool{ cap: 1 }
-	release_slow := chan bool{ cap: 1 }
+	slow_started := chan bool{cap: 1}
+	release_slow := chan bool{cap: 1}
 	mut slow_released := false
 	defer {
 		if !slow_released {
@@ -350,8 +350,8 @@ fn test_h3_server_handler_work_does_not_block_dispatch_or_completion_queue() {
 }
 
 fn test_h3_server_bounds_handler_worker_admission() {
-	slow_started := chan bool{ cap: 1 }
-	release_slow := chan bool{ cap: 1 }
+	slow_started := chan bool{cap: 1}
+	release_slow := chan bool{cap: 1}
 	mut slow_released := false
 	defer {
 		if !slow_released {
@@ -411,15 +411,15 @@ fn test_h3_server_real_udp_request_response_round_trip() {
 	}
 
 	mut server := new_h3_server(':0', H3ServerParams{
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
 			quic.CertificateEntry{
 				cert_data: h3_server_test_pem_to_der(h3_server_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
+		signing_key:          signing_key
 		transport_parameters: h3_server_test_transport_parameters()
-		handler: H3ServerTestEchoHandler{}
+		handler:              H3ServerTestEchoHandler{}
 	})!
 	server_addr := server.local_addr()!
 	port := server_addr.port()!
@@ -438,17 +438,17 @@ fn test_h3_server_real_udp_request_response_round_trip() {
 
 	now0 := h3_now_ns()
 	mut qc, first_dg := quic.dial(quic.DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: h3_server_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        h3_server_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: h3_server_test_transport_parameters()
 	}, now0)!
 	udp.write(first_dg.bytes)!
 	mut h3 := quic.new_h3_conn(mut qc, quic.H3ConnParams{
-		settings: [
+		settings:                     [
 			quic.H3Setting{
 				identifier: quic.qpack_settings_max_table_capacity_id
-				value: 4096
+				value:      4096
 			},
 		]
 		own_qpack_max_table_capacity: 4096
@@ -485,19 +485,19 @@ fn test_h3_server_real_udp_request_response_round_trip() {
 			stream_id = h3.open_request_stream()!
 			h3.send_request_headers(stream_id, [
 				quic.QpackFieldLine{
-					name: ':method'
+					name:  ':method'
 					value: 'GET'
 				},
 				quic.QpackFieldLine{
-					name: ':path'
+					name:  ':path'
 					value: '/echo'
 				},
 				quic.QpackFieldLine{
-					name: ':scheme'
+					name:  ':scheme'
 					value: 'https'
 				},
 				quic.QpackFieldLine{
-					name: ':authority'
+					name:  ':authority'
 					value: 'localhost'
 				},
 			], false)!
@@ -558,15 +558,15 @@ fn test_h3_server_request_split_across_two_datagrams_still_completes() {
 	}
 
 	mut server := new_h3_server(':0', H3ServerParams{
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
 			quic.CertificateEntry{
 				cert_data: h3_server_test_pem_to_der(h3_server_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
+		signing_key:          signing_key
 		transport_parameters: h3_server_test_transport_parameters()
-		handler: H3ServerTestEchoHandler{}
+		handler:              H3ServerTestEchoHandler{}
 	})!
 	server_addr := server.local_addr()!
 	port := server_addr.port()!
@@ -585,17 +585,17 @@ fn test_h3_server_request_split_across_two_datagrams_still_completes() {
 
 	now0 := h3_now_ns()
 	mut qc, first_dg := quic.dial(quic.DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: h3_server_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        h3_server_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: h3_server_test_transport_parameters()
 	}, now0)!
 	udp.write(first_dg.bytes)!
 	mut h3 := quic.new_h3_conn(mut qc, quic.H3ConnParams{
-		settings: [
+		settings:                     [
 			quic.H3Setting{
 				identifier: quic.qpack_settings_max_table_capacity_id
-				value: 4096
+				value:      4096
 			},
 		]
 		own_qpack_max_table_capacity: 4096
@@ -640,19 +640,19 @@ fn test_h3_server_request_split_across_two_datagrams_still_completes() {
 			// before send_request_data is ever called.
 			h3.send_request_headers(stream_id, [
 				quic.QpackFieldLine{
-					name: ':method'
+					name:  ':method'
 					value: 'GET'
 				},
 				quic.QpackFieldLine{
-					name: ':path'
+					name:  ':path'
 					value: '/echo'
 				},
 				quic.QpackFieldLine{
-					name: ':scheme'
+					name:  ':scheme'
 					value: 'https'
 				},
 				quic.QpackFieldLine{
-					name: ':authority'
+					name:  ':authority'
 					value: 'localhost'
 				},
 			], false)!
@@ -698,15 +698,15 @@ fn test_h3_server_local_addr_reports_os_assigned_port() {
 		signing_key.free()
 	}
 	mut server := new_h3_server(':0', H3ServerParams{
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
 			quic.CertificateEntry{
 				cert_data: h3_server_test_pem_to_der(h3_server_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
+		signing_key:          signing_key
 		transport_parameters: h3_server_test_transport_parameters()
-		handler: H3ServerTestEchoHandler{}
+		handler:              H3ServerTestEchoHandler{}
 	})!
 	defer {
 		server.close() or {}

@@ -69,13 +69,13 @@ fn h3_server_test_pem_to_der(pem string) []u8 {
 
 fn h3_server_test_transport_parameters() QuicTransportParameters {
 	return QuicTransportParameters{
-		max_idle_timeout: 30000
-		initial_max_data: 1 << 20
-		initial_max_stream_data_bidi_local: 1 << 16
+		max_idle_timeout:                    30000
+		initial_max_data:                    1 << 20
+		initial_max_stream_data_bidi_local:  1 << 16
 		initial_max_stream_data_bidi_remote: 1 << 16
-		initial_max_stream_data_uni: 1 << 16
-		initial_max_streams_bidi: 4
-		initial_max_streams_uni: 4
+		initial_max_stream_data_uni:         1 << 16
+		initial_max_streams_bidi:            4
+		initial_max_streams_uni:             4
 	}
 }
 
@@ -87,11 +87,11 @@ fn h3_server_test_settings() []H3Setting {
 	return [
 		H3Setting{
 			identifier: qpack_settings_max_table_capacity_id
-			value: 4096
+			value:      4096
 		},
 		H3Setting{
 			identifier: qpack_settings_blocked_streams_id
-			value: 100
+			value:      100
 		},
 	]
 }
@@ -107,22 +107,22 @@ fn h3_server_test_pair() !(&QuicConn, &H3Conn, &QuicConn, &H3Conn, u64) {
 	mut signing_key := ecdsa.new_key_from_seed(h3_server_test_key_seed, fixed_size: true)!
 
 	dial_params := DialParams{
-		server_name: 'localhost'
-		ca_bundle_pem: h3_server_test_cert_pem
-		alpn_protocols: ['h3']
+		server_name:          'localhost'
+		ca_bundle_pem:        h3_server_test_cert_pem
+		alpn_protocols:       ['h3']
 		transport_parameters: h3_server_test_transport_parameters()
 	}
 	mut client, client_dg := dial(dial_params, 0)!
 
 	accept_params := AcceptParams{
 		transport_parameters: h3_server_test_transport_parameters()
-		alpn_protocols: ['h3']
-		certificate_chain: [
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
 			CertificateEntry{
 				cert_data: h3_server_test_pem_to_der(h3_server_test_cert_pem)
 			},
 		]
-		signing_key: signing_key
+		signing_key:          signing_key
 	}
 	mut server, mut server_result := accept(client_dg.bytes, accept_params, 0)!
 
@@ -151,11 +151,11 @@ fn h3_server_test_pair() !(&QuicConn, &H3Conn, &QuicConn, &H3Conn, u64) {
 	assert server.state() == .established
 
 	mut client_h3 := new_h3_conn(mut client, H3ConnParams{
-		settings: h3_server_test_settings()
+		settings:                     h3_server_test_settings()
 		own_qpack_max_table_capacity: 4096
 	})
 	mut server_h3 := new_h3_conn(mut server, H3ConnParams{
-		settings: h3_server_test_settings()
+		settings:                     h3_server_test_settings()
 		own_qpack_max_table_capacity: 4096
 	})
 	client_h3.poll(none, now)!
@@ -241,19 +241,19 @@ fn test_h3_conn_server_role_receives_request_and_sends_response() {
 	stream_id := client_h3.open_request_stream()!
 	client_h3.send_request_headers(stream_id, [
 		QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'GET'
 		},
 		QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/hello'
 		},
 		QpackFieldLine{
-			name: ':scheme'
+			name:  ':scheme'
 			value: 'https'
 		},
 		QpackFieldLine{
-			name: ':authority'
+			name:  ':authority'
 			value: 'localhost'
 		},
 	], false)!
@@ -297,7 +297,7 @@ fn test_h3_conn_server_role_receives_request_and_sends_response() {
 
 	server_h3.send_response_headers(stream_id, [
 		QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: '200'
 		},
 	], false)!
@@ -330,15 +330,15 @@ fn test_h3_conn_server_rejects_oversized_data_from_header_only() {
 	stream_id := client_h3.open_request_stream()!
 	client_h3.send_request_headers(stream_id, [
 		QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'POST'
 		},
 		QpackFieldLine{
-			name: ':scheme'
+			name:  ':scheme'
 			value: 'https'
 		},
 		QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/'
 		},
 	], false)!
@@ -477,7 +477,7 @@ fn test_h3_conn_server_buffers_data_while_initial_headers_are_qpack_blocked() {
 
 	encoded := peer_encoder.encode_field_section(0, [
 		QpackFieldLine{
-			name: 'x-blocked'
+			name:  'x-blocked'
 			value: 'later'
 		},
 	])!
@@ -521,13 +521,13 @@ fn test_h3_conn_server_preserves_trailers_behind_qpack_blocked_initial_headers()
 
 	initial := peer_encoder.encode_field_section(0, [
 		QpackFieldLine{
-			name: 'x-blocked'
+			name:  'x-blocked'
 			value: 'initial'
 		},
 	])!
 	trailers := peer_encoder.encode_field_section(0, [
 		QpackFieldLine{
-			name: 'x-trailer'
+			name:  'x-trailer'
 			value: 'final'
 		},
 	])!

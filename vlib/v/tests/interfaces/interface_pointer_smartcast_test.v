@@ -68,6 +68,31 @@ fn test_interface_pointer_smartcast_method_call() {
 	}
 }
 
+struct PointerSmartcastError {
+	Error
+pub:
+	reason string
+}
+
+fn (err &PointerSmartcastError) msg() string {
+	return 'pointer error: ${err.reason}'
+}
+
+fn fail_with_pointer_error() ! {
+	return &PointerSmartcastError{
+		reason: 'boom'
+	}
+}
+
+fn test_assert_interface_pointer_smartcast_method_call() {
+	fail_with_pointer_error() or {
+		assert err is &PointerSmartcastError
+		assert err.reason == 'boom'
+		return
+	}
+	assert false
+}
+
 fn test_mut_interface_pointer_smartcast_method_call() {
 	mut actor := Actor(&Mob{
 		id:   2

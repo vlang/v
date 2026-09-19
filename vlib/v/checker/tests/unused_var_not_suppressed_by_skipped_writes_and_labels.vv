@@ -1,0 +1,112 @@
+fn skipped_assignment_target() {
+	mut x := 1
+	$if prealloc {
+		x = 2
+	}
+}
+
+fn skipped_control_flow_labels() {
+	goto_target := 1
+	break_target := 2
+	continue_target := 3
+	$if prealloc {
+		goto goto_target
+		goto_target:
+		break_target: for {
+			break break_target
+		}
+		continue_target: for {
+			continue continue_target
+		}
+	}
+}
+
+fn skipped_multi_assignment_targets() {
+	mut x := 1
+	mut y := 2
+	$if prealloc {
+		x, y = 3, 4
+	}
+}
+
+fn parsed_multi_assignment_targets() {
+	mut x := 1
+	mut y := 2
+	x, y = 3, 4
+}
+
+fn label_used_only_in_skipped_goto() {
+	done:
+	$if prealloc {
+		goto done
+	}
+}
+
+fn top_level_helper() {}
+
+fn skipped_sibling_does_not_use_branch_local() {
+	$if !prealloc {
+		top_level_helper := 1
+	} $else {
+		top_level_helper()
+	}
+}
+
+fn skipped_asm_template_tracks_only_v_operands() {
+	x0 := 1
+	input := 2
+	mut output := 0
+	$if prealloc {
+		asm arm64 {
+			mov x0, x1
+			; =r (output)
+			; r (input)
+		}
+	}
+}
+
+fn label_used_only_in_skipped_asm_goto() {
+	$if prealloc {
+		asm goto amd64 {
+			jne done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+
+fn main() {
+	skipped_assignment_target()
+	skipped_control_flow_labels()
+	skipped_multi_assignment_targets()
+	parsed_multi_assignment_targets()
+	skipped_dereferenced_assignment_base()
+	skipped_multi_dereferenced_assignment_bases()
+	label_used_only_in_skipped_goto()
+	top_level_helper()
+	skipped_sibling_does_not_use_branch_local()
+	skipped_asm_template_tracks_only_v_operands()
+	label_used_only_in_skipped_asm_goto()
+}
+
+fn skipped_dereferenced_assignment_base() {
+	mut value := 0
+	p := &value
+	$if prealloc {
+		unsafe {
+			*p = 1
+		}
+	}
+}
+
+fn skipped_multi_dereferenced_assignment_bases() {
+	mut first := 0
+	mut second := 0
+	p := &first
+	q := &second
+	$if prealloc {
+		unsafe {
+			*p, *q = 1, 2
+		}
+	}
+}

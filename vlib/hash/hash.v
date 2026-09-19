@@ -4,9 +4,9 @@
 module hash
 
 pub interface Hash {
-mut:
 	// Sum appends the current hash to b and returns the resulting array.
 	// It does not change the underlying hash state.
+mut:
 	sum(b []u8) []u8
 	size() int
 	block_size() int

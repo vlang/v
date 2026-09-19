@@ -1,0 +1,70 @@
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:7:2: warning: unused variable: `x`
+    5 | fn lambda_parameter_shadows_outer() {
+    6 |     // The lambda parameter below shadows this binding.
+    7 |     x := 1
+      |     ^
+    8 |     $if prealloc {
+    9 |         consume_lambda(|x| x + 1)
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:31:2: warning: unused variable: `x`
+   29 |
+   30 | fn multiline_lambda_parameter_shadows_outer() {
+   31 |     x := 1
+      |     ^
+   32 |     $if prealloc {
+   33 |         callback := |x| identity
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:40:2: warning: unused variable: `x`
+   38 |
+   39 | fn newline_selector_lambda_parameter_shadows_outer() {
+   40 |     x := 1
+      |     ^
+   41 |     $if prealloc {
+   42 |         callback := |x| [1]
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:49:2: warning: unused variable: `x`
+   47 |
+   48 | fn enclosing_lambda_parameter_shadows_outer() {
+   49 |     x := 1
+      |     ^
+   50 |     consume_action(|x| {
+   51 |         $if prealloc {
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:59:2: warning: unused variable: `x`
+   57 |
+   58 | fn newline_infix_lambda_parameter_shadows_outer() {
+   59 |     x := 1
+      |     ^
+   60 |     $if prealloc {
+   61 |         consume_lambda(|x| x
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:84:2: warning: unused variable: `module`
+   82 |
+   83 | fn keyword_lambda_parameters_shadow_outer() {
+   84 |     module := 1
+      |     ~~~~~~
+   85 |     type := 2
+   86 |     shared := 3
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:85:2: warning: unused variable: `type`
+   83 | fn keyword_lambda_parameters_shadow_outer() {
+   84 |     module := 1
+   85 |     type := 2
+      |     ~~~~
+   86 |     shared := 3
+   87 |     $if prealloc {
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:86:2: warning: unused variable: `shared`
+   84 |     module := 1
+   85 |     type := 2
+   86 |     shared := 3
+      |     ~~~~~~
+   87 |     $if prealloc {
+   88 |         consume_lambda(|module| module + 1)
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:97:2: warning: unused variable: `x`
+   95 | fn type_newline_call_lambda_parameter_shadows_outer() {
+   96 |     type := identity
+   97 |     x := 1
+      |     ^
+   98 |     $if prealloc {
+   99 |         callback := |x| type
+vlib/v/checker/tests/unused_var_not_suppressed_by_skipped_lambda_shadow.vv:112:2: warning: unused variable: `x`
+  110 | fn keyword_selector_newline_call_lambda_parameter_shadows_outer() {
+  111 |     holder := KeywordSelectorHolder{ lock: identity }
+  112 |     x := 1
+      |     ^
+  113 |     $if prealloc {
+  114 |         callback := |x| holder.lock

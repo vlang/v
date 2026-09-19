@@ -405,14 +405,16 @@ case "$(uname -s)" in
 		vc_source=$vc_source_win
 		vc_record=$lock_v_win_c
 		exe_suffix='.exe'
-		"$cc_command" -std=c99 -municode -w -o "$private_contract_root/v1.exe" "$vc_source" \
+		"$cc_command" -std=c99 -DCUSTOM_DEFINE_v1_fallback -municode -w \
+			-o "$private_contract_root/v1.exe" "$vc_source" \
 			-ladvapi32 -lws2_32 -Wl,-stack=33554432
 		;;
 	*)
 		vc_source=$vc_source_v
 		vc_record=$lock_v_c
 		exe_suffix=''
-		"$cc_command" -std=c99 -w -o "$private_contract_root/v1" "$vc_source" -lm -lpthread
+		"$cc_command" -std=c99 -DCUSTOM_DEFINE_v1_fallback -w \
+			-o "$private_contract_root/v1" "$vc_source" -lm -lpthread
 		;;
 esac
 cli_path="$work_root/tccbin-automation${exe_suffix}"

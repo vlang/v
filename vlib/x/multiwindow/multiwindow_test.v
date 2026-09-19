@@ -850,7 +850,7 @@ fn test_capabilities_for_backend_uses_backend_seam_without_app() {
 }
 
 fn test_mock_opaque_renderer_start_reports_renderer_unsupported() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		mut app := new_app()!
 		mut rejected_first_start := false
 		app.start_renderer(RendererConfig{}) or {
@@ -1428,7 +1428,7 @@ fn test_win32_render_capabilities_probe_d3d_on_windows_only() {
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if windows && sokol_d3d11 ? {
 		fn test_win32_d3d11_present_hresult_mapping_treats_occluded_as_nonfatal() {
 			assert_win32_d3d11_present_disposition(0, .ok)
@@ -2670,9 +2670,9 @@ fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
 	}
 	assert !checked_wm_state_body.contains('XGetWindowProperty')
 
-	for required_mask in ['StructureNotifyMask', 'KeyPressMask', 'KeyReleaseMask',
-		'PointerMotionMask', 'ButtonPressMask', 'ButtonReleaseMask', 'FocusChangeMask',
-		'EnterWindowMask', 'LeaveWindowMask', 'PropertyChangeMask'] {
+	for required_mask in ['StructureNotifyMask', 'KeyPressMask', 'KeyReleaseMask', 'PointerMotionMask',
+		'ButtonPressMask', 'ButtonReleaseMask', 'FocusChangeMask', 'EnterWindowMask', 'LeaveWindowMask',
+		'PropertyChangeMask'] {
 		assert x11_helper_source.contains(required_mask)
 	}
 	assert x11_helper_source.contains('PropertyNotify')
@@ -2854,8 +2854,8 @@ fn test_x11_stale_window_snapshots_use_only_checked_xcb_requests() {
 	assert !helpers.contains('XSetEventQueueOwner')
 	snapshot :=
 		helpers.all_after('v_multiwindow_x11_checked_window_snapshot').all_before('static inline int v_multiwindow_x11_send_event_checked')
-	for required in ['xcb_get_window_attributes_reply', 'xcb_get_geometry_reply',
-		'xcb_generic_error_t', 'xcb_connection_has_error'] {
+	for required in ['xcb_get_window_attributes_reply', 'xcb_get_geometry_reply', 'xcb_generic_error_t',
+		'xcb_connection_has_error'] {
 		assert snapshot.contains(required), 'missing checked XCB window snapshot `${required}`'
 	}
 	query :=
@@ -3834,8 +3834,7 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 	assert key_repeats_body.contains('raw_key) != 0')
 	for repeat_field in ['keyboard_repeat_rateint', 'keyboard_repeat_delayint',
 		'keyboard_repeat_activebool', 'keyboard_repeat_raw_keyu32', 'keyboard_repeat_key_codeint',
-		'keyboard_repeat_windowWindowId', 'keyboard_repeat_next_nsu64',
-		'keyboard_repeat_interval_nsu64'] {
+		'keyboard_repeat_windowWindowId', 'keyboard_repeat_next_nsu64', 'keyboard_repeat_interval_nsu64'] {
 		assert compact_wayland_source.contains(repeat_field)
 	}
 	assert !wayland_source.contains('keyboard_repeat_modifiers')
@@ -3890,10 +3889,9 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 		'v_multiwindow_wayland_data_device_manager_get_data_device',
 		'v_multiwindow_wayland_add_data_device_listener',
 		'v_multiwindow_wayland_add_data_offer_listener', 'v_multiwindow_wayland_data_offer_accept',
-		'v_multiwindow_wayland_data_offer_set_copy_action',
-		'v_multiwindow_wayland_data_offer_receive', 'v_multiwindow_wayland_data_offer_finish',
-		'v_multiwindow_wayland_data_offer_destroy', 'v_multiwindow_wayland_data_device_destroy',
-		'v_multiwindow_wayland_data_device_manager_destroy'] {
+		'v_multiwindow_wayland_data_offer_set_copy_action', 'v_multiwindow_wayland_data_offer_receive',
+		'v_multiwindow_wayland_data_offer_finish', 'v_multiwindow_wayland_data_offer_destroy',
+		'v_multiwindow_wayland_data_device_destroy', 'v_multiwindow_wayland_data_device_manager_destroy'] {
 		assert wayland_source.contains(required_wayland_drop)
 			|| wayland_helper_source.contains(required_wayland_drop)
 	}
@@ -4224,9 +4222,21 @@ fn test_sokol_wayland_build_links_wayland_when_flag_is_active() {
 
 fn test_gg_import_only_windows_build_keeps_win32_callback_record_declaration() {
 	c_source := multiwindow_emit_windows_gg_import_c()
-	assert c_source.contains('struct x__multiwindow__Win32WindowRecord {')
-	assert_source_order(c_source, 'struct x__multiwindow__Win32WindowRecord {',
-		'VV_LOC void x__multiwindow__win32_window_close_requested(voidptr data, u64 sequence)')
+	// The two compilers spell these C names differently: V1 writes the whole module
+	// path and marks internal functions `VV_LOC`, while V3 uses the shortest module
+	// name that is still unique and no marker. What has to hold either way is that
+	// the record is declared before the callback that casts `data` to it, or the
+	// Windows build does not compile.
+	v1_struct := 'struct x__multiwindow__Win32WindowRecord {'
+	v1_callback := 'VV_LOC void x__multiwindow__win32_window_close_requested(voidptr data, u64 sequence)'
+	v3_struct := 'struct multiwindow__Win32WindowRecord {'
+	v3_callback := 'void multiwindow__win32_window_close_requested(void* data, u64 sequence)'
+	if c_source.contains(v1_struct) {
+		assert_source_order(c_source, v1_struct, v1_callback)
+		return
+	}
+	assert c_source.contains(v3_struct), 'the Win32 callback record declaration is missing'
+	assert_source_order(c_source, v3_struct, v3_callback)
 }
 
 fn test_wayland_runtime_create_destroy_when_display_is_available() {
@@ -4672,7 +4682,7 @@ fn assert_source_order_after_marker(source string, marker string, before string,
 	assert_source_order(section, before, after)
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if windows && sokol_d3d11 ? {
 		fn assert_win32_d3d11_present_disposition(hresult i64, expected NativeRenderDisposition) {
 			context := NativeOperationContext{
@@ -4699,7 +4709,8 @@ fn assert_no_bool_signal(signal chan bool, message string) {
 		_ := <-signal {
 			assert false, message
 		}
-		20 * time.millisecond {}
+		20 * time.millisecond {
+		}
 	}
 }
 

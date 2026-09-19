@@ -174,11 +174,11 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 		// should use parse_retry_header (retry.v, Phase 4) for the token +
 		// integrity tag that follow.
 		return QuicLongHeader{
-			typ: typ
+			typ:     typ
 			version: version
-			dcid: dcid
-			scid: scid
-			token: token
+			dcid:    dcid
+			scid:    scid
+			token:   token
 		}, offset
 	}
 
@@ -186,12 +186,12 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 	offset += length_bytes
 
 	return QuicLongHeader{
-		typ: typ
+		typ:     typ
 		version: version
-		dcid: dcid
-		scid: scid
-		token: token
-		length: length
+		dcid:    dcid
+		scid:    scid
+		token:   token
+		length:  length
 	}, offset
 }
 
@@ -339,9 +339,9 @@ pub fn parse_short_header(buf []u8, dcid_len int) !(QuicShortHeader, int) {
 	// this struct's own doc comment) -- callers must not call this before
 	// that step, same caveat as reserved/pn-length bits.
 	return QuicShortHeader{
-		spin_bit: buf[0] & 0x20 != 0
+		spin_bit:  buf[0] & 0x20 != 0
 		key_phase: buf[0] & 0x04 != 0
-		dcid: dcid
+		dcid:      dcid
 	}, 1 + dcid_len
 }
 
@@ -451,8 +451,8 @@ pub fn parse_version_negotiation(buf []u8) !QuicVersionNegotiation {
 	}
 
 	return QuicVersionNegotiation{
-		dcid: dcid
-		scid: scid
+		dcid:     dcid
+		scid:     scid
 		versions: versions
 	}
 }

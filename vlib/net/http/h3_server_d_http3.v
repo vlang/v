@@ -278,13 +278,13 @@ pub:
 	// The defaults permit ordinary requests plus HTTP/3's required control
 	// and QPACK streams. Callers can still replace the complete parameter set.
 	transport_parameters quic.QuicTransportParameters = quic.QuicTransportParameters{
-		max_idle_timeout: 30_000
-		initial_max_data: 10_000_000
-		initial_max_stream_data_bidi_local: 1_000_000
+		max_idle_timeout:                    30_000
+		initial_max_data:                    10_000_000
+		initial_max_stream_data_bidi_local:  1_000_000
 		initial_max_stream_data_bidi_remote: 1_000_000
-		initial_max_stream_data_uni: 1_000_000
-		initial_max_streams_bidi: 100
-		initial_max_streams_uni: 100
+		initial_max_stream_data_uni:         1_000_000
+		initial_max_streams_bidi:            100
+		initial_max_streams_uni:             100
 	}
 	handler              Handler
 }
@@ -356,24 +356,24 @@ pub fn new_h3_server(listen_addr string, params H3ServerParams) !&H3Server {
 	}
 	listener := quic.new_quic_listener(quic.QuicListenerParams{
 		transport_parameters: params.transport_parameters
-		alpn_protocols: params.alpn_protocols
-		certificate_chain: params.certificate_chain
-		signing_key: params.signing_key
-		retry_token_key: retry_key
-		always_retry: params.always_retry
+		alpn_protocols:       params.alpn_protocols
+		certificate_chain:    params.certificate_chain
+		signing_key:          params.signing_key
+		retry_token_key:      retry_key
+		always_retry:         params.always_retry
 	})!
 	socket := net.listen_udp(listen_addr)!
 	return &H3Server{
-		socket: socket
-		listener: listener
-		h3_params: quic.H3ConnParams{
-			settings: h3_default_own_settings()
-			own_qpack_max_table_capacity: h3_default_own_qpack_max_table_capacity
+		socket:              socket
+		listener:            listener
+		h3_params:           quic.H3ConnParams{
+			settings:                       h3_default_own_settings()
+			own_qpack_max_table_capacity:   h3_default_own_qpack_max_table_capacity
 			max_inbound_data_frame_payload: h3_server_max_request_body
 		}
-		handler: params.handler
+		handler:             params.handler
 		completed_responses: &H3ServerCompletedResponseQueue{}
-		handler_admission: &H3ServerHandlerAdmission{
+		handler_admission:   &H3ServerHandlerAdmission{
 			limit: h3_server_max_handler_workers
 		}
 	}
@@ -822,10 +822,10 @@ fn h3_server_run_handler(handler Handler, req Request, conn_id string, stream_id
 	mut worker_handler := handler
 	response := worker_handler.handle(req)
 	completed.push(H3ServerCompletedResponse{
-		conn_id: conn_id
+		conn_id:   conn_id
 		stream_id: stream_id
-		method: method
-		response: response
+		method:    method
+		response:  response
 	})
 }
 
@@ -857,7 +857,7 @@ fn h3_build_request(st &H3ServerStream) !Request {
 	}
 	mut req := Request{
 		version: .v3_0
-		header: new_header()
+		header:  new_header()
 	}
 	mut method := ''
 	mut path := ''
@@ -1083,7 +1083,7 @@ fn h3_response_field_is_forbidden(lkey string) bool {
 fn h3_outbound_response_fields(status int, method Method, emitted_body_len int, header Header) []quic.QpackFieldLine {
 	mut fields := [
 		quic.QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: status.str()
 		},
 	]
@@ -1103,7 +1103,7 @@ fn h3_outbound_response_fields(status int, method Method, emitted_body_len int, 
 				value = h3_preserved_content_length(header.values(.content_length)) or { continue }
 			}
 			fields << quic.QpackFieldLine{
-				name: 'content-length'
+				name:  'content-length'
 				value: value
 			}
 			continue
@@ -1113,7 +1113,7 @@ fn h3_outbound_response_fields(status int, method Method, emitted_body_len int, 
 				continue
 			}
 			fields << quic.QpackFieldLine{
-				name: lkey
+				name:  lkey
 				value: val
 			}
 		}
@@ -1165,7 +1165,7 @@ fn h3_final_response_status(status_code int) !int {
 fn (mut s H3Server) send_error_response(mut h3c quic.H3Conn, stream_id u64, status int) {
 	h3c.send_response_headers(stream_id, [
 		quic.QpackFieldLine{
-			name: ':status'
+			name:  ':status'
 			value: status.str()
 		},
 	], true) or {}
@@ -1192,7 +1192,7 @@ fn h3_outbound_trailer_fields(trailers Header) []quic.QpackFieldLine {
 				continue
 			}
 			fields << quic.QpackFieldLine{
-				name: lkey
+				name:  lkey
 				value: val
 			}
 		}

@@ -383,8 +383,7 @@ fn test_durable_target_commit_plan_physical_config_reader_preserves_bytes_and_ch
 	assert actual.keys.len >= 3
 	assert actual.keys[..3] == ['core.repositoryformatversion', 'core.filemode', 'core.bare']
 
-	mut large_lines := ['[core]', '\trepositoryformatversion = 0', '\tfilemode = true',
-		'\tbare = true']
+	mut large_lines := ['[core]', '\trepositoryformatversion = 0', '\tfilemode = true', '\tbare = true']
 	mut large_keys := ['core.repositoryformatversion', 'core.filemode', 'core.bare']
 	for index in 0 .. 64 {
 		remote := 'chunk-${index:03}'
@@ -493,8 +492,8 @@ fn test_durable_target_commit_plan_runner_inputs_are_closed_before_child_creatio
 	environment := bin.durable_git_environment_for_test(['PATH=/usr/bin:/bin', 'HOME=/tmp/ignored',
 		'GIT_TRACE=/tmp/must-not-exist', 'LD_PRELOAD=/tmp/must-not-load']) or { panic(err) }
 	assert environment == ['PATH=/usr/bin:/bin', 'LC_ALL=C', 'LANG=C', 'LANGUAGE=C',
-		'GIT_NO_LAZY_FETCH=1', 'GIT_TERMINAL_PROMPT=0', 'GIT_OPTIONAL_LOCKS=0',
-		'GIT_CONFIG_NOSYSTEM=1', 'GIT_CONFIG_GLOBAL=${os.path_devnull}']
+		'GIT_NO_LAZY_FETCH=1', 'GIT_TERMINAL_PROMPT=0', 'GIT_OPTIONAL_LOCKS=0', 'GIT_CONFIG_NOSYSTEM=1',
+		'GIT_CONFIG_GLOBAL=${os.path_devnull}']
 	for poisoned in [
 		['PATH=/usr/bin', 'Path=/bin'],
 		['PATH=/usr/bin', 'GIT_CONFIG=/tmp/forged'],
@@ -510,23 +509,22 @@ fn test_durable_target_commit_plan_runner_inputs_are_closed_before_child_creatio
 		panic(err)
 	}
 	for poisoned in ['core.bare', 'core.bare\x00core.bare\x00', 'Core.bare\x00',
-		'extensions.worktreeconfig\x00', 'include.path\x00', 'log.showsignature\x00',
-		'gpg.program\x00', 'remote.origin.promisor\x00', 'remote.origin.partialclonefilter\x00',
-		'diff.external\x00', 'core.pager\x00', 'remote._origin.url\x00', 'remote.origin_.url\x00',
-		'remote.bad.name.url\x00', 'remote..url\x00', 'remote.origin.extra\x00'] {
+		'extensions.worktreeconfig\x00', 'include.path\x00', 'log.showsignature\x00', 'gpg.program\x00',
+		'remote.origin.promisor\x00', 'remote.origin.partialclonefilter\x00', 'diff.external\x00',
+		'core.pager\x00', 'remote._origin.url\x00', 'remote.origin_.url\x00', 'remote.bad.name.url\x00',
+		'remote..url\x00', 'remote.origin.extra\x00'] {
 		bin.validate_durable_git_config_for_test(poisoned) or { continue }
 		panic('durable Git config accepted `${poisoned}`')
 	}
 	argv := bin.durable_git_argv_for_test('/usr/bin/git', '/srv/state.git', ['log', '--format=',
 		'HEAD', '--', 'evidence'], true) or { panic(err) }
-	assert argv == ['/usr/bin/git', '--no-pager', '--no-replace-objects', '--no-lazy-fetch',
-		'--git-dir', '/srv/state.git', 'log', '--no-show-signature', '--no-ext-diff', '--no-textconv',
-		'--no-renames', '--no-color', '--no-decorate', '--no-notes', '--no-use-mailmap',
-		'--ignore-submodules=none', '-O', os.path_devnull, '--format=', 'HEAD', '--', 'evidence']
+	assert argv == ['/usr/bin/git', '--no-pager', '--no-replace-objects', '--no-lazy-fetch', '--git-dir',
+		'/srv/state.git', 'log', '--no-show-signature', '--no-ext-diff', '--no-textconv', '--no-renames',
+		'--no-color', '--no-decorate', '--no-notes', '--no-use-mailmap', '--ignore-submodules=none',
+		'-O', os.path_devnull, '--format=', 'HEAD', '--', 'evidence']
 	assert bin.durable_git_fd_tuple_is_valid_for_test([3, 4, 5, 6, 7, 8, 9])
-	for invalid in [[-1, 4, 5, 6, 7, 8, 9], [0, 4, 5, 6, 7, 8, 9],
-		[3, 1, 5, 6, 7, 8, 9], [3, 4, 2, 6, 7, 8, 9], [3, 4, 5, 6, 7, 8, 8],
-		[3, 4, 5, 6, 7, 8]] {
+	for invalid in [[-1, 4, 5, 6, 7, 8, 9], [0, 4, 5, 6, 7, 8, 9], [3, 1, 5, 6, 7, 8, 9],
+		[3, 4, 2, 6, 7, 8, 9], [3, 4, 5, 6, 7, 8, 8], [3, 4, 5, 6, 7, 8]] {
 		assert !bin.durable_git_fd_tuple_is_valid_for_test(invalid)
 	}
 	mut opened := []string{}
@@ -553,8 +551,7 @@ fn test_durable_target_commit_plan_runner_trace_reaps_only_after_both_eof() {
 		os.rmdir_all(repository.root) or {}
 		os.rm(trace_path) or {}
 	}
-	trace := bin.durable_git_runner_trace_for_test(repository.root, ['rev-parse',
-		'--is-bare-repository']) or { panic(err) }
+	trace := bin.durable_git_runner_trace_for_test(repository.root, ['rev-parse', '--is-bare-repository']) or { panic(err) }
 	assert trace == ['argv-validated', 'sigchld-pre-command', 'repository-preflight-before',
 		'argv-closed', 'seven-descriptors-validated', 'sigchld-prefork', 'positive-child-pid',
 		'pgroup-and-sigchld-verified', 'go-write-one-guarded', 'parent-go-read-closed',

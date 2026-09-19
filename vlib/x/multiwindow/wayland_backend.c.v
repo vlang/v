@@ -1,6 +1,6 @@
 module multiwindow
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	import sokol.gfx
 }
 
@@ -1009,7 +1009,7 @@ $if linux && sokol_wayland ? {
 	fn C.poll(fds &C.pollfd, nfds u64, timeout int) int
 	fn C.strcmp(a &char, b &char) int
 	fn C.close(fd int) int
-	fn C.pipe(fds &int) int
+	fn C.pipe(fds &i32) int
 	fn C.read(fd int, buf voidptr, count usize) isize
 	fn C.write(fd int, buf voidptr, count usize) isize
 	fn C.mmap(addr voidptr, length usize, prot int, flags int, fd int, offset i64) voidptr
@@ -2604,6 +2604,18 @@ fn new_wayland_backend() WaylandBackend {
 	return WaylandBackend{}
 }
 
+fn wayland_pipe() ![2]int {
+	$if linux && sokol_wayland ? {
+		// pipe(2) writes two C ints, which are always 32-bit even when V int is 64-bit.
+		mut native_fds := [2]i32{}
+		if C.pipe(&native_fds[0]) == -1 {
+			return error(err_capability_unsupported)
+		}
+		return [int(native_fds[0]), int(native_fds[1])]!
+	}
+	return error(err_backend_unsupported)
+}
+
 fn (backend &WaylandBackend) native_app_id() string {
 	return if backend.app_id == '' { 'v.x.multiwindow' } else { backend.app_id }
 }
@@ -2978,7 +2990,7 @@ fn (mut backend WaylandBackend) finish_window_show_handshake(index int, mut tran
 	backend.flush_window_show_ack(flush_attempt)!
 	if record.show_configure_width > 0 && record.show_configure_height > 0
 		&& (record.width != record.show_configure_width
-		|| record.height != record.show_configure_height) {
+			|| record.height != record.show_configure_height) {
 		record.width = record.show_configure_width
 		record.height = record.show_configure_height
 		if record.wl_egl_window != unsafe { nil } {
@@ -3266,7 +3278,7 @@ fn (record &WaylandWindowRecord) has_server_side_decoration() bool {
 fn (record &WaylandWindowRecord) has_client_side_decoration() bool {
 	return record.toplevel_decoration == unsafe { nil }
 		|| (record.toplevel_decoration_configured
-		&& record.toplevel_decoration_mode == wayland_xdg_toplevel_decoration_mode_client_side)
+			&& record.toplevel_decoration_mode == wayland_xdg_toplevel_decoration_mode_client_side)
 }
 
 fn (mut backend WaylandBackend) start(require_renderer bool) ! {
@@ -4181,7 +4193,7 @@ fn (mut backend WaylandBackend) release_egl_lifetime() {
 
 fn (mut backend WaylandBackend) accept_native_render_window_loss(id WindowId) {
 	index := backend.window_record_index(id) or { return }
-	$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		record := backend.windows[index]
 		backend.invalidate_window_egl_target(index, record.egl_surface,
 			record.render_target_generation, true)
@@ -5594,7 +5606,7 @@ fn (mut backend WaylandBackend) dispatch_pending_nonblocking() NativeRenderResul
 	}
 }
 
-$if gg_multiwindow ? || x_multiwindow_render ? {
+$if gg_multiwindow ?|| x_multiwindow_render ? {
 	fn (mut backend WaylandBackend) render_environment(id WindowId) !gfx.Environment {
 		$if linux && sokol_wayland ? {
 			index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -7375,10 +7387,7 @@ fn (mut backend WaylandBackend) begin_pending_data_offer_drop() bool {
 		if backend.data_offer == unsafe { nil } || backend.pending_drop_offer != unsafe { nil } {
 			return false
 		}
-		mut fds := [2]int{}
-		if C.pipe(&fds[0]) == -1 {
-			return false
-		}
+		fds := wayland_pipe() or { return false }
 		if C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 0 {
 			C.close(fds[0])
 			C.close(fds[1])
@@ -7813,7 +7822,7 @@ fn (mut backend WaylandBackend) release_window_render_target_for_hide(index int)
 						return error(err_render_native_renderer_unavailable)
 					}
 				} else {
-					$if gg_multiwindow ? || x_multiwindow_render ? {
+					$if gg_multiwindow ?|| x_multiwindow_render ? {
 						anchor := backend.make_renderer_anchor_current(.anchor_prepare)
 						if !backend.anchor_binding_proven(anchor) {
 							return native_render_error(anchor)
@@ -7823,7 +7832,7 @@ fn (mut backend WaylandBackend) release_window_render_target_for_hide(index int)
 					}
 				}
 			} $else {
-				$if gg_multiwindow ? || x_multiwindow_render ? {
+				$if gg_multiwindow ?|| x_multiwindow_render ? {
 					anchor := backend.make_renderer_anchor_current(.anchor_prepare)
 					if !backend.anchor_binding_proven(anchor) {
 						return native_render_error(anchor)
@@ -8606,10 +8615,7 @@ fn (mut backend WaylandBackend) service_request_clipboard_text(id WindowId, requ
 		if backend.clipboard_read_active {
 			return error(err_clipboard_capacity)
 		}
-		mut fds := [-1, -1]!
-		if C.pipe(&fds[0]) == -1 {
-			return error(err_capability_unsupported)
-		}
+		fds := wayland_pipe() or { return error(err_capability_unsupported) }
 		if C.v_multiwindow_wayland_fd_set_nonblocking(fds[0]) == 0 {
 			C.close(fds[0])
 			C.close(fds[1])

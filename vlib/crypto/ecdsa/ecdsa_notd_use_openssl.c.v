@@ -14,7 +14,7 @@ module ecdsa
 // EXACT, COMPLETE, byte-for-byte mirror of net.mbedtls's own list in
 // mbedtls.c.v -- not a trimmed subset, even though most of the ssl_*.o/
 // debug.o files are never called by this file's own code. This isn't just
-// about link-time dedup (vlib/v/ast/cflags.v's add_unique_cflags/has_cflag
+// about link-time dedup (the compiler deduplicates identical
 // dedupe identical `(os, name, value)` #flag strings so the linker only
 // ever sees one copy of a given .o). It's also about which MODULE a given
 // #flag string's attribution lands on: when both this file and
@@ -407,6 +407,17 @@ fn C.mbedtls_ecp_check_pubkey(grp &C.mbedtls_ecp_group, pt &C.mbedtls_ecp_point)
 fn C.mbedtls_ecp_export(key &C.mbedtls_ecdsa_context, grp &C.mbedtls_ecp_group, d &C.mbedtls_mpi, q &C.mbedtls_ecp_point) int
 
 fn C.mbedtls_ecp_set_public_key(grp_id int, key &C.mbedtls_ecdsa_context, q &C.mbedtls_ecp_point) int
+
+// mbedtls_ecp_read_key loads `grp_id`'s group into `key` and reads `buf` as
+// the big-endian private scalar `d`, then rejects it via
+// mbedtls_ecp_check_privkey unless it lies in `[1, curve_order-1]`. It does
+// NOT compute the public point -- call mbedtls_ecp_keypair_calc_public next.
+fn C.mbedtls_ecp_read_key(grp_id int, key &C.mbedtls_ecdsa_context, buf &u8, buflen usize) int
+
+// mbedtls_ecp_keypair_calc_public computes and stores `Q = d * G` for a
+// keypair whose group and private scalar are already set. `f_rng` is
+// required (used for scalar-multiplication blinding, not for the key itself).
+fn C.mbedtls_ecp_keypair_calc_public(key &C.mbedtls_ecdsa_context, f_rng fn (voidptr, &u8, usize) int, p_rng voidptr) int
 
 fn C.mbedtls_mpi_init(x &C.mbedtls_mpi)
 

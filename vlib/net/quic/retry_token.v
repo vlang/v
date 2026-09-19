@@ -112,9 +112,7 @@ fn decode_retry_token_claims(buf []u8) !RetryTokenClaims {
 	if buf.len - cursor != 8 {
 		return error('quic: truncated retry token claims: need exactly 8 bytes for issued_at_ms, have ${buf.len - cursor}')
 	}
-	issued_at_ms := (u64(buf[cursor]) << 56) | (u64(buf[cursor + 1]) << 48) | (u64(buf[cursor + 2]) << 40) | (u64(buf[
-		cursor + 3]) << 32) | (u64(buf[cursor + 4]) << 24) | (u64(buf[cursor + 5]) << 16) | (u64(buf[
-		cursor + 6]) << 8) | u64(buf[cursor + 7])
+	issued_at_ms := (u64(buf[cursor]) << 56) | (u64(buf[cursor + 1]) << 48) | (u64(buf[cursor + 2]) << 40) | (u64(buf[cursor + 3]) << 32) | (u64(buf[cursor + 4]) << 24) | (u64(buf[cursor + 5]) << 16) | (u64(buf[cursor + 6]) << 8) | u64(buf[cursor + 7])
 
 	return RetryTokenClaims{
 		client_addr:   client_addr

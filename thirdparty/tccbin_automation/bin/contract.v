@@ -1047,8 +1047,8 @@ fn validate_toolchain_resolved_identity(policy_role JsonValue, observed_role Jso
 // toolchain_role_resolution_digest derives one role resolution from its immutable profile
 // binding, phase, strategy, and closed readable fact set.
 pub fn toolchain_role_resolution_digest(observation JsonValue, role JsonValue) !string {
-	projection := object_value_from_pairs(['schema_version', 'target_id', 'profile_id',
-		'profile_sha256', 'phase', 'role_id', 'identity_strategy', 'resolved_identity'], [
+	projection := object_value_from_pairs(['schema_version', 'target_id', 'profile_id', 'profile_sha256',
+		'phase', 'role_id', 'identity_strategy', 'resolved_identity'], [
 		require_member(observation, 'schema_version')!,
 		require_member(observation, 'target_id')!,
 		require_member(observation, 'profile_id')!,
@@ -1414,9 +1414,8 @@ fn manifest_static_payload_policy(manifest JsonValue) !JsonValue {
 				'source_path',
 				'license',
 			])!
-			static_entry := select_object_members(entry, ['path', 'kind', 'git_mode',
-				'symlink_target', 'role', 'opaque', 'opaque_acceptance_id', 'format', 'object_type',
-				'machine', 'os_abi'])!
+			static_entry := select_object_members(entry, ['path', 'kind', 'git_mode', 'symlink_target',
+				'role', 'opaque', 'opaque_acceptance_id', 'format', 'object_type', 'machine', 'os_abi'])!
 			projected_entries << append_object_members(static_entry, ['provenance'], [
 				provenance,
 			])!
@@ -1438,8 +1437,8 @@ pub fn legacy_onboarding_policy_projection(manifest JsonValue) !JsonValue {
 	}
 	mut patches := []JsonValue{}
 	for patch in require_array_member(manifest, 'patches')! {
-		patches << select_object_members(patch, ['id', 'path', 'order', 'category',
-			'auto_deprecatable', 'state', 'effects'])!
+		patches << select_object_members(patch, ['id', 'path', 'order', 'category', 'auto_deprecatable',
+			'state', 'effects'])!
 	}
 	mut transforms := []JsonValue{}
 	for transform in require_array_member(manifest, 'transforms')! {
@@ -2091,17 +2090,17 @@ fn validate_manifest_source_matrix(target_id string, v_source_sha string,
 		if require_string_member(source, 'id')! != expectation.id
 			|| require_string_member(source, 'repository')! != expectation.repository
 			|| require_string_member(source, 'ref')! != expectation.ref {
-			issues << SchemaIssue{'$/sources/${index}', 'source ID, repository, ref, or order differs from the exact target matrix'}
+			issues << SchemaIssue{'\$/sources/${index}', 'source ID, repository, ref, or order differs from the exact target matrix'}
 		}
 		sha := require_member(source, 'sha')!
 		tree := require_member(source, 'tree')!
 		if (sha.kind == .null_value) != (tree.kind == .null_value) {
-			issues << SchemaIssue{'$/sources/${index}', 'source SHA and tree must be resolved or null as one pair'}
+			issues << SchemaIssue{'\$/sources/${index}', 'source SHA and tree must be resolved or null as one pair'}
 			continue
 		}
 		if expectation.id == 'v-libgc' && sha.kind == .string_value
 			&& sha.string_value != v_source_sha {
-			issues << SchemaIssue{'$/sources/${index}/sha', 'Windows v-libgc SHA must equal v_source_sha'}
+			issues << SchemaIssue{'\$/sources/${index}/sha', 'Windows v-libgc SHA must equal v_source_sha'}
 		}
 	}
 	return issues
@@ -2134,11 +2133,11 @@ fn validate_windows_transforms(transforms []JsonValue, header_effects []JsonValu
 			|| require_integer_member(transform, 'order')! != i64(index + 10)
 			|| require_string_member(transform, 'apply_stage')! != expected_stages[index]
 			|| actual_effects != expected_effects[index] {
-			issues << SchemaIssue{'$/transforms/${index}', 'Windows transform binding differs from the exact reviewed tuple'}
+			issues << SchemaIssue{'\$/transforms/${index}', 'Windows transform binding differs from the exact reviewed tuple'}
 		}
 		for effect_id in actual_effects {
 			if effect_id in bound_effect_ids {
-				issues << SchemaIssue{'$/transforms/${index}/effect_ids', 'transform effect bindings must be globally unique'}
+				issues << SchemaIssue{'\$/transforms/${index}/effect_ids', 'transform effect bindings must be globally unique'}
 			}
 			bound_effect_ids << effect_id
 		}

@@ -70,7 +70,13 @@ fn ssl_remaining_timeout(deadline time.Time) time.Duration {
 	if deadline.unix() == 0 {
 		return net.infinite_timeout
 	}
-	return deadline - time.now()
+	remaining := deadline - time.now()
+	if remaining <= 0 {
+		// An elapsed deadline must read as "expired" to select(), which treats
+		// a timeout <= 0 as "wait forever" (mirrors the net.mbedtls helper).
+		return time.nanosecond
+	}
+	return remaining
 }
 
 // close closes the ssl connection and does cleanup
@@ -157,12 +163,16 @@ fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
 	}
+	if s.config.validate && C.v_net_openssl_has_x509_identity_checks() != 1 {
+		return error('net.openssl SSLConn.init, certificate identity validation requires OpenSSL 1.0.2 or newer')
+	}
 	s.sslctx = unsafe { C.SSL_CTX_new(C.SSLv23_client_method()) }
 	if s.sslctx == 0 {
 		return error('net.openssl Could not get ssl context')
 	}
 
 	if s.config.validate {
+		C.SSL_CTX_set_verify(s.sslctx, C.SSL_VERIFY_PEER, unsafe { nil })
 		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
 		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_COMPRESSION)
 	}
@@ -217,6 +227,11 @@ fn (mut s SSLConn) init() ! {
 			if s.config.validate && res != 1 {
 				return error('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed')
 			}
+		} else {
+			res = C.SSL_CTX_set_default_verify_paths(s.sslctx)
+			if res != 1 {
+				return error('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed')
+			}
 		}
 		if s.config.cert != '' {
 			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),
@@ -241,10 +256,30 @@ fn (mut s SSLConn) init() ! {
 	}
 }
 
-// connect to server using OpenSSL
+// connect to server using OpenSSL.
+// The socket of `tcp_conn` is switched to non-blocking mode and stays that way
+// for the life of the SSL connection: every OpenSSL call in this backend is
+// driven by a WANT_READ/WANT_WRITE retry loop that applies the configured
+// timeout via wait_for_read/wait_for_write, and a blocking socket never yields
+// WANT_READ — SSL_read() would sit in read() with no bound at all, ignoring
+// set_read_timeout() (vlang/v#28506).
 pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname}')
+	}
+	mut connected := false
+	defer {
+		if !connected {
+			if s.ssl != 0 {
+				unsafe { C.SSL_free(voidptr(s.ssl)) }
+				s.ssl = unsafe { nil }
+			}
+			if s.sslctx != 0 {
+				C.SSL_CTX_free(s.sslctx)
+				s.sslctx = unsafe { nil }
+			}
+			s.handle = 0
+		}
 	}
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
@@ -255,7 +290,34 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	if C.SSL_set_fd(voidptr(s.ssl), tcp_conn.sock.handle) != 1 {
 		return error('net.openssl SSLConn.connect, could not assign ssl to socket.')
 	}
+	net.set_blocking(tcp_conn.sock.handle, false)!
+	tcp_conn.is_blocking = false
 	s.complete_connect()!
+	s.verify_hostname(hostname)!
+	connected = true
+}
+
+fn (s &SSLConn) verify_hostname(hostname string) ! {
+	if !s.config.validate {
+		return
+	}
+	cert := C.v_net_openssl_get1_peer_certificate(s.ssl)
+	if cert == unsafe { nil } {
+		return error('net.openssl SSLConn.verify_hostname, the peer sent no certificate')
+	}
+	defer {
+		C.X509_free(cert)
+	}
+	ip_result := C.v_net_openssl_x509_check_ip_asc(cert, &char(hostname.str), 0)
+	verified := if ip_result == -2 {
+		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), usize(hostname.len), 0,
+			unsafe { nil }) == 1
+	} else {
+		ip_result == 1
+	}
+	if !verified {
+		return error('net.openssl SSLConn.verify_hostname, the certificate is not valid for `${hostname}`')
+	}
 }
 
 // dial opens an ssl connection on hostname:port
@@ -263,6 +325,9 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} hostname: ${hostname} | port: ${port}')
 	}
+	// Note: net.dial_tcp's error is returned as is, on purpose - it carries
+	// the code of the failing connect (ECONNREFUSED etc), which callers use to
+	// classify the failure, just like for a plain net.dial_tcp call.
 	mut tcp_conn := net.dial_tcp('${hostname}:${port}') or { return err }
 	mut connected := false
 	defer {
@@ -376,7 +441,10 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	}
 
 	deadline := ssl_timeout_deadline(s.duration)
-	// s.wait_for_read(deadline - time.now())!
+	// No readiness poll before SSL_read(): OpenSSL may hold decrypted but not
+	// yet returned application data, which a socket-level select() cannot see.
+	// The socket is non-blocking (see connect()), so a read with nothing
+	// available returns WANT_READ and the wait below applies the deadline.
 	for {
 		// Clear the error queue so SSL_get_error() reflects only this call.
 		C.ERR_clear_error()
@@ -505,8 +573,6 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')
 	}
 	set := C.fd_set{}
-	C.FD_ZERO(&set)
-	C.FD_SET(handle, &set)
 
 	is_infinite := timeout <= 0 || timeout == net.infinite_timeout
 	deadline := ssl_timeout_deadline(timeout)
@@ -525,16 +591,24 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 			&tt
 		}
 
+		// (Re)arm the set on every iteration: select() leaves its contents
+		// unspecified after a failure, so a retry after EINTR must not reuse it.
+		C.FD_ZERO(&set)
+		C.FD_SET(handle, &set)
+		// Inspect the raw result here instead of wrapping the call in
+		// net.socket_error()!, which would turn EINTR (a spurious wakeup, e.g.
+		// from the GC signalling another thread) into a hard error before the
+		// retry below could ever run.
 		mut res := -1
 		match test {
 			.read {
-				res = net.socket_error(C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
+				res = C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout)
 			}
 			.write {
-				res = net.socket_error(C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
+				res = C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout)
 			}
 			.except {
-				res = net.socket_error(C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
+				res = C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout)
 			}
 		}
 
@@ -546,8 +620,8 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 				}
 				continue
 			}
-			cerr := C.errno
-			return error_with_code('net.openssl select, failed: ${res}', cerr)
+			net.socket_error(res)!
+			return error_with_code('net.openssl select, failed: ${res}', C.errno)
 		} else if res == 0 {
 			return net.err_timed_out
 		}

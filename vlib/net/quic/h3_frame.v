@@ -219,7 +219,7 @@ pub fn decode_h3_frame_payload(frame_type u64, payload []u8) !H3Frame {
 				return error_with_code('h3: PUSH_PROMISE frame payload does not contain a valid push ID: ${err.msg()}', int(H3ErrorCode.frame_error))
 			}
 			return PushPromiseFrame{
-				push_id: push_id
+				push_id:               push_id
 				encoded_field_section: payload[n..].clone()
 			}
 		}
@@ -248,7 +248,7 @@ pub fn decode_h3_frame_payload(frame_type u64, payload []u8) !H3Frame {
 		else {
 			return H3RawFrame{
 				frame_type: frame_type
-				payload: payload.clone()
+				payload:    payload.clone()
 			}
 		}
 	}
@@ -290,7 +290,7 @@ fn decode_h3_settings_payload(payload []u8) !SettingsFrame {
 		seen_ids[identifier] = true
 		settings << H3Setting{
 			identifier: identifier
-			value: value
+			value:      value
 		}
 		offset += id_len + value_len
 	}
@@ -450,8 +450,8 @@ fn (mut d H3FrameDecoder) next_with_payload_limits(max_data_payload u64, max_hea
 	d.pending.delete_many(0, total)
 	return H3FrameDecodeResult{
 		has_frame: true
-		frame: frame
-		consumed: total
+		frame:     frame
+		consumed:  total
 	}
 }
 

@@ -1,4 +1,5 @@
 import time
+
 // 1 line comment // 1 line comment
 
 /*
@@ -24,7 +25,7 @@ type MyFn2 = fn (a int, b int) int
 
 type MyFn3 = fn (int, int)
 
-fn myfn4(string)
+fn myfn4(string )
 
 fn foobar()
 

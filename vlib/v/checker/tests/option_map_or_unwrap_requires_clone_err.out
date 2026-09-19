@@ -1,21 +1,42 @@
-vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:22:13: error: cannot copy map: call `move` or `clone` method (or use a reference)
-   20 |         }
-   21 |     }
-   22 |     field := c.translations or { panic('none') }
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:25:10: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   23 |
+   24 | fn propagate_option(stored ?map[string]int) ?map[string]int {
+   25 |     copy := stored?
+      |             ~~~~~~
+   26 |     return copy
+   27 | }
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:35:13: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
+   33 |         }
+   34 |     }
+   35 |     field := c.translations or { panic('none') }
       |                ~~~~~~~~~~~~
-   23 | 
-   24 |     opt := get_opt()
-vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:25:14: error: cannot copy map: call `move` or `clone` method (or use a reference)
-   23 | 
-   24 |     opt := get_opt()
-   25 |     variable := opt or { panic('none') }
+   36 |
+   37 |     opt := get_opt()
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:38:14: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
+   36 |
+   37 |     opt := get_opt()
+   38 |     variable := opt or { panic('none') }
       |                 ~~~
-   26 | 
-   27 |     m := {
-vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:30:18: error: cannot copy map: call `move` or `clone` method (or use a reference)
-   28 |         'k': get_opt()
-   29 |     }
-   30 |     index := m['k'] or { panic('none') }
+   39 |     parenthesized := (opt or { panic('none') })
+   40 |     // A fresh Result-returning call does not copy a stored map and remains valid.
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:39:19: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
+   37 |     opt := get_opt()
+   38 |     variable := opt or { panic('none') }
+   39 |     parenthesized := (opt or { panic('none') })
+      |                      ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   40 |     // A fresh Result-returning call does not copy a stored map and remains valid.
+   41 |     result_call := get_result() or { panic(err) }
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:46:18: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
+   44 |         'k': get_opt()
+   45 |     }
+   46 |     index := m['k'] or { panic('none') }
       |                     ~~~~~~~~~~~~~~~~~~~~
-   31 | 
-   32 |     println(field)
+   47 |     map_ch := chan map[string]int{}
+   48 |     channel_receive := <-map_ch or { panic(err) }
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:48:21: error: cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)
+   46 |     index := m['k'] or { panic('none') }
+   47 |     map_ch := chan map[string]int{}
+   48 |     channel_receive := <-map_ch or { panic(err) }
+      |                        ~~
+   49 |
+   50 |     println(field)

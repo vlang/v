@@ -58,7 +58,7 @@ fn (mut h H3Conn) apply_control_frame(frame H3Frame, mut result H3PollResult) ! 
 			}
 			h.peer_goaway_id = frame.id
 			result.events << H3Event{
-				kind: .goaway
+				kind:      .goaway
 				goaway_id: frame.id
 			}
 		}

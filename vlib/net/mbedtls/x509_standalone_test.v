@@ -28,8 +28,7 @@ fn test_x509_parse_and_verify_without_ssl_context() {
 	// exactly .len bytes with no trailing NUL, so len+1 with that buffer
 	// reads one byte past the allocation (confirmed via ASan:
 	// heap-buffer-overflow in mbedtls_x509_crt_parse).
-	parse_res := C.mbedtls_x509_crt_parse(&crt, standalone_test_cert.str, usize(
-		standalone_test_cert.len + 1))
+	parse_res := C.mbedtls_x509_crt_parse(&crt, standalone_test_cert.str, usize(standalone_test_cert.len + 1))
 	assert parse_res == 0, 'mbedtls_x509_crt_parse failed standalone (no ssl_context in scope): ${parse_res}'
 
 	// Verify the self-signed leaf cert against itself as the sole trust

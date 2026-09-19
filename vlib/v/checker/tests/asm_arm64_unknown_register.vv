@@ -1,0 +1,6 @@
+fn main() {
+	asm arm64 {
+		mov x00, x0
+		; ; ; xzrr
+	}
+}

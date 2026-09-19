@@ -1,6 +1,7 @@
 module orm
 
 import time
+import strconv
 import strings.textscanner
 
 const operators = ['=', '!=', '<>', '>=', '<=', '>', '<', 'LIKE', 'ILIKE', 'IS NULL', 'IS NOT NULL',
@@ -25,8 +26,14 @@ pub mut:
 	where                 QueryData
 }
 
-// new_query create a new query object for struct `T`
+// new_query creates a new query object for struct `T`.
+@[deprecated: 'the Function Call API (orm_fn) will be moved out of the standard library after 2027-08-17; see https://github.com/vlang/v/issues/27001']
+@[deprecated_after: '2027-02-18']
 pub fn new_query[T](conn Connection) &QueryBuilder[T] {
+	return new_query_internal[T](conn)
+}
+
+fn new_query_internal[T](conn Connection) &QueryBuilder[T] {
 	meta := struct_meta[T]()
 	return &QueryBuilder[T]{
 		meta:                  meta
@@ -987,6 +994,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 
 	$for field in T.fields {
 		$if field.is_embed {
+			mut embedded := instance.$(field.name)
 			$for sub in field.typ.fields {
 				mut m := TableField{}
 				mm := qb.meta.filter(it.name == '${field.name}.${sub.name}')
@@ -998,7 +1006,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 
 						if value != Primitive(Null{}) {
 							$if sub.unaliased_typ is i8 || sub.unaliased_typ is ?i8 {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { i8(value) }
 									i16 { i8(value) }
 									int { i8(value) }
@@ -1013,7 +1021,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { 0 }
 								}
 							} $else $if sub.unaliased_typ is i16 || sub.unaliased_typ is ?i16 {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { i16(value) }
 									i16 { i16(value) }
 									int { i16(value) }
@@ -1028,7 +1036,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { 0 }
 								}
 							} $else $if sub.unaliased_typ is int || sub.unaliased_typ is ?int {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { int(value) }
 									i16 { int(value) }
 									int { int(value) }
@@ -1042,9 +1050,11 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									f64 { int(value) }
 									else { 0 }
 								}
-							} $else $if sub.unaliased_typ is i64 || sub.unaliased_typ is ?i64
-								|| sub.unaliased_typ is $enum {
-								instance.$(field.name).$(sub.name) = match value {
+							} $else $if sub.unaliased_typ is $enum {
+								embedded = orm_embedded_enum_from_primitive(embedded, sub.name,
+									value)
+							} $else $if sub.unaliased_typ is i64 || sub.unaliased_typ is ?i64 {
+								embedded.$(sub.name) = match value {
 									i8 { i64(value) }
 									i16 { i64(value) }
 									int { i64(value) }
@@ -1059,7 +1069,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { 0 }
 								}
 							} $else $if sub.unaliased_typ is u8 || sub.unaliased_typ is ?u8 {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { u8(value) }
 									i16 { u8(value) }
 									int { u8(value) }
@@ -1074,7 +1084,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { 0 }
 								}
 							} $else $if sub.unaliased_typ is u16 || sub.unaliased_typ is ?u16 {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { u16(value) }
 									i16 { u16(value) }
 									int { u16(value) }
@@ -1089,7 +1099,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { 0 }
 								}
 							} $else $if sub.unaliased_typ is u32 || sub.unaliased_typ is ?u32 {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { u32(value) }
 									i16 { u32(value) }
 									int { u32(value) }
@@ -1104,7 +1114,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { 0 }
 								}
 							} $else $if sub.unaliased_typ is u64 || sub.unaliased_typ is ?u64 {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { u64(value) }
 									i16 { u64(value) }
 									int { u64(value) }
@@ -1119,7 +1129,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { 0 }
 								}
 							} $else $if sub.unaliased_typ is f32 || sub.unaliased_typ is ?f32 {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { f32(value) }
 									i16 { f32(value) }
 									int { f32(value) }
@@ -1134,7 +1144,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { 0 }
 								}
 							} $else $if sub.unaliased_typ is f64 || sub.unaliased_typ is ?f64 {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { f64(value) }
 									i16 { f64(value) }
 									int { f64(value) }
@@ -1149,7 +1159,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { 0 }
 								}
 							} $else $if sub.unaliased_typ is bool || sub.unaliased_typ is ?bool {
-								instance.$(field.name).$(sub.name) = match value {
+								embedded.$(sub.name) = match value {
 									i8 { value != 0 }
 									i16 { value != 0 }
 									int { value != 0 }
@@ -1164,20 +1174,19 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 									else { false }
 								}
 							} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
-								instance.$(field.name).$(sub.name) = value as string
-							} $else $if sub.unaliased_typ is time.Time
-								|| sub.unaliased_typ is ?time.Time {
+								embedded.$(sub.name) = value as string
+							} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
 								if m.typ == time_ {
-									instance.$(field.name).$(sub.name) = value as time.Time
+									embedded.$(sub.name) = value as time.Time
 								} else if m.typ == type_string {
-									instance.$(field.name).$(sub.name) =
-										time.parse(value as string)!
+									embedded.$(sub.name) = time.parse(value as string)!
 								}
 							}
 						}
 					}
 				}
 			}
+			instance.$(field.name) = embedded
 		} $else {
 			mut m := TableField{}
 			mm := qb.meta.filter(it.name == field.name)
@@ -1238,8 +1247,10 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 								f64 { int(value) }
 								else { 0 }
 							}
-						} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64
-							|| field.unaliased_typ is $enum {
+						} $else $if field.unaliased_typ is $enum {
+							instance.$(field.name) = orm_enum_i64_from_primitive(value,
+								instance.$(field.name))
+						} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64 {
 							instance.$(field.name) = match value {
 								i8 { i64(value) }
 								i16 { i64(value) }
@@ -1361,8 +1372,7 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 							}
 						} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
 							instance.$(field.name) = value as string
-						} $else $if field.unaliased_typ is time.Time
-							|| field.unaliased_typ is ?time.Time {
+						} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
 							if m.typ == time_ {
 								instance.$(field.name) = value as time.Time
 							} else if m.typ == type_string {
@@ -1758,7 +1768,7 @@ fn (qb_ &QueryBuilder[T]) v_sql_drop_and_zero() !int {
 }
 
 fn v_sql_create_table[T](conn Connection, attrs []VAttribute) !int {
-	mut qb := new_query[T](conn)
+	mut qb := new_query_internal[T](conn)
 	for attr in attrs {
 		if attr_name_matches(attr.name, 'table') && attr.has_arg {
 			qb.config.table.name = trim_attr_arg(attr.arg)
@@ -1770,7 +1780,7 @@ fn v_sql_create_table[T](conn Connection, attrs []VAttribute) !int {
 }
 
 fn v_sql_drop_table[T](conn Connection, attrs []VAttribute) !int {
-	mut qb := new_query[T](conn)
+	mut qb := new_query_internal[T](conn)
 	for attr in attrs {
 		if attr_name_matches(attr.name, 'table') && attr.has_arg {
 			qb.config.table.name = trim_attr_arg(attr.arg)
@@ -1871,7 +1881,7 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 
 // save updates all mapped fields in `value` using the struct primary key or `id` field.
 pub fn save[T](conn Connection, value T) ! {
-	mut qb := new_query[T](conn)
+	mut qb := new_query_internal[T](conn)
 	data, where := build_save_query_data[T](qb.meta, qb.config.table.name, value)!
 	qb.conn.update(qb.config.table, data, where)!
 }
@@ -1957,7 +1967,8 @@ fn orm_field_sql_name(attrs []string, field_name string) string {
 		if has_arg && name == 'sql' {
 			sql_name := trim_attr_arg(arg)
 			if sql_name.len > 0
-				&& sql_name !in ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'bool', 'string'] {
+				&& sql_name !in ['serial', 'i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64',
+					'f32', 'f64', 'bool', 'string'] {
 				return sql_name
 			}
 		}
@@ -2140,8 +2151,9 @@ fn set_field_from_primitive[T](mut value T, field_name string, primitive Primiti
 				value.$(field.name) = i16(primitive_to_int(primitive))
 			} $else $if field.unaliased_typ is int || field.unaliased_typ is ?int {
 				value.$(field.name) = primitive_to_int(primitive)
-			} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64
-				|| field.unaliased_typ is $enum {
+			} $else $if field.unaliased_typ is $enum {
+				value.$(field.name) = orm_enum_i64_from_primitive(primitive, value.$(field.name))
+			} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64 {
 				value.$(field.name) = i64(primitive_to_int(primitive))
 			} $else $if field.unaliased_typ is u8 || field.unaliased_typ is ?u8 {
 				value.$(field.name) = u8(primitive_to_int(primitive))
@@ -2206,6 +2218,57 @@ fn primitive_to_string(value Primitive) string {
 	}
 }
 
+fn primitive_to_i64(value Primitive) i64 {
+	return match value {
+		i8 { i64(value) }
+		i16 { i64(value) }
+		int { i64(value) }
+		i64 { value }
+		u8 { i64(value) }
+		u16 { i64(value) }
+		u32 { i64(value) }
+		u64 { i64(value) }
+		bool { i64(value) }
+		f32 { i64(value) }
+		f64 { i64(value) }
+		else { 0 }
+	}
+}
+
+// orm_enum_i64_from_primitive maps a value read back from a database onto the numeric
+// value of the enum field it is assigned to. V's ORM stores enums as integers, but a
+// database can also return the *label* of a native enum column (`CREATE TYPE ... AS ENUM`
+// in PostgreSQL, `ENUM(...)` in MySQL, or a plain `TEXT` column in SQLite), so labels are
+// matched against the names of the enum values too. Labels that match no enum value and
+// are not numeric leave the field untouched.
+fn orm_enum_i64_from_primitive[E](value Primitive, current E) i64 {
+	if value is string {
+		$for item in E.values {
+			if value == item.name {
+				return i64(item.value)
+			}
+		}
+		return strconv.atoi64(value.trim_space()) or { i64(current) }
+	}
+	return primitive_to_i64(value)
+}
+
+// orm_embedded_enum_from_primitive returns a copy of the embedded struct `current`, with
+// its enum field `field_name` set from a value read back from a database. It exists
+// because the enum type of a field of an *embedded* struct can only be reached through a
+// value of that struct.
+fn orm_embedded_enum_from_primitive[S](current S, field_name string, value Primitive) S {
+	mut res := current
+	$for f in S.fields {
+		$if f.unaliased_typ is $enum {
+			if f.name == field_name {
+				res.$(f.name) = orm_enum_i64_from_primitive(value, current.$(f.name))
+			}
+		}
+	}
+	return res
+}
+
 fn orm_relation_lookup_key_has_value(value Primitive) bool {
 	return match value {
 		Null { false }
@@ -2260,7 +2323,7 @@ fn primitive_for_field[U](value Primitive, field_name string) Primitive {
 }
 
 fn query_relation_one[U](mut conn Connection, key Primitive) !U {
-	mut qb := new_query[U](conn)
+	mut qb := new_query_internal[U](conn)
 	primary := find_save_primary_field_name(qb.meta) or { return U{} }
 	rows := qb.v_sql_where_primitive(primary, .eq, primitive_for_field[U](key, primary)).query()!
 	if rows.len == 0 {
@@ -2284,7 +2347,7 @@ fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, _ ?U)
 }
 
 fn query_relation_array[U](mut conn Connection, key Primitive, fkey string) ![]U {
-	mut qb := new_query[U](conn)
+	mut qb := new_query_internal[U](conn)
 	field_key := primitive_for_field[U](key, fkey)
 	return qb.v_sql_where_primitive(fkey, .eq, field_key).query() or {
 		if err.msg().contains('no such table') {
@@ -2310,7 +2373,7 @@ fn query_relation_optional_array_like[U](mut conn Connection, key Primitive, fke
 }
 
 fn insert_relation_one[U](mut conn Connection, value U, initialized_fields []string) !Primitive {
-	mut qb := new_query[U](conn)
+	mut qb := new_query_internal[U](conn)
 	return qb.insert_value_with_fields(value, initialized_fields)!
 }
 
@@ -2677,7 +2740,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	if values.len == 0 {
 		return error('${@FN}(): need at least one record')
 	}
-	mut qb := new_query[T](conn)
+	mut qb := new_query_internal[T](conn)
 
 	// Build the field list from the first value
 	first := fill_data_with_struct[T](values[0], qb.meta)

@@ -7,6 +7,9 @@ declare -a git_cmd=()
 parse_git_argv() {
 	local git_argv_spec="${GIT:-git}"
 	git_cmd=()
+	# Bracket ranges are collation dependent, so keep the check on the C locale.
+	# Under tr_TR.UTF-8 for example, [A-Za-z] does not even match plain `git`.
+	local LC_ALL=C
 	# GIT is a space-delimited argv prefix. Use a wrapper without spaces when
 	# one argument itself would otherwise need shell quoting.
 	if [[ ! "$git_argv_spec" =~ ^[-A-Za-z0-9_./:=+@%,\ ]+$ ]]; then

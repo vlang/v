@@ -139,6 +139,7 @@ fn bsd_backtrace_resolve_atos(buffer &voidptr, nr_frames int) []string {
 	return []string{}
 }
 
+@[c_extern]
 fn C.tcc_backtrace(fmt &char) i32
 
 fn backtrace_current_executable_name() string {

@@ -180,8 +180,7 @@ fn (mut a App) line(label string, value string) {
 }
 
 fn (mut a App) line2(label string, value string, value2 string) {
-	a.println('|${label:-20}|${term.colorize(term.bold, value)}, value: ${term.colorize(term.bold,
-		value2)}')
+	a.println('|${label:-20}|${term.colorize(term.bold, value)}, value: ${term.colorize(term.bold, value2)}')
 }
 
 fn (mut a App) line_env(env_var string) {

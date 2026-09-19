@@ -46,7 +46,7 @@ struct DemoDefault {
 	method    string @[default: '`POST`']
 	quoted    string @[default: "`o'brien`"]
 	empty     string @[default: '``']
-	amount    int @[default: 42]
+	amount    int    @[default: 42]
 	created   string @[default: 'CURRENT_TIMESTAMP']
 }
 

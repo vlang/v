@@ -17,6 +17,7 @@ fn C.pthread_getthreadid_np() i32
 
 @[trusted]
 fn C.pthread_mutex_init(voidptr, voidptr) i32
+
 fn C.pthread_mutex_lock(voidptr) i32
 fn C.pthread_mutex_trylock(voidptr) i32
 fn C.pthread_mutex_unlock(voidptr) i32

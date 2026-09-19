@@ -437,7 +437,7 @@ pub fn parse_key_share_extension_client(data []u8) ![]ClientKeyShareEntry {
 			return error('quic: key_share (client) KeyShareEntry key_exchange must not be empty (opaque key_exchange<1..2^16-1>)')
 		}
 		entries << ClientKeyShareEntry{
-			group: group
+			group:        group
 			key_exchange: data[cursor..cursor + ke_len].clone()
 		}
 		cursor += ke_len
@@ -707,8 +707,8 @@ pub fn parse_client_hello(body []u8) !ParsedClientHello {
 	extensions := parse_extension_list(body[cursor..])!
 
 	return ParsedClientHello{
-		random: random
+		random:        random
 		cipher_suites: cipher_suites
-		extensions: extensions
+		extensions:    extensions
 	}
 }

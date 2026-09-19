@@ -48,8 +48,7 @@ pub fn file_size_greater_than(fpath string, min_fsize u64) {
 	}
 }
 
-const self_command =
-	os.quoted_path(os.getenv_opt('V_CI_VEXE') or {
+const self_command = os.quoted_path(os.getenv_opt('V_CI_VEXE') or {
 	os.join_path_single(@VEXEROOT, 'v')
 }) + ' ' +
 	os.real_path(os.executable()).replace_once(os.real_path(@VEXEROOT), '').trim_left('/\\') +

@@ -16,19 +16,19 @@ import net.quic
 fn test_h3_validate_request_pseudo_accepts_an_ordinary_get() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'GET'
 		},
 		quic.QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/'
 		},
 		quic.QpackFieldLine{
-			name: ':scheme'
+			name:  ':scheme'
 			value: 'https'
 		},
 		quic.QpackFieldLine{
-			name: ':authority'
+			name:  ':authority'
 			value: 'example.com'
 		},
 	])!
@@ -37,11 +37,11 @@ fn test_h3_validate_request_pseudo_accepts_an_ordinary_get() {
 fn test_h3_validate_request_pseudo_rejects_ordinary_request_missing_scheme() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'GET'
 		},
 		quic.QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/'
 		},
 	]) or {
@@ -54,11 +54,11 @@ fn test_h3_validate_request_pseudo_rejects_ordinary_request_missing_scheme() {
 fn test_h3_validate_request_pseudo_rejects_connect_until_tunnels_are_supported() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'CONNECT'
 		},
 		quic.QpackFieldLine{
-			name: ':authority'
+			name:  ':authority'
 			value: 'example.com:443'
 		},
 	]) or {
@@ -71,15 +71,15 @@ fn test_h3_validate_request_pseudo_rejects_connect_until_tunnels_are_supported()
 fn test_h3_validate_request_pseudo_rejects_connect_even_with_scheme() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'CONNECT'
 		},
 		quic.QpackFieldLine{
-			name: ':scheme'
+			name:  ':scheme'
 			value: 'https'
 		},
 		quic.QpackFieldLine{
-			name: ':authority'
+			name:  ':authority'
 			value: 'example.com:443'
 		},
 	]) or {
@@ -92,15 +92,15 @@ fn test_h3_validate_request_pseudo_rejects_connect_even_with_scheme() {
 fn test_h3_validate_request_pseudo_rejects_connect_even_with_path() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'CONNECT'
 		},
 		quic.QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/'
 		},
 		quic.QpackFieldLine{
-			name: ':authority'
+			name:  ':authority'
 			value: 'example.com:443'
 		},
 	]) or {
@@ -113,7 +113,7 @@ fn test_h3_validate_request_pseudo_rejects_connect_even_with_path() {
 fn test_h3_validate_request_pseudo_rejects_connect_without_authority() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'CONNECT'
 		},
 	]) or {
@@ -126,7 +126,7 @@ fn test_h3_validate_request_pseudo_rejects_connect_without_authority() {
 fn test_h3_validate_request_pseudo_rejects_connect_with_empty_authority() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'CONNECT'
 		},
 		quic.QpackFieldLine{
@@ -152,15 +152,15 @@ fn test_h3_validate_request_pseudo_rejects_connect_with_empty_authority() {
 fn test_h3_validate_request_pseudo_rejects_protocol_pseudo_header() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'CONNECT'
 		},
 		quic.QpackFieldLine{
-			name: ':protocol'
+			name:  ':protocol'
 			value: 'websocket'
 		},
 		quic.QpackFieldLine{
-			name: ':authority'
+			name:  ':authority'
 			value: 'example.com:443'
 		},
 	]) or { return }
@@ -171,15 +171,15 @@ fn test_h3_build_request_rejects_unknown_method_before_get_conversion() {
 	st := &H3ServerStream{
 		headers: [
 			quic.QpackFieldLine{
-				name: ':method'
+				name:  ':method'
 				value: 'FOO'
 			},
 			quic.QpackFieldLine{
-				name: ':path'
+				name:  ':path'
 				value: '/'
 			},
 			quic.QpackFieldLine{
-				name: ':scheme'
+				name:  ':scheme'
 				value: 'https'
 			},
 		]
@@ -195,19 +195,19 @@ fn test_h3_build_request_uses_host_when_authority_is_omitted() {
 	st := &H3ServerStream{
 		headers: [
 			quic.QpackFieldLine{
-				name: ':method'
+				name:  ':method'
 				value: 'GET'
 			},
 			quic.QpackFieldLine{
-				name: ':path'
+				name:  ':path'
 				value: '/'
 			},
 			quic.QpackFieldLine{
-				name: ':scheme'
+				name:  ':scheme'
 				value: 'https'
 			},
 			quic.QpackFieldLine{
-				name: 'host'
+				name:  'host'
 				value: 'example.com'
 			},
 		]
@@ -219,23 +219,23 @@ fn test_h3_build_request_uses_host_when_authority_is_omitted() {
 fn test_h3_validate_request_pseudo_rejects_non_token_regular_field_name() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'GET'
 		},
 		quic.QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/'
 		},
 		quic.QpackFieldLine{
-			name: ':scheme'
+			name:  ':scheme'
 			value: 'https'
 		},
 		quic.QpackFieldLine{
-			name: ':authority'
+			name:  ':authority'
 			value: 'example.com'
 		},
 		quic.QpackFieldLine{
-			name: 'bad name'
+			name:  'bad name'
 			value: 'silently dropped before this fix'
 		},
 	]) or {
@@ -249,23 +249,23 @@ fn test_h3_build_request_canonicalizes_host_to_authority() {
 	st := &H3ServerStream{
 		headers: [
 			quic.QpackFieldLine{
-				name: ':method'
+				name:  ':method'
 				value: 'GET'
 			},
 			quic.QpackFieldLine{
-				name: ':path'
+				name:  ':path'
 				value: '/'
 			},
 			quic.QpackFieldLine{
-				name: ':scheme'
+				name:  ':scheme'
 				value: 'https'
 			},
 			quic.QpackFieldLine{
-				name: ':authority'
+				name:  ':authority'
 				value: 'authority.example'
 			},
 			quic.QpackFieldLine{
-				name: 'host'
+				name:  'host'
 				value: 'conflicting.example'
 			},
 		]
@@ -278,26 +278,26 @@ fn test_h3_build_request_canonicalizes_host_to_authority() {
 fn test_h3_build_request_checks_fixed_header_capacity_before_insertion() {
 	mut headers := [
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'GET'
 		},
 		quic.QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/'
 		},
 		quic.QpackFieldLine{
-			name: ':scheme'
+			name:  ':scheme'
 			value: 'https'
 		},
 		quic.QpackFieldLine{
-			name: ':authority'
+			name:  ':authority'
 			value: 'example.com'
 		},
 	]
 	// Repeated fields consume distinct Header slots just like distinct names.
 	for _ in 0 .. max_headers {
 		headers << quic.QpackFieldLine{
-			name: 'x-field'
+			name:  'x-field'
 			value: 'value'
 		}
 	}
@@ -321,23 +321,23 @@ fn test_h3_build_request_rejects_overflowing_content_length() {
 	st := &H3ServerStream{
 		headers: [
 			quic.QpackFieldLine{
-				name: ':method'
+				name:  ':method'
 				value: 'GET'
 			},
 			quic.QpackFieldLine{
-				name: ':path'
+				name:  ':path'
 				value: '/'
 			},
 			quic.QpackFieldLine{
-				name: ':scheme'
+				name:  ':scheme'
 				value: 'https'
 			},
 			quic.QpackFieldLine{
-				name: ':authority'
+				name:  ':authority'
 				value: 'example.com'
 			},
 			quic.QpackFieldLine{
-				name: 'content-length'
+				name:  'content-length'
 				value: '99999999999999999999'
 			},
 		]
@@ -352,23 +352,23 @@ fn test_h3_build_request_rejects_overflowing_content_length() {
 fn test_h3_validate_request_pseudo_rejects_duplicate_host_fields() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'GET'
 		},
 		quic.QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/'
 		},
 		quic.QpackFieldLine{
-			name: ':scheme'
+			name:  ':scheme'
 			value: 'https'
 		},
 		quic.QpackFieldLine{
-			name: 'host'
+			name:  'host'
 			value: 'first.example'
 		},
 		quic.QpackFieldLine{
-			name: 'host'
+			name:  'host'
 			value: 'second.example'
 		},
 	]) or {
@@ -381,15 +381,15 @@ fn test_h3_validate_request_pseudo_rejects_duplicate_host_fields() {
 fn test_h3_validate_request_pseudo_rejects_missing_authority_and_host() {
 	h3_validate_request_pseudo([
 		quic.QpackFieldLine{
-			name: ':method'
+			name:  ':method'
 			value: 'GET'
 		},
 		quic.QpackFieldLine{
-			name: ':path'
+			name:  ':path'
 			value: '/'
 		},
 		quic.QpackFieldLine{
-			name: ':scheme'
+			name:  ':scheme'
 			value: 'https'
 		},
 	]) or {

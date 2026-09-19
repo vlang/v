@@ -28,8 +28,8 @@ mut:
 	read_eof    bool
 	// Housekeeping runs concurrently with completion workers, so fields it reads
 	// are atomic rather than merely protected by the registry container mutex.
-	read_start     &stdatomic.AtomicVal[u64] = stdatomic.new_atomic(u64(0))
-	write_start    &stdatomic.AtomicVal[u64] = stdatomic.new_atomic(u64(0))
+	read_start     &stdatomic.AtomicVal[u64]  = stdatomic.new_atomic(u64(0))
+	write_start    &stdatomic.AtomicVal[u64]  = stdatomic.new_atomic(u64(0))
 	request_active &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
 	request_arena  voidptr
 	should_close   bool
@@ -72,15 +72,15 @@ pub:
 mut:
 	listen_fd       C.SOCKET = iocp_invalid_socket
 	iocp            voidptr
-	threads         []thread = []thread{len: iocp_thread_count, cap: iocp_thread_count}
-	registry        &IocpConnRegistry = &IocpConnRegistry{}
+	threads         []thread                       = []thread{len: iocp_thread_count, cap: iocp_thread_count}
+	registry        &IocpConnRegistry              = &IocpConnRegistry{}
 	request_handler fn (HttpRequest) !HttpResponse = unsafe { nil }
-	append_handler  AppendHandler = unsafe { nil }
-	make_state      fn () voidptr = unsafe { nil }
-	running         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	shutting_down   &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	stopped         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
-	active_requests &stdatomic.AtomicVal[int] = stdatomic.new_atomic(0)
+	append_handler  AppendHandler                  = unsafe { nil }
+	make_state      fn () voidptr                  = unsafe { nil }
+	running         &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	shutting_down   &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	stopped         &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(true)
+	active_requests &stdatomic.AtomicVal[int]      = stdatomic.new_atomic(0)
 }
 
 // new_server creates and initializes a new Server instance.
@@ -100,21 +100,21 @@ pub fn new_server(config ServerConfig) !&Server {
 		return error('set only one of `handler` or `append_handler`, not both')
 	}
 	mut server := &Server{
-		family: config.family
-		host: config.host
-		port: config.port
+		family:                  config.family
+		host:                    config.host
+		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
-		max_request_body_size: config.max_request_body_size
-		timeout_in_seconds: config.timeout_in_seconds
-		user_data: config.user_data
-		request_handler: config.handler
-		append_handler: config.append_handler
-		make_state: config.make_state
-		running: stdatomic.new_atomic(false)
-		shutting_down: stdatomic.new_atomic(false)
-		stopped: stdatomic.new_atomic(true)
-		active_requests: stdatomic.new_atomic(0)
-		registry: &IocpConnRegistry{
+		max_request_body_size:   config.max_request_body_size
+		timeout_in_seconds:      config.timeout_in_seconds
+		user_data:               config.user_data
+		request_handler:         config.handler
+		append_handler:          config.append_handler
+		make_state:              config.make_state
+		running:                 stdatomic.new_atomic(false)
+		shutting_down:           stdatomic.new_atomic(false)
+		stopped:                 stdatomic.new_atomic(true)
+		active_requests:         stdatomic.new_atomic(0)
+		registry:                &IocpConnRegistry{
 			mutex: sync.new_mutex()
 		}
 	}
@@ -412,7 +412,7 @@ fn post_recv(mut conn IocpConn) bool {
 	mut op := &IocpOperation{
 		kind: .read
 		conn: conn
-		buf: []u8{len: iocp_read_buf_size}
+		buf:  []u8{len: iocp_read_buf_size}
 	}
 	op.wsabuf = C.WSABUF{
 		len: u32(op.buf.len)
@@ -538,7 +538,7 @@ fn send_response(mut conn IocpConn, content []u8, should_close bool, worker_stat
 	mut op := &IocpOperation{
 		kind: .write
 		conn: conn
-		buf: content
+		buf:  content
 	}
 	if !post_write_op(mut op) {
 		op.free()
@@ -590,11 +590,11 @@ fn process_request(mut conn IocpConn, frame_total int, worker_state voidptr) {
 		mut ctl := ResponseControl{}
 		step := conn.server.append_handler(decoded, mut out, worker_state, mut ctl)
 		HttpResponse{
-			content: out
+			content:       out
 			content_owned: true
 			takeover_mode: ctl.takeover_mode
-			should_close: ctl.should_close || step != .done
-			file_path: ctl.file_path
+			should_close:  ctl.should_close || step != .done
+			file_path:     ctl.file_path
 		}
 	} else {
 		conn.server.request_handler(decoded) or {
@@ -814,11 +814,11 @@ fn accept_loop(server &Server) {
 		opt := 1
 		C.v_fasthttp_setsockopt(client_fd, C.IPPROTO_TCP, C.TCP_NODELAY, voidptr(&opt), sizeof(opt))
 		mut conn := &IocpConn{
-			server: server
-			fd: client_fd
+			server:      server
+			fd:          client_fd
 			request_buf: []u8{cap: server.max_request_buffer_size}
-			closing: stdatomic.new_atomic(false)
-			pending_op: stdatomic.new_atomic(voidptr(unsafe { nil }))
+			closing:     stdatomic.new_atomic(false)
+			pending_op:  stdatomic.new_atomic(voidptr(unsafe { nil }))
 		}
 		if !associate_socket_with_iocp(server.iocp, client_fd) {
 			close_socket(client_fd)

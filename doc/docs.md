@@ -26,8 +26,8 @@ V does not yet have a separate formal language specification document like the G
 Until V 1.0, the language reference is defined by:
 * This document (`doc/docs.md`) for syntax and semantics.
 * The compiler implementation in `vlib/v/`.
-* The executable language tests in `vlib/v/tests/`, `vlib/v/parser/`,
-  `vlib/v/checker/`, and `vlib/v/slow_tests/inout/`.
+* The executable language tests in `vlib/v/tests/`, `vlib/v/parser/tests/`,
+  `vlib/v/checker/tests/`, and `vlib/v/slow_tests/inout/`.
 
 When documentation and implementation diverge, compiler behavior and tests are the source of truth.
 
@@ -75,20 +75,32 @@ project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
 ## The default compiler
 
-On macOS and Linux, the top-level `v` executable contains only the experimental
-**V3** C compiler (whose source lives in `vlib/v3`). Every direct C build,
-including compiler self-builds, is compiled by V3 in-process. The CLI and tool
-commands remain in `cmd/v`; commands such as `test` and `fmt` are external tools,
-and non-C backends remain separate builder tools.
+On every native platform, the top-level `v` executable contains the default
+compiler whose source lives in `vlib/v`. Every direct C build, including compiler
+self-builds, is compiled in-process. The CLI remains in `cmd/v`; `test` is
+handled by the default compiler, and external tools are compiled with it first.
 
-V3 compilation errors are returned directly. These builds do not silently retry
-with the established compiler, and `-old-compiler` reports that the executable
-contains only V3. `-new-compiler` remains accepted for command-line compatibility
-and selects the same embedded driver.
+The standard bootstrap does not build the sibling `v1_fallback` executable
+(`v1_fallback.exe` on Windows). When V needs the compatibility compiler and the
+sibling is missing, it reports that it is running `make v1`. That target reuses
+or downloads the complete 0.5.2 release under the user cache. If no release
+binary can run, `oldv` clones the 0.5.2 V sources and matching `vc` snapshot and
+builds the fallback there. You can run `make v1` explicitly to prepare it ahead
+of time. Automatic provisioning keeps its launcher metadata in the user cache,
+so an older read-only sibling installation can remain untouched. `-old-compiler`
+launches the fallback explicitly, and ordinary user builds and external tools
+retry through it after a compiler or C compilation failure. Explicit
+`-new-compiler` builds remain strict default-compiler operations.
+`-new-compiler` remains accepted for command-line compatibility and otherwise
+selects the same embedded driver.
 
-On platforms that do not embed V3, `cmd/v` still contains the established
-compiler from `vlib/v`. There, `-new-compiler` reports that the current build does
-not include V3.
+The installer supplements the cached fallback vlib with modules whose public
+paths moved after 0.5.2. Fallback roots missing these compatibility modules are
+not used. If a fallback command exits unsuccessfully, V notes where the default
+compiler stopped and how to show its suppressed diagnostics. For a command
+that may have run user code, the note preserves the child's status without
+mislabeling it as a compiler failure. Re-run the command with `-new-compiler`
+to see the default-compiler diagnostics without a fallback retry.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
@@ -741,7 +753,7 @@ and conversions, refer to the
 Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
 quotes to single quotes unless the string contains a single quote character.
 
-Prepend `r` for raw strings. Escapes are not handled, so you will get exacly what you type:
+Prepend `r` for raw strings. Escapes are not handled, so you will get exactly what you type:
 
 ```v
 s := r'hello\nworld' // the `\n` will be preserved as two characters
@@ -3452,6 +3464,38 @@ fn (foo &Foo) bar() {
 `foo` is still immutable and can't be changed. For that,
 `(mut foo Foo)` must be used.
 
+When immutable reference parameters to structs are compared with `==` or `!=`,
+V compares their addresses, not their fields. Dereference the parameters explicitly
+to compare their values instead:
+
+```v
+struct Point {
+	x int
+}
+
+fn same_reference(a &Point, b &Point) bool {
+	return a == b
+}
+
+fn same_value(a &Point, b &Point) bool {
+	return *a == *b
+}
+
+a := Point{
+	x: 1
+}
+b := Point{
+	x: 1
+}
+assert !same_reference(a, b)
+assert same_reference(a, a)
+assert same_value(a, b)
+```
+
+This address-comparison rule also applies when reference parameters are captured by
+a closure or their reference types are written through aliases. A user-defined `==`
+operator takes precedence over the default address or value comparison.
+
 In general, V's references are similar to Go pointers and C++ references.
 For example, a generic tree structure definition would look like this:
 
@@ -3755,13 +3799,28 @@ myapp/
 `main.v` can use `import myapp.common`, and `structs.v` should still
 declare `module common`.
 
+A module's import path is its path under that lookup root, so the directory
+holding a module has to sit at the root itself. There is no virtual `modules/`
+directory anymore: `modules/mymod` is not searched, the same way the virtual
+`src/` source root is no longer searched. Move such a directory up beside the
+`v.mod` it belongs to, which leaves every `import` unchanged:
+
+```text
+myapp/
+├── v.mod
+├── main.v
+└── mymod/            # was myapp/modules/mymod
+```
+
+V reports the move for you when an import would otherwise have resolved there.
+
 ### Module aliases
 
 When a module moves, an `alias.v` file can keep its old import path working without copying its
 implementation. The alias module contains only a module declaration with an `alias` attribute:
 
 ```v ignore
-@[alias: '@VMODROOT/modules/new_name']
+@[alias: '@VMODROOT/new_name']
 module old_name
 ```
 
@@ -5919,6 +5978,14 @@ final output). That's why this approach is *unsafe* and should be avoided!
 
 (This is still in an alpha state)
 
+> **Deprecation notice:** the Function Call API (`orm_fn`;
+> `orm.new_query[T]` / `QueryBuilder`) is deprecated and will be removed
+> from the standard library after **2027-08-17**, to be maintained in a
+> separate repository. Prefer the built-in `sql` ORM syntax shown below
+> for new code. Compiler deprecation warnings begin on **2027-02-18**;
+> until then the compiler emits a migration notice. See
+> https://github.com/vlang/v/issues/27001 for details.
+
 V has a built-in ORM (object-relational mapping) which supports SQLite, MySQL and Postgres,
 but soon it will support MS SQL and Oracle.
 
@@ -6150,8 +6217,8 @@ A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.
 
-During the transition to the V3 formatter, `v fmt -verify` and `v fmt -c` accept
-files matching either V3 or legacy vfmt output. `v fmt -w` uses V3 formatting,
+During the formatter transition, `v fmt -verify` and `v fmt -c` accept
+files matching either current or legacy vfmt output. `v fmt -w` uses current formatting,
 so it may rewrite a file accepted by either check mode.
 
 #### Disabling the formatting locally
@@ -6192,8 +6259,8 @@ That will produce a `profile.txt` file when the program exits, which you can the
 analyze. If the output file is omitted, as in `v -profile run file.v`, the report
 is written to standard output. `-prof` is an alias for `-profile`.
 
-The V3 compiler supports profiling with its C backend. Other V3 backends reject
-`-profile`. V3 also supports these V1-compatible selection options:
+The compiler supports profiling with its C backend. Other backends reject
+`-profile`. It also supports these compatibility selection options:
 
 - `-profile-fns name1,name2` profiles only the named functions and functions
   called from them. Use the function names shown in profile output, such as
@@ -6238,6 +6305,31 @@ folder containing `v.mod`.
 
 V packages are installed normally in your `~/.vmodules` folder. That
 location can be overridden by setting the env variable `VMODULES`.
+
+`v install --local` installs into the project's own lookup root instead, i.e.
+the folder holding its `v.mod`, so the package lands beside the project's own
+modules and is imported by its name just like they are. That root is shared with
+the modules the project writes itself, so VPM keeps a record of what it installed
+there and only updates or removes those. A package an older V installed into the
+project's `modules/` directory has no such record; after moving it up beside the
+`v.mod`, `v install --local --adopt <module>` tells VPM it is one of its own.
+
+### Package names and import paths
+
+A package name can contain characters that are not valid in a V import
+path, for example `-` or uppercase letters. Such names are normalized
+when the package is installed: `-` becomes `_` and the name is
+lowercased. A package named `my-mod` is therefore installed as
+`~/.vmodules/my_mod` and imported with `import my_mod`. The same applies
+to the publisher part of a VPM package name, so `Some-Publisher.repo` is
+installed as `~/.vmodules/some_publisher/repo` and imported with
+`import some_publisher.repo`.
+
+`v install` prints a warning with the resulting import prefix whenever it
+has to normalize a name. A package may contain only nested modules, so append
+the nested module path when needed (for example, `import my_mod.json`). If you
+publish a package, prefer a `name` in `v.mod` that is already a valid import
+path.
 
 ### Package commands
 
@@ -7072,6 +7164,13 @@ Full list of builtin options:
 |                                |                  |                               | `wasm32_emscripten`, `wasm32_wasi`            |
 |                                |                  |                               | `native`, `autofree`                          |
 
+`glibc` and `musl` describe the C library the generated program is linked against.
+On a native Linux build that V compiles and links itself, V infers the host libc.
+That host inference is deliberately not carried into C-only or object output, generated C
+projects, portable `-os cross` output, or a foreign target, because another toolchain may
+link those artifacts. Pass `-glibc` or `-musl` when that target libc is known; `-cc
+musl-gcc` also implies `-musl`. The latter enables optional checks such as `$if musl ? {`.
+
 #### `$embed_file`
 
 ```v ignore
@@ -7172,6 +7271,70 @@ numbers: [1, 2, 3]
 ```
 
 See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
+
+#### `$vml` for compiling UI2 interfaces
+
+The compiler can compile a VML file directly into an `ui2.Element` expression with
+`$vml(path)`. The VML is parsed while the application is compiled; the resulting program
+constructs UI2 elements directly and does not parse the VML file at runtime.
+
+```v ignore
+import ui2
+
+struct App {
+pub mut:
+	name string
+}
+
+pub fn (mut app App) save() {}
+
+fn view(app &App) ui2.Element {
+	return $vml('views/profile.vml')
+}
+```
+
+`views/profile.vml`:
+
+```vml
+Screen {
+    id: root
+    background: "#f8fafc"
+    Column {
+        Label { text: "Hello ${app.name}" }
+        Button { text: "Save" on_tap: app.save() }
+    }
+}
+```
+
+The path must be a compile-time string. String literals, constants, compile-time local
+bindings, and `+` concatenations of those forms are supported. Absolute paths are used as
+given. A relative path is searched for in this order:
+
+1. relative to the V source file;
+2. in a `templates` directory next to the V source file;
+3. relative to the nearest parent directory containing `v.mod`;
+4. in that module root's `templates` directory.
+
+The compiled VML subset supports these UI2 elements:
+
+- `Screen`, `View`, `Rectangle`, `Column`, `Row`, and `Scroll` containers;
+- `Label`, `Image`, `Button`, `Checkbox`, `Dropdown`, `TextField`, and `TextArea`;
+- `ProgressBar`, `Slider`, `Switch`, `Spinner`, and `MessageBox`;
+- `Repeater` delegates, `MenuItem` entries, and `Option` entries.
+
+Properties can use literals, arithmetic and boolean expressions, conditional expressions,
+string interpolation, an enclosing `app` value, and geometry or custom properties exposed
+by an `id`. An ID on an earlier node is available to following nodes in the same component.
+Both quoted and unquoted `#RRGGBB` color values are accepted. A `Repeater` requires `model`
+and stable `key` properties and exposes `item` and `index` inside its delegate.
+
+String literals may use either double (`"`) or single (`'`) quote delimiters. Escape a matching
+quote or a backslash with `\`; `\n` and `\t` are also supported.
+
+The `bind.text`, `bind.checked`, `bind.active`, and `bind.value` properties create two-way
+bindings to mutable top-level fields on `app`. Event properties `on_tap`, `on_change`,
+`on_active`, `on_text`, and `on_submit` call an `app` method with zero or one argument. These
+methods and their argument types are checked while the generated V code is compiled.
 
 #### `$env`
 
@@ -8194,6 +8357,49 @@ to race conditions. There are several approaches to deal with these:
   correlated, which is acceptable considering the performance penalty that using
   synchronization primitives would represent.
 
+### Shadowing a global
+
+A local variable may not reuse the name of a global. A global's bare name is visible
+everywhere, including in modules that never import the one declaring it, so the two
+names are not as far apart as they look.
+
+Where the global belongs to another module, the local does not merely shadow it, it
+loses: the declaration is ignored and every use of that name, including the ones that
+look like reads of the local, means the global. The code then does something other
+than it reads, with nothing to point at.
+
+V rejects it:
+
+```
+error: variable `devices` shadows a global variable
+```
+
+The fix is to rename the local, giving it a name that says what it holds:
+
+```v ignore
+__global (
+	devices []&Device
+)
+
+fn mount_dev(root &Node) bool {
+	// Was `devices`, which silently meant the global above.
+	dev_dir := get_node(root, '/dev') or { return false }
+	dev_dir.parent = root
+	return true
+}
+```
+
+The check covers every source-level local binding: declaration targets, function and
+lambda parameters, `for` variables, `if` guards, `select` receive declarations, and
+compile-time `\$for` variables. Each name is checked, so both targets of
+`value, devices := make_pair()` are covered. A name that shadows nothing, and `_`, are
+left alone.
+
+Only code the project owns is checked, which for a directory build means the whole
+project, not just the file named on the command line. An installed dependency is left
+alone: its author cannot see the globals your program declares, so a local of theirs
+that happens to collide will not stop your build.
+
 ## Static Variables
 
 V also supports *static variables*, which are like *global variables*, but
@@ -8282,6 +8488,77 @@ v -os linux -cc cosmocc .
 
 You will need to install Clang, LLD linker, and download a zip file with
 libraries and include files for Windows and Linux. V will provide you with a link.
+
+### Portable C output (`-os cross`)
+
+`-os cross` is not a platform. It asks for *portable* C,
+i.e. C that is not tied to one OS, architecture or C compiler, so that a single
+generated file can be compiled on any of them. It is how V's own bootstrap
+snapshot `vc/v.c` is produced, and it only makes sense with `-o file.c`:
+
+```shell
+v -os cross -o /tmp/v.c cmd/v
+cc -o v_from_c /tmp/v.c -lm -lpthread
+```
+
+The `-cross` flag asks for the same output, but as a modifier that combines with
+an explicit target, which is how the Windows bootstrap snapshot is produced:
+
+```shell
+v -cross -os windows -cc msvc -o /tmp/v_win.c cmd/v
+```
+
+Either spelling also turns on the `cross` and `no_backtrace` custom defines, so
+that the `$if cross ?` guards in the standard library select their portable path
+instead of a platform syscall.
+
+In this mode V does not decide a target-dependent `$if` while generating. It
+keeps every branch and emits the condition as a C preprocessor guard, leaving
+the choice to whichever C compiler builds the file:
+
+```v okfmt
+$if linux {
+	linux_only()
+} $else {
+	everywhere_else()
+}
+```
+
+becomes
+
+```c
+#if (defined(__linux__) && !defined(__ANDROID__))
+linux_only();
+#else
+everywhere_else();
+#endif
+```
+
+Conditions that do not depend on the target - `$if prealloc`, `$if debug`, `-d`
+values - are still resolved while generating, exactly as in an ordinary build.
+`#include`s written inside a `$if`, or carrying a target prefix such as
+`#include linux <sys/timerfd.h>`, are guarded the same way, and headers or C
+sources shipped alongside your code are embedded into the output instead of
+being referenced by a path that will not exist on the machine that compiles it.
+
+What is *not* portable, and is therefore decided while generating, for the host
+V runs on:
+
+* A `$if` used as an *expression*. Its branches may have different types - for
+  example `closure_thunk` in `vlib/builtin/closure` is a differently sized fixed
+  array per architecture - which no guard around an expression can express.
+* A `$if` at file scope holding *declarations*. A function, type, constant or
+  global cannot be wrapped in `#if` by the backend, so only the host's branch is
+  emitted. Directives (`#include`, `#flag`) written at file scope *are* kept
+  from every branch and guarded, which is what makes the headers portable.
+* [Environment specific files](#environment-specific-files). A module split into
+  `x_linux.c.v` and `x_darwin.c.v` contributes only the generating host's
+  variant, so generate the portable C on the platform whose variants are the
+  portable ones.
+* The pointer width. V's `int`, the type layouts and the literal ranges are
+  baked for the generating target, so the output carries a check that fails the
+  build with a clear `#error` when it is compiled for a different width. The
+  output stays portable across targets of the same width.
 
 ## Compiling for iOS
 
@@ -8663,9 +8940,14 @@ and `-cflags` settings, rather than including them in the build command each tim
 Add `#pkgconfig` directives to tell the compiler which modules should be used for compiling
 and linking using the pkg-config files provided by the respective dependencies.
 
-As long as backticks can't be used in `#flag` and spawning processes is not desirable for security
-and portability reasons, V uses its own pkgconfig library that is compatible with the standard
-freedesktop one.
+Resolving the directive runs the `pkg-config` command, so that command has to be installed and has
+to succeed. When it fails — it is not installed, the package is unknown, a dependency does not
+resolve — the default C generator contributes no flag at all for that directive, and reports
+nothing. If the flags it would have supplied are needed and come from nowhere else, the build then
+fails further along, on a header the compiler cannot find or on a symbol the linker cannot resolve.
+
+A `#pkgconfig` directive is therefore best guarded, so that the program still names its flags when
+resolution fails. This is what the standard library modules that bind an external library do.
 
 If no flags are passed it will add `--cflags` and `--libs` to pkgconfig (not to V).
 In other words, both lines below do the same:
@@ -8675,8 +8957,8 @@ In other words, both lines below do the same:
 #pkgconfig --cflags --libs r_core
 ```
 
-The `.pc` files are looked up into a hardcoded list of default pkg-config paths, the user can add
-extra paths by using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
+The `.pc` files are looked up in pkg-config's own default paths, the user can add extra paths by
+using the `PKG_CONFIG_PATH` environment variable. Multiple modules can be passed.
 
 To check the existence of a pkg-config use `$pkgconfig('pkg')` as a compile time "if" condition to
 check if a pkg-config exists. If it exists the branch will be created. Use `$else` or `$else $if`
@@ -8689,6 +8971,30 @@ $if $pkgconfig('mysqlclient') {
 	#pkgconfig mariadb
 }
 ```
+
+The condition runs the same command, so it reports every package as absent when `pkg-config` is
+missing. That is what makes it a usable guard: when the command cannot run, or the probe for a
+package fails, the `$else` branch is taken and can supply fallback flags.
+
+`vlib/db/sqlite/sqlite.c.v` guards its directive that way, naming the flags itself when `sqlite3`
+does not resolve (abridged here, it has a `windows` branch too):
+
+```v ignore
+$if $pkgconfig('sqlite3') {
+	#pkgconfig sqlite3
+	#include "sqlite3.h"
+} $else $if darwin {
+	// macOS ships libsqlite3, so do not require a separately downloaded amalgamation.
+	#flag darwin -lsqlite3
+} $else {
+	#flag -I@VEXEROOT/thirdparty/sqlite
+	#include "sqlite3.h"
+	#flag @VEXEROOT/thirdparty/sqlite/sqlite3.c
+}
+```
+
+When a directive names several packages, probe them all. A guard on one of them still enters the
+directive when another is the one missing, and loses the flags there.
 
 ### Including C code
 
@@ -8791,6 +9097,8 @@ struct SomeCStruct {
 members of sub-data-structures may be directly declared in the containing struct as below:
 
 ```v
+pub struct C.DataView {}
+
 pub struct C.SomeCStruct {
 	implTraits  u8
 	memPoolData u16
@@ -8835,7 +9143,9 @@ If you export your own `DllMain`, V will not generate the default one. Call
 the standard V runtime setup and teardown:
 
 ```v oksyntax
+pub type C.BOOL = int
 pub type C.DWORD = u32
+pub type C.HINSTANCE = voidptr
 pub type C.LPVOID = voidptr
 
 fn C._vinit_caller()
@@ -8978,6 +9288,14 @@ println('b: ${b}') // 20
 println('c: ${c}') // 120
 ```
 
+Structured `amd64` and `x86` blocks validate the `lock` prefix. The prefix and its instruction
+must be on the same source line. It may precede `add`, `adc`, `and`, `btc`, `btr`, `bts`,
+`cmpxchg`, `cmpxchg8b`, `cmpxchg16b`, `dec`, `inc`, `neg`, `not`, `or`, `sbb`, `sub`, `xor`,
+`xadd`, or `xchg`. The `b`, `w`, `l`, and `q` size suffixes are also recognized, for example
+`addq` and `cmpxchgq`. Without a permitted same-line instruction, the parser reports
+`The lock prefix cannot be used on this instruction`. A same-line `lock:` remains valid as a
+label; a newline inside a comment also separates the prefix, instruction, or label colon.
+
 The C backend also supports raw GNU assembly templates. In a `raw` block, V passes each
 double-quoted template string through unchanged and still checks the output, input, and clobber
 lists. Operands can use GNU's named form or V's `constraint (expression) as alias` form:
@@ -8992,6 +9310,56 @@ asm amd64 raw {
     ; cc
 }
 assert value == 42
+```
+
+Raw templates are the right level for hand-written kernels that need GNU assembler features such
+as local labels or explicit operand modifiers. A label made with `%=` gets a unique numeric suffix
+for each inline-assembly statement, so prefer names such as `.Lloop%=` for loops in reusable
+functions. Numeric local labels such as `1:` with `1b` (backward) and `1f` (forward) references are
+also useful for short branches. Do not use an ordinary global-looking label in a raw block unless
+it is deliberately exported: two instantiations of a function can otherwise define the same
+assembler symbol.
+
+For a loop over a V buffer, bind a pointer and a block count as read-write register operands, bump
+the pointer inside the template, and decrement the count until it reaches zero:
+
+```v ignore
+mut ptr := data.data
+mut len := u64(data.len)
+asm amd64 raw {
+    "testq %[len], %[len]\n\t"
+    "jz .Ldone%=\n\t"
+    ".Lloop%=:\n\t"
+    "... load and process one block ...\n\t"
+    "addq $16, %[ptr]\n\t"
+    "subq $1, %[len]\n\t"
+    "jnz .Lloop%=\n\t"
+    ".Ldone%=:"
+    ; [ptr] "+r" (ptr)
+      [len] "+r" (len)
+    ;
+    ; memory
+    ; cc
+}
+```
+
+Use `memory` when the assembly reads or writes memory not described by an operand, and use `cc`
+when it changes or observes condition flags. Raw templates leave the compiler-specific details of
+`r`, `m`, and explicit memory addressing to the selected C compiler. Use `r` for pointers when the
+template performs address arithmetic; use `m` when the template needs the compiler to format a
+memory operand. Keep the pointer and length constraints read-write when the template modifies them.
+
+`asm goto` emits GNU `asm goto` and is available only with the C backend. Its fifth semicolon
+section lists the V labels that the assembly may branch to. Use the label name in a structured
+branch instruction; a `raw` template uses GNU's `%l[label]` form. Targets cannot enter or leave a
+V `lock` scope.
+
+```v ignore
+asm goto amd64 {
+    jne done
+    ; ; ; ; done
+}
+done:
 ```
 
 Use `intel` for destination-first structured x86 assembly. V surrounds the generated template
@@ -9013,6 +9381,24 @@ operands. V uses the GNU x86 `%V` operand modifier so GCC and Clang substitute r
 without AT&T's `%` prefix. Memory-capable constraints such as `m` are rejected because compilers
 can still format those placeholders with AT&T addressing. In a `raw intel` block, the template is
 passed through unchanged, so use the selected C compiler's explicit operand modifiers.
+
+`%V` is the only operand modifier that omits the `%` prefix, and it prints the compilation
+target's native register: 64 bits for 64-bit machine code and 32 bits for 32-bit machine code,
+including when `-m32` overrides an explicit architecture. This is independent of the architecture
+declared on the assembly block. For instructions whose register operands must have the same width,
+V rejects a named operand combined with an explicit hard register of a different width. For
+example, in a 64-bit build, `mov eax, some_value` would reach the assembler as `mov eax, rcx`, so V
+rejects it at compile time. Named operands may still use narrower V types for operations that
+preserve their low-width result, such as an alias-only `add` whose flags are not observed later in
+the block. V rejects narrower operands where the instruction meaning changes with width, including
+shifts, rotates, implicit multiply and divide, bit counts, bit tests, byte swaps, and CRC32 sources.
+It also rejects narrower signed operands of `cmp` and `test`, and narrow arithmetic when a later
+instruction observes its flags. Named operands cannot be sources of `movsx`, `movsxd`, or `movzx`.
+Addressed sources of `movsx` and `movzx` are also rejected because structured assembly cannot
+specify their data width. Named shift counts are not supported because the `r` constraint cannot
+select `cl`. Effective addresses cannot contain three register operands, and signed address
+components must have the target's native width. Use a `raw intel` block to pick operand widths
+explicitly with `%k`, `%w` and related modifiers.
 
 The `raw` and `intel` modifiers affect GNU-style inline assembly emitted by the C backend. MSVC
 does not support this form of inline assembly on 64-bit targets, and individual instructions or
