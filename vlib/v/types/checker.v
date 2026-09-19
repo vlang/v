@@ -6089,9 +6089,14 @@ fn type_text_contains_qualified_import(text string, alias string) bool {
 
 fn (mut tc TypeChecker) check_deprecated_byte_types() {
 	mut identifier_offsets := map[u64]bool{}
+	// Inline assembly spans per file id: assembler text such as the `.byte` directive or
+	// an Intel-syntax `byte ptr` operand is not a V type reference.
+	mut asm_spans := map[int][]token.Pos{}
 	for node in tc.a.nodes {
 		if node.kind == .ident && node.value == 'byte' && node.pos.is_valid() {
 			identifier_offsets[deprecated_byte_position_key(node.pos.id, node.pos.offset)] = true
+		} else if node.kind == .asm_stmt && node.pos.is_valid() && node.pos.end > node.pos.offset {
+			asm_spans[int(node.pos.id)] << node.pos
 		}
 	}
 	mut pending_file := ''
@@ -6105,7 +6110,8 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 		if pending_file.len == 0 || !node.pos.is_valid() {
 			continue
 		}
-		tc.check_deprecated_byte_types_in_file(flat.NodeId(idx), node.pos.id, pending_file, identifier_offsets)
+		tc.check_deprecated_byte_types_in_file(flat.NodeId(idx), node.pos.id, pending_file, identifier_offsets,
+			asm_spans[int(node.pos.id)])
 		pending_file = ''
 	}
 }
@@ -6114,7 +6120,17 @@ fn deprecated_byte_position_key(file_id int, offset int) u64 {
 	return (u64(u32(file_id)) << 32) | u64(u32(offset))
 }
 
-fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool) {
+// offset_in_asm_span reports whether offset lies inside one of the inline assembly blocks.
+fn offset_in_asm_span(spans []token.Pos, offset int) bool {
+	for span in spans {
+		if offset >= span.offset && offset < span.end {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool, asm_spans []token.Pos) {
 	if tc.diagnostic_files.len > 0 && path !in tc.diagnostic_files {
 		return
 	}
@@ -6155,7 +6171,8 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 			i++
 		}
 		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start)
-			|| deprecated_byte_position_key(file_id, start) in identifier_offsets {
+			|| deprecated_byte_position_key(file_id, start) in identifier_offsets
+			|| offset_in_asm_span(asm_spans, start) {
 			continue
 		}
 		mut end := i
