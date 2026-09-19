@@ -6803,7 +6803,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	}
 	if base_type_raw.name() in ['voidptr', 'nil'] {
 		type_name := tc.pointer_diagnostic_binding_type_name(base_id, base_type_raw)
-		tc.record_error_at(.cannot_index, 'cannot index `${type_name}`', id, tc.index_brackets_pos(node))
+		tc.record_error_at(.cannot_index, 'type `${type_name}` does not support indexing', id, tc.index_brackets_pos(node))
 		tc.register_synth_type(id, Type(void_))
 		return
 	}
@@ -6999,7 +6999,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	if !(base_type is Array || base_type is ArrayFixed || base_type is String
 		|| base_type is Map || base_type is Unknown
 		|| (base_type_raw is Pointer && !implicit_mut_param_pointer)) && tc.should_diagnose(id) {
-		tc.record_error_at(.cannot_index, 'cannot index `${base_type.name()}`', id, tc.index_brackets_pos(node))
+		tc.record_error_at(.cannot_index, 'type `${base_type.name()}` does not support indexing', id, tc.index_brackets_pos(node))
 	}
 	tc.register_synth_type(id, tc.resolve_index_type(node))
 }
