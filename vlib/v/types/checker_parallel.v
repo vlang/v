@@ -1690,6 +1690,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 			return 1
 		}
 	}
+	a_is_duplicate_match_else := a.msg == '`match` can have only one `else` branch'
+	b_is_duplicate_match_else := b.msg == '`match` can have only one `else` branch'
+	a_is_nonfinal_match_else := a.msg == '`else` must be the last branch of `match`'
+	b_is_nonfinal_match_else := b.msg == '`else` must be the last branch of `match`'
+	if a.node == b.node && a_is_duplicate_match_else && b_is_nonfinal_match_else {
+		return -1
+	}
+	if a.node == b.node && b_is_duplicate_match_else && a_is_nonfinal_match_else {
+		return 1
+	}
 	a_match_range_order := match true {
 		a.msg.starts_with('the low and high parts of a range expression') { 1 }
 		a.msg.starts_with('the range type and the match condition type') { 2 }
