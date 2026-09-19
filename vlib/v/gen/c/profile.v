@@ -41,6 +41,7 @@ fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_
 	g.profile_fn_restore_enabled = false
 	if g.profile_file.len == 0 || (g.profile_no_inline && is_inline)
 		|| module_name == g.profile_runtime_module_name()
+		|| (g.is_trace_calls && module_name == g.trace_runtime_module_name())
 		|| fn_name.starts_with('time.vpc_now')
 		|| cfn_name.starts_with('time__vpc_now') {
 		return
