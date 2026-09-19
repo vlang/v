@@ -12935,6 +12935,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !info.is_variadic {
 			if spread_id := tc.spread_arg_child(arg_id) {
+				spread := tc.a.node(spread_id)
+				needed := info.params.len - param_idx
+				actual := int(spread.children_count)
+				if spread.kind == .array_literal && actual < needed {
+					element_word := if actual == 1 { 'element' } else { 'elements' }
+					pos := token.new_span(spread.pos.id, int_max(0, spread.pos.offset - 3), spread.pos.end)
+					tc.record_error_at(.call_arg_mismatch, 'array decompose has ${actual} ${element_word} but ${needed} are needed for `${tc.call_display_name(node)}`', arg_id, pos)
+				}
 				actual_spread := tc.resolve_type(spread_id)
 				elem_type := array_like_elem_type(unwrap_pointer(actual_spread)) or {
 					if has_dsl_scope {
@@ -16460,44 +16468,6 @@ fn (tc &TypeChecker) spread_arg_child(id flat.NodeId) ?flat.NodeId {
 		return tc.a.child(&node, 0)
 	}
 	return none
-}
-
-fn (mut tc TypeChecker) check_array_decompose_counts() {
-	for index, node in tc.a.nodes {
-		if node.kind != .call || node.children_count < 2 {
-			continue
-		}
-		callee := tc.a.child_node(&node, 0)
-		if callee.kind != .ident {
-			continue
-		}
-		name := tc.qualify_fn_name(callee.value)
-		params := tc.fn_param_types[name] or { tc.fn_param_types[callee.value] or { continue } }
-		if tc.fn_variadic[name] || tc.fn_variadic[callee.value] {
-			continue
-		}
-		mut preceding := 0
-		for i in 1 .. node.children_count {
-			arg_id := tc.call_arg_value(tc.a.child(&node, i))
-			spread_id := tc.spread_arg_child(arg_id) or {
-				preceding++
-				continue
-			}
-			spread := tc.a.nodes[int(spread_id)]
-			if spread.kind != .array_literal {
-				break
-			}
-			needed := params.len - preceding
-			actual := int(spread.children_count)
-			if actual < needed {
-				element_word := if actual == 1 { 'element' } else { 'elements' }
-				pos := token.new_span(spread.pos.id, int_max(0, spread.pos.offset - 3), spread.pos.end)
-				tc.errors << tc.make_type_error_at(.call_arg_mismatch, 'array decompose has ${actual} ${element_word} but ${needed} are needed for `${callee.value}`', arg_id, pos)
-			}
-			break
-		}
-		_ = index
-	}
 }
 
 fn (tc &TypeChecker) nonvariadic_spread_extra_arg_count(node flat.Node, info CallInfo, recv_extra int) int {

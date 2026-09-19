@@ -9219,7 +9219,6 @@ pub fn (mut tc TypeChecker) check_semantics() {
 		_ = i
 	}
 	tc.check_test_file_has_test_fn()
-	tc.check_array_decompose_counts()
 	tc.check_selective_builtin_import_diagnostics()
 	tc.check_unused_import_diagnostics()
 	tc.discard_cascading_fn_redefinition_diagnostics()
