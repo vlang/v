@@ -3797,6 +3797,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			display := tc.call_display_name(node)
 			message := if tc.comptime_static_depth > 0 {
 				'unknown function: ${display}'
+			} else if display.len == 0 {
+				'unknown function:'
 			} else {
 				'unknown function `${display}`'
 			}
