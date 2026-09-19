@@ -7992,8 +7992,10 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 	if p.tok == .comma || p.tok == .decl_assign {
 		// Simple if-guard; treat as regular condition for flat AST
 		if p.tok == .decl_assign {
+			assign_end := p.tok_end
 			p.next()
 			rhs := p.control_header_expr(.lowest)
+			p.validate_if_guard_rhs(rhs, assign_end)
 			guard_lhs_ids << guard_cond
 			istart := p.add_children2(guard_cond, rhs)
 			guard_cond = p.add_node(flat.Node{
@@ -8011,8 +8013,10 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 				lhs_ids << p.expr(.lowest)
 			}
 			if p.tok == .decl_assign {
+				assign_end := p.tok_end
 				p.next()
 				rhs := p.expr(.lowest)
+				p.validate_if_guard_rhs(rhs, assign_end)
 				mut all_ids := []flat.NodeId{cap: lhs_ids.len + 1}
 				all_ids << lhs_ids[0]
 				all_ids << rhs
@@ -8070,6 +8074,30 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(if_start)
 	})
+}
+
+fn (mut p Parser) validate_if_guard_rhs(rhs_id flat.NodeId, assign_end int) {
+	if int(rhs_id) < 0 || int(rhs_id) >= p.a.nodes.len {
+		return
+	}
+	rhs := p.a.nodes[int(rhs_id)]
+	if rhs.kind !in [.call, .index, .prefix, .selector, .ident] {
+		mut start := assign_end
+		mut end := rhs.pos.end
+		source := p.s.src
+		start = int_max(0, int_min(start, source.len))
+		end = int_max(start, int_min(end, source.len))
+		for start < end && source[start] in [`:`, `=`, ` `, `\t`] {
+			start++
+		}
+		for end > start && source[end - 1] in [` `, `\t`, `{`] {
+			end--
+		}
+		line_start := if index := source[..start].last_index('\n') { index + 1 } else { 0 }
+		start = int_min(end, start + source[line_start..start].count('\t') * 3)
+		p.record_diagnostic_span('if guard condition expression is illegal, it should return an Option',
+			start, end)
+	}
 }
 
 fn (mut p Parser) for_stmt() flat.NodeId {
