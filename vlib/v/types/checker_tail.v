@@ -3220,8 +3220,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				&& ((!tc.has_active_import(receiver.value) && tc.non_file_scope_type(receiver.value) == none
 					&& tc.future_local_decl_id(receiver.value, receiver_id) != none)
 					|| tc.ident_is_rhs_of_own_declaration(receiver_id, receiver.value)) {
-				tc.record_error_at(.unknown_fn, 'unknown function `${receiver.value}.${callee.value}`', id, tc.method_call_name_pos(node, callee))
-				tc.register_synth_type(id, unknown_type('unknown function `${receiver.value}.${callee.value}`'))
+				tc.record_error_at(.unknown_ident, 'undefined variable: `${receiver.value}`', receiver_id,
+					receiver.pos)
+				tc.register_synth_type(id, unknown_type('undefined variable `${receiver.value}`'))
 				return
 			}
 		}
