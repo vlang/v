@@ -11393,19 +11393,12 @@ fn (mut tc TypeChecker) check_block(id flat.NodeId, node flat.Node) {
 	if node.value == 'comma_exprs' {
 		if tc.is_statement_node(id) {
 			for i in 0 .. node.children_count {
-				mut value_id := tc.a.child(&node, i)
-				value := tc.a.node(value_id)
-				if value.kind == .expr_stmt && value.children_count > 0 {
-					value_id = tc.a.child(value, 0)
-				}
-				if unalias_type(tc.resolve_type(value_id)) is Void {
-					tc.record_error_at(.return_mismatch, 'type `void` cannot be used in multi-return', value_id, tc.a.node(value_id).pos)
-					break
-				}
+				tc.check_stmt_node(tc.a.child(&node, i))
 			}
-		}
-		for i in 0 .. node.children_count {
-			tc.check_node(tc.a.child(&node, i))
+		} else {
+			for i in 0 .. node.children_count {
+				tc.check_node(tc.a.child(&node, i))
+			}
 		}
 	} else {
 		value_tail := (is_unsafe && !tc.is_statement_node(id))
