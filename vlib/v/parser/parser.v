@@ -450,14 +450,24 @@ pub fn (mut p Parser) parse_into(path string) {
 			})
 			ids << mod_id
 			p.next()
+			mut malformed_module := false
 			if p.tok == .dot {
 				p.record_diagnostic_span('`module ${p.cur_module}`, unexpected `.` after module name',
 					p.tok_pos, p.tok_end)
+				malformed_module = true
 			}
 			if p.tok == .name && module_name_end <= p.tok_pos
 				&& !p.s.src[module_name_end..p.tok_pos].contains('\n') {
 				p.record_diagnostic_span('`module ${p.cur_module}`, you can only declare one module, unexpected `${p.lit}`',
 					p.tok_pos, p.tok_end)
+				malformed_module = true
+			}
+			if malformed_module {
+				line_end := p.s.src.index_after('\n', module_name_end) or { p.s.src.len }
+				for p.tok != .eof && p.tok_pos < line_end {
+					p.next()
+				}
+				continue
 			}
 			if p.tok == .semicolon || p.lit == '' {
 				p.next()
