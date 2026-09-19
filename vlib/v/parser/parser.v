@@ -3124,6 +3124,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	}
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	mut method_names := map[string]bool{}
 	mut fields_are_mut := false
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .key_mut {
@@ -3168,6 +3169,11 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			field_name += '[${method_generic_params.join(', ')}]'
 		}
 		if p.tok == .lpar {
+			if method_names[field_name] {
+				p.record_diagnostic_span('duplicate method `${field_name}`', method_start,
+					method_start + field_name.len)
+			}
+			method_names[field_name] = true
 			// method: name(params) ret_type
 			p.next() // skip (
 			mut params := []flat.NodeId{}
