@@ -4437,7 +4437,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	if !tc.type_implements_interface(actual, target_iface) {
 		actual_name := actual.name()
 		tc.record_interface_implementation_error(.assignment_mismatch, actual, target_iface, id, node.pos)
-		tc.record_error_at(.assignment_mismatch, 'type `${actual_name}` does not implement interface `${target_iface.name}`; `${actual_name}` does not implement interface `${target_iface.name}`, cannot cast `${actual_name}` to interface `${target_iface.name}`', id, node.pos)
+		tc.record_error_at(.assignment_mismatch, '`${actual_name}` does not implement interface `${target_iface.name}`, cannot cast `${actual_name}` to interface `${target_iface.name}`', id, node.pos)
 	}
 	if tc.warn_about_allocs && ((clean_actual !is Pointer && clean_actual !is Interface)
 		|| tc.interface_pointer_alias_cast_needs_heap_copy(child_id, actual)

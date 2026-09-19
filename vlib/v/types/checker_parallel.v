@@ -1466,6 +1466,28 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		&& is_inline_asm_instruction_error(b.msg) && a.pos.offset != b.pos.offset {
 		return a.pos.offset - b.pos.offset
 	}
+	a_is_ierror_msg_method := a.msg.contains("doesn't implement method `msg` of interface `IError`")
+	b_is_ierror_msg_method := b.msg.contains("doesn't implement method `msg` of interface `IError`")
+	a_is_ierror_code_method := a.msg.contains("doesn't implement method `code` of interface `IError`")
+	b_is_ierror_code_method := b.msg.contains("doesn't implement method `code` of interface `IError`")
+	if a.node == b.node && a_is_ierror_msg_method && b_is_ierror_code_method {
+		return -1
+	}
+	if a.node == b.node && b_is_ierror_msg_method && a_is_ierror_code_method {
+		return 1
+	}
+	a_is_missing_interface_method := a.msg.contains("doesn't implement method `")
+	b_is_missing_interface_method := b.msg.contains("doesn't implement method `")
+	a_is_interface_cast_summary := a.msg.contains(' does not implement interface `')
+		&& a.msg.contains(', cannot cast `')
+	b_is_interface_cast_summary := b.msg.contains(' does not implement interface `')
+		&& b.msg.contains(', cannot cast `')
+	if a.node == b.node && a_is_missing_interface_method && b_is_interface_cast_summary {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_interface_method && a_is_interface_cast_summary {
+		return 1
+	}
 	a_is_cast_to_struct := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to struct')
 	b_is_cast_to_struct := b.msg.starts_with('cannot cast `') && b.msg.ends_with(' to struct')
 	a_is_sum_type_cast := a.msg.contains(' sum type value to `')
