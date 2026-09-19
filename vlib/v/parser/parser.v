@@ -7077,7 +7077,12 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return stmt_id
 		}
 		.key_atomic {
+			atomic_start := p.tok_pos
+			atomic_end := p.tok_end
 			p.next()
+			if p.tok == .name && p.lit == '_' {
+				p.record_diagnostic_span('cannot use `atomic` on `_`', atomic_start, atomic_end)
+			}
 			stmt_id := p.assign_or_expr_stmt()
 			p.mark_node_atomic(stmt_id)
 			return stmt_id
