@@ -1,0 +1,7 @@
+vlib/v/checker/tests/use_byte_instead_of_u8_in_asm_operand_err.vv:8:8: error: byte is deprecated, use u8 instead
+    6 |         mov result, y
+    7 |         ; =r (result)
+    8 |         ; r (byte(x)) as y
+      |              ~~~~~~~
+    9 |     }
+   10 |     println(result)
