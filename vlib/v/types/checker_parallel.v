@@ -1700,6 +1700,8 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	}
 	a_is_missing_interface_method := a.msg.contains("doesn't implement method `")
 	b_is_missing_interface_method := b.msg.contains("doesn't implement method `")
+	a_is_interface_implementation_summary := a.msg.contains("doesn't implement interface `")
+	b_is_interface_implementation_summary := b.msg.contains("doesn't implement interface `")
 	if a.node == b.node && a_is_missing_interface_method && b_is_missing_interface_method {
 		a_interface := a.msg.all_after_last(' of interface `').all_before('`')
 		b_interface := b.msg.all_after_last(' of interface `').all_before('`')
@@ -1709,6 +1711,12 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		if a_interface > b_interface {
 			return 1
 		}
+	}
+	if a.node == b.node && a_is_missing_interface_method && b_is_interface_implementation_summary {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_interface_method && a_is_interface_implementation_summary {
+		return 1
 	}
 	a_is_interface_cast_summary := a.msg.contains(' does not implement interface `')
 		&& a.msg.contains(', cannot cast `')

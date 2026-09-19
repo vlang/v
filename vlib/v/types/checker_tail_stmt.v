@@ -2850,7 +2850,9 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 					&& !tc.named_type_implements_interface(concrete, expr_type.name)
 					&& tc.should_diagnose(id) {
 					pos := tc.node_value_diagnostic_pos(id)
-					tc.record_error_at(.condition_mismatch, '`${node.value}` is not compatible with interface `${expr_type.name}`', id, pos)
+					tc.record_interface_implementation_error(.condition_mismatch, concrete_type,
+						expr_type, id, pos)
+					tc.record_error_at(.condition_mismatch, "`${node.value}` doesn't implement interface `${expr_type.name}`", id, pos)
 				}
 			} else if tc.should_diagnose(id) {
 				tc.record_error(.condition_mismatch, 'unknown type `${node.value}`', id)
