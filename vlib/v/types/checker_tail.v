@@ -18381,11 +18381,11 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 							}
 						}
 					}
-					tc.record_error_at(.if_branch_mismatch, 'if-expression branch type mismatch: mismatched types `${then_name}` and `${else_name}`', id, pos)
+					tc.record_error_at(.if_branch_mismatch, 'mismatched types `${then_name}` and `${else_name}`', id, pos)
 				} else {
 					then_name := tc.diagnostic_expr_type_name(then_tail, then_type)
 					else_name := tc.diagnostic_expr_type_name(else_tail, else_type)
-					tc.record_error_at(.if_branch_mismatch, 'if-expression branch type mismatch: mismatched types `${then_name}` and `${else_name}`', id, pos)
+					tc.record_error_at(.if_branch_mismatch, 'mismatched types `${then_name}` and `${else_name}`', id, pos)
 				}
 			}
 		}
