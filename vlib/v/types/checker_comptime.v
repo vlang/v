@@ -8845,9 +8845,6 @@ fn (mut tc TypeChecker) check_result_propagation(id flat.NodeId, source_id flat.
 	clean_source_type := unalias_type(source_type)
 	clean_return_type := unalias_type(tc.fn_context.return_type)
 	if clean_source_type is OptionType {
-		if tc.current_fn_is_main() {
-			return
-		}
 		tc.record_error_at(.return_mismatch, 'to propagate a Result, the call must also return a Result type', id, tc.propagation_operator_pos(source_id, id, '!'))
 		return
 	}
