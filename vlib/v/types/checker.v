@@ -6324,7 +6324,12 @@ fn (mut tc TypeChecker) register_selective_imports(node flat.Node) {
 		if child.value in info.selective_imports {
 			tc.file_selective_imports[key] = []string{}
 			info.selective_imports[child.value] = []string{}
-			tc.record_error_unfiltered(.unknown_fn, 'ambiguous selective import `${child.value}`', child_id)
+			message := if tc.cur_module.len == 0 {
+				'cannot register symbol `${child.value}`, it was already imported'
+			} else {
+				'ambiguous selective import `${child.value}`'
+			}
+			tc.record_error_unfiltered(.unknown_fn, message, child_id)
 			continue
 		}
 		mut candidates := []string{}
