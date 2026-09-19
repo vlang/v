@@ -140,6 +140,7 @@ mut:
 	pending_decl_attr_sources         []string
 	in_for_container                  bool
 	in_select_branch_condition        int
+	in_match_branch_condition         int
 	in_array_literal                  int
 	inside_array_init_type_expr       bool
 	in_map_value                      int
@@ -8795,7 +8796,9 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		p.next()
 		return p.add_val(.ident, name)
 	}
+	p.in_match_branch_condition++
 	cond := p.expr(.lowest)
+	p.in_match_branch_condition--
 	cond_node := p.a.node(cond)
 	if cond_node.kind == .range && cond_node.children_count == 2 {
 		low := p.a.child_node(cond_node, 0)
@@ -11332,6 +11335,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			})
 		}
 		.lcbr {
+			if p.in_match_branch_condition > 0 {
+				p.record_diagnostic_span('invalid expression: unexpected token `{`', p.tok_pos,
+					p.tok_end)
+				return p.add(flat.NodeKind.empty)
+			}
 			return p.map_literal()
 		}
 		.amp {
