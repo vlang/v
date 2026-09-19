@@ -10112,6 +10112,7 @@ pub fn run(args []string) {
 	mut cache_no_parallel_cgen := current_no_parallel
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
+	p.enable_import_diagnostics()
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
 	}

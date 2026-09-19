@@ -1090,6 +1090,12 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 // 'html' (for veb.html, yields a veb.Result) or 'tmpl' (yields a string).
 fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	call_start := int_max(0, p.span_start() - 1)
+	missing_veb_import := is_html && p.check_imports
+		&& !p.imported_module_names['veb']
+	if missing_veb_import {
+		p.record_diagnostic_span('`\$veb` cannot be used without importing veb', call_start,
+			call_start + 4)
+	}
 	if is_html {
 		p.next() // skip `veb`
 		p.check(.dot)
@@ -1123,12 +1129,14 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	}
 	p.next() // skip `(`
 	mut had_arg := false
+	mut arg_pos := token.Pos{}
 	if p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
 		// The path may be a compile-time expression (a `const`, a local binding
 		// with a literal value, or a `+` concatenation of those), not just a raw
 		// string token — e.g. `const p = 'x.html'; $tmpl(p)`. Parse and resolve it.
 		had_arg = true
 		arg_id := p.expr(.lowest)
+		arg_pos = p.a.node(arg_id).pos
 		arg = p.resolve_tmpl_path_arg(arg_id)
 	}
 	for p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
@@ -1150,7 +1158,23 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		p.record_diagnostic('${call}() template path must be a compile-time string (a string literal, `const`, or a `+` of those); dynamic paths are not supported', p.tok_pos)
 		return p.add_val_id(5, '')
 	}
+	if missing_veb_import {
+		return p.add_val_id(5, '')
+	}
 	path := p.resolve_veb_template_path(is_html, arg)
+	if !os.is_file(path) {
+		message := if is_html {
+			'veb HTML template "${arg}" not found'
+		} else {
+			'template file "${arg}" not found'
+		}
+		if had_arg && arg_pos.end >= arg_pos.offset {
+			p.record_diagnostic_span(message, arg_pos.offset, arg_pos.end)
+		} else {
+			p.record_diagnostic(message, call_start)
+		}
+		return p.add_val_id(5, '')
+	}
 	p.has_veb_template = true
 	return p.add_node(flat.Node{
 		kind:  .veb_template

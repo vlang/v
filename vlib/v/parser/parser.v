@@ -111,6 +111,7 @@ mut:
 	comptime_const_values map[string]string
 	comptime_local_values map[string]string
 	imported_module_names map[string]bool // import aliases in the current file; not captured by inlined template closures
+	check_imports         bool            // enabled by the compiler driver, but not by syntax-only parser clients
 	// local_binding_* track the variable/parameter names currently in scope, so an inlined
 	// template closure captures a bare callee only when it is an actual local binding (a
 	// function-valued parameter/local) rather than a module/top-level function. Scoped like
@@ -176,6 +177,12 @@ pub fn (mut p Parser) reserve_selfhost_ast() {
 		p.a.nodes << old_nodes
 	}
 	p.a.children.ensure_cap(4_194_304)
+}
+
+// enable_import_diagnostics enables parser diagnostics that require a complete
+// source file rather than syntax-only parsing.
+pub fn (mut p Parser) enable_import_diagnostics() {
+	p.check_imports = true
 }
 
 // ExportRecord captures one accepted `@[export: name]` registration in file
