@@ -13678,6 +13678,15 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 	}
 	node := tc.a.node(id)
 	if node.kind == .selector {
+		if node.children_count > 0 {
+			base_id := tc.a.child(node, 0)
+			base := tc.a.node(base_id)
+			if base.kind == .call && unalias_type(tc.resolve_type(base_id)) is Pointer
+				&& tc.call_immutable_alias_source(base_id) != none {
+				tc.record_error_at(.assignment_mismatch, '`${tc.source_text_for_node(id)}` aliases mutable data from an immutable value', id, tc.node_value_diagnostic_pos(id))
+				return
+			}
+		}
 		if root_id := tc.lvalue_root_ident(id) {
 			root := tc.a.node(root_id)
 			if root.kind == .ident && unalias_type(tc.resolve_type(root_id)) is Pointer
