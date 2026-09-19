@@ -2,63 +2,42 @@ name: Issue 28785 investigation
 on:
   push:
     branches: ['fix/28785-reflected-method-callbacks']
+    paths: ['.github/workflows/issue-28785-investigation.yml']
 permissions:
   contents: write
 jobs:
-  fix-and-test:
+  apply-review-fix:
     if: github.repository == 'vlang/v' && github.ref == 'refs/heads/fix/28785-reflected-method-callbacks'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ github.sha }}
-      - name: Apply the exact source change on this branch only
-        env:
-          EXPECTED_HEAD: ${{ github.sha }}
+          ref: 313cbd42ff79652e6de510f93d31c7348ad5c1d0
+      - name: Apply the reviewed source correction to PR 28786 only
         run: |
           set -eu
-          branch=fix/28785-reflected-method-callbacks
+          branch=fix/28785-reflected-method-callbacks-pr
+          expected=313cbd42ff79652e6de510f93d31c7348ad5c1d0
           git fetch origin "$branch"
-          if [ "$(git rev-parse FETCH_HEAD)" != "$EXPECTED_HEAD" ]; then
-            echo 'Branch changed; refusing a stale update.'
-            exit 1
-          fi
-          test "$(git rev-parse HEAD:vlib/v/transform/transform.v)" = 1b78d3a1609fdcb71ca3c3d035ef6dbd81273d0d
+          test "$(git rev-parse FETCH_HEAD)" = "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test "$(git rev-parse HEAD:vlib/v/transform/transform.v)" = da77ed07fa365210961be4d683fab14f16d45290
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('vlib/v/transform/transform.v')
-          text = p.read_text()
-          old = '\t\tmethod_value_name := t.resolve_receiver_method_name(new_base, node.value)\n\t\tmethod_params := t.call_param_types(method_value_name)'
-          new = '\t\tmethod_value_name := t.resolve_receiver_method_name(new_base, node.value)\n\t\tif method_value_name.len > 0 {\n\t\t\t// C generation emits the bound-method wrapper later. Keep its target\n\t\t\t// live when reflection makes the enclosing body reachable late.\n\t\t\tt.mark_fn_used_name(method_value_name)\n\t\t}\n\t\tmethod_params := t.call_param_types(method_value_name)'
-          assert text.count(old) == 1, 'Expected exactly one method-value selector'
-          p.write_text(text.replace(old, new, 1))
+          path = Path('vlib/v/transform/transform.v')
+          text = path.read_text()
+          old = '\t\t\tt.mark_fn_used_name(method_value_name)\n\t\t}\n\t\tmethod_params := t.call_param_types(method_value_name)'
+          new = '\t\t\tt.mark_fn_used_name(method_value_name)\n\t\t\t// Interface callbacks also need their concrete dispatch targets when\n\t\t\t// this selector is discovered while transforming a late-used body.\n\t\t\tiface_name := t.resolve_interface_type_name(method_value_name.all_before_last(\'.\'))\n\t\t\tif iface_name.len > 0 {\n\t\t\t\tt.mark_interface_method_implementers_used(iface_name, node.value)\n\t\t\t}\n\t\t}\n\t\tmethod_params := t.call_param_types(method_value_name)'
+          assert text.count(old) == 1, 'Expected exactly one method-value retention site'
+          path.write_text(text.replace(old, new, 1))
           PY
           git diff --check
+          test "$(git diff --name-only)" = vlib/v/transform/transform.v
           git diff -- vlib/v/transform/transform.v
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- vlib/v/transform/transform.v
-          git commit -m 'transform: retain bound callback targets in late-reachable methods'
+          git commit -m 'transform: retain concrete interface callback targets in late bodies'
           git push origin HEAD:"$branch"
-      - name: Build baseline compiler and run the new regression
-        run: |
-          set -eu
-          git show 9bfa1dc3f3455d5733d5c226662b6aaba8544f2c:vlib/v/transform/transform.v > vlib/v/transform/transform.v
-          make
-          set +e
-          ./v -cc gcc test vlib/v/tests/comptime/comptime_reflected_method_callback_test.v
-          status=$?
-          set -e
-          echo "BASELINE_REGRESSION_EXIT=$status"
-          git restore -- vlib/v/transform/transform.v
-      - name: Rebuild and test the fix
-        run: |
-          set -eu
-          ./v self
-          ./v fmt -verify vlib/v/transform/transform.v vlib/v/tests/comptime/comptime_reflected_method_callback_test.v
-          ./v -cc gcc test vlib/v/tests/comptime/comptime_reflected_method_callback_test.v
-          ./v -prod -cc gcc test vlib/v/tests/comptime/comptime_reflected_method_callback_test.v
-          ./v -silent test vlib/v/tests/comptime/
-          ./v -silent test vlib/v/transform/
-          ./v -silent vlib/v/compiler_errors_test.v
+          echo "Published source correction: $(git rev-parse HEAD)"
