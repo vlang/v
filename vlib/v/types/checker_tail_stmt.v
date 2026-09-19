@@ -3973,7 +3973,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 							tc.record_error_at(.assignment_mismatch, 'reference field must be initialized with reference', field_id, field_pos)
 						}
 					} else {
-						tc.record_error_at(.assignment_mismatch, 'cannot initialize field `${field.value}` with `${actual_name}`; expected `${expected.name()}`; cannot assign to field `${field.value}`: expected `${expected.name()}`, not `${actual_name}`', field_id, field_pos)
+						tc.record_error_at(.assignment_mismatch, 'cannot assign to field `${field.value}`: expected `${expected.name()}`, not `${actual_name}`', field_id, field_pos)
 					}
 				}
 			}
