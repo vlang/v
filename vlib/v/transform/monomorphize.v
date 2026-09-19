@@ -4586,8 +4586,11 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 			t.tc.fn_ret_types[name] = ret
 			t.tc.register_generated_fn_param_types(name, params.clone())
 			t.tc.fn_variadic[name] = variadic
-			t.tc.fn_type_modules[name] = decl.module
-			t.tc.fn_type_files[name] = decl.file
+			// Map inserts clone keys, but string values stay references. The
+			// declaration strings can point into a worker scope that is released
+			// before the driver promotes the checker metadata, so own them here.
+			t.tc.fn_type_modules[name] = decl.module.clone()
+			t.tc.fn_type_files[name] = decl.file.clone()
 			t.add_receiver_method_suffix_index(name)
 			t.tc.specialized_generic_fns[name] = true
 			t.tc_signature_names_log << name
