@@ -1,4 +1,4 @@
-// vtest build: amd64 && !msvc && !tinyc
+// vtest build: !msvc && !tinyc
 
 #flag @VMODROOT/vlib/v/slow_tests/assembly/util/v_sha256_block.o
 
