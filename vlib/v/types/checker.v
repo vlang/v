@@ -6014,6 +6014,7 @@ fn is_import_ident_byte(ch u8) bool {
 }
 
 fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node) bool {
+	module_path := tc.import_module_path_text(import_node)
 	mut selective_names := []string{cap: int(import_node.children_count)}
 	for i in 0 .. import_node.children_count {
 		child := tc.a.child_node(&import_node, i)
@@ -6040,11 +6041,15 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			if base.kind == .ident && base.value == import_node.typ {
 				return true
 			}
+			selector_path := tc.expr_key(flat.NodeId(idx))
+			if type_text_contains_qualified_import(selector_path, module_path) {
+				return true
+			}
 		}
 		if type_text_contains_qualified_import(node.typ, import_node.typ)
 			|| type_text_contains_qualified_import(node.value, import_node.typ)
-			|| type_text_contains_qualified_import(node.typ, import_node.value)
-			|| type_text_contains_qualified_import(node.value, import_node.value) {
+			|| type_text_contains_qualified_import(node.typ, module_path)
+			|| type_text_contains_qualified_import(node.value, module_path) {
 			return true
 		}
 		if selective_names.len == 0 {
