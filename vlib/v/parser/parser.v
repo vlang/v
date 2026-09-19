@@ -10423,6 +10423,17 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		if token_is_assignment(p.tok) {
 			break
 		}
+		// A missing binary literal followed immediately by `**` is one malformed
+		// token sequence, not an exponentiation with a missing right operand. The
+		// scanner already reports the useful radix diagnostic; consume the stars so
+		// expression recovery leaves the enclosing call and block balanced.
+		if p.tok == .power && p.tok_pos == p.prev_tok_end {
+			left := p.a.node(lhs)
+			if left.kind == .int_literal && left.value.to_lower_ascii() == '0b' {
+				p.next()
+				break
+			}
+		}
 		// At the start of an identifier statement, `<<` is array append syntax.
 		// Its right side is the whole remaining expression, matching V's parser:
 		// `values << value & mask` appends `value & mask`, rather than shifting
