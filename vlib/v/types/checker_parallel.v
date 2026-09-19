@@ -2471,6 +2471,9 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		if used_names[candidate.name] {
 			continue
 		}
+		if tc.expr_calls_fn_with_duplicate_parameters(candidate.rhs_id) {
+			continue
+		}
 		if tc.expr_subtree_has_error_except(candidate.rhs_id, .if_branch_mismatch)
 			&& !tc.expr_subtree_allows_unused_warning(candidate.rhs_id) {
 			continue
@@ -2480,6 +2483,42 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
 	}
+}
+
+fn (tc &TypeChecker) expr_calls_fn_with_duplicate_parameters(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .call && node.children_count > 0 {
+		callee := tc.a.child_node(node, 0)
+		if callee.kind == .ident {
+			name := (tc.cached_resolved_call(id) or { callee.value }).all_after_last('.')
+			if decl_index := tc.fn_decl_short_name_ids[name] {
+				decl := tc.a.node(flat.NodeId(decl_index))
+				mut names := map[string]bool{}
+				for i in 0 .. decl.children_count {
+					param := tc.a.child_node(decl, i)
+					if param.kind != .param || param.value.len == 0 || param.value == '_' {
+						continue
+					}
+					if names[param.value] {
+						return true
+					}
+					names[param.value] = true
+				}
+			}
+		}
+	}
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if tc.expr_calls_fn_with_duplicate_parameters(tc.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) record_lambda_capture_errors(fn_node flat.Node) {
