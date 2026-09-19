@@ -19619,6 +19619,12 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 			// C generation emits the bound-method wrapper later. Keep its target
 			// live when reflection makes the enclosing body reachable late.
 			t.mark_fn_used_name(method_value_name)
+			// Interface callbacks also need their concrete dispatch targets when
+			// this selector is discovered while transforming a late-used body.
+			iface_name := t.resolve_interface_type_name(method_value_name.all_before_last('.'))
+			if iface_name.len > 0 {
+				t.mark_interface_method_implementers_used(iface_name, node.value)
+			}
 		}
 		method_params := t.call_param_types(method_value_name)
 		if method_params.len > 0 && method_params[0] !is types.Pointer {
