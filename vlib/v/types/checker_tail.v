@@ -2566,11 +2566,21 @@ fn (tc &TypeChecker) pointer_value_compatible(actual Type, expected Type) bool {
 		if !pointer_value_base_can_match(actual.base_type) {
 			return false
 		}
-		return tc.type_compatible(actual.base_type, expected)
+		return tc.pointer_base_value_compatible(actual.base_type, expected)
 			|| pointer_value_type_names_match(Type(actual).name(), expected.name())
 			|| bare_type_names_match(actual.base_type.name(), expected.name())
 	}
 	return pointer_value_type_names_match(actual.name(), expected.name())
+}
+
+fn (tc &TypeChecker) pointer_base_value_compatible(actual_base Type, expected Type) bool {
+	clean_actual := unalias_type(actual_base)
+	clean_expected := unalias_type(expected)
+	if clean_actual is Primitive && clean_expected is Primitive
+		&& clean_actual.name() != clean_expected.name() {
+		return false
+	}
+	return tc.type_compatible(actual_base, expected)
 }
 
 fn c_pointer_to_voidptr_arg_compatible(actual Type, expected Type) bool {
@@ -16553,7 +16563,7 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 		return tc.type_compatible(actual, expected.base_type)
 	}
 	if actual is Pointer {
-		return tc.type_compatible(actual.base_type, expected)
+		return tc.pointer_base_value_compatible(actual.base_type, expected)
 	}
 	return false
 }
@@ -16909,7 +16919,7 @@ fn (tc &TypeChecker) explicit_address_arg_compatible(expr_id flat.NodeId, actual
 				return tc.type_compatible(child_type, expected.base_type)
 			}
 		}
-		return tc.type_compatible(actual.base_type, expected)
+		return tc.pointer_base_value_compatible(actual.base_type, expected)
 	}
 	return false
 }
