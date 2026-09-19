@@ -13345,6 +13345,11 @@ fn (mut p Parser) lock_expr() flat.NodeId {
 	lock_start := p.span_start()
 	is_rlock := p.tok == .key_rlock
 	p.next() // skip 'lock' or 'rlock'
+	if p.tok == .decl_assign || token_is_assignment(p.tok) {
+		p.record_diagnostic_span('unexpected token `${p.tok}`, expecting one or more shared variable names',
+			p.tok_pos, p.tok_end)
+		p.next()
+	}
 	mut obj_ids := []flat.NodeId{}
 	mut modes := []u8{}
 	// lock objects
