@@ -13656,7 +13656,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& unalias_type(expected_pointer_base) is Array
 			&& actual_pointer_base.name() != expected_pointer_base.name() && !pointer_value_arg
 		if pointer_depth_mismatch || pointer_array_mismatch {
-			actual_display := tc.diagnostic_expr_type_name(arg_id, actual)
+			actual_name := tc.diagnostic_expr_type_name(arg_id, actual)
+			actual_display := if mut_arg_node.is_mut && param_is_mut && actual !is Pointer {
+				'&${actual_name}'
+			} else {
+				actual_name
+			}
 			expected_display := call_argument_type_name(expected)
 			tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
