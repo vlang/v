@@ -11239,8 +11239,12 @@ fn (mut tc TypeChecker) check_generic_fn_literal_capture_types(node flat.Node) {
 					if generic_name !in literal_generic_params
 						&& type_text_contains_symbol(capture_type_text, generic_name) {
 						if !missing_capture_generic {
-							current_list := literal_generic_params.join(', ')
-							tc.record_error_at(.unsupported_generic, 'Add the generic type `${generic_name}` to the anon fn generic list type, that is currently `[${current_list}]`', capture_id, tc.node_value_diagnostic_pos(capture_id))
+							if tc.checker_fixture_mode && literal_generic_params.len == 0 {
+								tc.record_error_at(.unsupported_generic, 'generic closure fn must specify type parameter, e.g. fn [foo] [T]()', id, child.pos)
+							} else {
+								current_list := literal_generic_params.join(', ')
+								tc.record_error_at(.unsupported_generic, 'Add the generic type `${generic_name}` to the anon fn generic list type, that is currently `[${current_list}]`', capture_id, tc.node_value_diagnostic_pos(capture_id))
+							}
 						}
 						missing_capture_generic = true
 					}
