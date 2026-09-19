@@ -12720,6 +12720,10 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 			p.next()
 			continue
 		}
+		if p.tok == .ellipsis {
+			p.record_diagnostic_span('unexpected token `...`, expecting name', p.tok_pos,
+				p.tok_end)
+		}
 		// named field: name: expr
 		if (p.tok == .name || p.tok.is_keyword()) && p.peek() == .colon {
 			fname := p.expect_name_or_keyword()
