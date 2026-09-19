@@ -11559,6 +11559,8 @@ fn (mut tc TypeChecker) check_block(id flat.NodeId, node flat.Node) {
 	}
 	if node.value == 'comma_exprs' {
 		is_statement := tc.is_statement_node(id)
+		mut first_void_value_id := flat.NodeId(-1)
+		mut last_value_is_void := false
 		for i in 0 .. node.children_count {
 			stmt_id := tc.a.child(&node, i)
 			if is_statement {
@@ -11572,11 +11574,15 @@ fn (mut tc TypeChecker) check_block(id flat.NodeId, node flat.Node) {
 			} else {
 				stmt_id
 			}
-			if unalias_type(tc.resolve_type(value_id)) is Void {
-				value := tc.a.node(value_id)
-				tc.record_error_at(.return_mismatch, 'type `void` cannot be used in multi-return', value_id, value.pos)
-				break
+			value_is_void := unalias_type(tc.resolve_type(value_id)) is Void
+			if value_is_void && int(first_void_value_id) < 0 {
+				first_void_value_id = value_id
 			}
+			last_value_is_void = value_is_void
+		}
+		if int(first_void_value_id) >= 0 && (!is_statement || last_value_is_void) {
+			value := tc.a.node(first_void_value_id)
+			tc.record_error_at(.return_mismatch, 'type `void` cannot be used in multi-return', first_void_value_id, value.pos)
 		}
 	} else {
 		value_tail := (is_unsafe && !tc.is_statement_node(id))
