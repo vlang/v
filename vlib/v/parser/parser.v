@@ -2295,6 +2295,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				p.next()
 				second := p.expect_name_or_keyword()
+				if second.len > 0 && second[0] >= `a` && second[0] <= `z` {
+					p.record_diagnostic_span('invalid field name', field_start, field_start + field_name.len)
+				}
 				full_type := '${field_name}.${second}'
 				field_type := full_type + p.parse_type_generic_suffix()
 				fid := p.add_node(flat.Node{
