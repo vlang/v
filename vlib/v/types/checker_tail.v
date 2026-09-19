@@ -13243,14 +13243,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			if actual is Array {
 				if unalias_type(elem_type) !is Array {
-					if tc.current_variadic_param_elem_name(arg_id) != none
-						&& (tc.receiver_compatible(actual.elem_type, elem_type)
-							|| tc.type_compatible(actual.elem_type, elem_type)) {
-						if has_dsl_scope {
-							tc.pop_scope()
-						}
-						continue
-					}
 					if elem_interface := cast_target_interface(unalias_type(elem_type)) {
 						if tc.type_compatible(actual.elem_type, elem_interface)
 							|| tc.receiver_compatible(actual.elem_type, elem_interface) {
