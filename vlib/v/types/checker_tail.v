@@ -14278,8 +14278,13 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		if has_short_struct_arg {
 			tc.check_builtin_array_short_struct_arg(node, 2, array_type.elem_type)
 		} else {
-			tc.check_node_with_expected_context(value_id, array_type.elem_type)
-			value_type = tc.resolve_expr(value_id, array_type.elem_type)
+			if tc.a.node(value_id).kind == .array_literal {
+				tc.check_node(value_id)
+				value_type = tc.resolve_type(value_id)
+			} else {
+				tc.check_node_with_expected_context(value_id, array_type.elem_type)
+				value_type = tc.resolve_expr(value_id, array_type.elem_type)
+			}
 			value_is_valid = tc.array_insert_value_compatible(value_id, value_type, array_type, receiver_type)
 		}
 		if index_is_valid && !value_is_valid {
@@ -14288,7 +14293,8 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 				tc.record_error(.call_arg_mismatch, 'cannot use `${value_type.name()}` as `voidptr`, it must be unwrapped first in argument 2 to `${receiver_type.name()}.insert`', value_id)
 			} else {
 				value_name := tc.array_insert_value_type_name(value_id, value_type)
-				tc.record_error(.call_arg_mismatch, 'cannot use `${value_name}` as `${array_type.elem_type.name()}` in argument 2 to `array.insert()`', value_id)
+				tc.record_error(.call_arg_mismatch, 'cannot insert `${value_name}` to `${receiver_type.name()}`',
+					value_id)
 			}
 		}
 		if index_is_valid && value_is_valid {
@@ -14311,8 +14317,13 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		if has_short_struct_arg {
 			tc.check_builtin_array_short_struct_arg(node, 1, array_type.elem_type)
 		} else {
-			tc.check_node_with_expected_context(value_id, array_type.elem_type)
-			value_type = tc.resolve_expr(value_id, array_type.elem_type)
+			if tc.a.node(value_id).kind == .array_literal {
+				tc.check_node(value_id)
+				value_type = tc.resolve_type(value_id)
+			} else {
+				tc.check_node_with_expected_context(value_id, array_type.elem_type)
+				value_type = tc.resolve_expr(value_id, array_type.elem_type)
+			}
 			value_is_valid = tc.array_insert_value_compatible(value_id, value_type, array_type, receiver_type)
 		}
 		if !value_is_valid {
@@ -14321,7 +14332,8 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 				tc.record_error(.call_arg_mismatch, 'cannot use `${value_type.name()}` as `voidptr`, it must be unwrapped first in argument 1 to `${receiver_type.name()}.prepend`', value_id)
 			} else {
 				value_name := tc.array_insert_value_type_name(value_id, value_type)
-				tc.record_error(.call_arg_mismatch, 'cannot use `${value_name}` as argument 1 to `array.prepend`; cannot prepend `${value_name}` to `${receiver_type.name()}`', value_id)
+				tc.record_error(.call_arg_mismatch, 'cannot prepend `${value_name}` to `${receiver_type.name()}`',
+					value_id)
 			}
 		}
 		if value_is_valid {

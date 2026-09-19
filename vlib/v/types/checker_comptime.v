@@ -7785,13 +7785,8 @@ fn (tc &TypeChecker) array_append_diagnostic_rhs_type(rhs_id flat.NodeId, fallba
 	if rhs.kind != .array_literal || rhs.children_count == 0 {
 		return fallback
 	}
-	for i in 0 .. rhs.children_count {
-		if tc.a.child_node(&rhs, i).kind != .int_literal {
-			return fallback
-		}
-	}
 	return Type(Array{
-		elem_type: Type(int_)
+		elem_type: tc.array_literal_elem_type(rhs)
 	})
 }
 
