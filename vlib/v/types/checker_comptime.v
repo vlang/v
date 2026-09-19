@@ -13588,7 +13588,19 @@ fn (mut tc TypeChecker) check_multi_value_list_decl_assign(id flat.NodeId, node 
 		first_rhs_id := tc.multi_assign_rhs_id(node, 0)
 		tc.check_node(first_rhs_id)
 		unexpected_rhs_id := tc.multi_assign_rhs_id(node, 1)
-		tc.record_error(.assignment_mismatch, 'unexpected `,` in expression, use `;` or a new line to separate statements', unexpected_rhs_id)
+		unexpected_rhs := tc.a.node(unexpected_rhs_id)
+		mut pos := unexpected_rhs.pos
+		if unexpected_rhs.kind == .call && unexpected_rhs.children_count > 0 {
+			callee := tc.a.child_node(unexpected_rhs, 0)
+			if callee.kind == .selector {
+				pos = tc.method_call_name_pos(*unexpected_rhs, *callee)
+			}
+		}
+		tc.record_error_at(.assignment_mismatch, 'unexpected `,` in expression, use `;` or a new line to separate statements',
+			unexpected_rhs_id, pos)
+		tc.insert_decl_lhs(lhs_ids[0], unknown_type('invalid variable'),
+			tc.decl_lhs_is_mut(node, lhs_ids[0]))
+		tc.fn_context.continue_after_unknown_ident = true
 		return true
 	}
 	mut rhs_ids := []flat.NodeId{cap: rhs_count}

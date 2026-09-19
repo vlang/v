@@ -13466,6 +13466,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			actual = tc.resolve_expr(arg_id, arg_context_expected)
 		}
 		if actual is Void {
+			callee := tc.a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value in ['print', 'println', 'eprint', 'eprintln']
+				&& tc.errors.any(it.node == arg_id && it.msg.starts_with('invalid variable `')) {
+				tc.record_error_at(.call_arg_mismatch, '`${callee.value}` can not print void expressions',
+					id, node.pos)
+				continue
+			}
 			if !tc.errors.any(it.node == arg_id && it.msg.contains('(used before declaration)'))
 				&& !tc.expr_subtree_has_undefined_ident_error(arg_id)
 				&& !tc.expr_subtree_has_no_value_error(arg_id) {
