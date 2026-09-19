@@ -798,7 +798,7 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 // independently when scope_parallel_check_workers is enabled.
 fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.resolution_type_mode = false
-	tc.check_duplicate_fn_declarations()
+	tc.check_whole_program_prepasses()
 	tc.install_type_cache_overlay()
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.selected_file_called_fns = map[string]bool{}
@@ -814,7 +814,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.cur_file = final_file
 	tc.cur_module = final_module
 	if !tc.valid_diagnostic_fast {
-		tc.check_unused_import_diagnostics()
+		tc.check_whole_program_postpasses()
 	}
 	if tc.defer_ierror_gating {
 		if tc.pending_ierror_errors.len > 0 {
@@ -1006,7 +1006,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		return false
 	} $else {
 		tc.resolution_type_mode = false
-		tc.check_duplicate_fn_declarations()
+		tc.check_whole_program_prepasses()
 		// Freeze the warm post-collect type cache as the shared read-only base
 		// for every worker thread and the master itself via a private overlay.
 		tc.install_type_cache_overlay()
@@ -1039,7 +1039,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.cur_file = final_file
 		tc.cur_module = final_module
 		if !tc.valid_diagnostic_fast {
-			tc.check_unused_import_diagnostics()
+			tc.check_whole_program_postpasses()
 		}
 		if tc.defer_ierror_gating {
 			if tc.pending_ierror_errors.len > 0 {
@@ -1156,6 +1156,13 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 			}
 			.module_decl {
 				tc.enter_module(node.value)
+				if do_signatures {
+					node_id := flat.NodeId(i)
+					tc.check_invalid_test_file_name(node_id, node)
+					if tc.should_check_source_name(node_id) && !snake_case_name_is_valid(node.value) {
+						tc.check_snake_case_name(node_id, node.value, 'module name', tc.declaration_keyword_name_pos(node_id, 'module'))
+					}
+				}
 			}
 			.struct_decl {
 				node_id := flat.NodeId(i)
@@ -1164,7 +1171,11 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					if comma_attr_text_has(node.typ, 'typedef') && !node.value.starts_with('C.') {
 						tc.record_error_at(.assignment_mismatch, '`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id, 'struct'))
 					}
+					if tc.should_check_source_name(node_id) && !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'struct name', tc.declaration_keyword_name_pos(node_id, 'struct'))
+					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
+					tc.check_struct_implements(flat.NodeId(i), node)
 				}
 				if do_values {
 					tc.check_struct_field_defaults(node_id, node)
@@ -1175,12 +1186,33 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					continue
 				}
 				node_id := flat.NodeId(i)
+				if node.kind == .interface_decl {
+					if tc.should_check_source_name(node_id)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'interface name', tc.source_line_declaration_pos(node_id))
+					}
+					tc.check_interface_member_names(node)
+				} else if tc.should_check_source_name(node_id)
+					&& !pascal_case_name_is_valid(node.value) {
+					type_kind := if node.children_count > 0 {
+						'sum type'
+					} else if node.typ.starts_with('fn') {
+						'fn type'
+					} else {
+						'type alias'
+					}
+					tc.check_pascal_case_name(node_id, node.value, type_kind, tc.declaration_keyword_name_pos(node_id, 'type'))
+				}
 				tc.check_type_declaration_conflict(node_id, node)
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.enum_decl {
 				if do_signatures {
-					tc.check_type_declaration_conflict(flat.NodeId(i), node)
+					node_id := flat.NodeId(i)
+					if tc.should_check_source_name(node_id) && !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'enum name', tc.declaration_keyword_name_pos(node_id, 'enum'))
+					}
+					tc.check_type_declaration_conflict(node_id, node)
 				}
 				if do_values {
 					tc.check_enum_backing_type(flat.NodeId(i), node)
@@ -1871,7 +1903,12 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.msg > b.msg {
 		return 1
 	}
-	return 0
+	// Same anchor, kind and message: order by source position, so that repeated
+	// diagnostics of one pass come out in file order and true duplicates stay adjacent.
+	if a.pos.id != b.pos.id {
+		return int(a.pos.id) - int(b.pos.id)
+	}
+	return int(a.pos.offset) - int(b.pos.offset)
 }
 
 fn duplicate_match_case_int(message string) ?int {
@@ -1899,12 +1936,12 @@ fn duplicate_match_case_int(message string) ?int {
 	return value.int()
 }
 
+// type_errors_equal reports whether two diagnostics are the same one recorded twice.
+// The position is part of the identity: a whole-program pass can record several
+// identical messages against one anchor node at different source offsets (every
+// deprecated `byte` in a file), and those are distinct diagnostics.
 fn type_errors_equal(a TypeError, b TypeError) bool {
-	if a.node == b.node && a.kind == b.kind && a.msg == b.msg
-		&& is_inline_asm_instruction_error(a.msg) {
-		return a.pos == b.pos
-	}
-	return a.node == b.node && a.kind == b.kind && a.msg == b.msg
+	return a.node == b.node && a.kind == b.kind && a.msg == b.msg && a.pos == b.pos
 }
 
 fn is_inline_asm_instruction_error(message string) bool {

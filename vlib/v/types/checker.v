@@ -9094,13 +9094,12 @@ fn should_cache_expr_type(kind flat.NodeKind, typ Type) bool {
 		&& kind_id != 28
 }
 
-// check_semantics validates check semantics state for types.
-pub fn (mut tc TypeChecker) check_semantics() {
-	tc.resolution_type_mode = false
-	tc.checked_const_names = map[string]bool{}
-	tc.check_comptime_struct_updates_preflight()
-	tc.collect_selected_file_called_fns()
-	tc.check_export_attrs()
+// check_whole_program_prepasses runs the declaration-level passes that do not
+// depend on any function body having been checked. Every check_semantics entry
+// point (serial, scoped serial and parallel) must run them, or diagnostics such
+// as the deprecated `byte` type or an unknown `goto` label silently disappear
+// under `-no-parallel` (#28792).
+fn (mut tc TypeChecker) check_whole_program_prepasses() {
 	tc.check_import_diagnostics()
 	tc.check_c_js_generic_declarations()
 	tc.check_duplicate_fn_declarations()
@@ -9108,6 +9107,27 @@ pub fn (mut tc TypeChecker) check_semantics() {
 	tc.check_interface_reserved_parameter_names()
 	tc.check_goto_labels()
 	tc.check_labelled_loop_controls()
+}
+
+// check_whole_program_postpasses runs the passes that follow the per-function
+// checks in every check_semantics entry point. `check_test_file_has_test_fn` is
+// not included: the scoped and parallel paths already run it while walking the
+// top-level declarations.
+fn (mut tc TypeChecker) check_whole_program_postpasses() {
+	tc.check_selective_builtin_import_diagnostics()
+	tc.check_unused_import_diagnostics()
+	tc.discard_cascading_fn_redefinition_diagnostics()
+	tc.notices.sort_with_compare(compare_type_notices)
+}
+
+// check_semantics validates check semantics state for types.
+pub fn (mut tc TypeChecker) check_semantics() {
+	tc.resolution_type_mode = false
+	tc.checked_const_names = map[string]bool{}
+	tc.check_comptime_struct_updates_preflight()
+	tc.collect_selected_file_called_fns()
+	tc.check_export_attrs()
+	tc.check_whole_program_prepasses()
 	tc.cur_module = ''
 	tc.cur_file = ''
 	blocking_import_files := tc.blocking_import_error_files()
@@ -9220,10 +9240,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 		_ = i
 	}
 	tc.check_test_file_has_test_fn()
-	tc.check_selective_builtin_import_diagnostics()
-	tc.check_unused_import_diagnostics()
-	tc.discard_cascading_fn_redefinition_diagnostics()
-	tc.notices.sort_with_compare(compare_type_notices)
+	tc.check_whole_program_postpasses()
 	// All ordinary source annotations have now been validated with module-strict
 	// lookup. Later transform/codegen stages also parse synthesized generic type
 	// text, where concrete arguments can legitimately come from another module.
