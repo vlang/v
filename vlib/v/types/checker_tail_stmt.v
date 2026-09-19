@@ -765,6 +765,9 @@ fn (tc &TypeChecker) negated_is_smartcast(cond_id flat.NodeId) ?LocalBinding {
 		return none
 	}
 	expr_id := tc.a.child(&inner, 0)
+	if tc.nonmut_mutable_interface_smartcast(expr_id) {
+		return none
+	}
 	key := tc.expr_key(expr_id)
 	if key.len == 0 || !valid_string_data(key) || inner.value.len == 0 {
 		return none
@@ -3203,6 +3206,9 @@ fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 	}
 	if cond.kind == .is_expr && cond.children_count > 0 {
 		expr_id := tc.a.child(&cond, 0)
+		if tc.nonmut_mutable_interface_smartcast(expr_id) {
+			return []LocalBinding{}
+		}
 		key := tc.expr_key(expr_id)
 		if key.len > 0 && valid_string_data(key) && cond.value.len > 0 {
 			mut result := []LocalBinding{}
