@@ -10685,6 +10685,11 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 	}
 	mut call_args := []string{}
 	if explicit := t.explicit_generic_call_args(node, t.cur_module) {
+		if is_receiver && explicit.len < param_names.len {
+			// A partial method list pins only method-level parameters; the receiver's
+			// generic arguments must be inferred from the fully cloned receiver below.
+			return ''
+		}
 		for arg in explicit {
 			call_args << t.subst_type(arg, args)
 		}
