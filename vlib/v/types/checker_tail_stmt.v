@@ -249,13 +249,20 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	if stmt.kind != .expr_stmt || stmt.children_count != 1 {
 		return
 	}
-	mut expr_id := tc.a.child(stmt, 0)
-	mut expr := tc.a.node(expr_id)
-	for expr.kind == .paren && expr.children_count == 1 {
-		expr_id = tc.a.child(&expr, 0)
-		expr = tc.a.node(expr_id)
+	expr_id := tc.a.child(stmt, 0)
+	expr := tc.a.node(expr_id)
+	mut semantic_id := expr_id
+	mut semantic := tc.a.node(expr_id)
+	for semantic.kind == .paren && semantic.children_count == 1 {
+		inner_id := tc.a.child(&semantic, 0)
+		inner := tc.a.node(inner_id)
+		if inner.kind == .empty {
+			break
+		}
+		semantic_id = inner_id
+		semantic = inner
 	}
-	if tc.errors.any(it.node == expr_id) {
+	if tc.errors.any(it.node == expr_id || it.node == semantic_id) {
 		return
 	}
 	if tc.expression_node_used_as_value(expr_id) {
@@ -267,67 +274,68 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	if tc.expr_is_inside_string_interpolation(id) {
 		return
 	}
-	if expr.kind == .empty {
+	if semantic.kind == .empty {
 		return
 	}
-	if expr.kind == .call {
-		tc.check_must_use_call(expr_id, expr)
+	if semantic.kind == .call {
+		tc.check_must_use_call(semantic_id, semantic)
 		return
 	}
-	if expr.kind in [.spawn_expr, .dump_expr, .or_expr, .if_expr, .match_stmt, .lock_expr,
+	if semantic.kind in [.spawn_expr, .dump_expr, .or_expr, .if_expr, .match_stmt, .lock_expr,
 		.select_stmt, .sql_expr, .fn_literal, .lambda_expr] {
 		return
 	}
-	if expr.kind == .selector && expr.children_count > 0 {
-		if tc.resolve_type(tc.a.child(expr, 0)) is Void {
+	if semantic.kind == .selector && semantic.children_count > 0 {
+		if tc.resolve_type(tc.a.child(semantic, 0)) is Void {
 			return
 		}
 	}
-	if expr.kind == .postfix && expr.op in [.inc, .dec] {
+	if semantic.kind == .postfix && semantic.op in [.inc, .dec] {
 		return
 	}
-	if expr.kind == .prefix && expr.op == .arrow {
+	if semantic.kind == .prefix && semantic.op == .arrow {
 		if tc.node_is_inside_for_statement(id) {
 			return
 		}
-		tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id, token.new_span(expr.pos.id, expr.pos.offset, expr.pos.offset + 2))
+		tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id, token.new_span(semantic.pos.id, semantic.pos.offset, semantic.pos.offset + 2))
 		return
 	}
-	if expr.kind == .infix && expr.op == .arrow {
+	if semantic.kind == .infix && semantic.op == .arrow {
 		return
 	}
-	if expr.kind == .infix && expr.op == .left_shift && expr.children_count > 0 {
-		receiver := unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(expr, 0))))
+	if semantic.kind == .infix && semantic.op == .left_shift && semantic.children_count > 0 {
+		receiver := unalias_type(unwrap_pointer(tc.resolve_type(tc.a.child(semantic, 0))))
 		if receiver is Array
 			|| (receiver is OptionType && unalias_type(receiver.base_type) is Array) {
 			return
 		}
 	}
-	if expr.kind == .infix && expr.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+	if semantic.kind == .infix && semantic.op in [.left_shift, .right_shift, .right_shift_unsigned] {
 		return
 	}
 	if tc.resolve_type(expr_id) is Void {
 		return
 	}
-	if expr.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
-		if tc.unused_literal_has_trailing_token(*stmt, *expr) {
-			tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id, expr.pos)
+	if semantic.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
+		if tc.unused_literal_has_trailing_token(*stmt, *semantic) {
+			tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id, semantic.pos)
 		} else {
-			tc.record_warning_at(.unknown_ident, 'expression evaluated but not used', expr_id, expr.pos)
+			tc.record_warning_at(.unknown_ident, 'expression evaluated but not used', expr_id, semantic.pos)
 		}
 		return
 	}
-	if expr.kind == .ident {
-		tc.record_error_at(.unknown_ident, '`${expr.value}` evaluated but not used', expr_id, expr.pos)
+	if semantic.kind == .ident {
+		tc.record_error_at(.unknown_ident, '`${semantic.value}` evaluated but not used', expr_id,
+			semantic.pos)
 		return
 	}
-	mut pos := if expr.kind == .selector {
-		tc.selector_field_diagnostic_pos(expr_id, expr.value)
+	mut pos := if expr_id == semantic_id && semantic.kind == .selector {
+		tc.selector_field_diagnostic_pos(semantic_id, semantic.value)
 	} else {
 		expr.pos
 	}
-	if expr.kind == .infix && expr.children_count > 0 {
-		lhs_id := tc.a.child(expr, 0)
+	if expr_id == semantic_id && semantic.kind == .infix && semantic.children_count > 0 {
+		lhs_id := tc.a.child(semantic, 0)
 		lhs := tc.a.node(lhs_id)
 		if lhs.kind == .selector {
 			start := tc.node_value_diagnostic_pos(lhs_id)
