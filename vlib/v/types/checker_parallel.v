@@ -1503,6 +1503,18 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a_is_bare_generic_fntype_decl != b_is_bare_generic_fntype_decl {
 		return if a_is_bare_generic_fntype_decl { 1 } else { -1 }
 	}
+	if a.node == b.node {
+		a_is_nonconstant_array_bound := a.msg.starts_with('non-constant array bound `')
+		b_is_nonconstant_array_bound := b.msg.starts_with('non-constant array bound `')
+		a_is_invalid_fixed_size := a.msg.starts_with('fixed size cannot be zero or negative')
+		b_is_invalid_fixed_size := b.msg.starts_with('fixed size cannot be zero or negative')
+		if a_is_nonconstant_array_bound && b_is_invalid_fixed_size {
+			return -1
+		}
+		if b_is_nonconstant_array_bound && a_is_invalid_fixed_size {
+			return 1
+		}
+	}
 	if a.node != b.node {
 		return int(a.node) - int(b.node)
 	}
