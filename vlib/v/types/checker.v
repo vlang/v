@@ -4,6 +4,7 @@ import os
 import strconv
 import time
 import strings
+import v.errors as compiler_errors
 import v.flat
 import v.gen.c.naming
 import v.token
@@ -9125,6 +9126,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 			}
 			.struct_decl {
 				node_id := flat.NodeId(i)
+				tc.check_type_declaration_conflict(node_id, node)
 				if comma_attr_text_has(node.typ, 'typedef') && !node.value.starts_with('C.') {
 					tc.record_error_at(.assignment_mismatch, '`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id, 'struct'))
 				}
@@ -9137,6 +9139,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 			}
 			.type_decl, .interface_decl {
 				node_id := flat.NodeId(i)
+				tc.check_type_declaration_conflict(node_id, node)
 				if node.kind == .interface_decl {
 					if tc.should_check_source_name(node_id)
 						&& !pascal_case_name_is_valid(node.value) {
@@ -9155,31 +9158,12 @@ pub fn (mut tc TypeChecker) check_semantics() {
 						&& !pascal_case_name_is_valid(node.value) {
 						tc.check_pascal_case_name(node_id, node.value, type_kind, tc.declaration_keyword_name_pos(node_id, 'type'))
 					}
-					is_c_alias := node.value.starts_with('C.') && node.children_count == 0
-						&& split_sum_variant_texts(node.typ).len <= 1
-					if !is_c_alias && tc.type_declaration_exists_before(node_id, node.value) {
-						is_fn_alias := node.children_count == 0 && node.typ.starts_with('fn')
-						kind := if is_fn_alias {
-							'fn'
-						} else if node.children_count > 0
-							|| split_sum_variant_texts(node.typ).len > 1 {
-							'sum type'
-						} else {
-							'alias'
-						}
-						name := if is_fn_alias { tc.qualify_name(node.value) } else { node.value }
-						pos := if is_fn_alias {
-							tc.node_value_diagnostic_pos(node_id)
-						} else {
-							tc.declaration_keyword_name_pos(node_id, 'type')
-						}
-						tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${name}`, another type with this name exists', node_id, pos)
-					}
 				}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.enum_decl {
 				node_id := flat.NodeId(i)
+				tc.check_type_declaration_conflict(node_id, node)
 				if tc.should_check_source_name(node_id) && !pascal_case_name_is_valid(node.value) {
 					tc.check_pascal_case_name(node_id, node.value, 'enum name', tc.declaration_keyword_name_pos(node_id, 'enum'))
 				}
@@ -10121,7 +10105,7 @@ fn (tc &TypeChecker) declaration_keyword_name_pos(node_id flat.NodeId, keyword s
 		return token.Pos{}
 	}
 	node := tc.a.node(node_id)
-	name_pos := tc.node_value_diagnostic_pos(node_id)
+	name_pos := tc.type_declaration_name_pos(node_id)
 	file := tc.a.source_files[name_pos.id] or { return name_pos }
 	source := tc.source_texts_by_file[file.name] or { return name_pos }
 	mut line_start := int_min(name_pos.offset, source.len)
@@ -14550,9 +14534,6 @@ fn (mut tc TypeChecker) check_enum_field_values(node_id flat.NodeId, node flat.N
 	if node.value.len == 1 && node.value[0] >= `A` && node.value[0] <= `Z` {
 		tc.record_error_at(.duplicate_decl, 'single letter capital names are reserved for generic template types.', node_id, tc.node_value_diagnostic_pos(node_id))
 	}
-	if tc.type_declaration_exists_before(node_id, node.value) {
-		tc.record_error_at(.duplicate_decl, 'cannot register enum `${node.value}`, another type with this name exists', node_id, tc.enum_declaration_diagnostic_pos(node_id))
-	}
 	allow_multiple := tc.declaration_has_attribute(node_id, '_allow_multiple_values')
 		|| tc.translated_files[tc.cur_file]
 	mut field_exprs := map[string]flat.NodeId{}
@@ -14824,7 +14805,7 @@ fn (tc &TypeChecker) current_file_module_has_attribute(name string) bool {
 	return false
 }
 
-fn (tc &TypeChecker) type_declaration_exists_before(node_id flat.NodeId, name string) bool {
+fn (tc &TypeChecker) type_declaration_before(node_id flat.NodeId, name string) ?flat.NodeId {
 	current_name := qualify_decl_name_in_module(name, tc.cur_module)
 	mut module_name := ''
 	for idx in tc.top_level_idx {
@@ -14842,10 +14823,106 @@ fn (tc &TypeChecker) type_declaration_exists_before(node_id flat.NodeId, name st
 		}
 		if candidate.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl]
 			&& qualify_decl_name_in_module(candidate.value, module_name) == current_name {
-			return true
+			return flat.NodeId(idx)
 		}
 	}
-	return false
+	return none
+}
+
+fn (mut tc TypeChecker) check_type_declaration_conflict(node_id flat.NodeId, node flat.Node) {
+	if node.value.starts_with('C.') {
+		return
+	}
+	name_pos := tc.type_declaration_name_pos(node_id)
+	if node.value == 'IError' && tc.cur_module != 'builtin'
+		&& node.kind in [.struct_decl, .interface_decl] {
+		kind := if node.kind == .struct_decl { 'struct' } else { 'interface' }
+		tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `IError`, it is builtin interface type', node_id, name_pos)
+		return
+	}
+	if _ := tc.selective_import_candidates(node.value) {
+		kind := match node.kind {
+			.struct_decl { 'struct' }
+			.interface_decl { 'interface' }
+			.enum_decl { 'enum' }
+			else { 'alias' }
+		}
+		tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${node.value}`, this type was already imported', node_id, name_pos)
+		return
+	}
+	previous_id := tc.type_declaration_before(node_id, node.value) or { flat.NodeId(-1) }
+	has_previous := int(previous_id) >= 0
+	is_builtin_collision := tc.cur_module in ['', 'main'] && is_builtin_type_name(node.value)
+	if !has_previous && !is_builtin_collision {
+		return
+	}
+	is_fn_alias := node.kind == .type_decl && node.children_count == 0
+		&& node.typ.starts_with('fn')
+	kind := match node.kind {
+		.struct_decl { 'struct' }
+		.interface_decl { 'interface' }
+		.enum_decl { 'enum' }
+		else {
+			if is_fn_alias {
+				'fn'
+			} else if node.children_count > 0 || split_sum_variant_texts(node.typ).len > 1 {
+				'sum type'
+			} else {
+				'alias'
+			}
+		}
+	}
+	name := if is_fn_alias { tc.qualify_name(node.value) } else { node.value }
+	pos := if node.kind == .type_decl && !is_fn_alias && !is_builtin_collision {
+		tc.declaration_keyword_name_pos(node_id, 'type')
+	} else if node.kind == .enum_decl && !is_builtin_collision {
+		tc.enum_declaration_diagnostic_pos(node_id)
+	} else {
+		name_pos
+	}
+	message := 'cannot register ${kind} `${name}`, another type with this name exists'
+	if node.kind == .struct_decl && has_previous {
+		previous_node := tc.a.node(previous_id)
+		previous_pos := token.new_span(previous_node.pos.id, previous_node.pos.offset,
+			previous_node.pos.offset + 1)
+		detail := compiler_errors.formatted_error('details:', 'another declaration was found here',
+			tc.a, previous_id, previous_pos)
+		tc.record_error_with_details_at(.duplicate_decl, message, node_id, pos, [detail])
+		return
+	}
+	tc.record_error_at(.duplicate_decl, message, node_id, pos)
+}
+
+fn (tc &TypeChecker) type_declaration_name_pos(node_id flat.NodeId) token.Pos {
+	if !tc.valid_node_id(node_id) {
+		return token.Pos{}
+	}
+	node := tc.a.node(node_id)
+	file := tc.a.source_files[node.pos.id] or { return node.pos }
+	source := tc.source_texts_by_file[file.name] or { return node.pos }
+	name := node.value.all_after_last('.')
+	start := int_max(0, node.pos.offset)
+	end := int_min(source.len, node.pos.end)
+	if name.len == 0 {
+		return node.pos
+	}
+	if node.kind == .type_decl {
+		for offset := int_min(start - 1, source.len - name.len); offset >= 0; offset-- {
+			if identifier_word_match_at(source, name, offset) {
+				return token.new_span(node.pos.id, offset, offset + name.len)
+			}
+		}
+		return node.pos
+	}
+	if start >= end || name.len > end - start {
+		return node.pos
+	}
+	for offset in start .. end - name.len + 1 {
+		if identifier_word_match_at(source, name, offset) {
+			return token.new_span(node.pos.id, offset, offset + name.len)
+		}
+	}
+	return node.pos
 }
 
 fn qualify_decl_name_in_module(name string, module_name string) string {

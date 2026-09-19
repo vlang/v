@@ -1149,6 +1149,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 			.struct_decl {
 				node_id := flat.NodeId(i)
 				if do_signatures {
+					tc.check_type_declaration_conflict(node_id, node)
 					if comma_attr_text_has(node.typ, 'typedef') && !node.value.starts_with('C.') {
 						tc.record_error_at(.assignment_mismatch, '`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id, 'struct'))
 					}
@@ -1163,29 +1164,13 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					continue
 				}
 				node_id := flat.NodeId(i)
-				is_c_alias := node.kind == .type_decl && node.value.starts_with('C.')
-					&& node.children_count == 0 && split_sum_variant_texts(node.typ).len <= 1
-				if node.kind == .type_decl && !is_c_alias
-					&& tc.type_declaration_exists_before(node_id, node.value) {
-					is_fn_alias := node.children_count == 0 && node.typ.starts_with('fn')
-					kind := if is_fn_alias {
-						'fn'
-					} else if node.children_count > 0 || split_sum_variant_texts(node.typ).len > 1 {
-						'sum type'
-					} else {
-						'alias'
-					}
-					name := if is_fn_alias { tc.qualify_name(node.value) } else { node.value }
-					pos := if is_fn_alias {
-						tc.node_value_diagnostic_pos(node_id)
-					} else {
-						tc.declaration_keyword_name_pos(node_id, 'type')
-					}
-					tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${name}`, another type with this name exists', node_id, pos)
-				}
+				tc.check_type_declaration_conflict(node_id, node)
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.enum_decl {
+				if do_signatures {
+					tc.check_type_declaration_conflict(flat.NodeId(i), node)
+				}
 				if do_values {
 					tc.check_enum_field_values(flat.NodeId(i), node)
 				}
