@@ -214,7 +214,7 @@ fn save_ci_progress(path string, task_name string) ! {
 	// Write privately, then rename on the same filesystem. An interrupted write
 	// leaves the previous checkpoint intact, never a partially written cursor.
 	tmp_dir := '${path}.${os.getpid()}.tmp'
-	os.mkdir(tmp_dir, 0o700)!
+	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {
 		os.rmdir_all(tmp_dir) or {}
 	}
@@ -233,6 +233,9 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('GITHUB_JOB', 'clang-macos', true)
 	os.setenv('RUNNER_OS', 'macOS', true)
 	os.setenv('VFLAGS', '-cc clang', true)
+	// Stop within test/build sessions too, without other files already running.
+	os.setenv('VTEST_FAIL_FAST', '1', true)
+	os.setenv('VJOBS', '1', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)

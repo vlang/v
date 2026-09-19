@@ -26,12 +26,14 @@ cat > "$fake_v" <<'MOCK'
 #!/bin/sh
 set -eu
 if [ "$1" = doctor ]; then
+    [ "${VTEST_FAIL_FAST:-}" = 0 ] && [ "${VJOBS:-}" = 8 ] || exit 94
     echo doctor >> direct.log
     exit 0
 fi
 [ "$1" = run ] && [ "$2" = ci/macos_ci.vsh ] || exit 90
 [ "$CI" = true ] && [ "$GITHUB_ACTIONS" = true ] || exit 91
 [ "$VFLAGS" = '-cc clang' ] && [ "$V_MACOS_V3_NO_FALLBACK" = 1 ] || exit 92
+[ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 1 ] || exit 93
 printf '%s\n' "$3" >> tasks.log
 if [ -f fail-task ] && [ "$3" = "$(cat fail-task)" ]; then
     exit 7
@@ -44,7 +46,9 @@ run_ci() {
     shift
     : > "$checkout/tasks.log"
     status=0
-    (cd "$checkout" && V_CI_VEXE="$fake_v" "$runner" "$@") > "$work/output" 2>&1 || status=$?
+    # ci must override inherited non-fail-fast/parallel settings; direct tasks must not.
+    (cd "$checkout" && VTEST_FAIL_FAST=0 VJOBS=8 V_CI_VEXE="$fake_v" \
+        "$runner" "$@") > "$work/output" 2>&1 || status=$?
     [ "$status" -eq "$expected_status" ] || fail "exit $status, expected $expected_status"
 }
 
@@ -135,4 +139,72 @@ run_ci 1 ci --reset
 [ ! -s "$checkout/tasks.log" ] || fail 'tasks ran despite a checkpoint write failure'
 rmdir "$checkpoint"
 
-echo 'PASS: macOS CI checkpoint/resume integration tests'
+# Use the real cleancode runner and TestSession, mocking only individual vet/fmt
+# commands. A failed vet session must not start the independent fmt session.
+cleancode="$work/cleancode"
+"$vexe" -o "$cleancode" "$repo/cmd/tools/vtest-cleancode.v"
+cleanroot="$work/clean code"
+for directory in vlib/v vlib/json2 vlib/x/ttf cmd/v cmd/tools/testing \
+    examples/2048 examples/tetris examples/term.ui tutorials; do
+    mkdir -p "$cleanroot/$directory"
+done
+# The reporter path must exist, as must the formatter's exception paths. Their
+# contents are never compiled by the fixture compiler below.
+for source in cmd/tools/testing/output_normal.v vlib/v/first.v vlib/v/second.v \
+    vlib/veb/tests/graceful_shutdown_test.v vlib/sync/arc/arc_d_ownership.v \
+    vlib/v/tests/structs/anon_struct_local_init_test.v \
+    vlib/v/tests/bench/bench_json_vs_json2.v; do
+    mkdir -p "$cleanroot/$(dirname "$source")"
+    printf 'module main\n' > "$cleanroot/$source"
+done
+cat > "$cleanroot/v" <<'MOCK'
+#!/bin/sh
+set -eu
+for arg do
+    case "$arg" in
+        vet|fmt)
+            printf '%s\n' "$arg" >> "$CLEAN_LOG"
+            if [ "$arg" = "$CLEAN_FAIL" ]; then
+                echo "intentional $arg fixture failure" >&2
+                exit 7
+            fi
+            exit 0
+            ;;
+    esac
+done
+exit 0
+MOCK
+chmod +x "$cleanroot/v"
+mkdir "$work/cleancode-tmp"
+
+run_cleancode() {
+    fast=$1
+    failing_phase=$2
+    expected_status=$3
+    : > "$cleanroot/commands.log"
+    status=0
+    (cd "$cleanroot" && VEXE="$cleanroot/v" VTMP="$work/cleancode-tmp" \
+        VFLAGS= VTEST_ONLY= VTEST_ONLY_FN= VTEST_FAIL_FAST="$fast" VJOBS=1 \
+        VTEST_MAX_COMPILATION_RETRIES=1 CLEAN_FAIL="$failing_phase" \
+        CLEAN_LOG="$cleanroot/commands.log" "$cleancode" test-cleancode) \
+        > "$work/output" 2>&1 || status=$?
+    [ "$status" -eq "$expected_status" ] || fail "cleancode exit $status, expected $expected_status"
+}
+
+run_cleancode 1 vet 1
+printf 'vet\n' > "$work/one"
+cmp "$work/one" "$cleanroot/commands.log" || fail 'fail-fast continued after the first vet error'
+
+# Without fail-fast, the existing collect-errors behavior must still run fmt.
+run_cleancode 0 vet 1
+grep -q '^fmt$' "$cleanroot/commands.log" || fail 'normal cleancode did not continue to fmt'
+
+run_cleancode 1 fmt 1
+grep -q '^vet$' "$cleanroot/commands.log" || fail 'cleancode skipped successful vetting'
+[ "$(grep -c '^fmt$' "$cleanroot/commands.log")" -eq 1 ] || fail 'fmt continued after an error'
+
+run_cleancode 1 none 0
+grep -q '^vet$' "$cleanroot/commands.log" || fail 'successful cleancode did not run vet'
+grep -q '^fmt$' "$cleanroot/commands.log" || fail 'successful cleancode did not run fmt'
+
+echo 'PASS: macOS CI checkpoint/resume and fail-fast integration tests'
