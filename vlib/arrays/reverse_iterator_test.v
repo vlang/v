@@ -57,6 +57,10 @@ fn test_reverse_iterator_with_mut_compound() {
 	mut original := [Compound{
 		s: 'abc'
 		i: 123
+		m: {
+			'modified':  i16(-1)
+			'untouched': 2
+		}
 	}, Compound{
 		s: 'xyz'
 		i: 987
@@ -64,7 +68,13 @@ fn test_reverse_iterator_with_mut_compound() {
 	mut before := []Compound{cap: original.len}
 	mut after := []Compound{cap: original.len}
 	for mut x in arrays.reverse_iterator(original) {
-		before << *x
+		// A struct copy still aliases its map, so clone it for the before snapshot.
+		before << Compound{
+			s: x.s
+			i: x.i
+			u: x.u
+			m: x.m.clone()
+		}
 		x.i++
 		x.s += ' tail'
 		x.u = 99
@@ -84,6 +94,24 @@ fn test_reverse_iterator_with_mut_compound() {
 		i: 987
 		u: 0
 		m: {}
+	}
+	assert before[1] == Compound{
+		s: 'abc'
+		i: 123
+		u: 0
+		m: {
+			'modified':  i16(-1)
+			'untouched': 2
+		}
+	}
+	assert after[1] == Compound{
+		s: 'abc tail'
+		i: 124
+		u: 99
+		m: {
+			'modified':  i16(1)
+			'untouched': 2
+		}
 	}
 	assert after.reverse() == original
 }
