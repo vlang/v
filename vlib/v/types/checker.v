@@ -11869,7 +11869,7 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 			} else {
 				child_type
 			}
-			tc.record_error_at(.unknown_type, 'generic type name `${name}` is not mentioned in ${kind} `${decl_name}`${unmentioned_generic_unknown_suffix(name)}', child_id, tc.type_diagnostic_pos(child_id, pos_text))
+			tc.record_error_at(.unknown_type, 'generic type name `${name}` is not mentioned in ${kind} `${decl_name}`', child_id, tc.type_diagnostic_pos(child_id, pos_text))
 		}
 		if node.kind != .interface_decl || child.op != .dot {
 			continue
@@ -11883,7 +11883,7 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 					continue
 				}
 				diagnosed[key] = true
-				tc.record_error_at(.unknown_type, 'generic type name `${name}` is not mentioned in ${kind} `${decl_name}`${unmentioned_generic_unknown_suffix(name)}', param_id, tc.type_diagnostic_pos(param_id, param.typ))
+				tc.record_error_at(.unknown_type, 'generic type name `${name}` is not mentioned in ${kind} `${decl_name}`', param_id, tc.type_diagnostic_pos(param_id, param.typ))
 			}
 		}
 	}
@@ -12036,7 +12036,7 @@ fn (mut tc TypeChecker) check_fn_decl_unmentioned_generic_types(node_id flat.Nod
 		}
 	}
 	for i, name in missing_names {
-		tc.record_error_at(.unknown_type, 'generic type name `${name}` is not mentioned in fn `${node.value.all_after_last('.')}[${node.generic_params().join(', ')}]`${unmentioned_generic_unknown_suffix(name)}', missing_ids[i], tc.type_diagnostic_pos(missing_ids[i], missing_types[i]))
+		tc.record_error_at(.unknown_type, 'generic type name `${name}` is not mentioned in fn `${node.value.all_after_last('.')}[${node.generic_params().join(', ')}]`', missing_ids[i], tc.type_diagnostic_pos(missing_ids[i], missing_types[i]))
 	}
 }
 
@@ -12169,13 +12169,6 @@ fn (tc &TypeChecker) unmentioned_generic_names_in_type(typ string, explicit_para
 		names << name
 	}
 	return names
-}
-
-fn unmentioned_generic_unknown_suffix(name string) string {
-	if name == 'T' {
-		return ''
-	}
-	return '; unknown type `${name}`'
 }
 
 fn (tc &TypeChecker) local_type_name_known(name string) bool {
