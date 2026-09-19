@@ -5334,19 +5334,6 @@ fn (tc &TypeChecker) implicit_int_literal_overflows(id flat.NodeId) bool {
 	if magnitude.len == 0 {
 		return false
 	}
-	if platform_int_bits() >= 64 {
-		value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
-		if parse_error == -3 {
-			return true
-		}
-		if parse_error != 0 {
-			return false
-		}
-		if is_negative {
-			return value > u64(9_223_372_036_854_775_808)
-		}
-		return value > u64(9_223_372_036_854_775_807)
-	}
 	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 32)
 	if parse_error == -3 {
 		return true
