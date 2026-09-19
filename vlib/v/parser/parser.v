@@ -7061,7 +7061,12 @@ fn (mut p Parser) stmt() flat.NodeId {
 			}.with_pos(p.span_to(kw_pos)))
 		}
 		.key_mut {
+			mut_start := p.tok_pos
+			mut_end := p.tok_end
 			p.next()
+			if p.tok == .name && p.lit == '_' {
+				p.record_diagnostic_span('cannot use `mut` on `_`', mut_start, mut_end)
+			}
 			if p.tok == .key_static {
 				stmt_id := p.static_decl_stmt()
 				p.mark_node_mut(stmt_id)
@@ -7088,7 +7093,12 @@ fn (mut p Parser) stmt() flat.NodeId {
 			if p.shared_token_is_identifier(false) {
 				return p.assign_or_expr_stmt()
 			}
+			shared_start := p.tok_pos
+			shared_end := p.tok_end
 			p.next()
+			if p.tok == .name && p.lit == '_' {
+				p.record_diagnostic_span('cannot use `shared` on `_`', shared_start, shared_end)
+			}
 			stmt_id := p.assign_or_expr_stmt()
 			p.mark_node_shared(stmt_id)
 			return stmt_id
