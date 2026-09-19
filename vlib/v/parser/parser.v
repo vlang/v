@@ -10100,6 +10100,9 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			if lhs_node.kind == .ident && p.peek() == .lpar {
 				p.record_diagnostic_span('unexpected name `${lhs_node.value}`', lhs_node.pos.offset,
 					lhs_node.pos.end)
+			} else if lhs_node.kind == .index {
+				p.record_diagnostic_span('`?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`',
+					p.tok_pos, p.tok_end)
 			}
 			p.next()
 			ostart := p.add_children2(lhs, p.add(flat.NodeKind.empty))
