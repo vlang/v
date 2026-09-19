@@ -881,7 +881,7 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 				lhs_name := tc.source_text_for_node(lhs_id)
 				expected_name := expected_type.name().replace_once('fn(', 'fn (')
 				actual_name := rhs_multi.types[i].name().replace_once('fn(', 'fn (')
-				tc.record_error_at(.assignment_mismatch, 'cannot assign `${actual_name}` to `${expected_name}`; cannot assign to `${lhs_name}`: expected `${expected_name}`, not `${actual_name}`', rhs_id, rhs.pos)
+				tc.record_error_at(.assignment_mismatch, 'cannot assign to `${lhs_name}`: expected `${expected_name}`, not `${actual_name}`', rhs_id, rhs.pos)
 			}
 		}
 		$if ownership ? {
