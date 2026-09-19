@@ -13126,7 +13126,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 						'...${elem_type.name()}'
 					}
 					target_name := tc.call_argument_target_name(node, info)
-					tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${argument_number} to `${target_name}`; cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, token.new_span(spread_pos.id, int_max(0, spread_pos.offset - 3), spread_pos.end))
+					message := if unalias_type(elem_type) is Interface {
+						'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
+					} else {
+						'cannot use `${actual.name()}` as argument ${argument_number} to `${target_name}`; cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
+					}
+					tc.record_error_at(.call_arg_mismatch, message, arg_id, token.new_span(spread_pos.id, int_max(0,
+						spread_pos.offset - 3), spread_pos.end))
 				}
 				if has_dsl_scope {
 					tc.pop_scope()
@@ -15246,11 +15252,21 @@ fn (tc &TypeChecker) spread_elem_compatible(actual Type, expected Type) bool {
 }
 
 fn (tc &TypeChecker) variadic_spread_arg_compatible(actual Type, expected_array Array) bool {
+	actual_elem := array_like_elem_type(unwrap_pointer(actual)) or { return false }
+	clean_expected_elem := unalias_type(expected_array.elem_type)
+	if clean_expected_elem is Interface {
+		clean_actual_elem := unalias_type(actual_elem)
+		if clean_actual_elem !is Interface {
+			return false
+		}
+		if clean_actual_elem.name != clean_expected_elem.name {
+			return false
+		}
+	}
 	expected := Type(expected_array)
 	if tc.receiver_compatible(actual, expected) || tc.type_compatible(actual, expected) {
 		return true
 	}
-	actual_elem := array_like_elem_type(unwrap_pointer(actual)) or { return false }
 	return tc.spread_elem_compatible(actual_elem, expected_array.elem_type)
 }
 
