@@ -1386,6 +1386,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	ret_type_start := p.tok_pos
 	if p.tok != .lcbr && p.tok != .semicolon && p.tok != .eof {
 		ret_type = p.parse_type_name()
+		ret_type = p.validate_fn_return_type(ret_type, ret_type_start)
 		p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
 		if p.tok == .question {
 			ret_type += '?'
@@ -1536,6 +1537,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	ret_type_start := p.tok_pos
 	if p.can_start_type_name() {
 		ret_type = p.parse_type_name()
+		ret_type = p.validate_fn_return_type(ret_type, ret_type_start)
 		p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
 		if p.tok == .question {
 			ret_type += '?'
@@ -1682,6 +1684,24 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.register_pending_export(name)
 	p.register_pending_noreturn(name)
 	return id
+}
+
+fn (mut p Parser) validate_fn_return_type(first string, start int) string {
+	if first.trim_left('?!').starts_with('mut ') {
+		mut_start := p.s.src.index_after('mut', start) or { start }
+		p.record_diagnostic_span('cannot use `mut` on fn return type', mut_start, mut_start + 3)
+	}
+	if p.tok != .comma {
+		return first
+	}
+	mut types := [first]
+	for p.tok == .comma {
+		p.next()
+		types << p.parse_type_name()
+	}
+	p.record_diagnostic_span('multiple return types in function declaration must use parentheses, e.g. (int, string)',
+		start, p.prev_tok_end)
+	return '(' + types.join(', ') + ')'
 }
 
 fn veb_context_binding_name(a &flat.FlatAst, param_ids []flat.NodeId, ret_type string) string {
