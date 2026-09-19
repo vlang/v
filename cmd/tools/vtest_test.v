@@ -191,19 +191,45 @@ fn test_wimpure_v_warnings_are_shown_for_test_files() {
 	assert res.output.contains('warning: C code will not be allowed in pure .v files'), res.output
 }
 
-fn test_js_runtime_errors_are_shown_for_js_tests() {
-	if @CCOMPILER.contains('musl') || os.getenv('VFLAGS').contains('musl')
-		|| os.getenv('V_CI_MUSL') == '1' {
-		return
+fn test_js_tests_are_skipped_without_strict_mode() {
+	// Exercise the ordinary runner, not its -new-compiler-only skip list.
+	keys := ['VFLAGS', 'VOSARGS', 'V_MACOS_V3_NO_FALLBACK', 'VTEST_HIDE_SKIP']
+	mut old_values := map[string]string{}
+	for key in keys {
+		if value := os.getenv_opt(key) {
+			old_values[key] = value
+		}
+		os.unsetenv(key)
 	}
-	if os.execute('node --version').exit_code != 0 {
-		return
+	defer {
+		for key in keys {
+			if value := old_values[key] {
+				os.setenv(key, value, true)
+			} else {
+				os.unsetenv(key)
+			}
+		}
 	}
-	res :=
-		os.execute('${os.quoted_path(mytest_exe)} test ${os.quoted_path(tpath_js_runtime_error)}')
-	assert res.exit_code == 1, res.output
-	assert res.output.contains('runtime_error_test.js.v'), res.output
-	assert res.output.contains('TypeError: boom'), res.output
+	os.setenv('VTEST_HIDE_SKIP', '0', true)
+	js_test := os.join_path(tpath_js_runtime_error, 'runtime_error_test.js.v')
+	for options in ['', '-stats', '-b js', '-stats -b js'] {
+		for target in [js_test, tpath_js_runtime_error] {
+			res := os.execute('${os.quoted_path(mytest_exe)} ${options} test ${os.quoted_path(target)}')
+			assert res.exit_code == 0, res.output
+			assert res.output.contains('1 skipped, 1 total'), res.output
+			assert res.output.contains('SKIP'), res.output
+			assert !res.output.contains('TypeError: boom'), res.output
+			assert !res.output.contains('compilation failed'), res.output
+		}
+	}
+	// Recursive discovery must still run native tests alongside disabled JS tests.
+	mixed := os.join_path(tpath, 'mixed_js_skip')
+	os.mkdir_all(mixed)!
+	os.write_file(os.join_path(mixed, 'native_test.v'), 'fn test_native() { assert true }\n')!
+	os.write_file(os.join_path(mixed, 'invalid_test.js.v'), 'deliberately invalid V source\n')!
+	res := os.execute('${os.quoted_path(mytest_exe)} test ${os.quoted_path(mixed)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('1 passed, 1 skipped, 2 total'), res.output
 }
 
 fn test_with_stats_and_partial_failure() {

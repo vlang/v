@@ -21,7 +21,36 @@ fn extern_cb_build_v3() string {
 // casting the argument to the V-declared signature is what breaks the call.
 fn extern_cb_write_source() string {
 	src := os.join_path(os.temp_dir(), 'v3_extern_callback_arg_${os.getpid()}.v')
+	header := src + '.h'
+	os.write_file(header, '#include <stddef.h>
+#include <stdint.h>
+
+static int32_t native_send(void *ctx, unsigned char *buf, size_t len) {
+	return (int32_t)len + (int32_t)buf[0] + (ctx != NULL);
+}
+
+static int32_t native_register(int32_t (*callback)(void *, unsigned char *, size_t)) {
+	unsigned char buf[] = {5};
+	return callback((void *)1, buf, 2);
+}
+
+static int32_t native_send_int(void *ctx, unsigned char *buf, int len) {
+	return (int32_t)buf[0] + len + (ctx != NULL);
+}
+
+static int32_t native_register_int(int32_t (*callback)(void *, unsigned char *, int)) {
+	unsigned char buf[] = {5};
+	return callback((void *)1, buf, -3);
+}
+
+static int native_register_const_int(int (*callback)(const unsigned char *, int)) {
+	const unsigned char buf[] = {5};
+	return callback(buf, -3);
+}
+') or { panic(err) }
 	os.write_file(src, 'module main
+
+#insert "${header}"
 
 fn C.native_send(voidptr, &u8, usize) i32
 fn C.native_register(fn (voidptr, &u8, usize) i32) i32
@@ -41,6 +70,7 @@ fn v_send_int(buf &u8, len int) int {
 }
 
 fn main() {
+	offset := 7
 	println(C.native_register(C.native_send))
 	println(C.native_register((C.native_send)))
 	println(C.native_register(voidptr(C.native_send)))
@@ -48,6 +78,9 @@ fn main() {
 	println(C.native_register_int(C.native_send_int))
 	println(C.native_register_int((C.native_send_int)))
 	println(C.native_register_const_int(v_send_int))
+	println(C.native_register_const_int(fn [offset] (buf &u8, len int) int {
+		return int(unsafe { buf[0] }) + len + offset
+	}))
 }
 ') or { panic(err) }
 	return src
@@ -57,10 +90,14 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	v3_bin := extern_cb_build_v3()
 	src := extern_cb_write_source()
 	c_path := src + '.c'
+	header := src + '.h'
+	exe := src + '.out'
 	defer {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}
+		os.rm(header) or {}
 		os.rm(c_path) or {}
+		os.rm(exe) or {}
 	}
 	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
 	assert compile.exit_code == 0, compile.output
@@ -90,4 +127,13 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	assert c_code.contains('static int v_send_int_callback_adapter_'), c_code
 	assert c_code.contains('return (int)(v_send_int((u8*)arg0, (i64)arg1));'), c_code
 	assert compact.contains('native_register_const_int(v_send_int_callback_adapter_'), c_code
+	// A capturing literal keeps its owned context, but the executable closure jumps
+	// to the C-ABI adapter instead of directly to its V-ABI `__anon_fn` target.
+	assert compact.contains('closure__closure_create_with_data(__anon_fn_0_callback_adapter_'), c_code
+
+	build_program := os.execute('${v3_bin} -o ${exe} ${src}')
+	assert build_program.exit_code == 0, build_program.output
+	run := os.execute(exe)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().split_into_lines() == ['8', '8', '8', '8', '3', '3', '2', '9']
 }

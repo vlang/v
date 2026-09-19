@@ -1243,7 +1243,10 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		}
 		iter_node := t.a.nodes[int(iter_id)]
 		if iter_node.kind == .ident && iter_node.value.len > 0 {
-			raw_local_type := t.raw_var_type(iter_node.value)
+			mut raw_local_type := t.raw_var_type(iter_node.value)
+			if t.pointer_value_rvalues[iter_node.value] && raw_local_type.starts_with('&') {
+				raw_local_type = raw_local_type[1..]
+			}
 			if raw_local_type.len > 0 && t.iterator_for_in_info(raw_local_type) != none {
 				return raw_local_type
 			}

@@ -487,7 +487,7 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	}
 	clean_rhs := unalias_type(rhs_type)
 	clean_expected := unalias_type(expected_type)
-	if op == .assign && clean_rhs.name() == 'int' && clean_expected.is_float() {
+	if op == .assign && clean_rhs.name() == 'int' && clean_expected.name() == 'f64' {
 		return true
 	}
 	if op == .assign && clean_rhs.is_integer() && clean_expected.is_float()
@@ -881,7 +881,7 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 				lhs_name := tc.source_text_for_node(lhs_id)
 				expected_name := expected_type.name().replace_once('fn(', 'fn (')
 				actual_name := rhs_multi.types[i].name().replace_once('fn(', 'fn (')
-				tc.record_error_at(.assignment_mismatch, 'cannot assign `${actual_name}` to `${expected_name}`; cannot assign to `${lhs_name}`: expected `${expected_name}`, not `${actual_name}`', rhs_id, rhs.pos)
+				tc.record_error_at(.assignment_mismatch, 'cannot assign to `${lhs_name}`: expected `${expected_name}`, not `${actual_name}`', rhs_id, rhs.pos)
 			}
 		}
 		$if ownership ? {
@@ -1333,8 +1333,8 @@ fn (tc &TypeChecker) selector_field_diagnostic_pos(id flat.NodeId, field string)
 	file := tc.a.source_files[node.pos.id] or { return tc.node_value_diagnostic_pos(id) }
 	source := tc.source_texts_by_file[file.name] or { return tc.node_value_diagnostic_pos(id) }
 	start := int_max(0, int_min(base.pos.offset, source.len))
-	line_end := source.index_after('\n', start) or { source.len }
-	if relative := source[start..line_end].last_index('.${field}') {
+	end := int_max(start, int_min(node.pos.end, source.len))
+	if relative := source[start..end].last_index('.${field}') {
 		field_start := start + relative + 1
 		return token.new_span(node.pos.id, field_start, field_start + field.len)
 	}
@@ -1805,12 +1805,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		}
 		if raw_child_type is OptionType && expected !is OptionType && !is_ierror_type(expected) {
 			tc.check_node(child_id)
-			expected_payload_name := if expected is ResultType {
-				expected.base_type.name()
-			} else {
-				expected.name()
-			}
-			tc.record_error_at(.return_mismatch, 'cannot return `?${raw_child_type.base_type.name()}` as `${expected_payload_name}`; cannot use `?${raw_child_type.base_type.name()}` as type `${expected.name()}` in return argument', child_id, tc.option_marker_payload_pos(child))
+			tc.record_error_at(.return_mismatch, 'cannot use `?${raw_child_type.base_type.name()}` as type `${expected.name()}` in return argument', child_id, tc.option_marker_payload_pos(child))
 			return
 		}
 	}
@@ -1827,7 +1822,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			if tc.should_diagnose(id) {
 				actual := tc.resolve_type(child_id)
 				actual_name := tc.diagnostic_expr_type_name(child_id, actual)
-				tc.record_error_at(.return_mismatch, 'cannot return `${bad_type}` as `${expected_name}`; cannot use `${actual_name}` as type `${expected_name}` in return argument', child_id, tc.a.node(child_id).pos)
+				tc.record_error_at(.return_mismatch, 'cannot use `${actual_name}` as type `${expected_name}` in return argument', child_id, tc.a.node(child_id).pos)
 			} else {
 				tc.record_invalid_ierror_return_error(id, 'cannot return `${bad_type}` as `${expected_name}`')
 			}
@@ -2081,18 +2076,14 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			return
 		}
 		child_node := tc.a.node(child_id)
-		mut actual_name := if child_node.kind == .float_literal {
-			'f64'
-		} else {
-			tc.diagnostic_expr_type_name(child_id, diagnostic_actual)
-		}
+		mut actual_name := tc.diagnostic_expr_type_name(child_id, diagnostic_actual)
 		if child_node.kind == .struct_init {
 			if inferred := tc.infer_generic_struct_init_type(child_node) {
 				actual_name = inferred.name()
 			}
 		}
 		expected_name := call_argument_type_name(expected)
-		tc.record_error_at(.return_mismatch, 'cannot return `${actual_name}` as `${expected_name}`; cannot use `${actual_name}` as type `${expected_name}` in return argument', child_id, tc.a.node(child_id).pos)
+		tc.record_error_at(.return_mismatch, 'cannot use `${actual_name}` as type `${expected_name}` in return argument', child_id, tc.a.node(child_id).pos)
 		return
 	}
 	$if ownership ? {
@@ -3202,6 +3193,14 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		callee_id := tc.a.child(&node, 0)
 		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .ident && tc.source_file_declares_bare_fn(callee.value, node.pos.id) {
+			if _ := tc.selective_import_candidates(callee.value) {
+				for i in 1 .. node.children_count {
+					tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+				}
+				return
+			}
+		}
 		if tc.check_c_alias_cast_call(id, node, callee) {
 			return
 		}
@@ -3212,8 +3211,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				&& ((!tc.has_active_import(receiver.value) && tc.non_file_scope_type(receiver.value) == none
 					&& tc.future_local_decl_id(receiver.value, receiver_id) != none)
 					|| tc.ident_is_rhs_of_own_declaration(receiver_id, receiver.value)) {
-				tc.record_error_at(.unknown_fn, 'unknown function `${receiver.value}.${callee.value}`', id, tc.method_call_name_pos(node, callee))
-				tc.register_synth_type(id, unknown_type('unknown function `${receiver.value}.${callee.value}`'))
+				tc.record_error_at(.unknown_ident, 'undefined variable: `${receiver.value}`', receiver_id,
+					receiver.pos)
+				tc.register_synth_type(id, unknown_type('undefined variable `${receiver.value}`'))
 				return
 			}
 		}
@@ -3297,8 +3297,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				}
 			}
 			if !(receiver.kind == .ident && receiver.value == 'C') {
-				receiver_name :=
-					resolve_type_name_for_method(unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id)))
+				receiver_name := resolve_type_name_for_method(unwrap_pointer(tc.resolve_type(receiver_id)))
 				method_name := '${receiver_name}.${callee.value}'
 				if method_name in tc.source_no_body_fns && !tc.v_source_fn_has_body(method_name) {
 					name_pos := tc.method_call_name_pos(node, callee)
@@ -3397,10 +3396,11 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 						key := '${type_name}.${callee.value}'
 						if tc.fn_signature_known(key) && !tc.fn_key_is_static_associated(key)
 							&& tc.static_assoc_type_known(type_name) {
-							tc.record_error(.unknown_fn, 'unknown function `${base.value}.${callee.value}`', id)
+							tc.record_error(.unknown_fn, 'unknown function: ${base.value}.${callee.value}', id)
 							tc.register_synth_type(id, Type(MultiReturn{
 								types: []Type{}
 							}))
+							tc.record_enclosing_print_void(id)
 							return
 						}
 					}
@@ -3491,7 +3491,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			} else {
 				'compile-time error'
 			}
-			message := 'compile-time error: ${raw_message}'
+			message := raw_message
 			if !tc.has_type_error(.compile_error, message, id) {
 				tc.record_error_unfiltered(.compile_error, message, id)
 			}
@@ -3690,7 +3690,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	}
 	if arg_id := tc.builtin_addr_call_arg(node) {
 		if tc.unsafe_depth == 0 {
-			tc.record_error(.call_arg_mismatch, '`__addr` can only be used in unsafe blocks', id)
+			tc.record_error(.call_arg_mismatch, '`__addr` must be called from an unsafe block', id)
 		}
 		arg_type := tc.resolve_type(arg_id)
 		tc.remember_expr_type(id, Type(Pointer{
@@ -3787,6 +3787,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			display := tc.call_display_name(node)
 			message := if tc.comptime_static_depth > 0 {
 				'unknown function: ${display}'
+			} else if display.len == 0 {
+				'unknown function:'
 			} else {
 				'unknown function `${display}`'
 			}
@@ -3806,6 +3808,17 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	if dsl_name.len > 0 {
 		tc.pop_scope()
 	}
+}
+
+fn (tc &TypeChecker) source_file_declares_bare_fn(name string, file_id int) bool {
+	for index in tc.top_level_idx {
+		declaration := tc.a.nodes[index]
+		if declaration.kind == .fn_decl && declaration.pos.id == file_id
+			&& declaration.value == name {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_c_va_macro_call(id flat.NodeId, node flat.Node) bool {
@@ -5354,7 +5367,7 @@ fn (mut tc TypeChecker) record_unknown_method_call(id flat.NodeId, node flat.Nod
 	message := if tc.generic_receiver_method_rejects_voidptr(receiver_name, callee.value) {
 		'method `${receiver_name}.${callee.value}` cannot bind `voidptr` to a generic receiver pattern; cast the receiver to a concrete V type first'
 	} else {
-		base := 'unknown function `${display}.${callee.value}`; unknown method or field: `${display}.${callee.value}`'
+		base := 'unknown method or field: `${display}.${callee.value}`'
 		util.new_suggestion(callee.value, tc.method_name_suggestions(receiver_name)).say(base)
 	}
 	tc.record_error_at(.unknown_fn, message, id, tc.method_call_name_pos(node, callee))
@@ -5782,7 +5795,7 @@ fn (mut tc TypeChecker) check_sum_constructor_call(id flat.NodeId, node flat.Nod
 	actual_count := node.children_count - 1
 	if actual_count != 1 {
 		if tc.should_diagnose(id) {
-			tc.record_error(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected 1, got ${actual_count}', id)
+			tc.record_error(.call_arg_mismatch, 'expected 1 argument, but got ${actual_count}', id)
 		}
 		for i in 1 .. node.children_count {
 			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
@@ -8613,7 +8626,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 	if is_decode_call_name(call_name) {
 		if type_args.len != 1 {
 			if tc.should_diagnose(id) {
-				tc.record_error(.call_arg_mismatch, 'generic argument count mismatch for `${call_name}`: expected 1, got ${type_args.len}', id)
+				tc.record_error(.call_arg_mismatch, 'expected 1 generic parameter, got ${type_args.len}', id)
 			}
 			return tc.failed_explicit_generic_call_info(call_name)
 		}
@@ -8730,7 +8743,8 @@ fn (mut tc TypeChecker) explicit_generic_arg_count_mismatch(name string, type_ar
 		plural := if generic_params.len == 1 { '' } else { 's' }
 		call := tc.a.node(id)
 		callee_id := if call.children_count > 0 { tc.a.child(call, 0) } else { id }
-		tc.record_error_at(.call_arg_mismatch, 'generic argument count mismatch for `${name}`: expected ${generic_params.len}, got ${type_args.len}; expected ${generic_params.len} generic parameter${plural}, got ${type_args.len}', id, tc.explicit_generic_args_diagnostic_pos(callee_id))
+		tc.record_error_at(.call_arg_mismatch, 'expected ${generic_params.len} generic parameter${plural}, got ${type_args.len}',
+			id, tc.explicit_generic_args_diagnostic_pos(callee_id))
 	}
 	return true
 }
@@ -9556,6 +9570,11 @@ fn (tc &TypeChecker) ident_is_mutable_lvalue(name string) bool {
 	}
 	if tc.cur_scope == unsafe { nil } {
 		return false
+	}
+	if tc.disable_explicit_mutability {
+		if owner := tc.cur_scope.lookup_owner(name) {
+			return !owner.belongs_to_scope(tc.file_scope)
+		}
 	}
 	if owner := tc.fn_context.mut_local_owners[name] {
 		if tc.cur_scope.nearest_binding_owned_by(name, owner) {
@@ -12495,10 +12514,29 @@ fn (mut tc TypeChecker) check_c_callback_abi_args(id flat.NodeId, node flat.Node
 			// A resolvable named function is adapted by a generated thunk.
 			continue
 		}
+		if tc.direct_fn_literal_expr(arg_id) {
+			// A direct literal is lowered to an owned closure whose generated target
+			// can be replaced with the same ABI adapter without losing its captures.
+			continue
+		}
 		if tc.should_diagnose(id) {
 			tc.record_error(.call_arg_mismatch, 'cannot pass a forwarded function value with an `int` parameter/return to the C callback of `${info.name}`: a C callback receives a 32-bit `int` but the V function expects 64-bit, and a function-pointer cast cannot adapt that; pass a named function directly, or declare the callback with `i32`', arg_id)
 		}
 	}
+}
+
+fn (tc &TypeChecker) direct_fn_literal_expr(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return true
+	}
+	if node.kind in [.cast_expr, .paren, .expr_stmt] && node.children_count > 0 {
+		return tc.direct_fn_literal_expr(tc.a.child(node, 0))
+	}
+	return false
 }
 
 fn fn_type_has_platform_int(t FnType) bool {
@@ -12527,7 +12565,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		arg_count := node.children_count - 1
 		if arg_count != 0 && tc.should_diagnose(id) {
-			tc.record_error(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected 0, got ${arg_count}', id)
+			tc.record_error(.call_arg_mismatch, 'expected 0 arguments, but got ${arg_count}', id)
 		}
 		return
 	}
@@ -12582,7 +12620,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if i < node.children_count - 1 {
 				expected_count := info.params.len - recv_extra
 				found_count := node.children_count - 1 - info.arg_offset
-				tc.record_error_at(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected ${expected_count}, got ${found_count}', id, node.pos)
+				grammar := if expected_count == 1 { 'argument' } else { 'arguments' }
+				tc.record_error_at(.call_arg_mismatch, 'expected ${expected_count} ${grammar}, but got ${found_count}',
+					id, node.pos)
 				return
 			}
 			actual_count += arg_type.types.len - 1
@@ -12691,13 +12731,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		expected_count := signature_param_count - recv_extra - ctx_count
 		found_count := actual_count - recv_extra
-		include_receiver_in_count := info.name == 'array.pointers'
-		reported_expected_count := expected_count + if include_receiver_in_count {
-			recv_extra
-		} else {
-			0
-		}
-		reported_found_count := found_count + if include_receiver_in_count { recv_extra } else { 0 }
 		if expanded_multi_return_arg {
 			user_arg_count := node.children_count - 1 - info.arg_offset
 			if user_arg_count == 1 && found_count > expected_count {
@@ -12715,7 +12748,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			} else {
 				node.pos
 			}
-			tc.record_error_with_details_at(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected ${expected_count}, got ${found_count}; expected ${expected_count} ${grammar}, but got ${found_count}', id, pos, tc.call_count_mismatch_details(node, info0))
+			tc.record_error_with_details_at(.call_arg_mismatch, 'expected ${expected_count} ${grammar}, but got ${found_count}',
+				id, pos, tc.call_count_mismatch_details(node, info0))
 			return
 		}
 		grammar := if expected_count == 1 { 'argument' } else { 'arguments' }
@@ -12742,7 +12776,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		} else {
 			tc.call_count_mismatch_details(node, info0)
 		}
-		tc.record_error_with_details_at(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected ${reported_expected_count}, got ${reported_found_count}; expected ${expected_count} ${grammar}, but got ${found_count}', id, pos, details)
+		tc.record_error_with_details_at(.call_arg_mismatch, 'expected ${expected_count} ${grammar}, but got ${found_count}',
+			id, pos, details)
 		return
 	}
 	if info.has_receiver && info.params.len > 0 {
@@ -12898,6 +12933,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !info.is_variadic {
 			if spread_id := tc.spread_arg_child(arg_id) {
+				spread := tc.a.node(spread_id)
+				needed := info.params.len - param_idx
+				actual := int(spread.children_count)
+				if spread.kind == .array_literal && actual < needed {
+					element_word := if actual == 1 { 'element' } else { 'elements' }
+					pos := token.new_span(spread.pos.id, int_max(0, spread.pos.offset - 3), spread.pos.end)
+					tc.record_error_at(.call_arg_mismatch, 'array decompose has ${actual} ${element_word} but ${needed} are needed for `${tc.call_display_name(node)}`', arg_id, pos)
+				}
 				actual_spread := tc.resolve_type(spread_id)
 				elem_type := array_like_elem_type(unwrap_pointer(actual_spread)) or {
 					if has_dsl_scope {
@@ -12949,6 +12992,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 		}
 		multi_arg_type := tc.cached_expr_type(check_arg_id) or { tc.resolve_type(check_arg_id) }
+		if tc.errors.any(it.node == check_arg_id && it.kind == .unknown_type
+			&& it.msg.starts_with('unknown module `')) {
+			if has_dsl_scope {
+				tc.pop_scope()
+			}
+			continue
+		}
 		if !info.is_variadic && !is_print_style_fn_name(info.name) && multi_arg_type is MultiReturn
 			&& tc.a.node(check_arg_id).kind != .call {
 			expected_count := info.params.len - (if info.has_receiver { 1 } else { 0 })
@@ -13073,7 +13123,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 						'...${elem_type.name()}'
 					}
 					target_name := tc.call_argument_target_name(node, info)
-					tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${argument_number} to `${target_name}`; cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, token.new_span(spread_pos.id, int_max(0, spread_pos.offset - 3), spread_pos.end))
+					message := if unalias_type(elem_type) is Interface {
+						'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
+					} else {
+						'cannot use `${actual.name()}` as argument ${argument_number} to `${target_name}`; cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
+					}
+					tc.record_error_at(.call_arg_mismatch, message, arg_id, token.new_span(spread_pos.id, int_max(0,
+						spread_pos.offset - 3), spread_pos.end))
 				}
 				if has_dsl_scope {
 					tc.pop_scope()
@@ -13178,7 +13234,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				same_numeric_type := !call_arg_numeric_type(actual_base)
 					|| !call_arg_numeric_type(expected_base)
 					|| call_argument_type_name(actual_base) == call_argument_type_name(expected_base)
-				if !same_numeric_type || !tc.type_compatible(actual_base, expected_base) {
+				is_literal := tc.a.node(arg_id).kind == .float_literal
+				if is_literal || !same_numeric_type
+					|| !tc.type_compatible(actual_base, expected_base) {
 					argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
 					tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual_push)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				}
@@ -13187,6 +13245,25 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.pop_scope()
 			}
 			continue
+		}
+		if is_channel_builtin_method_call_name(info.name, 'try_pop') && info.has_receiver
+			&& param_idx == 1 {
+			actual_pop := fn_param_unalias_type(tc.resolve_type(arg_id))
+			expected_pop := fn_param_unalias_type(expected)
+			if expected_pop is Pointer {
+				actual_base := if actual_pop is Pointer { actual_pop.base_type } else { actual_pop }
+				expected_base := expected_pop.base_type
+				same_numeric_type := !call_arg_numeric_type(actual_base)
+					|| !call_arg_numeric_type(expected_base)
+					|| call_argument_type_name(actual_base) == call_argument_type_name(expected_base)
+				if !same_numeric_type || !tc.type_compatible(actual_base, expected_base) {
+					tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual_base)}` as argument for `try_pop` (`${call_argument_type_name(expected_base)}` expected)', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+					if has_dsl_scope {
+						tc.pop_scope()
+					}
+					continue
+				}
+			}
 		}
 		mut_arg_node := tc.a.node(arg_id)
 		if expected !is Pointer && mut_arg_node.kind == .ident
@@ -13255,7 +13332,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				}
 			}
 		}
-		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg {
+		if param_is_mut && !mut_arg_node.is_mut && !implicit_receiver_arg
+			&& !tc.disable_explicit_mutability {
 			param_label := if param_name := tc.source_call_param_name(info.name, param_idx) {
 				'`${param_name}`'
 			} else {
@@ -13392,6 +13470,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			actual = tc.resolve_expr(arg_id, arg_context_expected)
 		}
 		if actual is Void {
+			callee := tc.a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value in ['print', 'println', 'eprint', 'eprintln']
+				&& tc.errors.any(it.node == arg_id && it.msg.starts_with('invalid variable `')) {
+				tc.record_error_at(.call_arg_mismatch, '`${callee.value}` can not print void expressions',
+					id, node.pos)
+				continue
+			}
 			if !tc.errors.any(it.node == arg_id && it.msg.contains('(used before declaration)'))
 				&& !tc.expr_subtree_has_undefined_ident_error(arg_id)
 				&& !tc.expr_subtree_has_no_value_error(arg_id) {
@@ -13413,6 +13498,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if clean_expected_for_interface is Interface && unalias_type(actual) is FnType {
 			tc.record_error_at(.call_arg_mismatch, 'function does not implement interface `${clean_expected_for_interface.name}`; cannot implement interface `${clean_expected_for_interface.name}` using function', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
+		}
+		if expected_interface := cast_target_interface(clean_expected_for_interface) {
+			interface_actual := if actual is Pointer { actual.base_type } else { actual }
+			if tc.record_interface_implementation_error(.call_arg_mismatch, interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id)) {
+				continue
+			}
 		}
 		count_builtin_map_receiver := checker_is_raw_collection_method_name(info.name, 'map.')
 		argument_number := param_idx + 1 - (if info.has_receiver && !count_builtin_map_receiver {
@@ -13678,28 +13769,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.record_error_at(.call_arg_mismatch, 'cannot use `?${actual.base_type.name()}` as `${expected.name()}`, it must be unwrapped first in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				continue
 			}
-			clean_expected := unalias_type(expected)
-			if expected_interface := cast_target_interface(clean_expected) {
-				interface_actual := if actual is Pointer { actual.base_type } else { actual }
-				if tc.record_interface_implementation_error(.call_arg_mismatch, interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id)) {
-					actual_display := tc.diagnostic_expr_type_name(arg_id, actual)
-					expected_display := call_argument_type_name(expected)
-					tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as argument ${argument_number} to `${target_name}`; expected `${expected_display}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
-					continue
-				}
-			}
-			is_println_target := target_name == 'println' || target_name.ends_with('.println')
-			actual_display := if is_println_target {
-				tc.diagnostic_expr_type_name(arg_id, actual)
-			} else {
-				call_argument_type_name(actual)
-			}
+			actual_display := tc.diagnostic_expr_type_name(arg_id, actual)
 			expected_display := call_argument_type_name(expected)
-			message := if is_println_target {
-				'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
-			} else {
-				'cannot use `${actual_display}` as argument ${argument_number} to `${target_name}`; expected `${expected_display}`'
-			}
+			message := 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`'
 			if unalias_type(expected) is FnType && unalias_type(actual) is FnType {
 				expected_alias := if expected is Alias { expected.name } else { '' }
 				details := tc.fn_assignment_mismatch_details(expected_display, expected_alias, actual_display, arg_id)
@@ -14146,8 +14218,7 @@ fn (mut tc TypeChecker) check_builtin_map_call_args(_id flat.NodeId, node flat.N
 	}
 	if node.children_count > 1 {
 		arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-		call_name := tc.source_text_for_node(tc.a.child(&node, 0))
-		tc.record_error(.call_arg_mismatch, 'argument count mismatch for `${call_name}`: expected 0, got ${node.children_count - 1}; `.${method}()` does not have any arguments', arg_id)
+		tc.record_error(.call_arg_mismatch, '`.${method}()` does not have any arguments', arg_id)
 	} else if method == 'move' {
 		tc.check_builtin_array_mutable_receiver(receiver_id)
 	}
@@ -14192,7 +14263,7 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		}
 		if explicit_count > 0 {
 			arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-			tc.record_error(.call_arg_mismatch, 'argument count mismatch for `.${method}`: expected 0, got ${explicit_count}; `.${method}()` does not have any arguments', arg_id)
+			tc.record_error(.call_arg_mismatch, '`.${method}()` does not have any arguments', arg_id)
 		}
 		if method in ['pop', 'pop_left'] {
 			tc.check_builtin_array_mutable_receiver(receiver_id)
@@ -14222,7 +14293,8 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 			for i in 1 .. node.children_count {
 				tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 			}
-			tc.record_error_at(.call_arg_mismatch, 'argument count mismatch for `array.insert`: expected 2, got ${explicit_count}; `array.insert()` should have 2 arguments, e.g. `insert(1, val)`', id, tc.method_call_name_pos(node, callee))
+			tc.record_error_at(.call_arg_mismatch, '`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
+				id, tc.method_call_name_pos(node, callee))
 			return true
 		}
 		index_id := tc.call_arg_value(tc.a.child(&node, 1))
@@ -14238,8 +14310,13 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		if has_short_struct_arg {
 			tc.check_builtin_array_short_struct_arg(node, 2, array_type.elem_type)
 		} else {
-			tc.check_node_with_expected_context(value_id, array_type.elem_type)
-			value_type = tc.resolve_expr(value_id, array_type.elem_type)
+			if tc.a.node(value_id).kind == .array_literal {
+				tc.check_node(value_id)
+				value_type = tc.resolve_type(value_id)
+			} else {
+				tc.check_node_with_expected_context(value_id, array_type.elem_type)
+				value_type = tc.resolve_expr(value_id, array_type.elem_type)
+			}
 			value_is_valid = tc.array_insert_value_compatible(value_id, value_type, array_type, receiver_type)
 		}
 		if index_is_valid && !value_is_valid {
@@ -14248,7 +14325,8 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 				tc.record_error(.call_arg_mismatch, 'cannot use `${value_type.name()}` as `voidptr`, it must be unwrapped first in argument 2 to `${receiver_type.name()}.insert`', value_id)
 			} else {
 				value_name := tc.array_insert_value_type_name(value_id, value_type)
-				tc.record_error(.call_arg_mismatch, 'cannot use `${value_name}` as `${array_type.elem_type.name()}` in argument 2 to `array.insert()`', value_id)
+				tc.record_error(.call_arg_mismatch, 'cannot insert `${value_name}` to `${receiver_type.name()}`',
+					value_id)
 			}
 		}
 		if index_is_valid && value_is_valid {
@@ -14261,7 +14339,8 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 			for i in 1 .. node.children_count {
 				tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 			}
-			tc.record_error_at(.call_arg_mismatch, 'argument count mismatch for `array.prepend`: expected 1, got ${explicit_count}; `array.prepend()` should have 1 argument, e.g. `prepend(val)`', id, tc.method_call_name_pos(node, callee))
+			tc.record_error_at(.call_arg_mismatch, '`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
+				id, tc.method_call_name_pos(node, callee))
 			return true
 		}
 		value_id := tc.call_arg_value(tc.a.child(&node, 1))
@@ -14270,8 +14349,13 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		if has_short_struct_arg {
 			tc.check_builtin_array_short_struct_arg(node, 1, array_type.elem_type)
 		} else {
-			tc.check_node_with_expected_context(value_id, array_type.elem_type)
-			value_type = tc.resolve_expr(value_id, array_type.elem_type)
+			if tc.a.node(value_id).kind == .array_literal {
+				tc.check_node(value_id)
+				value_type = tc.resolve_type(value_id)
+			} else {
+				tc.check_node_with_expected_context(value_id, array_type.elem_type)
+				value_type = tc.resolve_expr(value_id, array_type.elem_type)
+			}
 			value_is_valid = tc.array_insert_value_compatible(value_id, value_type, array_type, receiver_type)
 		}
 		if !value_is_valid {
@@ -14280,7 +14364,8 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 				tc.record_error(.call_arg_mismatch, 'cannot use `${value_type.name()}` as `voidptr`, it must be unwrapped first in argument 1 to `${receiver_type.name()}.prepend`', value_id)
 			} else {
 				value_name := tc.array_insert_value_type_name(value_id, value_type)
-				tc.record_error(.call_arg_mismatch, 'cannot use `${value_name}` as argument 1 to `array.prepend`; cannot prepend `${value_name}` to `${receiver_type.name()}`', value_id)
+				tc.record_error(.call_arg_mismatch, 'cannot prepend `${value_name}` to `${receiver_type.name()}`',
+					value_id)
 			}
 		}
 		if value_is_valid {
@@ -14475,6 +14560,10 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 			}
 		} else if arg.kind in [.string_literal, .string_interp] {
 			tc.record_error(.call_arg_mismatch, 'type mismatch, should use e.g. `${method}(it > 2)`', arg_id)
+		} else if method == 'count'
+			&& arg.kind !in [.infix, .lambda_expr, .fn_literal, .ident, .call, .paren] {
+			tc.record_error(.call_arg_mismatch, 'invalid expression, expected infix expr, lambda or function',
+				arg_id)
 		} else {
 			actual := tc.resolve_expr(arg_id, Type(bool_))
 			if !(method == 'count' && array_count_dsl_predicate_compatible(actual))
@@ -14694,8 +14783,10 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 			tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`', id, method_pos)
 		}
 	} else if !tc.sort_operand_has_valid_shape(lhs_id) || !tc.sort_operand_has_valid_shape(rhs_id) {
-		tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`', id, method_pos)
-		tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use ident, index, selector or call as argument,\ne.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`', id, method_pos)
+		tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`',
+			arg_id, method_pos)
+		tc.record_error_at(.call_arg_mismatch, '`.sort()` can only use ident, index, selector or call as argument,\ne.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`',
+			arg_id, method_pos)
 	}
 	tc.push_array_dsl_scope(node, 'array.sort')
 	tc.check_node(arg_id)
@@ -15150,11 +15241,21 @@ fn (tc &TypeChecker) spread_elem_compatible(actual Type, expected Type) bool {
 }
 
 fn (tc &TypeChecker) variadic_spread_arg_compatible(actual Type, expected_array Array) bool {
+	actual_elem := array_like_elem_type(unwrap_pointer(actual)) or { return false }
+	clean_expected_elem := unalias_type(expected_array.elem_type)
+	if clean_expected_elem is Interface {
+		clean_actual_elem := unalias_type(actual_elem)
+		if clean_actual_elem !is Interface {
+			return false
+		}
+		if clean_actual_elem.name != clean_expected_elem.name {
+			return false
+		}
+	}
 	expected := Type(expected_array)
 	if tc.receiver_compatible(actual, expected) || tc.type_compatible(actual, expected) {
 		return true
 	}
-	actual_elem := array_like_elem_type(unwrap_pointer(actual)) or { return false }
 	return tc.spread_elem_compatible(actual_elem, expected_array.elem_type)
 }
 
@@ -16403,44 +16504,6 @@ fn (tc &TypeChecker) spread_arg_child(id flat.NodeId) ?flat.NodeId {
 	return none
 }
 
-fn (mut tc TypeChecker) check_array_decompose_counts() {
-	for index, node in tc.a.nodes {
-		if node.kind != .call || node.children_count < 2 {
-			continue
-		}
-		callee := tc.a.child_node(&node, 0)
-		if callee.kind != .ident {
-			continue
-		}
-		name := tc.qualify_fn_name(callee.value)
-		params := tc.fn_param_types[name] or { tc.fn_param_types[callee.value] or { continue } }
-		if tc.fn_variadic[name] || tc.fn_variadic[callee.value] {
-			continue
-		}
-		mut preceding := 0
-		for i in 1 .. node.children_count {
-			arg_id := tc.call_arg_value(tc.a.child(&node, i))
-			spread_id := tc.spread_arg_child(arg_id) or {
-				preceding++
-				continue
-			}
-			spread := tc.a.nodes[int(spread_id)]
-			if spread.kind != .array_literal {
-				break
-			}
-			needed := params.len - preceding
-			actual := int(spread.children_count)
-			if actual < needed {
-				element_word := if actual == 1 { 'element' } else { 'elements' }
-				pos := token.new_span(spread.pos.id, int_max(0, spread.pos.offset - 3), spread.pos.end)
-				tc.errors << tc.make_type_error_at(.call_arg_mismatch, 'array decompose has ${actual} ${element_word} but ${needed} are needed for `${callee.value}`', arg_id, pos)
-			}
-			break
-		}
-		_ = index
-	}
-}
-
 fn (tc &TypeChecker) nonvariadic_spread_extra_arg_count(node flat.Node, info CallInfo, recv_extra int) int {
 	mut extra := 0
 	mut logical_arg_idx := 0
@@ -17185,6 +17248,9 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 		return none
 	}
 	base_node := tc.a.nodes[int(base_id)]
+	if base_node.kind in [.string_literal, .string_interp] {
+		return Type(string_)
+	}
 	if base_node.typ.len > 0 && base_node.typ != 'unknown' {
 		return tc.parse_type(base_node.typ)
 	}
@@ -18130,6 +18196,9 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			then_tail := tc.branch_tail_expr_id(then_id)
 			else_tail := tc.branch_tail_expr_id(else_id)
 			if tc.if_branch_none_has_option_context(then_type, then_tail, else_type, else_tail) {
+				if _ := inferred_contextual_if_type(then_type, else_type) {
+					return
+				}
 				if expected := tc.expected_context_for_expr(id) {
 					if expected is OptionType || is_ierror_type(expected) {
 						return

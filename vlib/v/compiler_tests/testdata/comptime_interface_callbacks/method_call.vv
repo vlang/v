@@ -1,0 +1,52 @@
+module main
+
+import callbacks
+
+interface IFoo {
+	name string
+	message() string
+}
+
+struct Foo {
+	name string
+}
+
+fn (foo Foo) message() string {
+	return foo.name
+}
+
+pub struct Model {}
+
+pub fn (model Model) get_foo() IFoo {
+	return Foo{
+		name: 'you should see this'
+	}
+}
+
+pub fn (mut model Model) run() {
+	value := model.get_foo()
+	// Separate from the printing fixture: fixing auto-str must not hide the
+	// interface method panic reported in the comments on vlang/v#28728.
+	println(value.message())
+}
+
+interface Noise {
+	marker int
+}
+
+struct NoiseValue {
+	marker int
+}
+
+fn noise_marker(value Noise) int {
+	return value.marker
+}
+
+fn main() {
+	assert noise_marker(NoiseValue{ marker: 7 }) == 7
+	mut model := Model{}
+	callback := callbacks.bind(mut model)
+	for _ in 0 .. 3 {
+		callback.invoke('run') or { panic(err) }
+	}
+}

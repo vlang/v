@@ -925,7 +925,8 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 		return backend == 'c'
 	}
 	if file.ends_with('_test.js.v') {
-		return backend == 'js'
+		// Disabled on every target until V3 has a JavaScript backend.
+		return false
 	}
 	if !file.ends_with('.v') {
 		return false
