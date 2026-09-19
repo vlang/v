@@ -487,6 +487,14 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, 
 	if type_arg_text.len == 0 {
 		return none
 	}
+	// A type argument that names a generic parameter of the declaration enclosing
+	// this call is not concrete: the enclosing specialization substitutes it while
+	// it is cloned. Resolving it here through the writing file's imports would
+	// request a specialization for a same-named imported type (`import pkg { T }`)
+	// instead of leaving the call to the clone.
+	if t.type_arg_text_has_enclosing_generic_param(id, type_arg_text) {
+		return none
+	}
 	raw_args := normalize_generic_args(split_generic_args(type_arg_text), module_name)
 	for candidate in t.explicit_generic_fn_value_decl_candidates(id, base_id, base, module_name) {
 		decl_key := generic_fn_decl_base_value(candidate)
@@ -3307,11 +3315,26 @@ fn (mut t Transformer) generic_struct_args_in_scope(args []string, module_name s
 	for arg in args {
 		parsed := t.tc.parse_resolution_type(arg)
 		result := if parsed is types.Unknown {
-			t.normalize_sum_variant_type(arg, module_name, [])
+			if resolved := t.selective_import_type_name_for_file(file_name, arg) {
+				resolved
+			} else {
+				t.normalize_sum_variant_type(arg, module_name, [])
+			}
 		} else if parsed is types.Alias && parsed.base_type is types.ArrayFixed {
 			types.Type(parsed.base_type).name()
 		} else {
-			parsed.name()
+			// A bare spelling that resolves inside the declaring module still has to
+			// honor the writing file's selective imports: `import model { Context }`
+			// makes `Context` mean `model.Context`, not a same-named type from an
+			// imported module or the declaring module itself.
+			name := parsed.name()
+			if !name.contains('.') {
+				if resolved := t.selective_import_type_name_for_file(file_name, name) {
+					scoped << resolved
+					continue
+				}
+			}
+			name
 		}
 		scoped << result
 	}
@@ -3331,11 +3354,27 @@ fn (mut t Transformer) generic_sum_args_in_scope(args []string, module_name stri
 	mut scoped := []string{cap: args.len}
 	for arg in args {
 		parsed := t.tc.parse_resolution_type(arg)
-		scoped << if parsed is types.Unknown {
-			t.normalize_sum_variant_type(arg, module_name, [])
+		result := if parsed is types.Unknown {
+			if resolved := t.selective_import_type_name_for_file(file_name, arg) {
+				resolved
+			} else {
+				t.normalize_sum_variant_type(arg, module_name, [])
+			}
 		} else {
-			parsed.name()
+			// A bare spelling that resolves inside the declaring module still has to
+			// honor the writing file's selective imports: `import iam { Token }`
+			// makes `Token` mean `iam.Token`, not a same-named type from another
+			// imported module or the declaring module itself.
+			name := parsed.name()
+			if !name.contains('.') {
+				if resolved := t.selective_import_type_name_for_file(file_name, name) {
+					scoped << resolved
+					continue
+				}
+			}
+			name
 		}
+		scoped << result
 	}
 	t.tc.cur_module = old_module
 	t.tc.cur_file = old_file
@@ -10464,7 +10503,12 @@ fn (mut t Transformer) substitute_cloned_generic_call_type_args(node flat.Node, 
 		// value index like `attr[start]` matches the `callee[arg]` shape too, and
 		// resolve_substituted_type_text would "qualify" the local `start` into a
 		// phantom type/fn name (`json2.start`), corrupting the index expression.
-		if !t.generic_args_have_placeholders([arg]) {
+		// A generic parameter is a placeholder even when the writing file also
+		// imports a type with the same spelling: `import pkg { T }` in a generic
+		// `fn outer[T]` makes the text `T` look like a concrete `pkg.T` to the
+		// declared-type tables, but the lexical parameter has precedence.
+		if !t.generic_args_have_placeholders([arg])
+			&& !generic_text_contains_param(arg, t.active_generic_params) {
 			continue
 		}
 		substituted := t.resolve_substituted_type_text(t.subst_type(arg, args))

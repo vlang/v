@@ -1004,6 +1004,25 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			if node.typ.starts_with('map[') {
 				return node.typ
 			}
+			// A generic parameter is lexical: inside `fn outer[T]`, `T` in
+			// `inner[T](value)` names the parameter even when the writing file also
+			// imports a type spelled `T` (`import pkg { T }`), matching the checker,
+			// where the parameter wins over the file's selective imports
+			// (`qualify_type_text_impl` checks the generic parameters first).
+			// Resolving it through them would specialize the callee for `pkg.T` and
+			// lose the substitution of the caller's type argument.
+			if node.value in t.active_generic_params
+				|| t.node_has_enclosing_generic_param(id, node.value) {
+				return node.value
+			}
+			// A bare spelling must be resolved in the file that wrote the call:
+			// `import model { Context }` makes `Context` mean `model.Context` there
+			// even when another imported module declares a same-named type. A global
+			// short-name index would pick whichever type was indexed first, so the
+			// rewritten call and the emitted specialization would disagree.
+			if resolved := t.selective_import_type_name_for_file(t.node_file_or(int(id), t.cur_file), node.value) {
+				return resolved
+			}
 			return node.value
 		}
 		.selector {
@@ -1072,6 +1091,50 @@ fn (t &Transformer) generic_call_type_arg_name(id flat.NodeId) string {
 			return ''
 		}
 	}
+}
+
+// node_enclosing_generic_params returns the generic parameter names of the
+// declaration that lexically encloses `id`. Synthesized nodes have no source
+// parent entry; a live specialization records its parameters in
+// `active_generic_params` instead.
+fn (t &Transformer) node_enclosing_generic_params(id flat.NodeId) []string {
+	if int(id) < 0 || int(id) >= t.source_parent_ids.len {
+		return []string{}
+	}
+	mut cursor := int(id)
+	for _ in 0 .. t.a.nodes.len {
+		parent_id := t.source_parent_id(cursor)
+		if parent_id < 0 || parent_id == cursor || parent_id >= t.a.nodes.len {
+			return []string{}
+		}
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.fn_decl, .struct_decl, .type_decl, .interface_decl, .c_fn_decl] {
+			return parent.generic_params()
+		}
+		cursor = parent_id
+	}
+	return []string{}
+}
+
+// node_has_enclosing_generic_param reports whether `name` is a generic parameter
+// of a declaration that lexically encloses `id`. Such a parameter keeps its
+// meaning even when the writing file selectively imports a type with the same
+// spelling, so resolution has to see it before it consults those imports.
+fn (t &Transformer) node_has_enclosing_generic_param(id flat.NodeId, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	return name in t.node_enclosing_generic_params(id)
+}
+
+// type_arg_text_has_enclosing_generic_param reports whether `text` names a
+// generic parameter of the declaration that lexically encloses `id`. An
+// argument that does is not concrete: the enclosing specialization substitutes
+// it while it is cloned, so it must not be resolved through the writing file's
+// imports here.
+fn (t &Transformer) type_arg_text_has_enclosing_generic_param(id flat.NodeId, text string) bool {
+	params := t.node_enclosing_generic_params(id)
+	return params.len > 0 && generic_text_contains_param(text, params)
 }
 
 fn (t &Transformer) generic_call_type_args_name(index_node flat.Node) string {
@@ -5058,6 +5121,14 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 	if qualified.starts_with('main.') {
 		qualified = qualified[5..]
 	} else if !typ.contains('.') {
+		// A bare enum name belongs to the file that wrote it: with several
+		// same-named enums in the program the suffix fallback below cannot pick
+		// one, and the helper would be emitted without its module prefix.
+		if resolved := t.selective_import_type_name_for_file(t.cur_file, typ) {
+			if resolved in t.enum_types {
+				return resolved
+			}
+		}
 		q := '${t.cur_module}.${typ}'
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin'
 			&& q in t.enum_types {
@@ -5094,6 +5165,20 @@ fn (t &Transformer) enum_autostr_type_name(typ string) string {
 		}
 	}
 	short_name := short_name_view(qualified)
+	// An import-alias prefix (`token.Kind` where this file imports `toml.token`)
+	// must be resolved before the short-name fallback below: the bare `Kind` table
+	// entry can belong to a different module, and the emitted helper would then
+	// name an enum that this file never declared.
+	if qualified.contains('.') && !qualified.starts_with('main.') {
+		alias := qualified.all_before('.')
+		resolved_module := t.import_alias_module(alias)
+		if resolved_module.len > 0 && resolved_module != alias {
+			resolved := '${resolved_module}.${qualified.all_after('.')}'
+			if resolved in t.enum_types || (!isnil(t.tc) && resolved in t.tc.enum_names) {
+				return resolved
+			}
+		}
+	}
 	if qualified !in t.enum_types && short_name in t.enum_types {
 		return short_name
 	}
