@@ -12927,6 +12927,9 @@ fn (mut tc TypeChecker) check_for_in_range_types(low_id flat.NodeId, high_id fla
 		tc.record_error_at(.condition_mismatch, 'range type can only be an integer type', low_id, tc.range_endpoints_pos(low_id, high_id))
 		return
 	}
+	if tc.check_for_in_range_high_overflow(low_id, high_id) {
+		return
+	}
 	if low := tc.match_condition_int_value(low_id) {
 		if high := tc.match_condition_int_value(high_id) {
 			if low > high {
@@ -12934,6 +12937,59 @@ fn (mut tc TypeChecker) check_for_in_range_types(low_id flat.NodeId, high_id fla
 			}
 		}
 	}
+}
+
+fn (mut tc TypeChecker) check_for_in_range_high_overflow(low_id flat.NodeId, high_id flat.NodeId) bool {
+	range_type := tc.range_loop_var_type(low_id, high_id)
+	type_range := integer_type_range(range_type) or { return false }
+	if type_range.bits <= 0 {
+		return false
+	}
+	maximum := if type_range.is_unsigned {
+		enum_backing_unsigned_max(type_range.bits)
+	} else if type_range.bits >= 64 {
+		u64(max_i64)
+	} else {
+		(u64(1) << (type_range.bits - 1)) - 1
+	}
+	high, high_text := tc.for_in_range_unsigned_const_value(high_id) or { return false }
+	if high <= maximum {
+		return false
+	}
+	tc.record_error_at(.condition_mismatch, '`high` value `${high_text}` does not fit in the range value type `${range_type.name()}` (max `${maximum}`); the loop variable would overflow and the loop would never terminate', low_id, tc.range_endpoints_pos(low_id, high_id))
+	return true
+}
+
+fn (tc &TypeChecker) for_in_range_unsigned_const_value(id flat.NodeId) ?(u64, string) {
+	if tc.valid_node_id(id) {
+		node := tc.a.node(id)
+		if node.kind == .ident && node.value == 'max_int' {
+			return u64(max_i32), max_i32.str()
+		}
+	}
+	mut literal_id := id
+	for tc.valid_node_id(literal_id) {
+		node := tc.a.node(literal_id)
+		if node.kind !in [.cast_expr, .paren] || node.children_count == 0 {
+			break
+		}
+		literal_id = tc.a.child(node, 0)
+	}
+	if mut literal := tc.integer_literal_source(literal_id) {
+		literal = literal.replace('_', '')
+		if literal.len > 0 && literal[0] != `-` {
+			magnitude := if literal[0] == `+` { literal[1..] } else { literal }
+			value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+			if parse_error == 0 {
+				return value, value.str()
+			}
+		}
+	}
+	value := tc.const_int_expr(id, tc.cur_module, []string{}) or { return none }
+	if value < 0 {
+		return none
+	}
+	return u64(value), value.str()
 }
 
 fn (tc &TypeChecker) range_bound_diagnostic_pos(id flat.NodeId) token.Pos {
