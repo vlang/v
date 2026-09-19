@@ -2683,6 +2683,22 @@ fn (mut p Parser) const_decl() flat.NodeId {
 				p.next()
 				full_name = 'C.' + p.expect_name_or_keyword()
 			}
+			if p.tok == .comma {
+				p.record_diagnostic_span('const declaration do not support multiple assign yet',
+					p.tok_pos, p.tok_end)
+				for p.tok !in [.semicolon, .eof] {
+					p.next()
+				}
+				ids << p.add_node(flat.Node{
+					kind:  .const_field
+					value: full_name
+					pos:   p.span_to(field_start)
+				})
+				if p.tok == .semicolon {
+					p.next()
+				}
+				continue
+			}
 			if p.tok == .assign || (p.prefs.is_fmt && p.tok == .decl_assign) {
 				p.next()
 				val_id := if p.tok == .eof {
