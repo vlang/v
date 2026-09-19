@@ -18152,6 +18152,9 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			then_tail := tc.branch_tail_expr_id(then_id)
 			else_tail := tc.branch_tail_expr_id(else_id)
 			if tc.if_branch_none_has_option_context(then_type, then_tail, else_type, else_tail) {
+				if _ := inferred_contextual_if_type(then_type, else_type) {
+					return
+				}
 				if expected := tc.expected_context_for_expr(id) {
 					if expected is OptionType || is_ierror_type(expected) {
 						return
