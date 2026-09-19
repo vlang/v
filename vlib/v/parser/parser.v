@@ -2130,6 +2130,13 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				sect_is_module = false
 				continue
 			}
+			p.record_diagnostic_span('missing `:` after `mut` in struct', p.tok_pos, p.tok_end)
+			p.next()
+			sect_is_pub = false
+			sect_is_mut = true
+			sect_is_global = false
+			sect_is_module = false
+			continue
 		}
 		if p.tok == .key_global {
 			if p.peek() == .colon {
