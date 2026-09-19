@@ -6743,9 +6743,9 @@ fn (t &Transformer) call_is_normalized_explicit_generic_call(node flat.Node) boo
 	if node.value.len == 0 || node.children_count == 0 {
 		return false
 	}
-	// normalize_generic_call_expr removes the source index node from
-	// `module.fn[T](...)`, but preserves `T` in the call payload.
-	return t.a.child_node(&node, 0).kind == .selector
+	// normalize_generic_call_expr removes the source index node from both
+	// `fn[T](...)` and `module.fn[T](...)`, but preserves `T` in the call payload.
+	return t.a.child_node(&node, 0).kind in [.ident, .selector]
 }
 
 fn (t &Transformer) should_skip_generic_call_specialization(decl_key string) bool {
@@ -7725,6 +7725,10 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	if param_names.len == 0 {
 		return none
 	}
+	// Explicit generic arguments seed this map before value-argument inference.
+	// Runtime argument types may fill missing parameters, but must not replace an
+	// explicit pointer type with the mutable parameter's storage-stripped value type.
+	pinned := inferred.clone()
 	is_receiver := t.generic_decl_is_receiver_method(decl.node)
 		&& !t.generic_call_is_static_assoc_selector(node, decl)
 	receiver_params := if is_receiver {
@@ -7842,6 +7846,9 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 	if ret.len > 0 {
 		t.infer_generic_return_type_args(decl, ret, mut inferred, receiver_params)
 		t.infer_missing_generic_receiver_args_from_return(decl, ret, receiver_params, mut inferred)
+	}
+	for name, typ in pinned {
+		inferred[name] = typ
 	}
 	mut args := []string{cap: param_names.len}
 	for name in param_names {
