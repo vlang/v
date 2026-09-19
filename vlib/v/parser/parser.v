@@ -8685,6 +8685,9 @@ fn (mut p Parser) record_for_mut_diagnostic(id flat.NodeId, message string) {
 fn (mut p Parser) match_stmt() flat.NodeId {
 	match_start := p.span_start()
 	p.next() // skip 'match'
+	if p.tok == .name && p.lit == 'sql' {
+		p.record_diagnostic_span('unexpected keyword `sql`, expecting name', p.tok_pos, p.tok_end)
+	}
 	match_expr := p.control_header_expr(.lowest)
 	if p.tok == .semicolon && p.peek() == .lcbr {
 		p.next()
