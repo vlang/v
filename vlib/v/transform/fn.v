@@ -12695,6 +12695,11 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			base_type = specialized
 		}
 	}
+	if method == 'str' {
+		if value_type := t.pointer_value_expr_type(base_id) {
+			base_type = value_type
+		}
+	}
 	base_is_pointer := base_type.starts_with('&')
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
@@ -12843,7 +12848,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		}
 		mut stringify_type := t.raw_alias_type_for_expr(base_id)
 		if stringify_type.len == 0 {
-			stringify_type = t.raw_var_type_for_expr(base_id) or { base_type }
+			stringify_type = t.pointer_value_expr_type(base_id) or {
+				t.raw_var_type_for_expr(base_id) or { base_type }
+			}
 		}
 		return t.wrap_string_conversion(t.transform_expr(base_id), stringify_type)
 	}
