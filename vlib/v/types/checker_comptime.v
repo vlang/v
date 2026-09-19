@@ -3276,7 +3276,8 @@ fn (tc &TypeChecker) expr_contains_invalid_variable_error(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.node(id)
-	if tc.errors.any(it.node == id && it.msg.starts_with('invalid variable `')) {
+	if tc.errors.any(it.node == id && (it.msg.starts_with('invalid variable `')
+		|| it.msg.starts_with('undefined ident:') || it.msg.starts_with('undefined variable:'))) {
 		return true
 	}
 	for i in 0 .. node.children_count {
