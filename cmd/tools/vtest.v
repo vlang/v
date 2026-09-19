@@ -180,9 +180,7 @@ fn (ctx &Context) should_test(path string, backend string) ShouldTestStatus {
 		return ctx.should_test_when_it_contains_matching_fns(path, backend)
 	}
 	if path.ends_with('_test.js.v') {
-		if testing.is_node_present {
-			return ctx.should_test_when_it_contains_matching_fns(path, backend)
-		}
+		// Node availability does not imply that V3 can compile JavaScript tests.
 		return .skip
 	}
 	file_name := os.file_name(path)

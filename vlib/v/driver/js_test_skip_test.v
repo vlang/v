@@ -81,19 +81,39 @@ fn test_direct_js_test_commands_skip_before_parsing() {
 		@VEXE
 	}
 	cc := $if windows { 'gcc' } $else { 'cc' }
-	for command in ['', 'run', 'test'] {
-		mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc]
-		if command.len > 0 {
-			args << command
+	for backend in ['c', 'js'] {
+		// The explicit JS backend returns before the normal backend test filter.
+		// `test` is covered by vtest_test.v, since the launcher dispatches it to vtest.
+		for command in ['', 'run'] {
+			mut args := ['-new-compiler', '-no-retry-compilation', '-nocache', '-cc', cc,
+				'-b', backend]
+			if command.len > 0 {
+				args << command
+			}
+			args << source
+			result := cmdexec.run_with_timeout(vexe, args, 120_000)
+			assert result.exit_code == 0, result.output
+			assert result.output.trim_space() == 'SKIP ${source}', result.output
 		}
-		args << source
-		result := cmdexec.run_with_timeout(vexe, args, 120_000)
-		assert result.exit_code == 0, result.output
-		assert result.output.trim_space() == 'SKIP ${source}', result.output
+		quiet := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation',
+			'-silent', '-cc', cc, '-b', backend, source], 120_000)
+		assert quiet.exit_code == 0, quiet.output
+		assert quiet.output == '', quiet.output
 	}
-	quiet := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation',
-		'-silent', '-cc', cc, source], 120_000)
-	assert quiet.exit_code == 0, quiet.output
-	assert quiet.output == '', quiet.output
+	// Match the command emitted by testing.TestSession, including an output path.
+	output := os.join_path(root, 'unexpected.js')
+	result := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation',
+		'-skip-running', '-b', 'js', '-o', output, source], 120_000)
+	assert result.exit_code == 0, result.output
+	assert result.output.trim_space() == 'SKIP ${source}', result.output
+	assert !os.exists(output)
 	assert !os.exists(source[..source.len - 2])
+	assert !os.exists(source[..source.len - 2] + '.js')
+	// Do not disable the limited compatibility generator for non-test programs.
+	program := os.join_path(root, 'literal.v')
+	os.write_file(program, "fn main() { println('still supported') }\n")!
+	compiled := cmdexec.run_with_timeout(vexe, ['-new-compiler', '-no-retry-compilation',
+		'-b', 'js', '-o', output, program], 120_000)
+	assert compiled.exit_code == 0, compiled.output
+	assert os.read_file(output)!.contains('console.log(')
 }

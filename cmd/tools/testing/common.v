@@ -853,7 +853,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 	ts.benchmark_step()
 	tls_bench.step()
-	if produces_file_output && !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
+	// Keep JS tests disabled for every session caller, including v test-self.
+	// Formatting and vetting still process these sources without compiling them.
+	if produces_file_output && !ts.build_tools
+		&& (!should_be_built || abs_path in ts.skip_files || abs_path.ends_with('_test.js.v')) {
 		ts.benchmark_skip()
 		tls_bench.skip()
 		if !hide_skips {
