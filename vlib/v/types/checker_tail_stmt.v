@@ -7343,9 +7343,13 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			return
 		}
 		parent_id := tc.direct_parent_id(id)
-		if tc.fn_context.node_id >= 0 && tc.valid_node_id(parent_id)
-			&& tc.a.node(parent_id).kind == .expr_stmt {
-			tc.record_error(.unknown_ident, 'unexpected name `${node.value}`', id)
+		if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .expr_stmt {
+			message := if tc.fn_context.node_id >= 0 {
+				'unexpected name `${node.value}`'
+			} else {
+				'`${node.value}` evaluated but not used'
+			}
+			tc.record_error(.unknown_ident, message, id)
 			tc.register_synth_type(id, Type(void_))
 			return
 		}
