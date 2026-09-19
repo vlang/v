@@ -1536,6 +1536,14 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_reserved_parameter := a.msg.starts_with('invalid use of reserved type `')
+		&& a.msg.ends_with(' as a parameter name')
+	b_is_reserved_parameter := b.msg.starts_with('invalid use of reserved type `')
+		&& b.msg.ends_with(' as a parameter name')
+	if a.file == b.file && a_is_reserved_parameter && b_is_reserved_parameter
+		&& a.node != b.node {
+		return int(b.node) - int(a.node)
+	}
 	a_is_missing_generic_decl := a.msg in [
 		'generic function declaration must specify generic type names',
 		'generic method declaration must specify generic type names',
