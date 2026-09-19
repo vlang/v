@@ -13636,7 +13636,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if pointer_depth_mismatch || pointer_array_mismatch {
 			actual_display := tc.diagnostic_expr_type_name(arg_id, actual)
 			expected_display := call_argument_type_name(expected)
-			tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as argument ${argument_number} to `${target_name}`; expected `${expected_display}`; cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
 		if expected is OptionType && actual is Pointer
