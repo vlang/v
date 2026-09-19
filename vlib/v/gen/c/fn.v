@@ -9169,7 +9169,7 @@ fn (mut g FlatGen) gen_json_encode_call(node flat.Node, pretty bool) bool {
 		return false
 	}
 	arg_id := g.a.child(&node, 1)
-	typ := g.usable_expr_type(arg_id)
+	typ := g.json_encode_arg_type(arg_id)
 	expr := g.expr_to_string_with_expected_type(arg_id, typ)
 	// Bind the argument to a single temporary so it is evaluated exactly once,
 	// no matter how many times the field/enum expansion references it.
@@ -9184,6 +9184,25 @@ fn (mut g FlatGen) gen_json_encode_call(node flat.Node, pretty bool) bool {
 		g.write('({ ${g.value_c_type(typ)} ${tmp} = ${expr}; ${encoded}; })')
 	}
 	return true
+}
+
+fn (g &FlatGen) json_encode_arg_type(arg_id flat.NodeId) types.Type {
+	arg_node := g.a.node(arg_id)
+	if arg_node.kind == .ident && g.cur_param_names.len > 0
+		&& arg_node.value == g.cur_param_names[0] && g.method_receiver_is_mut(g.cur_fn_name) {
+		if param_type := g.current_param_type(arg_node.value) {
+			if param_type is types.Pointer {
+				return param_type.base_type
+			}
+		}
+	}
+	if typ := g.tc.expr_type(arg_id) {
+		if typ !is types.Void && typ !is types.Unknown
+			&& !g.type_contains_generic_placeholder(typ) {
+			return typ
+		}
+	}
+	return g.usable_expr_type(arg_id)
 }
 
 fn (mut g FlatGen) preintern_json_encode_strings() {
@@ -9203,7 +9222,7 @@ fn (mut g FlatGen) preintern_json_encode_strings() {
 			continue
 		}
 		arg_id := g.a.child(&node, 1)
-		mut typ := g.usable_expr_type(arg_id)
+		mut typ := g.json_encode_arg_type(arg_id)
 		if typ is types.Void || typ is types.Unknown {
 			arg := g.a.nodes[int(arg_id)]
 			typ = g.tc.parse_type(arg.typ)
@@ -9541,7 +9560,7 @@ fn (mut g FlatGen) prepare_json_encode_pointer_helpers() []JsonEncodePointerHelp
 			continue
 		}
 		arg_id := g.a.child(&node, 1)
-		mut typ := g.usable_expr_type(arg_id)
+		mut typ := g.json_encode_arg_type(arg_id)
 		if typ is types.Void || typ is types.Unknown {
 			arg := g.a.nodes[int(arg_id)]
 			typ = g.tc.parse_type(arg.typ)
@@ -9576,7 +9595,7 @@ fn (mut g FlatGen) prepare_json_encode_sum_helpers() []JsonEncodeSumHelper {
 			continue
 		}
 		arg_id := g.a.child(&node, 1)
-		mut typ := g.usable_expr_type(arg_id)
+		mut typ := g.json_encode_arg_type(arg_id)
 		if typ is types.Void || typ is types.Unknown {
 			arg := g.a.nodes[int(arg_id)]
 			typ = g.tc.parse_type(arg.typ)
