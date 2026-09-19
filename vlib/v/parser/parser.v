@@ -9241,7 +9241,8 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 
 fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
 	if token_is_assignment(p.tok) {
-		p.record_diagnostic_span('unexpected assignment operator `${p.tok.str()}`', p.tok_pos, p.tok_end)
+		p.record_diagnostic_span('invalid expression: unexpected token `${p.tok.str()}`', p.tok_pos,
+			p.tok_end)
 		for p.tok != .semicolon && p.tok != .rcbr && p.tok != .eof {
 			p.next()
 		}
@@ -10554,7 +10555,10 @@ fn (mut p Parser) newline_dot_starts_map_entry() bool {
 }
 
 fn (mut p Parser) sql_expr(sql_pos int) flat.NodeId {
-	db_expr := if p.tok != .lcbr && p.tok != .eof {
+	db_expr := if p.tok == .name && p.lit == '_' && p.peek() == .lcbr {
+		p.next()
+		flat.empty_node
+	} else if p.tok != .lcbr && p.tok != .eof {
 		p.expr(.lowest)
 	} else {
 		flat.empty_node
@@ -11923,6 +11927,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.dollar {
 			return p.parse_comptime_expr()
+		}
+		.rcbr {
+			p.record_diagnostic_span('invalid expression: unexpected token `}`', p.tok_pos,
+				p.tok_end)
+			return p.add(flat.NodeKind.empty)
 		}
 		else {
 			if p.tok.is_keyword() {
