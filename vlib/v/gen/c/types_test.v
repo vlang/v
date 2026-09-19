@@ -269,6 +269,27 @@ fn test_json_helper_scan_requires_legacy_json_module() {
 	assert 'null' in g.str_lits
 }
 
+fn test_json_pointer_helper_scan_accepts_unresolved_encode_call() {
+	mut ast := flat.FlatAst.new()
+	ast.nodes = [flat.Node{ kind: .call, children_count: 2 },
+		flat.Node{ kind: .ident, value: 'json.encode' },
+		flat.Node{ kind: .ident, value: 'user', typ: '&main.User' }]
+	ast.children = [flat.NodeId(1), flat.NodeId(2)]
+	mut tc := types.TypeChecker.new(&ast)
+	tc.expr_type_values = [types.Type(types.void_), types.Type(types.void_), types.Type(types.Pointer{
+		base_type: types.Type(types.Struct{ name: 'main.User' })
+	})]
+	tc.expr_type_set = [false, false, true]
+	tc.structs['main.User'] = []types.StructField{}
+	tc.file_modules['json_primitives.c.v'] = 'json'
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	helpers := g.prepare_json_encode_pointer_helpers()
+	assert helpers.len == 1
+	assert helpers[0].pointer_ct == 'main__User*'
+}
+
 fn test_json_sum_variant_discriminator_strings_are_preinterned() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)

@@ -9199,11 +9199,7 @@ fn (mut g FlatGen) preintern_json_encode_strings() {
 		// name, so a resolved-name-only test skips it. Its `{`/`}`/label literals
 		// then get interned while its body is generated -- after the literal table
 		// was already emitted -- leaving `_str_N` undeclared in the C output.
-		resolved := g.tc.resolved_call_name(flat.NodeId(idx)) or { '' }
-		target := g.call_target_name(g.a.child(&node, 0))
-		if resolved !in ['json.encode', 'json__encode', 'json.encode_pretty', 'json__encode_pretty']
-			&& target !in ['json.encode', 'json__encode', 'json.encode_pretty', 'json__encode_pretty']
-			&& !(g.tc.cur_module == 'json' && target in ['encode', 'encode_pretty']) {
+		if !g.is_legacy_json_encode_call(flat.NodeId(idx), node) {
 			continue
 		}
 		arg_id := g.a.child(&node, 1)
@@ -9214,6 +9210,14 @@ fn (mut g FlatGen) preintern_json_encode_strings() {
 		}
 		g.preintern_json_encode_value_strings(typ, []string{})
 	}
+}
+
+fn (g &FlatGen) is_legacy_json_encode_call(id flat.NodeId, node flat.Node) bool {
+	resolved := g.tc.resolved_call_name(id) or { '' }
+	target := g.call_target_name(g.a.child(&node, 0))
+	return resolved in ['json.encode', 'json__encode', 'json.encode_pretty', 'json__encode_pretty']
+		|| target in ['json.encode', 'json__encode', 'json.encode_pretty', 'json__encode_pretty']
+		|| (g.tc.cur_module == 'json' && target in ['encode', 'encode_pretty'])
 }
 
 fn (mut g FlatGen) preintern_json_encode_value_strings(typ types.Type, seen []string) {
@@ -9533,8 +9537,7 @@ fn (mut g FlatGen) prepare_json_encode_pointer_helpers() []JsonEncodePointerHelp
 		if node.kind != .call || node.children_count < 2 {
 			continue
 		}
-		resolved := g.tc.resolved_call_name(flat.NodeId(idx)) or { continue }
-		if resolved !in ['json.encode', 'json__encode', 'json.encode_pretty', 'json__encode_pretty'] {
+		if !g.is_legacy_json_encode_call(flat.NodeId(idx), node) {
 			continue
 		}
 		arg_id := g.a.child(&node, 1)
@@ -9569,8 +9572,7 @@ fn (mut g FlatGen) prepare_json_encode_sum_helpers() []JsonEncodeSumHelper {
 		if node.kind != .call || node.children_count < 2 {
 			continue
 		}
-		resolved := g.tc.resolved_call_name(flat.NodeId(idx)) or { continue }
-		if resolved !in ['json.encode', 'json__encode', 'json.encode_pretty', 'json__encode_pretty'] {
+		if !g.is_legacy_json_encode_call(flat.NodeId(idx), node) {
 			continue
 		}
 		arg_id := g.a.child(&node, 1)
