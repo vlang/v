@@ -250,7 +250,6 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 		return
 	}
 	expr_id := tc.a.child(stmt, 0)
-	expr := tc.a.node(expr_id)
 	has_embed_file_value := tc.expr_source_contains_embed_file(expr_id)
 	mut semantic_id := expr_id
 	mut semantic := tc.a.node(expr_id)
