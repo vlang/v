@@ -3611,17 +3611,23 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_
 
 fn (mut p Parser) validate_struct_embed(field_type string, start int, end int, placement_ok bool, attr_start int, mut embedded_types map[string]bool, mut embedded_names map[string]string) {
 	short_name := field_type.all_after_last('.')
-	if attr_start >= 0 {
-		p.record_diagnostic_span('cannot use attributes on embedded structs', attr_start,
-			attr_start + 1)
-	} else if !placement_ok {
-		p.record_diagnostic_span('struct embedding must be declared at the beginning of the struct body',
-			start, end)
-	} else if field_type in embedded_types {
-		p.record_diagnostic_span('cannot embed `${field_type}` more than once', start, end)
-	} else if previous_type := embedded_names[short_name] {
-		if previous_type != field_type {
-			p.record_diagnostic_span('duplicate field `${short_name}`', start, end)
+	line, _ := p.s.current_file().find_line_and_column(clamp_source_offset(start, p.s.src.len))
+	has_prior_line_diagnostic := p.diagnostics.any(it.file == p.cur_file && it.line == line)
+	// A malformed field can leave type fragments for recovery. Do not report those
+	// fragments as additional embedded fields on the same line.
+	if !has_prior_line_diagnostic {
+		if attr_start >= 0 {
+			p.record_diagnostic_span('cannot use attributes on embedded structs', attr_start,
+				attr_start + 1)
+		} else if !placement_ok {
+			p.record_diagnostic_span('struct embedding must be declared at the beginning of the struct body',
+				start, end)
+		} else if field_type in embedded_types {
+			p.record_diagnostic_span('cannot embed `${field_type}` more than once', start, end)
+		} else if previous_type := embedded_names[short_name] {
+			if previous_type != field_type {
+				p.record_diagnostic_span('duplicate field `${short_name}`', start, end)
+			}
 		}
 	}
 	embedded_types[field_type] = true
