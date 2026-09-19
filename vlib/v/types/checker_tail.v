@@ -13231,7 +13231,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				same_numeric_type := !call_arg_numeric_type(actual_base)
 					|| !call_arg_numeric_type(expected_base)
 					|| call_argument_type_name(actual_base) == call_argument_type_name(expected_base)
-				if !same_numeric_type || !tc.type_compatible(actual_base, expected_base) {
+				is_literal := tc.a.node(arg_id).kind == .float_literal
+				if is_literal || !same_numeric_type
+					|| !tc.type_compatible(actual_base, expected_base) {
 					argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
 					tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual_push)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 				}
@@ -13240,6 +13242,25 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.pop_scope()
 			}
 			continue
+		}
+		if is_channel_builtin_method_call_name(info.name, 'try_pop') && info.has_receiver
+			&& param_idx == 1 {
+			actual_pop := fn_param_unalias_type(tc.resolve_type(arg_id))
+			expected_pop := fn_param_unalias_type(expected)
+			if expected_pop is Pointer {
+				actual_base := if actual_pop is Pointer { actual_pop.base_type } else { actual_pop }
+				expected_base := expected_pop.base_type
+				same_numeric_type := !call_arg_numeric_type(actual_base)
+					|| !call_arg_numeric_type(expected_base)
+					|| call_argument_type_name(actual_base) == call_argument_type_name(expected_base)
+				if !same_numeric_type || !tc.type_compatible(actual_base, expected_base) {
+					tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual_base)}` as argument for `try_pop` (`${call_argument_type_name(expected_base)}` expected)', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+					if has_dsl_scope {
+						tc.pop_scope()
+					}
+					continue
+				}
+			}
 		}
 		mut_arg_node := tc.a.node(arg_id)
 		if expected !is Pointer && mut_arg_node.kind == .ident
