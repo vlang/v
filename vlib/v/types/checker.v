@@ -11648,7 +11648,10 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 		if child.kind == .comptime_for {
 			continue
 		}
-		explicit_decl_params := generic_param_map_from_names(node.generic_params())
+		mut explicit_decl_params := generic_param_map_from_names(node.generic_params())
+		if decl_generic_mentions_error && explicit_decl_params.len == 0 {
+			explicit_decl_params['@declaration'] = true
+		}
 		if !decl_generic_mentions_error
 			|| tc.unmentioned_generic_names_in_type(child.typ, explicit_decl_params).len == 0 {
 			tc.check_type_string_for_unsupported_generics(child.typ, child_id, generic_params)
@@ -11806,6 +11809,12 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 	}
 	explicit_names := node.generic_params()
 	explicit_params := generic_param_map_from_names(explicit_names)
+	mut mention_params := explicit_params.clone()
+	if explicit_names.len == 0 {
+		// A declaration signature is type-only context, so any unknown one-letter
+		// capital is an omitted generic parameter, not an expression identifier.
+		mention_params['@declaration'] = true
+	}
 	mut has_unmentioned := false
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
@@ -11814,13 +11823,13 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 		} else {
 			child.typ
 		}
-		if tc.unmentioned_generic_names_in_type(child_type, explicit_params).len > 0 {
+		if tc.unmentioned_generic_names_in_type(child_type, mention_params).len > 0 {
 			has_unmentioned = true
 		}
 		if node.kind == .interface_decl && child.op == .dot {
 			for j in 0 .. child.children_count {
 				param := tc.a.child_node(child, j)
-				if tc.unmentioned_generic_names_in_type(param.typ, explicit_params).len > 0 {
+				if tc.unmentioned_generic_names_in_type(param.typ, mention_params).len > 0 {
 					has_unmentioned = true
 				}
 			}
@@ -11831,6 +11840,15 @@ fn (mut tc TypeChecker) check_struct_or_interface_decl_generic_mentions(node_id 
 	}
 	kind := if node.kind == .struct_decl { 'struct' } else { 'interface' }
 	if explicit_names.len == 0 {
+		mut error_index := tc.errors.len
+		for error_index > 0 {
+			error_index--
+			diagnostic := tc.errors[error_index]
+			if diagnostic.kind == .unknown_type && diagnostic.pos.id == node.pos.id
+				&& diagnostic.pos.offset >= node.pos.offset && diagnostic.pos.end <= node.pos.end {
+				tc.errors.delete(error_index)
+			}
+		}
 		pos := if node.kind == .struct_decl {
 			tc.struct_declaration_name_pos(node)
 		} else {
