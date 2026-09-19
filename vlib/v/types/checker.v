@@ -14007,6 +14007,16 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 		}
 		field_type_raw := tc.parse_type(field_type_text)
 		field_type := unalias_type(field_type_raw)
+		if field_type_text.starts_with('?') {
+			alias_name := field_type_text[1..]
+			qualified_alias := tc.qualify_name(alias_name)
+			alias_target := tc.type_aliases[qualified_alias] or {
+				tc.type_aliases[alias_name] or { '' }
+			}
+			if alias_target.starts_with('?') {
+				tc.record_error_at(.assignment_mismatch, 'cannot use double options like `?${alias_target}`, `${field_type_text}` is a double option. use `${alias_name}` instead', field_id, tc.struct_field_type_pos(*field))
+			}
+		}
 		if field_type is OptionType {
 			recursive_type := unalias_type(field_type.base_type)
 			if recursive_type is Struct
