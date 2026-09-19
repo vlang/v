@@ -15,6 +15,14 @@ applied twice, and the replay's environment changes do not affect the actual ret
 If the replay produces no output, V reports that explicitly instead of silently
 omitting the diagnostic.
 
+V diagnostics use the compatibility compiler's colors: errors are red, notices are
+yellow, and warnings and conflicting declarations are magenta. Source locations,
+severity labels, and underlines are bold; the highlighted source span uses the
+severity's color. Diagnostic replay preserves the parent terminal's color support
+even though it captures the compiler output through a pipe. Use `-color` or `-nocolor`
+to override detection, or `VCOLORS=always` / `VCOLORS=never` to set its default.
+Redirected diagnostics remain plain unless colors are explicitly enabled.
+
 Diagnostic output does not depend on automatic bug reporting being enabled. It is
 shown before locating or launching the fallback, even when that fallback succeeds.
 A successful fallback still returns success, and unsuccessful retries retain their
