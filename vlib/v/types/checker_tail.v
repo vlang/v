@@ -12709,14 +12709,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		arg := tc.a.node(arg_id)
 		if !info.is_variadic && arg.kind == .call && arg_type is MultiReturn
 			&& !is_print_style_fn_name(info.name) {
-			if i < node.children_count - 1 {
-				expected_count := info.params.len - recv_extra
-				found_count := node.children_count - 1 - info.arg_offset
-				grammar := if expected_count == 1 { 'argument' } else { 'arguments' }
-				tc.record_error_at(.call_arg_mismatch, 'expected ${expected_count} ${grammar}, but got ${found_count}',
-					id, node.pos)
-				return
-			}
 			actual_count += arg_type.types.len - 1
 			logical_arg_count += arg_type.types.len - 1
 			expanded_multi_return_arg = true
