@@ -1464,6 +1464,16 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_nonliteral_comptime_method := a.msg == 'todo: not a string literal'
+	b_is_nonliteral_comptime_method := b.msg == 'todo: not a string literal'
+	a_is_empty_comptime_method := a.msg == 'could not find method ``'
+	b_is_empty_comptime_method := b.msg == 'could not find method ``'
+	if a.node == b.node && a_is_nonliteral_comptime_method && b_is_empty_comptime_method {
+		return -1
+	}
+	if a.node == b.node && b_is_nonliteral_comptime_method && a_is_empty_comptime_method {
+		return 1
+	}
 	a_is_c_js_generic_struct := a.msg.ends_with('structs cannot be declared as generic')
 	b_is_c_js_generic_struct := b.msg.ends_with('structs cannot be declared as generic')
 	a_is_c_js_generic_fn := a.msg.ends_with('functions cannot be declared as generic')
