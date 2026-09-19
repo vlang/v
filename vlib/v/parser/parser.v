@@ -7864,7 +7864,7 @@ fn (mut p Parser) for_comma_header(first_expr flat.NodeId, first_is_mut bool) fl
 		if lhs_ids.len != 2 {
 			return flat.empty_node
 		}
-		for_id := p.for_in_parts(first_expr, val_id, first_is_mut || second_is_mut)
+		for_id := p.for_in_parts(first_expr, val_id, first_is_mut, second_is_mut)
 		p.record_formatter_for_in_mutability(for_id, first_is_mut, second_is_mut)
 		if !p.for_in_var_is_ident(first_expr) || !p.for_in_var_is_ident(val_id) {
 			return p.invalid_for_in_header(for_id)
@@ -8072,7 +8072,7 @@ fn (mut p Parser) for_in(first_expr flat.NodeId, first_is_mut bool) flat.NodeId 
 		val_id = p.add_val(.ident, p.expect_name())
 	}
 
-	for_id := p.for_in_parts(key_id, val_id, first_is_mut || second_is_mut)
+	for_id := p.for_in_parts(key_id, val_id, first_is_mut, second_is_mut)
 	p.record_formatter_for_in_mutability(for_id, first_is_mut, second_is_mut)
 	return for_id
 }
@@ -8093,7 +8093,7 @@ fn (mut p Parser) record_formatter_for_in_mutability(id flat.NodeId, first_is_mu
 	}
 }
 
-fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, value_is_mut bool) flat.NodeId {
+fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, first_is_mut bool, second_is_mut bool) flat.NodeId {
 	p.check(.key_in)
 	was_in_for_container := p.in_for_container
 	p.in_for_container = true
@@ -8109,6 +8109,28 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, value_is_
 		p.record_diagnostic_span('for loop only supports exclusive (`..`) ranges, not inclusive (`...`)', p.tok_pos, p.tok_end)
 		p.next()
 		range_end = p.expr(.lowest)
+	}
+
+	is_range := int(range_end) >= 0 || p.a.node(container).kind == .range
+	if is_range {
+		if first_is_mut {
+			p.record_for_mut_diagnostic(key_id, 'variable in range `for` cannot be mut')
+		} else if second_is_mut {
+			p.record_for_mut_diagnostic(val_id, 'variable in range `for` cannot be mut')
+		} else if int(val_id) >= 0 {
+			key := p.a.node(key_id)
+			p.record_diagnostic_span('cannot declare index variable with range `for`', key.pos.offset,
+				key.pos.end)
+		}
+	} else if int(val_id) >= 0 && first_is_mut {
+		p.record_for_mut_diagnostic(key_id, 'index of array or key of map cannot be mutated')
+	}
+	if int(val_id) < 0 {
+		key := p.a.node(key_id)
+		if key.kind == .ident && key.value != '_' && p.is_local_binding(key.value) {
+			p.record_diagnostic_span('redefinition of value iteration variable `${key.value}`, use `for (${key.value} in array) {` if you want to check for a condition instead',
+				key.pos.offset, key.pos.end)
+		}
 	}
 
 	// The key/value loop variables are locals scoped to the loop body.
@@ -8136,8 +8158,27 @@ fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, value_is_
 		// value field stores the count of header elements (key, val, container, [range_end])
 		// so gen knows where body starts
 		value:          if int(range_end) >= 0 { '4' } else { '3' }
-		op:             if value_is_mut { .amp } else { .none }
+		op:             if first_is_mut || second_is_mut { .amp } else { .none }
 	})
+}
+
+fn (mut p Parser) record_for_mut_diagnostic(id flat.NodeId, message string) {
+	variable := p.a.node(id)
+	mut word_end := variable.pos.offset
+	mut i := word_end - 1
+	for i >= 0 && p.s.src[i] in [` `, `\t`, `\n`, `\r`] {
+		i--
+	}
+	word_end = i + 1
+	for i >= 0 && p.s.src[i] >= `a` && p.s.src[i] <= `z` {
+		i--
+	}
+	word_start := i + 1
+	if word_start < word_end && p.s.src[word_start..word_end] == 'mut' {
+		p.record_diagnostic_span(message, word_start, word_end)
+		return
+	}
+	p.record_diagnostic_span(message, variable.pos.offset, variable.pos.end)
 }
 
 fn (mut p Parser) match_stmt() flat.NodeId {
