@@ -14627,7 +14627,11 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			'(string){"${c_escape(type_name)}", ${type_name.len}, 1}'
 		}
 		.sizeof_expr {
-			'sizeof(${g.sizeof_target(node.value)})'
+			if node.children_count > 0 {
+				'sizeof(${g.const_expr_to_string(g.a.child(&node, 0), seen)})'
+			} else {
+				'sizeof(${g.sizeof_target(node.value)})'
+			}
 		}
 		.int_literal, .float_literal, .bool_literal, .char_literal, .enum_val {
 			g.expr_to_string(id)
@@ -16596,7 +16600,13 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.sizeof_expr {
-			g.write('sizeof(${g.sizeof_target_in_file(node.value, g.node_source_file(node))})')
+			if node.children_count > 0 {
+				g.write('sizeof(')
+				g.gen_expr(g.a.child(&node, 0))
+				g.write(')')
+			} else {
+				g.write('sizeof(${g.sizeof_target_in_file(node.value, g.node_source_file(node))})')
+			}
 		}
 		.typeof_expr {
 			g.gen_typeof_name(node)

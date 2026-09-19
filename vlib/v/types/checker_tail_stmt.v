@@ -415,6 +415,12 @@ fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, seman
 			return token.new_span(pos.id, embed_pos.offset, pos.end)
 		}
 	}
+	if lhs.kind == .sizeof_expr && lhs.children_count > 0 {
+		if embed_id := tc.nested_embed_file_value(lhs_id) {
+			embed_pos := tc.a.node(embed_id).pos
+			return token.new_span(pos.id, embed_pos.offset, pos.end)
+		}
+	}
 	return pos
 }
 

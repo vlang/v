@@ -13969,6 +13969,16 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	p.check(.lpar)
+	if !p.can_start_type_name() {
+		inner := p.expr(.lowest)
+		p.check(.rpar)
+		return p.a.add_node(flat.Node{
+			kind:           .sizeof_expr
+			children_start: p.add_child(inner)
+			children_count: 1
+			pos:            p.span_to(sizeof_start)
+		})
+	}
 	if p.prefs.is_fmt && !p.can_start_type_name() {
 		mut depth := 1
 		for depth > 0 && p.tok != .eof {

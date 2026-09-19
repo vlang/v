@@ -1906,6 +1906,10 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		return
 	}
 	if node.kind == .sizeof_expr {
+		if node.children_count > 0 {
+			tc.check_node(tc.a.child(&node, 0))
+			return
+		}
 		if should_check_named_type(node.value) && !tc.type_name_known(node.value)
 			&& !tc.sizeof_value_selector_known(node.value)
 			&& !tc.sizeof_is_comptime_reflection_var(id, node.value) {
