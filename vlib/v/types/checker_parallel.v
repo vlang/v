@@ -1668,6 +1668,14 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if b_is_print_void && a_is_undefined_ident {
 		return 1
 	}
+	a_is_unknown_asm_register := a.msg.starts_with('unknown register `')
+		|| a.msg.starts_with('unknown clobbered register `')
+	b_is_unknown_asm_register := b.msg.starts_with('unknown register `')
+		|| b.msg.starts_with('unknown clobbered register `')
+	if a.node == b.node && a_is_unknown_asm_register && b_is_unknown_asm_register
+		&& a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
 	if a.node == b.node {
 		a_is_nonconstant_array_bound := a.msg.starts_with('non-constant array bound `')
 		b_is_nonconstant_array_bound := b.msg.starts_with('non-constant array bound `')
