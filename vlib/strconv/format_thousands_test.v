@@ -28,6 +28,14 @@ fn test_add_thousands_sep_decimal() {
 	}) == '1.234.567,89'
 }
 
+fn test_add_thousands_sep_exponent() {
+	assert add_thousands_sep('1e+06', ' ') == '1e+06'
+	assert add_thousands_sep('-1234567.89E-03', Separator{
+		integer: ','
+		decimal: ','
+	}) == '-1,234,567,89E-03'
+}
+
 fn test_add_thousands_sep_custom_sep() {
 	assert add_thousands_sep('1000000', ',') == '1,000,000'
 	assert add_thousands_sep('1000000', '.') == '1.000.000'
@@ -47,4 +55,9 @@ fn test_format_thousands() {
 	assert format_thousands(100, Separator{}) == '100'
 	assert format_thousands(0, Separator{}) == '0'
 	assert format_thousands(i64(-9223372036854775807 - 1), Separator{}) == '-9 223 372 036 854 775 808'
+	assert format_thousands(f32(1234567.5), Separator{}) == '1 234 567.5'
+	assert format_thousands(f64(1234567.89), Separator{
+		integer: '.'
+		decimal: ','
+	}) == '1.234.567,89'
 }

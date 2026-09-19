@@ -81,6 +81,15 @@ pub fn add_thousands_sep(s string, sep SeparatorOptions) string {
 		rest = rest[1..]
 	}
 
+	mut exponent := ''
+	for i := 0; i < rest.len; i++ {
+		if rest[i] == `e` || rest[i] == `E` {
+			exponent = rest[i..]
+			rest = rest[..i]
+			break
+		}
+	}
+
 	dot := rest.index_u8(`.`)
 	mut int_part := rest
 	mut frac_part := ''
@@ -96,7 +105,7 @@ pub fn add_thousands_sep(s string, sep SeparatorOptions) string {
 		}
 	}
 
-	return sign + insert_thousands_sep(int_part, separator.integer) + frac_part
+	return sign + insert_thousands_sep(int_part, separator.integer) + frac_part + exponent
 }
 
 // format_thousands returns the base-10 representation of `number`, inserting
@@ -129,7 +138,9 @@ pub fn format_thousands[T](number T, sep SeparatorOptions) string {
 		}
 	}
 
-	$if T is f64 {
+	$if js {
+		return add_thousands_sep(number.str(), separator)
+	} $else $if T is f64 {
 		return add_thousands_sep(f64_to_str_l_with_dot(number), separator)
 	} $else $if T is f32 {
 		return add_thousands_sep(f32_to_str_l(number), separator)
