@@ -3326,6 +3326,17 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	generic_base, generic_args, has_generic_args := generic_type_application_parts(init_type_text)
 	if has_generic_args {
 		qualified_base := tc.qualify_name(generic_base)
+		for arg in generic_args {
+			if unalias_type(tc.parse_type(arg)) is MultiReturn {
+				tc.record_error_at(.unsupported_generic, 'cannot use multi return as generic concrete type',
+					id, tc.type_diagnostic_pos(id, arg))
+				tc.register_synth_type(id, tc.parse_type(generic_base))
+				for i in 0 .. node.children_count {
+					tc.check_node(tc.a.child(&node, i))
+				}
+				return
+			}
+		}
 		if (generic_base in tc.structs || qualified_base in tc.structs)
 			&& generic_base !in tc.struct_generic_params && qualified_base !in tc.struct_generic_params {
 			if generic_args.any(is_bare_generic_param(it)) {
