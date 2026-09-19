@@ -12495,10 +12495,29 @@ fn (mut tc TypeChecker) check_c_callback_abi_args(id flat.NodeId, node flat.Node
 			// A resolvable named function is adapted by a generated thunk.
 			continue
 		}
+		if tc.direct_fn_literal_expr(arg_id) {
+			// A direct literal is lowered to an owned closure whose generated target
+			// can be replaced with the same ABI adapter without losing its captures.
+			continue
+		}
 		if tc.should_diagnose(id) {
 			tc.record_error(.call_arg_mismatch, 'cannot pass a forwarded function value with an `int` parameter/return to the C callback of `${info.name}`: a C callback receives a 32-bit `int` but the V function expects 64-bit, and a function-pointer cast cannot adapt that; pass a named function directly, or declare the callback with `i32`', arg_id)
 		}
 	}
+}
+
+fn (tc &TypeChecker) direct_fn_literal_expr(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return true
+	}
+	if node.kind in [.cast_expr, .paren, .expr_stmt] && node.children_count > 0 {
+		return tc.direct_fn_literal_expr(tc.a.child(node, 0))
+	}
+	return false
 }
 
 fn fn_type_has_platform_int(t FnType) bool {

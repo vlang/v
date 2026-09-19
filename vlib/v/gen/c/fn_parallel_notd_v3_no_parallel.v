@@ -2890,6 +2890,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		callback_wrapper_defs:              g.callback_wrapper_defs.clone()
 		callback_wrapper_defs_seen:         g.callback_wrapper_defs_seen.clone()
 		callback_identity_used:             g.callback_identity_used
+		callback_target_overrides:          map[int]string{}
 		c_extern_refs:                      g.c_extern_refs.clone()
 		c_extern_refs_ready:                g.c_extern_refs_ready
 		scope_parallel_workers:             g.scope_parallel_workers

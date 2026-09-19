@@ -322,6 +322,7 @@ mut:
 	show_test_file_results         bool
 	test_run_only                  []string
 	assert_expr_overrides          map[int]string
+	callback_target_overrides      map[int]string
 	print_fn_names                 []string
 	profile_file                   string
 	profile_no_inline              bool
@@ -1306,6 +1307,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_defers:                          []flat.NodeId{}
 		fn_defer_counts:                    map[int]string{}
 		assert_expr_overrides:              map[int]string{}
+		callback_target_overrides:          map[int]string{}
 		defer_capture_names:                []string{}
 		defer_capture_types:                map[string]types.Type{}
 		const_runtime_inits:                []string{}
@@ -14955,6 +14957,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	}
 	if g.assert_expr_overrides.len > 0 {
 		if replacement := g.assert_expr_overrides[int(id)] {
+			g.write(replacement)
+			return
+		}
+	}
+	if g.callback_target_overrides.len > 0 {
+		if replacement := g.callback_target_overrides[int(id)] {
 			g.write(replacement)
 			return
 		}

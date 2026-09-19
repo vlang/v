@@ -3219,7 +3219,9 @@ fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_i
 	clean_name := fn_name.trim_string_left('C.').all_after_last('.')
 	if clean_name == 'mbedtls_ssl_conf_sni' && arg_idx == 1 {
 		g.write('(int (*)(void *, mbedtls_ssl_context *, const unsigned char *, size_t))')
-		g.gen_expr(arg_id)
+		if !g.gen_c_callback_closure_abi_adapter(arg_id, expected_param, false) {
+			g.gen_expr(arg_id)
+		}
 		return true
 	}
 	// Only convert to `(void*)` for an actual C-callback slot. A V `fn (...) ...`
@@ -7934,6 +7936,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					emitted_callee_name,
 				])
 				if g.gen_special_c_callback_arg(target_name, arg_idx, arg_id, cb_param) {
+					continue
+				}
+				if is_c_call
+					&& g.gen_c_callback_closure_abi_adapter(arg_id, cb_param, true) {
 					continue
 				}
 				if is_c_call
@@ -13640,6 +13646,73 @@ fn (mut g FlatGen) c_call_callback_abi_thunk(arg_id flat.NodeId, expected types.
 	return g.ensure_callback_userdata_wrapper(actual_name, actual_fn, expected_fn, encoded)
 }
 
+struct CallbackClosureTarget {
+	id   flat.NodeId
+	name string
+}
+
+fn (g &FlatGen) callback_closure_target(id flat.NodeId) ?CallbackClosureTarget {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind in [.cast_expr, .paren, .expr_stmt] && node.children_count > 0 {
+		return g.callback_closure_target(g.a.child(&node, 0))
+	}
+	if node.kind != .call || node.children_count != 4 {
+		return none
+	}
+	callee := g.call_target_name(g.a.child(&node, 0))
+	resolved := g.tc.resolved_call_name(id) or { '' }
+	if callee !in ['closure.closure_create_with_data', 'closure__closure_create_with_data']
+		&& resolved !in ['closure.closure_create_with_data', 'closure__closure_create_with_data'] {
+		return none
+	}
+	mut target_id := g.a.child(&node, 1)
+	for _ in 0 .. 4 {
+		target := g.a.nodes[int(target_id)]
+		if target.kind !in [.cast_expr, .paren, .expr_stmt] || target.children_count == 0 {
+			break
+		}
+		target_id = g.a.child(&target, 0)
+	}
+	target := g.a.nodes[int(target_id)]
+	if target.kind != .ident || !target.value.contains('__anon_fn_') {
+		return none
+	}
+	return CallbackClosureTarget{
+		id:   target_id
+		name: target.value
+	}
+}
+
+// gen_c_callback_closure_abi_adapter preserves a direct literal's capture context
+// while replacing its generated target with a C-ABI adapter. The executable closure
+// still carries the original context; only its jump target changes.
+fn (mut g FlatGen) gen_c_callback_closure_abi_adapter(arg_id flat.NodeId, expected types.Type, emit_cast bool) bool {
+	expected_fn := fn_type_from(expected) or { return false }
+	target := g.callback_closure_target(arg_id) or { return false }
+	actual_fn := g.callback_fn_value_type(target.name) or { return false }
+	encoded := g.c_extern_fn_ptr_encoded_for_type(expected, expected_fn)
+	wrapper := g.ensure_callback_userdata_wrapper(target.name, actual_fn, expected_fn, encoded) or {
+		return false
+	}
+	if emit_cast {
+		mut expected_ct := encoded
+		if expected_ct.starts_with('fn_ptr:') {
+			expected_ct = g.resolve_fn_ptr_type(expected_ct)
+		}
+		g.write('(${expected_ct})(')
+	}
+	g.callback_target_overrides[int(target.id)] = wrapper
+	g.gen_expr(arg_id)
+	g.callback_target_overrides.delete(int(target.id))
+	if emit_cast {
+		g.write(')')
+	}
+	return true
+}
+
 fn (mut g FlatGen) gen_callback_fn_value_for_field_c_abi(arg_id flat.NodeId, expected types.Type, expected_c_abi string) bool {
 	if expected_c_abi.len == 0 {
 		return false
@@ -16033,6 +16106,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			}
 		}
 		if is_c_call && g.gen_special_c_callback_arg(fn_name, arg_idx, arg_id, cb_param) {
+			continue
+		}
+		if is_c_call && g.gen_c_callback_closure_abi_adapter(arg_id, cb_param, true) {
 			continue
 		}
 		if is_c_call {
