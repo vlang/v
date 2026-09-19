@@ -11583,7 +11583,15 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 		invalid_generic_struct_alias = tc.check_type_alias_generic_struct_application(node_id, node)
 		if imported_name := tc.selective_imported_builtin_in_type(node.typ) {
 			base := 'unknown type `${imported_name}`'
-			message := util.new_suggestion(imported_name, tc.known_type_name_candidates()).say(base)
+			mut candidates := tc.known_type_name_candidates()
+			if imported_name.contains('.') {
+				module_prefix := imported_name.all_before_last('.') + '.'
+				module_candidates := candidates.filter(it.starts_with(module_prefix))
+				if module_candidates.len > 0 {
+					candidates = module_candidates
+				}
+			}
+			message := util.new_suggestion(imported_name, candidates).say(base)
 			tc.record_error_at(.unknown_type, message, node_id, tc.type_diagnostic_pos(node_id, node.typ.trim_space()))
 		}
 		alias_name := node.typ.trim_space()
@@ -13329,12 +13337,19 @@ fn (tc &TypeChecker) unknown_type_message(name string, node_id flat.NodeId) stri
 		}
 	}
 	contextual_candidates := tc.contextual_generic_sum_type_candidates(node_id)
-	candidates := if contextual_candidates.len > 0 {
+	mut candidates := if contextual_candidates.len > 0 {
 		contextual_candidates
 	} else {
 		tc.known_type_name_candidates()
 	}
-	message := util.new_suggestion(name, candidates).say(base)
+	if display_name.contains('.') {
+		module_prefix := display_name.all_before_last('.') + '.'
+		module_candidates := candidates.filter(it.starts_with(module_prefix))
+		if module_candidates.len > 0 {
+			candidates = module_candidates
+		}
+	}
+	message := util.new_suggestion(display_name, candidates).say(base)
 	if message != base || int(node_id) < 0 || int(node_id) >= tc.a.nodes.len {
 		return message
 	}
