@@ -524,7 +524,7 @@ fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback
 	node := p.a.node(id)
 	if node.kind == .block {
 		for i in 0 .. node.children_count {
-			child_id := p.a.child(&node, i)
+			child_id := p.a.child(node, i)
 			child := p.a.node(child_id)
 			child_start := if child.pos.is_valid() { int(child.pos.offset) } else { fallback_start }
 			child_end := if child.pos.is_valid() { int(child.pos.end) } else { fallback_end }
