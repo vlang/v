@@ -251,6 +251,7 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	}
 	expr_id := tc.a.child(stmt, 0)
 	expr := tc.a.node(expr_id)
+	has_embed_file_value := tc.expr_source_contains_embed_file(expr_id)
 	mut semantic_id := expr_id
 	mut semantic := tc.a.node(expr_id)
 	for semantic.kind == .paren && semantic.children_count == 1 {
@@ -262,7 +263,7 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 		semantic_id = inner_id
 		semantic = inner
 	}
-	if tc.errors.any(it.node == expr_id || it.node == semantic_id) {
+	if tc.errors.any(it.node == expr_id || it.node == semantic_id) && !has_embed_file_value {
 		return
 	}
 	if tc.expression_node_used_as_value(expr_id) {
@@ -286,7 +287,7 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 		return
 	}
 	if semantic.kind == .selector && semantic.children_count > 0 {
-		if tc.resolve_type(tc.a.child(semantic, 0)) is Void {
+		if tc.resolve_type(tc.a.child(semantic, 0)) is Void && !has_embed_file_value {
 			return
 		}
 	}
@@ -313,7 +314,7 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 	if semantic.kind == .infix && semantic.op in [.left_shift, .right_shift, .right_shift_unsigned] {
 		return
 	}
-	if tc.resolve_type(expr_id) is Void {
+	if tc.resolve_type(expr_id) is Void && !has_embed_file_value {
 		return
 	}
 	if semantic.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
@@ -329,20 +330,90 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 			semantic.pos)
 		return
 	}
+	pos := tc.unused_expression_diagnostic_pos(expr_id, semantic_id, *semantic,
+		has_embed_file_value)
+	tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id, pos)
+}
+
+fn (tc &TypeChecker) expr_source_contains_embed_file(id flat.NodeId) bool {
+	return tc.source_text_for_node(id).contains('$embed_file')
+}
+
+fn (tc &TypeChecker) nested_embed_file_value(id flat.NodeId) ?flat.NodeId {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	mut pending := [id]
+	mut index := 0
+	for index < pending.len && index < 512 {
+		current_id := pending[index]
+		index++
+		current := tc.a.node(current_id)
+		if current.kind == .struct_init && current.value == 'embed_file.EmbedFileData' {
+			return current_id
+		}
+		pending << tc.a.children_of(current)
+	}
+	return none
+}
+
+fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, semantic_id flat.NodeId, semantic flat.Node,
+	has_embed_file_value bool) token.Pos {
 	mut pos := if expr_id == semantic_id && semantic.kind == .selector {
 		tc.selector_field_diagnostic_pos(semantic_id, semantic.value)
 	} else {
-		expr.pos
+		tc.a.node(expr_id).pos
 	}
-	if expr_id == semantic_id && semantic.kind == .infix && semantic.children_count > 0 {
-		lhs_id := tc.a.child(semantic, 0)
-		lhs := tc.a.node(lhs_id)
-		if lhs.kind == .selector {
-			start := tc.node_value_diagnostic_pos(lhs_id)
-			pos = token.new_span(pos.id, start.offset, pos.end)
+	if expr_id != semantic_id || !has_embed_file_value {
+		return pos
+	}
+	expr_source := tc.source_text_for_node(expr_id)
+	if expr_source.starts_with('.') && pos.offset < pos.end {
+		return token.new_span(pos.id, pos.offset + 1, pos.end)
+	}
+	if semantic.kind == .selector && semantic.children_count > 0 {
+		base_id := tc.a.child(&semantic, 0)
+		mut base := tc.a.node(base_id)
+		for base.kind == .paren && base.children_count == 1 {
+			base = tc.a.child_node(base, 0)
+		}
+		if base.kind in [.or_expr, .lock_expr] {
+			if embed_id := tc.nested_embed_file_value(base_id) {
+				return tc.a.node(embed_id).pos
+			}
 		}
 	}
-	tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id, pos)
+	if semantic.kind != .infix || semantic.children_count < 2 {
+		return pos
+	}
+	lhs_id := tc.a.child(&semantic, 0)
+	rhs_id := tc.a.child(&semantic, 1)
+	lhs := tc.a.node(lhs_id)
+	rhs := tc.a.node(rhs_id)
+	if rhs.kind == .selector && rhs.children_count > 0 {
+		rhs_base := tc.a.child_node(rhs, 0)
+		if rhs_base.kind == .call && rhs_base.children_count > 0
+			&& tc.a.child_node(rhs_base, 0).kind == .fn_literal {
+			return tc.selector_field_diagnostic_pos(rhs_id, rhs.value)
+		}
+	}
+	if lhs.kind == .selector {
+		start := tc.selector_field_diagnostic_pos(lhs_id, lhs.value)
+		return token.new_span(pos.id, start.offset, pos.end)
+	}
+	if lhs.kind == .or_expr {
+		if embed_id := tc.nested_embed_file_value(lhs_id) {
+			return tc.a.node(embed_id).pos
+		}
+	}
+	if lhs.kind == .call && lhs.children_count > 0
+		&& tc.a.child_node(lhs, 0).value == '__v3_isreftype' {
+		if embed_id := tc.nested_embed_file_value(lhs_id) {
+			embed_pos := tc.a.node(embed_id).pos
+			return token.new_span(pos.id, embed_pos.offset, pos.end)
+		}
+	}
+	return pos
 }
 
 fn (tc &TypeChecker) unused_literal_has_trailing_token(stmt flat.Node, expr flat.Node) bool {
