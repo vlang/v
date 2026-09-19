@@ -6015,11 +6015,6 @@ fn is_import_ident_byte(ch u8) bool {
 
 fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node) bool {
 	mut selective_names := []string{cap: int(import_node.children_count)}
-	import_file := if file := tc.a.source_files[import_node.pos.id] {
-		file.name
-	} else {
-		tc.cur_file
-	}
 	for i in 0 .. import_node.children_count {
 		child := tc.a.child_node(&import_node, i)
 		if child.kind == .ident {
@@ -6047,7 +6042,9 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			}
 		}
 		if type_text_contains_qualified_import(node.typ, import_node.typ)
-			|| type_text_contains_qualified_import(node.value, import_node.typ) {
+			|| type_text_contains_qualified_import(node.value, import_node.typ)
+			|| type_text_contains_qualified_import(node.typ, import_node.value)
+			|| type_text_contains_qualified_import(node.value, import_node.value) {
 			return true
 		}
 		if selective_names.len == 0 {
@@ -6067,14 +6064,9 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			}
 		}
 		for name in selective_names {
-			if !type_text_contains_symbol(node.typ, name)
-				&& !type_text_contains_symbol(node.value, name) {
-				continue
-			}
-			if resolved := tc.resolve_selective_import_type_symbol_in_file(name, import_file) {
-				if resolved == '${import_node.value}.${name}' {
-					return true
-				}
+			if type_text_contains_symbol(node.typ, name)
+				|| type_text_contains_symbol(node.value, name) {
+				return true
 			}
 		}
 	}
