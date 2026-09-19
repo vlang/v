@@ -487,7 +487,7 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	}
 	clean_rhs := unalias_type(rhs_type)
 	clean_expected := unalias_type(expected_type)
-	if op == .assign && clean_rhs.name() == 'int' && clean_expected.is_float() {
+	if op == .assign && clean_rhs.name() == 'int' && clean_expected.name() == 'f64' {
 		return true
 	}
 	if op == .assign && clean_rhs.is_integer() && clean_expected.is_float()
