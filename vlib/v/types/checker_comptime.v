@@ -11142,7 +11142,7 @@ fn (tc &TypeChecker) is_top_level_discarded_fn_signature(id flat.NodeId) bool {
 		}
 		parent := tc.a.node(parent_id)
 		if parent.kind in [.assign, .decl_assign] && parent.children_count >= 2 {
-			lhs := tc.a.child_node(&parent, 0)
+			lhs := tc.a.child_node(parent, 0)
 			is_discard_assignment = lhs.kind == .ident && lhs.value == '_'
 		}
 		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {

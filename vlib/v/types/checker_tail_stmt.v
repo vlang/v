@@ -932,7 +932,7 @@ fn (mut tc TypeChecker) check_for_condition(cond_id flat.NodeId, _node flat.Node
 	condition := tc.a.node(cond_id)
 	if _node.value == 'c_style' && condition.kind == .postfix
 		&& condition.op in [.inc, .dec] && condition.children_count > 0 {
-		child_id := tc.a.child(&condition, 0)
+		child_id := tc.a.child(condition, 0)
 		tc.check_node(child_id)
 		op := if condition.op == .inc { '++' } else { '--' }
 		source := tc.source_text_for_node(cond_id)
