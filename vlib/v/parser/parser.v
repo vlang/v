@@ -1502,6 +1502,15 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.disable_fn_body = false
 	// generic params — skip
 	mut generic_params := []string{}
+	if p.tok == .lt {
+		p.record_diagnostic_span('unexpected token `<`, expecting `(`', p.tok_pos, p.tok_end)
+		for p.tok !in [.gt, .eof] {
+			p.next()
+		}
+		if p.tok == .gt {
+			p.next()
+		}
+	}
 	if p.tok == .lsbr {
 		generic_params = p.parse_generic_param_names()
 	}
@@ -1538,6 +1547,13 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	if p.can_start_type_name() {
 		ret_type = p.parse_type_name()
 		ret_type = p.validate_fn_return_type(ret_type, ret_type_start)
+		for generic_name in generic_params {
+			if ret_type == '[${generic_name}]' {
+				p.record_diagnostic_span('invalid generic return, use `${generic_name}` instead',
+					ret_type_start, p.prev_tok_end)
+				break
+			}
+		}
 		p.record_inline_sum_return_type_diagnostic(ret_type, ret_type_start)
 		if p.tok == .question {
 			ret_type += '?'
@@ -2756,6 +2772,7 @@ fn (mut p Parser) enabled_enum_comptime_fields() []flat.NodeId {
 }
 
 fn (mut p Parser) type_decl() flat.NodeId {
+	decl_start := p.span_start()
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	p.next() // skip 'type'
@@ -2773,6 +2790,10 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	mut generic_params := []string{}
 	if p.tok == .lsbr {
 		generic_params = p.parse_generic_param_names()
+		if generic_params.len > 0 {
+			p.record_diagnostic_span('generic type aliases are not yet implemented', decl_start,
+				p.prev_tok_end)
+		}
 	}
 	p.expect(.assign)
 	type_start := p.span_start()
@@ -2868,6 +2889,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			field_name += '.' + p.expect_name_or_keyword()
 		}
 		mut method_generic_params := []string{}
+		method_generic_start := p.tok_pos
 		if p.tok == .lsbr && p.peek() in [.name, .xor] {
 			if p.peek() == .xor {
 				// Compiler parsing erases interface method lifetimes; formatter parsing keeps
@@ -2881,6 +2903,10 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				// the focused interface-method diagnostic instead of parser cascades.
 				method_generic_params = p.parse_generic_param_names()
 			}
+		}
+		if generic_params.len == 0 && method_generic_params.len > 0 {
+			p.record_diagnostic_span('non-generic interface `${name}` cannot define a generic method',
+				method_generic_start, method_generic_start + 1)
 		}
 		if p.tok != .lpar && method_generic_params.len > 0 {
 			field_name += '[${method_generic_params.join(', ')}]'
@@ -6391,7 +6417,21 @@ fn (mut p Parser) parse_generic_param_names() []string {
 				}
 				expect_name = false
 			} else if expect_name && p.tok == .name {
-				names << p.lit
+				name := p.lit
+				if name in names {
+					p.record_diagnostic_span('duplicated generic parameter `${name}`', p.tok_pos,
+						p.tok_end)
+				} else if names.len >= 9 {
+					p.record_diagnostic_span('cannot have more than 9 generic parameters', p.tok_pos,
+						p.tok_end)
+				} else if name.len != 1 {
+					p.record_diagnostic_span('generic parameter name needs to be exactly one char',
+						p.tok_pos, p.tok_end)
+				} else if name[0] >= `a` && name[0] <= `z` {
+					p.record_diagnostic_span('generic parameter needs to be uppercase', p.tok_pos,
+						p.tok_end)
+				}
+				names << name
 				expect_name = false
 			} else {
 				expect_name = false
