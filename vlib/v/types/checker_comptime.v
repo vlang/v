@@ -7039,9 +7039,6 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		&& rhs_clean !is ResultType {
 		payload := lhs_clean.base_type
 		compatible := tc.type_compatible(rhs_type, payload)
-		if type_is_string_like(payload) || type_is_string_like(rhs_type) {
-			tc.record_error(.assignment_mismatch, 'operator `+` cannot concatenate `${lhs_type.name()}` and `${rhs_type.name()}`', id)
-		}
 		if !compatible || type_is_string_like(payload) || type_is_string_like(rhs_type) {
 			tc.record_error(.assignment_mismatch, 'mismatched types `${lhs_type.name()}` and `${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}`', id)
 		}
@@ -7056,9 +7053,6 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		&& lhs_clean !is ResultType {
 		payload := rhs_clean.base_type
 		compatible := tc.type_compatible(lhs_type, payload)
-		if type_is_string_like(payload) || type_is_string_like(lhs_type) {
-			tc.record_error(.assignment_mismatch, 'operator `+` cannot concatenate `${lhs_type.name()}` and `${rhs_type.name()}`', id)
-		}
 		if !compatible || type_is_string_like(payload) || type_is_string_like(lhs_type) {
 			tc.record_error(.assignment_mismatch, 'mismatched types `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}` and `${rhs_type.name()}`', id)
 		}
