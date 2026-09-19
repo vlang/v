@@ -4148,7 +4148,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.assignment_mismatch, 'cannot cast `none` to `${target_name}`', id, node.pos)
 		return
 	}
-	if actual is OptionType && target !is OptionType {
+	if actual is OptionType && target !is OptionType && target !is Alias {
 		tc.record_error_at(.assignment_mismatch, 'cannot type cast an Option', id, node.pos)
 		return
 	}
