@@ -4616,7 +4616,10 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 		if field_type !is Struct || field.children_count > 0 {
 			continue
 		}
-		if !is_embed && field.value in supplied {
+		if field.value in supplied {
+			// An explicitly initialized field is checked on its own, and an embedded
+			// struct literal reports its own missing reference fields. Re-checking the
+			// embedded struct here would duplicate those diagnostics at the outer literal.
 			continue
 		}
 		child_supplied := if is_embed {
@@ -4669,7 +4672,10 @@ fn (tc &TypeChecker) missing_required_struct_fields(struct_name string, supplied
 		if field_type !is Struct || field.children_count > 0 {
 			continue
 		}
-		if !is_embed && field.value in supplied {
+		if field.value in supplied {
+			// An explicitly initialized field is checked on its own, and an embedded
+			// struct literal reports its own missing required fields. Re-checking the
+			// embedded struct here would duplicate those diagnostics at the outer literal.
 			continue
 		}
 		child_supplied := if is_embed {
