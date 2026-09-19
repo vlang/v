@@ -413,6 +413,9 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.next()
 
 	mut ids := []flat.NodeId{}
+	mut script_start := -1
+	mut script_start_end := -1
+	mut has_main_fn := false
 	for p.tok != .eof && !p.diagnostic_limit_reached {
 		if p.tok == .semicolon {
 			p.next()
@@ -444,12 +447,44 @@ pub fn (mut p Parser) parse_into(path string) {
 			}
 			continue
 		}
+		stmt_start := p.tok_pos
+		stmt_end := p.tok_end
 		id := p.top_level_stmt()
 		if expansion := p.expand_veb_template_stmt(id) {
 			ids << expansion
 			continue
 		}
 		if int(id) >= 0 {
+			node := p.a.node(id)
+			is_definition := node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .enum_decl,
+				.interface_decl, .type_decl, .const_decl, .global_decl]
+			is_script_statement := node.kind !in [.empty, .import_decl, .module_decl, .directive,
+				.comptime_if]
+				&& !is_definition
+			if p.cur_module.len > 0 {
+				ids << id
+				continue
+			}
+			if is_definition {
+				if script_start >= 0 {
+					p.record_notice_span('script mode started here', script_start, script_start_end)
+					def_start, def_end := p.script_definition_diagnostic_span(node, stmt_start,
+						stmt_end)
+					p.record_diagnostic_span('all definitions must occur before code in script mode',
+						def_start, def_end)
+				}
+				if node.kind == .fn_decl && node.value == 'main' {
+					has_main_fn = true
+				}
+			} else if is_script_statement {
+				if has_main_fn {
+					p.record_diagnostic_span('function `main` is already defined, put your script statements inside it',
+						stmt_start, stmt_end)
+				} else if script_start < 0 {
+					script_start = stmt_start
+					script_start_end = stmt_end
+				}
+			}
 			ids << id
 		}
 	}
@@ -474,6 +509,25 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.collect_formatter_comments(file, stable_src)
 	}
 	p.collect_scanner_diagnostics()
+}
+
+fn (p &Parser) script_definition_diagnostic_span(node flat.Node, fallback_start int, fallback_end int) (int, int) {
+	if node.kind == .fn_decl {
+		start := clamp_source_offset(node.pos.offset, p.s.src.len)
+		name := node.value.all_after_last('.')
+		return start, int_min(p.s.src.len, start + name.len)
+	}
+	if node.kind == .struct_decl {
+		search_start := clamp_source_offset(node.pos.offset, p.s.src.len)
+		search_end := clamp_source_offset(node.pos.end, p.s.src.len)
+		if search_end >= search_start {
+			if relative := p.s.src[search_start..search_end].index(node.value.all_after_last('.')) {
+				start := search_start + relative
+				return start, start + node.value.all_after_last('.').len
+			}
+		}
+	}
+	return fallback_start, fallback_end
 }
 
 // vsh_implicit_os_import gives a `.vsh` script the implicit `import os` of V's
@@ -669,6 +723,24 @@ fn (mut p Parser) record_warning_span(message string, start int, end int) {
 		line:     line
 		column:   column
 		severity: 'warning:'
+		message:  message
+	})
+}
+
+fn (mut p Parser) record_notice_span(message string, start int, end int) {
+	clamped_start := clamp_source_offset(start, p.s.src.len)
+	clamped_end := clamp_source_offset(end, p.s.src.len)
+	mut line := 1
+	mut column := clamped_start + 1
+	if p.s.src.len > 0 && p.s.current_file().name == p.cur_file {
+		line, column = p.s.current_file().find_line_and_column(clamped_start)
+	}
+	p.append_diagnostic(Diagnostic{
+		file:     p.cur_file
+		pos:      token.new_span(p.cur_file_id, clamped_start, clamped_end)
+		line:     line
+		column:   column
+		severity: 'notice:'
 		message:  message
 	})
 }
