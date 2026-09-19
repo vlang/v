@@ -1,0 +1,117 @@
+module types
+
+import os
+import time
+import v.parser
+import v.pref
+
+enum DuplicateFnCheckMode {
+	serial
+	scoped_serial
+	parallel
+	scoped_parallel
+	selected
+	reachable
+}
+
+struct DuplicateFnCase {
+	name   string
+	source string
+}
+
+fn duplicate_fn_check_modes() []DuplicateFnCheckMode {
+	return [.serial, .scoped_serial, .parallel, .scoped_parallel, .selected, .reachable]
+}
+
+fn check_duplicate_fn_source(source string, mode DuplicateFnCheckMode, padding int) ![]TypeError {
+	old_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', '2', true)
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
+		}
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3 duplicate functions ${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir(root)!
+	defer {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	path := os.join_path(root, 'input.v')
+	mut input := 'module duplicates\n' + source + '\nfn entry() {}\n'
+	// Exercise both the small-input fallback and actual worker dispatch.
+	for i in 0 .. padding {
+		input += 'fn padding_${i}(value int) int { return value }\n'
+	}
+	os.write_file(path, input)!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.scope_parallel_check_workers = mode in [.scoped_serial, .scoped_parallel]
+	tc.diagnose_unknown_calls = true
+	match mode {
+		.selected {
+			// Duplicates must be rejected even when their bodies are not selected.
+			tc.check_semantics_selected({ 'entry': true })
+		}
+		.reachable {
+			tc.check_semantics_reachable({ 'entry': true })
+		}
+		else {
+			want_parallel := mode in [.parallel, .scoped_parallel]
+			was_parallel := tc.check_semantics_opt(want_parallel)
+			$if windows {
+				assert !was_parallel
+			} $else {
+				assert was_parallel == (want_parallel && padding >= min_parallel_check_items)
+			}
+		}
+	}
+	return tc.errors.clone()
+}
+
+fn test_duplicate_functions_are_rejected_by_all_semantic_paths() {
+	cases := [
+		DuplicateFnCase{
+			name:   'lighten'
+			source: 'fn lighten(value int) int { return value + 1 }\nfn lighten(value int) int { return value + 2 }\n'
+		},
+		DuplicateFnCase{
+			name:   'lighten'
+			source: 'fn lighten(value int) int { return value }\nfn lighten(value string) string { return value }\n'
+		},
+		DuplicateFnCase{
+			name:   'Shade.lighten'
+			source: 'struct Shade {}\nfn (s Shade) lighten(value int) int { return value + 1 }\nfn (s Shade) lighten(value int) int { return value + 2 }\n'
+		},
+	]
+	for test_case in cases {
+		for mode in duplicate_fn_check_modes() {
+			for padding in [0, min_parallel_check_items + 8] {
+				errors := check_duplicate_fn_source(test_case.source, mode, padding)!
+				context := '${test_case.name}, ${mode}, padding=${padding}: ${errors}'
+				builders := errors.filter(it.severity == 'builder error:')
+				assert builders.len == 1, context
+				assert builders[0].kind == .duplicate_decl, context
+				assert builders[0].msg == 'redefinition of function `${test_case.name}`', context
+				conflicts := errors.filter(it.severity == 'conflicting declaration:')
+				assert conflicts.len == 2, context
+				assert conflicts.all(it.node_value == test_case.name), context
+				assert conflicts[0].pos.id == conflicts[1].pos.id, context
+				assert conflicts[0].pos.offset != conflicts[1].pos.offset, context
+				assert errors.len == 3, context
+			}
+		}
+	}
+}
+
+fn test_duplicate_fn_check_keeps_distinct_receivers_and_c_declarations_valid() {
+	source := 'struct Shade {}\nstruct OtherShade {}\nfn lighten(value int) int { return value }\nfn (s Shade) lighten(value int) int { return value }\nfn (s OtherShade) lighten(value int) int { return value }\nfn C.duplicate_fn_probe(value int) int\nfn C.duplicate_fn_probe(value int) int\n'
+	for mode in duplicate_fn_check_modes() {
+		errors := check_duplicate_fn_source(source, mode, min_parallel_check_items + 8)!
+		assert errors.len == 0, '${mode}: ${errors}'
+	}
+}

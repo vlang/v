@@ -797,6 +797,7 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 // independently when scope_parallel_check_workers is enabled.
 fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.resolution_type_mode = false
+	tc.check_duplicate_fn_declarations()
 	tc.install_type_cache_overlay()
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
 	tc.selected_file_called_fns = map[string]bool{}
@@ -829,6 +830,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 // proven that every top-level declaration is unchanged.
 pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 	tc.resolution_type_mode = false
+	tc.check_duplicate_fn_declarations()
 	tc.check_export_attrs()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
@@ -850,6 +852,7 @@ pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 // source shapes that have already proven they cannot declare any other items.
 pub fn (mut tc TypeChecker) check_semantics_reachable(selected map[string]bool) {
 	tc.resolution_type_mode = false
+	tc.check_duplicate_fn_declarations()
 	tc.cur_module = ''
 	tc.cur_file = ''
 	mut items := []CheckWorkItem{cap: selected.len}
@@ -997,6 +1000,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		return false
 	} $else {
 		tc.resolution_type_mode = false
+		tc.check_duplicate_fn_declarations()
 		// Freeze the warm post-collect type cache as the shared read-only base
 		// for every worker thread and the master itself via a private overlay.
 		tc.install_type_cache_overlay()
