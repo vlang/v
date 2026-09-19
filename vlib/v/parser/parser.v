@@ -10291,6 +10291,21 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		return p.prefix_expr()
 	}
 	tok_id := int(p.tok)
+	if p.tok == .dec {
+		operator_end := p.tok_end
+		p.next()
+		if p.tok in [.eof, .rcbr, .semicolon] {
+			p.record_diagnostic_span('token `--` must be on the same line as the previous token',
+				op_start, operator_end)
+			return p.add(flat.NodeKind.empty)
+		}
+		operand := p.expr(.power)
+		expr_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+		operand_text := p.s.src[operator_end..expr_end].trim_space().replace('"', "'")
+		p.record_diagnostic_span('prefix `--${operand_text}` is unsupported, use suffix form `${operand_text}--`',
+			op_start, expr_end)
+		return operand
+	}
 	if p.tok == .plus {
 		p.next()
 		operand := p.expr(.power)
@@ -10343,6 +10358,24 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		return p.channel_receive_expr(inner, op_start)
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
+		if p.tok == .minus {
+			mut previous := p.tok_pos - 1
+			mut preceding_minuses := 0
+			for previous >= 0 {
+				for previous >= 0 && p.s.src[previous] in [` `, `\t`] {
+					previous--
+				}
+				if previous < 0 || p.s.src[previous] != `-` {
+					break
+				}
+				preceding_minuses++
+				previous--
+			}
+			if preceding_minuses == 1 {
+				p.record_diagnostic_span('invalid expression: unexpected token `-`', p.tok_pos,
+					p.tok_end)
+			}
+		}
 		p.next()
 		mut operand := p.expr(.power)
 		// A trailing `or {}` binds to the operand, not to the prefix operator:
