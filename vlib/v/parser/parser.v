@@ -1438,6 +1438,11 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		} else {
 			'${clean_type}.${name}'
 		}
+		if p.a.nodes.any(it.pos.id == p.cur_file_id && it.kind == .fn_decl && it.value == name) {
+			method_name := name.all_after_last('.')
+			p.record_diagnostic_span('duplicate method `${method_name}`', name_pos,
+				name_pos + method_name.len)
+		}
 	}
 
 	return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, '', name_pos)
