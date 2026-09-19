@@ -470,7 +470,7 @@ pub fn (mut p Parser) parse_into(path string) {
 			is_definition := node.kind in [.fn_decl, .c_fn_decl, .struct_decl, .enum_decl,
 				.interface_decl, .type_decl, .const_decl, .global_decl]
 			is_script_statement := node.kind !in [.empty, .import_decl, .module_decl, .directive,
-				.comptime_if]
+				.comptime_if, .asm_stmt]
 				&& !is_definition
 			if p.cur_module.len > 0 {
 				ids << id

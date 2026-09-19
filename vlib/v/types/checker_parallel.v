@@ -1462,6 +1462,10 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	if a.node == b.node && is_inline_asm_instruction_error(a.msg)
+		&& is_inline_asm_instruction_error(b.msg) && a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
 	a_is_infix_mismatch := a.msg.starts_with('mismatched types `')
 	b_is_infix_mismatch := b.msg.starts_with('mismatched types `')
 	a_is_infix_rhs := a.msg.starts_with('infix expr: cannot use `')
@@ -1704,7 +1708,15 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 }
 
 fn type_errors_equal(a TypeError, b TypeError) bool {
+	if a.node == b.node && a.kind == b.kind && a.msg == b.msg
+		&& is_inline_asm_instruction_error(a.msg) {
+		return a.pos == b.pos
+	}
 	return a.node == b.node && a.kind == b.kind && a.msg == b.msg
+}
+
+fn is_inline_asm_instruction_error(message string) bool {
+	return message.contains('structured `intel`') || message.contains('`raw intel` block')
 }
 
 fn check_job_count(n_runtime_jobs int, n_items int) int {
