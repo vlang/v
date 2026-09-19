@@ -6753,7 +6753,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	}
 	pointer_base_node := tc.a.node(base_id)
 	mut_param_base := if pointer_base_node.kind == .ident {
-		unalias_type(tc.fn_context.mut_param_base_types[pointer_base_node.value] or { Type(void_) })
+		unalias_type(tc.mut_param_expr_base(base_id, base_type_raw) or { Type(void_) })
 	} else {
 		Type(void_)
 	}
@@ -6765,14 +6765,14 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	implicit_mut_param_pointer := mut_param_base !is Void && mut_param_base !is Pointer
 		&& !explicit_mut_param_pointer
 	outside_unsafe := tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
-	if node.value != 'range' && base_type_raw is Pointer && implicit_mut_param_pointer
-		&& base_type is Struct && outside_unsafe {
+	if node.value != 'range' && implicit_mut_param_pointer && base_type is Struct
+		&& outside_unsafe {
 		if tc.fn_context.generic_params.len > 0 && base_type.name.contains('[') {
 			tc.register_synth_type(id, tc.resolve_index_type(node))
 			return
 		}
 		tc.record_error_at(.cannot_index, 'type `mut ${base_type.name}` does not support slicing', id, tc.index_brackets_pos(node))
-		tc.register_synth_type(id, tc.resolve_index_type(node))
+		tc.register_synth_type(id, mut_param_base)
 		return
 	}
 	if node.value != 'range' && base_type_raw is Pointer && !implicit_mut_param_pointer
