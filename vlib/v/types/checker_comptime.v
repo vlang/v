@@ -9710,6 +9710,14 @@ fn type_is_option_or_result(typ Type) bool {
 }
 
 fn (mut tc TypeChecker) check_sql_expr(id flat.NodeId, node flat.Node) {
+	if node.typ.starts_with('!') && !tc.sql_expr_has_error_handler(id) {
+		message := if tc.sql_expr_is_in_defer(id) {
+			'ORM returns a result, so it should have an `or {}` block at the end'
+		} else {
+			'ORM returns a result, so it should have either an `or {}` block, or `!` at the end'
+		}
+		tc.record_error(.assignment_mismatch, message, id)
+	}
 	if node.children_count > 0 {
 		db_id := tc.a.child(&node, 0)
 		tc.check_node(db_id)
@@ -9765,6 +9773,40 @@ fn (mut tc TypeChecker) check_sql_expr(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, '`?${clean_field.base_type.name()}` cannot be used as `${clean_field.base_type.name()}`, unwrap the option first', id, tc.sql_expr_text_pos(node, '${base_name}.${field_name}', base_name.len + 1, field_name.len))
 		}
 	}
+}
+
+fn (tc &TypeChecker) sql_expr_has_error_handler(id flat.NodeId) bool {
+	mut child_id := id
+	mut parent_id := tc.direct_parent_id(id)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .or_expr && parent.children_count > 0
+			&& tc.a.child(parent, 0) == child_id {
+			return true
+		}
+		if parent.kind !in [.paren, .expr_stmt] || parent.children_count == 0
+			|| tc.a.child(parent, 0) != child_id {
+			return false
+		}
+		child_id = parent_id
+		parent_id = tc.direct_parent_id(parent_id)
+	}
+	return false
+}
+
+fn (tc &TypeChecker) sql_expr_is_in_defer(id flat.NodeId) bool {
+	mut parent_id := tc.direct_parent_id(id)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .defer_stmt {
+			return true
+		}
+		if parent.kind == .fn_decl || parent.kind == .fn_literal {
+			return false
+		}
+		parent_id = tc.direct_parent_id(parent_id)
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_sql_orm_constraints(id flat.NodeId, node flat.Node, tokens []string) {
