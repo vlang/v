@@ -7719,6 +7719,10 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 	if !lhs_clean.is_integer() || !rhs_clean.is_integer() || lhs_unsigned == rhs_unsigned {
 		return false
 	}
+	if (!lhs_unsigned && tc.integer_literal_source(lhs_id) != none)
+		|| (!rhs_unsigned && tc.integer_literal_source(rhs_id) != none) {
+		return false
+	}
 	lhs_bits := comparison_integer_bits(lhs_clean)
 	rhs_bits := comparison_integer_bits(rhs_clean)
 	if lhs_bits == 0 || rhs_bits == 0 {
