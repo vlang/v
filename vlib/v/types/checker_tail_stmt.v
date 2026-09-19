@@ -3648,6 +3648,13 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			} else if i < fields.len {
 				expected = fields[i].typ
 			}
+			value_node := tc.a.node(value_id)
+			if unalias_type(expected) is Array && value_node.kind == .map_init {
+				tc.record_error_at(.assignment_mismatch, 'cannot use `{}` for array field `${field.value}`; use `[]` instead',
+					value_id, token.new_span(value_node.pos.id, value_node.pos.offset,
+						value_node.pos.offset + 1))
+				continue
+			}
 			field_is_mut := struct_init_field_is_mut(fields, field, i)
 			source_actual := if expected !is Void {
 				tc.resolve_type(value_id)
@@ -3682,7 +3689,6 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					tc.ownership_consume_expr(value_id, 'struct field', value_id)
 				}
 			}
-			value_node := tc.a.node(value_id)
 			if type_is_unsigned_integer(expected) && tc.expr_is_negative_integer_literal(value_id) {
 				tc.record_error_at(.assignment_mismatch, 'cannot assign negative value to unsigned integer type', value_id, value_node.pos)
 			}
