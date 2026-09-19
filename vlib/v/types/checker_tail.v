@@ -14516,6 +14516,10 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 			}
 		} else if arg.kind in [.string_literal, .string_interp] {
 			tc.record_error(.call_arg_mismatch, 'type mismatch, should use e.g. `${method}(it > 2)`', arg_id)
+		} else if method == 'count'
+			&& arg.kind !in [.infix, .lambda_expr, .fn_literal, .ident, .call, .paren] {
+			tc.record_error(.call_arg_mismatch, 'invalid expression, expected infix expr, lambda or function',
+				arg_id)
 		} else {
 			actual := tc.resolve_expr(arg_id, Type(bool_))
 			if !(method == 'count' && array_count_dsl_predicate_compatible(actual))
