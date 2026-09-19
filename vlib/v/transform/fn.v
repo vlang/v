@@ -12776,10 +12776,8 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 			return t.enum_autostr_call(value, base_type)
 		}
-		if !recovered_or_value_type {
-			if exact_call := t.lower_checker_selected_receiver_method(id, node, base_id, 'str') {
-				return exact_call
-			}
+		if exact_call := t.lower_checker_selected_receiver_method(id, node, base_id, 'str') {
+			return exact_call
 		}
 		// Some calls cloned during comptime/generic lowering no longer have the
 		// checker's original call-id annotation. Resolve their concrete receiver
