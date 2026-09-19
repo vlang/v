@@ -9158,13 +9158,22 @@ pub fn (mut tc TypeChecker) check_semantics() {
 					is_c_alias := node.value.starts_with('C.') && node.children_count == 0
 						&& split_sum_variant_texts(node.typ).len <= 1
 					if !is_c_alias && tc.type_declaration_exists_before(node_id, node.value) {
-						kind := if node.children_count > 0
+						is_fn_alias := node.children_count == 0 && node.typ.starts_with('fn')
+						kind := if is_fn_alias {
+							'fn'
+						} else if node.children_count > 0
 							|| split_sum_variant_texts(node.typ).len > 1 {
 							'sum type'
 						} else {
 							'alias'
 						}
-						tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${node.value}`, another type with this name exists', node_id, tc.declaration_keyword_name_pos(node_id, 'type'))
+						name := if is_fn_alias { tc.qualify_name(node.value) } else { node.value }
+						pos := if is_fn_alias {
+							tc.node_value_diagnostic_pos(node_id)
+						} else {
+							tc.declaration_keyword_name_pos(node_id, 'type')
+						}
+						tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${name}`, another type with this name exists', node_id, pos)
 					}
 				}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
