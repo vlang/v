@@ -5544,7 +5544,7 @@ fn (mut tc TypeChecker) record_unhandled_result_call(call_id flat.NodeId, result
 		return
 	}
 	name := tc.call_display_name(call)
-	tc.record_error_at(.call_arg_mismatch, '${name}() returns `${Type(result_type).name()}`, so it should have either an `or {}` block, or `!` at the end; this requires `or {}`, `!`, or `?` handling', call_id, tc.wrapped_operand_diagnostic_pos(call_id))
+	tc.record_error_at(.call_arg_mismatch, '${name}() returns `${Type(result_type).name()}`, so it should have either an `or {}` block, or `!` at the end', call_id, tc.wrapped_operand_diagnostic_pos(call_id))
 }
 
 fn type_text_contains_any(typ string) bool {
@@ -15049,7 +15049,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 		if tc.should_diagnose(id) {
 			if rhs.kind == .call {
 				handler := if rhs_type is OptionType { '?' } else { '!' }
-				tc.record_error_at(.assignment_mismatch, '${tc.call_display_name(rhs)}() returns `${rhs_type_name}`, so it should have either an `or {}` block, or `${handler}` at the end; this requires `or {}`, `!`, or `?` handling', rhs_id, rhs.pos)
+				tc.record_error_at(.assignment_mismatch, '${tc.call_display_name(rhs)}() returns `${rhs_type_name}`, so it should have either an `or {}` block, or `${handler}` at the end', rhs_id, rhs.pos)
 			} else {
 				tc.record_error(.assignment_mismatch, 'multi-return assignment from `${rhs_type_name}` requires `or {}`, `!`, or `?` handling', id)
 			}
