@@ -12741,6 +12741,12 @@ fn (mut p Parser) struct_init(name string) flat.NodeId {
 		} else {
 			// positional value (unnamed)
 			val := p.expr(.lowest)
+			if p.tok == .colon {
+				p.record_diagnostic_span('invalid expression: unexpected token `:`', p.tok_pos,
+					p.tok_end)
+				p.next()
+				_ = p.expr(.lowest)
+			}
 			vstart := p.add_child(val)
 			ids << p.add_node(flat.Node{
 				kind:           .field_init
