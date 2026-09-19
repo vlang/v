@@ -307,7 +307,8 @@ fn (mut tc TypeChecker) check_comptime_static_method_var_call(id flat.NodeId, no
 				actual_name := if arg.kind == .ident
 					&& arg.value in tc.fn_context.mut_param_base_types
 					&& !tc.current_fn_param_is_explicit_mut_pointer(arg.value) {
-					'&${tc.fn_context.mut_param_base_types[arg.value].name()}'
+					base_type := tc.fn_context.mut_param_base_types[arg.value] or { actual }
+					'&${base_type.name()}'
 				} else if arg.kind == .ident {
 					(tc.cur_scope.lookup(arg.value) or { actual }).name()
 				} else {
