@@ -17159,6 +17159,10 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		}
 		return
 	}
+	if node.kind == .expr_stmt && node.children_count == 1
+		&& tc.expr_source_contains_embed_file(tc.a.child(&node, 0)) {
+		tc.check_unused_expression_statement(id)
+	}
 	if node.kind in [.expr_stmt, .return_stmt] {
 		for i in 0 .. node.children_count {
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
