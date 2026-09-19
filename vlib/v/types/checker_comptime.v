@@ -8340,7 +8340,8 @@ fn (mut tc TypeChecker) check_array_init(id flat.NodeId, node flat.Node) {
 				'len' { 'length' }
 				else { 'capacity' }
 			}
-			tc.record_error(.assignment_mismatch, 'cannot use unwrapped ${wrapper} as ${use_name}', expr_id)
+			tc.record_error_at(.assignment_mismatch, 'cannot use unwrapped ${wrapper} as ${use_name}',
+				id, tc.a.node(expr_id).pos)
 		}
 	}
 	for i in 0 .. node.children_count {

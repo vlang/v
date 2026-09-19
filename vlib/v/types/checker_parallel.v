@@ -1472,6 +1472,28 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.node == b.node && b_is_infix_mismatch && a_is_infix_rhs {
 		return 1
 	}
+	a_array_init_order := if a.msg.ends_with(' as initializer') {
+		1
+	} else if a.msg.ends_with(' as length') {
+		2
+	} else if a.msg.ends_with(' as capacity') {
+		3
+	} else {
+		0
+	}
+	b_array_init_order := if b.msg.ends_with(' as initializer') {
+		1
+	} else if b.msg.ends_with(' as length') {
+		2
+	} else if b.msg.ends_with(' as capacity') {
+		3
+	} else {
+		0
+	}
+	if a.node == b.node && a_array_init_order > 0 && b_array_init_order > 0
+		&& a_array_init_order != b_array_init_order {
+		return a_array_init_order - b_array_init_order
+	}
 	a_is_generic_arg_count := a.msg.starts_with('expected ')
 		&& a.msg.contains(' generic parameter')
 	b_is_generic_arg_count := b.msg.starts_with('expected ')
