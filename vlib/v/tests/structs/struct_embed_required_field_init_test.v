@@ -52,3 +52,37 @@ fn test_embedded_literal_initializes_reference_field() {
 	}
 	assert d.inner == inner
 }
+
+struct ShadowInner {}
+
+struct ShadowBase {
+	n int @[required]
+	p &ShadowInner
+}
+
+struct ShadowMiddle {
+	ShadowBase
+}
+
+struct ShadowOuter {
+	ShadowBase
+	ShadowMiddle
+}
+
+fn test_same_named_embeds_keep_distinct_initializers() {
+	inner := &ShadowInner{}
+	d := ShadowOuter{
+		ShadowBase:   ShadowBase{
+			n: 1
+			p: inner
+		}
+		ShadowMiddle: ShadowMiddle{
+			ShadowBase: ShadowBase{
+				n: 2
+				p: inner
+			}
+		}
+	}
+	assert d.ShadowBase.n == 1
+	assert d.ShadowMiddle.n == 2
+}

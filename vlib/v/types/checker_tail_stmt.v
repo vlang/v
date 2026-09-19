@@ -4560,6 +4560,37 @@ fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_text string, expect
 	return []string{}
 }
 
+// supplied_fields_for_embeds returns the names in `supplied` that can still refer to a
+// promoted field of an embedded struct of `decl`. An explicitly initialized embedded
+// field names one specific embedding path, so it is consumed by the current literal
+// level: keeping it would let `Outer{Base: ...}` also satisfy an unrelated
+// `Outer.Middle.Base` that has a different embedding path but the same field name.
+// Plain field names keep being passed down, because V1 also treats a supplied name as
+// initialization of a same-named promoted field (see struct_embed_required_field_err).
+fn (tc &TypeChecker) supplied_fields_for_embeds(decl flat.Node, supplied map[string]bool) map[string]bool {
+	if supplied.len == 0 {
+		return map[string]bool{}
+	}
+	mut embed_fields := map[string]bool{}
+	for i in 0 .. decl.children_count {
+		field := tc.a.child_node(&decl, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		field_type_text := if field.typ.len > 0 { field.typ } else { field.value }
+		if source_field_decl_is_embed(field, field_type_text) {
+			embed_fields[field.value] = true
+		}
+	}
+	mut promoted := map[string]bool{}
+	for name, is_supplied in supplied {
+		if is_supplied && name !in embed_fields {
+			promoted[name] = true
+		}
+	}
+	return promoted
+}
+
 fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplied map[string]bool, path []string) []MissingReferenceField {
 	clean_name := trimmed_space(struct_name)
 	if clean_name.len == 0 || clean_name in path || path.len >= 16 {
@@ -4567,6 +4598,7 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 	}
 	decl := tc.source_struct_decl_for_name(clean_name) or { return []MissingReferenceField{} }
 	display_name := decl.value.all_after_last('.')
+	embed_supplied := tc.supplied_fields_for_embeds(decl, supplied)
 	mut next_path := path.clone()
 	next_path << clean_name
 	mut missing := []MissingReferenceField{}
@@ -4623,7 +4655,7 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 			continue
 		}
 		child_supplied := if is_embed {
-			supplied
+			embed_supplied
 		} else {
 			map[string]bool{}
 		}
@@ -4653,6 +4685,7 @@ fn (tc &TypeChecker) missing_required_struct_fields(struct_name string, supplied
 	}
 	decl := tc.source_struct_decl_for_name(clean_name) or { return []string{} }
 	display_name := decl.value.all_after_last('.')
+	embed_supplied := tc.supplied_fields_for_embeds(decl, supplied)
 	mut next_path := path.clone()
 	next_path << clean_name
 	mut missing := []string{}
@@ -4679,7 +4712,7 @@ fn (tc &TypeChecker) missing_required_struct_fields(struct_name string, supplied
 			continue
 		}
 		child_supplied := if is_embed {
-			supplied
+			embed_supplied
 		} else {
 			map[string]bool{}
 		}
