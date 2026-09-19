@@ -5,6 +5,7 @@ import time
 import os
 import v.flat
 import v.gen.c.naming
+import v.pref
 import v.types
 
 const trace_markused = false
@@ -1554,8 +1555,10 @@ fn markused_file_is_vlib(file string) bool {
 		|| file.starts_with('vlib\\')
 }
 
+// markused_file_is_test defers to pref, so every spelling the driver treats as a test
+// (including architecture-qualified ones such as `foo_test.arm64.v`) is treated the same here.
 fn markused_file_is_test(file string) bool {
-	return file.ends_with('_test.v') || file.ends_with('_test.c.v') || file.ends_with('_test.js.v')
+	return pref.is_test_file_for_backend(file, 'c') || pref.is_test_file_for_backend(file, 'js')
 }
 
 fn enqueue_top_level_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, has_entry_main bool, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
