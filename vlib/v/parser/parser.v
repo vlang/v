@@ -11813,6 +11813,9 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 	mut ids := []flat.NodeId{}
 	ids << fn_expr
 	mut trailing_comma := false
+	mut last_comma_pos := -1
+	mut missing_comma_start := -1
+	mut missing_comma_end := -1
 	for p.tok != .rpar && p.tok != .eof {
 		if p.current_token_is_newline_semicolon() {
 			p.next()
@@ -11914,11 +11917,34 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		if p.tok == .comma {
 			trailing_comma = true
+			last_comma_pos = p.tok_pos
 			p.next()
+		} else if missing_comma_start < 0 && p.tok != .rpar && p.tok != .eof
+			&& !p.current_token_is_newline_semicolon() {
+			missing_comma_start = p.prev_tok_end
+			missing_comma_end = p.tok_end
 		}
 		if p.s.offset == prev_offset && p.tok == prev_tok {
 			p.next()
 		}
+	}
+	if p.tok == .eof {
+		mut message := 'unexpected eof, expecting `)`'
+		mut start := int_max(0, p.prev_tok_end - 1)
+		mut end := p.prev_tok_end
+		if expected := p.declared_call_param_count(fn_expr) {
+			if ids.len - 1 < expected {
+				message = 'unexpected eof, expecting `,`'
+			}
+		}
+		if missing_comma_start >= 0 {
+			start = missing_comma_start
+			end = missing_comma_end
+		} else if last_comma_pos >= 0 {
+			start = last_comma_pos
+			end = p.prev_tok_end
+		}
+		p.record_diagnostic_span(message, start, end)
 	}
 	p.check(.rpar)
 	args_end := p.prev_tok_end
@@ -11949,6 +11975,27 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 	}
 	return id
+}
+
+fn (p &Parser) declared_call_param_count(fn_expr flat.NodeId) ?int {
+	fn_node := p.a.node(fn_expr)
+	if fn_node.kind != .ident || fn_node.value.len == 0 {
+		return none
+	}
+	for candidate in p.a.nodes {
+		if candidate.kind != .fn_decl || candidate.value != fn_node.value {
+			continue
+		}
+		mut count := 0
+		for i in 0 .. candidate.children_count {
+			param := p.a.child_node(candidate, i)
+			if param.kind == .param && param.op != .dot {
+				count++
+			}
+		}
+		return count
+	}
+	return none
 }
 
 // annotate_short_struct_call_arg records the aggregate type of a trailing
