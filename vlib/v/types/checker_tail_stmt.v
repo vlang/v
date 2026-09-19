@@ -2087,7 +2087,7 @@ fn (mut tc TypeChecker) record_match_branch_return_type_mismatch(id flat.NodeId,
 	} else {
 		node.pos
 	}
-	tc.record_error_at(.if_branch_mismatch, 'return type mismatch, it should be `${expected.name()}`, but it is instead `${tc.diagnostic_expr_type_name(id, actual)}`; cannot return `${actual.name()}` as `${expected.name()}`', id, pos)
+	tc.record_error_at(.if_branch_mismatch, 'return type mismatch, it should be `${expected.name()}`, but it is instead `${tc.diagnostic_expr_type_name(id, actual)}`', id, pos)
 }
 
 fn (tc &TypeChecker) expr_has_match_branch_type_error(id flat.NodeId) bool {
