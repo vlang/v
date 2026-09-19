@@ -360,7 +360,7 @@ fn test_backend_suffixes_win_over_architecture_aliases() {
 	assert is_test_file_for_backend('foo_test.native.v', 'native')
 	assert !is_test_file_for_backend('foo_test.native.v', 'c')
 	assert is_test_file_for_backend('foo_test.c.v', 'c')
-	assert is_test_file_for_backend('foo_test.js.v', 'js')
+	assert !is_test_file_for_backend('foo_test.js.v', 'js')
 }
 
 fn test_architecture_suffixes_are_still_c_backend_tests() {

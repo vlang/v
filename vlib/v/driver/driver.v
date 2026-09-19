@@ -7252,7 +7252,15 @@ fn v3_test_matches_build_constraint(file string, target pref.Target, ccompiler s
 }
 
 fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string, backend string, target pref.Target, ccompiler string, is_prod bool, user_defines []string) bool {
-	if !is_test_command || !os.is_file(input_file) {
+	if !os.is_file(input_file) {
+		return false
+	}
+	// V3 has no JavaScript backend. Skip JS tests even for `v file_test.js.v`
+	// and `v run file_test.js.v`, before parsing them as native source.
+	if input_file.ends_with('_test.js.v') {
+		return true
+	}
+	if !is_test_command {
 		return false
 	}
 	if is_test_file_for_any_backend(input_file)
