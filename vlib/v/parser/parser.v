@@ -4525,15 +4525,26 @@ fn (mut p Parser) parse_known_comptime_match_value(value string, is_top_level bo
 		}
 		mut pattern_matches := false
 		for {
+			pattern_start := p.tok_pos
 			pattern := p.parse_comptime_match_pattern()
+			pattern_end := p.prev_tok_end
 			mut pattern_value := pattern
 			if known_value := p.comptime_value(pattern) {
 				pattern_value = known_value
 			} else if pattern.starts_with('@') {
 				pattern_value = p.resolve_comptime_at_values(pattern)
 			}
-			if comptime_cond_value(pattern_value) == comptime_cond_value(value) {
+			matches := comptime_cond_value(pattern_value) == comptime_cond_value(value)
+			if matches {
 				pattern_matches = true
+			}
+			if !p.prefs.is_fmt {
+				p.record_notice_span(if matches {
+					'match is always true'
+				} else {
+					'match is always false'
+				},
+					pattern_start, pattern_end)
 			}
 			if p.tok != .comma {
 				break
