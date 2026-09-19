@@ -12215,10 +12215,11 @@ fn (tc &TypeChecker) struct_field_has_shared_elements(struct_name string, field_
 
 // check_call_arg_types validates check call arg types state for types.
 @[direct_array_access]
-fn (mut tc TypeChecker) check_valid_call_arg_types(id flat.NodeId, node flat.Node, info CallInfo) {
+fn (mut tc TypeChecker) check_valid_call_arg_types(id flat.NodeId, node flat.Node, info0 CallInfo) {
 	if node.children_count == 0 {
 		return
 	}
+	info := tc.call_info_with_inferred_receiver(node, info0)
 	if tc.check_builtin_map_call_args(id, node, info)
 		|| tc.check_builtin_array_call_args(id, node, info) {
 		return
@@ -12563,7 +12564,8 @@ fn fn_type_has_platform_int(t FnType) bool {
 }
 
 fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info0 CallInfo) {
-	info := tc.specialized_plain_generic_call_info(node, info0)
+	info := tc.call_info_with_inferred_receiver(node, tc.specialized_plain_generic_call_info(node,
+		info0))
 	if node.children_count == 0 {
 		return
 	}
@@ -13815,6 +13817,43 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	}
 }
 
+fn (mut tc TypeChecker) call_info_with_inferred_receiver(node flat.Node, info CallInfo) CallInfo {
+	if info.has_receiver || info.params.len == 0 || node.children_count == 0 {
+		return info
+	}
+	mut callee := tc.a.child_node(&node, 0)
+	if callee.kind == .index && callee.children_count > 0 {
+		callee = tc.a.child_node(callee, 0)
+	}
+	if callee.kind == .ident && info.name.contains('.') && node.children_count > 1 {
+		receiver_type := unwrap_pointer(info.params[0])
+		owner := owner_name_view(info.name)
+		receiver_name := receiver_type.name()
+		if owner == receiver_name || owner.ends_with('.${receiver_name}')
+			|| receiver_name.ends_with('.${owner}') {
+			return CallInfo{
+				...info
+				has_receiver: true
+				arg_offset:   info.arg_offset + 1
+			}
+		}
+	}
+	if callee.kind != .selector || callee.children_count == 0 {
+		return info
+	}
+	receiver_id := tc.a.child(callee, 0)
+	actual := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
+	expected := unalias_and_unwrap_pointer_type(info.params[0])
+	if actual is Unknown || actual is Void
+		|| actual.name().all_after_last('.') != expected.name().all_after_last('.') {
+		return info
+	}
+	return CallInfo{
+		...info
+		has_receiver: true
+	}
+}
+
 fn (tc &TypeChecker) collapsed_field_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
 	// Compatibility is directional: the supplied value (`actual`) must be assignable to
 	// the field (`expected`). The reverse `type_compatible(expected, actual)` wrongly
@@ -13949,10 +13988,7 @@ fn (tc &TypeChecker) call_arg_is_lowered_method_receiver(node flat.Node, info Ca
 	if callee.kind != .ident || !info.name.contains('.') {
 		return false
 	}
-	mut receiver_type := fn_param_unalias_type(expected)
-	if receiver_type is Pointer {
-		receiver_type = fn_param_unalias_type(receiver_type.base_type)
-	}
+	receiver_type := unwrap_pointer(expected)
 	owner := owner_name_view(info.name)
 	receiver_name := receiver_type.name()
 	return owner == receiver_name || owner.ends_with('.${receiver_name}')
