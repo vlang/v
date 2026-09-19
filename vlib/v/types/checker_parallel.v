@@ -1555,6 +1555,30 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.file == b.file && b_is_anon_param_semantic && a_is_anon_param_followup {
 		return 1
 	}
+	a_is_compound_operand := (a.msg.starts_with('operator ')
+		&& a.msg.contains(' not defined on right operand')) || a.msg.starts_with('invalid right operand:')
+	b_is_compound_operand := (b.msg.starts_with('operator ')
+		&& b.msg.contains(' not defined on right operand')) || b.msg.starts_with('invalid right operand:')
+	a_is_assignment_type_mismatch := a.msg.starts_with('cannot assign to `')
+	b_is_assignment_type_mismatch := b.msg.starts_with('cannot assign to `')
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && a_is_compound_operand
+		&& b_is_assignment_type_mismatch {
+		return -1
+	}
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && b_is_compound_operand
+		&& a_is_assignment_type_mismatch {
+		return 1
+	}
+	a_is_deref_unsafe := a.msg.starts_with('modifying variables via dereferencing')
+	b_is_deref_unsafe := b.msg.starts_with('modifying variables via dereferencing')
+	a_is_deref_assignment := a.msg.starts_with('cannot assign to `*')
+	b_is_deref_assignment := b.msg.starts_with('cannot assign to `*')
+	if a.file == b.file && a_is_deref_unsafe && b_is_deref_assignment {
+		return -1
+	}
+	if a.file == b.file && b_is_deref_unsafe && a_is_deref_assignment {
+		return 1
+	}
 	a_is_generic_arg_count := a.msg.starts_with('expected ')
 		&& a.msg.contains(' generic parameter')
 	b_is_generic_arg_count := b.msg.starts_with('expected ')
