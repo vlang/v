@@ -12703,8 +12703,9 @@ fn (mut p Parser) index_range_expr(lhs flat.NodeId, range_id flat.NodeId, gated_
 }
 
 fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
+	node := p.a.node(id)
+	p.discard_generic_type_array_init_warnings(node.pos)
 	if p.prefs.is_fmt {
-		node := p.a.node(id)
 		if node.pos.is_valid() && node.pos.end <= p.s.src.len {
 			source := p.s.src[node.pos.offset..node.pos.end].trim_space()
 			if source.len > 0 {
@@ -12726,6 +12727,16 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 		kind:  .ident
 		value: resolved
 	})
+}
+
+fn (mut p Parser) discard_generic_type_array_init_warnings(pos token.Pos) {
+	if !pos.is_valid() {
+		return
+	}
+	p.diagnostics = p.diagnostics.filter(!(it.severity == 'warning:' && it.pos.id == pos.id
+		&& it.pos.offset >= pos.offset && it.pos.end <= pos.end
+		&& (it.message.starts_with('use `x := []Type{}`')
+			|| it.message.starts_with('use e.g. `x := [1]Type{}`'))))
 }
 
 fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
