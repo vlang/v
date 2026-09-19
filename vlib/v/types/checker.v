@@ -14106,7 +14106,9 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 			}
 		}
 		is_embed := source_field_decl_is_embed(field, field_type_text)
-		if !recursive_struct_reported && field_type is Struct {
+		direct_recursive_default := !is_embed && field.children_count > 0 && field_type is Struct
+			&& field_type.name.all_after_last('.') == node.value.all_after_last('.')
+		if !recursive_struct_reported && field_type is Struct && !direct_recursive_default {
 			mut seen := map[string]bool{}
 			if tc.struct_value_path_reaches(field_type.name, node.value, int(node_id), mut seen) {
 				pos := if is_embed {
