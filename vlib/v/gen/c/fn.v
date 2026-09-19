@@ -12707,6 +12707,8 @@ fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_ty
 	field_is_ptr := fn_type_is_pointer(field_type)
 	base_id := g.a.child(fn_node, 0)
 	base := g.a.nodes[int(base_id)]
+	base_is_pointer_param := base.kind == .ident
+		&& (g.current_param_type(base.value) or { types.Type(types.void_) }) is types.Pointer
 	needs_paren := base.kind !in [.ident, .selector, .call]
 	if field_is_ptr {
 		g.write('(*')
@@ -12718,7 +12720,8 @@ fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_ty
 	if needs_paren {
 		g.write(')')
 	}
-	if base_type is types.Pointer {
+	if base_type is types.Pointer || base_is_pointer_param
+		|| g.receiver_ident_storage_is_pointer(base_id) {
 		g.write('->')
 	} else {
 		g.write('.')
