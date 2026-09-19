@@ -1828,6 +1828,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	// variadic ...Type (no param name)
 	if p.tok == .ellipsis {
 		typ := p.parse_type_name()
+		if is_mut || is_shared || is_atomic {
+			p.record_variadic_modifier_diagnostic(typ, p.prev_tok_end)
+		}
 		id := p.add_node(flat.Node{
 			kind:   .param
 			value:  ''
@@ -1888,6 +1891,15 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	type_start := p.span_start()
 	mut typ := p.parse_type_name()
+	if typ.starts_with('...') {
+		if is_mut || is_shared || is_atomic {
+			p.record_variadic_modifier_diagnostic(typ, p.prev_tok_end)
+		}
+		if p.tok == .comma && names.len > 0 {
+			p.record_diagnostic_span('cannot use ...(variadic) with non-final parameter ${names[0]}',
+				name_positions[0].offset, name_positions[0].end)
+		}
+	}
 	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
 	param_group_end := p.prev_tok_end
 	explicit_mut_ref := is_mut && typ.starts_with('&')
@@ -13974,6 +13986,9 @@ fn (mut p Parser) parse_fn_type_param() string {
 	if first.len == 0 {
 		return first
 	}
+	if is_mut && first.starts_with('...') {
+		p.record_variadic_modifier_diagnostic(first, p.prev_tok_end)
+	}
 	if p.tok != .comma && p.tok != .rpar && p.tok != .eof && p.can_start_type_name() {
 		second := p.parse_type_name_progress()
 		if second.len > 0 {
@@ -13981,6 +13996,13 @@ fn (mut p Parser) parse_fn_type_param() string {
 		}
 	}
 	return fn_type_param_with_mut(first, is_mut)
+}
+
+fn (mut p Parser) record_variadic_modifier_diagnostic(typ string, end int) {
+	element_type := typ.trim_string_left('...')
+	start := int_max(0, end - element_type.len)
+	p.record_diagnostic_span('variadic arguments cannot be `mut`, `shared` or `atomic`', start,
+		end)
 }
 
 fn (mut p Parser) consume_lifetime_type_param() string {
