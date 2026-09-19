@@ -4201,13 +4201,19 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 			dollar_pos + 1)
 		invalid_expr = true
 	}
+	mut kind_start := p.tok_pos
 	mut segs := [p.expect_name()]
 	for p.tok == .dot {
 		p.next()
+		kind_start = p.tok_pos
 		segs << p.expect_name()
 	}
 	kind := if segs.len > 1 { segs.last() } else { 'fields' }
 	base := if segs.len > 1 { segs[..segs.len - 1].join('.') } else { segs.last() }
+	if segs.len > 1 && kind !in ['methods', 'fields', 'values', 'variants', 'attributes', 'params'] {
+		p.record_diagnostic_span('unknown kind `${kind}`, available are: `methods`, `fields`, `values`, `variants`, `attributes` or `params`',
+			kind_start, kind_start + kind.len)
+	}
 	if invalid_expr {
 		p.skip_block()
 		return flat.empty_node
