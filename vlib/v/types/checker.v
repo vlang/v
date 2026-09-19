@@ -13965,7 +13965,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 			&& embedded_alias_target !is Interface && embedded_alias_target !is FnType {
 			is_anonymous := is_anonymous_struct_name(node.value)
 			if is_anonymous {
-				tc.record_error_at(.assignment_mismatch, 'cannot embed non-struct `${field_type_text}`', field_id, tc.anonymous_struct_type_head_pos(node))
+				tc.record_error_at(.assignment_mismatch, 'cannot embed non-struct `${field_type_text}`', field_id, tc.anonymous_struct_embedded_type_pos(*field))
 			}
 			message := if is_anonymous {
 				'cannot embed non-struct `${field_type_text}`'
@@ -14174,15 +14174,16 @@ fn (tc &TypeChecker) struct_field_declaration_pos(field flat.Node) token.Pos {
 	return field.pos
 }
 
-fn (tc &TypeChecker) anonymous_struct_type_head_pos(node flat.Node) token.Pos {
-	file := tc.a.source_files[node.pos.id] or { return node.pos }
-	source := tc.source_texts_by_file[file.name] or { return node.pos }
-	start := int_min(int_max(node.pos.offset, 0), source.len)
-	end := int_min(int_max(node.pos.end, start), source.len)
-	if relative := source[start..end].index('{') {
-		return token.new_span(node.pos.id, start, start + relative + 1)
+fn (tc &TypeChecker) anonymous_struct_embedded_type_pos(field flat.Node) token.Pos {
+	file := tc.a.source_files[field.pos.id] or { return field.pos }
+	source := tc.source_texts_by_file[file.name] or { return field.pos }
+	start := int_min(int_max(field.pos.offset, 0), source.len)
+	end := int_min(int_max(field.pos.end, start), source.len)
+	if relative := source[start..end].last_index(field.typ) {
+		type_start := start + relative
+		return token.new_span(field.pos.id, type_start, type_start + field.typ.len)
 	}
-	return node.pos
+	return field.pos
 }
 
 // check_enum_backing_type validates explicit enum backing storage types.
