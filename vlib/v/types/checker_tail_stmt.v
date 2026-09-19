@@ -3359,7 +3359,11 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	is_optional_init := node.value.starts_with('?')
 	init_type_text := if is_optional_init { node.value[1..] } else { node.value }
-	raw_source_type_text := tc.source_text_for_node(id).all_before('{').trim_space().trim_left('?')
+	raw_source_type_text := if node.value == 'embed_file.EmbedFileData' {
+		init_type_text
+	} else {
+		tc.source_text_for_node(id).all_before('{').trim_space().trim_left('?')
+	}
 	// Struct literals in select send conditions can start their span one byte after the
 	// qualified type. Repair that narrow parser offset without treating synthesized
 	// qualified types (for example `$embed_file`) as source module references.
