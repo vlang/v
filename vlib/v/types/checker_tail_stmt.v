@@ -18074,10 +18074,29 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 
 fn (tc &TypeChecker) infix_operator_return_type(op flat.Op, lhs Type, rhs Type) ?Type {
 	signature := tc.infix_operator_signature(op, lhs) or { return none }
-	if signature.param_count < 2 || !tc.type_compatible(rhs, signature.param_type) {
+	if signature.param_count < 2 || !tc.infix_operator_operand_compatible(rhs, lhs) {
 		return none
 	}
 	return signature.return_type
+}
+
+fn (tc &TypeChecker) infix_operator_operand_compatible(actual Type, expected Type) bool {
+	if actual.name() == expected.name() {
+		return true
+	}
+	// Distinct aliases and structs do not become interchangeable just because
+	// their storage or fields match. Untyped primitive literals can still be
+	// promoted to the operator's declared alias type.
+	if actual is Alias {
+		return false
+	}
+	clean_actual := unalias_type(unwrap_pointer(actual))
+	clean_expected := unalias_type(unwrap_pointer(expected))
+	if clean_actual is Struct && clean_expected is Struct
+		&& clean_actual.name != clean_expected.name {
+		return false
+	}
+	return tc.type_compatible(actual, expected)
 }
 
 fn (tc &TypeChecker) type_has_infix_operator_method(typ Type, op flat.Op) bool {

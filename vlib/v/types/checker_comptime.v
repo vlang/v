@@ -7461,12 +7461,14 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if signature := tc.infix_operator_signature(.plus, lhs_type) {
-		if tc.diagnostic_expr_type_name(lhs_id, lhs_type) == tc.diagnostic_expr_type_name(rhs_id, rhs_type) {
+		if signature.param_count >= 2
+			&& tc.infix_operator_operand_compatible(rhs_type, lhs_type) {
 			return
 		}
-		if signature.param_count >= 2 && tc.type_compatible(rhs_type, signature.param_type) {
-			return
-		}
+		lhs_name := tc.diagnostic_expr_type_name(lhs_id, lhs_type)
+		rhs_name := tc.diagnostic_expr_type_name(rhs_id, rhs_type)
+		tc.record_error(.assignment_mismatch, 'infix expr: cannot use `${rhs_name}` (right expression) as `${lhs_name}`', id)
+		return
 	}
 	lhs_is_string := type_is_string_like(lhs_type)
 	rhs_is_string := type_is_string_like(rhs_type)
@@ -17246,20 +17248,15 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 					'operator ${op_text} not defined on left operand type `${lhs_name}`'
 				}
 				tc.record_error(.assignment_mismatch, message, lhs_id)
-				if !tc.type_compatible(signature.return_type, lhs_type) {
+				if !tc.infix_operator_operand_compatible(signature.return_type, lhs_type) {
 					operator_name := infix_operator_name(infix_op) or { '' }
 					tc.record_error_at(.assignment_mismatch, 'operator `${operator_name}` must return `${lhs_name}` to be used as an assignment operator', lhs_id, tc.compound_assignment_operator_pos(lhs_id, rhs_id, op_text))
 				}
 				return
 			}
-			rhs := tc.a.node(rhs_id)
-			rhs_is_literal := rhs.kind in [.int_literal, .float_literal, .char_literal,
-				.string_literal, .bool_literal]
-			operand_matches := rhs_type.name() == signature.param_type.name()
-				|| (type_is_string_like(lhs_type) && type_is_string_like(rhs_type))
-				|| (rhs_is_literal && tc.type_compatible(rhs_type, signature.param_type))
+			operand_matches := tc.infix_operator_operand_compatible(rhs_type, lhs_type)
 			if operand_matches {
-				if !tc.type_compatible(signature.return_type, lhs_type) {
+				if !tc.infix_operator_operand_compatible(signature.return_type, lhs_type) {
 					operator_name := infix_operator_name(infix_op) or { '' }
 					tc.record_error_at(.assignment_mismatch, 'operator `${operator_name}` must return `${lhs_name}` to be used as an assignment operator', lhs_id, tc.compound_assignment_operator_pos(lhs_id, rhs_id, op_text))
 				}
