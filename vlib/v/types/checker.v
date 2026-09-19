@@ -9855,6 +9855,12 @@ fn (mut tc TypeChecker) check_fn_declaration_name(id flat.NodeId, node flat.Node
 			name = method
 		}
 	}
+	if !node.value.contains('.') && !node.is_static_type_method() {
+		if _ := tc.selective_import_candidates(name) {
+			tc.record_error_at(.duplicate_decl, 'cannot redefine imported function `${name}`', id,
+				tc.type_name_diagnostic_pos(id, name))
+		}
+	}
 	if !node.value.contains('.') && !node.is_static_type_method()
 		&& tc.cur_module in ['', 'main'] && is_builtin_type_name(name) {
 		tc.record_error_at(.duplicate_decl, 'top level declaration cannot shadow builtin type', id, tc.fn_declaration_diagnostic_pos(node))

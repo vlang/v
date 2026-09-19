@@ -3202,6 +3202,14 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		callee_id := tc.a.child(&node, 0)
 		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .ident && tc.source_file_declares_bare_fn(callee.value, node.pos.id) {
+			if _ := tc.selective_import_candidates(callee.value) {
+				for i in 1 .. node.children_count {
+					tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+				}
+				return
+			}
+		}
 		if tc.check_c_alias_cast_call(id, node, callee) {
 			return
 		}
@@ -3807,6 +3815,17 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	if dsl_name.len > 0 {
 		tc.pop_scope()
 	}
+}
+
+fn (tc &TypeChecker) source_file_declares_bare_fn(name string, file_id int) bool {
+	for index in tc.top_level_idx {
+		declaration := tc.a.nodes[index]
+		if declaration.kind == .fn_decl && declaration.pos.id == file_id
+			&& declaration.value == name {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_c_va_macro_call(id flat.NodeId, node flat.Node) bool {
