@@ -3002,17 +3002,19 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 		actual := tc.resolve_expr(child_id, elem_type)
 		is_option_mismatch := (actual is OptionType) != (elem_type is OptionType)
 		is_pointer_mismatch := elem_type is Pointer && actual !is Pointer
+		child := tc.a.node(child_id)
 		if elem_type is OptionType && actual !is OptionType
-			&& tc.expr_compatible(child_id, actual, elem_type.base_type) {
-			// Plain values are lifted into an Option when the array's element type
-			// is already fixed by an earlier explicit Option element.
+			&& tc.expr_compatible(child_id, actual, elem_type.base_type)
+			&& child.kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
+				.string_literal, .none_expr] {
+			// Literal values are lifted into an Option when the array's element type
+			// is fixed by an earlier explicit Option element.
 			continue
 		}
 		if actual is Unknown || (tc.expr_compatible(child_id, actual, elem_type)
 			&& !is_option_mismatch && !is_pointer_mismatch) {
 			continue
 		}
-		child := tc.a.node(child_id)
 		if child.kind == .postfix && child.op == .not && actual is ArrayFixed
 			&& elem_type is ArrayFixed && actual.len <= elem_type.len
 			&& tc.receiver_compatible(actual.elem_type, elem_type.elem_type) {
