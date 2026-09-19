@@ -6010,7 +6010,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 						candidates << field.name
 					}
 				}
-				message := 'unknown field `${node.value}` on `${clean_base.name}`; ' + util.new_suggestion(node.value, candidates).say('type `${clean_base.name}` has no field named `${node.value}`')
+				message := util.new_suggestion(node.value, candidates).say('type `${clean_base.name}` has no field named `${node.value}`')
 				tc.record_error_at(.unknown_field, message, id, tc.node_value_diagnostic_pos(id))
 			} else if clean_base is SumType {
 				tc.record_error_at(.unknown_field, 'unknown field `${node.value}` on `${clean_base.name}`; field `${node.value}` does not exist or have the same type in these sumtype `${clean_base.name}` variants:', id, tc.node_value_diagnostic_pos(id))
