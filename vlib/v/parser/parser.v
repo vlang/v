@@ -2498,12 +2498,17 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			mut fattrs := pending_attrs.clone()
 			pending_attrs = []string{}
 			pending_attrs_start = -1
+			mut has_attrs_before_default := false
 			if p.tok == .attribute || p.tok == .lsbr {
 				fattrs << p.parse_field_attrs()
+				has_attrs_before_default = true
 			}
 			mut default_id := flat.empty_node
 			// default value
 			if p.tok == .assign {
+				if has_attrs_before_default {
+					p.record_diagnostic_span('expecting type declaration', p.tok_pos, p.tok_end)
+				}
 				p.next()
 				default_id = p.expr(.lowest)
 			}
