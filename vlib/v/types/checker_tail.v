@@ -5802,7 +5802,7 @@ fn (mut tc TypeChecker) check_sum_constructor_call(id flat.NodeId, node flat.Nod
 	actual_count := node.children_count - 1
 	if actual_count != 1 {
 		if tc.should_diagnose(id) {
-			tc.record_error(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected 1, got ${actual_count}', id)
+			tc.record_error(.call_arg_mismatch, 'expected 1 argument, but got ${actual_count}', id)
 		}
 		for i in 1 .. node.children_count {
 			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
@@ -8633,7 +8633,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 	if is_decode_call_name(call_name) {
 		if type_args.len != 1 {
 			if tc.should_diagnose(id) {
-				tc.record_error(.call_arg_mismatch, 'generic argument count mismatch for `${call_name}`: expected 1, got ${type_args.len}', id)
+				tc.record_error(.call_arg_mismatch, 'expected 1 generic parameter, got ${type_args.len}', id)
 			}
 			return tc.failed_explicit_generic_call_info(call_name)
 		}
@@ -8750,7 +8750,8 @@ fn (mut tc TypeChecker) explicit_generic_arg_count_mismatch(name string, type_ar
 		plural := if generic_params.len == 1 { '' } else { 's' }
 		call := tc.a.node(id)
 		callee_id := if call.children_count > 0 { tc.a.child(call, 0) } else { id }
-		tc.record_error_at(.call_arg_mismatch, 'generic argument count mismatch for `${name}`: expected ${generic_params.len}, got ${type_args.len}; expected ${generic_params.len} generic parameter${plural}, got ${type_args.len}', id, tc.explicit_generic_args_diagnostic_pos(callee_id))
+		tc.record_error_at(.call_arg_mismatch, 'expected ${generic_params.len} generic parameter${plural}, got ${type_args.len}',
+			id, tc.explicit_generic_args_diagnostic_pos(callee_id))
 	}
 	return true
 }
@@ -12566,7 +12567,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		arg_count := node.children_count - 1
 		if arg_count != 0 && tc.should_diagnose(id) {
-			tc.record_error(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected 0, got ${arg_count}', id)
+			tc.record_error(.call_arg_mismatch, 'expected 0 arguments, but got ${arg_count}', id)
 		}
 		return
 	}
@@ -12621,7 +12622,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if i < node.children_count - 1 {
 				expected_count := info.params.len - recv_extra
 				found_count := node.children_count - 1 - info.arg_offset
-				tc.record_error_at(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected ${expected_count}, got ${found_count}', id, node.pos)
+				grammar := if expected_count == 1 { 'argument' } else { 'arguments' }
+				tc.record_error_at(.call_arg_mismatch, 'expected ${expected_count} ${grammar}, but got ${found_count}',
+					id, node.pos)
 				return
 			}
 			actual_count += arg_type.types.len - 1
@@ -12730,13 +12733,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		expected_count := signature_param_count - recv_extra - ctx_count
 		found_count := actual_count - recv_extra
-		include_receiver_in_count := info.name == 'array.pointers'
-		reported_expected_count := expected_count + if include_receiver_in_count {
-			recv_extra
-		} else {
-			0
-		}
-		reported_found_count := found_count + if include_receiver_in_count { recv_extra } else { 0 }
 		if expanded_multi_return_arg {
 			user_arg_count := node.children_count - 1 - info.arg_offset
 			if user_arg_count == 1 && found_count > expected_count {
@@ -12754,7 +12750,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			} else {
 				node.pos
 			}
-			tc.record_error_with_details_at(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected ${expected_count}, got ${found_count}; expected ${expected_count} ${grammar}, but got ${found_count}', id, pos, tc.call_count_mismatch_details(node, info0))
+			tc.record_error_with_details_at(.call_arg_mismatch, 'expected ${expected_count} ${grammar}, but got ${found_count}',
+				id, pos, tc.call_count_mismatch_details(node, info0))
 			return
 		}
 		grammar := if expected_count == 1 { 'argument' } else { 'arguments' }
@@ -12781,7 +12778,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		} else {
 			tc.call_count_mismatch_details(node, info0)
 		}
-		tc.record_error_with_details_at(.call_arg_mismatch, 'argument count mismatch for `${tc.call_display_name(node)}`: expected ${reported_expected_count}, got ${reported_found_count}; expected ${expected_count} ${grammar}, but got ${found_count}', id, pos, details)
+		tc.record_error_with_details_at(.call_arg_mismatch, 'expected ${expected_count} ${grammar}, but got ${found_count}',
+			id, pos, details)
 		return
 	}
 	if info.has_receiver && info.params.len > 0 {
@@ -14188,8 +14186,7 @@ fn (mut tc TypeChecker) check_builtin_map_call_args(_id flat.NodeId, node flat.N
 	}
 	if node.children_count > 1 {
 		arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-		call_name := tc.source_text_for_node(tc.a.child(&node, 0))
-		tc.record_error(.call_arg_mismatch, 'argument count mismatch for `${call_name}`: expected 0, got ${node.children_count - 1}; `.${method}()` does not have any arguments', arg_id)
+		tc.record_error(.call_arg_mismatch, '`.${method}()` does not have any arguments', arg_id)
 	} else if method == 'move' {
 		tc.check_builtin_array_mutable_receiver(receiver_id)
 	}
@@ -14234,7 +14231,7 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		}
 		if explicit_count > 0 {
 			arg_id := tc.call_arg_value(tc.a.child(&node, 1))
-			tc.record_error(.call_arg_mismatch, 'argument count mismatch for `.${method}`: expected 0, got ${explicit_count}; `.${method}()` does not have any arguments', arg_id)
+			tc.record_error(.call_arg_mismatch, '`.${method}()` does not have any arguments', arg_id)
 		}
 		if method in ['pop', 'pop_left'] {
 			tc.check_builtin_array_mutable_receiver(receiver_id)
@@ -14264,7 +14261,8 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 			for i in 1 .. node.children_count {
 				tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 			}
-			tc.record_error_at(.call_arg_mismatch, 'argument count mismatch for `array.insert`: expected 2, got ${explicit_count}; `array.insert()` should have 2 arguments, e.g. `insert(1, val)`', id, tc.method_call_name_pos(node, callee))
+			tc.record_error_at(.call_arg_mismatch, '`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
+				id, tc.method_call_name_pos(node, callee))
 			return true
 		}
 		index_id := tc.call_arg_value(tc.a.child(&node, 1))
@@ -14303,7 +14301,8 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 			for i in 1 .. node.children_count {
 				tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 			}
-			tc.record_error_at(.call_arg_mismatch, 'argument count mismatch for `array.prepend`: expected 1, got ${explicit_count}; `array.prepend()` should have 1 argument, e.g. `prepend(val)`', id, tc.method_call_name_pos(node, callee))
+			tc.record_error_at(.call_arg_mismatch, '`array.prepend()` should have 1 argument, e.g. `prepend(val)`',
+				id, tc.method_call_name_pos(node, callee))
 			return true
 		}
 		value_id := tc.call_arg_value(tc.a.child(&node, 1))
