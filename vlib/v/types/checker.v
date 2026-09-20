@@ -10254,12 +10254,13 @@ fn (mut tc TypeChecker) check_test_fn_signature(id flat.NodeId, node flat.Node) 
 		}
 		param_count++
 	}
+	prefix := if tc.checker_fixture_mode { '' } else { 'invalid test signature: ' }
 	if param_count != 0 {
-		tc.record_error_at(.call_arg_mismatch, 'invalid test signature: test functions should take 0 parameters', id, tc.fn_declaration_diagnostic_pos(node))
+		tc.record_error_at(.call_arg_mismatch, '${prefix}test functions should take 0 parameters', id, tc.fn_declaration_diagnostic_pos(node))
 	}
 	return_type := trimmed_space(node.typ)
 	if return_type.len > 0 && return_type !in ['void', '?', '!'] && !return_type.starts_with('?void') && !return_type.starts_with('!void') {
-		tc.record_error_at(.return_mismatch, 'invalid test signature: test functions should either return nothing at all, or be marked to return `?` or `!`', id, tc.fn_declaration_diagnostic_pos(node))
+		tc.record_error_at(.return_mismatch, '${prefix}test functions should either return nothing at all, or be marked to return `?` or `!`', id, tc.fn_declaration_diagnostic_pos(node))
 	}
 }
 

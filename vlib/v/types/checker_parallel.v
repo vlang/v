@@ -2290,6 +2290,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if b_is_print_void && a_is_undefined_ident {
 		return 1
 	}
+	a_is_test_signature := a.msg.starts_with('test functions should ')
+	b_is_test_signature := b.msg.starts_with('test functions should ')
+	a_is_missing_return := a.msg.starts_with('missing return at end of function `')
+	b_is_missing_return := b.msg.starts_with('missing return at end of function `')
+	if a.node == b.node && a_is_test_signature && b_is_missing_return {
+		return -1
+	}
+	if a.node == b.node && b_is_test_signature && a_is_missing_return {
+		return 1
+	}
 	a_is_unknown_asm_register := a.msg.starts_with('unknown register `')
 		|| a.msg.starts_with('unknown clobbered register `')
 	b_is_unknown_asm_register := b.msg.starts_with('unknown register `')
