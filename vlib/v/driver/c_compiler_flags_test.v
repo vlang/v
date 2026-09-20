@@ -162,6 +162,22 @@ fn test_v3_implicit_tcc_uses_platform_compiler_for_non_c_objects() {
 	assert c_source_object_compiler('c++', 'tcc', false, 'linux') == 'tcc'
 }
 
+fn test_c_object_flag_plan_limits_primary_compiler_flags() {
+	plan := CObjectFlagPlan{
+		environment_flags:      ['-DENVIRONMENT']
+		primary_compiler:       '/v/thirdparty/tcc/tcc.exe'
+		primary_compiler_flags: ['-B/bundled/tcc', '-I/bundled/tcc/include']
+		common_flags:           ['-fPIC', '-I/module/include']
+	}
+	assert plan.flags_for_compiler('/v/thirdparty/tcc/tcc.exe') == ['-DENVIRONMENT', '-B/bundled/tcc',
+		'-I/bundled/tcc/include', '-fPIC', '-I/module/include']
+	assert plan.flags_for_compiler('c++') == [
+		'-DENVIRONMENT',
+		'-fPIC',
+		'-I/module/include',
+	]
+}
+
 fn test_v3_bundled_tcc_probe_eligibility() {
 	linux_target := pref.Target{
 		os:   'linux'
@@ -380,6 +396,34 @@ fn test_v3_bundled_tcc_native_object_build_is_cwd_independent() {
 	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
 		'-no-retry-compilation', '-cc', 'tcc', '-o', output, v_source], root)
 	assert build.exit_code == 0, build.output
+}
+
+fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
+	$if windows {
+		return
+	}
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_executable(bundled_tcc) {
+		return
+	}
+	os.find_abs_path_of_executable('c++') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_tcc_cpp_object_headers_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	cpp_source := os.join_path(root, 'native.cpp')
+	cpp_object := os.join_path(root, 'native.o')
+	v_source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main')
+	os.write_file(cpp_source, '#include <cstddef>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t); }\n')!
+	os.write_file(v_source, '#flag ${cpp_object}\n\nfn C.v3_cpp_object_probe() usize\n\nfn main() {\n\tassert C.v3_cpp_object_probe() > 0\n}\n')!
+	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
+		'-no-retry-compilation', '-o', output, v_source], root)
+	assert !build.output.contains('failed to build C object'), build.output
+	assert build.exit_code == 0
+		|| build.output.contains('implicit tcc could not be used for this build'), build.output
 }
 
 fn test_v3_system_tcc_runtime_requires_windows_openlibm() {

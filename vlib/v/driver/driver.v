@@ -347,6 +347,22 @@ mut:
 	dependency_files int
 }
 
+struct CObjectFlagPlan {
+	environment_flags      []string
+	primary_compiler       string
+	primary_compiler_flags []string
+	common_flags           []string
+}
+
+fn (plan &CObjectFlagPlan) flags_for_compiler(compiler string) []string {
+	mut flags := plan.environment_flags.clone()
+	if compiler == plan.primary_compiler {
+		flags << plan.primary_compiler_flags
+	}
+	flags << plan.common_flags
+	return flags
+}
+
 fn cpp_runtime_link_flag(target pref.Target) string {
 	return if target.os in ['macos', 'ios'] { '-lc++' } else { '-lstdc++' }
 }
@@ -364,7 +380,7 @@ fn add_c_language_runtime_link_flags(mut prepared []string, original []string, l
 	}
 }
 
-fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) ![]string {
+fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primary_compiler_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
@@ -386,12 +402,17 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 		}
 		return passthrough
 	}
-	mut support_flags := environment_c_flags.clone()
-	support_flags << optimization_flags
-	support_flags << c_object_compile_support_flags(flags)
+	mut common_compile_flags := optimization_flags.clone()
+	common_compile_flags << c_object_compile_support_flags(flags)
+	object_flag_plan := CObjectFlagPlan{
+		environment_flags:      environment_c_flags
+		primary_compiler:       c_compiler
+		primary_compiler_flags: primary_compiler_flags
+		common_flags:           common_compile_flags
+	}
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	plan_path := c_link_plan_path(cache_dir, flags, support_flags, c99, no_std, pic_flag,
+	plan_path := c_link_plan_path(cache_dir, flags, &object_flag_plan, c99, no_std, pic_flag,
 		target_args, target, c_compiler, use_platform_non_c_compiler, mut stats)
 	// Tracing intentionally walks the object manifests so every requested
 	// object's cache decision remains visible.
@@ -432,7 +453,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 			} else {
 				''
 			}
-			object_path := ensure_c_object_file(clean, active_language, support_flags, c99,
+			object_path := ensure_c_object_file(clean, active_language, &object_flag_plan, c99,
 				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
@@ -440,7 +461,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 		} else if clean.ends_with('.mm') {
 			stats.requests++
 			language := c_source_language(clean, active_language)
-			object_path := ensure_c_source_object(clean, active_language, support_flags, c99,
+			object_path := ensure_c_source_object(clean, active_language, &object_flag_plan, c99,
 				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
@@ -468,10 +489,12 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 	return prepared
 }
 
-fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
+fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'), support_flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'),
+		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
+		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
 		target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
 		target.object_format, use_platform_non_c_compiler.str()] {
@@ -1224,7 +1247,7 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, source_language string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn ensure_c_object_file(obj_path string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if os.exists(obj_path) {
 		stats.direct_objects++
 		return obj_path
@@ -1232,17 +1255,17 @@ fn ensure_c_object_file(obj_path string, source_language string, support_flags [
 	source_file := c_source_from_object_file(obj_path) or {
 		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.m/.mm/.S source was found')
 	}
-	return compile_cached_c_source_object(obj_path, source_file, source_language, support_flags,
+	return compile_cached_c_source_object(obj_path, source_file, source_language, object_flags,
 		c99, no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 		uncached_dir, mut stats)
 }
 
-fn ensure_c_source_object(source_file string, source_language string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn ensure_c_source_object(source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if !os.exists(source_file) {
 		return error('missing C source ${source_file}')
 	}
 	return compile_cached_c_source_object('${source_file}.o', source_file, source_language,
-		support_flags, c99, no_std, pic_flag, target_args, target, c_compiler,
+		object_flags, c99, no_std, pic_flag, target_args, target, c_compiler,
 		use_platform_non_c_compiler, uncached_dir, mut stats)
 }
 
@@ -1272,7 +1295,7 @@ fn c_source_object_compiler(language string, c_compiler string, use_platform_non
 	return c_compiler
 }
 
-fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
 	language := c_source_language(source_file, source_language)
@@ -1296,7 +1319,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		args << wrapv_flag
 	}
 	args << '-w'
-	args << support_flags
+	args << object_flags.flags_for_compiler(compiler)
 	if language.len > 0 {
 		args << ['-x', language]
 	}
@@ -12282,20 +12305,21 @@ pub fn run(args []string) {
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc)
-			mut object_environment_c_flags := environment_c_flags.clone()
+			mut primary_object_compiler_flags := []string{}
 			if effective_tcc {
 				object_tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
 					macos_sdk_root_cache.get()
 				} else {
 					''
 				}
-				object_environment_c_flags << v3_tcc_object_compile_flags(prefs.vroot, c_compiler,
+				primary_object_compiler_flags = v3_tcc_object_compile_flags(prefs.vroot, c_compiler,
 					bundled_tcc, bundled_tcc_available, prefs.normalized_target_os(),
 					object_tcc_sdk_root)
 			}
-			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, object_environment_c_flags,
-				object_optimization_flags, prefs.c99, no_std, pic_flag, target_args, prefs.target,
-				c_compiler, use_implicit_tcc_semantics, cc_dir, mut c_object_cache_stats) or {
+			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
+				primary_object_compiler_flags, object_optimization_flags, prefs.c99, no_std,
+				pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir,
+				mut c_object_cache_stats) or {
 				message := err.msg()
 				if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, false, 0) {
 					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc)
