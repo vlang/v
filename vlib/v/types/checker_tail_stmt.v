@@ -6780,6 +6780,20 @@ fn (mut tc TypeChecker) check_index_overload_arg(id flat.NodeId, node flat.Node,
 	return true
 }
 
+fn js_index_type_requires_int_cast(typ Type) bool {
+	return unalias_type(typ).name() in ['i64', 'u64', 'isize', 'usize']
+}
+
+fn (mut tc TypeChecker) check_js_index_type(id flat.NodeId, typ Type, base_type Type) bool {
+	if !tc.is_js_backend || !js_index_type_requires_int_cast(typ) {
+		return false
+	}
+	type_name := tc.diagnostic_expr_type_name(id, typ)
+	container := if base_type is String { 'string ' } else { '' }
+	tc.record_error_at(.cannot_index, 'cannot use `${type_name}` as ${container}index type `int`, use an explicit cast like `int(expr)`', id, tc.a.node(id).pos)
+	return true
+}
+
 // check_index validates check index state for types.
 fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
@@ -6916,7 +6930,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 						'non-integer index `${type_name}` (array type `${base_type.name()}`)'
 					}
 					tc.type_mismatch(.cannot_index, message, bound_id)
-				} else {
+				} else if !tc.check_js_index_type(bound_id, bound_type, base_type) {
 					if node.op != .gated_index {
 						if value := tc.index_literal_value(bound_id) {
 							if value < 0 {
@@ -7024,6 +7038,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 				}
 				tc.type_mismatch(.cannot_index, message, index_id)
 			}
+		} else if tc.check_js_index_type(index_id, index_type, base_type) {
+			// The JavaScript backend requires explicit narrowing to its `int` index type.
 		} else if node.op != .gated_index {
 			if value := tc.index_literal_value(index_id) {
 				if value < 0 {

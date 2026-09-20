@@ -859,6 +859,7 @@ pub mut:
 	autofree_mode                 bool
 	no_main                       bool
 	nofloat                       bool
+	is_js_backend                 bool
 	warn_about_allocs             bool
 	warns_are_errors              bool
 	notes_are_errors              bool
@@ -1181,6 +1182,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		building_v_fast:                       tc.building_v_fast
 		valid_diagnostic_fast:                 tc.valid_diagnostic_fast
 		valid_resolution_fast:                 tc.valid_resolution_fast
+		is_js_backend:                         tc.is_js_backend
 		enable_globals:                        tc.enable_globals
 		disable_explicit_mutability:           tc.disable_explicit_mutability
 		fn_ret_types:                          tc.fn_ret_types
@@ -14051,7 +14053,7 @@ fn (tc &TypeChecker) resolve_known_field_type(type_name string, fallback Type) T
 // type_name_known returns type name known data for TypeChecker.
 fn (tc &TypeChecker) type_name_known(typ string) bool {
 	if is_builtin_type_name(typ) || typ == 'unknown' || typ.starts_with('C.')
-		|| tc.active_generic_param(typ) {
+		|| (tc.is_js_backend && typ == 'JS.Number') || tc.active_generic_param(typ) {
 		return true
 	}
 	generic_base := strip_generic_args_name(typ)

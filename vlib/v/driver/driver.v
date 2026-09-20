@@ -1866,14 +1866,15 @@ fn input_owns_builtin_bundle_module(input_file string, vroot string) bool {
 }
 
 fn input_is_legacy_diagnostic_fixture(input_file string) bool {
-	if os.getenv('VTEST_RUNNER') != 'normal' || !input_file.ends_with('.vv') {
+	if !input_file.ends_with('.vv') {
 		return false
 	}
 	normalized := os.real_path(input_file).replace('\\', '/')
 	if !['/vlib/v/checker/tests/', '/vlib/v/parser/tests/', '/vlib/v/scanner/tests/'].any(normalized.contains(it)) {
 		return false
 	}
-	return os.is_file(input_file.all_before_last('.vv') + '.out')
+	base := input_file.all_before_last('.vv')
+	return os.is_file(base + '.out') || os.is_file(base + '.js.out')
 }
 
 fn default_bin_file_for_input(input_file string) string {
@@ -9316,7 +9317,7 @@ pub fn run(args []string) {
 		eprintln('option `-target-libc-headers` requires the C backend')
 		exit(1)
 	}
-	if backend == 'js' {
+	if backend == 'js' && !is_checker_fixture {
 		// This early compatibility path bypasses the common test filter below.
 		if input_file.ends_with('_test.js.v') && os.is_file(input_file) {
 			if !silent {
@@ -9373,7 +9374,8 @@ pub fn run(args []string) {
 		eprintln('ownership support is not compiled into this v3 executable')
 		exit(1)
 	}
-	if backend !in ['c', 'fastc', 'arm64', 'wasm', 'eval'] {
+	if backend !in ['c', 'fastc', 'arm64', 'wasm', 'eval']
+		&& !(backend == 'js' && is_checker_fixture) {
 		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, wasm, or eval')
 		exit(1)
 	}
@@ -10783,6 +10785,7 @@ pub fn run(args []string) {
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
 	pre_tc.no_main = 'no_main' in prefs.user_defines
 	pre_tc.nofloat = 'nofloat' in prefs.user_defines
+	pre_tc.is_js_backend = backend == 'js'
 	pre_tc.warn_about_allocs = prefs.warn_about_allocs
 	pre_tc.warns_are_errors = effective_warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
