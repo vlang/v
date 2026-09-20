@@ -1326,18 +1326,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 					i++
 					break
 				}
-				remaining := int(node.children_count) - i
-				if remaining == 1 {
-					arg_type := t.node_type(arg_id)
-					if arg_type.starts_with('[]')
-						&& !t.variadic_interface_single_array_should_box(arg_type, variadic_type) {
-						new_children << t.transform_call_arg_for_named_param(arg_id, param_type, call_name)
-					} else {
-						new_children << t.pack_variadic_args(node, i, variadic_type.elem_type)
-					}
-				} else {
-					new_children << t.pack_variadic_args(node, i, variadic_type.elem_type)
-				}
+				new_children << t.pack_variadic_args(node, i, variadic_type.elem_type)
 				break
 			}
 		}
@@ -1762,33 +1751,6 @@ fn (t &Transformer) call_param_type_names(params []types.Type) []string {
 		}
 	}
 	return names
-}
-
-fn (t &Transformer) variadic_interface_single_array_should_box(arg_type string, variadic_type types.Array) bool {
-	if !arg_type.starts_with('[]') {
-		return false
-	}
-	if t.normalize_type_alias(arg_type) == t.normalize_type_alias(t.semantic_type_name(variadic_type)) {
-		return false
-	}
-	elem_type := variadic_type.elem_type
-	if elem_type is types.Interface {
-		return true
-	}
-	if elem_type is types.Alias {
-		return t.variadic_interface_single_array_elem_should_box(elem_type.base_type)
-	}
-	return false
-}
-
-fn (t &Transformer) variadic_interface_single_array_elem_should_box(elem_type types.Type) bool {
-	if elem_type is types.Interface {
-		return true
-	}
-	if elem_type is types.Alias {
-		return t.variadic_interface_single_array_elem_should_box(elem_type.base_type)
-	}
-	return false
 }
 
 fn (mut t Transformer) fixed_variadic_spread_args_with_trailing(spread_args []flat.NodeId, node flat.Node, trailing_start int, variadic_type types.Array) []flat.NodeId {
@@ -15087,17 +15049,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 					i++
 					break
 				}
-				remaining := int(node.children_count) - i
-				if remaining == 1 {
-					arg_type := t.node_type(arg_id)
-					if arg_type.starts_with('[]') {
-						args << t.transform_call_arg_for_param(arg_id, param_type)
-					} else {
-						args << t.pack_variadic_args(node, i, variadic_type.elem_type)
-					}
-				} else {
-					args << t.pack_variadic_args(node, i, variadic_type.elem_type)
-				}
+				args << t.pack_variadic_args(node, i, variadic_type.elem_type)
 				break
 			}
 		}
