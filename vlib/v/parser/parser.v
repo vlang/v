@@ -9337,6 +9337,12 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		return p.finish_assignment_stmt(id)
 	}
 
+	if p.tok == .rpar {
+		p.record_diagnostic_span('invalid expression: unexpected token `)`', p.tok_pos, p.tok_end)
+		for p.tok !in [.semicolon, .rcbr, .eof] {
+			p.next()
+		}
+	}
 	if p.tok == .semicolon {
 		p.next()
 	}
