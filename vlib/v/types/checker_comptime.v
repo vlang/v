@@ -7277,6 +7277,11 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	if node.op in [.eq, .ne] {
 		lhs_is_sum := lhs_clean is SumType
 		rhs_is_sum := rhs_clean is SumType
+		c_literal_scalar_comparison :=
+			(rhs_node.kind == .char_literal && rhs_node.value.starts_with('c:')
+				&& lhs_clean.is_integer())
+				|| (lhs_node.kind == .char_literal && lhs_node.value.starts_with('c:')
+					&& rhs_clean.is_integer())
 		pointer_value_comparison :=
 			(rhs_clean is Pointer && tc.type_compatible(rhs_clean.base_type, lhs_clean))
 				|| (lhs_clean is Pointer && tc.type_compatible(lhs_clean.base_type, rhs_clean))
@@ -7294,7 +7299,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 			tc.type_compatible(lhs_type, rhs_type) || tc.type_compatible(rhs_type, lhs_type)
 				|| tc.expr_compatible(lhs_id, lhs_type, rhs_type)
 				|| tc.expr_compatible(rhs_id, rhs_type, lhs_type)
-				|| pointer_value_comparison_allowed
+				|| pointer_value_comparison_allowed || c_literal_scalar_comparison
 		}
 		unsafe_zero_struct_comparison :=
 			((lhs_clean is Struct && tc.zero_literal_expr_id(rhs_id) != none)
