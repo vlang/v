@@ -11523,7 +11523,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				val_type := p.parse_type_name()
 				map_type := 'map[${key_type}]${val_type}'
 				if p.tok == .lcbr {
-					return p.empty_map_init_after_type(map_type, name_pos)
+					return p.map_init_after_type(map_type, name_pos)
 				}
 				return p.a.add_node(flat.Node{
 					kind:  .map_init
@@ -12160,6 +12160,17 @@ fn (mut p Parser) map_init_body(map_type string, map_start int) flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(map_start)
 	})
+}
+
+fn (mut p Parser) map_init_after_type(map_type string, start int) flat.NodeId {
+	p.next() // skip {
+	// `map[K]V{cap: n}` is the removed map-capacity parameter form. Keep its
+	// dedicated diagnostic while allowing ordinary typed key/value literals.
+	if p.tok == .name && p.lit == 'cap' && p.peek() == .colon {
+		p.record_diagnostic_span('`}` expected; explicit `map` initialization does not support parameters',
+			p.tok_pos, p.tok_end)
+	}
+	return p.map_init_body(map_type, start)
 }
 
 fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.NodeId {
