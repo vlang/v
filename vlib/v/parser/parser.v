@@ -11248,6 +11248,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		if p.tok == .minus {
 			mut previous := p.tok_pos - 1
 			mut preceding_minuses := 0
+			mut preceding_minus_is_arrow := false
 			for previous >= 0 {
 				for previous >= 0 && p.s.src[previous] in [` `, `\t`] {
 					previous--
@@ -11255,10 +11256,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				if previous < 0 || p.s.src[previous] != `-` {
 					break
 				}
+				if preceding_minuses == 0 && previous > 0 && p.s.src[previous - 1] == `<` {
+					preceding_minus_is_arrow = true
+				}
 				preceding_minuses++
 				previous--
 			}
-			if preceding_minuses == 1 {
+			if preceding_minuses == 1 && !preceding_minus_is_arrow {
 				p.record_diagnostic_span('invalid expression: unexpected token `-`', p.tok_pos,
 					p.tok_end)
 			}
