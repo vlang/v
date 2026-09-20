@@ -2758,6 +2758,12 @@ fn (mut t Transformer) lower_type_pattern_membership(lhs_id flat.NodeId, rhs fla
 	}
 	for i in 0 .. rhs.children_count {
 		elem_id := t.a.child(&rhs, i)
+		elem := t.a.node(elem_id)
+		if elem.kind == .selector && elem.children_count > 0 {
+			if _ := t.enum_type_from_node(t.a.child(elem, 0)) {
+				return none
+			}
+		}
 		pattern := t.type_pattern_name(elem_id)
 		if pattern.len == 0 {
 			return none

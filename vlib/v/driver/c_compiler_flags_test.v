@@ -97,8 +97,8 @@ fn test_v3_no_std_command_keeps_the_user_standard_only() {
 		'-no-std', '-cflags', '-std=c++11', '-dump-c-flags', '-', '-o', output, source])
 	assert build.exit_code == 0, build.output
 	assert '-std=c++11' in build.output.split_into_lines(), build.output
-	assert '-std=gnu11' !in build.output, build.output
-	assert '-std=gnu++11' !in build.output, build.output
+	assert !build.output.contains('-std=gnu11'), build.output
+	assert !build.output.contains('-std=gnu++11'), build.output
 }
 
 fn test_v3_tcc_linux_output_declares_backtrace() {

@@ -6228,6 +6228,10 @@ fn (g &FlatGen) trace_call_name(fn_node flat.Node, fn_name string, target_name s
 	if !g.trace_calls || g.inside_trace_call {
 		return none
 	}
+	if fn_decl_module_key('debug', 'before_call_hook') !in g.fn_decl_ret_types
+		|| fn_decl_module_key('debug', 'after_call_hook') !in g.fn_decl_ret_types {
+		return none
+	}
 	if g.tc.cur_module in ['builtin', 'debug'] {
 		return none
 	}

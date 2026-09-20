@@ -364,7 +364,7 @@ fn add_c_language_runtime_link_flags(mut prepared []string, original []string, l
 	}
 }
 
-fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimization_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) ![]string {
+fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
@@ -391,7 +391,8 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 	support_flags << c_object_compile_support_flags(flags)
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	plan_path := c_link_plan_path(cache_dir, flags, support_flags, c99, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler, mut stats)
+	plan_path := c_link_plan_path(cache_dir, flags, support_flags, c99, no_std, pic_flag,
+		target_args, target, c_compiler, use_platform_non_c_compiler, mut stats)
 	// Tracing intentionally walks the object manifests so every requested
 	// object's cache decision remains visible.
 	if os.getenv('V3_CACHE_TRACE') == '' {
@@ -431,13 +432,17 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 			} else {
 				''
 			}
-			object_path := ensure_c_object_file(clean, active_language, support_flags, c99, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler, uncached_dir, mut stats)!
+			object_path := ensure_c_object_file(clean, active_language, support_flags, c99,
+				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
+				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
 			add_c_language_runtime_link_flags(mut prepared, flags, adjacent_language, target)
 		} else if clean.ends_with('.mm') {
 			stats.requests++
 			language := c_source_language(clean, active_language)
-			object_path := ensure_c_source_object(clean, active_language, support_flags, c99, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler, uncached_dir, mut stats)!
+			object_path := ensure_c_source_object(clean, active_language, support_flags, c99,
+				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
+				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
 			if c_generated_native_source_context(clean, uncached_dir) {
 				os.rm(clean) or {}
@@ -463,13 +468,13 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 	return prepared
 }
 
-fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
+fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
 	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'), support_flags.join('\x00'),
-		c99.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version, target.os,
-		target.arch, target.abi, target.endian, target.pointer_bits.str(), target.object_format,
-		use_platform_non_c_compiler.str()] {
+		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
+		target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
+		target.object_format, use_platform_non_c_compiler.str()] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -1219,7 +1224,7 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, source_language string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn ensure_c_object_file(obj_path string, source_language string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if os.exists(obj_path) {
 		stats.direct_objects++
 		return obj_path
@@ -1227,14 +1232,18 @@ fn ensure_c_object_file(obj_path string, source_language string, support_flags [
 	source_file := c_source_from_object_file(obj_path) or {
 		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.m/.mm/.S source was found')
 	}
-	return compile_cached_c_source_object(obj_path, source_file, source_language, support_flags, c99, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler, uncached_dir, mut stats)
+	return compile_cached_c_source_object(obj_path, source_file, source_language, support_flags,
+		c99, no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
+		uncached_dir, mut stats)
 }
 
-fn ensure_c_source_object(source_file string, source_language string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn ensure_c_source_object(source_file string, source_language string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if !os.exists(source_file) {
 		return error('missing C source ${source_file}')
 	}
-	return compile_cached_c_source_object('${source_file}.o', source_file, source_language, support_flags, c99, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler, uncached_dir, mut stats)
+	return compile_cached_c_source_object('${source_file}.o', source_file, source_language,
+		support_flags, c99, no_std, pic_flag, target_args, target, c_compiler,
+		use_platform_non_c_compiler, uncached_dir, mut stats)
 }
 
 fn c_source_language(source_file string, source_language string) string {
@@ -1263,18 +1272,21 @@ fn c_source_object_compiler(language string, c_compiler string, use_platform_non
 	return c_compiler
 }
 
-fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
 	language := c_source_language(source_file, source_language)
 	is_cpp := language in ['c++', 'objective-c++']
 	std_flag := if is_cpp {
-		if c99 { '-std=c++11' } else { '-std=gnu++11' }
+		cxx_standard_flag(c99, no_std)
 	} else {
-		c_standard_flag(c99)
+		c_standard_flag(c99, no_std)
 	}
 	compiler := c_source_object_compiler(language, c_compiler, use_platform_non_c_compiler, target.os)
-	mut args := [std_flag]
+	mut args := []string{}
+	if std_flag.len > 0 {
+		args << std_flag
+	}
 	args << target_args
 	if pic_flag.len > 0 {
 		args << pic_flag
@@ -1558,8 +1570,18 @@ fn c_flag_is_c_source_file(flag string) bool {
 		|| flag.ends_with('.m') || flag.ends_with('.mm')
 }
 
-fn c_standard_flag(c99 bool) string {
+fn c_standard_flag(c99 bool, no_std bool) string {
+	if no_std {
+		return ''
+	}
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
+}
+
+fn cxx_standard_flag(c99 bool, no_std bool) string {
+	if no_std {
+		return ''
+	}
+	return if c99 { '-std=c++11' } else { '-std=gnu++11' }
 }
 
 fn c_wrapv_flag(target_os string) string {
@@ -1579,6 +1601,25 @@ fn shared_pic_flag(is_shared bool, target_os string) string {
 
 fn v3_is_host_c_compiler(c_compiler string) bool {
 	return os.file_name(c_compiler).to_lower_ascii() in ['cc', 'clang', 'gcc', 'tcc', 'tinyc']
+}
+
+fn v3_windows_cross_c_compiler(c_compiler string, host pref.Target, target pref.Target) string {
+	if host.os == 'windows' || target.os != 'windows'
+		|| os.file_name(c_compiler).to_lower_ascii() !in ['tcc', 'tinyc'] {
+		return c_compiler
+	}
+	return match target.arch {
+		'amd64' { 'x86_64-w64-mingw32-gcc' }
+		'x86' { 'i686-w64-mingw32-gcc' }
+		else { c_compiler }
+	}
+}
+
+fn v3_c_compiler_command_alias(c_compiler string, host_os string) string {
+	if host_os == 'windows' && os.file_name(c_compiler).to_lower_ascii() == 'msvc' {
+		return 'cl'
+	}
+	return c_compiler
 }
 
 fn v3_macos_linux_compatibility_link(host pref.Target, target_os string, target_arch string, backend string, output_file string, explicit_output bool, is_o bool, c_compiler string, compiler_explicit bool) bool {
@@ -1866,14 +1907,15 @@ fn input_owns_builtin_bundle_module(input_file string, vroot string) bool {
 }
 
 fn input_is_legacy_diagnostic_fixture(input_file string) bool {
-	if os.getenv('VTEST_RUNNER') != 'normal' || !input_file.ends_with('.vv') {
+	if !input_file.ends_with('.vv') {
 		return false
 	}
 	normalized := os.real_path(input_file).replace('\\', '/')
 	if !['/vlib/v/checker/tests/', '/vlib/v/parser/tests/', '/vlib/v/scanner/tests/'].any(normalized.contains(it)) {
 		return false
 	}
-	return os.is_file(input_file.all_before_last('.vv') + '.out')
+	base := input_file.all_before_last('.vv')
+	return os.is_file(base + '.out') || os.is_file(base + '.js.out')
 }
 
 fn default_bin_file_for_input(input_file string) string {
@@ -2716,18 +2758,7 @@ fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 		offset = payload_end + js_eval_suffix.len
 	}
 	for line in source.split_into_lines() {
-		trimmed := line.trim_space()
-		if !trimmed.starts_with('println(') || !trimmed.ends_with(')') {
-			continue
-		}
-		argument := trimmed['println('.len..trimmed.len - 1].trim_space()
-		if argument.len < 2 {
-			continue
-		}
-		quote := argument[0]
-		if (quote != 39 && quote != 34) || argument[argument.len - 1] != quote {
-			continue
-		}
+		argument := v3_js_literal_println_argument(line) or { continue }
 		output.writeln('console.log(${argument});')
 		emitted = true
 	}
@@ -2736,6 +2767,62 @@ fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 	}
 	os.mkdir_all(os.dir(output_file))!
 	os.write_file(output_file, output.str())!
+}
+
+fn v3_js_literal_println_argument(line string) ?string {
+	prefix := 'println('
+	mut offset := 0
+	for offset < line.len {
+		relative := line[offset..].index(prefix) or { return none }
+		start := offset + relative
+		if start > 0 {
+			previous := line[start - 1]
+			if previous == `.` || previous == `_` || (previous >= `0` && previous <= `9`)
+				|| (previous >= `A` && previous <= `Z`) || (previous >= `a` && previous <= `z`) {
+				offset = start + prefix.len
+				continue
+			}
+		}
+		if comment := line[..start].index('//') {
+			if comment >= 0 {
+				return none
+			}
+		}
+		mut argument_start := start + prefix.len
+		for argument_start < line.len && line[argument_start] in [` `, `\t`] {
+			argument_start++
+		}
+		if argument_start >= line.len || line[argument_start] !in [`'`, `"`] {
+			offset = start + prefix.len
+			continue
+		}
+		quote := line[argument_start]
+		mut escaped := false
+		for i := argument_start + 1; i < line.len; i++ {
+			ch := line[i]
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == `\\` {
+				escaped = true
+				continue
+			}
+			if ch != quote {
+				continue
+			}
+			mut close := i + 1
+			for close < line.len && line[close] in [` `, `\t`] {
+				close++
+			}
+			if close < line.len && line[close] == `)` {
+				return line[argument_start..i + 1]
+			}
+			break
+		}
+		offset = start + prefix.len
+	}
+	return none
 }
 
 fn emit_v3_js_exported_global_aliases(source string, mut output strings.Builder) bool {
@@ -8638,6 +8725,7 @@ pub fn run(args []string) {
 	mut c_compiler_arg_index := -1
 	mut retry_compilation := true
 	mut gc_mode := ''
+	mut no_std := false
 	mut enable_globals_compat := false
 	mut disable_explicit_mutability := false
 	mut is_prod := false
@@ -8842,6 +8930,9 @@ pub fn run(args []string) {
 					user_defines << 'c99'
 				}
 			}
+			i++
+		} else if args[i] in ['-no-std', '--no-std'] {
+			no_std = true
 			i++
 		} else if args[i] in ['-strict', '-cstrict'] {
 			is_strict = true
@@ -9316,7 +9407,7 @@ pub fn run(args []string) {
 		eprintln('option `-target-libc-headers` requires the C backend')
 		exit(1)
 	}
-	if backend == 'js' {
+	if backend == 'js' && !is_checker_fixture {
 		// This early compatibility path bypasses the common test filter below.
 		if input_file.ends_with('_test.js.v') && os.is_file(input_file) {
 			if !silent {
@@ -9373,7 +9464,8 @@ pub fn run(args []string) {
 		eprintln('ownership support is not compiled into this v3 executable')
 		exit(1)
 	}
-	if backend !in ['c', 'fastc', 'arm64', 'wasm', 'eval'] {
+	if backend !in ['c', 'fastc', 'arm64', 'wasm', 'eval']
+		&& !(backend == 'js' && is_checker_fixture) {
 		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, wasm, or eval')
 		exit(1)
 	}
@@ -9676,6 +9768,8 @@ pub fn run(args []string) {
 	bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
 	host_os := os.user_os()
 	host_target := pref.host_target()
+	c_compiler = v3_windows_cross_c_compiler(c_compiler, host_target, target)
+	c_compiler = v3_c_compiler_command_alias(c_compiler, host_os)
 	bundled_tcc_available := v3_bundled_tcc_available(V3BundledTccProbeOptions{
 		backend:             backend
 		c_only:              c_only
@@ -10400,6 +10494,12 @@ pub fn run(args []string) {
 						'error:'
 					}
 					eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
+					print_type_diagnostic_details(diagnostic.details)
+					if diagnostic.detail_pos.is_valid() {
+						eprintln('Details: ')
+						eprintln(compiler_errors.formatted_parser_diagnostic('details:',
+							diagnostic.detail_message, a, diagnostic.detail_pos))
+					}
 					if fatal_errors && severity == 'error:' {
 						break
 					}
@@ -10780,9 +10880,15 @@ pub fn run(args []string) {
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.disable_explicit_mutability = disable_explicit_mutability
 	pre_tc.checker_fixture_mode = is_checker_fixture
+	pre_tc.module_diagnostic_root = if os.is_dir(input_file) {
+		os.real_path(input_file)
+	} else {
+		os.real_path(os.dir(input_file))
+	}
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
 	pre_tc.no_main = 'no_main' in prefs.user_defines
 	pre_tc.nofloat = 'nofloat' in prefs.user_defines
+	pre_tc.is_js_backend = backend == 'js'
 	pre_tc.warn_about_allocs = prefs.warn_about_allocs
 	pre_tc.warns_are_errors = effective_warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
@@ -11889,7 +11995,7 @@ pub fn run(args []string) {
 			&& a.nodes.len >= scoped_serial_user_cgen_node_threshold {
 			cache_no_parallel_cgen = true
 		}
-		c_standard := c_standard_flag(prefs.c99)
+		c_standard := c_standard_flag(prefs.c99, no_std)
 		use_cached_dev_dylib := cache_state.manager.enabled && remove_binary_after_run && !is_prod
 			&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
 		mut cc_dir := ''
@@ -12156,7 +12262,9 @@ pub fn run(args []string) {
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc)
-			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags, object_optimization_flags, prefs.c99, pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir, mut c_object_cache_stats) or {
+			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
+				object_optimization_flags, prefs.c99, no_std, pic_flag, target_args, prefs.target,
+				c_compiler, use_implicit_tcc_semantics, cc_dir, mut c_object_cache_stats) or {
 				message := err.msg()
 				if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, false, 0) {
 					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc)
@@ -12247,7 +12355,7 @@ pub fn run(args []string) {
 			}
 		}
 		if c_only {
-			b.metric('generated C size', os.file_size(cc_src), 'bytes')
+			b.metric('generated C size', i64(os.file_size(cc_src)), 'bytes')
 			if c_to_stdout {
 				source := os.read_file(cc_src) or {
 					eprintln('error reading generated C source ${cc_src}: ${err.msg()}')
@@ -12579,7 +12687,7 @@ pub fn run(args []string) {
 		if use_cached_dev_dylib {
 			b.step('C dylib cache')
 		}
-		b.metric('generated C size', os.file_size(published_c_source), 'bytes')
+		b.metric('generated C size', i64(os.file_size(published_c_source)), 'bytes')
 		// Before the driver was split out of v.v, explicit `-b c` binary builds
 		// retained `<output>.c`. Codegen tooling relies on that stable path.
 		if backend_explicit && !c_only {

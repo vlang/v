@@ -90,9 +90,9 @@ fn test_optional_selection_handoff_preserves_signature_context_and_types() {
 		mut worker := serial.new_parallel_worker(0)
 		serial.collect_declaration_signature_types()
 		args := OptionalSelectionArgs{ worker: voidptr(worker), items: chan []FlatFnGenItem{cap: 1} }
-		thread := spawn optional_support_selection_thread(voidptr(&args))
+		support_thread := spawn optional_support_selection_thread(voidptr(&args))
 		args.items <- items.clone()
-		thread.wait()
+		support_thread.wait()
 		assert worker.needed_optional_types == serial.needed_optional_types
 		assert 'Optional_payload__Data' in worker.needed_optional_types
 		assert worker.optional_types_ready

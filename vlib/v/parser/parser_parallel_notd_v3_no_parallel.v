@@ -364,7 +364,9 @@ fn (mut p Parser) remap_worker_file_ids(first_file_id int, delta int) {
 	for i in 0 .. p.diagnostics.len {
 		p.diagnostics[i] = Diagnostic{
 			...p.diagnostics[i]
-			pos: remap_worker_pos(p.diagnostics[i].pos, first_file_id, old_next_file_id, delta)
+			pos:        remap_worker_pos(p.diagnostics[i].pos, first_file_id, old_next_file_id, delta)
+			detail_pos: remap_worker_pos(p.diagnostics[i].detail_pos, first_file_id, old_next_file_id,
+				delta)
 		}
 	}
 	if p.cur_file_id >= first_file_id && p.cur_file_id < old_next_file_id {
@@ -1248,12 +1250,15 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 	}
 	for diagnostic in w.diagnostics {
 		p.append_diagnostic(Diagnostic{
-			file:     diagnostic.file.clone()
-			pos:      diagnostic.pos
-			line:     diagnostic.line
-			column:   diagnostic.column
-			message:  diagnostic.message.clone()
-			severity: diagnostic.severity.clone()
+			file:           diagnostic.file.clone()
+			pos:            diagnostic.pos
+			line:           diagnostic.line
+			column:         diagnostic.column
+			message:        diagnostic.message.clone()
+			severity:       diagnostic.severity.clone()
+			details:        diagnostic.details.clone()
+			detail_pos:     diagnostic.detail_pos
+			detail_message: diagnostic.detail_message.clone()
 		})
 	}
 	for file_id, call_site in w.a.template_call_sites {

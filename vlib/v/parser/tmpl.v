@@ -2099,7 +2099,8 @@ fn (p &Parser) collect_template_free_idents(id flat.NodeId, mut declared map[str
 			// Skip the builder's own bindings and imported module names — a module
 			// (`os` in `@{os.base(path)}`) is not a local variable and must not be
 			// captured. A module-qualified helper is still reachable inside the closure.
-			if name.len > 0 && name != '_' && name !in declared && name !in p.imported_module_names {
+			if name.len > 0 && name != '_' && name !in declared && name !in p.imported_module_names
+				&& p.is_local_binding(name) {
 				// A mutable use (`mut buf` argument) must be captured `mut`; record it
 				// even if the name was already seen through an immutable use.
 				if node.is_mut {

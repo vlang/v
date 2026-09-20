@@ -5841,9 +5841,8 @@ fn (mut g FlatGen) struct_decls() {
 	incremental_support_only := g.program_body_only && g.cached_support_identifiers.len > 0
 	struct_names := g.c_struct_decl_names().filter(!incremental_support_only
 		|| !g.cached_support_has_c_type(g.struct_cname(it)))
-	mut sum_names := g.tc.sum_types.keys().filter(!incremental_support_only
+	mut sum_names := g.c_sum_decl_names().filter(!incremental_support_only
 		|| !g.cached_support_has_c_type(g.cname(it)))
-	sum_names.sort()
 	mut interface_names := g.interfaces.keys().filter(!g.interface_name_is_specialized(it)
 		&& (!incremental_support_only || !g.cached_support_has_c_type(g.cname(it))))
 	interface_names.sort()
@@ -6195,8 +6194,7 @@ fn (mut g FlatGen) type_forward_decls() {
 		}
 		g.writeln('typedef ${tag} ${cn} ${cn};')
 	}
-	mut sum_names := g.tc.sum_types.keys()
-	sum_names.sort()
+	sum_names := g.c_sum_decl_names()
 	for name in sum_names {
 		cn := g.cname(name)
 		if cn == 'mach_timebase_info_data_t' {
@@ -6224,6 +6222,15 @@ fn (g &FlatGen) c_struct_decl_names() []string {
 	mut names := g.tc.structs.keys()
 	if g.skip_generics {
 		names = names.filter(!g.is_generic_struct(it))
+	}
+	names.sort()
+	return names
+}
+
+fn (g &FlatGen) c_sum_decl_names() []string {
+	mut names := g.tc.sum_types.keys()
+	if g.skip_generics {
+		names = names.filter((g.tc.sum_generic_params[it] or { []string{} }).len == 0)
 	}
 	names.sort()
 	return names

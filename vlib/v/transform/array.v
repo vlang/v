@@ -558,7 +558,8 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	if int(init_expr_id) >= 0 {
 		saved_pending := t.pending_stmts.clone()
 		t.pending_stmts.clear()
-		indexed_init := t.substitute_ident_expr(init_expr_id, 'index', t.make_ident(idx_name))
+		mut indexed_init := t.substitute_ident_expr(init_expr_id, 'index', t.make_ident(idx_name))
+		indexed_init = t.substitute_ident_expr(indexed_init, 'it', t.make_ident(idx_name))
 		// Typed value lowering so a value `match`/`if` init field is materialized as a value.
 		init_expr = t.transform_expr_for_type(indexed_init, elem_type)
 		// The source-level initializer is evaluated once for every generated element.
