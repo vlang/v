@@ -816,7 +816,12 @@ fn (mut s Scanner) number() {
 		c := s.peek_byte(1)
 		if c == `b` || c == `B` {
 			s.offset += 2
+			diagnostics_before := s.diagnostics.len
 			digits := s.consume_digits(2)
+			if s.diagnostics.len > diagnostics_before {
+				s.consume_invalid_numeric_suffix()
+				return
+			}
 			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this binary number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
@@ -827,7 +832,12 @@ fn (mut s Scanner) number() {
 			return
 		} else if c == `x` || c == `X` {
 			s.offset += 2
+			diagnostics_before := s.diagnostics.len
 			digits := s.consume_digits(16)
+			if s.diagnostics.len > diagnostics_before {
+				s.consume_invalid_numeric_suffix()
+				return
+			}
 			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this hexadecimal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
@@ -838,7 +848,12 @@ fn (mut s Scanner) number() {
 			return
 		} else if c == `o` || c == `O` {
 			s.offset += 2
+			diagnostics_before := s.diagnostics.len
 			digits := s.consume_digits(8)
+			if s.diagnostics.len > diagnostics_before {
+				s.consume_invalid_numeric_suffix()
+				return
+			}
 			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this octal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
@@ -972,6 +987,7 @@ fn (mut s Scanner) consume_invalid_numeric_suffix() {
 fn (mut s Scanner) consume_digits(base int) int {
 	mut digits := 0
 	mut previous_underscore := false
+	mut invalid_separator := false
 	for s.offset < s.src.len {
 		c := s.src[s.offset]
 		// Decimal digits are by far the most common case, so test them inline
@@ -990,7 +1006,9 @@ fn (mut s Scanner) consume_digits(base int) int {
 		}
 		if c == `_` {
 			if digits == 0 || previous_underscore {
-				s.error('numeric separators must occur between digits', s.offset)
+				s.error('separator `_` is only valid between digits in a numeric literal',
+					s.offset)
+				invalid_separator = true
 			}
 			previous_underscore = true
 			s.offset++
@@ -998,7 +1016,7 @@ fn (mut s Scanner) consume_digits(base int) int {
 		}
 		break
 	}
-	if previous_underscore {
+	if previous_underscore && !invalid_separator {
 		s.error('numeric literal cannot end with a separator', s.offset - 1)
 	}
 	return digits
