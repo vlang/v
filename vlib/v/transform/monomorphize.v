@@ -8450,6 +8450,9 @@ fn (t &Transformer) generic_arg_is_alias_name(arg string, module_name string) bo
 	if clean in t.tc.type_aliases {
 		return true
 	}
+	if clean.starts_with('main.') && clean[5..] in t.tc.type_aliases {
+		return true
+	}
 	if !clean.contains('.') {
 		scoped := if module_name != '' && module_name != 'main' && module_name != 'builtin' {
 			'${module_name}.${clean}'

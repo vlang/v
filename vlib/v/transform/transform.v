@@ -16865,17 +16865,7 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 			return t.comptime_enum_type_known(normalized)
 		}
 		'\$alias' {
-			if isnil(t.tc) {
-				return false
-			}
-			if clean_actual in t.tc.type_aliases {
-				return true
-			}
-			if !clean_actual.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-				&& t.cur_module != 'builtin' {
-				return '${t.cur_module}.${clean_actual}' in t.tc.type_aliases
-			}
-			return false
+			return t.generic_arg_is_alias_name(clean_actual, t.cur_module)
 		}
 		'\$sumtype' {
 			return !isnil(t.tc)
@@ -16883,7 +16873,8 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 					|| normalized in t.tc.sum_types)
 		}
 		'\$interface' {
-			return !isnil(t.tc) && normalized in t.tc.interface_names
+			return !isnil(t.tc)
+				&& t.tc.interface_metadata_name(normalized) in t.tc.interface_names
 		}
 		else {}
 	}
