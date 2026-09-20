@@ -12609,6 +12609,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	if p.tok == .rsbr {
 		lhs_node := p.a.node(lhs)
 		if lhs_node.kind == .array_init && lhs_node.typ.starts_with('[]') {
+			p.discard_generic_type_array_init_warnings(lhs_node.pos)
 			p.record_warning_span('use `x := []Type{}` instead of `x := []Type`', lhs_node.pos.offset, p.tok_pos)
 		}
 		p.record_diagnostic('invalid expression: unexpected token `]`', p.tok_pos)
