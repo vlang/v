@@ -3826,7 +3826,7 @@ fn (tc &TypeChecker) fixed_array_reference_ident(id flat.NodeId) ?flat.NodeId {
 		return none
 	}
 	node := tc.a.node(id)
-	if node.kind == .paren && node.children_count > 0 {
+	if node.kind in [.paren, .index] && node.children_count > 0 {
 		return tc.fixed_array_reference_ident(tc.a.child(node, 0))
 	}
 	if node.kind != .ident {
