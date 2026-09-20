@@ -1815,6 +1815,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// value resolve and B gets its own dispatch table entries.
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
 	function_c_names := fastc_compact_function_c_names(functions, prefs.building_v)
+	mut has_entry_module := false
+	for source_file in sources {
+		if source_file.header.module_name in ['', 'main'] {
+			has_entry_module = true
+			break
+		}
+	}
 	mut pending_references := fastc_start_referenced_function_names(sources, prefs, functions)
 	has_c_functions := fastc_functions_declare_c(functions)
 	fastc_prefixed_c_names := fastc_reserved_temporary_c_names(functions, globals)
@@ -1913,7 +1920,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls, function_c_names)!
 	timer.mark('startup_initializers')
-	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	mut used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	if !has_entry_module {
+		// A standalone module has no entry roots to walk from, so every declared
+		// function must survive the earlier name-based body filter too.
+		for key in functions.keys() {
+			used_function_names[key.all_after_last('.')] = true
+		}
+	}
 	timer.mark('wait_references')
 	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, function_c_names, interface_methods, used_function_names, prefs.building_v, prefs)
 	struct_field_lookup := constant_output.struct_field_lookup.move()
@@ -1936,13 +1950,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
 	for name, array_type in global_output.fixed_array_types {
 		fixed_array_types[name] = array_type
-	}
-	mut has_entry_module := false
-	for source_file in sources {
-		if source_file.header.module_name in ['', 'main'] {
-			has_entry_module = true
-			break
-		}
 	}
 	mut entry_has_main := false
 	// Self-host builds drop the functions that nothing reachable refers to:
