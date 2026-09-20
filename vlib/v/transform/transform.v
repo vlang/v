@@ -49,6 +49,7 @@ const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
 const generated_variant_access_marker = '__v3_generated_variant_access'
 const optional_wrapper_access_marker = '__v3_optional_wrapper_access'
 const transformed_option_unwrap_access_marker = '__v3_transformed_option_unwrap_access'
+const debugger_smartcast_marker = '__v3_debugger_smartcasts'
 const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
 const source_deref_marker = '__v3_source_deref'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
@@ -109,6 +110,7 @@ pub:
 	expr_name     string // the expression being smartcast (e.g. "node")
 	variant_name  string // the variant type name (e.g. "Ident")
 	sum_type_name string // the parent sum type name (e.g. "Expr")
+	display_type  string // debugger-visible type for aggregate match branches
 }
 
 enum SmartcastRestoreState {
@@ -9498,6 +9500,9 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 		.select_stmt {
 			return t.transform_select_stmt(id, node)
 		}
+		.debugger_stmt {
+			return [t.transform_debugger_stmt(node)]
+		}
 		.or_expr {
 			transformed := t.transform_or_expr(id, node)
 			transformed_node := t.a.nodes[int(transformed)]
@@ -9510,6 +9515,48 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 			return [id]
 		}
 	}
+}
+
+fn (mut t Transformer) transform_debugger_stmt(node flat.Node) flat.NodeId {
+	mut params := [debugger_smartcast_marker]
+	mut values := []flat.NodeId{}
+	mut seen := map[string]bool{}
+	for i := t.smartcast_stack.len - 1; i >= 0; i-- {
+		sc := t.smartcast_stack[i]
+		name := sc.expr_name
+		if name.len == 0 || name.contains_any('.[') || seen[name] {
+			continue
+		}
+		seen[name] = true
+		contexts := t.smartcasts_for(name)
+		if contexts.len == 0 {
+			continue
+		}
+		value := t.apply_smartcast_contexts(t.make_ident(name), t.var_type(name), contexts)
+		mut value_type := t.node_type(value)
+		if value_type.len == 0 {
+			value_type = t.smartcast_target_type(contexts.last())
+		}
+		mut display_type := contexts.last().display_type
+		if display_type.len == 0 {
+			display_type = value_type
+		}
+		values << value
+		params << name
+		params << value_type
+		params << display_type
+	}
+	start := t.a.children.len
+	for value in values {
+		t.a.children << value
+	}
+	return t.a.add_node(flat.Node{
+		kind:           .debugger_stmt
+		pos:            node.pos
+		children_start: start
+		children_count: flat.child_count(values.len)
+		payload:        flat.node_payload(params)
+	})
 }
 
 // transform_expr transforms transform expr data for transform.
@@ -22642,11 +22689,16 @@ fn (mut t Transformer) make_if_with_ownership_drop_mode(cond flat.NodeId, then_b
 
 // push_smartcast updates push smartcast state for Transformer.
 pub fn (mut t Transformer) push_smartcast(expr_name string, variant string, sum_type string) {
+	t.push_smartcast_with_display(expr_name, variant, sum_type, '')
+}
+
+fn (mut t Transformer) push_smartcast_with_display(expr_name string, variant string, sum_type string, display_type string) {
 	t.invalidated_smartcasts.delete(expr_name)
 	smartcast := SmartcastContext{
 		expr_name:     expr_name
 		variant_name:  variant
 		sum_type_name: sum_type
+		display_type:  display_type
 	}
 	t.smartcast_stack << smartcast
 	t.smartcast_event_id++
@@ -24782,6 +24834,7 @@ fn (mut t Transformer) build_match_value_type_branch_chain(match_expr_id flat.No
 			t.a.add(flat.NodeKind.empty)
 		}
 	}
+	display_type := t.debugger_multi_match_type(match_expr_id, branch, n_conds)
 	cond_val_id := t.a.child(&branch, cond_idx)
 	variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
 		return t.build_match_value_chain(match_expr_id, orig_expr_id, branches, idx + 1, target_name, target_type)
@@ -24806,12 +24859,13 @@ fn (mut t Transformer) build_match_value_type_branch_chain(match_expr_id flat.No
 	}
 	subj := t.expr_key(match_expr_id)
 	if subj.len > 0 && sc.sum_type_name.len > 0 {
-		t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
+		t.push_smartcast_with_display(subj, sc.variant_name, sc.sum_type_name, display_type)
 		sc_pushed++
 	}
 	orig_subj := t.expr_key(orig_expr_id)
 	if orig_subj.len > 0 && orig_subj != subj && sc.sum_type_name.len > 0 {
-		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
+		t.push_smartcast_with_display(orig_subj, sc.variant_name, sc.sum_type_name,
+			display_type)
 		sc_pushed++
 	}
 
@@ -24850,6 +24904,7 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 			t.a.add(flat.NodeKind.empty)
 		}
 	}
+	display_type := t.debugger_multi_match_type(match_expr_id, branch, n_conds)
 	cond_val_id := t.a.child(&branch, cond_idx)
 	variant_name := t.match_type_pattern_for_subject(match_expr_id, cond_val_id) or {
 		return t.build_match_chain(match_expr_id, orig_expr_id, branches, idx + 1)
@@ -24874,12 +24929,13 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 	}
 	subj := t.expr_key(match_expr_id)
 	if subj.len > 0 && sc.sum_type_name.len > 0 {
-		t.push_smartcast(subj, sc.variant_name, sc.sum_type_name)
+		t.push_smartcast_with_display(subj, sc.variant_name, sc.sum_type_name, display_type)
 		sc_pushed++
 	}
 	orig_subj := t.expr_key(orig_expr_id)
 	if orig_subj.len > 0 && orig_subj != subj && sc.sum_type_name.len > 0 {
-		t.push_smartcast(orig_subj, sc.variant_name, sc.sum_type_name)
+		t.push_smartcast_with_display(orig_subj, sc.variant_name, sc.sum_type_name,
+			display_type)
 		sc_pushed++
 	}
 
@@ -24905,6 +24961,20 @@ fn (mut t Transformer) build_match_type_branch_chain(match_expr_id flat.NodeId, 
 		children_start: start
 		children_count: 3
 	})
+}
+
+fn (t &Transformer) debugger_multi_match_type(match_expr_id flat.NodeId, branch flat.Node, n_conds int) string {
+	mut variants := []string{cap: n_conds}
+	for i in 0 .. n_conds {
+		cond_id := t.a.child(&branch, i)
+		sc := t.match_type_smartcast_context(match_expr_id, cond_id) or { return '' }
+		mut name := t.smartcast_target_type(sc)
+		if t.cur_module.len > 0 && t.cur_module != 'builtin' {
+			name = '${t.cur_module}.${name}'
+		}
+		variants << name
+	}
+	return '(${variants.join(' | ')})'
 }
 
 // clone_match_variant_sizeof resolves the ambiguous `sizeof(subject)` leaf for one
