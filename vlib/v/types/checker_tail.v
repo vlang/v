@@ -2191,7 +2191,8 @@ fn (mut tc TypeChecker) record_return_match_sumtype_branch_mismatch(id flat.Node
 			continue
 		}
 		actual := tc.raw_return_match_tail_type(tail_id)
-		if tc.type_name_is_direct_sum_variant(actual, expected_sum) {
+		if tc.type_is_same_sum_type(actual, expected_sum)
+			|| tc.type_name_is_direct_sum_variant(actual, expected_sum) {
 			continue
 		}
 		if !tc.expr_has_match_branch_type_error(id) {

@@ -2000,7 +2000,8 @@ fn (mut tc TypeChecker) check_general_match_branch_tail_types(id flat.NodeId, no
 		if clean_expected is SumType {
 			for i, tail_id in tails {
 				actual := tail_types[i]
-				if tc.type_name_is_direct_sum_variant(actual, clean_expected) {
+				if tc.type_is_same_sum_type(actual, clean_expected)
+					|| tc.type_name_is_direct_sum_variant(actual, clean_expected) {
 					continue
 				}
 				tc.record_match_branch_return_type_mismatch(tail_id, context_type, actual)
@@ -2074,6 +2075,15 @@ fn (tc &TypeChecker) type_name_is_direct_sum_variant(actual Type, expected SumTy
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) type_is_same_sum_type(actual Type, expected SumType) bool {
+	clean := unalias_type(actual)
+	if clean !is SumType {
+		return false
+	}
+	return tc.type_compatible(Type(clean), Type(expected))
+		&& tc.type_compatible(Type(expected), Type(clean))
 }
 
 fn (mut tc TypeChecker) record_match_branch_return_type_mismatch(id flat.NodeId, expected Type, actual Type) {
@@ -8756,6 +8766,23 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	expected_name := tc.type_name(expected)
 	if actual_name == expected_name {
 		return true
+	}
+	if actual_name.contains('.') && expected_name.contains('.')
+		&& actual_name.all_after_last('.') == expected_name.all_after_last('.') {
+		actual_prefix := actual_name.all_before_last('.')
+		expected_prefix := expected_name.all_before_last('.')
+		actual_module := tc.resolve_import_alias(actual_prefix) or { actual_prefix }
+		expected_module := tc.resolve_import_alias(expected_prefix) or { expected_prefix }
+		if actual_module == expected_module {
+			return true
+		}
+		if actual_canonical := tc.canonical_qualified_type_name(actual_name) {
+			if expected_canonical := tc.canonical_qualified_type_name(expected_name) {
+				if actual_canonical == expected_canonical {
+					return true
+				}
+			}
+		}
 	}
 	if thread_handle_type_names_match(actual_name, expected_name) {
 		return true
