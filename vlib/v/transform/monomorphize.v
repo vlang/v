@@ -2853,7 +2853,8 @@ fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]Gener
 				.sql_expr {
 					true
 				}
-				.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
+				.struct_init, .array_init, .map_init, .cast_expr, .as_expr, .sizeof_expr,
+				.typeof_expr,
 				.is_expr {
 					node.value.contains('[') || node.value.contains('_')
 						|| node.generic_params().len > 0
@@ -2907,7 +2908,8 @@ fn (mut t Transformer) collect_generic_struct_specs_from_node(node flat.Node, mo
 		.sql_expr {
 			t.collect_generic_struct_specs_from_sql_expr(node.value, module_name, file_name, decls, mut specs)
 		}
-		.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
+		.struct_init, .array_init, .map_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
+		.is_expr {
 			t.collect_generic_struct_spec_from_type(node.value, module_name, file_name, decls, mut specs)
 			if !node.value.contains('[') && node.generic_params().len > 0 {
 				t.collect_generic_struct_spec_from_type('${node.value}[${node.generic_params().join(', ')}]', module_name, file_name, decls, mut specs)
@@ -3137,7 +3139,8 @@ fn (mut t Transformer) collect_generic_sum_specs_from_node(node flat.Node, modul
 		t.collect_generic_sum_spec_from_type(node.typ, module_name, file_name, decls, mut specs)
 	}
 	match node.kind {
-		.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
+		.struct_init, .array_init, .map_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
+		.is_expr {
 			t.collect_generic_sum_spec_from_type(node.value, module_name, file_name, decls, mut specs)
 			if !node.value.contains('[') && node.generic_params().len > 0 {
 				t.collect_generic_sum_spec_from_type('${node.value}[${node.generic_params().join(', ')}]', module_name, file_name, decls, mut specs)

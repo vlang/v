@@ -3639,8 +3639,8 @@ fn (c &CallCollector) node_uses_generics(node &flat.Node, cur_module string, imp
 		return c.type_text_uses_generics(target.value, cur_module, imports)
 			|| c.type_text_uses_generics(target.typ, cur_module, imports)
 	}
-	if node.kind !in [.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
-		.is_expr] {
+	if node.kind !in [.struct_init, .array_init, .map_init, .cast_expr, .as_expr, .sizeof_expr,
+		.typeof_expr, .is_expr] {
 		return false
 	}
 	if c.type_text_uses_generics(node.value, cur_module, imports) {
