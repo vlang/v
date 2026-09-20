@@ -16080,14 +16080,25 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 	if generic_type_application(clean) {
 		actual_text := tc.generic_infer_type_text(actual)
 		param_base, param_args, _ := generic_type_application_parts(clean)
-		_, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
+		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
 		iface_name := tc.interface_metadata_name(param_base)
-		if iface_name in tc.interface_names && actual_is_generic
-			&& param_args.len == actual_args.len {
-			for i in 0 .. param_args.len {
-				tc.infer_generic_type_text_from_text(param_args[i], actual_args[i], generic_params, mut inferred)
+		if iface_name in tc.interface_names {
+			if actual_is_generic && tc.generic_type_base_matches(param_base, actual_base)
+				&& param_args.len == actual_args.len {
+				for i in 0 .. param_args.len {
+					tc.infer_generic_type_text_from_text(param_args[i], actual_args[i], generic_params, mut inferred)
+				}
+				return
 			}
-			return
+			if concrete_args := tc.generic_interface_implementation_type_args(iface_name,
+				actual) {
+				if param_args.len == concrete_args.len {
+					for i in 0 .. param_args.len {
+						tc.infer_generic_type_text_from_type(param_args[i], concrete_args[i], generic_params, mut inferred)
+					}
+					return
+				}
+			}
 		}
 		tc.infer_generic_type_text_from_text(clean, actual_text, generic_params, mut inferred)
 		return
@@ -16154,12 +16165,23 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_text string, ac
 	if generic_type_application(clean) {
 		param_base, param_args, _ := generic_type_application_parts(clean)
 		actual_text := tc.generic_infer_type_text(actual)
-		_, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
+		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
 		iface_name := tc.interface_metadata_name(param_base)
-		if iface_name in tc.interface_names && actual_is_generic
-			&& param_args.len == actual_args.len {
-			for i in 0 .. param_args.len {
-				tc.infer_generic_type_value_from_type(param_args[i], tc.parse_type(actual_args[i]), generic_params, mut inferred)
+		if iface_name in tc.interface_names {
+			if actual_is_generic && tc.generic_type_base_matches(param_base, actual_base)
+				&& param_args.len == actual_args.len {
+				for i in 0 .. param_args.len {
+					tc.infer_generic_type_value_from_type(param_args[i], tc.parse_type(actual_args[i]), generic_params, mut inferred)
+				}
+				return
+			}
+			if concrete_args := tc.generic_interface_implementation_type_args(iface_name,
+				actual) {
+				if param_args.len == concrete_args.len {
+					for i in 0 .. param_args.len {
+						tc.infer_generic_type_value_from_type(param_args[i], concrete_args[i], generic_params, mut inferred)
+					}
+				}
 			}
 		}
 		return
@@ -16170,6 +16192,74 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_text string, ac
 			return
 		}
 	}
+}
+
+// generic_interface_implementation_type_args derives an interface's concrete generic arguments
+// from the fields and method signatures of a concrete implementer.
+fn (mut tc TypeChecker) generic_interface_implementation_type_args(iface_name string, actual Type) ?[]Type {
+	interface_params := tc.interface_generic_params[iface_name] or {
+		tc.interface_generic_params[tc.qualify_name(iface_name)] or { return none }
+	}
+	if interface_params.len == 0 {
+		return none
+	}
+	actual_name := method_type_name(unwrap_pointer(actual))
+	if actual_name.len == 0 {
+		return none
+	}
+	mut inferred_text := map[string]string{}
+	mut inferred_types := map[string]Type{}
+	for field in tc.interface_field_list(iface_name) {
+		actual_field := tc.interface_actual_field(actual_name, field.name) or { continue }
+		field_text := field.typ.name()
+		tc.infer_generic_type_text_from_type(field_text, actual_field.typ, interface_params, mut inferred_text)
+		tc.infer_generic_type_value_from_type(field_text, actual_field.typ, interface_params, mut inferred_types)
+	}
+	for method in tc.interface_abstract_method_names(iface_name) {
+		expected_key := tc.interface_method_signature_key(iface_name, method) or { continue }
+		actual_info := tc.generic_interface_inference_method(actual_name, method) or { continue }
+		expected_params := tc.fn_param_types[expected_key] or { []Type{} }
+		expected_param_texts := tc.fn_param_type_texts[expected_key] or { []string{} }
+		for i in 1 .. actual_info.params.len {
+			if i >= expected_params.len {
+				break
+			}
+			param_text := if i < expected_param_texts.len {
+				expected_param_texts[i]
+			} else {
+				expected_params[i].name()
+			}
+			tc.infer_generic_type_text_from_type(param_text, actual_info.params[i], interface_params, mut inferred_text)
+			tc.infer_generic_type_value_from_type(param_text, actual_info.params[i], interface_params, mut inferred_types)
+		}
+		expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
+		ret_text := tc.fn_ret_type_texts[expected_key] or { expected_ret.name() }
+		tc.infer_generic_type_text_from_type(ret_text, actual_info.return_type, interface_params, mut inferred_text)
+		tc.infer_generic_type_value_from_type(ret_text, actual_info.return_type, interface_params, mut inferred_types)
+	}
+	mut concrete_args := []Type{cap: interface_params.len}
+	for param in interface_params {
+		if inferred_type := inferred_types[param] {
+			concrete_args << inferred_type
+			continue
+		}
+		inferred := inferred_text[param] or { return none }
+		concrete_args << tc.parse_type(inferred)
+	}
+	return concrete_args
+}
+
+fn (tc &TypeChecker) generic_interface_inference_method(actual_name string, method string) ?CallInfo {
+	if info := tc.resolve_generic_struct_method(actual_name, method) {
+		return info
+	}
+	if key := tc.concrete_method_signature_key(actual_name, method) {
+		return tc.call_info(key, true)
+	}
+	if info := tc.resolve_generic_sum_method(actual_name, method) {
+		return info
+	}
+	return none
 }
 
 fn (tc &TypeChecker) generic_infer_type_text(actual Type) string {
