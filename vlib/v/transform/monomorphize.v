@@ -529,11 +529,12 @@ fn (t &Transformer) explicit_generic_fn_value_decl_candidates(id flat.NodeId, ba
 				}
 			}
 			if candidates.len == 0 {
-				if typ := t.tc.expr_type(id) {
-					if typ !is types.FnType {
-						return candidates
-					}
+				cached_fn_type := if typ := t.tc.expr_type(id) {
+					typ is types.FnType
 				} else {
+					false
+				}
+				if !cached_fn_type && t.tc.resolve_type(base_id) !is types.FnType {
 					return candidates
 				}
 			}
