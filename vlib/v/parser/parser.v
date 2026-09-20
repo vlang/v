@@ -13372,7 +13372,8 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	if p.tok == .rsbr {
 		size_end := p.tok_pos
 		p.next()
-		if p.tok == .name || p.tok == .amp || p.tok == .question
+		if p.tok == .name || p.tok == .amp || (p.tok == .and && p.tok_pos == p.prev_tok_end)
+			|| p.tok == .question
 			|| (p.tok == .not && token_can_start_type_name(p.peek()))
 			|| (p.tok == .lsbr && p.current_lbr_starts_array_type()) {
 			// fixed array type: [N]Type. Use the literal node value for a plain integer
@@ -13577,6 +13578,10 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 	if p.tok == .amp {
 		p.next()
 		return '&' + p.parse_fixed_array_literal_type_name()
+	}
+	if p.tok == .and {
+		p.next()
+		return '&&' + p.parse_fixed_array_literal_type_name()
 	}
 	if p.tok == .ellipsis {
 		p.next()
