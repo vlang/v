@@ -6904,6 +6904,11 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 		&& tc.current_fn_param_type_text(pointer_base_node.value) != none
 		&& (base_type is Array || base_type is ArrayFixed || base_type is Map
 			|| base_type is String)
+	locked_shared_pointer_container := pointer_base_node.kind == .ident
+		&& tc.current_binding_is_shared(pointer_base_node.value)
+		&& tc.current_shared_lock_mode(pointer_base_node.value) != 0
+		&& (base_type is Array || base_type is ArrayFixed || base_type is Map
+			|| base_type is String)
 	outside_unsafe := tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
 	if node.value != 'range' && implicit_mut_param_pointer && base_type is Struct
 		&& outside_unsafe {
@@ -6917,7 +6922,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	}
 	if node.value != 'range' && base_type_raw is Pointer && !implicit_mut_param_pointer
 		&& !explicit_mut_param_pointer && mut_param_base !is Pointer && !pointer_container_param
-		&& outside_unsafe {
+		&& !locked_shared_pointer_container && outside_unsafe {
 		tc.record_error_at(.cannot_index, 'pointer indexing is only allowed in `unsafe` blocks', id, tc.index_brackets_pos(node))
 		tc.register_synth_type(id, tc.resolve_index_type(node))
 		return
