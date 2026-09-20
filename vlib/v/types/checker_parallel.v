@@ -3359,6 +3359,7 @@ fn (tc &TypeChecker) expr_subtree_allows_unused_warning(id flat.NodeId) bool {
 	root := tc.a.node(id)
 	return tc.errors.any(it.pos.id == root.pos.id && it.pos.offset >= root.pos.offset
 		&& it.pos.end <= root.pos.end && (it.msg == 'map value cannot be only `none`'
+		|| it.msg == 'cannot assign global variable to shared variable'
 		|| it.msg == 'cannot take the address of a literal value'
 		|| it.msg.starts_with('ambiguous field `')
 		|| it.msg.starts_with('invalid empty map initialisation syntax')

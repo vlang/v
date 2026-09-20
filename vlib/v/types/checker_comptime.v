@@ -13303,6 +13303,13 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		tc.expected_expr_id = saved_expected_expr_id
 		tc.expected_expr_type = saved_expected_expr_type
 		rhs_node := tc.a.nodes[int(rhs_id)]
+		if decl_assign_is_shared_marker(node.value) && rhs_node.kind == .ident {
+			qname := tc.qualify_name(rhs_node.value)
+			if rhs_node.value in tc.global_names || qname in tc.global_names {
+				tc.record_error_at(.assignment_mismatch, 'cannot assign global variable to shared variable',
+					rhs_id, tc.node_value_diagnostic_pos(rhs_id))
+			}
+		}
 		if rhs_node.kind == .struct_init && tc.struct_init_has_positional_fields(rhs_node)
 			&& !tc.type_name_known(rhs_node.value) {
 			if lhs_node.value != '_' {
