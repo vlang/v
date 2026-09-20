@@ -4339,7 +4339,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if clean_target is SumType && !tc.sum_type_contains_variant(clean_target, actual) {
+	if clean_target is SumType && !tc.sum_type_contains_variant(clean_target, actual)
+		&& !tc.smartcast_wrapper_cast_payload_compatible(child_id, actual, target) {
 		tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
 		return
 	}
@@ -4474,6 +4475,26 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		|| tc.interface_pointer_target_cast_needs_heap_copy(target, actual, target_iface)) {
 		tc.warn_alloc('cast to interface', id, node.pos)
 	}
+}
+
+fn (tc &TypeChecker) smartcast_wrapper_cast_payload_compatible(child_id flat.NodeId, actual Type, target Type) bool {
+	_ := tc.smartcast_type(child_id) or { return false }
+	declared := tc.declared_receiver_expr_type(child_id) or { return false }
+	if unalias_type(unwrap_all_pointers(declared)) !is SumType {
+		return false
+	}
+	wrapper := unalias_type(unwrap_all_pointers(actual))
+	if wrapper !is Struct {
+		return false
+	}
+	wrapper_struct := wrapper as Struct
+	fields := tc.struct_fields_for_type(wrapper_struct.name)
+	if fields.len != 1 || fields[0].is_embed {
+		return false
+	}
+	payload := unalias_type(fields[0].typ)
+	clean_target := unalias_type(target)
+	return payload.name() == clean_target.name() || tc.type_compatible(payload, clean_target)
 }
 
 fn (tc &TypeChecker) option_cast_payload_compatible(actual Type, target Type) bool {
