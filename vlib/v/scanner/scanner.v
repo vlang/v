@@ -14,9 +14,13 @@ pub enum Mode {
 // Diagnostic describes a lexical error at a byte offset in the current source.
 pub struct Diagnostic {
 pub:
-	offset  int
-	end     int
-	message string
+	offset         int
+	end            int
+	severity       string
+	message        string
+	details        []string
+	detail_offset  int = -1
+	detail_message string
 }
 
 // Scanner represents scanner data used by scanner.
@@ -111,6 +115,34 @@ fn (mut s Scanner) error_span(message string, start int, end int) {
 	}
 }
 
+fn (mut s Scanner) error_with_details(message string, offset int, details []string) {
+	s.diagnostics << Diagnostic{
+		offset:  offset
+		end:     offset + 1
+		message: message
+		details: details
+	}
+}
+
+fn (mut s Scanner) warning(message string, offset int) {
+	s.diagnostics << Diagnostic{
+		offset:   offset
+		end:      offset + 1
+		severity: 'warning:'
+		message:  message
+	}
+}
+
+fn (mut s Scanner) error_with_detail_position(message string, offset int, detail_message string, detail_offset int) {
+	s.diagnostics << Diagnostic{
+		offset:         offset
+		end:            offset + 1
+		message:        message
+		detail_offset:  detail_offset
+		detail_message: detail_message
+	}
+}
+
 @[inline]
 fn (s &Scanner) source_lit(start int, end int) string {
 	if end <= start {
@@ -152,8 +184,55 @@ fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
 		s.error('unterminated character literal', start)
 	}
 	s.lit = s.source_lit(s.pos + 1, end)
+	if quote == `\`` && closed {
+		s.validate_char_literal(start, s.pos + 1, end)
+	}
 	s.insert_semi = true
 	return .char
+}
+
+fn (mut s Scanner) validate_char_literal(start int, content_start int, content_end int) {
+	content := s.source_lit(content_start, content_end)
+	details := ['use quotes for strings, backticks for characters']
+	if content.len == 0 {
+		s.error_with_details('invalid empty character literal ``', start, details)
+		return
+	}
+	if content.contains('\n') {
+		s.error_with_details(r'invalid character literal, use `\n` instead', start, details)
+		return
+	}
+	mut parts := []string{}
+	mut offset := content_start
+	for offset < content_end {
+		part_start := offset
+		if s.src[offset] == `\\` {
+			escape := s.src[offset + 1]
+			if !is_known_string_escape(escape) {
+				s.error('`${escape.ascii_str()}` unknown escape sequence', offset + 2)
+				return
+			}
+			before_errors := s.diagnostics.len
+			s.check_string_escape(offset)
+			if s.diagnostics.len > before_errors {
+				return
+			}
+			extra := match escape {
+				`x` { 2 }
+				`u` { 4 }
+				`U` { 8 }
+				else { 0 }
+			}
+			offset = int_min(content_end, offset + 2 + extra)
+		} else {
+			offset = int_min(content_end, offset + utf8_char_len(s.src[offset]))
+		}
+		parts << s.source_lit(part_start, offset)
+	}
+	if parts.len > 1 {
+		formatted_parts := parts.map('`${it}`').join(', ')
+		s.error_with_details('invalid character literal `${content}` => `${content}` ([${formatted_parts}]) (more than one character)', start, details)
+	}
 }
 
 // current_file returns current file data for Scanner.
@@ -618,7 +697,7 @@ fn (mut s Scanner) comment() {
 			}
 		}
 		if ml_comment_depth > 0 {
-			s.error('unterminated block comment', s.pos)
+			s.error('unterminated multiline comment', s.pos + 1)
 		}
 	}
 }
@@ -685,7 +764,12 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 		}
 		s.offset++
 	}
-	s.error('unfinished string literal', s.src.len)
+	if s.src[s.pos..].count('\n') > 1 {
+		s.error_with_detail_position('unfinished string literal', s.src.len, 'literal started here',
+			s.pos)
+	} else {
+		s.error('unfinished string literal', s.src.len)
+	}
 }
 
 fn (mut s Scanner) begin_nested_string_interpolation(quote u8) {
@@ -759,7 +843,12 @@ fn (mut s Scanner) number() {
 		c := s.peek_byte(1)
 		if c == `b` || c == `B` {
 			s.offset += 2
+			diagnostics_before := s.diagnostics.len
 			digits := s.consume_digits(2)
+			if s.diagnostics.len > diagnostics_before {
+				s.consume_invalid_numeric_suffix()
+				return
+			}
 			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this binary number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
@@ -770,7 +859,12 @@ fn (mut s Scanner) number() {
 			return
 		} else if c == `x` || c == `X` {
 			s.offset += 2
+			diagnostics_before := s.diagnostics.len
 			digits := s.consume_digits(16)
+			if s.diagnostics.len > diagnostics_before {
+				s.consume_invalid_numeric_suffix()
+				return
+			}
 			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this hexadecimal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
@@ -781,7 +875,12 @@ fn (mut s Scanner) number() {
 			return
 		} else if c == `o` || c == `O` {
 			s.offset += 2
+			diagnostics_before := s.diagnostics.len
 			digits := s.consume_digits(8)
+			if s.diagnostics.len > diagnostics_before {
+				s.consume_invalid_numeric_suffix()
+				return
+			}
 			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this octal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
@@ -802,6 +901,11 @@ fn (mut s Scanner) number() {
 			if next >= `0` && next <= `9` {
 				s.consume_digits(10)
 			}
+		} else if next == 0 || next.is_space() || next in [`,`, `;`, `)`, `]`, `}`] {
+			has_fraction = true
+			s.offset++
+			s.warning('float literals should have a digit after the decimal point, e.g. `1.0`',
+				s.offset)
 		}
 	}
 	mut has_exponent := false
@@ -915,6 +1019,7 @@ fn (mut s Scanner) consume_invalid_numeric_suffix() {
 fn (mut s Scanner) consume_digits(base int) int {
 	mut digits := 0
 	mut previous_underscore := false
+	mut invalid_separator := false
 	for s.offset < s.src.len {
 		c := s.src[s.offset]
 		// Decimal digits are by far the most common case, so test them inline
@@ -933,7 +1038,9 @@ fn (mut s Scanner) consume_digits(base int) int {
 		}
 		if c == `_` {
 			if digits == 0 || previous_underscore {
-				s.error('numeric separators must occur between digits', s.offset)
+				s.error('separator `_` is only valid between digits in a numeric literal',
+					s.offset)
+				invalid_separator = true
 			}
 			previous_underscore = true
 			s.offset++
@@ -941,7 +1048,7 @@ fn (mut s Scanner) consume_digits(base int) int {
 		}
 		break
 	}
-	if previous_underscore {
+	if previous_underscore && !invalid_separator {
 		s.error('numeric literal cannot end with a separator', s.offset - 1)
 	}
 	return digits

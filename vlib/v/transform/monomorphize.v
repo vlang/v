@@ -7682,9 +7682,10 @@ fn (mut t Transformer) infer_generic_call_args(decl GenericFnDecl, _id flat.Node
 fn (mut t Transformer) infer_generic_call_args_with_explicit(decl GenericFnDecl, id flat.NodeId, node flat.Node, call_module string, explicit []string) ?[]string {
 	param_names := t.generic_fn_param_names(decl.node, decl.module)
 	mut method_explicit := explicit.clone()
+	mut method_param_count := 0
+	mut receiver_params := []string{}
 	if t.generic_decl_is_receiver_method(decl.node) {
-		receiver_params := t.generic_receiver_param_names(decl)
-		mut method_param_count := 0
+		receiver_params = t.generic_receiver_param_names(decl)
 		for raw_param in decl.node.generic_params() {
 			param := generic_param_name_from_decl_param(raw_param)
 			if param.len > 0 && param !in receiver_params {
@@ -7705,7 +7706,8 @@ fn (mut t Transformer) infer_generic_call_args_with_explicit(decl GenericFnDecl,
 	mut explicit_idx := 0
 	for raw_param in decl.node.generic_params() {
 		param := generic_param_name_from_decl_param(raw_param)
-		if param.len == 0 || param in inferred {
+		if param.len == 0 || param in inferred
+			|| (method_param_count > 0 && param in receiver_params) {
 			continue
 		}
 		if explicit_idx >= method_explicit.len {

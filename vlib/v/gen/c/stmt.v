@@ -4330,6 +4330,14 @@ struct DebuggerScopeVar {
 	typ  types.Type
 }
 
+struct DebuggerSmartcastVar {
+	expr_id      flat.NodeId
+	value_type   string
+	display_type string
+}
+
+const debugger_smartcast_marker = '__v3_debugger_smartcasts'
+
 fn (g &FlatGen) debugger_scope_vars() []DebuggerScopeVar {
 	mut result := []DebuggerScopeVar{}
 	mut seen := map[string]bool{}
@@ -4377,9 +4385,28 @@ fn debugger_string_literal(value string) string {
 	return '(string){"${c_escape(value)}", ${value.len}, 1}'
 }
 
+fn (g &FlatGen) debugger_smartcast_vars(node flat.Node) map[string]DebuggerSmartcastVar {
+	params := node.generic_params()
+	if params.len == 0 || params[0] != debugger_smartcast_marker
+		|| params.len != 1 + int(node.children_count) * 3 {
+		return map[string]DebuggerSmartcastVar{}
+	}
+	mut result := map[string]DebuggerSmartcastVar{}
+	for i in 0 .. node.children_count {
+		param_idx := 1 + int(i) * 3
+		result[params[param_idx]] = DebuggerSmartcastVar{
+			expr_id:      g.a.child(&node, int(i))
+			value_type:   params[param_idx + 1]
+			display_type: params[param_idx + 2]
+		}
+	}
+	return result
+}
+
 fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 	position := g.a.source_position(node.pos) or { return }
 	vars := g.debugger_scope_vars()
+	smartcast_vars := g.debugger_smartcast_vars(node)
 	scope_name := '__v3_debug_scope_${g.tmp_count}'
 	g.tmp_count++
 	info_type := g.cname('debug.DebugContextInfo')
@@ -4405,10 +4432,17 @@ fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 		value_name := '${scope_name}_value_${g.tmp_count}'
 		g.tmp_count++
 		key_literal := debugger_string_literal(v.name)
-		type_literal := debugger_string_literal(debugger_type_name(v.typ))
-		expr := g.debugger_var_expr(v.name)
+		mut value_type := v.typ
+		mut display_type := debugger_type_name(v.typ)
+		mut expr := g.debugger_var_expr(v.name)
+		if smartcast := smartcast_vars[v.name] {
+			value_type = g.tc.parse_canonical_type(smartcast.value_type)
+			display_type = smartcast.display_type
+			expr = g.expr_to_string(smartcast.expr_id).trim_space()
+		}
+		type_literal := debugger_string_literal(display_type)
 		mut stack := []string{}
-		value_expr := g.interface_implicit_str_expr(v.typ, expr, false, mut stack) or {
+		value_expr := g.interface_implicit_str_expr(value_type, expr, false, mut stack) or {
 			g.interface_str_lit('<value>')
 		}
 		g.writeln('string ${key_name} = ${key_literal};')
