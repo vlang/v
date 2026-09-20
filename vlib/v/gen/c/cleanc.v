@@ -20744,7 +20744,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('\tif (decimal_pos < 0) decimal_pos = digit_count;')
 		g.writeln('\tdecimal_pos += exponent_sign * exponent;')
 		g.writeln('\tint whole_digits = decimal_pos > 0 ? decimal_pos : 1;')
-		g.writeln('\tint negative = x < 0.0;')
+		g.writeln('\tint negative = signbit(x);')
 		g.writeln('\tint out_len = negative + whole_digits + (precision > 0 ? precision + 1 : 0);')
 		g.writeln('\tu8* out = malloc_noscan((ptrdiff_t)out_len + 1);')
 		g.writeln('\tint pos = 0;')
