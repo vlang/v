@@ -1500,6 +1500,11 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	source := t.stable_transformed_expr_for_reuse(new_expr, expr_type, 'sum_as')
 	variants := t.sum_type_variants_for_index(resolved_clean_type)
 	if variants.len > 0 {
+		mut accepted_variants := t.sum_alias_equivalent_variants(resolved_clean_type,
+			node.value)
+		if accepted_variants.len == 0 {
+			accepted_variants << qv
+		}
 		actual_name := t.new_temp('sum_as_type')
 		mut mismatch_stmts := [t.make_decl_assign_typed(actual_name,
 			t.make_string_literal(t.sum_as_display_type(variants[0])), 'string')]
@@ -1522,11 +1527,19 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			t.make_string_literal(t.sum_as_display_type(qv)),
 		], 'voidptr')
 		mismatch_stmts << t.make_expr_stmt(check)
-		mismatch := t.make_infix(.ne, t.make_sum_tag_selector(source, if expr_type.starts_with('&') {
-			.arrow
-		} else {
-			.dot
-		}), t.make_int_literal(t.sum_type_index(resolved_clean_type, qv)))
+		mut mismatch := flat.empty_node
+		for accepted_variant in accepted_variants {
+			not_variant := t.make_infix(.ne, t.make_sum_tag_selector(source, if expr_type.starts_with('&') {
+				.arrow
+			} else {
+				.dot
+			}), t.make_int_literal(t.sum_type_index(resolved_clean_type, accepted_variant)))
+			mismatch = if int(mismatch) < 0 {
+				not_variant
+			} else {
+				t.make_infix(.logical_and, mismatch, not_variant)
+			}
+		}
 		t.pending_stmts << t.make_if(mismatch, t.make_block(mismatch_stmts), t.make_empty())
 	}
 	use_ptr := t.variant_references_sum(qv, clean_type) && !t.sum_variant_is_direct_pointer(qv)
