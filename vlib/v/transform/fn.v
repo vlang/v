@@ -5246,6 +5246,10 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		if expr_node.kind == .ident && t.string_interp_needs_value_read(expr_node.value, typ) {
 			return t.wrap_string_conversion(t.make_prefix(.mul, expr), clean_typ)
 		}
+		if clean_typ.starts_with('&') {
+			return t.lower_ref_value_str(expr, typ,
+				'&'.repeat(dump_pointer_depth(typ)) + 'nil')
+		}
 		if clean_typ.starts_with('[]') || clean_typ.starts_with('map[')
 			|| t.is_fixed_array_type(clean_typ) {
 			return t.lower_ref_value_str(expr, typ, '&nil')
