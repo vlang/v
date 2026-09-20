@@ -514,7 +514,7 @@ mut:
 	// elements or `int` values directly (kept in sync with set_target).
 	int_ct                          string = 'i64'
 	thread_stack_size               int    = 8 * 1024 * 1024
-	compile_values                  map[string]string // explicit `-d` values used by `$d(...)` in `#flag`s
+	compile_values                  map[string]string // explicit `-d` values used by `$d(...)` in C directives
 	output_path                     string
 	output_error                    string
 	c99_mode                        bool
@@ -1537,7 +1537,7 @@ pub fn (mut g FlatGen) set_suppress_main(enabled bool) {
 	g.suppress_main = enabled
 }
 
-// set_compile_values records explicit `-d` values so `$d(...)` inside `#flag`
+// set_compile_values records explicit `-d` values so `$d(...)` inside C
 // directives resolves configured values over fallbacks.
 pub fn (mut g FlatGen) set_compile_values(values map[string]string) {
 	g.compile_values = values.clone()
@@ -5275,16 +5275,30 @@ fn (g &FlatGen) c_local_header_directive(path string) string {
 	return '#include "${path}"'
 }
 
-// c_include_directive_text renders an `#include` for the output. Portable output
-// carries the text of a project-local header instead of an absolute path, which
-// only exists on the machine that generated the C.
+// c_include_directive_text renders an `#include` for the output. Normal builds
+// resolve source-local headers because generated C is compiled outside their module;
+// portable output carries the header text instead of a machine-local absolute path.
 fn (mut g FlatGen) c_include_directive_text(node_idx int, prefix_condition string, include_arg string, source_file string) string {
 	mut directive := '#include ${include_arg}'
-	if g.output_cross_c && include_arg.trim_space().starts_with('"') {
+	clean_include_arg := include_arg.trim_space()
+	quoted_absolute_path := clean_include_arg.len >= 2 && clean_include_arg[0] == `"`
+		&& clean_include_arg[clean_include_arg.len - 1] == `"`
+		&& os.is_abs_path(clean_include_arg[1..clean_include_arg.len - 1])
+	// Preserve already-absolute spellings, including symlink aliases such as macOS `/tmp`.
+	if clean_include_arg.starts_with('"') && (g.output_cross_c || !quoted_absolute_path) {
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
-			if text := g.cross_embedded_header_text(path, include_dirs) {
-				directive = text
+			if !os.is_file(path) {
+				continue
+			}
+			if g.output_cross_c {
+				if text := g.cross_embedded_header_text(path, include_dirs) {
+					directive = text
+				}
+			} else {
+				directive = c_native_source_context_include(path)
+			}
+			if directive != '#include ${include_arg}' {
 				break
 			}
 		}
@@ -5405,7 +5419,8 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		if node.typ.len == 0 {
 			return true
 		}
-		include_arg := c_include_arg_for_target(directive_raw, g.compiler_vroot, source_file, g.target)
+		include_arg := c_include_arg_for_target_with_values(directive_raw, g.compiler_vroot,
+			source_file, g.target, g.compile_values)
 		// A `#include linux <x.h>` contributes nothing when building for another
 		// target, so it must not make the file look header backed there.
 		if include_arg.len == 0 {
@@ -5429,7 +5444,8 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		if node.typ.len == 0 {
 			return true
 		}
-		include_arg := c_include_arg_for_target(directive_raw, g.compiler_vroot, source_file, g.target)
+		include_arg := c_include_arg_for_target_with_values(directive_raw, g.compiler_vroot,
+			source_file, g.target, g.compile_values)
 		if include_arg.len == 0 {
 			return true
 		}
@@ -10351,7 +10367,19 @@ fn c_include_arg(raw string, vroot string, source_file string) string {
 }
 
 fn c_include_arg_for_target(raw string, vroot string, source_file string, target pref.Target) string {
+	return c_include_arg_for_target_with_values(raw, vroot, source_file, target, map[string]string{})
+}
+
+fn c_include_arg_for_target_with_values(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) string {
 	mut clean := c_directive_arg_for_target(raw.trim_space(), target) or { return '' }
+	// Quoted include paths wrap the whole argument in double quotes. Strip the
+	// opening quote while expanding so `$d('name', 'fallback')` is not mistaken
+	// for text inside an ordinary C flag string.
+	if clean.starts_with('"') {
+		clean = '"' + (c_expand_default_define_macros(clean[1..], compile_values) or { return '' })
+	} else {
+		clean = c_expand_default_define_macros(clean, compile_values) or { return '' }
+	}
 	if clean.contains('\$env(') {
 		clean = util.resolve_env_value(clean, true) or { return '' }
 	}
@@ -16602,7 +16630,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.sizeof_expr {
 			if node.children_count > 0 {
 				g.write('sizeof(')
-				g.gen_expr(g.a.child(&node, 0))
+				g.gen_expr(g.a.child(node, 0))
 				g.write(')')
 			} else {
 				g.write('sizeof(${g.sizeof_target_in_file(node.value, g.node_source_file(node))})')
