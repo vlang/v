@@ -3,6 +3,11 @@ module c
 import v.flat
 import v.types
 
+struct LoopBodyNodeResult {
+	emitted_continue_label bool
+	reachable              bool
+}
+
 fn (mut g FlatGen) take_pending_loop_label() string {
 	label := g.pending_loop_label
 	g.pending_loop_label = ''
@@ -103,13 +108,27 @@ fn (g &FlatGen) is_loop_continue_label(id flat.NodeId, label string) bool {
 	return node.kind == .label_stmt && node.value == '${label}_continue'
 }
 
-fn (mut g FlatGen) gen_loop_body_node(id flat.NodeId, label string) bool {
+fn (mut g FlatGen) gen_loop_body_node(id flat.NodeId, label string, was_reachable bool) LoopBodyNodeResult {
 	if g.is_loop_continue_label(id, label) {
-		g.gen_loop_continue_label(label)
-		return true
+		if label.starts_with('__for_post_') {
+			g.gen_loop_continue_label(label)
+		}
+		return LoopBodyNodeResult{
+			emitted_continue_label: true
+			reachable:              true
+		}
 	}
+	node := g.a.node(id)
+	defer_start := g.defers.len
 	g.gen_node(id)
-	return false
+	if !was_reachable {
+		// Ordinary defers have no runtime activation counter. Do not let a defer
+		// after an unconditional transfer leak into the enclosing loop cleanup.
+		g.trim_defers(defer_start)
+	}
+	return LoopBodyNodeResult{
+		reachable: node.kind == .label_stmt || (was_reachable && !g.stmt_tail_exits(id))
+	}
 }
 
 fn (mut g FlatGen) gen_loop_continue_label(label string) {
@@ -168,13 +187,16 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
 	mut emitted_continue_label := false
+	mut body_reachable := true
 	for i in 3 .. node.children_count {
-		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
-			|| emitted_continue_label
+		result := g.gen_loop_body_node(g.a.child(&node, i), label_state.label,
+			body_reachable)
+		emitted_continue_label = result.emitted_continue_label || emitted_continue_label
+		body_reachable = result.reachable
 	}
 	g.loop_depth--
 	g.gen_defers_from(defer_start)
-	if !emitted_continue_label {
+	if !emitted_continue_label || !label_state.label.starts_with('__for_post_') {
 		g.gen_loop_continue_label(label_state.label)
 	}
 	if !node.skip_ownership_drops() {
@@ -184,15 +206,15 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.indent--
 	g.writeln('}')
 	if wrap_init {
-		if g.tc.autofree_mode && label_state.label.len > 0 {
-			g.writeln('${g.loop_control_c_label(label_state.label, false)}: {}')
-			g.emitted_loop_break_labels[label_state.label] = true
-		}
 		if !node.skip_ownership_drops() {
 			g.gen_scope_ownership_drops()
 		}
 		g.indent--
 		g.writeln('}')
+		if g.tc.autofree_mode && label_state.label.len > 0 {
+			g.writeln('${g.loop_control_c_label(label_state.label, false)}: {}')
+			g.emitted_loop_break_labels[label_state.label] = true
+		}
 	}
 	g.pop_scope()
 	g.loop_defer_starts.delete_last()
@@ -483,10 +505,13 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 			}
 			mut emitted_continue_label := false
+			mut body_reachable := true
 			for i in body_start .. node.children_count {
-				emitted_continue_label =
-					g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
-						|| emitted_continue_label
+				result := g.gen_loop_body_node(g.a.child(&node, i), label_state.label,
+					body_reachable)
+				emitted_continue_label = result.emitted_continue_label
+					|| emitted_continue_label
+				body_reachable = result.reachable
 			}
 			if map_copyback_guard.dirty_var.len > 0 {
 				g.map_loop_copyback_guards.delete_last()
@@ -496,7 +521,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.loop_control_copybacks.delete_last()
 			}
 			g.gen_defers_from(defer_start)
-			if !emitted_continue_label {
+			if !emitted_continue_label || !label_state.label.starts_with('__for_post_') {
 				g.gen_loop_continue_label(label_state.label)
 			}
 			if !node.skip_ownership_drops() {
@@ -520,12 +545,14 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
 	mut emitted_continue_label := false
+	mut body_reachable := true
 	for i in body_start .. node.children_count {
-		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label_state.label)
-			|| emitted_continue_label
+		result := g.gen_loop_body_node(g.a.child(&node, i), label_state.label, body_reachable)
+		emitted_continue_label = result.emitted_continue_label || emitted_continue_label
+		body_reachable = result.reachable
 	}
 	g.gen_defers_from(defer_start)
-	if !emitted_continue_label {
+	if !emitted_continue_label || !label_state.label.starts_with('__for_post_') {
 		g.gen_loop_continue_label(label_state.label)
 	}
 	if !node.skip_ownership_drops() {
@@ -595,9 +622,11 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 	g.gen_labelled_continue_skip_drops_var(label)
 	g.loop_depth++
 	mut emitted_continue_label := false
+	mut body_reachable := true
 	for i in body_start .. node.children_count {
-		emitted_continue_label = g.gen_loop_body_node(g.a.child(&node, i), label)
-			|| emitted_continue_label
+		result := g.gen_loop_body_node(g.a.child(&node, i), label, body_reachable)
+		emitted_continue_label = result.emitted_continue_label || emitted_continue_label
+		body_reachable = result.reachable
 	}
 	defer_start := if g.loop_defer_starts.len > 0 {
 		g.loop_defer_starts.last()
@@ -605,7 +634,7 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 		g.defers.len
 	}
 	g.gen_defers_from(defer_start)
-	if !emitted_continue_label {
+	if !emitted_continue_label || !label.starts_with('__for_post_') {
 		g.gen_loop_continue_label(label)
 	}
 	if !node.skip_ownership_drops() {

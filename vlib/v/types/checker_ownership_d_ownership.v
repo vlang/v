@@ -1121,6 +1121,11 @@ fn (mut tc TypeChecker) ownership_record_scope_drops(frame OwnershipScopeFrame) 
 		// scope-drop slot. Counting them shifts every later lexical scope.
 		return
 	}
+	if scope_node.kind == .block && tc.direct_parent_kind(frame.scope_id) == .defer_stmt {
+		// The root defer block is emitted inline by cgen each time the defer runs. It
+		// does not consume a scope-drop slot; nested blocks still do.
+		return
+	}
 	mut st := tc.ownership_state()
 	index := st.drop_scope_counts[frame.cur_fn] or { 0 }
 	st.drop_scope_counts[frame.cur_fn] = index + 1
