@@ -13053,8 +13053,13 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 			} else {
 				'(', ')'
 			}
+			declaration_help := if variant_type is Alias {
+				'declare alias as non-reference type'
+			} else {
+				'declare the sum type with non-reference types'
+			}
 			tc.record_error_with_details_at(.assignment_mismatch, 'sum type cannot hold a reference type', variant_id, tc.type_diagnostic_pos(variant_id, variant_name), [
-				'declare the sum type with non-reference types: `${node.value} = ${display_variant} | ...`\nand use a reference to the sum type instead: `var := &${node.value}(${display_variant}${left}val${right})`',
+				'${declaration_help}: `${node.value} = ${display_variant} | ...`\nand use a reference to the sum type instead: `var := &${node.value}(${display_variant}${left}val${right})`',
 			])
 			pointer_reported = true
 		}
