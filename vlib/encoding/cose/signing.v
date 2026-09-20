@@ -67,6 +67,7 @@ fn check_ec_key(alg Algorithm, key Key) !EcParams {
 		}
 		return error('cose: EC2 key missing crv')
 	}
+
 	if crv != params.curve {
 		return error('cose: ${alg.name()} requires crv=${params.curve}, got ${crv}')
 	}
@@ -87,6 +88,7 @@ fn check_okp_key(key Key) ! {
 		}
 		return error('cose: OKP key missing crv')
 	}
+
 	if crv != .ed25519 {
 		return error('cose: EdDSA requires crv=Ed25519, got ${crv}')
 	}
@@ -95,13 +97,7 @@ fn check_okp_key(key Key) ! {
 fn check_ec_public_coordinates(priv ecdsa.PrivateKey, params EcParams, key Key) ! {
 	x := key.x or { return error('cose: EC2 private key missing x') }
 	y := key.y or { return error('cose: EC2 private key missing y') }
-	if x.len > params.coord_size || y.len > params.coord_size {
-		return error('cose: EC2 public coordinates exceed curve size')
-	}
-	mut advertised := []u8{len: 1 + 2 * params.coord_size}
-	advertised[0] = 0x04
-	copy(mut advertised[1 + params.coord_size - x.len..1 + params.coord_size], x)
-	copy(mut advertised[1 + 2 * params.coord_size - y.len..], y)
+	advertised := ec_uncompressed_point(params.coord_size, x, y)!
 	derived_public := priv.public_key()!
 	defer {
 		derived_public.free()
@@ -190,8 +186,10 @@ fn verify_with_key(alg Algorithm, key Key, to_be_signed []u8, signature []u8) ! 
 				}
 			}
 			der_sig := raw_to_der(signature, params.coord_size)!
-			spki := build_ec_spki(params.curve, x, y)!
-			pubkey := ecdsa.pubkey_from_bytes(spki)!
+			point := ec_uncompressed_point(params.coord_size, x, y)!
+			pubkey := ecdsa.PublicKey.from_uncompressed_bytes(point, ecdsa.CurveOptions{
+				nid: params.nid
+			})!
 			defer {
 				pubkey.free()
 			}
@@ -215,6 +213,7 @@ fn verify_with_key(alg Algorithm, key Key, to_be_signed []u8, signature []u8) ! 
 				}
 				ed25519.new_key_from_seed(d).public_key()
 			}
+
 			if x.len != ed25519.public_key_size {
 				return error('cose: Ed25519 public key must be ${ed25519.public_key_size} bytes')
 			}
@@ -238,69 +237,19 @@ fn verify_with_key(alg Algorithm, key Key, to_be_signed []u8, signature []u8) ! 
 	}
 }
 
-// build_ec_spki assembles a SubjectPublicKeyInfo DER blob (RFC 5480) for
-// an uncompressed EC public point. This is the format consumed by
-// `ecdsa.pubkey_from_bytes`. We do this in pure V to avoid having to
-// add new C bindings just to load a public key from raw coordinates.
-fn build_ec_spki(crv Curve, x []u8, y []u8) ![]u8 {
-	// id-ecPublicKey OID = 1.2.840.10045.2.1
-	id_ec_public_key := [u8(0x06), 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01]
-	// Per-curve OID:
-	curve_oid := match crv {
-		.p_256 { [u8(0x06), 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07] }
-		.p_384 { [u8(0x06), 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22] }
-		.p_521 { [u8(0x06), 0x05, 0x2B, 0x81, 0x04, 0x00, 0x23] }
-		else { return error('cose: not an EC2 curve for SPKI: ${crv}') }
-	}
-
-	coord_size := match crv {
-		.p_256 { 32 }
-		.p_384 { 48 }
-		.p_521 { 66 }
-		else { return error('cose: not an EC2 curve for SPKI: ${crv}') }
-	}
-
+// ec_uncompressed_point assembles the SEC 1 uncompressed point encoding
+// `0x04 || X || Y` from COSE `x`/`y` coordinates, left-padding each one
+// to the curve width. This is the form `crypto.ecdsa` accepts on both
+// its OpenSSL and mbedTLS backends.
+fn ec_uncompressed_point(coord_size int, x []u8, y []u8) ![]u8 {
 	if x.len > coord_size || y.len > coord_size {
 		return MalformedMessage{
 			reason: 'EC2 coordinates exceed curve size'
 		}
 	}
-
-	// Uncompressed point: 0x04 || X (left-padded) || Y (left-padded).
 	mut point := []u8{len: 1 + 2 * coord_size}
 	point[0] = 0x04
-	x_off := 1 + (coord_size - x.len)
-	for i in 0 .. x.len {
-		point[x_off + i] = x[i]
-	}
-	y_off := 1 + coord_size + (coord_size - y.len)
-	for i in 0 .. y.len {
-		point[y_off + i] = y[i]
-	}
-
-	// AlgorithmIdentifier ::= SEQUENCE { id_ec_public_key, curve_oid }
-	mut alg_id_body := []u8{cap: id_ec_public_key.len + curve_oid.len}
-	alg_id_body << id_ec_public_key
-	alg_id_body << curve_oid
-	mut alg_id := []u8{cap: 2 + alg_id_body.len}
-	alg_id << 0x30
-	alg_id << encode_der_length(alg_id_body.len)
-	alg_id << alg_id_body
-
-	// BIT STRING: 0x03 LEN UNUSED_BITS || POINT
-	mut bit_string := []u8{cap: 3 + point.len}
-	bit_string << 0x03
-	bit_string << encode_der_length(point.len + 1)
-	bit_string << 0x00 // 0 unused bits in the trailing octet
-	bit_string << point
-
-	// SubjectPublicKeyInfo ::= SEQUENCE { alg_id, bit_string }
-	mut spki_body := []u8{cap: alg_id.len + bit_string.len}
-	spki_body << alg_id
-	spki_body << bit_string
-	mut spki := []u8{cap: 2 + spki_body.len}
-	spki << 0x30
-	spki << encode_der_length(spki_body.len)
-	spki << spki_body
-	return spki
+	copy(mut point[1 + coord_size - x.len..1 + coord_size], x)
+	copy(mut point[1 + 2 * coord_size - y.len..], y)
+	return point
 }

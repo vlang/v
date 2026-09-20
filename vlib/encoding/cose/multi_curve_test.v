@@ -4,6 +4,7 @@
 // are randomised.
 module cose
 
+import crypto.ecdsa
 import encoding.base64
 import encoding.hex
 
@@ -64,4 +65,30 @@ fn test_sign1_p521_roundtrip() {
 	signed := sign1('p521'.bytes(), priv_key, protected: hp)!
 	got := verify1(signed, pub_key)!
 	assert got == 'p521'.bytes()
+}
+
+// A public point that is not on the curve must be refused when the key
+// is loaded, not merely produce a signature mismatch. `crypto.ecdsa`
+// enforces that on both its backends — mbedTLS through
+// `mbedtls_ecp_check_pubkey`, OpenSSL inside the point decoding of
+// `EVP_PKEY_fromdata` — so the load is asserted directly here; the
+// end-to-end `verify1` call then pins the same boundary as COSE sees
+// it. No error string is matched: the wording is backend-specific.
+fn test_verify1_rejects_public_point_off_the_curve() {
+	msg := hex.decode(p384_sig02_message)!
+	p384 := ecdsa.CurveOptions{
+		nid: .secp384r1
+	}
+	for bad in [u8(0x00), 0x01, 0xff] {
+		coord := []u8{len: 48, init: bad}
+		mut point := []u8{len: 1, init: 0x04}
+		point << coord
+		point << coord
+		if _ := ecdsa.PublicKey.from_uncompressed_bytes(point, p384) {
+			assert false, 'a point off the curve must not load as a public key'
+		}
+		if _ := verify1(msg, Key.ec2_public(.p_384, coord, coord)) {
+			assert false, 'a point off the curve must not verify'
+		}
+	}
 }
