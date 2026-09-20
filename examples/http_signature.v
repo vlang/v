@@ -1,4 +1,4 @@
-// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
+// vtest build: !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 // HTTP Message Signatures example: signs an outbound request with
 // Ed25519 (using the RFC 9421 §B.1.4 test key in PEM form) and then
 // verifies the result with the matching public key.
@@ -48,8 +48,7 @@ fn demo_sign_and_verify_request() ! {
 	println('Signature:       ${sig}')
 
 	signature.verify_request(req, pub_key,
-		required_components: ['date', '@method', '@path', '@authority', 'content-type',
-			'content-length']
+		required_components: ['date', '@method', '@path', '@authority', 'content-type', 'content-length']
 	)!
 	println('  ✓ verified with the matching public key')
 }
