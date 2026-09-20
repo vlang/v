@@ -8253,10 +8253,10 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 				if info := tc.resolve_generic_sum_method(declared_clean.name, fn_node.value) {
 					return info
 				}
-			}
-			for mname in receiver_method_name_candidates(declared_clean, fn_node.value, tc.cur_module) {
-				if mname in tc.fn_ret_types {
-					return tc.call_info(mname, true)
+				for mname in receiver_method_name_candidates(declared_clean, fn_node.value, tc.cur_module) {
+					if mname in tc.fn_ret_types {
+						return tc.call_info(mname, true)
+					}
 				}
 			}
 		}
