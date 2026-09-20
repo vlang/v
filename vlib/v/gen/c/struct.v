@@ -3666,13 +3666,17 @@ fn (mut g FlatGen) gen_local_shared_value_selector(base_id flat.NodeId, field st
 	if base.kind != .ident || !g.local_storage_is_shared(base.value) {
 		return false
 	}
-	g.write(g.shared_storage_ident_c_name(base.value))
-	g.write('->val.')
-	g.write(c_field_name(field))
 	mut base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
 	if base_type is types.Alias {
 		base_type = types.unwrap_pointer(base_type.base_type)
 	}
+	g.write(g.shared_storage_ident_c_name(base.value))
+	if field == 'len' && cgen_type_is_map(base_type) {
+		g.write('->val.data->count')
+		return true
+	}
+	g.write('->val.')
+	g.write(c_field_name(field))
 	if base_type is types.Struct {
 		if _ := g.shared_field_info(base_type.name, field) {
 			g.write('->val')
