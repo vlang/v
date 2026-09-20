@@ -1921,9 +1921,9 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls, function_c_names)!
 	timer.mark('startup_initializers')
 	mut used_function_names := fastc_wait_referenced_function_names(mut pending_references)
-	if !has_entry_module {
-		// A standalone module has no entry roots to walk from, so every declared
-		// function must survive the earlier name-based body filter too.
+	if 'main' !in functions {
+		// A program without an explicit main has no entry roots to walk from, so
+		// every declared function must survive the earlier name-based body filter too.
 		for key in functions.keys() {
 			used_function_names[key.all_after_last('.')] = true
 		}
