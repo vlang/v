@@ -8820,7 +8820,8 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	payload := tc.or_expr_payload_type(inner_id) or { Type(void_) }
 	require_fallback_value := !tc.expr_is_standalone_statement(id) && payload !is Void
 		&& !tc.call_has_argument_count_error(inner_id)
-	tc.check_or_fallback_branch_node(fallback_id, require_fallback_value)
+	check_fallback_value_tail := payload !is Void && !tc.call_has_argument_count_error(inner_id)
+	tc.check_or_fallback_branch_node(fallback_id, check_fallback_value_tail)
 	tc.check_or_fallback_type(id, inner_id, fallback_id, outer_expected)
 	tc.expected_expr_id = saved_expected_expr_id
 	tc.expected_expr_type = saved_expected_expr_type
@@ -9221,7 +9222,11 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 			}
 		}
 	}
-	mut actual := tc.resolve_type(tail_id)
+	mut actual := if tail.kind == .struct_init {
+		tc.parse_type(tail.value)
+	} else {
+		tc.resolve_type(tail_id)
+	}
 	if tail.kind == .infix && tail.op == .plus && tail.children_count >= 2 {
 		lhs_type := unalias_type(tc.resolve_type(tc.a.child(tail, 0)))
 		rhs_type := unalias_type(tc.resolve_type(tc.a.child(tail, 1)))
