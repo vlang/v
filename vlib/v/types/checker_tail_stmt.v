@@ -374,6 +374,14 @@ fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, seman
 	} else {
 		tc.a.node(expr_id).pos
 	}
+	if expr_id == semantic_id && semantic.kind == .infix && semantic.children_count >= 2 {
+		lhs_id := tc.a.child(&semantic, 0)
+		lhs := tc.a.node(lhs_id)
+		if lhs.kind == .selector {
+			start := tc.selector_field_diagnostic_pos(lhs_id, lhs.value)
+			return token.new_span(pos.id, start.offset, pos.end)
+		}
+	}
 	if expr_id != semantic_id || !has_embed_file_value {
 		return pos
 	}
@@ -409,10 +417,6 @@ fn (tc &TypeChecker) unused_expression_diagnostic_pos(expr_id flat.NodeId, seman
 			&& tc.a.child_node(rhs_base, 0).kind == .fn_literal {
 			return tc.selector_field_diagnostic_pos(rhs_id, rhs.value)
 		}
-	}
-	if lhs.kind == .selector {
-		start := tc.selector_field_diagnostic_pos(lhs_id, lhs.value)
-		return token.new_span(pos.id, start.offset, pos.end)
 	}
 	if lhs.kind == .or_expr {
 		if embed_id := tc.nested_embed_file_value(lhs_id) {
