@@ -314,6 +314,7 @@ fn test_optional_struct_zero_seeds_imported_default_helper() {
 fn test_prelude_global_initializer_seeds_calls_and_c_externs() {
 	mut a, mut tc := parse_checked_prelude_user_source('prelude_global_initializer', 'hidden/hidden.c.v', 'module hidden
 
+@[c_extern]
 fn C.hidden_external() int
 
 pub const hidden_value = helper() + C.hidden_external()
