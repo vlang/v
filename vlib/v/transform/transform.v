@@ -9864,6 +9864,12 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	if typ.len == 0 || typ == 'unknown' {
 		typ = t.resolve_expr_type(child_id)
 	}
+	if child_node.kind == .cast_expr {
+		cast_type := t.normalize_type_alias(child_node.value)
+		if t.is_sum_type_name(cast_type) {
+			typ = cast_type
+		}
+	}
 	mut dump_mut_param := false
 	mut dump_shared_ident := false
 	raw_alias_type := t.raw_alias_type_for_expr(child_id)
