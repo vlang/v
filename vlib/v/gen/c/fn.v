@@ -4722,6 +4722,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.collect_fn_prelude_scan(node)
 	}
 	g.goto_label_lock_scopes = prelude_scan.goto_label_lock_scopes.move()
+	g.cur_c_fn_calls = prelude_scan.c_fn_calls.move()
 	g.pending_loop_label = ''
 	g.ierror_stack_pointer_aliases.clear()
 	g.ierror_owned_pointer_by_owner.clear()

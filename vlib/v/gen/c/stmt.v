@@ -650,6 +650,7 @@ mut:
 	defer_ids              []flat.NodeId
 	lock_scopes            []int
 	goto_label_lock_scopes map[string][]int
+	c_fn_calls             map[string]bool
 }
 
 fn new_fn_prelude_scan() FnPreludeScan {
@@ -657,6 +658,7 @@ fn new_fn_prelude_scan() FnPreludeScan {
 		defer_ids:              []flat.NodeId{}
 		lock_scopes:            []int{}
 		goto_label_lock_scopes: map[string][]int{}
+		c_fn_calls:             map[string]bool{}
 	}
 }
 
@@ -702,6 +704,19 @@ fn (g &FlatGen) collect_prelude_scan_from(id flat.NodeId, mut scan FnPreludeScan
 	}
 	if node.kind == .label_stmt && node.value.len > 0 {
 		scan.goto_label_lock_scopes[node.value] = scan.lock_scopes.clone()
+	}
+	if collect_defers && node.kind == .call && node.children_count > 0 {
+		callee := g.a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value.starts_with('C.') {
+			scan.c_fn_calls[g.cname(callee.value)] = true
+		} else if callee.kind == .selector && callee.children_count > 0 {
+			base := g.a.child_node(callee, 0)
+			if (base.kind == .ident && base.value == 'C')
+				|| (base.kind == .empty && ('C.${callee.value}' in g.tc.fn_ret_types
+					|| 'C.${callee.value}' in g.tc.fn_param_types)) {
+				scan.c_fn_calls[g.cname('C.${callee.value}')] = true
+			}
+		}
 	}
 	start := node.children_start
 	end := start + int(node.children_count)
@@ -8476,14 +8491,15 @@ fn (g &FlatGen) current_param_use_cname(name string) string {
 
 fn (g &FlatGen) local_cname(name string) string {
 	if g.local_shadows_global(name) || local_name_shadows_c_runtime(name)
-		|| g.local_name_shadows_c_typedef(name) {
+		|| g.local_name_shadows_c_typedef(name) || g.local_name_shadows_c_function(name) {
 		return naming.local_rename(g.cname(name))
 	}
 	return g.cname(name)
 }
 
 fn (g &FlatGen) local_decl_cname(name string) string {
-	if local_name_shadows_c_runtime(name) || g.local_name_shadows_c_typedef(name) {
+	if local_name_shadows_c_runtime(name) || g.local_name_shadows_c_typedef(name)
+		|| g.local_name_shadows_c_function(name) {
 		return naming.local_rename(g.cname(name))
 	}
 	if g.local_name_needs_global_suffix(name) {
@@ -8556,6 +8572,10 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		cache.put(name, if result { i8(1) } else { i8(-1) })
 	}
 	return result
+}
+
+fn (g &FlatGen) local_name_shadows_c_function(name string) bool {
+	return g.cname(name) in g.cur_c_fn_calls
 }
 
 fn local_name_shadows_c_runtime(name string) bool {

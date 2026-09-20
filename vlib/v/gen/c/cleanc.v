@@ -543,6 +543,7 @@ mut:
 	cur_mut_pointer_params          map[string]bool
 	cur_explicit_mut_pointer_params map[string]bool
 	cur_mut_param_owners            map[string]types.ScopeBindingOwner
+	cur_c_fn_calls                  map[string]bool
 	cur_fn_ret                      types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional          bool
 	cur_fn_ret_base                 types.Type = types.Type(types.void_)
