@@ -9830,7 +9830,10 @@ fn (mut p Parser) defer_stmt() flat.NodeId {
 	p.defer_result_allowed = outer_defer_result_allowed || mode == 'function'
 		|| (p.defer_depth == 0 && p.nested_block_depth == 0)
 	p.defer_depth++
+	outer_unsafe_depth := p.unsafe_depth
+	p.unsafe_depth = 0
 	body := p.block_stmt()
+	p.unsafe_depth = outer_unsafe_depth
 	p.defer_depth--
 	p.defer_result_allowed = outer_defer_result_allowed
 	dstart := p.add_child(body)

@@ -7713,6 +7713,9 @@ fn (tc &TypeChecker) expr_is_inside_unsafe_block(id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
+		if parent.kind == .defer_stmt {
+			return false
+		}
 		if parent.kind == .block && parent.value == 'unsafe' {
 			return true
 		}
@@ -10960,9 +10963,12 @@ fn (mut tc TypeChecker) ownership_record_or_fallback_error_return_drops(id flat.
 }
 
 fn (mut tc TypeChecker) check_defer_stmt(node flat.Node) {
+	outer_unsafe_depth := tc.unsafe_depth
+	tc.unsafe_depth = 0
 	for i in 0 .. node.children_count {
 		tc.check_node(tc.a.child(&node, i))
 	}
+	tc.unsafe_depth = outer_unsafe_depth
 }
 
 fn (mut tc TypeChecker) check_asm_stmt(id flat.NodeId, node flat.Node) {
