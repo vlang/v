@@ -351,8 +351,35 @@ fn test_v3_system_tcc_does_not_use_bundled_resources() {
 	system_tcc := os.join_path(os.path_separator, 'usr', 'bin', 'tcc')
 	resources := v3_tcc_resource_flags_for_compiler(vroot, system_tcc, bundled_tcc, false)
 	assert resources == V3TccResourceFlags{}
+	assert v3_tcc_object_compile_flags(vroot, system_tcc, bundled_tcc, false, 'linux', '') == []
 	bundled_resources := v3_tcc_resource_flags_for_compiler(vroot, bundled_tcc, bundled_tcc, true)
 	assert bundled_resources.base_arg.contains('thirdparty')
+	object_flags := v3_tcc_object_compile_flags(vroot, bundled_tcc, bundled_tcc, true, 'linux', '')
+	assert bundled_resources.base_arg in object_flags
+	assert bundled_resources.include_arg in object_flags
+	assert bundled_resources.library_arg !in object_flags
+}
+
+fn test_v3_bundled_tcc_native_object_build_is_cwd_independent() {
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if !os.is_executable(bundled_tcc) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_tcc_native_object_cwd_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_source := os.join_path(root, 'native.c')
+	c_object := os.join_path(root, 'native.o')
+	v_source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main' + $if windows { '.exe' } $else { '' })
+	os.write_file(c_source, '#include <stddef.h>\nsize_t v3_tcc_native_object_probe(void) { return sizeof(size_t); }\n')!
+	os.write_file(v_source, '#flag ${c_object}\n\nfn C.v3_tcc_native_object_probe() usize\n\nfn main() {\n\tassert C.v3_tcc_native_object_probe() > 0\n}\n')!
+	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
+		'-no-retry-compilation', '-cc', 'tcc', '-o', output, v_source], root)
+	assert build.exit_code == 0, build.output
 }
 
 fn test_v3_system_tcc_runtime_requires_windows_openlibm() {

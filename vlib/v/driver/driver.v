@@ -2558,6 +2558,19 @@ fn v3_tcc_resource_flags_for_compiler(vroot string, tcc_path string, bundled_tcc
 	return v3_tcc_resource_flags(vroot)
 }
 
+// Separately compiled native objects need the relocatable bundled TCC resource root too;
+// otherwise its standard headers depend on V being invoked from the repository root.
+fn v3_tcc_object_compile_flags(vroot string, tcc_path string, bundled_tcc string, bundled_tcc_available bool, target_os string, macos_sdk_root string) []string {
+	resources := v3_tcc_resource_flags_for_compiler(vroot, tcc_path, bundled_tcc,
+		bundled_tcc_available)
+	if resources.base_arg == '' {
+		return []
+	}
+	mut flags := [resources.base_arg, resources.include_arg]
+	flags << v3_tcc_host_system_flags(target_os, macos_sdk_root)
+	return flags
+}
+
 fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 	if target_os != os.user_os() || target_os == 'windows' {
 		return []
@@ -12269,7 +12282,18 @@ pub fn run(args []string) {
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc)
-			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
+			mut object_environment_c_flags := environment_c_flags.clone()
+			if effective_tcc {
+				object_tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
+					macos_sdk_root_cache.get()
+				} else {
+					''
+				}
+				object_environment_c_flags << v3_tcc_object_compile_flags(prefs.vroot, c_compiler,
+					bundled_tcc, bundled_tcc_available, prefs.normalized_target_os(),
+					object_tcc_sdk_root)
+			}
+			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, object_environment_c_flags,
 				object_optimization_flags, prefs.c99, no_std, pic_flag, target_args, prefs.target,
 				c_compiler, use_implicit_tcc_semantics, cc_dir, mut c_object_cache_stats) or {
 				message := err.msg()
