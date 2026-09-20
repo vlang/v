@@ -13947,7 +13947,11 @@ fn generic_type_application_parts(typ string) (string, []string, bool) {
 	if is_fixed_array_len_text(inner) {
 		return '', []string{}, false
 	}
-	return typ[..bracket], split_params(inner), true
+	mut args := split_params(inner)
+	for i in 0 .. args.len {
+		args[i] = trimmed_space(args[i])
+	}
+	return typ[..bracket], args, true
 }
 
 // is_fixed_array_len_text reports whether a postfix `Base[inner]` bracket holds a fixed-array
