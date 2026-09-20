@@ -5246,7 +5246,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		if expr_node.kind == .ident && t.string_interp_needs_value_read(expr_node.value, typ) {
 			return t.wrap_string_conversion(t.make_prefix(.mul, expr), clean_typ)
 		}
-		if clean_typ.starts_with('&') {
+		if clean_typ.starts_with('&') && t.multi_pointer_str_expands_value(clean_typ) {
 			return t.lower_ref_value_str(expr, typ,
 				'&'.repeat(dump_pointer_depth(typ)) + 'nil')
 		}
@@ -5388,6 +5388,17 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 	}
+}
+
+fn (mut t Transformer) multi_pointer_str_expands_value(typ string) bool {
+	mut base := typ.trim_space()
+	for base.starts_with('&') {
+		base = base[1..].trim_space()
+	}
+	base = t.normalize_type_alias(base)
+	return t.is_optional_type_name(base) || base.starts_with('[]') || base.starts_with('map[')
+		|| t.is_fixed_array_type(base) || t.resolve_interface_type_name(base).len > 0
+		|| t.is_enum_stringify_type(base) || t.stringify_aggregate_type_name(base) != none
 }
 
 fn (mut t Transformer) lower_interface_auto_str(expr flat.NodeId, iface_name string) flat.NodeId {
