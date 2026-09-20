@@ -18208,12 +18208,7 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 	if tc.int_literal_value(other_id) != none {
 		return none
 	}
-	value := tc.int_literal_value(lit_id) or {
-		if lit_type.name() != Type(int_).name() {
-			return none
-		}
-		tc.const_int_expr(lit_id, tc.cur_module, []string{})?
-	}
+	value := tc.implicit_integer_constant_value(lit_id, lit_type)?
 	clean_type := unalias_type(other_type)
 	if unsigned_type_accepts_int_literal(clean_type, value) {
 		return clean_type
@@ -18225,6 +18220,13 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 		return clean_type
 	}
 	return none
+}
+
+fn (tc &TypeChecker) implicit_integer_constant_value(id flat.NodeId, typ Type) ?int {
+	if typ.name() != Type(int_).name() {
+		return none
+	}
+	return tc.const_int_expr(id, tc.cur_module, []string{})
 }
 
 fn (tc &TypeChecker) int_literal_value(id flat.NodeId) ?int {

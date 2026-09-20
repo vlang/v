@@ -13705,15 +13705,20 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		// Integer arguments are implicitly converted at a concrete call boundary.
 		// Resolve this before applying the expected type, since contextual resolution
 		// would otherwise diagnose the conversion while resolving the argument itself.
+		resolved_arg_type := tc.resolve_type(arg_id)
+		constant_integer_value := tc.implicit_integer_constant_value(arg_id,
+			resolved_arg_type)
 		negative_unsigned_literal := type_is_unsigned_integer(expected)
-			&& tc.expr_is_negative_integer_literal(arg_id)
+			&& (tc.expr_is_negative_integer_literal(arg_id)
+				|| (constant_integer_value or { 0 }) < 0)
 		if !negative_unsigned_literal {
 			tc.warn_if_integer_literal_outside_known_type_range(arg_id, expected, tc.a.nodes[int(arg_id)].pos)
 		}
 		if !call_param_is_shared(info, param_idx) && !tc.expr_is_explicit_shared_arg(arg_id)
-			&& call_arg_integer_type(expected) && call_arg_integer_type(tc.resolve_type(arg_id)) {
+			&& call_arg_integer_type(expected) && call_arg_integer_type(resolved_arg_type) {
 			arg_node := tc.a.node(arg_id)
-			if arg_node.kind == .int_literal {
+			if arg_node.kind == .int_literal
+				|| (constant_integer_value != none && !negative_unsigned_literal) {
 				if has_dsl_scope {
 					tc.pop_scope()
 				}
