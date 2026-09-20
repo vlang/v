@@ -3948,7 +3948,6 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					if expected_fn_text.len > 0 && actual_fn_text.len > 0
 						&& expected_fn_text != actual_fn_text && (fn_diagnostic_parameter_modes(expected_fn_text) != fn_diagnostic_parameter_modes(actual_fn_text)
 						|| !tc.fn_types_match_ignoring_module_qualification(clean_expected, clean_actual))
-						&& !tc.expr_compatible(value_id, actual, expected)
 						&& !tc.method_value_matches_voidptr_callback(value_id, actual, expected)
 						&& !tc.fn_callback_adapter_compatible(source_actual, clean_expected) {
 						details := tc.fn_assignment_mismatch_details(expected_fn_text, expected_alias, actual_fn_text, value_id)
