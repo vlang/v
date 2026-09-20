@@ -121,8 +121,8 @@ fn main() {
 	if '-new-compiler' in args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
-	if '-new-compiler' !in args && v3_fixture_expects_legacy_compiler_modules(args) {
-		launch_v1(clean_compiler_selection_flags(args), 'legacy compiler module fixture', RetryState{})
+	if '-new-compiler' !in args && v3_fixture_requires_compatibility_compiler(args) {
+		launch_v1(clean_compiler_selection_flags(args), 'legacy diagnostic fixture', RetryState{})
 	}
 	if command in ['help', '-h', '--help'] {
 		print_help(args, command_index)
@@ -486,7 +486,7 @@ fn retry_with_v1_at_exit() {
 @[noreturn]
 fn launch_v1(args []string, reason string, report_state RetryState) {
 	legacy_module_fixture := v3_fixture_expects_legacy_compiler_modules(args)
-	transparent_fixture_fallback := legacy_module_fixture
+	transparent_fixture_fallback := v3_fixture_requires_compatibility_compiler(args)
 		|| (report_state.fallback_file != '' && v3_exact_output_fixture_args(args))
 	diagnostics := if transparent_fixture_fallback {
 		''

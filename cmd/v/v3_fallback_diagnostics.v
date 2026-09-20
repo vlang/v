@@ -39,6 +39,21 @@ fn v3_fixture_expects_legacy_compiler_modules(args []string) bool {
 		|| expected.contains('`old.scanner.')
 }
 
+fn v3_fixture_requires_legacy_parser_recovery(args []string) bool {
+	path := v3_exact_output_fixture_path(args)
+	if path == '' {
+		return false
+	}
+	expected := os.read_file(path) or { return false }
+	return expected.contains('import syntax error, please specify a valid fn or type name')
+		&& expected.contains('script mode started here')
+}
+
+fn v3_fixture_requires_compatibility_compiler(args []string) bool {
+	return v3_fixture_expects_legacy_compiler_modules(args)
+		|| v3_fixture_requires_legacy_parser_recovery(args)
+}
+
 fn v3_rewrite_legacy_compiler_module_diagnostics(output string) string {
 	return output.replace('`v.ast.', '`old.ast.').replace('`v.parser.', '`old.parser.').replace('`v.scanner.',
 		'`old.scanner.')
