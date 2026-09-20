@@ -14264,7 +14264,7 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 		g.gen_expr(arg_id)
 		return true
 	}
-	if !concrete_abi && arg_node.kind in [.selector, .paren, .expr_stmt] {
+	if !concrete_abi && arg_node.kind in [.call, .selector, .paren, .expr_stmt] {
 		declared := optional_result_unalias_type(g.or_expr_source_type(arg_id, arg_node))
 		if declared is types.OptionType || declared is types.ResultType {
 			if g.optional_type_name(declared) == g.optional_type_name(expected) {
