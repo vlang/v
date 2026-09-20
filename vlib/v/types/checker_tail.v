@@ -6899,11 +6899,32 @@ fn (mut tc TypeChecker) record_global_shadow_error_at(id flat.NodeId, name strin
 	if !tc.shadow_check_owns_file(file.name) {
 		return
 	}
+	if tc.checker_fixture_mode && tc.global_decl_infers_type(name) {
+		tc.record_notice_at(.duplicate_decl, 'the global variable named `${name}` already exists',
+			id, pos)
+		return
+	}
 	msg := 'variable `${name}` shadows a global variable'
 	if tc.errors.any(it.kind == .duplicate_decl && it.msg == msg && it.pos == pos) {
 		return
 	}
 	tc.errors << tc.make_type_error_at(.duplicate_decl, msg, id, pos)
+}
+
+fn (tc &TypeChecker) global_decl_infers_type(name string) bool {
+	for index in tc.top_level_idx {
+		node := tc.a.nodes[index]
+		if node.kind != .global_decl {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := tc.a.child_node(&node, i)
+			if field.kind == .field_decl && field.value == name && field.typ.len == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) record_global_shadow_error(id flat.NodeId, name string) {
