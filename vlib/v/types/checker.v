@@ -5724,8 +5724,10 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		if has_source {
 			tc.check_import_source_syntax(flat.NodeId(idx), node)
 		}
-		if deprecation := tc.deprecated_modules[node.value] {
-			tc.record_deprecation(flat.NodeId(idx), 'module', deprecation, node.pos)
+		if module_base != tc.cur_module {
+			if deprecation := tc.deprecated_modules[node.value] {
+				tc.record_deprecation(flat.NodeId(idx), 'module', deprecation, node.pos)
+			}
 		}
 		if tc.selective_import_has_missing_value_symbol(node, module_path)
 			|| tc.selective_import_has_const(node, module_path) {
@@ -5749,9 +5751,6 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 				tc.import_module_basename_pos(node)
 			}
 			tc.record_error_at(.duplicate_decl, 'cannot import `${module_path}` as `${node.typ}` into a module with the same name', flat.NodeId(idx), alias_pos)
-		}
-		if module_path == 'json' && module_base != tc.cur_module {
-			tc.record_warning_at(.duplicate_decl, 'module `json` has been deprecated; `json` will be removed soon; use the pure V `json2` module instead', flat.NodeId(idx), node.pos)
 		}
 		key := file_import_key(tc.cur_file, node.typ)
 		if first_pos := first_imports[key] {
