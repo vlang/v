@@ -146,9 +146,8 @@ fn ecdsa_verify(base []u8, sig []u8, key Key, coord_size int, curve ecdsa.Nid) !
 
 fn build_ecdsa_public(key Key, coord_size int, curve ecdsa.Nid) !ecdsa.PublicKey {
 	// For a private Key we build via the seed path (V's ecdsa derives
-	// x, y from d). For a public Key we hand-craft a SubjectPublicKeyInfo
-	// DER from the supplied (x, y) - this is the only place where this
-	// module talks raw ASN.1 DER.
+	// x, y from d). For a public Key we hand the supplied (x, y) over as
+	// a SEC1 uncompressed point.
 	if key.is_private {
 		if key.bytes.len != coord_size * 3 {
 			return MalformedMessage{
@@ -166,10 +165,13 @@ fn build_ecdsa_public(key Key, coord_size int, curve ecdsa.Nid) !ecdsa.PublicKey
 			reason: 'ECDSA public key must be ${coord_size * 2} bytes (x||y)'
 		}
 	}
-	x := key.bytes[..coord_size]
-	y := key.bytes[coord_size..coord_size * 2]
-	spki := build_ec_spki(x, y, curve)
-	return ecdsa.pubkey_from_bytes(spki)!
+	// SEC1 uncompressed point (RFC 5480 2.2): 0x04 || x || y. Both
+	// crypto.ecdsa backends implement this constructor, while the DER
+	// entry points are OpenSSL-only.
+	mut point := []u8{cap: 1 + coord_size * 2}
+	point << 0x04
+	point << key.bytes[..coord_size * 2]
+	return ecdsa.PublicKey.from_uncompressed_bytes(point, nid: curve)!
 }
 
 // der_to_raw extracts (R, S) from a DER-encoded ECDSA signature and
@@ -308,44 +310,4 @@ fn pad_into(mut dst []u8, dst_off int, src []u8, target int) {
 	for i in 0 .. src.len {
 		dst[dst_off + pad + i] = src[i]
 	}
-}
-
-// build_ec_spki constructs a SubjectPublicKeyInfo DER for an EC public
-// key with the given (x, y) coordinates. RFC 5280 §4.1.2.7 + RFC 5480
-// shape:
-//
-//   SEQUENCE {
-//     SEQUENCE { OID ecPublicKey, OID <curve> },
-//     BIT STRING (0x00 || 0x04 || x || y)
-//   }
-fn build_ec_spki(x []u8, y []u8, curve ecdsa.Nid) []u8 {
-	curve_oid := match curve {
-		.prime256v1 { [u8(0x06), 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07] } // 1.2.840.10045.3.1.7
-		.secp384r1 { [u8(0x06), 0x05, 0x2B, 0x81, 0x04, 0x00, 0x22] } // 1.3.132.0.34
-		else { []u8{} }
-	}
-
-	ec_pub_oid := [u8(0x06), 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01] // 1.2.840.10045.2.1
-	mut alg := []u8{}
-	alg << ec_pub_oid
-	alg << curve_oid
-	mut alg_seq := []u8{cap: alg.len + 4}
-	alg_seq << 0x30
-	alg_seq << encode_der_length(alg.len)
-	alg_seq << alg
-	mut point := []u8{cap: 1 + x.len + y.len}
-	point << 0x04 // uncompressed point header (RFC 5480 §2.2)
-	point << x
-	point << y
-	mut bit_string := []u8{cap: point.len + 4}
-	bit_string << 0x03
-	bit_string << encode_der_length(point.len + 1)
-	bit_string << 0x00 // unused-bits indicator
-	bit_string << point
-	mut spki := []u8{cap: alg_seq.len + bit_string.len + 4}
-	spki << 0x30
-	spki << encode_der_length(alg_seq.len + bit_string.len)
-	spki << alg_seq
-	spki << bit_string
-	return spki
 }
