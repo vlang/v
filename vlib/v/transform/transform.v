@@ -16889,6 +16889,15 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 	}
 
 	expected_normalized := t.normalize_type_alias(clean_expected)
+	// Reflected field types are canonicalized in their declaration module, while
+	// a condition in `main` can retain the source spelling of nested user types.
+	// Compare recursively-qualified forms so `map[string]main.Item` still matches
+	// `map[string]Item` (and likewise for arrays, functions, and generic types).
+	actual_key := t.comptime_field_type_id_key(normalized, t.cur_module)
+	expected_key := t.comptime_field_type_id_key(expected_normalized, t.cur_module)
+	if actual_key.len > 0 && actual_key == expected_key {
+		return true
+	}
 	if (normalized.starts_with('fn(') || normalized.starts_with('fn ('))
 		&& (expected_normalized.starts_with('fn(')
 			|| expected_normalized.starts_with('fn (')) {
