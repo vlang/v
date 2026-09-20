@@ -1610,6 +1610,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		&& b_is_missing_generic_decl && a_is_unmentioned_fn_generic {
 		return 1
 	}
+	a_is_noreturn_return := a.msg == '[noreturn] functions cannot use return statements'
+	b_is_noreturn_return := b.msg == '[noreturn] functions cannot use return statements'
+	a_is_noreturn_tail := a.msg.starts_with('@[noreturn] functions should end with ')
+	b_is_noreturn_tail := b.msg.starts_with('@[noreturn] functions should end with ')
+	if a.file == b.file && a_is_noreturn_return && b_is_noreturn_tail {
+		return -1
+	}
+	if a.file == b.file && b_is_noreturn_return && a_is_noreturn_tail {
+		return 1
+	}
 	a_is_for_in_same_variable := a.msg.starts_with('in a `for x in ')
 		&& a.msg.contains(' can not be the same as the low variable')
 	b_is_for_in_same_variable := b.msg.starts_with('in a `for x in ')
