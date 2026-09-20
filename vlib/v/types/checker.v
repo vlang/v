@@ -15411,6 +15411,7 @@ fn reserved_const_type_name(name string) bool {
 		'map',
 		'string',
 		'rune',
+		'thread',
 		'usize',
 		'isize',
 		'voidptr',
