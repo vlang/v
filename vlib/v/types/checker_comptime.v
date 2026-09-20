@@ -4329,7 +4329,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if clean_target is SumType && !tc.direct_sum_assignment_variant_matches(actual, clean_target) {
+	if clean_target is SumType && !tc.sum_type_contains_variant(clean_target, actual) {
 		tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
 		return
 	}
@@ -5648,7 +5648,7 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 	}
 	if clean_child !is SumType && clean_child !is Interface {
 		target := unalias_type(tc.parse_type(node.value))
-		if tc.type_compatible(clean_child, target) || tc.type_compatible(target, clean_child) {
+		if clean_child.name() == target.name() {
 			return
 		}
 		suffix := if target is SumType {
