@@ -13723,7 +13723,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& call_arg_integer_type(expected) && call_arg_integer_type(resolved_arg_type) {
 			arg_node := tc.a.node(arg_id)
 			if arg_node.kind == .int_literal
-				|| (constant_integer_value != none && !negative_unsigned_literal) {
+				|| (constant_integer_value != none && !negative_unsigned_literal)
+				|| tc.ident_is_integer_literal_range_var(arg_id) {
 				if has_dsl_scope {
 					tc.pop_scope()
 				}

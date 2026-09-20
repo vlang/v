@@ -18359,6 +18359,48 @@ fn (tc &TypeChecker) implicit_integer_constant_value(id flat.NodeId, typ Type) ?
 	return tc.const_int_expr(id, tc.cur_module, []string{})
 }
 
+// ident_is_integer_literal_range_var preserves the reference checker's untyped integer
+// semantics for `for value in 0 .. limit`: the iteration variable can adopt an integer
+// parameter type at a call boundary even though its storage is emitted as `int`.
+fn (tc &TypeChecker) ident_is_integer_literal_range_var(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	ident := tc.a.node(id)
+	if ident.kind != .ident {
+		return false
+	}
+	mut current := id
+	for _ in 0 .. 128 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .fn_decl {
+			return false
+		}
+		if parent.kind == .for_in_stmt && parent.children_count >= 3 {
+			key := tc.a.child_node(parent, 0)
+			if key.kind == .ident && key.value == ident.value {
+				header := parent.value.int()
+				mut low_id := flat.empty_node
+				if header == 4 && parent.children_count >= 4 {
+					low_id = tc.a.child(parent, 2)
+				} else if header == 3 {
+					container := tc.a.child_node(parent, 2)
+					if container.kind == .range && container.children_count >= 2 {
+						low_id = tc.a.child(container, 0)
+					}
+				}
+				return tc.integer_literal_source(low_id) != none
+			}
+		}
+		current = parent_id
+	}
+	return false
+}
+
 fn (tc &TypeChecker) int_literal_value(id flat.NodeId) ?int {
 	node := tc.a.node(id)
 	if node.kind == .int_literal {
