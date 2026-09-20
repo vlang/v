@@ -317,19 +317,39 @@ fn ensure_signature_label_available(h http.Header, label string) ! {
 	}
 }
 
+// ensure_signature_header_capacity refuses to sign when the mutations that
+// follow would not fit in http.Header's fixed `max_headers` slot array, whose
+// writers index it without bounds-checking themselves.
+//
+// It replays the mutations in the order the signing paths apply them instead
+// of only checking the final total: `append_dict_header` collapses the
+// existing lines of a field into one slot, but only at the append that
+// consumes them, so a header that fits once both signature fields have been
+// collapsed can still overflow at an earlier step - inserting Content-Length,
+// or appending a Signature-Input that is not there yet while the slots to be
+// freed all belong to Signature.
 fn ensure_signature_header_capacity(h http.Header, extra_slots int) ! {
 	input_count := h.custom_values('Signature-Input').len
 	signature_count := h.custom_values('Signature').len
-	mut current_slots := 0
+	mut slots := 0
 	for key in h.keys() {
-		current_slots += h.custom_values(key, exact: true).len
+		slots += h.custom_values(key, exact: true).len
 	}
-	// Each signature field is collapsed to one slot when appending. Account for
-	// those replacements as well as any earlier mutation sign_response needs.
-	future_slots := current_slots - input_count - signature_count + 2 + extra_slots
-	if future_slots > http.max_headers {
+	// sign_response inserts the Content-Length it is about to sign.
+	slots += extra_slots
+	check_header_slots(slots)!
+	// Appending a signature field costs a slot when the field is absent, and
+	// releases its existing lines when it is not.
+	slots += if input_count == 0 { 1 } else { 1 - input_count }
+	check_header_slots(slots)!
+	slots += if signature_count == 0 { 1 } else { 1 - signature_count }
+	check_header_slots(slots)!
+}
+
+fn check_header_slots(slots int) ! {
+	if slots > http.max_headers {
 		return MalformedMessage{
-			reason: 'signing requires ${future_slots} header slots, but http.Header supports ${http.max_headers}'
+			reason: 'signing requires ${slots} header slots, but http.Header supports ${http.max_headers}'
 		}
 	}
 }
@@ -390,18 +410,18 @@ fn validate_request_component_coverage(req http.Request, components []string, de
 // verifiable. RFC 9110 §8.6 forbids a server from sending the field at all on
 // 1xx and 204, and a 304's Content-Length describes the content the matching
 // 200 would have carried (§15.4.5), not the zero bytes a 304 transmits - so
-// there is no correct value to synthesize either. A field the caller supplied
-// is left alone; this guard only covers values the module would fabricate.
+// the body cannot tell us the value either. A field the caller supplied is
+// left alone; this guard only covers values the module would fabricate.
 //
-// Two §8.6 cases stay out of reach because an http.Response carries no request
-// method: a 2xx response to CONNECT, where the field is forbidden, and a
-// response to HEAD, whose Content-Length describes the content the GET would
-// have returned rather than the zero bytes actually sent. Both need an
-// explicit field from the caller.
+// Two cases stay out of reach because an http.Response carries no request
+// method: a 2xx response to CONNECT, where §8.6 forbids the field and the
+// component must simply not be covered, and a response to HEAD, where the
+// field is allowed but carries the length a GET would have returned and so
+// has to come from the caller.
 fn check_content_length_synthesis(status_code int) ! {
 	if status_code == 304 {
 		return MalformedMessage{
-			reason: 'cannot synthesize a Content-Length for a 304 response; it describes the content the matching 200 would carry, so set the field explicitly or drop "content-length" from the covered components'
+			reason: 'cannot infer the Content-Length of a 304 response from its body; it describes the content the matching 200 would carry, so set the field explicitly or drop "content-length" from the covered components'
 		}
 	}
 	if status_code < 200 || status_code == 204 {

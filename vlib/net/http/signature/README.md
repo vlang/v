@@ -95,12 +95,15 @@ are deferred to a follow-up PR.
 
 When a response covers `content-length` without carrying the field,
 `sign_response` inserts the body length so the peer can reconstruct the
-signature base. It refuses to do so on 1xx, 204 and 304, where no correct
-value exists. Two more cases need the field from you, because an
-`http.Response` does not say which request it answers: a 2xx response to
-CONNECT, where RFC 9110 §8.6 forbids the field, and a response to HEAD, whose
-Content-Length describes the content a GET would have returned rather than the
-zero bytes actually sent.
+signature base. It refuses to do so on 1xx and 204, where RFC 9110 §8.6
+forbids the field outright, and on 304, where the value describes the content
+the matching 200 would carry and so cannot be inferred from the body.
+
+Two cases the module cannot detect, because an `http.Response` does not say
+which request it answers: a 2xx response to CONNECT must not carry the field
+at all, so do not cover `content-length` there; a response to HEAD may carry
+it, but the value is the length a GET would have returned, so set the field
+yourself before signing.
 
 ## Two API layers
 

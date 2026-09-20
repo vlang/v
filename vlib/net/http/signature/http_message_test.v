@@ -1102,3 +1102,51 @@ fn test_sign_response_synthesizes_the_real_length_for_a_content_status() {
 	assert synthesized == '5'
 	verify_response(resp, key, required_components: ['@status', 'content-length'])!
 }
+
+fn test_sign_response_refuses_a_content_length_that_would_overflow_the_header() {
+	// The two Signature-Input and two Signature lines are only collapsed when
+	// each field is appended, so the inserted Content-Length still has to fit
+	// in the full header before any of them is released.
+	mut resp := http.Response{
+		status_code: 200
+		body:        'hello'
+	}
+	resp.header.add_custom('Signature-Input', 'old1=("@status");created=1')!
+	resp.header.add_custom('Signature-Input', 'old2=("@status");created=1')!
+	resp.header.add_custom('Signature', 'old1=:AAAA:')!
+	resp.header.add_custom('Signature', 'old2=:AAAA:')!
+	for i in 0 .. 46 {
+		resp.header.add_custom('X-Pad-${i}', 'v')!
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_response(mut resp, key,
+		components: ['@status', 'content-length']
+		label:      'sig9'
+		created:    1
+	)
+	{
+		assert false, 'a full header must be refused, not overflowed'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !resp.header.contains(.content_length)
+}
+
+fn test_sign_request_refuses_when_only_the_other_signature_field_frees_slots() {
+	// Signature-Input is absent, so appending it costs a slot; the slots the
+	// repeated Signature lines release only come back one append later.
+	mut req := http.new_request(.get, 'https://example.com/foo', '')
+	req.header.add_custom('Signature', 'old1=:AAAA:')!
+	req.header.add_custom('Signature', 'old2=:AAAA:')!
+	req.header.add_custom('Content-Digest', empty_content_digest)!
+	for i in 0 .. 47 {
+		req.header.add_custom('X-Pad-${i}', 'v')!
+	}
+	key := Key.hmac_sha256(test_secret.bytes())!
+	if _ := sign_request(mut req, key, label: 'sig9', created: 1) {
+		assert false, 'a full header must be refused, not overflowed'
+	} else {
+		assert err is MalformedMessage
+	}
+	assert !req.header.contains_custom('Signature-Input')
+}
