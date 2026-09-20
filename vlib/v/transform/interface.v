@@ -749,7 +749,8 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	}
 	source_node := t.a.nodes[int(source_id)]
 	source_is_mut_pointer_slot := source_node.kind == .ident
-		&& t.pointer_value_rvalues[source_node.value]
+		&& (t.pointer_value_rvalues[source_node.value]
+			|| source_node.value in t.mut_param_values)
 		&& t.var_type(source_node.value).starts_with('&&')
 	if source_is_mut_pointer_slot {
 		// `mut p &T` has `&&T` storage but its expression value is `&T`.
@@ -758,7 +759,16 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	if source_type.len == 0 {
 		return none
 	}
-	source_expr := if source_is_heaped_amp_child || source_type.starts_with('&') {
+	source_is_generic_mut_pointer_slot := source_is_mut_pointer_slot
+		&& source_node.value !in t.pointer_value_rvalues
+	source_expr := if source_is_generic_mut_pointer_slot {
+		// A `mut x T` specialization with `T = &U` has `&&U` storage, while the
+		// scoped expression type is `&U`. Read the pointer value before boxing it.
+		value := t.transform_expr(source_id)
+		deref := t.make_prefix(.mul, value)
+		t.set_node_typ(int(deref), source_type)
+		deref
+	} else if source_is_heaped_amp_child || source_type.starts_with('&') {
 		source := t.a.nodes[int(source_id)]
 		had_rvalue := source.kind == .ident && source.value in t.pointer_value_rvalues
 			&& !source_is_mut_pointer_slot
