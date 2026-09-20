@@ -331,6 +331,7 @@ mut:
 	profile_fn_active              bool
 	profile_fn_restore_enabled     bool
 	is_prod                        bool
+	is_debug                       bool
 	check_overflow                 bool
 	ignore_overflow                bool
 	force_bounds_checking          bool
@@ -768,6 +769,11 @@ pub fn (mut g FlatGen) set_ccompiler(name string) {
 // set_prod controls production-only code generation such as removing assertions.
 pub fn (mut g FlatGen) set_prod(enabled bool) {
 	g.is_prod = enabled
+}
+
+// set_debug enables source-aware panic reporting for debug builds.
+pub fn (mut g FlatGen) set_debug(enabled bool) {
+	g.is_debug = enabled
 }
 
 // set_check_overflow enables runtime checks for integer addition, subtraction, and multiplication.

@@ -12368,7 +12368,7 @@ fn (mut t Transformer) optional_selector_lvalue_guard_stmts(body_id flat.NodeId,
 				t.make_return(t.make_optional_none_with_err(t.cur_fn_ret_type, err_expr), t.cur_fn_ret_type),
 			]
 		}
-		return [t.make_panic_stmt('option/result propagation failed')]
+		return t.make_propagation_panic_stmts(mode, err_expr, body_id)
 	}
 	return t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', mode, err_expr)
 }

@@ -11879,11 +11879,15 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 				arg_type := t.node_type(arg_id)
 				if arg_type == 'IError' {
 					arg := t.transform_expr(arg_id)
-					return t.make_call('panic', [
+					call := t.make_call('panic', [
 						t.make_method_call(arg, 'str', []flat.NodeId{}),
 					])
+					t.a.nodes[int(call)].pos = node.pos
+					return call
 				}
-				return t.make_call('panic', [t.stringify_expr(arg_id)])
+				call := t.make_call('panic', [t.stringify_expr(arg_id)])
+				t.a.nodes[int(call)].pos = node.pos
+				return call
 			}
 			return none
 		}

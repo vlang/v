@@ -2135,7 +2135,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
 			return [t.make_none_return_stmt_with_err_expr(err_expr)]
 		}
-		return [t.make_panic_stmt('option/result propagation failed')]
+		return t.make_propagation_panic_stmts(mode, err_expr, body_id)
 	}
 	if int(body_id) < 0 {
 		return []flat.NodeId{}

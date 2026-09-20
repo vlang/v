@@ -6508,6 +6508,38 @@ fn (mut g FlatGen) c_call_is_int_array_data_arg(arg_id flat.NodeId, arg_idx int,
 	return is_native_variadic
 }
 
+fn (mut g FlatGen) gen_builtin_panic_call(node flat.Node) {
+	if g.is_debug {
+		if position := g.a.source_position(node.pos) {
+			module_name := if g.tc.cur_module.len > 0 { g.tc.cur_module } else { 'main' }
+			fn_name := g.cur_fn_name.all_after_last('.')
+			g.write('panic_debug(${position.line}, _S("${c_escape(position.filename.replace('\\', '/'))}"), _S("${c_escape(module_name)}"), _S("${c_escape(fn_name)}"), ')
+		} else {
+			g.write('v_panic(')
+		}
+	} else {
+		g.write('v_panic(')
+	}
+	if node.children_count > 1 {
+		arg_id := g.a.child(&node, 1)
+		arg_type := g.tc.resolve_type(arg_id)
+		clean_arg_type := types.unwrap_pointer(arg_type)
+		if g.is_ierror_type_name(clean_arg_type.name()) {
+			g.write('IError__str(')
+			arg_expr := g.expr_to_string(arg_id)
+			if arg_expr.starts_with('&') {
+				g.write(arg_expr[1..])
+			} else {
+				g.write(arg_expr)
+			}
+			g.write(')')
+		} else {
+			g.gen_expr(arg_id)
+		}
+	}
+	g.write(')')
+}
+
 // gen_call emits call output for c.
 @[direct_array_access]
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
@@ -6520,6 +6552,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
 	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
+	if fn_node.kind == .ident && !callee_is_fn_value
+		&& (fn_name == 'panic' || target_name == 'builtin.panic'
+			|| resolved_target_name == 'builtin.panic') {
+		g.gen_builtin_panic_call(node)
+		return
+	}
 	if g.gen_lowered_enum_autostr_pointer_call(id, node, fn_node) {
 		return
 	}
@@ -7039,25 +7077,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 		'panic' {
-			g.write('v_panic(')
-			if node.children_count > 1 {
-				arg_id := g.a.child(&node, 1)
-				arg_type := g.tc.resolve_type(arg_id)
-				clean_arg_type := types.unwrap_pointer(arg_type)
-				if g.is_ierror_type_name(clean_arg_type.name()) {
-					g.write('IError__str(')
-					arg_expr := g.expr_to_string(arg_id)
-					if arg_expr.starts_with('&') {
-						g.write(arg_expr[1..])
-					} else {
-						g.write(arg_expr)
-					}
-					g.write(')')
-				} else {
-					g.gen_expr(arg_id)
-				}
-			}
-			g.write(')')
+			g.gen_builtin_panic_call(node)
 			return
 		}
 		'error' {

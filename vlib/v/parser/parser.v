@@ -10310,12 +10310,17 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// postfix `!` error propagation: expr!
 		if p.tok == .not {
+			prop_start := p.span_start()
 			if p.defer_depth > 0 {
 				p.record_diagnostic_span('error propagation not allowed inside `defer` blocks',
 					p.tok_pos, p.tok_end)
 			}
 			p.next()
-			ostart := p.add_children2(lhs, p.add(flat.NodeKind.empty))
+			fallback := p.add_node(flat.Node{
+				kind: .empty
+				pos:  p.span_to(prop_start)
+			})
+			ostart := p.add_children2(lhs, fallback)
 			lhs = p.add_node_from(flat.Node{
 				kind:           .or_expr
 				value:          '!'
@@ -10326,6 +10331,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// postfix `?` optional propagation: expr?
 		if p.tok == .question {
+			prop_start := p.span_start()
 			lhs_node := p.a.node(lhs)
 			if lhs_node.kind == .ident && p.peek() == .lpar {
 				p.record_diagnostic_span('unexpected name `${lhs_node.value}`', lhs_node.pos.offset,
@@ -10342,7 +10348,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 					p.tok_pos, p.tok_end)
 			}
 			p.next()
-			ostart := p.add_children2(lhs, p.add(flat.NodeKind.empty))
+			fallback := p.add_node(flat.Node{
+				kind: .empty
+				pos:  p.span_to(prop_start)
+			})
+			ostart := p.add_children2(lhs, fallback)
 			lhs = p.add_node_from(flat.Node{
 				kind:           .or_expr
 				value:          '?'

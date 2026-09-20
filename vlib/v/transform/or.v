@@ -1514,6 +1514,31 @@ fn (mut t Transformer) make_panic_stmt(message string) flat.NodeId {
 	return t.make_expr_stmt(call)
 }
 
+fn (mut t Transformer) make_panic_expr_stmt_at(message flat.NodeId, source_id flat.NodeId) flat.NodeId {
+	call := t.make_call('panic', [message])
+	if int(source_id) >= 0 && int(source_id) < t.a.nodes.len {
+		t.a.nodes[int(call)].pos = t.a.nodes[int(source_id)].pos
+	}
+	return t.make_expr_stmt(call)
+}
+
+fn (mut t Transformer) make_propagation_panic_stmts(mode string, err_expr flat.NodeId, source_id flat.NodeId) []flat.NodeId {
+	err_addr := t.make_prefix(.amp, err_expr)
+	err_message := t.make_call_typed('IError__msg', [err_addr], 'string')
+	if mode != '?' {
+		return [t.make_panic_expr_stmt_at(err_message, source_id)]
+	}
+	message_name := t.new_temp('propagation_message')
+	message := t.make_ident(message_name)
+	empty := t.make_infix(.eq, t.make_selector(message, 'len', 'int'), t.make_int_literal(0))
+	missing := t.make_panic_expr_stmt_at(t.make_string_literal('option not set ()'), source_id)
+	reported := t.make_panic_expr_stmt_at(message, source_id)
+	return [
+		t.make_decl_assign_typed(message_name, err_message, 'string'),
+		t.make_if(empty, t.make_block([missing]), t.make_block([reported])),
+	]
+}
+
 // make_none_return_stmt builds make none return stmt data for transform.
 fn (mut t Transformer) make_none_return_stmt() flat.NodeId {
 	return t.make_return(t.a.add(.none_expr), t.cur_fn_ret_type)
@@ -2207,7 +2232,7 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
 			return [t.make_none_return_stmt_with_err_expr(err_expr)]
 		}
-		return [t.make_panic_stmt('option/result propagation failed')]
+		return t.make_propagation_panic_stmts(mode, err_expr, body_id)
 	}
 	if int(body_id) < 0 || target_name == '' || field_types.len == 0 {
 		return t.lower_or_body_to_stmts_with_err_expr(body_id, target_name, target_type, mode,
@@ -2434,7 +2459,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
 			return [t.make_none_return_stmt_with_err_expr(err_expr)]
 		}
-		return [t.make_panic_stmt('option/result propagation failed')]
+		return t.make_propagation_panic_stmts(mode, err_expr, body_id)
 	}
 	if int(body_id) < 0 {
 		return []flat.NodeId{}

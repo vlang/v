@@ -4,7 +4,7 @@ module builtin
 // recent versions of tcc print nicer backtraces automatically
 // Note: the duplication here is because tcc_backtrace should be called directly
 // inside the panic functions.
-@[noreturn]
+@[markused; noreturn]
 fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// Note: the order here is important for a stabler test output
 	// module is less likely to change than function, etc...
