@@ -5275,16 +5275,25 @@ fn (g &FlatGen) c_local_header_directive(path string) string {
 	return '#include "${path}"'
 }
 
-// c_include_directive_text renders an `#include` for the output. Portable output
-// carries the text of a project-local header instead of an absolute path, which
-// only exists on the machine that generated the C.
+// c_include_directive_text renders an `#include` for the output. Normal builds
+// resolve source-local headers because generated C is compiled outside their module;
+// portable output carries the header text instead of a machine-local absolute path.
 fn (mut g FlatGen) c_include_directive_text(node_idx int, prefix_condition string, include_arg string, source_file string) string {
 	mut directive := '#include ${include_arg}'
-	if g.output_cross_c && include_arg.trim_space().starts_with('"') {
+	if include_arg.trim_space().starts_with('"') {
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
-			if text := g.cross_embedded_header_text(path, include_dirs) {
-				directive = text
+			if !os.is_file(path) {
+				continue
+			}
+			if g.output_cross_c {
+				if text := g.cross_embedded_header_text(path, include_dirs) {
+					directive = text
+				}
+			} else {
+				directive = c_native_source_context_include(path)
+			}
+			if directive != '#include ${include_arg}' {
 				break
 			}
 		}

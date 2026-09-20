@@ -6059,6 +6059,10 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 			if base.kind == .ident && base.value == import_node.typ {
 				return true
 			}
+			if base.kind == .ident && base.value == 'C'
+				&& tc.c_symbol_declared_in_module(module_path, 'C.${node.value}') {
+				return true
+			}
 			selector_path := tc.expr_key(flat.NodeId(idx))
 			if type_text_contains_qualified_import(selector_path, module_path) {
 				return true
@@ -6091,6 +6095,17 @@ fn (tc &TypeChecker) import_is_used(import_id flat.NodeId, import_node flat.Node
 				|| type_text_contains_symbol(node.value, name) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) c_symbol_declared_in_module(module_path string, name string) bool {
+	for module_name in [module_path, module_path.all_after_last('.')] {
+		if c_fn_module_signature_key(module_name, name) in tc.c_fn_module_ret_types
+			|| tc.type_alias_modules[name] or { '' } == module_name
+			|| tc.struct_modules[name] or { '' } == module_name {
+			return true
 		}
 	}
 	return false

@@ -3975,7 +3975,7 @@ fn (tc &TypeChecker) is_builtin_unsafe_c_call(node flat.Node, name string) bool 
 		return false
 	}
 	base := tc.a.child_node(callee, 0)
-	owner_module := tc.fn_type_modules[name] or { '' }
+	owner_module := tc.visible_c_fn_module(name) or { tc.fn_type_modules[name] or { '' } }
 	return base.kind == .ident && base.value == 'C' && owner_module == 'builtin'
 		&& tc.unsafe_c_fns[c_fn_module_signature_key(owner_module, name)]
 }
@@ -9203,11 +9203,30 @@ fn c_fn_module_signature_key(module_name string, fn_name string) string {
 	return '${module_name}\x01${fn_name}'
 }
 
+fn (tc &TypeChecker) visible_c_fn_module(name string) ?string {
+	if c_fn_module_signature_key(tc.cur_module, name) in tc.c_fn_module_ret_types {
+		return tc.cur_module
+	}
+	info := tc.current_file_import_info()
+	if isnil(info) {
+		return none
+	}
+	for _, module_path in info.imports {
+		for module_name in [module_path, module_path.all_after_last('.')] {
+			if c_fn_module_signature_key(module_name, name) in tc.c_fn_module_ret_types {
+				return module_name
+			}
+		}
+	}
+	return none
+}
+
 // call_info updates call info state for TypeChecker.
 fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 	if name.starts_with('C.') {
-		module_key := c_fn_module_signature_key(tc.cur_module, name)
-		if return_type := tc.c_fn_module_ret_types[module_key] {
+		if module_name := tc.visible_c_fn_module(name) {
+			module_key := c_fn_module_signature_key(module_name, name)
+			return_type := tc.c_fn_module_ret_types[module_key]
 			is_variadic := tc.c_fn_module_variadic[module_key] or { false }
 			params := tc.c_fn_module_param_types[module_key] or { []Type{} }
 			return CallInfo{
