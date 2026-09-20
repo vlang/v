@@ -12677,10 +12677,15 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 			if raw_return := g.call_declared_return_type_text(id, node) {
 				clean_return := trimmed_space(raw_return)
 				if clean_return.len > 1 && clean_return[0] in [`?`, `!`] {
-					if shared_ptr := g.shared_alias_pointer_type_from_text(clean_return[1..]) {
-						return g.optional_type_name(types.Type(types.OptionType{
-							base_type: shared_ptr
-						}))
+					raw_payload := trimmed_space(clean_return[1..])
+					// A direct `!shared T` return uses the same value payload ABI as `!T`;
+					// only aliases declared as `type A = shared T` retain pointer storage.
+					if !raw_payload.starts_with('shared ') {
+						if shared_ptr := g.shared_alias_pointer_type_from_text(raw_payload) {
+							return g.optional_type_name(types.Type(types.OptionType{
+								base_type: shared_ptr
+							}))
+						}
 					}
 				}
 			}
