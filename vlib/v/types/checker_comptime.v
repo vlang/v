@@ -3217,6 +3217,8 @@ fn (mut tc TypeChecker) check_dump_expr(node flat.Node) {
 			} else {
 				expr.pos
 			}
+		} else if expr.kind == .selector {
+			tc.node_value_diagnostic_pos(expr_id)
 		} else {
 			expr.pos
 		}

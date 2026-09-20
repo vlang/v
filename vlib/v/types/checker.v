@@ -789,6 +789,7 @@ pub mut:
 	translated_files       map[string]bool
 	has_globals_files      map[string]bool
 	deprecated_symbols     map[string]DeprecationInfo
+	deprecated_modules     map[string]DeprecationInfo
 	file_scope             &Scope = unsafe { nil }
 	cur_scope              &Scope = unsafe { nil }
 	scope_pool             []&Scope
@@ -1101,6 +1102,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		translated_files:                        map[string]bool{}
 		has_globals_files:                       map[string]bool{}
 		deprecated_symbols:                      map[string]DeprecationInfo{}
+		deprecated_modules:                      map[string]DeprecationInfo{}
 		file_scope:                              fs
 		cur_scope:                               fs
 		// The node-indexed cache arrays start empty: collect() sizes them via
@@ -1264,6 +1266,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		translated_files:                      tc.translated_files
 		has_globals_files:                     tc.has_globals_files
 		deprecated_symbols:                    tc.deprecated_symbols
+		deprecated_modules:                    tc.deprecated_modules
 		file_scope:                            fs
 		cur_scope:                             fs
 		scope_pool:                            []&Scope{}
@@ -4124,6 +4127,7 @@ fn source_field_decl_is_volatile(field flat.Node) bool {
 @[direct_array_access]
 fn (mut tc TypeChecker) collect_deprecated_symbols() {
 	tc.deprecated_symbols.clear()
+	tc.deprecated_modules.clear()
 	tc.unsafe_fns.clear()
 	mut module_name := ''
 	mut file_name := ''
@@ -4136,6 +4140,17 @@ fn (mut tc TypeChecker) collect_deprecated_symbols() {
 		}
 		if node.kind == .module_decl {
 			module_name = node.value
+			attr_id := decl_id + 1
+			if attr_id < tc.a.nodes.len {
+				attr_node := tc.a.nodes[attr_id]
+				if attr_node.kind == .directive
+					&& attr_node.value == '@attributes:${decl_id}' {
+					display_name := tc.diagnostic_module_name(node.value, file_name)
+					if info := deprecation_info_from_attrs(display_name, attr_node.generic_params()) {
+						tc.deprecated_modules[node.value] = info
+					}
+				}
+			}
 			continue
 		}
 		if node.kind == .struct_decl {
@@ -5708,6 +5723,9 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		}
 		if has_source {
 			tc.check_import_source_syntax(flat.NodeId(idx), node)
+		}
+		if deprecation := tc.deprecated_modules[node.value] {
+			tc.record_deprecation(flat.NodeId(idx), 'module', deprecation, node.pos)
 		}
 		if tc.selective_import_has_missing_value_symbol(node, module_path)
 			|| tc.selective_import_has_const(node, module_path) {
