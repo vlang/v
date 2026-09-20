@@ -2675,8 +2675,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 			// An unterminated `__global (` used to spin here forever: `p.next()` cannot
 			// advance past eof, and the grouped form never breaks on its own.
 			if is_grouped {
-				// The wording and the acute quotes match the existing fixtures.
-				p.record_diagnostic('unexpected eof, expecting ´)´', p.s.src.len)
+				p.record_diagnostic('unexpected eof, expecting `)`', p.s.src.len)
 			}
 			break
 		}
