@@ -4215,12 +4215,15 @@ fn (g &FlatGen) shared_payload_deref_storage_c_expr(id flat.NodeId) ?string {
 	if node.kind == .paren && node.children_count > 0 {
 		return g.shared_payload_deref_storage_c_expr(g.a.child(&node, 0))
 	}
+	if node.kind == .ident && g.local_ident_is_shared_wrapper(node.value) {
+		return g.shared_storage_ident_c_name(node.value)
+	}
 	if node.kind != .selector || node.value != 'val' || node.children_count == 0 {
 		return none
 	}
 	base_id := g.a.child(&node, 0)
 	base := g.a.nodes[int(base_id)]
-	if base.kind == .ident && g.local_storage_is_shared(base.value) {
+	if base.kind == .ident && g.local_ident_is_shared_wrapper(base.value) {
 		return g.shared_storage_ident_c_name(base.value)
 	}
 	return none
@@ -4273,18 +4276,10 @@ fn (g &FlatGen) spawn_arg_has_shared_marker(arg_id flat.NodeId) bool {
 }
 
 fn (g &FlatGen) spawn_arg_is_shared_local(arg_id flat.NodeId) bool {
-	if int(arg_id) < 0 || int(arg_id) >= g.a.nodes.len {
-		return false
+	if _ := g.shared_local_arg_c_expr(arg_id) {
+		return true
 	}
-	arg := g.a.nodes[int(arg_id)]
-	if arg.kind == .paren && arg.children_count > 0 {
-		return g.spawn_arg_is_shared_local(g.a.child(&arg, 0))
-	}
-	if arg.kind == .prefix && (arg.value == 'shared' || arg.value.starts_with('shared:'))
-		&& arg.children_count > 0 {
-		return g.spawn_arg_is_shared_local(g.a.child(&arg, 0))
-	}
-	return arg.kind == .ident && g.local_storage_is_shared(arg.value)
+	return false
 }
 
 fn (mut g FlatGen) spawn_arg_c_type(expected types.Type) string {
