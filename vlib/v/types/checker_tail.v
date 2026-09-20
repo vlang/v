@@ -13563,6 +13563,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		} else {
 			actual = tc.resolve_expr(arg_id, arg_context_expected)
 		}
+		actual = tc.wrapped_call_return_type(arg_id) or { actual }
 		if actual is Void {
 			callee := tc.a.child_node(&node, 0)
 			if callee.kind == .ident && callee.value in ['print', 'println', 'eprint', 'eprintln']
@@ -14452,6 +14453,7 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 			} else {
 				tc.check_node_with_expected_context(value_id, array_type.elem_type)
 				value_type = tc.resolve_expr(value_id, array_type.elem_type)
+				value_type = tc.wrapped_call_return_type(value_id) or { value_type }
 			}
 			value_is_valid = tc.array_insert_value_compatible(value_id, value_type, array_type, receiver_type)
 		}
@@ -14491,6 +14493,7 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 			} else {
 				tc.check_node_with_expected_context(value_id, array_type.elem_type)
 				value_type = tc.resolve_expr(value_id, array_type.elem_type)
+				value_type = tc.wrapped_call_return_type(value_id) or { value_type }
 			}
 			value_is_valid = tc.array_insert_value_compatible(value_id, value_type, array_type, receiver_type)
 		}
@@ -14520,6 +14523,7 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		arg_id := tc.call_arg_value(tc.a.child(&node, 1))
 		tc.check_node_with_expected_context(arg_id, array_type.elem_type)
 		mut actual := tc.resolve_expr(arg_id, array_type.elem_type)
+		actual = tc.wrapped_call_return_type(arg_id) or { actual }
 		if base := tc.mut_param_expr_base(arg_id, actual) {
 			actual = base
 		}
@@ -14701,7 +14705,9 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 			tc.record_error(.call_arg_mismatch, 'invalid expression, expected infix expr, lambda or function',
 				arg_id)
 		} else {
-			actual := tc.resolve_expr(arg_id, Type(bool_))
+			actual := tc.wrapped_call_return_type(arg_id) or {
+				tc.resolve_expr(arg_id, Type(bool_))
+			}
 			if !(method == 'count' && array_count_dsl_predicate_compatible(actual))
 				&& !tc.expr_compatible(arg_id, actual, Type(bool_)) {
 				clean_actual := unalias_type(actual)
@@ -17414,6 +17420,22 @@ fn (tc &TypeChecker) selector_fn_base_type(base_id flat.NodeId) ?Type {
 		}
 	}
 	return tc.resolve_type(base_id)
+}
+
+fn (mut tc TypeChecker) wrapped_call_return_type(id flat.NodeId) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.node(id)
+	if node.kind != .call {
+		return none
+	}
+	info0 := tc.resolve_call_info(id, node) or { return none }
+	ret := tc.specialized_plain_generic_call_info(node, info0).return_type
+	if ret is OptionType || ret is ResultType {
+		return ret
+	}
+	return none
 }
 
 // direct_call_return_type supports direct call return type handling for TypeChecker.
