@@ -179,6 +179,9 @@ pub fn sign_response(mut resp http.Response, key Key, opts SignResponseOptions) 
 	validate_response_component_coverage(comps)!
 	adds_content_length := comps.any(it.to_lower() == 'content-length')
 		&& !resp.header.contains(.content_length)
+	if adds_content_length {
+		check_content_length_synthesis(wire_status_code(resp.status_code)!)!
+	}
 	ensure_signature_header_capacity(resp.header, if adds_content_length { 1 } else { 0 })!
 	mut c := response_components(resp)!
 	if adds_content_length {
@@ -382,6 +385,24 @@ fn validate_request_component_coverage(req http.Request, components []string, de
 	}
 }
 
+// check_content_length_synthesis refuses to invent the Content-Length that
+// `sign_response` would otherwise insert to make covered `content-length`
+// verifiable. RFC 9110 §8.6 forbids a server from sending the field at all on
+// 1xx and 204, and a 304's Content-Length describes the content the matching
+// 200 would have carried (§15.4.5), not the zero bytes a 304 transmits - so
+// there is no correct value to synthesize either. A field the caller supplied
+// is left alone; this guard only covers values the module would fabricate.
+//
+// The remaining §8.6 case, a 2xx response to CONNECT, cannot be detected here
+// because an http.Response carries no request method.
+fn check_content_length_synthesis(status_code int) ! {
+	if status_code < 200 || status_code == 204 || status_code == 304 {
+		return MalformedMessage{
+			reason: 'cannot synthesize a Content-Length for a ${status_code} response; set the field explicitly or drop "content-length" from the covered components'
+		}
+	}
+}
+
 fn validate_response_component_coverage(components []string) ! {
 	for component in components {
 		name := component.to_lower()
@@ -533,15 +554,21 @@ fn transport_authority(url urllib.URL) string {
 	return '${host}:${port}'
 }
 
-fn response_components(resp http.Response) !Components {
-	if resp.status_code != 0 && (resp.status_code < 100 || resp.status_code > 599) {
+// wire_status_code returns the status code the net.http serializers actually
+// transmit: a zero `status_code` goes out as 200 (see h2_server.v and
+// Response.bytes()), anything else must be a real three-digit status.
+fn wire_status_code(status_code int) !int {
+	if status_code != 0 && (status_code < 100 || status_code > 599) {
 		return MalformedMessage{
-			reason: 'response status code ${resp.status_code} is outside 100...599'
+			reason: 'response status code ${status_code} is outside 100...599'
 		}
 	}
-	wire_status := if resp.status_code == 0 { 200 } else { resp.status_code }
+	return if status_code == 0 { 200 } else { status_code }
+}
+
+fn response_components(resp http.Response) !Components {
 	mut c := Components{
-		status: wire_status
+		status: wire_status_code(resp.status_code)!
 	}
 	for k in resp.header.unique_keys() {
 		values := resp.header.custom_values(k)

@@ -1054,3 +1054,51 @@ fn test_bodyless_default_profile_round_trips_with_an_empty_content_digest() {
 	sign_response(mut resp, key, created: 1)!
 	verify_response(resp, key)!
 }
+
+fn test_sign_response_refuses_to_synthesize_a_forbidden_content_length() {
+	key := Key.hmac_sha256(test_secret.bytes())!
+	// RFC 9110 §8.6 (1xx, 204) and §15.4.5 (304, whose Content-Length would
+	// describe the matching 200's content, not the zero bytes sent here).
+	for status in [100, 103, 199, 204, 304] {
+		mut resp := http.Response{
+			status_code: status
+		}
+		if _ := sign_response(mut resp, key,
+			components: ['@status', 'content-length']
+			created:    1
+		)
+		{
+			assert false, 'must not invent a Content-Length for ${status}'
+		} else {
+			assert err is MalformedMessage
+		}
+		assert !resp.header.contains(.content_length)
+		assert !resp.header.contains_custom('Signature')
+	}
+}
+
+fn test_sign_response_keeps_an_explicit_content_length_on_a_no_content_status() {
+	key := Key.hmac_sha256(test_secret.bytes())!
+	mut resp := http.Response{
+		status_code: 304
+	}
+	// The caller declared the field, so the module signs what the transport
+	// will emit instead of overwriting it with the body length.
+	resp.header.add_custom('Content-Length', '123')!
+	sign_response(mut resp, key, components: ['@status', 'content-length'], created: 1)!
+	kept := resp.header.get_custom('Content-Length') or { '' }
+	assert kept == '123'
+	verify_response(resp, key, required_components: ['@status', 'content-length'])!
+}
+
+fn test_sign_response_synthesizes_the_real_length_for_a_content_status() {
+	key := Key.hmac_sha256(test_secret.bytes())!
+	mut resp := http.Response{
+		status_code: 200
+		body:        'hello'
+	}
+	sign_response(mut resp, key, components: ['@status', 'content-length'], created: 1)!
+	synthesized := resp.header.get(.content_length) or { '' }
+	assert synthesized == '5'
+	verify_response(resp, key, required_components: ['@status', 'content-length'])!
+}
