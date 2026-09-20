@@ -16512,7 +16512,8 @@ fn call_arg_is_generated_storage_pointer_arg(arg_idx int, node flat.Node) bool {
 }
 
 fn generated_storage_pointer_arg_name(name string) bool {
-	return name.starts_with('__arr_val_') || name.starts_with('__map_val_')
+	return name.starts_with('__arr_val_') || name.starts_with('__vararg_')
+		|| name.starts_with('__map_val_')
 		|| name.starts_with('__map_zero_')
 }
 

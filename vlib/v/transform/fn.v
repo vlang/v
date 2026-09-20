@@ -2938,6 +2938,12 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
+	// Generic signatures are registered after some early transform probes. Do not
+	// let an earlier negative cache entry hide the template's variadic marker.
+	if !isnil(t.tc) && call_name.contains('_T_') && t.tc.specialized_generic_fns[call_name]
+		&& t.tc.fn_variadic[call_name.all_before('_T_')] {
+		return true
+	}
 	key := '${t.cur_file}\n${call_name}'
 	if !isnil(t.call_variadic_cache) {
 		mut cache := t.call_variadic_cache
