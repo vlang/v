@@ -1536,6 +1536,26 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_shared_receiver := a.msg.ends_with('to be used as non-mut receiver')
+	b_is_shared_receiver := b.msg.ends_with('to be used as non-mut receiver')
+	a_is_shared_assignment := a.msg.ends_with('to be used as non-mut right-hand side of assignment')
+	b_is_shared_assignment := b.msg.ends_with('to be used as non-mut right-hand side of assignment')
+	if a.node == b.node && a_is_shared_receiver && b_is_shared_assignment {
+		return -1
+	}
+	if a.node == b.node && b_is_shared_receiver && a_is_shared_assignment {
+		return 1
+	}
+	a_is_missing_lock_entry := a.msg.ends_with('must be added to the `lock` list above')
+	b_is_missing_lock_entry := b.msg.ends_with('must be added to the `lock` list above')
+	a_is_unlocked_shared_mut := a.msg.contains(' is `shared` and must be `lock`ed to be passed as `mut`')
+	b_is_unlocked_shared_mut := b.msg.contains(' is `shared` and must be `lock`ed to be passed as `mut`')
+	if a.node == b.node && a_is_missing_lock_entry && b_is_unlocked_shared_mut {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_lock_entry && a_is_unlocked_shared_mut {
+		return 1
+	}
 	a_is_duplicate_export := a.msg.starts_with('duplicate export name `')
 	b_is_duplicate_export := b.msg.starts_with('duplicate export name `')
 	if a.file == b.file && a.msg == b.msg && a_is_duplicate_export && b_is_duplicate_export
