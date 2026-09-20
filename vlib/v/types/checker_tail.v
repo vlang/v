@@ -517,9 +517,6 @@ fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected
 		|| tc.generic_type_name_matches(clean_actual.name(), expected.name) {
 		return true
 	}
-	if tc.sum_variant_type_for_pattern(expected.name, actual.name()) != none {
-		return true
-	}
 	base := tc.sum_base_name(expected.name)
 	variants := tc.sum_types[base] or { return false }
 	for variant in variants {
@@ -545,7 +542,8 @@ fn (tc &TypeChecker) nested_sum_variant_assignment_matches(actual Type, expected
 	clean_actual := unalias_type(actual)
 	clean_expected := unalias_type(expected)
 	if clean_expected is SumType {
-		return tc.direct_sum_assignment_variant_matches(actual, clean_expected)
+		return clean_actual is SumType
+			&& tc.direct_sum_assignment_variant_matches(actual, clean_expected)
 	}
 	if clean_actual is Array && clean_expected is Array {
 		return tc.nested_sum_variant_assignment_matches(clean_actual.elem_type, clean_expected.elem_type)
