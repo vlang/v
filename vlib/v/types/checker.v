@@ -6011,16 +6011,17 @@ fn (mut tc TypeChecker) check_import_source_syntax(id flat.NodeId, node flat.Nod
 }
 
 fn (mut tc TypeChecker) check_selective_import_source_syntax(id flat.NodeId, node flat.Node, source string, open int, line_end int) {
+	import_end := int_max(line_end, int_min(node.pos.end, source.len))
 	mut cursor := open + 1
-	for cursor < line_end && source[cursor] in [` `, `\t`, `\r`] {
+	for cursor < import_end && source[cursor] in [` `, `\t`, `\r`, `\n`] {
 		cursor++
 	}
-	if cursor < line_end && source[cursor] == `}` {
+	if cursor < import_end && source[cursor] == `}` {
 		tc.record_error_at(.duplicate_decl, 'empty `${tc.import_module_path_text(node)}` import set, remove `{}`', id, token.new_span(node.pos.id, cursor, cursor + 1))
 		return
 	}
 	mut close := -1
-	for i := cursor; i < line_end; i++ {
+	for i := cursor; i < import_end; i++ {
 		if source[i] == `}` {
 			close = i
 			break
