@@ -8507,7 +8507,7 @@ fn (mut tc TypeChecker) check_array_init(id flat.NodeId, node flat.Node) {
 			}
 			if field_name == 'init' {
 				if expected := init_elem_type {
-					actual := tc.resolve_type(expr_id)
+					actual := tc.resolve_expr(expr_id, expected)
 					clean_actual := unalias_type(actual)
 					if actual !is Unknown && clean_actual !is OptionType
 						&& clean_actual !is ResultType
