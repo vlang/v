@@ -13181,7 +13181,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				actual := if value_node.kind == .call {
 					tc.direct_call_return_type(value_node) or { tc.resolve_type(arg_id) }
 				} else {
-					tc.resolve_type(arg_id)
+					tc.resolve_expr(arg_id, expected)
 				}
 				if !tc.collapsed_field_expr_compatible(arg_id, actual, expected) {
 					expected_name := tc.collapsed_field_diagnostic_type(raw_arg.value, collapsed_target, expected)

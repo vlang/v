@@ -7806,6 +7806,10 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 		|| (!rhs_unsigned && tc.integer_literal_source(rhs_id) != none) {
 		return false
 	}
+	if (lhs_unsigned && tc.is_fixed_array_len_const_comparison(rhs_id, lhs_id))
+		|| (rhs_unsigned && tc.is_fixed_array_len_const_comparison(lhs_id, rhs_id)) {
+		return false
+	}
 	lhs_bits := comparison_integer_bits(lhs_clean)
 	rhs_bits := comparison_integer_bits(rhs_clean)
 	if lhs_bits == 0 || rhs_bits == 0 {
@@ -7828,6 +7832,24 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 	tc.record_error_at(.condition_mismatch, '`${lhs_type.name()}` cannot be compared with `${rhs_type.name()}`',
 		rhs_id, pos)
 	return true
+}
+
+fn (tc &TypeChecker) is_fixed_array_len_const_comparison(len_id flat.NodeId, const_id flat.NodeId) bool {
+	len_node := tc.a.node(len_id)
+	const_node := tc.a.node(const_id)
+	if len_node.kind != .selector || len_node.value != 'len' || len_node.children_count == 0
+		|| const_node.kind != .ident {
+		return false
+	}
+	arr := tc.fixed_array_type_from_receiver(tc.resolve_type(tc.a.child(len_node, 0))) or {
+		return false
+	}
+	if arr.len_expr.len == 0 {
+		return false
+	}
+	const_key := tc.const_key_for_name(const_node.value) or { return false }
+	len_key := tc.const_key_for_name(arr.len_expr) or { return false }
+	return const_key == len_key
 }
 
 fn comparison_integer_bits(typ Type) int {
