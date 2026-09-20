@@ -2422,7 +2422,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				continue
 			}
 			if p.tok == .lsbr && p.tok_pos > p.prev_tok_end && field_name.len > 0
-				&& field_name[0] >= `A` && field_name[0] <= `Z` {
+				&& field_name[0] >= `A` && field_name[0] <= `Z` && p.peek() != .rsbr {
 				attr_start := p.tok_pos
 				mut embed_attrs := pending_attrs.clone()
 				embed_attrs << p.parse_field_attrs()
