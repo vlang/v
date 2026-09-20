@@ -6504,7 +6504,8 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 		mut field_str := if field_type == struct_type {
 			t.make_string_literal('${struct_string_display_name(field_type)}{}')
 		} else {
-			t.struct_field_str_value(t.make_selector(base, field.name, field_type), raw_field_type, field_type)
+			t.struct_field_str_value(t.make_selector(base, field.name, field_type), raw_field_type,
+				field_type, struct_type.starts_with('C.') || info.is_c_anon)
 		}
 		if raw_field_type == 'string' || raw_field_type == 'builtin.string' {
 			field_str = t.string_plus(t.string_plus(t.make_string_literal("'"), field_str), t.make_string_literal("'"))
@@ -6661,9 +6662,24 @@ fn (t &Transformer) alias_string_display_name(alias_name string, base_type strin
 // Unlike top-level stringification, V wraps an alias-typed field as `AliasName(value)` even
 // when the alias base is primitive (`d: Duration(42)`), unless the alias defines its own
 // str() method, which is used bare.
-fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type string, field_type string) flat.NodeId {
+fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type string, field_type string, c_owner bool) flat.NodeId {
 	mut clean := raw_field_type.trim_space()
 	if clean.starts_with('&') {
+		if c_owner {
+			pointer_depth := dump_pointer_depth(clean)
+			mut elem_type := clean[pointer_depth..].trim_space()
+			elem_type = t.normalize_type_alias(elem_type)
+			if elem_type.starts_with('builtin.') {
+				elem_type = elem_type.all_after_last('.')
+			}
+			if pointer_depth == 1 && elem_type == 'char' {
+				return t.string_plus(t.make_string_literal('&'), t.lower_charptr_struct_field_str(expr))
+			}
+			if pointer_depth > 1 || elem_type in ['u8', 'byte', 'voidptr'] {
+				address := t.make_call_typed('ptr_str', [expr], 'string')
+				return t.string_plus(t.make_string_literal('&'), address)
+			}
+		}
 		return t.lower_ref_value_str_with_custom_prefix(expr, field_type, '&nil', true)
 	}
 	if clean == 'charptr' || clean == 'builtin.charptr' {
