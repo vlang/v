@@ -13475,14 +13475,19 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				Type(void_)
 			}
 			mut_param_base_depth, _ := type_pointer_depth_and_base(mut_param_base)
-			is_implicit_mut_param_pointer := mut_arg_node.kind == .ident
+			arg_is_implicit_mut_param := mut_arg_node.kind == .ident
 				&& mut_arg_node.value in tc.fn_context.mut_param_base_types
 				&& !tc.current_fn_param_is_explicit_mut_pointer(mut_arg_node.value)
+			is_implicit_mut_param_pointer := arg_is_implicit_mut_param
 				&& actual_mut_depth > mut_param_base_depth
 			if is_implicit_mut_param_pointer
 				|| !tc.mut_pointer_slot_arg_compatible(actual_mut_type, expected) {
 				argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
-				actual_display := tc.diagnostic_expr_type_name(arg_id, actual_mut_type)
+				actual_display := if arg_is_implicit_mut_param {
+					'&${mut_param_base.name()}'
+				} else {
+					tc.diagnostic_expr_type_name(arg_id, actual_mut_type)
+				}
 				expected_display := '&${call_argument_type_name(expected)}'
 				target_name := tc.call_argument_target_name(node, info)
 				tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as `${expected_display}` in argument ${argument_number} to `${target_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
