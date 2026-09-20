@@ -2115,6 +2115,14 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, 1))
 		}
 	}
+	if node.kind == .infix && node.op in [.pipe, .amp, .xor] {
+		if expected := tc.expected_context_for_expr(id) {
+			clean_expected := unalias_type(contextual_payload_type(expected) or { expected })
+			if clean_expected is Enum && clean_expected.is_flag {
+				_ = tc.resolve_expr(id, expected)
+			}
+		}
+	}
 	if node.kind == .infix && node.op in [.logical_and, .logical_or] && node.children_count >= 2 {
 		lhs_id := tc.a.child(&node, 0)
 		rhs_id := tc.a.child(&node, 1)

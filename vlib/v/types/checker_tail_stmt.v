@@ -7968,6 +7968,23 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		tc.register_synth_type(id, expected_raw)
 		return expected_raw
 	}
+	if node.kind == .infix && node.op in [.pipe, .amp, .xor] && node.children_count >= 2 {
+		mut enum_expected := unalias_type(expected)
+		if payload := contextual_payload_type(expected) {
+			enum_expected = unalias_type(payload)
+		}
+		if enum_expected is Enum && enum_expected.is_flag {
+			lhs_id := tc.a.child(&node, 0)
+			rhs_id := tc.a.child(&node, 1)
+			lhs_type := tc.resolve_expr(lhs_id, enum_expected)
+			rhs_type := tc.resolve_expr(rhs_id, enum_expected)
+			if tc.type_compatible(lhs_type, enum_expected)
+				&& tc.type_compatible(rhs_type, enum_expected) {
+				tc.register_synth_type(id, enum_expected)
+				return enum_expected
+			}
+		}
+	}
 	if node.kind == .enum_val {
 		// The expected type may be the enum directly, or an option/result wrapper around
 		// it (`?Enum` / `!Enum`), e.g. `mut field ?LoggingMode` assigned `field = .debug`.
