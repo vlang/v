@@ -14225,6 +14225,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		panic('internal error: empty decl_assign child in ${t.cur_fn_name}: count=${node.children_count} typ=${node.typ} value=${node.value} children=${parts.join('|')}')
 	}
 	mut inferred_typ := ''
+	multi_match_decl_type := t.multi_match_smartcast_decl_type(node) or { '' }
 	if node.children_count > 2 && !isnil(t.tc) {
 		rhs_id := t.a.child(&node, 1)
 		rhs := t.a.node(rhs_id)
@@ -14504,7 +14505,14 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		if i == 0 || (node.children_count > 2 && i > 1) {
-			new_children << t.transform_lvalue(child_id)
+			child := t.a.child_node(&node, i)
+			if i == 0 && multi_match_decl_type.len > 0 && child.kind == .ident {
+				lhs := t.make_ident(child.value)
+				t.set_node_typ(int(lhs), multi_match_decl_type)
+				new_children << lhs
+			} else {
+				new_children << t.transform_lvalue(child_id)
+			}
 		} else if node.children_count == 2 && t.try_heap_escaping_amp(node, child_id) {
 			new_children << t.heap_escaping_amp_rhs(child_id)
 			// When `v` was heap-moved it is already a `&T`, so `p := &v` is really `p := v`
@@ -23355,6 +23363,9 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 	if node.children_count == 2 {
 		rhs_id := t.a.child(node, 1)
 		rhs := t.a.node(rhs_id)
+		if target := t.multi_match_smartcast_decl_type(*node) {
+			return target
+		}
 		if deref_type := t.decl_rhs_deref_type(rhs_id) {
 			return deref_type
 		}
@@ -23425,6 +23436,25 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 		return rhs_authority
 	}
 	return ''
+}
+
+fn (t &Transformer) multi_match_smartcast_decl_type(node flat.Node) ?string {
+	if node.children_count != 2 {
+		return none
+	}
+	key := t.expr_key(t.a.child(&node, 1))
+	if key.len == 0 {
+		return none
+	}
+	sc := t.find_smartcast(key) or { return none }
+	if sc.display_type.len == 0 {
+		return none
+	}
+	target := t.smartcast_target_type(sc)
+	if !decl_type_is_usable(target) {
+		return none
+	}
+	return target
 }
 
 fn (t &Transformer) sum_constructor_call_type(node flat.Node) string {
