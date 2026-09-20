@@ -12921,7 +12921,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			|| tc.receiver_embeds(recv_type, info.params[0])
 		if call_param_is_shared(info, 0) && !tc.expr_is_shared_arg(recv_id) {
 			if tc.should_diagnose(id) {
-				tc.record_error_at(.call_arg_mismatch, 'cannot use non-shared `${recv_type.name()}` as receiver; cannot use shared method `${fn_node.value}` as `${tc.source_text_for_node(recv_id)}` is not a shared var', recv_id, tc.a.node(recv_id).pos)
+				tc.record_error_at(.call_arg_mismatch, 'cannot use shared method `${fn_node.value}` as `${tc.source_text_for_node(recv_id)}` is not a shared var', recv_id, tc.a.node(recv_id).pos)
 			}
 		}
 		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
