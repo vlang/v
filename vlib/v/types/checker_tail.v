@@ -13394,7 +13394,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					}
 					continue
 				}
-				if !tc.variadic_spread_arg_compatible(actual, expected_raw) {
+				allow_sum_variant := tc.call_param_has_open_generic_source(node, info, param_idx)
+				if !tc.variadic_spread_arg_compatible(actual, expected_raw, allow_sum_variant) {
 					actual_elem := array_like_elem_type(unwrap_pointer(actual)) or {
 						Type(Unknown{})
 					}
@@ -15597,7 +15598,7 @@ fn (tc &TypeChecker) spread_elem_compatible(actual Type, expected Type) bool {
 		&& tc.direct_sum_assignment_variant_matches(actual, clean_expected))
 }
 
-fn (tc &TypeChecker) variadic_spread_arg_compatible(actual Type, expected_array Array) bool {
+fn (tc &TypeChecker) variadic_spread_arg_compatible(actual Type, expected_array Array, allow_sum_variant bool) bool {
 	actual_elem := array_like_elem_type(unwrap_pointer(actual)) or { return false }
 	clean_expected_elem := unalias_type(expected_array.elem_type)
 	if clean_expected_elem is Interface {
@@ -15612,9 +15613,11 @@ fn (tc &TypeChecker) variadic_spread_arg_compatible(actual Type, expected_array 
 	if clean_expected_elem is SumType {
 		clean_actual_elem := unalias_type(actual_elem)
 		if clean_actual_elem !is SumType {
-			return false
-		}
-		if clean_actual_elem.name != clean_expected_elem.name {
+			if !allow_sum_variant
+				|| !tc.direct_sum_assignment_variant_matches(actual_elem, clean_expected_elem) {
+				return false
+			}
+		} else if clean_actual_elem.name != clean_expected_elem.name {
 			return false
 		}
 	}
