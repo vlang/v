@@ -11264,9 +11264,11 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 				capture_type_text := tc.current_fn_param_type_text(capture.value) or {
 					capture_type.name()
 				}
+				capture_dependency_text := fn_literal_capture_generic_dependency_text(capture_type,
+					capture_type_text, literal_generic_params)
 				for generic_name in tc.fn_context.generic_params {
 					if generic_name !in literal_generic_params
-						&& type_text_contains_symbol(capture_type_text, generic_name) {
+						&& type_text_contains_symbol(capture_dependency_text, generic_name) {
 						current_list := literal_generic_params.join(', ')
 						if !missing_capture_generic {
 							if tc.checker_fixture_mode && literal_generic_params.len == 0 {
@@ -11510,9 +11512,11 @@ fn (mut tc TypeChecker) check_generic_fn_literal_capture_types(node flat.Node) {
 				capture_type_text := tc.current_fn_param_type_text(capture.value) or {
 					capture_type.name()
 				}
+				capture_dependency_text := fn_literal_capture_generic_dependency_text(capture_type,
+					capture_type_text, literal_generic_params)
 				for generic_name in tc.fn_context.generic_params {
 					if generic_name !in literal_generic_params
-						&& type_text_contains_symbol(capture_type_text, generic_name) {
+						&& type_text_contains_symbol(capture_dependency_text, generic_name) {
 						if !missing_capture_generic {
 							if tc.checker_fixture_mode && literal_generic_params.len == 0 {
 								tc.record_error_at(.unsupported_generic, 'generic closure fn must specify type parameter, e.g. fn [foo] [T]()', id, child.pos)
@@ -11534,6 +11538,26 @@ fn (mut tc TypeChecker) check_generic_fn_literal_capture_types(node flat.Node) {
 			stack << tc.a.child(child, i)
 		}
 	}
+}
+
+fn fn_literal_capture_generic_dependency_text(capture_type Type, capture_type_text string, literal_generic_params []string) string {
+	// A closure without its own generic list cannot carry any open captured type.
+	if literal_generic_params.len == 0 {
+		return capture_type_text
+	}
+	// Once an explicit list establishes the outer specialization context, only a
+	// captured callback's result adds another type dependency. Its parameter and
+	// aggregate storage types are already fixed by the captured value.
+	if capture_type_text.trim_space().starts_with('fn') {
+		_, return_text := fn_diagnostic_type_parts(capture_type_text)
+		if return_text.len > 0 {
+			return return_text
+		}
+	}
+	if capture_fn := fn_type_from_type(capture_type) {
+		return capture_fn.return_type.name()
+	}
+	return ''
 }
 
 fn (mut tc TypeChecker) record_invalid_comptime_for_type(decl VisibleMutationFnDecl, generic_name string) bool {
