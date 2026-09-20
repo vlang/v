@@ -2145,6 +2145,20 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 			return if a_is_option_array_push { -1 } else { 1 }
 		}
 	}
+	a_is_option_index_unwrap := a.msg.starts_with('type `?')
+		&& a.msg.contains(' is an Option, it must be unwrapped first; use `')
+	b_is_option_index_unwrap := b.msg.starts_with('type `?')
+		&& b.msg.contains(' is an Option, it must be unwrapped first; use `')
+	a_is_option_field_unwrap := a.msg.starts_with('field `')
+		&& a.msg.ends_with(' is an Option, so it should have either an `or {}` block, or `?` at the end')
+	b_is_option_field_unwrap := b.msg.starts_with('field `')
+		&& b.msg.ends_with(' is an Option, so it should have either an `or {}` block, or `?` at the end')
+	if a.node == b.node && a_is_option_index_unwrap && b_is_option_field_unwrap {
+		return -1
+	}
+	if a.node == b.node && b_is_option_index_unwrap && a_is_option_field_unwrap {
+		return 1
+	}
 	a_is_bare_generic_fntype_decl := a.msg.starts_with('generic function `')
 		&& a.msg.contains(' in fn declaration must specify the generic type names')
 	b_is_bare_generic_fntype_decl := b.msg.starts_with('generic function `')
