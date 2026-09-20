@@ -9825,6 +9825,10 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 		raw := t.raw_var_type(child_node.value).trim_space()
 		if raw.starts_with('shared ') {
 			typ = t.normalize_type_alias(raw[7..].trim_space().trim_left('&'))
+		} else if t.pointer_value_rvalues[child_node.value] && typ.starts_with('&') {
+			// Heap-promoted value locals are stored as pointers, but ordinary reads
+			// (including dump) dereference them back to their source value type.
+			typ = typ[1..]
 		}
 	} else if child_node.kind == .selector && child_node.children_count > 0 && !isnil(t.tc) {
 		base_id := t.a.child(&child_node, 0)
