@@ -2068,7 +2068,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			} else {
 				Type(diagnostic_actual).name()
 			}
-			tc.record_error_with_details_at(.return_mismatch, 'cannot return `${diagnostic_actual_name}` as `${expected.name()}`; fn `${fn_name}` expects you to return a non reference type `${expected.name()}`, but you are returning `${diagnostic_actual_name}` instead', child_id, pos, [
+			tc.record_error_with_details_at(.return_mismatch, 'fn `${fn_name}` expects you to return a non reference type `${expected.name()}`, but you are returning `${diagnostic_actual_name}` instead', child_id, pos, [
 				'use `return *pointer` instead of `return pointer`, and just `return value` instead of `return &value`',
 			])
 			return
