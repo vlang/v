@@ -13280,7 +13280,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 							base := tc.a.child_node(callee, 0)
 							if base.kind == .ident
 								&& tc.source_declares_type_in_scope(base.value, tc.cur_file, tc.cur_module) {
-								target_name = flat.encode_static_type_method_name(base.value, callee.value)
+								target_name = '${base.value}__static__${callee.value}'
 							}
 							if info.has_receiver {
 								target_name = callee.value
