@@ -125,7 +125,8 @@ fn test_rejects_numeric_content_type_above_coap_range() {
 	}
 	if _ := check_protected_headers(Headers{
 		content_type_int: u64(65536)
-	}, Headers{}) {
+	}, Headers{})
+	{
 		assert false, 'message creation must reject out-of-range content types'
 	} else {
 		assert err.msg().contains('content type exceeds 65535')
@@ -181,10 +182,12 @@ fn test_encode_rejects_duplicate_header_labels() {
 	for headers in [
 		Headers{
 			algorithm:        .es256
-			extra_int_labels: [HeaderEntry{
-				label: 1
-				value: cbor.new_int(-7)
-			}]
+			extra_int_labels: [
+				HeaderEntry{
+					label: 1
+					value: cbor.new_int(-7)
+				},
+			]
 		},
 		Headers{
 			extra_int_labels: [
@@ -222,31 +225,37 @@ fn test_encode_rejects_duplicate_header_labels() {
 fn test_message_encoders_validate_unprotected_headers() {
 	invalid := Headers{
 		kid:              'kid'.bytes()
-		extra_int_labels: [HeaderEntry{
-			label: label_kid
-			value: cbor.new_bytes('duplicate'.bytes())
-		}]
+		extra_int_labels: [
+			HeaderEntry{
+				label: label_kid
+				value: cbor.new_bytes('duplicate'.bytes())
+			},
+		]
 	}
 	if _ := Sign1Message{
 		unprotected: invalid
-	}.encode(false) {
+	}.encode(false)
+	{
 		assert false, 'Sign1 encoder must validate unprotected headers'
 	}
 	if _ := Mac0Message{
 		unprotected: invalid
-	}.encode(false) {
+	}.encode(false)
+	{
 		assert false, 'Mac0 encoder must validate unprotected headers'
 	}
 	if _ := SignMessage{
 		unprotected: invalid
 		signatures:  [Signature{}]
-	}.encode(false) {
+	}.encode(false)
+	{
 		assert false, 'Sign encoder must validate unprotected headers'
 	}
 	if _ := MacMessage{
 		unprotected: invalid
 		recipients:  [Recipient{}]
-	}.encode(false) {
+	}.encode(false)
+	{
 		assert false, 'Mac encoder must validate unprotected headers'
 	}
 }
@@ -358,4 +367,54 @@ fn test_crit_rejects_its_own_label() {
 	} else {
 		assert err.msg().contains('crit must not list itself')
 	}
+}
+
+fn test_extra_int_labels_reject_modelled_labels() {
+	for label in [i64(2), 3, 4, 5, 6] {
+		h := Headers{
+			extra_int_labels: [
+				HeaderEntry{
+					label: label
+					value: cbor.new_int(1)
+				},
+			]
+		}
+		if _ := h.encode_map() {
+			assert false, 'modelled label ${label} must not be settable through extra_int_labels'
+		} else {
+			assert err.msg().contains('must not be set through extra_int_labels')
+		}
+	}
+}
+
+fn test_extra_alg_label_requires_int_or_text_value() {
+	h := Headers{
+		extra_int_labels: [
+			HeaderEntry{
+				label: 1
+				value: cbor.new_bytes([u8(1)])
+			},
+		]
+	}
+	if _ := h.encode_map() {
+		assert false, 'an extra alg label must carry an int or tstr value'
+	} else {
+		assert err.msg().contains('alg label is neither int nor tstr')
+	}
+}
+
+fn test_extra_alg_label_still_round_trips() {
+	h := Headers{
+		extra_int_labels: [
+			HeaderEntry{
+				label: 1
+				value: cbor.new_int(-1000)
+			},
+		]
+	}
+	parsed := parse_protected(h.encode_protected()!)!
+	assert parsed.algorithm == none
+	assert parsed.extra_int_labels.len == 1
+	assert parsed.extra_int_labels[0].label == 1
+	assert parsed.extra_int_labels[0].value.as_int() == ?i64(-1000)
 }

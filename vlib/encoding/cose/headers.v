@@ -466,6 +466,25 @@ fn check_header_values(h Headers) ! {
 				reason: 'duplicate header label ${entry.label} (RFC 9052 §3)'
 			}
 		}
+		// Labels 2..6 are modelled by typed fields, which is where their
+		// RFC 9052 §3.1 value rules are enforced. Letting the extra
+		// bucket carry them would bypass those rules and emit messages
+		// that our own decoder rejects.
+		if entry.label in [label_crit, label_content_type, label_kid, label_iv, label_partial_iv] {
+			return MalformedMessage{
+				reason: 'header label ${entry.label} is modelled by a typed field and must not be set through extra_int_labels (RFC 9052 §3.1)'
+			}
+		}
+		// Label 1 is the one modelled label allowed in the extra bucket:
+		// it is how unsupported/text algorithm identifiers survive a
+		// decode/encode round-trip. Its value must still be an int or a
+		// tstr, as the decoder requires.
+		if entry.label == label_alg && entry.value.as_int() == none
+			&& entry.value.as_string() == none {
+			return MalformedMessage{
+				reason: 'alg label is neither int nor tstr'
+			}
+		}
 		seen_int_labels[entry.label] = true
 	}
 	mut seen_text_labels := map[string]bool{}
@@ -502,11 +521,13 @@ fn verification_algorithm(protected Headers, unprotected Headers, key Key, conte
 			reason: 'algorithm missing from ${context} headers'
 		}
 	}
+
 	key_alg := key.alg or {
 		return MalformedMessage{
 			reason: 'algorithm in unprotected ${context} header requires a matching key alg constraint'
 		}
 	}
+
 	if key_alg != unprotected_alg {
 		return AlgorithmMismatch{
 			expected: key_alg
