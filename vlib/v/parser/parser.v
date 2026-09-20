@@ -3570,6 +3570,10 @@ fn (mut p Parser) directive() flat.NodeId {
 	if name == 'flag' && value.len == 0 {
 		p.record_diagnostic_span('no argument(s) provided for #flag', directive_start, directive_end)
 	}
+	if name.starts_with('!') && directive_start > 0 {
+		p.record_diagnostic_span('a shebang is only valid at the top of the file', directive_start,
+			directive_end)
+	}
 	if p.tok == .semicolon {
 		p.next()
 	}
