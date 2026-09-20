@@ -1634,6 +1634,16 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.file == b.file && b_is_option_alias_return && a_is_none_return {
 		return 1
 	}
+	a_is_unsafe_nil := a.msg == '`nil` is only allowed in `unsafe` code'
+	b_is_unsafe_nil := b.msg == '`nil` is only allowed in `unsafe` code'
+	a_is_nil_option_assignment := a.msg == 'cannot assign `nil` to option value'
+	b_is_nil_option_assignment := b.msg == 'cannot assign `nil` to option value'
+	if a.file == b.file && a_is_unsafe_nil && b_is_nil_option_assignment {
+		return -1
+	}
+	if a.file == b.file && b_is_unsafe_nil && a_is_nil_option_assignment {
+		return 1
+	}
 	a_is_for_in_same_variable := a.msg.starts_with('in a `for x in ')
 		&& a.msg.contains(' can not be the same as the low variable')
 	b_is_for_in_same_variable := b.msg.starts_with('in a `for x in ')
