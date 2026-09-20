@@ -2274,10 +2274,12 @@ pub fn ping() {}
 	assert resolved_modules == ['main', 'alpha']
 	prefs.building_v = true
 	c_source, _, _ := generate_source_files(sources, aliases, prefs) or { panic(err) }
-	assert c_source.contains('\talpha__init();'), c_source
-	assert c_source.contains('\talpha__cleanup();'), c_source
-	assert !c_source.contains('beta__init'), c_source
-	assert !c_source.contains('beta__cleanup'), c_source
+	// Self-host generation compacts non-main C function names, so check the selected
+	// lifecycle bodies instead of their private symbol spelling.
+	assert c_source.contains('println(_S("alpha init"));'), c_source
+	assert c_source.contains('println(_S("alpha cleanup"));'), c_source
+	assert !c_source.contains('println(_S("beta init"));'), c_source
+	assert !c_source.contains('println(_S("beta cleanup"));'), c_source
 }
 
 fn test_generate_files_rejects_mismatched_imported_module_declarations() {
