@@ -12534,8 +12534,10 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		}
 	}
 	p.check(.pipe)
+	p.begin_local_binding_scope()
 	for param_id in lambda_params {
 		name := p.a.nodes[int(param_id)].value
+		p.declare_local_binding(name)
 		p.active_lambda_param_counts[name] = (p.active_lambda_param_counts[name] or { 0 }) + 1
 	}
 	lambda_body := p.lambda_body_expr()
@@ -12548,6 +12550,7 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 			p.active_lambda_param_counts[name] = count - 1
 		}
 	}
+	p.end_local_binding_scope()
 	mut ids := lambda_params.clone()
 	ids << lambda_body
 	lstart := p.add_children(ids)
