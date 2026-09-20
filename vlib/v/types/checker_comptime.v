@@ -2407,8 +2407,24 @@ fn (tc &TypeChecker) loop_has_label(loop_id flat.NodeId, name string) bool {
 		return false
 	}
 	parent := tc.a.node(parent_id)
+	if parent.kind == .block && parent.value == 'for_c_style_multi' {
+		for i in 0 .. parent.children_count {
+			if tc.a.child(parent, i) == loop_id {
+				return tc.node_has_preceding_label(parent_id, name)
+			}
+		}
+	}
+	return tc.node_has_preceding_label(loop_id, name)
+}
+
+fn (tc &TypeChecker) node_has_preceding_label(id flat.NodeId, name string) bool {
+	parent_id := tc.direct_parent_id(id)
+	if !tc.valid_node_id(parent_id) {
+		return false
+	}
+	parent := tc.a.node(parent_id)
 	for i in 1 .. int(parent.children_count) {
-		if tc.a.child(parent, i) == loop_id {
+		if tc.a.child(parent, i) == id {
 			prev := tc.a.node(tc.a.child(parent, i - 1))
 			return prev.kind == .label_stmt && prev.value == name
 		}
@@ -2424,7 +2440,18 @@ fn (tc &TypeChecker) label_starts_loop(id flat.NodeId) bool {
 	parent := tc.a.node(parent_id)
 	for i in 0 .. int(parent.children_count) - 1 {
 		if tc.a.child(parent, i) == id {
-			return tc.a.node(tc.a.child(parent, i + 1)).kind in [.for_stmt, .for_in_stmt]
+			next := tc.a.node(tc.a.child(parent, i + 1))
+			if next.kind in [.for_stmt, .for_in_stmt] {
+				return true
+			}
+			if next.kind == .block && next.value == 'for_c_style_multi' {
+				for j in 0 .. next.children_count {
+					if tc.a.child_node(next, j).kind == .for_stmt {
+						return true
+					}
+				}
+			}
+			return false
 		}
 	}
 	return false
