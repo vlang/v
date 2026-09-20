@@ -1487,8 +1487,8 @@ fn for_in_fixed_array_elem_type(s string) string {
 			}
 			pos += close_rel + 2
 		}
-		if clean[pos..].contains('[') {
-			open := clean.last_index_u8(`[`)
+		if clean.ends_with(']') {
+			open := transform_trailing_matching_bracket_start(clean, clean.len)
 			if open >= pos {
 				return clean[..open]
 			}
@@ -1513,11 +1513,10 @@ fn for_in_fixed_array_len_text(s string) string {
 			}
 			pos += close_rel + 2
 		}
-		if clean[pos..].contains('[') {
-			open := clean.last_index_u8(`[`)
-			close_rel := clean[open + 1..].index_u8(`]`)
-			if open >= pos && close_rel >= 0 {
-				return clean[open + 1..open + 1 + close_rel].trim_space()
+		if clean.ends_with(']') {
+			open := transform_trailing_matching_bracket_start(clean, clean.len)
+			if open >= pos {
+				return clean[open + 1..clean.len - 1].trim_space()
 			}
 		}
 		return clean.all_after('[').all_before(']').trim_space()
