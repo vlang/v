@@ -17527,6 +17527,12 @@ fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeI
 		if params.len == 0 || unalias_type(params[0]) !is Pointer {
 			continue
 		}
+		// Mutable bound methods borrow their receiver and are safe while used in
+		// the current scope (including as an immediate callback argument). Their
+		// actual escape sites are checked by reject_stored_method_value.
+		if tc.mut_receiver_methods[method_name] {
+			continue
+		}
 		tc.record_error_at(.assignment_mismatch, 'method `${struct_name}.${node.value}` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `${struct_name}` as `@[heap]`.', id, node.pos)
 		return
 	}
