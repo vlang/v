@@ -5601,13 +5601,10 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 	}
 	if child_type is OptionType {
 		child := tc.a.node(child_id)
-		message := if child.kind == .ident {
-			'variable `${child.value}` is an Option, it must be unwrapped first'
-		} else {
-			'Option expression `${tc.source_text_for_node(child_id)}` must be unwrapped first'
+		if child.kind == .ident {
+			tc.record_error_at(.assignment_mismatch, 'variable `${child.value}` is an Option, it must be unwrapped first', child_id, tc.node_value_diagnostic_pos(child_id))
+			return
 		}
-		tc.record_error_at(.assignment_mismatch, message, child_id, tc.node_value_diagnostic_pos(child_id))
-		return
 	}
 	target_type_name := comptime_static_unwrap_type_text(node.value)
 	if target_type_name.contains('.') && !interface_pattern_is_collapsed_container(node.value)
