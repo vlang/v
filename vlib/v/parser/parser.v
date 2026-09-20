@@ -9032,6 +9032,14 @@ fn (mut p Parser) match_branch() flat.NodeId {
 		n_conds = 1
 		for p.tok == .comma {
 			p.next()
+			if p.prefs.is_fmt {
+				for p.tok == .comma {
+					p.next()
+				}
+				if p.tok == .lcbr {
+					break
+				}
+			}
 			cond := p.match_branch_cond()
 			p.inline_templates_as_closures(cond)
 			branch_ids << cond
