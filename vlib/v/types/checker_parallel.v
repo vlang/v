@@ -1994,6 +1994,34 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	b_is_infix_rhs := b.msg.starts_with('infix expr: cannot use `')
 	a_is_option_infix_unwrap := a.msg.ends_with('unwrap the option first')
 	b_is_option_infix_unwrap := b.msg.ends_with('unwrap the option first')
+	a_is_or_block_default := a.msg.starts_with('`or` block must provide a default value')
+	b_is_or_block_default := b.msg.starts_with('`or` block must provide a default value')
+	a_infix_error_order := if a_is_infix_mismatch {
+		1
+	} else if a_is_option_infix_unwrap {
+		2
+	} else if a_is_infix_rhs {
+		3
+	} else if a_is_or_block_default {
+		4
+	} else {
+		0
+	}
+	b_infix_error_order := if b_is_infix_mismatch {
+		1
+	} else if b_is_option_infix_unwrap {
+		2
+	} else if b_is_infix_rhs {
+		3
+	} else if b_is_or_block_default {
+		4
+	} else {
+		0
+	}
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && a_infix_error_order > 0
+		&& b_infix_error_order > 0 && a_infix_error_order != b_infix_error_order {
+		return a_infix_error_order - b_infix_error_order
+	}
 	a_is_multi_return_operand := a.msg.starts_with('invalid number of operand for `')
 	b_is_multi_return_operand := b.msg.starts_with('invalid number of operand for `')
 	a_is_none_operand := a.msg.starts_with('invalid operator `') && a.msg.ends_with(' to `none` and `none`')
