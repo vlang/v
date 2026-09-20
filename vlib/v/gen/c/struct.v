@@ -2312,7 +2312,8 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 		g.write('(${ct}){.ok = false, .err = builtin__none__}')
 		return
 	}
-	if clean_typ is types.Struct && !clean_typ.name.starts_with('C.') {
+	if clean_typ is types.Struct
+		&& (!clean_typ.name.starts_with('C.') || g.struct_needs_default_init(clean_typ.name)) {
 		ct := g.tc.c_type(raw_typ)
 		g.write('(${ct}){')
 		mut set_fields := map[string]bool{}
@@ -2426,7 +2427,7 @@ fn (g &FlatGen) struct_field_value_is_plainly_incompatible(value_id flat.NodeId,
 // metadata defaults such as dynamic arrays/maps.
 fn (mut g FlatGen) field_needs_default_init(typ types.Type) bool {
 	clean_type := default_init_unalias_type(typ)
-	if clean_type is types.Struct && !clean_type.name.starts_with('C.') {
+	if clean_type is types.Struct {
 		return g.struct_needs_default_init(clean_type.name)
 	}
 	return false
@@ -2482,7 +2483,7 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited
 			found = true
 			continue
 		}
-		if clean_ftyp is types.Struct && !clean_ftyp.name.starts_with('C.')
+		if clean_ftyp is types.Struct
 			&& g.struct_needs_default_init_inner(clean_ftyp.name, mut visited) {
 			found = true
 		}
