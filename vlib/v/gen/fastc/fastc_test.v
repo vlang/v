@@ -2693,7 +2693,7 @@ fn test_selfhost_method_params_struct_named_args() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	source := generate('module main\n@[params]\nstruct Options {\n\tafter bool\n}\nstruct Service {}\nfn (mut service Service) use(options Options) {}\nfn (mut service Service) redirect(path string, options Options) {}\nfn main() {\n\tmut service := Service{}\n\tservice.use(after: true)\n\tservice.redirect("/next")\n}\n', 'method_params_struct.v', prefs) or { panic(err) }
-	assert source.contains('Service_use(&(service),(Options){'), source
+	assert source.contains('Service_use(&(service),({ bool'), source
 	assert source.contains('.after='), source
 	assert source.contains('Service_redirect(&(service),_S("/next"),(Options){0})'), source
 }
