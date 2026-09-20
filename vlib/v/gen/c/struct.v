@@ -122,12 +122,16 @@ fn struct_init_unaliased_type_name(typ types.Type, fallback string) string {
 }
 
 fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Type) {
-	if call_name := g.callback_direct_fn_value_name(value_id, expected) {
-		g.write(g.callback_c_fn_name(call_name))
-		return
-	}
-	if g.gen_callback_fn_value_for_expected_type(value_id, expected) {
-		return
+	// A pointer-to-function field stores the address of a function-value slot, not
+	// the callable itself. Let expected-type generation retain the source `&`.
+	if !fn_type_is_pointer(expected) {
+		if call_name := g.callback_direct_fn_value_name(value_id, expected) {
+			g.write(g.callback_c_fn_name(call_name))
+			return
+		}
+		if g.gen_callback_fn_value_for_expected_type(value_id, expected) {
+			return
+		}
 	}
 	if g.gen_interface_pointer_value_expr(value_id, expected) {
 		return
