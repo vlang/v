@@ -17521,7 +17521,8 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			// The initializer itself is not semantically checked when it depends on
 			// reflection metadata, but nested source bindings still need diagnostics.
 			tc.check_generic_body_node_global_shadowing(rhs_id)
-			lhs := tc.a.child_node(&node, i)
+			lhs_id := tc.a.child(&node, i)
+			lhs := tc.a.node(lhs_id)
 			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
 				continue
 			}
@@ -17551,7 +17552,7 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 				}
 				tc.record_error_at(.assignment_mismatch, 'cannot copy map: call `move` or `clone` method (or use a reference)', rhs_id, pos)
 			}
-			tc.cur_scope.insert(lhs.value, typ)
+			tc.insert_decl_lhs(lhs_id, typ, tc.decl_lhs_is_mut(node, lhs_id))
 		}
 		return
 	}
