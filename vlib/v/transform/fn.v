@@ -5143,7 +5143,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if t.is_fixed_array_type(clean_typ) {
 		elem_type := fixed_array_elem_type(clean_typ)
 		arr := t.fixed_array_value_to_array(expr, clean_typ, '[]${elem_type}')
-		return t.wrap_string_conversion(arr, '[]${elem_type}')
+		return t.lower_fixed_array_str(arr, '[]${elem_type}')
 	}
 	if t.is_optional_type_name(clean_typ) {
 		mut optional_expr := expr
@@ -5991,7 +5991,13 @@ fn (mut t Transformer) lower_ref_value_str_with_custom_prefix(expr flat.NodeId, 
 	t.pending_stmts.clear()
 	value := t.make_prefix(.mul, t.make_ident(ptr_name))
 	t.set_node_typ(int(value), elem_type)
-	mut value_str := t.wrap_string_conversion(value, elem_type)
+	mut value_str := if elem_type.starts_with('&') {
+		nil_suffix := if nil_text.ends_with('0') { '0' } else { 'nil' }
+		nested_nil := '&'.repeat(dump_pointer_depth(elem_type)) + nil_suffix
+		t.lower_ref_value_str(value, elem_type, nested_nil)
+	} else {
+		t.wrap_string_conversion(value, elem_type)
+	}
 	mut quote_elem := t.normalize_type_alias(elem_type)
 	if quote_elem.starts_with('builtin.') {
 		quote_elem = quote_elem.all_after_last('.')
@@ -6677,6 +6683,11 @@ fn (mut t Transformer) struct_str_field_needs_indent(field_type string) bool {
 	}
 	if clean.starts_with('builtin.') {
 		clean = clean.all_after_last('.')
+	}
+	// Fixed-array auto-str already uses the legacy field indentation level for its
+	// elements. Re-indenting it here would add four spaces that V1 does not emit.
+	if t.is_fixed_array_type(clean) {
+		return false
 	}
 	if _, _ := t.lookup_str_alias(clean) {
 		return false
@@ -8511,6 +8522,14 @@ fn (mut t Transformer) append_string(result_name string, piece flat.NodeId) flat
 // via wrap_string_conversion, so nested arrays, structs with `str`, enums, etc. all recurse
 // correctly. Produces `[e0, e1, ...]`; string elements are wrapped in single quotes to match V.
 fn (mut t Transformer) lower_array_str(arr_expr flat.NodeId, base_type string) flat.NodeId {
+	return t.lower_array_str_impl(arr_expr, base_type, false)
+}
+
+fn (mut t Transformer) lower_fixed_array_str(arr_expr flat.NodeId, base_type string) flat.NodeId {
+	return t.lower_array_str_impl(arr_expr, base_type, true)
+}
+
+fn (mut t Transformer) lower_array_str_impl(arr_expr flat.NodeId, base_type string, fixed_pointer_style bool) flat.NodeId {
 	src := t.a.nodes[int(arr_expr)]
 	mut elem_type := base_type[2..]
 	if recorded_elem_type := t.recorded_array_call_elem_type(arr_expr) {
@@ -8579,6 +8598,10 @@ fn (mut t Transformer) lower_array_str(arr_expr flat.NodeId, base_type string) f
 	t.set_var_type(elem_name, elem_type)
 	elem_str := if t.array_elem_str_is_direct_circular(elem_type) {
 		t.make_string_literal('<circular>')
+	} else if fixed_pointer_style && t.normalize_type_alias(elem_type).starts_with('&') {
+		pointer_type := t.normalize_type_alias(elem_type)
+		t.lower_ref_value_str(t.make_ident(elem_name), pointer_type,
+			'&'.repeat(dump_pointer_depth(pointer_type)) + '0')
 	} else if elem_type.starts_with('&') {
 		t.lower_array_ref_str(t.make_ident(elem_name), elem_type)
 	} else {
