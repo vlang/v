@@ -14317,7 +14317,8 @@ fn (tc &TypeChecker) assignment_rhs_call_name(id flat.NodeId) ?string {
 			if callee_node.children_count > 0 {
 				base := tc.a.child_node(callee_node, 0)
 				if base.kind == .ident && !tc.ident_resolves_to_value(base.value)
-					&& tc.type_symbol_known(tc.qualify_name(base.value)) {
+					&& (tc.type_symbol_known(tc.qualify_name(base.value))
+						|| tc.resolve_selective_import_type_symbol(base.value) != none) {
 					return tc.call_display_name(node)
 				}
 			}

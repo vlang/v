@@ -3338,9 +3338,20 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				&& !tc.has_active_import(receiver.value)
 				&& tc.static_assoc_fn_key_for_base(receiver.value, callee.value) == none
 				&& tc.resolve_enum_name(receiver.value) == none {
-				qname := tc.qualify_name(receiver.value)
-				if qname in tc.structs || receiver.value in tc.structs {
-					tc.record_error_at(.unknown_fn, 'expected enum, but `${receiver.value}` is struct', id, node.pos)
+				resolved_receiver := tc.resolve_selective_import_type_symbol(receiver.value) or {
+					receiver.value
+				}
+				qname := tc.qualify_name(resolved_receiver)
+				if qname in tc.structs || resolved_receiver in tc.structs {
+					semantic_name := if qname in tc.structs { qname } else { resolved_receiver }
+					display_name := tc.diagnostic_qualified_name(semantic_name) or {
+						semantic_name
+					}
+					tc.record_error_at(.unknown_type, 'expected enum, but `${display_name}` is struct', id,
+						node.pos)
+					tc.register_synth_type(id, Type(MultiReturn{
+						types: []Type{}
+					}))
 					return
 				}
 				tc.record_error_at(.unknown_type, 'unknown enum `${receiver.value}`', id, node.pos)
@@ -3353,6 +3364,16 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 				&& !tc.ident_resolves_to_value(receiver.value)
 				&& !tc.has_active_import(receiver.value) {
 				if enum_name := tc.resolve_enum_name(receiver.value) {
+					if _ := tc.private_declaration(enum_name) {
+						display_name := tc.diagnostic_qualified_name(enum_name) or { enum_name }
+						module_name := display_name.all_before_last('.')
+						tc.record_error_at(.unknown_type, 'module `${module_name}` type `${display_name}` is private',
+							id, node.pos)
+						tc.register_synth_type(id, Type(MultiReturn{
+							types: []Type{}
+						}))
+						return
+					}
 					arg_count := node.children_count - 1
 					if arg_count != 1 {
 						tc.record_error_at(.call_arg_mismatch, 'expected 1 argument, but got ${arg_count}', id, node.pos)
