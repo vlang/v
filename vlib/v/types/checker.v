@@ -14289,6 +14289,13 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 		expected := tc.parse_type(field_type)
 		clean_expected := unalias_type(expected)
 		default_node := tc.a.nodes[int(default_id)]
+		if default_node.kind == .struct_init && default_node.value in node.generic_params() {
+			tc.record_error_at(.unknown_type, 'unknown struct `${default_node.value}`', default_id,
+				default_node.pos)
+			tc.record_error_at(.assignment_mismatch, 'incompatible initializer for field `${field.value}`: expected `${field_type}`, not `void`', default_id,
+				default_node.pos)
+			continue
+		}
 		if (default_node.kind == .nil_literal || tc.expr_is_unsafe_nil(default_id))
 			&& clean_expected !is Pointer {
 			continue
