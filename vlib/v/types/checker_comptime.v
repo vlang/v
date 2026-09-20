@@ -6244,21 +6244,29 @@ fn (mut tc TypeChecker) check_comptime_condition_diagnostics(id flat.NodeId, nod
 		}
 		left_is_type := tc.type_name_known(comptime_static_unwrap_type_text(left_type_name))
 		if root.len > 0 && !root_is_generic_type && !left_is_type && !tc.lvalue_ident_is_known(root) {
-			tc.record_error_at(.unknown_ident, 'undefined ident: `${root}`', id, tc.comptime_condition_part_pos(node, root))
+			tc.record_ordered_error_at(.unknown_ident, 'undefined ident: `${root}`', id, tc.comptime_condition_part_pos(node, root), 1)
 			has_error = true
 			if left.contains('.') {
 				member := left.all_after_last('.')
-				tc.record_error_at(.condition_mismatch, '`${root}` does not return a value', id, tc.comptime_condition_part_pos(node, member))
+				tc.record_ordered_error_at(.condition_mismatch, '`${root}` does not return a value', id, tc.comptime_condition_part_pos(node, member), 2)
 			}
 		}
 		if right.len == 0 || right[0].is_digit() || right[0] in [`'`, `"`] {
-			tc.record_error_at(.unknown_type, 'invalid $if right expr: expected a type', id, tc.comptime_condition_part_pos(node, right))
+			if has_error {
+				tc.record_ordered_error_at(.unknown_type, 'invalid $if right expr: expected a type', id, tc.comptime_condition_part_pos(node, right), 3)
+			} else {
+				tc.record_error_at(.unknown_type, 'invalid $if right expr: expected a type', id, tc.comptime_condition_part_pos(node, right))
+			}
 			return true
 		}
 		right_base := comptime_static_unwrap_type_text(right)
 		if !right.starts_with('$') && should_check_named_type(right_base)
 			&& !tc.type_name_known(right_base) {
-			tc.record_error_at(.unknown_type, 'unknown type `${right}`', id, tc.comptime_condition_part_pos(node, right))
+			if has_error {
+				tc.record_ordered_error_at(.unknown_type, 'unknown type `${right}`', id, tc.comptime_condition_part_pos(node, right), 3)
+			} else {
+				tc.record_error_at(.unknown_type, 'unknown type `${right}`', id, tc.comptime_condition_part_pos(node, right))
+			}
 			return true
 		}
 		return has_error
