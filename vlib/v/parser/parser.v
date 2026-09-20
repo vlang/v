@@ -124,6 +124,7 @@ mut:
 	// function-valued parameter/local) rather than a module/top-level function. Scoped like
 	// comptime_value_*: a name is in scope when local_binding_counts[name] > 0.
 	local_binding_counts              map[string]int
+	global_names                      map[string]bool
 	local_binding_undos               []string
 	local_binding_scopes              []int
 	active_lambda_param_counts        map[string]int
@@ -242,6 +243,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		comptime_local_values:         map[string]string{}
 		imported_module_names:         map[string]bool{}
 		local_binding_counts:          map[string]int{}
+		global_names:                  map[string]bool{}
 		active_lambda_param_counts:    map[string]int{}
 		unsupported_inline_asm_guards: map[int]bool{}
 		sql_query_data_aliases:        map[string]bool{}
@@ -2717,6 +2719,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 		if p.tok == .name || p.tok.is_keyword() {
 			field_start := p.span_start()
 			gname := p.expect_name_or_keyword()
+			p.global_names[gname] = true
 			if is_builtin_type(gname) {
 				p.record_diagnostic_span('invalid use of reserved type `${gname}` as a global name',
 					field_start, field_start + gname.len)
@@ -13840,7 +13843,8 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	}
 	for capture_id in capture_ids {
 		capture := p.a.node(capture_id)
-		if capture.value.len > 0 && !p.is_local_binding(capture.value) {
+		if capture.value.len > 0 && !p.global_names[capture.value]
+			&& !p.is_local_binding(capture.value) {
 			p.record_diagnostic_span('undefined ident: `${capture.value}`', capture.pos.offset,
 				capture.pos.end)
 		}

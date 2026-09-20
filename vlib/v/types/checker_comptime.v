@@ -10987,6 +10987,12 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		capture_modifier := capture.kind == .ident && capture.typ in ['shared', 'atomic']
 		if capture.kind == .ident && capture.value.len > 0 {
 			explicit_captures[capture.value] = true
+			qname := tc.qualify_name(capture.value)
+			if capture.value in tc.global_names || qname in tc.global_names {
+				capture_id := tc.a.child(&node, i)
+				tc.record_error_at(.duplicate_decl, 'no need to capture global variable `${capture.value}` in closure',
+					capture_id, tc.node_value_diagnostic_pos(capture_id))
+			}
 		}
 		if capture.kind == .ident && capture.is_mut && capture.value.len > 0
 			&& !tc.ident_is_mutable_lvalue(capture.value) {
