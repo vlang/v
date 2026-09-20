@@ -18255,6 +18255,16 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 }
 
 fn (tc &TypeChecker) implicit_integer_constant_value(id flat.NodeId, typ Type) ?int {
+	if unalias_type(typ) is USize {
+		node := tc.a.node(id)
+		if node.kind == .ident && !tc.ident_is_mutable_lvalue(node.value) {
+			rhs_id := tc.local_decl_rhs_before(node.value, id) or { return none }
+			rhs := tc.a.node(rhs_id)
+			if rhs.kind in [.sizeof_expr, .offsetof_expr] {
+				return tc.const_int_expr(rhs_id, tc.cur_module, []string{})
+			}
+		}
+	}
 	if typ.name() != Type(int_).name() {
 		return none
 	}
