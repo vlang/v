@@ -1795,6 +1795,17 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 				return
 			}
 		}
+		if child.kind == .ident && tc.unsafe_depth == 0 && unalias_type(expected) is Pointer
+			&& child.value in tc.fn_context.mut_param_base_types
+			&& !tc.current_fn_param_is_explicit_mut_pointer(child.value) {
+			base_type := tc.fn_context.mut_param_base_types[child.value] or { Type(void_) }
+			clean_base := unalias_type(unwrap_pointer(base_type))
+			if clean_base is Struct && !tc.type_has_declaration_attribute(clean_base, 'heap') {
+				tc.check_node(child_id)
+				tc.record_error_at(.return_mismatch, '`${child.value}` cannot be referenced outside `unsafe` blocks as it might be stored on stack. Consider declaring `${clean_base.name.all_after_last('.')}` as `@[heap]`.', child_id, child.pos)
+				return
+			}
+		}
 		raw_child_type := tc.resolve_type(child_id)
 		if raw_child_type is Void {
 			tc.check_node(child_id)
