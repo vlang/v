@@ -12927,7 +12927,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					message := '`${receiver.value}` is immutable, declare it with `mut` to make it mutable'
 					tc.record_error_at(.call_arg_mismatch, message, recv_id, tc.node_value_diagnostic_pos(recv_id))
 				} else {
-					tc.record_error_at(.call_arg_mismatch, 'method `${fn_node.value}` requires a mutable receiver; cannot pass expression as `mut`', recv_id, tc.mutable_receiver_expression_pos(recv_id))
+					tc.record_error_at(.call_arg_mismatch, 'cannot pass expression as `mut`', recv_id, tc.mutable_receiver_expression_pos(recv_id))
 				}
 			}
 		}
