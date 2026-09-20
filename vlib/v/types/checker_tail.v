@@ -2083,7 +2083,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 					actual_name = inferred.name()
 				}
 			}
-			tc.record_error_at(.return_mismatch, 'cannot return `${actual_name}` as `${call_argument_type_name(expected)}`; fn `${fn_name}` expects you to return a reference type `${call_argument_type_name(expected)}`, but you are returning `${actual_name}` instead', child_id, tc.a.node(child_id).pos)
+			tc.record_error_at(.return_mismatch, 'fn `${fn_name}` expects you to return a reference type `${call_argument_type_name(expected)}`, but you are returning `${actual_name}` instead', child_id, tc.a.node(child_id).pos)
 			return
 		}
 		child_node := tc.a.node(child_id)
