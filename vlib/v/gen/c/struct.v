@@ -5847,20 +5847,6 @@ fn (mut g FlatGen) struct_decls() {
 	interface_names.sort()
 	for name in struct_names {
 		if g.skip_builtin_struct(name) {
-			// An inlined header that defines `struct zip_t` without a typedef
-			// leaves V references to the bare name dangling; supply the alias
-			// (skipped when the header already typedefs it).
-			if name.starts_with('C.') && name !in c_preamble_defined_structs && name[2..] !in c_system_header_struct_names && c_struct_needs_typedef(name)
-				&& g.inlined_c_structs[name[2..]]
-				&& !g.inlined_c_typedef_names[name[2..]] && !(g.cache_split
-				&& name[2..] in c_cache_system_header_struct_names) {
-				ityp := if name in g.tc.unions { 'union' } else { 'struct' }
-				cn := g.struct_cname(name)
-				if cn != 'mach_timebase_info_data_t' && !cn.starts_with('struct ')
-					&& !cn.starts_with('union ') {
-					g.writeln('typedef ${ityp} ${cn} ${cn};')
-				}
-			}
 			continue
 		}
 		if !c_struct_needs_typedef(name) && name !in g.tc.c_typedef_structs {
@@ -6177,6 +6163,16 @@ fn (mut g FlatGen) type_forward_decls() {
 	struct_names := g.c_struct_decl_names()
 	for name in struct_names {
 		if g.skip_builtin_struct(name) {
+			// Header-backed C tags need their compatibility alias before optional wrappers
+			// and other generated declarations can refer to the bare C name.
+			if g.header_c_struct_needs_compat_typedef(name) {
+				tag := if name in g.tc.unions { 'union' } else { 'struct' }
+				cn := g.struct_cname(name)
+				if cn != 'mach_timebase_info_data_t' && !cn.starts_with('struct ')
+					&& !cn.starts_with('union ') {
+					g.writeln('typedef ${tag} ${cn} ${cn};')
+				}
+			}
 			continue
 		}
 		if !c_struct_needs_typedef(name) && name !in g.tc.c_typedef_structs {
@@ -6320,6 +6316,22 @@ fn (mut g FlatGen) soa_companion_decls() {
 		}
 		g.emit_soa_companion(name)
 	}
+}
+
+fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
+	if !name.starts_with('C.') || name in c_preamble_defined_structs
+		|| name[2..] in c_system_header_struct_names || !c_struct_needs_typedef(name)
+		|| name in g.tc.c_typedef_structs || name[2..] in g.inlined_c_typedef_names
+		|| (g.cache_split && name[2..] in c_cache_system_header_struct_names) {
+		return false
+	}
+	if g.inlined_c_structs[name[2..]] {
+		return true
+	}
+	if info := g.struct_decl_infos[name] {
+		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+	}
+	return false
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {
