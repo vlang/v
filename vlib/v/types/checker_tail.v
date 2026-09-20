@@ -6934,6 +6934,38 @@ fn (mut tc TypeChecker) record_global_shadow_error(id flat.NodeId, name string) 
 	tc.record_global_shadow_error_at(id, name, tc.node_value_diagnostic_pos(id))
 }
 
+fn (tc &TypeChecker) global_receiver_id(node flat.Node) ?flat.NodeId {
+	if node.kind != .fn_decl || node.children_count == 0 {
+		return none
+	}
+	receiver_id := tc.a.child(&node, 0)
+	receiver := tc.a.node(receiver_id)
+	if receiver.kind != .param || receiver.op != .dot || receiver.value.len == 0 {
+		return none
+	}
+	qname := tc.qualify_name(receiver.value)
+	if receiver.value in tc.global_names || qname in tc.global_names {
+		return receiver_id
+	}
+	return none
+}
+
+fn (tc &TypeChecker) file_has_global_receiver(file_name string) bool {
+	for index in tc.top_level_idx {
+		node := tc.a.nodes[index]
+		if node.kind != .fn_decl {
+			continue
+		}
+		file := tc.a.source_files[node.pos.id] or { continue }
+		if file.name == file_name {
+			if _ := tc.global_receiver_id(node) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // check_local_binding_global_shadowing reports a source-level local binding
 // whose name is already used by a global. Compiler-supplied bindings do not
 // have a source identifier and deliberately do not pass through this helper.

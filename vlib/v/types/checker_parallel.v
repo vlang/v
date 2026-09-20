@@ -2583,6 +2583,19 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	tc.cur_file = file
 	tc.cur_module = module_name
+	if !fast_valid_build {
+		if receiver_id := tc.global_receiver_id(node) {
+			receiver := tc.a.node(receiver_id)
+			name_pos := tc.fn_receiver_param_diagnostic_pos(node, receiver.value)
+			_, receiver_pos := tc.fn_receiver_source_text_pos(node)
+			pos := token.new_span(name_pos.id, name_pos.offset, int_max(name_pos.end,
+				receiver_pos.end - 1))
+			tc.record_error_at(.duplicate_decl, 'cannot use global variable name `${receiver.value}` as receiver',
+				receiver_id, pos)
+			tc.fn_context = saved_fn_context
+			return
+		}
+	}
 	if !fast_valid_build && module_name in ['', 'main'] && !node.value.contains('.') {
 		if visibility := tc.declaration_visibility['builtin.${node.value}'] {
 			if visibility.is_pub {

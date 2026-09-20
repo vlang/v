@@ -1020,6 +1020,9 @@ fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
 		if tc.diagnostic_files.len > 0 && file.name !in tc.diagnostic_files {
 			continue
 		}
+		if tc.file_has_global_receiver(file.name) {
+			continue
+		}
 		tc.cur_file = file.name
 		tc.cur_module = tc.file_modules[file.name] or { 'main' }
 		op := if node.op == .inc { '++' } else { '--' }
