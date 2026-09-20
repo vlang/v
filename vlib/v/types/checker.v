@@ -9464,7 +9464,7 @@ fn (mut tc TypeChecker) check_c_js_generic_declarations() {
 				continue
 			}
 			if node.generic_params().len == 0
-				&& !tc.declaration_source_line_has_generic(flat.NodeId(index)) {
+				&& !tc.declaration_source_line_has_generic(flat.NodeId(index), node) {
 				continue
 			}
 			namespace := tc.c_js_declaration_namespace(flat.NodeId(index), node) or { continue }
@@ -9479,14 +9479,22 @@ fn (mut tc TypeChecker) check_c_js_generic_declarations() {
 	}
 }
 
-fn (tc &TypeChecker) declaration_source_line_has_generic(id flat.NodeId) bool {
+fn (tc &TypeChecker) declaration_source_line_has_generic(id flat.NodeId, node &flat.Node) bool {
 	pos := tc.source_line_declaration_pos(id)
 	file := tc.a.source_files[pos.id] or { return false }
 	source := tc.source_texts_by_file[file.name] or { return false }
 	if pos.offset < 0 || pos.end > source.len || pos.offset >= pos.end {
 		return false
 	}
-	return source[pos.offset..pos.end].contains('[')
+	line := source[pos.offset..pos.end]
+	matched_name := if line.contains(node.value) {
+		node.value
+	} else {
+		node.value.all_after_last('.')
+	}
+	name_start := line.index(matched_name) or { return false }
+	after_name := line[name_start + matched_name.len..].trim_left(' \t')
+	return after_name.starts_with('[')
 }
 
 fn (tc &TypeChecker) c_js_declaration_namespace(id flat.NodeId, node &flat.Node) ?string {
