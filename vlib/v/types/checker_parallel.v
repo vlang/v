@@ -1644,6 +1644,20 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.file == b.file && b_is_unsafe_nil && a_is_nil_option_assignment {
 		return 1
 	}
+	a_is_unhandled_result_call := a.msg.contains('() returns `!')
+		&& a.msg.ends_with('`, so it should have either an `or {}` block, or `!` at the end')
+	b_is_unhandled_result_call := b.msg.contains('() returns `!')
+		&& b.msg.ends_with('`, so it should have either an `or {}` block, or `!` at the end')
+	a_is_direct_result_call := a.msg == 'Result type cannot be called directly'
+	b_is_direct_result_call := b.msg == 'Result type cannot be called directly'
+	if a.file == b.file
+		&& ((a_is_unhandled_result_call && b_is_direct_result_call)
+			|| (b_is_unhandled_result_call && a_is_direct_result_call)) {
+		if a.pos.offset != b.pos.offset {
+			return a.pos.offset - b.pos.offset
+		}
+		return if a_is_unhandled_result_call { -1 } else { 1 }
+	}
 	a_is_for_in_same_variable := a.msg.starts_with('in a `for x in ')
 		&& a.msg.contains(' can not be the same as the low variable')
 	b_is_for_in_same_variable := b.msg.starts_with('in a `for x in ')
