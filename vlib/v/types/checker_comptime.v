@@ -5416,6 +5416,26 @@ fn (tc &TypeChecker) integer_literal_source(id flat.NodeId) ?string {
 			return tc.source_text_for_node(id)
 		}
 	}
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return tc.integer_literal_source(tc.a.child(&node, 0))
+	}
+	if node.kind == .block {
+		tail_id := tc.branch_tail_expr_id(id)
+		if tc.valid_node_id(tail_id) && tail_id != id {
+			return tc.integer_literal_source(tail_id)
+		}
+	}
+	if node.kind == .comptime_if {
+		take_then := tc.comptime_type_condition_value(node.value) or { return none }
+		branch_index := if take_then { 0 } else { 1 }
+		if branch_index >= node.children_count {
+			return none
+		}
+		tail_id := tc.branch_tail_expr_id(tc.a.child(&node, branch_index))
+		if tc.valid_node_id(tail_id) && tail_id != id {
+			return tc.integer_literal_source(tail_id)
+		}
+	}
 	return none
 }
 
