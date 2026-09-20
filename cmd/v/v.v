@@ -500,7 +500,16 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 		report_v3_fallback_unavailable(args, reason, report_state, err.msg(), diagnostics != '')
 		exit(1)
 	}
-	os.setenv('VEXE', fallback, true)
+	compatibility_vexe := if v3_fixture_uses_current_vlib_compatibility(args) {
+		if current_root := find_vroot(os.real_path(os.executable())) {
+			os.join_path(current_root, v1_fallback_binary + $if windows { '.exe' } $else { '' })
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	os.setenv('VEXE', compatibility_vexe, true)
 	os.setenv('VCHILD', 'true', true)
 	if !transparent_fixture_fallback {
 		eprintln('${reason}; retrying with `${fallback}`.')

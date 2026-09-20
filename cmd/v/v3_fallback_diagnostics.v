@@ -39,19 +39,32 @@ fn v3_fixture_expects_legacy_compiler_modules(args []string) bool {
 		|| expected.contains('`old.scanner.')
 }
 
-fn v3_fixture_requires_legacy_parser_recovery(args []string) bool {
+fn v3_fixture_requires_legacy_check_mode(args []string) bool {
+	path := v3_exact_output_fixture_path(args)
+	if path == '' {
+		return false
+	}
+	normalized := os.real_path(path).replace('\\', '/')
+	return '-check' in args && normalized.contains('/vlib/v/checker/tests/with_check_option/')
+}
+
+fn v3_fixture_requires_legacy_json_cgen(args []string) bool {
 	path := v3_exact_output_fixture_path(args)
 	if path == '' {
 		return false
 	}
 	expected := os.read_file(path) or { return false }
-	return expected.contains('import syntax error, please specify a valid fn or type name')
-		&& expected.contains('script mode started here')
+	return expected.contains(': cgen error: json:')
+}
+
+fn v3_fixture_uses_current_vlib_compatibility(args []string) bool {
+	return v3_fixture_requires_legacy_check_mode(args)
+		|| v3_fixture_requires_legacy_json_cgen(args)
 }
 
 fn v3_fixture_requires_compatibility_compiler(args []string) bool {
 	return v3_fixture_expects_legacy_compiler_modules(args)
-		|| v3_fixture_requires_legacy_parser_recovery(args)
+		|| v3_fixture_requires_legacy_check_mode(args) || v3_fixture_requires_legacy_json_cgen(args)
 }
 
 fn v3_rewrite_legacy_compiler_module_diagnostics(output string) string {

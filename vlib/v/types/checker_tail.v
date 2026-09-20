@@ -4132,17 +4132,6 @@ fn (mut tc TypeChecker) check_json_magic_call(id flat.NodeId, node flat.Node) bo
 			tc.record_enclosing_print_void(id)
 			return true
 		}
-		tc.check_node(arg_id)
-		mut seen := map[string]bool{}
-		has_prior_file_error := tc.errors.any(it.pos.id == node.pos.id)
-		if !has_prior_file_error {
-			if interface_name := tc.json_encode_unsupported_interface(tc.resolve_type(arg_id), mut seen) {
-				tc.record_error_severity_at(.compile_error, 'json: ${interface_name} is not struct',
-					arg_id, tc.a.node(arg_id).pos, 'cgen error:')
-				tc.register_synth_type(id, Type(string_))
-				return true
-			}
-		}
 		return false
 	}
 	if name != 'json.decode' || node.children_count < 2 {
@@ -4213,37 +4202,6 @@ fn (mut tc TypeChecker) check_json_magic_call(id flat.NodeId, node flat.Node) bo
 		}
 	}
 	return true
-}
-
-fn (tc &TypeChecker) json_encode_unsupported_interface(typ Type, mut seen map[string]bool) ?string {
-	clean := unalias_type(typ)
-	match clean {
-		Interface {
-			return clean.name.all_after_last('.')
-		}
-		Pointer, OptionType, ResultType {
-			return tc.json_encode_unsupported_interface(clean.base_type, mut seen)
-		}
-		Array, ArrayFixed {
-			return tc.json_encode_unsupported_interface(clean.elem_type, mut seen)
-		}
-		Map {
-			return tc.json_encode_unsupported_interface(clean.value_type, mut seen)
-		}
-		Struct {
-			if seen[clean.name] {
-				return none
-			}
-			seen[clean.name] = true
-			for field in tc.struct_fields_for_init(clean.name) {
-				if interface_name := tc.json_encode_unsupported_interface(field.typ, mut seen) {
-					return interface_name
-				}
-			}
-		}
-		else {}
-	}
-	return none
 }
 
 fn (tc &TypeChecker) json_decode_type_arg_text(id flat.NodeId) string {

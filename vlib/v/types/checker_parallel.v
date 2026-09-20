@@ -822,7 +822,6 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 		tc.check_unused_import_diagnostics()
 	}
 	tc.check_selective_builtin_import_diagnostics()
-	tc.check_deferred_fixture_array_receivers()
 	if tc.defer_ierror_gating {
 		if tc.pending_ierror_errors.len > 0 {
 			tc.collect_selected_file_called_fns()
@@ -1055,7 +1054,6 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 			tc.check_unused_import_diagnostics()
 		}
 		tc.check_selective_builtin_import_diagnostics()
-		tc.check_deferred_fixture_array_receivers()
 		if tc.defer_ierror_gating {
 			if tc.pending_ierror_errors.len > 0 {
 				tc.collect_selected_file_called_fns()
@@ -2784,9 +2782,7 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				}
 			}
 			is_builtin_array_override := receiver_type is Array && node.value.ends_with('.map')
-			allow_fixture_array_receiver := tc.checker_fixture_mode && receiver_type is Array
-			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override
-				&& !allow_fixture_array_receiver {
+			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
 				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
 			}
@@ -2897,49 +2893,6 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			&& parsed_return_type.name() != receiver_type.name && operator_params_match {
 			tc.record_error_at(.return_mismatch, 'operator `${operator}` methods on primitive aliases should return `${receiver_type.name}`', id, tc.fn_return_type_diagnostic_pos(node))
 		}
-	}
-}
-
-fn (mut tc TypeChecker) check_deferred_fixture_array_receivers() {
-	if !tc.checker_fixture_mode {
-		return
-	}
-	mut files_with_errors := map[int]bool{}
-	for diagnostic in tc.errors {
-		files_with_errors[diagnostic.pos.id] = true
-	}
-	tc.cur_module = ''
-	tc.cur_file = ''
-	for idx in tc.top_level_idx {
-		node := tc.a.node(flat.NodeId(idx))
-		if node.kind == .file {
-			tc.enter_file(node.value)
-			continue
-		}
-		if node.kind == .module_decl {
-			tc.enter_module(node.value)
-			continue
-		}
-		if node.kind != .fn_decl || files_with_errors[node.pos.id] || tc.cur_module == 'builtin'
-			|| !node.value.contains('.') || node.value.ends_with('.map') {
-			continue
-		}
-		receiver, receiver_pos := tc.fn_receiver_source_text_pos(node)
-		if receiver.len < 3 {
-			continue
-		}
-		parts := receiver[1..receiver.len - 1].fields()
-		if parts.len < 2 {
-			continue
-		}
-		receiver_type := parts[parts.len - 1]
-		if !receiver_type.trim_left('&').starts_with('[]') {
-			continue
-		}
-		type_relative := receiver.last_index(receiver_type) or { continue }
-		type_pos := token.new_span(receiver_pos.id, receiver_pos.offset + type_relative,
-			receiver_pos.offset + type_relative + receiver_type.len)
-		tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_type}. Define an alias and use that instead like `type AliasName = ${receiver_type}`', flat.NodeId(idx), type_pos)
 	}
 }
 
