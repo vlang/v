@@ -1,4 +1,4 @@
-// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
+// vtest build: !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 // Tests for the http.Request / http.Response wrappers. The
 // roundtrip cases exercise the full sign-then-verify pipeline through
 // the public API; the negative paths cover the rejection branches
@@ -11,6 +11,10 @@ import encoding.base64
 import net.http
 
 const test_secret = 'shh-this-is-a-secret-shared-with-the-server'
+
+// empty_content_digest is the RFC 9530 §2 digest of zero-length content,
+// which is what the default profile needs on a bodyless message.
+const empty_content_digest = 'sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:'
 
 fn build_request(url string) http.Request {
 	mut req := http.Request{
@@ -31,19 +35,26 @@ fn test_sign_and_verify_request_hmac_roundtrip() {
 		created:    1618884473
 	)!
 	assert !req.allow_redirect
-	verify_request(req, key)!
+	verify_request(req, key,
+		required_components: ['@method', '@target-uri', '@authority', 'date', 'content-type']
+	)!
 }
 
-fn test_request_defaults_require_content_digest_for_body() {
-	mut missing_digest := build_request('https://example.com/upload')
-	missing_digest.data = 'hello'
+fn test_request_defaults_require_content_digest() {
 	key := Key.hmac_sha256(test_secret.bytes())!
-	if _ := sign_request(mut missing_digest, key, created: 1) {
-		assert false, 'default request signing must require a digest for a body'
-	} else {
-		assert err is MalformedMessage
+	// The requirement does not depend on the body: a bodyless request is
+	// refused exactly like a body-bearing one, because the matching default
+	// verification policy cannot tell the two apart on the wire.
+	for body in ['', 'hello'] {
+		mut missing_digest := build_request('https://example.com/upload')
+		missing_digest.data = body
+		if _ := sign_request(mut missing_digest, key, created: 1) {
+			assert false, 'default request signing must require a digest'
+		} else {
+			assert err is MalformedMessage
+		}
+		assert !missing_digest.header.contains_custom('Signature')
 	}
-	assert !missing_digest.header.contains_custom('Signature')
 
 	mut req := build_request('https://example.com/upload')
 	req.data = 'hello'
@@ -105,7 +116,7 @@ fn test_sign_and_verify_request_ecdsa_p256_roundtrip() {
 fn test_sign_and_verify_request_ecdsa_p384_roundtrip() {
 	// P-384 has no RFC 9421 vector; generate a fresh keypair via the
 	// V ecdsa module so the test is self-contained.
-	pub_obj, priv_obj := ecdsa.generate_key(nid: .secp384r1)!
+	pub_obj, priv_obj := ecdsa.generate_key(nid: ecdsa.Nid.secp384r1)!
 	defer {
 		priv_obj.free()
 		pub_obj.free()
@@ -661,7 +672,9 @@ fn test_sign_response_and_verify() {
 		components: ['@status', 'content-type', 'content-length']
 		created:    1
 	)!
-	verify_response(resp, key)!
+	verify_response(resp, key,
+		required_components: ['@status', 'content-type', 'content-length']
+	)!
 }
 
 fn test_verify_response_requires_status_coverage_by_default() {
@@ -680,18 +693,20 @@ fn test_verify_response_requires_status_coverage_by_default() {
 	verify_response(resp, key, required_components: ['content-type'])!
 }
 
-fn test_response_defaults_require_content_digest_for_body() {
-	mut missing_digest := http.Response{
-		status_code: 200
-		body:        'hello'
-	}
+fn test_response_defaults_require_content_digest() {
 	key := Key.hmac_sha256(test_secret.bytes())!
-	if _ := sign_response(mut missing_digest, key, created: 1) {
-		assert false, 'default response signing must require a digest for a body'
-	} else {
-		assert err is MalformedMessage
+	for body in ['', 'hello'] {
+		mut missing_digest := http.Response{
+			status_code: 200
+			body:        body
+		}
+		if _ := sign_response(mut missing_digest, key, created: 1) {
+			assert false, 'default response signing must require a digest'
+		} else {
+			assert err is MalformedMessage
+		}
+		assert !missing_digest.header.contains_custom('Signature')
 	}
-	assert !missing_digest.header.contains_custom('Signature')
 
 	mut resp := http.Response{
 		status_code: 200
@@ -729,7 +744,7 @@ fn test_sign_response_normalizes_zero_status_to_wire_ok() {
 		...resp
 		status_code: 200
 	}
-	verify_response(received, key)!
+	verify_response(received, key, required_components: ['@status'])!
 }
 
 fn test_sign_response_preserves_unassigned_three_digit_status() {
@@ -738,12 +753,12 @@ fn test_sign_response_preserves_unassigned_three_digit_status() {
 	}
 	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_response(mut resp, key, components: ['@status'], created: 1)!
-	verify_response(resp, key)!
+	verify_response(resp, key, required_components: ['@status'])!
 	tampered := http.Response{
 		...resp
 		status_code: 250
 	}
-	if _ := verify_response(tampered, key) {
+	if _ := verify_response(tampered, key, required_components: ['@status']) {
 		assert false, 'the signature must bind the actual unassigned status code'
 	} else {
 		assert err is VerificationFailed
@@ -829,6 +844,7 @@ fn test_sign_response_rejects_existing_label() {
 	mut resp := http.Response{
 		status_code: 200
 	}
+	resp.header.add_custom('Content-Digest', empty_content_digest)!
 	key := Key.hmac_sha256(test_secret.bytes())!
 	sign_response(mut resp, key, created: 1)!
 	if _ := sign_response(mut resp, key, created: 2) {
@@ -973,4 +989,68 @@ fn pad_b64u(s string, want int) []u8 {
 		b.prepend(u8(0))
 	}
 	return b
+}
+
+fn test_default_request_policy_does_not_depend_on_the_received_body() {
+	// An explicit profile may omit content-digest; the default verification
+	// policy must then reject the message whether or not the body survived
+	// the trip. Removing it used to select the weaker branch.
+	key := Key.hmac_sha256(test_secret.bytes())!
+	mut req := build_request('https://example.com/upload')
+	req.data = 'hello'
+	sign_request(mut req, key,
+		components: ['@method', '@target-uri', '@authority']
+		created:    1
+	)!
+	stripped := http.Request{
+		...req
+		data: ''
+	}
+	for candidate in [req, stripped] {
+		if _ := verify_request(candidate, key) {
+			assert false, 'default verification must require digest coverage'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+	// The same signature still verifies under the profile it was made with.
+	verify_request(stripped, key,
+		required_components: ['@method', '@target-uri', '@authority']
+	)!
+}
+
+fn test_default_response_policy_does_not_depend_on_the_received_body() {
+	key := Key.hmac_sha256(test_secret.bytes())!
+	mut resp := http.Response{
+		status_code: 200
+		body:        'hello'
+	}
+	sign_response(mut resp, key, components: ['@status'], created: 1)!
+	stripped := http.Response{
+		...resp
+		body: ''
+	}
+	for candidate in [resp, stripped] {
+		if _ := verify_response(candidate, key) {
+			assert false, 'default verification must require digest coverage'
+		} else {
+			assert err is MalformedMessage
+		}
+	}
+	verify_response(stripped, key, required_components: ['@status'])!
+}
+
+fn test_bodyless_default_profile_round_trips_with_an_empty_content_digest() {
+	key := Key.hmac_sha256(test_secret.bytes())!
+	mut req := build_request('https://example.com/foo')
+	req.header.add_custom('Content-Digest', empty_content_digest)!
+	sign_request(mut req, key, created: 1)!
+	verify_request(req, key)!
+
+	mut resp := http.Response{
+		status_code: 200
+	}
+	resp.header.add_custom('Content-Digest', empty_content_digest)!
+	sign_response(mut resp, key, created: 1)!
+	verify_response(resp, key)!
 }
