@@ -9906,7 +9906,11 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	t.pending_stmts << t.make_decl_assign_typed(temp_name, child, typ)
 	if isnil(t.tc) || !t.tc.suppress_dump_output {
 		value := t.make_ident(temp_name)
-		value_text := t.dump_value_string(value, typ)
+		value_text := if child_node.kind == .none_expr {
+			t.make_string_literal('none')
+		} else {
+			t.dump_value_string(value, typ)
+		}
 		mut path := t.cur_file
 		mut line := 0
 		if file := t.a.source_files[node.pos.id] {
