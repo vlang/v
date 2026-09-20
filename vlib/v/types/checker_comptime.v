@@ -7259,8 +7259,14 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		pointer_value_comparison :=
 			(rhs_clean is Pointer && tc.type_compatible(rhs_clean.base_type, lhs_clean))
 				|| (lhs_clean is Pointer && tc.type_compatible(lhs_clean.base_type, rhs_clean))
+		pointer_struct_value_comparison :=
+			(rhs_clean is Pointer && unalias_type(rhs_clean.base_type) is Struct
+				&& lhs_clean is Struct)
+				|| (lhs_clean is Pointer && unalias_type(lhs_clean.base_type) is Struct
+					&& rhs_clean is Struct)
 		pointer_value_comparison_allowed := pointer_value_comparison
-			&& (tc.unsafe_depth > 0 || tc.expr_is_inside_unsafe_block(id))
+			&& (pointer_struct_value_comparison || tc.unsafe_depth > 0
+				|| tc.expr_is_inside_unsafe_block(id))
 		compatible := if lhs_is_sum != rhs_is_sum {
 			false
 		} else {
