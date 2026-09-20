@@ -1536,6 +1536,10 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	if a.node == b.node && a.diagnostic_order > 0 && b.diagnostic_order > 0
+		&& a.diagnostic_order != b.diagnostic_order {
+		return a.diagnostic_order - b.diagnostic_order
+	}
 	a_is_struct_field_mismatch := a.msg.starts_with('cannot assign to field `')
 	b_is_struct_field_mismatch := b.msg.starts_with('cannot assign to field `')
 	a_is_struct_field_nil := a.msg.starts_with('cannot assign `nil` to struct field `')
@@ -4004,16 +4008,17 @@ fn clone_parallel_type_error(err TypeError) TypeError {
 		details << detail.clone()
 	}
 	return TypeError{
-		msg:        err.msg.clone()
-		kind:       err.kind
-		node:       err.node
-		file:       err.file.clone()
-		node_kind:  err.node_kind.clone()
-		node_value: err.node_value.clone()
-		node_pos:   err.node_pos.clone()
-		pos:        err.pos
-		details:    details
-		severity:   err.severity.clone()
+		msg:              err.msg.clone()
+		kind:             err.kind
+		node:             err.node
+		file:             err.file.clone()
+		node_kind:        err.node_kind.clone()
+		node_value:       err.node_value.clone()
+		node_pos:         err.node_pos.clone()
+		pos:              err.pos
+		details:          details
+		severity:         err.severity.clone()
+		diagnostic_order: err.diagnostic_order
 	}
 }
 

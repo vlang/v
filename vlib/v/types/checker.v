@@ -193,16 +193,17 @@ fn unknown_type(reason string) Type {
 // TypeError represents type error data used by types.
 pub struct TypeError {
 pub:
-	msg        string
-	kind       TypeErrorKind
-	node       flat.NodeId
-	file       string
-	node_kind  string
-	node_value string
-	node_pos   string
-	pos        token.Pos
-	details    []string
-	severity   string
+	msg              string
+	kind             TypeErrorKind
+	node             flat.NodeId
+	file             string
+	node_kind        string
+	node_value       string
+	node_pos         string
+	pos              token.Pos
+	details          []string
+	severity         string
+	diagnostic_order int
 }
 
 // TypeErrorKind lists type error kind values used by types.
@@ -2504,6 +2505,17 @@ fn (mut tc TypeChecker) record_error_at(kind TypeErrorKind, msg string, node fla
 		return
 	}
 	tc.errors << tc.make_type_error_at(kind, msg, node, pos)
+}
+
+fn (mut tc TypeChecker) record_ordered_error_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, order int) {
+	if !tc.should_diagnose(node) {
+		return
+	}
+	base := tc.make_type_error_at(kind, msg, node, pos)
+	tc.errors << TypeError{
+		...base
+		diagnostic_order: order
+	}
 }
 
 fn (mut tc TypeChecker) record_error_severity_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos, severity string) {

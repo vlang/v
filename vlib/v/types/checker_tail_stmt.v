@@ -3759,7 +3759,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		// acquire pointer fields only after substituting its type arguments, so those
 		// fields retain their zero/default initialization unless explicitly supplied.
 		if !init_type_text.contains('[') {
-			for missing in tc.missing_reference_struct_fields(init_name, supplied_fields, []string{}) {
+			for diagnostic_index, missing in tc.missing_reference_struct_fields(init_name, supplied_fields, []string{}) {
 				if seen_missing_references[missing.path] {
 					continue
 				}
@@ -3769,7 +3769,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 				} else {
 					'reference field `${missing.path}` must be initialized'
 				}
-				tc.record_error_at(.assignment_mismatch, message, id, tc.struct_init_head_pos(node))
+				tc.record_ordered_error_at(.assignment_mismatch, message, id,
+					tc.struct_init_head_pos(node), diagnostic_index + 1)
 			}
 		}
 		for i in 0 .. node.children_count {
