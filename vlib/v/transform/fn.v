@@ -6187,7 +6187,7 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 	if !t.alias_str_needs_name_wrapper(base_type) {
 		return inner
 	}
-	display := struct_string_display_name(alias_name)
+	display := t.alias_string_display_name(alias_name, base_type)
 	return t.string_plus(t.string_plus(t.make_string_literal('${display}('), inner), t.make_string_literal(')'))
 }
 
@@ -6400,7 +6400,7 @@ fn (mut t Transformer) optional_payload_alias_display_name(typ string) ?string {
 		'u8', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64'] {
 		return none
 	}
-	return struct_string_display_name(alias_name)
+	return t.alias_string_display_name(alias_name, base)
 }
 
 fn (t &Transformer) alias_str_needs_name_wrapper(base_type string) bool {
@@ -6630,6 +6630,33 @@ fn struct_string_display_name(typ string) string {
 	return typ
 }
 
+fn (t &Transformer) alias_string_display_name(alias_name string, base_type string) string {
+	if !alias_name.contains('.') && t.cur_module !in ['', 'main', 'builtin'] {
+		qualified := '${t.cur_module}.${alias_name}'
+		if !isnil(t.tc) && qualified in t.tc.type_aliases {
+			return qualified
+		}
+	}
+	if !alias_name.contains('.') && !isnil(t.tc) {
+		resolved_base := t.normalize_type_alias(base_type)
+		mut matched := ''
+		for candidate, target in t.tc.type_aliases {
+			if candidate.all_after_last('.') != alias_name
+				|| t.normalize_type_alias(target) != resolved_base {
+				continue
+			}
+			if matched.len > 0 && matched != candidate {
+				return struct_string_display_name(alias_name)
+			}
+			matched = candidate
+		}
+		if matched.len > 0 {
+			return struct_string_display_name(matched)
+		}
+	}
+	return struct_string_display_name(alias_name)
+}
+
 // struct_field_str_value stringifies one struct field for the auto-generated struct str.
 // Unlike top-level stringification, V wraps an alias-typed field as `AliasName(value)` even
 // when the alias base is primitive (`d: Duration(42)`), unless the alias defines its own
@@ -6685,7 +6712,7 @@ fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type s
 			return inner
 		}
 	}
-	display := struct_string_display_name(alias_name)
+	display := t.alias_string_display_name(alias_name, base_type)
 	return t.string_plus(t.string_plus(t.make_string_literal('${display}('), inner), t.make_string_literal(')'))
 }
 
