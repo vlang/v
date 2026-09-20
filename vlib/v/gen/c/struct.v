@@ -749,6 +749,10 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 			g.write('}')
 			return
 		}
+		if g.optional_struct_init_is_none(node) {
+			g.write('(${name}){.ok = false, .err = builtin__none__}')
+			return
+		}
 		if g.gen_optional_fixed_array_struct_init(node, name, init_type) {
 			return
 		}
@@ -1128,6 +1132,24 @@ fn (g &FlatGen) optional_struct_init_value_id(node flat.Node) ?flat.NodeId {
 		}
 	}
 	return none
+}
+
+fn (g &FlatGen) optional_struct_init_is_none(node flat.Node) bool {
+	mut has_false_ok := false
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		if field.value in ['err', 'value'] {
+			return false
+		}
+		if field.value == 'ok' {
+			value := g.a.child_node(field, 0)
+			has_false_ok = value.kind != .bool_literal || value.value != 'true'
+		}
+	}
+	return has_false_ok
 }
 
 fn (g &FlatGen) optional_struct_init_payload_type(init_type types.Type) ?types.Type {
@@ -2287,7 +2309,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 	raw_typ := clean_typ
 	if clean_typ is types.OptionType || clean_typ is types.ResultType {
 		ct := g.optional_type_name(clean_typ)
-		g.write('(${ct}){0}')
+		g.write('(${ct}){.ok = false, .err = builtin__none__}')
 		return
 	}
 	if clean_typ is types.Struct && !clean_typ.name.starts_with('C.') {
