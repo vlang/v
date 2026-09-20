@@ -13200,6 +13200,26 @@ fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos
 		p.next() // skip $
 		p.check(.lcbr) // skip {
 		expr_id := p.expr(.lowest)
+		if p.tok == .string && p.s.in_str_inter {
+			p.record_diagnostic('expected `}` to close string interpolation', p.tok_pos)
+			ids << expr_id
+			relative_line_end := p.s.src[p.tok_pos..].index_u8(`\n`)
+			line_end := if relative_line_end >= 0 {
+				relative_line_end
+			} else {
+				p.s.src.len - p.tok_pos
+			}
+			p.s.offset = p.tok_pos + line_end
+			p.s.in_str_incomplete = false
+			p.s.in_str_inter = false
+			p.s.in_str_inter_format = false
+			p.s.str_inter_cbr_depth = 0
+			p.s.str_parent_quotes.clear()
+			p.s.str_parent_depths.clear()
+			p.has_peek = false
+			p.next()
+			break
+		}
 		mut part_id := expr_id
 		// format spec: :fmt
 		if p.tok == .colon {
