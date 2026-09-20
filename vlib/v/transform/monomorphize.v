@@ -6798,6 +6798,19 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 				return direct_key
 			}
 		}
+		// Synthesized method calls use an identifier callee and can encode only the
+		// concrete generic arguments, not a structured receiver pattern such as
+		// `Box[[]T]`. Match those declarations against the call's receiver value.
+		if callee.value.contains('.') {
+			method := callee.value.all_after_last('.')
+			for key in t.generic_receiver_methods_by_name[method] {
+				decl := decls[key] or { continue }
+				if t.resolved_generic_decl_matches_callee_receiver(callee, node, decl,
+					module_name) && t.generic_call_arg_count_matches_decl(node, decl) {
+					return key
+				}
+			}
+		}
 		if key := t.generic_flat_receiver_call_decl_key(callee.value, module_name, decls) {
 			if decl := decls[key] {
 				if t.generic_call_arg_count_matches_decl(node, decl) {

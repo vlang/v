@@ -2353,6 +2353,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_shared_runtime := false
 	mut channel_stringify_cache := map[string]int{}
 	mut ierror_equality_cache := map[string]int{}
+	auto_str_skipped_fields := markused_auto_str_skipped_fields(a)
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	for _, shared_params in tc.fn_shared_params {
@@ -2451,7 +2452,8 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 							&& markused_expr_stringifies_channel(tc, a.child(&node, 1), cur_module, mut channel_stringify_cache) {
 							needs_channel_str_helpers = true
 						}
-						enqueue_stringified_custom_str_method(a.child(&node, 1), cur_module, tc, mut used, mut queue)
+						enqueue_stringified_custom_str_method(a.child(&node, 1), cur_module, tc,
+							auto_str_skipped_fields, mut used, mut queue)
 					}
 				}
 			}
@@ -2494,12 +2496,21 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				needs_string_interp_helpers = true
 				needs_string_plus_helper = true
 				for i in 0 .. node.children_count {
-					part_id := a.child(&node, i)
+					mut part_id := a.child(&node, i)
+					part := a.node(part_id)
+					if part.kind == .directive && part.value == 'string_interp_format'
+						&& part.children_count > 0 {
+						if part.typ == 'p' {
+							continue
+						}
+						part_id = a.child(part, 0)
+					}
 					if !needs_channel_str_helpers
 						&& markused_expr_stringifies_channel(tc, part_id, cur_module, mut channel_stringify_cache) {
 						needs_channel_str_helpers = true
 					}
-					enqueue_stringified_custom_str_method(part_id, cur_module, tc, mut used, mut queue)
+					enqueue_stringified_custom_str_method(part_id, cur_module, tc,
+						auto_str_skipped_fields, mut used, mut queue)
 				}
 			}
 			.assign, .index_assign {
@@ -3195,49 +3206,141 @@ fn markused_type_lowers_to_map_str(typ0 types.Type) bool {
 	return typ is types.Map || markused_clean_map_type(typ.name()).starts_with('map[')
 }
 
-// enqueue_stringified_custom_str_method supports enqueue_stringified_custom_str_method handling.
-fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
-	mut typ := tc.expr_type(expr_id) or { tc.resolve_type(expr_id) }
-	for _ in 0 .. 8 {
-		if typ is types.Alias {
-			typ = typ.base_type
+fn markused_auto_str_skipped_fields(a &flat.FlatAst) map[string]bool {
+	mut skipped := map[string]bool{}
+	mut module_name := 'main'
+	for node in a.nodes {
+		if node.kind == .module_decl {
+			module_name = if node.value.len > 0 { node.value } else { 'main' }
 			continue
 		}
-		if typ is types.OptionType {
-			typ = typ.base_type
+		if node.kind != .struct_decl {
 			continue
 		}
-		if typ is types.ResultType {
-			typ = typ.base_type
-			continue
+		qualified := if module_name in ['', 'main', 'builtin'] {
+			node.value
+		} else {
+			'${module_name}.${node.value}'
 		}
-		if typ is types.Pointer {
-			base := typ.base_type
-			if base is types.Struct || base is types.SumType || base is types.Interface
-				|| base is types.Enum {
-				typ = base
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.kind != .field_decl {
 				continue
 			}
+			params := field.generic_params()
+			if params.len < 2 {
+				continue
+			}
+			for attr in params[1..] {
+				parts := attr.split_nth(':', 2)
+				if parts.len == 2 && parts[0].trim_space() == 'str'
+					&& parts[1].trim_space().trim('\'"') == 'skip' {
+					skipped['${qualified}\n${field.value}'] = true
+					skipped['${node.value}\n${field.value}'] = true
+					break
+				}
+			}
+		}
+	}
+	return skipped
+}
+
+fn markused_auto_str_field_is_skipped(type_name string, field_name string, skipped map[string]bool) bool {
+	base, _, is_generic := markused_generic_app_parts(type_name)
+	lookup := if is_generic { base } else { type_name }
+	if skipped['${lookup}\n${field_name}'] {
+		return true
+	}
+	short := lookup.all_after_last('.')
+	return short != lookup && skipped['${short}\n${field_name}']
+}
+
+// enqueue_stringified_custom_str_method retains custom str methods needed by direct and nested
+// automatic stringification. The checker supplies concretely substituted generic field types.
+fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string, tc &types.TypeChecker, skipped_fields map[string]bool, mut used map[string]bool, mut queue []string) {
+	typ := tc.expr_type(expr_id) or { tc.resolve_type(expr_id) }
+	mut seen := map[string]bool{}
+	enqueue_stringified_type_dependencies(typ, cur_module, tc, skipped_fields, mut used,
+		mut queue, mut seen)
+}
+
+fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &types.TypeChecker, skipped_fields map[string]bool, mut used map[string]bool, mut queue []string, mut seen map[string]bool) {
+	type_name := typ.name()
+	if type_name.len > 0 {
+		if seen[type_name] {
 			return
 		}
-		break
+		seen[type_name] = true
 	}
-	type_name := typ.name()
 	match typ {
+		types.Alias {
+			if enqueue_structlike_str_method(type_name, cur_module, tc, mut used, mut queue) {
+				return
+			}
+			enqueue_stringified_type_dependencies(typ.base_type, cur_module, tc, skipped_fields,
+				mut used, mut queue, mut seen)
+		}
+		types.OptionType {
+			enqueue_stringified_type_dependencies(typ.base_type, cur_module, tc, skipped_fields,
+				mut used, mut queue, mut seen)
+		}
+		types.ResultType {
+			enqueue_stringified_type_dependencies(typ.base_type, cur_module, tc, skipped_fields,
+				mut used, mut queue, mut seen)
+		}
+		types.Pointer {
+			base := typ.base_type
+			if base is types.Struct || base is types.SumType || base is types.Interface
+				|| base is types.Enum || base is types.Alias {
+				enqueue_stringified_type_dependencies(base, cur_module, tc, skipped_fields,
+					mut used, mut queue, mut seen)
+			}
+		}
 		types.Primitive, types.Rune, types.Char, types.ISize, types.USize, types.String {
 			enqueue_stringified_primitive_helpers(type_name, mut used, mut queue)
 		}
 		types.Enum {
-			enqueue_enum_str_method(typ.name, cur_module, tc, mut used, mut queue)
+			enqueue_enum_str_method(type_name, cur_module, tc, mut used, mut queue)
 		}
 		types.Struct {
-			enqueue_structlike_str_method(typ.name, cur_module, tc, mut used, mut queue)
+			if enqueue_structlike_str_method(type_name, cur_module, tc, mut used, mut queue) {
+				return
+			}
+			for field in tc.struct_fields_for_type(type_name) {
+				if markused_auto_str_field_is_skipped(type_name, field.name, skipped_fields) {
+					continue
+				}
+				enqueue_stringified_type_dependencies(field.typ, cur_module, tc, skipped_fields,
+					mut used, mut queue, mut seen)
+			}
 		}
 		types.SumType {
-			enqueue_structlike_str_method(typ.name, cur_module, tc, mut used, mut queue)
+			if enqueue_structlike_str_method(type_name, cur_module, tc, mut used, mut queue) {
+				return
+			}
+			for variant in markused_sum_variants(type_name, tc) {
+				enqueue_stringified_type_dependencies(tc.parse_type(variant), cur_module, tc,
+					skipped_fields, mut used, mut queue, mut seen)
+			}
 		}
 		types.Interface {
-			enqueue_interface_str_methods(typ.name, tc, mut used, mut queue)
+			enqueue_interface_str_methods(type_name, tc, mut used, mut queue)
+		}
+		types.Array {
+			if !enqueue_structlike_str_method(type_name, cur_module, tc, mut used, mut queue) {
+				enqueue_stringified_type_dependencies(typ.elem_type, cur_module, tc,
+					skipped_fields, mut used, mut queue, mut seen)
+			}
+		}
+		types.ArrayFixed {
+			enqueue_stringified_type_dependencies(typ.elem_type, cur_module, tc, skipped_fields,
+				mut used, mut queue, mut seen)
+		}
+		types.Map {
+			enqueue_stringified_type_dependencies(typ.key_type, cur_module, tc, skipped_fields,
+				mut used, mut queue, mut seen)
+			enqueue_stringified_type_dependencies(typ.value_type, cur_module, tc, skipped_fields,
+				mut used, mut queue, mut seen)
 		}
 		else {}
 	}
@@ -3476,24 +3579,47 @@ fn enqueue_enum_str_method(type_name string, cur_module string, tc &types.TypeCh
 }
 
 // enqueue_structlike_str_method supports enqueue structlike str method handling for markused.
-fn enqueue_structlike_str_method(type_name string, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+
+fn enqueue_structlike_str_method(type_name string, cur_module string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) bool {
+	mut found := false
 	for candidate in stringification_type_candidates(type_name, cur_module) {
-		enqueue_structlike_str_candidate(candidate, tc, mut used, mut queue)
+		found = enqueue_structlike_str_candidate(candidate, tc, mut used, mut queue) || found
 	}
 	for candidate in generic_stringification_type_candidates(type_name, cur_module, tc) {
-		enqueue_structlike_str_candidate(candidate, tc, mut used, mut queue)
+		found = enqueue_structlike_str_candidate(candidate, tc, mut used, mut queue) || found
 	}
+	if info := tc.resolve_generic_struct_method(type_name, 'str') {
+		found = true
+		enqueue(info.name, mut used, mut queue)
+		lowered := markused_c_name(info.name)
+		if lowered != info.name {
+			enqueue(lowered, mut used, mut queue)
+		}
+	}
+	if method := tc.concrete_method_signature_key(type_name, 'str') {
+		found = true
+		enqueue(method, mut used, mut queue)
+		lowered := markused_c_name(method)
+		if lowered != method {
+			enqueue(lowered, mut used, mut queue)
+		}
+	}
+	return found
 }
 
-fn enqueue_structlike_str_candidate(candidate string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+fn enqueue_structlike_str_candidate(candidate string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) bool {
+	mut found := false
 	lowered := '${markused_c_name(candidate)}__str'
 	if lowered in tc.fn_ret_types {
+		found = true
 		enqueue(lowered, mut used, mut queue)
 	}
 	method := '${candidate}.str'
 	if method in tc.fn_ret_types {
+		found = true
 		enqueue(method, mut used, mut queue)
 	}
+	return found
 }
 
 // stringification_type_candidates supports stringification type candidates handling for markused.

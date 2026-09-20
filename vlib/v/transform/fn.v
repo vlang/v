@@ -6190,7 +6190,21 @@ fn (mut t Transformer) alias_custom_str_call(expr flat.NodeId, alias_name string
 			receiver = t.make_ident(tmp_name)
 		}
 	}
-	return t.make_call_typed(str_fn, [receiver], 'string')
+	return t.make_generic_str_method_call(str_fn, generic_fn_decl_base_value(str_fn), [receiver])
+}
+
+fn (mut t Transformer) make_generic_str_method_call(method_name string, decl_key string, args []flat.NodeId) flat.NodeId {
+	call := t.make_call_typed(method_name, args, 'string')
+	generic_args := t.recorded_generic_specialization_args(method_name) or { return call }
+	if generic_args.len == 0 || t.generic_args_have_placeholders(generic_args) {
+		return call
+	}
+	t.set_node_value(int(call), generic_args.join(', '))
+	t.generic_call_spec_cache[int(call)] = GenericCallSpec{
+		decl_key: decl_key
+		args:     generic_args.clone()
+	}
+	return call
 }
 
 fn (mut t Transformer) alias_custom_str_method_name(alias_name string) ?string {
@@ -6212,7 +6226,8 @@ fn (mut t Transformer) alias_custom_str_method_name(alias_name string) ?string {
 		}
 		str_fn := '${c_name(qname)}__str'
 		v_str_fn := '${qname}.str'
-		if method_name, generic_args := t.generic_str_method_specialization(v_str_fn, qname, alias_target) {
+		if method_name, generic_args, _ := t.generic_str_method_specialization(v_str_fn,
+			qname, alias_target) {
 			t.mark_generic_str_method_specialization(method_name, generic_args)
 			return method_name
 		}
@@ -8449,41 +8464,27 @@ fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ string) ?
 	// String interpolation synthesizes this call after the source-context maps
 	// have been built. Encode the exact receiver specialization in the callee and
 	// call metadata so a later monomorphizer instance can materialize its body.
-	_, receiver_args, is_generic := generic_app_parts(clean_typ)
-	mut concrete_args := []string{}
-	mut inferred_method_name := ''
-	if is_generic && receiver_args.len > 0 {
-		method_name, inferred_args := t.generic_str_method_specialization(info.name, clean_typ, '') or {
-			return none
-		}
-		inferred_method_name = method_name
-		concrete_args = inferred_args.clone()
-	}
-	method_name := if concrete_args.len > 0 {
-		inferred_method_name
-	} else {
-		'${clean_typ}.str'
-	}
+	method_name, concrete_args, decl_key := t.generic_str_method_specialization(info.name,
+		clean_typ, '') or { return none }
 	t.mark_generic_str_method_specialization(method_name, concrete_args)
-	call := t.make_call_typed(method_name, [expr], 'string')
-	if concrete_args.len > 0 {
-		t.set_node_value(int(call), concrete_args.join(', '))
-	}
-	return call
+	return t.make_generic_str_method_call(method_name, decl_key, [expr])
 }
 
 // generic_str_method_specialization infers the generic declaration arguments from the exact
 // receiver pattern. In particular, `(box Box[[]T])` on `Box[[]int]` specializes T as `int`, not
 // `[]int`. V1 also permits a generic str method on a concrete alias receiver; in that case its
 // method arguments are taken positionally from the alias target (`Ints = []int` gives T = int).
-fn (mut t Transformer) generic_str_method_specialization(fn_name string, receiver_type string, alias_target string) ?(string, []string) {
+fn (mut t Transformer) generic_str_method_specialization(fn_name string, receiver_type string, alias_target string) ?(string, []string, string) {
 	decls := t.cached_generic_fn_decls()
-	mut decl_key := generic_fn_decl_base_value(fn_name)
+	mut decl_key := fn_name
 	decl := decls[decl_key] or {
-		base, _, is_generic := generic_app_parts(receiver_type.trim_left('&'))
-		lookup_base := if is_generic { base } else { receiver_type.trim_left('&') }
-		decl_key = t.generic_receiver_decl_key(lookup_base, 'str', decls)
-		decls[decl_key] or { return none }
+		decl_key = generic_fn_decl_base_value(fn_name)
+		decls[decl_key] or {
+			base, _, is_generic := generic_app_parts(receiver_type.trim_left('&'))
+			lookup_base := if is_generic { base } else { receiver_type.trim_left('&') }
+			decl_key = t.generic_receiver_decl_key(lookup_base, 'str', decls)
+			decls[decl_key] or { return none }
+		}
 	}
 	params := t.generic_fn_param_names(decl.node, decl.module)
 	if params.len == 0 {
@@ -8521,7 +8522,7 @@ fn (mut t Transformer) generic_str_method_specialization(fn_name string, receive
 		return none
 	}
 	spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
-	return transform_qualified_fn_name(decl.module, spec_value), concrete_args
+	return transform_qualified_fn_name(decl.module, spec_value), concrete_args, decl_key
 }
 
 fn generic_str_alias_target_args(target string) []string {
