@@ -417,7 +417,8 @@ fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId)
 		} else {
 			node.value
 		}
-		if qualified == name || qualified == lookup_name
+		reflection_name := qualified.replace('@static@', '.')
+		if reflection_name == name || reflection_name == lookup_name
 			|| (module_name == t.cur_module && node.value == lookup_name) {
 			return t.comptime_node_attribute_metas(idx)
 		}
