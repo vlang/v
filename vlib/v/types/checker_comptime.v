@@ -7884,8 +7884,10 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 	if !lhs_clean.is_integer() || !rhs_clean.is_integer() || lhs_unsigned == rhs_unsigned {
 		return false
 	}
-	if (!lhs_unsigned && tc.integer_literal_source(lhs_id) != none)
-		|| (!rhs_unsigned && tc.integer_literal_source(rhs_id) != none) {
+	if (!lhs_unsigned && (tc.integer_literal_source(lhs_id) != none
+		|| tc.is_nonnegative_untyped_integer_constant_expr(lhs_id)))
+		|| (!rhs_unsigned && (tc.integer_literal_source(rhs_id) != none
+			|| tc.is_nonnegative_untyped_integer_constant_expr(rhs_id))) {
 		return false
 	}
 	if (lhs_unsigned && tc.is_fixed_array_len_const_comparison(rhs_id, lhs_id))
@@ -7914,6 +7916,34 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 	tc.record_error_at(.condition_mismatch, '`${lhs_type.name()}` cannot be compared with `${rhs_type.name()}`',
 		rhs_id, pos)
 	return true
+}
+
+fn (tc &TypeChecker) is_nonnegative_untyped_integer_constant_expr(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.int_literal {}
+		.paren, .prefix {
+			if node.children_count != 1
+				|| !tc.is_nonnegative_untyped_integer_constant_expr(tc.a.child(node, 0)) {
+				return false
+			}
+		}
+		.infix {
+			if node.children_count != 2
+				|| !tc.is_nonnegative_untyped_integer_constant_expr(tc.a.child(node, 0))
+				|| !tc.is_nonnegative_untyped_integer_constant_expr(tc.a.child(node, 1)) {
+				return false
+			}
+		}
+		else {
+			return false
+		}
+	}
+	value := tc.const_int_expr(id, tc.cur_module, []string{}) or { return false }
+	return value >= 0
 }
 
 fn (tc &TypeChecker) is_fixed_array_len_const_comparison(len_id flat.NodeId, const_id flat.NodeId) bool {
