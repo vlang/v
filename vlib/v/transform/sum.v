@@ -1665,10 +1665,10 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 	expr := t.a.nodes[int(expr_id)]
 	if expr.kind == .if_expr {
 		branch_type := t.if_expr_branch_result_type(expr)
-		if t.if_expr_branch_overrides_sum_target(branch_type, resolved_sum) {
+		if t.if_expr_branch_overrides_sum_target(branch_type, storage_sum) {
 			return t.transform_expr(expr_id)
 		}
-		if lowered := t.try_expand_if_expr_value_for_type(expr_id, expr, resolved_sum) {
+		if lowered := t.try_expand_if_expr_value_for_type(expr_id, expr, storage_sum) {
 			return lowered
 		}
 	}

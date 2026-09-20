@@ -10925,7 +10925,8 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 	}
 	resolved_target_type := t.resolve_sum_name(target_type)
 	if target_type.len > 0 && resolved_target_type in t.sum_types {
-		return t.clone_borrowed_projection(return_child_id, t.transform_sum_value_for_type(return_child_id, resolved_target_type), resolved_target_type)
+		sum_storage_type := t.sum_literal_type_name(target_type, resolved_target_type)
+		return t.clone_borrowed_projection(return_child_id, t.transform_sum_value_for_type(return_child_id, sum_storage_type), sum_storage_type)
 	}
 	if target_type.len > 0 && !t.is_optional_type_name(target_type) {
 		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id, target_type), target_type)
