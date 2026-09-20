@@ -742,10 +742,10 @@ fn (mut p Parser) record_diagnostic(message string, offset int) {
 }
 
 fn (mut p Parser) record_diagnostic_span(message string, start int, end int) {
-	p.record_diagnostic_span_with_details(message, start, end, [])
+	p.record_diagnostic_span_with_details(message, start, end, '', [])
 }
 
-fn (mut p Parser) record_diagnostic_span_with_details(message string, start int, end int, details []string) {
+fn (mut p Parser) record_diagnostic_span_with_details(message string, start int, end int, severity string, details []string) {
 	clamped_start := clamp_source_offset(start, p.s.src.len)
 	clamped_end := clamp_source_offset(end, p.s.src.len)
 	if message.starts_with('unexpected name `') {
@@ -765,12 +765,13 @@ fn (mut p Parser) record_diagnostic_span_with_details(message string, start int,
 		line, column = p.s.current_file().find_line_and_column(clamped_start)
 	}
 	p.append_diagnostic(Diagnostic{
-		file:    p.cur_file
-		pos:     token.new_span(p.cur_file_id, clamped_start, clamped_end)
-		line:    line
-		column:  column
-		message: message
-		details: details
+		file:     p.cur_file
+		pos:      token.new_span(p.cur_file_id, clamped_start, clamped_end)
+		line:     line
+		column:   column
+		severity: severity
+		message:  message
+		details:  details
 	})
 }
 
@@ -848,7 +849,7 @@ fn (mut p Parser) collect_scanner_diagnostics() {
 			continue
 		}
 		p.record_diagnostic_span_with_details(diagnostic.message, diagnostic.offset, diagnostic.end,
-			diagnostic.details.clone())
+			diagnostic.severity, diagnostic.details.clone())
 	}
 }
 

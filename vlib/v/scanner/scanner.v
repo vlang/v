@@ -14,10 +14,11 @@ pub enum Mode {
 // Diagnostic describes a lexical error at a byte offset in the current source.
 pub struct Diagnostic {
 pub:
-	offset  int
-	end     int
-	message string
-	details []string
+	offset   int
+	end      int
+	severity string
+	message  string
+	details  []string
 }
 
 // Scanner represents scanner data used by scanner.
@@ -118,6 +119,15 @@ fn (mut s Scanner) error_with_details(message string, offset int, details []stri
 		end:     offset + 1
 		message: message
 		details: details
+	}
+}
+
+fn (mut s Scanner) warning(message string, offset int) {
+	s.diagnostics << Diagnostic{
+		offset:   offset
+		end:      offset + 1
+		severity: 'warning:'
+		message:  message
 	}
 }
 
@@ -874,6 +884,11 @@ fn (mut s Scanner) number() {
 			if next >= `0` && next <= `9` {
 				s.consume_digits(10)
 			}
+		} else if next == 0 || next.is_space() || next in [`,`, `;`, `)`, `]`, `}`] {
+			has_fraction = true
+			s.offset++
+			s.warning('float literals should have a digit after the decimal point, e.g. `1.0`',
+				s.offset)
 		}
 	}
 	mut has_exponent := false
