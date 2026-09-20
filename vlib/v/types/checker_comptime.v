@@ -4162,6 +4162,17 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	}
 	if target is OptionType {
 		clean_payload := unalias_type(target.base_type)
+		if clean_payload is SumType {
+			clean_actual := unalias_type(actual)
+			if (clean_actual is SumType && clean_actual.name == clean_payload.name)
+				|| tc.sum_type_contains_variant(clean_payload, actual) {
+				tc.register_synth_type(id, target)
+				return
+			}
+			target_name := '?${target.base_type.name()}'
+			tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target_name}`', id, tc.cast_expression_diagnostic_pos(node, target.base_type.name()))
+			return
+		}
 		if actual is OptionType
 			&& tc.option_cast_payload_compatible(actual.base_type, target.base_type) {
 			tc.register_synth_type(id, target)
@@ -4171,23 +4182,9 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			tc.register_synth_type(id, target)
 			return
 		}
-		if actual is OptionType && clean_payload is SumType
-			&& tc.sum_type_contains_variant(clean_payload, actual.base_type) {
-			tc.register_synth_type(id, target)
-			return
-		}
 		if actual is OptionType && clean_payload is Pointer
 			&& tc.type_compatible(unalias_type(actual.base_type), unalias_type(clean_payload.base_type)) {
 			tc.register_synth_type(id, target)
-			return
-		}
-		if clean_payload is SumType {
-			if tc.sum_type_contains_variant(clean_payload, actual) {
-				tc.register_synth_type(id, target)
-				return
-			}
-			target_name := '?${target.base_type.name()}'
-			tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target_name}`', id, tc.cast_expression_diagnostic_pos(node, target.base_type.name()))
 			return
 		}
 	}
