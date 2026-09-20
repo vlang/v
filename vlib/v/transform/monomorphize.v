@@ -12852,6 +12852,14 @@ fn (mut t Transformer) subst_comptime_type_condition(cond string, args []string)
 			left := clean[..op_idx].trim_space()
 			right := clean[op_idx + op.len..].trim_space()
 			result := '${t.subst_comptime_type_operand(left, args)}${op}${t.subst_comptime_type_operand(right, args)}'
+			// `T is &U` introduces `U` as the pointee type. Keep the specialized
+			// condition for the clone pass to bind instead of deciding that the
+			// otherwise-unknown `U` makes the comparison false.
+			if op == ' is ' {
+				if _, _ := comptime_pointer_type_binding(result) {
+					return result
+				}
+			}
 			if t.cloning_comptime_for_depth == 0 {
 				if value := t.comptime_type_condition_value(result) {
 					return value.str()
