@@ -10865,6 +10865,7 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		c_name(spec_value),
 		c_name(qualified_spec),
 	], concrete_call_args)
+	param_types := t.specialized_generic_call_param_type_texts(decl, concrete_call_args)
 	if is_receiver {
 		mut callee := t.a.nodes[int(children[0])]
 		if callee.kind == .index && callee.children_count > 0 && callee.value != 'range' {
@@ -10873,13 +10874,27 @@ fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children
 		if callee.kind != .selector || callee.children_count == 0 {
 			return ''
 		}
-		receiver := t.a.child(&callee, 0)
+		mut receiver := t.a.child(&callee, 0)
+		if param_types.len > 0 {
+			base_type := t.generic_call_arg_type_for_inference(receiver)
+			mut expected_type := param_types[0].trim_space()
+			if expected_type.starts_with('mut ') {
+				expected_type = expected_type[4..].trim_space()
+			}
+			expected_type = expected_type.trim_left('&').trim_space()
+			if expected_type.len > 0 {
+				if embedded := t.embedded_receiver_base_for_type(receiver, base_type,
+					expected_type)
+				{
+					receiver = embedded
+				}
+			}
+		}
 		children[0] = t.make_ident(qualified_spec)
 		children.insert(1, receiver)
 	} else {
 		children[0] = t.make_ident(qualified_spec)
 	}
-	param_types := t.specialized_generic_call_param_type_texts(decl, concrete_call_args)
 	t.append_missing_specialized_params_struct_args(mut children, param_types, decl.module)
 	return t.specialized_fn_return_type_text(decl, concrete_call_args)
 }
