@@ -2771,6 +2771,9 @@ fn (tc &TypeChecker) optional_pointer_expr_compatible(expr_id flat.NodeId, actua
 		ResultType { actual.base_type }
 		else { actual }
 	}
+	if (actual is OptionType || actual is ResultType) && actual_base !is Pointer {
+		return false
+	}
 	if mut_base := tc.mut_param_expr_base(expr_id, actual) {
 		actual_base = match mut_base {
 			OptionType { mut_base.base_type }
