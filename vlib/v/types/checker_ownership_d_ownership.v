@@ -11302,6 +11302,9 @@ fn (tc &TypeChecker) ownership_expr_borrows_storage(id flat.NodeId) bool {
 		&& tc.ownership_expr_ident_name(variant_source_id).len > 0
 		&& unwrap_pointer(tc.resolve_type(variant_source_id)) == tc.resolve_type(variant_source_id)
 	is_const_read := tc.ownership_expr_reads_const_storage(clean_id)
+	if is_const_read && tc.ownership_expr_reads_error_sentinel(clean_id) {
+		return false
+	}
 	if !is_field && !is_slice && !is_index && !is_deref && !is_variant_cast && !is_const_read {
 		return false
 	}
@@ -11359,6 +11362,70 @@ fn (tc &TypeChecker) ownership_ident_names_const(name string) bool {
 	}
 	qname := tc.qualify_name(name)
 	return qname != name && qname in tc.const_types
+}
+
+fn (tc &TypeChecker) ownership_expr_reads_error_sentinel(id flat.NodeId) bool {
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.nodes[int(clean_id)]
+	mut key := ''
+	if node.kind == .ident {
+		key = tc.const_key_for_name(node.value) or { return false }
+	} else if node.kind == .selector && node.children_count > 0 {
+		base := tc.a.child_node(&node, 0)
+		if base.kind != .ident || tc.ident_resolves_to_value(base.value) {
+			return false
+		}
+		module_name := tc.resolve_import_alias(base.value) or { base.value }
+		key = '${module_name}.${node.value}'
+		if key !in tc.const_types {
+			return false
+		}
+	} else {
+		return false
+	}
+	mut seen := map[string]bool{}
+	return tc.ownership_const_is_error_sentinel(key, mut seen)
+}
+
+fn (tc &TypeChecker) ownership_const_is_error_sentinel(key string, mut seen map[string]bool) bool {
+	if key == '' || seen[key] {
+		return false
+	}
+	seen[key] = true
+	owner := tc.const_modules[key] or { '' }
+	if key.all_after_last('.') == 'error_sentinel' && owner == 'builtin' {
+		return true
+	}
+	expr_id := tc.const_exprs[key] or { return false }
+	clean_id := tc.ownership_unwrap_expr(expr_id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.nodes[int(clean_id)]
+	if node.kind == .ident {
+		module_key := if owner.len > 0 { '${owner}.${node.value}' } else { node.value }
+		next_key := if module_key in tc.const_types {
+			module_key
+		} else {
+			tc.const_key_for_name(node.value) or { return false }
+		}
+		return tc.ownership_const_is_error_sentinel(next_key, mut seen)
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := tc.a.child_node(&node, 0)
+		if base.kind != .ident {
+			return false
+		}
+		module_name := tc.resolve_import_alias(base.value) or { base.value }
+		next_key := '${module_name}.${node.value}'
+		if next_key in tc.const_types {
+			return tc.ownership_const_is_error_sentinel(next_key, mut seen)
+		}
+	}
+	return false
 }
 
 // ownership_projection_reads_through_pointer reports whether the field read at `id` projects
