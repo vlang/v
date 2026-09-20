@@ -12,6 +12,7 @@ CDNs, mTLS proxies, mutual API authentication, and the upcoming
 ## Quick start
 
 ```v ignore
+import time
 import net.http
 import net.http.signature
 
@@ -19,35 +20,49 @@ import net.http.signature
 mut req := http.new_request(.post, 'https://example.com/items', '{}')!
 req.header.add_custom('Date', 'Tue, 20 Apr 2021 02:07:55 GMT')!
 req.header.add_custom('Content-Type', 'application/json')!
+// RFC 9530 digest of the request content, here the two bytes `{}`.
+req.header.add_custom('Content-Digest', 'sha-256=:RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=:')!
 
 priv := signature.Key.from_pem(alice_private_pem)!.with_keyid('alice')
 signature.sign_request(mut req, priv,
-    components: ['@method', '@target-uri', '@authority', 'date', 'content-type']
+    components: ['@method', '@target-uri', '@authority', 'date', 'content-type',
+        'content-digest']
 )!
 // req now carries Signature-Input and Signature header fields.
 
-// On the receiving side, verify with the public key resolved from `keyid`:
+// On the receiving side, verify with the public key resolved from `keyid`,
+// then check the signed digest against the bytes you actually received.
 pub_key := signature.Key.from_pem(alice_public_pem)!
 signature.verify_request(req, pub_key, now_unix: time.now().unix())!
 ```
 
 `Key.from_pem` accepts the canonical PKCS#8 / SPKI / SEC1 PEM blocks
-that `openssl genpkey` and friends produce. The raw-coordinate
-constructors (`Key.ed25519_private(seed)`, `Key.ecdsa_p256_public(x,
-y)`, …) are still available when you have JWK-style key material.
+that `openssl genpkey` and friends produce. For ECDSA keys it goes through
+`crypto.ecdsa`, whose PEM/DER entry points currently need `-d use_openssl`;
+Ed25519 PEM parsing and every raw-coordinate constructor
+(`Key.ed25519_private(seed)`, `Key.ecdsa_p256_public(x, y)`, …) work on the
+default build and are the way in when you have JWK-style key material.
 
 The `now_unix` option rejects signatures created after the supplied time and
 enforces the optional `expires` parameter; pass `0` (the default) to skip time
 validation.
 
-`verify_request` requires `@method`, `@target-uri`, and `@authority` by default;
-a body also requires `content-digest`. For responses, the default is `@status`,
-again with `content-digest` for a body. Default `sign_request` and
-`sign_response` calls require an existing `Content-Digest` field for a body and
-cover it. Applications must also validate that digest against the received
-body. A different authorization profile can be selected explicitly with
-`components` when signing and `required_components` when verifying. The
-lower-level `verify` API performs cryptographic verification only unless its
+`verify_request` requires `@method`, `@target-uri`, `@authority` and
+`content-digest` by default; for responses the default is `@status` and
+`content-digest`. Default `sign_request` and `sign_response` calls require an
+existing `Content-Digest` field and cover it.
+
+That digest requirement does not depend on the message actually carrying
+content: a bodyless message needs the RFC 9530 digest of empty content
+(`sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:`). Deriving the
+policy from the received body instead would let an attacker drop the
+requirement by dropping the body, since nothing authenticates its absence.
+
+Applications must also validate the digest against the received bytes — this
+module verifies that the field is signed, not that it matches the content. A
+different authorization profile can be selected explicitly with `components`
+when signing and `required_components` when verifying. The lower-level
+`verify` API performs cryptographic verification only unless its
 `required_components` option is set.
 
 ## Algorithms
