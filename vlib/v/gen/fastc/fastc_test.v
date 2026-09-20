@@ -2745,7 +2745,10 @@ fn same_storage(left string, right string) bool {
 	return left.len == right.len && unsafe { left.str == right.str }
 }
 
-fn main() {}
+fn main() {
+	_ = accepts_str_method(Node{})
+	_ = same_storage("", "")
+}
 ', 'selector_after_binary.v', prefs) or { panic(err) }
 	assert !source.contains('&builtin__bool_str'), source
 	assert source.contains('Kind__str'), source
