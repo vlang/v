@@ -15054,6 +15054,21 @@ fn (tc &TypeChecker) node_contains_runtime_call(id flat.NodeId) bool {
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .call {
+		if node.children_count > 0 {
+			callee := tc.a.child_node(&node, 0)
+			if callee.kind == .ident {
+				if fn_id := tc.comptime_static_enum_helper_fn_id(callee.value, tc.cur_module) {
+					if tc.declaration_has_attribute(fn_id, 'comptime') {
+						for i in 1 .. node.children_count {
+							if tc.node_contains_runtime_call(tc.a.child(&node, i)) {
+								return true
+							}
+						}
+						return false
+					}
+				}
+			}
+		}
 		return true
 	}
 	for i in 0 .. node.children_count {

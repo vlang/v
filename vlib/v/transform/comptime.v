@@ -2107,6 +2107,11 @@ fn (t &Transformer) comptime_enum_members(base_type string) []EnumValueMeta {
 // treated like the C backend: normal enums use the integer directly; `[flag]` enums use it as the
 // bit index and materialize `1 << index`.
 fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
+	checked_values := if isnil(t.tc) {
+		map[string]int{}
+	} else {
+		t.tc.comptime_enum_decl_field_values(enum_name)
+	}
 	mut cur_mod := ''
 	for idx in 0 .. t.a.nodes.len {
 		kind := t.a.nodes[idx].kind
@@ -2150,7 +2155,9 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 		mut next_val := i64(0)
 		for f in fields {
 			mut val := next_val
-			if int(f.expr_id) >= 0 {
+			if checked_value := checked_values[f.name] {
+				val = i64(checked_value)
+			} else if int(f.expr_id) >= 0 {
 				if ev := t.enum_field_int_value_with_enum(f.expr_id, cur_mod, qualified, mut field_values, field_exprs, mut resolving) {
 					val = ev
 				}

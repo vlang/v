@@ -826,6 +826,17 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []C
 	return []ComptimeStaticValueCase{}
 }
 
+// comptime_enum_decl_field_values returns the statically evaluated values of an enum's fields.
+pub fn (tc &TypeChecker) comptime_enum_decl_field_values(enum_name string) map[string]int {
+	mut values := map[string]int{}
+	for item in tc.comptime_static_enum_decl_value_cases(enum_name) {
+		if item.has_value {
+			values[item.name] = item.value
+		}
+	}
+	return values
+}
+
 fn (tc &TypeChecker) comptime_static_enum_decl_value_cases_for_node(enum_name string, cur_mod string, node flat.Node) ?[]ComptimeStaticValueCase {
 	qualified := if cur_mod != '' && cur_mod != 'main' && cur_mod != 'builtin' {
 		'${cur_mod}.${node.value}'
@@ -976,7 +987,11 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 	if callee.kind != .ident {
 		return none
 	}
-	fn_node := tc.comptime_static_enum_helper_fn(callee.value, enum_module) or { return none }
+	fn_id := tc.comptime_static_enum_helper_fn_id(callee.value, enum_module) or { return none }
+	if !tc.declaration_has_attribute(fn_id, 'comptime') {
+		return none
+	}
+	fn_node := tc.a.node(fn_id)
 	mut locals := map[string]int{}
 	mut arg_idx := 1
 	for i in 0 .. fn_node.children_count {
@@ -1004,7 +1019,7 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 	return none
 }
 
-fn (tc &TypeChecker) comptime_static_enum_helper_fn(callee_name string, enum_module string) ?flat.Node {
+fn (tc &TypeChecker) comptime_static_enum_helper_fn_id(callee_name string, enum_module string) ?flat.NodeId {
 	short := callee_name.all_after_last('.')
 	mut indexes := tc.top_level_idx.clone()
 	if indexes.len == 0 {
@@ -1034,7 +1049,7 @@ fn (tc &TypeChecker) comptime_static_enum_helper_fn(callee_name string, enum_mod
 				else { suffix }
 			}
 			if matches {
-				return candidate
+				return flat.NodeId(idx)
 			}
 		}
 	}
