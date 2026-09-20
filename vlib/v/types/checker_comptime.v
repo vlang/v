@@ -4096,6 +4096,11 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			&& should_check_named_type(target_base_name) && !tc.type_name_known(target_base_name)
 			&& !target_is_generic_param {
 			tc.record_error_at(.unknown_type, 'unknown type `${target_base_name}`', id, node.pos)
+			if tc.cast_operand_is_zero(child_id) && tc.unsafe_depth == 0 {
+				target_name := if node.value.len > 0 { node.value } else { target.name() }
+				tc.record_error_at(.assignment_mismatch, 'cannot null cast a pointer, use ${target_name}(unsafe { nil })',
+					id, tc.cast_expression_diagnostic_pos(node, target_name))
+			}
 			return
 		}
 	}
