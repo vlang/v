@@ -87,11 +87,14 @@ fn (c Components) derived_value(name string) !string {
 		'@query' {
 			// RFC 9421 §2.2.7: the value MUST include the leading "?".
 			// If query is empty, the value is the single character "?".
-			if q := c.query {
-				if q.len == 0 || q[0] != `?` {
-					'?' + q
+			// Named `raw_query` rather than `q`: a local `q` currently collides
+			// with `hash.crc32`'s own `q` const in the C backend whenever both
+			// modules end up in the same binary.
+			if raw_query := c.query {
+				if raw_query.len == 0 || raw_query[0] != `?` {
+					'?' + raw_query
 				} else {
-					q
+					raw_query
 				}
 			} else {
 				return missing(name)
