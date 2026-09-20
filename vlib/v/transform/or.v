@@ -1523,6 +1523,11 @@ fn (mut t Transformer) make_panic_expr_stmt_at(message flat.NodeId, source_id fl
 }
 
 fn (mut t Transformer) make_propagation_panic_stmts(mode string, err_expr flat.NodeId, source_id flat.NodeId) []flat.NodeId {
+	if int(err_expr) < 0 || int(err_expr) >= t.a.nodes.len {
+		kind := if mode == '?' { 'option' } else { 'result' }
+		message := t.make_string_literal('${kind} not set ()')
+		return [t.make_panic_expr_stmt_at(message, source_id)]
+	}
 	err_addr := t.make_prefix(.amp, err_expr)
 	err_message := t.make_call_typed('IError__msg', [err_addr], 'string')
 	if mode != '?' {
