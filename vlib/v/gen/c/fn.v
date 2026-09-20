@@ -4642,10 +4642,11 @@ fn (mut g FlatGen) gen_thread_wait_call(fn_node &flat.Node) bool {
 	g.needs_thread_runtime = true
 	tmp := g.tmp_count
 	g.tmp_count++
+	thread_tmp_name := '__twthread${tmp}'
 	res_name := '__twres${tmp}'
-	g.write('({ void* ${res_name} = __v_thread_join(')
+	g.write('({ __v_thread ${thread_tmp_name} = ')
 	g.gen_expr(base_id)
-	g.write('); ')
+	g.write('; if (!${thread_tmp_name}.handle) v_panic(_S("unable to join thread")); void* ${res_name} = __v_thread_join(${thread_tmp_name}); ')
 	if ret_name.len == 0 {
 		g.write('if (${res_name}) free(${res_name}); })')
 		return true
