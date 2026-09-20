@@ -819,17 +819,7 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		}
 		.dump_expr {
 			if node.children_count > 0 {
-				child_id := tc.a.child(node, 0)
-				binding := tc.recursive_str_eval_expr(child_id, mut env, ctx)
-				if !tc.suppress_dump_output
-					&& recursive_str_binding_has_unprogressed_receiver(binding) {
-					pos := tc.a.node(child_id).pos
-					message := 'cannot call `str()` method recursively'
-					if !tc.errors.any(it.msg == message && it.pos == pos) {
-						tc.record_error_at(.unknown_fn, message, child_id, pos)
-					}
-				}
-				return binding
+				return tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
 			}
 		}
 		.prefix {
@@ -1077,12 +1067,6 @@ fn (mut tc TypeChecker) recursive_str_eval_struct_init(id flat.NodeId, node flat
 		return aggregate
 	}
 	if fields.len == 0 {
-		mut binding := env.bindings[ctx.receiver_name] or { return aggregate }
-		if tc.type_compatible(ctx.receiver_type, target_type)
-			&& tc.type_compatible(target_type, ctx.receiver_type) {
-			binding.typ_name = target_type.name()
-			return binding
-		}
 		return aggregate
 	}
 	mut receiver_text := ''
