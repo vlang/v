@@ -4854,6 +4854,11 @@ fn (tc &TypeChecker) interface_actual_field_inner(concrete_name string, field_na
 }
 
 fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind, actual Type, expected Interface, id flat.NodeId, pos token.Pos) bool {
+	return tc.record_interface_implementation_error_with_mut_receiver(kind, actual, expected,
+		id, pos, false)
+}
+
+fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(kind TypeErrorKind, actual Type, expected Interface, id flat.NodeId, pos token.Pos, allow_mut_receiver bool) bool {
 	clean_actual := unalias_type(unwrap_pointer(actual))
 	if clean_actual is Interface
 		&& (tc.interface_metadata_name(clean_actual.name) == tc.interface_metadata_name(expected.name)
@@ -4889,7 +4894,8 @@ fn (mut tc TypeChecker) record_interface_implementation_error(kind TypeErrorKind
 		mut message := ''
 		expected_receiver_mut, expected_receiver_shared := tc.method_receiver_flags(expected_key)
 		actual_receiver_mut, actual_receiver_shared := tc.method_receiver_flags(actual_key)
-		if !expected_receiver_mut && actual_receiver_mut {
+		if !expected_receiver_mut && actual_receiver_mut
+			&& (!allow_mut_receiver || actual_receiver_shared) {
 			actual_receiver := if actual_receiver_shared {
 				'mut shared ${actual_display}'
 			} else {

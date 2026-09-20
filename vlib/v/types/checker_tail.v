@@ -13789,11 +13789,16 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.record_error_at(.call_arg_mismatch, 'cannot implement interface `${clean_expected_for_interface.name}` using function', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
+		mut mutable_interface_impl_arg := false
 		if expected_interface := cast_target_interface(clean_expected_for_interface) {
 			interface_actual := if actual is Pointer { actual.base_type } else { actual }
-			if tc.record_interface_implementation_error(.call_arg_mismatch, interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id)) {
+			allow_mut_receiver := param_is_mut && mut_arg_node.is_mut
+			if tc.record_interface_implementation_error_with_mut_receiver(.call_arg_mismatch,
+				interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id),
+				allow_mut_receiver) {
 				continue
 			}
+			mutable_interface_impl_arg = allow_mut_receiver
 		}
 		argument_number := param_idx + 1 - (if info.has_receiver {
 			1
@@ -13904,7 +13909,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
 			&& !tc.call_arg_is_callee_receiver(node, arg_id)
 			&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
-		pointer_depth_mismatch := explicit_address_depth_mismatch
+		pointer_depth_mismatch := !mutable_interface_impl_arg && (explicit_address_depth_mismatch
 			|| (actual_pointer_depth != expected_pointer_depth
 				&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
 				&& !fn_param_is_voidptr_type(expected) && !(arg_node.is_mut
@@ -13921,7 +13926,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				&& !(arg_node.is_mut && expected is Pointer
 					&& tc.type_compatible(actual, expected.base_type)) && !pointer_value_arg
 				&& !(info.name.starts_with('C.')
-					&& c_pointer_to_voidptr_arg_compatible(pointer_check_actual, expected)))
+					&& c_pointer_to_voidptr_arg_compatible(pointer_check_actual, expected))))
 		pointer_array_mismatch := actual_pointer_depth > 0 && expected_pointer_depth > 0
 			&& unalias_type(actual_pointer_base) is Array
 			&& unalias_type(expected_pointer_base) is Array
@@ -13978,7 +13983,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`', id)
 			continue
 		}
-		if !tc.expr_receiver_compatible(arg_id, actual, expected)
+		if !mutable_interface_impl_arg && !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected)
 			&& !tc.pointer_value_compatible(actual, expected)
 			&& !(info.name.starts_with('C.')
