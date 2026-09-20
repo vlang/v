@@ -2921,19 +2921,25 @@ fn (mut tc TypeChecker) check_deferred_fixture_array_receivers() {
 			continue
 		}
 		if node.kind != .fn_decl || files_with_errors[node.pos.id] || tc.cur_module == 'builtin'
-			|| node.children_count == 0 {
+			|| !node.value.contains('.') || node.value.ends_with('.map') {
 			continue
 		}
-		receiver_id := tc.a.child(&node, 0)
-		receiver := tc.a.node(receiver_id)
-		if receiver.kind != .param || receiver.op != .dot {
+		receiver, receiver_pos := tc.fn_receiver_source_text_pos(node)
+		if receiver.len < 3 {
 			continue
 		}
-		receiver_type := unwrap_pointer(tc.parse_type(receiver.typ))
-		if receiver_type is Array && !node.value.ends_with('.map') {
-			receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
-			tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
+		parts := receiver[1..receiver.len - 1].fields()
+		if parts.len < 2 {
+			continue
 		}
+		receiver_type := parts[parts.len - 1]
+		if !receiver_type.trim_left('&').starts_with('[]') {
+			continue
+		}
+		type_relative := receiver.last_index(receiver_type) or { continue }
+		type_pos := token.new_span(receiver_pos.id, receiver_pos.offset + type_relative,
+			receiver_pos.offset + type_relative + receiver_type.len)
+		tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_type}. Define an alias and use that instead like `type AliasName = ${receiver_type}`', flat.NodeId(idx), type_pos)
 	}
 }
 
