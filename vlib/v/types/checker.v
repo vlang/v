@@ -12388,8 +12388,13 @@ fn (mut tc TypeChecker) check_struct_implements(node_id flat.NodeId, node flat.N
 			actual := Type(Struct{
 				name: node.value
 			})
+			expected_name := if is_generic {
+				'${interface_name}[${args.join(', ')}]'
+			} else {
+				interface_name
+			}
 			expected := Interface{
-				name: interface_name
+				name: expected_name
 			}
 			if !tc.type_implements_interface(actual, expected) {
 				tc.record_interface_implementation_error(.assignment_mismatch, actual, expected, node_id, tc.struct_declaration_name_pos(node))

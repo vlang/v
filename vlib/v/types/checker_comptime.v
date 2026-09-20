@@ -4889,7 +4889,8 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 			missing_methods = true
 			continue
 		}
-		expected_params := tc.fn_param_types[expected_key] or { []Type{} }
+		expected_params, expected_ret := tc.specialized_interface_method_signature(expected.name,
+			expected_key)
 		actual_params := tc.fn_param_types[actual_key] or { []Type{} }
 		mut message := ''
 		expected_receiver_mut, expected_receiver_shared := tc.method_receiver_flags(expected_key)
@@ -4918,7 +4919,6 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 				}
 			}
 			if message == '' {
-				expected_ret := tc.fn_ret_types[expected_key] or { Type(void_) }
 				actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 				if !tc.method_return_signature_compatible(actual_ret, expected_ret) {
 					message = '`${actual_display}` incorrectly implements method `${method}` of interface `${expected_display}`: expected return type `${tc.interface_diagnostic_type_name(expected_ret, '')}`'
