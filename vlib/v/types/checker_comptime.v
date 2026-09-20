@@ -14249,7 +14249,7 @@ fn (mut tc TypeChecker) record_invalid_decl_assign_lhs(node flat.Node, lhs_id fl
 			if tc.unsafe_depth == 0 {
 				tc.record_error_at(.assignment_mismatch, 'modifying variables via dereferencing can only be done in `unsafe` blocks', lhs_id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 			}
-			tc.record_error_at(.assignment_mismatch, 'non-name on the left side of `:=`', inner_id, tc.prefix_operator_pos(inner_id, '*'))
+			tc.record_error_at(.assignment_mismatch, 'non-name on the left side of `:=`', lhs_id, tc.prefix_operator_pos(inner_id, '*'))
 		}
 		return true
 	}

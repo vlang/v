@@ -1536,6 +1536,12 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_decl_assign_lhs_order := decl_assign_lhs_diagnostic_order(a.msg)
+	b_decl_assign_lhs_order := decl_assign_lhs_diagnostic_order(b.msg)
+	if a.node == b.node && a_decl_assign_lhs_order > 0 && b_decl_assign_lhs_order > 0
+		&& a_decl_assign_lhs_order != b_decl_assign_lhs_order {
+		return a_decl_assign_lhs_order - b_decl_assign_lhs_order
+	}
 	a_is_like_operand := a.msg.starts_with('the left operand of the `like` operator')
 		|| a.msg.starts_with('the right operand of the `like` operator')
 	b_is_like_operand := b.msg.starts_with('the left operand of the `like` operator')
@@ -2255,6 +2261,15 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		return 1
 	}
 	return 0
+}
+
+fn decl_assign_lhs_diagnostic_order(message string) int {
+	return match message {
+		'parentheses are not supported on the left side of `:=`' { 1 }
+		'modifying variables via dereferencing can only be done in `unsafe` blocks' { 2 }
+		'non-name on the left side of `:=`' { 3 }
+		else { 0 }
+	}
 }
 
 fn orm_connection_method_diagnostic_order(message string) int {
