@@ -10403,6 +10403,11 @@ pub fn run(args []string) {
 					}
 					eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
 					print_type_diagnostic_details(diagnostic.details)
+					if diagnostic.detail_pos.is_valid() {
+						eprintln('Details: ')
+						eprintln(compiler_errors.formatted_parser_diagnostic('details:',
+							diagnostic.detail_message, a, diagnostic.detail_pos))
+					}
 					if fatal_errors && severity == 'error:' {
 						break
 					}

@@ -14,11 +14,13 @@ pub enum Mode {
 // Diagnostic describes a lexical error at a byte offset in the current source.
 pub struct Diagnostic {
 pub:
-	offset   int
-	end      int
-	severity string
-	message  string
-	details  []string
+	offset         int
+	end            int
+	severity       string
+	message        string
+	details        []string
+	detail_offset  int = -1
+	detail_message string
 }
 
 // Scanner represents scanner data used by scanner.
@@ -128,6 +130,16 @@ fn (mut s Scanner) warning(message string, offset int) {
 		end:      offset + 1
 		severity: 'warning:'
 		message:  message
+	}
+}
+
+fn (mut s Scanner) error_with_detail_position(message string, offset int, detail_message string, detail_offset int) {
+	s.diagnostics << Diagnostic{
+		offset:         offset
+		end:            offset + 1
+		message:        message
+		detail_offset:  detail_offset
+		detail_message: detail_message
 	}
 }
 
@@ -752,7 +764,8 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 		}
 		s.offset++
 	}
-	s.error('unfinished string literal', s.src.len)
+	s.error_with_detail_position('unfinished string literal', s.src.len, 'literal started here',
+		s.pos)
 }
 
 fn (mut s Scanner) begin_nested_string_interpolation(quote u8) {

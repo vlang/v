@@ -44,13 +44,15 @@ const sql_query_data_alias_reserved_tokens = [
 // Diagnostic is a structured source-ingestion, lexical, or parse diagnostic.
 pub struct Diagnostic {
 pub:
-	file     string
-	pos      token.Pos
-	line     int
-	column   int
-	severity string
-	message  string
-	details  []string
+	file           string
+	pos            token.Pos
+	line           int
+	column         int
+	severity       string
+	message        string
+	details        []string
+	detail_pos     token.Pos
+	detail_message string
 }
 
 struct MalformedScannerDeclaration {
@@ -742,10 +744,10 @@ fn (mut p Parser) record_diagnostic(message string, offset int) {
 }
 
 fn (mut p Parser) record_diagnostic_span(message string, start int, end int) {
-	p.record_diagnostic_span_with_details(message, start, end, '', [])
+	p.record_diagnostic_span_with_details(message, start, end, '', [], -1, '')
 }
 
-fn (mut p Parser) record_diagnostic_span_with_details(message string, start int, end int, severity string, details []string) {
+fn (mut p Parser) record_diagnostic_span_with_details(message string, start int, end int, severity string, details []string, detail_offset int, detail_message string) {
 	clamped_start := clamp_source_offset(start, p.s.src.len)
 	clamped_end := clamp_source_offset(end, p.s.src.len)
 	if message.starts_with('unexpected name `') {
@@ -764,14 +766,21 @@ fn (mut p Parser) record_diagnostic_span_with_details(message string, start int,
 	if p.s.src.len > 0 && p.s.current_file().name == p.cur_file {
 		line, column = p.s.current_file().find_line_and_column(clamped_start)
 	}
+	detail_pos := if detail_offset >= 0 {
+		token.new_pos(p.cur_file_id, clamp_source_offset(detail_offset, p.s.src.len))
+	} else {
+		token.Pos{}
+	}
 	p.append_diagnostic(Diagnostic{
-		file:     p.cur_file
-		pos:      token.new_span(p.cur_file_id, clamped_start, clamped_end)
-		line:     line
-		column:   column
-		severity: severity
-		message:  message
-		details:  details
+		file:           p.cur_file
+		pos:            token.new_span(p.cur_file_id, clamped_start, clamped_end)
+		line:           line
+		column:         column
+		severity:       severity
+		message:        message
+		details:        details
+		detail_pos:     detail_pos
+		detail_message: detail_message
 	})
 }
 
@@ -849,7 +858,8 @@ fn (mut p Parser) collect_scanner_diagnostics() {
 			continue
 		}
 		p.record_diagnostic_span_with_details(diagnostic.message, diagnostic.offset, diagnostic.end,
-			diagnostic.severity, diagnostic.details.clone())
+			diagnostic.severity, diagnostic.details.clone(), diagnostic.detail_offset,
+			diagnostic.detail_message)
 	}
 }
 
