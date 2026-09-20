@@ -50,6 +50,7 @@ pub:
 	column   int
 	severity string
 	message  string
+	details  []string
 }
 
 struct MalformedScannerDeclaration {
@@ -741,6 +742,10 @@ fn (mut p Parser) record_diagnostic(message string, offset int) {
 }
 
 fn (mut p Parser) record_diagnostic_span(message string, start int, end int) {
+	p.record_diagnostic_span_with_details(message, start, end, [])
+}
+
+fn (mut p Parser) record_diagnostic_span_with_details(message string, start int, end int, details []string) {
 	clamped_start := clamp_source_offset(start, p.s.src.len)
 	clamped_end := clamp_source_offset(end, p.s.src.len)
 	if message.starts_with('unexpected name `') {
@@ -765,6 +770,7 @@ fn (mut p Parser) record_diagnostic_span(message string, start int, end int) {
 		line:    line
 		column:  column
 		message: message
+		details: details
 	})
 }
 
@@ -841,7 +847,8 @@ fn (mut p Parser) collect_scanner_diagnostics() {
 			&& diagnostic.offset >= it.scope.offset && diagnostic.end <= it.scope.end) {
 			continue
 		}
-		p.record_diagnostic_span(diagnostic.message, diagnostic.offset, diagnostic.end)
+		p.record_diagnostic_span_with_details(diagnostic.message, diagnostic.offset, diagnostic.end,
+			diagnostic.details.clone())
 	}
 }
 

@@ -1254,6 +1254,7 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 			column:   diagnostic.column
 			message:  diagnostic.message.clone()
 			severity: diagnostic.severity.clone()
+			details:  diagnostic.details.clone()
 		})
 	}
 	for file_id, call_site in w.a.template_call_sites {

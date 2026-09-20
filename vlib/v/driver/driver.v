@@ -10402,6 +10402,7 @@ pub fn run(args []string) {
 						'error:'
 					}
 					eprintln(compiler_errors.formatted_parser_diagnostic(severity, diagnostic.message, a, diagnostic.pos))
+					print_type_diagnostic_details(diagnostic.details)
 					if fatal_errors && severity == 'error:' {
 						break
 					}

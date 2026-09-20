@@ -17,6 +17,7 @@ pub:
 	offset  int
 	end     int
 	message string
+	details []string
 }
 
 // Scanner represents scanner data used by scanner.
@@ -111,6 +112,15 @@ fn (mut s Scanner) error_span(message string, start int, end int) {
 	}
 }
 
+fn (mut s Scanner) error_with_details(message string, offset int, details []string) {
+	s.diagnostics << Diagnostic{
+		offset:  offset
+		end:     offset + 1
+		message: message
+		details: details
+	}
+}
+
 @[inline]
 fn (s &Scanner) source_lit(start int, end int) string {
 	if end <= start {
@@ -152,8 +162,55 @@ fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
 		s.error('unterminated character literal', start)
 	}
 	s.lit = s.source_lit(s.pos + 1, end)
+	if quote == `\`` && closed {
+		s.validate_char_literal(start, s.pos + 1, end)
+	}
 	s.insert_semi = true
 	return .char
+}
+
+fn (mut s Scanner) validate_char_literal(start int, content_start int, content_end int) {
+	content := s.source_lit(content_start, content_end)
+	details := ['use quotes for strings, backticks for characters']
+	if content.len == 0 {
+		s.error_with_details('invalid empty character literal ``', start, details)
+		return
+	}
+	if content.contains('\n') {
+		s.error_with_details(r'invalid character literal, use `\n` instead', start, details)
+		return
+	}
+	mut parts := []string{}
+	mut offset := content_start
+	for offset < content_end {
+		part_start := offset
+		if s.src[offset] == `\\` {
+			escape := s.src[offset + 1]
+			if !is_known_string_escape(escape) {
+				s.error('`${escape.ascii_str()}` unknown escape sequence', offset + 2)
+				return
+			}
+			before_errors := s.diagnostics.len
+			s.check_string_escape(offset)
+			if s.diagnostics.len > before_errors {
+				return
+			}
+			extra := match escape {
+				`x` { 2 }
+				`u` { 4 }
+				`U` { 8 }
+				else { 0 }
+			}
+			offset = int_min(content_end, offset + 2 + extra)
+		} else {
+			offset = int_min(content_end, offset + utf8_char_len(s.src[offset]))
+		}
+		parts << s.source_lit(part_start, offset)
+	}
+	if parts.len > 1 {
+		formatted_parts := parts.map('`${it}`').join(', ')
+		s.error_with_details('invalid character literal `${content}` => `${content}` ([${formatted_parts}]) (more than one character)', start, details)
+	}
 }
 
 // current_file returns current file data for Scanner.
