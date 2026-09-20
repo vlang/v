@@ -452,6 +452,15 @@ fn retry_with_v1_at_exit() {
 	if reason !in ['compiler_error', 'c_compilation_error', 'inline_asm'] {
 		return
 	}
+	if v3_exact_output_fixture_args(state.args) {
+		if '-no-closures' in state.args {
+			os.rm(state.fallback_file) or {}
+			os.rmdir_all(state.c_error_dir) or {}
+			return
+		}
+		os.setenv(v3_retry_env, '1', true)
+		launch_v1(state.args, 'V compilation failed (${reason})', *state)
+	}
 	if reason != 'c_compilation_error' {
 		// V errors are final. The driver may have deferred their diagnostics while
 		// a failure marker was armed, so replay V3 with fallback disabled instead
@@ -470,7 +479,13 @@ fn retry_with_v1_at_exit() {
 
 @[noreturn]
 fn launch_v1(args []string, reason string, report_state RetryState) {
-	diagnostics := v3_fallback_diagnostics(os.real_path(os.executable()), args, report_state)
+	transparent_fixture_fallback := report_state.fallback_file != ''
+		&& v3_exact_output_fixture_args(args)
+	diagnostics := if transparent_fixture_fallback {
+		''
+	} else {
+		v3_fallback_diagnostics(os.real_path(os.executable()), args, report_state)
+	}
 	if diagnostics != '' {
 		eprint(diagnostics)
 	}
@@ -480,11 +495,17 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	os.setenv('VEXE', fallback, true)
 	os.setenv('VCHILD', 'true', true)
-	eprintln('${reason}; retrying with `${fallback}`.')
+	if !transparent_fixture_fallback {
+		eprintln('${reason}; retrying with `${fallback}`.')
+	}
 	os.unsetenv(v3_fallback_file_env)
 	os.unsetenv(v3_c_error_dir_env)
+	mut launch_args := args.clone()
+	if transparent_fixture_fallback && '-nocache' !in launch_args {
+		launch_args.prepend('-nocache')
+	}
 	mut process := os.new_process(fallback)
-	process.set_args(args)
+	process.set_args(launch_args)
 	process.wait()
 	if process.status == .aborted || process.code < 0 {
 		eprintln('failed to launch the V 0.5.2 compatibility compiler `${fallback}`: ${process.err}')
@@ -493,11 +514,11 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	code := process.code
 	process.close()
-	if code == 0 && report_state.fallback_file != '' {
+	if code == 0 && report_state.fallback_file != '' && !transparent_fixture_fallback {
 		submit_v3_fallback_report(fallback, report_state)
 	}
 	// These notes describe diagnostics that were suppressed, not errors printed above.
-	if code != 0 && diagnostics == '' {
+	if code != 0 && diagnostics == '' && !transparent_fixture_fallback {
 		report_v1_fallback_exit(report_state, v1_fallback_exit_identifies_compiler_failure(args))
 	}
 	os.rm(report_state.fallback_file) or {}

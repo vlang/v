@@ -3,6 +3,28 @@ module main
 import os
 import v.ansi
 
+fn v3_exact_output_fixture_args(args []string) bool {
+	for arg in args {
+		if arg.len == 0 || arg.starts_with('-') {
+			continue
+		}
+		if os.is_dir(arg) && os.is_file(arg + '.out') {
+			return true
+		}
+		ext := os.file_ext(arg)
+		if ext !in ['.v', '.vv', '.vsh'] || arg.len <= ext.len {
+			continue
+		}
+		base := arg[..arg.len - ext.len]
+		for suffix in ['.out', '.run.out', '.js.out'] {
+			if os.is_file(base + suffix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // v3_fallback_diagnostics includes failures from the V compiler itself, not just
 // the C compiler. Prefer the original staged C output; otherwise replay only
 // compilation, before the compatibility compiler can run the user's program.
@@ -92,7 +114,11 @@ fn v3_diagnostics_output(vexe string, args []string) string {
 	// The replay writes to a pipe, but its diagnostics are displayed on our stderr.
 	// Preserve the terminal decision; explicit -color/-nocolor options still win
 	// when the child parses args. Only change the child's environment.
-	environment['VCOLORS'] = if ansi.stderr_supports_escape_sequences() { 'always' } else { 'never' }
+	environment['VCOLORS'] = if ansi.stderr_supports_escape_sequences() {
+		'always'
+	} else {
+		'never'
+	}
 	// Prepend rather than append: arguments after a run/script input belong to
 	// the user program. A runtime argument named -skip-running must not prevent
 	// us from adding the compiler option, either. Do not mutate the caller's args.
