@@ -157,7 +157,7 @@ pub fn verify_mac(message []u8, key Key, opts VerifyMacOptions) ![]u8 {
 		'VerifyMacOptions.detached_payload')!
 	alg := verification_algorithm(msg.protected, msg.unprotected, key, 'Mac')!
 
-	body_protected := msg.protected_bytes()!
+	body_protected := msg.structure_protected_bytes()!
 	tbm := mac_structure_mac(body_protected, opts.external_aad, pl)
 	mac_verify(alg, key, tbm, msg.tag)!
 	return pl
@@ -232,16 +232,26 @@ fn check_direct_recipient(recipient Recipient, require_algorithm bool) !bool {
 	return true
 }
 
-// protected_bytes returns the body protected bucket to feed into the
-// MAC_structure: the bytes received on the wire for a decoded message,
-// a canonical encoding of `protected` for one built in memory.
-fn (m MacMessage) protected_bytes() ![]u8 {
+// structure_protected_bytes returns the body protected bucket to feed
+// into the MAC_structure; see `structure_protected_bytes_or`.
+fn (m MacMessage) structure_protected_bytes() ![]u8 {
+	return structure_protected_bytes_or(m.raw_protected, m.protected)!
+}
+
+// wire_protected_bytes returns the body protected bucket to write back
+// out: the bytes received on the wire for a decoded message, a canonical
+// encoding of `protected` for one built in memory.
+fn (m MacMessage) wire_protected_bytes() ![]u8 {
 	return protected_bytes_or(m.raw_protected, m.protected)!
 }
 
-// protected_bytes returns this recipient's protected bucket, following
-// the same rule as `MacMessage.protected_bytes`.
-fn (r Recipient) protected_bytes() ![]u8 {
+// wire_protected_bytes returns this recipient's protected bucket. A
+// recipient bucket never reaches the MAC_structure — RFC 9052 §6.3
+// builds it from the body alone — and RFC 9053 §6.1.1 requires the
+// direct-mode bucket to be zero-length already, which
+// `check_direct_recipient` enforces. So there is nothing to normalise
+// here, and no structure counterpart to this method.
+fn (r Recipient) wire_protected_bytes() ![]u8 {
 	return protected_bytes_or(r.raw_protected, r.protected)!
 }
 
@@ -267,7 +277,7 @@ pub fn (m MacMessage) encode(tagged bool) ![]u8 {
 		check_protected_headers(recipient.protected, recipient.unprotected)!
 		check_direct_recipient(recipient, true)!
 	}
-	body_protected := m.protected_bytes()!
+	body_protected := m.wire_protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
 	if tagged {
@@ -284,7 +294,7 @@ pub fn (m MacMessage) encode(tagged bool) ![]u8 {
 	p.pack_bytes(m.tag)
 	p.pack_array_header(u64(m.recipients.len))
 	for r in m.recipients {
-		rp := r.protected_bytes()!
+		rp := r.wire_protected_bytes()!
 		p.pack_array_header(3)
 		p.pack_bytes(rp)
 		p.pack_value(r.unprotected.to_value())!

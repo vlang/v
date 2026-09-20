@@ -8,7 +8,7 @@ fn encode_mac_unchecked(m MacMessage) ![]u8 {
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
 	p.pack_tag(tag_mac)
 	p.pack_array_header(5)
-	p.pack_bytes(m.protected_bytes()!)
+	p.pack_bytes(m.wire_protected_bytes()!)
 	p.pack_value(m.unprotected.to_value())!
 	if payload := m.payload {
 		p.pack_bytes(payload)
@@ -19,7 +19,7 @@ fn encode_mac_unchecked(m MacMessage) ![]u8 {
 	p.pack_array_header(u64(m.recipients.len))
 	for recipient in m.recipients {
 		p.pack_array_header(3)
-		p.pack_bytes(recipient.protected_bytes()!)
+		p.pack_bytes(recipient.wire_protected_bytes()!)
 		p.pack_value(recipient.unprotected.to_value())!
 		p.pack_bytes(recipient.encrypted_key)
 	}
@@ -71,7 +71,7 @@ fn test_mac_direct_mode_rejects_multiple_recipients() {
 	mut hp := Headers{}
 	hp.algorithm = .hmac_256_256
 	if _ := mac('payload'.bytes(), key,
-		protected: hp
+		protected:  hp
 		recipients: [
 			Recipient{},
 			Recipient{},
@@ -189,7 +189,7 @@ fn test_mac_rejects_nonempty_direct_recipient_protected_headers() {
 		},
 	] {
 		if _ := mac('payload'.bytes(), key,
-			protected: hp
+			protected:  hp
 			recipients: [Recipient{
 				protected: protected
 			}]

@@ -134,22 +134,34 @@ pub fn (m SignMessage) verify(signer_index int, key Key, opts VerifySignOptions)
 
 	pl := payload_for_verification(m.payload, opts.detached_payload,
 		'VerifySignOptions.detached_payload')!
-	body_protected := m.protected_bytes()!
-	sign_protected := entry.protected_bytes()!
+	body_protected := m.structure_protected_bytes()!
+	sign_protected := entry.structure_protected_bytes()!
 	tbs := sig_structure_sign(body_protected, sign_protected, opts.external_aad, pl)
 	verify_with_key(alg, key, tbs, entry.signature)!
 }
 
-// protected_bytes returns the body protected bucket to feed into the
-// Sig_structure: the bytes received on the wire for a decoded message,
-// a canonical encoding of `protected` for one built in memory.
-fn (m SignMessage) protected_bytes() ![]u8 {
+// structure_protected_bytes returns the body protected bucket to feed
+// into the Sig_structure; see `structure_protected_bytes_or`.
+fn (m SignMessage) structure_protected_bytes() ![]u8 {
+	return structure_protected_bytes_or(m.raw_protected, m.protected)!
+}
+
+// structure_protected_bytes returns this signer's protected bucket for
+// the Sig_structure, following the same rule as the body's.
+fn (s Signature) structure_protected_bytes() ![]u8 {
+	return structure_protected_bytes_or(s.raw_protected, s.protected)!
+}
+
+// wire_protected_bytes returns the body protected bucket to write back
+// out: the bytes received on the wire for a decoded message, a canonical
+// encoding of `protected` for one built in memory.
+fn (m SignMessage) wire_protected_bytes() ![]u8 {
 	return protected_bytes_or(m.raw_protected, m.protected)!
 }
 
-// protected_bytes returns this signer's protected bucket, following the
-// same rule as `SignMessage.protected_bytes`.
-fn (s Signature) protected_bytes() ![]u8 {
+// wire_protected_bytes returns this signer's protected bucket, following
+// the same rule as `SignMessage.wire_protected_bytes`.
+fn (s Signature) wire_protected_bytes() ![]u8 {
 	return protected_bytes_or(s.raw_protected, s.protected)!
 }
 
@@ -174,7 +186,7 @@ pub fn (m SignMessage) encode(tagged bool) ![]u8 {
 			'signer at index ${i}')!
 		check_protected_headers(entry.protected, entry.unprotected)!
 	}
-	body_protected := m.protected_bytes()!
+	body_protected := m.wire_protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
 	if tagged {
@@ -190,7 +202,7 @@ pub fn (m SignMessage) encode(tagged bool) ![]u8 {
 	}
 	p.pack_array_header(u64(m.signatures.len))
 	for entry in m.signatures {
-		sp := entry.protected_bytes()!
+		sp := entry.wire_protected_bytes()!
 		p.pack_array_header(3)
 		p.pack_bytes(sp)
 		p.pack_value(entry.unprotected.to_value())!

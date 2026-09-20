@@ -90,15 +90,21 @@ pub fn (m Mac0Message) verify(key Key, payload []u8, external_aad []u8) ! {
 	check_protected_headers(m.protected, m.unprotected)!
 	alg := verification_algorithm(m.protected, m.unprotected, key, 'Mac0')!
 
-	body_protected := m.protected_bytes()!
+	body_protected := m.structure_protected_bytes()!
 	tbm := mac_structure_mac0(body_protected, external_aad, payload)
 	mac_verify(alg, key, tbm, m.tag)!
 }
 
-// protected_bytes returns the bytes to feed into the MAC_structure:
-// the ones received on the wire for a decoded message, a canonical
-// encoding of `protected` for one built in memory.
-fn (m Mac0Message) protected_bytes() ![]u8 {
+// structure_protected_bytes returns the bytes to feed into the
+// MAC_structure; see `structure_protected_bytes_or`.
+fn (m Mac0Message) structure_protected_bytes() ![]u8 {
+	return structure_protected_bytes_or(m.raw_protected, m.protected)!
+}
+
+// wire_protected_bytes returns the bytes to write back out: the ones
+// received on the wire for a decoded message, a canonical encoding of
+// `protected` for one built in memory.
+fn (m Mac0Message) wire_protected_bytes() ![]u8 {
 	return protected_bytes_or(m.raw_protected, m.protected)!
 }
 
@@ -113,7 +119,7 @@ fn (m Mac0Message) protected_bytes() ![]u8 {
 pub fn (m Mac0Message) encode(tagged bool) ![]u8 {
 	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Mac0')!
 	check_protected_headers(m.protected, m.unprotected)!
-	body_protected := m.protected_bytes()!
+	body_protected := m.wire_protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
 	if tagged {

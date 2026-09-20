@@ -202,6 +202,10 @@ pub fn (h Headers) encode_protected() ![]u8 {
 // kept verbatim, including the `h'a0'` spelling of an empty map that
 // RFC 9052 §3 discourages but that decoders must still accept.
 //
+// This is the *wire* form, used when re-encoding a decoded message.
+// The crypto structures take `structure_protected_bytes_or` instead,
+// which differs on the one case RFC 9052 singles out.
+//
 // What is preserved is the *content* of the protected bstr, which is
 // what the structures carry; the bstr framing around it is re-emitted
 // in definite-length form, so a bucket that arrived inside an
@@ -209,6 +213,33 @@ pub fn (h Headers) encode_protected() ![]u8 {
 // original framing.
 fn protected_bytes_or(raw ?[]u8, h Headers) ![]u8 {
 	return raw or { h.encode_protected()! }
+}
+
+// structure_protected_bytes_or returns the protected bucket as it goes
+// into the Sig_structure (RFC 9052 §4.4) or MAC_structure (§6.3).
+//
+// That is the bucket as received, with one exception the RFC is explicit
+// about: "If there are no protected attributes, a zero-length byte
+// string is used". A sender may spell an empty protected map as `h'a0'`
+// — §3 says recipients MUST accept it, while noting that the zero-length
+// byte string is "the version used in the serialization structures for
+// cryptographic computation". So an empty bucket contributes nothing to
+// the structure however it was spelled on the wire, and a message signed
+// over the empty bstr still verifies when the map spelling arrives.
+//
+// Emptiness is decided by parsing, not by comparing against a list of
+// byte sequences: `h'a0'` is only the shortest of several non-minimal
+// encodings of the empty map, alongside the indefinite-length form and
+// the 1-, 2-, 4- and 8-byte length prefixes.
+//
+// Callers must run `check_decoded_protected_unchanged` first, so that a
+// mutated protected view is rejected rather than normalised away here.
+fn structure_protected_bytes_or(raw ?[]u8, h Headers) ![]u8 {
+	received := protected_bytes_or(raw, h)!
+	if received.len > 0 && parse_protected(received)!.is_empty() {
+		return []u8{}
+	}
+	return received
 }
 
 // parse_headers_map decodes a CBOR map (already extracted from the

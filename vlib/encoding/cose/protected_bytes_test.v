@@ -121,7 +121,7 @@ fn test_sign1_decode_encode_round_trips_non_canonical_protected_bytes() {
 
 	msg := build_sign1_with_protected(nc_sign1_protected, payload, priv)!
 	decoded := Sign1Message.decode(msg)!
-	assert decoded.protected_bytes()! == nc_sign1_protected
+	assert decoded.wire_protected_bytes()! == nc_sign1_protected
 	// The parsed view is still correct, it is just not what goes into
 	// the Sig_structure.
 	assert (decoded.protected.algorithm or { Algorithm.es256 }) == .eddsa
@@ -138,7 +138,7 @@ fn test_mac0_decode_encode_round_trips_non_canonical_protected_bytes() {
 
 	msg := build_mac0_with_protected(nc_mac0_protected, payload, key)!
 	decoded := Mac0Message.decode(msg)!
-	assert decoded.protected_bytes()! == nc_mac0_protected
+	assert decoded.wire_protected_bytes()! == nc_mac0_protected
 	assert decoded.encode(true)! == msg
 }
 
@@ -156,7 +156,7 @@ fn test_sign1_resigning_drops_the_decoded_protected_bytes() {
 	// that are no longer the ones in the message.
 	decoded.protected.content_type_int = none
 	decoded.sign(priv, payload, []u8{})!
-	assert decoded.protected_bytes()! == [u8(0xa1), 0x01, 0x27]
+	assert decoded.wire_protected_bytes()! == [u8(0xa1), 0x01, 0x27]
 
 	out := decoded.encode(true)!
 	assert out != msg
@@ -171,7 +171,7 @@ fn test_mac0_recomputing_drops_the_decoded_protected_bytes() {
 	mut decoded := Mac0Message.decode(msg)!
 	decoded.protected.content_type_int = none
 	decoded.compute(key, payload, []u8{})!
-	assert decoded.protected_bytes()! == [u8(0xa1), 0x01, 0x05]
+	assert decoded.wire_protected_bytes()! == [u8(0xa1), 0x01, 0x05]
 
 	out := decoded.encode(true)!
 	assert out != msg
@@ -205,7 +205,7 @@ fn test_failed_signing_and_macing_preserve_received_protected_bytes() {
 	if _ := signed.sign(pub_key, payload, []u8{}) {
 		assert false, 'signing with a public key must fail'
 	}
-	assert signed.protected_bytes()! == nc_sign1_protected
+	assert signed.wire_protected_bytes()! == nc_sign1_protected
 	assert signed.encode(true)! == sign1_bytes
 	signed.verify(pub_key, payload, []u8{})!
 
@@ -215,7 +215,7 @@ fn test_failed_signing_and_macing_preserve_received_protected_bytes() {
 	if _ := maced.compute(Key.symmetric([u8(1)]), payload, []u8{}) {
 		assert false, 'MAC computation with a short key must fail'
 	}
-	assert maced.protected_bytes()! == nc_mac0_protected
+	assert maced.wire_protected_bytes()! == nc_mac0_protected
 	assert maced.encode(true)! == mac0_bytes
 	maced.verify(key, payload, []u8{})!
 }
@@ -232,26 +232,64 @@ fn test_messages_built_in_memory_still_use_canonical_protected_bytes() {
 		protected: hp
 		payload:   nc_text.bytes()
 	}
-	assert m.protected_bytes()! == [u8(0xa2), 0x01, 0x27, 0x03, 0x00]
+	assert m.wire_protected_bytes()! == [u8(0xa2), 0x01, 0x27, 0x03, 0x00]
 	m.sign(priv, nc_text.bytes(), []u8{})!
-	assert m.protected_bytes()! == [u8(0xa2), 0x01, 0x27, 0x03, 0x00]
+	assert m.wire_protected_bytes()! == [u8(0xa2), 0x01, 0x27, 0x03, 0x00]
 }
 
-fn test_empty_protected_bucket_is_preserved_as_received() {
+// sign1_with_split_protected builds a COSE_Sign1 whose signature covers
+// `structure_protected` while the wire carries `wire_protected`. The
+// algorithm goes in the unprotected bucket, as the cose-wg sign-pass-01
+// vector does, so the two buckets can differ without the protected one
+// carrying anything.
+fn sign1_with_split_protected(structure_protected []u8, wire_protected []u8, payload []u8, key Key) ![]u8 {
+	tbs := sig_structure_sign1(structure_protected, []u8{}, payload)
+	sig := sign_with_key(.eddsa, key, tbs)!
+	mut unprotected := Headers{}
+	unprotected.algorithm = .eddsa
+	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
+	p.pack_tag(tag_sign1)
+	p.pack_array_header(4)
+	p.pack_bytes(wire_protected)
+	p.pack_value(unprotected.to_value())!
+	p.pack_bytes(payload)
+	p.pack_bytes(sig)
+	return p.bytes()
+}
+
+fn test_empty_protected_bucket_keeps_its_spelling_but_not_its_bytes() {
 	d := hex.decode(nc_eddsa_d_hex)!
 	x := hex.decode(nc_eddsa_x_hex)!
 	priv := Key.okp_private(.ed25519, x, d)
+	mut pub_key := Key.okp_public(.ed25519, x)
+	pub_key.alg = .eddsa
 	payload := nc_text.bytes()
 
-	// RFC 9052 §3 says an empty protected bucket is a zero-length bstr
-	// rather than h'a0', but a peer may still send the encoded empty map.
-	// Whatever arrived is what the signature covered, so keep it.
-	msg := build_sign1_with_protected([u8(0xa0)], payload, priv)!
-	decoded := Sign1Message.decode(msg)!
-	assert decoded.protected.is_empty()
-	assert decoded.protected.encode_protected()! == []u8{}
-	assert decoded.protected_bytes()! == [u8(0xa0)]
-	assert decoded.encode(true)! == msg
+	// RFC 9052 §3 lets a sender spell an empty protected map instead of
+	// the preferred zero-length bstr, and requires recipients to accept
+	// it; §4.4 requires the Sig_structure to use a zero-length bstr when
+	// there are no protected attributes. So the signature covers h'',
+	// while the wire keeps whichever spelling arrived. h'a0' is the
+	// shortest of those spellings: the indefinite-length form and the
+	// non-minimal length prefixes mean the same thing.
+	for spelling in [[u8(0xa0)], [u8(0xbf), 0xff], [u8(0xb8), 0x00]] {
+		msg := sign1_with_split_protected([]u8{}, spelling, payload, priv)!
+		decoded := Sign1Message.decode(msg)!
+		assert decoded.protected.is_empty()
+		assert decoded.protected.encode_protected()! == []u8{}
+		assert decoded.wire_protected_bytes()! == spelling
+		assert decoded.structure_protected_bytes()! == []u8{}
+		assert decoded.encode(true)! == msg
+		assert verify1(msg, pub_key)! == payload
+	}
+
+	// The converse must not hold: a signature computed over the spelled
+	// bytes is not a signature over the structure the RFC prescribes, and
+	// accepting both would make the choice a fallback rather than a rule.
+	wrong := sign1_with_split_protected([u8(0xa0)], [u8(0xa0)], payload, priv)!
+	if _ := verify1(wrong, pub_key) {
+		assert false, 'a signature computed over the empty-map spelling must not verify'
+	}
 }
 
 // A body bucket holding {4: h'6b' (kid), 3: 0 (content type)} with the
@@ -284,8 +322,8 @@ fn test_sign_uses_the_received_protected_bytes_for_body_and_signer() {
 
 	decoded := SignMessage.decode(msg)!
 	decoded.verify(0, pub_key)!
-	assert decoded.protected_bytes()! == nc_body_protected
-	assert decoded.signatures[0].protected_bytes()! == nc_sign1_protected
+	assert decoded.wire_protected_bytes()! == nc_body_protected
+	assert decoded.signatures[0].wire_protected_bytes()! == nc_sign1_protected
 	assert decoded.encode(true)! == msg
 	mut modified := decoded
 	modified.signatures[0].protected.kid = 'changed'.bytes()
@@ -332,8 +370,8 @@ fn test_mac_uses_the_received_protected_bytes_for_body() {
 
 	assert verify_mac(msg, key)! == payload
 	decoded := MacMessage.decode(msg)!
-	assert decoded.protected_bytes()! == nc_mac0_protected
-	assert decoded.recipients[0].protected_bytes()! == []u8{}
+	assert decoded.wire_protected_bytes()! == nc_mac0_protected
+	assert decoded.recipients[0].wire_protected_bytes()! == []u8{}
 	assert decoded.encode(true)! == msg
 	mut modified := decoded
 	modified.recipients[0].protected.kid = 'changed'.bytes()
@@ -342,4 +380,69 @@ fn test_mac_uses_the_received_protected_bytes_for_body() {
 	} else {
 		assert err.msg().contains('modified after decoding')
 	}
+}
+
+fn test_mac0_empty_protected_bucket_uses_a_zero_length_structure() {
+	key := Key.symmetric([]u8{len: 32, init: u8(index)})
+	payload := nc_text.bytes()
+
+	// RFC 9052 §6.3 states the MAC_structure rule in the same terms as
+	// §4.4 does for Sig_structure: no protected attributes means a
+	// zero-length bstr, whatever spelling reached the wire.
+	tbm := mac_structure_mac0([]u8{}, []u8{}, payload)
+	tag := compute_mac(.hmac_256_256, key, tbm)!
+	mut unprotected := Headers{}
+	unprotected.algorithm = .hmac_256_256
+	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
+	p.pack_tag(tag_mac0)
+	p.pack_array_header(4)
+	p.pack_bytes([u8(0xa0)])
+	p.pack_value(unprotected.to_value())!
+	p.pack_bytes(payload)
+	p.pack_bytes(tag)
+	msg := p.bytes()
+
+	mut bound := key
+	bound.alg = .hmac_256_256
+	decoded := Mac0Message.decode(msg)!
+	assert decoded.wire_protected_bytes()! == [u8(0xa0)]
+	assert decoded.structure_protected_bytes()! == []u8{}
+	assert decoded.encode(true)! == msg
+	assert verify_mac0(msg, bound)! == payload
+}
+
+fn test_sign_empty_protected_buckets_use_zero_length_structures() {
+	d := hex.decode(nc_eddsa_d_hex)!
+	x := hex.decode(nc_eddsa_x_hex)!
+	priv := Key.okp_private(.ed25519, x, d)
+	mut pub_key := Key.okp_public(.ed25519, x)
+	pub_key.alg = .eddsa
+	payload := nc_text.bytes()
+
+	// The body and the per-signer bucket each get the rule applied on
+	// their own; here both arrive spelled as the empty map.
+	tbs := sig_structure_sign([]u8{}, []u8{}, []u8{}, payload)
+	sig := sign_with_key(.eddsa, priv, tbs)!
+	mut unprotected := Headers{}
+	unprotected.algorithm = .eddsa
+	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
+	p.pack_tag(tag_sign)
+	p.pack_array_header(4)
+	p.pack_bytes([u8(0xa0)])
+	p.pack_value(Headers{}.to_value())!
+	p.pack_bytes(payload)
+	p.pack_array_header(1)
+	p.pack_array_header(3)
+	p.pack_bytes([u8(0xbf), 0xff])
+	p.pack_value(unprotected.to_value())!
+	p.pack_bytes(sig)
+	msg := p.bytes()
+
+	decoded := SignMessage.decode(msg)!
+	assert decoded.wire_protected_bytes()! == [u8(0xa0)]
+	assert decoded.structure_protected_bytes()! == []u8{}
+	assert decoded.signatures[0].wire_protected_bytes()! == [u8(0xbf), 0xff]
+	assert decoded.signatures[0].structure_protected_bytes()! == []u8{}
+	assert decoded.encode(true)! == msg
+	decoded.verify(0, pub_key)!
 }

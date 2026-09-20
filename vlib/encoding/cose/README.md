@@ -177,9 +177,13 @@ cose.verify1(sig_only, pub_key, detached_payload: large_blob)!
   and §6.3 build the `Sig_structure` / `MAC_structure` from the
   protected bytes as they were received, so those are kept verbatim and
   re-emitted as-is by `encode()`. Messages whose protected header uses a
-  legal but non-canonical encoding therefore verifies. Mutating
-  `protected` on a decoded message makes encoding and verification fail
-  until it is signed again. Labels 2-6 stay reserved for their typed
+  legal but non-canonical encoding therefore verifies. The one exception
+  is an *empty* protected bucket: §4.4 and §6.3 require a zero-length
+  bstr in the structures when there are no protected attributes, so a
+  bucket spelled `h'a0'` — which §3 requires recipients to accept —
+  contributes nothing to the signature while still being re-emitted as
+  it arrived. Mutating `protected` on a decoded message makes encoding
+  and verification fail until it is signed again. Labels 2-6 stay reserved for their typed
   fields and are rejected in `extra_int_labels`; label 1 is the one
   exception, accepted there so that an `alg` this module does not model
   — an unknown integer identifier, or a text one — survives a

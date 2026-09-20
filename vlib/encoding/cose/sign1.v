@@ -117,14 +117,21 @@ pub fn (m Sign1Message) verify(key Key, payload []u8, external_aad []u8) ! {
 	check_protected_headers(m.protected, m.unprotected)!
 	alg := verification_algorithm(m.protected, m.unprotected, key, 'Sign1')!
 
-	body_protected := m.protected_bytes()!
+	body_protected := m.structure_protected_bytes()!
 	tbs := sig_structure_sign1(body_protected, external_aad, payload)
 	verify_with_key(alg, key, tbs, m.signature)!
 }
-// protected_bytes returns the bytes to feed into the Sig_structure:
-// the ones received on the wire for a decoded message, a canonical
-// encoding of `protected` for one built in memory.
-fn (m Sign1Message) protected_bytes() ![]u8 {
+
+// structure_protected_bytes returns the bytes to feed into the
+// Sig_structure; see `structure_protected_bytes_or`.
+fn (m Sign1Message) structure_protected_bytes() ![]u8 {
+	return structure_protected_bytes_or(m.raw_protected, m.protected)!
+}
+
+// wire_protected_bytes returns the bytes to write back out: the ones
+// received on the wire for a decoded message, a canonical encoding of
+// `protected` for one built in memory.
+fn (m Sign1Message) wire_protected_bytes() ![]u8 {
 	return protected_bytes_or(m.raw_protected, m.protected)!
 }
 
@@ -139,7 +146,7 @@ fn (m Sign1Message) protected_bytes() ![]u8 {
 pub fn (m Sign1Message) encode(tagged bool) ![]u8 {
 	check_decoded_protected_unchanged(m.raw_protected, m.protected, 'Sign1')!
 	check_protected_headers(m.protected, m.unprotected)!
-	body_protected := m.protected_bytes()!
+	body_protected := m.wire_protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
 	if tagged {
