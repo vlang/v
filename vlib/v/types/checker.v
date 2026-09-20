@@ -14322,7 +14322,8 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 				tc.record_warning_at(.assignment_mismatch, 'unnecessary default value `false`: struct fields are zeroed by default', default_id, default.pos)
 			}
 		}
-		if field.children_count == 0 && field_type is FnType && !tc.translated_files[tc.cur_file]
+		if field.children_count == 0 && field_type is FnType && !node.value.starts_with('C.')
+			&& !tc.translated_files[tc.cur_file]
 			&& !struct_field_has_attr(*field, 'required') {
 			tc.record_notice_at(.assignment_mismatch, 'uninitialized `fn` struct fields are not allowed, since they can result in segfaults; use `?fn` or `@[required]` or initialize the field with `=` (if you absolutely want to have unsafe function pointers, use `= unsafe { nil }`)', field_id, tc.struct_field_declaration_pos(*field))
 		}
