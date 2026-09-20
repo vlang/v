@@ -1,3 +1,5 @@
+// vtest build: !msvc
+
 import encoding.binary
 import encoding.hex
 import os
@@ -248,14 +250,14 @@ fn can_run_pmull_test() bool {
 	}
 }
 
-fn test_raw_chacha20_neon_vector() {
+fn test_raw_chacha20_neon_vector() ! {
 	state := arm64_chacha20_row_state()
 	actual_chacha := arm64_chacha20_state_bytes(raw_chacha20_block_neon(&state))
 	expected_chacha := hex.decode('10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e')!
 	assert actual_chacha == expected_chacha
 }
 
-fn test_raw_ghash_pmull_vector() {
+fn test_raw_ghash_pmull_vector() ! {
 	if !can_run_pmull_test() {
 		return
 	}

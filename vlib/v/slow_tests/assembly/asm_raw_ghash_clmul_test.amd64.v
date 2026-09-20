@@ -130,7 +130,7 @@ fn can_run_pclmul_test() bool {
 	return (ecx & (u32(1) << 1)) != 0
 }
 
-fn test_raw_ghash_clmul_nist_vector() {
+fn test_raw_ghash_clmul_nist_vector() ! {
 	if !can_run_pclmul_test() {
 		return
 	}
