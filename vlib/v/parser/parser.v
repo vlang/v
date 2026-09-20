@@ -4421,6 +4421,7 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 	if explicit_mut {
 		p.next()
 	}
+	subject_is_pseudo := p.tok == .name && p.lit.starts_with('@')
 	subject_start := p.tok_pos
 	subject, subject_is_literal := p.parse_comptime_match_subject()
 	subject_end := p.prev_tok_end
@@ -4429,17 +4430,19 @@ fn (mut p Parser) parse_comptime_match(is_top_level bool, is_expr bool) flat.Nod
 	}
 	p.check(.lcbr)
 	if subject_is_literal && !explicit_mut {
-		return p.parse_known_comptime_match_value(subject, is_top_level, is_expr)
+		return p.parse_known_comptime_match_value(subject, is_top_level, is_expr,
+			!subject_is_pseudo)
 	}
 	subject_is_unresolved_local := p.is_local_binding(subject)
 		&& subject !in p.comptime_local_values
 	if !explicit_mut && !subject_is_unresolved_local && !p.is_local_binding(subject) {
 		if value := p.comptime_value(subject) {
-			return p.parse_known_comptime_match_value(value, is_top_level, is_expr)
+			return p.parse_known_comptime_match_value(value, is_top_level, is_expr, true)
 		}
 	}
 	if !explicit_mut && subject.starts_with('@') {
-		return p.parse_known_comptime_match_value(p.resolve_comptime_at_values(subject), is_top_level, is_expr)
+		return p.parse_known_comptime_match_value(p.resolve_comptime_at_values(subject), is_top_level,
+			is_expr, false)
 	}
 	mut branch_patterns := [][]string{}
 	mut blocks := []flat.NodeId{}
@@ -4568,7 +4571,7 @@ fn (mut p Parser) parse_comptime_match_subject() (string, bool) {
 	return name, false
 }
 
-fn (mut p Parser) parse_known_comptime_match_value(value string, is_top_level bool, is_expr bool) flat.NodeId {
+fn (mut p Parser) parse_known_comptime_match_value(value string, is_top_level bool, is_expr bool, report_condition_notices bool) flat.NodeId {
 	mut result := flat.empty_node
 	mut matched := false
 	for p.tok != .rcbr && p.tok != .eof {
@@ -4610,7 +4613,7 @@ fn (mut p Parser) parse_known_comptime_match_value(value string, is_top_level bo
 			if matches {
 				pattern_matches = true
 			}
-			if !p.prefs.is_fmt {
+			if report_condition_notices && !p.prefs.is_fmt {
 				p.record_notice_span(if matches {
 					'match is always true'
 				} else {
