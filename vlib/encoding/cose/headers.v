@@ -401,7 +401,7 @@ fn check_protected_headers(protected Headers, unprotected Headers) ! {
 	check_header_values(unprotected)!
 	if (has_int_label(protected, label_iv) || has_int_label(unprotected, label_iv))
 		&& (has_int_label(protected, label_partial_iv)
-		|| has_int_label(unprotected, label_partial_iv)) {
+			|| has_int_label(unprotected, label_partial_iv)) {
 		return MalformedMessage{
 			reason: 'iv and partial iv must not occur in the same security layer (RFC 9052 §3.1)'
 		}
@@ -559,8 +559,7 @@ fn check_critical(h Headers) ! {
 				reason: 'crit must not list itself (RFC 9052 §3.1)'
 			}
 		}
-		if label !in [label_alg, label_content_type, label_kid, label_iv,
-			label_partial_iv] {
+		if label !in [label_alg, label_content_type, label_kid, label_iv, label_partial_iv] {
 			return MalformedMessage{
 				reason: 'crit lists unknown label ${label} (RFC 9052 §3.1)'
 			}
@@ -628,8 +627,7 @@ fn has_int_label(h Headers, label i64) bool {
 fn int_header_labels(h Headers) []i64 {
 	mut labels := []i64{cap: h.extra_int_labels.len + 6}
 	mut seen := map[i64]bool{}
-	for label in [label_alg, label_crit, label_content_type, label_kid, label_iv,
-		label_partial_iv] {
+	for label in [label_alg, label_crit, label_content_type, label_kid, label_iv, label_partial_iv] {
 		if has_int_label(h, label) && label !in seen {
 			labels << label
 			seen[label] = true
