@@ -12080,6 +12080,10 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 fn (mut p Parser) map_literal() flat.NodeId {
 	map_start := p.span_start()
 	p.next()
+	return p.map_init_body('', map_start)
+}
+
+fn (mut p Parser) map_init_body(map_type string, map_start int) flat.NodeId {
 	mut ids := []flat.NodeId{}
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon || p.tok == .comma {
@@ -12110,6 +12114,7 @@ fn (mut p Parser) map_literal() flat.NodeId {
 	start := p.add_children(ids)
 	return p.add_node(flat.Node{
 		kind:           .map_init
+		value:          map_type
 		children_start: start
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(map_start)
@@ -12148,26 +12153,10 @@ fn (mut p Parser) channel_receive_expr(inner flat.NodeId, op_start int) flat.Nod
 fn (mut p Parser) empty_map_init_after_type(map_type string, start int) flat.NodeId {
 	p.next() // skip {
 	if p.tok != .rcbr {
-		p.record_diagnostic_span('`}` expected; explicit `map` initialization does not support parameters', p.tok_pos, p.tok_end)
-		mut nested_braces := 0
-		for p.tok != .eof {
-			if p.tok == .lcbr {
-				nested_braces++
-			} else if p.tok == .rcbr {
-				if nested_braces == 0 {
-					break
-				}
-				nested_braces--
-			}
-			p.next()
-		}
+		p.record_diagnostic_span('`}` expected; explicit `map` initialization does not support parameters', p.tok_pos,
+			p.tok_end)
 	}
-	p.check(.rcbr)
-	return p.add_node(flat.Node{
-		kind:  .map_init
-		value: map_type
-		pos:   p.span_to(start)
-	})
+	return p.map_init_body(map_type, start)
 }
 
 fn (mut p Parser) pointer_cast_expr_from_current_depth(depth int, start int) ?flat.NodeId {
