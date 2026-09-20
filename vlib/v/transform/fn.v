@@ -11667,11 +11667,13 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut fn_value_param_type_texts := []string{cap: param_types.len}
 	for i, param_type in param_types {
 		raw_type := if i < param_type_texts.len { param_type_texts[i] } else { '' }
-		fn_value_param_type_texts << if raw_type.contains('main.') {
+		slot_type := if raw_type.contains('main.') {
 			raw_type
 		} else {
 			param_type.name()
 		}
+		param := t.a.nodes[int(param_ids[i])]
+		fn_value_param_type_texts << mutable_fn_value_param_type_text(param, slot_type)
 	}
 	fn_value_type := fn_literal_value_type_text_from_text(fn_value_param_type_texts, ret_type)
 	mut ident := flat.empty_node

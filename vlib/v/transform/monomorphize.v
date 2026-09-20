@@ -5623,6 +5623,14 @@ fn explicit_mut_pointer_param_type_text(param flat.Node, typ string) string {
 	return typ
 }
 
+fn mutable_fn_value_param_type_text(param flat.Node, slot_type string) string {
+	if !param.is_mut {
+		return slot_type
+	}
+	value_type := if slot_type.starts_with('&') { slot_type[1..] } else { slot_type }
+	return 'mut ${value_type}'
+}
+
 fn (mut t Transformer) specialized_call_target_type_text(decl GenericFnDecl, typ string, args []string, params []string) string {
 	return t.specialized_signature_type_text(decl, typ, args, params)
 }
