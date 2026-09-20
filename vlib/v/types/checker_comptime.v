@@ -7349,13 +7349,19 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		pointer_value_comparison_allowed := pointer_value_comparison
 			&& (pointer_struct_value_comparison || tc.unsafe_depth > 0
 				|| tc.expr_is_inside_unsafe_block(id))
+		pointer_integer_zero_comparison :=
+			(lhs_clean is Pointer && rhs_clean.is_integer()
+				&& tc.zero_literal_expr_id(rhs_id) != none)
+				|| (rhs_clean is Pointer && lhs_clean.is_integer()
+					&& tc.zero_literal_expr_id(lhs_id) != none)
 		compatible := if lhs_is_sum != rhs_is_sum {
 			false
 		} else {
 			tc.type_compatible(lhs_type, rhs_type) || tc.type_compatible(rhs_type, lhs_type)
 				|| tc.expr_compatible(lhs_id, lhs_type, rhs_type)
 				|| tc.expr_compatible(rhs_id, rhs_type, lhs_type)
-				|| pointer_value_comparison_allowed || c_literal_scalar_comparison
+				|| pointer_value_comparison_allowed || pointer_integer_zero_comparison
+				|| c_literal_scalar_comparison
 		}
 		unsafe_zero_struct_comparison :=
 			((lhs_clean is Struct && tc.zero_literal_expr_id(rhs_id) != none)

@@ -13374,6 +13374,11 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 			// Keep that storage type authoritative instead of letting the template's
 			// pre-specialization checker type coerce the pointer back to `U`.
 			value := t.transform_struct_init(id, node)
+			if !t.node_type(value).starts_with('&') {
+				address := t.make_prefix(.amp, value)
+				t.set_node_typ(int(address), target_type)
+				return address
+			}
 			t.set_node_typ(int(value), target_type)
 			return value
 		}
