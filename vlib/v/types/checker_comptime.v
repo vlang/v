@@ -2663,7 +2663,7 @@ fn (mut tc TypeChecker) check_map_literal_slot_type(value_id flat.NodeId, expect
 	if expected is OptionType && actual !is OptionType {
 		compatible = false
 	}
-	if value.kind == .float_literal && unalias_type(expected).name() == 'f32' {
+	if slot == 'value' && value.kind == .float_literal && unalias_type(expected).name() == 'f32' {
 		compatible = false
 	}
 	if value.kind == .char_literal && unalias_type(expected) !is Rune {
