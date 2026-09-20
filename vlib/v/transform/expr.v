@@ -710,6 +710,18 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 		}
 	}
 	iface := if lhs_iface.len > 0 { lhs_iface } else { rhs_iface }
+	if t.is_builtin_ierror_interface_name(iface)
+		&& (t.a.node(lhs_id).kind == .none_expr || t.a.node(rhs_id).kind == .none_expr) {
+		value_id := if t.a.node(lhs_id).kind == .none_expr { rhs_id } else { lhs_id }
+		value := t.transform_expr_for_type(value_id, iface)
+		stable := t.stable_transformed_expr_for_reuse(value, iface, 'ierr_none')
+		typ := t.make_selector(stable, '_typ', 'int')
+		eq := t.make_ierror_none_type_check(typ, iface)
+		if node.op == .ne {
+			return t.make_prefix(.not, eq)
+		}
+		return eq
+	}
 	lhs := if lhs_iface.len == 0 && t.is_builtin_ierror_interface_name(iface) {
 		t.make_interface_literal_from_expr(lhs_id, iface, false) or {
 			t.transform_expr_for_type(lhs_id, iface)
