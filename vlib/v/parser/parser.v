@@ -2731,6 +2731,9 @@ fn (mut p Parser) global_decl() flat.NodeId {
 			mut val_id := flat.empty_node
 			if p.tok != .assign {
 				gtype = p.parse_type_name()
+				if gtype.len == 0 {
+					p.record_diagnostic_span('expecting type declaration', p.tok_pos, p.tok_end)
+				}
 			}
 			if p.tok == .assign {
 				// global with initializer: __global name = expr, or __global name Type = expr
