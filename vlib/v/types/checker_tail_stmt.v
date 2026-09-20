@@ -4035,6 +4035,25 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
+	if clean_init_type is SumType && node.children_count == 0 {
+		base := tc.sum_base_name(clean_init_type.name)
+		variants := tc.sum_types[base] or { []string{} }
+		if variants.len > 0 {
+			first_variant := tc.concrete_sum_variant_name(clean_init_type.name, variants[0])
+			if first_struct := struct_type_from_type(unalias_type(tc.parse_type(first_variant))) {
+				for diagnostic_index, missing in tc.missing_reference_struct_fields(first_struct.name,
+					map[string]bool{}, []string{}) {
+					message := if missing.has_part {
+						'reference field `${missing.path}` must be initialized (part of struct `${missing.owner}`)'
+					} else {
+						'reference field `${missing.path}` must be initialized'
+					}
+					tc.record_ordered_error_at(.assignment_mismatch, message, id,
+						tc.struct_init_head_pos(node), diagnostic_index + 1)
+				}
+			}
+		}
+	}
 	for i in 0 .. node.children_count {
 		tc.check_node(tc.a.child(&node, i))
 	}
