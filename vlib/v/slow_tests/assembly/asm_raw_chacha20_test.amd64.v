@@ -132,7 +132,7 @@ fn chacha20_state_bytes(state [16]u32) []u8 {
 	return result
 }
 
-fn test_raw_chacha20_simd_block_rfc8439() {
+fn test_raw_chacha20_simd_block_rfc8439() ! {
 	state := chacha20_row_state()
 	actual := chacha20_state_bytes(raw_chacha20_block_sse2(&state))
 	expected := hex.decode('10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e')!
