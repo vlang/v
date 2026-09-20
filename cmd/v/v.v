@@ -143,6 +143,9 @@ fn main() {
 		return
 	}
 	args = clean_compiler_selection_flags(args)
+	if v3_exact_output_fixture_args(args) && '-nocache' !in args {
+		args.prepend('-nocache')
+	}
 	if ownership_compiler_is_required(args) && !ownership_checker_is_compiled() {
 		launch_ownership_compiler(args)
 	}
