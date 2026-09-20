@@ -5344,11 +5344,10 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 			continue
 		}
 		mut inferred_arg_type := t.generic_call_arg_type_for_inference(arg_id)
-		if is_recv_param {
-			alias_target := t.generic_inference_alias_target(inferred_arg_type, call_module)
-			if alias_target.len > 0 && !t.generic_arg_is_unresolved(alias_target) {
-				inferred_arg_type = alias_target
-			}
+		inference_param_type := generic_inference_param_type(child)
+		if !is_generic_fn_placeholder_name(inference_param_type) {
+			inferred_arg_type = t.generic_composite_inference_alias_type(inferred_arg_type,
+				call_module)
 		}
 		if child.is_mut && child.op == .amp && inferred_arg_type.starts_with('&') {
 			// The explicit `mut p &T` marker addresses the caller's pointer slot;
@@ -5367,7 +5366,6 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 				}
 			}
 		}
-		inference_param_type := generic_inference_param_type(child)
 		if (child.is_mut || child.typ.starts_with('mut ')) && inferred_arg_type.starts_with('&') {
 			// A mutable parameter's leading pointer is its storage ABI, whether the
 			// generic placeholder is direct (`T`) or nested (`Container[T]`).
@@ -6553,6 +6551,9 @@ fn (mut t Transformer) infer_generic_call_args_from_raw_node_types(decl GenericF
 		arg := t.a.nodes[int(arg_id)]
 		inference_param_type := generic_inference_param_type(param)
 		mut raw_arg_type := t.fn_value_type_name(arg_id) or { arg.typ }
+		if !is_generic_fn_placeholder_name(inference_param_type) {
+			raw_arg_type = t.generic_composite_inference_alias_type(raw_arg_type, decl.module)
+		}
 		if (param.is_mut || param.op == .amp || param.typ.starts_with('mut '))
 			&& raw_arg_type.starts_with('&') {
 			// A rewritten `mut value` call stores the C ABI address on either the
@@ -7766,11 +7767,10 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 			continue
 		}
 		mut inferred_arg_type := t.generic_call_arg_type_for_inference(arg_id)
-		if is_recv_param {
-			alias_target := t.generic_inference_alias_target(inferred_arg_type, call_module)
-			if alias_target.len > 0 && !t.generic_arg_is_unresolved(alias_target) {
-				inferred_arg_type = alias_target
-			}
+		inference_param_type := generic_inference_param_type(child)
+		if !is_generic_fn_placeholder_name(inference_param_type) {
+			inferred_arg_type = t.generic_composite_inference_alias_type(inferred_arg_type,
+				call_module)
 		}
 		if child.is_mut && child.op == .amp && inferred_arg_type.starts_with('&') {
 			// The explicit `mut p &T` marker addresses the caller's pointer slot;
@@ -7789,7 +7789,6 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 				}
 			}
 		}
-		inference_param_type := generic_inference_param_type(child)
 		mut defer_numeric_literal := false
 		arg_kind := t.a.nodes[int(arg_id)].kind
 		if arg_kind in [.int_literal, .float_literal]
