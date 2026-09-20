@@ -16625,7 +16625,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.sizeof_expr {
 			if node.children_count > 0 {
 				g.write('sizeof(')
-				g.gen_expr(g.a.child(&node, 0))
+				g.gen_expr(g.a.child(node, 0))
 				g.write(')')
 			} else {
 				g.write('sizeof(${g.sizeof_target_in_file(node.value, g.node_source_file(node))})')
