@@ -887,8 +887,9 @@ fn test_parallel_constant_seed_preserves_constant_field_defaults() {
 		},
 	]
 	c_source, _, _ := generate_source_files(sources, map[string]string{}, prefs) or { panic(err) }
-	assert c_source.contains('#define v3__gen__fastc__default_retries (3)'), c_source
-	assert c_source.contains('.retries=(v3__gen__fastc__default_retries)'), c_source
+	assert c_source.contains('#define v__gen__fastc__default_retries (3)'), c_source
+	assert c_source.contains('struct F__Config'), c_source
+	assert c_source.contains('.retries=(v__gen__fastc__default_retries)'), c_source
 }
 
 fn test_fastc_fragmented_generation_matches_serial_output() {
