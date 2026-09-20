@@ -7634,7 +7634,8 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 			return
 		}
 		is_match_subject := tc.ident_is_match_subject(id)
-		message := if tc.fn_context.undefined_variable_context_depth > 0 && !is_match_subject {
+		message := if tc.fn_context.undefined_variable_context_depth > 0 && !is_match_subject
+			&& !node.value.starts_with('_') {
 			'undefined variable: `${node.value}`'
 		} else {
 			'undefined ident: `${node.value}`'
