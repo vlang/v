@@ -675,7 +675,7 @@ fn (mut s Scanner) comment() {
 			}
 		}
 		if ml_comment_depth > 0 {
-			s.error('unterminated block comment', s.pos)
+			s.error('unterminated multiline comment', s.pos + 1)
 		}
 	}
 }
