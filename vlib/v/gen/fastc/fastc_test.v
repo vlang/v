@@ -3229,7 +3229,7 @@ fn main() {
 	println(config.retries)
 }
 ', 'struct_field_default.v', prefs) or { panic(err) }
-	assert c_source.contains('int default_retries(void)'), c_source
+	assert c_source.contains('${fastc_platform_int_c_type} default_retries(void)'), c_source
 	assert c_source.contains('__vf_sd.retries=(default_retries());'), c_source
 }
 
