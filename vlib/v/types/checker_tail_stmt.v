@@ -806,7 +806,7 @@ fn (tc &TypeChecker) branch_has_value_tail(id flat.NodeId) bool {
 			return false
 		}
 		last := tc.a.nodes[int(last_id)]
-		return last.kind in [.expr_stmt, .if_expr, .match_stmt]
+		return last.kind in [.expr_stmt, .if_expr, .match_stmt, .comptime_if]
 			|| (last.kind == .block && tc.branch_has_value_tail(last_id))
 	}
 	if node.kind == .match_branch {
@@ -819,7 +819,7 @@ fn (tc &TypeChecker) branch_has_value_tail(id flat.NodeId) bool {
 			return false
 		}
 		last := tc.a.nodes[int(last_id)]
-		return last.kind in [.expr_stmt, .if_expr, .match_stmt]
+		return last.kind in [.expr_stmt, .if_expr, .match_stmt, .comptime_if]
 			|| (last.kind == .block && tc.branch_has_value_tail(last_id))
 	}
 	return node.kind !in [.assign, .decl_assign, .selector_assign, .index_assign, .return_stmt,
@@ -16486,7 +16486,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			})
 		}
 		.comptime_if {
-			take_then := tc.comptime_threads_condition_value(node.value) or {
+			take_then := tc.comptime_type_condition_value(node.value) or {
 				return unknown_type('unresolved compile-time expression condition `${node.value}`')
 			}
 			branch_index := if take_then { 0 } else { 1 }

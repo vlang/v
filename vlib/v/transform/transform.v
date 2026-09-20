@@ -16631,6 +16631,13 @@ fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
 		}
 		left := clean[..op_idx].trim_space()
 		right := clean[op_idx + op.len..].trim_space()
+		if op in [' != ', ' == '] {
+			if l := comptime_condition_scalar_value(left) {
+				if r := comptime_condition_scalar_value(right) {
+					return if op == ' == ' { l == r } else { l != r }
+				}
+			}
+		}
 		l := t.comptime_condition_int_value(left) or { continue }
 		r := t.comptime_condition_int_value(right) or { continue }
 		return match op {
@@ -16645,6 +16652,22 @@ fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
 	if clean.starts_with('!') {
 		value := t.comptime_type_condition_value(clean[1..]) or { return none }
 		return !value
+	}
+	return none
+}
+
+fn comptime_condition_scalar_value(raw string) ?string {
+	clean := comptime_condition_strip_outer_parens(raw.trim_space())
+	if clean in ['true', 'false'] {
+		return 'bool:${clean}'
+	}
+	if clean.len >= 2 && clean[clean.len - 1] == clean[0] {
+		if clean[0] in [`'`, `"`] {
+			return 'string:${comptime_cond_unescape(clean[1..clean.len - 1])}'
+		}
+		if clean[0] == `\`` {
+			return 'char:${comptime_cond_unescape(clean[1..clean.len - 1])}'
+		}
 	}
 	return none
 }

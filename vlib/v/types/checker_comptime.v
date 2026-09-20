@@ -6703,9 +6703,52 @@ fn (tc &TypeChecker) comptime_type_condition_value(cond string) ?bool {
 			return if op == ' is ' { matches } else { !matches }
 		}
 	}
+	for op in [' != ', ' == ', ' <= ', ' >= ', ' < ', ' > '] {
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx < 0 {
+			continue
+		}
+		left := clean[..op_idx].trim_space()
+		right := clean[op_idx + op.len..].trim_space()
+		if op in [' != ', ' == '] {
+			if l := comptime_condition_scalar_value(left) {
+				if r := comptime_condition_scalar_value(right) {
+					return if op == ' == ' { l == r } else { l != r }
+				}
+			}
+		}
+		if comptime_static_is_int(left) && comptime_static_is_int(right) {
+			l := left.int()
+			r := right.int()
+			return match op {
+				' != ' { l != r }
+				' == ' { l == r }
+				' <= ' { l <= r }
+				' >= ' { l >= r }
+				' < ' { l < r }
+				else { l > r }
+			}
+		}
+	}
 	if clean.starts_with('!') {
 		value := tc.comptime_type_condition_value(clean[1..]) or { return none }
 		return !value
+	}
+	return none
+}
+
+fn comptime_condition_scalar_value(raw string) ?string {
+	clean := comptime_condition_strip_outer_parens(raw.trim_space())
+	if clean in ['true', 'false'] {
+		return 'bool:${clean}'
+	}
+	if clean.len >= 2 && clean[clean.len - 1] == clean[0] {
+		if clean[0] in [`'`, `"`] {
+			return 'string:${comptime_static_unescape(clean[1..clean.len - 1])}'
+		}
+		if clean[0] == `\`` {
+			return 'char:${comptime_static_unescape(clean[1..clean.len - 1])}'
+		}
 	}
 	return none
 }
