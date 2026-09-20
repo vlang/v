@@ -4249,10 +4249,22 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 	}
 	if node.kind == .decl_assign && children.len >= 2 {
 		rhs := t.a.nodes[int(children[1])]
+		unwrapped_rhs_typ := if rhs.kind == .ident {
+			t.comptime_option_unwrapped_local_type(rhs.value, node, fm) or { '' }
+		} else {
+			''
+		}
+		if unwrapped_rhs_typ.len > 0 {
+			t.set_node_typ(int(children[1]), unwrapped_rhs_typ)
+			t.record_refined_node_type(int(children[1]), unwrapped_rhs_typ)
+		}
 		// A reflected selector carries the field's qualified type on the cloned
 		// node. Keep that spelling so a bare user type is not mistaken for an
 		// unresolved generic placeholder during a later call in this branch.
-		rhs_typ := if rhs.typ.len > 0 && rhs.typ !in ['unknown', 'generic'] && !t.generic_arg_is_unresolved(rhs.typ) {
+		rhs_typ := if unwrapped_rhs_typ.len > 0 {
+			unwrapped_rhs_typ
+		} else if rhs.typ.len > 0 && rhs.typ !in ['unknown', 'generic']
+			&& !t.generic_arg_is_unresolved(rhs.typ) {
 			rhs.typ
 		} else {
 			t.node_type(children[1])
