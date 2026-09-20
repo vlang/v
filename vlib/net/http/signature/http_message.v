@@ -393,12 +393,20 @@ fn validate_request_component_coverage(req http.Request, components []string, de
 // there is no correct value to synthesize either. A field the caller supplied
 // is left alone; this guard only covers values the module would fabricate.
 //
-// The remaining §8.6 case, a 2xx response to CONNECT, cannot be detected here
-// because an http.Response carries no request method.
+// Two §8.6 cases stay out of reach because an http.Response carries no request
+// method: a 2xx response to CONNECT, where the field is forbidden, and a
+// response to HEAD, whose Content-Length describes the content the GET would
+// have returned rather than the zero bytes actually sent. Both need an
+// explicit field from the caller.
 fn check_content_length_synthesis(status_code int) ! {
-	if status_code < 200 || status_code == 204 || status_code == 304 {
+	if status_code == 304 {
 		return MalformedMessage{
-			reason: 'cannot synthesize a Content-Length for a ${status_code} response; set the field explicitly or drop "content-length" from the covered components'
+			reason: 'cannot synthesize a Content-Length for a 304 response; it describes the content the matching 200 would carry, so set the field explicitly or drop "content-length" from the covered components'
+		}
+	}
+	if status_code < 200 || status_code == 204 {
+		return MalformedMessage{
+			reason: 'a ${status_code} response must not carry a Content-Length (RFC 9110 §8.6); drop "content-length" from the covered components'
 		}
 	}
 }

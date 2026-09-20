@@ -17,7 +17,7 @@ import net.http
 import net.http.signature
 
 // Sign an outbound request. `created` defaults to time.now().unix().
-mut req := http.new_request(.post, 'https://example.com/items', '{}')!
+mut req := http.new_request(.post, 'https://example.com/items', '{}')
 req.header.add_custom('Date', 'Tue, 20 Apr 2021 02:07:55 GMT')!
 req.header.add_custom('Content-Type', 'application/json')!
 // RFC 9530 digest of the request content, here the two bytes `{}`.
@@ -92,6 +92,15 @@ multi-value fields joined by `", "` and OWS trimmed at the boundaries
 `@query-param` (RFC 9421 §2.2.8), structured-field re-serialisation
 (`sf`, `key`, `bs` parameters from §2.1.x), and binary-wrapped fields
 are deferred to a follow-up PR.
+
+When a response covers `content-length` without carrying the field,
+`sign_response` inserts the body length so the peer can reconstruct the
+signature base. It refuses to do so on 1xx, 204 and 304, where no correct
+value exists. Two more cases need the field from you, because an
+`http.Response` does not say which request it answers: a 2xx response to
+CONNECT, where RFC 9110 §8.6 forbids the field, and a response to HEAD, whose
+Content-Length describes the content a GET would have returned rather than the
+zero bytes actually sent.
 
 ## Two API layers
 
