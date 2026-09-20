@@ -153,6 +153,20 @@ fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
 	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
 }
 
+fn test_main_function_is_prefixed_when_declared_c_function_owns_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.fn_ret_types['C.get_value'] = types.Type(types.int_)
+	g.fn_decl_ret_types[fn_decl_module_key('main', 'get_value')] = types.Type(types.int_)
+
+	assert g.fn_c_name_in_module('main', 'get_value') == 'main__get_value'
+	assert g.main_runtime_shadow_fn_c_name('main', 'get_value') or { '' } == 'main__get_value'
+	assert g.fn_c_name_in_module('database', 'get_value') == 'database__get_value'
+}
+
 fn test_target_libc_opaque_packed_struct_restores_packing() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

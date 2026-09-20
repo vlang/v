@@ -1314,10 +1314,14 @@ fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?
 	}
 	c_type_name := !isnil(g.tc)
 		&& ('C.${name}' in g.tc.structs || 'C.${name}' in g.tc.c_typedef_structs)
+	c_fn_name := !isnil(g.tc)
+		&& ('C.${name}' in g.tc.fn_ret_types || 'C.${name}' in g.tc.fn_param_types)
+		&& (fn_decl_module_key('main', name) in g.fn_decl_ret_types
+			|| fn_decl_module_key('', name) in g.fn_decl_ret_types)
 	needs_export_wrapper := g.main_export_needs_internal_name(module_name, name)
 	export_name_owned := g.main_export_name_owned_by_other_fn(module_name, name)
 	if !c_main_runtime_shadow_fn_names[name] && !g.inlined_c_typedef_names[name] && !c_type_name
-		&& !needs_export_wrapper && !export_name_owned {
+		&& !c_fn_name && !needs_export_wrapper && !export_name_owned {
 		return none
 	}
 	return g.cname('main.${name}')
