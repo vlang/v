@@ -19,7 +19,7 @@ vlib/v/checker/tests/struct_embed_shadowed_required_field_err.vv:18:11: error: f
       |              ~~~~~~
    19 |         Base: Base{
    20 |             n: 1
-vlib/v/checker/tests/struct_embed_shadowed_required_field_err.vv:18:11: error: reference field `Base.p` must be initialized
+vlib/v/checker/tests/struct_embed_shadowed_required_field_err.vv:18:11: error: reference field `Outer.p` must be initialized
    16 | 
    17 | fn main() {
    18 |     value := Outer{
@@ -33,7 +33,7 @@ vlib/v/checker/tests/struct_embed_shadowed_required_field_err.vv:18:11: error: r
       |              ~~~~~~
    19 |         Base: Base{
    20 |             n: 1
-vlib/v/checker/tests/struct_embed_shadowed_required_field_err.vv:18:11: error: reference field `Outer.p` must be initialized
+vlib/v/checker/tests/struct_embed_shadowed_required_field_err.vv:18:11: error: reference field `Base.p` must be initialized
    16 | 
    17 | fn main() {
    18 |     value := Outer{
