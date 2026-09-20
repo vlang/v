@@ -8265,7 +8265,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 
 // check_array_init validates an `[]T{len: ..., init: ...}` initializer. The `init:`
 // expression may reference the magic `index` variable (the current element index),
-// so it is checked in a scope where `index` is bound to an int.
+// or its deprecated `it` alias, so both are bound while it is checked.
 fn (mut tc TypeChecker) check_array_init(id flat.NodeId, node flat.Node) {
 	if tc.fn_context.generic_params.len == 0
 		&& tc.type_text_has_generic_struct_placeholder_application(node.typ) {
@@ -8348,8 +8348,20 @@ fn (mut tc TypeChecker) check_array_init(id flat.NodeId, node flat.Node) {
 				}
 				tc.push_scope()
 				tc.cur_scope.insert('index', Type(int_))
+				tc.cur_scope.insert('it', Type(int_))
 				tc.check_node(child_id)
 				tc.pop_scope()
+				if tc.find_ident_in_node(expr_id, 'it') != none {
+					message := 'variable `it` in array initialization will soon be replaced with `index`'
+					pos := token.new_span(node.pos.id, node.pos.end - 1, node.pos.end)
+					if !tc.has_type_notice(.assignment_mismatch, message, id) {
+						base := tc.make_type_error_at(.assignment_mismatch, message, id, pos)
+						tc.notices << TypeError{
+							...base
+							severity: 'warning:'
+						}
+					}
+				}
 			} else {
 				tc.check_node(child_id)
 			}
