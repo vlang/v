@@ -158,12 +158,29 @@ fn (tc &TypeChecker) diagnostic_type_name(typ Type) string {
 }
 
 fn (tc &TypeChecker) diagnostic_qualified_name(name string) ?string {
-	if tc.module_diagnostic_root == '' || !name.contains('.') {
+	if !name.contains('.') {
 		return none
 	}
 	base_name := name.all_before('[')
 	module_name := base_name.all_before_last('.')
 	if module_name in ['', 'main', 'builtin', 'C', 'JS'] {
+		return none
+	}
+	module_suffix := module_name.all_after_last('.')
+	if module_path := tc.file_import_suffix_paths['${tc.cur_file}\x00${module_suffix}'] {
+		if module_path != module_name && module_path.ends_with('.${module_name}') {
+			return module_path + name[module_name.len..]
+		}
+	}
+	info := tc.current_file_import_info()
+	if !isnil(info) {
+		for _, module_path in info.imports {
+			if module_path != module_name && module_path.ends_with('.${module_name}') {
+				return module_path + name[module_name.len..]
+			}
+		}
+	}
+	if tc.module_diagnostic_root == '' {
 		return none
 	}
 	mut declaration_file := tc.struct_files[base_name] or { tc.fn_type_files[base_name] or { '' } }
