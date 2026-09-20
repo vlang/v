@@ -2070,7 +2070,8 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 
 	ptr_ident := t.make_ident(ptr_name)
 	found_cond := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
-	else_block := t.make_block(t.lower_map_or_body_to_stmts(body_id, val_name, result_type, node.value, t.make_ierror_none()))
+	else_block := t.make_block(t.lower_map_or_body_to_stmts(body_id, val_name, result_type,
+		node.value, t.make_map_key_missing_error()))
 	ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name), '&${info.value_type}'))
 	then_block := if source_is_optional {
 		opt_name := t.new_temp('map_opt')
@@ -2115,6 +2116,12 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	}
 	t.pending_stmts << t.make_if(found_cond, then_block, else_block)
 	return t.make_ident(val_name)
+}
+
+fn (mut t Transformer) make_map_key_missing_error() flat.NodeId {
+	return t.make_call_typed('error', [
+		t.make_string_literal('map key does not exist'),
+	], 'IError')
 }
 
 // make_clear_map_ptr_value zeroes a value after ownership was moved out of a
