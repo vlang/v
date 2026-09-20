@@ -9864,6 +9864,8 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	if typ.len == 0 || typ == 'unknown' {
 		typ = t.resolve_expr_type(child_id)
 	}
+	mut dump_mut_param := false
+	mut dump_shared_ident := false
 	raw_alias_type := t.raw_alias_type_for_expr(child_id)
 	if raw_alias_type.len > 0 {
 		typ = raw_alias_type
@@ -9871,7 +9873,13 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	if child_node.kind == .ident {
 		raw := t.raw_var_type(child_node.value).trim_space()
 		if raw.starts_with('shared ') {
-			typ = t.normalize_type_alias(raw[7..].trim_space().trim_left('&'))
+			typ = '&' + t.normalize_type_alias(raw[7..].trim_space().trim_left('&'))
+			dump_shared_ident = true
+		} else if t.mut_param_values[child_node.value] {
+			if typ.starts_with('&') {
+				typ = typ[1..]
+			}
+			dump_mut_param = true
 		} else if t.pointer_value_rvalues[child_node.value] && typ.starts_with('&') {
 			// Heap-promoted value locals are stored as pointers, but ordinary reads
 			// (including dump) dereference them back to their source value type.
@@ -9897,10 +9905,17 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	}
 	// route a value `match`/`if` dumped operand (e.g. `dump(match x { ... })`)
 	// through value lowering so its propagating arms are lowered as values.
-	child := if t.is_value_match_or_if_operand(child_id) {
+	mut child := if t.is_value_match_or_if_operand(child_id) {
 		t.transform_value_operand(child_id)
 	} else {
 		t.transform_expr(child_id)
+	}
+	if dump_mut_param {
+		child = t.make_prefix(.mul, child)
+		t.set_node_typ(int(child), typ)
+	} else if dump_shared_ident {
+		child = t.make_prefix(.amp, child)
+		t.set_node_typ(int(child), typ)
 	}
 	temp_name := t.new_temp('dump')
 	t.pending_stmts << t.make_decl_assign_typed(temp_name, child, typ)
