@@ -183,7 +183,11 @@ cose.verify1(sig_only, pub_key, detached_payload: large_blob)!
   fields and are rejected in `extra_int_labels`; label 1 is the one
   exception, accepted there so that an `alg` this module does not model
   — an unknown integer identifier, or a text one — survives a
-  decode/encode round-trip.
+  decode/encode round-trip. A numeric content type must fit the CoAP
+  registry range; a text one must follow the `type-name/subtype-name`
+  syntax of RFC 9052 §3.1, with no leading or trailing whitespace.
+  Media type parameters (`; charset=utf-8`) are carried through
+  unvalidated, since implementations in the wild do send them.
 - `cose.sign1` / `cose.verify1` — single-signer convenience helpers.
 - `cose.sign` / `cose.SignMessage` — multi-signer.
 - `cose.mac0` / `cose.verify_mac0` — single-recipient MAC.

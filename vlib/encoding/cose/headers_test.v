@@ -418,3 +418,69 @@ fn test_extra_alg_label_still_round_trips() {
 	assert parsed.extra_int_labels[0].label == 1
 	assert parsed.extra_int_labels[0].value.as_int() == ?i64(-1000)
 }
+
+fn test_accepts_well_formed_text_content_types() {
+	for good in ['application/cbor', 'text/plain', 'application/coap-payload',
+		'application/vnd.example+json', 'x/y', 'text/plain; charset=utf-8', 'application/cbor;a=1;b=2'] {
+		h := Headers{
+			content_type_text: good
+		}
+		parsed := parse_protected(h.encode_protected()!)!
+		assert parsed.content_type_text == ?string(good)
+	}
+}
+
+fn test_rejects_malformed_text_content_types() {
+	// RFC 9052 §3.1 requires a type/subtype media type with no
+	// surrounding whitespace; RFC 6838 §4.2 constrains each name.
+	for bad in [' text/plain ', 'text/plain ', 'not-a-media-type', '', '///', 'a/b/c', 'text/',
+		'/plain', '-x/y', 'x/(y)', '; charset=utf-8'] {
+		h := Headers{
+			content_type_text: bad
+		}
+		if _ := h.encode_map() {
+			assert false, 'malformed content type "${bad}" must be rejected'
+		} else {
+			assert err.msg().contains('content type')
+		}
+	}
+}
+
+fn test_rejects_malformed_text_content_type_on_decode() {
+	// {3: " text/plain "} — a peer may send what we refuse to build.
+	encoded := cbor.encode(cbor.Value(cbor.Map{
+		pairs: [
+			cbor.MapPair{
+				key:   cbor.new_int(3)
+				value: cbor.new_text(' text/plain ')
+			},
+		]
+	}), cbor.EncodeOpts{})!
+	if _ := parse_headers_map(encoded) {
+		assert false, 'a malformed content type must not survive decoding'
+	} else {
+		assert err.msg().contains('content type')
+	}
+}
+
+fn test_numeric_content_type_shadows_an_unvalidated_text_one() {
+	// `append_pairs` emits the int form when both are set, so the text
+	// field never reaches the wire and must not be validated.
+	h := Headers{
+		content_type_int:  60
+		content_type_text: 'not a media type'
+	}
+	parsed := parse_protected(h.encode_protected()!)!
+	assert parsed.content_type_int == ?u64(60)
+	assert parsed.content_type_text == none
+}
+
+fn test_accepts_media_type_parameters_containing_a_slash() {
+	// Only the part before the first ';' is a media type; a parameter
+	// value may itself contain '/' and must not be parsed as one.
+	h := Headers{
+		content_type_text: 'multipart/related; type="application/cbor"'
+	}
+	parsed := parse_protected(h.encode_protected()!)!
+	assert parsed.content_type_text == ?string('multipart/related; type="application/cbor"')
+}

@@ -503,10 +503,77 @@ fn check_header_values(h Headers) ! {
 			}
 		}
 	}
+	// Only the content type that `append_pairs` actually emits is
+	// validated: the int form wins when both fields are set, so a text
+	// value that never reaches the wire must not fail the whole header.
+	if h.content_type_int == none {
+		if content_type := h.content_type_text {
+			check_media_type(content_type)!
+		}
+	}
 	if partial_iv := h.partial_iv {
 		if partial_iv.len > 13 {
 			return MalformedMessage{
 				reason: 'partial iv exceeds 13 bytes (RFC 9052 §3.1)'
+			}
+		}
+	}
+}
+
+// check_media_type enforces the tstr form of the content type header.
+// RFC 9052 §3.1 states that text values follow the
+// `type-name/subtype-name` syntax, with both names defined by RFC 6838
+// §4.2, and that leading and trailing whitespace is not permitted.
+//
+// Media type parameters (`; charset=utf-8`) are accepted as-is and left
+// unvalidated. RFC 9052 §3.1 does not spell out whether they belong in
+// this header, but it does point at the IANA registry "along with
+// parameters and subparameters", and implementations in the wild emit
+// them — so refusing them here would reject messages a peer legitimately
+// believes it may send. Only the media type itself is checked.
+fn check_media_type(s string) ! {
+	if s != s.trim_space() {
+		return MalformedMessage{
+			reason: 'content type "${s}" has leading or trailing whitespace (RFC 9052 §3.1)'
+		}
+	}
+	// Everything from the first ';' on is parameters, which this module
+	// carries without interpreting them.
+	base := s.all_before(';').trim_right(' \t')
+	parts := base.split('/')
+	if parts.len != 2 {
+		return MalformedMessage{
+			reason: 'content type "${s}" is not a type/subtype media type (RFC 9052 §3.1)'
+		}
+	}
+	for part in parts {
+		check_restricted_name(part, s)!
+	}
+}
+
+// check_restricted_name validates one half of a media type against the
+// restricted-name production of RFC 6838 §4.2:
+// `restricted-name-first *126restricted-name-chars`. `full` is the whole
+// content type, carried through so the error names what was rejected.
+fn check_restricted_name(name string, full string) ! {
+	if name.len == 0 || name.len > 127 {
+		return MalformedMessage{
+			reason: 'content type "${full}" has a name of invalid length (RFC 6838 §4.2)'
+		}
+	}
+	for i, c in name {
+		is_alnum := (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
+		if i == 0 {
+			if !is_alnum {
+				return MalformedMessage{
+					reason: 'content type "${full}" has a name not starting with an alphanumeric (RFC 6838 §4.2)'
+				}
+			}
+			continue
+		}
+		if !is_alnum && c !in [`!`, `#`, `$`, `&`, `-`, `^`, `_`, `.`, `+`] {
+			return MalformedMessage{
+				reason: 'content type "${full}" contains an invalid character (RFC 6838 §4.2)'
 			}
 		}
 	}
