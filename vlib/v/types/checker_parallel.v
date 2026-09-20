@@ -1536,6 +1536,16 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_unknown_format := a.msg.starts_with('unknown format specifier `')
+	b_is_unknown_format := b.msg.starts_with('unknown format specifier `')
+	a_is_illegal_format := a.msg.starts_with('illegal format specifier `')
+	b_is_illegal_format := b.msg.starts_with('illegal format specifier `')
+	if a.node == b.node && a_is_unknown_format && b_is_illegal_format {
+		return -1
+	}
+	if a.node == b.node && b_is_unknown_format && a_is_illegal_format {
+		return 1
+	}
 	a_is_shared_call_in_lock := a.msg.contains('with `shared` arguments cannot be called inside `lock`/`rlock` block')
 	b_is_shared_call_in_lock := b.msg.contains('with `shared` arguments cannot be called inside `lock`/`rlock` block')
 	a_is_missing_shared_arg := a.msg.contains(' parameter `')

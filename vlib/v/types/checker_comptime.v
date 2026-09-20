@@ -3518,7 +3518,7 @@ fn (mut tc TypeChecker) check_string_interpolation_format(id flat.NodeId, node f
 	} else if clean.is_integer() {
 		is_unsigned := if clean is Primitive { clean.props.has(.unsigned) } else { clean is USize }
 		allowed = if is_unsigned {
-			spec in [`d`, `u`, `x`, `X`, `o`, `b`, `c`]
+			spec in [`u`, `x`, `X`, `o`, `b`, `c`]
 		} else {
 			spec in [`d`, `x`, `X`, `o`, `b`, `c`]
 		}
