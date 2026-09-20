@@ -1338,7 +1338,11 @@ fn (t &Transformer) raw_checker_node_type(id flat.NodeId) string {
 }
 
 fn (t &Transformer) raw_alias_type_for_expr(id flat.NodeId) string {
-	if int(id) >= 0 && int(id) < t.a.nodes.len && t.a.nodes[int(id)].kind == .call {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call {
 		// A collection method call can retain its receiver alias in the parser's
 		// node annotation (`DottedKey.last()` annotated as `DottedKey`) even though
 		// the checker resolved its result to the element type (`string`). Do not let
@@ -1352,6 +1356,17 @@ fn (t &Transformer) raw_alias_type_for_expr(id flat.NodeId) string {
 			return raw_type
 		}
 		return ''
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		child_id := t.a.child(&node, 0)
+		if raw_child_type := t.raw_var_type_for_expr(child_id) {
+			clean_child_type := t.trim_pointer_type(raw_child_type)
+			if t.is_type_alias_name(clean_child_type)
+				|| (t.is_optional_type_name(clean_child_type)
+					&& t.is_type_alias_name(t.optional_base_type(clean_child_type))) {
+				return '&${raw_child_type}'
+			}
+		}
 	}
 	if raw_var_type := t.raw_var_type_for_expr(id) {
 		clean_var_type := t.trim_pointer_type(raw_var_type)
@@ -1368,7 +1383,6 @@ fn (t &Transformer) raw_alias_type_for_expr(id flat.NodeId) string {
 	if t.is_type_alias_name(clean) {
 		return raw_type
 	}
-	node := t.a.nodes[int(id)]
 	if node.kind == .infix && node.children_count > 0 {
 		lhs_id := t.a.child(&node, 0)
 		if lhs_type := t.raw_var_type_for_expr(lhs_id) {

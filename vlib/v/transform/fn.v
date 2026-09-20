@@ -6156,7 +6156,12 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 			}
 		}
 	}
-	resolved_base := t.alias_str_resolved_base_type(base_type)
+	mut resolved_base := t.alias_str_resolved_base_type(base_type)
+	if is_ref {
+		if option_base := t.alias_str_option_base_type(base_type) {
+			resolved_base = option_base
+		}
+	}
 	if is_ref && !t.is_optional_type_name(resolved_base)
 		&& t.alias_str_needs_name_wrapper(base_type) {
 		return t.lower_ref_str_guarded(expr, alias_name, false, '', '&nil')
@@ -6355,6 +6360,22 @@ fn (t &Transformer) alias_str_resolved_base_type(base_type string) string {
 		clean = next
 	}
 	return clean
+}
+
+// alias_str_option_base_type peels aliases around an option without resolving aliases in its
+// payload, since they may provide a custom `str()` method.
+fn (t &Transformer) alias_str_option_base_type(base_type string) ?string {
+	mut clean := base_type.trim_space()
+	mut seen := []string{}
+	for clean.len > 0 && clean !in seen {
+		if t.is_optional_type_name(clean) {
+			return clean
+		}
+		seen << clean
+		_, next := t.lookup_str_alias(clean) or { return none }
+		clean = next.trim_space()
+	}
+	return none
 }
 
 // optional_payload_alias_display_name returns the name an alias payload prints
@@ -8968,7 +8989,7 @@ fn (mut t Transformer) wrap_optional_string_conversion(expr flat.NodeId, typ str
 	pointer_payload := value_type.starts_with('&')
 	option_prefix := if pointer_payload || is_ref { '&Option(' } else { 'Option(' }
 	t.pending_stmts << t.make_decl_assign_typed(res_name, t.make_string_literal('${option_prefix}none)'), 'string')
-	if is_ref {
+	if is_ref || pointer_payload {
 		t.pending_stmts << t.make_assign(t.make_ident(res_name), t.make_string_literal('${option_prefix}&nil)'))
 	}
 	value := t.make_selector(t.make_ident(opt_name), 'value', value_type)
