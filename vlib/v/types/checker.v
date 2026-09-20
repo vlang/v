@@ -13222,7 +13222,8 @@ fn (mut tc TypeChecker) record_invalid_any_decl_type(node_id flat.NodeId) {
 	} else {
 		'cannot use type `any` here'
 	}
-	tc.record_error_at(.unknown_type, msg, node_id, tc.type_diagnostic_pos(node_id, 'any'))
+	tc.record_error_unfiltered_at(.unknown_type, msg, node_id, tc.type_diagnostic_pos(node_id,
+		'any'))
 }
 
 fn (tc &TypeChecker) node_value_diagnostic_pos(node_id flat.NodeId) token.Pos {
