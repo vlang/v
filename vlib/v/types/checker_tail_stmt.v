@@ -7595,7 +7595,8 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		} else {
 			'undefined ident: `${node.value}`'
 		}
-		tc.record_error(.unknown_ident, message, id)
+		tc.record_error_at(.unknown_ident, message, id,
+			tc.checker_fixture_template_ident_pos(id, node.pos))
 		tc.register_synth_type(id, Type(void_))
 	}
 }

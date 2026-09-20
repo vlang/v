@@ -2025,11 +2025,12 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 				} else {
 					'expression does not return a value'
 				}
-				diagnostic_pos := if invalid_selector {
+				mut diagnostic_pos := if invalid_selector {
 					tc.node_value_diagnostic_pos(expr_id)
 				} else {
 					tc.string_interpolation_expr_pos(expr_id)
 				}
+				diagnostic_pos = tc.checker_fixture_template_ident_pos(expr_id, diagnostic_pos)
 				tc.record_error_at(.call_arg_mismatch, message, expr_id, diagnostic_pos)
 				specialized_invalid_selector = specialized_invalid_selector
 					|| (invalid_selector && tc.current_fn_is_specialized_generic())

@@ -206,6 +206,20 @@ fn (tc &TypeChecker) source_text_for_node(id flat.NodeId) string {
 	return source[start..end].trim_space()
 }
 
+fn (tc &TypeChecker) checker_fixture_template_ident_pos(id flat.NodeId, pos token.Pos) token.Pos {
+	if !tc.checker_fixture_mode || !tc.valid_node_id(id) || pos.id !in tc.a.template_actions
+		|| tc.a.node(id).kind != .ident || pos.offset + 1 >= pos.end {
+		return pos
+	}
+	shifted := token.new_span(pos.id, pos.offset + 1, pos.end)
+	reported_column := tc.a.node(id).pos.reported_column()
+	return if reported_column > 0 {
+		shifted.with_reported_column(reported_column)
+	} else {
+		shifted
+	}
+}
+
 fn (tc &TypeChecker) node_is_c_source(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return tc.cur_file.ends_with('.c.v')
