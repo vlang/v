@@ -202,7 +202,7 @@ fn test_mac0_rejects_invalid_header_buckets_on_creation() {
 	mut protected := Headers{}
 	protected.algorithm = .hmac_256_256
 	if _ := mac0('payload'.bytes(), key,
-		protected: protected
+		protected:   protected
 		unprotected: Headers{
 			algorithm: .hmac_256_256
 		}

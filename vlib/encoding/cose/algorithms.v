@@ -10,10 +10,10 @@ module cose
 // RFC 9053.
 pub enum Algorithm {
 	// Signature algorithms (RFC 9053 §2)
-	es256 = -7  // ECDSA w/ SHA-256, curve P-256
+	es256 = -7 // ECDSA w/ SHA-256, curve P-256
 	es384 = -35 // ECDSA w/ SHA-384, curve P-384
 	es512 = -36 // ECDSA w/ SHA-512, curve P-521
-	eddsa = -8  // EdDSA (Ed25519 in this module)
+	eddsa = -8 // EdDSA (Ed25519 in this module)
 
 	// MAC algorithms (RFC 9053 §3)
 	hmac_256_64  = 4 // HMAC w/ SHA-256, truncated to 64 bits
