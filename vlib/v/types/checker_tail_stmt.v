@@ -3609,10 +3609,6 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	clean_init_type := unalias_type(init_type)
 	if clean_init_type is Interface {
-		if node.children_count == 0 && tc.interface_has_no_requirements(clean_init_type.name) {
-			tc.register_synth_type(id, init_type)
-			return
-		}
 		tc.record_error_at(.assignment_mismatch, 'cannot instantiate interface `${clean_init_type.name.all_after_last('.')}`', id, node.pos)
 		return
 	}
