@@ -14212,7 +14212,9 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 		if is_embed && field_type_raw is Alias && embedded_alias_target !is Struct
 			&& embedded_alias_target !is Interface && embedded_alias_target !is FnType {
 			is_anonymous := is_anonymous_struct_name(node.value)
-			if is_anonymous {
+			embedded_type_pos := tc.anonymous_struct_embedded_type_pos(*field)
+			anonymous_named_field := is_anonymous && embedded_type_pos.offset > field.pos.offset
+			if is_anonymous && !anonymous_named_field {
 				tc.record_error_at(.assignment_mismatch, 'cannot embed non-struct `${field_type_text}`', field_id, tc.anonymous_struct_declaration_pos(node))
 			}
 			message := if is_anonymous {
@@ -14220,7 +14222,12 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 			} else {
 				'`${field_type_text}` (alias of `${field_type.name()}`) is not a struct'
 			}
-			tc.record_error_at(.assignment_mismatch, message, field_id, tc.struct_field_declaration_pos(*field))
+			diagnostic_pos := if anonymous_named_field {
+				embedded_type_pos
+			} else {
+				tc.struct_field_declaration_pos(*field)
+			}
+			tc.record_error_at(.assignment_mismatch, message, field_id, diagnostic_pos)
 		}
 		if !is_embed && field_type_raw is Alias && field_type is Struct && field_type.name.starts_with('C.') && field_type.name in tc.c_typedef_structs && (tc.structs[field_type.name] or {
 			[]StructField{}
@@ -14425,6 +14432,18 @@ fn (tc &TypeChecker) struct_field_declaration_pos(field flat.Node) token.Pos {
 	if relative := line.index(field.value) {
 		start := line_start + relative
 		return token.new_span(field.pos.id, start, line_start + line.len)
+	}
+	return field.pos
+}
+
+fn (tc &TypeChecker) anonymous_struct_embedded_type_pos(field flat.Node) token.Pos {
+	file := tc.a.source_files[field.pos.id] or { return field.pos }
+	source := tc.source_texts_by_file[file.name] or { return field.pos }
+	start := int_min(int_max(field.pos.offset, 0), source.len)
+	end := int_min(int_max(field.pos.end, start), source.len)
+	if relative := source[start..end].last_index(field.typ) {
+		type_start := start + relative
+		return token.new_span(field.pos.id, type_start, type_start + field.typ.len)
 	}
 	return field.pos
 }
