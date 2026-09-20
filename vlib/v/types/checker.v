@@ -5892,7 +5892,9 @@ fn (mut tc TypeChecker) check_unused_import_diagnostics() {
 			continue
 		}
 		if tc.errors.any(it.file == tc.cur_file && it.kind == .unknown_ident
-			&& it.msg.starts_with('undefined variable') && it.node_value == node.typ) {
+			&& it.msg.starts_with('undefined variable')
+			&& (it.node_value == node.typ
+				|| (it.node_value.len > 1 && node.typ.starts_with(it.node_value)))) {
 			continue
 		}
 		if tc.node_has_unused_import_warning(flat.NodeId(idx)) {
