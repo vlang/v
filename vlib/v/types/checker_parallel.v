@@ -1723,6 +1723,12 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		&& a.msg.ends_with('`, so it should have either an `or {}` block, or `!` at the end')
 	b_is_unhandled_result_call := b.msg.contains('() returns `!')
 		&& b.msg.ends_with('`, so it should have either an `or {}` block, or `!` at the end')
+	a_is_unwrapped_result_operand := a.msg.starts_with('unwrapped Result cannot be used')
+	b_is_unwrapped_result_operand := b.msg.starts_with('unwrapped Result cannot be used')
+	if a.node == b.node && a_is_unwrapped_result_operand != b_is_unwrapped_result_operand
+		&& (a_is_unhandled_result_call || b_is_unhandled_result_call) {
+		return if a_is_unwrapped_result_operand { -1 } else { 1 }
+	}
 	a_is_direct_result_call := a.msg == 'Result type cannot be called directly'
 	b_is_direct_result_call := b.msg == 'Result type cannot be called directly'
 	if a.file == b.file
