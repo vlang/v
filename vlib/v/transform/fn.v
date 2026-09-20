@@ -1346,6 +1346,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			spread_id := t.a.child(&arg_node, 0)
 			spread_base := t.stable_expr_for_reuse(spread_id)
 			spread_count := params.len - param_idx
+			t.add_spread_length_guard(spread_base, spread_count)
 			for spread_offset in 0 .. spread_count {
 				expected := t.semantic_type_name(params[param_idx + spread_offset])
 				index_arg := t.make_spread_index_for_expected_param(spread_base, spread_offset, expected)
@@ -15000,6 +15001,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 			spread_id := t.a.child(&arg_node, 0)
 			spread_base := t.stable_expr_for_reuse(spread_id)
 			spread_count := params.len - param_idx
+			t.add_spread_length_guard(spread_base, spread_count)
 			for spread_offset in 0 .. spread_count {
 				expected := t.semantic_type_name(params[param_idx + spread_offset])
 				index_arg := t.make_spread_index_for_expected_param(spread_base, spread_offset, expected)
@@ -15037,6 +15039,32 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 	}
 	t.append_missing_params_struct_args(mut args, params, param_offset)
 	return args
+}
+
+fn (mut t Transformer) add_spread_length_guard(base flat.NodeId, needed int) {
+	len_expr := t.make_selector(base, 'len', 'int')
+	too_short := t.make_infix(.lt, len_expr, t.make_int_literal(needed))
+	count := t.stringify_expr(t.make_selector(base, 'len', 'int'))
+	prefix := t.make_call_typed('string__plus', [
+		t.make_string_literal('array decompose: array has '),
+		count,
+	], 'string')
+	needed_word := if needed == 1 { 'element is' } else { 'elements are' }
+	singular_message := t.make_call_typed('string__plus', [
+		prefix,
+		t.make_string_literal(' element but ${needed} ${needed_word} needed'),
+	], 'string')
+	plural_message := t.make_call_typed('string__plus', [
+		prefix,
+		t.make_string_literal(' elements but ${needed} ${needed_word} needed'),
+	], 'string')
+	singular := t.make_infix(.eq, t.make_selector(base, 'len', 'int'), t.make_int_literal(1))
+	report := t.make_if(singular, t.make_block([
+		t.make_expr_stmt(t.make_call('panic', [singular_message])),
+	]), t.make_block([
+		t.make_expr_stmt(t.make_call('panic', [plural_message])),
+	]))
+	t.pending_stmts << t.make_if(too_short, t.make_block([report]), t.make_empty())
 }
 
 fn (mut t Transformer) make_spread_index_for_expected_param(base flat.NodeId, offset int, typ string) flat.NodeId {
