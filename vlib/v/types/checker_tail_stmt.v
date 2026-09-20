@@ -4890,7 +4890,9 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 		if field_type !is Struct || field.children_count > 0 {
 			continue
 		}
-		if !is_embed && field.value in supplied {
+		// Supplying the embedded value itself initializes all of its fields. When only
+		// promoted fields are supplied, keep recursing with the outer field set below.
+		if field.value in supplied {
 			continue
 		}
 		child_supplied := if is_embed {
