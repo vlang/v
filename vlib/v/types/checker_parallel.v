@@ -2403,7 +2403,8 @@ fn duplicate_match_case_int(message string) ?int {
 fn type_errors_equal(a TypeError, b TypeError) bool {
 	if a.node == b.node && a.kind == b.kind && a.msg == b.msg
 		&& (is_inline_asm_instruction_error(a.msg)
-			|| a.msg.starts_with('cannot embed non-struct `')) {
+			|| a.msg.starts_with('cannot embed non-struct `')
+			|| a.msg == 'byte is deprecated, use u8 instead') {
 		return a.pos == b.pos
 	}
 	return a.node == b.node && a.kind == b.kind && a.msg == b.msg
