@@ -16894,7 +16894,8 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 			|| expected_normalized.starts_with('fn (')) {
 		return transform_sum_fn_variant_key(normalized) == transform_sum_fn_variant_key(expected_normalized)
 	}
-	if !isnil(t.tc) && expected_normalized in t.tc.interface_names {
+	if !isnil(t.tc)
+		&& t.tc.interface_metadata_name(expected_normalized) in t.tc.interface_names {
 		if t.tc.type_text_implements_interface(clean_actual, expected_normalized)
 			|| (normalized != clean_actual
 				&& t.tc.type_text_implements_interface(normalized, expected_normalized)) {
