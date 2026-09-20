@@ -2380,7 +2380,10 @@ fn set_list(mut state State, pointer voidptr) {
 	state.list = unsafe { &&char(pointer) }
 }
 
-fn main() {}
+fn main() {
+	mut state := State{}
+	set_list(mut state, voidptr(0))
+}
 ', 'selfhost_double_pointer_cast_assignment.v', prefs) or { panic(err) }
 	assert c_source.contains('state->list=((char**)(pointer))'), c_source
 	assert !c_source.contains('state->list=)&&'), c_source
