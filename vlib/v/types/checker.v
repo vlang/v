@@ -7228,6 +7228,9 @@ pub fn (mut tc TypeChecker) diagnose_unused_private_declarations(used_fns map[st
 			module_name = node.value
 			continue
 		}
+		if tc.translated_files[tc.cur_file] {
+			continue
+		}
 		if node.kind == .fn_decl {
 			if node.op == .arrow || node.value in ['main', 'init', 'cleanup']
 				|| is_v_test_fn_name(node.value) || node.value.starts_with('__anon_fn_')

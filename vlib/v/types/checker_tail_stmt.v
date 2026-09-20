@@ -996,6 +996,9 @@ fn (mut tc TypeChecker) check_postfix_value_uses_preflight() {
 	for index in tc.preflight_nodes(.postfix) {
 		id := flat.NodeId(index)
 		node := tc.a.nodes[index]
+		if tc.node_is_from_translated_file(node) {
+			continue
+		}
 		if node.op !in [.inc, .dec] || tc.expr_is_standalone_statement(id)
 			|| tc.postfix_is_c_style_for_condition(id) {
 			continue
