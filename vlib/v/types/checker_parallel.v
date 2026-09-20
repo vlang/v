@@ -2782,7 +2782,19 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				}
 			}
 			is_builtin_array_override := receiver_type is Array && node.value.ends_with('.map')
-			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override {
+			is_local_collection := match receiver_type {
+				Array {
+					tc.receiver_collection_payload_is_local(receiver_type.elem_type)
+				}
+				Map {
+					tc.receiver_collection_payload_is_local(receiver_type.value_type)
+				}
+				else {
+					false
+				}
+			}
+			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override
+				&& !is_local_collection {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
 				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
 			}
@@ -2894,6 +2906,78 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			tc.record_error_at(.return_mismatch, 'operator `${operator}` methods on primitive aliases should return `${receiver_type.name}`', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
+}
+
+fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
+	clean := unwrap_pointer(typ)
+	return match clean {
+		Alias {
+			tc.source_module_declares_type(clean.name)
+		}
+		Struct {
+			tc.source_module_declares_type(clean.name)
+		}
+		Interface {
+			tc.source_module_declares_type(clean.name)
+		}
+		Enum {
+			tc.source_module_declares_type(clean.name)
+		}
+		SumType {
+			tc.source_module_declares_type(clean.name)
+		}
+		Array {
+			tc.receiver_collection_payload_is_local(clean.elem_type)
+		}
+		ArrayFixed {
+			tc.receiver_collection_payload_is_local(clean.elem_type)
+		}
+		Map {
+			tc.receiver_collection_payload_is_local(clean.value_type)
+		}
+		OptionType {
+			tc.receiver_collection_payload_is_local(clean.base_type)
+		}
+		ResultType {
+			tc.receiver_collection_payload_is_local(clean.base_type)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (tc &TypeChecker) source_module_declares_type(type_name string) bool {
+	qualified_base := type_name.all_before('[')
+	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
+	if qualified_base.contains('.') {
+		owner_module := qualified_base.all_before_last('.')
+		if owner_module != current_module {
+			return false
+		}
+	}
+	base_name := qualified_base.all_after_last('.')
+	mut module_name := ''
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		match node.kind {
+			.file {
+				module_name = ''
+			}
+			.module_decl {
+				module_name = node.value
+			}
+			.struct_decl, .type_decl, .interface_decl, .enum_decl {
+				decl_module := if module_name in ['', 'main'] { 'main' } else { module_name }
+				modules_match := decl_module == current_module
+				if modules_match && node.value.all_before('[').all_after_last('.') == base_name {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) operator_receiver_without_mut_pos(node flat.Node) token.Pos {
