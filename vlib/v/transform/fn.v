@@ -14002,6 +14002,8 @@ fn (t &Transformer) resolved_call_uses_receiver_type(base_id flat.NodeId, receiv
 // supports helper handling in transform.
 fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, method_name string) flat.NodeId {
 	method_receiver := t.trim_pointer_type(owner_name_view(method_name))
+	params := t.call_param_types(method_name)
+	receiver_param_type := if params.len > 0 { t.semantic_type_name(params[0]) } else { '' }
 	key := t.expr_key(base_id)
 	for source_type in [t.raw_var_type_for_expr(base_id) or { '' }, t.original_expr_type(base_id),
 		t.node_type(base_id)] {
@@ -14021,12 +14023,12 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 					}
 				}
 			}
-			return t.transform_expr(base_id)
+			return t.transform_expr_for_type(base_id, receiver_param_type)
 		}
 		if alias_target := t.alias_target_type_preserving_main_lock(clean_source) {
 			if method_receiver.len > 0
 				&& short_name_view(t.trim_pointer_type(alias_target)) == short_name_view(method_receiver) {
-				return t.transform_expr(base_id)
+				return t.transform_expr_for_type(base_id, receiver_param_type)
 			}
 		}
 	}
@@ -14034,7 +14036,6 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 		return embedded_base
 	}
 	sc := t.find_smartcast(key) or { return t.transform_expr(base_id) }
-	params := t.call_param_types(method_name)
 	if params.len == 0 {
 		return t.transform_expr(base_id)
 	}
