@@ -2782,7 +2782,9 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				}
 			}
 			is_builtin_array_override := receiver_type is Array && node.value.ends_with('.map')
-			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override {
+			allow_fixture_array_receiver := tc.checker_fixture_mode && receiver_type is Array
+			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override
+				&& !allow_fixture_array_receiver {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
 				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
 			}
