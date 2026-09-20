@@ -13451,6 +13451,10 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		rhs_is_map_value := unalias_type(rhs_type) is Map
 			|| (rhs_node.kind == .ident && tc.mut_value_param_binding_matches_lvalue(rhs_node.value)
 				&& unalias_and_unwrap_pointer_type(rhs_type) is Map)
+		rhs_map_value_type := if rhs_type is Pointer { rhs_type.base_type } else { rhs_type }
+		is_mut_map_alias_receiver := rhs_node.kind == .ident
+			&& tc.current_fn_param_is_mut_receiver(rhs_node.value) && rhs_map_value_type is Alias
+			&& unalias_type(rhs_map_value_type) is Map
 		if tc.unsafe_depth == 0 && !tc.current_fn_declared_unsafe() && lhs_node.value != '_'
 			&& unalias_type(rhs_type) is Map {
 			if tc.record_decl_map_or_unwrap_copy(rhs_id) {
@@ -13460,7 +13464,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		}
 		if tc.unsafe_depth == 0 && !tc.current_fn_declared_unsafe() && lhs_node.value != '_'
 			&& rhs_is_map_value && rhs_node.kind == .ident
-			&& !tc.expr_is_unsafe_reference_alias(rhs_id) {
+			&& !tc.expr_is_unsafe_reference_alias(rhs_id) && !is_mut_map_alias_receiver {
 			tc.record_error_at(.assignment_mismatch, 'cannot copy map: call `move` or `clone` method (or use a reference)', rhs_id, rhs_node.pos)
 		}
 		if tc.unsafe_depth == 0 && lhs_is_mut && unalias_type(rhs_type) is Array
