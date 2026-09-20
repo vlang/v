@@ -6282,6 +6282,22 @@ fn (t &Transformer) heap_attr_struct_type(typ string) bool {
 	return t.tc.type_has_declaration_attribute(clean_type, 'heap')
 }
 
+fn (t &Transformer) pointer_to_heap_attr_struct_type(typ string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	clean_type := types.unalias_type(t.tc.parse_type(typ))
+	if clean_type !is types.Pointer {
+		return false
+	}
+	pointer_type := clean_type as types.Pointer
+	base_type := types.unalias_type(pointer_type.base_type)
+	if base_type !is types.Struct {
+		return false
+	}
+	return t.tc.type_has_declaration_attribute(base_type, 'heap')
+}
+
 fn (mut t Transformer) collect_exclusive_closure_return_fns() {
 	if t.exclusive_closure_returns_done {
 		return
@@ -20208,13 +20224,19 @@ fn (t &Transformer) pointer_storage_amp_decl_type(rhs_id flat.NodeId) ?string {
 		return none
 	}
 	child := t.a.child_node(&node, 0)
-	if child.kind != .ident
-		|| (!t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]) {
+	if child.kind != .ident {
 		return none
 	}
 	mut vt := t.var_type(child.value)
 	if vt.starts_with('mut ') {
 		vt = '&' + vt[4..].trim_space()
+	}
+	pointer_storage := t.mut_param_values[child.value] || t.pointer_value_rvalues[child.value]
+	heap_pointer_value := t.expected_expr_node == int(rhs_id)
+		&& t.normalize_type_alias(vt) == t.normalize_type_alias(t.expected_expr_type)
+		&& t.pointer_to_heap_attr_struct_type(vt)
+	if !pointer_storage && !heap_pointer_value {
+		return none
 	}
 	if !vt.starts_with('&') && vt.len > 0 {
 		vt = '&${vt}'
