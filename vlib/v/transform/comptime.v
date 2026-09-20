@@ -2552,15 +2552,7 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 			break
 		}
 		arg := t.a.nodes[int(arg_id)]
-		mut arg_type := if arg.kind == .ident {
-			t.local_decl_type_before(arg.value, arg_id) or {
-				t.comptime_reflected_for_in_local_type(arg.value, fm) or {
-					t.generic_call_arg_type_for_inference(arg_id)
-				}
-			}
-		} else {
-			t.generic_call_arg_type_for_inference(arg_id)
-		}
+		mut arg_type := t.comptime_field_generic_arg_type(arg_id, fm)
 		if arg.kind == .ident {
 			if payload := t.comptime_option_unwrapped_local_type(arg.value, node, fm) {
 				arg_type = payload
@@ -2614,6 +2606,32 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 	// generic arguments, so leaving the generated function name there makes a
 	// later monomorphization pass interpret that name as the concrete type.
 	return ''
+}
+
+fn (mut t Transformer) comptime_field_generic_arg_type(arg_id flat.NodeId, fm FieldMeta) string {
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind == .ident {
+		return t.local_decl_type_before(arg.value, arg_id) or {
+			t.comptime_reflected_for_in_local_type(arg.value, fm) or {
+				t.generic_call_arg_type_for_inference(arg_id)
+			}
+		}
+	}
+	if arg.kind == .prefix && arg.children_count > 0 {
+		child_id := t.a.child(&arg, 0)
+		child := t.a.nodes[int(child_id)]
+		if child.kind == .ident {
+			if local_type := t.local_decl_type_before(child.value, child_id) {
+				if arg.op == .amp {
+					return '&${local_type}'
+				}
+				if arg.op == .mul && local_type.starts_with('&') {
+					return local_type[1..]
+				}
+			}
+		}
+	}
+	return t.generic_call_arg_type_for_inference(arg_id)
 }
 
 fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.Node, fm FieldMeta) ?string {
