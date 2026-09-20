@@ -1825,6 +1825,11 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	a_is_interface_implementation_summary := a.msg.contains("doesn't implement interface `")
 	b_is_interface_implementation_summary := b.msg.contains("doesn't implement interface `")
 	if a.node == b.node && a_is_missing_interface_method && b_is_missing_interface_method {
+		a_orm_order := orm_connection_method_diagnostic_order(a.msg)
+		b_orm_order := orm_connection_method_diagnostic_order(b.msg)
+		if a_orm_order > 0 && b_orm_order > 0 && a_orm_order != b_orm_order {
+			return a_orm_order - b_orm_order
+		}
 		a_interface := a.msg.all_after_last(' of interface `').all_before('`')
 		b_interface := b.msg.all_after_last(' of interface `').all_before('`')
 		if a_interface < b_interface {
@@ -2250,6 +2255,24 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 		return 1
 	}
 	return 0
+}
+
+fn orm_connection_method_diagnostic_order(message string) int {
+	if !message.ends_with(' of interface `orm.Connection`') {
+		return 0
+	}
+	method := message.all_after("doesn't implement method `").all_before('`')
+	return match method {
+		'select' { 1 }
+		'insert' { 2 }
+		'update' { 3 }
+		'delete' { 4 }
+		'create' { 5 }
+		'drop' { 6 }
+		'last_id' { 7 }
+		'execute' { 8 }
+		else { 0 }
+	}
 }
 
 fn duplicate_match_case_int(message string) ?int {
