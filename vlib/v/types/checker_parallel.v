@@ -1943,6 +1943,30 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.file == b.file && b_is_sort_call_receiver && a_is_mut_expression {
 		return 1
 	}
+	a_is_missing_mut_arg := (a.msg.starts_with('function `') || a.msg.starts_with('method `'))
+		&& a.msg.contains(' is `mut`, so use `mut ')
+	b_is_missing_mut_arg := (b.msg.starts_with('function `') || b.msg.starts_with('method `'))
+		&& b.msg.contains(' is `mut`, so use `mut ')
+	a_is_call_arg_type_mismatch := a.msg.starts_with('cannot use `')
+		&& a.msg.contains(' in argument ')
+	b_is_call_arg_type_mismatch := b.msg.starts_with('cannot use `')
+		&& b.msg.contains(' in argument ')
+	if a.node == b.node && a_is_missing_mut_arg && b_is_call_arg_type_mismatch {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_mut_arg && a_is_call_arg_type_mismatch {
+		return 1
+	}
+	a_is_unneeded_mut_arg := a.msg.ends_with(' is not `mut`, `mut` is not needed`')
+	b_is_unneeded_mut_arg := b.msg.ends_with(' is not `mut`, `mut` is not needed`')
+	a_is_invalid_mut_expr := a.msg == 'array literal can not be modified' || a_is_mut_expression
+	b_is_invalid_mut_expr := b.msg == 'array literal can not be modified' || b_is_mut_expression
+	if a.node == b.node && a_is_invalid_mut_expr && b_is_unneeded_mut_arg {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_mut_expr && a_is_unneeded_mut_arg {
+		return 1
+	}
 	a_is_array_append_expr := a.msg == 'array append cannot be used in an expression'
 	b_is_array_append_expr := b.msg == 'array append cannot be used in an expression'
 	a_is_array_literal_mutation := a.msg == 'array literal can not be modified'

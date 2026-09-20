@@ -13430,7 +13430,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				tc.record_warning_at(.call_arg_mismatch, 'automatic referencing/dereferencing is deprecated and will be removed soon (got: ${actual_depth} references, expected: ${expected_depth} references)', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			}
 			tc.record_error_at(.call_arg_mismatch, '${call_kind} `${target}` parameter ${param_label} is `mut`, so use `mut ${arg_text}` instead', arg_id, tc.call_argument_diagnostic_pos(arg_id))
-			if call_kind == 'function' && mut_arg_node.kind == .ident {
+			if call_kind == 'function' && mut_arg_node.kind in [.ident, .array_literal] {
 				argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
 				actual := tc.resolve_type(arg_id)
 				tc.record_error_at(.call_arg_mismatch, 'cannot use `${tc.diagnostic_expr_type_name(arg_id, actual)}` as `${call_argument_type_name(expected)}` in argument ${argument_number} to `${tc.call_argument_target_name(node, info)}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
