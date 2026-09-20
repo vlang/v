@@ -9251,6 +9251,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 	tc.check_test_file_has_test_fn()
 	tc.check_selective_builtin_import_diagnostics()
 	tc.check_unused_import_diagnostics()
+	tc.check_deferred_fixture_array_receivers()
 	tc.discard_cascading_fn_redefinition_diagnostics()
 	tc.notices.sort_with_compare(compare_type_notices)
 	// All ordinary source annotations have now been validated with module-strict

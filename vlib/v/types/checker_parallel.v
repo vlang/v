@@ -822,6 +822,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 		tc.check_unused_import_diagnostics()
 	}
 	tc.check_selective_builtin_import_diagnostics()
+	tc.check_deferred_fixture_array_receivers()
 	if tc.defer_ierror_gating {
 		if tc.pending_ierror_errors.len > 0 {
 			tc.collect_selected_file_called_fns()
@@ -1054,6 +1055,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 			tc.check_unused_import_diagnostics()
 		}
 		tc.check_selective_builtin_import_diagnostics()
+		tc.check_deferred_fixture_array_receivers()
 		if tc.defer_ierror_gating {
 			if tc.pending_ierror_errors.len > 0 {
 				tc.collect_selected_file_called_fns()
@@ -2894,6 +2896,43 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			|| unalias_type(receiver_type.base_type) is String)
 			&& parsed_return_type.name() != receiver_type.name && operator_params_match {
 			tc.record_error_at(.return_mismatch, 'operator `${operator}` methods on primitive aliases should return `${receiver_type.name}`', id, tc.fn_return_type_diagnostic_pos(node))
+		}
+	}
+}
+
+fn (mut tc TypeChecker) check_deferred_fixture_array_receivers() {
+	if !tc.checker_fixture_mode {
+		return
+	}
+	mut files_with_errors := map[int]bool{}
+	for diagnostic in tc.errors {
+		files_with_errors[diagnostic.pos.id] = true
+	}
+	tc.cur_module = ''
+	tc.cur_file = ''
+	for idx in tc.top_level_idx {
+		node := tc.a.node(flat.NodeId(idx))
+		if node.kind == .file {
+			tc.enter_file(node.value)
+			continue
+		}
+		if node.kind == .module_decl {
+			tc.enter_module(node.value)
+			continue
+		}
+		if node.kind != .fn_decl || files_with_errors[node.pos.id] || tc.cur_module == 'builtin'
+			|| node.children_count == 0 {
+			continue
+		}
+		receiver_id := tc.a.child(&node, 0)
+		receiver := tc.a.node(receiver_id)
+		if receiver.kind != .param || receiver.op != .dot {
+			continue
+		}
+		receiver_type := unwrap_pointer(tc.parse_type(receiver.typ))
+		if receiver_type is Array && !node.value.ends_with('.map') {
+			receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
+			tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
 		}
 	}
 }
