@@ -4884,14 +4884,27 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 			missing_methods = true
 			continue
 		}
-		actual_key := tc.concrete_method_signature_key(actual_name, method) or {
+		mut actual_key := tc.concrete_method_signature_key(actual_name, method) or { '' }
+		mut actual_params := []Type{}
+		mut actual_ret := Type(void_)
+		if actual_key.len > 0 {
+			actual_params = tc.fn_param_types[actual_key] or { []Type{} }
+			actual_ret = tc.fn_ret_types[actual_key] or { Type(void_) }
+		} else if info := tc.resolve_generic_struct_method(actual_name, method) {
+			actual_key = info.name
+			actual_params = info.params
+			actual_ret = info.return_type
+		} else if info := tc.resolve_generic_sum_method(actual_name, method) {
+			actual_key = info.name
+			actual_params = info.params
+			actual_ret = info.return_type
+		} else {
 			tc.record_error_at(kind, "`${actual_display}` doesn't implement method `${method}` of interface `${expected_display}`", id, pos)
 			missing_methods = true
 			continue
 		}
 		expected_params, expected_ret := tc.specialized_interface_method_signature(expected.name,
 			expected_key)
-		actual_params := tc.fn_param_types[actual_key] or { []Type{} }
 		mut message := ''
 		expected_receiver_mut, expected_receiver_shared := tc.method_receiver_flags(expected_key)
 		actual_receiver_mut, actual_receiver_shared := tc.method_receiver_flags(actual_key)
@@ -4919,7 +4932,6 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 				}
 			}
 			if message == '' {
-				actual_ret := tc.fn_ret_types[actual_key] or { Type(void_) }
 				if !tc.method_return_signature_compatible(actual_ret, expected_ret) {
 					message = '`${actual_display}` incorrectly implements method `${method}` of interface `${expected_display}`: expected return type `${tc.interface_diagnostic_type_name(expected_ret, '')}`'
 				}
