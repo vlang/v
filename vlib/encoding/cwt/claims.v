@@ -150,6 +150,13 @@ fn check_claim_labels(c ClaimsSet) ! {
 		if entry.label in seen_int_claims {
 			return error('cwt: duplicate claim label ${entry.label}')
 		}
+		// Labels 1..7 are modelled by typed fields, which is where their
+		// RFC 8392 §3 value rules are enforced. Letting the extra bucket
+		// carry them would bypass those rules and emit payloads that
+		// `ClaimsSet.decode` rejects or reinterprets.
+		if entry.label >= claim_iss && entry.label <= claim_cti {
+			return error('cwt: claim label ${entry.label} is modelled by a typed field and must not be set through extra_int_claims')
+		}
 		seen_int_claims[entry.label] = true
 	}
 	mut seen_text_claims := map[string]bool{}

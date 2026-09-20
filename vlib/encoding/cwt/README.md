@@ -95,7 +95,10 @@ type. Verification accepts both forms.
 | cti   | 7     | `cti`     | `?[]u8` |
 
 Application-specific claims go into `extra_int_claims` /
-`extra_text_claims`, with raw `cbor.Value` payloads.
+`extra_text_claims`, with raw `cbor.Value` payloads. Labels 1-7 stay
+reserved for the typed fields above: `encode()` rejects them in
+`extra_int_claims` rather than emit a payload `ClaimsSet.decode()`
+would read back differently.
 
 ## Time handling
 

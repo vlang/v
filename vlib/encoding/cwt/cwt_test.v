@@ -5,6 +5,7 @@
 // verified rather than reproduced.
 module cwt
 
+import encoding.cbor
 import encoding.hex
 import encoding.cose
 
@@ -250,28 +251,22 @@ fn test_claims_set_encode_rejects_duplicate_labels() {
 			}]
 		},
 		ClaimsSet{
-			extra_int_claims: [
-				ClaimEntry{
-					label: 100
-					value: value
-				},
-				ClaimEntry{
-					label: 100
-					value: value
-				},
-			]
+			extra_int_claims: [ClaimEntry{
+				label: 100
+				value: value
+			}, ClaimEntry{
+				label: 100
+				value: value
+			}]
 		},
 		ClaimsSet{
-			extra_text_claims: [
-				TextClaimEntry{
-					label: 'private'
-					value: value
-				},
-				TextClaimEntry{
-					label: 'private'
-					value: value
-				},
-			]
+			extra_text_claims: [TextClaimEntry{
+				label: 'private'
+				value: value
+			}, TextClaimEntry{
+				label: 'private'
+				value: value
+			}]
 		},
 	] {
 		if _ := claims.encode() {
@@ -309,6 +304,24 @@ fn test_claims_set_rejects_nonfinite_and_out_of_range_numeric_dates() {
 			assert false, 'NumericDate float must be finite and fit in i64'
 		} else {
 			assert err.msg().contains('outside the i64 range')
+		}
+	}
+}
+
+fn test_claims_set_rejects_modelled_labels_in_extra_claims() {
+	for label in [i64(1), 2, 3, 4, 5, 6, 7] {
+		claims := ClaimsSet{
+			extra_int_claims: [
+				ClaimEntry{
+					label: label
+					value: cbor.new_int(1)
+				},
+			]
+		}
+		if _ := claims.encode() {
+			assert false, 'modelled claim ${label} must not be settable through extra_int_claims'
+		} else {
+			assert err.msg().contains('must not be set through extra_int_claims')
 		}
 	}
 }
