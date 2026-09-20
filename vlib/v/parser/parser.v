@@ -11785,13 +11785,15 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				})
 			}
 			mut operand := p.expr(.power)
-			for _ in 0 .. depth {
+			end := p.span_to(op_start).end
+			for i in 0 .. depth {
+				amp_offset := op_start + depth - i - 1
 				operand = p.a.add_node(flat.Node{
 					kind:           .prefix
 					op:             .amp
 					children_start: p.add_child(operand)
 					children_count: 1
-					pos:            p.span_to(op_start)
+					pos:            token.new_span(p.cur_file_id, amp_offset, end)
 				})
 			}
 			return operand

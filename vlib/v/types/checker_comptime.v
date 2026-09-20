@@ -3660,6 +3660,13 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	for address_child.kind in [.paren, .postfix] && address_child.children_count > 0 {
 		address_child = *tc.a.child_node(&address_child, 0)
 	}
+	if node.op == .amp && child.kind == .prefix && child.op == .amp {
+		if tc.expr_subtree_has_error(child_id) {
+			return
+		}
+		tc.record_error_at(.assignment_mismatch, 'unexpected `&`, expecting expression', child_id, token.new_span(child.pos.id, child.pos.offset, child.pos.offset + 1))
+		return
+	}
 	if node.op == .amp && address_child.kind == .prefix && address_child.op == .amp {
 		tc.record_error_at(.assignment_mismatch, 'cannot take the address of this expression', id, token.new_span(address_child.pos.id, address_child.pos.offset, address_child.pos.offset + 1))
 		return
