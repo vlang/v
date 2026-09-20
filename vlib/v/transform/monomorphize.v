@@ -6865,6 +6865,14 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		if base_type.len == 0 {
 			base_type = t.node_type(base_id)
 		}
+		// Calls in a generic match branch must bind to the concrete variant, even
+		// when the sum type declares a same-named generic method.
+		if sc := t.find_smartcast(t.expr_key(base_id)) {
+			target_type := t.smartcast_target_type(sc)
+			if target_type.len > 0 {
+				base_type = target_type
+			}
+		}
 		base_type = transform_unshared_receiver_type(base_type)
 		if base_type.starts_with('&') {
 			base_type = base_type[1..]
@@ -9947,7 +9955,23 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		t.generic_clone_children << flat.empty_node
 	}
 	for i in 0 .. node.children_count {
+		mut match_smartcasts := 0
+		// Receiver calls are retargeted while the generic tree is cloned. Preserve
+		// the branch narrowing here so they are not bound to the enclosing sum type.
+		if node.kind == .match_stmt && i > 0 {
+			match_expr_id := t.a.child(&node, 0)
+			branch := t.a.child_node(&node, i)
+			for sc in t.match_branch_type_contexts(match_expr_id, branch) {
+				variant := t.resolve_substituted_type_text(t.subst_type(sc.variant_name, args))
+				sum_type := t.resolve_substituted_type_text(t.subst_type(sc.sum_type_name, args))
+				t.push_smartcast(sc.expr_name, variant, sum_type)
+				match_smartcasts++
+			}
+		}
 		child := t.clone_generic_node(t.a.child(&node, i), args)
+		for _ in 0 .. match_smartcasts {
+			t.pop_smartcast()
+		}
 		t.generic_clone_children[scratch_start + i] = child
 		if node.kind == .for_in_stmt && i == 2 {
 			t.seed_cloned_generic_for_in_bindings(node, t.generic_clone_children[scratch_start], t.generic_clone_children[scratch_start + 1], child)
