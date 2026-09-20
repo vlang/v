@@ -1536,6 +1536,17 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_duplicate_export := a.msg.starts_with('duplicate export name `')
+	b_is_duplicate_export := b.msg.starts_with('duplicate export name `')
+	if a.file == b.file && a.msg == b.msg && a_is_duplicate_export && b_is_duplicate_export
+		&& a.node_kind != b.node_kind {
+		if a.node_kind == 'const_field' && b.node_kind == 'field_decl' {
+			return -1
+		}
+		if b.node_kind == 'const_field' && a.node_kind == 'field_decl' {
+			return 1
+		}
+	}
 	a_decl_assign_lhs_order := decl_assign_lhs_diagnostic_order(a.msg)
 	b_decl_assign_lhs_order := decl_assign_lhs_diagnostic_order(b.msg)
 	if a.node == b.node && a_decl_assign_lhs_order > 0 && b_decl_assign_lhs_order > 0
