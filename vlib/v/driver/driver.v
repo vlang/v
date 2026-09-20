@@ -3020,7 +3020,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -8784,6 +8784,7 @@ pub fn run(args []string) {
 	mut user_c_flags := []string{}
 	mut user_ld_flags := []string{}
 	mut should_run := false
+	mut is_crun := false
 	mut is_direct_vsh := false
 	mut is_test_command := false
 	mut is_checker_fixture := false
@@ -8832,8 +8833,9 @@ pub fn run(args []string) {
 			eprintln('option `${args[i]}` requires a value')
 			exit(1)
 		}
-		if args[i] == 'run' && input_file.len == 0 && !should_run {
+		if args[i] in ['run', 'crun'] && input_file.len == 0 && !should_run {
 			should_run = true
+			is_crun = args[i] == 'crun'
 			command_seen = true
 			i++
 		} else if args[i] == 'build' && input_file.len == 0 && !should_run {
@@ -9639,7 +9641,7 @@ pub fn run(args []string) {
 		}
 	}
 	binary_existed_before := os.exists(bin_file)
-	remove_binary_after_run := should_run && !is_direct_vsh && !explicit_output && !keep_c
+	remove_binary_after_run := should_run && !is_crun && !is_direct_vsh && !explicit_output && !keep_c
 		&& !binary_existed_before
 
 	// Decide which backend modules to compile into the output. By default only the C
@@ -10589,7 +10591,7 @@ pub fn run(args []string) {
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
 
 	mut crun_build_identity := ''
-	if is_direct_vsh && should_run && !explicit_output {
+	if (is_crun || is_direct_vsh) && should_run && !explicit_output {
 		carried_identity := os.getenv(v3_crun_build_identity_env)
 		if os.getenv(v3_internal_restart_env) == '1' && carried_identity.len > 0 {
 			crun_build_identity = carried_identity
@@ -13048,7 +13050,7 @@ Please install the corresponding development package/libraries and make sure the
 		})
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		if should_run {
-			if is_direct_vsh && !explicit_output {
+			if (is_crun || is_direct_vsh) && !explicit_output {
 				write_v3_crun_cache_marker(bin_file, crun_build_identity) or {}
 			}
 			run_result := run_binary(bin_file, run_args)
