@@ -1536,6 +1536,18 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_shared_call_in_lock := a.msg.contains('with `shared` arguments cannot be called inside `lock`/`rlock` block')
+	b_is_shared_call_in_lock := b.msg.contains('with `shared` arguments cannot be called inside `lock`/`rlock` block')
+	a_is_missing_shared_arg := a.msg.contains(' parameter `')
+		&& a.msg.contains('` is `shared`, so use `shared ')
+	b_is_missing_shared_arg := b.msg.contains(' parameter `')
+		&& b.msg.contains('` is `shared`, so use `shared ')
+	if a.node == b.node && a_is_shared_call_in_lock && b_is_missing_shared_arg {
+		return -1
+	}
+	if a.node == b.node && b_is_shared_call_in_lock && a_is_missing_shared_arg {
+		return 1
+	}
 	a_is_shared_receiver := a.msg.ends_with('to be used as non-mut receiver')
 	b_is_shared_receiver := b.msg.ends_with('to be used as non-mut receiver')
 	a_is_shared_assignment := a.msg.ends_with('to be used as non-mut right-hand side of assignment')

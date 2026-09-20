@@ -13389,10 +13389,6 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			call_kind := if info.has_receiver { 'method' } else { 'function' }
 			if tc.lock_depth > 0 {
 				tc.record_error_at(.call_arg_mismatch, '${call_kind} with `shared` arguments cannot be called inside `lock`/`rlock` block', arg_id, tc.call_argument_diagnostic_pos(arg_id))
-				if has_dsl_scope {
-					tc.pop_scope()
-				}
-				continue
 			}
 			tc.record_error_at(.call_arg_mismatch, '${call_kind} `${tc.call_argument_target_name(node, info).all_after_last('.')}` parameter `${param_name}` is `shared`, so use `shared ${tc.source_text_for_node(arg_id)}` instead', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			if has_dsl_scope {
