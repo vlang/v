@@ -8758,6 +8758,7 @@ pub fn run(args []string) {
 	mut warns_are_errors := false
 	mut notes_are_errors := false
 	mut fatal_errors := false
+	mut message_limit := -1
 	mut check_overflow := false
 	mut target_libc_headers := false
 	mut force_bounds_checking := false
@@ -8822,8 +8823,8 @@ pub fn run(args []string) {
 			i++
 			continue
 		}
-		option_accepts_dash_value := args[i] in ['-o', '-output'] && i + 1 < args.len
-			&& args[i + 1] == '-'
+		option_accepts_dash_value := (args[i] in ['-o', '-output'] && i + 1 < args.len
+			&& args[i + 1] == '-') || (args[i] == '-message-limit' && i + 1 < args.len)
 		if v3_driver_option_requires_value(args[i])
 			&& (i + 1 >= args.len || (args[i + 1].starts_with('-') && !option_accepts_dash_value)) {
 			eprintln('option `${args[i]}` requires a value')
@@ -9022,8 +9023,10 @@ pub fn run(args []string) {
 			}
 			i += 2
 		} else if args[i] == '-message-limit' && i + 1 < args.len {
-			// V3 reports all diagnostics, but accepts V1's accumulation-limit
-			// option so compiler invocations remain CLI-compatible.
+			message_limit = strconv.atoi(args[i + 1]) or {
+				eprintln('invalid message limit: ${args[i + 1]}')
+				exit(1)
+			}
 			i += 2
 		} else if args[i] == '-test-runner' && i + 1 < args.len {
 			// V3 currently emits its normal test harness directly. Accept the
@@ -10485,7 +10488,12 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if !silent || !only_check_syntax {
+			mut printed_parser_diagnostics := 0
 			for diagnostic in p.diagnostics {
+				if message_limit >= 0 && printed_parser_diagnostics >= message_limit {
+					break
+				}
+				printed_parser_diagnostics++
 				if file := a.source_files[diagnostic.pos.id] {
 					_ = file
 					severity := if effective_warns_are_errors && diagnostic.severity == 'warning:' {
@@ -10956,7 +10964,7 @@ pub fn run(args []string) {
 		if has_conflicting_c_declaration_errors(pre_tc.errors) {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 			}
 			exit(1)
 		}
@@ -10974,7 +10982,7 @@ pub fn run(args []string) {
 		if pre_tc.check_interface_embedding_limits() {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 			}
 			exit(1)
 		}
@@ -11096,7 +11104,7 @@ pub fn run(args []string) {
 			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 			}
 			pre_tc.notices.clear()
 		}
@@ -11106,7 +11114,7 @@ pub fn run(args []string) {
 		if no_closures {
 			if closure_error := no_closures_error(a, &pre_tc) {
 				print_type_diagnostics(a, []types.TypeError{}, [closure_error], true, fatal_errors,
-					check_only)
+					check_only, message_limit)
 				exit(1)
 			}
 		}
@@ -11136,7 +11144,7 @@ pub fn run(args []string) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 				exit(1)
 			}
 			return
@@ -11298,7 +11306,7 @@ pub fn run(args []string) {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
 			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only)
+				check_only, message_limit)
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -11749,7 +11757,7 @@ pub fn run(args []string) {
 		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
 			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
 			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only)
+				check_only, message_limit)
 			for notice in cached_notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -11767,7 +11775,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-			check_only)
+			check_only, message_limit)
 		exit(1)
 	}
 
@@ -11869,7 +11877,7 @@ pub fn run(args []string) {
 			if pre_tc.errors.len == 0
 				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 			}
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
@@ -15286,7 +15294,7 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
-fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool) {
+fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int) {
 	if !check_only {
 		mut first_unused := -1
 		for i, err in type_errors {
@@ -15301,6 +15309,9 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			}
 		}
 		if first_unused >= 0 {
+			if message_limit == 0 {
+				return
+			}
 			err := type_errors[first_unused]
 			severity := if err.severity.len > 0 { err.severity } else { 'error:' }
 			eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
@@ -15310,7 +15321,11 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	}
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
+	mut printed_diagnostics := 0
 	for notice in ordered_notices {
+		if message_limit >= 0 && printed_diagnostics >= message_limit {
+			break
+		}
 		if all_errors && notice.msg.starts_with('unused variable: `')
 			&& unused_notice_is_parameter_redefinition_cascade(a, notice, type_errors) {
 			continue
@@ -15318,6 +15333,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
 		eprintln(compiler_errors.formatted_error(severity, notice.msg, a, notice.node, notice.pos))
 		print_type_diagnostic_details(notice.details)
+		printed_diagnostics++
 	}
 	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a, type_errors))
 	mut ordered_errors := []types.TypeError{cap: source_errors.len}
@@ -15331,12 +15347,17 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			ordered_errors << err
 		}
 	}
-	max_errors := if fatal_errors {
+	default_max_errors := if fatal_errors {
 		if ordered_errors.len > 0 { 1 } else { 0 }
 	} else if all_errors || ordered_errors.len < 20 {
 		ordered_errors.len
 	} else {
 		20
+	}
+	max_errors := if message_limit >= 0 {
+		int_min(default_max_errors, int_max(0, message_limit - printed_diagnostics))
+	} else {
+		default_max_errors
 	}
 	for ei in 0 .. max_errors {
 		err := ordered_errors[ei]
@@ -15344,7 +15365,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 		eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
 		print_type_diagnostic_details(err.details)
 	}
-	if !fatal_errors && !all_errors && ordered_errors.len > max_errors {
+	if message_limit < 0 && !fatal_errors && !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
 	}
 }
