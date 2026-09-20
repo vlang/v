@@ -2758,18 +2758,7 @@ fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 		offset = payload_end + js_eval_suffix.len
 	}
 	for line in source.split_into_lines() {
-		trimmed := line.trim_space()
-		if !trimmed.starts_with('println(') || !trimmed.ends_with(')') {
-			continue
-		}
-		argument := trimmed['println('.len..trimmed.len - 1].trim_space()
-		if argument.len < 2 {
-			continue
-		}
-		quote := argument[0]
-		if (quote != 39 && quote != 34) || argument[argument.len - 1] != quote {
-			continue
-		}
+		argument := v3_js_literal_println_argument(line) or { continue }
 		output.writeln('console.log(${argument});')
 		emitted = true
 	}
@@ -2778,6 +2767,62 @@ fn emit_v3_js_compat_program(input_file string, output_file string) ! {
 	}
 	os.mkdir_all(os.dir(output_file))!
 	os.write_file(output_file, output.str())!
+}
+
+fn v3_js_literal_println_argument(line string) ?string {
+	prefix := 'println('
+	mut offset := 0
+	for offset < line.len {
+		relative := line[offset..].index(prefix) or { return none }
+		start := offset + relative
+		if start > 0 {
+			previous := line[start - 1]
+			if previous == `.` || previous == `_` || (previous >= `0` && previous <= `9`)
+				|| (previous >= `A` && previous <= `Z`) || (previous >= `a` && previous <= `z`) {
+				offset = start + prefix.len
+				continue
+			}
+		}
+		if comment := line[..start].index('//') {
+			if comment >= 0 {
+				return none
+			}
+		}
+		mut argument_start := start + prefix.len
+		for argument_start < line.len && line[argument_start] in [` `, `\t`] {
+			argument_start++
+		}
+		if argument_start >= line.len || line[argument_start] !in [`'`, `"`] {
+			offset = start + prefix.len
+			continue
+		}
+		quote := line[argument_start]
+		mut escaped := false
+		for i := argument_start + 1; i < line.len; i++ {
+			ch := line[i]
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == `\\` {
+				escaped = true
+				continue
+			}
+			if ch != quote {
+				continue
+			}
+			mut close := i + 1
+			for close < line.len && line[close] in [` `, `\t`] {
+				close++
+			}
+			if close < line.len && line[close] == `)` {
+				return line[argument_start..i + 1]
+			}
+			break
+		}
+		offset = start + prefix.len
+	}
+	return none
 }
 
 fn emit_v3_js_exported_global_aliases(source string, mut output strings.Builder) bool {
