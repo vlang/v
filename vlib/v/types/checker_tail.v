@@ -13900,6 +13900,9 @@ fn (mut tc TypeChecker) call_info_with_inferred_receiver(node flat.Node, info Ca
 	if callee.kind != .selector || callee.children_count == 0 {
 		return info
 	}
+	if tc.selector_fn_type(*callee) != none || tc.selector_wrapped_fn_type(*callee) != none {
+		return info
+	}
 	receiver_id := tc.a.child(callee, 0)
 	actual := unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id))
 	expected := unalias_and_unwrap_pointer_type(info.params[0])
