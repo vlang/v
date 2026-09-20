@@ -3183,7 +3183,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 			pos:            p.span_to(type_start)
 		})
 	}
-	if language_prefix.len == 0 && first_type == name {
+	if language_prefix.len == 0 && first_type == name && !p.has_prior_type_declaration(name) {
 		p.record_diagnostic_span('a type alias can not refer to itself: ${name}', decl_start,
 			p.prev_tok_end)
 	}
@@ -3199,6 +3199,18 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		payload: flat.node_payload(generic_params)
 		pos:     p.span_to(type_start)
 	})
+}
+
+fn (p &Parser) has_prior_type_declaration(name string) bool {
+	for i := p.a.nodes.len - 1; i >= 0; i-- {
+		node := p.a.nodes[i]
+		if node.pos.id == p.cur_file_id
+			&& node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl]
+			&& node.value == name {
+			return true
+		}
+	}
+	return false
 }
 
 fn type_text_contains_word(text string, word string) bool {
