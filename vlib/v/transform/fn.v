@@ -9287,6 +9287,10 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	if clean.len == 0 || clean.starts_with('&') {
 		return source
 	}
+	if clean == 'thread' || clean.starts_with('thread ') || clean == 'chan'
+		|| clean.starts_with('chan ') {
+		return source
+	}
 	// Options and results both store successful values behind the `ok` flag.
 	if clean.starts_with('?') || clean.starts_with('!') {
 		inner := t.optional_base_type(t.qualify_optional_type(clean))
@@ -9791,6 +9795,10 @@ fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
 fn (t &Transformer) compiler_default_clone_type_needs_work_seen(typ string, seen []string) bool {
 	clean := t.normalize_type_alias(typ).trim_space()
 	if clean.len == 0 || clean.starts_with('&') || clean in seen {
+		return false
+	}
+	if clean == 'thread' || clean.starts_with('thread ') || clean == 'chan'
+		|| clean.starts_with('chan ') {
 		return false
 	}
 	if clean.starts_with('!') {
