@@ -1456,17 +1456,21 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			t.ensure_node_context_map_capacity()
 			for idx, spec in args[ci].emitted_specs {
 				root := flat.NodeId(int(args[ci].roots[idx]) + node_shift)
-				t.record_monomorph_cache_spec(spec.key, spec.decl.key, spec.decl.module, spec.args)
-				if !t.generic_specialization_registered(spec.decl, spec.args) {
-					value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
-					t.register_specialized_fn_signature_value(spec.decl, value, spec.args)
+				// A chunk worker can emit a specialization another worker discovered, so
+				// the declaration it carries can live in that worker's scratch arena.
+				// Publish a copy the master arena owns instead (vlang/v#28489).
+				decl := clone_monomorph_worker_decl(spec.decl)
+				t.record_monomorph_cache_spec(spec.key.clone(), decl.key, decl.module, spec.args)
+				if !t.generic_specialization_registered(decl, spec.args) {
+					value := specialized_generic_fn_value(decl.node.value, spec.args)
+					t.register_specialized_fn_signature_value(decl, value, spec.args)
 				}
 				t.generic_fn_spec_nodes[spec.key.clone()] = root
 				t.a.specialized_fn_nodes[int(root)] = true
-				t.a.specialized_fn_modules[int(root)] = spec.decl.module
-				t.a.specialized_fn_files[int(root)] = spec.decl.file
-				t.mark_node_context(root, spec.decl.module, spec.decl.file)
-				emitted[generic_fn_spec_key(spec.decl.key, spec.args)] = true
+				t.a.specialized_fn_modules[int(root)] = decl.module
+				t.a.specialized_fn_files[int(root)] = decl.file
+				t.mark_node_context(root, decl.module, decl.file)
+				emitted[generic_fn_spec_key(decl.key, spec.args)] = true
 				t.pending_generic_fn_spec_keys.delete(spec.key)
 			}
 			for name in args[ci].generated {
@@ -1478,7 +1482,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 					for item in pending.args {
 						owned_args << item.clone()
 					}
-					t.request_generic_fn_specialization(pending.decl, owned_args)
+					t.request_generic_fn_specialization(clone_monomorph_worker_decl(pending.decl),
+						owned_args)
 				}
 			}
 			t.monomorph_profile('mono merged worker ${ci}: ${time.ticks() - debug_started} ms')
@@ -1523,6 +1528,25 @@ fn clone_monomorph_specialization_args(args []string) []string {
 		owned_args << arg.clone()
 	}
 	return owned_args
+}
+
+// clone_monomorph_worker_decl copies the declaration text a monomorph worker
+// put together while it was running into the arena that is current here.
+// Workers resolve and lift specialization declarations inside their own scratch
+// arena, which is released right after the batch merges; publishing the
+// worker's own strings would leave the master's signature and context tables
+// holding released memory (`string` comparisons then read unmapped bytes).
+fn clone_monomorph_worker_decl(decl GenericFnDecl) GenericFnDecl {
+	mut node := decl.node
+	node.value = decl.node.value.clone()
+	node.typ = decl.node.typ.clone()
+	return GenericFnDecl{
+		id:     decl.id
+		node:   node
+		file:   decl.file.clone()
+		module: decl.module.clone()
+		key:    decl.key.clone()
+	}
 }
 
 fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted map[string]bool, mut generated []string) bool {
@@ -1604,7 +1628,7 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 		worker_scope_state := transform_stage_scope_suspend(scope)
 		for spec in emitted_specs {
 			owned_emitted_specs << PendingGenericFnSpec{
-				decl: spec.decl
+				decl: clone_monomorph_worker_decl(spec.decl)
 				args: clone_monomorph_specialization_args(spec.args)
 				key:  spec.key.clone()
 			}
@@ -1638,7 +1662,10 @@ fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpe
 			for item in pending.args {
 				owned_args << item.clone()
 			}
-			t.request_generic_fn_specialization(pending.decl, owned_args)
+			// The queue keeps this declaration past the batch, so publish a copy
+			// the master arena owns (vlang/v#28489).
+			t.request_generic_fn_specialization(clone_monomorph_worker_decl(pending.decl),
+				owned_args)
 		}
 		for idx, spec in owned_emitted_specs {
 			root := flat.NodeId(int(roots[idx]) + node_shift)
