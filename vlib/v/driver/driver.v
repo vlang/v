@@ -10488,12 +10488,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if !silent || !only_check_syntax {
-			mut printed_parser_diagnostics := 0
 			for diagnostic in p.diagnostics {
-				if message_limit >= 0 && printed_parser_diagnostics >= message_limit {
-					break
-				}
-				printed_parser_diagnostics++
 				if file := a.source_files[diagnostic.pos.id] {
 					_ = file
 					severity := if effective_warns_are_errors && diagnostic.severity == 'warning:' {
