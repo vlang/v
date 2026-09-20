@@ -9218,6 +9218,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
 					tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), node.pos)
 				}
+				tc.check_global_decl_semantics(flat.NodeId(i), node)
 				tc.check_const_global_initializers(node)
 			}
 			.fn_decl {
@@ -13218,7 +13219,12 @@ fn (mut tc TypeChecker) record_unknown_decl_type(name string, node_id flat.NodeI
 			}
 		}
 	}
-	pos := tc.type_diagnostic_pos(node_id, name)
+	mut pos := tc.type_diagnostic_pos(node_id, name)
+	node := tc.a.node(node_id)
+	if node.kind == .field_decl && tc.global_names[node.value] && node.typ != name
+		&& pos.end > pos.offset + 1 {
+		pos = token.new_span(pos.id, pos.offset, pos.offset + 1)
+	}
 	if tc.unknown_type_already_reported_on_line(name, pos) {
 		return
 	}
@@ -15372,6 +15378,32 @@ fn (mut tc TypeChecker) check_const_global_initializers(node flat.Node) {
 		tc.check_node(expr_id)
 		if !tc.global_const_expr_is_c_constant(expr_id) {
 			tc.record_error_severity_at(.compile_error, 'const global `${field.value}` must be initialized with a C constant expression', field_id, tc.node_value_diagnostic_pos(field_id), 'cgen error:')
+		}
+	}
+}
+
+fn (mut tc TypeChecker) check_global_decl_semantics(node_id flat.NodeId, node flat.Node) {
+	tc.check_decl_type_strings(node_id, node)
+	for i in 0 .. node.children_count {
+		field_id := tc.a.child(&node, i)
+		field := tc.a.node(field_id)
+		if field.kind != .field_decl || field.value.len == 0 || field.value.starts_with('C.') {
+			continue
+		}
+		pos := tc.node_value_diagnostic_pos(field_id)
+		if field.value == '_' {
+			tc.record_error_at(.duplicate_decl, 'cannot use `_` as a global name', field_id,
+				pos)
+		} else if tc.should_check_source_name(field_id) && !snake_case_name_is_valid(field.value) {
+			tc.check_snake_case_name(field_id, field.value, 'global name', pos)
+		}
+		if tc.qualify_name(field.value) in tc.const_types {
+			tc.record_error_at(.duplicate_decl, 'duplicate global and const `${field.value}`',
+				field_id, pos)
+		}
+		if field.value == 'main' && tc.cur_module in ['', 'main'] {
+			tc.record_error_at(.duplicate_decl, 'the `main` function is the program entry point, cannot redefine it',
+				field_id, pos)
 		}
 	}
 }
