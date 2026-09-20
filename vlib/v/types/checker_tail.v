@@ -4134,11 +4134,14 @@ fn (mut tc TypeChecker) check_json_magic_call(id flat.NodeId, node flat.Node) bo
 		}
 		tc.check_node(arg_id)
 		mut seen := map[string]bool{}
-		if interface_name := tc.json_encode_unsupported_interface(tc.resolve_type(arg_id), mut seen) {
-			tc.record_error_severity_at(.compile_error, 'json: ${interface_name} is not struct',
-				arg_id, tc.a.node(arg_id).pos, 'cgen error:')
-			tc.register_synth_type(id, Type(string_))
-			return true
+		has_prior_file_error := tc.errors.any(it.pos.id == node.pos.id)
+		if !has_prior_file_error {
+			if interface_name := tc.json_encode_unsupported_interface(tc.resolve_type(arg_id), mut seen) {
+				tc.record_error_severity_at(.compile_error, 'json: ${interface_name} is not struct',
+					arg_id, tc.a.node(arg_id).pos, 'cgen error:')
+				tc.register_synth_type(id, Type(string_))
+				return true
+			}
 		}
 		return false
 	}
