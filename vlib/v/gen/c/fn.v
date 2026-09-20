@@ -19800,7 +19800,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 			g.optional_type_name(effective_pt)
 		} else if effective_pt is types.ArrayFixed {
 			'${g.fixed_array_elem_c_type(effective_pt.elem_type)}*'
-		} else if effective_pt is types.OptionType || effective_pt is types.ResultType {
+		} else if type_is_optional_result(effective_pt) {
 			g.optional_type_name(effective_pt)
 		} else {
 			g.tc.c_type(effective_pt)
