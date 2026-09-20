@@ -121,6 +121,9 @@ fn main() {
 	if '-new-compiler' in args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
+	if '-new-compiler' !in args && v3_fixture_expects_legacy_compiler_modules(args) {
+		launch_v1(clean_compiler_selection_flags(args), 'legacy compiler module fixture', RetryState{})
+	}
 	if command in ['help', '-h', '--help'] {
 		print_help(args, command_index)
 		return
@@ -479,8 +482,9 @@ fn retry_with_v1_at_exit() {
 
 @[noreturn]
 fn launch_v1(args []string, reason string, report_state RetryState) {
-	transparent_fixture_fallback := report_state.fallback_file != ''
-		&& v3_exact_output_fixture_args(args)
+	legacy_module_fixture := v3_fixture_expects_legacy_compiler_modules(args)
+	transparent_fixture_fallback := legacy_module_fixture
+		|| (report_state.fallback_file != '' && v3_exact_output_fixture_args(args))
 	diagnostics := if transparent_fixture_fallback {
 		''
 	} else {
@@ -506,7 +510,15 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	mut process := os.new_process(fallback)
 	process.set_args(launch_args)
-	process.wait()
+	mut compatibility_output := ''
+	if legacy_module_fixture {
+		process.set_redirect_stdio_merged()
+		process.run()
+		compatibility_output = process.stdout_slurp()
+		process.wait()
+	} else {
+		process.wait()
+	}
 	if process.status == .aborted || process.code < 0 {
 		eprintln('failed to launch the V 0.5.2 compatibility compiler `${fallback}`: ${process.err}')
 		process.close()
@@ -514,6 +526,9 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	code := process.code
 	process.close()
+	if compatibility_output != '' {
+		eprint(v3_rewrite_legacy_compiler_module_diagnostics(compatibility_output))
+	}
 	if code == 0 && report_state.fallback_file != '' && !transparent_fixture_fallback {
 		submit_v3_fallback_report(fallback, report_state)
 	}

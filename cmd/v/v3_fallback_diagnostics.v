@@ -3,13 +3,13 @@ module main
 import os
 import v.ansi
 
-fn v3_exact_output_fixture_args(args []string) bool {
+fn v3_exact_output_fixture_path(args []string) string {
 	for arg in args {
 		if arg.len == 0 || arg.starts_with('-') {
 			continue
 		}
 		if os.is_dir(arg) && os.is_file(arg + '.out') {
-			return true
+			return arg + '.out'
 		}
 		ext := os.file_ext(arg)
 		if ext !in ['.v', '.vv', '.vsh'] || arg.len <= ext.len {
@@ -18,11 +18,30 @@ fn v3_exact_output_fixture_args(args []string) bool {
 		base := arg[..arg.len - ext.len]
 		for suffix in ['.out', '.run.out', '.js.out'] {
 			if os.is_file(base + suffix) {
-				return true
+				return base + suffix
 			}
 		}
 	}
-	return false
+	return ''
+}
+
+fn v3_exact_output_fixture_args(args []string) bool {
+	return v3_exact_output_fixture_path(args) != ''
+}
+
+fn v3_fixture_expects_legacy_compiler_modules(args []string) bool {
+	path := v3_exact_output_fixture_path(args)
+	if path == '' {
+		return false
+	}
+	expected := os.read_file(path) or { return false }
+	return expected.contains('`old.ast.') || expected.contains('`old.parser.')
+		|| expected.contains('`old.scanner.')
+}
+
+fn v3_rewrite_legacy_compiler_module_diagnostics(output string) string {
+	return output.replace('`v.ast.', '`old.ast.').replace('`v.parser.', '`old.parser.').replace('`v.scanner.',
+		'`old.scanner.')
 }
 
 // v3_fallback_diagnostics includes failures from the V compiler itself, not just
