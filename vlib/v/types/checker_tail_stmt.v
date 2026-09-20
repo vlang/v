@@ -3966,7 +3966,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					expected_name := expected.name().replace_once('fn(', 'fn (')
 					tc.record_error_at(.assignment_mismatch, 'cannot assign to field `${field.value}`: expected `${expected_name}`, not `${expected_name} ?`', field_id, tc.struct_init_field_deprecation_pos(field))
 				} else if clean_expected is OptionType && clean_actual is Pointer
-					&& unalias_type(clean_expected.base_type) !is Pointer {
+					&& (unalias_type(clean_expected.base_type) !is Pointer
+						|| (expected is OptionType && expected.base_type is Alias)) {
 					tc.record_error_at(.assignment_mismatch, 'cannot assign a pointer to option struct field', field_id, tc.struct_init_pointer_field_pos(field))
 				} else if clean_expected is OptionType
 					&& unalias_type(clean_expected.base_type) is Pointer
@@ -8485,6 +8486,9 @@ fn (tc &TypeChecker) translated_c_string_fixed_array_compatible(id flat.NodeId, 
 	if node.kind != .char_literal || !node.value.starts_with('c:') {
 		return false
 	}
+	if expected is Alias && unalias_type(expected.base_type) is OptionType {
+		return false
+	}
 	clean_expected := unalias_type(expected)
 	if clean_expected is ArrayFixed {
 		if !fixed_array_has_c_char_elements(clean_expected) {
@@ -8495,8 +8499,11 @@ fn (tc &TypeChecker) translated_c_string_fixed_array_compatible(id flat.NodeId, 
 		return payload_len <= clean_expected.len
 	}
 	mut pointer_type := clean_expected
-	if pointer_type is OptionType {
-		pointer_type = unalias_type(pointer_type.base_type)
+	if expected is OptionType {
+		if expected.base_type !is Pointer {
+			return false
+		}
+		pointer_type = expected.base_type
 	}
 	if pointer_type is Pointer {
 		pointee := unalias_type(pointer_type.base_type)
