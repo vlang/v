@@ -155,6 +155,7 @@ mut:
 	unsupported_inline_asm_guards     map[int]bool
 	parsing_inferred_fixed_array_type bool
 	parsing_struct_field_type         bool
+	parsing_c_struct_fields           bool
 	diagnostic_limit_reached          bool
 	local_type_names                  map[string]string
 	local_type_decls_by_block         map[int][]string
@@ -382,6 +383,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.in_for_container = false
 	p.parsing_inferred_fixed_array_type = false
 	p.parsing_struct_field_type = false
+	p.parsing_c_struct_fields = false
 	p.local_type_scopes = []string{}
 	p.local_type_decls_by_block = map[int][]string{}
 	p.local_type_decls_indexed = false
@@ -2280,6 +2282,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		})
 	}
 	p.check(.lcbr)
+	previously_parsing_c_struct_fields := p.parsing_c_struct_fields
+	p.parsing_c_struct_fields = name.starts_with('C.')
 	mut ids := []flat.NodeId{}
 	// Track the current `pub:`/`mut:` section and any leading attributes so each field's real
 	// mutability/visibility/attrs are recorded on its `field_decl` node for `$for` reflection.
@@ -2617,6 +2621,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		p.record_diagnostic('expecting type declaration', p.tok_pos)
 	}
 	p.check(.rcbr)
+	p.parsing_c_struct_fields = previously_parsing_c_struct_fields
 	p.pending_params = false
 	start := p.add_children(ids)
 	return p.add_node(flat.Node{
@@ -15889,7 +15894,13 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 	decl_id := p.add_node(flat.Node{
 		kind:           .struct_decl
 		value:          name
-		typ:            if is_union { 'union' } else { '' }
+		typ:            if p.parsing_c_struct_fields {
+			if is_union { 'union,c_anon' } else { 'c_anon' }
+		} else if is_union {
+			'union'
+		} else {
+			''
+		}
 		pos:            if aggregate_start >= 0 {
 			p.span_to(aggregate_start)
 		} else {

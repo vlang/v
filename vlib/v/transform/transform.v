@@ -815,6 +815,7 @@ pub:
 	module     string
 	is_params  bool
 	is_aligned bool
+	is_c_anon  bool
 	alignment  string
 	fields     []FieldInfo
 }
@@ -2896,6 +2897,7 @@ fn (mut t Transformer) collect_types() {
 					module:     cur_mod
 					is_params:  'params' in node.typ.split(',')
 					is_aligned: transform_struct_decl_alignment_is_set(node.typ)
+					is_c_anon:  'c_anon' in node.typ.split(',')
 					alignment:  transform_struct_decl_alignment_value(node.typ)
 					fields:     fields
 				}
@@ -4347,6 +4349,7 @@ fn clone_struct_info_owned(info StructInfo) StructInfo {
 		module:     info.module.clone()
 		is_params:  info.is_params
 		is_aligned: info.is_aligned
+		is_c_anon:  info.is_c_anon
 		alignment:  info.alignment.clone()
 		fields:     fields
 	}
@@ -19079,6 +19082,7 @@ fn (mut t Transformer) ensure_stringify_generic_instances_for_type(typ string) {
 		name:      clean
 		module:    base_info.module
 		is_params: base_info.is_params
+		is_c_anon: base_info.is_c_anon
 		fields:    fields
 	}
 	// A later unqualified lookup must include this newly materialized generic
@@ -19173,6 +19177,7 @@ fn (t &Transformer) generic_struct_info_for_stringify(typ string) ?StructInfo {
 		name:      clean
 		module:    base_info.module
 		is_params: base_info.is_params
+		is_c_anon: base_info.is_c_anon
 		fields:    fields
 	}
 }

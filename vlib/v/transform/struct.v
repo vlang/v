@@ -902,6 +902,7 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 					name:      name
 					module:    base_info.module
 					is_params: base_info.is_params
+					is_c_anon: base_info.is_c_anon
 					fields:    fields
 				}
 			}

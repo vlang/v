@@ -14269,6 +14269,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 			seen_field_names[field.value] = true
 		}
 		if !is_embed && node.value != 'C.' && !node.value.starts_with('C.')
+			&& !comma_attr_text_has(node.typ, 'c_anon')
 			&& tc.should_check_source_name(field_id) && !snake_case_name_is_valid(field.value) {
 			tc.check_snake_case_name(field_id, field.value, 'field name', tc.struct_field_declaration_pos(*field))
 		}

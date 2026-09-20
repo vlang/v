@@ -6441,7 +6441,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 	if stack_count >= recurse_limit {
 		return t.make_string_literal('<circular>')
 	}
-	if t.stringify_stack.len >= t.stringify_depth_cap && stack_count == 0
+	if t.stringify_stack.len >= t.stringify_depth_cap && stack_count == 0 && !info.is_c_anon
 		&& !t.stringify_types_match(t.auto_str_synthesis_type, struct_type) {
 		return t.request_auto_str_helper(expr, struct_type)
 	}
