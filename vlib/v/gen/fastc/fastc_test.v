@@ -2341,7 +2341,9 @@ import transport
 fn convert(pointer voidptr) &transport.Conn {
 	return unsafe { &transport.Conn(pointer) }
 }
-fn main() {}
+fn main() {
+	_ = convert(voidptr(0))
+}
 '
 	transport_source := 'module transport
 pub struct Conn {}
