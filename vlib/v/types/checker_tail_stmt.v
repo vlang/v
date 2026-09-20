@@ -281,8 +281,17 @@ fn (mut tc TypeChecker) check_unused_expression_statement(id flat.NodeId) {
 		tc.check_must_use_call(semantic_id, semantic)
 		return
 	}
-	if semantic.kind in [.spawn_expr, .dump_expr, .or_expr, .if_expr, .match_stmt, .lock_expr,
-		.select_stmt, .sql_expr, .fn_literal, .lambda_expr] {
+	if semantic.kind == .or_expr {
+		if has_embed_file_value {
+			if embed_id := tc.nested_embed_file_value(semantic_id) {
+				tc.record_error_at(.unknown_ident, 'expression evaluated but not used', expr_id,
+					tc.a.node(embed_id).pos)
+			}
+		}
+		return
+	}
+	if semantic.kind in [.spawn_expr, .dump_expr, .if_expr, .match_stmt, .lock_expr, .select_stmt,
+		.sql_expr, .fn_literal, .lambda_expr] {
 		return
 	}
 	if semantic.kind == .selector && semantic.children_count > 0 {
