@@ -13513,16 +13513,22 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 		return none
 	}
 	expected_base := forwarded_return_unalias_type(expected_type)
+	mut value_id := id
+	mut value_is_transformed := false
 	if expected_base is types.Array {
-		concrete_call_type := if node.kind == .call {
+		if t.is_array_transform_call(id) {
+			value_id = t.transform_expr(id)
+			value_is_transformed = true
+		}
+		concrete_call_type := if !value_is_transformed && node.kind == .call {
 			t.concrete_generic_call_return_type(id, node)
 		} else {
 			''
 		}
 		actual_type_name := if concrete_call_type.len > 0 {
 			concrete_call_type
-		} else if t.node_type(id).len > 0 {
-			t.node_type(id)
+		} else if t.node_type(value_id).len > 0 {
+			t.node_type(value_id)
 		} else {
 			t.resolve_expr_type(id)
 		}
@@ -13541,7 +13547,7 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 				if t.record_specialized_slot_mismatch(actual_type, expected_type) {
 					return none
 				}
-				return t.convert_forwarded_array_to_dynamic(id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, false)
+				return t.convert_forwarded_array_to_dynamic(value_id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, false)
 			}
 		} else if actual_base is types.ArrayFixed {
 			if actual_base.elem_type.name() != expected_base.elem_type.name()
@@ -13549,8 +13555,11 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 				&& t.record_specialized_slot_mismatch(actual_type, expected_type) {
 				return none
 			}
-			return t.convert_forwarded_array_to_dynamic(id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, true)
+			return t.convert_forwarded_array_to_dynamic(value_id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, true)
 		}
+	}
+	if value_is_transformed {
+		return value_id
 	}
 	return none
 }
