@@ -5981,12 +5981,14 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	selector_is_method_value := tc.expr_is_method_value(id)
 		&& !tc.ident_is_call_callee_or_generic_base(id)
 	if clean_recv is Struct {
-		if visibility := tc.private_declaration(clean_recv.name) {
-			display_name := tc.diagnostic_type_name(Type(clean_recv))
-			decl_module := tc.diagnostic_module_display_name(visibility.module_name)
-			inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-			tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
-				tc.node_value_diagnostic_pos(id))
+		if !tc.expr_is_rooted_in_c_namespace(base_id) {
+			if visibility := tc.private_declaration(clean_recv.name) {
+				display_name := tc.diagnostic_type_name(Type(clean_recv))
+				decl_module := tc.diagnostic_module_display_name(visibility.module_name)
+				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+				tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
+					tc.node_value_diagnostic_pos(id))
+			}
 		}
 		if deprecation := tc.deprecated_symbols['${clean_recv.name}.${node.value}'] {
 			tc.record_deprecation(id, 'field', deprecation, tc.node_value_diagnostic_pos(id))
@@ -6431,6 +6433,20 @@ fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool 
 	}
 	qname := '${qbase}.${node.value}'
 	return qname in tc.const_types || qname in tc.fn_ret_types || qname in tc.enum_names
+}
+
+fn (tc &TypeChecker) expr_is_rooted_in_c_namespace(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return node.value == 'C'
+	}
+	if node.kind in [.selector, .index, .paren, .call] && node.children_count > 0 {
+		return tc.expr_is_rooted_in_c_namespace(tc.a.child(node, 0))
+	}
+	return false
 }
 
 // selector_type supports selector type handling for TypeChecker.
