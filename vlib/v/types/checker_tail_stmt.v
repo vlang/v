@@ -18209,7 +18209,10 @@ fn (tc &TypeChecker) infix_operator_operand_compatible(actual Type, expected Typ
 	// their storage or fields match. Untyped primitive literals can still be
 	// promoted to the operator's declared alias type.
 	if actual is Alias {
-		return false
+		if expected is Alias {
+			return false
+		}
+		return tc.type_compatible(actual.base_type, expected)
 	}
 	clean_actual := unalias_type(unwrap_pointer(actual))
 	clean_expected := unalias_type(unwrap_pointer(expected))
