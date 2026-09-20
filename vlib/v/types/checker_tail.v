@@ -602,7 +602,7 @@ fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected
 			|| tc.generic_type_name_matches(clean_actual.name(), concrete) {
 			return true
 		}
-		if tc.nested_sum_variant_assignment_matches(actual, tc.parse_type(concrete)) {
+		if tc.nested_sum_variant_assignment_matches(actual, tc.parse_type(concrete), false) {
 			return true
 		}
 	}
@@ -615,23 +615,26 @@ fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected
 	return false
 }
 
-fn (tc &TypeChecker) nested_sum_variant_assignment_matches(actual Type, expected Type) bool {
+fn (tc &TypeChecker) nested_sum_variant_assignment_matches(actual Type, expected Type, in_aggregate bool) bool {
 	clean_actual := unalias_type(actual)
 	clean_expected := unalias_type(expected)
 	if clean_expected is SumType {
-		return clean_actual is SumType
+		return (in_aggregate || clean_actual is SumType)
 			&& tc.direct_sum_assignment_variant_matches(actual, clean_expected)
 	}
 	if clean_actual is Array && clean_expected is Array {
-		return tc.nested_sum_variant_assignment_matches(clean_actual.elem_type, clean_expected.elem_type)
+		return tc.nested_sum_variant_assignment_matches(clean_actual.elem_type, clean_expected.elem_type,
+			true)
 	}
 	if clean_actual is ArrayFixed && clean_expected is ArrayFixed {
 		return clean_actual.len == clean_expected.len
-			&& tc.nested_sum_variant_assignment_matches(clean_actual.elem_type, clean_expected.elem_type)
+			&& tc.nested_sum_variant_assignment_matches(clean_actual.elem_type, clean_expected.elem_type,
+				true)
 	}
 	if clean_actual is Map && clean_expected is Map {
 		return tc.type_compatible(clean_actual.key_type, clean_expected.key_type)
-			&& tc.nested_sum_variant_assignment_matches(clean_actual.value_type, clean_expected.value_type)
+			&& tc.nested_sum_variant_assignment_matches(clean_actual.value_type, clean_expected.value_type,
+				true)
 	}
 	return tc.type_compatible(actual, expected)
 }
