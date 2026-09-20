@@ -3860,7 +3860,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		tc.invalidate_smartcasts_after_call(node, info)
 		tc.check_os_file_raw_io_call(id, node, info)
 		tc.check_instantiated_generic_as_casts(node, info)
-		tc.check_instantiated_generic_noinit_structs(node, info)
+		tc.check_instantiated_generic_noinit_structs(id, node, info)
 		tc.check_instantiated_generic_ordering_ops(node, info)
 		tc.check_instantiated_generic_compile_errors(id, node, info)
 		tc.check_instantiated_generic_compile_warnings(node, info)
@@ -5040,7 +5040,7 @@ fn (mut tc TypeChecker) check_instantiated_generic_as_casts(call flat.Node, info
 	}
 }
 
-fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call flat.Node, info CallInfo) {
+fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call_id flat.NodeId, call flat.Node, info CallInfo) {
 	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
 	fn_node := tc.a.node(instantiation.decl_id)
 	mut declaration_module := tc.fn_type_modules[info.name] or { '' }
@@ -5065,16 +5065,14 @@ fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call flat.Node
 				continue
 			}
 			typ := tc.parse_type(type_text)
-			type_base, _, _ := generic_type_application_parts(typ.name())
-			type_module := tc.struct_modules[type_base] or {
-				if type_base.contains('.') { type_base.all_before_last('.') } else { tc.cur_module }
-			}
+			type_module := tc.struct_module_for_type(typ.name())
 			if struct_type_from_type(typ) != none && type_module != declaration_module
 				&& tc.type_has_declaration_attribute(typ, 'noinit') {
 				display_name := tc.diagnostic_type_name(typ)
 				message := 'struct `${display_name}` is declared with a `@[noinit]` attribute, so it cannot be initialized with `${display_name}{}`'
 				if !tc.has_type_error(.assignment_mismatch, message, node_id) {
-					tc.record_error_at(.assignment_mismatch, message, node_id, node.pos)
+					tc.record_ordered_error_at(.assignment_mismatch, message, node_id, node.pos,
+						int(call_id) + 1)
 				}
 			}
 		}
