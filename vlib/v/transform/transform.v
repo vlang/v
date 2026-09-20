@@ -18699,7 +18699,13 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		// stabilize an earlier side-effecting operand before a later hoisting one.
 		// The index base (`i == 0`) keeps master's dedicated base lowering.
 		mut new_child := if i == 0 {
-			t.transform_index_base_expr(child_id)
+			base := t.transform_index_base_expr(child_id)
+			if node.value == 'range' && node.children_count < 3 {
+				base_type := t.node_type(base)
+				t.stable_transformed_expr_for_reuse(base, base_type, 'slice_base')
+			} else {
+				base
+			}
 		} else if i < last_value_branch && !t.is_value_match_or_if_operand(child_id)
 			&& t.operand_needs_ordering_snapshot(child_id) {
 			t.snapshot_expr_for_reuse(child_id)
