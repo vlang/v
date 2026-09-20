@@ -764,8 +764,12 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 		}
 		s.offset++
 	}
-	s.error_with_detail_position('unfinished string literal', s.src.len, 'literal started here',
-		s.pos)
+	if s.src[s.pos..].count('\n') > 1 {
+		s.error_with_detail_position('unfinished string literal', s.src.len, 'literal started here',
+			s.pos)
+	} else {
+		s.error('unfinished string literal', s.src.len)
+	}
 }
 
 fn (mut s Scanner) begin_nested_string_interpolation(quote u8) {
