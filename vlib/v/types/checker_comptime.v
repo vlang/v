@@ -5032,12 +5032,23 @@ fn (tc &TypeChecker) cast_expression_diagnostic_pos(node flat.Node, target_name 
 }
 
 fn (tc &TypeChecker) unknown_cast_type_diagnostic_pos(node flat.Node, target_name string) token.Pos {
-	full := tc.cast_expression_diagnostic_pos(node, target_name)
+	mut result := tc.cast_expression_diagnostic_pos(node, target_name)
+	cast_start := result.offset
 	short_name := target_name.all_after_last('.')
-	if short_name.len == target_name.len || full.end <= full.offset {
-		return full
+	if short_name.len != target_name.len && result.end > result.offset {
+		result = token.new_span(result.id, result.offset + target_name.len - short_name.len,
+			result.end)
 	}
-	return token.new_span(full.id, full.offset + target_name.len - short_name.len, full.end)
+	if cast_start > 0 {
+		if file := tc.a.source_files[result.id] {
+			if source := tc.source_texts_by_file[file.name] {
+				if cast_start <= source.len && source[cast_start - 1] == `&` {
+					return token.new_span(result.id, cast_start - 1, result.end)
+				}
+			}
+		}
+	}
+	return result
 }
 
 fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name string) bool {
