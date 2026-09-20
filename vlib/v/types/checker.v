@@ -13312,6 +13312,9 @@ fn (tc &TypeChecker) unknown_type_module_qualifier(name string, node_id flat.Nod
 	// Dots in generic arguments belong to their types, not to the module
 	// qualifier of the outer type (for example `datatypes.Set[time.Time]`).
 	outer_name := name.all_before('[')
+	if !outer_name.contains('.') {
+		return none
+	}
 	module_name := outer_name.all_before_last('.')
 	if module_name == tc.cur_module || tc.current_file_import_path_for_alias(module_name) != none
 		|| tc.source_file_import_path_for_alias(module_name, node_id) != none {
