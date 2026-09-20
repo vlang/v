@@ -1084,7 +1084,12 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	t.set_var_type(idx_name, 'int')
 	elem_is_mut := (node.op == .amp || container_is_explicit_reference)
 		&& actual_iter_type != 'string'
-	elem_needs_ref := elem_is_mut
+	// Interface payload arrays are borrowed from their runtime box. Preserve the
+	// element reference so scalar references stringify as addresses, matching
+	// direct interface smartcasts instead of silently copying the element.
+	interface_smartcast_ref := actual_iter_type.starts_with('[]')
+		&& t.for_in_container_is_interface_smartcast(container_id)
+	elem_needs_ref := elem_is_mut || interface_smartcast_ref
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)
 	if elem_needs_ref && t.is_fixed_array_type(actual_iter_type) {
@@ -1118,7 +1123,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_var_type)
 	mut transformed_body := []flat.NodeId{}
-	if elem_needs_ref {
+	if elem_is_mut {
 		had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
 		had_pointer_value_rvalue := t.pointer_value_rvalues[elem_name] or { false }
 		t.pointer_value_lvalues[elem_name] = true
@@ -1177,6 +1182,15 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	return prefix
+}
+
+fn (t &Transformer) for_in_container_is_interface_smartcast(container_id flat.NodeId) bool {
+	key := t.expr_key(container_id)
+	if key.len == 0 || t.find_smartcast(key) == none {
+		return false
+	}
+	source_type := t.trim_pointer_type(t.original_expr_type(container_id))
+	return t.is_interface_type_name(source_type)
 }
 
 fn (mut t Transformer) fixed_array_map_index_for_in_container(container_id flat.NodeId, mut prefix []flat.NodeId) ?flat.NodeId {
