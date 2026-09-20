@@ -4840,6 +4840,9 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 		return []MissingReferenceField{}
 	}
 	decl := tc.source_struct_decl_for_name(clean_name) or { return []MissingReferenceField{} }
+	if decl.value.starts_with('C.') || comma_attr_text_has(decl.typ, 'c_anon') {
+		return []MissingReferenceField{}
+	}
 	display_name := decl.value.all_after_last('.')
 	mut next_path := path.clone()
 	next_path << clean_name
