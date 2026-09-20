@@ -9202,11 +9202,58 @@ fn implicit_integer_to_float_compatible(actual Type, expected Type) bool {
 		&& clean_expected.is_float()
 }
 
-fn call_arg_implicit_signed_widening(actual Type, expected Type) bool {
+fn call_arg_numeric_promotion_index(name string) int {
+	return match name {
+		'i8' { 5 }
+		'i16' { 6 }
+		'i32' { 7 }
+		'int' { 8 }
+		'i64' { 9 }
+		'isize' { 10 }
+		'u8' { 11 }
+		'u16' { 12 }
+		'u32' { 13 }
+		'u64' { 14 }
+		'usize' { 15 }
+		'rune' { 22 }
+		else { -1 }
+	}
+}
+
+fn call_arg_implicit_numeric_widening(actual Type, expected Type) bool {
 	actual_name := fn_param_unalias_type(actual).name()
 	expected_name := fn_param_unalias_type(expected).name()
-	return (actual_name in ['int', 'i32'] && expected_name in ['i64', 'isize'])
-		|| (actual_name == 'f32' && expected_name == 'f64')
+	if actual_name == 'f32' && expected_name == 'f64' {
+		return true
+	}
+	actual_index := call_arg_numeric_promotion_index(actual_name)
+	expected_index := call_arg_numeric_promotion_index(expected_name)
+	if actual_index < 0 || expected_index < 0 {
+		return false
+	}
+	mut high := actual_index
+	mut low := expected_index
+	if high < low {
+		high, low = low, high
+	}
+	promoted := if low >= 11 {
+		high
+	} else if low >= 5 && (high <= 10 || high == 22) {
+		if low == 9 { low } else { high }
+	} else if high == 11 && low > 5 {
+		low
+	} else if high == 12 && low > 6 {
+		low
+	} else if high == 13 && low > 8 {
+		low
+	} else if high == 14 && low >= 9 {
+		low
+	} else if high == 15 && low >= 10 {
+		low
+	} else {
+		-1
+	}
+	return promoted == expected_index
 }
 
 fn call_arg_byte_rune_compatible(actual Type, expected Type) bool {
