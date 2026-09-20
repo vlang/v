@@ -9706,9 +9706,7 @@ fn (tc &TypeChecker) or_expr_source_can_fail(id flat.NodeId) bool {
 	}
 	if node.kind == .ident {
 		if declared := tc.cur_scope.lookup(node.value) {
-			key := tc.expr_key(id)
-			if type_is_option_or_result(declared)
-				&& (key.len == 0 || tc.lexical_smartcast_type(id, key) == none) {
+			if type_is_option_or_result(declared) && tc.smartcast_type(id) == none {
 				return true
 			}
 		}
