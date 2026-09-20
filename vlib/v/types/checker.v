@@ -12888,6 +12888,10 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, n
 	if clean.len == 0 {
 		return
 	}
+	node := tc.a.node(node_id)
+	if node.kind == .sql_expr && node.value.starts_with('querydata ') && clean == 'orm.QueryData' {
+		return
+	}
 	if clean in ['generic', 'params', 'union'] {
 		return
 	}
@@ -12896,7 +12900,6 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ string, n
 		return
 	}
 	if is_bare_generic_param(clean) {
-		node := tc.a.node(node_id)
 		if node.kind == .ident {
 			return
 		}
