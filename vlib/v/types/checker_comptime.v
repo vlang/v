@@ -13463,6 +13463,13 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			|| (rhs_node.kind == .ident && tc.mut_value_param_binding_matches_lvalue(rhs_node.value)
 				&& unalias_and_unwrap_pointer_type(rhs_type) is Map)
 		if tc.unsafe_depth == 0 && !tc.current_fn_declared_unsafe() && lhs_node.value != '_'
+			&& unalias_type(rhs_type) is Map {
+			if tc.record_decl_map_or_unwrap_copy(rhs_id) {
+				tc.notices = tc.notices.filter(!(it.node == lhs_id
+					&& it.msg == 'variable `${lhs_node.value}` shadows a function declaration'))
+			}
+		}
+		if tc.unsafe_depth == 0 && !tc.current_fn_declared_unsafe() && lhs_node.value != '_'
 			&& rhs_is_map_value && rhs_node.kind == .ident
 			&& !tc.expr_is_unsafe_reference_alias(rhs_id) {
 			tc.record_error_at(.assignment_mismatch, 'cannot copy map: call `move` or `clone` method (or use a reference)', rhs_id, rhs_node.pos)
@@ -15002,6 +15009,42 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 		return tc.if_expr_tail_type(rhs_id)
 	}
 	return tc.resolve_type(rhs_id)
+}
+
+fn (mut tc TypeChecker) record_decl_map_or_unwrap_copy(rhs_id flat.NodeId) bool {
+	clean_id := tc.unwrap_paren_expr_id(rhs_id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	or_expr := tc.a.node(clean_id)
+	if or_expr.kind != .or_expr || or_expr.children_count == 0 {
+		return false
+	}
+	source_id := tc.a.child(or_expr, 0)
+	source := tc.a.node(source_id)
+	if source.kind == .call {
+		return false
+	}
+	if or_expr.value in ['?', '!'] {
+		tc.record_error_at(.assignment_mismatch, 'cannot copy map: call `move` or `clone` method (or use a reference)', clean_id, source.pos)
+		return true
+	}
+	if or_expr.children_count < 2 {
+		return false
+	}
+	pos := if clean_id != rhs_id {
+		tc.a.node(rhs_id).pos
+	} else {
+		match source.kind {
+			.selector { tc.node_value_diagnostic_pos(source_id) }
+			.ident { source.pos }
+			.index { tc.or_block_operator_pos(source_id, tc.a.child(or_expr, 1)) }
+			.prefix { tc.prefix_operator_pos(source_id, '<-') }
+			else { source.pos }
+		}
+	}
+	tc.record_error_at(.assignment_mismatch, 'cannot copy map: unwrapping a map with `or {}` still copies it; use `(x or { ... }).clone()` (or a reference)', clean_id, pos)
+	return true
 }
 
 fn (mut tc TypeChecker) infer_fn_value_decl_type(rhs_id flat.NodeId) ?Type {
