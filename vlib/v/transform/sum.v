@@ -1497,9 +1497,41 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	field := t.sum_field_name(qv)
 	new_expr := t.transform_expr(expr_id)
+	source := t.stable_transformed_expr_for_reuse(new_expr, expr_type, 'sum_as')
+	variants := t.sum_type_variants_for_index(resolved_clean_type)
+	if variants.len > 0 {
+		actual_name := t.new_temp('sum_as_type')
+		mut mismatch_stmts := [t.make_decl_assign_typed(actual_name,
+			t.make_string_literal(t.sum_as_display_type(variants[0])), 'string')]
+		for variant in variants {
+			is_variant := t.make_infix(.eq, t.make_sum_tag_selector(source, if expr_type.starts_with('&') {
+				.arrow
+			} else {
+				.dot
+			}), t.make_int_literal(t.sum_type_index(resolved_clean_type, variant)))
+			mismatch_stmts << t.make_if(is_variant, t.make_block([
+				t.make_assign(t.make_ident(actual_name),
+					t.make_string_literal(t.sum_as_display_type(variant))),
+			]), t.make_empty())
+		}
+		check := t.make_call_typed('__as_cast', [
+			t.a.add(.nil_literal),
+			t.make_sum_tag_selector(source, if expr_type.starts_with('&') { .arrow } else { .dot }),
+			t.make_int_literal(t.sum_type_index(resolved_clean_type, qv)),
+			t.make_ident(actual_name),
+			t.make_string_literal(t.sum_as_display_type(qv)),
+		], 'voidptr')
+		mismatch_stmts << t.make_expr_stmt(check)
+		mismatch := t.make_infix(.ne, t.make_sum_tag_selector(source, if expr_type.starts_with('&') {
+			.arrow
+		} else {
+			.dot
+		}), t.make_int_literal(t.sum_type_index(resolved_clean_type, qv)))
+		t.pending_stmts << t.make_if(mismatch, t.make_block(mismatch_stmts), t.make_empty())
+	}
 	use_ptr := t.variant_references_sum(qv, clean_type) && !t.sum_variant_is_direct_pointer(qv)
 	field_typ := if use_ptr { '&${qv}' } else { qv }
-	field_sel := t.make_selector_op(new_expr, field, field_typ, if expr_type.starts_with('&') {
+	field_sel := t.make_selector_op(source, field, field_typ, if expr_type.starts_with('&') {
 		.arrow
 	} else {
 		.dot
@@ -1508,6 +1540,20 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		return t.make_prefix(.mul, field_sel)
 	}
 	return field_sel
+}
+
+fn (t &Transformer) sum_as_display_type(name string) string {
+	if name.len == 0 || name.contains('.') {
+		return name
+	}
+	is_named_type := name in t.structs || name in t.sum_types || name in t.enum_types
+		|| (!isnil(t.tc)
+			&& (name in t.tc.interface_names || name in t.tc.type_aliases))
+	if !is_named_type {
+		return name
+	}
+	module_name := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+	return '${module_name}.${name}'
 }
 
 // wrap_sum_return_expr transforms wrap sum return expr data for transform.
