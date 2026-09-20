@@ -5,9 +5,9 @@
 // derives or wraps the MAC key. Only the "direct" recipient mode
 // (RFC 9053 §6.1.1) is supported: each recipient is identified by
 // `kid` and is assumed to share the symmetric key out of band, so the
-// `encrypted_key` slot of every recipient is empty. The other
-// recipient modes (key wrap, key derivation) require AEAD primitives
-// that are not yet wired up.
+// `encrypted_key` slot of every recipient is empty, and exactly one
+// recipient is required. The other recipient modes (key wrap, key
+// derivation) are not implemented.
 module cose
 
 import encoding.cbor
@@ -63,9 +63,10 @@ pub:
 	external_aad     []u8
 	detached_payload ?[]u8
 	untagged         bool
-	// recipients: at least one entry. Each entry SHOULD set its
-	// unprotected `kid` so that the receiver can pick the right shared
-	// key. The `alg = direct (-6)` parameter is auto-added if absent.
+	// recipients: exactly one entry, since only the direct mode is
+	// supported. It SHOULD set its unprotected `kid` so that the
+	// receiver can pick the right shared key. The `alg = direct (-6)`
+	// parameter is auto-added if absent.
 	recipients []Recipient
 }
 
@@ -332,7 +333,11 @@ pub fn MacMessage.decode(data []u8) !MacMessage {
 			reason: 'Mac claims ${recipients_count} recipients (over ${max_recipients}-entry sanity cap)'
 		}
 	}
-	mut recipients := []Recipient{cap: if recipients_count == -1 { 1 } else { int(recipients_count) }}
+	mut recipients := []Recipient{cap: if recipients_count == -1 {
+		1
+	} else {
+		int(recipients_count)
+	}}
 	for recipients_count == -1 || recipients.len < recipients_count {
 		if recipients_count == -1 && u.peek_break() {
 			u.expect_break()!

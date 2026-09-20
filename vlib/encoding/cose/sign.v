@@ -16,7 +16,9 @@ import encoding.cbor
 const max_signers = 256
 
 // Signature is one entry of the `signatures` array of a COSE_Sign
-// message. The per-signer protected header MUST contain the algorithm.
+// message. The algorithm belongs in the per-signer protected header;
+// verification also accepts it from the unprotected header, but only
+// when the verifying key carries a matching `alg` constraint.
 pub struct Signature {
 pub mut:
 	protected   Headers

@@ -13,8 +13,8 @@ signing and MAC subset of [RFC 9052][rfc9052] and [RFC 9053][rfc9053].
 | `COSE_Sign1`     | 18  | ✅     |
 | `COSE_Sign`      | 98  | ✅     |
 | `COSE_Mac0`      | 17  | ✅     |
-| `COSE_Mac`       | 97  | ✅ (direct mode) |
-| `COSE_Encrypt0`  | 16  | ❌ (needs AEAD primitives in `vlib/crypto`) |
+| `COSE_Mac`       | 97  | ✅ (direct mode, single recipient) |
+| `COSE_Encrypt0`  | 16  | ❌ (not implemented) |
 | `COSE_Encrypt`   | 96  | ❌ (idem) |
 
 | Algorithm     | IANA | Status |
@@ -187,7 +187,8 @@ cose.verify1(sig_only, pub_key, detached_payload: large_blob)!
 - `cose.sign1` / `cose.verify1` — single-signer convenience helpers.
 - `cose.sign` / `cose.SignMessage` — multi-signer.
 - `cose.mac0` / `cose.verify_mac0` — single-recipient MAC.
-- `cose.mac` / `cose.verify_mac` — multi-recipient MAC (direct mode).
+- `cose.mac` / `cose.verify_mac` — COSE_Mac, direct mode with exactly
+  one recipient.
 
 Error variants: `VerificationFailed`, `MalformedMessage`,
 `AlgorithmMismatch`, `UnsupportedAlgorithm`. Use `if err is X` to
