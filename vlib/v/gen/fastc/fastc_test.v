@@ -2470,9 +2470,12 @@ fn use() !int {
 	return Tool.run(1, kind: .two)
 }
 
-fn main() {}
+fn main() {
+	_ := use() or { 0 }
+}
 ', 'selfhost_static_named_options.v', prefs) or { panic(err) }
-	assert c_source.contains('Tool_run(1,(Options){.kind='), c_source
+	assert c_source.contains('return Tool_run(1,({ Kind'), c_source
+	assert c_source.contains('(Options){.kind='), c_source
 	assert c_source.contains('Kind__two'), c_source
 	assert !c_source.contains('kind:.two'), c_source
 }
