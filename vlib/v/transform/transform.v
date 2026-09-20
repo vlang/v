@@ -14418,7 +14418,13 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			if rhs.kind == .ident
 				&& (t.pointer_value_rvalues[rhs.value] || t.mut_param_values[rhs.value])
 				&& typ.starts_with('&') {
-				typ = typ[1..]
+				storage_type := t.var_type(rhs.value)
+				semantic_pointer_read := t.pointer_value_rvalues[rhs.value]
+					&& storage_type.starts_with('&&')
+					&& t.normalize_type_alias(storage_type[1..]) == t.normalize_type_alias(typ)
+				if !semantic_pointer_read {
+					typ = typ[1..]
+				}
 			}
 			if node.typ.len == 0 {
 				if rhs.kind == .array_literal && rhs.typ.len == 0 && t.is_fixed_array_type(typ) {
