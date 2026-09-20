@@ -2330,7 +2330,7 @@ pub fn (d Duration) microseconds() i64 { return i64(d) / 1000 }
 			header: fastc_scan_source_header(clock_source, 'clock.v', prefs) or { panic(err) }
 		},
 	], map[string]string{}, prefs) or { panic(err) }
-	assert c_source.contains('clock__Duration_microseconds(((clock__Duration)'), c_source
+	assert c_source.contains('v_f0(((clock__Duration)'), c_source
 }
 
 fn test_selfhost_module_qualified_pointer_cast() {
