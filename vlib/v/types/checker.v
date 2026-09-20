@@ -13404,13 +13404,14 @@ fn (tc &TypeChecker) type_error_already_reported_on_line(kind TypeErrorKind, msg
 }
 
 fn (tc &TypeChecker) unknown_type_message(name string, node_id flat.NodeId) string {
-	mut display_name := name
+	mut lookup_name := name
 	if name.contains('.') {
 		alias := name.all_before('.')
 		if import_path := tc.current_file_import_path_for_alias(alias) {
-			display_name = import_path + name[alias.len..]
+			lookup_name = import_path + name[alias.len..]
 		}
 	}
+	display_name := tc.diagnostic_qualified_name(lookup_name) or { lookup_name }
 	base := 'unknown type `${display_name}`'
 	if int(node_id) >= 0 && int(node_id) < tc.a.nodes.len {
 		node := tc.a.nodes[int(node_id)]
@@ -13431,14 +13432,14 @@ fn (tc &TypeChecker) unknown_type_message(name string, node_id flat.NodeId) stri
 	} else {
 		tc.known_type_name_candidates()
 	}
-	if display_name.contains('.') {
-		module_prefix := display_name.all_before_last('.') + '.'
+	if lookup_name.contains('.') {
+		module_prefix := lookup_name.all_before_last('.') + '.'
 		module_candidates := candidates.filter(it.starts_with(module_prefix))
 		if module_candidates.len > 0 {
 			candidates = module_candidates.clone()
 		}
 	}
-	message := util.new_suggestion(display_name, candidates).say(base)
+	message := util.new_suggestion(lookup_name, candidates).say(base)
 	if message != base || int(node_id) < 0 || int(node_id) >= tc.a.nodes.len {
 		return message
 	}
@@ -13529,7 +13530,10 @@ fn (tc &TypeChecker) known_type_name_candidates() []string {
 	for name, _ in tc.structs {
 		push_diagnostic_type_name(mut names, name)
 	}
-	for name, _ in tc.type_aliases {
+	for name, target in tc.type_aliases {
+		if target.starts_with('fn(') || target.starts_with('fn (') {
+			continue
+		}
 		push_diagnostic_type_name(mut names, name)
 	}
 	for name, _ in tc.sum_types {

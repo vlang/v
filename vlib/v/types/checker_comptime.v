@@ -4083,12 +4083,14 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			}
 			return
 		}
-		tc.record_error_at(.unknown_type, 'unknown type `${node.value}`', id, node.pos)
+		tc.record_error_at(.unknown_type, tc.unknown_type_message(node.value, id), id,
+			tc.unknown_cast_type_diagnostic_pos(node, node.value))
 		return
 	}
 	if target is Struct && should_check_named_type(node.value) && !tc.type_name_known(node.value)
 		&& !target_is_generic_param {
-		tc.record_error_at(.unknown_type, 'unknown type `${node.value}`', id, node.pos)
+		tc.record_error_at(.unknown_type, tc.unknown_type_message(node.value, id), id,
+			tc.unknown_cast_type_diagnostic_pos(node, node.value))
 		return
 	}
 	if target is Pointer {
@@ -4097,7 +4099,8 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		if (target_base is Struct || target_base is Unknown)
 			&& should_check_named_type(target_base_name) && !tc.type_name_known(target_base_name)
 			&& !target_is_generic_param {
-			tc.record_error_at(.unknown_type, 'unknown type `${target_base_name}`', id, node.pos)
+			tc.record_error_at(.unknown_type, tc.unknown_type_message(target_base_name, id), id,
+				tc.unknown_cast_type_diagnostic_pos(node, target_base_name))
 			if tc.cast_operand_is_zero(child_id) && tc.unsafe_depth == 0 {
 				target_name := if node.value.len > 0 { node.value } else { target.name() }
 				tc.record_error_at(.assignment_mismatch, 'cannot null cast a pointer, use ${target_name}(unsafe { nil })',
@@ -5026,6 +5029,15 @@ fn (tc &TypeChecker) cast_expression_diagnostic_pos(node flat.Node, target_name 
 		}
 	}
 	return node.pos
+}
+
+fn (tc &TypeChecker) unknown_cast_type_diagnostic_pos(node flat.Node, target_name string) token.Pos {
+	full := tc.cast_expression_diagnostic_pos(node, target_name)
+	short_name := target_name.all_after_last('.')
+	if short_name.len == target_name.len || full.end <= full.offset {
+		return full
+	}
+	return token.new_span(full.id, full.offset + target_name.len - short_name.len, full.end)
 }
 
 fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name string) bool {
