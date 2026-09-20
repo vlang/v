@@ -13769,6 +13769,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if fn_param_is_voidptr_type(expected) && unalias_type(actual) is Struct {
 			tc.record_warning_at(.call_arg_mismatch, 'automatic ${unalias_type(actual).name()} referencing/dereferencing into voidptr is deprecated and will be removed soon; use `foo(&x)` instead of `foo(x)`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 		}
+		// An untyped nil local retains Nil/voidptr until its call context is known.
+		// It is compatible with pointer and interface parameters, just like an
+		// inline `unsafe { nil }`.
+		if (unalias_type(actual) is Nil || tc.immutable_local_is_unsafe_nil(arg_id))
+			&& (unalias_type(expected) is Pointer || cast_target_interface(expected) != none) {
+			continue
+		}
 		clean_expected_for_interface := unalias_type(expected)
 		if clean_expected_for_interface is Interface && unalias_type(actual) !is Interface
 			&& tc.private_declaration(clean_expected_for_interface.name) != none {
@@ -14139,6 +14146,20 @@ fn (tc &TypeChecker) collapsed_field_expr_compatible(id flat.NodeId, actual Type
 fn (tc &TypeChecker) call_is_direct_spawn_child(id flat.NodeId) bool {
 	parent_id := tc.direct_parent_id(id)
 	return tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .spawn_expr
+}
+
+fn (tc &TypeChecker) immutable_local_is_unsafe_nil(id flat.NodeId) bool {
+	mut value_id := id
+	mut value := tc.a.node(value_id)
+	for value.kind in [.paren, .expr_stmt] && value.children_count > 0 {
+		value_id = tc.a.child(value, 0)
+		value = tc.a.node(value_id)
+	}
+	if value.kind != .ident || tc.ident_is_mutable_lvalue(value.value) {
+		return false
+	}
+	rhs_id := tc.local_decl_rhs_before(value.value, value_id) or { return false }
+	return tc.expr_is_unsafe_nil(rhs_id)
 }
 
 fn (tc &TypeChecker) collapsed_field_diagnostic_type(field_name string, target Type, expected Type) string {
