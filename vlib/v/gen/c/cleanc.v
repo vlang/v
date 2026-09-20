@@ -514,7 +514,7 @@ mut:
 	// elements or `int` values directly (kept in sync with set_target).
 	int_ct                          string = 'i64'
 	thread_stack_size               int    = 8 * 1024 * 1024
-	compile_values                  map[string]string // explicit `-d` values used by `$d(...)` in `#flag`s
+	compile_values                  map[string]string // explicit `-d` values used by `$d(...)` in C directives
 	output_path                     string
 	output_error                    string
 	c99_mode                        bool
@@ -1537,7 +1537,7 @@ pub fn (mut g FlatGen) set_suppress_main(enabled bool) {
 	g.suppress_main = enabled
 }
 
-// set_compile_values records explicit `-d` values so `$d(...)` inside `#flag`
+// set_compile_values records explicit `-d` values so `$d(...)` inside C
 // directives resolves configured values over fallbacks.
 pub fn (mut g FlatGen) set_compile_values(values map[string]string) {
 	g.compile_values = values.clone()
@@ -5414,7 +5414,8 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		if node.typ.len == 0 {
 			return true
 		}
-		include_arg := c_include_arg_for_target(directive_raw, g.compiler_vroot, source_file, g.target)
+		include_arg := c_include_arg_for_target_with_values(directive_raw, g.compiler_vroot,
+			source_file, g.target, g.compile_values)
 		// A `#include linux <x.h>` contributes nothing when building for another
 		// target, so it must not make the file look header backed there.
 		if include_arg.len == 0 {
@@ -5438,7 +5439,8 @@ fn (mut g FlatGen) collect_c_directive_at(node_idx int, module_name string, node
 		if node.typ.len == 0 {
 			return true
 		}
-		include_arg := c_include_arg_for_target(directive_raw, g.compiler_vroot, source_file, g.target)
+		include_arg := c_include_arg_for_target_with_values(directive_raw, g.compiler_vroot,
+			source_file, g.target, g.compile_values)
 		if include_arg.len == 0 {
 			return true
 		}
@@ -10360,7 +10362,19 @@ fn c_include_arg(raw string, vroot string, source_file string) string {
 }
 
 fn c_include_arg_for_target(raw string, vroot string, source_file string, target pref.Target) string {
+	return c_include_arg_for_target_with_values(raw, vroot, source_file, target, map[string]string{})
+}
+
+fn c_include_arg_for_target_with_values(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) string {
 	mut clean := c_directive_arg_for_target(raw.trim_space(), target) or { return '' }
+	// Quoted include paths wrap the whole argument in double quotes. Strip the
+	// opening quote while expanding so `$d('name', 'fallback')` is not mistaken
+	// for text inside an ordinary C flag string.
+	if clean.starts_with('"') {
+		clean = '"' + (c_expand_default_define_macros(clean[1..], compile_values) or { return '' })
+	} else {
+		clean = c_expand_default_define_macros(clean, compile_values) or { return '' }
+	}
 	if clean.contains('\$env(') {
 		clean = util.resolve_env_value(clean, true) or { return '' }
 	}
