@@ -15306,7 +15306,8 @@ fn (tc &TypeChecker) type_declaration_name_pos(node_id flat.NodeId) token.Pos {
 
 fn qualify_decl_name_in_module(name string, module_name string) string {
 	if module_name == '' || module_name == 'main' || module_name == 'builtin'
-		|| name.starts_with('${module_name}.') {
+		|| name.starts_with('${module_name}.') || name.starts_with('C.')
+		|| name.starts_with('JS.') {
 		return name
 	}
 	return '${module_name}.${name}'

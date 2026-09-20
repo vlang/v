@@ -5966,6 +5966,13 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	selector_is_method_value := tc.expr_is_method_value(id)
 		&& !tc.ident_is_call_callee_or_generic_base(id)
 	if clean_recv is Struct {
+		if visibility := tc.private_declaration(clean_recv.name) {
+			display_name := tc.diagnostic_type_name(Type(clean_recv))
+			decl_module := tc.diagnostic_module_display_name(visibility.module_name)
+			inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+			tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${decl_module}`, so it can not be used inside module `${inside_module}`', id,
+				tc.node_value_diagnostic_pos(id))
+		}
 		if deprecation := tc.deprecated_symbols['${clean_recv.name}.${node.value}'] {
 			tc.record_deprecation(id, 'field', deprecation, tc.node_value_diagnostic_pos(id))
 		}
