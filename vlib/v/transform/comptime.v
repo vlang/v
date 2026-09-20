@@ -1718,7 +1718,7 @@ fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name stri
 // struct expected by a reflected method. Comptime method calls are checked before
 // generic specialization, so their argument can still be `T` then and become a
 // concrete embedding struct only while the call is cloned.
-fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId, param_type string) ?flat.NodeId {
+fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId, param_type string, param_module string) ?flat.NodeId {
 	if int(arg_id) < 0 || !param_type.starts_with('&') {
 		return none
 	}
@@ -1732,6 +1732,16 @@ fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId
 		actual_type = '&${actual_type}'
 	}
 	actual_base := t.trim_pointer_type(actual_type)
+	actual_identity := type_text_without_main_locks(t.normalize_type_in_module(actual_base,
+		t.cur_module))
+	expected_identity := if param_module in ['', 'main'] {
+		type_text_without_main_locks(expected_type)
+	} else {
+		type_text_without_main_locks(t.normalize_type_in_module(expected_type, param_module))
+	}
+	if actual_identity == expected_identity {
+		return none
+	}
 	_ := t.embedded_receiver_path(actual_base, expected_type) or { return none }
 	base := if actual_type.starts_with('&') && arg.kind == .ident {
 		t.transform_expr_preserving_pointer_value(arg_id)
@@ -1773,7 +1783,7 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 		callee := t.a.node(children[0])
 		if callee.kind == .selector && comptime_method_selector_marker in callee.generic_params() {
 			if embedded_ctx := t.transform_comptime_method_embedded_arg(children[1],
-				method.params[0].typ)
+				method.params[0].typ, method.params[0].module_name)
 			{
 				children[1] = embedded_ctx
 				t.a.children[start + 1] = embedded_ctx
