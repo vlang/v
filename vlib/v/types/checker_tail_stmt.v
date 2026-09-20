@@ -16093,10 +16093,12 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if rt is String {
 				return rt_raw
 			}
-			if int_promoted := tc.int_literal_promoted_infix_type(lhs_id, rhs_id, rt) {
+			if int_promoted := tc.int_literal_promoted_infix_type(lhs_id, rhs_id, lt,
+				rt) {
 				return int_promoted
 			}
-			if int_promoted := tc.int_literal_promoted_infix_type(rhs_id, lhs_id, lt) {
+			if int_promoted := tc.int_literal_promoted_infix_type(rhs_id, lhs_id, rt,
+				lt) {
 				return int_promoted
 			}
 			if lt.is_float() || rt.is_float() {
@@ -18202,11 +18204,16 @@ fn (tc &TypeChecker) type_has_infix_operator_method(typ Type, op flat.Op) bool {
 	return method_name in tc.fn_ret_types
 }
 
-fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_id flat.NodeId, other_type Type) ?Type {
-	if tc.int_literal_value(lit_id) == none || tc.int_literal_value(other_id) != none {
+fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_id flat.NodeId, lit_type Type, other_type Type) ?Type {
+	if tc.int_literal_value(other_id) != none {
 		return none
 	}
-	value := tc.int_literal_value(lit_id)?
+	value := tc.int_literal_value(lit_id) or {
+		if lit_type.name() != Type(int_).name() {
+			return none
+		}
+		tc.const_int_expr(lit_id, tc.cur_module, []string{})?
+	}
 	clean_type := unalias_type(other_type)
 	if unsigned_type_accepts_int_literal(clean_type, value) {
 		return clean_type
