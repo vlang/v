@@ -13629,12 +13629,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if tc.is_zero_literal(arg_id) {
 				continue
 			}
-			actual_display := match tc.a.node(arg_id).kind {
-				.int_literal { 'int' }
-				.float_literal { 'f64' }
-				else { tc.diagnostic_expr_type_name(arg_id, actual) }
-			}
-			tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual_display}` as argument ${argument_number} to `${target_name}`; expected `&void`; expression cannot be passed as `voidptr`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			tc.record_error_at(.call_arg_mismatch, 'expression cannot be passed as `voidptr`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			return
 		}
 		if negative_unsigned_literal {
