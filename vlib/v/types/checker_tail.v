@@ -138,6 +138,9 @@ fn (tc &TypeChecker) diagnostic_type_name(typ Type) string {
 	if !raw.contains('.') {
 		return raw
 	}
+	if display := tc.diagnostic_qualified_name(raw) {
+		return display
+	}
 	prefix := raw.all_before('.')
 	info := tc.current_file_import_info()
 	if isnil(info) {
@@ -152,6 +155,49 @@ fn (tc &TypeChecker) diagnostic_type_name(typ Type) string {
 		return module_path + raw[prefix.len..]
 	}
 	return raw
+}
+
+fn (tc &TypeChecker) diagnostic_qualified_name(name string) ?string {
+	if tc.module_diagnostic_root == '' || !name.contains('.') {
+		return none
+	}
+	base_name := name.all_before('[')
+	module_name := base_name.all_before_last('.')
+	if module_name in ['', 'main', 'builtin', 'C', 'JS'] {
+		return none
+	}
+	mut declaration_file := tc.struct_files[base_name] or { tc.fn_type_files[base_name] or { '' } }
+	if declaration_file == '' {
+		for file, declared_module in tc.file_modules {
+			if declared_module == module_name
+				|| declared_module.all_after_last('.') == module_name.all_after_last('.') {
+				declaration_file = file
+				break
+			}
+		}
+	}
+	if declaration_file == '' {
+		return none
+	}
+	display_module := tc.diagnostic_module_name(module_name, declaration_file)
+	if display_module == module_name {
+		return none
+	}
+	return display_module + name[module_name.len..]
+}
+
+fn (tc &TypeChecker) diagnostic_module_name(module_name string, declaration_file string) string {
+	root := os.real_path(tc.module_diagnostic_root).replace('\\', '/').trim_right('/')
+	directory := os.real_path(os.dir(declaration_file)).replace('\\', '/').trim_right('/')
+	if root == '' || directory == '' || directory == root || !directory.starts_with(root + '/') {
+		return module_name
+	}
+	relative := directory[root.len + 1..].replace('/', '.')
+	root_name := root.all_after_last('/')
+	if root_name == '' || relative == '' {
+		return module_name
+	}
+	return '${root_name}.${relative}'
 }
 
 fn assignment_operator_text(op flat.Op) string {
@@ -4300,9 +4346,14 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 		display_name := if receiver, method := flat.decode_static_type_method_name(info.name) {
 			'${receiver}.${method}'
 		} else {
-			info.name
+			tc.diagnostic_qualified_name(info.name) or { info.name }
 		}
-		tc.record_error_at(.unknown_fn, 'function `${display_name}` is private', id, node.pos)
+		pos := if callee.kind == .selector {
+			tc.method_call_name_pos(node, callee)
+		} else {
+			node.pos
+		}
+		tc.record_error_at(.unknown_fn, 'function `${display_name}` is private', id, pos)
 		return true
 	}
 	return false
@@ -4999,7 +5050,8 @@ fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call flat.Node
 			}
 			if struct_type_from_type(typ) != none && type_module != declaration_module
 				&& tc.type_has_declaration_attribute(typ, 'noinit') {
-				message := 'struct `${typ.name()}` is declared with a `@[noinit]` attribute, so it cannot be initialized with `${typ.name()}{}`'
+				display_name := tc.diagnostic_type_name(typ)
+				message := 'struct `${display_name}` is declared with a `@[noinit]` attribute, so it cannot be initialized with `${display_name}{}`'
 				if !tc.has_type_error(.assignment_mismatch, message, node_id) {
 					tc.record_error_at(.assignment_mismatch, message, node_id, node.pos)
 				}
@@ -12856,8 +12908,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
 			if _ := tc.private_declaration(param_struct.name) {
 				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-				tc.record_error_at(.unknown_type, 'struct `${param_struct.name}` was declared as private to module `${param_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, pos)
-				tc.record_error_at(.unknown_type, 'type `${param_struct.name}` is private', id, pos)
+				display_name := tc.diagnostic_type_name(Type(param_struct))
+				tc.record_error_at(.unknown_type, 'struct `${display_name}` was declared as private to module `${display_name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, pos)
+				tc.record_error_at(.unknown_type, 'type `${display_name}` is private', id, pos)
 			}
 		}
 	}
@@ -13670,7 +13723,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if clean_expected_for_interface is Interface && unalias_type(actual) !is Interface
 			&& tc.private_declaration(clean_expected_for_interface.name) != none {
 			actual_name := tc.diagnostic_expr_type_name(arg_id, actual)
-			tc.record_error_at(.call_arg_mismatch, '`${actual_name}` cannot implement private interface `${clean_expected_for_interface.name}` of other module', arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			expected_name := tc.diagnostic_type_name(clean_expected_for_interface)
+			tc.record_error_at(.call_arg_mismatch, '`${actual_name}` cannot implement private interface `${expected_name}` of other module', arg_id, tc.call_argument_diagnostic_pos(arg_id))
 			continue
 		}
 		if clean_expected_for_interface is Interface && unalias_type(actual) is FnType {

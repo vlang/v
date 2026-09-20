@@ -5888,7 +5888,8 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 				}
 			}
 			name := '${module_name}.${node.value}'
-			message := util.new_suggestion(name, candidates).say('undefined ident: `${name}`')
+			display_name := '${tc.diagnostic_module_display_name(module_name)}.${node.value}'
+			message := util.new_suggestion(name, candidates).say('undefined ident: `${display_name}`')
 			tc.record_error_at(.unknown_ident, message, id, tc.node_value_diagnostic_pos(id))
 			tc.register_synth_type(id, Type(void_))
 		}
@@ -6234,6 +6235,11 @@ fn (mut tc TypeChecker) record_enclosing_dump_void(id flat.NodeId) {
 				tc.record_error_at(.assignment_mismatch, 'dump expression can not be void', id, tc.method_call_name_pos(node, callee))
 				return
 			}
+		}
+		if node.kind == .selector {
+			tc.record_error_at(.assignment_mismatch, 'dump expression can not be void', id,
+				tc.node_value_diagnostic_pos(id))
+			return
 		}
 		tc.record_error(.assignment_mismatch, 'dump expression can not be void', id)
 	}

@@ -10788,6 +10788,11 @@ pub fn run(args []string) {
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.disable_explicit_mutability = disable_explicit_mutability
 	pre_tc.checker_fixture_mode = is_checker_fixture
+	pre_tc.module_diagnostic_root = if os.is_dir(input_file) {
+		os.real_path(input_file)
+	} else {
+		os.real_path(os.dir(input_file))
+	}
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
 	pre_tc.no_main = 'no_main' in prefs.user_defines
 	pre_tc.nofloat = 'nofloat' in prefs.user_defines

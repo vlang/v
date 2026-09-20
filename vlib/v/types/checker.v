@@ -856,6 +856,7 @@ pub mut:
 	reject_unlowered_map_mutation bool
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
+	module_diagnostic_root        string
 	autofree_mode                 bool
 	no_main                       bool
 	nofloat                       bool
@@ -1292,6 +1293,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unlowered_map_mutation:         tc.reject_unlowered_map_mutation
 		reject_unsupported_generics:           tc.reject_unsupported_generics
 		checker_fixture_mode:                  tc.checker_fixture_mode
+		module_diagnostic_root:                tc.module_diagnostic_root
 		autofree_mode:                         tc.autofree_mode
 		no_main:                               tc.no_main
 		nofloat:                               tc.nofloat
@@ -5852,6 +5854,7 @@ fn (mut tc TypeChecker) check_selective_const_imports(node flat.Node, module_pat
 }
 
 fn (mut tc TypeChecker) check_selective_type_imports(node flat.Node, module_path string) {
+	display_module_path := tc.diagnostic_module_display_name(module_path)
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
@@ -5867,9 +5870,9 @@ fn (mut tc TypeChecker) check_selective_type_imports(node flat.Node, module_path
 			}
 		}
 		if symbol_name.len == 0 {
-			tc.record_error_at(.unknown_type, 'module `${module_path}` has no type `${child.value}`', child_id, tc.node_value_diagnostic_pos(child_id))
+			tc.record_error_at(.unknown_type, 'module `${display_module_path}` has no type `${child.value}`', child_id, tc.node_value_diagnostic_pos(child_id))
 		} else if _ := tc.private_declaration(symbol_name) {
-			tc.record_error_at(.unknown_type, 'module `${module_path}` type `${child.value}` is private', child_id, tc.node_value_diagnostic_pos(child_id))
+			tc.record_error_at(.unknown_type, 'module `${display_module_path}` type `${child.value}` is private', child_id, tc.node_value_diagnostic_pos(child_id))
 		}
 	}
 }
@@ -6109,6 +6112,16 @@ fn (tc &TypeChecker) c_symbol_declared_in_module(module_path string, name string
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) diagnostic_module_display_name(module_name string) string {
+	for file, declared_module in tc.file_modules {
+		if declared_module == module_name
+			|| declared_module.all_after_last('.') == module_name.all_after_last('.') {
+			return tc.diagnostic_module_name(module_name, file)
+		}
+	}
+	return module_name
 }
 
 fn type_text_contains_qualified_import(text string, alias string) bool {
