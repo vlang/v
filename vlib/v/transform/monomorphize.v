@@ -12899,7 +12899,7 @@ fn (mut t Transformer) subst_comptime_type_condition(cond string, args []string)
 		if op_idx >= 0 {
 			left := clean[..op_idx].trim_space()
 			right := clean[op_idx + op.len..].trim_space()
-			result := '${t.subst_comptime_type_operand(left, args)}${op}${t.subst_comptime_type_operand(right, args)}'
+			result := '${t.subst_comptime_type_test_operand(left, args)}${op}${t.subst_comptime_type_test_operand(right, args)}'
 			// `T is &U` introduces `U` as the pointee type. Keep the specialized
 			// condition for the clone pass to bind instead of deciding that the
 			// otherwise-unknown `U` makes the comparison false.
@@ -12923,7 +12923,7 @@ fn (mut t Transformer) subst_comptime_type_condition(cond string, args []string)
 			if after >= clean.len || (clean[after] != `[` && clean[after] != ` `) {
 				continue
 			}
-			left := t.subst_comptime_type_operand(clean[..op_idx], args)
+			left := t.subst_comptime_type_test_operand(clean[..op_idx], args)
 			list := clean[after..].trim_space()
 			if list.starts_with('[') && list.ends_with(']') {
 				mut items := []string{}
@@ -13152,6 +13152,19 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args []string) strin
 		}
 	}
 	return t.resolve_substituted_type_text(t.subst_type(clean, args))
+}
+
+fn (t &Transformer) subst_comptime_type_test_operand(raw string, args []string) string {
+	if reflected_type, reflected_member := generic_comptime_typeof_operand(raw) {
+		if reflected_member == 'idx' {
+			substituted := t.resolve_substituted_type_text(t.subst_type(reflected_type, args))
+			// In a type test, `.idx` denotes the reflected type rather than the
+			// integer value of its runtime type index. Preserve aliases just as
+			// `.typ` does; ordinary comparisons still receive the numeric index.
+			return substituted + '.typ'
+		}
+	}
+	return t.subst_comptime_type_operand(raw, args)
 }
 
 fn (t &Transformer) comptime_type_layout(raw string, seen []string) ?ComptimeTypeLayout {
