@@ -9249,12 +9249,6 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 			return
 		}
 	}
-	if actual is OptionType && tc.type_compatible(actual.base_type, expected) {
-		context := unalias_type(outer_expected)
-		if context is OptionType && tc.type_compatible(expected, context.base_type) {
-			return
-		}
-	}
 	if tc.or_expr_payload_is_shared(source_id) && !tc.expr_is_shared_arg(tail_id)
 		&& !tc.or_fallback_tail_is_shared_decl(fallback_id, tail_id) {
 		actual_name := tc.diagnostic_expr_type_name(tail_id, actual)
