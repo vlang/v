@@ -1536,6 +1536,18 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	a_is_struct_field_mismatch := a.msg.starts_with('cannot assign to field `')
+	b_is_struct_field_mismatch := b.msg.starts_with('cannot assign to field `')
+	a_is_struct_field_nil := a.msg.starts_with('cannot assign `nil` to struct field `')
+	b_is_struct_field_nil := b.msg.starts_with('cannot assign `nil` to struct field `')
+	if a.pos.id == b.pos.id && a.pos.offset < b.pos.end && b.pos.offset < a.pos.end {
+		if a_is_struct_field_mismatch && b_is_struct_field_nil {
+			return -1
+		}
+		if b_is_struct_field_mismatch && a_is_struct_field_nil {
+			return 1
+		}
+	}
 	a_is_unknown_format := a.msg.starts_with('unknown format specifier `')
 	b_is_unknown_format := b.msg.starts_with('unknown format specifier `')
 	a_is_illegal_format := a.msg.starts_with('illegal format specifier `')
