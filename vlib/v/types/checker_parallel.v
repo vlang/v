@@ -1620,6 +1620,20 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	if a.file == b.file && b_is_noreturn_return && a_is_noreturn_tail {
 		return 1
 	}
+	a_is_option_alias_return := a.msg.starts_with('the fn returns type `')
+		&& a.msg.contains(' is an Option alias, you can not mix them')
+	b_is_option_alias_return := b.msg.starts_with('the fn returns type `')
+		&& b.msg.contains(' is an Option alias, you can not mix them')
+	a_is_none_return := a.msg.starts_with('cannot use `none` as type `')
+		&& a.msg.ends_with(' in return argument')
+	b_is_none_return := b.msg.starts_with('cannot use `none` as type `')
+		&& b.msg.ends_with(' in return argument')
+	if a.file == b.file && a_is_option_alias_return && b_is_none_return {
+		return -1
+	}
+	if a.file == b.file && b_is_option_alias_return && a_is_none_return {
+		return 1
+	}
 	a_is_for_in_same_variable := a.msg.starts_with('in a `for x in ')
 		&& a.msg.contains(' can not be the same as the low variable')
 	b_is_for_in_same_variable := b.msg.starts_with('in a `for x in ')
