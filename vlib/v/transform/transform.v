@@ -9872,10 +9872,16 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	}
 	if child_node.kind == .ident {
 		raw := t.raw_var_type(child_node.value).trim_space()
+		mut dump_generic_mut_param := t.cur_fn_is_generic
+		if !dump_generic_mut_param {
+			if _ := t.recorded_generic_specialization_args(t.cur_fn_name) {
+				dump_generic_mut_param = true
+			}
+		}
 		if raw.starts_with('shared ') {
 			typ = '&' + t.normalize_type_alias(raw[7..].trim_space().trim_left('&'))
 			dump_shared_ident = true
-		} else if t.mut_param_values[child_node.value] {
+		} else if dump_generic_mut_param && t.mut_param_values[child_node.value] {
 			if typ.starts_with('&') {
 				typ = typ[1..]
 			}
