@@ -9216,7 +9216,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 			}
 			.global_decl {
 				if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
-					tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), node.pos)
+					tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
 				}
 				tc.check_global_decl_semantics(flat.NodeId(i), node)
 				tc.check_const_global_initializers(node)

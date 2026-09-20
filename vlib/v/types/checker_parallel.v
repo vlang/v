@@ -1262,7 +1262,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 				}
 				if do_values {
 					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
-						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), node.pos)
+						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
 					}
 					tc.check_const_global_initializers(node)
 				}
