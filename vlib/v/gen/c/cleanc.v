@@ -5280,7 +5280,12 @@ fn (g &FlatGen) c_local_header_directive(path string) string {
 // portable output carries the header text instead of a machine-local absolute path.
 fn (mut g FlatGen) c_include_directive_text(node_idx int, prefix_condition string, include_arg string, source_file string) string {
 	mut directive := '#include ${include_arg}'
-	if include_arg.trim_space().starts_with('"') {
+	clean_include_arg := include_arg.trim_space()
+	quoted_absolute_path := clean_include_arg.len >= 2 && clean_include_arg[0] == `"`
+		&& clean_include_arg[clean_include_arg.len - 1] == `"`
+		&& os.is_abs_path(clean_include_arg[1..clean_include_arg.len - 1])
+	// Preserve already-absolute spellings, including symlink aliases such as macOS `/tmp`.
+	if clean_include_arg.starts_with('"') && (g.output_cross_c || !quoted_absolute_path) {
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
 			if !os.is_file(path) {
