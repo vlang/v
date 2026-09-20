@@ -2785,7 +2785,7 @@ fn (t &Transformer) subtree_has_comptime_field_selector(id flat.NodeId) bool {
 
 fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
 	literal := t.make_int_literal_typed(item.value.str(), 'i64')
-	return t.make_cast('i64', literal, 'i64')
+	return t.make_cast(item.enum_name, literal, item.enum_name)
 }
 
 // clone_variant_subst clones a `$for variant in Sum.variants` body and gives the variant loop
