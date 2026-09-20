@@ -3116,7 +3116,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		p.record_diagnostic_span('generic type aliases are not yet implemented', decl_start,
 			generic_params_end)
 	}
-	if first_type.starts_with('fn(') {
+	if first_type.starts_with('fn(') && !is_sum_type {
 		close := first_type.index(')') or { -1 }
 		if close > 3 {
 			params := first_type[3..close]
