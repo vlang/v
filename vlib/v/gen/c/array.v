@@ -319,6 +319,22 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 	g.gen_expr(id)
 }
 
+// gen_cabi_fixed_array_data_arg materializes fixed arrays whose V element storage
+// differs from the declared C ABI. In particular, V `int` is i64 while `int` in a
+// `fn C.` fixed-array parameter is the platform C int.
+fn (mut g FlatGen) gen_cabi_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed) bool {
+	c_elem := g.c_extern_interop_type_name(arr.elem_type) or { return false }
+	if c_elem == g.value_c_type(arr.elem_type) {
+		return false
+	}
+	initializer := g.fixed_array_initializer_string(id, arr)
+	if trimmed_space(initializer).len == 0 {
+		return false
+	}
+	g.write('(${c_elem}[])${initializer}')
+	return true
+}
+
 fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, arg_idx int, arg_id flat.NodeId, names []string) bool {
 	if arg_idx != 3 || !names.any(it in ['new_array_from_c_array', 'array__new_array_from_c_array'])
 		|| arg_start + 2 >= call.children_count {

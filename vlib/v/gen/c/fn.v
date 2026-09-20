@@ -7915,6 +7915,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				]) {
 					continue
 				}
+				if is_c_call && arg_idx < typed_param_count {
+					if fixed := array_fixed_type(param_types[arg_idx]) {
+						if _ := array_fixed_type(g.tc.resolve_type(arg_id)) {
+							if g.gen_cabi_fixed_array_data_arg(arg_id, fixed) {
+								continue
+							}
+						}
+					}
+				}
 				if fixed := array_fixed_type(g.tc.resolve_type(arg_id)) {
 					g.gen_fixed_array_data_arg(arg_id, fixed)
 					continue
@@ -16070,6 +16079,15 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		}
 		if g.gen_new_array_fixed_data_arg(node, start, arg_idx, arg_id, [fn_name, callee_name]) {
 			continue
+		}
+		if is_c_call && arg_idx < typed_param_count {
+			if fixed := array_fixed_type(param_types[arg_idx]) {
+				if _ := array_fixed_type(g.tc.resolve_type(arg_id)) {
+					if g.gen_cabi_fixed_array_data_arg(arg_id, fixed) {
+						continue
+					}
+				}
+			}
 		}
 		if fixed := array_fixed_type(g.tc.resolve_type(arg_id)) {
 			g.gen_fixed_array_data_arg(arg_id, fixed)
