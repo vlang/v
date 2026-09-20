@@ -8833,7 +8833,7 @@ fn (mut p Parser) match_stmt() flat.NodeId {
 	})
 	if p.tok == .key_or {
 		p.next()
-		or_body := p.block_stmt()
+		or_body := p.or_block_stmt()
 		ostart := p.add_children2(match_id, or_body)
 		return p.add_node(flat.Node{
 			kind:           .or_expr
@@ -9114,6 +9114,14 @@ fn (mut p Parser) block_stmt() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(block_start)
 	})
+}
+
+fn (mut p Parser) or_block_stmt() flat.NodeId {
+	p.begin_local_binding_scope()
+	p.declare_local_binding('err')
+	block := p.block_stmt()
+	p.end_local_binding_scope()
+	return block
 }
 
 fn (mut p Parser) unsafe_block_stmt(unsafe_start int) flat.NodeId {
@@ -10198,7 +10206,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				break
 			}
 			p.next()
-			or_body := p.block_stmt()
+			or_body := p.or_block_stmt()
 			ostart := p.add_children2(lhs, or_body)
 			lhs = p.add_node_from(flat.Node{
 				kind:           .or_expr
@@ -11276,7 +11284,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		// Option/Result. Consume it here so the unwrap happens before the prefix.
 		if p.tok == .key_or {
 			p.next()
-			or_body := p.block_stmt()
+			or_body := p.or_block_stmt()
 			ostart := p.add_children2(operand, or_body)
 			operand = p.a.add_node(flat.Node{
 				kind:           .or_expr
