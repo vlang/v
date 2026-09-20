@@ -17122,6 +17122,9 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 			if matched.is_exact {
 				return tc.call_info(matched.key, true)
 			}
+			if matched.args.any(tc.generic_receiver_arg_is_voidptr(it)) {
+				return none
+			}
 			generic_base = base
 			params = matched.params.clone()
 			concrete_args = matched.args.clone()
