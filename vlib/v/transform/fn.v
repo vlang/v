@@ -130,6 +130,16 @@ fn (t &Transformer) fn_value_call_return_type(node flat.Node) ?string {
 	if callee.kind == .selector {
 		if raw_type := t.raw_selector_field_type(callee_id) {
 			if ret := fn_type_return_type_text(raw_type) {
+				// A generic struct field keeps its declaration spelling (`fn () !T`) in
+				// raw metadata. A cloned selector already carries the specialized type;
+				// use it when the raw return still contains a placeholder.
+				if t.generic_arg_is_unresolved(ret) {
+					if concrete_ret := fn_type_return_type_text(callee.typ) {
+						if !t.generic_arg_is_unresolved(concrete_ret) {
+							return concrete_ret
+						}
+					}
+				}
 				return ret
 			}
 		}
