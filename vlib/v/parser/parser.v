@@ -10220,7 +10220,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				full_name := p.type_expr_name(lhs)
 				is_c_struct := full_name.starts_with('C.')
 					&& (!is_all_upper_ident(lhs_node.value) || p.current_lcbr_looks_struct_init())
-				is_v_struct := !full_name.starts_with('C.') && type_name_can_init(full_name)
+				is_unknown_qualified_struct := p.in_struct_init_value > 0
+					&& p.imported_module_names[full_name.all_before('.')]
+					&& p.current_lcbr_looks_struct_init()
+				is_v_struct := !full_name.starts_with('C.')
+					&& (type_name_can_init(full_name) || is_unknown_qualified_struct)
 				if is_c_struct || is_v_struct {
 					lhs = p.struct_init(full_name)
 					continue
