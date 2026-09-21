@@ -16,11 +16,29 @@ pub:
 
 pub type SeparatorOptions = string | Separator
 
+// is_all_digits reports whether every byte in `s` is an ASCII digit (`0`-`9`).
+// An empty string reports `true` (vacuously), matching how `insert_thousands_sep`
+// already treats `''` as nothing to group.
+fn is_all_digits(s string) bool {
+	for b in s {
+		if b < `0` || b > `9` {
+			return false
+		}
+	}
+	return true
+}
+
 // insert_thousands_sep inserts `sep` into the ASCII-digit string `digits`
 // every three digits, counting from the right. `digits` must not contain a
 // sign or a decimal point; use `add_thousands_sep` for full numeric strings.
+//
+// Non-finite float representations (`inf`, `-inf`, `nan`, `Infinity`,
+// `-Infinity`, `NaN`, etc., depending on the backend) reach here as their
+// integer part with no digits at all, or with letters mixed in; `digits` is
+// returned unchanged whenever it isn't purely numeric, instead of being
+// sliced into arbitrary chunks.
 fn insert_thousands_sep(digits string, sep string) string {
-	if digits.len <= 3 || sep == '' {
+	if digits.len <= 3 || sep == '' || !is_all_digits(digits) {
 		return digits
 	}
 
@@ -34,6 +52,72 @@ fn insert_thousands_sep(digits string, sep string) string {
 	}
 
 	return sb.str()
+}
+
+// expand_exponent rewrites a decimal string in scientific notation (e.g.
+// `'1e+21'`, `'1.5e-07'`, `'-2.5E10'`) into an equivalent plain decimal
+// string with no exponent. A string without an exponent is returned
+// unchanged. This is a pure, backend-independent string transformation (it
+// only shifts the decimal point; it never re-parses or rounds the
+// underlying value), so it produces fixed-point output on backends whose
+// native float-to-string conversion switches to scientific notation for
+// large or small magnitudes (currently the JS backend; see
+// `vlib/builtin/js/float.js.v`, which does `x.val + ''`).
+fn expand_exponent(s string) string {
+	mut e_idx := -1
+	for i := 0; i < s.len; i++ {
+		if s[i] == `e` || s[i] == `E` {
+			e_idx = i
+			break
+		}
+	}
+	if e_idx == -1 {
+		return s
+	}
+
+	mut sign := ''
+	mut mantissa := s[..e_idx]
+	if mantissa.len > 0 && (mantissa[0] == `-` || mantissa[0] == `+`) {
+		sign = mantissa[..1]
+		mantissa = mantissa[1..]
+	}
+
+	mut exp_str := s[e_idx + 1..]
+	mut exp_sign := 1
+	if exp_str.len > 0 && (exp_str[0] == `-` || exp_str[0] == `+`) {
+		if exp_str[0] == `-` {
+			exp_sign = -1
+		}
+		exp_str = exp_str[1..]
+	}
+	exponent := exp_sign * exp_str.int()
+
+	dot := mantissa.index_u8(`.`)
+	mut int_digits := mantissa
+	mut frac_digits := ''
+	if dot != -1 {
+		int_digits = mantissa[..dot]
+		frac_digits = mantissa[dot + 1..]
+	}
+
+	all_digits := int_digits + frac_digits
+	if !is_all_digits(all_digits) {
+		// Not actually numeric (shouldn't happen for a real float.str()
+		// output) - don't try to shift a decimal point through it.
+		return s
+	}
+
+	point_pos := int_digits.len + exponent
+
+	result := if point_pos <= 0 {
+		'0.' + strings.repeat(`0`, -point_pos) + all_digits
+	} else if point_pos >= all_digits.len {
+		all_digits + strings.repeat(`0`, point_pos - all_digits.len) + '.0'
+	} else {
+		all_digits[..point_pos] + '.' + all_digits[point_pos..]
+	}
+
+	return sign + result
 }
 
 // add_thousands_sep inserts `sep` as a thousands separator into the
@@ -139,7 +223,16 @@ pub fn format_thousands[T](number T, sep SeparatorOptions) string {
 	}
 
 	$if js {
-		return add_thousands_sep(number.str(), separator)
+		$if T is f32 || T is f64 {
+			// `float.str()` on the JS backend does `x.val + ''`, which -
+			// like plain JS number-to-string conversion - switches to
+			// scientific notation for large/small magnitudes (e.g. `1e21`
+			// becomes `'1e+21'`). Expand it back to fixed-point first so
+			// grouping still applies to the full integer part.
+			return add_thousands_sep(expand_exponent(number.str()), separator)
+		} $else {
+			return add_thousands_sep(number.str(), separator)
+		}
 	} $else $if T is f64 {
 		return add_thousands_sep(f64_to_str_l_with_dot(number), separator)
 	} $else $if T is f32 {
