@@ -901,6 +901,11 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	if struct_type.len == 0 {
 		return none
 	}
+	// V1's concrete generic symbols do not inherit the generic base's equality
+	// method when generating the structural helper used by `!=`. Keep direct
+	// generic `==` overloaded, but let `!=` compare the concrete fields.
+	_, _, is_generic_struct_instance := generic_app_parts(struct_type)
+	generic_ne_uses_structural_eq := node.op == .ne && is_generic_struct_instance
 	// Skip the checker/transformer agreement guard for generic-struct instances:
 	// they resolve reliably, and an alias name (`SimdFloat4`) vs the resolved form
 	// (`vec.Vec4[f32]`) would otherwise spuriously fail the comparison.
@@ -914,47 +919,49 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 			return none
 		}
 	}
-	if call_info := t.struct_operator_call_info_for_operand(struct_type, node.op, is_alias_operator) {
-		if t.is_disabled_fn_name(call_info.name) {
-			ret_type := t.struct_operator_return_type(call_info.name)
-			if ret_type.len == 0 || ret_type == 'void' {
-				return t.make_empty()
+	if !generic_ne_uses_structural_eq {
+		if call_info := t.struct_operator_call_info_for_operand(struct_type, node.op, is_alias_operator) {
+			if t.is_disabled_fn_name(call_info.name) {
+				ret_type := t.struct_operator_return_type(call_info.name)
+				if ret_type.len == 0 || ret_type == 'void' {
+					return t.make_empty()
+				}
+				return t.zero_value_for_type(ret_type)
 			}
-			return t.zero_value_for_type(ret_type)
+			mut lhs := t.transform_expr(lhs_id)
+			if lhs_is_pointer {
+				lhs = t.make_prefix(.mul, lhs)
+				t.set_node_typ(int(lhs), lhs_type)
+			}
+			rhs := t.transform_expr(t.a.children[node.children_start + 1])
+			mut call_lhs := lhs
+			mut call_rhs := rhs
+			if call_info.reverse {
+				call_lhs = t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'op_lhs')
+				call_rhs = t.stable_transformed_expr_for_reuse(rhs, t.node_type(t.a.children[node.children_start + 1]), 'op_rhs')
+			}
+			args := if call_info.reverse {
+				[call_rhs, call_lhs]
+			} else {
+				[call_lhs, call_rhs]
+			}
+			t.mark_struct_operator_used_name(call_info.name)
+			ret_type := t.infix_struct_operator_result_type(node, struct_type)
+			call := t.make_call_typed(call_info.name, args, if ret_type.len > 0 {
+				ret_type
+			} else {
+				node.typ
+			})
+			if call_info.negate {
+				return t.make_prefix(.not, call)
+			}
+			return call
 		}
-		mut lhs := t.transform_expr(lhs_id)
-		if lhs_is_pointer {
-			lhs = t.make_prefix(.mul, lhs)
-			t.set_node_typ(int(lhs), lhs_type)
-		}
-		rhs := t.transform_expr(t.a.children[node.children_start + 1])
-		mut call_lhs := lhs
-		mut call_rhs := rhs
-		if call_info.reverse {
-			call_lhs = t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'op_lhs')
-			call_rhs = t.stable_transformed_expr_for_reuse(rhs, t.node_type(t.a.children[node.children_start + 1]), 'op_rhs')
-		}
-		args := if call_info.reverse {
-			[call_rhs, call_lhs]
-		} else {
-			[call_lhs, call_rhs]
-		}
-		t.mark_struct_operator_used_name(call_info.name)
-		ret_type := t.infix_struct_operator_result_type(node, struct_type)
-		call := t.make_call_typed(call_info.name, args, if ret_type.len > 0 {
-			ret_type
-		} else {
-			node.typ
-		})
-		if call_info.negate {
-			return t.make_prefix(.not, call)
-		}
-		return call
 	}
 	if node.op != .eq && node.op != .ne {
 		return none
 	}
-	if !t.has_struct_operator_fn(struct_type, '==') {
+	if generic_ne_uses_structural_eq || !t.has_struct_operator_fn(struct_type, '==') {
 		lhs := t.stable_expr_for_reuse(lhs_id)
 		rhs_expr := t.transform_expr_for_type(rhs_id, lhs_type)
 		rhs := t.stable_transformed_expr_for_reuse(rhs_expr, lhs_type, 'eq_rhs')
