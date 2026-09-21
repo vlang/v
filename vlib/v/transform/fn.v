@@ -1370,6 +1370,12 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		if variadic_idx >= 0 && param_idx == variadic_idx {
 			variadic_type := params[variadic_idx]
 			if variadic_type is types.Array {
+				if t.call_arg_is_packed_variadic_tail(arg_id, variadic_type) {
+					new_children << t.transform_expr(arg_id)
+					variadic_tail_supplied = true
+					i++
+					break
+				}
 				if arg_node.kind == .prefix && arg_node.value == '...'
 					&& arg_node.children_count > 0 {
 					spread_id := t.a.child(&arg_node, 0)
@@ -1477,6 +1483,22 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	}
 	call := t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, typ, immediate_closure_capture_may_escape)
 	return t.finish_mut_optional_value_call(call, typ, mut_optional_value_writebacks)
+}
+
+fn (t &Transformer) call_arg_is_packed_variadic_tail(arg_id flat.NodeId, variadic_type types.Array) bool {
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return false
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind != .ident || !arg.value.starts_with('__varargs_') {
+		return false
+	}
+	actual_type := if arg.typ.len > 0 { arg.typ } else { t.var_type(arg.value) }
+	if actual_type.len == 0 {
+		return false
+	}
+	expected_type := t.semantic_type_name(variadic_type)
+	return t.normalize_type_alias(actual_type) == t.normalize_type_alias(expected_type)
 }
 
 fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId, param_type string) ?MutOptionalValueCallArg {
