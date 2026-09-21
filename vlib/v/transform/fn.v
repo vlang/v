@@ -5689,7 +5689,13 @@ fn (mut t Transformer) lower_interface_auto_str_with_nil(expr flat.NodeId, iface
 			render_body << assign
 			mut then_body := render_body.clone()
 			if t.interface_autostr_impl_needs_address_guard(inner_type) {
-				object_addr := t.make_selector(value, '_object', 'voidptr')
+				object_addr := if t.normalize_type_alias(inner_type).starts_with('[]') {
+					// Interface array values own a copied Array header. Track the backing
+					// storage so a boxed copy of the array can still be recognized as circular.
+					t.make_selector(concrete, 'data', 'voidptr')
+				} else {
+					t.make_selector(value, '_object', 'voidptr')
+				}
 				object_type := t.make_int_literal(t.type_index_for_type_name(inner_type))
 				mut live_body := [
 					t.make_expr_stmt(t.make_call_typed('autostr_addr_type_push', [
@@ -8867,6 +8873,14 @@ fn (mut t Transformer) lower_array_str_impl(arr_expr flat.NodeId, base_type stri
 	t.drain_pending(mut prefix)
 	result_name := t.new_temp('arr_str')
 	idx_name := t.new_temp('arr_str_idx')
+	if !fixed_pointer_style {
+		address := t.make_selector(base, 'data', 'voidptr')
+		address_type := t.make_int_literal(t.type_index_for_type_name(base_type))
+		prefix << t.make_expr_stmt(t.make_call_typed('autostr_addr_type_push', [
+			address,
+			address_type,
+		], 'void'))
+	}
 	prefix << t.make_decl_assign_typed(result_name, t.make_string_literal('['), 'string')
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
@@ -8910,6 +8924,9 @@ fn (mut t Transformer) lower_array_str_impl(arr_expr flat.NodeId, base_type stri
 	}
 	prefix << t.make_for_stmt(init, cond, post, loop_body, src)
 	prefix << t.append_string(result_name, t.make_string_literal(']'))
+	if !fixed_pointer_style {
+		prefix << t.make_expr_stmt(t.make_call_typed('autostr_addr_pop', [], 'void'))
+	}
 	for stmt in prefix {
 		t.pending_stmts << stmt
 	}
