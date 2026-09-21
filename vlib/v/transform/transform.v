@@ -11729,8 +11729,13 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			}
 			// A `mut val T` value param resolves to `&T`; cgen writes assignments
 			// through the pointer (`*val = ...`), so coerce the RHS to `T`, not `&T`.
+			mut_param_pointer_rebind := node.op == .assign && lhs.kind == .ident
+				&& t.mut_param_values[lhs.value] && lhs_type.starts_with('&')
+				&& !t.normalize_type_alias(t.raw_var_type(lhs.value)).starts_with('&&')
+				&& t.normalize_type_alias(t.original_expr_type(child_id)) == t.normalize_type_alias(lhs_type)
 			if lhs.kind == .ident && lhs_type.starts_with('&') && t.mut_param_values[lhs.value]
-				&& !t.pointer_value_rvalues[lhs.value] && !lhs_type.starts_with('&&') {
+				&& !t.pointer_value_rvalues[lhs.value] && !lhs_type.starts_with('&&')
+				&& !mut_param_pointer_rebind {
 				lhs_type = lhs_type[1..]
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
