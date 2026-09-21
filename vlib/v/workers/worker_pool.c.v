@@ -149,9 +149,9 @@ pub fn new(size int) &Pool {
 			pool.launch_failure_count++
 			continue
 		}
-		thread, result := worker_thread_create(stack_size, pool_worker, voidptr(pool))
+		worker, result := worker_thread_create(stack_size, pool_worker, voidptr(pool))
 		if result == 0 {
-			pool.threads << thread
+			pool.threads << worker
 		} else {
 			pool.launch_failure_count++
 		}
@@ -267,8 +267,8 @@ pub fn (mut p Pool) close() {
 			stop: true
 		}
 	}
-	for idx, thread in p.threads {
-		if worker_thread_join(thread) != 0 {
+	for idx, worker in p.threads {
+		if worker_thread_join(worker) != 0 {
 			panic('failed to join compiler worker ${idx}')
 		}
 	}

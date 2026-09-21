@@ -6,9 +6,9 @@ module workers
 @[typedef]
 struct C.pthread_t {}
 
-fn C.pthread_join(thread C.pthread_t, retval voidptr) int
+fn C.pthread_join(worker C.pthread_t, retval voidptr) int
 fn C.v3_pthread_zero() C.pthread_t
-fn C.v3_pthread_create(thread &C.pthread_t, stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr) int
+fn C.v3_pthread_create(worker &C.pthread_t, stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr) int
 
 // WorkerThread is one joinable persistent pool worker.
 struct WorkerThread {
@@ -27,6 +27,6 @@ fn worker_thread_create(stack_size usize, start_routine fn (voidptr) voidptr, ar
 
 // worker_thread_join waits for the worker to exit. A non-zero result is the
 // pthread error code.
-fn worker_thread_join(thread WorkerThread) int {
-	return C.pthread_join(thread.id, unsafe { nil })
+fn worker_thread_join(worker WorkerThread) int {
+	return C.pthread_join(worker.id, unsafe { nil })
 }

@@ -26,6 +26,6 @@ fn worker_thread_create(stack_size usize, start_routine fn (voidptr) voidptr, ar
 }
 
 // worker_thread_join waits for the worker to exit and releases its handle.
-fn worker_thread_join(thread WorkerThread) int {
-	return C.v3_win_thread_join(thread.handle)
+fn worker_thread_join(worker WorkerThread) int {
+	return C.v3_win_thread_join(worker.handle)
 }
