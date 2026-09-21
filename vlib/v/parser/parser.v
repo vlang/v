@@ -2158,6 +2158,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
 	param_group_end := p.prev_tok_end
 	explicit_mut_ref := is_mut && typ.starts_with('&')
+	mut_builtin_pointer := is_mut && typ in ['voidptr', 'byteptr', 'charptr']
 	if is_mut && !typ.starts_with('&') {
 		typ = '&' + typ
 	}
@@ -2174,6 +2175,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			value:  name
 			typ:    typ
 			is_mut: is_mut
+			flags:  if mut_builtin_pointer { flat.node_flag_mut_builtin_pointer_param } else { 0 }
 			pos:    name_positions[i]
 		})
 		ids << id
@@ -3425,6 +3427,8 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				mut ptype := p.parse_type_name()
 				param_end := p.prev_tok_end
 				explicit_mut_ref := param_is_mut && ptype.starts_with('&')
+				mut_builtin_pointer := param_is_mut
+					&& ptype in ['voidptr', 'byteptr', 'charptr']
 				// `mut` params are references, exactly like fn decls record them
 				// (parse_param_group), so implementation signatures compare equal.
 				if param_is_mut && !ptype.starts_with('&') {
@@ -3439,6 +3443,11 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					typ:    ptype
 					op:     if explicit_mut_ref { .amp } else { .none }
 					is_mut: param_is_mut
+					flags:  if mut_builtin_pointer {
+						flat.node_flag_mut_builtin_pointer_param
+					} else {
+						0
+					}
 					pos:    param_pos
 				})
 				params << param_id

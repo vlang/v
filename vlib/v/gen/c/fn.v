@@ -4822,9 +4822,10 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 				}
 				if p.is_mut {
 					g.cur_mut_params[p.value] = true
-					if p.op == .amp {
+					builtin_pointer_value := mut_param_has_builtin_pointer_value(p)
+					if p.op == .amp || builtin_pointer_value {
 						g.cur_mut_pointer_params[p.value] = true
-						if decl_param_type is types.Pointer {
+						if builtin_pointer_value || decl_param_type is types.Pointer {
 							g.cur_explicit_mut_pointer_params[p.value] = true
 						}
 					}
@@ -19798,6 +19799,10 @@ fn (mut g FlatGen) fn_node_effective_param_type(param flat.Node, typed types.Typ
 	return types.Type(types.Pointer{
 		base_type: typed
 	})
+}
+
+fn mut_param_has_builtin_pointer_value(param flat.Node) bool {
+	return param.is_mut_builtin_pointer_param()
 }
 
 // write_fn_node_params writes fn node params output for c.

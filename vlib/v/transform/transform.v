@@ -8829,6 +8829,10 @@ fn next_temp_counter_after_name(name string, current int) int {
 	return if value >= current { value + 1 } else { current }
 }
 
+fn mut_param_has_builtin_pointer_value(param flat.Node) bool {
+	return param.is_mut_builtin_pointer_param()
+}
+
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	if !isnil(t.selector_type_cache) {
 		t.selector_type_cache.generation++
@@ -8969,7 +8973,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		if child.is_mut || child.op == .amp || child.typ.starts_with('mut ') {
 			t.mut_param_values[child.value] = true
 			source_mut_params << child.value
-			if child.op == .amp {
+			if child.op == .amp || mut_param_has_builtin_pointer_value(child) {
 				source_pointer_value_params << child.value
 			}
 		}
@@ -13572,7 +13576,8 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 // value load. Returning an eagerly dereferenced node here makes C generation
 // apply that expected-type load a second time.
 fn (mut t Transformer) pointer_storage_expr_for_value_target(id flat.NodeId, target_type string) ?flat.NodeId {
-	if int(id) < 0 || target_type == '' || target_type.starts_with('&') {
+	if int(id) < 0 || target_type == ''
+		|| is_pointer_like_type_name(t.normalize_type_alias(target_type)) {
 		return none
 	}
 	mut source_id := id

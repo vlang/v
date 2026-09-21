@@ -3445,6 +3445,21 @@ fn pointer_type_depth_and_base(typ string) (int, string) {
 		depth++
 		clean = clean[1..].trim_space()
 	}
+	match clean {
+		'voidptr' {
+			depth++
+			clean = 'void'
+		}
+		'byteptr' {
+			depth++
+			clean = 'u8'
+		}
+		'charptr' {
+			depth++
+			clean = 'char'
+		}
+		else {}
+	}
 	return depth, clean
 }
 
@@ -11751,7 +11766,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			if param.is_mut || param.op == .amp || param.typ.starts_with('mut ') {
 				t.mut_param_values[param.value] = true
 				t.pointer_value_lvalues[param.value] = true
-				if param.op == .amp {
+				if param.op == .amp || mut_param_has_builtin_pointer_value(param) {
 					t.pointer_value_rvalues[param.value] = true
 				}
 			}
