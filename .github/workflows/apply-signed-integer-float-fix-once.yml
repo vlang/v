@@ -1,143 +1,19 @@
-name: Apply and validate signed integer float fix once
+name: Retire one-off signed integer float integration
 
 on:
   push:
     branches:
       - automation/apply-signed-integer-float-fix-20260921
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: apply-signed-integer-float-fix-20260921
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  apply-and-test:
-    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/automation/apply-signed-integer-float-fix-20260921'
+  retired:
+    if: false
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    env:
-      BASE_SHA: 5ab942298de918c838a9f1b849376859d9d828fa
-      SOURCE_BRANCH: fix/signed-integer-float-assignment-source-20260921
-      VFLAGS: -no-parallel
     steps:
-      - name: Check out the exact base without this temporary workflow
-        uses: actions/checkout@v7
-        with:
-          ref: 5ab942298de918c838a9f1b849376859d9d828fa
-          fetch-depth: 1
-
-      - name: Apply actual source changes and remove the patch file
-        id: publish
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$BASE_SHA"
-          test "$(git hash-object patches/signed_integer_float_assignment.patch)" = 8d6512d38cbf555fab55f99161d2a30c46313b97
-          git apply --check patches/signed_integer_float_assignment.patch
-          git apply patches/signed_integer_float_assignment.patch
-          git rm patches/signed_integer_float_assignment.patch
-          git add doc/docs.md vlib/v/types/checker_tail.v \
-            vlib/v/types/assignment_integer_literal_test.v \
-            vlib/v/tests/assign/signed_integer_literal_float_test.v
-          git diff --cached --check
-          python3 - <<'PY'
-          import subprocess
-          expected = {
-              'doc/docs.md',
-              'vlib/v/types/checker_tail.v',
-              'vlib/v/types/assignment_integer_literal_test.v',
-              'vlib/v/tests/assign/signed_integer_literal_float_test.v',
-              'patches/signed_integer_float_assignment.patch',
-          }
-          actual = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines())
-          assert actual == expected, (actual, expected)
-          PY
-          git diff --cached --stat
-          git diff --cached -- vlib/v/types/checker_tail.v
-          git switch -c "$SOURCE_BRANCH"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'checker: allow signed integer literal float assignments'
-          git push origin "HEAD:refs/heads/$SOURCE_BRANCH"
-          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "Published actual source changes at $(git rev-parse HEAD)." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Build baseline and reproduce the reported error
-        id: baseline
-        shell: bash
-        run: |
-          set -euo pipefail
-          trap 'git restore --source=HEAD -- vlib/v/types/checker_tail.v' EXIT
-          git show "$BASE_SHA:vlib/v/types/checker_tail.v" > vlib/v/types/checker_tail.v
-          make -j4
-          cat > "$RUNNER_TEMP/signed_integer_float_repro.v" <<'V'
-          fn main() {
-              mut a := f32(0)
-              a = 1
-              a = -1
-              assert a == f32(-1)
-              println(a)
-          }
-          V
-          set +e
-          ./v run "$RUNNER_TEMP/signed_integer_float_repro.v" > "$RUNNER_TEMP/signed_integer_float_before.log" 2>&1
-          status=$?
-          set -e
-          cat "$RUNNER_TEMP/signed_integer_float_before.log"
-          test "$status" -ne 0
-          grep -F 'expected `f32`, not `int`' "$RUNNER_TEMP/signed_integer_float_before.log"
-          echo 'Confirmed: the baseline rejects the reported negative literal assignment.' >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Rebuild the patched compiler
-        id: build
-        if: always() && steps.publish.outcome == 'success'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git restore --source=HEAD -- vlib/v/types/checker_tail.v
-          if test -x ./v; then ./v self; else make -j4; fi
-          ./v version
-          git diff --exit-code
-
-      - name: Run the original reproducer with the fix
-        if: always() && steps.build.outcome == 'success'
-        run: ./v run "$RUNNER_TEMP/signed_integer_float_repro.v"
-
-      - name: Run checker unit regressions
-        if: always() && steps.build.outcome == 'success'
-        run: ./v test vlib/v/types/assignment_integer_literal_test.v
-
-      - name: Run assignment runtime regressions
-        if: always() && steps.build.outcome == 'success'
-        run: ./v test vlib/v/tests/assign/
-
-      - name: Run type checker unit suite
-        if: always() && steps.build.outcome == 'success'
-        run: ./v test vlib/v/types/
-
-      - name: Check regression formatting
-        if: always() && steps.build.outcome == 'success'
-        run: ./v fmt -verify vlib/v/types/assignment_integer_literal_test.v vlib/v/tests/assign/signed_integer_literal_float_test.v
-
-      - name: Check compiler error fixtures
-        if: always() && steps.build.outcome == 'success'
-        run: ./v -silent vlib/v/compiler_errors_test.v
-
-      - name: Check documentation
-        if: always() && steps.build.outcome == 'success'
-        run: ./v check-md doc/docs.md
-
-      - name: Check final source diff and remove temporary automation branch
-        if: always() && steps.publish.outcome == 'success'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff "$BASE_SHA" HEAD --check
-          test ! -e patches/signed_integer_float_assignment.patch
-          test ! -e .github/workflows/apply-signed-integer-float-fix-once.yml
-          test -z "$(git diff --name-only "$BASE_SHA" HEAD -- .github/workflows)"
-          git push origin --delete automation/apply-signed-integer-float-fix-20260921
+      - run: echo 'Source integration is handled through Git objects.'
