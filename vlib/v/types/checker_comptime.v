@@ -7938,6 +7938,12 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 		|| (rhs_unsigned && tc.is_fixed_array_len_const_comparison(lhs_id, rhs_id)) {
 		return false
 	}
+	// Ordered comparisons are lowered with an explicit sign guard, so every
+	// non-literal mixed-width pair preserves mathematical ordering. Equality
+	// remains restricted when the unsigned side is wider than the signed side.
+	if !is_equality {
+		return false
+	}
 	lhs_bits := comparison_integer_bits(lhs_clean)
 	rhs_bits := comparison_integer_bits(rhs_clean)
 	if lhs_bits == 0 || rhs_bits == 0 {
@@ -7945,7 +7951,7 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 	}
 	unsigned_bits := if lhs_unsigned { lhs_bits } else { rhs_bits }
 	signed_bits := if lhs_unsigned { rhs_bits } else { lhs_bits }
-	if unsigned_bits < signed_bits {
+	if unsigned_bits <= signed_bits {
 		return false
 	}
 	mut pos := tc.a.node(rhs_id).pos
