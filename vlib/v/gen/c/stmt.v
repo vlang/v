@@ -2862,7 +2862,11 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								if c_type_is_pointer_storage(payload_ct) {
 									if !g.gen_heap_local_address_expr(ret_id, base)
 										&& !g.gen_bare_value_pointer_return_expr(ret_id, base) {
-										g.gen_expr(ret_id)
+										if fn_type_is_pointer(base) {
+											g.gen_expr_with_expected_type(ret_id, base)
+										} else {
+											g.gen_expr(ret_id)
+										}
 									}
 								} else if pointer_value_expr.len > 0 {
 									g.write(pointer_value_expr)
@@ -5250,7 +5254,13 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		payload_ct := g.optional_payload_c_type_for_optional_ct(ct, g.value_c_type(base))
 		if c_type_is_pointer_storage(payload_ct) {
 			value := g.heap_local_address_expr(ret_id, base) or {
-				g.bare_value_pointer_return_expr(ret_id, base) or { g.expr_to_string(ret_id) }
+				g.bare_value_pointer_return_expr(ret_id, base) or {
+					if fn_type_is_pointer(base) {
+						g.expr_to_string_with_expected_type(ret_id, base)
+					} else {
+						g.expr_to_string(ret_id)
+					}
+				}
 			}
 			return '(${ct}){.ok = true, .value = ${value}}'
 		}

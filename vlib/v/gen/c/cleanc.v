@@ -15449,14 +15449,25 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
-			if node.op == .amp && cgen_unalias_type(g.usable_expr_type(child_id)) is types.FnType
-				&& !g.context_wants_pointer_to_fn() {
+			fn_value_type := cgen_unalias_type(g.usable_expr_type(child_id))
+			if node.op == .amp && fn_value_type is types.FnType {
 				// A function value is already a C pointer, so `&` on one is a no-op
 				// wherever the context wants a callable: `Holder{ f: &local }` has to
 				// store the function, not the address of a stack slot that dies with
 				// the frame. Only a context that asks for a pointer to a function
 				// - `ref := &f`, read back through `*ref` - needs the address, and
 				// dropping it there leaves the dereference reading code as data.
+				if g.context_wants_pointer_to_fn() {
+					mut fn_ct := g.tc.c_type(fn_value_type)
+					if fn_ct.starts_with('fn_ptr:') {
+						fn_ct = g.resolve_fn_ptr_type(fn_ct)
+					}
+					tmp := g.tmp_name()
+					g.write('({ ${fn_ct} ${tmp} = ')
+					g.gen_expr(child_id)
+					g.write('; (${fn_ct}*)memdup(&${tmp}, sizeof(${fn_ct})); })')
+					return
+				}
 				g.gen_expr(child_id)
 				return
 			}
