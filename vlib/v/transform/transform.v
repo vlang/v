@@ -9007,6 +9007,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	// have populated var_types. Do not let those provisional answers leak into
 	// the declaration-ordered body transform.
 	t.clear_node_type_memo()
+	if !isnil(t.selector_type_cache) {
+		t.selector_type_cache.generation++
+	}
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
 	mut new_children := []flat.NodeId{cap: int(fn_node.children_count)}
