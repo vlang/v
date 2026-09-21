@@ -1490,7 +1490,9 @@ fn (t &Transformer) call_arg_is_packed_variadic_tail(arg_id flat.NodeId, variadi
 		return false
 	}
 	arg := t.a.nodes[int(arg_id)]
-	if arg.kind != .ident || !arg.value.starts_with('__varargs_') {
+	// Source identifiers can legally use this prefix in translated code. Only
+	// positionless transformer temporaries represent an already-packed tail.
+	if arg.kind != .ident || arg.pos.is_valid() || !arg.value.starts_with('__varargs_') {
 		return false
 	}
 	actual_type := if arg.typ.len > 0 { arg.typ } else { t.var_type(arg.value) }
