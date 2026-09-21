@@ -20434,7 +20434,8 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		// though its child is a pointer (`charptr`), so treating it as a plain
 		// non-pointer drops the source `*` (for example `*(charptr(addr))`).
 		if child.kind !in [.cast_expr, .paren] && child_type.len > 0
-			&& !child_type.starts_with('&') {
+			&& !child_type.starts_with('&')
+			&& !t.normalize_type_alias(child_type).starts_with('&') {
 			return t.transform_expr(child_id)
 		}
 	}

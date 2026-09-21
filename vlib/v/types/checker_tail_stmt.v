@@ -7033,7 +7033,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	}
 	if node.value != 'range' && base_type_raw is Pointer && !implicit_mut_param_pointer
 		&& !explicit_mut_param_pointer && mut_param_base !is Pointer && !pointer_container_param
-		&& !locked_shared_pointer_container && outside_unsafe {
+		&& !locked_shared_pointer_container && outside_unsafe
+		&& !tc.translated_files[tc.cur_file] && !tc.node_is_in_translated_file(id) {
 		tc.record_error_at(.cannot_index, 'pointer indexing is only allowed in `unsafe` blocks', id, tc.index_brackets_pos(node))
 		tc.register_synth_type(id, tc.resolve_index_type(node))
 		return
