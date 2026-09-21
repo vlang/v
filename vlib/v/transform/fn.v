@@ -7798,6 +7798,21 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		t.set_node_typ(int(value), elem_type)
 		return t.wrap_formatted_string_conversion(value, elem_type, format)
 	}
+	if t.is_optional_type_name(normalized_typ) {
+		opt_type := t.qualify_optional_type(normalized_typ)
+		mut value_type := t.optional_base_type(opt_type)
+		if value_type.len == 0 || value_type == 'void' {
+			value_type = 'int'
+		}
+		// Formatted option interpolation follows V's payload formatting semantics:
+		// `none` uses the zero-initialized payload, while `some` uses its stored value.
+		// Pin the wrapper so a call/index operand is evaluated exactly once.
+		opt_name := t.new_temp('fmt_opt')
+		t.pending_stmts << t.make_decl_assign_typed(opt_name, t.transform_optional_wrapper_expr(expr),
+			opt_type)
+		value := t.make_selector(t.make_ident(opt_name), 'value', value_type)
+		return t.wrap_formatted_string_conversion(value, value_type, format)
+	}
 	if dyn := t.dynamic_format_conversion(expr, typ, clean_typ, format) {
 		return dyn
 	}
