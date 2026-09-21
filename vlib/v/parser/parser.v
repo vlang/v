@@ -2451,7 +2451,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				continue
 			}
-			if p.tok == .lsbr && p.tok_pos > p.prev_tok_end && field_name.len > 0
+			// Uppercase C field names can be followed by array types.
+			if !p.parsing_c_struct_fields && p.tok == .lsbr && p.tok_pos > p.prev_tok_end && field_name.len > 0
 				&& field_name[0] >= `A` && field_name[0] <= `Z` && p.peek() != .rsbr {
 				attr_start := p.tok_pos
 				mut embed_attrs := pending_attrs.clone()
@@ -2480,7 +2481,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				continue
 			}
-			if p.tok == .lsbr && field_name.len > 0 && field_name[0] >= `A` && field_name[0] <= `Z` {
+			if !p.parsing_c_struct_fields && p.tok == .lsbr && field_name.len > 0
+				&& field_name[0] >= `A` && field_name[0] <= `Z` {
 				saved_s := p.s
 				saved_tok := p.tok
 				saved_lit := p.lit
@@ -2491,9 +2493,6 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				saved_has_peek := p.has_peek
 				suffix := p.parse_type_generic_suffix()
 				if suffix.len > 0 && (p.tok == .semicolon || p.tok == .rcbr) {
-					if name.starts_with('C.') {
-						has_c_embed = true
-					}
 					embedded_type := p.resolve_local_type_name(field_name + suffix)
 					fid := p.a.add_node(flat.Node{
 						kind:  .field_decl
