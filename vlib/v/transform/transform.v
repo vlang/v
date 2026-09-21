@@ -13449,7 +13449,8 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 			}
 			if t.is_optional_type_name(source_type) && target_payload.starts_with('&')
 				&& !t.optional_base_type(source_type).starts_with('&') {
-				if value := t.transform_optional_value_to_pointer(id, source_type, optional_target) {
+				if value := t.transform_optional_value_to_pointer(id, source_type, optional_target,
+					false) {
 					return value
 				}
 			}
@@ -20736,10 +20737,10 @@ fn (mut t Transformer) transform_amp_optional_value(id flat.NodeId, node flat.No
 		t.set_node_typ(int(addr), '&${payload_type}')
 		return t.make_optional_some(addr, target_type)
 	}
-	return t.transform_optional_value_to_pointer(child_id, source_type, target_type)
+	return t.transform_optional_value_to_pointer(child_id, source_type, target_type, true)
 }
 
-fn (mut t Transformer) transform_optional_value_to_pointer(source_id flat.NodeId, source_type string, target_type string) ?flat.NodeId {
+fn (mut t Transformer) transform_optional_value_to_pointer(source_id flat.NodeId, source_type string, target_type string, borrow_source bool) ?flat.NodeId {
 	payload_type := t.optional_base_type(t.qualify_optional_type(source_type))
 	target_payload := t.optional_base_type(t.qualify_optional_type(target_type))
 	if payload_type.len == 0 || target_payload != '&${payload_type}' {
@@ -20760,7 +20761,8 @@ fn (mut t Transformer) transform_optional_value_to_pointer(source_id flat.NodeId
 	value_addr := t.make_prefix(.amp, value)
 	t.set_node_typ(int(value_addr), target_payload)
 	source_node := t.a.nodes[int(source_id)]
-	addr := if source_node.kind == .ident && source_node.value in t.heaped_amp_locals {
+	addr := if (borrow_source && t.expr_can_take_address(source_id))
+		|| (source_node.kind == .ident && source_node.value in t.heaped_amp_locals) {
 		value_addr
 	} else {
 		dup := t.make_memdup_call_for_type(value_addr, payload_type)
