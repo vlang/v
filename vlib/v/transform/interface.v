@@ -108,6 +108,12 @@ fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_
 	if iface_name.len == 0 {
 		return false
 	}
+	// Interfaces with mutable fields are views onto the source object. The checker
+	// already rejects immutable value sources for these casts, so an addressable
+	// value must be shared rather than copied into an independent interface box.
+	if t.tc.interface_field_list(iface_name).any(it.is_mut) && t.expr_can_take_address(id) {
+		return true
+	}
 	if !t.in_return_expr && t.interface_pointer_source_needs_heap_copy(id) {
 		return true
 	}
