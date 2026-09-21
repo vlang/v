@@ -6192,6 +6192,11 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 	if tc.diagnostic_files.len > 0 && path !in tc.diagnostic_files {
 		return
 	}
+	builtin_dir := os.real_path(os.join_path(tc.compiler_vroot, 'vlib', 'builtin'))
+	real_path := os.real_path(path)
+	if real_path == builtin_dir || real_path.starts_with(builtin_dir + os.path_separator) {
+		return
+	}
 	source := os.read_file(path) or { return }
 	mut i := 0
 	for i < source.len {
@@ -6229,7 +6234,8 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 			i++
 		}
 		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start)
-			|| deprecated_byte_position_key(file_id, start) in identifier_offsets {
+			|| deprecated_byte_position_key(file_id, start) in identifier_offsets
+			|| tc.deprecated_byte_is_value_ident(file_id, start) {
 			continue
 		}
 		mut end := i
@@ -6249,7 +6255,7 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 fn (tc &TypeChecker) deprecated_byte_is_value_ident(file_id int, offset int) bool {
 	for node in tc.a.nodes {
 		if node.kind == .ident && node.value == 'byte' && node.pos.id == file_id
-			&& node.pos.offset == offset {
+			&& node.pos.offset <= offset && node.pos.end >= offset + 4 {
 			return true
 		}
 	}
