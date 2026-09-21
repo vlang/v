@@ -2790,6 +2790,7 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	}
 	mut expr_type := unalias_type(unwrap_pointer(raw_expr_type))
 	if expr_type is Interface && node.value != 'none'
+		&& tc.is_expr_used_for_branch_smartcast(id)
 		&& tc.nonmut_mutable_interface_smartcast(expr_id, node.value) {
 		if tc.interface_has_no_requirements(expr_type.name) {
 			tc.record_notice_at(.condition_mismatch, 'smartcasting requires either an immutable value, or an explicit mut keyword before the value', expr_id, expr_node.pos)
@@ -2899,6 +2900,31 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	if tc.should_diagnose(id) {
 		tc.record_error(.condition_mismatch, '`is` can only be used with sum type or interface values, not `${expr_type.name()}`', id)
 	}
+}
+
+fn (tc &TypeChecker) is_expr_used_for_branch_smartcast(id flat.NodeId) bool {
+	mut current := id
+	for _ in 0 .. 128 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .paren
+			|| (parent.kind == .prefix && parent.op == .not)
+			|| (parent.kind == .infix && parent.op in [.logical_and, .logical_or]) {
+			current = parent_id
+			continue
+		}
+		if parent.kind == .if_expr {
+			return parent.children_count > 0 && tc.a.child(parent, 0) == current
+		}
+		if parent.kind == .for_stmt {
+			return parent.children_count > 1 && tc.a.child(parent, 1) == current
+		}
+		return false
+	}
+	return false
 }
 
 // branch_tail_type supports branch tail type handling for TypeChecker.
