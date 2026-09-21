@@ -2342,14 +2342,39 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				embedding_allowed = false
 				continue
 			}
-			p.record_diagnostic_span('missing `:` after `mut` in struct', p.tok_pos, p.tok_end)
+			saved_s := p.s
+			saved_tok := p.tok
+			saved_lit := p.lit
+			saved_tok_pos := p.tok_pos
+			saved_tok_end := p.tok_end
+			saved_peek_tok := p.peek_tok
+			saved_peek_lit := p.peek_lit
+			saved_peek_pos := p.peek_pos
+			saved_peek_end := p.peek_end
+			saved_has_peek := p.has_peek
 			p.next()
-			sect_is_pub = false
-			sect_is_mut = true
-			sect_is_global = false
-			sect_is_module = false
-			embedding_allowed = false
-			continue
+			mut_is_field_name := p.peek() in [.semicolon, .rcbr, .assign, .attribute]
+			p.s = saved_s
+			p.tok = saved_tok
+			p.lit = saved_lit
+			p.tok_pos = saved_tok_pos
+			p.tok_end = saved_tok_end
+			p.peek_tok = saved_peek_tok
+			p.peek_lit = saved_peek_lit
+			p.peek_pos = saved_peek_pos
+			p.peek_end = saved_peek_end
+			p.has_peek = saved_has_peek
+			// `mut` is also a legal field name, as in `mut u8`.
+			if !mut_is_field_name {
+				p.record_diagnostic_span('missing `:` after `mut` in struct', p.tok_pos, p.tok_end)
+				p.next()
+				sect_is_pub = false
+				sect_is_mut = true
+				sect_is_global = false
+				sect_is_module = false
+				embedding_allowed = false
+				continue
+			}
 		}
 		if p.tok == .key_global {
 			if p.peek() == .colon {
