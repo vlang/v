@@ -437,6 +437,10 @@ pub fn (mut p Parser) parse_into(path string) {
 	mut ids := []flat.NodeId{}
 	mut script_mode := ScriptModeState{}
 	mut malformed_const_line_end := -1
+	// Top-level executable statements are lowered into a synthetic main function.
+	// Track their declarations as locals while parsing the file so closures in
+	// script mode can explicitly capture values declared by preceding statements.
+	p.begin_local_binding_scope()
 	for p.tok != .eof && !p.diagnostic_limit_reached {
 		if p.tok == .semicolon {
 			p.next()
@@ -504,6 +508,7 @@ pub fn (mut p Parser) parse_into(path string) {
 			ids << id
 		}
 	}
+	p.end_local_binding_scope()
 	if !p.prefs.is_fmt && path.ends_with('.vsh') {
 		p.a.has_vsh_source = true
 		if implicit_os_id := p.vsh_implicit_os_import(ids) {
