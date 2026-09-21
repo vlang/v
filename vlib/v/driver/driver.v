@@ -8845,6 +8845,7 @@ pub fn run(args []string) {
 	mut ownership_mode := false
 	mut verbose := false
 	mut silent := false
+	mut skip_notices := false
 	mut is_repl := false
 	mut show_test_stats := v3_environment_show_test_stats()
 	mut warn_impure_v := false
@@ -9205,6 +9206,9 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == '-v' {
 			verbose = true
+			i++
+		} else if args[i] == '-n' {
+			skip_notices = true
 			i++
 		} else if args[i] == '-silent' {
 			silent = true
@@ -10599,6 +10603,9 @@ pub fn run(args []string) {
 		}
 		if !silent || !only_check_syntax {
 			for diagnostic in p.diagnostics {
+				if skip_notices && diagnostic.severity == 'notice:' {
+					continue
+				}
 				if file := a.source_files[diagnostic.pos.id] {
 					_ = file
 					severity := if effective_warns_are_errors && diagnostic.severity == 'warning:' {
@@ -11069,7 +11076,7 @@ pub fn run(args []string) {
 		if has_conflicting_c_declaration_errors(pre_tc.errors) {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 			}
 			exit(1)
 		}
@@ -11087,7 +11094,7 @@ pub fn run(args []string) {
 		if pre_tc.check_interface_embedding_limits() {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 			}
 			exit(1)
 		}
@@ -11209,7 +11216,7 @@ pub fn run(args []string) {
 			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 			}
 			pre_tc.notices.clear()
 		}
@@ -11219,7 +11226,7 @@ pub fn run(args []string) {
 		if no_closures {
 			if closure_error := no_closures_error(a, &pre_tc) {
 				print_type_diagnostics(a, []types.TypeError{}, [closure_error], true, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 				exit(1)
 			}
 		}
@@ -11249,7 +11256,7 @@ pub fn run(args []string) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 				exit(1)
 			}
 			return
@@ -11411,8 +11418,11 @@ pub fn run(args []string) {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
 			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only, message_limit)
+				check_only, message_limit, skip_notices)
 			for notice in pre_tc.notices {
+				if skip_notices && notice.severity in ['', 'notice:'] {
+					continue
+				}
 				if notice.severity == 'warning:' {
 					checker_warning_count++
 				} else {
@@ -11862,8 +11872,11 @@ pub fn run(args []string) {
 		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
 			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
 			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only, message_limit)
+				check_only, message_limit, skip_notices)
 			for notice in cached_notices {
+				if skip_notices && notice.severity in ['', 'notice:'] {
+					continue
+				}
 				if notice.severity == 'warning:' {
 					checker_warning_count++
 				} else {
@@ -11880,7 +11893,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-			check_only, message_limit)
+			check_only, message_limit, skip_notices)
 		exit(1)
 	}
 
@@ -11982,9 +11995,12 @@ pub fn run(args []string) {
 			if pre_tc.errors.len == 0
 				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 			}
 			for notice in pre_tc.notices {
+				if skip_notices && notice.severity in ['', 'notice:'] {
+					continue
+				}
 				if notice.severity == 'warning:' {
 					checker_warning_count++
 				} else {
@@ -15412,7 +15428,7 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
-fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int) {
+fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
 	if !check_only {
 		mut first_unused := -1
 		for i, err in type_errors {
@@ -15441,6 +15457,9 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	ordered_notices.sort_with_compare(compare_print_notices)
 	mut printed_diagnostics := 0
 	for notice in ordered_notices {
+		if skip_notices && notice.severity in ['', 'notice:'] {
+			continue
+		}
 		if message_limit >= 0 && printed_diagnostics >= message_limit {
 			break
 		}
