@@ -6037,7 +6037,9 @@ fn (mut tc TypeChecker) check_selective_import_source_syntax(id flat.NodeId, nod
 		tc.record_error_at(.duplicate_decl, 'import syntax error, no closing `}`', id, token.new_span(node.pos.id, diagnostic_offset, diagnostic_offset + 1))
 		return
 	}
-	if cursor < close && !is_import_ident_byte(source[cursor]) {
+	valid_escaped_name := cursor + 1 < close && source[cursor] == `@`
+		&& is_import_ident_byte(source[cursor + 1])
+	if cursor < close && !is_import_ident_byte(source[cursor]) && !valid_escaped_name {
 		tc.record_error_at(.duplicate_decl, 'import syntax error, please specify a valid fn or type name', id, token.new_span(node.pos.id, cursor, cursor + 1))
 	}
 }
