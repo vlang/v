@@ -262,6 +262,31 @@ fn test_c_style_for_post_clause_spans() {
 	assert stmt_spans.filter(it == 'i++, j++').len == 0
 }
 
+fn test_postfix_comment_newline_starts_next_parenthesized_statement() {
+	ast, src := parse_span_source('postfix_comment_newline', 'fn main() {
+	mut p := &int(0)
+	p++ // advance the pointer
+	(*p) += 2
+}
+')
+	mut saw_postfix := false
+	mut saw_assignment := false
+	for node in ast.nodes {
+		if node.kind == .postfix && node.op == .inc && span_text(src, node) == 'p++' {
+			saw_postfix = true
+		}
+		if node.kind == .assign && node.op == .plus_assign {
+			saw_assignment = true
+		}
+		if node.kind == .call && node.children_count > 0 {
+			callee := ast.child_node(&node, 0)
+			assert callee.kind != .postfix
+		}
+	}
+	assert saw_postfix
+	assert saw_assignment
+}
+
 // Array cast expressions (`[N]T(x)`, `[]T(x)`) are built after the `[N]T`/`[]T`
 // prefix and `(x)` are consumed, so they must span from the opening `[` — the
 // fixed-array variant builds its node directly on the flat AST and previously had
