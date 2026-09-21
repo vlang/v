@@ -572,9 +572,9 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	if op == .assign && clean_rhs.name() == 'int' && clean_expected.name() == 'f64' {
 		return true
 	}
-	if op == .assign && clean_rhs.is_integer() && clean_expected.is_float()
-		&& tc.a.node(rhs_id).kind != .int_literal {
-		return false
+	if op == .assign && clean_rhs.is_integer() && clean_expected.is_float() {
+		literal_id := tc.assignment_integer_literal_operand(rhs_id) or { return false }
+		return tc.expr_compatible(literal_id, rhs_type, expected_type)
 	}
 	if op == .assign && clean_expected is FnType
 		&& tc.fn_types_match_ignoring_module_qualification(clean_expected, clean_rhs) {
@@ -586,6 +586,26 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	return tc.expr_compatible(rhs_id, rhs_type, expected_type)
 		|| tc.pointer_value_compatible(rhs_type, expected_type)
 		|| tc.pointer_arithmetic_assign_compatible(op, rhs_type, expected_type)
+}
+
+// Signs and parentheses preserve literal assignment compatibility.
+// Casts and other typed expressions are not literal operands.
+fn (tc &TypeChecker) assignment_integer_literal_operand(id flat.NodeId) ?flat.NodeId {
+	mut current := id
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind == .int_literal {
+			return current
+		}
+		if node.children_count != 1 {
+			return none
+		}
+		if node.kind != .paren && (node.kind != .prefix || node.op !in [.plus, .minus]) {
+			return none
+		}
+		current = tc.a.child(node, 0)
+	}
+	return none
 }
 
 fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Type, expected Type) bool {
