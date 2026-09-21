@@ -6210,7 +6210,9 @@ fn type_text_contains_qualified_import(text string, alias string) bool {
 fn (mut tc TypeChecker) check_deprecated_byte_types() {
 	mut identifier_offsets := map[u64]bool{}
 	for node in tc.a.nodes {
-		if node.kind == .ident && node.value == 'byte' && node.pos.is_valid() {
+		// Parameter positions span their names; synthetic receiver positions do not.
+		if (node.kind == .ident || (node.kind == .param && node.op != .dot))
+			&& node.value == 'byte' && node.pos.is_valid() {
 			identifier_offsets[deprecated_byte_position_key(node.pos.id, node.pos.offset)] = true
 		}
 	}
