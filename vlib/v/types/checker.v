@@ -977,6 +977,10 @@ mut:
 	// short fn name -> first declaring top-level node index, in declaration
 	// order (mirrors the expr_raw_fn_type_text scan's first-match rule).
 	fn_decl_short_name_ids map[string]int
+	// '${file id}\x00${fn name}' for every top-level fn_decl, so a per-call
+	// "does this file declare a bare fn of this name" lookup does not walk the
+	// whole top-level index.
+	file_bare_fn_names map[string]bool
 	// '${file}\x00${alias}' -> dotted import path, and '${file}\x00${last
 	// segment}' -> dotted import path (first import wins), replacing per-call
 	// scans over every top-level declaration.
@@ -1158,6 +1162,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		declaration_param_mutability:            map[string][]bool{}
 		strict_map_index_files:                  map[string]bool{}
 		fn_decl_short_name_ids:                  map[string]int{}
+		file_bare_fn_names:                      map[string]bool{}
 		file_import_alias_paths:                 map[string]string{}
 		file_import_suffix_paths:                map[string]string{}
 		struct_embed_receivers:                  map[string][]string{}
@@ -1336,6 +1341,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		declaration_param_mutability:          tc.declaration_param_mutability
 		strict_map_index_files:                tc.strict_map_index_files
 		fn_decl_short_name_ids:                tc.fn_decl_short_name_ids
+		file_bare_fn_names:                    tc.file_bare_fn_names
 		file_import_alias_paths:               tc.file_import_alias_paths
 		file_import_suffix_paths:              tc.file_import_suffix_paths
 		struct_embed_receivers:                tc.struct_embed_receivers
@@ -2034,6 +2040,7 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 	tc.file_import_alias_paths = map[string]string{}
 	tc.file_import_suffix_paths = map[string]string{}
 	tc.fn_decl_short_name_ids = map[string]int{}
+	tc.file_bare_fn_names = map[string]bool{}
 	mut module_name := ''
 	mut file_name := ''
 	for index in tc.top_level_idx {
@@ -2109,6 +2116,7 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 		if short_name !in tc.fn_decl_short_name_ids {
 			tc.fn_decl_short_name_ids[short_name] = index
 		}
+		tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
 		qname := checker_qualified_fn_name(module_name, node.value)
 		mut param_mutability := []bool{}
 		for child_index in 0 .. node.children_count {
@@ -13681,14 +13689,10 @@ fn closest_identifier_span(source string, name string, anchor int, file_id int) 
 	// The anchor normally sits on (or immediately before) the identifier, so
 	// search outward from it instead of scanning the file from the top: the
 	// nearest word match on each side decides, exactly like the old full scan.
-	mut left_start := -1
-	for i := int_min(anchor, source.len - name.len); i >= 0; i-- {
-		if !identifier_word_match_at(source, name, i) {
-			continue
-		}
-		left_start = i
-		break
-	}
+	// The right side is searched first so the left scan can stop once it is
+	// further from the anchor than that match (a left match at the same distance
+	// still wins): callers run this for every declaration, and an unbounded
+	// walk to the start of the file made checking quadratic in program size.
 	mut right_start := -1
 	mut from := int_max(anchor + 1, 0)
 	for from <= source.len - name.len {
@@ -13701,6 +13705,15 @@ fn closest_identifier_span(source string, name string, anchor int, file_id int) 
 			break
 		}
 		from = start + 1
+	}
+	left_limit := if right_start < 0 { 0 } else { int_max(anchor - (right_start - anchor), 0) }
+	mut left_start := -1
+	for i := int_min(anchor, source.len - name.len); i >= left_limit; i-- {
+		if !identifier_word_match_at(source, name, i) {
+			continue
+		}
+		left_start = i
+		break
 	}
 	best_start := if left_start < 0 {
 		right_start

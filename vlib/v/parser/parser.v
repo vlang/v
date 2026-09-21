@@ -118,6 +118,7 @@ mut:
 	comptime_const_values        map[string]string
 	comptime_local_values        map[string]string
 	imported_module_names        map[string]bool // import aliases in the current file; not captured by inlined template closures
+	file_method_names            map[string]bool // qualified method names declared so far in the current file, for duplicate diagnostics
 	check_imports                bool            // enabled by the compiler driver, but not by syntax-only parser clients
 	// local_binding_* track the variable/parameter names currently in scope, so an inlined
 	// template closure captures a bare callee only when it is an actual local binding (a
@@ -243,6 +244,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		comptime_const_values:         map[string]string{}
 		comptime_local_values:         map[string]string{}
 		imported_module_names:         map[string]bool{}
+		file_method_names:             map[string]bool{}
 		local_binding_counts:          map[string]int{}
 		global_names:                  map[string]bool{}
 		active_lambda_param_counts:    map[string]int{}
@@ -370,6 +372,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.comptime_value_undos.clear()
 	p.comptime_value_scopes.clear()
 	p.imported_module_names.clear()
+	p.file_method_names.clear()
 	if !p.prefs.is_fmt && path.ends_with('.vsh') {
 		// V script mode: `os` is in scope from the first statement on, so the alias
 		// has to be known before the body is parsed, not only once the synthetic
@@ -1524,11 +1527,14 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		} else {
 			'${clean_type}.${name}'
 		}
-		if p.a.nodes.any(it.pos.id == p.cur_file_id && it.kind == .fn_decl && it.value == name) {
+		// Scanning every AST node here made parsing quadratic in program size;
+		// the methods of the current file are tracked as they are declared instead.
+		if name in p.file_method_names {
 			method_name := name.all_after_last('.')
 			p.record_diagnostic_span('duplicate method `${method_name}`', name_pos,
 				name_pos + method_name.len)
 		}
+		p.file_method_names[name] = true
 	}
 
 	return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, '', name_pos)

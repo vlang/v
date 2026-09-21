@@ -3993,14 +3993,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 }
 
 fn (tc &TypeChecker) source_file_declares_bare_fn(name string, file_id int) bool {
-	for index in tc.top_level_idx {
-		declaration := tc.a.nodes[index]
-		if declaration.kind == .fn_decl && declaration.pos.id == file_id
-			&& declaration.value == name {
-			return true
-		}
-	}
-	return false
+	return '${file_id}\x00${name}' in tc.file_bare_fn_names
 }
 
 fn (mut tc TypeChecker) check_c_va_macro_call(id flat.NodeId, node flat.Node) bool {
