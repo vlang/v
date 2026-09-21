@@ -8029,7 +8029,7 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	node := tc.a.nodes[int(id)]
 	clean_expected := unalias_type(expected)
 	if clean_expected.is_float()
-		&& (tc.is_untyped_float_literal_expr(id) || node.kind == .int_literal) {
+		&& (tc.is_untyped_float_literal_expr(id) || tc.integer_literal_source(id) != none) {
 		tc.register_synth_type(id, expected_raw)
 		return expected_raw
 	}
