@@ -5133,7 +5133,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start
 	t.cur_file = ''
 	mut interface_seed_names := []string{}
 	for ni in names_start .. names_end {
-		name := (*names)[ni]
+		name := names[ni]
 		if !t.late_name_may_expand_interface(name) {
 			continue
 		}
@@ -5148,7 +5148,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start
 		}
 	}
 	for ni in names_start .. names_end {
-		name := (*names)[ni]
+		name := names[ni]
 		t.mark_fn_used_name(name)
 	}
 	for name in interface_seed_names {
@@ -5211,7 +5211,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start
 	// a name into the late-work maps when the index proves that it can match a
 	// body; unmatched names still remain marked used for later compiler stages.
 	for ni in names_start .. names_end {
-		name := (*names)[ni]
+		name := names[ni]
 		if name.len == 0
 			|| (candidate_index[name].len == 0 && candidate_index[c_name(name)].len == 0) {
 			continue
@@ -19912,9 +19912,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 			t.mark_fn_used_name(method_value_name)
 			// Interface callbacks also need their concrete dispatch targets when
 			// this selector is discovered while transforming a late-used body.
-			iface_name := t.resolve_interface_type_name(method_value_name.all_before_last('.'))
-			if iface_name.len > 0 {
-				t.mark_interface_method_implementers_used(iface_name, node.value)
+			method_iface_name := t.resolve_interface_type_name(method_value_name.all_before_last('.'))
+			if method_iface_name.len > 0 {
+				t.mark_interface_method_implementers_used(method_iface_name, node.value)
 			}
 		}
 		method_params := t.call_param_types(method_value_name)
