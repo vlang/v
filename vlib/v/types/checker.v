@@ -858,6 +858,7 @@ pub mut:
 	reject_unlowered_map_mutation bool
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
+	is_test                       bool
 	module_diagnostic_root        string
 	autofree_mode                 bool
 	no_main                       bool
@@ -1304,6 +1305,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unlowered_map_mutation:         tc.reject_unlowered_map_mutation
 		reject_unsupported_generics:           tc.reject_unsupported_generics
 		checker_fixture_mode:                  tc.checker_fixture_mode
+		is_test:                               tc.is_test
 		module_diagnostic_root:                tc.module_diagnostic_root
 		autofree_mode:                         tc.autofree_mode
 		no_main:                               tc.no_main
@@ -9993,7 +9995,7 @@ fn pascal_case_name_is_valid(name string) bool {
 }
 
 fn (mut tc TypeChecker) check_invalid_test_file_name(id flat.NodeId, node flat.Node) {
-	if node.value == 'main' || !tc.should_check_source_name(id) {
+	if tc.is_test || node.value == 'main' || !tc.should_check_source_name(id) {
 		return
 	}
 	base := os.file_name(tc.cur_file)

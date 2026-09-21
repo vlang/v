@@ -11034,6 +11034,7 @@ pub fn run(args []string) {
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.disable_explicit_mutability = disable_explicit_mutability
 	pre_tc.checker_fixture_mode = is_checker_fixture
+	pre_tc.is_test = prefs.is_test
 	pre_tc.module_diagnostic_root = if os.is_dir(input_file) {
 		os.real_path(input_file)
 	} else {
