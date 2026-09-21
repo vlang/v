@@ -7977,6 +7977,11 @@ fn (mut tc TypeChecker) check_signed_unsigned_comparison(op flat.Op, lhs_id flat
 		|| (rhs_unsigned && tc.is_fixed_array_len_const_comparison(lhs_id, rhs_id)) {
 		return false
 	}
+	// These compile-time values are nonnegative, so unsigned promotion preserves equality.
+	if lhs_node.kind in [.sizeof_expr, .offsetof_expr]
+		|| rhs_node.kind in [.sizeof_expr, .offsetof_expr] {
+		return false
+	}
 	// Ordered comparisons are lowered with an explicit sign guard, so every
 	// non-literal mixed-width pair preserves mathematical ordering. Equality
 	// remains restricted when the unsigned side is wider than the signed side.
