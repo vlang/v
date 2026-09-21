@@ -6261,12 +6261,11 @@ fn (mut t Transformer) make_non_aliasing_allocation_call(name string, args []fla
 }
 
 // heapable_value_type reports whether a local of this declared type can be moved to the heap
-// as a `&T` — a plain value type, not an already-reference / container / optional type (those
-// either carry their own indirection or are not addressable as a single `T`).
+// as a `&T` — a plain value type or an inline optional/result wrapper, not an already-reference
+// or container type (those either carry their own indirection or are not addressable as one `T`).
 fn (t &Transformer) heapable_value_type(typ string) bool {
 	if typ == '' || typ.starts_with('&') || typ.starts_with('[]') || typ.starts_with('map[')
-		|| typ.starts_with('?') || typ.starts_with('!') || typ.starts_with('[') || typ == 'unknown'
-		|| typ == 'void' {
+		|| typ.starts_with('[') || typ == 'unknown' || typ == 'void' {
 		return false
 	}
 	// Function values are already pointers in C. `&callback` is accepted as the
@@ -7908,7 +7907,7 @@ fn (t &Transformer) escape_address_root_name(id flat.NodeId) ?string {
 				return t.escape_address_root_name(t.a.child(&node, 0))
 			}
 		}
-		.selector, .index {
+		.selector, .index, .prefix, .or_expr {
 			if node.children_count > 0 {
 				return t.escape_address_root_name(t.a.child(&node, 0))
 			}
@@ -8225,10 +8224,16 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
 		&& node.children_count == 2 {
 		lhs_id := t.a.child(&node, 0)
+		rhs_id := t.a.child(&node, 1)
+		lhs_root := t.escape_address_root_name(lhs_id) or { '' }
+		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
+			if source_name == lhs_root && source_name in local_stack_names {
+				t.escaping_amp_sources[source_name] = true
+			}
+		}
 		if t.escape_index_assign_retains_value(lhs_id)
 			|| (node.kind == .selector_assign
 				&& t.escape_selector_assign_retains_value(lhs_id, amp_ptrs, ptr_aliases)) {
-			rhs_id := t.a.child(&node, 1)
 			// A map or caller-owned field may retain its value after this stack frame returns.
 			// Track pointer aliases through `returned`, and record direct `&local` values
 			// immediately.
@@ -20375,7 +20380,11 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		}
 		mut child_type := t.node_type(child_id)
 		original_child_type := t.original_expr_type(child_id)
-		if t.is_optional_type_name(child_type) && !t.is_optional_type_name(original_child_type)
+		checker_child_type := t.raw_checker_node_type(child_id)
+		if child.kind == .ident && t.pointer_value_rvalues[child.value]
+			&& child_type.starts_with('&') && t.is_optional_type_name(checker_child_type) {
+			child_type = checker_child_type
+		} else if t.is_optional_type_name(child_type) && !t.is_optional_type_name(original_child_type)
 			&& original_child_type.len > 0 && original_child_type != 'unknown' {
 			child_type = original_child_type
 		} else if child_type.len == 0 {
@@ -20385,7 +20394,7 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			child_type = child.value
 		}
 		if t.is_optional_type_name(child_type) {
-			if expr := t.transform_amp_optional_value(node, child_id, child, child_type) {
+			if expr := t.transform_amp_optional_value(id, node, child_id, child, child_type) {
 				return expr
 			}
 		}
@@ -20638,7 +20647,7 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	return new_id
 }
 
-fn (mut t Transformer) transform_amp_optional_value(node flat.Node, child_id flat.NodeId, child flat.Node, child_type string) ?flat.NodeId {
+fn (mut t Transformer) transform_amp_optional_value(id flat.NodeId, node flat.Node, child_id flat.NodeId, child flat.Node, child_type string) ?flat.NodeId {
 	source_type := t.qualify_optional_type(child_type)
 	payload_type := t.optional_base_type(source_type)
 	if payload_type.len == 0 || payload_type == 'void' {
@@ -20646,6 +20655,8 @@ fn (mut t Transformer) transform_amp_optional_value(node flat.Node, child_id fla
 	}
 	target_type := if node.typ.len > 0 {
 		t.qualify_optional_type(node.typ)
+	} else if t.expected_expr_node == int(id) && t.expected_expr_type.len > 0 {
+		t.qualify_optional_type(t.expected_expr_type)
 	} else if child.kind == .struct_init {
 		'${source_type[..1]}&${payload_type}'
 	} else {
@@ -20695,8 +20706,14 @@ fn (mut t Transformer) transform_optional_value_to_pointer(source_id flat.NodeId
 	t.pending_stmts << t.make_decl_assign_typed(result_name, initial, target_type)
 	value := t.make_selector(source_value, 'value', payload_type)
 	value_addr := t.make_prefix(.amp, value)
-	dup := t.make_memdup_call_for_type(value_addr, payload_type)
-	addr := t.make_cast(target_payload, dup, target_payload)
+	t.set_node_typ(int(value_addr), target_payload)
+	source_node := t.a.nodes[int(source_id)]
+	addr := if source_node.kind == .ident && source_node.value in t.heaped_amp_locals {
+		value_addr
+	} else {
+		dup := t.make_memdup_call_for_type(value_addr, payload_type)
+		t.make_cast(target_payload, dup, target_payload)
+	}
 	some := t.make_optional_some(addr, target_type)
 	assign := t.make_assign(t.make_ident(result_name), some)
 	ok := t.make_selector(source_value, 'ok', 'bool')
