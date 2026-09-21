@@ -16390,6 +16390,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 				return Type(f64_)
 			}
+			if promoted := infix_integer_promotion_type(lt, rt) {
+				return promoted
+			}
 			return lt
 		}
 		.prefix {
@@ -18484,14 +18487,36 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 	}
 	value := tc.implicit_integer_constant_value(lit_id, lit_type)?
 	clean_type := unalias_type(other_type)
-	if unsigned_type_accepts_int_literal(clean_type, value) {
-		return clean_type
+	if clean_type is Primitive && clean_type.props.has(.integer)
+		&& clean_type.size in [u8(8), 16] {
+		if small_integer_type_accepts_int_literal(clean_type, value) {
+			return clean_type
+		}
+		return Type(int_)
 	}
 	// An untyped integer literal adopts the other integer operand's concrete storage
 	// type. In particular, `24 * time.hour` is `i64`, not `int`; map literal
 	// inference relies on that distinction when it chooses its value type.
 	if clean_type.is_integer() && clean_type.name() != Type(int_).name() {
 		return clean_type
+	}
+	return none
+}
+
+fn infix_integer_promotion_type(lhs Type, rhs Type) ?Type {
+	if lhs.name() == rhs.name() {
+		return lhs
+	}
+	clean_lhs := unalias_type(lhs)
+	clean_rhs := unalias_type(rhs)
+	if !call_arg_integer_type(clean_lhs) || !call_arg_integer_type(clean_rhs) {
+		return none
+	}
+	if call_arg_implicit_numeric_widening(clean_lhs, clean_rhs) {
+		return clean_rhs
+	}
+	if call_arg_implicit_numeric_widening(clean_rhs, clean_lhs) {
+		return clean_lhs
 	}
 	return none
 }
@@ -18567,25 +18592,16 @@ fn (tc &TypeChecker) int_literal_value(id flat.NodeId) ?int {
 	return none
 }
 
-fn unsigned_type_accepts_int_literal(t Type, value int) bool {
-	if value < 0 {
+fn small_integer_type_accepts_int_literal(t Primitive, value int) bool {
+	if t.size !in [u8(8), 16] || !t.props.has(.integer) {
 		return false
 	}
-	if t is Primitive {
-		if !t.props.has(.integer) || !t.props.has(.unsigned) {
-			return false
-		}
-		max := match t.size {
-			8 { 255 }
-			16 { 65535 }
-			else {
-				return true
-			}
-		}
-
-		return value <= max
+	if t.props.has(.unsigned) {
+		max := if t.size == 8 { 255 } else { 65535 }
+		return value >= 0 && value <= max
 	}
-	return false
+	max := if t.size == 8 { 127 } else { 32767 }
+	return value >= -max - 1 && value <= max
 }
 
 fn type_is_f32(t Type) bool {
