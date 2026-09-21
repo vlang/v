@@ -9898,7 +9898,9 @@ fn (mut g FlatGen) json_encode_sum_variant_c_expr(typ types.Type, expr string, s
 		encoded := g.json_encode_sum_variant_c_expr(clean.base_type, '(${expr}).value', seen) or {
 			return none
 		}
-		return '((${expr}).ok ? ${encoded} : v3_c_lit("null", 4))'
+		// The legacy json encoder initializes a sum variant as an empty object and
+		// only replaces it when an optional payload is present.
+		return '((${expr}).ok ? ${encoded} : v3_c_lit("{}", 2))'
 	}
 	if json_is_time_type(clean) {
 		prefix := '{"_type":"Time","value":'

@@ -4219,8 +4219,12 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if actual is OptionType && target !is OptionType && target !is Alias {
-		tc.record_error_at(.assignment_mismatch, 'cannot type cast an Option', id, node.pos)
-		return
+		clean_target := unalias_type(target)
+		if clean_target !is SumType || !tc.sum_type_contains_variant(clean_target, actual) {
+			tc.record_error_at(.assignment_mismatch, 'cannot type cast an Option', id,
+				node.pos)
+			return
+		}
 	}
 	if target is OptionType {
 		clean_payload := unalias_type(target.base_type)
