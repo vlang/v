@@ -1337,7 +1337,20 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			pos:            node.pos
 		})
 	}
-	expr_id := t.a.child(&node, 0)
+	mut expr_id := t.a.child(&node, 0)
+	mut unchecked_optional_unwrap := false
+	expr_node := t.a.nodes[int(expr_id)]
+	if expr_node.kind == .or_expr && expr_node.value == '?' && expr_node.children_count > 0 {
+		source_id := t.a.child(&expr_node, 0)
+		mut source_type := t.raw_expr_type_without_smartcast(source_id)
+		if source_type.len == 0 {
+			source_type = t.node_type(source_id)
+		}
+		if t.is_optional_type_name(source_type) {
+			expr_id = source_id
+			unchecked_optional_unwrap = true
+		}
+	}
 	// `as` converts from the expression's storage type. Inside an `is` branch,
 	// `node_type` reports the smartcast target instead; using that here makes an
 	// interface-to-interface cast look like a no-op and leaves the source box on
@@ -1358,7 +1371,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		// and `x is Variant` branches, transforming `x` normally would apply both
 		// smartcasts before this code selects `.value`, then extract the variant a
 		// second time.
-		source := if t.expr_has_smartcast(expr_id) {
+		source := if unchecked_optional_unwrap {
+			t.transform_optional_wrapper_expr(expr_id)
+		} else if t.expr_has_smartcast(expr_id) {
 			t.make_plain_expr_for_smartcast(expr_id)
 		} else {
 			t.transform_expr(expr_id)
