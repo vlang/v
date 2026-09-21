@@ -1,0 +1,12 @@
+// Example configuration read by kdl_config.v
+app "demo" version="1.2.0"
+
+server host="127.0.0.1" port=8080 {
+    tls #true
+    // the same node name can appear several times
+    route "/api" timeout=2.5
+    route "/static"
+    route "/admin" timeout=10
+}
+
+limits max-connections=1_000 upload-size=0x100000 ratio=0.75
