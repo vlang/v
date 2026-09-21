@@ -725,6 +725,7 @@ pub mut:
 	receiver_method_suffix_index     map[string]string
 	generic_receiver_method_index    map[string][]string
 	structs                          map[string][]StructField
+	c_struct_scoped_fields           map[string][]StructField
 	struct_modules                   map[string]string
 	struct_files                     map[string]string
 	soa_structs                      map[string]bool
@@ -1049,6 +1050,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		receiver_method_suffix_index:            map[string]string{}
 		generic_receiver_method_index:           map[string][]string{}
 		structs:                                 map[string][]StructField{}
+		c_struct_scoped_fields:                  map[string][]StructField{}
 		struct_modules:                          map[string]string{}
 		struct_files:                            map[string]string{}
 		soa_structs:                             map[string]bool{}
@@ -1213,6 +1215,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		receiver_method_suffix_index:          tc.receiver_method_suffix_index
 		generic_receiver_method_index:         tc.generic_receiver_method_index
 		structs:                               tc.structs
+		c_struct_scoped_fields:                tc.c_struct_scoped_fields
 		struct_modules:                        tc.struct_modules
 		struct_files:                          tc.struct_files
 		declared_type_scope_keys:              tc.declared_type_scope_keys
@@ -3666,6 +3669,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		tc.fn_ret_text_registrations = []FnTextRegistration{cap: tc.top_level_idx.len * 2}
 		tc.visible_mutation_registrations = []VisibleMutationRegistration{cap: tc.top_level_idx.len}
 	}
+	mut public_c_structs := map[string]bool{}
 	for pi, tl_idx in tc.top_level_idx {
 		node := a.nodes[tl_idx]
 		node_ref := a.node(flat.NodeId(tl_idx))
@@ -3856,27 +3860,24 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				// it is deterministic regardless of module collection order, instead of
 				// letting whichever declaration is collected last silently win.
 				if qname.starts_with('C.') {
-					if existing := tc.structs[qname] {
-						if fields.len <= existing.len {
-							continue
+					scoped_name := c_struct_module_key(tc.cur_module, qname)
+					if existing := tc.c_struct_scoped_fields[scoped_name] {
+						if fields.len > existing.len {
+							tc.c_struct_scoped_fields[scoped_name] = fields
 						}
+					} else {
+						tc.c_struct_scoped_fields[scoped_name] = fields
+					}
+					is_public := node.op == .arrow
+					if is_public && !public_c_structs[qname] {
+						public_c_structs[qname] = true
+					} else if (!is_public && public_c_structs[qname])
+						|| (tc.structs[qname] or { []StructField{} }).len >= fields.len {
+						continue
 					}
 				}
-				tc.structs[qname] = fields
-				tc.struct_modules[qname] = tc.cur_module
-				tc.struct_files[qname] = tc.cur_file
-				if shadows_builtin_error_embed {
-					tc.struct_error_embeds_shadow_builtin[qname] = true
-				}
-				for field_name in shared_field_names {
-					tc.struct_shared_fields[struct_field_c_abi_key(qname, field_name)] = true
-				}
-				for field_name in shared_element_field_names {
-					tc.struct_shared_element_fields[struct_field_c_abi_key(qname, field_name)] = true
-				}
-				for field_name, c_abi_fn in field_c_abi_fns {
-					tc.struct_field_c_abi_fns[struct_field_c_abi_key(qname, field_name)] = c_abi_fn
-				}
+				tc.set_struct_fields(qname, fields, shared_field_names, shared_element_field_names,
+					field_c_abi_fns, shadows_builtin_error_embed)
 			}
 			.c_fn_decl {
 				c_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
@@ -4079,6 +4080,28 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	$if ownership ? {
 		tc.ownership_after_collect()
 	}
+}
+
+fn (mut tc TypeChecker) set_struct_fields(name string, fields []StructField, shared_field_names []string, shared_element_field_names []string, field_c_abi_fns map[string]string, shadows_builtin_error_embed bool) {
+	tc.structs[name] = fields
+	tc.struct_modules[name] = tc.cur_module
+	tc.struct_files[name] = tc.cur_file
+	if shadows_builtin_error_embed {
+		tc.struct_error_embeds_shadow_builtin[name] = true
+	}
+	for field_name in shared_field_names {
+		tc.struct_shared_fields[struct_field_c_abi_key(name, field_name)] = true
+	}
+	for field_name in shared_element_field_names {
+		tc.struct_shared_element_fields[struct_field_c_abi_key(name, field_name)] = true
+	}
+	for field_name, c_abi_fn in field_c_abi_fns {
+		tc.struct_field_c_abi_fns[struct_field_c_abi_key(name, field_name)] = c_abi_fn
+	}
+}
+
+fn c_struct_module_key(module_name string, qname string) string {
+	return '${module_name}\x00${qname}'
 }
 
 // Seed the frozen cache once instead of making every checker batch walk the
@@ -4324,10 +4347,15 @@ fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 	}
 }
 
+struct CStructDeclRecord {
+	signature string
+	file      string
+	module_   string
+}
+
 fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
-	mut c_struct_decl_sigs := map[string]string{}
-	mut c_struct_decl_files := map[string]string{}
-	mut c_struct_decl_modules := map[string]string{}
+	mut module_decls := map[string]CStructDeclRecord{}
+	mut public_decls := map[string]CStructDeclRecord{}
 	for node_idx in tc.top_level_idx {
 		node := a.nodes[node_idx]
 		match node.kind {
@@ -4342,38 +4370,54 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 				if !qname.starts_with('C.') {
 					continue
 				}
-				c_struct_sig := tc.c_struct_decl_signature(a, node)
-				if qname in c_struct_decl_sigs {
-					existing_sig := c_struct_decl_sigs[qname]
-					if !c_struct_decl_signatures_compatible(existing_sig, c_struct_sig) {
-						existing_file := c_struct_decl_files[qname] or { '' }
-						existing_module := c_struct_decl_modules[qname] or { '' }
-						if !tc.c_struct_redeclaration_allowed(qname, existing_file, tc.cur_file, existing_module, tc.cur_module) {
-							node_id := flat.NodeId(node_idx)
-							keyword := if comma_attr_text_has(node.typ, 'union') {
-								'union'
-							} else {
-								'struct'
-							}
-							tc.record_error_unfiltered_at(.duplicate_decl, 'cannot redeclare C struct `${qname}`', node_id, tc.declaration_keyword_name_pos(node_id, keyword))
-						}
+				current := CStructDeclRecord{
+					signature: tc.c_struct_decl_signature(a, node)
+					file:      tc.cur_file
+					module_:   tc.cur_module
+				}
+				module_key := '${tc.cur_module}\x00${qname}'
+				if existing := module_decls[module_key] {
+					if !c_struct_decl_signatures_compatible(existing.signature, current.signature)
+						&& !tc.c_struct_redeclaration_allowed(qname, existing.file, current.file,
+							existing.module_, current.module_) {
+						tc.record_c_struct_redeclaration(node_idx, node, qname)
 					}
-					existing_fields := c_struct_decl_signature_field_count(existing_sig)
-					current_fields := c_struct_decl_signature_field_count(c_struct_sig)
-					if current_fields > existing_fields {
-						c_struct_decl_sigs[qname] = c_struct_sig
-						c_struct_decl_files[qname] = tc.cur_file
-						c_struct_decl_modules[qname] = tc.cur_module
-					}
+					module_decls[module_key] = preferred_c_struct_decl(existing, current)
 				} else {
-					c_struct_decl_sigs[qname] = c_struct_sig
-					c_struct_decl_files[qname] = tc.cur_file
-					c_struct_decl_modules[qname] = tc.cur_module
+					module_decls[module_key] = current
+				}
+				if node.op != .arrow {
+					continue
+				}
+				if existing := public_decls[qname] {
+					if existing.module_ != current.module_
+						&& !c_struct_decl_signatures_compatible(existing.signature, current.signature)
+						&& !tc.c_struct_redeclaration_allowed(qname, existing.file, current.file,
+							existing.module_, current.module_) {
+						tc.record_c_struct_redeclaration(node_idx, node, qname)
+					}
+					public_decls[qname] = preferred_c_struct_decl(existing, current)
+				} else {
+					public_decls[qname] = current
 				}
 			}
 			else {}
 		}
 	}
+}
+
+fn preferred_c_struct_decl(existing CStructDeclRecord, current CStructDeclRecord) CStructDeclRecord {
+	if c_struct_decl_signature_field_count(current.signature) > c_struct_decl_signature_field_count(existing.signature) {
+		return current
+	}
+	return existing
+}
+
+fn (mut tc TypeChecker) record_c_struct_redeclaration(node_idx int, node flat.Node, qname string) {
+	node_id := flat.NodeId(node_idx)
+	keyword := if comma_attr_text_has(node.typ, 'union') { 'union' } else { 'struct' }
+	tc.record_error_unfiltered_at(.duplicate_decl, 'cannot redeclare C struct `${qname}`', node_id,
+		tc.declaration_keyword_name_pos(node_id, keyword))
 }
 
 struct CFnDeclSignature {

@@ -11627,6 +11627,12 @@ fn (tc &TypeChecker) struct_init_field_lookup_name(literal_name string, parsed_n
 fn (tc &TypeChecker) struct_fields_for_init(struct_name string) []StructField {
 	base_name, generic_args, is_generic := generic_type_application_parts(struct_name)
 	raw_lookup_name := if is_generic { base_name } else { struct_name }
+	scoped_c_name := c_struct_module_key(tc.cur_module, raw_lookup_name)
+	if raw_lookup_name.starts_with('C.') {
+		if fields := tc.c_struct_scoped_fields[scoped_c_name] {
+			return fields
+		}
+	}
 	lookup_name := if raw_lookup_name in tc.structs {
 		raw_lookup_name
 	} else if raw_lookup_name.all_after_last('.') in tc.structs {
