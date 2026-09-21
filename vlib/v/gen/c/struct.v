@@ -1599,7 +1599,10 @@ fn (g &FlatGen) struct_init_is_lowered_sum_literal(node flat.Node) bool {
 		return false
 	}
 	resolved := g.lowered_struct_init_sum_name(node)
-	return resolved in g.tc.sum_types
+	if resolved in g.tc.sum_types {
+		return true
+	}
+	return g.lowered_sum_init_name(node) in g.tc.sum_types
 }
 
 fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {

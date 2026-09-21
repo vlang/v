@@ -594,7 +594,12 @@ fn (t &Transformer) sum_type_index(sum_name string, variant string) int {
 	if variants.len == 0 {
 		return 0
 	}
-	return t.sum_type_index_in_variants(variants, variant)
+	concrete_variant := if t.active_specialization_args.len > 0 {
+		t.subst_type(variant, t.active_specialization_args)
+	} else {
+		variant
+	}
+	return t.sum_type_index_in_variants(variants, concrete_variant)
 }
 
 fn (t &Transformer) sum_type_variants_for_index(sum_name string) []string {
