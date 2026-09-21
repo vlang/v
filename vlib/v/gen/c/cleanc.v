@@ -16094,10 +16094,34 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			} else if g.gen_struct_default_global_selector(base, node.value, node.op) {
 				// handled
+			} else if embedded_path := g.embedded_field_path_for_promoted_selector(base_type0, node.value) {
+				needs_paren := base.kind !in [.ident, .selector]
+				if needs_paren {
+					g.write('(')
+				}
+				g.gen_expr(base_id)
+				if needs_paren {
+					g.write(')')
+				}
+				mut is_ptr := node.op == .arrow || base_type0 is types.Pointer
+				mut embedded_owner := types.unwrap_pointer(base_type0)
+				for embedded in embedded_path {
+					op := if is_ptr { '->' } else { '.' }
+					g.write('${op}${g.cname(embedded.name)}')
+					is_ptr = embedded.typ is types.Pointer
+						|| cgen_unalias_type(embedded.typ) is types.Pointer
+					embedded_owner = types.unwrap_pointer(embedded.typ)
+				}
+				final_op := if is_ptr { '->' } else { '.' }
+				g.write('${final_op}${g.field_c_name(embedded_owner, node.value)}')
+				if embedded_owner is types.Struct {
+					if _ := g.shared_field_info(embedded_owner.name, node.value) {
+						g.write('->val')
+					}
+				}
 			} else if g.selector_declared_type(id) != none {
-				// An explicitly declared field shadows any same-named field promoted
-				// through an embedded struct. Use the declared receiver type rather
-				// than a stale short-name lookup from another module.
+				// The promoted-field lookup above rejects real fields on the receiver,
+				// so direct fields still shadow same-named fields from embedded structs.
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {
 					g.write('(')
@@ -16127,30 +16151,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('.')
 				}
 				g.write(g.cname(embedded.name))
-			} else if embedded_path := g.embedded_field_path_for_promoted_selector(base_type0, node.value) {
-				needs_paren := base.kind !in [.ident, .selector]
-				if needs_paren {
-					g.write('(')
-				}
-				g.gen_expr(base_id)
-				if needs_paren {
-					g.write(')')
-				}
-				mut is_ptr := node.op == .arrow || base_type0 is types.Pointer
-				mut embedded_owner := types.unwrap_pointer(base_type0)
-				for embedded in embedded_path {
-					op := if is_ptr { '->' } else { '.' }
-					g.write('${op}${g.cname(embedded.name)}')
-					is_ptr = embedded.typ is types.Pointer || cgen_unalias_type(embedded.typ) is types.Pointer
-					embedded_owner = types.unwrap_pointer(embedded.typ)
-				}
-				final_op := if is_ptr { '->' } else { '.' }
-				g.write('${final_op}${g.field_c_name(embedded_owner, node.value)}')
-				if embedded_owner is types.Struct {
-					if _ := g.shared_field_info(embedded_owner.name, node.value) {
-						g.write('->val')
-					}
-				}
 			} else {
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {
