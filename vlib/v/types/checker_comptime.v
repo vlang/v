@@ -16447,7 +16447,8 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 	if lhs.kind == .ident && lhs.value.len > 0 {
 		if lhs.value != '_' && (tc.visible_local_scope_owns_name(lhs.value)
 			|| tc.visible_mut_param_binding_owns_name(lhs.value))
-			&& !(tc.unsafe_depth > 1 && !tc.current_local_scope_owns_name(lhs.value)) {
+			&& !(tc.unsafe_depth > 1 && !tc.current_local_scope_owns_name(lhs.value))
+			&& !tc.decl_shadows_implicit_or_err(lhs_id, lhs.value) {
 			tc.record_error(.assignment_mismatch, 'redefinition of `${lhs.value}`', lhs_id)
 			return ScopeBindingOwner{}
 		}
@@ -16467,6 +16468,34 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 		return owner
 	}
 	return ScopeBindingOwner{}
+}
+
+// decl_shadows_implicit_or_err permits a nested lexical scope inside an `or {}`
+// fallback to reuse the synthetic `err` name. A declaration directly in the
+// fallback still conflicts with the implicit binding.
+fn (tc &TypeChecker) decl_shadows_implicit_or_err(lhs_id flat.NodeId, name string) bool {
+	if name != 'err' || !tc.valid_node_id(lhs_id) {
+		return false
+	}
+	mut child_id := lhs_id
+	mut block_depth := 0
+	mut parent_id := tc.direct_parent_id(child_id)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return false
+		}
+		if parent.kind == .block {
+			block_depth++
+		}
+		if parent.kind == .or_expr {
+			return parent.value !in ['?', '!'] && parent.children_count >= 2
+				&& tc.a.child(parent, 1) == child_id && block_depth > 1
+		}
+		child_id = parent_id
+		parent_id = tc.direct_parent_id(parent_id)
+	}
+	return false
 }
 
 fn (tc &TypeChecker) current_local_scope_owns_name(name string) bool {
