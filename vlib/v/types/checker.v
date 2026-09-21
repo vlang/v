@@ -1853,7 +1853,7 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 			chunk.has_goto_nodes = true
 		}
 		if node.kind == .struct_decl
-			&& (is_anonymous_struct_name(node.value) || node.value.contains('@local@')) {
+			&& (is_anonymous_aggregate_name(node.value) || node.value.contains('@local@')) {
 			chunk.synthetic_type_ids << parent_idx
 		}
 		for child_idx in 0 .. node.children_count {

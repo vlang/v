@@ -17330,6 +17330,11 @@ fn is_anonymous_struct_name(name string) bool {
 	return name.all_after_last('.').starts_with('AnonStruct_')
 }
 
+fn is_anonymous_aggregate_name(name string) bool {
+	short := name.all_after_last('.')
+	return short.starts_with('AnonStruct_') || short.starts_with('AnonUnion_')
+}
+
 // is_synthesized_anon_struct reports whether `name` is an anonymous aggregate the
 // parser made up, rather than a type a user happened to name `AnonStruct_...`. Only
 // the former may be adopted as the type of a bare `struct { ... }` literal: adopting a
