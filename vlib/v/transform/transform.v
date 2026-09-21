@@ -10005,7 +10005,7 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 }
 
 fn (mut t Transformer) transform_nested_string_literal_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	if !t.in_string_interp_part {
+	if !t.in_string_interp_part || node.has_literal_interpolation_text() {
 		return id
 	}
 	if expr := t.complex_nested_string_interpolation(node.value) {
