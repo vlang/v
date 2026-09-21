@@ -10423,7 +10423,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		return t.try_lower_array_method_call(call_id, new_node)
 	}
 	if fn_node.value == 'str' && clean_base_type.starts_with('map[') {
-		return t.wrap_string_conversion(t.transform_expr(base_id), base_type)
+		raw_alias_type := t.raw_alias_type_for_expr(base_id)
+		stringify_type := if raw_alias_type.len > 0 { raw_alias_type } else { base_type }
+		return t.wrap_string_conversion(t.transform_expr(base_id), stringify_type)
 	}
 	if !clean_base_type.starts_with('[]') {
 		return none
