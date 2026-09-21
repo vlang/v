@@ -39,7 +39,7 @@ fn test_synthesized_helpers_are_program_specializations() {
 			kind:  .fn_decl
 			value: helper
 		})
-		node := a.get(node_id)
+		node := a.nodes[int(node_id)]
 		assert g.is_program_specialization_fn_node_with_qfn(node, int(node_id), helper)
 	}
 }

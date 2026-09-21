@@ -90,7 +90,7 @@ fn reflection_type_key(raw_type string, module_name string) string {
 		}
 	}
 	if typ.ends_with(']') {
-		open := typ.index_u8(`[`) or { -1 }
+		open := typ.index_u8(`[`)
 		close := if open >= 0 { reflection_matching_bracket(typ, open) } else { -1 }
 		if open > 0 && close == typ.len - 1 {
 			base := reflection_type_key(typ[..open], module_name)
@@ -316,7 +316,7 @@ fn reflection_field_type_id(raw_type string, module_name string) int {
 		indirections++
 		typ = typ[1..].trim_space()
 	}
-	return (reflection_type_id(typ, module_name) & 0xffff) | flags | (indirections << 16)
+	return (reflection_type_id(typ, module_name) & 0xffff) | flags | (indirections * 0x10000)
 }
 
 fn (g &FlatGen) reflection_struct_fields(info StructDeclInfo) string {
