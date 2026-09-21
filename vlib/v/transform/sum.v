@@ -1680,6 +1680,27 @@ fn (t &Transformer) fixed_array_sum_literal_elem_unknown(literal_elem string) bo
 	return literal_elem == '' || literal_elem in ['unknown', 'void', 'array']
 }
 
+fn (t &Transformer) single_pointer_sum_nil_variant(expr_id flat.NodeId, sum_name string) ?string {
+	if !t.expr_is_nil_like(expr_id) {
+		return none
+	}
+	_, variants := t.concrete_sum_name_and_variants(sum_name)
+	mut pointer_variant := ''
+	for variant in variants {
+		if !t.sum_variant_is_direct_pointer(variant) {
+			continue
+		}
+		if pointer_variant.len > 0 {
+			return none
+		}
+		pointer_variant = variant
+	}
+	if pointer_variant.len == 0 {
+		return none
+	}
+	return pointer_variant
+}
+
 // wrap_sum_value transforms wrap sum value data for transform.
 fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) flat.NodeId {
 	resolved_sum := t.resolve_sum_name(target_sum)
@@ -1687,6 +1708,10 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		return t.transform_expr(expr_id)
 	}
 	storage_sum := t.sum_literal_type_name(target_sum, resolved_sum)
+	if nil_variant := t.single_pointer_sum_nil_variant(expr_id, resolved_sum) {
+		value := t.transform_expr_for_type(expr_id, nil_variant)
+		return t.make_sum_literal(storage_sum, nil_variant, value)
+	}
 	expr := t.a.nodes[int(expr_id)]
 	if expr.kind == .if_expr {
 		branch_type := t.if_expr_branch_result_type(expr)

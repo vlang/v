@@ -1685,11 +1685,15 @@ fn (g &FlatGen) lowered_sum_field_is_direct_pointer(sum_name string, field &flat
 		return false
 	}
 	pointer_variant := variant_type as types.Pointer
+	child_id := g.a.child(field, 0)
+	if g.expr_is_nil_value(child_id) {
+		return true
+	}
 	// Expected-type propagation can cache the surrounding sum type on a local
 	// pointer used as the variant value. Recover the expression's declared type
 	// before deciding whether the sum field stores that pointer directly; treating
 	// it as a value variant adds an extra memdup box and changes pointer equality.
-	child_type := select_receive_unalias_type(g.usable_expr_type(g.a.child(field, 0)))
+	child_type := select_receive_unalias_type(g.usable_expr_type(child_id))
 	if child_type is types.Pointer {
 		return g.type_names_match(child_type.base_type, pointer_variant.base_type)
 	}
