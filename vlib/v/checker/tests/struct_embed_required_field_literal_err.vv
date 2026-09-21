@@ -1,0 +1,17 @@
+struct Base {
+	a int @[required]
+	b int @[required]
+}
+
+struct Derived {
+	Base
+}
+
+fn main() {
+	d := Derived{
+		Base: Base{
+			a: 1
+		}
+	}
+	println(d.a)
+}
