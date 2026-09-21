@@ -9539,6 +9539,14 @@ fn (mut tc TypeChecker) check_or_fallback_type(or_id flat.NodeId, source_id flat
 			return
 		}
 	}
+	clean_outer_expected := unalias_type(outer_expected)
+	clean_actual := unalias_type(actual)
+	if tc.direct_parent_kind(or_id) != .return_stmt && clean_outer_expected is OptionType
+		&& clean_actual is OptionType
+		&& tc.type_compatible(expected, clean_outer_expected.base_type)
+		&& tc.type_compatible(clean_actual.base_type, clean_outer_expected.base_type) {
+		return
+	}
 	if tc.or_expr_payload_is_shared(source_id) && !tc.expr_is_shared_arg(tail_id)
 		&& !tc.or_fallback_tail_is_shared_decl(fallback_id, tail_id) {
 		actual_name := tc.diagnostic_expr_type_name(tail_id, actual)
