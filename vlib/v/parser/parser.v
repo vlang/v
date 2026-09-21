@@ -15697,12 +15697,14 @@ fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_typ
 	}
 	mut ids := []flat.NodeId{cap: field_names.len}
 	for i, field_name in field_names {
-		ids << p.a.add_node(flat.Node{
+		field_id := p.a.add_node(flat.Node{
 			kind:  .field_decl
 			value: field_name
 			typ:   field_types[i]
 			pos:   field_positions[i]
 		})
+		p.apply_field_meta(field_id, true, false, false, false, []string{}, false)
+		ids << field_id
 	}
 	return p.register_anonymous_aggregate_type(ids, field_names, field_types, !allow_name_shape, false, -1)
 }
