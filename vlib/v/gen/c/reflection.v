@@ -214,9 +214,12 @@ fn reflection_attribute_info(raw string) ReflectionAttributeInfo {
 	clean := raw.trim_space()
 	colon := clean.index_u8(`:`)
 	if colon < 0 {
+		is_string := (clean.len >= 2 && clean[0] in [`'`, `\"`] && clean[clean.len - 1] == clean[0])
+			|| (clean.len >= 3 && clean[0] == `r` && clean[1] in [`'`, `\"`]
+				&& clean[clean.len - 1] == clean[1])
 		return ReflectionAttributeInfo{
-			name: clean.trim('\'"')
-			kind: if clean.len >= 2 && clean[0] in [`'`, `\"`] { 1 } else { 0 }
+			name: decode_attribute_string(clean)
+			kind: if is_string { 1 } else { 0 }
 		}
 	}
 	name := clean[..colon].trim_space()
@@ -225,11 +228,7 @@ fn reflection_attribute_info(raw string) ReflectionAttributeInfo {
 		&& raw_arg[raw_arg.len - 1] == raw_arg[0])
 		|| (raw_arg.len >= 3 && raw_arg[0] == `r` && raw_arg[1] in [`'`, `\"`]
 			&& raw_arg[raw_arg.len - 1] == raw_arg[1])
-	arg := if is_string {
-		if raw_arg[0] == `r` { raw_arg[2..raw_arg.len - 1] } else { raw_arg[1..raw_arg.len - 1] }
-	} else {
-		raw_arg
-	}
+	arg := decode_attribute_string(raw_arg)
 	return ReflectionAttributeInfo{
 		name:    name
 		has_arg: true

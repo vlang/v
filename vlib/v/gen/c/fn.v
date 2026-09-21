@@ -11570,7 +11570,7 @@ fn json_attrs_skip_field(attrs []string) bool {
 		return true
 	}
 	for attr in attrs {
-		if attr.starts_with('json:') && json_enum_attr_label(attr.all_after(':')) == '-' {
+		if attr.starts_with('json:') && decode_attribute_string(attr.all_after(':')) == '-' {
 			return true
 		}
 	}
@@ -11580,7 +11580,7 @@ fn json_attrs_skip_field(attrs []string) bool {
 fn json_struct_field_label(field_name string, attrs []string) string {
 	for attr in attrs {
 		if attr.starts_with('json:') {
-			return json_enum_attr_label(attr.all_after(':'))
+			return decode_attribute_string(attr.all_after(':'))
 		}
 	}
 	return field_name
@@ -11701,7 +11701,7 @@ fn (g &FlatGen) json_enum_labels(enum_name string) ([]string, map[string]string)
 			names << field.value
 			for attr in field.generic_params() {
 				if attr.starts_with('json:') {
-					labels[field.value] = json_enum_attr_label(attr.all_after(':'))
+					labels[field.value] = decode_attribute_string(attr.all_after(':'))
 				}
 			}
 		}
@@ -11710,7 +11710,7 @@ fn (g &FlatGen) json_enum_labels(enum_name string) ([]string, map[string]string)
 	return names, labels
 }
 
-fn json_enum_attr_label(raw_value string) string {
+fn decode_attribute_string(raw_value string) string {
 	mut value := raw_value.trim_space()
 	mut is_raw := false
 	if value.len >= 3 && value[0] == `r` && value[1] in [`'`, `"`]
@@ -11742,7 +11742,7 @@ fn json_enum_attr_label(raw_value string) string {
 		}
 
 		if hex_len > 0 && i + 2 + hex_len <= inner.len {
-			if code := json_enum_attr_hex(inner, i + 2, hex_len) {
+			if code := attribute_string_hex(inner, i + 2, hex_len) {
 				if next == `x` {
 					out.write_u8(u8(code))
 				} else {
@@ -11800,7 +11800,7 @@ fn json_enum_attr_label(raw_value string) string {
 	return out.str()
 }
 
-fn json_enum_attr_hex(value string, start int, count int) ?u32 {
+fn attribute_string_hex(value string, start int, count int) ?u32 {
 	mut code := u32(0)
 	for i in 0 .. count {
 		ch := value[start + i]
