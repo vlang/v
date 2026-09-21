@@ -9253,15 +9253,20 @@ pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 				}
 			}
 		}
+		// Statement transformation can rewrite conditions in place. Preserve the
+		// original `is` expressions before lowering them to runtime tag checks so
+		// their narrowing remains available to subsequent statements.
+		post_if_smartcasts := t.post_if_exit_smartcasts(id)
+		post_assert_smartcasts := t.post_assert_smartcasts(id)
 		expanded := t.transform_stmt(id)
 		t.drain_pending(mut result)
 		for eid in expanded {
 			result << eid
 		}
-		for info in t.post_if_exit_smartcasts(id) {
+		for info in post_if_smartcasts {
 			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 		}
-		for info in t.post_assert_smartcasts(id) {
+		for info in post_assert_smartcasts {
 			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 		}
 		i++
@@ -19692,8 +19697,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if full_key.len > 0 {
 		contexts := t.smartcasts_for(full_key)
 		if contexts.len > 0 {
+			plain_type := t.raw_selector_type_without_smartcast(id)
 			plain := t.make_plain_selector_expr(id, node)
-			return t.apply_smartcast_contexts(plain, t.original_expr_type(id), contexts)
+			return t.apply_smartcast_contexts(plain, plain_type, contexts)
 		}
 	}
 	base_id := base_id0
@@ -19701,8 +19707,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if !t.selector_base_is_explicit_as_expr(base_id) && sc_key.len > 0 {
 		contexts := t.smartcasts_for(sc_key)
 		if contexts.len > 0 {
+			plain_base_type := t.raw_expr_type_without_smartcast(base_id)
 			plain_base := t.make_plain_expr_for_smartcast(base_id)
-			variant_sel := t.apply_smartcast_contexts(plain_base, t.original_expr_type(base_id), contexts)
+			variant_sel := t.apply_smartcast_contexts(plain_base, plain_base_type, contexts)
 			variant_type := t.node_type(variant_sel)
 			if shared_typ := t.sum_shared_field_type_name(variant_type, node.value) {
 				return t.lower_sum_shared_field_selector(variant_sel, variant_type, node.value, shared_typ)
@@ -19868,7 +19875,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 }
 
 // make_plain_selector_expr builds make plain selector expr data for transform.
-fn (mut t Transformer) make_plain_selector_expr(_id flat.NodeId, node flat.Node) flat.NodeId {
+fn (mut t Transformer) make_plain_selector_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	base_id := t.a.child(&node, 0)
 	base_type := t.node_type(base_id)
 	new_base := t.selector_base_for_field(t.transform_selector_base_expr(base_id), base_type)
@@ -19882,7 +19889,8 @@ fn (mut t Transformer) make_plain_selector_expr(_id flat.NodeId, node flat.Node)
 	for nc in new_children {
 		t.a.children << nc
 	}
-	sel_typ := t.transformed_selector_type(node)
+	raw_sel_typ := t.raw_selector_type_without_smartcast(id)
+	sel_typ := if raw_sel_typ.len > 0 { raw_sel_typ } else { t.transformed_selector_type(node) }
 	transformed_base_type := t.node_type(new_base)
 	sel_op := if node.op == .arrow || transformed_base_type.starts_with('&') {
 		flat.Op.arrow
@@ -22313,14 +22321,16 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 			continue
 		}
 		if t.is_interface_type_name(sc.sum_type_name) {
-			if target_iface := t.resolve_interface_pattern_interface(sc.variant_name) {
+			pointer_target := sc.variant_name.starts_with('&')
+			variant_name := t.trim_all_pointer_type(sc.variant_name)
+			if target_iface := t.resolve_interface_pattern_interface(variant_name) {
 				if converted := t.convert_interface_expr_to_interface(current, current_type, target_iface) {
 					current = converted
 					current_type = target_iface
 					continue
 				}
 			}
-			qv := t.interface_variant_type(sc.variant_name)
+			qv := t.interface_variant_type(variant_name)
 			for current_type.starts_with('&&') {
 				current = t.make_prefix(.mul, current)
 				current_type = current_type[1..]
@@ -22329,9 +22339,14 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 			field_op := if current_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 			object := t.make_selector_op(current, '_object', 'voidptr', field_op)
 			cast := t.make_cast('&${qv}', object, '&${qv}')
-			current = t.make_prefix(.mul, cast)
-			t.set_node_typ(int(current), qv)
-			current_type = qv
+			if pointer_target {
+				current = cast
+				current_type = '&${qv}'
+			} else {
+				current = t.make_prefix(.mul, cast)
+				t.set_node_typ(int(current), qv)
+				current_type = qv
+			}
 			continue
 		}
 		clean_current_type := t.trim_pointer_type(current_type)

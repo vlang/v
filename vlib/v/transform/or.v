@@ -2518,6 +2518,11 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]
+		// Or blocks lower their statements directly instead of through
+		// `transform_stmts`. Capture narrowing facts before an assert/guard is
+		// rewritten to a runtime check, then expose them to later statements.
+		post_if_smartcasts := t.post_if_exit_smartcasts(child_id)
+		post_assert_smartcasts := t.post_assert_smartcasts(child_id)
 		is_last := i == body.children_count - 1
 		if is_last && child.kind == .expr_stmt && child.children_count > 0 {
 			inner_id := t.a.child(&child, 0)
@@ -2575,6 +2580,12 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 			for eid in expanded {
 				result << eid
 			}
+		}
+		for info in post_if_smartcasts {
+			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
+		}
+		for info in post_assert_smartcasts {
+			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 		}
 	}
 	_ = target_type

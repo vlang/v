@@ -1395,8 +1395,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 					}
 					if concrete := tc.resolve_interface_match_pattern(pattern) {
 						concrete_type := unalias_type(unwrap_pointer(tc.parse_type(concrete)))
+						concrete_name := method_type_name(concrete_type)
 						if concrete_type !is Interface
-							&& !tc.named_type_implements_interface(concrete, subject_type.name)
+							&& !tc.named_type_implements_interface(concrete_name, subject_type.name)
 							&& tc.should_diagnose(cond_id) {
 							pos := tc.match_condition_diagnostic_pos(cond_id)
 							if !tc.record_interface_implementation_error(.condition_mismatch,
@@ -2555,7 +2556,8 @@ fn (tc &TypeChecker) multi_interface_match_common_interface(subject Interface, b
 		}
 		mut implements_all := true
 		for variant in variants {
-			if !tc.named_type_implements_interface(variant, name) {
+			concrete_name := method_type_name(unalias_type(unwrap_pointer(tc.parse_type(variant))))
+			if concrete_name.len == 0 || !tc.named_type_implements_interface(concrete_name, name) {
 				implements_all = false
 				break
 			}
@@ -2650,7 +2652,7 @@ fn (tc &TypeChecker) interface_runtime_pattern_allowed(subject_iface string, tar
 fn (tc &TypeChecker) pattern_type_known(pattern string) bool {
 	clean := trimmed_space(pattern)
 	if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
-		|| clean.starts_with('fn ') || clean.starts_with('fn(') {
+		|| clean.starts_with('&') || clean.starts_with('fn ') || clean.starts_with('fn(') {
 		return tc.parse_type(clean) !is Unknown
 	}
 	return false
@@ -2658,7 +2660,9 @@ fn (tc &TypeChecker) pattern_type_known(pattern string) bool {
 
 fn (tc &TypeChecker) resolve_ierror_match_pattern(pattern string) ?string {
 	for candidate in tc.interface_match_pattern_candidates(pattern) {
-		if tc.named_type_compatible_with_ierror(candidate) {
+		candidate_type := unalias_type(unwrap_pointer(tc.parse_type(candidate)))
+		candidate_name := method_type_name(candidate_type)
+		if candidate_name.len > 0 && tc.named_type_compatible_with_ierror(candidate_name) {
 			return candidate
 		}
 	}
@@ -2666,6 +2670,19 @@ fn (tc &TypeChecker) resolve_ierror_match_pattern(pattern string) ?string {
 }
 
 fn (tc &TypeChecker) interface_match_pattern_candidates(pattern string) []string {
+	clean_pattern := trimmed_space(pattern)
+	if clean_pattern.starts_with('&') {
+		mut pointer_depth := 0
+		for pointer_depth < clean_pattern.len && clean_pattern[pointer_depth] == `&` {
+			pointer_depth++
+		}
+		base_pattern := trimmed_space(clean_pattern[pointer_depth..])
+		if base_pattern.len == 0 {
+			return [clean_pattern]
+		}
+		prefix := '&'.repeat(pointer_depth)
+		return tc.interface_match_pattern_candidates(base_pattern).map(prefix + it)
+	}
 	mut candidates := []string{}
 	if !pattern.contains('.') {
 		mut has_scoped_candidate := false
@@ -2880,8 +2897,9 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 				}
 			} else if concrete := tc.resolve_interface_match_pattern(node.value) {
 				concrete_type := unalias_type(unwrap_pointer(tc.parse_type(concrete)))
+				concrete_name := method_type_name(concrete_type)
 				if concrete_type !is Interface
-					&& !tc.named_type_implements_interface(concrete, expr_type.name)
+					&& !tc.named_type_implements_interface(concrete_name, expr_type.name)
 					&& tc.should_diagnose(id) {
 					pos := tc.node_value_diagnostic_pos(id)
 					tc.record_interface_implementation_error(.condition_mismatch, concrete_type,

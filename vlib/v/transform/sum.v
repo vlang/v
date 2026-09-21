@@ -735,14 +735,19 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		} else {
 			node.value
 		}
-		if target_iface := t.resolve_interface_pattern_interface(pattern_name) {
+		// Interface runtime tags describe the stored concrete value, not whether the
+		// source pattern asks to expose that value through a pointer smartcast.
+		// Resolve `is &Concrete` against `Concrete`, while retaining the original
+		// pattern in the smartcast context.
+		concrete_pattern_name := t.trim_all_pointer_type(pattern_name)
+		if target_iface := t.resolve_interface_pattern_interface(concrete_pattern_name) {
 			if check := t.make_interface_target_is_check(new_expr, expr_type, clean_type0,
 				target_iface)
 			{
 				return check
 			}
 		}
-		type_ids := t.interface_impl_type_ids(clean_type0, pattern_name)
+		type_ids := t.interface_impl_type_ids(clean_type0, concrete_pattern_name)
 		if type_ids.len > 0 {
 			stable_expr := if type_ids.len > 1 {
 				t.stable_transformed_expr_for_reuse(new_expr, expr_type, 'iface_is')
@@ -757,7 +762,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 			}
 			return check
 		}
-		if pattern := t.resolve_interface_pattern(pattern_name, clean_type0) {
+		if pattern := t.resolve_interface_pattern(concrete_pattern_name, clean_type0) {
 			is_start := t.a.children.len
 			t.a.children << new_expr
 			return t.a.add_node(flat.Node{
