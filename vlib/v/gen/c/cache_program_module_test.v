@@ -28,3 +28,18 @@ fn test_cache_program_module_stays_file_scoped_when_module_has_cached_sources() 
 	_, _, program_modules := g.fn_gen_selection_info()
 	assert !program_modules['builtin']
 }
+
+fn test_synthesized_helpers_are_program_specializations() {
+	mut a := flat.FlatAst.new()
+	mut g := FlatGen.new()
+	g.a = &a
+	for helper in ['__v3_sum_eq_reflection__Type', '__v3_autostr_reflection__Type',
+		'__v3_default_clone_reflection__Type'] {
+		node_id := a.add_node(flat.Node{
+			kind:  .fn_decl
+			value: helper
+		})
+		node := a.get(node_id)
+		assert g.is_program_specialization_fn_node_with_qfn(node, int(node_id), helper)
+	}
+}

@@ -1021,6 +1021,11 @@ fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_
 	if g.a.specialized_fn_nodes[node_index] {
 		return true
 	}
+	synthetic_name := c_short_name_view(node.value)
+	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
+		|| synthetic_name.starts_with('__v3_default_clone_') {
+		return true
+	}
 	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
 		|| g.cname(node.value) in g.tc.specialized_generic_fns
 }
