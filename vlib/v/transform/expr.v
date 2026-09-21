@@ -2289,7 +2289,8 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 		}
 		source_id = base_id
 	}
-	mut raw_type := t.raw_expr_type_without_smartcast(source_id)
+	raw_source_type := t.raw_expr_type_without_smartcast(source_id)
+	mut raw_type := raw_source_type
 	if !t.is_optional_type_name(raw_type) {
 		raw_type = t.optional_result_expr_type_name(source_id)
 	}
@@ -2308,6 +2309,12 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 		}
 	}
 	if t.is_optional_type_name(raw_type) && t.a.nodes[int(id)].kind in [.ident, .selector] {
+		// An optional sum variant gets its wrapper from the active smartcast, not
+		// from the declared expression storage. Select that variant before testing
+		// `.ok`; otherwise this would emit `.ok` on the outer sum struct.
+		if !t.is_optional_type_name(raw_source_type) && t.has_smartcast(t.expr_key(source_id)) {
+			return t.transform_expr(id)
+		}
 		// `source_id` is already the wrapper expression with any redundant top-level
 		// payload selectors removed. Rebuilding it here would transform its
 		// base again and could apply the same assignment smartcast a second time
