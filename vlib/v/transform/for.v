@@ -1062,9 +1062,14 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.set_node_typ(int(container), container_type[1..])
 		actual_iter_type = container_type[1..]
 	}
-	elem_type := t.infer_for_in_elem_type(actual_iter_type, node)
+	mut elem_type := t.infer_for_in_elem_type(actual_iter_type, node)
 	if elem_type.len == 0 {
 		return [id]
+	}
+	if declared_elem := t.declared_for_in_elem_type(container_id, node) {
+		if t.normalize_type_alias(declared_elem) == t.normalize_type_alias(elem_type) {
+			elem_type = declared_elem
+		}
 	}
 	mut idx_name := key.value
 	if !has_index || key.value == '_' {
@@ -1456,6 +1461,54 @@ fn (t &Transformer) infer_for_in_elem_type(iter_type string, node flat.Node) str
 		}
 	}
 	return ''
+}
+
+// declared_for_in_elem_type retains an array element's declared alias for the
+// lowered loop binding. Indexing still uses the normalized container layout,
+// while operations such as `${value}` can observe the alias name and methods.
+fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node flat.Node) ?string {
+	if isnil(t.tc) || int(container_id) < 0 {
+		return none
+	}
+	container := t.a.nodes[int(container_id)]
+	mut container_type := if container.kind == .ident {
+		t.raw_var_type(container.value).trim_space()
+	} else {
+		t.raw_checker_node_type(container_id).trim_space()
+	}
+	if container_type.len == 0 {
+		return none
+	}
+	for _ in 0 .. 16 {
+		container_type = for_iter_payload_type(container_type)
+		if container_type.starts_with('&') {
+			container_type = container_type[1..]
+			continue
+		}
+		if target := t.tc.type_aliases[container_type] {
+			if target == container_type {
+				break
+			}
+			container_type = target
+			continue
+		}
+		if !container_type.contains('.') {
+			qualified := t.tc.qualify_name(container_type)
+			if target := t.tc.type_aliases[qualified] {
+				if target == container_type {
+					break
+				}
+				container_type = target
+				continue
+			}
+		}
+		break
+	}
+	elem_type := t.infer_for_in_elem_type(container_type, node)
+	if elem_type.len > 0 {
+		return elem_type
+	}
+	return none
 }
 
 fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {
