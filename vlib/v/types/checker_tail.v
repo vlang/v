@@ -10140,9 +10140,10 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 		}
 		return
 	}
+	decl_module := if module_name == '' { 'main' } else { module_name }
 	decl := VisibleMutationFnDecl{
 		idx: idx
-		mod: module_name
+		mod: decl_module
 	}
 	normalized_qname := visible_mutation_fn_lookup_name(qname)
 	normalized_source_name := visible_mutation_fn_lookup_name(source_name)
@@ -10156,7 +10157,7 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 	}
 	for candidate in candidates {
 		tc.cache_visible_mutation_fn_decl('\x01${candidate}', decl)
-		tc.cache_visible_mutation_fn_decl('${module_name}\x01${candidate}', decl)
+		tc.cache_visible_mutation_fn_decl('${decl_module}\x01${candidate}', decl)
 	}
 }
 
@@ -10659,7 +10660,7 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 				break
 			}
 		}
-		storage_param_writes_merge(mut writes, scoped_writes)
+		writes = scoped_writes.move()
 		for exit in stable_exits {
 			if !exit.is_goto || exit.label !in labels {
 				loop_exits << exit
