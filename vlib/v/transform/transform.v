@@ -1597,10 +1597,10 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.transform_late_used_fn_bodies(t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
 		late_log_start = t.used_fns_log.len
 		t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
-		// Late-body transformation requests concrete generic work immediately. If
-		// reachability grew but queued no specialization, another whole-AST pass
-		// cannot materialize anything new.
-		if t.used_fn_count() == used_after_pass || t.pending_generic_fn_specs.len == 0 {
+		// A late non-generic body can expose a generic-struct method call. That call
+		// grows reachability without immediately queuing a specialization; the next
+		// pass's generic-struct method scan materializes it from the new used name.
+		if t.used_fn_count() == used_after_pass {
 			break
 		}
 	}
