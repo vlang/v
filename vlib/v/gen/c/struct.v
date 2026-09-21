@@ -999,7 +999,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		}
 	}
 	if !has_field {
-		g.write('0')
+		g.write(if g.struct_type_is_empty(lookup_name) { 'E_STRUCT' } else { '0' })
 	}
 	g.write('}')
 }
@@ -1991,7 +1991,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		}
 	}
 	if !has_field {
-		g.write('0')
+		g.write(if g.struct_type_is_empty(lookup_name) { 'E_STRUCT' } else { '0' })
 	}
 	if align_arg.len > 0 {
 		g.write('}, sizeof(${name}), ${align_arg})')
@@ -2352,7 +2352,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 			}
 		}
 		if !has_field {
-			g.write('0')
+			g.write(if g.struct_type_is_empty(sname) { 'E_STRUCT' } else { '0' })
 		}
 		g.write('}')
 		return
@@ -4664,6 +4664,42 @@ fn (g &FlatGen) struct_fields_for_type(type_name string) ?[]types.StructField {
 	return g.struct_fields_for_type_uncached(type_name)
 }
 
+fn (g &FlatGen) struct_type_is_empty(type_name string) bool {
+	mut seen := map[string]bool{}
+	return g.struct_type_is_empty_inner(type_name, mut seen)
+}
+
+fn (g &FlatGen) struct_type_is_empty_inner(type_name string, mut seen map[string]bool) bool {
+	if seen[type_name] {
+		return false
+	}
+	fields := g.struct_fields_for_type(type_name) or { return false }
+	if fields.len == 0 {
+		return true
+	}
+	seen[type_name] = true
+	defer {
+		seen.delete(type_name)
+	}
+	for field in fields {
+		if !g.type_is_effectively_empty(field.typ, mut seen) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (g &FlatGen) type_is_effectively_empty(typ types.Type, mut seen map[string]bool) bool {
+	clean := default_init_unalias_type(typ)
+	if clean is types.Struct {
+		return g.struct_type_is_empty_inner(clean.name, mut seen)
+	}
+	if clean is types.ArrayFixed {
+		return g.type_is_effectively_empty(clean.elem_type, mut seen)
+	}
+	return false
+}
+
 fn (g &FlatGen) struct_fields_for_type_uncached(type_name string) ?[]types.StructField {
 	if info := g.find_struct_decl(type_name) {
 		if fields := g.tc.structs[info.full_name] {
@@ -6274,7 +6310,7 @@ fn (mut g FlatGen) emit_struct(name string) {
 			g.writeln('#pragma pack(push, ${pack})')
 		}
 		// `struct C.X {}` says the struct is defined in C. V normally still emits a
-		// definition, with a dummy member because C has no empty struct -- fine when
+		// definition, with the compiler-specific empty-struct fallback -- fine when
 		// nothing else declares it. On a target that supplies its own headers those
 		// headers are included and do define it, so the synthesized one is a
 		// redefinition; a forward declaration is enough for the pointer use such an
@@ -6290,7 +6326,7 @@ fn (mut g FlatGen) emit_struct(name string) {
 		}
 		g.writeln('${g.struct_decl_head(name)} {')
 		if fields.len == 0 {
-			g.writeln('\tu8 _dummy;')
+			g.writeln('\tE_STRUCT_DECL;')
 		}
 		for f in fields {
 			g.write_struct_field(name, f)
