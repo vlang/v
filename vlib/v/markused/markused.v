@@ -236,6 +236,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// implicit helpers, which is required on every path (not just generics detection).
 	collect_body_metadata := true
 	mut cache_roots := []string{}
+	mut cached_header_enum_str_roots := []string{}
 	mut c_interface_roots := []string{}
 	mut marked_roots := []string{}
 	if use_prepared {
@@ -251,6 +252,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			suffix_map = prepared.suffix_map
 			import_contexts = prepared.import_contexts
 			marked_roots = prepared.marked_roots
+			cached_header_enum_str_roots = prepared.cached_header_enum_str_roots
 			c_interface_roots = prepared.c_interface_roots
 			body_ids = prepared.body_ids
 			body_modules = prepared.body_modules
@@ -289,6 +291,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			decl_module := tc.file_modules[decl_file] or { cur_module }
 			decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
+			if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+				cached_header_enum_str_roots << qualify_fn(decl_module, node.value)
+			}
 			if node.kind == .struct_decl {
 				full_name := qualify_fn(decl_module, node.value)
 				info := StructDeclInfo{
@@ -549,6 +554,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			queue << seed
 			used[seed] = true
 		}
+	}
+	// Cached module objects can call generated enum stringifiers from bodies that
+	// are intentionally absent from their public headers. Keep those program-level
+	// helpers even when no visible caller remains in the warm-cache AST.
+	for type_name in cached_header_enum_str_roots {
+		enqueue_enum_str_method(type_name, '', tc, mut used, mut queue)
 	}
 	for name in cache_roots {
 		enqueue(name, mut used, mut queue)
@@ -1754,23 +1765,24 @@ struct ConstDeclInfo {
 @[heap]
 pub struct PreparedMarkusedDecls {
 mut:
-	fn_decls              map[string]FnDeclInfo
-	fn_decl_lists         map[string][]FnDeclInfo
-	struct_decls          map[string]StructDeclInfo
-	const_decls           map[string]ConstDeclInfo
-	fn_name_suffixes      map[string]bool
-	const_name_suffixes   map[string]bool
-	suffix_map            map[string][]string
-	import_contexts       []map[string]string
-	marked_roots          []string
-	c_interface_roots     []string
-	auto_roots            []string
-	body_ids              []int
-	body_modules          []string
-	body_import_contexts  []int
-	needs_closure_runtime bool
-	scope                 voidptr
-	ready                 bool
+	fn_decls                     map[string]FnDeclInfo
+	fn_decl_lists                map[string][]FnDeclInfo
+	struct_decls                 map[string]StructDeclInfo
+	const_decls                  map[string]ConstDeclInfo
+	fn_name_suffixes             map[string]bool
+	const_name_suffixes          map[string]bool
+	suffix_map                   map[string][]string
+	import_contexts              []map[string]string
+	marked_roots                 []string
+	cached_header_enum_str_roots []string
+	c_interface_roots            []string
+	auto_roots                   []string
+	body_ids                     []int
+	body_modules                 []string
+	body_import_contexts         []int
+	needs_closure_runtime        bool
+	scope                        voidptr
+	ready                        bool
 }
 
 // prepare_markused_declarations builds self-host declaration indexes on a
@@ -1854,6 +1866,9 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		}
 		decl_module := tc.file_modules[decl_file] or { cur_module }
 		decl_import_context := import_context_by_file[decl_file] or { cur_import_context }
+		if node.kind == .enum_decl && decl_file.ends_with('.vh') {
+			result.cached_header_enum_str_roots << qualify_fn(decl_module, node.value)
+		}
 		if node.kind == .struct_decl {
 			full_name := qualify_fn(decl_module, node.value)
 			info := StructDeclInfo{

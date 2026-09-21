@@ -232,6 +232,19 @@ pub enum Color {
 	assert used['colors__Color__autostr']
 }
 
+fn test_cached_header_enum_keeps_autostr_helper_without_visible_call() {
+	a, tc := parse_checked_two_file_source('cached_header_enum_autostr', imported_enum_main_source('_ := c'),
+		'colors/colors.vh', 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+')
+	used := mark_used(a, tc)
+	assert used['colors__Color__autostr']
+}
+
 // test_imported_operator_infix_seeds_operator_methods validates this v3 regression case.
 fn test_imported_operator_infix_seeds_operator_methods() {
 	a, tc := parse_checked_two_file_source('imported_operator_infix', imported_operator_main_source(imported_operator_usage_source()), 'vectors/vectors.v', imported_operator_module_source())
