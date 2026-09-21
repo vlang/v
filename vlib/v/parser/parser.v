@@ -10310,7 +10310,25 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// function call
 		if p.tok == .lpar {
-			lhs_node := p.a.nodes[int(lhs)]
+			mut lhs_node := p.a.nodes[int(lhs)]
+			// On the C backend vfmt writes `'text'.str()` as `c'text'()`.
+			// Restore the semantic receiver/method shape before checking; formatter
+			// parses keep the compact source form so they can emit it unchanged.
+			if !p.prefs.is_fmt && lhs_node.kind == .char_literal
+				&& lhs_node.value.starts_with('c:') {
+				p.a.nodes[int(lhs)].kind = .string_literal
+				p.a.nodes[int(lhs)].value = unescape_string(lhs_node.value[2..])
+				p.a.nodes[int(lhs)].typ = ''
+				selector_start := p.add_child(lhs)
+				lhs = p.add_node_from(flat.Node{
+					kind:           .selector
+					value:          'str'
+					children_start: selector_start
+					children_count: 1
+				}, lhs)
+				lhs = p.call_args(lhs)
+				continue
+			}
 			if lhs_node.kind == .postfix && lhs_node.op in [.inc, .dec] && p.prev_tok_end > 0
 				&& p.line_nr_for_pos(p.prev_tok_end - 1) < p.line_nr_for_pos(p.tok_pos) {
 				break

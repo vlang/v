@@ -13907,8 +13907,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& tc.a.node(arg_id).children_count == 1 {
 			continue
 		}
-		is_c_string_literal := tc.a.node(arg_id).kind == .char_literal
-			&& tc.a.node(arg_id).value.starts_with('c:') && unalias_type(actual) is Pointer
+		is_c_string_literal := (tc.a.node(arg_id).kind == .char_literal
+			&& tc.a.node(arg_id).value.starts_with('c:') && unalias_type(actual) is Pointer)
+			|| tc.raw_string_literal_pointer_compatible(arg_id, expected)
 		if fn_param_is_voidptr_type(expected) && !is_c_string_literal
 			&& !info.name.ends_with('Channel.push')
 			&& !json_runtime_voidptr_accepts_arg(target_name, param_idx, expected, actual)
@@ -13936,8 +13937,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					}
 				}
 			}
-			c_string_literal := tc.a.node(arg_id).kind == .char_literal
-				&& tc.a.node(arg_id).value.starts_with('c:') && actual is Pointer
+			c_string_literal := (tc.a.node(arg_id).kind == .char_literal
+				&& tc.a.node(arg_id).value.starts_with('c:') && actual is Pointer)
+				|| tc.raw_string_literal_pointer_compatible(arg_id, expected)
 			if !info.name.starts_with('C.') && !c_string_literal
 				&& reference_name !in ['voidptr', 'byteptr', 'charptr'] {
 				tc.record_error_at(.call_arg_mismatch, 'literal argument cannot be passed as reference parameter `${reference_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))

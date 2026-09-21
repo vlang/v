@@ -8035,6 +8035,10 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		tc.register_synth_type(id, expected_raw)
 		return expected_raw
 	}
+	if tc.raw_string_literal_pointer_compatible(id, expected) {
+		tc.register_synth_type(id, expected_raw)
+		return expected_raw
+	}
 	if node.kind == .field_init && node.children_count > 0 {
 		return tc.resolve_expr(tc.a.child(&node, 0), expected)
 	}
@@ -8380,6 +8384,18 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		return expected_raw
 	}
 	return actual
+}
+
+fn (tc &TypeChecker) raw_string_literal_pointer_compatible(id flat.NodeId, expected Type) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .string_literal || !node.typ.starts_with('raw:') {
+		return false
+	}
+	string_data_type := tc.struct_field_type('string', 'str') or { return false }
+	return tc.type_compatible(string_data_type, expected)
 }
 
 fn c_char_literal_scalar_byte(value string) bool {
