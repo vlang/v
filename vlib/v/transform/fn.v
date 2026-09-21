@@ -1419,7 +1419,9 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				continue
 			}
 		}
-		if converted := t.transform_mut_optional_value_call_arg(arg_id, param_type) {
+		if converted := t.transform_mut_optional_pointer_address_call_arg(arg_id, param_type) {
+			new_children << converted
+		} else if converted := t.transform_mut_optional_value_call_arg(arg_id, param_type) {
 			new_children << converted.value
 			mut_optional_value_writebacks << converted.writeback
 		} else {
@@ -1501,6 +1503,39 @@ fn (t &Transformer) call_arg_is_packed_variadic_tail(arg_id flat.NodeId, variadi
 	}
 	expected_type := t.semantic_type_name(variadic_type)
 	return t.normalize_type_alias(actual_type) == t.normalize_type_alias(expected_type)
+}
+
+fn (mut t Transformer) transform_mut_optional_pointer_address_call_arg(arg_id flat.NodeId, param_type string) ?flat.NodeId {
+	if int(arg_id) < 0 || param_type.len < 4 || !param_type.starts_with('&?') {
+		return none
+	}
+	arg_node := t.a.nodes[int(arg_id)]
+	if !arg_node.is_mut || arg_node.kind != .prefix || arg_node.op != .amp
+		|| arg_node.children_count != 1 {
+		return none
+	}
+	option_type := t.qualify_optional_type(param_type[1..])
+	payload_type := t.optional_base_type(option_type)
+	if !payload_type.starts_with('&') {
+		return none
+	}
+	source_id := t.a.child(&arg_node, 0)
+	mut source_type := t.node_type(source_id)
+	if source_type.len == 0 {
+		source_type = t.resolve_expr_type(source_id)
+	}
+	if t.normalize_type_alias(source_type) != t.normalize_type_alias(payload_type) {
+		return none
+	}
+	tmp_name := t.new_temp('mut_optional_ptr_arg')
+	value := t.transform_expr_for_type(source_id, payload_type)
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.make_optional_some(value,
+		option_type), option_type)
+	tmp := t.make_ident(tmp_name)
+	t.set_node_typ(int(tmp), option_type)
+	addr := t.make_prefix(.amp, tmp)
+	t.set_node_typ(int(addr), param_type)
+	return addr
 }
 
 fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId, param_type string) ?MutOptionalValueCallArg {

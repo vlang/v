@@ -11839,6 +11839,9 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_compatible(actual Type, expected Type)
 	if tc.type_compatible(actual, expected) {
 		return true
 	}
+	if tc.mut_optional_pointer_arg_compatible(actual, expected) {
+		return true
+	}
 	actual_depth, actual_base := type_pointer_depth_and_base(actual)
 	expected_depth, expected_base := type_pointer_depth_and_base(expected)
 	if actual_depth == expected_depth + 1 && tc.type_compatible(actual_base, expected_base) {
@@ -13971,6 +13974,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& actual_pointer_depth > expected_pointer_depth
 			&& !(arg_node.is_mut && requires_mut_pointer_slot
 				&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
+			&& !(arg_node.is_mut
+				&& tc.mut_optional_pointer_arg_compatible(pointer_check_actual, expected))
 			&& !type_contains_unknown(expected)
 			&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
 			&& !tc.call_arg_is_callee_receiver(node, arg_id)
@@ -15377,6 +15382,9 @@ fn (tc &TypeChecker) mut_optional_pointer_arg_compatible(actual Type, expected T
 		return tc.type_compatible(actual.base_type, expected_option.base_type.base_type)
 	}
 	if expected_option.base_type is Pointer {
+		if actual is Pointer && actual.base_type is Pointer {
+			return tc.type_compatible(actual.base_type, expected_option.base_type)
+		}
 		return tc.type_compatible(actual, expected_option.base_type.base_type)
 	}
 	return false
