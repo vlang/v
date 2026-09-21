@@ -5755,13 +5755,6 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 		tc.record_unhandled_result_call(child_id, child_type)
 		return
 	}
-	if child_type is OptionType {
-		child := tc.a.node(child_id)
-		if child.kind == .ident {
-			tc.record_error_at(.assignment_mismatch, 'variable `${child.value}` is an Option, it must be unwrapped first', child_id, tc.node_value_diagnostic_pos(child_id))
-			return
-		}
-	}
 	target_type_name := comptime_static_unwrap_type_text(node.value)
 	if target_type_name.contains('.') && !interface_pattern_is_collapsed_container(node.value)
 		&& !tc.type_name_known(target_type_name) {
@@ -5786,6 +5779,25 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 		tc.record_error_at(.unknown_type, tc.unknown_type_message(node.value, id), id, pos)
 		tc.record_error_at(.assignment_mismatch, 'cannot cast `${tc.diagnostic_type_name(child_type)}` to `${node.value}`', id, pos)
 		return
+	}
+	if child_type is OptionType {
+		target_type := tc.parse_type(node.value)
+		if target_type is OptionType && tc.type_compatible(child_type, target_type)
+			&& tc.type_compatible(target_type, child_type) {
+			return
+		}
+		child := tc.a.node(child_id)
+		if child.kind == .ident {
+			declared := tc.cur_scope.lookup(child.value) or { Type(Unknown{}) }
+			clean_declared := unalias_type(unwrap_pointer(declared))
+			// A sum type can itself contain an optional variant. After an `is ?T`
+			// smartcast, the expression type is `?T`, but the `as ?T` operation still
+			// applies to the declared sum value rather than to an outer Option.
+			if clean_declared !is SumType && clean_declared !is Interface {
+				tc.record_error_at(.assignment_mismatch, 'variable `${child.value}` is an Option, it must be unwrapped first', child_id, tc.node_value_diagnostic_pos(child_id))
+				return
+			}
+		}
 	}
 	as_child_type := if child_type is OptionType { child_type.base_type } else { child_type }
 	mut clean_child := unalias_type(unwrap_pointer(as_child_type))
