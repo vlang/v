@@ -13793,12 +13793,16 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		mut compatible_interface_value_arg := false
 		mut mutable_interface_impl_arg := false
 		if expected_interface := cast_target_interface(clean_expected_for_interface) {
-			interface_actual := if actual is Pointer { actual.base_type } else { actual }
 			allow_mut_receiver := param_is_mut && mut_arg_node.is_mut
-			if tc.record_interface_implementation_error_with_mut_receiver(.call_arg_mismatch,
-				interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id),
-				allow_mut_receiver) {
-				continue
+			// A raw pointer is an explicit escape hatch for interface reference
+			// parameters; it does not describe a concrete interface implementer.
+			if !fn_param_is_voidptr_type(actual) {
+				interface_actual := if actual is Pointer { actual.base_type } else { actual }
+				if tc.record_interface_implementation_error_with_mut_receiver(.call_arg_mismatch,
+					interface_actual, expected_interface, arg_id, tc.call_argument_diagnostic_pos(arg_id),
+					allow_mut_receiver) {
+					continue
+				}
 			}
 			compatible_interface_value_arg = clean_expected_for_interface is Interface
 			mutable_interface_impl_arg = allow_mut_receiver
