@@ -1027,6 +1027,7 @@ fn (mut t Transformer) build_if_value_chain(if_id flat.NodeId, target_name strin
 	has_else := if_node.children_count >= 3
 
 	all_is := t.extract_all_is_exprs(cond_id)
+	else_smartcasts := t.extract_else_branch_smartcasts(cond_id)
 	new_cond := t.transform_and_chain_smartcasts(cond_id)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1041,12 +1042,18 @@ fn (mut t Transformer) build_if_value_chain(if_id flat.NodeId, target_name strin
 
 	mut else_block := flat.empty_node
 	if has_else {
+		for info in else_smartcasts {
+			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
+		}
 		else_id := t.a.child(&if_node, 2)
 		else_node := t.a.nodes[int(else_id)]
 		if else_node.kind == .if_expr {
 			else_block = t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
 		} else {
 			else_block = t.if_value_branch_block(else_id, target_name, target_type)
+		}
+		for _ in else_smartcasts {
+			t.pop_smartcast()
 		}
 	}
 	result << t.make_if(new_cond, then_block, else_block)
