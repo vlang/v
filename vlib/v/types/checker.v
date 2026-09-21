@@ -11819,9 +11819,9 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			continue
 		}
 		child := tc.a.nodes[int(child_id)]
-		// A `comptime_for` node stores its loop source (`val`, `T`) in `typ`, which is a value
-		// or generic placeholder rather than a declared type; it is validated at unroll time.
-		if child.kind == .comptime_for {
+		// These nodes use `typ` for a non-type payload: a comptime loop source or an
+		// offsetof field name. Their actual type inputs are validated separately.
+		if child.kind in [.comptime_for, .offsetof_expr] {
 			continue
 		}
 		mut explicit_decl_params := generic_param_map_from_names(node.generic_params())
@@ -11870,7 +11870,7 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 				continue
 			}
 			grandchild := tc.a.nodes[int(grandchild_id)]
-			if grandchild.kind == .comptime_for {
+			if grandchild.kind in [.comptime_for, .offsetof_expr] {
 				continue
 			}
 			if !decl_generic_mentions_error
