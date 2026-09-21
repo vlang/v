@@ -1370,6 +1370,13 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		if variadic_idx >= 0 && param_idx == variadic_idx {
 			variadic_type := params[variadic_idx]
 			if variadic_type is types.Array {
+				if arg_node.kind == .ident && arg_node.value == t.cur_fn_variadic_param {
+					new_children << t.transform_expr_for_type(arg_id,
+						t.semantic_type_name(variadic_type))
+					variadic_tail_supplied = true
+					i++
+					break
+				}
 				if t.call_arg_is_packed_variadic_tail(arg_id, variadic_type) {
 					new_children << t.transform_expr(arg_id)
 					variadic_tail_supplied = true
@@ -15332,6 +15339,12 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 		if variadic_idx >= 0 && param_idx == variadic_idx {
 			variadic_type := params[variadic_idx]
 			if variadic_type is types.Array {
+				if arg_node.kind == .ident && arg_node.value == t.cur_fn_variadic_param {
+					args << t.transform_expr_for_type(arg_id, t.semantic_type_name(variadic_type))
+					variadic_tail_supplied = true
+					i++
+					break
+				}
 				if arg_node.kind == .prefix && arg_node.value == '...'
 					&& arg_node.children_count > 0 {
 					spread_id := t.a.child(&arg_node, 0)
