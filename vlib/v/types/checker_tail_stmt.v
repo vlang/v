@@ -12153,7 +12153,7 @@ fn is_middleware_type_name(name string) bool {
 
 fn (tc &TypeChecker) receiver_embeds(actual Type, expected Type) bool {
 	actual_name := method_type_name(unalias_and_unwrap_pointer_type(actual))
-	expected_name := method_type_name(unalias_and_unwrap_pointer_type(expected))
+	expected_name := method_type_name(unwrap_pointer(expected))
 	if actual_name.len == 0 || expected_name.len == 0 {
 		return false
 	}
