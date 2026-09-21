@@ -1720,6 +1720,29 @@ fn run_binary(bin_file string, args []string) int {
 	return exit_code
 }
 
+fn run_v_source_from_stdin(args []string, input_index int) {
+	stdin_source := os.get_raw_lines_joined()
+	temporary_source := os.join_path(os.getwd(), '.v3_stdin_${os.getpid()}_${tempname.unique_token()}.v')
+	os.write_file(temporary_source, stdin_source) or {
+		eprintln('cannot create temporary stdin source file: ${err.msg()}')
+		exit(1)
+	}
+	mut child_args := args.clone()
+	child_args[input_index] = temporary_source
+	mut process := os.new_process(os.executable())
+	process.set_args(child_args)
+	process.wait()
+	exit_code := if process.code >= 0 { process.code } else { 1 }
+	process.close()
+	os.rm(temporary_source) or {
+		eprintln('cannot remove temporary stdin source file: ${err.msg()}')
+		if exit_code == 0 {
+			exit(1)
+		}
+	}
+	exit(exit_code)
+}
+
 fn maybe_delegate_v3_to_vvmrc(input_file string, verbose bool) {
 	if os.getenv(v3_vvmrc_skip_env) != '' || input_file in ['', '-'] {
 		return
@@ -8780,6 +8803,7 @@ pub fn run(args []string) {
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'command-line processing')
 
 	mut input_file := ''
+	mut stdin_input_index := -1
 	mut output_file := ''
 	mut explicit_output := false
 	mut backend := 'c'
@@ -8915,6 +8939,10 @@ pub fn run(args []string) {
 		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
 			is_test_command = true
 			command_seen = true
+			i++
+		} else if args[i] == '-' && input_file.len == 0 {
+			input_file = '-'
+			stdin_input_index = i
 			i++
 		} else if args[i] in ['-o', '-output'] && i + 1 < args.len {
 			output_file = args[i + 1]
@@ -9357,6 +9385,12 @@ pub fn run(args []string) {
 		// This option wins regardless of its ordering relative to
 		// `-no-bounds-checking`, matching the established parser contract.
 		user_defines = user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
+	}
+	if stdin_input_index >= 0 {
+		// The delegated compiler owns fallback reporting. Leaving the parent's
+		// staged marker armed would retry the original `run -` after stdin is spent.
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		run_v_source_from_stdin(args, stdin_input_index)
 	}
 	// `-ldflags` comes after the ambient `LDFLAGS`, so an explicitly passed option
 	// wins, exactly like V1 orders `env_ldflags` before the `-ldflags` value.
