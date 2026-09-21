@@ -7422,6 +7422,13 @@ fn v3_cache_compiler_signature(vroot string) string {
 	return modulecache.cached_source_signature(cache_dir, os.real_path(vroot), files)
 }
 
+// v3_cache_compiler_executable_identity prevents an old compiler from populating the module
+// cache under the source signature of a newer compiler that has not been rebuilt yet.
+fn v3_cache_compiler_executable_identity(vexe string) string {
+	path := os.real_path(vexe)
+	return '${path}\t${modulecache.file_metadata_signature(path)}'
+}
+
 fn restored_fn_c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]
@@ -10219,12 +10226,17 @@ pub fn run(args []string) {
 	} else {
 		''
 	}
+	compiler_executable_identity := if cache_candidate_enabled {
+		v3_cache_compiler_executable_identity(prefs.vexe)
+	} else {
+		''
+	}
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
 	cache_salt := [
 		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
 		'ccompiler=${prefs.ccompiler}',
-		'vexe=${prefs.vexe}',
+		'vexe=${compiler_executable_identity}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
