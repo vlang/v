@@ -5910,6 +5910,13 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
+	if key := tc.selector_fn_value_key(node) {
+		if typ := tc.fn_type_from_key(key) {
+			tc.remember_resolved_fn_value(id, key)
+			tc.register_synth_type(id, typ)
+			return
+		}
+	}
 	tc.check_storage_path_base_node(base_id)
 	mut base_type := tc.smartcast_type(base_id) or {
 		tc.lexical_match_smartcast_type(base_id) or { tc.resolve_type(base_id) }
@@ -7189,6 +7196,13 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 		}
 		_ = module_name
 		return
+	}
+	if key := tc.selector_fn_value_key(node) {
+		if typ := tc.fn_type_from_key(key) {
+			tc.remember_resolved_fn_value(id, key)
+			tc.register_synth_type(id, typ)
+			return
+		}
 	}
 	tc.check_storage_path_base_node(base_id)
 	mut base_type := tc.smartcast_type(base_id) or { tc.resolve_type(base_id) }
