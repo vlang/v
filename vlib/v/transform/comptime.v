@@ -417,7 +417,8 @@ fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId)
 		} else {
 			node.value
 		}
-		if qualified == name || qualified == lookup_name
+		reflection_name := qualified.replace('@static@', '.')
+		if reflection_name == name || reflection_name == lookup_name
 			|| (module_name == t.cur_module && node.value == lookup_name) {
 			return t.comptime_node_attribute_metas(idx)
 		}
@@ -1718,7 +1719,7 @@ fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name stri
 // struct expected by a reflected method. Comptime method calls are checked before
 // generic specialization, so their argument can still be `T` then and become a
 // concrete embedding struct only while the call is cloned.
-fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId, param_type string) ?flat.NodeId {
+fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId, param_type string, param_module string) ?flat.NodeId {
 	if int(arg_id) < 0 || !param_type.starts_with('&') {
 		return none
 	}
@@ -1732,6 +1733,16 @@ fn (mut t Transformer) transform_comptime_method_embedded_arg(arg_id flat.NodeId
 		actual_type = '&${actual_type}'
 	}
 	actual_base := t.trim_pointer_type(actual_type)
+	actual_identity := type_text_without_main_locks(t.normalize_type_in_module(actual_base,
+		t.cur_module))
+	expected_identity := if param_module in ['', 'main'] {
+		type_text_without_main_locks(expected_type)
+	} else {
+		type_text_without_main_locks(t.normalize_type_in_module(expected_type, param_module))
+	}
+	if actual_identity == expected_identity {
+		return none
+	}
 	_ := t.embedded_receiver_path(actual_base, expected_type) or { return none }
 	base := if actual_type.starts_with('&') && arg.kind == .ident {
 		t.transform_expr_preserving_pointer_value(arg_id)
@@ -1773,7 +1784,7 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 		callee := t.a.node(children[0])
 		if callee.kind == .selector && comptime_method_selector_marker in callee.generic_params() {
 			if embedded_ctx := t.transform_comptime_method_embedded_arg(children[1],
-				method.params[0].typ)
+				method.params[0].typ, method.params[0].module_name)
 			{
 				children[1] = embedded_ctx
 				t.a.children[start + 1] = embedded_ctx
@@ -2096,6 +2107,11 @@ fn (t &Transformer) comptime_enum_members(base_type string) []EnumValueMeta {
 // treated like the C backend: normal enums use the integer directly; `[flag]` enums use it as the
 // bit index and materialize `1 << index`.
 fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
+	checked_values := if isnil(t.tc) {
+		map[string]int{}
+	} else {
+		t.tc.comptime_enum_decl_field_values(enum_name)
+	}
 	mut cur_mod := ''
 	for idx in 0 .. t.a.nodes.len {
 		kind := t.a.nodes[idx].kind
@@ -2139,7 +2155,9 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 		mut next_val := i64(0)
 		for f in fields {
 			mut val := next_val
-			if int(f.expr_id) >= 0 {
+			if checked_value := checked_values[f.name] {
+				val = i64(checked_value)
+			} else if int(f.expr_id) >= 0 {
 				if ev := t.enum_field_int_value_with_enum(f.expr_id, cur_mod, qualified, mut field_values, field_exprs, mut resolving) {
 					val = ev
 				}
@@ -2534,15 +2552,7 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 			break
 		}
 		arg := t.a.nodes[int(arg_id)]
-		mut arg_type := if arg.kind == .ident {
-			t.local_decl_type_before(arg.value, arg_id) or {
-				t.comptime_reflected_for_in_local_type(arg.value, fm) or {
-					t.generic_call_arg_type_for_inference(arg_id)
-				}
-			}
-		} else {
-			t.generic_call_arg_type_for_inference(arg_id)
-		}
+		mut arg_type := t.comptime_field_generic_arg_type(arg_id, fm)
 		if arg.kind == .ident {
 			if payload := t.comptime_option_unwrapped_local_type(arg.value, node, fm) {
 				arg_type = payload
@@ -2596,6 +2606,32 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 	// generic arguments, so leaving the generated function name there makes a
 	// later monomorphization pass interpret that name as the concrete type.
 	return ''
+}
+
+fn (mut t Transformer) comptime_field_generic_arg_type(arg_id flat.NodeId, fm FieldMeta) string {
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind == .ident {
+		return t.local_decl_type_before(arg.value, arg_id) or {
+			t.comptime_reflected_for_in_local_type(arg.value, fm) or {
+				t.generic_call_arg_type_for_inference(arg_id)
+			}
+		}
+	}
+	if arg.kind == .prefix && arg.children_count > 0 {
+		child_id := t.a.child(&arg, 0)
+		child := t.a.nodes[int(child_id)]
+		if child.kind == .ident {
+			if local_type := t.local_decl_type_before(child.value, child_id) {
+				if arg.op == .amp {
+					return '&${local_type}'
+				}
+				if arg.op == .mul && local_type.starts_with('&') {
+					return local_type[1..]
+				}
+			}
+		}
+	}
+	return t.generic_call_arg_type_for_inference(arg_id)
 }
 
 fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.Node, fm FieldMeta) ?string {
@@ -2774,7 +2810,7 @@ fn (t &Transformer) subtree_has_comptime_field_selector(id flat.NodeId) bool {
 
 fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
 	literal := t.make_int_literal_typed(item.value.str(), 'i64')
-	return t.make_cast('i64', literal, 'i64')
+	return t.make_cast(item.enum_name, literal, item.enum_name)
 }
 
 // clone_variant_subst clones a `$for variant in Sum.variants` body and gives the variant loop
@@ -4238,10 +4274,32 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 	}
 	if node.kind == .decl_assign && children.len >= 2 {
 		rhs := t.a.nodes[int(children[1])]
+		unwrapped_rhs_typ := if rhs.kind == .ident {
+			t.comptime_option_unwrapped_local_type(rhs.value, node, fm) or { '' }
+		} else {
+			''
+		}
+		reflected_rhs_typ := if unwrapped_rhs_typ.len > 0 {
+			unwrapped_rhs_typ
+		} else if rhs.kind == .ident {
+			t.local_decl_type_before(rhs.value, children[1]) or { '' }
+		} else if rhs.kind == .or_expr && rhs.value == '?' && fm.is_option
+			&& fm.comptime_typ.starts_with('?') {
+			fm.comptime_typ[1..].trim_space()
+		} else {
+			''
+		}
+		if reflected_rhs_typ.len > 0 {
+			t.set_node_typ(int(children[1]), reflected_rhs_typ)
+			t.record_refined_node_type(int(children[1]), reflected_rhs_typ)
+		}
 		// A reflected selector carries the field's qualified type on the cloned
 		// node. Keep that spelling so a bare user type is not mistaken for an
 		// unresolved generic placeholder during a later call in this branch.
-		rhs_typ := if rhs.typ.len > 0 && rhs.typ !in ['unknown', 'generic'] && !t.generic_arg_is_unresolved(rhs.typ) {
+		rhs_typ := if reflected_rhs_typ.len > 0 {
+			reflected_rhs_typ
+		} else if rhs.typ.len > 0 && rhs.typ !in ['unknown', 'generic']
+			&& !t.generic_arg_is_unresolved(rhs.typ) {
 			rhs.typ
 		} else {
 			t.node_type(children[1])

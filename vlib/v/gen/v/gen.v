@@ -1198,6 +1198,10 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		.sizeof_expr {
 			if source := g.a.formatter_sources[int(id)] {
 				g.write(source.trim_space())
+			} else if n.children_count > 0 {
+				g.write('sizeof(')
+				g.expr(g.a.child(n, 0))
+				g.write(')')
 			} else {
 				g.write('sizeof(${g.type_text(n.value)})')
 			}

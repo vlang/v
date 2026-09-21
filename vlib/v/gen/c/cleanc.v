@@ -331,6 +331,7 @@ mut:
 	profile_fn_active              bool
 	profile_fn_restore_enabled     bool
 	is_prod                        bool
+	is_debug                       bool
 	check_overflow                 bool
 	ignore_overflow                bool
 	force_bounds_checking          bool
@@ -542,6 +543,7 @@ mut:
 	cur_mut_pointer_params          map[string]bool
 	cur_explicit_mut_pointer_params map[string]bool
 	cur_mut_param_owners            map[string]types.ScopeBindingOwner
+	cur_c_fn_calls                  map[string]bool
 	cur_fn_ret                      types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional          bool
 	cur_fn_ret_base                 types.Type = types.Type(types.void_)
@@ -768,6 +770,11 @@ pub fn (mut g FlatGen) set_ccompiler(name string) {
 // set_prod controls production-only code generation such as removing assertions.
 pub fn (mut g FlatGen) set_prod(enabled bool) {
 	g.is_prod = enabled
+}
+
+// set_debug enables source-aware panic reporting for debug builds.
+pub fn (mut g FlatGen) set_debug(enabled bool) {
+	g.is_debug = enabled
 }
 
 // set_check_overflow enables runtime checks for integer addition, subtraction, and multiplication.
@@ -4049,8 +4056,9 @@ fn (mut g FlatGen) write_type_declaration_block() {
 fn (mut g FlatGen) gen_vinit() {
 	needs_closure_init := g.needs_closure_runtime_init()
 	has_embed_joins := g.has_chunked_embed_blobs()
+	has_reflection := g.has_runtime_reflection()
 	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
-		&& g.global_inits.len == 0 && !needs_closure_init && !has_embed_joins {
+		&& g.global_inits.len == 0 && !needs_closure_init && !has_embed_joins && !has_reflection {
 		return
 	}
 	fn_start_pos := g.sb.len
@@ -4077,6 +4085,9 @@ fn (mut g FlatGen) gen_vinit() {
 		}
 	}
 	g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
+	if has_reflection {
+		g.gen_reflection_data()
+	}
 	if needs_closure_init {
 		g.writeln('\t${g.cname('closure.closure_init')}();')
 	}
@@ -15438,14 +15449,25 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
-			if node.op == .amp && cgen_unalias_type(g.usable_expr_type(child_id)) is types.FnType
-				&& !g.context_wants_pointer_to_fn() {
+			fn_value_type := cgen_unalias_type(g.usable_expr_type(child_id))
+			if node.op == .amp && fn_value_type is types.FnType {
 				// A function value is already a C pointer, so `&` on one is a no-op
 				// wherever the context wants a callable: `Holder{ f: &local }` has to
 				// store the function, not the address of a stack slot that dies with
 				// the frame. Only a context that asks for a pointer to a function
 				// - `ref := &f`, read back through `*ref` - needs the address, and
 				// dropping it there leaves the dereference reading code as data.
+				if g.context_wants_pointer_to_fn() {
+					mut fn_ct := g.tc.c_type(fn_value_type)
+					if fn_ct.starts_with('fn_ptr:') {
+						fn_ct = g.resolve_fn_ptr_type(fn_ct)
+					}
+					tmp := g.tmp_name()
+					g.write('({ ${fn_ct} ${tmp} = ')
+					g.gen_expr(child_id)
+					g.write('; (${fn_ct}*)memdup(&${tmp}, sizeof(${fn_ct})); })')
+					return
+				}
 				g.gen_expr(child_id)
 				return
 			}
@@ -16030,7 +16052,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if needs_paren {
 					g.write(')')
 				}
-				if node.op == .arrow || base_type0 is types.Pointer {
+				if base_type0 is types.Pointer {
 					g.write('->')
 				} else {
 					g.write('.')
@@ -16181,7 +16203,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if fixed_lit := g.fixed_array_literal_index_type(base_id, node) {
 					g.gen_expr_with_expected_type(base_id, types.Type(fixed_lit))
 					g.write('[')
-					g.gen_expr(g.a.child(node, 1))
+					g.gen_fixed_array_index(g.a.child(node, 1), g.fixed_array_len_value(fixed_lit))
 					g.write(']')
 					return
 				}
@@ -16195,7 +16217,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						}
 					}
 				}
-				is_fixed_array_index, fixed_is_ptr, _ := fixed_array_index_info(index_base_type)
+				is_fixed_array_index, fixed_is_ptr, fixed := fixed_array_index_info(index_base_type)
 				if is_fixed_array_index {
 					if fixed_is_ptr {
 						g.write('(*')
@@ -16212,7 +16234,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						}
 					}
 					g.write('[')
-					g.gen_expr(g.a.child(node, 1))
+					g.gen_fixed_array_index(g.a.child(node, 1), g.fixed_array_len_value(fixed))
 					g.write(']')
 				} else {
 					is_array_index, is_ptr, arr_type := array_index_info(index_base_type)
@@ -16435,7 +16457,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(g.ierror_none_literal_string())
 			} else {
 				ct := g.optional_type_name(g.optional_none_type(id))
-				g.write('(${ct}){.ok = false}')
+				g.write('(${ct}){.ok = false, .err = builtin__none__}')
 			}
 		}
 		.or_expr {
@@ -20738,7 +20760,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('\tif (decimal_pos < 0) decimal_pos = digit_count;')
 		g.writeln('\tdecimal_pos += exponent_sign * exponent;')
 		g.writeln('\tint whole_digits = decimal_pos > 0 ? decimal_pos : 1;')
-		g.writeln('\tint negative = x < 0.0;')
+		g.writeln('\tint negative = signbit(x);')
 		g.writeln('\tint out_len = negative + whole_digits + (precision > 0 ? precision + 1 : 0);')
 		g.writeln('\tu8* out = malloc_noscan((ptrdiff_t)out_len + 1);')
 		g.writeln('\tint pos = 0;')

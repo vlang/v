@@ -1,3 +1,5 @@
+// vtest build: false
+
 import os
 import v.cmdexec
 

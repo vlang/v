@@ -815,6 +815,7 @@ pub:
 	module     string
 	is_params  bool
 	is_aligned bool
+	is_c_anon  bool
 	alignment  string
 	fields     []FieldInfo
 }
@@ -2048,7 +2049,7 @@ fn (t &Transformer) interface_boxed_impl_name_is_direct(name string) bool {
 		return true
 	}
 	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 		return true
 	}
 	if name in t.tc.structs || name in t.tc.type_aliases {
@@ -2896,6 +2897,7 @@ fn (mut t Transformer) collect_types() {
 					module:     cur_mod
 					is_params:  'params' in node.typ.split(',')
 					is_aligned: transform_struct_decl_alignment_is_set(node.typ)
+					is_c_anon:  'c_anon' in node.typ.split(',')
 					alignment:  transform_struct_decl_alignment_value(node.typ)
 					fields:     fields
 				}
@@ -4347,6 +4349,7 @@ fn clone_struct_info_owned(info StructInfo) StructInfo {
 		module:     info.module.clone()
 		is_params:  info.is_params
 		is_aligned: info.is_aligned
+		is_c_anon:  info.is_c_anon
 		alignment:  info.alignment.clone()
 		fields:     fields
 	}
@@ -5929,10 +5932,16 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 			}
 		}
 	}
+	expr_node := t.a.nodes[int(expr_id)]
+	if typ.len == 0 && expr_node.kind == .call {
+		call_ret := t.get_call_return_type(expr_id, expr_node)
+		if call_ret.len > 0 && !t.generic_arg_is_unresolved(call_ret) {
+			typ = call_ret
+		}
+	}
 	if typ.len == 0 {
 		typ = t.raw_alias_type_for_expr(expr_id)
 	}
-	expr_node := t.a.nodes[int(expr_id)]
 	if typ.len == 0 && expr_node.kind == .ident {
 		raw_var_type := t.raw_var_type(expr_node.value)
 		if t.is_optional_type_name(raw_var_type) {
@@ -6252,12 +6261,11 @@ fn (mut t Transformer) make_non_aliasing_allocation_call(name string, args []fla
 }
 
 // heapable_value_type reports whether a local of this declared type can be moved to the heap
-// as a `&T` — a plain value type, not an already-reference / container / optional type (those
-// either carry their own indirection or are not addressable as a single `T`).
+// as a `&T` — a plain value type or an inline optional/result wrapper, not an already-reference
+// or container type (those either carry their own indirection or are not addressable as one `T`).
 fn (t &Transformer) heapable_value_type(typ string) bool {
 	if typ == '' || typ.starts_with('&') || typ.starts_with('[]') || typ.starts_with('map[')
-		|| typ.starts_with('?') || typ.starts_with('!') || typ.starts_with('[') || typ == 'unknown'
-		|| typ == 'void' {
+		|| typ.starts_with('[') || typ == 'unknown' || typ == 'void' {
 		return false
 	}
 	// Function values are already pointers in C. `&callback` is accepted as the
@@ -6277,6 +6285,22 @@ fn (t &Transformer) heap_attr_struct_type(typ string) bool {
 		return false
 	}
 	return t.tc.type_has_declaration_attribute(clean_type, 'heap')
+}
+
+fn (t &Transformer) pointer_to_heap_attr_struct_type(typ string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	clean_type := types.unalias_type(t.tc.parse_type(typ))
+	if clean_type !is types.Pointer {
+		return false
+	}
+	pointer_type := clean_type as types.Pointer
+	base_type := types.unalias_type(pointer_type.base_type)
+	if base_type !is types.Struct {
+		return false
+	}
+	return t.tc.type_has_declaration_attribute(base_type, 'heap')
 }
 
 fn (mut t Transformer) collect_exclusive_closure_return_fns() {
@@ -7883,7 +7907,7 @@ fn (t &Transformer) escape_address_root_name(id flat.NodeId) ?string {
 				return t.escape_address_root_name(t.a.child(&node, 0))
 			}
 		}
-		.selector, .index {
+		.selector, .index, .prefix, .or_expr {
 			if node.children_count > 0 {
 				return t.escape_address_root_name(t.a.child(&node, 0))
 			}
@@ -8200,10 +8224,16 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
 		&& node.children_count == 2 {
 		lhs_id := t.a.child(&node, 0)
+		rhs_id := t.a.child(&node, 1)
+		lhs_root := t.escape_address_root_name(lhs_id) or { '' }
+		for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources, ptr_aliases) {
+			if source_name == lhs_root && source_name in local_stack_names {
+				t.escaping_amp_sources[source_name] = true
+			}
+		}
 		if t.escape_index_assign_retains_value(lhs_id)
 			|| (node.kind == .selector_assign
 				&& t.escape_selector_assign_retains_value(lhs_id, amp_ptrs, ptr_aliases)) {
-			rhs_id := t.a.child(&node, 1)
 			// A map or caller-owned field may retain its value after this stack frame returns.
 			// Track pointer aliases through `returned`, and record direct `&local` values
 			// immediately.
@@ -8982,6 +9012,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	// have populated var_types. Do not let those provisional answers leak into
 	// the declaration-ordered body transform.
 	t.clear_node_type_memo()
+	if !isnil(t.selector_type_cache) {
+		t.selector_type_cache.generation++
+	}
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body
 	mut new_children := []flat.NodeId{cap: int(fn_node.children_count)}
@@ -9225,15 +9258,20 @@ pub fn (mut t Transformer) transform_stmts(ids []flat.NodeId) []flat.NodeId {
 				}
 			}
 		}
+		// Statement transformation can rewrite conditions in place. Preserve the
+		// original `is` expressions before lowering them to runtime tag checks so
+		// their narrowing remains available to subsequent statements.
+		post_if_smartcasts := t.post_if_exit_smartcasts(id)
+		post_assert_smartcasts := t.post_assert_smartcasts(id)
 		expanded := t.transform_stmt(id)
 		t.drain_pending(mut result)
 		for eid in expanded {
 			result << eid
 		}
-		for info in t.post_if_exit_smartcasts(id) {
+		for info in post_if_smartcasts {
 			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 		}
-		for info in t.post_assert_smartcasts(id) {
+		for info in post_assert_smartcasts {
 			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 		}
 		i++
@@ -9396,10 +9434,14 @@ fn (mut t Transformer) transform_labeled_multi_init_loop(label string, block_id 
 	}
 	labeled_loop := t.transform_labeled_loop(label, loop_id, loop_node)
 	t.drain_pending(mut block_children)
-	for i in 0 .. labeled_loop.len - 1 {
+	for i in 1 .. labeled_loop.len - 1 {
 		block_children << labeled_loop[i]
 	}
-	mut result := []flat.NodeId{}
+	mut result := []flat.NodeId{cap: 3}
+	// Keep the user label ahead of the generated initializer block. A goto to the
+	// labelled loop must execute its multi-variable initializers before entering
+	// the loop instead of jumping into their scope with uninitialized C locals.
+	result << labeled_loop[0]
 	result << t.make_block(block_children)
 	result << labeled_loop.last()
 	return result
@@ -9849,6 +9891,15 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	}
 	child_id := t.a.child(&node, 0)
 	mut typ := t.node_type(child_id)
+	mut has_active_smartcast := false
+	child_key := t.expr_key(child_id)
+	if child_key.len > 0 {
+		contexts := t.smartcasts_for(child_key)
+		if contexts.len > 0 {
+			typ = t.smartcast_target_type(contexts.last())
+			has_active_smartcast = true
+		}
+	}
 	child_node := t.a.nodes[int(child_id)]
 	if closure_type := t.fresh_runtime_closure_type(child_id) {
 		typ = closure_type
@@ -9864,14 +9915,34 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	if typ.len == 0 || typ == 'unknown' {
 		typ = t.resolve_expr_type(child_id)
 	}
+	if child_node.kind == .cast_expr {
+		cast_type := t.normalize_type_alias(child_node.value)
+		if t.is_sum_type_name(cast_type) {
+			typ = cast_type
+		}
+	}
+	mut dump_mut_param := false
+	mut dump_shared_ident := false
 	raw_alias_type := t.raw_alias_type_for_expr(child_id)
-	if raw_alias_type.len > 0 {
+	if raw_alias_type.len > 0 && !has_active_smartcast {
 		typ = raw_alias_type
 	}
 	if child_node.kind == .ident {
 		raw := t.raw_var_type(child_node.value).trim_space()
+		mut dump_generic_mut_param := t.cur_fn_is_generic
+		if !dump_generic_mut_param {
+			if _ := t.recorded_generic_specialization_args(t.cur_fn_name) {
+				dump_generic_mut_param = true
+			}
+		}
 		if raw.starts_with('shared ') {
-			typ = t.normalize_type_alias(raw[7..].trim_space().trim_left('&'))
+			typ = '&' + t.normalize_type_alias(raw[7..].trim_space().trim_left('&'))
+			dump_shared_ident = true
+		} else if dump_generic_mut_param && t.mut_param_values[child_node.value] {
+			if typ.starts_with('&') {
+				typ = typ[1..]
+			}
+			dump_mut_param = true
 		} else if t.pointer_value_rvalues[child_node.value] && typ.starts_with('&') {
 			// Heap-promoted value locals are stored as pointers, but ordinary reads
 			// (including dump) dereference them back to their source value type.
@@ -9897,16 +9968,27 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	}
 	// route a value `match`/`if` dumped operand (e.g. `dump(match x { ... })`)
 	// through value lowering so its propagating arms are lowered as values.
-	child := if t.is_value_match_or_if_operand(child_id) {
+	mut child := if t.is_value_match_or_if_operand(child_id) {
 		t.transform_value_operand(child_id)
 	} else {
 		t.transform_expr(child_id)
+	}
+	if dump_mut_param {
+		child = t.make_prefix(.mul, child)
+		t.set_node_typ(int(child), typ)
+	} else if dump_shared_ident {
+		child = t.make_prefix(.amp, child)
+		t.set_node_typ(int(child), typ)
 	}
 	temp_name := t.new_temp('dump')
 	t.pending_stmts << t.make_decl_assign_typed(temp_name, child, typ)
 	if isnil(t.tc) || !t.tc.suppress_dump_output {
 		value := t.make_ident(temp_name)
-		value_text := t.dump_value_string(value, typ)
+		value_text := if child_node.kind == .none_expr {
+			t.make_string_literal('none')
+		} else {
+			t.dump_value_string(value, typ)
+		}
 		mut path := t.cur_file
 		mut line := 0
 		if file := t.a.source_files[node.pos.id] {
@@ -10891,7 +10973,8 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 	}
 	resolved_target_type := t.resolve_sum_name(target_type)
 	if target_type.len > 0 && resolved_target_type in t.sum_types {
-		return t.clone_borrowed_projection(return_child_id, t.transform_sum_value_for_type(return_child_id, resolved_target_type), resolved_target_type)
+		sum_storage_type := t.sum_literal_type_name(target_type, resolved_target_type)
+		return t.clone_borrowed_projection(return_child_id, t.transform_sum_value_for_type(return_child_id, sum_storage_type), sum_storage_type)
 	}
 	if target_type.len > 0 && !t.is_optional_type_name(target_type) {
 		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id, target_type), target_type)
@@ -11652,6 +11735,12 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			if lhs_type.len == 0 {
 				lhs_type = t.lvalue_type(lhs_id)
 			}
+			if lhs.kind == .ident && t.mut_param_values[lhs.value] {
+				param_value_type := t.var_type(lhs.value)
+				if t.is_optional_type_name(param_value_type) {
+					lhs_type = param_value_type
+				}
+			}
 			if value_type := t.pointer_optional_unwrap_lvalue_type(lhs_id) {
 				lhs_type = value_type
 			}
@@ -11664,8 +11753,13 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			}
 			// A `mut val T` value param resolves to `&T`; cgen writes assignments
 			// through the pointer (`*val = ...`), so coerce the RHS to `T`, not `&T`.
+			mut_param_pointer_rebind := node.op == .assign && lhs.kind == .ident
+				&& t.mut_param_values[lhs.value] && lhs_type.starts_with('&')
+				&& !t.normalize_type_alias(t.raw_var_type(lhs.value)).starts_with('&&')
+				&& t.normalize_type_alias(t.original_expr_type(child_id)) == t.normalize_type_alias(lhs_type)
 			if lhs.kind == .ident && lhs_type.starts_with('&') && t.mut_param_values[lhs.value]
-				&& !t.pointer_value_rvalues[lhs.value] && !lhs_type.starts_with('&&') {
+				&& !t.pointer_value_rvalues[lhs.value] && !lhs_type.starts_with('&&')
+				&& !mut_param_pointer_rebind {
 				lhs_type = lhs_type[1..]
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
@@ -11936,9 +12030,8 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 	if !t.is_optional_type_name(lhs_type) {
 		return
 	}
-	// Assigning a payload only *keeps* an unwrap that was already in force, e.g.
-	// `if a != none { a = 5; println(a + 1) }`, where the assignment invalidates
-	// the smartcast the condition established. Outside such a region the variable
+	// Assigning a payload keeps an unwrap already in force, or establishes one
+	// after replacing a value known to be none. Outside such a region the variable
 	// stays a plain `?T`: re-reading it must still yield the option, or `if v := a`
 	// initialises an `Optional_T` from a payload and `'${a}'` prints the payload
 	// instead of `Option(...)`.
@@ -11948,7 +12041,7 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 		false
 	}
 	t.invalidate_smartcast_for_lvalue(lhs_id)
-	if !was_unwrapped {
+	if !was_unwrapped && !t.expr_is_in_option_none_branch(lhs_id, key) {
 		return
 	}
 	base_type := t.optional_base_type(t.qualify_optional_type(lhs_type))
@@ -11961,6 +12054,38 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 		return
 	}
 	t.push_smartcast(key, base_type, option_unwrap_marker)
+}
+
+fn (t &Transformer) expr_is_in_option_none_branch(id flat.NodeId, key string) bool {
+	mut current := int(id)
+	for _ in 0 .. 128 {
+		parent_id := t.source_parent_id(current)
+		if parent_id < 0 || parent_id >= t.a.nodes.len {
+			return false
+		}
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr, .spawn_expr] {
+			return false
+		}
+		if parent.kind == .if_expr && parent.children_count >= 2 {
+			mut cond := t.a.child_node(&parent, 0)
+			for cond.kind == .paren && cond.children_count > 0 {
+				cond = t.a.child_node(cond, 0)
+			}
+			if cond.kind == .infix && cond.children_count >= 2 {
+				if info := t.option_none_cmp_info(*cond) {
+					in_then := current == int(t.a.child(&parent, 1)) && cond.op == .eq
+					in_else := parent.children_count > 2
+						&& current == int(t.a.child(&parent, 2)) && cond.op == .ne
+					if info.expr_name == key && (in_then || in_else) {
+						return true
+					}
+				}
+			}
+		}
+		current = parent_id
+	}
+	return false
 }
 
 fn (mut t Transformer) fn_value_self_capture_refresh_stmt(node flat.Node, new_children []flat.NodeId) ?flat.NodeId {
@@ -12368,7 +12493,7 @@ fn (mut t Transformer) optional_selector_lvalue_guard_stmts(body_id flat.NodeId,
 				t.make_return(t.make_optional_none_with_err(t.cur_fn_ret_type, err_expr), t.cur_fn_ret_type),
 			]
 		}
-		return [t.make_panic_stmt('option/result propagation failed')]
+		return t.make_propagation_panic_stmts(mode, err_expr, body_id)
 	}
 	return t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', mode, err_expr)
 }
@@ -13339,6 +13464,11 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 			// Keep that storage type authoritative instead of letting the template's
 			// pre-specialization checker type coerce the pointer back to `U`.
 			value := t.transform_struct_init(id, node)
+			if !t.node_type(value).starts_with('&') {
+				address := t.make_prefix(.amp, value)
+				t.set_node_typ(int(address), target_type)
+				return address
+			}
 			t.set_node_typ(int(value), target_type)
 			return value
 		}
@@ -13433,6 +13563,11 @@ fn (mut t Transformer) pointer_storage_expr_for_value_target(id flat.NodeId, tar
 	mut source_id := id
 	mut source := t.a.nodes[int(source_id)]
 	if source.kind == .prefix && source.op == .mul && source.children_count == 1 {
+		if source.pos.end > source.pos.offset {
+			// An explicit source `*value` performs its own load. Only unwrap a
+			// synthetic dereference that a previous lowering pass inserted.
+			return none
+		}
 		source_id = t.a.child(&source, 0)
 		source = t.a.nodes[int(source_id)]
 	}
@@ -13482,16 +13617,22 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 		return none
 	}
 	expected_base := forwarded_return_unalias_type(expected_type)
+	mut value_id := id
+	mut value_is_transformed := false
 	if expected_base is types.Array {
-		concrete_call_type := if node.kind == .call {
+		if t.is_array_transform_call(id) {
+			value_id = t.transform_expr(id)
+			value_is_transformed = true
+		}
+		concrete_call_type := if !value_is_transformed && node.kind == .call {
 			t.concrete_generic_call_return_type(id, node)
 		} else {
 			''
 		}
 		actual_type_name := if concrete_call_type.len > 0 {
 			concrete_call_type
-		} else if t.node_type(id).len > 0 {
-			t.node_type(id)
+		} else if t.node_type(value_id).len > 0 {
+			t.node_type(value_id)
 		} else {
 			t.resolve_expr_type(id)
 		}
@@ -13510,7 +13651,7 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 				if t.record_specialized_slot_mismatch(actual_type, expected_type) {
 					return none
 				}
-				return t.convert_forwarded_array_to_dynamic(id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, false)
+				return t.convert_forwarded_array_to_dynamic(value_id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, false)
 			}
 		} else if actual_base is types.ArrayFixed {
 			if actual_base.elem_type.name() != expected_base.elem_type.name()
@@ -13518,8 +13659,11 @@ fn (mut t Transformer) transform_array_value_for_type(id flat.NodeId, target_typ
 				&& t.record_specialized_slot_mismatch(actual_type, expected_type) {
 				return none
 			}
-			return t.convert_forwarded_array_to_dynamic(id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, true)
+			return t.convert_forwarded_array_to_dynamic(value_id, actual_type, actual_base.elem_type, expected_type, expected_base.elem_type, true)
 		}
+	}
+	if value_is_transformed {
+		return value_id
 	}
 	return none
 }
@@ -13702,7 +13846,13 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		if source.kind != .none_expr {
 			payload_type := t.optional_base_type(optional_target)
 			value := if payload_type.starts_with('&') && !expr_type.starts_with('&') {
-				t.coerce_transformed_expr_to_type(expr, source_id, payload_type)
+				if source.kind == .struct_init {
+					addr := t.make_prefix(.amp, expr)
+					t.set_node_typ(int(addr), payload_type)
+					addr
+				} else {
+					t.coerce_transformed_expr_to_type(expr, source_id, payload_type)
+				}
 			} else if payload_type == 'string' && t.is_ierror_type(expr_type) {
 				t.wrap_string_conversion(expr, expr_type)
 			} else {
@@ -14182,6 +14332,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		panic('internal error: empty decl_assign child in ${t.cur_fn_name}: count=${node.children_count} typ=${node.typ} value=${node.value} children=${parts.join('|')}')
 	}
 	mut inferred_typ := ''
+	multi_match_decl_type := t.multi_match_smartcast_decl_type(node) or { '' }
 	if node.children_count > 2 && !isnil(t.tc) {
 		rhs_id := t.a.child(&node, 1)
 		rhs := t.a.node(rhs_id)
@@ -14373,7 +14524,13 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			if rhs.kind == .ident
 				&& (t.pointer_value_rvalues[rhs.value] || t.mut_param_values[rhs.value])
 				&& typ.starts_with('&') {
-				typ = typ[1..]
+				storage_type := t.var_type(rhs.value)
+				semantic_pointer_read := t.pointer_value_rvalues[rhs.value]
+					&& storage_type.starts_with('&&')
+					&& t.normalize_type_alias(storage_type[1..]) == t.normalize_type_alias(typ)
+				if !semantic_pointer_read {
+					typ = typ[1..]
+				}
 			}
 			if node.typ.len == 0 {
 				if rhs.kind == .array_literal && rhs.typ.len == 0 && t.is_fixed_array_type(typ) {
@@ -14461,7 +14618,14 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		if i == 0 || (node.children_count > 2 && i > 1) {
-			new_children << t.transform_lvalue(child_id)
+			child := t.a.child_node(&node, i)
+			if i == 0 && multi_match_decl_type.len > 0 && child.kind == .ident {
+				lhs := t.make_ident(child.value)
+				t.set_node_typ(int(lhs), multi_match_decl_type)
+				new_children << lhs
+			} else {
+				new_children << t.transform_lvalue(child_id)
+			}
 		} else if node.children_count == 2 && t.try_heap_escaping_amp(node, child_id) {
 			new_children << t.heap_escaping_amp_rhs(child_id)
 			// When `v` was heap-moved it is already a `&T`, so `p := &v` is really `p := v`
@@ -15427,16 +15591,29 @@ fn (mut t Transformer) expand_multi_return_match_decl(rhs_id flat.NodeId, rhs fl
 	}
 	value_types := t.tc.multi_expr_tail_types_for_transform(rhs_id, lhs_ids.len) or { return none }
 	mut result := []flat.NodeId{}
+	mut target_lhs_ids := []flat.NodeId{cap: lhs_ids.len}
 	for i, lhs_id in lhs_ids {
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind != .ident || lhs.value == '_' {
+			target_lhs_ids << lhs_id
 			continue
 		}
 		typ := if i < value_types.len { value_types[i].name() } else { 'int' }
 		t.set_var_type(lhs.value, t.normalize_type_alias(typ))
 		result << t.make_decl_assign_typed(lhs.value, t.zero_value_for_type(typ), typ)
+		// A match branch may declare a local with the same name as a result slot.
+		// Keep an address of the outer storage so the lowered branch assignment
+		// cannot bind to that inner local in C.
+		target_type := '&${typ}'
+		target_name := t.new_temp('match_result')
+		address := t.make_prefix(.amp, t.make_ident(lhs.value))
+		t.set_node_typ(int(address), target_type)
+		result << t.make_decl_assign_typed(target_name, address, target_type)
+		target := t.make_prefix(.mul, t.make_ident(target_name))
+		t.set_node_typ(int(target), typ)
+		target_lhs_ids << target
 	}
-	result << t.expand_multi_return_match_assign(rhs_id, rhs, lhs_ids) or { return none }
+	result << t.expand_multi_return_match_assign(rhs_id, rhs, target_lhs_ids) or { return none }
 	return result
 }
 
@@ -16814,17 +16991,7 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 			return t.comptime_enum_type_known(normalized)
 		}
 		'\$alias' {
-			if isnil(t.tc) {
-				return false
-			}
-			if clean_actual in t.tc.type_aliases {
-				return true
-			}
-			if !clean_actual.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-				&& t.cur_module != 'builtin' {
-				return '${t.cur_module}.${clean_actual}' in t.tc.type_aliases
-			}
-			return false
+			return t.generic_arg_is_alias_name(clean_actual, t.cur_module)
 		}
 		'\$sumtype' {
 			return !isnil(t.tc)
@@ -16832,18 +16999,29 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 					|| normalized in t.tc.sum_types)
 		}
 		'\$interface' {
-			return !isnil(t.tc) && normalized in t.tc.interface_names
+			return !isnil(t.tc)
+				&& t.tc.interface_metadata_name(normalized) in t.tc.interface_names
 		}
 		else {}
 	}
 
 	expected_normalized := t.normalize_type_alias(clean_expected)
+	// Reflected field types are canonicalized in their declaration module, while
+	// a condition in `main` can retain the source spelling of nested user types.
+	// Compare recursively-qualified forms so `map[string]main.Item` still matches
+	// `map[string]Item` (and likewise for arrays, functions, and generic types).
+	actual_key := t.comptime_field_type_id_key(normalized, t.cur_module)
+	expected_key := t.comptime_field_type_id_key(expected_normalized, t.cur_module)
+	if actual_key.len > 0 && actual_key == expected_key {
+		return true
+	}
 	if (normalized.starts_with('fn(') || normalized.starts_with('fn ('))
 		&& (expected_normalized.starts_with('fn(')
 			|| expected_normalized.starts_with('fn (')) {
 		return transform_sum_fn_variant_key(normalized) == transform_sum_fn_variant_key(expected_normalized)
 	}
-	if !isnil(t.tc) && expected_normalized in t.tc.interface_names {
+	if !isnil(t.tc)
+		&& t.tc.interface_metadata_name(expected_normalized) in t.tc.interface_names {
 		if t.tc.type_text_implements_interface(clean_actual, expected_normalized)
 			|| (normalized != clean_actual
 				&& t.tc.type_text_implements_interface(normalized, expected_normalized)) {
@@ -18699,7 +18877,13 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		// stabilize an earlier side-effecting operand before a later hoisting one.
 		// The index base (`i == 0`) keeps master's dedicated base lowering.
 		mut new_child := if i == 0 {
-			t.transform_index_base_expr(child_id)
+			base := t.transform_index_base_expr(child_id)
+			if node.value == 'range' && node.children_count < 3 {
+				base_type := t.node_type(base)
+				t.stable_transformed_expr_for_reuse(base, base_type, 'slice_base')
+			} else {
+				base
+			}
 		} else if i < last_value_branch && !t.is_value_match_or_if_operand(child_id)
 			&& t.operand_needs_ordering_snapshot(child_id) {
 			t.snapshot_expr_for_reuse(child_id)
@@ -18942,6 +19126,12 @@ fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.Node
 		}
 		return t.string_interp_child_has_unresolved_generic_part(t.a.child(&node, 0))
 	}
+	if node.kind == .call {
+		call_ret := t.get_call_return_type(id, node)
+		if call_ret.len > 0 && !t.generic_arg_is_unresolved(call_ret) {
+			return false
+		}
+	}
 	mut candidates := []string{cap: 5}
 	candidates << t.node_type(id)
 	if node.typ.len > 0 {
@@ -19033,6 +19223,7 @@ fn (mut t Transformer) ensure_stringify_generic_instances_for_type(typ string) {
 		name:      clean
 		module:    base_info.module
 		is_params: base_info.is_params
+		is_c_anon: base_info.is_c_anon
 		fields:    fields
 	}
 	// A later unqualified lookup must include this newly materialized generic
@@ -19127,6 +19318,7 @@ fn (t &Transformer) generic_struct_info_for_stringify(typ string) ?StructInfo {
 		name:      clean
 		module:    base_info.module
 		is_params: base_info.is_params
+		is_c_anon: base_info.is_c_anon
 		fields:    fields
 	}
 }
@@ -19589,8 +19781,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if full_key.len > 0 {
 		contexts := t.smartcasts_for(full_key)
 		if contexts.len > 0 {
+			plain_type := t.raw_selector_type_without_smartcast(id)
 			plain := t.make_plain_selector_expr(id, node)
-			return t.apply_smartcast_contexts(plain, t.original_expr_type(id), contexts)
+			return t.apply_smartcast_contexts(plain, plain_type, contexts)
 		}
 	}
 	base_id := base_id0
@@ -19598,8 +19791,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	if !t.selector_base_is_explicit_as_expr(base_id) && sc_key.len > 0 {
 		contexts := t.smartcasts_for(sc_key)
 		if contexts.len > 0 {
+			plain_base_type := t.raw_expr_type_without_smartcast(base_id)
 			plain_base := t.make_plain_expr_for_smartcast(base_id)
-			variant_sel := t.apply_smartcast_contexts(plain_base, t.original_expr_type(base_id), contexts)
+			variant_sel := t.apply_smartcast_contexts(plain_base, plain_base_type, contexts)
 			variant_type := t.node_type(variant_sel)
 			if shared_typ := t.sum_shared_field_type_name(variant_type, node.value) {
 				return t.lower_sum_shared_field_selector(variant_sel, variant_type, node.value, shared_typ)
@@ -19765,7 +19959,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 }
 
 // make_plain_selector_expr builds make plain selector expr data for transform.
-fn (mut t Transformer) make_plain_selector_expr(_id flat.NodeId, node flat.Node) flat.NodeId {
+fn (mut t Transformer) make_plain_selector_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	base_id := t.a.child(&node, 0)
 	base_type := t.node_type(base_id)
 	new_base := t.selector_base_for_field(t.transform_selector_base_expr(base_id), base_type)
@@ -19779,7 +19973,8 @@ fn (mut t Transformer) make_plain_selector_expr(_id flat.NodeId, node flat.Node)
 	for nc in new_children {
 		t.a.children << nc
 	}
-	sel_typ := t.transformed_selector_type(node)
+	raw_sel_typ := t.raw_selector_type_without_smartcast(id)
+	sel_typ := if raw_sel_typ.len > 0 { raw_sel_typ } else { t.transformed_selector_type(node) }
 	transformed_base_type := t.node_type(new_base)
 	sel_op := if node.op == .arrow || transformed_base_type.starts_with('&') {
 		flat.Op.arrow
@@ -20136,13 +20331,19 @@ fn (t &Transformer) pointer_storage_amp_decl_type(rhs_id flat.NodeId) ?string {
 		return none
 	}
 	child := t.a.child_node(&node, 0)
-	if child.kind != .ident
-		|| (!t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]) {
+	if child.kind != .ident {
 		return none
 	}
 	mut vt := t.var_type(child.value)
 	if vt.starts_with('mut ') {
 		vt = '&' + vt[4..].trim_space()
+	}
+	pointer_storage := t.mut_param_values[child.value] || t.pointer_value_rvalues[child.value]
+	heap_pointer_value := t.expected_expr_node == int(rhs_id)
+		&& t.normalize_type_alias(vt) == t.normalize_type_alias(t.expected_expr_type)
+		&& t.pointer_to_heap_attr_struct_type(vt)
+	if !pointer_storage && !heap_pointer_value {
+		return none
 	}
 	if !vt.starts_with('&') && vt.len > 0 {
 		vt = '&${vt}'
@@ -20231,7 +20432,11 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		}
 		mut child_type := t.node_type(child_id)
 		original_child_type := t.original_expr_type(child_id)
-		if t.is_optional_type_name(child_type) && !t.is_optional_type_name(original_child_type)
+		checker_child_type := t.raw_checker_node_type(child_id)
+		if child.kind == .ident && t.pointer_value_rvalues[child.value]
+			&& child_type.starts_with('&') && t.is_optional_type_name(checker_child_type) {
+			child_type = checker_child_type
+		} else if t.is_optional_type_name(child_type) && !t.is_optional_type_name(original_child_type)
 			&& original_child_type.len > 0 && original_child_type != 'unknown' {
 			child_type = original_child_type
 		} else if child_type.len == 0 {
@@ -20241,7 +20446,7 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			child_type = child.value
 		}
 		if t.is_optional_type_name(child_type) {
-			if expr := t.transform_amp_optional_value(node, child_id, child, child_type) {
+			if expr := t.transform_amp_optional_value(id, node, child_id, child, child_type) {
 				return expr
 			}
 		}
@@ -20441,7 +20646,14 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		mut new_child := if node.op == .not {
-			t.transform_expr_for_type(child_id, 'bool')
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .ident && t.pointer_value_rvalues[child.value] {
+				// `!` consumes the binding's value itself; unlike an assignment or
+				// argument context, there is no later expected-type load in cgen.
+				t.transform_expr(child_id)
+			} else {
+				t.transform_expr_for_type(child_id, 'bool')
+			}
 		} else {
 			// route a value `match`/`if` operand (e.g. `-(match x { ... })`)
 			// through its target type so its propagating arms are lowered as values.
@@ -20487,7 +20699,7 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	return new_id
 }
 
-fn (mut t Transformer) transform_amp_optional_value(node flat.Node, child_id flat.NodeId, child flat.Node, child_type string) ?flat.NodeId {
+fn (mut t Transformer) transform_amp_optional_value(id flat.NodeId, node flat.Node, child_id flat.NodeId, child flat.Node, child_type string) ?flat.NodeId {
 	source_type := t.qualify_optional_type(child_type)
 	payload_type := t.optional_base_type(source_type)
 	if payload_type.len == 0 || payload_type == 'void' {
@@ -20495,6 +20707,8 @@ fn (mut t Transformer) transform_amp_optional_value(node flat.Node, child_id fla
 	}
 	target_type := if node.typ.len > 0 {
 		t.qualify_optional_type(node.typ)
+	} else if t.expected_expr_node == int(id) && t.expected_expr_type.len > 0 {
+		t.qualify_optional_type(t.expected_expr_type)
 	} else if child.kind == .struct_init {
 		'${source_type[..1]}&${payload_type}'
 	} else {
@@ -20544,8 +20758,14 @@ fn (mut t Transformer) transform_optional_value_to_pointer(source_id flat.NodeId
 	t.pending_stmts << t.make_decl_assign_typed(result_name, initial, target_type)
 	value := t.make_selector(source_value, 'value', payload_type)
 	value_addr := t.make_prefix(.amp, value)
-	dup := t.make_memdup_call_for_type(value_addr, payload_type)
-	addr := t.make_cast(target_payload, dup, target_payload)
+	t.set_node_typ(int(value_addr), target_payload)
+	source_node := t.a.nodes[int(source_id)]
+	addr := if source_node.kind == .ident && source_node.value in t.heaped_amp_locals {
+		value_addr
+	} else {
+		dup := t.make_memdup_call_for_type(value_addr, payload_type)
+		t.make_cast(target_payload, dup, target_payload)
+	}
 	some := t.make_optional_some(addr, target_type)
 	assign := t.make_assign(t.make_ident(result_name), some)
 	ok := t.make_selector(source_value, 'ok', 'bool')
@@ -21610,7 +21830,7 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 			return t.make_string_literal(typeof_display_resolved_type_text(resolved))
 		}
 	}
-	return t.make_string_literal(typeof_display_type_text(typeof_fn_type_display(generic_type_name_display(typ))))
+	return t.make_string_literal(typeof_display_type_text(typeof_fn_type_display(type_text_without_main_locks(typ))))
 }
 
 fn (t &Transformer) explicit_generic_call_return_type_for_typeof(id flat.NodeId, node flat.Node) ?string {
@@ -22204,14 +22424,16 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 			continue
 		}
 		if t.is_interface_type_name(sc.sum_type_name) {
-			if target_iface := t.resolve_interface_pattern_interface(sc.variant_name) {
+			pointer_target := sc.variant_name.starts_with('&')
+			variant_name := t.trim_all_pointer_type(sc.variant_name)
+			if target_iface := t.resolve_interface_pattern_interface(variant_name) {
 				if converted := t.convert_interface_expr_to_interface(current, current_type, target_iface) {
 					current = converted
 					current_type = target_iface
 					continue
 				}
 			}
-			qv := t.interface_variant_type(sc.variant_name)
+			qv := t.interface_variant_type(variant_name)
 			for current_type.starts_with('&&') {
 				current = t.make_prefix(.mul, current)
 				current_type = current_type[1..]
@@ -22220,9 +22442,14 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 			field_op := if current_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 			object := t.make_selector_op(current, '_object', 'voidptr', field_op)
 			cast := t.make_cast('&${qv}', object, '&${qv}')
-			current = t.make_prefix(.mul, cast)
-			t.set_node_typ(int(current), qv)
-			current_type = qv
+			if pointer_target {
+				current = cast
+				current_type = '&${qv}'
+			} else {
+				current = t.make_prefix(.mul, cast)
+				t.set_node_typ(int(current), qv)
+				current_type = qv
+			}
 			continue
 		}
 		clean_current_type := t.trim_pointer_type(current_type)
@@ -23304,6 +23531,9 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 	if node.children_count == 2 {
 		rhs_id := t.a.child(node, 1)
 		rhs := t.a.node(rhs_id)
+		if target := t.multi_match_smartcast_decl_type(*node) {
+			return target
+		}
 		if deref_type := t.decl_rhs_deref_type(rhs_id) {
 			return deref_type
 		}
@@ -23374,6 +23604,25 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 		return rhs_authority
 	}
 	return ''
+}
+
+fn (t &Transformer) multi_match_smartcast_decl_type(node flat.Node) ?string {
+	if node.children_count != 2 {
+		return none
+	}
+	key := t.expr_key(t.a.child(&node, 1))
+	if key.len == 0 {
+		return none
+	}
+	sc := t.find_smartcast(key) or { return none }
+	if sc.display_type.len == 0 {
+		return none
+	}
+	target := t.smartcast_target_type(sc)
+	if !decl_type_is_usable(target) {
+		return none
+	}
+	return target
 }
 
 fn (t &Transformer) sum_constructor_call_type(node flat.Node) string {

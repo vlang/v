@@ -53,6 +53,23 @@ fn fixed_array_index_info(t types.Type) (bool, bool, types.ArrayFixed) {
 	return false, false, types.ArrayFixed{}
 }
 
+fn (mut g FlatGen) gen_fixed_array_index(index_id flat.NodeId, len string) {
+	index_node := g.a.nodes[int(index_id)]
+	if g.direct_array_access || g.unsafe_depth > 0 || index_node.kind == .int_literal {
+		g.gen_expr(index_id)
+		return
+	}
+	index_type := cgen_unalias_type(g.usable_expr_type(index_id))
+	helper := match index_type.name() {
+		'i64' { 'v_fixed_index_i64' }
+		'u64' { 'v_fixed_index_u64' }
+		else { 'v_fixed_index' }
+	}
+	g.write('${helper}(')
+	g.gen_expr(index_id)
+	g.write(', ${len})')
+}
+
 fn (g &FlatGen) fixed_array_type_from_alias_text(type_name string) ?types.ArrayFixed {
 	mut cur := trimmed_space(type_name)
 	for _ in 0 .. 16 {
@@ -319,6 +336,22 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 	g.gen_expr(id)
 }
 
+// gen_cabi_fixed_array_data_arg materializes fixed arrays whose V element storage
+// differs from the declared C ABI. In particular, V `int` is i64 while `int` in a
+// `fn C.` fixed-array parameter is the platform C int.
+fn (mut g FlatGen) gen_cabi_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed) bool {
+	c_elem := g.c_extern_interop_type_name(arr.elem_type) or { return false }
+	if c_elem == g.value_c_type(arr.elem_type) {
+		return false
+	}
+	initializer := g.fixed_array_initializer_string(id, arr)
+	if trimmed_space(initializer).len == 0 {
+		return false
+	}
+	g.write('(${c_elem}[])${initializer}')
+	return true
+}
+
 fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, arg_idx int, arg_id flat.NodeId, names []string) bool {
 	if arg_idx != 3 || !names.any(it in ['new_array_from_c_array', 'array__new_array_from_c_array'])
 		|| arg_start + 2 >= call.children_count {
@@ -508,11 +541,13 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 			g.write('array__slice_ni(new_array_from_c_array(${len_val}, ${len_val}, sizeof(${c_elem}), &(${data_str})[0]), ${start_str}, ${end_str})')
 			return
 		}
-		// Evaluate the slice bounds once so side-effecting expressions such as
-		// `arr[i++..limit()]` are not run multiple times in the generated C.
+		// Copy the complete fixed array before slicing so the runtime slice helper
+		// validates both bounds and the returned slice owns stable storage.
+		array_tmp := g.tmp_name()
 		start_tmp := g.tmp_name()
-		count_tmp := g.tmp_name()
-		g.write('({ int ${start_tmp} = (${start_str}); int ${count_tmp} = (${end_str}) - ${start_tmp}; new_array_from_c_array(${count_tmp}, ${count_tmp}, sizeof(${c_elem}), &(${data_str})[${start_tmp}]); })')
+		end_tmp := g.tmp_name()
+		len_val := g.fixed_array_len_value(fixed)
+		g.write('({ Array ${array_tmp} = new_array_from_c_array(${len_val}, ${len_val}, sizeof(${c_elem}), &(${data_str})[0]); int ${start_tmp} = (${start_str}); int ${end_tmp} = (${end_str}); array_slice(${array_tmp}, ${start_tmp}, ${end_tmp}); })')
 	} else if is_array {
 		arr_str := if is_ptr { '*${base_str}' } else { base_str }
 		if gated {
@@ -1779,11 +1814,13 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		if base_type is types.Pointer {
 			ptr_type := base_type
 			mut expected_type := ptr_type.base_type
+			mut fixed_len := ''
 			if fixed := array_fixed_type(ptr_type.base_type) {
 				g.write('(*')
 				g.gen_expr(base_id)
 				g.write(')')
 				expected_type = fixed.elem_type
+				fixed_len = g.fixed_array_len_value(fixed)
 			} else if ptr_type.base_type is types.Void {
 				g.write('((u8*)')
 				g.gen_expr(base_id)
@@ -1794,7 +1831,11 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				g.write(')')
 			}
 			g.write('[')
-			g.gen_expr(g.a.child(&lhs, 1))
+			if fixed_len.len > 0 {
+				g.gen_fixed_array_index(g.a.child(&lhs, 1), fixed_len)
+			} else {
+				g.gen_expr(g.a.child(&lhs, 1))
+			}
 			g.write('] ${g.op_str(node.op)} ')
 			g.gen_expr_with_expected_type(g.a.child(&node, 1), expected_type)
 			g.writeln(';')
