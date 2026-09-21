@@ -2193,6 +2193,11 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 		return expr
 	}
 	source := t.a.nodes[int(source_id)]
+	if source.kind == .ident && t.pointer_value_rvalues[source.value] {
+		// Ordinary reads of pointer-backed bindings are already dereferenced by
+		// transform_ident_expr; do not add a second optional-storage load.
+		return expr
+	}
 	raw_type := match source.kind {
 		.ident {
 			t.raw_var_type(source.value)

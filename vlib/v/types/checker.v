@@ -8244,6 +8244,13 @@ fn (tc &TypeChecker) for_in_iterable_yields_ref(container_id flat.NodeId) bool {
 	if tc.expr_is_shared_arg(container_id) {
 		return false
 	}
+	container := tc.a.nodes[int(container_id)]
+	if container.kind == .ident && container.value in tc.fn_context.mut_param_base_types {
+		// Mutable loop bindings use a pointer internally so writes reach the
+		// container element. Iterating that binding still has ordinary value
+		// semantics unless the source expression itself introduced a reference.
+		return false
+	}
 	mut typ := tc.resolve_type(container_id)
 	for _ in 0 .. 8 {
 		if typ is Alias {
@@ -8259,6 +8266,10 @@ fn (tc &TypeChecker) for_in_iterable_yields_ref(container_id flat.NodeId) bool {
 			}
 		}
 		break
+	}
+	if typ is Pointer {
+		base := unalias_type(typ.base_type)
+		return base is Array || base is ArrayFixed || base is Map
 	}
 	return false
 }
@@ -8481,7 +8492,8 @@ fn (mut tc TypeChecker) insert_mut_loop_var(id flat.NodeId, typ Type) {
 }
 
 fn for_in_ref_binding_type(typ Type, yields_ref bool) Type {
-	if yields_ref && typ !is Pointer {
+	clean := unalias_type(typ)
+	if yields_ref && clean !is Pointer && clean !is OptionType {
 		return Type(Pointer{
 			base_type: typ
 		})

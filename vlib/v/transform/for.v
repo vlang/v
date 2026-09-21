@@ -447,6 +447,10 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	raw_iter_type := t.detect_for_in_type(node)
 	iter_type := t.normalize_type_alias(raw_iter_type)
 	map_iter_type := t.clean_map_type(iter_type)
+	container := t.a.nodes[int(container_id)]
+	container_is_pointer_storage := container.kind == .ident
+		&& (t.mut_param_values[container.value] || t.pointer_value_rvalues[container.value])
+	container_yields_ref := raw_iter_type.starts_with('&') && !container_is_pointer_storage
 	body_ids := t.a.children_of(&node)[header_count..].clone()
 	source_is_owned_temporary := !raw_iter_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
@@ -541,13 +545,10 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 				t.infer_for_in_elem_type(iter_type, node)
 			}
 			if elem_type.len > 0 {
-				// Only `for k, mut v in m` (`.amp`) binds the value by reference, and C
-				// generation declares the binding by reference on that same condition. A
-				// container that is merely a map *reference* (`m &map[string]bool`) still binds
-				// a plain value copy, so typing it `&V` here makes every use of the binding
-				// emit a dereference of a non-pointer local.
 				val_type := if node.op == .amp {
 					'&${elem_type}'
+				} else if container_yields_ref {
+					t.for_in_declared_ref_type(val_id, elem_type)
 				} else {
 					elem_type
 				}
@@ -567,6 +568,8 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 				if elem_type.len > 0 {
 					value_type := if node.op == .amp {
 						'&${elem_type}'
+					} else if container_yields_ref {
+						t.for_in_declared_ref_type(key_id, elem_type)
 					} else {
 						elem_type
 					}
@@ -585,10 +588,24 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 				binding_clones << t.make_for_in_binding_clone(key_name, key_type)
 			}
 			value_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
-			binding_clones << t.make_for_in_binding_clone(value_name, value_type)
+			binding_type := if node.op == .amp {
+				'&${value_type}'
+			} else if container_yields_ref {
+				t.for_in_declared_ref_type(val_id, value_type)
+			} else {
+				value_type
+			}
+			binding_clones << t.make_for_in_binding_clone(value_name, binding_type)
 		} else {
 			value_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
-			binding_clones << t.make_for_in_binding_clone(value_name, value_type)
+			binding_type := if node.op == .amp {
+				'&${value_type}'
+			} else if container_yields_ref {
+				t.for_in_declared_ref_type(key_id, value_type)
+			} else {
+				value_type
+			}
+			binding_clones << t.make_for_in_binding_clone(value_name, binding_type)
 		}
 	} else if iter_type.starts_with('[]') || t.is_fixed_array_type(iter_type) {
 		value_name := if has_index {
@@ -597,7 +614,14 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 		}
 		elem_type := t.infer_for_in_elem_type(iter_type, node)
-		value_type := if node.op == .amp { '&${elem_type}' } else { elem_type }
+		value_type := if node.op == .amp {
+			'&${elem_type}'
+		} else if container_yields_ref {
+			bind_id := if has_index { val_id } else { key_id }
+			t.for_in_declared_ref_type(bind_id, elem_type)
+		} else {
+			elem_type
+		}
 		binding_clones << t.make_for_in_binding_clone(value_name, value_type)
 	}
 
@@ -990,11 +1014,16 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	} else {
 		iter_type
 	}
-	// `for x in &arr` requests by-reference elements via a `&` on the container
-	// expression itself, distinct from `node.op == .amp` (`for mut x in arr`). A
-	// `mut` parameter is stored as a pointer by the C ABI even without an explicit
-	// `&`, so only a genuine address-of/reference expression counts here.
-	container_is_explicit_reference := container_node.kind == .prefix && container_node.op == .amp
+	// `for x in &arr` and `ref := &arr; for x in ref` request by-reference
+	// elements, distinct from `node.op == .amp` (`for mut x in arr`). Mutable
+	// parameters and other pointer-backed values carry only a storage pointer and
+	// must keep ordinary value iteration.
+	container_is_reference_binding := container_node.kind == .ident
+		&& source_container_type.starts_with('&')
+		&& !t.mut_param_values[container_node.value]
+		&& !t.pointer_value_rvalues[container_node.value]
+	container_is_explicit_reference := (container_node.kind == .prefix
+		&& container_node.op == .amp) || container_is_reference_binding
 	source_is_owned_temporary := !source_container_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
@@ -1509,6 +1538,21 @@ fn (t &Transformer) declared_for_in_elem_type(container_id flat.NodeId, node fla
 		return elem_type
 	}
 	return none
+}
+
+fn (t &Transformer) for_in_declared_ref_type(binding_id flat.NodeId, elem_type string) string {
+	if int(binding_id) >= 0 {
+		checker_type := t.raw_checker_node_type(binding_id).trim_space()
+		clean_checker := t.normalize_type_alias(checker_type)
+		if clean_checker.starts_with('&') || t.is_optional_type_name(clean_checker) {
+			return checker_type
+		}
+	}
+	clean_elem := t.normalize_type_alias(elem_type)
+	if clean_elem.starts_with('&') || t.is_optional_type_name(clean_elem) {
+		return elem_type
+	}
+	return '&${elem_type}'
 }
 
 fn (mut t Transformer) make_for_in_fixed_array_len_expr(s string) flat.NodeId {

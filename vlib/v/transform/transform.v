@@ -13503,6 +13503,11 @@ fn (mut t Transformer) pointer_storage_expr_for_value_target(id flat.NodeId, tar
 	mut source_id := id
 	mut source := t.a.nodes[int(source_id)]
 	if source.kind == .prefix && source.op == .mul && source.children_count == 1 {
+		if source.pos.end > source.pos.offset {
+			// An explicit source `*value` performs its own load. Only unwrap a
+			// synthetic dereference that a previous lowering pass inserted.
+			return none
+		}
 		source_id = t.a.child(&source, 0)
 		source = t.a.nodes[int(source_id)]
 	}

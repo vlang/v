@@ -293,10 +293,21 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			if clean_container_type is types.Map {
 				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
 				c_val := g.value_c_type(clean_container_type.value_type)
-				map_value_by_ref := node.op == .amp
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
 				container_storage_is_pointer := storage_container_type is types.Pointer
+				container_node := g.a.child_node(&node, 2)
+				container_is_mut_param_storage := container_node.kind == .ident
+					&& g.current_param_is_mut_pointer(container_node.value)
+				mut clean_value_type := clean_container_type.value_type
+				for clean_value_type is types.Alias {
+					clean_value_type = clean_value_type.base_type
+				}
+				ref_container_keeps_value := clean_value_type is types.Pointer
+					|| clean_value_type is types.OptionType
+				map_value_by_ref := node.op == .amp
+					|| (container_storage_is_pointer && !container_is_mut_param_storage
+						&& !ref_container_keeps_value)
 				original_map_ref := if container_storage_is_pointer {
 					container_str
 				} else {
