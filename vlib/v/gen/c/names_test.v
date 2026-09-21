@@ -51,6 +51,7 @@ fn test_c_name_libc_collision_abs() {
 	assert c_name('send') == 'v_send'
 	assert c_name('C.abs') == 'abs'
 	assert c_name('printf') == 'v_printf'
+	assert c_name('raise') == 'v_raise'
 	assert c_name('select') == 'v_select'
 	assert c_name('C.printf') == 'printf'
 	assert c_name('C.select') == 'select'
