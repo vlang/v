@@ -14302,7 +14302,8 @@ fn (p &Parser) select_branch_is_timeout(branch &flat.Node) bool {
 		return false
 	}
 	first := p.a.child_node(branch, 0)
-	return !(first.kind == .infix && first.op == .arrow)
+	return !((first.kind == .infix && first.op == .arrow)
+		|| (first.kind == .prefix && first.op == .arrow))
 }
 
 // select_branch resolves select branch information for parser.
