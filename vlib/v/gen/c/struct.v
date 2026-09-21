@@ -4696,6 +4696,12 @@ fn (g &FlatGen) struct_fields_for_type_uncached(type_name string) ?[]types.Struc
 
 fn (g &FlatGen) embedded_field_type_name(field types.StructField) string {
 	clean_type := types.unwrap_pointer(field.typ)
+	if field.is_embed {
+		unaliased_type := types.unwrap_pointer(cgen_unalias_type(field.typ))
+		if unaliased_type is types.Struct {
+			return unaliased_type.name
+		}
+	}
 	// An embedded callback alias is stored semantically as its underlying FnType,
 	// whose generated name no longer matches the source field name. Recover the
 	// alias name so promoted methods on the alias receive the embedded callback,
