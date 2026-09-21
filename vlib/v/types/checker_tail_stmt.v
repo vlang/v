@@ -4027,7 +4027,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					}
 				}
 				if value_node.kind == .fn_literal && value_node.typ == '?'
-					&& clean_expected is FnType {
+					&& clean_expected is FnType && clean_expected.return_type !is OptionType {
 					expected_name := expected.name().replace_once('fn(', 'fn (')
 					tc.record_error_at(.assignment_mismatch, 'cannot assign to field `${field.value}`: expected `${expected_name}`, not `${expected_name} ?`', field_id, tc.struct_init_field_deprecation_pos(field))
 				} else if clean_expected is OptionType && clean_actual is Pointer
