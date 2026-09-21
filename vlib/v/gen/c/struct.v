@@ -2257,6 +2257,9 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		if g.default_value_stack[key] {
 			if clean_typ is types.Pointer {
 				g.write('NULL')
+			} else if clean_typ is types.SumType && g.shallow_default_value_depth == 0 {
+				mut recursive_sums := map[string]bool{}
+				g.gen_recursive_default_sum_value(clean_typ, mut recursive_sums)
 			} else {
 				ct := g.value_c_type(clean_typ)
 				g.write('(${ct}){0}')
@@ -2269,6 +2272,43 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		return
 	}
 	g.gen_default_value_for_clean_type(clean_typ)
+}
+
+fn (mut g FlatGen) gen_recursive_default_sum_value(sum_type types.SumType, mut seen map[string]bool) {
+	sum_name := g.resolve_sum_name(sum_type.name)
+	ct := g.value_c_type(sum_type)
+	if seen[sum_name] {
+		g.write('(${ct}){0}')
+		return
+	}
+	variants := g.tc.sum_types[sum_name] or {
+		g.write('(${ct}){0}')
+		return
+	}
+	if variants.len == 0 {
+		g.write('(${ct}){0}')
+		return
+	}
+	seen[sum_name] = true
+	defer {
+		seen.delete(sum_name)
+	}
+	variant := variants[0]
+	variant_type := select_receive_unalias_type(g.tc.parse_type(variant))
+	if variant_type is types.Pointer {
+		g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = NULL}')
+		return
+	}
+	inner_ct := g.value_c_type(variant_type)
+	g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = (${inner_ct}*)memdup(&(${inner_ct}[]){')
+	if variant_type is types.SumType {
+		g.gen_recursive_default_sum_value(variant_type, mut seen)
+	} else {
+		g.shallow_default_value_depth++
+		g.gen_default_value_for_clean_type(variant_type)
+		g.shallow_default_value_depth--
+	}
+	g.write('}, sizeof(${inner_ct}))}')
 }
 
 fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
@@ -2310,6 +2350,11 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 		}
 	}
 	if clean_typ is types.SumType {
+		if g.shallow_default_value_depth > 0 {
+			ct := g.value_c_type(clean_typ)
+			g.write('(${ct}){0}')
+			return
+		}
 		sum_name := g.resolve_sum_name(clean_typ.name)
 		variants := g.tc.sum_types[sum_name] or { []string{} }
 		if variants.len > 0 {

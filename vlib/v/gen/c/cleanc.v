@@ -533,6 +533,7 @@ mut:
 	direct_array_access             bool
 	struct_default_module           string
 	default_value_stack             map[string]bool
+	shallow_default_value_depth     int
 	shadowed_global_locals          map[string]bool
 	cur_param_names                 []string
 	cur_param_type_values           []types.Type
