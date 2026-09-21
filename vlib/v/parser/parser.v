@@ -9125,18 +9125,34 @@ fn (mut p Parser) or_block_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) unsafe_block_stmt(unsafe_start int) flat.NodeId {
-	if p.unsafe_depth > 0 {
-		p.record_diagnostic_span('already inside `unsafe` block', unsafe_start, unsafe_start + 6)
-	}
+	was_nested := p.unsafe_depth > 0
 	p.unsafe_depth++
 	id := p.block_stmt()
 	p.unsafe_depth--
+	if was_nested && !p.unsafe_block_has_nil_tail(id) {
+		p.record_diagnostic_span('already inside `unsafe` block', unsafe_start, unsafe_start + 6)
+	}
 	if int(id) >= 0 && int(id) < p.a.nodes.len {
 		mut node := p.a.nodes[int(id)].with_pos(token.new_span(p.cur_file_id, unsafe_start, int_max(unsafe_start, p.a.nodes[int(id)].pos.end - 1)))
 		node.value = 'unsafe'
 		p.a.nodes[int(id)] = node
 	}
 	return id
+}
+
+fn (p &Parser) unsafe_block_has_nil_tail(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return false
+	}
+	block := p.a.nodes[int(id)]
+	if block.kind != .block || block.children_count == 0 {
+		return false
+	}
+	mut tail := p.a.nodes[int(p.a.child(&block, block.children_count - 1))]
+	if tail.kind == .expr_stmt && tail.children_count == 1 {
+		tail = p.a.nodes[int(p.a.child(&tail, 0))]
+	}
+	return tail.kind == .nil_literal
 }
 
 fn (mut p Parser) parse_block_body() []flat.NodeId {

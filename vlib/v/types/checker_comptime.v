@@ -16397,7 +16397,8 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 	lhs := tc.a.nodes[int(lhs_id)]
 	if lhs.kind == .ident && lhs.value.len > 0 {
 		if lhs.value != '_' && (tc.visible_local_scope_owns_name(lhs.value)
-			|| tc.visible_mut_param_binding_owns_name(lhs.value)) {
+			|| tc.visible_mut_param_binding_owns_name(lhs.value))
+			&& !(tc.unsafe_depth > 1 && !tc.current_local_scope_owns_name(lhs.value)) {
 			tc.record_error(.assignment_mismatch, 'redefinition of `${lhs.value}`', lhs_id)
 			return ScopeBindingOwner{}
 		}
@@ -16417,6 +16418,18 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 		return owner
 	}
 	return ScopeBindingOwner{}
+}
+
+fn (tc &TypeChecker) current_local_scope_owns_name(name string) bool {
+	if name == '' || tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	for i := tc.cur_scope.names.len - 1; i >= 0; i-- {
+		if tc.cur_scope.names[i] == name {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) record_bool_condition_binding(owner ScopeBindingOwner, rhs_id flat.NodeId, typ Type, is_mut bool) {
