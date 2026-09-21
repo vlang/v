@@ -4531,7 +4531,9 @@ fn (t &Transformer) subst_unquoted_field_cond(cond string, var_name string, fm F
 	c = comptime_cond_replace_unquoted(c, '${var_name}.is_atomic', fm.is_atomic.str())
 	c = comptime_cond_replace_unquoted(c, '${var_name}.is_mut', fm.is_mut.str())
 	c = comptime_cond_replace_unquoted(c, '${var_name}.is_pub', fm.is_pub.str())
-	c = comptime_cond_replace_unquoted(c, '${var_name}.typ', fm.comptime_typ)
+	// Preserve the metadata selector marker until type matching. It distinguishes
+	// an alias-valued `field.typ` from `field.unaliased_typ` after substitution.
+	c = comptime_cond_replace_unquoted(c, '${var_name}.typ', '${fm.comptime_typ}.typ')
 	c = comptime_cond_replace_unquoted(c, '${var_name}.name', "'${fm.name}'")
 	c = comptime_cond_replace_bare_ident(c, var_name, fm.comptime_typ)
 	return c

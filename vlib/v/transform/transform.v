@@ -16956,7 +16956,9 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 		t.normalize_type_alias(clean_actual)
 	}
 	if is_alias_actual && (clean_actual == clean_expected
-		|| t.qualify_type(clean_actual) == t.qualify_type(clean_expected)) {
+		|| t.qualify_type(clean_actual) == t.qualify_type(clean_expected)
+		|| t.comptime_field_type_id_key(clean_actual, t.cur_module) == t.comptime_field_type_id_key(clean_expected,
+			t.cur_module)) {
 		return true
 	}
 	match clean_expected {

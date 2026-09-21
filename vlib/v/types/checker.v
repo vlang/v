@@ -16603,6 +16603,11 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 			tc.check_comptime_selectors_outside_loop(current_fn_id, _id, parts[0])
 		}
 	}
+	tc.push_scope()
+	tc.cur_scope.insert(parts[0], tc.parse_type(comptime_static_metadata_type_name(parts[1])))
+	defer {
+		tc.pop_scope()
+	}
 	tc.check_comptime_reflection_condition_types(body_id, parts[0])
 	if parts[1] == 'methods' {
 		mut invalid_uses := []flat.NodeId{}

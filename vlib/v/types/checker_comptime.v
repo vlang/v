@@ -403,16 +403,7 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name, loop_kind)
 	}
 	if node.kind == .ident && node.value == var_name {
-		metadata_type := match loop_kind {
-			'methods' { 'FunctionData' }
-			'params' { 'FunctionParam' }
-			'attributes' { 'VAttribute' }
-			'values' { 'EnumData' }
-			'variants' { 'VariantData' }
-			else { 'FieldData' }
-		}
-
-		return tc.parse_type(metadata_type)
+		return tc.parse_type(comptime_static_metadata_type_name(loop_kind))
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.a.child_node(&node, 0)
@@ -421,6 +412,17 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 		}
 	}
 	return none
+}
+
+fn comptime_static_metadata_type_name(loop_kind string) string {
+	return match loop_kind {
+		'methods' { 'FunctionData' }
+		'params' { 'FunctionParam' }
+		'attributes' { 'VAttribute' }
+		'values' { 'EnumData' }
+		'variants' { 'VariantData' }
+		else { 'FieldData' }
+	}
 }
 
 fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_kind string) ?Type {
