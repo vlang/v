@@ -166,6 +166,21 @@ fn test_single_moduleless_test_keeps_an_unresolvable_same_dir_fixture_module() {
 	assert same_dir_module_source_files(test_file, '', prefs) == [module_file]
 }
 
+fn test_main_module_test_includes_an_implicit_main_source() {
+	root := os.join_path(os.temp_dir(), 'v3_implicit_main_test_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	test_file := os.join_path(root, 'main_test.v')
+	module_file := os.join_path(root, 'main.v')
+	os.write_file(test_file, 'module main\n\nfn test_value() {}\n')!
+	os.write_file(module_file, 'fn value() int { return 1 }\n')!
+	mut prefs := pref.new_preferences()
+	assert same_dir_module_source_files(test_file, 'main', prefs) == [module_file]
+}
+
 fn test_v3_diagnostic_color_option() {
 	defer {
 		apply_v3_diagnostic_color_option('-color')
