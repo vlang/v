@@ -270,6 +270,13 @@ fn (t &Transformer) resolve_receiver_method_name(base_id flat.NodeId, method str
 		if t.receiver_method_matches_base_type(method_name, base_id) {
 			return method_name
 		}
+		if t.is_interface_type_name(base_type) {
+			if embedded_method := t.resolve_embedded_interface_declared_method(base_type, method) {
+				if embedded_method == method_name {
+					return method_name
+				}
+			}
+		}
 	}
 	if embedded_method := t.resolve_embedded_receiver_method(base_type, method) {
 		// resolve_embedded_receiver_method already walked the embedding chain from
@@ -486,11 +493,10 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 		}
 		if t.is_interface_type_name(clean_type) && !isnil(t.tc)
 			&& method !in t.tc.interface_abstract_method_names(clean_type) {
-			if embedded_interface_method := t.tc.interface_method_signature_key(clean_type, method) {
-				if embedded_interface_method != direct
-					&& t.is_known_fn_name(embedded_interface_method) {
-					return embedded_interface_method
-				}
+			if embedded_interface_method := t.resolve_embedded_interface_declared_method(clean_type,
+				method)
+			{
+				return embedded_interface_method
 			}
 		}
 	}
@@ -798,6 +804,35 @@ fn (t &Transformer) resolve_embedded_receiver_method(base_type string, method st
 		}
 		if method_name := t.resolve_embedded_receiver_method(clean_field, method) {
 			return method_name
+		}
+	}
+	return none
+}
+
+// Embedded method signatures are copied onto child interfaces, but default method bodies
+// remain owned by the interface that declared them.
+fn (t &Transformer) resolve_embedded_interface_declared_method(iface_name string, method string) ?string {
+	if isnil(t.tc) {
+		return none
+	}
+	mut seen := map[string]bool{}
+	return t.resolve_embedded_interface_declared_method_inner(iface_name, method, mut seen)
+}
+
+fn (t &Transformer) resolve_embedded_interface_declared_method_inner(iface_name string, method string, mut seen map[string]bool) ?string {
+	name := t.tc.interface_metadata_name(iface_name)
+	if name == '' || seen[name] {
+		return none
+	}
+	seen[name] = true
+	for embed in t.tc.interface_embeds[name] or { []string{} } {
+		if declared := t.declared_receiver_method(embed, method) {
+			return declared
+		}
+		if declared := t.resolve_embedded_interface_declared_method_inner(embed, method,
+			mut seen)
+		{
+			return declared
 		}
 	}
 	return none
@@ -13993,6 +14028,8 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 	method_receiver := t.trim_pointer_type(owner_name_view(method_name))
 	params := t.call_param_types(method_name)
 	receiver_param_type := if params.len > 0 { t.semantic_type_name(params[0]) } else { '' }
+	method := method_name.all_after_last('.')
+	method_iface := t.resolve_interface_type_name(method_receiver)
 	key := t.expr_key(base_id)
 	for source_type in [t.raw_var_type_for_expr(base_id) or { '' }, t.original_expr_type(base_id),
 		t.node_type(base_id)] {
@@ -14013,6 +14050,18 @@ fn (mut t Transformer) receiver_base_for_resolved_method(base_id flat.NodeId, me
 				}
 			}
 			return t.transform_expr_for_type(base_id, receiver_param_type)
+		}
+		if method_iface.len > 0 {
+			source_iface := t.resolve_interface_type_name(clean_source)
+			if source_iface.len > 0 && source_iface != method_iface {
+				if embedded_method := t.resolve_embedded_interface_declared_method(source_iface,
+					method)
+				{
+					if embedded_method == method_name {
+						return t.transform_expr_for_type(base_id, receiver_param_type)
+					}
+				}
+			}
 		}
 		if alias_target := t.alias_target_type_preserving_main_lock(clean_source) {
 			if method_receiver.len > 0
