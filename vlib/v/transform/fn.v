@@ -6859,6 +6859,11 @@ fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type s
 		return t.make_string_literal(t.fn_stringify_display(clean))
 	}
 	if clean.starts_with('?') || clean.starts_with('!') || clean.starts_with('shared ') {
+		if clean.starts_with('?')
+			&& t.optional_base_type(t.qualify_optional_type(field_type)).starts_with('&') {
+			return t.wrap_optional_string_conversion_with_pointer_none(expr, field_type, false,
+				false)
+		}
 		return t.wrap_string_conversion(expr, field_type)
 	}
 	if clean.starts_with('builtin.') {
@@ -9185,6 +9190,12 @@ fn (t &Transformer) map_str_fixed_len_for_type(typ string) int {
 
 // wrap_optional_string_conversion transforms wrap optional string conversion data for transform.
 fn (mut t Transformer) wrap_optional_string_conversion(expr flat.NodeId, typ string, is_ref bool) flat.NodeId {
+	return t.wrap_optional_string_conversion_with_pointer_none(expr, typ, is_ref, true)
+}
+
+// wrap_optional_string_conversion_with_pointer_none lets struct auto-str retain
+// `&Option(none)` for an empty pointer field while standalone `?&T` prints `&Option(&nil)`.
+fn (mut t Transformer) wrap_optional_string_conversion_with_pointer_none(expr flat.NodeId, typ string, is_ref bool, pointer_none_as_nil bool) flat.NodeId {
 	opt_type := t.qualify_optional_type(typ)
 	mut value_type := t.optional_base_type(opt_type)
 	if value_type.len == 0 || value_type == 'void' {
@@ -9196,7 +9207,7 @@ fn (mut t Transformer) wrap_optional_string_conversion(expr flat.NodeId, typ str
 	pointer_payload := value_type.starts_with('&')
 	option_prefix := if pointer_payload || is_ref { '&Option(' } else { 'Option(' }
 	t.pending_stmts << t.make_decl_assign_typed(res_name, t.make_string_literal('${option_prefix}none)'), 'string')
-	if is_ref || pointer_payload {
+	if is_ref || (pointer_payload && pointer_none_as_nil) {
 		t.pending_stmts << t.make_assign(t.make_ident(res_name), t.make_string_literal('${option_prefix}&nil)'))
 	}
 	value := t.make_selector(t.make_ident(opt_name), 'value', value_type)
