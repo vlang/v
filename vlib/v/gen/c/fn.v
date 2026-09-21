@@ -652,9 +652,21 @@ fn (g &FlatGen) needs_closure_runtime_init() bool {
 	return false
 }
 
+fn (g &FlatGen) needs_gc_runtime_init() bool {
+	return 'gcboehm' in g.compile_defines || 'vgc' in g.compile_defines
+}
+
 fn (g &FlatGen) runtime_init_is_needed() bool {
 	return g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
-		|| g.global_inits.len > 0 || g.needs_closure_runtime_init()
+		|| g.global_inits.len > 0 || g.needs_closure_runtime_init() || g.needs_gc_runtime_init()
+}
+
+fn (mut g FlatGen) gen_vinit_call(argc string, argv string) {
+	if g.is_shared {
+		g.writeln('\t_vinit(${argc}, ${argv});')
+	} else {
+		g.writeln('\t_vinit();')
+	}
 }
 
 fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
@@ -674,7 +686,7 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	}
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
-		g.writeln('\t_vinit();')
+		g.gen_vinit_call('0', '0')
 	}
 	g.gen_profile_registration()
 	if !g.is_shared {
@@ -4842,7 +4854,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.gen_coverage_registration()
 		g.gen_profile_startup_enable()
 		if g.runtime_init_is_needed() {
-			g.writeln('\t_vinit();')
+			g.gen_vinit_call('argc', 'argv')
 		}
 		g.gen_profile_registration()
 		g.gen_executable_cleanup_registration()
@@ -5264,7 +5276,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 		g.writeln('\t_vno_main_init_caller();')
 	} else {
 		if g.runtime_init_is_needed() {
-			g.writeln('\t_vinit();')
+			g.gen_vinit_call('argc', 'argv')
 		}
 		g.gen_executable_cleanup_registration()
 	}
@@ -5358,7 +5370,7 @@ fn (mut g FlatGen) gen_test_main() {
 	g.gen_coverage_registration()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
-		g.writeln('\t_vinit();')
+		g.gen_vinit_call('argc', 'argv')
 	}
 	g.gen_profile_registration()
 	g.gen_executable_cleanup_registration()

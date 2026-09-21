@@ -4056,10 +4056,12 @@ fn (mut g FlatGen) write_type_declaration_block() {
 
 fn (mut g FlatGen) gen_vinit() {
 	needs_closure_init := g.needs_closure_runtime_init()
+	needs_gc_init := g.needs_gc_runtime_init()
 	has_embed_joins := g.has_chunked_embed_blobs()
 	has_reflection := g.has_runtime_reflection()
 	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
-		&& g.global_inits.len == 0 && !needs_closure_init && !has_embed_joins && !has_reflection {
+		&& g.global_inits.len == 0 && !needs_closure_init && !needs_gc_init && !has_embed_joins
+		&& !has_reflection {
 		return
 	}
 	fn_start_pos := g.sb.len
@@ -4067,9 +4069,18 @@ fn (mut g FlatGen) gen_vinit() {
 	// prefix: a parallel C build repeats that prefix per unit, and only the unit
 	// holding `_vinit` may define them.
 	g.gen_embed_blob_joined()
-	g.writeln('void _vinit() {')
-	if 'gcboehm' in g.compile_defines || 'vgc' in g.compile_defines {
+	if g.is_shared {
+		g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	} else {
+		g.writeln('void _vinit() {')
+	}
+	if needs_gc_init {
 		g.writeln('\tgc_runtime_init();')
+	}
+	if 'gcboehm' in g.compile_defines {
+		g.writeln('#if defined(_VGCBOEHM) && defined(GC_THREADS)')
+		g.writeln('\tGC_allow_register_threads();')
+		g.writeln('#endif')
 	}
 	// A split `$embed_file` payload is put back together before anything else can
 	// look at it, which is both what makes it a one-time cost and what keeps it

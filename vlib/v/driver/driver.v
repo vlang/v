@@ -2110,7 +2110,7 @@ fn run_v3_parallel_c_compile_task(raw_task voidptr) voidptr {
 	return unsafe { nil }
 }
 
-fn write_v3_parallel_c_source(path string, header_name string, body string, owner bool) ! {
+fn write_v3_parallel_c_source(path string, header_name string, body string, owner bool, is_shared bool) ! {
 	mut file := os.create(path)!
 	defer {
 		file.close()
@@ -2126,7 +2126,7 @@ fn write_v3_parallel_c_source(path string, header_name string, body string, owne
 	file.writeln('#include "${header_name}"')!
 	// These program lifecycle functions are emitted in the generated body rather
 	// than its declaration prefix, so later body units need explicit prototypes.
-	file.writeln('void _vinit(void);')!
+	file.writeln(if is_shared { 'void _vinit(int, void*);' } else { 'void _vinit(void);' })!
 	file.writeln('void _vcleanup(void);')!
 	file.write_string(body)!
 }
@@ -2350,7 +2350,7 @@ fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) 
 	return split.prefix, merge_v3_parallel_c_units(units, max_units)
 }
 
-fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, output_name string, show_command bool, job_count int, unit_count int) os.Result {
+fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, output_name string, show_command bool, job_count int, unit_count int, is_shared bool) os.Result {
 	source := os.read_file(source_path) or {
 		return os.Result{
 			exit_code: 1
@@ -2391,7 +2391,7 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 		object_name := 'unit_${unit_index}.o'
 		unit_source := if unit_index == 0 { prefix } else { bodies[unit_index - 1] }
 		unit_path := os.join_path_single(build_dir, source_name)
-		write_v3_parallel_c_source(unit_path, header_name, unit_source, unit_index == 0) or {
+		write_v3_parallel_c_source(unit_path, header_name, unit_source, unit_index == 0, is_shared) or {
 			return os.Result{
 				exit_code: 1
 				output:    'failed to write parallel C unit ${source_name}: ${err.msg()}'
@@ -13075,7 +13075,7 @@ pub fn run(args []string) {
 			}
 			if use_parallel_c_compilation && cached_program_main_object.len == 0
 				&& fallback_source == 'src.c' {
-				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count)
+				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count, is_shared)
 			} else {
 				cc_args := c_flag_plan.compiler_args(cc_output_name, compiler_inputs, [])
 				if verbose || show_cc {
