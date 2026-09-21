@@ -21818,7 +21818,7 @@ fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node
 			return t.make_string_literal(typeof_display_resolved_type_text(resolved))
 		}
 	}
-	return t.make_string_literal(typeof_display_type_text(typeof_fn_type_display(generic_type_name_display(typ))))
+	return t.make_string_literal(typeof_display_type_text(typeof_fn_type_display(type_text_without_main_locks(typ))))
 }
 
 fn (t &Transformer) explicit_generic_call_return_type_for_typeof(id flat.NodeId, node flat.Node) ?string {
