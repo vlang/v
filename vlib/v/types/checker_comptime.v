@@ -12111,6 +12111,8 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 			unreachable_id = child_id
 		}
 		tc.check_stmt_node(child_id)
+		tc.apply_post_if_exit_smartcasts(child_id)
+		tc.apply_post_assert_smartcasts(child_id)
 		if tc.statement_exits_sequence(child_id, child) {
 			sequence_exited = true
 		}
@@ -13062,6 +13064,8 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			unreachable_id = child_id
 		}
 		tc.check_stmt_node(child_id)
+		tc.apply_post_if_exit_smartcasts(child_id)
+		tc.apply_post_assert_smartcasts(child_id)
 		if tc.statement_exits_sequence(child_id, child) {
 			sequence_exited = true
 		}
