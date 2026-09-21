@@ -13958,13 +13958,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		actual_pointer_depth, actual_pointer_base :=
 			type_pointer_depth_and_base(pointer_check_actual)
-		mut pointer_check_expected := expected
-		if expected is OptionType && expected.base_type is Pointer && actual !is OptionType
-			&& actual !is ResultType {
-			pointer_check_expected = expected.base_type
-		}
-		expected_pointer_depth, expected_pointer_base :=
-			type_pointer_depth_and_base(pointer_check_expected)
+		expected_pointer_depth, expected_pointer_base := type_pointer_depth_and_base(expected)
 		spawn_rvalue_address := expected_pointer_depth == actual_pointer_depth + 1
 			&& tc.call_is_direct_spawn_child(id)
 		mut pointer_value_arg := tc.pointer_value_compatible(actual, expected)
@@ -13981,27 +13975,30 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
 			&& !tc.call_arg_is_callee_receiver(node, arg_id)
 			&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
-		pointer_depth_mismatch := !compatible_interface_value_arg && (explicit_address_depth_mismatch
-			|| (actual_pointer_depth != expected_pointer_depth
-				&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
-				&& !fn_param_is_voidptr_type(expected) && !(arg_node.is_mut
-				&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
-				&& !tc.fn_voidptr_expr_compatible(pointer_check_actual, expected)
-				&& !(info.name.starts_with('C.') && tc.is_zero_literal(arg_id))
-				&& !(info.name.starts_with('C.') && fn_param_is_voidptr_type(pointer_check_actual))
-				&& !tc.implicit_ref_arg_compatible(arg_id, pointer_check_actual, expected)
-				&& !(actual_pointer_depth == expected_pointer_depth + 1
-					&& tc.receiver_compatible(pointer_check_actual, expected))
-				&& !type_contains_unknown(pointer_check_actual) && !type_contains_unknown(expected)
-				&& !tc.call_arg_is_callee_receiver(node, arg_id)
-				&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
-				&& !(arg_node.is_mut && expected is Pointer
-					&& tc.type_compatible(actual, expected.base_type))
-				&& !(arg_node.is_mut
-					&& tc.mut_optional_pointer_arg_compatible(pointer_check_actual, expected))
-				&& !pointer_value_arg
-				&& !(info.name.starts_with('C.')
-					&& c_pointer_to_voidptr_arg_compatible(pointer_check_actual, expected))))
+		optional_pointer_arg := tc.optional_pointer_expr_compatible(arg_id, pointer_check_actual,
+			expected)
+		pointer_depth_mismatch := !compatible_interface_value_arg && !optional_pointer_arg
+			&& (explicit_address_depth_mismatch
+				|| (actual_pointer_depth != expected_pointer_depth
+					&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
+					&& !fn_param_is_voidptr_type(expected) && !(arg_node.is_mut
+					&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
+					&& !tc.fn_voidptr_expr_compatible(pointer_check_actual, expected)
+					&& !(info.name.starts_with('C.') && tc.is_zero_literal(arg_id))
+					&& !(info.name.starts_with('C.') && fn_param_is_voidptr_type(pointer_check_actual))
+					&& !tc.implicit_ref_arg_compatible(arg_id, pointer_check_actual, expected)
+					&& !(actual_pointer_depth == expected_pointer_depth + 1
+						&& tc.receiver_compatible(pointer_check_actual, expected))
+					&& !type_contains_unknown(pointer_check_actual) && !type_contains_unknown(expected)
+					&& !tc.call_arg_is_callee_receiver(node, arg_id)
+					&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
+					&& !(arg_node.is_mut && expected is Pointer
+						&& tc.type_compatible(actual, expected.base_type))
+					&& !(arg_node.is_mut
+						&& tc.mut_optional_pointer_arg_compatible(pointer_check_actual, expected))
+					&& !pointer_value_arg
+					&& !(info.name.starts_with('C.')
+						&& c_pointer_to_voidptr_arg_compatible(pointer_check_actual, expected))))
 		pointer_array_mismatch := actual_pointer_depth > 0 && expected_pointer_depth > 0
 			&& unalias_type(actual_pointer_base) is Array
 			&& unalias_type(expected_pointer_base) is Array
