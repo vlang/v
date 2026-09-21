@@ -1388,6 +1388,10 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	raw_rhs_type := t.node_type(rhs_id)
 	mut rhs_type := t.normalize_type_alias(raw_rhs_type)
 	rhs_node := t.a.nodes[int(rhs_id)]
+	if literal_variant := t.array_append_literal_sum_array_variant_type(rhs_id, elem_type) {
+		t.set_node_typ(int(rhs_id), literal_variant)
+		rhs_type = literal_variant
+	}
 	mut push_many := t.array_append_rhs_is_push_many(lhs_id, rhs_id, rhs_type, elem_type)
 	if !push_many && t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
 		push_many = true
@@ -2141,6 +2145,9 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 	}
 	clean_rhs_type := rhs_type.trim_space()
 	lhs_elem_is_interface := t.array_append_elem_is_interface(elem_type)
+	if t.array_append_literal_is_sum_array_variant(rhs_id, elem_type) {
+		return false
+	}
 	if clean_rhs_type.starts_with('...') {
 		return t.array_append_elem_types_match(clean_rhs_type[3..], elem_type)
 	}
@@ -2212,6 +2219,9 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 	}
 	if clean_rhs.starts_with('[]') && t.array_append_elem_types_match(clean_rhs[2..], elem_type) {
 		return false
+	}
+	if t.array_append_literal_is_sum_array_variant(rhs_id, elem_type) {
+		return true
 	}
 	candidate := t.array_append_rhs_variant_candidate(rhs_id, rhs_type)
 	if candidate.len == 0 {
@@ -2335,6 +2345,9 @@ fn (t &Transformer) array_append_literal_should_push_many(rhs_id flat.NodeId, el
 	if t.array_append_elem_is_interface(elem_type) {
 		return t.array_append_literal_children_match_elem(rhs_id, elem_type)
 	}
+	if t.array_append_literal_is_sum_array_variant(rhs_id, elem_type) {
+		return false
+	}
 	if t.array_append_rhs_is_sum_array_variant(t.node_type(rhs_id), elem_type) {
 		return false
 	}
@@ -2359,19 +2372,50 @@ fn (t &Transformer) array_append_rhs_is_sum_array_variant(rhs_type string, elem_
 	if clean_rhs.len == 0 {
 		return false
 	}
-	// An array with exactly the destination's element type is the push-many
-	// form (`[]Value << []Value`), even when `[]Value` also appears recursively
-	// as a variant of `Value`. Distinct array variants such as `[]int` appended
-	// to `[]Any` remain single sum-type elements.
-	if clean_rhs.starts_with('[]') && t.array_append_elem_types_match(clean_rhs[2..], elem_type) {
-		return false
-	}
 	for variant in variants {
 		if t.array_append_elem_types_match(clean_rhs, variant) {
 			return true
 		}
 	}
 	return false
+}
+
+// array_append_literal_is_sum_array_variant recovers an array literal's source element
+// type after contextual checking may have widened the literal to the destination array
+// type. An explicit first element such as `u8(1)` makes `[u8(1), 2]` an `[]u8` variant,
+// so it must be pushed as one sum-type value instead of spreading its elements.
+fn (t &Transformer) array_append_literal_is_sum_array_variant(rhs_id flat.NodeId, elem_type string) bool {
+	if _ := t.array_append_literal_sum_array_variant_type(rhs_id, elem_type) {
+		return true
+	}
+	return false
+}
+
+fn (t &Transformer) array_append_literal_sum_array_variant_type(rhs_id flat.NodeId, elem_type string) ?string {
+	if int(rhs_id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(rhs_id)]
+	if node.kind != .array_literal || node.children_count == 0 {
+		return none
+	}
+	resolved_sum := t.resolve_sum_name(elem_type)
+	variants := t.sum_types[resolved_sum] or { return none }
+	first_id := t.a.child(&node, 0)
+	mut first_type := t.original_expr_type(first_id).trim_space()
+	if first_type.len == 0 || first_type in ['unknown', 'void'] {
+		first_type = t.node_type(first_id).trim_space()
+	}
+	if first_type.len == 0 || first_type in ['unknown', 'void'] {
+		return none
+	}
+	candidate := '[]${first_type}'
+	for variant in variants {
+		if t.array_append_elem_types_match(candidate, variant) {
+			return variant
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) array_append_elem_is_interface(elem_type string) bool {
