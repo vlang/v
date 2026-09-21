@@ -16355,6 +16355,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return operator_ret
 			}
 			if node.op == .right_shift_unsigned {
+				// Untyped integer literals retain the language's 32-bit default. An
+				// explicit `int(...)` uses the target-width `int` instead.
+				if tc.integer_literal_source(lhs_id) != none {
+					return Type(u32_)
+				}
 				return unsigned_shift_result_type(lt)
 			}
 			if node.op == .plus {

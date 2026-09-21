@@ -8087,7 +8087,7 @@ fn (tc &TypeChecker) is_fixed_array_len_const_comparison(len_id flat.NodeId, con
 fn comparison_integer_bits(typ Type) int {
 	clean := unalias_type(typ)
 	if clean is Primitive {
-		return if clean.size == 0 { 32 } else { int(clean.size) }
+		return if clean.size == 0 { platform_int_bits() } else { int(clean.size) }
 	}
 	if clean is ISize || clean is USize {
 		return 64
