@@ -4814,9 +4814,19 @@ fn (tc &TypeChecker) interface_actual_field(concrete_name string, field_name str
 		}
 	}
 	mut candidates := [concrete_name]
+	underlying_name := method_type_name(unalias_type(tc.parse_type(concrete_name)))
+	if underlying_name.len > 0 && underlying_name !in candidates {
+		candidates << underlying_name
+	}
 	if !concrete_name.contains('.') {
 		qname := tc.qualify_name(concrete_name)
-		if qname != concrete_name {
+		if qname !in candidates {
+			candidates << qname
+		}
+	}
+	if underlying_name.len > 0 && !underlying_name.contains('.') {
+		qname := tc.qualify_name(underlying_name)
+		if qname !in candidates {
 			candidates << qname
 		}
 	}
