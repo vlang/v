@@ -2452,10 +2452,11 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	}
 	unsafe { kept_lines.free() }
 	possible_text := possible_source.str()
-	if modulecache.c_source_has_static_storage(possible_text) {
+	if modulecache.c_source_has_static_storage(possible_text)
+		|| modulecache.c_source_function_identifiers(possible_text).len > 0 {
 		active_static_storage_paths[collection_key] = true
 		if os.getenv('V3_CACHE_TRACE') != '' {
-			eprintln('  V3 module cache active static C input: module=${collection_scope} path=${real_path}')
+			eprintln('  V3 module cache active C storage input: module=${collection_scope} path=${real_path}')
 		}
 	}
 	unsafe { possible_text.free() }
