@@ -177,6 +177,11 @@ fn struct_init_has_main_type_lock(type_name string) bool {
 }
 
 fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) string {
+	if node.typ == node.value && (node.typ.starts_with('?') || node.typ.starts_with('!')) {
+		// Lowered option/result literals carry their authoritative wrapper type on
+		// the synthetic node; they have no checker-side expression entry to refine it.
+		return node.typ
+	}
 	if node.typ == node.value && node.typ.contains('[') && node.typ.contains('.') {
 		// A specialized clone's explicit type annotation is newer than the
 		// checker's expression cache and can retain nested main-module locks.

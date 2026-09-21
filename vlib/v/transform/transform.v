@@ -13412,6 +13412,16 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 		}
 		if t.is_optional_type_name(target_type) {
 			optional_target := t.qualify_optional_type(target_type)
+			target_payload := t.optional_base_type(optional_target)
+			if node.kind == .prefix && node.op == .amp && node.children_count == 1
+				&& target_payload.starts_with('&') {
+				source_id := t.a.child(&node, 0)
+				source_type := t.optional_conversion_source_type(source_id)
+				if t.normalize_type_alias(source_type) == t.normalize_type_alias(target_payload[1..]) {
+					value := t.transform_expr_for_type(id, target_payload)
+					return t.make_optional_some(value, optional_target)
+				}
+			}
 			if node.kind in [.ident, .selector] {
 				source_type := t.original_expr_type(id)
 				if t.is_optional_type_name(source_type)
@@ -13419,7 +13429,6 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 					return t.make_plain_expr_for_smartcast(id)
 				}
 			}
-			target_payload := t.optional_base_type(optional_target)
 			source_type := t.optional_conversion_source_type(id)
 			if t.is_optional_type_name(source_type)
 				&& t.qualify_optional_type(source_type) == optional_target
