@@ -3318,6 +3318,24 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		return arg_id
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
+	if arg_node.is_mut && param_type.starts_with('&?&') {
+		arg_type := t.node_type(arg_id)
+		payload_type := param_type[3..]
+		if arg_type.len > 0 && !arg_type.starts_with('?')
+			&& t.normalize_type_alias(arg_type) == t.normalize_type_alias(payload_type) {
+			value := t.transform_expr(arg_id)
+			pointer_type := '&${payload_type}'
+			addr := t.make_prefix(.amp, value)
+			t.set_node_typ(int(addr), pointer_type)
+			option_type := '?${pointer_type}'
+			wrapped := t.make_optional_some(addr, option_type)
+			tmp_name := t.new_temp('mut_optional_arg')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name, wrapped, option_type)
+			option_addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+			t.set_node_typ(int(option_addr), param_type)
+			return option_addr
+		}
+	}
 	if param_type.starts_with('&') && t.call_arg_is_zero_pointer_literal(arg_id) {
 		value := t.transform_expr(arg_id)
 		t.set_node_typ(int(value), param_type)

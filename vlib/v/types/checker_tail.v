@@ -13931,7 +13931,10 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				&& !tc.call_arg_is_callee_receiver(node, arg_id)
 				&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
 				&& !(arg_node.is_mut && expected is Pointer
-					&& tc.type_compatible(actual, expected.base_type)) && !pointer_value_arg
+					&& tc.type_compatible(actual, expected.base_type))
+				&& !(arg_node.is_mut
+					&& tc.mut_optional_pointer_arg_compatible(pointer_check_actual, expected))
+				&& !pointer_value_arg
 				&& !(info.name.starts_with('C.')
 					&& c_pointer_to_voidptr_arg_compatible(pointer_check_actual, expected))))
 		pointer_array_mismatch := actual_pointer_depth > 0 && expected_pointer_depth > 0
@@ -15293,25 +15296,22 @@ fn (tc &TypeChecker) method_call_name_pos(call flat.Node, selector flat.Node) to
 }
 
 fn (tc &TypeChecker) mut_optional_pointer_arg_compatible(actual Type, expected Type) bool {
-	if actual !is OptionType {
-		return false
-	}
-	actual_option := actual as OptionType
 	if expected !is Pointer {
 		return false
 	}
 	expected_pointer := expected as Pointer
-	actual_payload := actual_option.base_type
 	expected_option_type := expected_pointer.base_type
-	if actual_payload !is Pointer {
-		return false
-	}
-	actual_pointer := actual_payload as Pointer
 	if expected_option_type !is OptionType {
 		return false
 	}
 	expected_option := expected_option_type as OptionType
-	return tc.type_compatible(actual_pointer.base_type, expected_option.base_type)
+	if actual is OptionType && actual.base_type is Pointer {
+		return tc.type_compatible(actual.base_type.base_type, expected_option.base_type)
+	}
+	if expected_option.base_type is Pointer {
+		return tc.type_compatible(actual, expected_option.base_type.base_type)
+	}
+	return false
 }
 
 fn enum_from_input_param(typ Type) bool {
