@@ -997,8 +997,18 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	if !lhs_is_ptr && !rhs_is_ptr {
 		return none
 	}
-	lhs_type := t.infix_operand_pointer_type(lhs_id) or { t.node_type(lhs_id) }
-	rhs_type := t.infix_operand_pointer_type(rhs_id) or { t.node_type(rhs_id) }
+	mut lhs_type := t.infix_operand_pointer_type(lhs_id) or { t.node_type(lhs_id) }
+	mut rhs_type := t.infix_operand_pointer_type(rhs_id) or { t.node_type(rhs_id) }
+	lhs_node := t.a.nodes[int(lhs_id)]
+	rhs_node := t.a.nodes[int(rhs_id)]
+	if lhs_node.kind == .ident && t.pointer_value_rvalues[lhs_node.value]
+		&& lhs_type.starts_with('&') {
+		lhs_type = lhs_type[1..]
+	}
+	if rhs_node.kind == .ident && t.pointer_value_rvalues[rhs_node.value]
+		&& rhs_type.starts_with('&') {
+		rhs_type = rhs_type[1..]
+	}
 	lhs_clean := t.trim_pointer_type(lhs_type)
 	rhs_clean := t.trim_pointer_type(rhs_type)
 	lhs_struct := t.struct_lookup_name(lhs_clean)
@@ -1039,12 +1049,16 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 		return t.transform_struct_pointer_eq(node, lhs_id, rhs_id, lhs_type, rhs_type, lhs_clean, rhs_clean)
 	}
 	lhs := if lhs_is_ptr {
-		t.make_prefix(.mul, t.transform_expr(lhs_id))
+		value := t.make_prefix(.mul, t.transform_expr(lhs_id))
+		t.set_node_typ(int(value), lhs_clean)
+		value
 	} else {
 		t.transform_expr(lhs_id)
 	}
 	rhs := if rhs_is_ptr {
-		t.make_prefix(.mul, t.transform_expr(rhs_id))
+		value := t.make_prefix(.mul, t.transform_expr(rhs_id))
+		t.set_node_typ(int(value), rhs_clean)
+		value
 	} else {
 		t.transform_expr(rhs_id)
 	}
@@ -1257,8 +1271,10 @@ fn (t &Transformer) infix_operand_is_language_pointer(id flat.NodeId) bool {
 	node := t.a.node(id)
 	if node.kind == .ident && t.pointer_value_rvalues[node.value] {
 		// Some value locals use pointer storage (mutable captures, `for mut` bindings,
-		// and heap-promoted locals). Equality still compares their language-level value.
-		return false
+		// and heap-promoted locals). Remove that storage indirection, but retain a
+		// real pointer layer from the language type (`for mut p in []&T` is stored
+		// as `&&T`, while `p` still has the value type `&T`).
+		return t.var_type(node.value).starts_with('&&') && t.infix_operand_is_pointer(id)
 	}
 	return t.infix_operand_is_pointer(id)
 }
