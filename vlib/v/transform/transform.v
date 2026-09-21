@@ -14620,6 +14620,7 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		// promise, not an escape-analysis trigger).
 		if src.kind == .ident && node.value != stack_value_decl_marker
 			&& node.value != zeroed_stack_value_decl_marker
+			&& !decl_assign_value_is_shared(node.value)
 			&& src.value !in t.heaped_amp_locals && t.heap_attr_struct_type(inferred_typ) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
