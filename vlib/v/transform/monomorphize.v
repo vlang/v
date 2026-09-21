@@ -6790,6 +6790,13 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 					return key
 				}
 			}
+			// A concrete receiver declaration is not part of the generic declaration
+			// index. Preserve the checker's exact choice instead of falling through to
+			// a broader structured receiver pattern with the same method name.
+			if callee.kind == .selector
+				&& t.resolved_call_is_concrete_fn(resolved, generic_fn_decl_base_value(resolved)) {
+				return none
+			}
 		}
 	}
 	if callee.kind == .ident {
@@ -6798,6 +6805,12 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 			if t.generic_call_arg_count_matches_decl(node, decl) {
 				return direct_key
 			}
+		}
+		// Receiver calls lowered from a checker-selected concrete declaration use
+		// an identifier callee. Keep that exact declaration instead of rematching
+		// the call against an indexed generic receiver pattern.
+		if t.plain_concrete_fn_known(callee.value, module_name, decls) {
+			return none
 		}
 		// Synthesized method calls use an identifier callee and can encode only the
 		// concrete generic arguments, not a structured receiver pattern such as
