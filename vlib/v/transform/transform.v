@@ -9891,6 +9891,15 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	}
 	child_id := t.a.child(&node, 0)
 	mut typ := t.node_type(child_id)
+	mut has_active_smartcast := false
+	child_key := t.expr_key(child_id)
+	if child_key.len > 0 {
+		contexts := t.smartcasts_for(child_key)
+		if contexts.len > 0 {
+			typ = t.smartcast_target_type(contexts.last())
+			has_active_smartcast = true
+		}
+	}
 	child_node := t.a.nodes[int(child_id)]
 	if closure_type := t.fresh_runtime_closure_type(child_id) {
 		typ = closure_type
@@ -9915,7 +9924,7 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 	mut dump_mut_param := false
 	mut dump_shared_ident := false
 	raw_alias_type := t.raw_alias_type_for_expr(child_id)
-	if raw_alias_type.len > 0 {
+	if raw_alias_type.len > 0 && !has_active_smartcast {
 		typ = raw_alias_type
 	}
 	if child_node.kind == .ident {
