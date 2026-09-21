@@ -1817,7 +1817,7 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 	// expression type. Keep it from becoming a synthetic named type when dump
 	// lowering declares a temporary for the expression.
 	if node.kind == .offsetof_expr || node.kind == .sizeof_expr {
-		return 'usize'
+		return 'u32'
 	}
 	resolved := t.resolve_expr_type(id)
 	if resolved.len > 0 {

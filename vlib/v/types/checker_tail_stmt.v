@@ -15755,7 +15755,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		return Type(string_)
 	}
 	if node.kind in [.sizeof_expr, .offsetof_expr] {
-		return Type(USize{})
+		return Type(u32_)
 	}
 	if kind_id == 28 {
 		return Type(voidptr_)
@@ -16456,10 +16456,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			return unknown_type('missing assoc base')
 		}
 		.sizeof_expr {
-			return Type(USize{})
+			return Type(u32_)
 		}
 		.offsetof_expr {
-			return Type(USize{})
+			return Type(u32_)
 		}
 		.cast_expr {
 			return tc.parse_type(node.value)
