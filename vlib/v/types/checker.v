@@ -5752,13 +5752,15 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 			}
 			tc.record_error_at(.duplicate_decl, 'cannot import `${module_path}` as `${node.typ}` into a module with the same name', flat.NodeId(idx), alias_pos)
 		}
-		key := file_import_key(tc.cur_file, node.typ)
-		if first_pos := first_imports[key] {
-			first_line := tc.import_line_number(first_pos)
-			pos := tc.import_module_path_pos(node)
-			tc.record_error_at(.duplicate_decl, 'A module `${node.typ}` was already imported on line ${first_line}`.', flat.NodeId(idx), pos)
-		} else {
-			first_imports[key] = node.pos
+		if node.typ != '_' {
+			key := file_import_key(tc.cur_file, node.typ)
+			if first_pos := first_imports[key] {
+				first_line := tc.import_line_number(first_pos)
+				pos := tc.import_module_path_pos(node)
+				tc.record_error_at(.duplicate_decl, 'A module `${node.typ}` was already imported on line ${first_line}`.', flat.NodeId(idx), pos)
+			} else {
+				first_imports[key] = node.pos
+			}
 		}
 	}
 }
