@@ -4,8 +4,6 @@ module workers
 import os
 import time
 
-#include "@VMODROOT/vlib/v/pthread_helper.h"
-
 // Parser, checker, transform, mark-used, and C generation have deep recursive
 // paths. Preserve their former 64 MiB worker stack while the persistent pool
 // avoids reserving a new set of stacks for every compiler phase.
@@ -76,22 +74,16 @@ struct Completion {
 	worker_run_ns u64
 }
 
-// C.pthread_t is the platform pthread handle type.
-@[typedef]
-struct C.pthread_t {}
-
-fn C.pthread_join(thread C.pthread_t, retval voidptr) int
-fn C.v3_pthread_zero() C.pthread_t
-fn C.v3_pthread_create(thread &C.pthread_t, stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr) int
-
 // Pool owns a bounded set of persistent compiler workers. Phase payloads stay
-// owned by the submitting thread until run returns.
+// owned by the submitting thread until run returns. Thread creation and
+// joining are the only platform-specific parts (thread_nix.c.v and
+// thread_windows.c.v); the queueing and accounting are shared.
 @[heap]
 pub struct Pool {
 mut:
 	jobs                   chan Task
 	done                   chan Completion
-	threads                []C.pthread_t
+	threads                []WorkerThread
 	is_closed              bool
 	task_count             u64
 	async_task_count       u64
@@ -153,14 +145,13 @@ pub fn new(size int) &Pool {
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 	stack_size := worker_stack_size()
 	for idx in 0 .. wanted {
-		mut thread_id := C.v3_pthread_zero()
-		result := if fail == 'pool:all' || fail == 'pool:${idx}' {
-			11
-		} else {
-			C.v3_pthread_create(&thread_id, stack_size, pool_worker, voidptr(pool))
+		if fail == 'pool:all' || fail == 'pool:${idx}' {
+			pool.launch_failure_count++
+			continue
 		}
+		worker, result := worker_thread_create(stack_size, pool_worker, voidptr(pool))
 		if result == 0 {
-			pool.threads << thread_id
+			pool.threads << worker
 		} else {
 			pool.launch_failure_count++
 		}
@@ -276,8 +267,8 @@ pub fn (mut p Pool) close() {
 			stop: true
 		}
 	}
-	for idx, thread_id in p.threads {
-		if C.pthread_join(thread_id, unsafe { nil }) != 0 {
+	for idx, worker in p.threads {
+		if worker_thread_join(worker) != 0 {
 			panic('failed to join compiler worker ${idx}')
 		}
 	}
