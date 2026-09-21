@@ -778,7 +778,7 @@ fn (tc &TypeChecker) negated_is_smartcast(cond_id flat.NodeId) ?LocalBinding {
 		return none
 	}
 	expr_id := tc.a.child(&inner, 0)
-	if tc.nonmut_mutable_interface_smartcast(expr_id) {
+	if tc.nonmut_mutable_interface_smartcast(expr_id, inner.value) {
 		return none
 	}
 	key := tc.expr_key(expr_id)
@@ -2790,7 +2790,7 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	}
 	mut expr_type := unalias_type(unwrap_pointer(raw_expr_type))
 	if expr_type is Interface && node.value != 'none'
-		&& tc.nonmut_mutable_interface_smartcast(expr_id) {
+		&& tc.nonmut_mutable_interface_smartcast(expr_id, node.value) {
 		if tc.interface_has_no_requirements(expr_type.name) {
 			tc.record_notice_at(.condition_mismatch, 'smartcasting requires either an immutable value, or an explicit mut keyword before the value', expr_id, expr_node.pos)
 		}
@@ -3241,7 +3241,7 @@ fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 	}
 	if cond.kind == .is_expr && cond.children_count > 0 {
 		expr_id := tc.a.child(&cond, 0)
-		if tc.nonmut_mutable_interface_smartcast(expr_id) {
+		if tc.nonmut_mutable_interface_smartcast(expr_id, cond.value) {
 			return []LocalBinding{}
 		}
 		key := tc.expr_key(expr_id)
@@ -3268,8 +3268,11 @@ fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 	return []LocalBinding{}
 }
 
-fn (tc &TypeChecker) nonmut_mutable_interface_smartcast(expr_id flat.NodeId) bool {
+fn (tc &TypeChecker) nonmut_mutable_interface_smartcast(expr_id flat.NodeId, pattern string) bool {
 	if !tc.valid_node_id(expr_id) {
+		return false
+	}
+	if tc.resolve_interface_pattern_interface(pattern) != none {
 		return false
 	}
 	if tc.expr_has_explicit_mut_marker(expr_id) {
