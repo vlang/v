@@ -16527,6 +16527,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	mut ownership_lhs_types := []Type{}
 	mut ownership_rhs_types := []Type{}
 	mut smartcast_write_keys := []string{}
+	mut option_assignment_smartcasts := []LocalBinding{}
 	is_cross_assignment := node.op == .assign && node.children_count > 2
 	pointer_alias_assignment_rhs := if is_cross_assignment {
 		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
@@ -16935,7 +16936,15 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		tc.update_pointer_binding_alias_assignment(lhs_id, rhs_id, expected_type, node.op, rhs_alias_state)
 		lhs_key := tc.expr_key(lhs_id)
 		if lhs_key.len > 0 {
-			if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
+			if smartcast := tc.option_assignment_smartcast_type(lhs_id, expected_type,
+				source_rhs_type, node.op)
+			{
+				smartcast_write_keys << lhs_key
+				option_assignment_smartcasts << LocalBinding{
+					name: lhs_key
+					typ:  smartcast
+				}
+			} else if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
 				smartcast_write_keys << lhs_key
 			}
 		}
@@ -16943,6 +16952,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	}
 	for key in smartcast_write_keys {
 		tc.invalidate_smartcasts_for_write_key(key)
+	}
+	for smartcast in option_assignment_smartcasts {
+		tc.smartcasts[smartcast.name] = smartcast.typ
 	}
 	$if ownership ? {
 		tc.ownership_after_assign_pairs(ownership_lhs_ids, ownership_rhs_ids, ownership_lhs_types, ownership_rhs_types, node.op, id)
@@ -16964,6 +16976,7 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 		return
 	}
 	mut smartcast_write_keys := []string{}
+	mut option_assignment_smartcasts := []LocalBinding{}
 	mut i := 0
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
@@ -16989,7 +17002,15 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 		}
 		lhs_key := tc.expr_key(lhs_id)
 		if lhs_key.len > 0 {
-			if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
+			if smartcast := tc.option_assignment_smartcast_type(lhs_id, expected_type,
+				source_rhs_type, node.op)
+			{
+				smartcast_write_keys << lhs_key
+				option_assignment_smartcasts << LocalBinding{
+					name: lhs_key
+					typ:  smartcast
+				}
+			} else if !tc.assignment_preserves_smartcast(lhs_id, rhs_id, source_rhs_type) {
 				smartcast_write_keys << lhs_key
 			}
 		}
@@ -16997,6 +17018,9 @@ fn (mut tc TypeChecker) check_valid_assign(id flat.NodeId, node flat.Node) {
 	}
 	for key in smartcast_write_keys {
 		tc.invalidate_smartcasts_for_write_key(key)
+	}
+	for smartcast in option_assignment_smartcasts {
+		tc.smartcasts[smartcast.name] = smartcast.typ
 	}
 }
 

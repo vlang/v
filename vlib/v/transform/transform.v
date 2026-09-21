@@ -12024,9 +12024,8 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 	if !t.is_optional_type_name(lhs_type) {
 		return
 	}
-	// Assigning a payload only *keeps* an unwrap that was already in force, e.g.
-	// `if a != none { a = 5; println(a + 1) }`, where the assignment invalidates
-	// the smartcast the condition established. Outside such a region the variable
+	// Assigning a payload keeps an unwrap already in force, or establishes one
+	// after replacing a value known to be none. Outside such a region the variable
 	// stays a plain `?T`: re-reading it must still yield the option, or `if v := a`
 	// initialises an `Optional_T` from a payload and `'${a}'` prints the payload
 	// instead of `Option(...)`.
@@ -12036,7 +12035,7 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 		false
 	}
 	t.invalidate_smartcast_for_lvalue(lhs_id)
-	if !was_unwrapped {
+	if !was_unwrapped && !t.expr_is_in_option_none_branch(lhs_id, key) {
 		return
 	}
 	base_type := t.optional_base_type(t.qualify_optional_type(lhs_type))
@@ -12049,6 +12048,38 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 		return
 	}
 	t.push_smartcast(key, base_type, option_unwrap_marker)
+}
+
+fn (t &Transformer) expr_is_in_option_none_branch(id flat.NodeId, key string) bool {
+	mut current := int(id)
+	for _ in 0 .. 128 {
+		parent_id := t.source_parent_id(current)
+		if parent_id < 0 || parent_id >= t.a.nodes.len {
+			return false
+		}
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr, .spawn_expr] {
+			return false
+		}
+		if parent.kind == .if_expr && parent.children_count >= 2 {
+			mut cond := t.a.child_node(&parent, 0)
+			for cond.kind == .paren && cond.children_count > 0 {
+				cond = t.a.child_node(cond, 0)
+			}
+			if cond.kind == .infix && cond.children_count >= 2 {
+				if info := t.option_none_cmp_info(*cond) {
+					in_then := current == int(t.a.child(&parent, 1)) && cond.op == .eq
+					in_else := parent.children_count > 2
+						&& current == int(t.a.child(&parent, 2)) && cond.op == .ne
+					if info.expr_name == key && (in_then || in_else) {
+						return true
+					}
+				}
+			}
+		}
+		current = parent_id
+	}
+	return false
 }
 
 fn (mut t Transformer) fn_value_self_capture_refresh_stmt(node flat.Node, new_children []flat.NodeId) ?flat.NodeId {

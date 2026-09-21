@@ -705,6 +705,55 @@ fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id f
 	return tc.assignment_rhs_mutates_same_smartcast_lhs(lhs_id, rhs_id, rhs_type, smartcast)
 }
 
+fn (tc &TypeChecker) option_assignment_smartcast_type(lhs_id flat.NodeId, lhs_type Type, rhs_type Type, op flat.Op) ?Type {
+	if op != .assign {
+		return none
+	}
+	option_type := unalias_type(lhs_type)
+	if option_type !is OptionType || unalias_type(rhs_type) is OptionType {
+		return none
+	}
+	option := option_type as OptionType
+	key := tc.expr_key(lhs_id)
+	if key.len == 0 || !tc.expr_is_in_option_none_branch(lhs_id, key)
+		|| !tc.type_compatible(rhs_type, option.base_type) {
+		return none
+	}
+	return option.base_type
+}
+
+fn (tc &TypeChecker) expr_is_in_option_none_branch(id flat.NodeId, key string) bool {
+	mut current := id
+	for _ in 0 .. 128 {
+		parent_id := tc.direct_parent_id(current)
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr, .spawn_expr] {
+			return false
+		}
+		if parent.kind == .if_expr && parent.children_count >= 2 {
+			mut cond := tc.a.child_node(parent, 0)
+			for cond.kind == .paren && cond.children_count > 0 {
+				cond = tc.a.child_node(cond, 0)
+			}
+			if cond.kind == .infix && cond.children_count >= 2 {
+				if binding := tc.option_none_cmp_binding(*cond) {
+					in_then := current == tc.a.child(parent, 1) && cond.op == .eq
+					in_else := parent.children_count > 2
+						&& current == tc.a.child(parent, 2) && cond.op == .ne
+					if binding.name == key && (in_then || in_else) {
+						return true
+					}
+				}
+			}
+		}
+		current = parent_id
+	}
+	return false
+}
+
 fn (tc &TypeChecker) assignment_rhs_mutates_same_smartcast_lhs(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type Type, smartcast Type) bool {
 	if tc.sum_variant_type_for_pattern(rhs_type.name(), smartcast.name()) == none {
 		return false
