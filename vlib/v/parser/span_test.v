@@ -39,6 +39,29 @@ fn test_parenthesized_match_statement_accepts_newline_before_block() {
 	assert a.nodes.count(it.kind == .match_stmt) == 1
 }
 
+fn test_or_block_accepts_newline_after_result_expression() {
+	path := os.join_path(os.temp_dir(), 'v3_newline_or_block_${os.getpid()}.v')
+	os.write_file(path, 'fn result_value() !int {
+	return 42
+}
+
+fn main() {
+	value := result_value()
+		or { return }
+	result_value()
+		or { return }
+	assert value == 42
+}
+') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert a.nodes.count(it.kind == .or_expr) == 2
+}
+
 fn test_statement_map_literals_accept_compound_keys() {
 	ast, _ := parse_span_source('statement_map_compound_keys', "fn make_key() string {
 	return 'key'

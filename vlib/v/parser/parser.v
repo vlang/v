@@ -10215,6 +10215,13 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next()
 			continue
 		}
+		// V1 allowed an `or {}` handler to start on the line after the
+		// option/result expression. Ignore only scanner-inserted newline
+		// semicolons here; an explicit `;` still terminates the expression.
+		if p.current_token_is_newline_semicolon() && p.peek() == .key_or {
+			p.next()
+			continue
+		}
 		// Bind an option/result handler to the expression immediately before it,
 		// including when that expression is the right operand of an infix operator.
 		if p.tok == .key_or {
