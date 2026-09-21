@@ -9429,10 +9429,14 @@ fn (mut t Transformer) transform_labeled_multi_init_loop(label string, block_id 
 	}
 	labeled_loop := t.transform_labeled_loop(label, loop_id, loop_node)
 	t.drain_pending(mut block_children)
-	for i in 0 .. labeled_loop.len - 1 {
+	for i in 1 .. labeled_loop.len - 1 {
 		block_children << labeled_loop[i]
 	}
-	mut result := []flat.NodeId{}
+	mut result := []flat.NodeId{cap: 3}
+	// Keep the user label ahead of the generated initializer block. A goto to the
+	// labelled loop must execute its multi-variable initializers before entering
+	// the loop instead of jumping into their scope with uninitialized C locals.
+	result << labeled_loop[0]
 	result << t.make_block(block_children)
 	result << labeled_loop.last()
 	return result
