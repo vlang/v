@@ -1,0 +1,126 @@
+name: Isolated negative integer float regression
+
+on:
+  push:
+    branches:
+      - work/negative-integer-float-literals-20260921
+    paths:
+      - .github/negative_integer_float_patch.py
+      - .github/workflows/negative-integer-float-literals.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: negative-integer-float-literals-20260921
+  cancel-in-progress: false
+
+jobs:
+  validate-and-publish:
+    if: github.repository == 'vlang/v'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      VJOBS: '2'
+      BASE: cdef6c049e6262e062823409690a3fdaeda579d2
+      FINAL_BRANCH: fix/negative-integer-float-literals-20260921
+      WORK_BRANCH: work/negative-integer-float-literals-20260921
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Build reviewed base compiler
+        run: make
+      - name: Confirm the original reproducer fails before the fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/negative_integer_float_repro.v <<'V'
+          fn main() {
+              mut a := f32(0)
+              a = 1
+              a = -1
+              println(a)
+          }
+          V
+          set +e
+          ./v run /tmp/negative_integer_float_repro.v > /tmp/negative_float_baseline.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/negative_float_baseline.log
+          if [ "$status" -eq 0 ]; then
+            echo 'The reproducer already succeeds on the reviewed base; refusing an unnecessary compiler change.'
+            exit 1
+          fi
+          grep -F 'cannot assign' /tmp/negative_float_baseline.log
+          grep -F 'f32' /tmp/negative_float_baseline.log
+      - name: Apply the guarded checker patch and regression tests
+        run: python3 .github/negative_integer_float_patch.py
+      - name: Rebuild and format
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./v self
+          ./v fmt -w vlib/v/types/checker_tail_stmt.v vlib/v/types/negative_integer_float_test.v vlib/v/tests/assign/negative_integer_float_test.v
+          ./v self
+          git diff --check
+      - name: Original reproducer and runtime regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./v run /tmp/negative_integer_float_repro.v
+          ./v -silent test vlib/v/tests/assign/negative_integer_float_test.v
+      - name: Confirm typed integer assignments still fail
+        shell: bash
+        run: |
+          set -euo pipefail
+          for expression in 'n' '-n' 'int(1)' '-int(1)'; do
+            printf 'fn main() {\n n := 1\n mut a := f32(0)\n a = %s\n println(a)\n println(n)\n}\n' "$expression" > /tmp/typed_integer_float_repro.v
+            if ./v -check /tmp/typed_integer_float_repro.v > /tmp/typed_integer_float_repro.log 2>&1; then
+              echo "Unexpectedly accepted typed integer expression: $expression"
+              exit 1
+            fi
+            cat /tmp/typed_integer_float_repro.log
+            grep -F 'cannot assign' /tmp/typed_integer_float_repro.log
+            grep -F 'f32' /tmp/typed_integer_float_repro.log
+          done
+      - name: Checker unit tests
+        run: ./v -silent test vlib/v/types/
+      - name: Assignment regression suite
+        run: ./v -silent test vlib/v/tests/assign/
+      - name: Compiler error regression suite
+        run: ./v -silent vlib/v/compiler_errors_test.v
+      - name: Publish only the fix and tests on a clean feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add vlib/v/types/checker_tail_stmt.v vlib/v/types/negative_integer_float_test.v vlib/v/tests/assign/negative_integer_float_test.v
+          git rm .github/negative_integer_float_patch.py .github/workflows/negative-integer-float-literals.yml
+          git diff --cached --check
+          tree=$(git write-tree)
+          export tree
+          python3 - <<'PY'
+          import os
+          import subprocess
+          base, tree = os.environ['BASE'], os.environ['tree']
+          paths = subprocess.check_output(['git', 'diff', '--name-only', base, tree], text=True).splitlines()
+          expected = sorted([
+              'vlib/v/types/checker_tail_stmt.v',
+              'vlib/v/types/negative_integer_float_test.v',
+              'vlib/v/tests/assign/negative_integer_float_test.v',
+          ])
+          if sorted(paths) != expected:
+              raise SystemExit(f'Refusing unrelated changes: {paths}')
+          stats = subprocess.check_output(['git', 'diff', '--numstat', base, tree, '--', 'vlib/v/types/checker_tail_stmt.v'], text=True).split()
+          if int(stats[0]) > 20 or int(stats[1]) > 20:
+              raise SystemExit(f'Refusing a broad checker rewrite: {stats}')
+          PY
+          commit=$(printf '%s\n' 'checker: allow untyped signed integer constants in float contexts' | git commit-tree "$tree" -p "$BASE")
+          git diff --stat "$BASE" "$commit"
+          git push origin "$commit:refs/heads/$FINAL_BRANCH"
+          echo "Published tested commit: $commit"
+          git push origin --delete "$WORK_BRANCH"
