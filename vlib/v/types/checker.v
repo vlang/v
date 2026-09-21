@@ -13693,6 +13693,11 @@ fn closest_identifier_span(source string, name string, anchor int, file_id int) 
 	// further from the anchor than that match (a left match at the same distance
 	// still wins): callers run this for every declaration, and an unbounded
 	// walk to the start of the file made checking quadratic in program size.
+	// A match exactly at the anchor is the nearest one possible, so it needs
+	// no search at all.
+	if identifier_word_match_at(source, name, anchor) {
+		return token.new_span(file_id, anchor, anchor + name.len)
+	}
 	mut right_start := -1
 	mut from := int_max(anchor + 1, 0)
 	for from <= source.len - name.len {
