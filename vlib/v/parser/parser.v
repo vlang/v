@@ -13275,6 +13275,7 @@ fn (mut p Parser) string_literal() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:  .string_literal
 			value: val
+			flags: string_literal_flags(lit)
 			typ:   if lit.len > 2 && lit.starts_with('js') {
 				'js:${lit[2].ascii_str()}'
 			} else if lit.len > 1 && lit[0] == `r` {
@@ -13287,7 +13288,7 @@ fn (mut p Parser) string_literal() flat.NodeId {
 	}
 	// string interpolation
 	val := strip_interp_start_quotes(lit)
-	id := p.string_interp(val, q, start_pos)
+	id := p.string_interp(val, q, start_pos, string_literal_flags(lit))
 	if lit.len > 2 && lit.starts_with('js') {
 		p.a.nodes[int(id)].typ = 'js:${lit[2].ascii_str()}'
 	}
@@ -13295,10 +13296,14 @@ fn (mut p Parser) string_literal() flat.NodeId {
 }
 
 // string_interp supports string interp handling for Parser.
-fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos) flat.NodeId {
+fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos, first_part_flags u8) flat.NodeId {
 	mut ids := []flat.NodeId{}
 	if first_part.len > 0 {
-		ids << p.add_val_id(5, first_part)
+		ids << p.add_node(flat.Node{
+			kind:  .string_literal
+			value: first_part
+			flags: first_part_flags
+		})
 	}
 	for p.tok == .str_dollar {
 		p.next() // skip $
@@ -13352,10 +13357,15 @@ fn (mut p Parser) string_interp(first_part string, quote u8, start_pos token.Pos
 		ids << part_id
 		p.check(.rcbr) // skip }
 		if p.tok == .string {
-			part := strip_interp_quotes(p.lit, quote)
+			part_lit := p.lit
+			part := strip_interp_quotes(part_lit, quote)
 			p.next()
 			if part.len > 0 {
-				ids << p.add_val_id(5, part)
+				ids << p.add_node(flat.Node{
+					kind:  .string_literal
+					value: part
+					flags: string_literal_flags(part_lit)
+				})
 			}
 			// check for more interpolation after this string part
 		}
@@ -16213,6 +16223,10 @@ fn strip_quotes(s string) string {
 		return raw
 	}
 	return unescape_string(raw)
+}
+
+fn string_literal_flags(source string) u8 {
+	return if source.contains(r'${') { flat.node_flag_literal_interpolation_text } else { 0 }
 }
 
 fn strip_interp_start_quotes(s string) string {
