@@ -19629,7 +19629,7 @@ fn (mut t Transformer) comptime_type_expr_type(id flat.NodeId) ?string {
 			base
 		}
 		'unaliased_typ' {
-			t.comptime_normalize_type_alias_chain(base)
+			t.comptime_typeof_unaliased_type(base)
 		}
 		'payload_type', 'pointee_type', 'element_type', 'key_type', 'value_type' {
 			t.generic_comptime_type_member(base, node.value)
@@ -19785,7 +19785,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		}
 		if node.value == 'unaliased_typ' {
 			base_type := t.typeof_type_name(base_node0)
-			unaliased := t.comptime_normalize_type_alias_chain(base_type)
+			unaliased := t.comptime_typeof_unaliased_type(base_type)
 			return t.make_int_literal(t.comptime_field_type_id(unaliased, t.cur_module))
 		}
 		if node.value in ['key_type', 'value_type', 'element_type'] {

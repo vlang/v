@@ -308,6 +308,20 @@ fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 	return typ
 }
 
+// comptime_typeof_unaliased_type removes only aliases at the root of a reflected type.
+// Aliases nested inside arrays, maps, options, and other aggregate types retain their identity.
+fn (t &Transformer) comptime_typeof_unaliased_type(raw string) string {
+	clean := raw.trim_space()
+	if clean.len == 0 || isnil(t.tc) {
+		return t.comptime_normalize_type_alias_chain(clean)
+	}
+	parsed := t.tc.parse_type(clean)
+	if parsed is types.Unknown {
+		return t.comptime_normalize_type_alias_chain(clean)
+	}
+	return types.unalias_type(parsed).name()
+}
+
 // expand_comptime_for unrolls the supported compile-time reflection loops into concrete
 // statements.
 fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []flat.NodeId {

@@ -10466,7 +10466,7 @@ fn (mut t Transformer) generic_comptime_type_expr(id flat.NodeId, args []string)
 			base
 		}
 		'unaliased_typ' {
-			t.comptime_normalize_type_alias_chain(base)
+			t.comptime_typeof_unaliased_type(base)
 		}
 		'payload_type', 'pointee_type', 'element_type', 'key_type', 'value_type' {
 			t.generic_comptime_type_member(base, node.value)
@@ -13108,7 +13108,7 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args []string) strin
 		substituted := t.resolve_substituted_type_text(t.subst_type(reflected_type, args))
 		return match reflected_member {
 			'idx' { t.comptime_field_type_id(substituted, t.cur_module).str() }
-			'unaliased_typ' { t.comptime_normalize_type_alias_chain(substituted) }
+			'unaliased_typ' { t.comptime_typeof_unaliased_type(substituted) }
 			'typ' { substituted + '.typ' }
 			else { substituted }
 		}
@@ -13157,7 +13157,7 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args []string) strin
 	if clean.ends_with('.unaliased_typ') {
 		base := clean[..clean.len - '.unaliased_typ'.len]
 		substituted := t.resolve_substituted_type_text(t.subst_type(base, args))
-		return t.comptime_normalize_type_alias_chain(substituted)
+		return t.comptime_typeof_unaliased_type(substituted)
 	}
 	if clean.ends_with('.typ') {
 		base := clean[..clean.len - '.typ'.len]
