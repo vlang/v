@@ -6948,11 +6948,22 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 	tc.rebuild_fn_param_suffix_index()
 }
 
+fn v3_c_compiler_matches_default_cc(c_compiler string) bool {
+	if c_compiler == 'cc' {
+		return true
+	}
+	default_path := os.find_abs_path_of_executable('cc') or { return false }
+	compiler_path := os.find_abs_path_of_executable(c_compiler) or { return false }
+	default_stat := os.stat(default_path) or { return false }
+	compiler_stat := os.stat(compiler_path) or { return false }
+	return default_stat.dev == compiler_stat.dev && default_stat.inode == compiler_stat.inode
+}
+
 // default_cc_identity returns a precise identity for the resolved default `cc`.
-// Module objects in the persistent cache are compiled with literal `cc` (only
-// the default compiler is cacheable), so a changed binary or retargeted symlink
-// must invalidate them. The version probe also identifies the selected backend
-// behind stable compiler shims and wrappers.
+// Only compiler spellings that resolve to the same executable as `cc` are
+// cacheable, so a changed binary or retargeted symlink must invalidate module
+// objects. The version probe also identifies the selected backend behind stable
+// compiler shims and wrappers.
 fn default_cc_identity() string {
 	cc_path := os.real_path(os.find_abs_path_of_executable('cc') or { 'cc' })
 	metadata := modulecache.file_metadata_signature(cc_path)
@@ -10197,8 +10208,9 @@ pub fn run(args []string) {
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
-		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit && !c_compiler_explicit
-		&& !minimal_literal_output && c_compiler == 'cc' && target.os == host_target.os
+		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
+		&& !minimal_literal_output && v3_c_compiler_matches_default_cc(c_compiler)
+		&& target.os == host_target.os
 		&& target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }

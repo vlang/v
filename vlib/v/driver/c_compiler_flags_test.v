@@ -38,6 +38,14 @@ fn test_v3_platform_c_compiler() {
 	assert v3_platform_c_compiler('macos') == 'cc'
 }
 
+fn test_v3_cache_accepts_default_cc_alias() {
+	assert v3_c_compiler_matches_default_cc('cc')
+	assert !v3_c_compiler_matches_default_cc('v3-definitely-missing-c-compiler')
+	$if macos {
+		assert v3_c_compiler_matches_default_cc('clang')
+	}
+}
+
 fn test_v3_windows_cross_compiler_replaces_host_tcc() {
 	linux := pref.Target{
 		os:   'linux'
