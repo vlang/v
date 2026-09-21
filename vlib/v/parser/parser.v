@@ -7637,7 +7637,8 @@ fn (mut p Parser) stmt() flat.NodeId {
 		.key_if {
 			if_id := p.if_stmt()
 			if token_is_infix(p.tok) || p.tok in [.key_as, .dot, .lpar, .lsbr]
-				|| token_is_postfix(p.tok) || p.tok == .not {
+				|| token_is_postfix(p.tok) || p.tok == .not || p.tok == .key_or
+				|| (p.current_token_is_newline_semicolon() && p.peek() == .key_or) {
 				expr_id := p.expr_with_lhs(if_id, .lowest)
 				if p.tok == .semicolon {
 					p.next()
@@ -8831,6 +8832,9 @@ fn (mut p Parser) match_stmt() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(match_start)
 	})
+	if p.current_token_is_newline_semicolon() && p.peek() == .key_or {
+		p.next()
+	}
 	if p.tok == .key_or {
 		p.next()
 		or_body := p.or_block_stmt()
@@ -10212,6 +10216,13 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		if min_bp == .lowest && p.tok == .semicolon && p.peek() == .lpar
 			&& p.expr_can_continue_with_newline_call(lhs) {
+			p.next()
+			continue
+		}
+		// V1 allowed an `or {}` handler to start on the line after the
+		// option/result expression. Ignore only scanner-inserted newline
+		// semicolons here; an explicit `;` still terminates the expression.
+		if p.current_token_is_newline_semicolon() && p.peek() == .key_or {
 			p.next()
 			continue
 		}
