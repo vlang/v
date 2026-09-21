@@ -16898,6 +16898,9 @@ fn range_slice_alias_type(base_type Type) ?Type {
 
 fn (tc &TypeChecker) resolve_index_base_type(base_type Type, node flat.Node) Type {
 	if node.value == 'range' {
+		if info := tc.index_overload_call_info(base_type, false) {
+			return info.return_type
+		}
 		if base_type is Array {
 			return base_type
 		}
