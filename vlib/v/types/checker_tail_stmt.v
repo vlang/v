@@ -1,6 +1,7 @@
 module types
 
 import os
+import strings
 import v.flat
 import v.gen.c.naming
 import v.token
@@ -11900,7 +11901,7 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_name
 		return Type(ArrayFixed{
 			elem_type: tc.substitute_generic_type(typ.elem_type, args, param_names)
 			len:       typ.len
-			len_expr:  typ.len_expr
+			len_expr:  subst_generic_const_expr(typ.len_expr, args, param_names)
 		})
 	}
 	if typ is Map {
@@ -12003,10 +12004,14 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		})
 	}
 	if typ is ArrayFixed {
+		mut arg_names := []string{cap: args.len}
+		for arg in args {
+			arg_names << arg.name()
+		}
 		return Type(ArrayFixed{
 			elem_type: tc.substitute_generic_type_values(typ.elem_type, args, param_names)
 			len:       typ.len
-			len_expr:  typ.len_expr
+			len_expr:  subst_generic_const_expr(typ.len_expr, arg_names, param_names)
 		})
 	}
 	if typ is Map {
@@ -12082,6 +12087,39 @@ fn substitute_generic_named_type_values(name string, args []Type, param_names []
 		arg_names << arg.name()
 	}
 	return subst_generic_text(name, arg_names, param_names)
+}
+
+// subst_generic_const_expr replaces generic parameter identifiers in fixed-array length
+// expressions, such as `sizeof(T)`, without changing identifiers that merely contain the
+// same letters.
+fn subst_generic_const_expr(expr string, args []string, params []string) string {
+	if expr.len == 0 || args.len == 0 || params.len != args.len {
+		return expr
+	}
+	mut out := strings.new_builder(expr.len)
+	mut i := 0
+	for i < expr.len {
+		ch := expr[i]
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || ch == `_` {
+			start := i
+			i++
+			for i < expr.len {
+				part := expr[i]
+				if !((part >= `a` && part <= `z`) || (part >= `A` && part <= `Z`)
+					|| (part >= `0` && part <= `9`) || part == `_`) {
+					break
+				}
+				i++
+			}
+			ident := expr[start..i]
+			idx := params.index(ident)
+			out.write_string(if idx >= 0 { args[idx] } else { ident })
+			continue
+		}
+		out.write_u8(ch)
+		i++
+	}
+	return out.str()
 }
 
 fn (tc &TypeChecker) embedded_method_call_info(struct_name string, method string) ?CallInfo {
