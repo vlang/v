@@ -5932,10 +5932,16 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 			}
 		}
 	}
+	expr_node := t.a.nodes[int(expr_id)]
+	if typ.len == 0 && expr_node.kind == .call {
+		call_ret := t.get_call_return_type(expr_id, expr_node)
+		if call_ret.len > 0 && !t.generic_arg_is_unresolved(call_ret) {
+			typ = call_ret
+		}
+	}
 	if typ.len == 0 {
 		typ = t.raw_alias_type_for_expr(expr_id)
 	}
-	expr_node := t.a.nodes[int(expr_id)]
 	if typ.len == 0 && expr_node.kind == .ident {
 		raw_var_type := t.raw_var_type(expr_node.value)
 		if t.is_optional_type_name(raw_var_type) {
@@ -19027,6 +19033,12 @@ fn (t &Transformer) string_interp_child_has_unresolved_generic_part(id flat.Node
 			return false
 		}
 		return t.string_interp_child_has_unresolved_generic_part(t.a.child(&node, 0))
+	}
+	if node.kind == .call {
+		call_ret := t.get_call_return_type(id, node)
+		if call_ret.len > 0 && !t.generic_arg_is_unresolved(call_ret) {
+			return false
+		}
 	}
 	mut candidates := []string{cap: 5}
 	candidates << t.node_type(id)
