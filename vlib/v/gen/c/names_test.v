@@ -170,6 +170,18 @@ fn test_main_function_is_prefixed_when_declared_c_function_owns_name() {
 	assert g.fn_c_name_in_module('database', 'get_value') == 'database__get_value'
 }
 
+fn test_main_function_is_prefixed_when_objective_c_owns_id_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+
+	assert g.fn_c_name_in_module('main', 'id') == 'main__id'
+	assert g.main_runtime_shadow_fn_c_name('main', 'id') or { '' } == 'main__id'
+	assert g.fn_c_name_in_module('database', 'id') == 'database__id'
+}
+
 fn test_target_libc_opaque_packed_struct_restores_packing() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
