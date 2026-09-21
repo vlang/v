@@ -1902,7 +1902,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.return_mismatch, 'should not unwrap option var on return, it could be none', id, token.new_span(return_line.id, return_line.offset, operator_pos.offset))
 			return
 		}
-		if tc.expr_never_returns_resolving(child_id) {
+		if tc.stmt_definitely_returns(child_id) || tc.expr_never_returns_resolving(child_id) {
 			$if ownership ? {
 				tc.ownership_check_node_with_deferred_aggregate_consumption(child_id)
 			} $else {
