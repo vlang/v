@@ -377,12 +377,15 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 	if clean_type.starts_with('&') {
 		clean_type = clean_type[1..]
 	}
-	if clean_type.starts_with('map[') {
-		for candidate in t.map_receiver_method_candidates(clean_type, method) {
+	if clean_type.starts_with('[]') || clean_type.starts_with('map[') {
+		// Collection element names are relative only to their declaring module.
+		// A suffix match could select another module's same-named element type.
+		for candidate in t.receiver_method_candidates(clean_type, method) {
 			if t.is_known_fn_name(candidate) {
 				return candidate
 			}
 		}
+		return none
 	} else {
 		if method_name := t.resolve_specialized_generic_receiver_method(clean_type, method) {
 			return method_name
@@ -505,29 +508,7 @@ fn (t &Transformer) resolve_receiver_method_for_type_uncached(receiver_type stri
 			}
 		}
 	}
-	if clean_type.starts_with('[]') {
-		elem_type := clean_type[2..]
-		short_elem := if elem_type.contains('.') {
-			elem_type.all_after_last('.')
-		} else {
-			elem_type
-		}
-		short_array := '[]${short_elem}.${method}'
-		if t.is_known_fn_name(short_array) {
-			return short_array
-		}
-		if elem_type.contains('.') {
-			qualified_array := '${elem_type.all_before_last('.')}.[]${short_elem}.${method}'
-			if t.is_known_fn_name(qualified_array) {
-				return qualified_array
-			}
-		} else if transform_can_prefix_collection_receiver(t.cur_module) {
-			current_module_array := '${t.cur_module}.[]${short_elem}.${method}'
-			if t.is_known_fn_name(current_module_array) {
-				return current_module_array
-			}
-		}
-	} else if clean_type.contains('.') {
+	if clean_type.contains('.') {
 		short_type := clean_type.all_after_last('.')
 		short_method := '${short_type}.${method}'
 		if t.is_known_fn_name(short_method) {
@@ -10441,6 +10422,9 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 		return t.try_lower_array_method_call(call_id, new_node)
 	}
+	if fn_node.value == 'str' && clean_base_type.starts_with('map[') {
+		return t.wrap_string_conversion(t.transform_expr(base_id), base_type)
+	}
 	if !clean_base_type.starts_with('[]') {
 		return none
 	}
@@ -14602,9 +14586,7 @@ fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ st
 	}
 	if clean.starts_with('[]') || clean.starts_with('map[') {
 		method := method_name.all_after_last('.')
-		if method_name in t.receiver_method_candidates(clean, method) {
-			return true
-		}
+		return method_name in t.receiver_method_candidates(clean, method)
 	}
 	mut candidates := [clean]
 	if clean.contains('.') {
@@ -14901,16 +14883,17 @@ fn (t &Transformer) receiver_method_candidates(receiver_type string, method stri
 	}
 	if clean_type.starts_with('[]') {
 		elem_type := clean_type[2..]
-		short_elem := if elem_type.contains('.') {
-			elem_type.all_after_last('.')
-		} else {
-			elem_type
+		for elem in t.receiver_type_text_variants(elem_type, '') {
+			transform_push_receiver_candidate(mut candidates, '[]${elem}.${method}')
 		}
-		candidates << '[]${short_elem}.${method}'
-		if elem_type.contains('.') {
-			candidates << '${elem_type.all_before_last('.')}.[]${short_elem}.${method}'
-		} else if transform_can_prefix_collection_receiver(t.cur_module) {
-			candidates << '${t.cur_module}.[]${short_elem}.${method}'
+		mut module_names := t.receiver_type_text_module_names(elem_type)
+		if transform_can_prefix_collection_receiver(t.cur_module) {
+			transform_push_receiver_candidate(mut module_names, t.cur_module)
+		}
+		for mod_name in module_names {
+			for elem in t.receiver_type_text_variants(elem_type, mod_name) {
+				transform_push_receiver_candidate(mut candidates, '${mod_name}.[]${elem}.${method}')
+			}
 		}
 	} else if clean_type.contains('.') {
 		short_type := clean_type.all_after_last('.')
@@ -15042,15 +15025,15 @@ fn transform_can_prefix_collection_receiver(module_name string) bool {
 	return module_name != '' && module_name != 'main' && module_name != 'builtin'
 }
 
-fn (t &Transformer) receiver_type_text_variants(type_text string) []string {
+fn (t &Transformer) receiver_type_text_variants(type_text string, module_name string) []string {
 	clean := type_text.trim_space()
 	mut names := []string{}
 	transform_push_receiver_candidate(mut names, clean)
-	transform_push_receiver_candidate(mut names, receiver_type_text_short_spelling(clean))
+	transform_push_receiver_candidate(mut names, receiver_type_text_in_module(clean, module_name))
 	if t.is_fixed_array_type(clean) {
 		source := t.receiver_type_text_source_fixed_spelling(clean)
 		transform_push_receiver_candidate(mut names, source)
-		transform_push_receiver_candidate(mut names, receiver_type_text_short_spelling(source))
+		transform_push_receiver_candidate(mut names, receiver_type_text_in_module(source, module_name))
 	}
 	return names
 }
@@ -15107,26 +15090,26 @@ fn transform_trailing_matching_bracket_start(s string, end int) int {
 	return -1
 }
 
-fn receiver_type_text_short_spelling(type_text string) string {
+fn receiver_type_text_in_module(type_text string, module_name string) string {
 	clean := type_text.trim_space()
 	if clean.starts_with('[]') {
-		return '[]' + receiver_type_text_short_spelling(clean[2..])
+		return '[]' + receiver_type_text_in_module(clean[2..], module_name)
 	}
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			return clean[..bracket_end + 1] + receiver_type_text_short_spelling(clean[bracket_end + 1..])
+			return clean[..bracket_end + 1] + receiver_type_text_in_module(clean[bracket_end + 1..], module_name)
 		}
 	}
 	if clean.starts_with('map[') {
 		bracket_end := generic_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			key := receiver_type_text_short_spelling(clean[4..bracket_end])
-			value := receiver_type_text_short_spelling(clean[bracket_end + 1..])
+			key := receiver_type_text_in_module(clean[4..bracket_end], module_name)
+			value := receiver_type_text_in_module(clean[bracket_end + 1..], module_name)
 			return 'map[${key}]${value}'
 		}
 	}
-	if clean.contains('.') {
+	if module_name.len > 0 && clean.contains('.') && clean.all_before_last('.') == module_name {
 		return clean.all_after_last('.')
 	}
 	return clean
@@ -15174,8 +15157,8 @@ fn (t &Transformer) map_receiver_method_candidates(receiver_type string, method 
 		transform_push_receiver_candidate(mut candidates, '${clean_type}.${method}')
 		return candidates
 	}
-	key_types := t.receiver_type_text_variants(key_type)
-	value_types := t.receiver_type_text_variants(value_type)
+	key_types := t.receiver_type_text_variants(key_type, '')
+	value_types := t.receiver_type_text_variants(value_type, '')
 	mut map_types := []string{}
 	for key in key_types {
 		for value in value_types {
@@ -15196,8 +15179,10 @@ fn (t &Transformer) map_receiver_method_candidates(receiver_type string, method 
 		transform_push_receiver_candidate(mut module_names, mod_name)
 	}
 	for mod_name in module_names {
-		for map_type in map_types {
-			transform_push_receiver_candidate(mut candidates, '${mod_name}.${map_type}.${method}')
+		for key in t.receiver_type_text_variants(key_type, mod_name) {
+			for value in t.receiver_type_text_variants(value_type, mod_name) {
+				transform_push_receiver_candidate(mut candidates, '${mod_name}.map[${key}]${value}.${method}')
+			}
 		}
 	}
 	return candidates

@@ -18117,63 +18117,63 @@ fn (tc &TypeChecker) ownership_clone_method_matches_type(info CallInfo, typ Type
 		&& semantic_types_equal(unalias_type(info.return_type), unalias_type(typ))
 }
 
-fn receiver_type_name_variant(t Type, fixed_array_prefix bool, shorten_modules bool) string {
+fn receiver_type_name_variant(t Type, fixed_array_prefix bool, module_name string) string {
 	if t is Alias {
-		return receiver_leaf_type_name(t.name, shorten_modules)
+		return receiver_leaf_type_name(t.name, module_name)
 	}
 	if t is Struct {
-		return receiver_leaf_type_name(t.name, shorten_modules)
+		return receiver_leaf_type_name(t.name, module_name)
 	}
 	if t is Interface {
-		return receiver_leaf_type_name(t.name, shorten_modules)
+		return receiver_leaf_type_name(t.name, module_name)
 	}
 	if t is SumType {
-		return receiver_leaf_type_name(t.name, shorten_modules)
+		return receiver_leaf_type_name(t.name, module_name)
 	}
 	if t is Enum {
-		return receiver_leaf_type_name(t.name, shorten_modules)
+		return receiver_leaf_type_name(t.name, module_name)
 	}
 	if t is String {
 		return 'string'
 	}
 	if t is Array {
-		return '[]${receiver_type_name_variant(t.elem_type, fixed_array_prefix, shorten_modules)}'
+		return '[]${receiver_type_name_variant(t.elem_type, fixed_array_prefix, module_name)}'
 	}
 	if t is ArrayFixed {
 		mut len_text := t.len.str()
 		if t.len_expr.len > 0 {
 			len_text = t.len_expr
 		}
-		elem := receiver_type_name_variant(t.elem_type, fixed_array_prefix, shorten_modules)
+		elem := receiver_type_name_variant(t.elem_type, fixed_array_prefix, module_name)
 		if fixed_array_prefix {
 			return '[${len_text}]${elem}'
 		}
 		return '${elem}[${len_text}]'
 	}
 	if t is Map {
-		key := receiver_type_name_variant(t.key_type, fixed_array_prefix, shorten_modules)
-		value := receiver_type_name_variant(t.value_type, fixed_array_prefix, shorten_modules)
+		key := receiver_type_name_variant(t.key_type, fixed_array_prefix, module_name)
+		value := receiver_type_name_variant(t.value_type, fixed_array_prefix, module_name)
 		return 'map[${key}]${value}'
 	}
 	if t is Primitive {
 		return prim_c_type_from(t.props, t.size)
 	}
-	return receiver_leaf_type_name(t.name(), shorten_modules)
+	return receiver_leaf_type_name(t.name(), module_name)
 }
 
-fn receiver_leaf_type_name(name string, shorten_modules bool) string {
-	if shorten_modules && name.contains('.') {
+fn receiver_leaf_type_name(name string, module_name string) string {
+	if module_name.len > 0 && name.contains('.') && name.all_before_last('.') == module_name {
 		return name.all_after_last('.')
 	}
 	return name
 }
 
-fn receiver_type_name_variants(t Type) []string {
+fn receiver_type_name_variants(t Type, module_name string) []string {
 	mut names := []string{}
-	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, false, false))
-	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, false, true))
-	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, true, false))
-	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, true, true))
+	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, false, ''))
+	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, false, module_name))
+	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, true, ''))
+	push_receiver_method_candidate(mut names, receiver_type_name_variant(t, true, module_name))
 	return names
 }
 
@@ -18238,7 +18238,7 @@ fn exact_array_receiver_method_candidates(t Array, method string, module_name st
 }
 
 fn append_array_receiver_method_candidates(mut names []string, t Array, method string, module_name string) {
-	elem_types := receiver_type_name_variants(t.elem_type)
+	elem_types := receiver_type_name_variants(t.elem_type, '')
 	if elem_types.len == 0 {
 		return
 	}
@@ -18250,15 +18250,16 @@ fn append_array_receiver_method_candidates(mut names []string, t Array, method s
 		push_receiver_method_candidate(mut module_names, module_name)
 	}
 	for mod_name in module_names {
-		for elem_type in elem_types {
+		// A short element name is meaningful only in its defining module.
+		for elem_type in receiver_type_name_variants(t.elem_type, mod_name) {
 			push_receiver_method_candidate(mut names, '${mod_name}.[]${elem_type}.${method}')
 		}
 	}
 }
 
 fn append_map_receiver_method_candidates(mut names []string, t Map, method string, module_name string) {
-	key_types := receiver_type_name_variants(t.key_type)
-	value_types := receiver_type_name_variants(t.value_type)
+	key_types := receiver_type_name_variants(t.key_type, '')
+	value_types := receiver_type_name_variants(t.value_type, '')
 	if key_types.len == 0 || value_types.len == 0 {
 		return
 	}
@@ -18282,8 +18283,10 @@ fn append_map_receiver_method_candidates(mut names []string, t Map, method strin
 		push_receiver_method_candidate(mut module_names, mod_name)
 	}
 	for mod_name in module_names {
-		for map_type in map_types {
-			push_receiver_method_candidate(mut names, '${mod_name}.${map_type}.${method}')
+		for key_type in receiver_type_name_variants(t.key_type, mod_name) {
+			for value_type in receiver_type_name_variants(t.value_type, mod_name) {
+				push_receiver_method_candidate(mut names, '${mod_name}.map[${key_type}]${value_type}.${method}')
+			}
 		}
 	}
 }
