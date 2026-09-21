@@ -2357,7 +2357,8 @@ fn (mut g FlatGen) interface_dispatch_signature_compatible(method_key string, ex
 		return false
 	}
 	for i in 1 .. params.len {
-		if g.tc.c_type(params[i]) != g.tc.c_type(sig_params[i]) {
+		if g.tc.c_type(params[i]) != g.tc.c_type(sig_params[i])
+			&& g.interface_arg_conversion_expr('_iface_arg', sig_params[i], params[i]) == none {
 			return false
 		}
 	}
