@@ -1005,6 +1005,19 @@ f2 := f32(3.14)
 If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
+Integer literals can be assigned to `f32` and `f64` variables without a cast.
+Unary `+`, unary `-`, and parentheses around a literal preserve this behavior:
+
+```v
+mut a := f32(0)
+a = 1
+a = -1
+assert a == f32(-1)
+```
+
+This does not make typed integer variables implicitly assignable to `f32`;
+use an explicit conversion such as `a = f32(value)` for those variables.
+
 Float literals can also be declared as a power of ten:
 
 ```v
