@@ -1027,6 +1027,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	source_is_owned_temporary := !source_container_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
+	container_has_smartcast := t.expr_has_smartcast(container_id)
 	mut container := if direct_map_index_container {
 		container_id
 	} else if t.is_value_match_or_if_operand(container_id) {
@@ -1034,7 +1035,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		// arm tail is materialized into a value temp (stable for the loop's repeated use);
 		// non-branch containers keep `stable_expr_for_reuse`.
 		t.transform_value_operand(container_id)
-	} else if t.expr_has_smartcast(container_id) {
+	} else if container_has_smartcast {
 		// The checker-facing iterator type is already the narrowed collection, but
 		// taking the original expression as an lvalue would bypass the active sum
 		// smartcast and make cgen index the sum wrapper itself.
@@ -1065,7 +1066,9 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	mut actual_iter_type := iter_type
 	mut optional_container := flat.empty_node
 	if payload_type := for_iter_optional_payload_type(raw_container_type) {
-		if payload_type == actual_iter_type {
+		// An active option/sum smartcast has already selected the collection payload.
+		// Only add the implicit optional guard when `container` is still the wrapper.
+		if payload_type == actual_iter_type && !container_has_smartcast {
 			optional_container = container
 			container = t.make_selector(container, 'value', actual_iter_type)
 		}
