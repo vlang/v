@@ -1127,20 +1127,20 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 		}
 	}
 	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 		return name
 	}
 	if name.starts_with('builtin.') {
 		short := name['builtin.'.len..]
 		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return short
 		}
 	}
 	if name.contains('.') {
 		short := name.all_after_last('.')
 		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return short
 		}
 	}

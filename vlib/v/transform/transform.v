@@ -2049,7 +2049,7 @@ fn (t &Transformer) interface_boxed_impl_name_is_direct(name string) bool {
 		return true
 	}
 	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 		return true
 	}
 	if name in t.tc.structs || name in t.tc.type_aliases {

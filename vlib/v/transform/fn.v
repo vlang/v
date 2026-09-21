@@ -5465,7 +5465,12 @@ fn (mut t Transformer) lower_interface_auto_str_with_nil(expr flat.NodeId, iface
 			wrapped := if t.stringify_type_at_circular_limit(inner_type) {
 				t.make_string_literal('<circular>')
 			} else {
-				mut inner := t.wrap_string_conversion(concrete, inner_type)
+				mut inner := if inner_type == 'voidptr' {
+					t.mark_fn_used_name('voidptr.str')
+					t.make_call_typed('voidptr.str', [concrete], 'string')
+				} else {
+					t.wrap_string_conversion(concrete, inner_type)
+				}
 				quote_type := t.normalize_type_alias(inner_type)
 				if quote_type == 'string' {
 					inner = t.string_plus(t.string_plus(t.make_string_literal("'"), inner), t.make_string_literal("'"))

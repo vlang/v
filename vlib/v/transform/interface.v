@@ -210,12 +210,23 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if target_is_ptr && node.kind == .cast_expr && node.value.starts_with('&')
 		&& t.resolve_interface_type_name(node.value) == iface_name {
 		if node.children_count == 1 {
-			child := t.a.nodes[int(t.a.child(&node, 0))]
+			child_id := t.a.child(&node, 0)
+			child := t.a.nodes[int(child_id)]
 			if child.kind == .call && child.children_count > 0 {
 				callee := t.a.child_node(&child, 0)
 				if callee.kind == .ident && callee.value == 'memdup' {
 					return id
 				}
+			}
+			mut child_type := t.node_type(child_id)
+			if child_type.len == 0 {
+				child_type = t.checker_node_type(child_id)
+			}
+			if t.normalize_type_alias(child_type) in ['voidptr', '&void'] {
+				literal := t.make_interface_literal_from_expr(child_id, iface_name, false) or {
+					return none
+				}
+				return t.heap_copy_interface_expr(literal, iface_name, target_type)
 			}
 		}
 		return t.transform_expr(id)
@@ -855,8 +866,12 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	field_ids << t.make_sum_literal_field('_object', object_expr, '&${concrete_type}')
 	for field in fields {
 		field_type := t.normalize_type_alias(field.typ.name())
-		mut field_value := t.make_selector(field_base, field.name, field_type)
-		if is_ptr {
+		mut field_value := if concrete_type == 'voidptr' {
+			t.zero_value_for_type(field_type)
+		} else {
+			t.make_selector(field_base, field.name, field_type)
+		}
+		if is_ptr && concrete_type != 'voidptr' {
 			field_value = t.null_safe_interface_pointer_field(source, field_value, field_type)
 		}
 		field_ids << t.make_sum_literal_field(field.name, field_value, field_type)
