@@ -46,6 +46,40 @@ fn test_v3_cache_accepts_default_cc_alias() {
 	}
 }
 
+fn test_v3_cache_rejects_a_different_compiler_than_cc() {
+	// The bundled TCC is never the same program as a `cc` found on PATH. Windows
+	// reports no inode, so an identity based on `os.stat` alone equated them.
+	bundled_tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	default_cc := os.find_abs_path_of_executable('cc') or { return }
+	if !os.is_file(bundled_tcc) || os.real_path(default_cc) == os.real_path(bundled_tcc) {
+		return
+	}
+	assert !v3_c_compiler_matches_default_cc(bundled_tcc), '${bundled_tcc} must not be treated as ${default_cc}'
+}
+
+fn test_v3_same_c_compiler_executable_compares_files_not_drives() {
+	root := os.join_path(os.temp_dir(), 'v3_same_cc_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first := os.join_path(root, 'first_cc')
+	second := os.join_path(root, 'second_cc')
+	os.write_file(first, 'first')!
+	os.write_file(second, 'second')!
+	assert v3_same_c_compiler_executable(first, first)
+	assert v3_same_c_compiler_executable(first, os.join_path(root, '.', 'first_cc'))
+	assert !v3_same_c_compiler_executable(first, second)
+	assert !v3_same_c_compiler_executable(first, os.join_path(root, 'missing_cc'))
+	$if !windows {
+		link := os.join_path(root, 'link_cc')
+		os.symlink(first, link)!
+		assert v3_same_c_compiler_executable(first, link)
+		assert !v3_same_c_compiler_executable(second, link)
+	}
+}
+
 fn test_v3_windows_cross_compiler_replaces_host_tcc() {
 	linux := pref.Target{
 		os:   'linux'
