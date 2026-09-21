@@ -12120,14 +12120,14 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	if map_call := t.try_lower_map_method_call(_id, node) {
 		return map_call
 	}
+	if pointer_str_call := t.try_lower_pointer_str_method_call(_id, node) {
+		return pointer_str_call
+	}
 	if array_call := t.try_lower_array_method_call(_id, node) {
 		return array_call
 	}
 	if smartcast_receiver_call := t.try_lower_smartcast_target_receiver_method_call(_id, node) {
 		return smartcast_receiver_call
-	}
-	if pointer_str_call := t.try_lower_pointer_str_method_call(_id, node) {
-		return pointer_str_call
 	}
 	if type_name_call := t.try_lower_sum_type_name_method_call(node) {
 		return type_name_call
