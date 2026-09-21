@@ -6152,10 +6152,35 @@ fn comptime_flag_is_target_arch(name string, target_arch string) bool {
 }
 
 fn (p &Parser) resolve_comptime_const_values(cond string) string {
-	return p.resolve_comptime_cached_values(cond, true)
+	clean := comptime_cond_strip_outer_parens(cond.trim_space())
+	if clean != cond.trim_space() {
+		return '(${p.resolve_comptime_const_values(clean)})'
+	}
+	if clean.starts_with('!') {
+		return '!${p.resolve_comptime_const_values(clean[1..])}'
+	}
+	for op in ['||', '&&'] {
+		left, right, has_op := comptime_cond_split_top_level(clean, op)
+		if has_op {
+			return '${p.resolve_comptime_const_values(left)} ${op} ${p.resolve_comptime_const_values(right)}'
+		}
+	}
+	for op in [' !is ', ' is '] {
+		_, _, has_op := comptime_cond_split_top_level(clean, op)
+		if has_op {
+			// An immutable local can be folded to its value in ordinary comptime
+			// expressions, but an `is` operand asks for that local's type.
+			return p.resolve_comptime_cached_values_mode(clean, true, true)
+		}
+	}
+	return p.resolve_comptime_cached_values(clean, true)
 }
 
 fn (p &Parser) resolve_comptime_cached_values(cond string, preserve_flags bool) string {
+	return p.resolve_comptime_cached_values_mode(cond, preserve_flags, false)
+}
+
+fn (p &Parser) resolve_comptime_cached_values_mode(cond string, preserve_flags bool, preserve_locals bool) string {
 	mut out := strings.new_builder(cond.len)
 	mut i := 0
 	mut quote := u8(0)
@@ -6190,7 +6215,8 @@ fn (p &Parser) resolve_comptime_cached_values(cond string, preserve_flags bool) 
 			}
 			is_protected_name := prev > 0 && (cond[prev - 1] == `.` || cond[prev - 1] == `$`)
 			is_comptime_flag := preserve_flags && p.comptime_cond_name_is_flag(cond, name, i)
-			if !is_protected_name && !is_comptime_flag && name !in p.comptime_for_vars {
+			if !is_protected_name && !is_comptime_flag && name !in p.comptime_for_vars
+				&& !(preserve_locals && p.is_local_binding(name)) {
 				if value := p.comptime_value(name) {
 					out.write_string(value)
 					continue
