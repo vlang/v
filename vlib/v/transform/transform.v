@@ -15534,16 +15534,29 @@ fn (mut t Transformer) expand_multi_return_match_decl(rhs_id flat.NodeId, rhs fl
 	}
 	value_types := t.tc.multi_expr_tail_types_for_transform(rhs_id, lhs_ids.len) or { return none }
 	mut result := []flat.NodeId{}
+	mut target_lhs_ids := []flat.NodeId{cap: lhs_ids.len}
 	for i, lhs_id in lhs_ids {
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind != .ident || lhs.value == '_' {
+			target_lhs_ids << lhs_id
 			continue
 		}
 		typ := if i < value_types.len { value_types[i].name() } else { 'int' }
 		t.set_var_type(lhs.value, t.normalize_type_alias(typ))
 		result << t.make_decl_assign_typed(lhs.value, t.zero_value_for_type(typ), typ)
+		// A match branch may declare a local with the same name as a result slot.
+		// Keep an address of the outer storage so the lowered branch assignment
+		// cannot bind to that inner local in C.
+		target_type := '&${typ}'
+		target_name := t.new_temp('match_result')
+		address := t.make_prefix(.amp, t.make_ident(lhs.value))
+		t.set_node_typ(int(address), target_type)
+		result << t.make_decl_assign_typed(target_name, address, target_type)
+		target := t.make_prefix(.mul, t.make_ident(target_name))
+		t.set_node_typ(int(target), typ)
+		target_lhs_ids << target
 	}
-	result << t.expand_multi_return_match_assign(rhs_id, rhs, lhs_ids) or { return none }
+	result << t.expand_multi_return_match_assign(rhs_id, rhs, target_lhs_ids) or { return none }
 	return result
 }
 
