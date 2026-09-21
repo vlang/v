@@ -4548,14 +4548,15 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 		names << specialized_generic_fn_signature_aliases(decl, concrete_args)
 		t.record_generic_specialization_args_for_names(names, concrete_args)
 		for name in names {
-			t.tc.fn_ret_types[name] = ret
-			t.tc.register_generated_fn_param_types(name, params.clone())
-			t.tc.fn_variadic[name] = variadic
-			t.tc.fn_type_modules[name] = decl.module
-			t.tc.fn_type_files[name] = decl.file
-			t.add_receiver_method_suffix_index(name)
-			t.tc.specialized_generic_fns[name] = true
-			t.tc_signature_names_log << name
+			owned_name := name.clone()
+			t.tc.fn_ret_types[owned_name] = ret
+			t.tc.register_generated_fn_param_types(owned_name, params.clone())
+			t.tc.fn_variadic[owned_name] = variadic
+			t.tc.fn_type_modules[owned_name] = decl.module.clone()
+			t.tc.fn_type_files[owned_name] = decl.file.clone()
+			t.add_receiver_method_suffix_index(owned_name)
+			t.tc.specialized_generic_fns[owned_name] = true
+			t.tc_signature_names_log << owned_name
 		}
 		t.tc.cur_module = old_tc_module
 		t.tc.cur_file = old_tc_file
