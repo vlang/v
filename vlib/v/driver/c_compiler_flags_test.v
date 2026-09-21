@@ -77,6 +77,13 @@ fn test_v3_same_c_compiler_executable_compares_files_not_drives() {
 		os.symlink(first, link)!
 		assert v3_same_c_compiler_executable(first, link)
 		assert !v3_same_c_compiler_executable(second, link)
+		// A hard link keeps its own path, so only the device/inode fallback can
+		// recognise it as the same program.
+		hard_link := os.join_path(root, 'hard_link_cc')
+		os.link(first, hard_link)!
+		assert os.real_path(hard_link) != os.real_path(first)
+		assert v3_same_c_compiler_executable(first, hard_link)
+		assert !v3_same_c_compiler_executable(second, hard_link)
 	}
 }
 
