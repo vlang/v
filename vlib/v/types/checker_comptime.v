@@ -4908,6 +4908,9 @@ fn (mut tc TypeChecker) record_interface_implementation_error_with_mut_receiver(
 			actual_key = info.name
 			actual_params = info.params
 			actual_ret = info.return_type
+		} else if method == 'str' && tc.interface_method_is_str_requirement(expected_key)
+			&& tc.type_has_implicit_str_method(actual_name) {
+			continue
 		} else {
 			tc.record_error_at(kind, "`${actual_display}` doesn't implement method `${method}` of interface `${expected_display}`", id, pos)
 			missing_methods = true
