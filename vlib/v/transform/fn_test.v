@@ -1243,3 +1243,23 @@ fn test_selfhost_transform_lane_count_is_memory_bounded() {
 	// Fewer items than lanes still gives one lane per item.
 	assert transform_job_count(18, 3, true) == 3
 }
+
+struct ThreadClonePayload {
+	values []string
+}
+
+fn thread_clone_payload_worker(value string) []ThreadClonePayload {
+	return [ThreadClonePayload{
+		values: [value]
+	}]
+}
+
+fn test_thread_handle_array_append_does_not_clone_result_fields() {
+	first := spawn thread_clone_payload_worker('first')
+	mut workers := [first]
+	second := spawn thread_clone_payload_worker('second')
+	workers << second
+	results := workers.wait()
+	assert results[0][0].values == ['first']
+	assert results[1][0].values == ['second']
+}

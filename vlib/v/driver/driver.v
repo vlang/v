@@ -347,6 +347,22 @@ mut:
 	dependency_files int
 }
 
+struct CObjectFlagPlan {
+	environment_flags      []string
+	primary_compiler       string
+	primary_compiler_flags []string
+	common_flags           []string
+}
+
+fn (plan &CObjectFlagPlan) flags_for_compiler(compiler string) []string {
+	mut flags := plan.environment_flags.clone()
+	if compiler == plan.primary_compiler {
+		flags << plan.primary_compiler_flags
+	}
+	flags << plan.common_flags
+	return flags
+}
+
 fn cpp_runtime_link_flag(target pref.Target) string {
 	return if target.os in ['macos', 'ios'] { '-lc++' } else { '-lstdc++' }
 }
@@ -364,7 +380,7 @@ fn add_c_language_runtime_link_flags(mut prepared []string, original []string, l
 	}
 }
 
-fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) ![]string {
+fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primary_compiler_flags []string, optimization_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
 	// (subprocess) plus plan-file signatures on every build.
@@ -386,12 +402,17 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 		}
 		return passthrough
 	}
-	mut support_flags := environment_c_flags.clone()
-	support_flags << optimization_flags
-	support_flags << c_object_compile_support_flags(flags)
+	mut common_compile_flags := optimization_flags.clone()
+	common_compile_flags << c_object_compile_support_flags(flags)
+	object_flag_plan := CObjectFlagPlan{
+		environment_flags:      environment_c_flags
+		primary_compiler:       c_compiler
+		primary_compiler_flags: primary_compiler_flags
+		common_flags:           common_compile_flags
+	}
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	plan_path := c_link_plan_path(cache_dir, flags, support_flags, c99, no_std, pic_flag,
+	plan_path := c_link_plan_path(cache_dir, flags, &object_flag_plan, c99, no_std, pic_flag,
 		target_args, target, c_compiler, use_platform_non_c_compiler, mut stats)
 	// Tracing intentionally walks the object manifests so every requested
 	// object's cache decision remains visible.
@@ -432,7 +453,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 			} else {
 				''
 			}
-			object_path := ensure_c_object_file(clean, active_language, support_flags, c99,
+			object_path := ensure_c_object_file(clean, active_language, &object_flag_plan, c99,
 				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
@@ -440,7 +461,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 		} else if clean.ends_with('.mm') {
 			stats.requests++
 			language := c_source_language(clean, active_language)
-			object_path := ensure_c_source_object(clean, active_language, support_flags, c99,
+			object_path := ensure_c_source_object(clean, active_language, &object_flag_plan, c99,
 				no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 				uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
@@ -468,10 +489,12 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, optimi
 	return prepared
 }
 
-fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
+fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'), support_flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'),
+		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
+		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
 		target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
 		target.object_format, use_platform_non_c_compiler.str()] {
@@ -1224,7 +1247,7 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, source_language string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn ensure_c_object_file(obj_path string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if os.exists(obj_path) {
 		stats.direct_objects++
 		return obj_path
@@ -1232,17 +1255,17 @@ fn ensure_c_object_file(obj_path string, source_language string, support_flags [
 	source_file := c_source_from_object_file(obj_path) or {
 		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.m/.mm/.S source was found')
 	}
-	return compile_cached_c_source_object(obj_path, source_file, source_language, support_flags,
+	return compile_cached_c_source_object(obj_path, source_file, source_language, object_flags,
 		c99, no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 		uncached_dir, mut stats)
 }
 
-fn ensure_c_source_object(source_file string, source_language string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn ensure_c_source_object(source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if !os.exists(source_file) {
 		return error('missing C source ${source_file}')
 	}
 	return compile_cached_c_source_object('${source_file}.o', source_file, source_language,
-		support_flags, c99, no_std, pic_flag, target_args, target, c_compiler,
+		object_flags, c99, no_std, pic_flag, target_args, target, c_compiler,
 		use_platform_non_c_compiler, uncached_dir, mut stats)
 }
 
@@ -1272,7 +1295,7 @@ fn c_source_object_compiler(language string, c_compiler string, use_platform_non
 	return c_compiler
 }
 
-fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, support_flags []string, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, use_platform_non_c_compiler bool, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
 	language := c_source_language(source_file, source_language)
@@ -1296,7 +1319,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		args << wrapv_flag
 	}
 	args << '-w'
-	args << support_flags
+	args << object_flags.flags_for_compiler(compiler)
 	if language.len > 0 {
 		args << ['-x', language]
 	}
@@ -2558,6 +2581,19 @@ fn v3_tcc_resource_flags_for_compiler(vroot string, tcc_path string, bundled_tcc
 	return v3_tcc_resource_flags(vroot)
 }
 
+// Separately compiled native objects need the relocatable bundled TCC resource root too;
+// otherwise its standard headers depend on V being invoked from the repository root.
+fn v3_tcc_object_compile_flags(vroot string, tcc_path string, bundled_tcc string, bundled_tcc_available bool, target_os string, macos_sdk_root string) []string {
+	resources := v3_tcc_resource_flags_for_compiler(vroot, tcc_path, bundled_tcc,
+		bundled_tcc_available)
+	if resources.base_arg == '' {
+		return []
+	}
+	mut flags := [resources.base_arg, resources.include_arg]
+	flags << v3_tcc_host_system_flags(target_os, macos_sdk_root)
+	return flags
+}
+
 fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 	if target_os != os.user_os() || target_os == 'windows' {
 		return []
@@ -3020,7 +3056,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -6912,11 +6948,22 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 	tc.rebuild_fn_param_suffix_index()
 }
 
+fn v3_c_compiler_matches_default_cc(c_compiler string) bool {
+	if c_compiler == 'cc' {
+		return true
+	}
+	default_path := os.find_abs_path_of_executable('cc') or { return false }
+	compiler_path := os.find_abs_path_of_executable(c_compiler) or { return false }
+	default_stat := os.stat(default_path) or { return false }
+	compiler_stat := os.stat(compiler_path) or { return false }
+	return default_stat.dev == compiler_stat.dev && default_stat.inode == compiler_stat.inode
+}
+
 // default_cc_identity returns a precise identity for the resolved default `cc`.
-// Module objects in the persistent cache are compiled with literal `cc` (only
-// the default compiler is cacheable), so a changed binary or retargeted symlink
-// must invalidate them. The version probe also identifies the selected backend
-// behind stable compiler shims and wrappers.
+// Only compiler spellings that resolve to the same executable as `cc` are
+// cacheable, so a changed binary or retargeted symlink must invalidate module
+// objects. The version probe also identifies the selected backend behind stable
+// compiler shims and wrappers.
 fn default_cc_identity() string {
 	cc_path := os.real_path(os.find_abs_path_of_executable('cc') or { 'cc' })
 	metadata := modulecache.file_metadata_signature(cc_path)
@@ -7373,6 +7420,13 @@ fn v3_cache_compiler_signature(vroot string) string {
 	files << os.walk_ext(dir, '.h')
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_source_signatures')
 	return modulecache.cached_source_signature(cache_dir, os.real_path(vroot), files)
+}
+
+// v3_cache_compiler_executable_identity prevents an old compiler from populating the module
+// cache under the source signature of a newer compiler that has not been rebuilt yet.
+fn v3_cache_compiler_executable_identity(vexe string) string {
+	path := os.real_path(vexe)
+	return '${path}\t${modulecache.file_metadata_signature(path)}'
 }
 
 fn restored_fn_c_name(name string) string {
@@ -8758,6 +8812,7 @@ pub fn run(args []string) {
 	mut warns_are_errors := false
 	mut notes_are_errors := false
 	mut fatal_errors := false
+	mut message_limit := -1
 	mut check_overflow := false
 	mut target_libc_headers := false
 	mut force_bounds_checking := false
@@ -8784,6 +8839,7 @@ pub fn run(args []string) {
 	mut user_c_flags := []string{}
 	mut user_ld_flags := []string{}
 	mut should_run := false
+	mut is_crun := false
 	mut is_direct_vsh := false
 	mut is_test_command := false
 	mut is_checker_fixture := false
@@ -8821,8 +8877,8 @@ pub fn run(args []string) {
 			i++
 			continue
 		}
-		option_accepts_dash_value := args[i] in ['-o', '-output'] && i + 1 < args.len
-			&& args[i + 1] == '-'
+		option_accepts_dash_value := (args[i] in ['-o', '-output'] && i + 1 < args.len
+			&& args[i + 1] == '-') || (args[i] == '-message-limit' && i + 1 < args.len)
 		if v3_driver_option_requires_value(args[i])
 			&& (i + 1 >= args.len || (args[i + 1].starts_with('-') && !option_accepts_dash_value)) {
 			eprintln('option `${args[i]}` requires a value')
@@ -8832,8 +8888,9 @@ pub fn run(args []string) {
 			eprintln('option `${args[i]}` requires a value')
 			exit(1)
 		}
-		if args[i] == 'run' && input_file.len == 0 && !should_run {
+		if args[i] in ['run', 'crun'] && input_file.len == 0 && !should_run {
 			should_run = true
+			is_crun = args[i] == 'crun'
 			command_seen = true
 			i++
 		} else if args[i] == 'build' && input_file.len == 0 && !should_run {
@@ -9020,8 +9077,10 @@ pub fn run(args []string) {
 			}
 			i += 2
 		} else if args[i] == '-message-limit' && i + 1 < args.len {
-			// V3 reports all diagnostics, but accepts V1's accumulation-limit
-			// option so compiler invocations remain CLI-compatible.
+			message_limit = strconv.atoi(args[i + 1]) or {
+				eprintln('invalid message limit: ${args[i + 1]}')
+				exit(1)
+			}
 			i += 2
 		} else if args[i] == '-test-runner' && i + 1 < args.len {
 			// V3 currently emits its normal test harness directly. Accept the
@@ -9639,7 +9698,7 @@ pub fn run(args []string) {
 		}
 	}
 	binary_existed_before := os.exists(bin_file)
-	remove_binary_after_run := should_run && !is_direct_vsh && !explicit_output && !keep_c
+	remove_binary_after_run := should_run && !is_crun && !is_direct_vsh && !explicit_output && !keep_c
 		&& !binary_existed_before
 
 	// Decide which backend modules to compile into the output. By default only the C
@@ -10156,8 +10215,9 @@ pub fn run(args []string) {
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	cache_candidate_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused
-		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit && !c_compiler_explicit
-		&& !minimal_literal_output && c_compiler == 'cc' && target.os == host_target.os
+		&& !no_builtin && !parallel_cc && !keep_c && !backend_explicit
+		&& !minimal_literal_output && v3_c_compiler_matches_default_cc(c_compiler)
+		&& target.os == host_target.os
 		&& target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_candidate_enabled { default_cc_identity() } else { '' }
@@ -10166,12 +10226,17 @@ pub fn run(args []string) {
 	} else {
 		''
 	}
+	compiler_executable_identity := if cache_candidate_enabled {
+		v3_cache_compiler_executable_identity(prefs.vexe)
+	} else {
+		''
+	}
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
 	cache_salt := [
 		'compiler=${compiler_signature}',
 		'cc=${cc_identity}',
 		'ccompiler=${prefs.ccompiler}',
-		'vexe=${prefs.vexe}',
+		'vexe=${compiler_executable_identity}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
@@ -10589,7 +10654,7 @@ pub fn run(args []string) {
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
 
 	mut crun_build_identity := ''
-	if is_direct_vsh && should_run && !explicit_output {
+	if (is_crun || is_direct_vsh) && should_run && !explicit_output {
 		carried_identity := os.getenv(v3_crun_build_identity_env)
 		if os.getenv(v3_internal_restart_env) == '1' && carried_identity.len > 0 {
 			crun_build_identity = carried_identity
@@ -10954,7 +11019,7 @@ pub fn run(args []string) {
 		if has_conflicting_c_declaration_errors(pre_tc.errors) {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 			}
 			exit(1)
 		}
@@ -10972,7 +11037,7 @@ pub fn run(args []string) {
 		if pre_tc.check_interface_embedding_limits() {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 			}
 			exit(1)
 		}
@@ -11094,7 +11159,7 @@ pub fn run(args []string) {
 			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 			}
 			pre_tc.notices.clear()
 		}
@@ -11104,7 +11169,7 @@ pub fn run(args []string) {
 		if no_closures {
 			if closure_error := no_closures_error(a, &pre_tc) {
 				print_type_diagnostics(a, []types.TypeError{}, [closure_error], true, fatal_errors,
-					check_only)
+					check_only, message_limit)
 				exit(1)
 			}
 		}
@@ -11134,7 +11199,7 @@ pub fn run(args []string) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 				exit(1)
 			}
 			return
@@ -11296,7 +11361,7 @@ pub fn run(args []string) {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
 			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only)
+				check_only, message_limit)
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -11747,7 +11812,7 @@ pub fn run(args []string) {
 		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
 			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
 			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only)
+				check_only, message_limit)
 			for notice in cached_notices {
 				if notice.severity == 'warning:' {
 					checker_warning_count++
@@ -11765,7 +11830,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-			check_only)
+			check_only, message_limit)
 		exit(1)
 	}
 
@@ -11867,7 +11932,7 @@ pub fn run(args []string) {
 			if pre_tc.errors.len == 0
 				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only)
+					check_only, message_limit)
 			}
 			for notice in pre_tc.notices {
 				if notice.severity == 'warning:' {
@@ -12074,6 +12139,7 @@ pub fn run(args []string) {
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
+			g.set_debug(prefs.is_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -12138,6 +12204,7 @@ pub fn run(args []string) {
 			g.set_c99_mode(prefs.c99)
 			g.set_ccompiler(prefs.ccompiler)
 			g.set_prod(prefs.is_prod)
+			g.set_debug(prefs.is_debug)
 			g.set_check_overflow(check_overflow)
 			g.set_force_bounds_checking(prefs.force_bounds_checking)
 			g.set_prealloc('prealloc' in prefs.user_defines)
@@ -12262,9 +12329,21 @@ pub fn run(args []string) {
 		}
 		if !c_only || (dump_c_flags.len > 0 && generate_c_project.len == 0) {
 			object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod, no_prod_options, is_shared, parallel_cc, effective_tcc)
+			mut primary_object_compiler_flags := []string{}
+			if effective_tcc {
+				object_tcc_sdk_root := if prefs.normalized_target_os() == 'macos' {
+					macos_sdk_root_cache.get()
+				} else {
+					''
+				}
+				primary_object_compiler_flags = v3_tcc_object_compile_flags(prefs.vroot, c_compiler,
+					bundled_tcc, bundled_tcc_available, prefs.normalized_target_os(),
+					object_tcc_sdk_root)
+			}
 			resolved_c_flags = prepare_c_flags_for_link(generated_c_flags, environment_c_flags,
-				object_optimization_flags, prefs.c99, no_std, pic_flag, target_args, prefs.target,
-				c_compiler, use_implicit_tcc_semantics, cc_dir, mut c_object_cache_stats) or {
+				primary_object_compiler_flags, object_optimization_flags, prefs.c99, no_std,
+				pic_flag, target_args, prefs.target, c_compiler, use_implicit_tcc_semantics, cc_dir,
+				mut c_object_cache_stats) or {
 				message := err.msg()
 				if v3_should_regenerate_after_implicit_tcc(retry_compilation, use_implicit_tcc_semantics, false, 0) {
 					v3_regenerate_after_implicit_tcc(args, c_compiler_arg_index, cc_dir, verbose, show_cc)
@@ -13048,7 +13127,7 @@ Please install the corresponding development package/libraries and make sure the
 		})
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		if should_run {
-			if is_direct_vsh && !explicit_output {
+			if (is_crun || is_direct_vsh) && !explicit_output {
 				write_v3_crun_cache_marker(bin_file, crun_build_identity) or {}
 			}
 			run_result := run_binary(bin_file, run_args)
@@ -13102,7 +13181,7 @@ Please install the corresponding development package/libraries and make sure the
 		println('checker summary: 0 V errors, ${checker_warning_count} V warnings, ${checker_notice_count} V notices')
 	}
 	b.print_report()
-	if newly_cached_module_count > 0 && !silent {
+	if newly_cached_module_count > 0 && !silent && !should_run {
 		println('Hint: cached ${newly_cached_module_count} modules. They will not be recompiled on the next run unless they change.')
 	}
 }
@@ -15282,7 +15361,7 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
-fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool) {
+fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int) {
 	if !check_only {
 		mut first_unused := -1
 		for i, err in type_errors {
@@ -15297,6 +15376,9 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			}
 		}
 		if first_unused >= 0 {
+			if message_limit == 0 {
+				return
+			}
 			err := type_errors[first_unused]
 			severity := if err.severity.len > 0 { err.severity } else { 'error:' }
 			eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
@@ -15306,7 +15388,11 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	}
 	mut ordered_notices := notices.clone()
 	ordered_notices.sort_with_compare(compare_print_notices)
+	mut printed_diagnostics := 0
 	for notice in ordered_notices {
+		if message_limit >= 0 && printed_diagnostics >= message_limit {
+			break
+		}
 		if all_errors && notice.msg.starts_with('unused variable: `')
 			&& unused_notice_is_parameter_redefinition_cascade(a, notice, type_errors) {
 			continue
@@ -15314,6 +15400,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 		severity := if notice.severity.len > 0 { notice.severity } else { 'notice:' }
 		eprintln(compiler_errors.formatted_error(severity, notice.msg, a, notice.node, notice.pos))
 		print_type_diagnostic_details(notice.details)
+		printed_diagnostics++
 	}
 	source_errors := reorder_chained_generic_inference_errors(a, dedupe_type_diagnostics(a, type_errors))
 	mut ordered_errors := []types.TypeError{cap: source_errors.len}
@@ -15327,12 +15414,17 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 			ordered_errors << err
 		}
 	}
-	max_errors := if fatal_errors {
+	default_max_errors := if fatal_errors {
 		if ordered_errors.len > 0 { 1 } else { 0 }
 	} else if all_errors || ordered_errors.len < 20 {
 		ordered_errors.len
 	} else {
 		20
+	}
+	max_errors := if message_limit >= 0 {
+		int_min(default_max_errors, int_max(0, message_limit - printed_diagnostics))
+	} else {
+		default_max_errors
 	}
 	for ei in 0 .. max_errors {
 		err := ordered_errors[ei]
@@ -15340,7 +15432,7 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 		eprintln(compiler_errors.formatted_error(severity, err.msg, a, err.node, err.pos))
 		print_type_diagnostic_details(err.details)
 	}
-	if !fatal_errors && !all_errors && ordered_errors.len > max_errors {
+	if message_limit < 0 && !fatal_errors && !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
 	}
 }

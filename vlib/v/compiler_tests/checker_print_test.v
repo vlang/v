@@ -58,6 +58,23 @@ fn main() {
 	assert errors.len == 0, errors.str()
 }
 
+fn test_bare_println_allows_explicit_multi_pointer_for_stringify_lowering() {
+	errors := check_print_sources('bare_println_multi_pointer', {
+		'main.v': 'module main
+
+struct Item {}
+
+fn println(s string) {}
+
+fn main() {
+	item := &Item{}
+	println(&item)
+}
+'
+	})
+	assert errors.len == 0, errors.str()
+}
+
 // test_local_println_non_string_param_keeps_declared_arg_type validates this v3 regression case.
 fn test_local_println_non_string_param_keeps_declared_arg_type() {
 	errors := check_print_sources('local_println_int_param', {

@@ -96,6 +96,7 @@ const libc_collisions = {
 	'pipe':     true
 	'pow':      true
 	'printf':   true
+	'raise':    true
 	'read':     true
 	'realpath': true
 	'rint':     true

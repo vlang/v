@@ -75,7 +75,7 @@ fn v_segmentation_fault_handler(signal_number i32) {
 	}
 }
 
-@[inline]
+@[inline; markused]
 fn v_fixed_index(i int, len int) int {
 	$if !no_bounds_checking {
 		if i < 0 || i >= len {

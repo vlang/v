@@ -121,8 +121,15 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 			fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
+			shared_interface_source := !isnil(t.tc) && t.is_interface_type(field_type)
+				&& t.tc.struct_field_is_shared(node.value, target_field_name)
+				&& t.expr_is_shared_value(val_id)
 			// Check if the value is an enum shorthand and the field type is an enum
-			mut new_val := if val_node.kind == .enum_val && enum_field_type.len > 0 {
+			mut new_val := if shared_interface_source {
+				// Keep the concrete shared source intact so cgen can make the interface
+				// wrapper borrow both its value and its synchronization guard.
+				t.transform_expr(val_id)
+			} else if val_node.kind == .enum_val && enum_field_type.len > 0 {
 				t.transform_enum_shorthand(val_id, val_node, enum_field_type)
 			} else if fixed_to_dynamic {
 				t.fixed_array_value_to_owned_array(val_id, value_type, field_type)
@@ -137,10 +144,10 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			} else {
 				t.transform_expr(val_id)
 			}
-			if sum_field_type.len == 0 && field_type.len > 0 {
+			if !shared_interface_source && sum_field_type.len == 0 && field_type.len > 0 {
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
 			}
-			if field_type.len > 0 && !fixed_to_dynamic {
+			if !shared_interface_source && field_type.len > 0 && !fixed_to_dynamic {
 				new_val = t.clone_borrowed_projection(val_id, new_val, field_type)
 			}
 			// Snapshot a preceding field value before a later field hoists its branch prelude,
@@ -902,6 +909,7 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 					name:      name
 					module:    base_info.module
 					is_params: base_info.is_params
+					is_c_anon: base_info.is_c_anon
 					fields:    fields
 				}
 			}

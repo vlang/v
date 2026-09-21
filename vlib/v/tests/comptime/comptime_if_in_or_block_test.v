@@ -78,7 +78,9 @@ fn main() {
 	generated := os.read_file(out)!
 	// The `panic(err)` branch must be emitted as a bare statement, never as an
 	// assignment to the result temp.
-	assert !generated.contains('= builtin___v_panic'), generated
+	assert !generated.contains('= v_panic'), generated
+	assert !generated.contains(' = (\n\t\t#if'), generated
+	assert generated.contains('v_panic(IError__str(err));')
 	// The value branch must still assign to the result temp.
-	assert generated.contains('builtin___v_panic')
+	assert generated.contains('= (i64)(0);')
 }

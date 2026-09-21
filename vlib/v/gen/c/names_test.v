@@ -51,6 +51,7 @@ fn test_c_name_libc_collision_abs() {
 	assert c_name('send') == 'v_send'
 	assert c_name('C.abs') == 'abs'
 	assert c_name('printf') == 'v_printf'
+	assert c_name('raise') == 'v_raise'
 	assert c_name('select') == 'v_select'
 	assert c_name('C.printf') == 'printf'
 	assert c_name('C.select') == 'select'
@@ -151,6 +152,20 @@ fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
 	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
 	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
 	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
+}
+
+fn test_main_function_is_prefixed_when_declared_c_function_owns_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.fn_ret_types['C.get_value'] = types.Type(types.int_)
+	g.fn_decl_ret_types[fn_decl_module_key('main', 'get_value')] = types.Type(types.int_)
+
+	assert g.fn_c_name_in_module('main', 'get_value') == 'main__get_value'
+	assert g.main_runtime_shadow_fn_c_name('main', 'get_value') or { '' } == 'main__get_value'
+	assert g.fn_c_name_in_module('database', 'get_value') == 'database__get_value'
 }
 
 fn test_target_libc_opaque_packed_struct_restores_packing() {

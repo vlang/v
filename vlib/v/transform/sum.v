@@ -735,14 +735,19 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		} else {
 			node.value
 		}
-		if target_iface := t.resolve_interface_pattern_interface(pattern_name) {
+		// Interface runtime tags describe the stored concrete value, not whether the
+		// source pattern asks to expose that value through a pointer smartcast.
+		// Resolve `is &Concrete` against `Concrete`, while retaining the original
+		// pattern in the smartcast context.
+		concrete_pattern_name := t.trim_all_pointer_type(pattern_name)
+		if target_iface := t.resolve_interface_pattern_interface(concrete_pattern_name) {
 			if check := t.make_interface_target_is_check(new_expr, expr_type, clean_type0,
 				target_iface)
 			{
 				return check
 			}
 		}
-		type_ids := t.interface_impl_type_ids(clean_type0, pattern_name)
+		type_ids := t.interface_impl_type_ids(clean_type0, concrete_pattern_name)
 		if type_ids.len > 0 {
 			stable_expr := if type_ids.len > 1 {
 				t.stable_transformed_expr_for_reuse(new_expr, expr_type, 'iface_is')
@@ -757,7 +762,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 			}
 			return check
 		}
-		if pattern := t.resolve_interface_pattern(pattern_name, clean_type0) {
+		if pattern := t.resolve_interface_pattern(concrete_pattern_name, clean_type0) {
 			is_start := t.a.children.len
 			t.a.children << new_expr
 			return t.a.add_node(flat.Node{
@@ -1127,20 +1132,20 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 		}
 	}
 	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 		return name
 	}
 	if name.starts_with('builtin.') {
 		short := name['builtin.'.len..]
 		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return short
 		}
 	}
 	if name.contains('.') {
 		short := name.all_after_last('.')
 		if short in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune', 'voidptr'] {
 			return short
 		}
 	}
@@ -1332,7 +1337,20 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			pos:            node.pos
 		})
 	}
-	expr_id := t.a.child(&node, 0)
+	mut expr_id := t.a.child(&node, 0)
+	mut unchecked_optional_unwrap := false
+	expr_node := t.a.nodes[int(expr_id)]
+	if expr_node.kind == .or_expr && expr_node.value == '?' && expr_node.children_count > 0 {
+		source_id := t.a.child(&expr_node, 0)
+		mut source_type := t.raw_expr_type_without_smartcast(source_id)
+		if source_type.len == 0 {
+			source_type = t.node_type(source_id)
+		}
+		if t.is_optional_type_name(source_type) {
+			expr_id = source_id
+			unchecked_optional_unwrap = true
+		}
+	}
 	// `as` converts from the expression's storage type. Inside an `is` branch,
 	// `node_type` reports the smartcast target instead; using that here makes an
 	// interface-to-interface cast look like a no-op and leaves the source box on
@@ -1353,7 +1371,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		// and `x is Variant` branches, transforming `x` normally would apply both
 		// smartcasts before this code selects `.value`, then extract the variant a
 		// second time.
-		source := if t.expr_has_smartcast(expr_id) {
+		source := if unchecked_optional_unwrap {
+			t.transform_optional_wrapper_expr(expr_id)
+		} else if t.expr_has_smartcast(expr_id) {
 			t.make_plain_expr_for_smartcast(expr_id)
 		} else {
 			t.transform_expr(expr_id)
@@ -1497,9 +1517,54 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	field := t.sum_field_name(qv)
 	new_expr := t.transform_expr(expr_id)
+	source := t.stable_transformed_expr_for_reuse(new_expr, expr_type, 'sum_as')
+	variants := t.sum_type_variants_for_index(resolved_clean_type)
+	if variants.len > 0 {
+		mut accepted_variants := t.sum_alias_equivalent_variants(resolved_clean_type,
+			node.value)
+		if accepted_variants.len == 0 {
+			accepted_variants << qv
+		}
+		actual_name := t.new_temp('sum_as_type')
+		mut mismatch_stmts := [t.make_decl_assign_typed(actual_name,
+			t.make_string_literal(t.sum_as_display_type(variants[0])), 'string')]
+		for variant in variants {
+			is_variant := t.make_infix(.eq, t.make_sum_tag_selector(source, if expr_type.starts_with('&') {
+				.arrow
+			} else {
+				.dot
+			}), t.make_int_literal(t.sum_type_index(resolved_clean_type, variant)))
+			mismatch_stmts << t.make_if(is_variant, t.make_block([
+				t.make_assign(t.make_ident(actual_name),
+					t.make_string_literal(t.sum_as_display_type(variant))),
+			]), t.make_empty())
+		}
+		check := t.make_call_typed('__as_cast', [
+			t.a.add(.nil_literal),
+			t.make_sum_tag_selector(source, if expr_type.starts_with('&') { .arrow } else { .dot }),
+			t.make_int_literal(t.sum_type_index(resolved_clean_type, qv)),
+			t.make_ident(actual_name),
+			t.make_string_literal(t.sum_as_display_type(qv)),
+		], 'voidptr')
+		mismatch_stmts << t.make_expr_stmt(check)
+		mut mismatch := flat.empty_node
+		for accepted_variant in accepted_variants {
+			not_variant := t.make_infix(.ne, t.make_sum_tag_selector(source, if expr_type.starts_with('&') {
+				.arrow
+			} else {
+				.dot
+			}), t.make_int_literal(t.sum_type_index(resolved_clean_type, accepted_variant)))
+			mismatch = if int(mismatch) < 0 {
+				not_variant
+			} else {
+				t.make_infix(.logical_and, mismatch, not_variant)
+			}
+		}
+		t.pending_stmts << t.make_if(mismatch, t.make_block(mismatch_stmts), t.make_empty())
+	}
 	use_ptr := t.variant_references_sum(qv, clean_type) && !t.sum_variant_is_direct_pointer(qv)
 	field_typ := if use_ptr { '&${qv}' } else { qv }
-	field_sel := t.make_selector_op(new_expr, field, field_typ, if expr_type.starts_with('&') {
+	field_sel := t.make_selector_op(source, field, field_typ, if expr_type.starts_with('&') {
 		.arrow
 	} else {
 		.dot
@@ -1508,6 +1573,20 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		return t.make_prefix(.mul, field_sel)
 	}
 	return field_sel
+}
+
+fn (t &Transformer) sum_as_display_type(name string) string {
+	if name.len == 0 || name.contains('.') {
+		return name
+	}
+	is_named_type := name in t.structs || name in t.sum_types || name in t.enum_types
+		|| (!isnil(t.tc)
+			&& (name in t.tc.interface_names || name in t.tc.type_aliases))
+	if !is_named_type {
+		return name
+	}
+	module_name := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+	return '${module_name}.${name}'
 }
 
 // wrap_sum_return_expr transforms wrap sum return expr data for transform.
@@ -1606,10 +1685,10 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 	expr := t.a.nodes[int(expr_id)]
 	if expr.kind == .if_expr {
 		branch_type := t.if_expr_branch_result_type(expr)
-		if t.if_expr_branch_overrides_sum_target(branch_type, resolved_sum) {
+		if t.if_expr_branch_overrides_sum_target(branch_type, storage_sum) {
 			return t.transform_expr(expr_id)
 		}
-		if lowered := t.try_expand_if_expr_value_for_type(expr_id, expr, resolved_sum) {
+		if lowered := t.try_expand_if_expr_value_for_type(expr_id, expr, storage_sum) {
 			return lowered
 		}
 	}
