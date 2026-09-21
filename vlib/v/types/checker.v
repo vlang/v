@@ -7786,7 +7786,9 @@ fn (tc &TypeChecker) expected_context_for_expr(id flat.NodeId) ?Type {
 				if other_type is Pointer {
 					other_type = other_type.base_type
 				}
-				if array_like_elem_type(other_type) != none {
+				clean_other := unalias_type(other_type)
+				if array_like_elem_type(other_type) != none
+					|| (clean_other is Enum && clean_other.is_flag) {
 					return other_type
 				}
 			}

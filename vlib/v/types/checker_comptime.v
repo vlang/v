@@ -7087,6 +7087,16 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	rhs_node := tc.a.node(rhs_id)
 	mut lhs_type := tc.infix_read_type(lhs_id)
 	mut rhs_type := tc.infix_read_type(rhs_id)
+	if node.op in [.pipe, .amp, .xor] {
+		if expected := tc.expected_context_for_expr(id) {
+			clean_expected := unalias_type(expected)
+			if clean_expected is Enum && clean_expected.is_flag {
+				lhs_type = tc.resolve_expr(lhs_id, expected)
+				rhs_type = tc.resolve_expr(rhs_id, expected)
+				tc.register_synth_type(id, expected)
+			}
+		}
+	}
 	nested_optional_or_source := tc.infix_is_or_expr_source(id)
 	unwrap_nested_optional := nested_optional_or_source
 		&& (node.op != .left_shift || array_type_from_receiver(lhs_type) == none)
