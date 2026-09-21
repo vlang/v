@@ -370,7 +370,8 @@ fn (mut tc TypeChecker) check_module_name_conflict(id flat.NodeId, name string) 
 	if name == '' || name == '_' {
 		return
 	}
-	if name == tc.cur_module && !tc.current_file_uses_nested_vlib_module_path() {
+	if tc.should_check_source_name(id) && name == tc.cur_module
+		&& !tc.current_file_uses_nested_vlib_module_path() {
 		tc.record_error_at(.duplicate_decl, 'duplicate of a module name `${name}`', id, tc.node_value_diagnostic_pos(id))
 	}
 	tc.check_imported_module_prefix(id, name, '')
