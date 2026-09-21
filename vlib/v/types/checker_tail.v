@@ -13867,7 +13867,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					continue
 				}
 			}
+			// A concrete value passed explicitly as `mut` to a mutable interface
+			// parameter is boxed as an interface reference by codegen. Its source
+			// pointer depth therefore does not have to match `&Interface` directly.
 			compatible_interface_value_arg = clean_expected_for_interface is Interface
+				|| allow_mut_receiver
 			mutable_interface_impl_arg = allow_mut_receiver
 		}
 		argument_number := param_idx + 1 - (if info.has_receiver {
