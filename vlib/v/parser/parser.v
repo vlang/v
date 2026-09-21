@@ -3870,7 +3870,11 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 			p.next()
 			if p.tok == .lpar {
 				attr_name := piece
+				call_attrs_start := attrs.len
 				mut has_base_arg := false
+				mut base_attr := attr_name
+				mut base_kind := piece_kind
+				mut positional_arg_idx := 1
 				p.next()
 				for p.tok != .rpar && p.tok != .eof {
 					if p.tok == .comma {
@@ -3886,20 +3890,30 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 					arg_kind := parsed_attribute_kind(p.tok)
 					arg := p.lit.trim_space()
 					p.next()
-					if arg_name.len == 0 || arg_name == 'msg' {
-						attrs << '${attr_name}: ${arg}'
-						kinds << arg_kind
+					if attr_name == 'deprecated' && arg_name == 'msg' {
+						if has_base_arg {
+							p.record_diagnostic_span('duplicate `msg` argument for `@[deprecated(...)]` attribute',
+								piece_start, p.prev_tok_end)
+						}
+						base_attr = '${attr_name}: ${arg}'
+						base_kind = arg_kind
 						has_base_arg = true
-					} else {
+					} else if arg_name.len > 0 {
 						attrs << '${attr_name}_${arg_name}: ${arg}'
 						kinds << arg_kind
+					} else if !has_base_arg {
+						base_attr = '${attr_name}: ${arg}'
+						base_kind = arg_kind
+						has_base_arg = true
+					} else {
+						attrs << '${attr_name}_${positional_arg_idx}: ${arg}'
+						kinds << arg_kind
+						positional_arg_idx++
 					}
 				}
 				p.check(.rpar)
-				if !has_base_arg {
-					attrs << attr_name
-					kinds << piece_kind
-				}
+				attrs.insert(call_attrs_start, base_attr)
+				kinds.insert(call_attrs_start, base_kind)
 				continue
 			}
 			mut kind := piece_kind
