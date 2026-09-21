@@ -7637,7 +7637,8 @@ fn (mut p Parser) stmt() flat.NodeId {
 		.key_if {
 			if_id := p.if_stmt()
 			if token_is_infix(p.tok) || p.tok in [.key_as, .dot, .lpar, .lsbr]
-				|| token_is_postfix(p.tok) || p.tok == .not {
+				|| token_is_postfix(p.tok) || p.tok == .not || p.tok == .key_or
+				|| (p.current_token_is_newline_semicolon() && p.peek() == .key_or) {
 				expr_id := p.expr_with_lhs(if_id, .lowest)
 				if p.tok == .semicolon {
 					p.next()

@@ -55,6 +55,12 @@ fn main() {
 		else {}
 	}
 		or { return }
+	if true {
+		result_value()
+	} else {
+		result_value()
+	}
+		or { return }
 	assert value == 42
 }
 ') or { panic(err) }
@@ -64,7 +70,7 @@ fn main() {
 	mut p := Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
-	assert a.nodes.count(it.kind == .or_expr) == 3
+	assert a.nodes.count(it.kind == .or_expr) == 4
 }
 
 fn test_statement_map_literals_accept_compound_keys() {
