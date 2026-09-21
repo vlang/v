@@ -32,6 +32,11 @@ const string_interp_hoisted_part_expansion_estimate = 5
 // before the repeated type is reached.
 const recursive_pointer_str_expansion_threshold = 512
 
+struct MutOptionalValueCallArg {
+	value     flat.NodeId
+	writeback flat.NodeId
+}
+
 // resolve_call_name resolves the function name from a .call node.
 // child[0] is the function expression: .ident for plain calls, .selector for method calls.
 fn (t &Transformer) resolve_call_name(node flat.Node) string {
@@ -1260,6 +1265,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		-1
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
+	mut mut_optional_value_writebacks := []flat.NodeId{}
 	saved_in_call_callee := t.in_call_callee
 	t.in_call_callee = true
 	callee_id := t.a.children[node.children_start]
@@ -1407,7 +1413,12 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				continue
 			}
 		}
-		new_children << t.transform_call_arg_for_named_param(arg_id, param_type, call_name)
+		if converted := t.transform_mut_optional_value_call_arg(arg_id, param_type) {
+			new_children << converted.value
+			mut_optional_value_writebacks << converted.writeback
+		} else {
+			new_children << t.transform_call_arg_for_named_param(arg_id, param_type, call_name)
+		}
 		i++
 	}
 	if variadic_idx >= 0 && !variadic_tail_supplied && explicit_args == variadic_idx - param_offset {
@@ -1428,7 +1439,8 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		if typ != t.a.nodes[int(id)].typ {
 			t.set_node_typ(int(id), typ)
 		}
-		return t.finish_immediate_closure_call(id, immediate_closure_cleanup, typ, immediate_closure_capture_may_escape)
+		call := t.finish_immediate_closure_call(id, immediate_closure_cleanup, typ, immediate_closure_capture_may_escape)
+		return t.finish_mut_optional_value_call(call, typ, mut_optional_value_writebacks)
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -1463,7 +1475,83 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			args:     cached_args
 		}
 	}
-	return t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, typ, immediate_closure_capture_may_escape)
+	call := t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, typ, immediate_closure_capture_may_escape)
+	return t.finish_mut_optional_value_call(call, typ, mut_optional_value_writebacks)
+}
+
+fn (mut t Transformer) transform_mut_optional_value_call_arg(arg_id flat.NodeId, param_type string) ?MutOptionalValueCallArg {
+	if int(arg_id) < 0 || param_type.len < 3 || !param_type.starts_with('&?') {
+		return none
+	}
+	arg_node := t.a.nodes[int(arg_id)]
+	if !arg_node.is_mut {
+		return none
+	}
+	arg_type := t.qualify_optional_type(t.node_type(arg_id))
+	if !arg_type.starts_with('?') {
+		return none
+	}
+	payload_type := t.optional_base_type(arg_type)
+	if isnil(t.tc) || types.unalias_type(t.tc.parse_type(payload_type)) !is types.Struct {
+		return none
+	}
+	param_option := t.qualify_optional_type(param_type[1..])
+	param_payload := t.optional_base_type(param_option)
+	target_payload := if param_payload.starts_with('&') {
+		param_payload
+	} else {
+		'&${param_payload}'
+	}
+	if t.normalize_type_alias(payload_type) != t.normalize_type_alias(target_payload[1..]) {
+		return none
+	}
+	target_option := '${param_option[..1]}${target_payload}'
+
+	lvalue := t.stabilize_transformed_lvalue_for_reuse(t.transform_lvalue(arg_id))
+	tmp_name := t.new_temp('mut_optional_arg')
+	initial_err := t.make_selector(lvalue, 'err', 'IError')
+	initial := t.make_optional_none_with_err(target_option, initial_err)
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, initial, target_option)
+	payload := t.make_selector(lvalue, 'value', payload_type)
+	payload_addr := t.make_prefix(.amp, payload)
+	t.set_node_typ(int(payload_addr), target_payload)
+	set_some := t.make_assign(t.make_ident(tmp_name), t.make_optional_some(payload_addr, target_option))
+	t.pending_stmts << t.make_if(t.make_selector(lvalue, 'ok', 'bool'), t.make_block([set_some]), t.make_empty())
+
+	tmp := t.make_ident(tmp_name)
+	t.set_node_typ(int(tmp), target_option)
+	result_payload_ptr := t.make_selector(tmp, 'value', target_payload)
+	result_payload := t.make_prefix(.mul, result_payload_ptr)
+	t.set_node_typ(int(result_payload), payload_type)
+	write_some := t.make_assign(lvalue, t.make_optional_some(result_payload, arg_type))
+	result_err := t.make_selector(tmp, 'err', 'IError')
+	write_none := t.make_assign(lvalue, t.make_optional_none_with_err(arg_type, result_err))
+	writeback := t.make_if(t.make_selector(tmp, 'ok', 'bool'), t.make_block([write_some]), t.make_block([write_none]))
+
+	addr := t.make_prefix(.amp, tmp)
+	t.set_node_typ(int(addr), param_type)
+	return MutOptionalValueCallArg{
+		value:     addr
+		writeback: writeback
+	}
+}
+
+fn (mut t Transformer) finish_mut_optional_value_call(call_id flat.NodeId, typ string, writebacks []flat.NodeId) flat.NodeId {
+	if writebacks.len == 0 {
+		return call_id
+	}
+	if typ == '' || typ == 'void' {
+		t.pending_stmts << t.make_expr_stmt(call_id)
+		t.pending_stmts << writebacks
+		return t.make_int_literal(0)
+	}
+	result_name := t.new_temp('mut_optional_result')
+	t.set_var_type(result_name, typ)
+	t.pending_stmts << t.make_decl_assign_typed(result_name, call_id, typ)
+	t.pending_stmts << writebacks
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), typ)
+	return result
 }
 
 fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closure_name string, typ string, capture_may_escape bool) flat.NodeId {

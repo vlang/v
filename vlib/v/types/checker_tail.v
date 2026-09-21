@@ -564,6 +564,10 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	}
 	clean_rhs := unalias_type(rhs_type)
 	clean_expected := unalias_type(expected_type)
+	if op == .assign && clean_expected is OptionType && clean_expected.base_type is Pointer
+		&& tc.type_compatible(clean_rhs, clean_expected.base_type.base_type) {
+		return true
+	}
 	if op == .assign && clean_rhs.name() == 'int' && clean_expected.name() == 'f64' {
 		return true
 	}
@@ -15357,8 +15361,14 @@ fn (tc &TypeChecker) mut_optional_pointer_arg_compatible(actual Type, expected T
 		return false
 	}
 	expected_option := expected_option_type as OptionType
+	if actual is OptionType && tc.type_compatible(actual, expected_option) {
+		return true
+	}
 	if actual is OptionType && actual.base_type is Pointer {
 		return tc.type_compatible(actual.base_type.base_type, expected_option.base_type)
+	}
+	if actual is OptionType && expected_option.base_type is Pointer {
+		return tc.type_compatible(actual.base_type, expected_option.base_type.base_type)
 	}
 	if expected_option.base_type is Pointer {
 		return tc.type_compatible(actual, expected_option.base_type.base_type)

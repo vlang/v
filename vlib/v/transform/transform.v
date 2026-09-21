@@ -11735,6 +11735,12 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			if lhs_type.len == 0 {
 				lhs_type = t.lvalue_type(lhs_id)
 			}
+			if lhs.kind == .ident && t.mut_param_values[lhs.value] {
+				param_value_type := t.var_type(lhs.value)
+				if t.is_optional_type_name(param_value_type) {
+					lhs_type = param_value_type
+				}
+			}
 			if value_type := t.pointer_optional_unwrap_lvalue_type(lhs_id) {
 				lhs_type = value_type
 			}
@@ -13840,7 +13846,13 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		if source.kind != .none_expr {
 			payload_type := t.optional_base_type(optional_target)
 			value := if payload_type.starts_with('&') && !expr_type.starts_with('&') {
-				t.coerce_transformed_expr_to_type(expr, source_id, payload_type)
+				if source.kind == .struct_init {
+					addr := t.make_prefix(.amp, expr)
+					t.set_node_typ(int(addr), payload_type)
+					addr
+				} else {
+					t.coerce_transformed_expr_to_type(expr, source_id, payload_type)
+				}
 			} else if payload_type == 'string' && t.is_ierror_type(expr_type) {
 				t.wrap_string_conversion(expr, expr_type)
 			} else {

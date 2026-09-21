@@ -725,11 +725,23 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		|| init_type is types.ResultType
 	has_expected_optional := g.expected_expr_type is types.OptionType
 		|| g.expected_expr_type is types.ResultType || g.expected_expr_is_optional_struct()
+	init_has_pointer_payload := match init_type {
+		types.OptionType { init_type.base_type is types.Pointer }
+		types.ResultType { init_type.base_type is types.Pointer }
+		else { false }
+	}
+	expected_has_pointer_payload := match g.expected_expr_type {
+		types.OptionType { g.expected_expr_type.base_type is types.Pointer }
+		types.ResultType { g.expected_expr_type.base_type is types.Pointer }
+		else { false }
+	}
 	// Lowered optional literals can retain their concrete V spelling (`?IError`)
 	// instead of the legacy synthetic `Optional` name. The wrapper ABI still comes
 	// from the expected option/result type; otherwise trimming the `?` above emits
 	// the payload C type and attempts to initialize an interface with option fields.
-	if is_optional_init
+	// A mutable optional struct parameter is the exception: its lowered payload is
+	// a pointer, while the source-level expected type still names the value payload.
+	if is_optional_init && !(init_has_pointer_payload && !expected_has_pointer_payload)
 		&& (g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType) {
 		concrete_expected := g.cur_fn_is_specialized && g.cur_fn_ret_is_optional
 			&& g.type_names_match(g.expected_expr_type, g.cur_fn_ret)

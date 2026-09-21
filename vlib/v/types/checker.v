@@ -7140,10 +7140,13 @@ fn mut_param_binding_type(typ Type, is_mut bool, is_explicit_reference bool) Typ
 		return typ
 	}
 	if typ is Pointer {
-		if unalias_type(typ.base_type) is Interface {
-			return typ
+		semantic_type := mut_param_semantic_type(typ)
+		if semantic_type is Pointer {
+			if unalias_type(semantic_type.base_type) is Interface {
+				return semantic_type
+			}
+			return semantic_type.base_type
 		}
-		return typ.base_type
 	}
 	return typ
 }
