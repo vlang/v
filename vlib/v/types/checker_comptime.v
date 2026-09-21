@@ -16247,8 +16247,15 @@ fn (tc &TypeChecker) wrapped_multi_return_tail_is_error(branch_id flat.NodeId, w
 	if tc.branch_tail_never_returns(branch_id) {
 		return true
 	}
+	if wrapper is OptionType && tc.branch_tail_is_none_literal(tail_id) {
+		return true
+	}
+	if wrapper is ResultType && tc.branch_tail_is_error_literal(tail_id) {
+		return true
+	}
 	raw_type := tc.resolve_type(tail_id)
-	return is_ierror_type(raw_type) || tc.type_compatible_with_ierror_payload(raw_type)
+	return wrapper is ResultType
+		&& (is_ierror_type(raw_type) || tc.type_compatible_with_ierror_payload(raw_type))
 }
 
 fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int, explicit_comma_tail bool) ?[][]flat.NodeId {

@@ -2419,6 +2419,9 @@ fn (mut tc TypeChecker) multi_expr_tail_return_compatible(return_id flat.NodeId,
 		tc.multi_expr_tail_value_groups(expr_id, expected.len, false) or { return none }
 	}
 	if groups.len == 0 {
+		if wrapper is OptionType || wrapper is ResultType {
+			return true
+		}
 		return none
 	}
 	if tc.record_multi_expr_wrapped_return_mismatch(expr_id, expected, groups) {
