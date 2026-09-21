@@ -6174,11 +6174,8 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 			}
 		}
 	}
-	mut resolved_base := t.alias_str_resolved_base_type(base_type)
-	if is_ref {
-		if option_base := t.alias_str_option_base_type(base_type) {
-			resolved_base = option_base
-		}
+	resolved_base := t.alias_str_option_base_type(base_type) or {
+		t.alias_str_resolved_base_type(base_type)
 	}
 	if is_ref && !t.is_optional_type_name(resolved_base)
 		&& t.alias_str_needs_name_wrapper(base_type) {
