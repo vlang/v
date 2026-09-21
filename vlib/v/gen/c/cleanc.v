@@ -15590,6 +15590,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_expr(g.a.child(&child, 0))
 				return
 			}
+			if node.op == .mul && child.kind == .char_literal && child.value.starts_with('c:') {
+				// The prefix already performs the byte load. Render its operand as the
+				// C string pointer so expected-type handling does not add a second `*`.
+				g.write('*"${escape_c_string_literal_quotes(child.value[2..])}"')
+				return
+			}
 			if node.op == .amp && child.kind == .selector && child.children_count > 0 && g.is_map_entry_lvalue(g.a.child(&child, 0)) {
 				g.write('&')
 				gen_expr_lvalue(mut g, child_id)
