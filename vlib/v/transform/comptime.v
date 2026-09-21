@@ -3684,6 +3684,13 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if is_generic_fn_placeholder_name(core) {
 		return core
 	}
+	// A bare type substituted into an imported generic still belongs to the
+	// caller's main module. Keep that provenance when producing stable type ids;
+	// otherwise `typeof[T]().idx` is hashed as though the type were declared by
+	// the generic function's module.
+	if t.active_specialization_main_types[core] {
+		return 'main.${core}'
+	}
 	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
 		|| core.contains(' ') || decl_module == 'builtin' {
 		return core
