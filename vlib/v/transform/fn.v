@@ -9287,6 +9287,14 @@ fn (mut t Transformer) wrap_optional_string_conversion_with_pointer_none(expr fl
 	if alias_display := t.optional_payload_alias_display_name(display_type) {
 		value_str = t.string_plus(t.string_plus(t.make_string_literal('${alias_display}('), value_str), t.make_string_literal(')'))
 	}
+	if !isnil(t.tc) {
+		iface_name := t.resolve_interface_type_name(display_type)
+		if iface_name.len > 0 && 'str' in t.tc.interface_abstract_method_names(iface_name) {
+			display_name := iface_name.all_after_last('.')
+			value_str = t.string_plus(t.string_plus(t.make_string_literal('${display_name}('),
+				value_str), t.make_string_literal(')'))
+		}
+	}
 	some_str := t.string_plus(t.string_plus(t.make_string_literal(option_prefix), value_str), t.make_string_literal(')'))
 	mut some_stmts := []flat.NodeId{}
 	t.drain_pending(mut some_stmts)
