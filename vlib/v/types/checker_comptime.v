@@ -4079,6 +4079,12 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		&& array_like_elem_type(unalias_type(target)) != none {
 		tc.annotate_expected_expr(child_id, unalias_type(target))
 		tc.check_node_with_expected_context(child_id, unalias_type(target))
+	} else if cast_child.kind == .struct_init
+		&& is_contextual_anonymous_struct_literal(cast_child.value)
+		&& tc.anonymous_struct_literal_compatible(cast_child, unalias_type(target)) {
+		// An alias cast supplies the otherwise unnamed struct literal's shape:
+		// `AliasToAnon(struct { ... })` initializes the alias target directly.
+		tc.check_node_with_expected_context(child_id, unalias_type(target))
 	} else if cast_child.kind == .enum_val && unalias_type(target) is Enum {
 		// A short enum value takes its type from the cast target. This also applies
 		// when the target is an alias, e.g. `EnumAlias(.value)`.
