@@ -541,9 +541,10 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	if op == .assign && tc.fn_storage_voidptr_mismatch(rhs_id, rhs_type, expected_type) {
 		return false
 	}
-	if op == .assign && tc.translated_files[tc.cur_file] && rhs_type is ArrayFixed
-		&& expected_type is Pointer && tc.a.node(rhs_id).kind == .ident {
-		return tc.type_compatible(rhs_type.elem_type, expected_type.base_type)
+	if op == .assign
+		&& tc.translated_fixed_array_pointer_assignment_compatible(rhs_id, rhs_type,
+			expected_type) {
+		return true
 	}
 	if op == .assign
 		&& tc.fixed_array_address_to_byte_pointer_compatible(rhs_id, rhs_type, expected_type) {
@@ -712,6 +713,21 @@ fn (tc &TypeChecker) fixed_array_address_to_byte_pointer_compatible(expr_id flat
 	}
 	node := tc.a.nodes[int(expr_id)]
 	return node.kind == .prefix && node.op == .amp && node.children_count > 0
+}
+
+fn (tc &TypeChecker) translated_fixed_array_pointer_assignment_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+	if !tc.node_is_in_translated_file(expr_id) {
+		return false
+	}
+	clean_actual := unalias_type(actual)
+	if clean_actual !is ArrayFixed {
+		return false
+	}
+	clean_expected := unalias_type(expected)
+	if clean_expected !is Pointer {
+		return false
+	}
+	return tc.type_compatible(clean_actual.elem_type, clean_expected.base_type)
 }
 
 fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type Type) bool {

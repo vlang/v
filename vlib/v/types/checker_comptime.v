@@ -16591,6 +16591,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	mut ownership_rhs_types := []Type{}
 	mut smartcast_write_keys := []string{}
 	mut option_assignment_smartcasts := []LocalBinding{}
+	assignment_is_translated := tc.node_is_from_translated_file(node)
 	is_cross_assignment := node.op == .assign && node.children_count > 2
 	pointer_alias_assignment_rhs := if is_cross_assignment {
 		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
@@ -16675,7 +16676,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			i += 2
 			continue
 		}
-		nonmut_smartcast_assignment := lhs_node.kind == .ident && lhs_node.value in tc.smartcasts
+		nonmut_smartcast_assignment := !assignment_is_translated && lhs_node.kind == .ident
+			&& lhs_node.value in tc.smartcasts
 			&& !tc.ident_is_mutable_lvalue(lhs_node.value)
 		unknown_assign_ident := lhs_node.kind == .ident && lhs_node.value != '_'
 			&& !tc.lvalue_ident_is_known(lhs_node.value)
@@ -16683,7 +16685,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'cannot mutate `${lhs_node.value}` in a non-mut smartcast, use `if mut ${lhs_node.value} ...`', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
 		} else if unknown_assign_ident {
 			tc.record_error_at(.unknown_ident, 'undefined ident: `${lhs_node.value}` (use `:=` to declare a variable)', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
-		} else {
+		} else if !assignment_is_translated {
 			tc.check_lvalue_mutability(lhs_id)
 		}
 		lhs_type := if unknown_assign_ident {
@@ -16812,7 +16814,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 				} else {
 					tc.record_error_at(.assignment_mismatch, 'cannot copy map: call `move` or `clone` method (or use a reference)', rhs_id, rhs_node.pos)
 				}
-			} else if clean_source_rhs_type is ArrayFixed
+			} else if !assignment_is_translated && clean_source_rhs_type is ArrayFixed
 				&& (clean_expected_type is Pointer || expected_type.name() == 'voidptr')
 				&& !tc.ident_is_explicitly_mutable_lvalue(rhs_node.value) {
 				tc.record_notice_at(.assignment_mismatch, 'left-side of assignment expects a mutable reference, but variable `${rhs_node.value}` is immutable, declare it with `mut` to make it mutable or clone it', rhs_id, rhs_node.pos)
@@ -16877,6 +16879,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			&& !invalid_comptime_selector_lhs
 		fixed_array_pointer_mismatch := node.op == .assign && clean_rhs_type is ArrayFixed
 			&& (clean_expected_type is Pointer || expected_type.name() == 'voidptr')
+			&& !tc.translated_fixed_array_pointer_assignment_compatible(rhs_id, rhs_type,
+				expected_type)
 		if fixed_array_pointer_mismatch {
 			tc.record_error_at(.assignment_mismatch, 'mismatched types `${expected_type.name()}` and `${rhs_type.name()}`', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 		}
