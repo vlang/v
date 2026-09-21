@@ -1394,7 +1394,7 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 						continue
 					}
 					if concrete := tc.resolve_interface_match_pattern(pattern) {
-						concrete_type := unalias_type(unwrap_pointer(tc.parse_type(concrete)))
+						concrete_type := unwrap_pointer(tc.parse_type(concrete))
 						concrete_name := method_type_name(concrete_type)
 						if concrete_type !is Interface
 							&& !tc.named_type_implements_interface(concrete_name, subject_type.name)
@@ -2556,7 +2556,7 @@ fn (tc &TypeChecker) multi_interface_match_common_interface(subject Interface, b
 		}
 		mut implements_all := true
 		for variant in variants {
-			concrete_name := method_type_name(unalias_type(unwrap_pointer(tc.parse_type(variant))))
+			concrete_name := method_type_name(unwrap_pointer(tc.parse_type(variant)))
 			if concrete_name.len == 0 || !tc.named_type_implements_interface(concrete_name, name) {
 				implements_all = false
 				break
@@ -2660,7 +2660,7 @@ fn (tc &TypeChecker) pattern_type_known(pattern string) bool {
 
 fn (tc &TypeChecker) resolve_ierror_match_pattern(pattern string) ?string {
 	for candidate in tc.interface_match_pattern_candidates(pattern) {
-		candidate_type := unalias_type(unwrap_pointer(tc.parse_type(candidate)))
+		candidate_type := unwrap_pointer(tc.parse_type(candidate))
 		candidate_name := method_type_name(candidate_type)
 		if candidate_name.len > 0 && tc.named_type_compatible_with_ierror(candidate_name) {
 			return candidate
@@ -2896,7 +2896,7 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 					tc.record_error(.condition_mismatch, '`${node.value}` is not compatible with interface `${expr_type.name}`', id)
 				}
 			} else if concrete := tc.resolve_interface_match_pattern(node.value) {
-				concrete_type := unalias_type(unwrap_pointer(tc.parse_type(concrete)))
+				concrete_type := unwrap_pointer(tc.parse_type(concrete))
 				concrete_name := method_type_name(concrete_type)
 				if concrete_type !is Interface
 					&& !tc.named_type_implements_interface(concrete_name, expr_type.name)
