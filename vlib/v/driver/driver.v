@@ -6954,9 +6954,24 @@ fn v3_c_compiler_matches_default_cc(c_compiler string) bool {
 	}
 	default_path := os.find_abs_path_of_executable('cc') or { return false }
 	compiler_path := os.find_abs_path_of_executable(c_compiler) or { return false }
-	default_stat := os.stat(default_path) or { return false }
-	compiler_stat := os.stat(compiler_path) or { return false }
-	return default_stat.dev == compiler_stat.dev && default_stat.inode == compiler_stat.inode
+	return v3_same_c_compiler_executable(default_path, compiler_path)
+}
+
+// v3_same_c_compiler_executable reports whether two compiler paths name one
+// program: the same file once links are resolved, or the same inode where the
+// platform reports one. Windows reports the drive as `dev` and 0 as `inode` for
+// every file, so there only the resolved path can tell two compilers apart.
+fn v3_same_c_compiler_executable(first string, second string) bool {
+	if !os.exists(first) || !os.exists(second) {
+		return false
+	}
+	if os.real_path(first) == os.real_path(second) {
+		return true
+	}
+	first_stat := os.stat(first) or { return false }
+	second_stat := os.stat(second) or { return false }
+	return first_stat.inode != 0 && first_stat.dev == second_stat.dev
+		&& first_stat.inode == second_stat.inode
 }
 
 // default_cc_identity returns a precise identity for the resolved default `cc`.
