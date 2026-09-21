@@ -18262,13 +18262,6 @@ fn fixed_array_elem_type(arr ArrayFixed) Type {
 	return arr.elem_type
 }
 
-fn fixed_array_type_contains_map(typ Type) bool {
-	if typ is ArrayFixed {
-		return fixed_array_type_contains_map(typ.elem_type)
-	}
-	return typ is Map
-}
-
 // map_value_type supports map value type handling for types.
 fn map_value_type(m Map) Type {
 	return m.value_type

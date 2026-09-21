@@ -16626,13 +16626,8 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 						}
 						value_id := tc.a.child(&node, i + 1)
 						resolved_value_type := tc.resolve_type(value_id)
-						mut value_type := tc.mut_param_expr_base(value_id, resolved_value_type) or {
+						value_type := tc.mut_param_expr_base(value_id, resolved_value_type) or {
 							resolved_value_type
-						}
-						if value_type is ArrayFixed && !fixed_array_type_contains_map(value_type) {
-							value_type = Type(Array{
-								elem_type: value_type.elem_type
-							})
 						}
 						return Type(Map{
 							key_type:   tc.resolve_type(key_id)
@@ -16647,13 +16642,8 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				key_type := tc.resolve_type(first_id)
 				value_id := tc.a.child(&node, 1)
 				resolved_value_type := tc.resolve_type(value_id)
-				mut value_type := tc.mut_param_expr_base(value_id, resolved_value_type) or {
+				value_type := tc.mut_param_expr_base(value_id, resolved_value_type) or {
 					resolved_value_type
-				}
-				if value_type is ArrayFixed && !fixed_array_type_contains_map(value_type) {
-					value_type = Type(Array{
-						elem_type: value_type.elem_type
-					})
 				}
 				return Type(Map{
 					key_type:   key_type
