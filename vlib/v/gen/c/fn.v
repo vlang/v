@@ -320,6 +320,19 @@ fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccess
 	mut overflow_node_ids := map[int]bool{}
 	mut overflow_source_positions := map[u64]bool{}
 	mut program_modules := map[string]bool{}
+	mut non_program_modules := map[string]bool{}
+	mut scan_file_is_program := false
+	for directive_idx in g.top_level_nodes() {
+		directive := g.a.nodes[directive_idx]
+		if directive.kind == .file {
+			scan_file_is_program = g.cache_program_files[directive.value]
+				|| g.cache_program_files[os.real_path(directive.value)]
+			continue
+		}
+		if directive.kind == .module_decl && !scan_file_is_program {
+			non_program_modules[directive.value] = true
+		}
+	}
 	mut cur_file_is_program := false
 	for directive_idx in g.top_level_nodes() {
 		directive := g.a.nodes[directive_idx]
@@ -329,7 +342,7 @@ fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccess
 			continue
 		}
 		if directive.kind == .module_decl {
-			if cur_file_is_program {
+			if cur_file_is_program && !non_program_modules[directive.value] {
 				program_modules[directive.value] = true
 			}
 			continue
