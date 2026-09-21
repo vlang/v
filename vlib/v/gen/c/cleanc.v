@@ -12752,6 +12752,23 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 				return g.sum_cast_actual_type(g.a.child(&node, 0))
 			}
 		}
+		.or_expr {
+			if node.children_count > 0 {
+				source_id := g.a.child(&node, 0)
+				source := g.a.nodes[int(source_id)]
+				if source.kind == .call {
+					// Expected-type propagation can make the or expression look like its
+					// enclosing sum type; the call payload is the actual sum variant.
+					declared := optional_result_unalias_type(g.declared_call_return_type(source_id))
+					match declared {
+						types.OptionType, types.ResultType {
+							return declared.base_type
+						}
+						else {}
+					}
+				}
+			}
+		}
 		else {}
 	}
 	if node.kind == .call {
@@ -14659,7 +14676,10 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					} else if ct.starts_with('Optional_') && ct.ends_with('ptr') && field.value == 'value' {
 						g.expr_to_string(val_id)
 					} else if ftyp := g.struct_field_type(node.value, field.value) {
-						if val_node.kind == .enum_val {
+						if cgen_unalias_type(ftyp) is types.SumType {
+							// A printable constant still needs the expected sum type to box it.
+							g.expr_to_string_with_expected_type(val_id, ftyp)
+						} else if val_node.kind == .enum_val {
 							g.expr_to_string_with_expected_type(val_id, ftyp)
 						} else {
 							const_val := g.const_expr_to_string(val_id, seen)

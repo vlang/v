@@ -4876,6 +4876,7 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 		}
 		rhs := t.a.nodes[int(rhs_id)]
 		mut is_json_decode_or := false
+		mut specialized_call_or := false
 		mut concrete_rhs_type := rhs.typ
 		mut raw_rhs_type := rhs.typ
 		if rhs.kind == .or_expr {
@@ -4886,6 +4887,11 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 			call := t.a.nodes[int(call_id)]
 			if call.kind != .call {
 				continue
+			}
+			if call.children_count > 0 {
+				callee := t.a.child_node(&call, 0)
+				specialized_call_or = callee.kind == .ident
+					&& t.generic_callee_is_specialization(callee.value)
 			}
 			_, concrete_rhs_type = t.or_expr_types(call_id, rhs.typ)
 			is_json_decode_or = t.is_cgen_magic_json_call(call_id, call)
@@ -4902,7 +4908,9 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite() bool {
 			continue
 		}
 		stale_json_voidptr := is_json_decode_or && node.typ.trim_space() in ['voidptr', '&void']
-		if !stale_json_voidptr && decl_type_is_usable(node.typ)
+		// A specialized generic result can replace an otherwise usable stale annotation.
+		if !stale_json_voidptr && !(specialized_call_or && node.typ != concrete_rhs_type)
+			&& decl_type_is_usable(node.typ)
 			&& !t.generic_arg_is_unresolved(node.typ) {
 			continue
 		}
