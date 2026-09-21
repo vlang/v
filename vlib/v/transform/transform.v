@@ -20558,7 +20558,14 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		mut new_child := if node.op == .not {
-			t.transform_expr_for_type(child_id, 'bool')
+			child := t.a.nodes[int(child_id)]
+			if child.kind == .ident && t.pointer_value_rvalues[child.value] {
+				// `!` consumes the binding's value itself; unlike an assignment or
+				// argument context, there is no later expected-type load in cgen.
+				t.transform_expr(child_id)
+			} else {
+				t.transform_expr_for_type(child_id, 'bool')
+			}
 		} else {
 			// route a value `match`/`if` operand (e.g. `-(match x { ... })`)
 			// through its target type so its propagating arms are lowered as values.
