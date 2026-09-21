@@ -155,6 +155,67 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 	g.write('})')
 }
 
+// gen_array_init_value emits a dynamic `[]T{len:, cap:, init:}` as a C value.
+// Most source array initializers are lowered by the transform, but imported struct
+// field defaults are deliberately left for cgen and can still reach this path.
+fn (mut g FlatGen) gen_array_init_value(node flat.Node, elem_type types.Type) {
+	len_id := g.array_init_field_value(node, 'len') or { flat.empty_node }
+	cap_id := g.array_init_field_value(node, 'cap') or { flat.empty_node }
+	init_id := g.array_init_field_value(node, 'init') or { flat.empty_node }
+	c_elem := g.value_sizeof_target(elem_type)
+	if int(init_id) < 0 {
+		g.write('array_new(sizeof(${c_elem}), ')
+		if int(len_id) >= 0 {
+			g.gen_expr_with_expected_type(len_id, types.Type(types.int_))
+		} else {
+			g.write('0')
+		}
+		g.write(', ')
+		if int(cap_id) >= 0 {
+			g.gen_expr_with_expected_type(cap_id, types.Type(types.int_))
+		} else {
+			g.write('0')
+		}
+		g.write(')')
+		return
+	}
+	len_name := g.tmp_name()
+	cap_name := g.tmp_name()
+	array_name := g.tmp_name()
+	index_name := g.tmp_name()
+	int_type := g.value_c_type(types.Type(types.int_))
+	g.write('({ ${int_type} ${len_name} = ')
+	if int(len_id) >= 0 {
+		g.gen_expr_with_expected_type(len_id, types.Type(types.int_))
+	} else {
+		g.write('0')
+	}
+	g.write('; ${int_type} ${cap_name} = ')
+	if int(cap_id) >= 0 {
+		g.gen_expr_with_expected_type(cap_id, types.Type(types.int_))
+	} else {
+		g.write('0')
+	}
+	g.write('; Array ${array_name} = array_new(sizeof(${c_elem}), ${len_name}, ${cap_name}); ')
+	g.write('for (${int_type} ${index_name} = 0; ${index_name} < ${array_name}.len; ${index_name}++) { ')
+	if g.node_contains_ident(init_id, 'index') {
+		g.write('${int_type} ${g.local_decl_cname('index')} = ${index_name}; ')
+	}
+	if g.node_contains_ident(init_id, 'it') {
+		g.write('${int_type} ${g.local_decl_cname('it')} = ${index_name}; ')
+	}
+	if fixed := array_fixed_type(elem_type) {
+		g.write('memcpy(array_get(${array_name}, ${index_name}), ')
+		g.gen_fixed_array_copy_source(init_id, fixed)
+		g.write(', sizeof(${c_elem})); ')
+	} else {
+		g.write('*((${c_elem}*)array_get(${array_name}, ${index_name})) = ')
+		g.gen_expr_with_expected_type(init_id, elem_type)
+		g.write('; ')
+	}
+	g.write('} ${array_name}; })')
+}
+
 fn array_literal_elem_can_use_noscan(elem_type types.Type) bool {
 	clean := cgen_unalias_type(elem_type)
 	return clean is types.Primitive || clean is types.Char || clean is types.Rune

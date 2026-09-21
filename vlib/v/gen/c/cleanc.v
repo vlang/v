@@ -16407,8 +16407,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				c_elem, dims := g.fixed_array_decl_parts(init_type)
 				g.write('(${c_elem}${dims}){0}')
 			} else {
-				c_elem := g.value_sizeof_target(raw_init_type)
-				g.write('array_new(sizeof(${c_elem}), 0, 0)')
+				g.gen_array_init_value(node, raw_init_type)
 			}
 		}
 		.map_init {
