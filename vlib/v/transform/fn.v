@@ -5319,6 +5319,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		return t.wrap_string_conversion(expr, normalized_stringify_type)
 	}
 	if t.is_fixed_array_type(clean_typ) {
+		if is_ref {
+			return t.lower_ref_value_str(expr, typ, '&nil')
+		}
 		elem_type := fixed_array_elem_type(clean_typ)
 		arr := t.fixed_array_value_to_array(expr, clean_typ, '[]${elem_type}')
 		return t.lower_fixed_array_str(arr, '[]${elem_type}')
