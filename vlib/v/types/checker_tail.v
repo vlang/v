@@ -2924,7 +2924,10 @@ fn (tc &TypeChecker) optional_pointer_expr_compatible(expr_id flat.NodeId, actua
 			return true
 		}
 	}
-	if actual_base is Pointer || !tc.expr_can_take_address(expr_id) {
+	if actual_base is Pointer {
+		return tc.type_compatible(actual_base, expected_ptr)
+	}
+	if !tc.expr_can_take_address(expr_id) {
 		return false
 	}
 	return tc.type_compatible(actual_base, expected_ptr.base_type)
@@ -13955,7 +13958,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		actual_pointer_depth, actual_pointer_base :=
 			type_pointer_depth_and_base(pointer_check_actual)
-		expected_pointer_depth, expected_pointer_base := type_pointer_depth_and_base(expected)
+		mut pointer_check_expected := expected
+		if expected is OptionType && expected.base_type is Pointer && actual !is OptionType
+			&& actual !is ResultType {
+			pointer_check_expected = expected.base_type
+		}
+		expected_pointer_depth, expected_pointer_base :=
+			type_pointer_depth_and_base(pointer_check_expected)
 		spawn_rvalue_address := expected_pointer_depth == actual_pointer_depth + 1
 			&& tc.call_is_direct_spawn_child(id)
 		mut pointer_value_arg := tc.pointer_value_compatible(actual, expected)
