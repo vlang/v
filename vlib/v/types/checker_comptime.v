@@ -2169,6 +2169,20 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	mut pointer_alias_skipped_rhs := map[string][]string{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
+		mut infix_anonymous_expected := Type(void_)
+		mut has_infix_anonymous_expected := false
+		if node.kind == .infix && node.op in [.eq, .ne] && node.children_count >= 2 {
+			child := tc.a.node(child_id)
+			if child.kind == .struct_init
+				&& is_contextual_anonymous_struct_literal(child.value) {
+				other_idx := if i == 0 { 1 } else { 0 }
+				other_type := tc.resolve_type(tc.a.child(&node, other_idx))
+				if tc.anonymous_struct_literal_compatible(child, other_type) {
+					infix_anonymous_expected = other_type
+					has_infix_anonymous_expected = true
+				}
+			}
+		}
 		if node.kind == .infix && node.op in [.eq, .ne] && i == 1 {
 			lhs_type := unalias_type(tc.resolve_type(tc.a.child(&node, 0)))
 			if lhs_type is Array || lhs_type is ArrayFixed {
@@ -2191,9 +2205,15 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			defer_append_rhs := node.kind == .infix && node.op == .left_shift
 				&& node.children_count >= 2 && i == 1
 				&& unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array
-			tc.ownership_check_node_with_aggregate_consumption_mode(child_id, defer_append_rhs)
+			if has_infix_anonymous_expected {
+				tc.ownership_check_node_with_expected_context_and_aggregate_consumption_mode(child_id, infix_anonymous_expected, defer_append_rhs)
+			} else {
+				tc.ownership_check_node_with_aggregate_consumption_mode(child_id, defer_append_rhs)
+			}
 		} $else {
-			if node.kind == .array_literal {
+			if has_infix_anonymous_expected {
+				tc.check_node_with_expected_context(child_id, infix_anonymous_expected)
+			} else if node.kind == .array_literal {
 				if expected := tc.expected_context_for_expr(id) {
 					context_type := unalias_type(contextual_payload_type(expected) or { expected })
 					if elem_type := array_like_elem_type(context_type) {
