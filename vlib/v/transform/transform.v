@@ -13231,7 +13231,12 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 		if !t.pointer_value_lvalues[lhs.value] {
 			return none
 		}
-		new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
+		mut new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
+		if t.pointer_value_rvalues[lhs.value] && lhs_type.starts_with('&&') {
+			// A source `mut p &T` parameter owns a pointer slot (`&&T`), but its
+			// compound mutations retain the source auto-dereferenced `T` semantics.
+			new_lhs = t.make_prefix(.mul, new_lhs)
+		}
 		return [t.make_assign_op(new_lhs, t.transform_expr(rhs_id), node.op)]
 	}
 	if !t.pointer_value_lvalues[lhs.value] {
@@ -21159,7 +21164,13 @@ fn (mut t Transformer) transform_postfix_expr(id flat.NodeId, node flat.Node) fl
 		}
 	}
 	new_child := if child.kind == .ident && t.pointer_value_lvalues[child.value] {
-		t.make_paren(t.make_prefix(.mul, t.make_ident(child.value)))
+		mut value := t.make_prefix(.mul, t.make_ident(child.value))
+		if t.pointer_value_rvalues[child.value] && t.var_type(child.value).starts_with('&&') {
+			// `mut p &T` uses one indirection for its mutable pointer slot and one
+			// for the source-level auto-dereferenced postfix mutation.
+			value = t.make_prefix(.mul, value)
+		}
+		t.make_paren(value)
 	} else {
 		t.transform_expr(child_id)
 	}
