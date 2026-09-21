@@ -2776,26 +2776,37 @@ fn generic_method_type_arg_from_return(ret types.Type) ?string {
 // is not a type or has no such static method.
 fn (g &FlatGen) static_method_fn_name(type_ident string, method string) ?string {
 	qtype := g.tc.qualify_name(type_ident)
-	is_type := type_ident in g.tc.type_aliases || qtype in g.tc.type_aliases
-		|| type_ident in g.tc.structs || qtype in g.tc.structs || type_ident in g.tc.enum_names
-		|| qtype in g.tc.enum_names || type_ident in g.tc.sum_types || qtype in g.tc.sum_types
-	if !is_type {
-		return none
+	mut type_candidates := []string{cap: 4}
+	if !type_ident.contains('.') {
+		for candidate in g.tc.file_selective_imports['${g.tc.cur_file}\n${type_ident}'] or {
+			[]string{}
+		} {
+			if candidate !in type_candidates {
+				type_candidates << candidate
+			}
+		}
 	}
-	// Prefer the module-qualified key: a static method defined in the current (or the
-	// type's) module is emitted under its qualified C name (`game__Animation__load`),
-	// so the call must resolve to the same qualified key even though an unqualified
-	// alias (`Animation.load`) may also be registered.
-	qdirect := '${qtype}.${method}'
-	if qtype != type_ident && (qdirect in g.tc.fn_ret_types || qdirect in g.tc.fn_param_types) {
-		return qdirect
+	for candidate in [qtype, type_ident] {
+		if candidate !in type_candidates {
+			type_candidates << candidate
+		}
 	}
-	direct := '${type_ident}.${method}'
-	if direct in g.tc.fn_ret_types || direct in g.tc.fn_param_types {
-		return direct
-	}
-	if qdirect in g.tc.fn_ret_types || qdirect in g.tc.fn_param_types {
-		return qdirect
+	for candidate in type_candidates {
+		is_type := candidate in g.tc.type_aliases || candidate in g.tc.structs
+			|| candidate in g.tc.enum_names || candidate in g.tc.sum_types
+		if !is_type {
+			continue
+		}
+		// Prefer module-qualified keys. Static methods are emitted under the type's
+		// qualified C name even when the source uses a selectively imported short name.
+		encoded := flat.encode_static_type_method_name(candidate, method)
+		if encoded in g.tc.fn_ret_types || encoded in g.tc.fn_param_types {
+			return encoded
+		}
+		legacy := '${candidate}.${method}'
+		if legacy in g.tc.fn_ret_types || legacy in g.tc.fn_param_types {
+			return legacy
+		}
 	}
 	return none
 }
