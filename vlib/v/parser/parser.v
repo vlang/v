@@ -8831,6 +8831,9 @@ fn (mut p Parser) match_stmt() flat.NodeId {
 		children_count: flat.child_count(ids.len)
 		pos:            p.span_to(match_start)
 	})
+	if p.current_token_is_newline_semicolon() && p.peek() == .key_or {
+		p.next()
+	}
 	if p.tok == .key_or {
 		p.next()
 		or_body := p.or_block_stmt()
