@@ -10000,7 +10000,9 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	// A string interpolation format is stored in `directive.typ`, but it is not a
 	// type name. Qualifying it in an imported generic specialization turns `04X`
 	// into e.g. `json2.04X`, which silently drops the requested base and width.
-	substituted_node_type := if node.kind == .directive && node.value == 'string_interp_format' {
+	substituted_node_type := if (node.kind == .directive
+		&& node.value == 'string_interp_format') || node.kind == .offsetof_expr {
+		// `offsetof_expr.typ` stores the field name, not a type annotation.
 		node.typ
 	} else {
 		t.subst_type(node.typ, args)
@@ -12352,7 +12354,7 @@ fn (mut t Transformer) subst_node_value(node flat.Node, args []string) string {
 			}
 			return t.resolve_substituted_type_text(t.subst_type(node.value, args))
 		}
-		.array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr {
+		.array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr, .offsetof_expr {
 			return t.resolve_substituted_type_text(t.subst_type(node.value, args))
 		}
 		.sizeof_expr, .typeof_expr {
