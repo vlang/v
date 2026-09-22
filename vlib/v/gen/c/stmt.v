@@ -6888,6 +6888,10 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 						v_type = ret
 					}
 				}
+			}
+			if rhs.kind in [.call, .ident] {
+				// Unwrapped results are copied from temporaries. Keep their concrete
+				// module identity just as for a direct call's return type.
 				rhs_type := g.usable_expr_type(rhs_id)
 				current_value := default_init_unalias_type(types.unwrap_pointer(v_type))
 				rhs_value := default_init_unalias_type(types.unwrap_pointer(rhs_type))
