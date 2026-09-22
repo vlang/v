@@ -5881,13 +5881,13 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 			}
 			if node.value.len > 0 && node.value[0].is_capital()
 				&& !tc.static_assoc_type_known(qname) {
-				tc.register_synth_type(id, Type(int_))
+				tc.register_synth_type(id, tc.c_integer_constant_context_type(id))
 				return
 			}
 			// C preprocessor constants do not have V declarations. Like V1, infer
 			// conventional all-uppercase macro names as integers.
 			if node.value.len > 0 && !ascii_name_has_lower(node.value) {
-				tc.register_synth_type(id, Type(int_))
+				tc.register_synth_type(id, tc.c_integer_constant_context_type(id))
 				return
 			}
 		}
@@ -7280,7 +7280,7 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 			tc.register_synth_type(id, if c_upper_constant_is_pointer('C.${node.value}') {
 				Type(voidptr_)
 			} else {
-				Type(int_)
+				tc.c_integer_constant_context_type(id)
 			})
 		}
 		_ = module_name
@@ -8460,6 +8460,15 @@ fn (tc &TypeChecker) fn_value_signature_compatible(actual Type, expected Type) b
 		}
 	}
 	return tc.fn_return_compatible(actual_fn.return_type, expected_fn.return_type)
+}
+
+fn (tc &TypeChecker) c_integer_constant_context_type(id flat.NodeId) Type {
+	if expected := tc.expected_context_for_expr(id) {
+		if unalias_type(expected).is_integer() {
+			return expected
+		}
+	}
+	return Type(int_)
 }
 
 fn c_upper_constant_is_pointer(qname string) bool {
