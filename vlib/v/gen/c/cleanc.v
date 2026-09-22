@@ -5430,7 +5430,21 @@ fn (mut g FlatGen) c_include_directive_text(node_idx int, prefix_condition strin
 	// Preserve already-absolute spellings, including symlink aliases such as macOS `/tmp`.
 	if clean_include_arg.starts_with('"') && (g.output_cross_c || !quoted_absolute_path) {
 		include_dirs := c_flag_include_dirs(g.c_flags)
-		for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		mut paths := []string{}
+		if g.output_cross_c {
+			paths = c_include_file_paths(include_arg, g.compiler_vroot, source_file,
+				include_dirs)
+		} else {
+			// A header supplied through an explicit -I directory already resolves from
+			// the generated C compiler command. Keep its original portable spelling;
+			// only source-local headers need an absolute path after C output moves away
+			// from the V source directory.
+			path := c_include_file_path(include_arg, g.compiler_vroot, source_file)
+			if path.len > 0 {
+				paths << path
+			}
+		}
+		for path in paths {
 			if !os.is_file(path) {
 				continue
 			}
