@@ -1597,10 +1597,10 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 		t.transform_late_used_fn_bodies(t.used_fns_log, remaining_match_log_start, remaining_match_log_end, base_node_count)
 		late_log_start = t.used_fns_log.len
 		t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
-		// Late-body transformation requests concrete generic work immediately. If
-		// reachability grew but queued no specialization, another whole-AST pass
-		// cannot materialize anything new.
-		if t.used_fn_count() == used_after_pass || t.pending_generic_fn_specs.len == 0 {
+		// A late non-generic body can expose a generic-struct method call. That call
+		// grows reachability without immediately queuing a specialization; the next
+		// pass's generic-struct method scan materializes it from the new used name.
+		if t.used_fn_count() == used_after_pass {
 			break
 		}
 	}
@@ -5133,7 +5133,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start
 	t.cur_file = ''
 	mut interface_seed_names := []string{}
 	for ni in names_start .. names_end {
-		name := (*names)[ni]
+		name := names[ni]
 		if !t.late_name_may_expand_interface(name) {
 			continue
 		}
@@ -5148,7 +5148,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start
 		}
 	}
 	for ni in names_start .. names_end {
-		name := (*names)[ni]
+		name := names[ni]
 		t.mark_fn_used_name(name)
 	}
 	for name in interface_seed_names {
@@ -5211,7 +5211,7 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, names_start
 	// a name into the late-work maps when the index proves that it can match a
 	// body; unmatched names still remain marked used for later compiler stages.
 	for ni in names_start .. names_end {
-		name := (*names)[ni]
+		name := names[ni]
 		if name.len == 0
 			|| (candidate_index[name].len == 0 && candidate_index[c_name(name)].len == 0) {
 			continue
@@ -8829,6 +8829,10 @@ fn next_temp_counter_after_name(name string, current int) int {
 	return if value >= current { value + 1 } else { current }
 }
 
+fn mut_param_has_builtin_pointer_value(param flat.Node) bool {
+	return param.is_mut_builtin_pointer_param()
+}
+
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	if !isnil(t.selector_type_cache) {
 		t.selector_type_cache.generation++
@@ -8969,7 +8973,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		if child.is_mut || child.op == .amp || child.typ.starts_with('mut ') {
 			t.mut_param_values[child.value] = true
 			source_mut_params << child.value
-			if child.op == .amp {
+			if child.op == .amp || mut_param_has_builtin_pointer_value(child) {
 				source_pointer_value_params << child.value
 			}
 		}
@@ -13572,7 +13576,8 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 // value load. Returning an eagerly dereferenced node here makes C generation
 // apply that expected-type load a second time.
 fn (mut t Transformer) pointer_storage_expr_for_value_target(id flat.NodeId, target_type string) ?flat.NodeId {
-	if int(id) < 0 || target_type == '' || target_type.starts_with('&') {
+	if int(id) < 0 || target_type == ''
+		|| is_pointer_like_type_name(t.normalize_type_alias(target_type)) {
 		return none
 	}
 	mut source_id := id
@@ -16951,7 +16956,9 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 		t.normalize_type_alias(clean_actual)
 	}
 	if is_alias_actual && (clean_actual == clean_expected
-		|| t.qualify_type(clean_actual) == t.qualify_type(clean_expected)) {
+		|| t.qualify_type(clean_actual) == t.qualify_type(clean_expected)
+		|| t.comptime_field_type_id_key(clean_actual, t.cur_module) == t.comptime_field_type_id_key(clean_expected,
+			t.cur_module)) {
 		return true
 	}
 	match clean_expected {
@@ -19624,7 +19631,7 @@ fn (mut t Transformer) comptime_type_expr_type(id flat.NodeId) ?string {
 			base
 		}
 		'unaliased_typ' {
-			t.comptime_normalize_type_alias_chain(base)
+			t.comptime_typeof_unaliased_type(base)
 		}
 		'payload_type', 'pointee_type', 'element_type', 'key_type', 'value_type' {
 			t.generic_comptime_type_member(base, node.value)
@@ -19780,7 +19787,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		}
 		if node.value == 'unaliased_typ' {
 			base_type := t.typeof_type_name(base_node0)
-			unaliased := t.comptime_normalize_type_alias_chain(base_type)
+			unaliased := t.comptime_typeof_unaliased_type(base_type)
 			return t.make_int_literal(t.comptime_field_type_id(unaliased, t.cur_module))
 		}
 		if node.value in ['key_type', 'value_type', 'element_type'] {
@@ -19905,9 +19912,9 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 			t.mark_fn_used_name(method_value_name)
 			// Interface callbacks also need their concrete dispatch targets when
 			// this selector is discovered while transforming a late-used body.
-			iface_name := t.resolve_interface_type_name(method_value_name.all_before_last('.'))
-			if iface_name.len > 0 {
-				t.mark_interface_method_implementers_used(iface_name, node.value)
+			method_iface_name := t.resolve_interface_type_name(method_value_name.all_before_last('.'))
+			if method_iface_name.len > 0 {
+				t.mark_interface_method_implementers_used(method_iface_name, node.value)
 			}
 		}
 		method_params := t.call_param_types(method_value_name)
@@ -20434,7 +20441,8 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		// though its child is a pointer (`charptr`), so treating it as a plain
 		// non-pointer drops the source `*` (for example `*(charptr(addr))`).
 		if child.kind !in [.cast_expr, .paren] && child_type.len > 0
-			&& !child_type.starts_with('&') {
+			&& !child_type.starts_with('&')
+			&& !t.normalize_type_alias(child_type).starts_with('&') {
 			return t.transform_expr(child_id)
 		}
 	}

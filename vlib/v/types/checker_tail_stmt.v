@@ -1,6 +1,7 @@
 module types
 
 import os
+import strings
 import v.flat
 import v.gen.c.naming
 import v.token
@@ -4026,7 +4027,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					}
 				}
 				if value_node.kind == .fn_literal && value_node.typ == '?'
-					&& clean_expected is FnType {
+					&& clean_expected is FnType && clean_expected.return_type !is OptionType {
 					expected_name := expected.name().replace_once('fn(', 'fn (')
 					tc.record_error_at(.assignment_mismatch, 'cannot assign to field `${field.value}`: expected `${expected_name}`, not `${expected_name} ?`', field_id, tc.struct_init_field_deprecation_pos(field))
 				} else if clean_expected is OptionType && clean_actual is Pointer
@@ -7032,7 +7033,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	}
 	if node.value != 'range' && base_type_raw is Pointer && !implicit_mut_param_pointer
 		&& !explicit_mut_param_pointer && mut_param_base !is Pointer && !pointer_container_param
-		&& !locked_shared_pointer_container && outside_unsafe {
+		&& !locked_shared_pointer_container && outside_unsafe
+		&& !tc.translated_files[tc.cur_file] && !tc.node_is_in_translated_file(id) {
 		tc.record_error_at(.cannot_index, 'pointer indexing is only allowed in `unsafe` blocks', id, tc.index_brackets_pos(node))
 		tc.register_synth_type(id, tc.resolve_index_type(node))
 		return
@@ -8027,11 +8029,15 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	node := tc.a.nodes[int(id)]
 	clean_expected := unalias_type(expected)
 	if clean_expected.is_float()
-		&& (tc.is_untyped_float_literal_expr(id) || node.kind == .int_literal) {
+		&& (tc.is_untyped_float_literal_expr(id) || tc.integer_literal_source(id) != none) {
 		tc.register_synth_type(id, expected_raw)
 		return expected_raw
 	}
 	if node.kind == .int_literal && clean_expected.is_integer() {
+		tc.register_synth_type(id, expected_raw)
+		return expected_raw
+	}
+	if tc.raw_string_literal_pointer_compatible(id, expected) {
 		tc.register_synth_type(id, expected_raw)
 		return expected_raw
 	}
@@ -8380,6 +8386,18 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		return expected_raw
 	}
 	return actual
+}
+
+fn (tc &TypeChecker) raw_string_literal_pointer_compatible(id flat.NodeId, expected Type) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .string_literal || !node.typ.starts_with('raw:') {
+		return false
+	}
+	string_data_type := tc.struct_field_type('string', 'str') or { return false }
+	return tc.type_compatible(string_data_type, expected)
 }
 
 fn c_char_literal_scalar_byte(value string) bool {
@@ -11884,7 +11902,7 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_name
 		return Type(ArrayFixed{
 			elem_type: tc.substitute_generic_type(typ.elem_type, args, param_names)
 			len:       typ.len
-			len_expr:  typ.len_expr
+			len_expr:  subst_generic_const_expr(typ.len_expr, args, param_names)
 		})
 	}
 	if typ is Map {
@@ -11987,10 +12005,14 @@ fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param
 		})
 	}
 	if typ is ArrayFixed {
+		mut arg_names := []string{cap: args.len}
+		for arg in args {
+			arg_names << arg.name()
+		}
 		return Type(ArrayFixed{
 			elem_type: tc.substitute_generic_type_values(typ.elem_type, args, param_names)
 			len:       typ.len
-			len_expr:  typ.len_expr
+			len_expr:  subst_generic_const_expr(typ.len_expr, arg_names, param_names)
 		})
 	}
 	if typ is Map {
@@ -12068,6 +12090,39 @@ fn substitute_generic_named_type_values(name string, args []Type, param_names []
 	return subst_generic_text(name, arg_names, param_names)
 }
 
+// subst_generic_const_expr replaces generic parameter identifiers in fixed-array length
+// expressions, such as `sizeof(T)`, without changing identifiers that merely contain the
+// same letters.
+fn subst_generic_const_expr(expr string, args []string, params []string) string {
+	if expr.len == 0 || args.len == 0 || params.len != args.len {
+		return expr
+	}
+	mut out := strings.new_builder(expr.len)
+	mut i := 0
+	for i < expr.len {
+		ch := expr[i]
+		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || ch == `_` {
+			start := i
+			i++
+			for i < expr.len {
+				part := expr[i]
+				if !((part >= `a` && part <= `z`) || (part >= `A` && part <= `Z`)
+					|| (part >= `0` && part <= `9`) || part == `_`) {
+					break
+				}
+				i++
+			}
+			ident := expr[start..i]
+			idx := params.index(ident)
+			out.write_string(if idx >= 0 { args[idx] } else { ident })
+			continue
+		}
+		out.write_u8(ch)
+		i++
+	}
+	return out.str()
+}
+
 fn (tc &TypeChecker) embedded_method_call_info(struct_name string, method string) ?CallInfo {
 	mut seen := map[string]bool{}
 	return tc.embedded_method_call_info_inner(struct_name, method, mut seen)
@@ -12137,7 +12192,7 @@ fn is_middleware_type_name(name string) bool {
 
 fn (tc &TypeChecker) receiver_embeds(actual Type, expected Type) bool {
 	actual_name := method_type_name(unalias_and_unwrap_pointer_type(actual))
-	expected_name := method_type_name(unalias_and_unwrap_pointer_type(expected))
+	expected_name := method_type_name(unwrap_pointer(expected))
 	if actual_name.len == 0 || expected_name.len == 0 {
 		return false
 	}
@@ -16300,6 +16355,11 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				return operator_ret
 			}
 			if node.op == .right_shift_unsigned {
+				// Untyped integer literals retain the language's 32-bit default. An
+				// explicit `int(...)` uses the target-width `int` instead.
+				if tc.integer_literal_source(lhs_id) != none {
+					return Type(u32_)
+				}
 				return unsigned_shift_result_type(lt)
 			}
 			if node.op == .plus {
@@ -16334,6 +16394,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 					return Type(f32_)
 				}
 				return Type(f64_)
+			}
+			if promoted := infix_integer_promotion_type(lt, rt) {
+				return promoted
 			}
 			return lt
 		}
@@ -16882,6 +16945,9 @@ fn range_slice_alias_type(base_type Type) ?Type {
 
 fn (tc &TypeChecker) resolve_index_base_type(base_type Type, node flat.Node) Type {
 	if node.value == 'range' {
+		if info := tc.index_overload_call_info(base_type, false) {
+			return info.return_type
+		}
 		if base_type is Array {
 			return base_type
 		}
@@ -18426,14 +18492,36 @@ fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_i
 	}
 	value := tc.implicit_integer_constant_value(lit_id, lit_type)?
 	clean_type := unalias_type(other_type)
-	if unsigned_type_accepts_int_literal(clean_type, value) {
-		return clean_type
+	if clean_type is Primitive && clean_type.props.has(.integer)
+		&& clean_type.size in [u8(8), 16] {
+		if small_integer_type_accepts_int_literal(clean_type, value) {
+			return clean_type
+		}
+		return Type(int_)
 	}
 	// An untyped integer literal adopts the other integer operand's concrete storage
 	// type. In particular, `24 * time.hour` is `i64`, not `int`; map literal
 	// inference relies on that distinction when it chooses its value type.
 	if clean_type.is_integer() && clean_type.name() != Type(int_).name() {
 		return clean_type
+	}
+	return none
+}
+
+fn infix_integer_promotion_type(lhs Type, rhs Type) ?Type {
+	if lhs.name() == rhs.name() {
+		return lhs
+	}
+	clean_lhs := unalias_type(lhs)
+	clean_rhs := unalias_type(rhs)
+	if !call_arg_integer_type(clean_lhs) || !call_arg_integer_type(clean_rhs) {
+		return none
+	}
+	if call_arg_implicit_numeric_widening(clean_lhs, clean_rhs) {
+		return clean_rhs
+	}
+	if call_arg_implicit_numeric_widening(clean_rhs, clean_lhs) {
+		return clean_lhs
 	}
 	return none
 }
@@ -18509,25 +18597,16 @@ fn (tc &TypeChecker) int_literal_value(id flat.NodeId) ?int {
 	return none
 }
 
-fn unsigned_type_accepts_int_literal(t Type, value int) bool {
-	if value < 0 {
+fn small_integer_type_accepts_int_literal(t Primitive, value int) bool {
+	if t.size !in [u8(8), 16] || !t.props.has(.integer) {
 		return false
 	}
-	if t is Primitive {
-		if !t.props.has(.integer) || !t.props.has(.unsigned) {
-			return false
-		}
-		max := match t.size {
-			8 { 255 }
-			16 { 65535 }
-			else {
-				return true
-			}
-		}
-
-		return value <= max
+	if t.props.has(.unsigned) {
+		max := if t.size == 8 { 255 } else { 65535 }
+		return value >= 0 && value <= max
 	}
-	return false
+	max := if t.size == 8 { 127 } else { 32767 }
+	return value >= -max - 1 && value <= max
 }
 
 fn type_is_f32(t Type) bool {

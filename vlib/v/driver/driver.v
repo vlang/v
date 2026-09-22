@@ -1622,8 +1622,9 @@ fn shared_pic_flag(is_shared bool, target_os string) string {
 	return ''
 }
 
-fn v3_is_host_c_compiler(c_compiler string) bool {
-	return os.file_name(c_compiler).to_lower_ascii() in ['cc', 'clang', 'gcc', 'tcc', 'tinyc']
+fn v3_is_macos_linux_cross_compiler(c_compiler string) bool {
+	name := os.file_name(c_compiler).to_lower_ascii()
+	return name == 'cc' || name == 'clang' || name.starts_with('clang-')
 }
 
 fn v3_windows_cross_c_compiler(c_compiler string, host pref.Target, target pref.Target) string {
@@ -1645,15 +1646,49 @@ fn v3_c_compiler_command_alias(c_compiler string, host_os string) string {
 	return c_compiler
 }
 
-fn v3_macos_linux_compatibility_link(host pref.Target, target_os string, target_arch string, backend string, output_file string, explicit_output bool, is_o bool, c_compiler string, compiler_explicit bool) bool {
-	explicit_c_output := explicit_output && (output_file == '-' || output_file.ends_with('.c'))
-	host_compiler := !compiler_explicit || v3_is_host_c_compiler(c_compiler)
-	return host.os == 'macos' && pref.normalized_os(target_os) == 'linux'
-		&& pref.normalized_arch(target_arch) == host.arch && backend == 'c' && !explicit_c_output
-		&& !is_o && host_compiler
+fn v3_target_arch_for_request(host pref.Target, target_os string, target_arch string, target_arch_explicit bool) string {
+	if host.os == 'macos' && pref.normalized_os(target_os) == 'linux' && !target_arch_explicit {
+		// The bundled Linux sysroot contains an x86_64 userspace, independently of
+		// whether the macOS host is Intel or Apple Silicon.
+		return 'amd64'
+	}
+	return target_arch
 }
 
-fn c_compiler_target_args(target pref.Target, compiler_explicit bool) ![]string {
+fn v3_macos_linux_cross_compile(host pref.Target, target pref.Target, backend string, c_compiler string) bool {
+	return host.os == 'macos' && target.os == 'linux' && backend == 'c'
+		&& v3_is_macos_linux_cross_compiler(c_compiler)
+}
+
+fn v3_linux_cross_sysroot() string {
+	return os.join_path(os.vmodules_dir(), 'linuxroot')
+}
+
+fn ensure_v3_linux_cross_sysroot() !string {
+	sysroot := v3_linux_cross_sysroot()
+	git_config := os.join_path(sysroot, '.git', 'config')
+	if os.is_dir(sysroot) && !os.is_file(git_config) {
+		return error('Linux cross-compilation sysroot `${sysroot}` is incomplete; remove or repair it, then retry')
+	}
+	if !os.is_dir(sysroot) {
+		os.mkdir_all(os.vmodules_dir())!
+		println('Downloading files for Linux cross compilation (~77MB) ...')
+		clone := cmdexec.run('git', ['clone', 'https://github.com/vlang/linuxroot', sysroot])
+		if clone.exit_code != 0 || !os.is_file(git_config) {
+			return error('failed to clone `https://github.com/vlang/linuxroot` to `${sysroot}`:\n${clone.output.trim_space()}')
+		}
+	}
+	for required in ['include/stdlib.h', 'crt1.o', 'crti.o', 'crtn.o', 'ld.lld'] {
+		path := os.join_path(sysroot, required)
+		if !os.is_file(path) {
+			return error('Linux cross-compilation sysroot `${sysroot}` is missing `${required}`')
+		}
+	}
+	os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755)!
+	return sysroot
+}
+
+fn c_compiler_target_args(target pref.Target, c_compiler string, compiler_explicit bool, linux_cross_sysroot string) ![]string {
 	host := pref.host_target()
 	if target.os == host.os && target.arch == host.arch {
 		return []string{}
@@ -1661,6 +1696,16 @@ fn c_compiler_target_args(target pref.Target, compiler_explicit bool) ![]string 
 	if target.os == 'macos' && host.os == 'macos' && target.arch in ['amd64', 'arm64'] {
 		arch := if target.arch == 'amd64' { 'x86_64' } else { 'arm64' }
 		return ['-arch', arch]
+	}
+	if host.os == 'macos' && target.os == 'linux'
+		&& v3_is_macos_linux_cross_compiler(c_compiler) {
+		if target.arch != 'amd64' {
+			return error('Linux cross compilation currently supports only `-arch amd64`; the bundled linuxroot sysroot does not provide `${target.arch}` runtime files')
+		}
+		if linux_cross_sysroot == '' {
+			return error('Linux cross-compilation sysroot is not initialized')
+		}
+		return ['-target', 'x86_64-linux-gnu', '-I', os.join_path(linux_cross_sysroot, 'include')]
 	}
 	if compiler_explicit {
 		// An explicitly selected compiler may already encode its target in its name or defaults.
@@ -2356,6 +2401,117 @@ fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) 
 		return error('missing v3 parallel C unit markers')
 	}
 	return split.prefix, merge_v3_parallel_c_units(units, max_units)
+}
+
+fn v3_linux_cross_link_flags(flags []string) []string {
+	filtered := c_dylib_link_flags(flags)
+	mut linker_flags := []string{cap: filtered.len}
+	mut i := 0
+	for i < filtered.len {
+		flag := filtered[i].trim(' \t\r\n"\'')
+		if flag == '-Xlinker' {
+			if i + 1 < filtered.len {
+				linker_flags << filtered[i + 1].trim(' \t\r\n"\'')
+			}
+			i += 2
+			continue
+		}
+		if flag.starts_with('-Wl,') {
+			linker_flags << flag['-Wl,'.len..].split(',')
+			i++
+			continue
+		}
+		if flag == '-pthread' {
+			linker_flags << '-lpthread'
+		} else {
+			linker_flags << flag
+		}
+		i++
+	}
+	return linker_flags
+}
+
+fn v3_linux_cross_source_input(input string) bool {
+	ext := os.file_ext(input).to_lower_ascii()
+	return ext in ['.c', '.cc', '.cpp', '.m', '.mm', '.s']
+}
+
+fn compile_v3_macos_linux_cross(c_compiler string, c_flag_plan &V3CCompilerFlagPlan, compiler_inputs []string, sysroot string, vroot string, build_dir string, output_name string, show_command bool, is_shared bool) os.Result {
+	mut compile_flags := c_object_compile_flags(c_flag_plan.before_inputs)
+	compile_flags << c_object_compile_flags(c_flag_plan.after_inputs)
+	compile_flags << c_object_compile_flags(compiler_inputs)
+	if '-fPIC' !in compile_flags {
+		compile_flags << '-fPIC'
+	}
+	mut objects := []string{}
+	mut source_index := 0
+	for raw_input in compiler_inputs {
+		input := raw_input.trim(' \t\r\n"\'')
+		if !v3_linux_cross_source_input(input) {
+			continue
+		}
+		object_name := 'linux_cross_${source_index}.o'
+		source_index++
+		mut args := compile_flags.clone()
+		args << ['-c', '-o', object_name, input]
+		if show_command {
+			println('  > ${cmdexec.display(c_compiler, args)}')
+		}
+		result := cmdexec.run_in(c_compiler, args, build_dir)
+		if result.exit_code != 0 {
+			return result
+		}
+		objects << object_name
+	}
+	if objects.len == 0 && !compiler_inputs.any(c_flag_is_object_file(it.trim_space())) {
+		return os.Result{
+			exit_code: 1
+			output:    'Linux cross compilation has no C source or object input'
+		}
+	}
+	builtins_source := os.join_path(vroot, 'thirdparty', 'builtins', 'compiler_builtins.c')
+	builtins_object := 'linux_cross_compiler_builtins.o'
+	if os.is_file(builtins_source) {
+		builtins_args := ['-w', '-fPIC', '-target', 'x86_64-linux-gnu', '-c', '-o', builtins_object,
+			builtins_source]
+		if show_command {
+			println('  > ${cmdexec.display(c_compiler, builtins_args)}')
+		}
+		builtins_result := cmdexec.run_in(c_compiler, builtins_args, build_dir)
+		if builtins_result.exit_code != 0 {
+			return builtins_result
+		}
+		objects << builtins_object
+	}
+	lib_dir := 'x86_64-linux-gnu'
+	mut linker_args := [
+		'-L',
+		os.join_path(sysroot, 'usr', 'lib', lib_dir),
+		'-L',
+		os.join_path(sysroot, 'lib', lib_dir),
+		'--sysroot=${sysroot}',
+		'-o',
+		output_name,
+		'-m',
+		'elf_x86_64',
+	]
+	if is_shared {
+		linker_args << '-shared'
+	} else {
+		linker_args << ['-dynamic-linker', '/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2',
+			os.join_path(sysroot, 'crt1.o')]
+	}
+	linker_args << os.join_path(sysroot, 'crti.o')
+	linker_args << objects
+	linker_args << v3_linux_cross_link_flags(compiler_inputs)
+	linker_args << v3_linux_cross_link_flags(c_flag_plan.after_inputs)
+	linker_args << ['-lc', '-lcrypto', '-lssl', '-lpthread', os.join_path(sysroot, 'crtn.o'), '-lm',
+		'-ldl']
+	linker := os.join_path(sysroot, 'ld.lld')
+	if show_command {
+		println('  > ${cmdexec.display(linker, linker_args)}')
+	}
+	return cmdexec.run_in(linker, linker_args, build_dir)
 }
 
 fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, output_name string, show_command bool, job_count int, unit_count int, is_shared bool) os.Result {
@@ -3088,7 +3244,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                 output binary or C file\n' + '  -b <c|fastc|arm64|wasm|eval> backend\n' + '  -os <name> -arch <name>     target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -prod -c99 -shared -strict  C build modes\n' + '  -v                           verbose stage profiling\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -3612,7 +3768,9 @@ fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target p
 		os.rm(path) or {}
 	}
 	os.write_file(path, '') or { return map[string]string{}, false }
-	mut args := c_compiler_target_args(target, false) or { return map[string]string{}, false }
+	mut args := c_compiler_target_args(target, ccompiler, false, '') or {
+		return map[string]string{}, false
+	}
 	args << c_object_compile_flags(cache_c_flags_without_forced_inputs(flags))
 	args << ['-dM', '-E', '-x', cache_probe_language(native_inputs_language, flags), path]
 	result := cmdexec.run(ccompiler, args)
@@ -8412,7 +8570,7 @@ fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only', '-profile-fns', '-subsystem', '-exclude', '-dump-files']
+		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -8906,6 +9064,8 @@ pub fn run(args []string) {
 	mut profile_file := ''
 	mut profile_no_inline := false
 	mut profile_fns := []string{}
+	mut is_trace_calls := false
+	mut trace_fns := []string{}
 	mut command_seen := false
 	mut macos_sdk_root_cache := V3MacosSdkRootCache{}
 	environment_c_flags := parse_v3_environment_flags('CFLAGS')
@@ -9152,6 +9312,16 @@ pub fn run(args []string) {
 		} else if args[i] == '-printfn' && i + 1 < args.len {
 			print_fn_names << args[i + 1].split(',')
 			no_cache = true
+			i += 2
+		} else if args[i] == '-trace-calls' {
+			is_trace_calls = true
+			i++
+		} else if args[i] == '-trace-fns' {
+			for pattern in args[i + 1].split(',') {
+				if pattern.trim_space().len > 0 {
+					trace_fns << pattern.trim_space()
+				}
+			}
 			i += 2
 		} else if args[i] in ['-prof', '-profile'] {
 			parsed_profile_file, profile_file_consumed := v3_profile_optional_arg_value(args, i, command_seen)
@@ -9409,6 +9579,14 @@ pub fn run(args []string) {
 	// wins, exactly like V1 orders `env_ldflags` before the `-ldflags` value.
 	mut link_ld_flags := environment_ld_flags.clone()
 	link_ld_flags << user_ld_flags
+	if is_trace_calls {
+		if backend != 'c' {
+			eprintln('option `-trace-calls` is only supported by the C backend')
+			exit(1)
+		}
+		// Cached module bodies were generated without function-entry hooks.
+		no_cache = true
+	}
 	if is_prof && backend !in ['c', 'fastc'] {
 		eprintln('option `-profile` is only supported by the C backend')
 		exit(1)
@@ -9614,24 +9792,17 @@ pub fn run(args []string) {
 		&& pref.normalized_os(target_os.trim_space().to_lower()) == 'wasm32_emscripten' {
 		target_arch = 'wasm32'
 	}
+	compatibility_host := pref.host_target()
+	target_arch = v3_target_arch_for_request(compatibility_host, target_os, target_arch,
+		target_arch_explicit)
 	// `-os cross` is not a platform. It asks for portable C that is not tied to
 	// one OS, architecture or C compiler, so that a single generated snapshot
 	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
 	// leave every target-dependent `$if` to the C preprocessor.
-	compatibility_host := pref.host_target()
-	macos_linux_compatibility_link := v3_macos_linux_compatibility_link(compatibility_host,
-		target_os, target_arch, backend, output_file, explicit_output, is_o, c_compiler,
-		c_compiler_explicit)
-	mut output_cross_c := cross_output || macos_linux_compatibility_link
+	mut output_cross_c := cross_output
 	if pref.normalized_os(target_os.trim_space().to_lower()) == 'cross' {
 		output_cross_c = true
 		target_os = os.user_os()
-	} else if macos_linux_compatibility_link {
-		// The paired `.c` build keeps the requested Linux target. The executable
-		// smoke build uses host source selection because the default Apple C
-		// toolchain has neither a Linux sysroot nor a Linux linker.
-		target_os = compatibility_host.os
-		target_arch = compatibility_host.arch
 	}
 	if output_cross_c {
 		// A portable snapshot cannot use the platform backtrace APIs, and the
@@ -9915,6 +10086,8 @@ pub fn run(args []string) {
 	// TCC cannot be used, regenerate below before invoking the `cc` fallback.
 	use_implicit_tcc_semantics := backend == 'c' && !c_compiler_explicit && implicit_tcc != ''
 	effective_c_compiler := v3_effective_c_compiler_for_codegen(backend, c_compiler, use_implicit_tcc_semantics, target)
+	macos_linux_cross_compile := v3_macos_linux_cross_compile(host_target, target, backend,
+		c_compiler)
 	if v3_c_compiler_implies_musl(c_compiler) {
 		libc_mode = 'musl'
 	}
@@ -10267,10 +10440,11 @@ pub fn run(args []string) {
 			return
 		}
 	}
-	minimal_literal_output := !is_prof
+	minimal_literal_output := !is_prof && !is_trace_calls
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !effective_tcc
 		&& !is_o && coverage_dir.len == 0 && profile_file.len == 0
+		&& !is_trace_calls
 		&& v3_parallel_cc_monolithic_define !in user_defines
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
 	// The module cache splits imported implementations into separate objects, so its main source
@@ -10493,6 +10667,9 @@ pub fn run(args []string) {
 	}
 	if is_prof {
 		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'profiled_program.v')
+	}
+	if is_trace_calls {
+		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'trace_calls.v')
 	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
@@ -11010,6 +11187,7 @@ pub fn run(args []string) {
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.disable_explicit_mutability = disable_explicit_mutability
 	pre_tc.checker_fixture_mode = is_checker_fixture
+	pre_tc.is_test = prefs.is_test
 	pre_tc.module_diagnostic_root = if os.is_dir(input_file) {
 		os.real_path(input_file)
 	} else {
@@ -11051,7 +11229,7 @@ pub fn run(args []string) {
 		set_diagnostic_files(mut pre_tc, user_files)
 		// The C generator has a dedicated literal-output path. The SSA/native backend
 		// still builds ordinary builtin bodies, so it needs their full dependency set.
-		trivial_literal_output = backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
+		trivial_literal_output = !is_trace_calls && backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
 			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		if verbose {
 			eprintln('  [ttime]   ck trivial gate  ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -12233,6 +12411,7 @@ pub fn run(args []string) {
 			g.set_test_run_only(run_only)
 			g.set_print_fn_names(print_fn_names)
 			g.set_profile(profile_file, profile_no_inline, profile_fns)
+			g.set_trace_calls(is_trace_calls, trace_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
 			g.set_suppress_main('no_main' in prefs.user_defines)
@@ -12298,6 +12477,7 @@ pub fn run(args []string) {
 			g.set_test_run_only(run_only)
 			g.set_print_fn_names(print_fn_names)
 			g.set_profile(profile_file, profile_no_inline, profile_fns)
+			g.set_trace_calls(is_trace_calls, trace_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
 			g.set_suppress_main('no_main' in prefs.user_defines)
@@ -12358,10 +12538,19 @@ pub fn run(args []string) {
 			b.step_parallel('cgen', cgen_was_parallel)
 		}
 		pic_flag := shared_pic_flag(is_shared || use_cached_dev_dylib, prefs.normalized_target_os())
+		mut linux_cross_sysroot := ''
+		if macos_linux_cross_compile && !c_only {
+			linux_cross_sysroot = ensure_v3_linux_cross_sysroot() or {
+				eprintln(err.msg())
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+		}
 		target_args := if c_only {
 			[]string{}
 		} else {
-			c_compiler_target_args(prefs.target, c_compiler_explicit) or {
+			c_compiler_target_args(prefs.target, c_compiler, c_compiler_explicit,
+				linux_cross_sysroot) or {
 				eprintln(err.msg())
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
@@ -13098,7 +13287,11 @@ pub fn run(args []string) {
 			if cached_dev_dylib.len > 0 {
 				compiler_inputs << cached_dev_dylib
 			}
-			if use_parallel_c_compilation && cached_program_main_object.len == 0
+			if macos_linux_cross_compile && !is_o {
+				result = compile_v3_macos_linux_cross(c_compiler, &c_flag_plan, compiler_inputs,
+					linux_cross_sysroot, prefs.vroot, cc_dir, cc_output_name, verbose || show_cc,
+					is_shared)
+			} else if use_parallel_c_compilation && cached_program_main_object.len == 0
 				&& fallback_source == 'src.c' {
 				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count, is_shared)
 			} else {
@@ -14574,7 +14767,7 @@ fn cache_preprocessed_native_input(path string, context []string, c_flags []stri
 	source.writeln('#include "${c_include_path(os.real_path(path))}"')
 	os.write_file(wrapper, source.str()) or { return none }
 	unsafe { source.free() }
-	mut args := c_compiler_target_args(target, false) or { return none }
+	mut args := c_compiler_target_args(target, ccompiler, false, '') or { return none }
 	args << c_object_compile_flags(c_flags)
 	mut language := cgen.cache_native_input_language(path, c_flags, false, target)
 	if c_flags_need_objective_c(c_flags) && language !in ['objective-c', 'objective-c++'] {

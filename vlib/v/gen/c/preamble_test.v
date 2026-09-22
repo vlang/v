@@ -452,6 +452,7 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	mut g := FlatGen.new()
 	g.system_libc_headers()
 	c_code := g.sb.str()
+	assert c_code.contains('#if defined(__has_include)\n#if __has_include(<wchar.h>)\n#include <wchar.h>\n#endif\n#else\n#include <wchar.h>\n#endif')
 	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)')
 	assert c_code.contains('thirdparty/stdatomic/win/atomic.h"\n#else')
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'

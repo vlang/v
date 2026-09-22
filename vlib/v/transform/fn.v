@@ -1433,6 +1433,13 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		if variadic_idx >= 0 && param_idx == variadic_idx {
 			variadic_type := params[variadic_idx]
 			if variadic_type is types.Array {
+				if arg_node.kind == .ident && arg_node.value == t.cur_fn_variadic_param {
+					new_children << t.transform_expr_for_type(arg_id,
+						t.semantic_type_name(variadic_type))
+					variadic_tail_supplied = true
+					i++
+					break
+				}
 				if t.call_arg_is_packed_variadic_tail(arg_id, variadic_type) {
 					new_children << t.transform_expr(arg_id)
 					variadic_tail_supplied = true
@@ -3500,6 +3507,21 @@ fn pointer_type_depth_and_base(typ string) (int, string) {
 	for clean.starts_with('&') {
 		depth++
 		clean = clean[1..].trim_space()
+	}
+	match clean {
+		'voidptr' {
+			depth++
+			clean = 'void'
+		}
+		'byteptr' {
+			depth++
+			clean = 'u8'
+		}
+		'charptr' {
+			depth++
+			clean = 'char'
+		}
+		else {}
 	}
 	return depth, clean
 }
@@ -10020,7 +10042,8 @@ fn (mut t Transformer) build_default_clone_helper_fn(typ string) {
 	t.default_clone_expansion_stack = saved_expansion_stack
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
-	t.add_generated_fn_decl_context('main')
+	helper_module := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+	t.add_generated_fn_decl_context(helper_module)
 	start := t.a.children.len
 	t.a.children << param
 	t.a.children << body
@@ -10032,7 +10055,7 @@ fn (mut t Transformer) build_default_clone_helper_fn(typ string) {
 		children_count: flat.child_count(1 + body.len)
 	})
 	t.ensure_node_context_map_capacity()
-	t.mark_node_context(fn_decl, 'main', t.cur_file)
+	t.mark_node_context(fn_decl, helper_module, t.cur_file)
 	t.set_fn_ret_type(helper, typ)
 	t.mark_fn_used_name(helper)
 	if !isnil(t.tc) {
@@ -11829,7 +11852,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			if param.is_mut || param.op == .amp || param.typ.starts_with('mut ') {
 				t.mut_param_values[param.value] = true
 				t.pointer_value_lvalues[param.value] = true
-				if param.op == .amp {
+				if param.op == .amp || mut_param_has_builtin_pointer_value(param) {
 					t.pointer_value_rvalues[param.value] = true
 				}
 			}
@@ -15417,6 +15440,12 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 		if variadic_idx >= 0 && param_idx == variadic_idx {
 			variadic_type := params[variadic_idx]
 			if variadic_type is types.Array {
+				if arg_node.kind == .ident && arg_node.value == t.cur_fn_variadic_param {
+					args << t.transform_expr_for_type(arg_id, t.semantic_type_name(variadic_type))
+					variadic_tail_supplied = true
+					i++
+					break
+				}
 				if arg_node.kind == .prefix && arg_node.value == '...'
 					&& arg_node.children_count > 0 {
 					spread_id := t.a.child(&arg_node, 0)

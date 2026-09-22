@@ -858,6 +858,7 @@ pub mut:
 	reject_unlowered_map_mutation bool
 	reject_unsupported_generics   bool
 	checker_fixture_mode          bool
+	is_test                       bool
 	module_diagnostic_root        string
 	autofree_mode                 bool
 	no_main                       bool
@@ -1304,6 +1305,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		reject_unlowered_map_mutation:         tc.reject_unlowered_map_mutation
 		reject_unsupported_generics:           tc.reject_unsupported_generics
 		checker_fixture_mode:                  tc.checker_fixture_mode
+		is_test:                               tc.is_test
 		module_diagnostic_root:                tc.module_diagnostic_root
 		autofree_mode:                         tc.autofree_mode
 		no_main:                               tc.no_main
@@ -1853,7 +1855,7 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 			chunk.has_goto_nodes = true
 		}
 		if node.kind == .struct_decl
-			&& (is_anonymous_struct_name(node.value) || node.value.contains('@local@')) {
+			&& (is_anonymous_aggregate_name(node.value) || node.value.contains('@local@')) {
 			chunk.synthetic_type_ids << parent_idx
 		}
 		for child_idx in 0 .. node.children_count {
@@ -9993,7 +9995,7 @@ fn pascal_case_name_is_valid(name string) bool {
 }
 
 fn (mut tc TypeChecker) check_invalid_test_file_name(id flat.NodeId, node flat.Node) {
-	if node.value == 'main' || !tc.should_check_source_name(id) {
+	if tc.is_test || node.value == 'main' || !tc.should_check_source_name(id) {
 		return
 	}
 	base := os.file_name(tc.cur_file)
@@ -15484,7 +15486,8 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 		} else {
 			tc.checked_const_names[duplicate_key] = true
 		}
-		if field.value == tc.cur_module && tc.cur_module !in ['', 'main'] && !tc.current_file_uses_nested_vlib_module_path() {
+		if field.value == tc.cur_module && tc.cur_module !in ['', 'main']
+			&& !tc.current_file_uses_nested_module_path() {
 			tc.record_error_at(.duplicate_decl, 'duplicate of a module name `${qname}`', field_id, tc.node_value_diagnostic_pos(field_id))
 		}
 		if field.value == '_' {
@@ -16602,6 +16605,11 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 		if tc.valid_node_id(current_fn_id) {
 			tc.check_comptime_selectors_outside_loop(current_fn_id, _id, parts[0])
 		}
+	}
+	tc.push_scope()
+	tc.cur_scope.insert(parts[0], tc.parse_type(comptime_static_metadata_type_name(parts[1])))
+	defer {
+		tc.pop_scope()
 	}
 	tc.check_comptime_reflection_condition_types(body_id, parts[0])
 	if parts[1] == 'methods' {

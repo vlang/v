@@ -403,16 +403,7 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name, loop_kind)
 	}
 	if node.kind == .ident && node.value == var_name {
-		metadata_type := match loop_kind {
-			'methods' { 'FunctionData' }
-			'params' { 'FunctionParam' }
-			'attributes' { 'VAttribute' }
-			'values' { 'EnumData' }
-			'variants' { 'VariantData' }
-			else { 'FieldData' }
-		}
-
-		return tc.parse_type(metadata_type)
+		return tc.parse_type(comptime_static_metadata_type_name(loop_kind))
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.a.child_node(&node, 0)
@@ -421,6 +412,17 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 		}
 	}
 	return none
+}
+
+fn comptime_static_metadata_type_name(loop_kind string) string {
+	return match loop_kind {
+		'methods' { 'FunctionData' }
+		'params' { 'FunctionParam' }
+		'attributes' { 'VAttribute' }
+		'values' { 'EnumData' }
+		'variants' { 'VariantData' }
+		else { 'FieldData' }
+	}
 }
 
 fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_kind string) ?Type {
@@ -2169,6 +2171,20 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	mut pointer_alias_skipped_rhs := map[string][]string{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
+		mut infix_anonymous_expected := Type(void_)
+		mut has_infix_anonymous_expected := false
+		if node.kind == .infix && node.op in [.eq, .ne] && node.children_count >= 2 {
+			child := tc.a.node(child_id)
+			if child.kind == .struct_init
+				&& is_contextual_anonymous_struct_literal(child.value) {
+				other_idx := if i == 0 { 1 } else { 0 }
+				other_type := tc.resolve_type(tc.a.child(&node, other_idx))
+				if tc.anonymous_struct_literal_compatible(child, other_type) {
+					infix_anonymous_expected = other_type
+					has_infix_anonymous_expected = true
+				}
+			}
+		}
 		if node.kind == .infix && node.op in [.eq, .ne] && i == 1 {
 			lhs_type := unalias_type(tc.resolve_type(tc.a.child(&node, 0)))
 			if lhs_type is Array || lhs_type is ArrayFixed {
@@ -2191,9 +2207,15 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			defer_append_rhs := node.kind == .infix && node.op == .left_shift
 				&& node.children_count >= 2 && i == 1
 				&& unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array
-			tc.ownership_check_node_with_aggregate_consumption_mode(child_id, defer_append_rhs)
+			if has_infix_anonymous_expected {
+				tc.ownership_check_node_with_expected_context_and_aggregate_consumption_mode(child_id, infix_anonymous_expected, defer_append_rhs)
+			} else {
+				tc.ownership_check_node_with_aggregate_consumption_mode(child_id, defer_append_rhs)
+			}
 		} $else {
-			if node.kind == .array_literal {
+			if has_infix_anonymous_expected {
+				tc.check_node_with_expected_context(child_id, infix_anonymous_expected)
+			} else if node.kind == .array_literal {
 				if expected := tc.expected_context_for_expr(id) {
 					context_type := unalias_type(contextual_payload_type(expected) or { expected })
 					if elem_type := array_like_elem_type(context_type) {
@@ -4078,6 +4100,12 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	if cast_child.kind in [.array_literal, .array_init]
 		&& array_like_elem_type(unalias_type(target)) != none {
 		tc.annotate_expected_expr(child_id, unalias_type(target))
+		tc.check_node_with_expected_context(child_id, unalias_type(target))
+	} else if cast_child.kind == .struct_init
+		&& is_contextual_anonymous_struct_literal(cast_child.value)
+		&& tc.anonymous_struct_literal_compatible(cast_child, unalias_type(target)) {
+		// An alias cast supplies the otherwise unnamed struct literal's shape:
+		// `AliasToAnon(struct { ... })` initializes the alias target directly.
 		tc.check_node_with_expected_context(child_id, unalias_type(target))
 	} else if cast_child.kind == .enum_val && unalias_type(target) is Enum {
 		// A short enum value takes its type from the cast target. This also applies
@@ -8061,7 +8089,7 @@ fn (tc &TypeChecker) is_fixed_array_len_const_comparison(len_id flat.NodeId, con
 fn comparison_integer_bits(typ Type) int {
 	clean := unalias_type(typ)
 	if clean is Primitive {
-		return if clean.size == 0 { 32 } else { int(clean.size) }
+		return if clean.size == 0 { platform_int_bits() } else { int(clean.size) }
 	}
 	if clean is ISize || clean is USize {
 		return 64
@@ -12083,6 +12111,8 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 			unreachable_id = child_id
 		}
 		tc.check_stmt_node(child_id)
+		tc.apply_post_if_exit_smartcasts(child_id)
+		tc.apply_post_assert_smartcasts(child_id)
 		if tc.statement_exits_sequence(child_id, child) {
 			sequence_exited = true
 		}
@@ -13034,6 +13064,8 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			unreachable_id = child_id
 		}
 		tc.check_stmt_node(child_id)
+		tc.apply_post_if_exit_smartcasts(child_id)
+		tc.apply_post_assert_smartcasts(child_id)
 		if tc.statement_exits_sequence(child_id, child) {
 			sequence_exited = true
 		}
@@ -16415,7 +16447,8 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 	if lhs.kind == .ident && lhs.value.len > 0 {
 		if lhs.value != '_' && (tc.visible_local_scope_owns_name(lhs.value)
 			|| tc.visible_mut_param_binding_owns_name(lhs.value))
-			&& !(tc.unsafe_depth > 1 && !tc.current_local_scope_owns_name(lhs.value)) {
+			&& !(tc.unsafe_depth > 1 && !tc.current_local_scope_owns_name(lhs.value))
+			&& !tc.decl_shadows_implicit_or_err(lhs_id, lhs.value) {
 			tc.record_error(.assignment_mismatch, 'redefinition of `${lhs.value}`', lhs_id)
 			return ScopeBindingOwner{}
 		}
@@ -16435,6 +16468,34 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 		return owner
 	}
 	return ScopeBindingOwner{}
+}
+
+// decl_shadows_implicit_or_err permits a nested lexical scope inside an `or {}`
+// fallback to reuse the synthetic `err` name. A declaration directly in the
+// fallback still conflicts with the implicit binding.
+fn (tc &TypeChecker) decl_shadows_implicit_or_err(lhs_id flat.NodeId, name string) bool {
+	if name != 'err' || !tc.valid_node_id(lhs_id) {
+		return false
+	}
+	mut child_id := lhs_id
+	mut block_depth := 0
+	mut parent_id := tc.direct_parent_id(child_id)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			return false
+		}
+		if parent.kind == .block {
+			block_depth++
+		}
+		if parent.kind == .or_expr {
+			return parent.value !in ['?', '!'] && parent.children_count >= 2
+				&& tc.a.child(parent, 1) == child_id && block_depth > 1
+		}
+		child_id = parent_id
+		parent_id = tc.direct_parent_id(parent_id)
+	}
+	return false
 }
 
 fn (tc &TypeChecker) current_local_scope_owns_name(name string) bool {
@@ -16565,6 +16626,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	mut ownership_rhs_types := []Type{}
 	mut smartcast_write_keys := []string{}
 	mut option_assignment_smartcasts := []LocalBinding{}
+	assignment_is_translated := tc.node_is_from_translated_file(node)
 	is_cross_assignment := node.op == .assign && node.children_count > 2
 	pointer_alias_assignment_rhs := if is_cross_assignment {
 		clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
@@ -16649,7 +16711,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			i += 2
 			continue
 		}
-		nonmut_smartcast_assignment := lhs_node.kind == .ident && lhs_node.value in tc.smartcasts
+		nonmut_smartcast_assignment := !assignment_is_translated && lhs_node.kind == .ident
+			&& lhs_node.value in tc.smartcasts
 			&& !tc.ident_is_mutable_lvalue(lhs_node.value)
 		unknown_assign_ident := lhs_node.kind == .ident && lhs_node.value != '_'
 			&& !tc.lvalue_ident_is_known(lhs_node.value)
@@ -16657,7 +16720,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'cannot mutate `${lhs_node.value}` in a non-mut smartcast, use `if mut ${lhs_node.value} ...`', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
 		} else if unknown_assign_ident {
 			tc.record_error_at(.unknown_ident, 'undefined ident: `${lhs_node.value}` (use `:=` to declare a variable)', lhs_id, tc.node_value_diagnostic_pos(lhs_id))
-		} else {
+		} else if !assignment_is_translated {
 			tc.check_lvalue_mutability(lhs_id)
 		}
 		lhs_type := if unknown_assign_ident {
@@ -16786,7 +16849,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 				} else {
 					tc.record_error_at(.assignment_mismatch, 'cannot copy map: call `move` or `clone` method (or use a reference)', rhs_id, rhs_node.pos)
 				}
-			} else if clean_source_rhs_type is ArrayFixed
+			} else if !assignment_is_translated && clean_source_rhs_type is ArrayFixed
 				&& (clean_expected_type is Pointer || expected_type.name() == 'voidptr')
 				&& !tc.ident_is_explicitly_mutable_lvalue(rhs_node.value) {
 				tc.record_notice_at(.assignment_mismatch, 'left-side of assignment expects a mutable reference, but variable `${rhs_node.value}` is immutable, declare it with `mut` to make it mutable or clone it', rhs_id, rhs_node.pos)
@@ -16851,6 +16914,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			&& !invalid_comptime_selector_lhs
 		fixed_array_pointer_mismatch := node.op == .assign && clean_rhs_type is ArrayFixed
 			&& (clean_expected_type is Pointer || expected_type.name() == 'voidptr')
+			&& !tc.translated_fixed_array_pointer_assignment_compatible(rhs_id, rhs_type,
+				expected_type)
 		if fixed_array_pointer_mismatch {
 			tc.record_error_at(.assignment_mismatch, 'mismatched types `${expected_type.name()}` and `${rhs_type.name()}`', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 		}

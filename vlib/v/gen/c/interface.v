@@ -1200,7 +1200,7 @@ fn (mut g FlatGen) gen_ierror_from_expr(id flat.NodeId) bool {
 fn (mut g FlatGen) ierror_none_literal_string() string {
 	type_id := g.ierror_type_id_for_pattern('None__')
 	empty_sid := g.intern_string('')
-	return '(IError){._typ = ${type_id}, ._object = memdup(&(None__){0}, sizeof(None__)), ._object_is_boxed = true, .message = _str_${empty_sid}, .code = 0}'
+	return '(IError){._typ = ${type_id}, ._object = memdup(&(None__){E_STRUCT}, sizeof(None__)), ._object_is_boxed = true, .message = _str_${empty_sid}, .code = 0}'
 }
 
 fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {

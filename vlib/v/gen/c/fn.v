@@ -291,7 +291,8 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 			}
 		}
 		qfn := g.qualified_fn_name_in_module_c(item_module, node.value)
-		is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, i, qfn)
+		is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node,
+			i, qfn, item_file)
 		if !g.should_emit_fn_node_in_module_known(node, item_module, item_file, qfn, is_program_specialization) {
 			continue
 		}
@@ -630,7 +631,7 @@ fn (g &FlatGen) has_no_main_module() bool {
 }
 
 fn (mut g FlatGen) gen_executable_cleanup_registration() {
-	if g.module_cleanup_fns.len > 0 {
+	if g.module_cleanup_fns.len > 0 || g.is_trace_calls {
 		g.writeln('atexit(_vcleanup);')
 	}
 }
@@ -684,6 +685,7 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 		g.writeln('\tg_main_argc = 0;')
 		g.writeln('\tg_main_argv = NULL;')
 	}
+	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
 		g.gen_vinit_call('0', '0')
@@ -817,7 +819,8 @@ fn (mut g FlatGen) should_emit_fn_node(node flat.Node, node_index int) bool {
 // should_emit_fn_node_in_module reports whether should emit fn node in module applies in c.
 fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int, module_name string, file_name string) bool {
 	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
-	is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn)
+	is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, node_index,
+		qfn, file_name)
 	return g.should_emit_fn_node_in_module_known(node, module_name, file_name, qfn, is_program_specialization)
 }
 
@@ -1026,17 +1029,17 @@ fn (g &FlatGen) is_program_specialization_fn_node(node flat.Node, node_index int
 		return false
 	}
 	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
-	return g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn)
+	return g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn, g.tc.cur_file)
 }
 
-fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_index int, qfn string) bool {
+fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_index int, qfn string, file_name string) bool {
 	if g.a.specialized_fn_nodes[node_index] {
 		return true
 	}
 	synthetic_name := c_short_name_view(node.value)
 	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
 		|| synthetic_name.starts_with('__v3_default_clone_') {
-		return true
+		return g.cache_program_files[file_name] || g.cache_program_files[os.real_path(file_name)]
 	}
 	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
 		|| g.cname(node.value) in g.tc.specialized_generic_fns
@@ -1336,6 +1339,7 @@ const c_main_runtime_shadow_fn_names = {
 	'new_map': true
 	'accept':  true
 	'perror':  true
+	'id':      true
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
@@ -4820,9 +4824,10 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 				}
 				if p.is_mut {
 					g.cur_mut_params[p.value] = true
-					if p.op == .amp {
+					builtin_pointer_value := mut_param_has_builtin_pointer_value(p)
+					if p.op == .amp || builtin_pointer_value {
 						g.cur_mut_pointer_params[p.value] = true
-						if decl_param_type is types.Pointer {
+						if builtin_pointer_value || decl_param_type is types.Pointer {
 							g.cur_explicit_mut_pointer_params[p.value] = true
 						}
 					}
@@ -4852,6 +4857,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		}
 		g.gen_compiler_vexe_env_setup()
 		g.gen_coverage_registration()
+		g.gen_trace_startup()
 		g.gen_profile_startup_enable()
 		if g.runtime_init_is_needed() {
 			g.gen_vinit_call('argc', 'argv')
@@ -4886,6 +4892,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		g.writeln('_vno_main_init_caller();')
 	}
 	g.gen_function_defer_prelude()
+	g.gen_trace_fn_begin(node, module_name)
 	g.gen_profile_fn_begin(generated_fn_name, module_name, node.value, g.tc.declaration_has_attribute(node_id, 'inline'))
 
 	for i in 0 .. node.children_count {
@@ -5268,6 +5275,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	}
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
+	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	needs_no_main_runtime_init_caller := g.needs_no_main_runtime_init_caller()
 	if needs_no_main_runtime_init_caller {
@@ -5285,6 +5293,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	}
 	g.indent++
 	g.gen_function_defer_prelude()
+	g.gen_trace_call('main main.main/0', 'main', 'main.main')
 	g.gen_profile_fn_begin('main', 'main', 'main', false)
 	for stmt in stmts {
 		g.tc.cur_file = stmt.file
@@ -5368,6 +5377,7 @@ fn (mut g FlatGen) gen_test_main() {
 	}
 	g.gen_compiler_vexe_env_setup()
 	g.gen_coverage_registration()
+	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
 		g.gen_vinit_call('argc', 'argv')
@@ -16620,11 +16630,23 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 	return true
 }
 
+fn (g &FlatGen) fn_value_candidate_type(id flat.NodeId, node flat.Node) types.Type {
+	if node.typ.len > 0 {
+		explicit_type := g.tc.parse_resolution_type(node.typ)
+		// Transformed nodes retain an explicit source/storage type even when a stale
+		// checker cache entry survives for their reused id.
+		if explicit_type !is types.Unknown && explicit_type !is types.Void {
+			return explicit_type
+		}
+	}
+	return g.usable_expr_type(id)
+}
+
 fn (g &FlatGen) node_is_fn_value_for_voidptr(id flat.NodeId, node flat.Node) bool {
 	if node.typ.starts_with('fn(') || node.typ.starts_with('fn (') {
 		return true
 	}
-	if type_is_fn_value(g.usable_expr_type(id)) {
+	if type_is_fn_value(g.fn_value_candidate_type(id, node)) {
 		return true
 	}
 	if node.kind == .ident {
@@ -19790,6 +19812,10 @@ fn (mut g FlatGen) fn_node_effective_param_type(param flat.Node, typed types.Typ
 	return types.Type(types.Pointer{
 		base_type: typed
 	})
+}
+
+fn mut_param_has_builtin_pointer_value(param flat.Node) bool {
+	return param.is_mut_builtin_pointer_param()
 }
 
 // write_fn_node_params writes fn node params output for c.
