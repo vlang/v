@@ -347,9 +347,11 @@ mut:
 	str_lits                       []string
 	str_lit_ids                    map[string]int
 	str_lits_shared                bool
-	json_decode_err_flag           string
-	json_decode_err_value          string
-	global_types                   map[string]types.Type
+	// Worker snapshots inherit this immutable prefix from their parent generator.
+	str_lits_base_len     int
+	json_decode_err_flag  string
+	json_decode_err_value string
+	global_types          map[string]types.Type
 	// Globals declared `volatile`. A kernel writes these where the hardware or
 	// the bootloader can see them, so the qualifier has to survive into the C.
 	global_volatile_names          map[string]bool
@@ -3242,6 +3244,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.profile_fn_restore_enabled = false
 	g.str_lits = []string{}
 	g.str_lits_shared = false
+	g.str_lits_base_len = 0
 	g.defers = []flat.NodeId{}
 	g.scope_defer_starts = []int{}
 	g.emitted_loop_break_labels.clear()

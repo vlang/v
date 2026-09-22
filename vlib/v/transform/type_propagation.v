@@ -940,55 +940,43 @@ fn (t &Transformer) struct_field_type_cache_key(type_name string, field_name str
 
 fn (t &Transformer) lookup_struct_field_type_uncached(type_name string, field_name string) ?string {
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
-	for f in lookup.info.fields {
-		if f.name == field_name {
-			if lookup.owner_type.contains('[') {
-				specialized := t.normalize_field_type(f.typ, lookup.owner_type)
-				if decl_type_is_usable(specialized) && !t.generic_arg_is_unresolved(specialized) {
-					return specialized
-				}
-			}
-			if checker_typ := t.checker_struct_field_type_name(lookup.owner_type, field_name) {
-				return checker_typ
-			}
-			if !lookup.owner_type.contains('[') {
-				return f.typ
-			}
-			return t.normalize_field_type(f.typ, lookup.owner_type)
+	f := lookup.info.field(field_name) or { return none }
+	if lookup.owner_type.contains('[') {
+		specialized := t.normalize_field_type(f.typ, lookup.owner_type)
+		if decl_type_is_usable(specialized) && !t.generic_arg_is_unresolved(specialized) {
+			return specialized
 		}
 	}
-	return none
+	if checker_typ := t.checker_struct_field_type_name(lookup.owner_type, field_name) {
+		return checker_typ
+	}
+	if !lookup.owner_type.contains('[') {
+		return f.typ
+	}
+	return t.normalize_field_type(f.typ, lookup.owner_type)
 }
 
 // lookup_struct_field_raw_type resolves lookup struct field raw type information for transform.
 fn (t &Transformer) lookup_struct_field_raw_type(type_name string, field_name string) ?string {
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
-	for f in lookup.info.fields {
-		if f.name == field_name {
-			if f.raw_typ.len > 0 {
-				return f.raw_typ
-			}
-			return f.typ
-		}
+	f := lookup.info.field(field_name) or { return none }
+	if f.raw_typ.len > 0 {
+		return f.raw_typ
 	}
-	return none
+	return f.typ
 }
 
 fn (t &Transformer) lookup_struct_field_raw_type_with_owner(type_name string, field_name string) ?(string, string) {
 	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
-	for f in lookup.info.fields {
-		if f.name == field_name {
-			raw := if f.raw_typ.len > 0 { f.raw_typ } else { f.typ }
-			owner_type := if lookup.owner_type.contains('.') || lookup.info.module.len == 0
-				|| lookup.info.module == 'main' || lookup.info.module == 'builtin' {
-				lookup.owner_type
-			} else {
-				'${lookup.info.module}.${lookup.owner_type}'
-			}
-			return raw, owner_type
-		}
+	f := lookup.info.field(field_name) or { return none }
+	raw := if f.raw_typ.len > 0 { f.raw_typ } else { f.typ }
+	owner_type := if lookup.owner_type.contains('.') || lookup.info.module.len == 0
+		|| lookup.info.module == 'main' || lookup.info.module == 'builtin' {
+		lookup.owner_type
+	} else {
+		'${lookup.info.module}.${lookup.owner_type}'
 	}
-	return none
+	return raw, owner_type
 }
 
 fn (t &Transformer) checker_struct_field_type_name(type_name string, field_name string) ?string {

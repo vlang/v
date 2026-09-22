@@ -8542,6 +8542,13 @@ fn (tc &TypeChecker) static_assoc_fn_key_for_base(type_ident string, method stri
 	if method == '' {
 		return none
 	}
+	// During checking the collected signatures are fixed. Most receiver calls
+	// cannot name a static method at all; avoid allocating candidate type names.
+	// Late registrations and post-check rewriting retain the general resolver.
+	if !tc.resolution_type_mode && tc.static_associated_signature_count == tc.fn_ret_types.len
+		&& !tc.static_associated_method_names[method] {
+		return none
+	}
 	mut direct_candidates := []string{}
 	tc.add_static_assoc_type_candidate(mut direct_candidates, type_ident)
 	tc.add_static_assoc_type_candidate(mut direct_candidates, tc.qualify_name(type_ident))

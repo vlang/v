@@ -4356,6 +4356,7 @@ mut:
 	entries            map[string]StructDeclInfo
 	misses             map[string]bool
 	field_entries      map[string][]types.StructField
+	field_indices      map[string]map[string]int
 	field_misses       map[string]bool
 	field_last_name    string
 	field_last_value   []types.StructField
@@ -4374,6 +4375,7 @@ fn (mut cache StructDeclPrefCache) select_module(module_name string) {
 	cache.entries.clear()
 	cache.misses.clear()
 	cache.field_entries.clear()
+	cache.field_indices.clear()
 	cache.field_misses.clear()
 	cache.field_last_name = ''
 	cache.field_last_value = []types.StructField{}
@@ -4596,16 +4598,37 @@ fn (g &FlatGen) struct_field_type_cached(type_name string, field_name string) ?t
 		}
 	}
 	fields := g.struct_fields_for_type(type_name) or { return none }
-	for field in fields {
-		if field.name == field_name {
-			if cache_enabled {
-				cache.type_recent_owners[slot] = type_name
-				cache.type_recent_fields[slot] = field_name
-				cache.type_recent_values[slot] = field.typ
-				cache.type_recent_states[slot] = 1
+	mut field_index := -1
+	if cache_enabled && fields.len >= 32 {
+		// The fields and module context are already memoized. Index large
+		// contexts once per worker instead of rescanning them on every miss.
+		if type_name !in cache.field_indices {
+			mut indexed := map[string]int{}
+			for i, field in fields {
+				if field.name !in indexed {
+					indexed[field.name] = i
+				}
 			}
-			return field.typ
+			cache.field_indices[type_name] = indexed
 		}
+		field_index = cache.field_indices[type_name][field_name] or { -1 }
+	} else {
+		for i, field in fields {
+			if field.name == field_name {
+				field_index = i
+				break
+			}
+		}
+	}
+	if field_index >= 0 {
+		typ := fields[field_index].typ
+		if cache_enabled {
+			cache.type_recent_owners[slot] = type_name
+			cache.type_recent_fields[slot] = field_name
+			cache.type_recent_values[slot] = typ
+			cache.type_recent_states[slot] = 1
+		}
+		return typ
 	}
 	if cache_enabled {
 		cache.type_recent_owners[slot] = type_name
@@ -4842,13 +4865,7 @@ fn embedded_field_c_names_match(field_name string, type_name string) bool {
 }
 
 fn (g &FlatGen) direct_struct_field_exists(type_name string, field_name string) bool {
-	fields := g.struct_fields_for_type(type_name) or { return false }
-	for field in fields {
-		if field.name == field_name {
-			return true
-		}
-	}
-	return false
+	return g.struct_field_type_cached(type_name, field_name) != none
 }
 
 fn (g &FlatGen) embedded_field_for_promoted_field(type_name string, field_name string) ?types.StructField {

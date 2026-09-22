@@ -358,7 +358,10 @@ mut:
 	// the own maps. The master installs its warm post-collect cache as base for
 	// the whole region (using a private overlay itself) so workers do not start
 	// cold and re-derive every memoized type/index.
-	base                     &TypeCache = unsafe { nil }
+	base &TypeCache = unsafe { nil }
+	// Generated nodes have no parsed parent slot. Keep validated scan results
+	// private to the worker, just like the other mutable lookup caches.
+	generated_parent_entries map[int]flat.NodeId
 	parse_enabled            bool
 	parse_hits               i64
 	parse_misses             i64
@@ -969,13 +972,15 @@ mut:
 	direct_parent_index_trusted bool
 	has_goto_nodes              bool
 	// Immutable declaration indexes shared by checker workers.
-	declaration_attributes       map[int][]string
-	type_declaration_ids         map[string][]int
-	strings_builder_bindings     map[string]bool
-	strings_builder_candidates   []i32
-	static_associated_fn_keys    map[string]bool
-	declaration_param_mutability map[string][]bool
-	strict_map_index_files       map[string]bool
+	declaration_attributes            map[int][]string
+	type_declaration_ids              map[string][]int
+	strings_builder_bindings          map[string]bool
+	strings_builder_candidates        []i32
+	static_associated_fn_keys         map[string]bool
+	static_associated_method_names    map[string]bool
+	static_associated_signature_count int = -1
+	declaration_param_mutability      map[string][]bool
+	strict_map_index_files            map[string]bool
 	// short fn name -> first declaring top-level node index, in declaration
 	// order (mirrors the expr_raw_fn_type_text scan's first-match rule).
 	fn_decl_short_name_ids map[string]int
@@ -1343,6 +1348,8 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		type_declaration_ids:                  tc.type_declaration_ids
 		strings_builder_bindings:              tc.strings_builder_bindings
 		static_associated_fn_keys:             tc.static_associated_fn_keys
+		static_associated_method_names:        tc.static_associated_method_names
+		static_associated_signature_count:     tc.static_associated_signature_count
 		declaration_param_mutability:          tc.declaration_param_mutability
 		strict_map_index_files:                tc.strict_map_index_files
 		fn_decl_short_name_ids:                tc.fn_decl_short_name_ids
@@ -1835,7 +1842,8 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 		if node.kind in [.decl_assign, .directive] {
 			chunk.metadata_node_ids << parent_idx
 		}
-		if node.kind in [.postfix, .for_in_stmt, .comptime_for] {
+		if node.kind in [.postfix, .for_in_stmt, .comptime_for, .break_stmt, .continue_stmt,
+			.goto_stmt] {
 			chunk.preflight_node_ids << parent_idx
 		}
 		// Node count alone severely underestimates index-heavy and control-flow
@@ -3109,6 +3117,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
 	mut ck_part_sw := time.new_stopwatch()
 	tc.a = a
+	tc.static_associated_signature_count = -1
 	tc.visible_mutation_cache = new_visible_mutation_cache()
 	tc.unsafe_c_fns.clear()
 	tc.v_fn_semantic_names.clear()
@@ -4077,6 +4086,13 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	ck_c_sw.restart()
 	tc.resolve_inferred_global_types(a)
 	tc.resolve_const_types()
+	tc.static_associated_method_names = map[string]bool{}
+	for name, _ in tc.fn_ret_types {
+		if _, method := flat.decode_static_type_method_name(name) {
+			tc.static_associated_method_names[method] = true
+		}
+	}
+	tc.static_associated_signature_count = tc.fn_ret_types.len
 	tc.build_const_suffixes()
 	tc.build_struct_embed_index()
 	if tc.building_v_fast {
@@ -6218,6 +6234,25 @@ fn type_text_contains_qualified_import(text string, alias string) bool {
 }
 
 fn (mut tc TypeChecker) check_deprecated_byte_types() {
+	mut has_byte_source := tc.a.source_files.len == 0
+	for _, file in tc.a.source_files {
+		if tc.diagnostic_files.len > 0 && file.name !in tc.diagnostic_files {
+			continue
+		}
+		source := tc.source_texts_by_file[file.name] or {
+			os.read_file(file.name) or {
+				has_byte_source = true
+				break
+			}
+		}
+		if source.contains('byte') {
+			has_byte_source = true
+			break
+		}
+	}
+	if !has_byte_source {
+		return
+	}
 	mut identifier_offsets := map[u64]bool{}
 	for node in tc.a.nodes {
 		if node.kind == .ident && node.value == 'byte' && node.pos.is_valid() {
@@ -9549,11 +9584,11 @@ fn (mut tc TypeChecker) check_c_js_generic_declarations() {
 				|| (!is_function && node.kind != .struct_decl) {
 				continue
 			}
+			namespace := tc.c_js_declaration_namespace(flat.NodeId(index), node) or { continue }
 			if node.generic_params().len == 0
 				&& !tc.declaration_source_line_has_generic(flat.NodeId(index), node) {
 				continue
 			}
-			namespace := tc.c_js_declaration_namespace(flat.NodeId(index), node) or { continue }
 			type_kind := if is_function { 'functions' } else { 'structs' }
 			pos := if is_function {
 				tc.source_line_declaration_pos(flat.NodeId(index))
@@ -9772,13 +9807,40 @@ fn (mut tc TypeChecker) check_goto_labels() {
 	if !tc.has_goto_nodes {
 		return
 	}
+	// A goto only depends on labels in its enclosing function or script. Find
+	// those roots through the parsed parent index instead of walking every body.
+	indexed := tc.direct_parent_index_trusted && tc.preflight_index_nodes_len == tc.a.nodes.len
+	mut roots := map[int]bool{}
+	if indexed {
+		for index in tc.preflight_nodes(.goto_stmt) {
+			mut current := flat.NodeId(index)
+			for tc.valid_node_id(current) {
+				node := tc.a.node(current)
+				if node.kind in [.fn_decl, .file] {
+					roots[int(current)] = true
+					break
+				}
+				parent := tc.direct_parent_id(current)
+				if parent == current {
+					break
+				}
+				current = parent
+			}
+		}
+	}
 	for index in tc.top_level_idx {
+		if indexed && !roots[index] {
+			continue
+		}
 		node := tc.a.node(flat.NodeId(index))
 		if node.kind == .fn_decl {
 			tc.check_goto_boundary(flat.NodeId(index))
 		}
 	}
 	for index in tc.top_level_idx {
+		if indexed && !roots[index] {
+			continue
+		}
 		node := tc.a.node(flat.NodeId(index))
 		if node.kind == .file {
 			tc.check_goto_boundary(flat.NodeId(index))

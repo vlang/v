@@ -818,6 +818,36 @@ pub:
 	is_c_anon  bool
 	alignment  string
 	fields     []FieldInfo
+mut:
+	field_indices map[string]int
+}
+
+fn struct_field_indices(fields []FieldInfo) map[string]int {
+	mut indices := map[string]int{}
+	// Linear lookup is cheaper for the usual small structs. Large compiler
+	// contexts otherwise compare hundreds of names for every field access.
+	if fields.len < 16 {
+		return indices
+	}
+	for i, field in fields {
+		if field.name !in indices {
+			indices[field.name] = i
+		}
+	}
+	return indices
+}
+
+fn (info &StructInfo) field(name string) ?FieldInfo {
+	if info.field_indices.len > 0 {
+		idx := info.field_indices[name] or { return none }
+		return info.fields[idx]
+	}
+	for field in info.fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
 }
 
 // FieldInfo stores field info metadata used by transform.
@@ -2893,13 +2923,14 @@ fn (mut t Transformer) collect_types() {
 					}
 				}
 				info := StructInfo{
-					name:       node.value
-					module:     cur_mod
-					is_params:  'params' in node.typ.split(',')
-					is_aligned: transform_struct_decl_alignment_is_set(node.typ)
-					is_c_anon:  'c_anon' in node.typ.split(',')
-					alignment:  transform_struct_decl_alignment_value(node.typ)
-					fields:     fields
+					name:          node.value
+					module:        cur_mod
+					is_params:     'params' in node.typ.split(',')
+					is_aligned:    transform_struct_decl_alignment_is_set(node.typ)
+					is_c_anon:     'c_anon' in node.typ.split(',')
+					alignment:     transform_struct_decl_alignment_value(node.typ)
+					fields:        fields
+					field_indices: struct_field_indices(fields)
 				}
 				if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 					qname := '${cur_mod}.${node.value}'
@@ -4345,13 +4376,14 @@ fn clone_struct_info_owned(info StructInfo) StructInfo {
 		}
 	}
 	return StructInfo{
-		name:       info.name.clone()
-		module:     info.module.clone()
-		is_params:  info.is_params
-		is_aligned: info.is_aligned
-		is_c_anon:  info.is_c_anon
-		alignment:  info.alignment.clone()
-		fields:     fields
+		name:          info.name.clone()
+		module:        info.module.clone()
+		is_params:     info.is_params
+		is_aligned:    info.is_aligned
+		is_c_anon:     info.is_c_anon
+		alignment:     info.alignment.clone()
+		fields:        fields
+		field_indices: struct_field_indices(fields)
 	}
 }
 

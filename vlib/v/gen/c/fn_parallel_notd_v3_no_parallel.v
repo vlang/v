@@ -2632,6 +2632,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 			g.str_lit_ids.clone()
 		}
 		str_lits_shared:                    g.scope_parallel_workers && (!result_only || g.str_lits_shared)
+		str_lits_base_len:                  g.str_lits.len
 		global_types:                       g.global_types
 		global_raw_type_texts:              g.global_raw_type_texts
 		enum_vals:                          g.enum_vals
@@ -2992,7 +2993,9 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 
 fn (mut g FlatGen) publish_worker_string_literals(w &FlatGen) map[int]int {
 	mut remap := map[int]int{}
-	mut common_len := 0
+	// Both tables append to the snapshot captured when this worker was forked.
+	// Only literals added since then can have conflicting ids.
+	mut common_len := w.str_lits_base_len
 	for common_len < g.str_lits.len && common_len < w.str_lits.len
 		&& g.str_lits[common_len] == w.str_lits[common_len] {
 		common_len++

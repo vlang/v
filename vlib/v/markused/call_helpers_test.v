@@ -15,6 +15,37 @@ fn call_helper_node(mut a flat.FlatAst, node flat.Node, children []flat.NodeId) 
 	})
 }
 
+fn test_literal_output_gate_preserves_file_index_fallbacks() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_val(.ident, 'println')
+	value := a.add_val(.string_literal, 'hello')
+	call := call_helper_node(mut a, flat.Node{ kind: .call }, [callee, value])
+	body := call_helper_node(mut a, flat.Node{ kind: .block }, [call])
+	main_fn := call_helper_node(mut a, flat.Node{ kind: .fn_decl, value: 'main' }, [body])
+	entry := call_helper_node(mut a, flat.Node{ kind: .file, value: 'main.v' }, [main_fn])
+	helper := a.add_val(.fn_decl, 'helper')
+	dependency := call_helper_node(mut a, flat.Node{ kind: .file, value: 'helper.v' }, [helper])
+	for mode in 0 .. 3 {
+		a.file_node_ids = match mode {
+			0 { []i32{} }
+			1 { [i32(entry), i32(dependency)] }
+			else { [i32(dependency)] }
+		}
+		a.file_index_incomplete = mode == 2
+		assert is_trivial_literal_output_program(&a, {
+			'main.v': true
+		})
+		assert !is_trivial_literal_output_program(&a, {
+			'helper.v': true
+		})
+		a.nodes[int(value)].kind = .int_literal
+		assert !is_trivial_literal_output_program(&a, {
+			'main.v': true
+		})
+		a.nodes[int(value)].kind = .string_literal
+	}
+}
+
 fn test_join_path_helper_preserves_resolved_and_source_names() {
 	mut a := flat.FlatAst.new()
 	arg := a.add_node(flat.Node{ kind: .string_literal, value: 'part' })

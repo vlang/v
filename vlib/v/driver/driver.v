@@ -16245,7 +16245,19 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 	}
 	// Imported project modules need the same checks as the entry files.
 	// Resolve ownership once here, rather than for every checked expression.
-	for i, node in tc.a.nodes {
+	file_ids := if tc.a.file_node_ids.len > 0 && !tc.a.file_index_incomplete {
+		tc.a.file_node_ids
+	} else {
+		mut ids := []i32{}
+		for i, node in tc.a.nodes {
+			if node.kind == .file {
+				ids << i
+			}
+		}
+		ids
+	}
+	for i in file_ids {
+		node := tc.a.nodes[i]
 		if i < tc.a.user_code_start || node.kind != .file || node.value.len == 0
 			|| node.value in tc.diagnostic_files {
 			continue
