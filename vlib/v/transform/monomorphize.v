@@ -2855,7 +2855,7 @@ fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]Gener
 					true
 				}
 				.struct_init, .array_init, .map_init, .cast_expr, .as_expr, .sizeof_expr,
-				.typeof_expr,
+				.offsetof_expr, .typeof_expr,
 				.is_expr {
 					node.value.contains('[') || node.value.contains('_')
 						|| node.generic_params().len > 0
@@ -2909,8 +2909,8 @@ fn (mut t Transformer) collect_generic_struct_specs_from_node(node flat.Node, mo
 		.sql_expr {
 			t.collect_generic_struct_specs_from_sql_expr(node.value, module_name, file_name, decls, mut specs)
 		}
-		.struct_init, .array_init, .map_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr,
-		.is_expr {
+		.struct_init, .array_init, .map_init, .cast_expr, .as_expr, .sizeof_expr, .offsetof_expr,
+		.typeof_expr, .is_expr {
 			t.collect_generic_struct_spec_from_type(node.value, module_name, file_name, decls, mut specs)
 			if !node.value.contains('[') && node.generic_params().len > 0 {
 				t.collect_generic_struct_spec_from_type('${node.value}[${node.generic_params().join(', ')}]', module_name, file_name, decls, mut specs)
@@ -10000,7 +10000,9 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	// A string interpolation format is stored in `directive.typ`, but it is not a
 	// type name. Qualifying it in an imported generic specialization turns `04X`
 	// into e.g. `json2.04X`, which silently drops the requested base and width.
-	substituted_node_type := if node.kind == .directive && node.value == 'string_interp_format' {
+	substituted_node_type := if (node.kind == .directive
+		&& node.value == 'string_interp_format') || node.kind == .offsetof_expr {
+		// `offsetof_expr.typ` stores the field name, not a type annotation.
 		node.typ
 	} else {
 		t.subst_type(node.typ, args)
@@ -11373,7 +11375,7 @@ fn (t &Transformer) resolved_call_is_generic_fn(name string) bool {
 fn substitute_generic_node_value(node flat.Node, args []string) string {
 	match node.kind {
 		.call, .array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr, .sizeof_expr,
-		.typeof_expr, .is_expr, .type_decl, .field_decl, .param {
+		.offsetof_expr, .typeof_expr, .is_expr, .type_decl, .field_decl, .param {
 			return substitute_generic_type_text(node.value, args)
 		}
 		else {
@@ -12352,7 +12354,7 @@ fn (mut t Transformer) subst_node_value(node flat.Node, args []string) string {
 			}
 			return t.resolve_substituted_type_text(t.subst_type(node.value, args))
 		}
-		.array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr {
+		.array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr, .offsetof_expr {
 			return t.resolve_substituted_type_text(t.subst_type(node.value, args))
 		}
 		.sizeof_expr, .typeof_expr {

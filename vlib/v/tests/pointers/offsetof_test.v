@@ -34,11 +34,11 @@ fn test_offsetof() {
 }
 
 fn test_offsetof_inline_only_marks_struct_as_used() {
-	assert __offsetof(OffsetInlineOnly, b) == 4
+	assert __offsetof(OffsetInlineOnly, b) == sizeof(int)
 }
 
 fn test_offsetof_const_marks_struct_as_used() {
-	assert offset_const_only_b == 4
+	assert offset_const_only_b == sizeof(int)
 }
 
 fn test_offsetof_struct_from_another_module() {

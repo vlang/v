@@ -749,3 +749,27 @@ fn test_cached_global_text_round_trips_qualifiers() {
 	}
 	assert seen == 3, 'the reparsed header did not describe all three globals (${seen})'
 }
+
+fn test_module_header_preserves_module_attributes() {
+	mut a := flat.FlatAst.new()
+	module_id := a.add_node(flat.Node{
+		kind:  .module_decl
+		value: 'guarded'
+	})
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(module_id)}'
+		payload: flat.node_payload(['has_globals'])
+	})
+	file_children := a.begin_children()
+	a.add_child(module_id)
+	a.add_node(flat.Node{
+		kind:           .file
+		value:          'guarded.v'
+		children_start: file_children
+		children_count: 1
+	})
+	tc := vtypes.TypeChecker.new(&a)
+	header := module_header(&a, &tc, 'guarded', '', map[string]string{})
+	assert header.starts_with('@[has_globals]\nmodule guarded\n'), header
+}

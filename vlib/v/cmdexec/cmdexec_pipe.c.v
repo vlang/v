@@ -31,7 +31,7 @@ fn read_process_pipe(mut process os.Process, kind os.ChildProcessPipeKind) (stri
 			return '', true
 		}
 		mut available := u32(0)
-		if !C.PeekNamedPipe(handle, 0, 0, 0, &available, 0) {
+		if !C.PeekNamedPipe(handle, 0, 0, 0, voidptr(&available), 0) {
 			return '', true
 		}
 		if available == 0 {

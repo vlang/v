@@ -2452,10 +2452,11 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	}
 	unsafe { kept_lines.free() }
 	possible_text := possible_source.str()
-	if modulecache.c_source_has_static_storage(possible_text) {
+	if modulecache.c_source_has_static_storage(possible_text)
+		|| modulecache.c_source_function_identifiers(possible_text).len > 0 {
 		active_static_storage_paths[collection_key] = true
 		if os.getenv('V3_CACHE_TRACE') != '' {
-			eprintln('  V3 module cache active static C input: module=${collection_scope} path=${real_path}')
+			eprintln('  V3 module cache active C storage input: module=${collection_scope} path=${real_path}')
 		}
 	}
 	unsafe { possible_text.free() }
@@ -3196,17 +3197,12 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	effective_no_parallel := no_parallel || g.profile_file.len > 0
-	// Every cgen stage below takes its serial `$if windows` branch on Windows:
-	// run_pre_dispatch_parallel bails out, gen_fns_dispatch emits every body on
-	// this thread, and the support scans are inlined. Only the *preparation*
-	// choices were still keyed off `effective_no_parallel`, so a default Windows
-	// build ran neither prepare_pre_dispatch_master (parallel-only) nor
-	// prepare_serial_fn_tables, and function selection first happened inside one
-	// of the forked scoped preseed helpers instead of on the master.
+	// The preparation choices below must agree with the dispatch mode the stages
+	// actually run in: a parallel dispatch expects prepare_pre_dispatch_master,
+	// a serial one expects prepare_serial_fn_tables. Keying both off the same
+	// flag keeps function selection on the master instead of inside one of the
+	// forked scoped preseed helpers.
 	mut parallel_cgen := !effective_no_parallel
-	$if windows {
-		parallel_cgen = false
-	}
 	if g.profile_file.len > 0 {
 		// Counter metadata and numbering are accumulated by one serial generator.
 		g.scope_parallel_workers = false
@@ -3485,22 +3481,18 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		mut parallel_iface_scan := false
 		mut iface_worker := &FlatGen{}
 		mut iface_threads := []thread voidptr{cap: 1}
-		$if !windows {
-			$if !v3_no_parallel ? {
-				parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
-			}
+		$if !v3_no_parallel ? {
+			parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
 		}
 		if parallel_iface_scan {
-			$if !windows {
-				$if !v3_no_parallel ? {
-					iface_worker = g.new_parallel_worker(4)
-					iface_worker.interface_boxed_types = map[string]bool{}
-					iface_worker.interface_boxed_types_done = false
-					iface_worker.iface_impls = map[string][]string{}
-					iface_worker.iface_type_ids = map[string]int{}
-					iface_worker.ierror_method_emit_names = map[string]bool{}
-					iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
-				}
+			$if !v3_no_parallel ? {
+				iface_worker = g.new_parallel_worker(4)
+				iface_worker.interface_boxed_types = map[string]bool{}
+				iface_worker.interface_boxed_types_done = false
+				iface_worker.iface_impls = map[string][]string{}
+				iface_worker.iface_type_ids = map[string]int{}
+				iface_worker.ierror_method_emit_names = map[string]bool{}
+				iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
 			}
 		} else {
 			g.collect_interface_impls()
@@ -3526,14 +3518,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.timing_profile('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		if parallel_iface_scan {
-			$if !windows {
-				$if !v3_no_parallel ? {
-					_ = iface_threads[0].wait()
-					g.publish_interface_impl_scan(mut iface_worker)
-					g.precompute_required_interface_dispatch_methods()
-					g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
-					cgsw.restart()
-				}
+			$if !v3_no_parallel ? {
+				_ = iface_threads[0].wait()
+				g.publish_interface_impl_scan(mut iface_worker)
+				g.precompute_required_interface_dispatch_methods()
+				g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+				cgsw.restart()
 			}
 		}
 		parallel_prep_done := g.run_pre_dispatch_parallel(effective_no_parallel)
@@ -3595,8 +3585,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.precompute_fixed_array_map_key_types()
 	}
 	// Deferring const lowering and the libc compatibility preseed only pays off
-	// when gen_fns_dispatch actually starts a declaration task. It never does on
-	// Windows, where this would just move the work behind an early selection.
+	// when gen_fns_dispatch actually starts a declaration task; in a serial
+	// dispatch it would just move the work behind an early selection.
 	defer_parallel_support := g.scope_parallel_workers && parallel_cgen && !g.program_body_only
 		&& g.incremental_fn_names.len == 0
 	mut const_code := if g.program_body_only || defer_parallel_support {
@@ -4055,10 +4045,12 @@ fn (mut g FlatGen) write_type_declaration_block() {
 
 fn (mut g FlatGen) gen_vinit() {
 	needs_closure_init := g.needs_closure_runtime_init()
+	needs_gc_init := g.needs_gc_runtime_init()
 	has_embed_joins := g.has_chunked_embed_blobs()
 	has_reflection := g.has_runtime_reflection()
 	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
-		&& g.global_inits.len == 0 && !needs_closure_init && !has_embed_joins && !has_reflection {
+		&& g.global_inits.len == 0 && !needs_closure_init && !needs_gc_init && !has_embed_joins
+		&& !has_reflection {
 		return
 	}
 	fn_start_pos := g.sb.len
@@ -4066,9 +4058,18 @@ fn (mut g FlatGen) gen_vinit() {
 	// prefix: a parallel C build repeats that prefix per unit, and only the unit
 	// holding `_vinit` may define them.
 	g.gen_embed_blob_joined()
-	g.writeln('void _vinit() {')
-	if 'gcboehm' in g.compile_defines || 'vgc' in g.compile_defines {
+	if g.is_shared {
+		g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	} else {
+		g.writeln('void _vinit() {')
+	}
+	if needs_gc_init {
 		g.writeln('\tgc_runtime_init();')
+	}
+	if 'gcboehm' in g.compile_defines {
+		g.writeln('#if defined(_VGCBOEHM) && defined(GC_THREADS)')
+		g.writeln('\tGC_allow_register_threads();')
+		g.writeln('#endif')
 	}
 	// A split `$embed_file` payload is put back together before anything else can
 	// look at it, which is both what makes it a one-time cost and what keeps it
@@ -4845,6 +4846,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	}
 	g.modules['strings'] = 'strings'
 	g.materialize_objective_cpp_sources()
+	g.add_macos_shared_export_linker_flags()
 	ccio_sw := time.new_stopwatch()
 	g.collect_const_init_order_from_files()
 	if profile {
@@ -4855,6 +4857,34 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		ci_ret_ms := f64(ci_ret_ns) / 1e6
 		ci_ptypes_ms := f64(ci_ptypes_ns) / 1e6
 		g.timing_profile('  [ttime]   ci fns ${ci_fn_ms:7.2f} ms of ${ci_total_ms:7.2f} ms (ptypes ${ci_ptypes_ms:.2f}, ret ${ci_ret_ms:.2f}, ret+reg ${ci_reg_ms:.2f}), const order ${ccio_ms:7.2f} ms')
+	}
+}
+
+fn (mut g FlatGen) add_macos_shared_export_linker_flags() {
+	if !g.is_shared || g.target.os != 'macos' || 'sharedlive' in g.compile_defines {
+		return
+	}
+	mut names := map[string]bool{}
+	for _, name in g.a.export_fn_names {
+		if name.len > 0 {
+			names[name] = true
+		}
+	}
+	for _, name in g.export_global_names {
+		if name.len > 0 {
+			names[name] = true
+		}
+	}
+	mut sorted_names := names.keys()
+	sorted_names.sort()
+	if sorted_names.len == 0 {
+		g.c_flags << '-Wl,-no_exported_symbols'
+		return
+	}
+	for name in sorted_names {
+		// Mach-O prefixes C ABI symbols with `_`; an explicit export list also
+		// hides symbols pulled from static archives, which -fvisibility cannot do.
+		g.c_flags << '-Wl,-exported_symbol,_${name}'
 	}
 }
 

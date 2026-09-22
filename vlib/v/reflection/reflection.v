@@ -1,8 +1,6 @@
 @[has_globals]
 module reflection
 
-import arrays
-
 __global g_reflection = Reflection{}
 
 @[heap; minify]
@@ -255,7 +253,11 @@ pub fn get_modules() []Module {
 // get_functions returns the functions built with V source
 pub fn get_funcs() []Function {
 	mut out := g_reflection.funcs.clone()
-	out << arrays.flatten[Function](get_types().map(it.sym.methods).filter(it.len != 0))
+	for typ in g_reflection.types {
+		if typ.sym.methods.len > 0 {
+			out << typ.sym.methods
+		}
+	}
 	return out
 }
 

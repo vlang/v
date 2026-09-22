@@ -370,7 +370,8 @@ fn (mut tc TypeChecker) check_module_name_conflict(id flat.NodeId, name string) 
 	if name == '' || name == '_' {
 		return
 	}
-	if name == tc.cur_module && !tc.current_file_uses_nested_vlib_module_path() {
+	if tc.should_check_source_name(id) && name == tc.cur_module
+		&& !tc.current_file_uses_nested_vlib_module_path() {
 		tc.record_error_at(.duplicate_decl, 'duplicate of a module name `${name}`', id, tc.node_value_diagnostic_pos(id))
 	}
 	tc.check_imported_module_prefix(id, name, '')
@@ -571,9 +572,9 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	if op == .assign && clean_rhs.name() == 'int' && clean_expected.name() == 'f64' {
 		return true
 	}
-	if op == .assign && clean_rhs.is_integer() && clean_expected.is_float()
-		&& tc.a.node(rhs_id).kind != .int_literal {
-		return false
+	if op == .assign && clean_rhs.is_integer() && clean_expected.is_float() {
+		literal_id := tc.assignment_integer_literal_operand(rhs_id) or { return false }
+		return tc.expr_compatible(literal_id, rhs_type, expected_type)
 	}
 	if op == .assign && clean_expected is FnType
 		&& tc.fn_types_match_ignoring_module_qualification(clean_expected, clean_rhs) {
@@ -585,6 +586,26 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	return tc.expr_compatible(rhs_id, rhs_type, expected_type)
 		|| tc.pointer_value_compatible(rhs_type, expected_type)
 		|| tc.pointer_arithmetic_assign_compatible(op, rhs_type, expected_type)
+}
+
+// Signs and parentheses preserve literal assignment compatibility.
+// Casts and other typed expressions are not literal operands.
+fn (tc &TypeChecker) assignment_integer_literal_operand(id flat.NodeId) ?flat.NodeId {
+	mut current := id
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind == .int_literal {
+			return current
+		}
+		if node.children_count != 1 {
+			return none
+		}
+		if node.kind != .paren && (node.kind != .prefix || node.op !in [.plus, .minus]) {
+			return none
+		}
+		current = tc.a.child(node, 0)
+	}
+	return none
 }
 
 fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Type, expected Type) bool {
@@ -1901,7 +1922,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.return_mismatch, 'should not unwrap option var on return, it could be none', id, token.new_span(return_line.id, return_line.offset, operator_pos.offset))
 			return
 		}
-		if tc.expr_never_returns_resolving(child_id) {
+		if tc.stmt_definitely_returns(child_id) || tc.expr_never_returns_resolving(child_id) {
 			$if ownership ? {
 				tc.ownership_check_node_with_deferred_aggregate_consumption(child_id)
 			} $else {
@@ -2924,7 +2945,10 @@ fn (tc &TypeChecker) optional_pointer_expr_compatible(expr_id flat.NodeId, actua
 			return true
 		}
 	}
-	if actual_base is Pointer || !tc.expr_can_take_address(expr_id) {
+	if actual_base is Pointer {
+		return tc.type_compatible(actual_base, expected_ptr)
+	}
+	if !tc.expr_can_take_address(expr_id) {
 		return false
 	}
 	return tc.type_compatible(actual_base, expected_ptr.base_type)
@@ -3993,14 +4017,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 }
 
 fn (tc &TypeChecker) source_file_declares_bare_fn(name string, file_id int) bool {
-	for index in tc.top_level_idx {
-		declaration := tc.a.nodes[index]
-		if declaration.kind == .fn_decl && declaration.pos.id == file_id
-			&& declaration.value == name {
-			return true
-		}
-	}
-	return false
+	return '${file_id}\x00${name}' in tc.file_bare_fn_names
 }
 
 fn (mut tc TypeChecker) check_c_va_macro_call(id flat.NodeId, node flat.Node) bool {
@@ -11836,6 +11853,9 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_compatible(actual Type, expected Type)
 	if tc.type_compatible(actual, expected) {
 		return true
 	}
+	if tc.mut_optional_pointer_arg_compatible(actual, expected) {
+		return true
+	}
 	actual_depth, actual_base := type_pointer_depth_and_base(actual)
 	expected_depth, expected_base := type_pointer_depth_and_base(expected)
 	if actual_depth == expected_depth + 1 && tc.type_compatible(actual_base, expected_base) {
@@ -13860,7 +13880,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					continue
 				}
 			}
+			// A concrete value passed explicitly as `mut` to a mutable interface
+			// parameter is boxed as an interface reference by codegen. Its source
+			// pointer depth therefore does not have to match `&Interface` directly.
 			compatible_interface_value_arg = clean_expected_for_interface is Interface
+				|| allow_mut_receiver
 			mutable_interface_impl_arg = allow_mut_receiver
 		}
 		argument_number := param_idx + 1 - (if info.has_receiver {
@@ -13968,31 +13992,36 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& actual_pointer_depth > expected_pointer_depth
 			&& !(arg_node.is_mut && requires_mut_pointer_slot
 				&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
+			&& !(arg_node.is_mut
+				&& tc.mut_optional_pointer_arg_compatible(pointer_check_actual, expected))
 			&& !type_contains_unknown(expected)
 			&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
 			&& !tc.call_arg_is_callee_receiver(node, arg_id)
 			&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
-		pointer_depth_mismatch := !compatible_interface_value_arg && (explicit_address_depth_mismatch
-			|| (actual_pointer_depth != expected_pointer_depth
-				&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
-				&& !fn_param_is_voidptr_type(expected) && !(arg_node.is_mut
-				&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
-				&& !tc.fn_voidptr_expr_compatible(pointer_check_actual, expected)
-				&& !(info.name.starts_with('C.') && tc.is_zero_literal(arg_id))
-				&& !(info.name.starts_with('C.') && fn_param_is_voidptr_type(pointer_check_actual))
-				&& !tc.implicit_ref_arg_compatible(arg_id, pointer_check_actual, expected)
-				&& !(actual_pointer_depth == expected_pointer_depth + 1
-					&& tc.receiver_compatible(pointer_check_actual, expected))
-				&& !type_contains_unknown(pointer_check_actual) && !type_contains_unknown(expected)
-				&& !tc.call_arg_is_callee_receiver(node, arg_id)
-				&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
-				&& !(arg_node.is_mut && expected is Pointer
-					&& tc.type_compatible(actual, expected.base_type))
-				&& !(arg_node.is_mut
-					&& tc.mut_optional_pointer_arg_compatible(pointer_check_actual, expected))
-				&& !pointer_value_arg
-				&& !(info.name.starts_with('C.')
-					&& c_pointer_to_voidptr_arg_compatible(pointer_check_actual, expected))))
+		optional_pointer_arg := tc.optional_pointer_expr_compatible(arg_id, pointer_check_actual,
+			expected)
+		pointer_depth_mismatch := !compatible_interface_value_arg && !optional_pointer_arg
+			&& (explicit_address_depth_mismatch
+				|| (actual_pointer_depth != expected_pointer_depth
+					&& expected.name() !in ['voidptr', 'byteptr', 'charptr']
+					&& !fn_param_is_voidptr_type(expected) && !(arg_node.is_mut
+					&& tc.mut_pointer_slot_arg_compatible(pointer_check_actual, expected))
+					&& !tc.fn_voidptr_expr_compatible(pointer_check_actual, expected)
+					&& !(info.name.starts_with('C.') && tc.is_zero_literal(arg_id))
+					&& !(info.name.starts_with('C.') && fn_param_is_voidptr_type(pointer_check_actual))
+					&& !tc.implicit_ref_arg_compatible(arg_id, pointer_check_actual, expected)
+					&& !(actual_pointer_depth == expected_pointer_depth + 1
+						&& tc.receiver_compatible(pointer_check_actual, expected))
+					&& !type_contains_unknown(pointer_check_actual) && !type_contains_unknown(expected)
+					&& !tc.call_arg_is_callee_receiver(node, arg_id)
+					&& !tc.call_arg_is_lowered_method_receiver(node, info, param_idx, expected)
+					&& !(arg_node.is_mut && expected is Pointer
+						&& tc.type_compatible(actual, expected.base_type))
+					&& !(arg_node.is_mut
+						&& tc.mut_optional_pointer_arg_compatible(pointer_check_actual, expected))
+					&& !pointer_value_arg
+					&& !(info.name.starts_with('C.')
+						&& c_pointer_to_voidptr_arg_compatible(pointer_check_actual, expected))))
 		pointer_array_mismatch := actual_pointer_depth > 0 && expected_pointer_depth > 0
 			&& unalias_type(actual_pointer_base) is Array
 			&& unalias_type(expected_pointer_base) is Array
@@ -15371,6 +15400,9 @@ fn (tc &TypeChecker) mut_optional_pointer_arg_compatible(actual Type, expected T
 		return tc.type_compatible(actual.base_type, expected_option.base_type.base_type)
 	}
 	if expected_option.base_type is Pointer {
+		if actual is Pointer && actual.base_type is Pointer {
+			return tc.type_compatible(actual.base_type, expected_option.base_type)
+		}
 		return tc.type_compatible(actual, expected_option.base_type.base_type)
 	}
 	return false

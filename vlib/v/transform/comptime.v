@@ -583,8 +583,17 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 				kind:    kind
 			}
 		} else {
+			name := if recorded_kind == 1 {
+				if comptime_attr_is_string_literal(clean) {
+					comptime_attr_unquote(clean)
+				} else {
+					comptime_cond_unescape(clean)
+				}
+			} else {
+				clean
+			}
 			attrs << AttributeMeta{
-				name: clean
+				name: name
 				kind: if recorded_kind >= 0 { recorded_kind } else { 0 }
 			}
 		}
@@ -610,6 +619,23 @@ fn comptime_attr_unquote(s string) string {
 		return comptime_cond_unescape(s[1..s.len - 1])
 	}
 	return s
+}
+
+fn comptime_attr_display(raw string) string {
+	clean := raw.trim_space()
+	colon := clean.index_u8(`:`)
+	if colon < 0 {
+		// Whole-string attributes are stored without their quotes. Decode their source spelling
+		// before exposing it through the legacy []string metadata.
+		return comptime_cond_unescape(clean)
+	}
+	raw_arg := clean[colon + 1..].trim_space()
+	if !comptime_attr_is_string_literal(raw_arg) || raw_arg[0] == `r` {
+		return clean
+	}
+	quote := raw_arg[0].ascii_str()
+	decoded := comptime_attr_unquote(raw_arg)
+	return '${clean[..colon + 1]} ${quote}${decoded}${quote}'
 }
 
 fn (mut t Transformer) clone_attribute_subst(id flat.NodeId, var_name string, attr AttributeMeta) flat.NodeId {
@@ -3684,6 +3710,13 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if is_generic_fn_placeholder_name(core) {
 		return core
 	}
+	// A bare type substituted into an imported generic still belongs to the
+	// caller's main module. Keep that provenance when producing stable type ids;
+	// otherwise `typeof[T]().idx` is hashed as though the type were declared by
+	// the generic function's module.
+	if t.active_specialization_main_types[core] {
+		return 'main.${core}'
+	}
 	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
 		|| core.contains(' ') || decl_module == 'builtin' {
 		return core
@@ -4425,7 +4458,7 @@ fn (mut t Transformer) make_string_array_literal(values []string) flat.NodeId {
 	}
 	mut ids := []flat.NodeId{cap: values.len}
 	for v in values {
-		ids << t.make_string_literal(v)
+		ids << t.make_string_literal(comptime_attr_display(v))
 	}
 	return t.make_array_literal_typed(ids, '[]string')
 }

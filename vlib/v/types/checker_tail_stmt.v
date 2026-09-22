@@ -4881,6 +4881,37 @@ fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_text string, expect
 	return []string{}
 }
 
+// supplied_fields_for_embeds returns the names in `supplied` that can still refer to a
+// promoted field of an embedded struct of `decl`. An explicitly initialized embedded
+// field names one specific embedding path, so it is consumed by the current literal
+// level: keeping it would let `Outer{Base: ...}` also satisfy an unrelated
+// `Outer.Middle.Base` that has a different embedding path but the same field name.
+// Plain field names keep being passed down, because V1 also treats a supplied name as
+// initialization of a same-named promoted field (see struct_embed_required_field_err).
+fn (tc &TypeChecker) supplied_fields_for_embeds(decl flat.Node, supplied map[string]bool) map[string]bool {
+	if supplied.len == 0 {
+		return map[string]bool{}
+	}
+	mut embed_fields := map[string]bool{}
+	for i in 0 .. decl.children_count {
+		field := tc.a.child_node(&decl, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		field_type_text := if field.typ.len > 0 { field.typ } else { field.value }
+		if source_field_decl_is_embed(field, field_type_text) {
+			embed_fields[field.value] = true
+		}
+	}
+	mut promoted := map[string]bool{}
+	for name, is_supplied in supplied {
+		if is_supplied && name !in embed_fields {
+			promoted[name] = true
+		}
+	}
+	return promoted
+}
+
 fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplied map[string]bool, path []string) []MissingReferenceField {
 	clean_name := trimmed_space(struct_name)
 	if clean_name.len == 0 || clean_name in path || path.len >= 16 {
@@ -4891,6 +4922,7 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 		return []MissingReferenceField{}
 	}
 	display_name := decl.value.all_after_last('.')
+	embed_supplied := tc.supplied_fields_for_embeds(decl, supplied)
 	mut next_path := path.clone()
 	next_path << clean_name
 	mut missing := []MissingReferenceField{}
@@ -4940,13 +4972,14 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 		if field_type !is Struct || field.children_count > 0 {
 			continue
 		}
-		// Supplying the embedded value itself initializes all of its fields. When only
-		// promoted fields are supplied, keep recursing with the outer field set below.
 		if field.value in supplied {
+			// An explicitly initialized field is checked on its own, and an embedded
+			// struct literal reports its own missing reference fields. Re-checking the
+			// embedded struct here would duplicate those diagnostics at the outer literal.
 			continue
 		}
 		child_supplied := if is_embed {
-			supplied
+			embed_supplied
 		} else {
 			map[string]bool{}
 		}
@@ -4976,6 +5009,7 @@ fn (tc &TypeChecker) missing_required_struct_fields(struct_name string, supplied
 	}
 	decl := tc.source_struct_decl_for_name(clean_name) or { return []string{} }
 	display_name := decl.value.all_after_last('.')
+	embed_supplied := tc.supplied_fields_for_embeds(decl, supplied)
 	mut next_path := path.clone()
 	next_path << clean_name
 	mut missing := []string{}
@@ -4995,11 +5029,14 @@ fn (tc &TypeChecker) missing_required_struct_fields(struct_name string, supplied
 		if field_type !is Struct || field.children_count > 0 {
 			continue
 		}
-		if !is_embed && field.value in supplied {
+		if field.value in supplied {
+			// An explicitly initialized field is checked on its own, and an embedded
+			// struct literal reports its own missing required fields. Re-checking the
+			// embedded struct here would duplicate those diagnostics at the outer literal.
 			continue
 		}
 		child_supplied := if is_embed {
-			supplied
+			embed_supplied
 		} else {
 			map[string]bool{}
 		}
@@ -7634,7 +7671,9 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, Type(void_))
 		return
 	}
-	if node.value.starts_with('@') {
+	is_escaped_keyword := node.value.len > 1
+		&& token.Token.from_string_tinyv(node.value[1..]).is_keyword()
+	if node.value.starts_with('@') && !is_escaped_keyword {
 		pos := token.new_pos(node.pos.id, int_max(node.pos.offset, node.pos.end - 1))
 		tc.record_error_with_details_at(.unknown_ident, '@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)', id, pos, [
 			'available compile time variables: @VROOT, @VMODROOT, @VEXEROOT, @FN, @METHOD, @MOD,\n@STRUCT, @VEXE, @FILE, @DIR, @LINE, @COLUMN, @VHASH, @VCURRENTHASH, @VMOD_FILE, @VMODHASH,\n@FILE_LINE, @LOCATION, @BUILD_DATE, @BUILD_TIME, @BUILD_TIMESTAMP, @OS, @CCOMPILER,\n@BACKEND, @PLATFORM',
@@ -11590,6 +11629,12 @@ fn (tc &TypeChecker) struct_init_field_lookup_name(literal_name string, parsed_n
 fn (tc &TypeChecker) struct_fields_for_init(struct_name string) []StructField {
 	base_name, generic_args, is_generic := generic_type_application_parts(struct_name)
 	raw_lookup_name := if is_generic { base_name } else { struct_name }
+	scoped_c_name := c_struct_module_key(tc.cur_module, raw_lookup_name)
+	if raw_lookup_name.starts_with('C.') {
+		if fields := tc.c_struct_scoped_fields[scoped_c_name] {
+			return fields
+		}
+	}
 	lookup_name := if raw_lookup_name in tc.structs {
 		raw_lookup_name
 	} else if raw_lookup_name.all_after_last('.') in tc.structs {
@@ -15710,7 +15755,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 		return Type(string_)
 	}
 	if node.kind in [.sizeof_expr, .offsetof_expr] {
-		return Type(USize{})
+		return Type(u32_)
 	}
 	if kind_id == 28 {
 		return Type(voidptr_)
@@ -16411,10 +16456,10 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			return unknown_type('missing assoc base')
 		}
 		.sizeof_expr {
-			return Type(USize{})
+			return Type(u32_)
 		}
 		.offsetof_expr {
-			return Type(USize{})
+			return Type(u32_)
 		}
 		.cast_expr {
 			return tc.parse_type(node.value)

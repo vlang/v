@@ -118,6 +118,10 @@ fn main() {
 	if '-old-compiler' in args {
 		launch_v1(clean_compiler_selection_flags(args), '`-old-compiler` was requested', RetryState{})
 	}
+	if command == 'build-module' {
+		launch_v1(clean_compiler_selection_flags(args), '`build-module` requires the compatibility compiler',
+			RetryState{})
+	}
 	if '-new-compiler' in args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
@@ -259,7 +263,7 @@ fn find_command(args []string) (int, string) {
 		if arg in external_commands
 			|| arg in ['version', '-version', '--version', 'help', '-h', '--help', 'get', 'interpret',
 				'new', 'init', 'install', 'link', 'list', 'outdated', 'remove', 'search', 'show',
-				'unlink', 'update', 'upgrade', 'vlib-docs'] {
+				'unlink', 'update', 'upgrade', 'vlib-docs', 'build-module'] {
 			return i, arg
 		}
 		if !arg.starts_with('-') {

@@ -8,7 +8,7 @@ pub fn repeat(c u8, n int) string {
 	}
 	mut bytes := unsafe { malloc_noscan(n + 1) }
 	unsafe {
-		C.memset(bytes, c, n)
+		C.memset(bytes, c, usize(n))
 		bytes[n] = 0
 	}
 	return unsafe { bytes.vstring_with_len(n) }

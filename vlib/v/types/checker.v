@@ -725,6 +725,7 @@ pub mut:
 	receiver_method_suffix_index     map[string]string
 	generic_receiver_method_index    map[string][]string
 	structs                          map[string][]StructField
+	c_struct_scoped_fields           map[string][]StructField
 	struct_modules                   map[string]string
 	struct_files                     map[string]string
 	soa_structs                      map[string]bool
@@ -977,6 +978,10 @@ mut:
 	// short fn name -> first declaring top-level node index, in declaration
 	// order (mirrors the expr_raw_fn_type_text scan's first-match rule).
 	fn_decl_short_name_ids map[string]int
+	// '${file id}\x00${fn name}' for every top-level fn_decl, so a per-call
+	// "does this file declare a bare fn of this name" lookup does not walk the
+	// whole top-level index.
+	file_bare_fn_names map[string]bool
 	// '${file}\x00${alias}' -> dotted import path, and '${file}\x00${last
 	// segment}' -> dotted import path (first import wins), replacing per-call
 	// scans over every top-level declaration.
@@ -1049,6 +1054,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		receiver_method_suffix_index:            map[string]string{}
 		generic_receiver_method_index:           map[string][]string{}
 		structs:                                 map[string][]StructField{}
+		c_struct_scoped_fields:                  map[string][]StructField{}
 		struct_modules:                          map[string]string{}
 		struct_files:                            map[string]string{}
 		soa_structs:                             map[string]bool{}
@@ -1158,6 +1164,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		declaration_param_mutability:            map[string][]bool{}
 		strict_map_index_files:                  map[string]bool{}
 		fn_decl_short_name_ids:                  map[string]int{}
+		file_bare_fn_names:                      map[string]bool{}
 		file_import_alias_paths:                 map[string]string{}
 		file_import_suffix_paths:                map[string]string{}
 		struct_embed_receivers:                  map[string][]string{}
@@ -1213,6 +1220,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		receiver_method_suffix_index:          tc.receiver_method_suffix_index
 		generic_receiver_method_index:         tc.generic_receiver_method_index
 		structs:                               tc.structs
+		c_struct_scoped_fields:                tc.c_struct_scoped_fields
 		struct_modules:                        tc.struct_modules
 		struct_files:                          tc.struct_files
 		declared_type_scope_keys:              tc.declared_type_scope_keys
@@ -1336,6 +1344,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		declaration_param_mutability:          tc.declaration_param_mutability
 		strict_map_index_files:                tc.strict_map_index_files
 		fn_decl_short_name_ids:                tc.fn_decl_short_name_ids
+		file_bare_fn_names:                    tc.file_bare_fn_names
 		file_import_alias_paths:               tc.file_import_alias_paths
 		file_import_suffix_paths:              tc.file_import_suffix_paths
 		struct_embed_receivers:                tc.struct_embed_receivers
@@ -2034,6 +2043,7 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 	tc.file_import_alias_paths = map[string]string{}
 	tc.file_import_suffix_paths = map[string]string{}
 	tc.fn_decl_short_name_ids = map[string]int{}
+	tc.file_bare_fn_names = map[string]bool{}
 	mut module_name := ''
 	mut file_name := ''
 	for index in tc.top_level_idx {
@@ -2109,6 +2119,7 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 		if short_name !in tc.fn_decl_short_name_ids {
 			tc.fn_decl_short_name_ids[short_name] = index
 		}
+		tc.file_bare_fn_names['${node.pos.id}\x00${node.value}'] = true
 		qname := checker_qualified_fn_name(module_name, node.value)
 		mut param_mutability := []bool{}
 		for child_index in 0 .. node.children_count {
@@ -3666,6 +3677,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 		tc.fn_ret_text_registrations = []FnTextRegistration{cap: tc.top_level_idx.len * 2}
 		tc.visible_mutation_registrations = []VisibleMutationRegistration{cap: tc.top_level_idx.len}
 	}
+	mut public_c_structs := map[string]bool{}
 	for pi, tl_idx in tc.top_level_idx {
 		node := a.nodes[tl_idx]
 		node_ref := a.node(flat.NodeId(tl_idx))
@@ -3856,27 +3868,24 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				// it is deterministic regardless of module collection order, instead of
 				// letting whichever declaration is collected last silently win.
 				if qname.starts_with('C.') {
-					if existing := tc.structs[qname] {
-						if fields.len <= existing.len {
-							continue
+					scoped_name := c_struct_module_key(tc.cur_module, qname)
+					if existing := tc.c_struct_scoped_fields[scoped_name] {
+						if fields.len > existing.len {
+							tc.c_struct_scoped_fields[scoped_name] = fields
 						}
+					} else {
+						tc.c_struct_scoped_fields[scoped_name] = fields
+					}
+					is_public := node.op == .arrow
+					if is_public && !public_c_structs[qname] {
+						public_c_structs[qname] = true
+					} else if (!is_public && public_c_structs[qname])
+						|| (tc.structs[qname] or { []StructField{} }).len >= fields.len {
+						continue
 					}
 				}
-				tc.structs[qname] = fields
-				tc.struct_modules[qname] = tc.cur_module
-				tc.struct_files[qname] = tc.cur_file
-				if shadows_builtin_error_embed {
-					tc.struct_error_embeds_shadow_builtin[qname] = true
-				}
-				for field_name in shared_field_names {
-					tc.struct_shared_fields[struct_field_c_abi_key(qname, field_name)] = true
-				}
-				for field_name in shared_element_field_names {
-					tc.struct_shared_element_fields[struct_field_c_abi_key(qname, field_name)] = true
-				}
-				for field_name, c_abi_fn in field_c_abi_fns {
-					tc.struct_field_c_abi_fns[struct_field_c_abi_key(qname, field_name)] = c_abi_fn
-				}
+				tc.set_struct_fields(qname, fields, shared_field_names, shared_element_field_names,
+					field_c_abi_fns, shadows_builtin_error_embed)
 			}
 			.c_fn_decl {
 				c_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
@@ -4079,6 +4088,28 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	$if ownership ? {
 		tc.ownership_after_collect()
 	}
+}
+
+fn (mut tc TypeChecker) set_struct_fields(name string, fields []StructField, shared_field_names []string, shared_element_field_names []string, field_c_abi_fns map[string]string, shadows_builtin_error_embed bool) {
+	tc.structs[name] = fields
+	tc.struct_modules[name] = tc.cur_module
+	tc.struct_files[name] = tc.cur_file
+	if shadows_builtin_error_embed {
+		tc.struct_error_embeds_shadow_builtin[name] = true
+	}
+	for field_name in shared_field_names {
+		tc.struct_shared_fields[struct_field_c_abi_key(name, field_name)] = true
+	}
+	for field_name in shared_element_field_names {
+		tc.struct_shared_element_fields[struct_field_c_abi_key(name, field_name)] = true
+	}
+	for field_name, c_abi_fn in field_c_abi_fns {
+		tc.struct_field_c_abi_fns[struct_field_c_abi_key(name, field_name)] = c_abi_fn
+	}
+}
+
+fn c_struct_module_key(module_name string, qname string) string {
+	return '${module_name}\x00${qname}'
 }
 
 // Seed the frozen cache once instead of making every checker batch walk the
@@ -4324,10 +4355,15 @@ fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 	}
 }
 
+struct CStructDeclRecord {
+	signature string
+	file      string
+	module_   string
+}
+
 fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
-	mut c_struct_decl_sigs := map[string]string{}
-	mut c_struct_decl_files := map[string]string{}
-	mut c_struct_decl_modules := map[string]string{}
+	mut module_decls := map[string]CStructDeclRecord{}
+	mut public_decls := map[string]CStructDeclRecord{}
 	for node_idx in tc.top_level_idx {
 		node := a.nodes[node_idx]
 		match node.kind {
@@ -4342,38 +4378,54 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 				if !qname.starts_with('C.') {
 					continue
 				}
-				c_struct_sig := tc.c_struct_decl_signature(a, node)
-				if qname in c_struct_decl_sigs {
-					existing_sig := c_struct_decl_sigs[qname]
-					if !c_struct_decl_signatures_compatible(existing_sig, c_struct_sig) {
-						existing_file := c_struct_decl_files[qname] or { '' }
-						existing_module := c_struct_decl_modules[qname] or { '' }
-						if !tc.c_struct_redeclaration_allowed(qname, existing_file, tc.cur_file, existing_module, tc.cur_module) {
-							node_id := flat.NodeId(node_idx)
-							keyword := if comma_attr_text_has(node.typ, 'union') {
-								'union'
-							} else {
-								'struct'
-							}
-							tc.record_error_unfiltered_at(.duplicate_decl, 'cannot redeclare C struct `${qname}`', node_id, tc.declaration_keyword_name_pos(node_id, keyword))
-						}
+				current := CStructDeclRecord{
+					signature: tc.c_struct_decl_signature(a, node)
+					file:      tc.cur_file
+					module_:   tc.cur_module
+				}
+				module_key := '${tc.cur_module}\x00${qname}'
+				if existing := module_decls[module_key] {
+					if !c_struct_decl_signatures_compatible(existing.signature, current.signature)
+						&& !tc.c_struct_redeclaration_allowed(qname, existing.file, current.file,
+							existing.module_, current.module_) {
+						tc.record_c_struct_redeclaration(node_idx, node, qname)
 					}
-					existing_fields := c_struct_decl_signature_field_count(existing_sig)
-					current_fields := c_struct_decl_signature_field_count(c_struct_sig)
-					if current_fields > existing_fields {
-						c_struct_decl_sigs[qname] = c_struct_sig
-						c_struct_decl_files[qname] = tc.cur_file
-						c_struct_decl_modules[qname] = tc.cur_module
-					}
+					module_decls[module_key] = preferred_c_struct_decl(existing, current)
 				} else {
-					c_struct_decl_sigs[qname] = c_struct_sig
-					c_struct_decl_files[qname] = tc.cur_file
-					c_struct_decl_modules[qname] = tc.cur_module
+					module_decls[module_key] = current
+				}
+				if node.op != .arrow {
+					continue
+				}
+				if existing := public_decls[qname] {
+					if existing.module_ != current.module_
+						&& !c_struct_decl_signatures_compatible(existing.signature, current.signature)
+						&& !tc.c_struct_redeclaration_allowed(qname, existing.file, current.file,
+							existing.module_, current.module_) {
+						tc.record_c_struct_redeclaration(node_idx, node, qname)
+					}
+					public_decls[qname] = preferred_c_struct_decl(existing, current)
+				} else {
+					public_decls[qname] = current
 				}
 			}
 			else {}
 		}
 	}
+}
+
+fn preferred_c_struct_decl(existing CStructDeclRecord, current CStructDeclRecord) CStructDeclRecord {
+	if c_struct_decl_signature_field_count(current.signature) > c_struct_decl_signature_field_count(existing.signature) {
+		return current
+	}
+	return existing
+}
+
+fn (mut tc TypeChecker) record_c_struct_redeclaration(node_idx int, node flat.Node, qname string) {
+	node_id := flat.NodeId(node_idx)
+	keyword := if comma_attr_text_has(node.typ, 'union') { 'union' } else { 'struct' }
+	tc.record_error_unfiltered_at(.duplicate_decl, 'cannot redeclare C struct `${qname}`', node_id,
+		tc.declaration_keyword_name_pos(node_id, keyword))
 }
 
 struct CFnDeclSignature {
@@ -6037,7 +6089,9 @@ fn (mut tc TypeChecker) check_selective_import_source_syntax(id flat.NodeId, nod
 		tc.record_error_at(.duplicate_decl, 'import syntax error, no closing `}`', id, token.new_span(node.pos.id, diagnostic_offset, diagnostic_offset + 1))
 		return
 	}
-	if cursor < close && !is_import_ident_byte(source[cursor]) {
+	valid_escaped_name := cursor + 1 < close && source[cursor] == `@`
+		&& is_import_ident_byte(source[cursor + 1])
+	if cursor < close && !is_import_ident_byte(source[cursor]) && !valid_escaped_name {
 		tc.record_error_at(.duplicate_decl, 'import syntax error, please specify a valid fn or type name', id, token.new_span(node.pos.id, cursor, cursor + 1))
 	}
 }
@@ -9910,6 +9964,10 @@ fn (tc &TypeChecker) should_check_source_name(id flat.NodeId) bool {
 	if tc.translated_files[file.name] {
 		return false
 	}
+	normalized := file.name.replace('\\', '/')
+	if normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh') {
+		return false
+	}
 	return tc.diagnostic_files.len == 0 || file.name in tc.diagnostic_files
 }
 
@@ -11769,9 +11827,9 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			continue
 		}
 		child := tc.a.nodes[int(child_id)]
-		// A `comptime_for` node stores its loop source (`val`, `T`) in `typ`, which is a value
-		// or generic placeholder rather than a declared type; it is validated at unroll time.
-		if child.kind == .comptime_for {
+		// These nodes use `typ` for a non-type payload: a comptime loop source or an
+		// offsetof field name. Their actual type inputs are validated separately.
+		if child.kind in [.comptime_for, .offsetof_expr] {
 			continue
 		}
 		mut explicit_decl_params := generic_param_map_from_names(node.generic_params())
@@ -11820,7 +11878,7 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 				continue
 			}
 			grandchild := tc.a.nodes[int(grandchild_id)]
-			if grandchild.kind == .comptime_for {
+			if grandchild.kind in [.comptime_for, .offsetof_expr] {
 				continue
 			}
 			if !decl_generic_mentions_error
@@ -13681,13 +13739,14 @@ fn closest_identifier_span(source string, name string, anchor int, file_id int) 
 	// The anchor normally sits on (or immediately before) the identifier, so
 	// search outward from it instead of scanning the file from the top: the
 	// nearest word match on each side decides, exactly like the old full scan.
-	mut left_start := -1
-	for i := int_min(anchor, source.len - name.len); i >= 0; i-- {
-		if !identifier_word_match_at(source, name, i) {
-			continue
-		}
-		left_start = i
-		break
+	// The right side is searched first so the left scan can stop once it is
+	// further from the anchor than that match (a left match at the same distance
+	// still wins): callers run this for every declaration, and an unbounded
+	// walk to the start of the file made checking quadratic in program size.
+	// A match exactly at the anchor is the nearest one possible, so it needs
+	// no search at all.
+	if identifier_word_match_at(source, name, anchor) {
+		return token.new_span(file_id, anchor, anchor + name.len)
 	}
 	mut right_start := -1
 	mut from := int_max(anchor + 1, 0)
@@ -13701,6 +13760,15 @@ fn closest_identifier_span(source string, name string, anchor int, file_id int) 
 			break
 		}
 		from = start + 1
+	}
+	left_limit := if right_start < 0 { 0 } else { int_max(anchor - (right_start - anchor), 0) }
+	mut left_start := -1
+	for i := int_min(anchor, source.len - name.len); i >= left_limit; i-- {
+		if !identifier_word_match_at(source, name, i) {
+			continue
+		}
+		left_start = i
+		break
 	}
 	best_start := if left_start < 0 {
 		right_start

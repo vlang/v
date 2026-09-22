@@ -1720,6 +1720,29 @@ fn run_binary(bin_file string, args []string) int {
 	return exit_code
 }
 
+fn run_v_source_from_stdin(args []string, input_index int) {
+	stdin_source := os.get_raw_lines_joined()
+	temporary_source := os.join_path(os.getwd(), '.v3_stdin_${os.getpid()}_${tempname.unique_token()}.v')
+	os.write_file(temporary_source, stdin_source) or {
+		eprintln('cannot create temporary stdin source file: ${err.msg()}')
+		exit(1)
+	}
+	mut child_args := args.clone()
+	child_args[input_index] = temporary_source
+	mut process := os.new_process(os.executable())
+	process.set_args(child_args)
+	process.wait()
+	exit_code := if process.code >= 0 { process.code } else { 1 }
+	process.close()
+	os.rm(temporary_source) or {
+		eprintln('cannot remove temporary stdin source file: ${err.msg()}')
+		if exit_code == 0 {
+			exit(1)
+		}
+	}
+	exit(exit_code)
+}
+
 fn maybe_delegate_v3_to_vvmrc(input_file string, verbose bool) {
 	if os.getenv(v3_vvmrc_skip_env) != '' || input_file in ['', '-'] {
 		return
@@ -2050,10 +2073,18 @@ mut:
 }
 
 fn v3_parallel_c_job_count(available_jobs int, building_v bool, is_bsd_host bool, prod_parallel_cc bool) int {
-	max_jobs := if building_v && is_bsd_host && prod_parallel_cc {
+	mut max_jobs := if building_v && is_bsd_host && prod_parallel_cc {
 		bsd_selfhost_parallel_cc_job_limit
 	} else {
 		v3_parallel_cc_max_jobs
+	}
+	// The default cap keeps the concurrent optimizing C compiles (and their
+	// memory) modest for CI-sized hosts. A developer machine with the cores and
+	// RAM to spare can raise it for one build; the available job count still
+	// bounds it.
+	requested := os.getenv('V3_PARALLEL_CC_JOBS').int()
+	if requested > max_jobs {
+		max_jobs = requested
 	}
 	return int_max(1, int_min(max_jobs, available_jobs))
 }
@@ -2087,7 +2118,7 @@ fn run_v3_parallel_c_compile_task(raw_task voidptr) voidptr {
 	return unsafe { nil }
 }
 
-fn write_v3_parallel_c_source(path string, header_name string, body string, owner bool) ! {
+fn write_v3_parallel_c_source(path string, header_name string, body string, owner bool, is_shared bool) ! {
 	mut file := os.create(path)!
 	defer {
 		file.close()
@@ -2103,7 +2134,7 @@ fn write_v3_parallel_c_source(path string, header_name string, body string, owne
 	file.writeln('#include "${header_name}"')!
 	// These program lifecycle functions are emitted in the generated body rather
 	// than its declaration prefix, so later body units need explicit prototypes.
-	file.writeln('void _vinit(void);')!
+	file.writeln(if is_shared { 'void _vinit(int, void*);' } else { 'void _vinit(void);' })!
 	file.writeln('void _vcleanup(void);')!
 	file.write_string(body)!
 }
@@ -2327,7 +2358,7 @@ fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) 
 	return split.prefix, merge_v3_parallel_c_units(units, max_units)
 }
 
-fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, output_name string, show_command bool, job_count int, unit_count int) os.Result {
+fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3CCompilerFlagPlan, large_c_flag_plan &V3CCompilerFlagPlan, native_support_inputs []string, cached_objects []string, cached_dev_dylib string, objective_c bool, build_dir string, output_name string, show_command bool, job_count int, unit_count int, is_shared bool) os.Result {
 	source := os.read_file(source_path) or {
 		return os.Result{
 			exit_code: 1
@@ -2368,7 +2399,7 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 		object_name := 'unit_${unit_index}.o'
 		unit_source := if unit_index == 0 { prefix } else { bodies[unit_index - 1] }
 		unit_path := os.join_path_single(build_dir, source_name)
-		write_v3_parallel_c_source(unit_path, header_name, unit_source, unit_index == 0) or {
+		write_v3_parallel_c_source(unit_path, header_name, unit_source, unit_index == 0, is_shared) or {
 			return os.Result{
 				exit_code: 1
 				output:    'failed to write parallel C unit ${source_name}: ${err.msg()}'
@@ -2661,7 +2692,8 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	if options.is_shared {
 		before_inputs << '-shared'
-		if !options.is_liveshared && options.target_os == 'macos' {
+		if !options.is_liveshared && options.target_os !in ['windows', 'wasm32']
+			&& options.c_compiler != 'msvc' {
 			before_inputs << '-fvisibility=hidden'
 		}
 	} else if options.is_o {
@@ -6954,9 +6986,24 @@ fn v3_c_compiler_matches_default_cc(c_compiler string) bool {
 	}
 	default_path := os.find_abs_path_of_executable('cc') or { return false }
 	compiler_path := os.find_abs_path_of_executable(c_compiler) or { return false }
-	default_stat := os.stat(default_path) or { return false }
-	compiler_stat := os.stat(compiler_path) or { return false }
-	return default_stat.dev == compiler_stat.dev && default_stat.inode == compiler_stat.inode
+	return v3_same_c_compiler_executable(default_path, compiler_path)
+}
+
+// v3_same_c_compiler_executable reports whether two compiler paths name one
+// program: the same file once links are resolved, or the same inode where the
+// platform reports one. Windows reports the drive as `dev` and 0 as `inode` for
+// every file, so there only the resolved path can tell two compilers apart.
+fn v3_same_c_compiler_executable(first string, second string) bool {
+	if !os.exists(first) || !os.exists(second) {
+		return false
+	}
+	if os.real_path(first) == os.real_path(second) {
+		return true
+	}
+	first_stat := os.stat(first) or { return false }
+	second_stat := os.stat(second) or { return false }
+	return first_stat.inode != 0 && first_stat.dev == second_stat.dev
+		&& first_stat.inode == second_stat.inode
 }
 
 // default_cc_identity returns a precise identity for the resolved default `cc`.
@@ -8765,6 +8812,7 @@ pub fn run(args []string) {
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'command-line processing')
 
 	mut input_file := ''
+	mut stdin_input_index := -1
 	mut output_file := ''
 	mut explicit_output := false
 	mut backend := 'c'
@@ -8805,6 +8853,7 @@ pub fn run(args []string) {
 	mut ownership_mode := false
 	mut verbose := false
 	mut silent := false
+	mut skip_notices := false
 	mut is_repl := false
 	mut show_test_stats := v3_environment_show_test_stats()
 	mut warn_impure_v := false
@@ -8900,6 +8949,10 @@ pub fn run(args []string) {
 		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
 			is_test_command = true
 			command_seen = true
+			i++
+		} else if args[i] == '-' && input_file.len == 0 {
+			input_file = '-'
+			stdin_input_index = i
 			i++
 		} else if args[i] in ['-o', '-output'] && i + 1 < args.len {
 			output_file = args[i + 1]
@@ -9162,6 +9215,9 @@ pub fn run(args []string) {
 		} else if args[i] == '-v' {
 			verbose = true
 			i++
+		} else if args[i] == '-n' {
+			skip_notices = true
+			i++
 		} else if args[i] == '-silent' {
 			silent = true
 			if 'silent' !in user_defines {
@@ -9342,6 +9398,12 @@ pub fn run(args []string) {
 		// This option wins regardless of its ordering relative to
 		// `-no-bounds-checking`, matching the established parser contract.
 		user_defines = user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
+	}
+	if stdin_input_index >= 0 {
+		// The delegated compiler owns fallback reporting. Leaving the parent's
+		// staged marker armed would retry the original `run -` after stdin is spent.
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		run_v_source_from_stdin(args, stdin_input_index)
 	}
 	// `-ldflags` comes after the ambient `LDFLAGS`, so an explicitly passed option
 	// wins, exactly like V1 orders `env_ldflags` before the `-ldflags` value.
@@ -10208,7 +10270,7 @@ pub fn run(args []string) {
 	minimal_literal_output := !is_prof
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	mut use_parallel_c_compilation := parallel_cc && backend == 'c' && !c_only && !effective_tcc
-		&& !is_o && target.os != 'windows' && coverage_dir.len == 0 && profile_file.len == 0
+		&& !is_o && coverage_dir.len == 0 && profile_file.len == 0
 		&& v3_parallel_cc_monolithic_define !in user_defines
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
 	// The module cache splits imported implementations into separate objects, so its main source
@@ -10549,6 +10611,9 @@ pub fn run(args []string) {
 		}
 		if !silent || !only_check_syntax {
 			for diagnostic in p.diagnostics {
+				if skip_notices && diagnostic.severity == 'notice:' {
+					continue
+				}
 				if file := a.source_files[diagnostic.pos.id] {
 					_ = file
 					severity := if effective_warns_are_errors && diagnostic.severity == 'warning:' {
@@ -11019,7 +11084,7 @@ pub fn run(args []string) {
 		if has_conflicting_c_declaration_errors(pre_tc.errors) {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 			}
 			exit(1)
 		}
@@ -11037,7 +11102,7 @@ pub fn run(args []string) {
 		if pre_tc.check_interface_embedding_limits() {
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 			}
 			exit(1)
 		}
@@ -11159,7 +11224,7 @@ pub fn run(args []string) {
 			}
 			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 			}
 			pre_tc.notices.clear()
 		}
@@ -11169,7 +11234,7 @@ pub fn run(args []string) {
 		if no_closures {
 			if closure_error := no_closures_error(a, &pre_tc) {
 				print_type_diagnostics(a, []types.TypeError{}, [closure_error], true, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 				exit(1)
 			}
 		}
@@ -11199,7 +11264,7 @@ pub fn run(args []string) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			if pre_tc.errors.len > 0 {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 				exit(1)
 			}
 			return
@@ -11361,8 +11426,11 @@ pub fn run(args []string) {
 				cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
 			}
 			print_type_diagnostics(a, pre_tc.notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only, message_limit)
+				check_only, message_limit, skip_notices)
 			for notice in pre_tc.notices {
+				if skip_notices && notice.severity in ['', 'notice:'] {
+					continue
+				}
 				if notice.severity == 'warning:' {
 					checker_warning_count++
 				} else {
@@ -11812,8 +11880,11 @@ pub fn run(args []string) {
 		if !is_repl && cgen_cache_metadata.diagnostics.len > 0 {
 			cached_notices := restore_v3_type_diagnostics(mut a, cgen_cache_metadata.diagnostics)
 			print_type_diagnostics(a, cached_notices, []types.TypeError{}, is_checker_fixture, fatal_errors,
-				check_only, message_limit)
+				check_only, message_limit, skip_notices)
 			for notice in cached_notices {
+				if skip_notices && notice.severity in ['', 'notice:'] {
+					continue
+				}
 				if notice.severity == 'warning:' {
 					checker_warning_count++
 				} else {
@@ -11830,7 +11901,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-			check_only, message_limit)
+			check_only, message_limit, skip_notices)
 		exit(1)
 	}
 
@@ -11932,9 +12003,12 @@ pub fn run(args []string) {
 			if pre_tc.errors.len == 0
 				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture, fatal_errors,
-					check_only, message_limit)
+					check_only, message_limit, skip_notices)
 			}
 			for notice in pre_tc.notices {
+				if skip_notices && notice.severity in ['', 'notice:'] {
+					continue
+				}
 				if notice.severity == 'warning:' {
 					checker_warning_count++
 				} else {
@@ -13026,7 +13100,7 @@ pub fn run(args []string) {
 			}
 			if use_parallel_c_compilation && cached_program_main_object.len == 0
 				&& fallback_source == 'src.c' {
-				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count)
+				result = compile_v3_parallel_c(cc_src, c_compiler, &c_flag_plan, &large_c_flag_plan, native_support_inputs, cached_objects, cached_dev_dylib, needs_objective_c, cc_dir, cc_output_name, verbose || show_cc, parallel_c_job_count, parallel_c_unit_count, is_shared)
 			} else {
 				cc_args := c_flag_plan.compiler_args(cc_output_name, compiler_inputs, [])
 				if verbose || show_cc {
@@ -15113,7 +15187,8 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	if module_name.len > 0 {
 		for file in all_files {
 			declared_module := declared_module_in_file(file)
-			if declared_module != module_name {
+			if declared_module != module_name
+				&& !(module_name == 'main' && declared_module.len == 0) {
 				continue
 			}
 			files << file
@@ -15361,7 +15436,7 @@ fn builtin_dir_for_vroot(root string) string {
 }
 
 // print_type_diagnostics renders notices before fatal type errors.
-fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int) {
+fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
 	if !check_only {
 		mut first_unused := -1
 		for i, err in type_errors {
@@ -15390,6 +15465,9 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	ordered_notices.sort_with_compare(compare_print_notices)
 	mut printed_diagnostics := 0
 	for notice in ordered_notices {
+		if skip_notices && notice.severity in ['', 'notice:'] {
+			continue
+		}
 		if message_limit >= 0 && printed_diagnostics >= message_limit {
 			break
 		}
