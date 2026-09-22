@@ -30,7 +30,13 @@ fn interface_pattern_is_collapsed_container_type(name string) bool {
 }
 
 fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type string) (flat.NodeId, string, flat.Op) {
-	mut access := t.transform_selector_base_expr(expr_id)
+	mut access := if t.expr_has_smartcast(expr_id) {
+		// A runtime tag check always starts from the stored sum/interface value.
+		// Applying an active smartcast here would inspect the extracted variant.
+		t.make_plain_expr_for_smartcast(expr_id)
+	} else {
+		t.transform_selector_base_expr(expr_id)
+	}
 	mut access_type := expr_type
 	for access_type.starts_with('&&') {
 		access = t.make_prefix(.mul, access)
