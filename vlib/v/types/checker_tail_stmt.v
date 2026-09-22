@@ -9802,7 +9802,8 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 			return tc.const_int_enum_selector_value(node.value)
 		}
 		.selector {
-			return tc.const_int_enum_selector_value(tc.source_text_for_node(id))
+			return tc.const_int_value_in_module(tc.source_text_for_node(id), module_name,
+				seen)
 		}
 		.sizeof_expr {
 			return tc.const_sizeof_type_value(node.value)
