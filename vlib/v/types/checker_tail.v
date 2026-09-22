@@ -371,14 +371,29 @@ fn (mut tc TypeChecker) check_module_name_conflict(id flat.NodeId, name string) 
 		return
 	}
 	if tc.should_check_source_name(id) && name == tc.cur_module
-		&& !tc.current_file_uses_nested_vlib_module_path() {
+		&& !tc.current_file_uses_nested_module_path() {
 		tc.record_error_at(.duplicate_decl, 'duplicate of a module name `${name}`', id, tc.node_value_diagnostic_pos(id))
 	}
 	tc.check_imported_module_prefix(id, name, '')
 }
 
-fn (tc &TypeChecker) current_file_uses_nested_vlib_module_path() bool {
+fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 	normalized := tc.cur_file.replace('\\', '/')
+	dir := normalized.all_before_last('/')
+	if dir == '' || tc.cur_module != dir.all_after_last('/') {
+		return false
+	}
+	root := tc.module_diagnostic_root.replace('\\', '/').trim_right('/')
+	if root != '' {
+		if dir.starts_with(root + '/') {
+			return dir[root.len + 1..].contains('/')
+		}
+		resolved_dir := os.real_path(dir).replace('\\', '/').trim_right('/')
+		resolved_root := os.real_path(root).replace('\\', '/').trim_right('/')
+		if resolved_root != '' && resolved_dir.starts_with(resolved_root + '/') {
+			return resolved_dir[resolved_root.len + 1..].contains('/')
+		}
+	}
 	mut relative := normalized
 	if marker := normalized.last_index('/vlib/') {
 		relative = normalized[marker + '/vlib/'.len..]
@@ -387,8 +402,7 @@ fn (tc &TypeChecker) current_file_uses_nested_vlib_module_path() bool {
 	} else {
 		return false
 	}
-	dir := relative.all_before_last('/')
-	return dir.contains('/') && tc.cur_module == dir.all_after_last('/')
+	return relative.all_before_last('/').contains('/')
 }
 
 fn (tc &TypeChecker) imported_module_prefix(id flat.NodeId, name string) ?string {

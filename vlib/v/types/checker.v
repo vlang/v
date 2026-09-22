@@ -15486,7 +15486,8 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 		} else {
 			tc.checked_const_names[duplicate_key] = true
 		}
-		if field.value == tc.cur_module && tc.cur_module !in ['', 'main'] && !tc.current_file_uses_nested_vlib_module_path() {
+		if field.value == tc.cur_module && tc.cur_module !in ['', 'main']
+			&& !tc.current_file_uses_nested_module_path() {
 			tc.record_error_at(.duplicate_decl, 'duplicate of a module name `${qname}`', field_id, tc.node_value_diagnostic_pos(field_id))
 		}
 		if field.value == '_' {
