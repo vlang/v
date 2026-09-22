@@ -14002,6 +14002,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		] && !(expected is Alias && actual.name() == expected.base_type.name()) && !(actual is Alias
 			&& actual.base_type.name() == expected.name())
 			&& !implicit_integer_to_float_compatible(actual, expected)
+			&& !tc.c_call_arg_compatible(info.name, arg_id, expected, actual)
 			&& (tc.mut_param_expr_base(arg_id, actual) or {
 				actual
 			}).name() != expected.name() {
