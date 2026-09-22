@@ -70,6 +70,26 @@ fn (a Money) < (b Money) bool {
 fn epoch() time.Time {
 	return time.unix(0)
 }
+
+struct Predicate {
+	value bool
+}
+
+struct Wrapper {
+	inner Predicate
+}
+
+fn predicate(value bool) Predicate {
+	return Predicate{
+		value: value
+	}
+}
+
+fn wrap(value bool) Wrapper {
+	return Wrapper{
+		inner: predicate(value)
+	}
+}
 "
 
 // Operand is one side of a generated comparison: a parameter of type `decl`,
@@ -653,7 +673,7 @@ fn test_ordered_comparison_messages_match_v1() {
 fn test_ordered_comparisons_are_checked_in_every_context() {
 	// Each line marked `// bad` compares a thread handle with a number.
 	src := prelude + '
-fn check_threads(ts []thread int, t thread int) {
+fn check_threads(ts []thread int, t thread int, preds []Predicate) {
 	_ := ts.filter(fn (x thread int) bool {
 		return x > 0 // bad
 	})
@@ -675,6 +695,10 @@ fn check_threads(ts []thread int, t thread int) {
 		!(t > 1) { 2 } // bad
 		(t < 0) { 3 } // bad
 		is_true(t >= 0) { 4 } // bad
+		predicate(t > 1).value { 5 } // bad
+		(Predicate{value: t > 1}).value { 6 } // bad
+		wrap(t > 1).inner.value { 7 } // bad
+		preds[if t > 1 { 0 } else { 1 }].value { 8 } // bad
 		else { 0 }
 	}
 }
@@ -689,8 +713,9 @@ fn (f Foo) above(limit int) bool {
 
 fn main() {}
 '
+	lines := src.split_into_lines()
 	mut bad_lines := []int{}
-	for i, line in src.split_into_lines() {
+	for i, line in lines {
 		if line.ends_with('// bad') {
 			bad_lines << i + 1
 		}
@@ -699,11 +724,28 @@ fn main() {}
 	mut lines_with_errors := map[int]bool{}
 	for err in errors {
 		assert err.line in bad_lines, 'unexpected error: ${err}'
+		// The comparison itself is reported, as a mismatch of its operands.
+		assert err.msg.starts_with('infix expr: cannot use '), 'not an operand mismatch: ${err}'
+		assert err.col == comparison_column(lines[err.line - 1]), 'not at the comparison: ${err}'
 		lines_with_errors[err.line] = true
 	}
 	for line in bad_lines {
-		assert line in lines_with_errors, 'no error on line ${line}:\n${src.split_into_lines()[line - 1]}'
+		assert line in lines_with_errors, 'no error on line ${line}:\n${lines[line - 1]}'
 	}
+}
+
+// comparison_column returns the column of the left operand of the ordered
+// comparison on `line`, where the checker reports a mismatch of the operands.
+fn comparison_column(line string) int {
+	for op in [' < ', ' > ', ' <= ', ' >= '] {
+		idx := line.index(op) or { continue }
+		mut start := idx
+		for start > 0 && (line[start - 1].is_alnum() || line[start - 1] == `_`) {
+			start--
+		}
+		return start + 1
+	}
+	return 0
 }
 
 fn test_ordered_comparisons_between_ordered_operands_compile_and_run() {
@@ -712,6 +754,8 @@ struct Point {
 	x int
 	y int
 }
+
+type Stamp = int | time.Time
 
 fn (p Point) far(limit int) bool {
 	return p.x > limit || p.y >= limit
@@ -823,6 +867,28 @@ fn main() {
 		(n >= 5) { 'five or more' }
 		else { 'less' }
 	})
+	pred := predicate(n > 1)
+	println(match true {
+		pred.value { 'field' }
+		else { 'no field' }
+	})
+	println(match true {
+		predicate(n > 10).value { 'call' }
+		(Predicate{value: n < 1}).value { 'struct' }
+		wrap(n >= 5).inner.value { 'wrapped' }
+		else { 'none' }
+	})
+	preds := [pred, predicate(n < 1)]
+	println(match true {
+		preds[if n > 1 { 1 } else { 0 }].value { 'second' }
+		preds[0].value { 'first' }
+		else { 'neither' }
+	})
+	stamp := Stamp(epoch())
+	println(match stamp {
+		time.Time { 'time' }
+		int { 'int' }
+	})
 }
 "
 	assert run_good('valid', src).split_into_lines() == [
@@ -869,6 +935,10 @@ fn main() {
 		'true',
 		'small',
 		'five or more',
+		'field',
+		'wrapped',
+		'first',
+		'time',
 	]
 }
 
