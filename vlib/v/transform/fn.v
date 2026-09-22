@@ -9957,7 +9957,8 @@ fn (mut t Transformer) build_default_clone_helper_fn(typ string) {
 	t.default_clone_expansion_stack = saved_expansion_stack
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
-	t.add_generated_fn_decl_context('main')
+	helper_module := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
+	t.add_generated_fn_decl_context(helper_module)
 	start := t.a.children.len
 	t.a.children << param
 	t.a.children << body
@@ -9969,7 +9970,7 @@ fn (mut t Transformer) build_default_clone_helper_fn(typ string) {
 		children_count: flat.child_count(1 + body.len)
 	})
 	t.ensure_node_context_map_capacity()
-	t.mark_node_context(fn_decl, 'main', t.cur_file)
+	t.mark_node_context(fn_decl, helper_module, t.cur_file)
 	t.set_fn_ret_type(helper, typ)
 	t.mark_fn_used_name(helper)
 	if !isnil(t.tc) {

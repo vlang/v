@@ -291,7 +291,8 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 			}
 		}
 		qfn := g.qualified_fn_name_in_module_c(item_module, node.value)
-		is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, i, qfn)
+		is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node,
+			i, qfn, item_file)
 		if !g.should_emit_fn_node_in_module_known(node, item_module, item_file, qfn, is_program_specialization) {
 			continue
 		}
@@ -818,7 +819,8 @@ fn (mut g FlatGen) should_emit_fn_node(node flat.Node, node_index int) bool {
 // should_emit_fn_node_in_module reports whether should emit fn node in module applies in c.
 fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int, module_name string, file_name string) bool {
 	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
-	is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn)
+	is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, node_index,
+		qfn, file_name)
 	return g.should_emit_fn_node_in_module_known(node, module_name, file_name, qfn, is_program_specialization)
 }
 
@@ -1027,17 +1029,17 @@ fn (g &FlatGen) is_program_specialization_fn_node(node flat.Node, node_index int
 		return false
 	}
 	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
-	return g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn)
+	return g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn, g.tc.cur_file)
 }
 
-fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_index int, qfn string) bool {
+fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_index int, qfn string, file_name string) bool {
 	if g.a.specialized_fn_nodes[node_index] {
 		return true
 	}
 	synthetic_name := c_short_name_view(node.value)
 	if synthetic_name.starts_with('__v3_sum_eq_') || synthetic_name.starts_with('__v3_autostr_')
 		|| synthetic_name.starts_with('__v3_default_clone_') {
-		return true
+		return g.cache_program_files[file_name] || g.cache_program_files[os.real_path(file_name)]
 	}
 	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
 		|| g.cname(node.value) in g.tc.specialized_generic_fns
