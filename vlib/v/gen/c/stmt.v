@@ -6367,10 +6367,12 @@ fn (g &FlatGen) type_can_wrap_as_ierror_payload(actual types.Type, expected type
 	return g.type_can_box_as_ierror(concrete)
 }
 
-// types_numeric_compatible supports types numeric compatible handling for FlatGen.
+// types_numeric_compatible compares numeric payloads through their aliases.
 fn (g &FlatGen) types_numeric_compatible(a types.Type, b types.Type) bool {
 	_ = g
-	return (a.is_integer() || a.is_float()) && (b.is_integer() || b.is_float())
+	a0 := cgen_unalias_type(a)
+	b0 := cgen_unalias_type(b)
+	return (a0.is_integer() || a0.is_float()) && (b0.is_integer() || b0.is_float())
 }
 
 // call_constructs_type updates call constructs type state for FlatGen.
