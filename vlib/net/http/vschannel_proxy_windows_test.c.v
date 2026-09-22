@@ -28,11 +28,32 @@ fn test_schannel_proxy_request_preserves_hostname_and_port() {
 	$if no_vschannel ? {
 		return
 	}
-	for host in ['example.com', '127.0.0.1', 'xn--mnich-kva.example', 'münich.example'] {
+	for host in ['example.com', 'Example.COM', '127.0.0.1', '[2001:db8::1]', 'xn--mnich-kva.example',
+		'example.com.'] {
 		for port in [1, 443, 8443, 65535] {
 			status, request := schannel_proxy_request_for_test(host.to_wide(), port)
 			assert status == 0
 			assert request == 'CONNECT ${host}:${port} HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n'
+		}
+	}
+}
+
+fn test_schannel_proxy_request_encodes_internationalized_hostname() {
+	$if no_vschannel ? {
+		return
+	}
+	hosts := {
+		'münich.example':       'xn--mnich-kva.example'
+		'mu\u0308nich.example': 'xn--mnich-kva.example'
+		'münich.example.':      'xn--mnich-kva.example.'
+		'例え.テスト':          'xn--r8jz45g.xn--zckzah'
+		'münich。example':      'xn--mnich-kva.example'
+	}
+	for host, ascii_host in hosts {
+		for port in [1, 443, 8443, 65535] {
+			status, request := schannel_proxy_request_for_test(host.to_wide(), port)
+			assert status == 0
+			assert request == 'CONNECT ${ascii_host}:${port} HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n'
 		}
 	}
 }
@@ -46,6 +67,12 @@ fn test_schannel_proxy_request_accepts_long_hostname() {
 	status, request := schannel_proxy_request_for_test(host.to_wide(), 443)
 	assert status == 0
 	assert request == 'CONNECT ${host}:443 HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n'
+	unicode_host := ('ü'.repeat(57) + '.').repeat(3) + 'ü'.repeat(55)
+	ascii_host := ('xn--td' + 'a'.repeat(57) + '.').repeat(3) + 'xn--td' + 'a'.repeat(55)
+	assert ascii_host.len == 253
+	idn_status, idn_request := schannel_proxy_request_for_test(unicode_host.to_wide(), 443)
+	assert idn_status == 0
+	assert idn_request == 'CONNECT ${ascii_host}:443 HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n'
 }
 
 fn test_schannel_proxy_request_rejects_invalid_input() {
@@ -64,5 +91,9 @@ fn test_schannel_proxy_request_rejects_invalid_input() {
 	assert null_status == 87
 	invalid_utf16 := [u16(0xd800), 0]!
 	status, _ := schannel_proxy_request_for_test(&invalid_utf16[0], 443)
-	assert status == 1113 // ERROR_NO_UNICODE_TRANSLATION
+	assert status != 0
+	for host in ['münich/.example', 'münich／example', 'ü'.repeat(58) + '.example'] {
+		idn_status, _ := schannel_proxy_request_for_test(host.to_wide(), 443)
+		assert idn_status == 123 // ERROR_INVALID_NAME
+	}
 }
