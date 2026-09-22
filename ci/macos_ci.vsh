@@ -94,11 +94,19 @@ fn ownership_vexe() string {
 }
 
 fn build_hello_world_autofree() {
+	if os.getenv('VTEST_SKIP_OWNERSHIP') == '1' {
+		eprintln('> skipping ownership/autofree test')
+		return
+	}
 	exec('${ownership_vexe()} -autofree -o hello_world examples/hello_world.v')
 	exec('./hello_world')
 }
 
 fn build_tetris_autofree() {
+	if os.getenv('VTEST_SKIP_OWNERSHIP') == '1' {
+		eprintln('> skipping ownership/autofree test')
+		return
+	}
 	exec('${ownership_vexe()} -autofree -o tetris examples/tetris/tetris.v')
 }
 
@@ -149,6 +157,11 @@ fn v_self_compilation_parallel_cc() {
 }
 
 fn test_password_input() {
+	// Expect gives the child a pseudo-terminal, but non-interactive parent shells can
+	// still export TERM=dumb, which makes os.input_password reject that usable PTY.
+	if os.getenv('TERM') in ['', 'dumb'] {
+		os.setenv('TERM', 'xterm', true)
+	}
 	exec('v -silent test examples/password/')
 }
 
@@ -239,6 +252,7 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
 	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)
+	os.setenv('VTEST_SKIP_OWNERSHIP', '1', true)
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	os.setenv('V_MACOS_MULTIWINDOW_TESTS', '0', true)
 

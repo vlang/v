@@ -34,3 +34,12 @@ fn test_struct() {
 	assert dump(sa.count(it == 'aa')) == 1
 	assert dump(sa.count(it.len == 3)) == 1
 }
+
+fn test_prefix_predicate() {
+	struct Cell {
+		is_open bool
+	}
+
+	cells := [Cell{}, Cell{ is_open: true }, Cell{}]
+	assert cells.count(!it.is_open) == 2
+}

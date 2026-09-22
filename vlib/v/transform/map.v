@@ -1644,7 +1644,15 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 }
 
 fn (t &Transformer) map_callback_names_for_type(key_type string) (string, string, string, string) {
-	normalized_key := t.normalize_type_alias(key_type)
+	mut normalized_key := key_type
+	alias_limit := if isnil(t.tc) { 1 } else { t.tc.type_aliases.len + 1 }
+	for _ in 0 .. alias_limit {
+		next := t.normalize_type_alias(normalized_key)
+		if next == normalized_key {
+			break
+		}
+		normalized_key = next
+	}
 	if !isnil(t.tc) {
 		clean := t.tc.parse_type(normalized_key)
 		if clean is types.ArrayFixed {

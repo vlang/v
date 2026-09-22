@@ -64,3 +64,17 @@ fn test_multiple_assign_complex_expr() {
 	assert b == -66
 	assert c == 11
 }
+
+struct FloatFields {
+mut:
+	radius   f32
+	rotation f32
+}
+
+fn test_multiple_assign_signed_integer_literals_to_float_fields() {
+	mut fields := FloatFields{}
+	fields.rotation = -90
+	fields.radius, fields.rotation = 15, -90
+	assert fields.radius == f32(15)
+	assert fields.rotation == f32(-90)
+}

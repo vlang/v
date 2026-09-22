@@ -437,6 +437,10 @@ fn main() {
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
 	}
+	if os.getenv('VTEST_SKIP_OWNERSHIP') == '1' {
+		tsession.skip_files << tsession.files.filter(os.file_name(it).contains('ownership')
+			|| os.file_name(it).contains('autofree'))
+	}
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'
 	}

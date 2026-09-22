@@ -6869,6 +6869,15 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			} else {
 				g.usable_expr_type(rhs_id)
 			}
+			// Generic rewriting can qualify the declaration type after the LHS was built.
+			if node.typ != lhs.typ && canonical_annotation_leaf(node.typ).contains('.') {
+				decl_type := g.tc.parse_canonical_type(node.typ)
+				rhs_type := g.usable_expr_type(rhs_id)
+				if decl_type !is types.Unknown && decl_type !is types.Void
+					&& g.type_names_match(decl_type, rhs_type) {
+					v_type = decl_type
+				}
+			}
 			if rhs.kind == .call && lhs.typ.starts_with('(') && lhs.typ.contains(',') {
 				mut declared_ret := g.declared_call_return_type(rhs_id)
 				if rhs.children_count > 0 {

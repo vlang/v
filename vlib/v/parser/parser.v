@@ -437,6 +437,10 @@ pub fn (mut p Parser) parse_into(path string) {
 	mut ids := []flat.NodeId{}
 	mut script_mode := ScriptModeState{}
 	mut malformed_const_line_end := -1
+	// Top-level executable statements are lowered into a synthetic main function.
+	// Track their declarations as locals while parsing the file so closures in
+	// script mode can explicitly capture values declared by preceding statements.
+	p.begin_local_binding_scope()
 	for p.tok != .eof && !p.diagnostic_limit_reached {
 		if p.tok == .semicolon {
 			p.next()
@@ -504,6 +508,7 @@ pub fn (mut p Parser) parse_into(path string) {
 			ids << id
 		}
 	}
+	p.end_local_binding_scope()
 	if !p.prefs.is_fmt && path.ends_with('.vsh') {
 		p.a.has_vsh_source = true
 		if implicit_os_id := p.vsh_implicit_os_import(ids) {
@@ -2158,6 +2163,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	p.record_inline_sum_type_deprecation(type_start, p.prev_tok_end)
 	param_group_end := p.prev_tok_end
 	explicit_mut_ref := is_mut && typ.starts_with('&')
+	mut_builtin_pointer := is_mut && typ in ['voidptr', 'byteptr', 'charptr']
 	if is_mut && !typ.starts_with('&') {
 		typ = '&' + typ
 	}
@@ -2174,6 +2180,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			value:  name
 			typ:    typ
 			is_mut: is_mut
+			flags:  if mut_builtin_pointer { flat.node_flag_mut_builtin_pointer_param } else { 0 }
 			pos:    name_positions[i]
 		})
 		ids << id
@@ -2342,14 +2349,39 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				embedding_allowed = false
 				continue
 			}
-			p.record_diagnostic_span('missing `:` after `mut` in struct', p.tok_pos, p.tok_end)
+			saved_s := p.s
+			saved_tok := p.tok
+			saved_lit := p.lit
+			saved_tok_pos := p.tok_pos
+			saved_tok_end := p.tok_end
+			saved_peek_tok := p.peek_tok
+			saved_peek_lit := p.peek_lit
+			saved_peek_pos := p.peek_pos
+			saved_peek_end := p.peek_end
+			saved_has_peek := p.has_peek
 			p.next()
-			sect_is_pub = false
-			sect_is_mut = true
-			sect_is_global = false
-			sect_is_module = false
-			embedding_allowed = false
-			continue
+			mut_is_field_name := p.peek() in [.semicolon, .rcbr, .assign, .attribute]
+			p.s = saved_s
+			p.tok = saved_tok
+			p.lit = saved_lit
+			p.tok_pos = saved_tok_pos
+			p.tok_end = saved_tok_end
+			p.peek_tok = saved_peek_tok
+			p.peek_lit = saved_peek_lit
+			p.peek_pos = saved_peek_pos
+			p.peek_end = saved_peek_end
+			p.has_peek = saved_has_peek
+			// `mut` is also a legal field name, as in `mut u8`.
+			if !mut_is_field_name {
+				p.record_diagnostic_span('missing `:` after `mut` in struct', p.tok_pos, p.tok_end)
+				p.next()
+				sect_is_pub = false
+				sect_is_mut = true
+				sect_is_global = false
+				sect_is_module = false
+				embedding_allowed = false
+				continue
+			}
 		}
 		if p.tok == .key_global {
 			if p.peek() == .colon {
@@ -3400,6 +3432,8 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				mut ptype := p.parse_type_name()
 				param_end := p.prev_tok_end
 				explicit_mut_ref := param_is_mut && ptype.starts_with('&')
+				mut_builtin_pointer := param_is_mut
+					&& ptype in ['voidptr', 'byteptr', 'charptr']
 				// `mut` params are references, exactly like fn decls record them
 				// (parse_param_group), so implementation signatures compare equal.
 				if param_is_mut && !ptype.starts_with('&') {
@@ -3414,6 +3448,11 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					typ:    ptype
 					op:     if explicit_mut_ref { .amp } else { .none }
 					is_mut: param_is_mut
+					flags:  if mut_builtin_pointer {
+						flat.node_flag_mut_builtin_pointer_param
+					} else {
+						0
+					}
 					pos:    param_pos
 				})
 				params << param_id
@@ -6118,10 +6157,35 @@ fn comptime_flag_is_target_arch(name string, target_arch string) bool {
 }
 
 fn (p &Parser) resolve_comptime_const_values(cond string) string {
-	return p.resolve_comptime_cached_values(cond, true)
+	clean := comptime_cond_strip_outer_parens(cond.trim_space())
+	if clean != cond.trim_space() {
+		return '(${p.resolve_comptime_const_values(clean)})'
+	}
+	if clean.starts_with('!') {
+		return '!${p.resolve_comptime_const_values(clean[1..])}'
+	}
+	for op in ['||', '&&'] {
+		left, right, has_op := comptime_cond_split_top_level(clean, op)
+		if has_op {
+			return '${p.resolve_comptime_const_values(left)} ${op} ${p.resolve_comptime_const_values(right)}'
+		}
+	}
+	for op in [' !is ', ' is '] {
+		_, _, has_op := comptime_cond_split_top_level(clean, op)
+		if has_op {
+			// An immutable local can be folded to its value in ordinary comptime
+			// expressions, but an `is` operand asks for that local's type.
+			return p.resolve_comptime_cached_values_mode(clean, true, true)
+		}
+	}
+	return p.resolve_comptime_cached_values(clean, true)
 }
 
 fn (p &Parser) resolve_comptime_cached_values(cond string, preserve_flags bool) string {
+	return p.resolve_comptime_cached_values_mode(cond, preserve_flags, false)
+}
+
+fn (p &Parser) resolve_comptime_cached_values_mode(cond string, preserve_flags bool, preserve_locals bool) string {
 	mut out := strings.new_builder(cond.len)
 	mut i := 0
 	mut quote := u8(0)
@@ -6156,7 +6220,8 @@ fn (p &Parser) resolve_comptime_cached_values(cond string, preserve_flags bool) 
 			}
 			is_protected_name := prev > 0 && (cond[prev - 1] == `.` || cond[prev - 1] == `$`)
 			is_comptime_flag := preserve_flags && p.comptime_cond_name_is_flag(cond, name, i)
-			if !is_protected_name && !is_comptime_flag && name !in p.comptime_for_vars {
+			if !is_protected_name && !is_comptime_flag && name !in p.comptime_for_vars
+				&& !(preserve_locals && p.is_local_binding(name)) {
 				if value := p.comptime_value(name) {
 					out.write_string(value)
 					continue
@@ -10310,7 +10375,25 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// function call
 		if p.tok == .lpar {
-			lhs_node := p.a.nodes[int(lhs)]
+			mut lhs_node := p.a.nodes[int(lhs)]
+			// On the C backend vfmt writes `'text'.str()` as `c'text'()`.
+			// Restore the semantic receiver/method shape before checking; formatter
+			// parses keep the compact source form so they can emit it unchanged.
+			if !p.prefs.is_fmt && lhs_node.kind == .char_literal
+				&& lhs_node.value.starts_with('c:') {
+				p.a.nodes[int(lhs)].kind = .string_literal
+				p.a.nodes[int(lhs)].value = unescape_string(lhs_node.value[2..])
+				p.a.nodes[int(lhs)].typ = ''
+				selector_start := p.add_child(lhs)
+				lhs = p.add_node_from(flat.Node{
+					kind:           .selector
+					value:          'str'
+					children_start: selector_start
+					children_count: 1
+				}, lhs)
+				lhs = p.call_args(lhs)
+				continue
+			}
 			if lhs_node.kind == .postfix && lhs_node.op in [.inc, .dec] && p.prev_tok_end > 0
 				&& p.line_nr_for_pos(p.prev_tok_end - 1) < p.line_nr_for_pos(p.tok_pos) {
 				break
@@ -14224,7 +14307,8 @@ fn (p &Parser) select_branch_is_timeout(branch &flat.Node) bool {
 		return false
 	}
 	first := p.a.child_node(branch, 0)
-	return !(first.kind == .infix && first.op == .arrow)
+	return !((first.kind == .infix && first.op == .arrow)
+		|| (first.kind == .prefix && first.op == .arrow))
 }
 
 // select_branch resolves select branch information for parser.
@@ -15679,12 +15763,14 @@ fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_typ
 	}
 	mut ids := []flat.NodeId{cap: field_names.len}
 	for i, field_name in field_names {
-		ids << p.a.add_node(flat.Node{
+		field_id := p.a.add_node(flat.Node{
 			kind:  .field_decl
 			value: field_name
 			typ:   field_types[i]
 			pos:   field_positions[i]
 		})
+		p.apply_field_meta(field_id, true, false, false, false, []string{}, false)
+		ids << field_id
 	}
 	return p.register_anonymous_aggregate_type(ids, field_names, field_types, !allow_name_shape, false, -1)
 }

@@ -122,6 +122,14 @@ fn main() {
 		launch_v1(clean_compiler_selection_flags(args), '`build-module` requires the compatibility compiler',
 			RetryState{})
 	}
+	// The mini-VLS protocol is implemented by the compatibility compiler's AST
+	// parser and checker. Select it before entering V3 instead of treating the
+	// request as a failed V3 compilation; `V_MACOS_V3_NO_FALLBACK` must continue
+	// to disable only retries, not explicit compatibility command modes.
+	if '-vls-mode' in args && '-new-compiler' !in args {
+		launch_v1(clean_compiler_selection_flags(args), '`-vls-mode` requires the compatibility compiler',
+			RetryState{})
+	}
 	if '-new-compiler' in args {
 		os.setenv(v3_no_fallback_env, '1', true)
 	}
@@ -490,7 +498,9 @@ fn retry_with_v1_at_exit() {
 @[noreturn]
 fn launch_v1(args []string, reason string, report_state RetryState) {
 	legacy_module_fixture := v3_fixture_expects_legacy_compiler_modules(args)
-	transparent_fixture_fallback := v3_fixture_requires_compatibility_compiler(args)
+	vls_mode := '-vls-mode' in args
+	transparent_fixture_fallback := vls_mode
+		|| v3_fixture_requires_compatibility_compiler(args)
 		|| (report_state.fallback_file != '' && v3_exact_output_fixture_args(args))
 	diagnostics := if transparent_fixture_fallback {
 		''
@@ -527,7 +537,7 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	mut process := os.new_process(fallback)
 	process.set_args(launch_args)
 	mut compatibility_output := ''
-	if legacy_module_fixture {
+	if legacy_module_fixture || vls_mode {
 		process.set_redirect_stdio_merged()
 		process.run()
 		compatibility_output = process.stdout_slurp()
@@ -542,8 +552,12 @@ fn launch_v1(args []string, reason string, report_state RetryState) {
 	}
 	code := process.code
 	process.close()
-	if compatibility_output != '' {
+	if legacy_module_fixture && compatibility_output != '' {
 		eprint(v3_rewrite_legacy_compiler_module_diagnostics(compatibility_output))
+	} else if vls_mode && compatibility_output != '' {
+		fallback_root := os.dir(fallback)
+		current_root := find_vroot(os.real_path(os.executable())) or { fallback_root }
+		eprint(compatibility_output.replace(fallback_root, current_root))
 	}
 	if code == 0 && report_state.fallback_file != '' && !transparent_fixture_fallback {
 		submit_v3_fallback_report(fallback, report_state)
