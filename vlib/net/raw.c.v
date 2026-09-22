@@ -221,20 +221,20 @@ pub fn (c &RawConn) protocol() Protocol {
 // set_option_bool sets a boolean socket option.
 pub fn (mut s RawSocket) set_option_bool(opt SocketOption, value bool) ! {
 	x := i32(value) // C socket options are 4-byte `int`; i32 storage keeps sizeof 4
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(x)))!
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), voidptr(&x), sizeof(x)))!
 }
 
 // set_option_int sets an integer socket option.
 pub fn (mut s RawSocket) set_option_int(opt SocketOption, value int) ! {
 	x := i32(value)
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(x)))!
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), voidptr(&x), sizeof(x)))!
 }
 
 // set_ip_header_included enables or disables the IP_HDRINCL option.
 // When enabled, the user must provide the complete IP header.
 pub fn (mut s RawSocket) set_ip_header_included(on bool) ! {
 	x := i32(on) // C socket options are 4-byte `int`; i32 storage keeps sizeof 4
-	socket_error(C.setsockopt(s.handle, C.IPPROTO_IP, C.IP_HDRINCL, &x, sizeof(x)))!
+	socket_error(C.setsockopt(s.handle, C.IPPROTO_IP, C.IP_HDRINCL, voidptr(&x), sizeof(x)))!
 }
 
 // close shuts down and closes the socket.
