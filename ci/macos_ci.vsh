@@ -157,6 +157,11 @@ fn v_self_compilation_parallel_cc() {
 }
 
 fn test_password_input() {
+	// Expect gives the child a pseudo-terminal, but non-interactive parent shells can
+	// still export TERM=dumb, which makes os.input_password reject that usable PTY.
+	if os.getenv('TERM') in ['', 'dumb'] {
+		os.setenv('TERM', 'xterm', true)
+	}
 	exec('v -silent test examples/password/')
 }
 
