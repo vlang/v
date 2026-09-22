@@ -348,10 +348,11 @@ mut:
 	str_lit_ids                    map[string]int
 	str_lits_shared                bool
 	// Worker snapshots inherit this immutable prefix from their parent generator.
-	str_lits_base_len     int
-	json_decode_err_flag  string
-	json_decode_err_value string
-	global_types          map[string]types.Type
+	str_lits_base_len         int
+	json_encode_pointer_types map[string]string
+	json_decode_err_flag      string
+	json_decode_err_value     string
+	global_types              map[string]types.Type
 	// Globals declared `volatile`. A kernel writes these where the hardware or
 	// the bootloader can see them, so the qualifier has to survive into the C.
 	global_volatile_names          map[string]bool
@@ -1183,6 +1184,7 @@ pub fn FlatGen.new() FlatGen {
 		cache_program_files:                map[string]bool{}
 		incremental_fn_names:               map[string]bool{}
 		str_lit_ids:                        map[string]int{}
+		json_encode_pointer_types:          map[string]string{}
 		global_types:                       map[string]types.Type{}
 		global_volatile_names:              map[string]bool{}
 		global_raw_type_texts:              map[string]string{}

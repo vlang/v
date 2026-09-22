@@ -9668,6 +9668,12 @@ fn (mut g FlatGen) prepare_json_encode_pointer_helpers() []JsonEncodePointerHelp
 		return []JsonEncodePointerHelper{}
 	}
 	mut pointer_types := map[string]types.Pointer{}
+	for pointer_ct, type_name in g.json_encode_pointer_types {
+		pointer_type := g.tc.parse_canonical_type(type_name)
+		if pointer_type is types.Pointer {
+			pointer_types[pointer_ct] = pointer_type
+		}
+	}
 	for idx, node in g.a.nodes {
 		if node.kind != .call || node.children_count < 2 {
 			continue
@@ -10030,6 +10036,7 @@ fn (mut g FlatGen) json_encode_value_c_expr_inner(typ types.Type, expr string, s
 			return none
 		}
 		pointer_ct := g.value_c_type(clean)
+		g.json_encode_pointer_types[pointer_ct] = clean.name()
 		return '${json_encode_pointer_helper_name(pointer_ct)}((${pointer_ct})(${expr}))'
 	}
 	if clean is types.Enum {

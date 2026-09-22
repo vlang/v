@@ -1287,6 +1287,9 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 			g.needed_optional_types[opt_name.clone()] = val_type.clone()
 		}
 	}
+	for pointer_ct, pointer_type in batch.json_encode_pointer_types {
+		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
+	}
 	for encoded, name in batch.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded.clone()] = name.clone()
@@ -2668,6 +2671,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		}
 		str_lits_shared:                    g.scope_parallel_workers && (!result_only || g.str_lits_shared)
 		str_lits_base_len:                  g.str_lits.len
+		json_encode_pointer_types:          map[string]string{}
 		global_types:                       g.global_types
 		global_raw_type_texts:              g.global_raw_type_texts
 		enum_vals:                          g.enum_vals
@@ -3198,6 +3202,9 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 	}
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
+	}
+	for pointer_ct, pointer_type in w.json_encode_pointer_types {
+		g.json_encode_pointer_types[pointer_ct.clone()] = pointer_type.clone()
 	}
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
