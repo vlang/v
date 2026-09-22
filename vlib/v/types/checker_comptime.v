@@ -7474,15 +7474,17 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		compatible := if lhs_is_sum != rhs_is_sum {
 			false
 		} else {
-			tc.type_compatible(lhs_type, rhs_type) || tc.type_compatible(rhs_type, lhs_type)
-				|| tc.expr_compatible(lhs_id, lhs_type, rhs_type)
-				|| tc.expr_compatible(rhs_id, rhs_type, lhs_type)
+			tc.infix_operands_compatible(lhs_id, lhs_type, rhs_id, rhs_type)
 				|| pointer_value_comparison_allowed || pointer_integer_zero_comparison
 				|| c_literal_scalar_comparison
 		}
+		// Only a struct reached through a pointer, such as a `mut` parameter,
+		// compares with zero: `unsafe` does not turn a struct value into one.
+		lhs_is_struct_reference := lhs_clean is Struct && tc.infix_operand_is_auto_deref(lhs_id)
+		rhs_is_struct_reference := rhs_clean is Struct && tc.infix_operand_is_auto_deref(rhs_id)
 		unsafe_zero_struct_comparison :=
-			((lhs_clean is Struct && tc.zero_literal_expr_id(rhs_id) != none)
-				|| (rhs_clean is Struct && tc.zero_literal_expr_id(lhs_id) != none))
+			((lhs_is_struct_reference && tc.zero_literal_expr_id(rhs_id) != none)
+				|| (rhs_is_struct_reference && tc.zero_literal_expr_id(lhs_id) != none))
 				&& (tc.unsafe_depth > 0 || tc.expr_is_inside_unsafe_block(id))
 		if !compatible && !unsafe_zero_struct_comparison
 			&& lhs_node.kind !in [.none_expr, .nil_literal]
@@ -7494,7 +7496,7 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 				tc.diagnostic_expr_type_name(lhs_id, lhs_type)
 			}
 			rhs_name := tc.diagnostic_expr_type_name(rhs_id, rhs_type)
-			suffix := if tc.unsafe_depth == 0 && lhs_clean is Struct
+			suffix := if tc.unsafe_depth == 0 && lhs_is_struct_reference
 				&& tc.zero_literal_expr_id(rhs_id) != none {
 				'  (you can use it inside an `unsafe` block)'
 			} else if tc.unsafe_depth == 0 && pointer_value_comparison {
@@ -7568,7 +7570,22 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 				tc.record_error_at(.condition_mismatch, 'mismatched types `${lhs_name}` and `${rhs_name}`', id, diagnostic_pos)
 				tc.record_error_at(.condition_mismatch, 'infix expr: cannot use `${rhs_name}` (right expression) as `${lhs_name}`', id, diagnostic_pos)
 			}
+			return
 		}
+		// The `<` of the left struct takes an operand of its own type. V1 also
+		// names the pair for `<` when the right struct has no `<` of its own.
+		if tc.type_name(lhs_order_type) != tc.type_name(rhs_order_type)
+			&& !tc.translated_files[tc.cur_file] {
+			if node.op == .lt && !tc.type_has_infix_operator_method(rhs_order_type, required_op)
+				&& tc.thread_wait_return_type(rhs_type) == none {
+				tc.record_error_at(.condition_mismatch, 'mismatched types `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}` and `${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}`', id, node.pos)
+			}
+			tc.record_ordered_operands_mismatch(id, node, lhs_id, lhs_type, rhs_id, rhs_type)
+		}
+		return
+	}
+	if node.op in [.lt, .gt, .le, .ge] {
+		tc.check_ordered_comparison(id, node, lhs_id, lhs_type, rhs_id, rhs_type)
 		return
 	}
 	if node.op == .arrow {
@@ -7803,6 +7820,131 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		return
 	}
 	tc.record_error(.assignment_mismatch, 'infix expr: cannot use `${rhs_name}` (right expression) as `${lhs_name}`', id)
+}
+
+// infix_operands_compatible reports whether either operand of a comparison
+// accepts the type of the other one.
+fn (tc &TypeChecker) infix_operands_compatible(lhs_id flat.NodeId, lhs_type Type, rhs_id flat.NodeId, rhs_type Type) bool {
+	return tc.type_compatible(lhs_type, rhs_type) || tc.type_compatible(rhs_type, lhs_type)
+		|| tc.expr_compatible(lhs_id, lhs_type, rhs_type)
+		|| tc.expr_compatible(rhs_id, rhs_type, lhs_type)
+}
+
+// infix_operand_is_auto_deref reports whether the operand `id` is a `mut`
+// parameter, or another binding that the generated C reaches through a
+// pointer: comparing it compares that pointer.
+fn (tc &TypeChecker) infix_operand_is_auto_deref(id flat.NodeId) bool {
+	node := tc.a.node(id)
+	return node.kind == .ident
+		&& tc.mut_param_base_for_current_ident(node.value, tc.resolve_type(id)) != none
+}
+
+// ordered_operand_name names an operand of `<`, `>`, `<=` or `>=` as V1 does:
+// an alias without an ordering of its own is named after the type it stands for.
+fn (tc &TypeChecker) ordered_operand_name(id flat.NodeId, typ Type) string {
+	if typ is Alias && !tc.type_has_infix_operator_method(typ, .lt) {
+		return tc.diagnostic_expr_type_name(id, unalias_type(typ))
+	}
+	return tc.diagnostic_expr_type_name(id, typ)
+}
+
+// check_ordered_comparison reports `<`, `>`, `<=` and `>=` between operands
+// without an order in common. The C backend compares them as they are, so a
+// struct, map or sum type would only fail in the C compiler, and a bool, enum,
+// channel or fn value would compile into a comparison that means nothing.
+fn (mut tc TypeChecker) check_ordered_comparison(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, lhs_type Type, rhs_id flat.NodeId, rhs_type Type) {
+	if lhs_type is Unknown || rhs_type is Unknown || tc.translated_files[tc.cur_file] {
+		return
+	}
+	lhs_clean := unalias_type(lhs_type)
+	rhs_clean := unalias_type(rhs_type)
+	// Numbers compare across their types, as V1 has it: most comparisons end here.
+	if ordered_number(lhs_clean) && ordered_number(rhs_clean) {
+		return
+	}
+	// `.sort()` reports a thread handle on the left of its comparison itself.
+	if tc.sort_comparator_depth > 0 && tc.thread_wait_return_type(lhs_type) != none {
+		return
+	}
+	op := infix_operator_name(node.op) or { return }
+	lhs_is_none := tc.a.node(lhs_id).kind == .none_expr
+	rhs_is_none := tc.a.node(rhs_id).kind == .none_expr
+	if lhs_is_none || rhs_is_none {
+		lhs_name := if lhs_is_none { 'none' } else { tc.ordered_operand_name(lhs_id, lhs_type) }
+		rhs_name := if rhs_is_none { 'none' } else { tc.ordered_operand_name(rhs_id, rhs_type) }
+		tc.record_error_at(.condition_mismatch, 'invalid operator `${op}` to `${lhs_name}` and `${rhs_name}`', id, node.pos)
+		return
+	}
+	lhs_is_array := array_type_from_receiver(lhs_type) != none || lhs_clean is ArrayFixed
+	rhs_is_array := array_type_from_receiver(rhs_type) != none || rhs_clean is ArrayFixed
+	if lhs_is_array && rhs_is_array {
+		tc.record_error_at(.assignment_mismatch, 'only `==` and `!=` are defined on arrays', id, tc.infix_operator_pos(node, op))
+		if tc.type_name(lhs_clean) != tc.type_name(rhs_clean) {
+			tc.record_ordered_operands_mismatch(id, node, lhs_id, lhs_type, rhs_id, rhs_type)
+		}
+		return
+	} else if lhs_clean is Map && rhs_clean is Map {
+		tc.record_error_at(.assignment_mismatch, 'only `==` and `!=` are defined on maps', id, tc.infix_operator_pos(node, op))
+	}
+	if (fn_type_from_type(lhs_clean) != none) != (fn_type_from_type(rhs_clean) != none) {
+		tc.record_error_at(.condition_mismatch, 'mismatched types `${tc.diagnostic_expr_type_name(lhs_id, lhs_type)}` and `${tc.diagnostic_expr_type_name(rhs_id, rhs_type)}`', id, node.pos)
+	}
+	if tc.type_name(lhs_type) == 'bool' {
+		tc.record_error_at(.condition_mismatch, 'bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`', id, tc.infix_operator_pos(node, op))
+	}
+	if lhs_clean is SumType {
+		tc.record_error_at(.condition_mismatch, 'cannot use operator `${op}` with `${tc.ordered_operand_name(lhs_id, lhs_type)}`', id, tc.infix_operator_pos(node, op))
+	} else if rhs_clean is SumType {
+		tc.record_error_at(.condition_mismatch, 'cannot use operator `${op}` with `${tc.ordered_operand_name(rhs_id, rhs_type)}`', id, tc.infix_operator_pos(node, op))
+	}
+	// A `voidptr` compares with whatever the C compiler can order it with. An
+	// enum compares only with an enum, which the enum check before this one handles.
+	compatible := if (is_voidptr_type(lhs_clean) && voidptr_orders_with(rhs_clean))
+		|| (is_voidptr_type(rhs_clean) && voidptr_orders_with(lhs_clean)) {
+		true
+	} else if (lhs_clean is Enum) != (rhs_clean is Enum) || (lhs_clean is SumType) != (rhs_clean is SumType) {
+		false
+	} else {
+		tc.infix_operands_compatible(lhs_id, lhs_type, rhs_id, rhs_type)
+	}
+	// A pointer against an integer is pointer arithmetic, as V1 has it.
+	pointer_and_integer := (lhs_clean is Pointer && ordered_integer(rhs_clean))
+		|| (rhs_clean is Pointer && ordered_integer(lhs_clean))
+	if !compatible && !pointer_and_integer {
+		tc.record_ordered_operands_mismatch(id, node, lhs_id, lhs_type, rhs_id, rhs_type)
+	} else if compatible && (lhs_clean is Interface || rhs_clean is Interface) {
+		tc.record_error_at(.condition_mismatch, 'undefined operation `${tc.ordered_operand_name(lhs_id, lhs_type)}` ${op} `${tc.ordered_operand_name(rhs_id, rhs_type)}`', id, node.pos)
+	}
+}
+
+// record_ordered_operands_mismatch reports the operands of `<`, `>`, `<=` or
+// `>=` that do not accept each other, in the words of V1.
+fn (mut tc TypeChecker) record_ordered_operands_mismatch(id flat.NodeId, node flat.Node, lhs_id flat.NodeId, lhs_type Type, rhs_id flat.NodeId, rhs_type Type) {
+	tc.record_error_at(.assignment_mismatch, 'infix expr: cannot use `${tc.ordered_operand_name(rhs_id, rhs_type)}` (right expression) as `${tc.ordered_operand_name(lhs_id, lhs_type)}`', id, node.pos)
+}
+
+// ordered_integer reports whether the unaliased type `t` is an integer in the
+// generated C, `char` included.
+fn ordered_integer(t Type) bool {
+	return t.is_integer() || t is Char
+}
+
+// ordered_number reports whether the unaliased type `t` is a number that `<`
+// compares with any other number.
+fn ordered_number(t Type) bool {
+	return ordered_integer(t) || t.is_float()
+}
+
+fn is_voidptr_type(t Type) bool {
+	return t is Pointer && t.base_type is Void
+}
+
+// voidptr_orders_with reports whether the C compiler orders a `voidptr` against
+// the unaliased type `t`: a pointer, channel, integer, bool or enum, and not an
+// aggregate or a float.
+fn voidptr_orders_with(t Type) bool {
+	return t is Pointer || t is Channel || t is Enum || ordered_integer(t)
+		|| (t is Primitive && t.props.has(.boolean))
 }
 
 fn (tc &TypeChecker) integer_shift_bit_size(typ Type) int {
@@ -8323,7 +8465,9 @@ fn (tc &TypeChecker) infix_operator_pos(node flat.Node, op string) token.Pos {
 	source := tc.source_texts_by_file[file.name] or { return node.pos }
 	start := int_max(lhs.pos.end, node.pos.offset)
 	end := int_min(rhs.pos.offset, node.pos.end)
-	if start < end {
+	// Template code can carry offsets past the end of the V file it is
+	// attributed to.
+	if start >= 0 && start < end && end <= source.len {
 		if relative := source[start..end].index(op) {
 			op_start := start + relative
 			return token.new_span(node.pos.id, op_start, op_start + op.len)

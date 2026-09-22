@@ -15519,7 +15519,9 @@ fn (mut tc TypeChecker) check_array_sort_call(id flat.NodeId, node flat.Node, ca
 			arg_id, method_pos)
 	}
 	tc.push_array_dsl_scope(node, 'array.sort')
+	tc.sort_comparator_depth++
 	tc.check_node(arg_id)
+	tc.sort_comparator_depth--
 	if invalid_id := tc.sort_first_invalid_ident(arg_id) {
 		invalid := tc.a.node(invalid_id)
 		mut error_index := tc.errors.len

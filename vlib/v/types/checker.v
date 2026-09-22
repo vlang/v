@@ -848,6 +848,7 @@ pub mut:
 	cur_file               string
 	generic_decl_file      string // declaring file of the generic param text being inferred ('' = cur_file)
 	unsafe_depth           int
+	sort_comparator_depth  int
 	lock_depth             int
 	comptime_static_depth  int
 	errors                 []TypeError

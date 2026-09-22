@@ -1376,6 +1376,11 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		}
 		for j in 0 .. n_conds {
 			cond_id := tc.a.child(branch, j)
+			// A condition that is an expression, as in `match true { a < b {} }`,
+			// gets the checks an `if` condition gets.
+			if tc.a.node(cond_id).kind == .infix {
+				tc.check_node(cond_id)
+			}
 			tc.check_match_range_types(subject_id, subject_type, cond_id)
 			tc.check_match_condition_type(subject_type, cond_id)
 			tc.check_match_alias_condition(subject_declared_type, cond_id)
