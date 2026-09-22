@@ -317,7 +317,7 @@ fn build_v3() string {
 		return ordered_v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${ordered_v3_bin} ${v3_src}')
+		os.execute('${os.quoted_path(vexe)} -gc none -path ${os.quoted_path('${vlib_dir}|@vlib|@vmodules')} -o ${os.quoted_path(ordered_v3_bin)} ${os.quoted_path(v3_src)}')
 	assert build.exit_code == 0, build.output
 	return ordered_v3_bin
 }
@@ -343,7 +343,8 @@ fn check_errors(name string, src string) []ErrorAt {
 // every error it reports, uncapped, in whichever file it is.
 fn check_file_errors(path string) []ErrorAt {
 	v3_bin := build_v3()
-	result := os.execute('${v3_bin} -nocache -check -nocolor -checker-fixture ${path}')
+	result :=
+		os.execute('${os.quoted_path(v3_bin)} -nocache -check -nocolor -checker-fixture ${os.quoted_path(path)}')
 	mut errors := []ErrorAt{}
 	for line in result.output.split_into_lines() {
 		if !line.contains(': error: ') {
@@ -373,10 +374,11 @@ fn run_good(name string, src string) string {
 		os.rm(good_src) or {}
 		os.rm(out) or {}
 	}
-	compile := os.execute('${v3_bin} -nocache ${good_src} -b c -o ${out}')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} -nocache ${os.quoted_path(good_src)} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
-	run := os.execute(out)
+	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, '${name}: run failed: ${run.output}'
 	return run.output.trim_space()
 }
@@ -670,8 +672,15 @@ fn check_threads(ts []thread int, t thread int) {
 	_ = f
 	_ := match true {
 		t > 1 { 1 } // bad
+		!(t > 1) { 2 } // bad
+		(t < 0) { 3 } // bad
+		is_true(t >= 0) { 4 } // bad
 		else { 0 }
 	}
+}
+
+fn is_true(b bool) bool {
+	return b
 }
 
 fn (f Foo) above(limit int) bool {
@@ -805,6 +814,15 @@ fn main() {
 		q := &x
 		println(p <= q)
 	}
+	n := 5
+	println(match true {
+		!(n > 10) { 'small' }
+		else { 'big' }
+	})
+	println(match true {
+		(n >= 5) { 'five or more' }
+		else { 'less' }
+	})
 }
 "
 	assert run_good('valid', src).split_into_lines() == [
@@ -849,6 +867,8 @@ fn main() {
 		'true',
 		'true',
 		'true',
+		'small',
+		'five or more',
 	]
 }
 
@@ -897,9 +917,10 @@ fn test_ordered_comparisons_in_templates() {
 		panic(err)
 	}
 	good_bin := os.join_path(dir, 'good')
-	compile := os.execute('${build_v3()} -nocache ${good_src} -b c -o ${good_bin}')
+	compile :=
+		os.execute('${os.quoted_path(build_v3())} -nocache ${os.quoted_path(good_src)} -b c -o ${os.quoted_path(good_bin)}')
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(good_bin)
+	run := os.execute(os.quoted_path(good_bin))
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines().map(it.trim_space()).filter(it != '') == [
 		'positive',

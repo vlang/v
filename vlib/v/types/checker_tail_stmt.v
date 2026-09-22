@@ -1376,9 +1376,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		}
 		for j in 0 .. n_conds {
 			cond_id := tc.a.child(branch, j)
-			// A condition that is an expression, as in `match true { a < b {} }`,
-			// gets the checks an `if` condition gets.
-			if tc.a.node(cond_id).kind == .infix {
+			// A condition that is an expression, as in `match true { a < b {} }`
+			// or `!(a < b)`, gets the checks an `if` condition gets.
+			if tc.match_condition_is_expression(cond_id) {
 				tc.check_node(cond_id)
 			}
 			tc.check_match_range_types(subject_id, subject_type, cond_id)
@@ -1602,6 +1602,17 @@ fn (tc &TypeChecker) match_trailing_or_parent(id flat.NodeId) ?flat.NodeId {
 		return none
 	}
 	return parent_id
+}
+
+// match_condition_is_expression reports whether the match condition `id` is an
+// expression, such as a comparison, a call or a literal. A name can stand for a
+// type, and ranges, enum shorthands and `none` have checks of their own.
+fn (tc &TypeChecker) match_condition_is_expression(id flat.NodeId) bool {
+	node := tc.a.node(id)
+	if node.kind in [.ident, .selector, .range, .enum_val, .none_expr] {
+		return false
+	}
+	return tc.match_type_pattern(node) == none
 }
 
 fn (mut tc TypeChecker) check_match_branch_structure(id flat.NodeId, node flat.Node) bool {
