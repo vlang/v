@@ -3494,23 +3494,23 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 	// Keep the helper in its request's output segment. This is normally the requesting
 	// module, but program-specific generic specializations and their nested helpers use
 	// main even though their bodies are resolved under the declaring module.
-	t.a.add_node(flat.Node{
-		kind:  .module_decl
-		value: if t.sum_eq_helper_module.len > 0 { t.sum_eq_helper_module } else { 'main' }
-	})
+	helper_module := if t.sum_eq_helper_module.len > 0 { t.sum_eq_helper_module } else { 'main' }
+	t.add_generated_fn_decl_context(helper_module)
 	start := t.a.children.len
 	t.a.children << param_a
 	t.a.children << param_b
 	for stmt in stmts {
 		t.a.children << stmt
 	}
-	t.a.add_node(flat.Node{
+	fn_decl := t.a.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          helper
 		typ:            'bool'
 		children_start: i32(start)
 		children_count: flat.child_count(2 + stmts.len)
 	})
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(fn_decl, helper_module, t.cur_file)
 	t.register_sum_eq_helper_signature(helper, clean_sum)
 }
 

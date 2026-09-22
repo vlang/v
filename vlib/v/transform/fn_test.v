@@ -528,6 +528,30 @@ fn test_program_sum_equality_helper_does_not_collide_with_cached_module_helper()
 	assert t.sum_eq_types[program_helper].helper_module == 'main'
 }
 
+fn test_sum_equality_helper_keeps_requesting_file_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['xml.Contents'] = ['string']
+	t.cur_module = 'xml'
+	t.cur_file = 'parser_test.v'
+	t.sum_eq_helper_module = 'xml'
+	helper := sum_eq_helper_name('xml.Contents')
+	t.build_sum_eq_helper_fn('xml.Contents', helper)
+
+	mut helper_id := flat.empty_node
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == helper {
+			helper_id = flat.NodeId(i)
+			break
+		}
+	}
+	assert helper_id != flat.empty_node
+	assert t.node_module_or(int(helper_id), '') == 'xml'
+	assert t.node_file_or(int(helper_id), '') == 'parser_test.v'
+	assert a.nodes.any(it.kind == .file && it.value == 'parser_test.v')
+}
+
 fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
