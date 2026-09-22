@@ -1,4 +1,5 @@
 import common { Task, exec }
+import crypto.sha256
 import os
 
 // Shared tasks/helpers
@@ -404,6 +405,177 @@ fn test_inline_assembly() {
 	exec('v test vlib/v/slow_tests/assembly')
 }
 
+// Keep this list in the same order as the active tasks in
+// .github/workflows/linux_ci.yml. The aggregate runner changes compiler flags at
+// the same boundaries as the three workflow jobs.
+const ci_tasks = [
+	'build_v_with_prealloc',
+	'all_code_is_formatted_tcc',
+	'install_dependencies_for_examples_and_tools_tcc',
+	'test_v_to_c_tcc',
+	'v_self_compilation_tcc',
+	'v_doctor_tcc',
+	'verify_v_test_works_tcc',
+	'test_pure_v_math_module_tcc',
+	'test_inline_assembly',
+	'self_tests_tcc',
+	'build_examples_tcc',
+	'run_submodule_example_tcc',
+	'build_tools_tcc',
+	'build_vbinaries_tcc',
+	'build_benches_tcc',
+	'run_vsh_script_tcc',
+	'test_v_tutorials_tcc',
+	'build_fast_tcc',
+	'v_self_compilation_usecache_tcc',
+	'test_password_input_tcc',
+	'test_readline_tcc',
+	'test_leak_detector_tcc',
+	'test_leak_detector_not_active_tcc',
+	'all_code_is_formatted_gcc',
+	'install_dependencies_for_examples_and_tools_gcc',
+	'recompile_v_with_cstrict_gcc',
+	'valgrind_v_c_gcc',
+	'run_sanitizers_gcc',
+	'v_self_compilation_gcc',
+	'v_self_compilation_usecache_gcc',
+	'verify_v_test_works_gcc',
+	'test_pure_v_math_module_gcc',
+	'self_tests_gcc',
+	'self_tests_prod_gcc',
+	'self_tests_cstrict_gcc',
+	'build_examples_gcc',
+	'build_tetris_autofree_gcc',
+	'build_blog_autofree_gcc',
+	'build_option_test_autofree_gcc',
+	'v_self_compilation_parallel_cc_gcc',
+	'build_modules_gcc',
+	'compile_vdoctor_prod_gcc',
+	'compile_vup_prod_gcc',
+	'all_code_is_formatted_clang',
+	'install_dependencies_for_examples_and_tools_clang',
+	'recompile_v_with_cstrict_clang',
+	'valgrind_clang',
+	'run_sanitizers_clang',
+	'v_self_compilation_clang',
+	'v_self_compilation_usecache_clang',
+	'verify_v_test_works_clang',
+	'test_pure_v_math_module_clang',
+	'self_tests_clang',
+	'self_tests_vprod_clang',
+	'self_tests_cstrict_clang',
+	'build_examples_clang',
+	'build_examples_autofree_clang',
+	'build_modules_clang',
+]
+
+// Keep progress across edits/rebuilds, but isolate users and checkout directories.
+fn ci_progress_path() string {
+	checkout := sha256.hexhash(os.real_path(os.getwd()))
+	return os.join_path(os.cache_dir(), 'v-linux-ci-${os.getuid()}-${checkout}.progress')
+}
+
+fn ci_progress_contents(task_name string) string {
+	// Record the whole ordered task list so changed plans restart safely.
+	return 'linux-ci-v1\n${task_name}\n${ci_tasks.join('\n')}\n'
+}
+
+fn ci_resume_index(path string) !int {
+	if !os.exists(path) {
+		return -1
+	}
+	if !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
+	saved := os.read_file(path)!
+	for i, task_name in ci_tasks {
+		if saved == ci_progress_contents(task_name) {
+			return i
+		}
+	}
+	eprintln('Ignoring invalid or outdated CI progress; restarting from the first task.')
+	return -1
+}
+
+fn save_ci_progress(path string, task_name string) ! {
+	// Write privately, then rename on the same filesystem. An interrupted write
+	// leaves the previous checkpoint intact, never a partially written cursor.
+	if os.exists(path) && !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
+	tmp_dir := '${path}.${os.getpid()}.tmp'
+	os.mkdir(tmp_dir, mode: 0o700)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	tmp_path := os.join_path(tmp_dir, 'progress')
+	os.write_file(tmp_path, ci_progress_contents(task_name))!
+	os.rename(tmp_path, path)!
+}
+
+fn ci_vflags(task_index int) string {
+	if task_index < ci_tasks.index('all_code_is_formatted_gcc') {
+		return '-cc tcc -no-retry-compilation'
+	}
+	if task_index < ci_tasks.index('all_code_is_formatted_clang') {
+		return ''
+	}
+	return '-cc clang'
+}
+
+// run_ci_tasks mirrors the active ci/linux_ci.vsh steps in
+// .github/workflows/linux_ci.yml. The generic `all` mode intentionally remains
+// exhaustive, including tasks that are currently disabled in the workflow.
+fn run_ci_tasks(reset bool) ! {
+	// Match the GitHub Actions environment that changes test behavior.
+	os.setenv('CI', 'true', true)
+	os.setenv('GITHUB_ACTIONS', 'true', true)
+	os.setenv('RUNNER_OS', 'Linux', true)
+	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
+	// Stop test/build sessions promptly while retaining Linux CI's normal worker count.
+	os.setenv('VTEST_FAIL_FAST', '1', true)
+	os.setenv('VTEST_SHOW_LONGEST_BY_RUNTIME', '3', true)
+	os.setenv('VTEST_SHOW_LONGEST_BY_COMPTIME', '3', true)
+	os.setenv('VTEST_SHOW_LONGEST_BY_TOTALTIME', '3', true)
+
+	progress_path := ci_progress_path()
+	progress_dir := '${progress_path}.d'
+	saved_index := if reset { -1 } else { ci_resume_index(progress_path)! }
+	// No valid cursor means none of its finer-grained records may be reused.
+	if saved_index < 0 && os.exists(progress_dir) {
+		os.rmdir_all(progress_dir)!
+	}
+	if !os.exists(progress_dir) {
+		os.mkdir(progress_dir, mode: 0o700)!
+	}
+	start := if saved_index < 0 { 0 } else { saved_index }
+	os.unsetenv('VTEST_RESUME_OWNER')
+	eprintln('CI progress: ${progress_path}')
+	eprintln('Use `v run ci/linux_ci.vsh ci --reset` to restart from the first task.')
+	if start > 0 {
+		eprintln('Resuming at ${ci_tasks[start]}; skipping ${start} completed CI tasks.')
+	}
+	for i in start .. ci_tasks.len {
+		task_name := ci_tasks[i]
+		// Save BEFORE execution: a failure or interruption must retry this task.
+		save_ci_progress(progress_path, task_name)!
+		os.setenv('V_CI_TASK_PROGRESS', os.join_path(progress_dir, task_name), true)
+		os.setenv('VFLAGS', ci_vflags(i), true)
+		if task_name.ends_with('_tcc') || task_name in ['build_v_with_prealloc', 'test_inline_assembly'] {
+			os.setenv('GITHUB_JOB', 'tcc-linux', true)
+		} else if task_name.ends_with('_gcc') {
+			os.setenv('GITHUB_JOB', 'gcc-linux', true)
+		} else {
+			os.setenv('GITHUB_JOB', 'clang-linux', true)
+		}
+		eprintln('CI task ${i + 1}/${ci_tasks.len}: ${task_name}')
+		exec('v run ci/linux_ci.vsh ${task_name}')
+	}
+	os.rmdir_all(progress_dir)!
+	os.rm(progress_path)!
+	eprintln('CI tasks complete; progress cleared.')
+}
+
 // Collect all tasks
 const all_tasks = {
 	'build_v_with_prealloc':                             Task{build_v_with_prealloc, 'Build V with prealloc'}
@@ -467,6 +639,18 @@ const all_tasks = {
 	'build_examples_autofree_clang':                     Task{build_examples_autofree_clang, 'Build examples with -autofree (clang)'}
 	'build_modules_clang':                               Task{build_modules_clang, 'Build modules (clang)'}
 	'test_inline_assembly':                              Task{test_inline_assembly, 'Test inline assembly'}
+}
+
+if os.args.len > 1 && os.args[1] == 'ci' {
+	if os.args.len > 3 || (os.args.len == 3 && os.args[2] != '--reset') {
+		eprintln('Usage: v run ci/linux_ci.vsh ci [--reset]')
+		exit(1)
+	}
+	run_ci_tasks(os.args.len == 3) or {
+		eprintln('Could not update CI progress: ${err.msg()}')
+		exit(1)
+	}
+	exit(0)
 }
 
 common.run(all_tasks)

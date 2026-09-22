@@ -213,6 +213,9 @@ fn ci_resume_index(path string) !int {
 	if !os.exists(path) {
 		return -1
 	}
+	if !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
 	saved := os.read_file(path)!
 	for i, task_name in ci_tasks {
 		if saved == ci_progress_contents(task_name) {
@@ -226,6 +229,9 @@ fn ci_resume_index(path string) !int {
 fn save_ci_progress(path string, task_name string) ! {
 	// Write privately, then rename on the same filesystem. An interrupted write
 	// leaves the previous checkpoint intact, never a partially written cursor.
+	if os.exists(path) && !os.is_file(path) {
+		return error('CI progress path is not a file: ${path}')
+	}
 	tmp_dir := '${path}.${os.getpid()}.tmp'
 	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {

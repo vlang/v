@@ -2617,6 +2617,19 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 }
 
 fn (mut t Transformer) lower_or_comptime_if_value(node flat.Node, target_name string, target_type string) flat.NodeId {
+	if take_then := t.comptime_type_condition_value(node.value) {
+		branch_index := if take_then { 0 } else { 1 }
+		for i in 0 .. node.children_count {
+			if i != branch_index {
+				t.ignore_comptime_for_subtree(t.a.child(&node, i))
+			}
+		}
+		if branch_index >= node.children_count {
+			return t.make_block([]flat.NodeId{})
+		}
+		return t.if_value_branch_block(t.a.child(&node, branch_index), target_name,
+			target_type)
+	}
 	mut branches := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		branches << t.if_value_branch_block(t.a.child(&node, i), target_name, target_type)
