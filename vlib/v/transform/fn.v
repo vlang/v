@@ -1027,7 +1027,8 @@ fn (mut t Transformer) normalize_generic_call_expr(id flat.NodeId, node flat.Nod
 }
 
 fn (t &Transformer) generic_call_base_is_fn_value(base_id flat.NodeId, base flat.Node) bool {
-	if base.kind != .ident || t.is_known_fn_name(base.value) || t.is_known_type_name(base.value) {
+	if base.kind != .ident || t.ident_is_direct_function_callee(base.value)
+		|| t.is_known_type_name(base.value) {
 		return false
 	}
 	for candidate in [t.raw_var_type(base.value), t.var_type(base.value), base.typ,

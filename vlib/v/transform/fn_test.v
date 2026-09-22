@@ -426,6 +426,38 @@ fn test_module_qualified_generic_callee_is_not_treated_as_value_index() {
 	assert t.generic_call_type_args_name(index_node) == 'Payload'
 }
 
+fn test_local_module_generic_call_keeps_explicit_type_args_when_normalized() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.fn_ret_types['sync.new_channel'] = types.Type(types.void_)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'sync'
+
+	callee_id := t.a.add_val(.ident, 'new_channel')
+	type_id := t.a.add_val(.ident, 'int')
+	index_children_start := t.a.children.len
+	t.a.children << callee_id
+	t.a.children << type_id
+	index_id := t.a.add_node(flat.Node{
+		kind:           .index
+		children_start: index_children_start
+		children_count: 2
+	})
+	arg_id := t.a.add_val(.int_literal, '0')
+	call_children_start := t.a.children.len
+	t.a.children << index_id
+	t.a.children << arg_id
+	call_id := t.a.add_node(flat.Node{
+		kind:           .call
+		children_start: call_children_start
+		children_count: 2
+	})
+
+	normalized_id := t.normalize_generic_call_expr(call_id, t.a.nodes[int(call_id)])
+	assert normalized_id != call_id
+	assert t.a.nodes[int(normalized_id)].value == 'int'
+}
+
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',
