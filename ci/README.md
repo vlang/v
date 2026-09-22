@@ -1,5 +1,56 @@
 # Local CI runners
 
+## Resuming the Linux CI jobs
+
+From the repository root of a built checkout on Linux, run:
+
+```sh
+./v ci/linux_ci.vsh ci
+```
+
+This runs the script tasks from `.github/workflows/linux_ci.yml` in workflow order:
+TCC, GCC, then Clang. It does not bootstrap V or run the workflow's separate shell
+canaries. The tasks include dependency installation with `sudo apt`; use the Ubuntu
+24.04 environment expected by the workflow, with all three C compilers available.
+The command explicitly selects each job's compiler (`-cc tcc -no-retry-compilation`,
+`-cc gcc`, or `-cc clang`), sets the corresponding `GITHUB_JOB`, and disables the
+compatibility compiler fallback. Existing task bodies and test exclusions are unchanged.
+
+Like the macOS runner, it saves the current task **before** executing it and sets
+`VTEST_FAIL_FAST=1` and `VJOBS=1`. Fix a failure and repeat the command to resume that
+same task. Successful test files are retained through the shared per-test resume
+mechanism described below; failed, interrupted and not-yet-run files are retried.
+Non-test commands restart at the beginning of their task.
+
+Linux progress is stored in `/tmp/v-linux-ci-<uid>-<checkout-hash>.progress`, with
+per-test records in the sibling `.progress.d` directory. It is separate from macOS
+progress and from other users and checkouts. Edits and compiler rebuilds preserve
+progress. Missing or invalid cursors, changed task plans or compiler flags, and
+`--reset` discard per-test state as well. A complete run clears both levels of progress.
+Read/write errors stop execution instead of silently losing progress.
+
+After fixing compiler/library bugs, perform a fresh validation of earlier work with:
+
+```sh
+./v ci/linux_ci.vsh ci --reset
+```
+
+A resumed pass alone does not revalidate earlier successes against shared source
+changes. Reset after switching branches or removing build artifacts, too. Do not run
+aggregate CI jobs concurrently in one checkout. Individual tasks and `all` retain
+their existing behavior and do not consume the aggregate runner's checkpoint.
+
+To test Linux task resume, compiler/job switching and workflow-plan parity without
+running the CI workloads or installing dependencies:
+
+```sh
+sh ci/linux_ci_resume_test.sh
+```
+
+The macOS integration test and shared resume unit test listed below also run on Linux
+and cover the unchanged per-file resume implementation. Set `VEXE` to an absolute
+compiler path to select the compiler used to build the integration-test runner.
+
 ## Resuming the macOS CI job
 
 From the repository root, run:
