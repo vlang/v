@@ -1336,6 +1336,17 @@ fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat
 	if !is_decode {
 		return none
 	}
+	// Pure-V `json2.decode[T](text)` can gain a synthesized default-options
+	// argument, so its first value argument must not be mistaken for the legacy
+	// `json.decode(Type, text)` type argument.
+	if !t.is_cgen_magic_json_call(expr_id, expr_node) {
+		if args := t.explicit_generic_call_args(expr_node, t.cur_module) {
+			if args.len == 1 && args[0].len > 0 {
+				return t.specialized_json_decode_result_type(args[0])
+			}
+			return none
+		}
+	}
 	// The established `json.decode(Type, text)` form keeps its type argument as
 	// the first call argument. Its synthetic generic metadata is erased to
 	// `voidptr`, so prefer the source type node before inspecting that metadata.
