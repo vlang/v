@@ -16629,11 +16629,23 @@ fn (mut g FlatGen) gen_voidptr_fn_value_arg(arg_id flat.NodeId, arg_node flat.No
 	return true
 }
 
+fn (g &FlatGen) fn_value_candidate_type(id flat.NodeId, node flat.Node) types.Type {
+	if node.typ.len > 0 {
+		explicit_type := g.tc.parse_resolution_type(node.typ)
+		// Transformed nodes retain an explicit source/storage type even when a stale
+		// checker cache entry survives for their reused id.
+		if explicit_type !is types.Unknown && explicit_type !is types.Void {
+			return explicit_type
+		}
+	}
+	return g.usable_expr_type(id)
+}
+
 fn (g &FlatGen) node_is_fn_value_for_voidptr(id flat.NodeId, node flat.Node) bool {
 	if node.typ.starts_with('fn(') || node.typ.starts_with('fn (') {
 		return true
 	}
-	if type_is_fn_value(g.usable_expr_type(id)) {
+	if type_is_fn_value(g.fn_value_candidate_type(id, node)) {
 		return true
 	}
 	if node.kind == .ident {

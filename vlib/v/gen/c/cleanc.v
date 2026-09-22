@@ -15517,7 +15517,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
-			fn_value_type := cgen_unalias_type(g.usable_expr_type(child_id))
+			fn_value_type := cgen_unalias_type(g.fn_value_candidate_type(child_id, child))
 			if node.op == .amp && fn_value_type is types.FnType {
 				// A function value is already a C pointer, so `&` on one is a no-op
 				// wherever the context wants a callable: `Holder{ f: &local }` has to
