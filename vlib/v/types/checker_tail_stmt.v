@@ -1605,10 +1605,14 @@ fn (tc &TypeChecker) match_trailing_or_parent(id flat.NodeId) ?flat.NodeId {
 }
 
 // match_condition_is_expression reports whether the match condition `id` is an
-// expression, such as a comparison, a call or a literal. A name can stand for a
-// type, and ranges, enum shorthands and `none` have checks of their own.
+// expression, such as a comparison, a call or a literal. A name, qualified or
+// not, can stand for a type, and ranges, enum shorthands and `none` have checks
+// of their own. A field of an expression, as in `f(a < b).x`, is an expression.
 fn (tc &TypeChecker) match_condition_is_expression(id flat.NodeId) bool {
-	node := tc.a.node(id)
+	mut node := tc.a.node(id)
+	for node.kind == .selector && node.children_count > 0 {
+		node = tc.a.child_node(node, 0)
+	}
 	if node.kind in [.ident, .selector, .range, .enum_val, .none_expr] {
 		return false
 	}
