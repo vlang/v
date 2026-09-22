@@ -274,3 +274,31 @@ fn main() {
 	assert typedef_pos > size_pos, generated
 	assert holder_pos > typedef_pos, generated
 }
+
+fn test_import_alias_const_fixed_array_length_is_folded() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('import_alias_const', 'module fixture
+
+pub const max_name_size = u32(256)
+', 'module main
+
+import fixture as fx
+
+fn name_size(name [fx.max_name_size]char) int {
+	return name.len
+}
+
+fn main() {
+	println(name_size([fx.max_name_size]char{}))
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '256', run.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('Array_fixed_char_256[256]'), generated
+	assert !generated.contains('Array_fixed_char_fx__max_name_size'), generated
+}

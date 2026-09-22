@@ -9775,6 +9775,27 @@ pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	return tc.const_int_value_in_module(name, tc.cur_module, seen)
 }
 
+fn (tc &TypeChecker) const_import_alias_module(alias string) ?string {
+	// Code generation can evaluate a stored type after leaving its source file.
+	// Recover the import only when the alias has one meaning across the program.
+	mut found := ''
+	for _, info in tc.file_imports_by_file {
+		if isnil(info) {
+			continue
+		}
+		if module_name := info.imports[alias] {
+			if found.len > 0 && found != module_name {
+				return none
+			}
+			found = module_name
+		}
+	}
+	if found.len > 0 {
+		return found
+	}
+	return none
+}
+
 // const_int_value_in_module supports const int value handling for a specific module.
 pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name string, seen []string) ?int {
 	if name in seen {
@@ -9782,6 +9803,12 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 	}
 	mut candidates := []string{}
 	candidates << name
+	if name.contains('.') {
+		alias := name.all_before_last('.')
+		if resolved_module := tc.const_import_alias_module(alias) {
+			candidates << '${resolved_module}.${name.all_after_last('.')}'
+		}
+	}
 	if module_name != '' && module_name != 'main' && module_name != 'builtin'
 		&& !name.contains('.') {
 		candidates << '${module_name}.${name}'
