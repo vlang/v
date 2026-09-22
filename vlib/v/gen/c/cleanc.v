@@ -15030,6 +15030,12 @@ fn (mut g FlatGen) fixed_array_elem_name_part(elem types.Type) string {
 	if elem is types.Pointer && elem.base_type is types.Void {
 		return 'voidptr'
 	}
+	// Function pointer signatures use TypeChecker.c_type(), which names enums
+	// `int`. The fixed-array typedef must use that same name even when the
+	// element storage is rendered as i32 by value_c_type().
+	if elem is types.Enum {
+		return g.tc.c_type(elem)
+	}
 	if elem is types.FnType {
 		return g.tc.c_type(elem)
 	}
