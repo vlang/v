@@ -113,6 +113,10 @@ fn main() {
 	defer {
 		os.chdir(os.wd_at_startup) or {}
 	}
+	// This smoke test deliberately runs the same file through several `v test`
+	// entry points and needs to observe each invocation, not a resumed success.
+	os.unsetenv('VTEST_RESUME_DIR')
+	os.unsetenv('VTEST_RESUME_OWNER')
 	unbuffer_stdout()
 	spawn fn () {
 		time.sleep(120 * time.second)
