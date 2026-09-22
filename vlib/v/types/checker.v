@@ -6356,7 +6356,8 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 		}
 		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start)
 			|| deprecated_byte_position_key(file_id, start) in identifier_offsets
-			|| tc.deprecated_byte_is_value_ident(file_id, start) {
+			|| tc.deprecated_byte_is_value_ident(file_id, start)
+			|| deprecated_byte_is_type_comparison(source, start) {
 			continue
 		}
 		mut end := i
@@ -6371,6 +6372,18 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 		}
 		tc.errors << tc.make_type_error_at(.unknown_type, 'byte is deprecated, use u8 instead', anchor, token.new_span(file_id, start, end))
 	}
+}
+
+fn deprecated_byte_is_type_comparison(source string, offset int) bool {
+	mut end := offset
+	for end > 0 && source[end - 1] in [` `, `\t`, `\r`, `\n`] {
+		end--
+	}
+	mut start := end
+	for start > 0 && (source[start - 1].is_alnum() || source[start - 1] == `_`) {
+		start--
+	}
+	return source[start..end] == 'is'
 }
 
 fn (tc &TypeChecker) deprecated_byte_is_value_ident(file_id int, offset int) bool {
