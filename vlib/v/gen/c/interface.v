@@ -2288,7 +2288,8 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 		return
 	}
 	g.interface_boxed_types_done = true
-	for node in g.a.nodes {
+	for node_idx in g.type_metadata_nodes() {
+		node := g.a.nodes[node_idx]
 		if node.kind != .struct_init || node.children_count == 0 {
 			continue
 		}

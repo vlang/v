@@ -373,13 +373,33 @@ fn test_normalize_type_in_module_cache_tracks_current_file() {
 	mut t := Transformer{
 		tc:                &tc
 		cur_module:        'shared'
-		module_type_cache: &AliasCache{}
+		module_type_cache: &ModuleTypeCache{}
 	}
 
 	t.cur_file = 'first.v'
 	assert t.normalize_type_in_module('dep.Type'.clone(), 'shared') == 'alpha.Type'
 	t.cur_file = 'second.v'
 	assert t.normalize_type_in_module('dep.Type'.clone(), 'shared') == 'beta.Type'
+}
+
+fn test_normalize_type_in_module_cache_preserves_alternating_owners() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['alpha.Item'] = []
+	tc.structs['beta.Item'] = []
+	mut t := Transformer{
+		tc:                &tc
+		cur_module:        'main'
+		cur_file:          'main.v'
+		module_type_cache: &ModuleTypeCache{}
+	}
+	for _ in 0 .. 3 {
+		assert t.normalize_type_in_module('Item'.clone(), 'alpha') == 'alpha.Item'
+		assert t.normalize_type_in_module('Item'.clone(), 'beta') == 'beta.Item'
+		assert t.normalize_type_in_module('[]&Item', 'alpha') == '[]&alpha.Item'
+		assert t.normalize_type_in_module('[]&Item', 'beta') == '[]&beta.Item'
+		assert t.normalize_type_in_module('Item', 'main') == 'Item'
+	}
 }
 
 fn test_module_qualified_generic_callee_is_not_treated_as_value_index() {

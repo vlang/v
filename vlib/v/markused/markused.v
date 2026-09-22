@@ -2269,7 +2269,19 @@ pub fn is_trivial_literal_output_program(a &flat.FlatAst, diagnostic_files map[s
 		return false
 	}
 	mut stack := []flat.NodeId{}
-	for node in a.nodes {
+	file_ids := if a.file_node_ids.len > 0 && !a.file_index_incomplete {
+		a.file_node_ids
+	} else {
+		mut ids := []i32{}
+		for i, node in a.nodes {
+			if node.kind == .file {
+				ids << i
+			}
+		}
+		ids
+	}
+	for id in file_ids {
+		node := a.nodes[id]
 		if node.kind != .file || node.value !in diagnostic_files {
 			continue
 		}

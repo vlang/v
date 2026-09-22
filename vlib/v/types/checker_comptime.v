@@ -2384,8 +2384,12 @@ fn (mut tc TypeChecker) check_labelled_loop_controls() {
 		return
 	}
 	mut diagnosed := map[string]bool{}
-	for index, node in tc.a.nodes {
-		if index < tc.a.user_code_start || node.kind !in [.break_stmt, .continue_stmt]
+	mut controls := tc.preflight_nodes(.break_stmt)
+	controls << tc.preflight_nodes(.continue_stmt)
+	controls.sort()
+	for index in controls {
+		node := tc.a.nodes[index]
+		if index < tc.a.user_code_start
 			|| node.value.len == 0 || !tc.node_is_in_selected_input_file(flat.NodeId(index))
 			|| tc.valid_labelled_loop_control(flat.NodeId(index), node.value) {
 			continue
@@ -9980,6 +9984,9 @@ fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 }
 
 fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.NodeId {
+	if idx < 0 || idx >= tc.a.nodes.len {
+		return flat.empty_node
+	}
 	if idx >= 0 && idx < tc.direct_parent_ids.len {
 		parent_id := tc.direct_parent_ids[idx]
 		if parent_id != flat.empty_node {
@@ -10009,9 +10016,25 @@ fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.No
 		// parent still references this shared generated node. Fall through to
 		// the arena scan when the indexed edge is stale.
 	}
+	if !isnil(tc.type_cache) {
+		if parent_id := tc.type_cache.generated_parent_entries[idx] {
+			if tc.valid_node_id(parent_id) {
+				parent := tc.a.node(parent_id)
+				for i in 0 .. parent.children_count {
+					if tc.a.child(parent, i) == id {
+						return parent_id
+					}
+				}
+			}
+		}
+	}
 	for parent_idx, candidate in tc.a.nodes {
 		for i in 0 .. candidate.children_count {
 			if tc.a.child(&candidate, i) == id {
+				if !isnil(tc.type_cache) {
+					mut cache := tc.type_cache
+					cache.generated_parent_entries[idx] = flat.NodeId(parent_idx)
+				}
 				return flat.NodeId(parent_idx)
 			}
 		}

@@ -61,11 +61,14 @@ struct CollectGenInfoScanArgs {
 	start int
 	end   int
 mut:
-	counts         CollectGenInfoScanCounts
-	top_level_pos  int
-	string_pos     int
-	top_levels_ptr voidptr
-	strings_ptr    voidptr
+	counts            CollectGenInfoScanCounts
+	top_level_pos     int
+	string_pos        int
+	type_metadata_pos int
+	top_levels_ptr    voidptr
+	strings_ptr       voidptr
+	type_metadata_ptr voidptr
+	type_text_cache   &TypeMetadataTextCache = unsafe { nil }
 }
 
 struct FnSignatureRegistrationArgs {
@@ -145,6 +148,9 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 	incremental := g.incremental_fn_names.len > 0
 	for node_idx in a.start .. a.end {
 		node := g.a.nodes[node_idx]
+		if is_type_metadata_node(&node, mut a.type_text_cache) {
+			a.type_metadata_pos++
+		}
 		if node.kind == .string_literal && !node.is_embed_payload() {
 			a.string_pos++
 		}
@@ -188,10 +194,18 @@ fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
 	g := unsafe { &FlatGen(a.g) }
 	mut top_levels := unsafe { &[]i32(a.top_levels_ptr) }
 	mut literals := unsafe { &[]string(a.strings_ptr) }
+	mut type_metadata := unsafe { &[]i32(a.type_metadata_ptr) }
 	mut top_level_pos := a.top_level_pos
 	mut string_pos := a.string_pos
+	mut type_metadata_pos := a.type_metadata_pos
 	for node_idx in a.start .. a.end {
 		node := g.a.nodes[node_idx]
+		if is_type_metadata_node(&node, mut a.type_text_cache) {
+			unsafe {
+				type_metadata[type_metadata_pos] = node_idx
+			}
+			type_metadata_pos++
+		}
 		if node.kind == .string_literal && !node.is_embed_payload() {
 			unsafe {
 				literals[string_pos] = node.value
@@ -637,9 +651,10 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	mut tasks := []workers.Task{cap: n_jobs}
 	for job in 0 .. n_jobs {
 		args << CollectGenInfoScanArgs{
-			g:     voidptr(g)
-			start: g.a.nodes.len * job / n_jobs
-			end:   g.a.nodes.len * (job + 1) / n_jobs
+			g:               voidptr(g)
+			start:           g.a.nodes.len * job / n_jobs
+			end:             g.a.nodes.len * (job + 1) / n_jobs
+			type_text_cache: &TypeMetadataTextCache{}
 		}
 	}
 	for job in 0 .. n_jobs {
@@ -653,6 +668,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 	mut counts := CollectGenInfoScanCounts{}
 	mut top_level_count := 0
 	mut string_count := 0
+	mut type_metadata_count := 0
 	for mut arg in args {
 		counts.fn_count += arg.counts.fn_count
 		counts.struct_count += arg.counts.struct_count
@@ -663,16 +679,21 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		counts.import_count += arg.counts.import_count
 		counted_top_levels := arg.top_level_pos
 		counted_strings := arg.string_pos
+		counted_type_metadata := arg.type_metadata_pos
 		arg.top_level_pos = top_level_count
 		arg.string_pos = string_count
+		arg.type_metadata_pos = type_metadata_count
 		top_level_count += counted_top_levels
 		string_count += counted_strings
+		type_metadata_count += counted_type_metadata
 	}
 	g.top_level_node_ids = []i32{len: top_level_count}
 	g.ast_string_literals = []string{len: string_count}
+	g.type_metadata_node_ids = []i32{len: type_metadata_count}
 	for mut arg in args {
 		arg.top_levels_ptr = unsafe { voidptr(&g.top_level_node_ids) }
 		arg.strings_ptr = unsafe { voidptr(&g.ast_string_literals) }
+		arg.type_metadata_ptr = unsafe { voidptr(&g.type_metadata_node_ids) }
 	}
 	tasks.clear()
 	for job in 0 .. n_jobs {
@@ -683,6 +704,7 @@ fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCou
 		}
 	}
 	g.a.worker_pool.run(tasks)
+	g.type_metadata_nodes_ready = true
 	return counts
 }
 
@@ -2602,6 +2624,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		used_fn_names:                      g.used_fn_names
 		fn_gen_items:                       g.fn_gen_items
 		top_level_node_ids:                 g.top_level_node_ids
+		type_metadata_node_ids:             g.type_metadata_node_ids
+		type_metadata_nodes_ready:          g.type_metadata_nodes_ready
 		test_files:                         if result_only {
 			g.test_files
 		} else {
@@ -2632,6 +2656,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 			g.str_lit_ids.clone()
 		}
 		str_lits_shared:                    g.scope_parallel_workers && (!result_only || g.str_lits_shared)
+		str_lits_base_len:                  g.str_lits.len
 		global_types:                       g.global_types
 		global_raw_type_texts:              g.global_raw_type_texts
 		enum_vals:                          g.enum_vals
@@ -2992,7 +3017,9 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 
 fn (mut g FlatGen) publish_worker_string_literals(w &FlatGen) map[int]int {
 	mut remap := map[int]int{}
-	mut common_len := 0
+	// Both tables append to the snapshot captured when this worker was forked.
+	// Only literals added since then can have conflicting ids.
+	mut common_len := w.str_lits_base_len
 	for common_len < g.str_lits.len && common_len < w.str_lits.len
 		&& g.str_lits[common_len] == w.str_lits[common_len] {
 		common_len++
