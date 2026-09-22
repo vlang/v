@@ -587,7 +587,8 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	if op == .assign && clean_rhs.name() == 'int' && clean_expected.name() == 'f64' {
 		return true
 	}
-	if op == .assign && clean_expected.is_float() {
+	if op == .assign && clean_expected.is_float()
+		&& tc.assignment_integer_constant_operand(rhs_id) != none {
 		if _ := tc.implicit_integer_constant_value(rhs_id, rhs_type) {
 			return true
 		}
@@ -606,6 +607,25 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	return tc.expr_compatible(rhs_id, rhs_type, expected_type)
 		|| tc.pointer_value_compatible(rhs_type, expected_type)
 		|| tc.pointer_arithmetic_assign_compatible(op, rhs_type, expected_type)
+}
+
+// Signs and parentheses preserve named integer constant assignment compatibility.
+fn (tc &TypeChecker) assignment_integer_constant_operand(id flat.NodeId) ?flat.NodeId {
+	mut current := id
+	for tc.valid_node_id(current) {
+		if tc.expr_root_constant_name(current) != none {
+			return current
+		}
+		node := tc.a.node(current)
+		if node.children_count != 1 {
+			return none
+		}
+		if node.kind != .paren && (node.kind != .prefix || node.op !in [.plus, .minus]) {
+			return none
+		}
+		current = tc.a.child(node, 0)
+	}
+	return none
 }
 
 // Signs and parentheses preserve literal assignment compatibility.
