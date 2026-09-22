@@ -12355,7 +12355,16 @@ fn (mut t Transformer) subst_node_value(node flat.Node, args []string) string {
 			return t.resolve_substituted_type_text(t.subst_type(node.value, args))
 		}
 		.array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr, .offsetof_expr {
-			return t.resolve_substituted_type_text(t.subst_type(node.value, args))
+			substituted := t.subst_type(node.value, args)
+			if node.kind == .cast_expr && substituted != node.value
+				&& t.generic_type_text_contains_alias(substituted, t.cur_module) {
+				// Qualify source names before substitution, keeping the alias intact so
+				// caller types can be locked before alias expansion changes their scope.
+				source := t.qualify_generic_alias_cast_type_text(node.value)
+				return t.lock_colliding_main_substitution_type_text(source, t.subst_type(source,
+					args), t.cur_module, t.active_generic_params)
+			}
+			return t.resolve_substituted_type_text(substituted)
 		}
 		.sizeof_expr, .typeof_expr {
 			substituted := t.subst_type(node.value, args)
@@ -12409,6 +12418,72 @@ fn (t &Transformer) subst_sql_expr_token(token string, args []string) string {
 		}
 	}
 	return token
+}
+
+fn (t &Transformer) qualify_generic_alias_cast_type_text(typ string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 || clean in t.active_generic_params || isnil(t.tc) {
+		return clean
+	}
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&', 'chan ', 'thread '] {
+		if clean.starts_with(prefix) {
+			return prefix + t.qualify_generic_alias_cast_type_text(clean[prefix.len..])
+		}
+	}
+	if clean.starts_with('map[') {
+		end := generic_matching_bracket(clean, 3)
+		if end < clean.len - 1 {
+			key := t.qualify_generic_alias_cast_type_text(clean[4..end])
+			value := t.qualify_generic_alias_cast_type_text(clean[end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		end := generic_matching_bracket(clean, 0)
+		if end > 1 && end < clean.len - 1 {
+			return clean[..end + 1] + t.qualify_generic_alias_cast_type_text(clean[end + 1..])
+		}
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if params, ret := fn_type_text_parts(clean) {
+			mut qualified_params := []string{cap: params.len}
+			for param in params {
+				qualified_params << t.qualify_generic_alias_cast_type_text(generic_fn_type_param_mode_payload(param))
+			}
+			qualified_ret := t.qualify_generic_alias_cast_type_text(ret)
+			return if qualified_ret.len > 0 {
+				'fn (${qualified_params.join(', ')}) ${qualified_ret}'
+			} else {
+				'fn (${qualified_params.join(', ')})'
+			}
+		}
+	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		mut qualified_parts := []string{}
+		for part in split_generic_args(clean[1..clean.len - 1]) {
+			qualified_parts << t.qualify_generic_alias_cast_type_text(part)
+		}
+		return '(' + qualified_parts.join(', ') + ')'
+	}
+	base, args, is_app := generic_app_parts(clean)
+	if is_app {
+		qualified_base := t.qualify_generic_alias_cast_type_text(base)
+		mut qualified_args := []string{cap: args.len}
+		for arg in args {
+			qualified_args << t.qualify_generic_alias_cast_type_text(arg)
+		}
+		return '${qualified_base}[${qualified_args.join(', ')}]'
+	}
+	if imported := t.resolve_imported_type_name(clean) {
+		return imported
+	}
+	if selective := t.selective_signature_type_symbol(t.cur_file, clean) {
+		return selective
+	}
+	if !clean.contains('.') && t.generic_arg_module_owns_type(clean, t.cur_module) {
+		return '${t.cur_module}.${clean}'
+	}
+	return clean
 }
 
 fn (t &Transformer) resolve_substituted_type_text(typ string) string {
