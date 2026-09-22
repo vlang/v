@@ -16384,6 +16384,9 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 				}
 				return unsigned_shift_result_type(lt)
 			}
+			if node.op in [.left_shift, .right_shift] {
+				return lt_raw
+			}
 			if node.op == .plus {
 				if lt is String && optional_payload_is_string(rt) {
 					return rt_raw
