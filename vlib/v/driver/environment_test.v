@@ -45,6 +45,7 @@ fn test_self_build_current_hash_is_empty_without_git_metadata() {
 fn test_v3_parallel_c_job_count() {
 	// A developer may export V3_PARALLEL_CC_JOBS globally; the default-cap
 	// assertions below must not see it.
+	assert v3_parallel_cc_max_jobs == 8
 	name := 'V3_PARALLEL_CC_JOBS'
 	old_value := os.getenv(name)
 	was_set := name in os.environ()
