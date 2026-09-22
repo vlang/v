@@ -463,6 +463,32 @@ fn main() {
 	assert errors.len == 0, errors.str()
 }
 
+fn test_builtin_wait_on_thread_arrays_is_allowed() {
+	// The results of `.wait()` are used as values of their element type, so a
+	// wrong result type would be reported too.
+	errors := check_diagnostic_project('thread_array_wait', {
+		'main.v': 'module main
+
+fn compute(n int) int {
+	return n * 2
+}
+
+fn tick() {}
+
+fn main() {
+	mut threads := []thread int{}
+	threads << spawn compute(1)
+	results := threads.wait()
+	println(results[0] + 1)
+	mut ticks := []thread{}
+	ticks << spawn tick()
+	ticks.wait()
+}
+'
+	}, ['main.v'])
+	assert errors.len == 0, errors.str()
+}
+
 fn test_unknown_enum_values_are_reported() {
 	errors := check_diagnostic_project('unknown_enum_values', {
 		'main.v': 'module main
