@@ -3236,7 +3236,7 @@ fn (mut g FlatGen) collect_shared_type_names() {
 
 fn (mut g FlatGen) collect_local_shared_type_names() {
 	mut cur_module := 'main'
-	for i in 0 .. g.a.nodes.len {
+	for i in g.type_metadata_nodes() {
 		node := g.a.nodes[i]
 		if node.kind == .module_decl {
 			cur_module = if node.value.len == 0 { 'main' } else { node.value }
@@ -5555,7 +5555,8 @@ fn map_integer_callback_size_suffix(key_type types.Type, c_key string, pointer_b
 }
 
 fn (mut g FlatGen) precompute_fixed_array_map_key_types() {
-	for node in g.a.nodes {
+	for node_idx in g.type_metadata_nodes() {
+		node := g.a.nodes[node_idx]
 		if node.kind != .call || node.children_count < 3 {
 			continue
 		}
@@ -6260,7 +6261,8 @@ fn (mut g FlatGen) by_value_field_dependency_c_type(typ types.Type) string {
 
 fn (mut g FlatGen) flattened_map_type_alias_decls() {
 	mut names := map[string]bool{}
-	for node in g.a.nodes {
+	for node_idx in g.type_metadata_nodes() {
+		node := g.a.nodes[node_idx]
 		if node.kind in [.fn_decl, .c_fn_decl, .fn_literal, .param] {
 			g.collect_flattened_map_type_alias(node.typ, mut names)
 		}

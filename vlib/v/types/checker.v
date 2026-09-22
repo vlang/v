@@ -1000,6 +1000,7 @@ mut:
 	// Immutable node -> generic parameter index shared by checker workers.
 	enclosing_generic_params_by_node map[int][]string
 	enclosing_generic_param_masks    []u32
+	first_type_declaration_ids       map[string]int
 }
 
 fn (tc &TypeChecker) timing_profile(message string) {
@@ -1346,6 +1347,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		has_goto_nodes:                        tc.has_goto_nodes
 		declaration_attributes:                tc.declaration_attributes
 		type_declaration_ids:                  tc.type_declaration_ids
+		first_type_declaration_ids:            tc.first_type_declaration_ids
 		strings_builder_bindings:              tc.strings_builder_bindings
 		static_associated_fn_keys:             tc.static_associated_fn_keys
 		static_associated_method_names:        tc.static_associated_method_names
@@ -2022,12 +2024,25 @@ pub fn (mut tc TypeChecker) refresh_rewritten_parent_index(a &flat.FlatAst) {
 
 fn (mut tc TypeChecker) build_type_declaration_index(a &flat.FlatAst) {
 	tc.type_declaration_ids = map[string][]int{}
+	tc.first_type_declaration_ids = map[string]int{}
 	mut module_name := ''
+	mut conflict_module_name := ''
 	for index in tc.top_level_idx {
 		node := a.nodes[index]
+		if node.kind == .file {
+			conflict_module_name = ''
+			continue
+		}
 		if node.kind == .module_decl {
 			module_name = node.value
+			conflict_module_name = node.value
 			continue
+		}
+		if node.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl] {
+			qualified := qualify_decl_name_in_module(node.value, conflict_module_name)
+			if qualified !in tc.first_type_declaration_ids {
+				tc.first_type_declaration_ids[qualified] = index
+			}
 		}
 		if node.kind !in [.struct_decl, .type_decl] {
 			continue
@@ -15376,6 +15391,10 @@ fn (tc &TypeChecker) current_file_module_has_attribute(name string) bool {
 
 fn (tc &TypeChecker) type_declaration_before(node_id flat.NodeId, name string) ?flat.NodeId {
 	current_name := qualify_decl_name_in_module(name, tc.cur_module)
+	if tc.first_type_declaration_ids.len > 0 {
+		index := tc.first_type_declaration_ids[current_name] or { return none }
+		return if index < int(node_id) { flat.NodeId(index) } else { none }
+	}
 	mut module_name := ''
 	for idx in tc.top_level_idx {
 		if idx >= int(node_id) {

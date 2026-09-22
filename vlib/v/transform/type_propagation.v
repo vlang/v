@@ -1558,24 +1558,39 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 		return t.normalize_type_in_module_uncached(typ, mod)
 	}
 	mut cache := t.module_type_cache
-	if !same_transform_text(cache.module, mod) || !same_transform_text(cache.file, t.cur_file) {
-		cache.module = mod
+	if !same_transform_text(cache.file, t.cur_file)
+		|| !same_transform_text(cache.source_module, t.cur_module) {
 		cache.file = t.cur_file
+		cache.source_module = t.cur_module
 		cache.entries.clear()
-		cache.clear_recent()
+		cache.generation++
 	}
-	recent_slot := alias_cache_slot(typ)
-	if cache.recent_generations[recent_slot] == cache.recent_generation
+	recent_slot := (alias_cache_slot(typ) ^ (alias_cache_slot(mod) << 1)) & 1023
+	if cache.recent_generations[recent_slot] == cache.generation
+		&& same_transform_text(cache.recent_modules[recent_slot], mod)
 		&& same_transform_text(cache.recent_types[recent_slot], typ) {
 		return cache.recent_results[recent_slot]
 	}
-	if cached := cache.entries[typ] {
-		cache.put_recent(typ, cached)
-		return cached
+	if !same_transform_text(cache.module, mod) {
+		cache.module = mod
+		cache.entries.clear()
 	}
-	result := t.normalize_type_in_module_uncached(typ, mod)
-	cache.entries[typ] = result
-	cache.put_recent(typ, result)
+	mut result := ''
+	if cached := cache.entries[typ] {
+		result = cached
+	} else {
+		result = t.normalize_type_in_module_uncached(typ, mod)
+		// Expanding an alias may recursively normalize in another owner module.
+		if !same_transform_text(cache.module, mod) {
+			cache.module = mod
+			cache.entries.clear()
+		}
+		cache.entries[typ] = result
+	}
+	cache.recent_types[recent_slot] = typ
+	cache.recent_modules[recent_slot] = mod
+	cache.recent_results[recent_slot] = result
+	cache.recent_generations[recent_slot] = cache.generation
 	return result
 }
 

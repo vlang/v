@@ -254,7 +254,7 @@ mut:
 	autolock_depth                int
 	alias_cache                   &AliasCache              = unsafe { nil }
 	sum_cache                     &AliasCache              = unsafe { nil }
-	module_type_cache             &AliasCache              = unsafe { nil }
+	module_type_cache             &ModuleTypeCache         = unsafe { nil }
 	struct_guess_cache            &AliasCache              = unsafe { nil }
 	generic_unresolved_cache      &GenericUnresolvedCache  = unsafe { nil }
 	generic_spec_decode_cache     &LookupCache             = unsafe { nil }
@@ -543,6 +543,22 @@ mut:
 	recent_results     [1024]string
 	recent_generations [1024]u32
 	canonical_types    [1024]string
+	entries            map[string]string
+}
+
+// Field lookups alternate between owner modules within one source file. Keep
+// recent results keyed by both type and module instead of discarding them on
+// every owner change. The source context still invalidates the whole cache.
+struct ModuleTypeCache {
+mut:
+	module             string
+	file               string
+	source_module      string
+	generation         u32 = 1
+	recent_types       [1024]string
+	recent_modules     [1024]string
+	recent_results     [1024]string
+	recent_generations [1024]u32
 	entries            map[string]string
 }
 
@@ -1885,7 +1901,7 @@ fn (mut t Transformer) prepare() {
 	// entries with results computed against a partial view.
 	t.alias_cache = &AliasCache{}
 	t.sum_cache = &AliasCache{}
-	t.module_type_cache = &AliasCache{}
+	t.module_type_cache = &ModuleTypeCache{}
 	t.struct_guess_cache = &AliasCache{}
 	t.var_type_cache = &VarTypeIndexCache{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -3906,7 +3922,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	}
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
-	w.module_type_cache = &AliasCache{}
+	w.module_type_cache = &ModuleTypeCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -4046,7 +4062,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	mut w := t.fork_program_view(t.a, wtc, map[string]bool{}, false)
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
-	w.module_type_cache = &AliasCache{}
+	w.module_type_cache = &ModuleTypeCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}

@@ -668,10 +668,38 @@ mut:
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
-	prealloc               bool
-	scope_parallel_workers bool
-	worker_scope           voidptr
-	parallel_worker_scopes []voidptr
+	prealloc                  bool
+	scope_parallel_workers    bool
+	worker_scope              voidptr
+	parallel_worker_scopes    []voidptr
+	type_metadata_node_ids    []i32
+	type_metadata_nodes_ready bool
+}
+
+struct TypeMetadataTextCache {
+mut:
+	ptrs   [4096]voidptr
+	lens   [4096]int
+	states [4096]u8
+}
+
+// AST text is immutable during collection. Remember both positive and negative
+// classifications so repeated type spellings do not need another byte scan.
+@[direct_array_access; inline]
+fn (mut cache TypeMetadataTextCache) may_need_array_typedef(text string) bool {
+	if text.len < 2 {
+		return false
+	}
+	ptr := voidptr(text.str)
+	slot := int((u64(ptr) >> 4 ^ u64(text.len)) & 4095)
+	if cache.ptrs[slot] == ptr && cache.lens[slot] == text.len && cache.states[slot] != 0 {
+		return cache.states[slot] == 2
+	}
+	needed := fixed_array_type_text_may_need_typedef(text)
+	cache.ptrs[slot] = ptr
+	cache.lens[slot] = text.len
+	cache.states[slot] = if needed { u8(2) } else { u8(1) }
+	return needed
 }
 
 struct FixedArrayTypedefInfo {
@@ -1343,6 +1371,38 @@ fn (g &FlatGen) top_level_nodes() []i32 {
 	for node_idx, node in g.a.nodes {
 		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
 			.global_decl, .const_decl, .enum_decl, .interface_decl, .import_decl, .directive] {
+			ids << node_idx
+		}
+	}
+	return ids
+}
+
+// Type support passes need declarations, calls, initializers and array types.
+// Keep file/module markers in AST order for the passes with lexical context.
+@[inline]
+fn is_type_metadata_node(node &flat.Node, mut cache TypeMetadataTextCache) bool {
+	if node.kind in [.file, .module_decl, .global_decl, .fn_decl, .c_fn_decl, .fn_literal, .param,
+		.call, .struct_init] {
+		return true
+	}
+	if node.kind == .decl_assign && decl_assign_is_shared_marker(node.value) {
+		return true
+	}
+	if cache.may_need_array_typedef(node.typ) {
+		return true
+	}
+	return node.kind in [.array_init, .array_literal, .cast_expr, .sizeof_expr, .typeof_expr]
+		&& cache.may_need_array_typedef(node.value)
+}
+
+fn (g &FlatGen) type_metadata_nodes() []i32 {
+	if g.type_metadata_nodes_ready {
+		return g.type_metadata_node_ids
+	}
+	mut ids := []i32{}
+	mut cache := &TypeMetadataTextCache{}
+	for node_idx, node in g.a.nodes {
+		if is_type_metadata_node(&node, mut cache) {
 			ids << node_idx
 		}
 	}
@@ -3220,6 +3280,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.used_fn_names = []string{}
 	g.fn_gen_items = []FlatFnGenItem{}
 	g.top_level_node_ids = []i32{}
+	g.type_metadata_node_ids = []i32{}
+	g.type_metadata_nodes_ready = false
 	g.ast_string_literals = []string{}
 	g.ast_string_literals_ready = false
 	g.direct_array_access = false
@@ -4899,10 +4961,15 @@ fn (mut g FlatGen) add_macos_shared_export_linker_flags() {
 @[direct_array_access]
 fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 	mut counts := CollectGenInfoScanCounts{}
+	mut cache := &TypeMetadataTextCache{}
 	incremental := g.incremental_fn_names.len > 0
 	g.ast_string_literals = []string{cap: 4096}
 	g.top_level_node_ids = []i32{cap: 4096}
+	g.type_metadata_node_ids = []i32{cap: 4096}
 	for node_idx, node in g.a.nodes {
+		if is_type_metadata_node(&node, mut cache) {
+			g.type_metadata_node_ids << node_idx
+		}
 		if node.kind == .string_literal && !node.is_embed_payload() {
 			g.ast_string_literals << node.value
 		}
@@ -4937,6 +5004,7 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 			else {}
 		}
 	}
+	g.type_metadata_nodes_ready = true
 	return counts
 }
 
@@ -21050,7 +21118,8 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 	}
 	mut cur_file := old_file
 	mut cur_module := old_module
-	for node in g.a.nodes {
+	for node_idx in g.type_metadata_nodes() {
+		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value

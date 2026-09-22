@@ -6,6 +6,42 @@ import v.flat
 import v.parser
 import v.pref
 
+fn test_first_type_declaration_index_preserves_conflict_context_and_order() {
+	mut a := flat.FlatAst.new()
+	a.nodes = [
+		flat.Node{ kind: .file, value: 'dep.v' },
+		flat.Node{ kind: .module_decl, value: 'dep' },
+		flat.Node{ kind: .interface_decl, value: 'Item' },
+		flat.Node{ kind: .struct_decl, value: 'dep.Item' },
+		flat.Node{ kind: .file, value: 'main.v' },
+		flat.Node{ kind: .enum_decl, value: 'Item' },
+		flat.Node{ kind: .type_decl, value: 'Item' },
+		flat.Node{ kind: .module_decl, value: 'builtin' },
+		flat.Node{ kind: .struct_decl, value: 'Item' },
+	]
+	mut tc := TypeChecker.new(&a)
+	for i in 0 .. a.nodes.len {
+		tc.top_level_idx << i
+	}
+	for indexed in [false, true] {
+		if indexed {
+			tc.build_type_declaration_index(&a)
+		}
+		tc.cur_module = 'dep'
+		assert tc.type_declaration_before(2, 'Item') == none
+		assert tc.type_declaration_before(3, 'dep.Item')? == flat.NodeId(2)
+		tc.cur_module = 'main'
+		assert tc.type_declaration_before(5, 'Item') == none
+		assert tc.type_declaration_before(6, 'Item')? == flat.NodeId(5)
+		tc.cur_module = 'builtin'
+		assert tc.type_declaration_before(8, 'Item')? == flat.NodeId(5)
+		assert tc.type_declaration_before(8, 'Missing') == none
+	}
+	worker := tc.fork_for_parallel_check()
+	assert worker.type_declaration_before(8, 'Item')? == flat.NodeId(5)
+	worker.free_parallel_check_worker_cache()
+}
+
 fn test_static_method_name_index_preserves_aliases_and_late_signatures() {
 	path := os.join_path(os.vtmp_dir(), 'v3_static_method_index_${os.getpid()}.v')
 	os.write_file(path, 'module main\nstruct Widget {}\ntype Alias = Widget\nfn Widget.make() Widget { return Widget{} }\n') or { panic(err) }
