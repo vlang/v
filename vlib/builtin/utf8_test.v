@@ -124,58 +124,58 @@ fn test_utf8_str_visible_length() {
 
 fn test_utf8_to_utf32_cases() {
 	test_case1 := 'A'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case1.data), test_case1.len) == rune(`A`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case1.data) }, test_case1.len) == rune(`A`)
 
 	test_case2 := 'é'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case2.data), test_case2.len) == rune(`é`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case2.data) }, test_case2.len) == rune(`é`)
 
 	test_case3 := '€'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case3.data), test_case3.len) == rune(`€`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case3.data) }, test_case3.len) == rune(`€`)
 
 	test_case4 := '𐍈'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case4.data), test_case4.len) == rune(0x10348)
-	assert impl_utf8_to_utf32(&u8(test_case4.data), test_case4.len) == rune(`𐍈`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case4.data) }, test_case4.len) == rune(0x10348)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case4.data) }, test_case4.len) == rune(`𐍈`)
 
 	test_case5 := '中'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case5.data), test_case5.len) == rune(0x4E2D)
-	assert impl_utf8_to_utf32(&u8(test_case5.data), test_case5.len) == rune(`中`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case5.data) }, test_case5.len) == rune(0x4E2D)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case5.data) }, test_case5.len) == rune(`中`)
 
 	// emoji, 4-byte UTF-8
 	test_case6 := '😀'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case6.data), test_case6.len) == rune(0x1F600)
-	assert impl_utf8_to_utf32(&u8(test_case6.data), test_case6.len) == `😀`
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case6.data) }, test_case6.len) == rune(0x1F600)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case6.data) }, test_case6.len) == `😀`
 
 	test_case7 := 'Ж'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case7.data), test_case7.len) == rune(`Ж`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case7.data) }, test_case7.len) == rune(`Ж`)
 
 	test_case8 := 'م'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case8.data), test_case8.len) == rune(`م`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case8.data) }, test_case8.len) == rune(`م`)
 
 	test_case9 := '߿'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case9.data), test_case9.len) == rune(0x07FF)
-	assert impl_utf8_to_utf32(&u8(test_case9.data), test_case9.len) == rune(`߿`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case9.data) }, test_case9.len) == rune(0x07FF)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case9.data) }, test_case9.len) == rune(`߿`)
 
 	test_case10 := 'ࠀ'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case10.data), test_case10.len) == rune(0x0800)
-	assert impl_utf8_to_utf32(&u8(test_case10.data), test_case10.len) == rune(`ࠀ`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case10.data) }, test_case10.len) == rune(0x0800)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case10.data) }, test_case10.len) == rune(`ࠀ`)
 
 	test_case11 := '￿'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case11.data), test_case11.len) == rune(0xFFFF)
-	assert impl_utf8_to_utf32(&u8(test_case11.data), test_case11.len) == rune(`￿`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case11.data) }, test_case11.len) == rune(0xFFFF)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case11.data) }, test_case11.len) == rune(`￿`)
 
 	test_case12 := '𐀀'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case12.data), test_case12.len) == rune(0x10000)
-	assert impl_utf8_to_utf32(&u8(test_case12.data), test_case12.len) == rune(`𐀀`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case12.data) }, test_case12.len) == rune(0x10000)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case12.data) }, test_case12.len) == rune(`𐀀`)
 
 	test_case13 := '􏿿'.bytes()
-	assert impl_utf8_to_utf32(&u8(test_case13.data), test_case13.len) == rune(0x10FFFF)
-	assert impl_utf8_to_utf32(&u8(test_case13.data), test_case13.len) == rune(`􏿿`)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case13.data) }, test_case13.len) == rune(0x10FFFF)
+	assert impl_utf8_to_utf32(unsafe { &u8(test_case13.data) }, test_case13.len) == rune(`􏿿`)
 }
 
 fn test_utf8_to_utf32_invalid_length() {
 	// More than 4 bytes is invalid
 	invalid := [u8(0xF0), 0x9F, 0x98, 0x80, 0x00]
-	assert impl_utf8_to_utf32(&u8(invalid.data), invalid.len) == 0
+	assert impl_utf8_to_utf32(unsafe { &u8(invalid.data) }, invalid.len) == 0
 }
 
 fn test_utf8_to_utf32_invalid_sequences() {
@@ -186,11 +186,11 @@ fn test_utf8_to_utf32_invalid_sequences() {
 	incomplete := [u8(0xc3)]
 	lone_continuation := [u8(0x80)]
 
-	assert impl_utf8_to_utf32(&u8(overlong.data), overlong.len) == replacement
-	assert impl_utf8_to_utf32(&u8(surrogate.data), surrogate.len) == replacement
-	assert impl_utf8_to_utf32(&u8(above_max.data), above_max.len) == replacement
-	assert impl_utf8_to_utf32(&u8(incomplete.data), incomplete.len) == replacement
-	assert impl_utf8_to_utf32(&u8(lone_continuation.data), lone_continuation.len) == replacement
+	assert impl_utf8_to_utf32(unsafe { &u8(overlong.data) }, overlong.len) == replacement
+	assert impl_utf8_to_utf32(unsafe { &u8(surrogate.data) }, surrogate.len) == replacement
+	assert impl_utf8_to_utf32(unsafe { &u8(above_max.data) }, above_max.len) == replacement
+	assert impl_utf8_to_utf32(unsafe { &u8(incomplete.data) }, incomplete.len) == replacement
+	assert impl_utf8_to_utf32(unsafe { &u8(lone_continuation.data) }, lone_continuation.len) == replacement
 }
 
 fn test_invalid_utf8_string_runes_use_replacement_character() {
@@ -216,5 +216,5 @@ fn test_invalid_utf8_string_runes_use_replacement_character() {
 }
 
 fn test_utf8_to_utf32_empty() {
-	assert impl_utf8_to_utf32(&u8([]u8{}.data), 0) == 0
+	assert impl_utf8_to_utf32(unsafe { &u8([]u8{}.data) }, 0) == 0
 }
