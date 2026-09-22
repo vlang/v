@@ -2152,6 +2152,12 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 		return t.array_append_elem_types_match(clean_rhs_type[3..], elem_type)
 	}
 	if t.array_append_rhs_is_sum_array_variant(clean_rhs_type, elem_type) {
+		// An exact array result remains the bulk-append form. An array variable or
+		// literal can explicitly denote the recursive array variant instead.
+		if clean_rhs_type.starts_with('[]')
+			&& t.array_append_elem_types_match(clean_rhs_type[2..], elem_type) {
+			return !t.array_append_rhs_is_sum_variant_value(rhs_id, rhs_type, elem_type)
+		}
 		return false
 	}
 	if clean_rhs_type.starts_with('[]') {
@@ -2211,13 +2217,6 @@ fn (t &Transformer) array_append_rhs_is_sum_variant_value(rhs_id flat.NodeId, rh
 		return false
 	}
 	if t.array_append_rhs_builtin_map_elem_matches(rhs_id, elem_type) {
-		return false
-	}
-	mut clean_rhs := rhs_type.trim_space()
-	if clean_rhs.starts_with('!') || clean_rhs.starts_with('?') {
-		clean_rhs = clean_rhs[1..].trim_space()
-	}
-	if clean_rhs.starts_with('[]') && t.array_append_elem_types_match(clean_rhs[2..], elem_type) {
 		return false
 	}
 	if t.array_append_literal_is_sum_array_variant(rhs_id, elem_type) {
@@ -2313,7 +2312,7 @@ fn (t &Transformer) array_append_rhs_variant_candidate(rhs_id flat.NodeId, rhs_t
 		return ''
 	}
 	node := t.a.nodes[int(rhs_id)]
-	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+	if node.kind in [.paren, .expr_stmt, .or_expr] && node.children_count > 0 {
 		return t.array_append_rhs_variant_candidate(t.a.child(&node, 0), rhs_type)
 	}
 	if node.kind in [.cast_expr, .struct_init, .as_expr, .assoc] && node.value.len > 0 {
