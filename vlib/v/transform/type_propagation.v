@@ -200,7 +200,7 @@ fn decl_type_is_usable(typ string) bool {
 	if types.type_text_contains_typeof(typ) {
 		return false
 	}
-	clean := if typ.index_u8(` `) < 0 { typ } else { typ.replace(' ', '') }
+	clean := typ.replace(' ', '')
 	return clean !in ['Option', 'Optional', 'Result'] && !clean.starts_with('Option_')
 		&& !clean.starts_with('Optional_') && !clean.starts_with('Result_')
 }
