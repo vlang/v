@@ -1277,7 +1277,7 @@ fn (mut p Parser) consume_decl_prefix_after_attrs() {
 }
 
 fn (mut p Parser) parse_pending_decl_attrs() {
-	parsed := p.parse_field_attrs_with_kinds()
+	parsed := p.parse_decl_attrs_with_kinds()
 	p.apply_decl_attr_flags(parsed.attrs)
 	p.pending_decl_attrs << parsed.attrs
 	p.pending_decl_attr_kinds << parsed.kinds
@@ -3803,15 +3803,23 @@ fn (mut p Parser) parse_field_attrs() []string {
 // attribute. Regardless of how the content splits, the loop always consumes through the closing
 // `]`, so parsing stays correct even for attribute forms it does not fully model.
 fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
-	return p.parse_field_attrs_with_kinds_mode(false)
+	return p.parse_field_attrs_with_kinds_mode(false, false)
+}
+
+// parse_decl_attrs_with_kinds parses one `@[...]` group attached to a declaration.
+// Declaration attributes can be split across several groups, so duplicates are also
+// checked against the groups already collected in `pending_decl_attrs`. Field
+// attributes live in their own scope and must not be compared with the declaration's.
+fn (mut p Parser) parse_decl_attrs_with_kinds() ParsedFieldAttrs {
+	return p.parse_field_attrs_with_kinds_mode(false, true)
 }
 
 // parse_single_field_attr_group consumes only the trailing `@[]` group attached to an assignment.
 fn (mut p Parser) parse_single_field_attr_group() ParsedFieldAttrs {
-	return p.parse_field_attrs_with_kinds_mode(true)
+	return p.parse_field_attrs_with_kinds_mode(true, false)
 }
 
-fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFieldAttrs {
+fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pending_decl_attrs bool) ParsedFieldAttrs {
 	mut attrs := []string{}
 	mut kinds := []int{}
 	mut sources := []string{}
@@ -3869,7 +3877,8 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool) ParsedFie
 			piece_name := attr_unquote(p.lit).all_before(':').trim_space()
 			if piece_name.len > 0
 				&& (attrs.any(it.all_before(':').trim_space() == piece_name)
-					|| p.pending_decl_attrs.any(it.all_before(':').trim_space() == piece_name)) {
+					|| (check_pending_decl_attrs
+						&& p.pending_decl_attrs.any(it.all_before(':').trim_space() == piece_name))) {
 				p.record_diagnostic_span('duplicate attribute `${piece_name}`', piece_start, piece_end)
 			}
 			mut piece := if p.prefs.is_fmt { p.lit } else { attr_unquote(p.lit) }
