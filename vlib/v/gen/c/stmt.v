@@ -5084,9 +5084,15 @@ fn (mut g FlatGen) optional_forward_return_abi_wrap_expr(source_ct string, expec
 // for a directly forwarded option/result expression.
 fn (mut g FlatGen) optional_forward_return_abi_expr(ret_id flat.NodeId, expected_ct string) ?string {
 	mut source_type := g.usable_expr_type(ret_id)
-	declared := g.declared_call_return_type(ret_id)
-	if type_is_optional_result(declared) {
-		source_type = declared
+	if json_type := g.json_decode_call_expr_result_type(ret_id) {
+		// The legacy declaration is `!voidptr`; the source type argument is the
+		// authoritative ABI for compiler-magic JSON calls.
+		source_type = json_type
+	} else {
+		declared := g.declared_call_return_type(ret_id)
+		if type_is_optional_result(declared) {
+			source_type = declared
+		}
 	}
 	if !type_is_optional_result(source_type) {
 		return none

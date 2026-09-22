@@ -9268,7 +9268,9 @@ fn (g &FlatGen) is_json_decode_target_name(target string) bool {
 
 fn (g &FlatGen) is_json_decode_call(id flat.NodeId, target string) bool {
 	if resolved := g.tc.resolved_call_name(id) {
-		return g.is_json_decode_target_name(resolved)
+		if g.is_json_decode_target_name(resolved) {
+			return true
+		}
 	}
 	return g.is_json_decode_target_name(target)
 }
@@ -11997,6 +11999,26 @@ fn (g &FlatGen) call_default_return_type(id flat.NodeId) types.Type {
 }
 
 fn (g &FlatGen) json_decode_result_type_for_call(node flat.Node) ?types.Type {
+	if node.typ.len > 0 {
+		ret_type := g.parse_node_type(&node)
+		if ret_type is types.ResultType && ret_type.base_type !is types.Unknown
+			&& ret_type.base_type !is types.Void
+			&& ret_type.base_type.name() !in ['voidptr', '&void'] {
+			return ret_type
+		}
+	}
+	// The legacy `json.decode(Type, text)` declaration returns `!voidptr`; the
+	// checker replaces that with the requested type, but cloned/cached nodes can
+	// retain the erased declaration annotation. Prefer the source type argument
+	// whenever this is the two-argument form.
+	if node.children_count >= 3 {
+		type_name := g.json_decode_type_arg_name(g.a.child(&node, 1))
+		if type_name.len > 0 {
+			return types.Type(types.ResultType{
+				base_type: g.tc.parse_type(type_name)
+			})
+		}
+	}
 	if node.typ.len > 0 {
 		ret_type := g.parse_node_type(&node)
 		if ret_type is types.ResultType {

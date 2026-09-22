@@ -949,6 +949,12 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			// `json.decode(Type, text)` is declared as returning `!voidptr`; recover
+			// its compiler-magic payload before generic/declaration fallbacks accept
+			// that erased signature.
+			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
+				return t.canonical_or_expr_types(decode_ret)
+			}
 			if specialized_ret := t.specialized_interface_method_call_return_type(expr_id,
 				expr_node)
 			{
@@ -986,9 +992,6 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 					&& t.is_optional_type_name(expr_node.typ) {
 					return t.specialized_or_expr_types(expr_node.typ)
 				}
-			}
-			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
-				return t.canonical_or_expr_types(decode_ret)
 			}
 			if typ := t.tc.expr_type(expr_id) {
 				mut prefix := ''
