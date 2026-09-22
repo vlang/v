@@ -5839,10 +5839,13 @@ fn (mut tc TypeChecker) check_import_diagnostics() {
 		if explicit_alias && node.typ == module_base {
 			tc.record_error_at(.duplicate_decl, 'import alias `${module_path} as ${node.typ}` is redundant', flat.NodeId(idx), tc.import_alias_pos(node))
 		}
-		if module_base == tc.cur_module {
+		// Compiler-injected runtime imports have no source span and may name the
+		// current module (for example channel support while compiling `sync`).
+		// Self-import diagnostics only apply to imports written by the user.
+		if has_source && module_base == tc.cur_module {
 			tc.record_error_at(.duplicate_decl, 'cannot import `${module_path}` into a module with the same name', flat.NodeId(idx), tc.import_module_path_pos(node))
 		}
-		if node.typ == tc.cur_module {
+		if has_source && node.typ == tc.cur_module {
 			alias_pos := if explicit_alias {
 				tc.import_alias_pos(node)
 			} else {
