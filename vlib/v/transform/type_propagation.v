@@ -1121,7 +1121,15 @@ fn (t &Transformer) normalize_field_type_with_owner_substitution(typ string, own
 	}
 	if typ.starts_with('[') {
 		bracket_end := typ.index(']') or { return t.normalize_type_alias(typ) }
-		return typ[..bracket_end + 1] + t.normalize_field_type_with_owner_substitution(typ[bracket_end + 1..], owner_type, allow_owner_substitution)
+		mut len_text := typ[1..bracket_end]
+		if allow_owner_substitution {
+			owner_base, owner_args, owner_is_generic_app := generic_app_parts(owner_type)
+			if owner_is_generic_app && owner_base.len > 0 {
+				params := t.generic_struct_param_names_for_base(owner_base)
+				len_text = substitute_generic_expr_text_with_params(len_text, owner_args, params)
+			}
+		}
+		return '[${len_text}]' + t.normalize_field_type_with_owner_substitution(typ[bracket_end + 1..], owner_type, allow_owner_substitution)
 	}
 	owner_base, owner_args, owner_is_generic_app := generic_app_parts(owner_type)
 	if allow_owner_substitution && owner_is_generic_app {

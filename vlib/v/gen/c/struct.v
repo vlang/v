@@ -999,7 +999,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		}
 	}
 	if !has_field {
-		g.write('0')
+		g.write(if g.struct_type_is_empty(lookup_name) { 'E_STRUCT' } else { '0' })
 	}
 	g.write('}')
 }
@@ -1599,7 +1599,10 @@ fn (g &FlatGen) struct_init_is_lowered_sum_literal(node flat.Node) bool {
 		return false
 	}
 	resolved := g.lowered_struct_init_sum_name(node)
-	return resolved in g.tc.sum_types
+	if resolved in g.tc.sum_types {
+		return true
+	}
+	return g.lowered_sum_init_name(node) in g.tc.sum_types
 }
 
 fn (g &FlatGen) lowered_sum_init_name(node flat.Node) string {
@@ -1682,11 +1685,15 @@ fn (g &FlatGen) lowered_sum_field_is_direct_pointer(sum_name string, field &flat
 		return false
 	}
 	pointer_variant := variant_type as types.Pointer
+	child_id := g.a.child(field, 0)
+	if g.expr_is_nil_value(child_id) {
+		return true
+	}
 	// Expected-type propagation can cache the surrounding sum type on a local
 	// pointer used as the variant value. Recover the expression's declared type
 	// before deciding whether the sum field stores that pointer directly; treating
 	// it as a value variant adds an extra memdup box and changes pointer equality.
-	child_type := select_receive_unalias_type(g.usable_expr_type(g.a.child(field, 0)))
+	child_type := select_receive_unalias_type(g.usable_expr_type(child_id))
 	if child_type is types.Pointer {
 		return g.type_names_match(child_type.base_type, pointer_variant.base_type)
 	}
@@ -1991,7 +1998,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		}
 	}
 	if !has_field {
-		g.write('0')
+		g.write(if g.struct_type_is_empty(lookup_name) { 'E_STRUCT' } else { '0' })
 	}
 	if align_arg.len > 0 {
 		g.write('}, sizeof(${name}), ${align_arg})')
@@ -2257,6 +2264,9 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		if g.default_value_stack[key] {
 			if clean_typ is types.Pointer {
 				g.write('NULL')
+			} else if clean_typ is types.SumType && g.shallow_default_value_depth == 0 {
+				mut recursive_sums := map[string]bool{}
+				g.gen_recursive_default_sum_value(clean_typ, mut recursive_sums)
 			} else {
 				ct := g.value_c_type(clean_typ)
 				g.write('(${ct}){0}')
@@ -2269,6 +2279,43 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		return
 	}
 	g.gen_default_value_for_clean_type(clean_typ)
+}
+
+fn (mut g FlatGen) gen_recursive_default_sum_value(sum_type types.SumType, mut seen map[string]bool) {
+	sum_name := g.resolve_sum_name(sum_type.name)
+	ct := g.value_c_type(sum_type)
+	if seen[sum_name] {
+		g.write('(${ct}){0}')
+		return
+	}
+	variants := g.tc.sum_types[sum_name] or {
+		g.write('(${ct}){0}')
+		return
+	}
+	if variants.len == 0 {
+		g.write('(${ct}){0}')
+		return
+	}
+	seen[sum_name] = true
+	defer {
+		seen.delete(sum_name)
+	}
+	variant := variants[0]
+	variant_type := select_receive_unalias_type(g.tc.parse_type(variant))
+	if variant_type is types.Pointer {
+		g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = NULL}')
+		return
+	}
+	inner_ct := g.value_c_type(variant_type)
+	g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = (${inner_ct}*)memdup(&(${inner_ct}[]){')
+	if variant_type is types.SumType {
+		g.gen_recursive_default_sum_value(variant_type, mut seen)
+	} else {
+		g.shallow_default_value_depth++
+		g.gen_default_value_for_clean_type(variant_type)
+		g.shallow_default_value_depth--
+	}
+	g.write('}, sizeof(${inner_ct}))}')
 }
 
 fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
@@ -2310,6 +2357,11 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 		}
 	}
 	if clean_typ is types.SumType {
+		if g.shallow_default_value_depth > 0 {
+			ct := g.value_c_type(clean_typ)
+			g.write('(${ct}){0}')
+			return
+		}
 		sum_name := g.resolve_sum_name(clean_typ.name)
 		variants := g.tc.sum_types[sum_name] or { []string{} }
 		if variants.len > 0 {
@@ -2352,7 +2404,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 			}
 		}
 		if !has_field {
-			g.write('0')
+			g.write(if g.struct_type_is_empty(sname) { 'E_STRUCT' } else { '0' })
 		}
 		g.write('}')
 		return
@@ -4664,6 +4716,42 @@ fn (g &FlatGen) struct_fields_for_type(type_name string) ?[]types.StructField {
 	return g.struct_fields_for_type_uncached(type_name)
 }
 
+fn (g &FlatGen) struct_type_is_empty(type_name string) bool {
+	mut seen := map[string]bool{}
+	return g.struct_type_is_empty_inner(type_name, mut seen)
+}
+
+fn (g &FlatGen) struct_type_is_empty_inner(type_name string, mut seen map[string]bool) bool {
+	if seen[type_name] {
+		return false
+	}
+	fields := g.struct_fields_for_type(type_name) or { return false }
+	if fields.len == 0 {
+		return true
+	}
+	seen[type_name] = true
+	defer {
+		seen.delete(type_name)
+	}
+	for field in fields {
+		if !g.type_is_effectively_empty(field.typ, mut seen) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (g &FlatGen) type_is_effectively_empty(typ types.Type, mut seen map[string]bool) bool {
+	clean := default_init_unalias_type(typ)
+	if clean is types.Struct {
+		return g.struct_type_is_empty_inner(clean.name, mut seen)
+	}
+	if clean is types.ArrayFixed {
+		return g.type_is_effectively_empty(clean.elem_type, mut seen)
+	}
+	return false
+}
+
 fn (g &FlatGen) struct_fields_for_type_uncached(type_name string) ?[]types.StructField {
 	if info := g.find_struct_decl(type_name) {
 		if fields := g.tc.structs[info.full_name] {
@@ -6274,7 +6362,7 @@ fn (mut g FlatGen) emit_struct(name string) {
 			g.writeln('#pragma pack(push, ${pack})')
 		}
 		// `struct C.X {}` says the struct is defined in C. V normally still emits a
-		// definition, with a dummy member because C has no empty struct -- fine when
+		// definition, with the compiler-specific empty-struct fallback -- fine when
 		// nothing else declares it. On a target that supplies its own headers those
 		// headers are included and do define it, so the synthesized one is a
 		// redefinition; a forward declaration is enough for the pointer use such an
@@ -6290,7 +6378,7 @@ fn (mut g FlatGen) emit_struct(name string) {
 		}
 		g.writeln('${g.struct_decl_head(name)} {')
 		if fields.len == 0 {
-			g.writeln('\tu8 _dummy;')
+			g.writeln('\tE_STRUCT_DECL;')
 		}
 		for f in fields {
 			g.write_struct_field(name, f)

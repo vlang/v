@@ -519,7 +519,9 @@ mut:
 	output_path                     string
 	output_error                    string
 	c99_mode                        bool
-	trace_calls                     bool
+	trace_calls                     bool // -d trace: custom call-site hooks
+	is_trace_calls                  bool // -trace-calls: function-entry logging
+	trace_fns                       []string
 	track_heap                      bool
 	inside_trace_call               bool
 	skip_generics                   bool
@@ -533,6 +535,7 @@ mut:
 	direct_array_access             bool
 	struct_default_module           string
 	default_value_stack             map[string]bool
+	shallow_default_value_depth     int
 	shadowed_global_locals          map[string]bool
 	cur_param_names                 []string
 	cur_param_type_values           []types.Type
@@ -4071,6 +4074,7 @@ fn (mut g FlatGen) gen_vinit() {
 		g.writeln('\tGC_allow_register_threads();')
 		g.writeln('#endif')
 	}
+	g.gen_trace_call('_vinit', '', '_vinit')
 	// A split `$embed_file` payload is put back together before anything else can
 	// look at it, which is both what makes it a one-time cost and what keeps it
 	// off a lazy path that concurrent readers would race on.
@@ -4100,7 +4104,7 @@ fn (mut g FlatGen) gen_vinit() {
 }
 
 fn (mut g FlatGen) gen_vcleanup() {
-	if !g.is_shared && g.module_cleanup_fns.len == 0 {
+	if !g.is_shared && g.module_cleanup_fns.len == 0 && !g.is_trace_calls {
 		return
 	}
 	fn_start_pos := g.sb.len
@@ -4108,6 +4112,7 @@ fn (mut g FlatGen) gen_vcleanup() {
 	g.writeln('\tstatic bool once = false;')
 	g.writeln('\tif (once) { return; }')
 	g.writeln('\tonce = true;')
+	g.gen_trace_call('_vcleanup', '', '_vcleanup')
 	cleanup_fns := g.ordered_module_cleanup_fns()
 	for i := cleanup_fns.len - 1; i >= 0; i-- {
 		g.writeln('\t${cleanup_fns[i]}();')
@@ -12747,6 +12752,23 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 				return g.sum_cast_actual_type(g.a.child(&node, 0))
 			}
 		}
+		.or_expr {
+			if node.children_count > 0 {
+				source_id := g.a.child(&node, 0)
+				source := g.a.nodes[int(source_id)]
+				if source.kind == .call {
+					// Expected-type propagation can make the or expression look like its
+					// enclosing sum type; the call payload is the actual sum variant.
+					declared := optional_result_unalias_type(g.declared_call_return_type(source_id))
+					match declared {
+						types.OptionType, types.ResultType {
+							return declared.base_type
+						}
+						else {}
+					}
+				}
+			}
+		}
 		else {}
 	}
 	if node.kind == .call {
@@ -14654,7 +14676,10 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					} else if ct.starts_with('Optional_') && ct.ends_with('ptr') && field.value == 'value' {
 						g.expr_to_string(val_id)
 					} else if ftyp := g.struct_field_type(node.value, field.value) {
-						if val_node.kind == .enum_val {
+						if cgen_unalias_type(ftyp) is types.SumType {
+							// A printable constant still needs the expected sum type to box it.
+							g.expr_to_string_with_expected_type(val_id, ftyp)
+						} else if val_node.kind == .enum_val {
 							g.expr_to_string_with_expected_type(val_id, ftyp)
 						} else {
 							const_val := g.const_expr_to_string(val_id, seen)
@@ -15145,8 +15170,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.string_literal {
-			sid := g.intern_string(node.value)
-			g.write('_str_${sid}')
+			if node.typ.starts_with('raw:') && cgen_unalias_type(g.expected_expr_type) is types.Pointer {
+				// vfmt keeps `r'...'.str` as a raw literal. In a compatible
+				// pointer context emit its backing bytes, not the string header.
+				g.write('"')
+				c_escape_into(mut g.sb, node.value)
+				g.write('"')
+			} else {
+				sid := g.intern_string(node.value)
+				g.write('_str_${sid}')
+			}
 		}
 		.string_interp {
 			g.gen_string_interp(node)
@@ -15352,7 +15385,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
-				g.gen_guarded_shift(lhs_id, rhs_id, lhs_type, node.op)
+				shift_type := if node.op == .right_shift_unsigned {
+					g.usable_expr_type(id)
+				} else {
+					lhs_type
+				}
+				g.gen_guarded_shift(lhs_id, rhs_id, shift_type, node.op)
 				g.expected_enum = old_expected_enum
 				return
 			}
@@ -15479,7 +15517,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
-			fn_value_type := cgen_unalias_type(g.usable_expr_type(child_id))
+			fn_value_type := cgen_unalias_type(g.fn_value_candidate_type(child_id, child))
 			if node.op == .amp && fn_value_type is types.FnType {
 				// A function value is already a C pointer, so `&` on one is a no-op
 				// wherever the context wants a callable: `Holder{ f: &local }` has to
@@ -15575,6 +15613,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			if node.op == .amp && child.kind == .prefix && child.op == .mul && child.children_count > 0 {
 				g.gen_expr(g.a.child(&child, 0))
+				return
+			}
+			if node.op == .mul && child.kind == .char_literal && child.value.starts_with('c:') {
+				// The prefix already performs the byte load. Render its operand as the
+				// C string pointer so expected-type handling does not add a second `*`.
+				g.write('*"${escape_c_string_literal_quotes(child.value[2..])}"')
 				return
 			}
 			if node.op == .amp && child.kind == .selector && child.children_count > 0 && g.is_map_entry_lvalue(g.a.child(&child, 0)) {
@@ -16070,10 +16114,34 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			} else if g.gen_struct_default_global_selector(base, node.value, node.op) {
 				// handled
+			} else if embedded_path := g.embedded_field_path_for_promoted_selector(base_type0, node.value) {
+				needs_paren := base.kind !in [.ident, .selector]
+				if needs_paren {
+					g.write('(')
+				}
+				g.gen_expr(base_id)
+				if needs_paren {
+					g.write(')')
+				}
+				mut is_ptr := node.op == .arrow || base_type0 is types.Pointer
+				mut embedded_owner := types.unwrap_pointer(base_type0)
+				for embedded in embedded_path {
+					op := if is_ptr { '->' } else { '.' }
+					g.write('${op}${g.cname(embedded.name)}')
+					is_ptr = embedded.typ is types.Pointer
+						|| cgen_unalias_type(embedded.typ) is types.Pointer
+					embedded_owner = types.unwrap_pointer(embedded.typ)
+				}
+				final_op := if is_ptr { '->' } else { '.' }
+				g.write('${final_op}${g.field_c_name(embedded_owner, node.value)}')
+				if embedded_owner is types.Struct {
+					if _ := g.shared_field_info(embedded_owner.name, node.value) {
+						g.write('->val')
+					}
+				}
 			} else if g.selector_declared_type(id) != none {
-				// An explicitly declared field shadows any same-named field promoted
-				// through an embedded struct. Use the declared receiver type rather
-				// than a stale short-name lookup from another module.
+				// The promoted-field lookup above rejects real fields on the receiver,
+				// so direct fields still shadow same-named fields from embedded structs.
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {
 					g.write('(')
@@ -16103,30 +16171,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('.')
 				}
 				g.write(g.cname(embedded.name))
-			} else if embedded_path := g.embedded_field_path_for_promoted_selector(base_type0, node.value) {
-				needs_paren := base.kind !in [.ident, .selector]
-				if needs_paren {
-					g.write('(')
-				}
-				g.gen_expr(base_id)
-				if needs_paren {
-					g.write(')')
-				}
-				mut is_ptr := node.op == .arrow || base_type0 is types.Pointer
-				mut embedded_owner := types.unwrap_pointer(base_type0)
-				for embedded in embedded_path {
-					op := if is_ptr { '->' } else { '.' }
-					g.write('${op}${g.cname(embedded.name)}')
-					is_ptr = embedded.typ is types.Pointer || cgen_unalias_type(embedded.typ) is types.Pointer
-					embedded_owner = types.unwrap_pointer(embedded.typ)
-				}
-				final_op := if is_ptr { '->' } else { '.' }
-				g.write('${final_op}${g.field_c_name(embedded_owner, node.value)}')
-				if embedded_owner is types.Struct {
-					if _ := g.shared_field_info(embedded_owner.name, node.value) {
-						g.write('->val')
-					}
-				}
 			} else {
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {
@@ -16363,8 +16407,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				c_elem, dims := g.fixed_array_decl_parts(init_type)
 				g.write('(${c_elem}${dims}){0}')
 			} else {
-				c_elem := g.value_sizeof_target(raw_init_type)
-				g.write('array_new(sizeof(${c_elem}), 0, 0)')
+				g.gen_array_init_value(node, raw_init_type)
 			}
 		}
 		.map_init {
@@ -17854,6 +17897,13 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#ifndef false')
 	g.writeln('#define false 0')
 	g.writeln('#endif')
+	g.writeln('#if defined(__TINYC__) || defined(_MSC_VER)')
+	g.writeln('#define E_STRUCT_DECL unsigned char _dummy_pad')
+	g.writeln('#define E_STRUCT 0')
+	g.writeln('#else')
+	g.writeln('#define E_STRUCT_DECL')
+	g.writeln('#define E_STRUCT')
+	g.writeln('#endif')
 	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
 	g.writeln('#if !defined(VNORETURN)')
 	g.writeln('#if defined(__TINYC__)')
@@ -17962,9 +18012,18 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 
 fn (mut g FlatGen) system_libc_headers() {
 	for header in ['assert.h', 'ctype.h', 'errno.h', 'float.h', 'inttypes.h', 'limits.h', 'math.h',
-		'setjmp.h', 'signal.h', 'stdbool.h', 'stddef.h', 'stdint.h', 'time.h', 'wchar.h'] {
+		'setjmp.h', 'signal.h', 'stdbool.h', 'stddef.h', 'stdint.h', 'time.h'] {
 		g.writeln('#include <${header}>')
 	}
+	// Minimal cross sysroots may omit wchar.h. V3 does not require its declarations,
+	// but include it when available for native headers that expect it to be loaded.
+	g.writeln('#if defined(__has_include)')
+	g.writeln('#if __has_include(<wchar.h>)')
+	g.writeln('#include <wchar.h>')
+	g.writeln('#endif')
+	g.writeln('#else')
+	g.writeln('#include <wchar.h>')
+	g.writeln('#endif')
 	// GCC's Objective-C frontend does not implement the C11 `_Atomic` qualifier,
 	// but its stdatomic macros still work with volatile storage and __atomic builtins.
 	// Clang implements `_Atomic` in Objective-C and must retain the native qualifier.

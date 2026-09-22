@@ -279,6 +279,9 @@ pub const node_flag_static_type_method = u8(2)
 pub const node_flag_embed_payload = u8(4)
 // node_flag_freed_assignment marks an assignment annotated with `@[freed]`.
 pub const node_flag_freed_assignment = u8(8)
+// node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
+// parameter before the parser folds its mutable caller slot into the type text.
+pub const node_flag_mut_builtin_pointer_param = u8(16)
 
 // node_flags packs rare node bools into Node.flags.
 @[inline]
@@ -304,7 +307,8 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 @[inline]
 pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
-	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment)
+	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment |
+		node_flag_mut_builtin_pointer_param)
 	return flags
 }
 
@@ -360,6 +364,13 @@ pub fn (n &Node) is_embed_payload() bool {
 @[inline]
 pub fn (n &Node) is_freed_assignment() bool {
 	return (n.flags & node_flag_freed_assignment) != 0
+}
+
+// is_mut_builtin_pointer_param reports whether this parameter was declared as
+// `mut p voidptr`, `mut p byteptr`, or `mut p charptr` in source.
+@[inline]
+pub fn (n &Node) is_mut_builtin_pointer_param() bool {
+	return (n.flags & node_flag_mut_builtin_pointer_param) != 0
 }
 
 // set_freed_assignment updates the assignment's `@[freed]` marker.

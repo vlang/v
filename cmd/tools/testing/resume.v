@@ -31,7 +31,7 @@ fn test_resume_dir() string {
 fn (ts &TestSession) test_resume(file string) !TestResume {
 	if ts.resume_dir == '' || !ts.will_compile || ts.exec_mode != .compile_and_run
 		|| !(file.ends_with('_test.v') || file.ends_with('_test.c.v')
-		|| file.ends_with('_test.js.v')) {
+			|| file.ends_with('_test.js.v')) {
 		return TestResume{}
 	}
 	// Separate files and compiler options, including function filters. Hash the

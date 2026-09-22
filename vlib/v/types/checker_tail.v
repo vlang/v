@@ -371,14 +371,29 @@ fn (mut tc TypeChecker) check_module_name_conflict(id flat.NodeId, name string) 
 		return
 	}
 	if tc.should_check_source_name(id) && name == tc.cur_module
-		&& !tc.current_file_uses_nested_vlib_module_path() {
+		&& !tc.current_file_uses_nested_module_path() {
 		tc.record_error_at(.duplicate_decl, 'duplicate of a module name `${name}`', id, tc.node_value_diagnostic_pos(id))
 	}
 	tc.check_imported_module_prefix(id, name, '')
 }
 
-fn (tc &TypeChecker) current_file_uses_nested_vlib_module_path() bool {
+fn (tc &TypeChecker) current_file_uses_nested_module_path() bool {
 	normalized := tc.cur_file.replace('\\', '/')
+	dir := normalized.all_before_last('/')
+	if dir == '' || tc.cur_module != dir.all_after_last('/') {
+		return false
+	}
+	root := tc.module_diagnostic_root.replace('\\', '/').trim_right('/')
+	if root != '' {
+		if dir.starts_with(root + '/') {
+			return dir[root.len + 1..].contains('/')
+		}
+		resolved_dir := os.real_path(dir).replace('\\', '/').trim_right('/')
+		resolved_root := os.real_path(root).replace('\\', '/').trim_right('/')
+		if resolved_root != '' && resolved_dir.starts_with(resolved_root + '/') {
+			return resolved_dir[resolved_root.len + 1..].contains('/')
+		}
+	}
 	mut relative := normalized
 	if marker := normalized.last_index('/vlib/') {
 		relative = normalized[marker + '/vlib/'.len..]
@@ -387,8 +402,7 @@ fn (tc &TypeChecker) current_file_uses_nested_vlib_module_path() bool {
 	} else {
 		return false
 	}
-	dir := relative.all_before_last('/')
-	return dir.contains('/') && tc.cur_module == dir.all_after_last('/')
+	return relative.all_before_last('/').contains('/')
 }
 
 fn (tc &TypeChecker) imported_module_prefix(id flat.NodeId, name string) ?string {
@@ -541,9 +555,10 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	if op == .assign && tc.fn_storage_voidptr_mismatch(rhs_id, rhs_type, expected_type) {
 		return false
 	}
-	if op == .assign && tc.translated_files[tc.cur_file] && rhs_type is ArrayFixed
-		&& expected_type is Pointer && tc.a.node(rhs_id).kind == .ident {
-		return tc.type_compatible(rhs_type.elem_type, expected_type.base_type)
+	if op == .assign
+		&& tc.translated_fixed_array_pointer_assignment_compatible(rhs_id, rhs_type,
+			expected_type) {
+		return true
 	}
 	if op == .assign
 		&& tc.fixed_array_address_to_byte_pointer_compatible(rhs_id, rhs_type, expected_type) {
@@ -572,6 +587,12 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	if op == .assign && clean_rhs.name() == 'int' && clean_expected.name() == 'f64' {
 		return true
 	}
+	if op == .assign && clean_expected.is_float()
+		&& tc.assignment_integer_constant_operand(rhs_id) != none {
+		if _ := tc.implicit_integer_constant_value(rhs_id, rhs_type) {
+			return true
+		}
+	}
 	if op == .assign && clean_rhs.is_integer() && clean_expected.is_float() {
 		literal_id := tc.assignment_integer_literal_operand(rhs_id) or { return false }
 		return tc.expr_compatible(literal_id, rhs_type, expected_type)
@@ -586,6 +607,25 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	return tc.expr_compatible(rhs_id, rhs_type, expected_type)
 		|| tc.pointer_value_compatible(rhs_type, expected_type)
 		|| tc.pointer_arithmetic_assign_compatible(op, rhs_type, expected_type)
+}
+
+// Signs and parentheses preserve named integer constant assignment compatibility.
+fn (tc &TypeChecker) assignment_integer_constant_operand(id flat.NodeId) ?flat.NodeId {
+	mut current := id
+	for tc.valid_node_id(current) {
+		if tc.expr_root_constant_name(current) != none {
+			return current
+		}
+		node := tc.a.node(current)
+		if node.children_count != 1 {
+			return none
+		}
+		if node.kind != .paren && (node.kind != .prefix || node.op !in [.plus, .minus]) {
+			return none
+		}
+		current = tc.a.child(node, 0)
+	}
+	return none
 }
 
 // Signs and parentheses preserve literal assignment compatibility.
@@ -712,6 +752,21 @@ fn (tc &TypeChecker) fixed_array_address_to_byte_pointer_compatible(expr_id flat
 	}
 	node := tc.a.nodes[int(expr_id)]
 	return node.kind == .prefix && node.op == .amp && node.children_count > 0
+}
+
+fn (tc &TypeChecker) translated_fixed_array_pointer_assignment_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+	if !tc.node_is_in_translated_file(expr_id) {
+		return false
+	}
+	clean_actual := unalias_type(actual)
+	if clean_actual !is ArrayFixed {
+		return false
+	}
+	clean_expected := unalias_type(expected)
+	if clean_expected !is Pointer {
+		return false
+	}
+	return tc.type_compatible(clean_actual.elem_type, clean_expected.base_type)
 }
 
 fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type Type) bool {
@@ -10124,9 +10179,10 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 		}
 		return
 	}
+	decl_module := if module_name == '' { 'main' } else { module_name }
 	decl := VisibleMutationFnDecl{
 		idx: idx
-		mod: module_name
+		mod: decl_module
 	}
 	normalized_qname := visible_mutation_fn_lookup_name(qname)
 	normalized_source_name := visible_mutation_fn_lookup_name(source_name)
@@ -10140,7 +10196,7 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 	}
 	for candidate in candidates {
 		tc.cache_visible_mutation_fn_decl('\x01${candidate}', decl)
-		tc.cache_visible_mutation_fn_decl('${module_name}\x01${candidate}', decl)
+		tc.cache_visible_mutation_fn_decl('${decl_module}\x01${candidate}', decl)
 	}
 }
 
@@ -10643,7 +10699,7 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 				break
 			}
 		}
-		storage_param_writes_merge(mut writes, scoped_writes)
+		writes = scoped_writes.move()
 		for exit in stable_exits {
 			if !exit.is_goto || exit.label !in labels {
 				loop_exits << exit
@@ -13513,6 +13569,17 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				continue
 			}
 			if actual is Array {
+				if _ := tc.current_variadic_param_elem_name(arg_id) {
+					target_generic_params := tc.fn_generic_params[info.name] or { []string{} }
+					is_generic_method := info.has_receiver && target_generic_params.len > 0
+					if !is_generic_method && (tc.receiver_compatible(actual.elem_type, elem_type)
+						|| tc.type_compatible(actual.elem_type, elem_type)) {
+						if has_dsl_scope {
+							tc.pop_scope()
+						}
+						continue
+					}
+				}
 				if unalias_type(elem_type) !is Array {
 					if elem_interface := cast_target_interface(unalias_type(elem_type)) {
 						if tc.type_compatible(actual.elem_type, elem_interface)
@@ -13907,8 +13974,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			&& tc.a.node(arg_id).children_count == 1 {
 			continue
 		}
-		is_c_string_literal := tc.a.node(arg_id).kind == .char_literal
-			&& tc.a.node(arg_id).value.starts_with('c:') && unalias_type(actual) is Pointer
+		is_c_string_literal := (tc.a.node(arg_id).kind == .char_literal
+			&& tc.a.node(arg_id).value.starts_with('c:') && unalias_type(actual) is Pointer)
+			|| tc.raw_string_literal_pointer_compatible(arg_id, expected)
 		if fn_param_is_voidptr_type(expected) && !is_c_string_literal
 			&& !info.name.ends_with('Channel.push')
 			&& !json_runtime_voidptr_accepts_arg(target_name, param_idx, expected, actual)
@@ -13936,8 +14004,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					}
 				}
 			}
-			c_string_literal := tc.a.node(arg_id).kind == .char_literal
-				&& tc.a.node(arg_id).value.starts_with('c:') && actual is Pointer
+			c_string_literal := (tc.a.node(arg_id).kind == .char_literal
+				&& tc.a.node(arg_id).value.starts_with('c:') && actual is Pointer)
+				|| tc.raw_string_literal_pointer_compatible(arg_id, expected)
 			if !info.name.starts_with('C.') && !c_string_literal
 				&& reference_name !in ['voidptr', 'byteptr', 'charptr'] {
 				tc.record_error_at(.call_arg_mismatch, 'literal argument cannot be passed as reference parameter `${reference_name}`', arg_id, tc.call_argument_diagnostic_pos(arg_id))
@@ -13953,6 +14022,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		] && !(expected is Alias && actual.name() == expected.base_type.name()) && !(actual is Alias
 			&& actual.base_type.name() == expected.name())
 			&& !implicit_integer_to_float_compatible(actual, expected)
+			&& !tc.c_call_arg_compatible(info.name, arg_id, expected, actual)
 			&& (tc.mut_param_expr_base(arg_id, actual) or {
 				actual
 			}).name() != expected.name() {
@@ -15017,7 +15087,7 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		} else if arg.kind in [.string_literal, .string_interp] {
 			tc.record_error(.call_arg_mismatch, 'type mismatch, should use e.g. `${method}(it > 2)`', arg_id)
 		} else if method == 'count'
-			&& arg.kind !in [.infix, .lambda_expr, .fn_literal, .ident, .call, .paren] {
+			&& arg.kind !in [.infix, .prefix, .lambda_expr, .fn_literal, .ident, .call, .paren] {
 			tc.record_error(.call_arg_mismatch, 'invalid expression, expected infix expr, lambda or function',
 				arg_id)
 		} else {
@@ -17299,6 +17369,11 @@ fn (tc &TypeChecker) bare_generic_literal_adopts(lit_value string, expected Type
 
 fn is_anonymous_struct_name(name string) bool {
 	return name.all_after_last('.').starts_with('AnonStruct_')
+}
+
+fn is_anonymous_aggregate_name(name string) bool {
+	short := name.all_after_last('.')
+	return short.starts_with('AnonStruct_') || short.starts_with('AnonUnion_')
 }
 
 // is_synthesized_anon_struct reports whether `name` is an anonymous aggregate the
