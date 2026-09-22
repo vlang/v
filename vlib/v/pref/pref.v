@@ -818,21 +818,30 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 			|| file_name_has_marker(file, '_test.') {
 			continue
 		}
-		if file_has_incompatible_os_only_suffix(file, target.os) {
+		// Everything after `_d_`/`_notd_` names a compile-time define, even when
+		// that define is also an OS or architecture name. The define selector must
+		// own that suffix instead of the platform filters below.
+		is_define_specific := file_name_has_marker(file, '_d_')
+			|| file_name_has_marker(file, '_notd_')
+		if !is_define_specific && file_has_incompatible_os_only_suffix(file, target.os) {
 			continue
 		}
 		mut incompatible := false
-		for arch in incompatible_archs {
-			if file_name_has_arch_marker(file, arch) {
-				incompatible = true
-				break
+		if !is_define_specific {
+			for arch in incompatible_archs {
+				if file_name_has_arch_marker(file, arch) {
+					incompatible = true
+					break
+				}
 			}
 		}
 		if incompatible {
 			continue
 		}
-		if base := os_specific_base_for(file, os_suffixes) {
-			has_os_specific[base] = true
+		if !is_define_specific {
+			if base := os_specific_base_for(file, os_suffixes) {
+				has_os_specific[base] = true
+			}
 		}
 		candidates << VFileCandidate{
 			file: file

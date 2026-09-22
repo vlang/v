@@ -117,3 +117,30 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ab\n0', run.output
 }
+
+fn test_source_var_with_generated_variadic_prefix_is_not_forwarded() {
+	v3_bin := variadic_call_build_v3()
+	src := os.join_path(os.temp_dir(), 'v3_source_varargs_prefix_${os.getpid()}.v')
+	os.write_file(src, 'interface Any {}
+
+fn count(values ...Any) int {
+	return values.len
+}
+
+fn main() {
+	__varargs_items := []Any{}
+	println(count(__varargs_items))
+}
+') or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_source_varargs_prefix_${os.getpid()}')
+	os.rm(bin) or {}
+	os.rm(bin + '.c') or {}
+	compile := os.execute('${v3_bin} -translated ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '1', run.output
+}

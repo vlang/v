@@ -1,14 +1,18 @@
-import v.ast
+import os
 import v.parser
 import v.pref
 
 fn test_parser_map_type() {
-	mut table := ast.new_table()
 	pref_ := pref.Preferences{
-		output_mode: .silent
-		is_fmt:      true
+		is_fmt: true
 	}
-	result := parser.parse_text('a := map[*Node]bool', '', mut table, .parse_comments, pref_)
+	path := os.join_path(os.temp_dir(), 'v3_invalid_map_type_${os.getpid()}.v')
+	os.write_file(path, 'a := map[*Node]bool') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(&pref_)
+	result := p.parse_file(path)
 	println(result)
-	assert true
+	assert result.nodes.len > 0
 }

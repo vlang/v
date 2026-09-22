@@ -331,6 +331,7 @@ mut:
 	profile_fn_active              bool
 	profile_fn_restore_enabled     bool
 	is_prod                        bool
+	is_debug                       bool
 	check_overflow                 bool
 	ignore_overflow                bool
 	force_bounds_checking          bool
@@ -542,6 +543,7 @@ mut:
 	cur_mut_pointer_params          map[string]bool
 	cur_explicit_mut_pointer_params map[string]bool
 	cur_mut_param_owners            map[string]types.ScopeBindingOwner
+	cur_c_fn_calls                  map[string]bool
 	cur_fn_ret                      types.Type = types.Type(types.void_)
 	cur_fn_ret_is_optional          bool
 	cur_fn_ret_base                 types.Type = types.Type(types.void_)
@@ -768,6 +770,11 @@ pub fn (mut g FlatGen) set_ccompiler(name string) {
 // set_prod controls production-only code generation such as removing assertions.
 pub fn (mut g FlatGen) set_prod(enabled bool) {
 	g.is_prod = enabled
+}
+
+// set_debug enables source-aware panic reporting for debug builds.
+pub fn (mut g FlatGen) set_debug(enabled bool) {
+	g.is_debug = enabled
 }
 
 // set_check_overflow enables runtime checks for integer addition, subtraction, and multiplication.
@@ -2445,10 +2452,11 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	}
 	unsafe { kept_lines.free() }
 	possible_text := possible_source.str()
-	if modulecache.c_source_has_static_storage(possible_text) {
+	if modulecache.c_source_has_static_storage(possible_text)
+		|| modulecache.c_source_function_identifiers(possible_text).len > 0 {
 		active_static_storage_paths[collection_key] = true
 		if os.getenv('V3_CACHE_TRACE') != '' {
-			eprintln('  V3 module cache active static C input: module=${collection_scope} path=${real_path}')
+			eprintln('  V3 module cache active C storage input: module=${collection_scope} path=${real_path}')
 		}
 	}
 	unsafe { possible_text.free() }
@@ -3189,17 +3197,12 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	effective_no_parallel := no_parallel || g.profile_file.len > 0
-	// Every cgen stage below takes its serial `$if windows` branch on Windows:
-	// run_pre_dispatch_parallel bails out, gen_fns_dispatch emits every body on
-	// this thread, and the support scans are inlined. Only the *preparation*
-	// choices were still keyed off `effective_no_parallel`, so a default Windows
-	// build ran neither prepare_pre_dispatch_master (parallel-only) nor
-	// prepare_serial_fn_tables, and function selection first happened inside one
-	// of the forked scoped preseed helpers instead of on the master.
+	// The preparation choices below must agree with the dispatch mode the stages
+	// actually run in: a parallel dispatch expects prepare_pre_dispatch_master,
+	// a serial one expects prepare_serial_fn_tables. Keying both off the same
+	// flag keeps function selection on the master instead of inside one of the
+	// forked scoped preseed helpers.
 	mut parallel_cgen := !effective_no_parallel
-	$if windows {
-		parallel_cgen = false
-	}
 	if g.profile_file.len > 0 {
 		// Counter metadata and numbering are accumulated by one serial generator.
 		g.scope_parallel_workers = false
@@ -3478,22 +3481,18 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		mut parallel_iface_scan := false
 		mut iface_worker := &FlatGen{}
 		mut iface_threads := []thread voidptr{cap: 1}
-		$if !windows {
-			$if !v3_no_parallel ? {
-				parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
-			}
+		$if !v3_no_parallel ? {
+			parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
 		}
 		if parallel_iface_scan {
-			$if !windows {
-				$if !v3_no_parallel ? {
-					iface_worker = g.new_parallel_worker(4)
-					iface_worker.interface_boxed_types = map[string]bool{}
-					iface_worker.interface_boxed_types_done = false
-					iface_worker.iface_impls = map[string][]string{}
-					iface_worker.iface_type_ids = map[string]int{}
-					iface_worker.ierror_method_emit_names = map[string]bool{}
-					iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
-				}
+			$if !v3_no_parallel ? {
+				iface_worker = g.new_parallel_worker(4)
+				iface_worker.interface_boxed_types = map[string]bool{}
+				iface_worker.interface_boxed_types_done = false
+				iface_worker.iface_impls = map[string][]string{}
+				iface_worker.iface_type_ids = map[string]int{}
+				iface_worker.ierror_method_emit_names = map[string]bool{}
+				iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
 			}
 		} else {
 			g.collect_interface_impls()
@@ -3519,14 +3518,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.timing_profile('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		if parallel_iface_scan {
-			$if !windows {
-				$if !v3_no_parallel ? {
-					_ = iface_threads[0].wait()
-					g.publish_interface_impl_scan(mut iface_worker)
-					g.precompute_required_interface_dispatch_methods()
-					g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
-					cgsw.restart()
-				}
+			$if !v3_no_parallel ? {
+				_ = iface_threads[0].wait()
+				g.publish_interface_impl_scan(mut iface_worker)
+				g.precompute_required_interface_dispatch_methods()
+				g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+				cgsw.restart()
 			}
 		}
 		parallel_prep_done := g.run_pre_dispatch_parallel(effective_no_parallel)
@@ -3588,8 +3585,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.precompute_fixed_array_map_key_types()
 	}
 	// Deferring const lowering and the libc compatibility preseed only pays off
-	// when gen_fns_dispatch actually starts a declaration task. It never does on
-	// Windows, where this would just move the work behind an early selection.
+	// when gen_fns_dispatch actually starts a declaration task; in a serial
+	// dispatch it would just move the work behind an early selection.
 	defer_parallel_support := g.scope_parallel_workers && parallel_cgen && !g.program_body_only
 		&& g.incremental_fn_names.len == 0
 	mut const_code := if g.program_body_only || defer_parallel_support {
@@ -4048,9 +4045,12 @@ fn (mut g FlatGen) write_type_declaration_block() {
 
 fn (mut g FlatGen) gen_vinit() {
 	needs_closure_init := g.needs_closure_runtime_init()
+	needs_gc_init := g.needs_gc_runtime_init()
 	has_embed_joins := g.has_chunked_embed_blobs()
+	has_reflection := g.has_runtime_reflection()
 	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
-		&& g.global_inits.len == 0 && !needs_closure_init && !has_embed_joins {
+		&& g.global_inits.len == 0 && !needs_closure_init && !needs_gc_init && !has_embed_joins
+		&& !has_reflection {
 		return
 	}
 	fn_start_pos := g.sb.len
@@ -4058,9 +4058,18 @@ fn (mut g FlatGen) gen_vinit() {
 	// prefix: a parallel C build repeats that prefix per unit, and only the unit
 	// holding `_vinit` may define them.
 	g.gen_embed_blob_joined()
-	g.writeln('void _vinit() {')
-	if 'gcboehm' in g.compile_defines || 'vgc' in g.compile_defines {
+	if g.is_shared {
+		g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	} else {
+		g.writeln('void _vinit() {')
+	}
+	if needs_gc_init {
 		g.writeln('\tgc_runtime_init();')
+	}
+	if 'gcboehm' in g.compile_defines {
+		g.writeln('#if defined(_VGCBOEHM) && defined(GC_THREADS)')
+		g.writeln('\tGC_allow_register_threads();')
+		g.writeln('#endif')
 	}
 	// A split `$embed_file` payload is put back together before anything else can
 	// look at it, which is both what makes it a one-time cost and what keeps it
@@ -4077,6 +4086,9 @@ fn (mut g FlatGen) gen_vinit() {
 		}
 	}
 	g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
+	if has_reflection {
+		g.gen_reflection_data()
+	}
 	if needs_closure_init {
 		g.writeln('\t${g.cname('closure.closure_init')}();')
 	}
@@ -4834,6 +4846,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	}
 	g.modules['strings'] = 'strings'
 	g.materialize_objective_cpp_sources()
+	g.add_macos_shared_export_linker_flags()
 	ccio_sw := time.new_stopwatch()
 	g.collect_const_init_order_from_files()
 	if profile {
@@ -4844,6 +4857,34 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		ci_ret_ms := f64(ci_ret_ns) / 1e6
 		ci_ptypes_ms := f64(ci_ptypes_ns) / 1e6
 		g.timing_profile('  [ttime]   ci fns ${ci_fn_ms:7.2f} ms of ${ci_total_ms:7.2f} ms (ptypes ${ci_ptypes_ms:.2f}, ret ${ci_ret_ms:.2f}, ret+reg ${ci_reg_ms:.2f}), const order ${ccio_ms:7.2f} ms')
+	}
+}
+
+fn (mut g FlatGen) add_macos_shared_export_linker_flags() {
+	if !g.is_shared || g.target.os != 'macos' || 'sharedlive' in g.compile_defines {
+		return
+	}
+	mut names := map[string]bool{}
+	for _, name in g.a.export_fn_names {
+		if name.len > 0 {
+			names[name] = true
+		}
+	}
+	for _, name in g.export_global_names {
+		if name.len > 0 {
+			names[name] = true
+		}
+	}
+	mut sorted_names := names.keys()
+	sorted_names.sort()
+	if sorted_names.len == 0 {
+		g.c_flags << '-Wl,-no_exported_symbols'
+		return
+	}
+	for name in sorted_names {
+		// Mach-O prefixes C ABI symbols with `_`; an explicit export list also
+		// hides symbols pulled from static archives, which -fvisibility cannot do.
+		g.c_flags << '-Wl,-exported_symbol,_${name}'
 	}
 }
 
@@ -15438,14 +15479,25 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
-			if node.op == .amp && cgen_unalias_type(g.usable_expr_type(child_id)) is types.FnType
-				&& !g.context_wants_pointer_to_fn() {
+			fn_value_type := cgen_unalias_type(g.usable_expr_type(child_id))
+			if node.op == .amp && fn_value_type is types.FnType {
 				// A function value is already a C pointer, so `&` on one is a no-op
 				// wherever the context wants a callable: `Holder{ f: &local }` has to
 				// store the function, not the address of a stack slot that dies with
 				// the frame. Only a context that asks for a pointer to a function
 				// - `ref := &f`, read back through `*ref` - needs the address, and
 				// dropping it there leaves the dereference reading code as data.
+				if g.context_wants_pointer_to_fn() {
+					mut fn_ct := g.tc.c_type(fn_value_type)
+					if fn_ct.starts_with('fn_ptr:') {
+						fn_ct = g.resolve_fn_ptr_type(fn_ct)
+					}
+					tmp := g.tmp_name()
+					g.write('({ ${fn_ct} ${tmp} = ')
+					g.gen_expr(child_id)
+					g.write('; (${fn_ct}*)memdup(&${tmp}, sizeof(${fn_ct})); })')
+					return
+				}
 				g.gen_expr(child_id)
 				return
 			}
@@ -16030,7 +16082,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if needs_paren {
 					g.write(')')
 				}
-				if node.op == .arrow || base_type0 is types.Pointer {
+				if base_type0 is types.Pointer {
 					g.write('->')
 				} else {
 					g.write('.')
@@ -16181,7 +16233,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if fixed_lit := g.fixed_array_literal_index_type(base_id, node) {
 					g.gen_expr_with_expected_type(base_id, types.Type(fixed_lit))
 					g.write('[')
-					g.gen_expr(g.a.child(node, 1))
+					g.gen_fixed_array_index(g.a.child(node, 1), g.fixed_array_len_value(fixed_lit))
 					g.write(']')
 					return
 				}
@@ -16195,7 +16247,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						}
 					}
 				}
-				is_fixed_array_index, fixed_is_ptr, _ := fixed_array_index_info(index_base_type)
+				is_fixed_array_index, fixed_is_ptr, fixed := fixed_array_index_info(index_base_type)
 				if is_fixed_array_index {
 					if fixed_is_ptr {
 						g.write('(*')
@@ -16212,7 +16264,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						}
 					}
 					g.write('[')
-					g.gen_expr(g.a.child(node, 1))
+					g.gen_fixed_array_index(g.a.child(node, 1), g.fixed_array_len_value(fixed))
 					g.write(']')
 				} else {
 					is_array_index, is_ptr, arr_type := array_index_info(index_base_type)
@@ -16435,7 +16487,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(g.ierror_none_literal_string())
 			} else {
 				ct := g.optional_type_name(g.optional_none_type(id))
-				g.write('(${ct}){.ok = false}')
+				g.write('(${ct}){.ok = false, .err = builtin__none__}')
 			}
 		}
 		.or_expr {
@@ -20738,7 +20790,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('\tif (decimal_pos < 0) decimal_pos = digit_count;')
 		g.writeln('\tdecimal_pos += exponent_sign * exponent;')
 		g.writeln('\tint whole_digits = decimal_pos > 0 ? decimal_pos : 1;')
-		g.writeln('\tint negative = x < 0.0;')
+		g.writeln('\tint negative = signbit(x);')
 		g.writeln('\tint out_len = negative + whole_digits + (precision > 0 ? precision + 1 : 0);')
 		g.writeln('\tu8* out = malloc_noscan((ptrdiff_t)out_len + 1);')
 		g.writeln('\tint pos = 0;')

@@ -652,7 +652,8 @@ fn (mut g FlatGen) collect_interface_impls() {
 		is_materializable_generic := concrete_is_generic
 			&& (concrete_base in g.tc.structs || concrete_base in g.tc.type_aliases || g.tc.qualify_name(concrete_base) in g.tc.structs
 				|| g.tc.qualify_name(concrete_base) in g.tc.type_aliases)
-		if !is_container && !is_materializable_generic && concrete !in g.tc.structs
+		if !is_container && concrete != 'voidptr' && !is_materializable_generic
+			&& concrete !in g.tc.structs
 			&& concrete !in g.tc.type_aliases {
 			qualified := g.tc.qualify_name(concrete)
 			if qualified !in g.tc.structs && qualified !in g.tc.type_aliases {
@@ -2356,7 +2357,8 @@ fn (mut g FlatGen) interface_dispatch_signature_compatible(method_key string, ex
 		return false
 	}
 	for i in 1 .. params.len {
-		if g.tc.c_type(params[i]) != g.tc.c_type(sig_params[i]) {
+		if g.tc.c_type(params[i]) != g.tc.c_type(sig_params[i])
+			&& g.interface_arg_conversion_expr('_iface_arg', sig_params[i], params[i]) == none {
 			return false
 		}
 	}

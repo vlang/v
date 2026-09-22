@@ -309,19 +309,31 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr, info.base_type, key_name), 'voidptr')
 
 	ptr_ident := t.make_ident(ptr_name)
-	found_cond := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
+	ptr_found := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
+	value_is_optional := t.is_optional_type_name(info.value_type)
+	mut guard_value_type := info.value_type
+	ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name),
+		'&${info.value_type}'))
+	mut value_expr := ptr_value
+	mut found_cond := ptr_found
+	if value_is_optional {
+		guard_value_type = t.optional_base_type(t.qualify_optional_type(info.value_type))
+		found_cond = t.make_infix(.logical_and, ptr_found,
+			t.make_selector(ptr_value, 'ok', 'bool'))
+		value_expr = t.make_selector(ptr_value, 'value', guard_value_type)
+	}
 
 	then_id := t.a.child(&node, 1)
 	then_node := t.a.nodes[int(then_id)]
+	saved_var_types := t.var_types.clone()
 	mut then_children := []flat.NodeId{}
 	// A discarded binding (`if _ := m[k]`) only tests key presence; the value is
 	// never read, so skip the value dereference. That deref would otherwise cast to
 	// `&${info.value_type}` and, when the value type is unresolved, emit an invalid
 	// `void __discard = *(void*)ptr`.
 	if lhs_name != '_' {
-		ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name), '&${info.value_type}'))
-		t.set_var_type(lhs_name, info.value_type)
-		then_children << t.make_decl_assign_typed(lhs_name, ptr_value, info.value_type)
+		t.set_var_type(lhs_name, guard_value_type)
+		then_children << t.make_decl_assign_typed(lhs_name, value_expr, guard_value_type)
 	}
 	if then_node.kind == .block {
 		then_children << t.transform_stmts(t.a.children_of(&then_node))
@@ -329,18 +341,14 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 		then_children << t.transform_stmt(then_id)
 	}
 	then_block := t.make_block_prefix_scope_drops(then_children)
+	t.restore_var_types(saved_var_types)
 
 	mut else_block := flat.empty_node
 	if node.children_count >= 3 {
 		else_id := t.a.child(&node, 2)
 		else_node := t.a.nodes[int(else_id)]
-		else_block = if else_node.kind == .block {
-			t.make_block(t.transform_stmts(t.a.children_of(&else_node)))
-		} else if else_node.kind == .if_expr {
-			t.transform_else_if_expr(else_id, else_node)
-		} else {
-			t.make_block(t.transform_stmt(else_id))
-		}
+		else_block = t.transform_map_index_if_guard_else_block(else_id, else_node, ptr_name,
+			info.value_type)
 	}
 	t.pending_stmts = outer_pending
 	mut expanded := []flat.NodeId{cap: prelude.len + 1}
@@ -349,6 +357,36 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	}
 	expanded << t.make_if(found_cond, then_block, else_block)
 	return expanded
+}
+
+fn (mut t Transformer) transform_map_index_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, ptr_name string, value_type string) flat.NodeId {
+	saved_var_types := t.var_types.clone()
+	t.set_implicit_err_var_type()
+	mut children := []flat.NodeId{}
+	missing_error := t.make_map_key_missing_error()
+	if t.is_optional_type_name(value_type) {
+		children << t.make_decl_assign_typed('err', t.make_struct_init('IError'), 'IError')
+		ptr_found := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+		ptr_value := t.make_prefix(.mul, t.make_cast('&${value_type}', t.make_ident(ptr_name),
+			'&${value_type}'))
+		stored_error := t.make_selector(ptr_value, 'err', 'IError')
+		children << t.make_if(ptr_found, t.make_block([
+			t.make_assign(t.make_ident('err'), stored_error),
+		]), t.make_block([
+			t.make_assign(t.make_ident('err'), missing_error),
+		]))
+	} else {
+		children << t.make_decl_assign_typed('err', missing_error, 'IError')
+	}
+	if else_node.kind == .block {
+		children << t.transform_stmts(t.a.children_of(&else_node))
+	} else if else_node.kind == .if_expr {
+		children << t.transform_else_if_expr(else_id, else_node)
+	} else {
+		children << t.transform_stmt(else_id)
+	}
+	t.restore_var_types(saved_var_types)
+	return t.make_block(children)
 }
 
 // expand_array_index_if_guard builds expand array index if guard data for transform.
@@ -989,6 +1027,7 @@ fn (mut t Transformer) build_if_value_chain(if_id flat.NodeId, target_name strin
 	has_else := if_node.children_count >= 3
 
 	all_is := t.extract_all_is_exprs(cond_id)
+	else_smartcasts := t.extract_else_branch_smartcasts(cond_id)
 	new_cond := t.transform_and_chain_smartcasts(cond_id)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -1003,12 +1042,18 @@ fn (mut t Transformer) build_if_value_chain(if_id flat.NodeId, target_name strin
 
 	mut else_block := flat.empty_node
 	if has_else {
+		for info in else_smartcasts {
+			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
+		}
 		else_id := t.a.child(&if_node, 2)
 		else_node := t.a.nodes[int(else_id)]
 		if else_node.kind == .if_expr {
 			else_block = t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
 		} else {
 			else_block = t.if_value_branch_block(else_id, target_name, target_type)
+		}
+		for _ in else_smartcasts {
+			t.pop_smartcast()
 		}
 	}
 	result << t.make_if(new_cond, then_block, else_block)

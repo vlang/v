@@ -417,7 +417,8 @@ fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId)
 		} else {
 			node.value
 		}
-		if qualified == name || qualified == lookup_name
+		reflection_name := qualified.replace('@static@', '.')
+		if reflection_name == name || reflection_name == lookup_name
 			|| (module_name == t.cur_module && node.value == lookup_name) {
 			return t.comptime_node_attribute_metas(idx)
 		}
@@ -582,8 +583,17 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 				kind:    kind
 			}
 		} else {
+			name := if recorded_kind == 1 {
+				if comptime_attr_is_string_literal(clean) {
+					comptime_attr_unquote(clean)
+				} else {
+					comptime_cond_unescape(clean)
+				}
+			} else {
+				clean
+			}
 			attrs << AttributeMeta{
-				name: clean
+				name: name
 				kind: if recorded_kind >= 0 { recorded_kind } else { 0 }
 			}
 		}
@@ -609,6 +619,23 @@ fn comptime_attr_unquote(s string) string {
 		return comptime_cond_unescape(s[1..s.len - 1])
 	}
 	return s
+}
+
+fn comptime_attr_display(raw string) string {
+	clean := raw.trim_space()
+	colon := clean.index_u8(`:`)
+	if colon < 0 {
+		// Whole-string attributes are stored without their quotes. Decode their source spelling
+		// before exposing it through the legacy []string metadata.
+		return comptime_cond_unescape(clean)
+	}
+	raw_arg := clean[colon + 1..].trim_space()
+	if !comptime_attr_is_string_literal(raw_arg) || raw_arg[0] == `r` {
+		return clean
+	}
+	quote := raw_arg[0].ascii_str()
+	decoded := comptime_attr_unquote(raw_arg)
+	return '${clean[..colon + 1]} ${quote}${decoded}${quote}'
 }
 
 fn (mut t Transformer) clone_attribute_subst(id flat.NodeId, var_name string, attr AttributeMeta) flat.NodeId {
@@ -2106,6 +2133,11 @@ fn (t &Transformer) comptime_enum_members(base_type string) []EnumValueMeta {
 // treated like the C backend: normal enums use the integer directly; `[flag]` enums use it as the
 // bit index and materialize `1 << index`.
 fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
+	checked_values := if isnil(t.tc) {
+		map[string]int{}
+	} else {
+		t.tc.comptime_enum_decl_field_values(enum_name)
+	}
 	mut cur_mod := ''
 	for idx in 0 .. t.a.nodes.len {
 		kind := t.a.nodes[idx].kind
@@ -2149,7 +2181,9 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 		mut next_val := i64(0)
 		for f in fields {
 			mut val := next_val
-			if int(f.expr_id) >= 0 {
+			if checked_value := checked_values[f.name] {
+				val = i64(checked_value)
+			} else if int(f.expr_id) >= 0 {
 				if ev := t.enum_field_int_value_with_enum(f.expr_id, cur_mod, qualified, mut field_values, field_exprs, mut resolving) {
 					val = ev
 				}
@@ -2544,15 +2578,7 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 			break
 		}
 		arg := t.a.nodes[int(arg_id)]
-		mut arg_type := if arg.kind == .ident {
-			t.local_decl_type_before(arg.value, arg_id) or {
-				t.comptime_reflected_for_in_local_type(arg.value, fm) or {
-					t.generic_call_arg_type_for_inference(arg_id)
-				}
-			}
-		} else {
-			t.generic_call_arg_type_for_inference(arg_id)
-		}
+		mut arg_type := t.comptime_field_generic_arg_type(arg_id, fm)
 		if arg.kind == .ident {
 			if payload := t.comptime_option_unwrapped_local_type(arg.value, node, fm) {
 				arg_type = payload
@@ -2606,6 +2632,32 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 	// generic arguments, so leaving the generated function name there makes a
 	// later monomorphization pass interpret that name as the concrete type.
 	return ''
+}
+
+fn (mut t Transformer) comptime_field_generic_arg_type(arg_id flat.NodeId, fm FieldMeta) string {
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind == .ident {
+		return t.local_decl_type_before(arg.value, arg_id) or {
+			t.comptime_reflected_for_in_local_type(arg.value, fm) or {
+				t.generic_call_arg_type_for_inference(arg_id)
+			}
+		}
+	}
+	if arg.kind == .prefix && arg.children_count > 0 {
+		child_id := t.a.child(&arg, 0)
+		child := t.a.nodes[int(child_id)]
+		if child.kind == .ident {
+			if local_type := t.local_decl_type_before(child.value, child_id) {
+				if arg.op == .amp {
+					return '&${local_type}'
+				}
+				if arg.op == .mul && local_type.starts_with('&') {
+					return local_type[1..]
+				}
+			}
+		}
+	}
+	return t.generic_call_arg_type_for_inference(arg_id)
 }
 
 fn (t &Transformer) comptime_option_unwrapped_local_type(name string, call flat.Node, fm FieldMeta) ?string {
@@ -2784,7 +2836,7 @@ fn (t &Transformer) subtree_has_comptime_field_selector(id flat.NodeId) bool {
 
 fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
 	literal := t.make_int_literal_typed(item.value.str(), 'i64')
-	return t.make_cast('i64', literal, 'i64')
+	return t.make_cast(item.enum_name, literal, item.enum_name)
 }
 
 // clone_variant_subst clones a `$for variant in Sum.variants` body and gives the variant loop
@@ -3658,6 +3710,13 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if is_generic_fn_placeholder_name(core) {
 		return core
 	}
+	// A bare type substituted into an imported generic still belongs to the
+	// caller's main module. Keep that provenance when producing stable type ids;
+	// otherwise `typeof[T]().idx` is hashed as though the type were declared by
+	// the generic function's module.
+	if t.active_specialization_main_types[core] {
+		return 'main.${core}'
+	}
 	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
 		|| core.contains(' ') || decl_module == 'builtin' {
 		return core
@@ -4248,10 +4307,32 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 	}
 	if node.kind == .decl_assign && children.len >= 2 {
 		rhs := t.a.nodes[int(children[1])]
+		unwrapped_rhs_typ := if rhs.kind == .ident {
+			t.comptime_option_unwrapped_local_type(rhs.value, node, fm) or { '' }
+		} else {
+			''
+		}
+		reflected_rhs_typ := if unwrapped_rhs_typ.len > 0 {
+			unwrapped_rhs_typ
+		} else if rhs.kind == .ident {
+			t.local_decl_type_before(rhs.value, children[1]) or { '' }
+		} else if rhs.kind == .or_expr && rhs.value == '?' && fm.is_option
+			&& fm.comptime_typ.starts_with('?') {
+			fm.comptime_typ[1..].trim_space()
+		} else {
+			''
+		}
+		if reflected_rhs_typ.len > 0 {
+			t.set_node_typ(int(children[1]), reflected_rhs_typ)
+			t.record_refined_node_type(int(children[1]), reflected_rhs_typ)
+		}
 		// A reflected selector carries the field's qualified type on the cloned
 		// node. Keep that spelling so a bare user type is not mistaken for an
 		// unresolved generic placeholder during a later call in this branch.
-		rhs_typ := if rhs.typ.len > 0 && rhs.typ !in ['unknown', 'generic'] && !t.generic_arg_is_unresolved(rhs.typ) {
+		rhs_typ := if reflected_rhs_typ.len > 0 {
+			reflected_rhs_typ
+		} else if rhs.typ.len > 0 && rhs.typ !in ['unknown', 'generic']
+			&& !t.generic_arg_is_unresolved(rhs.typ) {
 			rhs.typ
 		} else {
 			t.node_type(children[1])
@@ -4377,7 +4458,7 @@ fn (mut t Transformer) make_string_array_literal(values []string) flat.NodeId {
 	}
 	mut ids := []flat.NodeId{cap: values.len}
 	for v in values {
-		ids << t.make_string_literal(v)
+		ids << t.make_string_literal(comptime_attr_display(v))
 	}
 	return t.make_array_literal_typed(ids, '[]string')
 }

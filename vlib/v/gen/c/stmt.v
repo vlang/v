@@ -650,6 +650,7 @@ mut:
 	defer_ids              []flat.NodeId
 	lock_scopes            []int
 	goto_label_lock_scopes map[string][]int
+	c_fn_calls             map[string]bool
 }
 
 fn new_fn_prelude_scan() FnPreludeScan {
@@ -657,6 +658,7 @@ fn new_fn_prelude_scan() FnPreludeScan {
 		defer_ids:              []flat.NodeId{}
 		lock_scopes:            []int{}
 		goto_label_lock_scopes: map[string][]int{}
+		c_fn_calls:             map[string]bool{}
 	}
 }
 
@@ -702,6 +704,19 @@ fn (g &FlatGen) collect_prelude_scan_from(id flat.NodeId, mut scan FnPreludeScan
 	}
 	if node.kind == .label_stmt && node.value.len > 0 {
 		scan.goto_label_lock_scopes[node.value] = scan.lock_scopes.clone()
+	}
+	if collect_defers && node.kind == .call && node.children_count > 0 {
+		callee := g.a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value.starts_with('C.') {
+			scan.c_fn_calls[g.cname(callee.value)] = true
+		} else if callee.kind == .selector && callee.children_count > 0 {
+			base := g.a.child_node(callee, 0)
+			if (base.kind == .ident && base.value == 'C')
+				|| (base.kind == .empty && ('C.${callee.value}' in g.tc.fn_ret_types
+					|| 'C.${callee.value}' in g.tc.fn_param_types)) {
+				scan.c_fn_calls[g.cname('C.${callee.value}')] = true
+			}
+		}
 	}
 	start := node.children_start
 	end := start + int(node.children_count)
@@ -2847,7 +2862,11 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								if c_type_is_pointer_storage(payload_ct) {
 									if !g.gen_heap_local_address_expr(ret_id, base)
 										&& !g.gen_bare_value_pointer_return_expr(ret_id, base) {
-										g.gen_expr(ret_id)
+										if fn_type_is_pointer(base) {
+											g.gen_expr_with_expected_type(ret_id, base)
+										} else {
+											g.gen_expr(ret_id)
+										}
 									}
 								} else if pointer_value_expr.len > 0 {
 									g.write(pointer_value_expr)
@@ -5235,7 +5254,13 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		payload_ct := g.optional_payload_c_type_for_optional_ct(ct, g.value_c_type(base))
 		if c_type_is_pointer_storage(payload_ct) {
 			value := g.heap_local_address_expr(ret_id, base) or {
-				g.bare_value_pointer_return_expr(ret_id, base) or { g.expr_to_string(ret_id) }
+				g.bare_value_pointer_return_expr(ret_id, base) or {
+					if fn_type_is_pointer(base) {
+						g.expr_to_string_with_expected_type(ret_id, base)
+					} else {
+						g.expr_to_string(ret_id)
+					}
+				}
 			}
 			return '(${ct}){.ok = true, .value = ${value}}'
 		}
@@ -7663,7 +7688,8 @@ fn (mut g FlatGen) fixed_array_init_block_type(node flat.Node) ?types.ArrayFixed
 
 // gen_decl_init_expr emits decl init expr output for c.
 fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type, c_type string, is_declaration bool) {
-	if rhs.kind == .int_literal && rhs.value == '0' && g.is_aggregate_zero_init_type(v_type, c_type) {
+	if rhs.kind == .int_literal && rhs.value == '0' && v_type !is types.OptionType
+		&& v_type !is types.ResultType && g.is_aggregate_zero_init_type(v_type, c_type) {
 		if is_declaration {
 			g.write('{0}')
 		} else {
@@ -8179,7 +8205,12 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				}
 				gen_expr_lvalue(mut g, g.a.child(&node, i))
 				g.write(' ${g.op_str(node.op)} ')
-				rhs_expected_type := g.assign_rhs_expected_type(lhs_id, lhs_type)
+				rhs_expected_type := if g.mut_value_param_pointer_rebind(lhs_id, lhs_type,
+					rhs_type, node.op) {
+					lhs_type
+				} else {
+					g.assign_rhs_expected_type(lhs_id, lhs_type)
+				}
 				if _ := fn_type_from(rhs_expected_type) {
 					if c_abi_fn := g.assign_lhs_c_abi_fn_ptr_type(lhs_id) {
 						if g.gen_callback_fn_value_for_field_c_abi(rhs_id, rhs_expected_type, c_abi_fn) {
@@ -8386,6 +8417,9 @@ fn (g &FlatGen) assign_lhs_needs_deref(lhs_id flat.NodeId, lhs_type types.Type, 
 		return false
 	}
 	if g.current_param_is_mut(lhs.value) {
+		if g.mut_value_param_pointer_rebind(lhs_id, lhs_type, rhs_type, op) {
+			return false
+		}
 		return true
 	}
 	if op != .assign {
@@ -8395,6 +8429,39 @@ fn (g &FlatGen) assign_lhs_needs_deref(lhs_id flat.NodeId, lhs_type types.Type, 
 		return lhs_type.base_type.name() == rhs_type.name()
 	}
 	return false
+}
+
+fn (g &FlatGen) mut_value_param_pointer_rebind(lhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	if op != .assign {
+		return false
+	}
+	lhs := g.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || !g.current_param_is_mut(lhs.value)
+		|| (g.cur_explicit_mut_pointer_params[lhs.value] or { false }) {
+		return false
+	}
+	param_type := cgen_unalias_type(g.current_param_type(lhs.value) or { return false })
+	param_pointer := match param_type {
+		types.Pointer { param_type }
+		else { return false }
+	}
+	// A value parameter has one ABI pointer level (`mut value T` -> `T*`).
+	// Pointer values use a pointer slot (`mut value &T` -> `T**`) and assignment
+	// must update that caller-owned slot instead of rebinding the local ABI pointer.
+	if cgen_unalias_type(param_pointer.base_type) is types.Pointer {
+		return false
+	}
+	clean_lhs := cgen_unalias_type(lhs_type)
+	clean_rhs := cgen_unalias_type(rhs_type)
+	lhs_pointer := match clean_lhs {
+		types.Pointer { clean_lhs }
+		else { return false }
+	}
+	rhs_pointer := match clean_rhs {
+		types.Pointer { clean_rhs }
+		else { return false }
+	}
+	return cgen_unalias_type(lhs_pointer.base_type).name() == cgen_unalias_type(rhs_pointer.base_type).name()
 }
 
 // gen_multi_return_assign emits multi return assign output for c.
@@ -8476,14 +8543,15 @@ fn (g &FlatGen) current_param_use_cname(name string) string {
 
 fn (g &FlatGen) local_cname(name string) string {
 	if g.local_shadows_global(name) || local_name_shadows_c_runtime(name)
-		|| g.local_name_shadows_c_typedef(name) {
+		|| g.local_name_shadows_c_typedef(name) || g.local_name_shadows_c_function(name) {
 		return naming.local_rename(g.cname(name))
 	}
 	return g.cname(name)
 }
 
 fn (g &FlatGen) local_decl_cname(name string) string {
-	if local_name_shadows_c_runtime(name) || g.local_name_shadows_c_typedef(name) {
+	if local_name_shadows_c_runtime(name) || g.local_name_shadows_c_typedef(name)
+		|| g.local_name_shadows_c_function(name) {
 		return naming.local_rename(g.cname(name))
 	}
 	if g.local_name_needs_global_suffix(name) {
@@ -8556,6 +8624,10 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		cache.put(name, if result { i8(1) } else { i8(-1) })
 	}
 	return result
+}
+
+fn (g &FlatGen) local_name_shadows_c_function(name string) bool {
+	return g.cname(name) in g.cur_c_fn_calls
 }
 
 fn local_name_shadows_c_runtime(name string) bool {

@@ -87,71 +87,67 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 }
 
 fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []string) bool {
-	$if windows {
+	if iface_names.len < 8 || isnil(tc.a) || isnil(tc.a.worker_pool) {
 		return false
-	} $else {
-		if iface_names.len < 8 || isnil(tc.a) || isnil(tc.a.worker_pool) {
-			return false
-		}
-		n_jobs := int_min(tc.a.worker_pool.size() + 1, iface_names.len)
-		if n_jobs <= 1 {
-			return false
-		}
-		tc.install_type_cache_overlay()
-		mut checkers := []&TypeChecker{cap: n_jobs}
-		checkers << tc
-		for _ in 1 .. n_jobs {
-			checkers << tc.fork_for_parallel_transform(tc.a)
-		}
-		mut results := &InterfaceImplResults{
-			items: []&InterfaceImplIndex{cap: iface_names.len}
-		}
-		for _ in iface_names {
-			results.items << &InterfaceImplIndex(unsafe { nil })
-		}
-		mut args := []InterfaceImplChunkArgs{cap: n_jobs}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for job in 0 .. n_jobs {
-			args << InterfaceImplChunkArgs{
-				checker:     voidptr(checkers[job])
-				iface_names: unsafe { voidptr(&iface_names) }
-				results:     voidptr(results)
-				start:       iface_names.len * job / n_jobs
-				end:         iface_names.len * (job + 1) / n_jobs
-				// Job 0 runs on the master checker, whose overlay is folded back
-				// into the shared cache below; only forks may use scratch arenas.
-				scoped:      job > 0
-			}
-			tasks << workers.Task{
-				run:        interface_impl_index_chunk_thread
-				arg:        unsafe { voidptr(&args[job]) }
-				force_sync: job == 0
-			}
-		}
-		tc.a.worker_pool.run(tasks)
-		tc.restore_type_cache_base()
-		for i, iface_name in iface_names {
-			if !isnil(results.items[i]) {
-				// Worker indexes are backed by disposable worker arenas. Publish a
-				// parent-owned copy before those arenas are released.
-				worker_index := results.items[i]
-				mut names := []string{cap: worker_index.names.len}
-				for name in worker_index.names {
-					names << name.clone()
-				}
-				tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
-					names: names
-					ids:   stable_interface_type_ids(names)
-				}
-			}
-		}
-		for arg in args {
-			if arg.scope != unsafe { nil } {
-				check_worker_scope_free(arg.scope)
-			}
-		}
-		return true
 	}
+	n_jobs := int_min(tc.a.worker_pool.size() + 1, iface_names.len)
+	if n_jobs <= 1 {
+		return false
+	}
+	tc.install_type_cache_overlay()
+	mut checkers := []&TypeChecker{cap: n_jobs}
+	checkers << tc
+	for _ in 1 .. n_jobs {
+		checkers << tc.fork_for_parallel_transform(tc.a)
+	}
+	mut results := &InterfaceImplResults{
+		items: []&InterfaceImplIndex{cap: iface_names.len}
+	}
+	for _ in iface_names {
+		results.items << &InterfaceImplIndex(unsafe { nil })
+	}
+	mut args := []InterfaceImplChunkArgs{cap: n_jobs}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for job in 0 .. n_jobs {
+		args << InterfaceImplChunkArgs{
+			checker:     voidptr(checkers[job])
+			iface_names: unsafe { voidptr(&iface_names) }
+			results:     voidptr(results)
+			start:       iface_names.len * job / n_jobs
+			end:         iface_names.len * (job + 1) / n_jobs
+			// Job 0 runs on the master checker, whose overlay is folded back
+			// into the shared cache below; only forks may use scratch arenas.
+			scoped:      job > 0
+		}
+		tasks << workers.Task{
+			run:        interface_impl_index_chunk_thread
+			arg:        unsafe { voidptr(&args[job]) }
+			force_sync: job == 0
+		}
+	}
+	tc.a.worker_pool.run(tasks)
+	tc.restore_type_cache_base()
+	for i, iface_name in iface_names {
+		if !isnil(results.items[i]) {
+			// Worker indexes are backed by disposable worker arenas. Publish a
+			// parent-owned copy before those arenas are released.
+			worker_index := results.items[i]
+			mut names := []string{cap: worker_index.names.len}
+			for name in worker_index.names {
+				names << name.clone()
+			}
+			tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
+				names: names
+				ids:   stable_interface_type_ids(names)
+			}
+		}
+	}
+	for arg in args {
+		if arg.scope != unsafe { nil } {
+			check_worker_scope_free(arg.scope)
+		}
+	}
+	return true
 }
 
 struct UnusedFnVarCandidate {
@@ -436,67 +432,63 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 // Type values are plain data and the master's interner keeps its own
 // deterministic id order.
 fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
-	$if windows {
+	n := tc.top_level_idx.len
+	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n < 2048
+		|| os.getenv('V3_NO_PAR_PASS2') != '' {
 		return []Pass2FnPrep{}
-	} $else {
-		n := tc.top_level_idx.len
-		if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n < 2048
-			|| os.getenv('V3_NO_PAR_PASS2') != '' {
-			return []Pass2FnPrep{}
-		}
-		mut n_jobs := tc.a.worker_pool.size() + 1
-		if n_jobs > 10 {
-			n_jobs = 10
-		}
-		mut preps := []Pass2FnPrep{len: n}
-		// One cheap serial walk captures the (file, module) context active at
-		// each shard boundary.
-		mut ctx_files := []string{len: n_jobs}
-		mut ctx_modules := []string{len: n_jobs}
-		mut cur_file := ''
-		mut cur_module := ''
-		mut bi := 0
-		for pi in 0 .. n {
-			for bi < n_jobs && pi == n * bi / n_jobs {
-				ctx_files[bi] = cur_file
-				ctx_modules[bi] = cur_module
-				bi++
-			}
-			node := tc.a.nodes[tc.top_level_idx[pi]]
-			if node.kind == .file {
-				cur_file = node.value
-				cur_module = tc.file_modules[node.value] or { '' }
-			} else if node.kind == .module_decl {
-				cur_module = node.value
-			}
-		}
-		for bi < n_jobs {
+	}
+	mut n_jobs := tc.a.worker_pool.size() + 1
+	if n_jobs > 10 {
+		n_jobs = 10
+	}
+	mut preps := []Pass2FnPrep{len: n}
+	// One cheap serial walk captures the (file, module) context active at
+	// each shard boundary.
+	mut ctx_files := []string{len: n_jobs}
+	mut ctx_modules := []string{len: n_jobs}
+	mut cur_file := ''
+	mut cur_module := ''
+	mut bi := 0
+	for pi in 0 .. n {
+		for bi < n_jobs && pi == n * bi / n_jobs {
 			ctx_files[bi] = cur_file
 			ctx_modules[bi] = cur_module
 			bi++
 		}
-		mut args := []Pass2PrepArgs{cap: n_jobs}
-		for ji in 0 .. n_jobs {
-			args << Pass2PrepArgs{
-				tc:          voidptr(tc)
-				start:       n * ji / n_jobs
-				end:         n * (ji + 1) / n_jobs
-				file:        ctx_files[ji]
-				module_name: ctx_modules[ji]
-				preps:       unsafe { voidptr(&preps) }
-			}
+		node := tc.a.nodes[tc.top_level_idx[pi]]
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = tc.file_modules[node.value] or { '' }
+		} else if node.kind == .module_decl {
+			cur_module = node.value
 		}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for ji in 0 .. n_jobs {
-			tasks << workers.Task{
-				run:        pass2_fn_prep_thread
-				arg:        unsafe { voidptr(&args[ji]) }
-				force_sync: ji == 0
-			}
-		}
-		tc.a.worker_pool.run(tasks)
-		return preps
 	}
+	for bi < n_jobs {
+		ctx_files[bi] = cur_file
+		ctx_modules[bi] = cur_module
+		bi++
+	}
+	mut args := []Pass2PrepArgs{cap: n_jobs}
+	for ji in 0 .. n_jobs {
+		args << Pass2PrepArgs{
+			tc:          voidptr(tc)
+			start:       n * ji / n_jobs
+			end:         n * (ji + 1) / n_jobs
+			file:        ctx_files[ji]
+			module_name: ctx_modules[ji]
+			preps:       unsafe { voidptr(&preps) }
+		}
+	}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for ji in 0 .. n_jobs {
+		tasks << workers.Task{
+			run:        pass2_fn_prep_thread
+			arg:        unsafe { voidptr(&args[ji]) }
+			force_sync: ji == 0
+		}
+	}
+	tc.a.worker_pool.run(tasks)
+	return preps
 }
 
 // finish_pass2_ancillary_registrations replays independent signature tables on
@@ -506,33 +498,27 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 	if tc.fn_ancillary_registrations.len == 0 {
 		return
 	}
-	$if windows {
+	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() < 2 {
 		for group in 0 .. 9 {
 			tc.apply_pass2_ancillary_group(group)
 		}
-	} $else {
-		if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() < 2 {
-			for group in 0 .. 9 {
-				tc.apply_pass2_ancillary_group(group)
+	} else {
+		mut args := []Pass2AncillaryArgs{cap: 9}
+		mut tasks := []workers.Task{cap: 9}
+		for group in 0 .. 9 {
+			args << Pass2AncillaryArgs{
+				tc:    voidptr(tc)
+				group: group
 			}
-		} else {
-			mut args := []Pass2AncillaryArgs{cap: 9}
-			mut tasks := []workers.Task{cap: 9}
-			for group in 0 .. 9 {
-				args << Pass2AncillaryArgs{
-					tc:    voidptr(tc)
-					group: group
-				}
-			}
-			for group in 0 .. 9 {
-				tasks << workers.Task{
-					run:        pass2_ancillary_thread
-					arg:        unsafe { voidptr(&args[group]) }
-					force_sync: group == 0
-				}
-			}
-			tc.a.worker_pool.run(tasks)
 		}
+		for group in 0 .. 9 {
+			tasks << workers.Task{
+				run:        pass2_ancillary_thread
+				arg:        unsafe { voidptr(&args[group]) }
+				force_sync: group == 0
+			}
+		}
+		tc.a.worker_pool.run(tasks)
 	}
 	tc.fn_ancillary_registrations = []FnAncillaryRegistration{}
 	tc.fn_c_variadic_registrations = []FnNamePairRegistration{}
@@ -593,108 +579,106 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 	}
 }
 
-$if !windows {
-	struct Pass2AncillaryArgs {
-		tc    voidptr
-		group int
-	}
+struct Pass2AncillaryArgs {
+	tc    voidptr
+	group int
+}
 
-	fn pass2_ancillary_thread(arg voidptr) voidptr {
-		a := unsafe { &Pass2AncillaryArgs(arg) }
-		mut tc := unsafe { &TypeChecker(a.tc) }
-		tc.apply_pass2_ancillary_group(a.group)
-		return unsafe { nil }
-	}
+fn pass2_ancillary_thread(arg voidptr) voidptr {
+	a := unsafe { &Pass2AncillaryArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	tc.apply_pass2_ancillary_group(a.group)
+	return unsafe { nil }
+}
 
-	struct Pass2PrepArgs {
-		tc          voidptr // master &TypeChecker
-		start       int
-		end         int
-		file        string
-		module_name string
-		preps       voidptr // &[]Pass2FnPrep — shards fill disjoint positions
-	}
+struct Pass2PrepArgs {
+	tc          voidptr // master &TypeChecker
+	start       int
+	end         int
+	file        string
+	module_name string
+	preps       voidptr // &[]Pass2FnPrep — shards fill disjoint positions
+}
 
-	fn pass2_fn_prep_thread(arg voidptr) voidptr {
-		a := unsafe { &Pass2PrepArgs(arg) }
-		master := unsafe { &TypeChecker(a.tc) }
-		mut view := master.fork_for_parallel_transform(master.a)
-		view.cur_file = a.file
-		view.cur_module = a.module_name
-		mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
-		view.collect_pass2_fn_range(a.start, a.end, mut *preps)
-		return unsafe { nil }
-	}
+fn pass2_fn_prep_thread(arg voidptr) voidptr {
+	a := unsafe { &Pass2PrepArgs(arg) }
+	master := unsafe { &TypeChecker(a.tc) }
+	mut view := master.fork_for_parallel_transform(master.a)
+	view.cur_file = a.file
+	view.cur_module = a.module_name
+	mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
+	view.collect_pass2_fn_range(a.start, a.end, mut *preps)
+	return unsafe { nil }
+}
 
-	// UnusedAliveScanArgs shards the unused-declaration reference scan: each
-	// task probes its node range against the shared read-only candidate-key
-	// maps and records hits in a private alive array.
-	struct UnusedAliveScanArgs {
-		tc         voidptr // &TypeChecker
-		fn_keys    map[string][]int
-		const_keys map[string][]int
-		start      int
-		end        int
-	mut:
-		alive []bool
-	}
+// UnusedAliveScanArgs shards the unused-declaration reference scan: each
+// task probes its node range against the shared read-only candidate-key
+// maps and records hits in a private alive array.
+struct UnusedAliveScanArgs {
+	tc         voidptr // &TypeChecker
+	fn_keys    map[string][]int
+	const_keys map[string][]int
+	start      int
+	end        int
+mut:
+	alive []bool
+}
 
-	fn unused_alive_scan_thread(arg voidptr) voidptr {
-		mut a := unsafe { &UnusedAliveScanArgs(arg) }
-		tc := unsafe { &TypeChecker(a.tc) }
-		tc.scan_unused_alive_range(a.fn_keys, a.const_keys, a.start, a.end, mut a.alive)
-		return unsafe { nil }
-	}
+fn unused_alive_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &UnusedAliveScanArgs(arg) }
+	tc := unsafe { &TypeChecker(a.tc) }
+	tc.scan_unused_alive_range(a.fn_keys, a.const_keys, a.start, a.end, mut a.alive)
+	return unsafe { nil }
+}
 
-	struct CheckChunkArgs {
-		worker        voidptr
-		items_ptr     voidptr
-		dynamic_items voidptr
-		chunk_queue   chan int
-		scope_enabled bool
-		index         int
-	mut:
-		scope     voidptr
-		processed []CheckWorkItem
-	}
+struct CheckChunkArgs {
+	worker        voidptr
+	items_ptr     voidptr
+	dynamic_items voidptr
+	chunk_queue   chan int
+	scope_enabled bool
+	index         int
+mut:
+	scope     voidptr
+	processed []CheckWorkItem
+}
 
-	fn check_chunk_thread(arg voidptr) voidptr {
-		mut a := unsafe { &CheckChunkArgs(arg) }
-		cksw := time.new_stopwatch()
-		a.scope = check_worker_scope_begin(a.scope_enabled)
-		mut w := unsafe { &TypeChecker(a.worker) }
-		items := unsafe { &[]CheckWorkItem(a.items_ptr) }
-		configured_batches := os.getenv('V3_CHECK_WORKER_BATCHES').int()
-		batch_limit := if configured_batches > 0 {
-			configured_batches
-		} else if os.getenv('V3_NO_COARSER_CHECK_BATCHES') != '' {
-			scoped_check_worker_batches
-		} else {
-			scoped_check_worker_batches / 12
-		}
-		if a.dynamic_items != unsafe { nil } {
-			chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
-			dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
-			for {
-				chunk_idx := <-a.chunk_queue or { break }
-				chunk := unsafe { chunks[chunk_idx] }
-				if a.scope_enabled {
-					w.check_scoped_batches(chunk, dynamic_batch_limit)
-				} else {
-					w.check_fn_items_serial(chunk)
-				}
-				a.processed << chunk
+fn check_chunk_thread(arg voidptr) voidptr {
+	mut a := unsafe { &CheckChunkArgs(arg) }
+	cksw := time.new_stopwatch()
+	a.scope = check_worker_scope_begin(a.scope_enabled)
+	mut w := unsafe { &TypeChecker(a.worker) }
+	items := unsafe { &[]CheckWorkItem(a.items_ptr) }
+	configured_batches := os.getenv('V3_CHECK_WORKER_BATCHES').int()
+	batch_limit := if configured_batches > 0 {
+		configured_batches
+	} else if os.getenv('V3_NO_COARSER_CHECK_BATCHES') != '' {
+		scoped_check_worker_batches
+	} else {
+		scoped_check_worker_batches / 12
+	}
+	if a.dynamic_items != unsafe { nil } {
+		chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
+		dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
+		for {
+			chunk_idx := <-a.chunk_queue or { break }
+			chunk := unsafe { chunks[chunk_idx] }
+			if a.scope_enabled {
+				w.check_scoped_batches(chunk, dynamic_batch_limit)
+			} else {
+				w.check_fn_items_serial(chunk)
 			}
-		} else if a.scope_enabled {
-			w.check_scoped_batches(*items, batch_limit)
-		} else {
-			w.check_fn_items_serial(*items)
+			a.processed << chunk
 		}
-		check_worker_scope_leave(a.scope)
-		item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
-		w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
-		return unsafe { nil }
+	} else if a.scope_enabled {
+		w.check_scoped_batches(*items, batch_limit)
+	} else {
+		w.check_fn_items_serial(*items)
 	}
+	check_worker_scope_leave(a.scope)
+	item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
+	w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
+	return unsafe { nil }
 }
 
 // check_scoped_batches bounds each worker's temporary type-resolution state.
@@ -785,12 +769,7 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 		}
 		return false
 	}
-	$if windows {
-		tc.check_semantics()
-		return false
-	} $else {
-		return tc.check_semantics_parallel()
-	}
+	return tc.check_semantics_parallel()
 }
 
 // check_semantics_scoped_serial keeps a no-parallel preallocated check bounded
@@ -964,114 +943,104 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 // worker pool when available; hit-flag OR-merging keeps the result identical
 // to the serial scan regardless of shard boundaries.
 fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]int, const_keys map[string][]int, mut alive []bool) {
-	$if windows {
-		tc.scan_unused_alive_range(fn_keys, const_keys, 0, tc.a.nodes.len, mut alive)
+	n_nodes := tc.a.nodes.len
+	if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n_nodes < 262_144 {
+		tc.scan_unused_alive_range(fn_keys, const_keys, 0, n_nodes, mut alive)
 		return
-	} $else {
-		n_nodes := tc.a.nodes.len
-		if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n_nodes < 262_144 {
-			tc.scan_unused_alive_range(fn_keys, const_keys, 0, n_nodes, mut alive)
-			return
+	}
+	mut n_jobs := tc.a.worker_pool.size() + 1
+	if n_jobs > 8 {
+		n_jobs = 8
+	}
+	mut args := []UnusedAliveScanArgs{cap: n_jobs}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for job in 0 .. n_jobs {
+		args << UnusedAliveScanArgs{
+			tc:         voidptr(tc)
+			fn_keys:    fn_keys
+			const_keys: const_keys
+			start:      n_nodes * job / n_jobs
+			end:        n_nodes * (job + 1) / n_jobs
+			alive:      []bool{len: alive.len}
 		}
-		mut n_jobs := tc.a.worker_pool.size() + 1
-		if n_jobs > 8 {
-			n_jobs = 8
+	}
+	for job in 0 .. n_jobs {
+		tasks << workers.Task{
+			run:        unused_alive_scan_thread
+			arg:        unsafe { voidptr(&args[job]) }
+			force_sync: job == 0
 		}
-		mut args := []UnusedAliveScanArgs{cap: n_jobs}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for job in 0 .. n_jobs {
-			args << UnusedAliveScanArgs{
-				tc:         voidptr(tc)
-				fn_keys:    fn_keys
-				const_keys: const_keys
-				start:      n_nodes * job / n_jobs
-				end:        n_nodes * (job + 1) / n_jobs
-				alive:      []bool{len: alive.len}
-			}
-		}
-		for job in 0 .. n_jobs {
-			tasks << workers.Task{
-				run:        unused_alive_scan_thread
-				arg:        unsafe { voidptr(&args[job]) }
-				force_sync: job == 0
-			}
-		}
-		tc.a.worker_pool.run(tasks)
-		for arg in args {
-			for cand_idx in 0 .. alive.len {
-				if arg.alive[cand_idx] {
-					alive[cand_idx] = true
-				}
+	}
+	tc.a.worker_pool.run(tasks)
+	for arg in args {
+		for cand_idx in 0 .. alive.len {
+			if arg.alive[cand_idx] {
+				alive[cand_idx] = true
 			}
 		}
 	}
 }
 
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
-	$if windows {
-		tc.check_semantics()
-		return false
-	} $else {
-		tc.resolution_type_mode = false
-		tc.checked_const_names = map[string]bool{}
-		tc.check_import_diagnostics()
-		tc.check_duplicate_fn_declarations()
-		tc.check_deprecated_byte_types()
-		// Freeze the warm post-collect type cache as the shared read-only base
-		// for every worker thread and the master itself via a private overlay.
-		tc.install_type_cache_overlay()
-		// Invalid-IError-return diagnostics are gated to functions reachable
-		// from the selected files. Most successful compiles never produce a
-		// candidate, so defer the call-graph walk until after checking and only
-		// run it when there is something to filter.
-		tc.defer_ierror_gating = tc.diagnostic_files.len > 0
-		tc.selected_file_called_fns = map[string]bool{}
-		tc.selected_file_worklist = []string{}
-		mut cksw := time.new_stopwatch()
-		tc.check_export_attrs()
-		tc.check_c_js_generic_declarations()
-		tc.check_interface_reserved_parameter_names()
-		tc.check_goto_labels()
-		tc.check_labelled_loop_controls()
-		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		cksw.restart()
-		// The work list only drives the dispatch below; keep it and its
-		// collection scratch out of the persistent arena.
-		items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-		items := tc.collect_parallel_check_items()
-		check_worker_scope_leave(items_scope)
-		tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
-		final_file := tc.cur_file
-		final_module := tc.cur_module
-		was_parallel := tc.run_parallel_check(items)
-		check_worker_scope_free(items_scope)
-		// Per-function check costs only schedule the parallel batches above.
-		unsafe { tc.fn_check_costs.free() }
-		tc.fn_check_costs = []i32{}
-		tc.cur_file = final_file
-		tc.cur_module = final_module
-		if !tc.valid_diagnostic_fast {
-			tc.check_unused_import_diagnostics()
-		}
-		tc.check_selective_builtin_import_diagnostics()
-		if tc.defer_ierror_gating {
-			if tc.pending_ierror_errors.len > 0 {
-				tc.collect_selected_file_called_fns()
-			}
-			if tc.filter_pending_ierror_errors() {
-				tc.sort_parallel_check_errors()
-			}
-			tc.defer_ierror_gating = false
-		}
-		tc.discard_cascading_fn_redefinition_diagnostics()
-		tc.sort_parallel_check_errors()
-		tc.restore_type_cache_base()
-		// Match the serial checker: only generated post-check type text may use the
-		// cross-module generic-argument fallback.
-		tc.direct_parent_index_trusted = false
-		tc.resolution_type_mode = true
-		return was_parallel
+	tc.resolution_type_mode = false
+	tc.checked_const_names = map[string]bool{}
+	tc.check_import_diagnostics()
+	tc.check_duplicate_fn_declarations()
+	tc.check_deprecated_byte_types()
+	// Freeze the warm post-collect type cache as the shared read-only base
+	// for every worker thread and the master itself via a private overlay.
+	tc.install_type_cache_overlay()
+	// Invalid-IError-return diagnostics are gated to functions reachable
+	// from the selected files. Most successful compiles never produce a
+	// candidate, so defer the call-graph walk until after checking and only
+	// run it when there is something to filter.
+	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
+	tc.selected_file_called_fns = map[string]bool{}
+	tc.selected_file_worklist = []string{}
+	mut cksw := time.new_stopwatch()
+	tc.check_export_attrs()
+	tc.check_c_js_generic_declarations()
+	tc.check_interface_reserved_parameter_names()
+	tc.check_goto_labels()
+	tc.check_labelled_loop_controls()
+	tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	cksw.restart()
+	// The work list only drives the dispatch below; keep it and its
+	// collection scratch out of the persistent arena.
+	items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
+	items := tc.collect_parallel_check_items()
+	check_worker_scope_leave(items_scope)
+	tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
+	final_file := tc.cur_file
+	final_module := tc.cur_module
+	was_parallel := tc.run_parallel_check(items)
+	check_worker_scope_free(items_scope)
+	// Per-function check costs only schedule the parallel batches above.
+	unsafe { tc.fn_check_costs.free() }
+	tc.fn_check_costs = []i32{}
+	tc.cur_file = final_file
+	tc.cur_module = final_module
+	if !tc.valid_diagnostic_fast {
+		tc.check_unused_import_diagnostics()
 	}
+	tc.check_selective_builtin_import_diagnostics()
+	if tc.defer_ierror_gating {
+		if tc.pending_ierror_errors.len > 0 {
+			tc.collect_selected_file_called_fns()
+		}
+		if tc.filter_pending_ierror_errors() {
+			tc.sort_parallel_check_errors()
+		}
+		tc.defer_ierror_gating = false
+	}
+	tc.discard_cascading_fn_redefinition_diagnostics()
+	tc.sort_parallel_check_errors()
+	tc.restore_type_cache_base()
+	// Match the serial checker: only generated post-check type text may use the
+	// cross-module generic-argument fallback.
+	tc.direct_parent_index_trusted = false
+	tc.resolution_type_mode = true
+	return was_parallel
 }
 
 fn (mut tc TypeChecker) filter_pending_ierror_errors() bool {
@@ -1305,193 +1274,187 @@ fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 }
 
 fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
-	$if windows {
+	mut ast := unsafe { tc.a }
+	if isnil(ast.worker_pool) {
+		ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
+	}
+	mut n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
+	if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
+		n_jobs = max_scoped_check_jobs
+	}
+	if items.len < min_parallel_check_items || n_jobs <= 1 {
 		tc.check_top_level_declarations()
-		tc.check_fn_items_serial(items)
-		return false
-	} $else {
-		mut ast := unsafe { tc.a }
-		if isnil(ast.worker_pool) {
-			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
-		}
-		mut n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
-		if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
-			n_jobs = max_scoped_check_jobs
-		}
-		if items.len < min_parallel_check_items || n_jobs <= 1 {
-			tc.check_top_level_declarations()
-			if tc.scope_parallel_check_workers {
-				tc.check_scoped_batches(items, scoped_check_serial_batches)
-			} else {
-				tc.check_fn_items_serial(items)
-			}
-			return false
-		}
-		// Initializer-value checks can mutate compilation-wide state that the
-		// body workers read (for example the const-cycle poisoning of
-		// tc.const_types), so they must complete before any chunk is
-		// submitted; only the read-only signature checks overlap the pool.
-		tlv_sw := time.new_stopwatch()
-		tc.check_top_level_declaration_values()
-		tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		mut chunk_target := n_jobs
 		if tc.scope_parallel_check_workers {
-			chunk_target = n_jobs * check_chunk_oversubscribe
-			if chunk_target > items.len {
-				chunk_target = items.len
-			}
-		}
-		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
-		dynamic_dispatch := tc.scope_parallel_check_workers && tc.building_v_fast && fail.len == 0
-		// Dynamic workers record their actual assignments after dispatch; the
-		// static partition would only allocate and sort buckets that get replaced.
-		// The chunk partition only serves the dispatch below; keep it out of the
-		// persistent arena together with the worker forks.
-		setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-		mut chunks := if dynamic_dispatch {
-			[][]CheckWorkItem{len: chunk_target}
+			tc.check_scoped_batches(items, scoped_check_serial_batches)
 		} else {
-			split_check_items(items, chunk_target)
+			tc.check_fn_items_serial(items)
 		}
-		chunk_count := chunks.len
-		mut dynamic_chunks := [][]CheckWorkItem{}
-		mut chunk_queue := chan int{cap: 1}
-		if dynamic_dispatch {
-			dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
-			dynamic_chunks = split_check_items(items, dynamic_target)
-			chunk_queue = chan int{cap: dynamic_chunks.len}
-			for ci in 0 .. dynamic_chunks.len {
-				chunk_queue <- ci
-			}
-			chunk_queue.close()
+		return false
+	}
+	// Initializer-value checks can mutate compilation-wide state that the
+	// body workers read (for example the const-cycle poisoning of
+	// tc.const_types), so they must complete before any chunk is
+	// submitted; only the read-only signature checks overlap the pool.
+	tlv_sw := time.new_stopwatch()
+	tc.check_top_level_declaration_values()
+	tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	mut chunk_target := n_jobs
+	if tc.scope_parallel_check_workers {
+		chunk_target = n_jobs * check_chunk_oversubscribe
+		if chunk_target > items.len {
+			chunk_target = items.len
 		}
-		thread_count := chunk_count - 1
-		worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
-		rpsw := time.new_stopwatch()
-		mut checker_workers := []voidptr{cap: worker_count}
-		for _ in 0 .. worker_count {
-			mut w := tc.fork_for_parallel_check()
-			w.verbose = tc.verbose
-			checker_workers << voidptr(w)
+	}
+	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+	dynamic_dispatch := tc.scope_parallel_check_workers && tc.building_v_fast && fail.len == 0
+	// Dynamic workers record their actual assignments after dispatch; the
+	// static partition would only allocate and sort buckets that get replaced.
+	// The chunk partition only serves the dispatch below; keep it out of the
+	// persistent arena together with the worker forks.
+	setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
+	mut chunks := if dynamic_dispatch {
+		[][]CheckWorkItem{len: chunk_target}
+	} else {
+		split_check_items(items, chunk_target)
+	}
+	chunk_count := chunks.len
+	mut dynamic_chunks := [][]CheckWorkItem{}
+	mut chunk_queue := chan int{cap: 1}
+	if dynamic_dispatch {
+		dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
+		dynamic_chunks = split_check_items(items, dynamic_target)
+		chunk_queue = chan int{cap: dynamic_chunks.len}
+		for ci in 0 .. dynamic_chunks.len {
+			chunk_queue <- ci
 		}
-		tc.timing_profile('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
-		mut args := []CheckChunkArgs{cap: chunk_count}
-		mut dynamic_items_ptr := unsafe { nil }
-		if dynamic_dispatch {
-			dynamic_items_ptr = unsafe { voidptr(&dynamic_chunks) }
+		chunk_queue.close()
+	}
+	thread_count := chunk_count - 1
+	worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
+	rpsw := time.new_stopwatch()
+	mut checker_workers := []voidptr{cap: worker_count}
+	for _ in 0 .. worker_count {
+		mut w := tc.fork_for_parallel_check()
+		w.verbose = tc.verbose
+		checker_workers << voidptr(w)
+	}
+	tc.timing_profile('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
+	mut args := []CheckChunkArgs{cap: chunk_count}
+	mut dynamic_items_ptr := unsafe { nil }
+	if dynamic_dispatch {
+		dynamic_items_ptr = unsafe { voidptr(&dynamic_chunks) }
+	}
+	for ci in 0 .. chunk_count {
+		mut worker := voidptr(tc)
+		if tc.scope_parallel_check_workers {
+			worker = checker_workers[ci]
+		} else if ci > 0 {
+			worker = checker_workers[ci - 1]
 		}
-		for ci in 0 .. chunk_count {
-			mut worker := voidptr(tc)
-			if tc.scope_parallel_check_workers {
-				worker = checker_workers[ci]
-			} else if ci > 0 {
-				worker = checker_workers[ci - 1]
-			}
-			args << CheckChunkArgs{
-				worker:        worker
-				items_ptr:     unsafe { voidptr(&chunks[ci]) }
-				dynamic_items: dynamic_items_ptr
-				chunk_queue:   chunk_queue
-				scope_enabled: tc.scope_parallel_check_workers
-				index:         ci
-			}
+		args << CheckChunkArgs{
+			worker:        worker
+			items_ptr:     unsafe { voidptr(&chunks[ci]) }
+			dynamic_items: dynamic_items_ptr
+			chunk_queue:   chunk_queue
+			scope_enabled: tc.scope_parallel_check_workers
+			index:         ci
 		}
-		// The master checks its own chunk under the same range discipline as the
-		// workers: in-range cache writes go straight into the shared arrays (the
-		// master owns those slots), out-of-range ones into its sparse maps, which
-		// are replayed first after join so that worker merges overwrite them in
-		// the same order the old serial flow did. The read-only signature checks
-		// run as a final synchronous task, so the master performs them while the
-		// pool workers are still checking bodies; its sparse mode keeps their
-		// cache writes out of the worker-owned shared array ranges. The mutating
-		// value checks already ran before any chunk was created.
-		tc.parallel_check_sparse = true
-		mut tasks := []workers.Task{cap: chunk_count + 1}
-		for ci in 0 .. chunk_count {
-			helper_idx := ci - 1
-			tasks << workers.Task{
-				run:        check_chunk_thread
-				arg:        unsafe { voidptr(&args[ci]) }
-				force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
-			}
-		}
+	}
+	// The master checks its own chunk under the same range discipline as the
+	// workers: in-range cache writes go straight into the shared arrays (the
+	// master owns those slots), out-of-range ones into its sparse maps, which
+	// are replayed first after join so that worker merges overwrite them in
+	// the same order the old serial flow did. The read-only signature checks
+	// run as a final synchronous task, so the master performs them while the
+	// pool workers are still checking bodies; its sparse mode keeps their
+	// cache writes out of the worker-owned shared array ranges. The mutating
+	// value checks already ran before any chunk was created.
+	tc.parallel_check_sparse = true
+	mut tasks := []workers.Task{cap: chunk_count + 1}
+	for ci in 0 .. chunk_count {
+		helper_idx := ci - 1
 		tasks << workers.Task{
-			run:        check_top_level_decl_signatures_thread
-			arg:        voidptr(tc)
-			force_sync: true
+			run:        check_chunk_thread
+			arg:        unsafe { voidptr(&args[ci]) }
+			force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
 		}
-		check_worker_scope_leave(setup_scope)
-		rpsw2 := time.new_stopwatch()
-		any_started := ast.worker_pool.run(tasks)
-		if dynamic_dispatch {
-			for ci in 0 .. chunk_count {
-				chunks[ci] = args[ci].processed
+	}
+	tasks << workers.Task{
+		run:        check_top_level_decl_signatures_thread
+		arg:        voidptr(tc)
+		force_sync: true
+	}
+	check_worker_scope_leave(setup_scope)
+	rpsw2 := time.new_stopwatch()
+	any_started := ast.worker_pool.run(tasks)
+	if dynamic_dispatch {
+		for ci in 0 .. chunk_count {
+			chunks[ci] = args[ci].processed
+		}
+	}
+	tc.timing_profile('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
+	tc.merge_own_sparse_caches()
+	tc.parallel_check_sparse = false
+	merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
+	// Promote scope-resident cache payloads across the pool while every
+	// worker scope is still alive; only unknown-type interning stays serial.
+	par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
+	mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
+	mut mg_clone_ns := u64(0)
+	mut mg_merge_ns := u64(0)
+	if par_clone {
+		mg_t0 := time.sys_mono_now()
+		for ci in 0 .. chunk_count {
+			clone_args << CheckCloneChunkArgs{
+				tc:        voidptr(tc)
+				items_ptr: unsafe { voidptr(&chunks[ci]) }
+				miss:      []int{cap: 1024}
 			}
 		}
-		tc.timing_profile('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
-		tc.merge_own_sparse_caches()
-		tc.parallel_check_sparse = false
-		merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
-		// Promote scope-resident cache payloads across the pool while every
-		// worker scope is still alive; only unknown-type interning stays serial.
-		par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
-		mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
-		mut mg_clone_ns := u64(0)
-		mut mg_merge_ns := u64(0)
-		if par_clone {
+		mut ctasks := []workers.Task{cap: chunk_count}
+		for ci in 0 .. chunk_count {
+			ctasks << workers.Task{
+				run:        check_clone_chunk_thread
+				arg:        unsafe { voidptr(&clone_args[ci]) }
+				force_sync: ci == 0
+			}
+		}
+		ast.worker_pool.run(ctasks)
+		mg_clone_ns += time.sys_mono_now() - mg_t0
+	}
+	for ci in merge_start .. chunk_count {
+		worker_idx := if tc.scope_parallel_check_workers { ci } else { ci - 1 }
+		mut w := unsafe { &TypeChecker(checker_workers[worker_idx]) }
+		// Scoped-mode forks always own private interners, even when this compiler
+		// was built without the prealloc allocator and therefore has no arena.
+		scoped := tc.scope_parallel_check_workers
+		if scoped {
 			mg_t0 := time.sys_mono_now()
-			for ci in 0 .. chunk_count {
-				clone_args << CheckCloneChunkArgs{
-					tc:        voidptr(tc)
-					items_ptr: unsafe { voidptr(&chunks[ci]) }
-					miss:      []int{cap: 1024}
-				}
+			if par_clone {
+				tc.intern_expr_type_misses(clone_args[ci].miss)
+			} else {
+				tc.clone_parallel_worker_node_caches(chunks[ci])
 			}
-			mut ctasks := []workers.Task{cap: chunk_count}
-			for ci in 0 .. chunk_count {
-				ctasks << workers.Task{
-					run:        check_clone_chunk_thread
-					arg:        unsafe { voidptr(&clone_args[ci]) }
-					force_sync: ci == 0
-				}
-			}
-			ast.worker_pool.run(ctasks)
 			mg_clone_ns += time.sys_mono_now() - mg_t0
 		}
-		for ci in merge_start .. chunk_count {
-			worker_idx := if tc.scope_parallel_check_workers { ci } else { ci - 1 }
-			mut w := unsafe { &TypeChecker(checker_workers[worker_idx]) }
-			// Scoped-mode forks always own private interners, even when this compiler
-			// was built without the prealloc allocator and therefore has no arena.
-			scoped := tc.scope_parallel_check_workers
-			if scoped {
-				mg_t0 := time.sys_mono_now()
-				if par_clone {
-					tc.intern_expr_type_misses(clone_args[ci].miss)
-				} else {
-					tc.clone_parallel_worker_node_caches(chunks[ci])
-				}
-				mg_clone_ns += time.sys_mono_now() - mg_t0
-			}
-			mg_t1 := time.sys_mono_now()
-			tc.merge_parallel_check_worker_scoped(w, scoped)
-			mg_merge_ns += time.sys_mono_now() - mg_t1
-			if scoped {
-				check_worker_scope_free(args[ci].scope)
-			} else {
-				w.free_parallel_check_worker_cache()
-			}
+		mg_t1 := time.sys_mono_now()
+		tc.merge_parallel_check_worker_scoped(w, scoped)
+		mg_merge_ns += time.sys_mono_now() - mg_t1
+		if scoped {
+			check_worker_scope_free(args[ci].scope)
+		} else {
+			w.free_parallel_check_worker_cache()
 		}
-		mg_clone_ms := f64(mg_clone_ns) / 1e6
-		mg_merge_ms := f64(mg_merge_ns) / 1e6
-		tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
-		tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
-		check_worker_scope_free(setup_scope)
-		sort_sw := time.new_stopwatch()
-		tc.sort_parallel_check_errors()
-		tc.timing_profile('  [ttime]   ck err sort      ${f64(sort_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		return any_started
 	}
+	mg_clone_ms := f64(mg_clone_ns) / 1e6
+	mg_merge_ms := f64(mg_merge_ns) / 1e6
+	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
+	tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
+	check_worker_scope_free(setup_scope)
+	sort_sw := time.new_stopwatch()
+	tc.sort_parallel_check_errors()
+	tc.timing_profile('  [ttime]   ck err sort      ${f64(sort_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	return any_started
 }
 
 fn (mut tc TypeChecker) sort_parallel_check_errors() {
@@ -2782,7 +2745,19 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 				}
 			}
 			is_builtin_array_override := receiver_type is Array && node.value.ends_with('.map')
-			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override {
+			is_local_collection := match receiver_type {
+				Array {
+					tc.receiver_collection_payload_is_local(receiver_type.elem_type)
+				}
+				Map {
+					tc.receiver_collection_payload_is_local(receiver_type.value_type)
+				}
+				else {
+					false
+				}
+			}
+			if tc.cur_module != 'builtin' && is_non_local_builtin && !is_builtin_array_override
+				&& !is_local_collection {
 				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
 				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type AliasName = ${receiver_text}`', receiver_id, receiver_pos)
 			}
@@ -2894,6 +2869,78 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			tc.record_error_at(.return_mismatch, 'operator `${operator}` methods on primitive aliases should return `${receiver_type.name}`', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
+}
+
+fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
+	clean := unwrap_pointer(typ)
+	return match clean {
+		Alias {
+			tc.source_module_declares_type(clean.name)
+		}
+		Struct {
+			tc.source_module_declares_type(clean.name)
+		}
+		Interface {
+			tc.source_module_declares_type(clean.name)
+		}
+		Enum {
+			tc.source_module_declares_type(clean.name)
+		}
+		SumType {
+			tc.source_module_declares_type(clean.name)
+		}
+		Array {
+			tc.receiver_collection_payload_is_local(clean.elem_type)
+		}
+		ArrayFixed {
+			tc.receiver_collection_payload_is_local(clean.elem_type)
+		}
+		Map {
+			tc.receiver_collection_payload_is_local(clean.value_type)
+		}
+		OptionType {
+			tc.receiver_collection_payload_is_local(clean.base_type)
+		}
+		ResultType {
+			tc.receiver_collection_payload_is_local(clean.base_type)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (tc &TypeChecker) source_module_declares_type(type_name string) bool {
+	qualified_base := type_name.all_before('[')
+	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
+	if qualified_base.contains('.') {
+		owner_module := qualified_base.all_before_last('.')
+		if owner_module != current_module {
+			return false
+		}
+	}
+	base_name := qualified_base.all_after_last('.')
+	mut module_name := ''
+	for idx in tc.top_level_idx {
+		node := tc.a.nodes[idx]
+		match node.kind {
+			.file {
+				module_name = ''
+			}
+			.module_decl {
+				module_name = node.value
+			}
+			.struct_decl, .type_decl, .interface_decl, .enum_decl {
+				decl_module := if module_name in ['', 'main'] { 'main' } else { module_name }
+				modules_match := decl_module == current_module
+				if modules_match && node.value.all_before('[').all_after_last('.') == base_name {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) operator_receiver_without_mut_pos(node flat.Node) token.Pos {

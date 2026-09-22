@@ -39,6 +39,40 @@ fn test_parenthesized_match_statement_accepts_newline_before_block() {
 	assert a.nodes.count(it.kind == .match_stmt) == 1
 }
 
+fn test_or_block_accepts_newline_after_result_expression() {
+	path := os.join_path(os.temp_dir(), 'v3_newline_or_block_${os.getpid()}.v')
+	os.write_file(path, 'fn result_value() !int {
+	return 42
+}
+
+fn main() {
+	value := result_value()
+		or { return }
+	result_value()
+		or { return }
+	match result_value() {
+		42 {}
+		else {}
+	}
+		or { return }
+	if true {
+		result_value()
+	} else {
+		result_value()
+	}
+		or { return }
+	assert value == 42
+}
+') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	assert a.nodes.count(it.kind == .or_expr) == 4
+}
+
 fn test_statement_map_literals_accept_compound_keys() {
 	ast, _ := parse_span_source('statement_map_compound_keys', "fn make_key() string {
 	return 'key'
@@ -226,6 +260,31 @@ fn test_c_style_for_post_clause_spans() {
 	assert 'i++' in stmt_spans
 	assert 'j++' in stmt_spans
 	assert stmt_spans.filter(it == 'i++, j++').len == 0
+}
+
+fn test_postfix_comment_newline_starts_next_parenthesized_statement() {
+	ast, src := parse_span_source('postfix_comment_newline', 'fn main() {
+	mut p := &int(0)
+	p++ // advance the pointer
+	(*p) += 2
+}
+')
+	mut saw_postfix := false
+	mut saw_assignment := false
+	for node in ast.nodes {
+		if node.kind == .postfix && node.op == .inc && span_text(src, node) == 'p++' {
+			saw_postfix = true
+		}
+		if node.kind == .assign && node.op == .plus_assign {
+			saw_assignment = true
+		}
+		if node.kind == .call && node.children_count > 0 {
+			callee := ast.child_node(&node, 0)
+			assert callee.kind != .postfix
+		}
+	}
+	assert saw_postfix
+	assert saw_assignment
 }
 
 // Array cast expressions (`[N]T(x)`, `[]T(x)`) are built after the `[N]T`/`[]T`

@@ -122,12 +122,16 @@ fn struct_init_unaliased_type_name(typ types.Type, fallback string) string {
 }
 
 fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Type) {
-	if call_name := g.callback_direct_fn_value_name(value_id, expected) {
-		g.write(g.callback_c_fn_name(call_name))
-		return
-	}
-	if g.gen_callback_fn_value_for_expected_type(value_id, expected) {
-		return
+	// A pointer-to-function field stores the address of a function-value slot, not
+	// the callable itself. Let expected-type generation retain the source `&`.
+	if !fn_type_is_pointer(expected) {
+		if call_name := g.callback_direct_fn_value_name(value_id, expected) {
+			g.write(g.callback_c_fn_name(call_name))
+			return
+		}
+		if g.gen_callback_fn_value_for_expected_type(value_id, expected) {
+			return
+		}
 	}
 	if g.gen_interface_pointer_value_expr(value_id, expected) {
 		return
@@ -173,6 +177,11 @@ fn struct_init_has_main_type_lock(type_name string) bool {
 }
 
 fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) string {
+	if node.typ == node.value && (node.typ.starts_with('?') || node.typ.starts_with('!')) {
+		// Lowered option/result literals carry their authoritative wrapper type on
+		// the synthetic node; they have no checker-side expression entry to refine it.
+		return node.typ
+	}
 	if node.typ == node.value && node.typ.contains('[') && node.typ.contains('.') {
 		// A specialized clone's explicit type annotation is newer than the
 		// checker's expression cache and can retain nested main-module locks.
@@ -721,11 +730,23 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		|| init_type is types.ResultType
 	has_expected_optional := g.expected_expr_type is types.OptionType
 		|| g.expected_expr_type is types.ResultType || g.expected_expr_is_optional_struct()
+	init_has_pointer_payload := match init_type {
+		types.OptionType { init_type.base_type is types.Pointer }
+		types.ResultType { init_type.base_type is types.Pointer }
+		else { false }
+	}
+	expected_has_pointer_payload := match g.expected_expr_type {
+		types.OptionType { g.expected_expr_type.base_type is types.Pointer }
+		types.ResultType { g.expected_expr_type.base_type is types.Pointer }
+		else { false }
+	}
 	// Lowered optional literals can retain their concrete V spelling (`?IError`)
 	// instead of the legacy synthetic `Optional` name. The wrapper ABI still comes
 	// from the expected option/result type; otherwise trimming the `?` above emits
 	// the payload C type and attempts to initialize an interface with option fields.
-	if is_optional_init
+	// A mutable optional struct parameter is the exception: its lowered payload is
+	// a pointer, while the source-level expected type still names the value payload.
+	if is_optional_init && !(init_has_pointer_payload && !expected_has_pointer_payload)
 		&& (g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType) {
 		concrete_expected := g.cur_fn_is_specialized && g.cur_fn_ret_is_optional
 			&& g.type_names_match(g.expected_expr_type, g.cur_fn_ret)
@@ -747,6 +768,10 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 				g.gen_expr_with_expected_type(err_id, g.tc.parse_type('IError'))
 			}
 			g.write('}')
+			return
+		}
+		if g.optional_struct_init_is_none(node) {
+			g.write('(${name}){.ok = false, .err = builtin__none__}')
 			return
 		}
 		if g.gen_optional_fixed_array_struct_init(node, name, init_type) {
@@ -1128,6 +1153,24 @@ fn (g &FlatGen) optional_struct_init_value_id(node flat.Node) ?flat.NodeId {
 		}
 	}
 	return none
+}
+
+fn (g &FlatGen) optional_struct_init_is_none(node flat.Node) bool {
+	mut has_false_ok := false
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		if field.value in ['err', 'value'] {
+			return false
+		}
+		if field.value == 'ok' {
+			value := g.a.child_node(field, 0)
+			has_false_ok = value.kind != .bool_literal || value.value != 'true'
+		}
+	}
+	return has_false_ok
 }
 
 fn (g &FlatGen) optional_struct_init_payload_type(init_type types.Type) ?types.Type {
@@ -2287,10 +2330,11 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 	raw_typ := clean_typ
 	if clean_typ is types.OptionType || clean_typ is types.ResultType {
 		ct := g.optional_type_name(clean_typ)
-		g.write('(${ct}){0}')
+		g.write('(${ct}){.ok = false, .err = builtin__none__}')
 		return
 	}
-	if clean_typ is types.Struct && !clean_typ.name.starts_with('C.') {
+	if clean_typ is types.Struct
+		&& (!clean_typ.name.starts_with('C.') || g.struct_needs_default_init(clean_typ.name)) {
 		ct := g.tc.c_type(raw_typ)
 		g.write('(${ct}){')
 		mut set_fields := map[string]bool{}
@@ -2404,7 +2448,7 @@ fn (g &FlatGen) struct_field_value_is_plainly_incompatible(value_id flat.NodeId,
 // metadata defaults such as dynamic arrays/maps.
 fn (mut g FlatGen) field_needs_default_init(typ types.Type) bool {
 	clean_type := default_init_unalias_type(typ)
-	if clean_type is types.Struct && !clean_type.name.starts_with('C.') {
+	if clean_type is types.Struct {
 		return g.struct_needs_default_init(clean_type.name)
 	}
 	return false
@@ -2460,7 +2504,7 @@ fn (mut g FlatGen) struct_needs_default_init_inner(type_name string, mut visited
 			found = true
 			continue
 		}
-		if clean_ftyp is types.Struct && !clean_ftyp.name.starts_with('C.')
+		if clean_ftyp is types.Struct
 			&& g.struct_needs_default_init_inner(clean_ftyp.name, mut visited) {
 			found = true
 		}
@@ -3643,13 +3687,17 @@ fn (mut g FlatGen) gen_local_shared_value_selector(base_id flat.NodeId, field st
 	if base.kind != .ident || !g.local_storage_is_shared(base.value) {
 		return false
 	}
-	g.write(g.shared_storage_ident_c_name(base.value))
-	g.write('->val.')
-	g.write(c_field_name(field))
 	mut base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
 	if base_type is types.Alias {
 		base_type = types.unwrap_pointer(base_type.base_type)
 	}
+	g.write(g.shared_storage_ident_c_name(base.value))
+	if field == 'len' && cgen_type_is_map(base_type) {
+		g.write('->val.data->count')
+		return true
+	}
+	g.write('->val.')
+	g.write(c_field_name(field))
 	if base_type is types.Struct {
 		if _ := g.shared_field_info(base_type.name, field) {
 			g.write('->val')
@@ -4671,6 +4719,12 @@ fn (g &FlatGen) struct_fields_for_type_uncached(type_name string) ?[]types.Struc
 
 fn (g &FlatGen) embedded_field_type_name(field types.StructField) string {
 	clean_type := types.unwrap_pointer(field.typ)
+	if field.is_embed {
+		unaliased_type := types.unwrap_pointer(cgen_unalias_type(field.typ))
+		if unaliased_type is types.Struct {
+			return unaliased_type.name
+		}
+	}
 	// An embedded callback alias is stored semantically as its underlying FnType,
 	// whose generated name no longer matches the source field name. Recover the
 	// alias name so promoted methods on the alias receive the embedded callback,
@@ -5848,20 +5902,6 @@ fn (mut g FlatGen) struct_decls() {
 	interface_names.sort()
 	for name in struct_names {
 		if g.skip_builtin_struct(name) {
-			// An inlined header that defines `struct zip_t` without a typedef
-			// leaves V references to the bare name dangling; supply the alias
-			// (skipped when the header already typedefs it).
-			if name.starts_with('C.') && name !in c_preamble_defined_structs && name[2..] !in c_system_header_struct_names && c_struct_needs_typedef(name)
-				&& g.inlined_c_structs[name[2..]]
-				&& !g.inlined_c_typedef_names[name[2..]] && !(g.cache_split
-				&& name[2..] in c_cache_system_header_struct_names) {
-				ityp := if name in g.tc.unions { 'union' } else { 'struct' }
-				cn := g.struct_cname(name)
-				if cn != 'mach_timebase_info_data_t' && !cn.starts_with('struct ')
-					&& !cn.starts_with('union ') {
-					g.writeln('typedef ${ityp} ${cn} ${cn};')
-				}
-			}
 			continue
 		}
 		if !c_struct_needs_typedef(name) && name !in g.tc.c_typedef_structs {
@@ -6178,6 +6218,16 @@ fn (mut g FlatGen) type_forward_decls() {
 	struct_names := g.c_struct_decl_names()
 	for name in struct_names {
 		if g.skip_builtin_struct(name) {
+			// Header-backed C tags need their compatibility alias before optional wrappers
+			// and other generated declarations can refer to the bare C name.
+			if g.header_c_struct_needs_compat_typedef(name) {
+				tag := if name in g.tc.unions { 'union' } else { 'struct' }
+				cn := g.struct_cname(name)
+				if cn != 'mach_timebase_info_data_t' && !cn.starts_with('struct ')
+					&& !cn.starts_with('union ') {
+					g.writeln('typedef ${tag} ${cn} ${cn};')
+				}
+			}
 			continue
 		}
 		if !c_struct_needs_typedef(name) && name !in g.tc.c_typedef_structs {
@@ -6321,6 +6371,22 @@ fn (mut g FlatGen) soa_companion_decls() {
 		}
 		g.emit_soa_companion(name)
 	}
+}
+
+fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
+	if !name.starts_with('C.') || name in c_preamble_defined_structs
+		|| name[2..] in c_system_header_struct_names || !c_struct_needs_typedef(name)
+		|| name in g.tc.c_typedef_structs || name[2..] in g.inlined_c_typedef_names
+		|| (g.cache_split && name[2..] in c_cache_system_header_struct_names) {
+		return false
+	}
+	if g.inlined_c_structs[name[2..]] {
+		return true
+	}
+	if info := g.struct_decl_infos[name] {
+		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+	}
+	return false
 }
 
 fn (g &FlatGen) soa_companion_name(struct_name string) string {

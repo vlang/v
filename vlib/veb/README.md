@@ -29,6 +29,12 @@ that will check periodically if the current page has to be reloaded. In other wo
 template pages that have that `</html>` tag, or for ones that were produced by `ctx.html()` and that
 also have that closing tag, but not for ones produced by `ctx.text()` .
 
+## Port already in use
+
+When `lsof` finds a process listening on the requested TCP port, veb displays its PID and asks
+whether to terminate it. Reply `y` to send the process `SIGTERM`; any other response leaves it
+running.
+
 ## Deploying veb apps
 
 All the code, including HTML templates, is in one binary file. That's all you need to deploy.

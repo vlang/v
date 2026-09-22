@@ -123,7 +123,7 @@ fn (mut t Transformer) transformed_direct_optional_forward_return(value_id flat.
 	if !t.optional_types_match(qualified_ret, expr_type) {
 		return none
 	}
-	value := t.transform_expr(value_id)
+	value := t.transform_optional_wrapper_expr(value_id)
 	t.set_node_typ(int(value), qualified_ret)
 	ret := t.make_return(value, qualified_ret)
 	t.set_node_value(int(ret), '${transformed_direct_optional_forward_value_prefix}${int(source_return_id)}')
@@ -267,7 +267,7 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 	if !t.optional_types_match(ret_type, expr_type) {
 		return none
 	}
-	mut new_expr := t.transform_expr(child_id)
+	mut new_expr := t.transform_optional_wrapper_expr(child_id)
 	t.set_node_typ(int(new_expr), ret_type)
 	if skipped_propagation {
 		// Keep CGen's positional ownership records aligned after removing the or-expression.
@@ -313,7 +313,7 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	}
 	ret_type := t.qualify_optional_type(t.cur_fn_ret_type)
 	expr_type := t.qualify_optional_type(expr_type0)
-	new_expr := t.transform_expr(child_id)
+	new_expr := t.transform_optional_wrapper_expr(child_id)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	tmp_name := t.new_temp('return_opt')

@@ -482,7 +482,8 @@ fn (t &Transformer) fn_literal_type_text(node flat.Node) string {
 			continue
 		}
 		raw := if child.typ.len > 0 { child.typ } else { child.value }
-		params << explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(raw))
+		slot_type := explicit_mut_pointer_param_type_text(child, fn_literal_param_type_text(raw))
+		params << mutable_fn_value_param_type_text(child, slot_type)
 	}
 	ret := node.typ.trim_space()
 	if ret.len == 0 || ret == 'void' {
@@ -1816,7 +1817,7 @@ fn (t &Transformer) node_type_uncached(id flat.NodeId) string {
 	// expression type. Keep it from becoming a synthetic named type when dump
 	// lowering declares a temporary for the expression.
 	if node.kind == .offsetof_expr || node.kind == .sizeof_expr {
-		return 'usize'
+		return 'u32'
 	}
 	resolved := t.resolve_expr_type(id)
 	if resolved.len > 0 {
