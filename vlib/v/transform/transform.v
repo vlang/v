@@ -21259,6 +21259,11 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	// the checker sidecar holds its canonical identity. Normalize that semantic
 	// name so a real qualified alias with the same spelling cannot win first.
 	checker_target := t.raw_checker_node_type(id)
+	// A specialized alias cast can carry explicit main. locks for caller types.
+	// The checker can rebind those types to names in the alias's module.
+	specialized_alias_cast := t.active_specialization_args.len > 0
+		&& strip_main_type_locks(node.value) != node.value
+		&& t.generic_type_text_contains_alias(node.value, t.cur_module)
 	// Expected-type propagation can replace an explicit alias cast's checker type
 	// with the surrounding sum type. Keep the named variant as the cast target;
 	// the caller that requested the sum will wrap the converted alias value.
@@ -21266,7 +21271,8 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		&& t.is_sum_type_name(checker_target)
 		&& t.sum_target_accepts_variant_type(checker_target, node.value)
 	target_type := t.normalize_type_alias(if node.value in primitive_cast_type_names
-		|| node.value in ['voidptr', 'byteptr', 'charptr'] || checker_target_is_sum_context {
+		|| node.value in ['voidptr', 'byteptr', 'charptr'] || checker_target_is_sum_context
+		|| specialized_alias_cast {
 		node.value
 	} else if checker_target.len > 0 {
 		checker_target
