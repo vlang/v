@@ -60,7 +60,13 @@ fn test_format_thousands_float_large_magnitude() {
 }
 
 fn test_format_thousands_float_non_finite() {
-	assert format_thousands(math.inf(1), ',') == '+inf'
-	assert format_thousands(math.inf(-1), ',') == '-inf'
-	assert format_thousands(math.nan(), ',') == 'nan'
+	// Backend-agnostic on purpose: assert the pass-through property (a
+	// non-finite value's own `.str()` is never touched by grouping) rather
+	// than hard-coding one backend's spelling. On the C backend `.str()`
+	// gives '+inf'/'-inf'/'nan'; on the JS backend it gives
+	// 'Infinity'/'-Infinity'/'NaN'. Either way, format_thousands() must
+	// leave it exactly as `value.str()` produced it.
+	for value in [math.inf(1), math.inf(-1), math.nan()] {
+		assert format_thousands(value, ',') == value.str()
+	}
 }
