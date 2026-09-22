@@ -573,6 +573,11 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	if op == .assign && clean_rhs.name() == 'int' && clean_expected.name() == 'f64' {
 		return true
 	}
+	if op == .assign && clean_expected.is_float() {
+		if _ := tc.implicit_integer_constant_value(rhs_id, rhs_type) {
+			return true
+		}
+	}
 	if op == .assign && clean_rhs.is_integer() && clean_expected.is_float() {
 		literal_id := tc.assignment_integer_literal_operand(rhs_id) or { return false }
 		return tc.expr_compatible(literal_id, rhs_type, expected_type)
