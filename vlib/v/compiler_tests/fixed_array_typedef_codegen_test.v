@@ -284,12 +284,12 @@ pub const max_name_size = u32(256)
 
 import fixture as fx
 
-fn name_size(name [fx.max_name_size]char) int {
+fn name_size(name [fx /* imported const */ .max_name_size]char) int {
 	return name.len
 }
 
 fn main() {
-	println(name_size([fx.max_name_size]char{}))
+	println(name_size([fx.max_name_size /* trailing comment */]char{}))
 }
 ')
 	bin := os.join_path(root, 'out')

@@ -13747,16 +13747,34 @@ fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size
 	if node.kind in [.int_literal, .ident] && node.value.len > 0 {
 		return node.value
 	}
+	if node.kind == .selector && node.children_count == 1 {
+		// Use the parsed name instead of source text, which can include comments.
+		if base := p.fixed_array_const_name(p.a.child_node(&node, 0)) {
+			return '${base}.${node.value}'
+		}
+	}
 	if node.kind == .paren && node.value == '__v3_comptime_d' && node.children_count > 0 {
 		resolved := p.a.child_node(&node, 0)
 		if resolved.kind == .int_literal && resolved.value.len > 0 {
 			return resolved.value
 		}
 	}
-	if size_start >= 0 && size_end > size_start && size_end <= p.s.src.len {
-		return p.s.src[size_start..size_end].trim_space()
+	if size_start >= 0 && node.pos.end > size_start && node.pos.end <= size_end
+		&& size_end <= p.s.src.len {
+		return p.s.src[size_start..node.pos.end].trim_space()
 	}
 	return node.value
+}
+
+fn (p &Parser) fixed_array_const_name(node &flat.Node) ?string {
+	if node.kind == .ident {
+		return node.value
+	}
+	if node.kind == .selector && node.children_count == 1 {
+		base := p.fixed_array_const_name(p.a.child_node(node, 0))?
+		return '${base}.${node.value}'
+	}
+	return none
 }
 
 fn (mut p Parser) parse_fixed_array_literal_type_name() string {
