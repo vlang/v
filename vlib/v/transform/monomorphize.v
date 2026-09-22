@@ -13993,7 +13993,9 @@ fn (t &Transformer) generic_arg_is_unresolved(arg string) bool {
 	if !isnil(t.generic_unresolved_cache) {
 		mut cache := t.generic_unresolved_cache
 		if !same_transform_text(cache.module, t.cur_module) {
-			cache.module = t.cur_module
+			// cur_module can be a view into a scoped worker result. The cache
+			// survives that result, so retain its own module spelling.
+			cache.module = t.cur_module.clone()
 			cache.entries.clear()
 			cache.last_name = ''
 			cache.last_value = 0

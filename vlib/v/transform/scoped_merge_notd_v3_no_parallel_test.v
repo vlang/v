@@ -54,6 +54,24 @@ fn test_scoped_monomorph_specialization_args_are_deep_cloned() {
 	assert owned_args == ['cloud.Body', '[]string']
 }
 
+fn test_generic_unresolved_cache_owns_scoped_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.generic_unresolved_cache = &GenericUnresolvedCache{}
+
+	scope := transform_worker_scope_begin(true)
+	scoped_module := 'cloud'.clone()
+	transform_worker_scope_leave(scope)
+	t.cur_module = scoped_module
+	assert !t.generic_arg_is_unresolved('int')
+	assert !transform_scope_owns(scope, t.generic_unresolved_cache.module.str)
+
+	t.cur_module = 'main'
+	transform_worker_scope_free(scope)
+	assert !t.generic_arg_is_unresolved('int')
+}
+
 fn test_transform_fork_reads_and_merges_source_fn_values() {
 	mut a := flat.FlatAst.new()
 	for _ in 0 .. 8 {
