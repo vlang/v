@@ -1,5 +1,10 @@
 #include <vschannel.h>
 #include <sspi.h>
+#include <limits.h>
+
+#ifndef WC_ERR_INVALID_CHARS
+#define WC_ERR_INVALID_CHARS 0x00000080
+#endif
 
 #ifndef SCHANNEL_NAME
 #ifdef UNICODE
@@ -931,6 +936,48 @@ cleanup:
 }
 
 
+// The caller owns the returned UTF-8 request and must release it with LocalFree.
+static INT vschannel_build_proxy_request(LPCWSTR host, INT port_number, CHAR **request, INT *length) {
+	*request = NULL;
+	*length = 0;
+	if(host == NULL || host[0] == L'\0' || port_number < 1 || port_number > 65535) {
+		return ERROR_INVALID_PARAMETER;
+	}
+	for(LPCWSTR p = host; *p; ++p) {
+		if(*p <= L' ' || *p == 0x7f) {
+			return ERROR_INVALID_PARAMETER;
+		}
+	}
+
+	INT host_size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, host, -1, NULL, 0, NULL, NULL);
+	if(host_size == 0) {
+		return (INT)GetLastError();
+	}
+	const CHAR prefix[] = "CONNECT ";
+	const INT prefix_len = sizeof(prefix) - 1;
+	CHAR suffix[64];
+	INT suffix_len = snprintf(suffix, sizeof(suffix), ":%d HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n", port_number);
+	if(suffix_len < 0 || suffix_len >= (INT)sizeof(suffix) || host_size > INT_MAX - prefix_len - suffix_len) {
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+	CHAR *message = (CHAR *)LocalAlloc(LMEM_FIXED, (SIZE_T)prefix_len + host_size + suffix_len);
+	if(message == NULL) {
+		return ERROR_NOT_ENOUGH_MEMORY;
+	}
+	INT converted = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, host, -1,
+		message + prefix_len, host_size, NULL, NULL);
+	if(converted == 0) {
+		INT err_code = (INT)GetLastError();
+		LocalFree(message);
+		return err_code;
+	}
+	memcpy(message, prefix, prefix_len);
+	memcpy(message + prefix_len + converted - 1, suffix, suffix_len + 1);
+	*request = message;
+	*length = prefix_len + converted - 1 + suffix_len;
+	return ERROR_SUCCESS;
+}
+
 static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) {
 	SOCKET Socket;
 	
@@ -965,29 +1012,37 @@ static INT connect_to_server(TlsContext *tls_ctx, LPWSTR host, INT port_number) 
 	}
 
 	if(use_proxy) {
-		BYTE  pbMessage[200]; 
-		DWORD cbMessage;
-
-		// Build message for proxy server
-		strcpy(pbMessage, "CONNECT ");
-		strcat(pbMessage, host);
-		strcat(pbMessage, ":");
-		_itoa(port_number, pbMessage + strlen(pbMessage), 10);
-		strcat(pbMessage, " HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n");
-		cbMessage = (DWORD)strlen(pbMessage);
-
-		// Send message to proxy server
-		if(send(Socket, pbMessage, cbMessage, 0) == SOCKET_ERROR) {
-			INT err_code = WSAGetLastError();
+		CHAR *message = NULL;
+		INT message_length = 0;
+		INT err_code = vschannel_build_proxy_request(host, port_number, &message, &message_length);
+		if(err_code != ERROR_SUCCESS) {
 			vschannel_set_last_error(tls_ctx, err_code);
+			closesocket(Socket);
 			return err_code;
 		}
 
+		// Send message to proxy server
+		INT sent = 0;
+		while(sent < message_length) {
+			INT n = send(Socket, message + sent, message_length - sent, 0);
+			if(n <= 0) {
+				err_code = n == SOCKET_ERROR ? WSAGetLastError() : WSAECONNRESET;
+				LocalFree(message);
+				vschannel_set_last_error(tls_ctx, err_code);
+				closesocket(Socket);
+				return err_code;
+			}
+			sent += n;
+		}
+		LocalFree(message);
+
 		// Receive message from proxy server
-		cbMessage = recv(Socket, pbMessage, 200, 0);
+		CHAR response[200];
+		INT cbMessage = recv(Socket, response, sizeof(response), 0);
 		if(cbMessage == SOCKET_ERROR) {
-			INT err_code = WSAGetLastError();
+			err_code = WSAGetLastError();
 			vschannel_set_last_error(tls_ctx, err_code);
+			closesocket(Socket);
 			return err_code;
 		}
 
