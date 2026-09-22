@@ -62,6 +62,18 @@ fn h2_field_value_has_forbidden_octet(value string) bool {
 	return false
 }
 
+// h2_response_field_is_forbidden reports whether a handler-authored field must
+// be dropped from a response's header or trailer section (`lkey` is already
+// lowercase): the connection-specific fields RFC 9113 §8.2.2 forbids in any
+// HTTP/2 message, plus TE, which §8.2.2 permits only in requests (and only as
+// "trailers") -- so in a response it is connection-specific and the message is
+// malformed. h2_conn_specific_headers alone is not enough here because that
+// list deliberately omits TE for the request side's benefit (see its doc
+// comment); the request-side rule lives in h2_request_field_error below.
+fn h2_response_field_is_forbidden(lkey string) bool {
+	return lkey == 'te' || lkey in h2_conn_specific_headers
+}
+
 // h2_request_field_error returns a non-empty reason when a regular (non-pseudo)
 // request header field is malformed per RFC 9113 §8.2: names must be lowercase
 // and non-empty, values must not contain NUL/CR/LF, connection-specific fields
@@ -965,7 +977,7 @@ fn (mut c H2ServerConn) send_response(stream_id u32, resp Response, mut handler 
 	for key in resp.header.keys() {
 		lkey := key.to_lower()
 		// Drop hop-by-hop headers; HTTP/2 forbids them (RFC 9113 §8.2.2).
-		if lkey in h2_conn_specific_headers {
+		if h2_response_field_is_forbidden(lkey) {
 			continue
 		}
 		for val in resp.header.custom_values(key) {
@@ -1019,7 +1031,7 @@ fn (c &H2ServerConn) h2_outbound_trailer_fields(trailers Header) []H2HeaderField
 	mut fields := []H2HeaderField{}
 	for key in trailers.keys() {
 		lkey := key.to_lower()
-		if lkey.starts_with(':') || lkey in h2_conn_specific_headers {
+		if lkey.starts_with(':') || h2_response_field_is_forbidden(lkey) {
 			continue
 		}
 		for val in trailers.custom_values(key) {
