@@ -7,6 +7,8 @@ import v.parser
 import v.pref
 import v.token
 import v.types
+import v.util
+import v.vmod
 
 // SymbolKind categorizes the symbols it documents.
 pub enum SymbolKind {
@@ -125,6 +127,9 @@ pub mut:
 	filter_symbol_names []string
 	common_symbols      []string
 	platform            Platform
+	// keep_subdir_file, when set, selects which files of the v.mod `subdirs` get documented
+	// (vdoc uses it to apply `.vdocignore`). It receives their path as declared in `subdirs`.
+	keep_subdir_file fn (path string) bool = unsafe { nil }
 }
 
 @[minify]
@@ -885,6 +890,54 @@ fn source_files_for_platform(dir string, entries []string, platform Platform) []
 		&& !it.ends_with('.wasm.v'))
 }
 
+// module_source_dirs returns the directories whose files make up the module in `dir`:
+// `dir` itself, followed by the directories selected by the `subdirs` field of the
+// v.mod that owns `dir` (i.e. whose source root is `dir`). Like the compiler, each
+// subdir is walked recursively, stopping at folders that have their own v.mod.
+// Subdirs keep their declared path (symlinks are not resolved), so a folder reached
+// through several paths is listed for each of them.
+pub fn module_source_dirs(dir string) []string {
+	root := os.real_path(dir)
+	mut dirs := [root]
+	vmod_root := util.nearest_vmod_root(root) or { return dirs }
+	manifest := vmod.from_file(os.join_path_single(vmod_root, 'v.mod')) or { return dirs }
+	if os.real_path(manifest.source_root(vmod_root)) != root {
+		return dirs
+	}
+	mut active := map[string]bool{}
+	for subdir in manifest.unknown['subdirs'] or { []string{} } {
+		collect_module_subdirs(root, os.norm_path(os.join_path_single(root, subdir)), mut
+			active, mut dirs)
+	}
+	return dirs
+}
+
+// collect_module_subdirs lists `dir` and its descendants. `active` holds the real paths
+// of the folders being walked, to break symlink cycles.
+fn collect_module_subdirs(root string, dir string, mut active map[string]bool, mut dirs []string) {
+	if !os.is_dir(dir) {
+		return
+	}
+	real_dir := os.real_path(dir)
+	if active[real_dir] {
+		return
+	}
+	// The module root is already listed, but `subdirs: ['.']` still walks its children.
+	if real_dir != root {
+		if os.is_file(os.join_path_single(real_dir, 'v.mod')) {
+			return
+		}
+		dirs << dir
+	}
+	active[real_dir] = true
+	mut entries := os.ls(real_dir) or { []string{} }
+	entries.sort()
+	for entry in entries {
+		collect_module_subdirs(root, os.join_path_single(dir, entry), mut active, mut dirs)
+	}
+	active.delete(real_dir)
+}
+
 // generate populates this Doc from its input directory.
 pub fn (mut d Doc) generate() ! {
 	d.base_path = if os.is_dir(d.base_path) {
@@ -893,16 +946,29 @@ pub fn (mut d Doc) generate() ! {
 		os.real_path(os.dir(d.base_path))
 	}
 	d.is_vlib = d.base_path.contains('vlib')
-	entries := os.ls(d.base_path)!
-	files := source_files_for_platform(d.base_path, entries, d.platform)
-	if files.len == 0 {
+	// Root files are listed first, so that the module head and its comments
+	// keep coming from the module root, then the files of any v.mod `subdirs`.
+	mut paths := []string{}
+	mut seen_files := map[string]bool{}
+	for i, dir in module_source_dirs(d.base_path) {
+		entries := if i == 0 { os.ls(dir)! } else { os.ls(dir) or { continue } }
+		for filename in source_files_for_platform(dir, entries, d.platform) {
+			path := os.join_path(dir, filename)
+			real_path := os.real_path(path)
+			if i > 0 && d.keep_subdir_file != unsafe { nil } && !d.keep_subdir_file(path) {
+				continue
+			}
+			if !seen_files[real_path] {
+				seen_files[real_path] = true
+				paths << path
+			}
+		}
+	}
+	if paths.len == 0 {
 		eprintln('vdoc: No valid V files were found. Skipping folder: ${d.base_path}.')
 		return
 	}
-	mut paths := []string{cap: files.len}
-	for filename in files {
-		path := os.join_path(d.base_path, filename)
-		paths << path
+	for path in paths {
 		d.parse_file(path)!
 	}
 	d.populate_scoped_contents(paths)
@@ -918,10 +984,18 @@ pub fn (mut d Doc) generate() ! {
 
 // generate documents a file or directory.
 pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) !Doc {
+	return generate_with_subdir_filter(input_path, unsafe { nil }, pub_only, with_comments,
+		platform, ...filter_symbol_names)
+}
+
+// generate_with_subdir_filter documents a file or directory, like `generate`, but only
+// includes the files of the v.mod `subdirs` for which `keep_subdir_file` returns true.
+pub fn generate_with_subdir_filter(input_path string, keep_subdir_file fn (path string) bool, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) !Doc {
 	if platform == .js {
 		return error('vdoc: Platform `${platform}` is not supported.')
 	}
 	mut d := new(input_path)
+	d.keep_subdir_file = keep_subdir_file
 	d.pub_only = pub_only
 	d.with_comments = with_comments
 	d.platform = platform
