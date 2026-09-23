@@ -22,4 +22,6 @@ fn test_pub_fields_of_anon_struct_fields_are_accessible_from_another_module() {
 	made_value, made_x, _ := reader.read(made)
 	assert made_value == 7
 	assert made_x == 0
+	assert reader.bump_id(mut o) == 5
+	assert reader.bump_id(mut o) == 10
 }

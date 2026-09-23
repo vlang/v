@@ -9,4 +9,7 @@ fn main() {
 	outer.inner.deep.hidden = 1
 	deep := outer.inner.deep
 	println(deep.hidden)
+	println(outer.inner.public)
+	println(outer.inner.private)
+	outer.inner.counter = 2
 }

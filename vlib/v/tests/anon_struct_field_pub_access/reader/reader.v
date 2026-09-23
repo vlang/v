@@ -21,3 +21,10 @@ pub fn make(value int) owner.Outer {
 		}
 	}
 }
+
+// bump_id updates the public field that the anonymous struct field of `o`
+// promotes from its embedded `owner.Meta`.
+pub fn bump_id(mut o owner.Outer) int {
+	o.inner.id += 5
+	return o.inner.id
+}

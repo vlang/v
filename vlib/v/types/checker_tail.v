@@ -11986,9 +11986,25 @@ fn (tc &TypeChecker) anonymous_struct_field_is_public(struct_name string, field_
 			return true
 		}
 	}
-	return tc.visible_mutation_struct_field_is_public(struct_name, field_name, decl_mod) or {
-		true
+	if is_public := tc.visible_mutation_struct_field_is_public(struct_name, field_name, decl_mod) {
+		return is_public
 	}
+	// A field promoted from an embedded struct keeps the visibility it has in the
+	// struct that declares it.
+	for owner in tc.embedded_field_candidates(struct_name, field_name) {
+		owner_mod := if visibility := tc.declaration_visibility[owner] {
+			visibility.module_name
+		} else {
+			owner.all_before_last('.')
+		}
+		if owner_mod == tc.cur_module || (owner_mod in ['', 'main'] && tc.cur_module in ['', 'main']) {
+			continue
+		}
+		if !(tc.visible_mutation_struct_field_is_public(owner, field_name, owner_mod) or { true }) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (tc &TypeChecker) receiver_expr_mutation_visibility(expr_id flat.NodeId, root_name string, receiver_type string, decl_mod string) ReceiverMutationVisibility {

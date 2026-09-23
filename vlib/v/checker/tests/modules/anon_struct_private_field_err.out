@@ -17,4 +17,18 @@ vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:11:15: error: 
    10 |     deep := outer.inner.deep
    11 |     println(deep.hidden)
       |                  ~~~~~~
-   12 | }
+   12 |     println(outer.inner.public)
+   13 |     println(outer.inner.private)
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:13:22: error: field `outer.inner.private` is not public
+   11 |     println(deep.hidden)
+   12 |     println(outer.inner.public)
+   13 |     println(outer.inner.private)
+      |                         ~~~~~~~
+   14 |     outer.inner.counter = 2
+   15 | }
+vlib/v/checker/tests/modules/anon_struct_private_field_err/main.v:14:14: error: field `outer.inner.counter` is not public
+   12 |     println(outer.inner.public)
+   13 |     println(outer.inner.private)
+   14 |     outer.inner.counter = 2
+      |                 ~~~~~~~
+   15 | }
