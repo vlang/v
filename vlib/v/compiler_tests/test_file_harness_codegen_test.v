@@ -147,7 +147,7 @@ fn test_operand_once() {
 }
 ')
 	assert failing_run.exit_code != 0
-	assert failing_run.output.contains('left value: values.pop() = 1'), failing_run.output
+	assert failing_run.output.contains('Left value (len: 1): `1`'), failing_run.output
 
 	stats_run := compile_and_run_with_stats(v3_bin, 'assert_runtime_count', '_test.v', 'fn helper() {
 	assert true
