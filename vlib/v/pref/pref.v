@@ -92,6 +92,9 @@ pub mut:
 	// architecture or C compiler (`-os cross`). Target-dependent `$if` branches
 	// are all kept and decided by the C preprocessor instead of by the checker.
 	output_cross_c bool
+	// raw_vsh_file is the real path of an input without the `.vsh` extension that
+	// is still compiled as a V script (`-raw-vsh-tmp-prefix`).
+	raw_vsh_file string
 pub:
 	build_date      string
 	build_time      string

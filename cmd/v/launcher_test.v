@@ -503,3 +503,20 @@ fn test_fallback_installer_writes_a_native_windows_root() {
 	assert writer.contains('pwd -W')
 	assert source.count('write_candidate_root || return 1') == 2
 }
+
+fn test_fallback_handles_raw_vsh_script_like_a_vsh_script() {
+	previous_norun := os.getenv_opt('VNORUN')
+	os.unsetenv('VNORUN')
+	defer {
+		restore_environment('VNORUN', previous_norun)
+	}
+	// A script run through `-raw-vsh-tmp-prefix` may exit with a non zero code by itself.
+	assert !v1_fallback_exit_identifies_compiler_failure(['-raw-vsh-tmp-prefix', 'tmp', 'script'])
+	assert v1_fallback_exit_identifies_compiler_failure(['-skip-running', '-raw-vsh-tmp-prefix',
+		'tmp', 'script'])
+	// The arguments after an extensionless script belong to the script, even when
+	// they look like compiler options.
+	assert v1_fallback_compiler_prefix_len(['-raw-vsh-tmp-prefix', 'tmp', 'script', '-b', 'js']) == 2
+	assert v1_fallback_compiler_prefix_len(['-raw-vsh-tmp-prefix', 'tmp', 'run', 'script', '-check']) == 2
+	assert v1_fallback_compiler_prefix_len(['-prod', 'main.v']) == 2
+}

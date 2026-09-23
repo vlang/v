@@ -600,6 +600,8 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 	mut skip_running := os.getenv('VNORUN') != ''
 	mut direct_test := false
 	mut option_value_follows := false
+	// `-raw-vsh-tmp-prefix` runs its input as a script, whatever its extension.
+	mut raw_vsh := false
 	for i, arg in args {
 		if option_value_follows {
 			option_value_follows = false
@@ -607,6 +609,9 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 		}
 		if arg == '-e' || arg.starts_with('-e=') || arg == '-' {
 			return false
+		}
+		if arg == '-raw-vsh-tmp-prefix' {
+			raw_vsh = true
 		}
 		if arg in ['-prof', '-profile'] {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
@@ -642,7 +647,7 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 				direct_test = true
 				continue
 			}
-			return skip_running || !arg.ends_with('.vsh')
+			return skip_running || !(arg.ends_with('.vsh') || raw_vsh)
 		}
 	}
 	if direct_test {
@@ -655,10 +660,14 @@ fn v1_fallback_exit_identifies_compiler_failure(args []string) bool {
 
 fn v1_fallback_compiler_prefix_len(args []string) int {
 	mut option_value_follows := false
+	mut raw_vsh := false
 	for i, arg in args {
 		if option_value_follows {
 			option_value_follows = false
 			continue
+		}
+		if arg == '-raw-vsh-tmp-prefix' {
+			raw_vsh = true
 		}
 		if arg in ['-prof', '-profile'] {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
@@ -669,7 +678,7 @@ fn v1_fallback_compiler_prefix_len(args []string) int {
 			continue
 		}
 		if arg == '-' || arg in external_commands || arg in ['test', 'run', 'crun']
-			|| arg.ends_with('.vsh') {
+			|| arg.ends_with('.vsh') || (raw_vsh && !arg.starts_with('-')) {
 			return i
 		}
 	}

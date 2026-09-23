@@ -488,6 +488,9 @@ pub mut:
 	// script. V script mode makes the `os` module global inside such files, and
 	// the checker only pays for that lookup when this flag is set.
 	has_vsh_source bool
+	// raw_vsh_file is the parsed path of the script compiled without the `.vsh`
+	// extension (`-raw-vsh-tmp-prefix`), if any.
+	raw_vsh_file string
 	// source_buffers owns the storage behind zero-copy scanner strings retained
 	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
 	// explicit and lets parser workers transfer ownership with their nodes.

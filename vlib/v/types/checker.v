@@ -6719,7 +6719,8 @@ fn (tc &TypeChecker) vsh_os_const_key(name string) ?string {
 // AST-wide flag so non-script compilations never pay for it.
 @[inline]
 fn (tc &TypeChecker) vsh_script_file() bool {
-	return tc.a.has_vsh_source && tc.cur_file.ends_with('.vsh')
+	return tc.a.has_vsh_source
+		&& (tc.cur_file.ends_with('.vsh') || tc.cur_file == tc.a.raw_vsh_file)
 }
 
 fn (tc &TypeChecker) selective_import_candidates(name string) ?[]string {

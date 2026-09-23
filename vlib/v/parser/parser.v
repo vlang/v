@@ -373,7 +373,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.comptime_value_scopes.clear()
 	p.imported_module_names.clear()
 	p.file_method_names.clear()
-	if !p.prefs.is_fmt && path.ends_with('.vsh') {
+	if !p.prefs.is_fmt && p.is_vsh_path(path) {
 		// V script mode: `os` is in scope from the first statement on, so the alias
 		// has to be known before the body is parsed, not only once the synthetic
 		// `import os` node below is appended.
@@ -509,8 +509,11 @@ pub fn (mut p Parser) parse_into(path string) {
 		}
 	}
 	p.end_local_binding_scope()
-	if !p.prefs.is_fmt && path.ends_with('.vsh') {
+	if !p.prefs.is_fmt && p.is_vsh_path(path) {
 		p.a.has_vsh_source = true
+		if !path.ends_with('.vsh') {
+			p.a.raw_vsh_file = path
+		}
 		if implicit_os_id := p.vsh_implicit_os_import(ids) {
 			ids << implicit_os_id
 		}
@@ -572,6 +575,15 @@ fn (mut p Parser) track_script_mode(id flat.NodeId, fallback_start int, fallback
 			state.end = fallback_end
 		}
 	}
+}
+
+// is_vsh_path reports whether `path` is parsed in V script mode: a `.vsh` file, or
+// the extensionless script passed with `-raw-vsh-tmp-prefix`.
+fn (p &Parser) is_vsh_path(path string) bool {
+	if path.ends_with('.vsh') {
+		return true
+	}
+	return p.prefs.raw_vsh_file != '' && os.real_path(path) == p.prefs.raw_vsh_file
 }
 
 fn (p &Parser) script_definition_diagnostic_span(node flat.Node, fallback_start int, fallback_end int) (int, int) {

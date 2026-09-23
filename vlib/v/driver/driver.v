@@ -8637,7 +8637,8 @@ fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project', '-test-runner',
-		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files']
+		'-run-only', '-profile-fns', '-trace-fns', '-subsystem', '-exclude', '-dump-files',
+		'-raw-vsh-tmp-prefix']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -9115,6 +9116,9 @@ pub fn run(args []string) {
 	mut should_run := false
 	mut is_crun := false
 	mut is_direct_vsh := false
+	// raw_vsh_tmp_prefix runs an input without the `.vsh` extension as a V script,
+	// and names its executable `<prefix>.<script name>` (see doc/docs.md).
+	mut raw_vsh_tmp_prefix := ''
 	mut is_test_command := false
 	mut is_checker_fixture := false
 	mut coverage_dir := v3_environment_coverage_dir()
@@ -9567,6 +9571,9 @@ pub fn run(args []string) {
 		} else if args[i] == '-no-retry-compilation' {
 			retry_compilation = false
 			i++
+		} else if args[i] == '-raw-vsh-tmp-prefix' {
+			raw_vsh_tmp_prefix = args[i + 1]
+			i += 2
 		} else if args[i] in ['-show-timings', '-w', '-usecache', '-new-generic-solver', '-progress',
 			'-use-os-system-to-run'] {
 			// v3 already reports phase metrics, suppresses C warnings, leaves
@@ -9624,7 +9631,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			input_file = args[i]
-			if input_file.ends_with('.vsh') {
+			if input_file.ends_with('.vsh') || raw_vsh_tmp_prefix != '' {
 				is_direct_vsh = !should_run
 				should_run = true
 			}
@@ -9966,7 +9973,11 @@ pub fn run(args []string) {
 	mut c_only := false
 	mut c_to_stdout := false
 	if output_file == '' {
-		bin_file = default_bin_file_for_input(input_file)
+		bin_file = if raw_vsh_tmp_prefix != '' {
+			os.join_path_single(os.dir(input_file), '${raw_vsh_tmp_prefix}.${os.file_name(input_file)}')
+		} else {
+			default_bin_file_for_input(input_file)
+		}
 		if is_shared {
 			bin_file = with_shared_library_postfix(bin_file, target.os)
 		}
@@ -10100,6 +10111,10 @@ pub fn run(args []string) {
 
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
+	is_vsh_input := input_file.ends_with('.vsh') || raw_vsh_tmp_prefix != ''
+	if raw_vsh_tmp_prefix != '' {
+		prefs.raw_vsh_file = os.real_path(input_file)
+	}
 	if os.getenv('FASTC_BENCH_PHASES') != '' {
 		eprintln('fastc-phase driver.prefs ${driver_sw.elapsed().microseconds()}us')
 	}
@@ -10772,6 +10787,10 @@ pub fn run(args []string) {
 				watched[os.real_path(file.name)] = true
 			}
 		}
+		if prefs.raw_vsh_file != '' {
+			// The script passed with `-raw-vsh-tmp-prefix` has no V extension.
+			watched[prefs.raw_vsh_file] = true
+		}
 		for source_files in cache_state.module_sources.values() {
 			for file in source_files {
 				if file.ends_with('.v') || file.ends_with('.vv') || file.ends_with('.vsh') {
@@ -11358,7 +11377,7 @@ pub fn run(args []string) {
 		prepare_markused_overlap := building_v && current_parallel_transform
 			&& scope_prealloc_markused && !incremental_cache_hit && !generic_cache_hit
 			&& !cache_state.manager.enabled && test_files.len == 0 && !is_checker_fixture
-			&& !trivial_literal_output && !input_file.ends_with('.vsh') && !no_skip_unused
+			&& !trivial_literal_output && !is_vsh_input && !no_skip_unused
 		prepared_markused_thread := spawn markused.prepare_markused_declarations(a, &pre_tc, prepare_markused_overlap)
 		mut check_was_parallel := false
 		if trivial_literal_output && !incremental_cache_hit {
@@ -11585,7 +11604,7 @@ pub fn run(args []string) {
 			}
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a, markused_tc, test_files)
-		} else if input_file.ends_with('.vsh') {
+		} else if is_vsh_input {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a, markused_tc)
 		} else if trivial_literal_output && used_fns.len > 0 {
 			uses_generics = false

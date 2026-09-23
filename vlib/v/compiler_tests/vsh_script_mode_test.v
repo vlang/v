@@ -97,3 +97,56 @@ callback()
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'captured', result.output
 }
+
+// `-raw-vsh-tmp-prefix` compiles an input without the `.vsh` extension as a V script
+// (e.g. from a `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp` shebang). Without `run`,
+// the executable is kept as `<prefix>.<script name>` and reused, like a `.vsh` script.
+fn test_raw_vsh_tmp_prefix_runs_extensionless_script() {
+	root := os.join_path(os.vtmp_dir(), 'v3_vsh_raw_prefix_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_vsh_mode_v3(root)
+	script := os.join_path(root, 'myscript')
+	os.write_file(script, '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp
+println(file_name(executable()))
+println(arguments()[1..])
+') or { panic(err) }
+	kept_bin := os.join_path(root, 'tmp.myscript')
+	first := os.execute('${v3_bin} -silent -raw-vsh-tmp-prefix tmp ${script} first')
+	assert first.exit_code == 0, first.output
+	assert first.output.split_into_lines() == ['tmp.myscript', "['first']"], first.output
+	assert os.is_file(kept_bin)
+	// An unchanged script reuses the kept executable.
+	cache_stamp := os.file_last_mod_unix(kept_bin) + 3600
+	os.utime(kept_bin, cache_stamp, cache_stamp) or { panic(err) }
+	cached := os.execute('${v3_bin} -silent -raw-vsh-tmp-prefix tmp ${script} cached')
+	assert cached.exit_code == 0, cached.output
+	assert cached.output.split_into_lines() == ['tmp.myscript', "['cached']"], cached.output
+	assert os.file_last_mod_unix(kept_bin) == cache_stamp
+	// A newer script is rebuilt.
+	os.write_file(script, "println('rebuilt')
+") or { panic(err) }
+	os.utime(script, cache_stamp + 60, cache_stamp + 60) or { panic(err) }
+	rebuilt := os.execute('${v3_bin} -silent -raw-vsh-tmp-prefix tmp ${script}')
+	assert rebuilt.exit_code == 0, rebuilt.output
+	assert rebuilt.output == 'rebuilt\n', rebuilt.output
+	assert os.file_last_mod_unix(kept_bin) != cache_stamp
+	os.write_file(script, '#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run
+println(file_name(executable()))
+println(arguments()[1..])
+') or { panic(err) }
+	os.rm(kept_bin) or { panic(err) }
+	result := os.execute('${v3_bin} -silent -raw-vsh-tmp-prefix tmp run ${script} third')
+	assert result.exit_code == 0, result.output
+	assert result.output.split_into_lines() == ['tmp.myscript', "['third']"], result.output
+	assert !os.exists(kept_bin)
+	listed := os.execute('${v3_bin} -silent -print-v-files -raw-vsh-tmp-prefix tmp ${script}')
+	assert listed.exit_code == 0, listed.output
+	assert os.real_path(script) in listed.output.split_into_lines(), listed.output
+	missing := os.execute('${v3_bin} -raw-vsh-tmp-prefix')
+	assert missing.exit_code != 0
+	assert missing.output.contains('option `-raw-vsh-tmp-prefix` requires a value'), missing.output
+}
