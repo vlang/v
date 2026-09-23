@@ -1071,10 +1071,21 @@ pub fn (a &array) clone() array {
 pub fn (a &array) clone_to_depth(depth int) array {
 	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
+	// Unless nested arrays/strings are cloned element by element below, the
+	// whole capacity is copied from `a`, so zeroing the new buffer first is wasted.
+	clones_elements := depth > 0 && a.len >= 0 && a.cap >= a.len
+		&& (a.element_size == sizeof(array) || a.element_size == sizeof(string))
+	copies_capacity := !clones_elements && a.data != 0 && source_capacity_in_bytes > 0
 	mut data := unsafe { nil }
 	if a.cap > 0 {
 		if use_noscan_data {
-			data = a.alloc_array_data_like(source_capacity_in_bytes)
+			if copies_capacity {
+				data = a.alloc_array_data_like_uninit(source_capacity_in_bytes)
+			} else {
+				data = a.alloc_array_data_like(source_capacity_in_bytes)
+			}
+		} else if copies_capacity {
+			data = alloc_array_data_uninit(source_capacity_in_bytes)
 		} else {
 			data = alloc_array_data(source_capacity_in_bytes)
 		}
