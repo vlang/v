@@ -53,6 +53,11 @@ pub fn scan_scoped_text_flags_parallel(_ &flat.FlatAst, _ voidptr, mut _ []u8) b
 	return false
 }
 
+// scan_scoped_text_flags_parallel_multi reports that scoped text flag scanning stays serial in no-parallel builds.
+pub fn scan_scoped_text_flags_parallel_multi(_ &flat.FlatAst, _ []voidptr, mut _ []u8) bool {
+	return false
+}
+
 fn free_worker_scopes_parallel(_ &flat.FlatAst, _ []voidptr) bool {
 	return false
 }
