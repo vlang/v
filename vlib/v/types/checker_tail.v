@@ -15923,7 +15923,23 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		if arg_node.kind == .lambda_expr && param_idx < info.params.len {
 			actual = tc.contextual_generic_lambda_type(arg_id, info.params[param_idx], generic_params, inferred_types) or { actual }
 		}
-		param_text := trimmed_space(param_texts[param_idx])
+		mut param_text := trimmed_space(param_texts[param_idx])
+		if raw_arg.kind == .field_init {
+			// A shorthand field-init argument to a generic struct parameter
+			// (`f(field: value)` for `fn f[T](x Box[T])`) carries no type of its
+			// own. Infer `T` from the declared type of the initialized field and
+			// the shorthand value, reusing the numeric literal deferral below so
+			// that a later argument can still decide the placeholder's type.
+			base, _, is_generic := generic_type_application_parts(param_text)
+			if is_generic {
+				for field in tc.source_struct_field_decls(base) {
+					if field.name == raw_arg.value {
+						param_text = trimmed_space(field.typ)
+						break
+					}
+				}
+			}
+		}
 		mut defer_numeric_literal := false
 		if arg_node.kind in [.int_literal, .float_literal] && param_text in generic_params {
 			for later_param_idx in param_idx + 1 .. param_texts.len {
