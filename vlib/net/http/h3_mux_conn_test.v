@@ -526,6 +526,92 @@ fn test_wait_response_rejects_status_after_a_regular_field() {
 	assert false, 'RFC 9114 section 4.3 requires :status to precede regular fields, mirroring RFC 9113 section 8.3'
 }
 
+// h3_test_wait_response_error runs wait_response on an already-ended stream
+// carrying `headers` (after a valid :status) and `trailers`, returning the
+// error message, or '' when the response was accepted.
+fn h3_test_wait_response_error(headers []quic.QpackFieldLine, trailers []quic.QpackFieldLine) string {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [quic.QpackFieldLine{
+		name:  ':status'
+		value: '200'
+	}]
+	s.resp_headers << headers
+	s.resp_trailers = trailers
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or { return err.msg() }
+	return ''
+}
+
+fn h3_test_field(name string, value string) quic.QpackFieldLine {
+	return quic.QpackFieldLine{
+		name:  name
+		value: value
+	}
+}
+
+// RFC 9114 §4.1.2/§4.2: uppercase or invalid field names, invalid characters in
+// values, and connection-specific fields (TE included -- it is permitted only in
+// requests) make a response malformed, in the header AND the trailer section;
+// trailers additionally MUST NOT carry pseudo-headers. h2_mux_conn.v rejects
+// the same classes via h2_response_field_error.
+fn test_wait_response_rejects_malformed_response_fields() {
+	malformed := [
+		h3_test_field('Content-Type', 'text/plain'),
+		h3_test_field('bad name', 'v'),
+		h3_test_field('', 'v'),
+		h3_test_field('connection', 'close'),
+		h3_test_field('transfer-encoding', 'chunked'),
+		h3_test_field('te', 'trailers'),
+		h3_test_field('x-bad', 'a\nb'),
+		h3_test_field('x-bad', 'a\x00b'),
+	]
+	for f in malformed {
+		header_err := h3_test_wait_response_error([f], [])
+		assert header_err.contains('malformed'), 'header "${f.name}: ${f.value}" must be rejected, got "${header_err}"'
+		trailer_err := h3_test_wait_response_error([], [f])
+		assert trailer_err.contains('malformed'), 'trailer "${f.name}: ${f.value}" must be rejected, got "${trailer_err}"'
+	}
+	pseudo_err := h3_test_wait_response_error([], [h3_test_field(':path', '/')])
+	assert pseudo_err.contains('malformed'), 'a pseudo-header in trailers must be rejected, got "${pseudo_err}"'
+}
+
+// A non-numeric Content-Length, or two differing ones, makes the response
+// malformed (RFC 9110 §8.6, RFC 9114 §4.1.2) -- it must not be silently
+// ignored, which would skip the body-length check entirely.
+fn test_wait_response_rejects_malformed_or_conflicting_content_length() {
+	for headers in [
+		[h3_test_field('content-length', 'abc')],
+		[h3_test_field('content-length', '12junk')],
+		[h3_test_field('content-length', '99999999999999999999999')],
+		[h3_test_field('content-length', '0'), h3_test_field('content-length', '5')],
+	] {
+		msg := h3_test_wait_response_error(headers, [])
+		assert msg.contains('malformed'), 'content-length ${headers} must be rejected, got "${msg}"'
+	}
+}
+
+fn test_wait_response_accepts_well_formed_fields_and_trailers() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [
+		h3_test_field(':status', '200'),
+		h3_test_field('content-length', '3'),
+		h3_test_field('content-length', '3'),
+		h3_test_field('x-ok', 'value with spaces'),
+	]
+	s.chunks << 'abc'.bytes()
+	s.resp_trailers = [h3_test_field('x-checksum', 'ok')]
+	s.ended = true
+	resp := c.wait_response(mut s, H3ClientRequest{})!
+	assert resp.status == 200
+	assert resp.body == 'abc'.bytes()
+	assert resp.headers.any(it.name == 'x-ok')
+	assert resp.headers.any(it.name == 'x-checksum' && it.value == 'ok')
+}
+
 fn test_wait_response_rejects_unknown_pseudo_header() {
 	mut c := new_test_h3_mux_conn_no_driver()
 	mut s := new_h3_mux_stream()
