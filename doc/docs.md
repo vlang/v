@@ -660,10 +660,12 @@ everywhere else (tcc, MSVC, every 32-bit target), where a 128-bit value is a
 struct. Both answer identically. Pass `-d v3_no_native_int128` to force the
 portable implementation on a compiler that has the native type.
 
-Still missing: there are no integer literals wider than 64 bits, `str()` is not
-implemented for these types yet, and the promotion ladder below has no row for
-them, so an expression that mixes a 128-bit value with a smaller one wants an
-explicit cast on the smaller side.
+Printing works through `str()`, so println and string interpolation show the
+decimal value, including the minimum `i128` that has no positive counterpart.
+
+Still missing: there are no integer literals wider than 64 bits, and the
+promotion ladder below has no row for them, so an expression that mixes a
+128-bit value with a smaller one wants an explicit cast on the smaller side.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type
