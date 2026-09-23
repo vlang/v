@@ -885,7 +885,9 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
 			name := g.tc.resolved_call_names[idx].value
-			if name in g.tc.fn_ret_types {
+			// The compiler-magic `json.decode(T, s)` is declared as a `!voidptr`
+			// stub; its real `!T` return type only exists in the node spelling.
+			if name in g.tc.fn_ret_types && name != 'json.decode' {
 				// collect_declaration_signature_types() already processed this exact
 				// return entry; only calls without checker return metadata need their
 				// transformed node spelling inspected below.
