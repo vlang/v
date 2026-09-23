@@ -336,7 +336,7 @@ fn (mut g FlatGen) gen_int128_compound_assign(op flat.Op, lhs_id flat.NodeId, rh
 		lhs_ct := g.value_c_type(lhs_type)
 		g.write('{ ${lhs_ct}* ${addr_tmp} = &(')
 		g.gen_expr(lhs_id)
-		g.write('); *${addr_tmp}')
+		g.write('); ')
 		lhs_text = '*${addr_tmp}'
 	}
 	g.write('${lhs_text} = ${helper}(${lhs_text}, ')

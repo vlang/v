@@ -1,13 +1,14 @@
 // 128-bit values inside structs, arrays and function signatures. Layout is part
-// of the contract, so `sizeof` and alignment are checked here rather than
-// assumed from the C representation.
+// of the contract, so `sizeof` is checked here rather than assumed from the C
+// representation: both representations use 16-byte alignment, so the sizes have
+// to agree.
 struct Pair {
 mut:
 	lo u128
 	hi i128
 }
 
-struct Fixed128 {
+struct Mixed {
 	a u128
 	b u64
 	c u128
@@ -22,19 +23,21 @@ fn take_by_ref(p &Pair) u128 {
 }
 
 fn swap_values(a &u128, b &u128) {
-	tmp := *a
-	*a = *b
-	*b = tmp
+	unsafe {
+		tmp := *a
+		*a = *b
+		*b = tmp
+	}
 }
 
 fn test_sizeof_is_sixteen_bytes() {
 	assert sizeof(u128) == 16
 	assert sizeof(i128) == 16
 	assert sizeof(u64) == 8
-	// The u128 field is 16-byte aligned on both representations, so the u64
-	// after it starts at 16 and the struct rounds up past the second u128.
-	assert sizeof(Fixed128) == 32
 	assert sizeof(Pair) == 32
+	// The second u128 field needs its 16-byte alignment, so it starts at 32 and
+	// the struct ends at 48.
+	assert sizeof(Mixed) == 48
 }
 
 fn test_struct_fields_hold_wide_values() {
@@ -87,7 +90,7 @@ fn test_dynamic_arrays() {
 		total += value
 	}
 	assert total == u128(6) << 64
-	values << u128(4) << 64
+	values << (u128(4) << 64)
 	assert values.len == 4
 	assert values[3] == u128(4) << 64
 }
@@ -104,6 +107,13 @@ fn test_fixed_arrays_and_nested_structs() {
 	}]
 	assert holder[0].lo == u128(9)
 	assert holder[0].hi == i128(-9)
+}
+
+fn test_map_with_wide_values() {
+	mut by_name := map[string]u128{}
+	by_name['a'] = u128(1) << 96
+	by_name['b'] = u128(2) << 96
+	assert by_name['a'] + by_name['b'] == u128(3) << 96
 }
 
 fn test_i128_field_arithmetic_stays_signed() {
