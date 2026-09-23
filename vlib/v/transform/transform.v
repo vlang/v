@@ -21105,6 +21105,13 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 	if ftyp := t.lookup_struct_field_type(clean_base_type, node.value) {
 		return ftyp
 	}
+	if info := t.lookup_struct_info(clean_base_type) {
+		if embedded := t.embedded_field_for_promoted_field(info, node.value) {
+			if ftyp := t.lookup_struct_field_type(embedded.typ, node.value) {
+				return ftyp
+			}
+		}
+	}
 	return t.normalize_type_alias(node.typ)
 }
 

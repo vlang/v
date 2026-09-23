@@ -2315,13 +2315,34 @@ fn (mut t Transformer) transform_optional_wrapper_expr(id flat.NodeId) flat.Node
 		if !t.is_optional_type_name(raw_source_type) && t.has_smartcast(t.expr_key(source_id)) {
 			return t.transform_expr(id)
 		}
-		// `source_id` is already the wrapper expression with any redundant top-level
-		// payload selectors removed. Rebuilding it here would transform its
-		// base again and could apply the same assignment smartcast a second time
-		// (`foo?.field` becoming `foo.value.value.field`).
+		// `source_id` is the wrapper expression with redundant payload selectors
+		// removed. A field selector still needs normal lowering for promoted fields.
+		if t.a.nodes[int(source_id)].kind == .selector {
+			return t.transform_optional_wrapper_selector_expr(source_id, raw_type)
+		}
 		return t.mark_optional_wrapper_expr(source_id, raw_type)
 	}
 	return t.transform_expr(id)
+}
+
+fn (mut t Transformer) transform_optional_wrapper_selector_expr(id flat.NodeId, raw_type string) flat.NodeId {
+	key := t.expr_key(id)
+	saved_smartcasts := t.smartcast_stack.clone()
+	saved_smartcast_event_id := t.smartcast_event_id
+	if key.len > 0 {
+		mut remaining_smartcasts := []SmartcastContext{cap: saved_smartcasts.len}
+		for smartcast in saved_smartcasts {
+			if smartcast.expr_name == key {
+				continue
+			}
+			remaining_smartcasts << smartcast
+		}
+		t.smartcast_stack = remaining_smartcasts
+	}
+	// Lower promoted fields and their bases before marking the optional wrapper.
+	transformed := t.transform_expr(id)
+	t.smartcast_stack = t.restore_smartcasts_since(saved_smartcast_event_id, saved_smartcasts)
+	return t.mark_optional_wrapper_expr(transformed, raw_type)
 }
 
 fn (mut t Transformer) transform_optional_wrapper_index_expr(id flat.NodeId, node flat.Node, raw_type string) flat.NodeId {
