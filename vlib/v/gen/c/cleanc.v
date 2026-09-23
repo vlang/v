@@ -15465,6 +15465,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			old_expected_enum := g.expected_enum
 			lhs_type := g.usable_expr_type(lhs_id)
 			rhs_type := g.usable_expr_type(rhs_id)
+			if g.gen_int128_infix(id, node, lhs_id, rhs_id, lhs_type, rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if node.op == .power {
 				lhs_node := g.a.nodes[int(lhs_id)]
 				if lhs_node.kind == .prefix && lhs_node.op == .minus && lhs_node.children_count == 1 {
@@ -15620,6 +15624,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.prefix {
 			child_id := g.a.child(node, 0)
 			child := g.a.nodes[int(child_id)]
+			if g.gen_int128_prefix(node, child_id) {
+				return
+			}
 			fn_value_type := cgen_unalias_type(g.fn_value_candidate_type(child_id, child))
 			if node.op == .amp && fn_value_type is types.FnType {
 				// A function value is already a C pointer, so `&` on one is a no-op
@@ -16531,6 +16538,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
 			cast_arg := g.a.child_node(node, 0)
+			if g.gen_int128_cast(node, target_type, g.a.child(node, 0)) {
+				return
+			}
 			if shared_alias_ptr := g.shared_alias_pointer_type_from_text(node.value) {
 				g.gen_expr_with_expected_type(g.a.child(node, 0), shared_alias_ptr)
 				return
@@ -17992,6 +18002,7 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('typedef void* voidptr;')
 	g.writeln('typedef i64 int_literal;')
 	g.writeln('typedef double float_literal;')
+	g.emit_int128_preamble()
 	g.writeln('struct sync__Channel;')
 	g.writeln('typedef struct sync__Channel* chan;')
 	g.writeln('#ifndef true')
@@ -24156,6 +24167,7 @@ fn unsigned_shift_parts(ct string) (string, string) {
 		'i16', 'u16' { 'u16', '16' }
 		'int', 'i32', 'u32' { 'u32', '32' }
 		'i64', 'u64' { 'u64', '64' }
+		'i128', 'u128' { 'u128', '128' }
 		'isize', 'usize', 'ptrdiff_t', 'size_t' { 'size_t', '(sizeof(size_t) * 8)' }
 		else { 'u64', '64' }
 	}
