@@ -3805,6 +3805,17 @@ fn (mut g FlatGen) callback_wrapper_decls() {
 	}
 }
 
+// gen_detached_spawn emits a `spawn` whose thread handle is discarded (`spawn f()`,
+// `_ := spawn f()`, `_ = spawn f()`). Nothing can join that thread, so it is
+// detached: a joinable thread that is never joined keeps its OS resources (and,
+// under Boehm GC on macOS, a mach port) until the process exits. A `spawn` of an
+// elided `@[if flag]` fn yields an empty handle, which `__v_thread_detach` skips.
+fn (mut g FlatGen) gen_detached_spawn(spawn_id flat.NodeId) {
+	g.write('__v_thread_detach(')
+	g.gen_expr(spawn_id)
+	g.writeln(');')
+}
+
 fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	g.needs_thread_runtime = true
 	if node.children_count == 0 {

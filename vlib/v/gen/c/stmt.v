@@ -2528,6 +2528,8 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				return
 			} else if child.kind == .call && g.gen_guarded_anon_self_call_stmt(child) {
 				return
+			} else if child.kind == .spawn_expr {
+				g.gen_detached_spawn(child_id)
 			} else if child.kind == .infix && child.op == .left_shift {
 				lhs_id := g.a.child(&child, 0)
 				if child.value == 'push_many' {
@@ -6558,6 +6560,11 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 		rhs_id := g.a.child(&node, i + 1)
 		lhs := g.a.nodes[int(lhs_id)]
 		rhs := g.a.nodes[int(rhs_id)]
+		if lhs.kind == .ident && lhs.value == '_' && rhs.kind == .spawn_expr {
+			g.gen_detached_spawn(rhs_id)
+			i += 2
+			continue
+		}
 		// A `static` local with a non-constant initializer cannot use a C static
 		// initializer (`static Array x = array_new(...)` is rejected: not a
 		// compile-time constant). Emit the storage once and run the initializer
@@ -7992,7 +7999,9 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 			g.track_ierror_stack_pointer_alias_assign(lhs, rhs_for_alias)
 			g.track_local_pointer_alias_assign(lhs, rhs_id)
 		}
-		if lhs.kind == .ident && lhs.value == '_' {
+		if lhs.kind == .ident && lhs.value == '_' && rhs_for_alias.kind == .spawn_expr {
+			g.gen_detached_spawn(rhs_id)
+		} else if lhs.kind == .ident && lhs.value == '_' {
 			g.write('(void)(')
 			g.gen_expr(rhs_id)
 			g.writeln(');')

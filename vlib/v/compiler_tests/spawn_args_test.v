@@ -246,3 +246,33 @@ fn main() {
 	assert !c_compact.contains('closure__closure_try_destroy((void*)p->f);'), c_code
 	assert !c_compact.contains('closure__closure_try_destroy((void*)cb);'), c_code
 }
+
+// A `spawn` whose handle is discarded can never be joined, so its thread must be
+// detached. Left joinable, every such thread keeps its OS resources until exit
+// (under Boehm GC on macOS, one mach port each, until the kernel kills the
+// process). A handle that is kept must stay joinable for `.wait()`.
+fn test_discarded_spawn_detaches_thread() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_discarded_detach', '
+fn work() {}
+
+fn answer() int {
+	return 42
+}
+
+fn main() {
+	spawn work()
+	_ := spawn work()
+	_ = spawn work()
+	spawn answer()
+	t := spawn answer()
+	println(t.wait())
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_code.contains('static void __v_thread_detach(__v_thread thread)'), c_code
+	assert c_compact.count('__v_thread_detach(__v_thread_spawn(work_thread_wrapper,') == 3, c_code
+	assert c_compact.count('__v_thread_detach(__v_thread_spawn(answer_thread_wrapper,') == 1, c_code
+	assert c_compact.contains('__v_threadt=__v_thread_spawn(answer_thread_wrapper,'), c_code
+	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
+}
