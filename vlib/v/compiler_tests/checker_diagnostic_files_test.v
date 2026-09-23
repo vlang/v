@@ -414,7 +414,10 @@ fn main() {
 	}, ['main.v'])
 	assert errors.len == 3, errors.str()
 	for i, method in ['close', 'foo', 'wait'] {
-		assert errors[i].msg == 'unknown function `m.${method}`', errors[i].msg
+		// The wording belongs to the existing unknown-call path; assert the kind
+		// and the named method, which is what this check adds.
+		assert errors[i].kind == .unknown_fn, errors[i].str()
+		assert errors[i].msg.contains('m.${method}'), errors[i].msg
 	}
 }
 
