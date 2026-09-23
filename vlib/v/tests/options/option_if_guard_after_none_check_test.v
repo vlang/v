@@ -82,6 +82,40 @@ fn test_parenthesized_if_guards_after_none_check_use_optional_wrapper() {
 	assert (checked_parenthesized_title(IfGuardAfterNoneCheck{}) or { err.msg() }) == 'title is required'
 }
 
+struct NestedValueField {
+	value ?string
+}
+
+struct NestedOptionalField {
+	inner ?NestedValueField
+}
+
+fn nested_value_field_guard(outer NestedOptionalField) !string {
+	if outer.inner == none {
+		return error('inner is required')
+	}
+	if value := outer.inner.value {
+		return value
+	}
+	return error('value is required')
+}
+
+fn nested_value_field_guard_expr(outer NestedOptionalField) !string {
+	if outer.inner == none {
+		return error('inner is required')
+	}
+	return if value := outer.inner.value { value } else { '' }
+}
+
+fn test_user_declared_value_field_in_optional_payload() {
+	outer := NestedOptionalField{ inner: NestedValueField{ value: 'hello' } }
+	assert nested_value_field_guard(outer)! == 'hello'
+	assert nested_value_field_guard_expr(outer)! == 'hello'
+	empty_value := NestedOptionalField{ inner: NestedValueField{} }
+	assert (nested_value_field_guard(empty_value) or { err.msg() }) == 'value is required'
+	assert nested_value_field_guard_expr(empty_value)! == ''
+}
+
 struct PromotedOptionalFieldInner {
 mut:
 	value ?string
