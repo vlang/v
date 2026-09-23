@@ -111,7 +111,7 @@ pub fn new_mutex() &Mutex {
 // since it creates the associated resources needed for the mutex to work properly.
 @[inline]
 pub fn (mut m Mutex) init() {
-	C.pthread_mutex_init(&m.mutex, C.NULL)
+	C.pthread_mutex_init(&m.mutex, unsafe { nil })
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.
@@ -375,7 +375,7 @@ pub fn (mut sem Semaphore) destroy() {
 // and lets the C preprocessor pick the one that the target's libc can actually run.
 fn (mut sem Semaphore) cond_init(n u32) {
 	C.atomic_store_u32(&sem.count, n)
-	should_be_zero(C.pthread_mutex_init(&sem.mtx, C.NULL))
+	should_be_zero(C.pthread_mutex_init(&sem.mtx, unsafe { nil }))
 	attr := CondAttr{}
 	should_be_zero(C.pthread_condattr_init(&attr.attr))
 	$if !openbsd {

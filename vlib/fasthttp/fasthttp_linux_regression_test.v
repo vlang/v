@@ -523,7 +523,7 @@ fn record_sigpipe_handler(_ os.Signal) {
 
 fn current_thread_blocks_sigpipe() bool {
 	mut current_mask := C.sigset_t{}
-	if C.pthread_sigmask(C.SIG_SETMASK, C.NULL, &current_mask) != 0 {
+	if C.pthread_sigmask(C.SIG_SETMASK, unsafe { nil }, &current_mask) != 0 {
 		return true
 	}
 	return C.sigismember(&current_mask, C.SIGPIPE) == 1
