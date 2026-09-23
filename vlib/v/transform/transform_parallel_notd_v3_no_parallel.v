@@ -114,6 +114,127 @@ fn (mut t Transformer) relocate_worker_regions(worker_ptrs []voidptr, node_start
 	t.merge_regions_relocated = true
 }
 
+// RegionCompaction is one relocated worker region's move into its final slot
+// of the shared master arrays.
+struct RegionCompaction {
+	node_src  int
+	node_dst  int
+	node_len  int
+	child_src int
+	child_dst int
+	child_len int
+mut:
+	wave          int
+	nodes_base    voidptr
+	children_base voidptr
+	node_size     usize
+	child_size    usize
+}
+
+fn region_compact_thread(arg voidptr) voidptr {
+	c := unsafe { &RegionCompaction(arg) }
+	if c.node_len > 0 && c.node_dst != c.node_src {
+		unsafe {
+			vmemmove(&u8(c.nodes_base) + usize(c.node_dst) * c.node_size, &u8(c.nodes_base) +
+				usize(c.node_src) * c.node_size, isize(usize(c.node_len) * c.node_size))
+		}
+	}
+	if c.child_len > 0 && c.child_dst != c.child_src {
+		unsafe {
+			vmemmove(&u8(c.children_base) + usize(c.child_dst) * c.child_size, &u8(c.children_base) +
+				usize(c.child_src) * c.child_size, isize(usize(c.child_len) * c.child_size))
+		}
+	}
+	return unsafe { nil }
+}
+
+@[inline]
+fn index_ranges_overlap(a_start int, a_len int, b_start int, b_len int) bool {
+	return a_len > 0 && b_len > 0 && a_start < b_start + b_len && b_start < a_start + a_len
+}
+
+// compact_worker_regions_parallel moves every relocated worker region of the
+// shared arrays into its final slot, using the merge-order offsets that
+// relocate_worker_regions applied. Regions only move left, so a destination can
+// overlap the not yet copied source of an earlier region but never a later
+// one; each move therefore runs in a wave after the moves it overwrites, and
+// the regions of one wave copy concurrently on the pool. The arrays grow to
+// their final length first. Returns no moves when the layout breaks that
+// invariant, leaving the copies to merge_worker's serial compaction.
+fn (mut t Transformer) compact_worker_regions_parallel(worker_ptrs []voidptr, node_starts []int, child_starts []int) []RegionCompaction {
+	mut moves := []RegionCompaction{cap: worker_ptrs.len}
+	mut running_nodes := t.a.nodes.len
+	mut running_children := t.a.children.len
+	for ci, ptr in worker_ptrs {
+		w := unsafe { &Transformer(ptr) }
+		node_len := w.a.nodes.len - node_starts[ci]
+		child_len := w.a.children.len - child_starts[ci]
+		moves << RegionCompaction{
+			node_src:  node_starts[ci]
+			node_dst:  running_nodes
+			node_len:  node_len
+			child_src: child_starts[ci]
+			child_dst: running_children
+			child_len: child_len
+		}
+		running_nodes += node_len
+		running_children += child_len
+	}
+	if running_nodes > t.a.nodes.cap || running_children > t.a.children.cap {
+		return []RegionCompaction{}
+	}
+	mut wave_count := 0
+	for k in 0 .. moves.len {
+		for j in 0 .. moves.len {
+			if j == k {
+				continue
+			}
+			if index_ranges_overlap(moves[j].node_src, moves[j].node_len, moves[k].node_dst,
+				moves[k].node_len)
+				|| index_ranges_overlap(moves[j].child_src, moves[j].child_len, moves[k].child_dst, moves[k].child_len) {
+				if j > k {
+					return []RegionCompaction{}
+				}
+				if moves[j].wave + 1 > moves[k].wave {
+					moves[k].wave = moves[j].wave + 1
+				}
+			}
+		}
+		if moves[k].wave + 1 > wave_count {
+			wave_count = moves[k].wave + 1
+		}
+	}
+	unsafe {
+		t.a.nodes.grow_len(running_nodes - t.a.nodes.len)
+		t.a.children.grow_len(running_children - t.a.children.len)
+	}
+	for mut move in moves {
+		move.nodes_base = t.a.nodes.data
+		move.children_base = t.a.children.data
+		move.node_size = usize(t.a.nodes.element_size)
+		move.child_size = usize(t.a.children.element_size)
+	}
+	for wave in 0 .. wave_count {
+		mut tasks := []workers.Task{cap: moves.len}
+		for i in 0 .. moves.len {
+			if moves[i].wave != wave || (moves[i].node_len == 0 && moves[i].child_len == 0) {
+				continue
+			}
+			tasks << workers.Task{
+				run:        region_compact_thread
+				arg:        unsafe { voidptr(&moves[i]) }
+				force_sync: tasks.len == 0
+			}
+		}
+		t.a.worker_pool.run(tasks)
+	}
+	// Everything past the final lengths is now dead region storage; merge_worker
+	// only publishes annotations for base nodes and tables from here on. Release
+	// those pages before the merge allocates, rather than after the stage.
+	unsafe { t.a.discard_unused_capacity() }
+	return moves
+}
+
 // RegionAbsorbArgs is one worker region's relocate-and-append job. The master
 // grows its arrays to the final length first, so every worker can write its
 // own disjoint destination slice at the same time and the merge that follows
@@ -2850,6 +2971,16 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	mut merge_used_ms := f64(0)
 	mut merge_core_ms := f64(0)
 	mut mwsw := time.new_stopwatch()
+	// Relocated regions are plain moves: do them all up front on the pool, so
+	// the serial loop below only publishes each worker's annotations.
+	compactions := if t.merge_regions_relocated && thread_count > 0
+		&& os.getenv('V3_NO_PARALLEL_COMPACT').len == 0 {
+		t.compact_worker_regions_parallel(args[1..].map(it.worker), node_starts[1..chunk_count],
+			child_starts[1..chunk_count])
+	} else {
+		[]RegionCompaction{}
+	}
+	t.timing_profile('  [ttime]     mg compact     ${f64(mwsw.elapsed().microseconds()) / 1000.0:7.2f} ms (regions: ${compactions.len})')
 	for ci in 0 .. thread_count {
 		ww := unsafe { &Transformer(args[ci + 1].worker) }
 		t.timing_profile('  [ttime]     mg region ${ci}: nodes [${node_starts[ci + 1]}, ${ww.a.nodes.len}) cap ${node_starts[ci + 2]} children [${child_starts[ci + 1]}, ${ww.a.children.len}) cap ${child_starts[ci + 2]} dst n ${t.a.nodes.len} c ${t.a.children.len}')
@@ -2857,12 +2988,24 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.merge_worker_used_fns(ww)
 		merge_used_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
 		deferred_start := t.deferred_base_writes.len
-		merged_node_start := t.a.nodes.len
+		mut merged_node_start := t.a.nodes.len
+		if compactions.len > 0 {
+			move := compactions[ci]
+			t.merge_regions_absorbed = true
+			t.merge_absorbed_node_shift = i32(move.node_dst - move.node_src)
+			t.merge_absorbed_child_shift = i32(move.child_dst - move.child_src)
+			merged_node_start = move.node_dst
+		}
 		mwsw.restart()
 		// Compaction appends each worker at the current master end. Sparse cache
 		// entries from the master and earlier workers end before that fresh range,
 		// so clearing every new id would only hash absent keys.
 		t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1], false)
+		merged_node_end := if compactions.len > 0 {
+			compactions[ci].node_dst + compactions[ci].node_len
+		} else {
+			t.a.nodes.len
+		}
 		merge_core_ms += f64(mwsw.elapsed().microseconds()) / 1000.0
 		if ww.worker_scope != unsafe { nil } && !t.retain_worker_results {
 			t.clone_deferred_worker_writes_from(deferred_start)
@@ -2878,11 +3021,12 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			t.retained_worker_regions << ScopedTransformRegion{
 				scope:      ww.worker_scope
 				new_start:  merged_node_start
-				new_end:    t.a.nodes.len
+				new_end:    merged_node_end
 				base_nodes: worker_base_nodes
 			}
 		}
 	}
+	t.merge_regions_absorbed = false
 	t.merge_regions_relocated = false
 	t.timing_profile('  [ttime]   shared merge     ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (used: ${merge_used_ms:.2f}, core: ${merge_core_ms:.2f})')
 	ttsw.restart()
