@@ -293,7 +293,8 @@ fn (mut g FlatGen) collect_fn_gen_candidates_range(nodes []i32, start int, end i
 		qfn := g.qualified_fn_name_in_module_c(item_module, node.value)
 		is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node,
 			i, qfn, item_file)
-		if !g.should_emit_fn_node_in_module_known(node, item_module, item_file, qfn, is_program_specialization) {
+		if !g.should_emit_fn_node_in_module_known(node, i, item_module, item_file, qfn,
+			is_program_specialization) {
 			continue
 		}
 		preferred_name := g.fn_c_name_in_module(item_module, node.value)
@@ -821,10 +822,11 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
 	is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, node_index,
 		qfn, file_name)
-	return g.should_emit_fn_node_in_module_known(node, module_name, file_name, qfn, is_program_specialization)
+	return g.should_emit_fn_node_in_module_known(node, node_index, module_name, file_name,
+		qfn, is_program_specialization)
 }
 
-fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, module_name string, file_name string, qfn string, is_program_specialization bool) bool {
+fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, node_index int, module_name string, file_name string, qfn string, is_program_specialization bool) bool {
 	if g.should_rename_user_main_for_tests(module_name, node.value) {
 		return true
 	}
@@ -882,7 +884,7 @@ fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, module_na
 		&& g.specialization_signature_has_missing_nominal(node, module_name) {
 		return false
 	}
-	if g.fn_node_is_open_generic_template(node, module_name) {
+	if g.fn_node_is_open_generic_template(node, node_index, module_name) {
 		return false
 	}
 	// Every concrete specialization materialized from the combined
@@ -981,11 +983,17 @@ fn (g &FlatGen) type_has_missing_qualified_nominal(t types.Type) bool {
 	}
 }
 
-fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name string) bool {
+fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, node_index int, module_name string) bool {
 	if node.generic_params().len > 0 {
 		return true
 	}
 	if node.value.index_u8(`.`) < 0 {
+		return false
+	}
+	// A monomorphized clone substitutes every type parameter, so its receiver
+	// arguments are concrete even when a type is spelled with one capital letter
+	// (`Encoder[F].encode`, specialized for a user `struct F`).
+	if g.a.specialized_fn_nodes[node_index] {
 		return false
 	}
 	receiver := node.value.all_before_last('.')
