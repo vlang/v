@@ -114,9 +114,9 @@ pub fn (p YCbCr) sub_image(r Rectangle) YCbCr {
 	yi := p.y_offset(rr.min.x, rr.min.y)
 	ci := p.c_offset(rr.min.x, rr.min.y)
 	return YCbCr{
-		y:               p.y[yi..]
-		cb:              p.cb[ci..]
-		cr:              p.cr[ci..]
+		y:               p.y[yi..].clone()
+		cb:              p.cb[ci..].clone()
+		cr:              p.cr[ci..].clone()
 		y_stride:        p.y_stride
 		c_stride:        p.c_stride
 		subsample_ratio: p.subsample_ratio
@@ -215,15 +215,15 @@ pub fn (p NYCbCrA) sub_image(r Rectangle) NYCbCrA {
 	ai := p.a_offset(rr.min.x, rr.min.y)
 	return NYCbCrA{
 		ycbcr:    YCbCr{
-			y:               p.ycbcr.y[yi..]
-			cb:              p.ycbcr.cb[ci..]
-			cr:              p.ycbcr.cr[ci..]
+			y:               p.ycbcr.y[yi..].clone()
+			cb:              p.ycbcr.cb[ci..].clone()
+			cr:              p.ycbcr.cr[ci..].clone()
 			y_stride:        p.ycbcr.y_stride
 			c_stride:        p.ycbcr.c_stride
 			subsample_ratio: p.ycbcr.subsample_ratio
 			rect:            rr
 		}
-		a:        p.a[ai..]
+		a:        p.a[ai..].clone()
 		a_stride: p.a_stride
 	}
 }
