@@ -170,3 +170,52 @@ fn test_keyword_enum_selector_inserts_semicolon() {
 		assert scanner.scan() == expected
 	}
 }
+
+fn char_literal_diagnostics(source string) []string {
+	mut files := token.FileSet.new()
+	mut file := files.add_file('char_literal.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+	for scanner.scan() != .eof {
+	}
+	return scanner.diagnostics.map(it.message)
+}
+
+// A character literal holds one character however it is spelled: a three-digit octal
+// escape is one byte, and the byte escapes of one UTF-8 sequence are one character, the
+// same as in a string.
+fn test_char_literal_escapes_that_spell_one_character_are_accepted() {
+	for source in [
+		r'`\141`',
+		r'`\x61`',
+		r'`a`',
+		r'`\U0001F680`',
+		r'`\0`',
+		r'`\xc3\xa9`',
+		r'`\xe2\x98\x85`',
+		r'`\342\230\205`',
+		r'`\342\x98\205`',
+		r'`\xf0\x9f\x9a\x80`',
+	] {
+		assert char_literal_diagnostics(source) == [], source
+	}
+}
+
+fn test_char_literal_with_more_than_one_character_is_still_rejected() {
+	for source in [
+		r'`\141b`',
+		r'`\x61\x62`',
+		// A lead byte whose continuation bytes are missing, invalid, or overlong is not
+		// one character.
+		r'`\xe2\x98`',
+		r'`\xe2\x98\x41`',
+		r'`\xc0\x80`',
+		r'`\xc3\xa9\xa9`',
+	] {
+		diagnostics := char_literal_diagnostics(source)
+		assert diagnostics.len == 1, source
+		assert diagnostics[0].ends_with('(more than one character)'), '${source}: ${diagnostics[0]}'
+	}
+}
