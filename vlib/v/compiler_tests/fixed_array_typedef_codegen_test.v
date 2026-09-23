@@ -274,3 +274,36 @@ fn main() {
 	assert typedef_pos > size_pos, generated
 	assert holder_pos > typedef_pos, generated
 }
+
+fn test_imported_fn_pointer_fixed_array_of_backed_enum_uses_emitted_typedef() {
+	v3_bin := fixed_array_build_v3()
+	root := fixed_array_write_project('fn_pointer_enum', 'module fixture
+
+pub enum Mode as u32 {
+	one
+	two
+}
+
+pub struct Extent {
+	width u32
+}
+
+pub type Callback = fn (handle voidptr, extent &Extent, modes [2]Mode)
+', 'module main
+
+import fixture
+
+fn main() {
+	println(fixture.Mode.one)
+}
+')
+	bin := os.join_path(root, 'out')
+	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'one', run.output
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	assert generated.contains('typedef fixture__Mode Array_fixed_fixture__Mode_2[2];'), generated
+	assert !generated.contains('Array_fixed_int_2'), generated
+}

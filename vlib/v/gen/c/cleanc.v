@@ -21401,6 +21401,16 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 			}
 		}
 	}
+	for name, target in g.tc.type_aliases {
+		if !target.contains('[') {
+			continue
+		}
+		g.tc.cur_module = module_from_qualified_name(name)
+		alias_type := g.tc.parse_type(target)
+		if fixed_array_type_first_seen(alias_type, g.tc.cur_module, mut type_seen) {
+			g.collect_fixed_array_typedef(alias_type, g.tc.cur_module, mut needed)
+		}
+	}
 	for name, fields in g.tc.structs {
 		g.tc.cur_module = g.fixed_array_typedef_type_module(name, old_module)
 		for field in fields {

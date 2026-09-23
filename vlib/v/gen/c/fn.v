@@ -20530,7 +20530,12 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 	ret := if typ.return_type is types.Void { 'void' } else { g.tc.c_type(typ.return_type) }
 	mut params := []string{}
 	for i in 0 .. typ.params.len {
-		params << g.tc.c_type(fn_type_effective_param(typ, i))
+		param := fn_type_effective_param(typ, i)
+		params << if param is types.ArrayFixed {
+			g.fixed_array_c_type(param)
+		} else {
+			g.tc.c_type(param)
+		}
 	}
 	return naming.fn_ptr_encoded(ret, params)
 }
