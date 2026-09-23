@@ -185,6 +185,8 @@ $if gcboehm_leak ? {
 #include <gc.h>
 #include "@VEXEROOT/vlib/builtin/gc_debugger_linux.h"
 #define v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))
+#define v_gc_get_abort_func() ((void *)GC_get_abort_func())
+#define v_gc_set_abort_func(cb) GC_set_abort_func((GC_abort_func)(cb))
 
 // #include <gc/gc_mark.h>
 
@@ -301,6 +303,13 @@ fn C.GC_register_displacement(offset usize)
 // GC_REGISTER_DISPLACEMENT is `GC_debug_register_displacement` when `GC_DEBUG` is set
 // (`-gc boehm_leak`), and `GC_register_displacement` otherwise.
 fn C.GC_REGISTER_DISPLACEMENT(offset usize)
+
+// FnGC_AbortCB is the type of Boehm's fatal error handler (`GC_abort_func`).
+// `msg` is nil, when Boehm calls it right before `exit(1)`.
+type FnGC_AbortCB = fn (msg &char)
+
+fn C.v_gc_get_abort_func() voidptr
+fn C.v_gc_set_abort_func(cb FnGC_AbortCB)
 
 // gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings.
 pub fn gc_get_warn_proc() FnGC_WarnCB {
