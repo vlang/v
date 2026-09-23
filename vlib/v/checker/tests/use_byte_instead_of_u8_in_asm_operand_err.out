@@ -1,0 +1,14 @@
+vlib/v/checker/tests/use_byte_instead_of_u8_in_asm_operand_err.vv:9:13: error: byte is deprecated, use u8 instead
+    7 |         mov result, y
+    8 |         ; =r (result)
+    9 |           =r (buf[byte(0)])
+      |                   ~~~~~~~
+   10 |         ; r (byte(x)) as y
+   11 |     }
+vlib/v/checker/tests/use_byte_instead_of_u8_in_asm_operand_err.vv:10:8: error: byte is deprecated, use u8 instead
+    8 |         ; =r (result)
+    9 |           =r (buf[byte(0)])
+   10 |         ; r (byte(x)) as y
+      |              ~~~~~~~
+   11 |     }
+   12 |     println('${result} ${buf}')
