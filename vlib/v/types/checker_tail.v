@@ -10244,9 +10244,20 @@ fn (tc &TypeChecker) cache_visible_mutation_fn_decl(key string, decl VisibleMuta
 		return
 	}
 	mut cache := tc.visible_mutation_cache
-	if key !in cache.decls {
+	if visible_mutation_key_is_global(key) {
+		if key !in cache.global_decls {
+			cache.global_decls[key] = decl
+		}
+	} else if key !in cache.decls {
 		cache.decls[key] = decl
 	}
+}
+
+// visible_mutation_key_is_global reports whether a visible-mutation cache key has
+// no module part (`\x01name`); such keys live in VisibleMutationCache.global_decls.
+@[inline]
+fn visible_mutation_key_is_global(key string) bool {
+	return key.len > 0 && key[0] == 0x01
 }
 
 fn (mut tc TypeChecker) register_visible_mutation_fn_decl(idx int, module_name string, qname string, source_name string) {
@@ -10267,6 +10278,15 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 		}
 		return
 	}
+	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
+		c_source_name, false)
+	tc.register_visible_mutation_fn_decl_keys(idx, module_name, qname, source_name, c_qname,
+		c_source_name, true)
+}
+
+// register_visible_mutation_fn_decl_keys records one declaration under either its
+// module-less (`global`) or its module-qualified keys.
+fn (mut tc TypeChecker) register_visible_mutation_fn_decl_keys(idx int, module_name string, qname string, source_name string, c_qname string, c_source_name string, global bool) {
 	decl_module := if module_name == '' { 'main' } else { module_name }
 	decl := VisibleMutationFnDecl{
 		idx: idx
@@ -10282,9 +10302,17 @@ fn (mut tc TypeChecker) register_visible_mutation_fn_decl_with_lowered(idx int, 
 		candidates << c_qname
 		candidates << c_source_name
 	}
-	for candidate in candidates {
-		tc.cache_visible_mutation_fn_decl('\x01${candidate}', decl)
-		tc.cache_visible_mutation_fn_decl('${decl_module}\x01${candidate}', decl)
+	for i, candidate in candidates {
+		// A repeated spelling (a plain name is its own C name) only meets the
+		// entry the earlier one inserted, so skip building its keys again.
+		if candidate in candidates[..i] {
+			continue
+		}
+		if global {
+			tc.cache_visible_mutation_fn_decl('\x01${candidate}', decl)
+		} else {
+			tc.cache_visible_mutation_fn_decl('${decl_module}\x01${candidate}', decl)
+		}
 	}
 }
 
@@ -10292,7 +10320,11 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 	cache_key := '${fallback_mod}\x01${visible_mutation_fn_lookup_name(name)}'
 	if !isnil(tc.visible_mutation_cache) {
 		cache := tc.visible_mutation_cache
-		if decl := cache.decls[cache_key] {
+		if visible_mutation_key_is_global(cache_key) {
+			if decl := cache.global_decls[cache_key] {
+				return decl
+			}
+		} else if decl := cache.decls[cache_key] {
 			return decl
 		}
 		if cache.decl_misses[cache_key] {
@@ -10330,7 +10362,11 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 					}
 					if !isnil(tc.visible_mutation_cache) {
 						mut cache := tc.visible_mutation_cache
-						cache.decls[cache_key] = decl
+						if visible_mutation_key_is_global(cache_key) {
+							cache.global_decls[cache_key] = decl
+						} else {
+							cache.decls[cache_key] = decl
+						}
 					}
 					return decl
 				}
