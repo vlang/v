@@ -394,7 +394,7 @@ fn (mut s Scanner) scan() Token {
 				kind = .bool
 			}
 			unsafe { ident.free() }
-			val := s.text[s.pos..s.pos + 4]
+			val := unsafe { s.text[s.pos..s.pos + 4] }
 			tok := s.tokenize(val, kind)
 			s.move_n(4) // null / true
 			return tok
@@ -405,7 +405,7 @@ fn (mut s Scanner) scan() Token {
 		ident := s.text[s.pos..s.pos + 5].bytestr()
 		if ident == 'false' {
 			unsafe { ident.free() }
-			val := s.text[s.pos..s.pos + 5]
+			val := unsafe { s.text[s.pos..s.pos + 5] }
 			tok := s.tokenize(val, .bool)
 			s.move_n(5) // false
 			return tok
