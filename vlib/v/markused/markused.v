@@ -3566,6 +3566,14 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 			enqueue(markused_c_name('u64.str'), mut used, mut queue)
 			enqueue('strconv__format_uint', mut used, mut queue)
 		}
+		'u128' {
+			enqueue('u128.str', mut used, mut queue)
+			enqueue(markused_c_name('u128.str'), mut used, mut queue)
+		}
+		'i128' {
+			enqueue('i128.str', mut used, mut queue)
+			enqueue(markused_c_name('i128.str'), mut used, mut queue)
+		}
 		'f32' {
 			enqueue('f32.str', mut used, mut queue)
 			enqueue(markused_c_name('f32.str'), mut used, mut queue)
