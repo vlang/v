@@ -1006,6 +1006,16 @@ fn (mut t Transformer) try_expand_return_if(source_return_id flat.NodeId, node f
 	if val_node.kind != .if_expr || val_node.children_count < 3 {
 		return none
 	}
+	cond_id := t.a.child(&val_node, 0)
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .decl_assign && cond.children_count >= 2 {
+		rhs_id := t.a.child(&cond, 1)
+		// Let the value guard path recover the wrapper when a prior check smartcast its source.
+		if !t.is_optional_type_name(t.optional_result_expr_type_name(rhs_id))
+			&& t.is_optional_type_name(t.if_guard_optional_type_name(rhs_id)) {
+			return none
+		}
+	}
 	mut extra_return_vals := []flat.NodeId{}
 	for i in 1 .. node.children_count {
 		extra_return_vals << t.a.child(&node, i)
