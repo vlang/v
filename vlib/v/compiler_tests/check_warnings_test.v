@@ -167,3 +167,17 @@ fn test_check_reports_the_unused_declarations_a_build_reports() {
 		assert check == build, '${name}:\ncheck: ${check}\nbuild: ${build}'
 	}
 }
+
+// An editor shows the diagnostics of a program while its errors are being
+// fixed, the unused declarations among them. With errors, only what nothing
+// names is reported: a call the checker could not resolve still names its
+// function, which may be used after all.
+fn test_check_reports_unused_private_declarations_next_to_errors() {
+	res := check_output('unused_failing', 'module main\n\nconst limit = 3\n\nfn helper() int {\n\treturn 1\n}\n\nfn called_badly(x int) int {\n\treturn x\n}\n\nfn passed_to_unknown() {}\n\nfn main() {\n\ty := called_badly(1, 2)\n\tprintln(y)\n\tprintln(missing(passed_to_unknown))\n}\n')
+	assert res.exit_code == 1, res.output
+	assert res.output.contains('error: expected 1 argument, but got 2'), res.output
+	assert res.output.contains('notice: unused constant: `limit`'), res.output
+	assert res.output.contains('notice: unused function: `helper`'), res.output
+	assert !res.output.contains('`called_badly`'), res.output
+	assert !res.output.contains('unused function: `passed_to_unknown`'), res.output
+}
