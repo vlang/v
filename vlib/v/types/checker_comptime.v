@@ -5427,8 +5427,24 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 		return
 	}
 	bit_size := if clean_target.size == 0 { 32 } else { int(clean_target.size) }
-	value, parse_error := strconv.common_parse_uint2(magnitude, 0, bit_size)
 	target_name := target.name()
+	if bit_size > 64 {
+		// strconv stops at 64 bits, so the digits are compared against the largest
+		// value the type holds. The negative limit is the magnitude of the minimum,
+		// because that is the one value whose positive counterpart does not exist.
+		limit := if clean_target.props.has(.unsigned) {
+			'340282366920938463463374607431768211455'
+		} else if is_negative {
+			'170141183460469231731687303715884105728'
+		} else {
+			'170141183460469231731687303715884105727'
+		}
+		if decimal_magnitude_exceeds(magnitude, limit) {
+			tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
+		}
+		return
+	}
+	value, parse_error := strconv.common_parse_uint2(magnitude, 0, bit_size)
 	if parse_error == -3 {
 		tc.record_error_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`', id, node.pos)
 		return
@@ -5448,6 +5464,26 @@ fn (mut tc TypeChecker) check_integer_literal_cast_overflow(id flat.NodeId, node
 	if overflows_sign_bit {
 		tc.record_warning_at(.assignment_mismatch, 'value `${literal}` overflows `${target_name}`, this will be considered hard error soon', id, node.pos)
 	}
+}
+
+// Compares a literal's digits against a limit too large for u64. Leading zeros go
+// first, then the shorter number is the smaller one, and equal lengths compare
+// digit by digit through the string ordering.
+fn decimal_magnitude_exceeds(magnitude string, limit string) bool {
+	mut start := 0
+	for start < magnitude.len && magnitude[start] == `0` {
+		start++
+	}
+	digits := magnitude[start..]
+	mut limit_start := 0
+	for limit_start < limit.len && limit[limit_start] == `0` {
+		limit_start++
+	}
+	trimmed := limit[limit_start..]
+	if digits.len != trimmed.len {
+		return digits.len > trimmed.len
+	}
+	return digits > trimmed
 }
 
 fn (tc &TypeChecker) integer_literal_source(id flat.NodeId) ?string {

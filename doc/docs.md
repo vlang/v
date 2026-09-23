@@ -663,9 +663,24 @@ portable implementation on a compiler that has the native type.
 Printing works through `str()`, so println and string interpolation show the
 decimal value, including the minimum `i128` that has no positive counterpart.
 
-Still missing: there are no integer literals wider than 64 bits, and the
-promotion ladder below has no row for them, so an expression that mixes a
-128-bit value with a smaller one wants an explicit cast on the smaller side.
+A literal that needs more than 64 bits can be written directly and keeps its
+exact value:
+
+```v
+fn main() {
+	assert u128(31732946804115296442105984367).str() == '31732946804115296442105984367'
+}
+```
+
+The digits are split into two halves in the compiler, so the C compiler never
+sees a constant it would quietly cut down to its low 64 bits. A value outside
+the range of the target type is an error: `u128(2^128)` is rejected rather than
+wrapped, and `i128(-2^127)` is allowed because that is the minimum.
+
+A bare literal still follows the rule that applies to every other integer in V,
+so it wants an explicit cast, and the promotion ladder below has no row for
+128-bit types. An expression that mixes a 128-bit value with a smaller one
+therefore needs an explicit cast on the smaller side.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type

@@ -215,12 +215,110 @@ fn (mut g FlatGen) gen_int128_prefix(node flat.Node, child_id flat.NodeId) bool 
 // helpers are used on both sides so the struct representation needs no C cast
 // that does not exist for it. Anything it does not own returns false and keeps
 // the existing cast path.
+// A literal that needs more than 64 bits cannot travel to the C compiler as
+// digits: C keeps the low 64 bits of an oversized constant and stays quiet about
+// it, so `u128(31732946804115296442105984367)` used to become 4047906774079501679
+// without a word. Splitting the digits here and emitting the halves avoids the C
+// constant altogether, and __v_u128_make exists on both representations, so the
+// native and portable paths agree.
+//
+// A struct rather than two return values, because `.0` and `.1` on a multi-return
+// value compile to C that assigns the whole multi_return struct to a u64.
+struct Int128LiteralParts {
+	high u64
+	low  u64
+}
+
+// Returns the halves of a literal, or none when it fits in 64 bits and can stay
+// on the ordinary path.
+fn int128_literal_parts(text string) ?Int128LiteralParts {
+	cleaned := text.replace('_', '')
+	if cleaned.len == 0 {
+		return none
+	}
+	mut base := u32(10)
+	mut digits := cleaned
+	if cleaned.len >= 2 && cleaned[0] == `0` {
+		prefix := cleaned[1]
+		if prefix == `x` || prefix == `X` {
+			base = 16
+			digits = cleaned[2..]
+		} else if prefix == `o` || prefix == `O` {
+			base = 8
+			digits = cleaned[2..]
+		} else if prefix == `b` || prefix == `B` {
+			base = 2
+			digits = cleaned[2..]
+		}
+	}
+	if digits.len == 0 {
+		return none
+	}
+	// Four 32-bit limbs, least significant first. Multiplying a limb by a base of
+	// at most 16 and adding a carry stays inside 64 bits, so this needs no
+	// 128-bit arithmetic of its own and keeps bootstrapping simple.
+	mut limbs := [u32(0), 0, 0, 0]
+	for ch in digits {
+		digit := if ch >= `0` && ch <= `9` {
+			u64(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			u64(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			u64(ch - `A`) + 10
+		} else {
+			return none
+		}
+		if digit >= u64(base) {
+			return none
+		}
+		mut carry := digit
+		for i in 0 .. 4 {
+			product := u64(limbs[i]) * u64(base) + carry
+			limbs[i] = u32(product)
+			carry = product >> 32
+		}
+		if carry != 0 {
+			// More than 128 bits: not a value this type can hold at all.
+			return none
+		}
+	}
+	high := u64(limbs[2]) | (u64(limbs[3]) << 32)
+	low := u64(limbs[0]) | (u64(limbs[1]) << 32)
+	if high == 0 {
+		return none
+	}
+	return Int128LiteralParts{
+		high: high
+		low:  low
+	}
+}
+
 fn (mut g FlatGen) gen_int128_cast(node flat.Node, target_type types.Type, source_id flat.NodeId) bool {
 	target := int128_signedness(target_type)
 	source_type := g.usable_expr_type(source_id)
 	source := int128_signedness(source_type)
 	if target == none && source == none {
 		return false
+	}
+	if target != none && source_id >= 0 && int(source_id) < g.a.nodes.len {
+		// The digits of a wide literal are lowered here, so the C compiler never
+		// sees an oversized constant and cannot quietly keep the low 64 bits.
+		literal := g.a.nodes[int(source_id)]
+		if literal.kind == .int_literal {
+			if parts := int128_literal_parts(literal.value) {
+				g.write('__v_u128_make(${parts.high}ULL, ${parts.low}ULL)')
+				return true
+			}
+		}
+		if literal.kind == .prefix && literal.op == .minus && literal.children_count > 0 {
+			magnitude := g.a.child_node(literal, 0)
+			if magnitude.kind == .int_literal {
+				if parts := int128_literal_parts(magnitude.value) {
+					g.write('__v_i128_neg(__v_u128_make(${parts.high}ULL, ${parts.low}ULL))')
+					return true
+				}
+			}
+		}
 	}
 	if target != none {
 		to_signed := target?

@@ -11,6 +11,12 @@ typedef __int128 i128;
 
 #define V_INT128_NATIVE 1
 
+/* Generated code builds a wide literal from its halves, so this has to exist on
+ * both representations. On the native type the halves are a shift and an or. */
+static inline u128 __v_u128_make(u64 hi, u64 lo) {
+	return ((u128)hi << 64) | (u128)lo;
+}
+
 /* The native type is two's complement, so every bit pattern is a value and the
  * conversions below are plain casts. */
 static inline u128 __v_u128_zero(void) {

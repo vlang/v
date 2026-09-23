@@ -15192,6 +15192,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 	match node.kind {
 		.int_literal {
 			v := node.value.replace('_', '')
+			if parts := int128_literal_parts(v) {
+				// Wider than 64 bits: emit the halves, because a C decimal constant
+				// that large is silently reduced to its low 64 bits.
+				g.write('__v_u128_make(${parts.high}ULL, ${parts.low}ULL)')
+				return
+			}
 			if v.starts_with('0o') {
 				g.write('0${v[2..]}')
 			} else {
