@@ -44,6 +44,9 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	}
 	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
 	if !t.is_optional_type_name(rhs_type) {
+		rhs_type = t.raw_expr_type_without_smartcast(rhs_id)
+	}
+	if !t.is_optional_type_name(rhs_type) {
 		return none
 	}
 	rhs_type = t.qualify_optional_type(rhs_type)
@@ -57,7 +60,7 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 		rhs_expr = source
 		source_clear = t.make_assign_without_ownership_drop(source, t.make_optional_none(rhs_type))
 	} else {
-		rhs_expr = t.transform_expr(rhs_id)
+		rhs_expr = t.transform_optional_wrapper_expr(rhs_id)
 	}
 	if !t.is_optional_type_name(t.node_type(rhs_expr)) {
 		rhs_node := t.a.nodes[int(rhs_expr)]
