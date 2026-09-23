@@ -10756,3 +10756,27 @@ fn main() {
 ')
 	assert out == '2\n2'
 }
+
+// A `@[_naked]` function is its own prologue and epilogue: without
+// `__attribute__((naked))` the C compiler wraps the hand-written body in a frame
+// the body's own `ret` never unwinds, and calling it crashes. The attribute has
+// to precede the declarator -- gcc rejects it after the parameter list with
+// "attributes should be specified before the declarator in a function definition".
+fn test_naked_attribute_precedes_the_declarator() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'naked_attribute', '
+@[_naked]
+fn naked_body() {
+}
+
+fn ordinary_body() {
+}
+
+fn main() {
+	naked_body()
+	ordinary_body()
+}
+')
+	assert c_source.contains('__attribute__((naked)) void naked_body(void) {'), c_source
+	assert !c_source.contains('__attribute__((naked)) void ordinary_body'), c_source
+}
