@@ -490,7 +490,6 @@ mut:
 	needs_pthread_header          bool
 	needs_thread_type             bool
 	needs_thread_runtime          bool
-	discard_next_spawn            bool // set by gen_detached_spawn for the spawn it emits
 	spawn_detached                bool // the spawn being emitted has its handle discarded
 	const_runtime_inits           []string
 	const_runtime_init_modules    []string

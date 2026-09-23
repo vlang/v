@@ -272,6 +272,9 @@ fn main() {
 	spawn work()
 	_ := spawn work()
 	_ = spawn work()
+	mut b := 0
+	b, _ = 2, spawn work()
+	println(b)
 	spawn answer()
 	spawn add(1, 2)
 	spawn wait_for(spawn answer())
@@ -281,7 +284,7 @@ fn main() {
 	')
 	c_compact := compact_c(c_code)
 	assert c_code.contains('static void __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*))'), c_code
-	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 3, c_code
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 4, c_code
 	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper,') == 1, c_code
 	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper,(void*)_sa'), c_code
 	// The spawn nested in the arguments is joined by `wait_for`, so it stays joinable.

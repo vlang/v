@@ -3805,19 +3805,9 @@ fn (mut g FlatGen) callback_wrapper_decls() {
 	}
 }
 
-// gen_detached_spawn emits a `spawn` whose thread handle is discarded (`spawn f()`,
-// `_ := spawn f()`, `_ = spawn f()`). Nothing can join that thread, so it is started
-// detached through `__v_thread_spawn_detached`, which also frees the thread's context
-// and result when it exits. A joinable thread that is never joined keeps its OS
-// resources (and, under Boehm GC on macOS, a mach port) until the process exits.
-fn (mut g FlatGen) gen_detached_spawn(spawn_id flat.NodeId) {
-	g.discard_next_spawn = true
-	g.gen_expr(spawn_id)
-	g.discard_next_spawn = false
-	g.writeln(';')
-}
-
-// spawn_start_fn names the runtime call that starts the spawn being emitted.
+// spawn_start_fn names the runtime call that starts the spawn being emitted. A detached
+// spawn goes through `__v_thread_spawn_detached`, which also frees the thread's context
+// and result when it exits; nothing can join it.
 fn (g &FlatGen) spawn_start_fn() string {
 	return if g.spawn_detached { '__v_thread_spawn_detached' } else { '__v_thread_spawn' }
 }
@@ -3828,31 +3818,13 @@ fn (g &FlatGen) empty_spawn_value() string {
 	return if g.spawn_detached { '(void)0' } else { '(__v_thread){0}' }
 }
 
-// discarded_spawn_id returns the `spawn` a discarded expression evaluates to, seeing
-// through parentheses, so `(spawn f())` in a discarded position is detached as well.
-// Discarded `if`/`match` values are lowered to statements by the transformer.
-fn (g &FlatGen) discarded_spawn_id(id flat.NodeId) ?flat.NodeId {
-	mut cur := id
-	for int(cur) >= 0 && int(cur) < g.a.nodes.len {
-		node := g.a.nodes[int(cur)]
-		if node.kind == .spawn_expr {
-			return cur
-		}
-		if node.kind != .paren || node.children_count != 1 {
-			break
-		}
-		cur = g.a.child(&node, 0)
-	}
-	return none
-}
-
 fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	g.needs_thread_runtime = true
-	// Consume the discard request here, so a spawn nested in this spawn's arguments
-	// stays joinable; restore the outer spawn's mode once this one is emitted.
+	// The transformer marks a spawn whose handle is discarded; start its thread
+	// detached. A spawn nested in its arguments has its own mode, so restore this one
+	// after emitting it.
 	outer_detached := g.spawn_detached
-	g.spawn_detached = g.discard_next_spawn
-	g.discard_next_spawn = false
+	g.spawn_detached = node.is_detached_spawn()
 	defer {
 		g.spawn_detached = outer_detached
 	}

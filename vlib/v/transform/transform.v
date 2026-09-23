@@ -11982,13 +11982,14 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	return result
 }
 
-// try_lower_discarded_spawn_assign pushes the discard of `_ := v` / `_ = v` into the
-// branches of `v` when `v` is an `if`/`match` with a branch ending in a `spawn`:
-// `_ := if c { a } else { b }` becomes `if c { _ = a } else { _ = b }`. As a value, `v`
-// is lowered into a temporary that hides the spawns from cgen, so their threads stay
-// joinable with nothing left to join them. Pushed into the branches, each `_ = spawn`
-// is detached by cgen, while any other branch value, such as an existing handle, is
-// only evaluated: `(void)(t)` leaves it joinable for a later `.wait()`.
+// try_lower_discarded_spawn_assign lowers `_ := v` / `_ = v` when `v` can start a
+// thread whose handle the discard drops. A `spawn`, possibly parenthesized, becomes an
+// expression statement, which transform_expr_stmt marks detached. An `if`/`match`
+// with a branch ending in a `spawn` has the discard pushed into its branches:
+// `_ := if c { a } else { b }` becomes `if c { _ = a } else { _ = b }`. As a value it
+// would be lowered into a temporary that hides the spawns, leaving their threads
+// joinable with nothing left to join them. Any other branch value, such as an
+// existing handle, is only evaluated: `(void)(t)` leaves it joinable for `.wait()`.
 fn (mut t Transformer) try_lower_discarded_spawn_assign(node flat.Node) ?[]flat.NodeId {
 	if node.children_count != 2 || (node.kind == .assign && node.op != .assign) {
 		return none
@@ -11999,10 +12000,38 @@ fn (mut t Transformer) try_lower_discarded_spawn_assign(node flat.Node) ?[]flat.
 	}
 	value_id := t.skip_discarded_spawn_parens(t.a.child(&node, 1))
 	value := t.a.nodes[int(value_id)]
+	if value.kind == .spawn_expr {
+		return t.transform_stmt(t.make_expr_stmt(value_id))
+	}
 	if value.kind !in [.if_expr, .match_stmt] || !t.yields_fresh_spawn(value_id) {
 		return none
 	}
 	return t.transform_stmt(t.discard_conditional_branch_values(value_id))
+}
+
+// transform_detached_spawn_stmt transforms the expression statement `stmt`, whose
+// value is the `spawn` `spawn_id`, and marks that spawn detached: its handle is
+// discarded, so the backend starts the thread detached instead of joinable. The mark
+// goes on a copy, so the source node is left as it was.
+fn (mut t Transformer) transform_detached_spawn_stmt(stmt flat.Node, spawn_id flat.NodeId) []flat.NodeId {
+	mut value := t.transform_expr(spawn_id)
+	spawn_node := t.a.nodes[int(value)]
+	if spawn_node.kind == .spawn_expr {
+		value = t.copy_node_with_children(spawn_node, t.a.children_of(&spawn_node).clone())
+		t.a.nodes[int(value)].flags = spawn_node.flags | flat.node_flag_detached_spawn
+	}
+	start := t.a.children.len
+	t.a.children << value
+	new_id := t.a.add_node(flat.Node{
+		kind:           .expr_stmt
+		op:             stmt.op
+		children_start: start
+		children_count: 1
+		pos:            stmt.pos
+		value:          stmt.value
+		typ:            stmt.typ
+	})
+	return t.with_pending_before(new_id)
 }
 
 fn (t &Transformer) skip_discarded_spawn_parens(id flat.NodeId) flat.NodeId {
@@ -15423,6 +15452,15 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		lhs_ids << lhs_id
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident && lhs.value == '_' {
+			spawn_id := t.skip_discarded_spawn_parens(rhs_id)
+			if t.a.nodes[int(spawn_id)].kind == .spawn_expr {
+				// Nothing can join a discarded `spawn`; start its thread detached.
+				result << t.transform_detached_spawn_stmt(flat.Node{
+					kind: .expr_stmt
+				}, spawn_id)
+				tmp_names << ''
+				continue
+			}
 			rhs := t.transform_expr(rhs_id)
 			t.drain_pending(mut result)
 			result << t.make_expr_stmt(rhs)
@@ -16426,6 +16464,10 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 	}
 	if discarded := t.lower_discarded_closure_value(child_id) {
 		return discarded
+	}
+	spawn_id := t.skip_discarded_spawn_parens(child_id)
+	if t.a.nodes[int(spawn_id)].kind == .spawn_expr {
+		return t.transform_detached_spawn_stmt(node, spawn_id)
 	}
 	if t.autolock_depth == 0 {
 		if lock_id := t.shared_postfix_autolock_target(child_id) {

@@ -282,6 +282,9 @@ pub const node_flag_freed_assignment = u8(8)
 // node_flag_mut_builtin_pointer_param marks a source `mut p voidptr`/`byteptr`/`charptr`
 // parameter before the parser folds its mutable caller slot into the type text.
 pub const node_flag_mut_builtin_pointer_param = u8(16)
+// node_flag_detached_spawn marks a `spawn` whose thread handle is discarded, so the
+// backend starts its thread detached (see Node.is_detached_spawn()).
+pub const node_flag_detached_spawn = u8(32)
 
 // node_flags packs rare node bools into Node.flags.
 @[inline]
@@ -308,7 +311,7 @@ pub fn node_flags(skip_ownership_drops bool, is_static_type_method bool) u8 {
 pub fn clone_node_flags(source &Node, skip_ownership_drops bool) u8 {
 	mut flags := node_flags(skip_ownership_drops, source.is_static_type_method())
 	flags |= source.flags & (node_flag_embed_payload | node_flag_freed_assignment |
-		node_flag_mut_builtin_pointer_param)
+		node_flag_mut_builtin_pointer_param | node_flag_detached_spawn)
 	return flags
 }
 
@@ -325,6 +328,13 @@ pub mut:
 	flags          u8 // node_flag_* bits; see skip_ownership_drops/is_static_type_method
 	children_count i32
 	pos            token.Pos
+}
+
+// is_detached_spawn reports whether this `spawn` has its thread handle discarded:
+// nothing can join its thread, so the backend starts it detached.
+@[inline]
+pub fn (n &Node) is_detached_spawn() bool {
+	return (n.flags & node_flag_detached_spawn) != 0
 }
 
 // skip_ownership_drops reports whether this scope node must not consume
