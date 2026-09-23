@@ -428,6 +428,15 @@ pub fn (mut n Node) set_generic_params(params []string) {
 	n.payload = node_payload(params)
 }
 
+// SkippedAsmSpan is the [start, end) source span of an `asm` statement, or of one of
+// its output/input operand expressions (`is_operand`), in code the parser skipped.
+pub struct SkippedAsmSpan {
+pub:
+	start      int
+	end        int
+	is_operand bool
+}
+
 // FlatAst represents flat ast data used by flat.
 @[heap]
 pub struct FlatAst {
@@ -443,9 +452,13 @@ pub mut:
 	comptime_skipped_read_names map[string]bool
 	// Goto label operands use the same key format, but are not local-name uses.
 	comptime_skipped_goto_labels map[string]bool
-	export_fn_names              map[string]string
-	noreturn_fns                 map[string]bool
-	source_files                 map[int]&token.File
+	// The source spans of the `asm` statements in code the parser skipped (an untaken
+	// `$if`/`$match` branch, a disabled function body), keyed by file name. Nothing in
+	// the AST covers them, but the deprecated-`byte` check scans all source text.
+	comptime_skipped_asm_spans map[string][]SkippedAsmSpan
+	export_fn_names            map[string]string
+	noreturn_fns               map[string]bool
+	source_files               map[int]&token.File
 	// resolved_source_paths maps source paths to their resolved form. The owning
 	// thread fills it through record_source_path and resolve_source_paths, which
 	// sets source_paths_frozen; from then on it is only read, see real_source_path.
@@ -585,6 +598,7 @@ pub fn FlatAst.new() FlatAst {
 		comptime_skipped_names:        map[string]bool{}
 		comptime_skipped_read_names:   map[string]bool{}
 		comptime_skipped_goto_labels:  map[string]bool{}
+		comptime_skipped_asm_spans:    map[string][]SkippedAsmSpan{}
 		export_fn_names:               map[string]string{}
 		noreturn_fns:                  map[string]bool{}
 		contextual_anon_struct_types:  map[string]bool{}

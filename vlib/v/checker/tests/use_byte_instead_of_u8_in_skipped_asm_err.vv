@@ -1,0 +1,58 @@
+@[if never_defined_flag ?]
+fn disabled_fn() {
+	x := u8(1)
+	mut r := 0
+	asm amd64 {
+		.byte 0x90
+		mov r, y
+		; =r (r)
+		; r (byte(x)) as y
+	}
+}
+
+$if never_defined_flag ? {
+	asm amd64 {
+		.global byte_sequence
+		byte_sequence:
+		.byte 0x27, 0x35
+	}
+}
+
+fn main() {
+	x := u8(1)
+	mut buf := [u8(0), 0]
+	mut r := 0
+	$if never_defined_flag ? {
+		asm amd64 {
+			.byte 0x91
+			mov r, y
+			; =r (r)
+			  =r (buf[byte(0)])
+			; r (byte(x)) as y
+		}
+	} $else {
+		r = 1
+	}
+	$if linux || windows || macos {
+		$if never_defined_flag ? {
+			asm amd64 {
+				.byte 0x92
+				; ; memory
+			}
+		}
+	}
+	$match @OS {
+		'plan9' {
+			asm amd64 {
+				.byte 0x93
+				mov r, z
+				; =r (r)
+				; r (u8(byte(x))) as z
+			}
+		}
+		$else {}
+	}
+	disabled_fn()
+	after := byte(2)
+	println('${r} ${buf} ${after}')
+}

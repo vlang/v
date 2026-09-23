@@ -1224,6 +1224,13 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 			p.a.comptime_skipped_goto_labels[canonical] = true
 		}
 	}
+	// Keyed by file name and holding source offsets, so no file id to remap either.
+	for file, spans in w.a.comptime_skipped_asm_spans {
+		_, canonical := p.a.intern_text(file)
+		mut merged := p.a.comptime_skipped_asm_spans[canonical]
+		merged << spans
+		p.a.comptime_skipped_asm_spans[canonical] = merged
+	}
 	for name, is_contextual in w.a.contextual_anon_struct_types {
 		if is_contextual {
 			_, canonical := p.a.intern_text(name)

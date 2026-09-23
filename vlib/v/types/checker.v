@@ -6345,6 +6345,9 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 	}
 	mut identifier_offsets := map[u64]bool{}
 	mut inline_asm_ranges := map[int][]token.Pos{}
+	// The operand expressions of an asm block are V code, not assembler text, so a
+	// deprecated `byte` in them (`r (byte(x)) as y`) is still reported.
+	mut inline_asm_operand_ranges := map[int][]token.Pos{}
 	for node in tc.a.nodes {
 		if node.kind == .ident && node.value == 'byte' && node.pos.is_valid() {
 			identifier_offsets[deprecated_byte_position_key(node.pos.id, node.pos.offset)] = true
@@ -6352,6 +6355,14 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 			mut ranges := inline_asm_ranges[node.pos.id]
 			ranges << node.pos
 			inline_asm_ranges[node.pos.id] = ranges
+			for operand_id in tc.a.children_of(&node) {
+				operand := tc.a.node(operand_id)
+				if operand.pos.is_valid() && operand.pos.end > operand.pos.offset {
+					mut operand_ranges := inline_asm_operand_ranges[operand.pos.id]
+					operand_ranges << operand.pos
+					inline_asm_operand_ranges[operand.pos.id] = operand_ranges
+				}
+			}
 		}
 	}
 	mut pending_file := ''
@@ -6365,8 +6376,20 @@ fn (mut tc TypeChecker) check_deprecated_byte_types() {
 		if pending_file.len == 0 || !node.pos.is_valid() {
 			continue
 		}
+		mut asm_ranges := inline_asm_ranges[node.pos.id]
+		mut asm_operand_ranges := inline_asm_operand_ranges[node.pos.id]
+		// An asm statement in code the parser skipped (an untaken `$if` branch) has no
+		// node; the parser recorded its spans instead.
+		for span in tc.a.comptime_skipped_asm_spans[pending_file] {
+			pos := token.new_span(node.pos.id, span.start, span.end)
+			if span.is_operand {
+				asm_operand_ranges << pos
+			} else {
+				asm_ranges << pos
+			}
+		}
 		tc.check_deprecated_byte_types_in_file(flat.NodeId(idx), node.pos.id, pending_file,
-			identifier_offsets, inline_asm_ranges[node.pos.id])
+			identifier_offsets, asm_ranges, asm_operand_ranges)
 		pending_file = ''
 	}
 }
@@ -6375,7 +6398,7 @@ fn deprecated_byte_position_key(file_id int, offset int) u64 {
 	return (u64(u32(file_id)) << 32) | u64(u32(offset))
 }
 
-fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool, inline_asm_ranges []token.Pos) {
+fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, file_id int, path string, identifier_offsets map[u64]bool, inline_asm_ranges []token.Pos, inline_asm_operand_ranges []token.Pos) {
 	if tc.diagnostic_files.len > 0 && path !in tc.diagnostic_files {
 		return
 	}
@@ -6423,7 +6446,8 @@ fn (mut tc TypeChecker) check_deprecated_byte_types_in_file(anchor flat.NodeId, 
 		if source[start..i] != 'byte' || deprecated_byte_is_alias_base(source, start)
 			|| deprecated_byte_position_key(file_id, start) in identifier_offsets
 			|| tc.deprecated_byte_is_value_ident(file_id, start)
-			|| deprecated_byte_is_in_ranges(inline_asm_ranges, start)
+			|| (deprecated_byte_is_in_ranges(inline_asm_ranges, start)
+				&& !deprecated_byte_is_in_ranges(inline_asm_operand_ranges, start))
 			|| deprecated_byte_is_type_comparison(source, start) {
 			continue
 		}
