@@ -11728,6 +11728,9 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if discarded := t.try_lower_discarded_closure_assign(node) {
 		return discarded
 	}
+	if discarded := t.try_lower_discarded_spawn_assign(node) {
+		return discarded
+	}
 	t.update_orm_initialized_fields_for_assignment(node)
 	t.update_sql_query_data_aliases_for_assignment(node)
 	if lowered := t.try_lower_sum_shared_field_assign(node) {
@@ -11977,6 +11980,117 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		}
 	}
 	return result
+}
+
+// try_lower_discarded_spawn_assign lowers `_ := v` / `_ = v` to the statement form of
+// `v` when `v` is an `if`/`match` whose branches all end in a `spawn`. As a value, `v`
+// is lowered into a temporary that hides the spawns from cgen, so their threads stay
+// joinable with nothing left to join them. As a statement, cgen detaches each branch
+// spawn. A branch that yields anything else, such as an existing handle, keeps the
+// declaration: detaching that value would break a later `.wait()`.
+fn (mut t Transformer) try_lower_discarded_spawn_assign(node flat.Node) ?[]flat.NodeId {
+	if node.children_count != 2 || (node.kind == .assign && node.op != .assign) {
+		return none
+	}
+	lhs := t.a.child_node(&node, 0)
+	if lhs.kind != .ident || lhs.value != '_' {
+		return none
+	}
+	value_id := t.skip_discarded_spawn_parens(t.a.child(&node, 1))
+	value := t.a.nodes[int(value_id)]
+	if value.kind !in [.if_expr, .match_stmt] || !t.yields_only_fresh_spawns(value_id) {
+		return none
+	}
+	return t.transform_stmt(value_id)
+}
+
+fn (t &Transformer) skip_discarded_spawn_parens(id flat.NodeId) flat.NodeId {
+	mut cur := id
+	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
+		node := t.a.nodes[int(cur)]
+		if node.kind != .paren || node.children_count != 1 {
+			break
+		}
+		cur = t.a.child(&node, 0)
+	}
+	return cur
+}
+
+// yields_only_fresh_spawns reports whether every value `id` can produce is a thread
+// started by `id` itself: a `spawn`, or an `if`/`match` whose branches all end in one.
+fn (t &Transformer) yields_only_fresh_spawns(id flat.NodeId) bool {
+	value_id := t.skip_discarded_spawn_parens(id)
+	if int(value_id) < 0 || int(value_id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(value_id)]
+	match node.kind {
+		.spawn_expr {
+			return true
+		}
+		.if_expr {
+			// An `if` without `else` has no value.
+			if node.children_count < 3 {
+				return false
+			}
+			return t.branch_ends_in_fresh_spawn(t.a.child(&node, 1))
+				&& t.branch_ends_in_fresh_spawn(t.a.child(&node, 2))
+		}
+		.match_stmt {
+			if node.children_count < 2 {
+				return false
+			}
+			for i in 1 .. node.children_count {
+				branch := t.a.child_node(&node, i)
+				if branch.kind != .match_branch {
+					return false
+				}
+				// Branch children are its conditions, then its statements.
+				cond_count := if branch.value == 'else' { 0 } else { branch.value.int() }
+				if branch.children_count <= cond_count {
+					return false
+				}
+				if !t.stmt_is_fresh_spawn_value(t.a.child(branch, branch.children_count - 1)) {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
+
+// branch_ends_in_fresh_spawn checks an `if` branch: a block whose trailing value
+// statement is a fresh spawn, or the nested `if` of an `else if` chain.
+fn (t &Transformer) branch_ends_in_fresh_spawn(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .if_expr {
+		return t.yields_only_fresh_spawns(id)
+	}
+	if node.kind != .block || node.children_count == 0 {
+		return false
+	}
+	return t.stmt_is_fresh_spawn_value(t.a.child(&node, node.children_count - 1))
+}
+
+fn (t &Transformer) stmt_is_fresh_spawn_value(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .expr_stmt && node.children_count > 0 {
+		return t.yields_only_fresh_spawns(t.a.child(&node, 0))
+	}
+	// A nested conditional can be the trailing value statement of a branch.
+	if node.kind in [.if_expr, .match_stmt] {
+		return t.yields_only_fresh_spawns(id)
+	}
+	return false
 }
 
 fn (mut t Transformer) try_lower_discarded_closure_assign(node flat.Node) ?[]flat.NodeId {
@@ -14378,6 +14492,9 @@ fn (mut t Transformer) try_lower_string_compound_assign(_id flat.NodeId, node fl
 fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count == 0 {
 		return [id]
+	}
+	if discarded := t.try_lower_discarded_spawn_assign(node) {
+		return discarded
 	}
 	source_rhs_id := if node.children_count == 2 {
 		t.a.child(&node, 1)

@@ -3816,6 +3816,24 @@ fn (mut g FlatGen) gen_detached_spawn(spawn_id flat.NodeId) {
 	g.writeln(');')
 }
 
+// discarded_spawn_id returns the `spawn` a discarded expression evaluates to, seeing
+// through parentheses, so `(spawn f())` in a discarded position is detached as well.
+// Discarded `if`/`match` values are lowered to statements by the transformer.
+fn (g &FlatGen) discarded_spawn_id(id flat.NodeId) ?flat.NodeId {
+	mut cur := id
+	for int(cur) >= 0 && int(cur) < g.a.nodes.len {
+		node := g.a.nodes[int(cur)]
+		if node.kind == .spawn_expr {
+			return cur
+		}
+		if node.kind != .paren || node.children_count != 1 {
+			break
+		}
+		cur = g.a.child(&node, 0)
+	}
+	return none
+}
+
 fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	g.needs_thread_runtime = true
 	if node.children_count == 0 {
