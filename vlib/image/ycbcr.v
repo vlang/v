@@ -114,9 +114,9 @@ pub fn (p YCbCr) sub_image(r Rectangle) YCbCr {
 	yi := p.y_offset(rr.min.x, rr.min.y)
 	ci := p.c_offset(rr.min.x, rr.min.y)
 	return YCbCr{
-		y:               p.y[yi..].clone()
-		cb:              p.cb[ci..].clone()
-		cr:              p.cr[ci..].clone()
+		y:               unsafe { &p.y[yi..] }
+		cb:              unsafe { &p.cb[ci..] }
+		cr:              unsafe { &p.cr[ci..] }
 		y_stride:        p.y_stride
 		c_stride:        p.c_stride
 		subsample_ratio: p.subsample_ratio
