@@ -11130,55 +11130,53 @@ fn (tc &TypeChecker) collect_source_error_embed_entries() map[string]int {
 	}
 	mut cur_file := ''
 	mut cur_module := ''
-	if tc.top_level_idx.len > 0 && tc.a.nodes.len == tc.top_level_idx_nodes_len {
-		// struct_decl nodes only occur at the top level, and the AST has not
-		// grown since collect built the index.
+	mut tail_start := 0
+	if tc.top_level_idx.len > 0 && tc.a.nodes.len >= tc.top_level_idx_nodes_len {
+		// struct_decl nodes only occur at the top level, and the index visits the
+		// file and module nodes exactly as a full scan would. Only nodes appended
+		// after collect built the index (by transform) still need scanning.
 		for i in tc.top_level_idx {
 			node := tc.a.nodes[i]
-			match node.kind {
-				.file {
-					cur_file = node.value
-					cur_module = ''
-				}
-				.module_decl {
-					cur_module = node.value
-				}
-				.struct_decl {
-					if !tc.source_struct_decl_has_non_builtin_error_embed(node, cur_file, cur_module) {
-						continue
-					}
-					target := node.value.all_after_last('.')
-					module_key := source_error_embed_module_key(cur_module)
-					entries[source_error_embed_entry_key(target, '', module_key)] = 1
-					entries[source_error_embed_entry_key(target, cur_file, module_key)] = 1
-				}
-				else {}
-			}
+			cur_file, cur_module = tc.note_source_error_embed(node, cur_file, cur_module, mut
+				entries)
 		}
-		return entries
+		tail_start = tc.top_level_idx_nodes_len
 	}
-	for node in tc.a.nodes {
-		match node.kind {
-			.file {
-				cur_file = node.value
-				cur_module = ''
-			}
-			.module_decl {
-				cur_module = node.value
-			}
-			.struct_decl {
-				if !tc.source_struct_decl_has_non_builtin_error_embed(node, cur_file, cur_module) {
-					continue
-				}
+	tail_ids, use_ids := tc.tail_decl_ids_for(tail_start, tc.a.nodes.len)
+	tail_count := if use_ids { tail_ids.len } else { tc.a.nodes.len - tail_start }
+	for k in 0 .. tail_count {
+		i := if use_ids { int(tail_ids[k]) } else { tail_start + k }
+		kind := tc.a.nodes[i].kind
+		if kind != .file && kind != .module_decl && kind != .struct_decl {
+			continue
+		}
+		cur_file, cur_module = tc.note_source_error_embed(tc.a.nodes[i], cur_file, cur_module, mut
+			entries)
+	}
+	return entries
+}
+
+// note_source_error_embed tracks the file/module context of a declaration scan
+// and records struct declarations that embed a non-builtin Error.
+fn (tc &TypeChecker) note_source_error_embed(node flat.Node, cur_file string, cur_module string, mut entries map[string]int) (string, string) {
+	match node.kind {
+		.file {
+			return node.value, ''
+		}
+		.module_decl {
+			return cur_file, node.value
+		}
+		.struct_decl {
+			if tc.source_struct_decl_has_non_builtin_error_embed(node, cur_file, cur_module) {
 				target := node.value.all_after_last('.')
 				module_key := source_error_embed_module_key(cur_module)
 				entries[source_error_embed_entry_key(target, '', module_key)] = 1
 				entries[source_error_embed_entry_key(target, cur_file, module_key)] = 1
 			}
-			else {}
 		}
+		else {}
 	}
-	return entries
+	return cur_file, cur_module
 }
 
 fn (tc &TypeChecker) source_struct_decl_has_non_builtin_error_embed(node flat.Node, cur_file string, cur_module string) bool {

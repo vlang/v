@@ -6,6 +6,7 @@ import strings
 import v.flat
 import v.types
 import v.util
+import v.workers
 
 const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
 const comptime_method_selector_marker = '__v3_comptime_method_selector'
@@ -254,6 +255,10 @@ fn (mut t Transformer) cache_comptime_param_reflection_metadata() {
 	old_file := t.cur_file
 	old_module := t.cur_module
 	old_fn_name := t.cur_fn_name
+	// Finding the rare `$for x in f.params` loops walks every node of every function
+	// body. Record each function's node range serially, scan the ranges on the worker
+	// pool, then resolve the hits here in source order, exactly as a serial walk.
+	mut ranges := []ComptimeParamScanRange{cap: t.tc.top_level_idx.len}
 	mut cur_file := ''
 	mut cur_module := ''
 	mut previous_top_level := -1
@@ -265,33 +270,146 @@ fn (mut t Transformer) cache_comptime_param_reflection_metadata() {
 		} else if node.kind == .module_decl {
 			cur_module = node.value
 		} else if node.kind == .fn_decl {
-			t.cur_file = cur_file
-			t.cur_module = cur_module
-			t.cur_fn_name = node.value
-			if t.should_transform_fn(node) {
-				for idx in previous_top_level + 1 .. top_level_idx {
-					candidate := t.a.nodes[idx]
-					if candidate.kind != .comptime_for {
-						continue
-					}
-					_, kind := comptime_for_parts(candidate.value)
-					if kind != 'params' {
-						continue
-					}
-					source := t.comptime_reflection_source(candidate.typ, flat.NodeId(idx))
-					resolved := t.comptime_resolve_selective_import_reflection_source(source)
-					if resolved != source && resolved !in t.comptime_reflected_params {
-						params := t.comptime_param_metas(resolved)
-						t.comptime_reflected_params[resolved] = params
-					}
-				}
+			ranges << ComptimeParamScanRange{
+				lo:      previous_top_level + 1
+				fn_idx:  top_level_idx
+				file:    cur_file
+				module:  cur_module
+				fn_name: node.value
 			}
 		}
 		previous_top_level = top_level_idx
 	}
+	scans := t.scan_comptime_param_ranges(ranges)
+	for scan in scans {
+		for hit in scan.hits {
+			r := ranges[hit.range_idx]
+			t.cur_file = r.file
+			t.cur_module = r.module
+			t.cur_fn_name = r.fn_name
+			idx := hit.node_idx
+			candidate := t.a.nodes[idx]
+			_, kind := comptime_for_parts(candidate.value)
+			if kind != 'params' {
+				continue
+			}
+			source := t.comptime_reflection_source(candidate.typ, flat.NodeId(idx))
+			resolved := t.comptime_resolve_selective_import_reflection_source(source)
+			if resolved != source && resolved !in t.comptime_reflected_params {
+				params := t.comptime_param_metas(resolved)
+				t.comptime_reflected_params[resolved] = params
+			}
+		}
+	}
 	t.cur_file = old_file
 	t.cur_module = old_module
 	t.cur_fn_name = old_fn_name
+}
+
+// ComptimeParamScanRange is one function's node range, (previous top-level
+// declaration, fn_idx), with the context its `$for` loops resolve in.
+struct ComptimeParamScanRange {
+	lo      int
+	fn_idx  int
+	file    string
+	module  string
+	fn_name string
+}
+
+struct ComptimeParamScanHit {
+	range_idx int
+	node_idx  int
+}
+
+struct ComptimeParamScan {
+	t      voidptr // &Transformer, read-only while scanning
+	start  int
+	end    int
+	ranges voidptr // &[]ComptimeParamScanRange
+mut:
+	hits []ComptimeParamScanHit
+}
+
+const comptime_param_scan_max_tasks = 16
+
+// scan_comptime_param_ranges finds the `$for` nodes of every transformed
+// function's range. Each task covers a contiguous run of ranges, so the tasks'
+// hits concatenated in task order are in source order.
+fn (t &Transformer) scan_comptime_param_ranges(ranges []ComptimeParamScanRange) []ComptimeParamScan {
+	mut task_count := 1
+	if !isnil(t.a.worker_pool) {
+		task_count = t.a.worker_pool.size() + 1
+	}
+	if task_count > comptime_param_scan_max_tasks {
+		task_count = comptime_param_scan_max_tasks
+	}
+	if task_count > ranges.len {
+		task_count = ranges.len
+	}
+	if task_count <= 1 {
+		mut scan := ComptimeParamScan{
+			t:      voidptr(t)
+			start:  0
+			end:    ranges.len
+			ranges: unsafe { voidptr(&ranges) }
+		}
+		comptime_param_scan_thread(voidptr(&scan))
+		return [scan]
+	}
+	mut total := i64(0)
+	for r in ranges {
+		total += i64(r.fn_idx - r.lo) + 1
+	}
+	mut scans := []ComptimeParamScan{cap: task_count}
+	mut start := 0
+	mut consumed := i64(0)
+	for ti in 0 .. task_count {
+		target := total * i64(ti + 1) / i64(task_count)
+		mut end := start
+		for end < ranges.len && (consumed < target || ti == task_count - 1) {
+			consumed += i64(ranges[end].fn_idx - ranges[end].lo) + 1
+			end++
+		}
+		scans << ComptimeParamScan{
+			t:      voidptr(t)
+			start:  start
+			end:    end
+			ranges: unsafe { voidptr(&ranges) }
+		}
+		start = end
+	}
+	mut tasks := []workers.Task{cap: scans.len}
+	for i in 0 .. scans.len {
+		tasks << workers.Task{
+			run:        comptime_param_scan_thread
+			arg:        unsafe { voidptr(&scans[i]) }
+			force_sync: i == 0
+		}
+	}
+	mut pool := t.a.worker_pool
+	pool.run(tasks)
+	return scans
+}
+
+fn comptime_param_scan_thread(arg voidptr) voidptr {
+	mut scan := unsafe { &ComptimeParamScan(arg) }
+	t := unsafe { &Transformer(scan.t) }
+	ranges := unsafe { &[]ComptimeParamScanRange(scan.ranges) }
+	for ri in scan.start .. scan.end {
+		r := unsafe { ranges[ri] }
+		if !t.should_transform_fn_in_module(t.a.nodes[r.fn_idx], r.module) {
+			continue
+		}
+		for idx in r.lo .. r.fn_idx {
+			if t.a.nodes[idx].kind == .comptime_for {
+				scan.hits << ComptimeParamScanHit{
+					range_idx: ri
+					node_idx:  idx
+				}
+			}
+		}
+	}
+	return unsafe { nil }
 }
 
 fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {

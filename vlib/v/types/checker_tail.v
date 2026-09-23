@@ -7069,8 +7069,74 @@ pub fn shadow_roots_own_file(file string, diagnostic_root string, explicit_roots
 	// under the root only by their link paths, so resolving up front would place
 	// the whole project outside itself; resolving is what catches a directory
 	// reached through a symlink.
-	abs_file := os.abs_path(file)
-	real_file := os.real_path(file)
+	return shadow_roots_own_resolved_file(os.abs_path(file), os.real_path(file), diagnostic_root,
+		explicit_roots, dependency_roots)
+}
+
+// ShadowFileResolver resolves many source paths for shadow_roots_own_file with one
+// working-directory lookup and one realpath per directory instead of per file.
+pub struct ShadowFileResolver {
+	wd string
+mut:
+	real_dirs map[string]string
+}
+
+// new_shadow_file_resolver returns a resolver bound to the current working directory.
+pub fn new_shadow_file_resolver() ShadowFileResolver {
+	return ShadowFileResolver{
+		wd: os.getwd()
+	}
+}
+
+// owns_file is shadow_roots_own_file with cached path resolution.
+pub fn (mut r ShadowFileResolver) owns_file(file string, diagnostic_root string, explicit_roots []string, dependency_roots []string) bool {
+	if file == '' {
+		return false
+	}
+	return shadow_roots_own_resolved_file(r.abs_path(file), r.real_path(file), diagnostic_root,
+		explicit_roots, dependency_roots)
+}
+
+// abs_path matches os.abs_path for the working directory captured by the resolver.
+fn (r &ShadowFileResolver) abs_path(path string) string {
+	npath := os.norm_path(path)
+	if npath == '.' {
+		return r.wd
+	}
+	if !os.is_abs_path(npath) {
+		return os.norm_path(r.wd + os.path_separator + npath)
+	}
+	return npath
+}
+
+// real_path matches os.real_path for existing regular entries: resolving the
+// directory once is equivalent when the final component is not a symlink.
+fn (mut r ShadowFileResolver) real_path(file string) string {
+	dir := os.dir(file)
+	base := os.file_name(file)
+	if dir.len == 0 || base in ['', '.', '..'] {
+		return os.real_path(file)
+	}
+	st := os.lstat(file) or { return os.real_path(file) }
+	if st.get_filetype() == .symbolic_link {
+		return os.real_path(file)
+	}
+	real_dir := r.real_dirs[dir] or {
+		resolved := os.real_path(dir)
+		r.real_dirs[dir] = resolved
+		resolved
+	}
+	if real_dir.len == 0 || !os.is_abs_path(real_dir) {
+		return os.real_path(file)
+	}
+	return if real_dir.ends_with(os.path_separator) {
+		real_dir + base
+	} else {
+		real_dir + os.path_separator + base
+	}
+}
+
+fn shadow_roots_own_resolved_file(abs_file string, real_file string, diagnostic_root string, explicit_roots []string, dependency_roots []string) bool {
 	if shadow_root_owns_file(abs_file, real_file, diagnostic_root, dependency_roots) {
 		return true
 	}

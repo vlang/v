@@ -45,8 +45,7 @@ struct InterfaceImplChunkArgs {
 	checker     voidptr
 	iface_names voidptr
 	results     voidptr
-	start       int
-	end         int
+	queue       chan int
 	scoped      bool
 mut:
 	scope voidptr
@@ -68,7 +67,10 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 	tc := unsafe { &TypeChecker(a.checker) }
 	iface_names := unsafe { &[]string(a.iface_names) }
 	mut results := unsafe { &InterfaceImplResults(a.results) }
-	for i in a.start .. a.end {
+	// Implementer scans differ widely in cost (IError checks every type), so
+	// each job pulls the next interface instead of taking a fixed slice.
+	for {
+		i := <-a.queue or { break }
 		iface_name := unsafe { iface_names[i] }
 		impls := if is_builtin_ierror_name(iface_name) {
 			tc.ierror_impl_names()
@@ -106,6 +108,11 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 	for _ in iface_names {
 		results.items << &InterfaceImplIndex(unsafe { nil })
 	}
+	queue := chan int{cap: iface_names.len}
+	for i in 0 .. iface_names.len {
+		queue <- i
+	}
+	queue.close()
 	mut args := []InterfaceImplChunkArgs{cap: n_jobs}
 	mut tasks := []workers.Task{cap: n_jobs}
 	for job in 0 .. n_jobs {
@@ -113,8 +120,7 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []st
 			checker:     voidptr(checkers[job])
 			iface_names: unsafe { voidptr(&iface_names) }
 			results:     voidptr(results)
-			start:       iface_names.len * job / n_jobs
-			end:         iface_names.len * (job + 1) / n_jobs
+			queue:       queue
 			// Job 0 runs on the master checker, whose overlay is folded back
 			// into the shared cache below; only forks may use scratch arenas.
 			scoped:      job > 0
@@ -747,6 +753,7 @@ fn check_worker_scope_free(scope voidptr) {
 // check_semantics_opt runs semantic checks, using worker threads for independent
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
+	mut pfsw := time.new_stopwatch()
 	error_count := tc.errors.len
 	tc.check_postfix_value_uses_preflight()
 	tc.check_for_in_const_conflicts_preflight()
@@ -761,6 +768,7 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 			return false
 		}
 	}
+	tc.timing_profile('  [ttime]   ck preflights    ${f64(pfsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	if !want_parallel {
 		if tc.scope_parallel_check_workers {
 			tc.check_semantics_scoped_serial()
@@ -984,12 +992,18 @@ fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]in
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.resolution_type_mode = false
 	tc.checked_const_names = map[string]bool{}
+	mut presw := time.new_stopwatch()
 	tc.check_import_diagnostics()
+	tc.timing_profile('  [ttime]   ck import diag   ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	presw.restart()
 	tc.check_duplicate_fn_declarations()
+	tc.timing_profile('  [ttime]   ck dup fns       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	presw.restart()
 	tc.check_deprecated_byte_types()
 	// Freeze the warm post-collect type cache as the shared read-only base
 	// for every worker thread and the master itself via a private overlay.
 	tc.install_type_cache_overlay()
+	tc.timing_profile('  [ttime]   ck byte+overlay  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	// Invalid-IError-return diagnostics are gated to functions reachable
 	// from the selected files. Most successful compiles never produce a
 	// candidate, so defer the call-graph walk until after checking and only
@@ -1014,6 +1028,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	final_file := tc.cur_file
 	final_module := tc.cur_module
 	was_parallel := tc.run_parallel_check(items)
+	mut tailsw := time.new_stopwatch()
 	check_worker_scope_free(items_scope)
 	// Per-function check costs only schedule the parallel batches above.
 	unsafe { tc.fn_check_costs.free() }
@@ -1040,6 +1055,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	// cross-module generic-argument fallback.
 	tc.direct_parent_index_trusted = false
 	tc.resolution_type_mode = true
+	tc.timing_profile('  [ttime]   ck tail          ${f64(tailsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	return was_parallel
 }
 
@@ -1298,6 +1314,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	tlv_sw := time.new_stopwatch()
 	tc.check_top_level_declaration_values()
 	tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	split_sw := time.new_stopwatch()
 	mut chunk_target := n_jobs
 	if tc.scope_parallel_check_workers {
 		chunk_target = n_jobs * check_chunk_oversubscribe
@@ -1331,6 +1348,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 	}
 	thread_count := chunk_count - 1
 	worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
+	tc.timing_profile('  [ttime]   ck split         ${f64(split_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	rpsw := time.new_stopwatch()
 	mut checker_workers := []voidptr{cap: worker_count}
 	for _ in 0 .. worker_count {
@@ -2434,20 +2452,51 @@ fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 		}
 		loads[0] = -total * check_master_bias_pct / i64(100 * n)
 	}
-	mut sorted := items.clone()
-	sorted.sort(a.rank > b.rank)
+	// Sort compact (rank, index) pairs instead of whole work items. The sort is
+	// stable, so the assignment order is exactly that of sorting the items.
+	mut ranked := []CheckItemRank{cap: items.len}
+	for i, it in items {
+		ranked << CheckItemRank{
+			rank: it.rank
+			idx:  i
+		}
+	}
+	ranked.sort(a.rank > b.rank)
 	mut least_loaded := []int{len: n, init: index}
 	restore_check_load_heap(mut least_loaded, loads)
-	for it in sorted {
+	mut bucket_of := []int{len: items.len}
+	for r in ranked {
 		best := least_loaded[0]
-		buckets[best] << it
-		loads[best] += i64(it.cost) + 1
+		bucket_of[r.idx] = best
+		loads[best] += i64(items[r.idx].cost) + 1
 		restore_check_load_heap(mut least_loaded, loads)
+	}
+	mut strictly_ordered := true
+	for i in 1 .. items.len {
+		if items[i].fn_idx <= items[i - 1].fn_idx {
+			strictly_ordered = false
+			break
+		}
+	}
+	if strictly_ordered {
+		// Filling the buckets in source order already sorts each one by fn_idx.
+		for i, it in items {
+			buckets[bucket_of[i]] << it
+		}
+		return buckets
+	}
+	for r in ranked {
+		buckets[bucket_of[r.idx]] << items[r.idx]
 	}
 	for mut bucket in buckets {
 		bucket.sort(a.fn_idx < b.fn_idx)
 	}
 	return buckets
+}
+
+struct CheckItemRank {
+	rank i64
+	idx  int
 }
 
 // Only the root's load changes. Break equal-load ties by bucket index, exactly
@@ -3769,6 +3818,7 @@ fn (mut tc TypeChecker) prewarm_shared_type_cache() {
 	if isnil(tc.type_cache) {
 		return
 	}
+	tc.prepare_tail_decl_ids()
 	_ = tc.local_fn_decl_exists('__v3_prewarm__')
 	_ = tc.unique_qualified_type_name('__V3Prewarm__') or { '' }
 	_ = tc.source_struct_has_non_builtin_error_embed('__V3Prewarm__', '', '')
@@ -4307,4 +4357,83 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			}
 		}
 	}
+}
+
+struct TailDeclScanArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	start int
+	end   int
+mut:
+	ids []i32
+}
+
+const min_parallel_tail_decl_scan = 65_536
+
+// prepare_tail_decl_ids finds the declaration nodes appended after collect built
+// the top-level index (transform appends about a million expression nodes, and
+// only a handful of declarations among them). The lazy index builders consult
+// this list instead of walking the whole tail. It runs only while prewarming a
+// frozen cache, when the persistent pool is idle.
+fn (mut tc TypeChecker) prepare_tail_decl_ids() {
+	mut cache := tc.type_cache
+	start := tc.top_level_idx_nodes_len
+	end := if isnil(tc.a) { 0 } else { tc.a.nodes.len }
+	// Only a base cache builds the lazy declaration indexes (overlays defer to it).
+	if !isnil(cache.base) || start <= 0 || end - start < min_parallel_tail_decl_scan
+		|| isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 {
+		return
+	}
+	if cache.tail_decl_start == start && cache.tail_decl_end == end {
+		return
+	}
+	n := int_min(tc.a.worker_pool.size() + 1, 16)
+	mut args := []TailDeclScanArgs{cap: n}
+	for i in 0 .. n {
+		args << TailDeclScanArgs{
+			a:     tc.a
+			start: start + (end - start) * i / n
+			end:   start + (end - start) * (i + 1) / n
+		}
+	}
+	mut tasks := []workers.Task{cap: n}
+	for i in 0 .. n {
+		tasks << workers.Task{
+			run:        tail_decl_scan_thread
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == 0
+		}
+	}
+	tc.a.worker_pool.run(tasks)
+	mut total := 0
+	for arg in args {
+		total += arg.ids.len
+	}
+	mut ids := []i32{cap: total}
+	for arg in args {
+		ids << arg.ids
+	}
+	cache.tail_decl_ids = ids
+	cache.tail_decl_start = start
+	cache.tail_decl_end = end
+}
+
+fn tail_decl_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &TailDeclScanArgs(arg) }
+	for i in a.start .. a.end {
+		kind := a.a.nodes[i].kind
+		if kind == .file || kind == .module_decl || kind == .fn_decl || kind == .struct_decl {
+			a.ids << i32(i)
+		}
+	}
+	return unsafe { nil }
+}
+
+// tail_decl_ids_for returns the precomputed declaration ids of [start, end), and
+// whether they were prepared for exactly that range.
+fn (tc &TypeChecker) tail_decl_ids_for(start int, end int) ([]i32, bool) {
+	cache := tc.type_cache
+	if isnil(cache) || cache.tail_decl_start != start || cache.tail_decl_end != end {
+		return []i32{}, false
+	}
+	return cache.tail_decl_ids, true
 }

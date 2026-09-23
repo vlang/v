@@ -54,6 +54,8 @@ struct CollectGenInfoFnPrepArgs {
 	end          int
 	file         string
 	module_name  string
+	// registrations also builds each signature's alias registration.
+	registrations bool
 }
 
 struct CollectGenInfoScanArgs {
@@ -133,8 +135,16 @@ fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 			cur_module = node.value
 		} else if node.kind == .fn_decl && (!view.has_used_fn_filter()
 			|| view.used_fn_contains_in_module(node.value, cur_module)) {
+			mut prep := view.compute_collect_gen_fn_prep(node, cur_module, cur_file)
+			if a.registrations {
+				full_name := qualify_name_in_module(cur_module, node.value)
+				prep.registration = view.fn_signature_registration_in_module(cur_module, node.value,
+					full_name, prep.ptypes, prep.shared_params, prep.decl_is_variadic, prep.first_param_is_mut,
+					prep.return_type)
+				prep.has_registration = true
+			}
 			unsafe {
-				preps[pos] = view.compute_collect_gen_fn_prep(node, cur_module, cur_file)
+				preps[pos] = prep
 			}
 		}
 	}
@@ -785,7 +795,7 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool
 // collect_gen_info_fn_preps resolves used function signatures on the persistent
 // worker pool. Registration stays serial in collect_gen_info, preserving all
 // source-order and duplicate-declaration semantics.
-fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool) []CollectGenFnPrep {
+fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool, with_registrations bool) []CollectGenFnPrep {
 	if no_parallel || isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0
 		|| node_ids.len < 2048 || os.getenv('V3_NO_PAR_CGEN_INFO_FNS') != '' {
 		return []CollectGenFnPrep{}
@@ -823,13 +833,14 @@ fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []i32, no_parallel bool) [
 	mut tasks := []workers.Task{cap: n_jobs}
 	for job in 0 .. n_jobs {
 		args << CollectGenInfoFnPrepArgs{
-			g:            voidptr(g)
-			node_ids_ptr: unsafe { voidptr(&node_ids) }
-			preps_ptr:    unsafe { voidptr(&preps) }
-			start:        node_ids.len * job / n_jobs
-			end:          node_ids.len * (job + 1) / n_jobs
-			file:         context_files[job]
-			module_name:  context_modules[job]
+			g:             voidptr(g)
+			node_ids_ptr:  unsafe { voidptr(&node_ids) }
+			preps_ptr:     unsafe { voidptr(&preps) }
+			start:         node_ids.len * job / n_jobs
+			end:           node_ids.len * (job + 1) / n_jobs
+			file:          context_files[job]
+			module_name:   context_modules[job]
+			registrations: with_registrations
 		}
 	}
 	for job in 0 .. n_jobs {
