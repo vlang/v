@@ -597,7 +597,7 @@ fn test_handshake_certificate_verify_and_finished_with_real_cryptography() {
 	// appended client_finished_framed to h.transcript before returning, so
 	// strip it back off to recover the checkpoint the client actually
 	// signed over.
-	pre_client_finished_transcript := h.transcript[..h.transcript.len - client_finished_framed.len]
+	pre_client_finished_transcript := unsafe { h.transcript[..h.transcript.len - client_finished_framed.len] }
 	pre_client_finished_hash := sha256.sum256(pre_client_finished_transcript)
 	ok := verify_finished(server.handshake_secrets.client_secret, pre_client_finished_hash, client_finished_framed[4..])!
 	assert ok
