@@ -640,10 +640,10 @@ bitwise, shifts, comparisons, and casts to and from the other numeric types.
 
 ```v
 fn main() {
-	total := u128(1) << 100                        // 2^100
+	total := u128(1) << 100 // 2^100
 	assert total / u128(4) == u128(1) << 98
-	assert (u128(1) << 127) * u128(2) == u128(0)   // wraps at 128 bits
-	assert i128(-8) >> 1 == i128(-4)               // keeps the sign
+	assert (u128(1) << 127) * u128(2) == u128(0) // wraps at 128 bits
+	assert i128(-8) >> 1 == i128(-4) // keeps the sign
 	assert i128(-8) >>> 1 == (u128(1) << 127) - u128(4)
 }
 ```
