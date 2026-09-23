@@ -8141,6 +8141,9 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 			return formatted
 		}
 	}
+	if is_wide_integer_type_name(clean_typ) {
+		return t.wide_integer_format_conversion(expr, typ, format)
+	}
 	if char_format := character_format(format) {
 		if normalized_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'u8', 'byte', 'u16', 'u32',
 			'u64', 'usize', 'char', 'rune'] {
@@ -8238,6 +8241,65 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 			t.make_int_literal(0)], 'string')
 	}
 	return t.wrap_string_conversion(expr, typ)
+}
+
+// is_wide_integer_type_name reports whether a type name is one of the 128-bit
+// integers. Their formatting cannot go through the 64-bit helpers: the cast alone
+// would cut the value back to its low half.
+fn is_wide_integer_type_name(name string) bool {
+	return name in ['u128', 'i128']
+}
+
+// wide_integer_format_conversion lowers a format specifier on a 128-bit value. The
+// base forms print through `u128.str_base`, which formats the bit pattern, and the
+// width comes from padding the printed text rather than the number.
+fn (mut t Transformer) wide_integer_format_conversion(expr flat.NodeId, typ string, format string) flat.NodeId {
+	mut text := t.wrap_string_conversion(expr, typ)
+	if format == 'c' {
+		// The cast the 64-bit path would use cannot be put on a 128-bit value, so
+		// the conversion happens inside the type instead.
+		name := if typ.trim_space() == 'i128' { 'i128__char_str' } else { 'u128__char_str' }
+		return t.make_call_typed(name, [expr], 'string')
+	}
+	mut width := 0
+	mut zero := false
+	mut base := 0
+	if format == 'X' || format == 'x' {
+		base = 16
+	} else if format == 'o' {
+		base = 8
+	} else if format == 'b' {
+		base = 2
+	} else if b := integer_format_base(format) {
+		base = b
+	} else if padded := zero_padded_integer_base_format(format) {
+		base = padded.base
+		width = padded.width
+		zero = true
+	} else if w := left_zero_padded_decimal_width(format) {
+		width = w
+		zero = true
+	} else if w := zero_padded_decimal_width(format) {
+		width = w
+		zero = true
+	} else if w := static_format_width(format) {
+		width = w
+	}
+	if base > 0 {
+		text = t.make_call_typed('u128__str_base',
+			[t.make_cast('u128', expr, 'u128'), t.make_int_literal(base)], 'string')
+		if format == 'X' {
+			text = t.make_call_typed('v3_string_upper_ascii', [text], 'string')
+		}
+	}
+	if width > 0 {
+		text = if zero {
+			t.make_call_typed('v3_string_zpad', [text, t.make_int_literal(width)], 'string')
+		} else {
+			t.make_call_typed('v3_string_pad', [text, t.make_int_literal(width), t.make_int_literal(0)], 'string')
+		}
+	}
+	return text
 }
 
 fn (mut t Transformer) widened_unsigned_format_arg(expr flat.NodeId, typ string) flat.NodeId {
@@ -9238,8 +9300,8 @@ fn (t &Transformer) map_str_type_has_transform_conversion(typ string) bool {
 		return true
 	}
 	if clean in ['string', 'rune', 'bool', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'u8', 'byte',
-		'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal', 'voidptr',
-		'byteptr', 'charptr', 'IError'] {
+		'u16', 'u32', 'u64', 'usize', 'i128', 'u128', 'f32', 'f64', 'int literal', 'float literal',
+		'voidptr', 'byteptr', 'charptr', 'IError'] {
 		return true
 	}
 	if clean in t.enum_types || clean in t.structs || clean in t.sum_types {

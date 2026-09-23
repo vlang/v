@@ -3569,10 +3569,20 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 		'u128' {
 			enqueue('u128.str', mut used, mut queue)
 			enqueue(markused_c_name('u128.str'), mut used, mut queue)
+			enqueue('u128.str_base', mut used, mut queue)
+			enqueue(markused_c_name('u128.str_base'), mut used, mut queue)
+			enqueue('u128.char_str', mut used, mut queue)
+			enqueue(markused_c_name('u128.char_str'), mut used, mut queue)
 		}
 		'i128' {
 			enqueue('i128.str', mut used, mut queue)
 			enqueue(markused_c_name('i128.str'), mut used, mut queue)
+			// A signed value formats in another base from its bit pattern, which is
+			// the unsigned method's job.
+			enqueue('u128.str_base', mut used, mut queue)
+			enqueue(markused_c_name('u128.str_base'), mut used, mut queue)
+			enqueue('i128.char_str', mut used, mut queue)
+			enqueue(markused_c_name('i128.char_str'), mut used, mut queue)
 		}
 		'f32' {
 			enqueue('f32.str', mut used, mut queue)

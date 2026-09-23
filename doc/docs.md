@@ -697,10 +697,26 @@ fn main() {
 }
 ```
 
-Three gaps remain. Printing a map whose values are 128-bit shows `<map value>`,
-an interpolated format specifier such as `'${wide:08x}'` accepts the specifier and
-then prints the plain decimal value, and `json` and `json2` have no encoder for
-either type.
+Format specifiers work on a 128-bit value, and a map of them prints its values:
+
+```v
+fn main() {
+	wide := (u128(1) << 100) + u128(255)
+	assert '${wide:08x}' == '100000000000000000000000ff'
+	m := {
+		'a': wide
+	}
+	assert m.str().contains('100000000000000000000000ff')
+}
+```
+
+`str_base` covers the bases a specifier cannot spell out: `wide.str_base(2)` writes
+the value in binary, and `char_str` writes the code point in the low bits.
+
+Two things are still missing. `json` and `json2` have no encoder for either type,
+and a method called on a mixed-width expression picks the narrower receiver:
+`(x + u64(1)).str()` prints the low 64 bits, and on the struct representation it
+does not compile at all.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type

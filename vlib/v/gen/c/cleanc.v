@@ -11844,6 +11844,12 @@ fn map_str_kind(tc &types.TypeChecker, typ types.Type) int {
 		if name in ['u16', 'u32', 'u64'] {
 			return 3
 		}
+		if name == 'u128' {
+			return 10
+		}
+		if name == 'i128' {
+			return 11
+		}
 		if name == 'bool' {
 			return 7
 		}
@@ -21026,6 +21032,30 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	if g.has_cjson() {
 		g.json_number_token_helpers()
 	}
+	// The 128-bit printers only exist when the program uses those types, so the map
+	// printer reaches for the preamble's decimal helpers instead, and only when one
+	// of those types shows up in an expression.
+	mut has_wide_integer := false
+	for i in 0 .. g.tc.expr_type_values.len {
+		if i < g.tc.expr_type_set.len && g.tc.expr_type_set[i] {
+			if _ := int128_signedness(g.tc.expr_type_values[i]) {
+				has_wide_integer = true
+				break
+			}
+		}
+	}
+	if has_wide_integer {
+		// The helper hands back a shared buffer, so the text is copied out. Two map
+		// values in one row would otherwise both point at the second one's digits.
+		g.writeln('static inline string v3_wide_int_dec(void* p, int is_signed) {')
+		g.writeln('	const char* s = is_signed ? __v_i128_str(*(i128*)p) : __v_u128_str(*(u128*)p);')
+		g.writeln('	int n = (int)strlen(s);')
+		g.writeln('	u8* out = malloc_noscan((ptrdiff_t)(n + 1));')
+		g.writeln('	memcpy(out, s, (size_t)n);')
+		g.writeln('	out[n] = 0;')
+		g.writeln('	return (string){.str = (char*)out, .len = n, .is_lit = 0};')
+		g.writeln('}')
+	}
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
 	g.writeln('static inline u64 v3_map_unsigned(void* p, int bytes) { if (bytes == 1) return *(unsigned char*)p; if (bytes == 2) return *(unsigned short*)p; if (bytes == 8) return *(unsigned long long*)p; return *(unsigned int*)p; }')
 	g.writeln('static inline string v3_f32_array_str(float* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str((double)vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
@@ -21039,8 +21069,12 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('\tif (kind == 6) { if (fixed_len == 0 && bytes == (int)sizeof(Array)) { Array a = *(Array*)p; if (a.element_size == (int)sizeof(float)) return v3_f32_array_str((float*)a.data, a.len); if (a.element_size == (int)sizeof(double)) return v3_f64_array_str((double*)a.data, a.len); } if (fixed_len > 0 && bytes == fixed_len * (int)sizeof(float)) return v3_f32_array_str((float*)p, fixed_len); int n = fixed_len > 0 ? fixed_len : bytes / (int)sizeof(double); return v3_f64_array_str((double*)p, n); }')
 	g.writeln('\tif (kind == 8) { return f64__str((double)*(float*)p); }')
 	g.writeln('\tif (kind == 9) { int n = fixed_len > 0 ? fixed_len : bytes / (int)sizeof(float); return v3_f32_array_str((float*)p, n); }')
-	g.writeln('\tif (kind == 7) { return *(bool*)p ? v3_c_lit("true", 4) : v3_c_lit("false", 5); }')
-	g.writeln('\treturn v3_c_lit("<map value>", 11);')
+	g.writeln('	if (kind == 7) { return *(bool*)p ? v3_c_lit("true", 4) : v3_c_lit("false", 5); }')
+	if has_wide_integer {
+		g.writeln('	if (kind == 10) { return v3_wide_int_dec(p, 0); }')
+		g.writeln('	if (kind == 11) { return v3_wide_int_dec(p, 1); }')
+	}
+	g.writeln('	return v3_c_lit("<map value>", 11);')
 	g.writeln('}')
 	g.writeln('static inline string v3_map_str(map m, int key_kind, int val_kind, int val_fixed_len) {')
 	g.writeln('\tstring out = v3_c_lit("{", 1); bool first = true;')

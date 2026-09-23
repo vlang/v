@@ -589,6 +589,41 @@ pub fn (nn u128) bin() string {
 	return u128_to_bin(nn)
 }
 
+// str_base writes the value in the given base, using `a` to `f` for the digits
+// above nine. Interpolation reaches for this on `x`, `o` and `b`, where the
+// 64-bit path has nothing to call but a cast down to the low half.
+pub fn (nn u128) str_base(base int) string {
+	if nn == u128(0) {
+		return '0'
+	}
+	divisor := u128(base)
+	mut digits := []u8{}
+	mut value := nn
+	for value > u128(0) {
+		digit := u8(value % divisor)
+		digits << if digit < 10 { `0` + digit } else { `a` + digit - 10 }
+		value = value / divisor
+	}
+	mut out := []u8{len: digits.len}
+	for i, digit in digits {
+		out[digits.len - 1 - i] = digit
+	}
+	return out.bytestr()
+}
+
+// char_str writes the code point in the low bits as text. Interpolation reaches
+// for this on `c`; the cast the 64-bit path would use is one the transform cannot
+// put on a 128-bit value, since the C representation of one is a struct.
+pub fn (nn u128) char_str() string {
+	return rune(nn).str()
+}
+
+// char_str writes the code point in the low bits as text, from the bit pattern, so
+// a negative value prints the same code point as its unsigned counterpart.
+pub fn (nn i128) char_str() string {
+	return rune(nn).str()
+}
+
 // u128_to_hex writes the value into `max_digits` hexadecimal digits, most
 // significant first, and drops the leading zeros unless `full` asks for them.
 // Four bits at a time keeps this working on the portable representation, which
