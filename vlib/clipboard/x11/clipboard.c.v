@@ -205,7 +205,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 
 	display := new_display()
 
-	if display == C.NULL {
+	if display == unsafe { nil } {
 		println('ERROR: No X Server running. Clipboard cannot be used.')
 		return &Clipboard{
 			display: unsafe { nil }
@@ -228,7 +228,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 
 // check_availability returns `true` if the clipboard is available for use.
 pub fn (cb &Clipboard) check_availability() bool {
-	return cb.display != C.NULL
+	return cb.display != unsafe { nil }
 }
 
 // free releases the clipboard resources.
@@ -520,7 +520,7 @@ fn create_xwindow(display &C.Display) Window {
 }
 
 fn new_display() &C.Display {
-	return C.XOpenDisplay(C.NULL)
+	return C.XOpenDisplay(unsafe { nil })
 }
 
 // new_primary returns a new X11 `PRIMARY` type `Clipboard` instance allocated on the heap.
