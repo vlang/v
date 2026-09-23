@@ -260,19 +260,33 @@ fn answer() int {
 	return 42
 }
 
+fn add(a int, b int) int {
+	return a + b
+}
+
+fn wait_for(t thread int) {
+	println(t.wait())
+}
+
 fn main() {
 	spawn work()
 	_ := spawn work()
 	_ = spawn work()
 	spawn answer()
+	spawn add(1, 2)
+	spawn wait_for(spawn answer())
 	t := spawn answer()
 	println(t.wait())
 }
 	')
 	c_compact := compact_c(c_code)
-	assert c_code.contains('static void __v_thread_detach(__v_thread thread)'), c_code
-	assert c_compact.count('__v_thread_detach(__v_thread_spawn(work_thread_wrapper,') == 3, c_code
-	assert c_compact.count('__v_thread_detach(__v_thread_spawn(answer_thread_wrapper,') == 1, c_code
+	assert c_code.contains('static void __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*))'), c_code
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 3, c_code
+	assert c_compact.count('__v_thread_spawn_detached(answer_thread_wrapper,') == 1, c_code
+	assert c_compact.contains('__v_thread_spawn_detached(add_args_thread_wrapper,(void*)_sa'), c_code
+	// The spawn nested in the arguments is joined by `wait_for`, so it stays joinable.
+	assert c_compact.contains('__v_thread_spawn_detached(wait_for_args_thread_wrapper,(void*)_sa'), c_code
+	assert c_compact.count('__v_thread_spawn(answer_thread_wrapper,') == 2, c_code
 	assert c_compact.contains('__v_threadt=__v_thread_spawn(answer_thread_wrapper,'), c_code
 	assert c_compact.contains('__v_thread__twthread0=t;'), c_code
 }
@@ -315,10 +329,9 @@ fn main() {
 }
 	")
 	c_compact := compact_c(c_code)
-	assert c_compact.count('__v_thread_detach(__v_thread_spawn(work_thread_wrapper,') == 5, c_code
-	assert c_compact.count('__v_thread_detach(__v_thread_spawn(other_thread_wrapper,') == 5, c_code
-	assert c_compact.count('__v_thread_spawn(other_thread_wrapper,') == 5, c_code
+	assert c_compact.count('__v_thread_spawn_detached(work_thread_wrapper,') == 5, c_code
+	assert c_compact.count('__v_thread_spawn_detached(other_thread_wrapper,') == 5, c_code
+	assert !c_compact.contains('__v_thread_spawn(other_thread_wrapper,'), c_code
 	assert c_compact.contains('__v_threadt=__v_thread_spawn(work_thread_wrapper,'), c_code
 	assert c_compact.count('(void)(t);') == 2, c_code
-	assert !c_compact.contains('__v_thread_detach(t)'), c_code
 }

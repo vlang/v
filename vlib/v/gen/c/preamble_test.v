@@ -203,20 +203,25 @@ fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	assert windows_code.contains('WaitForSingleObject('), windows_code
 	assert windows_code.contains('CloseHandle('), windows_code
 	assert windows_code.contains('return a.handle == b.handle;'), windows_code
-	assert windows_code.contains('static void __v_thread_detach(__v_thread thread) { if (!thread.handle) return; if (!CloseHandle(thread.handle))'), windows_code
+	assert windows_code.contains('static void __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {'), windows_code
+	// The detached thread frees its own context and result; its handle is closed at once.
+	assert windows_code.contains('free(raw_context); void* result = context.start(context.arg); if (result) free(result); return 0; }'), windows_code
+	assert windows_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), windows_code
+	assert windows_code.contains('if (!CloseHandle(handle))'), windows_code
 	assert !windows_code.contains('pthread_'), windows_code
 	posix_code := c_code[posix_start..]
 	assert posix_code.contains('pthread_equal(a.handle, b.handle) != 0'), posix_code
-	assert posix_code.contains('static void __v_thread_detach(__v_thread thread) { if (!thread.handle) return; int rc = pthread_detach(thread.handle);'), posix_code
+	assert posix_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), posix_code
+	assert posix_code.contains('free(raw_context); void* result = context.start(context.arg); if (result) free(result); return NULL; }'), posix_code
 }
 
-fn test_headerless_thread_runtime_can_detach_discarded_threads() {
+fn test_headerless_thread_runtime_can_spawn_detached_threads() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('int pthread_detach(void* thread);'), c_code
-	assert c_code.contains('static void __v_thread_detach(__v_thread thread) { if (!thread.handle) return; if (!CloseHandle(thread.handle))'), c_code
-	assert c_code.contains('static void __v_thread_detach(__v_thread thread) { if (!thread.handle) return; int rc = pthread_detach(thread.handle);'), c_code
+	assert c_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), c_code
+	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), c_code
 }
 
 fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
@@ -326,7 +331,7 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('#include <pthread.h>')
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
 	assert c_code.contains('static void* __v_thread_join(')
-	assert c_code.contains('static void __v_thread_detach(__v_thread thread) { if (!thread.handle) return; int rc = pthread_detach(thread.handle);')
+	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)')
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
 }
 
@@ -338,7 +343,8 @@ fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
 	g.preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('pthread_create(&result.handle, NULL, (void*)start, arg)')
-	assert c_code.contains('static void __v_thread_detach(__v_thread thread) { if (!thread.handle) return; if (pthread_detach(thread.handle) != 0) exit(1); }')
+	assert c_code.contains('pthread_create(&handle, NULL, (void*)__v_detached_thread_start, context)')
+	assert c_code.contains('if (pthread_detach(handle) != 0) exit(1);')
 	assert !c_code.contains('pthread_attr_init(&attr)')
 	assert !c_code.contains('fprintf(stderr, "V thread')
 	assert !c_code.contains('abort();')

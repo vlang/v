@@ -3806,14 +3806,26 @@ fn (mut g FlatGen) callback_wrapper_decls() {
 }
 
 // gen_detached_spawn emits a `spawn` whose thread handle is discarded (`spawn f()`,
-// `_ := spawn f()`, `_ = spawn f()`). Nothing can join that thread, so it is
-// detached: a joinable thread that is never joined keeps its OS resources (and,
-// under Boehm GC on macOS, a mach port) until the process exits. A `spawn` of an
-// elided `@[if flag]` fn yields an empty handle, which `__v_thread_detach` skips.
+// `_ := spawn f()`, `_ = spawn f()`). Nothing can join that thread, so it is started
+// detached through `__v_thread_spawn_detached`, which also frees the thread's context
+// and result when it exits. A joinable thread that is never joined keeps its OS
+// resources (and, under Boehm GC on macOS, a mach port) until the process exits.
 fn (mut g FlatGen) gen_detached_spawn(spawn_id flat.NodeId) {
-	g.write('__v_thread_detach(')
+	g.discard_next_spawn = true
 	g.gen_expr(spawn_id)
-	g.writeln(');')
+	g.discard_next_spawn = false
+	g.writeln(';')
+}
+
+// spawn_start_fn names the runtime call that starts the spawn being emitted.
+fn (g &FlatGen) spawn_start_fn() string {
+	return if g.spawn_detached { '__v_thread_spawn_detached' } else { '__v_thread_spawn' }
+}
+
+// empty_spawn_value is emitted for a spawn that starts no thread, such as one of an
+// elided `@[if flag]` fn: an empty handle, or nothing when the handle is discarded.
+fn (g &FlatGen) empty_spawn_value() string {
+	return if g.spawn_detached { '(void)0' } else { '(__v_thread){0}' }
 }
 
 // discarded_spawn_id returns the `spawn` a discarded expression evaluates to, seeing
@@ -3836,14 +3848,22 @@ fn (g &FlatGen) discarded_spawn_id(id flat.NodeId) ?flat.NodeId {
 
 fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	g.needs_thread_runtime = true
+	// Consume the discard request here, so a spawn nested in this spawn's arguments
+	// stays joinable; restore the outer spawn's mode once this one is emitted.
+	outer_detached := g.spawn_detached
+	g.spawn_detached = g.discard_next_spawn
+	g.discard_next_spawn = false
+	defer {
+		g.spawn_detached = outer_detached
+	}
 	if node.children_count == 0 {
-		g.write('(__v_thread){0}')
+		g.write(g.empty_spawn_value())
 		return
 	}
 	call_id := g.a.child(&node, 0)
 	call_node := g.a.nodes[int(call_id)]
 	if call_node.kind != .call || call_node.children_count == 0 {
-		g.write('(__v_thread){0}')
+		g.write(g.empty_spawn_value())
 		return
 	}
 	fn_node := g.a.child_node(&call_node, 0)
@@ -3999,10 +4019,10 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 		}
 	}
 	if wrapper.len == 0 {
-		g.write('(__v_thread){0}')
+		g.write(g.empty_spawn_value())
 		return
 	}
-	g.write('__v_thread_spawn(${wrapper}, (void*)(${arg_expr}), NULL)')
+	g.write('${g.spawn_start_fn()}(${wrapper}, (void*)(${arg_expr}), NULL)')
 }
 
 fn (g &FlatGen) spawn_selector_fn_value_type(callee_id flat.NodeId, fn_node flat.Node) ?types.FnType {
@@ -4111,7 +4131,7 @@ fn (mut g FlatGen) emit_args_spawn_expr(cfn string, args []SpawnPackedArg, ret_c
 	for i, capture in captures {
 		g.write_spawn_capture_init(tmp, i, capture)
 	}
-	g.write('__v_thread_spawn(${wrapper}, (void*)_sa${tmp}, free); })')
+	g.write('${g.spawn_start_fn()}(${wrapper}, (void*)_sa${tmp}, free); })')
 }
 
 fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPackedArg, ret_ct string, captures []SpawnClosureCapture, destroys_fn bool) (string, string) {
@@ -4185,7 +4205,7 @@ fn (mut g FlatGen) emit_fn_value_spawn_expr(call_id flat.NodeId, fn_node flat.No
 	for i, capture in captures {
 		g.write_spawn_capture_init(tmp, i, capture)
 	}
-	g.write('__v_thread_spawn(${wrapper}, (void*)_sa${tmp}, free); })')
+	g.write('${g.spawn_start_fn()}(${wrapper}, (void*)_sa${tmp}, free); })')
 }
 
 fn (mut g FlatGen) write_spawn_packed_arg_init(tmp int, idx int, arg SpawnPackedArg) {
