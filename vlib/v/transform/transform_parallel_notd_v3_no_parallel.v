@@ -2827,6 +2827,22 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 	if thread_count > 0 {
 		t.lookup_worker_call_names(args[1..].map(it.worker))
 	}
+	// Worker call resolutions for appended nodes land in the master's sparse
+	// call-name map. Size it once for every region instead of rehashing through
+	// each doubling while merging (prealloc keeps the outgrown entry arrays).
+	if t.tc.parallel_check_sparse {
+		mut worker_calls := 0
+		for ci in 0 .. thread_count {
+			ww := unsafe { &Transformer(args[ci + 1].worker) }
+			if !isnil(ww.tc.fork_overlay) {
+				worker_calls += ww.tc.fork_overlay.resolved_call_names.len
+			}
+		}
+		if worker_calls > 0 {
+			t.tc.sparse_resolved_call_names.reserve(u32(t.tc.sparse_resolved_call_names.len +
+				worker_calls))
+		}
+	}
 	// Compact each worker region in fixed order (deterministic
 	// node numbering). merge_worker treats the region start exactly like a
 	// clone's base offset; compaction always moves content left, so the
