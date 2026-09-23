@@ -17767,6 +17767,11 @@ fn (tc &TypeChecker) selector_declared_value_type(node flat.Node) ?Type {
 			return typ
 		}
 	}
+	if clean is SumType {
+		if typ := tc.sum_shared_field_type(clean, node.value) {
+			return typ
+		}
+	}
 	if clean is Interface {
 		if typ := tc.interface_field_type(clean.name, node.value) {
 			return typ
