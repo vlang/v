@@ -801,6 +801,7 @@ pub mut:
 	has_builtins           bool
 	cur_module             string
 	cur_file               string
+	generic_decl_file      string // declaring file of the generic param text being inferred ('' = cur_file)
 	unsafe_depth           int
 	lock_depth             int
 	comptime_static_depth  int

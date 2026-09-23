@@ -4717,6 +4717,11 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	if generic_params.len == 0 {
 		return
 	}
+	saved_generic_decl_file := tc.generic_decl_file
+	tc.generic_decl_file = tc.fn_type_files[info.name] or { '' }
+	defer {
+		tc.generic_decl_file = saved_generic_decl_file
+	}
 	mut inferred := map[string]string{}
 	mut inferred_types := map[string]Type{}
 	mut first_param_idx := 0
@@ -4897,6 +4902,11 @@ fn (mut tc TypeChecker) generic_compile_error_instantiation(call flat.Node, info
 	}
 	if generic_params.len == 0 {
 		return none
+	}
+	saved_generic_decl_file := tc.generic_decl_file
+	tc.generic_decl_file = tc.fn_type_files[info.name] or { '' }
+	defer {
+		tc.generic_decl_file = saved_generic_decl_file
 	}
 	mut concrete_args := []string{}
 	callee := tc.a.child_node(&call, 0)
@@ -15872,6 +15882,11 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		|| tc.call_has_explicit_generic_args(node) {
 		return info
 	}
+	saved_generic_decl_file := tc.generic_decl_file
+	tc.generic_decl_file = tc.fn_type_files[info.name] or { '' }
+	defer {
+		tc.generic_decl_file = saved_generic_decl_file
+	}
 	mut inferred := map[string]string{}
 	mut inferred_types := map[string]Type{}
 	mut first_param_idx := 0
@@ -16187,6 +16202,16 @@ pub fn (tc &TypeChecker) fn_signature_type(name string, typ string) Type {
 	return tc.parse_fn_signature_type(name, typ)
 }
 
+// generic_param_type_text resolves an import alias in declared generic parameter
+// text through the imports of the declaring file, which can bind the alias
+// (`import genstream as csv`) differently from the calling file.
+fn (tc &TypeChecker) generic_param_type_text(text string) string {
+	if tc.generic_decl_file.len > 0 && tc.generic_decl_file != tc.cur_file {
+		return tc.resolve_imported_type_text_in_file(text, tc.generic_decl_file)
+	}
+	return tc.resolve_imported_type_text(text)
+}
+
 fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
 	clean := trimmed_space(param_text)
 	if clean.len == 0 {
@@ -16253,9 +16278,10 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
 		// `param_base` is declared source text, so an import alias (`import io as csv`)
 		// must be resolved before it can be told apart from a same-named loaded type.
-		iface_name := tc.interface_metadata_name(tc.resolve_imported_type_text(param_base))
+		decl_base := tc.generic_param_type_text(param_base)
+		iface_name := tc.interface_metadata_name(decl_base)
 		if iface_name in tc.interface_names {
-			if actual_is_generic && tc.generic_type_base_matches(param_base, actual_base)
+			if actual_is_generic && tc.generic_type_base_matches(decl_base, actual_base)
 				&& param_args.len == actual_args.len {
 				for i in 0 .. param_args.len {
 					tc.infer_generic_type_text_from_text(param_args[i], actual_args[i], generic_params, mut inferred)
@@ -16338,9 +16364,10 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_text string, ac
 		param_base, param_args, _ := generic_type_application_parts(clean)
 		actual_text := tc.generic_infer_type_text(actual)
 		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
-		iface_name := tc.interface_metadata_name(tc.resolve_imported_type_text(param_base))
+		decl_base := tc.generic_param_type_text(param_base)
+		iface_name := tc.interface_metadata_name(decl_base)
 		if iface_name in tc.interface_names {
-			if actual_is_generic && tc.generic_type_base_matches(param_base, actual_base)
+			if actual_is_generic && tc.generic_type_base_matches(decl_base, actual_base)
 				&& param_args.len == actual_args.len {
 				for i in 0 .. param_args.len {
 					tc.infer_generic_type_value_from_type(param_args[i], tc.parse_type(actual_args[i]), generic_params, mut inferred)
@@ -16378,6 +16405,13 @@ fn (mut tc TypeChecker) generic_interface_implementation_type_args(iface_name st
 	actual_name := method_type_name(unwrap_pointer(actual))
 	if actual_name.len == 0 {
 		return none
+	}
+	// The interface's own signature texts are not declared in the file of the
+	// generic call that is being inferred.
+	saved_generic_decl_file := tc.generic_decl_file
+	tc.generic_decl_file = ''
+	defer {
+		tc.generic_decl_file = saved_generic_decl_file
 	}
 	mut inferred_text := map[string]string{}
 	mut inferred_types := map[string]Type{}

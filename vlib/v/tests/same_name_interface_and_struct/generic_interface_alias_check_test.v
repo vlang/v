@@ -12,3 +12,13 @@ fn test_generic_interface_through_alias_named_like_a_loaded_struct_checks_cleanl
 	res := os.execute('${vexe} -check ${os.quoted_path(generic_interface_alias_project)}')
 	assert res.exit_code == 0, res.output
 }
+
+const generic_interface_alias_cross_file_project = os.join_path(os.dir(@FILE), 'generic_interface_alias_cross_file_project')
+
+// The alias belongs to the file that declares the generic function: `lib` binds
+// `csv` to the generic interface's module, while the calling file binds `csv` to
+// `encoding.csv`.
+fn test_generic_interface_alias_is_resolved_in_the_declaring_file() {
+	res := os.execute('${vexe} -check ${os.quoted_path(generic_interface_alias_cross_file_project)}')
+	assert res.exit_code == 0, res.output
+}
