@@ -12059,6 +12059,42 @@ fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type strin
 	return none
 }
 
+// anonymous_struct_field_is_public reports whether field `field_name` of the anonymous
+// struct `struct_name`, declared in module `decl_mod`, may be used from another module.
+// Fields of anonymous structs nested in C structs are always accessible, like the fields
+// of the C structs themselves, and so are those of a type inferred from a `struct { ... }`
+// literal, which has no `pub` section that could make them public.
+fn (tc &TypeChecker) anonymous_struct_field_is_public(struct_name string, field_name string, decl_mod string) bool {
+	short_name := struct_name.all_after_last('.')
+	if tc.a.contextual_anon_struct_types[short_name] {
+		return true
+	}
+	if decl := tc.source_struct_decl_for_name(short_name) {
+		if comma_attr_text_has(decl.typ, 'c_anon') {
+			return true
+		}
+	}
+	if is_public := tc.visible_mutation_struct_field_is_public(struct_name, field_name, decl_mod) {
+		return is_public
+	}
+	// A field promoted from an embedded struct keeps the visibility it has in the
+	// struct that declares it.
+	for owner in tc.embedded_field_candidates(struct_name, field_name) {
+		owner_mod := if visibility := tc.declaration_visibility[owner] {
+			visibility.module_name
+		} else {
+			owner.all_before_last('.')
+		}
+		if owner_mod == tc.cur_module || (owner_mod in ['', 'main'] && tc.cur_module in ['', 'main']) {
+			continue
+		}
+		if !(tc.visible_mutation_struct_field_is_public(owner, field_name, owner_mod) or { true }) {
+			return false
+		}
+	}
+	return true
+}
+
 fn (tc &TypeChecker) receiver_expr_mutation_visibility(expr_id flat.NodeId, root_name string, receiver_type string, decl_mod string) ReceiverMutationVisibility {
 	if int(expr_id) < 0 || int(expr_id) >= tc.a.nodes.len {
 		return .none
