@@ -99,3 +99,46 @@ fn test_if_guards_lower_promoted_optional_field() {
 	assert (promoted_field_guard_after_none(empty) or { err.msg() }) == 'value is required'
 	assert (promoted_field_guard_expr_after_none(empty) or { err.msg() }) == 'value is required'
 }
+
+struct SharedOptionalField {
+mut:
+	value ?string
+}
+
+struct SharedOptionalFieldA {
+	SharedOptionalField
+}
+
+struct SharedOptionalFieldB {
+	SharedOptionalField
+}
+
+type SharedOptionalFieldParam = SharedOptionalFieldA | SharedOptionalFieldB
+
+fn shared_field_guard_after_none(param SharedOptionalFieldParam) !string {
+	if param.value == none {
+		return error('value is required')
+	}
+	if value := param.value {
+		return value
+	}
+	return error('value is required')
+}
+
+fn shared_field_guard_expr_after_none(param SharedOptionalFieldParam) !string {
+	if param.value == none {
+		return error('value is required')
+	}
+	return if value := param.value { value } else { '' }
+}
+
+fn test_if_guards_lower_shared_optional_sum_field() {
+	mut a := SharedOptionalFieldA{}
+	a.SharedOptionalField.value = 'hello'
+	param := SharedOptionalFieldParam(a)
+	assert shared_field_guard_after_none(param)! == 'hello'
+	assert shared_field_guard_expr_after_none(param)! == 'hello'
+	empty := SharedOptionalFieldParam(SharedOptionalFieldB{})
+	assert (shared_field_guard_after_none(empty) or { err.msg() }) == 'value is required'
+	assert (shared_field_guard_expr_after_none(empty) or { err.msg() }) == 'value is required'
+}

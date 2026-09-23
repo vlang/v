@@ -21089,6 +21089,9 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 			if ftyp := t.lookup_struct_field_type(base_target, node.value) {
 				return ftyp
 			}
+			if ftyp := t.sum_shared_field_type_name(base_target, node.value) {
+				return ftyp
+			}
 		}
 	}
 	mut base_type := t.raw_expr_type_without_smartcast(base_id)
@@ -21103,6 +21106,9 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 		}
 	}
 	if ftyp := t.lookup_struct_field_type(clean_base_type, node.value) {
+		return ftyp
+	}
+	if ftyp := t.sum_shared_field_type_name(clean_base_type, node.value) {
 		return ftyp
 	}
 	if info := t.lookup_struct_info(clean_base_type) {
