@@ -9983,6 +9983,20 @@ fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 	return tc.direct_parent_id_untrusted(id, idx)
 }
 
+// note_generated_parent seeds the worker-private parent cache for a freshly
+// generated node whose only parent is `parent`, so parent queries on it skip
+// the arena scan. An edge found by an earlier query is kept.
+pub fn (tc &TypeChecker) note_generated_parent(child flat.NodeId, parent flat.NodeId) {
+	idx := int(child)
+	if isnil(tc.type_cache) || idx < tc.direct_parent_ids.len {
+		return
+	}
+	mut cache := tc.type_cache
+	if idx !in cache.generated_parent_entries {
+		cache.generated_parent_entries[idx] = parent
+	}
+}
+
 fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.NodeId {
 	if idx < 0 || idx >= tc.a.nodes.len {
 		return flat.empty_node

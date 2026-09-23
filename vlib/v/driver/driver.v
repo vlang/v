@@ -12297,6 +12297,7 @@ pub fn run(args []string) {
 	} else {
 		b.step('finalize')
 	}
+	mut cg_pre_sw := time.new_stopwatch()
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'backend code generation')
 	if backend == 'wasm' {
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
@@ -12477,6 +12478,9 @@ pub fn run(args []string) {
 			g.set_incremental_fn_names(incremental_changed_names)
 			g.set_cached_support_declarations(incremental_known_declarations)
 			g.set_scope_parallel_workers(!generic_cache_hit)
+			if verbose {
+				eprintln('  [ttime] cg setup           ${f64(cg_pre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			}
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc, cache_no_parallel_cgen || test_files.len > 0, test_files) or {
 				eprintln('error writing ${generated_path}: ${err}')
 				cleanup_c_build_dir(cc_dir)
@@ -16472,14 +16476,15 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 		}
 		ids
 	}
+	mut resolver := types.new_shadow_file_resolver()
 	for i in file_ids {
 		node := tc.a.nodes[i]
 		if i < tc.a.user_code_start || node.kind != .file || node.value.len == 0
 			|| node.value in tc.diagnostic_files {
 			continue
 		}
-		if types.shadow_roots_own_file(node.value, tc.shadow_diagnostic_root,
-			tc.shadow_explicit_roots, tc.shadow_dependency_roots) {
+		if resolver.owns_file(node.value, tc.shadow_diagnostic_root, tc.shadow_explicit_roots,
+			tc.shadow_dependency_roots) {
 			tc.diagnostic_files[node.value] = true
 		}
 	}

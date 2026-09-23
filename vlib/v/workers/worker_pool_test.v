@@ -136,3 +136,53 @@ fn test_pool_drains_fast_completions_while_submitting_large_batch() {
 	assert stats.async_tasks == 256
 	pool.close()
 }
+
+struct ConcurrentPoolRun {
+mut:
+	pool &Pool = unsafe { nil }
+	args []&PoolTestArg
+}
+
+fn concurrent_pool_run_thread(arg voidptr) voidptr {
+	mut run := unsafe { &ConcurrentPoolRun(arg) }
+	mut tasks := []Task{cap: run.args.len}
+	for i, a in run.args {
+		tasks << Task{
+			run:        pool_test_task
+			arg:        voidptr(a)
+			force_sync: i == 0
+		}
+	}
+	run.pool.run(tasks)
+	return unsafe { nil }
+}
+
+fn test_concurrent_batches_account_only_their_own_tasks() {
+	// The caller of a batch drains queued tasks while it waits, and may run a
+	// task queued by another batch. Every task must still run exactly once and
+	// each batch must return only after all of its own tasks finished.
+	mut pool := new(3)
+	for _ in 0 .. 20 {
+		mut first := &ConcurrentPoolRun{
+			pool: pool
+		}
+		mut second := &ConcurrentPoolRun{
+			pool: pool
+		}
+		for _ in 0 .. 40 {
+			first.args << &PoolTestArg{}
+			second.args << &PoolTestArg{}
+		}
+		t1 := spawn concurrent_pool_run_thread(voidptr(first))
+		t2 := spawn concurrent_pool_run_thread(voidptr(second))
+		t1.wait()
+		t2.wait()
+		for a in first.args {
+			assert a.value == 1
+		}
+		for a in second.args {
+			assert a.value == 1
+		}
+	}
+	pool.close()
+}

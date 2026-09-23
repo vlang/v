@@ -323,11 +323,13 @@ fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccess
 	mut program_modules := map[string]bool{}
 	mut non_program_modules := map[string]bool{}
 	mut scan_file_is_program := false
+	// Resolving a path is a syscall per file; there is nothing to match when no
+	// program files are cached, and each file is resolved once for both passes.
+	mut program_file_flags := map[string]bool{}
 	for directive_idx in g.top_level_nodes() {
 		directive := g.a.nodes[directive_idx]
 		if directive.kind == .file {
-			scan_file_is_program = g.cache_program_files[directive.value]
-				|| g.cache_program_files[os.real_path(directive.value)]
+			scan_file_is_program = g.file_is_cache_program_file(directive.value, mut program_file_flags)
 			continue
 		}
 		if directive.kind == .module_decl && !scan_file_is_program {
@@ -338,8 +340,7 @@ fn (g &FlatGen) fn_gen_selection_info() (DirectArrayAccessFns, DirectArrayAccess
 	for directive_idx in g.top_level_nodes() {
 		directive := g.a.nodes[directive_idx]
 		if directive.kind == .file {
-			cur_file_is_program = g.cache_program_files[directive.value]
-				|| g.cache_program_files[os.real_path(directive.value)]
+			cur_file_is_program = g.file_is_cache_program_file(directive.value, mut program_file_flags)
 			continue
 		}
 		if directive.kind == .module_decl {
@@ -518,6 +519,20 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 			g.writeln('/* V3CACHE_FN_END ${cache_fn_marker_key(item.file, item.module, node.value)} */')
 		}
 	}
+}
+
+// file_is_cache_program_file reports whether `file`, as written or resolved,
+// is one of the cached program files, memoizing the answer per file.
+fn (g &FlatGen) file_is_cache_program_file(file string, mut memo map[string]bool) bool {
+	if g.cache_program_files.len == 0 {
+		return false
+	}
+	if known := memo[file] {
+		return known
+	}
+	is_program := g.cache_program_files[file] || g.cache_program_files[os.real_path(file)]
+	memo[file] = is_program
+	return is_program
 }
 
 fn c_backend_fn_file_rank(file string) int {

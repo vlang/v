@@ -184,6 +184,10 @@ mut:
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
+	// merge_call_canon holds, in fork_overlay.resolved_call_names iteration
+	// order, each name's canonical spelling looked up in parallel before the
+	// merge ('' when the name was not interned yet).
+	merge_call_canon []string
 	// merge_regions_absorbed marks worker regions as already relocated *into*
 	// their final master slots by that same parallel pass, so merge_worker skips
 	// the bulk copies entirely and shifts ids with the offsets recorded below.
@@ -4831,14 +4835,20 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 	// under the shifted node ids, so or/return lowering in the late pass and
 	// cgen see them exactly as after a serial transform.
 	if !isnil(w.tc.fork_overlay) {
+		mut call_pos := 0
 		for idx, name in w.tc.fork_overlay.resolved_call_names {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-			owned_name := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
-				name.clone()
+			if call_pos < w.merge_call_canon.len && w.merge_call_canon[call_pos].len > 0 {
+				t.set_resolved_call_canonical(shifted, w.merge_call_canon[call_pos])
 			} else {
-				name
+				owned_name := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
+					name.clone()
+				} else {
+					name
+				}
+				t.set_resolved_call_entry(shifted, owned_name)
 			}
-			t.set_resolved_call_entry(shifted, owned_name)
+			call_pos++
 		}
 		for idx, name in w.tc.fork_overlay.resolved_fn_values {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
@@ -4947,8 +4957,14 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 }
 
 fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
+	t.set_resolved_call_canonical(idx, t.tc.canonical_symbol(name))
+}
+
+// set_resolved_call_canonical records a resolved call whose name is already the
+// checker's canonical spelling.
+fn (mut t Transformer) set_resolved_call_canonical(idx int, canonical string) {
 	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_call_names.len {
-		t.tc.sparse_resolved_call_names[idx] = t.tc.canonical_symbol(name)
+		t.tc.sparse_resolved_call_names[idx] = canonical
 		return
 	}
 	if t.tc.resolved_call_names.len <= idx {
@@ -4964,7 +4980,7 @@ fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
 			vmemset(&t.tc.resolved_call_set[set_start], 0, isize(amount))
 		}
 	}
-	t.tc.resolved_call_names[idx] = types.cached_name(t.tc.canonical_symbol(name))
+	t.tc.resolved_call_names[idx] = types.cached_name(canonical)
 	t.tc.resolved_call_set[idx] = true
 }
 
@@ -5079,27 +5095,58 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 fn split_work_items(items []FnWorkItem, n int) [][]FnWorkItem {
 	mut buckets := [][]FnWorkItem{len: n, init: []FnWorkItem{}}
 	mut loads := []i64{len: n}
-	mut sorted := items.clone()
-	sorted.sort(a.rank > b.rank)
-	for it in sorted {
+	// Sort compact (rank, index) pairs instead of whole work items. The sort is
+	// stable, so the assignment order is exactly that of sorting the items.
+	mut ranked := []WorkItemRank{cap: items.len}
+	for i, it in items {
+		ranked << WorkItemRank{
+			rank: it.rank
+			idx:  i
+		}
+	}
+	ranked.sort(a.rank > b.rank)
+	mut bucket_of := []int{len: items.len}
+	for r in ranked {
 		mut best := 0
 		for b in 1 .. n {
 			if loads[b] < loads[best] {
 				best = b
 			}
 		}
-		buckets[best] << it
-		loads[best] += i64(it.cost) + 1
+		bucket_of[r.idx] = best
+		loads[best] += i64(items[r.idx].cost) + 1
 	}
 	// Each bucket is processed sequentially by one thread: order its items by
 	// AST position, which groups functions of the same module together (the
 	// per-module alias/type-normalization caches are cleared on every module
 	// switch, and rank order interleaves modules almost per item) and walks the
-	// node arrays roughly sequentially.
+	// node arrays roughly sequentially. Items usually arrive in AST order, and
+	// then filling the buckets in that order already sorts each one.
+	mut strictly_ordered := true
+	for i in 1 .. items.len {
+		if items[i].fn_idx <= items[i - 1].fn_idx {
+			strictly_ordered = false
+			break
+		}
+	}
+	if strictly_ordered {
+		for i, it in items {
+			buckets[bucket_of[i]] << it
+		}
+		return buckets
+	}
+	for r in ranked {
+		buckets[bucket_of[r.idx]] << items[r.idx]
+	}
 	for bi in 0 .. n {
 		buckets[bi].sort(a.fn_idx < b.fn_idx)
 	}
 	return buckets
+}
+
+struct WorkItemRank {
+	rank i64
+	idx  int
 }
 
 // Keep each self-host worker's writes in adjacent source pages so snapshots
@@ -5134,22 +5181,28 @@ fn split_work_items_by_source(items []FnWorkItem, n int) [][]FnWorkItem {
 
 // should_transform_fn reports whether should transform fn applies in transform.
 fn (t &Transformer) should_transform_fn(node flat.Node) bool {
+	return t.should_transform_fn_in_module(node, t.cur_module)
+}
+
+// should_transform_fn_in_module is should_transform_fn for a function declared
+// in `module_name`; it only reads the used-function tables.
+fn (t &Transformer) should_transform_fn_in_module(node flat.Node, module_name string) bool {
 	if !t.has_used_fn_filter() {
 		return true
 	}
 	if transform_is_generated_fn_after_markused(node.value) {
 		return true
 	}
-	if t.cur_module == 'builtin' && node.value == 'exit' {
+	if module_name == 'builtin' && node.value == 'exit' {
 		return true
 	}
 	if node.value.contains('[') {
 		base_value := generic_fn_decl_base_value(node.value)
-		if base_value != node.value && t.used_fn_contains_in_module(base_value, t.cur_module) {
+		if base_value != node.value && t.used_fn_contains_in_module(base_value, module_name) {
 			return true
 		}
 	}
-	return t.used_fn_contains_in_module(node.value, t.cur_module)
+	return t.used_fn_contains_in_module(node.value, module_name)
 }
 
 fn transform_is_generated_fn_after_markused(name string) bool {

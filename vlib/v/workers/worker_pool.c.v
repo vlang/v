@@ -53,6 +53,10 @@ pub:
 	stop       bool
 mut:
 	queued_at_ns u64
+	// done receives the completion of a queued task. Each Pool.run batch has its
+	// own channel, so a batch never counts another batch's completions, even
+	// when it runs one of their queued tasks itself.
+	done chan Completion
 }
 
 // Stats is a cumulative snapshot of persistent worker-pool activity.
@@ -82,7 +86,6 @@ struct Completion {
 pub struct Pool {
 mut:
 	jobs                   chan Task
-	done                   chan Completion
 	threads                []WorkerThread
 	is_closed              bool
 	task_count             u64
@@ -92,6 +95,7 @@ mut:
 	launch_attempt_count   u64
 	launch_failure_count   u64
 	launched_thread_count  u64
+	caller_steals          bool
 	queue_wait_ns          u64
 	worker_run_ns          u64
 	started_at_ns          u64
@@ -107,7 +111,7 @@ fn pool_worker(arg voidptr) voidptr {
 		started_at := time.sys_mono_now()
 		task.run(task.arg)
 		finished_at := time.sys_mono_now()
-		pool.done <- Completion{
+		task.done <- Completion{
 			queue_wait_ns: if started_at >= task.queued_at_ns {
 				started_at - task.queued_at_ns
 			} else {
@@ -138,9 +142,9 @@ pub fn new(size int) &Pool {
 	queue_cap := if wanted > 0 { wanted * 16 } else { 1 }
 	mut pool := &Pool{
 		jobs:                 chan Task{cap: queue_cap}
-		done:                 chan Completion{cap: queue_cap}
 		launch_attempt_count: u64(wanted)
 		started_at_ns:        time.sys_mono_now()
+		caller_steals:        os.getenv('V3_NO_POOL_STEAL') == ''
 	}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 	stack_size := worker_stack_size()
@@ -188,6 +192,14 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 		p.task_count += u64(tasks.len)
 		return false
 	}
+	mut async_count := 0
+	for task in tasks {
+		if !task.force_sync {
+			async_count++
+		}
+	}
+	// Buffered for the whole batch, so a worker never blocks on reporting.
+	done := chan Completion{cap: if async_count > 0 { async_count } else { 1 }}
 	mut submitted := 0
 	mut completed := 0
 	for task in tasks {
@@ -196,6 +208,7 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 				run:          task.run
 				arg:          task.arg
 				queued_at_ns: time.sys_mono_now()
+				done:         done
 			}
 			mut is_submitted := false
 			for !is_submitted {
@@ -204,7 +217,7 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 						submitted++
 						is_submitted = true
 					}
-					completion := <-p.done {
+					completion := <-done {
 						p.record_completion(completion)
 						completed++
 					}
@@ -218,11 +231,33 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 			p.forced_sync_task_count++
 		}
 	}
-	for completed < submitted {
-		completion := <-p.done
+	// Help drain the queue instead of idling: when a worker is descheduled (a
+	// loaded host) or the caller's own share finished early, the caller runs
+	// queued tasks itself. A task is completed on its own batch's channel, so
+	// running one queued by a concurrent batch is still accounted correctly.
+	for completed < submitted && !p.caller_steals {
+		completion := <-done
 		p.record_completion(completion)
 		completed++
 	}
+	for completed < submitted {
+		select {
+			completion := <-done {
+				p.record_completion(completion)
+				completed++
+			}
+			task := <-p.jobs {
+				if task.stop {
+					// Only close() queues stop requests; leave them to the workers.
+					p.jobs <- task
+					continue
+				}
+				task.run(task.arg)
+				task.done <- Completion{}
+			}
+		}
+	}
+	done.close()
 	p.async_task_count += u64(submitted)
 	p.task_count += u64(tasks.len)
 	return submitted > 0

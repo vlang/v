@@ -454,6 +454,12 @@ mut:
 	local_fn_decl_index       map[string]bool
 	local_fn_decl_indexed_len int
 	local_fn_decl_last_module string
+	// tail_decl_ids lists, in order, the file/module/fn/struct declaration nodes
+	// in [tail_decl_start, tail_decl_end): the nodes appended after collect built
+	// its top-level index. The index scans below only look at those kinds.
+	tail_decl_ids   []i32
+	tail_decl_start int = -1
+	tail_decl_end   int = -1
 }
 
 fn (mut cache TypeCache) clear_c_type_entries() {
@@ -1638,6 +1644,9 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 		cache.local_fn_decl_index.clear()
 		cache.local_fn_decl_indexed_len = 0
 		cache.local_fn_decl_last_module = ''
+		cache.tail_decl_ids = []i32{}
+		cache.tail_decl_start = -1
+		cache.tail_decl_end = -1
 		return
 	}
 	tc.type_cache = &TypeCache{
@@ -5192,7 +5201,10 @@ fn (tc &TypeChecker) local_fn_decl_exists(name string) bool {
 		}
 		incremental_transform_scan := tc.top_level_idx_nodes_len > 0
 			&& scan_start >= tc.top_level_idx_nodes_len
-		for i in scan_start .. tc.a.nodes.len {
+		tail_ids, use_ids := tc.tail_decl_ids_for(scan_start, tc.a.nodes.len)
+		tail_count := if use_ids { tail_ids.len } else { tc.a.nodes.len - scan_start }
+		for k in 0 .. tail_count {
+			i := if use_ids { int(tail_ids[k]) } else { scan_start + k }
 			node := tc.a.nodes[i]
 			match node.kind {
 				.module_decl {
@@ -5958,7 +5970,7 @@ fn (mut tc TypeChecker) check_selective_const_imports(node flat.Node, module_pat
 }
 
 fn (mut tc TypeChecker) check_selective_type_imports(node flat.Node, module_path string) {
-	display_module_path := tc.diagnostic_module_display_name(module_path)
+	// The display name scans every file's module, so resolve it only for a diagnostic.
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.node(child_id)
@@ -5974,8 +5986,10 @@ fn (mut tc TypeChecker) check_selective_type_imports(node flat.Node, module_path
 			}
 		}
 		if symbol_name.len == 0 {
+			display_module_path := tc.diagnostic_module_display_name(module_path)
 			tc.record_error_at(.unknown_type, 'module `${display_module_path}` has no type `${child.value}`', child_id, tc.node_value_diagnostic_pos(child_id))
 		} else if _ := tc.private_declaration(symbol_name) {
+			display_module_path := tc.diagnostic_module_display_name(module_path)
 			tc.record_error_at(.unknown_type, 'module `${display_module_path}` type `${child.value}` is private', child_id, tc.node_value_diagnostic_pos(child_id))
 		}
 	}
@@ -9106,6 +9120,22 @@ pub fn (tc &TypeChecker) frozen_symbol_name(id SymbolId) string {
 	return symbols.names[index]
 }
 
+// lookup_canonical_symbol_unlocked returns the canonical spelling of an already
+// interned name without taking the interner lock. It is only valid while no
+// thread interns, e.g. across a pool phase that only reads the symbol table.
+pub fn (tc &TypeChecker) lookup_canonical_symbol_unlocked(name string) ?string {
+	if isnil(tc.symbols) || name.len == 0 {
+		return none
+	}
+	symbols := unsafe { tc.symbols }
+	id := symbols.ids[name] or { return none }
+	index := int(id) - 1
+	if index < 0 || index >= symbols.names.len {
+		return none
+	}
+	return symbols.names[index]
+}
+
 // canonical_symbol returns the compilation-owned canonical spelling of name.
 pub fn (tc &TypeChecker) canonical_symbol(name string) string {
 	_, canonical := tc.intern_symbol(name)
@@ -9672,6 +9702,11 @@ fn (tc &TypeChecker) generic_declaration_head_pos(id flat.NodeId) token.Pos {
 }
 
 fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
+	// Only names declared more than once can be reported. Record each name's first
+	// declaration and materialize an index list only for a repeated name, instead
+	// of allocating and sorting a group for every function.
+	mut first_index := map[string]int{}
+	first_index.reserve(u32(tc.top_level_idx.len))
 	mut groups := map[string][]int{}
 	mut cur_module := ''
 	for index in tc.top_level_idx {
@@ -9688,7 +9723,11 @@ fn (mut tc TypeChecker) check_duplicate_fn_declarations() {
 			continue
 		}
 		key := checker_qualified_fn_name(cur_module, node.value)
-		mut indexes := groups[key] or { []int{} }
+		first := first_index[key] or {
+			first_index[key] = index
+			continue
+		}
+		mut indexes := groups[key] or { [first] }
 		indexes << index
 		groups[key] = indexes
 	}
