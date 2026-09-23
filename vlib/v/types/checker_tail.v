@@ -16251,7 +16251,9 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 		actual_text := tc.generic_infer_type_text(actual)
 		param_base, param_args, _ := generic_type_application_parts(clean)
 		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
-		iface_name := tc.interface_metadata_name(param_base)
+		// `param_base` is declared source text, so an import alias (`import io as csv`)
+		// must be resolved before it can be told apart from a same-named loaded type.
+		iface_name := tc.interface_metadata_name(tc.resolve_imported_type_text(param_base))
 		if iface_name in tc.interface_names {
 			if actual_is_generic && tc.generic_type_base_matches(param_base, actual_base)
 				&& param_args.len == actual_args.len {
@@ -16336,7 +16338,7 @@ fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_text string, ac
 		param_base, param_args, _ := generic_type_application_parts(clean)
 		actual_text := tc.generic_infer_type_text(actual)
 		actual_base, actual_args, actual_is_generic := generic_type_application_parts(actual_text)
-		iface_name := tc.interface_metadata_name(param_base)
+		iface_name := tc.interface_metadata_name(tc.resolve_imported_type_text(param_base))
 		if iface_name in tc.interface_names {
 			if actual_is_generic && tc.generic_type_base_matches(param_base, actual_base)
 				&& param_args.len == actual_args.len {
