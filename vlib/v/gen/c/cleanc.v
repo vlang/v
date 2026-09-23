@@ -22510,6 +22510,16 @@ fn (mut g FlatGen) test_failure_helpers() {
 	g.writeln('static void v3_eprintln_string(string s) {')
 	g.writeln('\tfprintf(stderr, "%.*s\\n", s.len, (char*)s.str);')
 	g.writeln('}')
+	g.writeln('static void v3_eprint_assert_string(const char* prefix, const char* label, string value) {')
+	g.writeln('	fprintf(stderr, "%s: %s = ", prefix, label);')
+	g.writeln('	if (value.len > 0 && value.str != NULL) {')
+	g.writeln('		fprintf(stderr, "%.*s", (int)value.len, (char*)value.str);')
+	g.writeln('	}')
+	g.writeln('	fprintf(stderr, "\\n");')
+	g.writeln('}')
+	g.writeln('static void v3_eprint_assert_bool(const char* prefix, const char* label, bool value) {')
+	g.writeln('	fprintf(stderr, "%s: %s = %s\\n", prefix, label, value ? "true" : "false");')
+	g.writeln('}')
 	g.writeln('')
 }
 

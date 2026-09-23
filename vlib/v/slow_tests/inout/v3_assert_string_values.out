@@ -1,0 +1,4 @@
+V panic: Assertion failed...
+vlib/v/slow_tests/inout/v3_assert_string_values.v3.v:6: > assert foo() == 'www'
+   left value: foo() = zzz
+  right value: 'www' = www
