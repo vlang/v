@@ -71,12 +71,16 @@ pub:
 	launch_failures   u64
 	queue_wait_ns     u64
 	worker_run_ns     u64
-	utilization_ppm   u64
+	// caller_run_ns is queued work that a waiting Pool.run caller ran itself. It
+	// is excluded from utilization_ppm, which measures the persistent workers.
+	caller_run_ns   u64
+	utilization_ppm u64
 }
 
 struct Completion {
 	queue_wait_ns u64
-	worker_run_ns u64
+	run_ns        u64
+	on_worker     bool // run by a persistent worker rather than the waiting caller
 }
 
 // BatchStats accumulates one Pool.run batch's counters without touching the
@@ -89,11 +93,16 @@ mut:
 	fallback_tasks    u64
 	queue_wait_ns     u64
 	worker_run_ns     u64
+	caller_run_ns     u64
 }
 
 fn (mut s BatchStats) record_completion(completion Completion) {
 	s.queue_wait_ns += completion.queue_wait_ns
-	s.worker_run_ns += completion.worker_run_ns
+	if completion.on_worker {
+		s.worker_run_ns += completion.run_ns
+	} else {
+		s.caller_run_ns += completion.run_ns
+	}
 }
 
 // Pool owns a bounded set of persistent compiler workers. Phase payloads stay
@@ -119,6 +128,7 @@ mut:
 	caller_steals          bool
 	queue_wait_ns          u64
 	worker_run_ns          u64
+	caller_run_ns          u64
 	started_at_ns          u64
 }
 
@@ -129,7 +139,7 @@ fn pool_worker(arg voidptr) voidptr {
 		if task.stop {
 			break
 		}
-		run_queued_task(task)
+		run_queued_task(task, true)
 	}
 	$if prealloc {
 		unsafe {
@@ -140,8 +150,9 @@ fn pool_worker(arg voidptr) voidptr {
 }
 
 // run_queued_task runs a queued task and reports its queue wait and run time on
-// the task's batch channel, whether a worker or a draining caller picked it up.
-fn run_queued_task(task Task) {
+// the task's batch channel, noting whether a persistent worker or a draining
+// caller picked it up.
+fn run_queued_task(task Task, on_worker bool) {
 	started_at := time.sys_mono_now()
 	task.run(task.arg)
 	finished_at := time.sys_mono_now()
@@ -151,7 +162,8 @@ fn run_queued_task(task Task) {
 		} else {
 			0
 		}
-		worker_run_ns: if finished_at >= started_at { finished_at - started_at } else { 0 }
+		run_ns:        if finished_at >= started_at { finished_at - started_at } else { 0 }
+		on_worker:     on_worker
 	}
 }
 
@@ -204,6 +216,7 @@ fn (mut p Pool) merge_batch_stats(s BatchStats) {
 	p.fallback_task_count += s.fallback_tasks
 	p.queue_wait_ns += s.queue_wait_ns
 	p.worker_run_ns += s.worker_run_ns
+	p.caller_run_ns += s.caller_run_ns
 	p.stats_lock.unlock()
 }
 
@@ -218,6 +231,7 @@ fn (p &Pool) stats_snapshot() BatchStats {
 		fallback_tasks:    p.fallback_task_count
 		queue_wait_ns:     p.queue_wait_ns
 		worker_run_ns:     p.worker_run_ns
+		caller_run_ns:     p.caller_run_ns
 	}
 	stats_lock.unlock()
 	return snapshot
@@ -304,7 +318,7 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 					p.jobs <- task
 					continue
 				}
-				run_queued_task(task)
+				run_queued_task(task, false)
 			}
 		}
 	}
@@ -339,6 +353,7 @@ pub fn (p &Pool) stats() Stats {
 		launch_failures:   p.launch_failure_count
 		queue_wait_ns:     counters.queue_wait_ns
 		worker_run_ns:     counters.worker_run_ns
+		caller_run_ns:     counters.caller_run_ns
 		utilization_ppm:   utilization_ppm
 	}
 }
