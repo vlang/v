@@ -618,8 +618,8 @@ bool
 
 string
 
-i8    i16  int  i64      i128 (soon)
-u8    u16  u32  u64      u128 (soon)
+i8    i16  int  i64  i128
+u8    u16  u32  u64  u128
 
 rune // represents a Unicode code point
 
@@ -632,6 +632,38 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 
 > [!NOTE]
 > Unlike C and Go, `int` is always a 32 bit integer.
+
+### 128-bit integers
+
+`i128` and `u128` hold 128 bits. The usual operators work on them: arithmetic,
+bitwise, shifts, comparisons, and casts to and from the other numeric types.
+
+```v
+fn main() {
+	total := u128(1) << 100                        // 2^100
+	assert total / u128(4) == u128(1) << 98
+	assert (u128(1) << 127) * u128(2) == u128(0)   // wraps at 128 bits
+	assert i128(-8) >> 1 == i128(-4)               // keeps the sign
+	assert i128(-8) >>> 1 == (u128(1) << 127) - u128(4)
+}
+```
+
+A shift by 128 or more gives `0`. `>>` on a negative signed value is an
+arithmetic shift, so it gives `-1` once the value is all ones, while `>>>`
+reads the same bits as unsigned. Division or modulo by zero panics, as it does
+for the other integer types, and overflow wraps.
+
+The compiler does not require a 128-bit C type. Every operation becomes a call
+to a small helper, and the helper has two implementations: the C compiler's own
+`__int128` where it exists (gcc, clang), and one built from 64-bit limbs
+everywhere else (tcc, MSVC, every 32-bit target), where a 128-bit value is a
+struct. Both answer identically. Pass `-d v3_no_native_int128` to force the
+portable implementation on a compiler that has the native type.
+
+Still missing: there are no integer literals wider than 64 bits, `str()` is not
+implemented for these types yet, and the promotion ladder below has no row for
+them, so an expression that mixes a 128-bit value with a smaller one wants an
+explicit cast on the smaller side.
 
 There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type
