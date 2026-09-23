@@ -215,11 +215,12 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 	}
 	if prefix != '' {
 		// The walk reports paths rooted at the folded start folder; swap that
-		// root for the prefix as it was written in the pattern.
-		walked := if cwd == '.' { '' } else { '${cwd}${path_separator}' }
+		// root for the prefix as it was written in the pattern. From `.`, only the
+		// folders matched by a wildcard or walked by `**` start with `./`.
+		walked := '${cwd}${path_separator}'
 		for i := from; i < matches.len; i++ {
 			found := matches[i]
-			matches[i] = if walked != '' && found.starts_with(walked) {
+			matches[i] = if found.starts_with(walked) {
 				'${prefix}${found[walked.len..]}'
 			} else {
 				'${prefix}${found}'

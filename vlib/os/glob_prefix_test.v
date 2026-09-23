@@ -41,3 +41,23 @@ fn test_glob_keeps_a_repeated_prefix_verbatim() {
 	assert '.././vlib/os/os.v' in os.glob('.././vlib/os/*.v')!
 	os.chdir(@VMODROOT)!
 }
+
+fn test_glob_keeps_a_dot_prefix_before_a_wildcard_folder() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'glob_dot_prefix_wildcard_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'sub'))!
+	os.write_file(os.join_path(root, 'sub', 'a.v'), '')!
+	os.write_file(os.join_path(root, 'root.v'), '')!
+	defer {
+		os.chdir(@VMODROOT) or {}
+		os.rmdir_all(root) or {}
+	}
+	os.chdir(root)!
+	assert os.glob('./*/a.v')! == ['./sub/a.v']
+	assert os.glob('././*/a.v')! == ['././sub/a.v']
+	assert os.glob('./**/*.v')! == ['./root.v', './sub/a.v']
+	// Files matched right in the start folder carry no walked root.
+	assert os.glob('./*.v')! == ['./root.v']
+}
